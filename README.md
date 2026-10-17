@@ -1,8 +1,8 @@
 # BLOCKBUSTER REELS
 
 スマホの横画面・全画面で遊ぶ 5 リール × 3 段のカジノスロットです。
-UI・アイコン・シンボルは参考スクリーンショットを元にすべてベクター（SVG / Canvas）で再現しており、
-画像ファイルや外部ライブラリには依存しません。
+リールのシンボル 7 種は提供画像（`tools/art/source/`）を参考画面と同じ大きさ・位置に合わせて使用し、
+UI・アイコン・壁紙は参考スクリーンショットを元にベクター（SVG / Canvas）で再現しています。外部ライブラリには依存しません。
 
 ![screen](icons/icon-192.png)
 
@@ -65,17 +65,20 @@ js/render/fx.js            WIN / BIG WIN / SUPER BIG WIN 演出
 js/render/backdrop.js      アールデコ壁紙と金フレーム
 js/ui/screens.js           トークン購入・交換、ルール / 組み合わせ画面
 js/audio/sfx.js            効果音シンセサイザー
-js/art/*.js                アイコン・シンボル・壁紙パターンの SVG
+js/art/*.js                アイコン・壁紙パターンの SVG、シンボル画像の一覧
+img/symbols/*.webp         リール用に整えたシンボル画像
 tools/                     アート / フォント / 1 ファイル版の生成スクリプト
 ```
 
 ### 再生成
 
 ```sh
-pip install numpy shapely svgpathtools fonttools brotli
-python3 tools/art/build.py        # シンボルと壁紙パターン → js/art/symbols.js, pattern.js
+pip install numpy pillow fonttools brotli
+python3 tools/art/symbol_images.py  # シンボル画像 → img/symbols/*.webp
+python3 tools/art/icons.py          # アプリアイコン → icons/*.png
+python3 tools/art/build.py        # 壁紙パターン → js/art/pattern.js
 python3 tools/fonts/subset.py     # 使用文字だけのフォント → fonts/, css/fonts.css
 python3 tools/build_single.py     # 1 ファイル版 → dist/blockbuster-reels.html
 ```
 
-フォントは SIL Open Font License のフォント（Noto Sans JP / Exo 2 / Montserrat / Cinzel）を使用しています（`fonts/LICENSE-OFL.txt`）。
+フォントは SIL Open Font License のフォント（Noto Sans JP / Exo 2 / Montserrat）を使用しています（`fonts/LICENSE-OFL.txt`）。

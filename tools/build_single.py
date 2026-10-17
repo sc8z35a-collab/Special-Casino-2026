@@ -37,6 +37,8 @@ def inline_css(match):
 
 def inline_js(match):
     js = read(match.group(1)).replace('</script', '<\\/script')
+    # image references inside scripts (reel symbols) become data: URIs
+    js = re.sub(r"'(img/[A-Za-z0-9_/.-]+\.webp)'", lambda m: "'data:image/webp;base64,%s'" % b64(m.group(1)), js)
     return '<script>\n' + js + '</script>'
 
 
@@ -45,8 +47,8 @@ def main():
     html = re.sub(r'<link rel="stylesheet" href="([^"]+)">', inline_css, html)
     html = re.sub(r'<script src="([^"]+)"></script>', inline_js, html)
     html = html.replace('<link rel="manifest" href="manifest.webmanifest">\n', '')
-    html = html.replace('href="icons/icon.svg"', 'href="data:image/svg+xml;base64,%s"' % b64('icons/icon.svg'))
-    html = html.replace('href="icons/icon-180.png"', 'href="data:image/png;base64,%s"' % b64('icons/icon-180.png'))
+    for icon in ('icons/icon-192.png', 'icons/icon-180.png'):
+        html = html.replace('href="%s"' % icon, 'href="data:image/png;base64,%s"' % b64(icon))
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, 'w', encoding='utf-8') as fh:
         fh.write(html)

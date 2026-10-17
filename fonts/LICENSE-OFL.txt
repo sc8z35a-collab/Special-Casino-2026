@@ -1,10 +1,8 @@
 The fonts in this folder are subsets of fonts licensed under the SIL Open Font License, Version 1.1.
-The BAR reel symbol (tools/art/glyphs.py, js/art/symbols.js) contains glyph outlines derived from Cinzel.
 
 NotoJP-*.woff2      - Noto Sans JP:  Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
 Exo2-*.woff2        - Exo 2:         Copyright 2013 The Exo 2 Project Authors (https://github.com/googlefonts/Exo-2.0)
 MontserratX-*.woff2 - Montserrat:    Copyright 2024 The Montserrat.Git Project Authors (https://github.com/JulietaUla/Montserrat.git)
-BAR lettering       - Cinzel:        Copyright 2020 The Cinzel Project Authors (https://github.com/NDISCOVER/Cinzel)
 
 Reserved Font Names are not used by the subset fonts (they are renamed NotoJP / Exo2 / MontserratX).
 

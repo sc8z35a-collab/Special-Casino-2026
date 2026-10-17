@@ -1,8 +1,9 @@
-"""Regenerates the vector art modules in js/art/ from the Python sources.
+"""Regenerates the generated art modules in js/art/ from the Python sources.
 
     python3 tools/art/build.py
 
-Requires: numpy, shapely, svgpathtools (pip install numpy shapely svgpathtools)
+The reel symbols are images (see tools/art/symbol_images.py); this script
+builds the vector background pattern, js/art/pattern.js.
 """
 import json
 import os
@@ -12,7 +13,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 ROOT = os.path.dirname(os.path.dirname(HERE))
 
-import symbols  # noqa: E402
 import pattern  # noqa: E402
 
 
@@ -29,11 +29,7 @@ def write_module(name, var, mapping):
 
 
 def main():
-    only = sys.argv[1:]
-    syms = {k: f() for k, f in symbols.SYMBOLS.items() if not only or k in only}
-    write_module('symbols.js', 'SYMBOL_SVG', syms)
-    if not only:
-        write_module('pattern.js', 'PATTERN', pattern.pattern_module())
+    write_module('pattern.js', 'PATTERN', pattern.pattern_module())
 
 
 if __name__ == '__main__':

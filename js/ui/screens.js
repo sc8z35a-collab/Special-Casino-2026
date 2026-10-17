@@ -313,7 +313,7 @@
         var counts = Object.keys(pays).map(Number).sort(function (a, b) { return a - b; });
         var prob = Math.round(C.weights[sym] * 1000) / 10;
         card.innerHTML =
-          '<div class="pc-img"><img alt="" src="' + BR.svgURL(BR.SYMBOL_SVG[sym]) + '"></div>' +
+          '<div class="pc-img"><img alt="" src="' + BR.SYMBOL_IMG[sym] + '"></div>' +
           '<div class="pc-prob">確率: <b>' + prob + '%</b></div>' +
           '<div class="pc-counts">' + counts.map(function (c) { return '<div>' + c + '/5</div>'; }).join('') + '</div>' +
           '<div class="pc-div"></div>' +
