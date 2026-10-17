@@ -1,13 +1,14 @@
 /* Sound effects: the supplied recordings (sounds/) for clicks, the SPIN
    button, the turning reels and wins; everything else is synthesised with
    WebAudio. The synthesised versions also stand in until the recordings
-   are decoded. */
+   are decoded. Every sound plays from the start: the sound button on the
+   slot screen only changes its own look. */
 (function (BR) {
   'use strict';
 
   var AC = window.AudioContext || window.webkitAudioContext;
   var ctx = null, master = null, comp = null, verb = null, verbIn = null;
-  var muted = true, unlocked = false;
+  var muted = false, unlocked = false;
   var noiseBuf = null;
   var reelLoop = null;
 
@@ -333,6 +334,49 @@
     // outgoing chat message
     send: function (t) {
       tone({ t: t, f: 900, f2: 1500, glide: 0.06, d: 0.07, v: 0.07, type: 'sine' });
+    },
+    // friend request / accepted
+    notify: function (t) {
+      bell(N.C6, t, 0.08, 0.7, 0.35);
+      bell(N.E6, t + 0.1, 0.08, 0.7, 0.35);
+      bell(N.G6, t + 0.2, 0.09, 1.0, 0.35);
+    },
+    // a locked (chained) icon: heavy links rattling
+    chain: function (t) {
+      for (var i = 0; i < 5; i++) {
+        var tt = t + i * 0.055 + Math.random() * 0.02;
+        bell(1700 + Math.random() * 900, tt, 0.05, 0.16, 0.15);
+        noise({ t: tt, ftype: 'bandpass', f: 4200 + Math.random() * 2500, q: 3, d: 0.05, v: 0.08 });
+      }
+      noise({ t: t, ftype: 'lowpass', f: 500, d: 0.12, v: 0.12 });
+    },
+    // the chain breaks: a crack, falling links, a sparkle
+    unchain: function (t) {
+      noise({ t: t, ftype: 'highpass', f: 1800, a: 0.001, d: 0.09, v: 0.3 });
+      timpani(t, 90, 0.35);
+      for (var i = 0; i < 7; i++) bell(1500 + Math.random() * 1500, t + 0.12 + i * 0.07, 0.05, 0.2, 0.2);
+      bell(N.C7, t + 0.45, 0.1, 1.2);
+      bell(N.G6 * 2, t + 0.55, 0.08, 1.4);
+    },
+    // incoming call (one ring; repeated while ringing)
+    ring: function (t) {
+      for (var i = 0; i < 2; i++) {
+        tone({ t: t + i * 0.42, f: N.E6, d: 0.32, hold: 0.06, v: 0.1, type: 'sine', wet: 0.2 });
+        tone({ t: t + i * 0.42, f: N.G6, d: 0.32, hold: 0.06, v: 0.07, type: 'sine', wet: 0.2 });
+      }
+    },
+    // calling out, waiting for the friend
+    ringback: function (t) {
+      tone({ t: t, f: 440, d: 0.9, hold: 0.6, v: 0.06, type: 'sine' });
+      tone({ t: t, f: 480, d: 0.9, hold: 0.6, v: 0.05, type: 'sine' });
+    },
+    callStart: function (t) {
+      tone({ t: t, f: N.C5, d: 0.12, v: 0.12, type: 'triangle' });
+      tone({ t: t + 0.1, f: N.G5, d: 0.2, v: 0.12, type: 'triangle' });
+    },
+    callEnd: function (t) {
+      tone({ t: t, f: N.G5, d: 0.12, v: 0.12, type: 'triangle' });
+      tone({ t: t + 0.1, f: N.C5, d: 0.22, v: 0.12, type: 'triangle' });
     }
   };
 
@@ -399,15 +443,8 @@
     recordings: function () { return Object.keys(buffers); },
     startReels: startReels,
     stopReels: function () { if (ctx) stopReels(); },
-    setMuted: function (m) {
-      muted = m;
-      if (ctx) {
-        var t = ctx.currentTime;
-        master.gain.cancelScheduledValues(t);
-        master.gain.setTargetAtTime(m ? 0 : 0.8, t, 0.03);
-        if (m) stopReels();
-      }
-    },
+    // kept for the sound button, which is decoration: the sounds stay on
+    setMuted: function () {},
     suspend: function () { if (ctx && ctx.state === 'running') ctx.suspend(); },
     resume: function () { if (ctx && ctx.state === 'suspended' && !muted) ctx.resume(); }
   };

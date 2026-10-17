@@ -1,4 +1,5 @@
-/* Boot, landscape full-screen layout and the slot game controller. */
+/* Boot, landscape full-screen layout and the slot game controller (also
+   used to show a friend's spins while watching their screen). */
 (function (BR) {
   'use strict';
 
@@ -16,7 +17,9 @@
     var map = {
       plus: BR.ICONS.plus, back: BR.ICONS.back, radio: BR.ICONS.radio, mic: BR.ICONS.mic, edit: BR.ICONS.edit,
       stopwatch: BR.ICONS.stopwatch, info: BR.ICONS.info, grip: BR.ICONS.grip, del: BR.ICONS.del,
-      'sound-off': BR.ICONS.soundOff, 'sound-on': BR.ICONS.soundOn
+      'sound-off': BR.ICONS.soundOff, 'sound-on': BR.ICONS.soundOn,
+      lock: BR.ICONS.lock, phone: BR.ICONS.phone, hangup: BR.ICONS.hangup, 'mic-on': BR.ICONS.micOn, 'mic-off': BR.ICONS.micOff,
+      eye: BR.ICONS.eye, car: BR.ICONS.car, gift: BR.ICONS.gift, friends: BR.ICONS.friends, search: BR.ICONS.search, check: BR.ICONS.check
     };
     function url(u) { return 'url("' + u.replace(/"/g, '%22') + '")'; }
     function svg(markup) { return url(BR.svgURL(markup)); }
@@ -36,6 +39,9 @@
     css += '.chip-pile{background-image:' + url(art.chipPile) + '}\n';
     css += '#bg{background-image:' + url(art.bg) + '}\n';
     css += '#frame{border-image-source:' + url(art.frame) + '}\n';
+    var soc = BR.SOCIAL_IMG;
+    css += '.av-chain{background-image:' + url(soc.chain) + '}\n';
+    css += '.sale-badge{background-image:' + url(soc.sale) + '}\n';
     var st = document.createElement('style');
     st.textContent = css;
     document.head.appendChild(st);
@@ -61,6 +67,9 @@
     var W = Math.round(w / s), H = Math.round(h / s);
     stage.style.width = W + 'px';
     stage.style.height = H + 'px';
+    // the start video covers the stage like a background picture, but never
+    // crops into its two buttons (tablets get bands above and below instead)
+    stage.style.setProperty('--cover', String(Math.min(Math.max(W / REF_W, H / REF_H), W / 1640)));
     stage.style.transform = portrait
       ? 'translate(' + vw + 'px,0) rotate(90deg) scale(' + s + ')'
       : 'scale(' + s + ')';
@@ -110,9 +119,13 @@
   function setText(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
   // While the reels turn, the wallet keeps the stake (before the result is
   // known) or the win (until the reels have stopped) out of the token count.
-  function walletValue(k) { return k === 'tokens' ? Math.max(0, S.tokens - game.hold) : S[k]; }
+  function walletValue(k) {
+    var src = game.watch ? game.watch.balance : S;
+    return k === 'tokens' ? Math.max(0, src.tokens - game.hold) : src[k];
+  }
   function renderWallet(animate) {
-    var ready = BR.bank.ready();
+    var ready = BR.bank.ready() || !!game.watch;
+    $('.wallet').classList.toggle('watching', !!game.watch);
     ['tokens', 'dollars', 'coins'].forEach(function (k) {
       if (walletAnim[k]) walletAnim[k]();
       if (!ready) {
@@ -180,6 +193,7 @@
     slam: false,      // SPIN pressed again before the result came back
     queued: null,     // balance pushed by the server while a spin was out
     seq: 0,
+    watch: null,      // watching a friend: { user, balance, queue, mine: { grid } }
     busy: function () { return game.spinning || game.presenting; }
   };
 
@@ -216,10 +230,16 @@
       fx.skip();
       return;
     }
+    if (game.watch) {
+      BR.sfx.play('deny');
+      toast(game.watch.user.name + 'さんの画面を観戦中です（戻るボタンで終了）');
+      return;
+    }
     if (!BR.bank.ready()) {
       setAuto(false);
       BR.sfx.play('deny');
-      toast(BR.api.hasToken() ? 'サーバーに接続しています…' : 'ユーザー名を登録してください');
+      toast(BR.api.hasToken() ? 'サーバーに接続しています…' : 'ユーザー登録またはログインをしてください');
+      if (!BR.api.hasToken()) BR.account.require(function () {});
       return;
     }
     var stake = bet();
@@ -275,6 +295,7 @@
 
   // Balance pushed by the server (money received, another device, reconnect).
   function serverBalance(b) {
+    if (game.watch) { BR.bank.applyBalance(b); return; }
     if (game.waiting) {
       if (!game.queued || !(game.queued.rev > b.rev)) game.queued = b;
       return;
@@ -294,6 +315,7 @@
     if (!res || res.total <= 0) {
       renderWallet(false);
       renderBet();
+      if (game.watch) { setTimeout(nextWatched, 250); return; }
       scheduleAuto(game.auto ? 450 : 0);
       return;
     }
@@ -307,11 +329,72 @@
     setWinAmount(res.total, true);
     renderWallet(true);
     renderBet();
-    fx.play({ tier: res.tier, amount: res.total, bet: res.bet, mult: res.mult, cols: cols, auto: game.auto }).then(function () {
+    fx.play({ tier: res.tier, amount: res.total, bet: res.bet, mult: res.mult, cols: cols, auto: game.auto || !!game.watch }).then(function () {
       game.presenting = false;
       renderBet();
+      if (game.watch) { nextWatched(); return; }
       scheduleAuto(game.auto ? 350 : 0);
     });
+  }
+
+  /* ------------------------------------------------------------ watching a friend --- */
+  function watchEnter(user, balance, last) {
+    setAuto(false);
+    game.watch = { user: user, balance: balance, queue: [], mine: { grid: reels.getGrid() } };
+    if (last && last.grid) reels.setGrid(last.grid);
+    setWinGoodLuck();
+    renderWallet(false);
+    renderBet();
+  }
+  function watchExit() {
+    var w = game.watch;
+    if (!w) return;
+    game.watch = null;
+    if (!game.busy()) {
+      if (w.mine.grid) reels.setGrid(w.mine.grid);
+      setWinGoodLuck();
+    }
+    $$('.payline-mark').forEach(function (m) { m.classList.remove('lit'); });
+    renderWallet(false);
+    renderBet();
+  }
+  function watchBalance(b) {
+    if (!game.watch) return;
+    if (game.busy()) { game.watch.queue.push({ balance: b }); return; }
+    game.watch.balance = b;
+    renderWallet(true);
+  }
+  function watchSpin(result, balance) {
+    var w = game.watch;
+    if (!w) return;
+    w.queue.push({ result: result, balance: balance });
+    // a friend on auto-spin: keep up by skipping to the latest spins
+    var spins = w.queue.filter(function (q) { return q.result; });
+    if (spins.length > 2) w.queue.splice(0, w.queue.indexOf(spins[spins.length - 2]));
+    if (!game.busy()) nextWatched();
+  }
+  function nextWatched() {
+    var w = game.watch;
+    if (!w || game.busy()) return;
+    var item = w.queue.shift();
+    if (!item) return;
+    if (!item.result) { w.balance = item.balance; renderWallet(true); nextWatched(); return; }
+    var res = item.result;
+    w.balance = item.balance;
+    game.spinning = true;
+    game.result = res;
+    game.hold = res.total;
+    game.t0 = U.now();
+    renderWallet(false);
+    setWinGoodLuck();
+    $$('.payline-mark').forEach(function (m) { m.classList.remove('lit'); });
+    reels.spin();
+    BR.sfx.play('spinStart');
+    BR.sfx.startReels();
+    setTimeout(function () {
+      if (game.result !== res) return;
+      reels.scheduleStops(res.grid, { antic: anticipationFor(res), base: 0.55 });
+    }, 420);
   }
 
   var autoTimer = 0;
@@ -385,6 +468,7 @@
 
   function bind() {
     press($('#btn-spin'), function () { if (game.auto && !game.spinning && !game.presenting) { setAuto(false); return; } spin(); });
+    // the sound button only changes its look: every sound plays regardless
     press($('#bet-minus'), function () { changeBet(-1); });
     press($('#bet-plus'), function () { changeBet(1); });
     press($('#btn-max'), function () { BR.sfx.play('click'); maxBet(); });
@@ -444,6 +528,7 @@
     BR.app = {
       renderWallet: renderWallet, toast: toast, renderBet: renderBet, view: view, setAuto: setAuto,
       reels: reels, fx: fx, spin: spin, serverBalance: serverBalance,
+      watchEnter: watchEnter, watchExit: watchExit, watchSpin: watchSpin, watchBalance: watchBalance,
       relayout: function () { requestAnimationFrame(layout); }
     };
     reels.on('land', function (i) { BR.sfx.play('reelStop', i); if (i === 4) BR.sfx.stopReels(); });
@@ -458,9 +543,15 @@
       ['bar', 'bar', 'bar']
     ]);
     BR.screens.init();
+    BR.kit.init();
+    BR.account.init();
+    BR.avatars.init();
     BR.social.init();
+    BR.cars.init();
+    BR.call.init();
+    BR.watch.init();
+    BR.start.init();
     bind();
-    BR.sfx.setMuted(S.muted);
     $('#btn-sound').classList.toggle('sound-on', !S.muted);
     renderWallet(false);
     renderBet();

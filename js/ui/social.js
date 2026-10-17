@@ -1,222 +1,48 @@
-/* Online play: first-run registration, the board screen (ranking / messages /
-   lobby), direct messages, player profiles and money transfers.  Everything
-   here stays dormant in the offline build. */
+/* Online play: the session (sign-in, live connection), the board screen
+   (ranking / friends / messages / lobby / Car Owner / Garage), direct
+   messages, player profiles, friend requests and money transfers.
+   Everything here stays dormant in the offline build. */
 (function (BR) {
   'use strict';
 
-  var U = BR.util, S = BR.store.state, api = BR.api;
+  var U = BR.util, K = BR.kit, S = BR.store.state, api = BR.api;
   var $ = U.$, $$ = U.$$;
+  var el = K.el, icon = K.icon, sfx = K.sfx, toast = K.toast, fail = K.fail;
   var online = api.online;
 
-  /* ------------------------------------------------------------ helpers --- */
-  function el(tag, cls, text) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text !== undefined && text !== null) e.textContent = String(text);
-    return e;
-  }
-  function icon(name) { return el('i', 'ic ic-' + name); }
-  function pad2(n) { return n < 10 ? '0' + n : String(n); }
-  function sameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
-  function yesterday() { var n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate() - 1); }
-  function fmtTime(ts) {
-    var d = new Date(ts);
-    var hm = d.getHours() + ':' + pad2(d.getMinutes());
-    if (sameDay(d, new Date())) return hm;
-    if (sameDay(d, yesterday())) return '昨日 ' + hm;
-    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + hm;
-  }
-  function fmtDay(ts) {
-    var d = new Date(ts), now = new Date();
-    if (sameDay(d, now)) return '今日';
-    if (sameDay(d, yesterday())) return '昨日';
-    return (d.getFullYear() !== now.getFullYear() ? d.getFullYear() + '年' : '') + (d.getMonth() + 1) + '月' + d.getDate() + '日';
-  }
-  function fmtDate(ts) { var d = new Date(ts); return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate(); }
-  function clip(s, n) {
-    var a = Array.from(String(s || '').replace(/\s+/g, ' '));
-    return a.length > n ? a.slice(0, n).join('') + '…' : a.join('');
-  }
-  function nfkc(s) { s = String(s || ''); return s.normalize ? s.normalize('NFKC') : s; }
-
-  var CUR = { tokens: { icon: 'chip', name: 'トークン' }, dollars: { icon: 'dollar', name: 'ドル' } };
-  function amountEl(n, currency, cls) {
-    var a = el('span', 'amt' + (cls ? ' ' + cls : ''));
-    a.appendChild(icon((CUR[currency] || CUR.tokens).icon));
-    a.appendChild(el('span', '', U.fmt(n)));
-    return a;
-  }
-  var AVATAR = ['#b8322a', '#c1621b', '#a8871a', '#2f8f4e', '#1f8a7a', '#2f6fae', '#7b48a8', '#b0336f', '#6d4c41', '#4f6b7a'];
-  function avatar(user, cls) {
-    var a = el('span', 'avatar' + (cls ? ' ' + cls : ''), (Array.from(String(user.name || '?'))[0] || '?').toUpperCase());
-    a.style.background = AVATAR[Math.abs(user.id | 0) % AVATAR.length];
-    return a;
-  }
-  function presence(on) { return el('i', 'dot' + (on ? ' on' : '')); }
-  function nameSpan(name) { return el('span', 'uname', name); }
-  function toast(msg, ms) { BR.app.toast(msg, ms); }
-  function sfx(n) { BR.sfx.play(n); }
-  function fail(err) {
-    sfx('deny');
-    toast(err && err.message ? err.message : 'エラーが発生しました', 3200);
-  }
   function visible() { return BR.screens.current() === 'board'; }
 
   /* ------------------------------------------------------------ state --- */
   var me = null;             // my profile as the server sees it
   var unread = 0;            // unread direct messages
-  var view = 'ranking';      // ranking | messages | lobby | dm
+  var requests = 0;          // friend requests waiting for me
+  var view = 'ranking';      // ranking | friends | messages | lobby | dm | cars | garage
   var boardType = 'total';
-  var peer = null;           // { id, name, online } of the open direct conversation
+  var peer = null;           // { id, name, avatar, online } of the open direct conversation
   var chans = {};            // 'lobby' | 'dm:<userId>' -> message cache
   var drafts = {};
   var convs = null;          // conversation list, most recent first
   var ranks = {};            // last ranking per type
+  var friends = null;        // { friends, incoming, outgoing }
+  var found = null;          // last friend search result { user, ... }
   var greeted = false;       // a live connection has been made before
+  var cameFrom = 'slot';     // where the board's back button returns to
 
   function resetSocial() {
     chans = {};
     drafts = {};
     convs = null;
     ranks = {};
+    friends = null;
+    found = null;
     peer = null;
     greeted = false;
     setUnread(0);
+    setRequests(0);
     setLobbyNew(false);
   }
 
-  /* ------------------------------------------------------------ overlays (unscaled) --- */
-  // Keep fixed overlays inside the visible area while the keyboard is up
-  // (iOS and recent Android shrink only the visual viewport).
-  var fitted = [];
-  function fitOverlay(node) {
-    if (fitted.indexOf(node) < 0) fitted.push(node);
-    fitAll();
-  }
-  function fitAll() {
-    var vv = window.visualViewport;
-    fitted.forEach(function (n) {
-      if (n.hidden || !vv) return;
-      n.style.height = vv.height + 'px';
-      n.style.transform = 'translateY(' + vv.offsetTop + 'px)';
-    });
-  }
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', fitAll);
-    window.visualViewport.addEventListener('scroll', fitAll);
-  }
-
-  /* ------------------------------------------------------------ account --- */
-  var NAME_RE = /^[A-Za-z0-9_\-ぁ-ゖァ-ヺー・々〆一-鿿㐀-䶿]+$/;
-  // null = fine, '' = empty, otherwise the problem (the server has the last word)
-  function nameProblem(raw) {
-    var name = nfkc(raw).trim();
-    var len = Array.from(name).length;
-    if (!len) return '';
-    if (len < 2 || len > 12) return 'ユーザー名は2〜12文字にしてください';
-    if (!NAME_RE.test(name)) return 'ユーザー名には日本語・英数字・「_」「-」だけが使えます';
-    if (/^[_\-ー・]+$/.test(name)) return 'ユーザー名に文字か数字を含めてください';
-    return null;
-  }
-
-  var ov = { busy: false, first: false };
-  var CARDS = { register: '#ov-register', login: '#ov-login', code: '#ov-codecard' };
-  function showCard(which) {
-    Object.keys(CARDS).forEach(function (k) { $(CARDS[k]).hidden = k !== which; });
-    fitOverlay($('#welcome'));
-  }
-  function setOvError(which, text) { $('#ov-' + which + '-error').textContent = text || ''; }
-  function ovBusy(on) {
-    ov.busy = on;
-    $$('#welcome button, #welcome input').forEach(function (b) { b.disabled = on; });
-  }
-  function showWelcome(notice) {
-    var n = $('#ov-notice');
-    n.textContent = notice || '';
-    n.hidden = !notice;
-    setOvError('register', '');
-    setOvError('login', '');
-    $('#welcome').hidden = false;
-    showCard('register');
-  }
-  function hideWelcome() {
-    var a = document.activeElement;
-    if (a && a.blur && $('#welcome').contains(a)) a.blur();
-    $('#welcome').hidden = true;
-    BR.app.relayout();
-  }
-
-  function onRegister(e) {
-    e.preventDefault();
-    if (ov.busy) return;
-    var input = $('#ov-name');
-    var problem = nameProblem(input.value);
-    if (problem !== null) {
-      setOvError('register', problem || 'ユーザー名を入力してください');
-      return;
-    }
-    ovBusy(true);
-    setOvError('register', '');
-    api.register(nfkc(input.value).trim()).then(function (r) {
-      signIn(r.token, r.me);
-      showCode(r.recoveryCode, true);
-    }, function (err) {
-      setOvError('register', err.message);
-    }).then(function () { ovBusy(false); });
-  }
-
-  function onLogin(e) {
-    e.preventDefault();
-    if (ov.busy) return;
-    var code = $('#ov-code').value;
-    if (nfkc(code).replace(/[^0-9A-Za-z]/g, '').length !== 16) {
-      setOvError('login', '引き継ぎコードは16文字です');
-      return;
-    }
-    ovBusy(true);
-    setOvError('login', '');
-    api.login(code).then(function (r) {
-      signIn(r.token, r.me);
-      hideWelcome();
-      sfx('purchase');
-      toast(r.me.name + 'さん、おかえりなさい！');
-    }, function (err) {
-      setOvError('login', err.message);
-    }).then(function () { ovBusy(false); });
-  }
-
-  // XXXX-XXXX-XXXX-XXXX while typing
-  function formatCode() {
-    var input = $('#ov-code');
-    var raw = nfkc(input.value).toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 16);
-    var v = (raw.match(/.{1,4}/g) || []).join('-');
-    if (v !== input.value) input.value = v;
-  }
-
-  function showCode(code, first) {
-    ov.first = first;
-    $('#ov-code-title').textContent = first ? '登録が完了しました！' : '新しい引き継ぎコード';
-    $('#ov-code-value').textContent = code;
-    $('#ov-copy').textContent = 'コードをコピー';
-    $('#ov-done').textContent = first ? 'ゲームをはじめる' : '閉じる';
-    $('#welcome').hidden = false;
-    showCard('code');
-  }
-
-  function copyText(text) {
-    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
-    var t = document.createElement('textarea');
-    t.value = text;
-    t.setAttribute('readonly', '');
-    t.style.cssText = 'position:fixed;left:0;top:0;opacity:0;';
-    document.body.appendChild(t);
-    t.select();
-    var ok = false;
-    try { ok = document.execCommand('copy'); } catch (e) { /* unsupported */ }
-    document.body.removeChild(t);
-    return ok ? Promise.resolve() : Promise.reject(new Error('copy'));
-  }
-
+  /* ------------------------------------------------------------ session --- */
   function signIn(token, profile) {
     BR.live.close();
     BR.bank.reset();
@@ -228,16 +54,19 @@
   }
 
   // Load the account, then go live.  Retries quietly while the server is away.
-  var retry = 1000, retryTimer = 0, warned = false;
+  var retry = 1000, retryTimer = 0, warned = false, starting = null;
   function start() {
     clearTimeout(retryTimer);
     if (!api.hasToken()) return;
-    BR.bank.refresh().then(function (r) {
+    starting = BR.bank.refresh();
+    starting.then(function (r) {
       retry = 1000;
       warned = false;
       me = r.me;
       setUnread(r.unread);
+      setRequests(r.friendRequests);
       setOnline(r.online);
+      BR.avatars.setShop(r.iconShop);
       BR.app.renderWallet(false);
       BR.app.renderBet();
       BR.live.connect();
@@ -252,21 +81,46 @@
     });
   }
 
+  // The token stopped working (logged out elsewhere, banned). The money is
+  // safe on the server: logging in again brings everything back.
   function onAuthLost(err) {
-    if (!api.hasToken()) return;
     clearTimeout(retryTimer);
     BR.live.close();
     api.setToken(null);
     BR.bank.reset();
+    if (BR.call) BR.call.hangupAll();
+    if (BR.watch) BR.watch.stop(true);
     me = null;
     resetSocial();
-    entry.close();
-    closeModals();
-    if (visible()) BR.screens.show('slot');
+    BR.entry.close();
+    K.closeModals();
+    if (BR.screens.current() !== 'start' && BR.screens.current() !== 'slot') BR.screens.show('slot');
     BR.app.renderWallet(false);
-    showWelcome(err && err.code === 'banned'
+    BR.account.open('login', err && err.code === 'banned'
       ? 'このアカウントは利用停止されています。'
-      : 'ログインの有効期限が切れました。引き継ぎコードで復元するか、新しく登録してください。');
+      : 'もう一度ログインしてください。ユーザー名とパスワードで、残高もそのまま戻ります。');
+  }
+
+  function logout() {
+    K.confirmBox(function (p) {
+      p.appendChild(document.createTextNode('ログアウトしますか？'));
+      p.appendChild(el('small', 'confirm-sub', '残高やフレンドはサーバーに保存されています。ユーザー名とパスワードでいつでも戻れます。'));
+    }, 'ログアウト').then(function (ok) {
+      if (!ok) return;
+      api.logout().catch(function () {}).then(function () {
+        BR.live.close();
+        api.setToken(null);
+        BR.bank.reset();
+        if (BR.call) BR.call.hangupAll();
+        if (BR.watch) BR.watch.stop(true);
+        me = null;
+        resetSocial();
+        K.closeModals();
+        BR.app.renderWallet(false);
+        BR.screens.show('start');
+        toast('ログアウトしました');
+      });
+    });
   }
 
   /* ------------------------------------------------------------ coach mark --- */
@@ -315,6 +169,8 @@
       input.value = o.value || '';
       input.maxLength = o.max || 300;
       input.placeholder = o.placeholder || 'メッセージを入力';
+      input.enterKeyHint = o.enterKeyHint || 'send';
+      send.textContent = o.button || '送信';
       setError('');
       var feed = $('#entry-feed');
       if (o.feed) {
@@ -323,8 +179,9 @@
         feed.appendChild(o.feed);
       }
       feed.hidden = !o.feed;
+      root.classList.toggle('no-feed', !o.feed);
       root.hidden = false;
-      fitOverlay(root);
+      K.fitOverlay(root);
       input.focus();
       feed.scrollTop = feed.scrollHeight;
     }
@@ -346,11 +203,12 @@
       var o = opts;
       sending = true;
       send.disabled = true;
-      Promise.resolve().then(function () { return o.onSubmit(text); }).then(function () {
+      Promise.resolve().then(function () { return o.onSubmit(text); }).then(function (closeAfter) {
         if (opts !== o) return;
         input.value = '';
         if (o.onDraft) o.onDraft('');
         setError('');
+        if (closeAfter === true) close();
       }, function (err) {
         if (opts === o) setError(err && err.message ? err.message : '送信できませんでした');
       }).then(function () {
@@ -361,69 +219,18 @@
     return { init: init, open: open, close: close, isOpen: function () { return !!opts; } };
   })();
 
-  /* ------------------------------------------------------------ scrolling --- */
-  // In the portrait fallback the stage is turned 90°, where native touch
-  // scrolling would follow the wrong axis: those panes are dragged by hand.
-  function dragScroll(sc) {
-    var d = null, fling = 0, swallow = false;
-    sc.addEventListener('pointerdown', function (e) {
-      cancelAnimationFrame(fling);
-      swallow = false;
-      d = null;
-      if (!BR.app.view.portrait || e.pointerType === 'mouse') return;
-      d = { id: e.pointerId, x: e.clientX, top: sc.scrollTop, moved: false, v: 0, lx: e.clientX, lt: U.now() };
-    });
-    sc.addEventListener('pointermove', function (e) {
-      if (!d || e.pointerId !== d.id) return;
-      var s = BR.app.view.s;
-      if (!d.moved && Math.abs(e.clientX - d.x) > 8) {
-        d.moved = true;
-        try { sc.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
-      }
-      if (!d.moved) return;
-      // the stage's y axis runs along the screen's -x axis
-      sc.scrollTop = d.top + (e.clientX - d.x) / s;
-      var now = U.now(), dt = Math.max(1, now - d.lt);
-      d.v = 0.75 * ((e.clientX - d.lx) / s / dt) + 0.25 * d.v;
-      d.lx = e.clientX;
-      d.lt = now;
-    });
-    function end(e) {
-      if (!d || e.pointerId !== d.id) return;
-      if (d.moved) {
-        swallow = true;
-        var v = d.v, last = U.now();
-        (function step() {
-          var now = U.now(), dt = now - last;
-          last = now;
-          v *= Math.pow(0.995, dt);
-          if (Math.abs(v) < 0.02) return;
-          sc.scrollTop += v * dt;
-          fling = requestAnimationFrame(step);
-        })();
-      }
-      d = null;
-    }
-    sc.addEventListener('pointerup', end);
-    sc.addEventListener('pointercancel', end);
-    sc.addEventListener('click', function (e) {
-      if (!swallow) return;
-      swallow = false;
-      e.stopPropagation();
-      e.preventDefault();
-    }, true);
-  }
-
   /* ------------------------------------------------------------ badges --- */
-  function badge(node, n) {
-    node.hidden = !n;
-    node.textContent = n > 99 ? '99+' : String(n);
-  }
   function setUnread(n) {
     unread = Math.max(0, n | 0);
-    badge($('#radio-badge'), unread);
-    badge($('#tab-badge'), unread);
+    K.badge($('#tab-badge'), unread);
+    renderHudBadge();
   }
+  function setRequests(n) {
+    requests = Math.max(0, n | 0);
+    K.badge($('#friends-badge'), requests);
+    renderHudBadge();
+  }
+  function renderHudBadge() { K.badge($('#radio-badge'), unread + requests); }
   function setLobbyNew(on) {
     $('#mic-badge').hidden = !on;
     $('#lobby-dot').hidden = !on;
@@ -437,28 +244,40 @@
   function openBoard(tab) {
     if (!online) {
       sfx('deny');
-      toast('ランキングとチャットはオンライン版で利用できます');
+      toast(tab === 'friends' ? 'フレンド機能はオンライン版で利用できます' : 'ランキングとチャットはオンライン版で利用できます');
       return;
     }
-    if (!api.hasToken()) { showWelcome(); return; }
-    if (!BR.bank.ready()) { toast('サーバーに接続しています…'); return; }
-    hideCoach();
-    if (!visible()) BR.screens.show('board');
-    setView(tab);
+    BR.account.require(function () {
+      if (!BR.bank.ready()) {
+        toast('サーバーに接続しています…');
+        // open it as soon as the account has loaded
+        if (starting) starting.then(function () { if (BR.bank.ready()) openBoard(tab); }, function () {});
+        else start();
+        return;
+      }
+      hideCoach();
+      if (!visible()) {
+        cameFrom = BR.screens.current() === 'start' ? 'start' : 'slot';
+        BR.screens.show('board');
+      }
+      setView(tab || 'ranking');
+    });
   }
 
+  var PANES = { ranking: 'ranking', friends: 'friends', messages: 'messages', lobby: 'chat', dm: 'chat', cars: 'cars', garage: 'garage' };
   function setView(v) {
     if (v === 'dm' && !peer) v = 'messages';
     view = v;
     tabs.set(v === 'dm' ? 'messages' : v);
-    $('#pane-ranking').classList.toggle('active', v === 'ranking');
-    $('#pane-messages').classList.toggle('active', v === 'messages');
-    $('#pane-chat').classList.toggle('active', v === 'lobby' || v === 'dm');
+    Object.keys(PANES).forEach(function (k) { $('#pane-' + PANES[k]).classList.toggle('active', PANES[k] === PANES[v]); });
     $('#pane-chat').classList.toggle('is-dm', v === 'dm');
     if (v === 'ranking') loadRanking();
+    else if (v === 'friends') loadFriends();
     else if (v === 'messages') loadConversations();
     else if (v === 'lobby') { setLobbyNew(false); showChat('lobby', null); }
-    else { renderDmHead(); showChat('dm:' + peer.id, peer.id); }
+    else if (v === 'dm') { renderDmHead(); showChat('dm:' + peer.id, peer.id); }
+    else if (v === 'cars') BR.cars.showShop();
+    else if (v === 'garage') BR.cars.showGarage();
   }
 
   /* ranking */
@@ -491,10 +310,11 @@
     mine.className = 'rank-row rank-me' + (r.me.rank && r.me.rank <= 3 ? ' top' + r.me.rank : '');
     mine.appendChild(el('span', 'rank-no', r.me.rank ? r.me.rank : '-'));
     var who = el('span', 'rank-name');
+    who.appendChild(K.avatarEl(me || {}, 'sm'));
     who.appendChild(el('span', 'me-tag', 'あなた'));
-    who.appendChild(nameSpan(me ? me.name : ''));
+    who.appendChild(K.nameSpan(me ? me.name : ''));
     mine.appendChild(who);
-    mine.appendChild(amountEl(r.me.value, 'tokens', 'rank-val'));
+    mine.appendChild(K.amountEl(r.me.value, 'tokens', 'rank-val'));
     setOnline(r.online);
   }
   function rankRow(r) {
@@ -502,18 +322,192 @@
     li.dataset.uid = r.id;
     li.appendChild(el('span', 'rank-no', r.rank));
     var who = el('span', 'rank-name');
-    who.appendChild(presence(r.online));
-    who.appendChild(nameSpan(r.name));
+    var av = K.avatarEl(r, 'sm');
+    av.appendChild(K.presence(r.online));
+    who.appendChild(av);
+    who.appendChild(K.nameSpan(r.name));
     li.appendChild(who);
-    li.appendChild(amountEl(r.value, 'tokens', 'rank-val'));
+    li.appendChild(K.amountEl(r.value, 'tokens', 'rank-val'));
     return li;
   }
-  function rankUser(id) {
-    var found = null;
+  function knownUser(id) {
+    var hit = null;
     Object.keys(ranks).forEach(function (t) {
-      ranks[t].rows.forEach(function (r) { if (r.id === id) found = { id: r.id, name: r.name, online: r.online }; });
+      ranks[t].rows.forEach(function (r) { if (r.id === id) hit = { id: r.id, name: r.name, avatar: r.avatar, online: r.online }; });
     });
-    return found;
+    if (!hit && friends) ['friends', 'incoming', 'outgoing'].forEach(function (k) {
+      friends[k].forEach(function (f) { if (f.id === id) hit = f; });
+    });
+    if (!hit) (convs || []).forEach(function (c) { if (c.user.id === id) hit = c.user; });
+    if (!hit && found && found.user.id === id) hit = found.user;
+    return hit;
+  }
+
+  /* friends */
+  function loadFriends() {
+    renderFriends();
+    return api.friends().then(function (r) {
+      friends = r;
+      setRequests(r.incoming.length);
+      if (visible() && view === 'friends') renderFriends();
+      return r;
+    }, function (err) {
+      if (!friends) renderFriendsNote(err.message);
+      throw err;
+    });
+  }
+  function renderFriendsNote(text) {
+    var box = $('#fr-list');
+    box.textContent = '';
+    box.appendChild(el('div', 'empty', text));
+  }
+  function section(box, title, count) {
+    var h = el('div', 'fr-title');
+    h.appendChild(el('span', '', title));
+    if (count !== undefined) h.appendChild(el('b', 'fr-count', count));
+    box.appendChild(h);
+  }
+  function personRow(u, extraCls) {
+    var row = el('div', 'fr-row' + (extraCls ? ' ' + extraCls : ''));
+    row.dataset.uid = u.id;
+    var who = el('button', 'fr-who');
+    who.type = 'button';
+    who.dataset.act = 'profile';
+    var av = K.avatarEl(u);
+    av.appendChild(K.presence(u.online));
+    who.appendChild(av);
+    var id = el('span', 'fr-id');
+    id.appendChild(el('span', 'fr-name uname', u.name));
+    id.appendChild(el('span', 'fr-status' + (u.online ? ' on' : ''), u.online ? 'オンライン' : 'オフライン'));
+    who.appendChild(id);
+    row.appendChild(who);
+    var acts = el('div', 'fr-acts');
+    row.appendChild(acts);
+    return { row: row, acts: acts };
+  }
+  function actBtn(acts, label, act, cls, ic) {
+    var b = el('button', 'fr-btn' + (cls ? ' ' + cls : ''));
+    b.type = 'button';
+    b.dataset.act = act;
+    if (ic) b.appendChild(icon(ic));
+    b.appendChild(el('span', '', label));
+    acts.appendChild(b);
+    return b;
+  }
+  function renderFriends() {
+    var box = $('#fr-list');
+    $('#fr-myname').textContent = me ? me.name : '';
+    if (!friends) { renderFriendsNote('読み込み中…'); return; }
+    box.textContent = '';
+    if (found) {
+      section(box, '検索結果');
+      var f = found.user, p = personRow(f, 'found');
+      var rel = found.self ? 'self' : f.friendship;
+      if (rel === 'self') p.acts.appendChild(el('span', 'fr-note', 'あなたです'));
+      else if (rel === 'friends') p.acts.appendChild(el('span', 'fr-note ok', 'フレンドです'));
+      else if (rel === 'outgoing') actBtn(p.acts, '申請中（取り消す）', 'cancel', 'muted');
+      else if (rel === 'incoming') { actBtn(p.acts, '承認する', 'accept', 'gold', 'check'); actBtn(p.acts, '拒否', 'decline'); }
+      else actBtn(p.acts, 'フレンド申請', 'request', 'gold', 'friends');
+      var x = el('button', 'fr-clear', '×');
+      x.type = 'button';
+      x.dataset.act = 'clear';
+      x.setAttribute('aria-label', '検索結果を閉じる');
+      p.row.appendChild(x);
+      box.appendChild(p.row);
+    }
+    if (friends.incoming.length) {
+      section(box, '届いたフレンド申請', friends.incoming.length);
+      friends.incoming.forEach(function (u) {
+        var p = personRow(u, 'incoming');
+        actBtn(p.acts, '承認する', 'accept', 'gold', 'check');
+        actBtn(p.acts, '拒否', 'decline');
+        box.appendChild(p.row);
+      });
+    }
+    section(box, 'フレンド', friends.friends.length);
+    if (!friends.friends.length) {
+      box.appendChild(el('div', 'empty fr-empty', 'まだフレンドはいません。\n上の検索でユーザー名を入力して、フレンド申請を送りましょう！\n承認されると通知が届き、会話できるようになります。'));
+    }
+    friends.friends.forEach(function (u) {
+      var p = personRow(u, 'friend');
+      var inv = actBtn(p.acts, '稼ぎに招待', 'call', 'call', 'phone');
+      inv.disabled = !u.online;
+      var w = actBtn(p.acts, '画面を見る', 'watch', '', 'eye');
+      w.disabled = !u.online;
+      actBtn(p.acts, 'メッセージ', 'dm');
+      box.appendChild(p.row);
+    });
+    if (friends.outgoing.length) {
+      section(box, '送ったフレンド申請', friends.outgoing.length);
+      friends.outgoing.forEach(function (u) {
+        var p = personRow(u, 'outgoing');
+        p.acts.appendChild(el('span', 'fr-note', '承認待ち'));
+        actBtn(p.acts, '取り消す', 'cancel', 'muted');
+        box.appendChild(p.row);
+      });
+    }
+  }
+
+  function searchFriend() {
+    entry.open({
+      title: 'フレンドを検索',
+      placeholder: 'ユーザー名をそのまま入力（完全一致）',
+      max: 24,
+      button: '検索',
+      enterKeyHint: 'search',
+      onSubmit: function (text) {
+        return api.userByName(K.nfkc(text).trim()).then(function (r) {
+          found = r;
+          sfx('click');
+          if (visible() && view === 'friends') renderFriends();
+          $('#fr-scroll').scrollTop = 0;
+          return true;
+        });
+      }
+    });
+  }
+
+  // a friend action on user `id` (from the friends pane or a profile)
+  function friendAction(act, id) {
+    var u = knownUser(id) || { id: id, name: '' };
+    if (act === 'profile') { sfx('click'); openProfile(u); return; }
+    if (act === 'clear') { sfx('click'); found = null; renderFriends(); return; }
+    if (act === 'dm') { sfx('click'); openDm(u); return; }
+    if (act === 'call') { sfx('click'); BR.call.invite(u); return; }
+    if (act === 'watch') { sfx('click'); BR.watch.start(u); return; }
+    var job;
+    if (act === 'request') job = api.friendRequest(id).then(function (r) {
+      sfx(r.friendship === 'friends' ? 'notify' : 'send');
+      toast(r.friendship === 'friends' ? r.user.name + 'さんとフレンドになりました！' : r.user.name + 'さんにフレンド申請を送りました');
+      return r.friendship;
+    });
+    else if (act === 'accept') job = api.friendRespond(id, true).then(function (r) {
+      sfx('notify');
+      toast(r.user.name + 'さんとフレンドになりました！');
+      setRequests(r.pending);
+      return 'friends';
+    });
+    else if (act === 'decline') job = api.friendRespond(id, false).then(function (r) {
+      sfx('click');
+      setRequests(r.pending);
+      return 'none';
+    });
+    else if (act === 'cancel') job = api.friendCancel(id).then(function () { sfx('click'); toast('フレンド申請を取り消しました'); return 'none'; });
+    else if (act === 'remove') job = K.confirmBox(function (p) {
+      p.appendChild(K.nameSpan(u.name || ''));
+      p.appendChild(document.createTextNode('さんをフレンドから外しますか？'));
+      p.appendChild(el('small', 'confirm-sub', 'メッセージ・送金・車のプレゼント・通話・画面を見ることができなくなります。'));
+    }, '外す').then(function (ok) {
+      if (!ok) return null;
+      return api.friendRemove(id).then(function () { sfx('click'); toast('フレンドから外しました'); return 'none'; });
+    });
+    if (!job) return;
+    job.then(function (rel) {
+      if (rel === null || rel === undefined) return;
+      if (found && found.user.id === id) found.user.friendship = rel;
+      if (prof.data && prof.data.user.id === id) { prof.data.user.friendship = rel; fillProfile(prof.data.user, prof.data, false); }
+      loadFriends().catch(function () {});
+    }).catch(fail);
   }
 
   /* conversations */
@@ -535,7 +529,7 @@
   function renderConversations() {
     if (!convs) { renderConvNote('読み込み中…'); return; }
     if (!convs.length) {
-      renderConvNote('まだメッセージはありません。\nランキングやロビーでプレイヤーをタップして話しかけてみましょう！');
+      renderConvNote('まだメッセージはありません。\nフレンドになると、ここで会話できます。');
       return;
     }
     var list = $('#conv-list');
@@ -545,31 +539,33 @@
   function convRow(c) {
     var li = el('li', 'conv-row' + (c.unread ? ' unread' : ''));
     li.dataset.uid = c.user.id;
-    var av = avatar(c.user);
-    av.appendChild(presence(c.user.online));
+    var av = K.avatarEl(c.user);
+    av.appendChild(K.presence(c.user.online));
     li.appendChild(av);
     var mid = el('div', 'conv-mid');
     mid.appendChild(el('div', 'conv-name uname', c.user.name));
     mid.appendChild(el('div', 'conv-last', preview(c.last)));
     li.appendChild(mid);
     var side = el('div', 'conv-side');
-    side.appendChild(el('span', 'conv-time', fmtTime(c.at)));
+    side.appendChild(el('span', 'conv-time', K.fmtTime(c.at)));
     var b = el('b', 'badge');
-    badge(b, c.unread);
+    K.badge(b, c.unread);
     side.appendChild(b);
     li.appendChild(side);
     return li;
   }
+  function carName(model) {
+    var cars = BR.CONFIG.cars;
+    for (var i = 0; i < cars.length; i++) if (cars[i].id === model) return cars[i].name;
+    return '車';
+  }
   function preview(last) {
     if (last.kind === 'transfer') {
-      return (last.mine ? '送金しました: ' : '受け取りました: ') + U.fmt(last.amount) + ' ' + (CUR[last.currency] || CUR.tokens).name;
+      return (last.mine ? '送金しました: ' : '受け取りました: ') + U.fmt(last.amount) + ' ' + (K.CUR[last.currency] || K.CUR.tokens).name;
     }
-    return (last.mine ? 'あなた: ' : '') + clip(last.text, 60);
-  }
-  function convUser(id) {
-    var found = null;
-    (convs || []).forEach(function (c) { if (c.user.id === id) found = c.user; });
-    return found;
+    if (last.kind === 'gift') return (last.mine ? 'プレゼントしました: ' : 'プレゼントが届きました: ') + carName(last.text);
+    if (last.kind === 'system') return K.clip(last.text, 60);
+    return (last.mine ? 'あなた: ' : '') + K.clip(last.text, 60);
   }
   // keep the conversation list in step with live messages
   function touchConv(m, other, mine) {
@@ -577,9 +573,9 @@
     var c = null;
     for (var i = 0; i < convs.length; i++) if (convs[i].user.id === other) { c = convs.splice(i, 1)[0]; break; }
     if (!c) {
-      var name = mine ? (peer && peer.id === other ? peer.name : '') : (m.from && m.from.name);
-      if (!name) { convs = null; return; } // unknown: reload when the list is opened
-      c = { user: { id: other, name: name, online: mine ? !!(peer && peer.online) : true }, unread: 0 };
+      var u = mine ? (peer && peer.id === other ? peer : null) : m.from;
+      if (!u || !u.name) { convs = null; return; } // unknown: reload when the list is opened
+      c = { user: { id: other, name: u.name, avatar: u.avatar, online: mine ? !!u.online : true }, unread: 0, friend: true };
     }
     c.at = m.at;
     c.last = { kind: m.kind, text: m.text, amount: m.amount, currency: m.currency, mine: mine };
@@ -595,10 +591,12 @@
   function byId(a, b) { return a.id - b.id; }
   function chatKey() { return view === 'lobby' ? 'lobby' : view === 'dm' && peer ? 'dm:' + peer.id : null; }
   function viewing(key) { return visible() && !document.hidden && chatKey() === key; }
+  // "dm:<low id>:<high id>" -> "dm:<the other player>"
   function keyOf(m) {
     if (m.channel === 'lobby') return 'lobby';
-    var mine = !!(m.from && me && m.from.id === me.id);
-    return 'dm:' + (mine ? m.to : m.from ? m.from.id : 0);
+    if (m.peer) return 'dm:' + m.peer;
+    var p = String(m.channel).split(':'), a = Number(p[1]), b = Number(p[2]);
+    return 'dm:' + (me && a === me.id ? b : a);
   }
   function chatList() { return $('#chat-list'); }
   function nearBottom(sc) { return sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160; }
@@ -657,35 +655,52 @@
     renderChatBar();
   }
   function appendMsg(list, m, prev, key) {
-    if (!prev || !sameDay(new Date(prev.at), new Date(m.at))) list.appendChild(el('div', 'day-sep', fmtDay(m.at)));
+    if (!prev || !K.sameDay(new Date(prev.at), new Date(m.at))) list.appendChild(el('div', 'day-sep', K.fmtDay(m.at)));
     list.appendChild(msgEl(m, key));
   }
   function msgEl(m, key) {
     var mine = !!(m.from && me && m.from.id === me.id);
-    var node;
+    var node, card;
     if (m.kind === 'system') {
       node = el('div', 'msg sys');
       node.appendChild(el('span', 'sys-text', m.text));
-      node.appendChild(el('span', 'msg-time', fmtTime(m.at)));
+      node.appendChild(el('span', 'msg-time', K.fmtTime(m.at)));
       return node;
     }
     if (m.kind === 'transfer') {
       node = el('div', 'msg xfer' + (mine ? ' mine' : ''));
-      var card = el('div', 'xfer-card');
+      card = el('div', 'xfer-card');
       card.appendChild(el('div', 'xfer-label', mine ? '送金しました' : '送金が届きました'));
-      card.appendChild(amountEl(m.amount, m.currency, 'xfer-amount'));
+      card.appendChild(K.amountEl(m.amount, m.currency, 'xfer-amount'));
       node.appendChild(card);
-      node.appendChild(el('span', 'msg-time', fmtTime(m.at)));
+      node.appendChild(el('span', 'msg-time', K.fmtTime(m.at)));
+      return node;
+    }
+    if (m.kind === 'gift') {
+      node = el('div', 'msg xfer gift' + (mine ? ' mine' : ''));
+      card = el('div', 'xfer-card gift-card');
+      card.appendChild(el('div', 'xfer-label', mine ? '車をプレゼントしました' : '車のプレゼントが届きました！'));
+      var pic = el('span', 'gift-car');
+      var src = BR.SOCIAL_IMG.cars[m.text];
+      if (src) pic.style.backgroundImage = 'url("' + src + '")';
+      card.appendChild(pic);
+      card.appendChild(el('div', 'gift-name', carName(m.text)));
+      if (!mine) card.appendChild(el('div', 'gift-hint', 'Garage で見られます'));
+      node.appendChild(card);
+      node.appendChild(el('span', 'msg-time', K.fmtTime(m.at)));
       return node;
     }
     node = el('div', 'msg ' + (mine ? 'mine' : 'theirs'));
     if (key === 'lobby' && !mine && m.from) {
-      var n = el('button', 'msg-name uname', m.from.name || '?');
+      var n = el('button', 'msg-name');
+      n.type = 'button';
       n.dataset.uid = m.from.id;
+      n.appendChild(K.avatarEl(m.from, 'xs'));
+      n.appendChild(el('span', 'uname', m.from.name || '?'));
       node.appendChild(n);
     }
     node.appendChild(el('div', 'bubble', m.text));
-    node.appendChild(el('span', 'msg-time', fmtTime(m.at)));
+    node.appendChild(el('span', 'msg-time', K.fmtTime(m.at)));
     return node;
   }
   function renderChatBar() {
@@ -693,7 +708,7 @@
     if (!key) return;
     var d = drafts[key];
     var ph = $('#chat-placeholder');
-    ph.textContent = d ? clip(d, 80) : key === 'lobby' ? 'みんなにメッセージ…' : 'メッセージを入力…';
+    ph.textContent = d ? K.clip(d, 80) : key === 'lobby' ? 'みんなにメッセージ…' : 'メッセージを入力…';
     ph.classList.toggle('draft', !!d);
   }
 
@@ -768,65 +783,40 @@
   function renderDmHead() {
     var u = $('#dm-user');
     u.textContent = '';
-    u.appendChild(avatar(peer));
+    u.appendChild(K.avatarEl(peer));
     var t = el('span', 'dm-id');
     t.appendChild(el('span', 'dm-name uname', peer.name));
     var st = el('span', 'dm-status');
-    st.appendChild(presence(peer.online));
+    st.appendChild(K.presence(peer.online));
     st.appendChild(el('span', '', peer.online ? 'オンライン' : 'オフライン'));
     t.appendChild(st);
     u.appendChild(t);
+    $('#dm-call').disabled = !peer.online;
   }
 
   function openDm(user) {
     if (!user || !me || user.id === me.id) return;
-    peer = { id: user.id, name: user.name, online: !!user.online };
-    closeModals();
-    if (!visible()) BR.screens.show('board');
+    peer = { id: user.id, name: user.name, avatar: user.avatar, online: !!user.online };
+    K.closeModals();
+    if (!visible()) { cameFrom = BR.screens.current() === 'start' ? 'start' : 'slot'; BR.screens.show('board'); }
     setView('dm');
   }
 
-  /* ------------------------------------------------------------ modals --- */
-  var confirmDone = null;
-  function showModal(id) { $('#' + id).hidden = false; }
-  function closeModal(id) {
-    $('#' + id).hidden = true;
-    if (id === 'confirm' && confirmDone) {
-      var f = confirmDone;
-      confirmDone = null;
-      f(false);
-    }
-  }
-  function closeModals() {
-    ['confirm', 'transfer', 'profile'].forEach(closeModal);
-    $('#numpad').hidden = true;
-  }
-  // build(p) fills the question; resolves true when confirmed
-  function confirmBox(build, okLabel) {
-    if (confirmDone) closeModal('confirm');
-    var p = $('#confirm-text');
-    p.textContent = '';
-    build(p);
-    $('#confirm-yes').textContent = okLabel || 'OK';
-    showModal('confirm');
-    return new Promise(function (resolve) { confirmDone = resolve; });
-  }
-
-  /* profile */
+  /* ------------------------------------------------------------ profile --- */
   var prof = { data: null, seq: 0 };
   function openProfile(user) {
     if (!user || !me) return;
     var seq = ++prof.seq;
     prof.data = null;
     fillProfile(user, null, user.id === me.id);
-    showModal('profile');
+    K.showModal('profile');
     api.user(user.id).then(function (r) {
       if (seq !== prof.seq) return;
       prof.data = r;
       fillProfile(r.user, r, r.self);
     }, function (err) {
       if (seq !== prof.seq) return;
-      closeModal('profile');
+      K.closeModal('profile');
       fail(err);
     });
   }
@@ -834,53 +824,118 @@
     var b = $(id);
     b.textContent = '';
     if (v === null) b.textContent = '-';
-    else b.appendChild(amountEl(v, 'tokens'));
+    else b.appendChild(K.amountEl(v, 'tokens'));
+  }
+  function pfBtn(box, label, act, cls, ic) {
+    var b = el('button', 'act-btn' + (cls ? ' ' + cls : ''));
+    b.type = 'button';
+    b.dataset.act = act;
+    if (ic) b.appendChild(icon(ic));
+    b.appendChild(el('span', '', label));
+    box.appendChild(b);
+    return b;
   }
   function fillProfile(u, r, self) {
     var old = $('#pf-avatar');
-    var av = avatar(u, 'big');
+    var av = K.avatarEl(self ? me : u, 'big');
     av.id = 'pf-avatar';
     old.parentNode.replaceChild(av, old);
     $('#pf-name').textContent = u.name;
     var st = $('#pf-status');
     st.textContent = '';
     if (r) {
-      st.appendChild(presence(r.user.online));
+      st.appendChild(K.presence(r.user.online));
       st.appendChild(el('span', '', self ? 'あなた' : r.user.online ? 'オンライン' : 'オフライン'));
+      if (!self && r.user.friendship === 'friends') st.appendChild(el('span', 'pf-friend', 'フレンド'));
     }
     $('#pf-rank').textContent = r ? U.fmt(r.user.rank) : '-';
     statAmount('#pf-total', r ? r.user.totalWon : null);
     statAmount('#pf-biggest', r ? r.user.biggestWin : null);
     statAmount('#pf-today', r ? r.user.dayWon : null);
     $('#pf-spins').textContent = r ? U.fmt(r.user.spins) + '回' : '-';
-    $('#pf-since').textContent = r ? '登録日 ' + fmtDate(r.user.createdAt) : '';
-    $('#pf-actions-other').hidden = self;
-    $('#pf-actions-self').hidden = !self;
-    var blk = $('#pf-block');
-    blk.textContent = r && r.blocked ? 'ブロック解除' : 'ブロック';
-    blk.disabled = !r;
+    $('#pf-since').textContent = r ? '登録日 ' + K.fmtDate(r.user.createdAt) + (r.user.cars ? '・車 ' + r.user.cars + '台' : '') : '';
+    var a1 = $('#pf-actions'), a2 = $('#pf-actions2');
+    a1.textContent = '';
+    a2.textContent = '';
     $('#pf-blocks').hidden = true;
-    if (self && r) loadBlocks();
+    if (!r) return;
+    if (self) {
+      pfBtn(a1, 'アイコン変更', 'avatar', 'gold');
+      pfBtn(a1, me && me.hasPassword ? 'パスワード変更' : 'パスワード設定', 'password');
+      pfBtn(a1, '引き継ぎコード', 'recovery');
+      var lo = el('button', 'text-btn', 'ログアウト');
+      lo.type = 'button';
+      lo.dataset.act = 'logout';
+      a2.appendChild(lo);
+      loadBlocks();
+      return;
+    }
+    var rel = u.friendship;
+    if (rel === 'friends') {
+      var c = pfBtn(a1, '稼ぎに招待', 'call', 'call', 'phone');
+      c.disabled = !u.online;
+      var w = pfBtn(a1, '画面を見る', 'watch', '', 'eye');
+      w.disabled = !u.online;
+      pfBtn(a1, 'メッセージ', 'dm');
+      pfBtn(a2, '送金', 'transfer', 'gold', 'chip');
+      pfBtn(a2, '車をあげる', 'gift', '', 'gift');
+      var rm = el('button', 'text-btn', 'フレンド解除');
+      rm.type = 'button';
+      rm.dataset.act = 'remove';
+      a2.appendChild(rm);
+    } else if (rel === 'incoming') {
+      pfBtn(a1, '申請を承認する', 'accept', 'gold', 'check');
+      pfBtn(a1, '拒否', 'decline');
+    } else if (rel === 'outgoing') {
+      pfBtn(a1, '申請中（取り消す）', 'cancel');
+    } else {
+      pfBtn(a1, 'フレンド申請', 'request', 'gold', 'friends');
+      a1.appendChild(el('span', 'pf-hint', 'フレンドになると会話・送金・通話ができます'));
+    }
+    var blk = el('button', 'text-btn', r.blocked ? 'ブロック解除' : 'ブロック');
+    blk.type = 'button';
+    blk.dataset.act = 'block';
+    a2.appendChild(blk);
   }
   function profileUser() { return prof.data ? prof.data.user : null; }
+
+  function onProfileAction(act) {
+    var r = prof.data;
+    if (!r) return;
+    var u = r.user;
+    switch (act) {
+      case 'avatar': sfx('click'); K.closeModal('profile'); BR.avatars.openPicker(); break;
+      case 'password': sfx('click'); K.closeModal('profile'); BR.account.openPassword(); break;
+      case 'recovery': sfx('click'); reissueCode(); break;
+      case 'logout': sfx('click'); logout(); break;
+      case 'transfer': sfx('click'); openTransfer(u); break;
+      case 'gift': sfx('click'); K.closeModal('profile'); BR.cars.giftTo(u); break;
+      case 'block': toggleBlock(); break;
+      case 'dm': sfx('click'); openDm(u); break;
+      case 'call': sfx('click'); K.closeModal('profile'); BR.call.invite(u); break;
+      case 'watch': sfx('click'); K.closeModal('profile'); BR.watch.start(u); break;
+      default: friendAction(act, u.id);
+    }
+  }
 
   function toggleBlock() {
     var r = prof.data;
     if (!r || r.self) return;
     var u = r.user, blocked = r.blocked;
-    var ask = blocked ? Promise.resolve(true) : confirmBox(function (p) {
-      p.appendChild(nameSpan(u.name));
+    var ask = blocked ? Promise.resolve(true) : K.confirmBox(function (p) {
+      p.appendChild(K.nameSpan(u.name));
       p.appendChild(document.createTextNode('さんをブロックしますか？'));
-      p.appendChild(el('small', 'confirm-sub', 'この人からのメッセージと送金が届かなくなり、ロビーの発言も表示されなくなります。'));
+      p.appendChild(el('small', 'confirm-sub', 'フレンドも解除され、この人からの申請・メッセージ・送金が届かなくなり、ロビーの発言も表示されなくなります。'));
     }, 'ブロック');
     ask.then(function (ok) {
       if (!ok) return null;
       return api.block(u.id, !blocked).then(function (res) {
         r.blocked = res.blocked;
+        if (res.blocked) u.friendship = 'none';
         if (prof.data === r) fillProfile(u, r, false);
         sfx('click');
         toast(res.blocked ? 'ブロックしました' : 'ブロックを解除しました');
-        if (res.blocked) dropFromLobby(u.id);
+        if (res.blocked) { dropFromLobby(u.id); friends = null; }
       });
     }).catch(fail);
   }
@@ -899,7 +954,7 @@
       box.appendChild(el('div', 'pf-blocks-title', 'ブロック中のプレイヤー'));
       r.blocks.forEach(function (b) {
         var row = el('div', 'pf-block-row');
-        row.appendChild(nameSpan(b.name));
+        row.appendChild(K.nameSpan(b.name));
         var x = el('button', 'text-btn', '解除');
         x.addEventListener('click', function () {
           x.disabled = true;
@@ -915,19 +970,19 @@
     }, function () {});
   }
   function reissueCode() {
-    confirmBox(function (p) {
+    K.confirmBox(function (p) {
       p.appendChild(document.createTextNode('新しい引き継ぎコードを発行しますか？'));
       p.appendChild(el('small', 'confirm-sub', '今までのコードは使えなくなります。'));
     }, '発行する').then(function (ok) {
       if (!ok) return null;
       return api.recovery().then(function (r) {
-        closeModals();
-        showCode(r.recoveryCode, false);
+        K.closeModals();
+        BR.account.showCode(r.recoveryCode, false);
       });
     }).catch(fail);
   }
 
-  /* transfer */
+  /* ------------------------------------------------------------ transfer --- */
   var tf = { user: null, cur: 'tokens', value: 0, busy: false };
   function openTransfer(user) {
     if (!user || !me || user.id === me.id) return;
@@ -936,9 +991,9 @@
     tf.value = 0;
     tf.busy = false;
     $('#tf-name').textContent = user.name;
-    closeModal('profile');
+    K.closeModal('profile');
     renderTransfer();
-    showModal('transfer');
+    K.showModal('transfer');
   }
   function tfCap() {
     var r = BR.bank.rules();
@@ -949,10 +1004,10 @@
     $('#tf-bal-tokens').textContent = U.fmt(S.tokens);
     $('#tf-bal-dollars').textContent = U.fmt(S.dollars);
     $$('#tf-cur .tf-cur-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.cur === tf.cur); });
-    $('#tf-icon').className = 'ic ic-' + CUR[tf.cur].icon;
+    $('#tf-icon').className = 'ic ic-' + K.CUR[tf.cur].icon;
     tf.value = Math.min(tf.value, tfMax());
     $('#tf-value').textContent = tf.value > 0 ? U.fmt(tf.value) : '-';
-    $('#tf-note').textContent = '1回に送れる上限: ' + U.fmt(tfCap()) + ' ' + CUR[tf.cur].name;
+    $('#tf-note').textContent = '1回に送れる上限: ' + U.fmt(tfCap()) + ' ' + K.CUR[tf.cur].name;
     $('#tf-go').disabled = tf.busy || tf.value <= 0;
     var none = tf.busy || tfMax() <= 0;
     $$('#tf-quick button').forEach(function (b) { b.disabled = none; });
@@ -961,10 +1016,10 @@
   function sendMoney() {
     if (tf.busy || tf.value <= 0 || !tf.user) return;
     var u = tf.user, cur = tf.cur, amount = tf.value;
-    confirmBox(function (p) {
-      p.appendChild(nameSpan(u.name));
+    K.confirmBox(function (p) {
+      p.appendChild(K.nameSpan(u.name));
       p.appendChild(document.createTextNode('さんに'));
-      p.appendChild(amountEl(amount, cur, 'confirm-amt'));
+      p.appendChild(K.amountEl(amount, cur, 'confirm-amt'));
       p.appendChild(document.createTextNode('を送金します。'));
       p.appendChild(el('small', 'confirm-sub', '送金は取り消せません。よろしいですか？'));
     }, '送金する').then(function (ok) {
@@ -976,8 +1031,8 @@
         BR.app.serverBalance(r.balance);
         onMsg(r.message);
         sfx('purchase');
-        toast(u.name + 'さんに ' + U.fmt(amount) + ' ' + CUR[cur].name + ' を送金しました');
-        closeModal('transfer');
+        toast(u.name + 'さんに ' + U.fmt(amount) + ' ' + K.CUR[cur].name + ' を送金しました');
+        K.closeModal('transfer');
       }, function (err) {
         tf.busy = false;
         renderTransfer();
@@ -1013,23 +1068,47 @@
     touchConv(m, other, mine);
     if (mine) return;
     if (here) {
-      if (m.kind === 'transfer') sfx('purchase');
+      if (m.kind === 'transfer' || m.kind === 'gift') sfx('purchase');
       markRead(other);
       return;
     }
     if (typeof m.unread === 'number') setUnread(m.unread);
-    notify(m);
+    if (m.kind !== 'system') notify(m);
   }
 
   function notify(m) {
     var name = m.from ? m.from.name : '';
     if (m.kind === 'transfer') {
       sfx('purchase');
-      toast(name + 'さんから ' + U.fmt(m.amount) + ' ' + (CUR[m.currency] || CUR.tokens).name + ' が届きました！', 3400);
+      toast(name + 'さんから ' + U.fmt(m.amount) + ' ' + (K.CUR[m.currency] || K.CUR.tokens).name + ' が届きました！', 3400);
+    } else if (m.kind === 'gift') {
+      sfx('purchase');
+      toast(name + 'さんから ' + carName(m.text) + ' のプレゼントが届きました！Garage で見られます', 4200);
+      BR.cars.changed();
     } else {
       sfx('message');
-      toast(clip(name, 12) + ': ' + clip(m.text, 22), 3000);
+      toast(K.clip(name, 12) + ': ' + K.clip(m.text, 22), 3000);
     }
+  }
+
+  function onFriend(f) {
+    if (!me) return;
+    if (typeof f.pending === 'number' && f.type !== 'accepted') setRequests(f.pending);
+    var name = f.user ? f.user.name : '';
+    if (f.type === 'request') {
+      sfx('notify');
+      toast(name + 'さんからフレンド申請が届きました', 3400);
+    } else if (f.type === 'accepted') {
+      sfx('notify');
+      toast(name + 'さんからフレンド承認されました！会話できるようになりました', 4200);
+    }
+    if (found && f.user && found.user.id === f.user.id) {
+      found.user.friendship = { request: 'incoming', accepted: 'friends', added: 'friends', declined: 'none', cancelled: 'none', removed: 'none' }[f.type] || found.user.friendship;
+    }
+    var pu = profileUser();
+    if (pu && f.user && pu.id === f.user.id) openProfile(pu);
+    if (visible() && view === 'friends') loadFriends().catch(function () {});
+    else friends = null;
   }
 
   function onPresence(p) {
@@ -1037,6 +1116,11 @@
     $$('#screen-board [data-uid="' + (p.id | 0) + '"] .dot').forEach(function (d) { d.classList.toggle('on', !!p.online); });
     (convs || []).forEach(function (c) { if (c.user.id === p.id) c.user.online = p.online; });
     Object.keys(ranks).forEach(function (t) { ranks[t].rows.forEach(function (r) { if (r.id === p.id) r.online = p.online; }); });
+    if (friends) {
+      var hit = false;
+      ['friends', 'incoming', 'outgoing'].forEach(function (k) { friends[k].forEach(function (f) { if (f.id === p.id) { f.online = p.online; hit = true; } }); });
+      if (hit && visible() && view === 'friends') renderFriends();
+    }
     if (peer && peer.id === p.id) {
       peer.online = p.online;
       if (visible() && view === 'dm') renderDmHead();
@@ -1060,7 +1144,9 @@
     BR.bank.applyMe(h.me, true);
     BR.app.serverBalance(h.me);
     setUnread(h.unread);
+    setRequests(h.friendRequests);
     setOnline(h.online);
+    BR.avatars.setShop(h.iconShop);
     if (greeted) resync();
     greeted = true;
   }
@@ -1068,10 +1154,9 @@
   // after a dropped connection: fetch whatever is on screen again
   function resync() {
     Object.keys(chans).forEach(function (k) { chans[k].loaded = false; });
+    friends = null;
     if (!visible()) { convs = null; return; }
-    if (view === 'ranking') loadRanking();
-    else if (view === 'messages') loadConversations();
-    else showChat(chatKey(), view === 'dm' ? peer.id : null);
+    setView(view);
   }
 
   /* ------------------------------------------------------------ init --- */
@@ -1091,62 +1176,58 @@
       var row = e.target.closest('[data-uid]');
       if (!row) return;
       sfx('click');
-      openProfile(rankUser(Number(row.dataset.uid)));
+      openProfile(knownUser(Number(row.dataset.uid)));
     });
     $('#rank-me').addEventListener('click', function () { sfx('click'); openProfile(me); });
+    $('#fr-search').addEventListener('click', function () { sfx('click'); searchFriend(); });
+    $('#fr-list').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-act]');
+      var row = e.target.closest('[data-uid]');
+      if (!b || !row || b.disabled) return;
+      friendAction(b.dataset.act, Number(row.dataset.uid));
+    });
     $('#conv-list').addEventListener('click', function (e) {
       var row = e.target.closest('[data-uid]');
       if (!row) return;
       sfx('click');
-      openDm(convUser(Number(row.dataset.uid)));
+      openDm(knownUser(Number(row.dataset.uid)));
     });
     chatList().addEventListener('click', function (e) {
       var n = e.target.closest('.msg-name');
       if (!n) return;
       sfx('click');
-      openProfile({ id: Number(n.dataset.uid), name: n.textContent });
+      openProfile(knownUser(Number(n.dataset.uid)) || { id: Number(n.dataset.uid), name: n.textContent });
     });
     $('#chat-bar').addEventListener('click', function () { sfx('click'); compose(); });
     $('#dm-user').addEventListener('click', function () { sfx('click'); openProfile(peer); });
     $('#dm-profile').addEventListener('click', function () { sfx('click'); openProfile(peer); });
     $('#dm-money').addEventListener('click', function () { sfx('click'); openTransfer(peer); });
+    $('#dm-call').addEventListener('click', function () { sfx('click'); BR.call.invite(peer); });
     $('#chat-scroll').addEventListener('scroll', function () { if (this.scrollTop < 80) loadOlder(); }, { passive: true });
     $('#entry-feed').addEventListener('scroll', function () { if (this.scrollTop < 60 && entry.isOpen()) loadOlder(); }, { passive: true });
-    $$('#screen-board .scroller').forEach(dragScroll);
+    $$('#screen-board .scroller').forEach(K.dragScroll);
 
     BR.screens.register('board', {
       back: function () {
         if (view === 'dm') { setView('messages'); return true; }
+        if (cameFrom === 'start') { BR.screens.show('start'); return true; }
         return false;
       },
       close: function () {
         entry.close();
-        closeModals();
+        K.closeModals();
       }
     });
   }
 
   function bindModals() {
-    $$('.modal').forEach(function (m) {
-      m.addEventListener('click', function (e) {
-        if (e.target === m || e.target.closest('[data-close]')) {
-          sfx('click');
-          closeModal(m.id);
-        }
-      });
+    K.registerModal('transfer');
+    K.registerModal('profile');
+    $('#profile').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-act]');
+      if (!b || b.disabled) return;
+      onProfileAction(b.dataset.act);
     });
-    $('#confirm-yes').addEventListener('click', function () {
-      var f = confirmDone;
-      confirmDone = null;
-      $('#confirm').hidden = true;
-      sfx('click');
-      if (f) f(true);
-    });
-    $('#confirm-no').addEventListener('click', function () { sfx('click'); closeModal('confirm'); });
-    $('#pf-message').addEventListener('click', function () { sfx('click'); openDm(profileUser()); });
-    $('#pf-transfer').addEventListener('click', function () { sfx('click'); openTransfer(profileUser()); });
-    $('#pf-block').addEventListener('click', toggleBlock);
-    $('#pf-recovery').addEventListener('click', function () { sfx('click'); reissueCode(); });
     $$('#tf-cur .tf-cur-btn').forEach(function (b) {
       b.addEventListener('click', function () {
         if (tf.busy || tf.cur === b.dataset.cur) return;
@@ -1167,7 +1248,7 @@
     $('#tf-amount').addEventListener('click', function () {
       sfx('click');
       BR.screens.numpad({
-        icon: CUR[tf.cur].icon,
+        icon: K.CUR[tf.cur].icon,
         value: tf.value,
         max: tfMax(),
         onOk: function (n) { tf.value = n; renderTransfer(); }
@@ -1176,47 +1257,10 @@
     $('#tf-go').addEventListener('click', function () { sfx('click'); sendMoney(); });
   }
 
-  function bindWelcome() {
-    $('#ov-register').addEventListener('submit', onRegister);
-    $('#ov-login').addEventListener('submit', onLogin);
-    $('#ov-name').addEventListener('input', function () {
-      var p = nameProblem(this.value);
-      setOvError('register', p || '');
-    });
-    $('#ov-code').addEventListener('input', formatCode);
-    $$('#welcome [data-go]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        setOvError('register', '');
-        setOvError('login', '');
-        showCard(b.dataset.go);
-        var input = b.dataset.go === 'login' ? $('#ov-code') : $('#ov-name');
-        input.focus();
-      });
-    });
-    $('#ov-copy').addEventListener('click', function () {
-      var code = $('#ov-code-value').textContent;
-      copyText(code).then(function () {
-        $('#ov-copy').textContent = 'コピーしました！';
-      }, function () {
-        var r = document.createRange();
-        r.selectNodeContents($('#ov-code-value'));
-        var sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(r);
-        $('#ov-copy').textContent = '長押しでコピーしてください';
-      });
-    });
-    $('#ov-done').addEventListener('click', function () {
-      hideWelcome();
-      if (ov.first) showCoach();
-    });
-  }
-
   function init() {
     entry.init();
     bindBoard();
     bindModals();
-    bindWelcome();
     $('#coach').addEventListener('click', hideCoach);
     if (!online) return;
     api.on('auth-lost', onAuthLost);
@@ -1225,23 +1269,34 @@
     BR.live.on('balance', function (b) { BR.app.serverBalance(b); });
     BR.live.on('presence', onPresence);
     BR.live.on('board', onBoard);
+    BR.live.on('friend', onFriend);
     BR.live.on('status', function (on) { $('#board-info').classList.toggle('off', !on); });
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden && visible() && view === 'dm' && peer) markRead(peer.id);
     });
-    if (api.hasToken()) start();
-    else showWelcome();
+    api.restored.then(function () { if (api.hasToken()) start(); });
   }
 
   BR.social = {
     init: init,
     open: openBoard,
+    signIn: signIn,
+    me: function () { return me; },
+    setMe: function (m) {
+      me = m;
+      BR.bank.applyMe(m, true);
+      if (visible() && view === 'ranking' && ranks[boardType]) renderRanking(ranks[boardType]);
+    },
+    friendsList: function () { return friends ? friends.friends : null; },
+    loadFriends: loadFriends,
+    openProfile: openProfile,
+    openDm: openDm,
+    onMsg: onMsg,
+    firstRun: function () { if (BR.screens.current() === 'slot') showCoach(); },
     // Escape on a keyboard: close the top-most layer; true if something closed
     escape: function () {
       if (entry.isOpen()) { entry.close(); return true; }
-      var open = ['confirm', 'transfer', 'profile'].filter(function (id) { return !$('#' + id).hidden; });
-      if (open.length) { closeModal(open[0]); return true; }
-      return false;
+      return K.escape();
     }
   };
   BR.entry = entry;

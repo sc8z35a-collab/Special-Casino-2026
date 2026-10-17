@@ -1,10 +1,11 @@
-/* Secondary screens: token shop (buy / exchange) and rules (pay table / rules). */
+/* Navigation between the screens (start, slot, tokens, rules, board) plus
+   the token shop (buy / exchange) and the rules (pay table / rules). */
 (function (BR) {
   'use strict';
 
   var U = BR.util, C = BR.CONFIG, S = BR.store.state;
   var $ = U.$, $$ = U.$$;
-  var current = 'slot';
+  var current = 'start';
   var hooks = {};   // extra screens: { open, close, back }
 
   /* ------------------------------------------------------------ navigation --- */
@@ -14,18 +15,20 @@
     var prev = current;
     current = name;
     $$('.screen').forEach(function (s) { s.classList.toggle('active', s.id === 'screen-' + name); });
+    $('#stage').dataset.screen = name;
     if (hooks[prev] && hooks[prev].close) hooks[prev].close();
     if (name === 'tokens') shop.open();
     if (name === 'rules') rules.open();
     if (hooks[name] && hooks[name].open) hooks[name].open();
   }
 
-  // The back button: a screen may step back inside itself first.
+  // The back button: a screen may step back inside itself first; the slot
+  // goes back to the start screen.
   function back() {
     var h = hooks[current];
     if (h && h.back && h.back()) return true;
-    if (current === 'slot') return false;
-    show('slot');
+    if (current === 'start') return false;
+    show(current === 'slot' ? 'start' : 'slot');
     return true;
   }
 

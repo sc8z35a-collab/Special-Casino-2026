@@ -7,8 +7,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from './config.js';
-import { openDb } from './sqlite.js';
 import { createAdmin, AdminError } from '../core/admin.js';
 import { fmt } from '../core/rules.js';
 
@@ -26,6 +24,8 @@ const HELP = `BLOCKBUSTER REELS 管理コマンド
   redact <メッセージID>              メッセージを削除済みにする
   backup <ファイル>                  全データをファイルに保存（.json）
   restore <ファイル> [--replace]     backup で作ったファイルから戻す
+  restore-time <日時>                Cloudflare 版のみ: データベースを過去の時点に戻す
+                                     （例: 2026-10-17T12:00:00Z。30 日前まで。結果に取り消し用の値が出ます）
 
   --remote <URL>   公開中のサーバーに対して実行（環境変数 ADMIN_TOKEN が必要）
 
@@ -117,6 +117,12 @@ export async function run(argv, call, print = console.log) {
       print(`復元しました: ${Object.entries(counts).map(([t, n]) => `${t} ${n}`).join(', ')}`);
       break;
     }
+    case 'restore-time': {
+      if (!args[0]) throw new AdminError('戻したい日時を指定してください（例: 2026-10-17T12:00:00Z）');
+      const r = await call('restore-time', [args[0]]);
+      print(`${r.restoredTo} の状態に戻しました。取り消す場合の値: ${r.undoBookmark}`);
+      break;
+    }
     default:
       print(HELP);
       return cmd === undefined || cmd === 'help' || cmd === '--help' ? 0 : 1;
@@ -148,6 +154,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       call = remoteCaller(argv[at + 1], process.env.ADMIN_TOKEN);
       argv = argv.filter((_, i) => i !== at && i !== at + 1);
     } else {
+      // the local database (node:sqlite) is only loaded when it is used
+      const [{ loadConfig }, { openDb }] = await Promise.all([import('./config.js'), import('./sqlite.js')]);
       db = openDb(loadConfig().dataDir);
       const admin = createAdmin(db);
       call = async (cmd, args) => admin.command(cmd, args);

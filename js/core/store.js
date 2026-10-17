@@ -1,4 +1,6 @@
-/* Persistent player state (localStorage, guarded - the game works without it). */
+/* Persistent player state (localStorage, guarded - the game works without it).
+   Offline, the balances live here: they are written to two keys and read back
+   from whichever copy is intact, and nothing in the game ever resets them. */
 (function (BR) {
   'use strict';
 
@@ -6,6 +8,7 @@
   var mode = document.querySelector('meta[name="br-mode"]');
   var online = !!mode && mode.getAttribute('content') === 'online';
   var KEY = online ? 'blockbuster-reels/online-prefs' : 'blockbuster-reels/v1';
+  var BACKUP = KEY + '/backup';
   var PREFS = ['betIndex', 'muted', 'coach'];
 
   function defaults() {
@@ -15,7 +18,7 @@
       dollars: s.dollars,
       coins: s.coins,
       betIndex: 0,
-      muted: true,
+      muted: true,        // only the look of the sound button: sounds always play
       coach: false,
       boughtDay: '',
       boughtToday: 0,
@@ -24,26 +27,41 @@
     };
   }
 
-  var state = defaults();
-  try {
-    var raw = localStorage.getItem(KEY);
-    if (raw) {
+  function read(key) {
+    try {
+      var raw = localStorage.getItem(key);
+      if (!raw) return null;
       var saved = JSON.parse(raw);
-      Object.keys(state).forEach(function (k) {
-        if (saved[k] !== undefined && (!online || PREFS.indexOf(k) >= 0)) state[k] = saved[k];
-      });
-    }
-  } catch (e) { /* private mode etc. */ }
+      return saved && typeof saved === 'object' ? saved : null;
+    } catch (e) { return null; }
+  }
+  function valid(s) {
+    return !!s && ['tokens', 'dollars', 'coins'].every(function (k) { return typeof s[k] === 'number' && isFinite(s[k]) && s[k] >= 0; });
+  }
+
+  var state = defaults();
+  var saved = read(KEY);
+  if (!online && !valid(saved)) saved = valid(read(BACKUP)) ? read(BACKUP) : saved;
+  if (saved) {
+    Object.keys(state).forEach(function (k) {
+      if (saved[k] !== undefined && (!online || PREFS.indexOf(k) >= 0)) state[k] = saved[k];
+    });
+  }
 
   var timer = 0;
+  function write() {
+    var data = state;
+    if (online) { data = {}; PREFS.forEach(function (k) { data[k] = state[k]; }); }
+    var json = JSON.stringify(data);
+    try { localStorage.setItem(KEY, json); } catch (e) { /* ignore */ }
+    if (!online) try { localStorage.setItem(BACKUP, json); } catch (e) { /* ignore */ }
+  }
   function save() {
     clearTimeout(timer);
-    timer = setTimeout(function () {
-      var data = state;
-      if (online) { data = {}; PREFS.forEach(function (k) { data[k] = state[k]; }); }
-      try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* ignore */ }
-    }, 120);
+    timer = setTimeout(write, 120);
   }
+  // don't lose the last spin when the page is closed right after it
+  window.addEventListener('pagehide', function () { if (timer) { clearTimeout(timer); write(); } });
 
   function dayRoll() {
     var d = BR.util.utcDay();
@@ -53,11 +71,6 @@
   BR.store = {
     state: state,
     save: save,
-    dayRoll: dayRoll,
-    reset: function () {
-      var d = defaults();
-      Object.keys(d).forEach(function (k) { state[k] = d[k]; });
-      save();
-    }
+    dayRoll: dayRoll
   };
 })(window.BR = window.BR || {});

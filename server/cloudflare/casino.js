@@ -190,6 +190,15 @@ export class Casino extends DurableObject {
   // Operator commands that only exist here (see README): point-in-time recovery.
   // Cloudflare keeps 30 days of history of this database.
   async hostAdmin(cmd, args) {
+    try {
+      return await this.pointInTime(cmd, args);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      throw new ApiError(400, 'admin', `巻き戻しできませんでした: ${e && e.message}`);
+    }
+  }
+
+  async pointInTime(cmd, args) {
     if (cmd === 'bookmark') {
       const at = args[0] ? Date.parse(args[0]) : Date.now();
       if (!Number.isFinite(at)) throw new ApiError(400, 'admin', '日時は 2026-10-17T12:00:00Z の形式で指定してください');

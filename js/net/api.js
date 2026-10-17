@@ -1,18 +1,63 @@
-/* JSON API client for the online server (only used in online mode). */
+/* JSON API client for the online server (only used in online mode).
+   The login token is kept in two places (localStorage and IndexedDB), so one
+   of them being cleared does not log the player out; the name + password
+   always bring the account back anyway. */
 (function (BR) {
   'use strict';
 
   var meta = document.querySelector('meta[name="br-mode"]');
   var online = !!meta && meta.getAttribute('content') === 'online';
+  var liveMode = (meta && meta.getAttribute('data-live')) || 'sse';
   var KEY = 'blockbuster-reels/auth';
+  var NAME_KEY = 'blockbuster-reels/last-name';
   var token = null;
   var handlers = {};
   try { token = localStorage.getItem(KEY); } catch (e) { /* storage blocked */ }
 
-  function ApiError(status, code, message) {
+  /* second copy of the token in IndexedDB */
+  var idb = {
+    open: function () {
+      return new Promise(function (resolve, reject) {
+        if (!window.indexedDB) { reject(new Error('no idb')); return; }
+        var req = indexedDB.open('blockbuster-reels', 1);
+        req.onupgradeneeded = function () { req.result.createObjectStore('kv'); };
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function () { reject(req.error); };
+      });
+    },
+    get: function (k) {
+      return idb.open().then(function (db) {
+        return new Promise(function (resolve) {
+          var r = db.transaction('kv').objectStore('kv').get(k);
+          r.onsuccess = function () { resolve(r.result || null); };
+          r.onerror = function () { resolve(null); };
+        });
+      }).catch(function () { return null; });
+    },
+    set: function (k, v) {
+      return idb.open().then(function (db) {
+        var st = db.transaction('kv', 'readwrite').objectStore('kv');
+        if (v === null) st.delete(k); else st.put(v, k);
+      }).catch(function () { /* unavailable */ });
+    }
+  };
+
+  function persist(t) {
+    try { if (t) localStorage.setItem(KEY, t); else localStorage.removeItem(KEY); } catch (e) { /* in-memory only */ }
+    idb.set(KEY, t);
+  }
+
+  // Resolves once the token is known (it may have to come back from IndexedDB).
+  var restored = !online ? Promise.resolve() : (token ? Promise.resolve() : idb.get(KEY).then(function (t) {
+    if (t && !token) { token = t; persist(t); }
+  }));
+  if (online && token) idb.get(KEY).then(function (t) { if (t !== token && token) idb.set(KEY, token); });
+
+  function ApiError(status, code, message, extra) {
     this.status = status;
     this.code = code;
     this.message = message;
+    this.extra = extra || {};
   }
   ApiError.prototype = Object.create(Error.prototype);
 
@@ -34,8 +79,9 @@
       return res.json().catch(function () { return {}; }).then(function (json) {
         if (res.ok) return json;
         var e = json.error || {};
-        var err = new ApiError(res.status, e.code || 'error', e.message || ('エラーが発生しました（' + res.status + '）'));
-        if (res.status === 401 || (res.status === 403 && e.code === 'banned')) emit('auth-lost', err);
+        var err = new ApiError(res.status, e.code || 'error', e.message || ('エラーが発生しました（' + res.status + '）'), e);
+        if (res.status === 401 && token && path !== '/api/login' && path !== '/api/register') emit('auth-lost', err);
+        if (res.status === 403 && e.code === 'banned') emit('auth-lost', err);
         throw err;
       });
     });
@@ -43,40 +89,75 @@
 
   function get(path) { return request('GET', path); }
   function post(path, body) { return request('POST', path, body || {}); }
+  function q(v) { return encodeURIComponent(v); }
 
   BR.api = {
     online: online,
+    liveMode: liveMode,
     ApiError: ApiError,
+    restored: restored,
     hasToken: function () { return !!token; },
     setToken: function (t) {
       token = t || null;
-      try { if (token) localStorage.setItem(KEY, token); else localStorage.removeItem(KEY); } catch (e) { /* in-memory only */ }
+      persist(token);
     },
+    lastName: function () { try { return localStorage.getItem(NAME_KEY) || ''; } catch (e) { return ''; } },
+    rememberName: function (n) { try { localStorage.setItem(NAME_KEY, n); } catch (e) { /* ignore */ } },
     on: function (ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); },
 
-    register: function (name) { return post('/api/register', { name: name }); },
-    login: function (code) { return post('/api/login', { code: code }); },
+    /* account */
+    nameCheck: function (name) { return get('/api/name-check?name=' + q(name)); },
+    register: function (name, password, avatar) { return post('/api/register', { name: name, password: password, avatar: avatar }); },
+    login: function (name, password) { return post('/api/login', { name: name, password: password }); },
+    loginCode: function (code) { return post('/api/login', { code: code }); },
     logout: function () { return post('/api/logout'); },
     recovery: function () { return post('/api/recovery'); },
+    password: function (current, password) { return post('/api/password', { current: current, password: password }); },
     me: function () { return get('/api/me'); },
+
+    /* the game */
     spin: function (bet) { return post('/api/spin', { bet: bet }); },
     buy: function (n) { return post('/api/buy', { amount: n }); },
     sell: function (n) { return post('/api/sell', { amount: n }); },
     daily: function () { return post('/api/daily'); },
-    board: function (type) { return get('/api/board?type=' + encodeURIComponent(type)); },
-    user: function (id) { return get('/api/user?id=' + encodeURIComponent(id)); },
+    board: function (type) { return get('/api/board?type=' + q(type)); },
+
+    /* players and friends */
+    user: function (id) { return get('/api/user?id=' + q(id)); },
+    userByName: function (name) { return get('/api/user?name=' + q(name)); },
+    friends: function () { return get('/api/friends'); },
+    friendRequest: function (user) { return post('/api/friends/request', typeof user === 'number' ? { user: user } : { name: user }); },
+    friendRespond: function (id, accept) { return post('/api/friends/respond', { user: id, accept: !!accept }); },
+    friendCancel: function (id) { return post('/api/friends/cancel', { user: id }); },
+    friendRemove: function (id) { return post('/api/friends/remove', { user: id }); },
+
+    /* chat */
     conversations: function () { return get('/api/conversations'); },
     messages: function (withId, before) {
-      var q = [];
-      if (withId) q.push('with=' + encodeURIComponent(withId));
-      if (before) q.push('before=' + encodeURIComponent(before));
-      return get('/api/messages' + (q.length ? '?' + q.join('&') : ''));
+      var p = [];
+      if (withId) p.push('with=' + q(withId));
+      if (before) p.push('before=' + q(before));
+      return get('/api/messages' + (p.length ? '?' + p.join('&') : ''));
     },
     send: function (to, text) { return post('/api/messages', { to: to, text: text }); },
     read: function (withId) { return post('/api/read', { with: withId }); },
     transfer: function (to, amount, currency) { return post('/api/transfer', { to: to, amount: amount, currency: currency }); },
     blocks: function () { return get('/api/blocks'); },
     block: function (id, on) { return post('/api/block', { user: id, blocked: !!on }); },
+
+    /* icons and cars */
+    setAvatar: function (id) { return post('/api/avatar', { id: id }); },
+    buyAvatar: function (id, price) { return post('/api/avatar/buy', { id: id, price: price }); },
+    cars: function () { return get('/api/cars'); },
+    buyCar: function (model) { return post('/api/cars/buy', { model: model }); },
+    giftCar: function (to, carId) { return post('/api/cars/gift', { to: to, car: carId }); },
+
+    /* voice chat and watching */
+    iceServers: function () { return get('/api/call/ice'); },
+    call: function (to, type, callId, data) { return post('/api/call', { to: to, type: type, callId: callId, data: data === undefined ? null : data }); },
+    watch: function (id, on) { return post('/api/watch', { user: id, on: !!on }); },
+    watchers: function () { return get('/api/watchers'); },
+
     ticket: function () { return post('/api/stream-ticket'); }
   };
 })(window.BR = window.BR || {});

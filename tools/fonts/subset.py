@@ -3,7 +3,8 @@
     python3 tools/fonts/subset.py
 
 Only the characters actually used by the game are kept (collected from
-index.html, js/ and css/), so the Japanese font stays tiny.  Source fonts are
+index.html, js/, css/ and the server's messages in server/core/), so the
+Japanese font stays tiny.  Source fonts are
 downloaded to tools/fonts/src/ on first run (not committed).
 """
 import glob
@@ -44,8 +45,9 @@ def fetch():
 
 
 def used_chars():
+    # server/core holds the messages the server sends back (errors, notices)
     files = ([os.path.join(ROOT, 'index.html')] + glob.glob(os.path.join(ROOT, 'js', '**', '*.js'), recursive=True)
-             + glob.glob(os.path.join(ROOT, 'css', '*.css')))
+             + glob.glob(os.path.join(ROOT, 'css', '*.css')) + glob.glob(os.path.join(ROOT, 'server', 'core', '*.js')))
     chars = set()
     for f in files:
         if f.endswith(os.path.join('art', 'symbols.js')) or f.endswith(os.path.join('art', 'pattern.js')):
