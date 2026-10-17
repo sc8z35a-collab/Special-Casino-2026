@@ -1,0 +1,15 @@
+{
+  "name": "blockbuster-reels-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Online server for BLOCKBUSTER REELS: accounts, authoritative spins, leaderboard, chat and transfers.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "admin": "node --disable-warning=ExperimentalWarning admin.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  }
+}
