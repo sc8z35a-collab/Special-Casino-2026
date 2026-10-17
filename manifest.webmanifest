@@ -1,0 +1,19 @@
+{
+  "name": "BLOCKBUSTER REELS",
+  "short_name": "BLOCKBUSTER",
+  "description": "5リール・中央ライン型のカジノスロット",
+  "lang": "ja",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#2a0206",
+  "theme_color": "#2a0206",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

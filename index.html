@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2a0206">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Blockbuster Reels">
+<meta name="screen-orientation" content="landscape">
+<meta name="x5-orientation" content="landscape">
+<meta name="x5-fullscreen" content="true">
+<meta name="full-screen" content="yes">
+<title>Blockbuster Reels</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="viewport">
+  <div id="stage">
+    <canvas id="bg"></canvas>
+    <div id="frame"></div>
+
+    <!-- ===================== SLOT SCREEN ===================== -->
+    <section id="screen-slot" class="screen active" aria-label="BLOCKBUSTER REELS">
+      <button class="back-btn" data-action="back" aria-label="戻る"><i class="ic ic-back"></i></button>
+      <h1 class="title">BLOCKBUSTER REELS</h1>
+
+      <button id="btn-sound" class="sound-btn" aria-label="サウンド"><i class="ic ic-sound"></i></button>
+
+      <div id="reels">
+        <canvas id="reel-canvas"></canvas>
+        <div class="reel-frame"></div>
+        <div class="payline-mark left"></div>
+        <div class="payline-mark right"></div>
+      </div>
+
+      <button id="btn-get" class="pill pill-left pill-get" data-sfx="click"><span>トークンを入<br>手</span></button>
+      <button id="btn-max" class="pill pill-left pill-max" data-sfx="click"><span>最大ベット</span></button>
+
+      <button id="btn-radio" class="hud-circle hud-radio" aria-label="無線"><i class="ic ic-radio"></i></button>
+      <button id="btn-mic" class="hud-circle hud-mic" aria-label="マイク"><i class="ic ic-mic"></i></button>
+
+      <button id="btn-rules" class="pill pill-rules" data-sfx="click"><span>ルール</span></button>
+      <button id="btn-auto" class="pill pill-auto" data-sfx="click"><span class="auto-label">自動スピン</span><span class="auto-state"><i class="led"></i><b>オフ</b></span></button>
+      <button id="btn-spin" class="spin-btn" aria-label="SPIN">
+        <span class="spin-glow"></span>
+        <span class="spin-disc"><i class="spin-arrows"></i><b>SPIN</b></span>
+      </button>
+
+      <div class="bet-group">
+        <div class="hud-label">ベット</div>
+        <button id="bet-minus" class="sq-btn minus" aria-label="ベットを下げる"><i></i></button>
+        <div class="hud-box bet-box"><i class="ic ic-chip"></i><span id="bet-value">100</span></div>
+        <button id="bet-plus" class="sq-btn plus" aria-label="ベットを上げる"><i></i></button>
+      </div>
+      <div class="win-group">
+        <div class="hud-label">WIN</div>
+        <div class="hud-box win-box"><span id="win-value" class="win-text">グッドラック！</span></div>
+      </div>
+    </section>
+
+    <!-- ===================== TOKEN SCREEN ===================== -->
+    <section id="screen-tokens" class="screen" aria-label="トークン">
+      <button class="back-btn back-jp" data-action="back"><i class="ic ic-back"></i><span>戻る</span></button>
+      <div class="tabs">
+        <button class="tab active" data-tab="buy"><span>トークンを入手</span></button>
+        <button class="tab" data-tab="sell"><span>トークンを交換</span></button>
+      </div>
+      <div class="panel token-panel">
+        <h2 class="tp-title" id="tp-title">スピントークンを入手</h2>
+        <div class="tp-rate"><i class="ic ic-chip"></i><span>1 = 10</span><i class="ic ic-dollar"></i></div>
+        <div class="tp-fields">
+          <div class="tp-field">
+            <label id="tp-label-a">獲得:</label>
+            <button class="tp-input" id="tp-input-a"><i class="ic ic-chip"></i><span class="v" id="tp-val-a">-</span><i class="ic ic-edit"></i></button>
+          </div>
+          <div class="tp-field">
+            <label id="tp-label-b">交換:</label>
+            <button class="tp-input" id="tp-input-b"><i class="ic ic-dollar"></i><span class="v" id="tp-val-b">-</span><i class="ic ic-edit"></i></button>
+          </div>
+        </div>
+        <div class="tp-slider">
+          <button class="sq-btn minus" id="tp-minus" aria-label="減らす"><i></i></button>
+          <div class="track" id="tp-track"><div class="fill" id="tp-fill"></div><div class="thumb" id="tp-thumb"><i class="ic ic-grip"></i></div></div>
+          <button class="sq-btn plus" id="tp-plus" aria-label="増やす"><i></i></button>
+        </div>
+        <button class="action-btn" id="tp-action" disabled>入手</button>
+        <p class="tp-note" id="tp-note">スピントークン上限は毎日00:00 UTCに更新されます</p>
+      </div>
+      <div class="daily-bar">
+        <canvas class="chip-pile" id="chip-pile"></canvas>
+        <span class="daily-text">毎日無料でスピントークンを入手！</span>
+        <button class="daily-btn" id="daily-btn"><i class="ic ic-stopwatch"></i><span id="daily-label">受け取る</span></button>
+      </div>
+    </section>
+
+    <!-- ===================== RULES SCREEN ===================== -->
+    <section id="screen-rules" class="screen" aria-label="ルール">
+      <button class="back-btn back-jp" data-action="back"><i class="ic ic-back"></i><span>戻る</span></button>
+      <div class="tabs">
+        <button class="tab active" data-tab="combos"><span>組み合わせ</span></button>
+        <button class="tab" data-tab="rules"><span>ルール</span></button>
+      </div>
+      <div class="rules-pane combos active" id="pane-combos"></div>
+      <div class="rules-pane rules" id="pane-rules">
+        <ul class="rule-list">
+          <li><i class="ic ic-info"></i><span>「SPIN」をタップしてゲームを開始します。</span></li>
+          <li><i class="ic ic-info"></i><span>選択された賭金（ベット）が各スピンから引かれます。賞金は、中央ラインと賭金、およびマッチしたシンボルのタイプと数によって決まります。</span></li>
+          <li><i class="ic ic-info"></i><span>複数の当たりの組み合わせがライン上で止まった場合、報酬は加算されます。</span></li>
+          <li><i class="ic ic-info"></i><span>スピン中にゲームを終了すると、賭金は放棄されます。</span></li>
+          <li><i class="ic ic-info"></i><span>隣接するタブで、可能性のある組み合わせと倍率を見ることができます。</span></li>
+          <li><i class="ic ic-info"></i><span>1日の上限: 10,000,000スピントークン。</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- wallet is shared by every screen -->
+    <div class="wallet">
+      <div class="w-item w-tokens"><i class="ic ic-chip"></i><span id="w-tokens">0</span></div>
+      <div class="w-item w-dollars"><i class="ic ic-dollar"></i><span id="w-dollars">5 008 159</span></div>
+      <div class="w-item w-coins"><i class="ic ic-coin"></i><span id="w-coins">74</span></div>
+      <button class="w-plus" id="w-plus" aria-label="追加"><i class="ic ic-plus"></i></button>
+    </div>
+
+    <div id="fx" aria-hidden="true"></div>
+    <div id="fx-hit"></div>
+
+    <div id="numpad" class="numpad" hidden>
+      <div class="np-card">
+        <div class="np-display"><i class="ic ic-chip" id="np-icon"></i><span id="np-value">0</span></div>
+        <div class="np-keys">
+          <button>1</button><button>2</button><button>3</button>
+          <button>4</button><button>5</button><button>6</button>
+          <button>7</button><button>8</button><button>9</button>
+          <button data-k="max">MAX</button><button>0</button><button data-k="del" aria-label="削除"><i class="ic ic-del"></i></button>
+        </div>
+        <div class="np-actions"><button data-k="cancel" class="np-cancel">キャンセル</button><button data-k="ok" class="np-ok">OK</button></div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+</div>
+
+<script src="js/art/icons.js"></script>
+<script src="js/art/symbols.js"></script>
+<script src="js/art/pattern.js"></script>
+<script src="js/art/ui-svg.js"></script>
+<script src="js/core/util.js"></script>
+<script src="js/game/config.js"></script>
+<script src="js/core/store.js"></script>
+<script src="js/game/engine.js"></script>
+<script src="js/audio/sfx.js"></script>
+<script src="js/render/backdrop.js"></script>
+<script src="js/render/assets.js"></script>
+<script src="js/render/reels.js"></script>
+<script src="js/render/fx.js"></script>
+<script src="js/ui/screens.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
