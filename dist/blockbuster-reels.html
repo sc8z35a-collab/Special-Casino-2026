@@ -39,6 +39,8 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+:root { color-scheme: dark; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -95,6 +97,13 @@ button {
   outline: none;
 }
 button:disabled { cursor: default; }
+button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
+
+/* the reels and win motions are the game itself; only ambient pulses stop */
+@media (prefers-reduced-motion: reduce) {
+  .spin-glow, .daily-btn.ready { animation: none !important; }
+  .screen { transition: none; }
+}
 
 .ic { display: inline-block; background: center / contain no-repeat; flex: none; }
 
