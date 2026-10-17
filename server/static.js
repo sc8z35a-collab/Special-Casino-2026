@@ -16,10 +16,12 @@ const TYPES = {
   '.png': 'image/png',
   '.webp': 'image/webp',
   '.woff2': 'font/woff2',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
   '.txt': 'text/plain; charset=utf-8'
 };
 const TEXT = new Set(['.html', '.css', '.js', '.json', '.webmanifest', '.svg', '.txt']);
-const ALLOWED = /^\/(?:index\.html|manifest\.webmanifest|(?:css|js|fonts|icons|img)\/[A-Za-z0-9._\/-]+)$/;
+const ALLOWED = /^\/(?:index\.html|manifest\.webmanifest|(?:css|js|fonts|icons|img|sounds)\/[A-Za-z0-9._\/-]+)$/;
 
 export function createStatic(root, { transformHtml } = {}) {
   const cache = new Map();   // path -> { mtime, size, body, gz, etag }
@@ -43,7 +45,7 @@ export function createStatic(root, { transformHtml } = {}) {
       gz: TEXT.has(ext) && body.length > 512 ? zlib.gzipSync(body, { level: 9 }) : null,
       etag: '"' + crypto.createHash('sha1').update(body).digest('base64url').slice(0, 20) + '"',
       // art is fresh for an hour (then refreshed in the background); code is revalidated on every load
-      cacheControl: /^\/(fonts|icons|img)\//.test(rel) ? 'public, max-age=3600, stale-while-revalidate=86400' : 'no-cache'
+      cacheControl: /^\/(fonts|icons|img|sounds)\//.test(rel) ? 'public, max-age=3600, stale-while-revalidate=86400' : 'no-cache'
     };
     cache.set(rel, entry);
     return entry;

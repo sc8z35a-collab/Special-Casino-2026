@@ -2,7 +2,7 @@
 
     python3 tools/build_single.py
 
-CSS, JavaScript, fonts and the touch icon are inlined, so the file can be
+CSS, JavaScript, fonts, images, sounds and the touch icon are inlined, so the file can be
 opened directly, sent to a phone or hosted anywhere as a single page.
 """
 import base64
@@ -35,10 +35,14 @@ def inline_css(match):
     return '<style>\n' + css + '</style>'
 
 
+MEDIA = {'webp': 'image/webp', 'png': 'image/png', 'wav': 'audio/wav', 'mp3': 'audio/mpeg'}
+
+
 def inline_js(match):
     js = read(match.group(1)).replace('</script', '<\\/script')
-    # image references inside scripts (reel symbols) become data: URIs
-    js = re.sub(r"'(img/[A-Za-z0-9_/.-]+\.webp)'", lambda m: "'data:image/webp;base64,%s'" % b64(m.group(1)), js)
+    # image and sound references inside scripts become data: URIs
+    js = re.sub(r"'((?:img|sounds)/[A-Za-z0-9_/.-]+\.(webp|png|wav|mp3))'",
+                lambda m: "'data:%s;base64,%s'" % (MEDIA[m.group(2)], b64(m.group(1))), js)
     return '<script>\n' + js + '</script>'
 
 

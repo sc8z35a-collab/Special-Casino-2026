@@ -10,6 +10,7 @@ COPY js ./js
 COPY fonts ./fonts
 COPY icons ./icons
 COPY img ./img
+COPY sounds ./sounds
 COPY server ./server
 COPY deploy/entrypoint.sh /usr/local/bin/entrypoint
 RUN chmod 755 /usr/local/bin/entrypoint

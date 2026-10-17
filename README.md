@@ -2,7 +2,8 @@
 
 スマホの横画面・全画面で遊ぶ 5 リール × 3 段のカジノスロットです。
 サーバーに置くと **オンライン版** になり、ユーザー名の登録・ランキング（ボード）・プレイヤー同士のチャット・送金が使えます。
-リールのシンボル、スピントークン / $ / コインのアイコン、SPIN ボタン、ボタン類、チップの山、背景とアプリアイコンは提供画像（`tools/art/source/`）を使用しています。
+リールのシンボル、スピントークン / $ / コインのアイコン、SPIN ボタン、ボタン類、チップの山、背景とアプリアイコンは提供画像（`tools/art/source/`）、
+クリック・SPIN・リール回転・当たりの効果音は提供された録音（`tools/sound/source/`）を使用しています。
 ゲーム本体・サーバーとも外部ライブラリには依存しません（サーバーは Node.js 標準機能と SQLite のみ）。
 
 ![screen](icons/icon-192.png)
@@ -180,7 +181,8 @@ docker compose start app
 | SUPER BIG WIN | 15 倍以上 | BIG WIN からカウント途中で「SUPER」に昇格、花火とチップの雨 |
 
 演出中に画面をタップするとカウントを飛ばせます。あと 1 つで 20 倍以上になる場面では残りのリールが減速して光る「リーチ演出」が入ります。
-サウンドは WebAudio で生成しており、初期状態はミュート（参考画面どおり）。左上のスピーカーで切り替えます。
+効果音は、ボタンのクリック・SPIN・リールの回転音・当たり音が提供された録音、リール停止・リーチ・BIG WIN の打楽器などは WebAudio で生成しています。
+初期状態はミュート（参考画面どおり）で、左上のスピーカーで切り替えます。
 
 ## 構成
 
@@ -200,6 +202,7 @@ js/render/fx.js            WIN / BIG WIN / SUPER BIG WIN 演出
 js/audio/sfx.js            効果音シンセサイザー
 js/art/*.js                SVG アイコン、画像ファイルの一覧
 img/symbols/, img/ui/      提供画像から作ったシンボル・UI 画像
+sounds/                    提供された録音から作った効果音
 server/                    オンライン版サーバー（server.js 起動 / api.js API / db.js SQLite / admin.js 管理コマンド）
 Dockerfile, docker-compose.yml, deploy/, render.yaml   公開用の設定
 tools/                     画像 / フォント / 1 ファイル版の生成スクリプト
@@ -218,6 +221,7 @@ pip install numpy pillow scipy opencv-python-headless fonttools brotli
 python3 tools/art/symbol_images.py  # シンボル画像 → img/symbols/*.webp
 python3 tools/art/ui_images.py      # アイコン・SPIN・ボタン・チップの山・背景 → img/ui/*.webp
 python3 tools/art/icons.py          # アプリアイコン（7）→ icons/*.png
+python3 tools/sound/sounds.py       # 効果音（ffmpeg を使用）→ sounds/
 python3 tools/fonts/subset.py       # 使用文字だけのフォント → fonts/, css/fonts.css
 python3 tools/build_single.py       # 1 ファイル版 → dist/blockbuster-reels.html
 ```

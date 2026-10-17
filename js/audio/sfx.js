@@ -1,4 +1,7 @@
-/* Sound effects synthesised with WebAudio (no audio files needed). */
+/* Sound effects: the supplied recordings (sounds/) for clicks, the SPIN
+   button, the turning reels and wins; everything else is synthesised with
+   WebAudio. The synthesised versions also stand in until the recordings
+   are decoded. */
 (function (BR) {
   'use strict';
 
@@ -7,6 +10,77 @@
   var muted = true, unlocked = false;
   var noiseBuf = null;
   var reelLoop = null;
+
+  /* ------------------------------------------------------------ recordings --- */
+  var RECORDINGS = {
+    click: 'sounds/click.wav',
+    spin: 'sounds/spin-button.wav',
+    reels: 'sounds/reels.wav',      // two tick cycles, cut to loop seamlessly
+    win: 'sounds/win.mp3'
+  };
+  var LEVEL = { click: 0.7, spin: 1, reels: 0.6, win: 0.9 };
+  var raw = {}, buffers = {}, winVoice = null;
+
+  function bytes(url) {
+    var m = /^data:[^,]*;base64,(.*)$/.exec(url);   // single-file build
+    if (m) {
+      var bin = atob(m[1]), out = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return Promise.resolve(out.buffer);
+    }
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.arrayBuffer();
+    });
+  }
+  // fetched right away, decoded once the audio context exists
+  Object.keys(RECORDINGS).forEach(function (k) {
+    raw[k] = bytes(RECORDINGS[k]);
+    raw[k].catch(function () { /* the synthesised sound is used instead */ });
+  });
+
+  function decodeRecordings() {
+    Object.keys(raw).forEach(function (k) {
+      raw[k].then(function (ab) {
+        return new Promise(function (resolve, reject) {
+          var p = ctx.decodeAudioData(ab, resolve, reject);   // callback form for older Safari
+          if (p && p.then) p.then(resolve, reject);
+        });
+      }).then(function (b) { buffers[k] = b; }, function () { /* keep the synthesised sound */ });
+    });
+  }
+
+  // Plays a decoded recording; null while it is not available.
+  function sample(name, t, o) {
+    var b = buffers[name];
+    if (!b) return null;
+    o = o || {};
+    var src = ctx.createBufferSource();
+    src.buffer = b;
+    if (o.rate) src.playbackRate.value = o.rate;
+    var g = ctx.createGain();
+    g.gain.value = LEVEL[name] * (o.gain || 1);
+    src.connect(g);
+    g.connect(comp);
+    src.start(t);
+    return { src: src, g: g };
+  }
+
+  function fadeOut(voice, t, d) {
+    try {
+      voice.g.gain.cancelScheduledValues(t);
+      voice.g.gain.setValueAtTime(voice.g.gain.value, t);
+      voice.g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      voice.src.stop(t + d + 0.02);
+    } catch (e) { /* already stopped */ }
+  }
+
+  // The win recording: one at a time, cut short when the next spin starts.
+  function winSample(t) {
+    if (winVoice) fadeOut(winVoice, t, 0.12);
+    winVoice = sample('win', t);
+    return winVoice;
+  }
 
   function init() {
     if (ctx || !AC) return;
@@ -29,6 +103,7 @@
     verbIn.connect(verb);
     verb.connect(comp);
     noiseBuf = makeNoise(2);
+    decodeRecordings();
   }
 
   function impulse(sec, decay) {
@@ -151,14 +226,24 @@
 
   var SOUNDS = {
     click: function (t) {
+      if (sample('click', t)) return;
       tone({ t: t, f: 1800, f2: 1200, d: 0.05, v: 0.12, type: 'triangle' });
       noise({ t: t, f: 4000, q: 3, d: 0.02, v: 0.06 });
     },
     slider: function (t) { tone({ t: t, f: 2600, d: 0.025, v: 0.04, type: 'sine' }); },
-    betUp: function (t) { tone({ t: t, f: 660, d: 0.07, v: 0.12, type: 'triangle' }); tone({ t: t + 0.06, f: 990, d: 0.09, v: 0.12, type: 'triangle' }); },
-    betDown: function (t) { tone({ t: t, f: 990, d: 0.07, v: 0.12, type: 'triangle' }); tone({ t: t + 0.06, f: 660, d: 0.09, v: 0.12, type: 'triangle' }); },
+    // the click, pitched a little up / down
+    betUp: function (t) {
+      if (sample('click', t, { rate: 1.08 })) return;
+      tone({ t: t, f: 660, d: 0.07, v: 0.12, type: 'triangle' }); tone({ t: t + 0.06, f: 990, d: 0.09, v: 0.12, type: 'triangle' });
+    },
+    betDown: function (t) {
+      if (sample('click', t, { rate: 0.93 })) return;
+      tone({ t: t, f: 990, d: 0.07, v: 0.12, type: 'triangle' }); tone({ t: t + 0.06, f: 660, d: 0.09, v: 0.12, type: 'triangle' });
+    },
     deny: function (t) { tone({ t: t, f: 140, d: 0.22, v: 0.18, type: 'square', lp: 600 }); tone({ t: t + 0.12, f: 110, d: 0.25, v: 0.16, type: 'square', lp: 500 }); },
     spinStart: function (t) {
+      if (winVoice) { fadeOut(winVoice, t, 0.15); winVoice = null; }
+      if (sample('spin', t)) return;
       noise({ t: t, ftype: 'bandpass', f: 400, f2: 2400, q: 1.2, a: 0.02, d: 0.28, v: 0.22 });
       tone({ t: t, f: 120, f2: 70, d: 0.14, v: 0.3, type: 'sine' });
       noise({ t: t + 0.01, ftype: 'lowpass', f: 1200, d: 0.06, v: 0.2 });
@@ -177,11 +262,18 @@
       lfo.start(t); lfo.stop(t + 1.4);
       tone({ t: t, f: 110, f2: 220, glide: 1.25, a: 0.05, hold: 1.0, d: 0.25, v: 0.12, type: 'triangle' });
     },
+    // wins: the recording, with drum hits (no pitched parts to clash) for the big ones
     win: function (t) {
+      if (winSample(t)) return;
       [N.C6, N.E6, N.G6, N.C7].forEach(function (f, i) { bell(f, t + i * 0.075, 0.1, 0.7); });
       coin(t + 0.32, 0.5, 0.1);
     },
     bigWin: function (t) {
+      if (winSample(t)) {
+        timpani(t, 98, 0.5);
+        cymbal(t + 0.02, 0.12, 1.8);
+        return;
+      }
       timpani(t, 98, 0.55);
       brass([N.C4, N.E4, N.G4], t, 0.16, 0.5);
       brass([N.C4, N.E4, N.G4], t + 0.18, 0.12, 0.45);
@@ -192,6 +284,13 @@
       [N.C6, N.E6, N.G6, N.C7].forEach(function (f, i) { bell(f, t + 0.55 + i * 0.06, 0.07, 1.2); });
     },
     superWin: function (t) {
+      if (winSample(t)) {
+        timpani(t, 82, 0.65);
+        timpani(t + 0.42, 131, 0.5);
+        cymbal(t, 0.2, 2.4);
+        for (var k = 0; k < 10; k++) coin(t + 0.45 + k * 0.05, k / 10, 0.07);
+        return;
+      }
       timpani(t, 82, 0.7);
       cymbal(t, 0.22, 2.6);
       brass([N.G4, N.B4, N.D5], t, 0.18, 0.55);
@@ -201,8 +300,14 @@
       for (var i = 0; i < 10; i++) coin(t + 0.45 + i * 0.05, i / 10, 0.09);
       [N.C6, N.E6, N.G6, N.C7, N.G6, N.C7].forEach(function (f, i) { bell(f, t + 0.45 + i * 0.07, 0.07, 1.4); });
     },
-    tick: function (t, p) { coin(t, p || 0, 0.07); },
+    // the win recording already carries the count-up
+    tick: function (t, p) { if (!buffers.win) coin(t, p || 0, 0.07); },
     countEnd: function (t, tier) {
+      if (buffers.win) {
+        cymbal(t, tier >= 2 ? 0.14 : 0.07, 1.4);
+        coin(t + 0.05, 1, 0.08);
+        return;
+      }
       if (tier >= 2) {
         brass([N.C5, N.E5, N.G5], t, 0.5, 0.45);
         cymbal(t, 0.14, 1.6);
@@ -234,6 +339,12 @@
   function startReels() {
     if (!ctx || muted || reelLoop) return;
     var t = ctx.currentTime;
+    var rec = sample('reels', t);
+    if (rec) {
+      rec.src.loop = true;
+      reelLoop = rec;
+      return;
+    }
     var src = ctx.createBufferSource();
     // build a 1s loop of mechanical clicks over rolling noise
     var sr = ctx.sampleRate, len = sr, b = ctx.createBuffer(1, len, sr), d = b.getChannelData(0);
@@ -284,6 +395,8 @@
       if (ctx.state !== 'running') return;
       try { SOUNDS[name](ctx.currentTime + 0.005, arg); } catch (e) { /* ignore */ }
     },
+    // names of the recordings decoded so far (diagnostics)
+    recordings: function () { return Object.keys(buffers); },
     startReels: startReels,
     stopReels: function () { if (ctx) stopReels(); },
     setMuted: function (m) {
