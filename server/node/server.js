@@ -1,28 +1,34 @@
-// BLOCKBUSTER REELS online server: serves the game and its API from one process.
+// BLOCKBUSTER REELS on Node: the game files, the API and live updates (SSE)
+// from one process, data in SQLite. (The free hosted version runs the same
+// core on Cloudflare: see server/cloudflare/.)
 //
-//   node --disable-warning=ExperimentalWarning server/server.js
-//
-// Configuration comes from environment variables (see server/config.js).
+//   node --disable-warning=ExperimentalWarning server/node/server.js
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, ROOT } from './config.js';
-import { openDb } from './db.js';
+import { openDb } from './sqlite.js';
 import { Live } from './live.js';
-import { createApi } from './api.js';
 import { createStatic } from './static.js';
-import { SECURITY_HEADERS } from './http.js';
+import { SECURITY_HEADERS, sendJson, clientIp, coreRequest } from './http.js';
+import { createApi } from '../core/api.js';
+import { metaValue } from '../core/db.js';
 
 export function createApp(overrides = {}) {
   const config = loadConfig(overrides);
   const db = openDb(config.dataDir);
   const live = new Live();
-  const api = createApi({ db, live, config });
-  // The page switches to online mode when it sees this marker.
+  const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
+  const api = createApi({ db, live, config, secret });
+  live.onPresence = (userId, online) => api.presence(userId, online);
+  // The page switches to online mode (live updates over SSE) when it sees this marker.
   const serveStatic = createStatic(ROOT, {
-    transformHtml: (html) => html.replace('<meta name="br-mode" content="local">', '<meta name="br-mode" content="online">')
+    transformHtml: (html) => html.replace('<meta name="br-mode" content="local">', '<meta name="br-mode" content="online" data-live="sse">')
   });
+  const hk = setInterval(() => api.housekeeping(), 3600000);
+  hk.unref();
 
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     const started = Date.now();
     let url;
     try {
@@ -35,7 +41,14 @@ export function createApp(overrides = {}) {
       if (config.logRequests && url.pathname !== '/api/stream') {
         res.on('finish', () => console.log(`${new Date().toISOString()} ${req.method} ${url.pathname} ${res.statusCode} ${Date.now() - started}ms`));
       }
-      api.handle(req, res, url);
+      if (req.method === 'GET' && url.pathname === '/api/stream') {
+        const userId = api.consumeTicket(url.searchParams.get('ticket'));
+        if (!userId) { sendJson(res, 401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } }); return; }
+        live.attach(req, res, userId, () => api.hello(userId));
+        return;
+      }
+      const out = await api.handle(coreRequest(req, url, clientIp(req, config.trustProxy, config.clientIpHeader)));
+      sendJson(res, out.status, out.body);
       return;
     }
     if (serveStatic(req, res, url.pathname)) return;
@@ -47,6 +60,7 @@ export function createApp(overrides = {}) {
 
   function close() {
     return new Promise((resolve) => {
+      clearInterval(hk);
       live.close();
       api.close();
       server.close(() => {

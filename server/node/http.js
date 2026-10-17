@@ -1,13 +1,6 @@
-// Small HTTP helpers shared by the API and the static file server.
-
-export class ApiError extends Error {
-  constructor(status, code, message, extra) {
-    super(message);
-    this.status = status;
-    this.code = code;
-    this.extra = extra;
-  }
-}
+// HTTP plumbing for the Node host: headers, JSON bodies, client address.
+import { Buffer } from 'node:buffer';
+import { ApiError } from '../core/errors.js';
 
 export const SECURITY_HEADERS = {
   'Content-Security-Policy': [
@@ -28,7 +21,8 @@ export const SECURITY_HEADERS = {
   'Referrer-Policy': 'no-referrer',
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'same-origin',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()'
+  // the microphone is used for voice chat with friends
+  'Permissions-Policy': 'camera=(), microphone=(self), geolocation=(), payment=()'
 };
 
 export function sendJson(res, status, body, headers) {
@@ -43,16 +37,7 @@ export function sendJson(res, status, body, headers) {
   res.end(data);
 }
 
-export function sendError(res, err) {
-  if (err instanceof ApiError) {
-    sendJson(res, err.status, { error: { code: err.code, message: err.message, ...(err.extra || {}) } });
-  } else {
-    console.error(err);
-    sendJson(res, 500, { error: { code: 'internal', message: 'サーバーでエラーが発生しました。少し待ってからもう一度お試しください' } });
-  }
-}
-
-// Reads a JSON body (max `limit` bytes).
+// Reads a JSON body (at most `limit` bytes).
 export function readJson(req, limit = 16 * 1024) {
   return new Promise((resolve, reject) => {
     const type = String(req.headers['content-type'] || '');
@@ -107,9 +92,14 @@ export function clientIp(req, trustProxy, ipHeader) {
   return req.socket.remoteAddress || '';
 }
 
-// Positive safe integer from user input, or an ApiError.
-export function posInt(v, what) {
-  const n = typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : v;
-  if (!Number.isSafeInteger(n) || n <= 0) throw new ApiError(400, 'bad_amount', `${what}は1以上の整数で指定してください`);
-  return n;
+// The host-independent request the core API understands.
+export function coreRequest(req, url, ip) {
+  return {
+    method: req.method,
+    path: url.pathname,
+    query: url.searchParams,
+    ip,
+    header: (name) => req.headers[name.toLowerCase()] ?? null,
+    json: (limit) => readJson(req, limit)
+  };
 }

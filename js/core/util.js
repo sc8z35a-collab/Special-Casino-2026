@@ -42,7 +42,7 @@
   var buf = new Uint32Array(64), bufPos = 64;
   util.random = function () {
     if (bufPos >= buf.length) {
-      if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(buf);
+      if (globalThis.crypto && crypto.getRandomValues) crypto.getRandomValues(buf);
       else for (var i = 0; i < buf.length; i++) buf[i] = Math.floor(Math.random() * 4294967296);
       bufPos = 0;
     }
@@ -83,4 +83,4 @@
   util.wait = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
 
   BR.util = util;
-})(window.BR = window.BR || {});
+})(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

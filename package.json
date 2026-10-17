@@ -1,0 +1,15 @@
+{
+  "name": "two-state-casino",
+  "version": "2.0.0",
+  "private": true,
+  "description": "BLOCKBUSTER REELS online: the game, its Cloudflare Worker and the Node server",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "start": "node --disable-warning=ExperimentalWarning server/node/server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test server/test/*.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "4.151.1"
+  }
+}

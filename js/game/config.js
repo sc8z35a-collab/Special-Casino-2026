@@ -24,6 +24,23 @@
     tokenPrice: 10,          // $ per spin token
     dailyLimit: 10000000,    // spin tokens that can be bought per UTC day
     dailyFree: 1000,         // free tokens claimable once per UTC day
-    start: { tokens: 0, dollars: 5008159, coins: 74 }
+    start: { tokens: 0, dollars: 5008159, coins: 74 },
+    // player icons: price in $ (0 = free); "rare" ones are locked at sign-up
+    // Player icons (img/avatars/<id>.webp). Paid ones are chained on the
+    // sign-up screen and sold later for $, always 10-40 % off (js/game/sale.js).
+    avatars: [
+      { id: 'bald', name: 'スキンヘッド', price: 0 },
+      { id: 'beard', name: 'ヒゲ', price: 0 },
+      { id: 'curly', name: 'くせ毛', price: 0 },
+      { id: 'blond', name: '金髪', price: 0 },
+      { id: 'witch', name: '魔女ハット', price: 0 },
+      { id: 'pumpkin', name: 'パンプキン', price: 100000 },
+      { id: 'red', name: 'レッド', price: 350000, rare: true },
+      { id: 'vampire', name: 'ヴァンパイア', price: 800000, rare: true }
+    ],
+    // Car Owner shop (price in $)
+    cars: [
+      { id: 'two-state-sedan', name: 'Two state セダン', price: 1200000 }
+    ]
   };
-})(window.BR = window.BR || {});
+})(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

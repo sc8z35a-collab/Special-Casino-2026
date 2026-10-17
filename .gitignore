@@ -8,3 +8,7 @@ node_modules/
 # server data and local settings
 data/
 .env
+
+# Cloudflare local state and secrets
+.wrangler/
+.dev.vars

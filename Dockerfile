@@ -1,4 +1,5 @@
-# BLOCKBUSTER REELS online server: the game files and the API in one small image.
+# BLOCKBUSTER REELS on your own server (the free option is Cloudflare, see README.md):
+# the game files and the API in one small image.
 #   docker build -t blockbuster-reels .
 #   docker run -p 8080:8080 -v blockbuster-data:/data blockbuster-reels
 FROM node:22-alpine
@@ -11,6 +12,7 @@ COPY fonts ./fonts
 COPY icons ./icons
 COPY img ./img
 COPY sounds ./sounds
+COPY video ./video
 COPY server ./server
 COPY deploy/entrypoint.sh /usr/local/bin/entrypoint
 RUN chmod 755 /usr/local/bin/entrypoint
@@ -23,4 +25,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD wget -qO- "http://127.0.0.1:${PORT}/api/health" >/dev/null || exit 1
 
 ENTRYPOINT ["entrypoint"]
-CMD ["node", "server/server.js"]
+CMD ["node", "server/node/server.js"]

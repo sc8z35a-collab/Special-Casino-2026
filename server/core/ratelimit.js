@@ -1,4 +1,4 @@
-// Token-bucket rate limiter kept in memory (one server process).
+// Token-bucket rate limiter kept in memory (per server process / Durable Object).
 export class Limiter {
   // `perMinute` tokens are refilled per minute, at most `burst` can be stored.
   constructor(perMinute, burst) {

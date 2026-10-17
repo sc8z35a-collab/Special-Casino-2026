@@ -1,34 +1,17 @@
-// Real-time push over Server-Sent Events.
-// EventSource cannot send an Authorization header, so the client first trades
-// its token for a one-time ticket (valid for one minute) and opens
-// /api/stream?ticket=..., which keeps tokens out of URLs and access logs.
-import crypto from 'node:crypto';
+// Real-time push for the Node host over Server-Sent Events. The browser
+// trades its token for a short signed ticket and opens /api/stream?ticket=...,
+// which keeps tokens out of URLs and access logs.
 import { SECURITY_HEADERS } from './http.js';
 
-const TICKET_TTL = 60 * 1000;
 const HEARTBEAT = 25 * 1000;
 const MAX_BUFFERED = 512 * 1024;
 
 export class Live {
   constructor() {
     this.clients = new Map();   // userId -> Set<res>
-    this.tickets = new Map();   // ticket -> { userId, expires }
     this.onPresence = null;     // (userId, online) => void
     this.timer = setInterval(() => this.heartbeat(), HEARTBEAT);
     this.timer.unref();
-  }
-
-  ticket(userId) {
-    const t = crypto.randomBytes(24).toString('base64url');
-    this.tickets.set(t, { userId, expires: Date.now() + TICKET_TTL });
-    return t;
-  }
-
-  redeem(ticket) {
-    const entry = this.tickets.get(String(ticket || ''));
-    if (!entry) return null;
-    this.tickets.delete(ticket);
-    return entry.expires > Date.now() ? entry.userId : null;
   }
 
   attach(req, res, userId, hello) {
@@ -47,7 +30,7 @@ export class Live {
     const first = !set;
     if (!set) { set = new Set(); this.clients.set(userId, set); }
     set.add(res);
-    this.write(res, 'hello', hello);
+    this.write(res, 'hello', { ...hello(), online: this.onlineCount() });
     if (first && this.onPresence) this.onPresence(userId, true);
     const done = () => {
       const s = this.clients.get(userId);
@@ -78,17 +61,10 @@ export class Live {
     }
   }
 
-  disconnect(userId) {
-    const set = this.clients.get(userId);
-    if (set) for (const res of set) res.end();
-  }
-
   isOnline(userId) { return this.clients.has(userId); }
   onlineCount() { return this.clients.size; }
 
   heartbeat() {
-    const now = Date.now();
-    for (const [t, e] of this.tickets) if (e.expires < now) this.tickets.delete(t);
     for (const set of this.clients.values()) for (const res of set) res.write(': ping\n\n');
   }
 
