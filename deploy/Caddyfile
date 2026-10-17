@@ -1,0 +1,7 @@
+# Caddy obtains and renews the HTTPS certificate for {$DOMAIN} by itself.
+{$DOMAIN} {
+	reverse_proxy app:8080 {
+		# live updates (Server-Sent Events) must reach players unbuffered
+		flush_interval -1
+	}
+}
