@@ -44,35 +44,8 @@
       '</svg>';
   }
 
+  // spin-token / dollar / coin icons are bitmaps now (BR.UI_IMG)
   var ICONS = {
-    chip: chip('cp'),
-
-    dollar: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">' +
-      '<defs><linearGradient id="dl" x1="0" y1="0" x2="0" y2="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#252b23"/><stop offset="1" stop-color="#161a14"/></linearGradient>' +
-      '<linearGradient id="dg" x1="0" y1="6" x2="0" y2="34" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b9f39b"/><stop offset="1" stop-color="#78cf55"/></linearGradient></defs>' +
-      '<rect x="1" y="1" width="38" height="38" rx="2.4" fill="url(#dl)"/>' +
-      '<path d="M2.6,4.5V35.5M37.4,4.5V35.5" stroke="#86b86a" stroke-width="1.1" opacity="0.8"/>' +
-      '<rect x="10.5" y="2.6" width="19" height="2.4" rx="0.5" fill="#9ed97f"/><rect x="10.5" y="35" width="19" height="2.4" rx="0.5" fill="#9ed97f"/>' +
-      '<path d="M20,6.6V33.4" stroke="url(#dg)" stroke-width="2.8" stroke-linecap="round"/>' +
-      '<path d="M26.4,14.2 Q25.4,10.6 20.2,10.6 Q13.6,10.6 13.6,15.6 Q13.6,19.4 19.4,20.4 Q26.6,21.6 26.6,25.6 Q26.6,30 20,30 Q14.4,30 13.2,25.8" fill="none" stroke="url(#dg)" stroke-width="4.3" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '</svg>',
-
-    coin: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">' +
-      '<defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbe7a6"/><stop offset="0.45" stop-color="#d9b25c"/><stop offset="1" stop-color="#8a6526"/></linearGradient>' +
-      '<radialGradient id="cd" cx="0.45" cy="0.4" r="0.7"><stop offset="0" stop-color="#4c4635"/><stop offset="1" stop-color="#1f1c14"/></radialGradient>' +
-      '<linearGradient id="ce" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff0b6"/><stop offset="1" stop-color="#d1a751"/></linearGradient></defs>' +
-      '<circle cx="20" cy="20" r="19.2" fill="#6b5222"/>' +
-      '<circle cx="20" cy="20" r="18.2" fill="url(#cg)"/>' +
-      '<circle cx="20" cy="20" r="14.6" fill="#5b4a22"/>' +
-      '<circle cx="20" cy="20" r="13.8" fill="url(#cd)"/>' +
-      '<g fill="url(#ce)">' +
-      '<path d="M10.6,16.8 Q12.6,10.4 19.6,9.4 Q14.8,12.2 13.8,16.6Z"/>' +
-      '<path d="M29.4,23.2 Q27.4,29.6 20.4,30.6 Q25.2,27.8 26.2,23.4Z"/>' +
-      '<path d="M12.2,21.2 L27.4,12.8 L23.6,18.4 L27.8,19 L12.6,27.2 L16.4,21.6Z"/>' +
-      '<path d="M8.8,21.6 Q9.6,26.6 13.6,29.2 L12.2,26.4Z" opacity="0.8"/><path d="M31.2,18.4 Q30.4,13.4 26.4,10.8 L27.8,13.6Z" opacity="0.8"/>' +
-      '</g>' +
-      '</svg>',
-
     plus: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M20,9.5V30.5M9.5,20H30.5" stroke="#fff" stroke-width="5" stroke-linecap="square"/></svg>',
 
     back: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 42"><path d="M40.5,21H5.5M22.5,3.5L3.5,21L22.5,38.5" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>',

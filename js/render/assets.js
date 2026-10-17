@@ -6,7 +6,15 @@
   var CELL_W = 192, CELL_H = 182;
   var cache = {};
 
-  function loadSVG(svg) { return BR.backdrop.loadImage(BR.svgURL(svg)); }
+  function loadImage(src) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      img.onload = function () { resolve(img); };
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+  function loadSVG(svg) { return loadImage(BR.svgURL(svg)); }
 
   function makeCanvas(w, h) {
     var c = document.createElement('canvas');
@@ -42,7 +50,7 @@
     var w = CELL_W * pxPerUnit, h = CELL_H * pxPerUnit;
     var ids = Object.keys(BR.SYMBOL_IMG);
     cache[key] = Promise.all(ids.map(function (id) {
-      return BR.backdrop.loadImage(BR.SYMBOL_IMG[id]).then(function (img) {
+      return loadImage(BR.SYMBOL_IMG[id]).then(function (img) {
         var c = makeCanvas(w, h), g = c.getContext('2d');
         // soft contact shadow on the cream reel, as in the reference
         g.shadowColor = 'rgba(70, 35, 5, 0.38)';

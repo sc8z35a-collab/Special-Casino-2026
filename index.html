@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#2a0206">
 <meta name="color-scheme" content="dark">
+<meta name="br-mode" content="local">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -19,11 +20,12 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="stylesheet" href="css/fonts.css">
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/social.css">
 </head>
 <body>
 <div id="viewport">
   <div id="stage">
-    <canvas id="bg"></canvas>
+    <div id="bg"></div>
     <div id="frame"></div>
 
     <!-- ===================== SLOT SCREEN ===================== -->
@@ -40,17 +42,18 @@
         <div class="payline-mark right"></div>
       </div>
 
-      <button id="btn-get" class="pill pill-left pill-get" data-sfx="click"><span>トークンを入<br>手</span></button>
-      <button id="btn-max" class="pill pill-left pill-max" data-sfx="click"><span>最大ベット</span></button>
+      <button id="btn-get" class="pill pill-left pill-get" data-sfx="click" aria-label="トークンを入手"></button>
+      <button id="btn-max" class="pill pill-left pill-max" data-sfx="click" aria-label="最大ベット"></button>
 
-      <button id="btn-radio" class="hud-circle hud-radio" aria-label="無線"><i class="ic ic-radio"></i></button>
-      <button id="btn-mic" class="hud-circle hud-mic" aria-label="マイク"><i class="ic ic-mic"></i></button>
+      <button id="btn-radio" class="hud-circle hud-radio" aria-label="ランキング・メッセージ"><i class="ic ic-radio"></i><b class="hud-badge" id="radio-badge" hidden></b></button>
+      <button id="btn-mic" class="hud-circle hud-mic" aria-label="ロビーチャット"><i class="ic ic-mic"></i><b class="hud-badge dot-only" id="mic-badge" hidden></b></button>
+      <div class="coach" id="coach" hidden><span>ランキング・チャットはここから！</span></div>
 
       <button id="btn-rules" class="pill pill-rules" data-sfx="click"><span>ルール</span></button>
       <button id="btn-auto" class="pill pill-auto" data-sfx="click"><span class="auto-label">自動スピン</span><span class="auto-state"><i class="led"></i><b>オフ</b></span></button>
       <button id="btn-spin" class="spin-btn" aria-label="SPIN">
         <span class="spin-glow"></span>
-        <span class="spin-disc"><i class="spin-arrows"></i><b>SPIN</b></span>
+        <span class="spin-disc"><i class="spin-arrows"></i></span>
       </button>
 
       <div class="bet-group">
@@ -94,7 +97,7 @@
         <p class="tp-note" id="tp-note">スピントークン上限は毎日00:00 UTCに更新されます</p>
       </div>
       <div class="daily-bar">
-        <canvas class="chip-pile" id="chip-pile"></canvas>
+        <i class="chip-pile"></i>
         <span class="daily-text">毎日無料でスピントークンを入手！</span>
         <button class="daily-btn" id="daily-btn"><i class="ic ic-stopwatch"></i><span id="daily-label">受け取る</span></button>
       </div>
@@ -120,6 +123,44 @@
       </div>
     </section>
 
+    <!-- ===================== BOARD SCREEN (online) ===================== -->
+    <section id="screen-board" class="screen" aria-label="ボード">
+      <button class="back-btn back-jp" data-action="back"><i class="ic ic-back"></i><span>戻る</span></button>
+      <div class="tabs">
+        <button class="tab active" data-tab="ranking"><span>ランキング</span></button>
+        <button class="tab" data-tab="messages"><span>メッセージ</span><b class="tab-badge" id="tab-badge" hidden></b></button>
+        <button class="tab" data-tab="lobby"><span>ロビー</span><b class="tab-dot" id="lobby-dot" hidden></b></button>
+        <div class="tabs-info" id="board-info"><i class="dot on"></i><span id="online-count">-</span></div>
+      </div>
+
+      <div class="board-pane active" id="pane-ranking">
+        <div class="rank-head">
+          <div class="seg" id="rank-seg">
+            <button class="seg-btn active" data-type="total">累計獲得</button>
+            <button class="seg-btn" data-type="today">今日の獲得</button>
+            <button class="seg-btn" data-type="biggest">最大勝利</button>
+          </div>
+          <div class="rank-meta" id="rank-meta"></div>
+        </div>
+        <div class="scroller rank-scroll" id="rank-scroll"><ol class="rank-list" id="rank-list"></ol></div>
+        <button class="rank-row rank-me" id="rank-me" hidden></button>
+      </div>
+
+      <div class="board-pane" id="pane-messages">
+        <div class="scroller conv-scroll" id="conv-scroll"><ul class="conv-list" id="conv-list"></ul></div>
+      </div>
+
+      <div class="board-pane" id="pane-chat">
+        <div class="dm-head">
+          <button class="dm-user" id="dm-user"></button>
+          <button class="mini-btn gold" id="dm-money"><i class="ic ic-chip"></i><span>送金</span></button>
+          <button class="mini-btn" id="dm-profile"><span>プロフィール</span></button>
+        </div>
+        <div class="scroller chat-scroll" id="chat-scroll"><div class="chat-list" id="chat-list"></div></div>
+        <button class="chat-bar" id="chat-bar"><span class="chat-placeholder" id="chat-placeholder"></span><span class="chat-send">送信</span></button>
+      </div>
+    </section>
+
     <!-- wallet is shared by every screen -->
     <div class="wallet">
       <div class="w-item w-tokens"><i class="ic ic-chip"></i><span id="w-tokens">0</span></div>
@@ -130,6 +171,63 @@
 
     <div id="fx" aria-hidden="true"></div>
     <div id="fx-hit"></div>
+
+    <!-- player profile -->
+    <div id="profile" class="modal" hidden>
+      <div class="modal-card profile-card" role="dialog" aria-label="プロフィール">
+        <button class="modal-x" data-close aria-label="閉じる"></button>
+        <div class="pf-top">
+          <span class="avatar big" id="pf-avatar"></span>
+          <div class="pf-id">
+            <div class="pf-name uname" id="pf-name"></div>
+            <div class="pf-status" id="pf-status"></div>
+          </div>
+          <div class="pf-rank"><small>ランキング</small><span>#</span><b id="pf-rank">-</b></div>
+        </div>
+        <div class="pf-stats">
+          <div class="pf-stat"><label>累計獲得</label><b id="pf-total">-</b></div>
+          <div class="pf-stat"><label>最大勝利</label><b id="pf-biggest">-</b></div>
+          <div class="pf-stat"><label>今日の獲得</label><b id="pf-today">-</b></div>
+          <div class="pf-stat"><label>スピン回数</label><b id="pf-spins">-</b></div>
+        </div>
+        <div class="pf-since" id="pf-since"></div>
+        <div class="pf-actions" id="pf-actions-other">
+          <button class="act-btn" id="pf-message">メッセージ</button>
+          <button class="act-btn gold" id="pf-transfer"><i class="ic ic-chip"></i>送金</button>
+          <button class="text-btn" id="pf-block">ブロック</button>
+        </div>
+        <div class="pf-actions" id="pf-actions-self" hidden>
+          <button class="act-btn" id="pf-recovery">引き継ぎコードを再発行</button>
+        </div>
+        <div class="pf-blocks scroller" id="pf-blocks" hidden></div>
+      </div>
+    </div>
+
+    <!-- money transfer -->
+    <div id="transfer" class="modal" hidden>
+      <div class="modal-card transfer-card" role="dialog" aria-label="送金">
+        <button class="modal-x" data-close aria-label="閉じる"></button>
+        <h3 class="modal-title"><span class="uname" id="tf-name"></span><span>さんに送金</span></h3>
+        <div class="tf-cur" id="tf-cur">
+          <button class="tf-cur-btn active" data-cur="tokens"><i class="ic ic-chip"></i><span>トークン</span><small id="tf-bal-tokens">-</small></button>
+          <button class="tf-cur-btn" data-cur="dollars"><i class="ic ic-dollar"></i><span>ドル</span><small id="tf-bal-dollars">-</small></button>
+        </div>
+        <button class="tp-input tf-amount" id="tf-amount"><i class="ic ic-chip" id="tf-icon"></i><span class="v" id="tf-value">-</span><i class="ic ic-edit"></i></button>
+        <div class="tf-quick" id="tf-quick">
+          <button data-add="1000">+1 000</button><button data-add="10000">+10 000</button><button data-add="100000">+100 000</button><button data-add="max">MAX</button>
+        </div>
+        <p class="tf-note" id="tf-note"></p>
+        <button class="action-btn tf-go" id="tf-go" disabled>送金する</button>
+      </div>
+    </div>
+
+    <!-- yes / no -->
+    <div id="confirm" class="modal" hidden>
+      <div class="modal-card confirm-card" role="alertdialog">
+        <p class="confirm-text" id="confirm-text"></p>
+        <div class="confirm-actions"><button class="act-btn" id="confirm-no">キャンセル</button><button class="act-btn gold" id="confirm-yes">OK</button></div>
+      </div>
+    </div>
 
     <div id="numpad" class="numpad" hidden>
       <div class="np-card">
@@ -148,20 +246,69 @@
   </div>
 </div>
 
+<!-- online: first launch (outside the scaled stage so the text fields keep a
+     normal size on phones) -->
+<div id="welcome" class="ov" hidden>
+  <div class="ov-scroll">
+    <form class="ov-card" id="ov-register" autocomplete="off" novalidate>
+      <div class="ov-brand">BLOCKBUSTER REELS</div>
+      <h2 class="ov-title">ようこそ！</h2>
+      <p class="ov-notice" id="ov-notice" hidden></p>
+      <p class="ov-text">ユーザー名を決めてください。ランキングやチャットで他のプレイヤーに表示されます。</p>
+      <input id="ov-name" class="ov-input" type="text" maxlength="24" placeholder="ユーザー名（2〜12文字）" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+      <p class="ov-error" id="ov-register-error" role="alert"></p>
+      <button class="ov-btn gold" type="submit">はじめる</button>
+      <button class="ov-link" type="button" data-go="login">引き継ぎコードをお持ちの方はこちら</button>
+    </form>
+    <form class="ov-card" id="ov-login" autocomplete="off" novalidate hidden>
+      <h2 class="ov-title">データの引き継ぎ</h2>
+      <p class="ov-text">登録したときに表示された引き継ぎコード（16文字）を入力してください。</p>
+      <input id="ov-code" class="ov-input code" type="text" maxlength="24" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go">
+      <p class="ov-error" id="ov-login-error" role="alert"></p>
+      <button class="ov-btn gold" type="submit">引き継ぐ</button>
+      <button class="ov-link" type="button" data-go="register">新しく登録する</button>
+    </form>
+    <div class="ov-card" id="ov-codecard" hidden>
+      <h2 class="ov-title" id="ov-code-title"></h2>
+      <p class="ov-text">これはあなたの<b>引き継ぎコード</b>です。機種変更やブラウザのデータ削除のあとにアカウントを復元するときに必要です。スクリーンショットなどで大切に保管してください。</p>
+      <div class="ov-code" id="ov-code-value"></div>
+      <button class="ov-btn" type="button" id="ov-copy">コードをコピー</button>
+      <button class="ov-btn gold" type="button" id="ov-done"></button>
+    </div>
+  </div>
+</div>
+
+<!-- online: text entry for chat -->
+<div id="entry" class="entry" hidden>
+  <div class="entry-head">
+    <button type="button" class="entry-close" id="entry-close" aria-label="閉じる"><i class="ic ic-back"></i></button>
+    <div class="entry-title uname" id="entry-title"></div>
+  </div>
+  <div class="entry-feed" id="entry-feed"></div>
+  <p class="entry-error" id="entry-error" role="alert" hidden></p>
+  <form class="entry-bar" id="entry-form" autocomplete="off">
+    <input id="entry-input" type="text" maxlength="300" autocomplete="off" autocorrect="off" enterkeyhint="send" placeholder="メッセージを入力">
+    <button type="submit" id="entry-send">送信</button>
+  </form>
+</div>
+
 <script src="js/art/icons.js"></script>
 <script src="js/art/symbol-images.js"></script>
-<script src="js/art/pattern.js"></script>
+<script src="js/art/ui-images.js"></script>
 <script src="js/art/ui-svg.js"></script>
 <script src="js/core/util.js"></script>
 <script src="js/game/config.js"></script>
 <script src="js/core/store.js"></script>
 <script src="js/game/engine.js"></script>
+<script src="js/net/api.js"></script>
+<script src="js/net/live.js"></script>
+<script src="js/game/bank.js"></script>
 <script src="js/audio/sfx.js"></script>
-<script src="js/render/backdrop.js"></script>
 <script src="js/render/assets.js"></script>
 <script src="js/render/reels.js"></script>
 <script src="js/render/fx.js"></script>
 <script src="js/ui/screens.js"></script>
+<script src="js/ui/social.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

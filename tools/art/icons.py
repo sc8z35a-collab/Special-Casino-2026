@@ -1,6 +1,10 @@
-"""Builds the app icons (icons/icon-*.png) from the 7 symbol image.
+"""Builds the app icons (icons/icon-*.png) from the supplied 7 artwork.
 
     python3 tools/art/icons.py
+
+icon-180/192/512: the 7 on the casino red with a gold rim (iOS / browsers);
+icon-maskable-512: no rim and a smaller 7 inside the safe zone, for Android
+launchers that crop icons to their own shape.
 """
 import os
 
@@ -29,23 +33,31 @@ def gold_frame(img):
     d.rounded_rectangle([92, 92, S - 92, S - 92], radius=96, outline=(243, 207, 125, 170), width=4)
 
 
-def main():
-    icon = background()
-    gold_frame(icon)
-    seven = Image.open(os.path.join(HERE, 'source', 'seven.webp')).convert('RGBA')
+def place_seven(icon, height):
+    seven = Image.open(os.path.join(HERE, 'source', 'ui', 'app-seven.webp')).convert('RGBA')
     seven = seven.crop(seven.getchannel('A').point(lambda a: 255 if a > 8 else 0).getbbox())
-    k = 600 / max(seven.size)
+    k = height / seven.height
     seven = seven.resize((round(seven.width * k), round(seven.height * k)), Image.LANCZOS)
-    pos = ((S - seven.width) // 2, (S - seven.height) // 2 + 12)
+    pos = ((S - seven.width) // 2 + 6, (S - seven.height) // 2 + 4)
     shadow = Image.new('RGBA', (S, S), (0, 0, 0, 0))
-    shadow.paste((20, 0, 2, 160), (pos[0] + 6, pos[1] + 14), seven.getchannel('A'))
-    icon.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(14)))
+    shadow.paste((20, 0, 2, 170), (pos[0] + 8, pos[1] + 16), seven.getchannel('A'))
+    icon.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(16)))
     icon.alpha_composite(seven, pos)
+    return icon
+
+
+def main():
     out = os.path.join(ROOT, 'icons')
     os.makedirs(out, exist_ok=True)
+    icon = background()
+    gold_frame(icon)
+    place_seven(icon, 640)
     for size in (512, 192, 180):
         icon.convert('RGB').resize((size, size), Image.LANCZOS).save(os.path.join(out, f'icon-{size}.png'), optimize=True)
         print(f'wrote icons/icon-{size}.png')
+    maskable = place_seven(background(), 500)
+    maskable.convert('RGB').resize((512, 512), Image.LANCZOS).save(os.path.join(out, 'icon-maskable-512.png'), optimize=True)
+    print('wrote icons/icon-maskable-512.png')
 
 
 if __name__ == '__main__':

@@ -2,7 +2,11 @@
 (function (BR) {
   'use strict';
 
-  var KEY = 'blockbuster-reels/v1';
+  // Online, balances live on the server; only UI preferences are stored here.
+  var mode = document.querySelector('meta[name="br-mode"]');
+  var online = !!mode && mode.getAttribute('content') === 'online';
+  var KEY = online ? 'blockbuster-reels/online-prefs' : 'blockbuster-reels/v1';
+  var PREFS = ['betIndex', 'muted', 'coach'];
 
   function defaults() {
     var s = BR.CONFIG.start;
@@ -12,6 +16,7 @@
       coins: s.coins,
       betIndex: 0,
       muted: true,
+      coach: false,
       boughtDay: '',
       boughtToday: 0,
       freeDay: '',
@@ -24,7 +29,9 @@
     var raw = localStorage.getItem(KEY);
     if (raw) {
       var saved = JSON.parse(raw);
-      Object.keys(state).forEach(function (k) { if (saved[k] !== undefined) state[k] = saved[k]; });
+      Object.keys(state).forEach(function (k) {
+        if (saved[k] !== undefined && (!online || PREFS.indexOf(k) >= 0)) state[k] = saved[k];
+      });
     }
   } catch (e) { /* private mode etc. */ }
 
@@ -32,7 +39,9 @@
   function save() {
     clearTimeout(timer);
     timer = setTimeout(function () {
-      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+      var data = state;
+      if (online) { data = {}; PREFS.forEach(function (k) { data[k] = state[k]; }); }
+      try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* ignore */ }
     }, 120);
   }
 

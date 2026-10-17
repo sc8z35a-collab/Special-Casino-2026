@@ -14,20 +14,28 @@
   function installIcons() {
     var css = '';
     var map = {
-      chip: BR.ICONS.chip, dollar: BR.ICONS.dollar, coin: BR.ICONS.coin, plus: BR.ICONS.plus,
-      back: BR.ICONS.back, radio: BR.ICONS.radio, mic: BR.ICONS.mic, edit: BR.ICONS.edit,
+      plus: BR.ICONS.plus, back: BR.ICONS.back, radio: BR.ICONS.radio, mic: BR.ICONS.mic, edit: BR.ICONS.edit,
       stopwatch: BR.ICONS.stopwatch, info: BR.ICONS.info, grip: BR.ICONS.grip, del: BR.ICONS.del,
       'sound-off': BR.ICONS.soundOff, 'sound-on': BR.ICONS.soundOn
     };
-    Object.keys(map).forEach(function (k) {
-      css += '.ic-' + k + '{background-image:url("' + BR.svgURL(map[k]).replace(/"/g, '%22') + '")}\n';
-    });
-    css += '.ic-sound{background-image:url("' + BR.svgURL(BR.ICONS.soundOff).replace(/"/g, '%22') + '")}\n';
-    css += '.sound-on .ic-sound{background-image:url("' + BR.svgURL(BR.ICONS.soundOn).replace(/"/g, '%22') + '")}\n';
-    css += '.payline-mark{background-image:url("' + BR.svgURL(BR.UISVG.payline()).replace(/"/g, '%22') + '")}\n';
-    css += '.spin-arrows{background-image:url("' + BR.svgURL(BR.UISVG.spinArrows()).replace(/"/g, '%22') + '")}\n';
-    css += '.pill{background-image:url("' + BR.svgURL(BR.UISVG.pill(167, 92)).replace(/"/g, '%22') + '")}\n';
-    css += '.pill-auto{background-image:url("' + BR.svgURL(BR.UISVG.pill(168, 100)).replace(/"/g, '%22') + '")}\n';
+    function url(u) { return 'url("' + u.replace(/"/g, '%22') + '")'; }
+    function svg(markup) { return url(BR.svgURL(markup)); }
+    Object.keys(map).forEach(function (k) { css += '.ic-' + k + '{background-image:' + svg(map[k]) + '}\n'; });
+    var art = BR.UI_IMG;
+    css += '.ic-chip{background-image:' + url(art.chip) + '}\n';
+    css += '.ic-coin{background-image:' + url(art.coin) + '}\n';
+    css += '.ic-dollar{background-image:' + url(art.dollar) + '}\n';
+    css += '.ic-sound{background-image:' + svg(BR.ICONS.soundOff) + '}\n';
+    css += '.sound-on .ic-sound{background-image:' + svg(BR.ICONS.soundOn) + '}\n';
+    css += '.payline-mark{background-image:' + svg(BR.UISVG.payline()) + '}\n';
+    css += '.spin-disc{background-image:' + url(art.spin) + '}\n';
+    css += '.spin-arrows{background-image:' + url(art.spinArrows) + '}\n';
+    css += '.pill{background-image:' + url(art.pill) + '}\n';
+    css += '.pill-get{background-image:' + url(art.pillGet) + '}\n';
+    css += '.pill-max{background-image:' + url(art.pillMax) + '}\n';
+    css += '.chip-pile{background-image:' + url(art.chipPile) + '}\n';
+    css += '#bg{background-image:' + url(art.bg) + '}\n';
+    css += '#frame{border-image-source:' + url(art.frame) + '}\n';
     var st = document.createElement('style');
     st.textContent = css;
     document.head.appendChild(st);
@@ -35,9 +43,17 @@
   }
 
   /* ------------------------------------------------------------ layout --- */
+  // While a text field has the keyboard up the window shrinks; keep the game
+  // laid out for the full screen underneath and catch up afterwards.
+  function typing() {
+    var a = document.activeElement;
+    return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
+  }
   function layout() {
+    if (typing() && view.ready) return;
     var vw = window.innerWidth, vh = window.innerHeight;
     var portrait = vh > vw * 1.05;
+    stage.classList.toggle('rot', portrait);
     var w = portrait ? vh : vw, h = portrait ? vw : vh;
     // Fit the 924px-tall reference height; on narrower (16:9, tablet) screens
     // allow the design to shrink to 1800px wide before adding height.
@@ -57,11 +73,8 @@
     view.W = W; view.H = H; view.s = s; view.res = res; view.portrait = portrait;
     if (!changed) return;
     view.ready = true;
-    $('#frame').innerHTML = BR.backdrop.frameSVG(W, H);
-    BR.backdrop.drawBackground($('#bg'), W, H, Math.min(res, 2));
     reels.resize(Math.max(1, Math.min(s * dpr, 3)));
     fx.resize(W, H, res);
-    if (BR.screens) BR.screens.resize(res);
   }
 
   /* ------------------------------------------------------------ fullscreen --- */
@@ -92,14 +105,23 @@
   }
 
   /* ------------------------------------------------------------ wallet / HUD --- */
-  var shown = { tokens: S.tokens, dollars: S.dollars, coins: S.coins };
+  var shown = { tokens: null, dollars: null, coins: null };
   var walletAnim = {};
   function setText(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
+  // While the reels turn, the wallet keeps the stake (before the result is
+  // known) or the win (until the reels have stopped) out of the token count.
+  function walletValue(k) { return k === 'tokens' ? Math.max(0, S.tokens - game.hold) : S[k]; }
   function renderWallet(animate) {
+    var ready = BR.bank.ready();
     ['tokens', 'dollars', 'coins'].forEach(function (k) {
-      var to = S[k], from = shown[k];
       if (walletAnim[k]) walletAnim[k]();
-      if (!animate || from === to) {
+      if (!ready) {
+        shown[k] = null;
+        setText('w-' + k, '-');
+        return;
+      }
+      var to = walletValue(k), from = shown[k];
+      if (!animate || from === to || from === null) {
         shown[k] = to;
         setText('w-' + k, U.fmt(to));
         return;
@@ -153,8 +175,22 @@
     presenting: false,
     auto: false,
     result: null,
+    hold: 0,          // tokens hidden from the wallet display (see walletValue)
+    waiting: false,   // the spin is out at the server, reels turning
+    slam: false,      // SPIN pressed again before the result came back
+    queued: null,     // balance pushed by the server while a spin was out
+    seq: 0,
     busy: function () { return game.spinning || game.presenting; }
   };
+
+  // Shown when a spin could not be settled: nothing on the pay line wins.
+  var BLANK_GRID = [
+    ['star', 'gold', 'diamond'],
+    ['diamond', 'revolver', 'gold'],
+    ['revolver', 'diamond', 'star'],
+    ['gold', 'revolver', 'bar'],
+    ['diamond', 'star', 'revolver']
+  ];
 
   // Suspense: slow down the remaining reels when one more match pays >= 20x.
   function anticipationFor(res) {
@@ -172,43 +208,91 @@
   function spin() {
     BR.sfx.unlock();
     if (game.spinning) {
-      reels.quickStop();
+      if (game.waiting) game.slam = true;
+      else reels.quickStop();
       return;
     }
     if (game.presenting) {
       fx.skip();
       return;
     }
-    if (S.tokens < bet()) {
+    if (!BR.bank.ready()) {
+      setAuto(false);
+      BR.sfx.play('deny');
+      toast(BR.api.hasToken() ? 'サーバーに接続しています…' : 'ユーザー名を登録してください');
+      return;
+    }
+    var stake = bet();
+    if (S.tokens < stake) {
       setAuto(false);
       BR.sfx.play('deny');
       toast('スピントークンが不足しています');
       setTimeout(function () { BR.screens.show('tokens'); }, 650);
       return;
     }
-    S.tokens -= bet();
-    S.stats.spins++;
-    BR.store.save();
+    var seq = ++game.seq;
+    game.spinning = true;
+    game.waiting = true;
+    game.slam = false;
+    game.result = null;
+    game.hold = stake;
+    game.t0 = U.now();
     renderWallet(false);
     setWinGoodLuck();
-    var res = BR.engine.spin(bet());
-    game.result = res;
-    game.spinning = true;
     renderBet();
     $('#btn-spin').classList.add('spinning');
     $$('.payline-mark').forEach(function (m) { m.classList.remove('lit'); });
     reels.spin();
     BR.sfx.play('spinStart');
     BR.sfx.startReels();
-    reels.scheduleStops(res.grid, { antic: anticipationFor(res), base: game.auto ? 0.8 : 0.95 });
+    BR.bank.spin(stake).then(function (r) {
+      if (seq === game.seq) land(r.result);
+    }, function (err) {
+      if (seq !== game.seq) return;
+      land(null);
+      setAuto(false);
+      BR.sfx.play('deny');
+      toast(err.message, 3200);
+      // the server may have settled it anyway (lost response): re-sync
+      BR.bank.refresh().then(function () { renderWallet(true); renderBet(); }, function () {});
+      if (err.code === 'insufficient') setTimeout(function () { if (!game.busy()) BR.screens.show('tokens'); }, 1600);
+    });
+  }
+
+  // The result is known: schedule the reel stops (shortened by the time the
+  // server took) and keep the win hidden until the reels have stopped.
+  function land(res) {
+    game.waiting = false;
+    game.result = res;
+    game.hold = res ? res.total : 0;
+    if (game.queued) { BR.bank.applyBalance(game.queued); game.queued = null; }
+    renderWallet(false);
+    var late = (U.now() - game.t0) / 1000;
+    var base = Math.max(0.3, (game.auto ? 0.8 : 0.95) - late);
+    reels.scheduleStops(res ? res.grid : BLANK_GRID, { antic: res ? anticipationFor(res) : [], base: base });
+    if (game.slam) reels.quickStop();
+  }
+
+  // Balance pushed by the server (money received, another device, reconnect).
+  function serverBalance(b) {
+    if (game.waiting) {
+      if (!game.queued || !(game.queued.rev > b.rev)) game.queued = b;
+      return;
+    }
+    if (BR.bank.applyBalance(b)) {
+      renderWallet(true);
+      renderBet();
+    }
   }
 
   function onAllStopped() {
     game.spinning = false;
+    game.hold = 0;
     BR.sfx.stopReels();
     $('#btn-spin').classList.remove('spinning');
     var res = game.result;
     if (!res || res.total <= 0) {
+      renderWallet(false);
       renderBet();
       scheduleAuto(game.auto ? 450 : 0);
       return;
@@ -220,10 +304,6 @@
     $$('.payline-mark').forEach(function (m) { m.classList.add('lit'); });
     // as in the reference, the WIN box and the balance show the final values
     // right away while the overlay counts up
-    S.tokens += res.total;
-    S.stats.won += res.total;
-    S.stats.biggest = Math.max(S.stats.biggest, res.total);
-    BR.store.save();
     setWinAmount(res.total, true);
     renderWallet(true);
     renderBet();
@@ -324,26 +404,35 @@
       nav('tokens')();
     });
     press($('#btn-sound'), function () { setSound(!S.muted); BR.sfx.play('click'); });
-    ['#btn-radio', '#btn-mic'].forEach(function (id) {
-      press($(id), function () { $(id).classList.toggle('on'); BR.sfx.play('click'); });
+    // walkie-talkie: ranking & messages, microphone: lobby chat (online)
+    [['#btn-radio', 'ranking'], ['#btn-mic', 'lobby']].forEach(function (b) {
+      press($(b[0]), function () {
+        if (game.busy()) { BR.sfx.play('deny'); return; }
+        BR.sfx.play('click');
+        BR.social.open(b[1]);
+      });
     });
     $$('[data-action="back"]').forEach(function (b) {
       press(b, function () {
         BR.sfx.play('click');
-        if (BR.screens.current() !== 'slot') BR.screens.show('slot');
-        else toggleFullscreen();
+        if (!BR.screens.back()) toggleFullscreen();
       });
     });
-    document.addEventListener('pointerdown', function () { enterFullscreen(); BR.sfx.unlock(); }, true);
+    // text fields live in overlays outside the stage: leave them alone
+    function inField(e) { return !!(e.target && e.target.closest && e.target.closest('input, textarea, .ov, .entry')); }
+    document.addEventListener('pointerdown', function (e) { if (!inField(e)) enterFullscreen(); BR.sfx.unlock(); }, true);
     document.addEventListener('keydown', function (e) {
+      if (inField(e)) return;
+      if (e.key === 'Escape' && BR.social.escape()) { e.preventDefault(); return; }
       if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); if (BR.screens.current() === 'slot') spin(); }
     });
+    document.addEventListener('focusout', function () { setTimeout(function () { if (!typing()) layout(); }, 350); });
     window.addEventListener('resize', function () { requestAnimationFrame(layout); });
     window.addEventListener('orientationchange', function () { setTimeout(layout, 250); });
     document.addEventListener('fullscreenchange', function () { setTimeout(layout, 60); });
     document.addEventListener('visibilitychange', function () { if (document.hidden) BR.sfx.suspend(); else BR.sfx.resume(); });
-    document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-    document.addEventListener('dblclick', function (e) { e.preventDefault(); });
+    document.addEventListener('contextmenu', function (e) { if (!inField(e)) e.preventDefault(); });
+    document.addEventListener('dblclick', function (e) { if (!inField(e)) e.preventDefault(); });
   }
 
   /* ------------------------------------------------------------ boot --- */
@@ -352,7 +441,11 @@
     reels = new BR.Reels($('#reel-canvas'));
     fx = new BR.FX($('#fx'), $('#fx-hit'));
     BR.game = game;
-    BR.app = { renderWallet: renderWallet, toast: toast, renderBet: renderBet, view: view, setAuto: setAuto, reels: reels, fx: fx, spin: spin };
+    BR.app = {
+      renderWallet: renderWallet, toast: toast, renderBet: renderBet, view: view, setAuto: setAuto,
+      reels: reels, fx: fx, spin: spin, serverBalance: serverBalance,
+      relayout: function () { requestAnimationFrame(layout); }
+    };
     reels.on('land', function (i) { BR.sfx.play('reelStop', i); if (i === 4) BR.sfx.stopReels(); });
     reels.on('anticipate', function () { BR.sfx.play('anticipate'); });
     reels.on('allstopped', onAllStopped);
@@ -365,6 +458,7 @@
       ['bar', 'bar', 'bar']
     ]);
     BR.screens.init();
+    BR.social.init();
     bind();
     BR.sfx.setMuted(S.muted);
     $('#btn-sound').classList.toggle('sound-on', !S.muted);

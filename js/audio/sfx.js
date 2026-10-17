@@ -219,6 +219,15 @@
       bell(N.E6, t, 0.12, 0.9);
       bell(N.C7, t + 0.09, 0.12, 1.1);
       for (var i = 0; i < 4; i++) coin(t + 0.05 + i * 0.045, 0.6 + i * 0.1, 0.07);
+    },
+    // incoming chat message
+    message: function (t) {
+      bell(N.G5 * 2, t, 0.06, 0.5, 0.3);
+      bell(N.E6, t + 0.08, 0.05, 0.6, 0.3);
+    },
+    // outgoing chat message
+    send: function (t) {
+      tone({ t: t, f: 900, f2: 1500, glide: 0.06, d: 0.07, v: 0.07, type: 'sine' });
     }
   };
 
