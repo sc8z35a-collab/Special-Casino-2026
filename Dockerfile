@@ -5,15 +5,9 @@
 FROM node:22-alpine
 
 WORKDIR /app
-COPY index.html manifest.webmanifest ./
-COPY css ./css
-COPY js ./js
-COPY fonts ./fonts
-COPY icons ./icons
-COPY img ./img
-COPY sounds ./sounds
-COPY video ./video
-COPY server ./server
+# the game files, the server and (once built) download/ with the Android app;
+# .dockerignore keeps the rest out, the server only serves the game files
+COPY . ./
 COPY deploy/entrypoint.sh /usr/local/bin/entrypoint
 RUN chmod 755 /usr/local/bin/entrypoint
 

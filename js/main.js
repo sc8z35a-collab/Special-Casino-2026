@@ -19,7 +19,8 @@
       stopwatch: BR.ICONS.stopwatch, info: BR.ICONS.info, grip: BR.ICONS.grip, del: BR.ICONS.del,
       'sound-off': BR.ICONS.soundOff, 'sound-on': BR.ICONS.soundOn,
       lock: BR.ICONS.lock, phone: BR.ICONS.phone, hangup: BR.ICONS.hangup, 'mic-on': BR.ICONS.micOn, 'mic-off': BR.ICONS.micOff,
-      eye: BR.ICONS.eye, car: BR.ICONS.car, gift: BR.ICONS.gift, friends: BR.ICONS.friends, search: BR.ICONS.search, check: BR.ICONS.check
+      eye: BR.ICONS.eye, car: BR.ICONS.car, gift: BR.ICONS.gift, friends: BR.ICONS.friends, search: BR.ICONS.search, check: BR.ICONS.check,
+      share: BR.ICONS.share, 'add-home': BR.ICONS.addHome, download: BR.ICONS.download, android: BR.ICONS.android, apple: BR.ICONS.apple
     };
     function url(u) { return 'url("' + u.replace(/"/g, '%22') + '")'; }
     function svg(markup) { return url(BR.svgURL(markup)); }
@@ -90,7 +91,8 @@
   var wantFullscreen = true;
   function isFullscreen() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
   function enterFullscreen() {
-    if (!wantFullscreen || isFullscreen()) return;
+    // installed (Android app, home-screen app): already full screen
+    if (!wantFullscreen || isFullscreen() || (BR.platform && BR.platform.installed)) return;
     var el = document.documentElement;
     var req = el.requestFullscreen || el.webkitRequestFullscreen;
     if (!req) return;
@@ -551,6 +553,7 @@
     BR.call.init();
     BR.watch.init();
     BR.start.init();
+    BR.install.init();
     bind();
     $('#btn-sound').classList.toggle('sound-on', !S.muted);
     renderWallet(false);

@@ -5,3 +5,11 @@
   Referrer-Policy: no-referrer
   Cross-Origin-Resource-Policy: same-origin
   Permissions-Policy: camera=(), microphone=(self), geolocation=(), payment=()
+/sw.js
+  Cache-Control: no-cache
+/version.json
+  Cache-Control: no-store
+/download/*
+  Cache-Control: no-cache
+/download/*.apk
+  Content-Disposition: attachment; filename="two-state-casino.apk"

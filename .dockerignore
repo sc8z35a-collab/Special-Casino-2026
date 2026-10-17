@@ -8,3 +8,12 @@ node_modules
 server/test
 **/__pycache__
 *.md
+app
+.wrangler
+.dev.vars
+wrangler.jsonc
+.assetsignore
+_headers
+deploy/Caddyfile
+docker-compose.yml
+Dockerfile

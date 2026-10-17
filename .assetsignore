@@ -1,6 +1,8 @@
 # Workers Static Assets: publish the game files only (allow list).
 *
 !index.html
+!sw.js
+!version.json
 !manifest.webmanifest
 !_headers
 !css/
@@ -17,3 +19,5 @@
 !sounds/**
 !video/
 !video/**
+!download/
+!download/**

@@ -19,10 +19,11 @@ const TYPES = {
   '.wav': 'audio/wav',
   '.mp3': 'audio/mpeg',
   '.mp4': 'video/mp4',
-  '.txt': 'text/plain; charset=utf-8'
+  '.txt': 'text/plain; charset=utf-8',
+  '.apk': 'application/vnd.android.package-archive'
 };
 const TEXT = new Set(['.html', '.css', '.js', '.json', '.webmanifest', '.svg', '.txt']);
-const ALLOWED = /^\/(?:index\.html|manifest\.webmanifest|(?:css|js|fonts|icons|img|sounds|video)\/[A-Za-z0-9._\/-]+)$/;
+const ALLOWED = /^\/(?:index\.html|manifest\.webmanifest|sw\.js|version\.json|(?:css|js|fonts|icons|img|sounds|video|download)\/[A-Za-z0-9._\/-]+)$/;
 
 export function createStatic(root, { transformHtml } = {}) {
   const cache = new Map();   // path -> { mtime, size, body, gz, etag }
@@ -89,6 +90,8 @@ export function createStatic(root, { transformHtml } = {}) {
       return true;
     }
     if (!entry.gz) headers['Accept-Ranges'] = 'bytes';
+    if (rel.endsWith('.apk')) headers['Content-Disposition'] = `attachment; filename="${path.basename(rel)}"`;
+    if (rel === '/version.json') headers['Cache-Control'] = 'no-store';
     let body = entry.body;
     if (entry.gz && /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) {
       body = entry.gz;

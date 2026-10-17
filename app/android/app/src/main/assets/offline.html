@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Two state Casino</title>
+<style>
+  html, body { margin: 0; height: 100%; background: radial-gradient(ellipse at 50% 40%, #5a0812, #1a0104 75%); color: #fff;
+    font-family: -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif; -webkit-user-select: none; user-select: none; }
+  body { display: flex; align-items: center; justify-content: center; text-align: center; }
+  .card { padding: 24px 28px; max-width: 420px; }
+  h1 { margin: 0 0 10px; font-size: 22px; color: #ffe27a; }
+  p { margin: 0 0 22px; font-size: 15px; line-height: 1.7; color: #e3d7da; }
+  button { min-width: 200px; height: 52px; border: 0; border-radius: 10px; font-size: 17px; font-weight: 700;
+    color: #3a2c00; background: linear-gradient(180deg, #f6e04c, #e0bb22); box-shadow: 0 4px 10px rgba(0,0,0,.4); }
+  button:active { transform: scale(.97); }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>サーバーにつながりません</h1>
+  <p>インターネットの接続を確認して、もう一度お試しください。<br>残高やフレンドはサーバーに保存されています。</p>
+  <button id="retry">もう一度つなぐ</button>
+</div>
+<script>
+  document.getElementById('retry').addEventListener('click', function () {
+    if (window.TwoStateApp) window.TwoStateApp.retry();
+  });
+</script>
+</body>
+</html>

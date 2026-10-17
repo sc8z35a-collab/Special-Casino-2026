@@ -503,3 +503,64 @@
 }
 .watched-by .ic { width: 28px; height: 28px; }
 #screen-slot.watching .watched-by { display: none; }
+
+/* ------------------------------------------------------------ app install / update --- */
+.start-app {
+  position: absolute;
+  right: 40px;
+  top: 28px;
+  z-index: 6;
+  height: 72px;
+  padding: 0 30px 0 22px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 36px;
+  background: rgba(20, 2, 4, .72);
+  box-shadow: inset 0 0 0 2px #d6a94a, 0 6px 18px rgba(0, 0, 0, .5);
+  font-size: 26px;
+  font-weight: 700;
+  color: #ffe27a;
+}
+.start-app .ic { width: 38px; height: 38px; }
+.start-app:active { transform: scale(.95); }
+.start-app.update {
+  background: linear-gradient(180deg, #45c95f, #2a9a44);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, .25), 0 0 26px rgba(80, 255, 110, .55);
+  color: #fff;
+  animation: updatePulse 1.6s ease-in-out infinite;
+}
+@keyframes updatePulse { 50% { transform: scale(1.06); } }
+
+.install-card { width: 1320px; padding: 36px 44px 30px; }
+.in-head { display: flex; align-items: center; gap: 28px; padding-right: 80px; }
+.in-icon { flex: none; width: 116px; height: 116px; border-radius: 26px; box-shadow: 0 6px 16px rgba(0, 0, 0, .5); }
+.in-id h3 { margin: 0 0 8px; font-size: 38px; }
+.in-id p { margin: 0; font-size: 22px; line-height: 1.5; color: #e3d7da; }
+.in-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin-top: 26px; }
+.in-col { padding: 22px 26px 18px; border-radius: 12px; background: rgba(0, 0, 0, .3); box-shadow: inset 0 0 0 1.6px rgba(225, 205, 210, .2); }
+.install-card.is-android .in-android, .install-card.is-ios .in-ios { box-shadow: inset 0 0 0 3px #f4dc45; background: rgba(96, 86, 12, .25); }
+.in-col h4 { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; font-size: 28px; }
+.in-col h4 .ic { width: 38px; height: 38px; }
+.in-apk, .in-pwa { width: 100%; height: 92px; margin-bottom: 12px; text-decoration: none; }
+.in-apk .ic, .in-pwa .ic { width: 40px; height: 40px; }
+.in-apk .ic-download { filter: brightness(.25); }
+.in-apk span { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+.in-apk small { font-family: var(--f-num); font-size: 17px; font-weight: 600; opacity: .75; }
+.in-note { margin: 4px 0 12px; font-size: 19px; line-height: 1.55; color: #c3b8bb; }
+.in-steps { margin: 6px 0 0; padding-left: 30px; font-size: 19px; line-height: 1.6; color: #e3d7da; }
+.in-steps li { margin-bottom: 6px; }
+.in-steps.big { list-style: none; padding: 0; counter-reset: step; }
+.in-steps.big li { counter-increment: step; display: flex; align-items: center; gap: 16px; min-height: 70px; padding: 8px 0; font-size: 22px; box-shadow: inset 0 -1.4px 0 rgba(255, 255, 255, .08); }
+.in-steps.big li::before { content: counter(step); flex: none; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: #f4dc45; color: #3a3410; font: 800 22px var(--f-num); }
+.in-steps.big .ic { flex: none; width: 46px; height: 46px; border-radius: 10px; background-color: rgba(255, 255, 255, .1); background-size: 70%; }
+.in-steps b { color: #ffe27a; }
+.in-foot { display: flex; align-items: center; gap: 24px; margin-top: 22px; }
+.in-foot p { flex: 1; margin: 0; font-size: 20px; line-height: 1.5; color: #c3b8bb; }
+.act-btn.in-share { flex: none; width: 340px; height: 76px; font-size: 24px; }
+
+.update-card { width: 860px; text-align: center; }
+.update-card .modal-title { justify-content: center; margin: 0 0 18px; }
+.up-text { min-height: 80px; margin: 0 0 20px; font-size: 25px; line-height: 1.6; color: #efe5e8; }
+.up-bar { height: 22px; margin: 0 0 26px; border-radius: 11px; overflow: hidden; background: rgba(0, 0, 0, .45); box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .2); }
+.up-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #45c95f, #9dff7a); transition: width .25s ease; }

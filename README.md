@@ -116,6 +116,42 @@ node server/node/admin-cli.js --remote $URL backup backup.json    # 全データ
 - もしもの時の巻き戻し: Cloudflare はデータベースの過去 30 日分を保持しています。
   `node server/node/admin-cli.js --remote $URL restore-time 2026-10-17T12:00:00Z` でその時点の状態に戻せます（通常は不要です）。
 
+## アプリとして配布する（無料）
+
+| 端末 | 入れ方 | 更新 |
+| --- | --- | --- |
+| Android | ゲームのサイトから **アプリ（APK）** をダウンロードしてインストール、または Chrome の「アプリをインストール」 | アプリの中に出る **「アップデート」** ボタン |
+| iPhone / iPad | Safari の共有ボタン →「**ホーム画面に追加**」→「Web アプリとして開く」→「追加」 | 自動。開いている間に新しい版が出ると「アップデート」ボタン |
+
+起動画面の右上の「アプリで遊ぶ」に、使っている端末に合わせた手順とダウンロードボタンが出ます（`https://公開URL/?install` を友達に送ると、その画面から開きます）。
+どちらもホーム画面のアイコンから全画面・横向きで起動し、マイク（稼ぎに招待）も使えます。アプリでも同じユーザー名とパスワードでログインすれば、同じ残高・フレンドのまま遊べます。
+
+- iPhone 用に App Store で配るには Apple の開発者登録（年 99 ドル）が必要なため、無料で配れる形は「ホーム画面に追加」（Web アプリ）だけです。見た目と動きはアプリと同じです。
+- Android アプリは Google Play を通さない配布なので、ダウンロードやインストールのときに Android の注意が表示されます（「ダウンロード」「この提供元のアプリを許可」で進めます）。
+  Google はストア外のアプリにも開発者登録を求める方針を発表しており、国ごとに順次始まります。その場合でも Chrome の「アプリをインストール」は使えます。
+
+### Android アプリ（APK）を作る（最初に 1 回だけ）
+
+アプリは GitHub が無料で自動作成し、ゲームのサイト（`/download/`）に置きます。
+
+1. **署名の合言葉を登録する**: GitHub のこのリポジトリ → Settings → Secrets and variables → Actions →
+   New repository secret → Name に `APP_SIGNING_KEY`、Secret に好きな長い文字列（30 文字以上。パスワード生成サイトで作ったもので OK）→ Add secret
+   - **一度決めたら変えないでください。** アプリの更新は同じ合言葉で作ったアプリにしかできません。
+2. **ゲームの URL を書く**: GitHub で `app/app-url.txt` を開き、鉛筆マーク（Edit）からゲームの公開 URL
+   （例 `https://blockbuster-reels.xxxx.workers.dev`）を 1 行書いて「Commit changes」
+   - Cloudflare の本番ブランチ（main など）で編集してください
+3. 3〜5 分でアプリができ、ゲームのサイトに自動で置かれます（進み具合は GitHub の **Actions** タブで見られます）。
+   起動画面の「アプリで遊ぶ」→「アプリをダウンロード」から入れられます
+
+### アップデートの仕組み
+
+- **ゲームの中身**（画面・機能・バランスなど）は、サーバーを更新するだけで全員に届きます。開いている人には起動画面に
+  「アップデート」ボタンとお知らせが出て、押すとすぐ新しい版になります（ブラウザ・iPhone のホーム画面アプリ・Android アプリ共通）。
+- **Android アプリ本体**を作り直したとき（URL を変えた・アプリ部分を直した）は、アプリの中に「アップデート」ボタンが出ます。
+  押すとダウンロード → インストールまでアプリの中で進み、最後に Android の確認画面で「更新」を押すだけです
+  （初回だけ「この提供元のアプリを許可」をオンにする画面が出ます）。
+- アプリ本体は GitHub の Actions →「Android app」→「Run workflow」に URL を入れて手動で作り直すこともできます。
+
 ## 自分のサーバー（VPS / Docker）で公開する場合
 
 無料の Cloudflare 版のほかに、Node.js の同じサーバーを自分で動かすこともできます（中身の API は共通です）。
@@ -181,6 +217,9 @@ server/core/               サーバー本体（API・データベース・認�
 server/cloudflare/         無料版サーバー（Cloudflare Worker + Durable Object）
 server/node/               自前サーバー版（Node.js）
 wrangler.jsonc, .assetsignore, _headers   Cloudflare の設定（公開するファイルはゲーム画面の分だけ）
+sw.js, version.json, js/version.js        ホーム画面アプリ用の Service Worker と、「アップデート」判定用の版番号
+app/android/               Android アプリ（全画面 WebView・マイク・アプリ内アップデート）。署名は app/android/signing/
+.github/workflows/android.yml            Android アプリを自動で作ってゲームのサイトに置く GitHub Actions
 Dockerfile, docker-compose.yml, deploy/   自前サーバー用の設定
 tools/                     画像 / 動画 / 効果音 / フォント / 1 ファイル版の生成スクリプト
 ```
@@ -205,6 +244,10 @@ sh tools/video/encode_title.sh      # 起動画面の動画（ffmpeg を使用�
 python3 tools/sound/sounds.py       # 効果音（ffmpeg を使用）→ sounds/
 python3 tools/fonts/subset.py       # 使用文字だけのフォント → fonts/, css/fonts.css
 python3 tools/build_single.py       # 1 ファイル版 → dist/blockbuster-reels.html
+node tools/stamp.mjs                # ゲームのファイルを変えたあとに実行（版番号の更新。npm test が確認します）
 ```
+
+Android アプリを手元で作る場合は Android SDK と JDK 17 以上を用意し、
+`cd app/android && ./gradlew assembleRelease -PappUrl=https://公開URL/` を実行します。
 
 フォントは SIL Open Font License のフォント（Noto Sans JP / Exo 2 / Montserrat）を使用しています（`fonts/LICENSE-OFL.txt`）。

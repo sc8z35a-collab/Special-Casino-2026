@@ -37,6 +37,7 @@
         <button class="start-hit start-go" id="start-go" aria-label="スタート"></button>
         <button class="start-hit start-friends" id="start-friends" aria-label="友達"></button>
       </div>
+      <button class="start-app" id="start-app" hidden><i class="ic ic-add-home"></i><span>アプリで遊ぶ</span></button>
     </section>
 
     <!-- ===================== SLOT SCREEN ===================== -->
@@ -283,6 +284,59 @@
       </div>
     </div>
 
+    <!-- installing the game as an app -->
+    <div id="install" class="modal" hidden>
+      <div class="modal-card install-card" role="dialog" aria-label="アプリで遊ぶ">
+        <button class="modal-x" data-close aria-label="閉じる"></button>
+        <div class="in-head">
+          <img class="in-icon" src="icons/icon-192.png" alt="">
+          <div class="in-id">
+            <h3>Two state Casino RP</h3>
+            <p>無料でアプリとして遊べます。ホーム画面のアイコンから全画面ですぐに起動できます。</p>
+          </div>
+        </div>
+        <div class="in-cols">
+          <section class="in-col in-android">
+            <h4><i class="ic ic-android"></i>Android</h4>
+            <a class="act-btn gold in-apk" id="in-apk" download hidden><i class="ic ic-download"></i><span>アプリをダウンロード<small id="in-apk-size"></small></span></a>
+            <p class="in-note" id="in-apk-none">アプリ（APK）はまだ公開されていません。下の「Chrome でインストール」かメニューから入れられます。</p>
+            <button class="act-btn in-pwa" id="in-pwa" hidden><i class="ic ic-add-home"></i><span>Chrome でインストール</span></button>
+            <ol class="in-steps">
+              <li>ダウンロードしたファイルを開き「インストール」（初回は「この提供元のアプリを許可」をオン）</li>
+              <li>または Chrome のメニュー「⋮」→「アプリをインストール」</li>
+              <li>新しい版が出たら、アプリの中の「アップデート」で更新できます</li>
+            </ol>
+          </section>
+          <section class="in-col in-ios">
+            <h4><i class="ic ic-apple"></i>iPhone / iPad</h4>
+            <ol class="in-steps big">
+              <li><i class="ic ic-share"></i><span>Safari の<b>共有ボタン</b>をタップ（iOS 26 は「…」→「共有」）</span></li>
+              <li><i class="ic ic-add-home"></i><span><b>「ホーム画面に追加」</b>を選ぶ</span></li>
+              <li><i class="ic ic-check"></i><span>「Web アプリとして開く」をオンにして<b>「追加」</b></span></li>
+            </ol>
+            <p class="in-note">ホーム画面のアイコンから開くと全画面のアプリになります。更新は自動で、新しい版は「アップデート」ボタンですぐ反映できます。</p>
+          </section>
+        </div>
+        <div class="in-foot">
+          <p>アプリでもユーザー名とパスワードでログインすれば、同じアカウント・同じ残高で遊べます。</p>
+          <button class="act-btn in-share" id="in-share">友達にリンクを送る</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- updating the Android app -->
+    <div id="update" class="modal" hidden>
+      <div class="modal-card update-card" role="dialog">
+        <h3 class="modal-title" id="up-title"></h3>
+        <p class="up-text" id="up-text"></p>
+        <div class="up-bar" id="up-bar" hidden><i id="up-fill"></i></div>
+        <div class="confirm-actions">
+          <button class="act-btn" id="up-later">閉じる</button>
+          <button class="act-btn gold" id="up-go">アップデート</button>
+        </div>
+      </div>
+    </div>
+
     <!-- yes / no -->
     <div id="confirm" class="modal" hidden>
       <div class="modal-card confirm-card" role="alertdialog">
@@ -437,6 +491,7 @@
 <script src="js/art/ui-images.js"></script>
 <script src="js/art/social-images.js"></script>
 <script src="js/art/ui-svg.js"></script>
+<script src="js/version.js"></script>
 <script src="js/core/util.js"></script>
 <script src="js/game/config.js"></script>
 <script src="js/game/sale.js"></script>
@@ -458,6 +513,7 @@
 <script src="js/net/call.js"></script>
 <script src="js/ui/watch.js"></script>
 <script src="js/ui/start.js"></script>
+<script src="js/ui/install.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

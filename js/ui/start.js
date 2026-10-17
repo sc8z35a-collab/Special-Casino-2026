@@ -101,6 +101,12 @@
     BR.screens.register('start', { open: onShow, close: onHide });
     document.addEventListener('visibilitychange', function () { if (!document.hidden) play(); });
     play();
+    // app shortcuts (long press on the home-screen icon): ?open=friends / ?open=slot
+    var open = /[?&]open=(friends|slot)\b/.exec(location.search);
+    if (open) {
+      if (window.history && history.replaceState) history.replaceState(null, '', location.pathname);
+      setTimeout(open[1] === 'friends' ? onFriends : onStart, 300);
+    }
   }
 
   BR.start = { init: init, enterGame: enterGame };

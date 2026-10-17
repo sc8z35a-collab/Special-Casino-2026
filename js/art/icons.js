@@ -114,7 +114,18 @@
 
     search: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="17" cy="17" r="10.5" fill="none" stroke="#fff" stroke-width="4"/><path d="M25,25L35,35" stroke="#fff" stroke-width="5" stroke-linecap="round"/></svg>',
 
-    check: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M7,21L16,30L33,11" fill="none" stroke="#fff" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    check: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M7,21L16,30L33,11" fill="none" stroke="#fff" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
+    /* installing the app */
+    share: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M14,15H10.5Q8,15 8,17.5V34Q8,36.5 10.5,36.5H29.5Q32,36.5 32,34V17.5Q32,15 29.5,15H26" fill="none" stroke="#4aa8ff" stroke-width="2.8" stroke-linecap="round"/><path d="M20,24V3.5M13.5,10L20,3.5L26.5,10" fill="none" stroke="#4aa8ff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
+    addHome: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect x="5" y="5" width="30" height="30" rx="7" fill="none" stroke="#fff" stroke-width="2.8"/><path d="M20,12.5V27.5M12.5,20H27.5" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/></svg>',
+
+    download: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M20,4V25M12,17.5L20,25.5L28,17.5" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M6,26V31.5Q6,35 9.5,35H30.5Q34,35 34,31.5V26" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/></svg>',
+
+    android: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M8,30V18.5Q8,17 9.5,17H30.5Q32,17 32,18.5V30Q32,31.5 30.5,31.5H9.5Q8,31.5 8,30ZM8.6,15Q10,6.5 20,6.5Q30,6.5 31.4,15Z" fill="#3ddc84"/><circle cx="14.5" cy="11.5" r="1.6" fill="#0d3b22"/><circle cx="25.5" cy="11.5" r="1.6" fill="#0d3b22"/><path d="M11.5,7L9,3M28.5,7L31,3" stroke="#3ddc84" stroke-width="2" stroke-linecap="round"/></svg>',
+
+    apple: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M27.6,21.2Q27.5,16.6 31.4,14.4Q29.2,11.2 25.4,11Q23.6,10.8 21.4,11.8Q20,12.4 19.3,12.4Q18.4,12.4 16.8,11.8Q15,11 13.4,11.1Q8.6,11.4 6.8,16Q5.4,19.6 6.6,24.8Q7.6,29 10.4,32.6Q12.2,35 14.2,35Q15.4,35 16.8,34.3Q18.2,33.6 19.8,33.6Q21.4,33.6 22.8,34.3Q24.2,35 25.6,34.9Q28.2,34.8 30.4,31Q31.6,29 32.2,27Q27.8,25.2 27.6,21.2ZM24.8,8.2Q26.6,5.9 26.4,3.4Q24,3.6 22.2,5.6Q20.4,7.6 20.6,10.2Q23,10.4 24.8,8.2Z" fill="#fff"/></svg>'
   };
 
   BR.ICONS = ICONS;

@@ -1,9 +1,10 @@
 {
+  "id": "./",
   "name": "Two state Casino RP",
   "short_name": "Two state",
   "description": "BLOCKBUSTER REELS - フレンドと遊べるカジノスロット",
   "lang": "ja",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
   "display_override": [
@@ -13,6 +14,10 @@
   "orientation": "landscape",
   "background_color": "#2a0206",
   "theme_color": "#2a0206",
+  "categories": [
+    "games",
+    "entertainment"
+  ],
   "icons": [
     {
       "src": "icons/icon-192.png",
@@ -29,6 +34,32 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "フレンド",
+      "short_name": "フレンド",
+      "url": "./?open=friends",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "スロットをはじめる",
+      "short_name": "スタート",
+      "url": "./?open=slot",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }

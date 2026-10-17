@@ -1,0 +1,61 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The game's address, built into the app:
+//   gradle assembleRelease -PappUrl=https://blockbuster-reels.example.workers.dev/
+def appUrl = (findProperty('appUrl') ?: 'https://example.invalid/').toString().trim()
+if (!appUrl.endsWith('/')) appUrl += '/'
+def appVersionCode = (findProperty('versionCode') ?: '1').toString().toInteger()
+def appVersionName = (findProperty('versionName') ?: '1.0').toString()
+// signing key from the environment (see .github/workflows/android.yml)
+def keystore = System.getenv('ANDROID_KEYSTORE')
+
+android {
+    namespace 'jp.twostate.casinorp'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'jp.twostate.casinorp'
+        minSdk 24
+        targetSdk 35
+        versionCode appVersionCode
+        versionName appVersionName
+        buildConfigField 'String', 'APP_URL', "\"${appUrl}\""
+        // plain http is only allowed for a local test server
+        manifestPlaceholders = [cleartext: appUrl.startsWith('http://') ? 'true' : 'false']
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    signingConfigs {
+        release {
+            if (keystore) {
+                storeFile file(keystore)
+                storeType 'pkcs12'
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS') ?: 'app'
+                keyPassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystore ? signingConfigs.release : null
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
