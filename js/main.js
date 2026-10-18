@@ -197,7 +197,6 @@
     result: null,
     hold: 0,          // tokens hidden from the wallet display (see walletValue)
     waiting: false,   // the spin is out at the server, reels turning
-    slam: false,      // SPIN pressed again before the result came back
     queued: null,     // balance pushed by the server while a spin was out
     seq: 0,
     watch: null,      // watching a friend: { user, balance, queue, mine: { grid } }
@@ -228,11 +227,8 @@
 
   function spin() {
     BR.sfx.unlock();
-    if (game.spinning) {
-      if (game.waiting) game.slam = true;
-      else reels.quickStop();
-      return;
-    }
+    // the reels always run their whole course: no stopping them early
+    if (game.spinning) return;
     if (game.presenting) {
       fx.skip();
       return;
@@ -260,7 +256,6 @@
     var seq = ++game.seq;
     game.spinning = true;
     game.waiting = true;
-    game.slam = false;
     game.result = null;
     game.hold = stake;
     game.t0 = U.now();
@@ -299,7 +294,6 @@
     var late = (U.now() - game.t0) / 1000;
     var base = Math.max(0.3, (game.auto ? 0.8 : 0.95) - late);
     reels.scheduleStops(res ? res.grid : BLANK_GRID, { antic: res ? anticipationFor(res) : [], base: base });
-    if (game.slam) reels.quickStop();
   }
 
   // Balance pushed by the server (money received, another device, reconnect).
@@ -340,12 +334,19 @@
     setWinAmount(res.total, true);
     renderWallet(true);
     renderBet();
-    fx.play({ tier: res.tier, amount: res.total, bet: res.bet, mult: res.mult, cols: cols, auto: game.auto || !!game.watch }).then(function () {
+    var done = function () {
       game.presenting = false;
       renderBet();
       if (game.watch) { nextWatched(); return; }
       scheduleAuto(game.auto ? 350 : 0);
-    });
+    };
+    // a plain WIN has no overlay: the lit line, the WIN box and the sound
+    if (res.tier < 2) {
+      BR.sfx.play('win');
+      setTimeout(done, 700);
+      return;
+    }
+    fx.play({ tier: res.tier, amount: res.total, bet: res.bet, mult: res.mult, cols: cols, auto: game.auto || !!game.watch }).then(done);
   }
 
   /* ------------------------------------------------------------ watching a friend --- */
@@ -480,7 +481,7 @@
   }
 
   function bind() {
-    press($('#btn-spin'), function () { if (game.auto && !game.spinning && !game.presenting) { setAuto(false); return; } spin(); });
+    press($('#btn-spin'), function () { if (game.auto && !game.presenting) { setAuto(false); return; } spin(); });
     // the sound button only changes its look: every sound plays regardless
     press($('#bet-minus'), function () { changeBet(-1); });
     press($('#bet-plus'), function () { changeBet(1); });
@@ -518,6 +519,10 @@
     // text fields live in overlays outside the stage: leave them alone
     function inField(e) { return !!(e.target && e.target.closest && e.target.closest('input, textarea, .ov, .entry')); }
     document.addEventListener('pointerdown', function (e) { if (!inField(e)) enterFullscreen(); BR.sfx.unlock(); }, true);
+    // on touch screens only the end of a tap may open full screen: the very first tap counts
+    ['pointerup', 'click'].forEach(function (ev) {
+      document.addEventListener(ev, function (e) { if (!inField(e)) enterFullscreen(); }, true);
+    });
     document.addEventListener('keydown', function (e) {
       if (inField(e)) return;
       if (e.key === 'Escape' && BR.social.escape()) { e.preventDefault(); return; }
