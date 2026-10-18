@@ -52,6 +52,8 @@ export function configFrom(env = {}, overrides = {}) {
     loginBonus: flag(env, 'LOGIN_BONUS', true),
     // Quest rewards (js/game/quests.js); off only for tests that count money exactly.
     quests: flag(env, 'QUESTS', true),
+    // The account (user name) that reads the players' feedback (運営へのフィードバック).
+    feedbackAdmin: str(env, 'FEEDBACK_ADMIN', 'taku'),
     // Daily caps (per UTC day, 0 = none): past one, players see the maintenance
     // notice until 00:00 UTC. Cloudflare's own free-plan limits do that by themselves.
     dailyRequestLimit: int(env, 'DAILY_REQUEST_LIMIT', 0),

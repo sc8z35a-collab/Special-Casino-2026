@@ -221,6 +221,8 @@
       if (!BR.launch.done()) return true;
       if (BR.launch.introPlaying()) { BR.launch.skipIntro(); return true; }
       if (BR.launch.maintenance()) return true;
+      // the beginner guide has to be finished
+      if (BR.guide && BR.guide.active && BR.guide.active()) return true;
       if (!$('#numpad').hidden) { $('#numpad').hidden = true; return true; }
       if (BR.social && BR.social.escape()) return true;
       if (BR.account && BR.account.isOpen()) { BR.account.close(); return true; }

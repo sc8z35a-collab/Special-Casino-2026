@@ -1,0 +1,166 @@
+/* Small wins and winning streaks on the slot screen (js/render/combo.js),
+   design px inside #screen-slot. Nothing here takes a tap. */
+
+/* a plain WIN: the amount floats up out of the WIN box */
+.cb-float {
+  position: absolute;
+  left: 50%;
+  bottom: 118px;
+  z-index: 44;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 800 44px/1 var(--f-num);
+  color: #ffe27a;
+  white-space: nowrap;
+  text-shadow: 0 0 14px rgba(255, 200, 60, .85), 0 3px 6px rgba(0, 0, 0, .75);
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: cbFloat 1.35s cubic-bezier(.2, .7, .3, 1) forwards;
+  will-change: transform, opacity;
+}
+.cb-float .ic { width: 42px; height: 42px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .6)); }
+@keyframes cbFloat {
+  0% { opacity: 0; transform: translate(-50%, 34px) scale(.6); }
+  16% { opacity: 1; transform: translate(-50%, 0) scale(1.1); }
+  28% { transform: translate(-50%, -8px) scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -128px) scale(1); }
+}
+
+.cb-spark {
+  position: absolute;
+  left: 50%;
+  bottom: 150px;
+  z-index: 44;
+  width: 26px;
+  height: 26px;
+  margin-left: -13px;
+  background: radial-gradient(circle, #fffbe0 0 22%, #ffe27a 45%, rgba(255, 190, 60, 0) 72%);
+  clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+  pointer-events: none;
+  opacity: 0;
+  animation: cbSpark .9s ease-out var(--d, 0ms) forwards;
+}
+@keyframes cbSpark {
+  0% { opacity: 0; transform: translate(0, 0) scale(.2) rotate(0); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(var(--s, 1)) rotate(90deg); }
+}
+
+/* the COMBO badge, pinned to the top-left corner of the reels */
+.cb-badge {
+  position: absolute;
+  left: calc(50% - 522px);
+  top: calc(50% - 332px);
+  z-index: 44;
+  pointer-events: none;
+  transform: translate(-50%, -50%) rotate(-9deg);
+  animation: cbOut 2.6s linear forwards;
+}
+.cb-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: .9;
+  font-family: 'MontserratX', var(--f-num);
+  font-weight: 900;
+  white-space: nowrap;
+  animation: cbPop .5s cubic-bezier(.2, 1.6, .4, 1) both;
+}
+.cb-n, .cb-word {
+  background: linear-gradient(180deg, #fff6c4 0%, #ffe27a 40%, #e8a91b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.cb-n { font-size: 60px; letter-spacing: 1px; }
+.cb-word { font-size: 24px; letter-spacing: 3px; }
+.cb-badge .cb-inner { filter: drop-shadow(0 3px 0 #5a2a00) drop-shadow(0 6px 10px rgba(0, 0, 0, .6)); }
+@keyframes cbPop {
+  0% { opacity: 0; transform: scale(.3); }
+  60% { opacity: 1; transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+@keyframes cbOut { 0%, 82% { opacity: 1; } 100% { opacity: 0; } }
+
+/* 3-4 in a row: bigger, glowing, pulsing */
+.cb-badge.lv2 .cb-n { font-size: 74px; }
+.cb-badge.lv2 .cb-word { font-size: 27px; }
+.cb-badge.lv2 .cb-inner {
+  animation: cbPop .5s cubic-bezier(.2, 1.6, .4, 1) both, cbPulse .7s ease-in-out .5s infinite;
+  filter: drop-shadow(0 3px 0 #5a2a00) drop-shadow(0 0 16px rgba(255, 210, 90, .9));
+}
+@keyframes cbPulse { 50% { transform: scale(1.08); } }
+
+/* 5-7: rainbow */
+.cb-badge.lv3 .cb-n, .cb-badge.lv4 .cb-n,
+.cb-badge.lv3 .cb-word, .cb-badge.lv4 .cb-word {
+  background: linear-gradient(90deg, #ff5e5e, #ffb84d, #ffe27a, #6ee682, #5ec8ff, #d68bff, #ff5e5e);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: cbRainbow 1.2s linear infinite;
+}
+.cb-badge.lv3 .cb-n { font-size: 88px; }
+.cb-badge.lv3 .cb-word { font-size: 31px; }
+.cb-badge.lv3 .cb-inner {
+  animation: cbPop .5s cubic-bezier(.2, 1.6, .4, 1) both, cbPulse .55s ease-in-out .5s infinite;
+  filter: drop-shadow(0 3px 0 #3a0a40) drop-shadow(0 0 22px rgba(255, 255, 255, .75));
+}
+@keyframes cbRainbow { to { background-position: 300% 0; } }
+
+/* 8 and more: the biggest, shaking */
+.cb-badge.lv4 .cb-n { font-size: 104px; }
+.cb-badge.lv4 .cb-word { font-size: 36px; }
+.cb-badge.lv4 .cb-inner {
+  animation: cbPop .5s cubic-bezier(.2, 1.6, .4, 1) both, cbShake .32s linear .5s 5, cbPulse .5s ease-in-out 2.1s infinite;
+  filter: drop-shadow(0 3px 0 #3a0a40) drop-shadow(0 0 30px rgba(255, 240, 180, .95));
+}
+@keyframes cbShake {
+  0%, 100% { transform: translate(0, 0) rotate(0); }
+  25% { transform: translate(-4px, 2px) rotate(-2deg); }
+  50% { transform: translate(3px, -2px) rotate(2deg); }
+  75% { transform: translate(-2px, -1px) rotate(-1deg); }
+}
+
+/* a soft glow around the reels for long streaks */
+.cb-glow {
+  position: absolute;
+  left: calc(50% - 522px);
+  top: calc(50% - 332px);
+  width: 1044px;
+  height: 586px;
+  border-radius: 16px;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 0 46px 12px rgba(255, 214, 110, .55), inset 0 0 34px rgba(255, 214, 110, .35);
+  transition: opacity .5s ease;
+}
+.cb-glow.on { opacity: 1; animation: cbGlow 1.6s linear infinite; }
+.cb-glow.big { box-shadow: 0 0 70px 20px rgba(255, 220, 130, .7), inset 0 0 46px rgba(255, 220, 130, .45); }
+@keyframes cbGlow { to { filter: hue-rotate(360deg); } }
+
+.cb-confetti {
+  position: absolute;
+  left: calc(50% - 522px);
+  top: calc(50% - 332px);
+  z-index: 44;
+  width: 14px;
+  height: 22px;
+  margin: -11px 0 0 -7px;
+  border-radius: 3px;
+  pointer-events: none;
+  opacity: 0;
+  animation: cbConfetti 1.5s cubic-bezier(.15, .6, .4, 1) var(--d, 0ms) forwards;
+}
+@keyframes cbConfetti {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0) scale(.6); }
+  10% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--r)) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-badge .cb-inner, .cb-glow.on { animation-duration: .01s; animation-iteration-count: 1; }
+}

@@ -154,7 +154,9 @@ test('homes: ten watchers at most; members hear about each other; fruits go to t
   assert.equal((await call('POST', '/api/tip', { token: fans[1].token, body: { to: host.me.id, fruits: { strawberry: 1 } } })).error.code, 'insufficient');
   assert.equal((await call('POST', '/api/tip', { token: fans[2].token, body: { to: host.me.id, fruits: { banana: 1 } } })).error.code, 'bad_fruit');
 
-  // home voice: members reach each other, outsiders do not
+  // home voice: the watchers the host talks with reach each other, the rest do not
+  await call('POST', '/api/watch/voice', { token: host.token, body: { user: fans[0].me.id, on: true } });
+  await call('POST', '/api/watch/voice', { token: host.token, body: { user: fans[1].me.id, on: true } });
   r = await call('POST', '/api/call', { token: fans[0].token, body: { to: fans[1].me.id, type: 'home', callId: `home-${host.me.id}`, data: { room: host.me.id, op: 'hello' } } });
   assert.equal(r.status, 200, JSON.stringify(r));
   r = await call('POST', '/api/call', { token: fans[0].token, body: { to: host.me.id, type: 'home', callId: `home-${host.me.id}`, data: { room: host.me.id, op: 'hello' } } });
@@ -162,31 +164,24 @@ test('homes: ten watchers at most; members hear about each other; fruits go to t
   await lh.waitFor('call', (e) => e.type === 'home' && e.from.id === fans[0].me.id);
   r = await call('POST', '/api/call', { token: fans[9].token, body: { to: fans[0].me.id, type: 'home', callId: `home-${host.me.id}`, data: { room: host.me.id, op: 'hello' } } });
   assert.equal(r.error.code, 'not_home');
-  // 1:1 calls: someone in a home is busy, and cannot call out either
-  r = await call('POST', '/api/call', { token: fans[9].token, body: { to: host.me.id, type: 'invite', callId: 'c-123456' } });
-  assert.equal(r.error.code, 'busy');
-  r = await call('POST', '/api/call', { token: host.token, body: { to: fans[9].me.id, type: 'invite', callId: 'c-123457' } });
-  assert.equal(r.error.code, 'in_home');
-
-  // 稼ぎに参加要請
-  const lone = fans[9];
-  const l9 = await listen(lone);
-  r = await call('POST', '/api/home/invite', { token: host.token, body: { to: lone.me.id } });
-  assert.equal(r.error.code, 'full');
-  await call('POST', '/api/watch', { token: fans[10].token, body: { user: host.me.id, on: false } });
-  r = await call('POST', '/api/home/invite', { token: host.token, body: { to: lone.me.id } });
+  // the home chat: everyone in the home, nobody else
+  r = await call('POST', '/api/home/chat', { token: fans[2].token, body: { room: host.me.id, text: 'がんばれ！' } });
   assert.equal(r.status, 200, JSON.stringify(r));
-  const inv = await l9.waitFor('home', (e) => e.type === 'invite');
-  assert.equal(inv.from.id, host.me.id);
-  assert.equal((await call('POST', '/api/home/invite', { token: host.token, body: { to: fans[0].me.id } })).error.code, 'already');
-  assert.equal((await call('POST', '/api/home/invite', { token: fans[0].token, body: { to: lone.me.id } })).error.code, 'not_friends');
+  assert.equal((await lh.waitFor('homechat')).text, 'がんばれ！');
+  await l0.waitFor('homechat', (e) => e.from.id === fans[2].me.id);
+  const outsider = await register('Outsider');
+  assert.equal((await call('POST', '/api/home/chat', { token: outsider.token, body: { room: host.me.id, text: 'やあ' } })).error.code, 'not_home');
+  assert.equal((await call('GET', '/api/watchers', { token: host.token })).chat.length, 1);
+  // the home call is the only voice: no 1:1 invitations, no 参加要請
+  r = await call('POST', '/api/call', { token: host.token, body: { to: fans[9].me.id, type: 'invite', callId: 'c-123457' } });
+  assert.equal(r.error.code, 'bad_type');
+  assert.equal((await call('POST', '/api/home/invite', { token: host.token, body: { to: fans[9].me.id } })).status, 404);
 
   // the host leaves: the home closes
   lh.close();
   await l0.waitFor('watch', (e) => e.type === 'offline' && e.user === host.me.id);
   assert.equal(s.app.db.prepare('SELECT COUNT(*) AS n FROM watchers WHERE target_id = ?').get(host.me.id).n, 0);
   l0.close();
-  l9.close();
 });
 
 test('Peter reads loan requests in Japanese', () => {
@@ -206,9 +201,7 @@ test('Peter: offers money when a player is nearly broke, twice; debts stack up; 
   const me0 = await call('GET', '/api/me', { token: a.token });
   const peterId = me0.peter.id;
   assert.equal(me0.peter.name, 'ピーター');
-  // he is no player: not in the rankings, no friend requests, always online
-  const board = await call('GET', '/api/board?type=total', { token: a.token });
-  assert.ok(!board.rows.some((r) => r.id === peterId));
+  // he is no player: no friend requests, always online
   assert.equal((await call('POST', '/api/friends/request', { token: a.token, body: { user: peterId } })).error.code, 'npc');
   assert.equal((await call('GET', `/api/user?id=${peterId}`, { token: a.token })).user.online, true);
   assert.equal((await call('POST', '/api/register', { body: { name: 'ピーター', password: 'pass1234' } })).error.code, 'name_taken');

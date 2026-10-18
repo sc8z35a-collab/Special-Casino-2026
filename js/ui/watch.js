@@ -1,11 +1,11 @@
-/* 稼ぎに参加: watching a friend's slot live, which also puts one in their
-   "home": everyone watching the same player (up to 10) talks together in the
-   home call. The reels, the wins and the wallet on the slot screen follow the
-   friend's spins (live "watch" events) until one stops watching. Watchers
-   can throw fruits at the friend: spin tokens from their own wallet
-   (ストロベリー 1 000, スイカ 2 000, メロン 5 000), sent with a single tap.
-   Players also see who is watching them, and can ask a friend over
-   (稼ぎに参加要請). */
+/* 観戦 (稼ぎに参加): watching a friend's slot live, which puts one in their
+   "home". The reels, the wins and the wallet on the slot screen follow the
+   friend's spins (live "watch" events) until one stops watching. Watchers can
+   throw fruits at the friend (spin tokens from their own wallet: ストロベリー
+   1 000, スイカ 2 000, メロン 5 000) and chat with everyone in the home on
+   the spot. Nobody talks at first: the watched player sees who is watching
+   and picks the ones they talk with (js/net/call.js); 観戦ベット lives in
+   js/ui/play.js. */
 (function (BR) {
   'use strict';
 
@@ -13,11 +13,12 @@
   var $ = U.$, $$ = U.$$;
   var el = K.el, sfx = K.sfx, toast = K.toast;
 
-  var state = null;        // { user, members: { id: user } } while watching
-  var watchers = {};       // id -> { id, name, avatar } of players watching me
-  var offerFrom = null;    // the friend whose 参加要請 is on screen
-  var offerTimer = 0;
+  var state = null;        // watching: { user, members: { id: user (+ voice) }, voice: [ids] }
+  var watchers = {};       // my own home: id -> { id, name, avatar, voice }
+  var chat = { room: 0, list: [], ids: {} };   // the chat of the home I am in
+  var CHAT_KEEP = 30;
 
+  function me() { return BR.social.me(); }
   function fruitInfo(id) {
     var list = BR.CONFIG.fruits;
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
@@ -29,6 +30,7 @@
     $('#screen-slot').classList.toggle('watching', !!state);
     $('#stage').classList.toggle('watching', !!state);
     $('#fruit-tray').hidden = !state;
+    $('#watch-tools').hidden = !state;
     if (!state) { bar.hidden = true; return; }
     bar.hidden = false;
     var old = $('#watch-avatar');
@@ -42,26 +44,54 @@
     if (state) $('#fruit-mine').textContent = '手持ち ' + U.fmt(Math.max(0, S.tokens - pendingCost()));
   }
 
+  // the people of a home as a map (for the voice)
+  function people(list) {
+    var out = {};
+    list.forEach(function (u) { out[u.id] = u; });
+    return out;
+  }
+
   function start(user) {
     if (!user) return;
     if (state && state.user.id === user.id) { BR.screens.show('slot'); return; }
     if (!user.online) { sfx('deny'); toast(user.name + 'さんは今オフラインです'); return; }
     if (BR.game.busy()) { sfx('deny'); toast('スピンが終わってからお試しください'); return; }
+    if (state) stop(false);
     api.watch(user.id, true).then(function (r) {
       K.closeModals();
       flushTips();
-      state = { user: r.user, members: {} };
-      (r.members || []).forEach(function (m) { state.members[m.id] = m; });
+      // my own home's voice ends while I am somewhere else
+      if (BR.call.room() && BR.call.room() !== r.user.id) BR.call.leave();
+      enter(r);
       BR.screens.show('slot');
       BR.app.watchEnter(r.user, r.balance, r.last);
       BR.shop.watchedCharm(!!r.charm);
-      renderBar();
       sfx('notify');
       var n = Object.keys(state.members).length;
-      toast(r.user.name + 'さんの稼ぎに参加しました' + (n ? '（ほかに' + n + '人）' : '') + '・ホーム通話中', 3000);
-      // the home's voice call
-      BR.call.homeEnter(r.user.id, r.user, r.members || []);
+      toast(r.user.name + 'さんの観戦を始めました' + (n ? '（ほかに' + n + '人）' : '') + '。チャットで話しかけられます', 3400);
+      if (BR.play && BR.play.watchStart) BR.play.watchStart(r);
     }, K.fail);
+  }
+
+  // the watch response (also after a reconnect): who is here, who talks, the chat so far
+  function enter(r) {
+    state = { user: r.user, members: {}, voice: [] };
+    (r.members || []).forEach(function (m) {
+      state.members[m.id] = m;
+      if (m.voice) state.voice.push(m.id);
+    });
+    var my = me();
+    if (r.voice && my) state.voice.push(my.id);
+    setChat(r.user.id, r.chat || []);
+    renderBar();
+    syncVoice();
+  }
+
+  // the voice of the home I watch
+  function syncVoice() {
+    if (!state) return;
+    var map = people(Object.keys(state.members).map(function (k) { return state.members[k]; }));
+    BR.call.sync(state.user.id, state.user, state.voice, map);
   }
 
   // `quiet`: the server already knows (signed out, friend left)
@@ -70,31 +100,184 @@
     var id = state.user.id;
     flushTips();
     state = null;
-    // goodbyes to the home call first, while still in the home
-    BR.call.homeLeave();
+    if (BR.call.room() === id) BR.call.leave();
     if (!quiet) api.watch(id, false).catch(function () {});
     BR.app.watchExit();
     BR.shop.watchedCharm(false);
+    if (BR.play && BR.play.watchStop) BR.play.watchStop();
+    if (chat.room === id) setChat(0, []);
+    if (BR.entry.isOpen() && chatOpen) BR.entry.close();
     renderBar();
     if (message) toast(message, 3200);
-    // back home: my own watchers' call, if there are any
+    // back home: my own home (its chat and its voice) if people watch me
     syncHome();
   }
 
   /* ------------------------------------------------------------ my own home --- */
+  function watcherList() { return Object.keys(watchers).map(function (k) { return watchers[k]; }); }
+  function voiceList() { return watcherList().filter(function (w) { return w.voice; }).map(function (w) { return w.id; }); }
+
   function renderWatchers() {
-    var list = Object.keys(watchers).map(function (k) { return watchers[k]; });
+    var list = watcherList();
     var box = $('#watched-by');
     box.hidden = !list.length;
-    $('#watched-count').textContent = list.length > 1 ? list.length + '人が稼ぎに参加中' : list.length ? list[0].name + 'さんが稼ぎに参加中' : '';
+    $('#watched-count').textContent = list.length > 1 ? list.length + '人が観戦中' : list.length ? list[0].name + 'さんが観戦中' : '';
+    var talk = voiceList().length;
+    var t = $('#watched-talk');
+    t.hidden = !talk;
+    t.textContent = talk ? '通話 ' + talk + '人' : '';
+    if (K.isOpen('home-panel')) renderPanel();
   }
-  // my home call follows who is watching me
+  // my home's voice and chat follow who is watching me (not while I watch someone)
   function syncHome() {
-    var list = Object.keys(watchers).map(function (k) { return watchers[k]; });
-    var me = BR.social.me();
-    if (state || !me) return;
-    if (!list.length) { if (BR.call.homeRoom() === me.id) BR.call.homeLeave(); return; }
-    if (BR.call.homeRoom() !== me.id) BR.call.homeEnter(me.id, me, list);
+    var my = me();
+    if (state || !my) return;
+    if (!watcherList().length) {
+      if (BR.call.room() === my.id) BR.call.leave();
+      if (chat.room === my.id) setChat(0, []);
+      return;
+    }
+    if (chat.room !== my.id) setChat(my.id, []);
+    BR.call.sync(my.id, my, voiceList(), people(watcherList()));
+  }
+
+  // the panel: everyone watching me, and whether I talk with them
+  function renderPanel() {
+    var list = $('#hp-list');
+    list.textContent = '';
+    var ws = watcherList();
+    if (!ws.length) list.appendChild(el('div', 'hp-empty', '今は誰も観戦していません'));
+    ws.forEach(function (w) {
+      var row = el('div', 'hp-row' + (w.voice ? ' on' : ''));
+      row.dataset.uid = w.id;
+      row.appendChild(K.avatarEl(w, 'sm'));
+      var id = el('div', 'hp-id');
+      id.appendChild(el('span', 'hp-name uname', w.name));
+      id.appendChild(el('span', 'hp-state', w.voice ? '通話中（話しています）' : '観戦中（マイクはオフ）'));
+      row.appendChild(id);
+      var b = el('button', 'act-btn' + (w.voice ? '' : ' gold'));
+      b.type = 'button';
+      b.dataset.voice = w.voice ? 'off' : 'on';
+      b.appendChild(K.icon(w.voice ? 'hangup' : 'phone'));
+      b.appendChild(el('span', '', w.voice ? '話すのをやめる' : 'この人と話す'));
+      row.appendChild(b);
+      list.appendChild(row);
+    });
+  }
+  function openPanel() {
+    renderPanel();
+    K.showModal('home-panel');
+  }
+  // the watched player picks (or drops) someone to talk with; their own microphone goes on with it
+  function setVoice(id, on) {
+    var my = me();
+    return api.voice(id, on).then(function (r) {
+      Object.keys(watchers).forEach(function (k) { watchers[k].voice = r.voice.indexOf(Number(k)) >= 0; });
+      renderWatchers();
+      if (state || !my) return;
+      BR.call.sync(my.id, my, r.voice, people(watcherList()), { mic: on });
+    }, K.fail);
+  }
+  // the hang-up button of the call bar
+  function endVoice() {
+    var my = me();
+    if (!my) { BR.call.leave(); return; }
+    if (state) {
+      api.voice(my.id, false).catch(function () {});
+      state.voice = state.voice.filter(function (id) { return id !== my.id; });
+      BR.call.leave();
+      return;
+    }
+    voiceList().forEach(function (id) { api.voice(id, false).catch(function () {}); watchers[id].voice = false; });
+    renderWatchers();
+    BR.call.leave();
+  }
+
+  /* ------------------------------------------------------------ the home chat --- */
+  var chatOpen = false, chatFeed = null;
+  function setChat(room, list) {
+    chat = { room: room, list: [], ids: {} };
+    list.forEach(addChat);
+    $('#home-chat').textContent = '';
+    if (chatFeed) renderFeed();
+  }
+  function addChat(m) {
+    if (!m || chat.ids[m.id]) return false;
+    chat.ids[m.id] = true;
+    chat.list.push(m);
+    if (chat.list.length > CHAT_KEEP) chat.list.splice(0, chat.list.length - CHAT_KEEP).forEach(function (x) { delete chat.ids[x.id]; });
+    return true;
+  }
+  function lineEl(m) {
+    var my = me();
+    var mine = !!(my && m.from && m.from.id === my.id);
+    var row = el('div', 'msg ' + (mine ? 'mine' : 'theirs'));
+    if (!mine) {
+      var who = el('div', 'msg-name');
+      who.appendChild(K.avatarEl(m.from, 'xs'));
+      who.appendChild(el('span', 'uname', m.from.name || '?'));
+      row.appendChild(who);
+    }
+    row.appendChild(el('div', 'bubble', m.text));
+    row.appendChild(el('span', 'msg-time', K.fmtTime(m.at)));
+    return row;
+  }
+  function renderFeed() {
+    if (!chatFeed) return;
+    chatFeed.textContent = '';
+    if (!chat.list.length) chatFeed.appendChild(el('div', 'empty chat-empty', 'ホームのみんなにメッセージを送れます。\n（ここでの会話は保存されません）'));
+    chat.list.forEach(function (m) { chatFeed.appendChild(lineEl(m)); });
+    var f = $('#entry-feed');
+    f.scrollTop = f.scrollHeight;
+  }
+  // a line floats over the slot screen for a while
+  function float(m) {
+    var box = $('#home-chat');
+    var b = el('button', 'hc-line');
+    b.type = 'button';
+    b.appendChild(K.avatarEl(m.from, 'xs'));
+    var t = el('span', 'hc-text');
+    t.appendChild(el('b', 'uname', m.from.name || '?'));
+    t.appendChild(document.createTextNode(K.clip(m.text, 40)));
+    b.appendChild(t);
+    box.appendChild(b);
+    while (box.children.length > 4) box.removeChild(box.firstChild);
+    setTimeout(function () { b.classList.add('out'); }, 9000);
+    setTimeout(function () { if (b.parentNode) b.parentNode.removeChild(b); }, 9600);
+  }
+  function openChat() {
+    var room = chat.room;
+    if (!room) { sfx('deny'); return; }
+    chatFeed = el('div', 'chat-list home-feed');
+    renderFeed();
+    chatOpen = true;
+    BR.entry.open({
+      title: 'ホームチャット',
+      max: 200,
+      placeholder: state ? 'ホームのみんなにメッセージ' : '観戦している人たちにメッセージ',
+      feed: chatFeed,
+      onSubmit: function (text) {
+        return api.homeChat(room, text).then(function (r) {
+          sfx('send');
+          if (chat.room === room && addChat(r.message)) renderFeed();
+        });
+      },
+      onClose: function () { chatOpen = false; chatFeed = null; }
+    });
+  }
+  function onHomeChat(m) {
+    if (!m || m.room !== chat.room) return;
+    if (!addChat(m)) return;
+    var my = me();
+    var mine = !!(my && m.from && m.from.id === my.id);
+    if (chatOpen) { renderFeed(); if (!mine) sfx('message'); return; }
+    if (mine) return;
+    if (BR.screens.current() === 'slot') { float(m); sfx('message'); return; }
+    sfx('message');
+    toast('ホーム ' + K.clip(m.from.name, 10) + ': ' + K.clip(m.text, 22), 3400, function () {
+      BR.screens.show('slot');
+      openChat();
+    });
   }
 
   /* ------------------------------------------------------------ fruits --- */
@@ -179,49 +362,29 @@
     toast(t.from.name + 'さんから ' + fruitText(t.fruits) + '（+' + U.fmt(t.amount) + ' トークン）', 3400);
   }
 
-  /* ------------------------------------------------------------ 稼ぎに参加要請 --- */
-  function askOver(user) {
-    if (!user) return;
-    if (state) { sfx('deny'); toast('観戦中は参加要請を送れません'); return; }
-    if (!user.online) { sfx('deny'); toast(user.name + 'さんは今オフラインです'); return; }
-    api.homeInvite(user.id).then(function () {
-      sfx('send');
-      toast(user.name + 'さんに稼ぎに参加要請を送りました', 3000);
-    }, K.fail);
-  }
-  // the card: a friend asks me over (or their call moved to their home)
-  function offer(from, why) {
-    if (!from || (state && state.user.id === from.id)) return;
-    offerFrom = { id: from.id, name: from.name, avatar: from.avatar, online: true };
-    var old = $('#home-in-avatar');
-    var av = K.avatarEl(offerFrom, 'big');
-    av.id = 'home-in-avatar';
-    old.parentNode.replaceChild(av, old);
-    $('#home-in-name').textContent = from.name;
-    $('#home-in-what').textContent = why === 'moved' ? '通話がホーム通話になりました。参加しますか？' : '稼ぎに参加要請が届きました！';
-    $('#home-in').hidden = false;
-    sfx('ring');
-    clearTimeout(offerTimer);
-    offerTimer = setTimeout(closeOffer, 30000);
-  }
-  function closeOffer() {
-    clearTimeout(offerTimer);
-    offerFrom = null;
-    $('#home-in').hidden = true;
-  }
-
+  /* ------------------------------------------------------------ live events --- */
   function onWatch(ev) {
+    var my = me();
+    // my own home: someone came or left, the voice changed
     if (ev.type === 'watched') {
       if (!ev.by) return;
       if (ev.on) {
         var isNew = !watchers[ev.by.id];
-        watchers[ev.by.id] = ev.by;
-        if (isNew) { sfx('notify'); toast(ev.by.name + 'さんがあなたの稼ぎに参加しました（ホーム通話）', 3000); }
+        watchers[ev.by.id] = { id: ev.by.id, name: ev.by.name, avatar: ev.by.avatar, voice: !!(watchers[ev.by.id] && watchers[ev.by.id].voice) };
+        if (isNew) {
+          sfx('notify');
+          toast(ev.by.name + 'さんがあなたの画面を観戦しています（👁 から話すか選べます）', 3600, openPanel);
+        }
       } else {
         delete watchers[ev.by.id];
       }
       renderWatchers();
-      if (BR.call.homeRoom() === (BR.social.me() || {}).id) BR.call.homeMember(ev.by, ev.on);
+      syncHome();
+      return;
+    }
+    if (ev.type === 'voice' && my && ev.user === my.id) {
+      Object.keys(watchers).forEach(function (k) { watchers[k].voice = ev.voice.indexOf(Number(k)) >= 0; });
+      renderWatchers();
       syncHome();
       return;
     }
@@ -231,9 +394,28 @@
     else if (ev.type === 'charm') BR.shop.watchedCharm(ev.on);
     else if (ev.type === 'tip') rain(ev.fruits);
     else if (ev.type === 'member') {
-      if (ev.on) state.members[ev.by.id] = ev.by; else delete state.members[ev.by.id];
-      BR.call.homeMember(ev.by, ev.on);
-    } else if (ev.type === 'offline') stop(true, state.user.name + 'さんがオフラインになったのでホームを出ました');
+      if (ev.on) state.members[ev.by.id] = { id: ev.by.id, name: ev.by.name, avatar: ev.by.avatar, voice: false };
+      else {
+        delete state.members[ev.by.id];
+        state.voice = state.voice.filter(function (id) { return id !== ev.by.id; });
+      }
+      syncVoice();
+    } else if (ev.type === 'voice') {
+      // the watched player picked (or dropped) someone to talk with
+      var was = my && state.voice.indexOf(my.id) >= 0;
+      state.voice = ev.voice.slice();
+      Object.keys(state.members).forEach(function (k) { state.members[k].voice = ev.voice.indexOf(Number(k)) >= 0; });
+      var now = my && state.voice.indexOf(my.id) >= 0;
+      if (now && !was) {
+        sfx('notify');
+        toast(state.user.name + 'さんがあなたとの通話をオンにしました。マイクボタンで話せます（今はオフ）', 4200);
+      } else if (was && !now && ev.by && ev.by.id === my.id) {
+        toast('通話を終えました', 2400);
+      } else if (was && !now) {
+        toast(state.user.name + 'さんとの通話が終わりました', 3000);
+      }
+      syncVoice();
+    } else if (ev.type === 'offline') stop(true, state.user.name + 'さんがオフラインになったので観戦を終えました');
   }
 
   function init() {
@@ -242,13 +424,19 @@
       b.addEventListener('pointerdown', function (e) { e.preventDefault(); });
       b.addEventListener('click', function () { throwFruit(b.dataset.fruit, b); });
     });
-    $('#home-yes').addEventListener('click', function () {
+    $('#home-chat-btn').addEventListener('click', function () { sfx('click'); openChat(); });
+    $('#home-chat').addEventListener('click', function (e) { if (e.target.closest('.hc-line')) { sfx('click'); openChat(); } });
+    $('#watched-by').addEventListener('click', function () { sfx('click'); openPanel(); });
+    K.registerModal('home-panel');
+    $('#hp-list').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-voice]');
+      var row = e.target.closest('[data-uid]');
+      if (!b || !row || b.disabled) return;
       sfx('click');
-      var u = offerFrom;
-      closeOffer();
-      if (u) start(u);
+      b.disabled = true;
+      setVoice(Number(row.dataset.uid), b.dataset.voice === 'on');
     });
-    $('#home-no').addEventListener('click', function () { sfx('click'); closeOffer(); });
+    $('#hp-chat').addEventListener('click', function () { sfx('click'); K.closeModal('home-panel'); openChat(); });
     BR.screens.register('slot', {
       back: function () {
         if (!state) return false;
@@ -259,7 +447,7 @@
     if (!api.online) return;
     BR.live.on('watch', onWatch);
     BR.live.on('tip', onTip);
-    BR.live.on('home', function (ev) { if (ev.type === 'invite' && ev.from) offer(ev.from, 'invite'); });
+    BR.live.on('homechat', onHomeChat);
     BR.live.on('balance', function () { renderMine(); });
     // the server forgets watchers whose connection dropped: carry on after a reconnect
     BR.live.on('hello', function () {
@@ -267,6 +455,8 @@
       renderWatchers();
       api.watchers().then(function (r) {
         r.watchers.forEach(function (w) { watchers[w.id] = w; });
+        var my = me();
+        if (!state && my && r.watchers.length) setChat(my.id, r.chat || []);
         renderWatchers();
         syncHome();
       }, function () {});
@@ -275,9 +465,8 @@
       api.watch(id, true).then(function (r) {
         if (!state || state.user.id !== id) return;
         BR.app.watchBalance(r.balance);
-        state.members = {};
-        (r.members || []).forEach(function (m) { state.members[m.id] = m; });
-        BR.call.homeEnter(id, r.user, r.members || []);
+        enter(r);
+        if (BR.play && BR.play.watchStart) BR.play.watchStart(r);
       }, function () { stop(true, '観戦を続けられませんでした'); });
     });
   }
@@ -286,8 +475,8 @@
     init: init,
     start: start,
     stop: stop,
-    askOver: askOver,
-    offer: offer,
+    endVoice: endVoice,
+    openChat: openChat,
     active: function () { return !!state; },
     target: function () { return state ? state.user : null; }
   };

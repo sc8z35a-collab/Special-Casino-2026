@@ -109,10 +109,10 @@ export function createAdmin(db) {
                   FROM messages m LEFT JOIN users s ON s.id = m.sender_id WHERE m.sender_id = ? ORDER BY m.id DESC LIMIT ?`).all(u.id, limit);
       }
       return q(`SELECT m.id, m.channel, m.kind, m.body, m.amount, m.currency, m.created_at, s.name AS sender
-                FROM messages m LEFT JOIN users s ON s.id = m.sender_id WHERE m.channel = 'lobby' ORDER BY m.id DESC LIMIT ?`).all(limit);
+                FROM messages m LEFT JOIN users s ON s.id = m.sender_id ORDER BY m.id DESC LIMIT ?`).all(limit);
     },
 
-    // Blanks a chat message (lobby or direct); transfer and gift records stay as they are.
+    // Blanks a chat message (direct or in a group); transfer and gift records stay as they are.
     redact(id) {
       const m = q('SELECT id, kind FROM messages WHERE id = ?').get(Number(id));
       if (!m) throw new AdminError(`メッセージが見つかりません: ${id}`);

@@ -58,8 +58,21 @@
       { id: 'watermelon', name: 'スイカ', tokens: 2000 },
       { id: 'melon', name: 'メロン', tokens: 5000 }
     ],
-    // people watching one player (they share the player's voice call)
+    // people watching one player (the player picks who they talk with)
     maxWatchers: 10,
+    // 協力スロット: the spin tokens a group's players bet at its table fill
+    // one gauge; when it is full, everyone who bet gets `bonus` of what they
+    // bet in that round (the gauge then starts over)
+    coop: { goal: 100000, bonus: 0.05 },
+    // フレンド対決: two friends spin the same number of times (one of
+    // `spins`) at one bet, and the larger total win wins. An invitation waits
+    // `inviteMs`; a battle not finished in `maxMs` is decided as it stands.
+    battle: { spins: [10, 20, 30], inviteMs: 600000, maxMs: 3600000 },
+    // 観戦ベット: a watcher stakes spin tokens on whether the player gets a
+    // BIG WIN (or better) within their next `spins` spins: "hit" pays `hit`
+    // times the stake, "miss" `miss` times (a BIG WIN in 10 spins: 18.8 %).
+    // A bet left open for `refundMs` (the player stopped) is given back.
+    watchBet: { spins: 10, stakes: [1000, 5000, 10000], hit: 5, miss: 1.15, refundMs: 86400000 },
     // login bonus in spin tokens for the 1st, 2nd, 3rd, 4th day logged in
     // (then it starts over); a day runs from 6:00 to 6:00 Japan time
     loginBonus: { days: [45000, 50000, 65000, 90000], dayStartsJst: 6 },

@@ -1,0 +1,215 @@
+/* ------------------------------------------------------------ 初心者ガイド (js/ui/guide.js) --- */
+/* Above the HUD and the dialogs, below the maintenance notice and the movies. */
+.guide {
+  position: absolute;
+  inset: 0;
+  z-index: 150;
+  pointer-events: none;
+  animation: gdFade .4s ease;
+}
+.guide.gd-out { opacity: 0; transition: opacity .3s ease; }
+@keyframes gdFade { from { opacity: 0; } }
+#stage.guide-on .toast { z-index: 160; }
+
+/* the spotlight: everything outside it is dimmed by its shadow */
+.gd-hole {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  border-radius: 22px;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 3px rgba(255, 226, 122, .95),
+    0 0 36px 8px rgba(255, 214, 102, .5),
+    0 0 0 4000px rgba(10, 0, 3, .74);
+}
+/* moves (after the first placement) */
+.guide.gd-ready .gd-hole {
+  transition:
+    left .4s cubic-bezier(.3, 1.15, .4, 1), top .4s cubic-bezier(.3, 1.15, .4, 1),
+    width .4s cubic-bezier(.3, 1.15, .4, 1), height .4s cubic-bezier(.3, 1.15, .4, 1),
+    border-radius .4s ease, box-shadow .35s ease;
+}
+.gd-hole.none { box-shadow: 0 0 0 4000px rgba(10, 0, 3, .8); }
+/* the reels turn on the SPIN step: the screen shows through, taps still blocked */
+.guide.gd-wait .gd-hole { box-shadow: 0 0 0 3px rgba(255, 226, 122, 0), 0 0 0 4000px rgba(10, 0, 3, 0); }
+
+/* a pulsing ring where the player has to tap */
+.gd-ring {
+  position: absolute;
+  border-radius: 22px;
+  box-shadow: 0 0 0 4px #ffe27a, 0 0 22px 4px rgba(255, 226, 122, .8);
+  opacity: 0;
+  pointer-events: none;
+}
+.guide.gd-act .gd-ring { animation: gdRing 1.5s ease-out infinite; }
+@keyframes gdRing {
+  0% { opacity: .95; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.25); }
+}
+
+.gd-block { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: auto; }
+
+/* a gold arrow that bounces towards the spot to tap */
+.gd-arrow {
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  display: none;
+  pointer-events: none;
+  --rot: 0deg;
+  animation: gdBounce .9s ease-in-out infinite;
+}
+.guide.gd-act .gd-arrow { display: block; }
+.guide.gd-wait .gd-arrow, .guide.gd-wait .gd-ring { display: none; }
+.gd-arrow[data-dir="up"] { --rot: 180deg; }
+.gd-arrow[data-dir="left"] { --rot: 90deg; }
+.gd-arrow[data-dir="right"] { --rot: -90deg; }
+.gd-arrow::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 30px;
+  height: 30px;
+  border-right: 11px solid #ffe27a;
+  border-bottom: 11px solid #ffe27a;
+  border-radius: 0 0 6px 0;
+  transform: translate(-50%, -72%) rotate(45deg);
+  filter: drop-shadow(0 0 10px rgba(255, 226, 122, .95));
+}
+@keyframes gdBounce {
+  0%, 100% { transform: rotate(var(--rot)) translateY(-10px); }
+  50% { transform: rotate(var(--rot)) translateY(8px); }
+}
+
+/* the card */
+.gd-bubble {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 660px;
+  padding: 24px 32px 26px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #560c17, #2a0408);
+  box-shadow:
+    inset 0 0 0 2.4px #d6a94a,
+    0 24px 60px rgba(0, 0, 0, .65),
+    0 0 46px rgba(255, 210, 100, .16);
+  pointer-events: auto;
+}
+.guide.gd-ready .gd-bubble { transition: left .4s cubic-bezier(.3, 1.1, .4, 1), top .4s cubic-bezier(.3, 1.1, .4, 1), opacity .25s ease; }
+.gd-bubble.gd-in { animation: gdIn .45s cubic-bezier(.2, 1.3, .4, 1); }
+@keyframes gdIn { from { opacity: 0; transform: translateY(18px) scale(.95); } }
+.guide.gd-wait .gd-bubble { opacity: 0; visibility: hidden; transition: opacity .2s ease, visibility 0s linear .2s; }
+.guide.gd-intro .gd-bubble { width: 840px; padding: 34px 54px 36px; text-align: center; }
+
+/* its tail points at the spotlight (--tail: along the edge) */
+.gd-bubble::before {
+  content: '';
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  display: none;
+}
+.gd-bubble[data-side="top"]::before {
+  display: block;
+  top: -15px;
+  left: var(--tail, 50%);
+  transform: translateX(-50%) rotate(45deg);
+  background: #560c17;
+  border-left: 2.4px solid #d6a94a;
+  border-top: 2.4px solid #d6a94a;
+  border-radius: 6px 0 0 0;
+}
+.gd-bubble[data-side="bottom"]::before {
+  display: block;
+  bottom: -15px;
+  left: var(--tail, 50%);
+  transform: translateX(-50%) rotate(45deg);
+  background: #2a0408;
+  border-right: 2.4px solid #d6a94a;
+  border-bottom: 2.4px solid #d6a94a;
+  border-radius: 0 0 6px 0;
+}
+.gd-bubble[data-side="left"]::before {
+  display: block;
+  left: -15px;
+  top: var(--tail, 50%);
+  transform: translateY(-50%) rotate(45deg);
+  background: #3e0810;
+  border-left: 2.4px solid #d6a94a;
+  border-bottom: 2.4px solid #d6a94a;
+  border-radius: 0 0 0 6px;
+}
+.gd-bubble[data-side="right"]::before {
+  display: block;
+  right: -15px;
+  top: var(--tail, 50%);
+  transform: translateY(-50%) rotate(45deg);
+  background: #3e0810;
+  border-right: 2.4px solid #d6a94a;
+  border-top: 2.4px solid #d6a94a;
+  border-radius: 0 6px 0 0;
+}
+
+.gd-head { display: flex; align-items: center; gap: 14px; }
+.guide.gd-intro .gd-head { justify-content: center; }
+.gd-badge {
+  padding: 5px 14px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f4dc45, #e8c72a);
+  color: #3a3410;
+  font: 800 17px/1 var(--f-num);
+  letter-spacing: 2.5px;
+}
+.gd-count { font: 800 21px/1 var(--f-num); color: #f8cf2c; letter-spacing: 1px; }
+.gd-close {
+  margin-left: auto;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, .1);
+  box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .28);
+  font-size: 19px;
+  font-weight: 700;
+  color: #f1e7ea;
+}
+.gd-close:active { transform: scale(.95); }
+.guide.gd-intro .gd-close { position: absolute; right: 22px; top: 22px; }
+
+.gd-bar { position: relative; height: 6px; margin: 16px 0 14px; border-radius: 3px; overflow: hidden; background: rgba(255, 255, 255, .12); }
+.gd-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 3px; background: linear-gradient(90deg, #f4dc45, #ffb84d); transition: width .4s ease; }
+
+.gd-title { margin: 0 0 10px; font-size: 34px; font-weight: 700; line-height: 1.3; color: #ffe27a; text-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+.guide.gd-intro .gd-title { font-size: 42px; margin-bottom: 16px; }
+.gd-text { margin: 0; font-size: 27px; font-weight: 500; line-height: 1.6; color: #f3e8eb; white-space: pre-line; }
+.guide.gd-intro .gd-text { font-size: 29px; }
+
+.gd-foot { display: flex; align-items: center; justify-content: flex-end; gap: 18px; margin-top: 20px; }
+.guide.gd-intro .gd-foot { justify-content: center; margin-top: 28px; }
+.act-btn.gd-next { flex: none; min-width: 230px; height: 72px; padding: 0 44px; border-radius: 36px; font-size: 28px; }
+.guide.gd-intro .act-btn.gd-next { min-width: 340px; height: 84px; border-radius: 42px; font-size: 32px; }
+.gd-hint { display: flex; align-items: center; gap: 14px; margin-right: auto; font-size: 25px; font-weight: 700; color: #ffe27a; }
+.gd-tap {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #ffe27a;
+  box-shadow: 0 0 12px rgba(255, 226, 122, .9);
+}
+.gd-tap::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 3px solid #ffe27a;
+  animation: gdTap 1.3s ease-out infinite;
+}
+@keyframes gdTap {
+  0% { opacity: 1; transform: scale(.6); }
+  100% { opacity: 0; transform: scale(1.5); }
+}
