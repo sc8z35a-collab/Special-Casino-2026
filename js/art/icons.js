@@ -56,23 +56,6 @@
     soundOn: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 50"><path d="M3,17.6 Q3,15 5.6,15 L15,15 L29.6,3.6 Q33,1.4 33,5.4 L33,44.6 Q33,48.6 29.6,46.4 L15,35.4 L5.6,35.4 Q3,35.4 3,32.8Z" fill="#d9d9d9"/>' +
       '<path d="M39,17 Q43,25 39,33M44.5,11.5 Q52,25 44.5,38.5M50,6 Q61,25 50,44" fill="none" stroke="#d9d9d9" stroke-width="3.6" stroke-linecap="round"/></svg>',
 
-    // drawn in the coordinate frame of their HUD circle (origin = circle centre)
-    radio: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-43 -43 86 86">' +
-      '<path fill="#d8d3d3" fill-rule="evenodd" d="' +
-      'M3.4,-24.4 Q3.4,-27.2 6.2,-27.2 Q9,-27.2 9,-24.4 L9,-11 L3.4,-11Z ' +
-      'M-11,-12 Q-11,-13.9 -9.1,-13.9 L-6.4,-13.9 Q-4.5,-13.9 -4.5,-12 Z ' +
-      'M-12.2,-9 Q-12.2,-11.6 -9.6,-11.6 L9.9,-11.6 Q12.5,-11.6 12.5,-9 L12.5,-7 L13.3,-6.6 L13.3,-1.6 L12.5,-1.2 L12.5,20.4 Q12.5,23 9.9,23 L-9.6,23 Q-12.2,23 -12.2,20.4Z ' +
-      'M-9,-6 Q-9,-8 -7,-8 L7,-8 Q9,-8 9,-6 L9,-1 Q9,1 7,1 L-7,1 Q-9,1 -9,-1Z ' +
-      'M-5,7.9 Q-5,6.8 -3.9,6.8 L3.4,6.8 Q4.5,6.8 4.5,7.9 Q4.5,9 3.4,9 L-3.9,9 Q-5,9 -5,7.9Z ' +
-      'M-7,12 Q-7,10.8 -5.8,10.8 L5.3,10.8 Q6.5,10.8 6.5,12 Q6.5,13.2 5.3,13.2 L-5.8,13.2 Q-7,13.2 -7,12Z ' +
-      'M-5,16.75 Q-5,15.5 -3.75,15.5 L3.25,15.5 Q4.5,15.5 4.5,16.75 Q4.5,18 3.25,18 L-3.75,18 Q-5,18 -5,16.75Z"/>' +
-      '</svg>',
-
-    mic: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-46 -46 92 92">' +
-      '<rect x="-8" y="-17.5" width="16" height="27" rx="8" fill="#d8d3d3"/>' +
-      '<path d="M-12.6,0.6 V1 A12.6,12.6 0 0 0 12.6,1 V0.6 M0,13.6 V22.4 M-8,22.4 H8" fill="none" stroke="#d8d3d3" stroke-width="2.6" stroke-linecap="round"/>' +
-      '</svg>',
-
     edit: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M27,13 V7.5 Q27,5 24.5,5 H7.5 Q5,5 5,7.5 V32.5 Q5,35 7.5,35 H15" fill="none" stroke="#d6dbe6" stroke-width="2.8" stroke-linecap="round"/>' +
       '<path d="M10.5,13H21.5M10.5,19.5H17" stroke="#d6dbe6" stroke-width="2.8" stroke-linecap="round"/>' +
       '<path d="M18.5,35.5 L19.4,30 L31.2,18.2 Q32.6,16.8 34,18.2 L35.8,20 Q37.2,21.4 35.8,22.8 L24,34.6Z" fill="none" stroke="#d6dbe6" stroke-width="2.6" stroke-linejoin="round"/></svg>',

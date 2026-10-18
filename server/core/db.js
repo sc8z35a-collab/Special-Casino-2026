@@ -149,6 +149,20 @@ export const MIGRATIONS = [
        chat       INTEGER NOT NULL DEFAULT 0,
        updated_at INTEGER NOT NULL
      )`
+  ],
+  // v4: quests, player level, バイト, the update bonus; Peter counts every loan ever made
+  [
+    // XP for the player level
+    'ALTER TABLE users ADD COLUMN xp INTEGER NOT NULL DEFAULT 0',
+    // quest progress as JSON (server/core/quests.js): no extra rows per spin
+    "ALTER TABLE users ADD COLUMN quests TEXT NOT NULL DEFAULT ''",
+    // the バイト being worked, as JSON: [{ "id": "garage", "since": <ms> }]
+    "ALTER TABLE users ADD COLUMN jobs TEXT NOT NULL DEFAULT ''",
+    // the last release (js/game/news.js) the player has been thanked for
+    'ALTER TABLE users ADD COLUMN release_seen INTEGER NOT NULL DEFAULT 0',
+    // all the money Peter ever lent the player (his limit never comes back)
+    'ALTER TABLE debts ADD COLUMN lent INTEGER NOT NULL DEFAULT 0',
+    'UPDATE debts SET lent = principal'
   ]
 ];
 

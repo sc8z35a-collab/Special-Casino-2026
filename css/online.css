@@ -288,10 +288,11 @@
 @keyframes unlockRing { 0% { opacity: 1; width: 10%; } 100% { opacity: 0; width: 160%; } }
 
 /* the icon dialog (design px) */
-.avatar-card { width: 1240px; padding-bottom: 30px; }
-.av-sale-note { margin: -14px 0 22px; font-size: 21px; font-weight: 700; color: #ff9b8e; }
-.av-grid.stage-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
-.stage-grid .av-tile { --s: 262px; }
+/* the icons scroll inside the card: it never grows past the screen */
+.avatar-card { display: flex; flex-direction: column; width: 1440px; padding-bottom: 30px; }
+.av-sale-note { flex: none; margin: -14px 0 18px; font-size: 21px; font-weight: 700; color: #ff9b8e; }
+.av-grid.stage-grid { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(5, 1fr); align-content: start; gap: 18px; padding: 4px 6px 4px 0; }
+.stage-grid .av-tile { --s: 248px; }
 
 /* sign-up (CSS px) */
 .av-grid.ov-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 4px 0 2px; }
@@ -540,6 +541,11 @@
 .in-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin-top: 26px; }
 .in-col { padding: 22px 26px 18px; border-radius: 12px; background: rgba(0, 0, 0, .3); box-shadow: inset 0 0 0 1.6px rgba(225, 205, 210, .2); }
 .install-card.is-android .in-android, .install-card.is-ios .in-ios { box-shadow: inset 0 0 0 3px #f4dc45; background: rgba(96, 86, 12, .25); }
+/* a phone sees only its own way of installing (an iPhone cannot open the APK) */
+.install-card.is-ios .in-android, .install-card.is-android .in-ios { display: none; }
+.install-card.is-ios .in-cols, .install-card.is-android .in-cols { grid-template-columns: 1fr; }
+.in-warn { display: none; color: #ffb4a6; }
+.install-card.is-ios .in-warn { display: block; }
 .in-col h4 { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; font-size: 28px; }
 .in-col h4 .ic { width: 38px; height: 38px; }
 .in-apk, .in-pwa { width: 100%; height: 92px; margin-bottom: 12px; text-decoration: none; }
@@ -871,3 +877,238 @@
 @keyframes bonusToday { from { transform: scale(1.12); opacity: 0; } to { transform: none; opacity: 1; } }
 .bonus-text { margin: 0; font-size: 30px; font-weight: 700; color: #ffe27a; text-shadow: 0 2px 6px #000; text-align: center; }
 .act-btn.bonus-ok { flex: none; width: 360px; height: 84px; font-size: 30px; }
+
+/* ------------------------------------------------------------ player level, notices on the slot screen --- */
+.lv-chip {
+  position: absolute;
+  right: 168px;
+  top: 82px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 19px;
+  background: rgba(0, 0, 0, .38);
+  box-shadow: inset 0 0 0 1.6px rgba(214, 169, 74, .6);
+  pointer-events: none;
+}
+.lv-chip b { font: 800 22px/1 var(--f-num); color: #ffe27a; letter-spacing: .5px; }
+.lv-bar { position: relative; display: block; width: 120px; height: 9px; border-radius: 5px; overflow: hidden; background: rgba(255, 255, 255, .14); }
+.lv-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #f4dc45, #ffb84d); border-radius: 5px; }
+#screen-slot.watching .lv-chip { display: none; }
+
+/* 「アップデートしてくださいね。」 */
+.home-note {
+  position: absolute;
+  left: 50%;
+  top: 72px;
+  z-index: 30;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  height: 52px;
+  padding: 0 6px 0 26px;
+  border-radius: 26px;
+  background: rgba(20, 2, 4, .94);
+  box-shadow: inset 0 0 0 2px #f4dc45, 0 8px 22px rgba(0, 0, 0, .5);
+  font-size: 22px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.home-note .mini-btn { height: 40px; padding: 0 22px; border-radius: 20px; font-size: 20px; }
+
+/* quest finished: green, no sound; one notice for everything within 10 s */
+.quest-note {
+  position: absolute;
+  left: 50%;
+  top: 196px;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  max-width: 1300px;
+  padding: 12px 34px 12px 16px;
+  border-radius: 44px;
+  background: linear-gradient(180deg, rgba(40, 160, 78, .97), rgba(20, 108, 50, .97));
+  box-shadow: inset 0 0 0 2.4px #9dff9f, 0 12px 28px rgba(0, 0, 0, .5);
+  color: #fff;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -14px);
+  transition: opacity .3s ease, transform .3s ease;
+}
+.quest-note.show { opacity: 1; transform: translate(-50%, 0); }
+.qn-icon { flex: none; width: 62px; height: 62px; background: center / contain no-repeat; }
+.qn-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.qn-text b { font-size: 25px; line-height: 1.2; }
+.qn-text span { font-size: 21px; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qn-text .qn-level { color: #fff59a; }
+.qn-reward { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-left: 10px; font: 800 26px var(--f-num); }
+.qn-reward .amt { display: inline-flex; align-items: center; gap: 8px; }
+.qn-reward .amt::before { content: '+'; }
+.qn-reward .ic { width: 28px; height: 28px; }
+
+/* ------------------------------------------------------------ quests --- */
+.q-pane { display: block; }
+.q-head {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 118px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 30px;
+  box-shadow: inset 0 -1.6px 0 rgba(225, 205, 210, .18);
+}
+.q-icon { flex: none; width: 92px; height: 92px; background: center / contain no-repeat; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .5)); }
+.q-title { flex: 1; min-width: 0; }
+.q-title h2 { margin: 0 0 6px; font-size: 34px; line-height: 1.15; }
+.q-title p { margin: 0; font-size: 19px; font-weight: 500; color: #c3b8bb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-reset { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.q-reset small { font-size: 18px; color: #b3a7aa; }
+.q-reset b { font: 800 34px var(--f-num); color: #ffe27a; }
+.q-scroll { position: absolute; left: 0; right: 0; top: 118px; bottom: 0; }
+.q-list { display: flex; flex-direction: column; gap: 12px; padding: 18px 26px 26px; }
+.q-lv { gap: 12px; }
+.q-lv-num { font: 800 24px var(--f-num); color: #ffe27a; }
+.q-lv .lv-bar { width: 150px; }
+.q-lv-xp { font-size: 17px; color: #c3b8bb; }
+
+/* reward colours: grey < 5k <= blue < 10k <= purple < 20k <= gold < 50k <= red < 100k <= aqua < 1M <= aqua + gold */
+.q-row {
+  --tc: #9aa0a8;
+  --tb: rgba(154, 160, 168, .14);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-height: 104px;
+  padding: 14px 26px 14px 0;
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--tb), rgba(0, 0, 0, .25) 70%);
+  box-shadow: inset 0 0 0 2px var(--tc);
+  overflow: hidden;
+}
+.q-row.t-blue { --tc: #3d8bff; --tb: rgba(61, 139, 255, .26); }
+.q-row.t-purple { --tc: #a95cff; --tb: rgba(169, 92, 255, .28); }
+.q-row.t-gold { --tc: #f4c430; --tb: rgba(244, 196, 48, .26); }
+.q-row.t-red { --tc: #ff3b3b; --tb: rgba(255, 59, 59, .28); }
+.q-row.t-aqua { --tc: #4fd8ff; --tb: rgba(79, 216, 255, .26); }
+.q-row.t-prism { --tc: #4fd8ff; --tb: rgba(79, 216, 255, .3); }
+.q-gem { flex: none; align-self: stretch; width: 16px; margin: -14px 0; background: var(--tc); }
+.q-row.t-prism .q-gem, .q-row.t-prism::before {
+  background: repeating-linear-gradient(135deg, #4fd8ff 0 14px, #f4c430 14px 28px);
+  background-size: 40px 40px;
+  animation: prismSlide 1.6s linear infinite;
+}
+.q-row.t-prism::before { content: ''; position: absolute; inset: 0; opacity: .18; pointer-events: none; }
+@keyframes prismSlide { to { background-position: 40px 0; } }
+.q-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.q-text { font-size: 27px; font-weight: 700; line-height: 1.25; }
+.q-note { margin-top: -6px; font-size: 17px; color: #c3b8bb; }
+.q-prog { display: flex; align-items: center; gap: 16px; }
+.q-bar { position: relative; display: block; flex: 1; max-width: 560px; height: 12px; border-radius: 6px; overflow: hidden; background: rgba(255, 255, 255, .13); }
+.q-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 6px; background: var(--tc); }
+.q-count { flex: none; font: 700 21px var(--f-num); color: #e3d7da; }
+.q-reward { flex: none; display: flex; align-items: center; }
+.q-reward .amt { display: inline-flex; align-items: center; gap: 10px; font: 800 32px var(--f-num); color: var(--tc); }
+.q-row.t-gray .q-reward .amt { color: #d6d9de; }
+.q-reward .ic { width: 34px; height: 34px; }
+/* done: covered in grey until the period starts over */
+.q-row.done::after { content: ''; position: absolute; inset: 0; background: rgba(46, 44, 46, .72); pointer-events: none; }
+.q-row.done { filter: grayscale(.85); }
+.q-stamp {
+  position: absolute;
+  right: 26px;
+  top: 50%;
+  z-index: 2;
+  transform: translateY(-50%) rotate(-8deg);
+  padding: 4px 22px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 3px #d8d8d8;
+  color: #ececec;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 4px;
+}
+
+/* ------------------------------------------------------------ the menu: more tabs --- */
+#screen-board .tabs { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x; }
+#screen-board .tabs::-webkit-scrollbar { display: none; }
+#screen-board .tab { flex: none; min-width: 96px; padding: 0 14px; font-size: 21px; }
+#screen-board .tabs-info { flex: none; padding: 0 18px; font-size: 18px; }
+.tab-soon { display: inline-flex; align-items: center; gap: 8px; color: #c9bfc2; }
+.tab-soon small { padding: 2px 8px; border-radius: 6px; background: rgba(244, 220, 69, .2); color: #ffe27a; font-size: 14px; font-weight: 800; }
+
+/* バイト */
+.jobs-scroll, .news-scroll { position: absolute; inset: 0; }
+.jobs-list { padding: 26px 34px 30px; display: flex; flex-direction: column; gap: 22px; }
+.job-card {
+  display: flex;
+  gap: 34px;
+  padding: 26px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, .28);
+  box-shadow: inset 0 0 0 1.6px rgba(225, 205, 210, .22);
+}
+.job-card.working { box-shadow: inset 0 0 0 2.4px #45c95f, 0 0 22px rgba(69, 201, 95, .25); }
+.job-pic { position: relative; flex: none; width: 600px; aspect-ratio: 1200 / 554; border-radius: 10px; background: #111 center / cover no-repeat; box-shadow: 0 6px 16px rgba(0, 0, 0, .45); }
+.job-live { position: absolute; left: 14px; top: 14px; padding: 4px 16px; border-radius: 8px; background: #2fb44a; color: #fff; font-size: 21px; font-weight: 800; animation: jobLive 1.6s ease-in-out infinite; }
+@keyframes jobLive { 50% { opacity: .65; } }
+.job-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.job-name { margin: 0; font-size: 33px; line-height: 1.3; }
+.job-wage { display: flex; align-items: baseline; gap: 12px; }
+.job-wage .amt { display: inline-flex; align-items: center; gap: 10px; font: 800 42px var(--f-num); color: #ffe27a; }
+.job-wage .ic { width: 38px; height: 38px; align-self: center; }
+.job-per { font-size: 24px; font-weight: 700; color: #d4cacd; }
+.job-state { display: flex; flex-direction: column; gap: 6px; min-height: 66px; font-size: 22px; color: #c3b8bb; }
+.job-time { font: 700 24px var(--f-num); color: #8ff09c; }
+.job-pay { display: inline-flex; align-items: center; gap: 10px; }
+.job-pay .amt { display: inline-flex; align-items: center; gap: 8px; font: 800 28px var(--f-num); color: #ffe27a; }
+.job-pay .ic { width: 28px; height: 28px; }
+.job-acts { display: flex; gap: 16px; margin-top: auto; }
+.job-acts .act-btn { flex: none; min-width: 230px; padding: 0 26px; height: 76px; font-size: 25px; }
+.job-acts .act-btn:disabled { opacity: .45; }
+.jobs-note { padding: 22px 28px; border-radius: 12px; background: rgba(0, 0, 0, .22); font-size: 20px; line-height: 1.65; color: #d4cacd; }
+.jobs-note p { margin: 6px 0 0; }
+.jobs-lv { display: flex; align-items: center; gap: 16px; font-size: 22px; font-weight: 700; color: #fff; }
+.jobs-lv b { padding: 2px 14px; border-radius: 8px; background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; font: 800 22px var(--f-num); }
+
+/* 投資 (coming soon) */
+.soon-pane { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; text-align: center; }
+.soon-badge { padding: 8px 26px; border-radius: 22px; background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; font: 800 22px var(--f-num); letter-spacing: 3px; }
+.soon-pane h3 { margin: 0; font-size: 64px; }
+.soon-pane p { margin: 0; font-size: 26px; color: #c3b8bb; }
+
+/* Dev News */
+.news-list { padding: 26px 34px 30px; display: flex; flex-direction: column; gap: 22px; }
+.news-entry { padding: 24px 30px; border-radius: 12px; background: rgba(0, 0, 0, .26); box-shadow: inset 0 0 0 1.6px rgba(214, 169, 74, .4); text-align: left; }
+.news-head { display: flex; align-items: baseline; gap: 18px; }
+.news-date { flex: none; font: 700 21px var(--f-num); color: #d6a94a; }
+.news-title { margin: 0; font-size: 30px; line-height: 1.3; }
+.news-items { margin: 12px 0 0; padding-left: 30px; font-size: 22px; line-height: 1.6; color: #e3d7da; }
+.news-items li { margin-bottom: 4px; }
+
+/* thank you for updating */
+.thanks-card { display: flex; flex-direction: column; width: 1080px; text-align: center; }
+.thanks-card .modal-title { justify-content: center; margin: 0 0 8px; }
+.thanks-amt { flex: none; display: flex; align-items: center; justify-content: center; gap: 16px; font: 800 66px var(--f-num); color: #ffe27a; }
+.thanks-amt .ic { width: 58px; height: 58px; }
+.thanks-sub { flex: none; margin: 0 0 14px; font-size: 24px; color: #d4cacd; }
+.thanks-news { flex: 1 1 auto; min-height: 0; max-height: 360px; margin-bottom: 22px; }
+.thanks-news .news-entry { box-shadow: none; }
+.thanks-card .act-btn { flex: none; width: 360px; margin: 0 auto; }
+
+/* profile: the level next to the name */
+.pf-name-row { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.pf-name-row .pf-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-lv { flex: none; padding: 3px 14px; border-radius: 8px; background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; font: 800 24px var(--f-num); }
+
+/* Peter: what he lends at most, ever */
+.dm-debt-label { display: flex; flex-direction: column; line-height: 1.2; }
+.dm-debt-label small { font-size: 15px; color: #c3b8bb; white-space: nowrap; }

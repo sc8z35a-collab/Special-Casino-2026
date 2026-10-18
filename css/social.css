@@ -106,7 +106,7 @@
 .coach {
   position: absolute;
   right: 318px;
-  top: 166px;
+  top: 153px;
   z-index: 35;
   padding: 16px 26px;
   border-radius: 12px;
@@ -600,20 +600,12 @@
   .ov-title { font-size: 19px; }
 }
 
-/* text entry */
+/* text entry: one bar at the top (back, who, the field, send), the conversation below */
 .entry { z-index: 1100; display: flex; flex-direction: column; background: linear-gradient(180deg, #3a0610, #1c0205); }
-.entry-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 46px;
-  padding: 0 max(12px, env(safe-area-inset-right)) 0 max(4px, env(safe-area-inset-left));
-  box-shadow: inset 0 -1px 0 rgba(214, 169, 74, .55);
-}
-.entry-close { flex: none; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+.entry-close { flex: none; width: 40px; height: 42px; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
 .entry-close .ic { width: 22px; height: 21px; }
-.entry-title { flex: 1; font-size: 16px; font-weight: 700; }
+.entry-title { flex: 0 1 auto; max-width: 26%; font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 520px) { .entry-title { display: none; } }
 .entry-feed {
   flex: 1;
   min-height: 0;
@@ -627,10 +619,11 @@
 .entry-bar {
   flex: none;
   display: flex;
+  align-items: center;
   gap: 8px;
-  padding: 8px max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 6px max(4px, env(safe-area-inset-left));
   background: rgba(0, 0, 0, .4);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12);
+  box-shadow: inset 0 -1px 0 rgba(214, 169, 74, .55);
 }
 .entry-bar input {
   flex: 1;
@@ -646,5 +639,5 @@
   outline: none;
 }
 .entry-bar input:focus { border-color: #d6a94a; }
-.entry-bar button { flex: none; height: 42px; padding: 0 20px; border-radius: 8px; background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; font-size: 15px; font-weight: 700; touch-action: manipulation; }
-.entry-bar button:disabled { opacity: .6; }
+.entry-bar button[type="submit"] { flex: none; height: 42px; padding: 0 20px; border-radius: 8px; background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; font-size: 15px; font-weight: 700; touch-action: manipulation; }
+.entry-bar button[type="submit"]:disabled { opacity: .6; }

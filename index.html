@@ -75,9 +75,13 @@
       <button id="btn-get" class="pill pill-left pill-get" data-sfx="click" aria-label="トークンを入手"></button>
       <button id="btn-max" class="pill pill-left pill-max" data-sfx="click" aria-label="最大ベット"></button>
 
-      <button id="btn-radio" class="hud-circle hud-radio" aria-label="ランキング・メッセージ"><i class="ic ic-radio"></i><b class="hud-badge" id="radio-badge" hidden></b></button>
-      <button id="btn-mic" class="hud-circle hud-mic" aria-label="ロビーチャット"><i class="ic ic-mic"></i><b class="hud-badge dot-only" id="mic-badge" hidden></b></button>
+      <button id="btn-radio" class="hud-circle hud-radio pic" aria-label="メニュー（ランキング・フレンド・メッセージ・バイト）"><i class="ic ic-menu"></i><b class="hud-badge" id="radio-badge" hidden></b></button>
+      <button id="btn-mic" class="hud-circle hud-mic pic" aria-label="ロビー"><i class="ic ic-lobby"></i><b class="hud-badge dot-only" id="mic-badge" hidden></b></button>
+      <button id="btn-quest" class="hud-circle hud-quest pic" aria-label="クエスト"><i class="ic ic-quest"></i><b class="hud-badge" id="quest-badge" hidden></b></button>
       <div class="coach" id="coach" hidden><span>ランキング・チャットはここから！</span></div>
+      <div class="lv-chip" id="lv-chip" hidden><b>Lv.<span id="lv-num">1</span></b><i class="lv-bar"><i id="lv-fill"></i></i></div>
+      <div class="home-note" id="update-note" hidden><span>新しいバージョンがあります。アップデートしてくださいね。</span><button class="mini-btn gold" id="update-note-go"><span>アップデート</span></button></div>
+      <div class="quest-note" id="quest-note" hidden aria-live="polite"></div>
 
       <button id="btn-rules" class="pill pill-rules" data-sfx="click"><span>ルール</span></button>
       <button id="btn-auto" class="pill pill-auto" data-sfx="click"><span class="auto-label">自動スピン</span><span class="auto-state"><i class="led"></i><b>オフ</b></span></button>
@@ -165,6 +169,9 @@
         <button class="tab tab-car" data-tab="garage"><span>Garage</span></button>
         <button class="tab tab-shop" data-tab="shop"><i class="ic ic-bag"></i><span>Shop</span></button>
         <button class="tab" data-tab="items"><span>所有</span></button>
+        <button class="tab" data-tab="jobs"><span>バイト</span><b class="tab-dot" id="jobs-dot" hidden></b></button>
+        <button class="tab tab-soon" data-tab="invest"><span>投資</span><small>近日</small></button>
+        <button class="tab" data-tab="news"><span>Dev News</span><b class="tab-dot" id="news-dot" hidden></b></button>
         <div class="tabs-info" id="board-info"><i class="dot on"></i><span id="online-count">-</span></div>
       </div>
 
@@ -219,16 +226,53 @@
         <div class="scroller items-scroll" id="items-scroll"><div class="items-list" id="items-list"></div></div>
       </div>
 
+      <div class="board-pane" id="pane-jobs">
+        <div class="scroller jobs-scroll" id="jobs-scroll"><div class="jobs-list" id="jobs-list"></div></div>
+      </div>
+
+      <div class="board-pane" id="pane-invest">
+        <div class="soon-pane">
+          <div class="soon-badge">COMING SOON</div>
+          <h3>投資</h3>
+          <p>近日公開予定です。お楽しみに！</p>
+        </div>
+      </div>
+
+      <div class="board-pane" id="pane-news">
+        <div class="scroller news-scroll" id="news-scroll"><div class="news-list" id="news-list"></div></div>
+      </div>
+
       <div class="board-pane" id="pane-chat">
         <div class="dm-head">
           <button class="dm-user" id="dm-user"></button>
           <button class="mini-btn call" id="dm-call"><i class="ic ic-phone"></i><span>稼ぎに招待</span></button>
           <button class="mini-btn gold" id="dm-money"><i class="ic ic-chip"></i><span>送金</span></button>
           <button class="mini-btn" id="dm-profile"><span>プロフィール</span></button>
-          <div class="dm-debt" id="dm-debt" hidden><span>借金</span><b id="dm-debt-amt"></b><button class="mini-btn gold" id="dm-repay"><span>返済する</span></button></div>
+          <div class="dm-debt" id="dm-debt" hidden><span class="dm-debt-label">借金<small id="dm-debt-cap">累計1100万円まで</small></span><b id="dm-debt-amt"></b><button class="mini-btn gold" id="dm-repay"><span>返済する</span></button></div>
         </div>
         <div class="scroller chat-scroll" id="chat-scroll"><div class="chat-list" id="chat-list"></div></div>
         <button class="chat-bar" id="chat-bar"><span class="chat-placeholder" id="chat-placeholder"></span><span class="chat-send">送信</span></button>
+      </div>
+    </section>
+
+    <!-- ===================== QUESTS (online) ===================== -->
+    <section id="screen-quests" class="screen" aria-label="クエスト">
+      <button class="back-btn back-jp" data-action="back"><i class="ic ic-back"></i><span>戻る</span></button>
+      <div class="tabs" id="q-tabs">
+        <button class="tab active" data-tab="5h"><span>5時間</span></button>
+        <button class="tab" data-tab="day"><span>デイリー</span></button>
+        <button class="tab" data-tab="week"><span>週間</span></button>
+        <button class="tab" data-tab="month"><span>月極</span></button>
+        <button class="tab" data-tab="special"><span>特別</span></button>
+        <div class="tabs-info q-lv" id="q-lv"></div>
+      </div>
+      <div class="board-pane active q-pane">
+        <div class="q-head">
+          <i class="q-icon"></i>
+          <div class="q-title"><h2 id="q-title"></h2><p id="q-sub"></p></div>
+          <div class="q-reset"><small>リセットまで</small><b id="q-reset">-</b></div>
+        </div>
+        <div class="scroller q-scroll" id="q-scroll"><div class="q-list" id="q-list"></div></div>
       </div>
     </section>
 
@@ -251,7 +295,7 @@
         <div class="pf-top">
           <span class="avatar big" id="pf-avatar"></span>
           <div class="pf-id">
-            <div class="pf-name uname" id="pf-name"></div>
+            <div class="pf-name-row"><span class="pf-lv" id="pf-lv" hidden></span><div class="pf-name uname" id="pf-name"></div></div>
             <div class="pf-status" id="pf-status"></div>
           </div>
           <div class="pf-rank"><small>ランキング</small><span>#</span><b id="pf-rank">-</b></div>
@@ -293,7 +337,7 @@
         <button class="modal-x" data-close aria-label="閉じる"></button>
         <h3 class="modal-title"><span>アイコンを選ぶ</span></h3>
         <p class="av-sale-note" id="av-sale-note"></p>
-        <div class="av-grid stage-grid" id="av-grid"></div>
+        <div class="av-grid stage-grid scroller" id="av-grid"></div>
       </div>
     </div>
 
@@ -337,6 +381,7 @@
               <li><i class="ic ic-check"></i><span>「Web アプリとして開く」をオンにして<b>「追加」</b></span></li>
             </ol>
             <p class="in-note">ホーム画面のアイコンから開くと全画面のアプリになります。更新は自動で、新しい版は「アップデート」ボタンですぐ反映できます。</p>
+            <p class="in-note in-warn">iPhone・iPad では Android 用のアプリ（APK ファイル）は開けません。上の手順でホーム画面に追加してください。</p>
           </section>
         </div>
         <div class="in-foot">
@@ -367,6 +412,17 @@
         </div>
         <p class="bonus-text" id="bonus-text"></p>
         <button class="act-btn gold bonus-ok" id="bonus-ok">OK</button>
+      </div>
+    </div>
+
+    <!-- thank you for updating -->
+    <div id="thanks" class="modal" hidden>
+      <div class="modal-card thanks-card" role="dialog" aria-label="アップデートありがとう">
+        <h3 class="modal-title"><span>アップデートありがとうございます！</span></h3>
+        <div class="thanks-amt"><i class="ic ic-dollar"></i><b id="thanks-amt"></b></div>
+        <p class="thanks-sub">感謝料をお受け取りください</p>
+        <div class="thanks-news scroller" id="thanks-news"></div>
+        <button class="act-btn gold" id="thanks-ok">OK</button>
       </div>
     </div>
 
@@ -546,17 +602,16 @@
 </div>
 
 <!-- online: text entry for chat -->
+<!-- the field sits at the top: the keyboard never has to push the screen up to show it -->
 <div id="entry" class="entry" hidden>
-  <div class="entry-head">
+  <form class="entry-bar" id="entry-form" autocomplete="off">
     <button type="button" class="entry-close" id="entry-close" aria-label="閉じる"><i class="ic ic-back"></i></button>
     <div class="entry-title uname" id="entry-title"></div>
-  </div>
-  <div class="entry-feed" id="entry-feed"></div>
-  <p class="entry-error" id="entry-error" role="alert" hidden></p>
-  <form class="entry-bar" id="entry-form" autocomplete="off">
     <input id="entry-input" type="text" maxlength="300" autocomplete="off" autocorrect="off" enterkeyhint="send" placeholder="メッセージを入力">
     <button type="submit" id="entry-send">送信</button>
   </form>
+  <p class="entry-error" id="entry-error" role="alert" hidden></p>
+  <div class="entry-feed" id="entry-feed"></div>
 </div>
 
 <script src="js/art/icons.js"></script>
@@ -568,6 +623,8 @@
 <script src="js/core/util.js"></script>
 <script src="js/game/config.js"></script>
 <script src="js/game/sale.js"></script>
+<script src="js/game/quests.js"></script>
+<script src="js/game/news.js"></script>
 <script src="js/core/store.js"></script>
 <script src="js/game/engine.js"></script>
 <script src="js/net/api.js"></script>
@@ -586,6 +643,9 @@
 <script src="js/ui/shop.js"></script>
 <script src="js/ui/peter.js"></script>
 <script src="js/ui/bonus.js"></script>
+<script src="js/ui/quests.js"></script>
+<script src="js/ui/jobs.js"></script>
+<script src="js/ui/news.js"></script>
 <script src="js/net/call.js"></script>
 <script src="js/ui/watch.js"></script>
 <script src="js/ui/launch.js"></script>

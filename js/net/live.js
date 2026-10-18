@@ -5,7 +5,7 @@
 (function (BR) {
   'use strict';
 
-  var EVENTS = ['hello', 'msg', 'balance', 'presence', 'board', 'friend', 'call', 'watch', 'tip', 'home', 'items'];
+  var EVENTS = ['hello', 'msg', 'balance', 'presence', 'board', 'friend', 'call', 'watch', 'tip', 'home', 'items', 'quest'];
   var conn = null, want = false, connected = false, timer = 0, backoff = 1000, opening = false, pinger = 0;
   var handlers = {};
 

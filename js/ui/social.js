@@ -72,6 +72,10 @@
       BR.shop.renderCharm();
       BR.bonus.show(r.loginBonus);
       BR.bonus.schedule(r.loginReset);
+      BR.quests.setXp(r.me.xp, true);
+      BR.jobs.set(r.me);
+      BR.news.serverRelease(r.me.release);
+      BR.news.checkRelease();
       BR.app.renderWallet(false);
       BR.app.renderBet();
       BR.live.connect();
@@ -98,6 +102,8 @@
     if (BR.watch) BR.watch.stop(true);
     me = null;
     resetSocial();
+    BR.quests.reset();
+    BR.jobs.reset();
     BR.entry.close();
     K.closeModals();
     if (BR.screens.current() !== 'start' && BR.screens.current() !== 'slot') BR.screens.show('slot');
@@ -121,6 +127,8 @@
         if (BR.watch) BR.watch.stop(true);
         me = null;
         resetSocial();
+        BR.quests.reset();
+        BR.jobs.reset();
         K.closeModals();
         BR.app.renderWallet(false);
         BR.screens.show('start');
@@ -270,7 +278,10 @@
     });
   }
 
-  var PANES = { ranking: 'ranking', friends: 'friends', messages: 'messages', lobby: 'chat', dm: 'chat', cars: 'cars', garage: 'garage', shop: 'shop', items: 'items' };
+  var PANES = {
+    ranking: 'ranking', friends: 'friends', messages: 'messages', lobby: 'chat', dm: 'chat', cars: 'cars', garage: 'garage',
+    shop: 'shop', items: 'items', jobs: 'jobs', invest: 'invest', news: 'news'
+  };
   function setView(v) {
     if (v === 'dm' && !peer) v = 'messages';
     view = v;
@@ -286,6 +297,8 @@
     else if (v === 'garage') BR.cars.showGarage();
     else if (v === 'shop') BR.shop.showShop();
     else if (v === 'items') BR.shop.showItems();
+    else if (v === 'jobs') BR.jobs.show();
+    else if (v === 'news') BR.news.show();
   }
 
   /* ranking */
@@ -348,6 +361,8 @@
     });
     if (!hit) (convs || []).forEach(function (c) { if (c.user.id === id) hit = c.user; });
     if (!hit && found && found.user.id === id) hit = found.user;
+    // ピーター's row is there before he has written anything
+    if (!hit) { var pc = BR.peter.placeholder(); if (pc && pc.user.id === id) hit = pc.user; }
     return hit;
   }
 
@@ -560,7 +575,7 @@
     var name = el('div', 'conv-name uname', c.user.name);
     if (npc) name.appendChild(el('span', 'npc-tag', '金貸し・常時オンライン'));
     mid.appendChild(name);
-    mid.appendChild(el('div', 'conv-last', c.last ? preview(c.last) : 'お金に困ったら相談においで。「100万貸して」みたいに書いてくれれば貸すよ'));
+    mid.appendChild(el('div', 'conv-last', c.last ? preview(c.last) : 'お金に困ったら相談においで。累計1100万円まで貸すよ（「100万貸して」と書いてね）'));
     li.appendChild(mid);
     var side = el('div', 'conv-side');
     side.appendChild(el('span', 'conv-time', c.at ? K.fmtTime(c.at) : ''));
@@ -749,7 +764,7 @@
     var d = drafts[key];
     var ph = $('#chat-placeholder');
     ph.textContent = d ? K.clip(d, 80) : key === 'lobby' ? 'みんなにメッセージ…'
-      : peer && BR.peter.is(peer) ? '「100万貸して」「100万返す」のように書けます' : 'メッセージを入力…';
+      : peer && BR.peter.is(peer) ? '「100万貸して」「100万返す」のように書けます（累計1100万円まで）' : 'メッセージを入力…';
     ph.classList.toggle('draft', !!d);
   }
 
@@ -812,10 +827,13 @@
           drafts[key] = '';
           sfx('send');
           onMsg(r.message);
-          // ピーター answers right away
+          // ピーター answers right away (and a loan leaves 「○○万円貸しました」)
           if (r.reply) {
             setTimeout(function () { onMsg(r.reply); sfx('message'); }, 500);
             BR.peter.setDebt(r.debt);
+          }
+          if (r.lent) {
+            setTimeout(function () { onMsg(r.lent); sfx('purchase'); toast(r.lent.text, 3200); }, 900);
           }
         });
       },
@@ -852,6 +870,8 @@
     K.closeModals();
     if (!visible()) { cameFrom = BR.screens.current() === 'start' ? 'start' : 'slot'; BR.screens.show('board'); }
     setView('dm');
+    // クエスト「友達のチャットを覗く」 (the server checks the friendship)
+    if (!peer.npc) api.peek(peer.id).catch(function () {});
   }
 
   /* ------------------------------------------------------------ profile --- */
@@ -894,6 +914,9 @@
     av.id = 'pf-avatar';
     old.parentNode.replaceChild(av, old);
     $('#pf-name').textContent = u.name;
+    var lv = $('#pf-lv'), level = r ? r.user.level : null;
+    lv.hidden = !level;
+    lv.textContent = level ? 'Lv.' + level : '';
     var st = $('#pf-status');
     st.textContent = '';
     if (r) {
@@ -1212,6 +1235,8 @@
     BR.avatars.setShop(h.iconShop);
     BR.shop.setSale(h.itemShop);
     BR.peter.set(h.peter);
+    BR.jobs.set(h.me);
+    BR.news.serverRelease(h.me.release);
     if (greeted) resync();
     greeted = true;
   }
@@ -1350,6 +1375,7 @@
     setMe: function (m) {
       me = m;
       BR.bank.applyMe(m, true);
+      BR.quests.setXp(m.xp);
       BR.shop.renderCharm();
       if (visible() && view === 'ranking' && ranks[boardType]) renderRanking(ranks[boardType]);
     },

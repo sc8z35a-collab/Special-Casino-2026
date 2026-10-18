@@ -58,5 +58,11 @@
     });
   }
 
-  BR.bonus = { init: init, show: show, schedule: schedule };
+  BR.bonus = {
+    init: init,
+    show: show,
+    schedule: schedule,
+    // the board is up, or waiting to come up
+    busy: function () { return !!queued || K.isOpen('bonus'); }
+  };
 })(window.BR = window.BR || {});

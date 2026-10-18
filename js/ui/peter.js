@@ -63,6 +63,9 @@
     box.hidden = false;
     var owed = debt ? debt.owed : null;
     $('#dm-debt-amt').textContent = owed === null ? '-' : owed > 0 ? '$' + U.fmt(owed) : 'なし';
+    // he lends 累計1100万円 at most, ever (paying back does not bring it back)
+    var max = debt ? debt.max : BR.CONFIG.lender.max;
+    $('#dm-debt-cap').textContent = '貸してくれるのは累計' + yen(max) + 'まで' + (debt ? '（あと' + yen(debt.available) + '）' : '');
     $('#dm-repay').disabled = !(owed > 0) || busy;
   }
 
@@ -98,8 +101,9 @@
       BR.app.serverBalance(r.me);
       BR.social.setMe(r.me);
       BR.social.onMsg(r.reply);
+      if (r.lent) BR.social.onMsg(r.lent);
       sfx('purchase');
-      toast('ピーターから ' + yen(r.amount) + ' 借りました（利息' + r.rate + '%・返済額 ' + yen(r.owed) + '）', 4200);
+      toast(yen(r.amount) + '貸しました（利息' + r.rate + '%・返済額 ' + yen(r.owed) + '）', 4200);
       busy = false;
       setDebt(r.debt);
     }, function (err) {

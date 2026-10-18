@@ -252,7 +252,8 @@ test('Peter: offers money when a player is nearly broke, twice; debts stack up; 
   st = await call('GET', '/api/peter', { token: a.token });
   assert.equal(st.debt.offer, 0);
   r = await call('POST', '/api/messages', { token: a.token, body: { to: peterId, text: '100万貸して' } });
-  assert.match(r.reply.text, /まずは返して/);
+  assert.match(r.reply.text, /累計1100万円までなんだ/);
+  assert.equal(r.debt.available, 0);
 
   // repaying: partly, then all of it (a clean slate)
   setUser(a.me.id, { dollars: 20000000 });
@@ -267,6 +268,13 @@ test('Peter: offers money when a player is nearly broke, twice; debts stack up; 
   assert.match(r.reply.text, /全額返済/);
   assert.equal(r.me.dollars, 20000000 - owed1 - 6600000);
   assert.equal((await call('POST', '/api/peter/repay', { token: a.token, body: { amount: 1 } })).error.code, 'no_debt');
+  // 累計1100万円: paying back does not open his purse again
+  assert.deepEqual([r.debt.lent, r.debt.available], [11000000, 0]);
+  r = await call('POST', '/api/messages', { token: a.token, body: { to: peterId, text: '100万貸して' } });
+  assert.match(r.reply.text, /もう貸せない/);
+  setUser(a.me.id, { dollars: 0, tokens: 100 });
+  await call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
+  assert.equal((await call('GET', '/api/peter', { token: a.token })).debt.offer, 0);
   la.close();
 });
 
@@ -277,12 +285,14 @@ test('Peter: loans asked for in the chat stop his own offers until repaid', asyn
   assert.equal(r.status, 200);
   assert.match(r.reply.text, /100万貸して/);
   r = await call('POST', '/api/messages', { token: a.token, body: { to: peterId, text: '2000万貸してほしい' } });
-  assert.match(r.reply.text, /あと1100万円まで/);
+  assert.match(r.reply.text, /累計1100万円まで、あと1100万円/);
   r = await call('POST', '/api/messages', { token: a.token, body: { to: peterId, text: '0.5万貸して' } });
   assert.match(r.reply.text, /はした金/);
   const before = (await call('GET', '/api/me', { token: a.token })).me.dollars;
   r = await call('POST', '/api/messages', { token: a.token, body: { to: peterId, text: '300万貸して' } });
   assert.match(r.reply.text, /300万円貸すよ/);
+  // every loan leaves this line in his chat
+  assert.deepEqual([r.lent.kind, r.lent.text], ['system', '300万円貸しました']);
   assert.equal(r.debt.principal, 3000000);
   assert.equal(r.debt.chat, true);
   const rate = Number(/利息は(\d+)%/.exec(r.reply.text)[1]);

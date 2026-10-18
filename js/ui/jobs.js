@@ -1,0 +1,210 @@
+/* バイト (a tab of the menu): part-time jobs paid by the hour for every
+   second worked, also while the player is away. The wages so far come in with
+   「給料を受け取る」; changing or quitting a job pays them as well. How many
+   jobs can be worked at once, and which, will grow with the player level. */
+(function (BR) {
+  'use strict';
+
+  var U = BR.util, K = BR.kit, api = BR.api, C = BR.CONFIG, LV = BR.LEVEL;
+  var $ = U.$;
+  var el = K.el, sfx = K.sfx, toast = K.toast, fail = K.fail;
+
+  var state = null;   // { level, slots, working: [{ id, since }], offset }
+  var busy = false, ticker = 0;
+
+  function now() { return Date.now() + (state ? state.offset : 0); }
+  function shown() { return BR.screens.current() === 'board' && $('#pane-jobs').classList.contains('active'); }
+  function jobOf(id) {
+    for (var i = 0; i < C.jobs.length; i++) if (C.jobs[i].id === id) return C.jobs[i];
+    return null;
+  }
+  function working(id) {
+    if (!state) return null;
+    for (var i = 0; i < state.working.length; i++) if (state.working[i].id === id) return state.working[i];
+    return null;
+  }
+  function earned(w) {
+    var job = jobOf(w.id);
+    return job ? Math.floor(Math.max(0, now() - w.since) * job.wage / 3600000) : 0;
+  }
+  function level() {
+    var xp = BR.quests && BR.quests.xp();
+    return typeof xp === 'number' ? LV.of(xp) : state ? state.level : 1;
+  }
+
+  function set(r) {
+    if (!r) return;
+    state = { level: r.level, slots: r.slots, working: r.working || [], offset: (r.now || Date.now()) - Date.now() };
+    renderDot();
+    if (shown()) render();
+  }
+  function load() { return api.jobs().then(set); }
+
+  // a dot on the tab once an hour's wages are waiting
+  function renderDot() {
+    var waiting = state ? state.working.some(function (w) { return earned(w) >= jobOf(w.id).wage; }) : false;
+    $('#jobs-dot').hidden = !waiting;
+  }
+
+  function show() {
+    render();
+    load().catch(function (err) { if (!state) renderNote(err.message); });
+    clearInterval(ticker);
+    ticker = setInterval(function () {
+      if (!shown()) { clearInterval(ticker); return; }
+      tick();
+    }, 1000);
+  }
+
+  function renderNote(text) {
+    var list = $('#jobs-list');
+    list.textContent = '';
+    list.appendChild(el('div', 'empty', text));
+  }
+
+  function button(label, act, cls) {
+    var b = el('button', 'act-btn' + (cls ? ' ' + cls : ''), label);
+    b.type = 'button';
+    b.dataset.act = act;
+    return b;
+  }
+
+  function render() {
+    if (!state) { renderNote('読み込み中…'); return; }
+    var list = $('#jobs-list');
+    list.textContent = '';
+    C.jobs.forEach(function (job) { list.appendChild(card(job)); });
+    var lv = level();
+    var info = el('div', 'jobs-note');
+    var head = el('div', 'jobs-lv');
+    head.appendChild(el('b', '', 'Lv.' + lv));
+    head.appendChild(el('span', '', '同時にできるバイト ' + state.slots + 'つ'));
+    info.appendChild(head);
+    info.appendChild(el('p', '', 'バイトはいつでも変更できます。給料は働いた時間の分だけたまり（ゲームを閉じていても）、「給料を受け取る」で受け取れます。'));
+    info.appendChild(el('p', '', 'プレイヤーレベルが上がると、同時にできるバイトが増えたり、新しいバイトが解放されたりします（近日追加予定）。'));
+    list.appendChild(info);
+    tick();
+  }
+
+  function card(job) {
+    var w = working(job.id);
+    var c = el('div', 'job-card' + (w ? ' working' : ''));
+    c.dataset.job = job.id;
+    var pic = el('div', 'job-pic');
+    var src = BR.SOCIAL_IMG.jobs && BR.SOCIAL_IMG.jobs[job.id];
+    if (src) pic.style.backgroundImage = 'url("' + src + '")';
+    if (w) pic.appendChild(el('span', 'job-live', '勤務中'));
+    c.appendChild(pic);
+    var info = el('div', 'job-info');
+    info.appendChild(el('h3', 'job-name', job.name));
+    var wage = el('div', 'job-wage');
+    wage.appendChild(K.amountEl(job.wage, 'dollars'));
+    wage.appendChild(el('span', 'job-per', '/ 1時間'));
+    info.appendChild(wage);
+    info.appendChild(el('div', 'job-state', w ? '' : 'まだ働いていません'));
+    var acts = el('div', 'job-acts');
+    if (w) {
+      acts.appendChild(button('給料を受け取る', 'collect', 'gold'));
+      acts.appendChild(button('やめる', 'stop'));
+    } else {
+      var locked = level() < job.level;
+      var full = state.working.length >= state.slots;
+      var b = button(locked ? 'Lv.' + job.level + 'で解放' : full ? 'このバイトに変更' : '働く', 'start', 'gold');
+      b.disabled = locked;
+      acts.appendChild(b);
+    }
+    info.appendChild(acts);
+    c.appendChild(info);
+    return c;
+  }
+
+  function clock(ms) {
+    var s = Math.max(0, Math.floor(ms / 1000));
+    var pad = function (v) { return v < 10 ? '0' + v : String(v); };
+    return Math.floor(s / 3600) + ':' + pad(Math.floor(s % 3600 / 60)) + ':' + pad(s % 60);
+  }
+
+  // the wages tick up while the tab is open
+  function tick() {
+    if (!state) return;
+    state.working.forEach(function (w) {
+      var c = $('#jobs-list .job-card[data-job="' + w.id + '"]');
+      if (!c) return;
+      var st = c.querySelector('.job-state');
+      st.textContent = '';
+      st.appendChild(el('span', 'job-time', '勤務中 ' + clock(now() - w.since)));
+      var pay = el('span', 'job-pay');
+      pay.appendChild(document.createTextNode('受け取れる給料 '));
+      pay.appendChild(K.amountEl(earned(w), 'dollars'));
+      st.appendChild(pay);
+      var b = c.querySelector('[data-act="collect"]');
+      if (b) b.disabled = busy || earned(w) < 1;
+    });
+    renderDot();
+  }
+
+  function after(r, done) {
+    busy = false;
+    if (r.balance) BR.app.serverBalance(r.balance);
+    set(r);
+    if (r.paid > 0) {
+      sfx('purchase');
+      toast('給料 $' + U.fmt(r.paid) + ' を受け取りました' + (done ? '。' + done : ''), 3400);
+    } else if (done) {
+      toast(done, 3000);
+    }
+  }
+
+  function act(name, id) {
+    if (busy || !state) return;
+    var job = jobOf(id);
+    if (name === 'collect') {
+      busy = true;
+      api.collectJobs().then(function (r) {
+        after(r);
+        if (!r.paid) toast('まだ受け取れる給料がありません');
+      }, function (err) { busy = false; fail(err); });
+      return;
+    }
+    if (name === 'stop') {
+      K.confirmBox(function (p) {
+        p.appendChild(document.createTextNode('「' + job.name + '」をやめますか？'));
+        p.appendChild(el('small', 'confirm-sub', 'ここまでの給料は受け取られます。'));
+      }, 'やめる').then(function (ok) {
+        if (!ok) return;
+        busy = true;
+        api.stopJob(id).then(function (r) { after(r, 'バイトをやめました'); }, function (err) { busy = false; fail(err); });
+      });
+      return;
+    }
+    var go = function () {
+      busy = true;
+      api.startJob(id).then(function (r) {
+        after(r, '「' + job.name + '」を始めました！1時間ごとに $' + U.fmt(job.wage) + ' たまります');
+      }, function (err) { busy = false; fail(err); });
+    };
+    if (state.working.length < state.slots) { go(); return; }
+    var cur = jobOf(state.working[0].id);
+    K.confirmBox(function (p) {
+      p.appendChild(document.createTextNode('「' + (cur ? cur.name : '') + '」をやめて、このバイトに変更しますか？'));
+      p.appendChild(el('small', 'confirm-sub', 'ここまでの給料は受け取られます。'));
+    }, '変更する').then(function (ok) { if (ok) go(); });
+  }
+
+  function init() {
+    $('#jobs-list').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-act]');
+      var c = e.target.closest('[data-job]');
+      if (!b || !c || b.disabled) return;
+      sfx('click');
+      act(b.dataset.act, c.dataset.job);
+    });
+  }
+
+  BR.jobs = {
+    init: init,
+    show: show,
+    set: function (me) { if (me && me.jobs) set({ level: LV.of(me.xp || 0), slots: C.jobSlots, working: me.jobs, now: Date.now() }); },
+    reset: function () { state = null; $('#jobs-dot').hidden = true; }
+  };
+})(window.BR = window.BR || {});

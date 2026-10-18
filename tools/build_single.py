@@ -38,7 +38,7 @@ def inline_css(match):
 
 MEDIA = {'webp': 'image/webp', 'png': 'image/png', 'wav': 'audio/wav', 'mp3': 'audio/mpeg', 'mp4': 'video/mp4'}
 # only used by the online features (or the full-size start video): left out of the offline file
-ONLINE_ONLY = re.compile(r'^(img/avatars/|img/cars/|img/items/|img/fruits/|img/ui/chain\.webp|img/ui/sale\.webp|img/ui/login-bonus\.webp|'
+ONLINE_ONLY = re.compile(r'^(img/avatars/|img/cars/|img/items/|img/fruits/|img/jobs/|img/ui/chain\.webp|img/ui/sale\.webp|img/ui/login-bonus\.webp|'
                          r'video/title\.mp4|video/studio\.mp4|video/intro\.mp4|sounds/peter-)')
 
 
@@ -64,7 +64,8 @@ def main():
     html = re.sub(r'<script src="([^"]+)"></script>', inline_js, html)
     html = html.replace('<link rel="manifest" href="manifest.webmanifest">\n', '')
     for icon in ('icons/icon-192.png', 'icons/icon-180.png'):
-        html = html.replace('href="%s"' % icon, 'href="data:image/png;base64,%s"' % b64(icon))
+        for attr in ('href', 'src'):
+            html = html.replace('%s="%s"' % (attr, icon), '%s="data:image/png;base64,%s"' % (attr, b64(icon)))
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, 'w', encoding='utf-8') as fh:
         fh.write(html)

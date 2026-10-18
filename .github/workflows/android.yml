@@ -15,7 +15,9 @@ on:
       url:
         description: ゲームの公開URL（例 https://blockbuster-reels.xxxx.workers.dev）
         required: false
+  # only the branch the game's site is deployed from publishes the app
   push:
+    branches: [main]
     paths:
       - app/app-url.txt
       - app/android/**
