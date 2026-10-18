@@ -15,7 +15,7 @@
   function installIcons() {
     var css = '';
     var map = {
-      plus: BR.ICONS.plus, back: BR.ICONS.back, radio: BR.ICONS.radio, mic: BR.ICONS.mic, edit: BR.ICONS.edit,
+      plus: BR.ICONS.plus, back: BR.ICONS.back, edit: BR.ICONS.edit,
       stopwatch: BR.ICONS.stopwatch, info: BR.ICONS.info, grip: BR.ICONS.grip, del: BR.ICONS.del,
       'sound-off': BR.ICONS.soundOff, 'sound-on': BR.ICONS.soundOn,
       lock: BR.ICONS.lock, phone: BR.ICONS.phone, hangup: BR.ICONS.hangup, 'mic-on': BR.ICONS.micOn, 'mic-off': BR.ICONS.micOff,
@@ -42,6 +42,10 @@
     css += '#bg{background-image:' + url(art.bg) + '}\n';
     css += '#frame{border-image-source:' + url(art.frame) + '}\n';
     var soc = BR.SOCIAL_IMG;
+    // the round buttons on the slot screen: menu, lobby, quests
+    css += '.ic-menu{background-image:' + url(soc.buttons.menu) + '}\n';
+    css += '.ic-lobby{background-image:' + url(soc.buttons.lobby) + '}\n';
+    css += '.ic-quest,.q-icon,.qn-icon{background-image:' + url(soc.buttons.quest) + '}\n';
     css += '.av-chain{background-image:' + url(soc.chain) + '}\n';
     css += '.sale-badge{background-image:' + url(soc.sale) + '}\n';
     if (soc.items.omamori) css += '.charm-pic{background-image:' + url(soc.items.omamori) + '}\n';
@@ -270,6 +274,7 @@
     BR.bank.spin(stake).then(function (r) {
       if (seq === game.seq) land(r.result);
       BR.shop.afterSpin(r);
+      BR.quests.setXp(r.xp);
     }, function (err) {
       if (seq !== game.seq) return;
       land(null);
@@ -502,13 +507,18 @@
       nav('tokens')();
     });
     press($('#btn-sound'), function () { setSound(!S.muted); BR.sfx.play('click'); });
-    // walkie-talkie: ranking & messages, microphone: lobby chat (online)
+    // the menu (ranking, friends, messages ... バイト, Dev News), the lobby chat and the quests (online)
     [['#btn-radio', 'ranking'], ['#btn-mic', 'lobby']].forEach(function (b) {
       press($(b[0]), function () {
         if (game.busy()) { BR.sfx.play('deny'); return; }
         BR.sfx.play('click');
         BR.social.open(b[1]);
       });
+    });
+    press($('#btn-quest'), function () {
+      if (game.busy()) { BR.sfx.play('deny'); return; }
+      BR.sfx.play('click');
+      BR.quests.open();
     });
     $$('[data-action="back"]').forEach(function (b) {
       press(b, function () {
@@ -528,7 +538,22 @@
       if (e.key === 'Escape' && BR.social.escape()) { e.preventDefault(); return; }
       if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); if (BR.screens.current() === 'slot') spin(); }
     });
-    document.addEventListener('focusout', function () { setTimeout(function () { if (!typing()) layout(); }, 350); });
+    // iPhone: no pinch zoom; when the keyboard goes, the page goes back in
+    // place (Safari may leave it scrolled up) before the layout catches up
+    ['gesturestart', 'gesturechange'].forEach(function (ev) {
+      document.addEventListener(ev, function (e) { e.preventDefault(); }, { passive: false });
+    });
+    function settle() {
+      if (typing()) return;
+      if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }
+    document.addEventListener('focusout', function () {
+      setTimeout(settle, 60);
+      setTimeout(function () { if (!typing()) { settle(); layout(); } }, 350);
+    });
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { setTimeout(settle, 60); });
     window.addEventListener('resize', function () { requestAnimationFrame(layout); });
     window.addEventListener('orientationchange', function () { setTimeout(layout, 250); });
     document.addEventListener('fullscreenchange', function () { setTimeout(layout, 60); });
@@ -569,6 +594,9 @@
     BR.shop.init();
     BR.peter.init();
     BR.bonus.init();
+    BR.quests.init();
+    BR.jobs.init();
+    BR.news.init();
     BR.call.init();
     BR.watch.init();
     BR.start.init();

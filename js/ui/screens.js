@@ -7,6 +7,7 @@
   var $ = U.$, $$ = U.$$;
   var current = 'start';
   var hooks = {};   // extra screens: { open, close, back }
+  var watchers = []; // told about every screen change: fn(name, previous)
 
   /* ------------------------------------------------------------ navigation --- */
   function show(name) {
@@ -20,6 +21,7 @@
     if (name === 'tokens') shop.open();
     if (name === 'rules') rules.open();
     if (hooks[name] && hooks[name].open) hooks[name].open();
+    watchers.forEach(function (fn) { fn(name, prev); });
   }
 
   // The back button: a screen may step back inside itself first; the slot
@@ -281,6 +283,7 @@
     back: back,
     current: function () { return current; },
     register: function (name, h) { hooks[name] = h; },
+    onChange: function (fn) { watchers.push(fn); },
     tabs: tabs,
     numpad: openNumpad
   };

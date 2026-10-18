@@ -63,8 +63,9 @@
     // login bonus in spin tokens for the 1st, 2nd, 3rd, 4th day logged in
     // (then it starts over); a day runs from 6:00 to 6:00 Japan time
     loginBonus: { days: [45000, 50000, 65000, 90000], dayStartsJst: 6 },
-    // Peter the money lender ($): `max` lent at a time; he offers money on his
-    // own when a player is nearly broke (net worth below `brokeBelow` $)
+    // Peter the money lender ($): never more than `max` in all (counted over
+    // every loan ever made to the player, repaid or not); he offers money on
+    // his own when a player is nearly broke (net worth below `brokeBelow` $)
     lender: {
       max: 11000000,
       brokeBelow: 10000,
@@ -72,6 +73,15 @@
       offers: [{ amount: 5000000, rate: [2, 5] }, { amount: 6000000, rate: [10, 10] }],
       // asked in the chat: like the first offer when nothing is owed, then 10 %
       chatRate: [[2, 5], [10, 10]]
-    }
+    },
+    // part-time jobs (バイト): `wage` $ an hour, paid for every second worked
+    // (also while away); `level`: the player level that unlocks it. How many
+    // can be worked at once: `jobSlots` (more with the player level, coming).
+    jobs: [
+      { id: 'garage', name: '近所のガレージの壁を殴るバイト', wage: 20000, level: 1 }
+    ],
+    jobSlots: 1,
+    // $ for every player who updates the game to a new release (js/game/news.js)
+    updateBonus: 250000
   };
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

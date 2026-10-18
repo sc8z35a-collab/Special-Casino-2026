@@ -177,6 +177,15 @@
     tip: function (to, fruits) { return post('/api/tip', { to: to, fruits: fruits }); },
     homeInvite: function (to) { return post('/api/home/invite', { to: to }); },
 
+    /* quests, バイト and updates */
+    quests: function () { return get('/api/quests'); },
+    peek: function (withId) { return post('/api/quests/peek', { with: withId }); },
+    jobs: function () { return get('/api/jobs'); },
+    startJob: function (id) { return post('/api/jobs/start', { id: id }); },
+    stopJob: function (id) { return post('/api/jobs/stop', { id: id }); },
+    collectJobs: function () { return post('/api/jobs/collect'); },
+    release: function (n) { return post('/api/release', { release: n }); },
+
     loginBonus: function () { return post('/api/login-bonus'); },
     ticket: function () { return post('/api/stream-ticket'); }
   };

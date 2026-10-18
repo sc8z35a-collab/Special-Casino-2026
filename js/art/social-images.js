@@ -31,7 +31,17 @@
     },
     chain: 'img/ui/chain.webp',
     sale: 'img/ui/sale.webp',
-    loginBonus: 'img/ui/login-bonus.webp'
+    loginBonus: 'img/ui/login-bonus.webp',
+    // round buttons on the slot screen
+    buttons: {
+      quest: 'img/ui/quest.webp',
+      lobby: 'img/ui/lobby.webp',
+      menu: 'img/ui/menu.webp'
+    },
+    // バイト
+    jobs: {
+      garage: 'img/jobs/garage.webp'
+    }
   };
 
   // the studio logos (every launch; the small one in the single-file build),

@@ -9,6 +9,8 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* quick taps (the number pad, "00") never zoom in */
+button, input, a, label { touch-action: manipulation; }
 
 :root { color-scheme: dark; }
 
@@ -16,6 +18,9 @@ html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
+  /* iPhone: no automatic text enlarging in landscape */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   background: #1a0104;
   color: #fff;
   font-family: var(--f-jp);
@@ -317,8 +322,13 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 .hud-circle .ic { position: absolute; inset: 0; width: 100%; height: 100%; }
 .hud-circle:active { transform: scale(.93); background: rgba(255,255,255,.08); }
 .hud-circle.on { box-shadow: inset 0 0 0 2.6px rgba(140, 255, 150, .7), 0 0 16px rgba(120,255,140,.35); }
-.hud-radio { right: 208px; top: 152px; width: 86px; height: 86px; }
-.hud-mic { right: 204px; top: 296px; }
+/* menu, lobby, quests: the supplied pictures are the whole button */
+.hud-radio { right: 204px; top: 138px; }
+.hud-mic { right: 204px; top: 260px; }
+.hud-quest { right: 204px; top: 382px; }
+.hud-circle.pic { background: none; box-shadow: none; }
+.hud-circle.pic .ic { filter: drop-shadow(0 4px 7px rgba(0, 0, 0, .55)); }
+.hud-circle.pic:active { background: none; }
 
 /* SPIN */
 .spin-btn {

@@ -17,10 +17,14 @@ import {
   cleanPassword, hashPassword, verifyPassword, signTicket, verifyTicket
 } from './auth.js';
 import { Limiter } from './ratelimit.js';
-import { RULES, AVATARS, CARS, SHOP, FRUITS, spin as spinReels, iconSale, itemSale, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt } from './rules.js';
+import {
+  RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE,
+  spin as spinReels, iconSale, itemSale, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
+} from './rules.js';
 import { createAdmin } from './admin.js';
 import { createPeter, reservedName } from './peter.js';
 import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
+import { readQuests, stepQuests, questView } from './quests.js';
 
 const PAGE = 50;
 const LOBBY_KEEP = 500;
@@ -100,8 +104,79 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // in a home: watching someone, or watched by someone
   const inHome = (userId) => !!watching(userId) || !!q('SELECT 1 AS x FROM watchers WHERE target_id = ? LIMIT 1').get(userId);
 
-  const peter = createPeter({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel });
+  const peter = createPeter({
+    q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel,
+    onBorrow: (userId) => track(userId, [['borrow', 1]])
+  });
   peter.id();
+
+  /* ----- quests (js/game/quests.js), XP, バイト ----- */
+
+  // Quest progress inside the caller's transaction (`cur`: the player's row as
+  // it is now). `xp`: XP earned besides the quests. The caller saves `json`,
+  // pays `dollars` / `tokens` and adds `xp`.
+  function questStep(cur, events, xp = 0) {
+    if (!config.quests) return { changed: false, done: [], dollars: 0, tokens: 0, json: cur.quests, xp, before: cur.xp };
+    const state = readQuests(cur.quests);
+    const r = stepQuests(state, events, Date.now());
+    return { ...r, json: JSON.stringify(state), xp: xp + r.done.length * LEVEL.questXp, before: cur.xp };
+  }
+  // Tells the player what was finished (and their XP now).
+  function questNotice(userId, r) {
+    if (!r || !r.done.length) return;
+    live.send(userId, 'quest', { done: r.done.map((x) => x.id), dollars: r.dollars, tokens: r.tokens, xp: r.before + r.xp });
+  }
+  // Progress from one of the player's actions, saved in a transaction of its own.
+  function track(userId, events) {
+    const r = tx(() => {
+      const cur = getUser(userId);
+      if (!cur || cur.npc) return null;
+      const st = questStep(cur, events);
+      if (!st.changed) return null;
+      const paid = st.dollars > 0 || st.tokens > 0;
+      q('UPDATE users SET quests = ?, dollars = dollars + ?, tokens = tokens + ?, xp = xp + ?, rev = rev + ? WHERE id = ?')
+        .run(st.json, st.dollars, st.tokens, st.xp, paid ? 1 : 0, cur.id);
+      return st;
+    });
+    if (r && (r.dollars || r.tokens)) balanceChanged(userId);
+    questNotice(userId, r);
+    return r;
+  }
+  // After the player spent money: 「無一文になってしまう」 and Peter's offers.
+  function afterSpend(userId) {
+    const u = getUser(userId);
+    if (u && !u.npc && u.dollars + u.tokens * RULES.tokenPrice < QUESTS.brokeBelow) track(userId, [['broke', 1]]);
+    peter.check(userId);
+  }
+
+  // The バイト being worked: [{ id, since }] (since = paid up to then).
+  function readJobs(json) {
+    try {
+      const a = JSON.parse(json || '[]');
+      return Array.isArray(a) ? a.filter((j) => j && JOBS.has(j.id) && Number.isFinite(j.since)) : [];
+    } catch {
+      return [];
+    }
+  }
+  // Wages up to `now` for every job (the fraction of a $ carries over).
+  function settleJobs(cur, now) {
+    const jobs = readJobs(cur.jobs);
+    let pay = 0;
+    for (const j of jobs) {
+      const wage = JOBS.get(j.id).wage;
+      const p = Math.floor(Math.max(0, now - j.since) * wage / 3600000);
+      if (p <= 0) continue;
+      pay += p;
+      j.since += Math.floor(p * 3600000 / wage);
+    }
+    return { jobs, pay };
+  }
+  function jobsDto(u) {
+    return { level: LEVEL.of(u.xp), slots: RULES.jobSlots, working: readJobs(u.jobs), now: Date.now() };
+  }
+  function saveJobs(userId, jobs, pay) {
+    q('UPDATE users SET jobs = ?, dollars = dollars + ?, rev = rev + ? WHERE id = ?').run(JSON.stringify(jobs), pay, pay > 0 ? 1 : 0, userId);
+  }
 
   function balance(u) { return { tokens: u.tokens, dollars: u.dollars, coins: u.coins, rev: u.rev }; }
   function mini(u) { return { id: u.id, name: u.name, avatar: u.avatar }; }
@@ -126,6 +201,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       items: itemsOf(u.id),
       charm: u.charm > 0,
       debt: peter.owed(u.id),
+      xp: u.xp,
+      jobs: readJobs(u.jobs),
+      // the newest release: a browser running an older game asks the player to update
+      release: RELEASE,
       createdAt: u.created_at
     };
   }
@@ -198,6 +277,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       online: isOnline(u),
       rank: u.npc ? null : rankOf('total_won', u.total_won, u.id),
       cars: carCount(u.id),
+      level: LEVEL.of(u.xp),
       friendship: friendship(viewerId, u.id)
     };
   }
@@ -402,9 +482,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       try {
         ({ token, user } = tx(() => {
           const now = Date.now();
-          const r = q(`INSERT INTO users (name, name_key, recovery_hash, password_hash, avatar, tokens, dollars, coins, created_ip, created_at, last_seen)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-            .run(name, key, sha256(normalizeRecoveryCode(code)), passwordHash, avatar, start.tokens, start.dollars, start.coins, req.ip, now, now);
+          // a new player starts on the newest release: nothing to be thanked for yet
+          const r = q(`INSERT INTO users (name, name_key, recovery_hash, password_hash, avatar, tokens, dollars, coins, created_ip, created_at, last_seen, release_seen)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .run(name, key, sha256(normalizeRecoveryCode(code)), passwordHash, avatar, start.tokens, start.dollars, start.coins, req.ip, now, now, RELEASE);
           const id = Number(r.lastInsertRowid);
           return { token: createSession(id), user: getUser(id) };
         }));
@@ -484,6 +565,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!RULES.bets.includes(bet)) throw new ApiError(400, 'bad_bet', 'ベット額が正しくありません');
       rate(limit.spin, u.id, 'スピンが速すぎます');
       const today = utcDay();
+      let quests = null;
       const result = tx(() => {
         const cur = getUser(u.id);
         if (cur.tokens < bet) throw new ApiError(409, 'insufficient', 'スピントークンが不足しています');
@@ -496,26 +578,32 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const back = r.charm ? r.charm.back : 0;
         const dayWon = (cur.won_day === today ? cur.day_won : 0) + r.total;
         const last = JSON.stringify({ grid: r.grid, total: r.total, tier: r.tier, bet, at: Date.now() });
-        q(`UPDATE users SET tokens = tokens - ? + ?, total_bet = total_bet + ?, total_won = total_won + ?,
-           biggest_win = MAX(biggest_win, ?), spins = spins + 1, won_day = ?, day_won = ?, last_spin = ?, charm = ?, rev = rev + 1 WHERE id = ?`)
-          .run(bet, r.total + back, bet, r.total, r.total, today, dayWon, last, r.charm ? 0 : cur.charm, cur.id);
+        // quests count the spin, a win and the payout in $ (in the same row write)
+        quests = questStep(cur, [['spin', 1], ['win', r.total > 0 ? 1 : 0], ['earn', r.total * RULES.tokenPrice]], LEVEL.spinXp);
+        q(`UPDATE users SET tokens = tokens - ? + ?, dollars = dollars + ?, total_bet = total_bet + ?, total_won = total_won + ?,
+           biggest_win = MAX(biggest_win, ?), spins = spins + 1, won_day = ?, day_won = ?, last_spin = ?, charm = ?,
+           quests = ?, xp = xp + ?, rev = rev + 1 WHERE id = ?`)
+          .run(bet, r.total + back + quests.tokens, quests.dollars, bet, r.total, r.total, today, dayWon, last, r.charm ? 0 : cur.charm,
+            quests.json, quests.xp, cur.id);
         if (config.logSpins) {
           q('INSERT INTO spins (user_id, bet, payout, line, created_at) VALUES (?, ?, ?, ?, ?)').run(cur.id, bet, r.total + back, r.line.join(','), Date.now());
         }
         return r;
       });
       const after = getUser(u.id);
+      questNotice(u.id, quests);
       const out = { grid: result.grid, line: result.line, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet, charm: result.charm || null };
       if (result.total > 0) boardChanged();
       if (result.tier >= 3) {
         postLobbySystem(`${after.name}さんが SUPER BIG WIN！ ${fmt(result.total)} トークン獲得（${Math.round(result.mult * 10) / 10}倍）`);
       }
       notifyWatchers(u.id, { type: 'spin', user: u.id, result: out, balance: balance(after) });
-      peter.check(u.id);
+      afterSpend(u.id);
       return {
         result: out,
         balance: balance(after),
         charm: after.charm > 0,
+        xp: after.xp,
         stats: { totalWon: after.total_won, biggestWin: after.biggest_win, spins: after.spins }
       };
     },
@@ -721,7 +809,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         touchConversations(u.id, to, row.id);
         return row;
       });
-      return { message: deliverDm(m, u.id, to) };
+      const message = deliverDm(m, u.id, to);
+      track(u.id, [['chat', 1]]);
+      return { message };
     },
 
     'POST /api/read': async (req, u) => {
@@ -761,10 +851,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         return row;
       });
       balanceChanged(to);
-      const mine = balanceChanged(u.id);
+      // 送金 quests count it in $ (spin tokens at their price)
+      track(u.id, [['sent', currency === 'tokens' ? amount * RULES.tokenPrice : amount]]);
+      balanceChanged(u.id);
       const dto = deliverDm(m, u.id, to);
-      peter.check(u.id);
-      return { balance: balance(mine), message: dto };
+      afterSpend(u.id);
+      return { balance: balance(getUser(u.id)), message: dto };
     },
 
     /* ----- icons ----- */
@@ -798,7 +890,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           .run(sale.price, [...owned, a.id].join(','), a.id, cur.id);
       });
       const me = meDto(balanceChanged(u.id));
-      peter.check(u.id);
+      afterSpend(u.id);
       return { me, paid: sale.price, pct: sale.pct };
     },
 
@@ -826,7 +918,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         return Number(q('INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at) VALUES (?, ?, 0, ?, ?)').run(cur.id, car.id, now, now).lastInsertRowid);
       });
       const me = meDto(balanceChanged(u.id));
-      peter.check(u.id);
+      afterSpend(u.id);
       return { me, car: { id, model: car.id, acquiredAt: Date.now(), from: null } };
     },
 
@@ -923,7 +1015,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       }
       q(`INSERT INTO watchers (watcher_id, target_id, since) VALUES (?, ?, ?)
          ON CONFLICT(watcher_id) DO UPDATE SET target_id = excluded.target_id, since = excluded.since`).run(u.id, id, Date.now());
-      if (prev !== id) homeChanged(id, mini(u), true);
+      if (prev !== id) {
+        homeChanged(id, mini(u), true);
+        track(u.id, [['watch', 1]]);
+      }
       let last = null;
       try { last = t.last_spin ? JSON.parse(t.last_spin) : null; } catch { last = null; }
       const members = others.map((w) => getUser(w)).filter(Boolean).map(mini);
@@ -962,7 +1057,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         addItems(cur.id, item.id, count);
       });
       const me = meDto(balanceChanged(u.id));
-      peter.check(u.id);
+      afterSpend(u.id);
       return { me, paid: sale.price * count, pct: sale.pct };
     },
 
@@ -1045,9 +1140,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // everyone in the home sees the fruit fly
       notifyWatchers(to, { type: 'tip', user: to, ...tip });
       balanceChanged(to);
-      const mine = balanceChanged(u.id);
-      peter.check(u.id);
-      return { balance: balance(mine), amount, to: t.id };
+      track(u.id, Object.entries(fruits));
+      balanceChanged(u.id);
+      afterSpend(u.id);
+      return { balance: balance(getUser(u.id)), amount, to: t.id };
     },
 
     /* ----- ピーター ----- */
@@ -1071,6 +1167,98 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
     // still playing when the day turns (6:00 Japan time): that day counts too
     'POST /api/login-bonus': (req, u) => ({ loginBonus: loginBonus(u.id), next: nextLoginReset(), me: meDto(getUser(u.id)) }),
+
+    /* ----- quests and XP ----- */
+
+    'GET /api/quests': (req, u) => {
+      const cur = getUser(u.id);
+      return { periods: questView(readQuests(cur.quests)), xp: cur.xp, now: Date.now() };
+    },
+
+    // 友達のチャットを覗く: the player opened a friend's chat
+    'POST /api/quests/peek': async (req, u) => {
+      const body = await req.json();
+      const other = posInt(body.with, 'ユーザーID');
+      rate(limit.read, u.id);
+      if (!areFriends(u.id, other)) return { ok: false };
+      track(u.id, [['peek', 1]]);
+      return { ok: true };
+    },
+
+    /* ----- バイト ----- */
+
+    'GET /api/jobs': (req, u) => jobsDto(getUser(u.id)),
+
+    // With every slot taken, a new job takes the place of the oldest (paid up).
+    'POST /api/jobs/start': async (req, u) => {
+      const body = await req.json();
+      const job = JOBS.get(String(body.id || ''));
+      if (!job) throw new ApiError(400, 'bad_job', 'このバイトはありません');
+      rate(limit.shop, u.id);
+      const paid = tx(() => {
+        const cur = getUser(u.id);
+        if (LEVEL.of(cur.xp) < job.level) throw new ApiError(403, 'locked', `このバイトはプレイヤーレベル${job.level}から働けます`);
+        const now = Date.now();
+        const s = settleJobs(cur, now);
+        if (s.jobs.some((j) => j.id === job.id)) throw new ApiError(409, 'working', 'このバイトはもう始めています');
+        while (s.jobs.length >= RULES.jobSlots) s.jobs.shift();
+        s.jobs.push({ id: job.id, since: now });
+        saveJobs(cur.id, s.jobs, s.pay);
+        return s.pay;
+      });
+      if (paid) balanceChanged(u.id);
+      const after = getUser(u.id);
+      return { paid, balance: balance(after), ...jobsDto(after) };
+    },
+
+    'POST /api/jobs/stop': async (req, u) => {
+      const body = await req.json();
+      const id = String(body.id || '');
+      rate(limit.shop, u.id);
+      const paid = tx(() => {
+        const cur = getUser(u.id);
+        const s = settleJobs(cur, Date.now());
+        if (!s.jobs.some((j) => j.id === id)) throw new ApiError(409, 'not_working', 'このバイトはしていません');
+        saveJobs(cur.id, s.jobs.filter((j) => j.id !== id), s.pay);
+        return s.pay;
+      });
+      if (paid) balanceChanged(u.id);
+      const after = getUser(u.id);
+      return { paid, balance: balance(after), ...jobsDto(after) };
+    },
+
+    // the wages so far, the work goes on
+    'POST /api/jobs/collect': (req, u) => {
+      rate(limit.shop, u.id);
+      const paid = tx(() => {
+        const cur = getUser(u.id);
+        const s = settleJobs(cur, Date.now());
+        if (s.pay > 0) saveJobs(cur.id, s.jobs, s.pay);
+        return s.pay;
+      });
+      if (paid) balanceChanged(u.id);
+      const after = getUser(u.id);
+      return { paid, balance: balance(after), ...jobsDto(after) };
+    },
+
+    /* ----- updates ----- */
+
+    // The game in the browser says which release it is (js/game/news.js). An
+    // older one is asked to update; the first time a player runs a new release
+    // they get the thank-you money (once per release; new players start on it).
+    'POST /api/release': async (req, u) => {
+      const body = await req.json();
+      const theirs = Number(body.release) || 0;
+      if (theirs < RELEASE) return { release: RELEASE, outdated: true, bonus: 0 };
+      const bonus = tx(() => {
+        const cur = getUser(u.id);
+        if (cur.release_seen >= RELEASE) return 0;
+        q('UPDATE users SET release_seen = ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(RELEASE, RULES.updateBonus, cur.id);
+        return RULES.updateBonus;
+      });
+      if (bonus) balanceChanged(u.id);
+      return { release: RELEASE, outdated: false, bonus, me: meDto(getUser(u.id)) };
+    },
 
     'POST /api/stream-ticket': (req, u) => ({ ticket: signTicket(secret, u.id) })
   };
@@ -1101,6 +1289,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (inHome(to)) throw new ApiError(409, 'busy', `${t.name}さんは今ホーム通話中です`);
     }
     live.send(to, 'call', { type, callId, from: mini(u), data: body.data ?? null });
+    // quests: 友達に電話をかけてみる, 友達と話す（通話）: a call picked up, or two
+    // people in a home whose voices are connecting
+    if (type === 'invite') track(u.id, [['call', 1]]);
+    else if (type === 'accept' || (type === 'home' && body.data && body.data.op === 'hello' && body.data.reply)) {
+      track(u.id, [['talk', 1]]);
+      track(to, [['talk', 1]]);
+    }
   }
 
   // Signalling over the WebSocket (no HTTP request per message): errors are dropped.
@@ -1164,7 +1359,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     live.broadcast('presence', { id: userId, online, count: live.onlineCount() });
     if (online) {
       // back nearly broke: Peter may have something to say
-      try { peter.check(userId); } catch (e) { console.error('peter', e); }
+      try { afterSpend(userId); } catch (e) { console.error('peter', e); }
       return;
     }
     // a player who left stops watching, and the rest of that home is told

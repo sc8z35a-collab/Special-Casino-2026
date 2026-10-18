@@ -10,6 +10,8 @@ source/shop/omamori.webp    -> img/items/omamori.webp  (the Shop's お守り加�
 source/shop/<fruit>.webp    -> img/fruits/*.webp       (thrown to a friend one is watching)
 source/shop/peter.webp      -> img/avatars/peter.webp  (ピーター, the money lender)
 source/ui/login-bonus.webp  -> img/ui/login-bonus.webp (the LOGIN BONUS board)
+source/ui/{quest,lobby,menu}.webp -> img/ui/*.webp     (the round buttons on the slot screen)
+source/jobs/garage.jpg      -> img/jobs/garage.webp    (the バイト 近所のガレージの壁を殴る)
 """
 import os
 
@@ -43,6 +45,9 @@ SHOP = os.path.join(HERE, 'source', 'shop')
 FRUITS = ('strawberry', 'watermelon', 'melon')
 # Peter's photo is 1932 px square: hat to collar
 PETER = (226, 110, 1706, 1590)
+# buttons on the slot screen: クエスト, ロビー, the menu (ranking, friends ...)
+BUTTONS = ('quest', 'lobby', 'menu')
+JOBS = {'garage': 'garage.jpg'}
 
 
 def save(img, rel, quality=86):
@@ -86,6 +91,13 @@ def sale_badge(width=560):
     return canvas.resize((width, round(canvas.height * k)), Image.LANCZOS)
 
 
+def square(img):
+    s = max(img.size)
+    out = Image.new('RGBA', (s, s), (0, 0, 0, 0))
+    out.paste(img, ((s - img.width) // 2, (s - img.height) // 2))
+    return out
+
+
 def main():
     for key, (name, box) in AVATARS.items():
         img = Image.open(os.path.join(SRC, name)).convert('RGB').crop(box)
@@ -110,6 +122,12 @@ def main():
     board = trim(Image.open(os.path.join(HERE, 'source', 'ui', 'login-bonus.webp')).convert('RGBA'))
     k = 1500 / board.width
     save(board.resize((1500, round(board.height * k)), Image.LANCZOS), 'img/ui/login-bonus.webp', 88)
+    for key in BUTTONS:
+        pic = square(trim(Image.open(os.path.join(HERE, 'source', 'ui', key + '.webp')).convert('RGBA')))
+        save(pic.resize((256, 256), Image.LANCZOS), 'img/ui/%s.webp' % key, 90)
+    for key, name in JOBS.items():
+        photo = Image.open(os.path.join(HERE, 'source', 'jobs', name)).convert('RGB')
+        save(photo.resize((1200, round(photo.height * 1200 / photo.width)), Image.LANCZOS), 'img/jobs/%s.webp' % key, 84)
 
 
 if __name__ == '__main__':

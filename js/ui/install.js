@@ -44,6 +44,15 @@
     b.classList.toggle('update', update);
     b.querySelector('span').textContent = update ? 'アップデート' : 'アプリで遊ぶ';
     b.querySelector('.ic').className = 'ic ' + (update ? 'ic-download' : 'ic-add-home');
+    // and on the slot screen: 「アップデートしてくださいね。」
+    if (update && BR.news) BR.news.remind(true);
+  }
+
+  // the reminder's button: the app's own update first, else a reload
+  function update() {
+    K.sfx('click');
+    if (state.app) { askAppUpdate(); return; }
+    reload();
   }
 
   function onButton() {
@@ -65,7 +74,7 @@
       if (!v || !v.build || v.build === BR.BUILD || state.web) return;
       state.web = true;
       renderButton();
-      tell('新しいバージョンがあります。スタート画面の「アップデート」で更新できます');
+      tell('新しいバージョンがあります。アップデートしてくださいね。');
     }, function () { /* offline: try again later */ });
   }
 
@@ -77,7 +86,7 @@
       if (state.app && state.app.versionCode === info.versionCode) return;
       state.app = info;
       renderButton();
-      tell('アプリの新しいバージョン（' + info.versionName + '）があります。スタート画面の「アップデート」で更新できます');
+      tell('アプリの新しいバージョン（' + info.versionName + '）があります。アップデートしてくださいね。');
     }, function () { /* no app published, or offline */ });
   }
 
@@ -253,5 +262,5 @@
     if (/[?&]install\b/.test(location.search) && api.online && !platform.installed) BR.launch.whenDone(function () { setTimeout(openSheet, 600); });
   }
 
-  BR.install = { init: init, open: openSheet, check: check };
+  BR.install = { init: init, open: openSheet, check: check, update: update };
 })(window.BR = window.BR || {});

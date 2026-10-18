@@ -50,6 +50,8 @@ export function configFrom(env = {}, overrides = {}) {
     cfTurnToken: str(env, 'CF_TURN_API_TOKEN'),
     // The daily login bonus (js/game/config.js); off only for tests that count tokens exactly.
     loginBonus: flag(env, 'LOGIN_BONUS', true),
+    // Quest rewards (js/game/quests.js); off only for tests that count money exactly.
+    quests: flag(env, 'QUESTS', true),
     // Daily caps (per UTC day, 0 = none): past one, players see the maintenance
     // notice until 00:00 UTC. Cloudflare's own free-plan limits do that by themselves.
     dailyRequestLimit: int(env, 'DAILY_REQUEST_LIMIT', 0),

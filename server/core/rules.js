@@ -4,11 +4,18 @@ import '../../js/core/util.js';
 import '../../js/game/config.js';
 import '../../js/game/engine.js';
 import '../../js/game/sale.js';
+import '../../js/game/quests.js';
+import '../../js/game/news.js';
 
 const BR = globalThis.BR;
-if (!BR || !BR.CONFIG || !BR.engine || !BR.sale) throw new Error('could not load the game rules from js/');
+if (!BR || !BR.CONFIG || !BR.engine || !BR.sale || !BR.QUESTS || !BR.LEVEL || !BR.RELEASE) throw new Error('could not load the game rules from js/');
 
 export const RULES = BR.CONFIG;
+export const QUESTS = BR.QUESTS;
+export const LEVEL = BR.LEVEL;
+// the newest Dev News entry: players on an older game are asked to update
+export const RELEASE = BR.RELEASE;
+export const JOBS = new Map(RULES.jobs.map((j) => [j.id, j]));
 export const AVATARS = new Map(RULES.avatars.map((a) => [a.id, a]));
 export const CARS = new Map(RULES.cars.map((c) => [c.id, c]));
 export const SHOP = new Map(RULES.shop.map((i) => [i.id, i]));

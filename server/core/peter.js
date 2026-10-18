@@ -1,11 +1,13 @@
 // ピーター, the money lender: an NPC account that is always online. When a
 // player is nearly broke he offers a loan on his own (500万 at 2-5 %, and once
 // that is spent too, 600万 at 10 %), he lends what players ask for in his chat
-// ("300万貸して") and takes repayments. He never has more than RULES.lender.max
-// out with one player. A loan asked for in the chat stops his own offers until
-// everything is paid back, so the two never contradict each other. Interest
-// is fixed when the money is lent: the debt grows by the amount plus that
-// many percent, and stacks up until it is repaid. Money is in $ (he says 円).
+// ("300万貸して") and takes repayments. He lends one player RULES.lender.max
+// in all, ever: repaying does not bring that back (debts.lent counts every
+// loan). A loan asked for in the chat stops his own offers until everything
+// is paid back, so the two never contradict each other. Interest is fixed when
+// the money is lent: the debt grows by the amount plus that many percent, and
+// stacks up until it is repaid. Every loan leaves a line "○○万円貸しました" in
+// his chat. Money is in $ (he says 円).
 import { ApiError } from './errors.js';
 import { RULES } from './rules.js';
 import { newRecoveryCode, sha256 } from './auth.js';
@@ -84,7 +86,7 @@ function randInt([lo, hi]) {
 
 /* ------------------------------------------------------------ the lender */
 
-// ctx: { q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel }
+// ctx: { q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel, onBorrow }
 export function createPeter(ctx) {
   const { q, tx, getUser, live } = ctx;
   let peterId = 0;
@@ -108,16 +110,18 @@ export function createPeter(ctx) {
 
   function debt(userId) {
     return q('SELECT * FROM debts WHERE user_id = ?').get(userId)
-      || { user_id: userId, principal: 0, owed: 0, stage: 0, offer: 0, chat: 0 };
+      || { user_id: userId, principal: 0, owed: 0, stage: 0, offer: 0, chat: 0, lent: 0 };
   }
   function saveDebt(d) {
-    q(`INSERT INTO debts (user_id, principal, owed, stage, offer, chat, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+    q(`INSERT INTO debts (user_id, principal, owed, stage, offer, chat, lent, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET principal = excluded.principal, owed = excluded.owed, stage = excluded.stage,
-       offer = excluded.offer, chat = excluded.chat, updated_at = excluded.updated_at`)
-      .run(d.user_id, d.principal, d.owed, d.stage, d.offer, d.chat, Date.now());
+       offer = excluded.offer, chat = excluded.chat, lent = excluded.lent, updated_at = excluded.updated_at`)
+      .run(d.user_id, d.principal, d.owed, d.stage, d.offer, d.chat, d.lent, Date.now());
   }
+  // what he can still lend this player, ever
+  const left = (d) => Math.max(0, L.max - d.lent);
   function debtDto(d) {
-    return { principal: d.principal, owed: d.owed, offer: d.offer, stage: d.stage, chat: !!d.chat, max: L.max, available: Math.max(0, L.max - d.principal) };
+    return { principal: d.principal, owed: d.owed, offer: d.offer, stage: d.stage, chat: !!d.chat, max: L.max, lent: d.lent, available: left(d) };
   }
 
   // A message from Peter in his conversation with the player (unread for them).
@@ -138,8 +142,16 @@ export function createPeter(ctx) {
     const owed = amount + Math.round(amount * rate / 100);
     d.principal += amount;
     d.owed += owed;
+    d.lent += amount;
     q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(amount, cur.id);
     return owed;
+  }
+  // the line under every loan
+  function lentLine(userId, amount) {
+    const pid = id();
+    const row = ctx.insertMessage({ channel: ctx.dmChannel(userId, pid), sender: null, recipient: userId, kind: 'system', body: `${yen(amount)}貸しました` });
+    ctx.touchConversations(userId, pid, row.id, 0);
+    return row;
   }
 
   function repayIn(d, cur, amount) {
@@ -163,7 +175,7 @@ export function createPeter(ctx) {
     const d = debt(userId);
     if (d.chat || d.offer || d.stage >= L.offers.length) return;
     const n = d.stage + 1;
-    if (d.principal + L.offers[n - 1].amount > L.max) return;
+    if (L.offers[n - 1].amount > left(d)) return;
     const row = tx(() => {
       d.offer = n;
       saveDebt(d);
@@ -174,23 +186,27 @@ export function createPeter(ctx) {
 
   // 「借りる」 under one of his offers.
   function takeOffer(u, n) {
-    let note;
+    let note, line;
     const reply = tx(() => {
       const cur = getUser(u.id);
       const d = debt(u.id);
       if (!d.offer || d.offer !== n) throw new ApiError(409, 'offer_gone', 'その話はもう終わったよ（ピーター）');
       const o = L.offers[n - 1];
-      if (d.principal + o.amount > L.max) throw new ApiError(409, 'limit', `ピーターが貸せるのは ${yen(L.max)} までです`);
+      if (o.amount > left(d)) throw new ApiError(409, 'limit', `ピーターが貸せるのは累計${yen(L.max)}までです（あと${yen(left(d))}）`);
       const rate = randInt(o.rate);
       const owed = lend(d, cur, o.amount, rate);
       d.stage = n;
       d.offer = 0;
       saveDebt(d);
       note = { amount: o.amount, rate, owed };
-      return say(u.id, `毎度あり！${yen(o.amount)}貸したよ。利息は${rate}%、返すときは${yen(owed)}だ。`);
+      const row = say(u.id, `毎度あり！${yen(o.amount)}貸したよ。利息は${rate}%、返すときは${yen(owed)}だ。`);
+      line = lentLine(u.id, o.amount);
+      return row;
     });
     ctx.balanceChanged(u.id);
-    return { ...note, reply: deliver(u.id, reply), debt: debtDto(debt(u.id)) };
+    const out = { ...note, reply: deliver(u.id, reply), lent: deliver(u.id, line), debt: debtDto(debt(u.id)) };
+    if (ctx.onBorrow) ctx.onBorrow(u.id);
+    return out;
   }
 
   function repay(u, amount) {
@@ -219,7 +235,7 @@ export function createPeter(ctx) {
     const dto = ctx.msgDto(mine);
     live.send(u.id, 'msg', dto);
     const req = readRequest(text);
-    let money = false;
+    let money = false, line = null;
     const reply = tx(() => {
       const cur = getUser(u.id);
       const d = debt(u.id);
@@ -236,10 +252,10 @@ export function createPeter(ctx) {
       }
       if (req.intent === 'borrow') {
         if (!req.amount) return say(u.id, 'いくら必要なんだい？「100万貸して」みたいに金額を言ってくれ。');
-        const available = L.max - d.principal;
+        const available = left(d);
         if (req.amount < L.minLoan) return say(u.id, `そんなはした金じゃ商売にならないね。${yen(L.minLoan)}からにしてくれ。`);
-        if (available <= 0) return say(u.id, `悪いね、もう${yen(L.max)}貸してる。まずは返してくれ。`);
-        if (req.amount > available) return say(u.id, `そんなには貸せないね。あと${yen(available)}までなら貸すよ。`);
+        if (available <= 0) return say(u.id, `悪いね、俺が貸すのは累計${yen(L.max)}までなんだ。もう貸せないよ。`);
+        if (req.amount > available) return say(u.id, `そんなには貸せないね。俺が貸すのは累計${yen(L.max)}まで、あと${yen(available)}だよ。`);
         const rate = randInt(L.chatRate[d.principal > 0 ? 1 : 0]);
         const owed = lend(d, cur, req.amount, rate);
         // asked for himself: no more offers of his own until it is all repaid
@@ -247,12 +263,16 @@ export function createPeter(ctx) {
         d.offer = 0;
         saveDebt(d);
         money = true;
-        return say(u.id, `いいだろう、${yen(req.amount)}貸すよ。利息は${rate}%、返すときは${yen(owed)}だ。`);
+        const row = say(u.id, `いいだろう、${yen(req.amount)}貸すよ。利息は${rate}%、返すときは${yen(owed)}だ。`);
+        line = lentLine(u.id, req.amount);
+        return row;
       }
-      return say(u.id, '金の話なら聞くよ。借りたいなら「100万貸して」みたいに言ってくれ。');
+      return say(u.id, `金の話なら聞くよ。借りたいなら「100万貸して」みたいに言ってくれ（累計${yen(L.max)}まで貸すよ）。`);
     });
     if (money) ctx.balanceChanged(u.id);
-    return { message: dto, reply: deliver(u.id, reply), debt: debtDto(debt(u.id)) };
+    const out = { message: dto, reply: deliver(u.id, reply), lent: line ? deliver(u.id, line) : null, debt: debtDto(debt(u.id)) };
+    if (line && ctx.onBorrow) ctx.onBorrow(u.id);
+    return out;
   }
 
   return {

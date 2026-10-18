@@ -166,6 +166,7 @@
 
   function init() {
     K.registerModal('avatar-modal');
+    K.dragScroll($('#av-grid'));
   }
 
   BR.avatars = {
