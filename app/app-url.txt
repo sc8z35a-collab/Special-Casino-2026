@@ -1,3 +1,4 @@
 # Android アプリが開くゲームの公開URLを、下の行に書いて保存（コミット）してください。
 # 保存すると Android アプリ（APK）が自動で作られ、ゲームのサイトからダウンロードできるようになります。
 # 例: https://blockbuster-reels.example.workers.dev
+https://blockbuster-reels.sc8z-35a.workers.dev/
