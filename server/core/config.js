@@ -48,6 +48,12 @@ export function configFrom(env = {}, overrides = {}) {
     // Cloudflare Realtime TURN (free up to 1 000 GB a month): key id + API token
     cfTurnKeyId: str(env, 'CF_TURN_KEY_ID'),
     cfTurnToken: str(env, 'CF_TURN_API_TOKEN'),
+    // The daily login bonus (js/game/config.js); off only for tests that count tokens exactly.
+    loginBonus: flag(env, 'LOGIN_BONUS', true),
+    // Daily caps (per UTC day, 0 = none): past one, players see the maintenance
+    // notice until 00:00 UTC. Cloudflare's own free-plan limits do that by themselves.
+    dailyRequestLimit: int(env, 'DAILY_REQUEST_LIMIT', 0),
+    dailyMbLimit: int(env, 'DAILY_MB_LIMIT', 0),
     limits: {},
     ...overrides
   };

@@ -12,7 +12,9 @@
     // only the files listed in .assetsignore are published
     "directory": ".",
     "binding": "ASSETS",
-    "run_worker_first": ["/", "/index.html", "/api/*"]
+    // only the API runs the Worker: the page and the game files are served
+    // free even after the free plan's daily requests are used up
+    "run_worker_first": ["/api/*"]
   },
   "durable_objects": {
     "bindings": [{ "name": "CASINO", "class_name": "Casino" }]

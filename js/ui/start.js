@@ -9,26 +9,6 @@
 
   var video = null;
 
-  // The video is loaded whole and played from a Blob URL: Safari only plays
-  // a video URL from servers that answer byte-range requests, and the
-  // single-file build carries it as a data: URI. The poster shows meanwhile.
-  function load(src) {
-    var m = /^data:([^;,]+);base64,(.*)$/.exec(src);
-    if (!window.Blob || !window.URL || !URL.createObjectURL) return Promise.resolve(src);
-    if (m) {
-      try {
-        var bin = atob(m[2]), out = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-        return Promise.resolve(URL.createObjectURL(new Blob([out], { type: m[1] })));
-      } catch (e) { return Promise.resolve(src); }
-    }
-    if (!window.fetch) return Promise.resolve(src);
-    return fetch(src).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.blob();
-    }).then(function (b) { return URL.createObjectURL(b); }, function () { return src; });
-  }
-
   function pickSource() {
     var v = BR.START_VIDEO;
     if (!api.online) return v.lite;
@@ -38,13 +18,13 @@
   }
 
   function play() {
-    if (!video || BR.screens.current() !== 'start') return;
+    if (!video || BR.screens.current() !== 'start' || !BR.launch.done()) return;
     var p = video.play();
     if (p && p.catch) p.catch(function () { /* autoplay refused: the poster stays, the next tap starts it */ });
   }
 
-  function onShow() { play(); }
-  function onHide() { if (video) video.pause(); }
+  function onShow() { play(); BR.launch.musicOn(); }
+  function onHide() { if (video) video.pause(); BR.launch.musicOff(); }
 
   // the buttons drawn in the video light up when pressed
   function press(btn, fn) {
@@ -91,7 +71,7 @@
     video.setAttribute('muted', '');
     video.poster = BR.START_VIDEO.poster;
     $('#start-backdrop').style.backgroundImage = 'url("' + BR.START_VIDEO.poster + '")';
-    load(pickSource()).then(function (url) {
+    BR.launch.blobUrl(pickSource()).then(function (url) {
       video.src = url;
       play();
     });
@@ -100,12 +80,16 @@
     press($('#start-friends'), onFriends);
     BR.screens.register('start', { open: onShow, close: onHide });
     document.addEventListener('visibilitychange', function () { if (!document.hidden) play(); });
-    play();
+    // after the studio logos: the title video and its music
+    BR.launch.whenDone(function () {
+      play();
+      if (BR.screens.current() === 'start') BR.launch.musicOn();
+    });
     // app shortcuts (long press on the home-screen icon): ?open=friends / ?open=slot
     var open = /[?&]open=(friends|slot)\b/.exec(location.search);
     if (open) {
       if (window.history && history.replaceState) history.replaceState(null, '', location.pathname);
-      setTimeout(open[1] === 'friends' ? onFriends : onStart, 300);
+      BR.launch.whenDone(function () { setTimeout(open[1] === 'friends' ? onFriends : onStart, 300); });
     }
   }
 

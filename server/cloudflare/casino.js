@@ -161,9 +161,16 @@ export class Casino extends DurableObject {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  // Players only listen; everything they do goes through the HTTP API.
+  // Players mostly listen: what they do goes through the HTTP API, except
+  // voice chat signalling ({ op: "call", ... }), which is chatty.
   async webSocketMessage(ws, message) {
-    if (message === 'ping') this.live.write(ws, 'pong');
+    if (message === 'ping') { this.live.write(ws, 'pong'); return; }
+    if (typeof message !== 'string' || message.length > 32 * 1024) return;
+    const a = ws.deserializeAttachment();
+    if (!a) return;
+    let body;
+    try { body = JSON.parse(message); } catch { return; }
+    if (body && body.op === 'call') this.api.socketCall(a.u, body);
   }
 
   async webSocketClose(ws, code) {

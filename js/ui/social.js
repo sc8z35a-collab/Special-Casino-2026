@@ -67,11 +67,17 @@
       setRequests(r.friendRequests);
       setOnline(r.online);
       BR.avatars.setShop(r.iconShop);
+      BR.shop.setSale(r.itemShop);
+      BR.peter.set(r.peter);
+      BR.shop.renderCharm();
+      BR.bonus.show(r.loginBonus);
+      BR.bonus.schedule(r.loginReset);
       BR.app.renderWallet(false);
       BR.app.renderBet();
       BR.live.connect();
     }, function (err) {
       if (err.status === 401 || err.status === 403) return; // auth-lost takes over
+      if (err.code === 'maintenance') return;                // the notice is up until the quota resets
       if (!warned) {
         warned = true;
         toast('サーバーに接続できません。再接続しています…', 3000);
@@ -264,7 +270,7 @@
     });
   }
 
-  var PANES = { ranking: 'ranking', friends: 'friends', messages: 'messages', lobby: 'chat', dm: 'chat', cars: 'cars', garage: 'garage' };
+  var PANES = { ranking: 'ranking', friends: 'friends', messages: 'messages', lobby: 'chat', dm: 'chat', cars: 'cars', garage: 'garage', shop: 'shop', items: 'items' };
   function setView(v) {
     if (v === 'dm' && !peer) v = 'messages';
     view = v;
@@ -278,6 +284,8 @@
     else if (v === 'dm') { renderDmHead(); showChat('dm:' + peer.id, peer.id); }
     else if (v === 'cars') BR.cars.showShop();
     else if (v === 'garage') BR.cars.showGarage();
+    else if (v === 'shop') BR.shop.showShop();
+    else if (v === 'items') BR.shop.showItems();
   }
 
   /* ranking */
@@ -432,8 +440,10 @@
       var p = personRow(u, 'friend');
       var inv = actBtn(p.acts, '稼ぎに招待', 'call', 'call', 'phone');
       inv.disabled = !u.online;
-      var w = actBtn(p.acts, '画面を見る', 'watch', '', 'eye');
+      var w = actBtn(p.acts, '稼ぎに参加', 'watch', '', 'eye');
       w.disabled = !u.online;
+      var ask = actBtn(p.acts, '参加要請', 'ask', '', 'home');
+      ask.disabled = !u.online;
       actBtn(p.acts, 'メッセージ', 'dm');
       box.appendChild(p.row);
     });
@@ -475,6 +485,7 @@
     if (act === 'dm') { sfx('click'); openDm(u); return; }
     if (act === 'call') { sfx('click'); BR.call.invite(u); return; }
     if (act === 'watch') { sfx('click'); BR.watch.start(u); return; }
+    if (act === 'ask') { sfx('click'); BR.watch.askOver(u); return; }
     var job;
     if (act === 'request') job = api.friendRequest(id).then(function (r) {
       sfx(r.friendship === 'friends' ? 'notify' : 'send');
@@ -528,31 +539,41 @@
   }
   function renderConversations() {
     if (!convs) { renderConvNote('読み込み中…'); return; }
-    if (!convs.length) {
-      renderConvNote('まだメッセージはありません。\nフレンドになると、ここで会話できます。');
-      return;
-    }
     var list = $('#conv-list');
     list.textContent = '';
-    convs.forEach(function (c) { list.appendChild(convRow(c)); });
+    // ピーター is always at the top, even before he has written
+    var peterConv = null, rest = [];
+    convs.forEach(function (c) { if (BR.peter.is(c.user)) peterConv = c; else rest.push(c); });
+    peterConv = peterConv || BR.peter.placeholder();
+    if (peterConv) list.appendChild(convRow(peterConv));
+    rest.forEach(function (c) { list.appendChild(convRow(c)); });
+    if (!rest.length) list.appendChild(el('li', 'empty', 'フレンドになると、ここで会話できます。'));
   }
   function convRow(c) {
-    var li = el('li', 'conv-row' + (c.unread ? ' unread' : ''));
+    var npc = BR.peter.is(c.user);
+    var li = el('li', 'conv-row' + (c.unread ? ' unread' : '') + (npc ? ' npc' : ''));
     li.dataset.uid = c.user.id;
     var av = K.avatarEl(c.user);
     av.appendChild(K.presence(c.user.online));
     li.appendChild(av);
     var mid = el('div', 'conv-mid');
-    mid.appendChild(el('div', 'conv-name uname', c.user.name));
-    mid.appendChild(el('div', 'conv-last', preview(c.last)));
+    var name = el('div', 'conv-name uname', c.user.name);
+    if (npc) name.appendChild(el('span', 'npc-tag', '金貸し・常時オンライン'));
+    mid.appendChild(name);
+    mid.appendChild(el('div', 'conv-last', c.last ? preview(c.last) : 'お金に困ったら相談においで。「100万貸して」みたいに書いてくれれば貸すよ'));
     li.appendChild(mid);
     var side = el('div', 'conv-side');
-    side.appendChild(el('span', 'conv-time', K.fmtTime(c.at)));
+    side.appendChild(el('span', 'conv-time', c.at ? K.fmtTime(c.at) : ''));
     var b = el('b', 'badge');
     K.badge(b, c.unread);
     side.appendChild(b);
     li.appendChild(side);
     return li;
+  }
+  function itemName(id) {
+    var list = BR.CONFIG.shop;
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i].name;
+    return 'アイテム';
   }
   function carName(model) {
     var cars = BR.CONFIG.cars;
@@ -564,6 +585,8 @@
       return (last.mine ? '送金しました: ' : '受け取りました: ') + U.fmt(last.amount) + ' ' + (K.CUR[last.currency] || K.CUR.tokens).name;
     }
     if (last.kind === 'gift') return (last.mine ? 'プレゼントしました: ' : 'プレゼントが届きました: ') + carName(last.text);
+    if (last.kind === 'item') return (last.mine ? '譲りました: ' : '届きました: ') + itemName(last.text) + ' ×' + last.amount;
+    if (last.kind === 'offer') return K.clip(last.text, 60);
     if (last.kind === 'system') return K.clip(last.text, 60);
     return (last.mine ? 'あなた: ' : '') + K.clip(last.text, 60);
   }
@@ -625,6 +648,7 @@
 
   function showChat(key, withId) {
     var c = chan(key);
+    var npc = !!withId && peer && BR.peter.is(peer);
     renderChat();
     scrollChat();
     if (!c.loaded) {
@@ -632,10 +656,11 @@
         if (chatKey() !== key) return;
         renderChat();
         scrollChat();
+        if (npc) BR.peter.opened(c.list);
       }, function (err) {
         if (chatKey() === key && !c.list.length) renderChat(err.message);
       });
-    }
+    } else if (npc) BR.peter.opened(c.list);
     if (withId) markRead(withId);
   }
 
@@ -676,6 +701,21 @@
       node.appendChild(el('span', 'msg-time', K.fmtTime(m.at)));
       return node;
     }
+    if (m.kind === 'offer') return BR.peter.offerEl(m);
+    if (m.kind === 'item') {
+      node = el('div', 'msg xfer gift item' + (mine ? ' mine' : ''));
+      card = el('div', 'xfer-card gift-card');
+      card.appendChild(el('div', 'xfer-label', mine ? 'アイテムを譲りました' : 'アイテムが届きました！'));
+      var ip = el('span', 'gift-item');
+      var isrc = BR.SOCIAL_IMG.items[m.text];
+      if (isrc) ip.style.backgroundImage = 'url("' + isrc + '")';
+      card.appendChild(ip);
+      card.appendChild(el('div', 'gift-name', itemName(m.text) + ' ×' + m.amount));
+      if (!mine) card.appendChild(el('div', 'gift-hint', '所有 で見られます'));
+      node.appendChild(card);
+      node.appendChild(el('span', 'msg-time', K.fmtTime(m.at)));
+      return node;
+    }
     if (m.kind === 'gift') {
       node = el('div', 'msg xfer gift' + (mine ? ' mine' : ''));
       card = el('div', 'xfer-card gift-card');
@@ -708,7 +748,8 @@
     if (!key) return;
     var d = drafts[key];
     var ph = $('#chat-placeholder');
-    ph.textContent = d ? K.clip(d, 80) : key === 'lobby' ? 'みんなにメッセージ…' : 'メッセージを入力…';
+    ph.textContent = d ? K.clip(d, 80) : key === 'lobby' ? 'みんなにメッセージ…'
+      : peer && BR.peter.is(peer) ? '「100万貸して」「100万返す」のように書けます' : 'メッセージを入力…';
     ph.classList.toggle('draft', !!d);
   }
 
@@ -771,6 +812,11 @@
           drafts[key] = '';
           sfx('send');
           onMsg(r.message);
+          // ピーター answers right away
+          if (r.reply) {
+            setTimeout(function () { onMsg(r.reply); sfx('message'); }, 500);
+            BR.peter.setDebt(r.debt);
+          }
         });
       },
       onClose: function () {
@@ -787,16 +833,22 @@
     var t = el('span', 'dm-id');
     t.appendChild(el('span', 'dm-name uname', peer.name));
     var st = el('span', 'dm-status');
-    st.appendChild(K.presence(peer.online));
-    st.appendChild(el('span', '', peer.online ? 'オンライン' : 'オフライン'));
+    var npc = BR.peter.is(peer);
+    st.appendChild(K.presence(npc || peer.online));
+    st.appendChild(el('span', '', npc ? '金貸し・常時オンライン' : peer.online ? 'オンライン' : 'オフライン'));
     t.appendChild(st);
     u.appendChild(t);
+    $('#dm-call').hidden = npc;
+    $('#dm-money').hidden = npc;
+    $('#dm-profile').hidden = npc;
+    $('#dm-debt').hidden = !npc;
+    if (npc) BR.peter.renderHead();
     $('#dm-call').disabled = !peer.online;
   }
 
   function openDm(user) {
     if (!user || !me || user.id === me.id) return;
-    peer = { id: user.id, name: user.name, avatar: user.avatar, online: !!user.online };
+    peer = { id: user.id, name: user.name, avatar: user.avatar, online: !!user.online, npc: user.npc || null };
     K.closeModals();
     if (!visible()) { cameFrom = BR.screens.current() === 'start' ? 'start' : 'slot'; BR.screens.show('board'); }
     setView('dm');
@@ -806,6 +858,7 @@
   var prof = { data: null, seq: 0 };
   function openProfile(user) {
     if (!user || !me) return;
+    if (BR.peter.is(user)) { openDm(user); return; }
     var seq = ++prof.seq;
     prof.data = null;
     fillProfile(user, null, user.id === me.id);
@@ -874,11 +927,14 @@
     if (rel === 'friends') {
       var c = pfBtn(a1, '稼ぎに招待', 'call', 'call', 'phone');
       c.disabled = !u.online;
-      var w = pfBtn(a1, '画面を見る', 'watch', '', 'eye');
+      var w = pfBtn(a1, '稼ぎに参加', 'watch', '', 'eye');
       w.disabled = !u.online;
+      var ask = pfBtn(a1, '参加要請', 'ask', '', 'home');
+      ask.disabled = !u.online;
       pfBtn(a1, 'メッセージ', 'dm');
       pfBtn(a2, '送金', 'transfer', 'gold', 'chip');
       pfBtn(a2, '車をあげる', 'gift', '', 'gift');
+      pfBtn(a2, 'アイテムを譲る', 'give', '', 'bag');
       var rm = el('button', 'text-btn', 'フレンド解除');
       rm.type = 'button';
       rm.dataset.act = 'remove';
@@ -914,6 +970,8 @@
       case 'dm': sfx('click'); openDm(u); break;
       case 'call': sfx('click'); K.closeModal('profile'); BR.call.invite(u); break;
       case 'watch': sfx('click'); K.closeModal('profile'); BR.watch.start(u); break;
+      case 'ask': sfx('click'); K.closeModal('profile'); BR.watch.askOver(u); break;
+      case 'give': sfx('click'); K.closeModal('profile'); BR.shop.giveFrom(u); break;
       default: friendAction(act, u.id);
     }
   }
@@ -1068,7 +1126,7 @@
     touchConv(m, other, mine);
     if (mine) return;
     if (here) {
-      if (m.kind === 'transfer' || m.kind === 'gift') sfx('purchase');
+      if (m.kind === 'transfer' || m.kind === 'gift' || m.kind === 'item') sfx('purchase');
       markRead(other);
       return;
     }
@@ -1085,6 +1143,11 @@
       sfx('purchase');
       toast(name + 'さんから ' + carName(m.text) + ' のプレゼントが届きました！Garage で見られます', 4200);
       BR.cars.changed();
+    } else if (m.kind === 'item') {
+      sfx('purchase');
+      toast(name + 'さんから ' + itemName(m.text) + ' ×' + m.amount + ' が届きました！', 4200);
+    } else if (m.from && BR.peter.is(m.from)) {
+      BR.peter.notify(m);
     } else {
       sfx('message');
       toast(K.clip(name, 12) + ': ' + K.clip(m.text, 22), 3000);
@@ -1147,6 +1210,8 @@
     setRequests(h.friendRequests);
     setOnline(h.online);
     BR.avatars.setShop(h.iconShop);
+    BR.shop.setSale(h.itemShop);
+    BR.peter.set(h.peter);
     if (greeted) resync();
     greeted = true;
   }
@@ -1285,9 +1350,13 @@
     setMe: function (m) {
       me = m;
       BR.bank.applyMe(m, true);
+      BR.shop.renderCharm();
       if (visible() && view === 'ranking' && ranks[boardType]) renderRanking(ranks[boardType]);
     },
     friendsList: function () { return friends ? friends.friends : null; },
+    peerIs: function (u) { return !!peer && !!u && peer.id === u.id; },
+    viewingDm: function () { return visible() && view === 'dm' && !document.hidden; },
+    rerenderChat: function () { if (visible() && view === 'dm') renderChat(); },
     loadFriends: loadFriends,
     openProfile: openProfile,
     openDm: openDm,

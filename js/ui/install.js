@@ -208,6 +208,10 @@
   // the start screen (the app then goes to the background).
   window.BRNative = {
     back: function () {
+      // the studio logos cannot be skipped; the story can
+      if (!BR.launch.done()) return true;
+      if (BR.launch.introPlaying()) { BR.launch.skipIntro(); return true; }
+      if (BR.launch.maintenance()) return true;
       if (!$('#numpad').hidden) { $('#numpad').hidden = true; return true; }
       if (BR.social && BR.social.escape()) return true;
       if (BR.account && BR.account.isOpen()) { BR.account.close(); return true; }
@@ -246,7 +250,7 @@
       setInterval(check, CHECK_EVERY);
       document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
     }
-    if (/[?&]install\b/.test(location.search) && api.online && !platform.installed) setTimeout(openSheet, 600);
+    if (/[?&]install\b/.test(location.search) && api.online && !platform.installed) BR.launch.whenDone(function () { setTimeout(openSheet, 600); });
   }
 
   BR.install = { init: init, open: openSheet, check: check };

@@ -6,6 +6,8 @@ source/click.mp3        基本クリック音             -> sounds/click.wav
 source/spin-button.mp3  スロット回す時のボタン音   -> sounds/spin-button.wav
 source/reels.mp3        スロット回し音             -> sounds/reels.wav (exactly two tick cycles, loops seamlessly)
 source/win.mp3          スロットあたり音           -> sounds/win.mp3
+source/bgm-nichinichi.mp3  タイトル画面の BGM       -> sounds/bgm-title.mp3 (the game plays it quieter)
+source/peter-offer*.mp3    ピーターの声             -> sounds/peter-1.mp3, peter-2.mp3 (trimmed, levelled to -16 LUFS)
 
 The recordings are very quiet and the two button sounds start after a
 pause, so they are trimmed to their onset and brought to -1 dBFS peak.
@@ -116,6 +118,21 @@ def main():
 
     x = decode('win.mp3')
     write_mp3(fade(normalize(x[:end(x) + int(0.05 * SR)]), 0.0, 0.08), 'win.mp3')
+
+    # title music: stereo as supplied, a little smaller
+    ffmpeg('bgm-nichinichi.mp3', 'bgm-title.mp3', ['-c:a', 'libmp3lame', '-b:a', '112k', '-ar', str(SR)])
+    # Peter's lines: quiet recordings with silence around them
+    trim = ('silenceremove=start_periods=1:start_threshold=-50dB,areverse,'
+            'silenceremove=start_periods=1:start_threshold=-50dB,areverse,'
+            'loudnorm=I=-16:TP=-1.5:LRA=11,apad=pad_dur=0.15')
+    for n in (1, 2):
+        ffmpeg('peter-offer%d.mp3' % n, 'peter-%d.mp3' % n, ['-af', trim, '-ac', '1', '-ar', str(SR), '-c:a', 'libmp3lame', '-b:a', '80k'])
+
+
+def ffmpeg(src, name, args):
+    path = os.path.join(OUT, name)
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', os.path.join(SRC, src)] + args + [path], check=True)
+    print('wrote %s (%d KiB)' % (os.path.relpath(path, ROOT), os.path.getsize(path) // 1024))
 
 
 if __name__ == '__main__':

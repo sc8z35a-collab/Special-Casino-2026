@@ -125,12 +125,36 @@ export const MIGRATIONS = [
        since      INTEGER NOT NULL
      )`,
     'CREATE INDEX watchers_target ON watchers(target_id)'
+  ],
+  // v3: Shop items and the お守り加護, Peter the money lender (an NPC account), login bonus
+  [
+    "ALTER TABLE users ADD COLUMN npc TEXT NOT NULL DEFAULT ''",
+    'ALTER TABLE users ADD COLUMN charm INTEGER NOT NULL DEFAULT 0',
+    // login bonus: the last login day (6:00 JST to 6:00) and how many days so far
+    "ALTER TABLE users ADD COLUMN login_day TEXT NOT NULL DEFAULT ''",
+    'ALTER TABLE users ADD COLUMN login_days INTEGER NOT NULL DEFAULT 0',
+    `CREATE TABLE items (
+       user_id INTEGER NOT NULL,
+       item    TEXT    NOT NULL,
+       count   INTEGER NOT NULL,
+       PRIMARY KEY (user_id, item)
+     )`,
+    // what a player owes Peter: one row per player who ever borrowed or was offered money
+    `CREATE TABLE debts (
+       user_id    INTEGER PRIMARY KEY,
+       principal  INTEGER NOT NULL DEFAULT 0,
+       owed       INTEGER NOT NULL DEFAULT 0,
+       stage      INTEGER NOT NULL DEFAULT 0,
+       offer      INTEGER NOT NULL DEFAULT 0,
+       chat       INTEGER NOT NULL DEFAULT 0,
+       updated_at INTEGER NOT NULL
+     )`
   ]
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
-  'friends', 'friend_requests', 'cars', 'watchers', 'meta'];
+  'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

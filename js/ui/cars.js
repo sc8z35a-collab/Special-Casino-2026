@@ -192,6 +192,7 @@
     showShop: showShop,
     showGarage: showGarage,
     giftTo: giftTo,
+    pickDialog: pickDialog,
     // a car arrived: refresh when the garage is on screen
     changed: function () {
       garage = null;

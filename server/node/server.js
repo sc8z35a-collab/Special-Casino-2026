@@ -21,9 +21,9 @@ export function createApp(overrides = {}) {
   const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
   const api = createApi({ db, live, config, secret });
   live.onPresence = (userId, online) => api.presence(userId, online);
-  // The page switches to online mode (live updates over SSE) when it sees this marker.
+  // The page is online with WebSocket live updates (Cloudflare); here they come as SSE.
   const serveStatic = createStatic(ROOT, {
-    transformHtml: (html) => html.replace('<meta name="br-mode" content="local">', '<meta name="br-mode" content="online" data-live="sse">')
+    transformHtml: (html) => html.replace('<meta name="br-mode" content="online" data-live="ws">', '<meta name="br-mode" content="online" data-live="sse">')
   });
   const hk = setInterval(() => api.housekeeping(), 3600000);
   hk.unref();

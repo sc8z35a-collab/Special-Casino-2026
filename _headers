@@ -1,10 +1,18 @@
-# Response headers for the static game files on Cloudflare (the page itself
-# gets its headers from server/cloudflare/worker.js).
+# Response headers for the game files on Cloudflare (Workers Static Assets).
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Cross-Origin-Resource-Policy: same-origin
   Permissions-Policy: camera=(), microphone=(self), geolocation=(), payment=()
+# the page: always checked for a newer version; scripts only from the game itself
+/
+  Cache-Control: no-cache
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss:; manifest-src 'self'; media-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Cross-Origin-Opener-Policy: same-origin
+/index.html
+  Cache-Control: no-cache
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss:; manifest-src 'self'; media-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Cross-Origin-Opener-Policy: same-origin
 /sw.js
   Cache-Control: no-cache
 /version.json

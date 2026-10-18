@@ -5,7 +5,7 @@
 (function (BR) {
   'use strict';
 
-  var EVENTS = ['hello', 'msg', 'balance', 'presence', 'board', 'friend', 'call', 'watch'];
+  var EVENTS = ['hello', 'msg', 'balance', 'presence', 'board', 'friend', 'call', 'watch', 'tip', 'home', 'items'];
   var conn = null, want = false, connected = false, timer = 0, backoff = 1000, opening = false, pinger = 0;
   var handlers = {};
 
@@ -68,6 +68,11 @@
     clearInterval(pinger);
     pinger = setInterval(function () { if (ws.readyState === 1) ws.send('ping'); }, 30000);
     return {
+      // a message to the server (only on the WebSocket)
+      send: function (text) {
+        if (ws.readyState !== 1) return false;
+        try { ws.send(text); return true; } catch (e) { return false; }
+      },
       close: function () {
         closed = true;
         clearInterval(pinger);
@@ -116,6 +121,8 @@
       setConnected(false);
     },
     on: function (ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); },
-    isConnected: function () { return connected; }
+    isConnected: function () { return connected; },
+    // sends `obj` over the WebSocket; false when there is none (SSE, offline)
+    send: function (obj) { return !!(conn && connected && conn.send && conn.send(JSON.stringify(obj))); }
   };
 })(window.BR = window.BR || {});

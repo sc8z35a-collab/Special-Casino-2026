@@ -6,6 +6,10 @@ source/social/avatar-*.webp -> img/avatars/*.webp  (square, face centred)
 source/social/chain.webp    -> img/ui/chain.webp   (lock overlay for the paid icons)
 source/social/sale.webp     -> img/ui/sale.webp    (badge on paid icons the player does not own)
 source/social/car-*.webp    -> img/cars/*.webp
+source/shop/omamori.webp    -> img/items/omamori.webp  (the Shop's お守り加護)
+source/shop/<fruit>.webp    -> img/fruits/*.webp       (thrown to a friend one is watching)
+source/shop/peter.webp      -> img/avatars/peter.webp  (ピーター, the money lender)
+source/ui/login-bonus.webp  -> img/ui/login-bonus.webp (the LOGIN BONUS board)
 """
 import os
 
@@ -30,8 +34,15 @@ AVATARS = {
     'witch': ('avatar-witch.webp', LATER),
     'pumpkin': ('avatar-pumpkin.webp', LATER),
     'vampire': ('avatar-vampire.webp', LATER),
+    # 1932 px photos: cap to collar
+    'cap': ('avatar-cap.webp', (190, 40, 1750, 1600)),
+    'catcap': ('avatar-catcap.webp', (190, 40, 1750, 1600)),
 }
 CARS = {'two-state-sedan': 'car-two-state.webp'}
+SHOP = os.path.join(HERE, 'source', 'shop')
+FRUITS = ('strawberry', 'watermelon', 'melon')
+# Peter's photo is 1932 px square: hat to collar
+PETER = (226, 110, 1706, 1590)
 
 
 def save(img, rel, quality=86):
@@ -87,6 +98,18 @@ def main():
         car = trim(Image.open(os.path.join(SRC, name)).convert('RGBA'))
         k = 1200 / car.width
         save(car.resize((1200, round(car.height * k)), Image.LANCZOS), 'img/cars/%s.webp' % key, 86)
+    charm = trim(Image.open(os.path.join(SHOP, 'omamori.webp')).convert('RGBA'))
+    k = 480 / charm.height
+    save(charm.resize((round(charm.width * k), 480), Image.LANCZOS), 'img/items/omamori.webp', 88)
+    for key in FRUITS:
+        fruit = trim(Image.open(os.path.join(SHOP, key + '.webp')).convert('RGBA'))
+        k = 200 / max(fruit.size)
+        save(fruit.resize((round(fruit.width * k), round(fruit.height * k)), Image.LANCZOS), 'img/fruits/%s.webp' % key, 90)
+    peter = Image.open(os.path.join(SHOP, 'peter.webp')).convert('RGB').crop(PETER)
+    save(peter.resize((360, 360), Image.LANCZOS), 'img/avatars/peter.webp')
+    board = trim(Image.open(os.path.join(HERE, 'source', 'ui', 'login-bonus.webp')).convert('RGBA'))
+    k = 1500 / board.width
+    save(board.resize((1500, round(board.height * k)), Image.LANCZOS), 'img/ui/login-bonus.webp', 88)
 
 
 if __name__ == '__main__':

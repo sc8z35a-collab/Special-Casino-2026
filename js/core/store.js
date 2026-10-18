@@ -6,7 +6,8 @@
 
   // Online, balances live on the server; only UI preferences are stored here.
   var mode = document.querySelector('meta[name="br-mode"]');
-  var online = !!mode && mode.getAttribute('content') === 'online';
+  // (a page opened straight from a file has no server behind it)
+  var online = !!mode && mode.getAttribute('content') === 'online' && location.protocol !== 'file:';
   var KEY = online ? 'blockbuster-reels/online-prefs' : 'blockbuster-reels/v1';
   var BACKUP = KEY + '/backup';
   var PREFS = ['betIndex', 'muted', 'coach'];

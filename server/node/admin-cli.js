@@ -26,6 +26,7 @@ const HELP = `BLOCKBUSTER REELS 管理コマンド
   restore <ファイル> [--replace]     backup で作ったファイルから戻す
   restore-time <日時>                Cloudflare 版のみ: データベースを過去の時点に戻す
                                      （例: 2026-10-17T12:00:00Z。30 日前まで。結果に取り消し用の値が出ます）
+  quota                              --remote のみ: 今日のリクエスト数と送信量（DAILY_REQUEST_LIMIT / DAILY_MB_LIMIT）
 
   --remote <URL>   公開中のサーバーに対して実行（環境変数 ADMIN_TOKEN が必要）
 
@@ -121,6 +122,11 @@ export async function run(argv, call, print = console.log) {
       if (!args[0]) throw new AdminError('戻したい日時を指定してください（例: 2026-10-17T12:00:00Z）');
       const r = await call('restore-time', [args[0]]);
       print(`${r.restoredTo} の状態に戻しました。取り消す場合の値: ${r.undoBookmark}`);
+      break;
+    }
+    case 'quota': {
+      const r = await call('quota', []);
+      print(`${r.day}: ${r.requests} リクエスト / ${r.megabytes} MB（上限 ${r.limits.requests || 'なし'} / ${r.limits.megabytes ? r.limits.megabytes + ' MB' : 'なし'}、リセット ${r.resetsAt}）`);
       break;
     }
     default:

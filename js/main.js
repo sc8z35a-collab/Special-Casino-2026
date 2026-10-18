@@ -20,7 +20,8 @@
       'sound-off': BR.ICONS.soundOff, 'sound-on': BR.ICONS.soundOn,
       lock: BR.ICONS.lock, phone: BR.ICONS.phone, hangup: BR.ICONS.hangup, 'mic-on': BR.ICONS.micOn, 'mic-off': BR.ICONS.micOff,
       eye: BR.ICONS.eye, car: BR.ICONS.car, gift: BR.ICONS.gift, friends: BR.ICONS.friends, search: BR.ICONS.search, check: BR.ICONS.check,
-      share: BR.ICONS.share, 'add-home': BR.ICONS.addHome, download: BR.ICONS.download, android: BR.ICONS.android, apple: BR.ICONS.apple
+      share: BR.ICONS.share, 'add-home': BR.ICONS.addHome, download: BR.ICONS.download, android: BR.ICONS.android, apple: BR.ICONS.apple,
+      bag: BR.ICONS.bag, home: BR.ICONS.home, speaker: BR.ICONS.speaker
     };
     function url(u) { return 'url("' + u.replace(/"/g, '%22') + '")'; }
     function svg(markup) { return url(BR.svgURL(markup)); }
@@ -43,6 +44,10 @@
     var soc = BR.SOCIAL_IMG;
     css += '.av-chain{background-image:' + url(soc.chain) + '}\n';
     css += '.sale-badge{background-image:' + url(soc.sale) + '}\n';
+    if (soc.items.omamori) css += '.charm-pic{background-image:' + url(soc.items.omamori) + '}\n';
+    Object.keys(soc.fruits).forEach(function (k) {
+      if (soc.fruits[k]) css += '[data-fruit="' + k + '"] .fruit-pic,.fruit-fly.' + k + '{background-image:' + url(soc.fruits[k]) + '}\n';
+    });
     var st = document.createElement('style');
     st.textContent = css;
     document.head.appendChild(st);
@@ -234,7 +239,7 @@
     }
     if (game.watch) {
       BR.sfx.play('deny');
-      toast(game.watch.user.name + 'さんの画面を観戦中です（戻るボタンで終了）');
+      toast(game.watch.user.name + 'さんのホームで観戦中です（「ホームを出る」で戻れます）');
       return;
     }
     if (!BR.bank.ready()) {
@@ -269,6 +274,7 @@
     BR.sfx.startReels();
     BR.bank.spin(stake).then(function (r) {
       if (seq === game.seq) land(r.result);
+      BR.shop.afterSpin(r);
     }, function (err) {
       if (seq !== game.seq) return;
       land(null);
@@ -286,7 +292,8 @@
   function land(res) {
     game.waiting = false;
     game.result = res;
-    game.hold = res ? res.total : 0;
+    // tokens given back by the お守り加護 also wait for the reels
+    game.hold = res ? res.total + (res.charm ? res.charm.back : 0) : 0;
     if (game.queued) { BR.bank.applyBalance(game.queued); game.queued = null; }
     renderWallet(false);
     var late = (U.now() - game.t0) / 1000;
@@ -314,16 +321,18 @@
     BR.sfx.stopReels();
     $('#btn-spin').classList.remove('spinning');
     var res = game.result;
+    if (res && res.charm) BR.shop.charmSaved(res);
     if (!res || res.total <= 0) {
-      renderWallet(false);
+      renderWallet(!!(res && res.charm));
       renderBet();
-      if (game.watch) { setTimeout(nextWatched, 250); return; }
-      scheduleAuto(game.auto ? 450 : 0);
+      if (game.watch) { setTimeout(nextWatched, res && res.charm ? 900 : 250); return; }
+      scheduleAuto(game.auto ? (res && res.charm ? 1200 : 450) : 0);
       return;
     }
     game.presenting = true;
     var cols = [];
     res.wins.forEach(function (w) { w.cols.forEach(function (c) { if (cols.indexOf(c) < 0) cols.push(c); }); });
+    if (res.charm) game.hold = 0;
     reels.setHighlight(cols);
     $$('.payline-mark').forEach(function (m) { m.classList.add('lit'); });
     // as in the reference, the WIN box and the balance show the final values
@@ -347,6 +356,7 @@
     setWinGoodLuck();
     renderWallet(false);
     renderBet();
+    BR.shop.renderCharm();
   }
   function watchExit() {
     var w = game.watch;
@@ -359,6 +369,7 @@
     $$('.payline-mark').forEach(function (m) { m.classList.remove('lit'); });
     renderWallet(false);
     renderBet();
+    BR.shop.renderCharm();
   }
   function watchBalance(b) {
     if (!game.watch) return;
@@ -385,7 +396,7 @@
     w.balance = item.balance;
     game.spinning = true;
     game.result = res;
-    game.hold = res.total;
+    game.hold = res.total + (res.charm ? res.charm.back : 0);
     game.t0 = U.now();
     renderWallet(false);
     setWinGoodLuck();
@@ -550,6 +561,9 @@
     BR.avatars.init();
     BR.social.init();
     BR.cars.init();
+    BR.shop.init();
+    BR.peter.init();
+    BR.bonus.init();
     BR.call.init();
     BR.watch.init();
     BR.start.init();
@@ -559,6 +573,7 @@
     renderWallet(false);
     renderBet();
     layout();
+    BR.launch.init();
     var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
     fontsReady.then(function () { document.documentElement.classList.add('fonts-ready'); });
   }

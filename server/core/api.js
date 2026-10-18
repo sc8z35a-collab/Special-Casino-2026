@@ -17,18 +17,37 @@ import {
   cleanPassword, hashPassword, verifyPassword, signTicket, verifyTicket
 } from './auth.js';
 import { Limiter } from './ratelimit.js';
-import { RULES, AVATARS, CARS, spin as spinReels, iconSale, utcDay, nextUtcMidnight, fmt } from './rules.js';
+import { RULES, AVATARS, CARS, SHOP, FRUITS, spin as spinReels, iconSale, itemSale, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt } from './rules.js';
 import { createAdmin } from './admin.js';
+import { createPeter, reservedName } from './peter.js';
+import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
 
 const PAGE = 50;
 const LOBBY_KEEP = 500;
 const CURRENCIES = ['tokens', 'dollars'];
-const CALL_TYPES = new Set(['invite', 'accept', 'decline', 'busy', 'cancel', 'hangup', 'signal']);
+// 1:1 calls (稼ぎに招待) and "home" (the voice call of a player and everyone watching them)
+const CALL_TYPES = new Set(['invite', 'accept', 'decline', 'busy', 'cancel', 'hangup', 'signal', 'home']);
 const MAX_PENDING_REQUESTS = 50;
+const CHARM = RULES.charm;
 
-export function createApi({ db, live, config, secret, hostAdmin = null }) {
+function randomInt(lo, hi) {
+  const r = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(r);
+  return lo + (r[0] % (hi - lo + 1));
+}
+
+export function createApi({ db, live: hostLive, config, secret, hostAdmin = null }) {
   const q = statements(db);
   const tx = (fn) => db.tx(fn);
+  const quota = createQuota(db, { requests: config.dailyRequestLimit, megabytes: config.dailyMbLimit });
+  // live pushes count towards the bytes sent (only when a cap is set)
+  const live = !quota.on ? hostLive : {
+    ...hostLive,
+    send(userId, event, data) { quota.sent(JSON.stringify(data).length + 32); return hostLive.send(userId, event, data); },
+    broadcast(event, data, filter) { quota.sent((JSON.stringify(data).length + 32) * hostLive.onlineCount()); return hostLive.broadcast(event, data, filter); },
+    isOnline: (id) => hostLive.isOnline(id),
+    onlineCount: () => hostLive.onlineCount()
+  };
   const start = {
     tokens: config.startTokens ?? RULES.start.tokens,
     dollars: config.startDollars ?? RULES.start.dollars,
@@ -46,6 +65,7 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
     transfer: [10, 5],
     friend: [30, 10],
     call: [600, 120],
+    tip: [240, 40],
     read: [240, 30],
     general: [600, 60],
     ...config.limits
@@ -63,6 +83,25 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
   const hasRequest = (from, to) => !!q('SELECT 1 AS x FROM friend_requests WHERE from_id = ? AND to_id = ?').get(from, to);
   const ownedAvatars = (u) => (u.avatars ? u.avatars.split(',') : []);
   const carCount = (id) => q('SELECT COUNT(*) AS n FROM cars WHERE owner_id = ?').get(id).n;
+  const itemCount = (userId, item) => { const r = q('SELECT count FROM items WHERE user_id = ? AND item = ?').get(userId, item); return r ? r.count : 0; };
+  function addItems(userId, item, n) {
+    q(`INSERT INTO items (user_id, item, count) VALUES (?, ?, ?)
+       ON CONFLICT(user_id, item) DO UPDATE SET count = items.count + excluded.count`).run(userId, item, n);
+    q('DELETE FROM items WHERE user_id = ? AND count <= 0').run(userId);
+  }
+  function itemsOf(userId) {
+    const out = {};
+    for (const r of q('SELECT item, count FROM items WHERE user_id = ?').all(userId)) out[r.item] = r.count;
+    return out;
+  }
+  // the watchers of `hostId` (everyone in their home)
+  const watcherIds = (hostId) => q('SELECT watcher_id FROM watchers WHERE target_id = ?').all(hostId).map((r) => r.watcher_id);
+  const watching = (userId) => { const r = q('SELECT target_id FROM watchers WHERE watcher_id = ?').get(userId); return r ? r.target_id : 0; };
+  // in a home: watching someone, or watched by someone
+  const inHome = (userId) => !!watching(userId) || !!q('SELECT 1 AS x FROM watchers WHERE target_id = ? LIMIT 1').get(userId);
+
+  const peter = createPeter({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel });
+  peter.id();
 
   function balance(u) { return { tokens: u.tokens, dollars: u.dollars, coins: u.coins, rev: u.rev }; }
   function mini(u) { return { id: u.id, name: u.name, avatar: u.avatar }; }
@@ -84,7 +123,42 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
       dailyReady: u.free_day !== today,
       hasPassword: !!u.password_hash,
       cars: carCount(u.id),
+      items: itemsOf(u.id),
+      charm: u.charm > 0,
+      debt: peter.owed(u.id),
       createdAt: u.created_at
+    };
+  }
+
+  // Being logged in for any moment of a day (6:00 to 6:00 Japan time) counts
+  // as a login day; the first one of each day pays that day's bonus in spin
+  // tokens (1st..4th day, then over again). Returns what was paid, once a day.
+  function loginBonus(userId) {
+    if (!config.loginBonus) return null;
+    const day = loginDay();
+    const days = RULES.loginBonus.days;
+    const paid = tx(() => {
+      const cur = getUser(userId);
+      if (!cur || cur.npc || cur.login_day === day) return null;
+      const n = cur.login_days + 1;
+      const step = (n - 1) % days.length;
+      q('UPDATE users SET login_day = ?, login_days = ?, tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(day, n, days[step], cur.id);
+      return { day: step + 1, amount: days[step], days, loginDays: n, next: nextLoginReset() };
+    });
+    if (paid) balanceChanged(userId);
+    return paid;
+  }
+
+  // Today's prices in the Shop (always on sale too).
+  function itemShop() {
+    const day = utcDay();
+    return {
+      day,
+      until: nextUtcMidnight(),
+      items: [...SHOP.values()].map((i) => {
+        const s = itemSale(i, day);
+        return { id: i.id, price: i.price, salePrice: s.price, pct: s.pct, max: i.max };
+      })
     };
   }
 
@@ -115,20 +189,24 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
       id: u.id,
       name: u.name,
       avatar: u.avatar,
+      npc: u.npc || null,
       totalWon: u.total_won,
       biggestWin: u.biggest_win,
       spins: u.spins,
       dayWon: u.won_day === today ? u.day_won : 0,
       createdAt: u.created_at,
-      online: live.isOnline(u.id),
-      rank: rankOf('total_won', u.total_won, u.id),
+      online: isOnline(u),
+      rank: u.npc ? null : rankOf('total_won', u.total_won, u.id),
       cars: carCount(u.id),
       friendship: friendship(viewerId, u.id)
     };
   }
 
+  // Peter is always there
+  function isOnline(u) { return u.npc ? true : live.isOnline(u.id); }
+
   function rankOf(col, value, id) {
-    return q(`SELECT COUNT(*) AS n FROM users WHERE banned = 0 AND (${col} > ? OR (${col} = ? AND id < ?))`).get(value, value, id).n + 1;
+    return q(`SELECT COUNT(*) AS n FROM users WHERE banned = 0 AND npc = '' AND (${col} > ? OR (${col} = ? AND id < ?))`).get(value, value, id).n + 1;
   }
 
   function msgDto(m) {
@@ -202,6 +280,12 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
     if (boardTimer.unref) boardTimer.unref();
   }
 
+  // The other people in `hostId`'s home hear about a watcher coming or going.
+  function homeChanged(hostId, who, on) {
+    live.send(hostId, 'watch', { type: 'watched', by: who, on });
+    for (const id of watcherIds(hostId)) if (id !== who.id) live.send(id, 'watch', { type: 'member', user: hostId, by: who, on });
+  }
+
   function postLobbySystem(text) {
     const m = insertMessage({ channel: 'lobby', sender: null, kind: 'system', body: text });
     live.broadcast('msg', msgDto(m));
@@ -254,6 +338,7 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
   function nameProblem(raw) {
     let key;
     try { ({ key } = cleanName(raw)); } catch (e) { return e.message; }
+    if (reservedName(key)) return 'この名前は使えません';
     if (q('SELECT 1 AS x FROM users WHERE name_key = ?').get(key)) return 'このユーザー名はすでに使われています';
     return null;
   }
@@ -309,6 +394,7 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
         const n = q('SELECT COUNT(*) AS n FROM users WHERE created_ip = ? AND created_at > ?').get(req.ip, Date.now() - 86400000).n;
         if (n >= config.registrationsPerIp) throw new ApiError(429, 'too_many_accounts', 'この接続からはこれ以上アカウントを作成できません');
       }
+      if (reservedName(key)) throw new ApiError(409, 'name_taken', 'この名前は使えません');
       if (q('SELECT 1 AS x FROM users WHERE name_key = ?').get(key)) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
       const passwordHash = await hashPassword(password);
       const code = newRecoveryCode();
@@ -375,10 +461,14 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
     },
 
     'GET /api/me': (req, u) => ({
-      me: meDto(u),
+      loginBonus: loginBonus(u.id),
+      loginReset: nextLoginReset(),
+      me: meDto(getUser(u.id)),
       unread: unreadTotal(u.id),
       friendRequests: pendingRequests(u.id),
       iconShop: iconShop(),
+      itemShop: itemShop(),
+      peter: peter.me(),
       online: live.onlineCount(),
       now: Date.now(),
       nextReset: nextUtcMidnight(),
@@ -398,26 +488,34 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
         const cur = getUser(u.id);
         if (cur.tokens < bet) throw new ApiError(409, 'insufficient', 'スピントークンが不足しています');
         const r = spinReels(bet);
+        // an お守り加護 that is on softens the first losing spin, then it is used up
+        if (cur.charm > 0 && r.total < bet) {
+          const pct = randomInt(1, 10000) <= CHARM.fullChance * 10000 ? 100 : randomInt(CHARM.min, CHARM.max);
+          r.charm = { pct, back: Math.floor((bet - r.total) * pct / 100) };
+        }
+        const back = r.charm ? r.charm.back : 0;
         const dayWon = (cur.won_day === today ? cur.day_won : 0) + r.total;
         const last = JSON.stringify({ grid: r.grid, total: r.total, tier: r.tier, bet, at: Date.now() });
         q(`UPDATE users SET tokens = tokens - ? + ?, total_bet = total_bet + ?, total_won = total_won + ?,
-           biggest_win = MAX(biggest_win, ?), spins = spins + 1, won_day = ?, day_won = ?, last_spin = ?, rev = rev + 1 WHERE id = ?`)
-          .run(bet, r.total, bet, r.total, r.total, today, dayWon, last, cur.id);
+           biggest_win = MAX(biggest_win, ?), spins = spins + 1, won_day = ?, day_won = ?, last_spin = ?, charm = ?, rev = rev + 1 WHERE id = ?`)
+          .run(bet, r.total + back, bet, r.total, r.total, today, dayWon, last, r.charm ? 0 : cur.charm, cur.id);
         if (config.logSpins) {
-          q('INSERT INTO spins (user_id, bet, payout, line, created_at) VALUES (?, ?, ?, ?, ?)').run(cur.id, bet, r.total, r.line.join(','), Date.now());
+          q('INSERT INTO spins (user_id, bet, payout, line, created_at) VALUES (?, ?, ?, ?, ?)').run(cur.id, bet, r.total + back, r.line.join(','), Date.now());
         }
         return r;
       });
       const after = getUser(u.id);
-      const out = { grid: result.grid, line: result.line, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet };
+      const out = { grid: result.grid, line: result.line, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet, charm: result.charm || null };
       if (result.total > 0) boardChanged();
       if (result.tier >= 3) {
         postLobbySystem(`${after.name}さんが SUPER BIG WIN！ ${fmt(result.total)} トークン獲得（${Math.round(result.mult * 10) / 10}倍）`);
       }
       notifyWatchers(u.id, { type: 'spin', user: u.id, result: out, balance: balance(after) });
+      peter.check(u.id);
       return {
         result: out,
         balance: balance(after),
+        charm: after.charm > 0,
         stats: { totalWon: after.total_won, biggestWin: after.biggest_win, spins: after.spins }
       };
     },
@@ -468,18 +566,18 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
       const today = utcDay();
       let rows, value, rank;
       if (type === 'today') {
-        rows = q(`SELECT id, name, avatar, day_won AS value FROM users WHERE banned = 0 AND won_day = ? AND day_won > 0
+        rows = q(`SELECT id, name, avatar, day_won AS value FROM users WHERE banned = 0 AND npc = '' AND won_day = ? AND day_won > 0
                   ORDER BY day_won DESC, id LIMIT 100`).all(today);
         value = u.won_day === today ? u.day_won : 0;
         rank = value > 0
-          ? q('SELECT COUNT(*) AS n FROM users WHERE banned = 0 AND won_day = ? AND (day_won > ? OR (day_won = ? AND id < ?))').get(today, value, value, u.id).n + 1
+          ? q("SELECT COUNT(*) AS n FROM users WHERE banned = 0 AND npc = '' AND won_day = ? AND (day_won > ? OR (day_won = ? AND id < ?))").get(today, value, value, u.id).n + 1
           : null;
       } else if (type === 'biggest') {
-        rows = q('SELECT id, name, avatar, biggest_win AS value FROM users WHERE banned = 0 ORDER BY biggest_win DESC, id LIMIT 100').all();
+        rows = q("SELECT id, name, avatar, biggest_win AS value FROM users WHERE banned = 0 AND npc = '' ORDER BY biggest_win DESC, id LIMIT 100").all();
         value = u.biggest_win;
         rank = rankOf('biggest_win', value, u.id);
       } else if (type === 'total') {
-        rows = q('SELECT id, name, avatar, total_won AS value FROM users WHERE banned = 0 ORDER BY total_won DESC, id LIMIT 100').all();
+        rows = q("SELECT id, name, avatar, total_won AS value FROM users WHERE banned = 0 AND npc = '' ORDER BY total_won DESC, id LIMIT 100").all();
         value = u.total_won;
         rank = rankOf('total_won', value, u.id);
       } else {
@@ -489,7 +587,7 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
         type,
         rows: rows.map((r, i) => ({ rank: i + 1, id: r.id, name: r.name, avatar: r.avatar, value: r.value, online: live.isOnline(r.id) })),
         me: { rank, value },
-        players: q('SELECT COUNT(*) AS n FROM users WHERE banned = 0').get().n,
+        players: q("SELECT COUNT(*) AS n FROM users WHERE banned = 0 AND npc = ''").get().n,
         online: live.onlineCount()
       };
     },
@@ -525,6 +623,7 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
       const t = body.user !== undefined ? liveTarget(posInt(body.user, 'ユーザーID')) : findByName(body.name);
       if (!t || t.banned) throw new ApiError(404, 'not_found', 'その名前のプレイヤーは見つかりません');
       if (t.id === u.id) throw new ApiError(400, 'self', '自分には申請できません');
+      if (t.npc) throw new ApiError(403, 'npc', `${t.name}にはフレンド申請できません`);
       if (areFriends(u.id, t.id)) throw new ApiError(409, 'already', 'すでにフレンドです');
       if (isBlocked(t.id, u.id) || isBlocked(u.id, t.id)) throw new ApiError(403, 'blocked', 'このプレイヤーには申請できません');
       // they already asked us: that makes us friends
@@ -568,12 +667,12 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
     /* ----- chat ----- */
 
     'GET /api/conversations': (req, u) => {
-      const rows = q(`SELECT c.other_id AS id, c.unread, c.updated_at, o.name, o.avatar, o.banned, m.kind, m.body, m.amount, m.currency, m.sender_id
+      const rows = q(`SELECT c.other_id AS id, c.unread, c.updated_at, o.name, o.avatar, o.banned, o.npc, m.kind, m.body, m.amount, m.currency, m.sender_id
                       FROM conversations c JOIN users o ON o.id = c.other_id JOIN messages m ON m.id = c.last_id
                       WHERE c.user_id = ? ORDER BY c.updated_at DESC LIMIT 100`).all(u.id);
       return {
         conversations: rows.filter((r) => !r.banned).map((r) => ({
-          user: { id: r.id, name: r.name, avatar: r.avatar, online: live.isOnline(r.id) },
+          user: { id: r.id, name: r.name, avatar: r.avatar, online: isOnline(r), npc: r.npc || null },
           friend: areFriends(u.id, r.id),
           unread: r.unread,
           at: r.updated_at,
@@ -609,6 +708,10 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
       }
       const to = posInt(body.to, '宛先');
       if (to === u.id) throw new ApiError(400, 'self', '自分にはメッセージを送れません');
+      if (peter.is(to)) {
+        rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
+        return peter.chat(u, text);
+      }
       liveTarget(to);
       requireFriend(u, to, 'メッセージを送れるように');
       if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーにはメッセージを送れません');
@@ -659,7 +762,9 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
       });
       balanceChanged(to);
       const mine = balanceChanged(u.id);
-      return { balance: balance(mine), message: deliverDm(m, u.id, to) };
+      const dto = deliverDm(m, u.id, to);
+      peter.check(u.id);
+      return { balance: balance(mine), message: dto };
     },
 
     /* ----- icons ----- */
@@ -692,7 +797,9 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
         q('UPDATE users SET dollars = dollars - ?, avatars = ?, avatar = ?, rev = rev + 1 WHERE id = ?')
           .run(sale.price, [...owned, a.id].join(','), a.id, cur.id);
       });
-      return { me: meDto(balanceChanged(u.id)), paid: sale.price, pct: sale.pct };
+      const me = meDto(balanceChanged(u.id));
+      peter.check(u.id);
+      return { me, paid: sale.price, pct: sale.pct };
     },
 
     /* ----- cars ----- */
@@ -718,7 +825,9 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
         const now = Date.now();
         return Number(q('INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at) VALUES (?, ?, 0, ?, ?)').run(cur.id, car.id, now, now).lastInsertRowid);
       });
-      return { me: meDto(balanceChanged(u.id)), car: { id, model: car.id, acquiredAt: Date.now(), from: null } };
+      const me = meDto(balanceChanged(u.id));
+      peter.check(u.id);
+      return { me, car: { id, model: car.id, acquiredAt: Date.now(), from: null } };
     },
 
     'POST /api/cars/gift': async (req, u) => {
@@ -751,7 +860,9 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
       const body = await req.json();
       const id = posInt(body.user, 'ユーザーID');
       if (id === u.id) throw new ApiError(400, 'self', '自分はブロックできません');
-      if (!getUser(id)) throw new ApiError(404, 'not_found', 'ユーザーが見つかりません');
+      const target = getUser(id);
+      if (!target) throw new ApiError(404, 'not_found', 'ユーザーが見つかりません');
+      if (target.npc) throw new ApiError(400, 'npc', `${target.name}はブロックできません`);
       if (body.blocked) {
         q('INSERT OR IGNORE INTO blocks (user_id, blocked_id, created_at) VALUES (?, ?, ?)').run(u.id, id, Date.now());
         // blocking also ends a friendship and any pending request
@@ -767,44 +878,56 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
     'GET /api/call/ice': async () => ({ iceServers: await iceServers() }),
 
     'POST /api/call': async (req, u) => {
-      const body = await req.json(32 * 1024);
-      const type = String(body.type || '');
-      if (!CALL_TYPES.has(type)) throw new ApiError(400, 'bad_type', '通話の操作が正しくありません');
-      const callId = String(body.callId || '');
-      if (!/^[\w-]{6,64}$/.test(callId)) throw new ApiError(400, 'bad_call', '通話IDが正しくありません');
+      relayCall(u, await req.json(32 * 1024));
+      return { ok: true };
+    },
+
+    // 稼ぎに参加要請: asks a friend to come and join one's home (watch and talk)
+    'POST /api/home/invite': async (req, u) => {
+      const body = await req.json();
       const to = posInt(body.to, '宛先');
-      liveTarget(to);
-      requireFriend(u, to, '通話');
-      rate(limit.call, u.id);
-      if (type === 'invite') {
-        if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーは呼び出せません');
-        if (!live.isOnline(to)) throw new ApiError(409, 'offline', '相手がオフラインのため呼び出せません');
-      }
-      live.send(to, 'call', { type, callId, from: mini(u), data: body.data ?? null });
+      if (to === u.id) throw new ApiError(400, 'self', '自分には送れません');
+      const t = liveTarget(to);
+      requireFriend(u, to, '稼ぎに参加要請');
+      if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーには送れません');
+      rate(limit.friend, u.id, '少し待ってからお試しください');
+      if (!live.isOnline(to)) throw new ApiError(409, 'offline', `${t.name}さんは今オフラインです`);
+      if (watching(u.id)) throw new ApiError(409, 'watching', '観戦中は参加要請を送れません。観戦をやめてからお試しください');
+      if (watching(to) === u.id) throw new ApiError(409, 'already', `${t.name}さんはすでにあなたの稼ぎに参加しています`);
+      if (watcherIds(u.id).length >= RULES.maxWatchers) throw new ApiError(409, 'full', `あなたのホームは満員です（最大${RULES.maxWatchers}人）`);
+      live.send(to, 'home', { type: 'invite', from: mini(u) });
       return { ok: true };
     },
 
     /* ----- watching a friend's screen ----- */
 
+    // 稼ぎに参加: watching a friend's screen puts one in their home (and its voice call)
     'POST /api/watch': async (req, u) => {
       const body = await req.json();
       const id = posInt(body.user, 'ユーザーID');
       if (!body.on) {
-        const row = q('SELECT target_id FROM watchers WHERE watcher_id = ?').get(u.id);
+        const host = watching(u.id);
         q('DELETE FROM watchers WHERE watcher_id = ?').run(u.id);
-        if (row) live.send(row.target_id, 'watch', { type: 'watched', by: mini(u), on: false });
+        if (host) homeChanged(host, mini(u), false);
         return { on: false };
       }
       const t = liveTarget(id);
-      requireFriend(u, id, '画面を見る');
-      const prev = q('SELECT target_id FROM watchers WHERE watcher_id = ?').get(u.id);
-      if (prev && prev.target_id !== id) live.send(prev.target_id, 'watch', { type: 'watched', by: mini(u), on: false });
+      if (id === u.id) throw new ApiError(400, 'self', '自分の画面は見られません');
+      requireFriend(u, id, '稼ぎに参加');
+      const prev = watching(u.id);
+      const others = watcherIds(id).filter((w) => w !== u.id);
+      if (others.length >= RULES.maxWatchers) throw new ApiError(409, 'full', `${t.name}さんのホームは満員です（最大${RULES.maxWatchers}人）`);
+      if (prev && prev !== id) {
+        q('DELETE FROM watchers WHERE watcher_id = ?').run(u.id);
+        homeChanged(prev, mini(u), false);
+      }
       q(`INSERT INTO watchers (watcher_id, target_id, since) VALUES (?, ?, ?)
          ON CONFLICT(watcher_id) DO UPDATE SET target_id = excluded.target_id, since = excluded.since`).run(u.id, id, Date.now());
-      live.send(id, 'watch', { type: 'watched', by: mini(u), on: true });
+      if (prev !== id) homeChanged(id, mini(u), true);
       let last = null;
       try { last = t.last_spin ? JSON.parse(t.last_spin) : null; } catch { last = null; }
-      return { on: true, user: { ...mini(t), online: live.isOnline(id) }, balance: balance(t), last };
+      const members = others.map((w) => getUser(w)).filter(Boolean).map(mini);
+      return { on: true, user: { ...mini(t), online: live.isOnline(id) }, balance: balance(t), last, members, charm: t.charm > 0 };
     },
 
     // who is watching me (shown as a small eye on my screen)
@@ -812,8 +935,185 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
       watchers: q('SELECT o.id, o.name, o.avatar FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(u.id)
     }),
 
+    /* ----- Shop, 所有 (what one owns) and the お守り加護 ----- */
+
+    'GET /api/items': (req, u) => ({ items: itemsOf(u.id), charm: u.charm > 0, shop: itemShop() }),
+
+    // Charged at today's sale price (`price` per piece, as shown).
+    'POST /api/shop/buy': async (req, u) => {
+      const body = await req.json();
+      rate(limit.shop, u.id);
+      const item = SHOP.get(String(body.id || ''));
+      if (!item) throw new ApiError(400, 'bad_item', 'この商品は販売していません');
+      const count = body.count === undefined ? 1 : posInt(body.count, '個数');
+      const sale = itemSale(item, utcDay());
+      if (body.price !== undefined && Number(body.price) !== sale.price) {
+        throw new ApiError(409, 'price_changed', `セール価格が変わりました（今日は $${fmt(sale.price)}）`, { itemShop: itemShop() });
+      }
+      tx(() => {
+        const cur = getUser(u.id);
+        const have = itemCount(cur.id, item.id);
+        if (have + count > item.max) {
+          throw new ApiError(409, 'max', have >= item.max ? `${item.name}は一人${item.max}個までです` : `${item.name}は一人${item.max}個まで（あと${item.max - have}個買えます）`);
+        }
+        const cost = sale.price * count;
+        if (cur.dollars < cost) throw new ApiError(409, 'insufficient', '$が足りません');
+        q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(cost, cur.id);
+        addItems(cur.id, item.id, count);
+      });
+      const me = meDto(balanceChanged(u.id));
+      peter.check(u.id);
+      return { me, paid: sale.price * count, pct: sale.pct };
+    },
+
+    // Everything from the Shop can be given to a friend.
+    'POST /api/items/give': async (req, u) => {
+      const body = await req.json();
+      const to = posInt(body.to, '宛先');
+      const item = SHOP.get(String(body.id || ''));
+      if (!item) throw new ApiError(400, 'bad_item', 'このアイテムは譲れません');
+      const count = body.count === undefined ? 1 : posInt(body.count, '個数');
+      if (to === u.id) throw new ApiError(400, 'self', '自分には譲れません');
+      const t = liveTarget(to);
+      requireFriend(u, to, 'アイテムを譲る');
+      if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーには譲れません');
+      rate(limit.transfer, u.id, '少し待ってからお試しください');
+      const m = tx(() => {
+        const have = itemCount(u.id, item.id);
+        if (have < count) throw new ApiError(409, 'insufficient', `${item.name}が足りません（${have}個）`);
+        const theirs = itemCount(to, item.id);
+        if (theirs + count > item.max) {
+          throw new ApiError(409, 'their_max', theirs >= item.max
+            ? `${t.name}さんは${item.name}を上限（${item.max}個）まで持っています`
+            : `${t.name}さんに譲れるのはあと${item.max - theirs}個までです`);
+        }
+        addItems(u.id, item.id, -count);
+        addItems(to, item.id, count);
+        const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'item', body: item.id, amount: count });
+        touchConversations(u.id, to, row.id);
+        return row;
+      });
+      live.send(to, 'items', { items: itemsOf(to) });
+      return { me: meDto(getUser(u.id)), message: deliverDm(m, u.id, to) };
+    },
+
+    // One tap on the slot screen, before spinning: the お守り加護 is on until a spin is lost.
+    'POST /api/charm': (req, u) => {
+      rate(limit.shop, u.id);
+      tx(() => {
+        const cur = getUser(u.id);
+        if (cur.charm > 0) throw new ApiError(409, 'active', 'お守り加護はもう発動中です');
+        if (itemCount(cur.id, CHARM.item) < 1) throw new ApiError(409, 'none', 'お守り加護を持っていません（Shop で買えます）');
+        addItems(cur.id, CHARM.item, -1);
+        q('UPDATE users SET charm = 1 WHERE id = ?').run(cur.id);
+      });
+      notifyWatchers(u.id, { type: 'charm', user: u.id, on: true });
+      return { me: meDto(getUser(u.id)) };
+    },
+
+    /* ----- fruits for the friend one is watching ----- */
+
+    'POST /api/tip': async (req, u) => {
+      const body = await req.json();
+      const to = posInt(body.to, '宛先');
+      if (watching(u.id) !== to) throw new ApiError(409, 'not_watching', '観戦中の友達にだけ送れます');
+      const t = liveTarget(to);
+      if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーには送れません');
+      const fruits = {};
+      let count = 0, amount = 0;
+      for (const [id, n] of Object.entries(body.fruits || {})) {
+        const f = FRUITS.get(id);
+        if (!f) throw new ApiError(400, 'bad_fruit', 'このフルーツは送れません');
+        if (n === 0) continue;
+        const k = posInt(n, '個数');
+        fruits[id] = k;
+        count += k;
+        amount += k * f.tokens;
+      }
+      if (!count) throw new ApiError(400, 'bad_amount', '送るフルーツを選んでください');
+      if (count > 200) throw new ApiError(400, 'too_many', '一度に送れるのは200個までです');
+      rate(limit.tip, u.id, 'フルーツが速すぎます。少し待ってください');
+      tx(() => {
+        const cur = getUser(u.id);
+        if (cur.tokens < amount) throw new ApiError(409, 'insufficient', 'スピントークンが足りません');
+        q('UPDATE users SET tokens = tokens - ?, rev = rev + 1 WHERE id = ?').run(amount, u.id);
+        q('UPDATE users SET tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(amount, to);
+        q('INSERT INTO transfers (from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?)').run(u.id, to, 'tokens', amount, Date.now());
+      });
+      const tip = { from: mini(u), fruits, amount };
+      live.send(to, 'tip', tip);
+      // everyone in the home sees the fruit fly
+      notifyWatchers(to, { type: 'tip', user: to, ...tip });
+      balanceChanged(to);
+      const mine = balanceChanged(u.id);
+      peter.check(u.id);
+      return { balance: balance(mine), amount, to: t.id };
+    },
+
+    /* ----- ピーター ----- */
+
+    'GET /api/peter': (req, u) => peter.state(u.id),
+
+    'POST /api/peter/borrow': async (req, u) => {
+      const body = await req.json();
+      const n = Number(body.offer);
+      if (!(n === 1 || n === 2)) throw new ApiError(400, 'bad_offer', '話が見つかりません');
+      rate(limit.transfer, u.id, '少し待ってからお試しください');
+      return { ...peter.takeOffer(u, n), me: meDto(getUser(u.id)) };
+    },
+
+    'POST /api/peter/repay': async (req, u) => {
+      const body = await req.json();
+      const amount = posInt(body.amount, '返済額');
+      rate(limit.transfer, u.id, '少し待ってからお試しください');
+      return { ...peter.repay(u, amount), me: meDto(getUser(u.id)) };
+    },
+
+    // still playing when the day turns (6:00 Japan time): that day counts too
+    'POST /api/login-bonus': (req, u) => ({ loginBonus: loginBonus(u.id), next: nextLoginReset(), me: meDto(getUser(u.id)) }),
+
     'POST /api/stream-ticket': (req, u) => ({ ticket: signTicket(secret, u.id) })
   };
+
+  // Voice chat signalling between friends: 1:1 calls (稼ぎに招待, two people;
+  // a player already in a call or a home is busy) and the home call of a
+  // player and their watchers (type "home": everyone in the home can reach
+  // everyone else). Used by POST /api/call and by the WebSocket.
+  function relayCall(u, body) {
+    const type = String(body.type || '');
+    if (!CALL_TYPES.has(type)) throw new ApiError(400, 'bad_type', '通話の操作が正しくありません');
+    const callId = String(body.callId || '');
+    if (!/^[\w-]{6,64}$/.test(callId)) throw new ApiError(400, 'bad_call', '通話IDが正しくありません');
+    const to = posInt(body.to, '宛先');
+    const t = liveTarget(to);
+    rate(limit.call, u.id);
+    if (type === 'home') {
+      const room = Number(body.data && body.data.room);
+      const member = (id) => id === room || watching(id) === room;
+      if (!room || !member(u.id) || !member(to)) throw new ApiError(409, 'not_home', 'ホームにいません');
+    } else {
+      requireFriend(u, to, '通話');
+    }
+    if (type === 'invite') {
+      if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーは呼び出せません');
+      if (inHome(u.id)) throw new ApiError(409, 'in_home', 'ホーム通話中は稼ぎに招待できません（稼ぎに参加要請なら送れます）');
+      if (!live.isOnline(to)) throw new ApiError(409, 'offline', '相手がオフラインのため呼び出せません');
+      if (inHome(to)) throw new ApiError(409, 'busy', `${t.name}さんは今ホーム通話中です`);
+    }
+    live.send(to, 'call', { type, callId, from: mini(u), data: body.data ?? null });
+  }
+
+  // Signalling over the WebSocket (no HTTP request per message): errors are dropped.
+  function socketCall(userId, body) {
+    try {
+      const u = getUser(userId);
+      if (!u || u.banned) return;
+      if (body.type === 'invite') return;   // invitations go over HTTP, where the answer is seen
+      relayCall(u, body);
+    } catch (e) {
+      if (!(e instanceof ApiError)) console.error(e);
+    }
+  }
 
   // Friendship both ways, the request(s) gone, a note in their conversation.
   function makeFriends(requester, accepter) {
@@ -850,21 +1150,33 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
 
   // First payload of a live connection.
   function hello(userId) {
+    const bonus = loginBonus(userId);
     const u = getUser(userId);
-    return { me: meDto(u), unread: unreadTotal(userId), friendRequests: pendingRequests(userId), iconShop: iconShop(), online: live.onlineCount() };
+    return {
+      loginBonus: bonus,
+      loginReset: nextLoginReset(),
+      me: meDto(u), unread: unreadTotal(userId), friendRequests: pendingRequests(userId), iconShop: iconShop(), itemShop: itemShop(),
+      peter: peter.me(), online: live.onlineCount()
+    };
   }
 
   function presence(userId, online) {
     live.broadcast('presence', { id: userId, online, count: live.onlineCount() });
-    if (online) return;
-    // a player who left stops watching, and their spectators are told
-    const row = q('SELECT target_id FROM watchers WHERE watcher_id = ?').get(userId);
-    if (row) {
+    if (online) {
+      // back nearly broke: Peter may have something to say
+      try { peter.check(userId); } catch (e) { console.error('peter', e); }
+      return;
+    }
+    // a player who left stops watching, and the rest of that home is told
+    const host = watching(userId);
+    if (host) {
       q('DELETE FROM watchers WHERE watcher_id = ?').run(userId);
       const u = getUser(userId);
-      if (u) live.send(row.target_id, 'watch', { type: 'watched', by: mini(u), on: false });
+      if (u) homeChanged(host, mini(u), false);
     }
+    // their own home closes
     notifyWatchers(userId, { type: 'offline', user: userId });
+    q('DELETE FROM watchers WHERE target_id = ?').run(userId);
   }
 
   // Periodic clean-up: trim the lobby, old spin records, stale sessions and watchers.
@@ -876,6 +1188,7 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
       q('DELETE FROM sessions WHERE last_used < ?').run(Date.now() - 365 * 86400000);
       q('DELETE FROM watchers WHERE since < ?').run(Date.now() - 12 * 3600000);
       for (const l of Object.values(limit)) l.prune();
+      quota.flush();
     } catch (e) {
       console.error('housekeeping failed', e);
     }
@@ -897,9 +1210,17 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
   const admin = createAdmin(db);
 
   async function handle(req) {
+    const out = await answer(req);
+    if (quota.on) quota.request(out.body ? JSON.stringify(out.body).length : 0);
+    return out;
+  }
+
+  async function answer(req) {
     const key = `${req.method} ${req.path}`;
     try {
       if (key === 'POST /api/admin') return { status: 200, body: await adminCall(req) };
+      // a day's cap is reached: the same notice for everyone until 00:00 UTC
+      if (quota.over()) return { status: 503, body: maintenanceBody() };
       const route = routes[key];
       if (!route) throw new ApiError(404, 'not_found', 'APIが見つかりません');
       let user = null;
@@ -910,6 +1231,8 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
       return { status: 200, body: await route(req, user) };
     } catch (e) {
       if (e instanceof ApiError) return { status: e.status, body: { error: { code: e.code, message: e.message, ...(e.extra || {}) } } };
+      // the host's daily quota ran out (e.g. database writes on the free plan)
+      if (isQuotaError(e)) return { status: 503, body: maintenanceBody() };
       console.error(e);
       return { status: 500, body: { error: { code: 'internal', message: 'サーバーでエラーが発生しました。少し待ってからもう一度お試しください' } } };
     }
@@ -925,6 +1248,7 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
     const cmd = String(body.cmd || '');
     const args = Array.isArray(body.args) ? body.args : [];
     try {
+      if (cmd === 'quota') return { ok: true, result: quota.state() };
       const own = hostAdmin ? await hostAdmin(cmd, args) : undefined;
       return { ok: true, result: own !== undefined ? own : admin.command(cmd, args) };
     } catch (e) {
@@ -940,6 +1264,8 @@ export function createApi({ db, live, config, secret, hostAdmin = null }) {
     housekeeping,
     userForToken,
     consumeTicket,
-    close: () => { if (boardTimer) clearTimeout(boardTimer); }
+    socketCall,
+    quota,
+    close: () => { quota.flush(); if (boardTimer) clearTimeout(boardTimer); }
   };
 }

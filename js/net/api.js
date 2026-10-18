@@ -6,7 +6,7 @@
   'use strict';
 
   var meta = document.querySelector('meta[name="br-mode"]');
-  var online = !!meta && meta.getAttribute('content') === 'online';
+  var online = !!meta && meta.getAttribute('content') === 'online' && location.protocol !== 'file:';
   var liveMode = (meta && meta.getAttribute('data-live')) || 'sse';
   var KEY = 'blockbuster-reels/auth';
   var NAME_KEY = 'blockbuster-reels/last-name';
@@ -79,6 +79,12 @@
       return res.json().catch(function () { return {}; }).then(function (json) {
         if (res.ok) return json;
         var e = json.error || {};
+        // the server's daily quota is used up: ours says so, the host's own
+        // limit answers 429 (or an error page) without our JSON
+        if (e.code === 'maintenance' || (!json.error && (res.status === 429 || res.status === 503))) {
+          e = { code: 'maintenance', message: 'サーバーのメンテナンス中です', until: e.until };
+          emit('maintenance', e);
+        }
         var err = new ApiError(res.status, e.code || 'error', e.message || ('エラーが発生しました（' + res.status + '）'), e);
         if (res.status === 401 && token && path !== '/api/login' && path !== '/api/register') emit('auth-lost', err);
         if (res.status === 403 && e.code === 'banned') emit('auth-lost', err);
@@ -152,12 +158,26 @@
     buyCar: function (model) { return post('/api/cars/buy', { model: model }); },
     giftCar: function (to, carId) { return post('/api/cars/gift', { to: to, car: carId }); },
 
+    /* Shop, 所有 and the お守り加護 */
+    items: function () { return get('/api/items'); },
+    buyItem: function (id, count, price) { return post('/api/shop/buy', { id: id, count: count, price: price }); },
+    giveItem: function (to, id, count) { return post('/api/items/give', { to: to, id: id, count: count }); },
+    charm: function () { return post('/api/charm'); },
+
+    /* Peter */
+    peter: function () { return get('/api/peter'); },
+    borrow: function (offer) { return post('/api/peter/borrow', { offer: offer }); },
+    repay: function (amount) { return post('/api/peter/repay', { amount: amount }); },
+
     /* voice chat and watching */
     iceServers: function () { return get('/api/call/ice'); },
     call: function (to, type, callId, data) { return post('/api/call', { to: to, type: type, callId: callId, data: data === undefined ? null : data }); },
     watch: function (id, on) { return post('/api/watch', { user: id, on: !!on }); },
     watchers: function () { return get('/api/watchers'); },
+    tip: function (to, fruits) { return post('/api/tip', { to: to, fruits: fruits }); },
+    homeInvite: function (to) { return post('/api/home/invite', { to: to }); },
 
+    loginBonus: function () { return post('/api/login-bonus'); },
     ticket: function () { return post('/api/stream-ticket'); }
   };
 })(window.BR = window.BR || {});

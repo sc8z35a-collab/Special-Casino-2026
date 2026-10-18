@@ -11,7 +11,7 @@ export const PASSWORD = 'pass1234';
 export async function startServer(overrides = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'br-test-'));
   const app = createApp({
-    dataDir, logRequests: false, registrationsPerIp: 0, registerPerMinute: 100000,
+    dataDir, logRequests: false, registrationsPerIp: 0, registerPerMinute: 100000, loginBonus: false,
     limits: { spin: [100000, 1000], shop: [100000, 1000], general: [100000, 1000], login: [100000, 1000], friend: [100000, 1000], transfer: [100000, 1000] },
     ...overrides
   });
