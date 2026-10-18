@@ -63,24 +63,30 @@ jobs:
           echo "Building the app for $url"
 
       - name: Signing key
+        id: key
         env:
           APP_SIGNING_KEY: ${{ secrets.APP_SIGNING_KEY }}
           PUBLISH: ${{ steps.url.outputs.publish }}
         run: |
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install --quiet 'cryptography>=42,<60'
-          flag=""
-          if [ "$PUBLISH" = "true" ]; then flag="--require-stable"; fi
-          if ! "$RUNNER_TEMP/venv/bin/python" app/android/signing/keystore.py "$RUNNER_TEMP/app.p12" "$GITHUB_ENV" $flag; then
+          publish="$PUBLISH"
+          # no key yet: build as a check only, publishing waits for the key
+          if [ "$publish" = "true" ] && [ "${#APP_SIGNING_KEY}" -lt 16 ]; then
+            publish=false
+            echo "::warning::APP_SIGNING_KEY is not set: the app is built but not published."
             {
-              echo "## 署名キー（APP_SIGNING_KEY）が設定されていません"
+              echo "## アプリはまだ公開されていません（署名キー APP_SIGNING_KEY が未設定）"
               echo ""
-              echo "アプリを公開する前に一度だけ設定してください: リポジトリの Settings → Secrets and variables → Actions →"
-              echo "New repository secret → Name に \`APP_SIGNING_KEY\`、Secret に好きな長い文字列（30 文字以上）→ Add secret。"
-              echo "設定したら、このワークフローをもう一度実行してください（Re-run jobs）。"
+              echo "一度だけ設定してください: リポジトリの Settings → Secrets and variables → Actions →"
+              echo "New repository secret → Name に \`APP_SIGNING_KEY\`、Secret に好きな長い文字列（30 文字以上・二度と変えない）→ Add secret。"
+              echo "そのあと Actions → Android app → Run workflow を押すと公開されます。"
             } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
           fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          flag=""
+          if [ "$publish" = "true" ]; then flag="--require-stable"; fi
+          "$RUNNER_TEMP/venv/bin/python" app/android/signing/keystore.py "$RUNNER_TEMP/app.p12" "$GITHUB_ENV" $flag
 
       - name: Build
         working-directory: app/android
@@ -100,7 +106,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish on the game's site
-        if: steps.url.outputs.publish == 'true'
+        if: steps.key.outputs.publish == 'true'
         env:
           APP_URL: ${{ steps.url.outputs.url }}
         run: |

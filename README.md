@@ -149,11 +149,11 @@ node server/node/admin-cli.js --remote $URL quota                 # 今日のリ
 1. **署名の合言葉を登録する**: GitHub のこのリポジトリ → Settings → Secrets and variables → Actions →
    New repository secret → Name に `APP_SIGNING_KEY`、Secret に好きな長い文字列（30 文字以上。パスワード生成サイトで作ったもので OK）→ Add secret
    - **一度決めたら変えないでください。** アプリの更新は同じ合言葉で作ったアプリにしかできません。
-2. **ゲームの URL を書く**: GitHub で `app/app-url.txt` を開き、鉛筆マーク（Edit）からゲームの公開 URL
-   （例 `https://blockbuster-reels.xxxx.workers.dev`）を 1 行書いて「Commit changes」
-   - Cloudflare の本番ブランチ（main など）で編集してください
-3. 3〜5 分でアプリができ、ゲームのサイトに自動で置かれます（進み具合は GitHub の **Actions** タブで見られます）。
+2. **アプリを作る**: GitHub の **Actions** タブ →「Android app」→「Run workflow」→「Run workflow」
+   - ゲームの URL（`https://blockbuster-reels.sc8z-35a.workers.dev/`）は `app/app-url.txt` に記入済みです。URL が変わったときはこのファイルを書き換えると作り直されます
+3. 3〜5 分でアプリができ、ゲームのサイトに自動で置かれます（Cloudflare の自動デプロイ後に使えます）。
    起動画面の「アプリで遊ぶ」→「アプリをダウンロード」から入れられます
+   - 合言葉が未登録のうちはアプリは作られるだけで公開されません（Actions の結果に案内が出ます）
 
 ### アップデートの仕組み
 
