@@ -1,0 +1,289 @@
+/* フレンド対決, 協力スロット and 観戦ベット (js/ui/play.js): ribbons at the top
+   middle of the slot screen (#mode-stack), their dialogs, the invitation
+   card, the result, and the bet button of someone watching (#watch-tools). */
+
+/* ------------------------------------------------------------ ribbons --- */
+.pl-ribbon {
+  pointer-events: auto;
+  max-width: 760px;
+  height: 62px;
+  padding: 0 10px 0 9px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 31px;
+  background: linear-gradient(180deg, rgba(52, 6, 12, .95), rgba(22, 2, 6, .95));
+  box-shadow: inset 0 0 0 2px rgba(244, 220, 69, .75), 0 8px 22px rgba(0, 0, 0, .5);
+  font-weight: 700;
+  white-space: nowrap;
+}
+#screen-slot.watching .pl-ribbon { display: none; }
+.pl-vs-badge {
+  flex: none;
+  width: 54px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #ff5a4d, #b8141b);
+  box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .35), 0 2px 6px rgba(0, 0, 0, .45);
+  font: italic 900 22px/1 var(--f-num);
+  letter-spacing: 1px;
+  color: #fff;
+}
+.avatar.pl-av { width: 44px; height: 44px; font-size: 21px; }
+.pl-who { display: flex; flex-direction: column; min-width: 0; max-width: 168px; line-height: 1.15; }
+.pl-who .uname { font-size: 21px; color: #ffe27a; }
+.pl-who small { font-size: 15px; font-weight: 600; color: #c9bcbf; }
+
+.pl-score {
+  flex: none;
+  min-width: 128px;
+  height: 50px;
+  padding: 0 12px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  background: rgba(255, 255, 255, .07);
+  line-height: 1.1;
+}
+.pl-score-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 15px; color: #c9bcbf; }
+.pl-score-top i { font: 700 15px var(--f-num); font-style: normal; color: #e9dfe1; }
+.pl-score-amt { gap: 6px; font: 800 22px var(--f-num); }
+.pl-score-amt .ic { width: 22px; height: 22px; }
+.pl-score.ahead { background: rgba(244, 220, 69, .16); box-shadow: inset 0 0 0 1.6px rgba(244, 220, 69, .6); }
+.pl-score.ahead .pl-score-amt { color: #ffe27a; }
+.pl-score.done .pl-score-top i { color: #8ff09c; }
+.pl-time { flex: none; min-width: 72px; display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.pl-time small { font-size: 14px; color: #c9bcbf; }
+.pl-time b { font: 800 20px var(--f-num); }
+.pl-mini {
+  flex: none;
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 21px;
+  background: rgba(255, 255, 255, .12);
+  box-shadow: inset 0 0 0 1.4px rgba(255, 255, 255, .3);
+  font-size: 18px;
+  font-weight: 700;
+  color: #f1e7ea;
+}
+.pl-mini:active { transform: scale(.95); }
+.pl-battle.wait { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .45), 0 8px 22px rgba(0, 0, 0, .5); }
+.pl-wait-text { display: flex; align-items: center; gap: 10px; font-size: 19px; color: #e8dcdf; }
+.pl-wait-text b { font: 800 19px var(--f-num); color: #ffe27a; }
+
+/* 協力スロット */
+.pl-coop {
+  cursor: pointer;
+  background: linear-gradient(180deg, rgba(8, 44, 28, .95), rgba(4, 22, 14, .95));
+  box-shadow: inset 0 0 0 2px rgba(110, 230, 160, .75), 0 8px 22px rgba(0, 0, 0, .5);
+}
+.pl-tag { flex: none; padding: 7px 12px; border-radius: 8px; background: linear-gradient(180deg, #45c95f, #2a9a44); font-size: 18px; line-height: 1; color: #fff; }
+.pl-group { max-width: 160px; font-size: 21px; color: #b9ffc8; }
+.pl-gauge {
+  position: relative;
+  flex: none;
+  width: 200px;
+  height: 26px;
+  border-radius: 13px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, .45);
+  box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .22);
+}
+.pl-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #45c95f, #b6e04a 60%, #f4dc45);
+  box-shadow: 0 0 12px rgba(150, 255, 120, .45);
+  transition: width .6s cubic-bezier(.2, .9, .3, 1);
+}
+.pl-gauge-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: 800 16px var(--f-num);
+  color: #fff;
+  text-shadow: 0 1px 3px #000;
+}
+.pl-gauge.big { width: 100%; height: 46px; border-radius: 23px; }
+.pl-gauge.big .pl-gauge-text { font-size: 22px; }
+.pl-gauge.big .pl-gauge-text .amt { gap: 6px; }
+.pl-gauge.big .pl-gauge-text .ic { width: 24px; height: 24px; }
+.pl-of { color: #d7f5dc; }
+.pl-faces { flex: none; display: flex; align-items: center; }
+.pl-faces .avatar { margin-left: -8px; box-shadow: 0 0 0 2px #06180e; }
+.pl-faces .avatar:first-child { margin-left: 0; }
+.pl-more { margin-left: 6px; font: 700 16px var(--f-num); color: #b9ffc8; }
+.pl-ticker { min-width: 0; max-width: 210px; overflow: hidden; text-overflow: ellipsis; font-size: 17px; color: #e3f7e6; }
+.pl-ticker.flash { animation: plTick .9s ease; }
+.pl-ticker.hot { color: #ffe27a; }
+@keyframes plTick { 0% { opacity: 0; transform: translateY(8px); } 30% { opacity: 1; transform: none; } }
+.pl-x { flex: none; position: relative; width: 40px; height: 40px; border-radius: 50%; background: rgba(255, 255, 255, .1); box-shadow: inset 0 0 0 1.4px rgba(255, 255, 255, .3); }
+.pl-x::before, .pl-x::after { content: ''; position: absolute; left: 11px; top: 18.5px; width: 18px; height: 3px; border-radius: 2px; background: #f1e7ea; transform: rotate(45deg); }
+.pl-x::after { transform: rotate(-45deg); }
+.pl-x:active { transform: scale(.92); }
+.pl-coop.bonus { animation: plBonus 1.6s ease; }
+@keyframes plBonus {
+  0%, 100% { transform: none; filter: none; }
+  18% { transform: scale(1.06); filter: brightness(1.6); box-shadow: inset 0 0 0 2.4px #fff3b0, 0 0 44px rgba(255, 230, 130, .9); }
+  45% { transform: scale(1); }
+}
+
+/* ------------------------------------------------------------ dialogs --- */
+.pl-card { width: 900px; overflow-y: auto; }
+.pl-body { display: flex; flex-direction: column; gap: 14px; }
+.pl-lead { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.55; color: #e8dcdf; }
+.pl-label { margin-top: 6px; font-size: 19px; font-weight: 700; color: #c9bcbf; }
+.pl-note { margin: 0; font-size: 19px; line-height: 1.6; color: #c3b8bb; }
+.pl-note.warn { color: #ffd38a; }
+.pl-warn { color: #ffb38a; }
+.pl-inline { gap: 6px; font-family: var(--f-num); font-weight: 800; vertical-align: -3px; }
+.pl-inline .ic { width: 22px; height: 22px; }
+.pl-acts { display: flex; gap: 18px; margin-top: 10px; }
+.pl-empty { padding: 14px 0; font-size: 20px; color: #b3a7aa; text-align: center; }
+.pl-vs-head { display: flex; align-items: center; gap: 14px; }
+.pl-vs-head .pl-lead { flex: 1; min-width: 0; margin-left: 10px; }
+
+.pl-choices { display: flex; flex-wrap: wrap; gap: 10px; }
+.pl-choice {
+  flex: 1 1 0;
+  min-width: 110px;
+  height: 62px;
+  padding: 0 14px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: rgba(0, 0, 0, .32);
+  box-shadow: inset 0 0 0 1.6px rgba(225, 205, 210, .25);
+  font-size: 23px;
+  font-weight: 700;
+  color: #f1e7ea;
+  transition: transform .08s;
+}
+.pl-choice .amt { gap: 8px; font: 800 22px var(--f-num); }
+.pl-choice .amt .ic { width: 24px; height: 24px; }
+.pl-choice small { font-size: 16px; font-weight: 600; color: #c9bcbf; }
+.pl-choice.active { background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .35), 0 3px 8px rgba(0, 0, 0, .35); }
+.pl-choice.active small { color: #5a4c12; }
+.pl-choice:active { transform: scale(.96); }
+.pl-bets .pl-choice { flex: 0 0 calc(20% - 8px); min-width: 0; height: 56px; }
+.pl-sides .pl-choice { height: 100px; font-size: 32px; }
+.pl-sides .pl-choice small { font-size: 18px; }
+.pl-stakes .pl-choice { height: 66px; }
+
+.pl-seats { display: flex; flex-wrap: wrap; gap: 12px; max-height: 236px; overflow-y: auto; }
+.pl-seat { display: flex; align-items: center; gap: 14px; min-width: 0; width: calc(50% - 6px); height: 78px; padding: 0 16px; border-radius: 10px; background: rgba(0, 0, 0, .28); }
+.pl-seat-id { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pl-seat-id .uname { font-size: 22px; font-weight: 700; }
+.pl-seat-id small { font-size: 16px; color: #c3b8bb; }
+
+.pl-question { margin: 0; font-size: 28px; font-weight: 700; line-height: 1.5; }
+.pl-question .uname { display: inline-block; max-width: 340px; vertical-align: bottom; color: #ffe27a; }
+.pl-question b { color: #ff9a6a; }
+.pl-open-bet { display: flex; align-items: center; gap: 16px; height: 78px; padding: 0 22px; border-radius: 10px; background: rgba(0, 0, 0, .3); box-shadow: inset 0 0 0 1.6px rgba(244, 220, 69, .45); font-size: 22px; font-weight: 700; }
+.pl-open-bet .amt { gap: 8px; font: 800 24px var(--f-num); }
+.pl-open-bet .amt .ic { width: 26px; height: 26px; }
+.pl-side-tag { flex: none; padding: 4px 12px; border-radius: 8px; font-size: 18px; font-weight: 800; line-height: 1.3; }
+.pl-side-tag.hit { background: #e5262b; color: #fff; }
+.pl-side-tag.miss { background: #4b6fae; color: #fff; }
+
+/* ------------------------------------------------------------ a friend's invitation --- */
+.pl-invite .pl-invite-card { background: linear-gradient(180deg, #4a1208, #240604); box-shadow: inset 0 0 0 2.4px #f4dc45, 0 18px 50px rgba(0, 0, 0, .65); }
+.pl-invite .pl-invite-card .avatar.big { animation: plInvitePulse 1.2s ease-in-out infinite; }
+@keyframes plInvitePulse { 50% { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .25), 0 0 0 10px rgba(244, 220, 69, .28); } }
+.pl-invite .call-in-text small { color: #f3d9a8; }
+.pl-invite-left { font-family: var(--f-num); font-weight: 700; color: #ffe27a; }
+.pl-invite .call-btn.accept { background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; }
+.pl-invite .call-btn.accept .ic { filter: brightness(.25); }
+.pl-x-mark { position: relative; flex: none; width: 34px; height: 34px; }
+.pl-x-mark::before, .pl-x-mark::after { content: ''; position: absolute; left: 4px; top: 15px; width: 26px; height: 4px; border-radius: 2px; background: #fff; transform: rotate(45deg); }
+.pl-x-mark::after { transform: rotate(-45deg); }
+
+/* ------------------------------------------------------------ the result --- */
+.pl-result { position: absolute; inset: 0; z-index: 89; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .55); animation: plFade .25s ease; }
+@keyframes plFade { from { opacity: 0; } }
+.pl-result-card {
+  width: 860px;
+  padding: 34px 40px 28px;
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(180deg, #4a0a12, #22030a);
+  box-shadow: inset 0 0 0 2.4px #d6a94a, 0 20px 60px rgba(0, 0, 0, .7);
+  animation: plPop .5s cubic-bezier(.2, 1.4, .4, 1);
+}
+@keyframes plPop { from { transform: scale(.7); opacity: 0; } }
+.pl-result-kicker { font-size: 20px; font-weight: 700; color: #c9bcbf; }
+.pl-result-title { font-size: 86px; font-weight: 900; line-height: 1.1; letter-spacing: 4px; }
+.pl-result.win .pl-result-card { box-shadow: inset 0 0 0 3px #ffe27a, 0 0 70px rgba(255, 220, 110, .55), 0 20px 60px rgba(0, 0, 0, .7); }
+.pl-result.win .pl-result-title {
+  background: linear-gradient(180deg, #fff6b0, #f4dc45 45%, #d39a1c);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 4px 12px rgba(255, 210, 80, .6));
+}
+.pl-result.lose .pl-result-title { color: #a9bccf; }
+.pl-result.draw .pl-result-title { color: #e8dcdf; }
+.pl-result-row { width: 100%; display: flex; align-items: center; justify-content: center; gap: 28px; }
+.pl-result-row .pl-vs-badge { width: 72px; height: 52px; font-size: 28px; }
+.pl-side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px; border-radius: 12px; background: rgba(0, 0, 0, .3); }
+.pl-side.best { background: rgba(244, 220, 69, .14); box-shadow: inset 0 0 0 2px rgba(244, 220, 69, .7); }
+.pl-side-name { max-width: 100%; font-size: 22px; font-weight: 700; }
+.pl-side-amt { gap: 8px; font: 800 32px var(--f-num); }
+.pl-side-amt .ic { width: 32px; height: 32px; }
+.pl-result-note { font-size: 18px; color: #b3a7aa; }
+
+/* ------------------------------------------------------------ 観戦ベット (watching) --- */
+.pl-bet-btn {
+  flex: none;
+  height: 52px;
+  padding: 0 20px 0 14px;
+  border-radius: 26px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(180deg, #f4dc45, #e8c72a);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .35), 0 4px 10px rgba(0, 0, 0, .4);
+  font-size: 20px;
+  font-weight: 700;
+  color: #3a3410;
+  white-space: nowrap;
+}
+.pl-bet-btn .ic { width: 28px; height: 28px; }
+.pl-bet-btn:active { transform: scale(.95); }
+.pl-bet-chip {
+  flex: none;
+  height: 46px;
+  padding: 0 16px 0 8px;
+  border-radius: 23px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(0, 0, 0, .55);
+  box-shadow: inset 0 0 0 1.6px rgba(244, 220, 69, .6);
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pl-bet-chip .pl-side-tag { padding: 3px 10px; font-size: 16px; border-radius: 16px; }
+.pl-bet-chip .amt { gap: 6px; font: 800 20px var(--f-num); }
+.pl-bet-chip .amt .ic { width: 22px; height: 22px; }
+.pl-bet-chip small { font-size: 16px; color: #c9bcbf; }

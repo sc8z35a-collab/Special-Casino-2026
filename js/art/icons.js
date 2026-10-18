@@ -111,10 +111,12 @@
     apple: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M27.6,21.2Q27.5,16.6 31.4,14.4Q29.2,11.2 25.4,11Q23.6,10.8 21.4,11.8Q20,12.4 19.3,12.4Q18.4,12.4 16.8,11.8Q15,11 13.4,11.1Q8.6,11.4 6.8,16Q5.4,19.6 6.6,24.8Q7.6,29 10.4,32.6Q12.2,35 14.2,35Q15.4,35 16.8,34.3Q18.2,33.6 19.8,33.6Q21.4,33.6 22.8,34.3Q24.2,35 25.6,34.9Q28.2,34.8 30.4,31Q31.6,29 32.2,27Q27.8,25.2 27.6,21.2ZM24.8,8.2Q26.6,5.9 26.4,3.4Q24,3.6 22.2,5.6Q20.4,7.6 20.6,10.2Q23,10.4 24.8,8.2Z" fill="#fff"/></svg>',
     // shopping bag (Shop tab)
     bag: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M7.5,13H32.5L30.6,35.4Q30.4,37 28.8,37H11.2Q9.6,37 9.4,35.4Z" fill="#fff"/><path d="M14,16.5V10.5Q14,4.5 20,4.5Q26,4.5 26,10.5V16.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="14" cy="17" r="1.8" fill="#8a2020"/><circle cx="26" cy="17" r="1.8" fill="#8a2020"/></svg>',
-    // a house (稼ぎに参加要請: come to my home)
+    // a house
     home: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M4,19.5L20,5.5L36,19.5" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.5,18V34.5Q8.5,36 10,36H16.5V26.5H23.5V36H30Q31.5,36 31.5,34.5V18L20,8.4Z" fill="#fff"/></svg>',
     // play a recorded voice again
-    speaker: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M5,15H12L21,7V33L12,25H5Z" fill="#fff"/><path d="M26,14Q30,20 26,26M30.5,10Q37.5,20 30.5,30" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>'
+    speaker: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M5,15H12L21,7V33L12,25H5Z" fill="#fff"/><path d="M26,14Q30,20 26,26M30.5,10Q37.5,20 30.5,30" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>',
+    // the chat of a home (a speech bubble)
+    chat: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M7,6H33Q37,6 37,10V25Q37,29 33,29H19L10.5,35.5V29H7Q3,29 3,25V10Q3,6 7,6Z" fill="#fff"/><circle cx="12.5" cy="17.5" r="2.4" fill="#2a0408"/><circle cx="20" cy="17.5" r="2.4" fill="#2a0408"/><circle cx="27.5" cy="17.5" r="2.4" fill="#2a0408"/></svg>'
   };
 
   BR.ICONS = ICONS;

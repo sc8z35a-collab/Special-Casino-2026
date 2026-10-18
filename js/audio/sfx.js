@@ -9,6 +9,9 @@
   var AC = window.AudioContext || window.webkitAudioContext;
   var ctx = null, master = null, comp = null, verb = null, verbIn = null;
   var muted = false, unlocked = false;
+  // during a voice call phones play everything louder: the game's own sounds step back
+  var ducked = false, DUCK = 0.3;
+  function masterLevel() { return muted ? 0 : ducked ? 0.8 * DUCK : 0.8; }
   var noiseBuf = null;
   var reelLoop = null;
 
@@ -148,7 +151,7 @@
     comp.attack.value = 0.003;
     comp.release.value = 0.2;
     master = ctx.createGain();
-    master.gain.value = muted ? 0 : 0.8;
+    master.gain.value = masterLevel();
     comp.connect(master);
     master.connect(ctx.destination);
     // small hall reverb from a generated impulse response
@@ -552,6 +555,21 @@
     stopReels: function () { if (ctx) stopReels(); },
     // kept for the sound button, which is decoration: the sounds stay on
     setMuted: function () {},
+    // quieter while a voice call is on (on), back to normal after (off)
+    duck: function (on) {
+      if (ducked === !!on) return;
+      ducked = !!on;
+      if (!ctx || !master) return;
+      var t = ctx.currentTime;
+      master.gain.cancelScheduledValues(t);
+      master.gain.setValueAtTime(master.gain.value, t);
+      master.gain.linearRampToValueAtTime(masterLevel(), t + 0.35);
+      if (music.gain) {
+        music.gain.gain.cancelScheduledValues(t);
+        music.gain.gain.setValueAtTime(music.gain.gain.value, t);
+        music.gain.gain.linearRampToValueAtTime(ducked ? MUSIC_LEVEL * DUCK : MUSIC_LEVEL, t + 0.35);
+      }
+    },
     suspend: function () { if (ctx && ctx.state === 'running') ctx.suspend(); },
     resume: function () { if (ctx && ctx.state === 'suspended' && !muted) ctx.resume().then(musicStart, function () {}); },
     running: function () { return !!ctx && ctx.state === 'running'; }

@@ -135,26 +135,22 @@
   }
 
   /* ------------------------------------------------------------ 所有 --- */
-  var garage = null;
+  // 所有 (in the Shop tab): the items one owns, nothing else
   function showItems() {
     renderItems();
-    Promise.all([api.items(), api.cars()]).then(function (rs) {
+    api.items().then(function (r) {
       var m = me();
-      if (m) { m.items = rs[0].items; m.charm = rs[0].charm; }
-      sale = rs[0].shop;
-      garage = rs[1];
+      if (m) { m.items = r.items; m.charm = r.charm; }
+      sale = r.shop;
       if (onBoard('items')) renderItems();
       renderCharm();
     }, function () {});
   }
 
-  function section(box, title) { box.appendChild(el('div', 'fr-title items-title', title)); }
-
   function renderItems() {
     var box = $('#items-list');
     box.textContent = '';
     var m = me();
-    section(box, 'アイテム');
     var any = false;
     catalog().forEach(function (it) {
       var n = owned(it.id), active = it.id === BR.CONFIG.charm.item && m && m.charm;
@@ -177,46 +173,6 @@
       box.appendChild(row);
     });
     if (!any) box.appendChild(el('div', 'empty items-empty', 'まだアイテムを持っていません。Shop で買えます。'));
-
-    section(box, '車');
-    var cars = garage ? garage.cars : null;
-    if (!cars) box.appendChild(el('div', 'empty items-empty', '読み込み中…'));
-    else if (!cars.length) box.appendChild(el('div', 'empty items-empty', 'まだ車を持っていません。Car Owner で買えます。'));
-    else {
-      var counts = {};
-      cars.forEach(function (c) { counts[c.model] = (counts[c.model] || 0) + 1; });
-      Object.keys(counts).forEach(function (model) {
-        var row = el('div', 'item-row');
-        var pic = el('span', 'item-pic car');
-        pic.style.backgroundImage = 'url("' + (BR.SOCIAL_IMG.cars[model] || '') + '")';
-        row.appendChild(pic);
-        var mid = el('div', 'item-mid');
-        var cm = null;
-        BR.CONFIG.cars.forEach(function (c) { if (c.id === model) cm = c; });
-        mid.appendChild(el('div', 'item-name', cm ? cm.name : model));
-        mid.appendChild(el('div', 'item-sub', '×' + counts[model]));
-        row.appendChild(mid);
-        var go = el('button', 'act-btn item-give', 'Garage で見る');
-        go.addEventListener('click', function () { sfx('click'); BR.social.open('garage'); });
-        row.appendChild(go);
-        box.appendChild(row);
-      });
-    }
-
-    section(box, 'アイコン');
-    var icons = el('div', 'items-icons');
-    (m && m.avatars ? m.avatars : []).forEach(function (id) {
-      var a = K.avatarInfo(id);
-      if (!a) return;
-      var t = el('div', 'items-icon' + (m.avatar === id ? ' current' : ''));
-      t.appendChild(K.avatarEl({ avatar: id, name: a.name }, ''));
-      t.appendChild(el('span', '', a.name));
-      icons.appendChild(t);
-    });
-    box.appendChild(icons);
-    var change = el('button', 'act-btn items-avatar', 'アイコンを変更');
-    change.addEventListener('click', function () { sfx('click'); BR.avatars.openPicker(); });
-    box.appendChild(change);
   }
 
   // giving: which friend, how many

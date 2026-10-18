@@ -163,12 +163,94 @@ export const MIGRATIONS = [
     // all the money Peter ever lent the player (his limit never comes back)
     'ALTER TABLE debts ADD COLUMN lent INTEGER NOT NULL DEFAULT 0',
     'UPDATE debts SET lent = principal'
+  ],
+  // v5: group chats (with the 協力スロット gauge), read receipts, play time and the
+  // beginner guide, feedback, フレンド対決, 観戦ベット; no lobby and no ranking any more
+  [
+    // how far each player has read a conversation (既読 for the other one)
+    'ALTER TABLE conversations ADD COLUMN read_id INTEGER NOT NULL DEFAULT 0',
+    `CREATE TABLE chat_groups (
+       id         INTEGER PRIMARY KEY,
+       name       TEXT    NOT NULL,
+       owner_id   INTEGER NOT NULL,
+       last_id    INTEGER NOT NULL DEFAULT 0,
+       coop       INTEGER NOT NULL DEFAULT 0,
+       created_at INTEGER NOT NULL,
+       updated_at INTEGER NOT NULL
+     )`,
+    `CREATE TABLE chat_members (
+       group_id  INTEGER NOT NULL,
+       user_id   INTEGER NOT NULL,
+       joined_at INTEGER NOT NULL,
+       read_id   INTEGER NOT NULL DEFAULT 0,
+       unread    INTEGER NOT NULL DEFAULT 0,
+       coop_bet  INTEGER NOT NULL DEFAULT 0,
+       PRIMARY KEY (group_id, user_id)
+     )`,
+    'CREATE INDEX chat_members_user ON chat_members(user_id)',
+    // time spent playing; the guide is for those under 30 minutes who have not finished it
+    'ALTER TABLE users ADD COLUMN play_ms INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN guide_done INTEGER NOT NULL DEFAULT 0',
+    // nothing was measured before: about 5 seconds a spin
+    'UPDATE users SET play_ms = MIN(spins * 5000, 3600000)',
+    "DELETE FROM messages WHERE channel = 'lobby'",
+    // feedback to the operator: 1 = asked (everyone who played before), 2 = sent
+    'ALTER TABLE users ADD COLUMN feedback INTEGER NOT NULL DEFAULT 0',
+    'UPDATE users SET feedback = 1',
+    `CREATE TABLE feedback (
+       id         INTEGER PRIMARY KEY,
+       user_id    INTEGER NOT NULL,
+       ratings    TEXT    NOT NULL,
+       comment    TEXT    NOT NULL,
+       created_at INTEGER NOT NULL
+     )`,
+    // the voice of a home: the watched player picks who they talk with
+    'ALTER TABLE watchers ADD COLUMN voice INTEGER NOT NULL DEFAULT 0',
+    // 協力スロット: the group whose gauge the player's spins fill
+    'ALTER TABLE users ADD COLUMN coop_group INTEGER NOT NULL DEFAULT 0',
+    // フレンド対決 between two friends: the same number of spins at one bet
+    'ALTER TABLE users ADD COLUMN battle_id INTEGER NOT NULL DEFAULT 0',
+    `CREATE TABLE battles (
+       id         INTEGER PRIMARY KEY,
+       a_id       INTEGER NOT NULL,
+       b_id       INTEGER NOT NULL,
+       spins      INTEGER NOT NULL,
+       bet        INTEGER NOT NULL,
+       state      TEXT    NOT NULL,
+       a_n        INTEGER NOT NULL DEFAULT 0,
+       b_n        INTEGER NOT NULL DEFAULT 0,
+       a_won      INTEGER NOT NULL DEFAULT 0,
+       b_won      INTEGER NOT NULL DEFAULT 0,
+       winner     INTEGER NOT NULL DEFAULT 0,
+       quit       INTEGER NOT NULL DEFAULT 0,
+       created_at INTEGER NOT NULL,
+       started_at INTEGER NOT NULL DEFAULT 0,
+       ended_at   INTEGER NOT NULL DEFAULT 0
+     )`,
+    'CREATE INDEX battles_a ON battles(a_id, state)',
+    'CREATE INDEX battles_b ON battles(b_id, state)',
+    // 観戦ベット: a watcher's stake on the next spins of the player they watch
+    `CREATE TABLE watch_bets (
+       id         INTEGER PRIMARY KEY,
+       watcher_id INTEGER NOT NULL,
+       host_id    INTEGER NOT NULL,
+       side       TEXT    NOT NULL,
+       stake      INTEGER NOT NULL,
+       left_n     INTEGER NOT NULL,
+       state      TEXT    NOT NULL DEFAULT 'open',
+       paid       INTEGER NOT NULL DEFAULT 0,
+       created_at INTEGER NOT NULL,
+       ended_at   INTEGER NOT NULL DEFAULT 0
+     )`,
+    'CREATE INDEX watch_bets_host ON watch_bets(host_id, state)',
+    'CREATE INDEX watch_bets_watcher ON watch_bets(watcher_id, state)'
   ]
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
-  'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'meta'];
+  'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
+  'battles', 'watch_bets', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

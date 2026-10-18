@@ -71,7 +71,7 @@
 
   function presence(on) { return el('i', 'dot' + (on ? ' on' : '')); }
   function nameSpan(name) { return el('span', 'uname', name); }
-  function toast(msg, ms) { BR.app.toast(msg, ms); }
+  function toast(msg, ms, tap) { BR.app.toast(msg, ms, tap); }
   function sfx(n, arg) { BR.sfx.play(n, arg); }
   function fail(err) {
     sfx('deny');

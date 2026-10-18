@@ -22,6 +22,10 @@
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/social.css">
 <link rel="stylesheet" href="css/online.css">
+<link rel="stylesheet" href="css/play.css">
+<link rel="stylesheet" href="css/feedback.css">
+<link rel="stylesheet" href="css/guide.css">
+<link rel="stylesheet" href="css/combo.css">
 </head>
 <body>
 <div id="viewport">
@@ -43,14 +47,28 @@
     <!-- ===================== SLOT SCREEN ===================== -->
     <section id="screen-slot" class="screen" aria-label="BLOCKBUSTER REELS">
       <button class="back-btn" data-action="back" aria-label="戻る"><i class="ic ic-back"></i></button>
-      <h1 class="title">BLOCKBUSTER REELS</h1>
+      <h1 class="title" id="slot-title">BLOCKBUSTER REELS</h1>
+      <!-- my profile and level: tap to see it and change the icon -->
+      <button class="me-card" id="me-card" hidden aria-label="プロフィール">
+        <span class="avatar" id="me-avatar"></span>
+        <span class="me-id">
+          <b class="me-name uname" id="me-name"></b>
+          <span class="me-lv"><b>Lv.<span id="lv-num">1</span></b><i class="lv-bar"><i id="lv-fill"></i></i></span>
+        </span>
+      </button>
       <div class="watch-bar" id="watch-bar" hidden>
         <span class="avatar sm" id="watch-avatar"></span>
         <span class="watch-text"><b class="uname" id="watch-name"></b><span>さんのホームで観戦中</span></span>
         <i class="live-dot">LIVE</i>
         <button class="watch-stop" id="watch-stop">ホームを出る</button>
       </div>
-      <div class="watched-by" id="watched-by" hidden><i class="ic ic-eye"></i><span id="watched-count"></span></div>
+      <!-- watching: the home chat, the 観戦ベット (js/ui/play.js adds its buttons here) -->
+      <div class="watch-tools" id="watch-tools" hidden>
+        <button class="tool-btn" id="home-chat-btn"><i class="ic ic-chat"></i><span>チャット</span></button>
+      </div>
+      <!-- being watched: who, and who I talk with -->
+      <button class="watched-by" id="watched-by" hidden><i class="ic ic-eye"></i><span id="watched-count"></span><b class="watched-talk" id="watched-talk" hidden></b></button>
+      <div class="home-chat" id="home-chat" aria-live="polite"></div>
 
       <button id="btn-sound" class="sound-btn" aria-label="サウンド"><i class="ic ic-sound"></i></button>
 
@@ -75,12 +93,12 @@
       <button id="btn-get" class="pill pill-left pill-get" data-sfx="click" aria-label="トークンを入手"></button>
       <button id="btn-max" class="pill pill-left pill-max" data-sfx="click" aria-label="最大ベット"></button>
 
-      <button id="btn-radio" class="hud-circle hud-radio pic" aria-label="メニュー（ランキング・フレンド・メッセージ・バイト）"><i class="ic ic-menu"></i><b class="hud-badge" id="radio-badge" hidden></b></button>
-      <button id="btn-mic" class="hud-circle hud-mic pic" aria-label="ロビー"><i class="ic ic-lobby"></i><b class="hud-badge dot-only" id="mic-badge" hidden></b></button>
+      <button id="btn-radio" class="hud-circle hud-radio pic" aria-label="メニュー（フレンド・メッセージ・Car Owner・Shop・バイト）"><i class="ic ic-menu"></i><b class="hud-badge" id="radio-badge" hidden></b></button>
       <button id="btn-quest" class="hud-circle hud-quest pic" aria-label="クエスト"><i class="ic ic-quest"></i><b class="hud-badge" id="quest-badge" hidden></b></button>
-      <div class="coach" id="coach" hidden><span>ランキング・チャットはここから！</span></div>
-      <div class="lv-chip" id="lv-chip" hidden><b>Lv.<span id="lv-num">1</span></b><i class="lv-bar"><i id="lv-fill"></i></i></div>
-      <div class="home-note" id="update-note" hidden><span>新しいバージョンがあります。アップデートしてくださいね。</span><button class="mini-btn gold" id="update-note-go"><span>アップデート</span></button></div>
+      <!-- the top middle: the update reminder, then フレンド対決 / 協力スロット (js/ui/play.js) -->
+      <div class="mode-stack" id="mode-stack">
+        <div class="home-note" id="update-note" hidden><span>新しいバージョンがあります。アップデートしてくださいね。</span><button class="mini-btn gold" id="update-note-go"><span>アップデート</span></button></div>
+      </div>
       <div class="quest-note" id="quest-note" hidden aria-live="polite"></div>
 
       <button id="btn-rules" class="pill pill-rules" data-sfx="click"><span>ルール</span></button>
@@ -160,32 +178,15 @@
     <!-- ===================== BOARD SCREEN (online) ===================== -->
     <section id="screen-board" class="screen" aria-label="ボード">
       <button class="back-btn back-jp" data-action="back"><i class="ic ic-back"></i><span>戻る</span></button>
-      <div class="tabs">
-        <button class="tab active" data-tab="ranking"><span>ランキング</span></button>
-        <button class="tab" data-tab="friends"><span>フレンド</span><b class="tab-badge" id="friends-badge" hidden></b></button>
+      <div class="tabs" id="board-tabs">
+        <button class="tab active" data-tab="friends"><span>フレンド</span><b class="tab-badge" id="friends-badge" hidden></b></button>
         <button class="tab" data-tab="messages"><span>メッセージ</span><b class="tab-badge" id="tab-badge" hidden></b></button>
-        <button class="tab" data-tab="lobby"><span>ロビー</span><b class="tab-dot" id="lobby-dot" hidden></b></button>
         <button class="tab tab-car" data-tab="cars"><i class="ic ic-car"></i><span>Car Owner</span></button>
-        <button class="tab tab-car" data-tab="garage"><span>Garage</span></button>
         <button class="tab tab-shop" data-tab="shop"><i class="ic ic-bag"></i><span>Shop</span></button>
-        <button class="tab" data-tab="items"><span>所有</span></button>
         <button class="tab" data-tab="jobs"><span>バイト</span><b class="tab-dot" id="jobs-dot" hidden></b></button>
-        <button class="tab tab-soon" data-tab="invest"><span>投資</span><small>近日</small></button>
-        <button class="tab" data-tab="news"><span>Dev News</span><b class="tab-dot" id="news-dot" hidden></b></button>
+        <button class="tab" data-tab="more"><span>詳細</span><b class="tab-dot" id="news-dot" hidden></b></button>
+        <button class="tab" data-tab="feedback" id="tab-feedback" hidden><span>フィードバック</span><b class="tab-dot" id="feedback-dot" hidden></b></button>
         <div class="tabs-info" id="board-info"><i class="dot on"></i><span id="online-count">-</span></div>
-      </div>
-
-      <div class="board-pane active" id="pane-ranking">
-        <div class="rank-head">
-          <div class="seg" id="rank-seg">
-            <button class="seg-btn active" data-type="total">累計獲得</button>
-            <button class="seg-btn" data-type="today">今日の獲得</button>
-            <button class="seg-btn" data-type="biggest">最大勝利</button>
-          </div>
-          <div class="rank-meta" id="rank-meta"></div>
-        </div>
-        <div class="scroller rank-scroll" id="rank-scroll"><ol class="rank-list" id="rank-list"></ol></div>
-        <button class="rank-row rank-me" id="rank-me" hidden></button>
       </div>
 
       <div class="board-pane" id="pane-friends">
@@ -197,10 +198,12 @@
       </div>
 
       <div class="board-pane" id="pane-messages">
+        <div class="conv-head"><button class="mini-btn gold" id="group-new"><span>＋ グループを作る</span></button></div>
         <div class="scroller conv-scroll" id="conv-scroll"><ul class="conv-list" id="conv-list"></ul></div>
       </div>
 
       <div class="board-pane" id="pane-cars">
+        <div class="sub-seg" data-seg="cars"><button class="seg-btn active" data-v="cars">Car Owner</button><button class="seg-btn" data-v="garage">ガレージ</button></div>
         <div class="car-show">
           <div class="car-stage"><i class="car-light"></i><span class="car-pic" id="car-pic"></span><i class="car-floor"></i></div>
           <div class="car-info">
@@ -215,14 +218,17 @@
       </div>
 
       <div class="board-pane" id="pane-garage">
+        <div class="sub-seg" data-seg="cars"><button class="seg-btn" data-v="cars">Car Owner</button><button class="seg-btn active" data-v="garage">ガレージ</button></div>
         <div class="scroller garage-scroll" id="garage-scroll"><div class="garage-grid" id="garage-grid"></div></div>
       </div>
 
       <div class="board-pane" id="pane-shop">
+        <div class="sub-seg" data-seg="shop"><button class="seg-btn active" data-v="shop">Shop</button><button class="seg-btn" data-v="items">所有</button></div>
         <div class="scroller shop-scroll" id="shop-scroll"><div class="shop-grid" id="shop-grid"></div></div>
       </div>
 
       <div class="board-pane" id="pane-items">
+        <div class="sub-seg" data-seg="shop"><button class="seg-btn" data-v="shop">Shop</button><button class="seg-btn active" data-v="items">所有</button></div>
         <div class="scroller items-scroll" id="items-scroll"><div class="items-list" id="items-list"></div></div>
       </div>
 
@@ -230,27 +236,37 @@
         <div class="scroller jobs-scroll" id="jobs-scroll"><div class="jobs-list" id="jobs-list"></div></div>
       </div>
 
-      <div class="board-pane" id="pane-invest">
-        <div class="soon-pane">
-          <div class="soon-badge">COMING SOON</div>
-          <h3>投資</h3>
-          <p>近日公開予定です。お楽しみに！</p>
+      <!-- 詳細: the guide again, feedback, 投資 (coming soon) and Dev News -->
+      <div class="board-pane" id="pane-more">
+        <div class="scroller more-scroll" id="more-scroll">
+          <div class="more-cards">
+            <button class="more-card" data-act="guide"><b>初心者ガイド</b><span>遊び方の案内をもう一度見る</span></button>
+            <button class="more-card" data-act="feedback"><b>運営にフィードバック</b><span>感想や改善してほしいことを送る</span></button>
+            <div class="more-card soon"><b>投資<small>COMING SOON</small></b><span>近日公開予定です。お楽しみに！</span></div>
+          </div>
+          <h3 class="more-title">Dev News</h3>
+          <div class="news-list" id="news-list"></div>
         </div>
       </div>
 
-      <div class="board-pane" id="pane-news">
-        <div class="scroller news-scroll" id="news-scroll"><div class="news-list" id="news-list"></div></div>
+      <!-- the operator's account only: what players sent (js/ui/feedback.js) -->
+      <div class="board-pane" id="pane-feedback">
+        <div class="scroller fb-scroll" id="fb-scroll"><div class="fb-list" id="fb-list"></div></div>
       </div>
 
       <div class="board-pane" id="pane-chat">
         <div class="dm-head">
-          <button class="dm-user" id="dm-user"></button>
-          <button class="mini-btn call" id="dm-call"><i class="ic ic-phone"></i><span>稼ぎに招待</span></button>
+          <div class="dm-user" id="dm-user"></div>
+          <button class="mini-btn" id="dm-battle"><span>フレンド対決</span></button>
           <button class="mini-btn gold" id="dm-money"><i class="ic ic-chip"></i><span>送金</span></button>
           <button class="mini-btn" id="dm-profile"><span>プロフィール</span></button>
+          <button class="mini-btn gold" id="dm-coop" hidden><span>協力スロット</span></button>
+          <button class="mini-btn" id="dm-members" hidden><span>メンバー</span></button>
+          <button class="mini-btn" id="dm-leave" hidden><span>退出</span></button>
           <div class="dm-debt" id="dm-debt" hidden><span class="dm-debt-label">借金<small id="dm-debt-cap">累計1100万円まで</small></span><b id="dm-debt-amt"></b><button class="mini-btn gold" id="dm-repay"><span>返済する</span></button></div>
         </div>
         <div class="scroller chat-scroll" id="chat-scroll"><div class="chat-list" id="chat-list"></div></div>
+        <div class="chat-typing" id="chat-typing" hidden></div>
         <button class="chat-bar" id="chat-bar"><span class="chat-placeholder" id="chat-placeholder"></span><span class="chat-send">送信</span></button>
       </div>
     </section>
@@ -270,6 +286,7 @@
         <div class="q-head">
           <i class="q-icon"></i>
           <div class="q-title"><h2 id="q-title"></h2><p id="q-sub"></p></div>
+          <button class="act-btn gold q-claim-all" id="q-claim-all" hidden><span>一括受け取り</span><b id="q-claim-n"></b></button>
           <div class="q-reset"><small>リセットまで</small><b id="q-reset">-</b></div>
         </div>
         <div class="scroller q-scroll" id="q-scroll"><div class="q-list" id="q-list"></div></div>
@@ -298,7 +315,6 @@
             <div class="pf-name-row"><span class="pf-lv" id="pf-lv" hidden></span><div class="pf-name uname" id="pf-name"></div></div>
             <div class="pf-status" id="pf-status"></div>
           </div>
-          <div class="pf-rank"><small>ランキング</small><span>#</span><b id="pf-rank">-</b></div>
         </div>
         <div class="pf-stats">
           <div class="pf-stat"><label>累計獲得</label><b id="pf-total">-</b></div>
@@ -447,21 +463,7 @@
       </div>
     </div>
 
-    <!-- 稼ぎに招待 (voice chat) -->
-    <div id="call-in" class="call-in" hidden>
-      <div class="call-card" role="alertdialog" aria-label="稼ぎに招待">
-        <span class="avatar big" id="call-in-avatar"></span>
-        <div class="call-in-text">
-          <div class="call-in-who"><b class="uname" id="call-in-name"></b><span>さんから</span></div>
-          <div class="call-in-what">稼ぎに招待が届きました！</div>
-          <small>マイクで話しながら一緒にスロットを回そう</small>
-        </div>
-        <div class="call-in-acts">
-          <button class="call-btn decline" id="call-decline"><i class="ic ic-hangup"></i><span>あとで</span></button>
-          <button class="call-btn accept" id="call-accept"><i class="ic ic-phone"></i><span>参加する</span></button>
-        </div>
-      </div>
-    </div>
+    <!-- the voice of a home -->
     <div id="call-bar" class="call-bar" hidden>
       <div class="call-faces" id="call-faces"></div>
       <div class="call-id"><b class="uname" id="call-name"></b><span id="call-state"></span></div>
@@ -470,19 +472,14 @@
     </div>
     <div id="call-audios" hidden></div>
 
-    <!-- 稼ぎに参加要請 -->
-    <div id="home-in" class="call-in" hidden>
-      <div class="call-card home-card" role="alertdialog" aria-label="稼ぎに参加要請">
-        <span class="avatar big" id="home-in-avatar"></span>
-        <div class="call-in-text">
-          <div class="call-in-who"><b class="uname" id="home-in-name"></b><span>さんから</span></div>
-          <div class="call-in-what" id="home-in-what">稼ぎに参加要請が届きました！</div>
-          <small>参加すると画面を一緒に見ながら、ホームのみんなと通話できます</small>
-        </div>
-        <div class="call-in-acts">
-          <button class="call-btn decline" id="home-no"><i class="ic ic-hangup"></i><span>あとで</span></button>
-          <button class="call-btn accept" id="home-yes"><i class="ic ic-eye"></i><span>参加する</span></button>
-        </div>
+    <!-- my home: the people watching me; I pick who I talk with -->
+    <div id="home-panel" class="modal" hidden>
+      <div class="modal-card home-panel-card" role="dialog" aria-label="あなたのホーム">
+        <button class="modal-x" data-close aria-label="閉じる"></button>
+        <h3 class="modal-title"><span>あなたのホーム</span></h3>
+        <p class="hp-note">観戦している人と話すかどうかを選べます。最初はどちらのマイクもオフです。</p>
+        <div class="hp-list scroller" id="hp-list"></div>
+        <div class="hp-acts"><button class="act-btn gold" id="hp-chat"><span>チャットする</span></button></div>
       </div>
     </div>
 
@@ -601,6 +598,21 @@
   </div>
 </div>
 
+<!-- online: a new group chat (outside the scaled stage for the text field) -->
+<div id="group-ov" class="ov" hidden>
+  <div class="ov-scroll">
+    <form class="ov-card wide" id="group-form" autocomplete="off" novalidate>
+      <button class="ov-close" type="button" id="group-close" aria-label="閉じる"></button>
+      <h2 class="ov-title">グループを作る</h2>
+      <input id="group-name" class="ov-input" type="text" maxlength="20" placeholder="グループ名（20文字まで）" autocomplete="off" autocorrect="off" enterkeyhint="done">
+      <p class="ov-text">メンバーにするフレンドを選んでください（あなたを入れて20人まで）。</p>
+      <div class="group-pick" id="group-pick"></div>
+      <p class="ov-error" id="group-error" role="alert"></p>
+      <button class="ov-btn gold" type="submit" id="group-make">作成する</button>
+    </form>
+  </div>
+</div>
+
 <!-- online: text entry for chat -->
 <!-- the field sits at the top: the keyboard never has to push the screen up to show it -->
 <div id="entry" class="entry" hidden>
@@ -648,6 +660,10 @@
 <script src="js/ui/news.js"></script>
 <script src="js/net/call.js"></script>
 <script src="js/ui/watch.js"></script>
+<script src="js/render/combo.js"></script>
+<script src="js/ui/play.js"></script>
+<script src="js/ui/feedback.js"></script>
+<script src="js/ui/guide.js"></script>
 <script src="js/ui/launch.js"></script>
 <script src="js/ui/start.js"></script>
 <script src="js/ui/install.js"></script>

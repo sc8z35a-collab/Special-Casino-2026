@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
 import { QUESTS, LEVEL, RELEASE, RULES } from '../core/rules.js';
-import { stepQuests } from '../core/quests.js';
+import { stepQuests, claimQuests, questsReady } from '../core/quests.js';
 
 const H = 3600000;
 const ids = (r) => r.done.map((q) => q.id).sort();
@@ -20,58 +20,83 @@ test('quest periods start 2026-10-18 9:00 Japan time: every 5 h, day, week, mont
   assert.deepEqual([0, 99, 100, 299, 300, 600].map(LEVEL.of), [1, 1, 2, 2, 3, 4]);
 });
 
-test('quests: progress shared between periods, each pays once until its period starts over', () => {
+test('quests: progress shared between periods; finished ones wait to be received, once a period', () => {
   const st = {};
   const now = Date.UTC(2026, 9, 18, 1);
   let r = stepQuests(st, [['spin', 1], ['earn', 15000]], now);
   assert.deepEqual(ids(r), ['5h-earn10k', '5h-spin1']);
-  assert.deepEqual([r.dollars, r.tokens], [7000 + 15000, 0]);
+  assert.equal(questsReady(st, now), 2);
   assert.deepEqual(ids(stepQuests(st, [['spin', 1]], now)), ['5h-spin2']);
+  // 受け取る: one, then the rest (一括受け取り)
+  let c = claimQuests(st, ['5h-spin1'], now);
+  assert.deepEqual([c.claimed.map((q) => q.id), c.dollars], [['5h-spin1'], 7000]);
+  c = claimQuests(st, null, now);
+  assert.deepEqual([c.claimed.length, c.dollars], [2, 15000 + 14000]);
+  assert.equal(claimQuests(st, null, now).claimed.length, 0, 'never twice');
   assert.equal(stepQuests(st, [['peek', 1]], now).done.length, 1);
-  assert.equal(stepQuests(st, [['peek', 1]], now).changed, false, 'done: not counted again');
-  // one transfer counts for the daily and the monthly quest
+  assert.equal(stepQuests(st, [['peek', 1]], now).changed, false, 'finished: not counted again');
+  // one transfer counts for the daily and the monthly quest ($ and spin tokens)
   r = stepQuests(st, [['sent', 100000]], now);
   assert.deepEqual(ids(r), ['day-send1k', 'month-send100k']);
-  assert.deepEqual([r.dollars, r.tokens], [5000, 30000]);
+  c = claimQuests(st, ['day-send1k', 'month-send100k'], now);
+  assert.deepEqual([c.dollars, c.tokens], [5000, 30000]);
   assert.equal(st.special.m.clear, 6, 'every finished quest counts towards クエストを100個クリアする');
-  // five hours on, the 5時間 quests start over; the day's do not
+  // five hours on, the 5時間 quests start over (what was not received is gone); the day's do not
   r = stepQuests(st, [['spin', 1], ['sent', 1000]], now + 5 * H);
   assert.deepEqual(ids(r), ['5h-spin1']);
+  assert.equal(questsReady(st, now + 5 * H), 1);
 });
 
-test('server: quests and XP on spins, 送金 and 無一文, the quest list', async () => {
+test('server: quests finish on spins, 送金 and 無一文, and pay when received', async () => {
   const m = await startServer({ quests: true });
   try {
     const a = await m.register('Quester'), b = await m.register('Questee');
     await m.befriend(a, b);
     m.setUser(a.me.id, { tokens: 10000, dollars: 1000000 });
-    let r = await m.call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
-    assert.equal(r.status, 200, JSON.stringify(r));
-    const q = await m.call('GET', '/api/quests', { token: a.token });
+    const spun = await m.call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
+    assert.equal(spun.status, 200, JSON.stringify(spun));
+    assert.equal(spun.xp, LEVEL.spinXp);
+    let q = await m.call('GET', '/api/quests', { token: a.token });
     const five = q.periods.find((p) => p.id === '5h');
-    assert.equal(five.quests.find((x) => x.id === '5h-spin1').done, true);
+    assert.equal(five.quests.find((x) => x.id === '5h-spin1').state, 'ready');
     assert.equal(five.quests.find((x) => x.id === '5h-spin2').progress, 1);
-    assert.equal(q.xp, r.xp);
-    assert.ok(r.xp >= LEVEL.spinXp + LEVEL.questXp);
-    let me = (await m.call('GET', '/api/me', { token: a.token })).me;
-    assert.ok(me.dollars >= 1000000 + 7000, 'カジノを回す pays $7 000');
+    assert.ok(q.ready >= 1);
+    assert.equal((await m.call('GET', '/api/me', { token: a.token })).me.dollars, 1000000, 'nothing paid before 受け取る');
+    let c = await m.call('POST', '/api/quests/claim', { token: a.token, body: { ids: ['5h-spin1'] } });
+    assert.deepEqual([c.claimed, c.dollars, c.xp, c.balance.dollars], [['5h-spin1'], 7000, LEVEL.spinXp + LEVEL.questXp, 1007000]);
     // 送金 in tokens counts at the token price
-    r = await m.call('POST', '/api/transfer', { token: a.token, body: { to: b.me.id, amount: 100, currency: 'tokens' } });
-    assert.equal(r.status, 200);
-    const day = (await m.call('GET', '/api/quests', { token: a.token })).periods.find((p) => p.id === 'day');
-    assert.equal(day.quests.find((x) => x.id === 'day-send1k').done, true);
-    // nearly broke (tokens counted at their price): 無一文になってしまう pays 1 000 000 tokens once
+    await m.call('POST', '/api/transfer', { token: a.token, body: { to: b.me.id, amount: 100, currency: 'tokens' } });
+    q = await m.call('GET', '/api/quests', { token: a.token });
+    assert.equal(q.periods.find((p) => p.id === 'day').quests.find((x) => x.id === 'day-send1k').state, 'ready');
+    // nearly broke (tokens counted at their price): 無一文になってしまう, once
     m.setUser(a.me.id, { dollars: 0, tokens: 1000 });
     await m.call('POST', '/api/transfer', { token: a.token, body: { to: b.me.id, amount: 10, currency: 'tokens' } });
-    me = (await m.call('GET', '/api/me', { token: a.token })).me;
-    assert.equal(me.tokens, 990 + 1000000);
+    c = await m.call('POST', '/api/quests/claim', { token: a.token, body: {} });
+    assert.ok(c.claimed.includes('special-broke'), JSON.stringify(c.claimed));
+    assert.equal(c.balance.tokens, 990 + 1000000);
     m.setUser(a.me.id, { dollars: 0, tokens: 1000 });
     await m.call('POST', '/api/transfer', { token: a.token, body: { to: b.me.id, amount: 10, currency: 'tokens' } });
-    assert.equal((await m.call('GET', '/api/me', { token: a.token })).me.tokens, 990);
+    assert.ok(!(await m.call('POST', '/api/quests/claim', { token: a.token, body: {} })).claimed.includes('special-broke'));
     // other players see the level
+    const me = (await m.call('GET', '/api/me', { token: a.token })).me;
     assert.equal((await m.call('GET', `/api/user?id=${a.me.id}`, { token: b.token })).user.level, LEVEL.of(me.xp));
   } finally {
     await m.stop();
+  }
+});
+
+test('beginner guide: everyone under 30 minutes of play, until they finish it', async () => {
+  const { call, register, setUser, stop } = await startServer();
+  try {
+    const a = await register('Newbie');
+    assert.equal(a.me.guide, true);
+    setUser(a.me.id, { play_ms: 31 * 60000 });
+    assert.equal((await call('GET', '/api/me', { token: a.token })).me.guide, false);
+    setUser(a.me.id, { play_ms: 0 });
+    assert.equal((await call('POST', '/api/guide', { token: a.token })).me.guide, false);
+    assert.equal((await call('GET', '/api/me', { token: a.token })).me.guide, false);
+  } finally {
+    await stop();
   }
 });
 

@@ -173,24 +173,15 @@ test('spins are settled on the server and add up', async () => {
   assert.equal(me.dayWon, won);
 });
 
-test('leaderboard orders by winnings and reports my rank', async () => {
+test('profiles: no ranking any more; when a player was last online', async () => {
   const a = await register('ボードA', { avatar: 'curly' });
   const b = await register('ボードB');
-  setUser(a.me.id, { total_won: 9000000000, biggest_win: 5, won_day: '', day_won: 0 });
-  setUser(b.me.id, { total_won: 8000000000, biggest_win: 7000000000 });
-  const total = await call('GET', '/api/board?type=total', { token: b.token });
-  assert.equal(total.rows[0].id, a.me.id);
-  assert.equal(total.rows[0].avatar, 'curly');
-  assert.equal(total.rows[1].id, b.me.id);
-  assert.deepEqual(total.me, { rank: 2, value: 8000000000 });
-  const big = await call('GET', '/api/board?type=biggest', { token: a.token });
-  assert.equal(big.rows[0].id, b.me.id);
-  const today = await call('GET', '/api/board?type=today', { token: a.token });
-  assert.equal(today.me.rank, null);
-  assert.equal((await call('GET', '/api/board?type=nope', { token: a.token })).status, 400);
+  assert.equal((await call('GET', '/api/board?type=total', { token: b.token })).status, 404);
+  setUser(b.me.id, { last_seen: 1234567 });
   const prof = await call('GET', `/api/user?id=${b.me.id}`, { token: a.token });
   assert.equal(prof.user.name, 'ボードB');
-  assert.equal(prof.user.rank, 2);
+  assert.equal(prof.user.rank, undefined);
+  assert.equal(prof.user.lastSeen, 1234567);
   assert.equal(prof.user.friendship, 'none');
   assert.equal(prof.self, false);
 });
@@ -301,19 +292,57 @@ test('direct messages between friends: text is cleaned, unread counts, blocking'
   assert.equal(conv.conversations[0].friend, false);
 });
 
-test('lobby chat and its rate limit', async () => {
+test('read receipts and 入力中 in a conversation', async () => {
   const a = await register();
-  const r = await call('POST', '/api/messages', { token: a.token, body: { to: 'lobby', text: 'みなさんこんにちは' } });
-  assert.equal(r.status, 200);
-  const list = await call('GET', '/api/messages', { token: a.token });
-  assert.equal(list.channel, 'lobby');
-  assert.ok(list.messages.some((m) => m.id === r.message.id));
-  let limited = false;
-  for (let i = 0; i < 8; i++) {
-    const x = await call('POST', '/api/messages', { token: a.token, body: { to: 'lobby', text: `連投${i}` } });
-    if (x.status === 429) { limited = true; break; }
-  }
-  assert.ok(limited, 'lobby flood is rate limited');
+  const b = await register();
+  await befriend(a, b);
+  const la = await listen(a), lb = await listen(b);
+  const sent = await call('POST', '/api/messages', { token: a.token, body: { to: b.me.id, text: '読んだ？' } });
+  let thread = await call('GET', `/api/messages?with=${b.me.id}`, { token: a.token });
+  assert.ok(thread.readUpTo < sent.message.id, 'not read yet');
+  await call('POST', '/api/read', { token: b.token, body: { with: a.me.id } });
+  const read = await la.waitFor('read', (e) => e.dm === b.me.id);
+  assert.equal(read.upto, sent.message.id);
+  thread = await call('GET', `/api/messages?with=${b.me.id}`, { token: a.token });
+  assert.equal(thread.readUpTo, sent.message.id);
+  assert.equal((await call('POST', '/api/typing', { token: a.token, body: { to: b.me.id } })).status, 200);
+  assert.equal((await lb.waitFor('typing')).from.id, a.me.id);
+  assert.equal((await call('GET', '/api/messages', { token: a.token })).status, 400, 'there is no lobby any more');
+  la.close();
+  lb.close();
+});
+
+test('group chats: friends only; messages, unread, 既読 and typing reach every member', async () => {
+  const a = await register();
+  const b = await register();
+  const c = await register();
+  const stranger = await register();
+  await befriend(a, b);
+  await befriend(a, c);
+  assert.equal((await call('POST', '/api/groups', { token: a.token, body: { name: 'なかま', members: [stranger.me.id] } })).error.code, 'not_friends');
+  assert.equal((await call('POST', '/api/groups', { token: a.token, body: { name: 'なかま', members: [] } })).error.code, 'no_members');
+  const lb = await listen(b), lc = await listen(c);
+  const made = await call('POST', '/api/groups', { token: a.token, body: { name: 'なかま', members: [b.me.id, c.me.id] } });
+  assert.equal(made.status, 200, JSON.stringify(made));
+  const gid = made.group.id;
+  assert.deepEqual(made.group.members.map((m) => m.id), [a.me.id, b.me.id, c.me.id]);
+  const msg = await call('POST', '/api/messages', { token: b.token, body: { group: gid, text: 'よろしく' } });
+  assert.equal(msg.message.group, gid);
+  assert.equal((await lc.waitFor('msg', (m) => m.group === gid && m.kind === 'text')).text, 'よろしく');
+  const conv = await call('GET', '/api/conversations', { token: c.token });
+  const g = conv.groups.find((x) => x.id === gid);
+  assert.deepEqual([g.name, g.unread, g.last.text], ['なかま', 2, 'よろしく']);
+  await call('POST', '/api/read', { token: c.token, body: { group: gid } });
+  assert.equal((await lb.waitFor('read', (e) => e.group === gid && e.by === c.me.id)).upto, msg.message.id);
+  const thread = await call('GET', `/api/messages?group=${gid}`, { token: b.token });
+  assert.ok(thread.reads.some((r) => r.id === c.me.id && r.upto === msg.message.id));
+  await call('POST', '/api/typing', { token: c.token, body: { group: gid } });
+  assert.equal((await lb.waitFor('typing', (e) => e.group === gid)).from.id, c.me.id);
+  assert.equal((await call('GET', `/api/messages?group=${gid}`, { token: stranger.token })).status, 404);
+  assert.equal((await call('POST', '/api/groups/leave', { token: c.token, body: { group: gid } })).left, gid);
+  assert.equal((await call('POST', '/api/messages', { token: c.token, body: { group: gid, text: 'まだいる？' } })).status, 404);
+  lb.close();
+  lc.close();
 });
 
 test('transfers: friends only, atomic, shown in the chat', async () => {
@@ -418,31 +447,29 @@ test('cars: Car Owner sells for $1,200,000; garage; gifts go to friends only', a
   assert.equal((await call('POST', '/api/cars/gift', { token: a.token, body: { to: b.me.id, car: car.id } })).error.code, 'no_car');
 });
 
-test('voice chat signalling (稼ぎに招待): friends only, online only, relayed live', async () => {
+test('voice: only in a home, and only with the watchers the watched player picked', async () => {
   const a = await register();
   const b = await register();
-  const c = await register();
   await befriend(a, b);
   const ice = await call('GET', '/api/call/ice', { token: a.token });
   assert.ok(ice.iceServers[0].urls.length >= 1);
-  const callId = 'call-12345';
-  assert.equal((await call('POST', '/api/call', { token: a.token, body: { to: b.me.id, type: 'invite', callId } })).error.code, 'offline');
-  assert.equal((await call('POST', '/api/call', { token: c.token, body: { to: b.me.id, type: 'invite', callId } })).error.code, 'not_friends');
-  assert.equal((await call('POST', '/api/call', { token: a.token, body: { to: b.me.id, type: 'shout', callId } })).status, 400);
-  assert.equal((await call('POST', '/api/call', { token: a.token, body: { to: b.me.id, type: 'invite', callId: 'x' } })).status, 400);
+  const callId = `home-${a.me.id}`;
+  const hello = (from, to) => call('POST', '/api/call', { token: from.token, body: { to: to.me.id, type: 'home', callId, data: { room: a.me.id, op: 'hello' } } });
+  assert.equal((await call('POST', '/api/call', { token: a.token, body: { to: b.me.id, type: 'invite', callId } })).status, 400);
+  assert.equal((await hello(a, b)).error.code, 'not_home');
+  const w = await call('POST', '/api/watch', { token: b.token, body: { user: a.me.id, on: true } });
+  assert.equal(w.voice, false, 'nobody talks at first');
+  assert.equal((await hello(a, b)).error.code, 'not_home');
+  // only the watched player picks who they talk with
+  assert.equal((await call('POST', '/api/watch/voice', { token: b.token, body: { user: b.me.id, on: true } })).error.code, 'host_only');
   const bLive = await listen(b);
-  const aLive = await listen(a);
-  assert.equal((await call('POST', '/api/call', { token: a.token, body: { to: b.me.id, type: 'invite', callId } })).status, 200);
-  const invite = await bLive.waitFor('call', (d) => d.type === 'invite');
-  assert.deepEqual([invite.callId, invite.from.id], [callId, a.me.id]);
-  await call('POST', '/api/call', { token: b.token, body: { to: a.me.id, type: 'accept', callId } });
-  await aLive.waitFor('call', (d) => d.type === 'accept');
-  const offer = { sdp: 'v=0 fake', type: 'offer' };
-  await call('POST', '/api/call', { token: a.token, body: { to: b.me.id, type: 'signal', callId, data: { description: offer } } });
-  assert.deepEqual((await bLive.waitFor('call', (d) => d.type === 'signal')).data.description, offer);
-  await call('POST', '/api/call', { token: b.token, body: { to: a.me.id, type: 'hangup', callId } });
-  await aLive.waitFor('call', (d) => d.type === 'hangup');
-  aLive.close();
+  assert.deepEqual((await call('POST', '/api/watch/voice', { token: a.token, body: { user: b.me.id, on: true } })).voice, [b.me.id]);
+  assert.deepEqual((await bLive.waitFor('watch', (d) => d.type === 'voice')).voice, [b.me.id]);
+  assert.equal((await hello(a, b)).status, 200);
+  assert.equal((await bLive.waitFor('call', (d) => d.type === 'home')).from.id, a.me.id);
+  // the watcher stops talking
+  assert.deepEqual((await call('POST', '/api/watch/voice', { token: b.token, body: { user: b.me.id, on: false } })).voice, []);
+  assert.equal((await hello(b, a)).error.code, 'not_home');
   bLive.close();
 });
 

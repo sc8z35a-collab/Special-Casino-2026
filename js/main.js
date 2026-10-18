@@ -21,7 +21,7 @@
       lock: BR.ICONS.lock, phone: BR.ICONS.phone, hangup: BR.ICONS.hangup, 'mic-on': BR.ICONS.micOn, 'mic-off': BR.ICONS.micOff,
       eye: BR.ICONS.eye, car: BR.ICONS.car, gift: BR.ICONS.gift, friends: BR.ICONS.friends, search: BR.ICONS.search, check: BR.ICONS.check,
       share: BR.ICONS.share, 'add-home': BR.ICONS.addHome, download: BR.ICONS.download, android: BR.ICONS.android, apple: BR.ICONS.apple,
-      bag: BR.ICONS.bag, home: BR.ICONS.home, speaker: BR.ICONS.speaker
+      bag: BR.ICONS.bag, home: BR.ICONS.home, speaker: BR.ICONS.speaker, chat: BR.ICONS.chat
     };
     function url(u) { return 'url("' + u.replace(/"/g, '%22') + '")'; }
     function svg(markup) { return url(BR.svgURL(markup)); }
@@ -42,9 +42,8 @@
     css += '#bg{background-image:' + url(art.bg) + '}\n';
     css += '#frame{border-image-source:' + url(art.frame) + '}\n';
     var soc = BR.SOCIAL_IMG;
-    // the round buttons on the slot screen: menu, lobby, quests
+    // the round buttons on the slot screen: menu, quests
     css += '.ic-menu{background-image:' + url(soc.buttons.menu) + '}\n';
-    css += '.ic-lobby{background-image:' + url(soc.buttons.lobby) + '}\n';
     css += '.ic-quest,.q-icon,.qn-icon{background-image:' + url(soc.buttons.quest) + '}\n';
     css += '.av-chain{background-image:' + url(soc.chain) + '}\n';
     css += '.sale-badge{background-image:' + url(soc.sale) + '}\n';
@@ -66,7 +65,7 @@
     return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
   }
   function layout() {
-    if (typing() && view.ready) return;
+    if ((typing() || (BR.entry && BR.entry.isOpen())) && view.ready) return;
     var vw = window.innerWidth, vh = window.innerHeight;
     var portrait = vh > vw * 1.05;
     stage.classList.toggle('rot', portrait);
@@ -184,13 +183,21 @@
     if (flash) { box.classList.remove('flash'); void box.offsetWidth; box.classList.add('flash'); }
   }
 
-  var toastTimer = 0;
-  function toast(msg, ms) {
+  // `tap`: what tapping the notice opens (a message's chat ...)
+  var toastTimer = 0, toastTap = null;
+  function toast(msg, ms, tap) {
     var t = $('#toast');
     t.textContent = msg;
+    toastTap = tap || null;
+    t.classList.toggle('tappable', !!tap);
     t.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.classList.remove('show'); }, ms || 2200);
+    toastTimer = setTimeout(hideToast, ms || 2200);
+  }
+  function hideToast() {
+    var t = $('#toast');
+    t.classList.remove('show', 'tappable');
+    toastTap = null;
   }
 
   /* ------------------------------------------------------------ game flow --- */
@@ -302,14 +309,15 @@
   }
 
   // Balance pushed by the server (money received, another device, reconnect).
-  function serverBalance(b) {
+  // `quiet`: the wallet changes without moving (バイト wages).
+  function serverBalance(b, quiet) {
     if (game.watch) { BR.bank.applyBalance(b); return; }
     if (game.waiting) {
       if (!game.queued || !(game.queued.rev > b.rev)) game.queued = b;
       return;
     }
     if (BR.bank.applyBalance(b)) {
-      renderWallet(true);
+      renderWallet(!quiet);
       renderBet();
     }
   }
@@ -320,6 +328,8 @@
     BR.sfx.stopReels();
     $('#btn-spin').classList.remove('spinning');
     var res = game.result;
+    // small wins and winning streaks (js/render/combo.js)
+    if (res && BR.combo && BR.combo.spun) BR.combo.spun(res, !!game.watch);
     if (res && res.charm) BR.shop.charmSaved(res);
     if (!res || res.total <= 0) {
       renderWallet(!!(res && res.charm));
@@ -435,8 +445,24 @@
     if (!on) clearTimeout(autoTimer);
   }
 
+  // フレンド対決: the battle's bet stays until it is over (js/ui/play.js)
+  function betLocked() {
+    if (!BR.play || !BR.play.betLocked || !BR.play.betLocked()) return false;
+    BR.sfx.play('deny');
+    toast('フレンド対決中はベットを変えられません');
+    return true;
+  }
+  function setBet(value) {
+    var i = C.bets.indexOf(value);
+    if (i < 0 || game.busy()) return false;
+    S.betIndex = i;
+    BR.store.save();
+    renderBet();
+    return true;
+  }
+
   function changeBet(d) {
-    if (game.busy()) return;
+    if (game.busy() || betLocked()) return;
     var i = U.clamp(S.betIndex + d, 0, C.bets.length - 1);
     if (i === S.betIndex) return;
     S.betIndex = i;
@@ -448,7 +474,7 @@
   }
 
   function maxBet() {
-    if (game.busy()) return;
+    if (game.busy() || betLocked()) return;
     var idx = 0;
     for (var i = C.bets.length - 1; i >= 0; i--) if (C.bets[i] <= S.tokens) { idx = i; break; }
     if (S.tokens < C.bets[0]) toast('スピントークンが不足しています');
@@ -507,13 +533,17 @@
       nav('tokens')();
     });
     press($('#btn-sound'), function () { setSound(!S.muted); BR.sfx.play('click'); });
-    // the menu (ranking, friends, messages ... バイト, Dev News), the lobby chat and the quests (online)
-    [['#btn-radio', 'ranking'], ['#btn-mic', 'lobby']].forEach(function (b) {
-      press($(b[0]), function () {
-        if (game.busy()) { BR.sfx.play('deny'); return; }
-        BR.sfx.play('click');
-        BR.social.open(b[1]);
-      });
+    $('#toast').addEventListener('click', function () {
+      var f = toastTap;
+      if (!f) return;
+      hideToast();
+      f();
+    });
+    // the menu (フレンド, メッセージ, Car Owner, Shop, バイト, 詳細) and the quests (online)
+    press($('#btn-radio'), function () {
+      if (game.busy()) { BR.sfx.play('deny'); return; }
+      BR.sfx.play('click');
+      BR.social.open();
     });
     press($('#btn-quest'), function () {
       if (game.busy()) { BR.sfx.play('deny'); return; }
@@ -549,9 +579,13 @@
       document.documentElement.scrollTop = 0;
       document.body.scrollTop = 0;
     }
+    // the keyboard takes a moment to go (and iOS to give the height back): lay
+    // out again a few times instead of once with a half-restored window
     document.addEventListener('focusout', function () {
       setTimeout(settle, 60);
-      setTimeout(function () { if (!typing()) { settle(); layout(); } }, 350);
+      [350, 800, 1500].forEach(function (ms) {
+        setTimeout(function () { if (!typing()) { settle(); layout(); } }, ms);
+      });
     });
     if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { setTimeout(settle, 60); });
     window.addEventListener('resize', function () { requestAnimationFrame(layout); });
@@ -570,7 +604,7 @@
     BR.game = game;
     BR.app = {
       renderWallet: renderWallet, toast: toast, renderBet: renderBet, view: view, setAuto: setAuto,
-      reels: reels, fx: fx, spin: spin, serverBalance: serverBalance,
+      reels: reels, fx: fx, spin: spin, serverBalance: serverBalance, setBet: setBet, bet: bet,
       watchEnter: watchEnter, watchExit: watchExit, watchSpin: watchSpin, watchBalance: watchBalance,
       relayout: function () { requestAnimationFrame(layout); }
     };
@@ -599,6 +633,10 @@
     BR.news.init();
     BR.call.init();
     BR.watch.init();
+    if (BR.combo && BR.combo.init) BR.combo.init();
+    if (BR.play && BR.play.init) BR.play.init();
+    if (BR.feedback && BR.feedback.init) BR.feedback.init();
+    if (BR.guide && BR.guide.init) BR.guide.init();
     BR.start.init();
     BR.install.init();
     bind();

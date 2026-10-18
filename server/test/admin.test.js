@@ -67,10 +67,10 @@ test('messages can be redacted, transfer records cannot', async () => {
   const a = await register('talker');
   const b = await register('listener');
   await s.befriend(a, b);
-  const m = await call('POST', '/api/messages', { token: a.token, body: { to: 'lobby', text: 'ひどい発言' } });
+  const m = await call('POST', '/api/messages', { token: a.token, body: { to: b.me.id, text: 'ひどい発言' } });
   admin.redact(m.message.id);
-  const lobby = await call('GET', '/api/messages', { token: b.token });
-  assert.equal(lobby.messages.find((x) => x.id === m.message.id).text, '（このメッセージは削除されました）');
+  const thread = await call('GET', `/api/messages?with=${a.me.id}`, { token: b.token });
+  assert.equal(thread.messages.find((x) => x.id === m.message.id).text, '（このメッセージは削除されました）');
   const t = await call('POST', '/api/transfer', { token: a.token, body: { to: b.me.id, amount: 10, currency: 'dollars' } });
   assert.throws(() => admin.redact(t.message.id), AdminError);
 });

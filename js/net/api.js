@@ -126,7 +126,6 @@
     buy: function (n) { return post('/api/buy', { amount: n }); },
     sell: function (n) { return post('/api/sell', { amount: n }); },
     daily: function () { return post('/api/daily'); },
-    board: function (type) { return get('/api/board?type=' + q(type)); },
 
     /* players and friends */
     user: function (id) { return get('/api/user?id=' + q(id)); },
@@ -139,14 +138,17 @@
 
     /* chat */
     conversations: function () { return get('/api/conversations'); },
-    messages: function (withId, before) {
-      var p = [];
-      if (withId) p.push('with=' + q(withId));
+    // `chat`: { with: <player> } or { group: <id> }
+    messages: function (chat, before) {
+      var p = [chat.group ? 'group=' + q(chat.group) : 'with=' + q(chat.with)];
       if (before) p.push('before=' + q(before));
-      return get('/api/messages' + (p.length ? '?' + p.join('&') : ''));
+      return get('/api/messages?' + p.join('&'));
     },
-    send: function (to, text) { return post('/api/messages', { to: to, text: text }); },
-    read: function (withId) { return post('/api/read', { with: withId }); },
+    send: function (chat, text) { return post('/api/messages', chat.group ? { group: chat.group, text: text } : { to: chat.with, text: text }); },
+    read: function (chat) { return post('/api/read', chat.group ? { group: chat.group } : { with: chat.with }); },
+    typing: function (chat) { return post('/api/typing', chat.group ? { group: chat.group } : { to: chat.with }); },
+    makeGroup: function (name, members) { return post('/api/groups', { name: name, members: members }); },
+    leaveGroup: function (id) { return post('/api/groups/leave', { group: id }); },
     transfer: function (to, amount, currency) { return post('/api/transfer', { to: to, amount: amount, currency: currency }); },
     blocks: function () { return get('/api/blocks'); },
     block: function (id, on) { return post('/api/block', { user: id, blocked: !!on }); },
@@ -174,11 +176,27 @@
     call: function (to, type, callId, data) { return post('/api/call', { to: to, type: type, callId: callId, data: data === undefined ? null : data }); },
     watch: function (id, on) { return post('/api/watch', { user: id, on: !!on }); },
     watchers: function () { return get('/api/watchers'); },
+    voice: function (userId, on) { return post('/api/watch/voice', { user: userId, on: !!on }); },
+    homeChat: function (room, text) { return post('/api/home/chat', { room: room, text: text }); },
+    watchBet: function (side, stake) { return post('/api/watch/bet', { side: side, stake: stake }); },
     tip: function (to, fruits) { return post('/api/tip', { to: to, fruits: fruits }); },
-    homeInvite: function (to) { return post('/api/home/invite', { to: to }); },
+
+    /* フレンド対決 and 協力スロット */
+    battle: function () { return get('/api/battle'); },
+    challenge: function (to, spins, bet) { return post('/api/battle', { to: to, spins: spins, bet: bet }); },
+    battleRespond: function (id, accept) { return post('/api/battle/respond', { id: id, accept: !!accept }); },
+    battleQuit: function (id) { return post('/api/battle/quit', { id: id }); },
+    coop: function (group) { return get('/api/coop?group=' + q(group)); },
+    sitCoop: function (group, on) { return post('/api/coop', { group: group, on: !!on }); },
+
+    /* the beginner guide and feedback to the operator */
+    guideDone: function () { return post('/api/guide'); },
+    sendFeedback: function (ratings, comment) { return post('/api/feedback', { ratings: ratings, comment: comment }); },
+    feedback: function () { return get('/api/feedback'); },
 
     /* quests, バイト and updates */
     quests: function () { return get('/api/quests'); },
+    claimQuests: function (ids) { return post('/api/quests/claim', ids ? { ids: ids } : {}); },
     peek: function (withId) { return post('/api/quests/peek', { with: withId }); },
     jobs: function () { return get('/api/jobs'); },
     startJob: function (id) { return post('/api/jobs/start', { id: id }); },

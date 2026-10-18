@@ -157,10 +157,10 @@
     }
   }
 
-  // a message from him arrived (the chat is not open)
-  function notify(m) {
+  // a message from him arrived (the chat is not open): tap to open it
+  function notify(m, open) {
     sfx('notify');
-    toast('ピーター: ' + K.clip(m.text, 30), 4200);
+    toast('ピーター: ' + K.clip(m.text, 30), 4200, open);
   }
 
   function init() {

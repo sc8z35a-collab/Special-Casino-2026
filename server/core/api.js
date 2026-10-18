@@ -24,15 +24,26 @@ import {
 import { createAdmin } from './admin.js';
 import { createPeter, reservedName } from './peter.js';
 import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
-import { readQuests, stepQuests, questView } from './quests.js';
+import { readQuests, stepQuests, claimQuests, questsReady, questView } from './quests.js';
 
 const PAGE = 50;
-const LOBBY_KEEP = 500;
 const CURRENCIES = ['tokens', 'dollars'];
-// 1:1 calls (稼ぎに招待) and "home" (the voice call of a player and everyone watching them)
-const CALL_TYPES = new Set(['invite', 'accept', 'decline', 'busy', 'cancel', 'hangup', 'signal', 'home']);
+// voice: the home call (a player and everyone watching them)
+const CALL_TYPES = new Set(['home']);
 const MAX_PENDING_REQUESTS = 50;
 const CHARM = RULES.charm;
+// group chats: members (with the one who made it) and the length of a name
+const GROUP_MAX = 20;
+const GROUP_NAME_MAX = 20;
+// the beginner guide is for players who have played less than this
+const GUIDE_MS = 30 * 60000;
+// two requests further apart than this are two sessions (the gap is not play time)
+const SESSION_GAP = 5 * 60000;
+// feedback: ratings 0-5 (0 = not rated) of these, and a comment of any length
+const FEEDBACK_KEYS = ['slot', 'features', 'clarity', 'controls', 'looks', 'polish'];
+const FEEDBACK_MAX = 100000;
+// home chat: the latest lines kept for people who come in (not stored)
+const HOME_CHAT_KEEP = 30;
 
 function randomInt(lo, hi) {
   const r = new Uint32Array(1);
@@ -64,7 +75,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     nameCheck: [60, 20],
     spin: [120, 6],
     shop: [60, 10],
-    lobby: [20, 4],
+    typing: [120, 20],
     dm: [40, 8],
     transfer: [10, 5],
     friend: [30, 10],
@@ -101,8 +112,6 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the watchers of `hostId` (everyone in their home)
   const watcherIds = (hostId) => q('SELECT watcher_id FROM watchers WHERE target_id = ?').all(hostId).map((r) => r.watcher_id);
   const watching = (userId) => { const r = q('SELECT target_id FROM watchers WHERE watcher_id = ?').get(userId); return r ? r.target_id : 0; };
-  // in a home: watching someone, or watched by someone
-  const inHome = (userId) => !!watching(userId) || !!q('SELECT 1 AS x FROM watchers WHERE target_id = ? LIMIT 1').get(userId);
 
   const peter = createPeter({
     q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel,
@@ -113,18 +122,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   /* ----- quests (js/game/quests.js), XP, バイト ----- */
 
   // Quest progress inside the caller's transaction (`cur`: the player's row as
-  // it is now). `xp`: XP earned besides the quests. The caller saves `json`,
-  // pays `dollars` / `tokens` and adds `xp`.
-  function questStep(cur, events, xp = 0) {
-    if (!config.quests) return { changed: false, done: [], dollars: 0, tokens: 0, json: cur.quests, xp, before: cur.xp };
+  // it is now); the caller saves `json`. Finished quests wait to be received.
+  function questStep(cur, events) {
+    if (!config.quests) return { changed: false, done: [], json: cur.quests };
     const state = readQuests(cur.quests);
     const r = stepQuests(state, events, Date.now());
-    return { ...r, json: JSON.stringify(state), xp: xp + r.done.length * LEVEL.questXp, before: cur.xp };
+    return { ...r, json: JSON.stringify(state), ready: questsReady(state) };
   }
-  // Tells the player what was finished (and their XP now).
+  // Tells the player what was finished (and how many wait to be received).
   function questNotice(userId, r) {
-    if (!r || !r.done.length) return;
-    live.send(userId, 'quest', { done: r.done.map((x) => x.id), dollars: r.dollars, tokens: r.tokens, xp: r.before + r.xp });
+    if (!r || !r.done || !r.done.length) return;
+    live.send(userId, 'quest', { done: r.done.map((x) => x.id), ready: r.ready });
   }
   // Progress from one of the player's actions, saved in a transaction of its own.
   function track(userId, events) {
@@ -133,12 +141,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!cur || cur.npc) return null;
       const st = questStep(cur, events);
       if (!st.changed) return null;
-      const paid = st.dollars > 0 || st.tokens > 0;
-      q('UPDATE users SET quests = ?, dollars = dollars + ?, tokens = tokens + ?, xp = xp + ?, rev = rev + ? WHERE id = ?')
-        .run(st.json, st.dollars, st.tokens, st.xp, paid ? 1 : 0, cur.id);
+      q('UPDATE users SET quests = ? WHERE id = ?').run(st.json, cur.id);
       return st;
     });
-    if (r && (r.dollars || r.tokens)) balanceChanged(userId);
     questNotice(userId, r);
     return r;
   }
@@ -203,8 +208,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       debt: peter.owed(u.id),
       xp: u.xp,
       jobs: readJobs(u.jobs),
+      questsReady: questsReady(readQuests(u.quests)),
       // the newest release: a browser running an older game asks the player to update
       release: RELEASE,
+      // the beginner guide: everyone under 30 minutes of play until they finish it
+      guide: !u.guide_done && u.play_ms < GUIDE_MS,
+      feedback: feedbackState(u),
+      feedbackAdmin: isFeedbackAdmin(u),
+      feedbackCount: isFeedbackAdmin(u) ? feedbackCount() : 0,
+      // the group whose 協力スロット table the player sits at (0: none)
+      coop: u.coop_group || 0,
       createdAt: u.created_at
     };
   }
@@ -275,7 +288,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       dayWon: u.won_day === today ? u.day_won : 0,
       createdAt: u.created_at,
       online: isOnline(u),
-      rank: u.npc ? null : rankOf('total_won', u.total_won, u.id),
+      lastSeen: u.npc ? null : u.last_seen,
       cars: carCount(u.id),
       level: LEVEL.of(u.xp),
       friendship: friendship(viewerId, u.id)
@@ -284,10 +297,6 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   // Peter is always there
   function isOnline(u) { return u.npc ? true : live.isOnline(u.id); }
-
-  function rankOf(col, value, id) {
-    return q(`SELECT COUNT(*) AS n FROM users WHERE banned = 0 AND npc = '' AND (${col} > ? OR (${col} = ? AND id < ?))`).get(value, value, id).n + 1;
-  }
 
   function msgDto(m) {
     return {
@@ -324,7 +333,49 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
 
   function unreadTotal(userId) {
-    return q('SELECT COALESCE(SUM(unread), 0) AS n FROM conversations WHERE user_id = ?').get(userId).n;
+    return q('SELECT COALESCE(SUM(unread), 0) AS n FROM conversations WHERE user_id = ?').get(userId).n
+      + q('SELECT COALESCE(SUM(unread), 0) AS n FROM chat_members WHERE user_id = ?').get(userId).n;
+  }
+
+  /* ----- group chats ----- */
+  const groupChannel = (id) => `group:${id}`;
+  const memberIds = (groupId) => q('SELECT user_id FROM chat_members WHERE group_id = ? ORDER BY joined_at, user_id').all(groupId).map((r) => r.user_id);
+  // the group, if `userId` is in it
+  function myGroup(userId, groupId) {
+    const g = q('SELECT * FROM chat_groups WHERE id = ?').get(groupId);
+    if (!g || !q('SELECT 1 AS x FROM chat_members WHERE group_id = ? AND user_id = ?').get(groupId, userId)) {
+      throw new ApiError(404, 'no_group', 'このグループには参加していません');
+    }
+    return g;
+  }
+  function groupDto(g, viewerId) {
+    const members = q(`SELECT o.id, o.name, o.avatar FROM chat_members m JOIN users o ON o.id = m.user_id
+                       WHERE m.group_id = ? ORDER BY m.joined_at, o.id`).all(g.id);
+    const mine = q('SELECT unread FROM chat_members WHERE group_id = ? AND user_id = ?').get(g.id, viewerId);
+    const last = g.last_id ? q(`SELECT m.kind, m.body, m.sender_id, s.name AS sender_name FROM messages m LEFT JOIN users s ON s.id = m.sender_id
+                                WHERE m.id = ?`).get(g.last_id) : null;
+    return {
+      id: g.id,
+      name: g.name,
+      members: members.map((r) => ({ ...r, online: live.isOnline(r.id) })),
+      unread: mine ? mine.unread : 0,
+      coop: { gauge: g.coop, goal: CO.goal },
+      at: g.updated_at,
+      last: last ? { kind: last.kind, text: last.body, mine: last.sender_id === viewerId, from: last.sender_name || null } : null
+    };
+  }
+  // A message in a group: everyone else has one more unread, everyone hears it.
+  function postToGroup(g, sender, kind, body) {
+    const row = tx(() => {
+      const m = insertMessage({ channel: groupChannel(g.id), sender, kind, body });
+      q('UPDATE chat_groups SET last_id = ?, updated_at = ? WHERE id = ?').run(m.id, m.created_at, g.id);
+      q('UPDATE chat_members SET unread = unread + 1 WHERE group_id = ? AND user_id != ?').run(g.id, sender ? sender.id : 0);
+      if (sender) q('UPDATE chat_members SET read_id = ? WHERE group_id = ? AND user_id = ?').run(m.id, g.id, sender.id);
+      return m;
+    });
+    const dto = { ...msgDto(row), group: g.id };
+    for (const id of memberIds(g.id)) live.send(id, 'msg', sender && id === sender.id ? dto : { ...dto, unread: unreadTotal(id) });
+    return dto;
   }
   function pendingRequests(userId) {
     return q('SELECT COUNT(*) AS n FROM friend_requests WHERE to_id = ?').get(userId).n;
@@ -352,23 +403,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return t;
   }
 
-  // Board refresh hint, at most every 2 seconds.
-  let boardTimer = null;
-  function boardChanged() {
-    if (boardTimer) return;
-    boardTimer = setTimeout(() => { boardTimer = null; live.broadcast('board', { at: Date.now() }); }, 2000);
-    if (boardTimer.unref) boardTimer.unref();
-  }
-
   // The other people in `hostId`'s home hear about a watcher coming or going.
   function homeChanged(hostId, who, on) {
     live.send(hostId, 'watch', { type: 'watched', by: who, on });
     for (const id of watcherIds(hostId)) if (id !== who.id) live.send(id, 'watch', { type: 'member', user: hostId, by: who, on });
-  }
-
-  function postLobbySystem(text) {
-    const m = insertMessage({ channel: 'lobby', sender: null, kind: 'system', body: text });
-    live.broadcast('msg', msgDto(m));
   }
 
   // Players watching `targetId`'s screen.
@@ -376,10 +414,175 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     for (const w of q('SELECT watcher_id FROM watchers WHERE target_id = ?').all(targetId)) live.send(w.watcher_id, 'watch', payload);
   }
 
-  // After any balance change: the player's other devices and their spectators follow.
-  function balanceChanged(userId) {
+  /* ----- the voice and the chat of a home ----- */
+  // Nobody talks at first: the watched player picks the watchers they talk
+  // with (watchers.voice). The voice of a home is them and those watchers.
+  const voiceIds = (hostId) => q('SELECT watcher_id FROM watchers WHERE target_id = ? AND voice = 1').all(hostId).map((r) => r.watcher_id);
+  const inVoice = (id, room) => id === room || !!q('SELECT 1 AS x FROM watchers WHERE watcher_id = ? AND target_id = ? AND voice = 1').get(id, room);
+  // a watcher whose connection dropped keeps their voice for a while (memory only)
+  const voiceKept = new Map();
+  function voiceChanged(hostId, who, on) {
+    const data = { type: 'voice', user: hostId, by: mini(who), on, voice: voiceIds(hostId) };
+    live.send(hostId, 'watch', data);
+    for (const id of watcherIds(hostId)) live.send(id, 'watch', data);
+  }
+  // the people watching a player, and whether they may talk
+  function homeMembers(hostId) {
+    return q('SELECT o.id, o.name, o.avatar, w.voice FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(hostId)
+      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, voice: !!r.voice }));
+  }
+  // The chat of a home (the watched player and their watchers) is live only;
+  // its last lines are kept in memory for people who come in.
+  const homeChats = new Map();
+  let homeChatSeq = 0;
+  const homeChatOf = (room) => homeChats.get(room) || [];
+
+  /* ----- 観戦ベット ----- */
+  const WB = RULES.watchBet;
+  const openBet = (watcherId) => q("SELECT * FROM watch_bets WHERE watcher_id = ? AND state = 'open'").get(watcherId);
+  function betDto(b) {
+    return b ? { id: b.id, host: b.host_id, side: b.side, stake: b.stake, left: b.left_n, spins: WB.spins, state: b.state, paid: b.paid } : null;
+  }
+  // After each spin of `hostId`: the bets on them count down; a BIG WIN (or
+  // better) decides them at once, otherwise their last spin does.
+  function settleBets(hostId, tier) {
+    const bets = q("SELECT * FROM watch_bets WHERE host_id = ? AND state = 'open'").all(hostId);
+    if (!bets.length) return;
+    const host = getUser(hostId);
+    const now = Date.now();
+    for (const b of bets) {
+      const left = Math.max(0, b.left_n - 1);
+      const state = tier >= 2 ? (b.side === 'hit' ? 'won' : 'lost') : left === 0 ? (b.side === 'miss' ? 'won' : 'lost') : 'open';
+      const paid = state === 'won' ? Math.floor(b.stake * (b.side === 'hit' ? WB.hit : WB.miss)) : 0;
+      tx(() => {
+        q('UPDATE watch_bets SET left_n = ?, state = ?, paid = ?, ended_at = ? WHERE id = ?').run(left, state, paid, state === 'open' ? 0 : now, b.id);
+        if (paid) q('UPDATE users SET tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(paid, b.watcher_id);
+      });
+      const dto = betDto({ ...b, left_n: left, state, paid });
+      live.send(b.watcher_id, 'watch', { type: 'bet', user: hostId, host: host ? mini(host) : null, bet: dto });
+      if (paid) balanceChanged(b.watcher_id);
+      const w = state !== 'open' ? getUser(b.watcher_id) : null;
+      if (w) live.send(hostId, 'watch', { type: 'betEnd', by: mini(w), bet: dto });
+    }
+  }
+
+  /* ----- フレンド対決 ----- */
+  const BT = RULES.battle;
+  const battleById = (id) => q('SELECT * FROM battles WHERE id = ?').get(id);
+  const openBattleOf = (userId) => q("SELECT * FROM battles WHERE (a_id = ? OR b_id = ?) AND state IN ('invite', 'live') ORDER BY id DESC LIMIT 1").get(userId, userId);
+  function battleDto(b, viewerId) {
+    const mine = viewerId === b.b_id ? 'b' : 'a', theirs = mine === 'a' ? 'b' : 'a';
+    const side = (k) => {
+      const p = getUser(b[k + '_id']);
+      return { id: b[k + '_id'], name: p ? p.name : '?', avatar: p ? p.avatar : null, n: b[k + '_n'], won: b[k + '_won'] };
+    };
+    return {
+      id: b.id, spins: b.spins, bet: b.bet, state: b.state, from: b.a_id, me: side(mine), other: side(theirs),
+      winner: b.state === 'done' ? b.winner : null, quit: b.quit || 0,
+      until: b.state === 'invite' ? b.created_at + BT.inviteMs : b.state === 'live' ? b.started_at + BT.maxMs : 0
+    };
+  }
+  // The end of a battle: the larger total win wins (unless someone quit); both
+  // are told, and it goes into their conversation.
+  function finishBattle(b, quitter = 0) {
+    const winner = quitter ? (quitter === b.a_id ? b.b_id : b.a_id) : b.a_won === b.b_won ? 0 : b.a_won > b.b_won ? b.a_id : b.b_id;
+    const a = getUser(b.a_id), c = getUser(b.b_id);
+    const an = a ? a.name : '?', cn = c ? c.name : '?';
+    const head = `フレンド対決（${b.spins}回・ベット${fmt(b.bet)}）`;
+    const score = `${an}さん ${fmt(b.a_won)} ／ ${cn}さん ${fmt(b.b_won)}`;
+    const result = quitter ? `${quitter === b.a_id ? an : cn}さんがやめたので、${winner === b.a_id ? an : cn}さんの勝ち！`
+      : winner ? `${winner === b.a_id ? an : cn}さんの勝ち！` : '引き分け！';
+    const row = tx(() => {
+      const r = q("UPDATE battles SET state = 'done', winner = ?, quit = ?, ended_at = ? WHERE id = ? AND state = 'live'").run(winner, quitter, Date.now(), b.id);
+      if (!Number(r.changes)) return null;
+      q('UPDATE users SET battle_id = 0 WHERE id IN (?, ?) AND battle_id = ?').run(b.a_id, b.b_id, b.id);
+      const m = insertMessage({ channel: dmChannel(b.a_id, b.b_id), sender: null, kind: 'system', body: `${head}\n${score}\n${result}` });
+      touchConversations(b.a_id, b.b_id, m.id, 0);
+      return m;
+    });
+    if (!row) return;
+    const done = battleById(b.id);
+    const dto = msgDto(row);
+    for (const [me, other] of [[b.a_id, b.b_id], [b.b_id, b.a_id]]) {
+      live.send(me, 'battle', { type: 'done', battle: battleDto(done, me) });
+      live.send(me, 'msg', { ...dto, to: me, peer: other, unread: unreadTotal(me) });
+    }
+  }
+  // an invitation nobody answered, a battle past its time: over
+  function battleOver(b, now = Date.now()) {
+    if (b.state === 'invite' && now > b.created_at + BT.inviteMs) {
+      q("UPDATE battles SET state = 'expired', ended_at = ? WHERE id = ? AND state = 'invite'").run(now, b.id);
+      return true;
+    }
+    if (b.state === 'live' && now > b.started_at + BT.maxMs) {
+      finishBattle(b);
+      return true;
+    }
+    return false;
+  }
+  function currentBattle(userId) {
+    for (let i = 0; i < 3; i++) {
+      const b = openBattleOf(userId);
+      if (!b || !battleOver(b)) return b || null;
+    }
+    return null;
+  }
+  // after a spin that counted: both see the score, and the last spin ends it
+  function battleStep(id) {
+    const b = battleById(id);
+    if (!b || b.state !== 'live') return;
+    if (b.a_n >= b.spins && b.b_n >= b.spins) { finishBattle(b); return; }
+    for (const uid of [b.a_id, b.b_id]) live.send(uid, 'battle', { type: 'step', battle: battleDto(b, uid) });
+  }
+
+  /* ----- 協力スロット ----- */
+  const CO = RULES.coop;
+  // the players at a group's table, with what they bet in this round
+  function coopPlayers(groupId) {
+    return q(`SELECT o.id, o.name, o.avatar, m.coop_bet AS bet FROM chat_members m JOIN users o ON o.id = m.user_id
+              WHERE m.group_id = ? AND o.coop_group = ? ORDER BY m.joined_at, o.id`).all(groupId, groupId)
+      .map((r) => ({ ...r, online: live.isOnline(r.id) }));
+  }
+  function coopDto(g) { return { group: g.id, name: g.name, gauge: g.coop, goal: CO.goal, players: coopPlayers(g.id) }; }
+  function coopSend(groupId, data) { for (const p of coopPlayers(groupId)) live.send(p.id, 'coop', data); }
+  // After a spin at the table: everyone there sees it; a full gauge pays
+  // everyone who bet in the round and goes into the group's chat.
+  function coopAfterSpin(c, u, out) {
+    const g = q('SELECT * FROM chat_groups WHERE id = ?').get(c.group);
+    if (!g) return;
+    coopSend(g.id, { type: 'spin', group: g.id, by: mini(u), bet: out.bet, win: out.total, tier: out.tier, gauge: c.gauge, goal: CO.goal });
+    if (!c.paid.length) return;
+    const paid = c.paid.map((p) => ({ ...p, name: (getUser(p.id) || {}).name || '?' }));
+    postToGroup(g, null, 'system', `協力スロットのゲージが満タン！ボーナス: ${paid.map((p) => `${p.name}さん +${fmt(p.amount)}トークン`).join('、')}`);
+    coopSend(g.id, { type: 'bonus', group: g.id, paid, gauge: 0, goal: CO.goal });
+    for (const p of paid) if (p.id !== u.id) balanceChanged(p.id);
+  }
+
+  /* ----- 運営へのフィードバック ----- */
+  const FEEDBACK_ADMIN = config.feedbackAdmin ? nameKey(config.feedbackAdmin) : '';
+  const isFeedbackAdmin = (u) => !!FEEDBACK_ADMIN && u.name_key === FEEDBACK_ADMIN;
+  const feedbackCount = () => q('SELECT COUNT(*) AS n FROM feedback').get().n;
+  // 'ask' for players who have played a while (and everyone from before it
+  // existed) once the beginner guide is behind them; 'sent' once they did
+  function feedbackState(u) {
+    if (u.feedback === 2) return 'sent';
+    if (u.npc || isFeedbackAdmin(u)) return null;
+    const guide = !u.guide_done && u.play_ms < GUIDE_MS;
+    return !guide && (u.feedback === 1 || u.play_ms >= GUIDE_MS) ? 'ask' : null;
+  }
+  function readRatings(json) {
+    let r;
+    try { r = JSON.parse(json); } catch { r = {}; }
+    const out = {};
+    for (const k of FEEDBACK_KEYS) out[k] = Number(r && r[k]) || 0;
+    return out;
+  }
+
+  // After any balance change: the player's other devices and their spectators
+  // follow. `quiet`: no sound, no shaking wallet (wages).
+  function balanceChanged(userId, quiet = false) {
     const u = getUser(userId);
-    live.send(userId, 'balance', balance(u));
+    live.send(userId, 'balance', quiet ? { ...balance(u), quiet: true } : balance(u));
     notifyWatchers(userId, { type: 'balance', user: userId, balance: balance(u) });
     return u;
   }
@@ -403,7 +606,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (!u) throw new ApiError(401, 'auth', 'アカウントが見つかりません');
     if (u.banned) throw new ApiError(403, 'banned', 'このアカウントは利用停止されています');
     const now = Date.now();
-    if (now - u.last_seen > 60000) q('UPDATE users SET last_seen = ? WHERE id = ?').run(now, u.id);
+    // once a minute at most: the time since the last request is play time,
+    // unless the player was away (then a new session starts)
+    if (now - u.last_seen > 60000) {
+      const played = now - u.last_seen < SESSION_GAP ? now - u.last_seen : 0;
+      q('UPDATE users SET last_seen = ?, play_ms = play_ms + ? WHERE id = ?').run(now, played, u.id);
+    }
     if (now - s.last_used > 3600000) q('UPDATE sessions SET last_used = ? WHERE token_hash = ?').run(now, h);
     return u;
   }
@@ -493,7 +701,6 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (/UNIQUE/i.test(String(e && e.message))) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
         throw e;
       }
-      boardChanged();
       return { token, recoveryCode: code, me: meDto(user) };
     },
 
@@ -565,7 +772,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!RULES.bets.includes(bet)) throw new ApiError(400, 'bad_bet', 'ベット額が正しくありません');
       rate(limit.spin, u.id, 'スピンが速すぎます');
       const today = utcDay();
-      let quests = null;
+      let quests = null, fight = 0, coop = null;
       const result = tx(() => {
         const cur = getUser(u.id);
         if (cur.tokens < bet) throw new ApiError(409, 'insufficient', 'スピントークンが不足しています');
@@ -576,15 +783,46 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           r.charm = { pct, back: Math.floor((bet - r.total) * pct / 100) };
         }
         const back = r.charm ? r.charm.back : 0;
+        // フレンド対決: spins at the battle's bet count, up to its number
+        if (cur.battle_id) {
+          const b = battleById(cur.battle_id);
+          const k = b && b.state === 'live' && b.bet === bet ? (b.a_id === cur.id ? 'a' : 'b') : null;
+          if (k && b[k + '_n'] < b.spins) {
+            q(`UPDATE battles SET ${k}_n = ${k}_n + 1, ${k}_won = ${k}_won + ? WHERE id = ?`).run(r.total, b.id);
+            fight = b.id;
+          }
+        }
+        // 協力スロット: the bet fills the group's gauge; a full one pays everyone who bet
+        if (cur.coop_group) {
+          const m = q('SELECT coop_bet FROM chat_members WHERE group_id = ? AND user_id = ?').get(cur.coop_group, cur.id);
+          if (!m) {
+            q('UPDATE users SET coop_group = 0 WHERE id = ?').run(cur.id);
+          } else {
+            q('UPDATE chat_members SET coop_bet = coop_bet + ? WHERE group_id = ? AND user_id = ?').run(bet, cur.coop_group, cur.id);
+            q('UPDATE chat_groups SET coop = coop + ? WHERE id = ?').run(bet, cur.coop_group);
+            const g = q('SELECT id, coop FROM chat_groups WHERE id = ?').get(cur.coop_group);
+            coop = { group: g.id, gauge: g.coop, paid: [] };
+            if (g.coop >= CO.goal) {
+              for (const p of q('SELECT user_id, coop_bet FROM chat_members WHERE group_id = ? AND coop_bet > 0').all(g.id)) {
+                const amount = Math.max(1, Math.floor(p.coop_bet * CO.bonus));
+                q('UPDATE users SET tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(amount, p.user_id);
+                coop.paid.push({ id: p.user_id, amount });
+              }
+              q('UPDATE chat_members SET coop_bet = 0 WHERE group_id = ?').run(g.id);
+              q('UPDATE chat_groups SET coop = 0 WHERE id = ?').run(g.id);
+              coop.gauge = 0;
+            }
+          }
+        }
         const dayWon = (cur.won_day === today ? cur.day_won : 0) + r.total;
         const last = JSON.stringify({ grid: r.grid, total: r.total, tier: r.tier, bet, at: Date.now() });
         // quests count the spin, a win and the payout in $ (in the same row write)
-        quests = questStep(cur, [['spin', 1], ['win', r.total > 0 ? 1 : 0], ['earn', r.total * RULES.tokenPrice]], LEVEL.spinXp);
-        q(`UPDATE users SET tokens = tokens - ? + ?, dollars = dollars + ?, total_bet = total_bet + ?, total_won = total_won + ?,
+        quests = questStep(cur, [['spin', 1], ['win', r.total > 0 ? 1 : 0], ['earn', r.total * RULES.tokenPrice]]);
+        q(`UPDATE users SET tokens = tokens - ? + ?, total_bet = total_bet + ?, total_won = total_won + ?,
            biggest_win = MAX(biggest_win, ?), spins = spins + 1, won_day = ?, day_won = ?, last_spin = ?, charm = ?,
            quests = ?, xp = xp + ?, rev = rev + 1 WHERE id = ?`)
-          .run(bet, r.total + back + quests.tokens, quests.dollars, bet, r.total, r.total, today, dayWon, last, r.charm ? 0 : cur.charm,
-            quests.json, quests.xp, cur.id);
+          .run(bet, r.total + back, bet, r.total, r.total, today, dayWon, last, r.charm ? 0 : cur.charm,
+            quests.json, LEVEL.spinXp, cur.id);
         if (config.logSpins) {
           q('INSERT INTO spins (user_id, bet, payout, line, created_at) VALUES (?, ?, ?, ?, ?)').run(cur.id, bet, r.total + back, r.line.join(','), Date.now());
         }
@@ -593,11 +831,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const after = getUser(u.id);
       questNotice(u.id, quests);
       const out = { grid: result.grid, line: result.line, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet, charm: result.charm || null };
-      if (result.total > 0) boardChanged();
-      if (result.tier >= 3) {
-        postLobbySystem(`${after.name}さんが SUPER BIG WIN！ ${fmt(result.total)} トークン獲得（${Math.round(result.mult * 10) / 10}倍）`);
-      }
       notifyWatchers(u.id, { type: 'spin', user: u.id, result: out, balance: balance(after) });
+      settleBets(u.id, result.tier);
+      if (fight) battleStep(fight);
+      if (coop) coopAfterSpin(coop, u, out);
       afterSpend(u.id);
       return {
         result: out,
@@ -649,37 +886,6 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { me: meDto(balanceChanged(u.id)), amount: RULES.dailyFree, nextReset: nextUtcMidnight() };
     },
 
-    'GET /api/board': (req, u) => {
-      const type = req.query.get('type') || 'total';
-      const today = utcDay();
-      let rows, value, rank;
-      if (type === 'today') {
-        rows = q(`SELECT id, name, avatar, day_won AS value FROM users WHERE banned = 0 AND npc = '' AND won_day = ? AND day_won > 0
-                  ORDER BY day_won DESC, id LIMIT 100`).all(today);
-        value = u.won_day === today ? u.day_won : 0;
-        rank = value > 0
-          ? q("SELECT COUNT(*) AS n FROM users WHERE banned = 0 AND npc = '' AND won_day = ? AND (day_won > ? OR (day_won = ? AND id < ?))").get(today, value, value, u.id).n + 1
-          : null;
-      } else if (type === 'biggest') {
-        rows = q("SELECT id, name, avatar, biggest_win AS value FROM users WHERE banned = 0 AND npc = '' ORDER BY biggest_win DESC, id LIMIT 100").all();
-        value = u.biggest_win;
-        rank = rankOf('biggest_win', value, u.id);
-      } else if (type === 'total') {
-        rows = q("SELECT id, name, avatar, total_won AS value FROM users WHERE banned = 0 AND npc = '' ORDER BY total_won DESC, id LIMIT 100").all();
-        value = u.total_won;
-        rank = rankOf('total_won', value, u.id);
-      } else {
-        throw new ApiError(400, 'bad_type', 'ランキングの種類が正しくありません');
-      }
-      return {
-        type,
-        rows: rows.map((r, i) => ({ rank: i + 1, id: r.id, name: r.name, avatar: r.avatar, value: r.value, online: live.isOnline(r.id) })),
-        me: { rank, value },
-        players: q("SELECT COUNT(*) AS n FROM users WHERE banned = 0 AND npc = ''").get().n,
-        online: live.onlineCount()
-      };
-    },
-
     // by id, or by exact name (names are unique)
     'GET /api/user': (req, u) => {
       let t;
@@ -695,7 +901,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     /* ----- friends ----- */
 
     'GET /api/friends': (req, u) => {
-      const friends = q(`SELECT o.id, o.name, o.avatar, f.created_at AS since FROM friends f JOIN users o ON o.id = f.friend_id
+      const friends = q(`SELECT o.id, o.name, o.avatar, o.last_seen AS lastSeen, f.created_at AS since FROM friends f JOIN users o ON o.id = f.friend_id
                          WHERE f.user_id = ? AND o.banned = 0 ORDER BY o.name_key`).all(u.id);
       const incoming = q(`SELECT o.id, o.name, o.avatar, r.created_at AS at FROM friend_requests r JOIN users o ON o.id = r.from_id
                           WHERE r.to_id = ? AND o.banned = 0 ORDER BY r.created_at DESC`).all(u.id);
@@ -755,44 +961,58 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     /* ----- chat ----- */
 
     'GET /api/conversations': (req, u) => {
-      const rows = q(`SELECT c.other_id AS id, c.unread, c.updated_at, o.name, o.avatar, o.banned, o.npc, m.kind, m.body, m.amount, m.currency, m.sender_id
+      const rows = q(`SELECT c.other_id AS id, c.unread, c.updated_at, o.name, o.avatar, o.banned, o.npc, o.last_seen, m.kind, m.body, m.amount, m.currency, m.sender_id
                       FROM conversations c JOIN users o ON o.id = c.other_id JOIN messages m ON m.id = c.last_id
                       WHERE c.user_id = ? ORDER BY c.updated_at DESC LIMIT 100`).all(u.id);
+      const groups = q(`SELECT g.* FROM chat_members m JOIN chat_groups g ON g.id = m.group_id
+                        WHERE m.user_id = ? ORDER BY g.updated_at DESC LIMIT 50`).all(u.id);
       return {
         conversations: rows.filter((r) => !r.banned).map((r) => ({
-          user: { id: r.id, name: r.name, avatar: r.avatar, online: isOnline(r), npc: r.npc || null },
+          user: { id: r.id, name: r.name, avatar: r.avatar, online: isOnline(r), npc: r.npc || null, lastSeen: r.npc ? null : r.last_seen },
           friend: areFriends(u.id, r.id),
           unread: r.unread,
           at: r.updated_at,
           last: { kind: r.kind, text: r.body, amount: r.amount, currency: r.currency, mine: r.sender_id === u.id }
         })),
+        groups: groups.map((g) => groupDto(g, u.id)),
         unread: unreadTotal(u.id)
       };
     },
 
+    // a conversation (with=<player>) or a group (group=<id>), newest page
+    // first; `before` pages back. Also how far the others have read (既読).
     'GET /api/messages': (req, u) => {
-      const withId = req.query.get('with');
-      const channel = withId ? dmChannel(u.id, posInt(withId, 'ユーザーID')) : 'lobby';
+      const withId = req.query.get('with'), groupId = req.query.get('group');
+      let channel, extra;
+      if (groupId) {
+        const g = myGroup(u.id, posInt(groupId, 'グループ'));
+        channel = groupChannel(g.id);
+        const reads = q('SELECT user_id AS id, read_id AS upto FROM chat_members WHERE group_id = ? AND user_id != ?').all(g.id, u.id);
+        extra = { group: groupDto(g, u.id), reads };
+      } else if (withId) {
+        const other = posInt(withId, 'ユーザーID');
+        channel = dmChannel(u.id, other);
+        const c = q('SELECT read_id FROM conversations WHERE user_id = ? AND other_id = ?').get(other, u.id);
+        extra = { readUpTo: c ? c.read_id : 0 };
+      } else {
+        throw new ApiError(400, 'bad_chat', '相手かグループを指定してください');
+      }
       const beforeRaw = Number(req.query.get('before'));
       const before = Number.isSafeInteger(beforeRaw) && beforeRaw > 0 ? beforeRaw : Number.MAX_SAFE_INTEGER;
       const rows = q(`SELECT m.*, s.name AS sender_name, s.avatar AS sender_avatar FROM messages m LEFT JOIN users s ON s.id = m.sender_id
                       WHERE m.channel = ? AND m.id < ? ORDER BY m.id DESC LIMIT ?`).all(channel, before, PAGE);
-      let list = rows.reverse();
-      if (channel === 'lobby') {
-        const blocked = new Set(q('SELECT blocked_id FROM blocks WHERE user_id = ?').all(u.id).map((r) => r.blocked_id));
-        list = list.filter((m) => !blocked.has(m.sender_id));
-      }
-      return { channel, messages: list.map(msgDto), hasMore: rows.length === PAGE };
+      return { channel, messages: rows.reverse().map(msgDto), hasMore: rows.length === PAGE, ...extra };
     },
 
     'POST /api/messages': async (req, u) => {
       const body = await req.json();
       const text = cleanText(body.text);
-      if (body.to === 'lobby') {
-        rate(limit.lobby, u.id, '連続して送信できません。少し待ってください');
-        const dto = msgDto(insertMessage({ channel: 'lobby', sender: u, kind: 'text', body: text }));
-        live.broadcast('msg', dto, (uid) => uid === u.id || !isBlocked(uid, u.id));
-        return { message: dto };
+      if (body.group !== undefined) {
+        const g = myGroup(u.id, posInt(body.group, 'グループ'));
+        rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
+        const message = postToGroup(g, u, 'text', text);
+        track(u.id, [['chat', 1]]);
+        return { message };
       }
       const to = posInt(body.to, '宛先');
       if (to === u.id) throw new ApiError(400, 'self', '自分にはメッセージを送れません');
@@ -814,12 +1034,70 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { message };
     },
 
+    // Read up to the newest message: the other side (everyone in a group) sees 既読.
     'POST /api/read': async (req, u) => {
       const body = await req.json();
-      const other = posInt(body.with, 'ユーザーID');
       rate(limit.read, u.id);
-      q('UPDATE conversations SET unread = 0 WHERE user_id = ? AND other_id = ?').run(u.id, other);
+      if (body.group !== undefined) {
+        const g = myGroup(u.id, posInt(body.group, 'グループ'));
+        const before = q('SELECT read_id FROM chat_members WHERE group_id = ? AND user_id = ?').get(g.id, u.id).read_id;
+        q('UPDATE chat_members SET unread = 0, read_id = ? WHERE group_id = ? AND user_id = ?').run(g.last_id, g.id, u.id);
+        if (g.last_id > before) {
+          for (const id of memberIds(g.id)) if (id !== u.id) live.send(id, 'read', { group: g.id, by: u.id, upto: g.last_id });
+        }
+        return { unread: unreadTotal(u.id) };
+      }
+      const other = posInt(body.with, 'ユーザーID');
+      const c = q('SELECT last_id, read_id FROM conversations WHERE user_id = ? AND other_id = ?').get(u.id, other);
+      q('UPDATE conversations SET unread = 0, read_id = last_id WHERE user_id = ? AND other_id = ?').run(u.id, other);
+      if (c && c.last_id > c.read_id) live.send(other, 'read', { dm: u.id, upto: c.last_id });
       return { unread: unreadTotal(u.id) };
+    },
+
+    // 入力中: the others in the conversation see it for a few seconds
+    'POST /api/typing': async (req, u) => {
+      relayTyping(u, await req.json());
+      return { ok: true };
+    },
+
+    /* ----- group chats ----- */
+
+    // A group of friends: the one who makes it picks them.
+    'POST /api/groups': async (req, u) => {
+      const body = await req.json();
+      const name = cleanText(body.name);
+      if (Array.from(name).length > GROUP_NAME_MAX) throw new ApiError(400, 'bad_name', `グループ名は${GROUP_NAME_MAX}文字までです`);
+      const ids = [...new Set((Array.isArray(body.members) ? body.members : []).map((v) => posInt(v, 'メンバー')))].filter((id) => id !== u.id);
+      if (!ids.length) throw new ApiError(400, 'no_members', 'メンバーを選んでください');
+      if (ids.length + 1 > GROUP_MAX) throw new ApiError(400, 'too_many', `グループは${GROUP_MAX}人までです`);
+      for (const id of ids) {
+        if (!areFriends(u.id, id)) throw new ApiError(403, 'not_friends', 'フレンドだけをグループに入れられます');
+      }
+      rate(limit.friend, u.id);
+      const g = tx(() => {
+        const now = Date.now();
+        const id = Number(q('INSERT INTO chat_groups (name, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?)').run(name, u.id, now, now).lastInsertRowid);
+        for (const m of [u.id, ...ids]) q('INSERT INTO chat_members (group_id, user_id, joined_at) VALUES (?, ?, ?)').run(id, m, now);
+        return q('SELECT * FROM chat_groups WHERE id = ?').get(id);
+      });
+      postToGroup(g, null, 'system', `${u.name}さんがグループ「${name}」を作りました`);
+      return { group: groupDto(q('SELECT * FROM chat_groups WHERE id = ?').get(g.id), u.id) };
+    },
+
+    'POST /api/groups/leave': async (req, u) => {
+      const body = await req.json();
+      const g = myGroup(u.id, posInt(body.group, 'グループ'));
+      q('DELETE FROM chat_members WHERE group_id = ? AND user_id = ?').run(g.id, u.id);
+      q('UPDATE users SET coop_group = 0 WHERE id = ? AND coop_group = ?').run(u.id, g.id);
+      if (!memberIds(g.id).length) {
+        tx(() => {
+          q('DELETE FROM messages WHERE channel = ?').run(groupChannel(g.id));
+          q('DELETE FROM chat_groups WHERE id = ?').run(g.id);
+        });
+      } else {
+        postToGroup(g, null, 'system', `${u.name}さんがグループを抜けました`);
+      }
+      return { left: g.id, unread: unreadTotal(u.id) };
     },
 
     /* ----- money and gifts between friends ----- */
@@ -965,29 +1243,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { blocked: !!body.blocked };
     },
 
-    /* ----- voice chat signalling (稼ぎに招待) ----- */
+    /* ----- voice chat signalling (the home call) ----- */
 
     'GET /api/call/ice': async () => ({ iceServers: await iceServers() }),
 
     'POST /api/call': async (req, u) => {
       relayCall(u, await req.json(32 * 1024));
-      return { ok: true };
-    },
-
-    // 稼ぎに参加要請: asks a friend to come and join one's home (watch and talk)
-    'POST /api/home/invite': async (req, u) => {
-      const body = await req.json();
-      const to = posInt(body.to, '宛先');
-      if (to === u.id) throw new ApiError(400, 'self', '自分には送れません');
-      const t = liveTarget(to);
-      requireFriend(u, to, '稼ぎに参加要請');
-      if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーには送れません');
-      rate(limit.friend, u.id, '少し待ってからお試しください');
-      if (!live.isOnline(to)) throw new ApiError(409, 'offline', `${t.name}さんは今オフラインです`);
-      if (watching(u.id)) throw new ApiError(409, 'watching', '観戦中は参加要請を送れません。観戦をやめてからお試しください');
-      if (watching(to) === u.id) throw new ApiError(409, 'already', `${t.name}さんはすでにあなたの稼ぎに参加しています`);
-      if (watcherIds(u.id).length >= RULES.maxWatchers) throw new ApiError(409, 'full', `あなたのホームは満員です（最大${RULES.maxWatchers}人）`);
-      live.send(to, 'home', { type: 'invite', from: mini(u) });
       return { ok: true };
     },
 
@@ -1013,22 +1274,86 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         q('DELETE FROM watchers WHERE watcher_id = ?').run(u.id);
         homeChanged(prev, mini(u), false);
       }
-      q(`INSERT INTO watchers (watcher_id, target_id, since) VALUES (?, ?, ?)
-         ON CONFLICT(watcher_id) DO UPDATE SET target_id = excluded.target_id, since = excluded.since`).run(u.id, id, Date.now());
+      // back after a dropped connection: the voice the player gave stays
+      const kept = voiceKept.get(`${id}:${u.id}`);
+      const voice = kept && kept > Date.now() ? 1 : 0;
+      voiceKept.delete(`${id}:${u.id}`);
+      q(`INSERT INTO watchers (watcher_id, target_id, since, voice) VALUES (?, ?, ?, ?)
+         ON CONFLICT(watcher_id) DO UPDATE SET target_id = excluded.target_id, since = excluded.since,
+         voice = CASE WHEN watchers.target_id = excluded.target_id THEN MAX(watchers.voice, excluded.voice) ELSE excluded.voice END`).run(u.id, id, Date.now(), voice);
       if (prev !== id) {
         homeChanged(id, mini(u), true);
         track(u.id, [['watch', 1]]);
+        if (voice) voiceChanged(id, u, true);
       }
       let last = null;
       try { last = t.last_spin ? JSON.parse(t.last_spin) : null; } catch { last = null; }
-      const members = others.map((w) => getUser(w)).filter(Boolean).map(mini);
-      return { on: true, user: { ...mini(t), online: live.isOnline(id) }, balance: balance(t), last, members, charm: t.charm > 0 };
+      const all = homeMembers(id);
+      return {
+        on: true, user: { ...mini(t), online: live.isOnline(id) }, balance: balance(t), last, charm: t.charm > 0,
+        members: all.filter((m) => m.id !== u.id),
+        voice: all.some((m) => m.id === u.id && m.voice),
+        chat: homeChatOf(id),
+        bet: betDto(openBet(u.id))
+      };
     },
 
-    // who is watching me (shown as a small eye on my screen)
-    'GET /api/watchers': (req, u) => ({
-      watchers: q('SELECT o.id, o.name, o.avatar FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(u.id)
-    }),
+    // who is watching me (shown as a small eye on my screen), whether I talk with them, the home chat
+    'GET /api/watchers': (req, u) => ({ watchers: homeMembers(u.id), chat: homeChatOf(u.id) }),
+
+    // The watched player picks who they talk with; a watcher can only stop talking.
+    'POST /api/watch/voice': async (req, u) => {
+      const body = await req.json();
+      const id = posInt(body.user, 'ユーザーID');
+      const on = !!body.on;
+      const host = id === u.id ? watching(u.id) : u.id;
+      if (!host || watching(id) !== host) throw new ApiError(404, 'not_watching', 'このプレイヤーは観戦していません');
+      if (id === u.id && on) throw new ApiError(403, 'host_only', '話す相手は観戦されている人が選びます');
+      rate(limit.friend, u.id);
+      q('UPDATE watchers SET voice = ? WHERE watcher_id = ?').run(on ? 1 : 0, id);
+      voiceChanged(host, id === u.id ? u : getUser(id), on);
+      return { voice: voiceIds(host) };
+    },
+
+    // the chat of a home: the watched player and everyone watching them
+    'POST /api/home/chat': async (req, u) => {
+      const body = await req.json();
+      const room = posInt(body.room, 'ホーム');
+      if (room !== u.id && watching(u.id) !== room) throw new ApiError(409, 'not_home', 'ホームにいません');
+      const text = cleanText(body.text, 200);
+      rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
+      const message = { id: `${Date.now().toString(36)}-${++homeChatSeq}`, room, from: mini(u), text, at: Date.now() };
+      homeChats.set(room, homeChatOf(room).concat(message).slice(-HOME_CHAT_KEEP));
+      live.send(room, 'homechat', message);
+      for (const id of watcherIds(room)) live.send(id, 'homechat', message);
+      track(u.id, [['chat', 1]]);
+      return { message };
+    },
+
+    // 観戦ベット: will the player I watch get a BIG WIN within their next spins?
+    'POST /api/watch/bet': async (req, u) => {
+      const body = await req.json();
+      const side = body.side === 'hit' || body.side === 'miss' ? body.side : null;
+      if (!side) throw new ApiError(400, 'bad_side', '「出る」か「出ない」を選んでください');
+      const stake = Number(body.stake);
+      if (!WB.stakes.includes(stake)) throw new ApiError(400, 'bad_stake', '賭ける額が正しくありません');
+      const hostId = watching(u.id);
+      if (!hostId) throw new ApiError(409, 'not_watching', '観戦中だけ賭けられます');
+      rate(limit.shop, u.id);
+      const bet = tx(() => {
+        if (openBet(u.id)) throw new ApiError(409, 'bet_open', '前の観戦ベットの結果が出てから賭けられます');
+        const cur = getUser(u.id);
+        if (cur.tokens < stake) throw new ApiError(409, 'insufficient', 'スピントークンが足りません');
+        q('UPDATE users SET tokens = tokens - ?, rev = rev + 1 WHERE id = ?').run(stake, u.id);
+        const id = Number(q('INSERT INTO watch_bets (watcher_id, host_id, side, stake, left_n, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(u.id, hostId, side, stake, WB.spins, Date.now()).lastInsertRowid);
+        return q('SELECT * FROM watch_bets WHERE id = ?').get(id);
+      });
+      const me = balanceChanged(u.id);
+      const dto = betDto(bet);
+      live.send(hostId, 'watch', { type: 'betOn', by: mini(u), bet: dto });
+      return { bet: dto, balance: balance(me) };
+    },
 
     /* ----- Shop, 所有 (what one owns) and the お守り加護 ----- */
 
@@ -1172,7 +1497,37 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
     'GET /api/quests': (req, u) => {
       const cur = getUser(u.id);
-      return { periods: questView(readQuests(cur.quests)), xp: cur.xp, now: Date.now() };
+      const state = readQuests(cur.quests);
+      return { periods: questView(state), ready: questsReady(state), xp: cur.xp, now: Date.now() };
+    },
+
+    // 受け取る: the finished quests in `ids`, or all of them (一括受け取り)
+    'POST /api/quests/claim': async (req, u) => {
+      const body = await req.json();
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).slice(0, 100) : null;
+      rate(limit.shop, u.id);
+      const r = tx(() => {
+        const cur = getUser(u.id);
+        const state = readQuests(cur.quests);
+        const c = claimQuests(state, ids, Date.now());
+        if (!c.claimed.length) return { ...c, state };
+        const xp = c.claimed.length * LEVEL.questXp;
+        q('UPDATE users SET quests = ?, dollars = dollars + ?, tokens = tokens + ?, xp = xp + ?, rev = rev + 1 WHERE id = ?')
+          .run(JSON.stringify(state), c.dollars, c.tokens, xp, cur.id);
+        return { ...c, state };
+      });
+      if (r.claimed.length) balanceChanged(u.id);
+      const after = getUser(u.id);
+      return {
+        claimed: r.claimed.map((x) => x.id), dollars: r.dollars, tokens: r.tokens,
+        periods: questView(r.state), ready: questsReady(r.state), xp: after.xp, balance: balance(after)
+      };
+    },
+
+    // the beginner guide is finished
+    'POST /api/guide': (req, u) => {
+      q('UPDATE users SET guide_done = 1 WHERE id = ?').run(u.id);
+      return { me: meDto(getUser(u.id)) };
     },
 
     // 友達のチャットを覗く: the player opened a friend's chat
@@ -1206,7 +1561,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         saveJobs(cur.id, s.jobs, s.pay);
         return s.pay;
       });
-      if (paid) balanceChanged(u.id);
+      if (paid) balanceChanged(u.id, true);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
     },
@@ -1222,7 +1577,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         saveJobs(cur.id, s.jobs.filter((j) => j.id !== id), s.pay);
         return s.pay;
       });
-      if (paid) balanceChanged(u.id);
+      if (paid) balanceChanged(u.id, true);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
     },
@@ -1236,7 +1591,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (s.pay > 0) saveJobs(cur.id, s.jobs, s.pay);
         return s.pay;
       });
-      if (paid) balanceChanged(u.id);
+      if (paid) balanceChanged(u.id, true);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
     },
@@ -1260,55 +1615,183 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { release: RELEASE, outdated: false, bonus, me: meDto(getUser(u.id)) };
     },
 
+    /* ----- フレンド対決 ----- */
+
+    'GET /api/battle': (req, u) => {
+      const b = currentBattle(u.id);
+      return { battle: b ? battleDto(b, u.id) : null };
+    },
+
+    // to a friend who is online: the same number of spins at one bet
+    'POST /api/battle': async (req, u) => {
+      const body = await req.json();
+      const to = posInt(body.to, '相手');
+      const spins = Number(body.spins), bet = Number(body.bet);
+      if (!BT.spins.includes(spins)) throw new ApiError(400, 'bad_spins', '回数が正しくありません');
+      if (!RULES.bets.includes(bet)) throw new ApiError(400, 'bad_bet', 'ベット額が正しくありません');
+      const t = liveTarget(to);
+      if (to === u.id || t.npc) throw new ApiError(400, 'bad_target', 'この相手とは対決できません');
+      requireFriend(u, to, 'フレンド対決');
+      if (!live.isOnline(to)) throw new ApiError(409, 'offline', `${t.name}さんは今オフラインです`);
+      rate(limit.friend, u.id);
+      if (currentBattle(u.id)) throw new ApiError(409, 'busy', '対決中です。終わってから申し込んでください');
+      if (currentBattle(to)) throw new ApiError(409, 'busy_other', `${t.name}さんはほかの人と対決中です`);
+      const id = Number(q('INSERT INTO battles (a_id, b_id, spins, bet, state, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(u.id, to, spins, bet, 'invite', Date.now()).lastInsertRowid);
+      const b = battleById(id);
+      live.send(to, 'battle', { type: 'invite', battle: battleDto(b, to) });
+      return { battle: battleDto(b, u.id) };
+    },
+
+    'POST /api/battle/respond': async (req, u) => {
+      const body = await req.json();
+      const b = battleById(posInt(body.id, '対決'));
+      if (!b || b.b_id !== u.id || b.state !== 'invite' || battleOver(b)) throw new ApiError(404, 'no_battle', 'この対決の申し込みはもうありません');
+      if (!body.accept) {
+        q("UPDATE battles SET state = 'declined', ended_at = ? WHERE id = ?").run(Date.now(), b.id);
+        live.send(b.a_id, 'battle', { type: 'declined', battle: battleDto(battleById(b.id), b.a_id) });
+        return { battle: null };
+      }
+      tx(() => {
+        q("UPDATE battles SET state = 'live', started_at = ? WHERE id = ?").run(Date.now(), b.id);
+        q('UPDATE users SET battle_id = ? WHERE id IN (?, ?)').run(b.id, b.a_id, b.b_id);
+      });
+      const started = battleById(b.id);
+      live.send(b.a_id, 'battle', { type: 'start', battle: battleDto(started, b.a_id) });
+      return { battle: battleDto(started, u.id) };
+    },
+
+    // taking an invitation back, saying no, or giving up (the friend wins)
+    'POST /api/battle/quit': async (req, u) => {
+      const body = await req.json();
+      const b = battleById(posInt(body.id, '対決'));
+      if (!b || (b.a_id !== u.id && b.b_id !== u.id)) throw new ApiError(404, 'no_battle', '対決が見つかりません');
+      const other = b.a_id === u.id ? b.b_id : b.a_id;
+      if (b.state === 'invite') {
+        const state = u.id === b.a_id ? 'cancelled' : 'declined';
+        q('UPDATE battles SET state = ?, ended_at = ? WHERE id = ?').run(state, Date.now(), b.id);
+        live.send(other, 'battle', { type: state, battle: battleDto(battleById(b.id), other) });
+      } else if (b.state === 'live') {
+        finishBattle(b, u.id);
+      }
+      return { battle: null };
+    },
+
+    /* ----- 協力スロット ----- */
+
+    'GET /api/coop': (req, u) => {
+      const g = myGroup(u.id, posInt(req.query.get('group'), 'グループ'));
+      return { coop: coopDto(g), seated: u.coop_group === g.id };
+    },
+
+    // sitting down at a group's table (one at a time), or getting up
+    'POST /api/coop': async (req, u) => {
+      const body = await req.json();
+      const was = u.coop_group;
+      if (!body.on) {
+        q('UPDATE users SET coop_group = 0 WHERE id = ?').run(u.id);
+        if (was) coopSend(was, { type: 'seat', group: was, user: mini(u), on: false });
+        return { coop: null };
+      }
+      const g = myGroup(u.id, posInt(body.group, 'グループ'));
+      q('UPDATE users SET coop_group = ? WHERE id = ?').run(g.id, u.id);
+      if (was && was !== g.id) coopSend(was, { type: 'seat', group: was, user: mini(u), on: false });
+      if (was !== g.id) {
+        for (const p of coopPlayers(g.id)) if (p.id !== u.id) live.send(p.id, 'coop', { type: 'seat', group: g.id, user: mini(u), on: true });
+      }
+      return { coop: coopDto(g) };
+    },
+
+    /* ----- 運営へのフィードバック ----- */
+
+    // stars (any of them may be left out) and a comment of any length
+    'POST /api/feedback': async (req, u) => {
+      const body = await req.json(1024 * 1024);
+      const raw = body.ratings && typeof body.ratings === 'object' ? body.ratings : {};
+      const ratings = {};
+      for (const k of FEEDBACK_KEYS) {
+        const v = Number(raw[k] || 0);
+        if (!Number.isInteger(v) || v < 0 || v > 5) throw new ApiError(400, 'bad_rating', '評価は星1〜5で選んでください');
+        ratings[k] = v;
+      }
+      const comment = String(body.comment ?? '').trim() ? cleanText(body.comment, FEEDBACK_MAX) : '';
+      if (!comment && !Object.values(ratings).some((v) => v > 0)) throw new ApiError(400, 'empty', '星をつけるか、コメントを書いてください');
+      rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
+      tx(() => {
+        q('INSERT INTO feedback (user_id, ratings, comment, created_at) VALUES (?, ?, ?, ?)').run(u.id, JSON.stringify(ratings), comment, Date.now());
+        q('UPDATE users SET feedback = 2 WHERE id = ?').run(u.id);
+      });
+      const admin = FEEDBACK_ADMIN ? q('SELECT id FROM users WHERE name_key = ?').get(FEEDBACK_ADMIN) : null;
+      if (admin) live.send(admin.id, 'feedback', { count: feedbackCount(), from: mini(u) });
+      return { me: meDto(getUser(u.id)) };
+    },
+
+    // the answers: only the operator's account (FEEDBACK_ADMIN, "taku") sees them
+    'GET /api/feedback': (req, u) => {
+      if (!isFeedbackAdmin(u)) throw new ApiError(403, 'forbidden', 'このページは見られません');
+      const rows = q(`SELECT f.id, f.ratings, f.comment, f.created_at, o.id AS uid, o.name, o.avatar FROM feedback f
+                      LEFT JOIN users o ON o.id = f.user_id ORDER BY f.id DESC LIMIT 500`).all();
+      const list = rows.map((r) => ({ id: r.id, user: { id: r.uid, name: r.name, avatar: r.avatar }, ratings: readRatings(r.ratings), comment: r.comment, at: r.created_at }));
+      const average = {};
+      for (const k of FEEDBACK_KEYS) {
+        const v = list.map((f) => f.ratings[k]).filter((x) => x > 0);
+        average[k] = v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10 : null;
+      }
+      return { feedback: list, count: feedbackCount(), average };
+    },
+
     'POST /api/stream-ticket': (req, u) => ({ ticket: signTicket(secret, u.id) })
   };
 
-  // Voice chat signalling between friends: 1:1 calls (稼ぎに招待, two people;
-  // a player already in a call or a home is busy) and the home call of a
-  // player and their watchers (type "home": everyone in the home can reach
-  // everyone else). Used by POST /api/call and by the WebSocket.
+  // Voice signalling of the home call: a player and the watchers they talk
+  // with (type "home"; everyone in that voice can reach everyone else). Used by
+  // POST /api/call and by the WebSocket.
   function relayCall(u, body) {
     const type = String(body.type || '');
     if (!CALL_TYPES.has(type)) throw new ApiError(400, 'bad_type', '通話の操作が正しくありません');
     const callId = String(body.callId || '');
     if (!/^[\w-]{6,64}$/.test(callId)) throw new ApiError(400, 'bad_call', '通話IDが正しくありません');
     const to = posInt(body.to, '宛先');
-    const t = liveTarget(to);
+    liveTarget(to);
     rate(limit.call, u.id);
-    if (type === 'home') {
-      const room = Number(body.data && body.data.room);
-      const member = (id) => id === room || watching(id) === room;
-      if (!room || !member(u.id) || !member(to)) throw new ApiError(409, 'not_home', 'ホームにいません');
-    } else {
-      requireFriend(u, to, '通話');
-    }
-    if (type === 'invite') {
-      if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーは呼び出せません');
-      if (inHome(u.id)) throw new ApiError(409, 'in_home', 'ホーム通話中は稼ぎに招待できません（稼ぎに参加要請なら送れます）');
-      if (!live.isOnline(to)) throw new ApiError(409, 'offline', '相手がオフラインのため呼び出せません');
-      if (inHome(to)) throw new ApiError(409, 'busy', `${t.name}さんは今ホーム通話中です`);
-    }
+    const room = Number(body.data && body.data.room);
+    if (!room || !inVoice(u.id, room) || !inVoice(to, room)) throw new ApiError(409, 'not_home', 'ホームで話せる相手ではありません');
     live.send(to, 'call', { type, callId, from: mini(u), data: body.data ?? null });
-    // quests: 友達に電話をかけてみる, 友達と話す（通話）: a call picked up, or two
-    // people in a home whose voices are connecting
-    if (type === 'invite') track(u.id, [['call', 1]]);
-    else if (type === 'accept' || (type === 'home' && body.data && body.data.op === 'hello' && body.data.reply)) {
+    // quests: 友達に電話をかけてみる (calling into the home), 友達と話す（通話）
+    // (two people in a home whose voices are connecting)
+    const op = body.data && body.data.op;
+    if (op === 'hello' && !body.data.reply) track(u.id, [['call', 1]]);
+    else if (op === 'hello') {
       track(u.id, [['talk', 1]]);
       track(to, [['talk', 1]]);
     }
   }
 
-  // Signalling over the WebSocket (no HTTP request per message): errors are dropped.
-  function socketCall(userId, body) {
-    try {
-      const u = getUser(userId);
-      if (!u || u.banned) return;
-      if (body.type === 'invite') return;   // invitations go over HTTP, where the answer is seen
-      relayCall(u, body);
-    } catch (e) {
-      if (!(e instanceof ApiError)) console.error(e);
+  // 入力中 (typing): to the friend of a conversation, or everyone else in a group.
+  function relayTyping(u, body) {
+    rate(limit.typing, u.id);
+    if (body.group !== undefined && body.group !== null) {
+      const g = myGroup(u.id, posInt(body.group, 'グループ'));
+      for (const id of memberIds(g.id)) if (id !== u.id) live.send(id, 'typing', { group: g.id, from: mini(u) });
+      return;
     }
+    const to = posInt(body.to, '宛先');
+    if (areFriends(u.id, to)) live.send(to, 'typing', { from: mini(u) });
   }
+
+  // Signalling and typing over the WebSocket (no HTTP request per message): errors are dropped.
+  function fromSocket(fn) {
+    return (userId, body) => {
+      try {
+        const u = getUser(userId);
+        if (u && !u.banned) fn(u, body);
+      } catch (e) {
+        if (!(e instanceof ApiError)) console.error(e);
+      }
+    };
+  }
+  const socketCall = fromSocket(relayCall);
+  const socketTyping = fromSocket(relayTyping);
 
   // Friendship both ways, the request(s) gone, a note in their conversation.
   function makeFriends(requester, accepter) {
@@ -1362,26 +1845,42 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       try { afterSpend(userId); } catch (e) { console.error('peter', e); }
       return;
     }
+    // 最終オンライン: the moment they left (the time since their last request was play)
+    const now = Date.now();
+    const me = getUser(userId);
+    if (me && now - me.last_seen > 5000) {
+      q('UPDATE users SET last_seen = ?, play_ms = play_ms + ? WHERE id = ?').run(now, now - me.last_seen < SESSION_GAP ? now - me.last_seen : 0, userId);
+    }
     // a player who left stops watching, and the rest of that home is told
-    const host = watching(userId);
-    if (host) {
+    // (their voice is kept for a while in case the connection just dropped)
+    const row = q('SELECT target_id, voice FROM watchers WHERE watcher_id = ?').get(userId);
+    if (row) {
+      if (row.voice) voiceKept.set(`${row.target_id}:${userId}`, now + 10 * 60000);
       q('DELETE FROM watchers WHERE watcher_id = ?').run(userId);
-      const u = getUser(userId);
-      if (u) homeChanged(host, mini(u), false);
+      if (me) homeChanged(row.target_id, mini(me), false);
     }
     // their own home closes
     notifyWatchers(userId, { type: 'offline', user: userId });
     q('DELETE FROM watchers WHERE target_id = ?').run(userId);
+    homeChats.delete(userId);
   }
 
-  // Periodic clean-up: trim the lobby, old spin records, stale sessions and watchers.
+  // Periodic clean-up: old spin records, stale sessions and watchers.
   function housekeeping() {
     try {
-      q(`DELETE FROM messages WHERE channel = 'lobby' AND id <= COALESCE(
-           (SELECT id FROM messages WHERE channel = 'lobby' ORDER BY id DESC LIMIT 1 OFFSET ${LOBBY_KEEP}), 0)`).run();
       q('DELETE FROM spins WHERE created_at < ?').run(Date.now() - 30 * 86400000);
       q('DELETE FROM sessions WHERE last_used < ?').run(Date.now() - 365 * 86400000);
       q('DELETE FROM watchers WHERE since < ?').run(Date.now() - 12 * 3600000);
+      // 観戦ベット whose player stopped spinning: the stake goes back
+      for (const b of q("SELECT * FROM watch_bets WHERE state = 'open' AND created_at < ?").all(Date.now() - WB.refundMs)) {
+        tx(() => {
+          q("UPDATE watch_bets SET state = 'refunded', paid = stake, ended_at = ? WHERE id = ?").run(Date.now(), b.id);
+          q('UPDATE users SET tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(b.stake, b.watcher_id);
+        });
+        balanceChanged(b.watcher_id);
+      }
+      for (const b of q("SELECT * FROM battles WHERE state IN ('invite', 'live')").all()) battleOver(b);
+      for (const [k, until] of voiceKept) if (until < Date.now()) voiceKept.delete(k);
       for (const l of Object.values(limit)) l.prune();
       quota.flush();
     } catch (e) {
@@ -1460,7 +1959,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     userForToken,
     consumeTicket,
     socketCall,
+    socketTyping,
     quota,
-    close: () => { quota.flush(); if (boardTimer) clearTimeout(boardTimer); }
+    close: () => quota.flush()
   };
 }

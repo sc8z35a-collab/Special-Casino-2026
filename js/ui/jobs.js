@@ -1,6 +1,6 @@
 /* バイト (a tab of the menu): part-time jobs paid by the hour for every
    second worked, also while the player is away. The wages so far come in with
-   「給料を受け取る」; changing or quitting a job pays them as well. How many
+   「給料を受け取る」 (quietly); changing or quitting a job pays them as well. How many
    jobs can be worked at once, and which, will grow with the player level. */
 (function (BR) {
   'use strict';
@@ -143,16 +143,12 @@
     renderDot();
   }
 
+  // wages come in quietly: no sound, no notice, the wallet does not move
   function after(r, done) {
     busy = false;
-    if (r.balance) BR.app.serverBalance(r.balance);
+    if (r.balance) BR.app.serverBalance(r.balance, true);
     set(r);
-    if (r.paid > 0) {
-      sfx('purchase');
-      toast('給料 $' + U.fmt(r.paid) + ' を受け取りました' + (done ? '。' + done : ''), 3400);
-    } else if (done) {
-      toast(done, 3000);
-    }
+    if (done) toast(done, 3000);
   }
 
   function act(name, id) {
