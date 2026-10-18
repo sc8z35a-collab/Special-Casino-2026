@@ -1,0 +1,27 @@
+// Free hosting on Cloudflare Workers: the game files, the API and the player
+// database (a SQLite Durable Object) in one deploy. See README.md.
+//   npm run dev      local test server on http://localhost:8787
+//   npm run deploy   publish
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "blockbuster-reels",
+  "main": "server/cloudflare/worker.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    // only the files listed in .assetsignore are published
+    "directory": ".",
+    "binding": "ASSETS",
+    // only the API runs the Worker: the page and the game files are served
+    // free even after the free plan's daily requests are used up
+    "run_worker_first": ["/api/*"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "CASINO", "class_name": "Casino" }]
+  },
+  // NEVER edit or remove this entry: every player's account and money is
+  // stored in the "Casino" object it creates. New code can be deployed any
+  // number of times; the data stays.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Casino"] }],
+  "observability": { "enabled": true }
+}

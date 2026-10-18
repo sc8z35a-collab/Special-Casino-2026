@@ -44,35 +44,8 @@
       '</svg>';
   }
 
+  // spin-token / dollar / coin icons are bitmaps now (BR.UI_IMG)
   var ICONS = {
-    chip: chip('cp'),
-
-    dollar: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">' +
-      '<defs><linearGradient id="dl" x1="0" y1="0" x2="0" y2="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#252b23"/><stop offset="1" stop-color="#161a14"/></linearGradient>' +
-      '<linearGradient id="dg" x1="0" y1="6" x2="0" y2="34" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b9f39b"/><stop offset="1" stop-color="#78cf55"/></linearGradient></defs>' +
-      '<rect x="1" y="1" width="38" height="38" rx="2.4" fill="url(#dl)"/>' +
-      '<path d="M2.6,4.5V35.5M37.4,4.5V35.5" stroke="#86b86a" stroke-width="1.1" opacity="0.8"/>' +
-      '<rect x="10.5" y="2.6" width="19" height="2.4" rx="0.5" fill="#9ed97f"/><rect x="10.5" y="35" width="19" height="2.4" rx="0.5" fill="#9ed97f"/>' +
-      '<path d="M20,6.6V33.4" stroke="url(#dg)" stroke-width="2.8" stroke-linecap="round"/>' +
-      '<path d="M26.4,14.2 Q25.4,10.6 20.2,10.6 Q13.6,10.6 13.6,15.6 Q13.6,19.4 19.4,20.4 Q26.6,21.6 26.6,25.6 Q26.6,30 20,30 Q14.4,30 13.2,25.8" fill="none" stroke="url(#dg)" stroke-width="4.3" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '</svg>',
-
-    coin: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">' +
-      '<defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbe7a6"/><stop offset="0.45" stop-color="#d9b25c"/><stop offset="1" stop-color="#8a6526"/></linearGradient>' +
-      '<radialGradient id="cd" cx="0.45" cy="0.4" r="0.7"><stop offset="0" stop-color="#4c4635"/><stop offset="1" stop-color="#1f1c14"/></radialGradient>' +
-      '<linearGradient id="ce" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff0b6"/><stop offset="1" stop-color="#d1a751"/></linearGradient></defs>' +
-      '<circle cx="20" cy="20" r="19.2" fill="#6b5222"/>' +
-      '<circle cx="20" cy="20" r="18.2" fill="url(#cg)"/>' +
-      '<circle cx="20" cy="20" r="14.6" fill="#5b4a22"/>' +
-      '<circle cx="20" cy="20" r="13.8" fill="url(#cd)"/>' +
-      '<g fill="url(#ce)">' +
-      '<path d="M10.6,16.8 Q12.6,10.4 19.6,9.4 Q14.8,12.2 13.8,16.6Z"/>' +
-      '<path d="M29.4,23.2 Q27.4,29.6 20.4,30.6 Q25.2,27.8 26.2,23.4Z"/>' +
-      '<path d="M12.2,21.2 L27.4,12.8 L23.6,18.4 L27.8,19 L12.6,27.2 L16.4,21.6Z"/>' +
-      '<path d="M8.8,21.6 Q9.6,26.6 13.6,29.2 L12.2,26.4Z" opacity="0.8"/><path d="M31.2,18.4 Q30.4,13.4 26.4,10.8 L27.8,13.6Z" opacity="0.8"/>' +
-      '</g>' +
-      '</svg>',
-
     plus: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M20,9.5V30.5M9.5,20H30.5" stroke="#fff" stroke-width="5" stroke-linecap="square"/></svg>',
 
     back: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 42"><path d="M40.5,21H5.5M22.5,3.5L3.5,21L22.5,38.5" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -115,7 +88,50 @@
     del: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 36"><path d="M15,4 H42 Q45,4 45,7 V29 Q45,32 42,32 H15 L3,18Z" fill="none" stroke="#fff" stroke-width="3.4" stroke-linejoin="round"/>' +
       '<path d="M23,12 L35,24 M35,12 L23,24" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/></svg>',
 
-    grip: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M14,11V29M20,11V29M26,11V29" stroke="#6b6f86" stroke-width="2.6" stroke-linecap="round"/></svg>'
+    grip: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M14,11V29M20,11V29M26,11V29" stroke="#6b6f86" stroke-width="2.6" stroke-linecap="round"/></svg>',
+
+    /* online features */
+    lock: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><defs><linearGradient id="lkg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff1a8"/><stop offset=".5" stop-color="#e9bf3a"/><stop offset="1" stop-color="#a87412"/></linearGradient></defs>' +
+      '<path d="M12.5,18V13.5Q12.5,5.5 20,5.5Q27.5,5.5 27.5,13.5V18" fill="none" stroke="#d9dde4" stroke-width="4.2"/>' +
+      '<rect x="7.5" y="17" width="25" height="19" rx="3.5" fill="url(#lkg)" stroke="#5a3a00" stroke-width="1.4"/>' +
+      '<circle cx="20" cy="25" r="3" fill="#4a2e00"/><rect x="18.6" y="26" width="2.8" height="6" rx="1.2" fill="#4a2e00"/></svg>',
+
+    phone: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M11.5,4.5 L16.5,10.5 Q17.6,12 16.4,13.6 L13.8,16.6 Q16.6,22.6 23.4,26.2 L26.4,23.6 Q28,22.4 29.5,23.5 L35.5,28.5 Q36.6,29.6 35.6,31 L32.6,34.4 Q30.6,36.4 27.2,35.4 Q11,30 4.6,12.8 Q3.6,9.4 5.6,7.4 L9,4.4 Q10.4,3.4 11.5,4.5Z" fill="#fff"/></svg>',
+
+    hangup: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M4,22.5 Q4,16 20,16 Q36,16 36,22.5 L35,27 Q34.6,28.6 33,28.4 L26.6,27.2 Q25,26.8 25,25.2 L25,21.6 Q20,20.4 15,21.6 L15,25.2 Q15,26.8 13.4,27.2 L7,28.4 Q5.4,28.6 5,27Z" fill="#fff"/></svg>',
+
+    micOn: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect x="14" y="4" width="12" height="21" rx="6" fill="#fff"/><path d="M8.5,19Q8.5,30.5 20,30.5Q31.5,30.5 31.5,19M20,30.5V36.5M13.5,36.5H26.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>',
+
+    micOff: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect x="14" y="4" width="12" height="21" rx="6" fill="#fff" opacity=".55"/><path d="M8.5,19Q8.5,30.5 20,30.5Q31.5,30.5 31.5,19M20,30.5V36.5M13.5,36.5H26.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".55"/><path d="M6,5L34,35" stroke="#ff5a4f" stroke-width="4" stroke-linecap="round"/></svg>',
+
+    eye: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M2.5,20Q11,8.5 20,8.5Q29,8.5 37.5,20Q29,31.5 20,31.5Q11,31.5 2.5,20Z" fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/><circle cx="20" cy="20" r="6.6" fill="#fff"/><circle cx="22" cy="18" r="2.2" fill="#3a3a3a"/></svg>',
+
+    car: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M5,25.5V20.5Q5,18.6 7,18.2L11.5,17.4L15.4,11.6Q16.4,10.4 18,10.4H26.6Q28.2,10.4 29.2,11.8L32.6,17.4Q35.4,18 35.4,21V25.5Q35.4,27 34,27H6.5Q5,27 5,25.5Z" fill="#fff"/><path d="M14.4,17.2L17.2,13H22V17.2ZM24.2,17.2V13H27.2L29.6,17.2Z" fill="#6b5a2c"/><circle cx="12" cy="27.4" r="4.4" fill="#2b2b2b" stroke="#fff" stroke-width="2.2"/><circle cx="28.6" cy="27.4" r="4.4" fill="#2b2b2b" stroke="#fff" stroke-width="2.2"/></svg>',
+
+    gift: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect x="5" y="14" width="30" height="8" rx="1.6" fill="#fff"/><rect x="7.5" y="22" width="25" height="14" rx="1.6" fill="#fff"/><rect x="18" y="14" width="4.2" height="22" fill="#e5262b"/><path d="M20,14Q12,4 8.6,8.6Q6.6,12.6 20,14ZM20,14Q28,4 31.4,8.6Q33.4,12.6 20,14Z" fill="none" stroke="#fff" stroke-width="2.8" stroke-linejoin="round"/></svg>',
+
+    friends: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="14.5" cy="13" r="6.4" fill="#fff"/><path d="M2.5,34Q3.5,22 14.5,22Q25.5,22 26.5,34Z" fill="#fff"/><circle cx="27.5" cy="12" r="5.4" fill="#fff" opacity=".7"/><path d="M28.4,20.4Q37,21 37.6,32H29.4Q28.6,25 24.6,21.6Q26,20.4 28.4,20.4Z" fill="#fff" opacity=".7"/></svg>',
+
+    search: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="17" cy="17" r="10.5" fill="none" stroke="#fff" stroke-width="4"/><path d="M25,25L35,35" stroke="#fff" stroke-width="5" stroke-linecap="round"/></svg>',
+
+    check: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M7,21L16,30L33,11" fill="none" stroke="#fff" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
+    /* installing the app */
+    share: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M14,15H10.5Q8,15 8,17.5V34Q8,36.5 10.5,36.5H29.5Q32,36.5 32,34V17.5Q32,15 29.5,15H26" fill="none" stroke="#4aa8ff" stroke-width="2.8" stroke-linecap="round"/><path d="M20,24V3.5M13.5,10L20,3.5L26.5,10" fill="none" stroke="#4aa8ff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
+    addHome: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect x="5" y="5" width="30" height="30" rx="7" fill="none" stroke="#fff" stroke-width="2.8"/><path d="M20,12.5V27.5M12.5,20H27.5" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/></svg>',
+
+    download: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M20,4V25M12,17.5L20,25.5L28,17.5" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M6,26V31.5Q6,35 9.5,35H30.5Q34,35 34,31.5V26" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/></svg>',
+
+    android: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M8,30V18.5Q8,17 9.5,17H30.5Q32,17 32,18.5V30Q32,31.5 30.5,31.5H9.5Q8,31.5 8,30ZM8.6,15Q10,6.5 20,6.5Q30,6.5 31.4,15Z" fill="#3ddc84"/><circle cx="14.5" cy="11.5" r="1.6" fill="#0d3b22"/><circle cx="25.5" cy="11.5" r="1.6" fill="#0d3b22"/><path d="M11.5,7L9,3M28.5,7L31,3" stroke="#3ddc84" stroke-width="2" stroke-linecap="round"/></svg>',
+
+    apple: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M27.6,21.2Q27.5,16.6 31.4,14.4Q29.2,11.2 25.4,11Q23.6,10.8 21.4,11.8Q20,12.4 19.3,12.4Q18.4,12.4 16.8,11.8Q15,11 13.4,11.1Q8.6,11.4 6.8,16Q5.4,19.6 6.6,24.8Q7.6,29 10.4,32.6Q12.2,35 14.2,35Q15.4,35 16.8,34.3Q18.2,33.6 19.8,33.6Q21.4,33.6 22.8,34.3Q24.2,35 25.6,34.9Q28.2,34.8 30.4,31Q31.6,29 32.2,27Q27.8,25.2 27.6,21.2ZM24.8,8.2Q26.6,5.9 26.4,3.4Q24,3.6 22.2,5.6Q20.4,7.6 20.6,10.2Q23,10.4 24.8,8.2Z" fill="#fff"/></svg>',
+    // shopping bag (Shop tab)
+    bag: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M7.5,13H32.5L30.6,35.4Q30.4,37 28.8,37H11.2Q9.6,37 9.4,35.4Z" fill="#fff"/><path d="M14,16.5V10.5Q14,4.5 20,4.5Q26,4.5 26,10.5V16.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="14" cy="17" r="1.8" fill="#8a2020"/><circle cx="26" cy="17" r="1.8" fill="#8a2020"/></svg>',
+    // a house (稼ぎに参加要請: come to my home)
+    home: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M4,19.5L20,5.5L36,19.5" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.5,18V34.5Q8.5,36 10,36H16.5V26.5H23.5V36H30Q31.5,36 31.5,34.5V18L20,8.4Z" fill="#fff"/></svg>',
+    // play a recorded voice again
+    speaker: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M5,15H12L21,7V33L12,25H5Z" fill="#fff"/><path d="M26,14Q30,20 26,26M30.5,10Q37.5,20 30.5,30" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>'
   };
 
   BR.ICONS = ICONS;

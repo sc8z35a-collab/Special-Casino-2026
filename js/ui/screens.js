@@ -1,19 +1,35 @@
-/* Secondary screens: token shop (buy / exchange) and rules (pay table / rules). */
+/* Navigation between the screens (start, slot, tokens, rules, board) plus
+   the token shop (buy / exchange) and the rules (pay table / rules). */
 (function (BR) {
   'use strict';
 
   var U = BR.util, C = BR.CONFIG, S = BR.store.state;
   var $ = U.$, $$ = U.$$;
-  var current = 'slot';
+  var current = 'start';
+  var hooks = {};   // extra screens: { open, close, back }
 
   /* ------------------------------------------------------------ navigation --- */
   function show(name) {
     if (name === current) return;
     if (name !== 'slot' && BR.game && BR.game.auto) BR.app.setAuto(false);
+    var prev = current;
     current = name;
     $$('.screen').forEach(function (s) { s.classList.toggle('active', s.id === 'screen-' + name); });
+    $('#stage').dataset.screen = name;
+    if (hooks[prev] && hooks[prev].close) hooks[prev].close();
     if (name === 'tokens') shop.open();
     if (name === 'rules') rules.open();
+    if (hooks[name] && hooks[name].open) hooks[name].open();
+  }
+
+  // The back button: a screen may step back inside itself first; the slot
+  // goes back to the start screen.
+  function back() {
+    var h = hooks[current];
+    if (h && h.back && h.back()) return true;
+    if (current === 'start') return false;
+    show(current === 'slot' ? 'start' : 'slot');
+    return true;
   }
 
   function tabs(root, onChange) {
@@ -65,19 +81,16 @@
       setInterval(function () { if (current === 'tokens') self.renderDaily(); }, 1000);
     },
     open: function () {
+      var self = this;
       this.mode = 'buy';
       this.tabs.set('buy');
       this.value = 0;
-      BR.store.dayRoll();
       this.render();
-      drawPile();
+      // pick up today's counters and any money received meanwhile
+      BR.bank.refresh().then(function () { BR.app.renderWallet(false); self.setValue(self.value); }, function () {});
     },
     max: function () {
-      if (this.mode === 'buy') {
-        BR.store.dayRoll();
-        return Math.max(0, Math.min(Math.floor(S.dollars / C.tokenPrice), C.dailyLimit - S.boughtToday));
-      }
-      return Math.max(0, S.tokens);
+      return this.mode === 'buy' ? BR.bank.maxBuy() : Math.max(0, S.tokens);
     },
     // slider position <-> value (quadratic so small amounts are easy to pick)
     fromSlider: function (p) {
@@ -126,34 +139,30 @@
       $('#tp-plus').disabled = v >= m;
       var act = $('#tp-action');
       act.textContent = buy ? '入手' : '交換';
-      act.disabled = v <= 0;
+      act.disabled = v <= 0 || this.busy;
       $('#tp-note').textContent = buy
         ? 'スピントークン上限は毎日00:00 UTCに更新されます'
         : '1スピントークン = ' + C.tokenPrice + '$ で交換されます';
       this.renderDaily();
     },
     commit: function () {
-      var v = this.value;
-      if (v <= 0) return;
-      if (this.mode === 'buy') {
-        BR.store.dayRoll();
-        if (v > this.max()) { BR.app.toast('上限を超えています'); return; }
-        S.dollars -= v * C.tokenPrice;
-        S.tokens += v;
-        S.boughtToday += v;
-        BR.app.toast(U.fmt(v) + ' スピントークンを入手しました');
-      } else {
-        if (v > S.tokens) return;
-        S.tokens -= v;
-        S.dollars += v * C.tokenPrice;
-        BR.app.toast(U.fmt(v) + ' スピントークンを交換しました');
-      }
-      BR.store.save();
-      BR.sfx.play('purchase');
-      BR.app.renderWallet(true);
-      BR.app.renderBet();
-      this.value = 0;
+      var self = this, v = this.value, buy = this.mode === 'buy';
+      if (v <= 0 || this.busy) return;
+      this.busy = true;
       this.render();
+      (buy ? BR.bank.buy(v) : BR.bank.sell(v)).then(function () {
+        BR.app.toast(U.fmt(v) + (buy ? ' スピントークンを入手しました' : ' スピントークンを交換しました'));
+        BR.sfx.play('purchase');
+        BR.app.renderWallet(true);
+        BR.app.renderBet();
+        self.value = 0;
+      }, function (err) {
+        BR.sfx.play('deny');
+        BR.app.toast(err.message);
+      }).then(function () {
+        self.busy = false;
+        self.render();
+      });
     },
     numpad: function (which) {
       var self = this;
@@ -170,26 +179,33 @@
     },
     renderDaily: function () {
       var btn = $('#daily-btn'), label = $('#daily-label');
-      var ready = S.freeDay !== U.utcDay();
+      var ready = BR.bank.dailyReady();
       btn.classList.toggle('ready', ready);
       if (ready) {
         label.textContent = '受け取る';
       } else {
-        var s = U.secondsToUtcMidnight();
+        var s = BR.bank.secondsToReset();
         var h = Math.floor(s / 3600), mi = Math.floor((s % 3600) / 60), se = s % 60;
         label.textContent = h > 0 ? h + '時間' + mi + '分' : mi + '分' + se + '秒';
       }
     },
     claimDaily: function () {
-      if (S.freeDay === U.utcDay()) { BR.sfx.play('deny'); BR.app.toast('次の無料トークンまでお待ちください'); return; }
-      S.freeDay = U.utcDay();
-      S.tokens += C.dailyFree;
-      BR.store.save();
-      BR.sfx.play('purchase');
-      BR.app.renderWallet(true);
-      BR.app.renderBet();
-      BR.app.toast(U.fmt(C.dailyFree) + ' 無料スピントークンを受け取りました！');
-      this.render();
+      var self = this;
+      if (!BR.bank.dailyReady()) { BR.sfx.play('deny'); BR.app.toast('次の無料トークンまでお待ちください'); return; }
+      if (this.claiming) return;
+      this.claiming = true;
+      BR.bank.claimDaily().then(function (amount) {
+        BR.sfx.play('purchase');
+        BR.app.renderWallet(true);
+        BR.app.renderBet();
+        BR.app.toast(U.fmt(amount) + ' 無料スピントークンを受け取りました！');
+      }, function (err) {
+        BR.sfx.play('deny');
+        BR.app.toast(err.message);
+      }).then(function () {
+        self.claiming = false;
+        self.render();
+      });
     }
   };
 
@@ -222,72 +238,6 @@
     });
   }
 
-  /* ------------------------------------------------------------ chip pile --- */
-  var pileDrawn = 0;
-  function drawPile() {
-    var cv = $('#chip-pile');
-    var res = BR.app.view.res;
-    if (pileDrawn === res) return;
-    pileDrawn = res;
-    var W = 300, H = 140;
-    cv.width = Math.round(W * res);
-    cv.height = Math.round(H * res);
-    BR.assets.rasterize(BR.chipSVG('pile'), 120 * Math.max(1, res), 120 * Math.max(1, res)).then(function (face) {
-      var g = cv.getContext('2d');
-      g.setTransform(res, 0, 0, res, 0, 0);
-      g.clearRect(0, 0, W, H);
-      // stacks: [cx, bottomY, r, count] - layout follows the reference pile
-      var stacks = [[46, 136, 32, 10], [256, 138, 27, 5], [156, 120, 28, 3], [214, 134, 27, 2]];
-      stacks.forEach(function (s) { stack(g, face, s[0], s[1], s[2], s[3]); });
-      // leaning / standing chips
-      var D = BR.fxSprites.drawChip;
-      D(g, face, 102, 50, 38, 0.5, -0.12, 0.86, 0.4, 1);
-      D(g, face, 196, 92, 31, 0.1, -0.6, 0.79, 1.1, 1);
-      D(g, face, 62, 120, 27, -0.06, -0.72, 0.69, 0.2, 1);
-      D(g, face, 132, 116, 30, 0.06, -0.76, 0.64, 2.4, 1);
-    });
-  }
-
-  function stack(g, face, cx, by, r, n) {
-    var ry = r * 0.42, t = r * 0.2;
-    for (var i = 0; i < n; i++) {
-      var y = by - ry - i * t;
-      var jitter = Math.sin(i * 2.3 + cx) * 1.6;
-      var x = cx + jitter;
-      // side band
-      g.fillStyle = '#a3241a';
-      g.beginPath();
-      g.ellipse(x, y + t, r, ry, 0, 0, Math.PI);
-      g.lineTo(x - r, y);
-      g.ellipse(x, y, r, ry, 0, Math.PI, 0, true);
-      g.closePath();
-      g.fill();
-      // white inserts on the band
-      g.fillStyle = '#ece6e4';
-      for (var k = 0; k < 8; k++) {
-        var a = (k / 8) * Math.PI * 2 + i * 0.7;
-        var c = Math.cos(a), s = Math.sin(a);
-        if (s < 0.05) continue;
-        var px = x + r * c, w = r * 0.18 * s + 0.6;
-        g.fillRect(px - w / 2, y + ry * s - 0.2, w, t + 0.4);
-      }
-      g.fillStyle = 'rgba(0,0,0,0.25)';
-      g.beginPath();
-      g.ellipse(x, y + t, r, ry, 0, 0, Math.PI);
-      g.lineTo(x - r, y);
-      g.ellipse(x, y, r, ry, 0, Math.PI, 0, true);
-      g.closePath();
-      g.fill();
-      // top face
-      g.save();
-      g.translate(x, y);
-      g.scale(1, ry / r);
-      g.rotate(i * 0.9);
-      g.drawImage(face, -r, -r, 2 * r, 2 * r);
-      g.restore();
-    }
-  }
-
   /* ------------------------------------------------------------ rules --- */
   var rules = {
     built: false,
@@ -302,7 +252,6 @@
       this.built = true;
       var grid = document.createElement('div');
       grid.className = 'pay-grid';
-      var chipURL = BR.svgURL(BR.ICONS.chip);
       var pos = [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [1, 2]];
       C.symbols.forEach(function (sym, i) {
         var card = document.createElement('div');
@@ -313,12 +262,12 @@
         var counts = Object.keys(pays).map(Number).sort(function (a, b) { return a - b; });
         var prob = Math.round(C.weights[sym] * 1000) / 10;
         card.innerHTML =
-          '<div class="pc-img"><img alt="" src="' + BR.svgURL(BR.SYMBOL_SVG[sym]) + '"></div>' +
+          '<div class="pc-img"><img alt="" src="' + BR.SYMBOL_IMG[sym] + '"></div>' +
           '<div class="pc-prob">確率: <b>' + prob + '%</b></div>' +
           '<div class="pc-counts">' + counts.map(function (c) { return '<div>' + c + '/5</div>'; }).join('') + '</div>' +
           '<div class="pc-div"></div>' +
           '<div class="pc-mults">' + counts.map(function (c) {
-            return '<div><i class="ic" style="background-image:url(&quot;' + chipURL + '&quot;)"></i>x' + U.fmtMult(pays[c]) + '</div>';
+            return '<div><i class="ic ic-chip"></i>x' + U.fmtMult(pays[c]) + '</div>';
           }).join('') + '</div>';
         grid.appendChild(card);
       });
@@ -329,7 +278,10 @@
   BR.screens = {
     init: function () { shop.init(); rules.init(); initNumpad(); },
     show: show,
+    back: back,
     current: function () { return current; },
-    resize: function () { pileDrawn = 0; if (current === 'tokens') drawPile(); }
+    register: function (name, h) { hooks[name] = h; },
+    tabs: tabs,
+    numpad: openNumpad
   };
 })(window.BR = window.BR || {});

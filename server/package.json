@@ -1,0 +1,15 @@
+{
+  "name": "blockbuster-reels-server",
+  "version": "2.0.0",
+  "private": true,
+  "description": "BLOCKBUSTER REELS server: shared core (server/core), Node host (server/node) and Cloudflare host (server/cloudflare).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning node/server.js",
+    "admin": "node --disable-warning=ExperimentalWarning node/admin-cli.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  }
+}

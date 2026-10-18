@@ -1,0 +1,144 @@
+# Android app: builds the APK (the game full screen in its own app) and puts it
+# on the game's site (download/), where players download it and from where the
+# app updates itself. See README.md「アプリとして配布する」.
+#
+#   - write the game's address into app/app-url.txt (or run this workflow by
+#     hand and type it in): the app is built and published
+#   - repository secret APP_SIGNING_KEY: any long random text, set once and
+#     never changed (every version must carry the same signature to update)
+#   - without an address the app is only built, as a check
+name: Android app
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: ゲームの公開URL（例 https://blockbuster-reels.xxxx.workers.dev）
+        required: false
+  push:
+    paths:
+      - app/app-url.txt
+      - app/android/**
+      - .github/workflows/android.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-app-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Game address
+        id: url
+        env:
+          INPUT_URL: ${{ inputs.url }}
+        run: |
+          url="$INPUT_URL"
+          if [ -z "$url" ] && [ -f app/app-url.txt ]; then
+            # the first address on a line that is not a comment
+            url="$(grep -v '^[[:space:]]*#' app/app-url.txt | grep -Eo 'https://[^[:space:]]+' | head -n 1 || true)"
+          fi
+          url="$(printf '%s' "$url" | tr -d '[:space:]')"
+          if [ -z "$url" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "url=https://example.invalid/" >> "$GITHUB_OUTPUT"
+            echo "No address in app/app-url.txt: building only, as a check."
+            exit 0
+          fi
+          case "$url" in
+            https://*) ;;
+            *) echo "::error::The address must start with https:// (got: $url)"; exit 1 ;;
+          esac
+          # scheme + host only: the app always opens the start page
+          url="$(printf '%s' "$url" | sed -E 's|^(https://[^/?#]+).*|\1/|')"
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Building the app for $url"
+
+      - name: Signing key
+        env:
+          APP_SIGNING_KEY: ${{ secrets.APP_SIGNING_KEY }}
+          PUBLISH: ${{ steps.url.outputs.publish }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet 'cryptography>=42,<60'
+          flag=""
+          if [ "$PUBLISH" = "true" ]; then flag="--require-stable"; fi
+          if ! "$RUNNER_TEMP/venv/bin/python" app/android/signing/keystore.py "$RUNNER_TEMP/app.p12" "$GITHUB_ENV" $flag; then
+            {
+              echo "## 署名キー（APP_SIGNING_KEY）が設定されていません"
+              echo ""
+              echo "アプリを公開する前に一度だけ設定してください: リポジトリの Settings → Secrets and variables → Actions →"
+              echo "New repository secret → Name に \`APP_SIGNING_KEY\`、Secret に好きな長い文字列（30 文字以上）→ Add secret。"
+              echo "設定したら、このワークフローをもう一度実行してください（Re-run jobs）。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Build
+        working-directory: app/android
+        env:
+          APP_URL: ${{ steps.url.outputs.url }}
+        run: |
+          export JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME}"
+          ./gradlew assembleRelease --no-daemon --stacktrace \
+            -PappUrl="$APP_URL" \
+            -PversionCode=$((100 + GITHUB_RUN_NUMBER)) \
+            -PversionName="1.0.$GITHUB_RUN_NUMBER"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: two-state-casino-apk
+          path: app/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Publish on the game's site
+        if: steps.url.outputs.publish == 'true'
+        env:
+          APP_URL: ${{ steps.url.outputs.url }}
+        run: |
+          mkdir -p download
+          cp app/android/app/build/outputs/apk/release/app-release.apk download/two-state-casino.apk
+          python3 - <<'PY'
+          import datetime, hashlib, json, os
+          apk = 'download/two-state-casino.apk'
+          data = open(apk, 'rb').read()
+          run = int(os.environ['GITHUB_RUN_NUMBER'])
+          info = {
+              'name': 'Two state Casino',
+              'versionCode': 100 + run,
+              'versionName': '1.0.%d' % run,
+              'apk': apk,
+              'size': len(data),
+              'sha256': hashlib.sha256(data).hexdigest(),
+              'certSha256': os.environ['APP_CERT_SHA256'],
+              'url': os.environ['APP_URL'],
+              'builtAt': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+          }
+          open('download/app.json', 'w').write(json.dumps(info, ensure_ascii=False, indent=2) + '\n')
+          with open('app/app-url.txt', 'w') as fh:
+              fh.write('# Android アプリが開くゲームの公開URL。書き換えて保存すると、アプリが作り直されます。\n')
+              fh.write(os.environ['APP_URL'] + '\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add download/two-state-casino.apk download/app.json app/app-url.txt
+          git commit -m "Android app 1.0.$GITHUB_RUN_NUMBER"
+          for i in 1 2 3 4; do
+            if git pull --rebase --quiet origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME"; then break; fi
+            sleep $((i * 5))
+          done
+          {
+            echo "## Android アプリ 1.0.$GITHUB_RUN_NUMBER を公開しました"
+            echo ""
+            echo "- ダウンロード: ${APP_URL}download/two-state-casino.apk （Cloudflare の再デプロイ後、1〜2 分で使えます）"
+            echo "- 入れたアプリは、新しい版が出るとアプリの中の「アップデート」ボタンで更新できます"
+            echo "- 署名証明書 SHA-256: \`$APP_CERT_SHA256\`"
+          } >> "$GITHUB_STEP_SUMMARY"

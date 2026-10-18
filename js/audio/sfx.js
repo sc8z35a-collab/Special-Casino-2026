@@ -1,12 +1,142 @@
-/* Sound effects synthesised with WebAudio (no audio files needed). */
+/* Sound effects: the supplied recordings (sounds/) for clicks, the SPIN
+   button, the turning reels and wins; everything else is synthesised with
+   WebAudio. The synthesised versions also stand in until the recordings
+   are decoded. Every sound plays from the start: the sound button on the
+   slot screen only changes its own look. */
 (function (BR) {
   'use strict';
 
   var AC = window.AudioContext || window.webkitAudioContext;
   var ctx = null, master = null, comp = null, verb = null, verbIn = null;
-  var muted = true, unlocked = false;
+  var muted = false, unlocked = false;
   var noiseBuf = null;
   var reelLoop = null;
+
+  /* ------------------------------------------------------------ recordings --- */
+  var RECORDINGS = {
+    click: 'sounds/click.wav',
+    spin: 'sounds/spin-button.wav',
+    reels: 'sounds/reels.wav',      // two tick cycles, cut to loop seamlessly
+    win: 'sounds/win.mp3'
+  };
+  var LEVEL = { click: 0.7, spin: 1, reels: 0.6, win: 0.9 };
+  var raw = {}, buffers = {}, winVoice = null;
+
+  function bytes(url) {
+    var m = /^data:[^,]*;base64,(.*)$/.exec(url);   // single-file build
+    if (m) {
+      var bin = atob(m[1]), out = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return Promise.resolve(out.buffer);
+    }
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.arrayBuffer();
+    });
+  }
+  // fetched right away, decoded once the audio context exists
+  Object.keys(RECORDINGS).forEach(function (k) {
+    raw[k] = bytes(RECORDINGS[k]);
+    raw[k].catch(function () { /* the synthesised sound is used instead */ });
+  });
+
+  function decode(ab) {
+    return new Promise(function (resolve, reject) {
+      var p = ctx.decodeAudioData(ab, resolve, reject);   // callback form for older Safari
+      if (p && p.then) p.then(resolve, reject);
+    });
+  }
+
+  function decodeRecordings() {
+    Object.keys(raw).forEach(function (k) {
+      raw[k].then(decode).then(function (b) { buffers[k] = b; }, function () { /* keep the synthesised sound */ });
+    });
+    if (music.bytes && !music.loading) musicLoad();
+  }
+
+  /* ------------------------------------------------------------ title music --- */
+  // Loops without a gap, quieter than the effects and outside their
+  // compressor; it fades out when the title screen is left and picks up
+  // where it stopped when it comes back.
+  var MUSIC_LEVEL = 0.32;
+  var music = { url: null, bytes: null, loading: null, buf: null, src: null, gain: null, want: false, offset: 0, started: 0 };
+
+  function musicLoad() {
+    music.loading = music.bytes.then(decode).then(function (b) {
+      music.buf = b;
+      musicStart();
+    }, function () { /* no music */ });
+  }
+  function musicStart() {
+    if (!ctx || ctx.state !== 'running' || !music.want || music.src || !music.buf) return;
+    var t = ctx.currentTime;
+    var g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(MUSIC_LEVEL, t + 1.4);
+    g.connect(ctx.destination);
+    var src = ctx.createBufferSource();
+    src.buffer = music.buf;
+    src.loop = true;
+    src.connect(g);
+    var at = music.offset % music.buf.duration;
+    src.start(t, at);
+    music.started = t - at;
+    music.src = src;
+    music.gain = g;
+  }
+  function musicStop(fade) {
+    if (!music.src) return;
+    var t = ctx.currentTime, src = music.src, g = music.gain;
+    music.offset = (t - music.started) % music.buf.duration;
+    music.src = music.gain = null;
+    g.gain.cancelScheduledValues(t);
+    g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + fade);
+    try { src.stop(t + fade + 0.05); } catch (e) { /* stopped */ }
+  }
+
+  /* ------------------------------------------------------------ voices --- */
+  var voices = {};   // url -> Promise<AudioBuffer>
+  var voiceNow = null;
+  function voiceBuffer(url) {
+    if (!voices[url]) {
+      voices[url] = bytes(url).then(decode);
+      voices[url].catch(function () { delete voices[url]; });
+    }
+    return voices[url];
+  }
+
+  // Plays a decoded recording; null while it is not available.
+  function sample(name, t, o) {
+    var b = buffers[name];
+    if (!b) return null;
+    o = o || {};
+    var src = ctx.createBufferSource();
+    src.buffer = b;
+    if (o.rate) src.playbackRate.value = o.rate;
+    var g = ctx.createGain();
+    g.gain.value = LEVEL[name] * (o.gain || 1);
+    src.connect(g);
+    g.connect(comp);
+    src.start(t);
+    return { src: src, g: g };
+  }
+
+  function fadeOut(voice, t, d) {
+    try {
+      voice.g.gain.cancelScheduledValues(t);
+      voice.g.gain.setValueAtTime(voice.g.gain.value, t);
+      voice.g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      voice.src.stop(t + d + 0.02);
+    } catch (e) { /* already stopped */ }
+  }
+
+  // The win recording: one at a time, cut short when the next spin starts.
+  function winSample(t) {
+    if (winVoice) fadeOut(winVoice, t, 0.12);
+    winVoice = sample('win', t);
+    return winVoice;
+  }
 
   function init() {
     if (ctx || !AC) return;
@@ -29,6 +159,7 @@
     verbIn.connect(verb);
     verb.connect(comp);
     noiseBuf = makeNoise(2);
+    decodeRecordings();
   }
 
   function impulse(sec, decay) {
@@ -151,14 +282,24 @@
 
   var SOUNDS = {
     click: function (t) {
+      if (sample('click', t)) return;
       tone({ t: t, f: 1800, f2: 1200, d: 0.05, v: 0.12, type: 'triangle' });
       noise({ t: t, f: 4000, q: 3, d: 0.02, v: 0.06 });
     },
     slider: function (t) { tone({ t: t, f: 2600, d: 0.025, v: 0.04, type: 'sine' }); },
-    betUp: function (t) { tone({ t: t, f: 660, d: 0.07, v: 0.12, type: 'triangle' }); tone({ t: t + 0.06, f: 990, d: 0.09, v: 0.12, type: 'triangle' }); },
-    betDown: function (t) { tone({ t: t, f: 990, d: 0.07, v: 0.12, type: 'triangle' }); tone({ t: t + 0.06, f: 660, d: 0.09, v: 0.12, type: 'triangle' }); },
+    // the click, pitched a little up / down
+    betUp: function (t) {
+      if (sample('click', t, { rate: 1.08 })) return;
+      tone({ t: t, f: 660, d: 0.07, v: 0.12, type: 'triangle' }); tone({ t: t + 0.06, f: 990, d: 0.09, v: 0.12, type: 'triangle' });
+    },
+    betDown: function (t) {
+      if (sample('click', t, { rate: 0.93 })) return;
+      tone({ t: t, f: 990, d: 0.07, v: 0.12, type: 'triangle' }); tone({ t: t + 0.06, f: 660, d: 0.09, v: 0.12, type: 'triangle' });
+    },
     deny: function (t) { tone({ t: t, f: 140, d: 0.22, v: 0.18, type: 'square', lp: 600 }); tone({ t: t + 0.12, f: 110, d: 0.25, v: 0.16, type: 'square', lp: 500 }); },
     spinStart: function (t) {
+      if (winVoice) { fadeOut(winVoice, t, 0.15); winVoice = null; }
+      if (sample('spin', t)) return;
       noise({ t: t, ftype: 'bandpass', f: 400, f2: 2400, q: 1.2, a: 0.02, d: 0.28, v: 0.22 });
       tone({ t: t, f: 120, f2: 70, d: 0.14, v: 0.3, type: 'sine' });
       noise({ t: t + 0.01, ftype: 'lowpass', f: 1200, d: 0.06, v: 0.2 });
@@ -177,11 +318,18 @@
       lfo.start(t); lfo.stop(t + 1.4);
       tone({ t: t, f: 110, f2: 220, glide: 1.25, a: 0.05, hold: 1.0, d: 0.25, v: 0.12, type: 'triangle' });
     },
+    // wins: the recording, with drum hits (no pitched parts to clash) for the big ones
     win: function (t) {
+      if (winSample(t)) return;
       [N.C6, N.E6, N.G6, N.C7].forEach(function (f, i) { bell(f, t + i * 0.075, 0.1, 0.7); });
       coin(t + 0.32, 0.5, 0.1);
     },
     bigWin: function (t) {
+      if (winSample(t)) {
+        timpani(t, 98, 0.5);
+        cymbal(t + 0.02, 0.12, 1.8);
+        return;
+      }
       timpani(t, 98, 0.55);
       brass([N.C4, N.E4, N.G4], t, 0.16, 0.5);
       brass([N.C4, N.E4, N.G4], t + 0.18, 0.12, 0.45);
@@ -192,6 +340,13 @@
       [N.C6, N.E6, N.G6, N.C7].forEach(function (f, i) { bell(f, t + 0.55 + i * 0.06, 0.07, 1.2); });
     },
     superWin: function (t) {
+      if (winSample(t)) {
+        timpani(t, 82, 0.65);
+        timpani(t + 0.42, 131, 0.5);
+        cymbal(t, 0.2, 2.4);
+        for (var k = 0; k < 10; k++) coin(t + 0.45 + k * 0.05, k / 10, 0.07);
+        return;
+      }
       timpani(t, 82, 0.7);
       cymbal(t, 0.22, 2.6);
       brass([N.G4, N.B4, N.D5], t, 0.18, 0.55);
@@ -201,8 +356,14 @@
       for (var i = 0; i < 10; i++) coin(t + 0.45 + i * 0.05, i / 10, 0.09);
       [N.C6, N.E6, N.G6, N.C7, N.G6, N.C7].forEach(function (f, i) { bell(f, t + 0.45 + i * 0.07, 0.07, 1.4); });
     },
-    tick: function (t, p) { coin(t, p || 0, 0.07); },
+    // the win recording already carries the count-up
+    tick: function (t, p) { if (!buffers.win) coin(t, p || 0, 0.07); },
     countEnd: function (t, tier) {
+      if (buffers.win) {
+        cymbal(t, tier >= 2 ? 0.14 : 0.07, 1.4);
+        coin(t + 0.05, 1, 0.08);
+        return;
+      }
       if (tier >= 2) {
         brass([N.C5, N.E5, N.G5], t, 0.5, 0.45);
         cymbal(t, 0.14, 1.6);
@@ -219,12 +380,88 @@
       bell(N.E6, t, 0.12, 0.9);
       bell(N.C7, t + 0.09, 0.12, 1.1);
       for (var i = 0; i < 4; i++) coin(t + 0.05 + i * 0.045, 0.6 + i * 0.1, 0.07);
+    },
+    // incoming chat message
+    message: function (t) {
+      bell(N.G5 * 2, t, 0.06, 0.5, 0.3);
+      bell(N.E6, t + 0.08, 0.05, 0.6, 0.3);
+    },
+    // outgoing chat message
+    send: function (t) {
+      tone({ t: t, f: 900, f2: 1500, glide: 0.06, d: 0.07, v: 0.07, type: 'sine' });
+    },
+    // friend request / accepted
+    notify: function (t) {
+      bell(N.C6, t, 0.08, 0.7, 0.35);
+      bell(N.E6, t + 0.1, 0.08, 0.7, 0.35);
+      bell(N.G6, t + 0.2, 0.09, 1.0, 0.35);
+    },
+    // a locked (chained) icon: heavy links rattling
+    chain: function (t) {
+      for (var i = 0; i < 5; i++) {
+        var tt = t + i * 0.055 + Math.random() * 0.02;
+        bell(1700 + Math.random() * 900, tt, 0.05, 0.16, 0.15);
+        noise({ t: tt, ftype: 'bandpass', f: 4200 + Math.random() * 2500, q: 3, d: 0.05, v: 0.08 });
+      }
+      noise({ t: t, ftype: 'lowpass', f: 500, d: 0.12, v: 0.12 });
+    },
+    // the chain breaks: a crack, falling links, a sparkle
+    unchain: function (t) {
+      noise({ t: t, ftype: 'highpass', f: 1800, a: 0.001, d: 0.09, v: 0.3 });
+      timpani(t, 90, 0.35);
+      for (var i = 0; i < 7; i++) bell(1500 + Math.random() * 1500, t + 0.12 + i * 0.07, 0.05, 0.2, 0.2);
+      bell(N.C7, t + 0.45, 0.1, 1.2);
+      bell(N.G6 * 2, t + 0.55, 0.08, 1.4);
+    },
+    // incoming call (one ring; repeated while ringing)
+    ring: function (t) {
+      for (var i = 0; i < 2; i++) {
+        tone({ t: t + i * 0.42, f: N.E6, d: 0.32, hold: 0.06, v: 0.1, type: 'sine', wet: 0.2 });
+        tone({ t: t + i * 0.42, f: N.G6, d: 0.32, hold: 0.06, v: 0.07, type: 'sine', wet: 0.2 });
+      }
+    },
+    // calling out, waiting for the friend
+    ringback: function (t) {
+      tone({ t: t, f: 440, d: 0.9, hold: 0.6, v: 0.06, type: 'sine' });
+      tone({ t: t, f: 480, d: 0.9, hold: 0.6, v: 0.05, type: 'sine' });
+    },
+    callStart: function (t) {
+      tone({ t: t, f: N.C5, d: 0.12, v: 0.12, type: 'triangle' });
+      tone({ t: t + 0.1, f: N.G5, d: 0.2, v: 0.12, type: 'triangle' });
+    },
+    callEnd: function (t) {
+      tone({ t: t, f: N.G5, d: 0.12, v: 0.12, type: 'triangle' });
+      tone({ t: t + 0.1, f: N.C5, d: 0.22, v: 0.12, type: 'triangle' });
+    },
+    // the お守り加護 is switched on: a temple bell and a shimmer
+    charmOn: function (t) {
+      bell(N.G5, t, 0.16, 2.4, 0.5);
+      bell(N.D6, t + 0.02, 0.07, 2.0, 0.5);
+      for (var i = 0; i < 6; i++) bell(N.G6 * (1 + i * 0.12), t + 0.25 + i * 0.06, 0.035, 0.5, 0.4);
+    },
+    // it saved some tokens (`full`: all of them)
+    charmSave: function (t, full) {
+      bell(N.C6, t, 0.12, 1.2, 0.4);
+      bell(N.E6, t + 0.1, 0.12, 1.2, 0.4);
+      bell(N.G6, t + 0.2, 0.13, 1.6, 0.4);
+      if (full) { bell(N.C7, t + 0.34, 0.14, 2.2, 0.5); for (var i = 0; i < 6; i++) coin(t + 0.4 + i * 0.05, 0.8, 0.08); }
+    },
+    // a fruit thrown or caught
+    fruit: function (t) {
+      tone({ t: t, f: 520, f2: 1240, glide: 0.08, d: 0.12, v: 0.12, type: 'triangle' });
+      coin(t + 0.07, 0.9, 0.06);
     }
   };
 
   function startReels() {
     if (!ctx || muted || reelLoop) return;
     var t = ctx.currentTime;
+    var rec = sample('reels', t);
+    if (rec) {
+      rec.src.loop = true;
+      reelLoop = rec;
+      return;
+    }
     var src = ctx.createBufferSource();
     // build a 1s loop of mechanical clicks over rolling noise
     var sr = ctx.sampleRate, len = sr, b = ctx.createBuffer(1, len, sr), d = b.getChannelData(0);
@@ -260,7 +497,7 @@
     unlock: function () {
       if (!AC) return;
       init();
-      if (ctx.state === 'suspended') ctx.resume();
+      if (ctx.state === 'suspended') ctx.resume().then(musicStart, function () {});
       if (!unlocked) {
         // iOS: play a silent buffer inside the gesture
         var s = ctx.createBufferSource();
@@ -275,18 +512,48 @@
       if (ctx.state !== 'running') return;
       try { SOUNDS[name](ctx.currentTime + 0.005, arg); } catch (e) { /* ignore */ }
     },
+    // names of the recordings decoded so far (diagnostics)
+    recordings: function () { return Object.keys(buffers); },
+    // title music: play(url) / stop(); it starts as soon as sound is allowed
+    music: {
+      play: function (url) {
+        music.want = true;
+        if (music.url !== url) {
+          music.url = url;
+          music.bytes = bytes(url);
+          music.bytes.catch(function () { /* no music */ });
+          music.buf = null;
+          music.offset = 0;
+          if (ctx) musicLoad();
+        }
+        musicStart();
+      },
+      stop: function () { music.want = false; if (ctx) musicStop(0.8); },
+      playing: function () { return !!music.src; }
+    },
+    // a recorded voice line, at most one at a time; resolves when it starts
+    voice: function (url) {
+      if (!ctx || ctx.state !== 'running') return Promise.reject(new Error('no sound yet'));
+      return voiceBuffer(url).then(function (b) {
+        if (voiceNow) try { voiceNow.stop(); } catch (e) { /* ended */ }
+        var src = ctx.createBufferSource();
+        src.buffer = b;
+        var g = ctx.createGain();
+        g.gain.value = 1;
+        src.connect(g);
+        g.connect(ctx.destination);
+        src.start(ctx.currentTime + 0.02);
+        voiceNow = src;
+        src.onended = function () { if (voiceNow === src) voiceNow = null; };
+      });
+    },
+    preloadVoice: function (url) { if (ctx) voiceBuffer(url).catch(function () {}); },
     startReels: startReels,
     stopReels: function () { if (ctx) stopReels(); },
-    setMuted: function (m) {
-      muted = m;
-      if (ctx) {
-        var t = ctx.currentTime;
-        master.gain.cancelScheduledValues(t);
-        master.gain.setTargetAtTime(m ? 0 : 0.8, t, 0.03);
-        if (m) stopReels();
-      }
-    },
+    // kept for the sound button, which is decoration: the sounds stay on
+    setMuted: function () {},
     suspend: function () { if (ctx && ctx.state === 'running') ctx.suspend(); },
-    resume: function () { if (ctx && ctx.state === 'suspended' && !muted) ctx.resume(); }
+    resume: function () { if (ctx && ctx.state === 'suspended' && !muted) ctx.resume().then(musicStart, function () {}); },
+    running: function () { return !!ctx && ctx.state === 'running'; }
   };
 })(window.BR = window.BR || {});

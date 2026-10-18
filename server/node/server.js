@@ -1,0 +1,94 @@
+// BLOCKBUSTER REELS on Node: the game files, the API and live updates (SSE)
+// from one process, data in SQLite. (The free hosted version runs the same
+// core on Cloudflare: see server/cloudflare/.)
+//
+//   node --disable-warning=ExperimentalWarning server/node/server.js
+import http from 'node:http';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { loadConfig, ROOT } from './config.js';
+import { openDb } from './sqlite.js';
+import { Live } from './live.js';
+import { createStatic } from './static.js';
+import { SECURITY_HEADERS, sendJson, clientIp, coreRequest } from './http.js';
+import { createApi } from '../core/api.js';
+import { metaValue } from '../core/db.js';
+
+export function createApp(overrides = {}) {
+  const config = loadConfig(overrides);
+  const db = openDb(config.dataDir);
+  const live = new Live();
+  const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
+  const api = createApi({ db, live, config, secret });
+  live.onPresence = (userId, online) => api.presence(userId, online);
+  // The page is online with WebSocket live updates (Cloudflare); here they come as SSE.
+  const serveStatic = createStatic(ROOT, {
+    transformHtml: (html) => html.replace('<meta name="br-mode" content="online" data-live="ws">', '<meta name="br-mode" content="online" data-live="sse">')
+  });
+  const hk = setInterval(() => api.housekeeping(), 3600000);
+  hk.unref();
+
+  const server = http.createServer(async (req, res) => {
+    const started = Date.now();
+    let url;
+    try {
+      url = new URL(req.url, 'http://localhost');
+    } catch {
+      res.writeHead(400).end();
+      return;
+    }
+    if (url.pathname.startsWith('/api/')) {
+      if (config.logRequests && url.pathname !== '/api/stream') {
+        res.on('finish', () => console.log(`${new Date().toISOString()} ${req.method} ${url.pathname} ${res.statusCode} ${Date.now() - started}ms`));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/stream') {
+        const userId = api.consumeTicket(url.searchParams.get('ticket'));
+        if (!userId) { sendJson(res, 401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } }); return; }
+        live.attach(req, res, userId, () => api.hello(userId));
+        return;
+      }
+      const out = await api.handle(coreRequest(req, url, clientIp(req, config.trustProxy, config.clientIpHeader)));
+      sendJson(res, out.status, out.body);
+      return;
+    }
+    if (serveStatic(req, res, url.pathname)) return;
+    res.writeHead(404, { ...SECURITY_HEADERS, 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Not found');
+  });
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
+
+  function close() {
+    return new Promise((resolve) => {
+      clearInterval(hk);
+      live.close();
+      api.close();
+      server.close(() => {
+        try { db.close(); } catch { /* already closed */ }
+        resolve();
+      });
+      server.closeAllConnections?.();
+    });
+  }
+
+  return { server, db, live, api, config, close };
+}
+
+// Started directly (not imported by the tests).
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const app = createApp();
+  app.server.listen(app.config.port, app.config.host, () => {
+    console.log(`BLOCKBUSTER REELS server: http://${app.config.host === '0.0.0.0' ? 'localhost' : app.config.host}:${app.config.port}`);
+    console.log(`data directory: ${app.config.dataDir}`);
+  });
+  let stopping = false;
+  const stop = (sig) => {
+    if (stopping) return;
+    stopping = true;
+    console.log(`${sig} received, shutting down`);
+    app.close().then(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5000).unref();
+  };
+  process.on('SIGTERM', () => stop('SIGTERM'));
+  process.on('SIGINT', () => stop('SIGINT'));
+}

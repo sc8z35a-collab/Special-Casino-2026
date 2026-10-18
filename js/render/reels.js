@@ -165,6 +165,11 @@
     this.invalidate();
   };
 
+  // The visible grid (grid[reel][row]) while the reels stand still.
+  Reels.prototype.getGrid = function () {
+    return this.reels.map(function (r) { return [r.buf[1], r.buf[2], r.buf[3]]; });
+  };
+
   Reels.prototype.resize = function (res) {
     var self = this;
     this.res = res;

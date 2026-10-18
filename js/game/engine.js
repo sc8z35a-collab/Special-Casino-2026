@@ -48,4 +48,4 @@
   }
 
   BR.engine = { spin: spin, evaluate: evaluate, drawSymbol: drawSymbol };
-})(window.BR = window.BR || {});
+})(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

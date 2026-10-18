@@ -4,3 +4,17 @@ __pycache__/
 *.pyc
 .DS_Store
 node_modules/
+
+# server data and local settings
+data/
+.env
+
+# Cloudflare local state and secrets
+.wrangler/
+.dev.vars
+
+# Android build files
+app/android/.gradle/
+app/android/build/
+app/android/app/build/
+app/android/local.properties

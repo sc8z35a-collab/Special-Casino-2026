@@ -51,8 +51,17 @@ html, body {
   width: 100%;
   height: 100%;
 }
-#frame { pointer-events: none; z-index: 40; }
-#frame svg { display: block; width: 100%; height: 100%; }
+/* supplied wallpaper, cover-scaled (the stage aspect depends on the device) */
+#bg { background: #3e0306 center / cover no-repeat; }
+/* its gold frame as a 9-slice image: 72px corners in a 1846px-wide source = 78 design px */
+#frame {
+  pointer-events: none;
+  z-index: 40;
+  border: 78px solid transparent;
+  border-image-slice: 72;
+  border-image-width: 78px;
+  border-image-repeat: stretch;
+}
 #fx { pointer-events: none; z-index: 50; overflow: hidden; }
 #fx-hit { z-index: 51; display: none; }
 #fx-hit.on { display: block; }
@@ -255,7 +264,7 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 /* gold pill buttons */
 .pill {
   position: absolute;
-  width: 167px;
+  width: 172px;
   height: 92px;
   border-radius: 999px;
   background: center / 100% 100% no-repeat;
@@ -280,7 +289,7 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 .pill-auto {
   right: 411px;
   bottom: 53px;
-  width: 168px;
+  width: 180px;
   height: 100px;
   flex-direction: column;
   gap: 4px;
@@ -332,24 +341,9 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background:
-    radial-gradient(circle closest-side, rgba(0,0,0,0) 89.2%, #c4903d 89.8%, #d6ad60 91%, #ffe09a 92.6%, #e8b876 93.8%, #b88b4a 94.9%, #643400 95.7%, #6a3800 96.6%, #a87a40 97.5%, #d8b478 98.6%, #6e5418 100%),
-    linear-gradient(180deg, rgba(255, 248, 215, .32) 0%, rgba(255, 240, 200, 0) 38%, rgba(120, 60, 0, 0) 60%, rgba(120, 60, 0, .2) 100%),
-    radial-gradient(circle closest-side at 50% 48%, #fdf0b8 0%, #fbe6a0 34%, #f6d687 52%, #efc36d 66%, #e3ab55 78%, #cd9140 85%, #b67f31 89.6%);
+  background: center / 100% 100% no-repeat;
   box-shadow: 0 6px 14px rgba(0,0,0,.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   transition: transform .1s ease, filter .15s ease;
-}
-.spin-disc b {
-  position: relative;
-  font-size: 32.5px;
-  font-weight: 700;
-  color: #5c3517;
-  letter-spacing: 1.2px;
-  line-height: 1;
-  transform: translate(0.5px, 1px);
 }
 .spin-arrows {
   position: absolute;
@@ -359,7 +353,6 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 }
 .spin-btn:active .spin-disc, .spin-btn.pressed .spin-disc { transform: scale(.95); filter: brightness(.95); }
 .spin-btn.spinning .spin-arrows { animation: spinArrows .8s linear infinite; }
-.spin-btn.stop .spin-disc b { font-size: 30px; }
 @keyframes spinArrows { to { transform: rotate(360deg); } }
 .spin-btn:disabled .spin-disc { filter: grayscale(.35) brightness(.8); }
 .spin-btn:disabled .spin-glow { opacity: .3; animation: none; }
@@ -555,7 +548,7 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
   align-items: center;
   justify-content: center;
 }
-.chip-pile { position: absolute; left: 0; bottom: 2px; width: 300px; height: 140px; pointer-events: none; }
+.chip-pile { position: absolute; left: 2px; bottom: -3px; width: 286px; height: 125px; pointer-events: none; background: left bottom / contain no-repeat; }
 .daily-text { font-size: 22px; font-weight: 700; letter-spacing: 0.6px; transform: translate(-6px, 0); }
 .daily-btn {
   position: absolute;

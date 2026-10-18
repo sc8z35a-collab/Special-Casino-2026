@@ -24,6 +24,54 @@
     tokenPrice: 10,          // $ per spin token
     dailyLimit: 10000000,    // spin tokens that can be bought per UTC day
     dailyFree: 1000,         // free tokens claimable once per UTC day
-    start: { tokens: 0, dollars: 5008159, coins: 74 }
+    start: { tokens: 0, dollars: 5008159, coins: 74 },
+    // player icons: price in $ (0 = free); "rare" ones are locked at sign-up
+    // Player icons (img/avatars/<id>.webp). Paid ones are chained on the
+    // sign-up screen and sold later for $, always 10-40 % off (js/game/sale.js).
+    avatars: [
+      { id: 'bald', name: 'スキンヘッド', price: 0 },
+      { id: 'beard', name: 'ヒゲ', price: 0 },
+      { id: 'curly', name: 'くせ毛', price: 0 },
+      { id: 'blond', name: '金髪', price: 0 },
+      { id: 'witch', name: '魔女ハット', price: 0 },
+      { id: 'cap', name: '黒キャップ', price: 0 },
+      { id: 'catcap', name: 'ネコキャップ', price: 0 },
+      { id: 'pumpkin', name: 'パンプキン', price: 100000 },
+      { id: 'red', name: 'レッド', price: 350000, rare: true },
+      { id: 'vampire', name: 'ヴァンパイア', price: 800000, rare: true }
+    ],
+    // Car Owner shop (price in $)
+    cars: [
+      { id: 'two-state-sedan', name: 'Two state セダン', price: 1200000 }
+    ],
+    // Shop (price in $, always 10-40 % off like the icons); anything bought
+    // here can be given to friends, up to `max` per player
+    shop: [
+      { id: 'omamori', name: 'お守り加護', price: 90000, max: 10 }
+    ],
+    // お守り加護, switched on before a spin: the next losing spin gives back
+    // min-max % of the lost tokens (all of them `fullChance` of the time)
+    charm: { item: 'omamori', min: 5, max: 20, fullChance: 0.02 },
+    // thrown at the friend one is watching: spin tokens from the thrower
+    fruits: [
+      { id: 'strawberry', name: 'ストロベリー', tokens: 1000 },
+      { id: 'watermelon', name: 'スイカ', tokens: 2000 },
+      { id: 'melon', name: 'メロン', tokens: 5000 }
+    ],
+    // people watching one player (they share the player's voice call)
+    maxWatchers: 10,
+    // login bonus in spin tokens for the 1st, 2nd, 3rd, 4th day logged in
+    // (then it starts over); a day runs from 6:00 to 6:00 Japan time
+    loginBonus: { days: [45000, 50000, 65000, 90000], dayStartsJst: 6 },
+    // Peter the money lender ($): `max` lent at a time; he offers money on his
+    // own when a player is nearly broke (net worth below `brokeBelow` $)
+    lender: {
+      max: 11000000,
+      brokeBelow: 10000,
+      minLoan: 10000,
+      offers: [{ amount: 5000000, rate: [2, 5] }, { amount: 6000000, rate: [10, 10] }],
+      // asked in the chat: like the first offer when nothing is owed, then 10 %
+      chatRate: [[2, 5], [10, 10]]
+    }
   };
-})(window.BR = window.BR || {});
+})(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis
