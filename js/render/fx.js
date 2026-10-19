@@ -807,7 +807,7 @@
     if (J) {
       // the screen breaks like glass where SUPER comes through, lightning everywhere
       var p = L.superT;
-      J.flash('#ffffff', 0.9, 560);
+      J.flash('#ffffff', 0.78, 520);
       J.shards(p.x, p.y, { n: 40, speed: 1.25, size: 1.2 });
       for (var i = 0; i < 7; i++) {
         var ang = -Math.PI / 2 + (i - 3) * 0.5 + U.rand(-0.15, 0.15);

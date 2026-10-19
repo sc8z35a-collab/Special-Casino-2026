@@ -389,9 +389,12 @@
     var done = function () {
       game.presenting = false;
       if (res.tier >= 2) {
+        // the win pours out of where its count was into the wallet
+        var from = { x: view.W / 2, y: view.H / 2 + 136 };
         game.hold = 0;
-        renderWallet(true, { x: view.W / 2, y: view.H / 2 + 120 });
-        BR.sfx.play('coinShower', Math.round(6 + Math.log10(res.total + 1) * 3));
+        if (BR.juice) BR.juice.payout('tokens', res.total, from, { n: res.tier >= 3 ? 30 : 22, size: 58 });
+        renderWallet(true, from);
+        BR.sfx.play('coinShower', res.tier >= 3 ? 26 : 18);
       }
       renderBet();
       if (game.watch) { nextWatched(); return; }

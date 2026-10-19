@@ -153,6 +153,27 @@
 #fx .fx-beam.l { left: 13%; }
 #fx .fx-beam.r { left: 87%; }
 
+/* ------------------------------------------------------------ the room --- */
+/* now and then a slow band of light passes over the wallpaper of the slot screen */
+#bg::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 45%;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(110deg, rgba(255, 220, 160, 0) 20%, rgba(255, 230, 180, .1) 42%, rgba(255, 240, 200, .16) 50%, rgba(255, 230, 180, .1) 58%, rgba(255, 220, 160, 0) 80%);
+  transform: translateX(-110%);
+}
+#stage[data-screen="slot"] #bg::after { opacity: 1; animation: jcRoomSweep 14s ease-in-out infinite; }
+@keyframes jcRoomSweep {
+  0%, 70% { transform: translateX(-110%); }
+  100% { transform: translateX(240%); }
+}
+.jc-low #bg::after { display: none; }
+
 /* ------------------------------------------------------------ the wallet --- */
 .wallet .bump { animation: jcWalletBump .55s var(--jc-pop); }
 .wallet .bump.down { animation: jcWalletDown .5s ease-out; }
@@ -401,6 +422,9 @@
 /* a badge pops in and wiggles for attention */
 .hud-badge:not([hidden]), .tab-badge:not([hidden]) { animation: jcBadgeIn .5s var(--jc-pop), jcBadgeWiggle 4s ease-in-out 1s infinite; }
 @keyframes jcBadgeIn { 0% { transform: scale(0); } 70% { transform: scale(1.3); } 100% { transform: scale(1); } }
+/* the red dots on the tabs breathe */
+.tab-dot:not([hidden]) { animation: jcDot 1.8s ease-in-out infinite; }
+@keyframes jcDot { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.35); } }
 /* one more on a badge already up: it jumps */
 .hud-badge.jc-pop:not([hidden]), .tab-badge.jc-pop:not([hidden]) { animation: jcBadgeBump .5s var(--jc-pop), jcBadgeWiggle 4s ease-in-out 1s infinite; }
 @keyframes jcBadgeBump { 0% { transform: scale(1); } 35% { transform: scale(1.55) translateY(-6px); } 70% { transform: scale(.9); } 100% { transform: scale(1); } }
@@ -610,6 +634,13 @@
   animation: jcGleam 3.2s ease-in-out infinite;
 }
 .q-take:not(:disabled) { animation: jcNudge 2s ease-in-out infinite; }
+
+/* ------------------------------------------------------------ a phone that cannot keep up --- */
+/* (js/render/juice.js turns this on when frames drop while effects run) */
+.jc-low #fx .fx-sun, .jc-low #fx .fx-beam, .jc-low .tw { display: none; }
+.jc-low .mq i::after { animation-duration: 0s !important; opacity: .45; }
+.jc-low .mq.antic i::after, .jc-low .mq.win i::after, .jc-low .mq.big i::after { opacity: .9; }
+.jc-low .hud-circle.pic .ic, .jc-low .pill::after, .jc-low .q-row.ready::after { animation: none; }
 
 /* ------------------------------------------------------------ reduced motion --- */
 /* the game's own effects stay (they are the game), the ambient ones rest */

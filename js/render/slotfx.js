@@ -14,7 +14,7 @@
   var COL_PITCH = 202.67, COL_C0 = 98, ROW_PITCH = 186, CELL_H = 182;
 
   var mq = null, mode = '', modeTimer = 0, sweep = null;
-  var antic = { timer: 0, reels: [], count: 0 };
+  var antic = { timer: 0, reels: [], count: 0, queued: [] };
   var lastActive = 0, attract = false;
 
   function init() {
@@ -140,6 +140,9 @@
   // reel i comes to rest
   function land(i) {
     if (!J) return;
+    // landed before its リーチ moment came: that moment is gone
+    var qi = antic.queued.indexOf(i);
+    if (qi >= 0) antic.queued.splice(qi, 1);
     var last = i === 4;
     var top = cell(i, 0), bot = cell(i, 2);
     var y0 = top.y - CELL_H / 2, y1 = bot.y + CELL_H / 2;
@@ -166,7 +169,11 @@
         BR.sfx.play('miss');
       }
       antic.reels.splice(antic.reels.indexOf(i), 1);
-      if (!antic.reels.length) stopAntic();
+      if (!antic.reels.length) {
+        var next = antic.queued.shift();
+        stopAntic();
+        if (next !== undefined) setTimeout(function () { startAntic(next); }, 260);
+      }
     }
   }
 
@@ -184,6 +191,11 @@
   /* ------------------------------------------------------------ リーチ --- */
   function anticipate(i) {
     if (!J) return;
+    // the reel before is still on its way: this one's moment comes after it lands
+    if (antic.reels.length) { antic.queued.push(i); return; }
+    startAntic(i);
+  }
+  function startAntic(i) {
     antic.count++;
     if (antic.reels.indexOf(i) < 0) antic.reels.push(i);
     setMode('antic');
@@ -215,6 +227,7 @@
     clearInterval(antic.timer);
     antic.timer = 0;
     antic.reels = [];
+    antic.queued = [];
     var r = $('#reels');
     if (r) r.classList.remove('antic');
   }

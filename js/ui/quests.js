@@ -32,10 +32,21 @@
   function setXp(v, quiet) {
     if (typeof v !== 'number' || (xp !== null && v < xp)) return;
     var before = xp === null ? null : LV.of(xp);
+    var grew = xp !== null && v > xp;
     xp = v;
     renderLevel();
     var after = LV.of(xp);
     if (!quiet && before !== null && after > before) note({ level: after });
+    else if (grew && !quiet) xpSparkle();
+  }
+  // XP came in: a little glitter where the bar has grown to
+  function xpSparkle() {
+    var J = BR.juice, fill = $('#lv-fill'), card = $('#me-card');
+    if (!J || !fill || !card || card.hidden || !home()) return;
+    setTimeout(function () {
+      var r = J.size(fill), c = J.at(fill);
+      J.sparks(c.x + r.w / 2, c.y, { n: 5, speed: 160, life: 0.5, g: -80, size: 0.7 });
+    }, 500);
   }
   function levelBar(info) {
     var bar = el('i', 'lv-bar');
@@ -92,6 +103,13 @@
     void box.offsetWidth;
     box.classList.add('show');
     b.shown = true;
+    // the quest button lights up: something is waiting there
+    if (b.ids.length && BR.juice) {
+      var J = BR.juice, q = $('#btn-quest');
+      J.ring(J.at(q).x, J.at(q).y, { r0: 30, r1: 160, dur: 0.6, w: 8, color: 'green' });
+      J.sparks(J.at(q).x, J.at(q).y, { n: 14, speed: 420, life: 0.7, g: 300, color: 'green' });
+      J.bump(q, 1.2);
+    }
     clearTimeout(noteTimer);
     // up while the 10 s window is open, then a little longer
     noteTimer = setTimeout(hideNote, Math.max(4000, b.until - Date.now() + 2500));

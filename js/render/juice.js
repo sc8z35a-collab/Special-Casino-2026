@@ -23,6 +23,10 @@
   var img = {};
   var MAX = 700;
   var calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  // a phone that cannot keep up (frames well under 40 a second while effects
+  // run) gets lighter effects for the rest of the session: half the
+  // particles, no trails, and css/juice.css drops the heaviest extras
+  var low = false, slowFor = 0, frameAvg = 16.7;
 
   // [core, edge] of each colour, as "r,g,b"
   var COL = {
@@ -172,6 +176,7 @@
   }
   function frame() {
     var now = U.now();
+    watchSpeed(now - last);
     var dt = U.clamp((now - last) / 1000, 0, 0.05);
     last = now;
     try { step(dt); draw(); } catch (e) {
@@ -183,6 +188,17 @@
       running = false;
       g.setTransform(1, 0, 0, 1, 0, 0);
       g.clearRect(0, 0, cv.width, cv.height);
+    }
+  }
+
+  function watchSpeed(ms) {
+    if (low || ms <= 0 || ms > 250 || document.hidden) return;
+    frameAvg += (ms - frameAvg) * 0.08;
+    slowFor = frameAvg > 27 ? slowFor + ms : Math.max(0, slowFor - ms * 0.5);
+    if (slowFor > 2500) {
+      low = true;
+      MAX = 360;
+      document.documentElement.classList.add('jc-low');
     }
   }
 
@@ -200,7 +216,7 @@
         p.vx = (nx - p.x) / Math.max(dt, 1e-4); p.vy = (ny - p.y) / Math.max(dt, 1e-4);
         p.x = nx; p.y = ny;
         // a glittering trail behind each coin on its way
-        if (p.trail && !calm) {
+        if (p.trail && !calm && !low) {
           p.tAcc = (p.tAcc || 0) + dt;
           if (p.tAcc > 0.045) {
             p.tAcc = 0;
@@ -396,7 +412,7 @@
     wake();
     return p;
   }
-  function n(k) { return Math.max(1, Math.round(k * (calm ? 0.35 : 1))); }
+  function n(k) { return Math.max(1, Math.round(k * (calm ? 0.35 : low ? 0.5 : 1))); }
 
   /* ------------------------------------------------------------ building blocks --- */
   // sparks flying out of a point: o = { n, speed, colors, size, life, g, up, spread, delay }
@@ -741,14 +757,16 @@
   }
   // the flight only, to show money the wallet already has (shown once: a
   // flight that has just started for the same money stands)
-  function payout(k, amount, from) {
+  // o = { n, size }: more and bigger coins (a big win pouring out)
+  function payout(k, amount, from, o) {
     var item = $('.wallet .w-' + k);
     if (!stage || !item || !visible(item) || !(amount > 0)) return;
     if (gainAt[k] && U.now() - gainAt[k] < 400) return;
     gainAt[k] = U.now();
-    flyIn(k, amount, from);
+    flyIn(k, amount, from, o);
   }
-  function flyIn(k, amount, src) {
+  function flyIn(k, amount, src, o) {
+    o = o || {};
     var item = $('.wallet .w-' + k);
     if (!item) return;
     var icon = item.querySelector('.ic'), num = item.querySelector('span');
@@ -766,9 +784,9 @@
     bloom(a.x, a.y, { size: 360, dur: 0.6, a: 0.75 });
     ring(a.x, a.y, { r0: 10, r1: 150, dur: 0.45, w: 7 });
     sparks(a.x, a.y, { n: 14, speed: 620, life: 0.7, g: 500 });
-    var cnt = Math.max(6, Math.min(24, Math.round(4 + Math.log10(amount + 1) * 2.2)));
+    var cnt = o.n || Math.max(6, Math.min(24, Math.round(4 + Math.log10(amount + 1) * 2.2)));
     fly(a, icon, {
-      n: cnt, pic: pic, size: 50, dur: 0.95, spread: 30, stagger: 0.045, pop: 1.1,
+      n: cnt, pic: pic, size: o.size || 50, dur: 0.95, spread: o.n ? 90 : 30, stagger: o.n ? 0.03 : 0.045, pop: o.n ? 1.6 : 1.1,
       hit: function (i) {
         var t = U.now();
         if (t - clinkAt > 28) { clinkAt = t; if (BR.sfx) BR.sfx.play('coinIn', Math.min(1, i / cnt)); }
@@ -800,6 +818,7 @@
     text: text, banner: banner, fly: fly, rain: rain,
     tap: tap, celebrate: celebrate, gain: gain, source: source, payout: payout, reward: reward, hold: hold,
     calm: function () { return calm; },
+    low: function () { return low; },
     W: function () { return W; }, H: function () { return H; }
   };
 })(window.BR = window.BR || {});
