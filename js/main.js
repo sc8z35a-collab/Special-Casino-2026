@@ -223,6 +223,8 @@
     t.textContent = msg;
     toastTap = tap || null;
     t.classList.toggle('tappable', !!tap);
+    // a new notice over one still up bounces in again
+    if (t.classList.contains('show')) { t.classList.remove('show'); void t.offsetWidth; }
     t.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(hideToast, ms || 2200);

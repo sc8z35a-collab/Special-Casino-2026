@@ -30,6 +30,24 @@
     lastActive = U.now();
     document.addEventListener('pointerdown', wake, true);
     setInterval(checkIdle, 1000);
+    // coming in from the title screen, the machine powers up
+    BR.screens.onChange(function (name, prev) { if (name === 'slot' && prev === 'start') setTimeout(powerOn, 250); });
+  }
+
+  // the lights race round once, light sweeps the reels, sparks fly off the frame
+  function powerOn() {
+    if (!J || BR.screens.current() !== 'slot' || (BR.game && BR.game.busy())) return;
+    setMode('spin', 1300);
+    if (sweep) {
+      sweep.classList.remove('go');
+      void sweep.offsetWidth;
+      sweep.classList.add('go');
+    }
+    var b = reelBox();
+    [[b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]].forEach(function (p, k) {
+      J.sparks(p[0], p[1], { n: 10, speed: 520, life: 0.7, g: 400, delay: 0.1 + k * 0.08 });
+      J.stars(p[0], p[1], { n: 2, r: 30, size: 80, delay: 0.1 + k * 0.08 });
+    });
   }
 
   /* ------------------------------------------------------------ while nothing happens --- */
