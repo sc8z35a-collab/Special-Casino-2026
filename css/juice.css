@@ -540,17 +540,19 @@
 .board-pane.active, .rules-pane.active { animation: jcPaneIn .34s var(--jc-out); }
 @keyframes jcPaneIn { 0% { opacity: 0; transform: translateY(16px); } 100% { opacity: 1; transform: none; } }
 
-/* lists come in one row after another (only when a screen or tab opens) */
+/* lists come in one row after another (only when a screen or tab opens; rows
+   drawn again meanwhile go on from --jc-skip instead of coming in twice) */
 .jc-enter .fr-row, .jc-enter .conv-row, .jc-enter .q-row, .jc-enter .shop-card, .jc-enter .car-card, .jc-enter .news-entry, .jc-enter .job-card, .jc-enter .more-card, .jc-enter .rule-list li, .jc-enter .pay-card, .jc-enter .garage-card, .jc-enter .items-card {
   animation: jcRowIn .46s var(--jc-out) backwards;
+  animation-delay: calc(0s - var(--jc-skip, 0s));
 }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(2) { animation-delay: .04s; }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(3) { animation-delay: .08s; }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(4) { animation-delay: .12s; }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(5) { animation-delay: .16s; }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(6) { animation-delay: .2s; }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(7) { animation-delay: .24s; }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(n+8) { animation-delay: .28s; }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(2) { animation-delay: calc(.04s - var(--jc-skip, 0s)); }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(3) { animation-delay: calc(.08s - var(--jc-skip, 0s)); }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(4) { animation-delay: calc(.12s - var(--jc-skip, 0s)); }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(5) { animation-delay: calc(.16s - var(--jc-skip, 0s)); }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(6) { animation-delay: calc(.2s - var(--jc-skip, 0s)); }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(7) { animation-delay: calc(.24s - var(--jc-skip, 0s)); }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(n+8) { animation-delay: calc(.28s - var(--jc-skip, 0s)); }
 @keyframes jcRowIn { 0% { opacity: 0; transform: translateX(-40px) scale(.96); } 100% { opacity: 1; transform: none; } }
 
 /* ------------------------------------------------------------ dialogs --- */
