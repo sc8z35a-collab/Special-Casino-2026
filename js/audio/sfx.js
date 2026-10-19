@@ -1,8 +1,9 @@
 /* Sound effects: the supplied recordings (sounds/) for clicks, the SPIN
-   button, the turning reels and wins; everything else is synthesised with
-   WebAudio. The synthesised versions also stand in until the recordings
-   are decoded. Every sound plays from the start: the sound button on the
-   slot screen only changes its own look. */
+   button, the turning reels, wins and money (coins jingling whenever money
+   comes in, a cash register at the till, coins sent away); everything else
+   is synthesised with WebAudio. The synthesised versions also stand in until
+   the recordings are decoded. Every sound plays from the start: the sound
+   button on the slot screen only changes its own look. */
 (function (BR) {
   'use strict';
 
@@ -21,9 +22,15 @@
     click: 'sounds/click.wav',
     spin: 'sounds/spin-button.wav',
     reels: 'sounds/reels.wav',      // two tick cycles, cut to loop seamlessly
-    win: 'sounds/win.mp3'
+    win: 'sounds/win.mp3',
+    money: 'sounds/money.mp3',      // お金がジャラジャラ: money coming in
+    register: 'sounds/register.mp3',
+    registerHigh: 'sounds/register-high.mp3',
+    coins: 'sounds/coins.mp3'
   };
-  var LEVEL = { click: 0.7, spin: 1, reels: 0.6, win: 0.9 };
+  // (money a little louder than the rest)
+  var LEVEL = { click: 0.7, spin: 1, reels: 0.6, win: 0.9, money: 1.15, register: 0.85, registerHigh: 0.8, coins: 0.8 };
+  var quietCoins = 0;   // while the coins recording plays, the made-up clinks keep still
   var raw = {}, buffers = {}, winVoice = null;
 
   function bytes(url) {
@@ -395,6 +402,24 @@
       bell(N.C7, t + 0.09, 0.12, 1.1);
       for (var i = 0; i < 4; i++) coin(t + 0.05 + i * 0.045, 0.6 + i * 0.1, 0.07);
     },
+    // money comes in (wages, rewards, bonuses, a friend's 送金): coins jingling
+    money: function (t) {
+      if (sample('money', t)) { quietCoins = t + 1.5; return; }
+      SOUNDS.coinShower(t, 14);
+      SOUNDS.purchase(t + 0.15);
+    },
+    // paying at the till (SHOP, cars, tokens): the cash register
+    register: function (t) {
+      if (!sample('register', t)) SOUNDS.purchase(t);
+    },
+    // a lighter till: changing tokens back into $, paying back a loan
+    registerHigh: function (t) {
+      if (!sample('registerHigh', t)) SOUNDS.purchase(t);
+    },
+    // money (or a present) sent away to someone
+    coins: function (t) {
+      if (!sample('coins', t)) SOUNDS.coinPile(t, 6);
+    },
     // incoming chat message
     message: function (t) {
       bell(N.G5 * 2, t, 0.06, 0.5, 0.3);
@@ -463,10 +488,12 @@
     // a coin dropping into the wallet (`p` 0..1: how far into a run of them,
     // the later ones a little higher: ちゃりちゃり…)
     coinIn: function (t, p) {
+      if (t < quietCoins) return;
       clink(t, 1900 + Math.random() * 700 + (p || 0) * 600, 0.085);
     },
     // the last of them: a handful landing on the pile (ジャラッ) and a sparkle
     coinPile: function (t, n) {
+      if (t < quietCoins) return;
       var k = Math.max(4, Math.min(12, n || 8));
       for (var i = 0; i < k; i++) clink(t + i * 0.026 + Math.random() * 0.018, 1700 + Math.random() * 1500, 0.05);
       noise({ t: t, ftype: 'highpass', f: 5200, q: 0.6, a: 0.004, d: 0.32, v: 0.05, wet: 0.3 });

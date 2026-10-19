@@ -418,7 +418,7 @@
       setXp(r.xp);
       if (r.balance) BR.app.serverBalance(r.balance);
       if (r.claimed.length) {
-        sfx('purchase');
+        sfx('money');
         if (BR.juice) BR.juice.reward(null, r.claimed.length > 1 ? 3 : 2);
         toast((r.claimed.length > 1 ? r.claimed.length + '件の' : '') + '報酬を受け取りました' + (r.dollars ? '：$' + U.fmt(r.dollars) : ''), 3200);
       }

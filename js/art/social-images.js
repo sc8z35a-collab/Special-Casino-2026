@@ -36,8 +36,11 @@
     buttons: {
       quest: 'img/ui/quest.webp',
       lobby: 'img/ui/lobby.webp',
-      menu: 'img/ui/menu.webp'
+      menu: 'img/ui/menu.webp',
+      tree: 'img/ui/money-tree.webp'
     },
+    // 金の生る木 (coming soon): its screen
+    treeBig: 'img/ui/money-tree-big.webp',
     // バイト
     jobs: {
       garage: 'img/jobs/garage.webp'

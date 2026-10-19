@@ -277,13 +277,47 @@ export const MIGRATIONS = [
     'ALTER TABLE users ADD COLUMN streak INTEGER NOT NULL DEFAULT 0',
     // the last activity beat (time quests count the time between beats)
     'ALTER TABLE users ADD COLUMN beat_at INTEGER NOT NULL DEFAULT 0'
+  ],
+  // v7: who is active (last tap, key or voice), bans that end, the devices
+  // players use (two accounts a device), the operator site
+  [
+    // the player's last tap / key / voice: time quests and the hub's active members
+    'ALTER TABLE users ADD COLUMN active_at INTEGER NOT NULL DEFAULT 0',
+    // a ban: 'suspend' (access ban, 1 week), 'ban' (30 days) or 'perma'; until when
+    // (0: no end) and since when. device_ok_at: an operator let this account play
+    // past the bans of other accounts on its devices (bans after that count again)
+    "ALTER TABLE users ADD COLUMN ban_kind TEXT NOT NULL DEFAULT ''",
+    'ALTER TABLE users ADD COLUMN ban_until INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN ban_at INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN device_ok_at INTEGER NOT NULL DEFAULT 0',
+    "UPDATE users SET ban_kind = 'perma', ban_at = created_at WHERE banned = 1",
+    // the device an account was made on: its id, and its fingerprint (with created_ip)
+    "ALTER TABLE users ADD COLUMN created_device TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN created_fp TEXT NOT NULL DEFAULT ''",
+    'CREATE INDEX users_created_device ON users(created_device)',
+    'CREATE INDEX users_created_fp ON users(created_fp)',
+    // the 引き継ぎコード, readable by the operators (sealed with the server's key)
+    "ALTER TABLE users ADD COLUMN recovery_enc TEXT NOT NULL DEFAULT ''",
+    // login days in a row (6:00 to 6:00 Japan time): the last one counted, the run, the longest run
+    "ALTER TABLE users ADD COLUMN streak_day TEXT NOT NULL DEFAULT ''",
+    'ALTER TABLE users ADD COLUMN day_streak INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN day_best INTEGER NOT NULL DEFAULT 0',
+    // every device an account was used on: "id:<device id>" or "fp:<fingerprint>@<address>"
+    `CREATE TABLE devices (
+       user_id  INTEGER NOT NULL,
+       device   TEXT    NOT NULL,
+       first_at INTEGER NOT NULL,
+       last_at  INTEGER NOT NULL,
+       PRIMARY KEY (user_id, device)
+     )`,
+    'CREATE INDEX devices_device ON devices(device)'
   ]
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
-  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'meta'];
+  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

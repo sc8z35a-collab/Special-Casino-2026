@@ -7,7 +7,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 import { createAdmin, AdminError } from '../core/admin.js';
+import { metaValue } from '../core/db.js';
+import { sealText, keyFrom } from '../core/auth.js';
 import { fmt } from '../core/rules.js';
 
 const HELP = `BLOCKBUSTER REELS 管理コマンド
@@ -19,6 +22,7 @@ const HELP = `BLOCKBUSTER REELS 管理コマンド
   grant <ユーザー> <tokens|dollars|coins> <金額>   残高を増減（マイナスで減らす）
   rename <ユーザー> <新しい名前>     名前の変更
   recovery <ユーザー>                新しい引き継ぎコードを発行（本人確認のうえで）
+  password <ユーザー> <新しいパスワード>  パスワードを設定し直す（本人確認のうえで）
   logout <ユーザー>                  全端末からログアウトさせる
   messages [ユーザー]                ロビーの最新メッセージ（ユーザー指定でその人の発言）
   redact <メッセージID>              メッセージを削除済みにする
@@ -84,6 +88,12 @@ export async function run(argv, call, print = console.log) {
     case 'recovery': {
       const r = await call('recovery', [args.join(' ')]);
       print(`${r.name} (#${r.id}) の新しい引き継ぎコード: ${r.recoveryCode}`);
+      break;
+    }
+    case 'password': {
+      const [ref, ...pw] = args;
+      const r = await call('password', [ref, pw.join(' ')]);
+      print(`${r.name} (#${r.id}) のパスワードを「${r.password}」にしました`);
       break;
     }
     case 'logout': {
@@ -163,7 +173,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       // the local database (node:sqlite) is only loaded when it is used
       const [{ loadConfig }, { openDb }] = await Promise.all([import('./config.js'), import('./sqlite.js')]);
       db = openDb(loadConfig().dataDir);
-      const admin = createAdmin(db);
+      // codes issued here can be read on the operator site too (same key as the server)
+      const key = keyFrom(metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url')), 'recovery-codes');
+      const admin = createAdmin(db, { seal: (code) => sealText(key, code) });
       call = async (cmd, args) => admin.command(cmd, args);
     }
     process.exitCode = await run(argv, call);

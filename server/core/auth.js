@@ -22,6 +22,27 @@ export function normalizeRecoveryCode(code) {
     .replace(/O/g, '0').replace(/[IL]/g, '1').replace(/U/g, 'V');
 }
 
+// A short text sealed with `key` (32 bytes, AES-256-GCM): the operators can
+// read players' 引き継ぎコード back, a copy of the database alone cannot.
+export function sealText(key, text) {
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const body = Buffer.concat([c.update(String(text), 'utf8'), c.final()]);
+  return Buffer.concat([iv, c.getAuthTag(), body]).toString('base64url');
+}
+export function openText(key, sealed) {
+  try {
+    const b = Buffer.from(String(sealed || ''), 'base64url');
+    if (b.length < 29) return '';
+    const d = crypto.createDecipheriv('aes-256-gcm', key, b.subarray(0, 12));
+    d.setAuthTag(b.subarray(12, 28));
+    return Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8');
+  } catch {
+    return '';
+  }
+}
+export function keyFrom(secret, purpose) { return crypto.createHash('sha256').update(`${secret}:${purpose}`).digest(); }
+
 /* ------------------------------------------------------------ names --- */
 
 const NAME_CHARS = /^[A-Za-z0-9_\-ぁ-ゖァ-ヺー・々〆一-鿿㐀-䶿]+$/u;

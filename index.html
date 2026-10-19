@@ -27,6 +27,7 @@
 <link rel="stylesheet" href="css/guide.css">
 <link rel="stylesheet" href="css/combo.css">
 <link rel="stylesheet" href="css/hub.css">
+<link rel="stylesheet" href="css/tree.css">
 <link rel="stylesheet" href="css/juice.css">
 </head>
 <body>
@@ -97,14 +98,14 @@
 
       <button id="btn-radio" class="hud-circle hud-radio pic" aria-label="メニュー（フレンド・メッセージ・Car Owner・Shop・バイト）"><i class="ic ic-menu"></i><b class="hud-badge" id="radio-badge" hidden></b></button>
       <button id="btn-quest" class="hud-circle hud-quest pic" aria-label="クエスト"><i class="ic ic-quest"></i><b class="hud-badge" id="quest-badge" hidden></b></button>
+      <button id="btn-tree" class="hud-circle hud-tree pic" aria-label="金の生る木（近日公開）"><i class="ic ic-tree"></i><b class="hud-soon">近日公開</b></button>
       <!-- the top middle: the update reminder, then フレンド対決 / 協力スロット (js/ui/play.js) -->
       <div class="mode-stack" id="mode-stack">
-        <div class="home-note" id="update-note" hidden><span>新しいバージョンがあります。アップデートしてくださいね。</span><button class="mini-btn gold" id="update-note-go"><span>アップデート</span></button></div>
+        <div class="home-note" id="update-note" hidden><span id="update-note-text">新しいバージョンがあります。今すぐアップデートできます。</span><button class="mini-btn gold" id="update-note-go"><span>今すぐアップデート</span></button></div>
       </div>
       <div class="quest-note" id="quest-note" hidden aria-live="polite"></div>
 
       <button id="btn-rules" class="pill pill-rules" data-sfx="click"><span>ルール</span></button>
-      <button id="btn-auto" class="pill pill-auto" data-sfx="click"><span class="auto-label">自動スピン</span><span class="auto-state"><i class="led"></i><b>オフ</b></span></button>
       <button id="btn-spin" class="spin-btn" aria-label="SPIN">
         <span class="spin-glow"></span>
         <span class="spin-disc"><i class="spin-arrows"></i></span>
@@ -174,6 +175,23 @@
           <li><i class="ic ic-info"></i><span>隣接するタブで、可能性のある組み合わせと倍率を見ることができます。</span></li>
           <li><i class="ic ic-info"></i><span>1日の上限: 10,000,000スピントークン。</span></li>
         </ul>
+      </div>
+    </section>
+
+    <!-- ===================== 金の生る木 (coming soon) ===================== -->
+    <section id="screen-tree" class="screen" aria-label="金の生る木">
+      <button class="back-btn back-jp" data-action="back"><i class="ic ic-back"></i><span>戻る</span></button>
+      <div class="tree-scene">
+        <div class="tree-glow"></div>
+        <div class="tree-coins" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="tree-art" role="img" aria-label="金の生る木"></div>
+      </div>
+      <div class="tree-info">
+        <div class="tree-soon">COMING SOON</div>
+        <h2 class="tree-title">金の生る木</h2>
+        <p class="tree-badge">近日公開</p>
+        <p class="tree-text">お金が実る不思議な木を育てて、収穫できる新機能を準備中です。<br>公開まで楽しみに待っていてください！</p>
+        <button class="act-btn gold tree-back" data-action="back"><span>スロットに戻る</span></button>
       </div>
     </section>
 
@@ -313,10 +331,11 @@
       <div class="modal-card profile-card" role="dialog" aria-label="プロフィール">
         <button class="modal-x" data-close aria-label="閉じる"></button>
         <div class="pf-top">
-          <span class="avatar big" id="pf-avatar"></span>
+          <div class="pf-face"><span class="avatar big" id="pf-avatar"></span><i class="pf-online" id="pf-online" hidden></i></div>
           <div class="pf-id">
             <div class="pf-name-row"><span class="pf-lv" id="pf-lv" hidden></span><div class="pf-name uname" id="pf-name"></div></div>
             <div class="pf-status" id="pf-status"></div>
+            <div class="pf-since" id="pf-since"></div>
           </div>
         </div>
         <div class="pf-stats">
@@ -325,7 +344,6 @@
           <div class="pf-stat"><label>今日の獲得</label><b id="pf-today">-</b></div>
           <div class="pf-stat"><label>スピン回数</label><b id="pf-spins">-</b></div>
         </div>
-        <div class="pf-since" id="pf-since"></div>
         <div class="pf-actions" id="pf-actions"></div>
         <div class="pf-actions pf-actions2" id="pf-actions2"></div>
         <div class="pf-blocks scroller" id="pf-blocks" hidden></div>
@@ -471,6 +489,7 @@
       <div class="call-faces" id="call-faces"></div>
       <div class="call-id"><b class="uname" id="call-name"></b><span id="call-state"></span></div>
       <button class="call-icon" id="call-mute" aria-label="マイクのオン・オフ"><i class="ic ic-mic-on"></i></button>
+      <button class="call-icon" id="call-deaf" aria-label="相手の声のオン・オフ"><i class="ic ic-speaker"></i></button>
       <button class="call-icon end" id="call-end" aria-label="通話を終了"><i class="ic ic-hangup"></i></button>
     </div>
     <div id="call-audios" hidden></div>
@@ -535,6 +554,7 @@
       <p class="ov-error" id="ov-register-error" role="alert"></p>
       <button class="ov-btn gold" type="submit">次へ：アイコンを選ぶ</button>
       <button class="ov-link" type="button" data-go="login">アカウントをお持ちの方はログイン</button>
+      <button class="ov-link" type="button" data-go="code-login">引き継ぎコードをお持ちの方はこちら</button>
     </form>
 
     <div class="ov-card wide" id="ov-avatar" hidden>
@@ -568,11 +588,13 @@
     <form class="ov-card" id="ov-code-login" autocomplete="off" novalidate hidden>
       <button class="ov-close" type="button" data-ov-close aria-label="閉じる"></button>
       <h2 class="ov-title">引き継ぎコードでログイン</h2>
-      <p class="ov-text">登録したときに表示された引き継ぎコード（16文字）を入力してください。</p>
+      <p class="ov-notice" id="ov-notice-code-login" hidden></p>
+      <p class="ov-text">登録したときに表示された引き継ぎコード（16文字）を入力してください。<b>機種変更をしたとき</b>も、このコードで残高やフレンドをそのまま引き継げます。</p>
       <input id="ov-code" class="ov-input code" type="text" maxlength="24" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go">
       <p class="ov-error" id="ov-code-login-error" role="alert"></p>
       <button class="ov-btn gold" type="submit">ログイン</button>
       <button class="ov-link" type="button" data-go="login">ユーザー名とパスワードでログイン</button>
+      <button class="ov-link" type="button" data-go="register">はじめての方は新しく登録</button>
     </form>
 
     <div class="ov-card" id="ov-codecard" hidden>
@@ -642,6 +664,7 @@
 <script src="js/game/news.js"></script>
 <script src="js/core/store.js"></script>
 <script src="js/game/engine.js"></script>
+<script src="js/net/device.js"></script>
 <script src="js/net/api.js"></script>
 <script src="js/net/live.js"></script>
 <script src="js/game/bank.js"></script>
@@ -669,6 +692,7 @@
 <script src="js/ui/play.js"></script>
 <script src="js/ui/activity.js"></script>
 <script src="js/ui/hub.js"></script>
+<script src="js/ui/bigwin.js"></script>
 <script src="js/ui/feedback.js"></script>
 <script src="js/ui/guide.js"></script>
 <script src="js/ui/launch.js"></script>

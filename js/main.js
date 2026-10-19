@@ -21,7 +21,7 @@
       lock: BR.ICONS.lock, phone: BR.ICONS.phone, hangup: BR.ICONS.hangup, 'mic-on': BR.ICONS.micOn, 'mic-off': BR.ICONS.micOff,
       eye: BR.ICONS.eye, car: BR.ICONS.car, gift: BR.ICONS.gift, friends: BR.ICONS.friends, search: BR.ICONS.search, check: BR.ICONS.check,
       share: BR.ICONS.share, 'add-home': BR.ICONS.addHome, download: BR.ICONS.download, android: BR.ICONS.android, apple: BR.ICONS.apple,
-      bag: BR.ICONS.bag, home: BR.ICONS.home, speaker: BR.ICONS.speaker, chat: BR.ICONS.chat
+      bag: BR.ICONS.bag, home: BR.ICONS.home, speaker: BR.ICONS.speaker, 'speaker-off': BR.ICONS.speakerOff, chat: BR.ICONS.chat
     };
     function url(u) { return 'url("' + u.replace(/"/g, '%22') + '")'; }
     function svg(markup) { return url(BR.svgURL(markup)); }
@@ -45,6 +45,8 @@
     // the round buttons on the slot screen: menu, quests
     css += '.ic-menu{background-image:' + url(soc.buttons.menu) + '}\n';
     css += '.ic-quest,.q-icon,.qn-icon{background-image:' + url(soc.buttons.quest) + '}\n';
+    css += '.ic-tree{background-image:' + url(soc.buttons.tree) + '}\n';
+    css += '.tree-art{background-image:' + url(soc.treeBig) + '}\n';
     css += '.av-chain{background-image:' + url(soc.chain) + '}\n';
     css += '.sale-badge{background-image:' + url(soc.sale) + '}\n';
     if (soc.items.omamori) css += '.charm-pic{background-image:' + url(soc.items.omamori) + '}\n';
@@ -240,7 +242,6 @@
   var game = {
     spinning: false,
     presenting: false,
-    auto: false,
     result: null,
     hold: 0,          // tokens hidden from the wallet display (see walletValue)
     waiting: false,   // the spin is out at the server, reels turning
@@ -286,7 +287,6 @@
       return;
     }
     if (!BR.bank.ready()) {
-      setAuto(false);
       BR.sfx.play('deny');
       toast(BR.api.hasToken() ? 'サーバーに接続しています…' : 'ユーザー登録またはログインをしてください');
       if (!BR.api.hasToken()) BR.account.require(function () {});
@@ -294,7 +294,6 @@
     }
     var stake = bet();
     if (S.tokens < stake) {
-      setAuto(false);
       BR.sfx.play('deny');
       toast('スピントークンが不足しています');
       setTimeout(function () { BR.screens.show('tokens'); }, 650);
@@ -322,7 +321,6 @@
     }, function (err) {
       if (seq !== game.seq) return;
       land(null);
-      setAuto(false);
       BR.sfx.play('deny');
       toast(err.message, 3200);
       // the server may have settled it anyway (lost response): re-sync
@@ -341,7 +339,7 @@
     if (game.queued) { BR.bank.applyBalance(game.queued); game.queued = null; }
     renderWallet(false);
     var late = (U.now() - game.t0) / 1000;
-    var base = Math.max(0.3, (game.auto ? 0.8 : 0.95) - late);
+    var base = Math.max(0.3, 0.95 - late);
     reels.scheduleStops(res ? res.grid : BLANK_GRID, { antic: res ? anticipationFor(res) : [], base: base });
   }
 
@@ -373,8 +371,7 @@
     if (!res || res.total <= 0) {
       renderWallet(!!(res && res.charm));
       renderBet();
-      if (game.watch) { setTimeout(nextWatched, res && res.charm ? 900 : 250); return; }
-      scheduleAuto(game.auto ? (res && res.charm ? 1200 : 450) : 0);
+      if (game.watch) setTimeout(nextWatched, res && res.charm ? 900 : 250);
       return;
     }
     game.presenting = true;
@@ -401,8 +398,7 @@
         BR.sfx.play('coinShower', res.tier >= 3 ? 26 : 18);
       }
       renderBet();
-      if (game.watch) { nextWatched(); return; }
-      scheduleAuto(game.auto ? 350 : 0);
+      if (game.watch) nextWatched();
     };
     // a plain WIN has no overlay: the lit line, the WIN box and the sound
     if (res.tier < 2) {
@@ -410,12 +406,11 @@
       setTimeout(done, 700);
       return;
     }
-    fx.play({ tier: res.tier, amount: res.total, bet: res.bet, mult: res.mult, cols: cols, auto: game.auto || !!game.watch }).then(done);
+    fx.play({ tier: res.tier, amount: res.total, bet: res.bet, mult: res.mult, cols: cols, auto: !!game.watch }).then(done);
   }
 
   /* ------------------------------------------------------------ watching a friend --- */
   function watchEnter(user, balance, last) {
-    setAuto(false);
     game.watch = { user: user, balance: balance, queue: [], mine: { grid: reels.getGrid() } };
     if (last && last.grid) reels.setGrid(last.grid);
     setWinGoodLuck();
@@ -446,7 +441,7 @@
     var w = game.watch;
     if (!w) return;
     w.queue.push({ result: result, balance: balance });
-    // a friend on auto-spin: keep up by skipping to the latest spins
+    // a friend spinning fast: keep up by skipping to the latest spins
     var spins = w.queue.filter(function (q) { return q.result; });
     if (spins.length > 2) w.queue.splice(0, w.queue.indexOf(spins[spins.length - 2]));
     if (!game.busy()) nextWatched();
@@ -474,25 +469,6 @@
       if (game.result !== res) return;
       reels.scheduleStops(res.grid, { antic: anticipationFor(res), base: 0.55 });
     }, 420);
-  }
-
-  var autoTimer = 0;
-  function scheduleAuto(ms) {
-    clearTimeout(autoTimer);
-    if (!game.auto) return;
-    autoTimer = setTimeout(function () {
-      if (!game.auto || game.busy()) return;
-      if (BR.screens.current() !== 'slot') return;
-      spin();
-    }, ms);
-  }
-  function setAuto(on) {
-    game.auto = on;
-    var b = $('#btn-auto');
-    b.classList.toggle('on', on);
-    b.querySelector('.auto-state b').textContent = on ? 'オン' : 'オフ';
-    if (on && !game.busy()) scheduleAuto(250);
-    if (!on) clearTimeout(autoTimer);
   }
 
   // フレンド対決: the battle's bet stays until it is over (js/ui/play.js)
@@ -575,12 +551,11 @@
   }
 
   function bind() {
-    press($('#btn-spin'), function () { if (game.auto && !game.presenting) { setAuto(false); return; } spin(); });
+    press($('#btn-spin'), function () { spin(); });
     // the sound button only changes its look: every sound plays regardless
     press($('#bet-minus'), function () { changeBet(-1); });
     press($('#bet-plus'), function () { changeBet(1); });
     press($('#btn-max'), function () { BR.sfx.play('click'); maxBet(); });
-    press($('#btn-auto'), function () { BR.sfx.play('click'); setAuto(!game.auto); });
     // the machine is locked while the reels turn or a win is being paid out
     function nav(screen) {
       return function () {
@@ -591,6 +566,8 @@
     }
     press($('#btn-get'), nav('tokens'));
     press($('#btn-rules'), nav('rules'));
+    // 金の生る木: its own screen (coming soon)
+    press($('#btn-tree'), nav('tree'));
     press($('#w-plus'), function () {
       if (BR.screens.current() === 'tokens') return;
       nav('tokens')();
@@ -666,7 +643,7 @@
     fx = new BR.FX($('#fx'), $('#fx-hit'));
     BR.game = game;
     BR.app = {
-      renderWallet: renderWallet, toast: toast, renderBet: renderBet, view: view, setAuto: setAuto,
+      renderWallet: renderWallet, toast: toast, renderBet: renderBet, view: view,
       reels: reels, fx: fx, spin: spin, serverBalance: serverBalance, setBet: setBet, bet: bet,
       watchEnter: watchEnter, watchExit: watchExit, watchSpin: watchSpin, watchBalance: watchBalance,
       relayout: function () { requestAnimationFrame(layout); }
@@ -707,6 +684,7 @@
     BR.watch.init();
     if (BR.activity) BR.activity.init();
     if (BR.hub) BR.hub.init();
+    if (BR.bigwin) BR.bigwin.init();
     if (BR.combo && BR.combo.init) BR.combo.init();
     if (BR.play && BR.play.init) BR.play.init();
     if (BR.feedback && BR.feedback.init) BR.feedback.init();

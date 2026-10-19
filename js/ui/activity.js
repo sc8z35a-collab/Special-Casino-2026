@@ -8,9 +8,20 @@
   'use strict';
 
   var EVERY = 60000;
-  var last = Date.now(), sending = false;
+  var IDLE = (BR.QUESTS && BR.QUESTS.idleMs) || 240000;
+  var last = Date.now(), sending = false, soon = 0;
+  var listeners = [];
 
-  function poke() { last = Date.now(); }
+  // Something done. Back after being idle: the server hears it in a moment
+  // (in a hub that can switch everyone's benefits back on).
+  function poke() {
+    var was = Date.now() - last;
+    last = Date.now();
+    if (was < IDLE) return;
+    listeners.forEach(function (fn) { try { fn(true); } catch (e) { /* ignore */ } });
+    clearTimeout(soon);
+    soon = setTimeout(beat, 800);
+  }
 
   function beat() {
     var api = BR.api;
@@ -38,5 +49,13 @@
     if (BR.api.online) BR.live.on('hello', function () { setTimeout(beat, 2000); });
   }
 
-  BR.activity = { init: init, poke: poke, idle: function () { return Date.now() - last; } };
+  BR.activity = {
+    init: init,
+    poke: poke,
+    idle: function () { return Date.now() - last; },
+    // active: something done within the last 4 minutes
+    active: function () { return Date.now() - last < IDLE; },
+    // fn(true) when the player is back after being idle
+    onBack: function (fn) { listeners.push(fn); }
+  };
 })(window.BR = window.BR || {});

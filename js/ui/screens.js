@@ -12,7 +12,6 @@
   /* ------------------------------------------------------------ navigation --- */
   function show(name) {
     if (name === current) return;
-    if (name !== 'slot' && BR.game && BR.game.auto) BR.app.setAuto(false);
     var prev = current;
     current = name;
     $$('.screen').forEach(function (s) { s.classList.toggle('active', s.id === 'screen-' + name); });
@@ -165,7 +164,8 @@
       this.render();
       (buy ? BR.bank.buy(v) : BR.bank.sell(v)).then(function () {
         BR.app.toast(U.fmt(v) + (buy ? ' スピントークンを入手しました' : ' スピントークンを交換しました'));
-        BR.sfx.play('purchase');
+        // tokens bought at the till; tokens changed back: the $ come in
+        BR.sfx.play(buy ? 'register' : 'money');
         if (BR.juice) BR.juice.reward('#tp-action', 2);
         BR.app.renderWallet(true);
         BR.app.renderBet();
@@ -209,7 +209,7 @@
       if (this.claiming) return;
       this.claiming = true;
       BR.bank.claimDaily().then(function (amount) {
-        BR.sfx.play('purchase');
+        BR.sfx.play('money');
         if (BR.juice) BR.juice.reward('#daily-btn', 2);
         BR.app.renderWallet(true);
         BR.app.renderBet();
@@ -298,7 +298,7 @@
         ic.className = 'ic ic-info';
         var text = document.createElement('span');
         var head = document.createElement('b');
-        head.textContent = '友達と稼ぐ（2人以上）';
+        head.textContent = '友達と稼ぐ（プレイ中2人以上）';
         text.appendChild(head);
         text.appendChild(document.createTextNode('：' + BR.hub.effects().map(function (e) { return e.title + '（' + e.text + '）'; }).join('・')));
         li.appendChild(ic);

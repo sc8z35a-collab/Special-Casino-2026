@@ -156,6 +156,42 @@ test('バイト: $20 000 an hour, paid for the time worked; switching pays up', 
   }
 });
 
+test('バイト: one more at once every 3 levels; in 友達と稼ぐ the best paid one pays x1.5', async () => {
+  assert.deepEqual([1, 2, 3, 5, 6, 9, 12].map((l) => LEVEL.jobSlots(l)), [1, 1, 2, 2, 3, 4, 5]);
+  const { call, register, setUser, befriend, listen, stop } = await startServer();
+  try {
+    const a = await register('JobHubA'), b = await register('JobHubB');
+    let r = await call('GET', '/api/jobs', { token: a.token });
+    assert.deepEqual([r.slots, r.every], [1, 3]);
+    setUser(a.me.id, { xp: LEVEL.at(3) });
+    assert.equal((await call('GET', '/api/jobs', { token: a.token })).slots, 2);
+    assert.equal((await call('POST', '/api/jobs/start', { token: a.token, body: { id: 'garage' } })).status, 200);
+    await befriend(a, b);
+    const la = await listen(a), lb = await listen(b);
+    try {
+      // no hub: a minute of play is just a minute of wages
+      setUser(a.me.id, { beat_at: Date.now() - 60000 });
+      await call('POST', '/api/beat', { token: a.token, body: { idle: 0 } });
+      assert.equal((await call('GET', '/api/jobs', { token: a.token })).working[0].boost || 0, 0);
+      // a hub with its benefits on: the time counts once more at half the wage
+      await call('POST', '/api/hub/invite', { token: a.token, body: { to: b.me.id } });
+      assert.equal((await call('POST', '/api/hub/join', { token: b.token, body: { from: a.me.id } })).status, 200);
+      setUser(a.me.id, { beat_at: Date.now() - 60000 });
+      const beat = await call('POST', '/api/beat', { token: a.token, body: { idle: 0 } });
+      assert.ok(beat.counted >= 59, String(beat.counted));
+      assert.equal((await call('GET', '/api/jobs', { token: a.token })).working[0].boost, beat.counted * 1000);
+      setUser(a.me.id, { jobs: JSON.stringify([{ id: 'garage', since: Date.now() - H, boost: H }]) });
+      r = await call('POST', '/api/jobs/collect', { token: a.token });
+      assert.ok(r.paid >= 30000 && r.paid < 30010, 'an hour x1.5: ' + r.paid);
+      assert.equal(r.working[0].boost, 0);
+    } finally {
+      la.close(); lb.close();
+    }
+  } finally {
+    await stop();
+  }
+});
+
 test('update bonus: $250 000 for every release a player updates past; new players start on the newest', async () => {
   const { call, register, setUser, stop } = await startServer();
   try {

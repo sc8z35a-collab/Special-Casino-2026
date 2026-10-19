@@ -2,7 +2,7 @@
 // POST /api/admin endpoint (Cloudflare has no shell). Balances can be raised
 // or lowered by hand but never below zero, and nothing here wipes accounts.
 import { statements, TABLES, SCHEMA_VERSION } from './db.js';
-import { cleanName, nameKey, newRecoveryCode, normalizeRecoveryCode, sha256 } from './auth.js';
+import { cleanName, nameKey, newRecoveryCode, normalizeRecoveryCode, sha256, cleanPassword, hashPassword } from './auth.js';
 import { utcDay } from './rules.js';
 
 const CURRENCIES = ['tokens', 'dollars', 'coins'];
@@ -15,7 +15,8 @@ export class AdminError extends Error {
   }
 }
 
-export function createAdmin(db) {
+// `seal(code)`: the 引き継ぎコード sealed for the operator site (server/core/api.js)
+export function createAdmin(db, { seal = () => '' } = {}) {
   const q = statements(db);
   const tx = (fn) => db.tx(fn);
 
@@ -56,10 +57,20 @@ export function createAdmin(db) {
       };
     },
 
+    // 永久BAN (until unban); the operator site also has the week and 30-day ones
     ban(ref, on = true) {
       const u = find(ref);
-      q('UPDATE users SET banned = ? WHERE id = ?').run(on ? 1 : 0, u.id);
+      if (on) q("UPDATE users SET banned = 1, ban_kind = 'perma', ban_until = 0, ban_at = ? WHERE id = ?").run(Date.now(), u.id);
+      else q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ?").run(u.id);
       return { id: u.id, name: u.name, banned: !!on };
+    },
+
+    // A new password for a player who forgot theirs (check who is asking first!)
+    async password(ref, pw) {
+      const u = find(ref);
+      const clean = cleanPassword(pw);
+      q('UPDATE users SET password_hash = ? WHERE id = ?').run(await hashPassword(clean), u.id);
+      return { id: u.id, name: u.name, password: clean };
     },
 
     // amount may be negative; balances never go below zero
@@ -91,7 +102,7 @@ export function createAdmin(db) {
     recovery(ref) {
       const u = find(ref);
       const code = newRecoveryCode();
-      q('UPDATE users SET recovery_hash = ? WHERE id = ?').run(sha256(normalizeRecoveryCode(code)), u.id);
+      q('UPDATE users SET recovery_hash = ?, recovery_enc = ? WHERE id = ?').run(sha256(normalizeRecoveryCode(code)), seal(code), u.id);
       return { id: u.id, name: u.name, recoveryCode: code };
     },
 
@@ -182,6 +193,7 @@ export function createAdmin(db) {
       case 'grant': return admin.grant(args[0], args[1], args[2]);
       case 'rename': return admin.rename(args[0], args[1]);
       case 'recovery': return admin.recovery(args[0]);
+      case 'password': return admin.password(args[0], args[1]);
       case 'logout': return admin.logout(args[0]);
       case 'messages': return admin.messages({ ref: args[0] || null });
       case 'redact': return admin.redact(args[0]);

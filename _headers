@@ -21,3 +21,9 @@
   Cache-Control: no-cache
 /download/*.apk
   Content-Disposition: attachment; filename="two-state-casino.apk"
+# the operator site: its own page and script, never indexed
+/ops/*
+  Cache-Control: no-cache
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
+  Cross-Origin-Opener-Policy: same-origin

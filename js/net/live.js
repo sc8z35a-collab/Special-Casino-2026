@@ -6,7 +6,7 @@
   'use strict';
 
   var EVENTS = ['hello', 'msg', 'read', 'typing', 'balance', 'presence', 'friend', 'call', 'watch', 'homechat', 'tip', 'items', 'quest',
-    'battle', 'coop', 'feedback', 'hub'];
+    'battle', 'coop', 'feedback', 'hub', 'bigwin', 'kick'];
   var conn = null, want = false, connected = false, timer = 0, backoff = 1000, opening = false, pinger = 0;
   var handlers = {};
 

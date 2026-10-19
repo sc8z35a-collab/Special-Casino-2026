@@ -102,7 +102,7 @@
       BR.social.setMe(r.me);
       BR.social.onMsg(r.reply);
       if (r.lent) BR.social.onMsg(r.lent);
-      sfx('purchase');
+      sfx('money');
       if (BR.juice) BR.juice.reward(null, 2);
       toast(yen(r.amount) + '貸しました（利息' + r.rate + '%・返済額 ' + yen(r.owed) + '）', 4200);
       busy = false;
@@ -137,7 +137,7 @@
             BR.app.serverBalance(r.me);
             BR.social.setMe(r.me);
             BR.social.onMsg(r.reply);
-            sfx('purchase');
+            sfx('registerHigh');
             if (BR.juice) BR.juice.reward(null, 1);
             busy = false;
             setDebt(r.debt);

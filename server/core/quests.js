@@ -43,8 +43,9 @@ function current(state, period, now) {
 // a "clear" (a 特別 one also as an "sclear"). A metric like "combo" keeps its
 // biggest value instead of adding up. Metrics nothing waits for any more (or
 // a quest that is off this week) are not counted: the JSON only changes when
-// it matters. Returns { changed, done: [quest] }.
-export function stepQuests(state, events, now = Date.now()) {
+// it matters. `boost`: { <period>: times } counts faster in those periods
+// (5時間 in a hub). Returns { changed, done: [quest] }.
+export function stepQuests(state, events, now = Date.now(), boost = null) {
   const done = [];
   let changed = false;
   let queue = events.filter(([, n]) => n > 0);
@@ -59,7 +60,8 @@ export function stepQuests(state, events, now = Date.now()) {
         const open = quests.filter((q) => QUESTS.active(q, k) && !p.c.includes(q.id) && !p.d.includes(q.id));
         if (!open.length) continue;
         const was = p.m[metric] || 0;
-        const v = MAX.has(metric) ? Math.max(was, n) : was + n;
+        const times = boost && boost[period.id] && !MAX.has(metric) && metric !== 'clear' ? boost[period.id] : 1;
+        const v = MAX.has(metric) ? Math.max(was, n) : Math.round((was + n * times) * 1000) / 1000;
         if (v === was) continue;
         p.m[metric] = v;
         changed = true;
@@ -116,7 +118,8 @@ export function questView(state, now = Date.now()) {
       end: r.end,
       quests: QUESTS.list.filter((q) => q.period === period.id && QUESTS.active(q, r.k)).map((q) => {
         const st = p.d.includes(q.id) ? 'received' : p.c.includes(q.id) ? 'ready' : 'open';
-        return { id: q.id, state: st, progress: st === 'open' ? Math.min(q.goal, p.m[q.metric] || 0) : q.goal };
+        // (a boosted count can be part way to the next one)
+        return { id: q.id, state: st, progress: st === 'open' ? Math.min(q.goal, Math.floor((p.m[q.metric] || 0) + 1e-9)) : q.goal };
       })
     };
   });

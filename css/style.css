@@ -291,24 +291,6 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 .pill-get { top: calc(50% - 21px); }
 .pill-max { top: calc(50% + 107.5px); }
 .pill-rules { right: 171px; top: calc(50% + 56px); }
-.pill-auto {
-  right: 411px;
-  bottom: 53px;
-  width: 180px;
-  height: 100px;
-  flex-direction: column;
-  gap: 4px;
-}
-.pill-auto .auto-label { font-size: 17.5px; letter-spacing: 0.6px; line-height: 1; }
-.pill-auto .auto-state { display: flex; align-items: center; gap: 22px; font-size: 22px; font-weight: 700; line-height: 1; margin-left: -10px; }
-.pill-auto .led {
-  width: 21px;
-  height: 21px;
-  border-radius: 50%;
-  background: radial-gradient(circle, #ff1a1a 0 34%, #3e3a36 38% 100%);
-  box-shadow: 0 0 0 1px rgba(0,0,0,.25);
-}
-.pill-auto.on .led { background: radial-gradient(circle, #6dff4a 0 34%, #3e3a36 38% 100%); box-shadow: 0 0 6px #7dff60; }
 
 /* round HUD buttons (radio / mic) */
 .hud-circle {

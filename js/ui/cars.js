@@ -60,7 +60,7 @@
       api.buyCar(car.id).then(function (r) {
         BR.app.serverBalance(r.me);
         BR.social.setMe(r.me);
-        sfx('purchase');
+        sfx('register');
         var pic = $('#car-pic');
         pic.classList.remove('sold');
         void pic.offsetWidth;
@@ -175,7 +175,7 @@
     }, 'プレゼントする').then(function (ok) {
       if (!ok) return;
       api.giftCar(user.id, car.id).then(function (r) {
-        sfx('purchase');
+        sfx('coins');
         toast(user.name + 'さんに ' + m.name + ' をプレゼントしました！', 3200);
         if (BR.juice) BR.juice.reward(null, 2);
         BR.social.onMsg(r.message);

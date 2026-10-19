@@ -637,7 +637,7 @@
         void ui.coopBar.offsetWidth;
         ui.coopBar.classList.add('bonus');
         coopTicker('ゲージ満タン！ボーナス！', true);
-        sfx('purchase');
+        sfx('money');
         if (BR.juice) BR.juice.reward(ui.coopBar, 3);
         toast(mine ? '協力ボーナス！ +' + U.fmt(mine.amount) + ' トークン' : '協力ゲージが満タンになりました！みんなにボーナス！', 3600);
       });
@@ -754,7 +754,7 @@
         if (bet && bet.id === b.id) bet = null;
         renderBetChip();
         if (b.state === 'won') {
-          sfx('purchase');
+          sfx('money');
           toast('観戦ベット的中！ +' + U.fmt(b.paid) + ' トークン', 3600);
           if (BR.juice) BR.juice.reward('#toast', 3);
         } else if (b.state === 'lost') {

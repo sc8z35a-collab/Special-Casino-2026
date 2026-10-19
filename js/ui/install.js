@@ -1,8 +1,12 @@
 /* The game as an app: installing it (Android: the APK from this site or
-   Chrome's install; iPhone: Safari's "Add to Home Screen"), the アップデート
-   button (a newer game on the server -> reload; a newer Android app ->
-   download and install from inside the app), the service worker, and the
-   bridge the Android app uses for its back button. */
+   Chrome's install; iPhone: Safari's "Add to Home Screen"), updates, the
+   service worker, and the bridge the Android app uses for its back button.
+   Updates are the same everywhere: the web page and the apps (which open the
+   game from the server) load the newest game right away. A newer game is
+   looked for every 2 minutes and whenever the game comes back into view; it
+   loads by itself when nothing is going on (the title screen, or coming back
+   to the game), else with one tap on 今すぐアップデート. A newer Android app
+   itself (rare) downloads and installs from inside the app. */
 (function (BR) {
   'use strict';
 
@@ -19,7 +23,8 @@
 
   var U = BR.util, K, api;
   var $ = U.$;
-  var CHECK_EVERY = 15 * 60000;
+  var CHECK_EVERY = 2 * 60000;
+  var AWAY = 30000;       // back after this long away: a newer game loads by itself
 
   var state = {
     apk: null,           // download/app.json when the site offers the Android app
@@ -27,7 +32,8 @@
     app: null,           // a newer Android app (app mode): its app.json
     prompt: null,        // Chrome's install prompt (beforeinstallprompt)
     told: false,
-    updating: false
+    updating: false,
+    back: 0               // when the game came back into view (a newer game may load by itself then)
   };
 
   function getJson(path) {
@@ -42,39 +48,73 @@
     var install = api.online && !platform.installed;
     b.hidden = !update && !install;
     b.classList.toggle('update', update);
-    b.querySelector('span').textContent = update ? 'アップデート' : 'アプリで遊ぶ';
+    b.querySelector('span').textContent = state.web ? '今すぐアップデート' : state.app ? 'アプリを更新' : 'アプリで遊ぶ';
     b.querySelector('.ic').className = 'ic ' + (update ? 'ic-download' : 'ic-add-home');
-    // and on the slot screen: 「アップデートしてくださいね。」
-    if (update && BR.news) BR.news.remind(true);
+    // and on the slot screen: the 今すぐアップデート note
+    if (state.web && BR.news) BR.news.remind(true);
   }
 
-  // the reminder's button: the app's own update first, else a reload
+  // 今すぐアップデート (the slot screen's note, Dev News): the newest game,
+  // right away, on the web and in the apps alike
   function update() {
     K.sfx('click');
-    if (state.app) { askAppUpdate(); return; }
+    if (!state.web && state.app) { askAppUpdate(); return; }
     reload();
   }
 
   function onButton() {
     K.sfx('click');
-    if (state.app) { askAppUpdate(); return; }
     if (state.web) { reload(); return; }
+    if (state.app) { askAppUpdate(); return; }
     openSheet();
   }
 
   /* ------------------------------------------------------------ updates --- */
-  function reload() {
-    K.toast('最新版を読み込んでいます…');
-    setTimeout(function () { location.reload(); }, 300);
+  // The old copies kept by the service worker go first, then the page loads
+  // again from the server (the game's files are always checked with it).
+  var RELOADED = 'blockbuster-reels/reloaded';
+  function reloadedLately() { try { return Date.now() - (Number(sessionStorage.getItem(RELOADED)) || 0) < 60000; } catch (e) { return false; } }
+  function reload(quiet) {
+    if (state.updating) return;
+    state.updating = true;
+    try { sessionStorage.setItem(RELOADED, String(Date.now())); } catch (e) { /* fine */ }
+    if (!quiet) K.toast('最新版を読み込んでいます…');
+    var clear = window.caches ? caches.keys().then(function (keys) {
+      return Promise.all(keys.filter(function (k) { return k.indexOf('two-state-') === 0; }).map(function (k) { return caches.delete(k); }));
+    }) : Promise.resolve();
+    var sw = navigator.serviceWorker && navigator.serviceWorker.getRegistrations ? navigator.serviceWorker.getRegistrations().then(function (rs) {
+      return Promise.all(rs.map(function (r) { return r.update().catch(function () {}); }));
+    }) : Promise.resolve();
+    var go = function () { location.reload(); };
+    Promise.all([clear, sw]).then(go, go);
+    setTimeout(go, 2500);
+  }
+  // nothing would be lost by loading the page again now
+  function idle() {
+    if (BR.game && BR.game.busy()) return false;
+    if (BR.call && BR.call.active && BR.call.active()) return false;
+    if (BR.entry && BR.entry.isOpen()) return false;
+    if (BR.account && BR.account.isOpen()) return false;
+    if (BR.play && BR.play.betLocked && BR.play.betLocked()) return false;
+    if (BR.launch && BR.launch.introPlaying && BR.launch.introPlaying()) return false;
+    return !document.querySelector('#stage .modal:not([hidden])');
+  }
+  // a newer game: by itself on the title screen or just after coming back, else the note
+  function newer() {
+    var resumed = state.back && Date.now() - state.back < 20000;
+    // (never twice in a row by itself: a page the server has not caught up with stays put)
+    if ((BR.screens.current() === 'start' || resumed) && idle() && !reloadedLately()) { reload(true); return; }
+    tell('新しいバージョンがあります。「今すぐアップデート」ですぐに更新できます。');
   }
 
   function checkWeb() {
     if (!BR.BUILD || BR.BUILD === 'dev') return;
     getJson('version.json').then(function (v) {
-      if (!v || !v.build || v.build === BR.BUILD || state.web) return;
+      if (!v || !v.build || v.build === BR.BUILD) return;
+      var first = !state.web;
       state.web = true;
-      renderButton();
-      tell('新しいバージョンがあります。アップデートしてくださいね。');
+      if (first) renderButton();
+      newer();
     }, function () { /* offline: try again later */ });
   }
 
@@ -259,10 +299,28 @@
     if (api.online) {
       setTimeout(check, 4000);
       setInterval(check, CHECK_EVERY);
-      document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
+      var hiddenAt = 0;
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) { hiddenAt = Date.now(); return; }
+        // back after a while: a newer game may load by itself
+        if (hiddenAt && Date.now() - hiddenAt > AWAY) state.back = Date.now();
+        check();
+      });
     }
     if (/[?&]install\b/.test(location.search) && api.online && !platform.installed) BR.launch.whenDone(function () { setTimeout(openSheet, 600); });
   }
 
-  BR.install = { init: init, open: openSheet, check: check, update: update };
+  BR.install = {
+    init: init,
+    open: openSheet,
+    check: check,
+    update: update,
+    // the server runs a newer release than this game (js/ui/news.js)
+    outdated: function () {
+      if (state.web) return;
+      state.web = true;
+      renderButton();
+      newer();
+    }
+  };
 })(window.BR = window.BR || {});

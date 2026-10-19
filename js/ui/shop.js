@@ -122,7 +122,7 @@
       api.buyItem(it.id, n, s.salePrice).then(function (r) {
         BR.app.serverBalance(r.me);
         setMe(r.me);
-        sfx('purchase');
+        sfx('register');
         toast(it.name + ' ×' + n + ' を購入しました！スロット画面からワンタップで使えます', 3600);
         if (BR.juice) BR.juice.reward('#pane-shop .shop-pic', 2);
       }, function (err) {
@@ -213,7 +213,7 @@
         api.giveItem(user.id, it.id, n).then(function (r) {
           setMe(r.me);
           BR.social.onMsg(r.message);
-          sfx('purchase');
+          sfx('coins');
           toast(user.name + 'さんに ' + it.name + ' ×' + n + ' を譲りました', 3200);
           if (BR.juice) BR.juice.reward(null, 1);
         }).catch(fail);
@@ -239,7 +239,7 @@
     var m = me();
     if (!m) return;
     if (m.charm) { sfx('click'); toast('お守り加護 発動中：次に負けたスピンで守ってくれます', 3000); return; }
-    if (BR.game.busy() || BR.game.auto) {
+    if (BR.game.busy()) {
       sfx('deny');
       toast('お守り加護はスロットを回す前にだけ使えます', 3000);
       return;

@@ -1,0 +1,96 @@
+/* 金の生る木 (coming soon): the round button on the slot screen and its own
+   screen, with the tree in a glow and coins drifting around it. Design px. */
+
+.hud-tree { right: 204px; top: 382px; }
+.hud-tree .ic { animation-delay: -.9s; }
+.hud-soon {
+  position: absolute;
+  left: 50%;
+  bottom: -10px;
+  transform: translateX(-50%);
+  padding: 2px 9px;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #2f9a4f, #17602d);
+  box-shadow: inset 0 0 0 1.4px rgba(255, 230, 140, .8), 0 2px 6px rgba(0, 0, 0, .5);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+  color: #fff3c4;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+#screen-tree {
+  background:
+    radial-gradient(ellipse 60% 70% at 33% 52%, rgba(90, 210, 120, .28), transparent 70%),
+    radial-gradient(ellipse 80% 90% at 50% 50%, rgba(10, 60, 30, .55), rgba(4, 20, 10, .88));
+}
+.tree-scene { position: absolute; left: 230px; top: 150px; width: 620px; height: 620px; }
+.tree-glow {
+  position: absolute;
+  inset: -60px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 226, 120, .55), rgba(255, 200, 60, .18) 45%, transparent 70%);
+  animation: treeGlow 3.2s ease-in-out infinite;
+}
+@keyframes treeGlow { 50% { transform: scale(1.06); opacity: .75; } }
+.tree-art { position: absolute; inset: 40px; background: center / contain no-repeat; filter: drop-shadow(0 24px 30px rgba(0, 0, 0, .55)); animation: treeBob 4s ease-in-out infinite; }
+@keyframes treeBob { 50% { transform: translateY(-12px); } }
+/* coins drifting up around the tree */
+.tree-coins i {
+  position: absolute;
+  bottom: 120px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fffbe0 0 12%, #ffd84a 36%, #c8901a 74%, #8a5a08 100%);
+  box-shadow: inset 0 0 0 3px rgba(255, 240, 170, .55), 0 4px 10px rgba(0, 0, 0, .45);
+  opacity: 0;
+  animation: treeCoin 5.2s ease-in infinite;
+}
+.tree-coins i:nth-child(1) { left: 60px; animation-delay: 0s; }
+.tree-coins i:nth-child(2) { left: 520px; animation-delay: .7s; transform: scale(.8); }
+.tree-coins i:nth-child(3) { left: 150px; animation-delay: 1.4s; }
+.tree-coins i:nth-child(4) { left: 430px; animation-delay: 2.1s; }
+.tree-coins i:nth-child(5) { left: 20px; animation-delay: 2.8s; }
+.tree-coins i:nth-child(6) { left: 560px; animation-delay: 3.5s; }
+.tree-coins i:nth-child(7) { left: 250px; animation-delay: 4.2s; }
+.tree-coins i:nth-child(8) { left: 360px; animation-delay: 4.9s; }
+@keyframes treeCoin {
+  0% { opacity: 0; transform: translateY(0) rotateY(0) scale(.7); }
+  12% { opacity: 1; }
+  80% { opacity: .9; }
+  100% { opacity: 0; transform: translateY(-480px) rotateY(720deg) scale(1); }
+}
+
+.tree-info { position: absolute; left: 930px; top: 210px; width: 760px; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+.tree-soon { font: 900 26px var(--f-num); letter-spacing: 8px; color: #8ff0a8; text-shadow: 0 0 14px rgba(110, 240, 140, .6); }
+.tree-title {
+  margin: 0;
+  font-size: 92px;
+  line-height: 1.1;
+  background: linear-gradient(180deg, #fffbe0 0%, #ffe27a 40%, #e2a91a 75%, #b77c0c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 4px 0 #3a2400) drop-shadow(0 10px 18px rgba(0, 0, 0, .6));
+}
+.tree-badge {
+  margin: 4px 0 6px;
+  padding: 8px 28px;
+  border-radius: 30px;
+  background: linear-gradient(180deg, #2f9a4f, #17602d);
+  box-shadow: inset 0 0 0 2px rgba(255, 230, 140, .85), 0 6px 18px rgba(0, 0, 0, .45);
+  font-size: 34px;
+  font-weight: 800;
+  color: #fff3c4;
+  animation: treeBadge 1.6s ease-in-out infinite;
+}
+@keyframes treeBadge { 50% { box-shadow: inset 0 0 0 2px rgba(255, 230, 140, .85), 0 0 26px rgba(255, 220, 100, .55); } }
+.tree-text { margin: 0; font-size: 28px; line-height: 1.7; color: #e9f2e6; }
+.act-btn.tree-back { flex: none; margin-top: 18px; min-width: 340px; height: 84px; padding: 0 44px; border-radius: 42px; font-size: 30px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tree-glow, .tree-art, .tree-coins i, .tree-badge { animation: none; }
+  .tree-coins i { opacity: 0; }
+}

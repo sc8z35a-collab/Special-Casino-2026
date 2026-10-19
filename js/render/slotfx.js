@@ -128,24 +128,40 @@
   /* ------------------------------------------------------------ marquee --- */
   // bulbs every ~40 px on a rounded rectangle 20 px outside the reel frame,
   // numbered clockwise from the top-left corner
+  // The bulbs go round a rounded rectangle at an even distance: one sits on
+  // the middle of each corner's curve, and the stretches between them are
+  // shared out evenly, so no two bulbs crowd together anywhere.
   function buildMarquee(reels) {
     mq = document.createElement('div');
     mq.className = 'mq';
     mq.setAttribute('aria-hidden', 'true');
     var x0 = -20, y0 = -20, x1 = 1064, y1 = 606, r = 34, step = 40;
-    var pts = [];
-    var segs = [
-      [x0 + r, y0, x1 - r, y0], [x1, y0 + r, x1, y1 - r], [x1 - r, y1, x0 + r, y1], [x0, y1 - r, x0, y0 + r]
+    var Q = Math.PI / 2, arc = r * Q;
+    // the path clockwise from the middle of the top left corner: [kind, length, ...]
+    var path = [
+      ['arc', arc / 2, x0 + r, y0 + r, 2.5 * Q], ['line', x1 - x0 - 2 * r, x0 + r, y0, x1 - r, y0],
+      ['arc', arc, x1 - r, y0 + r, 3 * Q], ['line', y1 - y0 - 2 * r, x1, y0 + r, x1, y1 - r],
+      ['arc', arc, x1 - r, y1 - r, 0], ['line', x1 - x0 - 2 * r, x1 - r, y1, x0 + r, y1],
+      ['arc', arc, x0 + r, y1 - r, Q], ['line', y1 - y0 - 2 * r, x0, y1 - r, x0, y0 + r],
+      ['arc', arc / 2, x0 + r, y0 + r, 2 * Q]
     ];
-    var corners = [[x1 - r, y0 + r, -Math.PI / 2], [x1 - r, y1 - r, 0], [x0 + r, y1 - r, Math.PI / 2], [x0 + r, y0 + r, Math.PI]];
-    segs.forEach(function (s, k) {
-      var len = Math.hypot(s[2] - s[0], s[3] - s[1]), n = Math.max(1, Math.round(len / step));
-      for (var i = 0; i < n; i++) pts.push([s[0] + (s[2] - s[0]) * i / n, s[1] + (s[3] - s[1]) * i / n]);
-      var c = corners[k];
-      for (var j = 0; j < 2; j++) {
-        var a = c[2] + (j + 0.5) * Math.PI / 4;
-        pts.push([c[0] + Math.cos(a) * r, c[1] + Math.sin(a) * r]);
+    function at(d) {
+      for (var i = 0; i < path.length; i++) {
+        var p = path[i];
+        if (d > p[1] && i < path.length - 1) { d -= p[1]; continue; }
+        if (p[0] === 'line') { var t = p[1] ? d / p[1] : 0; return [p[2] + (p[4] - p[2]) * t, p[3] + (p[5] - p[3]) * t]; }
+        var a = p[4] + d / r;
+        return [p[2] + Math.cos(a) * r, p[3] + Math.sin(a) * r];
       }
+      return [x0, y0];
+    }
+    // the four stretches between the corners' middles: top, right, bottom, left
+    var sides = [x1 - x0 - 2 * r + arc, y1 - y0 - 2 * r + arc, x1 - x0 - 2 * r + arc, y1 - y0 - 2 * r + arc];
+    var pts = [], from = 0;
+    sides.forEach(function (len) {
+      var n = Math.max(1, Math.round(len / step));
+      for (var i = 0; i < n; i++) pts.push(at(from + len * i / n));
+      from += len;
     });
     var n = pts.length;
     mq.style.setProperty('--n', String(n));

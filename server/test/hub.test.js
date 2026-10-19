@@ -179,11 +179,20 @@ test('友達と稼ぐ: spins share one combo (x1.1 a win, three misses end it), 
   }
 });
 
-test('友達と稼ぐ: leaving, or gone for good, leaves one player: the hub closes', async () => {
+test('友達と稼ぐ: nobody leaves by going away; leaving leaves one player and the hub closes', async () => {
   const [a, b, c] = await friends('LeaveA', 'LeaveB', 'LeaveC');
   const la = await listen(a), lb = await listen(b), lc = await listen(c);
   try {
     const hub = await hubOf(a, b);
+    // b's connection goes: a sees it, but b stays in the hub (for days too)
+    lb.close();
+    assert.equal((await la.waitFor('hub', (e) => e.type === 'away')).user.id, b.me.id);
+    s.app.db.prepare('UPDATE users SET active_at = ? WHERE id = ?').run(Date.now() - 3 * 86400000, b.me.id);
+    s.app.api.housekeeping();
+    const still = (await call('GET', '/api/hub', { token: a.token })).hub;
+    assert.deepEqual(still.members.map((m) => m.id), [a.me.id, b.me.id]);
+    assert.equal(still.on, false, 'one of the two is idle: no benefits');
+    // 抜ける: one player left, the hub closes
     await call('POST', '/api/hub/leave', { token: b.token });
     assert.equal((await la.waitFor('hub', (e) => e.type === 'closed')).why, 'alone');
     assert.equal((await call('GET', '/api/hub', { token: a.token })).hub, null);
@@ -191,15 +200,93 @@ test('友達と稼ぐ: leaving, or gone for good, leaves one player: the hub clo
     // an invitation starts a new one
     const again = await hubOf(a, c);
     assert.deepEqual(again.members.map((m) => m.id), [a.me.id, c.me.id]);
-    // c's connection goes: away for a while (a hears it), then gone, and the hub closes
-    lc.close();
-    assert.equal((await la.waitFor('hub', (e) => e.type === 'away')).user.id, c.me.id);
-    assert.ok((await call('GET', '/api/hub', { token: a.token })).hub, 'still there within the grace time');
-    s.app.db.prepare('UPDATE hub_members SET away_at = ? WHERE user_id = ?').run(Date.now() - HUB.awayMs - 1000, c.me.id);
-    assert.equal((await call('GET', '/api/hub', { token: a.token })).hub, null);
-    assert.equal((await la.waitFor('hub', (e) => e.type === 'closed')).why, 'alone');
   } finally {
-    la.close(); lb.close();
+    la.close(); lc.close();
+  }
+});
+
+test('友達と稼ぐ: the benefits are on while two or more are active (4 minutes); the 5時間 booster x2, x1.1 a player more', async () => {
+  const [a, b, c] = await friends('ActA', 'ActB', 'ActC');
+  const la = await listen(a), lb = await listen(b), lc = await listen(c);
+  const spins5h = async (p) => (await call('GET', '/api/quests', { token: p.token })).periods.find((x) => x.id === '5h').quests.find((x) => x.id === '5h-spin10').progress;
+  const idleFor = (p, ms) => s.app.db.prepare('UPDATE users SET active_at = ? WHERE id = ?').run(Date.now() - ms, p.me.id);
+  try {
+    await hubOf(a, b);
+    for (const p of [a, b, c]) setUser(p.me.id, { tokens: 10000000 });
+    let h = (await call('GET', '/api/hub', { token: a.token })).hub;
+    assert.deepEqual([h.active, h.on, h.booster], [2, true, HUB.booster]);
+    // a spin counts twice in the 5時間 quests
+    let r = await call('POST', '/api/spin', { token: a.token, body: { bet: 100, idle: 0 } });
+    assert.ok(r.result.hub, 'benefits on');
+    assert.equal(r.result.hub.booster, 2);
+    assert.equal(await spins5h(a), 2);
+    // b has done nothing for over 4 minutes: everything stops for both
+    idleFor(b, 4 * 60000 + 5000);
+    h = (await call('GET', '/api/hub', { token: a.token })).hub;
+    assert.deepEqual([h.active, h.on], [1, false]);
+    r = await call('POST', '/api/spin', { token: a.token, body: { bet: 100, idle: 0 } });
+    assert.equal(r.result.hub, null, 'no hub odds, combo or boosts');
+    assert.equal(await spins5h(a), 3, 'no booster');
+    // AUTO spins of a player who does nothing are not activity
+    r = await call('POST', '/api/spin', { token: b.token, body: { bet: 100, idle: 5 * 60000 } });
+    assert.equal(r.result.hub, null);
+    // b taps again (the beat says so): back on, and a hears it
+    await call('POST', '/api/beat', { token: b.token, body: { idle: 1000 } });
+    assert.equal((await la.waitFor('hub', (e) => e.type === 'activity' && e.user === b.me.id)).idle < 60000, true);
+    h = (await call('GET', '/api/hub', { token: a.token })).hub;
+    assert.deepEqual([h.active, h.on], [2, true]);
+    assert.ok((await call('POST', '/api/spin', { token: a.token, body: { bet: 100, idle: 0 } })).result.hub);
+    assert.equal(await spins5h(a), 5);
+    // a third active player: x2.2 (x1.1 more), and back to x2 when one goes idle
+    await call('POST', '/api/hub/invite', { token: a.token, body: { to: c.me.id } });
+    await call('POST', '/api/hub/join', { token: c.token, body: { from: a.me.id } });
+    h = (await call('GET', '/api/hub', { token: a.token })).hub;
+    assert.deepEqual([h.active, h.booster], [3, 2.2]);
+    r = await call('POST', '/api/spin', { token: a.token, body: { bet: 100, idle: 0 } });
+    assert.equal(r.result.hub.booster, 2.2);
+    assert.equal(await spins5h(a), 7, '5 + 2.2 = 7.2');
+    idleFor(c, 10 * 60000);
+    r = await call('POST', '/api/spin', { token: a.token, body: { bet: 100, idle: 0 } });
+    assert.equal(r.result.hub.booster, 2);
+    assert.equal(await spins5h(a), 9, '7.2 + 2 = 9.2');
+    // XP x1.2 from quests and 週間協力 only while on: an idle player gets no co-op time
+    idleFor(b, 10 * 60000);
+    setUser(c.me.id, { beat_at: Date.now() - 60000 });
+    idleFor(c, 0);
+    const coop = await call('POST', '/api/beat', { token: c.token, body: { idle: 0 } });
+    assert.ok(coop.counted > 0);
+    const cq = await call('GET', '/api/quests', { token: c.token });
+    assert.equal(cq.periods.find((p) => p.id === 'coop').quests.find((x) => x.id === 'coop-time10').progress, coop.counted, 'a and c are active');
+    idleFor(a, 10 * 60000);
+    setUser(c.me.id, { beat_at: Date.now() - 60000 });
+    const alone = await call('POST', '/api/beat', { token: c.token, body: { idle: 0 } });
+    const cq2 = await call('GET', '/api/quests', { token: c.token });
+    assert.ok(alone.counted > 0);
+    assert.equal(cq2.periods.find((p) => p.id === 'coop').quests.find((x) => x.id === 'coop-time10').progress, coop.counted, 'only c is active: no co-op time');
+  } finally {
+    la.close(); lb.close(); lc.close();
+  }
+});
+
+test('SUPER BIG WIN: the friends who are online hear it (not the ones blocked)', async () => {
+  const [a, b, c] = await friends('BigA', 'BigB', 'BigC');
+  const lb = await listen(b), lc = await listen(c);
+  await call('POST', '/api/block', { token: c.token, body: { user: a.me.id, blocked: true } });
+  const U = globalThis.BR.util, real = U.random;
+  try {
+    setUser(a.me.id, { tokens: 100000000 });
+    // five statues on the line
+    U.random = () => 0.99999;
+    let r;
+    try { r = (await call('POST', '/api/spin', { token: a.token, body: { bet: 100 } })).result; } finally { U.random = real; }
+    assert.equal(r.tier, 3, JSON.stringify(r));
+    const ev = await lb.waitFor('bigwin');
+    assert.equal(ev.user.id, a.me.id);
+    assert.equal(ev.win, r.total);
+    await assert.rejects(lc.waitFor('bigwin', () => true, 300), 'blocked: not told');
+  } finally {
+    U.random = real;
+    lb.close(); lc.close();
   }
 });
 
@@ -226,15 +313,18 @@ test('time quests: online / in a hub / talking count while active, up to 4 minut
     assert.equal((await beat(a, { idle: 300000 })).counted, 0);
     setUser(a.me.id, { beat_at: Date.now() - 200000 });
     assert.equal((await beat(a, { idle: 0 })).counted, 0);
-    // in a hub with a friend who is connected: 友達と稼ぐ time; with a voice on: talking
+    // in a hub with a friend who is active: 友達と稼ぐ time; with a voice on:
+    // talking (x2 in the 5時間 quests: the hub's booster)
     await hubOf(a, b);
     setUser(a.me.id, { beat_at: Date.now() - 60000 });
     r = await beat(a, { idle: 0, voice: 1 });
     assert.equal(await progress(a, 'coop', 'coop-time10'), r.counted);
-    assert.equal(await progress(a, '5h', '5h-talk5'), r.counted);
+    const talked = await progress(a, '5h', '5h-talk5');
+    assert.equal(talked, 2 * r.counted);
     setUser(a.me.id, { beat_at: Date.now() - 60000 });
     r = await beat(a, { idle: 0 });
-    assert.equal(await progress(a, '5h', '5h-talk5') < 2 * r.counted, true, 'no voice: not talking');
+    assert.ok(r.counted > 0);
+    assert.equal(await progress(a, '5h', '5h-talk5'), talked, 'no voice: not talking');
   } finally {
     la.close(); lb.close();
   }
@@ -256,7 +346,7 @@ test('週間協力: what anyone in the hub wins counts for everyone in it', asyn
   }
 });
 
-test('odds: a little harder than before (RTP about 89.5 %); the hub raises the statue, the 7 and lowers the revolver', () => {
+test('odds: RTP 82.0 % (a win on about 33.5 % of the spins); the hub raises the statue, the 7 and lowers the revolver', () => {
   const W = RULES.weights, S = RULES.symbols;
   const sum = (w) => S.reduce((a, k) => a + w[k], 0);
   assert.ok(Math.abs(sum(W) - 1) < 1e-9 && Math.abs(sum(HUB.weights) - 1) < 1e-9);
@@ -273,6 +363,6 @@ test('odds: a little harder than before (RTP about 89.5 %); the hub raises the s
     }
     for (const k of S) { line[i] = k; rec(i + 1, p * W[k]); }
   })(0, 1);
-  assert.ok(rtp > 0.88 && rtp < 0.91, String(rtp));
-  assert.ok(hit > 0.33 && hit < 0.344, String(hit));
+  assert.ok(Math.abs(rtp - 0.82) < 0.0005, String(rtp));
+  assert.ok(hit > 0.33 && hit < 0.338, String(hit));
 });

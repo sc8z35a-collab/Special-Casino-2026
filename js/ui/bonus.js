@@ -27,7 +27,7 @@
     });
     $('#bonus-text').textContent = 'ログイン' + b.day + '日目！ スピントークン ' + U.fmt(b.amount) + ' を受け取りました';
     K.showModal('bonus');
-    K.sfx('purchase');
+    K.sfx('money');
     // once the board has landed, today's chips burst out of their card and
     // fly into the wallet (js/render/juice.js)
     var today = $('#bonus .bonus-day.today');

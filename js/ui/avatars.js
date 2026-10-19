@@ -143,6 +143,7 @@
       api.buyAvatar(a.id, s.salePrice).then(function (r) {
         BR.social.setMe(r.me);
         BR.app.serverBalance(r.me);
+        K.sfx('register');
         breakFree(t, function () {
           renderPicker();
           K.toast('「' + a.name + '」を手に入れました！', 2800);

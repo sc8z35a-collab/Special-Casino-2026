@@ -425,10 +425,6 @@
 .spin-btn:active .spin-disc, .spin-btn.pressed .spin-disc { transform: scale(.88, .84); filter: brightness(.9); transition: transform .06s ease-out; }
 .spin-btn.spinning .spin-arrows { animation: spinArrows .5s linear infinite; }
 
-/* 自動スピン on: its LED breathes */
-.pill-auto.on .led { animation: jcLed 1.1s ease-in-out infinite; }
-@keyframes jcLed { 50% { box-shadow: 0 0 14px #9dff80, 0 0 4px #fff; transform: scale(1.15); } }
-
 /* the pay line marks pulse while a win is shown */
 .payline-mark.lit { animation: jcMark .5s ease-in-out infinite; }
 @keyframes jcMark {
@@ -482,7 +478,6 @@
 .pill::after { animation-duration: 5.4s; }
 .pill-max::after { animation-delay: -1.3s; }
 .pill-rules::after { animation-delay: -2.6s; }
-.pill-auto::after { animation-delay: -3.9s; }
 @keyframes jcGleam {
   0%, 62% { background-position: 130% 0; }
   88%, 100% { background-position: -30% 0; }
@@ -527,7 +522,6 @@
 #screen-slot.active .hud-circle { animation-delay: .12s; }
 #screen-slot.active .hud-quest { animation-delay: .16s; }
 #screen-slot.active .pill-rules { animation-delay: .14s; }
-#screen-slot.active .pill-auto { animation-delay: .18s; }
 #screen-slot.active .spin-btn { animation: jcSpinIn .6s var(--jc-pop) .2s backwards; }
 #screen-slot.active .bet-group { animation-delay: .08s; }
 #screen-slot.active .win-group { animation-delay: .12s; }

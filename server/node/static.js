@@ -23,7 +23,8 @@ const TYPES = {
   '.apk': 'application/vnd.android.package-archive'
 };
 const TEXT = new Set(['.html', '.css', '.js', '.json', '.webmanifest', '.svg', '.txt']);
-const ALLOWED = /^\/(?:index\.html|manifest\.webmanifest|sw\.js|version\.json|(?:css|js|fonts|icons|img|sounds|video|download)\/[A-Za-z0-9._\/-]+)$/;
+// (ops/: the operator site, /ops/ — what it shows needs an operator's login)
+const ALLOWED = /^\/(?:index\.html|manifest\.webmanifest|sw\.js|version\.json|(?:css|js|fonts|icons|img|sounds|video|download|ops)\/[A-Za-z0-9._\/-]+)$/;
 
 export function createStatic(root, { transformHtml } = {}) {
   const cache = new Map();   // path -> { mtime, size, body, gz, etag }
@@ -55,7 +56,7 @@ export function createStatic(root, { transformHtml } = {}) {
 
   return function serve(req, res, pathname) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return false;
-    let rel = pathname === '/' ? '/index.html' : pathname;
+    let rel = pathname === '/' ? '/index.html' : pathname === '/ops' || pathname === '/ops/' ? '/ops/index.html' : pathname;
     try { rel = decodeURIComponent(rel); } catch { return false; }
     if (!ALLOWED.test(rel) || rel.includes('..')) return false;
     const entry = load(rel);

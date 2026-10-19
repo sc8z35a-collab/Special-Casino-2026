@@ -10,7 +10,10 @@
    connected directly; of each pair the one with the lower player id makes
    the offer. A microphone that is off sends nothing (the track is stopped),
    and while a call is on the game's own sounds play quieter. Someone heard
-   speaking into an open microphone counts as active (the time quests). */
+   speaking into an open microphone counts as active (the time quests).
+   A hub's voice cannot be hung up while in the hub; instead every voice has
+   its own volume and mute (kept on this phone), the speaker button mutes
+   them all, and a block cuts a voice off both ways. */
 (function (BR) {
   'use strict';
 
@@ -23,6 +26,64 @@
   // peer }, stream, mic, micBusy, cid }
   var home = null;
   var ice = null;         // { servers, until }
+
+  /* ------------------------------------------------------------ each voice's volume and mute --- */
+  // { v: { id: volume 0..100 }, m: { id: 1 (muted) }, d: 1 (all voices muted) }
+  var PREFS = 'blockbuster-reels/voice';
+  var prefs = (function () {
+    try {
+      var p = JSON.parse(localStorage.getItem(PREFS) || '{}') || {};
+      return { v: p.v || {}, m: p.m || {}, d: p.d ? 1 : 0 };
+    } catch (e) { return { v: {}, m: {}, d: 0 }; }
+  })();
+  function savePrefs() { try { localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch (e) { /* in memory only */ } }
+  function volOf(id) { var v = prefs.v[id]; return typeof v === 'number' ? Math.max(0, Math.min(100, v)) : 100; }
+  function mutedOf(id) { return !!prefs.m[id]; }
+  // iPhones ignore an audio element's volume: a quieter voice goes through Web Audio there
+  var volumeWorks = (function () {
+    var known = null;
+    return function () {
+      if (known === null) { try { var t = document.createElement('audio'); t.volume = 0.5; known = Math.abs(t.volume - 0.5) < 0.01; } catch (e) { known = false; } }
+      return known;
+    };
+  })();
+  var outCtx = null, gains = {};   // id: { src, node, stream }
+  function gainFor(id, a) {
+    var g = gains[id];
+    if (g && g.stream === a.srcObject) return g;
+    dropGain(id);
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC || !a.srcObject) return null;
+    try {
+      if (!outCtx) outCtx = new AC();
+      var src = outCtx.createMediaStreamSource(a.srcObject), node = outCtx.createGain();
+      src.connect(node);
+      node.connect(outCtx.destination);
+      if (outCtx.state === 'suspended') outCtx.resume().catch(function () {});
+      return (gains[id] = { src: src, node: node, stream: a.srcObject });
+    } catch (e) { return null; }
+  }
+  function dropGain(id) {
+    var g = gains[id];
+    if (!g) return;
+    delete gains[id];
+    try { g.src.disconnect(); g.node.disconnect(); } catch (e) { /* gone */ }
+  }
+  // the voice of `id` as set: muted (by itself or with all of them), its volume
+  function applyVoice(id) {
+    var a = $('#call-audios [data-key="home-' + id + '"]');
+    if (!a) return;
+    var off = !!prefs.d || mutedOf(id), vol = volOf(id) / 100;
+    var g = gains[id] || (vol < 1 && !volumeWorks() ? gainFor(id, a) : null);
+    if (g) {
+      a.muted = true;
+      g.node.gain.value = off ? 0 : vol;
+    } else {
+      a.muted = off;
+      try { a.volume = vol; } catch (e) { /* fixed */ }
+    }
+  }
+  function applyAll() { Object.keys(home ? home.peers : {}).forEach(function (k) { applyVoice(Number(k)); }); }
 
   function myId() { var m = BR.social.me(); return m ? m.id : 0; }
   function supported() { return !!(window.RTCPeerConnection && navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
@@ -58,7 +119,8 @@
   }
 
   /* ------------------------------------------------------------ audio out --- */
-  function audioFor(key, stream) {
+  function audioFor(id, stream) {
+    var key = 'home-' + id;
     var box = $('#call-audios');
     var a = box.querySelector('[data-key="' + key + '"]');
     if (!a) {
@@ -69,12 +131,15 @@
       box.appendChild(a);
     }
     a.srcObject = stream;
+    if (gains[id]) gainFor(id, a);
+    applyVoice(id);
     var p = a.play();
     if (p && p.catch) p.catch(function () { /* starts with the next tap */ });
     return a;
   }
-  function dropAudio(key) {
-    var a = $('#call-audios [data-key="' + key + '"]');
+  function dropAudio(id) {
+    dropGain(id);
+    var a = $('#call-audios [data-key="home-' + id + '"]');
     if (!a) return;
     a.srcObject = null;
     a.parentNode.removeChild(a);
@@ -84,12 +149,19 @@
   function faces(users) {
     var box = $('#call-faces');
     box.textContent = '';
-    users.slice(0, 4).forEach(function (u) { box.appendChild(K.avatarEl(u, 'sm')); });
+    users.slice(0, 4).forEach(function (u) {
+      var a = K.avatarEl(u, 'sm');
+      a.dataset.user = u.id;
+      // a voice turned off here shows on its face
+      a.classList.toggle('voice-off', !!prefs.d || mutedOf(u.id));
+      box.appendChild(a);
+    });
     if (users.length > 4) box.appendChild(el('span', 'call-more', '+' + (users.length - 4)));
   }
   function renderBar() {
     var bar = $('#call-bar');
     BR.sfx.duck(!!home);
+    changed();
     if (!home) { bar.hidden = true; return; }
     var m = $('#call-mute'), end = $('#call-end');
     var people = Object.keys(home.members).map(function (k) { return home.members[k]; });
@@ -105,6 +177,12 @@
     m.querySelector('.ic').className = 'ic ' + (home.mic ? 'ic-mic-on' : 'ic-mic-off');
     m.disabled = home.micBusy;
     m.setAttribute('aria-label', home.mic ? 'マイクをオフにする' : 'マイクをオンにする');
+    var d = $('#call-deaf');
+    d.classList.toggle('off', !!prefs.d);
+    d.querySelector('.ic').className = 'ic ' + (prefs.d ? 'ic-speaker-off' : 'ic-speaker');
+    d.setAttribute('aria-label', prefs.d ? 'みんなの声をオンにする' : 'みんなの声をミュートする');
+    // a hub's voice stays on while in the hub (mute it instead)
+    end.hidden = home.kind === 'hub';
     end.querySelector('.ic').className = 'ic ic-hangup';
     end.setAttribute('aria-label', '通話を終える');
   }
@@ -177,7 +255,7 @@
     clearTimeout(p.flush);
     clearTimeout(p.timer);
     if (p.pc) try { p.pc.close(); } catch (e) { /* closed */ }
-    dropAudio('home-' + id);
+    dropAudio(id);
   }
 
   // A fresh connection to `id`; `offer`: this side makes the offer. Audio
@@ -196,7 +274,7 @@
         if (micTrack(h)) p.sender.replaceTrack(micTrack(h)).catch(function () {});
       }
       pc.onicecandidate = function (e) { if (e.candidate) queue(h, p, { candidate: e.candidate.toJSON() }); };
-      pc.ontrack = function (e) { audioFor('home-' + id, e.streams[0] || new MediaStream([e.track])); };
+      pc.ontrack = function (e) { audioFor(id, e.streams[0] || new MediaStream([e.track])); };
       pc.onconnectionstatechange = function () {
         if (home !== h || h.peers[id] !== p) return;
         var s = pc.connectionState;
@@ -366,7 +444,7 @@
       clearTimeout(p.flush);
       clearTimeout(p.timer);
       if (p.pc) try { p.pc.close(); } catch (e) { /* closed */ }
-      dropAudio('home-' + k);
+      dropAudio(Number(k));
     });
     if (h.stream) h.stream.getTracks().forEach(function (t) { t.stop(); });
     sfx('callEnd');
@@ -379,24 +457,47 @@
       sfx('click');
       setMic(!home.mic);
     });
-    // hanging up: the watched player stops talking with everyone, a watcher
-    // stops talking; in a hub, its voice ends for me (BR.hub can bring it back)
-    $('#call-end').addEventListener('click', function () {
+    // everyone's voice off (and on again)
+    $('#call-deaf').addEventListener('click', function () {
       if (!home) return;
       sfx('click');
-      if (home.kind === 'hub') { if (BR.hub && BR.hub.hangUp) BR.hub.hangUp(); else syncHub(0, []); return; }
+      setDeaf(!prefs.d);
+      toast(prefs.d ? 'みんなの声をミュートしました' : 'みんなの声をオンにしました', 1800);
+    });
+    // hanging up: the watched player stops talking with everyone, a watcher
+    // stops talking (a hub's voice has no hang-up: it stays while in the hub)
+    $('#call-end').addEventListener('click', function () {
+      if (!home || home.kind === 'hub') return;
+      sfx('click');
       if (BR.watch && BR.watch.endVoice) BR.watch.endVoice();
       else leave();
+    });
+    // a face in the bar of a hub's voice: that person's volume, mute, chat
+    $('#call-faces').addEventListener('click', function (e) {
+      var f = e.target.closest('[data-user]');
+      if (!f || !home || home.kind !== 'hub' || !BR.hub || !BR.hub.openMember) return;
+      sfx('click');
+      BR.hub.openMember(Number(f.dataset.user));
     });
     // some phones only start the voices after a tap
     document.addEventListener('pointerdown', function () {
       Array.prototype.forEach.call(document.querySelectorAll('#call-audios audio'), function (a) {
         if (a.srcObject && a.paused) { var p = a.play(); if (p && p.catch) p.catch(function () {}); }
       });
+      if (outCtx && outCtx.state === 'suspended') outCtx.resume().catch(function () {});
     }, true);
     window.addEventListener('pagehide', function () { if (home) leave(); });
     if (api.online) BR.live.on('call', onCall);
   }
+
+  function setDeaf(on) {
+    prefs.d = on ? 1 : 0;
+    savePrefs();
+    applyAll();
+    renderBar();
+  }
+  var listeners = [];
+  function changed() { listeners.forEach(function (fn) { try { fn(); } catch (e) { /* ignore */ } }); }
 
   BR.call = {
     init: init,
@@ -404,6 +505,24 @@
     syncHub: syncHub,
     leave: leave,
     setMic: setMic,
+    mic: function () { return !!(home && home.mic); },
+    // each voice: { volume 0..100, muted, connected }; all of them muted (the speaker button)
+    voice: function (id) { return { volume: volOf(id), muted: mutedOf(id), connected: !!(home && home.peers[id] && home.peers[id].live) }; },
+    setVolume: function (id, v) {
+      v = Math.round(Math.max(0, Math.min(100, Number(v) || 0)));
+      if (v === 100) delete prefs.v[id]; else prefs.v[id] = v;
+      savePrefs();
+      applyVoice(id);
+    },
+    setMuted: function (id, on) {
+      if (on) prefs.m[id] = 1; else delete prefs.m[id];
+      savePrefs();
+      applyVoice(id);
+      renderBar();
+    },
+    deaf: function () { return !!prefs.d; },
+    setDeaf: setDeaf,
+    onChange: function (fn) { listeners.push(fn); },
     active: function () { return !!home; },
     // some voice of a friend comes through (a connection is up)
     live: function () { return !!home && Object.keys(home.peers).some(function (k) { return home.peers[k].live; }); },

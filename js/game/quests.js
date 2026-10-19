@@ -225,6 +225,11 @@
     questXp: LEVEL.questXp,
     of: levelOf,
     at: xpAt,
+    // バイト that can be worked at once at `level` (one more every few levels)
+    jobSlots: function (level) {
+      var C = BR.CONFIG;
+      return C.jobSlots + Math.floor(Math.max(1, level || 1) / C.jobSlotEvery);
+    },
     // { level, into: XP gained in this level, need: XP this level takes }
     info: function (xp) {
       var l = levelOf(xp);

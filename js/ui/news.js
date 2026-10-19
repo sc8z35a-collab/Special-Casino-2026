@@ -11,13 +11,17 @@
   var SEEN = 'blockbuster-reels/news-seen';
 
   var outdated = false;   // the server or this device has a newer game
+  var latest = 0;         // the newest release the server knows (DEV number)
 
   function seen() { try { return Number(localStorage.getItem(SEEN)) || 0; } catch (e) { return 0; } }
   function renderDot() { $('#news-dot').hidden = seen() >= BR.RELEASE; }
 
+  // the release number as the players know it: DEV5
+  function devName(id) { return 'DEV' + id; }
   function entryEl(n) {
-    var box = el('article', 'news-entry');
+    var box = el('article', 'news-entry' + (n.id === BR.RELEASE ? ' current' : ''));
     var head = el('div', 'news-head');
+    head.appendChild(el('span', 'news-dev', devName(n.id)));
     head.appendChild(el('span', 'news-date', n.date.replace(/-/g, '/')));
     head.appendChild(el('h3', 'news-title', n.title));
     box.appendChild(head);
@@ -30,15 +34,37 @@
   function show() {
     var list = $('#news-list');
     list.textContent = '';
+    // which one this game is (and that a newer one is out)
+    var ver = el('div', 'news-version');
+    ver.appendChild(el('span', '', 'このゲームのバージョン'));
+    ver.appendChild(el('b', '', devName(BR.RELEASE)));
+    if (latest > BR.RELEASE) {
+      var up = el('button', 'mini-btn gold news-update');
+      up.type = 'button';
+      up.appendChild(el('span', '', devName(latest) + ' にアップデート'));
+      up.addEventListener('click', update);
+      ver.appendChild(up);
+    }
+    list.appendChild(ver);
     BR.NEWS.forEach(function (n) { list.appendChild(entryEl(n)); });
     try { localStorage.setItem(SEEN, String(BR.RELEASE)); } catch (e) { /* the dot comes back next time */ }
     renderDot();
   }
 
   /* ------------------------------------------------------------ updates --- */
-  function remind(on) {
+  function remind(on, release) {
+    var was = outdated;
     outdated = outdated || !!on;
+    if (outdated && !was && BR.install && BR.install.outdated) BR.install.outdated();
+    if (release > latest) latest = release;
     $('#update-note').hidden = !outdated;
+    if (latest > BR.RELEASE) $('#update-note-text').textContent = '新しいバージョン（' + devName(latest) + '）があります。今すぐアップデートできます。';
+  }
+  // one tap: the newest game right away (the web page and the app alike)
+  function update() {
+    sfx('click');
+    if (BR.install && BR.install.update) BR.install.update();
+    else location.reload();
   }
 
   // Tells the server which release this game is: an older one gets the
@@ -46,7 +72,7 @@
   function checkRelease() {
     if (!api.online) return;
     api.release(BR.RELEASE).then(function (r) {
-      if (r.outdated) { remind(true); return; }
+      if (r.outdated) { remind(true, r.release); return; }
       // the money flies in with the thank-you, not before it
       if (r.bonus > 0 && BR.juice) BR.juice.hold('dollars', r.bonus);
       if (r.me) {
@@ -77,7 +103,7 @@
     (missed.length ? missed : BR.NEWS.slice(0, 1)).forEach(function (n) { box.appendChild(entryEl(n)); });
     box.scrollTop = 0;
     K.showModal('thanks');
-    sfx('purchase');
+    sfx('money');
     // the money bursts out of the amount and rains down, then flies into the wallet
     setTimeout(function () {
       var J = BR.juice;
@@ -95,11 +121,7 @@
     K.registerModal('thanks');
     K.dragScroll($('#thanks-news'));
     $('#thanks-ok').addEventListener('click', function () { sfx('click'); K.closeModal('thanks'); });
-    $('#update-note-go').addEventListener('click', function () {
-      if (BR.install && BR.install.update) { BR.install.update(); return; }
-      sfx('click');
-      location.reload();
-    });
+    $('#update-note-go').addEventListener('click', update);
   }
 
   BR.news = {
@@ -108,6 +130,7 @@
     remind: remind,
     checkRelease: checkRelease,
     // the server's newest release (me.release): newer than this game -> update
-    serverRelease: function (n) { if (typeof n === 'number' && n > BR.RELEASE) remind(true); }
+    serverRelease: function (n) { if (typeof n === 'number' && n > BR.RELEASE) remind(true, n); },
+    devName: devName
   };
 })(window.BR = window.BR || {});
