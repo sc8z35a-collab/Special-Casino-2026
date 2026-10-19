@@ -266,7 +266,9 @@
       if (BR.account && BR.account.isOpen()) { BR.account.close(); return true; }
       return BR.screens.back();
     },
-    updateEvent: onAppUpdate
+    updateEvent: onAppUpdate,
+    // the app's notification permission, once the player answered (js/net/push.js)
+    notifyState: function (state) { if (BR.push) BR.push.appState(state); }
   };
 
   function init() {

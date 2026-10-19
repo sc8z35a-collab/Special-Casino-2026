@@ -218,6 +218,7 @@
     pushKey: function () { return get('/api/push/key'); },
     pushSubscribe: function (sub) { return post('/api/push/subscribe', sub); },
     pushUnsubscribe: function (endpoint) { return post('/api/push/unsubscribe', { endpoint: endpoint }); },
+    sight: function (on) { return post('/api/sight', { on: on ? 1 : 0 }); },
 
     /* quests, バイト and updates */
     quests: function () { return get('/api/quests'); },

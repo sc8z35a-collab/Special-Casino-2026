@@ -133,7 +133,9 @@ export class Casino extends DurableObject {
     ctx.blockConcurrencyWhile(async () => {
       migrate(this.db);
       const secret = metaValue(this.db, 'ticket_secret', () => newToken());
-      this.api = createApi({ db: this.db, live: this.live, config: this.config, secret, hostAdmin: (cmd, args) => this.hostAdmin(cmd, args) });
+      // (phone notifications go out after the answer: the object waits for them)
+      const defer = (p) => { if (ctx.waitUntil) ctx.waitUntil(p); return p; };
+      this.api = createApi({ db: this.db, live: this.live, config: this.config, secret, defer, hostAdmin: (cmd, args) => this.hostAdmin(cmd, args) });
       if ((await ctx.storage.getAlarm()) === null) await ctx.storage.setAlarm(Date.now() + HOUSEKEEPING_EVERY);
     });
   }
@@ -174,6 +176,7 @@ export class Casino extends DurableObject {
     if (body && body.op === 'call') this.api.socketCall(a.u, body);
     else if (body && body.op === 'typing') this.api.socketTyping(a.u, body);
     else if (body && body.op === 'beat') this.api.socketBeat(a.u, body);
+    else if (body && body.op === 'sight') this.api.socketSight(a.u, body);
   }
 
   async webSocketClose(ws, code) {

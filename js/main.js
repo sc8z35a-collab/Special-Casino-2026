@@ -685,6 +685,7 @@
     BR.official.init();
     BR.presents.init();
     BR.safety.init();
+    BR.push.init();
     BR.bonus.init();
     BR.quests.init();
     BR.jobs.init();

@@ -165,3 +165,56 @@ test('the operators\' log: everything done, chained, and never deleted', async (
   const a = await register('NoOps');
   assert.equal((await call('GET', '/api/ops/log', { token: a.token })).status, 403);
 });
+
+test('phone notifications: a message for a player away from the game goes to their push service, encrypted and signed', async () => {
+  const { webcrypto, hkdfSync } = await import('node:crypto');
+  const subtle = webcrypto.subtle;
+  const b64u = (b) => Buffer.from(b).toString('base64url');
+  const a = await register('Push1'), b = await register('Push2');
+  await friends(a, b);
+  const key = (await call('GET', '/api/push/key', { token: b.token })).key;
+  assert.equal(Buffer.from(key, 'base64url').length, 65);
+  // the phone's keys
+  const ua = await subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const uaPub = new Uint8Array(await subtle.exportKey('raw', ua.publicKey));
+  const auth = webcrypto.getRandomValues(new Uint8Array(16));
+  const keys = { p256dh: b64u(uaPub), auth: b64u(auth) };
+  assert.equal((await call('POST', '/api/push/subscribe', { token: b.token, body: { endpoint: 'https://127.0.0.1/steal', keys } })).error.code, 'bad_subscription');
+  const endpoint = 'https://fcm.googleapis.com/fcm/send/test-' + Date.now();
+  assert.equal((await call('POST', '/api/push/subscribe', { token: b.token, body: { endpoint, keys } })).ok, true);
+  // what the server sends to the push service
+  const realFetch = globalThis.fetch;
+  let sent = null;
+  globalThis.fetch = (url, init) => {
+    if (String(url) === endpoint) { sent = init; return Promise.resolve(new Response(null, { status: 201 })); }
+    return realFetch(url, init);
+  };
+  try {
+    await call('POST', '/api/messages', { token: a.token, body: { to: b.me.id, text: '今から稼ごう！' } });
+    for (let i = 0; i < 50 && !sent; i++) await new Promise((r) => setTimeout(r, 20));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.ok(sent, 'nothing was sent to the push service');
+  assert.equal(sent.headers['Content-Encoding'], 'aes128gcm');
+  // signed with the server's key (RFC 8292)
+  const [, t, k] = sent.headers.Authorization.match(/^vapid t=([^,]+), k=(.+)$/);
+  assert.equal(k, key);
+  const [h, p, sig] = t.split('.');
+  const pub = await subtle.importKey('raw', Buffer.from(key, 'base64url'), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+  assert.ok(await subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, pub, Buffer.from(sig, 'base64url'), Buffer.from(`${h}.${p}`)));
+  assert.equal(JSON.parse(Buffer.from(p, 'base64url')).aud, 'https://fcm.googleapis.com');
+  // and readable by the phone only (RFC 8291)
+  const body = new Uint8Array(sent.body);
+  const salt = body.slice(0, 16), idlen = body[20], asPub = body.slice(21, 21 + idlen), ct = body.slice(21 + idlen);
+  const asKey = await subtle.importKey('raw', asPub, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  const secret = new Uint8Array(await subtle.deriveBits({ name: 'ECDH', public: asKey }, ua.privateKey, 256));
+  const ikm = new Uint8Array(hkdfSync('sha256', secret, auth, Buffer.concat([Buffer.from('WebPush: info\0'), uaPub, asPub]), 32));
+  const cek = new Uint8Array(hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: aes128gcm\0'), 16));
+  const nonce = new Uint8Array(hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: nonce\0'), 12));
+  const aes = await subtle.importKey('raw', cek, 'AES-GCM', false, ['decrypt']);
+  const plain = new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv: nonce }, aes, ct));
+  assert.equal(plain[plain.length - 1], 2);
+  const note = JSON.parse(Buffer.from(plain.slice(0, -1)).toString('utf8'));
+  assert.deepEqual([note.kind, note.title, note.body, note.open], ['msg', 'Push1', '今から稼ごう！', `dm:${a.me.id}`]);
+});

@@ -5,6 +5,9 @@
     <!-- voice chat with friends (稼ぎに招待) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- the phone's notifications: messages, calls and invitations while the app is in the background -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- installing the app's own updates from the game's site -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 

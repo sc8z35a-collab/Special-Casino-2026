@@ -26,6 +26,7 @@ import { createPeter, reservedName } from './peter.js';
 import { createJohnson } from './johnson.js';
 import { createOfficial } from './official.js';
 import { createOpsLog } from './opslog.js';
+import { createPush } from './push.js';
 import { screen as filterText } from './filter.js';
 import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
 import { readQuests, stepQuests, claimQuests, questsReady, questView } from './quests.js';
@@ -36,6 +37,8 @@ const PAGE = 50;
 const CURRENCIES = ['tokens', 'dollars'];
 // voice: the home call (a player and everyone watching them)
 const CALL_TYPES = new Set(['home', 'hub']);
+// the push services browsers subscribe with (Chrome / Android, Firefox, Safari / iPhone, Edge)
+const PUSH_HOSTS = /^(?:fcm\.googleapis\.com|android\.googleapis\.com|(?:[\w-]+\.)*push\.services\.mozilla\.com|(?:[\w-]+\.)*push\.apple\.com|(?:[\w-]+\.)*notify\.windows\.com)$/;
 const MAX_PENDING_REQUESTS = 50;
 const CHARM = RULES.charm;
 // group chats: members (with the one who made it) and the length of a name
@@ -57,7 +60,7 @@ function randomInt(lo, hi) {
   return lo + (r[0] % (hi - lo + 1));
 }
 
-export function createApi({ db, live: hostLive, config, secret, hostAdmin = null }) {
+export function createApi({ db, live: hostLive, config, secret, hostAdmin = null, defer = null }) {
   const q = statements(db);
   const tx = (fn) => db.tx(fn);
   const quota = createQuota(db, { requests: config.dailyRequestLimit, megabytes: config.dailyMbLimit });
@@ -214,7 +217,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const johnson = createJohnson({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel });
   johnson.id();
   // the operators' account in everyone's messages, and the operators' log
-  const official = createOfficial({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel });
+  const official = createOfficial({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel,
+    onDelivered: (userId, dto) => phone(userId, dmNote(dto)) });
   official.id();
   const opsLog = createOpsLog({ q });
   // a new DEV going live is the first entry of its own
@@ -224,6 +228,52 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       opsLog.add({ action: 'release', summary: `DEV${RELEASE} を本番に反映（サーバーが起動）`, detail: { release: RELEASE, previous: seen ? Number(seen.value) : null, host: config.host || '' } });
       q("INSERT INTO meta (key, value) VALUES ('ops_log_release', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(RELEASE));
     }
+  }
+
+  /* ----- phone notifications (server/core/push.js) ----- */
+  const push = createPush({
+    q,
+    meta: {
+      get: (k) => { const r = q('SELECT value FROM meta WHERE key = ?').get(k); return r ? r.value : null; },
+      set: (k, v) => q('INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)').run(k, v)
+    },
+    contact: config.pushContact || '',
+    defer: defer || undefined
+  });
+  // Whether a player's game is in sight: the beats (sent only by a page in
+  // sight) say so, and the page tells when it goes out of sight. Memory only:
+  // after a restart everyone counts as away until their next beat.
+  const sight = new Map();
+  const SIGHT_MS = 90000;
+  const inSight = (id) => live.isOnline(id) && Date.now() - (sight.get(id) || 0) < SIGHT_MS;
+  function seeing(u, body) {
+    if (body && body.on) sight.set(u.id, Date.now()); else sight.delete(u.id);
+    return { ok: true };
+  }
+  // a message, a call or an invitation for a player whose game is out of
+  // sight goes to their phone; `gap`: the same one at most that often
+  const pushedAt = new Map();
+  function phone(userId, n, gap = 0) {
+    if (!n || inSight(userId)) return;
+    if (gap) {
+      const k = `${userId}:${n.tag}`;
+      if (Date.now() - (pushedAt.get(k) || 0) < gap) return;
+      pushedAt.set(k, Date.now());
+    }
+    push.notify(userId, n).catch(() => {});
+  }
+  const clip = (t, n) => { const a = Array.from(String(t || '')); return a.length > n ? a.slice(0, n).join('') + '…' : a.join(''); };
+  // what a direct message says on the phone
+  function dmNote(dto) {
+    if (!dto || !dto.from || dto.kind === 'system' || dto.kind === 'offer') return null;
+    const cur = dto.currency === 'tokens' ? 'トークン' : 'ドル';
+    const present = dto.kind === 'present' ? RULES.presents.find((p) => p.id === dto.text) : null;
+    const body = dto.kind === 'transfer' ? `${Number(dto.amount).toLocaleString('en-US')} ${cur}が届きました`
+      : dto.kind === 'present' ? `${present ? present.name : 'プレゼント'}のプレゼントが届きました。タップして受け取ろう`
+        : dto.kind === 'gift' ? '車のプレゼントが届きました'
+          : dto.kind === 'item' ? 'アイテムが届きました'
+            : clip(dto.text, 140);
+    return { kind: 'msg', title: dto.from.name || 'メッセージ', body, tag: `dm:${dto.from.id}`, open: `dm:${dto.from.id}` };
   }
 
   // What the chat filter found in a player's words (server/core/filter.js): the
@@ -560,6 +610,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     });
     const dto = { ...msgDto(row), group: g.id };
     for (const id of memberIds(g.id)) live.send(id, 'msg', sender && id === sender.id ? dto : { ...dto, unread: unreadTotal(id) });
+    if (sender && kind === 'text') {
+      for (const id of memberIds(g.id)) {
+        if (id !== sender.id) phone(id, { kind: 'msg', title: g.name, body: `${sender.name}: ${clip(body, 120)}`, tag: `group:${g.id}`, open: `group:${g.id}` });
+      }
+    }
     return dto;
   }
   function pendingRequests(userId) {
@@ -571,6 +626,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const dto = msgDto(m);
     live.send(to, 'msg', { ...dto, unread: unreadTotal(to) });
     live.send(from, 'msg', dto);
+    phone(to, dmNote(dto));
     return dto;
   }
 
@@ -918,6 +974,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function beat(u, body) {
     if (u.npc) return { counted: 0 };
     const now = Date.now();
+    sight.set(u.id, now);
     const idle = Math.max(0, Number(body && body.idle) || 0);
     touchActive(u.id, now - idle, true);
     const dt = now - (u.beat_at || 0);
@@ -2209,6 +2266,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q(`INSERT INTO hub_invites (from_id, to_id, created_at) VALUES (?, ?, ?)
          ON CONFLICT(from_id, to_id) DO UPDATE SET created_at = excluded.created_at`).run(u.id, to, now);
       live.send(to, 'hub', { type: 'invite', from: mini(u), size: h ? hubMemberRows(h.id).length : 1, until: now + HUB.inviteMs });
+      phone(to, { kind: 'invite', title: '「一緒に稼ぐ」の招待', body: `${u.name}さんから「一緒に稼ぐ」の招待が届きました。10分以内にゲームを開いて参加しよう！`, tag: `invite:${u.id}`, open: 'friends' });
       return { ok: true, until: now + HUB.inviteMs };
     },
 
@@ -2436,6 +2494,33 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { message: official.fromPlayer(u, `【${kind === 'bug' ? '報告' : '意見案'}】\n${text}`) };
     },
 
+    /* ----- phone notifications ----- */
+
+    'GET /api/push/key': async (req, u) => ({ key: await push.publicKey(), on: push.has(u.id) }),
+    // a browser's subscription (PushSubscription.toJSON()); only the push services' own addresses
+    'POST /api/push/subscribe': async (req, u) => {
+      const body = await req.json(8192);
+      const endpoint = String(body.endpoint || '');
+      const keys = body.keys && typeof body.keys === 'object' ? body.keys : {};
+      let host = '';
+      try { const e = new URL(endpoint); host = e.protocol === 'https:' ? e.hostname : ''; } catch { host = ''; }
+      if (!PUSH_HOSTS.test(host) || endpoint.length > 2000 || !/^[\w-]{40,200}$/.test(String(keys.p256dh || '')) || !/^[\w-]{10,64}$/.test(String(keys.auth || ''))) {
+        throw new ApiError(400, 'bad_subscription', 'この端末では通知を登録できませんでした');
+      }
+      push.subscribe(u.id, { endpoint, p256dh: String(keys.p256dh), auth: String(keys.auth) }, String(req.header('origin') || ''));
+      // a few devices a player: the oldest go
+      const extra = q('SELECT endpoint FROM push_subs WHERE user_id = ? ORDER BY created_at DESC LIMIT -1 OFFSET 8').all(u.id);
+      for (const r of extra) q('DELETE FROM push_subs WHERE endpoint = ?').run(r.endpoint);
+      return { ok: true };
+    },
+    'POST /api/push/unsubscribe': async (req, u) => {
+      const body = await req.json(8192);
+      push.unsubscribe(u.id, String(body.endpoint || ''));
+      return { ok: true, on: push.has(u.id) };
+    },
+    // the game went out of sight (or came back)
+    'POST /api/sight': async (req, u) => seeing(u, await req.json()),
+
     // (each connection also notes the device the account is used on)
     'POST /api/stream-ticket': (req, u) => {
       seenOn(u.id, req);
@@ -2466,6 +2551,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       throw new ApiError(409, 'not_home', 'ホームで話せる相手ではありません');
     }
     live.send(to, 'call', { type, callId, from: mini(u), data: body.data ?? null });
+    // someone calling a player whose game is out of sight: their phone rings (once in two minutes)
+    if (body.data && body.data.op === 'hello' && !body.data.reply) {
+      phone(to, { kind: 'call', title: `${u.name}さんから通話`, body: type === 'hub' ? '「一緒に稼ぐ」の通話であなたを呼んでいます' : 'ホームの通話であなたを呼んでいます', tag: `call:${u.id}`, open: 'slot' }, 120000);
+    }
     // quests: 友達に電話をかけてみる (calling into the home or the hub), 友達と
     // 話す（通話） (two people in a home or a hub whose voices are connecting)
     const op = body.data && body.data.op;
@@ -2502,6 +2591,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const socketCall = fromSocket(relayCall);
   const socketTyping = fromSocket(relayTyping);
   const socketBeat = fromSocket(beat);
+  const socketSight = fromSocket(seeing);
 
   // Friendship both ways, the request(s) gone, a note in their conversation.
   function makeFriends(requester, accepter) {
@@ -2702,6 +2792,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     socketCall,
     socketTyping,
     socketBeat,
+    socketSight,
     quota,
     close: () => quota.flush()
   };

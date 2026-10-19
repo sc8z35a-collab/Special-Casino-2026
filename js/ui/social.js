@@ -142,7 +142,8 @@
       p.appendChild(el('small', 'confirm-sub', '残高やフレンドはサーバーに保存されています。ユーザー名とパスワードでいつでも戻れます。'));
     }, 'ログアウト').then(function (ok) {
       if (!ok) return;
-      api.logout().catch(function () {}).then(function () {
+      // this phone stops getting the account's notifications first (while signed in)
+      (BR.push ? BR.push.forget() : Promise.resolve()).then(function () { return api.logout(); }).catch(function () {}).then(function () {
         signedOut();
         BR.screens.show('start');
         toast('ログアウトしました');
@@ -1309,6 +1310,7 @@
       pfBtn(a1, '引き継ぎコード発行', 'recovery', '', 'share');
       pfBtn(a1, 'コードでログイン', 'codeLogin', '', 'download');
       pfBtn(a1, '演出設定', 'effects', '', 'sound');
+      if (BR.push && BR.push.mode() !== 'none') pfBtn(a1, '通知', 'push', '', 'chat', BR.push.permission() === 'granted' ? 'オン' : 'オフ');
       pfLink(a2, 'ログアウト', 'logout');
       loadBlocks();
       return;
@@ -1354,6 +1356,7 @@
       // another account of mine: its 引き継ぎコード
       case 'codeLogin': sfx('click'); K.closeModal('profile'); BR.account.open('code-login', 'ほかのアカウントの引き継ぎコードを入力すると、そのアカウントに切り替わります。'); break;
       case 'effects': sfx('click'); K.closeModal('profile'); BR.effects.open(); break;
+      case 'push': sfx('click'); K.closeModal('profile'); BR.push.settings(); break;
       case 'logout': sfx('click'); logout(); break;
       case 'transfer': sfx('click'); openTransfer(u); break;
       case 'gift': sfx('click'); K.closeModal('profile'); BR.cars.giftTo(u); break;
