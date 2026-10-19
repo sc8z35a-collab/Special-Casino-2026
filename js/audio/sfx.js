@@ -14,6 +14,7 @@
   function masterLevel() { return muted ? 0 : ducked ? 0.8 * DUCK : 0.8; }
   var noiseBuf = null;
   var reelLoop = null;
+  var feverOn = false;   // FEVER (js/render/combo.js): the reels run faster
 
   /* ------------------------------------------------------------ recordings --- */
   var RECORDINGS = {
@@ -484,6 +485,28 @@
       bell(N.E6, t + 0.42, 0.08, 0.8, 0.4);
       bell(N.A5 * 2, t + 0.46, 0.06, 0.9, 0.4);
     },
+    // one more of a kind on the pay line (n: how many now): a bell a step higher each time
+    match: function (t, n) {
+      var notes = [N.C6, N.C6, N.E6, N.G6, N.C7, N.E6 * 2];
+      var f = notes[Math.min(5, n || 2)];
+      bell(f, t, 0.09, 0.8, 0.45);
+      bell(f * 1.5, t + 0.05, 0.05, 0.7, 0.45);
+      if (n >= 4) bell(f * 2, t + 0.1, 0.05, 0.9, 0.5);
+    },
+    // a 7, a BAR or the statue lands on the pay line
+    premium: function (t, s) {
+      if (s === 'statue') {
+        bell(N.C6, t, 0.08, 1.6, 0.6);
+        bell(N.G6, t + 0.03, 0.06, 1.6, 0.6);
+        bell(N.E6 * 2, t + 0.07, 0.04, 1.4, 0.6);
+      } else if (s === 'seven') {
+        bell(N.A5 * 2, t, 0.08, 0.6, 0.4);
+        tone({ t: t, f: 1760, f2: 2640, glide: 0.08, d: 0.15, v: 0.05, type: 'triangle' });
+      } else {
+        noise({ t: t, ftype: 'bandpass', f: 3500, q: 4, d: 0.08, v: 0.08 });
+        bell(N.E6, t, 0.06, 0.5, 0.3);
+      }
+    },
     // a リーチ that did not come: the fire goes out (a hiss and a sigh down)
     miss: function (t) {
       noise({ t: t, ftype: 'highpass', f: 3000, f2: 900, a: 0.01, d: 0.55, v: 0.07, wet: 0.2 });
@@ -502,6 +525,38 @@
       [N.C6, N.E6, N.G6, N.C7].forEach(function (f, i) { bell(f, t + 0.32 + i * 0.05, 0.06, 1.1); });
       cymbal(t + 0.28, 0.1, 1.2);
     },
+    // FEVER: a rush of flame up into a fanfare, fire crackling under it
+    fever: function (t) {
+      noise({ t: t, ftype: 'bandpass', f: 300, f2: 6000, q: 1.2, a: 0.25, d: 0.3, v: 0.2, wet: 0.3 });
+      tone({ t: t, f: 70, f2: 40, glide: 0.5, d: 0.6, v: 0.32, type: 'sine', wet: 0.2 });
+      timpani(t + 0.45, 98, 0.55);
+      cymbal(t + 0.45, 0.18, 2.2);
+      brass([N.G4, N.B4, N.D5], t + 0.45, 0.12, 0.5);
+      brass([N.A4, N.C5, N.E5], t + 0.6, 0.12, 0.5);
+      brass([N.C5, N.E5, N.G5], t + 0.76, 0.9, 0.62);
+      [N.C6, N.E6, N.G6, N.C7].forEach(function (f, i) { bell(f, t + 0.8 + i * 0.05, 0.06, 1.1); });
+      for (var i = 0; i < 16; i++) noise({ t: t + 0.4 + Math.random() * 1.4, ftype: 'highpass', f: 2500 + Math.random() * 4000, d: 0.015 + Math.random() * 0.02, v: 0.04 + Math.random() * 0.05 });
+    },
+    // a win in a FEVER: a gust of fire
+    feverWin: function (t) {
+      noise({ t: t, ftype: 'bandpass', f: 600, f2: 4200, q: 1, a: 0.04, d: 0.32, v: 0.13, wet: 0.25 });
+      for (var i = 0; i < 6; i++) noise({ t: t + 0.05 + Math.random() * 0.4, ftype: 'highpass', f: 3000 + Math.random() * 3000, d: 0.02, v: 0.05 });
+    },
+    // the FEVER goes out: a long hiss and a falling sigh
+    feverEnd: function (t) {
+      noise({ t: t, ftype: 'highpass', f: 4000, f2: 700, a: 0.02, d: 0.9, v: 0.08, wet: 0.3 });
+      tone({ t: t + 0.05, f: N.G5, f2: N.C5, glide: 0.6, d: 0.6, v: 0.07, type: 'triangle', wet: 0.3 });
+      tone({ t: t + 0.05, f: N.E5, f2: N.A4 / 2, glide: 0.7, d: 0.7, v: 0.05, type: 'triangle', wet: 0.3 });
+    },
+    // the curtains open on the machine: velvet sweeping aside and a ta-da
+    curtain: function (t) {
+      noise({ t: t, ftype: 'lowpass', f: 300, f2: 2400, q: 0.7, a: 0.3, d: 0.6, v: 0.16, wet: 0.2 });
+      noise({ t: t + 0.12, ftype: 'bandpass', f: 900, f2: 3000, q: 0.8, a: 0.25, d: 0.5, v: 0.07 });
+      brass([N.G4, N.B4, N.D5], t + 0.42, 0.1, 0.4);
+      brass([N.C5, N.E5, N.G5], t + 0.56, 0.7, 0.5);
+      cymbal(t + 0.56, 0.08, 1.3);
+      [N.G6, N.C7].forEach(function (f, i) { bell(f, t + 0.6 + i * 0.07, 0.05, 1.0); });
+    },
     // a fruit thrown or caught
     fruit: function (t) {
       tone({ t: t, f: 520, f2: 1240, glide: 0.08, d: 0.12, v: 0.12, type: 'triangle' });
@@ -512,7 +567,7 @@
   function startReels() {
     if (!ctx || muted || reelLoop) return;
     var t = ctx.currentTime;
-    var rec = sample('reels', t);
+    var rec = sample('reels', t, feverOn ? { rate: 1.14 } : null);
     if (rec) {
       rec.src.loop = true;
       reelLoop = rec;
@@ -605,6 +660,8 @@
     },
     preloadVoice: function (url) { if (ctx) voiceBuffer(url).catch(function () {}); },
     startReels: startReels,
+    // FEVER on / off: the turning reels sound faster
+    fever: function (on) { feverOn = !!on; },
     stopReels: function () { if (ctx) stopReels(); },
     // kept for the sound button, which is decoration: the sounds stay on
     setMuted: function () {},

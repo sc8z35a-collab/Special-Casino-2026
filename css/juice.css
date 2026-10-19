@@ -113,6 +113,21 @@
   background-clip: text;
 }
 .jc-banner.level::before { background: linear-gradient(180deg, rgba(255, 220, 90, 0), rgba(255, 210, 80, .4) 30%, rgba(255, 250, 210, .65) 50%, rgba(255, 210, 80, .4) 70%, rgba(255, 220, 90, 0)); }
+/* FEVER!!: fire letters on a band of flame (js/render/combo.js) */
+.jc-banner.fever b {
+  font-family: 'MontserratX', var(--f-num);
+  font-style: normal;
+  font-weight: 900;
+  font-size: 150px;
+  letter-spacing: 4px;
+  background: linear-gradient(180deg, #ffffff 0%, #fff0a0 26%, #ffb02a 50%, #ff4a12 74%, #a8100a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-stroke: 3px #3a0400;
+  filter: drop-shadow(0 6px 0 #4a0500) drop-shadow(0 0 34px rgba(255, 90, 20, 1));
+}
+.jc-banner.fever::before { background: linear-gradient(180deg, rgba(255, 60, 0, 0), rgba(255, 70, 10, .6) 28%, rgba(255, 220, 140, .8) 50%, rgba(255, 70, 10, .6) 72%, rgba(255, 60, 0, 0)); }
+.jc-banner.fever .jc-banner-in { animation: jcBanner var(--ms, 1400ms) var(--jc-out) forwards, jcJitter .09s linear 8; }
 @keyframes jcBanner {
   0% { opacity: 0; transform: translate(-50%, -50%) scale(3.2) skewX(-12deg); }
   12% { opacity: 1; transform: translate(-50%, -50%) scale(.88) skewX(-12deg); }
@@ -173,6 +188,58 @@
   100% { transform: translateX(240%); }
 }
 .jc-low #bg::after { display: none; }
+
+/* ------------------------------------------------------------ the curtains (title screen -> slot) --- */
+/* red velvet: folds of light and shade, darker at the top and bottom, a gold
+   fringe on the hem; each half gathers to its side (squeezed towards its
+   outer edge, the hem swinging behind), then the valance goes up */
+.curtain { position: absolute; inset: 0; z-index: 92; pointer-events: none; overflow: hidden; }
+.curtain .cl, .curtain .cr {
+  position: absolute;
+  top: -20px;
+  bottom: -10px;
+  width: 53%;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, .45), rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0) 78%, rgba(0, 0, 0, .5)),
+    repeating-linear-gradient(90deg, #3e0207 0, #7e0c18 20px, #b81c2c 40px, #de4050 48px, #b81c2c 56px, #7e0c18 76px, #3e0207 96px);
+  will-change: transform;
+}
+.curtain .cl { left: 0; transform-origin: 0 50%; box-shadow: 16px 0 34px rgba(0, 0, 0, .6); animation: curtainL 1.12s cubic-bezier(.6, 0, .28, 1) .06s forwards; }
+.curtain .cr { right: 0; transform-origin: 100% 50%; box-shadow: -16px 0 34px rgba(0, 0, 0, .6); animation: curtainR 1.12s cubic-bezier(.6, 0, .28, 1) .06s forwards; }
+.curtain .cl::after, .curtain .cr::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 30px;
+  background: repeating-linear-gradient(90deg, #ffe39a 0 5px, #b9821e 5px 10px);
+  box-shadow: 0 -5px 0 #d9a53c, 0 -9px 0 #6a3a08;
+}
+.curtain .cv {
+  position: absolute;
+  left: -2%;
+  right: -2%;
+  top: 0;
+  height: 150px;
+  background:
+    linear-gradient(#e8b84a, #e8b84a) 0 84px / 100% 6px no-repeat,
+    radial-gradient(circle 64px at 50% 0, #a8182a 0 56px, #f0c45a 57px 61px, rgba(0, 0, 0, 0) 62px) 0 88px / 128px 62px repeat-x,
+    linear-gradient(180deg, #2e0105, #82101c 62%, #a8182a) 0 0 / 100% 88px no-repeat;
+  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, .55));
+  animation: curtainUp .62s cubic-bezier(.55, 0, .3, 1) .72s forwards;
+}
+@keyframes curtainL {
+  0% { transform: none; }
+  55% { transform: scaleX(.42) skewX(4deg); }
+  100% { transform: translateX(-100%) scaleX(.22); }
+}
+@keyframes curtainR {
+  0% { transform: none; }
+  55% { transform: scaleX(.42) skewX(-4deg); }
+  100% { transform: translateX(100%) scaleX(.22); }
+}
+@keyframes curtainUp { to { transform: translateY(-110%); } }
 
 /* ------------------------------------------------------------ the wallet --- */
 .wallet .bump { animation: jcWalletBump .55s var(--jc-pop); }
@@ -245,6 +312,13 @@
 /* a BIG WIN: every other bulb, fast (only the opacity moves: no repainting) */
 .mq.big i::after { animation: mqFlash .16s steps(1) infinite; }
 .mq.big i:nth-child(odd)::after { animation-delay: -.08s; }
+
+/* FEVER (js/render/combo.js): the bulbs burn in fire colours, and when
+   nothing else is on they chase round instead of breathing */
+.mq.fever:not(.antic) i::after { background: radial-gradient(circle, #fffef4 0 12%, rgba(255, 200, 120, .95) 26%, rgba(255, 96, 20, .62) 46%, rgba(255, 50, 0, 0) 72%); }
+.mq.fever:not(.antic) i:nth-child(3n)::after { background: radial-gradient(circle, #fff 0 12%, rgba(255, 160, 214, .95) 26%, rgba(255, 50, 150, .6) 46%, rgba(255, 0, 110, 0) 72%); }
+.mq.fever:not(.antic) i:nth-child(3n+1)::after { background: radial-gradient(circle, #fffef0 0 14%, rgba(255, 240, 150, .95) 26%, rgba(255, 190, 40, .6) 46%, rgba(255, 150, 0, 0) 72%); }
+.mq.fever.idle i::after { animation: mqChase .5s steps(1) infinite; animation-delay: calc(var(--i) * -.125s); }
 
 /* the reels jolt when they land: kept on a layer of their own so that costs nothing */
 #reels { will-change: transform; }
@@ -458,6 +532,10 @@
 #screen-slot.active .bet-group { animation-delay: .08s; }
 #screen-slot.active .win-group { animation-delay: .12s; }
 @keyframes jcHudIn { 0% { opacity: 0; transform: translateY(26px) scale(.8); } 100% { opacity: 1; transform: none; } }
+/* coming in behind the curtains: everything waits until it is uncovered */
+.jc-curtain #screen-slot.active #reels { animation: jcReelsIn .7s var(--jc-pop) .16s backwards; }
+.jc-curtain #screen-slot.active .pill, .jc-curtain #screen-slot.active .hud-circle, .jc-curtain #screen-slot.active .bet-group, .jc-curtain #screen-slot.active .win-group { animation-delay: .6s; }
+.jc-curtain #screen-slot.active .spin-btn { animation-delay: .7s; }
 @keyframes jcSpinIn { 0% { opacity: 0; transform: scale(.3) rotate(-120deg); } 100% { opacity: 1; transform: none; } }
 
 /* tabs: the active one lights up; panes slide in */

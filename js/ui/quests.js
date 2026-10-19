@@ -34,9 +34,10 @@
     var before = xp === null ? null : LV.of(xp);
     var grew = xp !== null && v > xp;
     xp = v;
-    renderLevel();
     var after = LV.of(xp);
-    if (!quiet && before !== null && after > before) note({ level: after });
+    var levelled = !quiet && before !== null && after > before;
+    renderLevel(levelled);
+    if (levelled) note({ level: after });
     else if (grew && !quiet) xpSparkle();
   }
   // XP came in: a little glitter where the bar has grown to
@@ -55,14 +56,26 @@
     bar.appendChild(fill);
     return bar;
   }
-  // the level shows on my card (top left of the slot screen) and on the quest screen
-  function renderLevel() {
+  // The level shows on my card (top left of the slot screen) and on the
+  // quest screen. A new level: the bar on the card fills up to the end and
+  // stays full until the LEVEL UP shows (levelUp), then the number turns
+  // over and the bar starts again from nothing.
+  var turn = null, turnTimer = 0;
+  function pct(info) { return Math.round(info.into / info.need * 100) + '%'; }
+  function renderLevel(levelled) {
     var q = $('#q-lv');
     q.textContent = '';
     if (xp === null) return;
     var info = LV.info(xp);
-    $('#lv-num').textContent = info.level;
-    $('#lv-fill').style.width = Math.round(info.into / info.need * 100) + '%';
+    if (levelled || turn) {
+      turn = info;
+      $('#lv-fill').style.width = '100%';
+      clearTimeout(turnTimer);
+      turnTimer = setTimeout(turnOver, 20000);
+    } else {
+      $('#lv-num').textContent = info.level;
+      $('#lv-fill').style.width = pct(info);
+    }
     q.appendChild(el('b', 'q-lv-num', 'Lv.' + info.level));
     q.appendChild(levelBar(info));
     q.appendChild(el('span', 'q-lv-xp', U.fmt(info.into) + ' / ' + U.fmt(info.need) + ' XP'));
@@ -114,9 +127,29 @@
     // up while the 10 s window is open, then a little longer
     noteTimer = setTimeout(hideNote, Math.max(4000, b.until - Date.now() + 2500));
   }
+  function turnOver() {
+    clearTimeout(turnTimer);
+    var info = turn, fill = $('#lv-fill'), J = BR.juice;
+    if (!info) return;
+    turn = null;
+    $('#lv-num').textContent = info.level;
+    fill.style.transition = 'none';
+    fill.style.width = '0%';
+    void fill.offsetWidth;
+    fill.style.transition = '';
+    fill.style.width = pct(info);
+    if (J && home() && J.visible(fill)) {
+      var num = $('.me-lv b'), c = J.at(num);
+      J.ring(c.x, c.y, { r0: 6, r1: 90, dur: 0.5, w: 6 });
+      J.sparks(c.x, c.y, { n: 14, speed: 420, life: 0.6, g: 300 });
+      J.bump(num, 1.5);
+    }
+  }
+
   // LEVEL UP across the screen, the card at the top left lights up
   var levelShown = 0;
   function levelUp(n) {
+    setTimeout(turnOver, 420);
     if (n <= levelShown) return;
     levelShown = n;
     var J = BR.juice, card = $('#me-card');

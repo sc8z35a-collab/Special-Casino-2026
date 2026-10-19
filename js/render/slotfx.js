@@ -3,8 +3,10 @@
    in a リーチ, flashing on a win), a flash of light across the reels and a
    burst off the SPIN button at the start, dust, light and a jolt where each
    reel lands, the リーチ banner with sparks and lightning off the reel that
-   slows down, and coins jumping out of the winning symbols. Drawn with
-   js/render/juice.js and css/juice.css. */
+   slows down, and coins jumping out of the winning symbols; the curtains
+   that open on it from the title screen and the symbols that catch the
+   light while nothing happens. Drawn with js/render/juice.js and
+   css/juice.css. */
 (function (BR) {
   'use strict';
 
@@ -13,7 +15,7 @@
   var VIEW_W = 1006, VIEW_H = 554;
   var COL_PITCH = 202.67, COL_C0 = 98, ROW_PITCH = 186, CELL_H = 182;
 
-  var mq = null, mode = '', modeTimer = 0, sweep = null;
+  var mq = null, mode = '', modeTimer = 0, sweep = null, fever = false;
   var antic = { timer: 0, reels: [], count: 0, queued: [] };
   var lastActive = 0, attract = false;
 
@@ -30,8 +32,49 @@
     lastActive = U.now();
     document.addEventListener('pointerdown', wake, true);
     setInterval(checkIdle, 1000);
-    // coming in from the title screen, the machine powers up
-    BR.screens.onChange(function (name, prev) { if (name === 'slot' && prev === 'start') setTimeout(powerOn, 250); });
+    // coming in from the title screen, the curtains open and the machine powers up
+    BR.screens.onChange(function (name, prev) {
+      if (name !== 'slot' || prev !== 'start') return;
+      var opened = curtains();
+      setTimeout(powerOn, opened ? 520 : 250);
+    });
+    setTimeout(glints, 4000);
+  }
+
+  // Red velvet curtains over the whole stage gather to the sides, their hems
+  // swinging behind, and the valance goes up; the buttons pop in as they are
+  // uncovered (css/juice.css). Returns false when there is no show.
+  function curtains() {
+    if (!J || J.calm()) return false;
+    var stage = $('#stage');
+    var c = document.createElement('div');
+    c.className = 'curtain';
+    c.setAttribute('aria-hidden', 'true');
+    ['cl', 'cr', 'cv'].forEach(function (k) {
+      var i = document.createElement('i');
+      i.className = k;
+      c.appendChild(i);
+    });
+    stage.appendChild(c);
+    stage.classList.add('jc-curtain');
+    BR.sfx.play('curtain');
+    setTimeout(function () { stage.classList.remove('jc-curtain'); }, 1500);
+    setTimeout(function () { if (c.parentNode) c.parentNode.removeChild(c); }, 1700);
+    return true;
+  }
+
+  // While nothing happens, now and then a symbol catches the light (the
+  // shiny ones more often).
+  var SHINE = { seven: 3, statue: 3, bar: 2, diamond: 3, star: 2, gold: 2, revolver: 1 };
+  function glints() {
+    setTimeout(glints, U.rand(1700, 3300));
+    var g = BR.game, reels = BR.app && BR.app.reels;
+    if (!J || J.calm() || document.hidden || !reels || !g || g.busy() || BR.screens.current() !== 'slot' ||
+      document.querySelector('#stage > .modal:not([hidden])')) return;
+    var grid = reels.getGrid(), spots = [];
+    for (var c = 0; c < 5; c++) for (var r = 0; r < 3; r++) for (var k = 0; k < (SHINE[grid[c][r]] || 1); k++) spots.push([c, r]);
+    var at = spots[Math.floor(Math.random() * spots.length)], p = cell(at[0], at[1]);
+    J.stars(p.x + U.rand(-46, 46), p.y + U.rand(-56, 30), { n: 1, r: 1, speed: 1, size: U.rand(70, 105), life: 0.9, stagger: 0 });
   }
 
   // the lights race round once, light sweeps the reels, sparks fly off the frame
@@ -121,10 +164,16 @@
   function setMode(m, ms) {
     clearTimeout(modeTimer);
     if (mq && m !== mode) {
-      mq.className = 'mq ' + m;
+      mq.className = 'mq ' + m + (fever ? ' fever' : '');
       mode = m;
     }
     if (ms) modeTimer = setTimeout(function () { setMode('idle'); }, ms);
+  }
+
+  // FEVER (js/render/combo.js): the bulbs burn in fire colours
+  function setFever(on) {
+    fever = !!on;
+    if (mq) mq.classList.toggle('fever', fever);
   }
 
   /* ------------------------------------------------------------ positions --- */
@@ -170,6 +219,7 @@
     J.bloom(top.x, y0, { size: 220, sy: 0.35, dur: 0.3, a: 0.5 });
     // the machine takes the weight of each reel: a thud downwards
     J.kick('#reels', 0, last ? 9 : 5, last ? 300 : 220);
+    reveal(i);
     if (antic.reels.indexOf(i) >= 0) {
       var mid = (y0 + y1) / 2;
       if (awaited(i)) {
@@ -193,6 +243,47 @@
         if (next !== undefined) setTimeout(function () { startAntic(next); }, 260);
       }
     }
+  }
+
+  /* What the reel that just landed adds to the pay line: a 7, a BAR or the
+     statue landing gets its own burst; a symbol that now pays (or pays
+     more) lights up in all its places with a bell a step higher for every
+     one of a kind, and stays framed until the win is shown. */
+  var PREMIUM = { seven: 'red', bar: 'green', statue: 'white' };
+  function reveal(i) {
+    var res = BR.game && BR.game.result;
+    if (!res || !res.line || !BR.app || !BR.app.reels) return;
+    var line = res.line, s = line[i], pays = BR.CONFIG.pays;
+    var p = cell(i, 1);
+    if (PREMIUM[s]) {
+      if (s === 'statue') {
+        // a pillar of light comes down on her
+        J.bloom(p.x, p.y, { size: 420, sy: 2.2, dur: 0.8, a: 0.9 });
+        J.stars(p.x, p.y, { n: 6, r: 110, size: 90, life: 1.1 });
+        J.sparks(p.x, p.y - 60, { n: 14, speed: 260, dir: Math.PI / 2, spread: 0.4, life: 0.9, g: 200, color: 'white', jx: 60 });
+      } else {
+        J.ring(p.x, p.y, { r0: 30, r1: 150, dur: 0.45, w: 8, color: PREMIUM[s] });
+        J.sparks(p.x, p.y, { n: 14, speed: 520, life: 0.6, g: 500, color: s === 'seven' ? 'fire' : 'green' });
+      }
+      BR.sfx.play('premium', s);
+    }
+    var cols = [];
+    for (var j = 0; j <= i; j++) if (line[j] === s) cols.push(j);
+    if (!pays[s] || !pays[s][cols.length]) return;
+    // every symbol paying so far stays framed
+    var framed = [];
+    Object.keys(pays).forEach(function (sym) {
+      var c = [];
+      for (var k = 0; k <= i; k++) if (line[k] === sym) c.push(k);
+      if (pays[sym][c.length]) framed = framed.concat(c);
+    });
+    BR.app.reels.preview(framed);
+    cols.forEach(function (c, k) {
+      var q = cell(c, 1);
+      J.ring(q.x, q.y, { r0: 40, r1: 130 + cols.length * 20, dur: 0.45, w: 6 + cols.length, delay: k * 0.04 });
+      J.sparks(q.x, q.y, { n: 6 + cols.length * 2, speed: 420, life: 0.55, g: 400, delay: k * 0.04 });
+    });
+    BR.sfx.play('match', cols.length);
   }
 
   // Did reel i bring what its リーチ waited for (one more of a symbol making
@@ -277,6 +368,13 @@
       if (!big) J.coins(p.x, p.y - 20, { n: 4, pic: 'chip', speed: 760, size: 44, life: 1.1, delay: d });
     });
     var mid = cols.length ? { x: sx / cols.length, y: sy / cols.length } : reelBox();
+    // lightning links the winning symbols, twice
+    var linked = cols.slice().sort(function (a, b) { return a - b; });
+    for (var k = 1; k < linked.length; k++) {
+      var a = cell(linked[k - 1], 1), b = cell(linked[k], 1);
+      J.bolt(a.x, a.y, b.x, b.y, { amp: 26, segs: 9, dur: 0.38, w: 3, color: 'gold', delay: 0.12 + k * 0.06 });
+      J.bolt(a.x, a.y, b.x, b.y, { amp: 20, segs: 9, dur: 0.3, w: 2, color: 'white', delay: 0.7 + k * 0.06 });
+    }
     if (!big) {
       var w = J.at('.win-box');
       J.ring(w.x, w.y, { r0: 30, r1: 300, dur: 0.55, w: 8, sy: 0.4, delay: 0.15 });
@@ -294,6 +392,7 @@
     stopped: stopped,
     win: win,
     setMode: setMode,
+    fever: setFever,
     cell: cell
   };
 })(window.BR = window.BR || {});
