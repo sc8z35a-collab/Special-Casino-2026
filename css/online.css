@@ -52,14 +52,7 @@
   transform: skewX(-18deg);
   mix-blend-mode: screen;
   opacity: 0;
-  animation: startSweep 5.5s ease-in-out infinite;
-}
-.start-friends::before { animation-delay: 2.75s; }
-@keyframes startSweep {
-  0%, 62% { left: -40%; opacity: 0; }
-  64% { opacity: 1; }
-  80% { left: 120%; opacity: 1; }
-  82%, 100% { left: 120%; opacity: 0; }
+  display: none;
 }
 .start-hit::after {
   content: '';

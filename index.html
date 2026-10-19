@@ -74,6 +74,7 @@
       <div class="home-chat" id="home-chat" aria-live="polite"></div>
 
       <button id="btn-sound" class="sound-btn" aria-label="サウンド"><i class="ic ic-sound"></i></button>
+      <button id="btn-fx" class="fx-btn" aria-label="演出設定"><span>演出</span></button>
 
       <div id="reels">
         <canvas id="reel-canvas"></canvas>
@@ -480,6 +481,17 @@
     </div>
 
     <!-- yes / no -->
+    <!-- 演出設定 (js/ui/effects.js) -->
+    <div id="fx-settings" class="modal" hidden>
+      <div class="modal-card fx-card" role="dialog" aria-label="演出設定">
+        <button class="modal-x" data-close aria-label="閉じる"></button>
+        <h2 class="modal-title"><span>演出設定</span></h2>
+        <label class="fx-simple"><span class="fx-name">シンプル演出<small>豪華な演出をまとめてオフにします（ゲームの結果や支払いは変わりません）</small></span><input type="checkbox" id="fx-simple"><i class="fx-switch"></i></label>
+        <div class="fx-groups scroller" id="fx-groups"></div>
+        <div class="fx-foot"><button class="act-btn" id="fx-reset" type="button">すべてオンに戻す</button><button class="act-btn gold" data-close type="button">閉じる</button></div>
+      </div>
+    </div>
+
     <div id="confirm" class="modal" hidden>
       <div class="modal-card confirm-card" role="alertdialog">
         <p class="confirm-text" id="confirm-text"></p>
@@ -674,6 +686,7 @@
 <script src="js/art/ui-svg.js"></script>
 <script src="js/version.js"></script>
 <script src="js/core/util.js"></script>
+<script src="js/core/effects.js"></script>
 <script src="js/game/config.js"></script>
 <script src="js/game/sale.js"></script>
 <script src="js/game/quests.js"></script>
@@ -704,6 +717,7 @@
 <script src="js/ui/quests.js"></script>
 <script src="js/ui/jobs.js"></script>
 <script src="js/ui/tree.js"></script>
+<script src="js/ui/effects.js"></script>
 <script src="js/ui/news.js"></script>
 <script src="js/net/call.js"></script>
 <script src="js/ui/watch.js"></script>

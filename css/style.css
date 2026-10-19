@@ -86,7 +86,7 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 
 /* the reels and win motions are the game itself; only ambient pulses stop */
 @media (prefers-reduced-motion: reduce) {
-  .spin-glow, .daily-btn.ready { animation: none !important; }
+  .daily-btn.ready { animation: none !important; }
   .screen { transition: none; }
 }
 
@@ -325,9 +325,8 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
   inset: -16px;
   border-radius: 50%;
   background: radial-gradient(circle closest-side, rgba(236, 232, 172, 0) 84%, rgba(236, 232, 172, 1) 87.6%, rgba(223, 217, 157, .95) 89.5%, rgba(190, 188, 135, .7) 92%, rgba(150, 142, 100, .38) 95%, rgba(110, 90, 60, .12) 97.5%, rgba(80, 40, 30, 0) 100%);
-  animation: spinGlow 2.6s ease-in-out infinite;
+  opacity: .9;
 }
-@keyframes spinGlow { 0%, 100% { opacity: .9; } 50% { opacity: 1; transform: scale(1.025); } }
 .spin-disc {
   position: absolute;
   inset: 0;
@@ -346,7 +345,7 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 .spin-btn.spinning .spin-arrows { animation: spinArrows .8s linear infinite; }
 @keyframes spinArrows { to { transform: rotate(360deg); } }
 .spin-btn:disabled .spin-disc { filter: grayscale(.35) brightness(.8); }
-.spin-btn:disabled .spin-glow { opacity: .3; animation: none; }
+.spin-btn:disabled .spin-glow { opacity: .3; }
 
 /* bet / win */
 .bet-group, .win-group { position: absolute; bottom: 52px; height: 112px; }

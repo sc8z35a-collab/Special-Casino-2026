@@ -51,8 +51,9 @@
       { id: 'omamori', name: 'お守り加護', price: 90000, max: 10 }
     ],
     // お守り加護, switched on before a spin: the next losing spin gives back
-    // min-max % of the lost tokens (all of them `fullChance` of the time)
-    charm: { item: 'omamori', min: 5, max: 20, fullChance: 0.02 },
+    // min-max % of the lost tokens (all of them `fullChance` of the time);
+    // with 友達と稼ぐ's benefits on, up to `hub.max` % and `hub.fullChance`
+    charm: { item: 'omamori', min: 5, max: 20, fullChance: 0.02, hub: { max: 70, fullChance: 0.04 } },
     // thrown at the friend one is watching: spin tokens from the thrower
     fruits: [
       { id: 'strawberry', name: 'ストロベリー', tokens: 1000 },

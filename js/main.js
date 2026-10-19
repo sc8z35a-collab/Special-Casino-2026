@@ -382,7 +382,9 @@
     // the WIN box shows the win right away; the coins jump out of the winning
     // symbols into the wallet (a BIG WIN pays out when its overlay is over)
     var mid = BR.slotfx ? BR.slotfx.win(res, cols) : null;
-    setWinAmount(res.total, true, res.tier < 2);
+    // BIG WIN switched off in 演出設定: shown like a plain WIN (the WIN box counts up)
+    var overlay = res.tier >= 2 && (!BR.fx || BR.fx.on('bigwin'));
+    setWinAmount(res.total, true, !overlay);
     if (res.tier >= 2) game.hold = res.total;
     renderWallet(true, mid);
     renderBet();
@@ -400,9 +402,9 @@
       if (game.watch) nextWatched();
     };
     // a plain WIN has no overlay: the lit line, the WIN box and the sound
-    if (res.tier < 2) {
-      BR.sfx.play('win');
-      setTimeout(done, 700);
+    if (!overlay) {
+      BR.sfx.play(res.tier >= 2 ? 'bigWin' : 'win');
+      setTimeout(done, res.tier >= 2 ? 1400 : 700);
       return;
     }
     fx.play({ tier: res.tier, amount: res.total, bet: res.bet, mult: res.mult, cols: cols, auto: !!game.watch }).then(done);
@@ -684,6 +686,7 @@
     BR.quests.init();
     BR.jobs.init();
     BR.tree.init();
+    BR.effects.init();
     BR.news.init();
     BR.call.init();
     BR.watch.init();

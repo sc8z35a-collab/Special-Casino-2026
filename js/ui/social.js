@@ -1275,7 +1275,7 @@
       pfBtn(a1, me && me.hasPassword ? 'パスワード変更' : 'パスワード設定', 'password', '', 'lock');
       pfBtn(a1, '引き継ぎコード発行', 'recovery', '', 'share');
       pfBtn(a1, 'コードでログイン', 'codeLogin', '', 'download');
-      if (me && me.operator) pfBtn(a1, '運営サイト', 'ops', 'ops', 'info');
+      pfBtn(a1, '演出設定', 'effects', '', 'sound');
       pfLink(a2, 'ログアウト', 'logout');
       loadBlocks();
       return;
@@ -1319,7 +1319,7 @@
       case 'recovery': sfx('click'); reissueCode(); break;
       // another account of mine: its 引き継ぎコード
       case 'codeLogin': sfx('click'); K.closeModal('profile'); BR.account.open('code-login', 'ほかのアカウントの引き継ぎコードを入力すると、そのアカウントに切り替わります。'); break;
-      case 'ops': sfx('click'); window.open('/ops/', '_blank', 'noopener'); break;
+      case 'effects': sfx('click'); K.closeModal('profile'); BR.effects.open(); break;
       case 'logout': sfx('click'); logout(); break;
       case 'transfer': sfx('click'); openTransfer(u); break;
       case 'gift': sfx('click'); K.closeModal('profile'); BR.cars.giftTo(u); break;

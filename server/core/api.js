@@ -1134,9 +1134,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const r = spinReels(bet, hub ? HUB.weights : undefined);
         if (hub) boost = hubSpin(r, hub, bet);
         // an お守り加護 that is on softens the first losing spin, then it is used up
+        // (友達と稼ぐ: up to CHARM.hub.max %, 大吉 twice as often)
         if (cur.charm > 0 && r.total < bet) {
-          const pct = randomInt(1, 10000) <= CHARM.fullChance * 10000 ? 100 : randomInt(CHARM.min, CHARM.max);
-          r.charm = { pct, back: Math.floor((bet - r.total) * pct / 100) };
+          const c = hub ? { ...CHARM, ...CHARM.hub } : CHARM;
+          const pct = randomInt(1, 10000) <= c.fullChance * 10000 ? 100 : randomInt(c.min, c.max);
+          r.charm = { pct, back: Math.floor((bet - r.total) * pct / 100), hub: !!hub };
         }
         const back = r.charm ? r.charm.back : 0;
         // フレンド対決: spins at the battle's bet count, up to its number
