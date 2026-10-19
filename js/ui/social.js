@@ -327,6 +327,7 @@
     $('#board-tabs').classList.toggle('solo', tab === 'messages');
     $('#board-tabs').classList.toggle('in-chat', v === 'dm' || v === 'group');
     PANES.forEach(function (p) { $('#pane-' + p).classList.toggle('active', p === PANE_OF[v]); });
+    BR.screens.enter($('#pane-' + PANE_OF[v]));
     $('#pane-chat').classList.toggle('is-dm', v === 'dm');
     $('#pane-chat').classList.toggle('is-group', v === 'group');
     if (v === 'friends') loadFriends().catch(function () {});
@@ -754,7 +755,10 @@
     var typing = list.querySelector('.typing-row');
     var at = typing || null;
     if (!prev || !K.sameDay(new Date(prev.at), new Date(m.at))) list.insertBefore(el('div', 'day-sep', K.fmtDay(m.at)), at);
-    list.insertBefore(msgEl(m, key, prev), at);
+    // a message that just came in pops in (css/juice.css)
+    var node = msgEl(m, key, prev);
+    node.classList.add('jc-new');
+    list.insertBefore(node, at);
   }
 
   // 既読: in a conversation once the friend has read it; in a group, how many have
@@ -986,7 +990,7 @@
             BR.peter.setDebt(r.debt);
           }
           if (r.lent) {
-            setTimeout(function () { onMsg(r.lent); sfx('purchase'); toast(r.lent.text, 3200); }, 900);
+            setTimeout(function () { onMsg(r.lent); sfx('purchase'); toast(r.lent.text, 3200); if (BR.juice) BR.juice.reward('#toast', 2); }, 900);
           }
         });
       },
@@ -1388,6 +1392,7 @@
         onMsg(r.message);
         sfx('purchase');
         toast(u.name + 'さんに ' + U.fmt(amount) + ' ' + K.CUR[cur].name + ' を送金しました');
+        if (BR.juice) BR.juice.reward(null, 1);
         K.closeModal('transfer');
       }, function (err) {
         tf.busy = false;
@@ -1414,7 +1419,12 @@
     else touchConv(m, Number(key.slice(3)), mine);
     if (mine) return;
     if (here) {
-      if (m.kind === 'transfer' || m.kind === 'gift' || m.kind === 'item') sfx('purchase');
+      if (m.kind === 'transfer' || m.kind === 'gift' || m.kind === 'item') {
+        sfx('purchase');
+        // out of the card that just popped into the chat
+        var cards = document.querySelectorAll('.msg.xfer.jc-new');
+        if (BR.juice) BR.juice.reward(cards.length ? cards[cards.length - 1] : null, 2);
+      }
       markRead(key);
       return;
     }
@@ -1431,13 +1441,16 @@
     if (m.kind === 'transfer') {
       sfx('purchase');
       toast(name + 'さんから ' + U.fmt(m.amount) + ' ' + (K.CUR[m.currency] || K.CUR.tokens).name + ' が届きました！', 3400, open);
+      if (BR.juice) BR.juice.reward('#toast', 2);
     } else if (m.kind === 'gift') {
       sfx('purchase');
       toast(name + 'さんから ' + carName(m.text) + ' のプレゼントが届きました！ガレージで見られます', 4200, open);
+      if (BR.juice) BR.juice.reward('#toast', 3);
       BR.cars.changed();
     } else if (m.kind === 'item') {
       sfx('purchase');
       toast(name + 'さんから ' + itemName(m.text) + ' ×' + m.amount + ' が届きました！', 4200, open);
+      if (BR.juice) BR.juice.reward('#toast', 2);
     } else if (m.from && BR.peter.is(m.from)) {
       BR.peter.notify(m, open);
     } else if (key.indexOf('group:') === 0) {

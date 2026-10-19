@@ -201,6 +201,7 @@
     K.sfx('purchase');
     K.toast(r.me.name + 'さん、おかえりなさい！');
     finish();
+    if (BR.juice) setTimeout(function () { BR.juice.reward('#toast', 2); }, 120);
   }
 
   // XXXX-XXXX-XXXX-XXXX while typing

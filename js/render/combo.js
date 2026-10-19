@@ -6,6 +6,8 @@
      3-4    bigger, glowing, pulsing
      5-7    rainbow, and the reels glow
      8+     the biggest, shaking, with confetti
+   Every step of a streak lands with rings, sparks and stars round the badge
+   (js/render/juice.js), louder the longer it goes.
    Spins of a watched friend count the same way (a separate streak). A BIG WIN
    has its own overlay: its badge waits until that is over. */
 (function (BR) {
@@ -69,9 +71,24 @@
       if (b.parentNode) b.parentNode.removeChild(b);
       if (badgeNode === b) badgeNode = null;
     }, 2600);
+    burst(b, lv);
     if (lv >= 3) glowReels(lv);
-    if (lv >= 4) confetti();
+    if (lv >= 4) confetti(b);
     if (sound) BR.sfx.play(lv >= 4 ? 'purchase' : lv >= 3 ? 'notify' : 'betUp');
+  }
+
+  // the badge lands: rings, sparks and stars, more of everything the higher it goes
+  function burst(b, lv) {
+    var J = BR.juice;
+    if (!J) return;
+    var p = J.at(b), color = lv >= 3 ? 'rainbow' : 'gold';
+    J.ring(p.x, p.y, { r0: 20, r1: 120 + lv * 50, dur: 0.5, w: 6 + lv * 2, color: lv >= 3 ? 'pink' : 'gold' });
+    if (lv >= 2) J.ring(p.x, p.y, { r0: 20, r1: 200 + lv * 70, dur: 0.7, w: 4, delay: 0.08, color: lv >= 3 ? 'blue' : 'white' });
+    J.sparks(p.x, p.y, { n: 8 + lv * 8, speed: 500 + lv * 160, life: 0.8, g: 500, color: color });
+    J.stars(p.x, p.y, { n: lv + 1, r: 70 + lv * 20, size: 60 + lv * 10 });
+    J.bloom(p.x, p.y, { size: 200 + lv * 90, dur: 0.5 });
+    if (lv >= 3) J.flash(lv >= 4 ? '#fff0c0' : '#ffe9b0', lv >= 4 ? 0.3 : 0.18, 300);
+    if (lv >= 4) J.shake(null, 9, 420);
   }
 
   function glowReels(lv) {
@@ -87,7 +104,14 @@
     glowTimer = setTimeout(function () { glow.classList.remove('on', 'big'); }, 2600);
   }
 
-  function confetti() {
+  function confetti(b) {
+    var J = BR.juice;
+    if (J) {
+      var p = J.at(b);
+      J.confetti(p.x, p.y, { n: 60, speed: 1300, dir: -Math.PI * 0.35, spread: 0.9 });
+      J.confetti(J.W() / 2, J.H() * 0.55, { n: 40, speed: 1500, dir: -Math.PI / 2, spread: 1.2, delay: 0.1 });
+      return;
+    }
     for (var i = 0; i < 22; i++) {
       var c = el('i', 'cb-confetti');
       var a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.6;

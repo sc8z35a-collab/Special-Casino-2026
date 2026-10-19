@@ -93,6 +93,7 @@
     view.ready = true;
     reels.resize(Math.max(1, Math.min(s * dpr, 3)));
     fx.resize(W, H, res);
+    if (BR.juice) BR.juice.resize(W, H, res);
   }
 
   /* ------------------------------------------------------------ fullscreen --- */
@@ -125,7 +126,8 @@
 
   /* ------------------------------------------------------------ wallet / HUD --- */
   var shown = { tokens: null, dollars: null, coins: null };
-  var walletAnim = {};
+  var walletAnim = {};   // the count under way (or waiting for its coins): cancels it
+  var aim = {};          // the value each count is going to
   function setText(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
   // While the reels turn, the wallet keeps the stake (before the result is
   // known) or the win (until the reels have stopped) out of the token count.
@@ -133,29 +135,46 @@
     var src = game.watch ? game.watch.balance : S;
     return k === 'tokens' ? Math.max(0, src.tokens - game.hold) : src[k];
   }
-  function renderWallet(animate) {
+  // Money coming in flies into the wallet as coins first (js/render/juice.js:
+  // from `src`, an element or a stage point, else from what the moment told
+  // BR.juice.source()) and the count starts when the first coin gets there.
+  function renderWallet(animate, src) {
     var ready = BR.bank.ready() || !!game.watch;
     $('.wallet').classList.toggle('watching', !!game.watch);
     ['tokens', 'dollars', 'coins'].forEach(function (k) {
-      if (walletAnim[k]) walletAnim[k]();
+      var to = ready ? walletValue(k) : null;
+      // already counting (or about to) towards this very value: let it run
+      if (animate && ready && walletAnim[k] && aim[k] === to) return;
+      var running = !!walletAnim[k], before = aim[k];
+      if (walletAnim[k]) { walletAnim[k](); walletAnim[k] = null; }
+      aim[k] = to;
       if (!ready) {
         shown[k] = null;
         setText('w-' + k, '-');
         return;
       }
-      var to = walletValue(k), from = shown[k];
+      var from = shown[k];
       if (!animate || from === to || from === null) {
         shown[k] = to;
         setText('w-' + k, U.fmt(to));
         return;
       }
       var el = document.getElementById('w-' + k);
-      el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
-      var dur = Math.min(1400, 300 + Math.log10(Math.abs(to - from) + 1) * 220);
-      walletAnim[k] = U.tween(dur, function (t) {
-        shown[k] = Math.round(from + (to - from) * U.ease.outCubic(t));
-        setText('w-' + k, U.fmt(shown[k]));
-      });
+      var run = function () {
+        el.classList.toggle('down', to < from);
+        el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+        var dur = Math.min(1600, 380 + Math.log10(Math.abs(to - from) + 1) * 240);
+        walletAnim[k] = U.tween(dur, function (t) {
+          shown[k] = Math.round(from + (to - from) * U.ease.outCubic(t));
+          setText('w-' + k, U.fmt(shown[k]));
+        }, function () { walletAnim[k] = null; });
+      };
+      // the coins fly in for what is new (a count already under way had the rest)
+      var fresh = to - (running && typeof before === 'number' ? before : from);
+      var wait = fresh > 0 && BR.juice ? BR.juice.gain(k, fresh, src) : 0;
+      if (!wait) { run(); return; }
+      var timer = setTimeout(run, wait);
+      walletAnim[k] = function () { clearTimeout(timer); };
     });
   }
 
@@ -276,6 +295,7 @@
     $('#btn-spin').classList.add('spinning');
     $$('.payline-mark').forEach(function (m) { m.classList.remove('lit'); });
     reels.spin();
+    if (BR.slotfx) BR.slotfx.spinStart();
     BR.sfx.play('spinStart');
     BR.sfx.startReels();
     BR.bank.spin(stake).then(function (r) {
@@ -328,6 +348,7 @@
     BR.sfx.stopReels();
     $('#btn-spin').classList.remove('spinning');
     var res = game.result;
+    if (BR.slotfx) BR.slotfx.stopped(!!(res && res.total > 0));
     // small wins and winning streaks (js/render/combo.js)
     if (res && BR.combo && BR.combo.spun) BR.combo.spun(res, !!game.watch);
     if (res && res.charm) BR.shop.charmSaved(res);
@@ -344,13 +365,20 @@
     if (res.charm) game.hold = 0;
     reels.setHighlight(cols);
     $$('.payline-mark').forEach(function (m) { m.classList.add('lit'); });
-    // as in the reference, the WIN box and the balance show the final values
-    // right away while the overlay counts up
+    // the WIN box shows the win right away; the coins jump out of the winning
+    // symbols into the wallet (a BIG WIN pays out when its overlay is over)
+    var mid = BR.slotfx ? BR.slotfx.win(res, cols) : null;
     setWinAmount(res.total, true);
-    renderWallet(true);
+    if (res.tier >= 2) game.hold = res.total;
+    renderWallet(true, mid);
     renderBet();
     var done = function () {
       game.presenting = false;
+      if (res.tier >= 2) {
+        game.hold = 0;
+        renderWallet(true, { x: view.W / 2, y: view.H / 2 + 120 });
+        BR.sfx.play('coinShower', Math.round(6 + Math.log10(res.total + 1) * 3));
+      }
       renderBet();
       if (game.watch) { nextWatched(); return; }
       scheduleAuto(game.auto ? 350 : 0);
@@ -418,6 +446,7 @@
     setWinGoodLuck();
     $$('.payline-mark').forEach(function (m) { m.classList.remove('lit'); });
     reels.spin();
+    if (BR.slotfx) BR.slotfx.spinStart();
     BR.sfx.play('spinStart');
     BR.sfx.startReels();
     setTimeout(function () {
@@ -608,8 +637,15 @@
       watchEnter: watchEnter, watchExit: watchExit, watchSpin: watchSpin, watchBalance: watchBalance,
       relayout: function () { requestAnimationFrame(layout); }
     };
-    reels.on('land', function (i) { BR.sfx.play('reelStop', i); if (i === 4) BR.sfx.stopReels(); });
-    reels.on('anticipate', function () { BR.sfx.play('anticipate'); });
+    reels.on('land', function (i) {
+      BR.sfx.play('reelStop', i);
+      if (i === 4) BR.sfx.stopReels();
+      if (BR.slotfx) BR.slotfx.land(i);
+    });
+    reels.on('anticipate', function (i) {
+      BR.sfx.play('anticipate');
+      if (BR.slotfx) BR.slotfx.anticipate(i);
+    });
     reels.on('allstopped', onAllStopped);
     // initial screen like the reference shot
     reels.setGrid([
@@ -619,6 +655,8 @@
       ['star', 'star', 'diamond'],
       ['bar', 'bar', 'bar']
     ]);
+    if (BR.juice) BR.juice.init();
+    if (BR.slotfx) BR.slotfx.init();
     BR.screens.init();
     BR.kit.init();
     BR.account.init();

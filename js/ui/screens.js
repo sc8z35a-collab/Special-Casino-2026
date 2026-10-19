@@ -17,11 +17,21 @@
     current = name;
     $$('.screen').forEach(function (s) { s.classList.toggle('active', s.id === 'screen-' + name); });
     $('#stage').dataset.screen = name;
+    enter($('#screen-' + name));
     if (hooks[prev] && hooks[prev].close) hooks[prev].close();
     if (name === 'tokens') shop.open();
     if (name === 'rules') rules.open();
     if (hooks[name] && hooks[name].open) hooks[name].open();
     watchers.forEach(function (fn) { fn(name, prev); });
+  }
+
+  // Lists in a screen or pane that just opened come in one row after another
+  // (css/juice.css); only for a moment, so later updates do not replay it.
+  function enter(node) {
+    if (!node) return;
+    clearTimeout(node.jcEnter);
+    node.classList.add('jc-enter');
+    node.jcEnter = setTimeout(function () { node.classList.remove('jc-enter'); }, 1100);
   }
 
   // The back button: a screen may step back inside itself first; the slot
@@ -41,6 +51,7 @@
         if (b.classList.contains('active')) return;
         btns.forEach(function (x) { x.classList.toggle('active', x === b); });
         BR.sfx.play('click');
+        enter(root);
         onChange(b.dataset.tab);
       });
     });
@@ -155,6 +166,7 @@
       (buy ? BR.bank.buy(v) : BR.bank.sell(v)).then(function () {
         BR.app.toast(U.fmt(v) + (buy ? ' スピントークンを入手しました' : ' スピントークンを交換しました'));
         BR.sfx.play('purchase');
+        if (BR.juice) BR.juice.reward('#tp-action', 2);
         BR.app.renderWallet(true);
         BR.app.renderBet();
         self.value = 0;
@@ -198,6 +210,7 @@
       this.claiming = true;
       BR.bank.claimDaily().then(function (amount) {
         BR.sfx.play('purchase');
+        if (BR.juice) BR.juice.reward('#daily-btn', 2);
         BR.app.renderWallet(true);
         BR.app.renderBet();
         BR.app.toast(U.fmt(amount) + ' 無料スピントークンを受け取りました！');
@@ -285,6 +298,7 @@
     register: function (name, h) { hooks[name] = h; },
     onChange: function (fn) { watchers.push(fn); },
     tabs: tabs,
+    enter: enter,
     numpad: openNumpad
   };
 })(window.BR = window.BR || {});

@@ -82,7 +82,10 @@
       text.appendChild(el('b', '', 'クエストを完了しました'));
       text.appendChild(el('span', '', '「' + (first ? first.text : '') + '」' + (b.ids.length > 1 ? 'ほか' + (b.ids.length - 1) + '件' : '') + '・クエストで受け取れます'));
     }
-    if (b.level) text.appendChild(el('b', 'qn-level', 'レベルアップ！ Lv.' + b.level));
+    if (b.level) {
+      text.appendChild(el('b', 'qn-level', 'レベルアップ！ Lv.' + b.level));
+      levelUp(b.level);
+    }
     box.appendChild(text);
     box.hidden = false;
     box.classList.remove('show');
@@ -93,6 +96,25 @@
     // up while the 10 s window is open, then a little longer
     noteTimer = setTimeout(hideNote, Math.max(4000, b.until - Date.now() + 2500));
   }
+  // LEVEL UP across the screen, the card at the top left lights up
+  var levelShown = 0;
+  function levelUp(n) {
+    if (n <= levelShown) return;
+    levelShown = n;
+    var J = BR.juice, card = $('#me-card');
+    sfx('levelUp');
+    if (!J) return;
+    J.banner('LEVEL UP!', 'level', 2000, 'Lv.' + n);
+    J.flash('#fff3c0', 0.3, 420);
+    J.rain({ kind: 'confetti', dur: 1.2, rate: 40 });
+    if (card && !card.hidden) {
+      J.celebrate(card, 2);
+      card.classList.remove('jc-level');
+      void card.offsetWidth;
+      card.classList.add('jc-level');
+    }
+  }
+
   function hideNote() {
     var box = $('#quest-note');
     box.classList.remove('show');
@@ -257,6 +279,7 @@
       if (r.balance) BR.app.serverBalance(r.balance);
       if (r.claimed.length) {
         sfx('purchase');
+        if (BR.juice) BR.juice.reward(null, r.claimed.length > 1 ? 3 : 2);
         var parts = [];
         if (r.dollars) parts.push('$' + U.fmt(r.dollars));
         if (r.tokens) parts.push(U.fmt(r.tokens) + ' トークン');

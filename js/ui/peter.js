@@ -103,6 +103,7 @@
       BR.social.onMsg(r.reply);
       if (r.lent) BR.social.onMsg(r.lent);
       sfx('purchase');
+      if (BR.juice) BR.juice.reward(null, 2);
       toast(yen(r.amount) + '貸しました（利息' + r.rate + '%・返済額 ' + yen(r.owed) + '）', 4200);
       busy = false;
       setDebt(r.debt);
@@ -137,6 +138,7 @@
             BR.social.setMe(r.me);
             BR.social.onMsg(r.reply);
             sfx('purchase');
+            if (BR.juice) BR.juice.reward(null, 1);
             busy = false;
             setDebt(r.debt);
           }, function (err) { busy = false; refresh(); fail(err); });

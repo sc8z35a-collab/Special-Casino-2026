@@ -123,17 +123,29 @@ test('バイト: $20 000 an hour, paid for the time worked; switching pays up', 
   }
 });
 
-test('update bonus: $250 000 once per release for players who update; new players start on it', async () => {
+test('update bonus: $250 000 for every release a player updates past; new players start on the newest', async () => {
   const { call, register, setUser, stop } = await startServer();
   try {
     const a = await register('Updater');
-    assert.deepEqual(await call('POST', '/api/release', { token: a.token, body: { release: RELEASE } }).then((r) => [r.bonus, r.outdated]), [0, false]);
+    const release = () => call('POST', '/api/release', { token: a.token, body: { release: RELEASE } });
+    assert.deepEqual(await release().then((r) => [r.bonus, r.updates, r.outdated]), [0, 0, false]);
     setUser(a.me.id, { release_seen: RELEASE - 1 });
     assert.equal((await call('POST', '/api/release', { token: a.token, body: { release: RELEASE - 1 } })).outdated, true);
-    const before = (await call('GET', '/api/me', { token: a.token })).me.dollars;
-    const r = await call('POST', '/api/release', { token: a.token, body: { release: RELEASE } });
-    assert.deepEqual([r.bonus, r.me.dollars], [250000, before + 250000]);
-    assert.equal((await call('POST', '/api/release', { token: a.token, body: { release: RELEASE } })).bonus, 0);
+    let before = (await call('GET', '/api/me', { token: a.token })).me.dollars;
+    let r = await release();
+    assert.deepEqual([r.bonus, r.updates, r.me.dollars], [250000, 1, before + 250000]);
+    assert.equal((await release()).bonus, 0);
+    // two updates at once (the game was not opened in between): paid twice, in one go
+    setUser(a.me.id, { release_seen: RELEASE - 2 });
+    before = r.me.dollars;
+    r = await release();
+    assert.deepEqual([r.bonus, r.updates, r.me.dollars], [500000, 2, before + 500000]);
+    assert.deepEqual(await release().then((x) => [x.bonus, x.updates]), [0, 0]);
+    // registered before there was an update bonus: every release so far
+    setUser(a.me.id, { release_seen: 0 });
+    before = r.me.dollars;
+    r = await release();
+    assert.deepEqual([r.bonus, r.updates, r.me.dollars], [RELEASE * 250000, RELEASE, before + RELEASE * 250000]);
   } finally {
     await stop();
   }

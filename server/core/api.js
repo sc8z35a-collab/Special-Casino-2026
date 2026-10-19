@@ -1600,19 +1600,23 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
     // The game in the browser says which release it is (js/game/news.js). An
     // older one is asked to update; the first time a player runs a new release
-    // they get the thank-you money (once per release; new players start on it).
+    // they get the thank-you money once for every release since the last one
+    // they were thanked for: two updates at once pay twice (`updates`). New
+    // players start on the newest release.
     'POST /api/release': async (req, u) => {
       const body = await req.json();
       const theirs = Number(body.release) || 0;
-      if (theirs < RELEASE) return { release: RELEASE, outdated: true, bonus: 0 };
-      const bonus = tx(() => {
+      if (theirs < RELEASE) return { release: RELEASE, outdated: true, bonus: 0, updates: 0 };
+      const updates = tx(() => {
         const cur = getUser(u.id);
-        if (cur.release_seen >= RELEASE) return 0;
-        q('UPDATE users SET release_seen = ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(RELEASE, RULES.updateBonus, cur.id);
-        return RULES.updateBonus;
+        const n = RELEASE - cur.release_seen;
+        if (n <= 0) return 0;
+        q('UPDATE users SET release_seen = ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(RELEASE, n * RULES.updateBonus, cur.id);
+        return n;
       });
+      const bonus = updates * RULES.updateBonus;
       if (bonus) balanceChanged(u.id);
-      return { release: RELEASE, outdated: false, bonus, me: meDto(getUser(u.id)) };
+      return { release: RELEASE, outdated: false, bonus, updates, me: meDto(getUser(u.id)) };
     },
 
     /* ----- フレンド対決 ----- */

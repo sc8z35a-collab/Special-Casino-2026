@@ -264,6 +264,10 @@
     }
     if (BR.screens.current() !== 'slot') BR.screens.show('slot');
     toast('フレンド対決スタート！ベット ' + U.fmt(b.bet) + ' で ' + b.spins + '回回そう', 3400);
+    if (BR.juice) {
+      BR.juice.banner('対決スタート！', 'chance', 1500, b.spins + '回勝負');
+      BR.juice.flash('#ffd27a', 0.2, 300);
+    }
   }
   function betLocked() { return !!battle && battle.state === 'live' && battle.me.n < battle.spins; }
   // the battle's bet: set as soon as the reels allow it
@@ -356,6 +360,17 @@
     $('#stage').appendChild(wrap);
     resultBox = wrap;
     sfx(win ? 'bigWin' : draw ? 'notify' : 'callEnd');
+    // a win is a party; a loss just sinks in
+    var J = BR.juice;
+    if (J && win) {
+      setTimeout(function () {
+        if (resultBox !== wrap) return;
+        J.celebrate(card.querySelector('.pl-result-title'), 3);
+        J.rain({ kind: 'confetti', dur: 2.2, rate: 46 });
+      }, 280);
+    } else if (J && draw) {
+      J.celebrate(card.querySelector('.pl-result-title'), 1);
+    }
     resultTimer = setTimeout(closeResult, 4500);
   }
   function resultSide(u, label, won, best) {
@@ -623,6 +638,7 @@
         ui.coopBar.classList.add('bonus');
         coopTicker('ゲージ満タン！ボーナス！', true);
         sfx('purchase');
+        if (BR.juice) BR.juice.reward(ui.coopBar, 3);
         toast(mine ? '協力ボーナス！ +' + U.fmt(mine.amount) + ' トークン' : '協力ゲージが満タンになりました！みんなにボーナス！', 3600);
       });
     }
@@ -740,6 +756,7 @@
         if (b.state === 'won') {
           sfx('purchase');
           toast('観戦ベット的中！ +' + U.fmt(b.paid) + ' トークン', 3600);
+          if (BR.juice) BR.juice.reward('#toast', 3);
         } else if (b.state === 'lost') {
           sfx('deny');
           toast('観戦ベットはハズレ…（' + sideText(b.side) + '）', 3000);

@@ -262,6 +262,16 @@
     noise({ t: t, f: 7000, q: 2, d: 0.03, v: 0.05 });
   }
 
+  // a struck coin (チャリン): the inharmonic partials of a thin metal disc
+  // ringing out fast over the click of the hit, a little different each time
+  function clink(t, f, v) {
+    [[1, 1, 0.16], [2.76, 0.55, 0.1], [5.4, 0.28, 0.06]].forEach(function (k) {
+      tone({ t: t, f: f * k[0] * (0.995 + Math.random() * 0.01), d: k[2] * (0.75 + Math.random() * 0.5), v: v * k[1], type: 'sine', wet: 0.22 });
+    });
+    noise({ t: t, ftype: 'highpass', f: 6500, q: 0.7, d: 0.018, v: v * 0.7 });
+    noise({ t: t + 0.002, ftype: 'bandpass', f: f * 1.9, q: 9, d: 0.05, v: v * 0.35 });
+  }
+
   // brass-ish chord stab
   function brass(freqs, t, dur, v) {
     freqs.forEach(function (f, i) {
@@ -448,6 +458,44 @@
       bell(N.E6, t + 0.1, 0.12, 1.2, 0.4);
       bell(N.G6, t + 0.2, 0.13, 1.6, 0.4);
       if (full) { bell(N.C7, t + 0.34, 0.14, 2.2, 0.5); for (var i = 0; i < 6; i++) coin(t + 0.4 + i * 0.05, 0.8, 0.08); }
+    },
+    // a coin dropping into the wallet (`p` 0..1: how far into a run of them,
+    // the later ones a little higher: ちゃりちゃり…)
+    coinIn: function (t, p) {
+      clink(t, 1900 + Math.random() * 700 + (p || 0) * 600, 0.085);
+    },
+    // the last of them: a handful landing on the pile (ジャラッ) and a sparkle
+    coinPile: function (t, n) {
+      var k = Math.max(4, Math.min(12, n || 8));
+      for (var i = 0; i < k; i++) clink(t + i * 0.026 + Math.random() * 0.018, 1700 + Math.random() * 1500, 0.05);
+      noise({ t: t, ftype: 'highpass', f: 5200, q: 0.6, a: 0.004, d: 0.32, v: 0.05, wet: 0.3 });
+      bell(N.C7, t + k * 0.026 + 0.04, 0.05, 0.9, 0.4);
+    },
+    // coins pouring out of a big win into the wallet (ジャラジャラ)
+    coinShower: function (t, n) {
+      var k = Math.max(8, Math.min(26, n || 16));
+      for (var i = 0; i < k; i++) clink(t + i * 0.045 + Math.random() * 0.03, 1800 + Math.random() * 1600 + i * 25, 0.045 + Math.random() * 0.03);
+      noise({ t: t, ftype: 'highpass', f: 4800, q: 0.5, a: 0.05, d: k * 0.045, v: 0.035, wet: 0.35 });
+    },
+    // ready... (the anticipation banner): a rising whoosh into a hit
+    chance: function (t) {
+      noise({ t: t, ftype: 'bandpass', f: 500, f2: 5200, q: 1.4, a: 0.18, d: 0.28, v: 0.16, wet: 0.3 });
+      timpani(t + 0.42, 110, 0.45);
+      bell(N.E6, t + 0.42, 0.08, 0.8, 0.4);
+      bell(N.A5 * 2, t + 0.46, 0.06, 0.9, 0.4);
+    },
+    // something big hits the screen (SUPER, the glass breaking)
+    impact: function (t) {
+      tone({ t: t, f: 90, f2: 38, glide: 0.35, d: 0.5, v: 0.5, type: 'sine', wet: 0.3 });
+      noise({ t: t, ftype: 'lowpass', f: 2400, f2: 300, a: 0.002, d: 0.45, v: 0.32, wet: 0.4 });
+      for (var i = 0; i < 8; i++) noise({ t: t + 0.03 + Math.random() * 0.25, ftype: 'highpass', f: 4000 + Math.random() * 4000, d: 0.03, v: 0.05 + Math.random() * 0.05 });
+    },
+    // the player level went up: a short fanfare and a sparkle
+    levelUp: function (t) {
+      [N.C5, N.E5, N.G5].forEach(function (f, i) { tone({ t: t + i * 0.09, f: f, d: 0.16, v: 0.12, type: 'triangle', wet: 0.3 }); });
+      brass([N.C5, N.E5, N.G5], t + 0.28, 0.5, 0.42);
+      [N.C6, N.E6, N.G6, N.C7].forEach(function (f, i) { bell(f, t + 0.32 + i * 0.05, 0.06, 1.1); });
+      cymbal(t + 0.28, 0.1, 1.2);
     },
     // a fruit thrown or caught
     fruit: function (t) {

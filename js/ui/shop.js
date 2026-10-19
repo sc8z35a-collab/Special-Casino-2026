@@ -124,6 +124,7 @@
         setMe(r.me);
         sfx('purchase');
         toast(it.name + ' ×' + n + ' を購入しました！スロット画面からワンタップで使えます', 3600);
+        if (BR.juice) BR.juice.reward('#pane-shop .shop-pic', 2);
       }, function (err) {
         if (err.code === 'price_changed' && err.extra.itemShop) sale = err.extra.itemShop;
         fail(err);
@@ -214,6 +215,7 @@
           BR.social.onMsg(r.message);
           sfx('purchase');
           toast(user.name + 'さんに ' + it.name + ' ×' + n + ' を譲りました', 3200);
+          if (BR.juice) BR.juice.reward(null, 1);
         }).catch(fail);
       });
     });
@@ -275,6 +277,8 @@
     pop.appendChild(t);
     (where || layer).appendChild(pop);
     setTimeout(function () { if (pop.parentNode) pop.parentNode.removeChild(pop); }, 2600);
+    // the saved tokens: light out of the charm, and they fly back into the wallet
+    if (BR.juice) setTimeout(function () { if (pop.parentNode) BR.juice.reward(pop.querySelector('.charm-pic'), full ? 3 : 1); }, 250);
   }
 
   // my spin: the server says whether the お守り加護 is still on

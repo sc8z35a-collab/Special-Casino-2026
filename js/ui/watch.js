@@ -360,6 +360,7 @@
     setTimeout(function () { sfx('purchase'); }, 200);
     if (BR.screens.current() === 'slot') rain(t.fruits);
     toast(t.from.name + 'さんから ' + fruitText(t.fruits) + '（+' + U.fmt(t.amount) + ' トークン）', 3400);
+    if (BR.juice) BR.juice.reward('#toast', 2);
   }
 
   /* ------------------------------------------------------------ live events --- */
