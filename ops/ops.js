@@ -31,8 +31,9 @@
     release: 'DEV更新', open: 'サイトを開いた', 'ban:suspend': 'アクセス禁止', 'ban:ban': 'BAN', 'ban:perma': '永久BAN', 'ban:none': '処分の解除',
     device_ok: '端末の許可', recovery: '引き継ぎコード再発行', password: 'パスワード再設定', bot_read: 'チャットを既読', bot_message: '公式ボットのメッセージ',
     money: '送金', report_accept: '通報を受理', report_reject: '通報を不受理', detections_reviewed: '検知を確認', feedback_handled: '報告・意見案を対応済み',
-    bot_auto_reply: '自動返信'
+    bot_auto_reply: '自動返信', log_kept: '運営ログの保持', 'admin:restore-time': '管理コマンド: 時点への巻き戻し'
   };
+  function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
   var REPORT_PLACES = { profile: 'プロフィール', hub: '「一緒に稼ぐ」', search: 'フレンド検索', chat: 'チャット' };
   var FB_ITEMS = { slot: 'スロットの面白さ', features: 'スロット以外の機能の面白さ', clarity: '全体的なわかりやすさ', controls: '操作性', looks: '見やすさ', polish: '完成度' };
 
@@ -994,7 +995,7 @@
     var rows = [
       ['記録番号', '#' + x.id],
       ['内容', x.summary],
-      ['操作', (ACTIONS[x.action] || x.action) + '（' + x.action + '）'],
+      ['操作', actionName(x.action) + '（' + x.action + '）'],
       ['日時（日本時間）', x.jst],
       ['日時（UTC）', time.iso || new Date(x.at).toISOString()],
       ['実行した人', x.actor.name + (x.actor.id ? '（ID ' + x.actor.id + '）' : '')],

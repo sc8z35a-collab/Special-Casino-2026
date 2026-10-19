@@ -218,3 +218,18 @@ test('phone notifications: a message for a player away from the game goes to the
   const note = JSON.parse(Buffer.from(plain.slice(0, -1)).toString('utf8'));
   assert.deepEqual([note.kind, note.title, note.body, note.open], ['msg', 'Push1', '今から稼ごう！', `dm:${a.me.id}`]);
 });
+
+test('the operators\' log survives a restore: rows that do not fit are kept inside a new entry', async () => {
+  const { createOpsLog } = await import('../core/opslog.js');
+  const { statements } = await import('../core/db.js');
+  const log = createOpsLog({ q: statements(db()) });
+  const before = log.all();
+  // as if the database went back in time: the last rows "missing", others in their place
+  const lost = before.slice(-2);
+  const r = log.keep(lost.map((x) => ({ ...x, hash: x.hash.replace(/^./, (c) => (c === 'a' ? 'b' : 'a')) })), { why: 'テスト' });
+  assert.deepEqual(r, { added: 0, kept: 2 });
+  const last = log.all().at(-1);
+  assert.equal(last.action, 'log_kept');
+  assert.equal(JSON.parse(last.detail).entries.length, 2);
+  assert.equal(log.verify().ok, true);
+});

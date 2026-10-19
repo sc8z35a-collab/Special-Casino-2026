@@ -52,6 +52,8 @@ export function configFrom(env = {}, overrides = {}) {
     loginBonus: flag(env, 'LOGIN_BONUS', true),
     // Quest rewards (js/game/quests.js); off only for tests that count money exactly.
     quests: flag(env, 'QUESTS', true),
+    // ジョンソン's gifts coming by themselves (after spending, on connecting); off only for tests that count money exactly.
+    npcGifts: flag(env, 'NPC_GIFTS', true),
     // The accounts (user names, comma separated) that may open the operator site (/ops/),
     // where the players' feedback, 通報 and the official bot's messages are read.
     operators: str(env, 'OPERATORS', 'taku').split(',').map((s) => s.trim()).filter(Boolean),

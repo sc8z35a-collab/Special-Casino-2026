@@ -10,7 +10,7 @@ const J = RULES.johnson;
 let s, call, register, setUser;
 
 before(async () => {
-  s = await startServer({ limits: { spin: [100000, 1000], shop: [100000, 1000], general: [100000, 1000], login: [100000, 1000], friend: [100000, 1000], transfer: [100000, 1000], dm: [100000, 1000] } });
+  s = await startServer({ npcGifts: true, limits: { spin: [100000, 1000], shop: [100000, 1000], general: [100000, 1000], login: [100000, 1000], friend: [100000, 1000], transfer: [100000, 1000], dm: [100000, 1000] } });
   ({ call, register, setUser } = s);
 });
 after(() => s.stop());

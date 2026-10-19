@@ -130,8 +130,16 @@ export async function run(argv, call, print = console.log) {
     }
     case 'restore-time': {
       if (!args[0]) throw new AdminError('戻したい日時を指定してください（例: 2026-10-17T12:00:00Z）');
+      // the operators' log never goes back: taken now, given back after the restart
+      const log = await call('log-export', []);
       const r = await call('restore-time', [args[0]]);
+      let kept = null;
+      for (let i = 0; i < 10 && !kept; i++) {
+        await new Promise((ok) => setTimeout(ok, 1500));
+        kept = await call('log-keep', [log.rows, { restoredTo: r.restoredTo, undoBookmark: r.undoBookmark }]).catch(() => null);
+      }
       print(`${r.restoredTo} の状態に戻しました。取り消す場合の値: ${r.undoBookmark}`);
+      print(kept ? `運営ログはそのまま残しました（${log.rows.length}件）` : '運営ログを戻せませんでした。もう一度 restore-time と同じ日時で実行せず、運営サイトのログを確認してください');
       break;
     }
     case 'quota': {

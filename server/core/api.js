@@ -319,7 +319,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function afterSpend(userId) {
     const u = getUser(userId);
     if (u && !u.npc && u.dollars + u.tokens * RULES.tokenPrice < QUESTS.brokeBelow) track(userId, [['broke', 1]]);
-    johnson.check(userId);
+    if (config.npcGifts !== false) johnson.check(userId);
     peter.check(userId);
   }
 
@@ -2774,8 +2774,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const args = Array.isArray(body.args) ? body.args : [];
     try {
       if (cmd === 'quota') return { ok: true, result: quota.state() };
+      // going back in time (Cloudflare): the CLI takes the operators' log first
+      // and gives it back after, so none of it is lost (server/core/opslog.js)
+      if (cmd === 'log-export') return { ok: true, result: { rows: admin.logRows() } };
+      if (cmd === 'log-keep') return { ok: true, result: admin.keepLog(args[0], args[1] || {}, req) };
       const own = hostAdmin ? await hostAdmin(cmd, args) : undefined;
-      return { ok: true, result: own !== undefined ? own : await admin.command(cmd, args) };
+      return { ok: true, result: own !== undefined ? own : await admin.command(cmd, args, req) };
     } catch (e) {
       if (e && e.name === 'AdminError') throw new ApiError(400, 'admin', e.message);
       throw e;

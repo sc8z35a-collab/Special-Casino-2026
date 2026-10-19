@@ -3,9 +3,10 @@
 // passwords, 引き継ぎコード …) and every DEV release going live, with all
 // that is known about it. It can only grow: the database refuses to change
 // or delete its rows (triggers in db.js), the server has no way to, a
-// restore only adds missing rows (admin.js), and each row carries the hash
-// of the one before it, so a row changed or taken out behind the server's
-// back shows in verify().
+// restore from a backup or to an earlier time keeps every row (keep():
+// admin.js, server/node/admin-cli.js), and each row carries the hash of the
+// one before it, so a row changed or taken out behind the server's back
+// shows in verify().
 import { sha256 } from './auth.js';
 
 const GENESIS = 'TWO STATE ops log';
@@ -27,15 +28,15 @@ export function createOpsLog({ q }) {
     return { ip: req.ip || '', userAgent: h('user-agent'), device: h('x-device').slice(0, 120), origin: h('origin'), referer: h('referer') };
   }
 
-  // One entry: actor and target are user rows (or null), detail anything JSON.
-  function add({ actor = null, action, target = null, summary, detail = {}, req = null }) {
+  // One entry: actor and target are user rows (or null: actorName, or システム), detail anything JSON.
+  function add({ actor = null, actorName = '', action, target = null, summary, detail = {}, req = null }) {
     const at = Date.now();
     const last = q('SELECT id, hash FROM ops_log ORDER BY id DESC LIMIT 1').get();
     const row = {
       id: last ? last.id + 1 : 1,
       at,
       actor_id: actor ? actor.id : 0,
-      actor_name: actor ? actor.name : 'システム',
+      actor_name: actor ? actor.name : actorName || 'システム',
       action,
       target_id: target ? target.id : 0,
       target_name: target ? target.name : '',
@@ -44,11 +45,45 @@ export function createOpsLog({ q }) {
       prev_hash: last ? last.hash : sha256(GENESIS)
     };
     row.hash = sha256(fields(row));
-    q(`INSERT INTO ops_log (id, at, actor_id, actor_name, action, target_id, target_name, summary, detail, prev_hash, hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(row.id, row.at, row.actor_id, row.actor_name, row.action, row.target_id, row.target_name, row.summary, row.detail, row.prev_hash, row.hash);
+    insert(row);
     return row;
   }
+  function insert(r) {
+    q(`INSERT INTO ops_log (id, at, actor_id, actor_name, action, target_id, target_name, summary, detail, prev_hash, hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(r.id, r.at, r.actor_id, r.actor_name, r.action, r.target_id, r.target_name, r.summary, r.detail, r.prev_hash, r.hash);
+  }
+
+  // Rows from elsewhere (a backup, or this log as it was before the database
+  // went back in time): the ones this log has are skipped, the ones that
+  // continue it are added as they were, and any others are kept whole inside
+  // one new entry, so no row is ever lost and the chain stays whole.
+  const COLS = ['id', 'at', 'actor_id', 'actor_name', 'action', 'target_id', 'target_name', 'summary', 'detail', 'prev_hash', 'hash'];
+  function keep(rows, { why = '', actorName = '' } = {}) {
+    const list = (Array.isArray(rows) ? rows : []).filter((r) => r && COLS.every((c) => c in r)).sort((a, b) => a.id - b.id);
+    let added = 0;
+    const kept = [];
+    for (const r of list) {
+      const have = q('SELECT hash FROM ops_log WHERE id = ?').get(r.id);
+      if (have && have.hash === r.hash) continue;
+      const last = q('SELECT id, hash FROM ops_log ORDER BY id DESC LIMIT 1').get();
+      if (!have && r.id === (last ? last.id : 0) + 1 && r.prev_hash === (last ? last.hash : sha256(GENESIS)) && sha256(fields(r)) === r.hash) {
+        insert(r);
+        added++;
+      } else {
+        kept.push(r);
+      }
+    }
+    if (kept.length) {
+      add({
+        actorName, action: 'log_kept',
+        summary: `${why || '記録の復元'}：この記録とつながらない運営ログ ${kept.length}件（#${kept[0].id}〜#${kept[kept.length - 1].id}）を、消さずにこの記録の中に保存`,
+        detail: { why, entries: kept }
+      });
+    }
+    return { added, kept: kept.length };
+  }
+  const all = () => q('SELECT * FROM ops_log ORDER BY id').all();
 
   function dto(r) {
     let detail = {};
@@ -83,5 +118,5 @@ export function createOpsLog({ q }) {
     return { ok: true, count: n };
   }
 
-  return { add, list, verify, dto };
+  return { add, list, verify, dto, keep, all };
 }

@@ -2,6 +2,7 @@
 // POST /api/admin endpoint (Cloudflare has no shell). Balances can be raised
 // or lowered by hand but never below zero, and nothing here wipes accounts.
 import { statements, TABLES, SCHEMA_VERSION } from './db.js';
+import { createOpsLog } from './opslog.js';
 import { cleanName, nameKey, newRecoveryCode, normalizeRecoveryCode, sha256, cleanPassword, hashPassword } from './auth.js';
 import { utcDay } from './rules.js';
 
@@ -19,6 +20,8 @@ export class AdminError extends Error {
 export function createAdmin(db, { seal = () => '' } = {}) {
   const q = statements(db);
   const tx = (fn) => db.tx(fn);
+  // what the commands change goes to the operators' log (server/core/opslog.js)
+  const log = createOpsLog({ q });
 
   // "#12" or "12" = user id, anything else = user name (case-insensitive)
   function find(ref) {
@@ -168,17 +171,10 @@ export function createAdmin(db, { seal = () => '' } = {}) {
         const counts = {};
         for (const t of TABLES) {
           if (t === 'meta') continue;
-          // the operators' log is never deleted: entries missing here are added
+          // the operators' log is never deleted: every row of the backup is kept
           if (t === 'ops_log') {
-            let n = 0;
-            for (const row of data.tables[t] || []) {
-              if (!['id', 'at', 'actor_id', 'actor_name', 'action', 'target_id', 'target_name', 'summary', 'detail', 'prev_hash', 'hash'].every((c) => c in row)) continue;
-              if (q('SELECT 1 AS x FROM ops_log WHERE id = ?').get(row.id)) continue;
-              q(`INSERT INTO ops_log (id, at, actor_id, actor_name, action, target_id, target_name, summary, detail, prev_hash, hash)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(row.id, row.at, row.actor_id, row.actor_name, row.action, row.target_id, row.target_name, row.summary, row.detail, row.prev_hash, row.hash);
-              n++;
-            }
-            counts[t] = n;
+            const r = log.keep(data.tables[t] || [], { why: 'バックアップからの復元', actorName: '管理コマンド' });
+            counts[t] = r.added + r.kept;
             continue;
           }
           q(`DELETE FROM ${t}`).run();
@@ -195,8 +191,43 @@ export function createAdmin(db, { seal = () => '' } = {}) {
     }
   };
 
-  // Dispatch used by POST /api/admin: { cmd, args: [...] }
-  admin.command = (cmd, args) => {
+  // What a command changed, in the operators' log (passwords and codes left out).
+  const LOGGED = {
+    ban: (r) => `${r.name}さんを永久BAN`,
+    unban: (r) => `${r.name}さんのBANを解除`,
+    grant: (r) => `${r.name}さんの${{ tokens: 'トークン', dollars: 'ドル', coins: 'コイン' }[r.currency]}を ${r.before.toLocaleString('en-US')} → ${r.after.toLocaleString('en-US')} に変更`,
+    rename: (r) => `${r.before}さんの名前を「${r.after}」に変更`,
+    recovery: (r) => `${r.name}さんの引き継ぎコードを再発行`,
+    password: (r) => `${r.name}さんのパスワードを再設定`,
+    logout: (r) => `${r.name}さんのログインを ${r.sessions}件解除`,
+    redact: (r) => `メッセージ #${r.id} を削除済みにした`,
+    export: () => '全データのバックアップを書き出した',
+    import: (r) => `バックアップから復元（${Object.entries(r).map(([t, n]) => `${t} ${n}`).join(', ')}）`
+  };
+  function logged(cmd, args, r, req) {
+    if (!LOGGED[cmd]) return r;
+    const target = r && r.id && cmd !== 'redact' ? q('SELECT id, name FROM users WHERE id = ?').get(r.id) : null;
+    const safeArgs = cmd === 'password' ? [args[0], '（非表示）'] : cmd === 'import' ? ['（バックアップのデータ）', !!args[1]] : args;
+    const result = r && typeof r === 'object' && !Array.isArray(r) && cmd !== 'export'
+      ? { ...r, password: r.password ? '（非表示）' : undefined, recoveryCode: r.recoveryCode ? r.recoveryCode.slice(0, 4) + '…' : undefined } : null;
+    log.add({ actorName: '管理コマンド', action: 'admin:' + cmd, target, summary: `管理コマンド：${LOGGED[cmd](r)}`, detail: { command: cmd, args: safeArgs, result }, req });
+    return r;
+  }
+
+  // Dispatch used by POST /api/admin: { cmd, args: [...] } (req: who sent it, for the log)
+  admin.command = async (cmd, args, req = null) => logged(cmd, args, await run(cmd, args), req);
+  // the operators' log as it is now, and rows to keep after the database went back in time
+  admin.logRows = () => log.all();
+  admin.keepLog = (rows, info = {}, req = null) => {
+    const r = tx(() => log.keep(rows, { why: `${info.restoredTo || ''} の時点への巻き戻し`, actorName: '管理コマンド' }));
+    log.add({
+      actorName: '管理コマンド', action: 'admin:restore-time', req,
+      summary: `管理コマンド：データベースを ${info.restoredTo || '?'} の時点に巻き戻した（運営ログは ${r.added + r.kept}件をそのまま保持）`,
+      detail: { ...info, logRowsAdded: r.added, logRowsKeptInside: r.kept }
+    });
+    return r;
+  };
+  function run(cmd, args) {
     switch (cmd) {
       case 'stats': return admin.stats();
       case 'users': return admin.users({ query: args[0] || '' });
@@ -214,7 +245,7 @@ export function createAdmin(db, { seal = () => '' } = {}) {
       case 'import': return admin.import(args[0], { replace: !!args[1] });
       default: throw new AdminError(`不明なコマンド: ${cmd}`);
     }
-  };
+  }
 
   return admin;
 }
