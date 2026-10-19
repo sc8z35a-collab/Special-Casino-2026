@@ -349,7 +349,8 @@
 
 /* messages: sized by --u so the same nodes also fit the (unscaled) entry overlay */
 .chat-list { --u: 1px; display: flex; flex-direction: column; gap: calc(var(--u) * 14); padding-bottom: calc(var(--u) * 8); }
-.entry-feed .chat-list { --u: .62px; }
+/* the chat moved above the keyboard keeps the size it had on the screen (js/ui/social.js sets --entry-u) */
+.entry-feed .chat-list { --u: var(--entry-u, .62px); }
 .chat-list .empty { padding: calc(var(--u) * 60) calc(var(--u) * 30); font-size: calc(var(--u) * 24); }
 .msg { display: flex; flex-direction: column; max-width: 76%; }
 .msg.theirs { align-self: flex-start; align-items: flex-start; }

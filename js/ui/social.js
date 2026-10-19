@@ -216,6 +216,9 @@
       send.textContent = o.button || '送信';
       setError('');
       var feed = $('#entry-feed');
+      // the same size as on the (scaled) screen: typing must not make it bigger
+      var s = BR.app.view && BR.app.view.s;
+      if (s) feed.style.setProperty('--entry-u', s.toFixed(4) + 'px');
       if (o.feed) {
         home = o.feed.parentNode;
         homeNext = o.feed.nextSibling;

@@ -1,7 +1,7 @@
 /* Service worker: makes the game installable as an app ("ホーム画面に追加",
    Chrome's install) and lets it open without a connection. Always the
    network first, the cache only as a fallback; the API is never cached. */
-const BUILD = 'c3e28ac07b4c';          // written by tools/stamp.mjs
+const BUILD = '036b733802cf';          // written by tools/stamp.mjs
 const CACHE = 'two-state-' + BUILD;
 
 self.addEventListener('install', (e) => {
