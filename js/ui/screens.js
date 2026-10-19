@@ -276,8 +276,11 @@
         var pays = C.pays[sym];
         var counts = Object.keys(pays).map(Number).sort(function (a, b) { return a - b; });
         var prob = Math.round(C.weights[sym] * 1000) / 10;
+        // 友達と稼ぐ (a hub) has odds of its own: up or down
+        var hub = Math.round(C.hub.weights[sym] * 1000) / 10;
+        var hubTag = hub === prob ? '' : '<div class="pc-hub ' + (hub > prob ? 'up' : 'down') + '">友達と稼ぐ <b>' + hub + '%</b>' + (hub > prob ? '▲' : '▼') + '</div>';
         card.innerHTML =
-          '<div class="pc-img"><img alt="" src="' + BR.SYMBOL_IMG[sym] + '"></div>' +
+          '<div class="pc-img"><img alt="" src="' + BR.SYMBOL_IMG[sym] + '"></div>' + hubTag +
           '<div class="pc-prob">確率: <b>' + prob + '%</b></div>' +
           '<div class="pc-counts">' + counts.map(function (c) { return '<div>' + c + '/5</div>'; }).join('') + '</div>' +
           '<div class="pc-div"></div>' +
@@ -287,6 +290,21 @@
         grid.appendChild(card);
       });
       $('#pane-combos').appendChild(grid);
+      // what 友達と稼ぐ gives, at the end of the rules
+      if (BR.hub && BR.hub.effects) {
+        var li = document.createElement('li');
+        li.className = 'rule-hub';
+        var ic = document.createElement('i');
+        ic.className = 'ic ic-info';
+        var text = document.createElement('span');
+        var head = document.createElement('b');
+        head.textContent = '友達と稼ぐ（2人以上）';
+        text.appendChild(head);
+        text.appendChild(document.createTextNode('：' + BR.hub.effects().map(function (e) { return e.title + '（' + e.text + '）'; }).join('・')));
+        li.appendChild(ic);
+        li.appendChild(text);
+        $('#pane-rules .rule-list').appendChild(li);
+      }
     }
   };
 

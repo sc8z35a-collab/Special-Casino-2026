@@ -12,8 +12,10 @@
    embers rise, a FEVER sign hangs off the top-right corner of the reels and
    the marquee runs in fire colours; every win in a FEVER throws more fire,
    and the first spin without a win puts it out in smoke.
-   Spins of a watched friend count the same way (a separate streak). A BIG WIN
-   has its own overlay: its badge waits until that is over. */
+   Spins of a watched friend count the same way (a separate streak). In a
+   hub (友達と稼ぐ, js/ui/hub.js) the combo is everyone's: the server counts
+   it, a miss or two do not end it, and the others' wins show on it too. A
+   BIG WIN has its own overlay: its badge waits until that is over. */
 (function (BR) {
   'use strict';
 
@@ -233,8 +235,15 @@
     if (!res) return;
     watching = !!watching;
     if (watching !== watchingNow) { watchingNow = watching; streak = 0; feverOff(true); }
-    if (!(res.total > 0)) { streak = 0; feverOff(); return; }
-    var n = ++streak;
+    // in a hub the server counts the combo everyone shares (it lives through a miss or two)
+    var shared = !!res.hub && !watching;
+    if (!(res.total > 0)) {
+      streak = shared ? res.hub.combo : 0;
+      if (!streak) feverOff();
+      return;
+    }
+    streak = shared ? res.hub.combo : streak + 1;
+    var n = streak;
     if (res.tier <= 1) {
       smallWin(res);
       if (n >= 2) badge(n, true);
@@ -258,6 +267,17 @@
     }, 380);
   }
 
+  // Someone else in my hub spun (js/ui/hub.js): the combo they made, and
+  // their win on the badge (and the FEVER) like one of mine.
+  function shared(n, win) {
+    if (watchingNow) return;
+    streak = n;
+    if (!n) { feverOff(); return; }
+    if (!win) return;
+    if (n >= 2) badge(n, true);
+    streakFire(n);
+  }
+
   function reset() {
     streak = 0;
     clearTimeout(badgeTimer);
@@ -270,6 +290,7 @@
   BR.combo = {
     init: function () {},
     spun: spun,
+    shared: shared,
     reset: reset,
     streak: function () { return streak; },
     fever: function () { return !!fever; }

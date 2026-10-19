@@ -189,6 +189,14 @@
     coop: function (group) { return get('/api/coop?group=' + q(group)); },
     sitCoop: function (group, on) { return post('/api/coop', { group: group, on: !!on }); },
 
+    /* 友達と稼ぐ (hubs) and the activity beat of the time quests */
+    hub: function () { return get('/api/hub'); },
+    hubInvite: function (to) { return post('/api/hub/invite', { to: to }); },
+    hubJoin: function (from) { return post('/api/hub/join', { from: from }); },
+    hubDecline: function (from) { return post('/api/hub/decline', { from: from }); },
+    hubLeave: function () { return post('/api/hub/leave'); },
+    beat: function (idle, voice) { return post('/api/beat', { idle: idle, voice: voice ? 1 : 0 }); },
+
     /* the beginner guide and feedback to the operator */
     guideDone: function () { return post('/api/guide'); },
     sendFeedback: function (ratings, comment) { return post('/api/feedback', { ratings: ratings, comment: comment }); },

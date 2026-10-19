@@ -19,7 +19,7 @@ import {
 import { Limiter } from './ratelimit.js';
 import {
   RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE,
-  spin as spinReels, iconSale, itemSale, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
+  spin as spinReels, evaluate as evaluateLine, iconSale, itemSale, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
 import { createPeter, reservedName } from './peter.js';
@@ -29,7 +29,7 @@ import { readQuests, stepQuests, claimQuests, questsReady, questView } from './q
 const PAGE = 50;
 const CURRENCIES = ['tokens', 'dollars'];
 // voice: the home call (a player and everyone watching them)
-const CALL_TYPES = new Set(['home']);
+const CALL_TYPES = new Set(['home', 'hub']);
 const MAX_PENDING_REQUESTS = 50;
 const CHARM = RULES.charm;
 // group chats: members (with the one who made it) and the length of a name
@@ -558,6 +558,154 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     for (const p of paid) if (p.id !== u.id) balanceChanged(p.id);
   }
 
+  /* ----- 友達と稼ぐ (hubs) ----- */
+  // Friends invited from the friend list play together in a hub of up to
+  // HUB.max players, each on their own reels. Joining always goes through the
+  // hub tables in one transaction, so two players accepting at once or
+  // invitations that cross end up in one hub. While two or more are in it,
+  // their spins get the hub's odds and boosts (RULES.hub) and share one
+  // combo. A player whose connection has been gone for HUB.awayMs leaves; a
+  // hub with one player left closes (an invitation starts a new one).
+  const HUB = RULES.hub;
+  const hubRow = (id) => q('SELECT * FROM hubs WHERE id = ?').get(id);
+  const memberRow = (userId) => q('SELECT * FROM hub_members WHERE user_id = ?').get(userId);
+  const hubMemberRows = (hubId) => q('SELECT * FROM hub_members WHERE hub_id = ? ORDER BY joined_at, user_id').all(hubId);
+  // a win that makes the combo `n` pays x1.1 for every win before it in the run
+  const comboMult = (n) => (n > 1 ? Math.round(Math.pow(HUB.comboStep, n - 1) * 10000) / 10000 : 1);
+  function hubPeople(hubId) {
+    return q(`SELECT o.id, o.name, o.avatar FROM hub_members m JOIN users o ON o.id = m.user_id
+              WHERE m.hub_id = ? ORDER BY m.joined_at, o.id`).all(hubId)
+      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, online: live.isOnline(r.id) }));
+  }
+  function hubDto(h) {
+    if (!h) return null;
+    return { id: h.id, combo: h.combo, misses: h.misses, won: h.won, seq: h.spins, max: HUB.max, next: comboMult(h.combo + 1), members: hubPeople(h.id) };
+  }
+  function hubSend(hubId, data, except = 0) {
+    for (const m of hubMemberRows(hubId)) if (m.user_id !== except) live.send(m.user_id, 'hub', data);
+  }
+  // invitations to a player that are still open
+  function hubInvites(userId) {
+    const since = Date.now() - HUB.inviteMs;
+    return q(`SELECT i.created_at, o.id, o.name, o.avatar FROM hub_invites i JOIN users o ON o.id = i.from_id
+              WHERE i.to_id = ? AND i.created_at > ? ORDER BY i.created_at DESC`).all(userId, since)
+      .map((r) => ({ from: { id: r.id, name: r.name, avatar: r.avatar }, until: r.created_at + HUB.inviteMs }));
+  }
+  // The hub after its members' connections are looked at: whoever has been
+  // gone for HUB.awayMs leaves, and with one player left it closes. Returns
+  // the hub, or null when there is none (any more).
+  function settleHub(hubId, now = Date.now()) {
+    const out = tx(() => {
+      if (!hubRow(hubId)) return { hub: null, gone: [], alone: [] };
+      const gone = [];
+      for (const m of hubMemberRows(hubId)) {
+        // connected: still here (coming back is presence()'s to tell)
+        if (live.isOnline(m.user_id)) continue;
+        if (!m.away_at) {
+          q('UPDATE hub_members SET away_at = ? WHERE user_id = ?').run(now, m.user_id);
+        } else if (now - m.away_at >= HUB.awayMs) {
+          q('DELETE FROM hub_members WHERE user_id = ?').run(m.user_id);
+          gone.push(m.user_id);
+        }
+      }
+      const left = hubMemberRows(hubId);
+      if (left.length >= 2) return { hub: hubRow(hubId), gone, alone: [] };
+      q('DELETE FROM hub_members WHERE hub_id = ?').run(hubId);
+      q('DELETE FROM hubs WHERE id = ?').run(hubId);
+      return { hub: null, gone, alone: left.map((m) => m.user_id) };
+    });
+    for (const id of out.gone) {
+      const u = getUser(id);
+      if (out.hub && u) hubSend(hubId, { type: 'leave', user: mini(u), why: 'away', hub: hubDto(out.hub) });
+    }
+    for (const id of out.alone) live.send(id, 'hub', { type: 'closed', why: 'alone' });
+    return out.hub;
+  }
+  // the hub a player plays in now (two or more in it), or null
+  function playingHub(userId) {
+    const m = memberRow(userId);
+    return m ? settleHub(m.hub_id) : null;
+  }
+  const myHub = (userId) => hubDto(playingHub(userId));
+  // A spin in a hub (inside the spin's transaction): HUB.diamonds of them
+  // land five diamonds, 777 pays HUB.sevens times, and the shared combo: a win
+  // adds one to it and pays comboMult(combo), HUB.misses misses in a row end
+  // it. Changes `r` (what it pays, and the tier the win is shown as) and the
+  // hub; returns what the spin got from the hub.
+  function hubSpin(r, hub, bet) {
+    const got = { combo: hub.combo, misses: hub.misses, mult: 1, sevens: false, diamonds: false };
+    if (randomInt(1, 10000) <= HUB.diamonds * 10000) {
+      for (const col of r.grid) col[1] = 'diamond';
+      r.line = r.grid.map((col) => col[1]);
+      Object.assign(r, evaluateLine(r.line, bet));
+      got.diamonds = true;
+    }
+    const sevens = r.wins.find((w) => w.symbol === 'seven' && w.count >= 3);
+    if (sevens) {
+      const extra = Math.floor(sevens.amount * (HUB.sevens - 1));
+      sevens.amount += extra;
+      r.total += extra;
+      got.sevens = true;
+    }
+    if (r.total > 0) {
+      got.combo = hub.combo + 1;
+      got.misses = 0;
+      got.mult = comboMult(got.combo);
+      r.total = Math.floor(r.total * got.mult);
+    } else {
+      got.misses = hub.misses + 1;
+      if (got.misses >= HUB.misses) { got.combo = 0; got.misses = 0; }
+    }
+    q('UPDATE hubs SET combo = ?, misses = ?, won = won + ?, spins = spins + 1 WHERE id = ?').run(got.combo, got.misses, r.total, hub.id);
+    got.seq = hub.spins + 1;
+    if (r.total > 0) {
+      const m = r.total / bet;
+      r.tier = m >= RULES.tiers.superBig ? 3 : m >= RULES.tiers.big ? 2 : 1;
+    }
+    got.next = comboMult(got.combo + 1);
+    return got;
+  }
+
+  /* ----- activity: the time quests ----- */
+  // Every open game says once a minute how long ago its player last did
+  // something (a tap, a key, a voice). The time since the last beat counts
+  // while that was within QUESTS.idleMs: as time online, in a hub with friends
+  // (one of them connected) and talking with friends (a voice connected, in a
+  // hub or a home call). Beats more than BEAT_GAP apart count nothing in between.
+  const BEAT_GAP = 100000;
+  function talkingAtHome(userId) {
+    const w = q('SELECT target_id FROM watchers WHERE watcher_id = ? AND voice = 1').get(userId);
+    if (w) return live.isOnline(w.target_id);
+    return voiceIds(userId).some((id) => live.isOnline(id));
+  }
+  function beat(u, body) {
+    if (u.npc) return { counted: 0 };
+    const now = Date.now();
+    const idle = Math.max(0, Number(body && body.idle) || 0);
+    const dt = now - (u.beat_at || 0);
+    const ms = dt > 0 && dt <= BEAT_GAP ? Math.min(dt, Math.max(0, QUESTS.idleMs - idle + dt)) : 0;
+    const sec = Math.floor(ms / 1000);
+    const events = [];
+    if (sec > 0) {
+      events.push(['online', sec]);
+      const h = playingHub(u.id);
+      const friends = !!h && hubPeople(h.id).some((p) => p.id !== u.id && p.online);
+      if (friends) events.push(['hubSec', sec]);
+      if (body && body.voice && (friends || talkingAtHome(u.id))) events.push(['talkSec', sec]);
+    }
+    const st = tx(() => {
+      const cur = getUser(u.id);
+      const r = events.length ? questStep(cur, events) : null;
+      // the part of a second not counted waits for the next beat
+      const at = sec > 0 ? now - (ms - sec * 1000) : now;
+      if (r && r.changed) q('UPDATE users SET beat_at = ?, quests = ? WHERE id = ?').run(at, r.json, cur.id);
+      else q('UPDATE users SET beat_at = ? WHERE id = ?').run(at, cur.id);
+      return r;
+    });
+    questNotice(u.id, st);
+    return { counted: sec };
+  }
+
   /* ----- 運営へのフィードバック ----- */
   const FEEDBACK_ADMIN = config.feedbackAdmin ? nameKey(config.feedbackAdmin) : '';
   const isFeedbackAdmin = (u) => !!FEEDBACK_ADMIN && u.name_key === FEEDBACK_ADMIN;
@@ -772,11 +920,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!RULES.bets.includes(bet)) throw new ApiError(400, 'bad_bet', 'ベット額が正しくありません');
       rate(limit.spin, u.id, 'スピンが速すぎます');
       const today = utcDay();
-      let quests = null, fight = 0, coop = null;
+      // 友達と稼ぐ: a hub of two or more (looked at first: that may close it)
+      const hub0 = playingHub(u.id);
+      let quests = null, fight = 0, coop = null, boost = null, earned = 0;
       const result = tx(() => {
         const cur = getUser(u.id);
         if (cur.tokens < bet) throw new ApiError(409, 'insufficient', 'スピントークンが不足しています');
-        const r = spinReels(bet);
+        const hm = hub0 ? memberRow(cur.id) : null;
+        const hub = hm && hm.hub_id === hub0.id ? hubRow(hub0.id) : null;
+        const r = spinReels(bet, hub ? HUB.weights : undefined);
+        if (hub) boost = hubSpin(r, hub, bet);
         // an お守り加護 that is on softens the first losing spin, then it is used up
         if (cur.charm > 0 && r.total < bet) {
           const pct = randomInt(1, 10000) <= CHARM.fullChance * 10000 ? 100 : randomInt(CHARM.min, CHARM.max);
@@ -816,13 +969,27 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         }
         const dayWon = (cur.won_day === today ? cur.day_won : 0) + r.total;
         const last = JSON.stringify({ grid: r.grid, total: r.total, tier: r.tier, bet, at: Date.now() });
-        // quests count the spin, a win and the payout in $ (in the same row write)
-        quests = questStep(cur, [['spin', 1], ['win', r.total > 0 ? 1 : 0], ['earn', r.total * RULES.tokenPrice]]);
+        // XP, x1.2 in a hub: one more on every fifth spin there
+        let xp = LEVEL.spinXp;
+        if (hub) {
+          const k = Math.round((HUB.xp - 1) * 1000);
+          xp += Math.floor((hm.spins + 1) * LEVEL.spinXp * k / 1000) - Math.floor(hm.spins * LEVEL.spinXp * k / 1000);
+          q('UPDATE hub_members SET spins = spins + 1 WHERE user_id = ?').run(cur.id);
+          boost.xp = xp;
+        }
+        // wins in a row: one's own, or in a hub the combo everyone shares
+        const streak = hub ? cur.streak : r.total > 0 ? cur.streak + 1 : 0;
+        const combo = r.total > 0 ? (hub ? boost.combo : streak) : 0;
+        earned = r.total * RULES.tokenPrice;
+        // quests count the spin, a win, the payout in $, the bet, the combo and
+        // in a hub what everyone there wins (in the same row write)
+        quests = questStep(cur, [['spin', 1], ['win', r.total > 0 ? 1 : 0], ['earn', earned], ['bet', bet], ['combo', combo],
+          ['coopEarn', hub ? earned : 0]]);
         q(`UPDATE users SET tokens = tokens - ? + ?, total_bet = total_bet + ?, total_won = total_won + ?,
            biggest_win = MAX(biggest_win, ?), spins = spins + 1, won_day = ?, day_won = ?, last_spin = ?, charm = ?,
-           quests = ?, xp = xp + ?, rev = rev + 1 WHERE id = ?`)
+           quests = ?, xp = xp + ?, streak = ?, rev = rev + 1 WHERE id = ?`)
           .run(bet, r.total + back, bet, r.total, r.total, today, dayWon, last, r.charm ? 0 : cur.charm,
-            quests.json, LEVEL.spinXp, cur.id);
+            quests.json, xp, streak, cur.id);
         if (config.logSpins) {
           q('INSERT INTO spins (user_id, bet, payout, line, created_at) VALUES (?, ?, ?, ?, ?)').run(cur.id, bet, r.total + back, r.line.join(','), Date.now());
         }
@@ -830,8 +997,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       const after = getUser(u.id);
       questNotice(u.id, quests);
-      const out = { grid: result.grid, line: result.line, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet, charm: result.charm || null };
+      const out = { grid: result.grid, line: result.line, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet, charm: result.charm || null, hub: boost };
       notifyWatchers(u.id, { type: 'spin', user: u.id, result: out, balance: balance(after) });
+      if (boost && hub0) {
+        // the others in the hub: the combo they share, and what everyone won together
+        hubSend(hub0.id, { type: 'spin', user: mini(u), win: out.total, tier: out.tier, combo: boost.combo, misses: boost.misses, next: boost.next,
+          seq: boost.seq, sevens: boost.sevens, diamonds: boost.diamonds }, u.id);
+        if (earned > 0) for (const m of hubMemberRows(hub0.id)) if (m.user_id !== u.id && live.isOnline(m.user_id)) track(m.user_id, [['coopEarn', earned]]);
+      }
       settleBets(u.id, result.tier);
       if (fight) battleStep(fight);
       if (coop) coopAfterSpin(coop, u, out);
@@ -1352,6 +1525,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const me = balanceChanged(u.id);
       const dto = betDto(bet);
       live.send(hostId, 'watch', { type: 'betOn', by: mini(u), bet: dto });
+      track(u.id, [['wbet', 1]]);
       return { bet: dto, balance: balance(me) };
     },
 
@@ -1511,15 +1685,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const state = readQuests(cur.quests);
         const c = claimQuests(state, ids, Date.now());
         if (!c.claimed.length) return { ...c, state };
-        const xp = c.claimed.length * LEVEL.questXp;
-        q('UPDATE users SET quests = ?, dollars = dollars + ?, tokens = tokens + ?, xp = xp + ?, rev = rev + 1 WHERE id = ?')
-          .run(JSON.stringify(state), c.dollars, c.tokens, xp, cur.id);
+        // XP, x1.2 in a hub
+        const boost = memberRow(cur.id) ? HUB.xp : 1;
+        const xp = Math.floor(c.claimed.length * LEVEL.questXp * boost + 1e-9);
+        q('UPDATE users SET quests = ?, dollars = dollars + ?, xp = xp + ?, rev = rev + 1 WHERE id = ?')
+          .run(JSON.stringify(state), c.dollars, xp, cur.id);
         return { ...c, state };
       });
       if (r.claimed.length) balanceChanged(u.id);
       const after = getUser(u.id);
       return {
-        claimed: r.claimed.map((x) => x.id), dollars: r.dollars, tokens: r.tokens,
+        claimed: r.claimed.map((x) => x.id), dollars: r.dollars, tokens: 0,
         periods: questView(r.state), ready: questsReady(r.state), xp: after.xp, balance: balance(after)
       };
     },
@@ -1706,6 +1882,101 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { coop: coopDto(g) };
     },
 
+    /* ----- 友達と稼ぐ (hubs) ----- */
+
+    // my hub (null: none) and the invitations waiting for me
+    'GET /api/hub': (req, u) => {
+      const h = playingHub(u.id);
+      return { hub: h ? hubDto(h) : null, invites: hubInvites(u.id) };
+    },
+
+    // to a friend who is online: they can join from the notice or the friend list
+    'POST /api/hub/invite': async (req, u) => {
+      const body = await req.json();
+      const to = posInt(body.to, '相手');
+      const t = liveTarget(to);
+      if (to === u.id || t.npc) throw new ApiError(400, 'bad_target', 'この相手は招待できません');
+      requireFriend(u, to, '友達と稼ぐ');
+      if (!live.isOnline(to)) throw new ApiError(409, 'offline', `${t.name}さんは今オフラインです`);
+      rate(limit.friend, u.id);
+      const h = playingHub(u.id);
+      if (h) {
+        const theirs = memberRow(to);
+        if (theirs && theirs.hub_id === h.id) throw new ApiError(409, 'same', `${t.name}さんはもう一緒に稼いでいます`);
+        if (hubMemberRows(h.id).length >= HUB.max) throw new ApiError(409, 'full', `ハブは満員です（最大${HUB.max}人）`);
+      }
+      const now = Date.now();
+      q(`INSERT INTO hub_invites (from_id, to_id, created_at) VALUES (?, ?, ?)
+         ON CONFLICT(from_id, to_id) DO UPDATE SET created_at = excluded.created_at`).run(u.id, to, now);
+      live.send(to, 'hub', { type: 'invite', from: mini(u), size: h ? hubMemberRows(h.id).length : 1, until: now + HUB.inviteMs });
+      return { ok: true, until: now + HUB.inviteMs };
+    },
+
+    // accepting `from`'s invitation: into their hub, or a new one for the two
+    // (one transaction: crossing invitations and players joining at once end up together)
+    'POST /api/hub/join': async (req, u) => {
+      const body = await req.json();
+      const fromId = posInt(body.from, '招待');
+      rate(limit.friend, u.id);
+      const t = liveTarget(fromId);
+      const theirsNow = memberRow(fromId);
+      if (theirsNow) settleHub(theirsNow.hub_id);
+      const r = tx(() => {
+        const inv = q('SELECT created_at FROM hub_invites WHERE from_id = ? AND to_id = ?').get(fromId, u.id);
+        if (!inv || Date.now() - inv.created_at > HUB.inviteMs) throw new ApiError(404, 'no_invite', 'この招待はもう終わっています');
+        if (!areFriends(u.id, fromId)) throw new ApiError(403, 'not_friends', 'フレンドの招待だけ受けられます');
+        if (!live.isOnline(fromId)) throw new ApiError(409, 'offline', `${t.name}さんは今オフラインです`);
+        q('DELETE FROM hub_invites WHERE from_id = ? AND to_id = ?').run(fromId, u.id);
+        const mine = memberRow(u.id), theirs = memberRow(fromId);
+        if (mine && theirs && mine.hub_id === theirs.hub_id) return { hubId: mine.hub_id, prev: 0, formed: false, same: true };
+        let hubId = theirs ? theirs.hub_id : 0;
+        if (hubId && hubMemberRows(hubId).length >= HUB.max) throw new ApiError(409, 'full', `${t.name}さんのハブは満員です（最大${HUB.max}人）`);
+        const now = Date.now();
+        const formed = !hubId;
+        if (formed) {
+          hubId = Number(q('INSERT INTO hubs (created_at) VALUES (?)').run(now).lastInsertRowid);
+          q('INSERT INTO hub_members (user_id, hub_id, joined_at) VALUES (?, ?, ?)').run(fromId, hubId, now);
+        }
+        const prev = mine ? mine.hub_id : 0;
+        if (prev) q('DELETE FROM hub_members WHERE user_id = ?').run(u.id);
+        q('INSERT INTO hub_members (user_id, hub_id, joined_at) VALUES (?, ?, ?)').run(u.id, hubId, now + 1);
+        return { hubId, prev, formed, same: false };
+      });
+      if (r.prev) {
+        hubSend(r.prev, { type: 'leave', user: mini(u), why: 'moved' });
+        settleHub(r.prev);
+      }
+      const dto = hubDto(hubRow(r.hubId));
+      if (!r.same) {
+        hubSend(r.hubId, { type: 'join', user: mini(u), hub: dto }, u.id);
+        track(u.id, [['hub', 1]]);
+        if (r.formed) track(fromId, [['hub', 1]]);
+      }
+      return { hub: dto };
+    },
+
+    // saying no to an invitation (its sender hears it)
+    'POST /api/hub/decline': async (req, u) => {
+      const body = await req.json();
+      const fromId = posInt(body.from, '招待');
+      const r = q('DELETE FROM hub_invites WHERE from_id = ? AND to_id = ?').run(fromId, u.id);
+      if (Number(r.changes) > 0) live.send(fromId, 'hub', { type: 'declined', by: mini(u) });
+      return { invites: hubInvites(u.id) };
+    },
+
+    // leaving: the others play on (a hub with one player left closes)
+    'POST /api/hub/leave': (req, u) => {
+      const m = memberRow(u.id);
+      if (!m) return { hub: null };
+      q('DELETE FROM hub_members WHERE user_id = ?').run(u.id);
+      const h = settleHub(m.hub_id);
+      if (h) hubSend(m.hub_id, { type: 'leave', user: mini(u), hub: hubDto(h) });
+      return { hub: null };
+    },
+
+    // the activity beat (time quests), when there is no WebSocket to send it on
+    'POST /api/beat': async (req, u) => beat(u, await req.json()),
+
     /* ----- 運営へのフィードバック ----- */
 
     // stars (any of them may be left out) and a comment of any length
@@ -1748,8 +2019,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   };
 
   // Voice signalling of the home call: a player and the watchers they talk
-  // with (type "home"; everyone in that voice can reach everyone else). Used by
-  // POST /api/call and by the WebSocket.
+  // with (type "home"; everyone in that voice can reach everyone else), and of
+  // a hub (type "hub": everyone in it). Used by POST /api/call and by the
+  // WebSocket.
   function relayCall(u, body) {
     const type = String(body.type || '');
     if (!CALL_TYPES.has(type)) throw new ApiError(400, 'bad_type', '通話の操作が正しくありません');
@@ -1759,10 +2031,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     liveTarget(to);
     rate(limit.call, u.id);
     const room = Number(body.data && body.data.room);
-    if (!room || !inVoice(u.id, room) || !inVoice(to, room)) throw new ApiError(409, 'not_home', 'ホームで話せる相手ではありません');
+    if (type === 'hub') {
+      const a = memberRow(u.id), b = memberRow(to);
+      if (!room || !a || !b || a.hub_id !== room || b.hub_id !== room) throw new ApiError(409, 'not_hub', 'ハブで話せる相手ではありません');
+    } else if (!room || !inVoice(u.id, room) || !inVoice(to, room)) {
+      throw new ApiError(409, 'not_home', 'ホームで話せる相手ではありません');
+    }
     live.send(to, 'call', { type, callId, from: mini(u), data: body.data ?? null });
-    // quests: 友達に電話をかけてみる (calling into the home), 友達と話す（通話）
-    // (two people in a home whose voices are connecting)
+    // quests: 友達に電話をかけてみる (calling into the home or the hub), 友達と
+    // 話す（通話） (two people in a home or a hub whose voices are connecting)
     const op = body.data && body.data.op;
     if (op === 'hello' && !body.data.reply) track(u.id, [['call', 1]]);
     else if (op === 'hello') {
@@ -1796,6 +2073,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   const socketCall = fromSocket(relayCall);
   const socketTyping = fromSocket(relayTyping);
+  const socketBeat = fromSocket(beat);
 
   // Friendship both ways, the request(s) gone, a note in their conversation.
   function makeFriends(requester, accepter) {
@@ -1813,6 +2091,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const dto = msgDto(m);
     live.send(requester.id, 'msg', { ...dto, to: requester.id, peer: accepter.id, unread: unreadTotal(requester.id) });
     live.send(accepter.id, 'msg', { ...dto, to: accepter.id, peer: requester.id });
+    // quests: 友達を追加する (both of them)
+    track(requester.id, [['friend', 1]]);
+    track(accepter.id, [['friend', 1]]);
     return { pending: pendingRequests(accepter.id) };
   }
 
@@ -1838,16 +2119,30 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       loginBonus: bonus,
       loginReset: nextLoginReset(),
       me: meDto(u), unread: unreadTotal(userId), friendRequests: pendingRequests(userId), iconShop: iconShop(), itemShop: itemShop(),
-      peter: peter.me(), online: live.onlineCount()
+      peter: peter.me(), online: live.onlineCount(),
+      hub: myHub(userId), hubInvites: hubInvites(userId)
     };
   }
 
   function presence(userId, online) {
     live.broadcast('presence', { id: userId, online, count: live.onlineCount() });
+    const hm = memberRow(userId);
     if (online) {
+      // back in the hub before it let them go
+      if (hm && hm.away_at) {
+        q('UPDATE hub_members SET away_at = 0 WHERE user_id = ?').run(userId);
+        const me = getUser(userId);
+        if (me) hubSend(hm.hub_id, { type: 'back', user: mini(me) }, userId);
+      }
       // back nearly broke: Peter may have something to say
       try { afterSpend(userId); } catch (e) { console.error('peter', e); }
       return;
+    }
+    // gone from the hub for now: they leave it if they are not back in HUB.awayMs
+    if (hm) {
+      q('UPDATE hub_members SET away_at = ? WHERE user_id = ? AND away_at = 0').run(Date.now(), userId);
+      const me = getUser(userId);
+      if (me) hubSend(hm.hub_id, { type: 'away', user: mini(me) }, userId);
     }
     // 最終オンライン: the moment they left (the time since their last request was play)
     const now = Date.now();
@@ -1884,6 +2179,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         balanceChanged(b.watcher_id);
       }
       for (const b of q("SELECT * FROM battles WHERE state IN ('invite', 'live')").all()) battleOver(b);
+      // 友達と稼ぐ: old invitations, players long gone, hubs of one
+      q('DELETE FROM hub_invites WHERE created_at < ?').run(Date.now() - HUB.inviteMs);
+      for (const h of q('SELECT id FROM hubs').all()) settleHub(h.id);
       for (const [k, until] of voiceKept) if (until < Date.now()) voiceKept.delete(k);
       for (const l of Object.values(limit)) l.prune();
       quota.flush();
@@ -1964,6 +2262,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     consumeTicket,
     socketCall,
     socketTyping,
+    socketBeat,
     quota,
     close: () => quota.flush()
   };

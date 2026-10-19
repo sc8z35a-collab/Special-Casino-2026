@@ -1,5 +1,6 @@
 /* Game rules: symbols, per-cell probabilities and the pay table shown in the
-   in-game "組み合わせ" tab.  RTP with these numbers is 92.84 %. */
+   in-game "組み合わせ" tab.  RTP with these numbers is 89.46 % (a win on
+   33.8 % of the spins); in a hub (友達と稼ぐ) see `hub`. */
 (function (BR) {
   'use strict';
 
@@ -7,7 +8,7 @@
     // order = paytable order (low -> high)
     symbols: ['revolver', 'gold', 'diamond', 'star', 'bar', 'seven', 'statue'],
     // probability of each symbol landing on any reel position
-    weights: { revolver: 0.40, gold: 0.25, diamond: 0.20, star: 0.08, bar: 0.045, seven: 0.02, statue: 0.005 },
+    weights: { revolver: 0.42, gold: 0.23, diamond: 0.205, star: 0.075, bar: 0.045, seven: 0.02, statue: 0.005 },
     // matches anywhere on the centre line: count -> multiplier of the bet
     pays: {
       revolver: { 4: 1.5, 5: 3 },
@@ -95,6 +96,27 @@
     ],
     jobSlots: 1,
     // $ for every player who updates the game to a new release (js/game/news.js)
-    updateBonus: 250000
+    updateBonus: 250000,
+    // 友達と稼ぐ: friends invited from the friend list play together in a hub
+    // of up to `max` players (each on their own reels, which the others do not
+    // see). While two or more are in it, every spin of theirs uses `weights`
+    // (the statue 1 %, 7 4 %, the revolver 35 %), `diamonds` of the spins land
+    // five diamonds, the combo is shared by everyone: each win in a row pays
+    // `comboStep` times more than the one before (x1, x1.1, x1.21 ...) and only
+    // `misses` misses in a row end it; 777 (three 7s or more) pays `sevens`
+    // times, XP is `xp` times. An invitation waits `inviteMs`; a player whose
+    // connection is gone for `awayMs` leaves, and a hub with one player left
+    // closes.
+    hub: {
+      max: 5,
+      weights: { revolver: 0.35, gold: 0.25, diamond: 0.22, star: 0.08, bar: 0.05, seven: 0.04, statue: 0.01 },
+      diamonds: 0.01,
+      comboStep: 1.1,
+      misses: 3,
+      sevens: 1.5,
+      xp: 1.2,
+      inviteMs: 600000,
+      awayMs: 90000
+    }
   };
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

@@ -8,14 +8,16 @@ import { stepQuests, claimQuests, questsReady } from '../core/quests.js';
 const H = 3600000;
 const ids = (r) => r.done.map((q) => q.id).sort();
 
-test('quest periods start 2026-10-18 9:00 Japan time: every 5 h, day, week, month (18th), 3 months', () => {
+test('quest periods start 2026-10-18 9:00 Japan time: every 5 h, day, week (協力 too), month (18th); 特別 never', () => {
   const t = Date.UTC(2026, 9, 18, 6, 30);   // 15:30 in Japan
   assert.deepEqual(QUESTS.range('5h', t), { k: 1, start: Date.UTC(2026, 9, 18, 5), end: Date.UTC(2026, 9, 18, 10) });
   assert.equal(QUESTS.range('day', t).end, Date.UTC(2026, 9, 19));
   assert.equal(QUESTS.range('week', t).end, Date.UTC(2026, 9, 25));
+  assert.deepEqual(QUESTS.range('coop', t), QUESTS.range('week', t));
   assert.equal(QUESTS.range('month', Date.UTC(2026, 10, 17, 23)).end, Date.UTC(2026, 10, 18));
-  assert.equal(QUESTS.range('special', Date.UTC(2027, 0, 17)).end, Date.UTC(2027, 0, 18));
-  assert.equal(QUESTS.range('special', Date.UTC(2027, 0, 18)).end, Date.UTC(2027, 3, 18));
+  assert.deepEqual(QUESTS.range('special', Date.UTC(2031, 0, 18)), { k: 0, start: QUESTS.epoch, end: 0 });
+  // every quest pays $; ids are unique
+  assert.equal(new Set(QUESTS.list.map((q) => q.id)).size, QUESTS.list.length);
   assert.deepEqual([2000, 5000, 10000, 20000, 50000, 100000, 1000000].map(QUESTS.tier), ['gray', 'blue', 'purple', 'gold', 'red', 'aqua', 'prism']);
   assert.deepEqual([0, 99, 100, 299, 300, 600].map(LEVEL.of), [1, 1, 2, 2, 3, 4]);
 });
@@ -35,16 +37,46 @@ test('quests: progress shared between periods; finished ones wait to be received
   assert.equal(claimQuests(st, null, now).claimed.length, 0, 'never twice');
   assert.equal(stepQuests(st, [['peek', 1]], now).done.length, 1);
   assert.equal(stepQuests(st, [['peek', 1]], now).changed, false, 'finished: not counted again');
-  // one transfer counts for the daily and the monthly quest ($ and spin tokens)
+  // one transfer counts for the daily and the monthly quests, all paid in $
+  // (with the four before them that is five finished: クエストを5回クリアする as well)
   r = stepQuests(st, [['sent', 100000]], now);
-  assert.deepEqual(ids(r), ['day-send1k', 'month-send100k']);
-  c = claimQuests(st, ['day-send1k', 'month-send100k'], now);
-  assert.deepEqual([c.dollars, c.tokens], [5000, 30000]);
-  assert.equal(st.special.m.clear, 6, 'every finished quest counts towards クエストを100個クリアする');
+  assert.deepEqual(ids(r), ['day-clear5', 'day-send100k', 'day-send1k', 'month-send100k']);
+  c = claimQuests(st, ['day-send1k', 'day-send100k', 'month-send100k'], now);
+  assert.equal(c.dollars, 5000 + 10000 + 30000);
+  assert.equal(st.special.m.clear, 8, 'every finished quest counts towards クエストを100個クリアする');
+  claimQuests(st, null, now);
   // five hours on, the 5時間 quests start over (what was not received is gone); the day's do not
   r = stepQuests(st, [['spin', 1], ['sent', 1000]], now + 5 * H);
   assert.deepEqual(ids(r), ['5h-spin1']);
   assert.equal(questsReady(st, now + 5 * H), 1);
+});
+
+test('quests: chains of one metric, the longest combo, 特別 clears, 臨時緊急 weeks, never-ending 特別', () => {
+  const st = {};
+  const now = Date.UTC(2026, 9, 18, 1);
+  // a chain: the same count goes on towards every step
+  const chain = QUESTS.chainOf(QUESTS.get('5h-online10'));
+  assert.deepEqual(chain.map((q) => q.goal), [300, 600, 900, 1200, 1800, 3600, 5400]);
+  // (finishing quests also counts クエストを5回クリアする: left out here)
+  const fiveH = (r) => ids(r).filter((id) => id.startsWith('5h-'));
+  assert.deepEqual(fiveH(stepQuests(st, [['online', 650]], now)), ['5h-online10', '5h-online5']);
+  // combos keep the longest run, they do not add up
+  assert.deepEqual(fiveH(stepQuests(st, [['combo', 2]], now)), ['5h-combo2']);
+  assert.equal(stepQuests(st, [['combo', 1]], now).changed, false);
+  assert.deepEqual(fiveH(stepQuests(st, [['combo', 4]], now)), ['5h-combo3', '5h-combo4']);
+  // a 特別 quest finished: 特別クエストをひとつクリアする (デイリー)
+  const r = stepQuests(st, [['borrow', 1]], now);
+  assert.ok(ids(r).includes('special-borrow') && ids(r).includes('day-special'), JSON.stringify(ids(r)));
+  // 特別 never starts over: done stays done years later
+  assert.equal(stepQuests(st, [['borrow', 1]], now + 900 * 24 * H).done.length, 0);
+  // 臨時緊急クエスト: on in some weeks only (the first one is one of them)
+  const weeks = Array.from({ length: 52 }, (_, k) => QUESTS.emergencyWeek(k));
+  assert.equal(weeks[0], true);
+  assert.ok(weeks.filter(Boolean).length > 15 && weeks.filter(Boolean).length < 37, String(weeks.filter(Boolean).length));
+  const on = weeks.indexOf(true), off = weeks.indexOf(false);
+  const at = (k) => QUESTS.epoch + k * 7 * 24 * H + H;
+  assert.deepEqual(ids(stepQuests({}, [['watermelon', 3]], at(on))), ['day-watermelon', 'week-melon3']);
+  assert.deepEqual(ids(stepQuests({}, [['watermelon', 3]], at(off))), ['day-watermelon']);
 });
 
 test('server: quests finish on spins, 送金 and 無一文, and pay when received', async () => {
@@ -73,7 +105,8 @@ test('server: quests finish on spins, 送金 and 無一文, and pay when receive
     await m.call('POST', '/api/transfer', { token: a.token, body: { to: b.me.id, amount: 10, currency: 'tokens' } });
     c = await m.call('POST', '/api/quests/claim', { token: a.token, body: {} });
     assert.ok(c.claimed.includes('special-broke'), JSON.stringify(c.claimed));
-    assert.equal(c.balance.tokens, 990 + 1000000);
+    assert.deepEqual([c.balance.tokens, c.balance.dollars, c.tokens], [990, c.dollars, 0], 'every quest pays $');
+    assert.ok(c.dollars >= 1000000);
     m.setUser(a.me.id, { dollars: 0, tokens: 1000 });
     await m.call('POST', '/api/transfer', { token: a.token, body: { to: b.me.id, amount: 10, currency: 'tokens' } });
     assert.ok(!(await m.call('POST', '/api/quests/claim', { token: a.token, body: {} })).claimed.includes('special-broke'));

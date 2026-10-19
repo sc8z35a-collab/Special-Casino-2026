@@ -227,7 +227,8 @@
     if (t.classList.contains('show')) { t.classList.remove('show'); void t.offsetWidth; }
     t.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(hideToast, ms || 2200);
+    // short: a notice gets out of the way quickly
+    toastTimer = setTimeout(hideToast, Math.max(1500, Math.round((ms || 2200) * 0.7)));
   }
   function hideToast() {
     var t = $('#toast');
@@ -365,8 +366,9 @@
     $('#btn-spin').classList.remove('spinning');
     var res = game.result;
     if (BR.slotfx) BR.slotfx.stopped(!!(res && res.total > 0));
-    // small wins and winning streaks (js/render/combo.js)
+    // small wins and winning streaks (js/render/combo.js); in a hub, what it added (js/ui/hub.js)
     if (res && BR.combo && BR.combo.spun) BR.combo.spun(res, !!game.watch);
+    if (res && res.hub && !game.watch && BR.hub) BR.hub.afterSpin(res);
     if (res && res.charm) BR.shop.charmSaved(res);
     if (!res || res.total <= 0) {
       renderWallet(!!(res && res.charm));
@@ -703,6 +705,8 @@
     BR.news.init();
     BR.call.init();
     BR.watch.init();
+    if (BR.activity) BR.activity.init();
+    if (BR.hub) BR.hub.init();
     if (BR.combo && BR.combo.init) BR.combo.init();
     if (BR.play && BR.play.init) BR.play.init();
     if (BR.feedback && BR.feedback.init) BR.feedback.init();

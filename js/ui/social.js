@@ -406,6 +406,15 @@
     acts.appendChild(b);
     return b;
   }
+  // 友達と稼ぐ (js/ui/hub.js): join their invitation, invite them, or already together
+  function hubButton(acts, u) {
+    var H = BR.hub;
+    if (!H) return;
+    if (H.isMember(u.id)) { acts.appendChild(el('span', 'fr-note ok', '一緒に稼ぎ中')); return; }
+    if (H.invitedBy(u.id)) { actBtn(acts, '参加する', 'hubJoin', 'gold fr-hub-join', 'check'); return; }
+    var b = actBtn(acts, '一緒に稼ぐ', 'hubInvite', 'gold fr-hub', 'friends');
+    b.disabled = !u.online;
+  }
   function renderFriends() {
     var box = $('#fr-list');
     $('#fr-myname').textContent = me ? me.name : '';
@@ -445,7 +454,8 @@
     friends.friends.slice().sort(function (a, b) {
       return (b.online ? 1 : 0) - (a.online ? 1 : 0) || (b.lastSeen || 0) - (a.lastSeen || 0);
     }).forEach(function (u) {
-      var p = personRow(u, 'friend');
+      var p = personRow(u, 'friend' + (BR.hub && BR.hub.invitedBy(u.id) ? ' invited' : ''));
+      hubButton(p.acts, u);
       var w = actBtn(p.acts, '観戦する', 'watch', '', 'eye');
       w.disabled = !u.online;
       var b = actBtn(p.acts, 'フレンド対決', 'battle');
@@ -492,6 +502,8 @@
     if (act === 'dm') { sfx('click'); openDm(u); return; }
     if (act === 'watch') { sfx('click'); BR.watch.start(u); return; }
     if (act === 'battle') { sfx('click'); if (BR.play) BR.play.challenge(u); return; }
+    if (act === 'hubInvite') { if (BR.hub) BR.hub.invite(u); return; }
+    if (act === 'hubJoin') { if (BR.hub) BR.hub.join(u.id); return; }
     var job;
     if (act === 'request') job = api.friendRequest(id).then(function (r) {
       sfx(r.friendship === 'friends' ? 'notify' : 'send');
@@ -1236,6 +1248,10 @@
     }
     var rel = u.friendship;
     if (rel === 'friends') {
+      if (BR.hub && !BR.hub.isMember(u.id)) {
+        var hb = BR.hub.invitedBy(u.id) ? pfBtn(a1, '参加する', 'hubJoin', 'gold', 'check') : pfBtn(a1, '一緒に稼ぐ', 'hubInvite', 'gold', 'friends');
+        hb.disabled = !u.online && !BR.hub.invitedBy(u.id);
+      }
       var w = pfBtn(a1, '観戦する', 'watch', '', 'eye');
       w.disabled = !u.online;
       var b = pfBtn(a1, 'フレンド対決', 'battle');
@@ -1279,6 +1295,8 @@
       case 'dm': sfx('click'); openDm(u); break;
       case 'watch': sfx('click'); K.closeModal('profile'); BR.watch.start(u); break;
       case 'battle': sfx('click'); K.closeModal('profile'); if (BR.play) BR.play.challenge(u); break;
+      case 'hubInvite': K.closeModal('profile'); friendAction(act, u.id); break;
+      case 'hubJoin': K.closeModal('profile'); friendAction(act, u.id); break;
       case 'give': sfx('click'); K.closeModal('profile'); BR.shop.giveFrom(u); break;
       default: friendAction(act, u.id);
     }
@@ -1690,6 +1708,8 @@
     BR.live.on('presence', onPresence);
     BR.live.on('friend', onFriend);
     BR.live.on('status', function (on) { $('#board-info').classList.toggle('off', !on); });
+    // 友達と稼ぐ: an invitation came or ran out, someone joined or left
+    if (BR.hub) BR.hub.onChange(function () { if (visible() && view === 'friends' && friends) renderFriends(); });
     document.addEventListener('visibilitychange', function () {
       var key = chatKey();
       if (!document.hidden && visible() && key) markRead(key);

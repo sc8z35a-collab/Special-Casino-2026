@@ -647,23 +647,32 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 .np-actions button { flex: 1; font-family: var(--f-jp); font-size: 26px; }
 .np-actions .np-ok { background: linear-gradient(180deg, #f6e04c, #e0bb22); color: #3a2c00; }
 
+/* notices: small, at the very top between my card and the wallet, two lines at most */
 .toast {
   position: absolute;
-  left: 50%;
-  top: 112px;
+  left: 884px;
+  top: 8px;
   transform: translate(-50%, -20px);
-  padding: 16px 34px;
-  border-radius: 40px;
-  background: rgba(20, 2, 4, .92);
-  box-shadow: inset 0 0 0 2px #d6a94a, 0 10px 26px rgba(0,0,0,.5);
-  font-size: 26px;
+  max-width: 660px;
+  padding: 10px 26px;
+  border-radius: 26px;
+  background: rgba(20, 2, 4, .94);
+  box-shadow: inset 0 0 0 2px #d6a94a, 0 8px 20px rgba(0,0,0,.5);
+  font-size: 20px;
   font-weight: 700;
-  white-space: nowrap;
+  line-height: 1.35;
+  text-align: center;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   opacity: 0;
   pointer-events: none;
   z-index: 90;
   transition: opacity .25s ease, transform .25s ease;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+/* below the call bar while a call is on */
+#stage:has(#call-bar:not([hidden])) .toast { top: 100px; }
 
 /* rotate-to-landscape fallback is handled in JS (stage rotation) */

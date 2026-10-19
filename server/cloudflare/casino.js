@@ -162,8 +162,8 @@ export class Casino extends DurableObject {
   }
 
   // Players mostly listen: what they do goes through the HTTP API, except
-  // voice chat signalling ({ op: "call", ... }) and 入力中 ({ op: "typing" }),
-  // which are chatty.
+  // voice chat signalling ({ op: "call", ... }), 入力中 ({ op: "typing" }) and
+  // the activity beat of the time quests ({ op: "beat" }), which are chatty.
   async webSocketMessage(ws, message) {
     if (message === 'ping') { this.live.write(ws, 'pong'); return; }
     if (typeof message !== 'string' || message.length > 32 * 1024) return;
@@ -173,6 +173,7 @@ export class Casino extends DurableObject {
     try { body = JSON.parse(message); } catch { return; }
     if (body && body.op === 'call') this.api.socketCall(a.u, body);
     else if (body && body.op === 'typing') this.api.socketTyping(a.u, body);
+    else if (body && body.op === 'beat') this.api.socketBeat(a.u, body);
   }
 
   async webSocketClose(ws, code) {

@@ -244,13 +244,46 @@ export const MIGRATIONS = [
      )`,
     'CREATE INDEX watch_bets_host ON watch_bets(host_id, state)',
     'CREATE INDEX watch_bets_watcher ON watch_bets(watcher_id, state)'
+  ],
+  // v6: 友達と稼ぐ (hubs of friends), wins in a row, activity for the time quests
+  [
+    // a hub: its shared combo (wins in a row, ended by `misses` misses in a row),
+    // what it won and its spins so far (updates are told in that order)
+    `CREATE TABLE hubs (
+       id         INTEGER PRIMARY KEY,
+       combo      INTEGER NOT NULL DEFAULT 0,
+       misses     INTEGER NOT NULL DEFAULT 0,
+       won        INTEGER NOT NULL DEFAULT 0,
+       spins      INTEGER NOT NULL DEFAULT 0,
+       created_at INTEGER NOT NULL
+     )`,
+    // one hub per player; away_at: when their connection went (0: connected)
+    `CREATE TABLE hub_members (
+       user_id   INTEGER PRIMARY KEY,
+       hub_id    INTEGER NOT NULL,
+       joined_at INTEGER NOT NULL,
+       away_at   INTEGER NOT NULL DEFAULT 0,
+       spins     INTEGER NOT NULL DEFAULT 0
+     )`,
+    'CREATE INDEX hub_members_hub ON hub_members(hub_id)',
+    `CREATE TABLE hub_invites (
+       from_id    INTEGER NOT NULL,
+       to_id      INTEGER NOT NULL,
+       created_at INTEGER NOT NULL,
+       PRIMARY KEY (from_id, to_id)
+     )`,
+    'CREATE INDEX hub_invites_to ON hub_invites(to_id)',
+    // wins in a row on one's own (quests: カジノで2コンボする)
+    'ALTER TABLE users ADD COLUMN streak INTEGER NOT NULL DEFAULT 0',
+    // the last activity beat (time quests count the time between beats)
+    'ALTER TABLE users ADD COLUMN beat_at INTEGER NOT NULL DEFAULT 0'
   ]
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
-  'battles', 'watch_bets', 'meta'];
+  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

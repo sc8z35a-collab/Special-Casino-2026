@@ -1,13 +1,16 @@
-/* The voice of a home. The player being watched (the host) picks which of
-   their watchers they talk with; the host and those watchers make up the
-   voice of the home, everyone else only watches. Every microphone starts
-   off: the host's goes on when they pick someone to talk with, a watcher
-   switches theirs on with the microphone button. Audio goes straight between
-   the phones (WebRTC); the server only passes connection details along
-   between people who may talk (POST /api/call, or the WebSocket). Every pair
-   is connected directly; of each pair the one with the lower player id makes
+/* The voice of a home, or of a hub. In a home, the player being watched
+   (the host) picks which of their watchers they talk with; the host and
+   those watchers make up the voice of the home, everyone else only watches.
+   In a hub (友達と稼ぐ) everyone in it is in its voice, and it takes the
+   place of a home's while it lasts. Every microphone starts off: a home's
+   host's goes on when they pick someone to talk with, everyone else switches
+   theirs on with the microphone button. Audio goes straight between the
+   phones (WebRTC); the server only passes connection details along between
+   people who may talk (POST /api/call, or the WebSocket). Every pair is
+   connected directly; of each pair the one with the lower player id makes
    the offer. A microphone that is off sends nothing (the track is stopped),
-   and while a call is on the game's own sounds play quieter. */
+   and while a call is on the game's own sounds play quieter. Someone heard
+   speaking into an open microphone counts as active (the time quests). */
 (function (BR) {
   'use strict';
 
@@ -15,8 +18,9 @@
   var $ = U.$;
   var el = K.el, sfx = K.sfx, toast = K.toast;
 
-  // home: { room: host id, host: user, members: { id: user } (the others in
-  // the voice), peers: { id: peer }, stream, mic, micBusy, cid }
+  // home: { kind: 'home' | 'hub', room: host id (or hub id), host: user (a
+  // home's), members: { id: user } (the others in the voice), peers: { id:
+  // peer }, stream, mic, micBusy, cid }
   var home = null;
   var ice = null;         // { servers, until }
 
@@ -49,8 +53,8 @@
   function signal(to, data) {
     var h = home;
     data.room = h.room;
-    if (BR.live.send({ op: 'call', to: to, type: 'home', callId: h.cid, data: data })) return Promise.resolve();
-    return api.call(to, 'home', h.cid, data).catch(function () {});
+    if (BR.live.send({ op: 'call', to: to, type: h.kind, callId: h.cid, data: data })) return Promise.resolve();
+    return api.call(to, h.kind, h.cid, data).catch(function () {});
   }
 
   /* ------------------------------------------------------------ audio out --- */
@@ -93,7 +97,8 @@
     bar.hidden = false;
     bar.classList.add('home');
     faces(people);
-    $('#call-name').textContent = home.room === myId() ? 'ホーム通話' : home.host.name + 'さんのホーム通話';
+    $('#call-name').textContent = home.kind === 'hub' ? '友達と稼ぐ・通話' : home.room === myId() ? 'ホーム通話' : home.host.name + 'さんのホーム通話';
+    bar.classList.toggle('hub', home.kind === 'hub');
     $('#call-state').textContent = (live ? (live + 1) + '人で通話中' : '接続中…') + (home.mic ? '' : '・マイク オフ');
     bar.classList.toggle('live', live > 0);
     m.classList.toggle('off', !home.mic);
@@ -123,6 +128,7 @@
       if (home !== h) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
       h.stream = stream;
       h.mic = true;
+      listenForVoice(h, stream);
       var track = stream.getAudioTracks()[0];
       eachPeer(h, function (p) { if (p.sender) p.sender.replaceTrack(track).catch(function () {}); });
       renderBar();
@@ -134,6 +140,28 @@
     });
   }
   function micTrack(h) { return h.stream ? h.stream.getAudioTracks()[0] || null : null; }
+
+  // Someone speaking into their open microphone is doing something: the time
+  // quests keep counting (js/ui/activity.js). A cheap level check twice a second.
+  function listenForVoice(h, stream) {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC || !BR.activity) return;
+    var ctx, an, buf, timer;
+    try {
+      ctx = new AC();
+      an = ctx.createAnalyser();
+      an.fftSize = 512;
+      ctx.createMediaStreamSource(stream).connect(an);
+      buf = new Uint8Array(an.fftSize);
+    } catch (e) { return; }
+    timer = setInterval(function () {
+      if (home !== h || h.stream !== stream) { clearInterval(timer); try { ctx.close(); } catch (e) { /* closed */ } return; }
+      an.getByteTimeDomainData(buf);
+      var sum = 0;
+      for (var i = 0; i < buf.length; i++) { var v = (buf[i] - 128) / 128; sum += v * v; }
+      if (Math.sqrt(sum / buf.length) > 0.04) BR.activity.poke();
+    }, 500);
+  }
 
   /* ------------------------------------------------------------ connections --- */
   function eachPeer(h, fn) { Object.keys(h.peers).forEach(function (k) { fn(h.peers[k]); }); }
@@ -246,7 +274,7 @@
 
   function onCall(ev) {
     var h = home, from = ev.from, data = ev.data;
-    if (ev.type !== 'home' || !h || !from || !data || data.room !== h.room) return;
+    if (!h || ev.type !== h.kind || !from || !data || data.room !== h.room) return;
     var id = from.id;
     // only the people the voice is for (the server checks it too)
     if (!h.members[id]) return;
@@ -273,20 +301,48 @@
   // the watchers the host talks with). Called by js/ui/watch.js for the home
   // I am in, whenever that changes. `opts.mic`: switch my microphone on.
   function sync(room, host, voice, people, opts) {
+    lastHome = [room, host, voice, people];
+    // a hub's voice comes first
+    if (hubVoice) return;
     var me = myId();
     var inVoice = !!room && (room === me ? voice.length > 0 : voice.indexOf(me) >= 0);
     if (!inVoice) { leave(); return; }
-    if (home && home.room !== room) leave();
-    var fresh = !home;
-    if (fresh) {
-      home = { room: room, host: host, members: {}, peers: {}, stream: null, mic: false, micBusy: false, cid: 'home-' + room };
-      iceServers();
-    }
-    var h = home;
     var want = {};
     if (room !== me) want[room] = host;
     voice.forEach(function (id) { if (id !== me) want[id] = people[id] || { id: id, name: '', avatar: null }; });
-    // gone: close; new: say hello
+    join('home', room, host, want);
+    if (opts && opts.mic) setMic(true);
+    renderBar();
+  }
+
+  // The voice of my hub: `people` (everyone in it, me too); 0 / []: none.
+  // A home call I was in comes back when it ends.
+  var hubVoice = null, lastHome = null;
+  function syncHub(hubId, people) {
+    var me = myId();
+    var want = {};
+    (people || []).forEach(function (p) { if (p.id !== me) want[p.id] = p; });
+    if (!hubId || !Object.keys(want).length) {
+      if (!hubVoice) return;
+      hubVoice = null;
+      if (home && home.kind === 'hub') leave();
+      if (lastHome) sync.apply(null, lastHome);
+      return;
+    }
+    hubVoice = hubId;
+    join('hub', hubId, null, want);
+    renderBar();
+  }
+
+  // into the voice `kind` / `room` with the people in `want` ({ id: user }):
+  // whoever is gone is closed, whoever is new is greeted
+  function join(kind, room, host, want) {
+    if (home && (home.kind !== kind || home.room !== room)) leave();
+    if (!home) {
+      home = { kind: kind, room: room, host: host, members: {}, peers: {}, stream: null, mic: false, micBusy: false, cid: (kind === 'hub' ? 'hub-room-' : 'home-') + room };
+      iceServers();
+    }
+    var h = home;
     Object.keys(h.members).forEach(function (k) {
       if (!want[k]) { signal(Number(k), { op: 'bye' }); delete h.members[k]; closePeer(h, Number(k)); }
     });
@@ -295,8 +351,6 @@
       h.members[k] = want[k];
       if (isNew) signal(Number(k), { op: 'hello' });
     });
-    if (opts && opts.mic) setMic(true);
-    renderBar();
   }
 
   function leave() {
@@ -305,7 +359,7 @@
     home = null;
     Object.keys(h.members).forEach(function (k) {
       var data = { op: 'bye', room: h.room };
-      if (!BR.live.send({ op: 'call', to: Number(k), type: 'home', callId: h.cid, data: data })) api.call(Number(k), 'home', h.cid, data).catch(function () {});
+      if (!BR.live.send({ op: 'call', to: Number(k), type: h.kind, callId: h.cid, data: data })) api.call(Number(k), h.kind, h.cid, data).catch(function () {});
     });
     Object.keys(h.peers).forEach(function (k) {
       var p = h.peers[k];
@@ -325,10 +379,12 @@
       sfx('click');
       setMic(!home.mic);
     });
-    // hanging up: the watched player stops talking with everyone, a watcher stops talking
+    // hanging up: the watched player stops talking with everyone, a watcher
+    // stops talking; in a hub, its voice ends for me (BR.hub can bring it back)
     $('#call-end').addEventListener('click', function () {
       if (!home) return;
       sfx('click');
+      if (home.kind === 'hub') { if (BR.hub && BR.hub.hangUp) BR.hub.hangUp(); else syncHub(0, []); return; }
       if (BR.watch && BR.watch.endVoice) BR.watch.endVoice();
       else leave();
     });
@@ -345,10 +401,15 @@
   BR.call = {
     init: init,
     sync: sync,
+    syncHub: syncHub,
     leave: leave,
     setMic: setMic,
     active: function () { return !!home; },
-    room: function () { return home ? home.room : 0; },
+    // some voice of a friend comes through (a connection is up)
+    live: function () { return !!home && Object.keys(home.peers).some(function (k) { return home.peers[k].live; }); },
+    kind: function () { return home ? home.kind : ''; },
+    // the home whose voice I am in (0: none, or a hub's)
+    room: function () { return home && home.kind === 'home' ? home.room : 0; },
     hangupAll: leave
   };
 })(window.BR = window.BR || {});

@@ -1,0 +1,147 @@
+/* 友達と稼ぐ (js/ui/hub.js): the hub bar at the top of the slot screen, the
+   notes of the others' wins, the dialog with what a hub gives, the
+   invitation card and the friend list buttons. Design px of the stage. */
+
+/* ------------------------------------------------------------ the hub bar --- */
+.pl-ribbon.hb-bar {
+  max-width: 860px;
+  height: 66px;
+  gap: 12px;
+  padding: 0 10px 0 8px;
+  background: linear-gradient(180deg, rgba(58, 8, 46, .96), rgba(24, 4, 22, .96));
+  box-shadow: inset 0 0 0 2px rgba(255, 120, 214, .8), 0 0 22px rgba(255, 80, 200, .25), 0 8px 22px rgba(0, 0, 0, .5);
+}
+.hb-tag { flex: none; display: flex; flex-direction: column; align-items: center; line-height: 1.1; padding: 0 6px 0 8px; }
+.hb-tag b {
+  font-size: 19px;
+  letter-spacing: .5px;
+  background: linear-gradient(180deg, #fff 0%, #ffc8f0 45%, #ff7ad0 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hb-tag small { font: 700 14px var(--f-num); color: #e6bfd9; }
+.hb-faces { flex: none; display: flex; align-items: center; }
+.hb-faces .avatar.sm { width: 42px; height: 42px; font-size: 20px; box-shadow: 0 0 0 3px #3a0830; }
+.hb-faces .avatar + .avatar { margin-left: -12px; }
+.hb-faces .avatar.away { filter: grayscale(1) brightness(.6); }
+.hb-combo, .hb-next {
+  flex: none;
+  height: 50px;
+  padding: 0 12px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  line-height: 1.05;
+  background: rgba(255, 255, 255, .07);
+}
+.hb-combo small, .hb-next small { font-size: 13px; font-weight: 700; color: #e6bfd9; white-space: nowrap; }
+.hb-combo b { font: 900 26px var(--f-num); color: #fff; }
+.hb-combo b, .hb-next b { display: inline-block; }
+.hb-combo.hot { background: linear-gradient(180deg, rgba(255, 120, 60, .35), rgba(255, 40, 120, .3)); box-shadow: inset 0 0 0 1.6px rgba(255, 200, 120, .8); }
+.hb-combo.hot b { color: #ffe27a; text-shadow: 0 0 12px rgba(255, 180, 60, .9); }
+.hb-next b { font: 800 22px var(--f-num); color: #9ff0ff; }
+/* how many misses the combo can still take */
+.hb-lives { flex: none; display: flex; gap: 5px; }
+.hb-lives i { width: 12px; height: 12px; border-radius: 50%; background: rgba(255, 255, 255, .16); box-shadow: inset 0 0 0 1.4px rgba(255, 255, 255, .25); }
+.hb-lives i.on { background: radial-gradient(circle at 35% 30%, #fff 0 18%, #ff8ad8 45%, #c21a8c 100%); box-shadow: 0 0 8px rgba(255, 110, 210, .9); }
+.hb-exp { flex: none; padding: 5px 9px; border-radius: 8px; background: rgba(110, 230, 130, .18); box-shadow: inset 0 0 0 1.4px rgba(140, 255, 160, .55); font: 800 15px var(--f-num); color: #b6ffbf; }
+.hb-btn { background: rgba(255, 120, 214, .22); box-shadow: inset 0 0 0 1.4px rgba(255, 150, 220, .65); }
+
+/* in a hub the FEVER sign moves aside for the bar */
+#screen-slot.in-hub .fv-sign { left: calc(50% + 590px); top: calc(50% - 300px); }
+
+/* ------------------------------------------------------------ the others' wins --- */
+.hb-pops { position: absolute; left: 50%; top: 166px; z-index: 46; display: flex; flex-direction: column; align-items: center; gap: 8px; transform: translateX(-50%); pointer-events: none; }
+.hb-note-pop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 54px;
+  padding: 0 18px 0 6px;
+  border-radius: 27px;
+  background: linear-gradient(180deg, rgba(40, 6, 34, .95), rgba(20, 2, 18, .95));
+  box-shadow: inset 0 0 0 1.8px rgba(255, 140, 220, .7), 0 6px 16px rgba(0, 0, 0, .5);
+  font-weight: 700;
+  white-space: nowrap;
+  animation: hbPopIn .45s cubic-bezier(.2, 1.5, .4, 1);
+}
+.hb-note-pop .avatar.sm { width: 42px; height: 42px; font-size: 20px; }
+.hb-pop-text { display: flex; align-items: baseline; font-size: 20px; }
+.hb-pop-text .uname { max-width: 180px; color: #ffd0f0; }
+.hb-pop-amt { gap: 6px; font: 800 22px var(--f-num); color: #ffe27a; }
+.hb-pop-amt .ic { width: 24px; height: 24px; }
+.hb-pop-combo { padding: 3px 10px; border-radius: 8px; background: linear-gradient(90deg, #ff5e8a, #ffb84d); font: 900 italic 16px var(--f-num); color: #fff; }
+.hb-note-pop.big { box-shadow: inset 0 0 0 2.4px #ffe27a, 0 0 24px rgba(255, 210, 90, .6), 0 6px 16px rgba(0, 0, 0, .5); }
+.hb-note-pop.out { animation: hbPopOut .45s ease-in forwards; }
+@keyframes hbPopIn { from { opacity: 0; transform: translateY(-16px) scale(.8); } to { opacity: 1; transform: none; } }
+@keyframes hbPopOut { to { opacity: 0; transform: translateY(-10px) scale(.9); } }
+
+/* what the hub added to my win, floating over the WIN box */
+.jc-text.hb-boost { font-size: 46px; color: #ffd0f6; text-shadow: 0 0 14px rgba(255, 90, 200, .95), 0 3px 0 #5a0040, 0 6px 10px rgba(0, 0, 0, .7); }
+.jc-text.hb-keep { font: 700 26px var(--f-jp); color: #ffe0f4; text-shadow: 0 0 10px rgba(255, 90, 200, .8), 0 2px 6px rgba(0, 0, 0, .8); animation: jcGainUp 1.8s var(--jc-out) forwards; }
+
+/* ------------------------------------------------------------ the effects dialog --- */
+.modal-card.hb-card { width: 1040px; }
+.hb-lead { margin: 0 0 16px; font-size: 22px; color: #e8dcdf; }
+.hb-effs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.hb-eff {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 84px;
+  padding: 10px 16px 10px 10px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, .03));
+  box-shadow: inset 0 0 0 1.4px rgba(255, 140, 220, .3);
+}
+.hb-eff-pic { flex: none; width: 62px; height: 62px; border-radius: 10px; background: rgba(255, 255, 255, .9) center / 82% no-repeat; }
+.hb-eff-pic.badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #ff6ac8, #a8127e);
+  font: 900 15px/1 var(--f-num);
+  letter-spacing: .5px;
+  color: #fff;
+  box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .45);
+}
+.hb-eff-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.hb-eff-text b { font-size: 21px; color: #ffe27a; }
+.hb-eff-text span { font-size: 17px; line-height: 1.35; color: #e8dcdf; }
+.hb-arrow { flex: none; width: 0; height: 0; border-left: 13px solid transparent; border-right: 13px solid transparent; }
+.hb-arrow.up { border-bottom: 20px solid #6ee682; filter: drop-shadow(0 0 6px rgba(110, 230, 130, .8)); }
+.hb-arrow.down { border-top: 20px solid #6ec8ff; filter: drop-shadow(0 0 6px rgba(110, 200, 255, .8)); }
+.hb-eff.up { box-shadow: inset 0 0 0 1.6px rgba(110, 230, 130, .55); }
+.hb-who { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 16px; }
+.hb-person { display: flex; align-items: center; gap: 8px; font-size: 19px; font-weight: 700; }
+.hb-person .avatar.sm { width: 40px; height: 40px; font-size: 19px; }
+.hb-person.away { opacity: .5; }
+.hb-won { display: flex; align-items: center; gap: 14px; margin-top: 12px; font-size: 19px; color: #e6bfd9; }
+.hb-won .amt { display: inline-flex; align-items: center; gap: 8px; font: 800 26px var(--f-num); color: #ffe27a; }
+.hb-won .ic { width: 26px; height: 26px; }
+.hb-note { margin: 14px 0 0; font-size: 16px; color: #b9adb0; }
+
+/* ------------------------------------------------------------ the rules: the hub's odds --- */
+.pay-card .pc-hub { position: absolute; left: 19px; top: 16px; width: 160px; height: 24px; color: #fff; font-size: 13.5px; font-weight: 700; text-align: center; line-height: 24px; white-space: nowrap; }
+.pay-card .pc-hub b { font-family: var(--f-num); font-size: 15px; }
+.pay-card .pc-hub.up { background: linear-gradient(90deg, #c2187e, #ff5ab4); }
+.pay-card .pc-hub.down { background: linear-gradient(90deg, #1a62a8, #3aa0ff); }
+.rule-list li.rule-hub { height: auto; min-height: 50px; line-height: 1.6; padding-top: 7px; padding-bottom: 7px; }
+.rule-list li.rule-hub b { color: #ffb0e6; }
+
+/* ------------------------------------------------------------ invitation, friend list, call --- */
+.hb-invite .call-card { background: linear-gradient(180deg, #3a0c34, #1e0418); box-shadow: inset 0 0 0 2.4px #ff8ad8, 0 18px 50px rgba(0, 0, 0, .65); }
+.hb-invite .call-in-text small { color: #ffd0f0; }
+.fr-btn.fr-hub-join { animation: hbJoin 1.3s ease-in-out infinite; }
+@keyframes hbJoin { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 140, 220, 0); } 50% { transform: scale(1.06); box-shadow: 0 0 0 8px rgba(255, 140, 220, .25); } }
+.fr-row.invited { box-shadow: inset 0 0 0 2px rgba(255, 140, 220, .7), 0 0 18px rgba(255, 120, 210, .2); }
+.call-bar.hub { background: rgba(40, 8, 34, .92); box-shadow: inset 0 0 0 2px rgba(255, 140, 220, .7), 0 8px 24px rgba(0, 0, 0, .5); }
+.call-bar.hub.live { box-shadow: inset 0 0 0 2px #ff8ad8, 0 0 22px rgba(255, 110, 210, .35), 0 8px 24px rgba(0, 0, 0, .5); }
+
+@media (prefers-reduced-motion: reduce) {
+  .fr-btn.fr-hub-join { animation: none; }
+}
