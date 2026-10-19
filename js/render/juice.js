@@ -40,7 +40,7 @@
   function col(c) { return c === 'rainbow' ? COL[pick(RAINBOW)] : COL[c] || COL.gold; }
 
   // kinds of particle
-  var SPARK = 0, STAR = 1, PIC = 2, CONF = 3, SHARD = 4;
+  var SPARK = 0, STAR = 1, PIC = 2, CONF = 3, SHARD = 4, SMOKE = 5;
 
   /* ------------------------------------------------------------ sprites --- */
   function sprite(size, draw) {
@@ -82,6 +82,15 @@
         x.fill();
         x.restore();
       }
+    });
+    // a soft grey puff (painted over, not added: smoke darkens)
+    img.smoke = sprite(64, function (x, r) {
+      var gr = x.createRadialGradient(r, r, 0, r, r, r);
+      gr.addColorStop(0, 'rgba(150,138,132,0.55)');
+      gr.addColorStop(0.5, 'rgba(130,120,115,0.24)');
+      gr.addColorStop(1, 'rgba(120,110,105,0)');
+      x.fillStyle = gr;
+      x.fillRect(0, 0, 2 * r, 2 * r);
     });
     var art = BR.UI_IMG || {};
     ['chip', 'dollar', 'coin'].forEach(function (k) {
@@ -178,7 +187,7 @@
   }
 
   function step(dt) {
-    var keep = [], arrived = [];
+    var keep = [], arrived = [], born = [];
     for (var i = 0; i < parts.length; i++) {
       var p = parts[i];
       if (p.delay > 0) { p.delay -= dt; keep.push(p); continue; }
@@ -190,6 +199,14 @@
         var ny = u * u * q[1] + 2 * u * t * q[3] + t * t * q[5];
         p.vx = (nx - p.x) / Math.max(dt, 1e-4); p.vy = (ny - p.y) / Math.max(dt, 1e-4);
         p.x = nx; p.y = ny;
+        // a glittering trail behind each coin on its way
+        if (p.trail && !calm) {
+          p.tAcc = (p.tAcc || 0) + dt;
+          if (p.tAcc > 0.045) {
+            p.tAcc = 0;
+            born.push({ k: SPARK, x: p.x + rr(-6, 6), y: p.y + rr(-6, 6), vx: rr(-60, 60), vy: rr(-40, 60), life: rr(0.25, 0.45), size: rr(1.6, 3), g: 240, drag: 2, c: COL[p.trail], streak: 0.03, age: 0, delay: 0, rot: 0, vr: 0, flip: 0, vf: 0, a: 0.9, fin: 0.1, ph: 0 });
+          }
+        }
       } else {
         var d = Math.exp(-p.drag * dt);
         p.vx *= d;
@@ -202,7 +219,7 @@
       p.flip += p.vf * dt;
       keep.push(p);
     }
-    parts = keep;
+    parts = born.length && keep.length < MAX ? keep.concat(born.slice(0, MAX - keep.length)) : keep;
     rings = rings.filter(function (r) { r.t += dt; return r.t < r.dur; });
     blooms = blooms.filter(function (b) { b.t += dt; return b.t < b.dur; });
     bolts = bolts.filter(function (b) {
@@ -289,6 +306,9 @@
         g.fillStyle = p.color;
         g.fillRect(-p.size / 2, -p.size * 0.3, p.size, p.size * 0.6);
         if (fy < 0) { g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(-p.size / 2, -p.size * 0.3, p.size, p.size * 0.6); }
+      } else if (p.k === SMOKE) {
+        var sz = p.size * (0.5 + p.age / p.life);
+        g.drawImage(img.smoke, -sz / 2, -sz / 2, sz, sz);
       } else if (p.k === SHARD) {
         // glass: clear with a bright edge and a glint that flickers as it turns
         var sh = p.shape;
@@ -441,6 +461,19 @@
       });
     }
   }
+  // smoke rising from a line (x, y0..y1): a fire going out
+  function smoke(x, y0, y1, o) {
+    o = o || {};
+    var cnt = n(o.n || 14);
+    for (var i = 0; i < cnt; i++) {
+      add({
+        k: SMOKE, x: x + rr(-1, 1) * (o.jx || 70), y: rr(y0, y1),
+        vx: rr(-40, 40), vy: -rr(80, 220), life: rr(0.8, 1.4), size: rr(70, 130) * (o.size || 1),
+        g: -60, drag: 1.2, vr: rr(-1, 1), a: o.a === undefined ? 0.75 : o.a, fin: 0.15, delay: rr(0, 0.15)
+      });
+    }
+  }
+
   // the screen breaks like glass: triangles flying out of a point
   function shards(x, y, o) {
     o = o || {};
@@ -506,6 +539,20 @@
     k.push({ transform: 'translate(0,0)' });
     node.animate(k, { duration: ms || 360, easing: 'linear' });
   }
+  // a push in one direction that springs back (a thud, a recoil)
+  function kick(node, dx, dy, ms) {
+    if (calm) return;
+    if (typeof node === 'string') node = $(node);
+    if (!node || !node.animate) return;
+    node.animate([
+      { transform: 'translate(0,0)' },
+      { transform: 'translate(' + dx + 'px,' + dy + 'px)', offset: 0.18 },
+      { transform: 'translate(' + (-dx * 0.35) + 'px,' + (-dy * 0.35) + 'px)', offset: 0.52 },
+      { transform: 'translate(' + (dx * 0.12) + 'px,' + (dy * 0.12) + 'px)', offset: 0.78 },
+      { transform: 'translate(0,0)' }
+    ], { duration: ms || 260, easing: 'ease-out' });
+  }
+
   // a bump of one element (a box that just got something)
   function bump(node, s) {
     if (typeof node === 'string') node = $(node);
@@ -565,7 +612,7 @@
       var cx = sx + Math.cos(out) * reach, cy = Math.min(sy, b.y) - rr(60, 240) + Math.sin(out) * reach * 0.4;
       if (add({
         k: PIC, pic: o.pic || 'chip', x: sx, y: sy, vx: 0, vy: 0,
-        path: [sx, sy, cx, cy, b.x, b.y], ease: easeFly,
+        path: [sx, sy, cx, cy, b.x, b.y], ease: easeFly, trail: o.trail === undefined ? 'gold' : o.trail,
         life: dur * rr(0.85, 1.15), size: rr(0.8, 1.1) * (o.size || 46),
         flip: rr(0, TAU), vf: rr(9, 16), fin: 0.05, a: 1,
         delay: i * (o.stagger === undefined ? 0.035 : o.stagger) + rr(0, 0.05),
@@ -748,8 +795,8 @@
 
   BR.juice = {
     init: init, resize: resize, at: at, size: sizeOf, visible: visible, toStage: toStage,
-    sparks: sparks, stars: stars, coins: coins, confetti: confetti, shards: shards,
-    ring: ring, bloom: bloom, bolt: bolt, flash: flash, shake: shake, bump: bump,
+    sparks: sparks, stars: stars, coins: coins, confetti: confetti, shards: shards, smoke: smoke,
+    ring: ring, bloom: bloom, bolt: bolt, flash: flash, shake: shake, kick: kick, bump: bump,
     text: text, banner: banner, fly: fly, rain: rain,
     tap: tap, celebrate: celebrate, gain: gain, source: source, payout: payout, reward: reward, hold: hold,
     calm: function () { return calm; },

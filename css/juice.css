@@ -228,6 +228,43 @@
 /* the reels jolt when they land: kept on a layer of their own so that costs nothing */
 #reels { will-change: transform; }
 
+/* left alone: the lights chase round like comets and SPIN asks to be pressed */
+.mq.attract i::after { animation: mqComet 2.4s linear infinite; animation-delay: calc(var(--i) / var(--n) * -2.4s); }
+@keyframes mqComet {
+  0%, 50% { opacity: 1; }
+  4%, 54% { opacity: .6; }
+  10%, 60% { opacity: .25; }
+  18%, 49.9%, 68%, 100% { opacity: .05; }
+}
+.spin-btn.attract .spin-disc { animation: jcAttract 2.6s ease-in-out infinite; }
+.spin-btn.attract .spin-glow { animation-duration: 1.1s; }
+@keyframes jcAttract {
+  0%, 68%, 100% { transform: none; }
+  74% { transform: scale(1.1) rotate(-6deg); }
+  80% { transform: scale(.96) rotate(4deg); }
+  86% { transform: scale(1.05) rotate(-2deg); }
+  92% { transform: scale(1); }
+}
+
+/* stars twinkling on the gold corners while nothing happens */
+.tw {
+  position: absolute;
+  z-index: 3;
+  width: 54px;
+  height: 54px;
+  margin: -27px 0 0 -27px;
+  pointer-events: none;
+  background: radial-gradient(circle, #fffef0 0 12%, rgba(255, 238, 175, .95) 22%, rgba(255, 200, 90, 0) 62%);
+  clip-path: polygon(50% 0, 56% 44%, 100% 50%, 56% 56%, 50% 100%, 44% 56%, 0 50%, 44% 44%);
+  opacity: 0;
+  animation: jcTwinkle 10.2s ease-in-out infinite;
+}
+@keyframes jcTwinkle {
+  0%, 84%, 100% { opacity: 0; transform: scale(.2) rotate(0); }
+  89% { opacity: 1; transform: scale(1.15) rotate(45deg); }
+  95% { opacity: .25; transform: scale(.5) rotate(90deg); }
+}
+
 /* a sweep of light across the reels when they start */
 .reel-sweep {
   position: absolute;
@@ -292,6 +329,10 @@
 .spin-btn .spin-disc { transition: transform .22s var(--jc-snap), filter .15s ease; }
 .spin-btn:active .spin-disc, .spin-btn.pressed .spin-disc { transform: scale(.88, .84); filter: brightness(.9); transition: transform .06s ease-out; }
 .spin-btn.spinning .spin-arrows { animation: spinArrows .5s linear infinite; }
+
+/* 自動スピン on: its LED breathes */
+.pill-auto.on .led { animation: jcLed 1.1s ease-in-out infinite; }
+@keyframes jcLed { 50% { box-shadow: 0 0 14px #9dff80, 0 0 4px #fff; transform: scale(1.15); } }
 
 /* the pay line marks pulse while a win is shown */
 .payline-mark.lit { animation: jcMark .5s ease-in-out infinite; }
@@ -360,6 +401,9 @@
 /* a badge pops in and wiggles for attention */
 .hud-badge:not([hidden]), .tab-badge:not([hidden]) { animation: jcBadgeIn .5s var(--jc-pop), jcBadgeWiggle 4s ease-in-out 1s infinite; }
 @keyframes jcBadgeIn { 0% { transform: scale(0); } 70% { transform: scale(1.3); } 100% { transform: scale(1); } }
+/* one more on a badge already up: it jumps */
+.hud-badge.jc-pop:not([hidden]), .tab-badge.jc-pop:not([hidden]) { animation: jcBadgeBump .5s var(--jc-pop), jcBadgeWiggle 4s ease-in-out 1s infinite; }
+@keyframes jcBadgeBump { 0% { transform: scale(1); } 35% { transform: scale(1.55) translateY(-6px); } 70% { transform: scale(.9); } 100% { transform: scale(1); } }
 @keyframes jcBadgeWiggle {
   0%, 86%, 100% { transform: rotate(0) scale(1); }
   89% { transform: rotate(-14deg) scale(1.15); }
@@ -423,6 +467,15 @@
   55% { opacity: 1; transform: translateY(-6px) scale(1.03); }
   100% { opacity: 1; transform: none; }
 }
+/* what is in the card follows a moment later, one part after another */
+.modal:not([hidden]) > .modal-card > :not(.modal-x) { animation: jcContentIn .5s var(--jc-out) backwards; }
+.modal:not([hidden]) > .modal-card > :nth-child(1) { animation-delay: .1s; }
+.modal:not([hidden]) > .modal-card > :nth-child(2) { animation-delay: .15s; }
+.modal:not([hidden]) > .modal-card > :nth-child(3) { animation-delay: .2s; }
+.modal:not([hidden]) > .modal-card > :nth-child(4) { animation-delay: .25s; }
+.modal:not([hidden]) > .modal-card > :nth-child(n+5) { animation-delay: .3s; }
+@keyframes jcContentIn { 0% { opacity: 0; transform: translateY(14px); } 100% { opacity: 1; transform: none; } }
+
 /* a gleam runs round the gold edge once it has landed */
 .modal:not([hidden]) > .modal-card::before {
   content: '';
@@ -561,7 +614,7 @@
 /* ------------------------------------------------------------ reduced motion --- */
 /* the game's own effects stay (they are the game), the ambient ones rest */
 @media (prefers-reduced-motion: reduce) {
-  .mq i::after, .spin-btn::before, .hud-circle.pic .ic, .pill::after, .act-btn.gold::after, .mini-btn.gold::after, .fr-btn.gold::after, .ov-btn.gold::after,
+  .mq i::after, .tw, .spin-btn::before, .spin-btn.attract .spin-disc, .hud-circle.pic .ic, .pill::after, .act-btn.gold::after, .mini-btn.gold::after, .fr-btn.gold::after, .ov-btn.gold::after,
   .action-btn::after, .daily-btn.ready::after, .np-actions .np-ok::after, .hud-badge, .tab-badge, #reels.antic, .bonus-day.today, .daily-btn.ready,
   #confirm .act-btn.gold, .lv-bar i::after, .thanks-amt, .bonus-ok {
     animation-iteration-count: 1 !important;

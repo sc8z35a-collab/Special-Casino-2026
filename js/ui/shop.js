@@ -259,6 +259,12 @@
       b.classList.remove('lit');
       void b.offsetWidth;
       b.classList.add('lit');
+      if (BR.juice) {
+        var p = BR.juice.at(b);
+        BR.juice.ring(p.x, p.y, { r0: 30, r1: 220, dur: 0.6, w: 8, color: 'white' });
+        BR.juice.stars(p.x, p.y, { n: 6, r: 110, size: 80 });
+        BR.juice.sparks(p.x, p.y, { n: 16, speed: 420, life: 0.9, g: -120, color: 'gold' });
+      }
       toast('お守り加護を使いました！次に負けたスピンで守ってくれます', 3200);
     }, fail).then(function () { busy = false; });
   }

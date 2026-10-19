@@ -186,19 +186,33 @@
     $('#bet-plus').disabled = lock || S.betIndex >= C.bets.length - 1;
   }
 
+  var winRoll = null;   // the WIN box counting up (a plain WIN): cancels it
   function setWinGoodLuck() {
+    if (winRoll) { winRoll(); winRoll = null; }
     var box = $('.win-box');
     box.classList.remove('flash');
     box.innerHTML = '<span id="win-value" class="win-text">グッドラック！</span>';
   }
-  function setWinAmount(v, flash) {
+  // `roll`: count up to it (a plain WIN has no overlay doing that), else at once
+  function setWinAmount(v, flash, roll) {
     var box = $('.win-box');
     var num = box.querySelector('.win-num');
     if (!num) {
       box.innerHTML = '<span id="win-value" class="win-amount"><i class="ic ic-chip"></i><span class="win-num"></span></span>';
       num = box.querySelector('.win-num');
     }
-    num.textContent = U.fmt(v);
+    if (winRoll) { winRoll(); winRoll = null; }
+    if (roll && v > 0) {
+      num.textContent = '0';
+      winRoll = U.tween(Math.min(900, 380 + Math.log10(v + 1) * 110), function (t) {
+        num.textContent = U.fmt(Math.round(v * U.ease.outCubic(t)));
+      }, function () {
+        winRoll = null;
+        if (BR.juice) BR.juice.bump(num.parentNode, 1.3);
+      });
+    } else {
+      num.textContent = U.fmt(v);
+    }
     if (flash) { box.classList.remove('flash'); void box.offsetWidth; box.classList.add('flash'); }
   }
 
@@ -368,7 +382,7 @@
     // the WIN box shows the win right away; the coins jump out of the winning
     // symbols into the wallet (a BIG WIN pays out when its overlay is over)
     var mid = BR.slotfx ? BR.slotfx.win(res, cols) : null;
-    setWinAmount(res.total, true);
+    setWinAmount(res.total, true, res.tier < 2);
     if (res.tier >= 2) game.hold = res.total;
     renderWallet(true, mid);
     renderBet();
@@ -500,6 +514,10 @@
     BR.sfx.play(d > 0 ? 'betUp' : 'betDown');
     var box = $('.bet-box span');
     box.classList.remove('bump'); void box.offsetWidth; box.classList.add('bump');
+    if (BR.juice) {
+      var p = BR.juice.at(box);
+      BR.juice.sparks(p.x, p.y, { n: d > 0 ? 8 : 4, speed: d > 0 ? 380 : 220, life: 0.5, g: d > 0 ? 300 : 600, color: d > 0 ? 'gold' : 'white' });
+    }
   }
 
   function maxBet() {
@@ -507,10 +525,19 @@
     var idx = 0;
     for (var i = C.bets.length - 1; i >= 0; i--) if (C.bets[i] <= S.tokens) { idx = i; break; }
     if (S.tokens < C.bets[0]) toast('スピントークンが不足しています');
+    var was = S.betIndex;
     S.betIndex = idx;
     BR.store.save();
     renderBet();
     BR.sfx.play('betUp');
+    // all in: the bet box flares up
+    if (BR.juice && idx > was) {
+      var box = $('.bet-box');
+      var p = BR.juice.at(box);
+      BR.juice.ring(p.x, p.y, { r0: 20, r1: 220, dur: 0.5, w: 8, sy: 0.4 });
+      BR.juice.sparks(p.x, p.y, { n: 18, speed: 560, life: 0.7, g: 500 });
+      BR.juice.bump(box, 1.12);
+    }
   }
 
   function setSound(muted) {

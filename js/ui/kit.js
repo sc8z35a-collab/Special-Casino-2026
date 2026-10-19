@@ -78,8 +78,16 @@
     toast(err && err.message ? err.message : 'エラーが発生しました', 3200);
   }
   function badge(node, n) {
+    var was = Number(node.dataset.n) || 0;
     node.hidden = !n;
     node.textContent = n > 99 ? '99+' : String(n);
+    node.dataset.n = String(n || 0);
+    // one more: it jumps (css/juice.css)
+    if (n > was && was > 0) {
+      node.classList.remove('jc-pop');
+      void node.offsetWidth;
+      node.classList.add('jc-pop');
+    }
   }
 
   /* dialogs inside the stage */

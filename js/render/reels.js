@@ -79,10 +79,10 @@
       return true;
     }
     if (p === 'kick') {
-      // small upward wind-up before the reel takes off
-      var K = 0.13;
+      // an upward wind-up before the reel takes off (anticipation)
+      var K = 0.15;
       var u = Math.min(1, this.t / K);
-      var target = -13 * Math.sin(Math.PI * u);
+      var target = -22 * Math.sin(Math.PI * u);
       this.off = this.kickBase + target;
       if (u >= 1) {
         this.off = this.kickBase;
@@ -498,7 +498,13 @@
           g.restore();
           continue;
         }
-        if (set === sp.sharp) {
+        if (set === sp.sharp && r.flash > 0.02) {
+          // the symbols squash as the reel hits home, then spring back
+          var since = 1 - r.flash, give = Math.exp(-5 * since) * Math.cos(since * 13);
+          var sqx = 1 + 0.05 * give, sqy = 1 - 0.08 * give;
+          var qx = x + COL_W * res / 2, qy = (yy + CELL_H / 2) * res;
+          g.drawImage(sp.sharp[sym], qx - COL_W * res * sqx / 2, qy - CELL_H * res * sqy / 2, COL_W * res * sqx, CELL_H * res * sqy);
+        } else if (set === sp.sharp) {
           g.drawImage(sp.sharp[sym], Math.round(x), Math.round(yy * res));
         } else {
           var bimg = set[sym];

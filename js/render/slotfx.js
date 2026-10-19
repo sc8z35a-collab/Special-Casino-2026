@@ -15,6 +15,7 @@
 
   var mq = null, mode = '', modeTimer = 0, sweep = null;
   var antic = { timer: 0, reels: [], count: 0 };
+  var lastActive = 0, attract = false;
 
   function init() {
     J = BR.juice;
@@ -23,7 +24,44 @@
     sweep = document.createElement('div');
     sweep.className = 'reel-sweep';
     reels.appendChild(sweep);
+    twinkles(reels);
     setMode('idle');
+    // left alone for a while, the machine calls for a spin
+    lastActive = U.now();
+    document.addEventListener('pointerdown', wake, true);
+    setInterval(checkIdle, 1000);
+  }
+
+  /* ------------------------------------------------------------ while nothing happens --- */
+  // little stars twinkling on the gold corners of the reels and the frame
+  function twinkles(reels) {
+    var spots = [[0, 0], [1044, 0], [1044, 586], [0, 586], [522, -6], [522, 592]];
+    spots.forEach(function (p, i) {
+      var t = document.createElement('i');
+      t.className = 'tw';
+      t.style.left = p[0] + 'px';
+      t.style.top = p[1] + 'px';
+      t.style.animationDelay = (-i * 1.7) + 's';
+      reels.appendChild(t);
+    });
+  }
+  function wake() {
+    lastActive = U.now();
+    if (attract) setAttract(false);
+  }
+  function checkIdle() {
+    var g = BR.game;
+    var can = BR.screens && BR.screens.current() === 'slot' && g && !g.busy() && !g.auto && !g.watch && !document.hidden &&
+      !document.querySelector('#stage > .modal:not([hidden])');
+    if (!can) { lastActive = U.now(); if (attract) setAttract(false); return; }
+    if (!attract && U.now() - lastActive > 15000) setAttract(true);
+  }
+  function setAttract(on) {
+    attract = on;
+    var b = $('#btn-spin');
+    if (b) b.classList.toggle('attract', on);
+    if (on && mode === 'idle') setMode('attract');
+    else if (!on && mode === 'attract') setMode('idle');
   }
 
   /* ------------------------------------------------------------ marquee --- */
@@ -49,6 +87,7 @@
       }
     });
     var n = pts.length;
+    mq.style.setProperty('--n', String(n));
     pts.forEach(function (p, i) {
       var b = document.createElement('i');
       b.style.left = p[0].toFixed(1) + 'px';
@@ -84,6 +123,7 @@
   /* ------------------------------------------------------------ the spin --- */
   function spinStart() {
     if (!J) return;
+    wake();
     setMode('spin');
     var b = J.at('#btn-spin');
     J.ring(b.x, b.y, { r0: 70, r1: 230, dur: 0.5, w: 12 });
@@ -107,14 +147,38 @@
     J.sparks(top.x, y0 + 6, { n: last ? 10 : 6, speed: 380, dir: Math.PI / 2, spread: 1.1, life: 0.45, g: -200, jx: 70, color: 'white' });
     J.bloom(top.x, y1, { size: 260, sy: 0.35, dur: 0.35, a: 0.7 });
     J.bloom(top.x, y0, { size: 220, sy: 0.35, dur: 0.3, a: 0.5 });
-    J.shake('#reels', last ? 7 : 3.5, last ? 260 : 150);
+    // the machine takes the weight of each reel: a thud downwards
+    J.kick('#reels', 0, last ? 9 : 5, last ? 300 : 220);
     if (antic.reels.indexOf(i) >= 0) {
-      // the reel that kept everyone waiting: a bigger thud
-      J.ring(top.x, (y0 + y1) / 2, { r0: 40, r1: 360, dur: 0.55, w: 10, sy: 1.4, color: 'fire' });
-      J.flash('#ffd27a', 0.25, 260);
+      var mid = (y0 + y1) / 2;
+      if (awaited(i)) {
+        // what it was waiting for: the reel explodes in fire
+        J.ring(top.x, mid, { r0: 40, r1: 420, dur: 0.6, w: 14, sy: 1.4, color: 'fire' });
+        J.ring(top.x, mid, { r0: 30, r1: 700, dur: 0.8, w: 6, sy: 1.1, color: 'white', delay: 0.06 });
+        J.sparks(top.x, mid, { n: 46, speed: 1100, life: 0.9, g: 600, jx: 80, jy: 200, color: 'fire' });
+        J.bloom(top.x, mid, { size: 640, sy: 1.3, dur: 0.6 });
+        J.flash('#ffd27a', 0.42, 320);
+        J.shake('#reels', 12, 420);
+      } else {
+        // it did not come: the fire goes out in smoke
+        J.ring(top.x, mid, { r0: 40, r1: 260, dur: 0.45, w: 8, sy: 1.4, color: 'fire' });
+        J.smoke(top.x, y0 + 40, y1, { n: 16 });
+        BR.sfx.play('miss');
+      }
       antic.reels.splice(antic.reels.indexOf(i), 1);
       if (!antic.reels.length) stopAntic();
     }
+  }
+
+  // Did reel i bring what its リーチ waited for (one more of a symbol making
+  // the pay line worth 20x or more)?
+  function awaited(i) {
+    var res = BR.game && BR.game.result;
+    if (!res || !res.line) return false;
+    var counts = {};
+    for (var j = 0; j < i; j++) counts[res.line[j]] = (counts[res.line[j]] || 0) + 1;
+    var pays = BR.CONFIG.pays[res.line[i]];
+    return !!pays && (pays[(counts[res.line[i]] || 0) + 1] || 0) >= 20;
   }
 
   /* ------------------------------------------------------------ リーチ --- */

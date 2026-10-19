@@ -751,6 +751,7 @@
   FX.prototype.skip = function () {
     var a = this.active;
     if (!a || a.outT >= 0) return;
+    if (BR.juice) BR.juice.flash('#fff6dc', 0.22, 220);
     if (a.t - a.countStart < a.countDur) {
       // jump the counter to the end
       a.countStart = a.t - a.countDur;

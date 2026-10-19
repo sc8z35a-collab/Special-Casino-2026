@@ -159,6 +159,8 @@
     K.sfx('unchain');
     t.classList.remove('on-sale');
     t.classList.add('breaking');
+    // the chains fall away and the icon bursts into light
+    if (BR.juice) setTimeout(function () { BR.juice.celebrate(t, 2); }, 420);
     setTimeout(done, 1150);
   }
 

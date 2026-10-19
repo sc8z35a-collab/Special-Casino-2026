@@ -484,6 +484,11 @@
       bell(N.E6, t + 0.42, 0.08, 0.8, 0.4);
       bell(N.A5 * 2, t + 0.46, 0.06, 0.9, 0.4);
     },
+    // a リーチ that did not come: the fire goes out (a hiss and a sigh down)
+    miss: function (t) {
+      noise({ t: t, ftype: 'highpass', f: 3000, f2: 900, a: 0.01, d: 0.55, v: 0.07, wet: 0.2 });
+      tone({ t: t + 0.04, f: 520, f2: 260, glide: 0.4, d: 0.45, v: 0.07, type: 'triangle', wet: 0.3 });
+    },
     // something big hits the screen (SUPER, the glass breaking)
     impact: function (t) {
       tone({ t: t, f: 90, f2: 38, glide: 0.35, d: 0.5, v: 0.5, type: 'sine', wet: 0.3 });
