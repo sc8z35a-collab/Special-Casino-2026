@@ -207,8 +207,15 @@ test('Peter: offers money when a player is nearly broke, twice; debts stack up; 
   assert.equal((await call('POST', '/api/register', { body: { name: 'ピーター', password: 'pass1234' } })).error.code, 'name_taken');
 
   const la = await listen(a);
-  setUser(a.me.id, { dollars: 0, tokens: 100 });
-  await call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
+  // nearly broke after a spin (a rare big win lifts the player over the line: then again)
+  async function goBroke(offerNo) {
+    for (let i = 0; i < 10; i++) {
+      setUser(a.me.id, { dollars: 0, tokens: 100 });
+      await call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
+      if ((await call('GET', '/api/peter', { token: a.token })).debt.offer === offerNo) return;
+    }
+  }
+  await goBroke(1);
   let offer = await la.waitFor('msg', (m) => m.kind === 'offer');
   assert.deepEqual([offer.from.id, offer.amount, offer.text], [peterId, 1, OFFER_LINES[0]]);
   assert.ok(offer.unread >= 1);
@@ -231,8 +238,7 @@ test('Peter: offers money when a player is nearly broke, twice; debts stack up; 
   assert.equal((await call('POST', '/api/peter/borrow', { token: a.token, body: { offer: 1 } })).error.code, 'offer_gone');
 
   // spent it all: the second offer, 600万 at 10 %
-  setUser(a.me.id, { dollars: 0, tokens: 100 });
-  await call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
+  await goBroke(2);
   offer = await la.waitFor('msg', (m) => m.kind === 'offer' && m.amount === 2);
   assert.equal(offer.text, OFFER_LINES[1]);
   r = await call('POST', '/api/peter/borrow', { token: a.token, body: { offer: 2 } });

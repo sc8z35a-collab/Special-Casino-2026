@@ -127,8 +127,10 @@
     clearTimeout(retryTimer);
     signedOut();
     if (BR.screens.current() !== 'start' && BR.screens.current() !== 'slot') BR.screens.show('slot');
-    BR.account.open('login', err && err.code === 'banned'
-      ? 'このアカウントは利用停止されています。'
+    // banned (アクセス禁止 / BAN / 永久BAN, or another account on this device): the server says until when
+    var banned = err && (err.code === 'banned' || err.code === 'device_banned');
+    BR.account.open('login', banned
+      ? (err.message || 'このアカウントは利用停止されています') + '。'
       : 'もう一度ログインしてください。ユーザー名とパスワードで、残高もそのまま戻ります。');
   }
 
@@ -323,10 +325,10 @@
     var tab = TAB_OF[v];
     if (tab !== 'messages') lastTab = v;
     tabs.set(tab);
-    // メッセージ: the other buttons at the top step aside; its own button goes back to the list
-    $('#board-tabs').classList.toggle('solo', tab === 'messages');
+    // in a conversation every button at the top stays; メッセージ goes back to the list
     $('#board-tabs').classList.toggle('in-chat', v === 'dm' || v === 'group');
     PANES.forEach(function (p) { $('#pane-' + p).classList.toggle('active', p === PANE_OF[v]); });
+    BR.screens.enter($('#pane-' + PANE_OF[v]));
     $('#pane-chat').classList.toggle('is-dm', v === 'dm');
     $('#pane-chat').classList.toggle('is-group', v === 'group');
     if (v === 'friends') loadFriends().catch(function () {});
@@ -405,6 +407,15 @@
     acts.appendChild(b);
     return b;
   }
+  // 友達と稼ぐ (js/ui/hub.js): join their invitation, invite them, or already together
+  function hubButton(acts, u) {
+    var H = BR.hub;
+    if (!H) return;
+    if (H.isMember(u.id)) { acts.appendChild(el('span', 'fr-note ok', '一緒に稼ぎ中')); return; }
+    if (H.invitedBy(u.id)) { actBtn(acts, '参加する', 'hubJoin', 'gold fr-hub-join', 'check'); return; }
+    var b = actBtn(acts, '一緒に稼ぐ', 'hubInvite', 'gold fr-hub', 'friends');
+    b.disabled = !u.online;
+  }
   function renderFriends() {
     var box = $('#fr-list');
     $('#fr-myname').textContent = me ? me.name : '';
@@ -444,7 +455,8 @@
     friends.friends.slice().sort(function (a, b) {
       return (b.online ? 1 : 0) - (a.online ? 1 : 0) || (b.lastSeen || 0) - (a.lastSeen || 0);
     }).forEach(function (u) {
-      var p = personRow(u, 'friend');
+      var p = personRow(u, 'friend' + (BR.hub && BR.hub.invitedBy(u.id) ? ' invited' : ''));
+      hubButton(p.acts, u);
       var w = actBtn(p.acts, '観戦する', 'watch', '', 'eye');
       w.disabled = !u.online;
       var b = actBtn(p.acts, 'フレンド対決', 'battle');
@@ -491,6 +503,8 @@
     if (act === 'dm') { sfx('click'); openDm(u); return; }
     if (act === 'watch') { sfx('click'); BR.watch.start(u); return; }
     if (act === 'battle') { sfx('click'); if (BR.play) BR.play.challenge(u); return; }
+    if (act === 'hubInvite') { if (BR.hub) BR.hub.invite(u); return; }
+    if (act === 'hubJoin') { if (BR.hub) BR.hub.join(u.id); return; }
     var job;
     if (act === 'request') job = api.friendRequest(id).then(function (r) {
       sfx(r.friendship === 'friends' ? 'notify' : 'send');
@@ -754,7 +768,10 @@
     var typing = list.querySelector('.typing-row');
     var at = typing || null;
     if (!prev || !K.sameDay(new Date(prev.at), new Date(m.at))) list.insertBefore(el('div', 'day-sep', K.fmtDay(m.at)), at);
-    list.insertBefore(msgEl(m, key, prev), at);
+    // a message that just came in pops in (css/juice.css)
+    var node = msgEl(m, key, prev);
+    node.classList.add('jc-new');
+    list.insertBefore(node, at);
   }
 
   // 既読: in a conversation once the friend has read it; in a group, how many have
@@ -986,7 +1003,7 @@
             BR.peter.setDebt(r.debt);
           }
           if (r.lent) {
-            setTimeout(function () { onMsg(r.lent); sfx('purchase'); toast(r.lent.text, 3200); }, 900);
+            setTimeout(function () { onMsg(r.lent); sfx('money'); toast(r.lent.text, 3200); if (BR.juice) BR.juice.reward('#toast', 2); }, 900);
           }
         });
       },
@@ -1184,12 +1201,22 @@
     if (v === null) b.textContent = '-';
     else b.appendChild(K.amountEl(v, 'tokens'));
   }
-  function pfBtn(box, label, act, cls, ic) {
-    var b = el('button', 'act-btn' + (cls ? ' ' + cls : ''));
+  // an action of the profile: a tile with its picture over its name (never wrapped)
+  function pfBtn(box, label, act, cls, ic, note) {
+    var b = el('button', 'pf-tile' + (cls ? ' ' + cls : ''));
     b.type = 'button';
     b.dataset.act = act;
-    if (ic) b.appendChild(icon(ic));
-    b.appendChild(el('span', '', label));
+    b.appendChild(ic ? icon(ic) : el('i', 'ic pf-tile-dot'));
+    b.appendChild(el('span', 'pf-tile-name', label));
+    if (note) b.appendChild(el('small', 'pf-tile-note', note));
+    box.appendChild(b);
+    return b;
+  }
+  // a quiet action at the bottom (フレンド解除, ブロック, ログアウト)
+  function pfLink(box, label, act) {
+    var b = el('button', 'text-btn', label);
+    b.type = 'button';
+    b.dataset.act = act;
     box.appendChild(b);
     return b;
   }
@@ -1204,10 +1231,12 @@
     lv.textContent = level ? 'Lv.' + level : '';
     var st = $('#pf-status');
     st.textContent = '';
+    $('#pf-online').hidden = !(r && r.user.online);
     if (r) {
-      st.appendChild(K.presence(r.user.online));
-      st.appendChild(el('span', '', self ? 'あなた' : seenText(r.user)));
-      if (!self && r.user.friendship === 'friends') st.appendChild(el('span', 'pf-friend', 'フレンド'));
+      st.appendChild(el('span', 'pf-chip ' + (r.user.online ? 'on' : 'off'), self ? 'あなた' : seenText(r.user)));
+      if (!self && r.user.friendship === 'friends') st.appendChild(el('span', 'pf-chip friend', 'フレンド'));
+      if (!self && BR.hub && BR.hub.isMember(u.id)) st.appendChild(el('span', 'pf-chip hub', '一緒に稼ぎ中'));
+      if (self && me && me.operator) st.appendChild(el('span', 'pf-chip op', '運営'));
     }
     statAmount('#pf-total', r ? r.user.totalWon : null);
     statAmount('#pf-biggest', r ? r.user.biggestWin : null);
@@ -1220,43 +1249,41 @@
     $('#pf-blocks').hidden = true;
     if (!r) return;
     if (self) {
-      pfBtn(a1, 'アイコン変更', 'avatar', 'gold');
-      pfBtn(a1, me && me.hasPassword ? 'パスワード変更' : 'パスワード設定', 'password');
-      pfBtn(a1, '引き継ぎコード', 'recovery');
-      var lo = el('button', 'text-btn', 'ログアウト');
-      lo.type = 'button';
-      lo.dataset.act = 'logout';
-      a2.appendChild(lo);
+      pfBtn(a1, 'アイコン変更', 'avatar', 'gold', 'edit');
+      pfBtn(a1, me && me.hasPassword ? 'パスワード変更' : 'パスワード設定', 'password', '', 'lock');
+      pfBtn(a1, '引き継ぎコード発行', 'recovery', '', 'share');
+      pfBtn(a1, 'コードでログイン', 'codeLogin', '', 'download');
+      if (me && me.operator) pfBtn(a1, '運営サイト', 'ops', 'ops', 'info');
+      pfLink(a2, 'ログアウト', 'logout');
       loadBlocks();
       return;
     }
     var rel = u.friendship;
     if (rel === 'friends') {
-      var w = pfBtn(a1, '観戦する', 'watch', '', 'eye');
-      w.disabled = !u.online;
-      var b = pfBtn(a1, 'フレンド対決', 'battle');
-      b.disabled = !u.online;
-      pfBtn(a1, 'メッセージ', 'dm');
-      pfBtn(a2, '送金', 'transfer', 'gold', 'chip');
-      pfBtn(a2, '車をあげる', 'gift', '', 'gift');
-      pfBtn(a2, 'アイテムを譲る', 'give', '', 'bag');
-      var rm = el('button', 'text-btn', 'フレンド解除');
-      rm.type = 'button';
-      rm.dataset.act = 'remove';
-      a2.appendChild(rm);
+      var off = u.online ? '' : 'オフライン';
+      if (BR.hub && !BR.hub.isMember(u.id)) {
+        var inv = BR.hub.invitedBy(u.id);
+        var hb = inv ? pfBtn(a1, '参加する', 'hubJoin', 'gold', 'check') : pfBtn(a1, '一緒に稼ぐ', 'hubInvite', 'gold', 'friends', off);
+        hb.disabled = !u.online && !inv;
+      }
+      pfBtn(a1, '観戦する', 'watch', '', 'eye', off).disabled = !u.online;
+      pfBtn(a1, 'フレンド対決', 'battle', '', 'chip', off).disabled = !u.online;
+      pfBtn(a1, 'メッセージ', 'dm', '', 'chat');
+      pfBtn(a1, '送金', 'transfer', 'gold', 'dollar');
+      pfBtn(a1, '車をあげる', 'gift', '', 'gift');
+      pfBtn(a1, 'アイテムを譲る', 'give', '', 'bag');
+      pfLink(a2, 'フレンド解除', 'remove');
     } else if (rel === 'incoming') {
-      pfBtn(a1, '申請を承認する', 'accept', 'gold', 'check');
+      pfBtn(a1, '申請を承認', 'accept', 'gold', 'check');
       pfBtn(a1, '拒否', 'decline');
     } else if (rel === 'outgoing') {
-      pfBtn(a1, '申請中（取り消す）', 'cancel');
+      pfBtn(a1, '申請を取り消す', 'cancel');
+      a1.appendChild(el('span', 'pf-hint', 'フレンド申請の返事を待っています'));
     } else {
       pfBtn(a1, 'フレンド申請', 'request', 'gold', 'friends');
-      a1.appendChild(el('span', 'pf-hint', 'フレンドになると会話・送金・観戦ができます'));
+      a1.appendChild(el('span', 'pf-hint', 'フレンドになると会話・送金・観戦・一緒に稼ぐができます'));
     }
-    var blk = el('button', 'text-btn', r.blocked ? 'ブロック解除' : 'ブロック');
-    blk.type = 'button';
-    blk.dataset.act = 'block';
-    a2.appendChild(blk);
+    pfLink(a2, r.blocked ? 'ブロック解除' : 'ブロック', 'block');
   }
   function profileUser() { return prof.data ? prof.data.user : null; }
 
@@ -1268,6 +1295,9 @@
       case 'avatar': sfx('click'); K.closeModal('profile'); BR.avatars.openPicker(); break;
       case 'password': sfx('click'); K.closeModal('profile'); BR.account.openPassword(); break;
       case 'recovery': sfx('click'); reissueCode(); break;
+      // another account of mine: its 引き継ぎコード
+      case 'codeLogin': sfx('click'); K.closeModal('profile'); BR.account.open('code-login', 'ほかのアカウントの引き継ぎコードを入力すると、そのアカウントに切り替わります。'); break;
+      case 'ops': sfx('click'); window.open('/ops/', '_blank', 'noopener'); break;
       case 'logout': sfx('click'); logout(); break;
       case 'transfer': sfx('click'); openTransfer(u); break;
       case 'gift': sfx('click'); K.closeModal('profile'); BR.cars.giftTo(u); break;
@@ -1275,6 +1305,8 @@
       case 'dm': sfx('click'); openDm(u); break;
       case 'watch': sfx('click'); K.closeModal('profile'); BR.watch.start(u); break;
       case 'battle': sfx('click'); K.closeModal('profile'); if (BR.play) BR.play.challenge(u); break;
+      case 'hubInvite': K.closeModal('profile'); friendAction(act, u.id); break;
+      case 'hubJoin': K.closeModal('profile'); friendAction(act, u.id); break;
       case 'give': sfx('click'); K.closeModal('profile'); BR.shop.giveFrom(u); break;
       default: friendAction(act, u.id);
     }
@@ -1298,6 +1330,8 @@
         sfx('click');
         toast(res.blocked ? 'ブロックしました' : 'ブロックを解除しました');
         if (res.blocked) friends = null;
+        // in a hub with them: their voice and quick chat go (or come back)
+        if (BR.hub && BR.hub.blockChanged) BR.hub.blockChanged(u.id, res.blocked);
       });
     }).catch(fail);
   }
@@ -1317,6 +1351,7 @@
           api.block(b.id, false).then(function () {
             row.parentNode.removeChild(row);
             toast('ブロックを解除しました');
+            if (BR.hub && BR.hub.blockChanged) BR.hub.blockChanged(b.id, false);
             if (!box.querySelector('.pf-block-row')) box.hidden = true;
           }, function (err) { x.disabled = false; fail(err); });
         });
@@ -1386,8 +1421,9 @@
         tf.busy = false;
         BR.app.serverBalance(r.balance);
         onMsg(r.message);
-        sfx('purchase');
+        sfx('coins');
         toast(u.name + 'さんに ' + U.fmt(amount) + ' ' + K.CUR[cur].name + ' を送金しました');
+        if (BR.juice) BR.juice.reward(null, 1);
         K.closeModal('transfer');
       }, function (err) {
         tf.busy = false;
@@ -1414,7 +1450,12 @@
     else touchConv(m, Number(key.slice(3)), mine);
     if (mine) return;
     if (here) {
-      if (m.kind === 'transfer' || m.kind === 'gift' || m.kind === 'item') sfx('purchase');
+      if (m.kind === 'transfer' || m.kind === 'gift' || m.kind === 'item') {
+        sfx(m.kind === 'transfer' ? 'money' : 'purchase');
+        // out of the card that just popped into the chat
+        var cards = document.querySelectorAll('.msg.xfer.jc-new');
+        if (BR.juice) BR.juice.reward(cards.length ? cards[cards.length - 1] : null, 2);
+      }
       markRead(key);
       return;
     }
@@ -1429,15 +1470,18 @@
       ? function () { sfx('click'); openGroupById(Number(key.slice(6))); }
       : function () { sfx('click'); openDm(knownUser(m.from.id) || m.from); };
     if (m.kind === 'transfer') {
-      sfx('purchase');
+      sfx('money');
       toast(name + 'さんから ' + U.fmt(m.amount) + ' ' + (K.CUR[m.currency] || K.CUR.tokens).name + ' が届きました！', 3400, open);
+      if (BR.juice) BR.juice.reward('#toast', 2);
     } else if (m.kind === 'gift') {
       sfx('purchase');
       toast(name + 'さんから ' + carName(m.text) + ' のプレゼントが届きました！ガレージで見られます', 4200, open);
+      if (BR.juice) BR.juice.reward('#toast', 3);
       BR.cars.changed();
     } else if (m.kind === 'item') {
       sfx('purchase');
       toast(name + 'さんから ' + itemName(m.text) + ' ×' + m.amount + ' が届きました！', 4200, open);
+      if (BR.juice) BR.juice.reward('#toast', 2);
     } else if (m.from && BR.peter.is(m.from)) {
       BR.peter.notify(m, open);
     } else if (key.indexOf('group:') === 0) {
@@ -1669,6 +1713,8 @@
     bindModals();
     if (!online) return;
     api.on('auth-lost', onAuthLost);
+    // an operator has just banned this account (or one on this device)
+    BR.live.on('kick', function (ev) { if (me) onAuthLost(ev); });
     BR.live.on('hello', onHello);
     BR.live.on('msg', onMsg);
     BR.live.on('read', onRead);
@@ -1677,6 +1723,8 @@
     BR.live.on('presence', onPresence);
     BR.live.on('friend', onFriend);
     BR.live.on('status', function (on) { $('#board-info').classList.toggle('off', !on); });
+    // 友達と稼ぐ: an invitation came or ran out, someone joined or left
+    if (BR.hub) BR.hub.onChange(function () { if (visible() && view === 'friends' && friends) renderFriends(); });
     document.addEventListener('visibilitychange', function () {
       var key = chatKey();
       if (!document.hidden && visible() && key) markRead(key);

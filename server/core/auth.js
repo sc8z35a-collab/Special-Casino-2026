@@ -22,6 +22,45 @@ export function normalizeRecoveryCode(code) {
     .replace(/O/g, '0').replace(/[IL]/g, '1').replace(/U/g, 'V');
 }
 
+// A short text sealed with `key` (32 bytes): the operators can read players'
+// 引き継ぎコード back, a copy of the database alone cannot. Encrypt-then-MAC
+// with HMAC-SHA256 only (a keystream from HMAC(key, "enc" | iv | block), a
+// 16-byte tag from HMAC(key, "mac" | iv | data)), so it works the same on Node
+// and on Cloudflare Workers.
+function stream(key, iv, n) {
+  const out = [];
+  for (let i = 0, got = 0; got < n; i++) {
+    const block = crypto.createHmac('sha256', key).update('enc').update(iv).update(Buffer.from([i >> 8 & 255, i & 255])).digest();
+    out.push(block);
+    got += block.length;
+  }
+  return Buffer.concat(out).subarray(0, n);
+}
+const tagOf = (key, iv, data) => crypto.createHmac('sha256', key).update('mac').update(iv).update(data).digest().subarray(0, 16);
+export function sealText(key, text) {
+  const iv = crypto.randomBytes(12);
+  const plain = Buffer.from(String(text), 'utf8');
+  const ks = stream(key, iv, plain.length);
+  const data = Buffer.alloc(plain.length);
+  for (let i = 0; i < plain.length; i++) data[i] = plain[i] ^ ks[i];
+  return Buffer.concat([iv, tagOf(key, iv, data), data]).toString('base64url');
+}
+export function openText(key, sealed) {
+  try {
+    const b = Buffer.from(String(sealed || ''), 'base64url');
+    if (b.length < 29) return '';
+    const iv = b.subarray(0, 12), tag = b.subarray(12, 28), data = b.subarray(28);
+    if (!crypto.timingSafeEqual(tag, tagOf(key, iv, data))) return '';
+    const ks = stream(key, iv, data.length);
+    const plain = Buffer.alloc(data.length);
+    for (let i = 0; i < data.length; i++) plain[i] = data[i] ^ ks[i];
+    return plain.toString('utf8');
+  } catch {
+    return '';
+  }
+}
+export function keyFrom(secret, purpose) { return crypto.createHash('sha256').update(`${secret}:${purpose}`).digest(); }
+
 /* ------------------------------------------------------------ names --- */
 
 const NAME_CHARS = /^[A-Za-z0-9_\-ぁ-ゖァ-ヺー・々〆一-鿿㐀-䶿]+$/u;

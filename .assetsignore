@@ -21,3 +21,5 @@
 !video/**
 !download/
 !download/**
+!ops/
+!ops/**

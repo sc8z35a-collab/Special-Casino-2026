@@ -3,10 +3,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import { createApp } from '../node/server.js';
 
 export const PASSWORD = 'pass1234';
+// a device of its own (js/net/device.js): the game sends one, and a device makes two accounts at most
+export const newDevice = (fp = '') => crypto.randomBytes(16).toString('hex') + (fp ? '~' + fp : '');
 
 export async function startServer(overrides = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'br-test-'));
@@ -23,14 +26,15 @@ export async function startServer(overrides = {}) {
   async function call(method, url, { token, body, headers = {} } = {}) {
     const h = { ...headers };
     if (token) h.Authorization = `Bearer ${token}`;
+    if (url === '/api/register' && !('X-Device' in h)) h['X-Device'] = newDevice();
     if (body !== undefined) h['Content-Type'] = 'application/json';
     const res = await fetch(base + url, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
     const json = await res.json();
     return { ...json, status: res.status };
   }
 
-  async function register(name, { password = PASSWORD, avatar = 'bald' } = {}) {
-    const r = await call('POST', '/api/register', { body: { name: name || `ユーザー${++seq}`, password, avatar } });
+  async function register(name, { password = PASSWORD, avatar = 'bald', device } = {}) {
+    const r = await call('POST', '/api/register', { body: { name: name || `ユーザー${++seq}`, password, avatar }, headers: device ? { 'X-Device': device } : {} });
     assert.equal(r.status, 200, JSON.stringify(r));
     return r;
   }

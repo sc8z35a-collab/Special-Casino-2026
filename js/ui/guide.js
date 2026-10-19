@@ -1,10 +1,11 @@
 /* 初心者向けの案内ガイド: a walk through the slot screen and the menu for
    every player with less than 30 minutes of play who has not finished it
-   (me.guide, from the server). It cannot be skipped: a dimmed layer blocks
-   everything but what a step points at, some steps wait for the player to
-   tap (SPIN, the menu, 戻る), and the Android back button does nothing
-   (js/ui/install.js). Replayed from the menu (詳細) it can be closed and
-   tells the server nothing. */
+   (me.guide, from the server). A dimmed layer blocks everything but what a
+   step points at, some steps wait for the player to tap (SPIN, the menu,
+   戻る), and the Android back button does nothing (js/ui/install.js). The
+   スキップ button (tapped twice: once more to be sure) ends it for good, as
+   finishing does. Replayed from the menu (詳細) it can be closed and tells
+   the server nothing. */
 (function (BR) {
   'use strict';
 
@@ -35,8 +36,6 @@
       textIdle: 'SPIN でスロットが回ります。トークンがないときは「トークンを入手」で手に入れましょう。' },
     { screen: 'slot', target: '.win-group', title: '当たり',
       text: '当たると、ここに獲得したトークンが表示されます。小さな当たりでも、連続するとコンボになります！' },
-    { screen: 'slot', target: '#btn-auto', title: '自動スピン',
-      text: 'オンにすると自動で回り続けます。もう一度タップすると止まります。' },
     { screen: 'slot', target: '#btn-charm', title: 'お守り加護',
       text: '使うと、次に負けたスピンでトークンの一部が戻ってきます。Shop で買えます。' },
     { screen: 'slot', target: '#btn-quest', round: true, title: 'クエスト',
@@ -130,6 +129,9 @@
     var close = el('button', 'gd-close', '閉じる');
     close.type = 'button';
     head.appendChild(close);
+    var skip = el('button', 'gd-close gd-skip', 'スキップ');
+    skip.type = 'button';
+    head.appendChild(skip);
     bubble.appendChild(head);
     var bar = el('div', 'gd-bar');
     var fill = el('i');
@@ -156,9 +158,20 @@
     root.appendChild(bubble);
     next.addEventListener('click', function () { if (run && !run.act) { K.sfx('click'); advance(); } });
     close.addEventListener('click', function () { if (run && run.replay) { K.sfx('click'); finish(false); } });
+    // the first tap asks, a second one within a few seconds skips
+    var armed = 0;
+    skip.addEventListener('click', function () {
+      if (!run || run.replay) return;
+      K.sfx('click');
+      if (Date.now() - armed < 3500) { finish('skip'); return; }
+      armed = Date.now();
+      skip.textContent = 'もう一度タップでスキップ';
+      skip.classList.add('sure');
+      setTimeout(function () { skip.textContent = 'スキップ'; skip.classList.remove('sure'); }, 3500);
+    });
     $('#stage').appendChild(root);
     return {
-      root: root, hole: hole, ring: ring, blocks: blocks, arrow: arrow, bubble: bubble, count: count, close: close,
+      root: root, hole: hole, ring: ring, blocks: blocks, arrow: arrow, bubble: bubble, count: count, close: close, skip: skip,
       fill: fill, title: title, text: text, hint: hint, hintText: hintText, next: next
     };
   }
@@ -174,7 +187,6 @@
     K = K || BR.kit;
     clearTimeout(waitTimer);
     waitTimer = 0;
-    if (BR.app.setAuto) BR.app.setAuto(false);
     if (BR.entry && BR.entry.isOpen()) BR.entry.close();
     run = { replay: !!replay, uid: me.id, i: -1, step: null, act: null, phase: '', timers: [], dom: build() };
     // notices stay readable above the dimmed screen
@@ -238,6 +250,7 @@
     d.next.hidden = !!act;
     d.next.textContent = st.last ? 'はじめる！' : '次へ';
     d.close.hidden = !R.replay;
+    d.skip.hidden = R.replay;
     d.root.classList.toggle('gd-act', !!act);
     d.root.classList.toggle('gd-intro', !st.target);
     d.root.classList.remove('gd-wait');
@@ -437,7 +450,8 @@
     resizeTimer = setTimeout(place, 120);
   }
 
-  // `completed`: the last step was reached (else it was closed or the player signed out)
+  // `completed`: the last step was reached, or 'skip' (skipped: done as well);
+  // else it was closed or the player signed out
   function finish(completed) {
     var R = run;
     if (!R) return;
@@ -452,6 +466,11 @@
     root.classList.add('gd-out');
     setTimeout(function () { if (root.parentNode) root.parentNode.removeChild(root); }, 320);
     if (!completed) return;
+    if (completed === 'skip') {
+      K.toast('ガイドをスキップしました（メニューの「詳細」からいつでも見られます）', 3600);
+      sendDone(R.uid);
+      return;
+    }
     K.sfx('notify');
     if (R.replay) { K.toast('ガイドを最後まで見ました', 2600); return; }
     K.toast('ガイド完了！楽しんでください', 3200);

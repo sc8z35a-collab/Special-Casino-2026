@@ -66,6 +66,8 @@
   function request(method, path, body) {
     var headers = {};
     if (token) headers.Authorization = 'Bearer ' + token;
+    // the device (js/net/device.js): two accounts a device, BANs
+    if (BR.device) headers['X-Device'] = BR.device.header();
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     return fetch(path, {
       method: method,
@@ -87,7 +89,8 @@
         }
         var err = new ApiError(res.status, e.code || 'error', e.message || ('エラーが発生しました（' + res.status + '）'), e);
         if (res.status === 401 && token && path !== '/api/login' && path !== '/api/register') emit('auth-lost', err);
-        if (res.status === 403 && e.code === 'banned') emit('auth-lost', err);
+        // banned (or another account on this device is): signed out, with why
+        if (res.status === 403 && (e.code === 'banned' || e.code === 'device_banned') && path !== '/api/login' && path !== '/api/register') emit('auth-lost', err);
         throw err;
       });
     });
@@ -122,7 +125,8 @@
     me: function () { return get('/api/me'); },
 
     /* the game */
-    spin: function (bet) { return post('/api/spin', { bet: bet }); },
+    // (idle: how long ago the player last did something, for the hub: js/ui/activity.js)
+    spin: function (bet) { return post('/api/spin', { bet: bet, idle: BR.activity ? Math.round(BR.activity.idle()) : 0 }); },
     buy: function (n) { return post('/api/buy', { amount: n }); },
     sell: function (n) { return post('/api/sell', { amount: n }); },
     daily: function () { return post('/api/daily'); },
@@ -188,6 +192,15 @@
     battleQuit: function (id) { return post('/api/battle/quit', { id: id }); },
     coop: function (group) { return get('/api/coop?group=' + q(group)); },
     sitCoop: function (group, on) { return post('/api/coop', { group: group, on: !!on }); },
+
+    /* 友達と稼ぐ (hubs) and the activity beat of the time quests */
+    hub: function () { return get('/api/hub'); },
+    hubInvite: function (to) { return post('/api/hub/invite', { to: to }); },
+    hubJoin: function (from) { return post('/api/hub/join', { from: from }); },
+    hubDecline: function (from) { return post('/api/hub/decline', { from: from }); },
+    hubLeave: function () { return post('/api/hub/leave'); },
+    hubSay: function (to, text) { return post('/api/hub/say', { to: to, text: text }); },
+    beat: function (idle, voice) { return post('/api/beat', { idle: idle, voice: voice ? 1 : 0 }); },
 
     /* the beginner guide and feedback to the operator */
     guideDone: function () { return post('/api/guide'); },

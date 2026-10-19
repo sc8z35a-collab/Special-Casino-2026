@@ -1,6 +1,12 @@
 /* Win presentation layer: WIN / BIG WIN / SUPER BIG WIN.
    Everything is drawn on one canvas above the stage with pre-rendered
-   sprites (titles, chips, rays, glints) so it stays smooth on phones. */
+   sprites (titles, chips, rays, glints) so it stays smooth on phones.
+   The big wins hit like the real thing: a turning sunburst and two stage
+   beams behind the rays, a moment of stillness (hit-stop) when the title
+   lands, a camera kick, three shock rings, a heartbeat that keeps pulsing
+   the title, and for SUPER the screen breaking like glass, lightning,
+   rainbow rays and confetti (the shards, bolts and confetti are drawn by
+   js/render/juice.js on top). */
 (function (BR) {
   'use strict';
 
@@ -64,8 +70,8 @@
     return c;
   }
 
-  // light rays texture (additive)
-  function raySprite(size, count, seed) {
+  // light rays texture (additive); `rainbow`: every ray its own colour
+  function raySprite(size, count, seed, rainbow) {
     var c = canvas(size, size), g = c.getContext('2d'), r = size / 2;
     g.translate(r, r);
     var rnd = seed;
@@ -76,9 +82,16 @@
       var len = r * (0.65 + rand() * 0.35);
       var gr = g.createRadialGradient(0, 0, 0, 0, 0, len);
       var al = 0.35 + rand() * 0.5;
-      gr.addColorStop(0, 'rgba(255,250,215,' + al + ')');
-      gr.addColorStop(0.35, 'rgba(255,215,120,' + (al * 0.55) + ')');
-      gr.addColorStop(1, 'rgba(255,170,50,0)');
+      if (rainbow) {
+        var hue = Math.round(i / count * 360);
+        gr.addColorStop(0, 'hsla(' + hue + ',100%,92%,' + al + ')');
+        gr.addColorStop(0.35, 'hsla(' + hue + ',100%,62%,' + (al * 0.6) + ')');
+        gr.addColorStop(1, 'hsla(' + hue + ',100%,50%,0)');
+      } else {
+        gr.addColorStop(0, 'rgba(255,250,215,' + al + ')');
+        gr.addColorStop(0.35, 'rgba(255,215,120,' + (al * 0.55) + ')');
+        gr.addColorStop(1, 'rgba(255,170,50,0)');
+      }
       g.fillStyle = gr;
       g.beginPath();
       g.moveTo(0, 0);
@@ -86,6 +99,46 @@
       g.closePath();
       g.fill();
     }
+    return c;
+  }
+
+  // sunburst: wedges of warm light fading out from the middle (drawn small,
+  // shown large: a soft background does not need the pixels)
+  function sunSprite(size, wedges) {
+    var c = canvas(size, size), g = c.getContext('2d'), r = size / 2;
+    g.translate(r, r);
+    for (var i = 0; i < wedges; i++) {
+      var a0 = i / wedges * TAU, a1 = (i + 0.5) / wedges * TAU;
+      var gr = g.createRadialGradient(0, 0, r * 0.05, 0, 0, r);
+      gr.addColorStop(0, 'rgba(255,236,170,0.9)');
+      gr.addColorStop(0.35, 'rgba(255,190,70,0.45)');
+      gr.addColorStop(1, 'rgba(255,140,30,0)');
+      g.fillStyle = gr;
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.arc(0, 0, r, a0, a1);
+      g.closePath();
+      g.fill();
+    }
+    return c;
+  }
+
+  // a stage beam: light widening upwards from a point, fading out (drawn
+  // once: a clip on a moving layer would be cut out again on every frame)
+  function beamSprite(w, h) {
+    var c = canvas(w, h), g = c.getContext('2d');
+    var gr = g.createLinearGradient(0, h, 0, 0);
+    gr.addColorStop(0, 'rgba(255,244,200,0.85)');
+    gr.addColorStop(0.4, 'rgba(255,224,150,0.32)');
+    gr.addColorStop(0.88, 'rgba(255,200,100,0)');
+    g.fillStyle = gr;
+    g.beginPath();
+    g.moveTo(w * 0.46, h);
+    g.lineTo(w * 0.54, h);
+    g.lineTo(w, 0);
+    g.lineTo(0, 0);
+    g.closePath();
+    g.fill();
     return c;
   }
 
@@ -413,7 +466,11 @@
     this.active = null;
     this.sprites = null;
     this.dim = el('div', 'fx-dim', root);
+    // two stage beams sweeping up from the bottom corners
+    this.beams = [el('div', 'fx-beam l', root), el('div', 'fx-beam r', root)];
     this.burst = el('div', 'fx-burst', root);
+    // a sunburst: wedges of gold light turning behind everything
+    this.sun = el('div', 'fx-sun', this.burst);
     this.back = el('canvas', 'fx-canvas', root);
     this.titles = el('div', 'fx-group', root);
     this.panelWrap = el('div', 'fx-group', root);
@@ -423,7 +480,7 @@
     this.gf = this.front.getContext('2d');
     this.glow = el('div', 'fx-glow', this.burst);
     this.streak = el('div', 'fx-streak', this.burst);
-    this.rings = [el('div', 'fx-ring', this.burst), el('div', 'fx-ring', this.burst)];
+    this.rings = [el('div', 'fx-ring', this.burst), el('div', 'fx-ring', this.burst), el('div', 'fx-ring', this.burst)];
     this.titleM = el('div', 'fx-title', this.titles);
     this.titleS = el('div', 'fx-title', this.titles);
     this.panel = el('div', 'fx-panel', this.panelWrap);
@@ -469,6 +526,9 @@
         flare: flareSprite(Math.round(200 * self.pres)),
         rays: raySprite(1024, 30, 7),
         rays2: raySprite(1024, 18, 99),
+        raysR: raySprite(1024, 24, 31, true),
+        sun: sunSprite(512, 18),
+        beam: beamSprite(128, 360),
         bigWin: titleSprite('BIG WIN', Object.assign({ em: 232, maxW: 870 }, STYLE_RED), res),
         win: titleSprite('WIN', Object.assign({ em: 200, maxW: 700 }, STYLE_RED), res),
         superT: titleSprite('SUPER', Object.assign({ em: 150, maxW: 700 }, STYLE_GOLD), res),
@@ -494,10 +554,23 @@
     $$('.fx-rays', b).forEach(function (n) { n.remove(); });
     sp.rays.className = 'fx-rays';
     sp.rays2.className = 'fx-rays';
+    sp.raysR.className = 'fx-rays';
     b.insertBefore(sp.rays2, this.glow);
     b.insertBefore(sp.rays, sp.rays2);
+    b.insertBefore(sp.raysR, this.glow);
     this.raysA = sp.rays;
     this.raysB = sp.rays2;
+    this.raysR = sp.raysR;
+    this.sun.innerHTML = '';
+    sp.sun.className = 'fx-sun-img';
+    this.sun.appendChild(sp.sun);
+    this.beams.forEach(function (bm, i) {
+      bm.innerHTML = '';
+      var c = i ? canvas(sp.beam.width, sp.beam.height) : sp.beam;
+      if (i) c.getContext('2d').drawImage(sp.beam, 0, 0);
+      c.className = 'fx-beam-img';
+      bm.appendChild(c);
+    });
   };
 
   function $$(sel, root) { return Array.prototype.slice.call(root.querySelectorAll(sel)); }
@@ -547,17 +620,19 @@
     return this.ensureSprites().then(function (sp) {
       return new Promise(function (resolve) {
         var tier = o.tier;
-        var countDur = tier >= 3 ? 6.2 : tier === 2 ? 3.4 : 1.0;
-        var hold = tier >= 3 ? 1.8 : tier === 2 ? 1.5 : 0.75;
+        var countDur = tier >= 3 ? 6.4 : tier === 2 ? 3.6 : 1.0;
+        var hold = tier >= 3 ? 2.0 : tier === 2 ? 1.6 : 0.75;
         self.active = {
           o: o, tier: tier, t: 0, resolve: resolve,
-          countStart: tier === 1 ? 0.18 : 0.55,
+          countStart: tier === 1 ? 0.18 : 0.6,
           countDur: countDur, hold: hold,
           shown: -1, outT: -1,
           upgraded: tier < 3 ? 1 : 0,   // SUPER starts as BIG WIN and upgrades mid-count
           chips: [], sparks: [], glints: [], ringFx: [],
           nextFountain: 0, nextFirework: 1.2, lastTick: 0, shake: 0,
-          sweep: -1, nextSweep: 0.8
+          sweep: -1, nextSweep: 0.8,
+          // hit-stop: seconds the clock stands still; a camera kick; the title's heartbeat
+          freeze: 0, kick: 0, kickT: -1, landed: false, beat: 1.05, beatT: -1, nextBolt: 0, tickPop: -1
         };
         self.mountTitle(self.titleM, tier === 1 ? sp.win : sp.bigWin);
         self.mountTitle(self.titleS, sp.superT);
@@ -565,6 +640,7 @@
         self.amount.style.fontSize = (tier === 1 ? 70 : 88) + 'px';
         self.amount.textContent = '0';
         self.root.classList.toggle('small', tier === 1);
+        setStyle(self.root, 'transform', '');
         self.root.style.display = 'block';
         self.hit.classList.add('on');
         self.entry();
@@ -589,14 +665,45 @@
   FX.prototype.entry = function () {
     var a = this.active, L = this.layout();
     BR.sfx.play(a.tier === 1 ? 'win' : 'bigWin');
-    this.burstSparks(L.burst.x, L.burst.y, a.tier === 1 ? 26 : 80, a.tier === 1 ? 520 : 900, 0.1);
+    this.burstSparks(L.burst.x, L.burst.y, a.tier === 1 ? 26 : 90, a.tier === 1 ? 520 : 1000, 0.1);
     if (a.tier >= 2) {
-      this.explodeChips(L.burst.x, L.burst.y, 20, 0.12);
-      a.ringFx.push({ t: -0.1, dur: 0.8, r0: 60, r1: 900 });
+      this.explodeChips(L.burst.x, L.burst.y, 26, 0.12);
       a.shake = 0.35;
     } else {
       this.explodeChips(L.burst.x, L.burst.y + 30, 8, 0.15, 0.6);
     }
+  };
+
+  // The title hits the screen: everything stands still for a moment, then
+  // the shock goes out (rings, sparks, a flash, the camera kicks back).
+  FX.prototype.slam = function () {
+    var a = this.active, L = this.layout(), J = BR.juice;
+    a.landed = a.t;
+    a.freeze = a.tier >= 2 ? 0.09 : 0.04;
+    a.kickT = a.t;
+    a.kick = a.tier >= 2 ? 0.07 : 0.03;
+    if (a.tier < 2) return;
+    a.ringFx.push({ t: 0, dur: 0.75, r0: 60, r1: 950 });
+    a.ringFx.push({ t: -0.1, dur: 0.85, r0: 50, r1: 1350 });
+    a.ringFx.push({ t: -0.22, dur: 0.95, r0: 40, r1: 1750 });
+    a.shake = 0.6;
+    this.burstSparks(L.title.x, L.title.y + 40, 70, 1300, 0);
+    this.explodeChips(L.title.x, L.title.y + 60, 14, 0.02);
+    if (J) {
+      J.flash('#fff2c8', 0.5, 420);
+      J.shake('#screen-slot', 14, 480);
+      J.stars(L.title.x, L.title.y, { n: 8, r: 420, flat: 0.35, size: 120, life: 1 });
+    }
+  };
+
+  // the title's heartbeat: a pulse, a ring and a spray of light
+  FX.prototype.beat = function () {
+    var a = this.active, L = this.layout(), J = BR.juice;
+    a.beatT = a.t;
+    var sup = a.tier >= 3 && a.upgraded;
+    a.ringFx.push({ t: 0, dur: 0.7, r0: 200, r1: sup ? 1300 : 1000 });
+    this.burstSparks(L.title.x, L.title.y, sup ? 34 : 20, sup ? 900 : 700, 0);
+    if (J) J.stars(L.title.x, L.title.y, { n: sup ? 5 : 3, r: 380, flat: 0.3, size: 90 });
   };
 
   FX.prototype.explodeChips = function (x, y, n, delay, scale) {
@@ -644,10 +751,12 @@
   FX.prototype.skip = function () {
     var a = this.active;
     if (!a || a.outT >= 0) return;
+    if (BR.juice) BR.juice.flash('#fff6dc', 0.22, 220);
     if (a.t - a.countStart < a.countDur) {
       // jump the counter to the end
       a.countStart = a.t - a.countDur;
       if (a.tier >= 3 && !a.upgraded) this.upgrade();
+      if (!a.landed) this.slam();
       a.holdEnd = a.t + Math.min(0.9, a.hold);
     } else {
       a.outT = a.t;
@@ -660,6 +769,7 @@
     this.active = null;
     this.hit.classList.remove('on');
     this.root.style.display = 'none';
+    setStyle(this.root, 'transform', '');
     this.gb.setTransform(1, 0, 0, 1, 0, 0);
     this.gb.clearRect(0, 0, this.back.width, this.back.height);
     this.gf.setTransform(1, 0, 0, 1, 0, 0);
@@ -668,16 +778,45 @@
     a.resolve();
   };
 
+  // SUPER comes flying in on top of BIG WIN ...
   FX.prototype.upgrade = function () {
     var a = this.active;
     a.upgraded = a.t;
     var L = this.layout();
-    a.ringFx.push({ t: 0, dur: 0.9, r0: 80, r1: 1200 });
-    this.burstSparks(L.burst.x, L.burst.y - 80, 110, 1100, 0);
-    this.explodeChips(L.burst.x, L.burst.y - 40, 26, 0);
-    a.flash = a.t;
-    a.shake = 0.5;
+    this.burstSparks(L.burst.x, L.burst.y - 80, 40, 900, 0);
     BR.sfx.play('superWin');
+  };
+
+  // ... and hits: the screen breaks like glass
+  FX.prototype.superSlam = function () {
+    var a = this.active, J = BR.juice;
+    a.superLanded = a.t;
+    var L = this.layout();
+    a.ringFx.push({ t: 0, dur: 0.9, r0: 80, r1: 1300 });
+    a.ringFx.push({ t: -0.1, dur: 1.0, r0: 60, r1: 1900 });
+    a.ringFx.push({ t: -0.2, dur: 1.1, r0: 40, r1: 2400 });
+    this.burstSparks(L.burst.x, L.burst.y - 80, 170, 1400, 0);
+    this.explodeChips(L.burst.x, L.burst.y - 40, 36, 0);
+    a.flash = a.t;
+    a.shake = 0.8;
+    a.freeze = 0.13;
+    a.kickT = a.t;
+    a.kick = 0.1;
+    a.beat = a.t + 0.8;
+    BR.sfx.play('impact');
+    if (J) {
+      // the screen breaks like glass where SUPER comes through, lightning everywhere
+      var p = L.superT;
+      J.flash('#ffffff', 0.78, 520);
+      J.shards(p.x, p.y, { n: 40, speed: 1.25, size: 1.2 });
+      for (var i = 0; i < 7; i++) {
+        var ang = -Math.PI / 2 + (i - 3) * 0.5 + U.rand(-0.15, 0.15);
+        J.bolt(p.x, p.y, p.x + Math.cos(ang) * 1000, p.y + Math.sin(ang) * 520 + 300, { amp: 70, segs: 14, dur: 0.45, w: 5, color: i % 2 ? 'blue' : 'white', delay: i * 0.025 });
+      }
+      J.shake('#screen-slot', 24, 760);
+      J.confetti(this.W * 0.5, this.H * 0.45, { n: 70, speed: 1700, dir: -Math.PI / 2, spread: 1.4 });
+      J.rain({ kind: 'confetti', dur: 4.5, rate: 22, delay: 0.5 });
+    }
   };
 
   FX.prototype.frame = function () {
@@ -693,8 +832,11 @@
   };
 
   FX.prototype.step = function (a, dt) {
+    // hit-stop: the clock stands still for a moment (the picture stays on)
+    if (a.freeze > 0) { a.freeze -= dt; dt = 0; }
     a.t += dt;
     var t = a.t;
+    var J = BR.juice;
     var ct = t - a.countStart;
     var amount = a.o.amount;
 
@@ -706,9 +848,19 @@
       a.shown = val;
       this.amount.textContent = U.fmt(val);
       if (a.o.onCount) a.o.onCount(val);
-      if (t - a.lastTick > (a.tier === 1 ? 0.06 : 0.075) && p > 0 && p < 1) { a.lastTick = t; BR.sfx.play('tick', p); }
+      if (t - a.lastTick > (a.tier === 1 ? 0.06 : 0.075) && p > 0 && p < 1) { a.lastTick = t; a.tickPop = t; BR.sfx.play('tick', p); }
     }
+    // the title lands, SUPER lands, the heartbeat goes on
+    if (!a.landed && t >= (a.tier === 1 ? 0.5 : 0.36)) this.slam();
     if (a.tier >= 3 && !a.upgraded && p >= 0.36) this.upgrade();
+    if (a.tier >= 3 && a.upgraded && !a.superLanded && t - a.upgraded >= 0.2) this.superSlam();
+    if (a.tier >= 2 && a.landed && a.outT < 0 && t >= a.beat) { this.beat(); a.beat = t + 0.95; }
+    // lightning round SUPER
+    if (J && a.superLanded && a.outT < 0 && t >= a.nextBolt) {
+      var Lb = this.layout(), side = U.random() < 0.5 ? -1 : 1;
+      J.bolt(Lb.superT.x + side * U.rand(150, 330), Lb.superT.y + U.rand(-40, 40), Lb.superT.x + side * U.rand(600, 1000), U.rand(-20, this.H * 0.75), { amp: 55, segs: 12, dur: 0.3, w: 4, color: U.random() < 0.5 ? 'blue' : 'gold' });
+      a.nextBolt = t + U.rand(0.35, 0.8);
+    }
     if (p >= 1 && !a.countDone) {
       a.countDone = t;
       if (!a.holdEnd) a.holdEnd = t + a.hold;
@@ -717,6 +869,16 @@
       a.glints.push({ x: L0.panel.x - 300 * k, y: L0.panel.y - 50, t: 0, dur: 0.7, s: 1 });
       a.glints.push({ x: L0.panel.x + 320 * k, y: L0.panel.y + 46, t: -0.12, dur: 0.7, s: 0.8 });
       BR.sfx.play('countEnd', a.tier);
+      if (a.tier >= 2 && J) {
+        // confetti cannons from both bottom corners, the camera kicks
+        J.confetti(30, this.H - 10, { n: a.tier >= 3 ? 70 : 45, speed: 2100, dir: -Math.PI * 0.3, spread: 0.28 });
+        J.confetti(this.W - 30, this.H - 10, { n: a.tier >= 3 ? 70 : 45, speed: 2100, dir: -Math.PI * 0.7, spread: 0.28 });
+        J.ring(L0.panel.x, L0.panel.y, { r0: 100, r1: 700, dur: 0.6, w: 12, sy: 0.45 });
+        J.flash('#fff6d8', 0.32, 360);
+        J.shake('#screen-slot', 10, 380);
+        a.kickT = t;
+        a.kick = 0.045;
+      }
     }
     if (a.countDone && a.outT < 0 && t >= a.holdEnd) a.outT = t;
     var outDur = a.tier === 1 ? 0.35 : 0.5;
@@ -801,6 +963,11 @@
       setStyle(this.dim, 'maskImage', 'none');
     }
 
+    // the camera kicks back when something hits
+    var kick = 0;
+    if (a.kickT >= 0) { var kp = (t - a.kickT) / 0.42; if (kp < 1) kick = a.kick * (1 - kp) * (1 - kp); }
+    setStyle(this.root, 'transform', kick > 0.0005 ? 'scale(' + (1 + kick).toFixed(4) + ')' : '');
+
     // camera shake for the burst/title/panel groups
     var shx = 0, shy = 0;
     if (a.shake > 0) { var k = a.shake * a.shake * 26; shx = U.rand(-k, k); shy = U.rand(-k, k); }
@@ -818,6 +985,22 @@
     setStyle(this.raysA, 'transform', 'scale(1.25,0.82) rotate(' + (t * 0.12).toFixed(4) + 'rad) scale(' + rs.toFixed(4) + ')');
     setStyle(this.raysB, 'opacity', f3(Math.min(1, ra * 0.7)));
     setStyle(this.raysB, 'transform', 'scale(1.25,0.82) rotate(' + (-t * 0.08 + 0.4).toFixed(4) + 'rad) scale(' + (rs * 0.9).toFixed(4) + ')');
+    // SUPER: rainbow rays turning the other way
+    var rb = sup && a.superLanded ? U.clamp((t - a.superLanded) / 0.5, 0, 1) : 0;
+    setStyle(this.raysR, 'opacity', f3(0.6 * rb * fade));
+    setStyle(this.raysR, 'transform', 'scale(1.25,0.82) rotate(' + (-t * 0.18 + 1).toFixed(4) + 'rad) scale(' + (rs * 1.12).toFixed(4) + ')');
+    // the sunburst behind it all
+    var sunA = (big ? 0.5 : 0.22) * bIn * fade * (sup ? 1.3 : 1) * (0.85 + 0.15 * Math.sin(t * 3.2));
+    var sunS = (big ? 2.7 : 1.6) * (0.45 + 0.55 * bIn) * (sup ? 1.15 : 1);
+    setStyle(this.sun, 'opacity', f3(Math.min(1, sunA)));
+    setStyle(this.sun, 'transform', 'scale(' + sunS.toFixed(4) + ',' + (sunS * 0.72).toFixed(4) + ') rotate(' + (t * (sup ? 0.45 : 0.2)).toFixed(4) + 'rad)');
+    // stage beams sweeping from the bottom corners
+    for (var bi = 0; bi < this.beams.length; bi++) {
+      var side = bi ? -1 : 1;
+      var ang = side * (18 + 15 * Math.sin(t * (sup ? 1.9 : 1.25) + bi * 1.7));
+      setStyle(this.beams[bi], 'opacity', f3((big ? 0.55 : 0) * bIn * fade * (sup ? 1.3 : 1)));
+      setStyle(this.beams[bi], 'transform', 'rotate(' + ang.toFixed(2) + 'deg)');
+    }
     var gs = (big ? 1150 : 700) * (0.4 + 0.6 * bIn) * (sup ? 1.2 : 1) / 512;
     setStyle(this.glow, 'opacity', f3((big ? 0.95 : 0.7) * bIn * fade));
     setStyle(this.glow, 'transform', 'scale(' + (gs * 1.45).toFixed(4) + ',' + (gs * 0.62).toFixed(4) + ')');
@@ -834,16 +1017,27 @@
       setStyle(node, 'transform', 'scale(' + (rad / 256).toFixed(4) + ',' + (rad * 0.58 / 256).toFixed(4) + ')');
     }
 
-    // titles
-    var tIn = U.clamp((t - 0.12) / 0.55, 0, 1);
-    var ts = tIn < 1 ? 2.3 - 1.3 * E.outBack(tIn, 1.9) : 1;
+    // titles: they fall in faster and faster, hit, squash and spring back,
+    // then keep beating
     var breathe = 1 + 0.012 * Math.sin(t * 3.1);
     var outScale = 1 + 0.18 * E.inQuad(out);
-    this.placeTitle(this.titleM, L.title, ts * breathe * outScale, E.outQuad(U.clamp(tIn * 3, 0, 1)) * fade);
+    var pulse = a.beatT >= 0 ? 1 + 0.085 * Math.sin(Math.min(1, (t - a.beatT) / 0.28) * Math.PI) : 1;
+    var ts, ta, sq = [1, 1];
+    if (big) {
+      var tl = t - 0.1;
+      ts = fallIn(tl, 0.26, 3.4);
+      sq = squash(tl - 0.26, 0.55, 0.22);
+      ta = E.outQuad(U.clamp(tl / 0.14, 0, 1));
+    } else {
+      var tIn = U.clamp((t - 0.12) / 0.55, 0, 1);
+      ts = tIn < 1 ? 2.3 - 1.3 * E.outBack(tIn, 1.9) : 1;
+      ta = E.outQuad(U.clamp(tIn * 3, 0, 1));
+    }
+    this.placeTitle(this.titleM, L.title, ts * breathe * outScale * pulse, ta * fade, sq[0], sq[1]);
     if (sup) {
-      var ut = U.clamp((t - a.upgraded) / 0.5, 0, 1);
-      var us = 2.6 - 1.6 * E.outBack(ut, 2.2);
-      this.placeTitle(this.titleS, L.superT, us * breathe * outScale, E.outQuad(U.clamp(ut * 2.5, 0, 1)) * fade);
+      var ul = t - a.upgraded;
+      var usq = squash(ul - 0.2, 0.5, 0.26);
+      this.placeTitle(this.titleS, L.superT, fallIn(ul, 0.2, 3.6) * breathe * outScale * pulse, E.outQuad(U.clamp(ul / 0.12, 0, 1)) * fade, usq[0], usq[1]);
     } else {
       setStyle(this.titleS, 'opacity', '0');
     }
@@ -851,7 +1045,8 @@
     // panel + amount
     var pIn = U.clamp((t - (a.tier === 1 ? 0.1 : 0.4)) / 0.42, 0, 1);
     var pScale = (0.55 + 0.45 * E.outBack(pIn, 1.6)) * (1 - 0.06 * E.inQuad(out));
-    var pop = a.countDone ? 1 + 0.22 * Math.max(0, 1 - (t - a.countDone) / 0.35) * Math.sin(Math.min(1, (t - a.countDone) / 0.35) * Math.PI) : 1;
+    var pop = a.countDone ? 1 + 0.26 * Math.max(0, 1 - (t - a.countDone) / 0.35) * Math.sin(Math.min(1, (t - a.countDone) / 0.35) * Math.PI) : 1;
+    if (!a.countDone && a.tickPop >= 0) pop *= 1 + 0.045 * Math.max(0, 1 - (t - a.tickPop) / 0.1);
     setStyle(this.panel, 'opacity', f3(E.outQuad(pIn) * fade));
     setStyle(this.panel, 'transform', 'translate(' + L.panel.x + 'px,' + L.panel.y + 'px) scale(' + pScale.toFixed(4) + ')');
     setStyle(this.amount, 'transform', 'scale(' + pop.toFixed(4) + ')');
@@ -900,10 +1095,22 @@
     gf.globalCompositeOperation = 'source-over';
   };
 
-  FX.prototype.placeTitle = function (slot, pos, scale, alpha) {
+  // falling towards the screen: from `from` times its size down to 1 in `dur` s, accelerating
+  function fallIn(t, dur, from) {
+    var u = U.clamp(t / dur, 0, 1);
+    return from - (from - 1) * u * u;
+  }
+  // after a hit: wider and flatter, springing back to shape ([sx, sy])
+  function squash(t, dur, amt) {
+    if (t < 0 || t >= dur) return [1, 1];
+    var v = t / dur, k = Math.exp(-4.5 * v) * Math.cos(v * 15);
+    return [1 + amt * k, 1 - amt * k];
+  }
+
+  FX.prototype.placeTitle = function (slot, pos, scale, alpha, sx, sy) {
     var a = this.active;
     setStyle(slot, 'opacity', f3(alpha));
-    setStyle(slot, 'transform', 'translate(' + pos.x + 'px,' + pos.y + 'px) scale(' + scale.toFixed(4) + ')');
+    setStyle(slot, 'transform', 'translate(' + pos.x + 'px,' + pos.y + 'px) scale(' + (scale * (sx || 1)).toFixed(4) + ',' + (scale * (sy || 1)).toFixed(4) + ')');
     var sw = slot.sweepEl;
     if (!sw) return;
     if (a.sweep >= 0) {

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { startServer, PASSWORD } from './helpers.js';
+import { startServer, PASSWORD, newDevice } from './helpers.js';
 import { createApp } from '../node/server.js';
 import { openDb } from '../node/sqlite.js';
 import { run } from '../node/admin-cli.js';
@@ -119,7 +119,11 @@ test('money survives restarts and redeploys: the database is reopened as it was'
     await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
     let base = `http://127.0.0.1:${app.server.address().port}`;
     const post = async (b, url, body, token) => {
-      const res = await fetch(b + url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
+      const res = await fetch(b + url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Device': newDevice(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(body)
+      });
       return res.json();
     };
     const reg = await post(base, '/api/register', { name: 'Durable', password: PASSWORD, avatar: 'beard' });

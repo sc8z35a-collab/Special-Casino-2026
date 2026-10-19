@@ -161,6 +161,120 @@
   100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--r)) scale(1); }
 }
 
+/* ------------------------------------------------------------ FEVER --- */
+/* five wins in a row: the edges of the screen burn (only opacity and
+   transforms move, each on a layer of its own: nothing is repainted) */
+.fv-edge {
+  position: absolute;
+  inset: 0;
+  z-index: 43;
+  pointer-events: none;
+  box-shadow: inset 0 0 150px 46px rgba(255, 70, 10, .5), inset 0 0 44px 8px rgba(255, 196, 80, .5);
+  animation: fvIn .6s ease-out both, fvFlicker 1.3s ease-in-out .6s infinite;
+  will-change: opacity;
+}
+/* flames licking up from the bottom: two rows of tongues out of step */
+.fv-edge::before, .fv-edge::after {
+  content: '';
+  position: absolute;
+  left: -40px;
+  right: -40px;
+  bottom: -6px;
+  height: 210px;
+  transform-origin: 50% 100%;
+  background: linear-gradient(0deg, rgba(255, 210, 110, .75) 0%, rgba(255, 110, 20, .6) 22%, rgba(255, 50, 0, .28) 55%, rgba(255, 30, 0, 0) 100%);
+  -webkit-mask: radial-gradient(28px 100% at 50% 100%, #000 55%, transparent 100%) 0 100% / 74px 100% repeat-x;
+  mask: radial-gradient(28px 100% at 50% 100%, #000 55%, transparent 100%) 0 100% / 74px 100% repeat-x;
+  animation: fvLick .62s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+.fv-edge::after {
+  height: 140px;
+  -webkit-mask-size: 52px 100%;
+  mask-size: 52px 100%;
+  -webkit-mask-position: 26px 100%;
+  mask-position: 26px 100%;
+  animation-duration: .47s;
+  animation-delay: -.23s;
+}
+@keyframes fvIn { from { opacity: 0; } }
+@keyframes fvFlicker { 0%, 100% { opacity: 1; } 22% { opacity: .78; } 47% { opacity: .95; } 61% { opacity: .7; } 83% { opacity: .9; } }
+@keyframes fvLick {
+  0% { transform: translateX(-10px) scaleY(.78); opacity: .8; }
+  100% { transform: translateX(10px) scaleY(1.12); opacity: 1; }
+}
+
+/* the reels glow like embers */
+.fv-reels {
+  position: absolute;
+  left: calc(50% - 522px);
+  top: calc(50% - 332px);
+  width: 1044px;
+  height: 586px;
+  z-index: 2;
+  border-radius: 18px;
+  pointer-events: none;
+  box-shadow: 0 0 60px 16px rgba(255, 90, 20, .7), 0 0 130px 40px rgba(255, 40, 0, .35);
+  animation: fvIn .6s ease-out both, fvBeat .9s ease-in-out .6s infinite;
+  will-change: opacity;
+}
+@keyframes fvBeat { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+
+/* the FEVER sign off the top-right corner of the reels */
+.fv-sign {
+  position: absolute;
+  left: calc(50% + 500px);
+  top: calc(50% - 336px);
+  z-index: 44;
+  pointer-events: none;
+  transform: translate(-50%, -50%) rotate(8deg);
+}
+.fv-word {
+  display: flex;
+  padding: 8px 20px 6px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(70, 6, 0, .92), rgba(30, 2, 0, .92));
+  box-shadow: 0 0 0 3px #ffb347, 0 0 0 6px rgba(120, 20, 0, .9), 0 0 30px 6px rgba(255, 90, 20, .85);
+  font: 900 62px/1 'MontserratX', var(--f-num);
+  letter-spacing: 2px;
+  animation: fvSignIn .75s cubic-bezier(.18, 1.5, .4, 1) both;
+}
+.fv-word b {
+  display: block;
+  background: linear-gradient(180deg, #fffbe0 0%, #ffd34a 34%, #ff7a1a 64%, #d0200a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 3px 0 #5a0a00) drop-shadow(0 0 12px rgba(255, 120, 30, .95));
+  animation: fvLetter 1.1s ease-in-out infinite;
+  animation-delay: calc(var(--i) * .11s);
+}
+@keyframes fvSignIn {
+  0% { opacity: 0; transform: translateY(-120px) rotate(-30deg) scale(.4); }
+  60% { opacity: 1; transform: translateY(8px) rotate(4deg) scale(1.1); }
+  100% { transform: none; }
+}
+@keyframes fvLetter {
+  0%, 100% { transform: translateY(0) scale(1); }
+  28% { transform: translateY(-11px) scale(1.14); }
+  56% { transform: translateY(2px) scale(.97); }
+}
+/* a win in a FEVER: the sign jumps */
+.fv-sign.hit .fv-word { animation: fvHit .5s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes fvHit { 0% { transform: scale(1); } 35% { transform: scale(1.3) rotate(-4deg); } 100% { transform: none; } }
+/* it goes out */
+.fv-edge.out, .fv-reels.out { animation: fvOut .8s ease-out forwards; }
+.fv-sign.out .fv-word { animation: fvSignOut .7s ease-in forwards; }
+@keyframes fvOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes fvSignOut {
+  0% { transform: none; filter: none; }
+  30% { transform: translateY(-8px) rotate(-6deg); filter: saturate(.4) brightness(.8); }
+  100% { opacity: 0; transform: translateY(140px) rotate(-24deg); filter: saturate(0) brightness(.5); }
+}
+.jc-low .fv-edge::after { display: none; }
+.jc-low .fv-edge, .jc-low .fv-reels { animation: fvIn .6s ease-out both; }
+
 @media (prefers-reduced-motion: reduce) {
   .cb-badge .cb-inner, .cb-glow.on { animation-duration: .01s; animation-iteration-count: 1; }
+  .fv-edge, .fv-edge::before, .fv-edge::after, .fv-reels, .fv-word b { animation-iteration-count: 1; }
 }

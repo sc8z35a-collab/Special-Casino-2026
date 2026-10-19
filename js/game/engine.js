@@ -3,14 +3,20 @@
   'use strict';
 
   var C = BR.CONFIG, U = BR.util;
-  var cumulative = [];
-  (function () {
-    var acc = 0;
-    C.symbols.forEach(function (s) { acc += C.weights[s]; cumulative.push([acc, s]); });
-    cumulative[cumulative.length - 1][0] = 1; // guard against float drift
-  })();
+  // weights -> [[cumulative probability, symbol], ...] (one table per set of weights)
+  var tables = [];
+  function table(weights) {
+    for (var t = 0; t < tables.length; t++) if (tables[t].w === weights) return tables[t].c;
+    var c = [], acc = 0;
+    C.symbols.forEach(function (s) { acc += weights[s]; c.push([acc, s]); });
+    c[c.length - 1][0] = 1; // guard against float drift
+    tables.push({ w: weights, c: c });
+    return c;
+  }
 
-  function drawSymbol() {
+  // one symbol, by C.weights or by the `weights` given (a hub's)
+  function drawSymbol(weights) {
+    var cumulative = table(weights || C.weights);
     var r = U.random();
     for (var i = 0; i < cumulative.length; i++) if (r < cumulative[i][0]) return cumulative[i][1];
     return cumulative[cumulative.length - 1][1];
@@ -35,10 +41,11 @@
     return { wins: wins, mult: mult, total: total, tier: tier };
   }
 
-  // grid[reel][row] with row 0 = top, 1 = centre (pay line), 2 = bottom
-  function spin(bet) {
+  // grid[reel][row] with row 0 = top, 1 = centre (pay line), 2 = bottom;
+  // `weights`: other odds than C.weights (a hub's)
+  function spin(bet, weights) {
     var grid = [];
-    for (var r = 0; r < 5; r++) grid.push([drawSymbol(), drawSymbol(), drawSymbol()]);
+    for (var r = 0; r < 5; r++) grid.push([drawSymbol(weights), drawSymbol(weights), drawSymbol(weights)]);
     var line = grid.map(function (col) { return col[1]; });
     var res = evaluate(line, bet);
     res.grid = grid;

@@ -21,7 +21,8 @@ export const CARS = new Map(RULES.cars.map((c) => [c.id, c]));
 export const SHOP = new Map(RULES.shop.map((i) => [i.id, i]));
 export const FRUITS = new Map(RULES.fruits.map((f) => [f.id, f]));
 
-export function spin(bet) { return BR.engine.spin(bet); }
+// `weights`: other odds than the usual ones (a hub's, RULES.hub.weights)
+export function spin(bet, weights) { return BR.engine.spin(bet, weights); }
 export function evaluate(line, bet) { return BR.engine.evaluate(line, bet); }
 // today's price of a paid icon and its discount in percent
 export function iconSale(avatar, day) { return { price: BR.sale.price(avatar, day), pct: BR.sale.pct(avatar.id, day) }; }

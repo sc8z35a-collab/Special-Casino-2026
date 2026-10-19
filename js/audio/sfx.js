@@ -1,8 +1,9 @@
 /* Sound effects: the supplied recordings (sounds/) for clicks, the SPIN
-   button, the turning reels and wins; everything else is synthesised with
-   WebAudio. The synthesised versions also stand in until the recordings
-   are decoded. Every sound plays from the start: the sound button on the
-   slot screen only changes its own look. */
+   button, the turning reels, wins and money (coins jingling whenever money
+   comes in, a cash register at the till, coins sent away); everything else
+   is synthesised with WebAudio. The synthesised versions also stand in until
+   the recordings are decoded. Every sound plays from the start: the sound
+   button on the slot screen only changes its own look. */
 (function (BR) {
   'use strict';
 
@@ -14,15 +15,22 @@
   function masterLevel() { return muted ? 0 : ducked ? 0.8 * DUCK : 0.8; }
   var noiseBuf = null;
   var reelLoop = null;
+  var feverOn = false;   // FEVER (js/render/combo.js): the reels run faster
 
   /* ------------------------------------------------------------ recordings --- */
   var RECORDINGS = {
     click: 'sounds/click.wav',
     spin: 'sounds/spin-button.wav',
     reels: 'sounds/reels.wav',      // two tick cycles, cut to loop seamlessly
-    win: 'sounds/win.mp3'
+    win: 'sounds/win.mp3',
+    money: 'sounds/money.mp3',      // お金がジャラジャラ: money coming in
+    register: 'sounds/register.mp3',
+    registerHigh: 'sounds/register-high.mp3',
+    coins: 'sounds/coins.mp3'
   };
-  var LEVEL = { click: 0.7, spin: 1, reels: 0.6, win: 0.9 };
+  // (money a little louder than the rest)
+  var LEVEL = { click: 0.7, spin: 1, reels: 0.6, win: 0.9, money: 1.15, register: 0.85, registerHigh: 0.8, coins: 0.8 };
+  var quietCoins = 0;   // while the coins recording plays, the made-up clinks keep still
   var raw = {}, buffers = {}, winVoice = null;
 
   function bytes(url) {
@@ -262,6 +270,16 @@
     noise({ t: t, f: 7000, q: 2, d: 0.03, v: 0.05 });
   }
 
+  // a struck coin (チャリン): the inharmonic partials of a thin metal disc
+  // ringing out fast over the click of the hit, a little different each time
+  function clink(t, f, v) {
+    [[1, 1, 0.16], [2.76, 0.55, 0.1], [5.4, 0.28, 0.06]].forEach(function (k) {
+      tone({ t: t, f: f * k[0] * (0.995 + Math.random() * 0.01), d: k[2] * (0.75 + Math.random() * 0.5), v: v * k[1], type: 'sine', wet: 0.22 });
+    });
+    noise({ t: t, ftype: 'highpass', f: 6500, q: 0.7, d: 0.018, v: v * 0.7 });
+    noise({ t: t + 0.002, ftype: 'bandpass', f: f * 1.9, q: 9, d: 0.05, v: v * 0.35 });
+  }
+
   // brass-ish chord stab
   function brass(freqs, t, dur, v) {
     freqs.forEach(function (f, i) {
@@ -384,6 +402,24 @@
       bell(N.C7, t + 0.09, 0.12, 1.1);
       for (var i = 0; i < 4; i++) coin(t + 0.05 + i * 0.045, 0.6 + i * 0.1, 0.07);
     },
+    // money comes in (wages, rewards, bonuses, a friend's 送金): coins jingling
+    money: function (t) {
+      if (sample('money', t)) { quietCoins = t + 1.5; return; }
+      SOUNDS.coinShower(t, 14);
+      SOUNDS.purchase(t + 0.15);
+    },
+    // paying at the till (SHOP, cars, tokens): the cash register
+    register: function (t) {
+      if (!sample('register', t)) SOUNDS.purchase(t);
+    },
+    // a lighter till: changing tokens back into $, paying back a loan
+    registerHigh: function (t) {
+      if (!sample('registerHigh', t)) SOUNDS.purchase(t);
+    },
+    // money (or a present) sent away to someone
+    coins: function (t) {
+      if (!sample('coins', t)) SOUNDS.coinPile(t, 6);
+    },
     // incoming chat message
     message: function (t) {
       bell(N.G5 * 2, t, 0.06, 0.5, 0.3);
@@ -449,6 +485,105 @@
       bell(N.G6, t + 0.2, 0.13, 1.6, 0.4);
       if (full) { bell(N.C7, t + 0.34, 0.14, 2.2, 0.5); for (var i = 0; i < 6; i++) coin(t + 0.4 + i * 0.05, 0.8, 0.08); }
     },
+    // a coin dropping into the wallet (`p` 0..1: how far into a run of them,
+    // the later ones a little higher: ちゃりちゃり…)
+    coinIn: function (t, p) {
+      if (t < quietCoins) return;
+      clink(t, 1900 + Math.random() * 700 + (p || 0) * 600, 0.085);
+    },
+    // the last of them: a handful landing on the pile (ジャラッ) and a sparkle
+    coinPile: function (t, n) {
+      if (t < quietCoins) return;
+      var k = Math.max(4, Math.min(12, n || 8));
+      for (var i = 0; i < k; i++) clink(t + i * 0.026 + Math.random() * 0.018, 1700 + Math.random() * 1500, 0.05);
+      noise({ t: t, ftype: 'highpass', f: 5200, q: 0.6, a: 0.004, d: 0.32, v: 0.05, wet: 0.3 });
+      bell(N.C7, t + k * 0.026 + 0.04, 0.05, 0.9, 0.4);
+    },
+    // coins pouring out of a big win into the wallet (ジャラジャラ)
+    coinShower: function (t, n) {
+      var k = Math.max(8, Math.min(26, n || 16));
+      for (var i = 0; i < k; i++) clink(t + i * 0.045 + Math.random() * 0.03, 1800 + Math.random() * 1600 + i * 25, 0.045 + Math.random() * 0.03);
+      noise({ t: t, ftype: 'highpass', f: 4800, q: 0.5, a: 0.05, d: k * 0.045, v: 0.035, wet: 0.35 });
+    },
+    // ready... (the anticipation banner): a rising whoosh into a hit
+    chance: function (t) {
+      noise({ t: t, ftype: 'bandpass', f: 500, f2: 5200, q: 1.4, a: 0.18, d: 0.28, v: 0.16, wet: 0.3 });
+      timpani(t + 0.42, 110, 0.45);
+      bell(N.E6, t + 0.42, 0.08, 0.8, 0.4);
+      bell(N.A5 * 2, t + 0.46, 0.06, 0.9, 0.4);
+    },
+    // one more of a kind on the pay line (n: how many now): a bell a step higher each time
+    match: function (t, n) {
+      var notes = [N.C6, N.C6, N.E6, N.G6, N.C7, N.E6 * 2];
+      var f = notes[Math.min(5, n || 2)];
+      bell(f, t, 0.09, 0.8, 0.45);
+      bell(f * 1.5, t + 0.05, 0.05, 0.7, 0.45);
+      if (n >= 4) bell(f * 2, t + 0.1, 0.05, 0.9, 0.5);
+    },
+    // a 7, a BAR or the statue lands on the pay line
+    premium: function (t, s) {
+      if (s === 'statue') {
+        bell(N.C6, t, 0.08, 1.6, 0.6);
+        bell(N.G6, t + 0.03, 0.06, 1.6, 0.6);
+        bell(N.E6 * 2, t + 0.07, 0.04, 1.4, 0.6);
+      } else if (s === 'seven') {
+        bell(N.A5 * 2, t, 0.08, 0.6, 0.4);
+        tone({ t: t, f: 1760, f2: 2640, glide: 0.08, d: 0.15, v: 0.05, type: 'triangle' });
+      } else {
+        noise({ t: t, ftype: 'bandpass', f: 3500, q: 4, d: 0.08, v: 0.08 });
+        bell(N.E6, t, 0.06, 0.5, 0.3);
+      }
+    },
+    // a リーチ that did not come: the fire goes out (a hiss and a sigh down)
+    miss: function (t) {
+      noise({ t: t, ftype: 'highpass', f: 3000, f2: 900, a: 0.01, d: 0.55, v: 0.07, wet: 0.2 });
+      tone({ t: t + 0.04, f: 520, f2: 260, glide: 0.4, d: 0.45, v: 0.07, type: 'triangle', wet: 0.3 });
+    },
+    // something big hits the screen (SUPER, the glass breaking)
+    impact: function (t) {
+      tone({ t: t, f: 90, f2: 38, glide: 0.35, d: 0.5, v: 0.5, type: 'sine', wet: 0.3 });
+      noise({ t: t, ftype: 'lowpass', f: 2400, f2: 300, a: 0.002, d: 0.45, v: 0.32, wet: 0.4 });
+      for (var i = 0; i < 8; i++) noise({ t: t + 0.03 + Math.random() * 0.25, ftype: 'highpass', f: 4000 + Math.random() * 4000, d: 0.03, v: 0.05 + Math.random() * 0.05 });
+    },
+    // the player level went up: a short fanfare and a sparkle
+    levelUp: function (t) {
+      [N.C5, N.E5, N.G5].forEach(function (f, i) { tone({ t: t + i * 0.09, f: f, d: 0.16, v: 0.12, type: 'triangle', wet: 0.3 }); });
+      brass([N.C5, N.E5, N.G5], t + 0.28, 0.5, 0.42);
+      [N.C6, N.E6, N.G6, N.C7].forEach(function (f, i) { bell(f, t + 0.32 + i * 0.05, 0.06, 1.1); });
+      cymbal(t + 0.28, 0.1, 1.2);
+    },
+    // FEVER: a rush of flame up into a fanfare, fire crackling under it
+    fever: function (t) {
+      noise({ t: t, ftype: 'bandpass', f: 300, f2: 6000, q: 1.2, a: 0.25, d: 0.3, v: 0.2, wet: 0.3 });
+      tone({ t: t, f: 70, f2: 40, glide: 0.5, d: 0.6, v: 0.32, type: 'sine', wet: 0.2 });
+      timpani(t + 0.45, 98, 0.55);
+      cymbal(t + 0.45, 0.18, 2.2);
+      brass([N.G4, N.B4, N.D5], t + 0.45, 0.12, 0.5);
+      brass([N.A4, N.C5, N.E5], t + 0.6, 0.12, 0.5);
+      brass([N.C5, N.E5, N.G5], t + 0.76, 0.9, 0.62);
+      [N.C6, N.E6, N.G6, N.C7].forEach(function (f, i) { bell(f, t + 0.8 + i * 0.05, 0.06, 1.1); });
+      for (var i = 0; i < 16; i++) noise({ t: t + 0.4 + Math.random() * 1.4, ftype: 'highpass', f: 2500 + Math.random() * 4000, d: 0.015 + Math.random() * 0.02, v: 0.04 + Math.random() * 0.05 });
+    },
+    // a win in a FEVER: a gust of fire
+    feverWin: function (t) {
+      noise({ t: t, ftype: 'bandpass', f: 600, f2: 4200, q: 1, a: 0.04, d: 0.32, v: 0.13, wet: 0.25 });
+      for (var i = 0; i < 6; i++) noise({ t: t + 0.05 + Math.random() * 0.4, ftype: 'highpass', f: 3000 + Math.random() * 3000, d: 0.02, v: 0.05 });
+    },
+    // the FEVER goes out: a long hiss and a falling sigh
+    feverEnd: function (t) {
+      noise({ t: t, ftype: 'highpass', f: 4000, f2: 700, a: 0.02, d: 0.9, v: 0.08, wet: 0.3 });
+      tone({ t: t + 0.05, f: N.G5, f2: N.C5, glide: 0.6, d: 0.6, v: 0.07, type: 'triangle', wet: 0.3 });
+      tone({ t: t + 0.05, f: N.E5, f2: N.A4 / 2, glide: 0.7, d: 0.7, v: 0.05, type: 'triangle', wet: 0.3 });
+    },
+    // the curtains open on the machine: velvet sweeping aside and a ta-da
+    curtain: function (t) {
+      noise({ t: t, ftype: 'lowpass', f: 300, f2: 2400, q: 0.7, a: 0.3, d: 0.6, v: 0.16, wet: 0.2 });
+      noise({ t: t + 0.12, ftype: 'bandpass', f: 900, f2: 3000, q: 0.8, a: 0.25, d: 0.5, v: 0.07 });
+      brass([N.G4, N.B4, N.D5], t + 0.42, 0.1, 0.4);
+      brass([N.C5, N.E5, N.G5], t + 0.56, 0.7, 0.5);
+      cymbal(t + 0.56, 0.08, 1.3);
+      [N.G6, N.C7].forEach(function (f, i) { bell(f, t + 0.6 + i * 0.07, 0.05, 1.0); });
+    },
     // a fruit thrown or caught
     fruit: function (t) {
       tone({ t: t, f: 520, f2: 1240, glide: 0.08, d: 0.12, v: 0.12, type: 'triangle' });
@@ -459,7 +594,7 @@
   function startReels() {
     if (!ctx || muted || reelLoop) return;
     var t = ctx.currentTime;
-    var rec = sample('reels', t);
+    var rec = sample('reels', t, feverOn ? { rate: 1.14 } : null);
     if (rec) {
       rec.src.loop = true;
       reelLoop = rec;
@@ -552,6 +687,8 @@
     },
     preloadVoice: function (url) { if (ctx) voiceBuffer(url).catch(function () {}); },
     startReels: startReels,
+    // FEVER on / off: the turning reels sound faster
+    fever: function (on) { feverOn = !!on; },
     stopReels: function () { if (ctx) stopReels(); },
     // kept for the sound button, which is decoration: the sounds stay on
     setMuted: function () {},

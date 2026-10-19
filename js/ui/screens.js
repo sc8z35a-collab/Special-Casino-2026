@@ -12,16 +12,25 @@
   /* ------------------------------------------------------------ navigation --- */
   function show(name) {
     if (name === current) return;
-    if (name !== 'slot' && BR.game && BR.game.auto) BR.app.setAuto(false);
     var prev = current;
     current = name;
     $$('.screen').forEach(function (s) { s.classList.toggle('active', s.id === 'screen-' + name); });
     $('#stage').dataset.screen = name;
+    enter($('#screen-' + name));
     if (hooks[prev] && hooks[prev].close) hooks[prev].close();
     if (name === 'tokens') shop.open();
     if (name === 'rules') rules.open();
     if (hooks[name] && hooks[name].open) hooks[name].open();
     watchers.forEach(function (fn) { fn(name, prev); });
+  }
+
+  // Lists in a screen or pane that just opened come in one row after another
+  // (css/juice.css); only for a moment, so later updates do not replay it.
+  function enter(node) {
+    if (!node) return;
+    clearTimeout(node.jcEnter);
+    node.classList.add('jc-enter');
+    node.jcEnter = setTimeout(function () { node.classList.remove('jc-enter'); }, 1100);
   }
 
   // The back button: a screen may step back inside itself first; the slot
@@ -41,6 +50,7 @@
         if (b.classList.contains('active')) return;
         btns.forEach(function (x) { x.classList.toggle('active', x === b); });
         BR.sfx.play('click');
+        enter(root);
         onChange(b.dataset.tab);
       });
     });
@@ -154,7 +164,9 @@
       this.render();
       (buy ? BR.bank.buy(v) : BR.bank.sell(v)).then(function () {
         BR.app.toast(U.fmt(v) + (buy ? ' スピントークンを入手しました' : ' スピントークンを交換しました'));
-        BR.sfx.play('purchase');
+        // tokens bought at the till; tokens changed back: the $ come in
+        BR.sfx.play(buy ? 'register' : 'money');
+        if (BR.juice) BR.juice.reward('#tp-action', 2);
         BR.app.renderWallet(true);
         BR.app.renderBet();
         self.value = 0;
@@ -197,7 +209,8 @@
       if (this.claiming) return;
       this.claiming = true;
       BR.bank.claimDaily().then(function (amount) {
-        BR.sfx.play('purchase');
+        BR.sfx.play('money');
+        if (BR.juice) BR.juice.reward('#daily-btn', 2);
         BR.app.renderWallet(true);
         BR.app.renderBet();
         BR.app.toast(U.fmt(amount) + ' 無料スピントークンを受け取りました！');
@@ -263,8 +276,11 @@
         var pays = C.pays[sym];
         var counts = Object.keys(pays).map(Number).sort(function (a, b) { return a - b; });
         var prob = Math.round(C.weights[sym] * 1000) / 10;
+        // 友達と稼ぐ (a hub) has odds of its own: up or down
+        var hub = Math.round(C.hub.weights[sym] * 1000) / 10;
+        var hubTag = hub === prob ? '' : '<div class="pc-hub ' + (hub > prob ? 'up' : 'down') + '">友達と稼ぐ <b>' + hub + '%</b>' + (hub > prob ? '▲' : '▼') + '</div>';
         card.innerHTML =
-          '<div class="pc-img"><img alt="" src="' + BR.SYMBOL_IMG[sym] + '"></div>' +
+          '<div class="pc-img"><img alt="" src="' + BR.SYMBOL_IMG[sym] + '"></div>' + hubTag +
           '<div class="pc-prob">確率: <b>' + prob + '%</b></div>' +
           '<div class="pc-counts">' + counts.map(function (c) { return '<div>' + c + '/5</div>'; }).join('') + '</div>' +
           '<div class="pc-div"></div>' +
@@ -274,6 +290,21 @@
         grid.appendChild(card);
       });
       $('#pane-combos').appendChild(grid);
+      // what 友達と稼ぐ gives, at the end of the rules
+      if (BR.hub && BR.hub.effects) {
+        var li = document.createElement('li');
+        li.className = 'rule-hub';
+        var ic = document.createElement('i');
+        ic.className = 'ic ic-info';
+        var text = document.createElement('span');
+        var head = document.createElement('b');
+        head.textContent = '友達と稼ぐ（プレイ中2人以上）';
+        text.appendChild(head);
+        text.appendChild(document.createTextNode('：' + BR.hub.effects().map(function (e) { return e.title + '（' + e.text + '）'; }).join('・')));
+        li.appendChild(ic);
+        li.appendChild(text);
+        $('#pane-rules .rule-list').appendChild(li);
+      }
     }
   };
 
@@ -285,6 +316,7 @@
     register: function (name, h) { hooks[name] = h; },
     onChange: function (fn) { watchers.push(fn); },
     tabs: tabs,
+    enter: enter,
     numpad: openNumpad
   };
 })(window.BR = window.BR || {});

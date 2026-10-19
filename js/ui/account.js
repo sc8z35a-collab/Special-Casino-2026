@@ -66,7 +66,7 @@
   }
 
   /* ------------------------------------------------------------ name check --- */
-  var check = { seq: 0, timer: 0, name: '', available: null };
+  var check = { seq: 0, timer: 0, name: '', available: null, device: '' };
   function hint(text, kind) {
     var h = $('#ov-name-hint');
     h.textContent = text || '';
@@ -90,6 +90,7 @@
       if (seq !== check.seq) return null;
       check.name = name;
       check.available = r.available;
+      check.device = r.device || '';
       if (r.available) hint('このユーザー名は使えます', 'ok');
       else hint(r.problem || 'このユーザー名は使えません', 'bad');
       return r;
@@ -110,16 +111,35 @@
     if (pp) { setError('register', pp); K.sfx('deny'); return; }
     var name = nfkc(raw).trim();
     setBusy(true);
-    var known = check.name === name && check.available !== null ? Promise.resolve({ available: check.available }) : lookup(name);
+    var known = check.name === name && check.available !== null ? Promise.resolve({ available: check.available, device: check.device }) : lookup(name);
     known.then(function (r) {
       setBusy(false);
       if (!r) { setError('register', 'サーバーに接続できません。少し待ってからもう一度お試しください'); return; }
+      if (deviceStop(r.device)) return;
       if (!r.available) { setError('register', 'このユーザー名はすでに使われています。別の名前にしてください'); K.sfx('deny'); return; }
       draft.name = name;
       draft.password = pw;
       K.sfx('click');
       openAvatarStep();
     });
+  }
+
+  // This device has made its two accounts (or one on it is banned): no new
+  // one. Two made: the 引き継ぎコード of one of them brings it back.
+  var DEVICE_FULL = 'この端末ではアカウントを2つまでしか作れません。前に作ったアカウントの引き継ぎコードを入力してログインしてください';
+  function deviceStop(state, message) {
+    if (state === 'full') {
+      K.sfx('deny');
+      open('code-login', message || DEVICE_FULL);
+      return true;
+    }
+    if (state === 'banned') {
+      K.sfx('deny');
+      show('register');
+      setError('register', message || 'この端末のアカウントがBANされているため、新しいアカウントは作れません');
+      return true;
+    }
+    return false;
   }
 
   function openAvatarStep() {
@@ -146,6 +166,10 @@
       K.sfx('purchase');
       showCode(r.recoveryCode, true);
     }, function (err) {
+      if (err.code === 'device_limit' || err.code === 'device_banned') {
+        deviceStop(err.code === 'device_limit' ? 'full' : 'banned', err.message);
+        return;
+      }
       if (err.code === 'name_taken' || /^name_/.test(err.code)) {
         show('register');
         setError('register', err.message);
@@ -201,6 +225,7 @@
     K.sfx('purchase');
     K.toast(r.me.name + 'さん、おかえりなさい！');
     finish();
+    if (BR.juice) setTimeout(function () { BR.juice.reward('#toast', 2); }, 120);
   }
 
   // XXXX-XXXX-XXXX-XXXX while typing
@@ -263,8 +288,13 @@
     setError('register', '');
     setError('login', '');
     setError('code-login', '');
-    var n = $('#ov-notice-' + (card === 'login' ? 'login' : 'register'));
-    if (n) { n.textContent = notice || ''; n.hidden = !notice; }
+    ['register', 'login', 'code-login'].forEach(function (c) {
+      var n = $('#ov-notice-' + c);
+      if (!n) return;
+      var mine = c === card || (c === 'register' && CARDS.indexOf(card) < 0);
+      n.textContent = mine ? notice || '' : '';
+      n.hidden = !(mine && notice);
+    });
     if (card === 'login' && !$('#ov-login-name').value) $('#ov-login-name').value = api.lastName();
     show(card);
   }

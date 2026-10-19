@@ -32,6 +32,7 @@
     this.t = 0;
     this.plan = null;
     this.anticipate = false;
+    this.flash = 0;
   }
 
   Reel.prototype.next = function () {
@@ -69,6 +70,8 @@
 
   Reel.prototype.update = function (dt) {
     var p = this.phase;
+    // the light of the landing fades out after the reel has stopped too
+    if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 3.2);
     if (p === 'idle') return false;
     this.t += dt;
     if (p === 'wait') {
@@ -76,10 +79,10 @@
       return true;
     }
     if (p === 'kick') {
-      // small upward wind-up before the reel takes off
-      var K = 0.13;
+      // an upward wind-up before the reel takes off (anticipation)
+      var K = 0.15;
       var u = Math.min(1, this.t / K);
-      var target = -13 * Math.sin(Math.PI * u);
+      var target = -22 * Math.sin(Math.PI * u);
       this.off = this.kickBase + target;
       if (u >= 1) {
         this.off = this.kickBase;
@@ -119,6 +122,7 @@
       this.v = Math.abs(delta) / Math.max(dt, 1e-4);
       if (!this.landed && uu >= STOP_LAND) {
         this.landed = true;
+        this.flash = 1;
         this.owner.emit('land', this.i);
       }
       if (uu >= 1) {
@@ -144,6 +148,7 @@
     this.reels = [];
     for (var i = 0; i < 5; i++) this.reels.push(new Reel(i, this));
     this.hl = null;
+    this.pre = null;     // matches so far while the reels still turn: { cols, t0 }
     this.antic = [];
     this.dirty = true;
     this.running = false;
@@ -178,6 +183,9 @@
     this.back = this.renderBack(res);
     this.front = this.renderFront(res);
     this.glow = this.renderGlow(res);
+    this.rays = this.renderRays(res);
+    this.streaks = this.renderStreaks(res);
+    this.flare = this.renderFlare(res);
     return BR.assets.buildSymbols(res).then(function (sp) {
       if (self.res !== res) return;
       self.sprites = sp;
@@ -255,6 +263,164 @@
     r.addColorStop(1, 'rgba(255,120,0,0)');
     g.fillStyle = r;
     g.fillRect(0, 0, s, s);
+    return c;
+  };
+
+  // Light rays turning behind a winning symbol.
+  Reels.prototype.renderRays = function (res) {
+    var s = 300, c = BR.assets.makeCanvas(s * res, s * res), g = c.getContext('2d');
+    g.setTransform(res, 0, 0, res, s / 2 * res, s / 2 * res);
+    for (var i = 0; i < 12; i++) {
+      var a = i / 12 * Math.PI * 2, w = 0.09 + (i % 3) * 0.03;
+      var gr = g.createRadialGradient(0, 0, 0, 0, 0, s / 2);
+      gr.addColorStop(0, 'rgba(255,250,215,0.85)');
+      gr.addColorStop(0.45, 'rgba(255,205,90,0.35)');
+      gr.addColorStop(1, 'rgba(255,160,30,0)');
+      g.fillStyle = gr;
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.arc(0, 0, s / 2, a - w, a + w);
+      g.closePath();
+      g.fill();
+    }
+    return c;
+  };
+
+  // A four-point star for the glints on winning symbols.
+  Reels.prototype.renderFlare = function (res) {
+    var s = 120, r = s / 2, c = BR.assets.makeCanvas(s * res, s * res), g = c.getContext('2d');
+    g.setTransform(res, 0, 0, res, r * res, r * res);
+    var gr = g.createRadialGradient(0, 0, 0, 0, 0, r * 0.4);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(0.4, 'rgba(255,245,210,0.5)');
+    gr.addColorStop(1, 'rgba(255,220,140,0)');
+    g.fillStyle = gr;
+    g.fillRect(-r, -r, s, s);
+    for (var k = 0; k < 4; k++) {
+      g.save();
+      g.rotate(k * Math.PI / 2);
+      var lg = g.createLinearGradient(0, 0, r, 0);
+      lg.addColorStop(0, 'rgba(255,255,255,1)');
+      lg.addColorStop(1, 'rgba(255,230,160,0)');
+      g.fillStyle = lg;
+      g.beginPath();
+      g.moveTo(0, -r * 0.06);
+      g.quadraticCurveTo(r * 0.3, 0, r, 0);
+      g.quadraticCurveTo(r * 0.3, 0, 0, r * 0.06);
+      g.fill();
+      g.restore();
+    }
+    return c;
+  };
+
+  /* Each symbol wins in its own way, drawn round the punching symbol in
+     device px (`back`: the layer behind it, else the one in front): the 7
+     burns, a pillar of light comes down on the statue, the diamond throws
+     rainbow glints, sparks circle the star, a gleam passes over the BAR,
+     the gold bar glints at its corners, the revolver fires. Times run from
+     the moment the win is shown, a little apart from one reel to the next. */
+  Reels.prototype.winFx = function (g, sym, cx, cy, ht, res, i, back) {
+    var t = ht + i * 0.15, x0 = cx - COL_W * res / 2, base = cy + CELL_H * res / 2;
+    g.save();
+    if (back) {
+      if (sym === 'seven') {
+        flames(g, x0, COL_W * res, base, res, t, i + 9, 0.6, ['rgba(255,220,110,0.9)', 'rgba(255,120,30,0.75)', 'rgba(230,40,0,0.4)', 'rgba(180,10,0,0)']);
+      } else if (sym === 'statue') {
+        g.globalCompositeOperation = 'lighter';
+        var pg = g.createLinearGradient(0, 0, 0, base);
+        pg.addColorStop(0, 'rgba(255,250,225,0.8)');
+        pg.addColorStop(0.7, 'rgba(255,232,165,0.28)');
+        pg.addColorStop(1, 'rgba(255,220,140,0)');
+        g.fillStyle = pg;
+        var pw = (74 + 20 * Math.sin(t * 3)) * res;
+        g.fillRect(cx - pw / 2, 0, pw, base);
+      }
+    } else {
+      g.globalCompositeOperation = 'lighter';
+      if (sym === 'diamond') {
+        var spots = [[-38, -26, 0], [34, -8, 2.1], [4, 34, 4.2]];
+        for (var k = 0; k < spots.length; k++) {
+          var p = spots[k], a = Math.max(0, Math.sin(t * 5.5 + p[2]));
+          if (a < 0.05) continue;
+          var px = cx + p[0] * res, py = cy + p[1] * res;
+          g.globalAlpha = a * 0.7;
+          g.fillStyle = 'hsla(' + Math.round((t * 120 + p[2] * 60) % 360) + ',100%,70%,0.8)';
+          g.beginPath();
+          g.arc(px, py, 16 * res * a, 0, Math.PI * 2);
+          g.fill();
+          g.globalAlpha = a;
+          var fs = 70 * res * a;
+          g.drawImage(this.flare, px - fs / 2, py - fs / 2, fs, fs);
+        }
+      } else if (sym === 'star') {
+        for (var m = 0; m < 2; m++) {
+          var ang = t * 3 + m * Math.PI, ss = 46 * res;
+          g.globalAlpha = 0.9;
+          g.drawImage(this.flare, cx + Math.cos(ang) * 82 * res - ss / 2, cy + Math.sin(ang) * 72 * res - ss / 2, ss, ss);
+        }
+      } else if (sym === 'bar') {
+        var sw = ((t * 0.8) % 1.4) - 0.2;
+        var gx = x0 + sw * COL_W * res;
+        var lg = g.createLinearGradient(gx - 42 * res, 0, gx + 42 * res, 0);
+        lg.addColorStop(0, 'rgba(255,255,230,0)');
+        lg.addColorStop(0.5, 'rgba(255,255,230,0.55)');
+        lg.addColorStop(1, 'rgba(255,255,230,0)');
+        g.fillStyle = lg;
+        g.fillRect(x0, cy - CELL_H * res / 2, COL_W * res, CELL_H * res);
+      } else if (sym === 'gold') {
+        var gp = (t * 1.25) % 1, corner = Math.floor(t * 1.25) % 2 ? [42, -30] : [-46, 18];
+        var gz = 90 * res * Math.sin(gp * Math.PI);
+        g.drawImage(this.flare, cx + corner[0] * res - gz / 2, cy + corner[1] * res - gz / 2, gz, gz);
+      } else if (sym === 'revolver') {
+        // it fires: a flash at the muzzle, then a wisp of smoke
+        var shot = t % 1.3, mx = cx + 66 * res, my = cy - 44 * res;
+        if (shot < 0.12) {
+          var fa = 1 - shot / 0.12, ms = 120 * res;
+          g.globalAlpha = fa;
+          g.drawImage(this.glow, mx - ms / 2, my - ms / 2, ms, ms);
+          var fz = 130 * res * fa;
+          g.drawImage(this.flare, mx - fz / 2, my - fz / 2, fz, fz);
+        } else if (shot < 0.8) {
+          var sx = mx + shot * 20 * res, sy = my - shot * 55 * res, sr = (12 + shot * 34) * res;
+          var sg = g.createRadialGradient(sx, sy, 0, sx, sy, sr);
+          sg.addColorStop(0, 'rgba(215,205,200,' + (0.5 * (1 - (shot - 0.12) / 0.68)) + ')');
+          sg.addColorStop(1, 'rgba(215,205,200,0)');
+          g.globalCompositeOperation = 'source-over';
+          g.fillStyle = sg;
+          g.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
+        }
+      }
+    }
+    g.restore();
+  };
+  // the extra turn of a winning symbol: the star rocks, the revolver recoils
+  function winTurn(sym, ht, i) {
+    var t = ht + i * 0.15;
+    if (sym === 'star') return Math.sin(t * 2.6) * 0.22;
+    if (sym === 'revolver') {
+      var shot = t % 1.3;
+      return shot < 0.45 ? -0.3 * Math.exp(-shot * 9) * Math.sin(Math.min(1, shot / 0.04) * Math.PI / 2) : 0;
+    }
+    return 0;
+  }
+
+  // Streaks of light racing down a reel at full speed.
+  Reels.prototype.renderStreaks = function (res) {
+    var w = COL_W, h = VIEW_H, c = BR.assets.makeCanvas(w * res, h * res), g = c.getContext('2d');
+    g.setTransform(res, 0, 0, res, 0, 0);
+    var xs = [0.18, 0.37, 0.55, 0.71, 0.86];
+    xs.forEach(function (fx, i) {
+      var y0 = (i * 137) % h, len = 120 + (i * 53) % 140;
+      for (var k = -1; k <= 1; k++) {
+        var y = y0 + k * h;
+        var gr = g.createLinearGradient(0, y, 0, y + len);
+        gr.addColorStop(0, 'rgba(255,255,255,0)');
+        gr.addColorStop(0.7, 'rgba(255,250,230,0.55)');
+        gr.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = gr;
+        g.fillRect(w * fx - 1.5, y, 3, len);
+      }
+    });
     return c;
   };
 
@@ -341,11 +507,19 @@
 
   Reels.prototype.setHighlight = function (cols, opts) {
     this.hl = { cols: cols, t0: U.now(), opts: opts || {} };
+    this.pre = null;
     this.invalidate();
   };
   Reels.prototype.clearHighlight = function () {
     this.hl = null;
+    this.pre = null;
     this.antic = [];
+    this.invalidate();
+  };
+  // Frames the symbols on the pay line that already pay while other reels
+  // still turn (js/render/slotfx.js), until the win itself is shown.
+  Reels.prototype.preview = function (cols) {
+    this.pre = cols && cols.length ? { cols: cols.slice(), t0: U.now() } : null;
     this.invalidate();
   };
 
@@ -355,9 +529,12 @@
     var now = U.now();
     var dt = U.clamp((now - this.last) / 1000, 0, 0.05);
     this.last = now;
-    var moving = false;
-    for (var i = 0; i < 5; i++) if (this.reels[i].update(dt)) moving = true;
-    var more = moving || this.hl || this.antic.length;
+    var moving = false, lit = false;
+    for (var i = 0; i < 5; i++) {
+      if (this.reels[i].update(dt)) moving = true;
+      if (this.reels[i].flash > 0) lit = true;
+    }
+    var more = moving || lit || this.hl || this.pre || this.antic.length;
     if (more) requestAnimationFrame(this._loop);
     else this.running = false;
     if (more || this.dirty) {
@@ -374,18 +551,26 @@
     var hl = this.hl;
     var ht = hl ? Math.max(0, (now - hl.t0) / 1000) : 0;
 
-    // pay line beam behind the symbols
+    // pay line beam behind the symbols, with a light running along it
     if (hl && hl.cols.length) {
       var a = Math.min(1, ht / 0.35);
       var y = (ROW_PITCH + CELL_H / 2) * res;
+      var bw = (20 + 6 * Math.sin(ht * 9)) * res;
       g.save();
       g.globalCompositeOperation = 'lighter';
-      var grd = g.createLinearGradient(0, y - 14 * res, 0, y + 14 * res);
+      var grd = g.createLinearGradient(0, y - bw, 0, y + bw);
       grd.addColorStop(0, 'rgba(255,190,60,0)');
-      grd.addColorStop(0.5, 'rgba(255,220,120,' + (0.75 * a) + ')');
+      grd.addColorStop(0.5, 'rgba(255,230,140,' + (0.9 * a) + ')');
       grd.addColorStop(1, 'rgba(255,190,60,0)');
       g.fillStyle = grd;
-      g.fillRect(0, y - 14 * res, VIEW_W * res * a, 28 * res);
+      g.fillRect(0, y - bw, VIEW_W * res * a, bw * 2);
+      var run = ((ht * 0.85) % 1) * (VIEW_W + 400) - 200;
+      var rg = g.createRadialGradient(run * res, y, 0, run * res, y, 150 * res);
+      rg.addColorStop(0, 'rgba(255,255,240,' + (0.95 * a) + ')');
+      rg.addColorStop(0.3, 'rgba(255,220,120,' + (0.45 * a) + ')');
+      rg.addColorStop(1, 'rgba(255,170,40,0)');
+      g.fillStyle = rg;
+      g.fillRect((run - 150) * res, y - 40 * res, 300 * res, 80 * res);
       g.restore();
     }
 
@@ -407,19 +592,49 @@
         var win = hl && r.phase === 'idle' && row === 1 && hl.cols.indexOf(i) >= 0;
         if (win) {
           var pulse = 0.5 + 0.5 * Math.sin(ht * Math.PI * 2 * 1.3 - Math.PI / 2);
-          var ga = Math.min(1, ht / 0.25) * (0.55 + 0.35 * pulse);
+          var ga = Math.min(1, ht / 0.25) * (0.6 + 0.4 * pulse);
+          var cx = x + COL_W * res / 2, cy = (yy + CELL_H / 2) * res;
           g.save();
           g.globalCompositeOperation = 'lighter';
+          // turning rays and a warm glow behind the symbol
+          g.globalAlpha = ga * 0.8;
+          var rs = (230 + 30 * pulse) * res;
+          g.translate(cx, cy);
+          g.rotate(ht * 0.9 + i * 0.7);
+          g.drawImage(this.rays, -rs / 2, -rs / 2, rs, rs);
+          g.setTransform(1, 0, 0, 1, 0, 0);
           g.globalAlpha = ga;
-          var gs = 250 * res;
-          g.drawImage(this.glow, x + (COL_W * res - gs) / 2, (yy + CELL_H / 2) * res - gs / 2, gs, gs);
+          var gs = 270 * res;
+          g.drawImage(this.glow, cx - gs / 2, cy - gs / 2, gs, gs);
           g.restore();
-          var sc = 1 + 0.07 * pulse * Math.min(1, ht / 0.25);
-          var cx = x + COL_W * res / 2, cy = (yy + CELL_H / 2) * res;
-          g.drawImage(sp.sharp[sym], cx - COL_W * res * sc / 2, cy - CELL_H * res * sc / 2, COL_W * res * sc, CELL_H * res * sc);
+          if (this.flare) this.winFx(g, sym, cx, cy, ht, res, i, true);
+          // the symbol punches in, then keeps beating
+          var pin = Math.min(1, ht / 0.32);
+          var punch = pin < 1 ? 1.25 - 0.25 * U.ease.outBack(pin, 2.4) : 1;
+          var sc = punch * (1 + 0.1 * pulse * pin);
+          var wob = (Math.sin(ht * 7.5 + i) * 0.035 + winTurn(sym, ht, i)) * pin;
+          g.save();
+          g.translate(cx, cy);
+          g.rotate(wob);
+          g.drawImage(sp.sharp[sym], -COL_W * res * sc / 2, -CELL_H * res * sc / 2, COL_W * res * sc, CELL_H * res * sc);
+          // a white flash on the way in
+          if (pin < 1) {
+            g.globalCompositeOperation = 'lighter';
+            g.globalAlpha = (1 - pin) * 0.75;
+            var fs = 240 * res;
+            g.drawImage(this.glow, -fs / 2, -fs / 2, fs, fs);
+          }
+          g.restore();
+          if (this.flare) this.winFx(g, sym, cx, cy, ht, res, i, false);
           continue;
         }
-        if (set === sp.sharp) {
+        if (set === sp.sharp && r.flash > 0.02) {
+          // the symbols squash as the reel hits home, then spring back
+          var since = 1 - r.flash, give = Math.exp(-5 * since) * Math.cos(since * 13);
+          var sqx = 1 + 0.05 * give, sqy = 1 - 0.08 * give;
+          var qx = x + COL_W * res / 2, qy = (yy + CELL_H / 2) * res;
+          g.drawImage(sp.sharp[sym], qx - COL_W * res * sqx / 2, qy - CELL_H * res * sqy / 2, COL_W * res * sqx, CELL_H * res * sqy);
+        } else if (set === sp.sharp) {
           g.drawImage(sp.sharp[sym], Math.round(x), Math.round(yy * res));
         } else {
           var bimg = set[sym];
@@ -432,6 +647,32 @@
           g.globalAlpha = 1;
         }
       }
+      // streaks of light while a reel races
+      if (r.v > 2600 && this.streaks) {
+        var sa = U.clamp((r.v - 2600) / 1600, 0, 1) * 0.55;
+        var sky = ((now / 1000) * 2600 + i * 211) % VIEW_H;
+        g.save();
+        g.globalCompositeOperation = 'lighter';
+        g.globalAlpha = sa;
+        g.drawImage(this.streaks, x, (sky - VIEW_H) * res);
+        g.drawImage(this.streaks, x, sky * res);
+        g.restore();
+      }
+      // a flash where a reel lands: light from the top and the bottom edge
+      if (r.flash > 0) {
+        var lf = r.flash * r.flash;
+        g.save();
+        g.globalCompositeOperation = 'lighter';
+        var lg = g.createLinearGradient(0, 0, 0, VIEW_H * res);
+        lg.addColorStop(0, 'rgba(255,240,190,' + (0.8 * lf) + ')');
+        lg.addColorStop(0.22, 'rgba(255,220,140,' + (0.18 * lf) + ')');
+        lg.addColorStop(0.5, 'rgba(255,230,160,' + (0.1 * lf) + ')');
+        lg.addColorStop(0.78, 'rgba(255,220,140,' + (0.18 * lf) + ')');
+        lg.addColorStop(1, 'rgba(255,240,190,' + (0.8 * lf) + ')');
+        g.fillStyle = lg;
+        g.fillRect(x, 0, COL_W * res, VIEW_H * res);
+        g.restore();
+      }
       // dim the non-winning cells while a win is shown
       if (hl && r.phase === 'idle') {
         var da = Math.min(1, ht / 0.3) * 0.42;
@@ -441,15 +682,31 @@
           g.fillRect(x, rr * ROW_PITCH * res, COL_W * res, CELL_H * res);
         }
       }
-      // anticipation: pulsing light around the reel that is still spinning
+      // anticipation: the reel still spinning burns, the ones stopped go dark
+      if (this.antic.length && r.phase === 'idle' && this.antic.indexOf(i) < 0) {
+        g.fillStyle = 'rgba(25,4,0,0.38)';
+        g.fillRect(x, 0, COL_W * res, VIEW_H * res);
+      }
       if (this.antic.indexOf(i) >= 0 && r.phase !== 'idle') {
-        var ap = 0.5 + 0.5 * Math.sin(now / 1000 * Math.PI * 4);
+        var ts = now / 1000;
+        var ap = 0.5 + 0.5 * Math.sin(ts * Math.PI * 6);
+        // the reel turns orange-red (painted over: a bright reel cannot be made
+        // red by adding light), then flames lick up from the bottom
+        var tint = g.createLinearGradient(0, 0, 0, VIEW_H * res);
+        tint.addColorStop(0, 'rgba(255,130,40,' + (0.16 + 0.1 * ap) + ')');
+        tint.addColorStop(0.55, 'rgba(255,80,20,' + (0.2 + 0.1 * ap) + ')');
+        tint.addColorStop(1, 'rgba(220,30,0,' + (0.42 + 0.14 * ap) + ')');
+        g.fillStyle = tint;
+        g.fillRect(x, 0, COL_W * res, VIEW_H * res);
+        flames(g, x, COL_W * res, VIEW_H * res, res, ts, i, 1, ['rgba(255,210,90,0.95)', 'rgba(255,110,20,0.85)', 'rgba(230,40,0,0.5)', 'rgba(180,10,0,0)']);
+        flames(g, x, COL_W * res, VIEW_H * res, res, ts * 1.35 + 3, i + 5, 0.55, ['rgba(255,255,230,0.95)', 'rgba(255,230,120,0.85)', 'rgba(255,160,40,0.5)', 'rgba(255,120,20,0)']);
+        // and the edges burn bright
         g.globalCompositeOperation = 'lighter';
         var ag = g.createLinearGradient(x, 0, x + COL_W * res, 0);
-        ag.addColorStop(0, 'rgba(255,170,40,' + (0.55 + 0.3 * ap) + ')');
-        ag.addColorStop(0.18, 'rgba(255,170,40,0)');
-        ag.addColorStop(0.82, 'rgba(255,170,40,0)');
-        ag.addColorStop(1, 'rgba(255,170,40,' + (0.55 + 0.3 * ap) + ')');
+        ag.addColorStop(0, 'rgba(255,150,40,' + (0.7 + 0.3 * ap) + ')');
+        ag.addColorStop(0.16, 'rgba(255,90,20,0)');
+        ag.addColorStop(0.84, 'rgba(255,90,20,0)');
+        ag.addColorStop(1, 'rgba(255,150,40,' + (0.7 + 0.3 * ap) + ')');
         g.fillStyle = ag;
         g.fillRect(x, 0, COL_W * res, VIEW_H * res);
         g.globalCompositeOperation = 'source-over';
@@ -458,6 +715,25 @@
     }
 
     if (this.front) g.drawImage(this.front, 0, 0);
+
+    // matches so far (other reels still turning): thin gold frames that breathe
+    if (this.pre && !hl) {
+      var pt = (now - this.pre.t0) / 1000;
+      g.save();
+      g.setTransform(res, 0, 0, res, 0, 0);
+      g.lineWidth = 4;
+      g.strokeStyle = '#ffeaa6';
+      g.shadowColor = 'rgba(255,210,80,1)';
+      g.shadowBlur = 16 * res;
+      for (var pi = 0; pi < this.pre.cols.length; pi++) {
+        var pc = this.pre.cols[pi];
+        if (this.reels[pc].phase !== 'idle') continue;
+        g.globalAlpha = Math.min(1, pt / 0.15) * (0.72 + 0.28 * Math.sin(pt * 9 + pc));
+        roundRect(g, colC(pc) - CELL_VIS / 2 + 4, ROW_PITCH + 4, CELL_VIS - 8, CELL_H - 8, 10);
+        g.stroke();
+      }
+      g.restore();
+    }
 
     // animated gold frames around winning cells
     if (hl && hl.cols.length) {
@@ -469,8 +745,8 @@
         if (this.reels[ci].phase !== 'idle') continue;
         var fx = colC(ci) - CELL_VIS / 2 + 3, fy = ROW_PITCH + 3, fw = CELL_VIS - 6, fh = CELL_H - 6;
         g.globalAlpha = fa;
-        g.lineWidth = 5;
-        var sweep = U.clamp((ht * 0.9 + j * 0.12) % 1, 0, 1);
+        g.lineWidth = 6 + 2 * Math.sin(ht * 8 + j);
+        var sweep = U.clamp((ht * 1.2 + j * 0.12) % 1, 0, 1);
         var fg = g.createLinearGradient(fx, fy, fx + fw, fy + fh);
         fg.addColorStop(0, '#b37a22');
         fg.addColorStop(Math.max(0, sweep - 0.15), '#e9b84f');
@@ -478,8 +754,8 @@
         fg.addColorStop(Math.min(1, sweep + 0.15), '#e9b84f');
         fg.addColorStop(1, '#b37a22');
         g.strokeStyle = fg;
-        g.shadowColor = 'rgba(255,200,60,0.9)';
-        g.shadowBlur = 14 * res;
+        g.shadowColor = 'rgba(255,210,80,1)';
+        g.shadowBlur = (18 + 8 * Math.sin(ht * 8 + j)) * res;
         roundRect(g, fx, fy, fw, fh, 10);
         g.stroke();
         g.shadowBlur = 0;
@@ -491,6 +767,37 @@
       g.restore();
     }
   };
+
+  // Flame tongues along the bottom of a reel: valleys and peaks that rise
+  // and fall, joined by smooth curves; `k` scales their height, `cols` are
+  // the colours from the bottom up.
+  function flames(g, x, w, h, res, ts, seed, k, cols) {
+    var n = 7, pts = [];
+    for (var j = 0; j <= n * 2; j++) {
+      var peak = j % 2 === 1;
+      var hh = peak
+        ? (120 + 60 * Math.sin(ts * 7.3 + j * 1.9 + seed) + 35 * Math.sin(ts * 17.1 + j * 0.7)) * k
+        : (26 + 16 * Math.sin(ts * 11 + j + seed)) * k;
+      pts.push([x + w * j / (n * 2), h - hh * res]);
+    }
+    g.beginPath();
+    g.moveTo(x, h);
+    g.lineTo(pts[0][0], pts[0][1]);
+    for (var m = 1; m < pts.length - 1; m++) {
+      var mx = (pts[m][0] + pts[m + 1][0]) / 2, my = (pts[m][1] + pts[m + 1][1]) / 2;
+      g.quadraticCurveTo(pts[m][0], pts[m][1], mx, my);
+    }
+    g.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
+    g.lineTo(x + w, h);
+    g.closePath();
+    var fg = g.createLinearGradient(0, h, 0, h - 210 * k * res);
+    fg.addColorStop(0, cols[0]);
+    fg.addColorStop(0.35, cols[1]);
+    fg.addColorStop(0.7, cols[2]);
+    fg.addColorStop(1, cols[3]);
+    g.fillStyle = fg;
+    g.fill();
+  }
 
   function roundRect(g, x, y, w, h, r) {
     g.beginPath();

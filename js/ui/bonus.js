@@ -27,8 +27,19 @@
     });
     $('#bonus-text').textContent = 'ログイン' + b.day + '日目！ スピントークン ' + U.fmt(b.amount) + ' を受け取りました';
     K.showModal('bonus');
-    K.sfx('purchase');
-    BR.app.renderWallet(true);
+    K.sfx('money');
+    // once the board has landed, today's chips burst out of their card and
+    // fly into the wallet (js/render/juice.js)
+    var today = $('#bonus .bonus-day.today');
+    setTimeout(function () {
+      var J = BR.juice;
+      if (J && K.isOpen('bonus')) {
+        J.reward(today, 3);
+        J.rain({ pic: 'chip', dur: 1.2, rate: 24 });
+      }
+      BR.app.renderWallet(true);
+      if (J && K.isOpen('bonus')) J.payout('tokens', b.amount, today);
+    }, 650);
   }
 
   // the day turns at 6:00 Japan time: still here, so that day counts too

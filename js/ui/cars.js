@@ -60,11 +60,16 @@
       api.buyCar(car.id).then(function (r) {
         BR.app.serverBalance(r.me);
         BR.social.setMe(r.me);
-        sfx('purchase');
+        sfx('register');
         var pic = $('#car-pic');
         pic.classList.remove('sold');
         void pic.offsetWidth;
         pic.classList.add('sold');
+        // the biggest purchase there is: the car shines, confetti everywhere
+        if (BR.juice) {
+          BR.juice.reward(pic, 3);
+          BR.juice.rain({ kind: 'confetti', dur: 1.6, rate: 50 });
+        }
         toast(car.name + ' を購入しました！Garage で見られます', 3200);
         return load();
       }).catch(fail).then(function () {
@@ -170,8 +175,9 @@
     }, 'プレゼントする').then(function (ok) {
       if (!ok) return;
       api.giftCar(user.id, car.id).then(function (r) {
-        sfx('purchase');
+        sfx('coins');
         toast(user.name + 'さんに ' + m.name + ' をプレゼントしました！', 3200);
+        if (BR.juice) BR.juice.reward(null, 2);
         BR.social.onMsg(r.message);
         return load();
       }).then(function () {

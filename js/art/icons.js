@@ -115,6 +115,7 @@
     home: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M4,19.5L20,5.5L36,19.5" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.5,18V34.5Q8.5,36 10,36H16.5V26.5H23.5V36H30Q31.5,36 31.5,34.5V18L20,8.4Z" fill="#fff"/></svg>',
     // play a recorded voice again
     speaker: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M5,15H12L21,7V33L12,25H5Z" fill="#fff"/><path d="M26,14Q30,20 26,26M30.5,10Q37.5,20 30.5,30" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>',
+    speakerOff: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M5,15H12L21,7V33L12,25H5Z" fill="#fff" opacity=".55"/><path d="M26,14Q30,20 26,26M30.5,10Q37.5,20 30.5,30" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".55"/><path d="M6,5L34,35" stroke="#ff5a4f" stroke-width="4" stroke-linecap="round"/></svg>',
     // the chat of a home (a speech bubble)
     chat: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M7,6H33Q37,6 37,10V25Q37,29 33,29H19L10.5,35.5V29H7Q3,29 3,25V10Q3,6 7,6Z" fill="#fff"/><circle cx="12.5" cy="17.5" r="2.4" fill="#2a0408"/><circle cx="20" cy="17.5" r="2.4" fill="#2a0408"/><circle cx="27.5" cy="17.5" r="2.4" fill="#2a0408"/></svg>'
   };

@@ -1,5 +1,6 @@
 /* Game rules: symbols, per-cell probabilities and the pay table shown in the
-   in-game "組み合わせ" tab.  RTP with these numbers is 92.84 %. */
+   in-game "組み合わせ" tab.  RTP with these numbers is 82.00 % (a win on
+   33.5 % of the spins); in a hub (友達と稼ぐ) see `hub`. */
 (function (BR) {
   'use strict';
 
@@ -7,7 +8,7 @@
     // order = paytable order (low -> high)
     symbols: ['revolver', 'gold', 'diamond', 'star', 'bar', 'seven', 'statue'],
     // probability of each symbol landing on any reel position
-    weights: { revolver: 0.40, gold: 0.25, diamond: 0.20, star: 0.08, bar: 0.045, seven: 0.02, statue: 0.005 },
+    weights: { revolver: 0.452, gold: 0.227, diamond: 0.212, star: 0.045, bar: 0.039, seven: 0.021, statue: 0.004 },
     // matches anywhere on the centre line: count -> multiplier of the bet
     pays: {
       revolver: { 4: 1.5, 5: 3 },
@@ -89,12 +90,41 @@
     },
     // part-time jobs (バイト): `wage` $ an hour, paid for every second worked
     // (also while away); `level`: the player level that unlocks it. How many
-    // can be worked at once: `jobSlots` (more with the player level, coming).
+    // can be worked at once: `jobSlots`, one more every `jobSlotEvery` player
+    // levels (Lv.3: 2, Lv.6: 3 ...: BR.LEVEL.jobSlots).
     jobs: [
       { id: 'garage', name: '近所のガレージの壁を殴るバイト', wage: 20000, level: 1 }
     ],
     jobSlots: 1,
+    jobSlotEvery: 3,
     // $ for every player who updates the game to a new release (js/game/news.js)
-    updateBonus: 250000
+    updateBonus: 250000,
+    // 友達と稼ぐ: friends invited from the friend list play together in a hub
+    // of up to `max` players (each on their own reels, which the others do not
+    // see; nobody leaves unless they press 抜ける, a hub of one closes). While
+    // two or more of its players are active (a tap, a key or a voice in the
+    // last 4 minutes), every spin of theirs uses `weights` (the statue 1 %, 7
+    // 4 %, the revolver 35 %, the rest as usual between them),
+    // `diamonds` of the spins land five diamonds, the
+    // combo is shared by everyone: each win in a row pays `comboStep` times
+    // more than the one before (x1, x1.1, x1.21 ...) and only `misses` misses
+    // in a row end it; 777 (three 7s or more) pays `sevens` times, XP is `xp`
+    // times, and 5時間 quests count `booster` times as fast with two active
+    // players, `boosterStep` times more for each one after that (x2, x2.2,
+    // x2.42 ...), and the best paid バイト being worked pays `wage` times its
+    // wage. An invitation waits `inviteMs`.
+    hub: {
+      max: 5,
+      weights: { revolver: 0.35, gold: 0.26, diamond: 0.243, star: 0.052, bar: 0.045, seven: 0.04, statue: 0.01 },
+      diamonds: 0.01,
+      comboStep: 1.1,
+      misses: 3,
+      sevens: 1.5,
+      xp: 1.2,
+      booster: 2,
+      boosterStep: 1.1,
+      wage: 1.5,
+      inviteMs: 600000
+    }
   };
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

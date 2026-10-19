@@ -143,6 +143,7 @@
       api.buyAvatar(a.id, s.salePrice).then(function (r) {
         BR.social.setMe(r.me);
         BR.app.serverBalance(r.me);
+        K.sfx('register');
         breakFree(t, function () {
           renderPicker();
           K.toast('「' + a.name + '」を手に入れました！', 2800);
@@ -159,6 +160,8 @@
     K.sfx('unchain');
     t.classList.remove('on-sale');
     t.classList.add('breaking');
+    // the chains fall away and the icon bursts into light
+    if (BR.juice) setTimeout(function () { BR.juice.celebrate(t, 2); }, 420);
     setTimeout(done, 1150);
   }
 

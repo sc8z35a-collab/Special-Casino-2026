@@ -1,7 +1,9 @@
 /* バイト (a tab of the menu): part-time jobs paid by the hour for every
    second worked, also while the player is away. The wages so far come in with
-   「給料を受け取る」 (quietly); changing or quitting a job pays them as well. How many
-   jobs can be worked at once, and which, will grow with the player level. */
+   「給料を受け取る」 (with the sound of coins); changing or quitting a job pays
+   them as well. One more job can be worked at once every 3 player levels
+   (BR.LEVEL.jobSlots), and in 友達と稼ぐ with its benefits on, the best paid
+   job being worked pays x1.5 (the server counts that time from the beats). */
 (function (BR) {
   'use strict';
 
@@ -9,7 +11,7 @@
   var $ = U.$;
   var el = K.el, sfx = K.sfx, toast = K.toast, fail = K.fail;
 
-  var state = null;   // { level, slots, working: [{ id, since }], offset }
+  var state = null;   // { level, slots, every, working: [{ id, since, boost }], offset, at }
   var busy = false, ticker = 0;
 
   function now() { return Date.now() + (state ? state.offset : 0); }
@@ -23,9 +25,21 @@
     for (var i = 0; i < state.working.length; i++) if (state.working[i].id === id) return state.working[i];
     return null;
   }
+  // the best paid job being worked: the one 友達と稼ぐ pays x1.5
+  function best() {
+    if (!state || !state.working.length) return null;
+    var b = state.working[0];
+    state.working.forEach(function (w) { if (jobOf(w.id).wage > jobOf(b.id).wage) b = w; });
+    return b;
+  }
+  function hubOn() { return !!(BR.hub && BR.hub.on && BR.hub.on()); }
   function earned(w) {
     var job = jobOf(w.id);
-    return job ? Math.floor(Math.max(0, now() - w.since) * job.wage / 3600000) : 0;
+    if (!job) return 0;
+    var pay = Math.floor(Math.max(0, now() - w.since) * job.wage / 3600000);
+    // the time with a hub's benefits on: since loading too, while they are on (an estimate)
+    var boost = (w.boost || 0) + (w === best() && hubOn() ? Math.max(0, Date.now() - state.at) : 0);
+    return pay + Math.floor(boost * job.wage * (C.hub.wage - 1) / 3600000);
   }
   function level() {
     var xp = BR.quests && BR.quests.xp();
@@ -34,7 +48,8 @@
 
   function set(r) {
     if (!r) return;
-    state = { level: r.level, slots: r.slots, working: r.working || [], offset: (r.now || Date.now()) - Date.now() };
+    state = { level: r.level, slots: r.slots || LV.jobSlots(r.level), every: r.every || C.jobSlotEvery, working: r.working || [],
+      offset: (r.now || Date.now()) - Date.now(), at: Date.now() };
     renderDot();
     if (shown()) render();
   }
@@ -75,13 +90,21 @@
     list.textContent = '';
     C.jobs.forEach(function (job) { list.appendChild(card(job)); });
     var lv = level();
+    var slots = LV.jobSlots(lv), every = state.every;
     var info = el('div', 'jobs-note');
     var head = el('div', 'jobs-lv');
     head.appendChild(el('b', '', 'Lv.' + lv));
-    head.appendChild(el('span', '', '同時にできるバイト ' + state.slots + 'つ'));
+    head.appendChild(el('span', '', '同時にできるバイト ' + slots + 'つ'));
+    // the next level that adds one
+    var next = (Math.floor(lv / every) + 1) * every;
+    head.appendChild(el('small', 'jobs-next', 'Lv.' + next + 'で' + (slots + 1) + 'つに'));
     info.appendChild(head);
-    info.appendChild(el('p', '', 'バイトはいつでも変更できます。給料は働いた時間の分だけたまり（ゲームを閉じていても）、「給料を受け取る」で受け取れます。'));
-    info.appendChild(el('p', '', 'プレイヤーレベルが上がると、同時にできるバイトが増えたり、新しいバイトが解放されたりします（近日追加予定）。'));
+    info.appendChild(el('p', 'jobs-rule', 'プレイヤーレベルが' + every + '上がるごとに、同時にできるバイトが1つ増えます（Lv.' + every + 'で2つ・Lv.' + every * 2 + 'で3つ…）。'));
+    var hub = el('p', 'jobs-hub' + (hubOn() ? ' on' : ''));
+    hub.appendChild(el('b', '', '友達と稼ぐ 特典'));
+    hub.appendChild(document.createTextNode('参加中（特典が有効なあいだ）は、勤務中でいちばん時給が高いバイト1つの時給が×' + C.hub.wage + 'になります。'));
+    info.appendChild(hub);
+    info.appendChild(el('p', '', 'バイトはいつでも変更できます。給料は働いた時間の分だけたまり（ゲームを閉じていても）、「給料を受け取る」で受け取れます。新しいバイトは近日追加予定です。'));
     list.appendChild(info);
     tick();
   }
@@ -100,6 +123,8 @@
     var wage = el('div', 'job-wage');
     wage.appendChild(K.amountEl(job.wage, 'dollars'));
     wage.appendChild(el('span', 'job-per', '/ 1時間'));
+    // 友達と稼ぐ: this one pays x1.5 now
+    if (w && w === best() && hubOn()) wage.appendChild(el('span', 'job-boost', '友達と稼ぐ 時給×' + C.hub.wage));
     info.appendChild(wage);
     info.appendChild(el('div', 'job-state', w ? '' : 'まだ働いていません'));
     var acts = el('div', 'job-acts');
@@ -108,7 +133,7 @@
       acts.appendChild(button('やめる', 'stop'));
     } else {
       var locked = level() < job.level;
-      var full = state.working.length >= state.slots;
+      var full = state.working.length >= LV.jobSlots(level());
       var b = button(locked ? 'Lv.' + job.level + 'で解放' : full ? 'このバイトに変更' : '働く', 'start', 'gold');
       b.disabled = locked;
       acts.appendChild(b);
@@ -143,12 +168,17 @@
     renderDot();
   }
 
-  // wages come in quietly: no sound, no notice, the wallet does not move
+  // wages come in with the sound of coins and the wallet counting up
   function after(r, done) {
     busy = false;
-    if (r.balance) BR.app.serverBalance(r.balance, true);
+    if (r.balance) BR.app.serverBalance(r.balance, !r.paid);
     set(r);
-    if (done) toast(done, 3000);
+    if (r.paid > 0) {
+      sfx('money');
+      if (BR.juice) BR.juice.reward('#jobs-list .job-card.working', 2);
+    }
+    if (done) toast(done + (r.paid > 0 ? '（給料 $' + U.fmt(r.paid) + ' を受け取りました）' : ''), 3000);
+    else if (r.paid > 0) toast('給料 $' + U.fmt(r.paid) + ' を受け取りました', 2600);
   }
 
   function act(name, id) {
@@ -179,7 +209,7 @@
         after(r, '「' + job.name + '」を始めました！1時間ごとに $' + U.fmt(job.wage) + ' たまります');
       }, function (err) { busy = false; fail(err); });
     };
-    if (state.working.length < state.slots) { go(); return; }
+    if (state.working.length < LV.jobSlots(level())) { go(); return; }
     var cur = jobOf(state.working[0].id);
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode('「' + (cur ? cur.name : '') + '」をやめて、このバイトに変更しますか？'));
@@ -200,7 +230,7 @@
   BR.jobs = {
     init: init,
     show: show,
-    set: function (me) { if (me && me.jobs) set({ level: LV.of(me.xp || 0), slots: C.jobSlots, working: me.jobs, now: Date.now() }); },
+    set: function (me) { if (me && me.jobs) set({ level: LV.of(me.xp || 0), working: me.jobs, now: Date.now() }); },
     reset: function () { state = null; $('#jobs-dot').hidden = true; }
   };
 })(window.BR = window.BR || {});

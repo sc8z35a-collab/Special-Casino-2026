@@ -231,7 +231,7 @@
     if (BR.guide && BR.guide.active && BR.guide.active()) return true;
     if (BR.entry && BR.entry.isOpen()) return true;
     if (BR.screens.current() !== 'slot') return true;
-    if (BR.game && (BR.game.busy() || BR.game.auto)) return true;
+    if (BR.game && BR.game.busy()) return true;
     if (BR.watch && BR.watch.active()) return true;
     var th = $('#thanks'), np = $('#numpad');
     if ((th && !th.hidden) || (np && !np.hidden)) return true;

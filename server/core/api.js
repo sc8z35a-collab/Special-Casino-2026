@@ -14,22 +14,23 @@ import { ApiError, posInt } from './errors.js';
 import { statements } from './db.js';
 import {
   newToken, sha256, newRecoveryCode, normalizeRecoveryCode, nameKey, cleanName, cleanText,
-  cleanPassword, hashPassword, verifyPassword, signTicket, verifyTicket
+  cleanPassword, hashPassword, verifyPassword, signTicket, verifyTicket, sealText, openText, keyFrom
 } from './auth.js';
 import { Limiter } from './ratelimit.js';
 import {
   RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE,
-  spin as spinReels, iconSale, itemSale, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
+  spin as spinReels, evaluate as evaluateLine, iconSale, itemSale, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
 import { createPeter, reservedName } from './peter.js';
 import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
 import { readQuests, stepQuests, claimQuests, questsReady, questView } from './quests.js';
+import { createOps } from './ops.js';
 
 const PAGE = 50;
 const CURRENCIES = ['tokens', 'dollars'];
 // voice: the home call (a player and everyone watching them)
-const CALL_TYPES = new Set(['home']);
+const CALL_TYPES = new Set(['home', 'hub']);
 const MAX_PENDING_REQUESTS = 50;
 const CHARM = RULES.charm;
 // group chats: members (with the one who made it) and the length of a name
@@ -113,6 +114,92 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const watcherIds = (hostId) => q('SELECT watcher_id FROM watchers WHERE target_id = ?').all(hostId).map((r) => r.watcher_id);
   const watching = (userId) => { const r = q('SELECT target_id FROM watchers WHERE watcher_id = ?').get(userId); return r ? r.target_id : 0; };
 
+  /* ----- devices and bans ----- */
+  // The game sends X-Device: "<device id>~<fingerprint>" (js/net/device.js): a
+  // random id kept in every storage the page has, and a hash of what the phone
+  // and its browser are like. An account is on a device when it was made or
+  // used with that id, or with that fingerprint from the same address.
+  function deviceOf(req) {
+    const m = /^([0-9a-f]{32})(?:~([0-9a-f]{16,64}))?$/.exec(String(req.header('x-device') || ''));
+    return { id: m ? m[1] : '', fp: m && m[2] ? m[2] : '' };
+  }
+  function deviceKeys(dev, ip) {
+    const keys = [];
+    if (dev.id) keys.push('id:' + dev.id);
+    if (dev.fp && ip) keys.push('fp:' + dev.fp + '@' + ip);
+    return keys;
+  }
+  // the account was used on this device (written at most once an hour)
+  function seenOn(userId, req) {
+    const now = Date.now();
+    for (const k of deviceKeys(deviceOf(req), req.ip)) {
+      q(`INSERT INTO devices (user_id, device, first_at, last_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id, device) DO UPDATE SET last_at = excluded.last_at WHERE devices.last_at < excluded.last_at - 3600000`).run(userId, k, now, now);
+    }
+  }
+  // the accounts made on this device (the fingerprint only counts from the same address, for 30 days)
+  function madeOn(dev, ip) {
+    const ids = new Set();
+    if (dev.id) for (const r of q('SELECT id FROM users WHERE created_device = ?').all(dev.id)) ids.add(r.id);
+    if (dev.fp && ip) {
+      for (const r of q('SELECT id FROM users WHERE created_fp = ? AND created_ip = ? AND created_at > ?').all(dev.fp, ip, Date.now() - 30 * 86400000)) ids.add(r.id);
+    }
+    return ids;
+  }
+  // may this device make an account? '' yes, 'full' (log in to one of its own), 'banned'
+  const DEVICE_BANNED_NEW = 'この端末のアカウントがBANされているため、新しいアカウントは作れません';
+  const deviceFull = () => `この端末ではアカウントを${config.accountsPerDevice}つまでしか作れません。前に作ったアカウントの引き継ぎコードを入力してログインしてください`;
+  function deviceRoom(req) {
+    const dev = deviceOf(req);
+    if (!dev.id) return '';
+    if (devicesBanned(deviceKeys(dev, req.ip))) return 'banned';
+    if (config.accountsPerDevice > 0 && madeOn(dev, req.ip).size >= config.accountsPerDevice) return 'full';
+    return '';
+  }
+  // Bans: アクセス禁止 (a week), BAN (30 days), 永久BAN (until an operator lifts it).
+  // A ban that has run out is lifted when it is next looked at.
+  const BAN_DAYS = { suspend: 7, ban: 30, perma: 0 };
+  const BAN_NAME = { suspend: 'アクセス禁止', ban: 'BAN', perma: '永久BAN' };
+  function liftExpired(u) {
+    if (!u || !u.banned || !u.ban_until || u.ban_until > Date.now()) return u;
+    q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ?").run(u.id);
+    return { ...u, banned: 0, ban_kind: '', ban_until: 0 };
+  }
+  function banMessage(u) {
+    const name = BAN_NAME[u.ban_kind] || '利用停止';
+    if (!u.ban_until) return `このアカウントは${name}されています`;
+    const d = new Date(u.ban_until + 9 * 3600000);
+    return `このアカウントは${name}中です（${d.getUTCMonth() + 1}/${d.getUTCDate()} ${d.getUTCHours()}:${String(d.getUTCMinutes()).padStart(2, '0')} まで）`;
+  }
+  const BANNED_NOW = "o.banned = 1 AND o.ban_kind IN ('ban', 'perma') AND (o.ban_until = 0 OR o.ban_until > ?)";
+  // another account on one of this account's devices is under a BAN or a
+  // 永久BAN placed after an operator last let this account play
+  function deviceBanOf(u) {
+    return q(`SELECT o.id FROM devices d JOIN devices e ON e.device = d.device AND e.user_id != d.user_id
+              JOIN users o ON o.id = e.user_id
+              WHERE d.user_id = ? AND ${BANNED_NOW} AND o.ban_at > ? LIMIT 1`).get(u.id, Date.now(), u.device_ok_at) || null;
+  }
+  // an account on these devices is under a BAN or a 永久BAN
+  function devicesBanned(keys) {
+    if (!keys.length) return false;
+    return !!q(`SELECT 1 AS x FROM devices d JOIN users o ON o.id = d.user_id
+                WHERE d.device IN (${keys.map(() => '?').join(', ')}) AND ${BANNED_NOW} LIMIT 1`).get(...keys, Date.now());
+  }
+  // May this account play now? Throws why not.
+  function allowed(u) {
+    u = liftExpired(u);
+    if (u.banned) throw new ApiError(403, 'banned', banMessage(u), { kind: u.ban_kind, until: u.ban_until });
+    if (deviceBanOf(u)) throw new ApiError(403, 'device_banned', 'この端末のほかのアカウントがBANされているため、このアカウントも利用できません');
+    return u;
+  }
+  // 引き継ぎコード: kept as a hash to log in with, and sealed for the operator site
+  const CODE_KEY = keyFrom(secret, 'recovery-codes');
+  function setRecovery(userId) {
+    const code = newRecoveryCode();
+    q('UPDATE users SET recovery_hash = ?, recovery_enc = ? WHERE id = ?').run(sha256(normalizeRecoveryCode(code)), sealText(CODE_KEY, code), userId);
+    return code;
+  }
+
   const peter = createPeter({
     q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel,
     onBorrow: (userId) => track(userId, [['borrow', 1]])
@@ -123,10 +210,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   // Quest progress inside the caller's transaction (`cur`: the player's row as
   // it is now); the caller saves `json`. Finished quests wait to be received.
-  function questStep(cur, events) {
+  function questStep(cur, events, boost = null) {
     if (!config.quests) return { changed: false, done: [], json: cur.quests };
     const state = readQuests(cur.quests);
-    const r = stepQuests(state, events, Date.now());
+    const r = stepQuests(state, events, Date.now(), boost);
     return { ...r, json: JSON.stringify(state), ready: questsReady(state) };
   }
   // Tells the player what was finished (and how many wait to be received).
@@ -136,10 +223,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   // Progress from one of the player's actions, saved in a transaction of its own.
   function track(userId, events) {
+    const boost = questBoost(userId);
     const r = tx(() => {
       const cur = getUser(userId);
       if (!cur || cur.npc) return null;
-      const st = questStep(cur, events);
+      const st = questStep(cur, events, boost);
       if (!st.changed) return null;
       q('UPDATE users SET quests = ? WHERE id = ?').run(st.json, cur.id);
       return st;
@@ -154,7 +242,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     peter.check(userId);
   }
 
-  // The バイト being worked: [{ id, since }] (since = paid up to then).
+  // The バイト being worked: [{ id, since, boost }] (since = paid up to then;
+  // boost: ms worked with a hub's benefits on, not paid yet).
   function readJobs(json) {
     try {
       const a = JSON.parse(json || '[]');
@@ -163,21 +252,42 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return [];
     }
   }
-  // Wages up to `now` for every job (the fraction of a $ carries over).
+  // Wages up to `now` for every job (the fraction of a $ carries over), and
+  // for the time worked with a hub's benefits on (RULES.hub.wage: x1.5) the
+  // extra half of the wage.
   function settleJobs(cur, now) {
     const jobs = readJobs(cur.jobs);
     let pay = 0;
     for (const j of jobs) {
       const wage = JOBS.get(j.id).wage;
       const p = Math.floor(Math.max(0, now - j.since) * wage / 3600000);
-      if (p <= 0) continue;
-      pay += p;
-      j.since += Math.floor(p * 3600000 / wage);
+      if (p > 0) {
+        pay += p;
+        j.since += Math.floor(p * 3600000 / wage);
+      }
+      const extra = wage * (RULES.hub.wage - 1);
+      const b = j.boost > 0 && extra > 0 ? Math.floor(j.boost * extra / 3600000) : 0;
+      if (b > 0) {
+        pay += b;
+        j.boost = Math.max(0, j.boost - Math.floor(b * 3600000 / extra));
+      }
     }
     return { jobs, pay };
   }
+  // jobs at once: one more every RULES.jobSlotEvery levels (LEVEL.jobSlots)
   function jobsDto(u) {
-    return { level: LEVEL.of(u.xp), slots: RULES.jobSlots, working: readJobs(u.jobs), now: Date.now() };
+    const level = LEVEL.of(u.xp);
+    return { level, slots: LEVEL.jobSlots(level), every: RULES.jobSlotEvery, working: readJobs(u.jobs), now: Date.now() };
+  }
+  // A hub's benefits were on for `ms` of play: the best paid job being worked
+  // earns x RULES.hub.wage for that time (inside the caller's transaction).
+  function boostJobs(cur, ms) {
+    const jobs = readJobs(cur.jobs);
+    if (!jobs.length || ms <= 0) return null;
+    let best = jobs[0];
+    for (const j of jobs) if (JOBS.get(j.id).wage > JOBS.get(best.id).wage) best = j;
+    best.boost = (best.boost || 0) + ms;
+    return JSON.stringify(jobs);
   }
   function saveJobs(userId, jobs, pay) {
     q('UPDATE users SET jobs = ?, dollars = dollars + ?, rev = rev + ? WHERE id = ?').run(JSON.stringify(jobs), pay, pay > 0 ? 1 : 0, userId);
@@ -218,6 +328,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       feedbackCount: isFeedbackAdmin(u) ? feedbackCount() : 0,
       // the group whose 協力スロット table the player sits at (0: none)
       coop: u.coop_group || 0,
+      // may open the operator site (/ops/)
+      operator: config.operators.some((n) => nameKey(n) === u.name_key),
       createdAt: u.created_at
     };
   }
@@ -226,6 +338,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // as a login day; the first one of each day pays that day's bonus in spin
   // tokens (1st..4th day, then over again). Returns what was paid, once a day.
   function loginBonus(userId) {
+    countDay(userId);
     if (!config.loginBonus) return null;
     const day = loginDay();
     const days = RULES.loginBonus.days;
@@ -239,6 +352,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     });
     if (paid) balanceChanged(userId);
     return paid;
+  }
+
+  // Login days in a row (6:00 to 6:00 Japan time) and the longest run (the operator site).
+  function countDay(userId) {
+    const day = loginDay();
+    const cur = getUser(userId);
+    if (!cur || cur.npc || cur.streak_day === day) return;
+    const run = cur.streak_day === loginDay(Date.now() - 86400000) ? cur.day_streak + 1 : 1;
+    q('UPDATE users SET streak_day = ?, day_streak = ?, day_best = MAX(day_best, ?) WHERE id = ?').run(day, run, run, cur.id);
   }
 
   // Today's prices in the Shop (always on sale too).
@@ -558,6 +680,215 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     for (const p of paid) if (p.id !== u.id) balanceChanged(p.id);
   }
 
+  /* ----- 友達と稼ぐ (hubs) ----- */
+  // Friends invited from the friend list play together in a hub of up to
+  // HUB.max players, each on their own reels. Joining always goes through the
+  // hub tables in one transaction, so two players accepting at once or
+  // invitations that cross end up in one hub. Nobody leaves unless they say
+  // so (the small 抜ける button), a hub with one player left closes (an
+  // invitation starts a new one). Its benefits (RULES.hub: the odds, the
+  // shared combo, 777, XP, the 5時間 booster and the 週間協力 quests) are on
+  // while two or more of its players are active: something done (a tap, a
+  // key, a voice) within QUESTS.idleMs.
+  const HUB = RULES.hub;
+  const hubRow = (id) => q('SELECT * FROM hubs WHERE id = ?').get(id);
+  const memberRow = (userId) => q('SELECT * FROM hub_members WHERE user_id = ?').get(userId);
+  const hubMemberRows = (hubId) => q('SELECT * FROM hub_members WHERE hub_id = ? ORDER BY joined_at, user_id').all(hubId);
+  // a win that makes the combo `n` pays x1.1 for every win before it in the run
+  const comboMult = (n) => (n > 1 ? Math.round(Math.pow(HUB.comboStep, n - 1) * 10000) / 10000 : 1);
+  // 5時間 quests: x2 with two active players, x1.1 more for each one after
+  const boosterFor = (n) => (n >= 2 ? Math.round(HUB.booster * Math.pow(HUB.boosterStep, n - 2) * 1000) / 1000 : 1);
+  const isActive = (activeAt, now = Date.now()) => now - (activeAt || 0) < QUESTS.idleMs;
+  // the players of a hub who are active now
+  function activeIn(hubId, now = Date.now()) {
+    return q('SELECT o.id, o.active_at FROM hub_members m JOIN users o ON o.id = m.user_id WHERE m.hub_id = ?').all(hubId)
+      .filter((r) => isActive(r.active_at, now)).map((r) => r.id);
+  }
+  function hubPeople(hubId, now = Date.now()) {
+    return q(`SELECT o.id, o.name, o.avatar, o.active_at FROM hub_members m JOIN users o ON o.id = m.user_id
+              WHERE m.hub_id = ? ORDER BY m.joined_at, o.id`).all(hubId)
+      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, online: live.isOnline(r.id), idle: Math.min(86400000, Math.max(0, now - (r.active_at || 0))) }));
+  }
+  function hubDto(h) {
+    if (!h) return null;
+    const now = Date.now();
+    const members = hubPeople(h.id, now);
+    const active = members.filter((m) => m.idle < QUESTS.idleMs).length;
+    return {
+      id: h.id, combo: h.combo, misses: h.misses, won: h.won, seq: h.spins, max: HUB.max, next: comboMult(h.combo + 1),
+      members, active, on: active >= 2, booster: boosterFor(active), idleMs: QUESTS.idleMs
+    };
+  }
+  function hubSend(hubId, data, except = 0) {
+    for (const m of hubMemberRows(hubId)) if (m.user_id !== except) live.send(m.user_id, 'hub', data);
+  }
+  // invitations to a player that are still open
+  function hubInvites(userId) {
+    const since = Date.now() - HUB.inviteMs;
+    return q(`SELECT i.created_at, o.id, o.name, o.avatar FROM hub_invites i JOIN users o ON o.id = i.from_id
+              WHERE i.to_id = ? AND i.created_at > ? ORDER BY i.created_at DESC`).all(userId, since)
+      .map((r) => ({ from: { id: r.id, name: r.name, avatar: r.avatar }, until: r.created_at + HUB.inviteMs }));
+  }
+  // The hub, or null when there is none (any more): with one player left it closes.
+  function settleHub(hubId) {
+    const out = tx(() => {
+      if (!hubRow(hubId)) return { hub: null, alone: [] };
+      const left = hubMemberRows(hubId);
+      if (left.length >= 2) return { hub: hubRow(hubId), alone: [] };
+      q('DELETE FROM hub_members WHERE hub_id = ?').run(hubId);
+      q('DELETE FROM hubs WHERE id = ?').run(hubId);
+      return { hub: null, alone: left.map((m) => m.user_id) };
+    });
+    for (const id of out.alone) live.send(id, 'hub', { type: 'closed', why: 'alone' });
+    return out.hub;
+  }
+  // the hub a player is in, or null
+  function playingHub(userId) {
+    const m = memberRow(userId);
+    return m ? settleHub(m.hub_id) : null;
+  }
+  // (noVoice: the ones in it a block cuts my voice off from, either way)
+  function myHub(userId) {
+    const h = playingHub(userId);
+    return h ? { ...hubDto(h), noVoice: noVoiceIn(h.id, userId) } : null;
+  }
+  function noVoiceIn(hubId, userId) {
+    return q(`SELECT m.user_id AS id FROM hub_members m WHERE m.hub_id = ? AND m.user_id != ? AND (
+                EXISTS (SELECT 1 FROM blocks b WHERE b.user_id = ? AND b.blocked_id = m.user_id) OR
+                EXISTS (SELECT 1 FROM blocks b WHERE b.user_id = m.user_id AND b.blocked_id = ?))`).all(hubId, userId, userId, userId).map((r) => r.id);
+  }
+  // a player leaves their hub (pressing 抜ける, or banned)
+  function dropFromHub(userId) {
+    const m = memberRow(userId);
+    if (!m) return;
+    q('DELETE FROM hub_members WHERE user_id = ?').run(userId);
+    const h = settleHub(m.hub_id);
+    const u = getUser(userId);
+    if (h && u) hubSend(m.hub_id, { type: 'leave', user: mini(u), hub: hubDto(h) });
+  }
+  // The player did something at `at`. In a hub the others hear it (a minute
+  // apart at most, from the beats), so everyone sees who is active.
+  function touchActive(userId, at, tell = true) {
+    const u = q('SELECT active_at FROM users WHERE id = ?').get(userId);
+    if (!u || at <= u.active_at) return;
+    q('UPDATE users SET active_at = ? WHERE id = ?').run(at, userId);
+    if (!tell && isActive(u.active_at)) return;
+    const m = memberRow(userId);
+    if (m) hubSend(m.hub_id, { type: 'activity', user: userId, idle: Math.max(0, Date.now() - at) }, userId);
+  }
+  // A player's hub benefits on now: { hub, active (ids), booster } or null
+  function hubOn(userId) {
+    const m = memberRow(userId);
+    if (!m) return null;
+    const hub = hubRow(m.hub_id);
+    if (!hub) return null;
+    const active = activeIn(hub.id);
+    if (active.length < 2 || !active.includes(userId)) return null;
+    return { hub, active, booster: boosterFor(active.length) };
+  }
+  // the 5時間 booster of a player's quests, or null
+  function questBoost(userId) {
+    const on = hubOn(userId);
+    return on ? { '5h': on.booster } : null;
+  }
+  // A SUPER BIG WIN: every friend of the player who is online hears it
+  // (shown at the top of their screen), unless one of them blocked the other
+  function superWin(u, out) {
+    for (const r of q('SELECT friend_id FROM friends WHERE user_id = ?').all(u.id)) {
+      const id = r.friend_id;
+      if (!live.isOnline(id) || isBlocked(id, u.id) || isBlocked(u.id, id)) continue;
+      live.send(id, 'bigwin', { user: mini(u), win: out.total, tier: out.tier });
+    }
+  }
+
+  // A spin in a hub with its benefits on (inside the spin's transaction):
+  // HUB.diamonds of them land five diamonds, 777 pays HUB.sevens times, and
+  // the shared combo: a win adds one to it and pays comboMult(combo),
+  // HUB.misses misses in a row end it. Changes `r` (what it pays, and the
+  // tier the win is shown as) and the hub; returns what the spin got.
+  function hubSpin(r, hub, bet) {
+    const got = { combo: hub.combo, misses: hub.misses, mult: 1, sevens: false, diamonds: false };
+    if (randomInt(1, 10000) <= HUB.diamonds * 10000) {
+      for (const col of r.grid) col[1] = 'diamond';
+      r.line = r.grid.map((col) => col[1]);
+      Object.assign(r, evaluateLine(r.line, bet));
+      got.diamonds = true;
+    }
+    const sevens = r.wins.find((w) => w.symbol === 'seven' && w.count >= 3);
+    if (sevens) {
+      const extra = Math.floor(sevens.amount * (HUB.sevens - 1));
+      sevens.amount += extra;
+      r.total += extra;
+      got.sevens = true;
+    }
+    if (r.total > 0) {
+      got.combo = hub.combo + 1;
+      got.misses = 0;
+      got.mult = comboMult(got.combo);
+      r.total = Math.floor(r.total * got.mult);
+    } else {
+      got.misses = hub.misses + 1;
+      if (got.misses >= HUB.misses) { got.combo = 0; got.misses = 0; }
+    }
+    q('UPDATE hubs SET combo = ?, misses = ?, won = won + ?, spins = spins + 1 WHERE id = ?').run(got.combo, got.misses, r.total, hub.id);
+    got.seq = hub.spins + 1;
+    if (r.total > 0) {
+      const m = r.total / bet;
+      r.tier = m >= RULES.tiers.superBig ? 3 : m >= RULES.tiers.big ? 2 : 1;
+    }
+    got.next = comboMult(got.combo + 1);
+    return got;
+  }
+
+  /* ----- activity: the time quests ----- */
+  // Every open game says once a minute how long ago its player last did
+  // something (a tap, a key, a voice). The time since the last beat counts
+  // while that was within QUESTS.idleMs: as time online, in a hub with its
+  // benefits on, and talking with friends (a voice connected, in a hub or a
+  // home call). Beats more than BEAT_GAP apart count nothing in between.
+  const BEAT_GAP = 100000;
+  function talkingAtHome(userId) {
+    const w = q('SELECT target_id FROM watchers WHERE watcher_id = ? AND voice = 1').get(userId);
+    if (w) return live.isOnline(w.target_id);
+    return voiceIds(userId).some((id) => live.isOnline(id));
+  }
+  function beat(u, body) {
+    if (u.npc) return { counted: 0 };
+    const now = Date.now();
+    const idle = Math.max(0, Number(body && body.idle) || 0);
+    touchActive(u.id, now - idle, true);
+    const dt = now - (u.beat_at || 0);
+    const ms = dt > 0 && dt <= BEAT_GAP ? Math.min(dt, Math.max(0, QUESTS.idleMs - idle + dt)) : 0;
+    const sec = Math.floor(ms / 1000);
+    const events = [];
+    let boost = null;
+    if (sec > 0) {
+      events.push(['online', sec]);
+      const m = memberRow(u.id);
+      const on = m ? hubOn(u.id) : null;
+      if (on) {
+        events.push(['hubSec', sec]);
+        boost = { '5h': on.booster };
+      }
+      const friends = !!m && hubPeople(m.hub_id).some((p) => p.id !== u.id && p.online);
+      if (body && body.voice && (friends || talkingAtHome(u.id))) events.push(['talkSec', sec]);
+    }
+    const st = tx(() => {
+      const cur = getUser(u.id);
+      const r = events.length ? questStep(cur, events, boost) : null;
+      // the part of a second not counted waits for the next beat
+      const at = sec > 0 ? now - (ms - sec * 1000) : now;
+      if (r && r.changed) q('UPDATE users SET beat_at = ?, quests = ? WHERE id = ?').run(at, r.json, cur.id);
+      else q('UPDATE users SET beat_at = ? WHERE id = ?').run(at, cur.id);
+      // in a hub with its benefits on: the best paid バイト earns x1.5 for the time
+      const jobs = boost ? boostJobs(cur, sec * 1000) : null;
+      if (jobs) q('UPDATE users SET jobs = ? WHERE id = ?').run(jobs, cur.id);
+      return r;
+    });
+    questNotice(u.id, st);
+    return { counted: sec };
+  }
+
   /* ----- 運営へのフィードバック ----- */
   const FEEDBACK_ADMIN = config.feedbackAdmin ? nameKey(config.feedbackAdmin) : '';
   const isFeedbackAdmin = (u) => !!FEEDBACK_ADMIN && u.name_key === FEEDBACK_ADMIN;
@@ -602,9 +933,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const h = sha256(token);
     const s = q('SELECT user_id, last_used FROM sessions WHERE token_hash = ?').get(h);
     if (!s) throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
-    const u = getUser(s.user_id);
+    let u = getUser(s.user_id);
     if (!u) throw new ApiError(401, 'auth', 'アカウントが見つかりません');
-    if (u.banned) throw new ApiError(403, 'banned', 'このアカウントは利用停止されています');
+    u = allowed(u);
     const now = Date.now();
     // once a minute at most: the time since the last request is play time,
     // unless the player was away (then a new session starts)
@@ -662,10 +993,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const routes = {
     'GET /api/health': () => ({ ok: true, online: live.onlineCount() }),
 
+    // (device: whether this device may make an account, before the name and icon are picked)
     'GET /api/name-check': (req) => {
       rate(limit.nameCheck, req.ip);
       const problem = nameProblem(req.query.get('name'));
-      return { available: !problem, problem };
+      return { available: !problem, problem, device: deviceRoom(req) };
     },
 
     'POST /api/register': async (req) => {
@@ -684,6 +1016,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       }
       if (reservedName(key)) throw new ApiError(409, 'name_taken', 'この名前は使えません');
       if (q('SELECT 1 AS x FROM users WHERE name_key = ?').get(key)) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
+      // two accounts a device at most (then: log in to one of them), none on a device with a BAN
+      const dev = deviceOf(req);
+      if (!dev.id) throw new ApiError(400, 'update', 'アプリを最新にしてからもう一度お試しください');
+      const room = deviceRoom(req);
+      if (room === 'banned') throw new ApiError(403, 'device_banned', DEVICE_BANNED_NEW);
+      if (room === 'full') throw new ApiError(403, 'device_limit', deviceFull());
       const passwordHash = await hashPassword(password);
       const code = newRecoveryCode();
       let token, user;
@@ -691,10 +1029,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         ({ token, user } = tx(() => {
           const now = Date.now();
           // a new player starts on the newest release: nothing to be thanked for yet
-          const r = q(`INSERT INTO users (name, name_key, recovery_hash, password_hash, avatar, tokens, dollars, coins, created_ip, created_at, last_seen, release_seen)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-            .run(name, key, sha256(normalizeRecoveryCode(code)), passwordHash, avatar, start.tokens, start.dollars, start.coins, req.ip, now, now, RELEASE);
+          const r = q(`INSERT INTO users (name, name_key, recovery_hash, recovery_enc, password_hash, avatar, tokens, dollars, coins, created_ip, created_device, created_fp,
+                         created_at, last_seen, release_seen)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .run(name, key, sha256(normalizeRecoveryCode(code)), sealText(CODE_KEY, code), passwordHash, avatar, start.tokens, start.dollars, start.coins,
+              req.ip, dev.id, dev.fp, now, now, RELEASE);
           const id = Number(r.lastInsertRowid);
+          seenOn(id, req);
           return { token: createSession(id), user: getUser(id) };
         }));
       } catch (e) {
@@ -722,7 +1063,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           throw new ApiError(401, 'bad_login', 'ユーザー名かパスワードが違います');
         }
       }
-      if (u.banned) throw new ApiError(403, 'banned', 'このアカウントは利用停止されています');
+      u = allowed(u);
+      seenOn(u.id, req);
       return { token: createSession(u.id), me: meDto(u) };
     },
 
@@ -731,11 +1073,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { ok: true };
     },
 
-    'POST /api/recovery': (req, u) => {
-      const code = newRecoveryCode();
-      q('UPDATE users SET recovery_hash = ? WHERE id = ?').run(sha256(normalizeRecoveryCode(code)), u.id);
-      return { recoveryCode: code };
-    },
+    'POST /api/recovery': (req, u) => ({ recoveryCode: setRecovery(u.id) }),
 
     'POST /api/password': async (req, u) => {
       rate(limit.login, req.ip, '試行回数が多すぎます。しばらく待ってからお試しください');
@@ -772,11 +1110,20 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!RULES.bets.includes(bet)) throw new ApiError(400, 'bad_bet', 'ベット額が正しくありません');
       rate(limit.spin, u.id, 'スピンが速すぎます');
       const today = utcDay();
-      let quests = null, fight = 0, coop = null;
+      // 友達と稼ぐ: the hub's benefits, on while two or more of its players are
+      // active. The game says how long ago its player last did something
+      // (AUTO spins by itself, so a spin alone is not that).
+      const idle = Number(body.idle);
+      touchActive(u.id, Date.now() - (Number.isFinite(idle) ? Math.min(86400000, Math.max(0, idle)) : 0), false);
+      const on = hubOn(u.id);
+      let quests = null, fight = 0, coop = null, boost = null, earned = 0;
       const result = tx(() => {
         const cur = getUser(u.id);
         if (cur.tokens < bet) throw new ApiError(409, 'insufficient', 'スピントークンが不足しています');
-        const r = spinReels(bet);
+        const hm = on ? memberRow(cur.id) : null;
+        const hub = hm && hm.hub_id === on.hub.id ? hubRow(on.hub.id) : null;
+        const r = spinReels(bet, hub ? HUB.weights : undefined);
+        if (hub) boost = hubSpin(r, hub, bet);
         // an お守り加護 that is on softens the first losing spin, then it is used up
         if (cur.charm > 0 && r.total < bet) {
           const pct = randomInt(1, 10000) <= CHARM.fullChance * 10000 ? 100 : randomInt(CHARM.min, CHARM.max);
@@ -816,13 +1163,28 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         }
         const dayWon = (cur.won_day === today ? cur.day_won : 0) + r.total;
         const last = JSON.stringify({ grid: r.grid, total: r.total, tier: r.tier, bet, at: Date.now() });
-        // quests count the spin, a win and the payout in $ (in the same row write)
-        quests = questStep(cur, [['spin', 1], ['win', r.total > 0 ? 1 : 0], ['earn', r.total * RULES.tokenPrice]]);
+        // XP, x1.2 in a hub: one more on every fifth spin there
+        let xp = LEVEL.spinXp;
+        if (hub) {
+          const k = Math.round((HUB.xp - 1) * 1000);
+          xp += Math.floor((hm.spins + 1) * LEVEL.spinXp * k / 1000) - Math.floor(hm.spins * LEVEL.spinXp * k / 1000);
+          q('UPDATE hub_members SET spins = spins + 1 WHERE user_id = ?').run(cur.id);
+          boost.xp = xp;
+        }
+        // wins in a row: one's own, or in a hub the combo everyone shares
+        const streak = hub ? cur.streak : r.total > 0 ? cur.streak + 1 : 0;
+        const combo = r.total > 0 ? (hub ? boost.combo : streak) : 0;
+        earned = r.total * RULES.tokenPrice;
+        // quests count the spin, a win, the payout in $, the bet, the combo and
+        // in a hub what everyone there wins (in the same row write)
+        quests = questStep(cur, [['spin', 1], ['win', r.total > 0 ? 1 : 0], ['earn', earned], ['bet', bet], ['combo', combo],
+          ['coopEarn', hub ? earned : 0]], hub ? { '5h': on.booster } : null);
+        if (boost) boost.booster = on.booster;
         q(`UPDATE users SET tokens = tokens - ? + ?, total_bet = total_bet + ?, total_won = total_won + ?,
            biggest_win = MAX(biggest_win, ?), spins = spins + 1, won_day = ?, day_won = ?, last_spin = ?, charm = ?,
-           quests = ?, xp = xp + ?, rev = rev + 1 WHERE id = ?`)
+           quests = ?, xp = xp + ?, streak = ?, rev = rev + 1 WHERE id = ?`)
           .run(bet, r.total + back, bet, r.total, r.total, today, dayWon, last, r.charm ? 0 : cur.charm,
-            quests.json, LEVEL.spinXp, cur.id);
+            quests.json, xp, streak, cur.id);
         if (config.logSpins) {
           q('INSERT INTO spins (user_id, bet, payout, line, created_at) VALUES (?, ?, ?, ?, ?)').run(cur.id, bet, r.total + back, r.line.join(','), Date.now());
         }
@@ -830,8 +1192,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       const after = getUser(u.id);
       questNotice(u.id, quests);
-      const out = { grid: result.grid, line: result.line, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet, charm: result.charm || null };
+      const out = { grid: result.grid, line: result.line, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet, charm: result.charm || null, hub: boost };
       notifyWatchers(u.id, { type: 'spin', user: u.id, result: out, balance: balance(after) });
+      if (boost && on) {
+        // the others in the hub: the combo they share, and what everyone won
+        // together (週間協力 counts it for the ones who are active)
+        hubSend(on.hub.id, { type: 'spin', user: mini(u), win: out.total, tier: out.tier, combo: boost.combo, misses: boost.misses, next: boost.next,
+          seq: boost.seq, sevens: boost.sevens, diamonds: boost.diamonds }, u.id);
+        if (earned > 0) for (const id of on.active) if (id !== u.id) track(id, [['coopEarn', earned]]);
+      }
+      // a SUPER BIG WIN: every friend who is online hears it
+      if (result.tier >= 3) superWin(u, out);
       settleBets(u.id, result.tier);
       if (fight) battleStep(fight);
       if (coop) coopAfterSpin(coop, u, out);
@@ -1240,6 +1611,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       } else {
         q('DELETE FROM blocks WHERE user_id = ? AND blocked_id = ?').run(u.id, id);
       }
+      // in the same hub: the voice between them goes (or comes back)
+      const ma = memberRow(u.id), mb = memberRow(id);
+      if (ma && mb && ma.hub_id === mb.hub_id) live.send(id, 'hub', { type: 'voice', user: u.id, off: !!body.blocked || isBlocked(id, u.id) });
       return { blocked: !!body.blocked };
     },
 
@@ -1352,6 +1726,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const me = balanceChanged(u.id);
       const dto = betDto(bet);
       live.send(hostId, 'watch', { type: 'betOn', by: mini(u), bet: dto });
+      track(u.id, [['wbet', 1]]);
       return { bet: dto, balance: balance(me) };
     },
 
@@ -1511,15 +1886,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const state = readQuests(cur.quests);
         const c = claimQuests(state, ids, Date.now());
         if (!c.claimed.length) return { ...c, state };
-        const xp = c.claimed.length * LEVEL.questXp;
-        q('UPDATE users SET quests = ?, dollars = dollars + ?, tokens = tokens + ?, xp = xp + ?, rev = rev + 1 WHERE id = ?')
-          .run(JSON.stringify(state), c.dollars, c.tokens, xp, cur.id);
+        // XP, x1.2 in a hub with its benefits on
+        const boost = hubOn(cur.id) ? HUB.xp : 1;
+        const xp = Math.floor(c.claimed.length * LEVEL.questXp * boost + 1e-9);
+        q('UPDATE users SET quests = ?, dollars = dollars + ?, xp = xp + ?, rev = rev + 1 WHERE id = ?')
+          .run(JSON.stringify(state), c.dollars, xp, cur.id);
         return { ...c, state };
       });
       if (r.claimed.length) balanceChanged(u.id);
       const after = getUser(u.id);
       return {
-        claimed: r.claimed.map((x) => x.id), dollars: r.dollars, tokens: r.tokens,
+        claimed: r.claimed.map((x) => x.id), dollars: r.dollars, tokens: 0,
         periods: questView(r.state), ready: questsReady(r.state), xp: after.xp, balance: balance(after)
       };
     },
@@ -1556,7 +1933,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const now = Date.now();
         const s = settleJobs(cur, now);
         if (s.jobs.some((j) => j.id === job.id)) throw new ApiError(409, 'working', 'このバイトはもう始めています');
-        while (s.jobs.length >= RULES.jobSlots) s.jobs.shift();
+        while (s.jobs.length >= LEVEL.jobSlots(LEVEL.of(cur.xp))) s.jobs.shift();
         s.jobs.push({ id: job.id, since: now });
         saveJobs(cur.id, s.jobs, s.pay);
         return s.pay;
@@ -1600,19 +1977,23 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
     // The game in the browser says which release it is (js/game/news.js). An
     // older one is asked to update; the first time a player runs a new release
-    // they get the thank-you money (once per release; new players start on it).
+    // they get the thank-you money once for every release since the last one
+    // they were thanked for: two updates at once pay twice (`updates`). New
+    // players start on the newest release.
     'POST /api/release': async (req, u) => {
       const body = await req.json();
       const theirs = Number(body.release) || 0;
-      if (theirs < RELEASE) return { release: RELEASE, outdated: true, bonus: 0 };
-      const bonus = tx(() => {
+      if (theirs < RELEASE) return { release: RELEASE, outdated: true, bonus: 0, updates: 0 };
+      const updates = tx(() => {
         const cur = getUser(u.id);
-        if (cur.release_seen >= RELEASE) return 0;
-        q('UPDATE users SET release_seen = ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(RELEASE, RULES.updateBonus, cur.id);
-        return RULES.updateBonus;
+        const n = RELEASE - cur.release_seen;
+        if (n <= 0) return 0;
+        q('UPDATE users SET release_seen = ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(RELEASE, n * RULES.updateBonus, cur.id);
+        return n;
       });
+      const bonus = updates * RULES.updateBonus;
       if (bonus) balanceChanged(u.id);
-      return { release: RELEASE, outdated: false, bonus, me: meDto(getUser(u.id)) };
+      return { release: RELEASE, outdated: false, bonus, updates, me: meDto(getUser(u.id)) };
     },
 
     /* ----- フレンド対決 ----- */
@@ -1702,6 +2083,112 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { coop: coopDto(g) };
     },
 
+    /* ----- 友達と稼ぐ (hubs) ----- */
+
+    // my hub (null: none) and the invitations waiting for me
+    'GET /api/hub': (req, u) => ({ hub: myHub(u.id), invites: hubInvites(u.id) }),
+
+    // to a friend who is online: they can join from the notice or the friend list
+    'POST /api/hub/invite': async (req, u) => {
+      const body = await req.json();
+      const to = posInt(body.to, '相手');
+      const t = liveTarget(to);
+      if (to === u.id || t.npc) throw new ApiError(400, 'bad_target', 'この相手は招待できません');
+      requireFriend(u, to, '友達と稼ぐ');
+      touchActive(u.id, Date.now(), false);
+      if (!live.isOnline(to)) throw new ApiError(409, 'offline', `${t.name}さんは今オフラインです`);
+      rate(limit.friend, u.id);
+      const h = playingHub(u.id);
+      if (h) {
+        const theirs = memberRow(to);
+        if (theirs && theirs.hub_id === h.id) throw new ApiError(409, 'same', `${t.name}さんはもう一緒に稼いでいます`);
+        if (hubMemberRows(h.id).length >= HUB.max) throw new ApiError(409, 'full', `ハブは満員です（最大${HUB.max}人）`);
+      }
+      const now = Date.now();
+      q(`INSERT INTO hub_invites (from_id, to_id, created_at) VALUES (?, ?, ?)
+         ON CONFLICT(from_id, to_id) DO UPDATE SET created_at = excluded.created_at`).run(u.id, to, now);
+      live.send(to, 'hub', { type: 'invite', from: mini(u), size: h ? hubMemberRows(h.id).length : 1, until: now + HUB.inviteMs });
+      return { ok: true, until: now + HUB.inviteMs };
+    },
+
+    // accepting `from`'s invitation: into their hub, or a new one for the two
+    // (one transaction: crossing invitations and players joining at once end up together)
+    'POST /api/hub/join': async (req, u) => {
+      const body = await req.json();
+      const fromId = posInt(body.from, '招待');
+      rate(limit.friend, u.id);
+      touchActive(u.id, Date.now(), false);
+      const t = liveTarget(fromId);
+      const theirsNow = memberRow(fromId);
+      if (theirsNow) settleHub(theirsNow.hub_id);
+      const r = tx(() => {
+        const inv = q('SELECT created_at FROM hub_invites WHERE from_id = ? AND to_id = ?').get(fromId, u.id);
+        if (!inv || Date.now() - inv.created_at > HUB.inviteMs) throw new ApiError(404, 'no_invite', 'この招待はもう終わっています');
+        if (!areFriends(u.id, fromId)) throw new ApiError(403, 'not_friends', 'フレンドの招待だけ受けられます');
+        if (!live.isOnline(fromId)) throw new ApiError(409, 'offline', `${t.name}さんは今オフラインです`);
+        q('DELETE FROM hub_invites WHERE from_id = ? AND to_id = ?').run(fromId, u.id);
+        const mine = memberRow(u.id), theirs = memberRow(fromId);
+        if (mine && theirs && mine.hub_id === theirs.hub_id) return { hubId: mine.hub_id, prev: 0, formed: false, same: true };
+        let hubId = theirs ? theirs.hub_id : 0;
+        if (hubId && hubMemberRows(hubId).length >= HUB.max) throw new ApiError(409, 'full', `${t.name}さんのハブは満員です（最大${HUB.max}人）`);
+        const now = Date.now();
+        const formed = !hubId;
+        if (formed) {
+          hubId = Number(q('INSERT INTO hubs (created_at) VALUES (?)').run(now).lastInsertRowid);
+          q('INSERT INTO hub_members (user_id, hub_id, joined_at) VALUES (?, ?, ?)').run(fromId, hubId, now);
+        }
+        const prev = mine ? mine.hub_id : 0;
+        if (prev) q('DELETE FROM hub_members WHERE user_id = ?').run(u.id);
+        q('INSERT INTO hub_members (user_id, hub_id, joined_at) VALUES (?, ?, ?)').run(u.id, hubId, now + 1);
+        return { hubId, prev, formed, same: false };
+      });
+      if (r.prev) {
+        hubSend(r.prev, { type: 'leave', user: mini(u), why: 'moved' });
+        settleHub(r.prev);
+      }
+      const dto = hubDto(hubRow(r.hubId));
+      if (!r.same) {
+        hubSend(r.hubId, { type: 'join', user: mini(u), hub: dto }, u.id);
+        track(u.id, [['hub', 1]]);
+        if (r.formed) track(fromId, [['hub', 1]]);
+      }
+      return { hub: { ...dto, noVoice: noVoiceIn(r.hubId, u.id) } };
+    },
+
+    // saying no to an invitation (its sender hears it)
+    'POST /api/hub/decline': async (req, u) => {
+      const body = await req.json();
+      const fromId = posInt(body.from, '招待');
+      const r = q('DELETE FROM hub_invites WHERE from_id = ? AND to_id = ?').run(fromId, u.id);
+      if (Number(r.changes) > 0) live.send(fromId, 'hub', { type: 'declined', by: mini(u) });
+      return { invites: hubInvites(u.id) };
+    },
+
+    // leaving (the small 抜ける button): the others play on (a hub with one player left closes)
+    'POST /api/hub/leave': (req, u) => {
+      dropFromHub(u.id);
+      return { hub: null };
+    },
+
+    // 即席チャット: a line to someone in my hub (from their icon), not stored
+    'POST /api/hub/say': async (req, u) => {
+      const body = await req.json();
+      const to = posInt(body.to, '宛先');
+      const text = cleanText(body.text, 200);
+      const a = memberRow(u.id), b = memberRow(to);
+      if (!a || !b || a.hub_id !== b.hub_id || to === u.id) throw new ApiError(409, 'not_hub', '同じ「友達と稼ぐ」にいる人にだけ送れます');
+      if (isBlocked(to, u.id) || isBlocked(u.id, to)) throw new ApiError(403, 'blocked', 'このプレイヤーには送れません');
+      rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
+      touchActive(u.id, Date.now(), false);
+      const line = { from: mini(u), to, text, at: Date.now() };
+      live.send(to, 'hub', { type: 'say', ...line });
+      track(u.id, [['chat', 1]]);
+      return { line };
+    },
+
+    // the activity beat (time quests), when there is no WebSocket to send it on
+    'POST /api/beat': async (req, u) => beat(u, await req.json()),
+
     /* ----- 運営へのフィードバック ----- */
 
     // stars (any of them may be left out) and a comment of any length
@@ -1740,12 +2227,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { feedback: list, count: feedbackCount(), average };
     },
 
-    'POST /api/stream-ticket': (req, u) => ({ ticket: signTicket(secret, u.id) })
+    // (each connection also notes the device the account is used on)
+    'POST /api/stream-ticket': (req, u) => {
+      seenOn(u.id, req);
+      return { ticket: signTicket(secret, u.id) };
+    }
   };
 
   // Voice signalling of the home call: a player and the watchers they talk
-  // with (type "home"; everyone in that voice can reach everyone else). Used by
-  // POST /api/call and by the WebSocket.
+  // with (type "home"; everyone in that voice can reach everyone else), and of
+  // a hub (type "hub": everyone in it). Used by POST /api/call and by the
+  // WebSocket.
   function relayCall(u, body) {
     const type = String(body.type || '');
     if (!CALL_TYPES.has(type)) throw new ApiError(400, 'bad_type', '通話の操作が正しくありません');
@@ -1755,10 +2247,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     liveTarget(to);
     rate(limit.call, u.id);
     const room = Number(body.data && body.data.room);
-    if (!room || !inVoice(u.id, room) || !inVoice(to, room)) throw new ApiError(409, 'not_home', 'ホームで話せる相手ではありません');
+    if (type === 'hub') {
+      const a = memberRow(u.id), b = memberRow(to);
+      if (!room || !a || !b || a.hub_id !== room || b.hub_id !== room) throw new ApiError(409, 'not_hub', 'ハブで話せる相手ではありません');
+      // a block cuts the voice both ways (they stay in the hub)
+      if (isBlocked(to, u.id) || isBlocked(u.id, to)) throw new ApiError(403, 'blocked', 'このプレイヤーとは話せません');
+    } else if (!room || !inVoice(u.id, room) || !inVoice(to, room)) {
+      throw new ApiError(409, 'not_home', 'ホームで話せる相手ではありません');
+    }
     live.send(to, 'call', { type, callId, from: mini(u), data: body.data ?? null });
-    // quests: 友達に電話をかけてみる (calling into the home), 友達と話す（通話）
-    // (two people in a home whose voices are connecting)
+    // quests: 友達に電話をかけてみる (calling into the home or the hub), 友達と
+    // 話す（通話） (two people in a home or a hub whose voices are connecting)
     const op = body.data && body.data.op;
     if (op === 'hello' && !body.data.reply) track(u.id, [['call', 1]]);
     else if (op === 'hello') {
@@ -1784,7 +2283,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return (userId, body) => {
       try {
         const u = getUser(userId);
-        if (u && !u.banned) fn(u, body);
+        if (u && !u.banned) fn(allowed(u), body);
       } catch (e) {
         if (!(e instanceof ApiError)) console.error(e);
       }
@@ -1792,6 +2291,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   const socketCall = fromSocket(relayCall);
   const socketTyping = fromSocket(relayTyping);
+  const socketBeat = fromSocket(beat);
 
   // Friendship both ways, the request(s) gone, a note in their conversation.
   function makeFriends(requester, accepter) {
@@ -1809,6 +2309,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const dto = msgDto(m);
     live.send(requester.id, 'msg', { ...dto, to: requester.id, peer: accepter.id, unread: unreadTotal(requester.id) });
     live.send(accepter.id, 'msg', { ...dto, to: accepter.id, peer: requester.id });
+    // quests: 友達を追加する (both of them)
+    track(requester.id, [['friend', 1]]);
+    track(accepter.id, [['friend', 1]]);
     return { pending: pendingRequests(accepter.id) };
   }
 
@@ -1822,6 +2325,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     });
   }
 
+  // the operator site (/ops/)
+  const ops = createOps({
+    q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub
+  });
+  Object.assign(routes, ops.routes);
+
   const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login']);
 
   /* ---------------------------------------------------------------- live connection hooks */
@@ -1834,12 +2343,19 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       loginBonus: bonus,
       loginReset: nextLoginReset(),
       me: meDto(u), unread: unreadTotal(userId), friendRequests: pendingRequests(userId), iconShop: iconShop(), itemShop: itemShop(),
-      peter: peter.me(), online: live.onlineCount()
+      peter: peter.me(), online: live.onlineCount(),
+      hub: myHub(userId), hubInvites: hubInvites(userId)
     };
   }
 
   function presence(userId, online) {
     live.broadcast('presence', { id: userId, online, count: live.onlineCount() });
+    // in a hub the others see who is connected (nobody leaves by going away)
+    const hm = memberRow(userId);
+    if (hm) {
+      const me = getUser(userId);
+      if (me) hubSend(hm.hub_id, { type: online ? 'back' : 'away', user: mini(me) }, userId);
+    }
     if (online) {
       // back nearly broke: Peter may have something to say
       try { afterSpend(userId); } catch (e) { console.error('peter', e); }
@@ -1871,6 +2387,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('DELETE FROM spins WHERE created_at < ?').run(Date.now() - 30 * 86400000);
       q('DELETE FROM sessions WHERE last_used < ?').run(Date.now() - 365 * 86400000);
       q('DELETE FROM watchers WHERE since < ?').run(Date.now() - 12 * 3600000);
+      // アクセス禁止 and BAN that have run out
+      q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE banned = 1 AND ban_until > 0 AND ban_until <= ?").run(Date.now());
       // 観戦ベット whose player stopped spinning: the stake goes back
       for (const b of q("SELECT * FROM watch_bets WHERE state = 'open' AND created_at < ?").all(Date.now() - WB.refundMs)) {
         tx(() => {
@@ -1880,6 +2398,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         balanceChanged(b.watcher_id);
       }
       for (const b of q("SELECT * FROM battles WHERE state IN ('invite', 'live')").all()) battleOver(b);
+      // 友達と稼ぐ: old invitations, hubs of one
+      q('DELETE FROM hub_invites WHERE created_at < ?').run(Date.now() - HUB.inviteMs);
+      for (const h of q('SELECT id FROM hubs').all()) settleHub(h.id);
       for (const [k, until] of voiceKept) if (until < Date.now()) voiceKept.delete(k);
       for (const l of Object.values(limit)) l.prune();
       quota.flush();
@@ -1898,10 +2419,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (usedTickets.has(ticket)) return null;
     usedTickets.set(ticket, now + 70000);
     const u = getUser(userId);
-    return u && !u.banned ? userId : null;
+    if (!u) return null;
+    try { allowed(u); } catch { return null; }
+    return userId;
   }
 
-  const admin = createAdmin(db);
+  const admin = createAdmin(db, { seal: (code) => sealText(CODE_KEY, code) });
 
   async function handle(req) {
     const out = await answer(req);
@@ -1944,7 +2467,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     try {
       if (cmd === 'quota') return { ok: true, result: quota.state() };
       const own = hostAdmin ? await hostAdmin(cmd, args) : undefined;
-      return { ok: true, result: own !== undefined ? own : admin.command(cmd, args) };
+      return { ok: true, result: own !== undefined ? own : await admin.command(cmd, args) };
     } catch (e) {
       if (e && e.name === 'AdminError') throw new ApiError(400, 'admin', e.message);
       throw e;
@@ -1960,6 +2483,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     consumeTicket,
     socketCall,
     socketTyping,
+    socketBeat,
     quota,
     close: () => quota.flush()
   };

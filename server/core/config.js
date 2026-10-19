@@ -54,6 +54,10 @@ export function configFrom(env = {}, overrides = {}) {
     quests: flag(env, 'QUESTS', true),
     // The account (user name) that reads the players' feedback (運営へのフィードバック).
     feedbackAdmin: str(env, 'FEEDBACK_ADMIN', 'taku'),
+    // The accounts (user names, comma separated) that may open the operator site (/ops/).
+    operators: str(env, 'OPERATORS', 'taku').split(',').map((s) => s.trim()).filter(Boolean),
+    // Accounts that may be made on one device (0 = no limit).
+    accountsPerDevice: int(env, 'ACCOUNTS_PER_DEVICE', 2),
     // Daily caps (per UTC day, 0 = none): past one, players see the maintenance
     // notice until 00:00 UTC. Cloudflare's own free-plan limits do that by themselves.
     dailyRequestLimit: int(env, 'DAILY_REQUEST_LIMIT', 0),
