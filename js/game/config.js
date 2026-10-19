@@ -99,6 +99,32 @@
     jobSlotEvery: 3,
     // $ for every player who updates the game to a new release (js/game/news.js)
     updateBonus: 250000,
+    // 金の生る木 (js/game/tree.js): money given to a tree (one tap: `amounts`)
+    // makes it earn $ every second: `rate` [given so far, $ a second], a
+    // straight line in between (no jumps), flat after the last. A harvest
+    // `cycle` is picked when it starts and the money waits until it is over:
+    // what grew in it times `mult`. `stages`: the given sum each look starts
+    // at. A SUPER tree pays `superMult` times, for good. More trees come from
+    // the auctions (`markets`: the average winning price for the 2nd tree and
+    // for every one after it), at most `max`.
+    tree: {
+      amounts: [5000, 10000, 20000, 50000, 100000],
+      rate: [[0, 5], [150000, 10], [200000, 12], [500000, 14], [1500000, 15], [3000000, 18], [6000000, 20], [10000000, 21]],
+      cycles: [
+        { id: '30m', name: '30分', ms: 1800000, mult: 1 },
+        { id: '2h', name: '2時間', ms: 7200000, mult: 1.1 },
+        { id: '1d', name: '1日', ms: 86400000, mult: 1.2 },
+        { id: '1w', name: '1週間', ms: 604800000, mult: 1.6 }
+      ],
+      stages: [0, 150000, 200000, 500000, 1500000, 3000000, 6000000, 10000000, 20000000],
+      superMult: 1.1,
+      max: 8,
+      markets: {
+        seed: { name: '木の種市場', second: 10200000, more: 21300000 },
+        grown: { name: '成長した木市場', second: 12100000, more: 22100000 }
+      },
+      superChance: 0.12
+    },
     // 友達と稼ぐ: friends invited from the friend list play together in a hub
     // of up to `max` players (each on their own reels, which the others do not
     // see; nobody leaves unless they press 抜ける, a hub of one closes). While

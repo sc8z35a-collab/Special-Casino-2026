@@ -26,6 +26,7 @@ import { createPeter, reservedName } from './peter.js';
 import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
 import { readQuests, stepQuests, claimQuests, questsReady, questView } from './quests.js';
 import { createOps } from './ops.js';
+import { createTrees } from './tree.js';
 
 const PAGE = 50;
 const CURRENCIES = ['tokens', 'dollars'];
@@ -2330,6 +2331,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub
   });
   Object.assign(routes, ops.routes);
+  // 金の生る木
+  const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
+  Object.assign(routes, trees.routes);
 
   const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login']);
 

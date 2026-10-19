@@ -311,13 +311,44 @@ export const MIGRATIONS = [
        PRIMARY KEY (user_id, device)
      )`,
     'CREATE INDEX devices_device ON devices(device)'
+  ],
+  // v8: 金の生る木: the trees (what was given, the harvest cycle running, the
+  // money grown in it so far) and the auctions for more trees
+  [
+    `CREATE TABLE trees (
+       id         INTEGER PRIMARY KEY,
+       user_id    INTEGER NOT NULL,
+       name       TEXT    NOT NULL,
+       super      INTEGER NOT NULL DEFAULT 0,
+       given      INTEGER NOT NULL DEFAULT 0,
+       cycle      TEXT    NOT NULL DEFAULT '',
+       cycle_at   INTEGER NOT NULL DEFAULT 0,
+       cycle_end  INTEGER NOT NULL DEFAULT 0,
+       grown      REAL    NOT NULL DEFAULT 0,
+       grown_at   INTEGER NOT NULL DEFAULT 0,
+       harvested  INTEGER NOT NULL DEFAULT 0,
+       price      INTEGER NOT NULL DEFAULT 0,
+       created_at INTEGER NOT NULL
+     )`,
+    'CREATE INDEX trees_user ON trees(user_id)',
+    `CREATE TABLE tree_auctions (
+       id         INTEGER PRIMARY KEY,
+       user_id    INTEGER NOT NULL,
+       market     TEXT    NOT NULL,
+       state      TEXT    NOT NULL,
+       status     TEXT    NOT NULL DEFAULT 'live',
+       price      INTEGER NOT NULL DEFAULT 0,
+       created_at INTEGER NOT NULL,
+       ended_at   INTEGER NOT NULL DEFAULT 0
+     )`,
+    'CREATE INDEX tree_auctions_user ON tree_auctions(user_id, status)'
   ]
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
-  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'meta'];
+  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
