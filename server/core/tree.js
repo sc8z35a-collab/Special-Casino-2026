@@ -92,7 +92,8 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged }) {
       expected: c ? Math.floor((grown + Math.max(0, t.cycle_end - now) / 1000 * rate) * mult) : 0,
       ready: !!c && now >= t.cycle_end,
       harvested: t.harvested,
-      price: t.price
+      price: t.price,
+      at: now            // the server time all this is for (the game counts on from it)
     };
   }
   function saveGrowth(t, now) {

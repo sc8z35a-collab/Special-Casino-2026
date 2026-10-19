@@ -46,7 +46,6 @@
     css += '.ic-menu{background-image:' + url(soc.buttons.menu) + '}\n';
     css += '.ic-quest,.q-icon,.qn-icon{background-image:' + url(soc.buttons.quest) + '}\n';
     css += '.ic-tree{background-image:' + url(soc.buttons.tree) + '}\n';
-    css += '.tree-art{background-image:' + url(soc.treeBig) + '}\n';
     css += '.av-chain{background-image:' + url(soc.chain) + '}\n';
     css += '.sale-badge{background-image:' + url(soc.sale) + '}\n';
     if (soc.items.omamori) css += '.charm-pic{background-image:' + url(soc.items.omamori) + '}\n';
@@ -566,8 +565,12 @@
     }
     press($('#btn-get'), nav('tokens'));
     press($('#btn-rules'), nav('rules'));
-    // 金の生る木: its own screen (coming soon)
-    press($('#btn-tree'), nav('tree'));
+    // 金の生る木 (online)
+    press($('#btn-tree'), function () {
+      if (game.busy()) { BR.sfx.play('deny'); return; }
+      BR.sfx.play('click');
+      BR.tree.open();
+    });
     press($('#w-plus'), function () {
       if (BR.screens.current() === 'tokens') return;
       nav('tokens')();
@@ -679,6 +682,7 @@
     BR.bonus.init();
     BR.quests.init();
     BR.jobs.init();
+    BR.tree.init();
     BR.news.init();
     BR.call.init();
     BR.watch.init();

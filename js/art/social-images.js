@@ -39,8 +39,12 @@
       menu: 'img/ui/menu.webp',
       tree: 'img/ui/money-tree.webp'
     },
-    // 金の生る木 (coming soon): its screen
-    treeBig: 'img/ui/money-tree-big.webp',
+    // 金の生る木: its nine looks, and the seed sold at the auctions
+    tree: {
+      stages: ['img/tree/stage-1.webp', 'img/tree/stage-2.webp', 'img/tree/stage-3.webp', 'img/tree/stage-4.webp', 'img/tree/stage-5.webp',
+        'img/tree/stage-6.webp', 'img/tree/stage-7.webp', 'img/tree/stage-8.webp', 'img/tree/stage-9.webp'],
+      seed: 'img/tree/seed.webp'
+    },
     // バイト
     jobs: {
       garage: 'img/jobs/garage.webp'

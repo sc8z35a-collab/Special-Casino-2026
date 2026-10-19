@@ -217,6 +217,16 @@
     collectJobs: function () { return post('/api/jobs/collect'); },
     release: function (n) { return post('/api/release', { release: n }); },
 
+    /* 金の生る木 and its auctions */
+    trees: function () { return get('/api/tree'); },
+    treeGive: function (tree, amount) { return post('/api/tree/give', { tree: tree, amount: amount }); },
+    treeStart: function (tree, cycle) { return post('/api/tree/start', { tree: tree, cycle: cycle }); },
+    treeHarvest: function (tree, next) { return post('/api/tree/harvest', { tree: tree, next: next }); },
+    auction: function () { return get('/api/tree/auction'); },
+    auctionStart: function (market) { return post('/api/tree/auction/start', { market: market }); },
+    auctionBid: function (steps) { return post('/api/tree/auction/bid', { steps: steps }); },
+    auctionLeave: function () { return post('/api/tree/auction/leave'); },
+
     loginBonus: function () { return post('/api/login-bonus'); },
     ticket: function () { return post('/api/stream-ticket'); }
   };

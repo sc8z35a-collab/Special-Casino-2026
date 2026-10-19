@@ -115,6 +115,7 @@
     meChanged();
     BR.quests.reset();
     BR.jobs.reset();
+    if (BR.tree) BR.tree.reset();
     BR.entry.close();
     closeGroupForm();
     K.closeModals();

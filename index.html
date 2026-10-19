@@ -98,7 +98,7 @@
 
       <button id="btn-radio" class="hud-circle hud-radio pic" aria-label="メニュー（フレンド・メッセージ・Car Owner・Shop・バイト）"><i class="ic ic-menu"></i><b class="hud-badge" id="radio-badge" hidden></b></button>
       <button id="btn-quest" class="hud-circle hud-quest pic" aria-label="クエスト"><i class="ic ic-quest"></i><b class="hud-badge" id="quest-badge" hidden></b></button>
-      <button id="btn-tree" class="hud-circle hud-tree pic" aria-label="金の生る木（近日公開）"><i class="ic ic-tree"></i><b class="hud-soon">近日公開</b></button>
+      <button id="btn-tree" class="hud-circle hud-tree pic" aria-label="金の生る木"><i class="ic ic-tree"></i><b class="hud-badge" id="tree-badge" hidden></b></button>
       <!-- the top middle: the update reminder, then フレンド対決 / 協力スロット (js/ui/play.js) -->
       <div class="mode-stack" id="mode-stack">
         <div class="home-note" id="update-note" hidden><span id="update-note-text">新しいバージョンがあります。今すぐアップデートできます。</span><button class="mini-btn gold" id="update-note-go"><span>今すぐアップデート</span></button></div>
@@ -178,21 +178,36 @@
       </div>
     </section>
 
-    <!-- ===================== 金の生る木 (coming soon) ===================== -->
+    <!-- ===================== 金の生る木 (js/ui/tree.js) ===================== -->
     <section id="screen-tree" class="screen" aria-label="金の生る木">
       <button class="back-btn back-jp" data-action="back"><i class="ic ic-back"></i><span>戻る</span></button>
-      <div class="tree-scene">
-        <div class="tree-glow"></div>
-        <div class="tree-coins" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        <div class="tree-art" role="img" aria-label="金の生る木"></div>
+      <!-- one tab a tree, then the auctions -->
+      <div class="tabs tree-tabs" id="tree-tabs"></div>
+      <div class="board-pane tree-pane" id="tree-pane">
+        <div class="tr-scene">
+          <div class="tr-glow"></div>
+          <div class="tr-coins" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <img class="tr-art" id="tr-art" alt="" draggable="false">
+          <div class="tr-name"><span class="tr-super" id="tr-super" hidden>SUPER</span><b class="uname" id="tr-name"></b></div>
+          <div class="tr-look">
+            <div class="tr-look-head"><span>見た目</span><b id="tr-look"></b><small id="tr-look-next"></small></div>
+            <div class="tr-bar"><i id="tr-look-bar"></i></div>
+          </div>
+        </div>
+        <div class="tr-side">
+          <div class="tr-card tr-grow">
+            <div class="tr-card-head">
+              <h3>お金をあげて育てる</h3>
+              <div class="tr-rate"><small>毎秒</small><i class="ic ic-dollar"></i><b id="tr-rate"></b></div>
+            </div>
+            <div class="tr-given"><span>あげた合計</span><i class="ic ic-dollar"></i><b id="tr-given"></b><small id="tr-rate-next"></small></div>
+            <div class="tr-amounts" id="tr-amounts"></div>
+            <button class="act-btn gold tr-give" id="tr-give" type="button"></button>
+          </div>
+          <div class="tr-card tr-harvest" id="tr-harvest"></div>
+        </div>
       </div>
-      <div class="tree-info">
-        <div class="tree-soon">COMING SOON</div>
-        <h2 class="tree-title">金の生る木</h2>
-        <p class="tree-badge">近日公開</p>
-        <p class="tree-text">お金が実る不思議な木を育てて、収穫できる新機能を準備中です。<br>公開まで楽しみに待っていてください！</p>
-        <button class="act-btn gold tree-back" data-action="back"><span>スロットに戻る</span></button>
-      </div>
+      <div class="board-pane auction-pane" id="auction-pane"></div>
     </section>
 
     <!-- ===================== BOARD SCREEN (online) ===================== -->
@@ -686,6 +701,7 @@
 <script src="js/ui/bonus.js"></script>
 <script src="js/ui/quests.js"></script>
 <script src="js/ui/jobs.js"></script>
+<script src="js/ui/tree.js"></script>
 <script src="js/ui/news.js"></script>
 <script src="js/net/call.js"></script>
 <script src="js/ui/watch.js"></script>
