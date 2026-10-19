@@ -5,11 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#ffffff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>TWO STATE サーバー運営サイト</title>
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="/icons/icon-192.png" type="image/png">
 <link rel="stylesheet" href="ops.css">
 </head>
 <body>
+<div class="frame" id="frame">
 
 <!-- the first time: the operator's name and password -->
 <main class="login" id="login" hidden>
@@ -27,44 +32,106 @@
 <div class="app" id="app" hidden>
   <header class="top">
     <div class="brand"><span class="brand-mark">TS</span><span>TWO STATE</span><small>サーバー運営</small></div>
+    <nav class="tabs" id="tabs">
+      <button class="tab on" data-view="players" type="button">プレイヤー</button>
+      <button class="tab" data-view="reports" type="button">通報<b class="count" id="count-reports" hidden></b></button>
+      <button class="tab" data-view="detections" type="button">検知<b class="count" id="count-detections" hidden></b></button>
+      <button class="tab" data-view="feedback" type="button">報告・意見案<b class="count" id="count-feedback" hidden></b></button>
+      <button class="tab" data-view="log" type="button">ログ</button>
+    </nav>
     <div class="top-right">
       <span class="muted" id="op-name"></span>
       <button class="btn ghost small" id="logout" type="button">ログアウト</button>
     </div>
   </header>
 
-  <section class="summary">
-    <div class="stat"><span>登録プレイヤー</span><b id="sum-total">-</b></div>
-    <div class="stat"><span>オンライン</span><b id="sum-online">-</b></div>
-    <div class="stat"><span>処分中</span><b id="sum-banned">-</b></div>
-    <div class="stat"><span>最終更新</span><b id="sum-at">-</b></div>
-  </section>
-
-  <section class="toolbar">
-    <input class="search" id="search" type="search" placeholder="プレイヤー名で探す" autocomplete="off" spellcheck="false">
-    <div class="chips" id="filters">
-      <button class="chip on" data-filter="all" type="button">すべて</button>
-      <button class="chip" data-filter="online" type="button">オンライン</button>
-      <button class="chip" data-filter="banned" type="button">処分中</button>
+  <!-- the players -->
+  <section class="view" id="view-players">
+    <div class="summary">
+      <div class="stat"><span>登録プレイヤー</span><b id="sum-total">-</b></div>
+      <div class="stat"><span>オンライン</span><b id="sum-online">-</b></div>
+      <div class="stat"><span>返信待ち</span><b id="sum-waiting">-</b></div>
+      <div class="stat"><span>処分中</span><b id="sum-banned">-</b></div>
+      <div class="stat"><span>最終更新</span><b id="sum-at">-</b></div>
     </div>
-    <label class="sort"><span>並び順</span>
-      <select id="sort">
-        <option value="new">登録が新しい順</option>
-        <option value="worth">資産が多い順</option>
-        <option value="seen">最近遊んだ順</option>
-        <option value="play">遊んだ時間が長い順</option>
-      </select>
-    </label>
+    <div class="toolbar">
+      <input class="search" id="search" type="search" placeholder="プレイヤー名で探す" autocomplete="off" spellcheck="false">
+      <div class="chips" id="filters">
+        <button class="chip on" data-filter="all" type="button">すべて</button>
+        <button class="chip" data-filter="online" type="button">オンライン</button>
+        <button class="chip" data-filter="waiting" type="button">返信待ち</button>
+        <button class="chip" data-filter="detected" type="button">検知あり</button>
+        <button class="chip" data-filter="banned" type="button">処分中</button>
+      </div>
+      <label class="sort"><span>並び順</span>
+        <select id="sort">
+          <option value="new">登録が新しい順</option>
+          <option value="worth">資産が多い順</option>
+          <option value="seen">最近遊んだ順</option>
+          <option value="play">遊んだ時間が長い順</option>
+        </select>
+      </label>
+    </div>
+    <p class="hint muted">アイコンをタップすると公式ボットとのチャット、行をタップすると詳細が開きます。</p>
+    <div class="table-wrap">
+      <table class="players">
+        <thead>
+          <tr><th>プレイヤー</th><th>オンライン状況</th><th class="num">資産</th><th>18歳以上</th><th>引き継ぎコード</th><th>パスワード</th><th>処分</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p class="empty muted" id="empty" hidden>該当するプレイヤーはいません</p>
+    </div>
   </section>
 
-  <section class="table-wrap">
-    <table class="players">
-      <thead>
-        <tr><th>プレイヤー</th><th>オンライン状況</th><th class="num">資産</th><th>引き継ぎコード</th><th>パスワード</th><th>処分</th></tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
-    <p class="empty muted" id="empty" hidden>該当するプレイヤーはいません</p>
+  <!-- 通報 -->
+  <section class="view" id="view-reports" hidden>
+    <div class="view-head">
+      <h2>通報</h2>
+      <div class="chips" id="report-filter">
+        <button class="chip on" data-status="open" type="button">未処理</button>
+        <button class="chip" data-status="done" type="button">処理済み</button>
+      </div>
+    </div>
+    <p class="hint muted">受理すると、Ice Smoker公式ボットから通報した人へ選んだ金額と感謝のメッセージが自動で届きます。</p>
+    <div class="cards" id="report-list"></div>
+  </section>
+
+  <!-- 検知 -->
+  <section class="view" id="view-detections" hidden>
+    <div class="view-head">
+      <h2>検知（不適切な言葉）</h2>
+      <div class="chips" id="det-filter">
+        <button class="chip on" data-all="0" type="button">未確認</button>
+        <button class="chip" data-all="1" type="button">すべて</button>
+      </div>
+    </div>
+    <p class="hint muted">相手には検知した部分が *** で届いています。ここでは送られた原文を確認できます（赤い部分が検知した言葉）。</p>
+    <div class="cards" id="det-list"></div>
+  </section>
+
+  <!-- 報告・意見案 -->
+  <section class="view" id="view-feedback" hidden>
+    <div class="view-head">
+      <h2>報告・意見案・フィードバック</h2>
+      <div class="chips" id="fb-filter">
+        <button class="chip on" data-fb="open" type="button">未対応</button>
+        <button class="chip" data-fb="all" type="button">すべて</button>
+      </div>
+    </div>
+    <div class="cards" id="fb-list"></div>
+  </section>
+
+  <!-- ログ -->
+  <section class="view" id="view-log" hidden>
+    <div class="view-head">
+      <h2>運営ログ</h2>
+      <input class="search" id="log-search" type="search" placeholder="名前・内容で探す" autocomplete="off" spellcheck="false">
+    </div>
+    <p class="verify" id="log-verify"></p>
+    <p class="hint muted">運営として行ったこと（メッセージ・送金・処分・通報の処理など）とDEVの更新が、すべて自動で記録されます。記録は消すことも書き換えることもできません。行をタップすると詳細が開きます。</p>
+    <div class="log" id="log-list"></div>
+    <button class="btn wide" id="log-more" type="button" hidden>さらに読み込む</button>
   </section>
 </div>
 
@@ -74,6 +141,56 @@
   <button class="close" id="drawer-close" type="button" aria-label="閉じる">×</button>
   <div id="detail"></div>
 </aside>
+
+<!-- the conversation with the official bot -->
+<div class="chat-back" id="chat" hidden>
+  <section class="chat" aria-label="公式ボットとのチャット">
+    <header class="chat-head">
+      <button class="btn ghost small" id="chat-close" type="button">← 戻る</button>
+      <div class="chat-who" id="chat-who"></div>
+      <div class="chat-acts">
+        <button class="btn small" id="chat-detail" type="button">詳細</button>
+        <button class="btn small primary" id="chat-money" type="button">送金</button>
+      </div>
+    </header>
+    <div class="chat-scroll" id="chat-scroll"><div class="chat-list" id="chat-list"></div></div>
+    <form class="compose" id="compose" novalidate autocomplete="off">
+      <div class="compose-fields">
+        <label class="mini-field"><span>件名</span><input id="c-subject" type="text" maxlength="100" placeholder="例: お問い合わせの件について"></label>
+        <label class="mini-field grow"><span>要件（文字数の制限はありません）</span><textarea id="c-body" rows="3" placeholder="お問い合わせいただき、誠にありがとうございます。"></textarea></label>
+      </div>
+      <div class="compose-side">
+        <button class="btn small ghost" id="c-preview-btn" type="button">送られる文面を見る</button>
+        <button class="btn primary" id="c-send" type="submit">送信</button>
+      </div>
+      <pre class="compose-preview" id="c-preview" hidden></pre>
+      <p class="error" id="c-error" role="alert"></p>
+    </form>
+  </section>
+</div>
+
+<!-- money from the official bot -->
+<div class="dialog-back" id="money" hidden>
+  <form class="dialog" id="money-form" novalidate>
+    <h2 id="money-title">送金</h2>
+    <p class="muted">Ice Smoker公式ボットからドルを送ります（$0〜$10,000,000）。チャットに送金として表示されます。</p>
+    <div class="presets" id="money-presets">
+      <button type="button" data-amount="10000">1万</button>
+      <button type="button" data-amount="100000">10万</button>
+      <button type="button" data-amount="500000">50万</button>
+      <button type="button" data-amount="1000000">100万</button>
+      <button type="button" data-amount="5000000">500万</button>
+      <button type="button" data-amount="10000000">1000万</button>
+    </div>
+    <label class="field"><span>金額（$）</span><input id="money-amount" type="text" inputmode="numeric" autocomplete="off" placeholder="0"></label>
+    <label class="field"><span>ひとこと（任意・チャットに一緒に届きます）</span><textarea id="money-note" rows="2" placeholder="例: ご迷惑をおかけしたお詫びです。"></textarea></label>
+    <p class="error" id="money-error" role="alert"></p>
+    <div class="dialog-acts">
+      <button class="btn ghost" type="button" id="money-cancel">やめる</button>
+      <button class="btn primary" type="submit" id="money-ok">送金する</button>
+    </div>
+  </form>
+</div>
 
 <!-- confirmations and inputs -->
 <div class="dialog-back" id="dialog" hidden>
@@ -90,6 +207,7 @@
 </div>
 
 <div class="toast" id="toast" hidden></div>
+</div>
 
 <script src="ops.js"></script>
 </body>
