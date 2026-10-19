@@ -168,6 +168,19 @@ export function createAdmin(db, { seal = () => '' } = {}) {
         const counts = {};
         for (const t of TABLES) {
           if (t === 'meta') continue;
+          // the operators' log is never deleted: entries missing here are added
+          if (t === 'ops_log') {
+            let n = 0;
+            for (const row of data.tables[t] || []) {
+              if (!['id', 'at', 'actor_id', 'actor_name', 'action', 'target_id', 'target_name', 'summary', 'detail', 'prev_hash', 'hash'].every((c) => c in row)) continue;
+              if (q('SELECT 1 AS x FROM ops_log WHERE id = ?').get(row.id)) continue;
+              q(`INSERT INTO ops_log (id, at, actor_id, actor_name, action, target_id, target_name, summary, detail, prev_hash, hash)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(row.id, row.at, row.actor_id, row.actor_name, row.action, row.target_id, row.target_name, row.summary, row.detail, row.prev_hash, row.hash);
+              n++;
+            }
+            counts[t] = n;
+            continue;
+          }
           q(`DELETE FROM ${t}`).run();
           const rows = data.tables[t] || [];
           for (const row of rows) {

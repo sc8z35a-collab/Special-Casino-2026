@@ -89,6 +89,24 @@
       // asked in the chat: like the first offer when nothing is owed, then 10 %
       chatRate: [[2, 5], [10, 10]]
     },
+    // presents sent in a chat (the picture img/gifts/<id>.webp): the sender
+    // pays `price` $, the friend taps it once to get as much
+    presents: [
+      { id: 'cookie', name: 'クッキー', price: 10000 },
+      { id: 'bear', name: 'クマのぬいぐるみ', price: 50000 },
+      { id: 'snowman', name: '雪だるま', price: 100000 },
+      { id: 'pumpkin', name: 'パンプキンヘッド', price: 250000 },
+      { id: 'diamond', name: 'ダイヤモンド', price: 1000000 }
+    ],
+    // 通報: what kind of trouble
+    reportKinds: [
+      { id: 'spam', name: 'スパム' },
+      { id: 'abuse', name: '暴言' },
+      { id: 'harass', name: '嫌がらせ' },
+      { id: 'conduct', name: '不適切な行動' },
+      { id: 'cheat', name: 'チート' },
+      { id: 'other', name: 'その他' }
+    ],
     // ジョンソン, a friend NPC ($): `gift` (rounded to 1000) every `every` ms to
     // help grow the 金の生る木, and once ever `rescue` when the money (tokens
     // at their price) is under `rescueBelow`; nothing is ever paid back

@@ -24,6 +24,9 @@ import {
 import { createAdmin } from './admin.js';
 import { createPeter, reservedName } from './peter.js';
 import { createJohnson } from './johnson.js';
+import { createOfficial } from './official.js';
+import { createOpsLog } from './opslog.js';
+import { screen as filterText } from './filter.js';
 import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
 import { readQuests, stepQuests, claimQuests, questsReady, questView } from './quests.js';
 import { createOps } from './ops.js';
@@ -210,6 +213,26 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // ジョンソン, a friend: money for the 金の生る木 every 2 days, one rescue
   const johnson = createJohnson({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel });
   johnson.id();
+  // the operators' account in everyone's messages, and the operators' log
+  const official = createOfficial({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel });
+  official.id();
+  const opsLog = createOpsLog({ q });
+  // a new DEV going live is the first entry of its own
+  {
+    const seen = q("SELECT value FROM meta WHERE key = 'ops_log_release'").get();
+    if (!seen || Number(seen.value) !== RELEASE) {
+      opsLog.add({ action: 'release', summary: `DEV${RELEASE} を本番に反映（サーバーが起動）`, detail: { release: RELEASE, previous: seen ? Number(seen.value) : null, host: config.host || '' } });
+      q("INSERT INTO meta (key, value) VALUES ('ops_log_release', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(RELEASE));
+    }
+  }
+
+  // What the chat filter found in a player's words (server/core/filter.js): the
+  // operators see the original, the other player only the *** version.
+  function detected(u, f, { to = 0, group = 0, place, original, messageId = 0 }) {
+    if (!f.words.length) return;
+    q(`INSERT INTO detections (sender_id, recipient_id, group_id, place, original, masked, words, message_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(u.id, to, group, place, original, f.masked, JSON.stringify(f.words), messageId, Date.now());
+  }
 
   /* ----- quests (js/game/quests.js), XP, バイト ----- */
 
@@ -332,12 +355,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // the beginner guide: everyone under 30 minutes of play until they finish it
       guide: !u.guide_done && u.play_ms < GUIDE_MS,
       feedback: feedbackState(u),
-      feedbackAdmin: isFeedbackAdmin(u),
-      feedbackCount: isFeedbackAdmin(u) ? feedbackCount() : 0,
+      // the feedback is read on the operator site (no account in the game reads it)
+      feedbackAdmin: false,
+      feedbackCount: 0,
       // the group whose 協力スロット table the player sits at (0: none)
       coop: u.coop_group || 0,
       // may open the operator site (/ops/)
       operator: config.operators.some((n) => nameKey(n) === u.name_key),
+      // 18歳以上？ (null: not answered yet)
+      age: u.age_ok === null || u.age_ok === undefined ? null : !!u.age_ok,
       createdAt: u.created_at
     };
   }
@@ -438,17 +464,19 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       text: m.body,
       amount: m.amount ?? null,
       currency: m.currency ?? null,
+      claimed: m.kind === 'present' ? !!m.claimed_at : undefined,
       at: m.created_at
     };
   }
 
-  function insertMessage({ channel, sender, recipient = null, kind, body = '', amount = null, currency = null }) {
+  // `held`: the recipient blocked the sender; it reaches them once they unblock
+  function insertMessage({ channel, sender, recipient = null, kind, body = '', amount = null, currency = null, held = false }) {
     const now = Date.now();
-    const r = q('INSERT INTO messages (channel, sender_id, recipient_id, kind, body, amount, currency, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(channel, sender ? sender.id : 0, recipient, kind, body, amount, currency, now);
+    const r = q('INSERT INTO messages (channel, sender_id, recipient_id, kind, body, amount, currency, held, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(channel, sender ? sender.id : 0, recipient, kind, body, amount, currency, held ? 1 : 0, now);
     return {
       id: Number(r.lastInsertRowid), channel, sender_id: sender ? sender.id : 0, sender_name: sender ? sender.name : null,
-      sender_avatar: sender ? sender.avatar : null, recipient_id: recipient, kind, body, amount, currency, created_at: now
+      sender_avatar: sender ? sender.avatar : null, recipient_id: recipient, kind, body, amount, currency, claimed_at: 0, held: held ? 1 : 0, created_at: now
     };
   }
 
@@ -460,6 +488,36 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
                   unread = conversations.unread + excluded.unread, updated_at = excluded.updated_at`);
     up.run(a, b, msgId, unreadFor === a ? 1 : 0, now);
     up.run(b, a, msgId, unreadFor === b ? 1 : 0, now);
+  }
+  // only the sender's side (a message kept back by the other's block)
+  function touchOwn(a, b, msgId) {
+    q(`INSERT INTO conversations (user_id, other_id, last_id, unread, updated_at) VALUES (?, ?, ?, 0, ?)
+       ON CONFLICT(user_id, other_id) DO UPDATE SET last_id = excluded.last_id, updated_at = excluded.updated_at`).run(a, b, msgId, Date.now());
+  }
+  function sendOwn(m, from) {
+    const dto = msgDto(m);
+    live.send(from, 'msg', dto);
+    return dto;
+  }
+  // Unblocking: what was kept back arrives now, as it would have (money too).
+  function releaseHeld(userId, otherId) {
+    const channel = dmChannel(userId, otherId);
+    const rows = q('SELECT * FROM messages WHERE channel = ? AND held = 1 AND recipient_id = ? ORDER BY id').all(channel, userId);
+    if (!rows.length) return 0;
+    tx(() => {
+      q('UPDATE messages SET held = 0 WHERE channel = ? AND held = 1 AND recipient_id = ?').run(channel, userId);
+      for (const m of rows) {
+        if (m.kind !== 'transfer' || !CURRENCIES.includes(m.currency) || !(m.amount > 0)) continue;
+        q(`UPDATE users SET ${m.currency} = ${m.currency} + ?, rev = rev + 1 WHERE id = ?`).run(m.amount, userId);
+        q('INSERT INTO transfers (from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?)').run(otherId, userId, m.currency, m.amount, Date.now());
+      }
+      const last = rows[rows.length - 1].id;
+      q(`INSERT INTO conversations (user_id, other_id, last_id, unread, updated_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, other_id) DO UPDATE SET last_id = MAX(conversations.last_id, excluded.last_id),
+         unread = conversations.unread + excluded.unread, updated_at = excluded.updated_at`).run(userId, otherId, last, rows.length, Date.now());
+    });
+    if (rows.some((m) => m.kind === 'transfer')) balanceChanged(userId);
+    return rows.length;
   }
 
   function unreadTotal(userId) {
@@ -1104,6 +1162,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       itemShop: itemShop(),
       peter: peter.me(),
       johnson: johnson.me(),
+      official: official.me(),
       online: live.onlineCount(),
       now: Date.now(),
       nextReset: nextUtcMidnight(),
@@ -1301,7 +1360,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (t.id === u.id) throw new ApiError(400, 'self', '自分には申請できません');
       if (t.npc) throw new ApiError(403, 'npc', `${t.name}にはフレンド申請できません`);
       if (areFriends(u.id, t.id)) throw new ApiError(409, 'already', 'すでにフレンドです');
-      if (isBlocked(t.id, u.id) || isBlocked(u.id, t.id)) throw new ApiError(403, 'blocked', 'このプレイヤーには申請できません');
+      if (isBlocked(u.id, t.id)) throw new ApiError(403, 'blocked', 'ブロック中のプレイヤーには申請できません');
+      if (isBlocked(t.id, u.id)) return { friendship: 'outgoing', user: mini(t) };
       // they already asked us: that makes us friends
       if (hasRequest(t.id, u.id)) return { friendship: 'friends', user: mini(t), ...makeFriends(t, u) };
       if (hasRequest(u.id, t.id)) throw new ApiError(409, 'pending', 'すでに申請しています。承認されるまでお待ちください');
@@ -1382,7 +1442,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const beforeRaw = Number(req.query.get('before'));
       const before = Number.isSafeInteger(beforeRaw) && beforeRaw > 0 ? beforeRaw : Number.MAX_SAFE_INTEGER;
       const rows = q(`SELECT m.*, s.name AS sender_name, s.avatar AS sender_avatar FROM messages m LEFT JOIN users s ON s.id = m.sender_id
-                      WHERE m.channel = ? AND m.id < ? ORDER BY m.id DESC LIMIT ?`).all(channel, before, PAGE);
+                      WHERE m.channel = ? AND m.id < ? AND NOT (m.held = 1 AND m.recipient_id = ?) ORDER BY m.id DESC LIMIT ?`).all(channel, before, u.id, PAGE);
       return { channel, messages: rows.reverse().map(msgDto), hasMore: rows.length === PAGE, ...extra };
     },
 
@@ -1392,12 +1452,19 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (body.group !== undefined) {
         const g = myGroup(u.id, posInt(body.group, 'グループ'));
         rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
-        const message = postToGroup(g, u, 'text', text);
+        const f = filterText(text);
+        const message = postToGroup(g, u, 'text', f.masked);
+        detected(u, f, { group: g.id, place: 'group:' + g.name, original: text, messageId: message.id });
         track(u.id, [['chat', 1]]);
         return { message };
       }
       const to = posInt(body.to, '宛先');
       if (to === u.id) throw new ApiError(400, 'self', '自分にはメッセージを送れません');
+      // to the operators (any length: a 報告 or an 意見案 can be long)
+      if (official.is(to)) {
+        rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
+        return { message: official.fromPlayer(u, cleanText(body.text, official.LONG)) };
+      }
       if (peter.is(to)) {
         rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
         return peter.chat(u, text);
@@ -1408,14 +1475,19 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       }
       liveTarget(to);
       requireFriend(u, to, 'メッセージを送れるように');
-      if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーにはメッセージを送れません');
       rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
+      // the filter: the other player gets *** for what it found
+      const f = filterText(text);
+      // blocked by them: sent as far as the sender can tell, kept back from them
+      const held = isBlocked(to, u.id);
       const m = tx(() => {
-        const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'text', body: text });
-        touchConversations(u.id, to, row.id);
+        const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'text', body: f.masked, held });
+        if (held) touchOwn(u.id, to, row.id);
+        else touchConversations(u.id, to, row.id);
         return row;
       });
-      const message = deliverDm(m, u.id, to);
+      detected(u, f, { to, place: 'dm', original: text, messageId: m.id });
+      const message = held ? sendOwn(m, u.id) : deliverDm(m, u.id, to);
       track(u.id, [['chat', 1]]);
       return { message };
     },
@@ -1499,8 +1571,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (to === u.id) throw new ApiError(400, 'self', '自分には送金できません');
       liveTarget(to);
       requireFriend(u, to, '送金');
-      if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーには送金できません');
       rate(limit.transfer, u.id, '送金が続いています。少し待ってからお試しください');
+      // blocked by them: the money leaves now and reaches them when they unblock
+      const held = isBlocked(to, u.id);
       const m = tx(() => {
         const cur = getUser(u.id);
         if (cur[currency] < amount) {
@@ -1508,17 +1581,20 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         }
         // `currency` is one of CURRENCIES, so it is safe as a column name
         q(`UPDATE users SET ${currency} = ${currency} - ?, rev = rev + 1 WHERE id = ?`).run(amount, u.id);
-        q(`UPDATE users SET ${currency} = ${currency} + ?, rev = rev + 1 WHERE id = ?`).run(amount, to);
-        q('INSERT INTO transfers (from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?)').run(u.id, to, currency, amount, Date.now());
-        const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'transfer', amount, currency });
-        touchConversations(u.id, to, row.id);
+        if (!held) {
+          q(`UPDATE users SET ${currency} = ${currency} + ?, rev = rev + 1 WHERE id = ?`).run(amount, to);
+          q('INSERT INTO transfers (from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?)').run(u.id, to, currency, amount, Date.now());
+        }
+        const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'transfer', amount, currency, held });
+        if (held) touchOwn(u.id, to, row.id);
+        else touchConversations(u.id, to, row.id);
         return row;
       });
-      balanceChanged(to);
+      if (!held) balanceChanged(to);
       // 送金 quests count it in $ (spin tokens at their price)
       track(u.id, [['sent', currency === 'tokens' ? amount * RULES.tokenPrice : amount]]);
       balanceChanged(u.id);
-      const dto = deliverDm(m, u.id, to);
+      const dto = held ? sendOwn(m, u.id) : deliverDm(m, u.id, to);
       afterSpend(u.id);
       return { balance: balance(getUser(u.id)), message: dto };
     },
@@ -1619,17 +1695,20 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const target = getUser(id);
       if (!target) throw new ApiError(404, 'not_found', 'ユーザーが見つかりません');
       if (target.npc) throw new ApiError(400, 'npc', `${target.name}はブロックできません`);
+      // A silent block: the other player is not told and can go on as before
+      // (messages, money, presents, calls, invitations all seem to go out),
+      // but nothing reaches the one who blocked; what was sent meanwhile
+      // arrives when they unblock.
+      let released = 0;
       if (body.blocked) {
         q('INSERT OR IGNORE INTO blocks (user_id, blocked_id, created_at) VALUES (?, ?, ?)').run(u.id, id, Date.now());
-        // blocking also ends a friendship and any pending request
-        if (unfriend(u.id, id)) live.send(id, 'friend', { type: 'removed', user: mini(u) });
+        q('DELETE FROM friend_requests WHERE from_id = ? AND to_id = ?').run(id, u.id);
+        q('DELETE FROM hub_invites WHERE from_id = ? AND to_id = ?').run(id, u.id);
       } else {
         q('DELETE FROM blocks WHERE user_id = ? AND blocked_id = ?').run(u.id, id);
+        released = releaseHeld(u.id, id);
       }
-      // in the same hub: the voice between them goes (or comes back)
-      const ma = memberRow(u.id), mb = memberRow(id);
-      if (ma && mb && ma.hub_id === mb.hub_id) live.send(id, 'hub', { type: 'voice', user: u.id, off: !!body.blocked || isBlocked(id, u.id) });
-      return { blocked: !!body.blocked };
+      return { blocked: !!body.blocked, released, unread: unreadTotal(u.id) };
     },
 
     /* ----- voice chat signalling (the home call) ----- */
@@ -1709,8 +1788,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const body = await req.json();
       const room = posInt(body.room, 'ホーム');
       if (room !== u.id && watching(u.id) !== room) throw new ApiError(409, 'not_home', 'ホームにいません');
-      const text = cleanText(body.text, 200);
+      const raw = cleanText(body.text, 200);
       rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
+      const f = filterText(raw);
+      const text = f.masked;
+      detected(u, f, { to: room, place: room === u.id ? 'home' : 'home:' + room, original: raw });
       const message = { id: `${Date.now().toString(36)}-${++homeChatSeq}`, room, from: mini(u), text, at: Date.now() };
       homeChats.set(room, homeChatOf(room).concat(message).slice(-HOME_CHAT_KEEP));
       live.send(room, 'homechat', message);
@@ -2126,6 +2208,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (hubMemberRows(h.id).length >= HUB.max) throw new ApiError(409, 'full', `ハブは満員です（最大${HUB.max}人）`);
       }
       const now = Date.now();
+      if (isBlocked(to, u.id)) return { ok: true, until: now + HUB.inviteMs };
       q(`INSERT INTO hub_invites (from_id, to_id, created_at) VALUES (?, ?, ?)
          ON CONFLICT(from_id, to_id) DO UPDATE SET created_at = excluded.created_at`).run(u.id, to, now);
       live.send(to, 'hub', { type: 'invite', from: mini(u), size: h ? hubMemberRows(h.id).length : 1, until: now + HUB.inviteMs });
@@ -2198,11 +2281,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const text = cleanText(body.text, 200);
       const a = memberRow(u.id), b = memberRow(to);
       if (!a || !b || a.hub_id !== b.hub_id || to === u.id) throw new ApiError(409, 'not_hub', '同じ「友達と稼ぐ」にいる人にだけ送れます');
-      if (isBlocked(to, u.id) || isBlocked(u.id, to)) throw new ApiError(403, 'blocked', 'このプレイヤーには送れません');
       rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
       touchActive(u.id, Date.now(), false);
-      const line = { from: mini(u), to, text, at: Date.now() };
-      live.send(to, 'hub', { type: 'say', ...line });
+      const f = filterText(text);
+      detected(u, f, { to, place: 'hub', original: text });
+      const line = { from: mini(u), to, text: f.masked, at: Date.now() };
+      if (!isBlocked(to, u.id) && !isBlocked(u.id, to)) live.send(to, 'hub', { type: 'say', ...line });
       track(u.id, [['chat', 1]]);
       return { line };
     },
@@ -2229,14 +2313,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         q('INSERT INTO feedback (user_id, ratings, comment, created_at) VALUES (?, ?, ?, ?)').run(u.id, JSON.stringify(ratings), comment, Date.now());
         q('UPDATE users SET feedback = 2 WHERE id = ?').run(u.id);
       });
-      const admin = FEEDBACK_ADMIN ? q('SELECT id FROM users WHERE name_key = ?').get(FEEDBACK_ADMIN) : null;
-      if (admin) live.send(admin.id, 'feedback', { count: feedbackCount(), from: mini(u) });
+      // (read on the operator site now, not by an account in the game)
       return { me: meDto(getUser(u.id)) };
     },
 
-    // the answers: only the operator's account (FEEDBACK_ADMIN, "taku") sees them
+    // the answers (the operator site shows them now: GET /api/ops/feedback)
     'GET /api/feedback': (req, u) => {
-      if (!isFeedbackAdmin(u)) throw new ApiError(403, 'forbidden', 'このページは見られません');
+      if (!ops.isOperator(u)) throw new ApiError(403, 'forbidden', 'このページは見られません');
       const rows = q(`SELECT f.id, f.ratings, f.comment, f.created_at, o.id AS uid, o.name, o.avatar FROM feedback f
                       LEFT JOIN users o ON o.id = f.user_id ORDER BY f.id DESC LIMIT 500`).all();
       const list = rows.map((r) => ({ id: r.id, user: { id: r.uid, name: r.name, avatar: r.avatar }, ratings: readRatings(r.ratings), comment: r.comment, at: r.created_at }));
@@ -2246,6 +2329,114 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         average[k] = v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10 : null;
       }
       return { feedback: list, count: feedbackCount(), average };
+    },
+
+    /* ----- the age check, presents, 通報, 報告 / 意見案 ----- */
+
+    // 18歳以上？ answered once (nothing is limited by it for now)
+    'POST /api/age': async (req, u) => {
+      const body = await req.json();
+      if (typeof body.adult !== 'boolean') throw new ApiError(400, 'bad_answer', '「はい」か「いいえ」を選んでください');
+      q('UPDATE users SET age_ok = ?, age_at = ? WHERE id = ? AND age_ok IS NULL').run(body.adult ? 1 : 0, Date.now(), u.id);
+      return { me: meDto(getUser(u.id)) };
+    },
+
+    // a present in the chat: paid now, worth its price to the friend who taps it
+    'POST /api/present': async (req, u) => {
+      const body = await req.json();
+      const to = posInt(body.to, '宛先');
+      const p = RULES.presents.find((x) => x.id === String(body.id || ''));
+      if (!p) throw new ApiError(400, 'bad_present', 'プレゼントを選んでください');
+      if (to === u.id) throw new ApiError(400, 'self', '自分には贈れません');
+      const t = liveTarget(to);
+      if (t.npc) throw new ApiError(400, 'npc', `${t.name}には贈れません`);
+      requireFriend(u, to, 'プレゼントを贈れるように');
+      rate(limit.transfer, u.id, '続けて贈れません。少し待ってからお試しください');
+      const held = isBlocked(to, u.id);
+      const m = tx(() => {
+        const cur = getUser(u.id);
+        if (cur.dollars < p.price) throw new ApiError(409, 'insufficient', '$が足りません');
+        q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(p.price, u.id);
+        const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'present', body: p.id, amount: p.price, currency: 'dollars', held });
+        if (held) touchOwn(u.id, to, row.id);
+        else touchConversations(u.id, to, row.id);
+        return row;
+      });
+      track(u.id, [['sent', p.price]]);
+      balanceChanged(u.id);
+      const message = held ? sendOwn(m, u.id) : deliverDm(m, u.id, to);
+      afterSpend(u.id);
+      return { balance: balance(getUser(u.id)), message };
+    },
+
+    // the friend taps the present: once, its price comes in
+    'POST /api/present/claim': async (req, u) => {
+      const body = await req.json();
+      const id = posInt(body.message, 'プレゼント');
+      const r = tx(() => {
+        const m = q('SELECT * FROM messages WHERE id = ?').get(id);
+        if (!m || m.kind !== 'present' || m.recipient_id !== u.id || m.held) throw new ApiError(404, 'no_present', 'このプレゼントは受け取れません');
+        if (m.claimed_at) throw new ApiError(409, 'claimed', 'このプレゼントはもう受け取りました');
+        q('UPDATE messages SET claimed_at = ? WHERE id = ? AND claimed_at = 0').run(Date.now(), m.id);
+        q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(m.amount, u.id);
+        q('INSERT INTO transfers (from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?)').run(m.sender_id, u.id, 'dollars', m.amount, Date.now());
+        return q('SELECT m.*, s.name AS sender_name, s.avatar AS sender_avatar FROM messages m LEFT JOIN users s ON s.id = m.sender_id WHERE m.id = ?').get(m.id);
+      });
+      balanceChanged(u.id);
+      const dto = msgDto(r);
+      // both ends see it was received (on every device)
+      live.send(r.sender_id, 'present', { id: r.id, claimed: true, by: u.id });
+      live.send(u.id, 'present', { id: r.id, claimed: true, by: u.id });
+      return { paid: r.amount, balance: balance(getUser(u.id)), message: dto };
+    },
+
+    // 通報: friends or not (from a profile, a hub, the search); everything
+    // the operators need goes with it
+    'POST /api/report': async (req, u) => {
+      const body = await req.json(1024 * 1024);
+      const id = posInt(body.user, 'プレイヤー');
+      if (id === u.id) throw new ApiError(400, 'self', '自分は通報できません');
+      const t = getUser(id);
+      if (!t) throw new ApiError(404, 'not_found', 'プレイヤーが見つかりません');
+      if (t.npc) throw new ApiError(400, 'npc', `${t.name}は通報できません`);
+      const kind = RULES.reportKinds.find((k) => k.id === String(body.kind || ''));
+      if (!kind) throw new ApiError(400, 'bad_kind', '通報の種類を選んでください');
+      const text = String(body.text ?? '').trim() ? cleanText(body.text, 50000) : '';
+      if (!text) throw new ApiError(400, 'empty', 'どのようなトラブルがあったか書いてください');
+      rate(limit.friend, u.id, '通報が続いています。少し待ってからお試しください');
+      const place = ['profile', 'hub', 'search', 'chat'].includes(body.place) ? body.place : 'profile';
+      const ma = memberRow(u.id), mb = memberRow(t.id);
+      const recent = q(`SELECT m.*, s.name AS sender_name FROM messages m LEFT JOIN users s ON s.id = m.sender_id WHERE m.channel = ?
+                        ORDER BY m.id DESC LIMIT 30`).all(dmChannel(u.id, t.id)).reverse()
+        .map((m) => ({ id: m.id, from: m.sender_name, kind: m.kind, text: m.body, amount: m.amount, at: m.created_at }));
+      const context = {
+        target: {
+          id: t.id, name: t.name, level: LEVEL.of(t.xp), dollars: t.dollars, tokens: t.tokens, createdAt: t.created_at, lastSeen: t.last_seen,
+          online: live.isOnline(t.id), banned: !!t.banned, age: t.age_ok === null ? null : !!t.age_ok
+        },
+        friends: areFriends(u.id, t.id),
+        sameHub: !!(ma && mb && ma.hub_id === mb.hub_id),
+        hub: mb ? mb.hub_id : 0,
+        messages: recent,
+        detections: q('SELECT original, place, created_at FROM detections WHERE sender_id = ? ORDER BY id DESC LIMIT 10').all(t.id),
+        request: { ip: req.ip || '', userAgent: String(req.header('user-agent') || '').slice(0, 300) }
+      };
+      q(`INSERT INTO reports (reporter_id, target_id, kind, body, place, context, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+        .run(u.id, t.id, kind.id, text, place, JSON.stringify(context), Date.now());
+      return { ok: true, message: '今後このようなトラブルがないよう気を付けます。' };
+    },
+
+    // 報告 (a bug, an error, something odd) and 意見案 (an idea): to the
+    // operators, of any length, shown in the chat with the official bot too
+    'POST /api/official/feedback': async (req, u) => {
+      const body = await req.json(1024 * 1024);
+      const kind = body.kind === 'idea' ? 'idea' : body.kind === 'bug' ? 'bug' : '';
+      if (!kind) throw new ApiError(400, 'bad_kind', '報告か意見案を選んでください');
+      const text = String(body.text ?? '').trim() ? cleanText(body.text, official.LONG - 20) : '';
+      if (!text) throw new ApiError(400, 'empty', '内容を書いてください');
+      rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
+      q("INSERT INTO feedback (user_id, ratings, comment, kind, created_at) VALUES (?, '{}', ?, ?, ?)").run(u.id, text, kind, Date.now());
+      return { message: official.fromPlayer(u, `【${kind === 'bug' ? '報告' : '意見案'}】\n${text}`) };
     },
 
     // (each connection also notes the device the account is used on)
@@ -2271,8 +2462,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (type === 'hub') {
       const a = memberRow(u.id), b = memberRow(to);
       if (!room || !a || !b || a.hub_id !== room || b.hub_id !== room) throw new ApiError(409, 'not_hub', 'ハブで話せる相手ではありません');
-      // a block cuts the voice both ways (they stay in the hub)
-      if (isBlocked(to, u.id) || isBlocked(u.id, to)) throw new ApiError(403, 'blocked', 'このプレイヤーとは話せません');
+      // a block cuts the voice both ways (they stay in the hub), without a word
+      // to the one who was blocked: their call just never connects
+      if (isBlocked(to, u.id) || isBlocked(u.id, to)) return;
     } else if (!room || !inVoice(u.id, room) || !inVoice(to, room)) {
       throw new ApiError(409, 'not_home', 'ホームで話せる相手ではありません');
     }
@@ -2348,7 +2540,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   // the operator site (/ops/)
   const ops = createOps({
-    q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub
+    q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub,
+    official, opsLog, balance
   });
   Object.assign(routes, ops.routes);
   // 金の生る木
@@ -2367,7 +2560,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       loginBonus: bonus,
       loginReset: nextLoginReset(),
       me: meDto(u), unread: unreadTotal(userId), friendRequests: pendingRequests(userId), iconShop: iconShop(), itemShop: itemShop(),
-      peter: peter.me(), johnson: johnson.me(), online: live.onlineCount(),
+      peter: peter.me(), johnson: johnson.me(), official: official.me(), online: live.onlineCount(),
       hub: myHub(userId), hubInvites: hubInvites(userId)
     };
   }
@@ -2426,6 +2619,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('DELETE FROM hub_invites WHERE created_at < ?').run(Date.now() - HUB.inviteMs);
       for (const h of q('SELECT id FROM hubs').all()) settleHub(h.id);
       for (const [k, until] of voiceKept) if (until < Date.now()) voiceKept.delete(k);
+      // the official bot: two days without the operators' answer, it answers on its own
+      for (const p of official.autoReplies()) {
+        opsLog.add({ action: 'bot_auto_reply', target: p, summary: `${p.name}さんへ自動返信を送信（2日以上返信がなかったため、メッセージを既読にしました）`, detail: { text: 'AUTO' } });
+      }
       for (const l of Object.values(limit)) l.prune();
       quota.flush();
     } catch (e) {
