@@ -52,9 +52,8 @@ export function configFrom(env = {}, overrides = {}) {
     loginBonus: flag(env, 'LOGIN_BONUS', true),
     // Quest rewards (js/game/quests.js); off only for tests that count money exactly.
     quests: flag(env, 'QUESTS', true),
-    // The account (user name) that reads the players' feedback (運営へのフィードバック).
-    feedbackAdmin: str(env, 'FEEDBACK_ADMIN', 'taku'),
-    // The accounts (user names, comma separated) that may open the operator site (/ops/).
+    // The accounts (user names, comma separated) that may open the operator site (/ops/),
+    // where the players' feedback, 通報 and the official bot's messages are read.
     operators: str(env, 'OPERATORS', 'taku').split(',').map((s) => s.trim()).filter(Boolean),
     // Accounts that may be made on one device (0 = no limit).
     accountsPerDevice: int(env, 'ACCOUNTS_PER_DEVICE', 2),

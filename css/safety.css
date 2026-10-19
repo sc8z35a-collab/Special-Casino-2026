@@ -1,0 +1,132 @@
+/* DEV6 in the game: Ice Smoker公式ボット's chat head, presents, the rule line
+   of the chats, and the overlays of js/ui/safety.js (18歳以上？, 通報, 報告 / 意見案) */
+
+/* ------------------------------------------------------------ the chat (design px) --- */
+.conv-row.official { background: linear-gradient(90deg, rgba(90, 160, 255, .14), transparent 60%); box-shadow: inset 4px 0 0 #5aa0ff; }
+.npc-tag.official { background: rgba(90, 160, 255, .22); color: #bcdcff; }
+.dm-official { flex: none; display: flex; align-items: center; gap: 12px; height: 72px; padding: 0 7px 0 22px; border-radius: 36px; background: rgba(0, 0, 0, .35); box-shadow: inset 0 0 0 1.6px rgba(90, 160, 255, .55); }
+.dm-official-label { font-size: 19px; font-weight: 700; color: #bcdcff; white-space: nowrap; }
+.dm-official .mini-btn { height: 58px; padding: 0 26px; border-radius: 29px; }
+
+/* the faint rule over the message bar */
+.chat-rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 104px;
+  margin: 0;
+  padding: 4px 24px;
+  font-size: 16px;
+  line-height: 22px;
+  color: rgba(225, 210, 214, .42);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.chat-scroll { bottom: 134px; }
+#pane-chat.can-gift .chat-bar { left: 150px; padding-left: 0; }
+.chat-gift {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 150px;
+  height: 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, .28);
+  box-shadow: inset 0 1.6px 0 rgba(225, 205, 210, .25);
+  font-size: 17px;
+  font-weight: 700;
+  color: #ffd6e0;
+  touch-action: manipulation;
+}
+.chat-gift-ring { width: 54px; height: 54px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: linear-gradient(180deg, #ff6f8e, #d8325a); box-shadow: 0 3px 6px rgba(0, 0, 0, .35); }
+.chat-gift .ic { width: 34px; height: 34px; }
+.chat-gift:active .chat-gift-ring { transform: scale(.92); }
+.entry-rule { flex: none; margin: 0; padding: 3px 16px 4px; font-size: 11.5px; line-height: 1.4; color: rgba(225, 210, 214, .45); text-align: center; }
+
+/* ------------------------------------------------------------ presents --- */
+.pr-pic { display: block; width: 120px; height: 120px; background: center / contain no-repeat; }
+.present-modal { width: 1180px; }
+.pr-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px; }
+.pr-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 10px 16px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, .3);
+  box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .16);
+}
+.pr-tile .pr-pic { width: 150px; height: 150px; }
+.pr-tile-name { font-size: 21px; font-weight: 700; white-space: nowrap; }
+.pr-tile-price { display: flex; align-items: center; gap: 6px; font: 800 24px var(--f-num); color: #ffe27a; }
+.pr-tile-price .ic { width: 24px; height: 24px; }
+.pr-tile.on { background: rgba(255, 214, 90, .16); box-shadow: inset 0 0 0 3px #f4dc45, 0 0 18px rgba(244, 220, 69, .35); }
+.pr-tile:disabled { opacity: .4; }
+.pr-tile:not(:disabled):active { transform: scale(.96); }
+.pr-note { min-height: 28px; margin: 20px 0 0; text-align: center; font-size: 20px; color: #c9bdc0; }
+.action-btn.pr-go { position: relative; left: auto; top: auto; display: block; margin: 16px auto 0; }
+
+/* the present in a chat (sized by --u like the other messages) */
+.present-card { display: flex; flex-direction: column; align-items: center; min-width: calc(var(--u) * 380); font: inherit; color: inherit; }
+.present-card .pr-pic { width: calc(var(--u) * 170); height: calc(var(--u) * 170); margin: calc(var(--u) * 8) 0 calc(var(--u) * 4); }
+.pr-worth { display: flex; align-items: center; gap: calc(var(--u) * 8); margin-top: calc(var(--u) * 4); font: 800 calc(var(--u) * 30) var(--f-num); color: #ffe27a; }
+.pr-worth .ic { width: calc(var(--u) * 30); height: calc(var(--u) * 30); }
+.pr-state { margin-top: calc(var(--u) * 10); padding: calc(var(--u) * 6) calc(var(--u) * 20); border-radius: 999px; background: rgba(255, 255, 255, .1); font-size: calc(var(--u) * 19); font-weight: 700; color: #d9cdd0; }
+.msg.present.can-claim .present-card { box-shadow: inset 0 0 0 calc(var(--u) * 3) #f4dc45, 0 calc(var(--u) * 4) calc(var(--u) * 16) rgba(244, 220, 69, .3); }
+.msg.present.can-claim .pr-state { background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; }
+.msg.present.can-claim .present-card:active { transform: scale(.97); }
+.msg.present.claimed .pr-pic { opacity: .75; }
+
+/* ------------------------------------------------------------ the overlays (CSS px) --- */
+.sf-card { text-align: left; }
+.sf-card .ov-title { padding-right: 36px; }
+.sf-lead { margin-top: 2px; }
+.sf-label { margin-top: 4px; font-size: 13.5px; font-weight: 700; color: #ffe27a; }
+.sf-kinds { display: flex; flex-wrap: wrap; gap: 8px; }
+.sf-kind {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, .1);
+  box-shadow: inset 0 0 0 1.4px rgba(255, 255, 255, .25);
+  font-size: 14px;
+  font-weight: 700;
+  color: #f1e7ea;
+  touch-action: manipulation;
+}
+.sf-kind.on { background: linear-gradient(180deg, #f6e04c, #e0bb22); color: #3a2c00; box-shadow: 0 2px 6px rgba(0, 0, 0, .35); }
+.ov-input.sf-text {
+  height: auto;
+  min-height: 140px;
+  margin-top: 0;
+  padding: 10px 12px;
+  line-height: 1.55;
+  text-align: left;
+  resize: none;
+  overflow-y: auto;
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: manipulation;
+}
+.sf-warn { text-align: left; }
+.sf-done-mark { display: block; width: 64px; height: 64px; margin: 10px auto 4px; border-radius: 50%; background: linear-gradient(180deg, #7ee08a, #2fa64a); position: relative; }
+.sf-done-mark::after { content: ''; position: absolute; left: 21px; top: 14px; width: 16px; height: 28px; border: solid #fff; border-width: 0 5px 5px 0; transform: rotate(45deg); }
+.sf-done { margin: 6px 0 10px; font-size: 16px; font-weight: 700; line-height: 1.7; text-align: center; }
+
+/* 18歳以上？ */
+.age-ov { z-index: 1200; }
+.age-card { text-align: center; gap: 12px; }
+.age-en { margin: -4px 0 0; font-size: 15px; font-weight: 700; color: #e3d7da; }
+.age-note { white-space: pre-line; color: #c3b8bb; }
+.age-row { margin-top: 6px; }
+.age-btn { height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.2; }
+.age-btn small { font-size: 12px; font-weight: 700; opacity: .8; }
+.age-row .age-btn, .age-row .age-btn.gold { flex: 1; }

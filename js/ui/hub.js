@@ -469,6 +469,7 @@
     say.disabled = !!cut;
     acts.appendChild(say);
     acts.appendChild(mcButton(blocked && blocked[m.id] ? 'ブロック解除' : 'ブロック', 'block', 'danger'));
+    acts.appendChild(mcButton('通報', 'report', 'danger'));
     root.appendChild(acts);
   }
   // a volume slider drawn by hand (it follows the finger in the scaled stage)
@@ -527,6 +528,7 @@
       }
       case 'say': openChat(m); break;
       case 'block': toggleBlock(m); break;
+      case 'report': closeMember(); BR.safety.report(m, 'hub'); break;
     }
   }
   function toggleBlock(m) {
@@ -534,13 +536,14 @@
     var ask = !on ? Promise.resolve(true) : K.confirmBox(function (p) {
       p.appendChild(K.nameSpan(m.name));
       p.appendChild(document.createTextNode('さんをブロックしますか？'));
-      p.appendChild(el('small', 'confirm-sub', '通話と即席チャットがつながらなくなり、フレンドも解除されます（「友達と稼ぐ」にはそのまま残ります）。'));
+      p.appendChild(el('small', 'confirm-sub', '相手には知らされません。この人の声・即席チャット・メッセージなどがあなたに届かなくなります（フレンドと「友達と稼ぐ」はそのまま。解除するとブロック中のメッセージが届きます）。'));
     }, 'ブロック');
     ask.then(function (ok) {
       if (!ok) return null;
-      return api.block(m.id, on).then(function () {
+      return api.block(m.id, on).then(function (res) {
         blockChanged(m.id, on);
-        toast(on ? m.name + 'さんをブロックしました' : m.name + 'さんのブロックを解除しました');
+        // (the toast, and what arrives when it is lifted: js/ui/social.js)
+        BR.social.blockChanged(m.id, res);
       });
     }).catch(fail);
   }
@@ -589,6 +592,7 @@
       max: 200,
       placeholder: m.name + 'さんにメッセージ',
       feed: chatFeed,
+      rule: true,
       onSubmit: function (text) {
         return api.hubSay(m.id, text).then(function (r) {
           sfx('send');
@@ -753,13 +757,6 @@
         if (a) { a.until = Date.now() - (ev.idle || 0) + IDLE; watchActive(); }
         break;
       }
-      case 'voice':
-        // someone blocked me (or lifted it): their voice goes (or comes back)
-        if (ev.off) noVoice[ev.user] = true; else delete noVoice[ev.user];
-        syncVoice();
-        render();
-        if (mc) fillMember();
-        break;
       case 'say':
         onSay(ev);
         break;

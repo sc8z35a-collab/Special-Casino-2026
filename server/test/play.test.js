@@ -100,7 +100,7 @@ test('協力スロット: bets at a group table fill one gauge; a full one pays 
   assert.equal((await call('GET', '/api/me', { token: b.token })).me.coop, 0);
 });
 
-test('feedback: stars (some may be left out) and any comment, read only by taku', async () => {
+test('feedback: stars (some may be left out) and any comment, read only by the operators', async () => {
   const p = await register('Player1'), taku = await register('taku');
   setUser(p.me.id, { play_ms: 3600000 });
   assert.equal((await call('GET', '/api/me', { token: p.token })).me.feedback, 'ask');
@@ -114,5 +114,5 @@ test('feedback: stars (some may be left out) and any comment, read only by taku'
   assert.deepEqual([f.count, f.feedback[0].user.name, f.feedback[0].ratings.slot, f.feedback[0].ratings.clarity, f.feedback[0].comment.length],
     [1, 'Player1', 5, 0, long.length]);
   assert.equal(f.average.looks, 3);
-  assert.equal((await call('GET', '/api/me', { token: taku.token })).me.feedbackAdmin, true);
+  assert.equal((await call('GET', '/api/me', { token: taku.token })).me.operator, true);
 });

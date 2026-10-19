@@ -15,15 +15,24 @@
       vampire: 'img/avatars/vampire.webp',
       cap: 'img/avatars/cap.webp',
       catcap: 'img/avatars/catcap.webp',
-      // the NPCs マイクソン (once ピーター) and ジョンソン (not players' icons)
+      // the NPCs マイクソン (once ピーター) and ジョンソン, and Ice Smoker公式ボット (not players' icons)
       peter: 'img/avatars/peter.webp',
-      johnson: 'img/avatars/johnson.webp'
+      johnson: 'img/avatars/johnson.webp',
+      official: 'img/avatars/official.webp'
     },
     cars: {
       'two-state-sedan': 'img/cars/two-state-sedan.webp'
     },
     items: {
       omamori: 'img/items/omamori.webp'
+    },
+    // presents in a chat (js/ui/presents.js)
+    presents: {
+      cookie: 'img/gifts/cookie.webp',
+      bear: 'img/gifts/bear.webp',
+      snowman: 'img/gifts/snowman.webp',
+      pumpkin: 'img/gifts/pumpkin.webp',
+      diamond: 'img/gifts/diamond.webp'
     },
     fruits: {
       strawberry: 'img/fruits/strawberry.webp',

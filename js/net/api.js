@@ -206,7 +206,18 @@
     /* the beginner guide and feedback to the operator */
     guideDone: function () { return post('/api/guide'); },
     sendFeedback: function (ratings, comment) { return post('/api/feedback', { ratings: ratings, comment: comment }); },
-    feedback: function () { return get('/api/feedback'); },
+
+    /* 18歳以上？, presents, 通報 and the official bot's 報告 / 意見案 */
+    age: function (adult) { return post('/api/age', { adult: !!adult }); },
+    present: function (to, id) { return post('/api/present', { to: to, id: id }); },
+    presentClaim: function (messageId) { return post('/api/present/claim', { message: messageId }); },
+    report: function (user, kind, text, place) { return post('/api/report', { user: user, kind: kind, text: text, place: place }); },
+    officialFeedback: function (kind, text) { return post('/api/official/feedback', { kind: kind, text: text }); },
+
+    /* phone notifications (js/net/push.js) */
+    pushKey: function () { return get('/api/push/key'); },
+    pushSubscribe: function (sub) { return post('/api/push/subscribe', sub); },
+    pushUnsubscribe: function (endpoint) { return post('/api/push/unsubscribe', { endpoint: endpoint }); },
 
     /* quests, バイト and updates */
     quests: function () { return get('/api/quests'); },

@@ -256,6 +256,7 @@
       max: 200,
       placeholder: state ? 'ホームのみんなにメッセージ' : '観戦している人たちにメッセージ',
       feed: chatFeed,
+      rule: true,
       onSubmit: function (text) {
         return api.homeChat(room, text).then(function (r) {
           sfx('send');

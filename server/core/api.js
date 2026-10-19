@@ -355,13 +355,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // the beginner guide: everyone under 30 minutes of play until they finish it
       guide: !u.guide_done && u.play_ms < GUIDE_MS,
       feedback: feedbackState(u),
-      // the feedback is read on the operator site (no account in the game reads it)
-      feedbackAdmin: false,
-      feedbackCount: 0,
       // the group whose 協力スロット table the player sits at (0: none)
       coop: u.coop_group || 0,
       // may open the operator site (/ops/)
-      operator: config.operators.some((n) => nameKey(n) === u.name_key),
+      operator: isOperatorName(u),
       // 18歳以上？ (null: not answered yet)
       age: u.age_ok === null || u.age_ok === undefined ? null : !!u.age_ok,
       createdAt: u.created_at
@@ -813,15 +810,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const m = memberRow(userId);
     return m ? settleHub(m.hub_id) : null;
   }
-  // (noVoice: the ones in it a block cuts my voice off from, either way)
+  // (noVoice: the ones in it I blocked, whom my side does not call; a block
+  // on me stays unseen: my call just never reaches the one who blocked me)
   function myHub(userId) {
     const h = playingHub(userId);
     return h ? { ...hubDto(h), noVoice: noVoiceIn(h.id, userId) } : null;
   }
   function noVoiceIn(hubId, userId) {
-    return q(`SELECT m.user_id AS id FROM hub_members m WHERE m.hub_id = ? AND m.user_id != ? AND (
-                EXISTS (SELECT 1 FROM blocks b WHERE b.user_id = ? AND b.blocked_id = m.user_id) OR
-                EXISTS (SELECT 1 FROM blocks b WHERE b.user_id = m.user_id AND b.blocked_id = ?))`).all(hubId, userId, userId, userId).map((r) => r.id);
+    return q(`SELECT m.user_id AS id FROM hub_members m WHERE m.hub_id = ? AND m.user_id != ? AND
+                EXISTS (SELECT 1 FROM blocks b WHERE b.user_id = ? AND b.blocked_id = m.user_id)`).all(hubId, userId, userId).map((r) => r.id);
   }
   // a player leaves their hub (pressing 抜ける, or banned)
   function dropFromHub(userId) {
@@ -956,14 +953,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
 
   /* ----- 運営へのフィードバック ----- */
-  const FEEDBACK_ADMIN = config.feedbackAdmin ? nameKey(config.feedbackAdmin) : '';
-  const isFeedbackAdmin = (u) => !!FEEDBACK_ADMIN && u.name_key === FEEDBACK_ADMIN;
+  // (read on the operator site; the operators are not asked for any)
+  const isOperatorName = (u) => config.operators.some((n) => nameKey(n) === u.name_key);
   const feedbackCount = () => q('SELECT COUNT(*) AS n FROM feedback').get().n;
   // 'ask' for players who have played a while (and everyone from before it
   // existed) once the beginner guide is behind them; 'sent' once they did
   function feedbackState(u) {
     if (u.feedback === 2) return 'sent';
-    if (u.npc || isFeedbackAdmin(u)) return null;
+    if (u.npc || isOperatorName(u)) return null;
     const guide = !u.guide_done && u.play_ms < GUIDE_MS;
     return !guide && (u.feedback === 1 || u.play_ms >= GUIDE_MS) ? 'ask' : null;
   }
