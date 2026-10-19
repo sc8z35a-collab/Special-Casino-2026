@@ -15,8 +15,9 @@
       vampire: 'img/avatars/vampire.webp',
       cap: 'img/avatars/cap.webp',
       catcap: 'img/avatars/catcap.webp',
-      // ピーター (not a player's icon)
-      peter: 'img/avatars/peter.webp'
+      // the NPCs マイクソン (once ピーター) and ジョンソン (not players' icons)
+      peter: 'img/avatars/peter.webp',
+      johnson: 'img/avatars/johnson.webp'
     },
     cars: {
       'two-state-sedan': 'img/cars/two-state-sedan.webp'

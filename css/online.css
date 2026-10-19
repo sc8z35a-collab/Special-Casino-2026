@@ -826,9 +826,15 @@
 .items-icon.current .avatar { box-shadow: 0 0 0 3px #ffe27a, 0 0 14px rgba(255, 226, 122, .6); }
 .act-btn.items-avatar { flex: none; width: 300px; height: 66px; margin: 4px 32px 0; font-size: 23px; }
 
-/* ------------------------------------------------------------ ピーター --- */
+/* ------------------------------------------------------------ マイクソン, ジョンソン --- */
 .conv-row.npc { background: linear-gradient(90deg, rgba(255, 214, 120, .1), transparent 60%); box-shadow: inset 4px 0 0 #d8b53a; }
 .npc-tag { margin-left: 14px; padding: 3px 10px; border-radius: 6px; background: rgba(216, 181, 58, .2); font-size: 17px; font-weight: 700; color: #ffe27a; vertical-align: 3px; }
+.npc-tag.friend { background: rgba(110, 210, 120, .18); color: #a8f08f; }
+.fr-row.npc { background: linear-gradient(90deg, rgba(110, 210, 120, .1), transparent 60%); box-shadow: inset 4px 0 0 #6fcf6a; }
+.fr-row.npc .fr-note { max-width: 520px; white-space: normal; }
+.dm-johnson { box-shadow: inset 0 0 0 1.6px rgba(110, 210, 120, .55); }
+.dm-johnson b { color: #a8f08f; }
+.dm-johnson small { margin-left: 8px; font-size: 16px; }
 .dm-debt { flex: none; display: flex; align-items: center; gap: 14px; padding: 0 6px 0 22px; height: 72px; border-radius: 36px; background: rgba(0, 0, 0, .35); box-shadow: inset 0 0 0 1.6px rgba(214, 169, 74, .55); font-size: 21px; color: #d4cacd; }
 .dm-debt b { font: 800 30px var(--f-num); color: #ffe27a; }
 .dm-debt .mini-btn { height: 58px; padding: 0 24px; border-radius: 29px; }

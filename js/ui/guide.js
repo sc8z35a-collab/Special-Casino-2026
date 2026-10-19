@@ -47,7 +47,7 @@
     { screen: 'board', target: tab('friends'), title: 'フレンド',
       text: 'ユーザー名で検索してフレンド申請。フレンドの画面を観戦したり、フレンド対決もできます。' },
     { screen: 'board', target: tab('messages'), title: 'メッセージ',
-      text: 'フレンドやグループと会話できます。お金に困ったら、金貸しのピーターに相談しましょう。' },
+      text: 'フレンドやグループと会話できます。お金に困ったら金貸しのマイクソン、金の生る木のことなら友達のジョンソンに話しかけてみましょう。' },
     { screen: 'board', target: [tab('cars'), tab('shop')], title: 'Car Owner と Shop',
       text: '車を買ってガレージに飾ったり、フレンドにプレゼントしたり。Shop ではお守り加護などのアイテムが買えます（持っている物は「所有」）。' },
     { screen: 'board', target: tab('jobs'), title: 'バイト',

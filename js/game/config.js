@@ -88,6 +88,10 @@
       // asked in the chat: like the first offer when nothing is owed, then 10 %
       chatRate: [[2, 5], [10, 10]]
     },
+    // ジョンソン, a friend NPC ($): `gift` (rounded to 1000) every `every` ms to
+    // help grow the 金の生る木, and once ever `rescue` when the money (tokens
+    // at their price) is under `rescueBelow`; nothing is ever paid back
+    johnson: { every: 172800000, gift: [100000, 200000], rescue: 350000, rescueBelow: 80000 },
     // part-time jobs (バイト): `wage` $ an hour, paid for every second worked
     // (also while away); `level`: the player level that unlocks it. How many
     // can be worked at once: `jobSlots`, one more every `jobSlotEvery` player

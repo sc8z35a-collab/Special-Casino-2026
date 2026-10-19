@@ -200,11 +200,13 @@ test('Peter: offers money when a player is nearly broke, twice; debts stack up; 
   const a = await register('Broke1');
   const me0 = await call('GET', '/api/me', { token: a.token });
   const peterId = me0.peter.id;
-  assert.equal(me0.peter.name, 'ピーター');
+  assert.equal(me0.peter.name, 'マイクソン');
   // he is no player: no friend requests, always online
   assert.equal((await call('POST', '/api/friends/request', { token: a.token, body: { user: peterId } })).error.code, 'npc');
   assert.equal((await call('GET', `/api/user?id=${peterId}`, { token: a.token })).user.online, true);
   assert.equal((await call('POST', '/api/register', { body: { name: 'ピーター', password: 'pass1234' } })).error.code, 'name_taken');
+  // ジョンソン's one rescue has been used: the lender is the one who answers going broke here
+  s.app.db.prepare("INSERT INTO npc_friends (user_id, npc, gift_at, rescued_at) VALUES (?, 'johnson', ?, 1)").run(a.me.id, Date.now());
 
   const la = await listen(a);
   // nearly broke after a spin (a rare big win lifts the player over the line: then again)

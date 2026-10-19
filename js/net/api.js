@@ -174,6 +174,7 @@
     peter: function () { return get('/api/peter'); },
     borrow: function (offer) { return post('/api/peter/borrow', { offer: offer }); },
     repay: function (amount) { return post('/api/peter/repay', { amount: amount }); },
+    johnson: function () { return get('/api/johnson'); },
 
     /* voice chat and watching */
     iceServers: function () { return get('/api/call/ice'); },

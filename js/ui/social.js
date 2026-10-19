@@ -80,6 +80,7 @@
       BR.avatars.setShop(r.iconShop);
       BR.shop.setSale(r.itemShop);
       BR.peter.set(r.peter);
+      BR.johnson.set(r.johnson);
       BR.shop.renderCharm();
       BR.bonus.show(r.loginBonus);
       BR.bonus.schedule(r.loginReset);
@@ -171,10 +172,11 @@
     if (d < 7 * 86400000) return Math.floor(d / 86400000) + '日前';
     return K.fmtDate(ts);
   }
-  // 「オンライン」 or when they were last here (ピーター: 金貸し)
+  // 「オンライン」 or when they were last here (the NPCs: what they are)
   function seenText(u) {
     if (!u) return '';
     if (BR.peter.is(u)) return '金貸し';
+    if (BR.johnson.is(u)) return '友達・いつでもオンライン';
     if (u.online) return 'オンライン';
     return u.lastSeen ? '最終オンライン ' + ago(u.lastSeen) : 'オフライン';
   }
@@ -353,8 +355,9 @@
     if (!hit) (convs || []).forEach(function (c) { if (c.user.id === id) hit = c.user; });
     if (!hit) (groups || []).forEach(function (g) { g.members.forEach(function (m) { if (m.id === id) hit = hit || m; }); });
     if (!hit && found && found.user.id === id) hit = found.user;
-    // ピーター's row is there before he has written anything
+    // the NPCs' rows are there before they have written anything
     if (!hit) { var pc = BR.peter.placeholder(); if (pc && pc.user.id === id) hit = pc.user; }
+    if (!hit) { var jc = BR.johnson.placeholder(); if (jc && jc.user.id === id) hit = jc.user; }
     return hit;
   }
 
@@ -449,6 +452,14 @@
       });
     }
     section(box, 'フレンド', friends.friends.length);
+    // ジョンソン, a friend from the start (an NPC: messages only)
+    var jc = BR.johnson.placeholder();
+    if (jc) {
+      var jp = personRow(jc.user, 'friend npc');
+      jp.acts.appendChild(el('span', 'fr-note', BR.johnson.intro));
+      actBtn(jp.acts, 'メッセージ', 'dm');
+      box.appendChild(jp.row);
+    }
     if (!friends.friends.length) {
       box.appendChild(el('div', 'empty fr-empty', 'まだフレンドはいません。\n上の検索でユーザー名を入力して、フレンド申請を送りましょう！\n承認されると通知が届き、会話できるようになります。'));
     }
@@ -563,18 +574,24 @@
     if (!convs) { renderConvNote('読み込み中…'); return; }
     var list = $('#conv-list');
     list.textContent = '';
-    // ピーター is always at the top, even before he has written
-    var peterConv = null, rest = [];
-    convs.forEach(function (c) { if (BR.peter.is(c.user)) peterConv = c; else rest.push({ at: c.at, row: convRow(c) }); });
+    // マイクソン and ジョンソン are always at the top, even before they have written
+    var peterConv = null, johnsonConv = null, rest = [];
+    convs.forEach(function (c) {
+      if (BR.peter.is(c.user)) peterConv = c;
+      else if (BR.johnson.is(c.user)) johnsonConv = c;
+      else rest.push({ at: c.at, row: convRow(c) });
+    });
     (groups || []).forEach(function (g) { rest.push({ at: g.at, row: groupRow(g) }); });
     rest.sort(function (a, b) { return (b.at || 0) - (a.at || 0); });
     peterConv = peterConv || BR.peter.placeholder();
     if (peterConv) list.appendChild(convRow(peterConv));
+    johnsonConv = johnsonConv || BR.johnson.placeholder();
+    if (johnsonConv) list.appendChild(convRow(johnsonConv));
     rest.forEach(function (x) { list.appendChild(x.row); });
     if (!rest.length) list.appendChild(el('li', 'empty', 'フレンドになると、ここで会話できます。\n「＋ グループを作る」でフレンドとのグループも作れます。'));
   }
   function convRow(c) {
-    var npc = BR.peter.is(c.user);
+    var lender = BR.peter.is(c.user), friend = BR.johnson.is(c.user), npc = lender || friend;
     var li = el('li', 'conv-row' + (c.unread ? ' unread' : '') + (npc ? ' npc' : ''));
     li.dataset.uid = c.user.id;
     var av = K.avatarEl(c.user);
@@ -582,11 +599,11 @@
     li.appendChild(av);
     var mid = el('div', 'conv-mid');
     var name = el('div', 'conv-name uname', c.user.name);
-    if (npc) name.appendChild(el('span', 'npc-tag', '金貸し'));
+    if (npc) name.appendChild(el('span', 'npc-tag' + (friend ? ' friend' : ''), friend ? '友達' : '金貸し'));
     mid.appendChild(name);
     var key = 'dm:' + c.user.id;
     mid.appendChild(el('div', 'conv-last' + (typingNames(key).length ? ' typing' : ''), typingNames(key).length ? '入力中…'
-      : c.last ? preview(c.last) : 'お金に困ったら相談においで。累計1100万円まで貸すよ（「100万貸して」と書いてね）'));
+      : c.last ? preview(c.last) : friend ? BR.johnson.intro + 'です' : 'お金に困ったら相談においで。累計1100万円まで貸すよ（「100万貸して」と書いてね）'));
     li.appendChild(mid);
     li.appendChild(convSide(c.at, c.unread));
     return li;
@@ -734,6 +751,7 @@
   function showChat(key) {
     var c = chan(key);
     var npc = key.indexOf('dm:') === 0 && peer && BR.peter.is(peer);
+    if (key.indexOf('dm:') === 0 && peer && BR.johnson.is(peer)) BR.johnson.opened();
     renderChat();
     scrollChat();
     if (!c.loaded) {
@@ -871,7 +889,8 @@
     var d = drafts[key];
     var ph = $('#chat-placeholder');
     ph.textContent = d ? K.clip(d, 80) : view === 'group' ? 'グループにメッセージ…'
-      : peer && BR.peter.is(peer) ? '「100万貸して」「100万返す」のように書けます（累計1100万円まで）' : 'メッセージを入力…';
+      : peer && BR.peter.is(peer) ? '「100万貸して」「100万返す」のように書けます（累計1100万円まで）'
+      : peer && BR.johnson.is(peer) ? 'ジョンソンに話しかける…' : 'メッセージを入力…';
     ph.classList.toggle('draft', !!d);
   }
 
@@ -929,7 +948,7 @@
   /* 入力中 */
   var typingSent = {};
   function sendTyping(key) {
-    if (key.indexOf('dm:') === 0 && peer && BR.peter.is(peer)) return;
+    if (key.indexOf('dm:') === 0 && peer && (BR.peter.is(peer) || BR.johnson.is(peer))) return;
     var t = Date.now();
     if (typingSent[key] && t - typingSent[key] < 2500) return;
     typingSent[key] = t;
@@ -1020,7 +1039,7 @@
     var u = $('#dm-user');
     u.textContent = '';
     var isGroup = view === 'group';
-    var npc = !isGroup && BR.peter.is(peer);
+    var npc = !isGroup && (BR.peter.is(peer) || BR.johnson.is(peer));
     if (isGroup) {
       u.appendChild(groupFaces(group, 'head'));
       var gt = el('span', 'dm-id');
@@ -1045,8 +1064,10 @@
     $('#dm-coop').hidden = !isGroup;
     $('#dm-members').hidden = !isGroup;
     $('#dm-leave').hidden = !isGroup;
-    $('#dm-debt').hidden = !npc;
-    if (npc) BR.peter.renderHead();
+    $('#dm-debt').hidden = isGroup || !BR.peter.is(peer);
+    if (!isGroup && BR.peter.is(peer)) BR.peter.renderHead();
+    $('#dm-johnson').hidden = isGroup || !BR.johnson.is(peer);
+    if (!isGroup && BR.johnson.is(peer)) BR.johnson.renderHead();
   }
 
   function enterChat(v) {
@@ -1181,7 +1202,7 @@
   var prof = { data: null, seq: 0 };
   function openProfile(user) {
     if (!user || !me) return;
-    if (BR.peter.is(user)) { openDm(user); return; }
+    if (BR.peter.is(user) || BR.johnson.is(user)) { openDm(user); return; }
     var seq = ++prof.seq;
     prof.data = null;
     fillProfile(user, null, user.id === me.id);
@@ -1561,6 +1582,7 @@
     BR.avatars.setShop(h.iconShop);
     BR.shop.setSale(h.itemShop);
     BR.peter.set(h.peter);
+    BR.johnson.set(h.johnson);
     BR.jobs.set(h.me);
     BR.quests.setReady(h.me.questsReady);
     BR.news.serverRelease(h.me.release);

@@ -342,13 +342,26 @@ export const MIGRATIONS = [
        ended_at   INTEGER NOT NULL DEFAULT 0
      )`,
     'CREATE INDEX tree_auctions_user ON tree_auctions(user_id, status)'
+  ],
+  // v9: NPC friends (ジョンソン): when they last sent money, how much in all,
+  // and their one rescue
+  [
+    `CREATE TABLE npc_friends (
+       user_id    INTEGER NOT NULL,
+       npc        TEXT    NOT NULL,
+       gift_at    INTEGER NOT NULL DEFAULT 0,
+       gifts      INTEGER NOT NULL DEFAULT 0,
+       given      INTEGER NOT NULL DEFAULT 0,
+       rescued_at INTEGER NOT NULL DEFAULT 0,
+       PRIMARY KEY (user_id, npc)
+     )`
   ]
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
-  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'meta'];
+  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

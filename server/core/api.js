@@ -23,6 +23,7 @@ import {
 } from './rules.js';
 import { createAdmin } from './admin.js';
 import { createPeter, reservedName } from './peter.js';
+import { createJohnson } from './johnson.js';
 import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
 import { readQuests, stepQuests, claimQuests, questsReady, questView } from './quests.js';
 import { createOps } from './ops.js';
@@ -206,6 +207,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     onBorrow: (userId) => track(userId, [['borrow', 1]])
   });
   peter.id();
+  // ジョンソン, a friend: money for the 金の生る木 every 2 days, one rescue
+  const johnson = createJohnson({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel });
+  johnson.id();
 
   /* ----- quests (js/game/quests.js), XP, バイト ----- */
 
@@ -236,10 +240,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     questNotice(userId, r);
     return r;
   }
-  // After the player spent money: 「無一文になってしまう」 and Peter's offers.
+  // After the player spent money (or came back): 「無一文になってしまう」, ジョンソン's
+  // gift or rescue (first: a friend helps before the lender offers a loan) and
+  // マイクソン's offers.
   function afterSpend(userId) {
     const u = getUser(userId);
     if (u && !u.npc && u.dollars + u.tokens * RULES.tokenPrice < QUESTS.brokeBelow) track(userId, [['broke', 1]]);
+    johnson.check(userId);
     peter.check(userId);
   }
 
@@ -1096,6 +1103,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       iconShop: iconShop(),
       itemShop: itemShop(),
       peter: peter.me(),
+      johnson: johnson.me(),
       online: live.onlineCount(),
       now: Date.now(),
       nextReset: nextUtcMidnight(),
@@ -1391,6 +1399,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (peter.is(to)) {
         rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
         return peter.chat(u, text);
+      }
+      if (johnson.is(to)) {
+        rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
+        return johnson.chat(u, text);
       }
       liveTarget(to);
       requireFriend(u, to, 'メッセージを送れるように');
@@ -1847,9 +1859,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { balance: balance(getUser(u.id)), amount, to: t.id };
     },
 
-    /* ----- ピーター ----- */
+    /* ----- マイクソン (the lender) and ジョンソン (a friend) ----- */
 
     'GET /api/peter': (req, u) => peter.state(u.id),
+
+    // his chat was opened: a gift that is due comes now
+    'GET /api/johnson': (req, u) => {
+      johnson.check(u.id);
+      return johnson.state(u.id);
+    },
 
     'POST /api/peter/borrow': async (req, u) => {
       const body = await req.json();
@@ -2347,7 +2365,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       loginBonus: bonus,
       loginReset: nextLoginReset(),
       me: meDto(u), unread: unreadTotal(userId), friendRequests: pendingRequests(userId), iconShop: iconShop(), itemShop: itemShop(),
-      peter: peter.me(), online: live.onlineCount(),
+      peter: peter.me(), johnson: johnson.me(), online: live.onlineCount(),
       hub: myHub(userId), hubInvites: hubInvites(userId)
     };
   }
@@ -2361,8 +2379,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (me) hubSend(hm.hub_id, { type: online ? 'back' : 'away', user: mini(me) }, userId);
     }
     if (online) {
-      // back nearly broke: Peter may have something to say
-      try { afterSpend(userId); } catch (e) { console.error('peter', e); }
+      // back: ジョンソン's gift may be due; nearly broke, the NPCs have something to say
+      try { afterSpend(userId); } catch (e) { console.error('npc', e); }
       return;
     }
     // 最終オンライン: the moment they left (the time since their last request was play)

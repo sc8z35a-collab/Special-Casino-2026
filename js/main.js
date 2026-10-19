@@ -679,6 +679,7 @@
     BR.cars.init();
     BR.shop.init();
     BR.peter.init();
+    BR.johnson.init();
     BR.bonus.init();
     BR.quests.init();
     BR.jobs.init();

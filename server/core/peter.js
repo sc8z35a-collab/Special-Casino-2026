@@ -1,4 +1,4 @@
-// ピーター, the money lender: an NPC account that is always online. When a
+// マイクソン (once ピーター), the money lender: an NPC account that is always online. When a
 // player is nearly broke he offers a loan on his own (500万 at 2-5 %, and once
 // that is spent too, 600万 at 10 %), he lends what players ask for in his chat
 // ("300万貸して") and takes repayments. He lends one player RULES.lender.max
@@ -21,7 +21,9 @@ export const OFFER_LINES = [
   'おや、もう使い切ってしまったのかい？ギャンブラーだね。じゃあ利息10パーセントで600万貸そう'
 ];
 
-const RESERVED = new Set(['ピーター', 'peter', 'ぴーたー']);
+// the NPCs' names (and the lender's old one) are not for players
+export const NAME = 'マイクソン';
+const RESERVED = new Set(['マイクソン', 'まいくそん', 'mikeson', 'mikuson', 'ピーター', 'peter', 'ぴーたー', 'ジョンソン', 'じょんそん', 'johnson']);
 export function reservedName(key) { return RESERVED.has(key); }
 
 // 5150000 -> "515万円", 1279200 -> "127万9200円"
@@ -100,10 +102,12 @@ export function createPeter(ctx) {
       const now = Date.now();
       q(`INSERT INTO users (name, name_key, recovery_hash, avatar, tokens, dollars, coins, npc, created_at, last_seen)
          VALUES (?, ?, ?, 'peter', 0, 0, 0, 'peter', ?, ?)`)
-        .run('ピーター', 'npc:peter', sha256(newRecoveryCode() + ':peter'), now, now);
+        .run(NAME, 'npc:peter', sha256(newRecoveryCode() + ':peter'), now, now);
       row = q("SELECT id FROM users WHERE npc = 'peter' LIMIT 1").get();
     }
     peterId = row.id;
+    // he was called ピーター before DEV6
+    q('UPDATE users SET name = ? WHERE id = ? AND name <> ?').run(NAME, peterId, NAME);
     return peterId;
   }
   function me() { const p = getUser(id()); return { id: p.id, name: p.name, avatar: p.avatar, npc: 'peter' }; }
@@ -155,7 +159,7 @@ export function createPeter(ctx) {
   }
 
   function repayIn(d, cur, amount) {
-    if (d.owed <= 0) throw new ApiError(409, 'no_debt', 'ピーターへの借金はありません');
+    if (d.owed <= 0) throw new ApiError(409, 'no_debt', `${NAME}への借金はありません`);
     const pay = Math.min(amount, d.owed);
     if (cur.dollars < pay) throw new ApiError(409, 'insufficient', `$が足りません（返済には $${pay.toLocaleString('en-US')} 必要です）`);
     const principalPaid = pay === d.owed ? d.principal : Math.floor(d.principal * pay / d.owed);
@@ -190,9 +194,9 @@ export function createPeter(ctx) {
     const reply = tx(() => {
       const cur = getUser(u.id);
       const d = debt(u.id);
-      if (!d.offer || d.offer !== n) throw new ApiError(409, 'offer_gone', 'その話はもう終わったよ（ピーター）');
+      if (!d.offer || d.offer !== n) throw new ApiError(409, 'offer_gone', `その話はもう終わったよ（${NAME}）`);
       const o = L.offers[n - 1];
-      if (o.amount > left(d)) throw new ApiError(409, 'limit', `ピーターが貸せるのは累計${yen(L.max)}までです（あと${yen(left(d))}）`);
+      if (o.amount > left(d)) throw new ApiError(409, 'limit', `${NAME}が貸せるのは累計${yen(L.max)}までです（あと${yen(left(d))}）`);
       const rate = randInt(o.rate);
       const owed = lend(d, cur, o.amount, rate);
       d.stage = n;
