@@ -499,7 +499,7 @@
   // login bonus, thank-you, dialog or text field, the slot is on, not watching.
   function calm() {
     var L = BR.launch;
-    if (!L || !L.done() || L.introPlaying() || L.maintenance()) return false;
+    if (!L || !L.done() || L.maintenance()) return false;
     if (BR.account && BR.account.isOpen()) return false;
     if (BR.bonus && BR.bonus.busy()) return false;
     var th = $('#thanks');

@@ -1,7 +1,7 @@
 /* Service worker: makes the game installable as an app ("ホーム画面に追加",
    Chrome's install) and lets it open without a connection. Always the
    network first, the cache only as a fallback; the API is never cached. */
-const BUILD = 'ddeff9877a79';          // written by tools/stamp.mjs
+const BUILD = 'c3e28ac07b4c';          // written by tools/stamp.mjs
 const CACHE = 'two-state-' + BUILD;
 
 self.addEventListener('install', (e) => {
@@ -21,8 +21,6 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/download/') || url.pathname === '/version.json') return;
-  // the story plays once per player: not worth keeping
-  if (url.pathname === '/video/intro.mp4') return;
   e.respondWith(fetch(req).then((res) => {
     if (res.ok && res.type === 'basic') {
       const copy = res.clone();

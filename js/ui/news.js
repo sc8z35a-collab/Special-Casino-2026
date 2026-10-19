@@ -89,7 +89,7 @@
   function thank(amount, updates) {
     // after the studio logos, the story and the login bonus, not on top of them
     var L = BR.launch;
-    if (!L.done() || L.introPlaying() || L.maintenance() || BR.account.isOpen() || BR.bonus.busy()) {
+    if (!L.done() || L.maintenance() || BR.account.isOpen() || BR.bonus.busy()) {
       setTimeout(function () { thank(amount, updates); }, 700);
       return;
     }

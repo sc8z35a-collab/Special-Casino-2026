@@ -12,7 +12,7 @@
 
   // waits for the studio logos, sign-up and the story to be out of the way
   function ready() {
-    return BR.launch.done() && !BR.launch.introPlaying() && !BR.account.isOpen() && !BR.launch.maintenance();
+    return BR.launch.done() && !BR.account.isOpen() && !BR.launch.maintenance();
   }
 
   function show(b) {

@@ -96,7 +96,6 @@
     if (BR.entry && BR.entry.isOpen()) return false;
     if (BR.account && BR.account.isOpen()) return false;
     if (BR.play && BR.play.betLocked && BR.play.betLocked()) return false;
-    if (BR.launch && BR.launch.introPlaying && BR.launch.introPlaying()) return false;
     return !document.querySelector('#stage .modal:not([hidden])');
   }
   // a newer game: by itself on the title screen or just after coming back, else the note
@@ -257,9 +256,8 @@
   // the start screen (the app then goes to the background).
   window.BRNative = {
     back: function () {
-      // the studio logos cannot be skipped; the story can
+      // the studio logos cannot be skipped
       if (!BR.launch.done()) return true;
-      if (BR.launch.introPlaying()) { BR.launch.skipIntro(); return true; }
       if (BR.launch.maintenance()) return true;
       // the beginner guide has to be finished
       if (BR.guide && BR.guide.active && BR.guide.active()) return true;

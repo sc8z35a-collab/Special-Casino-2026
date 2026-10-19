@@ -225,7 +225,7 @@
   function blocked() {
     var L = BR.launch;
     if (document.hidden) return true;
-    if (!L || !L.done() || L.introPlaying() || L.maintenance()) return true;
+    if (!L || !L.done() || L.maintenance()) return true;
     if (BR.account && BR.account.isOpen()) return true;
     if (BR.bonus && BR.bonus.busy()) return true;
     if (BR.guide && BR.guide.active && BR.guide.active()) return true;

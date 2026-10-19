@@ -39,8 +39,6 @@
   function overlay() { return $('#welcome'); }
   function isOpen() { return !overlay().hidden; }
   function show(card) {
-    // the story after signing up: fetched while the form is filled in
-    if (card === 'register' || card === 'avatar') BR.launch.prefetchIntro();
     CARDS.forEach(function (c) { $('#ov-' + c).hidden = c !== card; });
     overlay().hidden = false;
     K.fitOverlay(overlay());
@@ -349,10 +347,11 @@
     $('#ov-done').addEventListener('click', function () {
       K.sfx('click');
       if (!codeFirst) { close(); return; }
-      // a new player: the story first (once, skippable), then the game
+      // a new player: into the game (the guide shows the way)
       codeFirst = false;
       close();
-      BR.launch.playIntro(function () { finish(); BR.social.firstRun(); });
+      finish();
+      BR.social.firstRun();
     });
   }
 

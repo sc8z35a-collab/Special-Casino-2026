@@ -57,7 +57,6 @@
   BR.LAUNCH_MEDIA = {
     studio: 'video/studio.mp4',
     studioLite: 'video/studio-lite.mp4',
-    intro: 'video/intro.mp4',
     bgm: 'sounds/bgm-title.mp3',
     peter: ['sounds/peter-1.mp3', 'sounds/peter-2.mp3']
   };
