@@ -516,12 +516,21 @@ test('watching a friend\'s screen: friends only, spins and balance pushed live',
   bLive.close();
 });
 
-test('banned players are locked out', async () => {
+test('banned players are locked out (their login only asks whether the ban is over)', async () => {
   const u = await register('BannedOne');
   setUser(u.me.id, { banned: 1 });
-  assert.equal((await call('GET', '/api/me', { token: u.token })).status, 403);
-  assert.equal((await call('POST', '/api/login', { body: { code: u.recoveryCode } })).status, 403);
-  assert.equal((await call('POST', '/api/login', { body: { name: 'BannedOne', password: PASSWORD } })).status, 403);
+  const me = await call('GET', '/api/me', { token: u.token });
+  assert.deepEqual([me.status, me.error.code, me.error.ban.code], [403, 'banned', 'banned']);
+  for (const body of [{ code: u.recoveryCode }, { name: 'BannedOne', password: PASSWORD }]) {
+    const r = await call('POST', '/api/login', { body });
+    assert.equal(r.me, undefined);
+    assert.equal(r.ban.code, 'banned');
+    assert.equal((await call('POST', '/api/spin', { token: r.token, body: { bet: 100 } })).status, 403);
+    assert.equal((await call('GET', '/api/ban', { token: r.token })).ban.code, 'banned');
+  }
+  setUser(u.me.id, { banned: 0 });
+  assert.equal((await call('GET', '/api/ban', { token: u.token })).ban, null);
+  assert.equal((await call('GET', '/api/ban', {})).status, 401);
 });
 
 test('live stream: tickets open one connection; messages and transfers are pushed', async () => {

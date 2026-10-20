@@ -214,6 +214,10 @@ button { cursor: pointer; }
 .kind.rating { background: var(--soft); color: var(--muted); }
 .kind.accepted { background: var(--ok-soft); color: var(--ok); }
 .kind.rejected { background: var(--soft); color: var(--muted); }
+.kind.op { background: var(--ok-soft); color: var(--ok); }
+.kind.dev { background: var(--accent-soft); color: var(--accent); }
+.kind.revoked { background: var(--soft); color: var(--muted); }
+.adopted { color: var(--warn); font-size: 13px; font-weight: 700; }
 .body-text { margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--soft); font-size: 14px; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
 .body-text .hit { padding: 0 2px; border-radius: 3px; background: #ffd9d9; color: var(--bad); font-weight: 700; }
 .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 14px; margin-top: 10px; font-size: 12.5px; }

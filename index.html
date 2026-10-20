@@ -566,6 +566,18 @@
   </div>
 </div>
 
+<!-- banned: the title screen stays locked until it ends (js/ui/banlock.js) -->
+<div id="ban-lock" class="ban-lock" hidden role="alertdialog" aria-modal="true" aria-labelledby="ban-lock-title">
+  <div class="ban-card">
+    <div class="ban-from"><span class="ban-from-icon" aria-hidden="true"></span>Ice Smoker公式より</div>
+    <h2 class="ban-title" id="ban-lock-title">アクセス禁止中</h2>
+    <p class="ban-notice" id="ban-lock-notice"></p>
+    <p class="ban-until" id="ban-lock-until"></p>
+    <p class="ban-sub" id="ban-lock-sub"></p>
+    <button class="ov-btn gold" type="button" id="ban-lock-go" hidden>ゲームに戻る</button>
+  </div>
+</div>
+
 <!-- online: sign-up / log-in (outside the scaled stage so the text fields
      keep a normal size on phones) -->
 <div id="welcome" class="ov" hidden>
@@ -742,6 +754,7 @@
 <script src="js/ui/guide.js"></script>
 <script src="js/ui/launch.js"></script>
 <script src="js/ui/start.js"></script>
+<script src="js/ui/banlock.js"></script>
 <script src="js/ui/install.js"></script>
 <script src="js/main.js"></script>
 </body>

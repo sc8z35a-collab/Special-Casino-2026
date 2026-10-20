@@ -16,8 +16,10 @@ export class AdminError extends Error {
   }
 }
 
-// `seal(code)`: the 引き継ぎコード sealed for the operator site (server/core/api.js)
-export function createAdmin(db, { seal = () => '' } = {}) {
+// `seal(code)`: the 引き継ぎコード sealed for the operator site (server/core/api.js);
+// `onBan(user, on)`: in the server, a ban reaches the player at once and the
+// official bot tells them (lifting it too: then it is what lifts it)
+export function createAdmin(db, { seal = () => '', onBan = null } = {}) {
   const q = statements(db);
   const tx = (fn) => db.tx(fn);
   // what the commands change goes to the operators' log (server/core/opslog.js)
@@ -63,7 +65,10 @@ export function createAdmin(db, { seal = () => '' } = {}) {
     // 永久BAN (until unban); the operator site also has the week and 30-day ones
     ban(ref, on = true) {
       const u = find(ref);
-      if (on) q("UPDATE users SET banned = 1, ban_kind = 'perma', ban_until = 0, ban_at = ? WHERE id = ?").run(Date.now(), u.id);
+      if (on) {
+        q("UPDATE users SET banned = 1, ban_kind = 'perma', ban_until = 0, ban_at = ? WHERE id = ?").run(Date.now(), u.id);
+        if (onBan) onBan(u, true);
+      } else if (onBan) onBan(u, false);
       else q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ?").run(u.id);
       return { id: u.id, name: u.name, banned: !!on };
     },

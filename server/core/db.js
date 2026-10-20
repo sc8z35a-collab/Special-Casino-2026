@@ -432,13 +432,26 @@ export const MIGRATIONS = [
        created_at INTEGER NOT NULL
      )`,
     'CREATE INDEX push_subs_user ON push_subs(user_id)'
+  ],
+  // 意見案 the operators adopted (with $100,000 from the official bot), and
+  // the operators whose rights the developer (TAKU) took away
+  [
+    'ALTER TABLE feedback ADD COLUMN adopted_at INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE feedback ADD COLUMN adopted_by INTEGER NOT NULL DEFAULT 0',
+    // a session the server ended (why, said once at its next use)
+    "ALTER TABLE sessions ADD COLUMN ended TEXT NOT NULL DEFAULT ''",
+    `CREATE TABLE ops_revoked (
+       name_key   TEXT    PRIMARY KEY,
+       revoked_at INTEGER NOT NULL,
+       revoked_by INTEGER NOT NULL DEFAULT 0
+     )`
   ]
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
-  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'meta'];
+  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_revoked', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

@@ -1,5 +1,5 @@
 /* Win presentation layer: WIN / BIG WIN / SUPER BIG WIN (ULTRA BIG WIN for
-   77777 once its model is there). The titles are 3D models turning round
+   77777). The titles are 3D models turning round
    (js/render/win3d.js) once they have loaded; until then, and without 3D,
    the drawn titles below.
    Everything is drawn on one canvas above the stage with pre-rendered
@@ -212,7 +212,12 @@
       g.lineWidth = em * 0.042;
       g.strokeStyle = vgrad(opt.rimInner);
       g.strokeText(text, 0, base);
-      g.fillStyle = vgrad(opt.face);
+      if (opt.faceH) {
+        // left to right (ULTRA's rainbow)
+        var gr = g.createLinearGradient(-tw / 2, 0, tw / 2, 0);
+        opt.faceH.forEach(function (st) { gr.addColorStop(st[0], st[1]); });
+        g.fillStyle = gr;
+      } else g.fillStyle = vgrad(opt.face);
       g.fillText(text, 0, base);
     });
     // glossy upper half + bevel highlight on the face only
@@ -258,6 +263,10 @@
     rimInner: [[0, '#fff'], [1, '#ffe7a0']],
     face: [[0, '#fff7c2'], [0.3, '#ffd968'], [0.6, '#f0a92a'], [1, '#c4701a']]
   };
+  // ULTRA (77777): gold rims, a rainbow face
+  var STYLE_ULTRA = Object.assign({}, STYLE_GOLD, {
+    faceH: [[0, '#ff4a3d'], [0.2, '#ffa02e'], [0.4, '#ffe84a'], [0.6, '#46e08c'], [0.8, '#3a9cff'], [1, '#b44cff']]
+  });
 
   // dark amount panel with the double gold frame and concave corners
   function panelSprite(w, h, res) {
@@ -536,11 +545,12 @@
         bigWin: titleSprite('BIG WIN', Object.assign({ em: 232, maxW: 870 }, STYLE_RED), res),
         win: titleSprite('WIN', Object.assign({ em: 200, maxW: 700 }, STYLE_RED), res),
         superT: titleSprite('SUPER', Object.assign({ em: 150, maxW: 700 }, STYLE_GOLD), res),
+        ultraT: titleSprite('ULTRA', Object.assign({ em: 150, maxW: 700 }, STYLE_ULTRA), res),
         panel: panelSprite(766, 156, res),
         panelS: panelSprite(560, 124, res)
       };
       // low-res masks for the CSS light sweep
-      ['bigWin', 'win', 'superT'].forEach(function (k) {
+      ['bigWin', 'win', 'superT', 'ultraT'].forEach(function (k) {
         var t = sp[k], m = canvas(t.w * 0.5, t.h * 0.5);
         m.getContext('2d').drawImage(t.mask, 0, 0, m.width, m.height);
         t.maskURL = m.toDataURL('image/png');
@@ -642,7 +652,7 @@
           top: tier >= 3 ? (o.ultra ? 'ultra' : 'super') : null
         };
         self.mountTitle(self.titleM, tier === 1 ? sp.win : sp.bigWin);
-        self.mountTitle(self.titleS, sp.superT);
+        self.mountTitle(self.titleS, o.ultra ? sp.ultraT : sp.superT);
         self.mountPanel(tier === 1 ? sp.panelS : sp.panel);
         self.amount.style.fontSize = (tier === 1 ? 70 : 88) + 'px';
         self.amount.textContent = '0';

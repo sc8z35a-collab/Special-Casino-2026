@@ -3,10 +3,12 @@
 // conversations with the official bot (Ice Smoker公式ボット: messages written
 // from a polite template, money, 返信待ち), the reports (通報: accepted with a
 // reward from the bot, or declined), what the chat filter found (検知), the
-// 報告 / 意見案 players sent, and the operators' log. Only the accounts named
-// in config.operators may use it (they log in with their name and password on
-// the site; the session is the game's own). Passwords are never shown: they
-// are kept only as one-way hashes, so an operator sets a new one instead.
+// 報告 / 意見案 players sent (an adopted 意見案 earns $100,000 from the bot),
+// and the operators' log. Only the accounts named in config.operators may use
+// it (they log in with their name and password on the site; the session is the
+// game's own), less those whose rights the developer (config.developer, TAKU)
+// took away: they are logged out everywhere at once. Passwords are never
+// shown: they are kept only as one-way hashes, so an operator sets a new one.
 // Everything an operator does here that reaches anyone is written to the log
 // (server/core/opslog.js), with the request it came from.
 import { ApiError, posInt } from './errors.js';
@@ -15,14 +17,38 @@ import { LEVEL, RULES } from './rules.js';
 import { jst } from './opslog.js';
 
 const REWARDS = [600000, 1200000, 2400000];
+const IDEA_REWARD = 100000;
 const MONEY_MAX = 10000000;
 const fmt = (n) => Number(n).toLocaleString('en-US');
 
-export function createOps({ q, tx, live, config, getUser, mini, openCode, setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub, official, opsLog, balance }) {
+export function createOps({ q, tx, live, config, getUser, mini, openCode, setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub, official, opsLog, balance,
+  banState, tellBanned, liftBan, DEVICE_BANNED }) {
   const operators = new Set(config.operators.map(nameKey));
-  const isOperator = (u) => !!u && operators.has(u.name_key);
+  const devKey = operators.has(nameKey(config.developer || '')) ? nameKey(config.developer) : '';
+  const revokedRow = (key) => q('SELECT * FROM ops_revoked WHERE name_key = ?').get(key);
+  const isDeveloper = (u) => !!u && !!devKey && u.name_key === devKey;
+  const isOperator = (u) => !!u && operators.has(u.name_key) && (isDeveloper(u) || !revokedRow(u.name_key));
   function need(u) {
-    if (!isOperator(u)) throw new ApiError(403, 'not_operator', 'この画面は運営者だけが使えます');
+    if (isOperator(u)) return;
+    if (u && operators.has(u.name_key)) throw new ApiError(403, 'not_operator', '運営権が剥奪されたため、運営サイトは使えません');
+    throw new ApiError(403, 'not_operator', 'この画面は運営者だけが使えます');
+  }
+  function needDeveloper(u) {
+    need(u);
+    if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', '運営権の剥奪は開発者（' + (config.developer || 'TAKU') + '）だけができます');
+  }
+  // the operators (config.operators) and whether they still have their rights
+  function operatorList() {
+    return config.operators.map((name) => {
+      const key = nameKey(name);
+      const p = q('SELECT * FROM users WHERE name_key = ?').get(key);
+      const r = revokedRow(key);
+      const by = r && getUser(r.revoked_by);
+      return {
+        key, name: p ? p.name : name, id: p ? p.id : 0, avatar: p ? p.avatar : '', registered: !!p, online: p ? live.isOnline(p.id) : false,
+        developer: key === devKey, revoked: r ? { at: r.revoked_at, by: by ? by.name : '' } : null
+      };
+    });
   }
   const worth = (u) => u.dollars + u.tokens * RULES.tokenPrice;
   function banOf(u) {
@@ -115,7 +141,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         opened.set(u.id, Date.now());
         opsLog.add({ actor: u, action: 'open', summary: `${u.name}が運営サイトを開いた`, req });
       }
-      return { name: u.name, operators: config.operators, now: Date.now() };
+      return { name: u.name, operators: config.operators, developer: isDeveloper(u), now: Date.now() };
     },
 
     // everyone (a name to look for: part of it), the newest players first
@@ -168,7 +194,9 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
 
     // kind: 'suspend' (TWO STATE へのアクセス禁止, a week), 'ban' (30 days),
     // 'perma' (until lifted) or 'none' (lift it). A BAN or a 永久BAN also shuts
-    // out the other accounts on the player's devices.
+    // out the other accounts on the player's devices. The player's game goes
+    // back to the title screen at once and stays there (js/ui/banlock.js); the
+    // official bot tells them when, and again when it is lifted.
     'POST /api/ops/ban': async (req, u) => {
       need(u);
       const body = await req.json();
@@ -180,19 +208,18 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const before = banOf(p);
       const shut = [];
       if (kind === 'none') {
-        q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ?").run(p.id);
+        if (before) liftBan(p, 'lifted');
+        else q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ?").run(p.id);
       } else {
-        tx(() => {
-          q('UPDATE users SET banned = 1, ban_kind = ?, ban_until = ?, ban_at = ? WHERE id = ?').run(kind, BAN_DAYS[kind] ? now + BAN_DAYS[kind] * 86400000 : 0, now, p.id);
-          q('DELETE FROM sessions WHERE user_id = ?').run(p.id);
-        });
+        q('UPDATE users SET banned = 1, ban_kind = ?, ban_until = ?, ban_at = ? WHERE id = ?').run(kind, BAN_DAYS[kind] ? now + BAN_DAYS[kind] * 86400000 : 0, now, p.id);
         const after = getUser(p.id);
-        live.send(p.id, 'kick', { code: 'banned', message: banMessage(after) });
+        live.send(p.id, 'kick', { code: 'banned', message: banMessage(after), ban: banState(after) });
         dropFromHub(p.id);
+        tellBanned(after);
         if (kind !== 'suspend') {
           for (const d of devicesOf(after)) for (const o of d.others) {
             shut.push({ id: o.id, name: o.name, device: d.label });
-            live.send(o.id, 'kick', { code: 'device_banned', message: 'この端末のほかのアカウントがBANされているため、このアカウントも利用できません' });
+            live.send(o.id, 'kick', { code: 'device_banned', message: DEVICE_BANNED, ban: { code: 'device_banned', message: DEVICE_BANNED } });
           }
         }
       }
@@ -366,7 +393,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         feedback: rows.map((f) => {
           let ratings = {};
           try { ratings = JSON.parse(f.ratings); } catch { /* none */ }
-          return { id: f.id, kind: f.kind || 'rating', user: { id: f.user_id, name: f.name, avatar: f.avatar }, text: f.comment, ratings, handledAt: f.handled_at, at: f.created_at };
+          return { id: f.id, kind: f.kind || 'rating', user: { id: f.user_id, name: f.name, avatar: f.avatar }, text: f.comment, ratings, handledAt: f.handled_at, adoptedAt: f.adopted_at, at: f.created_at };
         }),
         now: Date.now()
       };
@@ -381,6 +408,71 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const p = getUser(f.user_id);
       opsLog.add({ actor: u, action: 'feedback_handled', target: p, req, summary: `${p ? p.name : '?'}さんの${f.kind === 'bug' ? '報告' : f.kind === 'idea' ? '意見案' : 'フィードバック'} #${f.id} を対応済みにした`, detail: { id: f.id, kind: f.kind, text: f.comment } });
       return { ok: true };
+    },
+
+    // a 意見案 taken up: $100,000 from the official bot with its thanks (once; it is handled then too)
+    'POST /api/ops/feedback/adopt': async (req, u) => {
+      need(u);
+      const body = await req.json();
+      const f = q('SELECT * FROM feedback WHERE id = ?').get(posInt(body.id, '意見案'));
+      if (!f || f.kind !== 'idea') throw new ApiError(404, 'not_found', 'この意見案は見つかりません');
+      const now = Date.now();
+      // (two operators at once: one of them adopts it)
+      const r = q('UPDATE feedback SET adopted_at = ?, adopted_by = ?, handled_at = CASE WHEN handled_at = 0 THEN ? ELSE handled_at END WHERE id = ? AND adopted_at = 0')
+        .run(now, u.id, now, f.id);
+      if (!Number(r.changes)) throw new ApiError(409, 'done', 'この意見案はもう採用されています');
+      const p = getUser(f.user_id);
+      const before = p ? p.dollars : 0;
+      let thanks = '';
+      if (p && !p.npc) {
+        official.pay(p.id, IDEA_REWARD);
+        const excerpt = Array.from(f.comment).length > 60 ? Array.from(f.comment).slice(0, 60).join('') + '…' : f.comment;
+        thanks = `ありがとうございます！${shortTime(f.created_at)}にいただいた意見案（「${excerpt}」）を採用させていただきました！すてきなアイデアに、運営一同心より感謝いたします！\n感謝の気持ちとして $${fmt(IDEA_REWARD)} をお送りしました。`;
+        official.say(p.id, thanks);
+      }
+      opsLog.add({
+        actor: u, action: 'idea_adopt', target: p, req,
+        summary: `${p ? p.name : '?'}さんの意見案 #${f.id} を採用し、$${fmt(IDEA_REWARD)} と感謝のメッセージ`,
+        detail: { id: f.id, text: f.comment, reward: IDEA_REWARD, message: thanks, dollarsBefore: before, dollarsAfter: p ? getUser(p.id).dollars : 0 }
+      });
+      return { ok: true, reward: IDEA_REWARD };
+    },
+
+    /* ----- the operators (the developer only) ----- */
+
+    'GET /api/ops/operators': (req, u) => {
+      needDeveloper(u);
+      return { operators: operatorList(), now: Date.now() };
+    },
+
+    // 'revoke': an operator's rights go; they are logged out everywhere at once
+    // (the game says why) and the site no longer lets them in. 'restore': back.
+    'POST /api/ops/operator': async (req, u) => {
+      needDeveloper(u);
+      const body = await req.json();
+      const key = nameKey(String(body.name ?? ''));
+      if (!operators.has(key)) throw new ApiError(404, 'not_found', 'その名前の運営者はいません');
+      if (key === devKey) throw new ApiError(400, 'developer', '開発者の運営権は剥奪できません');
+      const p = q('SELECT * FROM users WHERE name_key = ?').get(key) || null;
+      const name = p ? p.name : key;
+      if (body.action === 'revoke') {
+        if (revokedRow(key)) throw new ApiError(409, 'done', `${name}さんの運営権はもう剥奪されています`);
+        const why = '運営権が剥奪されたため、ログアウトされました。ゲームにはもう一度ログインすると入れます（運営サイトには入れません）';
+        let ended = 0;
+        tx(() => {
+          q('INSERT INTO ops_revoked (name_key, revoked_at, revoked_by) VALUES (?, ?, ?)').run(key, Date.now(), u.id);
+          if (p) ended = Number(q('UPDATE sessions SET ended = ? WHERE user_id = ?').run(why, p.id).changes);
+        });
+        if (p) live.send(p.id, 'kick', { code: 'ended', message: why });
+        opsLog.add({ actor: u, action: 'ops_revoke', target: p, req, summary: `${name}さんの運営権を剥奪（すべての端末からログアウト）`, detail: { name: key, sessionsEnded: ended } });
+      } else if (body.action === 'restore') {
+        if (!revokedRow(key)) throw new ApiError(409, 'done', `${name}さんは運営権を持っています`);
+        q('DELETE FROM ops_revoked WHERE name_key = ?').run(key);
+        opsLog.add({ actor: u, action: 'ops_restore', target: p, req, summary: `${name}さんの運営権を元に戻した`, detail: { name: key } });
+      } else {
+        throw new ApiError(400, 'bad_action', '処理を選んでください');
+      }
+      return { operators: operatorList() };
     },
 
     /* ----- the operators' log ----- */

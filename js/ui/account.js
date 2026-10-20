@@ -210,7 +210,7 @@
     api.loginCode(code).then(function (r) {
       $('#ov-code').value = '';
       welcomeBack(r);
-      if (!r.me.hasPassword) setTimeout(function () { K.toast('プロフィールからパスワードを設定すると、名前とパスワードでログインできます', 4200); }, 2600);
+      if (r.me && !r.me.hasPassword) setTimeout(function () { K.toast('プロフィールからパスワードを設定すると、名前とパスワードでログインできます', 4200); }, 2600);
     }, function (err) {
       setError('code-login', err.message);
       K.sfx('deny');
@@ -218,6 +218,13 @@
   }
 
   function welcomeBack(r) {
+    // banned: logged in, but only to the locked title screen (js/ui/banlock.js)
+    if (r.ban) {
+      after = null;
+      close();
+      BR.social.signInBanned(r.token, r.ban);
+      return;
+    }
     api.rememberName(r.me.name);
     BR.social.signIn(r.token, r.me);
     K.sfx('purchase');
@@ -278,6 +285,7 @@
   /* ------------------------------------------------------------ entry points --- */
   // Runs `next` when signed in; otherwise asks to sign up (or log in) first.
   function require(next, card) {
+    if (BR.banlock && BR.banlock.active()) return;
     if (api.hasToken()) { next(); return; }
     after = next;
     open(card || 'register');

@@ -25,7 +25,7 @@ import { createAdmin } from './admin.js';
 import { createPeter, reservedName } from './peter.js';
 import { createJohnson } from './johnson.js';
 import { createOfficial } from './official.js';
-import { createOpsLog } from './opslog.js';
+import { createOpsLog, jst } from './opslog.js';
 import { createPush } from './push.js';
 import { screen as filterText } from './filter.js';
 import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
@@ -155,23 +155,57 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return ids;
   }
   // may this device make an account? '' yes, 'full' (log in to one of its own), 'banned'
-  const DEVICE_BANNED_NEW = 'この端末のアカウントがBANされているため、新しいアカウントは作れません';
+  const DEVICE_BANNED_NEW = 'この端末のアカウントが利用停止（アクセス禁止・BAN）中のため、新しいアカウントは作れません';
   const deviceFull = () => `この端末ではアカウントを${config.accountsPerDevice}つまでしか作れません。前に作ったアカウントの引き継ぎコードを入力してログインしてください`;
   function deviceRoom(req) {
     const dev = deviceOf(req);
     if (!dev.id) return '';
-    if (devicesBanned(deviceKeys(dev, req.ip))) return 'banned';
+    // (no new account to play on while one of the device's is banned)
+    if (devicesBanned(deviceKeys(dev, req.ip), true)) return 'banned';
     if (config.accountsPerDevice > 0 && madeOn(dev, req.ip).size >= config.accountsPerDevice) return 'full';
     return '';
   }
   // Bans: アクセス禁止 (a week), BAN (30 days), 永久BAN (until an operator lifts it).
-  // A ban that has run out is lifted when it is next looked at.
+  // A ban that has run out is lifted when it is next looked at (or by the
+  // housekeeping). The banned player's game goes back to the title screen and
+  // stays there until the ban ends (its login is kept for GET /api/ban); the
+  // official bot tells them when they were banned, and again when it ends.
   const BAN_DAYS = { suspend: 7, ban: 30, perma: 0 };
   const BAN_NAME = { suspend: 'アクセス禁止', ban: 'BAN', perma: '永久BAN' };
+  const DEVICE_BANNED = 'この端末のほかのアカウントがBANされているため、このアカウントも利用できません';
+  const when = (ms) => jst(ms).slice(0, 16);   // 2026/10/20 12:34 (Japan time)
+  // a letter from the official bot: 【件名】, 〇〇様, the matter, Ice Smoker公式より
+  const letter = (u, subject, text) => `【${subject}】\n\n${u.name}様\n\n${text}\n\nIce Smoker公式より`;
+  function banNotice(u) {
+    return `あなたは${when(u.ban_at || Date.now())}に公式より${BAN_NAME[u.ban_kind] || '利用停止'}されました。`;
+  }
+  function tellBanned(u) {
+    const name = BAN_NAME[u.ban_kind] || '利用停止';
+    official.say(u.id, letter(u, `${name}のお知らせ`, `${banNotice(u)}\n期間：${u.ban_until ? when(u.ban_until) + ' まで' : '解除されるまで'}\nその間は TWO STATE で遊ぶことはできません。`));
+  }
+  // The ban ends: lifted by the operators ('lifted') or its time is up
+  // ('expired'). False when there was none to end.
+  function liftBan(u, how) {
+    const now = Date.now();
+    const r = how === 'expired'
+      ? q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ? AND banned = 1 AND ban_until > 0 AND ban_until <= ?").run(u.id, now)
+      : q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ? AND banned = 1").run(u.id);
+    if (!Number(r.changes)) return false;
+    const name = BAN_NAME[u.ban_kind] || '利用停止';
+    official.say(u.id, letter(u, `${name}解除のお知らせ`,
+      `あなたの${name}は${when(now)}に${how === 'expired' ? '期間が終わり、' : '公式により'}解除されました。\nまた TWO STATE をお楽しみください。ルールを守って遊んでいただきますよう、お願いいたします。`));
+    return true;
+  }
   function liftExpired(u) {
     if (!u || !u.banned || !u.ban_until || u.ban_until > Date.now()) return u;
-    q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ?").run(u.id);
-    return { ...u, banned: 0, ban_kind: '', ban_until: 0 };
+    liftBan(u, 'expired');
+    return getUser(u.id);
+  }
+  // what a banned player's title screen shows (null: free to play)
+  function banState(u) {
+    if (u.banned) return { code: 'banned', kind: u.ban_kind || 'perma', at: u.ban_at || 0, until: u.ban_until || 0, message: banMessage(u), notice: banNotice(u) };
+    if (deviceBanOf(u)) return { code: 'device_banned', message: DEVICE_BANNED };
+    return null;
   }
   function banMessage(u) {
     const name = BAN_NAME[u.ban_kind] || '利用停止';
@@ -187,17 +221,18 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
               JOIN users o ON o.id = e.user_id
               WHERE d.user_id = ? AND ${BANNED_NOW} AND o.ban_at > ? LIMIT 1`).get(u.id, Date.now(), u.device_ok_at) || null;
   }
-  // an account on these devices is under a BAN or a 永久BAN
-  function devicesBanned(keys) {
+  // an account on these devices is under a BAN or a 永久BAN (or, `any`, an アクセス禁止 too)
+  function devicesBanned(keys, any = false) {
     if (!keys.length) return false;
+    const banned = any ? 'o.banned = 1 AND (o.ban_until = 0 OR o.ban_until > ?)' : BANNED_NOW;
     return !!q(`SELECT 1 AS x FROM devices d JOIN users o ON o.id = d.user_id
-                WHERE d.device IN (${keys.map(() => '?').join(', ')}) AND ${BANNED_NOW} LIMIT 1`).get(...keys, Date.now());
+                WHERE d.device IN (${keys.map(() => '?').join(', ')}) AND ${banned} LIMIT 1`).get(...keys, Date.now());
   }
   // May this account play now? Throws why not.
   function allowed(u) {
     u = liftExpired(u);
-    if (u.banned) throw new ApiError(403, 'banned', banMessage(u), { kind: u.ban_kind, until: u.ban_until });
-    if (deviceBanOf(u)) throw new ApiError(403, 'device_banned', 'この端末のほかのアカウントがBANされているため、このアカウントも利用できません');
+    if (u.banned) throw new ApiError(403, 'banned', banMessage(u), { kind: u.ban_kind, until: u.ban_until, ban: banState(u) });
+    if (deviceBanOf(u)) throw new ApiError(403, 'device_banned', DEVICE_BANNED, { ban: banState(u) });
     return u;
   }
   // 引き継ぎコード: kept as a hash to log in with, and sealed for the operator site
@@ -1024,7 +1059,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   /* ----- 運営へのフィードバック ----- */
   // (read on the operator site; the operators are not asked for any)
-  const isOperatorName = (u) => config.operators.some((n) => nameKey(n) === u.name_key);
+  // (the operators named in config.operators, less those whose rights were taken away: server/core/ops.js)
+  const isOperatorName = (u) => ops.isOperator(u);
   const feedbackCount = () => q('SELECT COUNT(*) AS n FROM feedback').get().n;
   // 'ask' for players who have played a while (and everyone from before it
   // existed) once the beginner guide is behind them; 'sent' once they did
@@ -1064,8 +1100,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // Also used by the live connection.
   function userForToken(token) {
     const h = sha256(token);
-    const s = q('SELECT user_id, last_used FROM sessions WHERE token_hash = ?').get(h);
+    const s = q('SELECT user_id, last_used, ended FROM sessions WHERE token_hash = ?').get(h);
     if (!s) throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
+    // ended by the server (an operator's rights taken away): why, once, then it is gone
+    if (s.ended) {
+      q('DELETE FROM sessions WHERE token_hash = ?').run(h);
+      throw new ApiError(401, 'ended', s.ended);
+    }
     let u = getUser(s.user_id);
     if (!u) throw new ApiError(401, 'auth', 'アカウントが見つかりません');
     u = allowed(u);
@@ -1196,9 +1237,26 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           throw new ApiError(401, 'bad_login', 'ユーザー名かパスワードが違います');
         }
       }
-      u = allowed(u);
+      // banned (or another account on this device is): logged in all the same,
+      // for the title screen that stays locked until the ban ends (GET /api/ban);
+      // nothing else accepts the login meanwhile
+      u = liftExpired(u);
+      const ban = banState(u);
+      if (ban) return { token: createSession(u.id), ban };
       seenOn(u.id, req);
       return { token: createSession(u.id), me: meDto(u) };
+    },
+
+    // Still banned? The question of a banned player's title screen: their
+    // login answers it (and nothing else) while the ban lasts.
+    'GET /api/ban': (req) => {
+      const m = /^Bearer ([A-Za-z0-9_-]{20,100})$/.exec(String(req.header('authorization') || ''));
+      const s = m ? q('SELECT user_id, ended FROM sessions WHERE token_hash = ?').get(sha256(m[1])) : null;
+      if (!s || s.ended) throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
+      rate(limit.general, s.user_id);
+      const u = getUser(s.user_id);
+      if (!u) throw new ApiError(401, 'auth', 'アカウントが見つかりません');
+      return { ban: banState(liftExpired(u)) };
     },
 
     'POST /api/logout': (req, u) => {
@@ -2641,14 +2699,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the operator site (/ops/)
   const ops = createOps({
     q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub,
-    official, opsLog, balance
+    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED
   });
   Object.assign(routes, ops.routes);
   // 金の生る木
   const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
   Object.assign(routes, trees.routes);
 
-  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login']);
+  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban']);
 
   /* ---------------------------------------------------------------- live connection hooks */
 
@@ -2704,8 +2762,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('DELETE FROM spins WHERE created_at < ?').run(Date.now() - 30 * 86400000);
       q('DELETE FROM sessions WHERE last_used < ?').run(Date.now() - 365 * 86400000);
       q('DELETE FROM watchers WHERE since < ?').run(Date.now() - 12 * 3600000);
-      // アクセス禁止 and BAN that have run out
-      q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE banned = 1 AND ban_until > 0 AND ban_until <= ?").run(Date.now());
+      // アクセス禁止 and BAN that have run out (the official bot tells the player)
+      for (const b of q('SELECT * FROM users WHERE banned = 1 AND ban_until > 0 AND ban_until <= ?').all(Date.now())) liftBan(b, 'expired');
       // 観戦ベット whose player stopped spinning: the stake goes back
       for (const b of q("SELECT * FROM watch_bets WHERE state = 'open' AND created_at < ?").all(Date.now() - WB.refundMs)) {
         tx(() => {
@@ -2745,7 +2803,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return userId;
   }
 
-  const admin = createAdmin(db, { seal: (code) => sealText(CODE_KEY, code) });
+  // (a ban or its lifting by command reaches the player like one from the operator site)
+  const admin = createAdmin(db, {
+    seal: (code) => sealText(CODE_KEY, code),
+    onBan: (u, on) => {
+      if (!on) { liftBan(u, 'lifted'); return; }
+      const b = getUser(u.id);
+      tellBanned(b);
+      live.send(b.id, 'kick', { code: 'banned', message: banMessage(b), ban: banState(b) });
+      dropFromHub(b.id);
+    }
+  });
 
   async function handle(req) {
     const out = await answer(req);

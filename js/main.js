@@ -684,6 +684,8 @@
     BR.account.init();
     BR.avatars.init();
     BR.social.init();
+    // banned: back to the title screen, locked (before anything else shows)
+    if (BR.banlock) BR.banlock.init();
     BR.cars.init();
     BR.shop.init();
     BR.peter.init();

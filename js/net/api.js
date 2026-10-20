@@ -89,8 +89,8 @@
         }
         var err = new ApiError(res.status, e.code || 'error', e.message || ('エラーが発生しました（' + res.status + '）'), e);
         if (res.status === 401 && token && path !== '/api/login' && path !== '/api/register') emit('auth-lost', err);
-        // banned (or another account on this device is): signed out, with why
-        if (res.status === 403 && (e.code === 'banned' || e.code === 'device_banned') && path !== '/api/login' && path !== '/api/register') emit('auth-lost', err);
+        // banned (or another account on this device is): the title screen, locked (js/ui/banlock.js)
+        if (res.status === 403 && (e.code === 'banned' || e.code === 'device_banned') && path !== '/api/login' && path !== '/api/register') emit('banned', err);
         throw err;
       });
     });
@@ -123,6 +123,7 @@
     recovery: function () { return post('/api/recovery'); },
     password: function (current, password) { return post('/api/password', { current: current, password: password }); },
     me: function () { return get('/api/me'); },
+    banState: function () { return get('/api/ban'); },
 
     /* the game */
     // (idle: how long ago the player last did something, for the hub: js/ui/activity.js)

@@ -105,9 +105,17 @@
     });
   }
 
-  function signedOut() {
+  // A banned account (js/ui/banlock.js): banned logins land here, and a ban
+  // while playing stops everything but keeps the login, to ask with.
+  function signInBanned(token, ban) {
+    api.setToken(token);
+    BR.banlock.lock(ban);
+  }
+  function lockDown() { signedOut(true); }
+
+  function signedOut(keepLogin) {
     BR.live.close();
-    api.setToken(null);
+    if (!keepLogin) api.setToken(null);
     BR.bank.reset();
     if (BR.call) BR.call.hangupAll();
     if (BR.watch) BR.watch.stop(true);
@@ -123,17 +131,22 @@
     BR.app.renderWallet(false);
   }
 
-  // The token stopped working (logged out elsewhere, banned). The money is
-  // safe on the server: logging in again brings everything back.
+  // The token stopped working (logged out elsewhere, or by the server: an
+  // operator's rights taken away). The money is safe on the server: logging
+  // in again brings everything back.
   function onAuthLost(err) {
     clearTimeout(retryTimer);
     signedOut();
     if (BR.screens.current() !== 'start' && BR.screens.current() !== 'slot') BR.screens.show('slot');
-    // banned (アクセス禁止 / BAN / 永久BAN, or another account on this device): the server says until when
-    var banned = err && (err.code === 'banned' || err.code === 'device_banned');
-    BR.account.open('login', banned
-      ? (err.message || 'このアカウントは利用停止されています') + '。'
+    BR.account.open('login', err && err.code === 'ended' && err.message
+      ? err.message + '。'
       : 'もう一度ログインしてください。ユーザー名とパスワードで、残高もそのまま戻ります。');
+  }
+  // banned (アクセス禁止 / BAN / 永久BAN, or another account on this device):
+  // locked on the title screen until it ends
+  function onBanned(err) {
+    clearTimeout(retryTimer);
+    BR.banlock.lock((err && err.extra && err.extra.ban) || err);
   }
 
   function logout() {
@@ -1791,8 +1804,13 @@
     bindModals();
     if (!online) return;
     api.on('auth-lost', onAuthLost);
-    // an operator has just banned this account (or one on this device)
-    BR.live.on('kick', function (ev) { if (me) onAuthLost(ev); });
+    api.on('banned', onBanned);
+    // an operator has just banned this account (or one on this device), or
+    // the server ended its logins
+    BR.live.on('kick', function (ev) {
+      if (ev.code === 'banned' || ev.code === 'device_banned') BR.banlock.lock(ev.ban || ev);
+      else if (me) onAuthLost(ev);
+    });
     BR.live.on('hello', onHello);
     BR.live.on('msg', onMsg);
     BR.live.on('read', onRead);
@@ -1815,6 +1833,8 @@
     init: init,
     open: openBoard,
     signIn: signIn,
+    signInBanned: signInBanned,
+    lockDown: lockDown,
     me: function () { return me; },
     onMe: function (fn) { meListeners.push(fn); },
     setMe: function (m) {

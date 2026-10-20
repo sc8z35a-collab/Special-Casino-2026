@@ -11,7 +11,10 @@
      password, a message from the bot (件名, 〇〇様, the matter, Ice Smoker公式
      より) and money from the bot ($0〜1000万).
    - 通報: accepted with a reward of 60万 / 120万 / 240万 sent by the bot with
-     its thanks, or declined. 検知: the original words. 報告・意見案.
+     its thanks, or declined. 検知: the original words. 報告・意見案: an
+     意見案 adopted earns its player $100,000 from the bot with its thanks.
+   - 運営者 (the developer, TAKU, only): an operator's rights taken away (they
+     are logged out everywhere at once and kept out of this site) or given back.
    - ログ: everything done here, and every DEV going live, newest first; a tap
      shows all that is known about it. It cannot be changed or deleted.
    Passwords are kept only as one-way hashes, so they can be set, never shown.
@@ -31,6 +34,7 @@
     release: 'DEV更新', open: 'サイトを開いた', 'ban:suspend': 'アクセス禁止', 'ban:ban': 'BAN', 'ban:perma': '永久BAN', 'ban:none': '処分の解除',
     device_ok: '端末の許可', recovery: '引き継ぎコード再発行', password: 'パスワード再設定', bot_read: 'チャットを既読', bot_message: '公式ボットのメッセージ',
     money: '送金', report_accept: '通報を受理', report_reject: '通報を不受理', detections_reviewed: '検知を確認', feedback_handled: '報告・意見案を対応済み',
+    idea_adopt: '意見案を採用', ops_revoke: '運営権の剥奪', ops_restore: '運営権を戻す',
     bot_auto_reply: '自動返信', log_kept: '運営ログの保持', 'admin:restore-time': '管理コマンド: 時点への巻き戻し'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
@@ -41,7 +45,8 @@
   var token = null;
   var state = {
     view: 'players', players: [], total: 0, counts: {}, now: Date.now(), filter: 'all', sort: 'new', q: '', open: 0, busy: false,
-    reportStatus: 'open', detAll: false, fb: 'open', feedback: [], log: [], logQ: '', logDone: false, chat: null
+    reportStatus: 'open', detAll: false, fb: 'open', feedback: [], log: [], logQ: '', logDone: false, chat: null,
+    developer: false, operators: []
   };
   var timer = 0, searchTimer = 0, logTimer = 0, chatTimer = 0;
 
@@ -201,7 +206,9 @@
   function start(me) {
     $('#login').hidden = true;
     $('#app').hidden = false;
-    $('#op-name').textContent = '運営者: ' + me.name;
+    $('#op-name').textContent = (me.developer ? '開発者: ' : '運営者: ') + me.name;
+    state.developer = !!me.developer;
+    $('#tab-operators').hidden = !state.developer;
     load();
     clearInterval(timer);
     timer = setInterval(function () {
@@ -215,8 +222,9 @@
   function setView(v) {
     state.view = v;
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
-    ['players', 'reports', 'detections', 'feedback', 'log'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
+    ['players', 'reports', 'detections', 'feedback', 'log', 'operators'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
     if (v === 'players') load();
+    else if (v === 'operators') loadOperators();
     else if (v === 'reports') loadReports();
     else if (v === 'detections') loadDetections();
     else if (v === 'feedback') loadFeedback();
@@ -537,8 +545,8 @@
       var kind = b.dataset.kind;
       var info = BAN[kind];
       ask(kind === 'none'
-        ? { title: '処分を解除しますか？', text: p.name + ' さんはすぐにまた遊べるようになります。', ok: '解除する' }
-        : { title: info.long + 'にしますか？', text: p.name + ' さんはすぐにログアウトされ、' + (kind === 'perma' ? '解除するまで' : kind === 'ban' ? '30日間' : '1週間') + 'TWO STATE を遊べなくなります。' + (kind === 'suspend' ? '' : '同じ端末のほかのアカウントも止まります。'), ok: info.name + 'にする', danger: true }
+        ? { title: '処分を解除しますか？', text: p.name + ' さんはすぐにまた遊べるようになります。公式ボットから解除のお知らせが届きます。', ok: '解除する' }
+        : { title: info.long + 'にしますか？', text: p.name + ' さんのゲームはすぐにタイトル画面に戻り、' + (kind === 'perma' ? '解除するまで' : kind === 'ban' ? '30日間' : '1週間') + 'そこから先へ進めなくなります（TWO STATE を遊べません）。公式ボットから「' + date(Date.now(), true) + 'に公式より' + info.name + 'されました」とお知らせが届き、解除されたときもお知らせが届きます。' + (kind === 'suspend' ? '' : '同じ端末のほかのアカウントも止まります。'), ok: info.name + 'にする', danger: true }
       ).then(function (ok) {
         if (!ok) return null;
         state.busy = true;
@@ -919,12 +927,21 @@
         c.dataset.chat = f.user.id;
         a.appendChild(c);
       }
+      if (f.kind === 'idea') {
+        if (f.adoptedAt) a.appendChild(el('span', 'adopted', '採用済み・$100,000 を送金（' + stamp(f.adoptedAt) + '）'));
+        else {
+          var ad = el('button', 'btn small warn', '採用する（$100,000 を送る）');
+          ad.type = 'button';
+          ad.dataset.adopt = f.id;
+          a.appendChild(ad);
+        }
+      }
       if (!f.handledAt) {
         var h = el('button', 'btn small ok', '対応済みにする');
         h.type = 'button';
         h.dataset.handled = f.id;
         a.appendChild(h);
-      } else {
+      } else if (!f.adoptedAt) {
         a.appendChild(el('span', 'muted', '対応済み（' + stamp(f.handledAt) + '）'));
       }
       card.appendChild(a);
@@ -936,6 +953,8 @@
     if (o) { openDetail(Number(o.dataset.open)); return; }
     var c = e.target.closest('[data-chat]');
     if (c) { openChat(Number(c.dataset.chat)); return; }
+    var ad = e.target.closest('[data-adopt]');
+    if (ad) { adopt(Number(ad.dataset.adopt), ad); return; }
     var b = e.target.closest('[data-handled]');
     if (!b) return;
     b.disabled = true;
@@ -944,6 +963,79 @@
       loadFeedback(true);
       load(true);
     }, function (err) { b.disabled = false; fail(err); });
+  }
+
+  function adopt(id, b) {
+    var f = state.feedback.find(function (x) { return x.id === id; });
+    var who = f && f.user ? f.user.name : '';
+    ask({ title: 'この意見案を採用しますか？', text: who + ' さんに Ice Smoker公式ボットから $100,000 と感謝のメッセージが届きます（1つの意見案につき1回）。', ok: '採用する' }).then(function (ok) {
+      if (!ok) return null;
+      b.disabled = true;
+      return request('POST', '/api/ops/feedback/adopt', { id: id }).then(function () {
+        toast('採用して $100,000 を送りました');
+        loadFeedback(true);
+        load(true);
+      });
+    }).catch(function (err) { b.disabled = false; fail(err); });
+  }
+
+  /* ------------------------------------------------------------ the operators (the developer only) --- */
+  function loadOperators() {
+    var list = $('#op-list');
+    list.textContent = '';
+    list.appendChild(el('p', 'muted', '読み込み中…'));
+    request('GET', '/api/ops/operators').then(function (r) {
+      state.operators = r.operators || [];
+      renderOperators();
+    }, fail);
+  }
+  function renderOperators() {
+    var list = $('#op-list');
+    list.textContent = '';
+    state.operators.forEach(function (o) {
+      var card = el('article', 'card' + (o.revoked ? ' done' : ''));
+      var head = el('div', 'card-head');
+      head.appendChild(person({ id: o.id, name: o.name, avatar: o.avatar }, o.registered ? (o.online ? 'オンライン' : '') : 'アカウント未登録'));
+      head.appendChild(el('span', 'kind ' + (o.developer ? 'dev' : o.revoked ? 'revoked' : 'op'), o.developer ? '開発者' : o.revoked ? '運営権なし（剥奪済み）' : '運営者'));
+      card.appendChild(head);
+      var a = el('div', 'acts');
+      if (o.developer) a.appendChild(el('span', 'muted', '開発者の運営権は剥奪できません'));
+      else if (o.revoked) {
+        a.appendChild(el('span', 'muted', stamp(o.revoked.at) + ' に' + (o.revoked.by ? o.revoked.by + 'が' : '') + '剥奪'));
+        var r = el('button', 'btn small', '運営権を戻す');
+        r.type = 'button';
+        r.dataset.restore = o.key;
+        a.appendChild(r);
+      } else {
+        var x = el('button', 'btn small danger', '運営権を剥奪する');
+        x.type = 'button';
+        x.dataset.revoke = o.key;
+        a.appendChild(x);
+      }
+      card.appendChild(a);
+      list.appendChild(card);
+    });
+  }
+  function onOperators(e) {
+    var o = e.target.closest('[data-open]');
+    if (o && Number(o.dataset.open)) { openDetail(Number(o.dataset.open)); return; }
+    var b = e.target.closest('[data-revoke], [data-restore]');
+    if (!b) return;
+    var revoke = !!b.dataset.revoke, key = b.dataset.revoke || b.dataset.restore;
+    var op = state.operators.find(function (x) { return x.key === key; });
+    var name = op ? op.name : key;
+    ask(revoke
+      ? { title: name + ' さんの運営権を剥奪しますか？', text: name + ' さんはすぐにすべての端末でログアウトされ、運営サイトにログインできなくなります（ゲームには一般のプレイヤーとしてログインできます）。あとで「運営権を戻す」で元に戻せます。', ok: '剥奪する', danger: true }
+      : { title: name + ' さんの運営権を戻しますか？', text: name + ' さんはまた運営サイトにログインできるようになります。', ok: '戻す' }
+    ).then(function (ok) {
+      if (!ok) return null;
+      b.disabled = true;
+      return request('POST', '/api/ops/operator', { name: key, action: revoke ? 'revoke' : 'restore' }).then(function (r) {
+        toast(revoke ? name + ' さんの運営権を剥奪しました' : name + ' さんの運営権を戻しました');
+        state.operators = r.operators || [];
+        renderOperators();
+      });
+    }).catch(function (err) { b.disabled = false; fail(err); });
   }
 
   /* ------------------------------------------------------------ the operators' log --- */
@@ -1164,6 +1256,7 @@
       renderFeedback();
     });
     $('#fb-list').addEventListener('click', onFeedback);
+    $('#op-list').addEventListener('click', onOperators);
     $('#log-search').addEventListener('input', function () {
       clearTimeout(logTimer);
       logTimer = setTimeout(function () { state.logQ = $('#log-search').value.trim(); loadLog(true); }, 300);

@@ -38,6 +38,7 @@
       <button class="tab" data-view="detections" type="button">検知<b class="count" id="count-detections" hidden></b></button>
       <button class="tab" data-view="feedback" type="button">報告・意見案<b class="count" id="count-feedback" hidden></b></button>
       <button class="tab" data-view="log" type="button">ログ</button>
+      <button class="tab" data-view="operators" type="button" id="tab-operators" hidden>運営者</button>
     </nav>
     <div class="top-right">
       <span class="muted" id="op-name"></span>
@@ -129,9 +130,18 @@
       <input class="search" id="log-search" type="search" placeholder="名前・内容で探す" autocomplete="off" spellcheck="false">
     </div>
     <p class="verify" id="log-verify"></p>
-    <p class="hint muted">運営として行ったこと（メッセージ・送金・処分・通報の処理など）とDEVの更新が、すべて自動で記録されます。記録は消すことも書き換えることもできません。行をタップすると詳細が開きます。</p>
+    <p class="hint muted">運営として行ったこと（メッセージ・送金・処分・通報の処理・意見案の採用・運営権の剥奪など）とDEVの更新が、すべて自動で記録されます。記録は消すことも書き換えることもできません。行をタップすると詳細が開きます。</p>
     <div class="log" id="log-list"></div>
     <button class="btn wide" id="log-more" type="button" hidden>さらに読み込む</button>
+  </section>
+
+  <!-- 運営者 (the developer only) -->
+  <section class="view" id="view-operators" hidden>
+    <div class="view-head">
+      <h2>運営者</h2>
+    </div>
+    <p class="hint muted">運営権を剥奪すると、その運営者はすぐにすべての端末でログアウトされ、運営サイトにログインできなくなります。運営権の剥奪と戻すことは開発者だけができ、運営ログに記録されます。</p>
+    <div class="cards" id="op-list"></div>
   </section>
 </div>
 

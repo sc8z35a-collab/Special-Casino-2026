@@ -14,10 +14,9 @@
   'use strict';
 
   var SRC = 'js/vendor/three-win.js';
-  // (ULTRA BIG WIN: its model is still to come; until then 77777 shows SUPER BIG WIN)
-  var FILES = { win: 'img/3d/win.glb', big: 'img/3d/big.glb', super: 'img/3d/super.glb', ultra: '' };
-  // each model's width on the stage (design px)
-  var WIDTH = { win: 600, big: 1000, super: 840, ultra: 900 };
+  var FILES = { win: 'img/3d/win.glb', big: 'img/3d/big.glb', super: 'img/3d/super.glb', ultra: 'img/3d/ultra.glb' };
+  // each model's width on the stage (design px; ULTRA as tall as SUPER)
+  var WIDTH = { win: 600, big: 1000, super: 840, ultra: 870 };
   var FOV = 26;
   var W = 2000, H = 924;
 
@@ -126,7 +125,7 @@
       if (!T) throw new Error('3D: three.js');
       setup();
       // one after the other: the game goes on meanwhile
-      return ['big', 'super', 'win', 'ultra'].filter(function (k) { return FILES[k]; }).reduce(function (p, k) {
+      return ['big', 'super', 'win', 'ultra'].reduce(function (p, k) {
         return p.then(function () { return load(k); });
       }, Promise.resolve());
     }).then(function () {
@@ -143,7 +142,7 @@
     return loading;
   }
 
-  // the model for a kind (ULTRA until its model is there: SUPER)
+  // the model for a kind (ULTRA, should its model not load: SUPER)
   function pick(kind) {
     if (kind === 'ultra' && !models.ultra) kind = 'super';
     return models[kind] ? kind : null;
