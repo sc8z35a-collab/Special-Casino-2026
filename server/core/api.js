@@ -2088,7 +2088,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (to === u.id) throw new ApiError(400, 'self', '自分には売れません');
       const t = liveTarget(to);
       if (t.npc) throw new ApiError(403, 'npc', `${t.name}には売れません`);
-      requireFriend(u, to, '車を売る');
+      requireFriend(u, to, '販売');
       if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーには売れません');
       rate(limit.transfer, u.id, '少し待ってからお試しください');
       settleRentals(u.id);
@@ -2136,7 +2136,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (row.state) throw new ApiError(409, 'done', row.state === 'sold' ? 'この車はもう売れました' : 'この販売は取り消されました');
         const car = q('SELECT * FROM cars WHERE offer_id = ? AND owner_id = ?').get(id, row.sender_id);
         if (!car) throw new ApiError(409, 'gone', 'この車はもう販売されていません');
-        requireFriend(u, row.sender_id, '買う');
+        requireFriend(u, row.sender_id, '購入');
         const cur = getUser(u.id);
         if (carCount(cur.id) >= garageSize(cur)) throw new ApiError(409, 'garage_full', `ガレージがいっぱいです（${garageSize(cur)}台）`);
         if (cur.dollars < row.amount) throw new ApiError(409, 'insufficient', '$が足りません');
