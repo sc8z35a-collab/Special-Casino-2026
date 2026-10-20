@@ -4,7 +4,7 @@
    - プレイヤー: everyone's money, connection, 18歳以上, 引き継ぎコード and bans
      at a glance, with marks on the icons (返信待ち: a message to the official
      bot waits for an answer; 検知: the chat filter found something). A tap on
-     an icon opens the conversation with Ice Smoker公式ボット (opening it marks
+     an icon opens the conversation with Ice Smoker公式 (opening it marks
      the player's messages read), a tap on the row the player's details and
      the actions: アクセス禁止 (a week), BAN (30 days), 永久BAN, lifting them,
      letting a player past a BAN on their device, a new 引き継ぎコード, a new
@@ -12,12 +12,18 @@
      より) and money from the bot ($0〜1000万).
    - 通報: accepted with a reward of 60万 / 120万 / 240万 sent by the bot with
      its thanks, or declined. 検知: the original words. 報告・意見案: an
-     意見案 adopted earns its player $100,000 from the bot with its thanks.
+     意見案 adopted earns its player 50,000 spin tokens from Ice Smoker公式 with its thanks.
    - 運営者: operator rights given to a player or taken away (they are logged
      out everywhere at once and kept out of this site), each with the
      developer code; the developer registers that code here once.
    - ログ: everything done here, and every DEV going live, newest first; a tap
      shows all that is known about it. It cannot be changed or deleted.
+   - 課金 (the developer's own): the players who paid for 開発者支援, waiting
+     for the developer's words; answered (through the official bot), they
+     leave the list. Every order, the meters, and whether payments are on.
+   - 保管庫 (the developer's own, opened with the developer code): big files
+     sent in 1 MiB pieces checked by SHA-256 (a broken upload goes on where it
+     stopped), fetched back the same way, and time-limited read-only links.
    Passwords are kept only as one-way hashes, so they can be set, never shown.
    On a phone the site goes full screen and landscape at the first tap; held
    upright where that is not possible, the whole site is turned sideways. */
@@ -33,11 +39,15 @@
   };
   var ACTIONS = {
     release: 'DEV更新', open: 'サイトを開いた', 'ban:suspend': 'アクセス禁止', 'ban:ban': 'BAN', 'ban:perma': '永久BAN', 'ban:none': '処分の解除',
-    device_ok: '端末の許可', recovery: '引き継ぎコード再発行', password: 'パスワード再設定', bot_read: 'チャットを既読', bot_message: '公式ボットのメッセージ',
+    device_ok: '端末の許可', recovery: '引き継ぎコード再発行', password: 'パスワード再設定', bot_read: 'チャットを既読', bot_message: '公式のメッセージ',
     money: '送金', report_accept: '通報を受理', report_reject: '通報を不受理', detections_reviewed: '検知を確認', feedback_handled: '報告・意見案を対応済み',
     idea_adopt: '意見案を採用', ops_revoke: '運営権の剥奪', ops_grant: '運営権の付与', ops_restore: '運営権を戻す',
     dev_code_set: '開発者コードを登録', dev_code_change: '開発者コードを変更', dev_code_fail: '開発者コードの入力ミス',
-    bot_auto_reply: '自動返信', log_kept: '運営ログの保持', 'admin:restore-time': '管理コマンド: 時点への巻き戻し'
+    bot_auto_reply: '自動返信', log_kept: '運営ログの保持', 'admin:restore-time': '管理コマンド: 時点への巻き戻し',
+    pay_order: '支払いページ', pay_paid: '購入（入金を確認）', pay_slip: 'コンビニ払いの番号', pay_unpaid: 'コンビニ未払い', pay_refund: '返金',
+    pay_review: '決済の不一致（保留）', pay_reply: '開発者の返信', pay_error: '決済ページのエラー', pay_unknown: '不明な決済通知', pay_bad_signature: '不正な決済通知を拒否',
+    vault_open: '保管庫を開いた', vault_upload: '保管庫に保存', vault_delete: '保管庫から削除', vault_link: '保管庫のリンク作成',
+    vault_link_stop: '保管庫のリンク停止', vault_pull: '保管庫からリンクで取得'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
   var REPORT_PLACES = { profile: 'プロフィール', hub: '「一緒に稼ぐ」', search: 'フレンド検索', chat: 'チャット' };
@@ -48,16 +58,17 @@
   var state = {
     view: 'players', players: [], total: 0, counts: {}, now: Date.now(), filter: 'all', sort: 'new', q: '', open: 0, busy: false,
     reportStatus: 'open', detAll: false, fb: 'open', feedback: [], log: [], logQ: '', logDone: false, chat: null,
-    developer: false, operators: []
+    developer: false, operators: [], pay: null, payView: 'waiting', vault: null, vaultFiles: []
   };
   var timer = 0, searchTimer = 0, logTimer = 0, chatTimer = 0;
 
   try { token = localStorage.getItem(KEY); } catch (e) { token = null; }
 
   /* ------------------------------------------------------------ the server --- */
-  function request(method, path, body) {
+  function request(method, path, body, headers) {
     var h = { 'Content-Type': 'application/json' };
     if (token) h.Authorization = 'Bearer ' + token;
+    if (headers) Object.keys(headers).forEach(function (k) { h[k] = headers[k]; });
     return fetch(path, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' })
       .catch(function () { throw { status: 0, message: '通信できませんでした' }; })
       .then(function (res) {
@@ -118,7 +129,7 @@
     var b = el('button', 'face-wrap');
     b.type = 'button';
     b.dataset.chat = p.id;
-    b.title = p.name + 'さんと公式ボットのチャットを開く';
+    b.title = p.name + 'さんと公式チャットを開く';
     b.appendChild(face(p));
     if (p.waiting) b.appendChild(el('span', 'mark wait', '返信待ち'));
     if (p.detections) b.appendChild(el('span', 'mark det', '検知' + (p.detections > 1 ? ' ' + p.detections : '')));
@@ -209,9 +220,16 @@
     $('#login').hidden = true;
     $('#app').hidden = false;
     $('#op-name').textContent = (me.developer ? '開発者: ' : '運営者: ') + me.name;
+    state.name = me.name;
     state.developer = !!me.developer;
     state.devCodeSet = !!me.devCodeSet;
+    // 課金 and 保管庫: the developer's own
+    $('#tab-pay').hidden = !state.developer;
+    $('#tab-vault').hidden = !state.developer;
+    if (state.developer) loadPay(true);
     load();
+    // /ops/#vault: straight to the vault
+    if (state.developer && location.hash === '#vault') setView('vault');
     clearInterval(timer);
     timer = setInterval(function () {
       if (document.hidden || !$('#dialog').hidden || !$('#money').hidden) return;
@@ -219,18 +237,21 @@
       if (state.view === 'reports') loadReports(true);
       else if (state.view === 'detections') loadDetections(true);
       else if (state.view === 'feedback') loadFeedback(true);
+      if (state.developer && !(state.view === 'pay' && document.activeElement && document.activeElement.tagName === 'TEXTAREA')) loadPay(true);
     }, REFRESH);
   }
   function setView(v) {
     state.view = v;
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
-    ['players', 'reports', 'detections', 'feedback', 'log', 'operators'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
+    ['players', 'reports', 'detections', 'feedback', 'log', 'operators', 'pay', 'vault'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
     if (v === 'players') load();
     else if (v === 'operators') loadOperators();
     else if (v === 'reports') loadReports();
     else if (v === 'detections') loadDetections();
     else if (v === 'feedback') loadFeedback();
     else if (v === 'log') { loadLog(true); verifyLog(); }
+    else if (v === 'pay') loadPay();
+    else if (v === 'vault') renderVault();
     scrollTop();
   }
   function scrollTop() { if (turned) $('#app').scrollTop = 0; else window.scrollTo(0, 0); }
@@ -297,6 +318,7 @@
     var t = el('div');
     var n = el('b', '', p.name);
     if (p.operator) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag op', '運営')); }
+    if (p.vip !== null && p.vip !== undefined) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag vip vip-' + p.vip, 'VIP' + p.vip)); }
     t.appendChild(n);
     t.appendChild(el('small', '', '登録 ' + date(p.createdAt)));
     w.appendChild(t);
@@ -307,7 +329,7 @@
     tr.appendChild(td('オンライン状況', s));
     var m = el('div', 'money');
     m.appendChild(el('b', '', '$' + fmt(p.worth)));
-    m.appendChild(el('small', '', 'トークン ' + fmt(p.tokens) + '・$' + fmt(p.dollars) + '・コイン ' + fmt(p.coins)));
+    m.appendChild(el('small', '', 'トークン ' + fmt(p.tokens) + '・$' + fmt(p.dollars) + '・ロイヤルコイン ' + fmt(p.coins)));
     tr.appendChild(td('資産', m, 'num'));
     tr.appendChild(td('18歳以上', ageBadge(p)));
     tr.appendChild(td('引き継ぎコード', codeEl(p)));
@@ -384,7 +406,7 @@
     head.appendChild(t);
     box.appendChild(head);
 
-    var bot = section('Ice Smoker公式ボット');
+    var bot = section('Ice Smoker公式');
     if (p.waiting) bot.appendChild(el('p', 'note bad', 'このプレイヤーのメッセージが返信を待っています。'));
     var a = el('div', 'acts');
     a.appendChild(act('チャットを開く', 'chat', 'primary'));
@@ -417,7 +439,8 @@
     g.appendChild(cell('資産（$換算）', '$' + fmt(p.worth)));
     g.appendChild(cell('スピントークン', fmt(p.tokens)));
     g.appendChild(cell('ドル', '$' + fmt(p.dollars)));
-    g.appendChild(cell('コイン', fmt(p.coins)));
+    g.appendChild(cell('ロイヤルコイン', fmt(p.coins)));
+    g.appendChild(cell('VIP', (p.vip !== null && p.vip !== undefined ? 'VIP' + p.vip + '（' + stamp(p.vipUntil) + ' まで）' : '無効') + '・EXP ' + fmt(Math.floor(p.vipExp || 0))));
     g.appendChild(cell('スピン回数', fmt(p.spins) + '回'));
     g.appendChild(cell('最大勝利', fmt(p.biggestWin)));
     g.appendChild(cell('累計ベット', fmt(p.totalBet)));
@@ -430,7 +453,7 @@
     g.appendChild(cell('引き継ぎコード', codeEl(p), true));
     g.appendChild(cell('パスワード', p.hasPassword ? '設定済み（非公開）' : '未設定', true));
     acc.appendChild(g);
-    acc.appendChild(el('p', 'note', 'パスワードは安全のため元に戻せない形（ハッシュ）でだけ保存しているので、運営者にも表示できません。忘れた人には新しいパスワードを設定してください。'));
+    acc.appendChild(el('p', 'note', 'パスワードはハッシュでのみ保存しているため表示できません。忘れた人には再設定してください。'));
     a = el('div', 'acts');
     a.style.marginTop = '10px';
     a.appendChild(act('引き継ぎコードを再発行', 'recovery'));
@@ -455,7 +478,7 @@
       if (p.ban) a.appendChild(act('処分を解除', 'ban', 'ok', 'none'));
       if (p.deviceBlocked) a.appendChild(act('端末のBANから外す', 'deviceOk', 'ok'));
       ban.appendChild(a);
-      ban.appendChild(el('p', 'muted', 'アクセス禁止は1週間、BANは30日で自動的に解除されます（いつでも解除できます）。BAN・永久BANをすると、同じ端末で使われたほかのアカウントもアクセスできなくなります。'));
+      ban.appendChild(el('p', 'muted', 'アクセス禁止は1週間、BANは30日で自動解除（いつでも解除可）。BAN・永久BANは同じ端末のほかのアカウントも止めます。'));
     }
     box.appendChild(ban);
 
@@ -547,8 +570,8 @@
       var kind = b.dataset.kind;
       var info = BAN[kind];
       ask(kind === 'none'
-        ? { title: '処分を解除しますか？', text: p.name + ' さんはすぐにまた遊べるようになります。公式ボットから解除のお知らせが届きます。', ok: '解除する' }
-        : { title: info.long + 'にしますか？', text: p.name + ' さんのゲームはすぐにタイトル画面に戻り、' + (kind === 'perma' ? '解除するまで' : kind === 'ban' ? '30日間' : '1週間') + 'そこから先へ進めなくなります（TWO STATE を遊べません）。公式ボットから「' + date(Date.now(), true) + 'に公式より' + info.name + 'されました」とお知らせが届き、解除されたときもお知らせが届きます。' + (kind === 'suspend' ? '' : '同じ端末のほかのアカウントも止まります。'), ok: info.name + 'にする', danger: true }
+        ? { title: '処分を解除しますか？', text: p.name + ' さんはすぐにまた遊べるようになります。公式から解除のお知らせが届きます。', ok: '解除する' }
+        : { title: info.long + 'にしますか？', text: p.name + ' さんのゲームはすぐにタイトル画面に戻り、' + (kind === 'perma' ? '解除するまで' : kind === 'ban' ? '30日間' : '1週間') + '先へ進めなくなります。処分と解除のお知らせが公式から届きます。' + (kind === 'suspend' ? '' : '同じ端末のほかのアカウントも止まります。'), ok: info.name + 'にする', danger: true }
       ).then(function (ok) {
         if (!ok) return null;
         state.busy = true;
@@ -558,12 +581,12 @@
         });
       }).catch(fail).then(function () { state.busy = false; });
     } else if (name === 'deviceOk') {
-      ask({ title: '端末のBANから外しますか？', text: p.name + ' さんは、同じ端末のアカウントがBANされていても遊べるようになります（次にその端末のアカウントがBANされると、また止まります）。', ok: '外す' }).then(function (ok) {
+      ask({ title: '端末のBANから外しますか？', text: p.name + ' さんは、同じ端末のアカウントがBAN中でも遊べるようになります（次にその端末でBANがあると、また止まります）。', ok: '外す' }).then(function (ok) {
         if (!ok) return null;
         return request('POST', '/api/ops/device-ok', { id: p.id }).then(function (r) { toast('端末のBANから外しました'); afterChange(r); });
       }).catch(fail);
     } else if (name === 'recovery') {
-      ask({ title: '引き継ぎコードを再発行しますか？', text: '今までのコードは使えなくなります。本人であることを確かめてから発行してください。', ok: '再発行する' }).then(function (ok) {
+      ask({ title: '引き継ぎコードを再発行しますか？', text: '今までのコードは使えなくなります。本人確認のうえで発行してください。', ok: '再発行する' }).then(function (ok) {
         if (!ok) return null;
         return request('POST', '/api/ops/recovery', { id: p.id }).then(function (r) {
           afterChange(r);
@@ -573,7 +596,7 @@
     } else if (name === 'password') {
       ask({
         title: 'パスワードを再設定',
-        text: p.name + ' さんの新しいパスワードを入力してください（4〜64文字）。本人であることを確かめてから設定してください。',
+        text: p.name + ' さんの新しいパスワード（4〜64文字）。本人確認のうえで設定してください。',
         ok: '設定する',
         input: { label: '新しいパスワード', type: 'text' },
         check: function (v) { var n = Array.from(v).length; return n < 4 ? '4文字以上にしてください' : n > 64 ? '64文字までです' : ''; }
@@ -624,7 +647,7 @@
     w.textContent = '';
     w.appendChild(face(p));
     var t = el('div');
-    t.appendChild(el('b', '', p.name + ' さん と Ice Smoker公式ボット'));
+    t.appendChild(el('b', '', p.name + ' さん と Ice Smoker公式'));
     t.appendChild(el('small', '', (p.online ? 'オンライン' : '最終オンライン ' + ago(p.lastSeen)) + (p.waiting ? '・返信待ち' : '')));
     w.appendChild(t);
   }
@@ -632,7 +655,7 @@
     var c = state.chat, r = c.data, list = $('#chat-list'), sc = $('#chat-scroll');
     var atBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 60;
     list.textContent = '';
-    if (!r.messages.length) list.appendChild(el('p', 'chat-empty', 'まだメッセージはありません。下から最初のメッセージを送れます。'));
+    if (!r.messages.length) list.appendChild(el('p', 'chat-empty', 'まだメッセージはありません。'));
     var lastDay = '';
     r.messages.forEach(function (m) {
       var day = date(m.at);
@@ -698,7 +721,7 @@
     if (!Number.isInteger(amount) || amount < 0 || amount > 10000000) { $('#money-error').textContent = '金額は $0〜$10,000,000 の整数で入力してください'; return; }
     var note = $('#money-note').value.trim();
     if (!amount && !note) { $('#money-error').textContent = '金額を入力してください'; return; }
-    ask({ title: '$' + fmt(amount) + ' を送りますか？', text: p.name + ' さんへ Ice Smoker公式ボットから送金します。' + (note ? '「' + note + '」も一緒に届きます。' : ''), ok: '送金する' }).then(function (ok) {
+    ask({ title: '$' + fmt(amount) + ' を送りますか？', text: p.name + ' さんへ公式から送金します。' + (note ? '「' + note + '」も届きます。' : ''), ok: '送金する' }).then(function (ok) {
       if (!ok) return null;
       $('#money-ok').disabled = true;
       return request('POST', '/api/ops/money', { id: p.id, amount: amount, note: note }).then(function (r) {
@@ -802,7 +825,7 @@
     var id = Number(b.closest('[data-report]').dataset.report);
     var reward = Number(b.dataset.accept || 0);
     ask(reward
-      ? { title: '通報 #' + id + ' を受理しますか？', text: '通報した人へ Ice Smoker公式ボットから $' + fmt(reward) + ' と感謝のメッセージが自動で届きます。', ok: '受理して送る' }
+      ? { title: '通報 #' + id + ' を受理しますか？', text: '通報した人へ公式から $' + fmt(reward) + ' とお礼が届きます。', ok: '受理して送る' }
       : { title: '通報 #' + id + ' を受理しませんか？', text: '通報した人には何も届きません。', ok: '受理しない', danger: true }
     ).then(function (ok) {
       if (!ok) return null;
@@ -930,9 +953,9 @@
         a.appendChild(c);
       }
       if (f.kind === 'idea') {
-        if (f.adoptedAt) a.appendChild(el('span', 'adopted', '採用済み・$100,000 を送金（' + stamp(f.adoptedAt) + '）'));
+        if (f.adoptedAt) a.appendChild(el('span', 'adopted', '採用済み（' + stamp(f.adoptedAt) + '）'));
         else {
-          var ad = el('button', 'btn small warn', '採用する（$100,000 を送る）');
+          var ad = el('button', 'btn small warn', '採用する（50,000 スピントークンを送る）');
           ad.type = 'button';
           ad.dataset.adopt = f.id;
           a.appendChild(ad);
@@ -970,11 +993,11 @@
   function adopt(id, b) {
     var f = state.feedback.find(function (x) { return x.id === id; });
     var who = f && f.user ? f.user.name : '';
-    ask({ title: 'この意見案を採用しますか？', text: who + ' さんに Ice Smoker公式ボットから $100,000 と感謝のメッセージが届きます（1つの意見案につき1回）。', ok: '採用する' }).then(function (ok) {
+    ask({ title: 'この意見案を採用しますか？', text: who + ' さんに公式から 50,000 スピントークンとお礼が届きます（1つにつき1回）。', ok: '採用する' }).then(function (ok) {
       if (!ok) return null;
       b.disabled = true;
       return request('POST', '/api/ops/feedback/adopt', { id: id }).then(function () {
-        toast('採用して $100,000 を送りました');
+        toast('採用して 50,000 スピントークンを送りました');
         loadFeedback(true);
         load(true);
       });
@@ -997,8 +1020,8 @@
     var reg = $('#op-devcode');
     reg.hidden = !state.developer;
     $('#op-devcode-text').textContent = state.devCodeSet
-      ? '開発者コードは登録済みです（変更するときは今のコードが必要です）。'
-      : '開発者コードがまだ登録されていません。運営権の付与・剥奪に使うコードを、最初に一度だけ登録してください（サーバーには元に戻せない形でだけ保存されます）。';
+      ? '開発者コードは登録済みです（変更には今のコードが必要）。'
+      : '開発者コードが未登録です。運営権の付与・剥奪に使うコードを、最初に一度だけ登録してください。';
     $('#op-devcode-btn').textContent = state.devCodeSet ? '開発者コードを変更' : '開発者コードを登録';
     var list = $('#op-list');
     list.textContent = '';
@@ -1030,8 +1053,8 @@
   function changeAccess(action, name, b) {
     var revoke = action === 'revoke';
     withCode(revoke
-      ? { title: name + ' さんの運営権を剥奪しますか？', text: name + ' さんはすぐにすべての端末でログアウトされ、運営サイトにログインできなくなります（ゲームには一般のプレイヤーとしてログインできます）。', ok: '剥奪する', danger: true }
-      : { title: name + ' さんに運営権を付与しますか？', text: name + ' さんは運営サイトにログインして、運営のすべての操作ができるようになります。', ok: '付与する' }
+      ? { title: name + ' さんの運営権を剥奪しますか？', text: name + ' さんはすぐ全端末でログアウトされ、運営サイトに入れなくなります（ゲームには入れます）。', ok: '剥奪する', danger: true }
+      : { title: name + ' さんに運営権を付与しますか？', text: name + ' さんは運営サイトのすべての操作ができるようになります。', ok: '付与する' }
     ).then(function (code) {
       if (code === null) return null;
       if (b) b.disabled = true;
@@ -1064,7 +1087,7 @@
       if (old === null) return null;
       return ask({
         title: change ? '新しい開発者コード' : '開発者コードを登録',
-        text: '8〜32桁の数字。開発者だけが知っているコードにしてください（ここにもサーバーにも、元のコードは残りません）。',
+        text: '8〜32桁の数字（元のコードはどこにも残りません）。',
         ok: '登録する',
         input: { label: '開発者コード', type: 'password' },
         check: function (v) { return /^\d{8,32}$/.test(v.replace(/[\s-]/g, '')) ? '' : '8〜32桁の数字にしてください'; }
@@ -1077,6 +1100,498 @@
         });
       });
     }).catch(fail);
+  }
+
+  /* ------------------------------------------------------------ 課金 (開発者支援, the developer's own) --- */
+  var drafts = {};   // replies being written, by player (kept while the list refreshes)
+  function yen(n) { return fmt(n) + '円'; }
+  function loadPay(quiet) {
+    if (!state.developer) return Promise.resolve();
+    return request('GET', '/api/ops/pay').then(function (r) {
+      state.pay = r;
+      setCount('pay', r.waiting.length);
+      if (state.view === 'pay') renderPay();
+    }, function (err) { if (!quiet) fail(err); });
+  }
+  function payStat(box, label, value, cls) {
+    var d = el('div', 'stat' + (cls ? ' ' + cls : ''));
+    d.appendChild(el('span', '', label));
+    d.appendChild(el('b', '', value));
+    box.appendChild(d);
+  }
+  function renderPay() {
+    var r = state.pay;
+    if (!r) return;
+    var st = r.setup, t = r.totals, m = r.meters;
+    var setup = $('#pay-setup');
+    setup.textContent = '';
+    var box = el('div', 'pay-setup ' + st.mode);
+    box.appendChild(el('b', '', st.mode === 'live' ? '● 本番：実際のお金での購入を受け付けています'
+      : st.mode === 'test' ? '● テストモード：Stripe のテスト用の鍵です（お金は動きません）' : '● 停止中：購入はできません（下の設定が必要です）'));
+    if (st.problems && st.problems.length) {
+      var ul = el('ul');
+      st.problems.forEach(function (x) { ul.appendChild(el('li', '', x)); });
+      box.appendChild(ul);
+    }
+    box.appendChild(el('p', '', '支払い方法：' + (st.methods.length ? st.methods.join('・') : 'なし') + '　/　1人24時間あたり ' + yen(st.dailyMax) + 'まで' +
+      (st.seller ? '' : '　/　特定商取引法の表記（SELLER_NAME など）が未設定です')));
+    if (st.webhook) box.appendChild(el('p', 'mono', 'Webhook の送信先：' + st.webhook + '　イベント：' + st.events.join(', ')));
+    setup.appendChild(box);
+    var sum = $('#pay-sum');
+    sum.textContent = '';
+    payStat(sum, '開発費回収', fmt(m.recover.have) + ' / ' + yen(m.recover.goal));
+    payStat(sum, '来月の開発費確保（今月）', fmt(m.monthly.have) + ' / ' + yen(m.monthly.goal));
+    payStat(sum, '今月の売上', yen(t.monthYen) + '（' + fmt(t.monthOrders) + '件）');
+    payStat(sum, '累計の売上', yen(t.yen) + '（' + fmt(t.orders) + '件・' + fmt(t.payers) + '人）');
+    payStat(sum, '返信待ち', fmt(r.waiting.length) + '人', r.waiting.length ? 'hot' : '');
+    var list = $('#pay-list');
+    list.textContent = '';
+    var notes = [];
+    if (t.slips) notes.push('コンビニ払いの支払い待ち ' + t.slips + '件（' + yen(t.slipYen) + '）');
+    if (t.refunds) notes.push('返金 ' + t.refunds + '件（' + yen(t.refundYen) + '）');
+    if (t.review) notes.push('⚠ Stripe と一致しない注文が ' + t.review + '件（ロイヤルコインは未付与。Stripe のダッシュボードで確認してください）');
+    if (notes.length) list.appendChild(el('p', 'pay-notes', notes.join('　/　')));
+    if (state.payView === 'waiting') {
+      if (!r.waiting.length) list.appendChild(el('p', 'empty muted', '返信待ちの人はいません'));
+      r.waiting.forEach(function (w) { list.appendChild(payCard(w)); });
+    } else {
+      if (!r.orders.length) list.appendChild(el('p', 'empty muted', '注文はまだありません'));
+      r.orders.forEach(function (o) { list.appendChild(orderCard(o)); });
+    }
+  }
+  // a player who paid: what they bought, how many, how much, and the reply
+  function payCard(w) {
+    var card = el('article', 'card pay-card');
+    var head = el('div', 'card-head');
+    head.appendChild(person(w.player, w.player.online ? 'オンライン' : ''));
+    head.appendChild(el('span', 'kind idea', '返信待ち'));
+    head.appendChild(el('span', 'time', '購入 ' + stamp(w.first) + (w.last !== w.first ? ' 〜 ' + stamp(w.last) : '')));
+    card.appendChild(head);
+    var items = el('div', 'pay-items');
+    w.items.forEach(function (it) { items.appendChild(el('span', 'pay-item', it.name + ' × ' + fmt(it.qty) + '口（' + yen(it.amount) + '）')); });
+    card.appendChild(items);
+    card.appendChild(el('p', 'pay-total', '合計 ' + yen(w.amount) + '・ロイヤルコイン ' + fmt(w.coins) + '枚・' + fmt(w.orders) + '件'));
+    var ta = el('textarea', 'pay-reply');
+    ta.rows = 3;
+    ta.maxLength = 5000;
+    ta.placeholder = w.player.name + 'さんへの熱いお言葉';
+    ta.value = drafts[w.player.id] || '';
+    ta.dataset.draft = w.player.id;
+    card.appendChild(ta);
+    var a = el('div', 'acts');
+    var b = el('button', 'btn primary small', '返信して一覧から消す');
+    b.type = 'button';
+    b.dataset.reply = w.player.id;
+    b.dataset.upto = w.last;
+    b.dataset.name = w.player.name;
+    a.appendChild(b);
+    card.appendChild(a);
+    return card;
+  }
+  function orderCard(o) {
+    var card = el('article', 'card' + (o.status === 'paid' ? '' : ' done'));
+    var head = el('div', 'card-head');
+    head.appendChild(person(o.player || {}, ''));
+    head.appendChild(el('span', 'kind ' + (o.status === 'paid' ? 'accepted' : o.status === 'review' ? '' : 'rating'), o.statusName));
+    head.appendChild(el('span', 'time', stamp(o.createdAt)));
+    card.appendChild(head);
+    var f = el('div', 'facts');
+    fact(f, '内容', o.name + ' × ' + fmt(o.qty) + '口');
+    fact(f, '金額', yen(o.amount));
+    fact(f, 'ロイヤルコイン', fmt(o.coins) + '枚' + (o.coinsBack ? '（返金で ' + fmt(o.coinsBack) + '枚回収）' : ''));
+    fact(f, '支払い方法', o.methodName);
+    fact(f, '入金', o.paidAt ? stamp(o.paidAt) : '-');
+    fact(f, '開発者の返信', o.repliedAt ? stamp(o.repliedAt) : o.status === 'paid' ? 'まだ' : '-');
+    fact(f, '注文番号', o.id);
+    card.appendChild(f);
+    if (o.reply) card.appendChild(el('p', 'pay-said', '返信：' + o.reply));
+    return card;
+  }
+  function onPay(e) {
+    var b = e.target.closest('[data-reply]');
+    if (!b) return;
+    var id = Number(b.dataset.reply), name = b.dataset.name;
+    var text = String(drafts[id] || '').trim();
+    if (!text) { toast(name + 'さんへの返信を書いてください'); return; }
+    var full = '【開発者からのメッセージ】\n\n' + name + '様\n\n' + text + '\n\nTwo state 開発者 ' + state.name;
+    ask({ title: name + 'さんに返信しますか？', text: full, ok: '送信して一覧から消す' }).then(function (ok) {
+      if (!ok) return null;
+      b.disabled = true;
+      return request('POST', '/api/ops/pay/reply', { id: id, text: text, upto: Number(b.dataset.upto) }).then(function () {
+        delete drafts[id];
+        toast(name + 'さんに返信しました');
+        return loadPay();
+      });
+    }).catch(function (err) { b.disabled = false; fail(err); });
+  }
+
+  /* ------------------------------------------------------------ 保管庫 (the developer's own) --- */
+  var vaultTimer = 0, moving = 0, v3d = null, viewing = null, pics = {};
+  // three.js for the 3D previews (ops/vault3d.js), loaded the first time it is needed
+  function vault3d() {
+    if (!v3d) {
+      v3d = new Promise(function (ok, no) {
+        var s = document.createElement('script');
+        s.src = 'vault3d.js';
+        s.onload = function () { if (window.VAULT3D) ok(window.VAULT3D); else no(new Error('3Dを読み込めませんでした')); };
+        s.onerror = function () { v3d = null; no(new Error('3Dを読み込めませんでした')); };
+        document.head.appendChild(s);
+      });
+    }
+    return v3d;
+  }
+  var KINDS_3D = /\.(glb|gltf|obj|fbx|stl|ply)$/i;
+  function is3d(name) { return KINDS_3D.test(String(name || '')); }
+  function vreq(method, path, body) {
+    return request(method, path, body, state.vault ? { 'X-Vault-Ticket': state.vault.ticket } : {}).catch(function (err) {
+      if (err.code === 'vault_locked') lockVault('保管庫が閉じました。もう一度開いてください');
+      throw err;
+    });
+  }
+  function mb(n) { return n >= 1048576 ? (n / 1048576).toFixed(n >= 104857600 ? 0 : 1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; }
+  function lockVault(message) {
+    state.vault = null;
+    state.vaultFiles = [];
+    clearTimeout(vaultTimer);
+    renderVault();
+    if (message) toast(message);
+  }
+  function openVault() {
+    withCode({ title: '保管庫を開く', text: '開発者専用の保管庫を30分間開きます。', ok: '開く' }).then(function (code) {
+      if (code === null) return null;
+      return request('POST', '/api/vault/open', { code: code }).then(function (r) {
+        state.vault = r;
+        clearTimeout(vaultTimer);
+        vaultTimer = setTimeout(function () { lockVault('30分たったので保管庫を閉じました'); }, Math.max(1000, r.until - Date.now() - 5000));
+        renderVault();
+        return loadVault();
+      });
+    }).catch(fail);
+  }
+  function loadVault() {
+    if (!state.vault) return Promise.resolve();
+    return vreq('GET', '/api/vault/files').then(function (r) {
+      state.vaultFiles = r.files || [];
+      if (state.vault) { state.vault.used = r.used; state.vault.all = r.all; }
+      renderVault();
+    }, fail);
+  }
+  function renderVault() {
+    var open = !!state.vault;
+    $('#vault-closed').hidden = open;
+    $('#vault-main').hidden = !open;
+    $('#vault-lock').hidden = !open;
+    $('#vault-usage').textContent = open ? '使用量 ' + mb(state.vault.used) + ' / ' + mb(state.vault.maxBytes) + '（1ファイル ' + mb(state.vault.fileBytes) + 'まで）' : '';
+    var list = $('#vault-list');
+    list.textContent = '';
+    if (!open) return;
+    var all = state.vault.all || { live: 0 };
+    $('#vault-all-state').textContent = all.live ? '保管庫全体のリンク：' + all.live + '本 有効（' + stamp(all.until) + 'まで・取得 ' + fmt(all.uses) + '回）' : '保管庫全体のリンク：なし';
+    $('#vault-all-stop').hidden = !all.live;
+    // a model's light copy shows with the model
+    var tops = state.vaultFiles.filter(function (f) { return !f.parent; });
+    if (!tops.length) list.appendChild(el('p', 'empty muted', 'ファイルはまだありません'));
+    tops.forEach(function (f) { list.appendChild(vaultCard(f)); });
+  }
+  function lightOf(f) { return state.vaultFiles.filter(function (x) { return x.parent === f.id && x.done; })[0] || null; }
+  // the picture of a model, fetched once
+  function picEl(f) {
+    var p = el('div', 'vault-pic');
+    p.dataset.vact = 'pic';
+    if (pics[f.id]) { p.style.backgroundImage = 'url("' + pics[f.id] + '")'; return p; }
+    vreq('GET', '/api/vault/preview?id=' + f.id).then(function (r) {
+      if (!r.preview) return;
+      pics[f.id] = r.preview;
+      p.style.backgroundImage = 'url("' + r.preview + '")';
+    }).catch(function () {});
+    return p;
+  }
+  function modelFacts(facts, i, light) {
+    fact(facts, '3Dモデル', String(i.format || '').toUpperCase() + '・三角形 ' + fmt(i.triangles) + '・頂点 ' + fmt(i.vertices) + '・メッシュ ' + fmt(i.meshes));
+    fact(facts, 'マテリアル / テクスチャ', fmt(i.materials) + ' / ' + fmt(i.textures) + (i.maxTexture ? '（最大 ' + i.maxTexture + 'px）' : ''));
+    if (i.size) fact(facts, '大きさ（幅×高さ×奥行き）', i.size.join(' × '));
+    if (i.animations && i.animations.length) fact(facts, 'アニメーション', i.animations.map(function (a) { return (a.name || '-') + '（' + a.seconds + '秒）'; }).join('・'));
+    if (i.skinned || i.morphs) fact(facts, 'ボーン / モーフ', fmt(i.skinned) + ' / ' + fmt(i.morphs));
+    if (light) fact(facts, '軽量版', mb(light.size) + '（' + light.name + '）');
+  }
+  function vaultCard(f) {
+    var card = el('article', 'card vault-card' + (f.done ? '' : ' done'));
+    card.dataset.file = f.id;
+    var head = el('div', 'card-head');
+    head.appendChild(el('b', 'vault-name', f.name));
+    head.appendChild(el('span', 'kind ' + (f.done ? 'accepted' : 'bug'), f.done ? '保存済み' : 'アップロード途中 ' + f.received + '/' + f.chunks));
+    head.appendChild(el('span', 'time', stamp(f.createdAt)));
+    card.appendChild(head);
+    var light = lightOf(f);
+    var body = el('div', 'vault-body');
+    if (f.preview) body.appendChild(picEl(f));
+    else if (f.done && is3d(f.name)) body.appendChild(el('div', 'vault-pic none', 'プレビューなし'));
+    var facts = el('div', 'facts');
+    if (f.info) modelFacts(facts, f.info, light);
+    fact(facts, '大きさ', mb(f.size) + '（' + fmt(f.size) + 'バイト）');
+    fact(facts, '種類', f.type || '-');
+    fact(facts, 'SHA-256（部分ごとのハッシュの並び）', f.sha256 || '-');
+    fact(facts, '読み取り専用リンク', f.links.live ? f.links.live + '本 有効（' + stamp(f.links.until) + 'まで）' : 'なし');
+    fact(facts, 'リンクからの取得', fmt(f.links.uses) + '回');
+    if (f.note) fact(facts, 'メモ', f.note);
+    body.appendChild(facts);
+    card.appendChild(body);
+    var a = el('div', 'acts');
+    function btn(label, act, cls) {
+      var b = el('button', 'btn small' + (cls ? ' ' + cls : ''), label);
+      b.type = 'button';
+      b.dataset.vact = act;
+      a.appendChild(b);
+    }
+    if (f.done) {
+      if (f.info) btn('3Dで見る', 'view', 'primary');
+      else if (is3d(f.name)) btn('プレビューを作る', 'make');
+      btn('ダウンロード', 'get');
+      if (light) btn('軽量版をダウンロード', 'getlight');
+      btn('読み取り専用リンクを作る', 'link', 'primary');
+      if (f.links.live) btn('リンクを停止', 'stop', 'warn');
+    } else {
+      btn('続きから送る（同じファイルを選ぶ）', 'resume', 'primary');
+    }
+    btn('削除', 'delete', 'danger');
+    card.appendChild(a);
+    return card;
+  }
+  // progress of one upload or download
+  function job(name) {
+    var card = el('article', 'card job');
+    card.appendChild(el('b', '', name));
+    var bar = el('div', 'bar'), fill = el('i');
+    bar.appendChild(fill);
+    card.appendChild(bar);
+    var note = el('span', 'muted', '準備中…');
+    card.appendChild(note);
+    $('#vault-jobs').insertBefore(card, $('#vault-jobs').firstChild);
+    moving++;
+    var over = false;
+    function end() { if (!over) { over = true; moving--; } }
+    return {
+      set: function (d, t) {
+        var p = t ? d / t * 100 : 0;
+        fill.style.width = p.toFixed(1) + '%';
+        note.textContent = d + ' / ' + t + '（' + Math.round(p) + '%）';
+      },
+      finish: function (msg) { end(); fill.style.width = '100%'; card.classList.add('ok'); note.textContent = msg; setTimeout(function () { card.remove(); }, 20000); },
+      fail: function (msg) { end(); card.classList.add('bad'); note.textContent = msg; }
+    };
+  }
+  function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (x) { return (x < 16 ? '0' : '') + x.toString(16); }).join(''); }
+  function sha(buf) { return crypto.subtle.digest('SHA-256', buf); }
+  function base64(bytes) {
+    var s = '';
+    for (var i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  function later(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  // three pieces at a time; a piece that fails is tried again (3 times)
+  function pieces(todo, one) {
+    var queue = todo.slice(), failed = null;
+    function run(n, tries) {
+      return one(n).catch(function (err) {
+        if (tries < 3 && err.code !== 'vault_locked' && err.status !== 413 && err.status !== 404) return later(1500 * (tries + 1)).then(function () { return run(n, tries + 1); });
+        throw err;
+      });
+    }
+    function worker() {
+      if (failed || !queue.length) return Promise.resolve();
+      return run(queue.shift(), 0).then(worker, function (err) { failed = err; });
+    }
+    return Promise.all([worker(), worker(), worker()]).then(function () { if (failed) throw failed; });
+  }
+  function upload(file, resumeId, parent) {
+    var CH = state.vault.chunk, j = job(file.name + '（アップロード）'), made = null;
+    var begin = resumeId
+      ? vreq('GET', '/api/vault/missing?id=' + resumeId).then(function (r) {
+        if (r.file.size !== file.size) throw { message: 'ファイルの大きさが違います。同じファイルを選んでください' };
+        var todo = [];
+        r.missing.forEach(function (m) { for (var n = m[0]; n <= m[1]; n++) todo.push(n); });
+        return { file: r.file, todo: todo };
+      })
+      : vreq('POST', '/api/vault/files', { name: file.name, size: file.size, type: file.type || '', note: parent ? '' : $('#vault-note').value.trim(), parent: parent || undefined }).then(function (r) {
+        var todo = [];
+        for (var n = 0; n < r.file.chunks; n++) todo.push(n);
+        return { file: r.file, todo: todo };
+      });
+    var last = null;
+    return begin.then(function (b) {
+      made = b.file;
+      var done = b.file.chunks - b.todo.length;
+      j.set(done, b.file.chunks);
+      return pieces(b.todo, function (n) {
+        return file.slice(n * CH, Math.min(file.size, (n + 1) * CH)).arrayBuffer().then(function (buf) {
+          return sha(buf).then(function (h) {
+            return vreq('POST', '/api/vault/chunk', { id: b.file.id, n: n, sha256: hex(h), data: base64(new Uint8Array(buf)) });
+          });
+        }).then(function (r) { last = r; done++; j.set(done, b.file.chunks); });
+      });
+    }).then(function () {
+      j.finish(last && last.done ? '保存しました（SHA-256 ' + String(last.sha256).slice(0, 16) + '…）' : '送り終えました');
+      if (!parent) $('#vault-note').value = '';
+      return loadVault().then(function () { if (!parent && made && is3d(file.name)) return preview(made, file); });
+    }, function (err) { j.fail((err && err.message) || 'アップロードできませんでした'); return loadVault(); });
+  }
+  // A model: its picture, what is in it, and its light copy (uploaded as a file of its own)
+  function preview(f, file) {
+    var j = job(f.name + '（3Dプレビュー）');
+    j.set(0, 3);
+    return vault3d().then(function (V) {
+      return V.analyze(file, f.name);
+    }).then(function (r) {
+      j.set(1, 3);
+      return vreq('POST', '/api/vault/meta', { id: f.id, preview: r.preview, info: r.info }).then(function () {
+        pics[f.id] = r.preview;
+        j.set(2, 3);
+        if (!r.light) return null;
+        var base = f.name.replace(/\.[^.]+$/, '');
+        return upload(new File([r.light], base + '.light.glb', { type: 'model/gltf-binary' }), null, f.id);
+      });
+    }).then(function () { j.finish('プレビューを作りました'); return loadVault(); }, function (err) {
+      j.fail('プレビューを作れませんでした：' + ((err && err.message) || ''));
+    });
+  }
+  // a whole file from the vault, its hashes checked: a Blob
+  function fetchFile(f, j) {
+    var parts = [], digests = [], done = 0, todo = [];
+    for (var n = 0; n < f.chunks; n++) todo.push(n);
+    return pieces(todo, function (n) {
+      return vreq('GET', '/api/vault/chunk?id=' + f.id + '&n=' + n).then(function (r) {
+        var bin = atob(r.data), bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return sha(bytes).then(function (h) {
+          if (hex(h) !== r.sha256) throw { message: '部分 ' + n + ' が壊れています（ハッシュが一致しません）' };
+          parts[n] = bytes;
+          digests[n] = new Uint8Array(h);
+          done++;
+          if (j) j.set(done, f.chunks);
+        });
+      });
+    }).then(function () {
+      var all = new Uint8Array(32 * f.chunks);
+      digests.forEach(function (d, i) { all.set(d, i * 32); });
+      return sha(all).then(function (h) {
+        if (f.sha256 && hex(h) !== f.sha256) throw { message: 'ファイル全体のハッシュが一致しません' };
+        return new Blob(parts, { type: 'application/octet-stream' });
+      });
+    });
+  }
+  // the light copy (or the model itself when it is small) turning in 3D
+  function view3d(f) {
+    var light = lightOf(f), src = light || f;
+    var box = $('#viewer-box');
+    closeViewer();
+    $('#viewer-name').textContent = f.name;
+    $('#viewer-note').textContent = '読み込み中…';
+    $('#viewer').hidden = false;
+    Promise.all([vault3d(), fetchFile(src, { set: function (d, t) { $('#viewer-note').textContent = '読み込み中… ' + Math.round(d / t * 100) + '%'; } })]).then(function (r) {
+      return r[1].arrayBuffer().then(function (buf) { return r[0].view(box, buf, src.name); });
+    }).then(function (v) {
+      if ($('#viewer').hidden) { v.stop(); return; }
+      viewing = v;
+      $('#viewer-note').textContent = (light ? '軽量版 ' + mb(light.size) : mb(f.size)) + '・ドラッグで回転・ホイール / 2本指でズーム';
+    }).catch(function (err) { $('#viewer-note').textContent = (err && err.message) || '表示できませんでした'; });
+  }
+  function closeViewer() {
+    if (viewing) { viewing.stop(); viewing = null; }
+    var box = $('#viewer-box');
+    box.textContent = '';
+    box.classList.remove('big');
+    box.style.backgroundImage = '';
+    $('#viewer').hidden = true;
+  }
+  // the picture, big
+  function showPic(f) {
+    if (!pics[f.id]) return;
+    closeViewer();
+    $('#viewer-name').textContent = f.name;
+    $('#viewer-note').textContent = '前（+Z）・右（+X）・上（+Y）・斜め';
+    var box = $('#viewer-box');
+    box.classList.add('big');
+    box.style.backgroundImage = 'url("' + pics[f.id] + '")';
+    $('#viewer').hidden = false;
+  }
+  function makePreview(f) {
+    var j = job(f.name + '（ダウンロード）');
+    fetchFile(f, j).then(function (blob) {
+      j.finish('ダウンロードしました');
+      return preview(f, new File([blob], f.name));
+    }).catch(function (err) { j.fail((err && err.message) || 'ダウンロードできませんでした'); });
+  }
+  function download(f) {
+    var j = job(f.name + '（ダウンロード）');
+    return fetchFile(f, j).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = f.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
+      j.finish('ダウンロードしました（ハッシュ一致を確認済み）');
+    }).catch(function (err) { j.fail((err && err.message) || 'ダウンロードできませんでした'); });
+  }
+  // `f`: a file, or null for the whole vault
+  function makeLink(f) {
+    var hours = state.vault.hours || [1, 6, 24, 72];
+    ask({
+      title: f ? '読み取り専用リンクを作る' : '保管庫全体のリンクを作る',
+      text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき）') + 'をログインなしで取り出せるリンクです（表示は一度だけ）。有効時間（' + hours.join('・') + ' 時間）を入れてください。',
+      ok: '作る', input: { label: '有効時間（時間）', type: 'text', value: '24' },
+      check: function (v) { return hours.indexOf(Number(v)) >= 0 ? '' : hours.join('・') + ' のどれかを入れてください'; }
+    }).then(function (v) {
+      if (v === null) return null;
+      return vreq('POST', '/api/vault/link', { id: f ? f.id : '*', hours: Number(v) }).then(function (r) {
+        var url = location.origin + r.path;
+        copy(url);
+        loadVault();
+        return ask({ title: 'リンクを作りました（' + v + '時間有効・コピー済み）', text: url + '\n\n' + (f ? '期限まで、このファイルだけを取り出せます。' : '期限まで、保管庫のすべてのファイルを取り出せます。') + '用が済んだら停止してください。', ok: 'OK' });
+      });
+    }).catch(fail);
+  }
+  function onVault(e) {
+    var b = e.target.closest('[data-vact]'), card = b && b.closest('[data-file]');
+    if (!card) return;
+    var f = state.vaultFiles.filter(function (x) { return x.id === card.dataset.file; })[0];
+    if (!f) return;
+    var act = b.dataset.vact;
+    if (act === 'get') download(f);
+    else if (act === 'getlight') { if (lightOf(f)) download(lightOf(f)); }
+    else if (act === 'view') view3d(f);
+    else if (act === 'pic') showPic(f);
+    else if (act === 'make') makePreview(f);
+    else if (act === 'link') makeLink(f);
+    else if (act === 'resume') { state.resumeId = f.id; $('#vault-file').click(); }
+    else if (act === 'stop') {
+      ask({ title: 'リンクを停止しますか？', text: '「' + f.name + '」の読み取り専用リンクがすべて、すぐに使えなくなります。', ok: '停止する', danger: true }).then(function (ok) {
+        if (!ok) return null;
+        return vreq('POST', '/api/vault/link/stop', { id: f.id }).then(function (r) { toast('リンクを停止しました（' + r.stopped + '本）'); return loadVault(); });
+      }).catch(fail);
+    } else if (act === 'delete') {
+      ask({ title: '「' + f.name + '」を削除しますか？', text: '保管庫から完全に消えます（元に戻せません）。リンクも使えなくなります。', ok: '削除する', danger: true }).then(function (ok) {
+        if (!ok) return null;
+        return vreq('POST', '/api/vault/delete', { id: f.id }).then(function () { toast('削除しました'); return loadVault(); });
+      }).catch(fail);
+    }
+  }
+  // files picked: one after another (an unfinished one with the same name and size goes on where it stopped)
+  function onFiles() {
+    var input = $('#vault-file'), files = Array.prototype.slice.call(input.files || []), resume = state.resumeId;
+    input.value = '';
+    state.resumeId = null;
+    if (!state.vault) return;
+    files.reduce(function (p, file) {
+      return p.then(function () {
+        if (!state.vault) return null;
+        if (file.size > state.vault.fileBytes) { toast('「' + file.name + '」は大きすぎます（1ファイル ' + mb(state.vault.fileBytes) + 'まで）'); return null; }
+        var half = state.vaultFiles.filter(function (x) { return !x.done && (resume ? x.id === resume : x.name === file.name && x.size === file.size); })[0];
+        return upload(file, half ? half.id : null);
+      });
+    }, Promise.resolve());
   }
 
   /* ------------------------------------------------------------ the operators' log --- */
@@ -1305,6 +1820,37 @@
       logTimer = setTimeout(function () { state.logQ = $('#log-search').value.trim(); loadLog(true); }, 300);
     });
     $('#log-more').addEventListener('click', function () { loadLog(false); });
+    $('#pay-filter').addEventListener('click', function (e) {
+      var c = e.target.closest('[data-pay]');
+      if (!c) return;
+      state.payView = c.dataset.pay;
+      Array.prototype.forEach.call(document.querySelectorAll('#pay-filter .chip'), function (x) { x.classList.toggle('on', x === c); });
+      renderPay();
+    });
+    $('#pay-list').addEventListener('click', function (e) {
+      var o = e.target.closest('[data-open]');
+      if (o && Number(o.dataset.open)) { openDetail(Number(o.dataset.open)); return; }
+      onPay(e);
+    });
+    $('#pay-list').addEventListener('input', function (e) {
+      var t = e.target.closest('[data-draft]');
+      if (t) drafts[t.dataset.draft] = t.value;
+    });
+    $('#vault-open').addEventListener('click', openVault);
+    $('#vault-lock').addEventListener('click', function () { lockVault('保管庫を閉じました'); });
+    $('#vault-list').addEventListener('click', onVault);
+    $('#vault-all-link').addEventListener('click', function () { makeLink(null); });
+    $('#vault-all-stop').addEventListener('click', function () {
+      ask({ title: '全体リンクを停止しますか？', text: '保管庫全体の読み取り専用リンクがすべて、すぐに使えなくなります。', ok: '停止する', danger: true }).then(function (ok) {
+        if (!ok) return null;
+        return vreq('POST', '/api/vault/link/stop', { id: '*' }).then(function (r) { toast('リンクを停止しました（' + r.stopped + '本）'); return loadVault(); });
+      }).catch(fail);
+    });
+    $('#viewer-close').addEventListener('click', closeViewer);
+    $('#viewer').addEventListener('click', function (e) { if (e.target.id === 'viewer') closeViewer(); });
+    $('#vault-file').addEventListener('change', onFiles);
+    // leaving in the middle of an upload or a download
+    window.addEventListener('beforeunload', function (e) { if (moving > 0) { e.preventDefault(); e.returnValue = ''; } });
 
     $('#chat-close').addEventListener('click', closeChat);
     $('#chat-detail').addEventListener('click', function () { var c = state.chat; if (c) { closeChat(); openDetail(c.id); } });

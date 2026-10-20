@@ -65,7 +65,7 @@
     $('#dm-debt-amt').textContent = owed === null ? '-' : owed > 0 ? '$' + U.fmt(owed) : 'なし';
     // he lends 累計1100万円 at most, ever (paying back does not bring it back)
     var max = debt ? debt.max : BR.CONFIG.lender.max;
-    $('#dm-debt-cap').textContent = '貸してくれるのは累計' + yen(max) + 'まで' + (debt ? '（あと' + yen(debt.available) + '）' : '');
+    $('#dm-debt-cap').textContent = '累計' + yen(max) + 'まで' + (debt ? '（あと' + yen(debt.available) + '）' : '');
     $('#dm-repay').disabled = !(owed > 0) || busy;
   }
 

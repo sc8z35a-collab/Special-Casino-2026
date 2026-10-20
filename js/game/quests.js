@@ -44,7 +44,8 @@
   // value of the payouts of everyone in one's hub), sent ($ value sent to
   // friends), friend (a new friend), strawberry / watermelon / melon (fruits
   // given), borrow (money from ピーター), clear (quests finished, all kinds),
-  // sclear (特別 quests finished), broke (net worth below `brokeBelow` $).
+  // sclear (特別 quests finished), broke (net worth below `brokeBelow` $),
+  // jobpay ($ received from バイト).
   // How the progress reads: `money` an amount of $, `tokens` of spin
   // tokens, `sec` seconds (shown in minutes).
   var MAX_METRICS = ['combo'];
@@ -73,10 +74,14 @@
       { id: '5h-win20', period: '5h', metric: 'win', goal: 20, reward: 40000, text: 'カジノで20回当たる' },
       { id: '5h-win30', period: '5h', metric: 'win', goal: 30, reward: 50000, text: 'カジノで30回当たる' }
     ],
+    steps('5h', 'win', [['win50', 50, 80000], ['win70', 70, 90000], ['win90', 90, 110000], ['win100', 100, 120000],
+      ['win150', 150, 250000], ['win200', 200, 450000]],
+      function (n) { return { text: 'カジノで' + n + '回当たる' }; }),
     steps('5h', 'combo', [['combo2', 2, 5000], ['combo3', 3, 10000], ['combo4', 4, 20000]],
       function (n) { return { text: 'カジノで' + n + 'コンボする' }; }),
     steps('5h', 'bet', [['bet10k', 10000, 10000], ['bet20k', 20000, 20000], ['bet50k', 50000, 30000], ['bet100k', 100000, 40000],
-      ['bet200k', 200000, 50000], ['bet300k', 300000, 100000], ['bet500k', 500000, 200000]],
+      ['bet200k', 200000, 50000], ['bet300k', 300000, 100000], ['bet500k', 500000, 200000], ['bet1m', 1e6, 80000],
+      ['bet2m', 2e6, 100000], ['bet3m', 3e6, 120000], ['bet4m', 4e6, 150000], ['bet5m', 5e6, 200000], ['bet6m', 6e6, 220000]],
       function (n) { return { text: 'カジノで' + man(n) + 'トークン賭ける（累計）', tokens: true }; }),
     [
       { id: '5h-earn10k', period: '5h', metric: 'earn', goal: 10000, reward: 15000, text: '10kを稼ぐ', money: true },
@@ -87,7 +92,8 @@
     steps('5h', 'talkSec', [['talk5', 5 * M, 10000], ['talk10', 10 * M, 20000], ['talk20', 20 * M, 30000], ['talk30', 30 * M, 40000]],
       function (n) { return { text: '友達と' + n / M + '分間話す（通話・累計）', sec: true }; }),
     steps('5h', 'online', [['online5', 5 * M, 3000], ['online10', 10 * M, 5000], ['online15', 15 * M, 10000], ['online20', 20 * M, 20000],
-      ['online30', 30 * M, 40000], ['online60', 60 * M, 50000], ['online90', 90 * M, 100000]],
+      ['online30', 30 * M, 40000], ['online60', 60 * M, 50000], ['online90', 90 * M, 100000], ['online120', 120 * M, 10000],
+      ['online150', 150 * M, 12000], ['online180', 180 * M, 15000], ['online200', 200 * M, 20000], ['online250', 250 * M, 30000]],
       function (n) { return { text: n / M + '分間オンラインでいる', sec: true }; }),
     [{ id: '5h-join', period: '5h', metric: 'hub', goal: 1, reward: 5000, text: '稼ぎに参加する（友達と稼ぐ）' }],
     steps('5h', 'wbet', [['wbet1', 1, 5000], ['wbet2', 2, 10000], ['wbet3', 3, 15000], ['wbet4', 4, 20000], ['wbet5', 5, 30000], ['wbet6', 6, 40000]],
@@ -109,6 +115,9 @@
       { id: 'day-special', period: 'day', metric: 'sclear', goal: 1, reward: 30000, text: '特別クエストをひとつクリアする' },
       { id: 'day-talk', period: 'day', metric: 'talk', goal: 1, reward: 10000, text: '友達と話す（通話）' },
       { id: 'day-friend', period: 'day', metric: 'friend', goal: 1, reward: 10000, text: '友達を追加する' },
+      { id: 'day-job100k', period: 'day', metric: 'jobpay', goal: 100000, reward: 10000, text: 'バイトで100k稼ぐ（累計）', money: true },
+      { id: 'day-job150k', period: 'day', metric: 'jobpay', goal: 150000, reward: 20000, text: 'バイトで150k稼ぐ（累計）', money: true },
+      { id: 'day-job300k', period: 'day', metric: 'jobpay', goal: 300000, reward: 40000, text: 'バイトで300k稼ぐ（累計）', money: true },
 
       { id: 'week-melon3', period: 'week', metric: 'watermelon', goal: 3, reward: 100000, text: '友達にスイカを3個与える', emergency: true },
       { id: 'week-melon5', period: 'week', metric: 'watermelon', goal: 5, reward: 200000, text: '友達にスイカを5個与える', emergency: true }
@@ -116,7 +125,7 @@
 
     steps('coop', 'coopEarn', [['earn1m', 1e6, 100000], ['earn1.5m', 1.5e6, 150000], ['earn3m', 3e6, 200000], ['earn4m', 4e6, 250000],
       ['earn5m', 5e6, 300000], ['earn10m', 1e7, 500000], ['earn15m', 1.5e7, 800000]],
-      function (n) { return { text: '友達と' + (n / 1e6) + 'M稼ぐ（ハブのみんなの累計）', money: true }; }),
+      function (n) { return { text: '友達と' + (n / 1e6) + 'M稼ぐ（みんなの累計）', money: true }; }),
     steps('coop', 'hubSec', [['time10', 10 * M, 200000], ['time20', 20 * M, 400000], ['time30', 30 * M, 500000], ['time50', 50 * M, 750000],
       ['time60', 60 * M, 800000], ['time90', 90 * M, 1000000], ['time120', 120 * M, 1250000], ['time150', 150 * M, 1400000],
       ['time200', 200 * M, 1500000], ['time250', 250 * M, 1500000], ['time300', 300 * M, 1500000], ['time500', 500 * M, 1500000],
@@ -134,7 +143,7 @@
       { id: 'special-earn1m', period: 'special', metric: 'earn', goal: 1000000, reward: 300000, text: '1M稼ぐ', money: true },
       { id: 'special-win100', period: 'special', metric: 'win', goal: 100, reward: 100000, text: 'カジノで100回当たる' },
       { id: 'special-win500', period: 'special', metric: 'win', goal: 500, reward: 500000, text: 'カジノで500回当たる' },
-      { id: 'special-broke', period: 'special', metric: 'broke', goal: 1, reward: 1000000, text: '無一文になってしまう', note: 'コインもすべてお金に換算して総額が5万円を下回ったとき' }
+      { id: 'special-broke', period: 'special', metric: 'broke', goal: 1, reward: 1000000, text: '無一文になってしまう', note: 'トークンも$に換算した総額が5万を下回ったとき（ロイヤルコインは除く）' }
     ]
   );
 

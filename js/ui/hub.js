@@ -82,12 +82,12 @@
       { sym: 'seven', title: '7の確率アップ', text: pct(W.seven) + ' → ' + pct(H.seven), up: true },
       { sym: 'revolver', title: '銃の確率ダウン（はずれにくい）', text: pct(W.revolver) + ' → ' + pct(H.revolver), up: false },
       { sym: 'diamond', title: 'ダイヤ確定', text: pct(HUB.diamonds) + 'の確率でダイヤ5つがそろう（20倍）' },
-      { badge: 'COMBO', title: 'コンボをみんなで共有', text: '1コンボごとに当たりの報酬が' + times(HUB.comboStep) + 'ずつアップ（2コンボ目 ×1.1・3コンボ目 ×1.21…）。' + HUB.misses + '回続けて外れるまでコンボは消えない' },
+      { badge: 'COMBO', title: 'コンボをみんなで共有', text: '1コンボごとに報酬が' + times(HUB.comboStep) + 'ずつアップ（2コンボ目 ×1.1・3コンボ目 ×1.21…）。' + HUB.misses + '回続けて外れるまで続く' },
       { badge: '777', title: '777ボーナス', text: '7が3つ以上そろうと、7の報酬が' + times(HUB.sevens) },
       { badge: 'EXP', title: 'レベルブースト', text: '経験値が' + times(HUB.xp) + '（抜けるまで自動）' },
       { badge: '5H', title: '5時間クエスト ブースター', text: '5時間クエストのカウントが2人で' + times(HUB.booster) + '、1人増えるごとにさらに' + times(HUB.boosterStep) + '（3人 ×2.2・4人 ×2.42…）' },
-      { badge: 'JOB', title: 'バイトの時給アップ', text: '勤務中でいちばん時給が高いバイト1つの時給が' + times(HUB.wage) },
-      { badge: '守', title: 'お守り加護パワーアップ', text: '負けたスピンの損の軽減が最大' + BR.CONFIG.charm.hub.max + '%に（ふだんは' + BR.CONFIG.charm.min + '〜' + BR.CONFIG.charm.max + '%）。100%軽減（大吉）の確率も2倍' },
+      { badge: 'JOB', title: 'バイトの時給アップ', text: '勤務中でいちばん高いバイトの時給が' + times(HUB.wage) },
+      { badge: '守', title: 'お守り加護パワーアップ', text: '負けたスピンの軽減が最大' + BR.CONFIG.charm.hub.max + '%に（通常' + BR.CONFIG.charm.min + '〜' + BR.CONFIG.charm.max + '%）。100%軽減（大吉）の確率も2倍' },
       { badge: 'QUEST', title: 'クエストはすべて有効', text: '週間協力クエストも進みます' }
     ];
   }
@@ -200,8 +200,8 @@
     } else {
       sfx('deny');
       toast(isActive({ id: myId() })
-        ? 'プレイ中の人が1人になったので「友達と稼ぐ」の特典はストップ中です（2人以上で再開）'
-        : '4分以上操作がなかったので特典はストップ中です（タップで再開）', 3600);
+        ? 'プレイ中が1人になったので特典はストップ中です（2人以上で再開）'
+        : '4分以上操作がないので特典はストップ中です（タップで再開）', 3600);
     }
   }
 
@@ -249,18 +249,18 @@
       J.flash('#ffd27a', 0.22, 320);
       J.rain({ kind: 'confetti', dur: 1, rate: 36 });
     }
-    toast('「友達と稼ぐ」に参加中：7・女神像が出やすく、コンボはみんなで共有（効果ボタンで詳しく）', 4200);
+    toast('「友達と稼ぐ」に参加中：7・女神像が出やすく、コンボはみんなで共有', 4200);
   }
 
   /* ------------------------------------------------------------ invitations --- */
   function invite(user) {
     if (!api.online || !user) return;
-    if (!user.online) { sfx('deny'); toast(user.name + 'さんは今オフラインです（オンラインのフレンドを招待できます）', 3200); return; }
+    if (!user.online) { sfx('deny'); toast(user.name + 'さんは今オフラインです', 3200); return; }
     if (hub && hub.members.length >= hub.max) { sfx('deny'); toast('「友達と稼ぐ」は' + hub.max + '人までです'); return; }
     sfx('click');
     api.hubInvite(user.id).then(function () {
       sfx('send');
-      toast(user.name + 'さんを「友達と稼ぐ」に招待しました（参加を待っています）', 3000);
+      toast(user.name + 'さんを「友達と稼ぐ」に招待しました', 3000);
     }, fail);
   }
 
@@ -356,7 +356,7 @@
     if (!hub) return;
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode('「友達と稼ぐ」を抜けますか？'));
-      p.appendChild(el('small', 'confirm-sub', 'コンボ共有などの効果と通話がなくなります。また招待してもらうと参加できます。'));
+      p.appendChild(el('small', 'confirm-sub', 'コンボ共有などの効果と通話がなくなります。'));
     }, '抜ける').then(function (ok) {
       if (!ok) return;
       api.hubLeave().then(function () {
@@ -419,7 +419,10 @@
     face.appendChild(el('i', 'hb-dot'));
     top.appendChild(face);
     var id = el('div', 'hb-mc-id');
-    id.appendChild(el('b', 'uname', m.name + (self ? '（あなた）' : '')));
+    var nm = el('span', 'fr-name-row');
+    nm.appendChild(el('b', 'uname', m.name + (self ? '（あなた）' : '')));
+    K.addVip(nm, m.vip);
+    id.appendChild(nm);
     var st = el('span', 'hb-mc-state ' + stateOf(m));
     st.appendChild(el('i', 'hb-dot'));
     st.appendChild(document.createTextNode(idleText(m)));
@@ -437,7 +440,7 @@
       var deaf = call && call.deaf();
       mine.appendChild(mcButton(deaf ? 'みんなの声 ミュート中' : 'みんなの声 オン', 'deaf', deaf ? 'off' : 'on', deaf ? 'speaker-off' : 'speaker'));
       root.appendChild(mine);
-      root.appendChild(el('p', 'hb-mc-note', '通話は「友達と稼ぐ」にいるあいだ切れません。声を止めたい人はその人のアイコンからミュートできます。'));
+      root.appendChild(el('p', 'hb-mc-note', '通話は抜けるまで切れません。声はアイコンから人ごとにミュートできます。'));
       return;
     }
     // their voice: volume and mute (kept on this phone), or why there is none
@@ -454,7 +457,7 @@
       voice.appendChild(slider(m.id, v.volume));
       voice.appendChild(el('b', 'hb-vol-n', v.volume + '%'));
       voice.appendChild(mcButton(v.muted ? 'ミュート解除' : 'ミュート', 'mute', v.muted ? 'off' : ''));
-      if (!m.online) voice.appendChild(el('small', 'hb-mc-sub', 'オフライン（戻ると声がつながります）'));
+      if (!m.online) voice.appendChild(el('small', 'hb-mc-sub', 'オフライン（戻るとつながります）'));
       else if (!v.connected) voice.appendChild(el('small', 'hb-mc-sub', '通話に接続中…'));
     }
     root.appendChild(voice);
@@ -516,12 +519,14 @@
     switch (act) {
       case 'close': closeMember(); break;
       case 'profile': closeMember(); BR.social.openProfile(m); break;
-      case 'mic': BR.call.setMic(!BR.call.mic()).then(fillMember); fillMember(); break;
+      case 'mic':
+        if (BR.call.paused()) { BR.call.resume(); fillMember(); break; }
+        BR.call.setMic(!BR.call.mic()).then(fillMember); fillMember(); break;
       case 'deaf': BR.call.setDeaf(!BR.call.deaf()); fillMember(); break;
       case 'mute': {
         var v = BR.call.voice(m.id);
         BR.call.setMuted(m.id, !v.muted);
-        toast(v.muted ? m.name + 'さんのミュートを解除しました' : m.name + 'さんの声をミュートしました（相手には知らされません）', 2200);
+        toast(v.muted ? m.name + 'さんのミュートを解除しました' : m.name + 'さんの声をミュートしました', 2200);
         fillMember();
         render();
         break;
@@ -536,7 +541,7 @@
     var ask = !on ? Promise.resolve(true) : K.confirmBox(function (p) {
       p.appendChild(K.nameSpan(m.name));
       p.appendChild(document.createTextNode('さんをブロックしますか？'));
-      p.appendChild(el('small', 'confirm-sub', '相手には知らされません。この人の声・即席チャット・メッセージなどがあなたに届かなくなります（フレンドと「友達と稼ぐ」はそのまま。解除するとブロック中のメッセージが届きます）。'));
+      p.appendChild(el('small', 'confirm-sub', '相手には知らされません。声・即席チャット・メッセージなどが届かなくなります（解除するとまとめて届きます）。'));
     }, 'ブロック');
     ask.then(function (ok) {
       if (!ok) return null;
@@ -576,7 +581,7 @@
     if (!chatFeed) return;
     chatFeed.textContent = '';
     var list = chats[chatWith] || [];
-    if (!list.length) chatFeed.appendChild(el('div', 'empty chat-empty', '「友達と稼ぐ」の仲間に即席チャット。\n（ここでの会話は保存されません）'));
+    if (!list.length) chatFeed.appendChild(el('div', 'empty chat-empty', '仲間に即席チャット（保存されません）'));
     list.forEach(function (l) { chatFeed.appendChild(lineEl(l)); });
     BR.entry.scrollFeed();
   }
@@ -627,7 +632,7 @@
     var m = ui.modal;
     m.title.textContent = '「友達と稼ぐ」の効果';
     m.body.textContent = '';
-    m.body.appendChild(el('p', 'hb-lead', '2人以上がプレイ中（4分以内に操作）のあいだ、全員のスロットに次の効果がつきます（最大' + HUB.max + '人）。'));
+    m.body.appendChild(el('p', 'hb-lead', '2人以上がプレイ中のあいだ、全員のスロットに次の効果がつきます（最大' + HUB.max + '人）。'));
     var list = el('div', 'hb-effs');
     effects().forEach(function (e) { list.appendChild(effectRow(e)); });
     m.body.appendChild(list);
@@ -646,7 +651,7 @@
       won.appendChild(K.amountEl(hub.won || 0, 'tokens'));
       m.body.appendChild(won);
     }
-    m.body.appendChild(el('p', 'hb-note', '4分以上何も操作しないと「放置中」になります。プレイ中の人が1人だけになると特典と週間協力クエストは止まり、2人以上に戻ると再開します。抜けるまで「友達と稼ぐ」から自動で抜けることはありません（抜けるときはバーの右上の小さなボタン）。マイクは最初オフ、通話は切れません（アイコンから人ごとに音量・ミュート）。'));
+    m.body.appendChild(el('p', 'hb-note', '4分以上操作しないと「放置中」になります。プレイ中が1人になると特典と週間協力クエストは止まり、2人以上で再開します。自動で抜けることはありません（抜けるときはバー右上のボタン）。マイクは最初オフで、通話は切れません（アイコンから人ごとに音量・ミュート）。'));
     K.showModal(m.id);
   }
 
@@ -763,7 +768,7 @@
       case 'closed':
         setHub(null);
         sfx('callEnd');
-        toast('ひとりになったので「友達と稼ぐ」は解散しました。また友達を招待しよう！', 3600);
+        toast('ひとりになったので「友達と稼ぐ」は解散しました', 3600);
         break;
       case 'spin':
         friendSpin(ev);

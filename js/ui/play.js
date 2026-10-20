@@ -111,8 +111,8 @@
   function challenge(user) {
     if (!api.online || !user) return;
     if (!myId()) { sfx('deny'); toast('ログインしてからお試しください'); return; }
-    if (battle) { sfx('deny'); toast(battle.state === 'live' ? '対決中です。終わってから申し込んでください' : '返事を待っている対決があります'); return; }
-    if (!user.online) { sfx('deny'); toast(user.name + 'さんは今オフラインです（オンラインの相手と対決できます）', 3200); return; }
+    if (battle) { sfx('deny'); toast(battle.state === 'live' ? '対決が終わってから申し込んでください' : '返事を待っている対決があります'); return; }
+    if (!user.online) { sfx('deny'); toast(user.name + 'さんは今オフラインです', 3200); return; }
     var spins = cfg('battle').spins;
     ask.user = { id: user.id, name: user.name, avatar: user.avatar };
     ask.spins = ask.spins && spins.indexOf(ask.spins) >= 0 ? ask.spins : spins[0];
@@ -205,7 +205,7 @@
     text.appendChild(who);
     text.appendChild(el('div', 'call-in-what', 'フレンド対決の申し込み！'));
     var small = el('small', '');
-    small.appendChild(document.createTextNode(b.spins + '回・ベット ' + U.fmt(b.bet) + ' で勝負（獲得トークンの多いほうが勝ち）'));
+    small.appendChild(document.createTextNode(b.spins + '回・ベット ' + U.fmt(b.bet) + ' で勝負'));
     var left = el('span', 'pl-invite-left');
     small.appendChild(left);
     text.appendChild(small);
@@ -484,13 +484,13 @@
   function renderCoopPanel(c, seated) {
     var m = ui.coop, b = clear(m.body);
     var rate = Math.round(cfg('coop').bonus * 100);
-    b.appendChild(el('p', 'pl-lead', 'グループのみんなで同じ台を回そう！みんなのベットが1つのゲージにたまり、満タンになると、そのラウンドで賭けたトークンの' + rate + '%がボーナスとして全員に入ります。'));
+    b.appendChild(el('p', 'pl-lead', 'みんなのベットが1つのゲージにたまり、満タンになると、そのラウンドで賭けたトークンの' + rate + '%が全員にボーナスで入ります。'));
     if (!c) { b.appendChild(el('div', 'pl-empty', '読み込み中…')); return; }
     b.appendChild(el('div', 'pl-label', '協力ゲージ'));
     b.appendChild(gaugeEl(c.gauge, c.goal, true));
     b.appendChild(el('div', 'pl-label', '座っている人（' + c.players.length + '人）'));
     var seats = el('div', 'pl-seats');
-    if (!c.players.length) seats.appendChild(el('div', 'pl-empty', 'まだ誰も座っていません。最初の一人になろう！'));
+    if (!c.players.length) seats.appendChild(el('div', 'pl-empty', 'まだ誰も座っていません'));
     c.players.forEach(function (p) {
       var s = el('div', 'pl-seat');
       var av = K.avatarEl(p, 'sm');
@@ -514,7 +514,7 @@
       go.addEventListener('click', function () { sfx('click'); K.closeModal(m.id); BR.screens.show('slot'); });
       acts.appendChild(go);
     } else {
-      var sitBtn = button('act-btn gold', coop && coop.group !== c.group ? 'このテーブルに移って座る' : '座る（協力スロットを始める）', 'sit');
+      var sitBtn = button('act-btn gold', coop && coop.group !== c.group ? 'このテーブルに移る' : '座って始める', 'sit');
       sitBtn.addEventListener('click', function () { sit(c.group, true, sitBtn); });
       acts.appendChild(sitBtn);
     }
@@ -639,7 +639,7 @@
         coopTicker('ゲージ満タン！ボーナス！', true);
         sfx('money');
         if (BR.juice) BR.juice.reward(ui.coopBar, 3);
-        toast(mine ? '協力ボーナス！ +' + U.fmt(mine.amount) + ' トークン' : '協力ゲージが満タンになりました！みんなにボーナス！', 3600);
+        toast(mine ? '協力ボーナス！ +' + U.fmt(mine.amount) + ' トークン' : '協力ゲージ満タン！みんなにボーナス！', 3600);
       });
     }
   }
@@ -701,7 +701,7 @@
     ], pick.side, function (v) { pick.side = v; }));
     b.appendChild(el('div', 'pl-label', '賭けるトークン'));
     b.appendChild(choices('pl-stakes', wb.stakes.map(function (n) { return { value: n, chip: true }; }), pick.stake, function (v) { pick.stake = v; }));
-    b.appendChild(el('p', 'pl-note', 'BIG WIN（ベットの' + BR.CONFIG.tiers.big + '倍以上の当たり）が' + wb.spins + '回以内に出るかどうかを予想します。的中すると賭けたトークンの' + wb.hit + '倍（「出ない」は' + wb.miss + '倍）が戻ってきます。'));
+    b.appendChild(el('p', 'pl-note', 'BIG WIN（ベットの' + BR.CONFIG.tiers.big + '倍以上）が' + wb.spins + '回以内に出るかを予想。的中で賭けたトークンの' + wb.hit + '倍（「出ない」は' + wb.miss + '倍）が戻ります。'));
     var acts = el('div', 'pl-acts');
     var go = button('act-btn gold', '賭ける', 'bet');
     go.addEventListener('click', function () { placeBet(h, go); });

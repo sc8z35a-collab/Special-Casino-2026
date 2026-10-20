@@ -98,6 +98,15 @@
 
   function get(path) { return request('GET', path); }
   function post(path, body) { return request('POST', path, body || {}); }
+  // 運営へのメッセージ・報告・意見案・通報・プレイヤー間のメッセージ: too big
+  // ones (BR.CONFIG.sendMax) are stopped here, before they are sent
+  function postText(path, body) {
+    var M = BR.CONFIG.sendMax;
+    if (Array.from(String(body.text || '')).length > M.chars || new Blob([JSON.stringify(body)]).size > M.bytes) {
+      return Promise.reject(new ApiError(413, 'too_large', '送信できません。大きすぎます。'));
+    }
+    return post(path, body);
+  }
   function q(v) { return encodeURIComponent(v); }
 
   BR.api = {
@@ -149,7 +158,7 @@
       if (before) p.push('before=' + q(before));
       return get('/api/messages?' + p.join('&'));
     },
-    send: function (chat, text) { return post('/api/messages', chat.group ? { group: chat.group, text: text } : { to: chat.with, text: text }); },
+    send: function (chat, text) { return postText('/api/messages', chat.group ? { group: chat.group, text: text } : { to: chat.with, text: text }); },
     read: function (chat) { return post('/api/read', chat.group ? { group: chat.group } : { with: chat.with }); },
     typing: function (chat) { return post('/api/typing', chat.group ? { group: chat.group } : { to: chat.with }); },
     makeGroup: function (name, members) { return post('/api/groups', { name: name, members: members }); },
@@ -167,7 +176,13 @@
     sellCar: function (carId, price) { return post('/api/cars/sell', { car: carId, price: price }); },
     rentCar: function (carId, action) { return post('/api/cars/rent', { car: carId, action: action }); },
     collectRent: function () { return post('/api/cars/collect'); },
-    expandGarage: function () { return post('/api/garage/expand'); },
+    expandGarage: function (price) { return post('/api/garage/expand', { price: price }); },
+    // a car sold to a friend in the chat
+    carOffer: function (to, carId, price) { return post('/api/cars/offer', { to: to, car: carId, price: price }); },
+    carOfferCancel: function (id) { return post('/api/cars/offer/cancel', { id: id }); },
+    carOfferBuy: function (id) { return post('/api/cars/offer/buy', { id: id }); },
+    carSoldClaim: function (id) { return post('/api/cars/sold/claim', { id: id }); },
+    vipExtend: function (days) { return post('/api/vip/extend', { days: days }); },
 
     /* Shop, 所有 and the お守り加護 */
     items: function () { return get('/api/items'); },
@@ -216,8 +231,8 @@
     age: function (adult) { return post('/api/age', { adult: !!adult }); },
     present: function (to, id) { return post('/api/present', { to: to, id: id }); },
     presentClaim: function (messageId) { return post('/api/present/claim', { message: messageId }); },
-    report: function (user, kind, text, place) { return post('/api/report', { user: user, kind: kind, text: text, place: place }); },
-    officialFeedback: function (kind, text) { return post('/api/official/feedback', { kind: kind, text: text }); },
+    report: function (user, kind, text, place) { return postText('/api/report', { user: user, kind: kind, text: text, place: place }); },
+    officialFeedback: function (kind, text) { return postText('/api/official/feedback', { kind: kind, text: text }); },
 
     /* phone notifications (js/net/push.js) */
     pushKey: function () { return get('/api/push/key'); },
@@ -244,6 +259,13 @@
     auctionStart: function (market) { return post('/api/tree/auction/start', { market: market }); },
     auctionBid: function (steps) { return post('/api/tree/auction/bid', { steps: steps }); },
     auctionLeave: function () { return post('/api/tree/auction/leave'); },
+
+    /* 開発者支援 (js/ui/support.js): the price is the server's, the plan and how many are ours */
+    payInfo: function () { return get('/api/pay/info'); },
+    payCheckout: function (plan, qty, method) { return post('/api/pay/checkout', { plan: plan, qty: qty, method: method }); },
+    payOrder: function (id) { return get('/api/pay/order?id=' + q(id)); },
+    payCancel: function (id) { return post('/api/pay/cancel', { order: id }); },
+    paySeller: function () { return get('/api/pay/seller'); },
 
     loginBonus: function () { return post('/api/login-bonus'); },
     ticket: function () { return post('/api/stream-ticket'); }

@@ -336,7 +336,7 @@
         var head = document.createElement('b');
         head.textContent = '友達と稼ぐ（プレイ中2人以上）';
         text.appendChild(head);
-        text.appendChild(document.createTextNode('：' + BR.hub.effects().map(function (e) { return e.title + '（' + e.text + '）'; }).join('・')));
+        text.appendChild(document.createTextNode('：' + BR.hub.effects().map(function (e) { return e.title; }).join('・')));
         li.appendChild(ic);
         li.appendChild(text);
         $('#pane-rules .rule-list').appendChild(li);

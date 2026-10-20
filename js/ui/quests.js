@@ -296,7 +296,7 @@
     list.textContent = '';
     if (def.hub) list.appendChild(hubBanner());
     var cs = chains(p);
-    if (!cs.length) { list.appendChild(el('div', 'empty', '現在、' + def.name + 'クエストはありません')); return; }
+    if (!cs.length) { list.appendChild(el('div', 'empty', def.name + 'クエストはありません')); return; }
     // the 臨時緊急 first, then what waits to be received, what is open, what is all done
     var order = { ready: 0, open: 1, received: 2 };
     cs.sort(function (a, b) { return (b.emergency - a.emergency) || (order[chainState(a)] - order[chainState(b)]); });
@@ -324,8 +324,8 @@
     var on = !!(BR.hub && BR.hub.active());
     var b = el('div', 'q-hub' + (on ? ' on' : ''));
     var t = el('div', 'q-hub-text');
-    t.appendChild(el('b', '', on ? '友達と稼ぐに参加中：進行中！' : '友達と稼ぐ（ハブ）に参加しているあいだだけ進みます'));
-    t.appendChild(el('span', '', 'ハブのみんなが稼いだ額と、友達と一緒に稼いだ時間がカウントされます（4分以上なにも操作がないと時間は止まります）'));
+    t.appendChild(el('b', '', on ? '友達と稼ぐに参加中：進行中！' : '友達と稼ぐの参加中だけ進みます'));
+    t.appendChild(el('span', '', 'みんなで稼いだ額と時間がカウントされます（4分操作がないと時間は止まります）'));
     b.appendChild(t);
     if (!on) {
       var go = el('button', 'act-btn gold q-hub-go', 'フレンドを招待');

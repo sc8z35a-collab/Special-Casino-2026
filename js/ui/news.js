@@ -69,7 +69,7 @@
     if (outdated && !was && BR.install && BR.install.outdated) BR.install.outdated();
     if (release > latest) latest = release;
     $('#update-note').hidden = !outdated;
-    if (latest > BR.RELEASE) $('#update-note-text').textContent = '新しいバージョン（' + devName(latest) + '）があります。今すぐアップデートできます。';
+    if (latest > BR.RELEASE) $('#update-note-text').textContent = '新しいバージョン（' + devName(latest) + '）があります';
   }
   // one tap: the newest game right away (the web page and the app alike)
   function update() {

@@ -302,8 +302,8 @@
     if (!t.cycle) {
       head.appendChild(el('h3', '', '収穫の時期を選ぶ'));
       box.appendChild(el('p', 'tr-note', t.given > 0
-        ? '選んだ時期まで育てて収穫します。長く待つほど収穫が増えます。一度決めると、その時期まで変更も収穫もできません。'
-        : 'まずはお金をあげて育てましょう。お金をあげると、収穫の時期を選べるようになります。'));
+        ? '長く待つほど収穫が増えます。一度決めると、その時期まで変更も収穫もできません。'
+        : 'お金をあげると、収穫の時期を選べるようになります。'));
       var row = el('div', 'tr-cycles');
       R.cycles.forEach(function (c) {
         var b = cycleButton(t, c, 'start');
@@ -341,7 +341,7 @@
     var got = el('div', 'tr-got');
     got.appendChild(K.amountEl(value(t, at), 'dollars', 'tr-got-amt'));
     box.appendChild(got);
-    box.appendChild(el('p', 'tr-note', '収穫すると、次の時期で育て直します。次の収穫の時期:'));
+    box.appendChild(el('p', 'tr-note', '収穫後は次の時期で育て直します:'));
     var pick = el('div', 'tr-cycles small');
     var next = harvestNext || t.cycle.id;
     R.cycles.forEach(function (x) { pick.appendChild(cycleButton(t, x, 'next', x.id === next)); });
@@ -394,7 +394,7 @@
     if (!t || !c || busy) return;
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode('「' + c.name + '」で育てますか？'));
-      p.appendChild(el('small', 'confirm-sub', c.name + '後に ' + multText(c.mult) + ' で収穫できます（いまの毎秒の金額なら $' + U.fmt(estimate(t, c)) + '）。一度決めると、その時期まで変更も収穫もできません。'));
+      p.appendChild(el('small', 'confirm-sub', c.name + '後に ' + multText(c.mult) + ' で収穫（見込み $' + U.fmt(estimate(t, c)) + '）。その時期まで変更も収穫もできません。'));
     }, '育てる').then(function (ok) {
       if (!ok) return;
       busy = true;
@@ -516,7 +516,7 @@
       info.appendChild(el('h3', '', m.name));
       info.appendChild(el('p', 'au-desc', id === 'seed'
         ? '種から育てる新しい金の生る木。'
-        : '少なくとも一段階上の姿まで育った金の生る木（見た目 2〜4）。'));
+        : '少し育った金の生る木（見た目 2〜4）。'));
       var avg = el('div', 'au-avgs');
       [['2本目', m.second, owned <= 1], ['3本目以降', m.more, owned >= 2]].forEach(function (x) {
         var line = el('div', 'au-avg' + (x[2] ? ' now' : ''));
@@ -536,10 +536,10 @@
     v.appendChild(row);
     var notes = el('ul', 'au-notes');
     [
-      owned >= R.max ? '金の生る木は' + R.max + '本までです。' : 'いまの木は' + owned + '本。競りで落札すると' + (owned + 1) + '本目として植えられます（' + R.max + '本まで）。',
-      '競りの相手はほかの入札者（NPC）です。いつでも離脱でき、離脱すれば支払いはありません。',
-      '落札価格は平均より安くなることも、大幅に高くなることもあります。入札がないまま' + 6 + '秒たつと落札です。',
-      '名前にSUPERがつく木かどうかは、競りの間はわかりません。落札して手に入れたときにSUPERがついていれば、その木の収穫はずっと' + multText(R.superMult) + '！'
+      owned >= R.max ? '金の生る木は' + R.max + '本までです。' : 'いまの木は' + owned + '本。落札すると' + (owned + 1) + '本目になります（' + R.max + '本まで）。',
+      '相手はNPCです。いつでも離脱でき、離脱すれば支払いはありません。',
+      '落札価格は平均より安くも高くもなります。入札がないまま' + 6 + '秒たつと落札です。',
+      'SUPERの木かどうかは落札するまでわかりません。SUPERなら収穫はずっと' + multText(R.superMult) + '！'
     ].forEach(function (s) { notes.appendChild(el('li', '', s)); });
     v.appendChild(notes);
     return v;
@@ -655,7 +655,7 @@
     } else if (a.status === 'left') {
       card.appendChild(el('p', '', '支払いはありません。また参加できます。'));
     } else if (a.status === 'unpaid') {
-      card.appendChild(el('p', '', '落札の時点で$が足りなかったため、落札は取り消されました。'));
+      card.appendChild(el('p', '', '$が足りなかったため、落札は取り消されました。'));
     } else if (a.status === 'full') {
       card.appendChild(el('p', '', '金の生る木は' + R.max + '本までのため、植えられませんでした。'));
     }

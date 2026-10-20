@@ -136,7 +136,7 @@
       p.appendChild(document.createTextNode('「' + a.name + '」を'));
       p.appendChild(K.amountEl(s.salePrice, 'dollars', 'confirm-amt'));
       p.appendChild(document.createTextNode('で購入しますか？'));
-      p.appendChild(el('small', 'confirm-sub', 'セール価格（通常 ' + money(s.price) + ' → ' + s.pct + '%オフ）。購入するとすぐにこのアイコンになります。'));
+      p.appendChild(el('small', 'confirm-sub', 'セール価格（通常 ' + money(s.price) + ' → ' + s.pct + '%オフ）。購入するとこのアイコンになります。'));
     }, '購入する').then(function (ok) {
       if (!ok) return;
       busy = true;

@@ -21,7 +21,7 @@
   <form class="login-card" id="login-form" autocomplete="on" novalidate>
     <div class="brand"><span class="brand-mark">TS</span><span>TWO STATE</span></div>
     <h1>サーバー運営サイト</h1>
-    <p class="muted">運営者のアカウントだけがログインできます。名前とパスワードの入力は最初の1回だけです。</p>
+    <p class="muted">運営者のアカウントだけがログインできます（入力は最初の1回だけ）。</p>
     <label class="field"><span>名前</span><input id="login-name" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
     <label class="field"><span>パスワード</span><input id="login-pass" name="password" type="password" autocomplete="current-password" required></label>
     <p class="error" id="login-error" role="alert"></p>
@@ -39,6 +39,8 @@
       <button class="tab" data-view="feedback" type="button">報告・意見案<b class="count" id="count-feedback" hidden></b></button>
       <button class="tab" data-view="log" type="button">ログ</button>
       <button class="tab" data-view="operators" type="button" id="tab-operators">運営者</button>
+      <button class="tab" data-view="pay" type="button" id="tab-pay" hidden>課金<b class="count" id="count-pay" hidden></b></button>
+      <button class="tab" data-view="vault" type="button" id="tab-vault" hidden>保管庫</button>
     </nav>
     <div class="top-right">
       <span class="muted" id="op-name"></span>
@@ -73,7 +75,7 @@
         </select>
       </label>
     </div>
-    <p class="hint muted">アイコンをタップすると公式ボットとのチャット、行をタップすると詳細が開きます。</p>
+    <p class="hint muted">アイコンで公式チャット、行で詳細が開きます。</p>
     <div class="table-wrap">
       <table class="players">
         <thead>
@@ -94,7 +96,7 @@
         <button class="chip" data-status="done" type="button">処理済み</button>
       </div>
     </div>
-    <p class="hint muted">受理すると、Ice Smoker公式ボットから通報した人へ選んだ金額と感謝のメッセージが自動で届きます。</p>
+    <p class="hint muted">受理すると、通報した人へ選んだ金額とお礼が公式から自動で届きます。</p>
     <div class="cards" id="report-list"></div>
   </section>
 
@@ -107,7 +109,7 @@
         <button class="chip" data-all="1" type="button">すべて</button>
       </div>
     </div>
-    <p class="hint muted">相手には検知した部分が *** で届いています。ここでは送られた原文を確認できます（赤い部分が検知した言葉）。</p>
+    <p class="hint muted">相手には *** で届いています。赤い部分が検知した言葉です。</p>
     <div class="cards" id="det-list"></div>
   </section>
 
@@ -130,7 +132,7 @@
       <input class="search" id="log-search" type="search" placeholder="名前・内容で探す" autocomplete="off" spellcheck="false">
     </div>
     <p class="verify" id="log-verify"></p>
-    <p class="hint muted">運営として行ったこと（メッセージ・送金・処分・通報の処理・意見案の採用・運営権の剥奪など）とDEVの更新が、すべて自動で記録されます。記録は消すことも書き換えることもできません。行をタップすると詳細が開きます。</p>
+    <p class="hint muted">運営の操作とDEVの更新が自動で記録されます（消去・書き換え不可）。行をタップで詳細。</p>
     <div class="log" id="log-list"></div>
     <button class="btn wide" id="log-more" type="button" hidden>さらに読み込む</button>
   </section>
@@ -144,13 +146,63 @@
         <button class="btn primary small" type="submit">運営権を付与</button>
       </form>
     </div>
-    <p class="hint muted">運営権の付与と剥奪には、開発者だけが知っている「開発者コード」が必要です。剥奪するとその人はすぐにすべての端末でログアウトされ、運営サイトにログインできなくなります。開発者の運営権は剥奪できず、開発者のアカウントはアクセス禁止・BANもできません。すべて運営ログに記録されます。</p>
+    <p class="hint muted">付与と剥奪には「開発者コード」が必要です。剥奪された人はすぐ全端末でログアウトされ、運営サイトに入れなくなります。開発者は剥奪・アクセス禁止・BANできません。</p>
     <div class="devcode" id="op-devcode" hidden>
       <p id="op-devcode-text"></p>
       <button class="btn small" type="button" id="op-devcode-btn">開発者コードを登録</button>
     </div>
     <div class="cards" id="op-list"></div>
   </section>
+
+  <!-- 課金 (開発者支援): who paid, waiting for the developer's words (the developer's own) -->
+  <section class="view" id="view-pay" hidden>
+    <div class="view-head">
+      <h2>課金（開発者支援）</h2>
+      <div class="chips" id="pay-filter">
+        <button class="chip on" data-pay="waiting" type="button">返信待ち</button>
+        <button class="chip" data-pay="all" type="button">すべての注文</button>
+      </div>
+    </div>
+    <div id="pay-setup"></div>
+    <div class="summary pay-sum" id="pay-sum"></div>
+    <p class="hint muted">購入した人は、開発者が返信するまでここに残ります（返信は「【開発者からのメッセージ】」として公式から届きます）。ロイヤルコインは入金の確認後に自動で届いています。</p>
+    <div class="cards" id="pay-list"></div>
+  </section>
+
+  <!-- 保管庫: the developer's files (the developer code opens it) -->
+  <section class="view" id="view-vault" hidden>
+    <div class="view-head">
+      <h2>開発者専用保管庫</h2>
+      <span class="muted" id="vault-usage"></span>
+      <button class="btn small ghost" id="vault-lock" type="button" hidden>閉じる</button>
+    </div>
+    <p class="hint muted">開発者コードで開きます（30分で閉じます）。3Dモデルは4方向の画像・情報・軽量版が自動で作られます。切れたアップロードは、同じファイルを選び直すと続きから送れます。</p>
+    <div class="vault-closed" id="vault-closed">
+      <button class="btn primary" id="vault-open" type="button">開発者コードで開く</button>
+    </div>
+    <div id="vault-main" hidden>
+      <div class="vault-up">
+        <label class="btn primary" for="vault-file">ファイルを選んでアップロード</label>
+        <input id="vault-file" type="file" multiple hidden>
+        <input class="search" id="vault-note" type="text" maxlength="500" placeholder="メモ（任意・次に選ぶファイルに付きます）">
+      </div>
+      <div class="vault-all">
+        <span id="vault-all-state"></span>
+        <button class="btn small primary" id="vault-all-link" type="button">保管庫全体のリンクを作る</button>
+        <button class="btn small warn" id="vault-all-stop" type="button" hidden>全体リンクを停止</button>
+      </div>
+      <div class="cards" id="vault-jobs"></div>
+      <div class="cards" id="vault-list"></div>
+    </div>
+  </section>
+</div>
+
+<!-- a vault model in 3D (ops/vault3d.js) -->
+<div class="viewer-back" id="viewer" hidden>
+  <div class="viewer" role="dialog" aria-label="3Dプレビュー">
+    <div class="viewer-head"><b id="viewer-name"></b><span class="muted" id="viewer-note"></span><button class="close" id="viewer-close" type="button" aria-label="閉じる">×</button></div>
+    <div class="viewer-box" id="viewer-box"></div>
+  </div>
 </div>
 
 <!-- one player's details and the actions -->
@@ -162,7 +214,7 @@
 
 <!-- the conversation with the official bot -->
 <div class="chat-back" id="chat" hidden>
-  <section class="chat" aria-label="公式ボットとのチャット">
+  <section class="chat" aria-label="公式チャット">
     <header class="chat-head">
       <button class="btn ghost small" id="chat-close" type="button">← 戻る</button>
       <div class="chat-who" id="chat-who"></div>
@@ -175,7 +227,7 @@
     <form class="compose" id="compose" novalidate autocomplete="off">
       <div class="compose-fields">
         <label class="mini-field"><span>件名</span><input id="c-subject" type="text" maxlength="100" placeholder="例: お問い合わせの件について"></label>
-        <label class="mini-field grow"><span>要件（文字数の制限はありません）</span><textarea id="c-body" rows="3" placeholder="お問い合わせいただき、誠にありがとうございます。"></textarea></label>
+        <label class="mini-field grow"><span>要件</span><textarea id="c-body" rows="3" placeholder="お問い合わせいただき、誠にありがとうございます。"></textarea></label>
       </div>
       <div class="compose-side">
         <button class="btn small ghost" id="c-preview-btn" type="button">送られる文面を見る</button>
@@ -191,7 +243,7 @@
 <div class="dialog-back" id="money" hidden>
   <form class="dialog" id="money-form" novalidate>
     <h2 id="money-title">送金</h2>
-    <p class="muted">Ice Smoker公式ボットからドルを送ります（$0〜$10,000,000）。チャットに送金として表示されます。</p>
+    <p class="muted">公式から$を送ります（$0〜$10,000,000）。</p>
     <div class="presets" id="money-presets">
       <button type="button" data-amount="10000">1万</button>
       <button type="button" data-amount="100000">10万</button>
@@ -201,7 +253,7 @@
       <button type="button" data-amount="10000000">1000万</button>
     </div>
     <label class="field"><span>金額（$）</span><input id="money-amount" type="text" inputmode="numeric" autocomplete="off" placeholder="0"></label>
-    <label class="field"><span>ひとこと（任意・チャットに一緒に届きます）</span><textarea id="money-note" rows="2" placeholder="例: ご迷惑をおかけしたお詫びです。"></textarea></label>
+    <label class="field"><span>ひとこと（任意）</span><textarea id="money-note" rows="2" placeholder="例: ご迷惑をおかけしたお詫びです。"></textarea></label>
     <p class="error" id="money-error" role="alert"></p>
     <div class="dialog-acts">
       <button class="btn ghost" type="button" id="money-cancel">やめる</button>

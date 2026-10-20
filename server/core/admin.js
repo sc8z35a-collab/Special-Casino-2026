@@ -202,7 +202,7 @@ export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = (
   const LOGGED = {
     ban: (r) => `${r.name}さんを永久BAN`,
     unban: (r) => `${r.name}さんのBANを解除`,
-    grant: (r) => `${r.name}さんの${{ tokens: 'トークン', dollars: 'ドル', coins: 'コイン' }[r.currency]}を ${r.before.toLocaleString('en-US')} → ${r.after.toLocaleString('en-US')} に変更`,
+    grant: (r) => `${r.name}さんの${{ tokens: 'トークン', dollars: 'ドル', coins: 'ロイヤルコイン' }[r.currency]}を ${r.before.toLocaleString('en-US')} → ${r.after.toLocaleString('en-US')} に変更`,
     rename: (r) => `${r.before}さんの名前を「${r.after}」に変更`,
     recovery: (r) => `${r.name}さんの引き継ぎコードを再発行`,
     password: (r) => `${r.name}さんのパスワードを再設定`,

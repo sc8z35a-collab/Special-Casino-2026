@@ -18,7 +18,7 @@ import {
 } from './auth.js';
 import { Limiter } from './ratelimit.js';
 import {
-  RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE,
+  RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, VIP,
   spin as spinReels, evaluate as evaluateLine, iconSale, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
@@ -32,6 +32,9 @@ import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
 import { readQuests, stepQuests, claimQuests, questsReady, questView } from './quests.js';
 import { createOps } from './ops.js';
 import { createTrees } from './tree.js';
+import { createDevCode } from './devcode.js';
+import { createPay } from './pay.js';
+import { createVault } from './vault.js';
 
 const PAGE = 50;
 const CURRENCIES = ['tokens', 'dollars'];
@@ -53,6 +56,10 @@ const FEEDBACK_KEYS = ['slot', 'features', 'clarity', 'controls', 'looks', 'poli
 const FEEDBACK_MAX = 100000;
 // home chat: the latest lines kept for people who come in (not stored)
 const HOME_CHAT_KEEP = 30;
+// 運営へのメッセージ・報告・意見案・通報・プレイヤー間のメッセージ: RULES.sendMax
+// (the game stops bigger ones before they are sent; a request this big holds any it lets through)
+const TOO_BIG = '送信できません。大きすぎます。';
+const SEND_BYTES = 64 * 1024;
 
 function randomInt(lo, hi) {
   const r = new Uint32Array(1);
@@ -109,6 +116,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const carCount = (id) => q('SELECT COUNT(*) AS n FROM cars WHERE owner_id = ?').get(id).n;
   // how many cars a garage holds: two, and one more for every place bought
   const garageSize = (u) => RULES.garage.slots + (u.garage_extra || 0);
+  // what one more place costs (VIP: RULES.vip.garageOff % off)
+  const slotPrice = (u) => (u.vip_until > Date.now() ? Math.round(RULES.garage.slotPrice * (100 - RULES.vip.garageOff) / 10000) * 100 : RULES.garage.slotPrice);
 
   // Renting cars out (RULES.carRental): for every 5-hour block a car is out,
   // customers come (each of them with a chance of its own) and pay by how
@@ -156,8 +165,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return {
       id: r.id, model: r.model, acquiredAt: r.acquired_at, from: r.from_id ? { id: r.from_id, name: r.from_name } : null,
       rent: r.rent_start ? { start: r.rent_start, until: r.rent_until, next: r.rent_start + (r.rent_blocks + 1) * BLOCK } : null,
-      earned: r.rent_earned, last
+      earned: r.rent_earned, last,
+      paid: carPaid(r), used: !!r.used, offer: r.offer_id || 0, via: r.via || (r.from_id ? 'gift' : '')
     };
+  }
+  // what the owner paid for a car (cars from before this was kept: its list price)
+  const carPaid = (c) => c.paid || (CARS.get(c.model) ? CARS.get(c.model).price : 0);
+  // what a car can be sold for to a friend: RULES.carResale % of that
+  function resaleRange(c) {
+    const R = RULES.carResale, base = carPaid(c);
+    return { base, min: Math.ceil(base * R.min / 100), max: Math.floor(base * R.max / 100) };
   }
   const itemCount = (userId, item) => { const r = q('SELECT count FROM items WHERE user_id = ? AND item = ?').get(userId, item); return r ? r.count : 0; };
   function addItems(userId, item, n) {
@@ -208,7 +225,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   // may this device make an account? '' yes, 'full' (log in to one of its own), 'banned'
   const DEVICE_BANNED_NEW = 'この端末のアカウントが利用停止（アクセス禁止・BAN）中のため、新しいアカウントは作れません';
-  const deviceFull = () => `この端末ではアカウントを${config.accountsPerDevice}つまでしか作れません。前に作ったアカウントの引き継ぎコードを入力してログインしてください`;
+  const deviceFull = () => `この端末で作れるアカウントは${config.accountsPerDevice}つまでです。前のアカウントの引き継ぎコードでログインしてください`;
   function deviceRoom(req) {
     const dev = deviceOf(req);
     if (!dev.id) return '';
@@ -237,7 +254,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   function tellBanned(u) {
     const name = BAN_NAME[u.ban_kind] || '利用停止';
-    official.say(u.id, letter(u, `${name}のお知らせ`, `${banNotice(u)}\n期間：${u.ban_until ? when(u.ban_until) + ' まで' : '解除されるまで'}\nその間は TWO STATE で遊ぶことはできません。`));
+    official.say(u.id, letter(u, `${name}のお知らせ`, `${banNotice(u)}\n期間：${u.ban_until ? when(u.ban_until) + ' まで' : '解除されるまで'}\nその間は遊べません。`));
   }
   // The ban ends: lifted by the operators ('lifted') or its time is up
   // ('expired'). False when there was none to end.
@@ -249,7 +266,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (!Number(r.changes)) return false;
     const name = BAN_NAME[u.ban_kind] || '利用停止';
     official.say(u.id, letter(u, `${name}解除のお知らせ`,
-      `あなたの${name}は${when(now)}に${how === 'expired' ? '期間が終わり、' : '公式により'}解除されました。\nまた TWO STATE をお楽しみください。ルールを守って遊んでいただきますよう、お願いいたします。`));
+      `あなたの${name}は${when(now)}に${how === 'expired' ? '期間が終わり、' : '公式により'}解除されました。\nルールを守って、また TWO STATE をお楽しみください。`));
     return true;
   }
   function liftExpired(u) {
@@ -369,6 +386,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     }
     push.notify(userId, n).catch(() => {});
   }
+  // the text of a message, a 報告, an 意見案 or a 通報 (RULES.sendMax.chars at most)
+  function sendText(raw) {
+    if (Array.from(String(raw ?? '')).length > RULES.sendMax.chars) throw new ApiError(413, 'too_large', TOO_BIG);
+    return cleanText(raw, RULES.sendMax.chars);
+  }
   const clip = (t, n) => { const a = Array.from(String(t || '')); return a.length > n ? a.slice(0, n).join('') + '…' : a.join(''); };
   // what a direct message says on the phone
   function dmNote(dto) {
@@ -379,7 +401,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       : dto.kind === 'present' ? `${present ? present.name : 'プレゼント'}のプレゼントが届きました。タップして受け取ろう`
         : dto.kind === 'gift' ? '車のプレゼントが届きました'
           : dto.kind === 'item' ? 'アイテムが届きました'
-            : clip(dto.text, 140);
+            : dto.kind === 'car_offer' ? `車の販売：$${Number(dto.amount).toLocaleString('en-US')}`
+              : dto.kind === 'car_sold' ? `車が売れました（$${Number(dto.amount).toLocaleString('en-US')}）。タップして受け取ろう`
+                : clip(dto.text, 140);
     return { kind: 'msg', title: dto.from.name || 'メッセージ', body, tag: `dm:${dto.from.id}`, open: `dm:${dto.from.id}` };
   }
 
@@ -401,10 +425,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const r = stepQuests(state, events, Date.now(), boost);
     return { ...r, json: JSON.stringify(state), ready: questsReady(state) };
   }
-  // Tells the player what was finished (and how many wait to be received).
+  // Tells the player what was finished (and how many wait to be received);
+  // with VIP on, each one is VIP EXP.
   function questNotice(userId, r) {
     if (!r || !r.done || !r.done.length) return;
     live.send(userId, 'quest', { done: r.done.map((x) => x.id), ready: r.ready });
+    if (vipOn(getUser(userId))) tx(() => addVipExp(getUser(userId), r.done.length * VIP_RULES.exp.quest));
   }
   // Progress from one of the player's actions, saved in a transaction of its own.
   function track(userId, events) {
@@ -440,18 +466,21 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return [];
     }
   }
-  // Wages up to `now` for every job (the fraction of a $ carries over), and
-  // for the time worked with a hub's benefits on (RULES.hub.wage: x1.5) the
-  // extra half of the wage.
+  // Wages up to `now` for every job (the fraction of a $ carries over): from
+  // VIP1, the time VIP is on at VIP.wage times (jobs are paid up whenever VIP
+  // starts, so it is on from `since` until it ends); for the time worked with
+  // a hub's benefits on (RULES.hub.wage: x1.5) the extra half of the wage.
   function settleJobs(cur, now) {
     const jobs = readJobs(cur.jobs);
+    const mult = VIP.wage(VIP.level(cur.vip_exp));
     let pay = 0;
     for (const j of jobs) {
       const wage = JOBS.get(j.id).wage;
-      const p = Math.floor(Math.max(0, now - j.since) * wage / 3600000);
+      const value = VIP.earned(wage, j.since, now, cur.vip_until, mult);
+      const p = Math.floor(value);
       if (p > 0) {
         pay += p;
-        j.since += Math.floor(p * 3600000 / wage);
+        j.since = now - Math.floor((value - p) * 3600000 / (wage * (cur.vip_until > now ? mult : 1)));
       }
       const extra = wage * (RULES.hub.wage - 1);
       const b = j.boost > 0 && extra > 0 ? Math.floor(j.boost * extra / 3600000) : 0;
@@ -480,9 +509,39 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function saveJobs(userId, jobs, pay) {
     q('UPDATE users SET jobs = ?, dollars = dollars + ?, rev = rev + ? WHERE id = ?').run(JSON.stringify(jobs), pay, pay > 0 ? 1 : 0, userId);
   }
+  function jobsPaid(userId, pay) {
+    if (!pay) return;
+    balanceChanged(userId, true);
+    track(userId, [['jobpay', pay]]);
+  }
 
   function balance(u) { return { tokens: u.tokens, dollars: u.dollars, coins: u.coins, rev: u.rev }; }
-  function mini(u) { return { id: u.id, name: u.name, avatar: u.avatar }; }
+  // `vip`: the VIP level of someone whose VIP is on (the badge others see)
+  function mini(u) {
+    const v = vipLevel(u);
+    return v === null ? { id: u.id, name: u.name, avatar: u.avatar } : { id: u.id, name: u.name, avatar: u.avatar, vip: v };
+  }
+
+  /* ----- VIP (js/game/vip.js) ----- */
+  const VIP_RULES = RULES.vip;
+  const vipOn = (u, now = Date.now()) => !!u && !u.npc && u.vip_until > now;
+  // its level while it is on, null while it is off
+  const vipLevel = (u, now = Date.now()) => (vipOn(u, now) ? VIP.level(u.vip_exp) : null);
+  function vipDto(u, now = Date.now()) {
+    const i = VIP.info(u.vip_exp);
+    return { on: vipOn(u, now), until: u.vip_until, exp: Math.floor(i.exp * 10 + 1e-6) / 10, level: i.level, from: i.from, next: i.next };
+  }
+  // VIP EXP, inside the caller's transaction (`cur`: the row as it is now).
+  // Reaching VIP${VIP_RULES.refund.from} while days are paid ahead gives back their coins at once.
+  function addVipExp(cur, gain, now = Date.now()) {
+    if (!cur || cur.npc || !(gain > 0)) return;
+    const exp = Math.round((cur.vip_exp + gain) * 1000) / 1000;
+    const from = VIP_RULES.refund.from;
+    const back = VIP.level(cur.vip_exp) < from && VIP.level(exp) >= from && cur.vip_until > now
+      ? VIP_RULES.refund.coins * Math.floor((cur.vip_until - now) / VIP.day) : 0;
+    q('UPDATE users SET vip_exp = ?, coins = coins + ?, rev = rev + ? WHERE id = ?').run(exp, back, back ? 1 : 0, cur.id);
+    cur.vip_exp = exp;
+  }
 
   function meDto(u) {
     const today = utcDay();
@@ -519,6 +578,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       operator: isOperatorName(u),
       // 18歳以上？ (null: not answered yet)
       age: u.age_ok === null || u.age_ok === undefined ? null : !!u.age_ok,
+      vip: vipDto(u),
       createdAt: u.created_at
     };
   }
@@ -543,7 +603,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return paid;
   }
 
-  // アクセス日数 (login days, all told): at 5, 10 … 35 Ice Smoker公式ボット
+  // アクセス日数 (login days, all told): at 5, 10 … 35 Ice Smoker公式
   // sends $250,000 by itself, with its congratulations (one reached before is
   // paid at the next visit; a 永久BAN account gets none).
   function accessDayGifts(userId) {
@@ -617,6 +677,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       lastSeen: u.npc ? null : u.last_seen,
       cars: carCount(u.id),
       level: LEVEL.of(u.xp),
+      vip: vipLevel(u),
       friendship: friendship(viewerId, u.id)
     };
   }
@@ -634,7 +695,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       text: m.body,
       amount: m.amount ?? null,
       currency: m.currency ?? null,
-      claimed: m.kind === 'present' ? !!m.claimed_at : undefined,
+      claimed: m.kind === 'present' || m.kind === 'car_sold' ? !!m.claimed_at : undefined,
+      state: m.kind === 'car_offer' ? m.state || 'open' : undefined,
       at: m.created_at
     };
   }
@@ -646,7 +708,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       .run(channel, sender ? sender.id : 0, recipient, kind, body, amount, currency, held ? 1 : 0, now);
     return {
       id: Number(r.lastInsertRowid), channel, sender_id: sender ? sender.id : 0, sender_name: sender ? sender.name : null,
-      sender_avatar: sender ? sender.avatar : null, recipient_id: recipient, kind, body, amount, currency, claimed_at: 0, held: held ? 1 : 0, created_at: now
+      sender_avatar: sender ? sender.avatar : null, recipient_id: recipient, kind, body, amount, currency, claimed_at: 0, held: held ? 1 : 0, state: '', created_at: now
     };
   }
 
@@ -753,8 +815,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return dto;
   }
 
+  // a card in a chat changed (a car sold or taken off sale, money taken): both ends see it
+  function cardChanged(m, change) {
+    for (const id of [m.sender_id, m.recipient_id]) if (id) live.send(id, 'card', { id: m.id, kind: m.kind, ...change });
+  }
+
   function rate(limiter, key, message) {
-    if (!limiter.take(String(key))) throw new ApiError(429, 'rate_limited', message || '操作が速すぎます。少し待ってからもう一度お試しください');
+    if (!limiter.take(String(key))) throw new ApiError(429, 'rate_limited', message || '操作が速すぎます。少し待ってください');
   }
 
   function requireFriend(u, otherId, what) {
@@ -792,8 +859,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   // the people watching a player, and whether they may talk
   function homeMembers(hostId) {
-    return q('SELECT o.id, o.name, o.avatar, w.voice FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(hostId)
-      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, voice: !!r.voice }));
+    return q('SELECT o.id, o.name, o.avatar, o.vip_until, o.vip_exp, w.voice FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(hostId)
+      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, vip: vipLevel(r), voice: !!r.voice }));
   }
   // The chat of a home (the watched player and their watchers) is live only;
   // its last lines are kept in memory for people who come in.
@@ -947,9 +1014,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       .filter((r) => isActive(r.active_at, now)).map((r) => r.id);
   }
   function hubPeople(hubId, now = Date.now()) {
-    return q(`SELECT o.id, o.name, o.avatar, o.active_at FROM hub_members m JOIN users o ON o.id = m.user_id
+    return q(`SELECT o.id, o.name, o.avatar, o.active_at, o.vip_until, o.vip_exp FROM hub_members m JOIN users o ON o.id = m.user_id
               WHERE m.hub_id = ? ORDER BY m.joined_at, o.id`).all(hubId)
-      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, online: live.isOnline(r.id), idle: Math.min(86400000, Math.max(0, now - (r.active_at || 0))) }));
+      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, vip: vipLevel(r, now), online: live.isOnline(r.id), idle: Math.min(86400000, Math.max(0, now - (r.active_at || 0))) }));
   }
   function hubDto(h) {
     if (!h) return null;
@@ -1392,6 +1459,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const hub = hm && hm.hub_id === on.hub.id ? hubRow(on.hub.id) : null;
         const r = spinReels(bet, hub ? HUB.weights : undefined);
         if (hub) boost = hubSpin(r, hub, bet);
+        const vip = vipLevel(cur);
+        // 77777: ULTRA BIG WIN (from VIP1, VIP.ultra times)
+        const ultra = r.wins.some((w) => w.symbol === 'seven' && w.count >= 5);
+        if (ultra && VIP.ultra(vip) > 1) {
+          r.total = Math.round(r.total * VIP.ultra(vip));
+          r.vip = true;
+        }
         // the combo this win makes (one's own wins in a row, or in a hub the
         // one everyone shares): from RULES.comboDouble on, the win pays double
         r.combo = r.total > 0 ? (hub ? boost.combo : cur.streak + 1) : 0;
@@ -1442,10 +1516,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         }
         const dayWon = (cur.won_day === today ? cur.day_won : 0) + r.total;
         const last = JSON.stringify({ grid: r.grid, total: r.total, tier: r.tier, bet, at: Date.now() });
-        // XP, x1.2 in a hub: one more on every fifth spin there
+        // XP, x1.2 in a hub (with VIP on, x1.5 of that): the fraction adds up over the spins there
         let xp = LEVEL.spinXp;
         if (hub) {
-          const k = Math.round((HUB.xp - 1) * 1000);
+          const k = Math.round((HUB.xp * (vip === null ? 1 : VIP_RULES.hubXp) - 1) * 1000);
           xp += Math.floor((hm.spins + 1) * LEVEL.spinXp * k / 1000) - Math.floor(hm.spins * LEVEL.spinXp * k / 1000);
           q('UPDATE hub_members SET spins = spins + 1 WHERE user_id = ?').run(cur.id);
           boost.xp = xp;
@@ -1467,12 +1541,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (config.logSpins) {
           q('INSERT INTO spins (user_id, bet, payout, line, created_at) VALUES (?, ?, ?, ?, ?)').run(cur.id, bet, r.total + back, r.line.join(','), Date.now());
         }
+        if (vip !== null) addVipExp(cur, (r.total > 0 ? VIP_RULES.exp.win : 0) + (ultra ? VIP_RULES.exp.ultra : 0));
         return r;
       });
       const after = getUser(u.id);
       questNotice(u.id, quests);
       const out = { grid: result.grid, line: result.line, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet, charm: result.charm || null, hub: boost,
-        combo: result.combo, double: !!result.double };
+        combo: result.combo, double: !!result.double, vip: !!result.vip };
       notifyWatchers(u.id, { type: 'spin', user: u.id, result: out, balance: balance(after) });
       if (boost && on) {
         // the others in the hub: the combo they share, and what everyone won
@@ -1492,6 +1567,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         balance: balance(after),
         charm: after.charm > 0,
         xp: after.xp,
+        vip: vipDto(after),
         stats: { totalWon: after.total_won, biggestWin: after.biggest_win, spins: after.spins }
       };
     },
@@ -1552,8 +1628,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     /* ----- friends ----- */
 
     'GET /api/friends': (req, u) => {
-      const friends = q(`SELECT o.id, o.name, o.avatar, o.last_seen AS lastSeen, f.created_at AS since FROM friends f JOIN users o ON o.id = f.friend_id
-                         WHERE f.user_id = ? AND o.banned = 0 ORDER BY o.name_key`).all(u.id);
+      const friends = q(`SELECT o.id, o.name, o.avatar, o.npc, o.vip_until, o.vip_exp, o.last_seen AS lastSeen, f.created_at AS since FROM friends f JOIN users o ON o.id = f.friend_id
+                         WHERE f.user_id = ? AND o.banned = 0 ORDER BY o.name_key`).all(u.id)
+        .map(({ npc, vip_until: until, vip_exp: exp, ...r }) => ({ ...r, vip: vipLevel({ npc, vip_until: until, vip_exp: exp }) }));
       const incoming = q(`SELECT o.id, o.name, o.avatar, r.created_at AS at FROM friend_requests r JOIN users o ON o.id = r.from_id
                           WHERE r.to_id = ? AND o.banned = 0 ORDER BY r.created_at DESC`).all(u.id);
       const outgoing = q(`SELECT o.id, o.name, o.avatar, r.created_at AS at FROM friend_requests r JOIN users o ON o.id = r.to_id
@@ -1574,7 +1651,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (isBlocked(t.id, u.id)) return { friendship: 'outgoing', user: mini(t) };
       // they already asked us: that makes us friends
       if (hasRequest(t.id, u.id)) return { friendship: 'friends', user: mini(t), ...makeFriends(t, u) };
-      if (hasRequest(u.id, t.id)) throw new ApiError(409, 'pending', 'すでに申請しています。承認されるまでお待ちください');
+      if (hasRequest(u.id, t.id)) throw new ApiError(409, 'pending', 'すでに申請しています');
       if (q('SELECT COUNT(*) AS n FROM friend_requests WHERE from_id = ?').get(u.id).n >= MAX_PENDING_REQUESTS) {
         throw new ApiError(429, 'too_many', '承認待ちの申請が多すぎます');
       }
@@ -1613,14 +1690,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     /* ----- chat ----- */
 
     'GET /api/conversations': (req, u) => {
-      const rows = q(`SELECT c.other_id AS id, c.unread, c.updated_at, o.name, o.avatar, o.banned, o.npc, o.last_seen, m.kind, m.body, m.amount, m.currency, m.sender_id
+      const rows = q(`SELECT c.other_id AS id, c.unread, c.updated_at, o.name, o.avatar, o.banned, o.npc, o.last_seen, o.vip_until, o.vip_exp, m.kind, m.body, m.amount, m.currency, m.sender_id
                       FROM conversations c JOIN users o ON o.id = c.other_id JOIN messages m ON m.id = c.last_id
                       WHERE c.user_id = ? ORDER BY c.updated_at DESC LIMIT 100`).all(u.id);
       const groups = q(`SELECT g.* FROM chat_members m JOIN chat_groups g ON g.id = m.group_id
                         WHERE m.user_id = ? ORDER BY g.updated_at DESC LIMIT 50`).all(u.id);
       return {
         conversations: rows.filter((r) => !r.banned).map((r) => ({
-          user: { id: r.id, name: r.name, avatar: r.avatar, online: isOnline(r), npc: r.npc || null, lastSeen: r.npc ? null : r.last_seen },
+          user: { id: r.id, name: r.name, avatar: r.avatar, online: isOnline(r), npc: r.npc || null, lastSeen: r.npc ? null : r.last_seen, vip: vipLevel(r) },
           friend: areFriends(u.id, r.id),
           unread: r.unread,
           at: r.updated_at,
@@ -1657,8 +1734,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     },
 
     'POST /api/messages': async (req, u) => {
-      const body = await req.json();
-      const text = cleanText(body.text);
+      const body = await req.json(SEND_BYTES);
+      const text = sendText(body.text);
       if (body.group !== undefined) {
         const g = myGroup(u.id, posInt(body.group, 'グループ'));
         rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
@@ -1673,7 +1750,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // to the operators (any length: a 報告 or an 意見案 can be long)
       if (official.is(to)) {
         rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
-        return { message: official.fromPlayer(u, cleanText(body.text, official.LONG)) };
+        return { message: official.fromPlayer(u, text) };
       }
       if (peter.is(to)) {
         rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
@@ -1857,7 +1934,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         catalog: RULES.cars,
         cars: rows.map(carDto),
         capacity: garageSize(u),
-        slotPrice: RULES.garage.slotPrice,
+        slotPrice: slotPrice(u),
+        vip: vipLevel(u),
         sale: carSale(now),
         disposal: carDisposal(now),
         buyback: Object.fromEntries(RULES.cars.map((c) => [c.id, carBuyback(c, now)])),
@@ -1876,7 +1954,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const r = tx(() => {
         const c = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(id, u.id);
         if (!c) throw new ApiError(404, 'no_car', 'この車は持っていません');
-        if (c.rent_start) throw new ApiError(409, 'rented', '貸し出し中の車は売れません（戻ってから売れます）');
+        if (c.rent_start) throw new ApiError(409, 'rented', '貸し出し中の車は売れません');
+        if (c.offer_id) throw new ApiError(409, 'on_offer', '販売中の車です');
         const model = CARS.get(c.model);
         if (!model) throw new ApiError(400, 'bad_model', 'この車は買い取れません');
         const b = carBuyback(model);
@@ -1901,6 +1980,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (!c) throw new ApiError(404, 'no_car', 'この車は持っていません');
         if (body.action === 'start') {
           if (c.rent_start) throw new ApiError(409, 'rented', 'この車はもう貸し出し中です');
+          if (c.offer_id) throw new ApiError(409, 'on_offer', '販売中の車です');
           q('UPDATE cars SET rent_start = ?, rent_until = 0, rent_blocks = 0 WHERE id = ?').run(now, c.id);
         } else if (body.action === 'stop') {
           if (!c.rent_start) throw new ApiError(409, 'not_rented', 'この車は貸し出していません');
@@ -1934,28 +2014,32 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       rate(limit.shop, u.id);
       const car = CARS.get(String(body.model || ''));
       if (!car) throw new ApiError(400, 'bad_model', 'この車は販売していません');
-      const cost = carPrice(car, carSale()).price;
+      const vip = vipLevel(u);
+      if (!VIP.carOpen(car, vip)) throw new ApiError(403, 'vip_only', `VIP${car.vip}限定車です`);
+      const cost = carPrice(car, carSale(), vip === null ? 0 : VIP_RULES.carOff).price;
       if (body.price !== undefined && Number(body.price) !== cost) {
         throw new ApiError(409, 'price_changed', `価格が変わりました（今は $${fmt(cost)}）`, { sale: carSale() });
       }
       const id = tx(() => {
         const cur = getUser(u.id);
-        if (carCount(cur.id) >= garageSize(cur)) throw new ApiError(409, 'garage_full', `ガレージがいっぱいです（${garageSize(cur)}台）。ガレージを拡張すると置けます`);
+        if (carCount(cur.id) >= garageSize(cur)) throw new ApiError(409, 'garage_full', `ガレージがいっぱいです（${garageSize(cur)}台）`);
         if (cur.dollars < cost) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(cost, cur.id);
+        addVipExp(cur, VIP_RULES.exp.car);
         const now = Date.now();
-        return Number(q('INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at) VALUES (?, ?, 0, ?, ?)').run(cur.id, car.id, now, now).lastInsertRowid);
+        return Number(q('INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid) VALUES (?, ?, 0, ?, ?, ?)').run(cur.id, car.id, now, now, cost).lastInsertRowid);
       });
       const me = meDto(balanceChanged(u.id));
       afterSpend(u.id);
-      return { me, paid: cost, car: { id, model: car.id, acquiredAt: Date.now(), from: null } };
+      return { me, paid: cost, car: { id, model: car.id, acquiredAt: Date.now(), from: null, paid: cost, used: false, offer: 0 } };
     },
 
-    // one more place in the garage, for good ($1,000,000; any number of times)
+    // one more place in the garage, for good ($1,000,000, VIP's off; any number of times)
     'POST /api/garage/expand': async (req, u) => {
-      await req.json();
+      const body = await req.json();
       rate(limit.shop, u.id);
-      const price = RULES.garage.slotPrice;
+      const price = slotPrice(u);
+      if (body.price !== undefined && Number(body.price) !== price) throw new ApiError(409, 'price_changed', `価格が変わりました（今は $${fmt(price)}）`);
       tx(() => {
         const cur = getUser(u.id);
         if (cur.dollars < price) throw new ApiError(409, 'insufficient', '$が足りません');
@@ -1980,16 +2064,117 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const car = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(carId, u.id);
         if (!car) throw new ApiError(404, 'no_car', 'この車は持っていません');
         if (car.rent_start) throw new ApiError(409, 'rented', '貸し出し中の車はあげられません');
+        if (car.offer_id) throw new ApiError(409, 'on_offer', '販売中の車です');
         // what its renting earned stays with the giver
         if (car.rent_earned) q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(car.rent_earned, u.id);
         const them = getUser(to);
         if (carCount(to) >= garageSize(them)) throw new ApiError(409, 'their_garage_full', `${them.name}さんのガレージがいっぱいです`);
-        q('UPDATE cars SET owner_id = ?, from_id = ?, acquired_at = ?, rent_earned = 0, rent_last = \'\' WHERE id = ?').run(to, u.id, Date.now(), car.id);
+        q("UPDATE cars SET owner_id = ?, from_id = ?, acquired_at = ?, via = 'gift', rent_earned = 0, rent_last = '' WHERE id = ?").run(to, u.id, Date.now(), car.id);
         const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'gift', body: car.model, amount: car.id });
         touchConversations(u.id, to, row.id);
         return row;
       });
       return { message: deliverDm(m, u.id, to) };
+    },
+
+    // 車を売る: an offer in the chat with a friend (not Ice Smoker公式 or the
+    // NPCs), at RULES.carResale % of what the seller paid for the car. The car
+    // stays the seller's until the friend buys it (or the seller takes it back).
+    'POST /api/cars/offer': async (req, u) => {
+      const body = await req.json();
+      const to = posInt(body.to, '宛先');
+      const carId = posInt(body.car, '車');
+      const price = posInt(body.price, '金額');
+      if (to === u.id) throw new ApiError(400, 'self', '自分には売れません');
+      const t = liveTarget(to);
+      if (t.npc) throw new ApiError(403, 'npc', `${t.name}には売れません`);
+      requireFriend(u, to, '販売');
+      if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーには売れません');
+      rate(limit.transfer, u.id, '少し待ってからお試しください');
+      settleRentals(u.id);
+      const m = tx(() => {
+        const car = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(carId, u.id);
+        if (!car) throw new ApiError(404, 'no_car', 'この車は持っていません');
+        if (car.rent_start) throw new ApiError(409, 'rented', '貸し出し中の車は売れません');
+        if (car.offer_id) throw new ApiError(409, 'on_offer', 'この車はもう販売中です');
+        const r = resaleRange(car);
+        if (price < r.min || price > r.max) throw new ApiError(400, 'bad_price', `価格は $${fmt(r.min)}〜$${fmt(r.max)} です`);
+        const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'car_offer', amount: price, currency: 'dollars',
+          body: JSON.stringify({ car: car.id, model: car.model, used: !!car.used }) });
+        q('UPDATE cars SET offer_id = ? WHERE id = ?').run(row.id, car.id);
+        touchConversations(u.id, to, row.id);
+        return row;
+      });
+      return { message: deliverDm(m, u.id, to) };
+    },
+
+    // the seller takes the car back off sale
+    'POST /api/cars/offer/cancel': async (req, u) => {
+      const body = await req.json();
+      const id = posInt(body.id, '販売');
+      const m = tx(() => {
+        const row = q("SELECT * FROM messages WHERE id = ? AND kind = 'car_offer' AND sender_id = ?").get(id, u.id);
+        if (!row) throw new ApiError(404, 'not_found', 'この販売は見つかりません');
+        if (row.state) throw new ApiError(409, 'done', row.state === 'sold' ? 'この車はもう売れました' : 'この販売はもう取り消しました');
+        q("UPDATE messages SET state = 'canceled' WHERE id = ? AND state = ''").run(id);
+        q('UPDATE cars SET offer_id = 0 WHERE offer_id = ?').run(id);
+        return row;
+      });
+      cardChanged(m, { state: 'canceled' });
+      return { ok: true, state: 'canceled' };
+    },
+
+    // the friend buys it: the car moves to them (a 中古車 now, bought at this
+    // price), the seller gets a card in the chat to take the money from
+    'POST /api/cars/offer/buy': async (req, u) => {
+      const body = await req.json();
+      const id = posInt(body.id, '販売');
+      rate(limit.transfer, u.id, '少し待ってからお試しください');
+      const r = tx(() => {
+        const row = q("SELECT * FROM messages WHERE id = ? AND kind = 'car_offer' AND recipient_id = ?").get(id, u.id);
+        if (!row) throw new ApiError(404, 'not_found', 'この販売は見つかりません');
+        if (row.state) throw new ApiError(409, 'done', row.state === 'sold' ? 'この車はもう売れました' : 'この販売は取り消されました');
+        const car = q('SELECT * FROM cars WHERE offer_id = ? AND owner_id = ?').get(id, row.sender_id);
+        if (!car) throw new ApiError(409, 'gone', 'この車はもう販売されていません');
+        requireFriend(u, row.sender_id, '購入');
+        const cur = getUser(u.id);
+        if (carCount(cur.id) >= garageSize(cur)) throw new ApiError(409, 'garage_full', `ガレージがいっぱいです（${garageSize(cur)}台）`);
+        if (cur.dollars < row.amount) throw new ApiError(409, 'insufficient', '$が足りません');
+        q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(row.amount, cur.id);
+        // what its renting earned stays with the seller
+        if (car.rent_earned) q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(car.rent_earned, row.sender_id);
+        q(`UPDATE cars SET owner_id = ?, from_id = ?, acquired_at = ?, paid = ?, used = 1, via = 'friend', offer_id = 0, rent_earned = 0, rent_last = '' WHERE id = ?`)
+          .run(cur.id, row.sender_id, Date.now(), row.amount, car.id);
+        q("UPDATE messages SET state = 'sold' WHERE id = ?").run(id);
+        const sold = insertMessage({ channel: row.channel, sender: cur, recipient: row.sender_id, kind: 'car_sold', amount: row.amount, currency: 'dollars',
+          body: JSON.stringify({ car: car.id, model: car.model, offer: id }) });
+        touchConversations(cur.id, row.sender_id, sold.id, row.sender_id);
+        return { row, sold, carId: car.id, earned: car.rent_earned };
+      });
+      cardChanged(r.row, { state: 'sold' });
+      deliverDm(r.sold, u.id, r.row.sender_id);
+      if (r.earned) balanceChanged(r.row.sender_id);
+      const me = meDto(balanceChanged(u.id));
+      afterSpend(u.id);
+      return { state: 'sold', car: r.carId, me };
+    },
+
+    // the seller taps the 売れました card: the money arrives
+    'POST /api/cars/sold/claim': async (req, u) => {
+      const body = await req.json();
+      const id = posInt(body.id, 'メッセージ');
+      const m = tx(() => {
+        const row = q("SELECT * FROM messages WHERE id = ? AND kind = 'car_sold' AND recipient_id = ?").get(id, u.id);
+        if (!row) throw new ApiError(404, 'not_found', 'この売上は見つかりません');
+        if (!Number(q('UPDATE messages SET claimed_at = ? WHERE id = ? AND claimed_at = 0').run(Date.now(), id).changes)) {
+          throw new ApiError(409, 'claimed', 'この売上はもう受け取りました');
+        }
+        q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(row.amount, u.id);
+        q('INSERT INTO transfers (from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?)').run(row.sender_id, u.id, 'dollars', row.amount, Date.now());
+        return row;
+      });
+      cardChanged(m, { claimed: true });
+      return { paid: m.amount, balance: balance(balanceChanged(u.id)) };
     },
 
     /* ----- blocking ----- */
@@ -2299,8 +2484,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const state = readQuests(cur.quests);
         const c = claimQuests(state, ids, Date.now());
         if (!c.claimed.length) return { ...c, state };
-        // XP, x1.2 in a hub with its benefits on
-        const boost = hubOn(cur.id) ? HUB.xp : 1;
+        // XP, x1.2 in a hub with its benefits on (and VIP's x1.5 there)
+        const boost = hubOn(cur.id) ? HUB.xp * (vipOn(cur) ? VIP_RULES.hubXp : 1) : 1;
         const xp = Math.floor(c.claimed.length * LEVEL.questXp * boost + 1e-9);
         q('UPDATE users SET quests = ?, dollars = dollars + ?, xp = xp + ?, rev = rev + 1 WHERE id = ?')
           .run(JSON.stringify(state), c.dollars, xp, cur.id);
@@ -2342,7 +2527,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       rate(limit.shop, u.id);
       const paid = tx(() => {
         const cur = getUser(u.id);
-        if (LEVEL.of(cur.xp) < job.level) throw new ApiError(403, 'locked', `このバイトはプレイヤーレベル${job.level}から働けます`);
+        if (LEVEL.of(cur.xp) < job.level) throw new ApiError(403, 'locked', `このバイトはLv.${job.level}から働けます`);
         const now = Date.now();
         const s = settleJobs(cur, now);
         if (s.jobs.some((j) => j.id === job.id)) throw new ApiError(409, 'working', 'このバイトはもう始めています');
@@ -2351,7 +2536,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         saveJobs(cur.id, s.jobs, s.pay);
         return s.pay;
       });
-      if (paid) balanceChanged(u.id, true);
+      jobsPaid(u.id, paid);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
     },
@@ -2367,7 +2552,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         saveJobs(cur.id, s.jobs.filter((j) => j.id !== id), s.pay);
         return s.pay;
       });
-      if (paid) balanceChanged(u.id, true);
+      jobsPaid(u.id, paid);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
     },
@@ -2381,9 +2566,34 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (s.pay > 0) saveJobs(cur.id, s.jobs, s.pay);
         return s.pay;
       });
-      if (paid) balanceChanged(u.id, true);
+      jobsPaid(u.id, paid);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
+    },
+
+    /* ----- VIP ----- */
+
+    // `days` more days of VIP for ロイヤルコイン (from VIP1 some come back at
+    // once); the バイト are paid up first, so VIP's wage counts from now
+    'POST /api/vip/extend': async (req, u) => {
+      const body = await req.json();
+      const days = posInt(body.days, '日数');
+      rate(limit.shop, u.id);
+      const now = Date.now();
+      const r = tx(() => {
+        const cur = getUser(u.id);
+        const until = Math.max(now, cur.vip_until) + days * VIP.day;
+        if (until > now + VIP_RULES.maxDays * VIP.day) throw new ApiError(409, 'too_long', `VIPは${VIP_RULES.maxDays}日先までです`);
+        const c = VIP.cost(days, VIP.level(cur.vip_exp));
+        if (cur.coins < c.coins) throw new ApiError(409, 'insufficient', 'ロイヤルコインが足りません');
+        const s = settleJobs(cur, now);
+        saveJobs(cur.id, s.jobs, s.pay);
+        q('UPDATE users SET coins = coins - ? + ?, vip_until = ?, rev = rev + 1 WHERE id = ?').run(c.coins, c.back, until, cur.id);
+        return { ...c, paid: s.pay };
+      });
+      if (r.paid) track(u.id, [['jobpay', r.paid]]);
+      const me = meDto(balanceChanged(u.id));
+      return { days, coins: r.coins, back: r.back, paid: r.paid, me };
     },
 
     /* ----- updates ----- */
@@ -2428,7 +2638,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       requireFriend(u, to, 'フレンド対決');
       if (!live.isOnline(to)) throw new ApiError(409, 'offline', `${t.name}さんは今オフラインです`);
       rate(limit.friend, u.id);
-      if (currentBattle(u.id)) throw new ApiError(409, 'busy', '対決中です。終わってから申し込んでください');
+      if (currentBattle(u.id)) throw new ApiError(409, 'busy', '対決が終わってから申し込んでください');
       if (currentBattle(to)) throw new ApiError(409, 'busy_other', `${t.name}さんはほかの人と対決中です`);
       const id = Number(q('INSERT INTO battles (a_id, b_id, spins, bet, state, created_at) VALUES (?, ?, ?, ?, ?, ?)')
         .run(u.id, to, spins, bet, 'invite', Date.now()).lastInsertRowid);
@@ -2522,7 +2732,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q(`INSERT INTO hub_invites (from_id, to_id, created_at) VALUES (?, ?, ?)
          ON CONFLICT(from_id, to_id) DO UPDATE SET created_at = excluded.created_at`).run(u.id, to, now);
       live.send(to, 'hub', { type: 'invite', from: mini(u), size: h ? hubMemberRows(h.id).length : 1, until: now + HUB.inviteMs });
-      phone(to, { kind: 'invite', title: '「一緒に稼ぐ」の招待', body: `${u.name}さんから「一緒に稼ぐ」の招待が届きました。10分以内にゲームを開いて参加しよう！`, tag: `invite:${u.id}`, open: 'friends' });
+      phone(to, { kind: 'invite', title: '「一緒に稼ぐ」の招待', body: `${u.name}さんから「一緒に稼ぐ」の招待が届きました。10分以内に参加しよう！`, tag: `invite:${u.id}`, open: 'friends' });
       return { ok: true, until: now + HUB.inviteMs };
     },
 
@@ -2662,7 +2872,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const t = liveTarget(to);
       if (t.npc) throw new ApiError(400, 'npc', `${t.name}には贈れません`);
       requireFriend(u, to, 'プレゼントを贈れるように');
-      rate(limit.transfer, u.id, '続けて贈れません。少し待ってからお試しください');
+      rate(limit.transfer, u.id, '続けて贈れません。少し待ってください');
       const held = isBlocked(to, u.id);
       const m = tx(() => {
         const cur = getUser(u.id);
@@ -2704,7 +2914,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // 通報: friends or not (from a profile, a hub, the search); everything
     // the operators need goes with it
     'POST /api/report': async (req, u) => {
-      const body = await req.json(1024 * 1024);
+      const body = await req.json(SEND_BYTES);
       const id = posInt(body.user, 'プレイヤー');
       if (id === u.id) throw new ApiError(400, 'self', '自分は通報できません');
       const t = getUser(id);
@@ -2712,9 +2922,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (t.npc) throw new ApiError(400, 'npc', `${t.name}は通報できません`);
       const kind = RULES.reportKinds.find((k) => k.id === String(body.kind || ''));
       if (!kind) throw new ApiError(400, 'bad_kind', '通報の種類を選んでください');
-      const text = String(body.text ?? '').trim() ? cleanText(body.text, 50000) : '';
+      const text = String(body.text ?? '').trim() ? sendText(body.text) : '';
       if (!text) throw new ApiError(400, 'empty', 'どのようなトラブルがあったか書いてください');
       rate(limit.friend, u.id, '通報が続いています。少し待ってからお試しください');
+      const R = RULES.report;
+      if (q('SELECT COUNT(*) AS n FROM reports WHERE reporter_id = ? AND created_at > ?').get(u.id, Date.now() - 3600000).n >= R.perHour) {
+        throw new ApiError(429, 'report_limit', `通報は1時間に${R.perHour}件までです`);
+      }
       const place = ['profile', 'hub', 'search', 'chat'].includes(body.place) ? body.place : 'profile';
       const ma = memberRow(u.id), mb = memberRow(t.id);
       const recent = q(`SELECT m.*, s.name AS sender_name FROM messages m LEFT JOIN users s ON s.id = m.sender_id WHERE m.channel = ?
@@ -2734,18 +2948,23 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       };
       q(`INSERT INTO reports (reporter_id, target_id, kind, body, place, context, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
         .run(u.id, t.id, kind.id, text, place, JSON.stringify(context), Date.now());
-      return { ok: true, message: '今後このようなトラブルがないよう気を付けます。' };
+      official.pay(u.id, R.reward);
+      return { ok: true, reward: R.reward, message: '今後このようなトラブルがないよう気を付けます。' };
     },
 
     // 報告 (a bug, an error, something odd) and 意見案 (an idea): to the
     // operators, of any length, shown in the chat with the official bot too
     'POST /api/official/feedback': async (req, u) => {
-      const body = await req.json(1024 * 1024);
+      const body = await req.json(SEND_BYTES);
       const kind = body.kind === 'idea' ? 'idea' : body.kind === 'bug' ? 'bug' : '';
       if (!kind) throw new ApiError(400, 'bad_kind', '報告か意見案を選んでください');
-      const text = String(body.text ?? '').trim() ? cleanText(body.text, official.LONG - 20) : '';
+      const text = String(body.text ?? '').trim() ? sendText(body.text) : '';
       if (!text) throw new ApiError(400, 'empty', '内容を書いてください');
       rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
+      const I = RULES.idea;
+      if (kind === 'idea' && q("SELECT COUNT(*) AS n FROM feedback WHERE user_id = ? AND kind = 'idea' AND created_at >= ?").get(u.id, nextUtcMidnight() - 86400000).n >= I.perDay) {
+        throw new ApiError(429, 'idea_limit', `意見案は1日${I.perDay}件までです`);
+      }
       q("INSERT INTO feedback (user_id, ratings, comment, kind, created_at) VALUES (?, '{}', ?, ?, ?)").run(u.id, text, kind, Date.now());
       return { message: official.fromPlayer(u, `【${kind === 'bug' ? '報告' : '意見案'}】\n${text}`) };
     },
@@ -2881,17 +3100,24 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     });
   }
 
-  // the operator site (/ops/)
+  // the operator site (/ops/); the developer code is checked in one place
+  // (its wrong tries are counted together for the site and the vault)
+  const devCode = createDevCode({ q, opsLog });
   const ops = createOps({
     q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub,
-    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper
+    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode
   });
   Object.assign(routes, ops.routes);
   // 金の生る木
   const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
   Object.assign(routes, trees.routes);
+  // 開発者支援 (real money for ロイヤルコイン) and the developer's vault
+  const pay = createPay({ q, tx, live, config, getUser, balanceChanged, official, opsLog, isDeveloper });
+  Object.assign(routes, pay.routes);
+  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode });
+  Object.assign(routes, vault.routes);
 
-  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban']);
+  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', ...pay.public, ...vault.public]);
 
   /* ---------------------------------------------------------------- live connection hooks */
 
@@ -2967,13 +3193,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       for (const [k, until] of voiceKept) if (until < Date.now()) voiceKept.delete(k);
       // the official bot: two days without the operators' answer, it answers on its own
       for (const p of official.autoReplies()) {
-        opsLog.add({ action: 'bot_auto_reply', target: p, summary: `${p.name}さんへ自動返信を送信（2日以上返信がなかったため、メッセージを既読にしました）`, detail: { text: 'AUTO' } });
+        opsLog.add({ action: 'bot_auto_reply', target: p, summary: `${p.name}さんへ自動返信（2日以上未返信のため既読に）`, detail: { text: 'AUTO' } });
       }
       for (const l of Object.values(limit)) l.prune();
       quota.flush();
     } catch (e) {
       console.error('housekeeping failed', e);
     }
+    // payments whose notice may have been lost are asked about at Stripe
+    return pay.sweep().catch((e) => console.error('pay sweep failed', e));
   }
 
   // Stream tickets are signed and expire within a minute; each opens one connection.

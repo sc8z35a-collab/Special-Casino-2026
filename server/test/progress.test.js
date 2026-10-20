@@ -56,7 +56,7 @@ test('quests: chains of one metric, the longest combo, 特別 clears, 臨時緊�
   const now = Date.UTC(2026, 9, 18, 1);
   // a chain: the same count goes on towards every step
   const chain = QUESTS.chainOf(QUESTS.get('5h-online10'));
-  assert.deepEqual(chain.map((q) => q.goal), [300, 600, 900, 1200, 1800, 3600, 5400]);
+  assert.deepEqual(chain.map((q) => q.goal), [300, 600, 900, 1200, 1800, 3600, 5400, 7200, 9000, 10800, 12000, 15000]);
   // (finishing quests also counts クエストを5回クリアする: left out here)
   const fiveH = (r) => ids(r).filter((id) => id.startsWith('5h-'));
   assert.deepEqual(fiveH(stepQuests(st, [['online', 650]], now)), ['5h-online10', '5h-online5']);

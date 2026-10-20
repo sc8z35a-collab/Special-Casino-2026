@@ -1,4 +1,4 @@
-// DEV7 on the server: an adopted 意見案 pays $100,000, bans told by the
+// DEV7 on the server: an adopted 意見案 pays spin tokens, bans told by the
 // official bot (and a banned login kept for the locked title screen), the
 // developer taking an operator's rights away. npm test
 import { test, before, after } from 'node:test';
@@ -18,29 +18,30 @@ after(() => s.stop());
 
 const ops = (method, url, body, who = taku) => call(method, url, { token: who.token, body });
 const dollars = (id) => s.app.db.prepare('SELECT dollars FROM users WHERE id = ?').get(id).dollars;
+const tokens = (id) => s.app.db.prepare('SELECT tokens FROM users WHERE id = ?').get(id).tokens;
 async function fromBot(p) {
   const bot = (await call('GET', '/api/me', { token: p.token })).official;
   const id = bot ? bot.id : s.app.db.prepare("SELECT id FROM users WHERE npc = 'official'").get().id;
   return (await call('GET', `/api/messages?with=${id}`, { token: p.token })).messages.filter((m) => m.from && m.from.id === id);
 }
 
-test('an adopted 意見案: $100,000 from the official bot with its thanks, once', async () => {
+test('an adopted 意見案: 50,000 spin tokens from Ice Smoker公式 with its thanks, once', async () => {
   const p = await register('Idea1');
   await call('POST', '/api/official/feedback', { token: p.token, body: { kind: 'idea', text: 'ガチャを追加してほしい' } });
   await call('POST', '/api/official/feedback', { token: p.token, body: { kind: 'bug', text: '表示がずれる' } });
   const list = (await ops('GET', '/api/ops/feedback')).feedback;
   const idea = list.find((f) => f.kind === 'idea' && f.user.id === p.me.id), bug = list.find((f) => f.kind === 'bug' && f.user.id === p.me.id);
-  const before = dollars(p.me.id);
-  assert.equal((await ops('POST', '/api/ops/feedback/adopt', { id: idea.id })).reward, 100000);
-  assert.equal(dollars(p.me.id), before + 100000);
+  const before = tokens(p.me.id);
+  assert.equal((await ops('POST', '/api/ops/feedback/adopt', { id: idea.id })).reward, 50000);
+  assert.equal(tokens(p.me.id), before + 50000);
   const said = await fromBot(p);
-  assert.ok(said.some((m) => m.kind === 'transfer' && m.amount === 100000));
+  assert.ok(said.some((m) => m.kind === 'transfer' && m.amount === 50000 && m.currency === 'tokens'));
   assert.match(said[said.length - 1].text, /意見案（「ガチャを追加してほしい」）を採用/);
   assert.equal((await ops('POST', '/api/ops/feedback/adopt', { id: idea.id })).status, 409);
   assert.equal((await ops('POST', '/api/ops/feedback/adopt', { id: bug.id })).status, 404);
   const after = (await ops('GET', '/api/ops/feedback')).feedback.find((f) => f.id === idea.id);
   assert.ok(after.adoptedAt && after.handledAt);
-  assert.equal(dollars(p.me.id), before + 100000);
+  assert.equal(tokens(p.me.id), before + 50000);
   assert.ok((await ops('GET', '/api/ops/log')).entries.some((e) => e.action === 'idea_adopt'));
 });
 

@@ -11,7 +11,7 @@ export const SECURITY_HEADERS = {
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
     // (blob: the 3D models' textures are read from the model file in the page)
-    "connect-src 'self' blob:",
+    "connect-src 'self' blob: data:",
     "manifest-src 'self'",
     "media-src 'self' data: blob:",
     "object-src 'none'",
@@ -53,7 +53,7 @@ export function readJson(req, limit = 16 * 1024) {
     req.on('data', (c) => {
       size += c.length;
       if (size > limit) {
-        reject(new ApiError(413, 'too_large', 'リクエストが大きすぎます'));
+        reject(new ApiError(413, 'too_large', '送信できません。大きすぎます。'));
         req.destroy();
         return;
       }
@@ -70,6 +70,26 @@ export function readJson(req, limit = 16 * 1024) {
         reject(new ApiError(400, 'bad_json', 'リクエストの形式が正しくありません'));
       }
     });
+    req.on('error', reject);
+  });
+}
+
+// Reads the body exactly as it came, whatever its type (at most `limit`
+// bytes): a payment company's signed notice is checked byte for byte.
+export function readBytes(req, limit = 64 * 1024) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) {
+        reject(new ApiError(413, 'too_large', '送信できません。大きすぎます。'));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => { if (size <= limit) resolve(Buffer.concat(chunks)); });
     req.on('error', reject);
   });
 }
@@ -102,6 +122,7 @@ export function coreRequest(req, url, ip) {
     query: url.searchParams,
     ip,
     header: (name) => req.headers[name.toLowerCase()] ?? null,
-    json: (limit) => readJson(req, limit)
+    json: (limit) => readJson(req, limit),
+    bytes: (limit) => readBytes(req, limit)
   };
 }

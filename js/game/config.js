@@ -25,13 +25,68 @@
     // from this many wins in a row (the combo; in a hub the one everyone
     // shares) every win pays double
     comboDouble: 5,
-    // アクセス日数 (login days, all told): Ice Smoker公式ボット sends `amount` $
+    // アクセス日数 (login days, all told): Ice Smoker公式 sends `amount` $
     // by itself on each of these (not to a 永久BAN account)
     accessDays: { at: [5, 10, 15, 20, 25, 30, 35], amount: 250000 },
     tokenPrice: 10,          // $ per spin token
     dailyLimit: 10000000,    // spin tokens that can be bought per UTC day
     dailyFree: 1000,         // free tokens claimable once per UTC day
     start: { tokens: 0, dollars: 5008159, coins: 74 },
+    // 開発者支援 (js/ui/support.js, server/core/pay.js): yen for ロイヤルコイン,
+    // the coins in the wallet. They only make days of VIP: never bet,
+    // exchanged for tokens or $, sent to anyone or paid out. Up to `maxQty` of one plan at
+    // once (`bonus`: 感謝料 coins on top, per unit), paid with PayPay or at a
+    // konbini (each from `min` yen, the payment company's smallest payment;
+    // a konbini payment waits `konbiniDays` days), at most `dailyMax` yen a
+    // player a day. The meters fill with every yen paid: 開発費回収 up to
+    // `recover` once, then 来月の開発費確保 up to `monthly` every month.
+    support: {
+      plans: [
+        { id: 'support1', name: '開発者支援I', price: 10, coins: 10, bonus: 0 },
+        { id: 'support2', name: '開発者支援II', price: 20, coins: 20, bonus: 0 },
+        { id: 'support3', name: '開発者支援III', price: 30, coins: 30, bonus: 4 }
+      ],
+      maxQty: 100,
+      methods: [
+        { id: 'paypay', name: 'PayPay', min: 50, max: 1000000 },
+        { id: 'konbini', name: 'コンビニ決済', min: 120, max: 300000 }
+      ],
+      konbiniDays: 3,
+      dailyMax: 10000,
+      goals: { recover: 9900, monthly: 3400 }
+    },
+    // VIP (js/game/vip.js): `coins` ロイヤルコイン a day of it, at most
+    // `maxDays` days ahead; from VIP`refund.from` on, `refund.coins` of a day's
+    // come back. VIP EXP: `exp.win` a casino win, `exp.quest` a quest
+    // finished and `exp.ultra` an ULTRA BIG WIN while VIP is on, `exp.car`
+    // every car bought at Car Owner; `levels`: the EXP VIP0-VIP3 start at.
+    // While it is on: XP in a hub `hubXp` times, cars `carOff` % off on top
+    // of any sale, a garage place `garageOff` % off; from VIP1 the バイト being
+    // worked pay `wage[level]` times and an ULTRA BIG WIN `ultra` times;
+    // calls at `voice` kbit/s (no VIP, VIP0-1, VIP2-3: the best in a call for
+    // everyone in it). `cars` in the Car Owner list with `vip` are for that level on.
+    vip: {
+      coins: 4,
+      maxDays: 365,
+      refund: { from: 1, coins: 2 },
+      exp: { win: 4, quest: 0.1, ultra: 250, car: 30 },
+      levels: [0, 1200, 2100, 4500],
+      hubXp: 1.5,
+      carOff: 3,
+      garageOff: 40,
+      wage: [1, 2.5, 2.5, 3],
+      ultra: 1.3,
+      voice: [32, 48, 64]
+    },
+    // 運営へのメッセージ・報告・意見案・通報・プレイヤー間のメッセージ: more than
+    // `chars` characters or `bytes` bytes are not sent
+    sendMax: { chars: 6000, bytes: 2097152 },
+    // 通報: `perHour` a player, each one paid `reward` $ by Ice Smoker公式;
+    // 意見案: `perDay` a player (days from 9:00 Japan time), an adopted one pays `reward` spin tokens
+    report: { perHour: 3, reward: 5000 },
+    idea: { perDay: 10, reward: 50000 },
+    // a car sold to a friend in the chat: `min`-`max` % of what the seller paid for it
+    carResale: { min: 50, max: 300 },
     // player icons: price in $ (0 = free); "rare" ones are locked at sign-up
     // Player icons (img/avatars/<id>.webp). Paid ones are chained on the
     // sign-up screen and sold later for $, always 10-40 % off (js/game/sale.js).

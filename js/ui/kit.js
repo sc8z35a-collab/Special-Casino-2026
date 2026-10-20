@@ -71,6 +71,14 @@
 
   function presence(on) { return el('i', 'dot' + (on ? ' on' : '')); }
   function nameSpan(name) { return el('span', 'uname', name); }
+  // the VIP badge of someone whose VIP is on (`level` 0-3; null: none)
+  function vipBadge(level) {
+    if (level === null || level === undefined) return null;
+    var b = el('i', 'vip-badge vip-' + level, 'VIP');
+    b.appendChild(el('b', '', String(level)));
+    return b;
+  }
+  function addVip(node, level) { var b = vipBadge(level); if (b) node.appendChild(b); return node; }
   function toast(msg, ms, tap) { BR.app.toast(msg, ms, tap); }
   function sfx(n, arg) { BR.sfx.play(n, arg); }
   function fail(err) {
@@ -239,7 +247,7 @@
     init: init,
     el: el, icon: icon, fmtTime: fmtTime, fmtDay: fmtDay, fmtDate: fmtDate, sameDay: sameDay, clip: clip, nfkc: nfkc,
     CUR: CUR, amountEl: amountEl, avatarEl: avatarEl, avatarInfo: avatarInfo, avatarSrc: avatarSrc,
-    presence: presence, nameSpan: nameSpan, toast: toast, sfx: sfx, fail: fail, badge: badge,
+    presence: presence, nameSpan: nameSpan, vipBadge: vipBadge, addVip: addVip, toast: toast, sfx: sfx, fail: fail, badge: badge,
     registerModal: registerModal, showModal: showModal, closeModal: closeModal, closeModals: closeModals, isOpen: isOpen,
     confirmBox: confirmBox, escape: escape, fitOverlay: fitOverlay, copyText: copyText, dragScroll: dragScroll
   };

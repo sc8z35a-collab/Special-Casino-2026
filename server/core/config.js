@@ -68,6 +68,31 @@ export function configFrom(env = {}, overrides = {}) {
     // notice until 00:00 UTC. Cloudflare's own free-plan limits do that by themselves.
     dailyRequestLimit: int(env, 'DAILY_REQUEST_LIMIT', 0),
     dailyMbLimit: int(env, 'DAILY_MB_LIMIT', 0),
+    // 開発者支援 (server/core/pay.js): real money through Stripe, off until the
+    // secret key, the webhook's signing secret(s) (comma separated while one is
+    // being replaced) and the game's public address are all set. Secrets live
+    // in the host's settings only, never in the repository.
+    stripeSecretKey: str(env, 'STRIPE_SECRET_KEY'),
+    stripeWebhookSecret: str(env, 'STRIPE_WEBHOOK_SECRET'),
+    stripeApiVersion: str(env, 'STRIPE_API_VERSION'),
+    // (tests only: a stand-in for Stripe's API on this machine)
+    stripeApi: str(env, 'STRIPE_API'),
+    publicUrl: str(env, 'PUBLIC_URL').replace(/\/+$/, ''),
+    // the ways to pay offered (paypay, konbini), and what one player may pay in a day (yen)
+    payMethods: str(env, 'PAY_METHODS', 'paypay,konbini').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+    payDailyLimit: int(env, 'PAY_DAILY_LIMIT', undefined),
+    // 特定商取引法に基づく表記 (law.html): the seller, as the law asks
+    seller: {
+      name: str(env, 'SELLER_NAME'),
+      head: str(env, 'SELLER_HEAD'),
+      address: str(env, 'SELLER_ADDRESS'),
+      phone: str(env, 'SELLER_PHONE'),
+      email: str(env, 'SELLER_EMAIL'),
+      hours: str(env, 'SELLER_HOURS')
+    },
+    // the developer's vault (server/core/vault.js): all files together, and one file (MB)
+    vaultMaxMb: int(env, 'VAULT_MAX_MB', 1024),
+    vaultFileMb: int(env, 'VAULT_FILE_MB', 300),
     limits: {},
     ...overrides
   };

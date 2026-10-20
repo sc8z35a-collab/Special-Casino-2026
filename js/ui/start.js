@@ -59,7 +59,7 @@
     if (BR.banlock && BR.banlock.active()) return;
     if (!api.online) {
       K.sfx('deny');
-      K.toast('フレンド機能はオンライン版（サーバー公開後）で利用できます', 3200);
+      K.toast('フレンド機能はオンライン版で使えます', 3200);
       return;
     }
     api.restored.then(function () {

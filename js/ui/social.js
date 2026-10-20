@@ -98,7 +98,7 @@
       if (err.code === 'maintenance') return;                // the notice is up until the quota resets
       if (!warned) {
         warned = true;
-        toast('サーバーに接続できません。再接続しています…', 3000);
+        toast('接続が切れました。再接続しています…', 3000);
       }
       retryTimer = setTimeout(start, retry);
       retry = Math.min(retry * 2, 30000);
@@ -140,7 +140,7 @@
     if (BR.screens.current() !== 'start' && BR.screens.current() !== 'slot') BR.screens.show('slot');
     BR.account.open('login', err && err.code === 'ended' && err.message
       ? err.message + '。'
-      : 'もう一度ログインしてください。ユーザー名とパスワードで、残高もそのまま戻ります。');
+      : 'もう一度ログインしてください（残高はそのまま戻ります）。');
   }
   // banned (アクセス禁止 / BAN / 永久BAN, or another account on this device):
   // locked on the title screen until it ends
@@ -152,7 +152,7 @@
   function logout() {
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode('ログアウトしますか？'));
-      p.appendChild(el('small', 'confirm-sub', '残高やフレンドはサーバーに保存されています。ユーザー名とパスワードでいつでも戻れます。'));
+      p.appendChild(el('small', 'confirm-sub', '残高やフレンドは消えません。ユーザー名とパスワードでいつでも戻れます。'));
     }, 'ログアウト').then(function (ok) {
       if (!ok) return;
       // this phone stops getting the account's notifications first (while signed in)
@@ -175,6 +175,9 @@
     av.id = 'me-avatar';
     old.parentNode.replaceChild(av, old);
     $('#me-name').textContent = me.name;
+    var v = $('#me-vip');
+    v.textContent = '';
+    K.addVip(v, me.vip && me.vip.on && me.vip.until > Date.now() ? me.vip.level : null);
   }
 
   /* ------------------------------------------------------------ last online --- */
@@ -225,7 +228,7 @@
       opts = o;
       $('#entry-title').textContent = o.title;
       input.value = o.value || '';
-      input.maxLength = o.max || 300;
+      if (o.max) input.maxLength = o.max; else input.removeAttribute('maxlength');
       input.placeholder = o.placeholder || 'メッセージを入力';
       input.enterKeyHint = o.enterKeyHint || 'send';
       send.textContent = o.button || '送信';
@@ -409,7 +412,10 @@
     av.appendChild(K.presence(u.online));
     who.appendChild(av);
     var id = el('span', 'fr-id');
-    id.appendChild(el('span', 'fr-name uname', u.name));
+    var nm = el('span', 'fr-name-row');
+    nm.appendChild(el('span', 'fr-name uname', u.name));
+    K.addVip(nm, u.vip);
+    id.appendChild(nm);
     id.appendChild(el('span', 'fr-status' + (u.online ? ' on' : ''), seenText(u)));
     who.appendChild(id);
     row.appendChild(who);
@@ -477,7 +483,7 @@
       box.appendChild(jp.row);
     }
     if (!friends.friends.length) {
-      box.appendChild(el('div', 'empty fr-empty', 'まだフレンドはいません。\n上の検索でユーザー名を入力して、フレンド申請を送りましょう！\n承認されると通知が届き、会話できるようになります。'));
+      box.appendChild(el('div', 'empty fr-empty', 'まだフレンドはいません。\n上の検索からフレンド申請を送りましょう！'));
     }
     // online first, then whoever was here most recently
     friends.friends.slice().sort(function (a, b) {
@@ -507,7 +513,7 @@
   function searchFriend() {
     entry.open({
       title: 'フレンドを検索',
-      placeholder: 'ユーザー名をそのまま入力（完全一致）',
+      placeholder: 'ユーザー名（完全一致）',
       max: 24,
       button: '検索',
       enterKeyHint: 'search',
@@ -555,7 +561,7 @@
     else if (act === 'remove') job = K.confirmBox(function (p) {
       p.appendChild(K.nameSpan(u.name || ''));
       p.appendChild(document.createTextNode('さんをフレンドから外しますか？'));
-      p.appendChild(el('small', 'confirm-sub', 'メッセージ・送金・車のプレゼント・観戦・フレンド対決ができなくなります。'));
+      p.appendChild(el('small', 'confirm-sub', 'メッセージ・送金・観戦などができなくなります。'));
     }, '外す').then(function (ok) {
       if (!ok) return null;
       return api.friendRemove(id).then(function () { sfx('click'); toast('フレンドから外しました'); return 'none'; });
@@ -591,7 +597,7 @@
     if (!convs) { renderConvNote('読み込み中…'); return; }
     var list = $('#conv-list');
     list.textContent = '';
-    // Ice Smoker公式ボット, マイクソン and ジョンソン are always at the top, even before they have written
+    // Ice Smoker公式, マイクソン and ジョンソン are always at the top, even before they have written
     var officialConv = null, peterConv = null, johnsonConv = null, rest = [];
     convs.forEach(function (c) {
       if (BR.official.is(c.user)) officialConv = c;
@@ -608,7 +614,7 @@
     johnsonConv = johnsonConv || BR.johnson.placeholder();
     if (johnsonConv) list.appendChild(convRow(johnsonConv));
     rest.forEach(function (x) { list.appendChild(x.row); });
-    if (!rest.length) list.appendChild(el('li', 'empty', 'フレンドになると、ここで会話できます。\n「＋ グループを作る」でフレンドとのグループも作れます。'));
+    if (!rest.length) list.appendChild(el('li', 'empty', 'フレンドとここで会話できます。\n「＋ グループを作る」でグループも作れます。'));
   }
   function convRow(c) {
     var lender = BR.peter.is(c.user), friend = BR.johnson.is(c.user), bot = BR.official.is(c.user), npc = lender || friend || bot;
@@ -623,7 +629,7 @@
     mid.appendChild(name);
     var key = 'dm:' + c.user.id;
     mid.appendChild(el('div', 'conv-last' + (typingNames(key).length ? ' typing' : ''), typingNames(key).length ? '入力中…'
-      : c.last ? preview(c.last) : bot ? BR.official.intro : friend ? BR.johnson.intro + 'です' : 'お金に困ったら相談においで。累計1100万円まで貸すよ（「100万貸して」と書いてね）'));
+      : c.last ? preview(c.last) : bot ? BR.official.intro : friend ? BR.johnson.intro + 'です' : 'お金に困ったら相談においで（「100万貸して」と書いてね）'));
     li.appendChild(mid);
     li.appendChild(convSide(c.at, c.unread));
     return li;
@@ -677,6 +683,7 @@
     }
     if (last.kind === 'gift') return (last.mine ? 'プレゼントしました: ' : 'プレゼントが届きました: ') + carName(last.text);
     if (last.kind === 'present') return BR.presents.preview(last);
+    if (last.kind === 'car_offer' || last.kind === 'car_sold') return BR.carsale.preview(last);
     if (last.kind === 'item') return (last.mine ? '譲りました: ' : '届きました: ') + itemName(last.text) + ' ×' + last.amount;
     if (last.kind === 'offer') return K.clip(last.text, 60);
     if (last.kind === 'system') return K.clip(last.text, 60);
@@ -793,13 +800,13 @@
     if (!key) return;
     var c = chan(key), list = chatList();
     list.textContent = '';
-    if (c.hasMore) list.appendChild(el('div', 'chat-more', '上にスクロールして以前のメッセージを表示'));
+    if (c.hasMore) list.appendChild(el('div', 'chat-more', '上にスクロールで以前のメッセージ'));
     var prev = null;
     c.list.forEach(function (m) { appendMsg(list, m, prev, key); prev = m; });
     if (!c.list.length) {
       list.appendChild(el('div', 'empty chat-empty', note || (!c.loaded ? '読み込み中…'
-        : key.indexOf('group:') === 0 ? 'グループができました。\n最初のメッセージを送ってみましょう！'
-          : peer && BR.official.is(peer) ? '運営へのお問い合わせはこちらから送れます。\n不具合は「報告」、ゲームへのアイデアは「意見案」からどうぞ。担当者が確認してお返事します。'
+        : key.indexOf('group:') === 0 ? 'グループができました。\nメッセージを送ってみましょう！'
+          : peer && BR.official.is(peer) ? '運営へのお問い合わせはこちらへ。\n不具合は「報告」、アイデアは「意見案」からどうぞ。'
             : 'まだメッセージはありません。\nあいさつしてみましょう！')));
     }
     renderTyping();
@@ -859,6 +866,14 @@
     var node = msgEl(m, key, c.list[c.list.indexOf(m) - 1] || null);
     old.parentNode.replaceChild(node, old);
   }
+  // a card changed (js/ui/carsale.js): every copy of the message, and the chat on screen
+  function patchMsg(id, patch) {
+    Object.keys(chans).forEach(function (k) {
+      var m = chans[k].ids[id] ? find(chans[k], id) : null;
+      if (m) Object.keys(patch).forEach(function (p) { m[p] = patch[p]; });
+    });
+    refreshMsg(id);
+  }
   // a present was received (on this device or another, by me or by the friend)
   function onPresent(d) {
     if (!d || !d.id) return;
@@ -882,6 +897,10 @@
     if (m.kind === 'offer') return BR.peter.offerEl(m);
     if (m.kind === 'present') {
       node = BR.presents.bubble(m, mine);
+    } else if (m.kind === 'car_offer') {
+      node = BR.carsale.offerEl(m, mine);
+    } else if (m.kind === 'car_sold') {
+      node = BR.carsale.soldEl(m, mine);
     } else if (m.kind === 'transfer') {
       node = el('div', 'msg xfer' + (mine ? ' mine' : ' theirs'));
       card = el('div', 'xfer-card');
@@ -931,9 +950,9 @@
     var d = drafts[key];
     var ph = $('#chat-placeholder');
     ph.textContent = d ? K.clip(d, 80) : view === 'group' ? 'グループにメッセージ…'
-      : peer && BR.peter.is(peer) ? '「100万貸して」「100万返す」のように書けます（累計1100万円まで）'
+      : peer && BR.peter.is(peer) ? '「100万貸して」「100万返す」のように書けます'
       : peer && BR.johnson.is(peer) ? 'ジョンソンに話しかける…'
-      : peer && BR.official.is(peer) ? '運営へのメッセージを入力…（不具合は「報告」、アイデアは「意見案」からも送れます）' : 'メッセージを入力…';
+      : peer && BR.official.is(peer) ? '運営へのメッセージを入力…' : 'メッセージを入力…';
     ph.classList.toggle('draft', !!d);
   }
 
@@ -1050,7 +1069,6 @@
     entry.open({
       title: view === 'group' ? group.name : peer.name,
       value: drafts[key] || '',
-      max: 300,
       placeholder: 'メッセージを入力',
       feed: chatList(),
       rule: true,
@@ -1094,7 +1112,10 @@
     } else {
       u.appendChild(K.avatarEl(peer));
       var t = el('span', 'dm-id');
-      t.appendChild(el('span', 'dm-name uname', peer.name));
+      var nm = el('span', 'dm-name-row');
+      nm.appendChild(el('span', 'dm-name uname', peer.name));
+      K.addVip(nm, peer.vip);
+      t.appendChild(nm);
       var st = el('span', 'dm-status');
       st.appendChild(K.presence(npc || peer.online));
       st.appendChild(el('span', '', seenText(peer)));
@@ -1104,6 +1125,7 @@
     $('#dm-battle').hidden = isGroup || npc;
     $('#dm-battle').disabled = !isGroup && !npc && !peer.online;
     $('#dm-money').hidden = isGroup || npc;
+    $('#dm-car').hidden = isGroup || npc;
     $('#dm-profile').hidden = isGroup || npc;
     $('#dm-coop').hidden = !isGroup;
     $('#dm-members').hidden = !isGroup;
@@ -1126,7 +1148,7 @@
   }
   function openDm(user) {
     if (!user || !me || user.id === me.id) return;
-    peer = { id: user.id, name: user.name, avatar: user.avatar, online: !!user.online, npc: user.npc || null, lastSeen: user.lastSeen || null };
+    peer = { id: user.id, name: user.name, avatar: user.avatar, online: !!user.online, npc: user.npc || null, lastSeen: user.lastSeen || null, vip: user.vip };
     group = null;
     enterChat('dm');
     // クエスト「友達のチャットを覗く」 (the server checks the friendship)
@@ -1209,7 +1231,7 @@
     var box = $('#group-pick');
     box.textContent = '';
     if (!friends) { box.appendChild(el('div', 'group-pick-note', '読み込み中…')); return; }
-    if (!friends.friends.length) { box.appendChild(el('div', 'group-pick-note', 'まだフレンドがいません。フレンドになるとグループに入れられます。')); return; }
+    if (!friends.friends.length) { box.appendChild(el('div', 'group-pick-note', 'グループに入れられるフレンドがいません。')); return; }
     friends.friends.forEach(function (f) {
       var b = el('button', 'group-pick-row' + (groupForm.picked[f.id] ? ' on' : ''));
       b.type = 'button';
@@ -1297,6 +1319,9 @@
     av.id = 'pf-avatar';
     old.parentNode.replaceChild(av, old);
     $('#pf-name').textContent = u.name;
+    var pv = $('#pf-vip');
+    pv.textContent = '';
+    K.addVip(pv, self ? (me && me.vip && me.vip.on ? me.vip.level : null) : r ? r.user.vip : u.vip);
     var lv = $('#pf-lv'), level = r ? r.user.level : null;
     lv.hidden = !level;
     lv.textContent = level ? 'Lv.' + level : '';
@@ -1325,6 +1350,7 @@
       pfBtn(a1, '引き継ぎコード発行', 'recovery', '', 'share');
       pfBtn(a1, 'コードでログイン', 'codeLogin', '', 'download');
       pfBtn(a1, '演出設定', 'effects', '', 'sound');
+      pfBtn(a1, 'VIP', 'vip', 'gold', 'crown', me && me.vip && me.vip.on ? 'VIP' + me.vip.level : '');
       if (BR.push && BR.push.mode() !== 'none') pfBtn(a1, '通知', 'push', '', 'chat', BR.push.permission() === 'granted' ? 'オン' : 'オフ');
       pfLink(a2, 'ログアウト', 'logout');
       loadBlocks();
@@ -1350,10 +1376,10 @@
       pfBtn(a1, '拒否', 'decline');
     } else if (rel === 'outgoing') {
       pfBtn(a1, '申請を取り消す', 'cancel');
-      a1.appendChild(el('span', 'pf-hint', 'フレンド申請の返事を待っています'));
+      a1.appendChild(el('span', 'pf-hint', '承認待ちです'));
     } else {
       pfBtn(a1, 'フレンド申請', 'request', 'gold', 'friends');
-      a1.appendChild(el('span', 'pf-hint', 'フレンドになると会話・送金・観戦・一緒に稼ぐができます'));
+      a1.appendChild(el('span', 'pf-hint', 'フレンドになると会話・送金・観戦などができます'));
     }
     pfLink(a2, r.blocked ? 'ブロック解除' : 'ブロック', 'block');
     pfLink(a2, '通報', 'report');
@@ -1369,8 +1395,9 @@
       case 'password': sfx('click'); K.closeModal('profile'); BR.account.openPassword(); break;
       case 'recovery': sfx('click'); reissueCode(); break;
       // another account of mine: its 引き継ぎコード
-      case 'codeLogin': sfx('click'); K.closeModal('profile'); BR.account.open('code-login', 'ほかのアカウントの引き継ぎコードを入力すると、そのアカウントに切り替わります。'); break;
+      case 'codeLogin': sfx('click'); K.closeModal('profile'); BR.account.open('code-login', 'ほかのアカウントの引き継ぎコードで、そのアカウントに切り替えます。'); break;
       case 'effects': sfx('click'); K.closeModal('profile'); BR.effects.open(); break;
+      case 'vip': sfx('click'); K.closeModal('profile'); BR.vip.open(); break;
       case 'push': sfx('click'); K.closeModal('profile'); BR.push.settings(); break;
       case 'logout': sfx('click'); logout(); break;
       case 'transfer': sfx('click'); openTransfer(u); break;
@@ -1394,7 +1421,7 @@
     var ask = blocked ? Promise.resolve(true) : K.confirmBox(function (p) {
       p.appendChild(K.nameSpan(u.name));
       p.appendChild(document.createTextNode('さんをブロックしますか？'));
-      p.appendChild(el('small', 'confirm-sub', '相手には知らされません。ブロック中はこの人のメッセージ・送金・プレゼント・通話・招待があなたに届かなくなり、解除するとブロック中に送られたメッセージなどが届きます。'));
+      p.appendChild(el('small', 'confirm-sub', '相手には知らされません。メッセージ・送金・通話などが届かなくなり、解除するとまとめて届きます。'));
     }, 'ブロック');
     ask.then(function (ok) {
       if (!ok) return null;
@@ -1412,8 +1439,8 @@
   // silent: friends stay friends. Lifted, what they sent meanwhile arrives:
   // the conversation and the list load again.
   function blockChanged(id, res) {
-    if (res.blocked) { toast('ブロックしました（相手には知らされません）'); return; }
-    toast(res.released ? 'ブロックを解除しました。ブロック中のメッセージ ' + res.released + '件が届きました' : 'ブロックを解除しました', 3000);
+    if (res.blocked) { toast('ブロックしました'); return; }
+    toast(res.released ? 'ブロックを解除しました（' + res.released + '件のメッセージが届きました）' : 'ブロックを解除しました', 3000);
     if (typeof res.unread === 'number') setUnread(res.unread);
     if (!res.released) return;
     delete chans['dm:' + id];
@@ -1498,7 +1525,7 @@
       p.appendChild(document.createTextNode('さんに'));
       p.appendChild(K.amountEl(amount, cur, 'confirm-amt'));
       p.appendChild(document.createTextNode('を送金します。'));
-      p.appendChild(el('small', 'confirm-sub', '送金は取り消せません。よろしいですか？'));
+      p.appendChild(el('small', 'confirm-sub', '送金は取り消せません。'));
     }, '送金する').then(function (ok) {
       if (!ok) return;
       tf.busy = true;
@@ -1536,7 +1563,7 @@
     else touchConv(m, Number(key.slice(3)), mine);
     if (mine) return;
     if (here) {
-      if (m.kind === 'transfer' || m.kind === 'gift' || m.kind === 'item' || m.kind === 'present') {
+      if (m.kind === 'transfer' || m.kind === 'gift' || m.kind === 'item' || m.kind === 'present' || m.kind === 'car_offer' || m.kind === 'car_sold') {
         sfx(m.kind === 'transfer' ? 'money' : 'purchase');
         // out of the card that just popped into the chat
         var cards = document.querySelectorAll('.msg.xfer.jc-new');
@@ -1572,6 +1599,11 @@
       sfx('purchase');
       toast(name + 'さんから' + BR.presents.name(m.text) + 'のプレゼントが届きました！タップして受け取ろう', 4200, open);
       if (BR.juice) BR.juice.reward('#toast', 2);
+    } else if (m.kind === 'car_offer' || m.kind === 'car_sold') {
+      sfx(m.kind === 'car_sold' ? 'register' : 'purchase');
+      toast(BR.carsale.note(m), 4200, open);
+      if (BR.juice) BR.juice.reward('#toast', 2);
+      if (m.kind === 'car_sold') BR.cars.changed();
     } else if (m.from && BR.peter.is(m.from)) {
       BR.peter.notify(m, open);
     } else if (key.indexOf('group:') === 0) {
@@ -1605,7 +1637,7 @@
       toast(name + 'さんからフレンド申請が届きました', 3400, goFriends);
     } else if (f.type === 'accepted') {
       sfx('notify');
-      toast(name + 'さんからフレンド承認されました！会話できるようになりました', 4200, function () { sfx('click'); openDm(f.user); });
+      toast(name + 'さんとフレンドになりました！', 4200, function () { sfx('click'); openDm(f.user); });
     }
     if (found && f.user && found.user.id === f.user.id) {
       found.user.friendship = { request: 'incoming', accepted: 'friends', added: 'friends', declined: 'none', cancelled: 'none', removed: 'none' }[f.type] || found.user.friendship;
@@ -1712,6 +1744,7 @@
     $('#chat-gift').addEventListener('click', function () { sfx('click'); if (peer) BR.presents.open(peer); });
     $('#dm-profile').addEventListener('click', function () { sfx('click'); openProfile(peer); });
     $('#dm-money').addEventListener('click', function () { sfx('click'); openTransfer(peer); });
+    $('#dm-car').addEventListener('click', function () { sfx('click'); BR.carsale.open(peer); });
     $('#dm-battle').addEventListener('click', function () { sfx('click'); if (BR.play) BR.play.challenge(peer); });
     $('#dm-coop').addEventListener('click', function () { sfx('click'); if (BR.play && group) BR.play.coopOpen(group); });
     $('#dm-members').addEventListener('click', function () { sfx('click'); showMembers(); });
@@ -1724,6 +1757,8 @@
       sfx('click');
       if (b.dataset.act === 'guide' && BR.guide) { BR.screens.show('slot'); BR.guide.start(true); }
       if (b.dataset.act === 'feedback' && BR.feedback) BR.feedback.open();
+      if (b.dataset.act === 'support' && BR.support) BR.support.open();
+      if (b.dataset.act === 'vip' && BR.vip) BR.vip.open();
     });
     $$('#screen-board .scroller').forEach(K.dragScroll);
 
@@ -1792,9 +1827,11 @@
     });
     $('#tf-go').addEventListener('click', function () { sfx('click'); sendMoney(); });
     // my card on the slot screen: my profile (and the icon) from there
-    $('#me-card').addEventListener('click', function () {
+    // (the VIP badge on it opens VIP)
+    $('#me-card').addEventListener('click', function (e) {
       if (BR.game.busy()) { sfx('deny'); return; }
       sfx('click');
+      if (e.target.closest('.vip-badge') && BR.vip) { BR.vip.open(); return; }
       openProfile(me);
     });
   }
@@ -1859,6 +1896,8 @@
     seenText: seenText,
     blockChanged: blockChanged,
     refreshMsg: refreshMsg,
+    patchMsg: patchMsg,
+    renderMe: renderMeCard,
     // signing up (the story has played): nothing extra any more, the guide takes over
     firstRun: function () {},
     // Escape on a keyboard / the app's back button: close the top-most layer; true if something closed

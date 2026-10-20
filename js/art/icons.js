@@ -46,6 +46,7 @@
 
   // spin-token / dollar / coin icons are bitmaps now (BR.UI_IMG)
   var ICONS = {
+    crown: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M5.5,29L3.5,11.5L13,19L20,6.5L27,19L36.5,11.5L34.5,29Z" fill="#ffd34a" stroke="#8a5a00" stroke-width="1.8" stroke-linejoin="round"/><rect x="5.5" y="30.5" width="29" height="4.6" rx="1.6" fill="#ffd34a" stroke="#8a5a00" stroke-width="1.4"/><circle cx="20" cy="22" r="2.6" fill="#e5262b"/></svg>',
     plus: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M20,9.5V30.5M9.5,20H30.5" stroke="#fff" stroke-width="5" stroke-linecap="square"/></svg>',
 
     back: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 42"><path d="M40.5,21H5.5M22.5,3.5L3.5,21L22.5,38.5" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>',

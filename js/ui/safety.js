@@ -6,7 +6,7 @@
    - 通報: a player (friend or not) from their profile, a hub's member card or
      the friend search; a kind and as much text as needed, a warning about
      false reports, and the operators' answer once it is sent.
-   - 報告 (a bug, an error) and 意見案 (an idea) to Ice Smoker公式ボット: they
+   - 報告 (a bug, an error) and 意見案 (an idea) to Ice Smoker公式: they
      arrive in the chat with the bot, and on the operator site. */
 (function (BR) {
   'use strict';
@@ -134,7 +134,7 @@
     ta.id = 'sf-text';
     ta.className = 'ov-input sf-text';
     ta.rows = 5;
-    ta.placeholder = cfg.placeholder || '自由に書いてください（文字数の制限はありません）';
+    ta.placeholder = cfg.placeholder || '自由に書いてください';
     ta.addEventListener('input', function () { grow(f); render(f); });
     card.appendChild(ta);
     f.ta = ta;
@@ -233,12 +233,12 @@
     t.appendChild(document.createTextNode('さんを通報'));
     openForm({
       title: t,
-      lead: 'どのようなトラブルがあったか教えてください。内容は運営だけが確認し、相手には知らされません。',
+      lead: '相手には知らされません。通報すると $' + U.fmt(BR.CONFIG.report.reward) + ' が届きます（1時間に' + BR.CONFIG.report.perHour + '件まで）。',
       kinds: BR.CONFIG.reportKinds,
       kindTitle: '通報の種類',
       label: 'くわしい内容',
-      placeholder: 'いつ・どこで・何があったかを自由に書いてください（文字数の制限はありません）',
-      warn: '虚偽の通報や、おふざけでの通報をした場合は、通報したあなたのアカウントがアクセス禁止になる可能性があります。',
+      placeholder: 'いつ・どこで・何があったかを書いてください',
+      warn: '虚偽やおふざけの通報は、あなたのアカウントがアクセス禁止になることがあります。',
       send: '通報する',
       submit: function (kind, text) { return api.report(user.id, kind, text, place || 'profile'); },
       done: function (r) { return (r && r.message) || '今後このようなトラブルがないよう気を付けます。'; }
@@ -249,15 +249,15 @@
   var TO_BOT = {
     bug: {
       title: '運営に報告',
-      lead: '不具合・エラー・おかしな表示など、気づいたことを教えてください。運営が確認し、Ice Smoker公式ボットからお返事します。',
+      lead: '不具合・エラー・おかしな表示を教えてください。',
       label: '報告の内容',
-      placeholder: 'どの画面で・何をしたら・どうなったかを自由に書いてください（文字数の制限はありません）'
+      placeholder: 'どの画面で・何をしたら・どうなったかを書いてください'
     },
     idea: {
       title: '運営に意見案を送る',
-      lead: '「こんな機能がほしい」「ここをこう変えてほしい」など、ゲームへのアイデアを教えてください。採用された意見案には、お礼として Ice Smoker公式ボットから $100,000 をお送りします！',
+      lead: '採用された意見案には ' + U.fmt(BR.CONFIG.idea.reward) + ' スピントークンをお送りします（1日' + BR.CONFIG.idea.perDay + '件まで）。',
       label: '意見案',
-      placeholder: 'アイデアを自由に書いてください（文字数の制限はありません）'
+      placeholder: 'アイデアを書いてください'
     }
   };
   function toBot(kind) {
@@ -274,7 +274,7 @@
       done: function (r) {
         if (r && r.message) BR.social.onMsg(r.message);
         K.sfx('send');
-        K.toast('運営に送りました。お返事は公式ボットとのメッセージに届きます', 3400);
+        K.toast('運営に送りました。お返事はメッセージに届きます', 3400);
         return null;
       }
     });

@@ -66,6 +66,6 @@
     placeholder: function () {
       return who ? { user: { id: who.id, name: who.name, avatar: who.avatar, online: true, npc: 'johnson' }, unread: 0, at: 0, friend: true, last: null } : null;
     },
-    intro: '2日に一度、金の生る木を育てる資金を送ってくれる友達'
+    intro: '2日に一度、木を育てる資金をくれる友達'
   };
 })(window.BR = window.BR || {});

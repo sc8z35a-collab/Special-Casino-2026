@@ -1,6 +1,6 @@
 // The operator site (/ops/): the players with their money, connection,
 // 引き継ぎコード, play time, age check and devices, and the bans; the
-// conversations with the official bot (Ice Smoker公式ボット: messages written
+// conversations with the official bot (Ice Smoker公式: messages written
 // from a polite template, money, 返信待ち), the reports (通報: accepted with a
 // reward from the bot, or declined), what the chat filter found (検知), the
 // 報告 / 意見案 players sent (an adopted 意見案 earns $100,000 from the bot),
@@ -15,19 +15,19 @@
 // (server/core/opslog.js), with the request it came from.
 import { ApiError, posInt } from './errors.js';
 import { nameKey, cleanPassword, cleanText, hashPassword } from './auth.js';
-import { LEVEL, RULES } from './rules.js';
+import { LEVEL, RULES, VIP } from './rules.js';
 import { jst } from './opslog.js';
 import { createDevCode } from './devcode.js';
 
 const REWARDS = [600000, 1200000, 2400000];
-const IDEA_REWARD = 100000;
+// an adopted 意見案: spin tokens
+const IDEA_REWARD = RULES.idea.reward;
 const MONEY_MAX = 10000000;
 const fmt = (n) => Number(n).toLocaleString('en-US');
 
 export function createOps({ q, tx, live, config, getUser, mini, openCode, setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub, official, opsLog, balance,
-  banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper }) {
+  banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode = createDevCode({ q, opsLog }) }) {
   const operators = new Set(config.operators.map(nameKey));
-  const devCode = createDevCode({ q, opsLog });
   const accessRow = (key) => q('SELECT * FROM ops_access WHERE name_key = ?').get(key);
   // an operator: the developer always; otherwise as given or taken away on
   // the site, or as named in config.operators
@@ -88,6 +88,10 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       playMs: u.play_ms,
       operator: isOperator(u),
       npc: !!u.npc,
+      // VIP: its level while it is on (null: off), until when, its EXP
+      vip: u.vip_until > Date.now() ? VIP.level(u.vip_exp) : null,
+      vipUntil: u.vip_until || 0,
+      vipExp: u.vip_exp || 0,
       // 18歳以上？ (null: not answered)
       age: u.age_ok === null || u.age_ok === undefined ? null : !!u.age_ok,
       ageAt: u.age_at || 0,
@@ -284,7 +288,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const upto = official.markRead(p.id);
       const c = official.conversation(p.id);
       if (upto && c.messages.some((m) => m.from && m.from.id === p.id)) {
-        opsLog.add({ actor: u, action: 'bot_read', target: p, req, summary: `${p.name}さんとの公式ボットのチャットを開いた（既読をつけた）`, detail: { readUpTo: upto, waiting: waitingBefore } });
+        opsLog.add({ actor: u, action: 'bot_read', target: p, req, summary: `${p.name}さんとの公式チャットを開いた（既読をつけた）`, detail: { readUpTo: upto, waiting: waitingBefore } });
       }
       return { player: row(getUser(p.id)), bot: official.me(), ...c, now: Date.now() };
     },
@@ -299,7 +303,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const full = `【${subject}】\n\n${p.name}様\n\n${text}\n\nIce Smoker公式より`;
       const message = official.say(p.id, full);
       official.answered(p.id);
-      opsLog.add({ actor: u, action: 'bot_message', target: p, req, summary: `${p.name}さんへ公式ボットからメッセージ「${subject}」`, detail: { subject, body: text, sent: full, messageId: message.id } });
+      opsLog.add({ actor: u, action: 'bot_message', target: p, req, summary: `${p.name}さんへ公式からメッセージ「${subject}」`, detail: { subject, body: text, sent: full, messageId: message.id } });
       return { message, player: row(getUser(p.id)) };
     },
 
@@ -316,7 +320,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const noteMsg = note ? official.say(p.id, note) : null;
       if (noteMsg) official.answered(p.id);
       opsLog.add({
-        actor: u, action: 'money', target: p, req, summary: `${p.name}さんへ公式ボットから $${fmt(amount)} を送金`,
+        actor: u, action: 'money', target: p, req, summary: `${p.name}さんへ公式から $${fmt(amount)} を送金`,
         detail: { amount, note, dollarsBefore: before, dollarsAfter: getUser(p.id).dollars, messageId: message ? message.id : 0 }
       });
       return { message, note: noteMsg, balance: balance(getUser(p.id)), player: row(getUser(p.id)) };
@@ -347,7 +351,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         if (reporter && !reporter.npc) {
           official.pay(reporter.id, reward);
           const excerpt = Array.from(r.body).length > 60 ? Array.from(r.body).slice(0, 60).join('') + '…' : r.body;
-          thanks = `ありがとうございます！${shortTime(r.created_at)}にいただいた、${who ? who.name : '対象プレイヤー'}さんの件の通報（${KIND_NAMES[r.kind] || r.kind}：「${excerpt}」）は、無事に運営に届き、受理されました！運営一同、ご協力に心より感謝いたします！\n感謝の気持ちとして $${fmt(reward)} をお送りしました。`;
+          thanks = `ありがとうございます！${shortTime(r.created_at)}にいただいた、${who ? who.name : '対象プレイヤー'}さんの件の通報（${KIND_NAMES[r.kind] || r.kind}：「${excerpt}」）は受理されました！運営一同、ご協力に心より感謝いたします！\nお礼として $${fmt(reward)} をお送りしました。`;
           official.say(reporter.id, thanks);
         }
         opsLog.add({
@@ -419,7 +423,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       return { ok: true };
     },
 
-    // a 意見案 taken up: $100,000 from the official bot with its thanks (once; it is handled then too)
+    // a 意見案 taken up: spin tokens from Ice Smoker公式 with its thanks (once; it is handled then too)
     'POST /api/ops/feedback/adopt': async (req, u) => {
       need(u);
       const body = await req.json();
@@ -431,18 +435,18 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         .run(now, u.id, now, f.id);
       if (!Number(r.changes)) throw new ApiError(409, 'done', 'この意見案はもう採用されています');
       const p = getUser(f.user_id);
-      const before = p ? p.dollars : 0;
+      const before = p ? p.tokens : 0;
       let thanks = '';
       if (p && !p.npc) {
-        official.pay(p.id, IDEA_REWARD);
+        official.pay(p.id, IDEA_REWARD, 'tokens');
         const excerpt = Array.from(f.comment).length > 60 ? Array.from(f.comment).slice(0, 60).join('') + '…' : f.comment;
-        thanks = `ありがとうございます！${shortTime(f.created_at)}にいただいた意見案（「${excerpt}」）を採用させていただきました！すてきなアイデアに、運営一同心より感謝いたします！\n感謝の気持ちとして $${fmt(IDEA_REWARD)} をお送りしました。`;
+        thanks = `ありがとうございます！${shortTime(f.created_at)}にいただいた意見案（「${excerpt}」）を採用させていただきました！\n感謝の気持ちとして ${fmt(IDEA_REWARD)} スピントークンをお送りしました。`;
         official.say(p.id, thanks);
       }
       opsLog.add({
         actor: u, action: 'idea_adopt', target: p, req,
-        summary: `${p ? p.name : '?'}さんの意見案 #${f.id} を採用し、$${fmt(IDEA_REWARD)} と感謝のメッセージ`,
-        detail: { id: f.id, text: f.comment, reward: IDEA_REWARD, message: thanks, dollarsBefore: before, dollarsAfter: p ? getUser(p.id).dollars : 0 }
+        summary: `${p ? p.name : '?'}さんの意見案 #${f.id} を採用し、${fmt(IDEA_REWARD)} スピントークンと感謝のメッセージ`,
+        detail: { id: f.id, text: f.comment, reward: IDEA_REWARD, currency: 'tokens', message: thanks, tokensBefore: before, tokensAfter: p ? getUser(p.id).tokens : 0 }
       });
       return { ok: true, reward: IDEA_REWARD };
     },
@@ -475,7 +479,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         opsLog.add({ actor: u, action: 'ops_grant', target: p, req, summary: `${p.name}さんに運営権を付与（開発者コードで）`, detail: { name: key } });
       } else {
         if (!isOperator(p)) throw new ApiError(409, 'done', `${p.name}さんは運営者ではありません`);
-        const why = '運営権が剥奪されたため、ログアウトされました。ゲームにはもう一度ログインすると入れます（運営サイトには入れません）';
+        const why = '運営権が剥奪されたため、ログアウトされました（ゲームには再ログインで入れます）';
         let ended = 0;
         tx(() => {
           q('INSERT INTO ops_access (name_key, granted, at, by_id) VALUES (?, 0, ?, ?) ON CONFLICT(name_key) DO UPDATE SET granted = 0, at = excluded.at, by_id = excluded.by_id')

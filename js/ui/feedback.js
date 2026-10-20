@@ -50,7 +50,7 @@
     form.appendChild(x);
     form.appendChild(el('div', 'ov-brand', 'Two state Casino RP'));
     form.appendChild(el('h2', 'ov-title', '運営にフィードバックを送ろう'));
-    form.appendChild(el('p', 'ov-text fb-lead', '遊んでみた感想を星1〜5で教えてください。つけたい項目だけでも送れます。'));
+    form.appendChild(el('p', 'ov-text fb-lead', '感想を星1〜5で教えてください（一部の項目だけでもOK）。'));
 
     var rates = el('div', 'fb-rates');
     ITEMS.forEach(function (it) {
@@ -89,7 +89,7 @@
     ta.id = 'fb-comment';
     ta.className = 'ov-input fb-comment';
     ta.rows = 4;
-    ta.placeholder = '自由に書いてください（文字数の制限はありません）';
+    ta.placeholder = '自由に書いてください';
     ta.addEventListener('input', function () { grow(); render(); });
     form.appendChild(ta);
 

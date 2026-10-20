@@ -152,7 +152,7 @@
         BR.app.serverBalance(r.me);
         setMe(r.me);
         sfx('register');
-        toast(it.name + ' ×' + n + ' を購入しました！スロット画面からワンタップで使えます', 3600);
+        toast(it.name + ' ×' + n + ' を購入しました！スロット画面で使えます', 3600);
         if (BR.juice) BR.juice.reward('#pane-shop .shop-pic', 2);
       }, function (err) {
         if (err.code === 'price_changed' && err.extra.itemShop) setSale(err.extra.itemShop);
@@ -214,14 +214,14 @@
         av.appendChild(K.presence(f.online));
         row.appendChild(av);
         row.appendChild(el('span', 'pick-name uname', f.name));
-      }, function (f) { giveTo(f, it); }, 'まだフレンドがいません。\nフレンドになるとアイテムを譲れます。');
+      }, function (f) { giveTo(f, it); }, 'まだフレンドがいません。');
     }).catch(fail);
   }
 
   // from a friend's profile
   function giveFrom(user) {
     var list = catalog().filter(function (it) { return owned(it.id) > 0; });
-    if (!list.length) { sfx('deny'); toast('譲れるアイテムがありません。Shop で買えます', 3000); return; }
+    if (!list.length) { sfx('deny'); toast('譲れるアイテムがありません', 3000); return; }
     giveTo(user, list[0]);
   }
 
@@ -236,7 +236,7 @@
       K.confirmBox(function (p) {
         p.appendChild(K.nameSpan(user.name));
         p.appendChild(document.createTextNode('さんに ' + it.name + ' ×' + n + ' を譲りますか？'));
-        p.appendChild(el('small', 'confirm-sub', '譲ったアイテムは相手の所有に移ります。取り消せません。'));
+        p.appendChild(el('small', 'confirm-sub', '取り消せません。'));
       }, '譲る').then(function (ok) {
         if (!ok) return;
         api.giveItem(user.id, it.id, n).then(function (r) {

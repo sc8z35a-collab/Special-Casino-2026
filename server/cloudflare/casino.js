@@ -102,9 +102,9 @@ function coreRequest(request, url) {
       if (!/^application\/json\b/i.test(request.headers.get('content-type') || '')) {
         throw new ApiError(415, 'content_type', 'Content-Type は application/json にしてください');
       }
-      if (Number(request.headers.get('content-length') || 0) > limit) throw new ApiError(413, 'too_large', 'リクエストが大きすぎます');
+      if (Number(request.headers.get('content-length') || 0) > limit) throw new ApiError(413, 'too_large', '送信できません。大きすぎます。');
       const bytes = await request.arrayBuffer();
-      if (bytes.byteLength > limit) throw new ApiError(413, 'too_large', 'リクエストが大きすぎます');
+      if (bytes.byteLength > limit) throw new ApiError(413, 'too_large', '送信できません。大きすぎます。');
       try {
         const text = new TextDecoder().decode(bytes);
         const body = text ? JSON.parse(text) : {};
@@ -113,6 +113,13 @@ function coreRequest(request, url) {
       } catch {
         throw new ApiError(400, 'bad_json', 'リクエストの形式が正しくありません');
       }
+    },
+    // the body exactly as it came (a payment company's signed notice)
+    async bytes(limit = 64 * 1024) {
+      if (Number(request.headers.get('content-length') || 0) > limit) throw new ApiError(413, 'too_large', '送信できません。大きすぎます。');
+      const bytes = new Uint8Array(await request.arrayBuffer());
+      if (bytes.byteLength > limit) throw new ApiError(413, 'too_large', '送信できません。大きすぎます。');
+      return bytes;
     }
   };
 }
@@ -196,7 +203,7 @@ export class Casino extends DurableObject {
   }
 
   async alarm() {
-    this.api.housekeeping();
+    await this.api.housekeeping();
     await this.ctx.storage.setAlarm(Date.now() + HOUSEKEEPING_EVERY);
   }
 

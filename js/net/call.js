@@ -13,7 +13,9 @@
    speaking into an open microphone counts as active (the time quests).
    A hub's voice cannot be hung up while in the hub; instead every voice has
    its own volume and mute (kept on this phone), the speaker button mutes
-   them all, and a block cuts a voice off both ways. */
+   them all, and a block cuts a voice off both ways. A call that has gone on
+   for 2 hours ends (it can be started again). Its sound quality is the one
+   of the best VIP in it (js/game/vip.js), for everyone in it. */
 (function (BR) {
   'use strict';
 
@@ -26,6 +28,9 @@
   // peer }, stream, mic, micBusy, cid }
   var home = null;
   var ice = null;         // { servers, until }
+  var LIMIT = 2 * 3600000;
+  var pausedHub = 0;      // a hub whose voice ended at the limit (until it is asked back)
+  var lastHub = null;     // [hub id, people]
 
   /* ------------------------------------------------------------ each voice's volume and mute --- */
   // { v: { id: volume 0..100 }, m: { id: 1 (muted) }, d: 1 (all voices muted) }
@@ -241,6 +246,52 @@
     }, 500);
   }
 
+  /* ------------------------------------------------------------ the sound quality --- */
+  // the tier of the call: the best VIP of everyone in it (me too)
+  function tierOf(h) {
+    var me = BR.social.me(), V = BR.VIP;
+    var t = V.tier(me && me.vip && me.vip.on && me.vip.until > Date.now() ? me.vip.level : null);
+    Object.keys(h.members).forEach(function (k) {
+      var u = h.members[k];
+      t = Math.max(t, V.tier(u && typeof u.vip === 'number' ? u.vip : null));
+    });
+    return t;
+  }
+  // the bitrate the other side may send me at (Opus in the description I send)
+  function withBitrate(sdp, tier) {
+    if (!tier) return sdp;
+    var m = /a=rtpmap:(\d+) opus\/48000[^\r\n]*/i.exec(sdp);
+    if (!m) return sdp;
+    var pt = m[1], bps = BR.VIP.kbps(tier) * 1000;
+    var re = new RegExp('a=fmtp:' + pt + ' ([^\\r\\n]*)');
+    if (re.test(sdp)) {
+      return sdp.replace(re, function (all, params) {
+        var p = params.split(';').filter(function (x) { return x && !/^\s*maxaveragebitrate=/.test(x); });
+        p.push('maxaveragebitrate=' + bps);
+        return 'a=fmtp:' + pt + ' ' + p.join(';');
+      });
+    }
+    return sdp.replace(m[0], m[0] + '\r\na=fmtp:' + pt + ' minptime=10;useinbandfec=1;maxaveragebitrate=' + bps);
+  }
+  function capSender(p, tier) {
+    if (!p.sender || !p.sender.getParameters) return;
+    try {
+      var prm = p.sender.getParameters();
+      if (!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
+      prm.encodings[0].maxBitrate = BR.VIP.kbps(tier) * 1000;
+      p.sender.setParameters(prm).catch(function () {});
+    } catch (e) { /* not on this browser */ }
+  }
+  // the tier changed (a VIP came or went): the connections start over at it
+  function quality(h) {
+    var t = tierOf(h);
+    if (h.tier === t) return;
+    var was = h.tier;
+    h.tier = t;
+    if (was === undefined) return;
+    Object.keys(h.peers).forEach(function (k) { var id = Number(k); if (myId() < id) connect(h, id, true); });
+  }
+
   /* ------------------------------------------------------------ connections --- */
   function eachPeer(h, fn) { Object.keys(h.peers).forEach(function (k) { fn(h.peers[k]); }); }
 
@@ -282,6 +333,7 @@
           if (!p.live) sfx('callStart');
           p.live = true;
           clearTimeout(p.timer);
+          capSender(p, h.tier || 0);
         } else if (s === 'failed' || s === 'closed') p.live = false;
         else if (s === 'disconnected') {
           clearTimeout(p.timer);
@@ -294,7 +346,7 @@
         renderBar();
       };
       if (!offer) return pc;
-      pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).then(function () {
+      pc.createOffer().then(function (o) { return pc.setLocalDescription({ type: o.type, sdp: withBitrate(o.sdp, h.tier || 0) }); }).then(function () {
         queue(h, p, { description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
       }).catch(function () { /* tried again on the next hello */ });
       return pc;
@@ -336,7 +388,7 @@
             peer.sender = tr.sender;
             if (micTrack(h)) tr.sender.replaceTrack(micTrack(h)).catch(function () {});
           }
-          return pc.createAnswer().then(function (a) { return pc.setLocalDescription(a); }).then(function () {
+          return pc.createAnswer().then(function (a) { return pc.setLocalDescription({ type: a.type, sdp: withBitrate(a.sdp, h.tier || 0) }); }).then(function () {
             queue(h, peer, { description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
           });
         });
@@ -400,6 +452,10 @@
     var me = myId();
     var want = {};
     (people || []).forEach(function (p) { if (p.id !== me) want[p.id] = p; });
+    lastHub = [hubId, people];
+    if (pausedHub && pausedHub !== hubId) pausedHub = 0;
+    // ended at the limit: it waits to be asked back
+    if (pausedHub && Object.keys(want).length) return;
     if (!hubId || !Object.keys(want).length) {
       if (!hubVoice) return;
       hubVoice = null;
@@ -417,18 +473,39 @@
   function join(kind, room, host, want) {
     if (home && (home.kind !== kind || home.room !== room)) leave();
     if (!home) {
-      home = { kind: kind, room: room, host: host, members: {}, peers: {}, stream: null, mic: false, micBusy: false, cid: (kind === 'hub' ? 'hub-room-' : 'home-') + room };
+      home = { kind: kind, room: room, host: host, members: {}, peers: {}, stream: null, mic: false, micBusy: false, cid: (kind === 'hub' ? 'hub-room-' : 'home-') + room, since: Date.now() };
       iceServers();
     }
     var h = home;
     Object.keys(h.members).forEach(function (k) {
       if (!want[k]) { signal(Number(k), { op: 'bye' }); delete h.members[k]; closePeer(h, Number(k)); }
     });
+    var fresh = [];
     Object.keys(want).forEach(function (k) {
-      var isNew = !h.members[k];
+      if (!h.members[k]) fresh.push(Number(k));
       h.members[k] = want[k];
-      if (isNew) signal(Number(k), { op: 'hello' });
     });
+    quality(h);
+    fresh.forEach(function (id) { signal(id, { op: 'hello' }); });
+  }
+
+  // 2 hours in one call: it ends (a hub's comes back when asked)
+  function overTime() {
+    var h = home;
+    if (!h || Date.now() - h.since < LIMIT) return;
+    if (h.kind === 'hub') {
+      pausedHub = h.room;
+      leave();
+      toast('通話が2時間続いたため終了しました。タップで通話に戻れます', 6000, resume);
+      return;
+    }
+    if (BR.watch && BR.watch.endVoice) BR.watch.endVoice(); else leave();
+    toast('通話が2時間続いたため終了しました', 4000);
+  }
+  function resume() {
+    if (!pausedHub) return;
+    pausedHub = 0;
+    if (lastHub) syncHub(lastHub[0], lastHub[1]);
   }
 
   function leave() {
@@ -487,6 +564,7 @@
       if (outCtx && outCtx.state === 'suspended') outCtx.resume().catch(function () {});
     }, true);
     window.addEventListener('pagehide', function () { if (home) leave(); });
+    setInterval(overTime, 15000);
     if (api.online) BR.live.on('call', onCall);
   }
 
@@ -527,6 +605,11 @@
     // some voice of a friend comes through (a connection is up)
     live: function () { return !!home && Object.keys(home.peers).some(function (k) { return home.peers[k].live; }); },
     kind: function () { return home ? home.kind : ''; },
+    // a hub's voice that ended at the limit, and asking it back
+    paused: function () { return !!pausedHub; },
+    resume: resume,
+    // my VIP changed: the quality of the call
+    quality: function () { if (home) quality(home); },
     // the home whose voice I am in (0: none, or a hub's)
     room: function () { return home && home.kind === 'home' ? home.room : 0; },
     hangupAll: leave

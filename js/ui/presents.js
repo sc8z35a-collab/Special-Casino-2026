@@ -54,8 +54,8 @@
       grid.appendChild(b);
     });
     var p = info(pick);
-    $('#pr-note').textContent = p ? p.name + 'を贈ります（' + to.name + 'さんがタップすると $' + U.fmt(p.price) + ' を受け取れます）'
-      : '所持 $' + U.fmt(dollars()) + '・贈ったプレゼントは、相手がタップするとその金額を受け取れます';
+    $('#pr-note').textContent = p ? p.name + 'を贈ります（相手はタップで $' + U.fmt(p.price) + ' を受け取れます）'
+      : '所持 $' + U.fmt(dollars()) + '・相手はタップでその金額を受け取れます';
     var go = $('#pr-go');
     go.disabled = busy || !p || dollars() < p.price;
     go.textContent = busy ? '贈っています…' : 'プレゼントする';
