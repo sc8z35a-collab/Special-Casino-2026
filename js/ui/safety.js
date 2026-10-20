@@ -6,7 +6,7 @@
    - 通報: a player (friend or not) from their profile, a hub's member card or
      the friend search; a kind and as much text as needed, a warning about
      false reports, and the operators' answer once it is sent.
-   - 報告 (a bug, an error) and 意見案 (an idea) to Ice Smoker公式ボット: they
+   - 報告 (a bug, an error) and 意見案 (an idea) to Ice Smoker公式: they
      arrive in the chat with the bot, and on the operator site. */
 (function (BR) {
   'use strict';
@@ -249,13 +249,13 @@
   var TO_BOT = {
     bug: {
       title: '運営に報告',
-      lead: '不具合・エラー・おかしな表示など、気づいたことを教えてください。運営が確認し、Ice Smoker公式ボットからお返事します。',
+      lead: '不具合・エラー・おかしな表示など、気づいたことを教えてください。運営が確認し、Ice Smoker公式からお返事します。',
       label: '報告の内容',
       placeholder: 'どの画面で・何をしたら・どうなったかを自由に書いてください（文字数の制限はありません）'
     },
     idea: {
       title: '運営に意見案を送る',
-      lead: '「こんな機能がほしい」「ここをこう変えてほしい」など、ゲームへのアイデアを教えてください。採用された意見案には、お礼として Ice Smoker公式ボットから $100,000 をお送りします！',
+      lead: '「こんな機能がほしい」「ここをこう変えてほしい」など、ゲームへのアイデアを教えてください。採用された意見案には、お礼として Ice Smoker公式から $100,000 をお送りします！',
       label: '意見案',
       placeholder: 'アイデアを自由に書いてください（文字数の制限はありません）'
     }
@@ -274,7 +274,7 @@
       done: function (r) {
         if (r && r.message) BR.social.onMsg(r.message);
         K.sfx('send');
-        K.toast('運営に送りました。お返事は公式ボットとのメッセージに届きます', 3400);
+        K.toast('運営に送りました。お返事はメッセージに届きます', 3400);
         return null;
       }
     });

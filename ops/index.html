@@ -75,7 +75,7 @@
         </select>
       </label>
     </div>
-    <p class="hint muted">アイコンをタップすると公式ボットとのチャット、行をタップすると詳細が開きます。</p>
+    <p class="hint muted">アイコンをタップすると公式チャット、行をタップすると詳細が開きます。</p>
     <div class="table-wrap">
       <table class="players">
         <thead>
@@ -96,7 +96,7 @@
         <button class="chip" data-status="done" type="button">処理済み</button>
       </div>
     </div>
-    <p class="hint muted">受理すると、Ice Smoker公式ボットから通報した人へ選んだ金額と感謝のメッセージが自動で届きます。</p>
+    <p class="hint muted">受理すると、Ice Smoker公式から通報した人へ選んだ金額と感謝のメッセージが自動で届きます。</p>
     <div class="cards" id="report-list"></div>
   </section>
 
@@ -165,7 +165,7 @@
     </div>
     <div id="pay-setup"></div>
     <div class="summary pay-sum" id="pay-sum"></div>
-    <p class="hint muted">購入した人は、開発者が返信するまでここに残ります。返信は Ice Smoker公式ボットから「【開発者からのメッセージ】」として届き、送るとその人だけがこの一覧から消えます（そのあとにまた購入すると、もう一度載ります）。ロイヤルコインは Stripe からの入金をサーバーが確かめてから自動で届いています。</p>
+    <p class="hint muted">購入した人は、開発者が返信するまでここに残ります。返信は Ice Smoker公式から「【開発者からのメッセージ】」として届き、送るとその人だけがこの一覧から消えます（そのあとにまた購入すると、もう一度載ります）。ロイヤルコインは Stripe からの入金をサーバーが確かめてから自動で届いています。</p>
     <div class="cards" id="pay-list"></div>
   </section>
 
@@ -201,7 +201,7 @@
 
 <!-- the conversation with the official bot -->
 <div class="chat-back" id="chat" hidden>
-  <section class="chat" aria-label="公式ボットとのチャット">
+  <section class="chat" aria-label="公式チャット">
     <header class="chat-head">
       <button class="btn ghost small" id="chat-close" type="button">← 戻る</button>
       <div class="chat-who" id="chat-who"></div>
@@ -230,7 +230,7 @@
 <div class="dialog-back" id="money" hidden>
   <form class="dialog" id="money-form" novalidate>
     <h2 id="money-title">送金</h2>
-    <p class="muted">Ice Smoker公式ボットからドルを送ります（$0〜$10,000,000）。チャットに送金として表示されます。</p>
+    <p class="muted">Ice Smoker公式からドルを送ります（$0〜$10,000,000）。チャットに送金として表示されます。</p>
     <div class="presets" id="money-presets">
       <button type="button" data-amount="10000">1万</button>
       <button type="button" data-amount="100000">10万</button>

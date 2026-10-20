@@ -15,7 +15,7 @@
       vampire: 'img/avatars/vampire.webp',
       cap: 'img/avatars/cap.webp',
       catcap: 'img/avatars/catcap.webp',
-      // the NPCs マイクソン (once ピーター) and ジョンソン, and Ice Smoker公式ボット (not players' icons)
+      // the NPCs マイクソン (once ピーター) and ジョンソン, and Ice Smoker公式 (not players' icons)
       peter: 'img/avatars/peter.webp',
       johnson: 'img/avatars/johnson.webp',
       official: 'img/avatars/official.webp'

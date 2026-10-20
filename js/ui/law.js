@@ -5,7 +5,7 @@
 (function (BR) {
   'use strict';
 
-  var ASK = 'ご請求があれば遅滞なく開示いたします（ゲーム内の「Ice Smoker公式ボット」へのメッセージでご連絡ください）';
+  var ASK = 'ご請求があれば遅滞なく開示いたします（ゲーム内の「Ice Smoker公式」へのメッセージでご連絡ください）';
   function yen(n) { return Number(n).toLocaleString('en-US') + '円'; }
 
   // [[label, text], …] (text only: shown with textContent)
@@ -21,7 +21,7 @@
       ['所在地', s.address || ASK],
       ['電話番号', s.phone || ASK],
       ['メールアドレス', s.email || ASK],
-      ['お問い合わせ', (s.hours ? '受付時間：' + s.hours + '。' : '') + 'ゲーム内のメッセージ「Ice Smoker公式ボット」からも受け付けています'],
+      ['お問い合わせ', (s.hours ? '受付時間：' + s.hours + '。' : '') + 'ゲーム内のメッセージ「Ice Smoker公式」からも受け付けています'],
       ['販売価格', plans.join(' / ') + '（いずれも1口あたり・税込。1回に1〜' + (d.maxQty || 100) + '口）'],
       ['商品代金以外の必要料金', 'ありません（インターネットの通信料はお客様のご負担となります）'],
       ['お支払い方法', methods.length ? methods.join('、') : '準備中です'],

@@ -25,7 +25,7 @@
     // from this many wins in a row (the combo; in a hub the one everyone
     // shares) every win pays double
     comboDouble: 5,
-    // アクセス日数 (login days, all told): Ice Smoker公式ボット sends `amount` $
+    // アクセス日数 (login days, all told): Ice Smoker公式 sends `amount` $
     // by itself on each of these (not to a 永久BAN account)
     accessDays: { at: [5, 10, 15, 20, 25, 30, 35], amount: 250000 },
     tokenPrice: 10,          // $ per spin token

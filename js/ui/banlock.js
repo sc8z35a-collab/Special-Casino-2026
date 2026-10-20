@@ -91,7 +91,7 @@
     $('#ban-lock-title').textContent = '解除されました';
     $('#ban-lock-notice').textContent = '利用停止が解除されました。また TWO STATE で遊べます！';
     $('#ban-lock-until').textContent = '';
-    $('#ban-lock-sub').textContent = 'Ice Smoker公式ボットからのお知らせは、メッセージで見られます。';
+    $('#ban-lock-sub').textContent = 'Ice Smoker公式からのお知らせは、メッセージで見られます。';
     $('#ban-lock-go').hidden = false;
     K.sfx('purchase');
   }

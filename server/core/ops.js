@@ -1,6 +1,6 @@
 // The operator site (/ops/): the players with their money, connection,
 // 引き継ぎコード, play time, age check and devices, and the bans; the
-// conversations with the official bot (Ice Smoker公式ボット: messages written
+// conversations with the official bot (Ice Smoker公式: messages written
 // from a polite template, money, 返信待ち), the reports (通報: accepted with a
 // reward from the bot, or declined), what the chat filter found (検知), the
 // 報告 / 意見案 players sent (an adopted 意見案 earns $100,000 from the bot),
@@ -283,7 +283,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const upto = official.markRead(p.id);
       const c = official.conversation(p.id);
       if (upto && c.messages.some((m) => m.from && m.from.id === p.id)) {
-        opsLog.add({ actor: u, action: 'bot_read', target: p, req, summary: `${p.name}さんとの公式ボットのチャットを開いた（既読をつけた）`, detail: { readUpTo: upto, waiting: waitingBefore } });
+        opsLog.add({ actor: u, action: 'bot_read', target: p, req, summary: `${p.name}さんとの公式チャットを開いた（既読をつけた）`, detail: { readUpTo: upto, waiting: waitingBefore } });
       }
       return { player: row(getUser(p.id)), bot: official.me(), ...c, now: Date.now() };
     },
@@ -298,7 +298,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const full = `【${subject}】\n\n${p.name}様\n\n${text}\n\nIce Smoker公式より`;
       const message = official.say(p.id, full);
       official.answered(p.id);
-      opsLog.add({ actor: u, action: 'bot_message', target: p, req, summary: `${p.name}さんへ公式ボットからメッセージ「${subject}」`, detail: { subject, body: text, sent: full, messageId: message.id } });
+      opsLog.add({ actor: u, action: 'bot_message', target: p, req, summary: `${p.name}さんへ公式からメッセージ「${subject}」`, detail: { subject, body: text, sent: full, messageId: message.id } });
       return { message, player: row(getUser(p.id)) };
     },
 
@@ -315,7 +315,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const noteMsg = note ? official.say(p.id, note) : null;
       if (noteMsg) official.answered(p.id);
       opsLog.add({
-        actor: u, action: 'money', target: p, req, summary: `${p.name}さんへ公式ボットから $${fmt(amount)} を送金`,
+        actor: u, action: 'money', target: p, req, summary: `${p.name}さんへ公式から $${fmt(amount)} を送金`,
         detail: { amount, note, dollarsBefore: before, dollarsAfter: getUser(p.id).dollars, messageId: message ? message.id : 0 }
       });
       return { message, note: noteMsg, balance: balance(getUser(p.id)), player: row(getUser(p.id)) };

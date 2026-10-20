@@ -483,6 +483,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function saveJobs(userId, jobs, pay) {
     q('UPDATE users SET jobs = ?, dollars = dollars + ?, rev = rev + ? WHERE id = ?').run(JSON.stringify(jobs), pay, pay > 0 ? 1 : 0, userId);
   }
+  function jobsPaid(userId, pay) {
+    if (!pay) return;
+    balanceChanged(userId, true);
+    track(userId, [['jobpay', pay]]);
+  }
 
   function balance(u) { return { tokens: u.tokens, dollars: u.dollars, coins: u.coins, rev: u.rev }; }
   function mini(u) { return { id: u.id, name: u.name, avatar: u.avatar }; }
@@ -546,7 +551,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return paid;
   }
 
-  // アクセス日数 (login days, all told): at 5, 10 … 35 Ice Smoker公式ボット
+  // アクセス日数 (login days, all told): at 5, 10 … 35 Ice Smoker公式
   // sends $250,000 by itself, with its congratulations (one reached before is
   // paid at the next visit; a 永久BAN account gets none).
   function accessDayGifts(userId) {
@@ -2354,7 +2359,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         saveJobs(cur.id, s.jobs, s.pay);
         return s.pay;
       });
-      if (paid) balanceChanged(u.id, true);
+      jobsPaid(u.id, paid);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
     },
@@ -2370,7 +2375,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         saveJobs(cur.id, s.jobs.filter((j) => j.id !== id), s.pay);
         return s.pay;
       });
-      if (paid) balanceChanged(u.id, true);
+      jobsPaid(u.id, paid);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
     },
@@ -2384,7 +2389,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (s.pay > 0) saveJobs(cur.id, s.jobs, s.pay);
         return s.pay;
       });
-      if (paid) balanceChanged(u.id, true);
+      jobsPaid(u.id, paid);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
     },

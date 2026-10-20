@@ -105,7 +105,7 @@ test('通報 → accepted: the official bot pays the reporter and thanks them', 
   const a = await register('Rep1'), b = await register('Rep2');
   await call('GET', '/api/johnson', { token: a.token });
   const bot = (await call('GET', '/api/me', { token: a.token })).official;
-  assert.equal(bot.name, 'Ice Smoker公式ボット');
+  assert.equal(bot.name, 'Ice Smoker公式');
   // no friendship needed; the bot cannot be reported or blocked
   const r = await call('POST', '/api/report', { token: a.token, body: { user: b.me.id, kind: 'abuse', text: '暴言を言われました', place: 'search' } });
   assert.equal(r.message, '今後このようなトラブルがないよう気を付けます。');

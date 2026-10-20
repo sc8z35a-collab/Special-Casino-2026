@@ -1,4 +1,4 @@
-// Ice Smoker公式ボット: the operators' account in every player's messages
+// Ice Smoker公式: the operators' account in every player's messages
 // (always at the top, always online). Players can write to it, send a 報告
 // (a bug, an error, something odd) or a 意見案 (an idea for the game) of any
 // length; it cannot be blocked, reported or called. The operators answer
@@ -7,7 +7,7 @@
 // answer gets an automatic one (and their messages are marked read).
 import { newRecoveryCode, sha256 } from './auth.js';
 
-export const NAME = 'Ice Smoker公式ボット';
+export const NAME = 'Ice Smoker公式';
 export const WAIT_MS = 2 * 86400000;
 export const AUTO_TEXT = '（自動返信）現在、サーバーが大変混み合っており、対応に時間を要しております。個別のメッセージにはすべて担当者が手動で返信し、お客様との信頼を大切にしております。大変お手数ですが、返信まであと数日お時間をいただく場合がございます。ご迷惑をおかけしてしまい、誠に申し訳ございません。';
 const LONG = 20000;   // 報告 and 意見案: no limit a player would reach
@@ -28,6 +28,7 @@ export function createOfficial(ctx) {
         .run(NAME, 'npc:official', sha256(newRecoveryCode() + ':official'), now, now);
       row = q("SELECT id FROM users WHERE npc = 'official' LIMIT 1").get();
     }
+    q('UPDATE users SET name = ? WHERE id = ? AND name != ?').run(NAME, row.id, NAME);
     botId = row.id;
     return botId;
   }

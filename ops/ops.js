@@ -4,7 +4,7 @@
    - プレイヤー: everyone's money, connection, 18歳以上, 引き継ぎコード and bans
      at a glance, with marks on the icons (返信待ち: a message to the official
      bot waits for an answer; 検知: the chat filter found something). A tap on
-     an icon opens the conversation with Ice Smoker公式ボット (opening it marks
+     an icon opens the conversation with Ice Smoker公式 (opening it marks
      the player's messages read), a tap on the row the player's details and
      the actions: アクセス禁止 (a week), BAN (30 days), 永久BAN, lifting them,
      letting a player past a BAN on their device, a new 引き継ぎコード, a new
@@ -39,7 +39,7 @@
   };
   var ACTIONS = {
     release: 'DEV更新', open: 'サイトを開いた', 'ban:suspend': 'アクセス禁止', 'ban:ban': 'BAN', 'ban:perma': '永久BAN', 'ban:none': '処分の解除',
-    device_ok: '端末の許可', recovery: '引き継ぎコード再発行', password: 'パスワード再設定', bot_read: 'チャットを既読', bot_message: '公式ボットのメッセージ',
+    device_ok: '端末の許可', recovery: '引き継ぎコード再発行', password: 'パスワード再設定', bot_read: 'チャットを既読', bot_message: '公式のメッセージ',
     money: '送金', report_accept: '通報を受理', report_reject: '通報を不受理', detections_reviewed: '検知を確認', feedback_handled: '報告・意見案を対応済み',
     idea_adopt: '意見案を採用', ops_revoke: '運営権の剥奪', ops_grant: '運営権の付与', ops_restore: '運営権を戻す',
     dev_code_set: '開発者コードを登録', dev_code_change: '開発者コードを変更', dev_code_fail: '開発者コードの入力ミス',
@@ -129,7 +129,7 @@
     var b = el('button', 'face-wrap');
     b.type = 'button';
     b.dataset.chat = p.id;
-    b.title = p.name + 'さんと公式ボットのチャットを開く';
+    b.title = p.name + 'さんと公式チャットを開く';
     b.appendChild(face(p));
     if (p.waiting) b.appendChild(el('span', 'mark wait', '返信待ち'));
     if (p.detections) b.appendChild(el('span', 'mark det', '検知' + (p.detections > 1 ? ' ' + p.detections : '')));
@@ -403,7 +403,7 @@
     head.appendChild(t);
     box.appendChild(head);
 
-    var bot = section('Ice Smoker公式ボット');
+    var bot = section('Ice Smoker公式');
     if (p.waiting) bot.appendChild(el('p', 'note bad', 'このプレイヤーのメッセージが返信を待っています。'));
     var a = el('div', 'acts');
     a.appendChild(act('チャットを開く', 'chat', 'primary'));
@@ -566,8 +566,8 @@
       var kind = b.dataset.kind;
       var info = BAN[kind];
       ask(kind === 'none'
-        ? { title: '処分を解除しますか？', text: p.name + ' さんはすぐにまた遊べるようになります。公式ボットから解除のお知らせが届きます。', ok: '解除する' }
-        : { title: info.long + 'にしますか？', text: p.name + ' さんのゲームはすぐにタイトル画面に戻り、' + (kind === 'perma' ? '解除するまで' : kind === 'ban' ? '30日間' : '1週間') + 'そこから先へ進めなくなります（TWO STATE を遊べません）。公式ボットから「' + date(Date.now(), true) + 'に公式より' + info.name + 'されました」とお知らせが届き、解除されたときもお知らせが届きます。' + (kind === 'suspend' ? '' : '同じ端末のほかのアカウントも止まります。'), ok: info.name + 'にする', danger: true }
+        ? { title: '処分を解除しますか？', text: p.name + ' さんはすぐにまた遊べるようになります。公式から解除のお知らせが届きます。', ok: '解除する' }
+        : { title: info.long + 'にしますか？', text: p.name + ' さんのゲームはすぐにタイトル画面に戻り、' + (kind === 'perma' ? '解除するまで' : kind === 'ban' ? '30日間' : '1週間') + 'そこから先へ進めなくなります（TWO STATE を遊べません）。公式から「' + date(Date.now(), true) + 'に公式より' + info.name + 'されました」とお知らせが届き、解除されたときもお知らせが届きます。' + (kind === 'suspend' ? '' : '同じ端末のほかのアカウントも止まります。'), ok: info.name + 'にする', danger: true }
       ).then(function (ok) {
         if (!ok) return null;
         state.busy = true;
@@ -643,7 +643,7 @@
     w.textContent = '';
     w.appendChild(face(p));
     var t = el('div');
-    t.appendChild(el('b', '', p.name + ' さん と Ice Smoker公式ボット'));
+    t.appendChild(el('b', '', p.name + ' さん と Ice Smoker公式'));
     t.appendChild(el('small', '', (p.online ? 'オンライン' : '最終オンライン ' + ago(p.lastSeen)) + (p.waiting ? '・返信待ち' : '')));
     w.appendChild(t);
   }
@@ -717,7 +717,7 @@
     if (!Number.isInteger(amount) || amount < 0 || amount > 10000000) { $('#money-error').textContent = '金額は $0〜$10,000,000 の整数で入力してください'; return; }
     var note = $('#money-note').value.trim();
     if (!amount && !note) { $('#money-error').textContent = '金額を入力してください'; return; }
-    ask({ title: '$' + fmt(amount) + ' を送りますか？', text: p.name + ' さんへ Ice Smoker公式ボットから送金します。' + (note ? '「' + note + '」も一緒に届きます。' : ''), ok: '送金する' }).then(function (ok) {
+    ask({ title: '$' + fmt(amount) + ' を送りますか？', text: p.name + ' さんへ Ice Smoker公式から送金します。' + (note ? '「' + note + '」も一緒に届きます。' : ''), ok: '送金する' }).then(function (ok) {
       if (!ok) return null;
       $('#money-ok').disabled = true;
       return request('POST', '/api/ops/money', { id: p.id, amount: amount, note: note }).then(function (r) {
@@ -821,7 +821,7 @@
     var id = Number(b.closest('[data-report]').dataset.report);
     var reward = Number(b.dataset.accept || 0);
     ask(reward
-      ? { title: '通報 #' + id + ' を受理しますか？', text: '通報した人へ Ice Smoker公式ボットから $' + fmt(reward) + ' と感謝のメッセージが自動で届きます。', ok: '受理して送る' }
+      ? { title: '通報 #' + id + ' を受理しますか？', text: '通報した人へ Ice Smoker公式から $' + fmt(reward) + ' と感謝のメッセージが自動で届きます。', ok: '受理して送る' }
       : { title: '通報 #' + id + ' を受理しませんか？', text: '通報した人には何も届きません。', ok: '受理しない', danger: true }
     ).then(function (ok) {
       if (!ok) return null;
@@ -989,7 +989,7 @@
   function adopt(id, b) {
     var f = state.feedback.find(function (x) { return x.id === id; });
     var who = f && f.user ? f.user.name : '';
-    ask({ title: 'この意見案を採用しますか？', text: who + ' さんに Ice Smoker公式ボットから $100,000 と感謝のメッセージが届きます（1つの意見案につき1回）。', ok: '採用する' }).then(function (ok) {
+    ask({ title: 'この意見案を採用しますか？', text: who + ' さんに Ice Smoker公式から $100,000 と感謝のメッセージが届きます（1つの意見案につき1回）。', ok: '採用する' }).then(function (ok) {
       if (!ok) return null;
       b.disabled = true;
       return request('POST', '/api/ops/feedback/adopt', { id: id }).then(function () {
@@ -1170,7 +1170,7 @@
     var ta = el('textarea', 'pay-reply');
     ta.rows = 3;
     ta.maxLength = 5000;
-    ta.placeholder = w.player.name + 'さんへの熱いお言葉（公式ボットから【開発者からのメッセージ】として届きます）';
+    ta.placeholder = w.player.name + 'さんへの熱いお言葉（公式から【開発者からのメッセージ】として届きます）';
     ta.value = drafts[w.player.id] || '';
     ta.dataset.draft = w.player.id;
     card.appendChild(ta);

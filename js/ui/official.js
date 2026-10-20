@@ -1,4 +1,4 @@
-/* Ice Smoker公式ボット in the chat (server/core/official.js): the operators'
+/* Ice Smoker公式 in the chat (server/core/official.js): the operators'
    account, always online and always at the top of the messages. Players can
    write to it, and its head has 報告 (a bug, an error) and 意見案 (an idea),
    both of any length (js/ui/safety.js). The operators answer through it from

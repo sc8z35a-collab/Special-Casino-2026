@@ -591,7 +591,7 @@
     if (!convs) { renderConvNote('読み込み中…'); return; }
     var list = $('#conv-list');
     list.textContent = '';
-    // Ice Smoker公式ボット, マイクソン and ジョンソン are always at the top, even before they have written
+    // Ice Smoker公式, マイクソン and ジョンソン are always at the top, even before they have written
     var officialConv = null, peterConv = null, johnsonConv = null, rest = [];
     convs.forEach(function (c) {
       if (BR.official.is(c.user)) officialConv = c;
