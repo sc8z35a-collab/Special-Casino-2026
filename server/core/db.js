@@ -648,6 +648,20 @@ export const MIGRATIONS = [
        until      INTEGER NOT NULL DEFAULT 0
      )`,
     'CREATE INDEX vault_notes_file ON vault_notes(file_id, id)'
+  ],
+  // DEV9: money, cars and items sent wait for the other to tap them (pending);
+  // a message taken back by its sender within the hour (what it said stays
+  // for the operators); the chat stopped by the automatic filter until an
+  // operator lets it go again (when, and why); the message a report is about;
+  // the update thank-you money waiting for the tap on the thanks
+  [
+    'ALTER TABLE messages ADD COLUMN pending INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE messages ADD COLUMN retracted_at INTEGER NOT NULL DEFAULT 0',
+    'CREATE INDEX messages_pending ON messages(recipient_id, pending)',
+    'ALTER TABLE users ADD COLUMN chat_ban INTEGER NOT NULL DEFAULT 0',
+    "ALTER TABLE users ADD COLUMN chat_ban_why TEXT NOT NULL DEFAULT ''",
+    'ALTER TABLE reports ADD COLUMN message_id INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN release_bonus INTEGER NOT NULL DEFAULT 0'
   ]
 ];
 

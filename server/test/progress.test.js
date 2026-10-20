@@ -204,21 +204,30 @@ test('update bonus: $250 000 for every release a player updates past; new player
     assert.ok(Math.abs(released[RELEASE] - Date.now()) < 60000);
     setUser(a.me.id, { release_seen: RELEASE - 1 });
     assert.equal((await call('POST', '/api/release', { token: a.token, body: { release: RELEASE - 1 } })).outdated, true);
+    const claim = () => call('POST', '/api/release/claim', { token: a.token, body: {} });
     let before = (await call('GET', '/api/me', { token: a.token })).me.dollars;
     let r = await release();
-    assert.deepEqual([r.bonus, r.updates, r.me.dollars], [250000, 1, before + 250000]);
+    // it waits for the tap on the thanks (DEV9), also after a reload, and is paid once
+    assert.deepEqual([r.bonus, r.updates, r.me.dollars], [250000, 1, before]);
+    assert.equal((await release()).bonus, 250000);
+    let c = await claim();
+    assert.deepEqual([c.paid, c.me.dollars], [250000, before + 250000]);
+    assert.equal((await claim()).paid, 0);
     assert.equal((await release()).bonus, 0);
     // two updates at once (the game was not opened in between): paid twice, in one go
     setUser(a.me.id, { release_seen: RELEASE - 2 });
-    before = r.me.dollars;
+    before = c.me.dollars;
     r = await release();
-    assert.deepEqual([r.bonus, r.updates, r.me.dollars], [500000, 2, before + 500000]);
+    assert.deepEqual([r.bonus, r.updates], [500000, 2]);
+    c = await claim();
+    assert.equal(c.me.dollars, before + 500000);
     assert.deepEqual(await release().then((x) => [x.bonus, x.updates]), [0, 0]);
     // registered before there was an update bonus: every release so far
     setUser(a.me.id, { release_seen: 0 });
-    before = r.me.dollars;
+    before = c.me.dollars;
     r = await release();
-    assert.deepEqual([r.bonus, r.updates, r.me.dollars], [RELEASE * 250000, RELEASE, before + RELEASE * 250000]);
+    assert.deepEqual([r.bonus, r.updates], [RELEASE * 250000, RELEASE]);
+    assert.equal((await claim()).me.dollars, before + RELEASE * 250000);
   } finally {
     await stop();
   }

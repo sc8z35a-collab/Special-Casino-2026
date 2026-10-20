@@ -72,6 +72,9 @@ test('Shop items can be given to friends (up to their limit)', async () => {
   assert.deepEqual([r.message.text, r.message.amount], ['omamori', 3]);
   const msg = await lb.waitFor('msg', (m) => m.kind === 'item');
   assert.equal(msg.amount, 3);
+  // it arrives with the tap (DEV9)
+  assert.equal((await call('GET', '/api/me', { token: b.token })).me.items.omamori, undefined);
+  assert.equal((await call('POST', '/api/messages/claim', { token: b.token, body: { message: msg.id } })).status, 200);
   await lb.waitFor('items', (e) => e.items.omamori === 3);
   lb.close();
   assert.equal((await call('GET', '/api/me', { token: b.token })).me.items.omamori, 3);

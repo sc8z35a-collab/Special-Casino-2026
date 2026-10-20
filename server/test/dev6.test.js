@@ -6,12 +6,12 @@ import { startServer } from './helpers.js';
 import { screen } from '../core/filter.js';
 import { AUTO_TEXT, WAIT_MS } from '../core/official.js';
 
-let s, call, register, setUser, befriend;
+let s, call, register, setUser, befriend, claimAll;
 let taku;
 
 before(async () => {
   s = await startServer({ limits: { spin: [100000, 1000], shop: [100000, 1000], general: [100000, 1000], login: [100000, 1000], friend: [100000, 1000], transfer: [100000, 1000], dm: [100000, 1000] } });
-  ({ call, register, setUser, befriend } = s);
+  ({ call, register, setUser, befriend, claimAll } = s);
   taku = await register('TAKU');
 });
 after(() => s.stop());
@@ -20,11 +20,13 @@ const db = () => s.app.db;
 const ops = (method, url, body) => call(method, url, { token: taku.token, body });
 const dollars = (id) => db().prepare('SELECT dollars FROM users WHERE id = ?').get(id).dollars;
 const chat = async (p, withId) => (await call('GET', `/api/messages?with=${withId}`, { token: p.token })).messages;
-// ジョンソン's first gift comes with the first spend: taken before counting money
+// ジョンソン's first gift comes with the first spend: taken (and tapped) before counting money
 async function friends(a, b) {
   await befriend(a, b);
   await call('GET', '/api/johnson', { token: a.token });
   await call('GET', '/api/johnson', { token: b.token });
+  await claimAll(a);
+  await claimAll(b);
 }
 
 test('the chat filter: the words go, everyday sentences stay', () => {
@@ -83,6 +85,10 @@ test('a silent block: the blocked player notices nothing, the blocker gets it al
   const list = await chat(b, a.me.id);
   assert.ok(list.some((x) => x.text === 'まだ届く？'));
   assert.ok(list.some((x) => x.kind === 'present' && !x.claimed));
+  // the money waits for b's tap like any other (DEV9)
+  assert.ok(list.some((x) => x.kind === 'transfer' && x.pending && !x.claimed));
+  assert.equal(dollars(b.me.id), b0);
+  assert.equal(await claimAll(b), 1);
   assert.equal(dollars(b.me.id), b0 + 1000);
 });
 
@@ -104,6 +110,7 @@ test('the filter on a chat: *** for the friend, the original and a 検知 for th
 test('通報 → accepted: the official bot pays the reporter and thanks them', async () => {
   const a = await register('Rep1'), b = await register('Rep2');
   await call('GET', '/api/johnson', { token: a.token });
+  await claimAll(a);
   const bot = (await call('GET', '/api/me', { token: a.token })).official;
   assert.equal(bot.name, 'Ice Smoker公式');
   // no friendship needed; the bot cannot be reported or blocked
@@ -115,8 +122,11 @@ test('通報 → accepted: the official bot pays the reporter and thanks them', 
   const rep = list.find((x) => x.reporter.id === a.me.id);
   assert.equal(rep.target.name, 'Rep2');
   assert.equal(rep.context.target.name, 'Rep2');
+  // (the reward for reporting, tapped first)
+  await claimAll(a);
   const a0 = dollars(a.me.id);
   assert.equal((await ops('POST', '/api/ops/report', { id: rep.id, action: 'accept', reward: 600000 })).report.status, 'accepted');
+  await claimAll(a);
   assert.equal(dollars(a.me.id), a0 + 600000);
   const msgs = await chat(a, bot.id);
   assert.ok(msgs.some((m) => m.kind === 'transfer' && m.amount === 600000));
@@ -127,6 +137,7 @@ test('通報 → accepted: the official bot pays the reporter and thanks them', 
 test('the official bot: 返信待ち, the operators answer and send money, 2 days without an answer', async () => {
   const a = await register('Bot1');
   await call('GET', '/api/johnson', { token: a.token });
+  await claimAll(a);
   const bot = (await call('GET', '/api/me', { token: a.token })).official;
   await call('POST', '/api/official/feedback', { token: a.token, body: { kind: 'bug', text: 'ボタンが押せません' } });
   assert.equal((await ops('GET', '/api/ops/players')).players.find((p) => p.id === a.me.id).waiting, true);
@@ -141,6 +152,8 @@ test('the official bot: 返信待ち, the operators answer and send money, 2 day
   const a0 = dollars(a.me.id);
   assert.equal((await ops('POST', '/api/ops/money', { id: a.me.id, amount: 10000001 })).error.code, 'bad_amount');
   await ops('POST', '/api/ops/money', { id: a.me.id, amount: 2500000, note: 'お詫びです' });
+  assert.equal(dollars(a.me.id), a0, 'it arrives with the tap');
+  await claimAll(a);
   assert.equal(dollars(a.me.id), a0 + 2500000);
   // waiting more than two days: read and answered on its own, once
   await call('POST', '/api/messages', { token: a.token, body: { to: bot.id, text: 'まだですか？' } });

@@ -127,3 +127,28 @@ export function coreRequest(req, url, ip) {
     bytes: (limit) => readBytes(req, limit)
   };
 }
+
+// The same, for a body read already (the chat routes: the automatic filter looks at it first).
+export function bufferedRequest(req, url, ip, bytes) {
+  return {
+    ...coreRequest(req, url, ip),
+    async json(limit = 16 * 1024) {
+      if (!/^application\/json\b/i.test(String(req.headers['content-type'] || ''))) {
+        throw new ApiError(415, 'content_type', 'Content-Type は application/json にしてください');
+      }
+      if (bytes.length > limit) throw new ApiError(413, 'too_large', '送信できません。大きすぎます。');
+      try {
+        const text = Buffer.from(bytes).toString('utf8');
+        const body = text ? JSON.parse(text) : {};
+        if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('not an object');
+        return body;
+      } catch {
+        throw new ApiError(400, 'bad_json', 'リクエストの形式が正しくありません');
+      }
+    },
+    async bytes(limit = 64 * 1024) {
+      if (bytes.length > limit) throw new ApiError(413, 'too_large', '送信できません。大きすぎます。');
+      return bytes;
+    }
+  };
+}

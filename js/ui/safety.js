@@ -80,7 +80,8 @@
   }
 
   /* ------------------------------------------------------------ a long form --- */
-  // cfg: { title, lead, kinds, kindTitle, label, placeholder, warn, send: label,
+  // cfg: { title, lead, quote, kinds, kindTitle, label, placeholder, max: characters,
+  //        optional: the text may be left empty, warn, send: label,
   //        submit(kind, text) -> Promise, done(result) -> the thanks to show, or null to close }
   var form = null;
   function openForm(cfg) {
@@ -103,6 +104,7 @@
     else title.appendChild(cfg.title);
     card.appendChild(title);
     if (cfg.lead) card.appendChild(el('p', 'ov-text sf-lead', cfg.lead));
+    if (cfg.quote) card.appendChild(el('blockquote', 'sf-quote', K.clip(cfg.quote, 300)));
 
     if (cfg.kinds) {
       card.appendChild(el('div', 'sf-label', cfg.kindTitle || '種類'));
@@ -138,6 +140,11 @@
     ta.addEventListener('input', function () { grow(f); render(f); });
     card.appendChild(ta);
     f.ta = ta;
+    if (cfg.max) {
+      ta.maxLength = cfg.max;
+      f.count = el('div', 'sf-count');
+      card.appendChild(f.count);
+    }
     if (cfg.warn) card.appendChild(el('p', 'ov-notice sf-warn', cfg.warn));
     var err = el('p', 'ov-error');
     err.setAttribute('role', 'alert');
@@ -167,8 +174,17 @@
         b.setAttribute('aria-checked', on ? 'true' : 'false');
       });
     }
-    f.sendBtn.disabled = f.busy || !f.ta.value.trim() || (!!f.chips && !f.kind);
+    var n = Array.from(f.ta.value).length;
+    if (f.count) {
+      f.count.textContent = n + ' / ' + f.cfg.max + '文字';
+      f.count.classList.toggle('over', n > f.cfg.max);
+    }
+    f.sendBtn.disabled = !ready2(f);
     f.sendBtn.textContent = f.busy ? '送信中…' : f.cfg.send || '送信する';
+  }
+  // what the form needs before it can be sent
+  function ready2(f) {
+    return !f.busy && (f.cfg.optional || !!f.ta.value.trim()) && (!f.chips || !!f.kind) && (!f.cfg.max || Array.from(f.ta.value).length <= f.cfg.max);
   }
   // the box grows with the text, up to about half the screen
   function grow(f) {
@@ -177,7 +193,7 @@
     f.ta.style.height = Math.min(f.ta.scrollHeight + 2, Math.max(140, Math.round(vh * 0.45))) + 'px';
   }
   function submit(f) {
-    if (f.busy || !f.ta.value.trim() || (f.chips && !f.kind)) return;
+    if (!ready2(f)) return;
     f.busy = true;
     f.err.textContent = '';
     render(f);
@@ -245,6 +261,30 @@
     });
   }
 
+  // 通報 of one message (the ⋯ under it): it and the conversation around it go to the operators
+  function reportMessage(m) {
+    if (!m || !m.from || !ready()) return;
+    var R = BR.CONFIG.messageReport;
+    var t = el('span');
+    t.appendChild(K.nameSpan(m.from.name || '?'));
+    t.appendChild(document.createTextNode('さんのメッセージを通報'));
+    openForm({
+      title: t,
+      lead: 'このメッセージと前後の会話が運営に届きます。相手には知らされません（1日' + R.perDay + '件まで）。',
+      quote: m.text,
+      kinds: BR.CONFIG.reportKinds,
+      kindTitle: '通報の種類',
+      label: 'くわしい内容（なくても送れます）',
+      placeholder: '何が問題かを書いてください',
+      max: R.chars,
+      optional: true,
+      warn: '虚偽やおふざけの通報は、あなたのアカウントがアクセス禁止になることがあります。',
+      send: '通報する',
+      submit: function (kind, text) { return api.reportMessage(m.id, kind, text); },
+      done: function (r) { return (r && r.message) || '通報を受け付けました。'; }
+    });
+  }
+
   /* ------------------------------------------------------------ 報告 / 意見案 --- */
   var TO_BOT = {
     bug: {
@@ -288,6 +328,7 @@
   BR.safety = {
     init: init,
     report: report,
+    reportMessage: reportMessage,
     toBot: toBot,
     isOpen: function () { return !!form || (!!age.root && !age.root.hidden); },
     close: function () { if (form) { closeForm(); return true; } return false; }

@@ -84,6 +84,11 @@
 .msg.present.can-claim .pr-state { background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; }
 .msg.present.can-claim .present-card:active { transform: scale(.97); }
 .msg.present.claimed .pr-pic { opacity: .75; }
+/* money, a car or an item waiting for the tap (DEV9) */
+.msg.xfer.can-claim .xfer-card { font: inherit; color: inherit; border: 0; cursor: pointer; box-shadow: inset 0 0 0 calc(var(--u) * 3) #f4dc45, 0 calc(var(--u) * 4) calc(var(--u) * 16) rgba(244, 220, 69, .3); }
+.msg.xfer.can-claim .pr-state { background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; }
+.msg.xfer.can-claim .xfer-card:active { transform: scale(.97); }
+.msg.xfer.claimed .gift-car, .msg.xfer.claimed .gift-item { opacity: .8; }
 
 /* ------------------------------------------------------------ the overlays (CSS px) --- */
 .sf-card { text-align: left; }
@@ -117,6 +122,10 @@
   touch-action: manipulation;
 }
 .sf-warn { text-align: left; }
+/* 通報 of one message: the message, and how much is written */
+.sf-quote { margin: 2px 0 4px; padding: 8px 12px; border-left: 3px solid #f0c94a; border-radius: 4px; background: rgba(255, 255, 255, .07); font-size: 14px; line-height: 1.55; color: #f1e7ea; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sf-count { margin-top: -2px; font-size: 12.5px; text-align: right; color: #b9adb0; }
+.sf-count.over { color: #ff8a8a; font-weight: 700; }
 .sf-done-mark { display: block; width: 64px; height: 64px; margin: 10px auto 4px; border-radius: 50%; background: linear-gradient(180deg, #7ee08a, #2fa64a); position: relative; }
 .sf-done-mark::after { content: ''; position: absolute; left: 21px; top: 14px; width: 16px; height: 28px; border: solid #fff; border-width: 0 5px 5px 0; transform: rotate(45deg); }
 .sf-done { margin: 6px 0 10px; font-size: 16px; font-weight: 700; line-height: 1.7; text-align: center; }

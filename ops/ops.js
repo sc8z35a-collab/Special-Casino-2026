@@ -74,7 +74,7 @@
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
   var KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
-  var REPORT_PLACES = { profile: 'プロフィール', hub: '「一緒に稼ぐ」', search: 'フレンド検索', chat: 'チャット' };
+  var REPORT_PLACES = { profile: 'プロフィール', hub: '「一緒に稼ぐ」', search: 'フレンド検索', chat: 'チャット', message: 'メッセージ（⋯から1件を通報）' };
   var FB_ITEMS = { slot: 'スロットの面白さ', features: 'スロット以外の機能の面白さ', clarity: '全体的なわかりやすさ', controls: '操作性', looks: '見やすさ', polish: '完成度' };
 
   var $ = function (s) { return document.querySelector(s); };
@@ -404,6 +404,7 @@
     if (p.developer) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag maker', '開発者')); }
     if (p.operator) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag op', '運営')); }
     if (p.vip !== null && p.vip !== undefined) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag vip vip-' + p.vip, 'VIP' + p.vip)); }
+    if (p.chatBan) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag chatban', 'チャット停止')); }
     t.appendChild(n);
     t.appendChild(el('small', '', '登録 ' + date(p.createdAt)));
     w.appendChild(t);
@@ -496,6 +497,16 @@
       box.appendChild(el('p', 'note bad', p.deleted
         ? 'このアカウントは ' + date(p.archive.at, true) + ' に削除されました（取り消し不可）。' + date(p.archive.purgeAt, true) + '（あと' + left + '日）にデータを完全に削除します。'
         : '永久BANでプレイヤーアーカイブに入っています。' + date(p.archive.purgeAt, true) + '（あと' + left + '日）にデータを完全に削除します（永久BANを解除すると一覧に戻ります）。'));
+    }
+
+    // the automatic filter stopped their chat: an operator lets it go again
+    if (p.chatBan) {
+      var cb = section('チャット停止（自動フィルタリングシステム）');
+      cb.appendChild(el('p', 'note bad', 'テキスト以外のもの（' + (p.chatBan.why || '理由不明') + '）を送ろうとしたため、' + date(p.chatBan.at, true) + ' からチャットを止めています。くわしくはログの「緊急」にあります。Ice Smoker公式へのメッセージは送れます。'));
+      var ca = el('div', 'acts');
+      if (!p.deleted) ca.appendChild(act('チャット停止を解除', 'chatUnban', 'ok'));
+      cb.appendChild(ca);
+      box.appendChild(cb);
     }
 
     var bot = section('Ice Smoker公式');
@@ -691,6 +702,13 @@
     var name = b.dataset.act;
     if (name === 'chat') { openChat(p.id); return; }
     if (name === 'money') { openMoney(p); return; }
+    if (name === 'chatUnban') {
+      ask({ title: 'チャット停止を解除しますか？', text: p.name + ' さんはすぐにまたチャットできるようになります（ログに残ります）。', ok: '解除する' }).then(function (ok) {
+        if (!ok) return null;
+        return request('POST', '/api/ops/chat-ban', { id: p.id }).then(function (r) { toast('チャット停止を解除しました'); afterChange(r); });
+      }).catch(fail);
+      return;
+    }
     if (name === 'ban') {
       var kind = b.dataset.kind;
       var info = BAN[kind];
@@ -925,17 +943,30 @@
       var day = date(m.at);
       if (day !== lastDay) { list.appendChild(el('div', 'day', day)); lastDay = day; }
       var mine = !!(m.from && r.bot && m.from.id === r.bot.id);
-      var node = el('div', 'msg ' + (mine ? 'bot' : 'player') + (m.kind === 'transfer' ? ' money' : ''));
-      var text = m.kind === 'transfer' ? '送金 ' + (m.currency === 'tokens' ? fmt(m.amount) + ' トークン' : '$' + fmt(m.amount))
-        : m.kind === 'present' ? 'プレゼント（' + m.text + '）' : m.kind === 'system' ? m.text : m.text;
+      var node = el('div', 'msg ' + (mine ? 'bot' : 'player') + (m.kind === 'transfer' ? ' money' : '') + (m.retracted ? ' retracted' : ''));
+      var text = m.kind === 'transfer' ? '送金 ' + (m.currency === 'tokens' ? fmt(m.amount) + ' トークン' : '$' + fmt(m.amount)) + (m.pending ? (m.claimed ? '（受け取り済み）' : '（受け取り待ち）') : '')
+        : m.kind === 'present' ? 'プレゼント（' + m.text + '）' : m.retracted ? '（' + (mine ? '運営' : 'プレイヤー') + 'が送信を取り消し）\n' + (m.original || '') : m.text;
       node.appendChild(el('div', 'bubble', text));
       var meta = el('div', 'msg-meta');
       if (mine && r.playerReadUpTo >= m.id) meta.appendChild(el('b', '', '既読'));
       meta.appendChild(document.createTextNode(stamp(m.at)));
+      // the bot's words can be taken back within the hour (money never)
+      if (mine && m.kind === 'text' && !m.retracted && Date.now() - m.at < 3600000) {
+        var undo = el('button', 'btn tiny ghost', '取り消す');
+        undo.type = 'button';
+        undo.addEventListener('click', function () { retractBot(m); });
+        meta.appendChild(undo);
+      }
       node.appendChild(meta);
       list.appendChild(node);
     });
     if (stick || atBottom) sc.scrollTop = sc.scrollHeight;
+  }
+  function retractBot(m) {
+    ask({ title: 'このメッセージの送信を取り消しますか？', text: 'プレイヤーの画面から消えます（この画面とログには残ります）。', ok: '取り消す', danger: true }).then(function (ok) {
+      if (!ok) return null;
+      return request('POST', '/api/ops/chat/retract', { message: m.id }).then(function () { toast('送信を取り消しました'); loadChat(); });
+    }).catch(fail);
   }
   function composed() {
     var c = state.chat;
@@ -1023,8 +1054,14 @@
     head.appendChild(person(r.target, '通報された人'));
     head.appendChild(el('span', 'time', '#' + r.id + '・' + stamp(r.at)));
     card.appendChild(head);
-    card.appendChild(el('p', 'body-text', r.text));
     var ctx = r.context || {}, t = ctx.target || {};
+    if (ctx.message) {
+      var q = el('div', 'quote');
+      q.appendChild(el('small', 'muted', '通報されたメッセージ' + (ctx.group ? '（グループ「' + ctx.group.name + '」）' : '') + '・' + stamp(ctx.message.at) + (ctx.message.retracted ? '・あとで送信者が取り消し' : '')));
+      q.appendChild(el('p', '', ctx.message.text));
+      card.appendChild(q);
+    }
+    card.appendChild(el('p', 'body-text', r.text || (ctx.message ? '（通報者のコメントなし）' : '')));
     var facts = el('div', 'facts');
     fact(facts, '通報した場所', REPORT_PLACES[r.place] || r.place || '-');
     fact(facts, 'ふたりの関係', (ctx.friends ? 'フレンド' : 'フレンドではない') + (ctx.sameHub ? '・同じ「一緒に稼ぐ」' : ''));
@@ -1036,6 +1073,21 @@
     fact(facts, '対象の処分', t.banned ? '処分中（通報時）' : 'なし');
     if (ctx.request) fact(facts, '通報した端末', (ctx.request.ip || '-') + ' / ' + (ctx.request.userAgent || '').slice(0, 80));
     card.appendChild(facts);
+    if ((ctx.around || []).length) {
+      var ar = el('details', 'more');
+      ar.open = true;
+      ar.appendChild(el('summary', '', '前後の会話（' + ctx.around.length + '件・取り消されたものも元の文で表示）'));
+      var ac = el('div', 'mini-chat');
+      ctx.around.forEach(function (m) {
+        var line = el('p', m.reported ? 'hit' : '');
+        line.appendChild(el('b', '', m.from ? m.from.name : 'システム'));
+        line.appendChild(document.createTextNode((m.retracted ? '［取り消し済み］' : '') + (m.kind === 'transfer' ? '送金 ' + fmt(m.amount) : m.kind === 'text' || m.kind === 'system' ? m.text : '（' + m.kind + '）')));
+        line.appendChild(el('small', '', stamp(m.at)));
+        ac.appendChild(line);
+      });
+      ar.appendChild(ac);
+      card.appendChild(ar);
+    }
     if ((ctx.messages || []).length) {
       var more = el('details', 'more');
       more.appendChild(el('summary', '', 'ふたりの最近のメッセージ（' + ctx.messages.length + '件）'));

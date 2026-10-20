@@ -13,8 +13,9 @@ import { loadConfig, ROOT } from './config.js';
 import { openDb } from './sqlite.js';
 import { Live } from './live.js';
 import { createStatic } from './static.js';
-import { SECURITY_HEADERS, sendJson, clientIp, coreRequest } from './http.js';
+import { SECURITY_HEADERS, sendJson, clientIp, coreRequest, bufferedRequest, readBytes } from './http.js';
 import { createApi } from '../core/api.js';
+import { CHAT_ROUTES, screenChat, BLOCKED } from '../core/attach.js';
 import { metaValue } from '../core/db.js';
 
 // This machine for the operator site's サーバー tab: the database's size,
@@ -82,7 +83,23 @@ export function createApp({ blobs = null, ...overrides } = {}) {
         live.attach(req, res, userId, () => api.hello(userId));
         return;
       }
-      const out = await api.handle(coreRequest(req, url, clientIp(req, config.trustProxy, config.clientIpHeader)));
+      const ip = clientIp(req, config.trustProxy, config.clientIpHeader);
+      let core = coreRequest(req, url, ip);
+      // the automatic filter: a chat message that is not just text never
+      // reaches the API, only a note of it (server/core/attach.js)
+      const route = `${req.method} ${url.pathname}`;
+      if (CHAT_ROUTES[route]) {
+        let bytes;
+        try { bytes = await readBytes(req, 9 * 1024 * 1024); } catch (e) { sendJson(res, e.status || 400, { error: { code: e.code || 'bad_request', message: e.message } }); return; }
+        const note = await screenChat(route, req.headers['content-type'], bytes);
+        if (note) {
+          api.filtered(core, note);
+          sendJson(res, 400, { error: BLOCKED });
+          return;
+        }
+        core = bufferedRequest(req, url, ip, bytes);
+      }
+      const out = await api.handle(core);
       api.sent(sendJson(res, out.status, out.body), url.pathname);
       return;
     }

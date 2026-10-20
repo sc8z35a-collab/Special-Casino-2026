@@ -6,12 +6,15 @@
 // headers are in _headers.
 import { Casino } from './casino.js';
 import { maintenanceBody, isQuotaError } from '../core/quota.js';
+import { screenChat, BLOCKED } from '../core/attach.js';
 
 export { Casino };
 
 // The same name forever: it is the address of the database with every player in it.
 const DATABASE = 'main';
 const MAX_BODY = 9 * 1024 * 1024;
+// what the object is told about a request the automatic filter stopped
+const PASS = ['authorization', 'user-agent', 'x-device', 'origin', 'referer', 'cf-connecting-ip'];
 
 function failure(e) {
   const body = isQuotaError(e)
@@ -31,7 +34,17 @@ export default {
       if (Number(request.headers.get('content-length') || 0) > MAX_BODY) {
         return Response.json({ error: { code: 'too_large', message: '送信できません。大きすぎます。' } }, { status: 413 });
       }
-      return await casino.fetch(new Request(request, { body: await request.arrayBuffer() }));
+      const bytes = await request.arrayBuffer();
+      // the automatic filter: a chat message that is not just text never
+      // reaches the object, only a note of it (server/core/attach.js)
+      const note = await screenChat(`${request.method} ${url.pathname}`, request.headers.get('content-type'), new Uint8Array(bytes));
+      if (note) {
+        const headers = new Headers({ 'content-type': 'application/json' });
+        for (const k of PASS) if (request.headers.has(k)) headers.set(k, request.headers.get(k));
+        await casino.fetch(new Request(new URL('/internal/filter', url), { method: 'POST', headers, body: JSON.stringify(note) }));
+        return Response.json({ error: BLOCKED }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
+      }
+      return await casino.fetch(new Request(request, { body: bytes }));
     } catch (e) {
       // the object could not be reached (its daily quota, or a restart)
       console.error('casino unavailable', e && e.message);
