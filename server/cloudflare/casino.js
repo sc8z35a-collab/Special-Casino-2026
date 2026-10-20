@@ -50,6 +50,32 @@ function sqlAdapter(ctx) {
   };
 }
 
+// The developer's vault keeps its files' pieces in R2 when the Worker has the
+// bucket (wrangler.jsonc: r2_buckets, binding VAULT), each with its SHA-256
+// (server/core/vault.js).
+function bucketBlobs(bucket) {
+  return {
+    put: (key, bytes, sha256) => bucket.put(key, bytes, { customMetadata: { sha256 } }),
+    async get(key) {
+      const o = await bucket.get(key);
+      return o ? { bytes: new Uint8Array(await o.arrayBuffer()), sha256: (o.customMetadata || {}).sha256 || '' } : null;
+    },
+    async list(prefix) {
+      const out = [];
+      let cursor;
+      do {
+        const r = await bucket.list({ prefix, cursor, include: ['customMetadata'] });
+        for (const o of r.objects) out.push({ key: o.key, sha256: (o.customMetadata || {}).sha256 || '' });
+        cursor = r.truncated ? r.cursor : undefined;
+      } while (cursor);
+      return out;
+    },
+    async del(keys) {
+      for (let i = 0; i < keys.length; i += 1000) await bucket.delete(keys.slice(i, i + 1000));
+    }
+  };
+}
+
 // Pushes events to connected players. Each socket is tagged "u:<user id>".
 class SocketHub {
   constructor(ctx) { this.ctx = ctx; }
@@ -142,7 +168,12 @@ export class Casino extends DurableObject {
       const secret = metaValue(this.db, 'ticket_secret', () => newToken());
       // (phone notifications go out after the answer: the object waits for them)
       const defer = (p) => { if (ctx.waitUntil) ctx.waitUntil(p); return p; };
-      this.api = createApi({ db: this.db, live: this.live, config: this.config, secret, defer, hostAdmin: (cmd, args) => this.hostAdmin(cmd, args) });
+      this.api = createApi({
+        db: this.db, live: this.live, config: this.config, secret, defer, hostAdmin: (cmd, args) => this.hostAdmin(cmd, args),
+        blobs: env.VAULT ? bucketBlobs(env.VAULT) : null,
+        // for the operator site's サーバー tab
+        host: { name: 'cloudflare', dbBytes: () => ctx.storage.sql.databaseSize, sockets: () => ctx.getWebSockets().length }
+      });
       if ((await ctx.storage.getAlarm()) === null) await ctx.storage.setAlarm(Date.now() + HOUSEKEEPING_EVERY);
     });
   }
@@ -151,7 +182,9 @@ export class Casino extends DurableObject {
     const url = new URL(request.url);
     if (url.pathname === '/api/live') return this.connect(request, url);
     const out = await this.api.handle(coreRequest(request, url));
-    return json(out.status, out.body);
+    const bytes = new TextEncoder().encode(JSON.stringify(out.body));
+    this.api.sent(bytes.byteLength);
+    return new Response(bytes, { status: out.status, headers: JSON_HEADERS });
   }
 
   // GET /api/live?ticket=... (WebSocket). The ticket comes from POST /api/stream-ticket.

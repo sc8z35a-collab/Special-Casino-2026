@@ -23,5 +23,9 @@
   // stored in the "Casino" object it creates. New code can be deployed any
   // number of times; the data stays.
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Casino"] }],
+  // the plan the game runs on: Workers Paid ($5 a month, since 2026-10-20);
+  // the variables set in the dashboard stay through every deploy
+  "vars": { "CF_PLAN": "paid" },
+  "keep_vars": true,
   "observability": { "enabled": true }
 }

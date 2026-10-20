@@ -26,7 +26,7 @@ const MONEY_MAX = 10000000;
 const fmt = (n) => Number(n).toLocaleString('en-US');
 
 export function createOps({ q, tx, live, config, getUser, mini, openCode, setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub, official, opsLog, balance,
-  banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode = createDevCode({ q, opsLog }) }) {
+  banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode = createDevCode({ q, opsLog }), seen = new Map() }) {
   const operators = new Set(config.operators.map(nameKey));
   const accessRow = (key) => q('SELECT * FROM ops_access WHERE name_key = ?').get(key);
   // an operator: the developer always; otherwise as given or taken away on
@@ -37,8 +37,9 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     const r = accessRow(u.name_key);
     return r ? r.granted === 1 : operators.has(u.name_key);
   }
+  // (`seen`: when each operator last used the site, for who is on it now)
   function need(u) {
-    if (isOperator(u)) return;
+    if (isOperator(u)) { seen.set(u.id, Date.now()); return; }
     const r = u && accessRow(u.name_key);
     if (r && !r.granted) throw new ApiError(403, 'not_operator', '運営権が剥奪されたため、運営サイトは使えません');
     throw new ApiError(403, 'not_operator', 'この画面は運営者だけが使えます');
@@ -87,6 +88,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       createdAt: u.created_at,
       playMs: u.play_ms,
       operator: isOperator(u),
+      developer: isDeveloper(u),
       npc: !!u.npc,
       // VIP: its level while it is on (null: off), until when, its EXP
       vip: u.vip_until > Date.now() ? VIP.level(u.vip_exp) : null,
@@ -515,5 +517,5 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     }
   };
 
-  return { routes, isOperator, mini };
+  return { routes, isOperator, need, operatorList, mini };
 }

@@ -9,7 +9,10 @@
 // `live` pushes events to connected players: send(userId, event, data),
 // broadcast(event, data, filter), isOnline(userId), onlineCount().
 // `hostAdmin(cmd, args)` may answer operator commands only one host has
-// (it returns undefined for the rest).
+// (it returns undefined for the rest). `blobs`, when the host has a bucket,
+// keeps the developer's vault's files (server/core/vault.js). `host` tells
+// the operator site's サーバー tab about the machine (server/core/stats.js),
+// and the host reports the bytes of each answer it sends: api.sent(bytes).
 import { ApiError, posInt } from './errors.js';
 import { statements } from './db.js';
 import {
@@ -34,6 +37,8 @@ import { createOps } from './ops.js';
 import { createTrees } from './tree.js';
 import { createDevCode } from './devcode.js';
 import { createPay } from './pay.js';
+import { createTeam } from './team.js';
+import { createStats } from './stats.js';
 import { createVault } from './vault.js';
 
 const PAGE = 50;
@@ -67,15 +72,23 @@ function randomInt(lo, hi) {
   return lo + (r[0] % (hi - lo + 1));
 }
 
-export function createApi({ db, live: hostLive, config, secret, hostAdmin = null, defer = null }) {
+export function createApi({ db, live: hostLive, config, secret, hostAdmin = null, defer = null, blobs = null, host = null }) {
   const q = statements(db);
   const tx = (fn) => db.tx(fn);
   const quota = createQuota(db, { requests: config.dailyRequestLimit, megabytes: config.dailyMbLimit });
-  // live pushes count towards the bytes sent (only when a cap is set)
-  const live = !quota.on ? hostLive : {
-    ...hostLive,
-    send(userId, event, data) { quota.sent(JSON.stringify(data).length + 32); return hostLive.send(userId, event, data); },
-    broadcast(event, data, filter) { quota.sent((JSON.stringify(data).length + 32) * hostLive.onlineCount()); return hostLive.broadcast(event, data, filter); },
+  const stats = createStats({ db, q, config, host: host || {}, defer });
+  // live pushes: counted for the サーバー tab, and towards the bytes sent when a cap is set
+  const live = {
+    send(userId, event, data) {
+      stats.wsOut();
+      if (quota.on) quota.sent(JSON.stringify(data).length + 32);
+      return hostLive.send(userId, event, data);
+    },
+    broadcast(event, data, filter) {
+      stats.wsOut(hostLive.onlineCount());
+      if (quota.on) quota.sent((JSON.stringify(data).length + 32) * hostLive.onlineCount());
+      return hostLive.broadcast(event, data, filter);
+    },
     isOnline: (id) => hostLive.isOnline(id),
     onlineCount: () => hostLive.onlineCount()
   };
@@ -3055,6 +3068,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // Signalling and typing over the WebSocket (no HTTP request per message): errors are dropped.
   function fromSocket(fn) {
     return (userId, body) => {
+      stats.wsIn();
       try {
         const u = getUser(userId);
         if (u && !u.banned) fn(allowed(u), body);
@@ -3103,19 +3117,52 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the operator site (/ops/); the developer code is checked in one place
   // (its wrong tries are counted together for the site and the vault)
   const devCode = createDevCode({ q, opsLog });
+  // when each operator last used the site (who is on it now, and 最終オンライン:
+  // kept in the database at most once a minute)
+  const seenAt = new Map();
+  try {
+    const row = q("SELECT value FROM meta WHERE key = 'ops_seen'").get();
+    for (const [id, at] of Object.entries(row ? JSON.parse(row.value) : {})) seenAt.set(Number(id), Number(at));
+  } catch { /* from now on */ }
+  let seenSaved = 0;
+  const opsSeen = {
+    get: (id) => seenAt.get(id),
+    set(id, at) {
+      seenAt.set(id, at);
+      if (at - seenSaved < 60000) return;
+      seenSaved = at;
+      q("INSERT INTO meta (key, value) VALUES ('ops_seen', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(Object.fromEntries(seenAt)));
+    }
+  };
   const ops = createOps({
     q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub,
-    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode
+    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen
   });
   Object.assign(routes, ops.routes);
+  // 運営チャット
+  Object.assign(routes, createTeam({ q, getUser, live, ops, seen: opsSeen }).routes);
   // 金の生る木
   const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
   Object.assign(routes, trees.routes);
   // 開発者支援 (real money for ロイヤルコイン) and the developer's vault
   const pay = createPay({ q, tx, live, config, getUser, balanceChanged, official, opsLog, isDeveloper });
   Object.assign(routes, pay.routes);
-  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode });
+  // (the bucket's operations counted: R2 bills writes and lists, and reads)
+  const bucket = blobs && {
+    put: (...a) => { stats.r2('a'); return blobs.put(...a); },
+    get: (...a) => { stats.r2('b'); return blobs.get(...a); },
+    list: (...a) => { stats.r2('a'); return blobs.list(...a); },
+    del: (...a) => blobs.del(...a)
+  };
+  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, blobs: bucket });
   Object.assign(routes, vault.routes);
+  // the operator site's サーバー tab (every operator)
+  routes['GET /api/ops/server'] = (req, u) => {
+    ops.need(u);
+    const now = Date.now();
+    const operatorsOnline = ops.operatorList().filter((o) => o.operator && o.id && now - (opsSeen.get(o.id) || 0) < 40000).length;
+    return stats.snapshot({ online: live.onlineCount(), operatorsOnline, vault: vault.summary() });
+  };
 
   const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', ...pay.public, ...vault.public]);
 
@@ -3197,6 +3244,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       }
       for (const l of Object.values(limit)) l.prune();
       quota.flush();
+      stats.flush();
     } catch (e) {
       console.error('housekeeping failed', e);
     }
@@ -3234,6 +3282,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   async function handle(req) {
     const out = await answer(req);
+    stats.request();
     if (quota.on) quota.request(out.body ? JSON.stringify(out.body).length : 0);
     return out;
   }
@@ -3296,6 +3345,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     socketBeat,
     socketSight,
     quota,
-    close: () => quota.flush()
+    // the bytes of an answer, as the host sent it
+    sent: (bytes) => stats.sent(bytes),
+    close: () => { quota.flush(); stats.flush(); }
   };
 }

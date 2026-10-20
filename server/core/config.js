@@ -90,9 +90,23 @@ export function configFrom(env = {}, overrides = {}) {
       email: str(env, 'SELLER_EMAIL'),
       hours: str(env, 'SELLER_HOURS')
     },
-    // the developer's vault (server/core/vault.js): all files together, and one file (MB)
-    vaultMaxMb: int(env, 'VAULT_MAX_MB', 1024),
-    vaultFileMb: int(env, 'VAULT_FILE_MB', 300),
+    // the developer's vault (server/core/vault.js): all files together, and one
+    // file (MB; unset: 50GB / 2000MB with a bucket, 3GB / 2000MB on Workers
+    // Paid without one, else 1GB / 300MB), and the size of a piece (MiB, 1-16,
+    // only with a bucket; unset: 8 on Workers Paid, else 1)
+    vaultMaxMb: int(env, 'VAULT_MAX_MB', undefined),
+    vaultFileMb: int(env, 'VAULT_FILE_MB', undefined),
+    vaultPieceMb: int(env, 'VAULT_PIECE_MB', undefined),
+    // the Cloudflare plan the game runs on ('free' or 'paid'): its allowances
+    // and prices on the operator site's サーバー tab, and the vault's sizes
+    plan: str(env, 'CF_PLAN', 'free').toLowerCase() === 'paid' ? 'paid' : 'free',
+    // Cloudflare's own usage figures on the サーバー tab (an API token that can
+    // read the account's analytics; both secrets), the Worker's and the
+    // vault bucket's names
+    cfAccountId: str(env, 'CF_ACCOUNT_ID'),
+    cfApiToken: str(env, 'CF_API_TOKEN'),
+    cfScript: str(env, 'CF_SCRIPT_NAME', 'blockbuster-reels'),
+    cfBucket: str(env, 'CF_BUCKET_NAME', 'blockbuster-reels-vault'),
     limits: {},
     ...overrides
   };
