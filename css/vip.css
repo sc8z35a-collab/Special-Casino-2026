@@ -76,6 +76,7 @@
 .vp-cost-line b { font-family: var(--f-num); font-size: 36px; color: #fff; }
 .vp-back { padding: 4px 14px; border-radius: 999px; background: rgba(86, 214, 130, .2); font-size: 19px; font-weight: 800; color: #b8f5cd; white-space: nowrap; }
 .vp-have { margin-left: auto; font-size: 20px; font-weight: 700; color: #d9cdd0; white-space: nowrap; }
+.vp-go, .cs-go { position: relative; left: auto; top: auto; width: 100%; }
 .vp-go { height: 86px; font-size: 30px; }
 
 .vp-table { width: 100%; border-collapse: separate; border-spacing: 0 6px; font-size: 21px; }
@@ -96,7 +97,9 @@
 .garage-used { position: absolute; right: 6px; top: 6px; padding: 3px 12px; border-radius: 6px; background: linear-gradient(180deg, #5fe08a, #23a653); color: #05310f; font: 900 17px var(--f-ui, inherit); font-style: normal; }
 .garage-offer { position: absolute; left: 6px; bottom: 6px; padding: 3px 12px; border-radius: 6px; background: rgba(230, 160, 30, .95); color: #2e1d00; font-size: 17px; font-weight: 900; font-style: normal; }
 .car-thumb-vip { position: absolute; right: 6px; top: 6px; font-size: 22px; }
-.car-vip-note { margin-left: 12px; font-size: 20px; font-weight: 800; color: #ffe27a; }
+.car-price { flex-wrap: wrap; row-gap: 6px; }
+.car-price .car-was, .car-price .amt { white-space: nowrap; }
+.car-vip-note { padding: 2px 12px; border-radius: 10px; background: linear-gradient(180deg, #fff1a8, #e7b93a); color: #3a2600; font: 800 26px var(--f-num); font-style: normal; white-space: nowrap; }
 
 /* the 車を売る dialog */
 .carsale-card { width: 1180px; }
@@ -115,7 +118,7 @@
 .cs-pct.down { color: #ffb38a; }
 .cs-range { width: 100%; margin: 18px 0 4px; accent-color: #f8cf2c; height: 34px; }
 .cs-note { margin: 0; text-align: center; font: 700 20px var(--f-num); color: #c3b8bb; }
-.cs-go { margin-top: 14px; width: 100%; }
+.cs-go { margin-top: 14px; }
 
 /* ------------------------------------------------------------ cards in the chat --- */
 /* money and things received: a dark velvet card in a gold frame, a ribbon,
