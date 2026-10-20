@@ -67,6 +67,7 @@ export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = (
     ban(ref, on = true) {
       const u = find(ref);
       if (on && isDeveloper(u)) throw new AdminError('開発者のアカウントは処分できません');
+      if (u.ban_kind === 'deleted') throw new AdminError('削除されたアカウントです（取り消せません）');
       if (on) {
         q("UPDATE users SET banned = 1, ban_kind = 'perma', ban_until = 0, ban_at = ? WHERE id = ?").run(Date.now(), u.id);
         if (onBan) onBan(u, true);

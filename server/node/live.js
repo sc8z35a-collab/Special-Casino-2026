@@ -73,4 +73,9 @@ export class Live {
     for (const set of this.clients.values()) for (const res of set) res.end();
     this.clients.clear();
   }
+
+  // every connection ends (the emergency stop); the players go offline
+  drop() {
+    for (const set of [...this.clients.values()]) for (const res of [...set]) res.end();
+  }
 }

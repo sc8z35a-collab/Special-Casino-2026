@@ -18,11 +18,21 @@ import { createApi } from '../core/api.js';
 import { metaValue } from '../core/db.js';
 
 // This machine for the operator site's サーバー tab: the database's size,
-// the live connections, memory, load and disk.
-function machine(dataDir, live) {
+// the live connections, memory, load and disk; the operators' log's newest
+// hash in a file of its own; the emergency stop (every live connection closes).
+function machine(dataDir, live, trail) {
   const size = (f) => { try { return fs.statSync(path.join(dataDir, f)).size; } catch { return 0; } };
+  const anchorFile = path.join(dataDir, 'ops-log.anchor.json');
   return {
     name: 'node',
+    anchor: {
+      put(row) {
+        fs.writeFileSync(anchorFile, JSON.stringify(row));
+        if (trail) console.log(`[ops-log] #${row.id} ${row.hash}`);
+      },
+      get: async () => { try { return JSON.parse(fs.readFileSync(anchorFile, 'utf8')); } catch { return null; } }
+    },
+    stop: () => live.drop(),
     dbBytes: () => size('blockbuster.db') + size('blockbuster.db-wal'),
     sockets: () => [...live.clients.values()].reduce((n, set) => n + set.size, 0),
     extra() {
@@ -40,7 +50,7 @@ export function createApp({ blobs = null, ...overrides } = {}) {
   const db = openDb(config.dataDir);
   const live = new Live();
   const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
-  const api = createApi({ db, live, config, secret, blobs, host: machine(config.dataDir, live) });
+  const api = createApi({ db, live, config, secret, blobs, host: machine(config.dataDir, live, config.logRequests) });
   live.onPresence = (userId, online) => api.presence(userId, online);
   // The page is online with WebSocket live updates (Cloudflare); here they come as SSE.
   const serveStatic = createStatic(ROOT, {
@@ -48,6 +58,9 @@ export function createApp({ blobs = null, ...overrides } = {}) {
   });
   const hk = setInterval(() => api.housekeeping(), 3600000);
   hk.unref();
+  // (the developer's automatic backup, when it is due)
+  const bk = setInterval(() => api.backupDue(), 5 * 60000);
+  bk.unref();
 
   const server = http.createServer(async (req, res) => {
     const started = Date.now();
@@ -63,13 +76,14 @@ export function createApp({ blobs = null, ...overrides } = {}) {
         res.on('finish', () => console.log(`${new Date().toISOString()} ${req.method} ${url.pathname} ${res.statusCode} ${Date.now() - started}ms`));
       }
       if (req.method === 'GET' && url.pathname === '/api/stream') {
+        if (api.stopped()) { sendJson(res, 503, api.stoppedBody()); return; }
         const userId = api.consumeTicket(url.searchParams.get('ticket'));
         if (!userId) { sendJson(res, 401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } }); return; }
         live.attach(req, res, userId, () => api.hello(userId));
         return;
       }
       const out = await api.handle(coreRequest(req, url, clientIp(req, config.trustProxy, config.clientIpHeader)));
-      api.sent(sendJson(res, out.status, out.body));
+      api.sent(sendJson(res, out.status, out.body), url.pathname);
       return;
     }
     if (serveStatic(req, res, url.pathname)) return;
@@ -82,6 +96,7 @@ export function createApp({ blobs = null, ...overrides } = {}) {
   function close() {
     return new Promise((resolve) => {
       clearInterval(hk);
+      clearInterval(bk);
       live.close();
       api.close();
       server.close(() => {

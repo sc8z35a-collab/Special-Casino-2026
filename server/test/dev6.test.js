@@ -231,5 +231,5 @@ test('the operators\' log survives a restore: rows that do not fit are kept insi
   const last = log.all().at(-1);
   assert.equal(last.action, 'log_kept');
   assert.equal(JSON.parse(last.detail).entries.length, 2);
-  assert.equal(log.verify().ok, true);
+  assert.equal((await log.verify()).ok, true);
 });

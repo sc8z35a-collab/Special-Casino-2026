@@ -1,14 +1,16 @@
 // 運営チャット on the operator site: the operators, live (on the site now:
 // seen there in the last 40 seconds; in the game; or away since when), and
-// their talk, one to one or all together (to 0). Messages stay; each
-// operator's read point per conversation gives the unread counts and 既読.
+// their talk, one to one or all together (to 0). Messages stay (nobody can
+// take one back); each operator's read point per conversation gives the
+// unread counts and 既読. The developer can read the one-to-one talks
+// between the other operators too (they are told so on the page).
 import { ApiError, posInt } from './errors.js';
 
 const ON_SITE_MS = 40000;
 const TEXT_MAX = 2000;
 const PAGE = 100;
 
-export function createTeam({ q, getUser, live, ops, seen }) {
+export function createTeam({ q, getUser, live, ops, seen, isDeveloper }) {
   // the operators now (the ones whose rights were taken away are not)
   const members = () => ops.operatorList().filter((o) => o.operator && o.id);
   function needMember(u) {
@@ -54,6 +56,25 @@ export function createTeam({ q, getUser, live, ops, seen }) {
         }),
         all: { unread: unread(u, 0), last: last ? dto(last) : null }
       };
+    },
+
+    // the developer: the one-to-one talks between the other operators
+    'GET /api/ops/team/pairs': (req, u) => {
+      needMember(u);
+      if (!isDeveloper(u)) throw new ApiError(404, 'not_found', 'APIが見つかりません');
+      const rows = q(`SELECT MIN(from_id, to_id) AS a, MAX(from_id, to_id) AS b, COUNT(*) AS n, MAX(id) AS last FROM ops_messages
+                      WHERE to_id != 0 AND from_id != ? AND to_id != ? GROUP BY a, b ORDER BY last DESC LIMIT 200`).all(u.id, u.id);
+      return { pairs: rows.map((r) => ({ a: who(r.a), b: who(r.b), count: r.n, last: dto(q('SELECT * FROM ops_messages WHERE id = ?').get(r.last)) })) };
+    },
+    // (the developer) one of those talks: ?a=&b=
+    'GET /api/ops/team/pair': (req, u) => {
+      needMember(u);
+      if (!isDeveloper(u)) throw new ApiError(404, 'not_found', 'APIが見つかりません');
+      const a = posInt(Number(req.query.get('a')), '運営者'), b = posInt(Number(req.query.get('b')), '運営者');
+      const after = Number(req.query.get('after') || 0);
+      const rows = q(`SELECT * FROM ops_messages WHERE ((from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?)) AND id > ? ORDER BY id DESC LIMIT ?`)
+        .all(a, b, b, a, after, PAGE).reverse();
+      return { messages: rows.map(dto) };
     },
 
     // a conversation (with: an operator's id, or 0 for everyone), newest last

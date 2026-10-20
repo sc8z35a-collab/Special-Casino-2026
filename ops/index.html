@@ -16,6 +16,16 @@
 <body>
 <div class="frame" id="frame">
 
+<!-- 緊急停止: the developer sees why and starts it again with the developer code; the rest wait -->
+<div class="emergency" id="emergency" hidden>
+  <div class="em-card">
+    <h2>サーバーを緊急停止しています</h2>
+    <p id="em-text"></p>
+    <div class="em-list" id="em-list"></div>
+    <div class="acts"><button class="btn danger solid" id="em-release" type="button" hidden>開発者コードで解除</button><button class="btn" id="em-reload" type="button">再読み込み</button></div>
+  </div>
+</div>
+
 <!-- the first time: the operator's name and password -->
 <main class="login" id="login" hidden>
   <form class="login-card" id="login-form" autocomplete="on" novalidate>
@@ -34,6 +44,7 @@
     <div class="brand"><span class="brand-mark">TS</span><span>TWO STATE</span><small>サーバー運営</small></div>
     <nav class="tabs" id="tabs">
       <button class="tab on" data-view="players" type="button">プレイヤー</button>
+      <button class="tab" data-view="archive" type="button">アーカイブ<b class="count soft" id="count-archive" hidden></b></button>
       <button class="tab" data-view="reports" type="button">通報<b class="count" id="count-reports" hidden></b></button>
       <button class="tab" data-view="detections" type="button">検知<b class="count" id="count-detections" hidden></b></button>
       <button class="tab" data-view="feedback" type="button">報告・意見案<b class="count" id="count-feedback" hidden></b></button>
@@ -92,6 +103,13 @@
     </div>
   </section>
 
+  <!-- プレイヤーアーカイブ: 永久BAN and deleted accounts, gone for good 90 days later -->
+  <section class="view" id="view-archive" hidden>
+    <div class="view-head"><h2>プレイヤーアーカイブ</h2><span class="muted" id="archive-note"></span></div>
+    <p class="hint muted">永久BANとアカウント削除をしたプレイヤーです。ここに入って90日たつと、その人のデータはすべて自動で完全に削除されます。永久BANは解除するとプレイヤー一覧に戻ります。削除したアカウントは誰も元に戻せません。</p>
+    <div class="cards" id="archive-list"></div>
+  </section>
+
   <!-- 通報 -->
   <section class="view" id="view-reports" hidden>
     <div class="view-head">
@@ -136,8 +154,11 @@
       <h2>運営ログ</h2>
       <input class="search" id="log-search" type="search" placeholder="名前・内容で探す" autocomplete="off" spellcheck="false">
     </div>
+    <div class="chips log-kinds" id="log-kinds">
+      <button class="chip on" data-kind="" type="button">すべて</button><button class="chip" data-kind="player" type="button">プレイヤー<b></b></button><button class="chip" data-kind="operator" type="button">運営<b></b></button><button class="chip" data-kind="security" type="button">セキュリティ<b></b></button><button class="chip" data-kind="vault" type="button">保管庫<b></b></button><button class="chip" data-kind="emergency" type="button">緊急<b></b></button>
+    </div>
     <p class="verify" id="log-verify"></p>
-    <p class="hint muted">運営の操作とDEVの更新が自動で記録されます（消去・書き換え不可）。行をタップで詳細。</p>
+    <p class="hint muted">プレイヤー・運営・セキュリティ・保管庫・緊急に分けて自動で記録されます。消去も書き換えもできず、最新の記録のハッシュはデータベースの外にも控えているので、書き換えや作り直しは「改ざんチェック」に出ます。行をタップで詳細。</p>
     <div class="log" id="log-list"></div>
     <button class="btn wide" id="log-more" type="button" hidden>さらに読み込む</button>
   </section>
@@ -177,7 +198,7 @@
   <!-- 運営チャット: the operators, live; one to one or all together -->
   <section class="view" id="view-team" hidden>
     <div class="view-head"><h2>運営チャット</h2><span class="muted" id="team-note"></span></div>
-    <p class="hint muted">運営者だけの連絡用です。緑は運営サイトにいる人、青はゲーム中の人。送ったメッセージは取り消せません。</p>
+    <p class="hint muted">運営者だけの連絡用です。緑は運営サイトにいる人、青はゲーム中の人。送ったメッセージは取り消せません。個人チャットは開発者も見られます。</p>
     <div class="team">
       <aside class="team-list" id="team-list"></aside>
       <section class="team-chat">
@@ -205,6 +226,11 @@
       <article class="card" id="srv-cf"></article>
       <article class="card" id="srv-machine" hidden></article>
     </div>
+    <!-- the developer's own: backups and the emergency stop -->
+    <div class="srv-grid srv-dev" id="srv-dev" hidden>
+      <article class="card" id="srv-backup"></article>
+      <article class="card" id="srv-stop"></article>
+    </div>
   </section>
 
   <!-- 保管庫: the developer's files (the developer code opens it) -->
@@ -222,6 +248,7 @@
       <div class="vault-up">
         <label class="btn primary" for="vault-file">ファイルを選んでアップロード</label>
         <button class="btn" id="vault-new-folder" type="button">＋ フォルダを作る</button>
+        <button class="btn" id="vault-new-text" type="button">＋ テキストを作る</button>
         <input id="vault-file" type="file" multiple hidden>
         <input class="search" id="vault-note" type="text" maxlength="500" placeholder="メモ（任意・次に選ぶファイルに付きます）">
       </div>
@@ -316,6 +343,7 @@
     <p class="muted" id="dialog-text"></p>
     <label class="field" id="dialog-field" hidden><span id="dialog-label"></span><input id="dialog-input" type="text" autocomplete="off"></label>
     <label class="field" id="dialog-pick" hidden><span id="dialog-pick-label"></span><select id="dialog-select"></select></label>
+    <label class="field" id="dialog-area-field" hidden><span id="dialog-area-label"></span><textarea id="dialog-area" rows="8"></textarea></label>
     <p class="error" id="dialog-error" role="alert"></p>
     <div class="dialog-acts">
       <button class="btn ghost" type="button" id="dialog-cancel">やめる</button>

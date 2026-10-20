@@ -33,7 +33,10 @@ import { createPush } from './push.js';
 import { screen as filterText } from './filter.js';
 import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
 import { readQuests, stepQuests, claimQuests, questsReady, questView } from './quests.js';
-import { createOps } from './ops.js';
+import { createOps, DELETED, ARCHIVE_DAYS } from './ops.js';
+import { createOpsLogin } from './opslogin.js';
+import { createEmergency } from './emergency.js';
+import { createBackup } from './backup.js';
 import { createTrees } from './tree.js';
 import { createDevCode } from './devcode.js';
 import { createPay } from './pay.js';
@@ -275,8 +278,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const now = Date.now();
     const r = how === 'expired'
       ? q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ? AND banned = 1 AND ban_until > 0 AND ban_until <= ?").run(u.id, now)
-      : q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ? AND banned = 1").run(u.id);
+      : q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ? AND banned = 1 AND ban_kind != 'deleted'").run(u.id);
     if (!Number(r.changes)) return false;
+    // (a 永久BAN lifted: back from the プレイヤーアーカイブ)
+    q("UPDATE users SET archived_at = 0, archive_reason = '', purge_at = 0, archive_with = 0 WHERE id = ? AND archive_reason = 'perma'").run(u.id);
     const name = BAN_NAME[u.ban_kind] || '利用停止';
     official.say(u.id, letter(u, `${name}解除のお知らせ`,
       `あなたの${name}は${when(now)}に${how === 'expired' ? '期間が終わり、' : '公式により'}解除されました。\nルールを守って、また TWO STATE をお楽しみください。`));
@@ -295,6 +300,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return null;
   }
   function banMessage(u) {
+    if (u.ban_kind === 'deleted') return DELETED;
     const name = BAN_NAME[u.ban_kind] || '利用停止';
     if (!u.ban_until) return `このアカウントは${name}されています`;
     const d = new Date(u.ban_until + 9 * 3600000);
@@ -344,7 +350,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const official = createOfficial({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel,
     onDelivered: (userId, dto) => phone(userId, dmNote(dto)) });
   official.id();
-  const opsLog = createOpsLog({ q });
+  // (the host keeps the newest entry's hash where SQL cannot reach: server/core/opslog.js)
+  const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null });
   // a new DEV going live is the first entry of its own
   {
     const seen = q("SELECT value FROM meta WHERE key = 'ops_log_release'").get();
@@ -1371,6 +1378,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (/UNIQUE/i.test(String(e && e.message))) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
         throw e;
       }
+      opsLog.add({ actor: user, action: 'player_register', req, summary: `${user.name}さんが登録`, detail: { avatar } });
       return { token, recoveryCode: code, me: meDto(user) };
     },
 
@@ -1392,11 +1400,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           throw new ApiError(401, 'bad_login', 'ユーザー名かパスワードが違います');
         }
       }
+      // a deleted account never comes back
+      if (u.ban_kind === 'deleted') throw new ApiError(403, 'deleted', DELETED);
       // banned (or another account on this device is): logged in all the same,
       // for the title screen that stays locked until the ban ends (GET /api/ban);
       // nothing else accepts the login meanwhile
       u = liftExpired(u);
       const ban = banState(u);
+      opsLog.add({ actor: u, action: 'player_login', req, summary: `${u.name}さんがログイン（${body.code !== undefined ? '引き継ぎコード' : 'パスワード'}${ban ? '・処分中' : ''}）`, detail: { by: body.code !== undefined ? 'code' : 'password', banned: !!ban } });
       if (ban) return { token: createSession(u.id), ban };
       seenOn(u.id, req);
       return { token: createSession(u.id), me: meDto(u) };
@@ -1419,7 +1430,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { ok: true };
     },
 
-    'POST /api/recovery': (req, u) => ({ recoveryCode: setRecovery(u.id) }),
+    'POST /api/recovery': (req, u) => {
+      const code = setRecovery(u.id);
+      opsLog.add({ actor: u, action: 'player_recovery', req, summary: `${u.name}さんが引き継ぎコードを再発行` });
+      return { recoveryCode: code };
+    },
 
     'POST /api/password': async (req, u) => {
       rate(limit.login, req.ip, '試行回数が多すぎます。しばらく待ってからお試しください');
@@ -1429,6 +1444,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         throw new ApiError(403, 'bad_password', '今のパスワードが違います');
       }
       q('UPDATE users SET password_hash = ? WHERE id = ?').run(await hashPassword(password), u.id);
+      opsLog.add({ actor: u, action: 'player_password', req, summary: `${u.name}さんがパスワードを${u.password_hash ? '変更' : '設定'}` });
       return { me: meDto(getUser(u.id)) };
     },
 
@@ -1896,6 +1912,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       balanceChanged(u.id);
       const dto = held ? sendOwn(m, u.id) : deliverDm(m, u.id, to);
       afterSpend(u.id);
+      const t = getUser(to);
+      opsLog.add({
+        actor: u, action: 'player_transfer', target: t, req,
+        summary: `${u.name}さんが${t ? t.name : '?'}さんへ ${currency === 'tokens' ? fmt(amount) + ' トークン' : '$' + fmt(amount)} を送金${held ? '（ブロック中のため保留）' : ''}`,
+        detail: { currency, amount, held, messageId: m.id }
+      });
       return { balance: balance(getUser(u.id)), message: dto };
     },
 
@@ -2619,6 +2641,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     'POST /api/release': async (req, u) => {
       const body = await req.json();
       const theirs = Number(body.release) || 0;
+      // (what the player's game runs, for the operator site)
+      if (theirs > 0 && theirs < 1e6) {
+        const build = /^[0-9a-f]{6,40}$/.test(String(body.build || '')) ? String(body.build) : '';
+        q('UPDATE users SET client_release = ?, client_build = ?, client_at = ?, client_agent = ? WHERE id = ?')
+          .run(theirs, build, Date.now(), String(req.header('user-agent') || '').slice(0, 300), u.id);
+      }
       if (theirs < RELEASE) return { release: RELEASE, outdated: true, bonus: 0, updates: 0, released: releasedAt() };
       const updates = tx(() => {
         const cur = getUser(u.id);
@@ -2962,6 +2990,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q(`INSERT INTO reports (reporter_id, target_id, kind, body, place, context, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
         .run(u.id, t.id, kind.id, text, place, JSON.stringify(context), Date.now());
       official.pay(u.id, R.reward);
+      opsLog.add({ actor: u, action: 'player_report', target: t, req, summary: `${u.name}さんが${t.name}さんを通報（${kind.name}）`, detail: { kind: kind.id, place, text } });
       return { ok: true, reward: R.reward, message: '今後このようなトラブルがないよう気を付けます。' };
     },
 
@@ -2979,6 +3008,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         throw new ApiError(429, 'idea_limit', `意見案は1日${I.perDay}件までです`);
       }
       q("INSERT INTO feedback (user_id, ratings, comment, kind, created_at) VALUES (?, '{}', ?, ?, ?)").run(u.id, text, kind, Date.now());
+      opsLog.add({ actor: u, action: 'player_feedback', req, summary: `${u.name}さんから${kind === 'bug' ? '報告' : '意見案'}`, detail: { kind, text } });
       return { message: official.fromPlayer(u, `【${kind === 'bug' ? '報告' : '意見案'}】\n${text}`) };
     },
 
@@ -3069,6 +3099,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function fromSocket(fn) {
     return (userId, body) => {
       stats.wsIn();
+      emergency.wsIn();
       try {
         const u = getUser(userId);
         if (u && !u.banned) fn(allowed(u), body);
@@ -3117,6 +3148,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the operator site (/ops/); the developer code is checked in one place
   // (its wrong tries are counted together for the site and the vault)
   const devCode = createDevCode({ q, opsLog });
+  // the emergency stop (server/core/emergency.js)
+  const emergency = createEmergency({
+    q, config, opsLog, devCode, isDeveloper, getUser, clock: config.clock || Date.now,
+    host: { dbBytes: host && host.dbBytes ? host.dbBytes : null, stop: () => { if (host && host.stop) host.stop(); } }
+  });
+  Object.assign(routes, emergency.routes);
   // when each operator last used the site (who is on it now, and 最終オンライン:
   // kept in the database at most once a minute)
   const seenAt = new Map();
@@ -3139,8 +3176,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen
   });
   Object.assign(routes, ops.routes);
+  // the operator site's own login (two wrong tries: a wait that doubles); while stopped, the developer's only
+  const opsLogin = createOpsLogin({
+    q, findByName, isOperator: ops.isOperator, createSession, seenOn,
+    rate: (req) => rate(limit.login, req.ip, '試行回数が多すぎます。しばらく待ってからお試しください'),
+    allow: (u) => !emergency.stopped() || isDeveloper(u), stoppedBody: () => emergency.body()
+  });
+  Object.assign(routes, opsLogin.routes);
   // 運営チャット
-  Object.assign(routes, createTeam({ q, getUser, live, ops, seen: opsSeen }).routes);
+  Object.assign(routes, createTeam({ q, getUser, live, ops, seen: opsSeen, isDeveloper }).routes);
   // 金の生る木
   const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
   Object.assign(routes, trees.routes);
@@ -3154,8 +3198,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     list: (...a) => { stats.r2('a'); return blobs.list(...a); },
     del: (...a) => blobs.del(...a)
   };
-  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, blobs: bucket });
+  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, blobs: bucket, onDb: (n) => emergency.vaultDb(n) });
   Object.assign(routes, vault.routes);
+  // the developer's backups of everything but the vault
+  const backup = createBackup({
+    q, tx, opsLog, devCode, isDeveloper, exportAll: () => admin.export(), blobs: bucket, secret,
+    // (a new schedule: the host's housekeeping comes sooner if need be)
+    onChange: () => { if (host && host.reschedule) host.reschedule(nextHousekeeping()); }
+  });
+  Object.assign(routes, backup.routes);
   // the operator site's サーバー tab (every operator)
   routes['GET /api/ops/server'] = (req, u) => {
     ops.need(u);
@@ -3164,7 +3215,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return stats.snapshot({ online: live.onlineCount(), operatorsOnline, vault: vault.summary() });
   };
 
-  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', ...pay.public, ...vault.public]);
+  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', ...pay.public, ...vault.public]);
 
   /* ---------------------------------------------------------------- live connection hooks */
 
@@ -3243,13 +3294,25 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         opsLog.add({ action: 'bot_auto_reply', target: p, summary: `${p.name}さんへ自動返信（2日以上未返信のため既読に）`, detail: { text: 'AUTO' } });
       }
       for (const l of Object.values(limit)) l.prune();
+      opsLogin.prune();
+      // 90 days in the プレイヤーアーカイブ: their data goes
+      ops.purgeDue();
       quota.flush();
       stats.flush();
     } catch (e) {
       console.error('housekeeping failed', e);
     }
-    // payments whose notice may have been lost are asked about at Stripe
-    return pay.sweep().catch((e) => console.error('pay sweep failed', e));
+    // payments whose notice may have been lost are asked about at Stripe;
+    // the developer's automatic backup when it is time
+    return Promise.all([
+      pay.sweep().catch((e) => console.error('pay sweep failed', e)),
+      backup.due().catch((e) => console.error('backup failed', e))
+    ]);
+  }
+  // when the host should run the housekeeping next: in 6 hours, or sooner for a backup
+  function nextHousekeeping(now = Date.now()) {
+    const b = backup.nextDue();
+    return b ? Math.max(now + 60000, Math.min(now + 6 * 3600000, b)) : now + 6 * 3600000;
   }
 
   // Stream tickets are signed and expire within a minute; each opens one connection.
@@ -3273,6 +3336,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     isDeveloper,
     onBan: (u, on) => {
       if (!on) { liftBan(u, 'lifted'); return; }
+      // (a 永久BAN: to the プレイヤーアーカイブ, like one from the operator site)
+      const now = Date.now();
+      q("UPDATE users SET archived_at = ?, archive_reason = 'perma', purge_at = ?, archive_with = 0 WHERE id = ?").run(now, now + ARCHIVE_DAYS * 86400000, u.id);
       const b = getUser(u.id);
       tellBanned(b);
       live.send(b.id, 'kick', { code: 'banned', message: banMessage(b), ban: banState(b) });
@@ -3281,16 +3347,24 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   });
 
   async function handle(req) {
+    // (a minute over: the emergency stop looks at it before this answer)
+    emergency.tick();
     const out = await answer(req);
     stats.request();
+    emergency.request({ path: req.path, ip: req.ip, userId: req.userId || 0, status: out.status });
     if (quota.on) quota.request(out.body ? JSON.stringify(out.body).length : 0);
     return out;
   }
+
+  // what still comes in while the server is stopped: the developer's way back in
+  const WHILE_STOPPED = new Set(['POST /api/ops/login', 'GET /api/ops/me', 'GET /api/emergency', 'POST /api/emergency/release']);
 
   async function answer(req) {
     const key = `${req.method} ${req.path}`;
     try {
       if (key === 'POST /api/admin') return { status: 200, body: await adminCall(req) };
+      // stopped for an emergency: nobody but the developer
+      if (emergency.stopped() && !WHILE_STOPPED.has(key)) return { status: 503, body: emergency.body() };
       // a day's cap is reached: the same notice for everyone until 00:00 UTC
       if (quota.over()) return { status: 503, body: maintenanceBody() };
       const route = routes[key];
@@ -3298,6 +3372,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       let user = null;
       if (!PUBLIC.has(key)) {
         user = authUser(req);
+        req.userId = user.id;
+        if (emergency.stopped() && !isDeveloper(user)) return { status: 503, body: emergency.body() };
         rate(limit.general, user.id);
       }
       return { status: 200, body: await route(req, user) };
@@ -3345,8 +3421,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     socketBeat,
     socketSight,
     quota,
-    // the bytes of an answer, as the host sent it
-    sent: (bytes) => stats.sent(bytes),
+    // the bytes of an answer, as the host sent it (and the path it answered)
+    sent: (bytes, path = '') => { stats.sent(bytes); emergency.sent(bytes, path); },
+    // stopped for an emergency: the hosts take no live connections meanwhile
+    stopped: () => emergency.stopped(),
+    stoppedBody: () => emergency.body(),
+    nextHousekeeping,
+    backupDue: () => backup.due().catch((e) => console.error('backup failed', e)),
     close: () => { quota.flush(); stats.flush(); }
   };
 }
