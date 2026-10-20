@@ -5,8 +5,11 @@
 // ticket good for 30 minutes. A file comes in 1 MiB pieces, each checked
 // against its SHA-256 as it arrives (a broken upload carries on where it
 // stopped); it is whole once every piece is in, and its fingerprint is the
-// SHA-256 of its pieces' hashes in order. The developer can also make a
-// read-only link for one file (good for 1 to 72 hours, stopped at any time;
+// SHA-256 of its pieces' hashes in order. A 3D model gets, from the operator
+// site (ops/vault3d.js, made in the developer's browser), a small picture of
+// it from four sides, what is in it, and a light copy (a file of its own whose
+// `parent` is the model). The developer can also make a read-only link for one
+// file, or for the whole vault (good for 1 to 72 hours, stopped at any time;
 // only the hash of its secret is kept) to fetch it somewhere else.
 // Files are data only: they leave as base64 inside JSON, never as a page,
 // and the server never opens or runs them. They are not part of the backups
@@ -23,6 +26,12 @@ const ID_RE = /^[0-9a-f]{32}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const TOKEN_RE = /^[\w-]{43}$/;
+// a model's picture (a WebP or JPEG data URL) and what is in it (JSON)
+const PREVIEW_MAX = 600 * 1024;
+const PREVIEW_RE = /^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/]+={0,2}$/;
+const INFO_MAX = 8 * 1024;
+// a link to every file
+const ALL = '*';
 
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 const mb = (n) => `${(n / 1048576).toFixed(n < 10485760 ? 1 : 0)}MB`;
@@ -72,13 +81,27 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     return f;
   }
   const used = () => q('SELECT COALESCE(SUM(size), 0) AS n FROM vault_files').get().n;
-  function fileDto(f, now = Date.now()) {
-    const links = q('SELECT until, uses, revoked, created_at FROM vault_links WHERE file_id = ? ORDER BY created_at DESC').all(f.id);
+  function infoOf(f) {
+    try { return f.info ? JSON.parse(f.info) : null; } catch { return null; }
+  }
+  function linksOf(fileId, now) {
+    const links = q('SELECT until, uses, revoked, created_at FROM vault_links WHERE file_id = ? ORDER BY created_at DESC').all(fileId);
     const live = links.filter((l) => !l.revoked && l.until > now);
+    return { live: live.length, until: live.reduce((m, l) => Math.max(m, l.until), 0), uses: links.reduce((s, l) => s + l.uses, 0) };
+  }
+  function fileDto(f, now = Date.now()) {
     return {
       id: f.id, name: f.name, type: f.type, note: f.note, size: f.size, chunks: f.chunks, received: f.received, done: !!f.done_at,
-      sha256: f.sha256, createdAt: f.created_at, doneAt: f.done_at,
-      links: { live: live.length, until: live.reduce((m, l) => Math.max(m, l.until), 0), uses: links.reduce((s, l) => s + l.uses, 0) }
+      sha256: f.sha256, createdAt: f.created_at, doneAt: f.done_at, parent: f.parent || '', info: infoOf(f), preview: !!f.preview,
+      links: linksOf(f.id, now)
+    };
+  }
+  // what a link shows of a file (no notes, no links)
+  function pullDto(f) {
+    const light = q("SELECT * FROM vault_files WHERE parent = ? AND done_at > 0 ORDER BY created_at DESC LIMIT 1").get(f.id);
+    return {
+      id: f.id, name: f.name, type: f.type, size: f.size, chunks: f.chunks, chunk: CHUNK, sha256: f.sha256, info: infoOf(f), preview: !!f.preview,
+      light: light ? { id: light.id, name: light.name, size: light.size, chunks: light.chunks, sha256: light.sha256 } : null
     };
   }
   // the piece numbers not in yet, as ranges [[from, to], …]
@@ -117,7 +140,26 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     'GET /api/vault/files': (req, u) => {
       need(req, u);
       const now = Date.now();
-      return { files: q('SELECT * FROM vault_files ORDER BY created_at DESC').all().map((f) => fileDto(f, now)), used: used(), maxBytes, fileBytes, chunk: CHUNK, now };
+      return { files: q('SELECT * FROM vault_files ORDER BY created_at DESC').all().map((f) => fileDto(f, now)), used: used(), maxBytes, fileBytes, chunk: CHUNK, all: linksOf(ALL, now), now };
+    },
+
+    // a 3D model's picture and what is in it (made on the operator site)
+    'POST /api/vault/meta': async (req, u) => {
+      need(req, u);
+      const body = await req.json(PREVIEW_MAX + INFO_MAX + 4096);
+      const f = theFile(body.id);
+      const preview = String(body.preview || '');
+      if (preview && (preview.length > PREVIEW_MAX || !PREVIEW_RE.test(preview))) throw new ApiError(400, 'bad_preview', 'プレビュー画像の形式が正しくありません');
+      const info = body.info && typeof body.info === 'object' && !Array.isArray(body.info) ? JSON.stringify(body.info) : '';
+      if (info.length > INFO_MAX) throw new ApiError(400, 'bad_info', 'モデルの情報が大きすぎます');
+      q('UPDATE vault_files SET preview = ?, info = ? WHERE id = ?').run(preview, info, f.id);
+      return { file: fileDto(fileRow(f.id)) };
+    },
+
+    'GET /api/vault/preview': (req, u) => {
+      need(req, u);
+      const f = theFile(req.query.get('id'));
+      return { id: f.id, preview: f.preview || null };
     },
 
     // a new file: its name, size and type; the pieces follow
@@ -130,11 +172,14 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const name = cleanName(body.name);
       const type = /^[\w.+-]{1,60}\/[\w.+-]{1,60}$/.test(String(body.type || '')) ? String(body.type) : '';
       const note = Array.from(String(body.note ?? '').trim()).slice(0, 500).join('');
+      // a model's light copy
+      const parent = body.parent ? theFile(body.parent) : null;
+      if (parent && parent.parent) throw new ApiError(400, 'bad_parent', '軽量版の軽量版は作れません');
       const id = crypto.randomBytes(16).toString('hex');
       tx(() => {
         if (used() + size > maxBytes) throw new ApiError(413, 'vault_full', `保管庫がいっぱいです（${mb(used())} / ${mb(maxBytes)}）。いらないファイルを削除してください`);
-        q('INSERT INTO vault_files (id, name, type, note, size, chunks, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-          .run(id, name, type, note, size, Math.ceil(size / CHUNK), u.id, Date.now());
+        q('INSERT INTO vault_files (id, name, type, note, size, chunks, created_by, created_at, parent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(id, name, type, note, size, Math.ceil(size / CHUNK), u.id, Date.now(), parent ? parent.id : '');
       });
       return { file: fileDto(fileRow(id)) };
     },
@@ -189,54 +234,78 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       need(req, u);
       const body = await req.json();
       const f = theFile(body.id);
+      // (with its light copy)
+      const ids = [f.id, ...q('SELECT id FROM vault_files WHERE parent = ?').all(f.id).map((r) => r.id)];
       tx(() => {
-        q('DELETE FROM vault_chunks WHERE file_id = ?').run(f.id);
-        q('DELETE FROM vault_links WHERE file_id = ?').run(f.id);
-        q('DELETE FROM vault_files WHERE id = ?').run(f.id);
+        for (const id of ids) {
+          q('DELETE FROM vault_chunks WHERE file_id = ?').run(id);
+          q('DELETE FROM vault_links WHERE file_id = ?').run(id);
+          q('DELETE FROM vault_files WHERE id = ?').run(id);
+        }
       });
       opsLog.add({ actor: u, action: 'vault_delete', req, summary: `保管庫の「${f.name}」（${mb(f.size)}）を削除`, detail: { file: f.id, name: f.name, size: f.size, sha256: f.sha256 } });
       return { ok: true, used: used() };
     },
 
-    // a read-only link to one whole file, good for `hours`; the secret is shown once
+    // a read-only link to one whole file (`id`) or to the whole vault (id
+    // '*'), good for `hours`; the secret is shown once
     'POST /api/vault/link': async (req, u) => {
       need(req, u);
       const body = await req.json();
-      const f = theFile(body.id);
-      if (!f.done_at) throw new ApiError(409, 'not_done', 'アップロードが終わってからリンクを作れます');
+      const all = body.id === ALL;
+      const f = all ? null : theFile(body.id);
+      if (f && !f.done_at) throw new ApiError(409, 'not_done', 'アップロードが終わってからリンクを作れます');
       const hours = Number(body.hours);
       if (!LINK_HOURS.includes(hours)) throw new ApiError(400, 'bad_hours', `有効期間は ${LINK_HOURS.join(' / ')} 時間から選んでください`);
       const token = crypto.randomBytes(32).toString('base64url');
       const until = Date.now() + hours * 3600000;
-      q('INSERT INTO vault_links (token_hash, file_id, until, created_by, created_at) VALUES (?, ?, ?, ?, ?)').run(sha(token), f.id, until, u.id, Date.now());
-      opsLog.add({ actor: u, action: 'vault_link', req, summary: `保管庫の「${f.name}」の読み取り専用リンクを作成（${hours}時間有効）`, detail: { file: f.id, name: f.name, hours, until } });
+      q('INSERT INTO vault_links (token_hash, file_id, until, created_by, created_at) VALUES (?, ?, ?, ?, ?)').run(sha(token), all ? ALL : f.id, until, u.id, Date.now());
+      const what = all ? '保管庫全体' : `保管庫の「${f.name}」`;
+      opsLog.add({ actor: u, action: 'vault_link', req, summary: `${what}の読み取り専用リンクを作成（${hours}時間有効）`, detail: { file: all ? ALL : f.id, name: all ? '' : f.name, hours, until } });
       return { token, until, path: `/api/vault/pull?t=${token}` };
     },
 
-    // every link of a file stops working at once
+    // every link of a file (or of the whole vault: id '*') stops working at once
     'POST /api/vault/link/stop': async (req, u) => {
       need(req, u);
       const body = await req.json();
-      const f = theFile(body.id);
-      const n = Number(q('UPDATE vault_links SET revoked = 1 WHERE file_id = ? AND revoked = 0 AND until > ?').run(f.id, Date.now()).changes);
-      opsLog.add({ actor: u, action: 'vault_link_stop', req, summary: `保管庫の「${f.name}」のリンクを停止（${n}件）`, detail: { file: f.id, stopped: n } });
+      const all = body.id === ALL;
+      const f = all ? null : theFile(body.id);
+      const n = Number(q('UPDATE vault_links SET revoked = 1 WHERE file_id = ? AND revoked = 0 AND until > ?').run(all ? ALL : f.id, Date.now()).changes);
+      opsLog.add({ actor: u, action: 'vault_link_stop', req, summary: `${all ? '保管庫全体' : `保管庫の「${f.name}」`}のリンクを停止（${n}件）`, detail: { file: all ? ALL : f.id, stopped: n } });
       return { ok: true, stopped: n };
     },
 
-    // With a link (no login): the file's details, or piece `n` of it. Any
-    // problem (wrong, stopped, expired) looks the same from outside.
+    // With a link (no login). A file's link: the file (with its picture and
+    // light copy); a vault link: every file (`f`: one of them). `n`: piece n
+    // of it, `preview=1`: its picture. Any problem (wrong, stopped, expired)
+    // looks the same from outside.
     'GET /api/vault/pull': (req) => {
       rate(limits.pull, req.ip || '-');
       const token = String(req.query.get('t') || '');
       const now = Date.now();
       const l = TOKEN_RE.test(token) ? q('SELECT * FROM vault_links WHERE token_hash = ?').get(sha(token)) : null;
-      const f = l && !l.revoked && l.until > now ? fileRow(l.file_id) : null;
-      if (!f || !f.done_at) throw new ApiError(404, 'no_link', 'リンクが無効か、有効期限が切れています');
+      const gone = () => new ApiError(404, 'no_link', 'リンクが無効か、有効期限が切れています');
+      if (!l || l.revoked || l.until <= now) throw gone();
+      const all = l.file_id === ALL;
+      const top = all ? null : fileRow(l.file_id);
+      if (!all && (!top || !top.done_at)) throw gone();
+      // the file asked for: the link's own, its light copy, or (a vault link) any
+      const want = req.query.get('f');
+      let f = top;
+      if (want) {
+        const x = fileRow(want);
+        f = x && x.done_at && (all || x.id === top.id || x.parent === top.id) ? x : null;
+        if (!f) throw new ApiError(404, 'no_file', 'ファイルが見つかりません');
+      }
       const n = req.query.get('n');
-      if (n !== null && n !== '') return piece(f, pieceNo(f, n));
+      if (f && n !== null && n !== '') return piece(f, pieceNo(f, n));
+      if (f && req.query.get('preview')) return { id: f.id, preview: f.preview || null };
       q('UPDATE vault_links SET uses = uses + 1 WHERE token_hash = ?').run(l.token_hash);
-      opsLog.add({ actorName: 'リンク', action: 'vault_pull', req, summary: `保管庫の「${f.name}」がリンクから取得された`, detail: { file: f.id, name: f.name, uses: l.uses + 1, until: l.until } });
-      return { name: f.name, type: f.type, size: f.size, chunks: f.chunks, chunk: CHUNK, sha256: f.sha256, until: l.until, hashes: 'sha256 of each piece; the file\'s sha256 is the SHA-256 of all piece digests in order' };
+      opsLog.add({ actorName: 'リンク', action: 'vault_pull', req, summary: f ? `保管庫の「${f.name}」がリンクから取得された` : '保管庫全体の一覧がリンクから取得された', detail: { file: f ? f.id : ALL, name: f ? f.name : '', uses: l.uses + 1, until: l.until } });
+      const how = { pieces: '&n=<piece> (base64, with its sha256)', picture: '&preview=1', file: '&f=<file id>', sha256: "the file's sha256 is the SHA-256 of all piece digests in order" };
+      if (f) return { ...pullDto(f), until: l.until, how };
+      return { vault: true, until: l.until, files: q("SELECT * FROM vault_files WHERE done_at > 0 AND parent = '' ORDER BY created_at DESC").all().map(pullDto), how };
     }
   };
 

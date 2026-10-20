@@ -11,7 +11,7 @@ export const SECURITY_HEADERS = {
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
     // (blob: the 3D models' textures are read from the model file in the page)
-    "connect-src 'self' blob:",
+    "connect-src 'self' blob: data:",
     "manifest-src 'self'",
     "media-src 'self' data: blob:",
     "object-src 'none'",

@@ -228,6 +228,8 @@
     $('#tab-vault').hidden = !state.developer;
     if (state.developer) loadPay(true);
     load();
+    // /ops/#vault: straight to the vault
+    if (state.developer && location.hash === '#vault') setView('vault');
     clearInterval(timer);
     timer = setInterval(function () {
       if (document.hidden || !$('#dialog').hidden || !$('#money').hidden) return;
@@ -1224,7 +1226,22 @@
   }
 
   /* ------------------------------------------------------------ 保管庫 (the developer's own) --- */
-  var vaultTimer = 0, moving = 0;
+  var vaultTimer = 0, moving = 0, v3d = null, viewing = null, pics = {};
+  // three.js for the 3D previews (ops/vault3d.js), loaded the first time it is needed
+  function vault3d() {
+    if (!v3d) {
+      v3d = new Promise(function (ok, no) {
+        var s = document.createElement('script');
+        s.src = 'vault3d.js';
+        s.onload = function () { if (window.VAULT3D) ok(window.VAULT3D); else no(new Error('3Dを読み込めませんでした')); };
+        s.onerror = function () { v3d = null; no(new Error('3Dを読み込めませんでした')); };
+        document.head.appendChild(s);
+      });
+    }
+    return v3d;
+  }
+  var KINDS_3D = /\.(glb|gltf|obj|fbx|stl|ply)$/i;
+  function is3d(name) { return KINDS_3D.test(String(name || '')); }
   function vreq(method, path, body) {
     return request(method, path, body, state.vault ? { 'X-Vault-Ticket': state.vault.ticket } : {}).catch(function (err) {
       if (err.code === 'vault_locked') lockVault('保管庫が閉じました。もう一度開いてください');
@@ -1255,7 +1272,7 @@
     if (!state.vault) return Promise.resolve();
     return vreq('GET', '/api/vault/files').then(function (r) {
       state.vaultFiles = r.files || [];
-      if (state.vault) state.vault.used = r.used;
+      if (state.vault) { state.vault.used = r.used; state.vault.all = r.all; }
       renderVault();
     }, fail);
   }
@@ -1268,8 +1285,34 @@
     var list = $('#vault-list');
     list.textContent = '';
     if (!open) return;
-    if (!state.vaultFiles.length) list.appendChild(el('p', 'empty muted', 'ファイルはまだありません'));
-    state.vaultFiles.forEach(function (f) { list.appendChild(vaultCard(f)); });
+    var all = state.vault.all || { live: 0 };
+    $('#vault-all-state').textContent = all.live ? '保管庫全体のリンク：' + all.live + '本 有効（' + stamp(all.until) + 'まで・取得 ' + fmt(all.uses) + '回）' : '保管庫全体のリンク：なし';
+    $('#vault-all-stop').hidden = !all.live;
+    // a model's light copy shows with the model
+    var tops = state.vaultFiles.filter(function (f) { return !f.parent; });
+    if (!tops.length) list.appendChild(el('p', 'empty muted', 'ファイルはまだありません'));
+    tops.forEach(function (f) { list.appendChild(vaultCard(f)); });
+  }
+  function lightOf(f) { return state.vaultFiles.filter(function (x) { return x.parent === f.id && x.done; })[0] || null; }
+  // the picture of a model, fetched once
+  function picEl(f) {
+    var p = el('div', 'vault-pic');
+    p.dataset.vact = 'pic';
+    if (pics[f.id]) { p.style.backgroundImage = 'url("' + pics[f.id] + '")'; return p; }
+    vreq('GET', '/api/vault/preview?id=' + f.id).then(function (r) {
+      if (!r.preview) return;
+      pics[f.id] = r.preview;
+      p.style.backgroundImage = 'url("' + r.preview + '")';
+    }).catch(function () {});
+    return p;
+  }
+  function modelFacts(facts, i, light) {
+    fact(facts, '3Dモデル', String(i.format || '').toUpperCase() + '・三角形 ' + fmt(i.triangles) + '・頂点 ' + fmt(i.vertices) + '・メッシュ ' + fmt(i.meshes));
+    fact(facts, 'マテリアル / テクスチャ', fmt(i.materials) + ' / ' + fmt(i.textures) + (i.maxTexture ? '（最大 ' + i.maxTexture + 'px）' : ''));
+    if (i.size) fact(facts, '大きさ（幅×高さ×奥行き）', i.size.join(' × '));
+    if (i.animations && i.animations.length) fact(facts, 'アニメーション', i.animations.map(function (a) { return (a.name || '-') + '（' + a.seconds + '秒）'; }).join('・'));
+    if (i.skinned || i.morphs) fact(facts, 'ボーン / モーフ', fmt(i.skinned) + ' / ' + fmt(i.morphs));
+    if (light) fact(facts, '軽量版', mb(light.size) + '（' + light.name + '）');
   }
   function vaultCard(f) {
     var card = el('article', 'card vault-card' + (f.done ? '' : ' done'));
@@ -1279,14 +1322,20 @@
     head.appendChild(el('span', 'kind ' + (f.done ? 'accepted' : 'bug'), f.done ? '保存済み' : 'アップロード途中 ' + f.received + '/' + f.chunks));
     head.appendChild(el('span', 'time', stamp(f.createdAt)));
     card.appendChild(head);
+    var light = lightOf(f);
+    var body = el('div', 'vault-body');
+    if (f.preview) body.appendChild(picEl(f));
+    else if (f.done && is3d(f.name)) body.appendChild(el('div', 'vault-pic none', 'プレビューなし'));
     var facts = el('div', 'facts');
+    if (f.info) modelFacts(facts, f.info, light);
     fact(facts, '大きさ', mb(f.size) + '（' + fmt(f.size) + 'バイト）');
     fact(facts, '種類', f.type || '-');
     fact(facts, 'SHA-256（部分ごとのハッシュの並び）', f.sha256 || '-');
     fact(facts, '読み取り専用リンク', f.links.live ? f.links.live + '本 有効（' + stamp(f.links.until) + 'まで）' : 'なし');
     fact(facts, 'リンクからの取得', fmt(f.links.uses) + '回');
     if (f.note) fact(facts, 'メモ', f.note);
-    card.appendChild(facts);
+    body.appendChild(facts);
+    card.appendChild(body);
     var a = el('div', 'acts');
     function btn(label, act, cls) {
       var b = el('button', 'btn small' + (cls ? ' ' + cls : ''), label);
@@ -1295,7 +1344,10 @@
       a.appendChild(b);
     }
     if (f.done) {
+      if (f.info) btn('3Dで見る', 'view', 'primary');
+      else if (is3d(f.name)) btn('プレビューを作る', 'make');
       btn('ダウンロード', 'get');
+      if (light) btn('軽量版をダウンロード', 'getlight');
       btn('読み取り専用リンクを作る', 'link', 'primary');
       if (f.links.live) btn('リンクを停止', 'stop', 'warn');
     } else {
@@ -1351,8 +1403,8 @@
     }
     return Promise.all([worker(), worker(), worker()]).then(function () { if (failed) throw failed; });
   }
-  function upload(file, resumeId) {
-    var CH = state.vault.chunk, j = job(file.name + '（アップロード）');
+  function upload(file, resumeId, parent) {
+    var CH = state.vault.chunk, j = job(file.name + '（アップロード）'), made = null;
     var begin = resumeId
       ? vreq('GET', '/api/vault/missing?id=' + resumeId).then(function (r) {
         if (r.file.size !== file.size) throw { message: 'ファイルの大きさが違います。同じファイルを選んでください' };
@@ -1360,13 +1412,14 @@
         r.missing.forEach(function (m) { for (var n = m[0]; n <= m[1]; n++) todo.push(n); });
         return { file: r.file, todo: todo };
       })
-      : vreq('POST', '/api/vault/files', { name: file.name, size: file.size, type: file.type || '', note: $('#vault-note').value.trim() }).then(function (r) {
+      : vreq('POST', '/api/vault/files', { name: file.name, size: file.size, type: file.type || '', note: parent ? '' : $('#vault-note').value.trim(), parent: parent || undefined }).then(function (r) {
         var todo = [];
         for (var n = 0; n < r.file.chunks; n++) todo.push(n);
         return { file: r.file, todo: todo };
       });
     var last = null;
     return begin.then(function (b) {
+      made = b.file;
       var done = b.file.chunks - b.todo.length;
       j.set(done, b.file.chunks);
       return pieces(b.todo, function (n) {
@@ -1378,11 +1431,32 @@
       });
     }).then(function () {
       j.finish(last && last.done ? '保存しました（SHA-256 ' + String(last.sha256).slice(0, 16) + '…）' : '送り終えました');
-      $('#vault-note').value = '';
-    }, function (err) { j.fail((err && err.message) || 'アップロードできませんでした'); }).then(loadVault);
+      if (!parent) $('#vault-note').value = '';
+      return loadVault().then(function () { if (!parent && made && is3d(file.name)) return preview(made, file); });
+    }, function (err) { j.fail((err && err.message) || 'アップロードできませんでした'); return loadVault(); });
   }
-  function download(f) {
-    var j = job(f.name + '（ダウンロード）'), parts = [], digests = [], done = 0, todo = [];
+  // A model: its picture, what is in it, and its light copy (uploaded as a file of its own)
+  function preview(f, file) {
+    var j = job(f.name + '（3Dプレビュー）');
+    j.set(0, 3);
+    return vault3d().then(function (V) {
+      return V.analyze(file, f.name);
+    }).then(function (r) {
+      j.set(1, 3);
+      return vreq('POST', '/api/vault/meta', { id: f.id, preview: r.preview, info: r.info }).then(function () {
+        pics[f.id] = r.preview;
+        j.set(2, 3);
+        if (!r.light) return null;
+        var base = f.name.replace(/\.[^.]+$/, '');
+        return upload(new File([r.light], base + '.light.glb', { type: 'model/gltf-binary' }), null, f.id);
+      });
+    }).then(function () { j.finish('プレビューを作りました'); return loadVault(); }, function (err) {
+      j.fail('プレビューを作れませんでした：' + ((err && err.message) || ''));
+    });
+  }
+  // a whole file from the vault, its hashes checked: a Blob
+  function fetchFile(f, j) {
+    var parts = [], digests = [], done = 0, todo = [];
     for (var n = 0; n < f.chunks; n++) todo.push(n);
     return pieces(todo, function (n) {
       return vreq('GET', '/api/vault/chunk?id=' + f.id + '&n=' + n).then(function (r) {
@@ -1393,7 +1467,7 @@
           parts[n] = bytes;
           digests[n] = new Uint8Array(h);
           done++;
-          j.set(done, f.chunks);
+          if (j) j.set(done, f.chunks);
         });
       });
     }).then(function () {
@@ -1401,32 +1475,81 @@
       digests.forEach(function (d, i) { all.set(d, i * 32); });
       return sha(all).then(function (h) {
         if (f.sha256 && hex(h) !== f.sha256) throw { message: 'ファイル全体のハッシュが一致しません' };
-        var url = URL.createObjectURL(new Blob(parts, { type: 'application/octet-stream' }));
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = f.name;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
-        j.finish('ダウンロードしました（ハッシュ一致を確認済み）');
+        return new Blob(parts, { type: 'application/octet-stream' });
       });
+    });
+  }
+  // the light copy (or the model itself when it is small) turning in 3D
+  function view3d(f) {
+    var light = lightOf(f), src = light || f;
+    var box = $('#viewer-box');
+    closeViewer();
+    $('#viewer-name').textContent = f.name;
+    $('#viewer-note').textContent = '読み込み中…';
+    $('#viewer').hidden = false;
+    Promise.all([vault3d(), fetchFile(src, { set: function (d, t) { $('#viewer-note').textContent = '読み込み中… ' + Math.round(d / t * 100) + '%'; } })]).then(function (r) {
+      return r[1].arrayBuffer().then(function (buf) { return r[0].view(box, buf, src.name); });
+    }).then(function (v) {
+      if ($('#viewer').hidden) { v.stop(); return; }
+      viewing = v;
+      $('#viewer-note').textContent = (light ? '軽量版 ' + mb(light.size) : mb(f.size)) + '・ドラッグで回転・ホイール / 2本指でズーム';
+    }).catch(function (err) { $('#viewer-note').textContent = (err && err.message) || '表示できませんでした'; });
+  }
+  function closeViewer() {
+    if (viewing) { viewing.stop(); viewing = null; }
+    var box = $('#viewer-box');
+    box.textContent = '';
+    box.classList.remove('big');
+    box.style.backgroundImage = '';
+    $('#viewer').hidden = true;
+  }
+  // the picture, big
+  function showPic(f) {
+    if (!pics[f.id]) return;
+    closeViewer();
+    $('#viewer-name').textContent = f.name;
+    $('#viewer-note').textContent = '前（+Z）・右（+X）・上（+Y）・斜め';
+    var box = $('#viewer-box');
+    box.classList.add('big');
+    box.style.backgroundImage = 'url("' + pics[f.id] + '")';
+    $('#viewer').hidden = false;
+  }
+  function makePreview(f) {
+    var j = job(f.name + '（ダウンロード）');
+    fetchFile(f, j).then(function (blob) {
+      j.finish('ダウンロードしました');
+      return preview(f, new File([blob], f.name));
     }).catch(function (err) { j.fail((err && err.message) || 'ダウンロードできませんでした'); });
   }
+  function download(f) {
+    var j = job(f.name + '（ダウンロード）');
+    return fetchFile(f, j).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = f.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
+      j.finish('ダウンロードしました（ハッシュ一致を確認済み）');
+    }).catch(function (err) { j.fail((err && err.message) || 'ダウンロードできませんでした'); });
+  }
+  // `f`: a file, or null for the whole vault
   function makeLink(f) {
     var hours = state.vault.hours || [1, 6, 24, 72];
     ask({
-      title: '読み取り専用リンクを作る',
-      text: '「' + f.name + '」だけを、ログインなしで取り出せるリンクです（リンクは一度しか表示されません）。有効時間を ' + hours.join('・') + ' 時間から選んで入れてください。',
+      title: f ? '読み取り専用リンクを作る' : '保管庫全体のリンクを作る',
+      text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき）') + 'を、ログインなしで取り出せるリンクです（リンクは一度しか表示されません）。有効時間を ' + hours.join('・') + ' 時間から選んで入れてください。',
       ok: '作る', input: { label: '有効時間（時間）', type: 'text', value: '24' },
       check: function (v) { return hours.indexOf(Number(v)) >= 0 ? '' : hours.join('・') + ' のどれかを入れてください'; }
     }).then(function (v) {
       if (v === null) return null;
-      return vreq('POST', '/api/vault/link', { id: f.id, hours: Number(v) }).then(function (r) {
+      return vreq('POST', '/api/vault/link', { id: f ? f.id : '*', hours: Number(v) }).then(function (r) {
         var url = location.origin + r.path;
         copy(url);
         loadVault();
-        return ask({ title: 'リンクを作りました（' + v + '時間有効・コピー済み）', text: url + '\n\nこのリンクを知っている人は、期限までこのファイルだけを取り出せます。用が済んだら「リンクを停止」してください。', ok: 'OK' });
+        return ask({ title: 'リンクを作りました（' + v + '時間有効・コピー済み）', text: url + '\n\n' + (f ? 'このリンクを知っている人は、期限までこのファイルだけを取り出せます。' : 'このリンクを知っている人は、期限まで保管庫のすべてのファイルを取り出せます。') + '用が済んだら停止してください。', ok: 'OK' });
       });
     }).catch(fail);
   }
@@ -1437,6 +1560,10 @@
     if (!f) return;
     var act = b.dataset.vact;
     if (act === 'get') download(f);
+    else if (act === 'getlight') { if (lightOf(f)) download(lightOf(f)); }
+    else if (act === 'view') view3d(f);
+    else if (act === 'pic') showPic(f);
+    else if (act === 'make') makePreview(f);
     else if (act === 'link') makeLink(f);
     else if (act === 'resume') { state.resumeId = f.id; $('#vault-file').click(); }
     else if (act === 'stop') {
@@ -1712,6 +1839,15 @@
     $('#vault-open').addEventListener('click', openVault);
     $('#vault-lock').addEventListener('click', function () { lockVault('保管庫を閉じました'); });
     $('#vault-list').addEventListener('click', onVault);
+    $('#vault-all-link').addEventListener('click', function () { makeLink(null); });
+    $('#vault-all-stop').addEventListener('click', function () {
+      ask({ title: '全体リンクを停止しますか？', text: '保管庫全体の読み取り専用リンクがすべて、すぐに使えなくなります。', ok: '停止する', danger: true }).then(function (ok) {
+        if (!ok) return null;
+        return vreq('POST', '/api/vault/link/stop', { id: '*' }).then(function (r) { toast('リンクを停止しました（' + r.stopped + '本）'); return loadVault(); });
+      }).catch(fail);
+    });
+    $('#viewer-close').addEventListener('click', closeViewer);
+    $('#viewer').addEventListener('click', function (e) { if (e.target.id === 'viewer') closeViewer(); });
     $('#vault-file').addEventListener('change', onFiles);
     // leaving in the middle of an upload or a download
     window.addEventListener('beforeunload', function (e) { if (moving > 0) { e.preventDefault(); e.returnValue = ''; } });
