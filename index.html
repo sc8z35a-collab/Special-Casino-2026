@@ -30,6 +30,7 @@
 <link rel="stylesheet" href="css/tree.css">
 <link rel="stylesheet" href="css/safety.css">
 <link rel="stylesheet" href="css/juice.css">
+<link rel="stylesheet" href="css/support.css">
 </head>
 <body>
 <div id="viewport">
@@ -46,6 +47,8 @@
         <button class="start-hit start-friends" id="start-friends" aria-label="友達"></button>
       </div>
       <button class="start-app" id="start-app" hidden><i class="ic ic-add-home"></i><span>アプリで遊ぶ</span></button>
+      <!-- 開発者支援: the law asks for this page to be reachable from the top page -->
+      <a class="start-law" id="start-law" href="/law" target="_blank" rel="noopener">特定商取引法に基づく表記</a>
     </section>
 
     <!-- ===================== SLOT SCREEN ===================== -->
@@ -282,6 +285,7 @@
           <div class="more-cards">
             <button class="more-card" data-act="guide"><b>初心者ガイド</b><span>遊び方の案内をもう一度見る</span></button>
             <button class="more-card" data-act="feedback"><b>運営にフィードバック</b><span>感想や改善してほしいことを送る</span></button>
+            <button class="more-card support" data-act="support"><b>開発者支援</b><span>ロイヤルコインで開発者を応援する</span></button>
             <div class="more-card soon"><b>投資<small>COMING SOON</small></b><span>近日公開予定です。お楽しみに！</span></div>
           </div>
           <h3 class="more-title">Dev News</h3>
@@ -333,12 +337,63 @@
       </div>
     </section>
 
+    <!-- ===================== 開発者支援 (js/ui/support.js) ===================== -->
+    <section id="screen-support" class="screen" aria-label="開発者支援">
+      <button class="back-btn back-jp" data-action="back"><i class="ic ic-back"></i><span>戻る</span></button>
+      <div class="sp-head">
+        <i class="ic ic-coin sp-head-coin"></i>
+        <h2 class="sp-title">開発者支援<small>ロイヤルコイン</small></h2>
+        <span class="sp-flag" id="sp-flag" hidden></span>
+        <button class="sp-law" id="sp-law" type="button">特定商取引法に基づく表記</button>
+      </div>
+      <div class="sp-body">
+        <div class="sp-left">
+          <div class="sp-plans" id="sp-plans"></div>
+          <div class="sp-qty">
+            <span class="sp-label">口数</span>
+            <button class="sq-btn minus" id="sp-minus" type="button" aria-label="減らす"><i></i></button>
+            <button class="sp-qty-v" id="sp-qty" type="button"><b id="sp-qty-n">5</b><small>口</small><i class="ic ic-edit"></i></button>
+            <button class="sq-btn plus" id="sp-plus" type="button" aria-label="増やす"><i></i></button>
+            <div class="sp-quick" id="sp-quick"><button type="button" data-q="1">1</button><button type="button" data-q="5">5</button><button type="button" data-q="10">10</button><button type="button" data-q="50">50</button><button type="button" data-q="100">100</button></div>
+          </div>
+          <div class="sp-total">
+            <span class="sp-label">合計</span><b class="sp-yen" id="sp-yen">-</b>
+            <span class="sp-get"><i class="ic ic-coin"></i><span>ロイヤルコイン</span><b id="sp-coins">-</b><span>枚</span></span>
+          </div>
+          <div class="sp-pay" id="sp-pay"></div>
+          <p class="sp-hint" id="sp-hint"></p>
+        </div>
+        <div class="sp-right scroller" id="sp-right">
+          <div class="sp-meters">
+            <div class="sp-meter" id="sp-m1">
+              <div class="sp-m-head"><span>開発費回収まであと</span><b><span class="sp-m-have">0</span>/<span class="sp-m-goal">9,900</span>円</b></div>
+              <div class="sp-m-bar"><i></i></div>
+              <p class="sp-m-note"></p>
+            </div>
+            <div class="sp-meter" id="sp-m2">
+              <div class="sp-m-head"><span>来月の開発費確保まであと</span><b><span class="sp-m-have">0</span>/<span class="sp-m-goal">3,400</span>円</b></div>
+              <div class="sp-m-bar"><i></i></div>
+              <p class="sp-m-note"></p>
+            </div>
+          </div>
+          <ul class="sp-notes">
+            <li class="hot">買っていただいた金額や個数にかかわらず、ご購入いただけた場合は<b>開発者が直接熱いお言葉をかけさせていただきます。</b></li>
+            <li>お支払いは決済代行会社 Stripe を通じて、<b>開発者の銀行口座に直接送金</b>されます。</li>
+            <li>いただいたお金は <b>Two state の開発費にのみ</b>使用します。</li>
+            <li>ロイヤルコインは支援の証（記念のコイン）です。スロットに賭ける・トークンや $ に交換する・人に送る・換金することはできません。</li>
+            <li>購入後のキャンセル・返金はできません（法令で認められる場合を除く）。18歳以上の方に限ります。お金の使いすぎ防止のため、24時間で<span id="sp-daily">10,000円</span>までです。</li>
+          </ul>
+          <div class="sp-orders" id="sp-orders"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- wallet is shared by every screen -->
     <div class="wallet">
       <i class="ic ic-eye w-eye"></i>
       <div class="w-item w-tokens"><i class="ic ic-chip"></i><span id="w-tokens">0</span></div>
       <div class="w-item w-dollars"><i class="ic ic-dollar"></i><span id="w-dollars">5 008 159</span></div>
-      <div class="w-item w-coins"><i class="ic ic-coin"></i><span id="w-coins">74</span></div>
+      <div class="w-item w-coins" title="ロイヤルコイン（タップで開発者支援）"><i class="ic ic-coin"></i><span id="w-coins">74</span></div>
       <button class="w-plus" id="w-plus" aria-label="追加"><i class="ic ic-plus"></i></button>
     </div>
 
@@ -490,6 +545,33 @@
         <p class="thanks-sub" id="thanks-sub">感謝料をお受け取りください</p>
         <div class="thanks-news scroller" id="thanks-news"></div>
         <button class="act-btn gold" id="thanks-ok">OK</button>
+      </div>
+    </div>
+
+    <!-- 開発者支援 (js/ui/support.js): the last check before paying, the thanks
+         after it, and 特定商取引法に基づく表記 -->
+    <div id="sp-confirm" class="modal" hidden>
+      <div class="modal-card sp-confirm-card" role="dialog" aria-label="ご購入内容の確認">
+        <button class="modal-x" data-close aria-label="閉じる"></button>
+        <h3 class="modal-title"><span>ご購入内容の確認</span></h3>
+        <dl class="sp-rows" id="sp-confirm-rows"></dl>
+        <p class="sp-confirm-note">「決済ページへ進む」を押すと、決済会社 Stripe のお支払いページに移動します。お支払いが確認できしだい、ロイヤルコインをお届けします。</p>
+        <div class="confirm-actions"><button class="act-btn" type="button" data-close>キャンセル</button><button class="act-btn gold" type="button" id="sp-confirm-go">決済ページへ進む</button></div>
+      </div>
+    </div>
+    <div id="sp-done" class="modal" hidden>
+      <div class="modal-card sp-done-card" role="dialog" aria-label="ご支援ありがとうございます">
+        <div class="sp-done-coins" aria-hidden="true"><i class="ic ic-coin"></i><i class="ic ic-coin"></i><i class="ic ic-coin"></i></div>
+        <h3 class="modal-title"><span id="sp-done-title">ご支援ありがとうございます！</span></h3>
+        <p class="sp-done-text" id="sp-done-text"></p>
+        <div class="confirm-actions"><button class="act-btn gold" type="button" data-close>OK</button></div>
+      </div>
+    </div>
+    <div id="sp-law-modal" class="modal" hidden>
+      <div class="modal-card sp-law-card" role="dialog" aria-label="特定商取引法に基づく表記">
+        <button class="modal-x" data-close aria-label="閉じる"></button>
+        <h3 class="modal-title"><span>特定商取引法に基づく表記</span></h3>
+        <dl class="sp-rows scroller" id="sp-law-rows"></dl>
       </div>
     </div>
 
@@ -771,6 +853,8 @@
 <script src="js/ui/bigwin.js"></script>
 <script src="js/ui/feedback.js"></script>
 <script src="js/ui/guide.js"></script>
+<script src="js/ui/law.js"></script>
+<script src="js/ui/support.js"></script>
 <script src="js/ui/launch.js"></script>
 <script src="js/ui/start.js"></script>
 <script src="js/ui/banlock.js"></script>

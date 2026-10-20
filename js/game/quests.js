@@ -134,7 +134,7 @@
       { id: 'special-earn1m', period: 'special', metric: 'earn', goal: 1000000, reward: 300000, text: '1M稼ぐ', money: true },
       { id: 'special-win100', period: 'special', metric: 'win', goal: 100, reward: 100000, text: 'カジノで100回当たる' },
       { id: 'special-win500', period: 'special', metric: 'win', goal: 500, reward: 500000, text: 'カジノで500回当たる' },
-      { id: 'special-broke', period: 'special', metric: 'broke', goal: 1, reward: 1000000, text: '無一文になってしまう', note: 'コインもすべてお金に換算して総額が5万円を下回ったとき' }
+      { id: 'special-broke', period: 'special', metric: 'broke', goal: 1, reward: 1000000, text: '無一文になってしまう', note: 'スピントークンもお金に換算して、総額が5万を下回ったとき（ロイヤルコインは含みません）' }
     ]
   );
 

@@ -245,6 +245,13 @@
     auctionBid: function (steps) { return post('/api/tree/auction/bid', { steps: steps }); },
     auctionLeave: function () { return post('/api/tree/auction/leave'); },
 
+    /* 開発者支援 (js/ui/support.js): the price is the server's, the plan and how many are ours */
+    payInfo: function () { return get('/api/pay/info'); },
+    payCheckout: function (plan, qty, method) { return post('/api/pay/checkout', { plan: plan, qty: qty, method: method }); },
+    payOrder: function (id) { return get('/api/pay/order?id=' + q(id)); },
+    payCancel: function (id) { return post('/api/pay/cancel', { order: id }); },
+    paySeller: function () { return get('/api/pay/seller'); },
+
     loginBonus: function () { return post('/api/login-bonus'); },
     ticket: function () { return post('/api/stream-ticket'); }
   };

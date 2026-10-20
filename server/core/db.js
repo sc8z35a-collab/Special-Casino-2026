@@ -459,13 +459,94 @@ export const MIGRATIONS = [
     'ALTER TABLE cars ADD COLUMN rent_blocks INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE cars ADD COLUMN rent_earned INTEGER NOT NULL DEFAULT 0',
     "ALTER TABLE cars ADD COLUMN rent_last TEXT NOT NULL DEFAULT ''"
+  ],
+  // DEV8: 開発者支援 (server/core/pay.js): the orders, with what the payment
+  // company said about them and the developer's answer, and its notices
+  // already handled; the developer's vault (server/core/vault.js): files kept
+  // in pieces, and the time-limited links to fetch one
+  [
+    // status: new (asking Stripe) → open (its payment page is up) → pending
+    // (a konbini payment slip waits for the cash) → paid; or failed, expired,
+    // canceled, refunded, error (no payment page), review (Stripe's answer
+    // did not match the order: nothing given, for the developer to look at)
+    `CREATE TABLE pay_orders (
+       id            TEXT    PRIMARY KEY,
+       user_id       INTEGER NOT NULL,
+       plan          TEXT    NOT NULL,
+       qty           INTEGER NOT NULL,
+       coins         INTEGER NOT NULL,
+       bonus         INTEGER NOT NULL DEFAULT 0,
+       amount        INTEGER NOT NULL,
+       method        TEXT    NOT NULL,
+       status        TEXT    NOT NULL,
+       session_id    TEXT    NOT NULL DEFAULT '',
+       intent_id     TEXT    NOT NULL DEFAULT '',
+       voucher_url   TEXT    NOT NULL DEFAULT '',
+       voucher_until INTEGER NOT NULL DEFAULT 0,
+       livemode      INTEGER NOT NULL DEFAULT 0,
+       ip            TEXT    NOT NULL DEFAULT '',
+       created_at    INTEGER NOT NULL,
+       updated_at    INTEGER NOT NULL,
+       paid_at       INTEGER NOT NULL DEFAULT 0,
+       checked_at    INTEGER NOT NULL DEFAULT 0,
+       refunded_at   INTEGER NOT NULL DEFAULT 0,
+       coins_back    INTEGER NOT NULL DEFAULT 0,
+       replied_at    INTEGER NOT NULL DEFAULT 0,
+       replied_by    INTEGER NOT NULL DEFAULT 0,
+       reply         TEXT    NOT NULL DEFAULT ''
+     )`,
+    'CREATE INDEX pay_orders_user ON pay_orders(user_id, created_at)',
+    'CREATE INDEX pay_orders_paid ON pay_orders(status, paid_at)',
+    "CREATE UNIQUE INDEX pay_orders_session ON pay_orders(session_id) WHERE session_id != ''",
+    "CREATE INDEX pay_orders_intent ON pay_orders(intent_id) WHERE intent_id != ''",
+    `CREATE TABLE pay_events (
+       id       TEXT    PRIMARY KEY,
+       type     TEXT    NOT NULL,
+       order_id TEXT    NOT NULL DEFAULT '',
+       at       INTEGER NOT NULL
+     )`,
+    // a file: its pieces (1 MiB each, base64) and the SHA-256 of each, and of
+    // the list of them all once every piece is in
+    `CREATE TABLE vault_files (
+       id         TEXT    PRIMARY KEY,
+       name       TEXT    NOT NULL,
+       type       TEXT    NOT NULL DEFAULT '',
+       note       TEXT    NOT NULL DEFAULT '',
+       size       INTEGER NOT NULL,
+       chunks     INTEGER NOT NULL,
+       received   INTEGER NOT NULL DEFAULT 0,
+       sha256     TEXT    NOT NULL DEFAULT '',
+       created_by INTEGER NOT NULL,
+       created_at INTEGER NOT NULL,
+       done_at    INTEGER NOT NULL DEFAULT 0
+     )`,
+    `CREATE TABLE vault_chunks (
+       file_id TEXT    NOT NULL,
+       n       INTEGER NOT NULL,
+       sha256  TEXT    NOT NULL,
+       data    TEXT    NOT NULL,
+       PRIMARY KEY (file_id, n)
+     )`,
+    // only the hash of a link's secret is kept
+    `CREATE TABLE vault_links (
+       token_hash TEXT    PRIMARY KEY,
+       file_id    TEXT    NOT NULL,
+       until      INTEGER NOT NULL,
+       uses       INTEGER NOT NULL DEFAULT 0,
+       revoked    INTEGER NOT NULL DEFAULT 0,
+       created_by INTEGER NOT NULL,
+       created_at INTEGER NOT NULL
+     )`,
+    'CREATE INDEX vault_links_file ON vault_links(file_id)'
   ]
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
+// what a backup holds (not the vault's files: they are big, and the developer has them)
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
-  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'meta'];
+  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access',
+  'pay_orders', 'pay_events', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

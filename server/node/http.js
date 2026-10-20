@@ -74,6 +74,26 @@ export function readJson(req, limit = 16 * 1024) {
   });
 }
 
+// Reads the body exactly as it came, whatever its type (at most `limit`
+// bytes): a payment company's signed notice is checked byte for byte.
+export function readBytes(req, limit = 64 * 1024) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) {
+        reject(new ApiError(413, 'too_large', 'リクエストが大きすぎます'));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => { if (size <= limit) resolve(Buffer.concat(chunks)); });
+    req.on('error', reject);
+  });
+}
+
 // Private, loopback, link-local and carrier-grade NAT ranges: proxies, never players.
 const INTERNAL = /^(?:::ffff:)?(?:10\.|127\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)|^(?:::1|f[cd][0-9a-f]{2}:|fe80:)/i;
 
@@ -102,6 +122,7 @@ export function coreRequest(req, url, ip) {
     query: url.searchParams,
     ip,
     header: (name) => req.headers[name.toLowerCase()] ?? null,
-    json: (limit) => readJson(req, limit)
+    json: (limit) => readJson(req, limit),
+    bytes: (limit) => readBytes(req, limit)
   };
 }

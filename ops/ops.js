@@ -18,6 +18,12 @@
      developer code; the developer registers that code here once.
    - ログ: everything done here, and every DEV going live, newest first; a tap
      shows all that is known about it. It cannot be changed or deleted.
+   - 課金 (the developer's own): the players who paid for 開発者支援, waiting
+     for the developer's words; answered (through the official bot), they
+     leave the list. Every order, the meters, and whether payments are on.
+   - 保管庫 (the developer's own, opened with the developer code): big files
+     sent in 1 MiB pieces checked by SHA-256 (a broken upload goes on where it
+     stopped), fetched back the same way, and time-limited read-only links.
    Passwords are kept only as one-way hashes, so they can be set, never shown.
    On a phone the site goes full screen and landscape at the first tap; held
    upright where that is not possible, the whole site is turned sideways. */
@@ -37,7 +43,11 @@
     money: '送金', report_accept: '通報を受理', report_reject: '通報を不受理', detections_reviewed: '検知を確認', feedback_handled: '報告・意見案を対応済み',
     idea_adopt: '意見案を採用', ops_revoke: '運営権の剥奪', ops_grant: '運営権の付与', ops_restore: '運営権を戻す',
     dev_code_set: '開発者コードを登録', dev_code_change: '開発者コードを変更', dev_code_fail: '開発者コードの入力ミス',
-    bot_auto_reply: '自動返信', log_kept: '運営ログの保持', 'admin:restore-time': '管理コマンド: 時点への巻き戻し'
+    bot_auto_reply: '自動返信', log_kept: '運営ログの保持', 'admin:restore-time': '管理コマンド: 時点への巻き戻し',
+    pay_order: '支払いページ', pay_paid: '購入（入金を確認）', pay_slip: 'コンビニ払いの番号', pay_unpaid: 'コンビニ未払い', pay_refund: '返金',
+    pay_review: '決済の不一致（保留）', pay_reply: '開発者の返信', pay_error: '決済ページのエラー', pay_unknown: '不明な決済通知', pay_bad_signature: '不正な決済通知を拒否',
+    vault_open: '保管庫を開いた', vault_upload: '保管庫に保存', vault_delete: '保管庫から削除', vault_link: '保管庫のリンク作成',
+    vault_link_stop: '保管庫のリンク停止', vault_pull: '保管庫からリンクで取得'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
   var REPORT_PLACES = { profile: 'プロフィール', hub: '「一緒に稼ぐ」', search: 'フレンド検索', chat: 'チャット' };
@@ -48,16 +58,17 @@
   var state = {
     view: 'players', players: [], total: 0, counts: {}, now: Date.now(), filter: 'all', sort: 'new', q: '', open: 0, busy: false,
     reportStatus: 'open', detAll: false, fb: 'open', feedback: [], log: [], logQ: '', logDone: false, chat: null,
-    developer: false, operators: []
+    developer: false, operators: [], pay: null, payView: 'waiting', vault: null, vaultFiles: []
   };
   var timer = 0, searchTimer = 0, logTimer = 0, chatTimer = 0;
 
   try { token = localStorage.getItem(KEY); } catch (e) { token = null; }
 
   /* ------------------------------------------------------------ the server --- */
-  function request(method, path, body) {
+  function request(method, path, body, headers) {
     var h = { 'Content-Type': 'application/json' };
     if (token) h.Authorization = 'Bearer ' + token;
+    if (headers) Object.keys(headers).forEach(function (k) { h[k] = headers[k]; });
     return fetch(path, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' })
       .catch(function () { throw { status: 0, message: '通信できませんでした' }; })
       .then(function (res) {
@@ -209,8 +220,13 @@
     $('#login').hidden = true;
     $('#app').hidden = false;
     $('#op-name').textContent = (me.developer ? '開発者: ' : '運営者: ') + me.name;
+    state.name = me.name;
     state.developer = !!me.developer;
     state.devCodeSet = !!me.devCodeSet;
+    // 課金 and 保管庫: the developer's own
+    $('#tab-pay').hidden = !state.developer;
+    $('#tab-vault').hidden = !state.developer;
+    if (state.developer) loadPay(true);
     load();
     clearInterval(timer);
     timer = setInterval(function () {
@@ -219,18 +235,21 @@
       if (state.view === 'reports') loadReports(true);
       else if (state.view === 'detections') loadDetections(true);
       else if (state.view === 'feedback') loadFeedback(true);
+      if (state.developer && !(state.view === 'pay' && document.activeElement && document.activeElement.tagName === 'TEXTAREA')) loadPay(true);
     }, REFRESH);
   }
   function setView(v) {
     state.view = v;
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
-    ['players', 'reports', 'detections', 'feedback', 'log', 'operators'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
+    ['players', 'reports', 'detections', 'feedback', 'log', 'operators', 'pay', 'vault'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
     if (v === 'players') load();
     else if (v === 'operators') loadOperators();
     else if (v === 'reports') loadReports();
     else if (v === 'detections') loadDetections();
     else if (v === 'feedback') loadFeedback();
     else if (v === 'log') { loadLog(true); verifyLog(); }
+    else if (v === 'pay') loadPay();
+    else if (v === 'vault') renderVault();
     scrollTop();
   }
   function scrollTop() { if (turned) $('#app').scrollTop = 0; else window.scrollTo(0, 0); }
@@ -307,7 +326,7 @@
     tr.appendChild(td('オンライン状況', s));
     var m = el('div', 'money');
     m.appendChild(el('b', '', '$' + fmt(p.worth)));
-    m.appendChild(el('small', '', 'トークン ' + fmt(p.tokens) + '・$' + fmt(p.dollars) + '・コイン ' + fmt(p.coins)));
+    m.appendChild(el('small', '', 'トークン ' + fmt(p.tokens) + '・$' + fmt(p.dollars) + '・ロイヤルコイン ' + fmt(p.coins)));
     tr.appendChild(td('資産', m, 'num'));
     tr.appendChild(td('18歳以上', ageBadge(p)));
     tr.appendChild(td('引き継ぎコード', codeEl(p)));
@@ -417,7 +436,7 @@
     g.appendChild(cell('資産（$換算）', '$' + fmt(p.worth)));
     g.appendChild(cell('スピントークン', fmt(p.tokens)));
     g.appendChild(cell('ドル', '$' + fmt(p.dollars)));
-    g.appendChild(cell('コイン', fmt(p.coins)));
+    g.appendChild(cell('ロイヤルコイン', fmt(p.coins)));
     g.appendChild(cell('スピン回数', fmt(p.spins) + '回'));
     g.appendChild(cell('最大勝利', fmt(p.biggestWin)));
     g.appendChild(cell('累計ベット', fmt(p.totalBet)));
@@ -1079,6 +1098,373 @@
     }).catch(fail);
   }
 
+  /* ------------------------------------------------------------ 課金 (開発者支援, the developer's own) --- */
+  var drafts = {};   // replies being written, by player (kept while the list refreshes)
+  function yen(n) { return fmt(n) + '円'; }
+  function loadPay(quiet) {
+    if (!state.developer) return Promise.resolve();
+    return request('GET', '/api/ops/pay').then(function (r) {
+      state.pay = r;
+      setCount('pay', r.waiting.length);
+      if (state.view === 'pay') renderPay();
+    }, function (err) { if (!quiet) fail(err); });
+  }
+  function payStat(box, label, value, cls) {
+    var d = el('div', 'stat' + (cls ? ' ' + cls : ''));
+    d.appendChild(el('span', '', label));
+    d.appendChild(el('b', '', value));
+    box.appendChild(d);
+  }
+  function renderPay() {
+    var r = state.pay;
+    if (!r) return;
+    var st = r.setup, t = r.totals, m = r.meters;
+    var setup = $('#pay-setup');
+    setup.textContent = '';
+    var box = el('div', 'pay-setup ' + st.mode);
+    box.appendChild(el('b', '', st.mode === 'live' ? '● 本番：実際のお金での購入を受け付けています'
+      : st.mode === 'test' ? '● テストモード：Stripe のテスト用の鍵です（お金は動きません）' : '● 停止中：購入はできません（下の設定が必要です）'));
+    if (st.problems && st.problems.length) {
+      var ul = el('ul');
+      st.problems.forEach(function (x) { ul.appendChild(el('li', '', x)); });
+      box.appendChild(ul);
+    }
+    box.appendChild(el('p', '', '支払い方法：' + (st.methods.length ? st.methods.join('・') : 'なし') + '　/　1人24時間あたり ' + yen(st.dailyMax) + 'まで' +
+      (st.seller ? '' : '　/　特定商取引法の表記（SELLER_NAME など）が未設定です')));
+    if (st.webhook) box.appendChild(el('p', 'mono', 'Webhook の送信先：' + st.webhook + '　イベント：' + st.events.join(', ')));
+    setup.appendChild(box);
+    var sum = $('#pay-sum');
+    sum.textContent = '';
+    payStat(sum, '開発費回収', fmt(m.recover.have) + ' / ' + yen(m.recover.goal));
+    payStat(sum, '来月の開発費確保（今月）', fmt(m.monthly.have) + ' / ' + yen(m.monthly.goal));
+    payStat(sum, '今月の売上', yen(t.monthYen) + '（' + fmt(t.monthOrders) + '件）');
+    payStat(sum, '累計の売上', yen(t.yen) + '（' + fmt(t.orders) + '件・' + fmt(t.payers) + '人）');
+    payStat(sum, '返信待ち', fmt(r.waiting.length) + '人', r.waiting.length ? 'hot' : '');
+    var list = $('#pay-list');
+    list.textContent = '';
+    var notes = [];
+    if (t.slips) notes.push('コンビニ払いの支払い待ち ' + t.slips + '件（' + yen(t.slipYen) + '）');
+    if (t.refunds) notes.push('返金 ' + t.refunds + '件（' + yen(t.refundYen) + '）');
+    if (t.review) notes.push('⚠ Stripe の内容と一致しない注文が ' + t.review + '件あります（ロイヤルコインは付与していません。Stripe のダッシュボードで確認してください）');
+    if (notes.length) list.appendChild(el('p', 'pay-notes', notes.join('　/　')));
+    if (state.payView === 'waiting') {
+      if (!r.waiting.length) list.appendChild(el('p', 'empty muted', '返信待ちの人はいません'));
+      r.waiting.forEach(function (w) { list.appendChild(payCard(w)); });
+    } else {
+      if (!r.orders.length) list.appendChild(el('p', 'empty muted', '注文はまだありません'));
+      r.orders.forEach(function (o) { list.appendChild(orderCard(o)); });
+    }
+  }
+  // a player who paid: what they bought, how many, how much, and the reply
+  function payCard(w) {
+    var card = el('article', 'card pay-card');
+    var head = el('div', 'card-head');
+    head.appendChild(person(w.player, w.player.online ? 'オンライン' : ''));
+    head.appendChild(el('span', 'kind idea', '返信待ち'));
+    head.appendChild(el('span', 'time', '購入 ' + stamp(w.first) + (w.last !== w.first ? ' 〜 ' + stamp(w.last) : '')));
+    card.appendChild(head);
+    var items = el('div', 'pay-items');
+    w.items.forEach(function (it) { items.appendChild(el('span', 'pay-item', it.name + ' × ' + fmt(it.qty) + '口（' + yen(it.amount) + '）')); });
+    card.appendChild(items);
+    card.appendChild(el('p', 'pay-total', '合計 ' + yen(w.amount) + '・ロイヤルコイン ' + fmt(w.coins) + '枚・' + fmt(w.orders) + '件'));
+    var ta = el('textarea', 'pay-reply');
+    ta.rows = 3;
+    ta.maxLength = 5000;
+    ta.placeholder = w.player.name + 'さんへの熱いお言葉（公式ボットから【開発者からのメッセージ】として届きます）';
+    ta.value = drafts[w.player.id] || '';
+    ta.dataset.draft = w.player.id;
+    card.appendChild(ta);
+    var a = el('div', 'acts');
+    var b = el('button', 'btn primary small', '返信して一覧から消す');
+    b.type = 'button';
+    b.dataset.reply = w.player.id;
+    b.dataset.upto = w.last;
+    b.dataset.name = w.player.name;
+    a.appendChild(b);
+    card.appendChild(a);
+    return card;
+  }
+  function orderCard(o) {
+    var card = el('article', 'card' + (o.status === 'paid' ? '' : ' done'));
+    var head = el('div', 'card-head');
+    head.appendChild(person(o.player || {}, ''));
+    head.appendChild(el('span', 'kind ' + (o.status === 'paid' ? 'accepted' : o.status === 'review' ? '' : 'rating'), o.statusName));
+    head.appendChild(el('span', 'time', stamp(o.createdAt)));
+    card.appendChild(head);
+    var f = el('div', 'facts');
+    fact(f, '内容', o.name + ' × ' + fmt(o.qty) + '口');
+    fact(f, '金額', yen(o.amount));
+    fact(f, 'ロイヤルコイン', fmt(o.coins) + '枚' + (o.coinsBack ? '（返金で ' + fmt(o.coinsBack) + '枚回収）' : ''));
+    fact(f, '支払い方法', o.methodName);
+    fact(f, '入金', o.paidAt ? stamp(o.paidAt) : '-');
+    fact(f, '開発者の返信', o.repliedAt ? stamp(o.repliedAt) : o.status === 'paid' ? 'まだ' : '-');
+    fact(f, '注文番号', o.id);
+    card.appendChild(f);
+    if (o.reply) card.appendChild(el('p', 'pay-said', '返信：' + o.reply));
+    return card;
+  }
+  function onPay(e) {
+    var b = e.target.closest('[data-reply]');
+    if (!b) return;
+    var id = Number(b.dataset.reply), name = b.dataset.name;
+    var text = String(drafts[id] || '').trim();
+    if (!text) { toast(name + 'さんへの返信を書いてください'); return; }
+    var full = '【開発者からのメッセージ】\n\n' + name + '様\n\n' + text + '\n\nTwo state 開発者 ' + state.name;
+    ask({ title: name + 'さんに返信しますか？', text: full, ok: '送信して一覧から消す' }).then(function (ok) {
+      if (!ok) return null;
+      b.disabled = true;
+      return request('POST', '/api/ops/pay/reply', { id: id, text: text, upto: Number(b.dataset.upto) }).then(function () {
+        delete drafts[id];
+        toast(name + 'さんに返信しました');
+        return loadPay();
+      });
+    }).catch(function (err) { b.disabled = false; fail(err); });
+  }
+
+  /* ------------------------------------------------------------ 保管庫 (the developer's own) --- */
+  var vaultTimer = 0, moving = 0;
+  function vreq(method, path, body) {
+    return request(method, path, body, state.vault ? { 'X-Vault-Ticket': state.vault.ticket } : {}).catch(function (err) {
+      if (err.code === 'vault_locked') lockVault('保管庫が閉じました。もう一度開いてください');
+      throw err;
+    });
+  }
+  function mb(n) { return n >= 1048576 ? (n / 1048576).toFixed(n >= 104857600 ? 0 : 1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; }
+  function lockVault(message) {
+    state.vault = null;
+    state.vaultFiles = [];
+    clearTimeout(vaultTimer);
+    renderVault();
+    if (message) toast(message);
+  }
+  function openVault() {
+    withCode({ title: '保管庫を開く', text: '開発者専用の保管庫を30分間開きます。', ok: '開く' }).then(function (code) {
+      if (code === null) return null;
+      return request('POST', '/api/vault/open', { code: code }).then(function (r) {
+        state.vault = r;
+        clearTimeout(vaultTimer);
+        vaultTimer = setTimeout(function () { lockVault('30分たったので保管庫を閉じました'); }, Math.max(1000, r.until - Date.now() - 5000));
+        renderVault();
+        return loadVault();
+      });
+    }).catch(fail);
+  }
+  function loadVault() {
+    if (!state.vault) return Promise.resolve();
+    return vreq('GET', '/api/vault/files').then(function (r) {
+      state.vaultFiles = r.files || [];
+      if (state.vault) state.vault.used = r.used;
+      renderVault();
+    }, fail);
+  }
+  function renderVault() {
+    var open = !!state.vault;
+    $('#vault-closed').hidden = open;
+    $('#vault-main').hidden = !open;
+    $('#vault-lock').hidden = !open;
+    $('#vault-usage').textContent = open ? '使用量 ' + mb(state.vault.used) + ' / ' + mb(state.vault.maxBytes) + '（1ファイル ' + mb(state.vault.fileBytes) + 'まで）' : '';
+    var list = $('#vault-list');
+    list.textContent = '';
+    if (!open) return;
+    if (!state.vaultFiles.length) list.appendChild(el('p', 'empty muted', 'ファイルはまだありません'));
+    state.vaultFiles.forEach(function (f) { list.appendChild(vaultCard(f)); });
+  }
+  function vaultCard(f) {
+    var card = el('article', 'card vault-card' + (f.done ? '' : ' done'));
+    card.dataset.file = f.id;
+    var head = el('div', 'card-head');
+    head.appendChild(el('b', 'vault-name', f.name));
+    head.appendChild(el('span', 'kind ' + (f.done ? 'accepted' : 'bug'), f.done ? '保存済み' : 'アップロード途中 ' + f.received + '/' + f.chunks));
+    head.appendChild(el('span', 'time', stamp(f.createdAt)));
+    card.appendChild(head);
+    var facts = el('div', 'facts');
+    fact(facts, '大きさ', mb(f.size) + '（' + fmt(f.size) + 'バイト）');
+    fact(facts, '種類', f.type || '-');
+    fact(facts, 'SHA-256（部分ごとのハッシュの並び）', f.sha256 || '-');
+    fact(facts, '読み取り専用リンク', f.links.live ? f.links.live + '本 有効（' + stamp(f.links.until) + 'まで）' : 'なし');
+    fact(facts, 'リンクからの取得', fmt(f.links.uses) + '回');
+    if (f.note) fact(facts, 'メモ', f.note);
+    card.appendChild(facts);
+    var a = el('div', 'acts');
+    function btn(label, act, cls) {
+      var b = el('button', 'btn small' + (cls ? ' ' + cls : ''), label);
+      b.type = 'button';
+      b.dataset.vact = act;
+      a.appendChild(b);
+    }
+    if (f.done) {
+      btn('ダウンロード', 'get');
+      btn('読み取り専用リンクを作る', 'link', 'primary');
+      if (f.links.live) btn('リンクを停止', 'stop', 'warn');
+    } else {
+      btn('続きから送る（同じファイルを選ぶ）', 'resume', 'primary');
+    }
+    btn('削除', 'delete', 'danger');
+    card.appendChild(a);
+    return card;
+  }
+  // progress of one upload or download
+  function job(name) {
+    var card = el('article', 'card job');
+    card.appendChild(el('b', '', name));
+    var bar = el('div', 'bar'), fill = el('i');
+    bar.appendChild(fill);
+    card.appendChild(bar);
+    var note = el('span', 'muted', '準備中…');
+    card.appendChild(note);
+    $('#vault-jobs').insertBefore(card, $('#vault-jobs').firstChild);
+    moving++;
+    var over = false;
+    function end() { if (!over) { over = true; moving--; } }
+    return {
+      set: function (d, t) {
+        var p = t ? d / t * 100 : 0;
+        fill.style.width = p.toFixed(1) + '%';
+        note.textContent = d + ' / ' + t + '（' + Math.round(p) + '%）';
+      },
+      finish: function (msg) { end(); fill.style.width = '100%'; card.classList.add('ok'); note.textContent = msg; setTimeout(function () { card.remove(); }, 20000); },
+      fail: function (msg) { end(); card.classList.add('bad'); note.textContent = msg; }
+    };
+  }
+  function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (x) { return (x < 16 ? '0' : '') + x.toString(16); }).join(''); }
+  function sha(buf) { return crypto.subtle.digest('SHA-256', buf); }
+  function base64(bytes) {
+    var s = '';
+    for (var i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  function later(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  // three pieces at a time; a piece that fails is tried again (3 times)
+  function pieces(todo, one) {
+    var queue = todo.slice(), failed = null;
+    function run(n, tries) {
+      return one(n).catch(function (err) {
+        if (tries < 3 && err.code !== 'vault_locked' && err.status !== 413 && err.status !== 404) return later(1500 * (tries + 1)).then(function () { return run(n, tries + 1); });
+        throw err;
+      });
+    }
+    function worker() {
+      if (failed || !queue.length) return Promise.resolve();
+      return run(queue.shift(), 0).then(worker, function (err) { failed = err; });
+    }
+    return Promise.all([worker(), worker(), worker()]).then(function () { if (failed) throw failed; });
+  }
+  function upload(file, resumeId) {
+    var CH = state.vault.chunk, j = job(file.name + '（アップロード）');
+    var begin = resumeId
+      ? vreq('GET', '/api/vault/missing?id=' + resumeId).then(function (r) {
+        if (r.file.size !== file.size) throw { message: 'ファイルの大きさが違います。同じファイルを選んでください' };
+        var todo = [];
+        r.missing.forEach(function (m) { for (var n = m[0]; n <= m[1]; n++) todo.push(n); });
+        return { file: r.file, todo: todo };
+      })
+      : vreq('POST', '/api/vault/files', { name: file.name, size: file.size, type: file.type || '', note: $('#vault-note').value.trim() }).then(function (r) {
+        var todo = [];
+        for (var n = 0; n < r.file.chunks; n++) todo.push(n);
+        return { file: r.file, todo: todo };
+      });
+    var last = null;
+    return begin.then(function (b) {
+      var done = b.file.chunks - b.todo.length;
+      j.set(done, b.file.chunks);
+      return pieces(b.todo, function (n) {
+        return file.slice(n * CH, Math.min(file.size, (n + 1) * CH)).arrayBuffer().then(function (buf) {
+          return sha(buf).then(function (h) {
+            return vreq('POST', '/api/vault/chunk', { id: b.file.id, n: n, sha256: hex(h), data: base64(new Uint8Array(buf)) });
+          });
+        }).then(function (r) { last = r; done++; j.set(done, b.file.chunks); });
+      });
+    }).then(function () {
+      j.finish(last && last.done ? '保存しました（SHA-256 ' + String(last.sha256).slice(0, 16) + '…）' : '送り終えました');
+      $('#vault-note').value = '';
+    }, function (err) { j.fail((err && err.message) || 'アップロードできませんでした'); }).then(loadVault);
+  }
+  function download(f) {
+    var j = job(f.name + '（ダウンロード）'), parts = [], digests = [], done = 0, todo = [];
+    for (var n = 0; n < f.chunks; n++) todo.push(n);
+    return pieces(todo, function (n) {
+      return vreq('GET', '/api/vault/chunk?id=' + f.id + '&n=' + n).then(function (r) {
+        var bin = atob(r.data), bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return sha(bytes).then(function (h) {
+          if (hex(h) !== r.sha256) throw { message: '部分 ' + n + ' が壊れています（ハッシュが一致しません）' };
+          parts[n] = bytes;
+          digests[n] = new Uint8Array(h);
+          done++;
+          j.set(done, f.chunks);
+        });
+      });
+    }).then(function () {
+      var all = new Uint8Array(32 * f.chunks);
+      digests.forEach(function (d, i) { all.set(d, i * 32); });
+      return sha(all).then(function (h) {
+        if (f.sha256 && hex(h) !== f.sha256) throw { message: 'ファイル全体のハッシュが一致しません' };
+        var url = URL.createObjectURL(new Blob(parts, { type: 'application/octet-stream' }));
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = f.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
+        j.finish('ダウンロードしました（ハッシュ一致を確認済み）');
+      });
+    }).catch(function (err) { j.fail((err && err.message) || 'ダウンロードできませんでした'); });
+  }
+  function makeLink(f) {
+    var hours = state.vault.hours || [1, 6, 24, 72];
+    ask({
+      title: '読み取り専用リンクを作る',
+      text: '「' + f.name + '」だけを、ログインなしで取り出せるリンクです（リンクは一度しか表示されません）。有効時間を ' + hours.join('・') + ' 時間から選んで入れてください。',
+      ok: '作る', input: { label: '有効時間（時間）', type: 'text', value: '24' },
+      check: function (v) { return hours.indexOf(Number(v)) >= 0 ? '' : hours.join('・') + ' のどれかを入れてください'; }
+    }).then(function (v) {
+      if (v === null) return null;
+      return vreq('POST', '/api/vault/link', { id: f.id, hours: Number(v) }).then(function (r) {
+        var url = location.origin + r.path;
+        copy(url);
+        loadVault();
+        return ask({ title: 'リンクを作りました（' + v + '時間有効・コピー済み）', text: url + '\n\nこのリンクを知っている人は、期限までこのファイルだけを取り出せます。用が済んだら「リンクを停止」してください。', ok: 'OK' });
+      });
+    }).catch(fail);
+  }
+  function onVault(e) {
+    var b = e.target.closest('[data-vact]'), card = b && b.closest('[data-file]');
+    if (!card) return;
+    var f = state.vaultFiles.filter(function (x) { return x.id === card.dataset.file; })[0];
+    if (!f) return;
+    var act = b.dataset.vact;
+    if (act === 'get') download(f);
+    else if (act === 'link') makeLink(f);
+    else if (act === 'resume') { state.resumeId = f.id; $('#vault-file').click(); }
+    else if (act === 'stop') {
+      ask({ title: 'リンクを停止しますか？', text: '「' + f.name + '」の読み取り専用リンクがすべて、すぐに使えなくなります。', ok: '停止する', danger: true }).then(function (ok) {
+        if (!ok) return null;
+        return vreq('POST', '/api/vault/link/stop', { id: f.id }).then(function (r) { toast('リンクを停止しました（' + r.stopped + '本）'); return loadVault(); });
+      }).catch(fail);
+    } else if (act === 'delete') {
+      ask({ title: '「' + f.name + '」を削除しますか？', text: '保管庫から完全に消えます（元に戻せません）。リンクも使えなくなります。', ok: '削除する', danger: true }).then(function (ok) {
+        if (!ok) return null;
+        return vreq('POST', '/api/vault/delete', { id: f.id }).then(function () { toast('削除しました'); return loadVault(); });
+      }).catch(fail);
+    }
+  }
+  // files picked: one after another (an unfinished one with the same name and size goes on where it stopped)
+  function onFiles() {
+    var input = $('#vault-file'), files = Array.prototype.slice.call(input.files || []), resume = state.resumeId;
+    input.value = '';
+    state.resumeId = null;
+    if (!state.vault) return;
+    files.reduce(function (p, file) {
+      return p.then(function () {
+        if (!state.vault) return null;
+        if (file.size > state.vault.fileBytes) { toast('「' + file.name + '」は大きすぎます（1ファイル ' + mb(state.vault.fileBytes) + 'まで）'); return null; }
+        var half = state.vaultFiles.filter(function (x) { return !x.done && (resume ? x.id === resume : x.name === file.name && x.size === file.size); })[0];
+        return upload(file, half ? half.id : null);
+      });
+    }, Promise.resolve());
+  }
+
   /* ------------------------------------------------------------ the operators' log --- */
   function loadLog(reset) {
     var list = $('#log-list');
@@ -1305,6 +1691,28 @@
       logTimer = setTimeout(function () { state.logQ = $('#log-search').value.trim(); loadLog(true); }, 300);
     });
     $('#log-more').addEventListener('click', function () { loadLog(false); });
+    $('#pay-filter').addEventListener('click', function (e) {
+      var c = e.target.closest('[data-pay]');
+      if (!c) return;
+      state.payView = c.dataset.pay;
+      Array.prototype.forEach.call(document.querySelectorAll('#pay-filter .chip'), function (x) { x.classList.toggle('on', x === c); });
+      renderPay();
+    });
+    $('#pay-list').addEventListener('click', function (e) {
+      var o = e.target.closest('[data-open]');
+      if (o && Number(o.dataset.open)) { openDetail(Number(o.dataset.open)); return; }
+      onPay(e);
+    });
+    $('#pay-list').addEventListener('input', function (e) {
+      var t = e.target.closest('[data-draft]');
+      if (t) drafts[t.dataset.draft] = t.value;
+    });
+    $('#vault-open').addEventListener('click', openVault);
+    $('#vault-lock').addEventListener('click', function () { lockVault('保管庫を閉じました'); });
+    $('#vault-list').addEventListener('click', onVault);
+    $('#vault-file').addEventListener('change', onFiles);
+    // leaving in the middle of an upload or a download
+    window.addEventListener('beforeunload', function (e) { if (moving > 0) { e.preventDefault(); e.returnValue = ''; } });
 
     $('#chat-close').addEventListener('click', closeChat);
     $('#chat-detail').addEventListener('click', function () { var c = state.chat; if (c) { closeChat(); openDetail(c.id); } });

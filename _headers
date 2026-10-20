@@ -21,6 +21,13 @@
   Cache-Control: no-cache
 /download/*.apk
   Content-Disposition: attachment; filename="two-state-casino.apk"
+# 特定商取引法に基づく表記: a plain page of its own (served at /law)
+/law
+  Cache-Control: no-cache
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+/law.html
+  Cache-Control: no-cache
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 # the operator site: its own page and script, never indexed
 /ops/*
   Cache-Control: no-cache

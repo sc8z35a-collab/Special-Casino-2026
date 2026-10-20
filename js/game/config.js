@@ -32,6 +32,29 @@
     dailyLimit: 10000000,    // spin tokens that can be bought per UTC day
     dailyFree: 1000,         // free tokens claimable once per UTC day
     start: { tokens: 0, dollars: 5008159, coins: 74 },
+    // 開発者支援 (js/ui/support.js, server/core/pay.js): yen for ロイヤルコイン,
+    // the coins in the wallet. They are thanks only: never bet, exchanged for
+    // tokens or $, sent to anyone or paid out. Up to `maxQty` of one plan at
+    // once (`bonus`: 感謝料 coins on top, per unit), paid with PayPay or at a
+    // konbini (each from `min` yen, the payment company's smallest payment;
+    // a konbini payment waits `konbiniDays` days), at most `dailyMax` yen a
+    // player a day. The meters fill with every yen paid: 開発費回収 up to
+    // `recover` once, then 来月の開発費確保 up to `monthly` every month.
+    support: {
+      plans: [
+        { id: 'support1', name: '開発者支援I', price: 10, coins: 10, bonus: 0 },
+        { id: 'support2', name: '開発者支援II', price: 20, coins: 20, bonus: 0 },
+        { id: 'support3', name: '開発者支援III', price: 30, coins: 30, bonus: 4 }
+      ],
+      maxQty: 100,
+      methods: [
+        { id: 'paypay', name: 'PayPay', min: 50, max: 1000000 },
+        { id: 'konbini', name: 'コンビニ決済', min: 120, max: 300000 }
+      ],
+      konbiniDays: 3,
+      dailyMax: 10000,
+      goals: { recover: 9900, monthly: 3400 }
+    },
     // player icons: price in $ (0 = free); "rare" ones are locked at sign-up
     // Player icons (img/avatars/<id>.webp). Paid ones are chained on the
     // sign-up screen and sold later for $, always 10-40 % off (js/game/sale.js).

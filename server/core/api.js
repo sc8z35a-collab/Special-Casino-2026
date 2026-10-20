@@ -32,6 +32,9 @@ import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
 import { readQuests, stepQuests, claimQuests, questsReady, questView } from './quests.js';
 import { createOps } from './ops.js';
 import { createTrees } from './tree.js';
+import { createDevCode } from './devcode.js';
+import { createPay } from './pay.js';
+import { createVault } from './vault.js';
 
 const PAGE = 50;
 const CURRENCIES = ['tokens', 'dollars'];
@@ -2881,17 +2884,24 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     });
   }
 
-  // the operator site (/ops/)
+  // the operator site (/ops/); the developer code is checked in one place
+  // (its wrong tries are counted together for the site and the vault)
+  const devCode = createDevCode({ q, opsLog });
   const ops = createOps({
     q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub,
-    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper
+    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode
   });
   Object.assign(routes, ops.routes);
   // 金の生る木
   const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
   Object.assign(routes, trees.routes);
+  // 開発者支援 (real money for ロイヤルコイン) and the developer's vault
+  const pay = createPay({ q, tx, live, config, getUser, balanceChanged, official, opsLog, isDeveloper });
+  Object.assign(routes, pay.routes);
+  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode });
+  Object.assign(routes, vault.routes);
 
-  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban']);
+  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', ...pay.public, ...vault.public]);
 
   /* ---------------------------------------------------------------- live connection hooks */
 
@@ -2974,6 +2984,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     } catch (e) {
       console.error('housekeeping failed', e);
     }
+    // payments whose notice may have been lost are asked about at Stripe
+    return pay.sweep().catch((e) => console.error('pay sweep failed', e));
   }
 
   // Stream tickets are signed and expire within a minute; each opens one connection.

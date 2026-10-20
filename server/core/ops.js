@@ -25,9 +25,8 @@ const MONEY_MAX = 10000000;
 const fmt = (n) => Number(n).toLocaleString('en-US');
 
 export function createOps({ q, tx, live, config, getUser, mini, openCode, setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub, official, opsLog, balance,
-  banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper }) {
+  banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode = createDevCode({ q, opsLog }) }) {
   const operators = new Set(config.operators.map(nameKey));
-  const devCode = createDevCode({ q, opsLog });
   const accessRow = (key) => q('SELECT * FROM ops_access WHERE name_key = ?').get(key);
   // an operator: the developer always; otherwise as given or taken away on
   // the site, or as named in config.operators

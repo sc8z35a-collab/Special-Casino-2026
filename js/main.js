@@ -709,6 +709,7 @@
     if (BR.play && BR.play.init) BR.play.init();
     if (BR.feedback && BR.feedback.init) BR.feedback.init();
     if (BR.guide && BR.guide.init) BR.guide.init();
+    if (BR.support) BR.support.init();
     BR.start.init();
     BR.install.init();
     bind();

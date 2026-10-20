@@ -39,6 +39,8 @@
       <button class="tab" data-view="feedback" type="button">報告・意見案<b class="count" id="count-feedback" hidden></b></button>
       <button class="tab" data-view="log" type="button">ログ</button>
       <button class="tab" data-view="operators" type="button" id="tab-operators">運営者</button>
+      <button class="tab" data-view="pay" type="button" id="tab-pay" hidden>課金<b class="count" id="count-pay" hidden></b></button>
+      <button class="tab" data-view="vault" type="button" id="tab-vault" hidden>保管庫</button>
     </nav>
     <div class="top-right">
       <span class="muted" id="op-name"></span>
@@ -150,6 +152,43 @@
       <button class="btn small" type="button" id="op-devcode-btn">開発者コードを登録</button>
     </div>
     <div class="cards" id="op-list"></div>
+  </section>
+
+  <!-- 課金 (開発者支援): who paid, waiting for the developer's words (the developer's own) -->
+  <section class="view" id="view-pay" hidden>
+    <div class="view-head">
+      <h2>課金（開発者支援）</h2>
+      <div class="chips" id="pay-filter">
+        <button class="chip on" data-pay="waiting" type="button">返信待ち</button>
+        <button class="chip" data-pay="all" type="button">すべての注文</button>
+      </div>
+    </div>
+    <div id="pay-setup"></div>
+    <div class="summary pay-sum" id="pay-sum"></div>
+    <p class="hint muted">購入した人は、開発者が返信するまでここに残ります。返信は Ice Smoker公式ボットから「【開発者からのメッセージ】」として届き、送るとその人だけがこの一覧から消えます（そのあとにまた購入すると、もう一度載ります）。ロイヤルコインは Stripe からの入金をサーバーが確かめてから自動で届いています。</p>
+    <div class="cards" id="pay-list"></div>
+  </section>
+
+  <!-- 保管庫: the developer's files (the developer code opens it) -->
+  <section class="view" id="view-vault" hidden>
+    <div class="view-head">
+      <h2>開発者専用保管庫</h2>
+      <span class="muted" id="vault-usage"></span>
+      <button class="btn small ghost" id="vault-lock" type="button" hidden>閉じる</button>
+    </div>
+    <p class="hint muted">3Dモデルなどの大きなファイルを保存して、どこからでも取り出せます。開くには開発者コードが必要です（30分で自動的に閉じます）。ファイルは1MBずつ送られ、1つずつハッシュ（SHA-256）で壊れていないか確かめます。途中で切れても、同じファイルを選び直すと続きから送れます。「読み取り専用リンク」は期限付きで、ログインなしでそのファイルだけを取り出せます（いつでも停止できます）。ファイルが開かれたり実行されたりすることはありません。</p>
+    <div class="vault-closed" id="vault-closed">
+      <button class="btn primary" id="vault-open" type="button">開発者コードで開く</button>
+    </div>
+    <div id="vault-main" hidden>
+      <div class="vault-up">
+        <label class="btn primary" for="vault-file">ファイルを選んでアップロード</label>
+        <input id="vault-file" type="file" multiple hidden>
+        <input class="search" id="vault-note" type="text" maxlength="500" placeholder="メモ（任意・次に選ぶファイルに付きます）">
+      </div>
+      <div class="cards" id="vault-jobs"></div>
+      <div class="cards" id="vault-list"></div>
+    </div>
   </section>
 </div>
 
