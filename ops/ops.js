@@ -12,7 +12,7 @@
      より) and money from the bot ($0〜1000万).
    - 通報: accepted with a reward of 60万 / 120万 / 240万 sent by the bot with
      its thanks, or declined. 検知: the original words. 報告・意見案: an
-     意見案 adopted earns its player $100,000 from the bot with its thanks.
+     意見案 adopted earns its player 50,000 spin tokens from Ice Smoker公式 with its thanks.
    - 運営者: operator rights given to a player or taken away (they are logged
      out everywhere at once and kept out of this site), each with the
      developer code; the developer registers that code here once.
@@ -949,9 +949,9 @@
         a.appendChild(c);
       }
       if (f.kind === 'idea') {
-        if (f.adoptedAt) a.appendChild(el('span', 'adopted', '採用済み・$100,000 を送金（' + stamp(f.adoptedAt) + '）'));
+        if (f.adoptedAt) a.appendChild(el('span', 'adopted', '採用済み（' + stamp(f.adoptedAt) + '）'));
         else {
-          var ad = el('button', 'btn small warn', '採用する（$100,000 を送る）');
+          var ad = el('button', 'btn small warn', '採用する（50,000 スピントークンを送る）');
           ad.type = 'button';
           ad.dataset.adopt = f.id;
           a.appendChild(ad);
@@ -989,11 +989,11 @@
   function adopt(id, b) {
     var f = state.feedback.find(function (x) { return x.id === id; });
     var who = f && f.user ? f.user.name : '';
-    ask({ title: 'この意見案を採用しますか？', text: who + ' さんに Ice Smoker公式から $100,000 と感謝のメッセージが届きます（1つの意見案につき1回）。', ok: '採用する' }).then(function (ok) {
+    ask({ title: 'この意見案を採用しますか？', text: who + ' さんに Ice Smoker公式から 50,000 スピントークンと感謝のメッセージが届きます（1つの意見案につき1回）。', ok: '採用する' }).then(function (ok) {
       if (!ok) return null;
       b.disabled = true;
       return request('POST', '/api/ops/feedback/adopt', { id: id }).then(function () {
-        toast('採用して $100,000 を送りました');
+        toast('採用して 50,000 スピントークンを送りました');
         loadFeedback(true);
         load(true);
       });

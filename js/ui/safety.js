@@ -134,7 +134,7 @@
     ta.id = 'sf-text';
     ta.className = 'ov-input sf-text';
     ta.rows = 5;
-    ta.placeholder = cfg.placeholder || '自由に書いてください（文字数の制限はありません）';
+    ta.placeholder = cfg.placeholder || '自由に書いてください';
     ta.addEventListener('input', function () { grow(f); render(f); });
     card.appendChild(ta);
     f.ta = ta;
@@ -233,11 +233,11 @@
     t.appendChild(document.createTextNode('さんを通報'));
     openForm({
       title: t,
-      lead: 'どのようなトラブルがあったか教えてください。内容は運営だけが確認し、相手には知らされません。',
+      lead: '内容は運営だけが確認し、相手には知らされません。通報すると $' + U.fmt(BR.CONFIG.report.reward) + ' が届きます（1時間に' + BR.CONFIG.report.perHour + '件まで）。',
       kinds: BR.CONFIG.reportKinds,
       kindTitle: '通報の種類',
       label: 'くわしい内容',
-      placeholder: 'いつ・どこで・何があったかを自由に書いてください（文字数の制限はありません）',
+      placeholder: 'いつ・どこで・何があったかを書いてください',
       warn: '虚偽の通報や、おふざけでの通報をした場合は、通報したあなたのアカウントがアクセス禁止になる可能性があります。',
       send: '通報する',
       submit: function (kind, text) { return api.report(user.id, kind, text, place || 'profile'); },
@@ -249,15 +249,15 @@
   var TO_BOT = {
     bug: {
       title: '運営に報告',
-      lead: '不具合・エラー・おかしな表示など、気づいたことを教えてください。運営が確認し、Ice Smoker公式からお返事します。',
+      lead: '不具合・エラー・おかしな表示を教えてください。Ice Smoker公式からお返事します。',
       label: '報告の内容',
-      placeholder: 'どの画面で・何をしたら・どうなったかを自由に書いてください（文字数の制限はありません）'
+      placeholder: 'どの画面で・何をしたら・どうなったかを書いてください'
     },
     idea: {
       title: '運営に意見案を送る',
-      lead: '「こんな機能がほしい」「ここをこう変えてほしい」など、ゲームへのアイデアを教えてください。採用された意見案には、お礼として Ice Smoker公式から $100,000 をお送りします！',
+      lead: '採用された意見案には、Ice Smoker公式から ' + U.fmt(BR.CONFIG.idea.reward) + ' スピントークンをお送りします（1日' + BR.CONFIG.idea.perDay + '件まで）。',
       label: '意見案',
-      placeholder: 'アイデアを自由に書いてください（文字数の制限はありません）'
+      placeholder: 'アイデアを書いてください'
     }
   };
   function toBot(kind) {

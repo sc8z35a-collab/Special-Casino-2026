@@ -98,6 +98,15 @@
 
   function get(path) { return request('GET', path); }
   function post(path, body) { return request('POST', path, body || {}); }
+  // 運営へのメッセージ・報告・意見案・通報・プレイヤー間のメッセージ: too big
+  // ones (BR.CONFIG.sendMax) are stopped here, before they are sent
+  function postText(path, body) {
+    var M = BR.CONFIG.sendMax;
+    if (Array.from(String(body.text || '')).length > M.chars || new Blob([JSON.stringify(body)]).size > M.bytes) {
+      return Promise.reject(new ApiError(413, 'too_large', '送信できません。大きすぎます。'));
+    }
+    return post(path, body);
+  }
   function q(v) { return encodeURIComponent(v); }
 
   BR.api = {
@@ -149,7 +158,7 @@
       if (before) p.push('before=' + q(before));
       return get('/api/messages?' + p.join('&'));
     },
-    send: function (chat, text) { return post('/api/messages', chat.group ? { group: chat.group, text: text } : { to: chat.with, text: text }); },
+    send: function (chat, text) { return postText('/api/messages', chat.group ? { group: chat.group, text: text } : { to: chat.with, text: text }); },
     read: function (chat) { return post('/api/read', chat.group ? { group: chat.group } : { with: chat.with }); },
     typing: function (chat) { return post('/api/typing', chat.group ? { group: chat.group } : { to: chat.with }); },
     makeGroup: function (name, members) { return post('/api/groups', { name: name, members: members }); },
@@ -216,8 +225,8 @@
     age: function (adult) { return post('/api/age', { adult: !!adult }); },
     present: function (to, id) { return post('/api/present', { to: to, id: id }); },
     presentClaim: function (messageId) { return post('/api/present/claim', { message: messageId }); },
-    report: function (user, kind, text, place) { return post('/api/report', { user: user, kind: kind, text: text, place: place }); },
-    officialFeedback: function (kind, text) { return post('/api/official/feedback', { kind: kind, text: text }); },
+    report: function (user, kind, text, place) { return postText('/api/report', { user: user, kind: kind, text: text, place: place }); },
+    officialFeedback: function (kind, text) { return postText('/api/official/feedback', { kind: kind, text: text }); },
 
     /* phone notifications (js/net/push.js) */
     pushKey: function () { return get('/api/push/key'); },

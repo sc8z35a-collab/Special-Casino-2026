@@ -225,7 +225,7 @@
       opts = o;
       $('#entry-title').textContent = o.title;
       input.value = o.value || '';
-      input.maxLength = o.max || 300;
+      if (o.max) input.maxLength = o.max; else input.removeAttribute('maxlength');
       input.placeholder = o.placeholder || 'メッセージを入力';
       input.enterKeyHint = o.enterKeyHint || 'send';
       send.textContent = o.button || '送信';
@@ -1050,7 +1050,6 @@
     entry.open({
       title: view === 'group' ? group.name : peer.name,
       value: drafts[key] || '',
-      max: 300,
       placeholder: 'メッセージを入力',
       feed: chatList(),
       rule: true,

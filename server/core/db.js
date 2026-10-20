@@ -506,7 +506,9 @@ export const MIGRATIONS = [
        at       INTEGER NOT NULL
      )`,
     // a file: its pieces (1 MiB each, base64) and the SHA-256 of each, and of
-    // the list of them all once every piece is in
+    // the list of them all once every piece is in; for a 3D model, a small
+    // picture of it and what is in it, and its light copy (a file whose
+    // `parent` is the model)
     `CREATE TABLE vault_files (
        id         TEXT    PRIMARY KEY,
        name       TEXT    NOT NULL,
@@ -518,8 +520,12 @@ export const MIGRATIONS = [
        sha256     TEXT    NOT NULL DEFAULT '',
        created_by INTEGER NOT NULL,
        created_at INTEGER NOT NULL,
-       done_at    INTEGER NOT NULL DEFAULT 0
+       done_at    INTEGER NOT NULL DEFAULT 0,
+       parent     TEXT    NOT NULL DEFAULT '',
+       preview    TEXT    NOT NULL DEFAULT '',
+       info       TEXT    NOT NULL DEFAULT ''
      )`,
+    'CREATE INDEX vault_files_parent ON vault_files(parent)',
     `CREATE TABLE vault_chunks (
        file_id TEXT    NOT NULL,
        n       INTEGER NOT NULL,
@@ -527,7 +533,7 @@ export const MIGRATIONS = [
        data    TEXT    NOT NULL,
        PRIMARY KEY (file_id, n)
      )`,
-    // only the hash of a link's secret is kept
+    // only the hash of a link's secret is kept; file_id '*': the whole vault
     `CREATE TABLE vault_links (
        token_hash TEXT    PRIMARY KEY,
        file_id    TEXT    NOT NULL,
@@ -537,7 +543,17 @@ export const MIGRATIONS = [
        created_by INTEGER NOT NULL,
        created_at INTEGER NOT NULL
      )`,
-    'CREATE INDEX vault_links_file ON vault_links(file_id)'
+    'CREATE INDEX vault_links_file ON vault_links(file_id)',
+    // VIP: until when it is on (0: never), its EXP
+    'ALTER TABLE users ADD COLUMN vip_until INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN vip_exp REAL NOT NULL DEFAULT 0',
+    // a car: what its owner paid for it (0: its list price), sold between
+    // players once (中古車), the chat offer it is in (a message)
+    'ALTER TABLE cars ADD COLUMN paid INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE cars ADD COLUMN used INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE cars ADD COLUMN offer_id INTEGER NOT NULL DEFAULT 0',
+    // a car offer in a chat: '' open, 'sold', 'canceled'
+    "ALTER TABLE messages ADD COLUMN state TEXT NOT NULL DEFAULT ''"
   ]
 ];
 

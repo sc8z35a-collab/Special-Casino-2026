@@ -57,12 +57,13 @@ export function createOfficial(ctx) {
     });
     return deliver(userId, row);
   }
-  // Money from the operators: it arrives, and shows in the chat like a transfer.
-  function pay(userId, amount) {
+  // Money (or spin tokens) from the operators: it arrives, and shows in the chat like a transfer.
+  function pay(userId, amount, currency = 'dollars') {
     const bid = id();
+    const col = currency === 'tokens' ? 'tokens' : 'dollars';
     const row = tx(() => {
-      q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(amount, userId);
-      const r = ctx.insertMessage({ channel: ctx.dmChannel(userId, bid), sender: getUser(bid), recipient: userId, kind: 'transfer', amount, currency: 'dollars' });
+      q(`UPDATE users SET ${col} = ${col} + ?, rev = rev + 1 WHERE id = ?`).run(amount, userId);
+      const r = ctx.insertMessage({ channel: ctx.dmChannel(userId, bid), sender: getUser(bid), recipient: userId, kind: 'transfer', amount, currency: col });
       ctx.touchConversations(userId, bid, r.id, userId);
       return r;
     });

@@ -53,7 +53,7 @@ export function readJson(req, limit = 16 * 1024) {
     req.on('data', (c) => {
       size += c.length;
       if (size > limit) {
-        reject(new ApiError(413, 'too_large', 'リクエストが大きすぎます'));
+        reject(new ApiError(413, 'too_large', '送信できません。大きすぎます。'));
         req.destroy();
         return;
       }
@@ -83,7 +83,7 @@ export function readBytes(req, limit = 64 * 1024) {
     req.on('data', (c) => {
       size += c.length;
       if (size > limit) {
-        reject(new ApiError(413, 'too_large', 'リクエストが大きすぎます'));
+        reject(new ApiError(413, 'too_large', '送信できません。大きすぎます。'));
         req.destroy();
         return;
       }

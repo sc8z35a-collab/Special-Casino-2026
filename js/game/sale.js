@@ -149,10 +149,11 @@
       return { price: on ? round100(item.price * (100 - pct) / 100) : item.price, pct: pct, on: on, start: w.start, end: w.end, next: on ? w.start : next };
     },
     // the Car Owner sale on at `ms` (null: none), and a car's price then
+    // (`off`: VIP's % off on top of it)
     cars: carSale,
-    carPrice: function (car, sale) {
-      var pct = sale && sale.pct[car.id] || 0;
-      return { price: pct ? round100(car.price * (100 - pct) / 100) : car.price, pct: pct };
+    carPrice: function (car, sale, off) {
+      var pct = sale && sale.pct[car.id] || 0, all = pct + (off || 0);
+      return { price: all ? round100(car.price * (100 - all) / 100) : car.price, pct: pct, vip: off || 0 };
     },
     // the 大廃棄セール on at `ms` (null: none)
     disposal: function (ms) {

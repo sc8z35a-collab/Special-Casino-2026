@@ -29,7 +29,7 @@ export default {
       if (request.method === 'GET' || request.method === 'HEAD') return await casino.fetch(request);
       // bodies are small; reading them here lets the object answer early (e.g. 403) cleanly
       if (Number(request.headers.get('content-length') || 0) > MAX_BODY) {
-        return Response.json({ error: { code: 'too_large', message: 'リクエストが大きすぎます' } }, { status: 413 });
+        return Response.json({ error: { code: 'too_large', message: '送信できません。大きすぎます。' } }, { status: 413 });
       }
       return await casino.fetch(new Request(request, { body: await request.arrayBuffer() }));
     } catch (e) {

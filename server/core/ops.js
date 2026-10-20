@@ -20,7 +20,8 @@ import { jst } from './opslog.js';
 import { createDevCode } from './devcode.js';
 
 const REWARDS = [600000, 1200000, 2400000];
-const IDEA_REWARD = 100000;
+// an adopted 意見案: spin tokens
+const IDEA_REWARD = RULES.idea.reward;
 const MONEY_MAX = 10000000;
 const fmt = (n) => Number(n).toLocaleString('en-US');
 
@@ -418,7 +419,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       return { ok: true };
     },
 
-    // a 意見案 taken up: $100,000 from the official bot with its thanks (once; it is handled then too)
+    // a 意見案 taken up: spin tokens from Ice Smoker公式 with its thanks (once; it is handled then too)
     'POST /api/ops/feedback/adopt': async (req, u) => {
       need(u);
       const body = await req.json();
@@ -430,18 +431,18 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         .run(now, u.id, now, f.id);
       if (!Number(r.changes)) throw new ApiError(409, 'done', 'この意見案はもう採用されています');
       const p = getUser(f.user_id);
-      const before = p ? p.dollars : 0;
+      const before = p ? p.tokens : 0;
       let thanks = '';
       if (p && !p.npc) {
-        official.pay(p.id, IDEA_REWARD);
+        official.pay(p.id, IDEA_REWARD, 'tokens');
         const excerpt = Array.from(f.comment).length > 60 ? Array.from(f.comment).slice(0, 60).join('') + '…' : f.comment;
-        thanks = `ありがとうございます！${shortTime(f.created_at)}にいただいた意見案（「${excerpt}」）を採用させていただきました！すてきなアイデアに、運営一同心より感謝いたします！\n感謝の気持ちとして $${fmt(IDEA_REWARD)} をお送りしました。`;
+        thanks = `ありがとうございます！${shortTime(f.created_at)}にいただいた意見案（「${excerpt}」）を採用させていただきました！\n感謝の気持ちとして ${fmt(IDEA_REWARD)} スピントークンをお送りしました。`;
         official.say(p.id, thanks);
       }
       opsLog.add({
         actor: u, action: 'idea_adopt', target: p, req,
-        summary: `${p ? p.name : '?'}さんの意見案 #${f.id} を採用し、$${fmt(IDEA_REWARD)} と感謝のメッセージ`,
-        detail: { id: f.id, text: f.comment, reward: IDEA_REWARD, message: thanks, dollarsBefore: before, dollarsAfter: p ? getUser(p.id).dollars : 0 }
+        summary: `${p ? p.name : '?'}さんの意見案 #${f.id} を採用し、${fmt(IDEA_REWARD)} スピントークンと感謝のメッセージ`,
+        detail: { id: f.id, text: f.comment, reward: IDEA_REWARD, currency: 'tokens', message: thanks, tokensBefore: before, tokensAfter: p ? getUser(p.id).tokens : 0 }
       });
       return { ok: true, reward: IDEA_REWARD };
     },
