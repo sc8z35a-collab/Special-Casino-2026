@@ -103,7 +103,7 @@
     var resumed = state.back && Date.now() - state.back < 20000;
     // (never twice in a row by itself: a page the server has not caught up with stays put)
     if ((BR.screens.current() === 'start' || resumed) && idle() && !reloadedLately()) { reload(true); return; }
-    tell('新しいバージョンがあります。「今すぐアップデート」ですぐに更新できます。');
+    tell('新しいバージョンがあります（「今すぐアップデート」で更新）');
   }
 
   function checkWeb() {
@@ -125,7 +125,7 @@
       if (state.app && state.app.versionCode === info.versionCode) return;
       state.app = info;
       renderButton();
-      tell('アプリの新しいバージョン（' + info.versionName + '）があります。アップデートしてくださいね。');
+      tell('アプリの新しいバージョン（' + info.versionName + '）があります');
     }, function () { /* no app published, or offline */ });
   }
 
@@ -148,7 +148,7 @@
     showUpdate({
       title: 'アプリのアップデート',
       text: resign
-        ? 'このバージョンは今のアプリの上に入れられません。アプリをいったん削除してから、新しいアプリを入れてください（残高やフレンドはサーバーに保存されています）。'
+        ? 'このバージョンは上書きできません。アプリを削除してから入れ直してください（残高やフレンドは消えません）。'
         : 'Two state Casino ' + info.versionName + '（' + Math.max(1, Math.round(info.size / 1024)) + ' KB）に更新します。',
       go: resign ? 'ダウンロード' : 'アップデート',
       onGo: function () {
@@ -175,12 +175,12 @@
         setUpdateText('ダウンロードしています… ' + (ev.progress || 0) + '%');
         break;
       case 'permission':
-        setUpdateText('「この提供元のアプリを許可」をオンにして、この画面に戻ってください。そのままインストールが始まります。');
+        setUpdateText('「この提供元のアプリを許可」をオンにして戻ってください。インストールが始まります。');
         break;
       case 'installing':
       case 'confirm':
         progress(100);
-        setUpdateText('インストール画面で「更新」（または「インストール」）をタップしてください。終わるとアプリが新しくなります。');
+        setUpdateText('インストール画面で「更新」（または「インストール」）をタップしてください。');
         break;
       case 'done':
         setUpdateText('アップデートが完了しました。');
@@ -188,7 +188,7 @@
       case 'cancelled':
         state.updating = false;
         $('#up-go').disabled = false;
-        setUpdateText('アップデートを中止しました。もう一度「アップデート」を押すとやり直せます。');
+        setUpdateText('アップデートを中止しました。');
         break;
       case 'error':
         state.updating = false;

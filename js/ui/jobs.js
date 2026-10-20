@@ -106,12 +106,12 @@
     var next = (Math.floor(lv / every) + 1) * every;
     head.appendChild(el('small', 'jobs-next', 'Lv.' + next + 'で' + (slots + 1) + 'つに'));
     info.appendChild(head);
-    info.appendChild(el('p', 'jobs-rule', 'プレイヤーレベルが' + every + '上がるごとに、同時にできるバイトが1つ増えます（Lv.' + every + 'で2つ・Lv.' + every * 2 + 'で3つ…）。'));
+    info.appendChild(el('p', 'jobs-rule', 'レベルが' + every + '上がるごとに、同時にできるバイトが1つ増えます。'));
     var hub = el('p', 'jobs-hub' + (hubOn() ? ' on' : ''));
     hub.appendChild(el('b', '', '友達と稼ぐ 特典'));
-    hub.appendChild(document.createTextNode('参加中（特典が有効なあいだ）は、勤務中でいちばん時給が高いバイト1つの時給が×' + C.hub.wage + 'になります。'));
+    hub.appendChild(document.createTextNode('特典が有効なあいだ、勤務中でいちばん高いバイトの時給が×' + C.hub.wage + 'になります。'));
     info.appendChild(hub);
-    info.appendChild(el('p', '', 'バイトはいつでも変更できます。給料は働いた時間の分だけたまり（ゲームを閉じていても）、「給料を受け取る」で受け取れます。新しいバイトは近日追加予定です。'));
+    info.appendChild(el('p', '', 'バイトはいつでも変更できます。給料はゲームを閉じていてもたまり、「給料を受け取る」で受け取れます。'));
     list.appendChild(info);
     tick();
   }

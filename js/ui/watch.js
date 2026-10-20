@@ -68,7 +68,7 @@
       BR.shop.watchedCharm(!!r.charm);
       sfx('notify');
       var n = Object.keys(state.members).length;
-      toast(r.user.name + 'さんの観戦を始めました' + (n ? '（ほかに' + n + '人）' : '') + '。チャットで話しかけられます', 3400);
+      toast(r.user.name + 'さんの観戦を始めました' + (n ? '（ほかに' + n + '人）' : ''), 3400);
       if (BR.play && BR.play.watchStart) BR.play.watchStart(r);
     }, K.fail);
   }
@@ -225,7 +225,7 @@
   function renderFeed() {
     if (!chatFeed) return;
     chatFeed.textContent = '';
-    if (!chat.list.length) chatFeed.appendChild(el('div', 'empty chat-empty', 'ホームのみんなにメッセージを送れます。\n（ここでの会話は保存されません）'));
+    if (!chat.list.length) chatFeed.appendChild(el('div', 'empty chat-empty', 'ホームのみんなにメッセージ（保存されません）'));
     chat.list.forEach(function (m) { chatFeed.appendChild(lineEl(m)); });
     var f = $('#entry-feed');
     f.scrollTop = f.scrollHeight;
@@ -375,7 +375,7 @@
         watchers[ev.by.id] = { id: ev.by.id, name: ev.by.name, avatar: ev.by.avatar, voice: !!(watchers[ev.by.id] && watchers[ev.by.id].voice) };
         if (isNew) {
           sfx('notify');
-          toast(ev.by.name + 'さんがあなたの画面を観戦しています（👁 から話すか選べます）', 3600, openPanel);
+          toast(ev.by.name + 'さんが観戦しています（👁 から話すか選べます）', 3600, openPanel);
         }
       } else {
         delete watchers[ev.by.id];
@@ -410,7 +410,7 @@
       var now = my && state.voice.indexOf(my.id) >= 0;
       if (now && !was) {
         sfx('notify');
-        toast(state.user.name + 'さんがあなたとの通話をオンにしました。マイクボタンで話せます（今はオフ）', 4200);
+        toast(state.user.name + 'さんが通話をオンにしました。マイクボタンで話せます', 4200);
       } else if (was && !now && ev.by && ev.by.id === my.id) {
         toast('通話を終えました', 2400);
       } else if (was && !now) {

@@ -351,7 +351,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         if (reporter && !reporter.npc) {
           official.pay(reporter.id, reward);
           const excerpt = Array.from(r.body).length > 60 ? Array.from(r.body).slice(0, 60).join('') + '…' : r.body;
-          thanks = `ありがとうございます！${shortTime(r.created_at)}にいただいた、${who ? who.name : '対象プレイヤー'}さんの件の通報（${KIND_NAMES[r.kind] || r.kind}：「${excerpt}」）は、無事に運営に届き、受理されました！運営一同、ご協力に心より感謝いたします！\n感謝の気持ちとして $${fmt(reward)} をお送りしました。`;
+          thanks = `ありがとうございます！${shortTime(r.created_at)}にいただいた、${who ? who.name : '対象プレイヤー'}さんの件の通報（${KIND_NAMES[r.kind] || r.kind}：「${excerpt}」）は受理されました！運営一同、ご協力に心より感謝いたします！\nお礼として $${fmt(reward)} をお送りしました。`;
           official.say(reporter.id, thanks);
         }
         opsLog.add({
@@ -479,7 +479,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         opsLog.add({ actor: u, action: 'ops_grant', target: p, req, summary: `${p.name}さんに運営権を付与（開発者コードで）`, detail: { name: key } });
       } else {
         if (!isOperator(p)) throw new ApiError(409, 'done', `${p.name}さんは運営者ではありません`);
-        const why = '運営権が剥奪されたため、ログアウトされました。ゲームにはもう一度ログインすると入れます（運営サイトには入れません）';
+        const why = '運営権が剥奪されたため、ログアウトされました（ゲームには再ログインで入れます）';
         let ended = 0;
         tx(() => {
           q('INSERT INTO ops_access (name_key, granted, at, by_id) VALUES (?, 0, ?, ?) ON CONFLICT(name_key) DO UPDATE SET granted = 0, at = excluded.at, by_id = excluded.by_id')

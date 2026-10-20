@@ -9,7 +9,7 @@ import { newRecoveryCode, sha256 } from './auth.js';
 
 export const NAME = 'Ice Smoker公式';
 export const WAIT_MS = 2 * 86400000;
-export const AUTO_TEXT = '（自動返信）現在、サーバーが大変混み合っており、対応に時間を要しております。個別のメッセージにはすべて担当者が手動で返信し、お客様との信頼を大切にしております。大変お手数ですが、返信まであと数日お時間をいただく場合がございます。ご迷惑をおかけしてしまい、誠に申し訳ございません。';
+export const AUTO_TEXT = '（自動返信）ただいま大変混み合っております。すべてのメッセージに担当者が手動で返信しているため、返信まで数日かかる場合がございます。ご迷惑をおかけし、申し訳ございません。';
 const LONG = 20000;   // 報告 and 意見案: no limit a player would reach
 
 // ctx: { q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel, onDelivered }

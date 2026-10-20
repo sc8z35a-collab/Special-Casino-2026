@@ -52,7 +52,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   const L = { vaultOpen: [10, 5], vaultWork: [1200, 300], vaultPull: [600, 200], ...config.limits };
   const limits = { open: new Limiter(...L.vaultOpen), work: new Limiter(...L.vaultWork), pull: new Limiter(...L.vaultPull) };
   function rate(l, key) {
-    if (!l.take(String(key))) throw new ApiError(429, 'rate_limited', '操作が速すぎます。少し待ってからもう一度お試しください');
+    if (!l.take(String(key))) throw new ApiError(429, 'rate_limited', '操作が速すぎます。少し待ってください');
   }
 
   const sign = (body) => crypto.createHmac('sha256', KEY).update(body).digest();

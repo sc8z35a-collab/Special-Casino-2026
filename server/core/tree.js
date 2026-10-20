@@ -274,7 +274,7 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged }) {
         const t = treeOf(u.id, body.tree);
         const c = TREE.cycleOf(t.cycle);
         if (!c) throw new ApiError(409, 'not_growing', 'まだ育てはじめていません');
-        if (now < t.cycle_end) throw new ApiError(409, 'not_ready', 'まだ収穫できません（収穫の時期まで待ってください）');
+        if (now < t.cycle_end) throw new ApiError(409, 'not_ready', 'まだ収穫できません');
         const paid = Math.floor(grownNow(t, now) * c.mult * boostOf(t));
         q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(paid, u.id);
         q('UPDATE trees SET harvested = harvested + ? WHERE id = ?').run(paid, t.id);

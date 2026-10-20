@@ -135,7 +135,7 @@
     card.appendChild(x);
     card.appendChild(el('i', 'push-bell'));
     card.appendChild(el('h2', 'ov-title', '通知をオンにしよう'));
-    card.appendChild(el('p', 'ov-text', '友達や運営からのメッセージ、通話の呼び出し、「一緒に稼ぐ」の招待を、ゲームを開いていないときもスマホの通知でお知らせします（音とバイブ付き）。'));
+    card.appendChild(el('p', 'ov-text', 'メッセージ・通話の呼び出し・「一緒に稼ぐ」の招待を、ゲームを閉じていても通知でお知らせします。'));
     var err = el('p', 'ov-error');
     var row = el('div', 'ov-row');
     var later = el('button', 'ov-btn', fromProfile ? '閉じる' : 'あとで');
@@ -144,7 +144,7 @@
     var on = el('button', 'ov-btn gold', '通知をオンにする');
     on.type = 'button';
     if (m === 'none') {
-      card.appendChild(el('p', 'ov-notice', 'この環境では通知を使えません。iPhone は Safari の共有ボタンから「ホーム画面に追加」したアプリで、Android は Chrome かアプリ版で使えます。'));
+      card.appendChild(el('p', 'ov-notice', 'この環境では通知を使えません。iPhone は「ホーム画面に追加」したアプリ、Android は Chrome かアプリ版で使えます。'));
       on.hidden = true;
     } else if (p === 'denied') {
       card.appendChild(el('p', 'ov-notice', m === 'app' ? '通知がオフになっています。スマホの「設定」→「アプリ」→「Two state Casino RP」→「通知」から許可してください。'

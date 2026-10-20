@@ -61,10 +61,10 @@
 
   // why nobody can buy right now (null: they can)
   function blocked() {
-    if (!api.online) return '開発者支援はオンライン版でのみご利用いただけます';
+    if (!api.online) return '開発者支援はオンライン版のみです';
     if (!info) return '読み込み中…';
-    if (!info.on) return 'ただいま準備中です。開始までもうしばらくお待ちください';
-    if (!info.adult) return info.ageAsked ? '開発者支援の購入は18歳以上の方に限らせていただいています' : '年齢の確認ができていないため購入できません（起動時の「18歳以上ですか？」にお答えください）';
+    if (!info.on) return 'ただいま準備中です';
+    if (!info.adult) return info.ageAsked ? '購入は18歳以上の方に限ります' : '年齢確認が済んでいないため購入できません（起動時の「18歳以上ですか？」に回答してください）';
     return null;
   }
 
@@ -113,14 +113,14 @@
       b.type = 'button';
       b.dataset.method = m.id;
       b.appendChild(el('b', '', m.id === 'paypay' ? 'PayPay で支払う' : 'コンビニで支払う'));
-      b.appendChild(el('small', '', a < m.min ? '合計' + U.fmt(m.min) + '円からご利用いただけます' : m.id === 'konbini' ? C.konbiniDays + '日以内に店頭でお支払い' : 'お支払い後すぐにお届け'));
+      b.appendChild(el('small', '', a < m.min ? '合計' + U.fmt(m.min) + '円から' : m.id === 'konbini' ? C.konbiniDays + '日以内に店頭でお支払い' : 'お支払い後すぐにお届け'));
       b.disabled = !!why || busy || a < m.min || a > left;
       box.appendChild(b);
     });
     var hint = why || '';
-    if (!hint && a > left) hint = 'お金の使いすぎ防止のため、24時間で' + U.fmt(info.dailyMax) + '円までです（いまはあと' + U.fmt(left) + '円）';
+    if (!hint && a > left) hint = '24時間で' + U.fmt(info.dailyMax) + '円までです（あと' + U.fmt(left) + '円）';
     else if (!hint && ms.every(function (m) { return a < m.min; })) {
-      hint = '決済会社の最低金額のため、合計' + U.fmt(Math.min.apply(null, ms.map(function (m) { return m.min; }))) + '円からご購入いただけます。口数を増やしてください';
+      hint = '合計' + U.fmt(Math.min.apply(null, ms.map(function (m) { return m.min; }))) + '円から購入できます。口数を増やしてください';
     }
     $('#sp-hint').textContent = hint;
   }
@@ -205,7 +205,7 @@
     if (!m || busy) return;
     var why = blocked();
     if (why) { sfx('deny'); toast(why, 3200); return; }
-    if (amount() < m.min) { sfx('deny'); toast(m.name + 'は合計' + U.fmt(m.min) + '円からご利用いただけます'); return; }
+    if (amount() < m.min) { sfx('deny'); toast(m.name + 'は合計' + U.fmt(m.min) + '円からです'); return; }
     asked = { plan: plan, qty: qty, method: m };
     var dl = $('#sp-confirm-rows');
     dl.textContent = '';
@@ -214,7 +214,7 @@
     row(dl, 'お支払い金額', U.fmt(amount()) + '円（税込・手数料なし）');
     row(dl, 'お届けするもの', 'ロイヤルコイン ' + U.fmt(coins()) + '枚' + (plan.bonus ? '（感謝料 ' + U.fmt(plan.bonus * qty) + '枚を含む）' : ''));
     row(dl, 'お支払い方法', m.id === 'konbini' ? 'コンビニ決済（ご注文から' + C.konbiniDays + '日以内に、店頭で現金でお支払い）' : 'PayPay（このあとの決済ページでお支払い）');
-    row(dl, 'お届けの時期', m.id === 'konbini' ? '店頭でのお支払いが確認できしだい、すぐ' : 'お支払いが確認できしだい、すぐ');
+    row(dl, 'お届けの時期', 'お支払いの確認後すぐ');
     row(dl, 'キャンセル', '購入後のキャンセル・返金はできません（法令で認められる場合を除く）');
     sfx('click');
     K.showModal('sp-confirm');
@@ -248,7 +248,7 @@
   function thank(o) {
     $('#sp-done-title').textContent = 'ご支援ありがとうございます！';
     $('#sp-done-text').textContent = o.name + ' × ' + o.qty + '口（' + U.fmt(o.amount) + '円）のお支払いを確認しました。\n' +
-      'ロイヤルコイン ' + U.fmt(o.coins) + '枚をお届けしました。\n開発者から直接メッセージが届きますので、楽しみにお待ちください！';
+      'ロイヤルコイン ' + U.fmt(o.coins) + '枚をお届けしました。\n開発者からのメッセージをお待ちください！';
     K.showModal('sp-done');
     sfx('money');
     if (BR.juice && BR.juice.celebrate) { try { BR.juice.celebrate($('#sp-done .sp-done-coins'), 2); } catch (e) { /* the effects are a bonus */ } }
@@ -294,7 +294,7 @@
     back = null;
     BR.launch.whenDone(function () {
       setTimeout(function () {
-        if (!api.hasToken()) { toast('お支払いの結果はゲーム（アプリ）に届きます。ゲームに戻ってご確認ください', 5000); return; }
+        if (!api.hasToken()) { toast('お支払いの結果はゲーム（アプリ）でご確認ください', 5000); return; }
         open();
         if (b.kind === 'cancel') {
           toast('お支払いを中止しました（お金は動いていません）', 3600);
@@ -310,7 +310,7 @@
 
   /* ------------------------------------------------------------ setup --- */
   function open() {
-    if (!api.online) { sfx('deny'); toast('開発者支援はオンライン版でのみご利用いただけます'); return; }
+    if (!api.online) { sfx('deny'); toast('開発者支援はオンライン版のみです'); return; }
     if (!api.hasToken()) { BR.account.require(open); return; }
     if (BR.game && BR.game.busy()) { sfx('deny'); return; }
     BR.screens.show('support');

@@ -125,7 +125,7 @@
 
     steps('coop', 'coopEarn', [['earn1m', 1e6, 100000], ['earn1.5m', 1.5e6, 150000], ['earn3m', 3e6, 200000], ['earn4m', 4e6, 250000],
       ['earn5m', 5e6, 300000], ['earn10m', 1e7, 500000], ['earn15m', 1.5e7, 800000]],
-      function (n) { return { text: '友達と' + (n / 1e6) + 'M稼ぐ（ハブのみんなの累計）', money: true }; }),
+      function (n) { return { text: '友達と' + (n / 1e6) + 'M稼ぐ（みんなの累計）', money: true }; }),
     steps('coop', 'hubSec', [['time10', 10 * M, 200000], ['time20', 20 * M, 400000], ['time30', 30 * M, 500000], ['time50', 50 * M, 750000],
       ['time60', 60 * M, 800000], ['time90', 90 * M, 1000000], ['time120', 120 * M, 1250000], ['time150', 150 * M, 1400000],
       ['time200', 200 * M, 1500000], ['time250', 250 * M, 1500000], ['time300', 300 * M, 1500000], ['time500', 500 * M, 1500000],
@@ -143,7 +143,7 @@
       { id: 'special-earn1m', period: 'special', metric: 'earn', goal: 1000000, reward: 300000, text: '1M稼ぐ', money: true },
       { id: 'special-win100', period: 'special', metric: 'win', goal: 100, reward: 100000, text: 'カジノで100回当たる' },
       { id: 'special-win500', period: 'special', metric: 'win', goal: 500, reward: 500000, text: 'カジノで500回当たる' },
-      { id: 'special-broke', period: 'special', metric: 'broke', goal: 1, reward: 1000000, text: '無一文になってしまう', note: 'スピントークンもお金に換算して、総額が5万を下回ったとき（ロイヤルコインは含みません）' }
+      { id: 'special-broke', period: 'special', metric: 'broke', goal: 1, reward: 1000000, text: '無一文になってしまう', note: 'トークンも$に換算した総額が5万を下回ったとき（ロイヤルコインは除く）' }
     ]
   );
 

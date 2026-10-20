@@ -107,7 +107,7 @@
       <button id="btn-tree" class="hud-circle hud-tree pic" aria-label="金の生る木"><i class="ic ic-tree"></i><b class="hud-badge" id="tree-badge" hidden></b></button>
       <!-- the top middle: the update reminder, then フレンド対決 / 協力スロット (js/ui/play.js) -->
       <div class="mode-stack" id="mode-stack">
-        <div class="home-note" id="update-note" hidden><span id="update-note-text">新しいバージョンがあります。今すぐアップデートできます。</span><button class="mini-btn gold" id="update-note-go"><span>今すぐアップデート</span></button></div>
+        <div class="home-note" id="update-note" hidden><span id="update-note-text">新しいバージョンがあります</span><button class="mini-btn gold" id="update-note-go"><span>今すぐアップデート</span></button></div>
       </div>
       <div class="quest-note" id="quest-note" hidden aria-live="polite"></div>
 
@@ -174,13 +174,13 @@
       <div class="rules-pane combos active" id="pane-combos"></div>
       <div class="rules-pane rules" id="pane-rules">
         <ul class="rule-list">
-          <li><i class="ic ic-info"></i><span>「SPIN」をタップしてゲームを開始します。</span></li>
-          <li><i class="ic ic-info"></i><span>選択された賭金（ベット）が各スピンから引かれます。賞金は、中央ラインと賭金、およびマッチしたシンボルのタイプと数によって決まります。</span></li>
-          <li><i class="ic ic-info"></i><span>複数の当たりの組み合わせがライン上で止まった場合、報酬は加算されます。</span></li>
-          <li><i class="ic ic-info"></i><span>スピン中にゲームを終了すると、賭金は放棄されます。</span></li>
-          <li><i class="ic ic-info"></i><span>隣接するタブで、可能性のある組み合わせと倍率を見ることができます。</span></li>
+          <li><i class="ic ic-info"></i><span>「SPIN」をタップして開始します。</span></li>
+          <li><i class="ic ic-info"></i><span>スピンごとにベットが引かれます。賞金はベットと、中央ラインにそろったシンボルの種類と数で決まります。</span></li>
+          <li><i class="ic ic-info"></i><span>当たりの組み合わせが複数あれば、報酬は加算されます。</span></li>
+          <li><i class="ic ic-info"></i><span>スピン中に終了すると、ベットは戻りません。</span></li>
+          <li><i class="ic ic-info"></i><span>組み合わせと倍率は「組み合わせ」タブで見られます。</span></li>
           <li><i class="ic ic-info"></i><span>1日の上限: 10,000,000スピントークン。</span></li>
-          <li class="rule-ban"><i class="ic ic-info"></i><span><b>サブアカウントの禁止</b>：サブアカウント（ひとりで2つ目以降のアカウント）の作成と使用は禁止です。違反が見つかった場合は、アカウントの利用停止（アクセス禁止・BAN）の対象になります。</span></li>
+          <li class="rule-ban"><i class="ic ic-info"></i><span><b>サブアカウントの禁止</b>：ひとりで2つ目以降のアカウントを作る・使うことは禁止です。違反はアクセス禁止・BANの対象です。</span></li>
         </ul>
       </div>
     </section>
@@ -256,7 +256,7 @@
             <div class="car-price" id="car-price"></div>
             <div class="car-own" id="car-own"></div>
             <button class="act-btn gold car-buy" id="car-buy">購入する</button>
-            <p class="car-note">買った車は Garage で3D鑑賞・貸し出し・売却・フレンドへのプレゼントや販売ができます。</p>
+            <p class="car-note">買った車はガレージで3D鑑賞・貸し出し・売却・プレゼント・販売ができます。</p>
           </div>
         </div>
       </div>
@@ -288,7 +288,7 @@
             <button class="more-card" data-act="feedback"><b>運営にフィードバック</b><span>感想や改善してほしいことを送る</span></button>
             <button class="more-card vip" data-act="vip"><b>VIP</b><span>ロイヤルコインでVIPを有効にする</span></button>
             <button class="more-card support" data-act="support" hidden><b>有料ショップ</b><span>ロイヤルコインを購入する</span></button>
-            <div class="more-card soon"><b>投資<small>COMING SOON</small></b><span>近日公開予定です。お楽しみに！</span></div>
+            <div class="more-card soon"><b>投資<small>COMING SOON</small></b><span>近日公開予定</span></div>
           </div>
           <h3 class="more-title">Dev News</h3>
           <div class="news-list" id="news-list"></div>
@@ -311,7 +311,7 @@
         </div>
         <div class="scroller chat-scroll" id="chat-scroll"><div class="chat-list" id="chat-list"></div></div>
         <div class="chat-typing" id="chat-typing" hidden></div>
-        <p class="chat-rule">不適切な言動は絶対にやめましょう。発覚しだい罰則が発生する可能性があります。</p>
+        <p class="chat-rule">不適切な言動は禁止です。罰則の対象になります。</p>
         <button class="chat-gift" id="chat-gift" aria-label="プレゼントを贈る" hidden><span class="chat-gift-ring"><i class="ic ic-gift"></i></span><span>プレゼント</span></button>
         <button class="chat-bar" id="chat-bar"><span class="chat-placeholder" id="chat-placeholder"></span><span class="chat-send">送信</span></button>
       </div>
@@ -380,11 +380,11 @@
             </div>
           </div>
           <ul class="sp-notes">
-            <li class="hot">買っていただいた金額や個数にかかわらず、ご購入いただけた場合は<b>開発者が直接熱いお言葉をかけさせていただきます。</b></li>
+            <li class="hot">金額や個数にかかわらず、ご購入いただいた方には<b>開発者が直接熱いお言葉を送ります。</b></li>
             <li>お支払いは決済代行会社 Stripe を通じて、<b>開発者の銀行口座に直接送金</b>されます。</li>
             <li>いただいたお金は <b>Two state の開発費にのみ</b>使用します。</li>
-            <li>ロイヤルコインはVIPを有効にするためのコインです（4枚で1日）。スロットに賭ける・トークンや $ に交換する・人に送る・換金することはできません。</li>
-            <li>購入後のキャンセル・返金はできません（法令で認められる場合を除く）。18歳以上の方に限ります。お金の使いすぎ防止のため、24時間で<span id="sp-daily">10,000円</span>までです。</li>
+            <li>ロイヤルコインはVIP用のコインです（4枚で1日）。賭ける・トークンや $ への交換・人に送る・換金はできません。</li>
+            <li>購入後のキャンセル・返金はできません（法令で認められる場合を除く）。18歳以上の方に限ります。24時間で<span id="sp-daily">10,000円</span>までです。</li>
           </ul>
           <div class="sp-orders" id="sp-orders"></div>
         </div>
@@ -533,19 +533,19 @@
           <img class="in-icon" src="icons/icon-192.png" alt="">
           <div class="in-id">
             <h3>Two state Casino RP</h3>
-            <p>無料でアプリとして遊べます。ホーム画面のアイコンから全画面ですぐに起動できます。</p>
+            <p>無料でアプリとして遊べます（ホーム画面から全画面で起動）。</p>
           </div>
         </div>
         <div class="in-cols">
           <section class="in-col in-android">
             <h4><i class="ic ic-android"></i>Android</h4>
             <a class="act-btn gold in-apk" id="in-apk" download hidden><i class="ic ic-download"></i><span>アプリをダウンロード<small id="in-apk-size"></small></span></a>
-            <p class="in-note" id="in-apk-none">アプリ（APK）はまだ公開されていません。下の「Chrome でインストール」かメニューから入れられます。</p>
+            <p class="in-note" id="in-apk-none">アプリ（APK）は未公開です。「Chrome でインストール」かメニューから入れられます。</p>
             <button class="act-btn in-pwa" id="in-pwa" hidden><i class="ic ic-add-home"></i><span>Chrome でインストール</span></button>
             <ol class="in-steps">
               <li>ダウンロードしたファイルを開き「インストール」（初回は「この提供元のアプリを許可」をオン）</li>
               <li>または Chrome のメニュー「⋮」→「アプリをインストール」</li>
-              <li>新しい版が出たら、アプリの中の「アップデート」で更新できます</li>
+              <li>更新はアプリ内の「アップデート」から</li>
             </ol>
           </section>
           <section class="in-col in-ios">
@@ -555,12 +555,12 @@
               <li><i class="ic ic-add-home"></i><span><b>「ホーム画面に追加」</b>を選ぶ</span></li>
               <li><i class="ic ic-check"></i><span>「Web アプリとして開く」をオンにして<b>「追加」</b></span></li>
             </ol>
-            <p class="in-note">ホーム画面のアイコンから開くと全画面のアプリになります。更新は自動で、新しい版は「アップデート」ボタンですぐ反映できます。</p>
-            <p class="in-note in-warn">iPhone・iPad では Android 用のアプリ（APK ファイル）は開けません。上の手順でホーム画面に追加してください。</p>
+            <p class="in-note">ホーム画面から開くと全画面のアプリになります。更新は自動です。</p>
+            <p class="in-note in-warn">iPhone・iPad では APK は開けません。上の手順でホーム画面に追加してください。</p>
           </section>
         </div>
         <div class="in-foot">
-          <p>アプリでもユーザー名とパスワードでログインすれば、同じアカウント・同じ残高で遊べます。</p>
+          <p>アプリでも同じユーザー名とパスワードで、同じ残高のまま遊べます。</p>
           <button class="act-btn in-share" id="in-share">友達にリンクを送る</button>
         </div>
       </div>
@@ -608,7 +608,7 @@
         <button class="modal-x" data-close aria-label="閉じる"></button>
         <h3 class="modal-title"><span>ご購入内容の確認</span></h3>
         <dl class="sp-rows" id="sp-confirm-rows"></dl>
-        <p class="sp-confirm-note">「決済ページへ進む」を押すと、決済会社 Stripe のお支払いページに移動します。お支払いが確認できしだい、ロイヤルコインをお届けします。</p>
+        <p class="sp-confirm-note">「決済ページへ進む」で Stripe のお支払いページに移動します。お支払いの確認後、ロイヤルコインをお届けします。</p>
         <div class="confirm-actions"><button class="act-btn" type="button" data-close>キャンセル</button><button class="act-btn gold" type="button" id="sp-confirm-go">決済ページへ進む</button></div>
       </div>
     </div>
@@ -634,7 +634,7 @@
       <div class="modal-card fx-card" role="dialog" aria-label="演出設定">
         <button class="modal-x" data-close aria-label="閉じる"></button>
         <h2 class="modal-title"><span>演出設定</span></h2>
-        <label class="fx-simple"><span class="fx-name">シンプル演出<small>豪華な演出をまとめてオフにします（ゲームの結果や支払いは変わりません）</small></span><input type="checkbox" id="fx-simple"><i class="fx-switch"></i></label>
+        <label class="fx-simple"><span class="fx-name">シンプル演出<small>豪華な演出をまとめてオフ（結果や支払いは変わりません）</small></span><input type="checkbox" id="fx-simple"><i class="fx-switch"></i></label>
         <div class="fx-groups scroller" id="fx-groups"></div>
         <div class="fx-foot"><button class="act-btn" id="fx-reset" type="button">すべてオンに戻す</button><button class="act-btn gold" data-close type="button">閉じる</button></div>
       </div>
@@ -675,7 +675,7 @@
       <div class="modal-card home-panel-card" role="dialog" aria-label="あなたのホーム">
         <button class="modal-x" data-close aria-label="閉じる"></button>
         <h3 class="modal-title"><span>あなたのホーム</span></h3>
-        <p class="hp-note">観戦している人と話すかどうかを選べます。最初はどちらのマイクもオフです。</p>
+        <p class="hp-note">観戦している人と話すか選べます（最初はマイクオフ）。</p>
         <div class="hp-list scroller" id="hp-list"></div>
         <div class="hp-acts"><button class="act-btn gold" id="hp-chat"><span>チャットする</span></button></div>
       </div>
@@ -740,8 +740,8 @@
       <div class="ov-brand">Two state Casino RP</div>
       <h2 class="ov-title">はじめまして！</h2>
       <p class="ov-notice" id="ov-notice-register" hidden></p>
-      <p class="ov-text">ユーザー名とパスワードを決めてください。<b>ユーザー名はほかの人と同じものは使えません。</b>フレンドはこの名前であなたを探します。</p>
-      <p class="ov-rule">サブアカウント（ひとりで2つ目以降のアカウント）の作成・使用はルールで禁止されています。</p>
+      <p class="ov-text">ユーザー名とパスワードを決めてください。<b>ユーザー名はほかの人と同じものは使えません。</b></p>
+      <p class="ov-rule">サブアカウント（2つ目以降のアカウント）の作成・使用は禁止です。</p>
       <div class="ov-field">
         <input id="ov-name" class="ov-input" type="text" name="username" maxlength="24" placeholder="ユーザー名（2〜12文字）" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next">
         <p class="ov-hint" id="ov-name-hint"></p>
@@ -758,7 +758,7 @@
 
     <div class="ov-card wide" id="ov-avatar" hidden>
       <h2 class="ov-title"><span class="uname" id="ov-avatar-who"></span>さんのアイコン</h2>
-      <p class="ov-text">好きなアイコンを選んでください。<b>鎖のかかったアイコンはレアもの</b>なので今は選べません。ゲームの中で $ を貯めると買えます。</p>
+      <p class="ov-text">好きなアイコンを選んでください。<b>鎖つきはレアもの</b>で、ゲームの中で $ を貯めると買えます。</p>
       <div class="av-grid ov-grid" id="ov-av-grid"></div>
       <p class="ov-error" id="ov-avatar-error" role="alert"></p>
       <div class="ov-row">
@@ -772,7 +772,7 @@
       <div class="ov-brand">Two state Casino RP</div>
       <h2 class="ov-title">ログイン</h2>
       <p class="ov-notice" id="ov-notice-login" hidden></p>
-      <p class="ov-text">登録したユーザー名とパスワードを入力してください。残高もフレンドもそのまま戻ります。</p>
+      <p class="ov-text">ユーザー名とパスワードを入力してください。残高もフレンドもそのまま戻ります。</p>
       <input id="ov-login-name" class="ov-input" type="text" name="username" maxlength="24" placeholder="ユーザー名" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next">
       <div class="ov-field pw">
         <input id="ov-login-pass" class="ov-input" type="password" name="password" maxlength="64" placeholder="パスワード" autocomplete="current-password" enterkeyhint="go">
@@ -788,7 +788,7 @@
       <button class="ov-close" type="button" data-ov-close aria-label="閉じる"></button>
       <h2 class="ov-title">引き継ぎコードでログイン</h2>
       <p class="ov-notice" id="ov-notice-code-login" hidden></p>
-      <p class="ov-text">登録したときに表示された引き継ぎコード（16文字）を入力してください。<b>機種変更をしたとき</b>も、このコードで残高やフレンドをそのまま引き継げます。</p>
+      <p class="ov-text">登録時に表示された引き継ぎコード（16文字）を入力してください。<b>機種変更</b>のときも、このコードで引き継げます。</p>
       <input id="ov-code" class="ov-input code" type="text" maxlength="24" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go">
       <p class="ov-error" id="ov-code-login-error" role="alert"></p>
       <button class="ov-btn gold" type="submit">ログイン</button>
@@ -798,7 +798,7 @@
 
     <div class="ov-card" id="ov-codecard" hidden>
       <h2 class="ov-title" id="ov-code-title"></h2>
-      <p class="ov-text">これはあなたの<b>引き継ぎコード</b>です。パスワードを忘れたときにアカウントを復元するのに使います。スクリーンショットなどで大切に保管してください。</p>
+      <p class="ov-text">あなたの<b>引き継ぎコード</b>です。パスワードを忘れたときに使います。スクリーンショットなどで保管してください。</p>
       <div class="ov-code" id="ov-code-value"></div>
       <button class="ov-btn" type="button" id="ov-copy">コードをコピー</button>
       <button class="ov-btn gold" type="button" id="ov-done"></button>
@@ -847,7 +847,7 @@
     <button type="submit" id="entry-send">送信</button>
   </form>
   <p class="entry-error" id="entry-error" role="alert" hidden></p>
-  <p class="entry-rule" id="entry-rule" hidden>不適切な言動は絶対にやめましょう。発覚しだい罰則が発生する可能性があります。</p>
+  <p class="entry-rule" id="entry-rule" hidden>不適切な言動は禁止です。罰則の対象になります。</p>
   <div class="entry-feed" id="entry-feed"></div>
 </div>
 

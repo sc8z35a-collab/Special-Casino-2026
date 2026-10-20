@@ -114,7 +114,7 @@
       setBusy(false);
       if (!r) { setError('register', 'サーバーに接続できません。少し待ってからもう一度お試しください'); return; }
       if (deviceStop(r.device)) return;
-      if (!r.available) { setError('register', 'このユーザー名はすでに使われています。別の名前にしてください'); K.sfx('deny'); return; }
+      if (!r.available) { setError('register', 'このユーザー名はすでに使われています'); K.sfx('deny'); return; }
       draft.name = name;
       draft.password = pw;
       K.sfx('click');
@@ -124,7 +124,7 @@
 
   // This device has made its two accounts (or one on it is banned): no new
   // one. Two made: the 引き継ぎコード of one of them brings it back.
-  var DEVICE_FULL = 'この端末ではアカウントを2つまでしか作れません。前に作ったアカウントの引き継ぎコードを入力してログインしてください';
+  var DEVICE_FULL = 'この端末で作れるアカウントは2つまでです。前のアカウントの引き継ぎコードでログインしてください';
   function deviceStop(state, message) {
     if (state === 'full') {
       K.sfx('deny');
@@ -147,7 +147,7 @@
       draft.avatar = id;
       setError('avatar', '');
     }, function (a) {
-      setError('avatar', '「' + a.name + '」はレアアイコン。鎖でロックされているので今は選べません！ゲームの中で$を貯めて購入しよう（いつでもセール中）');
+      setError('avatar', '「' + a.name + '」はレアアイコンのため今は選べません。ゲームの中で$を貯めて購入しよう！');
     });
     show('avatar');
   }

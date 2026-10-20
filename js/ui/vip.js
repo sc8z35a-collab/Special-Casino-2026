@@ -29,7 +29,7 @@
   }
 
   function open() {
-    if (!api.online) { sfx('deny'); toast('VIPはオンライン版でのみご利用いただけます'); return; }
+    if (!api.online) { sfx('deny'); toast('VIPはオンライン版のみです'); return; }
     if (!api.hasToken()) { BR.account.require(open); return; }
     if (BR.game && BR.game.busy()) { sfx('deny'); return; }
     BR.screens.show('vip');

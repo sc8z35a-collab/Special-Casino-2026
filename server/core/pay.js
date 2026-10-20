@@ -96,7 +96,7 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
     seller: new Limiter(...L.paySeller)
   };
   function rate(l, key) {
-    if (!l.take(String(key))) throw new ApiError(429, 'rate_limited', '操作が速すぎます。少し待ってからもう一度お試しください');
+    if (!l.take(String(key))) throw new ApiError(429, 'rate_limited', '操作が速すぎます。少し待ってください');
   }
 
   const getOrder = (id) => q('SELECT * FROM pay_orders WHERE id = ?').get(id);
@@ -204,7 +204,7 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
       const plan = planOf(o.plan);
       official.say(p.id, `【ご支援ありがとうございます】\n\n${p.name}様\n\nこのたびは「${plan.name}」を${o.qty}口（${yen(o.amount)}）ご購入いただき、誠にありがとうございます！\n` +
         `ロイヤルコイン ${o.coins}枚${o.bonus ? `（感謝料 ${o.bonus}枚を含む）` : ''}をお届けしました。\n\n` +
-        'いただいたお金は Two state の開発費にのみ使わせていただきます。\n開発者から直接メッセージをお送りしますので、楽しみにお待ちください。\n\nIce Smoker公式より');
+        'いただいたお金は Two state の開発費にのみ使います。\n開発者からのメッセージをお待ちください。\n\nIce Smoker公式より');
     }
     opsLog.add({
       actorName: 'Stripe', action: 'pay_paid', target: p, req,
@@ -356,7 +356,7 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
           unit_amount: plan.price,
           product_data: {
             name: `${plan.name}（ロイヤルコイン${plan.coins}枚${plan.bonus ? `＋感謝料${plan.bonus}枚` : ''}）`,
-            description: 'Two state Casino RP の開発者への支援です（開発費にのみ使われます）。ロイヤルコインはゲーム内でVIPを有効にするためのコインで、賭けたり交換・換金したりはできません。',
+            description: 'Two state Casino RP の開発者への支援です（開発費にのみ使用）。ロイヤルコインはVIP用のコインで、賭け・交換・換金はできません。',
             images: [`${config.publicUrl}/icons/icon-512.png`]
           }
         }
@@ -396,9 +396,9 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
     'POST /api/pay/checkout': async (req, u) => {
       rate(limits.checkout, u.id);
       rate(limits.checkoutIp, req.ip || '-');
-      if (!on) throw new ApiError(503, 'pay_off', '開発者支援の購入はただいま準備中です。開始までもうしばらくお待ちください');
+      if (!on) throw new ApiError(503, 'pay_off', '開発者支援はただいま準備中です');
       if (u.npc) throw new ApiError(403, 'forbidden', 'このアカウントでは購入できません');
-      if (u.age_ok !== 1) throw new ApiError(403, 'age', '開発者支援の購入は18歳以上の方に限らせていただいています');
+      if (u.age_ok !== 1) throw new ApiError(403, 'age', '購入は18歳以上の方に限ります');
       const body = await req.json();
       const plan = PLANS.get(String(body.plan || ''));
       if (!plan) throw new ApiError(400, 'bad_plan', 'プランを選んでください');
@@ -407,7 +407,7 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
       const method = methods.find((m) => m.id === String(body.method || ''));
       if (!method) throw new ApiError(400, 'bad_method', '支払い方法を選んでください');
       const amount = plan.price * qty;
-      if (amount < method.min) throw new ApiError(400, 'too_small', `${method.name}は合計${yen(method.min)}からご利用いただけます（いまの合計は${yen(amount)}です）`);
+      if (amount < method.min) throw new ApiError(400, 'too_small', `${method.name}は合計${yen(method.min)}からです（いまの合計は${yen(amount)}）`);
       if (amount > method.max) throw new ApiError(400, 'too_large', `${method.name}は合計${yen(method.max)}までです`);
       const now = Date.now();
       const id = crypto.randomBytes(16).toString('hex');
@@ -416,9 +416,9 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
         const w = q(`SELECT SUM(CASE WHEN status = 'pending' AND (voucher_until = 0 OR voucher_until > ?) THEN 1 ELSE 0 END) AS slips,
                             SUM(CASE WHEN status IN ('new', 'open') AND created_at > ? THEN 1 ELSE 0 END) AS pages
                      FROM pay_orders WHERE user_id = ? AND created_at > ?`).get(now, now - PAGE_MS - 300000, u.id, now - 60 * DAY);
-        if ((w.slips || 0) >= SLIPS_MAX) throw new ApiError(429, 'slips', `コンビニでのお支払いを待っている注文が${SLIPS_MAX}件あります。先にお支払いを済ませるか、期限が過ぎてからお試しください`);
-        if ((w.pages || 0) >= PAGES_MAX) throw new ApiError(429, 'pages', '支払いページを開いたままの注文が多すぎます。開いたままのページは30分で自動的に取り消されます。しばらくしてからお試しください');
-        if (spent(u.id, now) + amount > dailyMax) throw new ApiError(429, 'daily_max', `開発者支援の購入は24時間で${yen(dailyMax)}までとさせていただいています（使いすぎ防止のため）`);
+        if ((w.slips || 0) >= SLIPS_MAX) throw new ApiError(429, 'slips', `コンビニ払い待ちの注文が${SLIPS_MAX}件あります。お支払い後か期限が過ぎてからお試しください`);
+        if ((w.pages || 0) >= PAGES_MAX) throw new ApiError(429, 'pages', '開いたままの支払いページが多すぎます（30分で自動的に取り消されます）。しばらくしてからお試しください');
+        if (spent(u.id, now) + amount > dailyMax) throw new ApiError(429, 'daily_max', `購入は24時間で${yen(dailyMax)}までです`);
         q(`INSERT INTO pay_orders (id, user_id, plan, qty, coins, bonus, amount, method, status, livemode, ip, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?)`)
           .run(id, u.id, plan.id, qty, (plan.coins + plan.bonus) * qty, plan.bonus * qty, amount, method.id, stripe.live ? 1 : 0, String(req.ip || '').slice(0, 64), now, now);

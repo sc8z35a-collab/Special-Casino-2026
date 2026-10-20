@@ -29,6 +29,6 @@
     placeholder: function () {
       return who ? { user: { id: who.id, name: who.name, avatar: who.avatar, online: true, npc: 'official' }, unread: 0, at: 0, friend: false, last: null } : null;
     },
-    intro: '運営からのお知らせ・お問い合わせはこちら。不具合の報告や意見案も送れます'
+    intro: '運営からのお知らせ・お問い合わせはこちら'
   };
 })(window.BR = window.BR || {});

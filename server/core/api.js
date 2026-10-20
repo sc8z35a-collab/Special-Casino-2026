@@ -225,7 +225,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   // may this device make an account? '' yes, 'full' (log in to one of its own), 'banned'
   const DEVICE_BANNED_NEW = 'この端末のアカウントが利用停止（アクセス禁止・BAN）中のため、新しいアカウントは作れません';
-  const deviceFull = () => `この端末ではアカウントを${config.accountsPerDevice}つまでしか作れません。前に作ったアカウントの引き継ぎコードを入力してログインしてください`;
+  const deviceFull = () => `この端末で作れるアカウントは${config.accountsPerDevice}つまでです。前のアカウントの引き継ぎコードでログインしてください`;
   function deviceRoom(req) {
     const dev = deviceOf(req);
     if (!dev.id) return '';
@@ -254,7 +254,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   function tellBanned(u) {
     const name = BAN_NAME[u.ban_kind] || '利用停止';
-    official.say(u.id, letter(u, `${name}のお知らせ`, `${banNotice(u)}\n期間：${u.ban_until ? when(u.ban_until) + ' まで' : '解除されるまで'}\nその間は TWO STATE で遊ぶことはできません。`));
+    official.say(u.id, letter(u, `${name}のお知らせ`, `${banNotice(u)}\n期間：${u.ban_until ? when(u.ban_until) + ' まで' : '解除されるまで'}\nその間は遊べません。`));
   }
   // The ban ends: lifted by the operators ('lifted') or its time is up
   // ('expired'). False when there was none to end.
@@ -266,7 +266,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (!Number(r.changes)) return false;
     const name = BAN_NAME[u.ban_kind] || '利用停止';
     official.say(u.id, letter(u, `${name}解除のお知らせ`,
-      `あなたの${name}は${when(now)}に${how === 'expired' ? '期間が終わり、' : '公式により'}解除されました。\nまた TWO STATE をお楽しみください。ルールを守って遊んでいただきますよう、お願いいたします。`));
+      `あなたの${name}は${when(now)}に${how === 'expired' ? '期間が終わり、' : '公式により'}解除されました。\nルールを守って、また TWO STATE をお楽しみください。`));
     return true;
   }
   function liftExpired(u) {
@@ -821,7 +821,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
 
   function rate(limiter, key, message) {
-    if (!limiter.take(String(key))) throw new ApiError(429, 'rate_limited', message || '操作が速すぎます。少し待ってからもう一度お試しください');
+    if (!limiter.take(String(key))) throw new ApiError(429, 'rate_limited', message || '操作が速すぎます。少し待ってください');
   }
 
   function requireFriend(u, otherId, what) {
@@ -1651,7 +1651,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (isBlocked(t.id, u.id)) return { friendship: 'outgoing', user: mini(t) };
       // they already asked us: that makes us friends
       if (hasRequest(t.id, u.id)) return { friendship: 'friends', user: mini(t), ...makeFriends(t, u) };
-      if (hasRequest(u.id, t.id)) throw new ApiError(409, 'pending', 'すでに申請しています。承認されるまでお待ちください');
+      if (hasRequest(u.id, t.id)) throw new ApiError(409, 'pending', 'すでに申請しています');
       if (q('SELECT COUNT(*) AS n FROM friend_requests WHERE from_id = ?').get(u.id).n >= MAX_PENDING_REQUESTS) {
         throw new ApiError(429, 'too_many', '承認待ちの申請が多すぎます');
       }
@@ -1954,7 +1954,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const r = tx(() => {
         const c = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(id, u.id);
         if (!c) throw new ApiError(404, 'no_car', 'この車は持っていません');
-        if (c.rent_start) throw new ApiError(409, 'rented', '貸し出し中の車は売れません（戻ってから売れます）');
+        if (c.rent_start) throw new ApiError(409, 'rented', '貸し出し中の車は売れません');
         if (c.offer_id) throw new ApiError(409, 'on_offer', '販売中の車です');
         const model = CARS.get(c.model);
         if (!model) throw new ApiError(400, 'bad_model', 'この車は買い取れません');
@@ -2022,7 +2022,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       }
       const id = tx(() => {
         const cur = getUser(u.id);
-        if (carCount(cur.id) >= garageSize(cur)) throw new ApiError(409, 'garage_full', `ガレージがいっぱいです（${garageSize(cur)}台）。ガレージを拡張すると置けます`);
+        if (carCount(cur.id) >= garageSize(cur)) throw new ApiError(409, 'garage_full', `ガレージがいっぱいです（${garageSize(cur)}台）`);
         if (cur.dollars < cost) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(cost, cur.id);
         addVipExp(cur, VIP_RULES.exp.car);
@@ -2527,7 +2527,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       rate(limit.shop, u.id);
       const paid = tx(() => {
         const cur = getUser(u.id);
-        if (LEVEL.of(cur.xp) < job.level) throw new ApiError(403, 'locked', `このバイトはプレイヤーレベル${job.level}から働けます`);
+        if (LEVEL.of(cur.xp) < job.level) throw new ApiError(403, 'locked', `このバイトはLv.${job.level}から働けます`);
         const now = Date.now();
         const s = settleJobs(cur, now);
         if (s.jobs.some((j) => j.id === job.id)) throw new ApiError(409, 'working', 'このバイトはもう始めています');
@@ -2638,7 +2638,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       requireFriend(u, to, 'フレンド対決');
       if (!live.isOnline(to)) throw new ApiError(409, 'offline', `${t.name}さんは今オフラインです`);
       rate(limit.friend, u.id);
-      if (currentBattle(u.id)) throw new ApiError(409, 'busy', '対決中です。終わってから申し込んでください');
+      if (currentBattle(u.id)) throw new ApiError(409, 'busy', '対決が終わってから申し込んでください');
       if (currentBattle(to)) throw new ApiError(409, 'busy_other', `${t.name}さんはほかの人と対決中です`);
       const id = Number(q('INSERT INTO battles (a_id, b_id, spins, bet, state, created_at) VALUES (?, ?, ?, ?, ?, ?)')
         .run(u.id, to, spins, bet, 'invite', Date.now()).lastInsertRowid);
@@ -2732,7 +2732,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q(`INSERT INTO hub_invites (from_id, to_id, created_at) VALUES (?, ?, ?)
          ON CONFLICT(from_id, to_id) DO UPDATE SET created_at = excluded.created_at`).run(u.id, to, now);
       live.send(to, 'hub', { type: 'invite', from: mini(u), size: h ? hubMemberRows(h.id).length : 1, until: now + HUB.inviteMs });
-      phone(to, { kind: 'invite', title: '「一緒に稼ぐ」の招待', body: `${u.name}さんから「一緒に稼ぐ」の招待が届きました。10分以内にゲームを開いて参加しよう！`, tag: `invite:${u.id}`, open: 'friends' });
+      phone(to, { kind: 'invite', title: '「一緒に稼ぐ」の招待', body: `${u.name}さんから「一緒に稼ぐ」の招待が届きました。10分以内に参加しよう！`, tag: `invite:${u.id}`, open: 'friends' });
       return { ok: true, until: now + HUB.inviteMs };
     },
 
@@ -2872,7 +2872,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const t = liveTarget(to);
       if (t.npc) throw new ApiError(400, 'npc', `${t.name}には贈れません`);
       requireFriend(u, to, 'プレゼントを贈れるように');
-      rate(limit.transfer, u.id, '続けて贈れません。少し待ってからお試しください');
+      rate(limit.transfer, u.id, '続けて贈れません。少し待ってください');
       const held = isBlocked(to, u.id);
       const m = tx(() => {
         const cur = getUser(u.id);
@@ -3193,7 +3193,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       for (const [k, until] of voiceKept) if (until < Date.now()) voiceKept.delete(k);
       // the official bot: two days without the operators' answer, it answers on its own
       for (const p of official.autoReplies()) {
-        opsLog.add({ action: 'bot_auto_reply', target: p, summary: `${p.name}さんへ自動返信を送信（2日以上返信がなかったため、メッセージを既読にしました）`, detail: { text: 'AUTO' } });
+        opsLog.add({ action: 'bot_auto_reply', target: p, summary: `${p.name}さんへ自動返信（2日以上未返信のため既読に）`, detail: { text: 'AUTO' } });
       }
       for (const l of Object.values(limit)) l.prune();
       quota.flush();

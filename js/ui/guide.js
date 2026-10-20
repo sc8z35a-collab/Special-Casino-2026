@@ -24,9 +24,9 @@
   function tab(name) { return '#board-tabs .tab[data-tab="' + name + '"]'; }
   var STEPS = [
     { screen: 'slot', title: 'ようこそ Two state Casino RP へ！',
-      text: 'これから2分ほどで、遊び方をかんたんに案内します。\nまずはホーム画面から見ていきましょう！' },
+      text: '遊び方をかんたんに案内します。\nまずはホーム画面から！' },
     { screen: 'slot', target: '.wallet', title: 'あなたの持ち物',
-      text: 'チップはスピントークン（スロットを回すのに使います）、$ はドル、そして黄色いコインはロイヤルコイン（開発者支援のお礼の記念コイン。タップで開発者支援）です。' },
+      text: 'チップはスピントークン（スロット用）、$ はドル、黄色いコインはロイヤルコイン（VIP用・タップで開発者支援）です。' },
     { screen: 'slot', target: '#btn-get', title: 'トークンを入手',
       text: '$ をスピントークンに交換できます。毎日1回、無料のトークンももらえます。' },
     { screen: 'slot', target: '.bet-group', title: 'ベット',
@@ -35,29 +35,29 @@
       text: 'さっそく回してみましょう！\n光っている SPIN をタップしてください。',
       textIdle: 'SPIN でスロットが回ります。トークンがないときは「トークンを入手」で手に入れましょう。' },
     { screen: 'slot', target: '.win-group', title: '当たり',
-      text: '当たると、ここに獲得したトークンが表示されます。小さな当たりでも、連続するとコンボになります！' },
+      text: '当たると獲得トークンがここに出ます。連続で当たるとコンボに！' },
     { screen: 'slot', target: '#btn-charm', title: 'お守り加護',
       text: '使うと、次に負けたスピンでトークンの一部が戻ってきます。Shop で買えます。' },
     { screen: 'slot', target: '#btn-quest', round: true, title: 'クエスト',
-      text: '達成するとごほうびがもらえます。達成したら自分で「受け取る」。まとめて受け取ることもできます。' },
+      text: '達成したら「受け取る」でごほうびがもらえます（一括受け取りも可）。' },
     { screen: 'slot', target: '#me-card', title: 'プロフィール',
-      text: 'あなたの名前とレベルです。タップするとプロフィールが開き、アイコンも変えられます。' },
+      text: 'あなたの名前とレベルです。タップでプロフィール・アイコン変更。' },
     { screen: 'slot', target: '#btn-radio', round: true, act: 'menu', title: 'メニュー',
       text: 'フレンドやメッセージはメニューから。\nメニューのボタンをタップしてみましょう！', hint: 'メニューをタップ' },
     { screen: 'board', target: tab('friends'), title: 'フレンド',
-      text: 'ユーザー名で検索してフレンド申請。フレンドの画面を観戦したり、フレンド対決もできます。' },
+      text: 'ユーザー名で検索してフレンド申請。観戦やフレンド対決もできます。' },
     { screen: 'board', target: tab('messages'), title: 'メッセージ',
-      text: 'フレンドやグループと会話できます。お金に困ったら金貸しのマイクソン、金の生る木のことなら友達のジョンソンに話しかけてみましょう。' },
+      text: 'フレンドやグループと会話できます。お金に困ったらマイクソン、金の生る木のことはジョンソンへ。' },
     { screen: 'board', target: [tab('cars'), tab('shop')], title: 'Car Owner と Shop',
-      text: '車を買ってガレージに飾ったり、フレンドにプレゼントしたり。Shop ではお守り加護などのアイテムが買えます（持っている物は「所有」）。' },
+      text: '車を買ってガレージに飾ったり、プレゼントしたり。Shop ではお守り加護などが買えます。' },
     { screen: 'board', target: tab('jobs'), title: 'バイト',
       text: 'バイトをすると、ゲームを閉じていてもお金がたまります。' },
     { screen: 'board', target: tab('more'), title: '詳細',
-      text: 'アップデート情報（Dev News）、このガイドの見直し、運営へのフィードバックはここから。' },
+      text: 'Dev News・このガイド・運営へのフィードバックはここから。' },
     { screen: 'board', target: '#screen-board [data-action="back"]', act: 'back', title: 'ホームに戻ろう',
-      text: '「戻る」をタップすると、いつでもホーム画面に戻れます。', hint: '「戻る」をタップ' },
+      text: '「戻る」でいつでもホーム画面に戻れます。', hint: '「戻る」をタップ' },
     { screen: 'slot', last: true, title: '準備OK！',
-      text: 'これで案内はおしまいです。\nさあ、スロットを回して楽しんでください！' }
+      text: '案内はおしまいです。\nスロットを楽しんでください！' }
   ];
 
   /* ------------------------------------------------------------ geometry --- */
@@ -467,7 +467,7 @@
     setTimeout(function () { if (root.parentNode) root.parentNode.removeChild(root); }, 320);
     if (!completed) return;
     if (completed === 'skip') {
-      K.toast('ガイドをスキップしました（メニューの「詳細」からいつでも見られます）', 3600);
+      K.toast('ガイドは「詳細」からいつでも見られます', 3600);
       sendDone(R.uid);
       return;
     }

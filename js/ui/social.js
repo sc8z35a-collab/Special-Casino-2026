@@ -98,7 +98,7 @@
       if (err.code === 'maintenance') return;                // the notice is up until the quota resets
       if (!warned) {
         warned = true;
-        toast('サーバーに接続できません。再接続しています…', 3000);
+        toast('接続が切れました。再接続しています…', 3000);
       }
       retryTimer = setTimeout(start, retry);
       retry = Math.min(retry * 2, 30000);
@@ -140,7 +140,7 @@
     if (BR.screens.current() !== 'start' && BR.screens.current() !== 'slot') BR.screens.show('slot');
     BR.account.open('login', err && err.code === 'ended' && err.message
       ? err.message + '。'
-      : 'もう一度ログインしてください。ユーザー名とパスワードで、残高もそのまま戻ります。');
+      : 'もう一度ログインしてください（残高はそのまま戻ります）。');
   }
   // banned (アクセス禁止 / BAN / 永久BAN, or another account on this device):
   // locked on the title screen until it ends
@@ -152,7 +152,7 @@
   function logout() {
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode('ログアウトしますか？'));
-      p.appendChild(el('small', 'confirm-sub', '残高やフレンドはサーバーに保存されています。ユーザー名とパスワードでいつでも戻れます。'));
+      p.appendChild(el('small', 'confirm-sub', '残高やフレンドは消えません。ユーザー名とパスワードでいつでも戻れます。'));
     }, 'ログアウト').then(function (ok) {
       if (!ok) return;
       // this phone stops getting the account's notifications first (while signed in)
@@ -483,7 +483,7 @@
       box.appendChild(jp.row);
     }
     if (!friends.friends.length) {
-      box.appendChild(el('div', 'empty fr-empty', 'まだフレンドはいません。\n上の検索でユーザー名を入力して、フレンド申請を送りましょう！\n承認されると通知が届き、会話できるようになります。'));
+      box.appendChild(el('div', 'empty fr-empty', 'まだフレンドはいません。\n上の検索からフレンド申請を送りましょう！'));
     }
     // online first, then whoever was here most recently
     friends.friends.slice().sort(function (a, b) {
@@ -513,7 +513,7 @@
   function searchFriend() {
     entry.open({
       title: 'フレンドを検索',
-      placeholder: 'ユーザー名をそのまま入力（完全一致）',
+      placeholder: 'ユーザー名（完全一致）',
       max: 24,
       button: '検索',
       enterKeyHint: 'search',
@@ -561,7 +561,7 @@
     else if (act === 'remove') job = K.confirmBox(function (p) {
       p.appendChild(K.nameSpan(u.name || ''));
       p.appendChild(document.createTextNode('さんをフレンドから外しますか？'));
-      p.appendChild(el('small', 'confirm-sub', 'メッセージ・送金・車のプレゼント・観戦・フレンド対決ができなくなります。'));
+      p.appendChild(el('small', 'confirm-sub', 'メッセージ・送金・観戦などができなくなります。'));
     }, '外す').then(function (ok) {
       if (!ok) return null;
       return api.friendRemove(id).then(function () { sfx('click'); toast('フレンドから外しました'); return 'none'; });
@@ -614,7 +614,7 @@
     johnsonConv = johnsonConv || BR.johnson.placeholder();
     if (johnsonConv) list.appendChild(convRow(johnsonConv));
     rest.forEach(function (x) { list.appendChild(x.row); });
-    if (!rest.length) list.appendChild(el('li', 'empty', 'フレンドになると、ここで会話できます。\n「＋ グループを作る」でフレンドとのグループも作れます。'));
+    if (!rest.length) list.appendChild(el('li', 'empty', 'フレンドとここで会話できます。\n「＋ グループを作る」でグループも作れます。'));
   }
   function convRow(c) {
     var lender = BR.peter.is(c.user), friend = BR.johnson.is(c.user), bot = BR.official.is(c.user), npc = lender || friend || bot;
@@ -629,7 +629,7 @@
     mid.appendChild(name);
     var key = 'dm:' + c.user.id;
     mid.appendChild(el('div', 'conv-last' + (typingNames(key).length ? ' typing' : ''), typingNames(key).length ? '入力中…'
-      : c.last ? preview(c.last) : bot ? BR.official.intro : friend ? BR.johnson.intro + 'です' : 'お金に困ったら相談においで。累計1100万円まで貸すよ（「100万貸して」と書いてね）'));
+      : c.last ? preview(c.last) : bot ? BR.official.intro : friend ? BR.johnson.intro + 'です' : 'お金に困ったら相談においで（「100万貸して」と書いてね）'));
     li.appendChild(mid);
     li.appendChild(convSide(c.at, c.unread));
     return li;
@@ -800,13 +800,13 @@
     if (!key) return;
     var c = chan(key), list = chatList();
     list.textContent = '';
-    if (c.hasMore) list.appendChild(el('div', 'chat-more', '上にスクロールして以前のメッセージを表示'));
+    if (c.hasMore) list.appendChild(el('div', 'chat-more', '上にスクロールで以前のメッセージ'));
     var prev = null;
     c.list.forEach(function (m) { appendMsg(list, m, prev, key); prev = m; });
     if (!c.list.length) {
       list.appendChild(el('div', 'empty chat-empty', note || (!c.loaded ? '読み込み中…'
-        : key.indexOf('group:') === 0 ? 'グループができました。\n最初のメッセージを送ってみましょう！'
-          : peer && BR.official.is(peer) ? '運営へのお問い合わせはこちらから送れます。\n不具合は「報告」、ゲームへのアイデアは「意見案」からどうぞ。担当者が確認してお返事します。'
+        : key.indexOf('group:') === 0 ? 'グループができました。\nメッセージを送ってみましょう！'
+          : peer && BR.official.is(peer) ? '運営へのお問い合わせはこちらへ。\n不具合は「報告」、アイデアは「意見案」からどうぞ。'
             : 'まだメッセージはありません。\nあいさつしてみましょう！')));
     }
     renderTyping();
@@ -950,9 +950,9 @@
     var d = drafts[key];
     var ph = $('#chat-placeholder');
     ph.textContent = d ? K.clip(d, 80) : view === 'group' ? 'グループにメッセージ…'
-      : peer && BR.peter.is(peer) ? '「100万貸して」「100万返す」のように書けます（累計1100万円まで）'
+      : peer && BR.peter.is(peer) ? '「100万貸して」「100万返す」のように書けます'
       : peer && BR.johnson.is(peer) ? 'ジョンソンに話しかける…'
-      : peer && BR.official.is(peer) ? '運営へのメッセージを入力…（不具合は「報告」、アイデアは「意見案」からも送れます）' : 'メッセージを入力…';
+      : peer && BR.official.is(peer) ? '運営へのメッセージを入力…' : 'メッセージを入力…';
     ph.classList.toggle('draft', !!d);
   }
 
@@ -1231,7 +1231,7 @@
     var box = $('#group-pick');
     box.textContent = '';
     if (!friends) { box.appendChild(el('div', 'group-pick-note', '読み込み中…')); return; }
-    if (!friends.friends.length) { box.appendChild(el('div', 'group-pick-note', 'まだフレンドがいません。フレンドになるとグループに入れられます。')); return; }
+    if (!friends.friends.length) { box.appendChild(el('div', 'group-pick-note', 'グループに入れられるフレンドがいません。')); return; }
     friends.friends.forEach(function (f) {
       var b = el('button', 'group-pick-row' + (groupForm.picked[f.id] ? ' on' : ''));
       b.type = 'button';
@@ -1376,10 +1376,10 @@
       pfBtn(a1, '拒否', 'decline');
     } else if (rel === 'outgoing') {
       pfBtn(a1, '申請を取り消す', 'cancel');
-      a1.appendChild(el('span', 'pf-hint', 'フレンド申請の返事を待っています'));
+      a1.appendChild(el('span', 'pf-hint', '承認待ちです'));
     } else {
       pfBtn(a1, 'フレンド申請', 'request', 'gold', 'friends');
-      a1.appendChild(el('span', 'pf-hint', 'フレンドになると会話・送金・観戦・一緒に稼ぐができます'));
+      a1.appendChild(el('span', 'pf-hint', 'フレンドになると会話・送金・観戦などができます'));
     }
     pfLink(a2, r.blocked ? 'ブロック解除' : 'ブロック', 'block');
     pfLink(a2, '通報', 'report');
@@ -1395,7 +1395,7 @@
       case 'password': sfx('click'); K.closeModal('profile'); BR.account.openPassword(); break;
       case 'recovery': sfx('click'); reissueCode(); break;
       // another account of mine: its 引き継ぎコード
-      case 'codeLogin': sfx('click'); K.closeModal('profile'); BR.account.open('code-login', 'ほかのアカウントの引き継ぎコードを入力すると、そのアカウントに切り替わります。'); break;
+      case 'codeLogin': sfx('click'); K.closeModal('profile'); BR.account.open('code-login', 'ほかのアカウントの引き継ぎコードで、そのアカウントに切り替えます。'); break;
       case 'effects': sfx('click'); K.closeModal('profile'); BR.effects.open(); break;
       case 'vip': sfx('click'); K.closeModal('profile'); BR.vip.open(); break;
       case 'push': sfx('click'); K.closeModal('profile'); BR.push.settings(); break;
@@ -1421,7 +1421,7 @@
     var ask = blocked ? Promise.resolve(true) : K.confirmBox(function (p) {
       p.appendChild(K.nameSpan(u.name));
       p.appendChild(document.createTextNode('さんをブロックしますか？'));
-      p.appendChild(el('small', 'confirm-sub', '相手には知らされません。ブロック中はこの人のメッセージ・送金・プレゼント・通話・招待があなたに届かなくなり、解除するとブロック中に送られたメッセージなどが届きます。'));
+      p.appendChild(el('small', 'confirm-sub', '相手には知らされません。メッセージ・送金・通話などが届かなくなり、解除するとまとめて届きます。'));
     }, 'ブロック');
     ask.then(function (ok) {
       if (!ok) return null;
@@ -1439,8 +1439,8 @@
   // silent: friends stay friends. Lifted, what they sent meanwhile arrives:
   // the conversation and the list load again.
   function blockChanged(id, res) {
-    if (res.blocked) { toast('ブロックしました（相手には知らされません）'); return; }
-    toast(res.released ? 'ブロックを解除しました。ブロック中のメッセージ ' + res.released + '件が届きました' : 'ブロックを解除しました', 3000);
+    if (res.blocked) { toast('ブロックしました'); return; }
+    toast(res.released ? 'ブロックを解除しました（' + res.released + '件のメッセージが届きました）' : 'ブロックを解除しました', 3000);
     if (typeof res.unread === 'number') setUnread(res.unread);
     if (!res.released) return;
     delete chans['dm:' + id];
@@ -1525,7 +1525,7 @@
       p.appendChild(document.createTextNode('さんに'));
       p.appendChild(K.amountEl(amount, cur, 'confirm-amt'));
       p.appendChild(document.createTextNode('を送金します。'));
-      p.appendChild(el('small', 'confirm-sub', '送金は取り消せません。よろしいですか？'));
+      p.appendChild(el('small', 'confirm-sub', '送金は取り消せません。'));
     }, '送金する').then(function (ok) {
       if (!ok) return;
       tf.busy = true;
@@ -1637,7 +1637,7 @@
       toast(name + 'さんからフレンド申請が届きました', 3400, goFriends);
     } else if (f.type === 'accepted') {
       sfx('notify');
-      toast(name + 'さんからフレンド承認されました！会話できるようになりました', 4200, function () { sfx('click'); openDm(f.user); });
+      toast(name + 'さんとフレンドになりました！', 4200, function () { sfx('click'); openDm(f.user); });
     }
     if (found && f.user && found.user.id === f.user.id) {
       found.user.friendship = { request: 'incoming', accepted: 'friends', added: 'friends', declined: 'none', cancelled: 'none', removed: 'none' }[f.type] || found.user.friendship;

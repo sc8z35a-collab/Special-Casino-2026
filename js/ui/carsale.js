@@ -50,7 +50,7 @@
       var cars = r.cars.filter(function (c) { return !c.rent && !c.offer; });
       if (!cars.length) {
         sfx('deny');
-        toast(r.cars.length ? '売れる車がありません（貸し出し中・販売中の車は売れません）' : 'Garage に車がありません', 3200);
+        toast(r.cars.length ? '売れる車がありません（貸し出し中・販売中は不可）' : 'Garage に車がありません', 3200);
         return;
       }
       st.user = { id: user.id, name: user.name };
@@ -176,7 +176,7 @@
         if (r.me) { BR.app.serverBalance(r.me); BR.social.setMe(r.me); }
         sfx('register');
         if (BR.juice) BR.juice.reward(null, 3);
-        toast(carName(b.model) + ' を購入しました！Garage で見られます', 3200);
+        toast(carName(b.model) + ' を購入しました！', 3200);
         BR.cars.changed();
       }, function (err) {
         if (err.code === 'done' || err.code === 'gone') BR.social.patchMsg(m.id, { state: err.message.indexOf('売れ') >= 0 ? 'sold' : 'canceled' });

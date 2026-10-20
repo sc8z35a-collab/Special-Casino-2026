@@ -131,7 +131,7 @@
   function renderOwned() {
     var car = model(sel);
     var n = garage ? garage.cars.filter(function (c) { return c.model === car.id; }).length : null;
-    $('#car-own').textContent = n === null ? '' : (n > 0 ? 'Garage に ' + n + '台' : 'まだ持っていません') + '・ガレージ ' + owned() + ' / ' + capacity() + '台';
+    $('#car-own').textContent = n === null ? '' : (n > 0 ? '所有 ' + n + '台' : '未所有') + '・ガレージ ' + owned() + ' / ' + capacity() + '台';
     var buy = $('#car-buy');
     var locked = !BR.VIP.carOpen(car, vipLevel());
     buy.disabled = busy || locked;
@@ -177,7 +177,7 @@
       p.appendChild(document.createTextNode(car.name + ' を'));
       p.appendChild(K.amountEl(pr.price, 'dollars', 'confirm-amt'));
       p.appendChild(document.createTextNode('で購入しますか？'));
-      p.appendChild(el('small', 'confirm-sub', (pr.pct ? 'セール中 ' + pr.pct + '%OFF' : '') + (pr.vip ? (pr.pct ? '・' : '') + 'VIP割引 ' + pr.vip + '%OFF' : '') + (pr.pct || pr.vip ? '（通常 ' + money(car.price) + '）。' : '') + '購入した車は Garage に入ります。'));
+      p.appendChild(el('small', 'confirm-sub', (pr.pct ? 'セール中 ' + pr.pct + '%OFF' : '') + (pr.vip ? (pr.pct ? '・' : '') + 'VIP割引 ' + pr.vip + '%OFF' : '') + (pr.pct || pr.vip ? '（通常 ' + money(car.price) + '）。' : '') + 'ガレージに入ります。'));
     }, '購入する').then(function (ok) {
       if (!ok) return;
       busy = true;
@@ -195,7 +195,7 @@
           BR.juice.reward(pic, 3);
           BR.juice.rain({ kind: 'confetti', dur: 1.6, rate: 50 });
         }
-        toast(car.name + ' を購入しました！Garage で見られます', 3200);
+        toast(car.name + ' を購入しました！', 3200);
         return load();
       }).catch(function (err) {
         if (err.code === 'garage_full') { full(); return null; }
@@ -212,7 +212,7 @@
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode('ガレージがいっぱいです（' + capacity() + '台）。1台分広げますか？'));
       p.appendChild(K.amountEl(garage ? garage.slotPrice : slotPrice(), 'dollars', 'confirm-amt'));
-      p.appendChild(el('small', 'confirm-sub', '広げた分はずっと使えます。何台分でも広げられます。'));
+      p.appendChild(el('small', 'confirm-sub', '広げた分はずっと使えます。'));
     }, '広げる').then(function (ok) { if (ok) expand(true); });
   }
 
@@ -272,7 +272,7 @@
     var g = $('#garage-grid');
     g.textContent = '';
     if (!garage.cars.length) {
-      garageNote('まだ車を持っていません。\nCar Owner で購入しましょう！');
+      garageNote('まだ車がありません。\nCar Owner で買えます。');
       return;
     }
     garage.cars.forEach(function (c) {
@@ -365,14 +365,14 @@
     var lo = Math.round((R.min + (R.max - R.spread - R.min) * t) / 1000) * 1000;
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode(m.name + ' を貸し出しますか？'));
-      p.appendChild(el('small', 'confirm-sub', R.hours + '時間ごとにお客さんが1〜5人来て、1人 ' + money(lo) + '〜' + money(lo + R.spread) + ' 払ってくれます（まれに ' + money(R.vip.pay) + ' 払うお客さんも！）。' +
-        '貸し出し中は少なくとも' + R.hours + '時間、この車を売ったり・あげたり・3Dで見たりできません。'));
+      p.appendChild(el('small', 'confirm-sub', R.hours + '時間ごとにお客さんが1〜5人来て、1人 ' + money(lo) + '〜' + money(lo + R.spread) + '（まれに ' + money(R.vip.pay) + '）払ってくれます。' +
+        '少なくとも' + R.hours + '時間は売る・あげる・3Dで見ることができません。'));
     }, '貸し出す').then(function (ok) {
       if (!ok) return;
       busy = true;
       api.rentCar(c.id, 'start').then(function () {
         sfx('register');
-        toast(m.name + ' を貸し出しました。' + R.hours + '時間ごとにお客さんが来ます', 3200);
+        toast(m.name + ' を貸し出しました', 3200);
         return load();
       }).catch(fail).then(function () { busy = false; if (onBoard('garage')) renderGarage(); });
     });
@@ -383,7 +383,7 @@
     var back = c.rent.start + Math.max(1, Math.ceil((now() - c.rent.start) / B)) * B;
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode(m.name + ' の貸し出しを止めますか？'));
-      p.appendChild(el('small', 'confirm-sub', '今の' + BR.CONFIG.carRental.hours + '時間が終わる ' + at(back) + ' に戻ってきます（それまでのお客さんの分も売上になります）。'));
+      p.appendChild(el('small', 'confirm-sub', at(back) + ' に戻ってきます（それまでの分も売上になります）。'));
     }, '止める').then(function (ok) {
       if (!ok) return;
       busy = true;
@@ -409,7 +409,7 @@
       p.appendChild(document.createTextNode(m.name + ' を'));
       p.appendChild(K.amountEl(b.price, 'dollars', 'confirm-amt'));
       p.appendChild(document.createTextNode('で売りますか？'));
-      p.appendChild(el('small', 'confirm-sub', (b.disposal ? '大廃棄セールの高価買取' : '今日の買取') + '：今の販売価格の −' + b.pct + '%。売った車は戻りません。' + (c.earned ? 'この車の貸し出しの売上も一緒に受け取ります。' : '')));
+      p.appendChild(el('small', 'confirm-sub', (b.disposal ? '大廃棄セールの高価買取' : '今日の買取') + '：今の販売価格の −' + b.pct + '%。売った車は戻りません。' + (c.earned ? '貸し出しの売上も受け取ります。' : '')));
     }, '売る').then(function (ok) {
       if (!ok) return;
       busy = true;
@@ -442,7 +442,7 @@
     space = c.model;
     BR.garage3d.onMode = function (mode) {
       box.classList.toggle('walk', mode === 'walk');
-      $('#g3d-hint').textContent = mode === 'walk' ? 'ドラッグで見回す・スティックで歩く・2本指かスライダーでズーム（最大5倍）・ダブルタップで戻る' : 'ドラッグで回転・ダブルタップで中に入る';
+      $('#g3d-hint').textContent = mode === 'walk' ? 'ドラッグで見回す・スティックで歩く・2本指でズーム・ダブルタップで戻る' : 'ドラッグで回転・ダブルタップで中に入る';
       zoomShown(1);
     };
     BR.garage3d.onZoom = zoomShown;
@@ -518,7 +518,7 @@
       var cars = r.cars.filter(function (c) { return !c.rent && !c.offer; });
       if (!cars.length) {
         sfx('deny');
-        toast(r.cars.length ? '貸し出し中の車はあげられません' : 'あげられる車がありません。Car Owner で購入できます', 3200);
+        toast(r.cars.length ? '貸し出し中の車はあげられません' : 'あげられる車がありません', 3200);
         return;
       }
       if (cars.length === 1) { confirmGift(user, cars[0]); return; }
@@ -537,7 +537,7 @@
     K.confirmBox(function (p) {
       p.appendChild(K.nameSpan(user.name));
       p.appendChild(document.createTextNode('さんに ' + m.name + ' をプレゼントしますか？'));
-      p.appendChild(el('small', 'confirm-sub', 'プレゼントした車は相手の Garage に移ります。取り消せません。'));
+      p.appendChild(el('small', 'confirm-sub', '取り消せません。'));
     }, 'プレゼントする').then(function (ok) {
       if (!ok) return;
       api.giftCar(user.id, car.id).then(function (r) {

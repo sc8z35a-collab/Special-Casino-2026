@@ -453,7 +453,7 @@
     g.appendChild(cell('引き継ぎコード', codeEl(p), true));
     g.appendChild(cell('パスワード', p.hasPassword ? '設定済み（非公開）' : '未設定', true));
     acc.appendChild(g);
-    acc.appendChild(el('p', 'note', 'パスワードは安全のため元に戻せない形（ハッシュ）でだけ保存しているので、運営者にも表示できません。忘れた人には新しいパスワードを設定してください。'));
+    acc.appendChild(el('p', 'note', 'パスワードはハッシュでのみ保存しているため表示できません。忘れた人には再設定してください。'));
     a = el('div', 'acts');
     a.style.marginTop = '10px';
     a.appendChild(act('引き継ぎコードを再発行', 'recovery'));
@@ -478,7 +478,7 @@
       if (p.ban) a.appendChild(act('処分を解除', 'ban', 'ok', 'none'));
       if (p.deviceBlocked) a.appendChild(act('端末のBANから外す', 'deviceOk', 'ok'));
       ban.appendChild(a);
-      ban.appendChild(el('p', 'muted', 'アクセス禁止は1週間、BANは30日で自動的に解除されます（いつでも解除できます）。BAN・永久BANをすると、同じ端末で使われたほかのアカウントもアクセスできなくなります。'));
+      ban.appendChild(el('p', 'muted', 'アクセス禁止は1週間、BANは30日で自動解除（いつでも解除可）。BAN・永久BANは同じ端末のほかのアカウントも止めます。'));
     }
     box.appendChild(ban);
 
@@ -571,7 +571,7 @@
       var info = BAN[kind];
       ask(kind === 'none'
         ? { title: '処分を解除しますか？', text: p.name + ' さんはすぐにまた遊べるようになります。公式から解除のお知らせが届きます。', ok: '解除する' }
-        : { title: info.long + 'にしますか？', text: p.name + ' さんのゲームはすぐにタイトル画面に戻り、' + (kind === 'perma' ? '解除するまで' : kind === 'ban' ? '30日間' : '1週間') + 'そこから先へ進めなくなります（TWO STATE を遊べません）。公式から「' + date(Date.now(), true) + 'に公式より' + info.name + 'されました」とお知らせが届き、解除されたときもお知らせが届きます。' + (kind === 'suspend' ? '' : '同じ端末のほかのアカウントも止まります。'), ok: info.name + 'にする', danger: true }
+        : { title: info.long + 'にしますか？', text: p.name + ' さんのゲームはすぐにタイトル画面に戻り、' + (kind === 'perma' ? '解除するまで' : kind === 'ban' ? '30日間' : '1週間') + '先へ進めなくなります。処分と解除のお知らせが公式から届きます。' + (kind === 'suspend' ? '' : '同じ端末のほかのアカウントも止まります。'), ok: info.name + 'にする', danger: true }
       ).then(function (ok) {
         if (!ok) return null;
         state.busy = true;
@@ -581,12 +581,12 @@
         });
       }).catch(fail).then(function () { state.busy = false; });
     } else if (name === 'deviceOk') {
-      ask({ title: '端末のBANから外しますか？', text: p.name + ' さんは、同じ端末のアカウントがBANされていても遊べるようになります（次にその端末のアカウントがBANされると、また止まります）。', ok: '外す' }).then(function (ok) {
+      ask({ title: '端末のBANから外しますか？', text: p.name + ' さんは、同じ端末のアカウントがBAN中でも遊べるようになります（次にその端末でBANがあると、また止まります）。', ok: '外す' }).then(function (ok) {
         if (!ok) return null;
         return request('POST', '/api/ops/device-ok', { id: p.id }).then(function (r) { toast('端末のBANから外しました'); afterChange(r); });
       }).catch(fail);
     } else if (name === 'recovery') {
-      ask({ title: '引き継ぎコードを再発行しますか？', text: '今までのコードは使えなくなります。本人であることを確かめてから発行してください。', ok: '再発行する' }).then(function (ok) {
+      ask({ title: '引き継ぎコードを再発行しますか？', text: '今までのコードは使えなくなります。本人確認のうえで発行してください。', ok: '再発行する' }).then(function (ok) {
         if (!ok) return null;
         return request('POST', '/api/ops/recovery', { id: p.id }).then(function (r) {
           afterChange(r);
@@ -596,7 +596,7 @@
     } else if (name === 'password') {
       ask({
         title: 'パスワードを再設定',
-        text: p.name + ' さんの新しいパスワードを入力してください（4〜64文字）。本人であることを確かめてから設定してください。',
+        text: p.name + ' さんの新しいパスワード（4〜64文字）。本人確認のうえで設定してください。',
         ok: '設定する',
         input: { label: '新しいパスワード', type: 'text' },
         check: function (v) { var n = Array.from(v).length; return n < 4 ? '4文字以上にしてください' : n > 64 ? '64文字までです' : ''; }
@@ -655,7 +655,7 @@
     var c = state.chat, r = c.data, list = $('#chat-list'), sc = $('#chat-scroll');
     var atBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 60;
     list.textContent = '';
-    if (!r.messages.length) list.appendChild(el('p', 'chat-empty', 'まだメッセージはありません。下から最初のメッセージを送れます。'));
+    if (!r.messages.length) list.appendChild(el('p', 'chat-empty', 'まだメッセージはありません。'));
     var lastDay = '';
     r.messages.forEach(function (m) {
       var day = date(m.at);
@@ -721,7 +721,7 @@
     if (!Number.isInteger(amount) || amount < 0 || amount > 10000000) { $('#money-error').textContent = '金額は $0〜$10,000,000 の整数で入力してください'; return; }
     var note = $('#money-note').value.trim();
     if (!amount && !note) { $('#money-error').textContent = '金額を入力してください'; return; }
-    ask({ title: '$' + fmt(amount) + ' を送りますか？', text: p.name + ' さんへ Ice Smoker公式から送金します。' + (note ? '「' + note + '」も一緒に届きます。' : ''), ok: '送金する' }).then(function (ok) {
+    ask({ title: '$' + fmt(amount) + ' を送りますか？', text: p.name + ' さんへ公式から送金します。' + (note ? '「' + note + '」も届きます。' : ''), ok: '送金する' }).then(function (ok) {
       if (!ok) return null;
       $('#money-ok').disabled = true;
       return request('POST', '/api/ops/money', { id: p.id, amount: amount, note: note }).then(function (r) {
@@ -825,7 +825,7 @@
     var id = Number(b.closest('[data-report]').dataset.report);
     var reward = Number(b.dataset.accept || 0);
     ask(reward
-      ? { title: '通報 #' + id + ' を受理しますか？', text: '通報した人へ Ice Smoker公式から $' + fmt(reward) + ' と感謝のメッセージが自動で届きます。', ok: '受理して送る' }
+      ? { title: '通報 #' + id + ' を受理しますか？', text: '通報した人へ公式から $' + fmt(reward) + ' とお礼が届きます。', ok: '受理して送る' }
       : { title: '通報 #' + id + ' を受理しませんか？', text: '通報した人には何も届きません。', ok: '受理しない', danger: true }
     ).then(function (ok) {
       if (!ok) return null;
@@ -993,7 +993,7 @@
   function adopt(id, b) {
     var f = state.feedback.find(function (x) { return x.id === id; });
     var who = f && f.user ? f.user.name : '';
-    ask({ title: 'この意見案を採用しますか？', text: who + ' さんに Ice Smoker公式から 50,000 スピントークンと感謝のメッセージが届きます（1つの意見案につき1回）。', ok: '採用する' }).then(function (ok) {
+    ask({ title: 'この意見案を採用しますか？', text: who + ' さんに公式から 50,000 スピントークンとお礼が届きます（1つにつき1回）。', ok: '採用する' }).then(function (ok) {
       if (!ok) return null;
       b.disabled = true;
       return request('POST', '/api/ops/feedback/adopt', { id: id }).then(function () {
@@ -1020,8 +1020,8 @@
     var reg = $('#op-devcode');
     reg.hidden = !state.developer;
     $('#op-devcode-text').textContent = state.devCodeSet
-      ? '開発者コードは登録済みです（変更するときは今のコードが必要です）。'
-      : '開発者コードがまだ登録されていません。運営権の付与・剥奪に使うコードを、最初に一度だけ登録してください（サーバーには元に戻せない形でだけ保存されます）。';
+      ? '開発者コードは登録済みです（変更には今のコードが必要）。'
+      : '開発者コードが未登録です。運営権の付与・剥奪に使うコードを、最初に一度だけ登録してください。';
     $('#op-devcode-btn').textContent = state.devCodeSet ? '開発者コードを変更' : '開発者コードを登録';
     var list = $('#op-list');
     list.textContent = '';
@@ -1053,8 +1053,8 @@
   function changeAccess(action, name, b) {
     var revoke = action === 'revoke';
     withCode(revoke
-      ? { title: name + ' さんの運営権を剥奪しますか？', text: name + ' さんはすぐにすべての端末でログアウトされ、運営サイトにログインできなくなります（ゲームには一般のプレイヤーとしてログインできます）。', ok: '剥奪する', danger: true }
-      : { title: name + ' さんに運営権を付与しますか？', text: name + ' さんは運営サイトにログインして、運営のすべての操作ができるようになります。', ok: '付与する' }
+      ? { title: name + ' さんの運営権を剥奪しますか？', text: name + ' さんはすぐ全端末でログアウトされ、運営サイトに入れなくなります（ゲームには入れます）。', ok: '剥奪する', danger: true }
+      : { title: name + ' さんに運営権を付与しますか？', text: name + ' さんは運営サイトのすべての操作ができるようになります。', ok: '付与する' }
     ).then(function (code) {
       if (code === null) return null;
       if (b) b.disabled = true;
@@ -1087,7 +1087,7 @@
       if (old === null) return null;
       return ask({
         title: change ? '新しい開発者コード' : '開発者コードを登録',
-        text: '8〜32桁の数字。開発者だけが知っているコードにしてください（ここにもサーバーにも、元のコードは残りません）。',
+        text: '8〜32桁の数字（元のコードはどこにも残りません）。',
         ok: '登録する',
         input: { label: '開発者コード', type: 'password' },
         check: function (v) { return /^\d{8,32}$/.test(v.replace(/[\s-]/g, '')) ? '' : '8〜32桁の数字にしてください'; }
@@ -1149,7 +1149,7 @@
     var notes = [];
     if (t.slips) notes.push('コンビニ払いの支払い待ち ' + t.slips + '件（' + yen(t.slipYen) + '）');
     if (t.refunds) notes.push('返金 ' + t.refunds + '件（' + yen(t.refundYen) + '）');
-    if (t.review) notes.push('⚠ Stripe の内容と一致しない注文が ' + t.review + '件あります（ロイヤルコインは付与していません。Stripe のダッシュボードで確認してください）');
+    if (t.review) notes.push('⚠ Stripe と一致しない注文が ' + t.review + '件（ロイヤルコインは未付与。Stripe のダッシュボードで確認してください）');
     if (notes.length) list.appendChild(el('p', 'pay-notes', notes.join('　/　')));
     if (state.payView === 'waiting') {
       if (!r.waiting.length) list.appendChild(el('p', 'empty muted', '返信待ちの人はいません'));
@@ -1174,7 +1174,7 @@
     var ta = el('textarea', 'pay-reply');
     ta.rows = 3;
     ta.maxLength = 5000;
-    ta.placeholder = w.player.name + 'さんへの熱いお言葉（公式から【開発者からのメッセージ】として届きます）';
+    ta.placeholder = w.player.name + 'さんへの熱いお言葉';
     ta.value = drafts[w.player.id] || '';
     ta.dataset.draft = w.player.id;
     card.appendChild(ta);
@@ -1540,7 +1540,7 @@
     var hours = state.vault.hours || [1, 6, 24, 72];
     ask({
       title: f ? '読み取り専用リンクを作る' : '保管庫全体のリンクを作る',
-      text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき）') + 'を、ログインなしで取り出せるリンクです（リンクは一度しか表示されません）。有効時間を ' + hours.join('・') + ' 時間から選んで入れてください。',
+      text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき）') + 'をログインなしで取り出せるリンクです（表示は一度だけ）。有効時間（' + hours.join('・') + ' 時間）を入れてください。',
       ok: '作る', input: { label: '有効時間（時間）', type: 'text', value: '24' },
       check: function (v) { return hours.indexOf(Number(v)) >= 0 ? '' : hours.join('・') + ' のどれかを入れてください'; }
     }).then(function (v) {
@@ -1549,7 +1549,7 @@
         var url = location.origin + r.path;
         copy(url);
         loadVault();
-        return ask({ title: 'リンクを作りました（' + v + '時間有効・コピー済み）', text: url + '\n\n' + (f ? 'このリンクを知っている人は、期限までこのファイルだけを取り出せます。' : 'このリンクを知っている人は、期限まで保管庫のすべてのファイルを取り出せます。') + '用が済んだら停止してください。', ok: 'OK' });
+        return ask({ title: 'リンクを作りました（' + v + '時間有効・コピー済み）', text: url + '\n\n' + (f ? '期限まで、このファイルだけを取り出せます。' : '期限まで、保管庫のすべてのファイルを取り出せます。') + '用が済んだら停止してください。', ok: 'OK' });
       });
     }).catch(fail);
   }
