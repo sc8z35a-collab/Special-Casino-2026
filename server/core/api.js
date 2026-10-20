@@ -36,6 +36,8 @@ import { readQuests, stepQuests, claimQuests, questsReady, questView } from './q
 import { createOps, DELETED, ARCHIVE_DAYS } from './ops.js';
 import { createOpsLogin } from './opslogin.js';
 import { createEmergency } from './emergency.js';
+import { createShield } from './shield.js';
+import { createSec } from './sec.js';
 import { createBackup } from './backup.js';
 import { createTrees } from './tree.js';
 import { createDevCode } from './devcode.js';
@@ -399,6 +401,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const pushedAt = new Map();
   function phone(userId, n, gap = 0) {
     if (!n || inSight(userId)) return;
+    // outbound calls (the push services) are cut during a lockdown
+    if (emergency.locked && emergency.locked()) return;
     if (gap) {
       const k = `${userId}:${n.tag}`;
       if (Date.now() - (pushedAt.get(k) || 0) < gap) return;
@@ -1271,6 +1275,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     }
     let u = getUser(s.user_id);
     if (!u) throw new ApiError(401, 'auth', 'アカウントが見つかりません');
+    // the security shield has blocked this account (an operator, or by itself)
+    if (!isDeveloper(u) && shield.accountBlocked(u.id)) throw new ApiError(403, 'blocked', 'このアカウントは一時的に制限されています。しばらく待ってからお試しください');
     u = allowed(u);
     const now = Date.now();
     // once a minute at most: the time since the last request is play time,
@@ -1305,7 +1311,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const servers = [];
     if (config.stunUrls.length) servers.push({ urls: config.stunUrls });
     if (config.turnUrls.length) servers.push({ urls: config.turnUrls, username: config.turnUsername, credential: config.turnCredential });
-    if (config.cfTurnKeyId && config.cfTurnToken) {
+    // outbound calls are cut during a lockdown
+    if (config.cfTurnKeyId && config.cfTurnToken && emergency.outboundAllowed()) {
       if (iceCache && iceCache.until > Date.now()) return [...servers, ...iceCache.servers];
       try {
         const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${config.cfTurnKeyId}/credentials/generate-ice-servers`, {
@@ -3148,11 +3155,21 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the operator site (/ops/); the developer code is checked in one place
   // (its wrong tries are counted together for the site and the vault)
   const devCode = createDevCode({ q, opsLog });
-  // the emergency stop (server/core/emergency.js)
+  // the security shield (server/core/shield.js), the emergency stop and the
+  // lockdown (server/core/emergency.js). The shield can call for the lockdown,
+  // which needs the shield's forensics and a protective backup, so the three
+  // know one another through late-bound references.
+  let emergencyRef = null, backupRef = null;
+  const shield = createShield({
+    q, config, opsLog, clock: config.clock || Date.now,
+    onBreach: (info) => { if (emergencyRef) emergencyRef.breach(info); }
+  });
   const emergency = createEmergency({
     q, config, opsLog, devCode, isDeveloper, getUser, clock: config.clock || Date.now,
+    shield, verifyLog: () => opsLog.verify(), protect: () => (backupRef ? backupRef.lockdownBackup() : null), defer: defer || ((p) => p),
     host: { dbBytes: host && host.dbBytes ? host.dbBytes : null, stop: () => { if (host && host.stop) host.stop(); } }
   });
+  emergencyRef = emergency;
   Object.assign(routes, emergency.routes);
   // when each operator last used the site (who is on it now, and 最終オンライン:
   // kept in the database at most once a minute)
@@ -3180,7 +3197,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const opsLogin = createOpsLogin({
     q, findByName, isOperator: ops.isOperator, createSession, seenOn,
     rate: (req) => rate(limit.login, req.ip, '試行回数が多すぎます。しばらく待ってからお試しください'),
-    allow: (u) => !emergency.stopped() || isDeveloper(u), stoppedBody: () => emergency.body()
+    // during a lockdown the operators still come in to reach the security base;
+    // during a plain emergency stop, only the developer
+    allow: (u) => emergency.locked() || !emergency.stopped() || isDeveloper(u), stoppedBody: () => emergency.body()
   });
   Object.assign(routes, opsLogin.routes);
   // 運営チャット
@@ -3207,13 +3226,40 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     onChange: () => { if (host && host.reschedule) host.reschedule(nextHousekeeping()); }
   });
   Object.assign(routes, backup.routes);
+  backupRef = backup;
+  const operatorsOnlineNow = () => { const now = Date.now(); return ops.operatorList().filter((o) => o.operator && o.id && now - (opsSeen.get(o.id) || 0) < 40000).length; };
   // the operator site's サーバー tab (every operator)
   routes['GET /api/ops/server'] = (req, u) => {
     ops.need(u);
-    const now = Date.now();
-    const operatorsOnline = ops.operatorList().filter((o) => o.operator && o.id && now - (opsSeen.get(o.id) || 0) < 40000).length;
-    return stats.snapshot({ online: live.onlineCount(), operatorsOnline, vault: vault.summary() });
+    return stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() });
   };
+  // the operator site's セキュリティ tab (every operator): the shield and the
+  // emergency/lockdown state; and the operators' actions on attacks that did
+  // not reach the lockdown — blocking an address, account or device, or
+  // lifting one (manual blocks are logged)
+  routes['GET /api/ops/security'] = (req, u) => {
+    ops.need(u);
+    return { shield: shield.snapshot(), emergency: emergency.info(), now: Date.now() };
+  };
+  routes['POST /api/ops/security/block'] = async (req, u) => {
+    ops.need(u);
+    const b = await req.json();
+    const row = shield.block(String(b.scope || ''), b.target, b.reason, u, req);
+    return { ok: true, block: { ...row, manual: !!row.manual } };
+  };
+  routes['POST /api/ops/security/unblock'] = async (req, u) => {
+    ops.need(u);
+    const b = await req.json();
+    return { ok: shield.unblock(String(b.key || ''), u, req) };
+  };
+  // the security base (/sec/): the operators' final safety base
+  const health = () => ({
+    online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(),
+    sockets: host && host.sockets ? host.sockets() : null, dbBytes: host && host.dbBytes ? host.dbBytes() : null,
+    quota: quota.on ? quota.state() : null, outbound: emergency.outboundAllowed(), startedAt: stats.startedAt || 0, host: (host && host.name) || 'node'
+  });
+  const sec = createSec({ q, getUser, ops, emergency, shield, opsLog, health, secret, isDeveloper, live, seen: opsSeen });
+  Object.assign(routes, sec.routes);
 
   const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', ...pay.public, ...vault.public]);
 
@@ -3268,8 +3314,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   // Periodic clean-up: old spin records, stale sessions and watchers.
   function housekeeping() {
+    // the lockdown lifts itself after a month; during one the server does no
+    // clean-up and no outbound work — it protects the data and stays still
+    emergency.tick();
+    if (emergency.locked()) return Promise.resolve();
     try {
       q('DELETE FROM spins WHERE created_at < ?').run(Date.now() - 30 * 86400000);
+      shield.prune();
       q('DELETE FROM sessions WHERE last_used < ?').run(Date.now() - 365 * 86400000);
       q('DELETE FROM watchers WHERE since < ?').run(Date.now() - 12 * 3600000);
       // rented cars: their customers counted, the ones asked back home again
@@ -3352,19 +3403,35 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const out = await answer(req);
     stats.request();
     emergency.request({ path: req.path, ip: req.ip, userId: req.userId || 0, status: out.status });
+    // the shield learns from the outcome (a failed login, a guess at the keys)
+    shield.request({ path: req.path, ip: req.ip, userId: req.userId || 0, status: out.status, code: out.body && out.body.error ? out.body.error.code : '' });
     if (quota.on) quota.request(out.body ? JSON.stringify(out.body).length : 0);
     return out;
   }
 
-  // what still comes in while the server is stopped: the developer's way back in
+  // what still comes in while the server is stopped for an emergency: the
+  // developer's way back in
   const WHILE_STOPPED = new Set(['POST /api/ops/login', 'GET /api/ops/me', 'GET /api/emergency', 'POST /api/emergency/release']);
+  // what still comes in during a lockdown: the security base (/sec/) for the
+  // operators, the operator login they reach it with, and the developer's
+  // emergency page. Everything else — players, the operator site, the
+  // developer's own tools — is shut.
+  const WHILE_LOCKED = new Set([
+    'POST /api/ops/login', 'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify',
+    'GET /api/sec/messages', 'POST /api/sec/messages', 'POST /api/sec/lockdown', 'POST /api/sec/release',
+    'GET /api/emergency', 'POST /api/emergency/release'
+  ]);
 
   async function answer(req) {
     const key = `${req.method} ${req.path}`;
     try {
+      // the security shield first: an attack is turned away before anything else
+      shield.inspect(req);
       if (key === 'POST /api/admin') return { status: 200, body: await adminCall(req) };
-      // stopped for an emergency: nobody but the developer
-      if (emergency.stopped() && !WHILE_STOPPED.has(key)) return { status: 503, body: emergency.body() };
+      // locked down: nobody but the operators' security base; or stopped for an
+      // emergency: nobody but the developer
+      if (emergency.locked()) { if (!WHILE_LOCKED.has(key)) return { status: 503, body: emergency.body() }; }
+      else if (emergency.stopped() && !WHILE_STOPPED.has(key)) return { status: 503, body: emergency.body() };
       // a day's cap is reached: the same notice for everyone until 00:00 UTC
       if (quota.over()) return { status: 503, body: maintenanceBody() };
       const route = routes[key];
@@ -3373,7 +3440,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!PUBLIC.has(key)) {
         user = authUser(req);
         req.userId = user.id;
-        if (emergency.stopped() && !isDeveloper(user)) return { status: 503, body: emergency.body() };
+        // during a plain emergency stop only the developer passes; during a
+        // lockdown WHILE_LOCKED already allows only the security base, whose
+        // routes check for an operator themselves
+        if (emergency.stopped() && !emergency.locked() && !isDeveloper(user)) return { status: 503, body: emergency.body() };
         rate(limit.general, user.id);
       }
       return { status: 200, body: await route(req, user) };

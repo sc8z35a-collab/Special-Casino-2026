@@ -648,6 +648,36 @@ export const MIGRATIONS = [
        until      INTEGER NOT NULL DEFAULT 0
      )`,
     'CREATE INDEX vault_notes_file ON vault_notes(file_id, id)'
+  ],
+  // DEV10: the security shield (server/core/shield.js) — the addresses,
+  // accounts and devices it has blocked (attacks, floods, scanners), kept so
+  // a restart does not forget them; and the security base (/sec/) operators'
+  // channel, its messages sealed at rest so a copy of the database alone
+  // cannot read them. The lockdown's state lives in meta ('emergency', with a
+  // level), alongside the emergency stop it grew out of.
+  [
+    `CREATE TABLE security_blocks (
+       key      TEXT    PRIMARY KEY,
+       scope    TEXT    NOT NULL,
+       target   TEXT    NOT NULL DEFAULT '',
+       reason   TEXT    NOT NULL DEFAULT '',
+       score    INTEGER NOT NULL DEFAULT 0,
+       hits     INTEGER NOT NULL DEFAULT 0,
+       first_at INTEGER NOT NULL,
+       at       INTEGER NOT NULL,
+       until    INTEGER NOT NULL DEFAULT 0,
+       step     INTEGER NOT NULL DEFAULT 0,
+       by_id    INTEGER NOT NULL DEFAULT 0,
+       manual   INTEGER NOT NULL DEFAULT 0
+     )`,
+    'CREATE INDEX security_blocks_until ON security_blocks(until)',
+    `CREATE TABLE sec_messages (
+       id         INTEGER PRIMARY KEY,
+       from_id    INTEGER NOT NULL,
+       from_name  TEXT    NOT NULL DEFAULT '',
+       body       TEXT    NOT NULL,
+       created_at INTEGER NOT NULL
+     )`
   ]
 ];
 
@@ -656,7 +686,7 @@ export const SCHEMA_VERSION = MIGRATIONS.length;
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
   'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access',
-  'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'meta'];
+  'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

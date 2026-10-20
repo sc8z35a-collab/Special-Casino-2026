@@ -114,9 +114,18 @@
 
   function showMaintenance(info) {
     var until = (info && info.until) || nextUtcMidnight();
-    var t = recoveryText(until);
-    $('#maint-text').textContent = 'サーバーのメンテナンス中です。' + t.date + 'には復旧予定です。';
-    $('#maint-sub').textContent = '復旧予定 ' + t.time;
+    var h2 = document.querySelector('#maint h2');
+    if (info && info.lockdown) {
+      // the lockdown: a plain 緊急メンテナンス notice, no "recovery by" date
+      if (h2) h2.textContent = '緊急メンテナンス';
+      $('#maint-text').textContent = 'ただいま緊急メンテナンスを行っています。';
+      $('#maint-sub').textContent = '復旧までしばらくお待ちください。';
+    } else {
+      if (h2) h2.textContent = 'メンテナンス中';
+      var t = recoveryText(until);
+      $('#maint-text').textContent = 'サーバーのメンテナンス中です。' + t.date + 'には復旧予定です。';
+      $('#maint-sub').textContent = '復旧予定 ' + t.time;
+    }
     if (maint.on) return;
     maint.on = true;
     whenDone(function () { $('#maint').hidden = false; });

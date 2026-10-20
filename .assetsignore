@@ -24,3 +24,5 @@
 !download/**
 !ops/
 !ops/**
+!sec/
+!sec/**

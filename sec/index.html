@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#060a12">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>security HOME — TWO STATE</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png" type="image/png">
+<link rel="stylesheet" href="sec.css">
+</head>
+<body>
+<div class="frame" id="frame">
+
+<!-- the first time: an operator's name and password (operators only) -->
+<main class="login" id="login" hidden>
+  <form class="login-card" id="login-form" autocomplete="on" novalidate>
+    <div class="brand"><span class="brand-mark">◆</span><span>security HOME</span></div>
+    <p class="muted">TWO STATE 運営者だけのセキュリティ基地です。運営サイトとは独立した環境で、サーバーのセキュリティ状況の監視・ログの閲覧・運営者どうしの連絡・ロックダウンだけを行います。</p>
+    <label class="field"><span>名前</span><input id="login-name" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+    <label class="field"><span>パスワード</span><input id="login-pass" name="password" type="password" autocomplete="current-password" required></label>
+    <p class="error" id="login-error" role="alert"></p>
+    <button class="btn primary wide" type="submit" id="login-go">入る</button>
+  </form>
+</main>
+
+<div class="app" id="app" hidden>
+  <header class="top">
+    <div class="brand"><span class="brand-mark">◆</span><span>security HOME</span><small>最終安全基地</small></div>
+    <div class="top-right">
+      <label class="speed" title="更新頻度"><span>更新</span><select id="speed">
+        <option value="max">極めて高い</option><option value="high">高い</option><option value="normal" selected>通常</option><option value="slow">遅い</option>
+      </select></label>
+      <span class="muted" id="op-name"></span>
+      <button class="btn ghost small" id="logout" type="button">出る</button>
+    </div>
+  </header>
+
+  <!-- the lockdown banner (ふだんは隠れています) -->
+  <div class="lock-banner" id="lock-banner" hidden>
+    <div class="lock-dot"></div>
+    <div class="lock-text"><b id="lock-title">ロックダウン中</b><span id="lock-sub"></span></div>
+    <div class="lock-acts">
+      <button class="btn danger solid small" id="lock-release" type="button">ロックダウンを解除</button>
+    </div>
+  </div>
+
+  <div class="columns">
+    <!-- 左: realtime cyber status -->
+    <section class="col status-col">
+      <div class="level-card" id="level-card">
+        <div class="level-ring" id="level-ring"><b id="level-word">—</b><span>脅威レベル</span></div>
+        <div class="level-facts" id="level-facts"></div>
+      </div>
+
+      <article class="card" id="card-shield">
+        <h3>シールド（直近5分）</h3>
+        <div class="stats" id="shield-stats"></div>
+        <svg class="spark" id="shield-spark" viewBox="0 0 320 60" preserveAspectRatio="none" aria-hidden="true"></svg>
+      </article>
+
+      <article class="card" id="card-server">
+        <h3>サーバー</h3>
+        <div class="stats" id="server-stats"></div>
+      </article>
+
+      <article class="card" id="card-emergency">
+        <h3>緊急システム</h3>
+        <p class="muted" id="emergency-state"></p>
+        <div class="acts" id="emergency-acts">
+          <button class="btn danger small" id="btn-lockdown" type="button">ロックダウンを発動</button>
+          <button class="btn small" id="btn-verify" type="button">ログ整合性を確認</button>
+        </div>
+        <p class="verify" id="verify-line"></p>
+      </article>
+
+      <article class="card" id="card-blocks">
+        <h3>ブロック中 <b class="count" id="blocks-count"></b></h3>
+        <div class="blocks" id="blocks-list"></div>
+      </article>
+
+      <article class="card" id="card-attackers">
+        <h3>脅威スコアの高いアドレス</h3>
+        <div class="attackers" id="attackers-list"></div>
+      </article>
+
+      <article class="card" id="card-ops">
+        <h3>運営者</h3>
+        <div class="ops-now" id="ops-now"></div>
+      </article>
+    </section>
+
+    <!-- 右: the log and the operators' channel -->
+    <section class="col side-col">
+      <div class="side-tabs">
+        <button class="side-tab on" data-side="log" type="button">ログ</button>
+        <button class="side-tab" data-side="chat" type="button">連絡チャンネル<b class="count" id="chat-dot" hidden></b></button>
+      </div>
+
+      <div class="side-view" id="side-log">
+        <div class="log-head">
+          <input class="search" id="log-search" type="search" placeholder="名前・内容で探す" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="chips log-kinds" id="log-kinds">
+          <button class="chip on" data-kind="" type="button">すべて</button>
+          <button class="chip" data-kind="security" type="button">セキュリティ</button>
+          <button class="chip" data-kind="emergency" type="button">緊急</button>
+          <button class="chip" data-kind="operator" type="button">運営</button>
+          <button class="chip" data-kind="player" type="button">プレイヤー</button>
+          <button class="chip" data-kind="vault" type="button">保管庫</button>
+        </div>
+        <div class="log" id="log-list"></div>
+        <button class="btn wide small" id="log-more" type="button" hidden>さらに読み込む</button>
+      </div>
+
+      <div class="side-view" id="side-chat" hidden>
+        <p class="hint muted">運営者だけの連絡チャンネルです。メッセージはサーバーに暗号化して保存されます（データベースを直接見ても読めません）。ロックダウン中もここは使えます。</p>
+        <div class="chat-scroll" id="chat-scroll"><div class="chat-list" id="chat-list"></div></div>
+        <form class="chat-compose" id="chat-form">
+          <textarea id="chat-text" rows="2" maxlength="4000" placeholder="メッセージ（Ctrl+Enter で送信）"></textarea>
+          <button class="btn primary" type="submit">送信</button>
+        </form>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- confirmations and inputs -->
+<div class="dialog-back" id="dialog" hidden>
+  <form class="dialog" id="dialog-form" novalidate>
+    <h2 id="dialog-title"></h2>
+    <p class="muted" id="dialog-text"></p>
+    <label class="field" id="dialog-area-field" hidden><span id="dialog-area-label"></span><textarea id="dialog-area" rows="3"></textarea></label>
+    <p class="error" id="dialog-error" role="alert"></p>
+    <div class="dialog-acts">
+      <button class="btn ghost" type="button" id="dialog-cancel">やめる</button>
+      <button class="btn primary" type="submit" id="dialog-ok"></button>
+    </div>
+  </form>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+</div>
+
+<script src="sec.js"></script>
+</body>
+</html>
