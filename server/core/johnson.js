@@ -5,7 +5,7 @@
 // under RULES.johnson.rescueBelow, he sends RULES.johnson.rescue with a few
 // words. He answers what is written to him. Money is in $ (he says 円), and
 // it comes as a transfer in his chat so the game shows it like money from a
-// friend.
+// friend (it arrives with the player's tap).
 import { RULES } from './rules.js';
 import { newRecoveryCode, sha256 } from './auth.js';
 
@@ -80,11 +80,11 @@ export function createJohnson(ctx) {
     ctx.touchConversations(userId, jid, row.id, userId);
     return row;
   }
-  // Money from him: it arrives, and shows in his chat like a friend's transfer.
+  // Money from him: a card in his chat like a friend's transfer, and it
+  // arrives when the player taps it (POST /api/messages/claim).
   function send(userId, amount) {
     const jid = id();
-    q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(amount, userId);
-    const row = ctx.insertMessage({ channel: ctx.dmChannel(userId, jid), sender: getUser(jid), recipient: userId, kind: 'transfer', amount, currency: 'dollars' });
+    const row = ctx.insertMessage({ channel: ctx.dmChannel(userId, jid), sender: getUser(jid), recipient: userId, kind: 'transfer', amount, currency: 'dollars', pending: true });
     ctx.touchConversations(userId, jid, row.id, userId);
     return row;
   }
@@ -120,7 +120,6 @@ export function createJohnson(ctx) {
       return out;
     });
     if (!rows.length) return [];
-    ctx.balanceChanged(userId);
     return rows.map((row) => deliver(userId, row));
   }
 

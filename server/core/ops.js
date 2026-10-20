@@ -19,6 +19,8 @@
 // comes back to the list); a deleted account never comes back, not even by
 // the developer. Only the developer sees the button that deletes one, and it
 // asks for the developer code; the accounts on the same device go with it.
+// A player whose chat the automatic filter stopped (server/core/attach.js)
+// carries a badge until an operator lets it go again.
 import { ApiError, posInt } from './errors.js';
 import { nameKey, cleanPassword, cleanText, hashPassword } from './auth.js';
 import { LEVEL, RULES, VIP, RELEASE } from './rules.js';
@@ -33,6 +35,8 @@ const REWARDS = [600000, 1200000, 2400000];
 // an adopted 意見案: spin tokens
 const IDEA_REWARD = RULES.idea.reward;
 const MONEY_MAX = 10000000;
+// 送信の取り消し of the bot's words: within the hour (RULES.retract)
+const RETRACT_MS = RULES.retract.minutes * 60000;
 const fmt = (n) => Number(n).toLocaleString('en-US');
 
 export function createOps({ q, tx, live, config, getUser, mini, openCode, setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub, official, opsLog, balance,
@@ -116,7 +120,9 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       detections: detections ? detections.get(u.id) || 0 : q('SELECT COUNT(*) AS n FROM detections WHERE sender_id = ? AND reviewed_at = 0').get(u.id).n,
       // in the プレイヤーアーカイブ: why ('perma' or 'deleted'), since when, and when all of it goes
       archive: u.archived_at ? { reason: u.archive_reason, at: u.archived_at, purgeAt: u.purge_at, with: u.archive_with || 0 } : null,
-      deleted: u.ban_kind === 'deleted'
+      deleted: u.ban_kind === 'deleted',
+      // the chat stopped by the automatic filter: since when, and why
+      chatBan: u.chat_ban ? { at: u.chat_ban, why: u.chat_ban_why } : null
     };
   }
   // the other accounts seen on each of a player's devices
@@ -166,7 +172,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     let context = {};
     try { context = JSON.parse(r.context); } catch { /* left empty */ }
     return {
-      id: r.id, kind: r.kind, kindName: KIND_NAMES[r.kind] || r.kind, text: r.body, place: r.place, context, status: r.status, reward: r.reward,
+      id: r.id, kind: r.kind, kindName: KIND_NAMES[r.kind] || r.kind, text: r.body, place: r.place, messageId: r.message_id || 0, context, status: r.status, reward: r.reward,
       reporter: brief(getUser(r.reporter_id)), target: brief(getUser(r.target_id)), handledBy: brief(getUser(r.handled_by)), handledAt: r.handled_at, at: r.created_at
     };
   }
@@ -399,6 +405,24 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       return { message, player: row(getUser(p.id)) };
     },
 
+    // 送信の取り消し of the bot's words, within the hour (money never comes back);
+    // the player's chat loses it, the site and the log keep what it said
+    'POST /api/ops/chat/retract': async (req, u) => {
+      need(u);
+      const body = await req.json();
+      const m = q('SELECT * FROM messages WHERE id = ?').get(posInt(body.message, 'メッセージ'));
+      if (!m || m.sender_id !== official.id()) throw new ApiError(404, 'not_found', 'このメッセージは取り消せません');
+      if (m.kind !== 'text') throw new ApiError(409, 'not_text', '送金は取り消せません');
+      if (m.retracted_at) throw new ApiError(409, 'retracted', 'このメッセージはもう取り消しています');
+      const now = Date.now();
+      if (now - m.created_at > RETRACT_MS) throw new ApiError(409, 'too_late', '送ってから1時間を過ぎたメッセージは取り消せません');
+      q('UPDATE messages SET retracted_at = ? WHERE id = ? AND retracted_at = 0').run(now, m.id);
+      live.send(m.recipient_id, 'retract', { id: m.id, channel: m.channel, at: now });
+      const p = getUser(m.recipient_id);
+      opsLog.add({ actor: u, action: 'bot_retract', target: p, req, summary: `${p ? p.name : '?'}さんへの公式メッセージを取り消した`, detail: { messageId: m.id, text: m.body, sentAt: m.created_at } });
+      return { id: m.id, retracted: now };
+    },
+
     // money from the operators ($0〜1000万), with a note if written
     'POST /api/ops/money': async (req, u) => {
       need(u);
@@ -407,15 +431,29 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const amount = Number(body.amount);
       if (!Number.isInteger(amount) || amount < 0 || amount > MONEY_MAX) throw new ApiError(400, 'bad_amount', `金額は $0〜${fmt(MONEY_MAX)} で選んでください`);
       const note = String(body.note ?? '').trim() ? cleanText(body.note, 2000) : '';
-      const before = getUser(p.id).dollars;
       const message = amount > 0 ? official.pay(p.id, amount) : null;
       const noteMsg = note ? official.say(p.id, note) : null;
       if (noteMsg) official.answered(p.id);
       opsLog.add({
-        actor: u, action: 'money', target: p, req, summary: `${p.name}さんへ公式から $${fmt(amount)} を送金`,
-        detail: { amount, note, dollarsBefore: before, dollarsAfter: getUser(p.id).dollars, messageId: message ? message.id : 0 }
+        actor: u, action: 'money', target: p, req, summary: `${p.name}さんへ公式から $${fmt(amount)} を送金（タップで受け取り）`,
+        detail: { amount, note, dollars: getUser(p.id).dollars, pending: amount > 0, messageId: message ? message.id : 0 }
       });
       return { message, note: noteMsg, balance: balance(getUser(p.id)), player: row(getUser(p.id)) };
+    },
+
+    // the chat the automatic filter stopped: an operator lets it go again
+    'POST /api/ops/chat-ban': async (req, u) => {
+      need(u);
+      const body = await req.json();
+      const p = alive(body.id);
+      if (!p.chat_ban) return { player: row(p) };
+      q("UPDATE users SET chat_ban = 0, chat_ban_why = '' WHERE id = ?").run(p.id);
+      live.send(p.id, 'chatban', { on: false });
+      opsLog.add({
+        actor: u, action: 'chat_unban', target: p, req, summary: `${p.name}さんのチャット停止を解除（自動フィルタリングシステム：${p.chat_ban_why || '理由不明'}）`,
+        detail: { since: p.chat_ban, why: p.chat_ban_why }
+      });
+      return { player: row(getUser(p.id)) };
     },
 
     /* ----- 通報 ----- */

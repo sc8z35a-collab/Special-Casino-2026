@@ -79,14 +79,14 @@
   }
 
   // Tells the server which release this game is: an older one gets the
-  // reminder, the first run of a new one the thank-you money.
+  // reminder, the first run of a new one the thank-you money (it arrives
+  // with the tap on the thanks, and waits there until then).
+  var owed = 0, claimingBonus = false;
   function checkRelease() {
     if (!api.online) return;
     api.release(BR.RELEASE).then(function (r) {
       if (r.released) released = r.released;
       if (r.outdated) { remind(true, r.release); return; }
-      // the money flies in with the thank-you, not before it
-      if (r.bonus > 0 && BR.juice) BR.juice.hold('dollars', r.bonus);
       if (r.me) {
         BR.social.setMe(r.me);
         BR.app.serverBalance(r.me);
@@ -114,25 +114,54 @@
     var missed = BR.NEWS.filter(function (n) { return n.id > BR.RELEASE - updates; });
     (missed.length ? missed : BR.NEWS.slice(0, 1)).forEach(function (n) { box.appendChild(entryEl(n)); });
     box.scrollTop = 0;
+    owed = amount;
+    renderOk();
     K.showModal('thanks');
-    sfx('money');
-    // the money bursts out of the amount and rains down, then flies into the wallet
-    setTimeout(function () {
-      var J = BR.juice;
-      if (!J || !K.isOpen('thanks')) return;
-      J.reward('#thanks-amt', 3);
-      J.rain({ pic: 'dollar', dur: 1.6, rate: 22 + Math.min(30, updates * 8) });
-      J.payout('dollars', amount, '#thanks-amt');
-    }, 700);
+    sfx('notify');
     try { localStorage.setItem(SEEN, String(BR.RELEASE)); } catch (e) { /* ignore */ }
     renderDot();
+  }
+  function renderOk() {
+    var b = $('#thanks-ok');
+    b.disabled = claimingBonus;
+    b.textContent = claimingBonus ? '受け取っています…' : owed > 0 ? '受け取る' : 'OK';
+  }
+  // the tap: the money bursts out of the amount and rains down, then flies into the wallet
+  function receive() {
+    if (claimingBonus) return;
+    if (!(owed > 0)) { K.closeModal('thanks'); return; }
+    claimingBonus = true;
+    renderOk();
+    api.releaseClaim().then(function (r) {
+      claimingBonus = false;
+      var paid = r.paid || 0, J = BR.juice;
+      owed = 0;
+      if (paid && J) J.hold('dollars', paid);
+      if (r.me) {
+        BR.social.setMe(r.me);
+        BR.app.serverBalance(r.me);
+      }
+      renderOk();
+      if (!paid) { K.closeModal('thanks'); return; }
+      sfx('money');
+      if (J) {
+        J.reward('#thanks-amt', 3);
+        J.rain({ pic: 'dollar', dur: 1.6, rate: 22 + Math.min(30, Math.round(paid / BR.CONFIG.updateBonus) * 8) });
+        J.payout('dollars', paid, '#thanks-amt');
+      }
+      setTimeout(function () { K.closeModal('thanks'); }, 1700);
+    }, function (err) {
+      claimingBonus = false;
+      renderOk();
+      K.fail(err);
+    });
   }
 
   function init() {
     renderDot();
     K.registerModal('thanks');
     K.dragScroll($('#thanks-news'));
-    $('#thanks-ok').addEventListener('click', function () { sfx('click'); K.closeModal('thanks'); });
+    $('#thanks-ok').addEventListener('click', function () { sfx('click'); receive(); });
     $('#update-note-go').addEventListener('click', update);
   }
 

@@ -98,6 +98,28 @@
 
   function get(path) { return request('GET', path); }
   function post(path, body) { return request('POST', path, body || {}); }
+  // Words only: the server's automatic filter stops a chat message with
+  // anything else in it (and the sender's chat with it), so the game never
+  // sends one. Invisible control characters go; what looks like a file (a
+  // data: URL, a long run of base64) is not sent (server/core/attach.js).
+  // eslint-disable-next-line no-control-regex
+  var CONTROL = /[\u0000-\u0008\u000E-\u001F\u007F]/g;
+  function looksLikeFile(t) {
+    if (/data:[\w.+-]+\/[\w.+-]+(?:;[\w=.+-]+)*;base64,[A-Za-z0-9+/]{40,}/i.test(t)) return true;
+    var runs = t.match(/[A-Za-z0-9+/]{400,}/g) || [];
+    for (var i = 0; i < runs.length; i++) {
+      var r = runs[i], seen = {}, n = 0;
+      for (var j = 0; j < r.length && n < 20; j++) if (!seen[r[j]]) { seen[r[j]] = 1; n++; }
+      if (n >= 20 && /[A-Z]/.test(r) && /[a-z]/.test(r) && /\d/.test(r)) return true;
+    }
+    return false;
+  }
+  function words(path, body) {
+    var t = String(body.text == null ? '' : body.text).replace(CONTROL, '');
+    if (looksLikeFile(t)) return Promise.reject(new ApiError(400, 'not_text', 'ファイルのような長い英数字の列は送れません'));
+    body.text = t;
+    return post(path, body);
+  }
   // 運営へのメッセージ・報告・意見案・通報・プレイヤー間のメッセージ: too big
   // ones (BR.CONFIG.sendMax) are stopped here, before they are sent
   function postText(path, body) {
@@ -105,7 +127,7 @@
     if (Array.from(String(body.text || '')).length > M.chars || new Blob([JSON.stringify(body)]).size > M.bytes) {
       return Promise.reject(new ApiError(413, 'too_large', '送信できません。大きすぎます。'));
     }
-    return post(path, body);
+    return words(path, body);
   }
   function q(v) { return encodeURIComponent(v); }
 
@@ -164,6 +186,9 @@
     makeGroup: function (name, members) { return post('/api/groups', { name: name, members: members }); },
     leaveGroup: function (id) { return post('/api/groups/leave', { group: id }); },
     transfer: function (to, amount, currency) { return post('/api/transfer', { to: to, amount: amount, currency: currency }); },
+    // money, a car or an item sent in a chat arrives with the tap
+    claim: function (messageId) { return post('/api/messages/claim', { message: messageId }); },
+    retract: function (messageId) { return post('/api/messages/retract', { message: messageId }); },
     blocks: function () { return get('/api/blocks'); },
     block: function (id, on) { return post('/api/block', { user: id, blocked: !!on }); },
 
@@ -202,7 +227,7 @@
     watch: function (id, on) { return post('/api/watch', { user: id, on: !!on }); },
     watchers: function () { return get('/api/watchers'); },
     voice: function (userId, on) { return post('/api/watch/voice', { user: userId, on: !!on }); },
-    homeChat: function (room, text) { return post('/api/home/chat', { room: room, text: text }); },
+    homeChat: function (room, text) { return words('/api/home/chat', { room: room, text: text }); },
     watchBet: function (side, stake) { return post('/api/watch/bet', { side: side, stake: stake }); },
     tip: function (to, fruits) { return post('/api/tip', { to: to, fruits: fruits }); },
 
@@ -220,7 +245,7 @@
     hubJoin: function (from) { return post('/api/hub/join', { from: from }); },
     hubDecline: function (from) { return post('/api/hub/decline', { from: from }); },
     hubLeave: function () { return post('/api/hub/leave'); },
-    hubSay: function (to, text) { return post('/api/hub/say', { to: to, text: text }); },
+    hubSay: function (to, text) { return words('/api/hub/say', { to: to, text: text }); },
     beat: function (idle, voice) { return post('/api/beat', { idle: idle, voice: voice ? 1 : 0 }); },
 
     /* the beginner guide and feedback to the operator */
@@ -232,6 +257,7 @@
     present: function (to, id) { return post('/api/present', { to: to, id: id }); },
     presentClaim: function (messageId) { return post('/api/present/claim', { message: messageId }); },
     report: function (user, kind, text, place) { return postText('/api/report', { user: user, kind: kind, text: text, place: place }); },
+    reportMessage: function (messageId, kind, text) { return postText('/api/report/message', { message: messageId, kind: kind, text: text }); },
     officialFeedback: function (kind, text) { return postText('/api/official/feedback', { kind: kind, text: text }); },
 
     /* phone notifications (js/net/push.js) */
@@ -248,7 +274,8 @@
     startJob: function (id) { return post('/api/jobs/start', { id: id }); },
     stopJob: function (id) { return post('/api/jobs/stop', { id: id }); },
     collectJobs: function () { return post('/api/jobs/collect'); },
-    release: function (n) { return post('/api/release', { release: n }); },
+    release: function (n) { return post('/api/release', { release: n, build: BR.BUILD || '' }); },
+    releaseClaim: function () { return post('/api/release/claim'); },
 
     /* 金の生る木 and its auctions */
     trees: function () { return get('/api/tree'); },

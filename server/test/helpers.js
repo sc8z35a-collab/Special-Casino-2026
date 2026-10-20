@@ -94,10 +94,17 @@ export async function startServer(overrides = {}) {
     return { events, waitFor, ticket, close: () => req.destroy() };
   }
 
+  // DEV9: money, cars and items sent in a chat arrive with the player's tap: tap all that waits
+  async function claimAll(u) {
+    const rows = app.db.prepare('SELECT id FROM messages WHERE recipient_id = ? AND pending = 1 AND claimed_at = 0 AND held = 0 ORDER BY id').all(u.me.id);
+    for (const r of rows) await call('POST', '/api/messages/claim', { token: u.token, body: { message: r.id } });
+    return rows.length;
+  }
+
   async function stop() {
     await app.close();
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 
-  return { app, base, dataDir, call, register, setUser, befriend, openStream, listen, stop };
+  return { app, base, dataDir, call, register, setUser, befriend, openStream, listen, claimAll, stop };
 }

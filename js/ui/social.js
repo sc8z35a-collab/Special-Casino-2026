@@ -32,6 +32,8 @@
 
   // modules that follow my profile (the guide, feedback, フレンド対決 ...): fn(me or null)
   var meListeners = [];
+  var claiming = {};         // message id -> true while money, a car or an item is being received
+  var menu = null;           // the ⋯ menu under a message, while it is open
   function meChanged() {
     renderMeCard();
     meListeners.forEach(function (fn) { try { fn(me); } catch (e) { if (window.console) console.warn(e); } });
@@ -678,8 +680,9 @@
     return '車';
   }
   function preview(last) {
+    if (last.retracted) return last.mine ? '送信を取り消しました' : 'メッセージの送信が取り消されました';
     if (last.kind === 'transfer') {
-      return (last.mine ? '送金しました: ' : '受け取りました: ') + U.fmt(last.amount) + ' ' + (K.CUR[last.currency] || K.CUR.tokens).name;
+      return (last.mine ? '送金しました: ' : '届きました: ') + U.fmt(last.amount) + ' ' + (K.CUR[last.currency] || K.CUR.tokens).name;
     }
     if (last.kind === 'gift') return (last.mine ? 'プレゼントしました: ' : 'プレゼントが届きました: ') + carName(last.text);
     if (last.kind === 'present') return BR.presents.preview(last);
@@ -840,6 +843,14 @@
       t.appendChild(r);
     }
     t.appendChild(document.createTextNode(K.fmtTime(m.at)));
+    // ⋯: copy, take back (my words, within the hour), report (someone's words)
+    if (m.kind === 'text' && !m.retracted) {
+      var more = el('button', 'msg-more', '⋯');
+      more.type = 'button';
+      more.setAttribute('aria-label', 'メッセージのメニュー');
+      more.addEventListener('click', function (e) { e.stopPropagation(); sfx('click'); openMenu(more, m, mine); });
+      t.appendChild(more);
+    }
     return t;
   }
   function updateReads() {
@@ -884,6 +895,110 @@
     refreshMsg(d.id);
   }
 
+  // money, a car or an item: the tap that receives it
+  function claimMsg(m) {
+    if (!m.pending || m.claimed || claiming[m.id]) return;
+    claiming[m.id] = true;
+    refreshMsg(m.id);
+    api.claim(m.id).then(function (r) {
+      delete claiming[m.id];
+      if (r.me) { BR.social.setMe(r.me); BR.app.serverBalance(r.me); }
+      patchMsg(m.id, { claimed: true });
+      sfx(m.kind === 'transfer' ? 'money' : 'purchase');
+      toast((m.kind === 'transfer' ? U.fmt(m.amount) + ' ' + (K.CUR[m.currency] || K.CUR.tokens).name
+        : m.kind === 'gift' ? carName(m.text) : itemName(m.text) + ' ×' + m.amount) + ' を受け取りました！', 2800);
+      if (BR.juice && BR.juice.reward) BR.juice.reward('#toast', 2);
+      if (m.kind === 'gift') BR.cars.changed();
+    }, function (err) {
+      delete claiming[m.id];
+      if (err && err.code === 'claimed') patchMsg(m.id, { claimed: true });
+      else refreshMsg(m.id);
+      fail(err);
+    });
+  }
+  // the card of money, a car or an item (since DEV9 it waits for the tap: m.pending)
+  function canClaim(m, mine) { return !!m.pending && !mine && !m.claimed; }
+  function cardNode(m, mine, cls) {
+    var node = el('div', 'msg xfer' + (cls ? ' ' + cls : '') + (mine ? ' mine' : ' theirs') + (canClaim(m, mine) ? ' can-claim' : '') + (m.pending && m.claimed ? ' claimed' : ''));
+    node.dataset.pid = m.id;
+    return node;
+  }
+  function cardBox(m, mine, cls) {
+    var open = canClaim(m, mine);
+    var card = el(open ? 'button' : 'div', 'xfer-card' + (cls ? ' ' + cls : ''));
+    if (open) {
+      card.type = 'button';
+      card.addEventListener('click', function () { claimMsg(m); });
+    }
+    return card;
+  }
+  // under the card: whether it was received (`hint`: where it is once it is)
+  function claimState(card, m, mine, hint) {
+    if (m.pending) {
+      card.appendChild(el('div', 'pr-state', mine ? (m.claimed ? '受け取られました' : 'まだ受け取られていません')
+        : m.claimed ? '受け取り済み' : claiming[m.id] ? '受け取っています…' : 'タップして受け取る'));
+    }
+    if (hint && !mine && (!m.pending || m.claimed)) card.appendChild(el('div', 'gift-hint', hint));
+  }
+
+  /* the ⋯ under a message */
+  function closeMenu() {
+    if (menu && menu.parentNode) menu.parentNode.removeChild(menu);
+    menu = null;
+  }
+  function openMenu(btn, m, mine) {
+    closeMenu();
+    var acts = [['copy', 'コピー']];
+    if (mine && Date.now() - m.at < BR.CONFIG.retract.minutes * 60000) acts.push(['retract', '送信を取り消す']);
+    if (!mine && m.from && !(BR.peter.is(m.from) || BR.johnson.is(m.from) || BR.official.is(m.from))) acts.push(['report', 'このメッセージを通報']);
+    menu = el('div', 'msg-menu');
+    menu.setAttribute('role', 'menu');
+    acts.forEach(function (a) {
+      var b = el('button', 'msg-menu-item' + (a[0] === 'copy' ? '' : ' warn'), a[1]);
+      b.type = 'button';
+      b.setAttribute('role', 'menuitem');
+      b.addEventListener('click', function (e) { e.stopPropagation(); sfx('click'); closeMenu(); msgAction(a[0], m); });
+      menu.appendChild(b);
+    });
+    document.body.appendChild(menu);
+    var r = btn.getBoundingClientRect(), w = menu.offsetWidth, h = menu.offsetHeight;
+    menu.style.left = Math.max(8, Math.min(mine ? r.right - w : r.left, window.innerWidth - w - 8)) + 'px';
+    menu.style.top = Math.max(8, r.bottom + 4 + h > window.innerHeight - 8 ? r.top - h - 4 : r.bottom + 4) + 'px';
+  }
+  function msgAction(what, m) {
+    if (what === 'copy') {
+      K.copyText(m.text).then(function () { toast('コピーしました', 1600); }, function () { toast('コピーできませんでした', 2000); });
+    } else if (what === 'report') {
+      BR.safety.reportMessage(m);
+    } else if (what === 'retract') {
+      K.confirmBox(function (p) { p.textContent = 'このメッセージの送信を取り消しますか？相手の画面からも消えます。'; }, '取り消す').then(function (ok) {
+        if (!ok) return;
+        api.retract(m.id).then(function (r) {
+          onRetract({ id: m.id, at: r.retracted });
+          toast('送信を取り消しました', 2000);
+        }, fail);
+      });
+    }
+  }
+  // a message taken back (here, on another device, or by the other side)
+  function onRetract(d) {
+    if (!d || !d.id) return;
+    patchMsg(d.id, { retracted: d.at || Date.now(), text: '' });
+    // the lists' newest lines: fetched again
+    convs = null;
+    groups = null;
+    if (visible() && view === 'messages') loadConversations();
+  }
+  // the automatic filter stopped my chat, or an operator let it go again
+  function onChatBan(d) {
+    if (!d) return;
+    if (d.me) BR.social.setMe(d.me);
+    else if (me) me.chatBan = d.on ? me.chatBan || { at: Date.now(), why: '' } : null;
+    renderChatBar();
+    if (d.on) { sfx('deny'); toast(d.message || 'チャットは停止中です', 6000); }
+    else { sfx('notify'); toast('運営がチャットの停止を解除しました。またチャットできます', 4200); }
+  }
+
   function msgEl(m, key, prev) {
     var mine = !!(m.from && me && m.from.id === me.id);
     var inGroup = key.indexOf('group:') === 0;
@@ -902,33 +1017,37 @@
     } else if (m.kind === 'car_sold') {
       node = BR.carsale.soldEl(m, mine);
     } else if (m.kind === 'transfer') {
-      node = el('div', 'msg xfer' + (mine ? ' mine' : ' theirs'));
-      card = el('div', 'xfer-card');
+      node = cardNode(m, mine, '');
+      card = cardBox(m, mine, '');
       card.appendChild(el('div', 'xfer-label', mine ? '送金しました' : '送金が届きました'));
       card.appendChild(K.amountEl(m.amount, m.currency, 'xfer-amount'));
+      claimState(card, m, mine, '');
       node.appendChild(card);
     } else if (m.kind === 'item') {
-      node = el('div', 'msg xfer gift item' + (mine ? ' mine' : ' theirs'));
-      card = el('div', 'xfer-card gift-card');
+      node = cardNode(m, mine, 'gift item');
+      card = cardBox(m, mine, 'gift-card');
       card.appendChild(el('div', 'xfer-label', mine ? 'アイテムを譲りました' : 'アイテムが届きました！'));
       var ip = el('span', 'gift-item');
       var isrc = BR.SOCIAL_IMG.items[m.text];
       if (isrc) ip.style.backgroundImage = 'url("' + isrc + '")';
       card.appendChild(ip);
       card.appendChild(el('div', 'gift-name', itemName(m.text) + ' ×' + m.amount));
-      if (!mine) card.appendChild(el('div', 'gift-hint', 'Shop の「所有」で見られます'));
+      claimState(card, m, mine, 'Shop の「所有」で見られます');
       node.appendChild(card);
     } else if (m.kind === 'gift') {
-      node = el('div', 'msg xfer gift' + (mine ? ' mine' : ' theirs'));
-      card = el('div', 'xfer-card gift-card');
+      node = cardNode(m, mine, 'gift');
+      card = cardBox(m, mine, 'gift-card');
       card.appendChild(el('div', 'xfer-label', mine ? '車をプレゼントしました' : '車のプレゼントが届きました！'));
       var pic = el('span', 'gift-car');
       var src = BR.SOCIAL_IMG.cars[m.text];
       if (src) pic.style.backgroundImage = 'url("' + src + '")';
       card.appendChild(pic);
       card.appendChild(el('div', 'gift-name', carName(m.text)));
-      if (!mine) card.appendChild(el('div', 'gift-hint', 'Car Owner の「ガレージ」で見られます'));
+      claimState(card, m, mine, 'Car Owner の「ガレージ」で見られます');
       node.appendChild(card);
+    } else if (m.retracted) {
+      node = el('div', 'msg retracted ' + (mine ? 'mine' : 'theirs'));
+      node.appendChild(el('div', 'bubble', mine ? '送信を取り消しました' : 'メッセージの送信が取り消されました'));
     } else {
       node = el('div', 'msg ' + (mine ? 'mine' : 'theirs'));
       // in a group: who wrote it (a run of messages by one person shows it once)
@@ -940,6 +1059,7 @@
       }
       node.appendChild(el('div', 'bubble', m.text));
     }
+    if (!node.dataset.pid) node.dataset.pid = m.id;
     if (mine) node.dataset.mid = m.id;
     node.appendChild(timeEl(m, key, mine));
     return node;
@@ -949,7 +1069,8 @@
     if (!key) return;
     var d = drafts[key];
     var ph = $('#chat-placeholder');
-    ph.textContent = d ? K.clip(d, 80) : view === 'group' ? 'グループにメッセージ…'
+    var stopped = me && me.chatBan && !(peer && view === 'dm' && (BR.official.is(peer) || BR.peter.is(peer) || BR.johnson.is(peer)));
+    ph.textContent = d ? K.clip(d, 80) : stopped ? 'チャットは停止中です（運営の確認待ち）' : view === 'group' ? 'グループにメッセージ…'
       : peer && BR.peter.is(peer) ? '「100万貸して」「100万返す」のように書けます'
       : peer && BR.johnson.is(peer) ? 'ジョンソンに話しかける…'
       : peer && BR.official.is(peer) ? '運営へのメッセージを入力…' : 'メッセージを入力…';
@@ -1584,16 +1705,16 @@
       : function () { sfx('click'); openDm(knownUser(m.from.id) || m.from); };
     if (m.kind === 'transfer') {
       sfx('money');
-      toast(name + 'さんから ' + U.fmt(m.amount) + ' ' + (K.CUR[m.currency] || K.CUR.tokens).name + ' が届きました！', 3400, open);
+      toast(name + 'さんから ' + U.fmt(m.amount) + ' ' + (K.CUR[m.currency] || K.CUR.tokens).name + ' が届きました！' + (m.pending ? 'タップして受け取ろう' : ''), 3400, open);
       if (BR.juice) BR.juice.reward('#toast', 2);
     } else if (m.kind === 'gift') {
       sfx('purchase');
-      toast(name + 'さんから ' + carName(m.text) + ' のプレゼントが届きました！ガレージで見られます', 4200, open);
+      toast(name + 'さんから ' + carName(m.text) + ' のプレゼントが届きました！' + (m.pending ? 'タップして受け取ろう' : 'ガレージで見られます'), 4200, open);
       if (BR.juice) BR.juice.reward('#toast', 3);
       BR.cars.changed();
     } else if (m.kind === 'item') {
       sfx('purchase');
-      toast(name + 'さんから ' + itemName(m.text) + ' ×' + m.amount + ' が届きました！', 4200, open);
+      toast(name + 'さんから ' + itemName(m.text) + ' ×' + m.amount + ' が届きました！' + (m.pending ? 'タップして受け取ろう' : ''), 4200, open);
       if (BR.juice) BR.juice.reward('#toast', 2);
     } else if (m.kind === 'present') {
       sfx('purchase');
@@ -1857,6 +1978,10 @@
     BR.live.on('balance', function (b) { BR.app.serverBalance(b, b.quiet); });
     BR.live.on('presence', onPresence);
     BR.live.on('present', onPresent);
+    BR.live.on('retract', onRetract);
+    BR.live.on('chatban', onChatBan);
+    // the ⋯ menu closes with a tap anywhere else
+    document.addEventListener('pointerdown', function (e) { if (menu && !menu.contains(e.target)) closeMenu(); }, true);
     BR.live.on('friend', onFriend);
     BR.live.on('status', function (on) { $('#board-info').classList.toggle('off', !on); });
     // 友達と稼ぐ: an invitation came or ran out, someone joined or left

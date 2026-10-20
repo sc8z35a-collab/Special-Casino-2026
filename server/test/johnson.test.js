@@ -7,11 +7,11 @@ import { startServer } from './helpers.js';
 import { RULES } from '../core/rules.js';
 
 const J = RULES.johnson;
-let s, call, register, setUser;
+let s, call, register, setUser, claimAll;
 
 before(async () => {
-  s = await startServer({ npcGifts: true, limits: { spin: [100000, 1000], shop: [100000, 1000], general: [100000, 1000], login: [100000, 1000], friend: [100000, 1000], transfer: [100000, 1000], dm: [100000, 1000] } });
-  ({ call, register, setUser } = s);
+  s = await startServer({ npcGifts: true, limits: { spin: [100000, 1000], shop: [100000, 1000], general: [100000, 1000], login: [100000, 1000], friend: [100000, 1000], transfer: [100000, 1000], dm: [100000, 1000], read: [100000, 1000] } });
+  ({ call, register, setUser, claimAll } = s);
 });
 after(() => s.stop());
 
@@ -36,6 +36,9 @@ test('ジョンソン: a friend from the start; his first gift comes when the pl
   const r = await call('GET', '/api/johnson', { token: a.token });
   assert.equal(r.status, 200);
   assert.equal(r.gifts, 1);
+  // (it arrives with the tap)
+  assert.equal(dollars(a.me.id), before);
+  assert.equal(await claimAll(a), 1);
   const got = dollars(a.me.id) - before;
   assert.ok(got >= J.gift[0] && got <= J.gift[1] && got % 1000 === 0, String(got));
   assert.equal(r.given, got);
@@ -55,6 +58,7 @@ test('ジョンソン: a friend from the start; his first gift comes when the pl
   db().prepare("UPDATE npc_friends SET gift_at = gift_at - ? WHERE user_id = ? AND npc = 'johnson'").run(J.every, a.me.id);
   const r2 = await call('GET', '/api/johnson', { token: a.token });
   assert.equal(r2.gifts, 2);
+  await claimAll(a);
   const got2 = dollars(a.me.id) - before - got;
   assert.ok(got2 >= J.gift[0] && got2 <= J.gift[1], String(got2));
   assert.equal((await chatWith(a.token, jid)).length, 4);
@@ -74,6 +78,7 @@ test('ジョンソン: once ever, he helps a player whose money (tokens counted)
   await call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
   st = await call('GET', '/api/johnson', { token: a.token });
   assert.equal(st.rescued, true);
+  await claimAll(a);
   assert.ok(dollars(a.me.id) >= J.rescue, String(dollars(a.me.id)));
   const list = await chatWith(a.token, jid);
   const rescue = list.filter((m) => m.kind === 'transfer' && m.amount === J.rescue);

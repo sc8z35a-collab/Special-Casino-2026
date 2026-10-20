@@ -5,7 +5,9 @@
 // conversations), friends, items, reports and the rest. Two things stay, by
 // law and by design: the payment records of 開発者支援 (Japan's tax law keeps
 // sales records for 7 years) and the operators' log (it can never change).
-// Cars they gave away stay with their owners, without the giver.
+// Cars they gave away stay with their owners, without the giver. What friends
+// sent them that they never tapped (money, a car, items) goes back to the
+// friend; what they sent and nobody tapped goes with them.
 
 // [table, the columns that hold the player's id]: rows matching any go
 export const PLAYER_ROWS = [
@@ -37,10 +39,40 @@ export const PLAYER_ROWS = [
   ['push_subs', ['user_id']]
 ];
 
+const CURRENCIES = ['tokens', 'dollars'];
+
+// What waited for a tap (messages.pending), before the messages go.
+function settlePending(q, id) {
+  let back = 0;
+  for (const m of q('SELECT * FROM messages WHERE recipient_id = ? AND pending = 1 AND claimed_at = 0').all(id)) {
+    const s = q('SELECT id, npc FROM users WHERE id = ?').get(m.sender_id);
+    // (from Ice Smoker公式 or an NPC: nothing to give back)
+    const friend = s && !s.npc ? s.id : 0;
+    if (m.kind === 'gift') {
+      if (friend) q('UPDATE cars SET owner_id = ?, from_id = 0, acquired_at = ? WHERE id = ? AND owner_id = 0').run(friend, Date.now(), m.amount);
+      else q('DELETE FROM cars WHERE id = ? AND owner_id = 0').run(m.amount);
+    } else if (!friend) {
+      continue;
+    } else if (m.kind === 'transfer' && CURRENCIES.includes(m.currency)) {
+      q(`UPDATE users SET ${m.currency} = ${m.currency} + ?, rev = rev + 1 WHERE id = ?`).run(m.amount, friend);
+    } else if (m.kind === 'item') {
+      q('INSERT INTO items (user_id, item, count) VALUES (?, ?, ?) ON CONFLICT(user_id, item) DO UPDATE SET count = items.count + excluded.count').run(friend, m.body, m.amount);
+    }
+    back++;
+  }
+  // a car they gave that nobody took
+  for (const m of q("SELECT amount FROM messages WHERE sender_id = ? AND kind = 'gift' AND pending = 1 AND claimed_at = 0").all(id)) {
+    q('DELETE FROM cars WHERE id = ? AND owner_id = 0').run(m.amount);
+  }
+  return back;
+}
+
 // Takes out one player's data (in one transaction); how many rows went, by table.
 export function purgePlayer(q, tx, id) {
   return tx(() => {
     const gone = {};
+    const back = settlePending(q, id);
+    if (back) gone.returned = back;
     for (const [table, cols] of PLAYER_ROWS) {
       const n = Number(q(`DELETE FROM ${table} WHERE ${cols.map((c) => `${c} = ?`).join(' OR ')}`).run(...cols.map(() => id)).changes);
       if (n) gone[table] = n;
