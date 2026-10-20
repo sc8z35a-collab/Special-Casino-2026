@@ -1,4 +1,4 @@
-/* Shop (on the board screen; always on sale like the icons), 所有 (all one
+/* Shop (on the board screen; on sale 5 hours a day: js/game/sale.js), 所有 (all one
    owns: Shop items, cars, icons) and the お守り加護 on the slot screen: one
    tap before a spin switches it on, and the next losing spin gives back
    5-20 % of the lost tokens (now and then all of them). Shop items can be
@@ -10,7 +10,8 @@
   var $ = U.$;
   var el = K.el, sfx = K.sfx, toast = K.toast, fail = K.fail;
 
-  var sale = null;      // today's Shop prices from the server: { day, until, items: [{ id, price, salePrice, pct, max }] }
+  var skew = 0;        // the server's clock less ours (the Shop's sale hours are the server's)
+  var tick = 0;
   var qty = {};         // id -> how many to buy
   var busy = false;
 
@@ -20,10 +21,22 @@
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;
   }
+  // the price now: on sale 5 hours a day ({ price, salePrice, pct, on, end, next, max })
   function saleOf(id) {
-    if (sale) for (var i = 0; i < sale.items.length; i++) if (sale.items[i].id === id) return sale.items[i];
-    var it = info(id), day = U.utcDay();
-    return { id: id, price: it.price, salePrice: BR.sale.price(it, day), pct: BR.sale.pct(id, day), max: it.max };
+    var it = info(id), s = BR.sale.shop(it, Date.now() + skew);
+    return { id: id, price: it.price, salePrice: s.price, pct: s.pct, on: s.on, end: s.end, next: s.next, max: it.max };
+  }
+  function setSale(shop) { if (shop && shop.now) skew = shop.now - Date.now(); }
+  function left(ms) {
+    var t = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), x = t % 60;
+    return h + ':' + (m < 10 ? '0' : '') + m + ':' + (x < 10 ? '0' : '') + x;
+  }
+  function when(ms) {
+    var d = new Date(ms - skew);
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
+  }
+  function saleLine(s) {
+    return s.on ? 'セール中 残り ' + left(s.end - Date.now() - skew) : '次のセール ' + when(s.next) + '〜（5時間）';
   }
   function me() { return BR.social.me(); }
   function owned(id) { var m = me(); return (m && m.items && m.items[id]) || 0; }
@@ -46,8 +59,20 @@
 
   function showShop() {
     renderShop();
+    clearInterval(tick);
+    tick = setInterval(function () {
+      if (!onBoard('shop')) { clearInterval(tick); return; }
+      var on = false;
+      Array.prototype.forEach.call(document.querySelectorAll('#shop-grid .shop-left'), function (n) {
+        var s = saleOf(n.dataset.id);
+        n.textContent = saleLine(s);
+        if (String(s.on) !== n.dataset.on) on = true;
+      });
+      // the sale has begun or ended: the prices change
+      if (on) renderShop();
+    }, 1000);
     api.items().then(function (r) {
-      sale = r.shop;
+      setSale(r.shop);
       var m = me();
       if (m) { m.items = r.items; m.charm = r.charm; }
       if (onBoard('shop')) renderShop();
@@ -67,7 +92,7 @@
       var pic = el('span', 'shop-pic');
       pic.style.backgroundImage = 'url("' + picture(it.id) + '")';
       stage.appendChild(pic);
-      if (room > 0) stage.appendChild(el('i', 'sale-badge'));
+      if (room > 0 && s.on) stage.appendChild(el('i', 'sale-badge'));
       card.appendChild(stage);
       var body = el('div', 'shop-body');
       body.appendChild(el('div', 'shop-brand', 'SHOP'));
@@ -76,11 +101,15 @@
       (LINES[it.id] || []).forEach(function (t) { ul.appendChild(el('li', '', t)); });
       body.appendChild(ul);
       var price = el('div', 'shop-price');
-      price.appendChild(el('s', '', money(s.price)));
+      if (s.on) price.appendChild(el('s', '', money(s.price)));
       price.appendChild(K.amountEl(s.salePrice, 'dollars', 'shop-now'));
-      price.appendChild(el('em', '', '-' + s.pct + '%'));
+      if (s.on) price.appendChild(el('em', '', '-' + s.pct + '%'));
       price.appendChild(el('small', '', '/ 個'));
       body.appendChild(price);
+      var sl = el('div', 'shop-left' + (s.on ? ' on' : ''), saleLine(s));
+      sl.dataset.id = it.id;
+      sl.dataset.on = String(s.on);
+      body.appendChild(sl);
       body.appendChild(el('div', 'shop-own', '所持 ' + have + ' / ' + it.max + '個'));
       var row = el('div', 'shop-buy-row');
       var minus = el('button', 'sq-btn minus');
@@ -114,7 +143,7 @@
       p.appendChild(document.createTextNode(it.name + ' ×' + n + ' を'));
       p.appendChild(K.amountEl(s.salePrice * n, 'dollars', 'confirm-amt'));
       p.appendChild(document.createTextNode('で購入しますか？'));
-      p.appendChild(el('small', 'confirm-sub', 'セール中 ' + s.pct + '%OFF（通常 ' + money(s.price) + ' / 個）'));
+      p.appendChild(el('small', 'confirm-sub', s.on ? 'セール中 ' + s.pct + '%OFF（通常 ' + money(s.price) + ' / 個）' : '通常価格（セールは1日5時間）'));
     }, '購入する').then(function (ok) {
       if (!ok) return;
       busy = true;
@@ -126,7 +155,7 @@
         toast(it.name + ' ×' + n + ' を購入しました！スロット画面からワンタップで使えます', 3600);
         if (BR.juice) BR.juice.reward('#pane-shop .shop-pic', 2);
       }, function (err) {
-        if (err.code === 'price_changed' && err.extra.itemShop) sale = err.extra.itemShop;
+        if (err.code === 'price_changed' && err.extra.itemShop) setSale(err.extra.itemShop);
         fail(err);
       }).then(function () {
         busy = false;
@@ -142,7 +171,7 @@
     api.items().then(function (r) {
       var m = me();
       if (m) { m.items = r.items; m.charm = r.charm; }
-      sale = r.shop;
+      setSale(r.shop);
       if (onBoard('items')) renderItems();
       renderCharm();
     }, function () {});
@@ -300,7 +329,7 @@
   function init() {
     $('#btn-charm').addEventListener('click', useCharm);
     if (!api.online) return;
-    BR.live.on('hello', function (h) { if (h.itemShop) sale = h.itemShop; setTimeout(renderCharm, 0); });
+    BR.live.on('hello', function (h) { if (h.itemShop) setSale(h.itemShop); setTimeout(renderCharm, 0); });
     BR.live.on('items', function (e) {
       var m = me();
       if (m) m.items = e.items;
@@ -314,7 +343,7 @@
     init: init,
     showShop: showShop,
     showItems: showItems,
-    setSale: function (s) { if (s) sale = s; },
+    setSale: setSale,
     renderCharm: renderCharm,
     charmSaved: charmSaved,
     afterSpin: afterSpin,

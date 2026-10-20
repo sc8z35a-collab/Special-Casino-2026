@@ -33,6 +33,9 @@ export function shopSale(item, now = Date.now()) { return BR.sale.shop(item, now
 // the Car Owner sale on at `now` (or null), and a car's price with it
 export function carSale(now = Date.now()) { return BR.sale.cars(now, RULES.cars); }
 export function carPrice(car, sale) { return BR.sale.carPrice(car, sale); }
+// what the buy-back pays for a car at `now` (and the 大廃棄セール on then)
+export function carBuyback(car, now = Date.now()) { return BR.sale.buyback(car, now, BR.sale.cars(now, RULES.cars)); }
+export function carDisposal(now = Date.now()) { return BR.sale.disposal(now); }
 export function utcDay(date) {
   const d = date || new Date();
   return d.getUTCFullYear() + '-' + (d.getUTCMonth() + 1) + '-' + d.getUTCDate();

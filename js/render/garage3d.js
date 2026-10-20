@@ -114,14 +114,14 @@
     renderer.shadowMap.type = T.PCFSoftShadowMap;
     var scene = new T.Scene();
     scene.background = new T.Color(0x06070b);
-    scene.fog = new T.Fog(0x06070b, 13, 32);
+    scene.fog = new T.Fog(0x06070b, 16, 40);
     var pm = new T.PMREMGenerator(renderer);
     scene.environment = pm.fromScene(new T.RoomEnvironment(), 0.04).texture;
     scene.environmentIntensity = 0.32;
     pm.dispose();
     scene.add(new T.HemisphereLight(0x8a96b8, 0x0b0b10, 0.45));
     // the glossy floor, fading into the dark
-    var floor = new T.Mesh(new T.CircleGeometry(ROOM * 2, 64), new T.MeshStandardMaterial({ color: 0x0c0d12, roughness: 0.38, metalness: 0.25 }));
+    var floor = new T.Mesh(new T.CircleGeometry(ROOM * 2, 64), new T.MeshStandardMaterial({ color: 0x15161d, roughness: 0.55, metalness: 0.1 }));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
@@ -146,9 +146,9 @@
     geo.translate(0, -len / 2, 0);
     geo.rotateX(-Math.PI / 2);
     var mat = new T.ShaderMaterial({
-      uniforms: { color: { value: new T.Color(color) }, strength: { value: 0.22 } },
+      uniforms: { color: { value: new T.Color(color) }, strength: { value: 0.42 } },
       vertexShader: 'varying float vAlong; varying vec3 vN; varying vec3 vView;' +
-        'void main() { vAlong = clamp(-position.z / ' + len.toFixed(3) + ', 0.0, 1.0);' +
+        'void main() { vAlong = clamp(position.z / ' + len.toFixed(3) + ', 0.0, 1.0);' +
         'vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vView = normalize(-mv.xyz);' +
         'gl_Position = projectionMatrix * mv; }',
       fragmentShader: 'uniform vec3 color; uniform float strength; varying float vAlong; varying vec3 vN; varying vec3 vView;' +
@@ -163,6 +163,22 @@
     return m;
   }
 
+  // the glow of a lamp's lens (a soft round sprite, added light)
+  function glow(at, color, size) {
+    var c = document.createElement('canvas');
+    c.width = c.height = 128;
+    var x = c.getContext('2d'), gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(0.25, 'rgba(255,255,255,.55)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = gr;
+    x.fillRect(0, 0, 128, 128);
+    var sp = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(c), color: color, blending: T.AdditiveBlending, depthWrite: false, transparent: true }));
+    sp.position.copy(at);
+    sp.scale.set(size, size, 1);
+    return sp;
+  }
+
   function dress(baseM, movingM, spotM) {
     var s = g.scene;
     // the round base, its pattern up (the pattern faces +z in the file)
@@ -175,7 +191,7 @@
     var target = new T.Vector3(0, 0.75, 0);
     // the moving head on the floor at the back left, its head towards the car
     var moving = fit(movingM, 'y', MOVING_H);
-    moving.position.set(-4.7, 0, -3.1);
+    moving.position.set(-4.1, 0, -2.5);
     moving.rotation.y = Math.atan2(-moving.position.x, -moving.position.z) + Math.PI / 2;
     shadows(moving, true, false);
     s.add(moving);
@@ -197,16 +213,26 @@
     key.shadow.camera.near = 1;
     key.shadow.camera.far = 20;
     s.add(key, key.target);
-    var coolFrom = new T.Vector3(-4.7, MOVING_H * 0.8, -3.1);
-    var cool = new T.SpotLight(0x8fc4ff, 380, 0, 0.36, 0.45, 2);
+    var coolFrom = new T.Vector3(-4.1, MOVING_H * 0.8, -2.5);
+    var cool = new T.SpotLight(0x8fc4ff, 420, 9, 0.3, 0.5, 2);
     cool.position.copy(coolFrom);
-    cool.target.position.set(0, 1.0, 0);
+    cool.target.position.set(0, 0.9, 0);
     s.add(cool, cool.target);
-    // a soft top light so the car never sits in the dark
-    var top = new T.SpotLight(0xffffff, 140, 0, 0.7, 0.9, 2);
-    top.position.set(0, 7.5, 0.5);
+    // the lamps' lenses glow, and the moving head is lit a little from the front
+    s.add(glow(coolFrom.clone().lerp(new T.Vector3(0, 0.9, 0), 0.05), 0x9fd0ff, 0.6));
+    s.add(glow(keyFrom.clone().lerp(target, 0.03), 0xfff0d0, 0.6));
+    var fill = new T.PointLight(0xc8d4ff, 6, 4, 2);
+    fill.position.set(-3.2, 1.4, -1.4);
+    s.add(fill);
+    // a soft top light on the car (its pool stays on the base), and a dim
+    // light behind so the stands and the moving head show against the dark
+    var top = new T.SpotLight(0xffffff, 110, 0, 0.42, 0.85, 2);
+    top.position.set(0, 9, 0);
     top.target.position.set(0, 0, 0);
     s.add(top, top.target);
+    var back = new T.PointLight(0x6f7fa8, 18, 14, 2);
+    back.position.set(0, 3.2, -6);
+    s.add(back);
     g.beams = [beam(keyFrom, target, 1.5, 0xffe8c8), beam(coolFrom, new T.Vector3(0, 1.0, 0), 1.2, 0x9ccaff)];
     g.beams.forEach(function (b) { s.add(b); });
   }
@@ -270,7 +296,7 @@
     c.autoRotateSpeed = auto ? 0.9 : 0.35;
     c.enableZoom = !auto;
     g.camera.fov = FOV;
-    g.camera.position.set(6.3, 2.3, 6.6);
+    g.camera.position.set(4.9, 1.85, 5.2);
     c.target.set(0, 0.8, 0);
     g.camera.updateProjectionMatrix();
     c.update();
@@ -474,6 +500,8 @@
     // stops drawing (the canvas stays where it is until shown elsewhere)
     stop: function () { stop(); if (mode === 'walk') leaveWalk(); mode = ''; host = null; },
     onMode: null,
-    onZoom: null
+    onZoom: null,
+    // (the studio, to look into it while working on it)
+    debug: function () { return g; }
   };
 })(window.BR = window.BR || {});

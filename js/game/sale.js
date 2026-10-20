@@ -10,7 +10,11 @@
        超ダイナミックセール  5 % of the months: 24 hours, 8 cars 20-45 % off
        年感謝セール        once a year on a day of its own: 24 hours, every car 10-30 % off
      A sale that would fall on a day a bigger one already has is called off
-     (the yearly one comes first, then the monthly, the weekly, the daily). */
+     (the yearly one comes first, then the monthly, the weekly, the daily);
+   - the car buy-back (BR.sale.buyback): a car's price now (its sale price in
+     a sale) less 10-35 %, a new rate for each car every Japan day; in a
+     大廃棄セール (45 % of the fortnights, one day without a car sale) every
+     car less only 2.5-10 %, the same for all. */
 (function (BR) {
   'use strict';
 
@@ -81,6 +85,28 @@
     return dayMs + pick('car-day/' + k + '/hour', 24 - c.hours + 1) * HOUR;
   }
 
+  // is there a Car Owner sale on that Japan day (0:00 of it)?
+  function saleDay(dayMs) {
+    var t = jday(dayMs);
+    return dayMs === yearDay(t.y) || dayMs === monthDay(t.y, t.m) || dayMs === weekDay(mondayOf(dayMs)) || !!dayStart(dayMs);
+  }
+  // the 大廃棄セール of the fortnight `ms` is in: its day (0:00 Japan time) and
+  // its rate, or null (fortnights counted from Monday 2026-01-05)
+  var FORTNIGHT0 = Date.UTC(2026, 0, 5) - JST;
+  function disposal(ms) {
+    var c = BR.CONFIG.carBuyback.disposal, i = Math.floor((ms - FORTNIGHT0) / (14 * DAY)), from = FORTNIGHT0 + i * 14 * DAY;
+    if (pick('car-dispose/' + i + '/chance', 1000) >= c.chance * 10) return null;
+    // a day of its own in the fortnight; a car sale's day passes it to the next free one
+    var d0 = pick('car-dispose/' + i + '/day', 14);
+    for (var k = 0; k < 14; k++) {
+      var day = from + ((d0 + k) % 14) * DAY;
+      if (saleDay(day)) continue;
+      var steps = Math.round((c.max - c.min) / c.step) + 1;
+      return { name: c.name, start: day, end: day + DAY, pct: c.min + pick('car-dispose/' + i + '/rate', steps) * c.step };
+    }
+    return null;
+  }
+
   // The Car Owner sale on at `ms`, or null: { kind, name, start, end, pct: { carId: % off } }
   function carSale(ms, cars) {
     var S = BR.CONFIG.carSales, t = jday(ms), today = midnight(t.y, t.m, t.d), on = null;
@@ -127,6 +153,19 @@
     carPrice: function (car, sale) {
       var pct = sale && sale.pct[car.id] || 0;
       return { price: pct ? round100(car.price * (100 - pct) / 100) : car.price, pct: pct };
+    },
+    // the 大廃棄セール on at `ms` (null: none)
+    disposal: function (ms) {
+      var d = disposal(ms);
+      return d && ms >= d.start && ms < d.end ? d : null;
+    },
+    // What the buy-back pays for `car` at `ms`: its price now (`sale`: the car
+    // sale on now) less `pct` % (the day's rate, or the 大廃棄セール's).
+    buyback: function (car, ms, sale) {
+      var b = BR.CONFIG.carBuyback, d = BR.sale.disposal(ms);
+      var pct = d ? d.pct : b.min + pick('car-buyback/' + dayKey(ms) + '/' + car.id, b.max - b.min + 1);
+      var now = BR.sale.carPrice(car, sale).price;
+      return { price: round100(now * (100 - pct) / 100), pct: pct, disposal: !!d };
     }
   };
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

@@ -451,7 +451,14 @@ export const MIGRATIONS = [
     // the highest access-day milestone paid (5, 10 … 35)
     'ALTER TABLE users ADD COLUMN days_paid INTEGER NOT NULL DEFAULT 0',
     // garage places bought on top of the two everyone has
-    'ALTER TABLE users ADD COLUMN garage_extra INTEGER NOT NULL DEFAULT 0'
+    'ALTER TABLE users ADD COLUMN garage_extra INTEGER NOT NULL DEFAULT 0',
+    // a car rented out: since when (0: at home), when it comes back (0: not
+    // asked), the 5-hour blocks paid for, $ waiting, the last block's customers
+    'ALTER TABLE cars ADD COLUMN rent_start INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE cars ADD COLUMN rent_until INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE cars ADD COLUMN rent_blocks INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE cars ADD COLUMN rent_earned INTEGER NOT NULL DEFAULT 0',
+    "ALTER TABLE cars ADD COLUMN rent_last TEXT NOT NULL DEFAULT ''"
   ]
 ];
 

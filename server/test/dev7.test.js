@@ -167,3 +167,39 @@ test('the garage: two cars, one more place for $1,000,000 each (for good); a ful
   const car = g.cars[0].id;
   assert.equal((await call('POST', '/api/cars/gift', { token: a.token, body: { to: b.me.id, car } })).error.code, 'their_garage_full');
 });
+
+test('buy-back and renting out: the day\'s price, customers every 5 hours, back after the block', async () => {
+  const { RULES, carBuyback } = await import('../core/rules.js');
+  const p = await register('Rent7');
+  setUser(p.me.id, { dollars: 100000000, garage_extra: 3 });
+  const buy = async () => (await call('POST', '/api/cars/buy', { token: p.token, body: { model: 'blue-lightning' } })).car.id;
+  const [a, b] = [await buy(), await buy()];
+  let g = await call('GET', '/api/cars', { token: p.token });
+  const offer = g.buyback['blue-lightning'];
+  assert.deepEqual(offer, carBuyback(RULES.cars.find((c) => c.id === 'blue-lightning')));
+  assert.ok(offer.disposal ? offer.pct >= 2.5 && offer.pct <= 10 : offer.pct >= 10 && offer.pct <= 35);
+  // rent both out (as many as one has)
+  for (const id of [a, b]) assert.ok((await call('POST', '/api/cars/rent', { token: p.token, body: { car: id, action: 'start' } })).car.rent);
+  assert.equal((await call('POST', '/api/cars/sell', { token: p.token, body: { car: a } })).error.code, 'rented');
+  // 11 hours later: two blocks of customers (one at the least each), waiting
+  const db = s.app.db;
+  db.prepare('UPDATE cars SET rent_start = ? WHERE id IN (?, ?)').run(Date.now() - 11 * 3600000, a, b);
+  g = await call('GET', '/api/cars', { token: p.token });
+  const ca = g.cars.find((c) => c.id === a);
+  assert.ok(ca.earned >= 2 * 10000 && ca.last.n >= 1, JSON.stringify(ca));
+  // asked back: home at the end of its block (here: at once, the 3rd block runs till 15 h)
+  const stop = (await call('POST', '/api/cars/rent', { token: p.token, body: { car: a, action: 'stop' } })).car;
+  assert.equal(stop.rent.until, stop.rent.start + 15 * 3600000);
+  db.prepare('UPDATE cars SET rent_start = ?, rent_until = ? WHERE id = ?').run(Date.now() - 16 * 3600000, Date.now() - 3600000, a);
+  g = await call('GET', '/api/cars', { token: p.token });
+  assert.equal(g.cars.find((c) => c.id === a).rent, null);
+  // the takings, then the buy-back
+  const before = dollars(p.me.id);
+  const got = await call('POST', '/api/cars/collect', { token: p.token, body: {} });
+  assert.equal(dollars(p.me.id), before + got.paid);
+  const offer2 = (await call('GET', '/api/cars', { token: p.token })).buyback['blue-lightning'];
+  assert.equal((await call('POST', '/api/cars/sell', { token: p.token, body: { car: a, price: offer2.price + 100 } })).error.code, 'price_changed');
+  const sold = await call('POST', '/api/cars/sell', { token: p.token, body: { car: a, price: offer2.price } });
+  assert.equal(sold.paid, offer2.price);
+  assert.equal(dollars(p.me.id), before + got.paid + offer2.price);
+});

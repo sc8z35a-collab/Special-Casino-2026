@@ -19,7 +19,7 @@ import {
 import { Limiter } from './ratelimit.js';
 import {
   RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE,
-  spin as spinReels, evaluate as evaluateLine, iconSale, shopSale, carSale, carPrice, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
+  spin as spinReels, evaluate as evaluateLine, iconSale, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
 import { createPeter, reservedName } from './peter.js';
@@ -109,6 +109,56 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const carCount = (id) => q('SELECT COUNT(*) AS n FROM cars WHERE owner_id = ?').get(id).n;
   // how many cars a garage holds: two, and one more for every place bought
   const garageSize = (u) => RULES.garage.slots + (u.garage_extra || 0);
+
+  // Renting cars out (RULES.carRental): for every 5-hour block a car is out,
+  // customers come (each of them with a chance of its own) and pay by how
+  // dear the car is, now and then one pays $150,000; it waits to be
+  // collected. Stopped, a car comes back at the end of its block (5 hours at
+  // the least). Counted when someone looks (and by the housekeeping).
+  const RENT = RULES.carRental, BLOCK = RENT.hours * 3600000;
+  function customer(model) {
+    if (randomInt(1, 10000) <= RENT.vip.chance * 10000) return { pay: RENT.vip.pay, vip: true };
+    // $1M cars and less: 10k-30k; $20M and more: 40k-60k
+    const t = Math.max(0, Math.min(1, Math.log((model ? model.price : 1e6) / 1e6) / Math.log(20)));
+    const lo = RENT.min + (RENT.max - RENT.spread - RENT.min) * t;
+    return { pay: Math.round(lo / 1000) * 1000 + randomInt(0, RENT.spread / 1000) * 1000, vip: false };
+  }
+  function settleRental(c, now = Date.now()) {
+    if (!c.rent_start) return false;
+    const back = c.rent_until > 0 && c.rent_until <= now;
+    const blocks = Math.floor(((back ? c.rent_until : now) - c.rent_start) / BLOCK);
+    if (blocks <= c.rent_blocks && !back) return false;
+    const model = CARS.get(c.model);
+    let earned = 0, last = null;
+    for (let b = c.rent_blocks; b < blocks; b++) {
+      let n = 0, sum = 0, vip = 0;
+      for (const chance of RENT.customers) {
+        if (randomInt(1, 10000) > chance * 10000) continue;
+        const x = customer(model);
+        n++;
+        sum += x.pay;
+        if (x.vip) vip++;
+      }
+      earned += sum;
+      last = { n, sum, vip, at: c.rent_start + (b + 1) * BLOCK };
+    }
+    // (counted once: another request that got here first wins)
+    return Number(q(`UPDATE cars SET rent_blocks = ?, rent_earned = rent_earned + ?, rent_last = ?, rent_start = ?, rent_until = ?
+                     WHERE id = ? AND rent_start = ? AND rent_blocks = ?`)
+      .run(back ? 0 : blocks, earned, last ? JSON.stringify(last) : c.rent_last, back ? 0 : c.rent_start, back ? 0 : c.rent_until, c.id, c.rent_start, c.rent_blocks).changes) > 0;
+  }
+  function settleRentals(userId) {
+    for (const c of q('SELECT * FROM cars WHERE owner_id = ? AND rent_start > 0').all(userId)) tx(() => settleRental(c));
+  }
+  function carDto(r) {
+    let last = null;
+    try { last = r.rent_last ? JSON.parse(r.rent_last) : null; } catch { last = null; }
+    return {
+      id: r.id, model: r.model, acquiredAt: r.acquired_at, from: r.from_id ? { id: r.from_id, name: r.from_name } : null,
+      rent: r.rent_start ? { start: r.rent_start, until: r.rent_until, next: r.rent_start + (r.rent_blocks + 1) * BLOCK } : null,
+      earned: r.rent_earned, last
+    };
+  }
   const itemCount = (userId, item) => { const r = q('SELECT count FROM items WHERE user_id = ? AND item = ?').get(userId, item); return r ? r.count : 0; };
   function addItems(userId, item, n) {
     q(`INSERT INTO items (user_id, item, count) VALUES (?, ?, ?)
@@ -1796,18 +1846,86 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
     /* ----- cars ----- */
 
-    // the cars one owns, the garage's size, and the Car Owner sale on now (if any)
+    // the cars one owns (and how their renting goes), the garage's size, the
+    // Car Owner sale and the 大廃棄セール on now (if any), the buy-back prices
     'GET /api/cars': (req, u) => {
-      const rows = q(`SELECT c.id, c.model, c.acquired_at, c.from_id, f.name AS from_name FROM cars c LEFT JOIN users f ON f.id = c.from_id
+      settleRentals(u.id);
+      const rows = q(`SELECT c.*, f.name AS from_name FROM cars c LEFT JOIN users f ON f.id = c.from_id
                       WHERE c.owner_id = ? ORDER BY c.acquired_at DESC, c.id DESC`).all(u.id);
+      const now = Date.now();
       return {
         catalog: RULES.cars,
-        cars: rows.map((r) => ({ id: r.id, model: r.model, acquiredAt: r.acquired_at, from: r.from_id ? { id: r.from_id, name: r.from_name } : null })),
+        cars: rows.map(carDto),
         capacity: garageSize(u),
         slotPrice: RULES.garage.slotPrice,
-        sale: carSale(),
-        now: Date.now()
+        sale: carSale(now),
+        disposal: carDisposal(now),
+        buyback: Object.fromEntries(RULES.cars.map((c) => [c.id, carBuyback(c, now)])),
+        rental: { hours: RENT.hours },
+        now
       };
+    },
+
+    // the buy-back: the car goes, its price now arrives (`price`: the one shown;
+    // a rented car cannot go; what its renting earned comes along)
+    'POST /api/cars/sell': async (req, u) => {
+      const body = await req.json();
+      rate(limit.shop, u.id);
+      const id = posInt(body.car, '車');
+      settleRentals(u.id);
+      const r = tx(() => {
+        const c = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(id, u.id);
+        if (!c) throw new ApiError(404, 'no_car', 'この車は持っていません');
+        if (c.rent_start) throw new ApiError(409, 'rented', '貸し出し中の車は売れません（戻ってから売れます）');
+        const model = CARS.get(c.model);
+        if (!model) throw new ApiError(400, 'bad_model', 'この車は買い取れません');
+        const b = carBuyback(model);
+        if (body.price !== undefined && Number(body.price) !== b.price) {
+          throw new ApiError(409, 'price_changed', `買取価格が変わりました（今は $${fmt(b.price)}）`, { buyback: b });
+        }
+        q('DELETE FROM cars WHERE id = ?').run(c.id);
+        q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(b.price + c.rent_earned, u.id);
+        return { paid: b.price, earned: c.rent_earned, pct: b.pct, disposal: b.disposal };
+      });
+      return { ...r, me: meDto(balanceChanged(u.id)) };
+    },
+
+    // renting a car out ('start'), or asking it back ('stop': at the end of its block)
+    'POST /api/cars/rent': async (req, u) => {
+      const body = await req.json();
+      const id = posInt(body.car, '車');
+      settleRentals(u.id);
+      const now = Date.now();
+      tx(() => {
+        const c = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(id, u.id);
+        if (!c) throw new ApiError(404, 'no_car', 'この車は持っていません');
+        if (body.action === 'start') {
+          if (c.rent_start) throw new ApiError(409, 'rented', 'この車はもう貸し出し中です');
+          q('UPDATE cars SET rent_start = ?, rent_until = 0, rent_blocks = 0 WHERE id = ?').run(now, c.id);
+        } else if (body.action === 'stop') {
+          if (!c.rent_start) throw new ApiError(409, 'not_rented', 'この車は貸し出していません');
+          if (!c.rent_until) q('UPDATE cars SET rent_until = ? WHERE id = ?').run(c.rent_start + Math.max(1, Math.ceil((now - c.rent_start) / BLOCK)) * BLOCK, c.id);
+        } else {
+          throw new ApiError(400, 'bad_action', '処理を選んでください');
+        }
+      });
+      const row = q('SELECT c.*, f.name AS from_name FROM cars c LEFT JOIN users f ON f.id = c.from_id WHERE c.id = ?').get(id);
+      return { car: carDto(row) };
+    },
+
+    // what the customers paid, all of it
+    'POST /api/cars/collect': async (req, u) => {
+      await req.json();
+      settleRentals(u.id);
+      const paid = tx(() => {
+        const n = q('SELECT COALESCE(SUM(rent_earned), 0) AS n FROM cars WHERE owner_id = ?').get(u.id).n;
+        if (!n) return 0;
+        q('UPDATE cars SET rent_earned = 0 WHERE owner_id = ?').run(u.id);
+        q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(n, u.id);
+        return n;
+      });
+      if (!paid) throw new ApiError(409, 'nothing', 'まだ受け取れる売上はありません');
+      return { paid, me: meDto(balanceChanged(u.id)) };
     },
 
     // at the price of the moment (`price`: the one shown; a sale may have begun or ended)
@@ -1857,12 +1975,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       requireFriend(u, to, '車をあげる');
       if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーにはあげられません');
       rate(limit.transfer, u.id, '少し待ってからお試しください');
+      settleRentals(u.id);
       const m = tx(() => {
         const car = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(carId, u.id);
         if (!car) throw new ApiError(404, 'no_car', 'この車は持っていません');
+        if (car.rent_start) throw new ApiError(409, 'rented', '貸し出し中の車はあげられません');
+        // what its renting earned stays with the giver
+        if (car.rent_earned) q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(car.rent_earned, u.id);
         const them = getUser(to);
         if (carCount(to) >= garageSize(them)) throw new ApiError(409, 'their_garage_full', `${them.name}さんのガレージがいっぱいです`);
-        q('UPDATE cars SET owner_id = ?, from_id = ?, acquired_at = ? WHERE id = ?').run(to, u.id, Date.now(), car.id);
+        q('UPDATE cars SET owner_id = ?, from_id = ?, acquired_at = ?, rent_earned = 0, rent_last = \'\' WHERE id = ?').run(to, u.id, Date.now(), car.id);
         const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'gift', body: car.model, amount: car.id });
         touchConversations(u.id, to, row.id);
         return row;
@@ -2826,6 +2948,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('DELETE FROM spins WHERE created_at < ?').run(Date.now() - 30 * 86400000);
       q('DELETE FROM sessions WHERE last_used < ?').run(Date.now() - 365 * 86400000);
       q('DELETE FROM watchers WHERE since < ?').run(Date.now() - 12 * 3600000);
+      // rented cars: their customers counted, the ones asked back home again
+      for (const c of q('SELECT * FROM cars WHERE rent_start > 0').all()) tx(() => settleRental(c));
       // アクセス禁止 and BAN that have run out (the official bot tells the player)
       for (const b of q('SELECT * FROM users WHERE banned = 1 AND ban_until > 0 AND ban_until <= ?').all(Date.now())) liftBan(b, 'expired');
       // 観戦ベット whose player stopped spinning: the stake goes back

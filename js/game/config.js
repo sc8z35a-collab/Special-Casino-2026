@@ -64,6 +64,15 @@
       month: { name: '超ダイナミックセール', chance: 5, hours: 24, cars: 8, min: 20, max: 45 },
       year: { name: '年感謝セール', chance: 100, hours: 24, cars: 0, min: 10, max: 30 }
     },
+    // the car buy-back: a car's price now (with its sale) less `min`-`max` %,
+    // a new rate every Japan day; the 大廃棄セール (on `chance` % of the
+    // fortnights, a day long): every car less the same `min`-`max` % (by `step`)
+    carBuyback: { min: 10, max: 35, disposal: { name: '大廃棄セール', chance: 45, min: 2.5, max: 10, step: 0.5 } },
+    // renting cars out (any number of one's cars): every `hours` hours customers
+    // come (each of these with its chance), paying `min`-`max` $ each (the
+    // dearer the car, the more), and `vip.chance` of them `vip.pay` $; a car
+    // out is away for `hours` hours at least (stopping it waits for that)
+    carRental: { hours: 5, customers: [1, 0.9, 0.4, 0.3, 0.1], min: 10000, max: 60000, spread: 20000, vip: { chance: 0.03, pay: 150000 } },
     // Shop (price in $, 10-40 % off for 5 hours a day: js/game/sale.js);
     // anything bought here can be given to friends, up to `max` per player
     shop: [

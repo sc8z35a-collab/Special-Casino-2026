@@ -337,6 +337,8 @@
     if (!TAB_OF[v]) v = 'friends';
     if (v === 'dm' && !peer) v = 'messages';
     if (v === 'group' && !group) v = 'messages';
+    // the cars' 3D stops when Car Owner is left
+    if (v !== 'cars' && BR.cars && BR.cars.leave) BR.cars.leave();
     view = v;
     var tab = TAB_OF[v];
     if (tab !== 'messages') lastTab = v;

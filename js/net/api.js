@@ -162,8 +162,12 @@
     setAvatar: function (id) { return post('/api/avatar', { id: id }); },
     buyAvatar: function (id, price) { return post('/api/avatar/buy', { id: id, price: price }); },
     cars: function () { return get('/api/cars'); },
-    buyCar: function (model) { return post('/api/cars/buy', { model: model }); },
+    buyCar: function (model, price) { return post('/api/cars/buy', { model: model, price: price }); },
     giftCar: function (to, carId) { return post('/api/cars/gift', { to: to, car: carId }); },
+    sellCar: function (carId, price) { return post('/api/cars/sell', { car: carId, price: price }); },
+    rentCar: function (carId, action) { return post('/api/cars/rent', { car: carId, action: action }); },
+    collectRent: function () { return post('/api/cars/collect'); },
+    expandGarage: function () { return post('/api/garage/expand'); },
 
     /* Shop, 所有 and the お守り加護 */
     items: function () { return get('/api/items'); },

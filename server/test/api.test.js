@@ -156,8 +156,10 @@ test('spins are settled on the server and add up', async () => {
     assert.equal(res.grid.length, 5);
     res.grid.forEach((col, k) => { assert.equal(col.length, 3); assert.equal(col[1], res.line[k]); });
     const check = evaluate(res.line, bet);
-    assert.equal(res.total, check.total);
-    assert.equal(res.tier, check.tier);
+    // (from the fifth win in a row, double)
+    const twice = res.combo >= RULES.comboDouble;
+    assert.equal(res.total, check.total * (twice ? 2 : 1));
+    if (!twice) assert.equal(res.tier, check.tier);
     tokens = tokens - bet + res.total;
     won += res.total;
     biggest = Math.max(biggest, res.total);
