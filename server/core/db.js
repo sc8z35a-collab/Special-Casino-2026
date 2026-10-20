@@ -556,6 +556,43 @@ export const MIGRATIONS = [
     "ALTER TABLE cars ADD COLUMN via TEXT NOT NULL DEFAULT ''",
     // a car offer in a chat: '' open, 'sold', 'canceled'
     "ALTER TABLE messages ADD COLUMN state TEXT NOT NULL DEFAULT ''"
+  ],
+  // DEV9: the vault's folders (folders in folders too), the folder of each
+  // file ('' the top), and the size of a file's pieces (bigger with a bucket)
+  [
+    `CREATE TABLE vault_folders (
+       id         TEXT    PRIMARY KEY,
+       name       TEXT    NOT NULL,
+       parent     TEXT    NOT NULL DEFAULT '',
+       created_by INTEGER NOT NULL,
+       created_at INTEGER NOT NULL
+     )`,
+    'CREATE INDEX vault_folders_parent ON vault_folders(parent)',
+    "ALTER TABLE vault_files ADD COLUMN folder TEXT NOT NULL DEFAULT ''",
+    'CREATE INDEX vault_files_folder ON vault_files(folder)',
+    'ALTER TABLE vault_files ADD COLUMN piece INTEGER NOT NULL DEFAULT 1048576',
+    // what an AI did with a file (JSON: [{ at, kind, text }]), and when an AI
+    // put it in the game (実装済み: out of the links, kept in the vault); a
+    // link made for an AI (it labels what it takes and what it put in the game)
+    "ALTER TABLE vault_files ADD COLUMN labels TEXT NOT NULL DEFAULT ''",
+    'ALTER TABLE vault_files ADD COLUMN implemented_at INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE vault_links ADD COLUMN ai INTEGER NOT NULL DEFAULT 0',
+    // 運営チャット: the operators to one another (to_id) or to all of them (0),
+    // and how far each has read each conversation (peer 0: the one with all)
+    `CREATE TABLE ops_messages (
+       id         INTEGER PRIMARY KEY,
+       from_id    INTEGER NOT NULL,
+       to_id      INTEGER NOT NULL DEFAULT 0,
+       body       TEXT    NOT NULL,
+       created_at INTEGER NOT NULL
+     )`,
+    'CREATE INDEX ops_messages_to ON ops_messages(to_id, from_id, id)',
+    `CREATE TABLE ops_reads (
+       user_id INTEGER NOT NULL,
+       peer_id INTEGER NOT NULL,
+       read_id INTEGER NOT NULL DEFAULT 0,
+       PRIMARY KEY (user_id, peer_id)
+     )`
   ]
 ];
 
@@ -564,7 +601,7 @@ export const SCHEMA_VERSION = MIGRATIONS.length;
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
   'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access',
-  'pay_orders', 'pay_events', 'meta'];
+  'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

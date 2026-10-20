@@ -37,6 +37,7 @@ export function sendJson(res, status, body, headers) {
     ...headers
   });
   res.end(data);
+  return data.length;
 }
 
 // Reads a JSON body (at most `limit` bytes).

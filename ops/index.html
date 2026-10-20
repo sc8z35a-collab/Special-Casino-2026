@@ -39,10 +39,15 @@
       <button class="tab" data-view="feedback" type="button">報告・意見案<b class="count" id="count-feedback" hidden></b></button>
       <button class="tab" data-view="log" type="button">ログ</button>
       <button class="tab" data-view="operators" type="button" id="tab-operators">運営者</button>
+      <button class="tab" data-view="team" type="button">運営チャット<b class="count" id="count-team" hidden></b></button>
+      <button class="tab" data-view="server" type="button">サーバー</button>
       <button class="tab" data-view="pay" type="button" id="tab-pay" hidden>課金<b class="count" id="count-pay" hidden></b></button>
       <button class="tab" data-view="vault" type="button" id="tab-vault" hidden>保管庫</button>
     </nav>
     <div class="top-right">
+      <label class="speed" title="運営サイトの更新頻度"><span>更新</span><select id="speed">
+        <option value="max">極めて高い</option><option value="high">高い</option><option value="normal">通常</option><option value="slow">遅い</option>
+      </select></label>
       <span class="muted" id="op-name"></span>
       <button class="btn ghost small" id="logout" type="button">ログアウト</button>
     </div>
@@ -169,6 +174,39 @@
     <div class="cards" id="pay-list"></div>
   </section>
 
+  <!-- 運営チャット: the operators, live; one to one or all together -->
+  <section class="view" id="view-team" hidden>
+    <div class="view-head"><h2>運営チャット</h2><span class="muted" id="team-note"></span></div>
+    <p class="hint muted">運営者だけの連絡用です。緑は運営サイトにいる人、青はゲーム中の人。送ったメッセージは取り消せません。</p>
+    <div class="team">
+      <aside class="team-list" id="team-list"></aside>
+      <section class="team-chat">
+        <div class="team-head" id="team-head"></div>
+        <div class="team-scroll" id="team-scroll"><div class="chat-list" id="team-msgs"></div></div>
+        <form class="team-compose" id="team-form" hidden><textarea id="team-text" rows="2" maxlength="2000" placeholder="メッセージ（Ctrl+Enter で送信）"></textarea><button class="btn primary" type="submit">送信</button></form>
+      </section>
+    </div>
+  </section>
+
+  <!-- サーバー: what the server sees of itself, live (every operator) -->
+  <section class="view" id="view-server" hidden>
+    <div class="view-head"><h2>サーバー</h2><span class="muted" id="srv-at"></span></div>
+    <p class="hint muted">料金はサーバーが数えた分からの目安です（1ドル150円で計算）。正確な請求額は Cloudflare のダッシュボードの「請求」で確認できます。</p>
+    <div class="summary srv-live" id="srv-live"></div>
+    <div class="card srv-chart">
+      <div class="srv-chart-head"><b>直近5分（1秒ごと）</b><span class="srv-key"><i class="k-req"></i>リクエスト <i class="k-bytes"></i>送信量</span><span class="muted" id="srv-chart-note"></span></div>
+      <svg id="srv-chart" viewBox="0 0 600 120" preserveAspectRatio="none" aria-label="直近5分のリクエストと送信量"></svg>
+    </div>
+    <div class="srv-grid">
+      <article class="card" id="srv-plan"></article>
+      <article class="card" id="srv-bill"></article>
+      <article class="card" id="srv-db"></article>
+      <article class="card" id="srv-vault"></article>
+      <article class="card" id="srv-cf"></article>
+      <article class="card" id="srv-machine" hidden></article>
+    </div>
+  </section>
+
   <!-- 保管庫: the developer's files (the developer code opens it) -->
   <section class="view" id="view-vault" hidden>
     <div class="view-head">
@@ -176,13 +214,14 @@
       <span class="muted" id="vault-usage"></span>
       <button class="btn small ghost" id="vault-lock" type="button" hidden>閉じる</button>
     </div>
-    <p class="hint muted">開発者コードで開きます（30分で閉じます）。3Dモデルは4方向の画像・情報・軽量版が自動で作られます。切れたアップロードは、同じファイルを選び直すと続きから送れます。</p>
+    <p class="hint muted">開発者コードで開きます（30分で閉じます）。ファイルはフォルダにまとめられます（チェックして「フォルダへ移動」）。3Dモデルは4方向の画像・情報・軽量版が自動で作られます。止まったアップロードは、このページを開いている間、空きや通信が戻りしだい自動で続きから送ります（閉じたあとは同じファイルを選び直すと続きから）。AI用リンクで AI が取ったファイルと AI の作業にはラベルが付き、AI がゲームに入れたファイルは「実装済み」に移ってリンクから外れます。保管庫のファイルが自動で消えることはありません。</p>
     <div class="vault-closed" id="vault-closed">
       <button class="btn primary" id="vault-open" type="button">開発者コードで開く</button>
     </div>
     <div id="vault-main" hidden>
       <div class="vault-up">
         <label class="btn primary" for="vault-file">ファイルを選んでアップロード</label>
+        <button class="btn" id="vault-new-folder" type="button">＋ フォルダを作る</button>
         <input id="vault-file" type="file" multiple hidden>
         <input class="search" id="vault-note" type="text" maxlength="500" placeholder="メモ（任意・次に選ぶファイルに付きます）">
       </div>
@@ -192,7 +231,15 @@
         <button class="btn small warn" id="vault-all-stop" type="button" hidden>全体リンクを停止</button>
       </div>
       <div class="cards" id="vault-jobs"></div>
+      <div class="card vault-waiting" id="vault-waiting" hidden></div>
+      <div class="vault-path" id="vault-path"></div>
+      <div class="vault-picked" id="vault-picked" hidden><b id="vault-picked-n"></b><button class="btn small primary" id="vault-picked-move" type="button">フォルダへ移動</button><button class="btn small ghost" id="vault-picked-clear" type="button">選択を解除</button></div>
+      <div class="vault-folders" id="vault-folders"></div>
+      <div class="chips vault-filter" id="vault-filter">
+        <button class="chip on" data-vf="all" type="button">すべて</button><button class="chip" data-vf="open" type="button">未実装</button><button class="chip" data-vf="used" type="button">実装済み</button>
+      </div>
       <div class="cards" id="vault-list"></div>
+      <div class="vault-pager" id="vault-pager"></div>
     </div>
   </section>
 </div>
@@ -268,6 +315,7 @@
     <h2 id="dialog-title"></h2>
     <p class="muted" id="dialog-text"></p>
     <label class="field" id="dialog-field" hidden><span id="dialog-label"></span><input id="dialog-input" type="text" autocomplete="off"></label>
+    <label class="field" id="dialog-pick" hidden><span id="dialog-pick-label"></span><select id="dialog-select"></select></label>
     <p class="error" id="dialog-error" role="alert"></p>
     <div class="dialog-acts">
       <button class="btn ghost" type="button" id="dialog-cancel">やめる</button>

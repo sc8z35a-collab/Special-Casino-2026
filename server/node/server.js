@@ -5,6 +5,9 @@
 //   node --disable-warning=ExperimentalWarning server/node/server.js
 import http from 'node:http';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, ROOT } from './config.js';
 import { openDb } from './sqlite.js';
@@ -14,12 +17,30 @@ import { SECURITY_HEADERS, sendJson, clientIp, coreRequest } from './http.js';
 import { createApi } from '../core/api.js';
 import { metaValue } from '../core/db.js';
 
-export function createApp(overrides = {}) {
+// This machine for the operator site's サーバー tab: the database's size,
+// the live connections, memory, load and disk.
+function machine(dataDir, live) {
+  const size = (f) => { try { return fs.statSync(path.join(dataDir, f)).size; } catch { return 0; } };
+  return {
+    name: 'node',
+    dbBytes: () => size('blockbuster.db') + size('blockbuster.db-wal'),
+    sockets: () => [...live.clients.values()].reduce((n, set) => n + set.size, 0),
+    extra() {
+      const m = process.memoryUsage();
+      let disk = null;
+      try { const d = fs.statfsSync(dataDir); disk = { free: d.bavail * d.bsize, size: d.blocks * d.bsize }; } catch { /* not told */ }
+      return { rss: m.rss, heap: m.heapUsed, load: os.loadavg(), cpus: os.cpus().length, memTotal: os.totalmem(), memFree: os.freemem(), uptime: Math.round(process.uptime()), node: process.version, disk };
+    }
+  };
+}
+
+// `blobs`: a bucket for the developer's vault (the tests' stand-in for R2; none here)
+export function createApp({ blobs = null, ...overrides } = {}) {
   const config = loadConfig(overrides);
   const db = openDb(config.dataDir);
   const live = new Live();
   const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
-  const api = createApi({ db, live, config, secret });
+  const api = createApi({ db, live, config, secret, blobs, host: machine(config.dataDir, live) });
   live.onPresence = (userId, online) => api.presence(userId, online);
   // The page is online with WebSocket live updates (Cloudflare); here they come as SSE.
   const serveStatic = createStatic(ROOT, {
@@ -48,7 +69,7 @@ export function createApp(overrides = {}) {
         return;
       }
       const out = await api.handle(coreRequest(req, url, clientIp(req, config.trustProxy, config.clientIpHeader)));
-      sendJson(res, out.status, out.body);
+      api.sent(sendJson(res, out.status, out.body));
       return;
     }
     if (serveStatic(req, res, url.pathname)) return;
