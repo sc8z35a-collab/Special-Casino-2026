@@ -62,6 +62,8 @@
     dev_code_set: '開発者コードを登録', dev_code_change: '開発者コードを変更', dev_code_fail: '開発者コードの入力ミス',
     bot_auto_reply: '自動返信', log_kept: '運営ログの保持', 'admin:restore-time': '管理コマンド: 時点への巻き戻し',
     account_delete: 'アカウント削除', account_purge: 'データの完全削除', emergency_stop: '緊急停止', emergency_release: '緊急停止の解除',
+    lockdown: 'ロックダウン', lockdown_release: 'ロックダウンの解除', shield_block: '手動ブロック', shield_auto_block: '自動ブロック',
+    shield_unblock: 'ブロックの解除', sec_message: 'セキュリティ基地の連絡',
     backup_key: 'バックアップの鍵', backup_run: 'バックアップ', backup_get: 'バックアップのダウンロード', backup_delete: 'バックアップの削除',
     backup_settings: 'バックアップの設定', backup_failed: 'バックアップの失敗', vault_note: '保管庫のメッセージ', vault_note_delete: '保管庫のメッセージ削除',
     player_register: '登録', player_login: 'ログイン', player_password: 'パスワード変更', player_recovery: '引き継ぎコード再発行',
@@ -104,8 +106,8 @@
           if (res.ok) return j;
           var e = j.error || {};
           var err = { status: res.status, code: e.code || '', message: e.message || 'エラーが発生しました（' + res.status + '）', until: e.until || 0 };
-          // the server stopped itself
-          if (res.status === 503 && e.emergency) showEmergency();
+          // the server stopped itself (a plain emergency stop, or a lockdown)
+          if (res.status === 503 && e.emergency) showEmergency(e);
           else if (res.status === 401 || e.code === 'not_operator' || e.code === 'banned') signedOut(err.message);
           throw err;
         });
@@ -310,6 +312,7 @@
       if (document.hidden) return;
       if (state.view === 'server') loadServer(true);
       else if (state.view === 'team') loadTeam(true);
+      else if (state.view === 'security') loadSecurity(true);
     }, SPEEDS[speed][1]);
     if (state.chat) chatEvery();
   }
@@ -323,7 +326,7 @@
   function setView(v) {
     state.view = v;
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
-    ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'server', 'pay', 'vault'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
+    ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
     if (v === 'players') load();
     else if (v === 'archive') loadArchive();
     else if (v === 'operators') loadOperators();
@@ -332,6 +335,7 @@
     else if (v === 'feedback') loadFeedback();
     else if (v === 'log') { loadLog(true); verifyLog(); }
     else if (v === 'team') openTeamView();
+    else if (v === 'security') loadSecurity();
     else if (v === 'server') { loadServer(); renderDevCards(); }
     else if (v === 'pay') loadPay();
     else if (v === 'vault') renderVault();
@@ -789,7 +793,7 @@
 
   /* ------------------------------------------------------------ 緊急停止 --- */
   var emergencyOn = false;
-  function showEmergency() {
+  function showEmergency(info) {
     if (emergencyOn) return;
     emergencyOn = true;
     clearInterval(timer);
@@ -798,8 +802,16 @@
     $('#emergency').hidden = false;
     $('#em-list').textContent = '';
     $('#em-release').hidden = true;
-    $('#em-text').textContent = 'いつもよりはるかに多い使用量を検知したため、サーバーを止めています。開発者が確認して再開するまでお待ちください。';
-    if (state.developer) loadEmergency();
+    // a lockdown: the operator site is shut too; direct everyone to security HOME
+    var lockdown = !!(info && info.lockdown);
+    $('#em-sec').hidden = !lockdown;
+    if (lockdown) {
+      $('#emergency').querySelector('h2').textContent = 'ロックダウン中です';
+      $('#em-text').textContent = '防御が突破された可能性を検知したため、サーバーをロックダウンしています。運営の操作はできません。監視・連絡・解除はセキュリティ基地（security HOME）で行ってください。';
+    } else {
+      $('#em-text').textContent = 'いつもよりはるかに多い使用量を検知したため、サーバーを止めています。開発者が確認して再開するまでお待ちください。';
+      if (state.developer) loadEmergency();
+    }
   }
   function loadEmergency() {
     request('GET', '/api/emergency').then(function (r) {
@@ -1752,6 +1764,96 @@
     return fmt(Math.round(n));
   }
   function usd(n) { return '$' + Number(n || 0).toFixed(2); }
+
+  /* ------------------------------------------------------------ セキュリティ --- */
+  function loadSecurity(quiet) {
+    return request('GET', '/api/ops/security').then(function (r) {
+      state.security = r;
+      if (state.view === 'security') renderSecurity(r);
+      // the tab badge: blocks in force
+      var n = (r.shield && r.shield.blocks ? r.shield.blocks.length : 0);
+      setCount('security', n);
+    }, function (err) { if (!quiet) fail(err); });
+  }
+  function secStat(box, label, value, cls) {
+    var s = el('div', 'stat' + (cls ? ' ' + cls : ''));
+    s.appendChild(el('span', '', label));
+    s.appendChild(el('b', '', value));
+    box.appendChild(s);
+  }
+  function renderSecurity(r) {
+    var sh = r.shield || {}, em = r.emergency || {}, m = sh.last5m || {}, p = sh.pressure || {};
+    $('#sec-at').textContent = '最終更新 ' + stamp(Date.now()).slice(11);
+    var live = $('#sec-live'); live.textContent = '';
+    secStat(live, 'リクエスト（5分）', fmt(m.requests || 0));
+    secStat(live, '攻撃（5分）', fmt(m.attacks || 0), (m.attacks || 0) ? 'hot' : '');
+    secStat(live, 'フラッド（5分）', fmt(m.floods || 0), (m.floods || 0) ? 'hot' : '');
+    secStat(live, 'ログイン失敗（5分）', fmt(m.authFails || 0), (m.authFails || 0) ? 'warn' : '');
+    secStat(live, 'ブロック中', fmt((sh.blocks || []).length), (sh.blocks || []).length ? 'warn' : '');
+    secStat(live, '攻撃元アドレス', (p.attackers || 0) + '/' + (p.breachAt || 8), (p.attackers || 0) ? 'warn' : '');
+
+    // the lockdown card (every operator can raise or lift it)
+    var lc = $('#sec-lockcard'); lc.textContent = '';
+    lc.appendChild(el('h3', '', '緊急システム・ロックダウン'));
+    var state2 = em.level === 'lockdown' ? 'ロックダウン中' : em.level === 'stop' ? '緊急停止中' : 'ふだんどおり';
+    lc.appendChild(el('p', 'muted', em.level ? (state2 + '（' + stamp(em.at) + '〜・' + (em.reason || '') + '）' + (em.releaseAt ? '・自動解除 ' + stamp(em.releaseAt) : '')) : 'ふだんどおり動いています。防御が突破されたと判断したときの最終手段です。'));
+    var acts = el('div', 'acts');
+    if (em.level === 'lockdown') {
+      var rel = el('button', 'btn danger solid small', 'ロックダウンを解除'); rel.type = 'button'; rel.dataset.secRelease = '1'; acts.appendChild(rel);
+    } else {
+      var go = el('button', 'btn danger small', 'ロックダウンを発動'); go.type = 'button'; go.dataset.secLockdown = '1'; acts.appendChild(go);
+    }
+    var open = el('a', 'btn small', 'security HOME を開く'); open.href = '/sec/'; open.target = '_blank'; open.rel = 'noopener'; acts.appendChild(open);
+    lc.appendChild(acts);
+    lc.appendChild(el('p', 'muted', 'ロックダウン中は全ユーザー（プレイヤー・運営者・開発者）が締め出され、外部通信を遮断、ログ以外を停止します。最長1か月で自動解除。'));
+
+    // the blocks in force
+    var bl = $('#sec-blocks'); bl.textContent = '';
+    bl.appendChild(el('h3', '', 'ブロック中 ' + ((sh.blocks || []).length ? '（' + (sh.blocks || []).length + '）' : '')));
+    if (!(sh.blocks || []).length) bl.appendChild(el('p', 'muted', 'ブロック中のものはありません'));
+    (sh.blocks || []).slice(0, 60).forEach(function (b) {
+      var row = el('div', 'sec-row');
+      row.appendChild(el('span', 'sec-tag ' + b.scope, b.scope === 'ip' ? 'IP' : b.scope === 'account' ? 'アカウント' : '端末'));
+      row.appendChild(el('span', 'sec-target', b.target));
+      if (b.manual) row.appendChild(el('span', 'sec-tag manual', '手動'));
+      row.appendChild(el('span', 'sec-why', (b.reason || '') + (b.until ? '｜あと' + Math.max(1, Math.round((b.until - Date.now()) / 60000)) + '分' : '｜解除まで')));
+      var un = el('button', 'btn ghost small', '解除'); un.type = 'button'; un.dataset.unblock = b.key; row.appendChild(un);
+      bl.appendChild(row);
+    });
+
+    // the addresses with the highest threat score
+    var at = $('#sec-attackers'); at.textContent = '';
+    at.appendChild(el('h3', '', '脅威スコアの高いアドレス'));
+    var tops = (sh.topAttackers || []).filter(function (x) { return x.score > 0; });
+    if (!tops.length) at.appendChild(el('p', 'muted', '脅威は検知されていません'));
+    tops.slice(0, 15).forEach(function (x) {
+      var row = el('div', 'sec-row');
+      row.appendChild(el('span', 'sec-target', x.ip));
+      if (x.flags && x.flags.length) row.appendChild(el('span', 'sec-why', x.flags.join('・')));
+      row.appendChild(el('span', 'sec-score', 'スコア ' + fmt(x.score)));
+      var bk = el('button', 'btn ghost small', 'ブロック'); bk.type = 'button'; bk.dataset.blockIp = x.ip; row.appendChild(bk);
+      at.appendChild(row);
+    });
+  }
+  function secBlock(scope, target, reason) {
+    return request('POST', '/api/ops/security/block', { scope: scope, target: target, reason: reason }).then(function () { toast('ブロックしました'); loadSecurity(); }, fail);
+  }
+  function secUnblock(key) {
+    return request('POST', '/api/ops/security/unblock', { key: key }).then(function () { toast('解除しました'); loadSecurity(); }, fail);
+  }
+  function secLockdown() {
+    ask({ title: 'ロックダウンを発動しますか？', text: '全ユーザー（プレイヤー・運営者・開発者）が締め出され、外部通信を遮断、ログ以外を停止します。重要データを保護し、攻撃情報を緊急ログに記録します。最長1か月で自動解除、運営者はいつでも手動で解除できます。', input: { label: '理由（任意）' }, ok: '発動する', danger: true }).then(function (reason) {
+      if (reason === null) return;
+      request('POST', '/api/sec/lockdown', { reason: reason }).then(function () { showEmergency({ lockdown: true }); }, fail);
+    }).catch(fail);
+  }
+  function secRelease() {
+    ask({ title: 'ロックダウンを解除しますか？', text: '原因を確認してから解除してください。サーバーが通常に戻ります。', ok: '解除する', danger: true }).then(function (ok) {
+      if (ok === null) return;
+      request('POST', '/api/sec/release', {}).then(function () { toast('解除しました'); loadSecurity(); }, fail);
+    }).catch(fail);
+  }
+
   function loadServer(quiet) {
     if (srvBusy) return;
     srvBusy = true;
@@ -3166,6 +3268,18 @@
     $('#em-reload').addEventListener('click', function () { location.reload(); });
     $('#srv-backup').addEventListener('click', onBackup);
     $('#srv-stop').addEventListener('click', function (e) { if (e.target.closest('[data-stop]')) stopNow(); });
+    $('#view-security').addEventListener('click', function (e) {
+      var un = e.target.closest('[data-unblock]'); if (un) { secUnblock(un.dataset.unblock); return; }
+      var bk = e.target.closest('[data-block-ip]'); if (bk) { secBlock('ip', bk.dataset.blockIp, '運営が手動でブロック'); return; }
+      if (e.target.closest('[data-sec-lockdown]')) { secLockdown(); return; }
+      if (e.target.closest('[data-sec-release]')) { secRelease(); return; }
+    });
+    $('#sec-block-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var scope = $('#sec-block-scope').value, target = $('#sec-block-target').value.trim(), reason = $('#sec-block-reason').value.trim();
+      if (!target) { toast('対象を入力してください'); return; }
+      secBlock(scope, target, reason).then(function () { $('#sec-block-target').value = ''; $('#sec-block-reason').value = ''; });
+    });
     $('#pay-filter').addEventListener('click', function (e) {
       var c = e.target.closest('[data-pay]');
       if (!c) return;

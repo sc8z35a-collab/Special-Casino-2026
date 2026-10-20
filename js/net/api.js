@@ -84,7 +84,8 @@
         // the server's daily quota is used up: ours says so, the host's own
         // limit answers 429 (or an error page) without our JSON
         if (e.code === 'maintenance' || (!json.error && (res.status === 429 || res.status === 503))) {
-          e = { code: 'maintenance', message: 'サーバーのメンテナンス中です', until: e.until };
+          // a lockdown carries lockdown: true — the game shows 緊急メンテナンス
+          e = { code: 'maintenance', message: e.message || 'サーバーのメンテナンス中です', until: e.until, lockdown: !!e.lockdown, emergency: !!e.emergency };
           emit('maintenance', e);
         }
         var err = new ApiError(res.status, e.code || 'error', e.message || ('エラーが発生しました（' + res.status + '）'), e);

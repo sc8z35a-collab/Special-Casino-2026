@@ -224,6 +224,17 @@ export function createBackup({ q, tx, opsLog, devCode, isDeveloper, exportAll, b
   return {
     routes,
     nextDue,
+    hasKey: () => !!keyOf(),
+    // the lockdown protects the data: one encrypted backup now, if there is a
+    // key (nothing leaves the server — it is sealed for the developer's key
+    // and kept in the bucket or the database). Best-effort.
+    async lockdownBackup() {
+      if (!keyOf()) return null;
+      try { return await run('auto'); } catch (e) {
+        opsLog.add({ actorName: 'システム', action: 'backup_failed', summary: `ロックダウン時のバックアップに失敗：${String((e && e.message) || e).slice(0, 200)}`, detail: { error: String((e && e.stack) || e).slice(0, 2000) } });
+        return null;
+      }
+    },
     // the automatic one, when it is time (from the housekeeping)
     async due() {
       const at = nextDue();

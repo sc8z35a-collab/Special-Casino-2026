@@ -22,7 +22,7 @@
     <h2>サーバーを緊急停止しています</h2>
     <p id="em-text"></p>
     <div class="em-list" id="em-list"></div>
-    <div class="acts"><button class="btn danger solid" id="em-release" type="button" hidden>開発者コードで解除</button><button class="btn" id="em-reload" type="button">再読み込み</button></div>
+    <div class="acts"><button class="btn danger solid" id="em-release" type="button" hidden>開発者コードで解除</button><a class="btn" id="em-sec" href="/sec/" target="_blank" rel="noopener" hidden>security HOME を開く</a><button class="btn" id="em-reload" type="button">再読み込み</button></div>
   </div>
 </div>
 
@@ -51,6 +51,7 @@
       <button class="tab" data-view="log" type="button">ログ</button>
       <button class="tab" data-view="operators" type="button" id="tab-operators">運営者</button>
       <button class="tab" data-view="team" type="button">運営チャット<b class="count" id="count-team" hidden></b></button>
+      <button class="tab" data-view="security" type="button">セキュリティ<b class="count" id="count-security" hidden></b></button>
       <button class="tab" data-view="server" type="button">サーバー</button>
       <button class="tab" data-view="pay" type="button" id="tab-pay" hidden>課金<b class="count" id="count-pay" hidden></b></button>
       <button class="tab" data-view="vault" type="button" id="tab-vault" hidden>保管庫</button>
@@ -230,6 +231,32 @@
     <div class="srv-grid srv-dev" id="srv-dev" hidden>
       <article class="card" id="srv-backup"></article>
       <article class="card" id="srv-stop"></article>
+    </div>
+  </section>
+
+  <!-- セキュリティ: the shield and the lockdown (every operator) -->
+  <section class="view" id="view-security" hidden>
+    <div class="view-head"><h2>セキュリティ</h2><span class="muted" id="sec-at"></span></div>
+    <p class="hint muted">攻撃・フラッド・探索を検知してブロックするシールドの状況です。ロックダウンに至らない攻撃は、ここで手動のブロック／解除ができます。より詳しい監視と連絡は独立したサイト「security HOME」（<a href="/sec/" target="_blank" rel="noopener">/sec/</a>）で行えます。</p>
+    <div class="summary" id="sec-live"></div>
+    <div class="srv-grid">
+      <article class="card" id="sec-lockcard"></article>
+      <article class="card" id="sec-blocks"></article>
+      <article class="card" id="sec-attackers"></article>
+      <article class="card" id="sec-manual">
+        <h3>手動でブロック</h3>
+        <p class="muted">攻撃元のアドレス・アカウント・端末を手動でブロックします（記録に残ります）。</p>
+        <form class="sec-block-form" id="sec-block-form" autocomplete="off">
+          <select id="sec-block-scope">
+            <option value="ip">IPアドレス</option>
+            <option value="account">アカウントID</option>
+            <option value="fp">端末ID</option>
+          </select>
+          <input class="search" id="sec-block-target" type="text" placeholder="対象（例: 203.0.113.9）" spellcheck="false">
+          <input class="search" id="sec-block-reason" type="text" placeholder="理由（任意）" spellcheck="false">
+          <button class="btn primary small" type="submit">ブロック</button>
+        </form>
+      </article>
     </div>
   </section>
 

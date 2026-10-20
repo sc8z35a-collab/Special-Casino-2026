@@ -548,3 +548,21 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .cell b.verline small { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 400; }
 .srv-dev p { font-size: 13px; }
 .bk-row .btn { flex: none; }
+
+/* ------------------------------------------------------------ セキュリティ --- */
+#view-security .stat.hot b { color: #c62f3f; }
+#view-security .stat.warn b { color: #b4710a; }
+.sec-row { display: flex; align-items: center; gap: 9px; padding: 7px 0; border-bottom: 1px solid var(--line, #e7e3ea); }
+.sec-row:last-child { border-bottom: 0; }
+.sec-target { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; overflow-wrap: anywhere; }
+.sec-why { font-size: 11.5px; color: #8a8192; margin-left: auto; text-align: right; max-width: 48%; }
+.sec-score { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; }
+.sec-row .btn { flex: none; }
+.sec-tag { font-size: 10px; font-weight: 800; padding: 1px 7px; border-radius: 8px; background: #eee; color: #555; flex: none; }
+.sec-tag.ip { background: #e3f0fb; color: #1769aa; }
+.sec-tag.account { background: #fff0d9; color: #a8700a; }
+.sec-tag.fp { background: #f1e3fb; color: #7b2fb0; }
+.sec-tag.manual { background: #e0f6ec; color: #138a5a; }
+.sec-block-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.sec-block-form select { flex: none; }
+.sec-block-form .search { flex: 1; min-width: 140px; }

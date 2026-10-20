@@ -1,16 +1,28 @@
-// The emergency stop. Outside the developer's vault, the server counts each
-// minute what it answers (requests let through: a flood the limits turn
-// away does not count), the bytes it sends, the live messages it gets and
-// how much its database grows, for the whole game and for the operator site
-// on its own, against what is usual for it (an average that follows the
-// last day or so). When a minute is far above that (10 times, and above a
-// floor, so a quiet server's small burst does not count) and the next one
-// is too, it writes all it knows to the 緊急 log (the minutes, the usual
-// figures, the busiest addresses, accounts and APIs, the database) and
+// The emergency stop and the lockdown, one controller: the server's many
+// emergency systems, merged. The stop is the first level — outside the
+// developer's vault, the server counts each minute what it answers (requests
+// let through: a flood the limits turn away does not count), the bytes it
+// sends, the live messages it gets and how much its database grows, for the
+// whole game and for the operator site on its own, against what is usual for
+// it (an average that follows the last day or so). When a minute is far above
+// that (10 times, and above a floor, so a quiet server's small burst does not
+// count) and the next one is too, it writes all it knows to the 緊急 log and
 // stops: every request gets the maintenance notice, the live connections
-// close, and only the developer comes in, sees the 緊急 entries on the
-// operator site, and starts it again with the developer code. The stop
-// lasts through restarts and deploys. The developer can also stop it by hand.
+// close, and only the developer comes in, sees why, and starts it again with
+// the developer code.
+//
+// The lockdown is the final measure, for when the defences have been
+// breached. The security shield (server/core/shield.js) calls for it when a
+// great many addresses attack at once or the server's keys are hammered; an
+// operator can also raise it by hand. In a lockdown EVERYONE is shut out —
+// players (「緊急メンテナンス」), operators and the developer alike — and only
+// the security base (/sec/) stays reachable, to read the logs, watch the
+// server and reach the operators. The server writes everything it could learn
+// about the attack to the 緊急 log, checks the operators' log has not been
+// tampered with, protects what it can (an encrypted backup if there is a key,
+// no more reads or writes of anyone's data) and cuts off outbound
+// communication. It lifts itself after a month; an operator can lift it by
+// hand at any time.
 import { ApiError } from './errors.js';
 
 const MINUTES = 15;
@@ -19,6 +31,7 @@ const FACTOR = 10;
 // a half-day half-life, a minute at a time
 const ALPHA = 1 / 720;
 const GRACE_MS = 30 * 60000;
+const LOCKDOWN_MS = 30 * 86400000;   // a month, then it lifts itself
 const TOP = 15;
 const KEYS_MAX = 5000;
 const MB = 1048576;
@@ -38,8 +51,12 @@ function bump(map, key) {
 const top = (map) => [...map].sort((a, b) => b[1] - a[1]).slice(0, TOP).map(([k, n]) => ({ key: k, n }));
 const show = (k, v) => (UNIT[k] ? `${(v / MB).toFixed(1)}MB` : Math.round(v).toLocaleString('en-US'));
 
-// host: { dbBytes() -> number | null, stop() (close the live connections) }; clock: the time (tests move it)
-export function createEmergency({ q, config, opsLog, host = {}, devCode, isDeveloper, getUser, clock = Date.now }) {
+// host: { dbBytes() -> number | null, stop() (close the live connections) };
+// shield: server/core/shield.js (its forensic report goes into a lockdown);
+// verifyLog(): the operators' log's integrity (checked on a lockdown);
+// protect(reason): best-effort, keep the important data safe (an encrypted
+// backup); clock: the time (tests move it).
+export function createEmergency({ q, config, opsLog, host = {}, devCode, isDeveloper, getUser, shield = null, verifyLog = null, protect = null, defer = (p) => p, clock = Date.now }) {
   const floors = { ...FLOORS, ...(config.emergencyFloors || {}) };
   const on = config.emergency !== 'off';
   const read = (key, fallback) => {
@@ -51,6 +68,8 @@ export function createEmergency({ q, config, opsLog, host = {}, devCode, isDevel
   let cur = blank(minuteOf(clock()));
   const history = [];
   let run = 0, lastDb = null, graceUntil = state.releasedAt ? state.releasedAt + GRACE_MS : 0, savedAt = 0;
+
+  const isLocked = () => !!state.stopped && state.level === 'lockdown';
 
   // a minute is over: is it far above the usual?
   function close(now) {
@@ -72,6 +91,8 @@ export function createEmergency({ q, config, opsLog, host = {}, devCode, isDevel
     if (on && !state.stopped && run >= RUN && now > graceUntil) stop(over, m, now);
   }
   function tick(now = clock()) {
+    // a lockdown lifts itself after a month
+    if (isLocked() && state.releaseAt && now >= state.releaseAt) release({ auto: true, now });
     const mm = minuteOf(now);
     if (mm === cur.minute) return;
     close(now);
@@ -102,14 +123,63 @@ export function createEmergency({ q, config, opsLog, host = {}, devCode, isDevel
     const what = by ? `開発者（${by.name}）が手動で緊急停止${why ? `：${why}` : ''}`
       : `異常な使用量を検知したため、サーバーを緊急停止（${over.map((k) => `${NAMES[k]} ${show(k, m[k])}/分・ふだんの${base[k] ? Math.round(m[k] / base[k]) + '倍' : '数十倍以上'}`).join('、')}）`;
     const entry = opsLog.add({ actor: by, actorName: 'システム', action: 'emergency_stop', summary: what, detail });
-    state = { stopped: true, at: now, by: by ? by.id : 0, reason: what, entry: entry.id };
+    state = { stopped: true, level: 'stop', at: now, by: by ? by.id : 0, reason: what, entry: entry.id };
     write('emergency', state);
     if (host.stop) host.stop();
   }
 
-  // what everyone but the developer gets while stopped (the game shows its maintenance notice)
-  const body = () => ({ error: { code: 'maintenance', message: 'サーバーを緊急停止しています。復旧までお待ちください', until: Date.now() + 15 * 60000, emergency: true } });
-  // the developer, and the developer only
+  // The lockdown — the final measure. `why`: 'breach' (the shield), 'manual'.
+  function lockdown({ by = null, reason = '', why = 'manual', trigger = null, forensic = null, req = null, now = clock() } = {}) {
+    if (isLocked()) return state;
+    const integrity = verifyLog ? safe(() => verifyLog(), null) : null;
+    const detail = {
+      why, trigger, manual: why !== 'breach',
+      reason: reason || (why === 'breach' ? '防御の突破を検知' : '手動でロックダウン'),
+      usage: report([], cur),
+      shield: forensic || (shield && shield.forensic ? safe(() => shield.forensic(now), null) : null),
+      logIntegrity: integrity && typeof integrity.then === 'function' ? null : integrity,
+      releaseAt: { ms: now + LOCKDOWN_MS, days: LOCKDOWN_MS / 86400000 }
+    };
+    const summary = why === 'breach'
+      ? `防御の突破を検知し、ロックダウンを発動（${detail.reason}）。全ユーザーを締め出し、外部通信を遮断、ログ以外を停止`
+      : `${by ? `${by.name}が` : ''}ロックダウンを手動で発動（${detail.reason}）`;
+    const entry = opsLog.add({ actor: by, actorName: by ? undefined : 'システム', action: 'lockdown', summary, detail, req });
+    state = { stopped: true, level: 'lockdown', at: now, by: by ? by.id : 0, reason: detail.reason, entry: entry.id, releaseAt: now + LOCKDOWN_MS, why };
+    write('emergency', state);
+    if (host.stop) host.stop();
+    // protect what we can, without letting a failure hold up the lockdown
+    if (protect) defer(Promise.resolve().then(() => protect('lockdown')).catch((e) => {
+      opsLog.add({ actorName: 'システム', action: 'lockdown', summary: `ロックダウン時の保護処理に失敗：${String((e && e.message) || e).slice(0, 200)}`, detail: { step: 'protect' } });
+    }));
+    // the integrity check, if it was a promise, once it settles
+    if (integrity && typeof integrity.then === 'function') {
+      defer(integrity.then((r) => opsLog.add({ actorName: 'システム', action: 'lockdown', summary: `ロックダウン時のログ整合性チェック：${r && r.ok ? '異常なし' : '異常あり（' + ((r && r.reason) || '?') + '）'}`, detail: { logIntegrity: r } })).catch(() => {}));
+    }
+    return state;
+  }
+  const safe = (fn, fb) => { try { return fn(); } catch { return fb; } };
+
+  function release({ by = null, req = null, auto = false, now = clock() } = {}) {
+    if (!state.stopped) return { stopped: false };
+    const was = state;
+    state = { stopped: false, level: '', releasedAt: now, releasedBy: by ? by.id : 0 };
+    graceUntil = now + GRACE_MS;
+    run = 0;
+    write('emergency', state);
+    const kind = was.level === 'lockdown' ? 'ロックダウン' : '緊急停止';
+    opsLog.add({
+      actor: by, actorName: by ? undefined : 'システム', action: was.level === 'lockdown' ? 'lockdown_release' : 'emergency_release', req,
+      summary: `${auto ? '自動で' : by ? `${by.name}が` : ''}${kind}を解除（${auto ? '発動から1か月' : by ? '手動' : ''}・停止していた時間 ${Math.round((now - (was.at || now)) / 60000)}分）`,
+      detail: { level: was.level, stoppedAt: was.at, reason: was.reason, entry: was.entry, auto, graceMinutes: GRACE_MS / 60000 }
+    });
+    return { stopped: false };
+  }
+
+  // what everyone but the developer gets while stopped (the game shows its
+  // maintenance notice; a lockdown says 緊急メンテナンス to all)
+  const body = () => (isLocked()
+    ? { error: { code: 'maintenance', message: 'ただいま緊急メンテナンスを行っています。復旧までしばらくお待ちください。', until: Date.now() + 30 * 60000, emergency: true, lockdown: true } }
+    : { error: { code: 'maintenance', message: 'サーバーを緊急停止しています。復旧までお待ちください', until: Date.now() + 15 * 60000, emergency: true } });
   function needDeveloper(u) {
     if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
   }
@@ -118,21 +188,14 @@ export function createEmergency({ q, config, opsLog, host = {}, devCode, isDevel
     // the state, and (the developer) the 緊急 entries
     'GET /api/emergency': (req, u) => {
       needDeveloper(u);
-      return { stopped: !!state.stopped, at: state.at || 0, reason: state.reason || '', entries: opsLog.list({ kind: 'emergency', limit: 50 }), floors, factor: FACTOR, usual: { ...base }, now: Date.now() };
+      return { stopped: !!state.stopped, level: state.level || '', at: state.at || 0, reason: state.reason || '', releaseAt: state.releaseAt || 0, entries: opsLog.list({ kind: 'emergency', limit: 50 }), floors, factor: FACTOR, usual: { ...base }, now: Date.now() };
     },
     'POST /api/emergency/release': async (req, u) => {
       needDeveloper(u);
       const b = await req.json();
       await devCode.check(b.code, req, u);
       if (!state.stopped) return { stopped: false };
-      const now = clock();
-      const was = state;
-      state = { stopped: false, releasedAt: now, releasedBy: u.id };
-      graceUntil = now + GRACE_MS;
-      run = 0;
-      write('emergency', state);
-      opsLog.add({ actor: u, action: 'emergency_release', req, summary: `${u.name}が緊急停止を解除（開発者コードで・停止していた時間 ${Math.round((now - (was.at || now)) / 60000)}分）`, detail: { stoppedAt: was.at, reason: was.reason, entry: was.entry, graceMinutes: GRACE_MS / 60000 } });
-      return { stopped: false };
+      return release({ by: u, req });
     },
     'POST /api/emergency/stop': async (req, u) => {
       needDeveloper(u);
@@ -148,14 +211,25 @@ export function createEmergency({ q, config, opsLog, host = {}, devCode, isDevel
   return {
     routes,
     stopped: () => !!state.stopped,
+    locked: isLocked,
+    level: () => state.level || '',
+    // outbound calls (push, Stripe, Cloudflare, TURN) are cut during a lockdown
+    outboundAllowed: () => !isLocked(),
     body,
-    // one request answered (the vault's are not counted); `rejected`: turned away by the limits
+    // what the operators see without the developer code (security base, ops tab)
+    info: () => ({ stopped: !!state.stopped, level: state.level || '', at: state.at || 0, reason: state.reason || '', by: state.by || 0, releaseAt: state.releaseAt || 0, now: Date.now() }),
+    // the shield decided the perimeter is breached
+    breach: (info = {}) => lockdown({ why: 'breach', reason: info.reason || '', trigger: info.trigger || null, forensic: info.forensic || null }),
+    // an operator raises or lifts the lockdown by hand (allowed at any time)
+    lockdownByOperator: (by, req, reason) => lockdown({ by, req, why: 'manual', reason: Array.from(String(reason || '').trim()).slice(0, 300).join('') }),
+    releaseByOperator: (by, req) => release({ by, req }),
+    // one request answered (the vault's are not counted); `rejected`: turned away
     request({ path, ip, userId, status }) {
       tick();
       if (path.startsWith('/api/vault/')) return;
-      if (status === 429) { cur.rejected++; return; }
+      if (status === 429 || status === 403) { cur.rejected++; return; }
       cur.requests++;
-      if (path.startsWith('/api/ops/')) cur.opsRequests++;
+      if (path.startsWith('/api/ops/') || path.startsWith('/api/sec/')) cur.opsRequests++;
       bump(cur.ips, ip || '-');
       if (userId) bump(cur.users, String(userId));
       bump(cur.routes, path);
@@ -163,10 +237,9 @@ export function createEmergency({ q, config, opsLog, host = {}, devCode, isDevel
     sent(bytes, path) {
       if (path.startsWith('/api/vault/')) return;
       cur.bytes += bytes;
-      if (path.startsWith('/api/ops/')) cur.opsBytes += bytes;
+      if (path.startsWith('/api/ops/') || path.startsWith('/api/sec/')) cur.opsBytes += bytes;
     },
     wsIn() { tick(); cur.wsIn++; },
-    // bytes of the vault's pieces written into the database (not counted as growth)
     vaultDb(bytes) { cur.vaultDb += bytes; },
     tick
   };
