@@ -18,8 +18,9 @@ export class AdminError extends Error {
 
 // `seal(code)`: the 引き継ぎコード sealed for the operator site (server/core/api.js);
 // `onBan(user, on)`: in the server, a ban reaches the player at once and the
-// official bot tells them (lifting it too: then it is what lifts it)
-export function createAdmin(db, { seal = () => '', onBan = null } = {}) {
+// official bot tells them (lifting it too: then it is what lifts it);
+// `isDeveloper(user)`: the developer's account, which no ban reaches
+export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = () => false } = {}) {
   const q = statements(db);
   const tx = (fn) => db.tx(fn);
   // what the commands change goes to the operators' log (server/core/opslog.js)
@@ -65,6 +66,7 @@ export function createAdmin(db, { seal = () => '', onBan = null } = {}) {
     // 永久BAN (until unban); the operator site also has the week and 30-day ones
     ban(ref, on = true) {
       const u = find(ref);
+      if (on && isDeveloper(u)) throw new AdminError('開発者のアカウントは処分できません');
       if (on) {
         q("UPDATE users SET banned = 1, ban_kind = 'perma', ban_until = 0, ban_at = ? WHERE id = ?").run(Date.now(), u.id);
         if (onBan) onBan(u, true);

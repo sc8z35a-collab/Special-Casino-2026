@@ -21,7 +21,8 @@
       official: 'img/avatars/official.webp'
     },
     cars: {
-      'two-state-sedan': 'img/cars/two-state-sedan.webp'
+      'two-state-sedan': 'img/cars/two-state-sedan.webp',
+      'blue-lightning': 'img/cars/blue-lightning.webp'
     },
     items: {
       omamori: 'img/items/omamori.webp'

@@ -218,6 +218,10 @@ button { cursor: pointer; }
 .kind.dev { background: var(--accent-soft); color: var(--accent); }
 .kind.revoked { background: var(--soft); color: var(--muted); }
 .adopted { color: var(--warn); font-size: 13px; font-weight: 700; }
+.grant { display: flex; gap: 8px; align-items: center; }
+.grant .search { width: 180px; }
+.devcode { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; padding: 10px 14px; border-radius: var(--radius); background: var(--warn-soft); color: var(--warn); font-size: 13px; font-weight: 600; }
+.devcode p { margin: 0; flex: 1; min-width: 220px; }
 .body-text { margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--soft); font-size: 14px; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
 .body-text .hit { padding: 0 2px; border-radius: 3px; background: #ffd9d9; color: var(--bad); font-weight: 700; }
 .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 14px; margin-top: 10px; font-size: 12.5px; }

@@ -6,6 +6,8 @@
      3-4    bigger, glowing, pulsing
      5-7    rainbow, and the reels glow
      8+     the biggest, shaking, with confetti
+   From the fifth win in a row every win pays double (the server pays it;
+   the badge says 報酬×2).
    Every step of a streak lands with rings, sparks and stars round the badge
    (js/render/juice.js), louder the longer it goes. Five in a row and the
    screen catches FEVER: its edges burn, flames lick up from the bottom,
@@ -72,6 +74,7 @@
     var inner = el('div', 'cb-inner');
     inner.appendChild(el('b', 'cb-n', String(n)));
     inner.appendChild(el('span', 'cb-word', 'COMBO!'));
+    if (n >= BR.CONFIG.comboDouble) inner.appendChild(el('span', 'cb-x2', '報酬×2'));
     b.appendChild(inner);
     screen().appendChild(b);
     badgeNode = b;
@@ -243,7 +246,8 @@
       if (!streak) feverOff();
       return;
     }
-    streak = shared ? res.hub.combo : streak + 1;
+    // (the server says which combo the win made: the count survives a reload)
+    streak = shared ? res.hub.combo : res.combo > 0 ? res.combo : streak + 1;
     var n = streak;
     if (res.tier <= 1) {
       smallWin(res);

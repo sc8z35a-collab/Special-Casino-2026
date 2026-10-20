@@ -4,17 +4,20 @@
 // from a polite template, money, 返信待ち), the reports (通報: accepted with a
 // reward from the bot, or declined), what the chat filter found (検知), the
 // 報告 / 意見案 players sent (an adopted 意見案 earns $100,000 from the bot),
-// and the operators' log. Only the accounts named in config.operators may use
-// it (they log in with their name and password on the site; the session is the
-// game's own), less those whose rights the developer (config.developer, TAKU)
-// took away: they are logged out everywhere at once. Passwords are never
-// shown: they are kept only as one-way hashes, so an operator sets a new one.
+// and the operators' log. The operators: the developer (config.developer,
+// TAKU) and the accounts named in config.operators, plus those given operator
+// rights on the site and less those whose rights were taken away, both with
+// the developer code (server/core/devcode.js); one whose rights go is logged
+// out everywhere at once. They log in with their name and password on the
+// site (the session is the game's own). Passwords are never shown: they are
+// kept only as one-way hashes, so an operator sets a new one.
 // Everything an operator does here that reaches anyone is written to the log
 // (server/core/opslog.js), with the request it came from.
 import { ApiError, posInt } from './errors.js';
 import { nameKey, cleanPassword, cleanText, hashPassword } from './auth.js';
 import { LEVEL, RULES } from './rules.js';
 import { jst } from './opslog.js';
+import { createDevCode } from './devcode.js';
 
 const REWARDS = [600000, 1200000, 2400000];
 const IDEA_REWARD = 100000;
@@ -22,33 +25,38 @@ const MONEY_MAX = 10000000;
 const fmt = (n) => Number(n).toLocaleString('en-US');
 
 export function createOps({ q, tx, live, config, getUser, mini, openCode, setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub, official, opsLog, balance,
-  banState, tellBanned, liftBan, DEVICE_BANNED }) {
+  banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper }) {
   const operators = new Set(config.operators.map(nameKey));
-  const devKey = operators.has(nameKey(config.developer || '')) ? nameKey(config.developer) : '';
-  const revokedRow = (key) => q('SELECT * FROM ops_revoked WHERE name_key = ?').get(key);
-  const isDeveloper = (u) => !!u && !!devKey && u.name_key === devKey;
-  const isOperator = (u) => !!u && operators.has(u.name_key) && (isDeveloper(u) || !revokedRow(u.name_key));
+  const devCode = createDevCode({ q, opsLog });
+  const accessRow = (key) => q('SELECT * FROM ops_access WHERE name_key = ?').get(key);
+  // an operator: the developer always; otherwise as given or taken away on
+  // the site, or as named in config.operators
+  function isOperator(u) {
+    if (!u || u.npc) return false;
+    if (isDeveloper(u)) return true;
+    const r = accessRow(u.name_key);
+    return r ? r.granted === 1 : operators.has(u.name_key);
+  }
   function need(u) {
     if (isOperator(u)) return;
-    if (u && operators.has(u.name_key)) throw new ApiError(403, 'not_operator', '運営権が剥奪されたため、運営サイトは使えません');
+    const r = u && accessRow(u.name_key);
+    if (r && !r.granted) throw new ApiError(403, 'not_operator', '運営権が剥奪されたため、運営サイトは使えません');
     throw new ApiError(403, 'not_operator', 'この画面は運営者だけが使えます');
   }
-  function needDeveloper(u) {
-    need(u);
-    if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', '運営権の剥奪は開発者（' + (config.developer || 'TAKU') + '）だけができます');
-  }
-  // the operators (config.operators) and whether they still have their rights
+  // the operators, and the accounts whose rights were taken away
   function operatorList() {
-    return config.operators.map((name) => {
-      const key = nameKey(name);
+    const keys = new Set([...operators, ...q('SELECT name_key FROM ops_access').all().map((r) => r.name_key)]);
+    return [...keys].map((key) => {
       const p = q('SELECT * FROM users WHERE name_key = ?').get(key);
-      const r = revokedRow(key);
-      const by = r && getUser(r.revoked_by);
+      const r = accessRow(key);
+      const by = r && getUser(r.by_id);
+      const developer = !!p && isDeveloper(p);
       return {
-        key, name: p ? p.name : name, id: p ? p.id : 0, avatar: p ? p.avatar : '', registered: !!p, online: p ? live.isOnline(p.id) : false,
-        developer: key === devKey, revoked: r ? { at: r.revoked_at, by: by ? by.name : '' } : null
+        key, name: p ? p.name : key, id: p ? p.id : 0, avatar: p ? p.avatar : '', registered: !!p, online: p ? live.isOnline(p.id) : false,
+        developer, operator: developer || (r ? r.granted === 1 : operators.has(key)), fromSettings: operators.has(key),
+        changed: r ? { granted: r.granted === 1, at: r.at, by: by ? by.name : '' } : null
       };
-    });
+    }).sort((a, b) => (b.developer - a.developer) || (b.operator - a.operator) || a.name.localeCompare(b.name));
   }
   const worth = (u) => u.dollars + u.tokens * RULES.tokenPrice;
   function banOf(u) {
@@ -141,7 +149,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         opened.set(u.id, Date.now());
         opsLog.add({ actor: u, action: 'open', summary: `${u.name}が運営サイトを開いた`, req });
       }
-      return { name: u.name, operators: config.operators, developer: isDeveloper(u), now: Date.now() };
+      return { name: u.name, operators: config.operators, developer: isDeveloper(u), devCodeSet: devCode.isSet(), now: Date.now() };
     },
 
     // everyone (a name to look for: part of it), the newest players first
@@ -203,6 +211,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const p = target(body.id);
       const kind = String(body.kind || '');
       if (kind !== 'none' && !(kind in BAN_DAYS)) throw new ApiError(400, 'bad_kind', '処分の種類が正しくありません');
+      if (isDeveloper(p)) throw new ApiError(400, 'operator', '開発者のアカウントは処分できません');
       if (p.id === u.id || isOperator(p)) throw new ApiError(400, 'operator', '運営者のアカウントには使えません');
       const now = Date.now();
       const before = banOf(p);
@@ -438,41 +447,55 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       return { ok: true, reward: IDEA_REWARD };
     },
 
-    /* ----- the operators (the developer only) ----- */
+    /* ----- the operators: rights given and taken away with the developer code ----- */
 
     'GET /api/ops/operators': (req, u) => {
-      needDeveloper(u);
-      return { operators: operatorList(), now: Date.now() };
+      need(u);
+      return { operators: operatorList(), devCodeSet: devCode.isSet(), now: Date.now() };
     },
 
-    // 'revoke': an operator's rights go; they are logged out everywhere at once
-    // (the game says why) and the site no longer lets them in. 'restore': back.
+    // 'grant': a player becomes an operator. 'revoke': an operator's rights
+    // go; they are logged out everywhere at once (the game says why) and the
+    // site no longer lets them in. Both need the developer code; the
+    // developer's own rights never go.
     'POST /api/ops/operator': async (req, u) => {
-      needDeveloper(u);
+      need(u);
       const body = await req.json();
+      const action = body.action === 'grant' || body.action === 'revoke' ? body.action : '';
+      if (!action) throw new ApiError(400, 'bad_action', '処理を選んでください');
       const key = nameKey(String(body.name ?? ''));
-      if (!operators.has(key)) throw new ApiError(404, 'not_found', 'その名前の運営者はいません');
-      if (key === devKey) throw new ApiError(400, 'developer', '開発者の運営権は剥奪できません');
-      const p = q('SELECT * FROM users WHERE name_key = ?').get(key) || null;
-      const name = p ? p.name : key;
-      if (body.action === 'revoke') {
-        if (revokedRow(key)) throw new ApiError(409, 'done', `${name}さんの運営権はもう剥奪されています`);
+      const p = key ? q('SELECT * FROM users WHERE name_key = ?').get(key) || null : null;
+      if (!p || p.npc) throw new ApiError(404, 'not_found', 'その名前のプレイヤーはいません');
+      if (isDeveloper(p)) throw new ApiError(400, 'developer', '開発者の運営権は変えられません');
+      await devCode.check(body.code, req, u);
+      if (action === 'grant') {
+        if (isOperator(p)) throw new ApiError(409, 'done', `${p.name}さんはもう運営者です`);
+        q('INSERT INTO ops_access (name_key, granted, at, by_id) VALUES (?, 1, ?, ?) ON CONFLICT(name_key) DO UPDATE SET granted = 1, at = excluded.at, by_id = excluded.by_id')
+          .run(key, Date.now(), u.id);
+        opsLog.add({ actor: u, action: 'ops_grant', target: p, req, summary: `${p.name}さんに運営権を付与（開発者コードで）`, detail: { name: key } });
+      } else {
+        if (!isOperator(p)) throw new ApiError(409, 'done', `${p.name}さんは運営者ではありません`);
         const why = '運営権が剥奪されたため、ログアウトされました。ゲームにはもう一度ログインすると入れます（運営サイトには入れません）';
         let ended = 0;
         tx(() => {
-          q('INSERT INTO ops_revoked (name_key, revoked_at, revoked_by) VALUES (?, ?, ?)').run(key, Date.now(), u.id);
-          if (p) ended = Number(q('UPDATE sessions SET ended = ? WHERE user_id = ?').run(why, p.id).changes);
+          q('INSERT INTO ops_access (name_key, granted, at, by_id) VALUES (?, 0, ?, ?) ON CONFLICT(name_key) DO UPDATE SET granted = 0, at = excluded.at, by_id = excluded.by_id')
+            .run(key, Date.now(), u.id);
+          ended = Number(q('UPDATE sessions SET ended = ? WHERE user_id = ?').run(why, p.id).changes);
         });
-        if (p) live.send(p.id, 'kick', { code: 'ended', message: why });
-        opsLog.add({ actor: u, action: 'ops_revoke', target: p, req, summary: `${name}さんの運営権を剥奪（すべての端末からログアウト）`, detail: { name: key, sessionsEnded: ended } });
-      } else if (body.action === 'restore') {
-        if (!revokedRow(key)) throw new ApiError(409, 'done', `${name}さんは運営権を持っています`);
-        q('DELETE FROM ops_revoked WHERE name_key = ?').run(key);
-        opsLog.add({ actor: u, action: 'ops_restore', target: p, req, summary: `${name}さんの運営権を元に戻した`, detail: { name: key } });
-      } else {
-        throw new ApiError(400, 'bad_action', '処理を選んでください');
+        live.send(p.id, 'kick', { code: 'ended', message: why });
+        opsLog.add({ actor: u, action: 'ops_revoke', target: p, req, summary: `${p.name}さんの運営権を剥奪（開発者コードで・すべての端末からログアウト）`, detail: { name: key, sessionsEnded: ended } });
       }
       return { operators: operatorList() };
+    },
+
+    // the developer code: registered once by the developer's account (never
+    // written anywhere else), changed with the old one
+    'POST /api/ops/dev-code': async (req, u) => {
+      need(u);
+      if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', '開発者コードは開発者のアカウントだけが登録できます');
+      const body = await req.json();
+      await devCode.register(body.code, body.old, req, u);
+      return { ok: true, devCodeSet: true };
     },
 
     /* ----- the operators' log ----- */

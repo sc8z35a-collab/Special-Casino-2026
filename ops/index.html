@@ -38,7 +38,7 @@
       <button class="tab" data-view="detections" type="button">検知<b class="count" id="count-detections" hidden></b></button>
       <button class="tab" data-view="feedback" type="button">報告・意見案<b class="count" id="count-feedback" hidden></b></button>
       <button class="tab" data-view="log" type="button">ログ</button>
-      <button class="tab" data-view="operators" type="button" id="tab-operators" hidden>運営者</button>
+      <button class="tab" data-view="operators" type="button" id="tab-operators">運営者</button>
     </nav>
     <div class="top-right">
       <span class="muted" id="op-name"></span>
@@ -135,12 +135,20 @@
     <button class="btn wide" id="log-more" type="button" hidden>さらに読み込む</button>
   </section>
 
-  <!-- 運営者 (the developer only) -->
+  <!-- 運営者: rights given and taken away with the developer code -->
   <section class="view" id="view-operators" hidden>
     <div class="view-head">
       <h2>運営者</h2>
+      <form class="grant" id="op-grant" autocomplete="off">
+        <input class="search" id="op-grant-name" type="text" placeholder="プレイヤー名" spellcheck="false" autocapitalize="off">
+        <button class="btn primary small" type="submit">運営権を付与</button>
+      </form>
     </div>
-    <p class="hint muted">運営権を剥奪すると、その運営者はすぐにすべての端末でログアウトされ、運営サイトにログインできなくなります。運営権の剥奪と戻すことは開発者だけができ、運営ログに記録されます。</p>
+    <p class="hint muted">運営権の付与と剥奪には、開発者だけが知っている「開発者コード」が必要です。剥奪するとその人はすぐにすべての端末でログアウトされ、運営サイトにログインできなくなります。開発者の運営権は剥奪できず、開発者のアカウントはアクセス禁止・BANもできません。すべて運営ログに記録されます。</p>
+    <div class="devcode" id="op-devcode" hidden>
+      <p id="op-devcode-text"></p>
+      <button class="btn small" type="button" id="op-devcode-btn">開発者コードを登録</button>
+    </div>
     <div class="cards" id="op-list"></div>
   </section>
 </div>

@@ -28,8 +28,11 @@ export function spin(bet, weights) { return BR.engine.spin(bet, weights); }
 export function evaluate(line, bet) { return BR.engine.evaluate(line, bet); }
 // today's price of a paid icon and its discount in percent
 export function iconSale(avatar, day) { return { price: BR.sale.price(avatar, day), pct: BR.sale.pct(avatar.id, day) }; }
-// Shop items are on sale the same way
-export const itemSale = iconSale;
+// a Shop item at `now` (on sale 5 hours a day: { price, pct, on, start, end, next })
+export function shopSale(item, now = Date.now()) { return BR.sale.shop(item, now); }
+// the Car Owner sale on at `now` (or null), and a car's price with it
+export function carSale(now = Date.now()) { return BR.sale.cars(now, RULES.cars); }
+export function carPrice(car, sale) { return BR.sale.carPrice(car, sale); }
 export function utcDay(date) {
   const d = date || new Date();
   return d.getUTCFullYear() + '-' + (d.getUTCMonth() + 1) + '-' + d.getUTCDate();

@@ -13,8 +13,9 @@
    - 通報: accepted with a reward of 60万 / 120万 / 240万 sent by the bot with
      its thanks, or declined. 検知: the original words. 報告・意見案: an
      意見案 adopted earns its player $100,000 from the bot with its thanks.
-   - 運営者 (the developer, TAKU, only): an operator's rights taken away (they
-     are logged out everywhere at once and kept out of this site) or given back.
+   - 運営者: operator rights given to a player or taken away (they are logged
+     out everywhere at once and kept out of this site), each with the
+     developer code; the developer registers that code here once.
    - ログ: everything done here, and every DEV going live, newest first; a tap
      shows all that is known about it. It cannot be changed or deleted.
    Passwords are kept only as one-way hashes, so they can be set, never shown.
@@ -34,7 +35,8 @@
     release: 'DEV更新', open: 'サイトを開いた', 'ban:suspend': 'アクセス禁止', 'ban:ban': 'BAN', 'ban:perma': '永久BAN', 'ban:none': '処分の解除',
     device_ok: '端末の許可', recovery: '引き継ぎコード再発行', password: 'パスワード再設定', bot_read: 'チャットを既読', bot_message: '公式ボットのメッセージ',
     money: '送金', report_accept: '通報を受理', report_reject: '通報を不受理', detections_reviewed: '検知を確認', feedback_handled: '報告・意見案を対応済み',
-    idea_adopt: '意見案を採用', ops_revoke: '運営権の剥奪', ops_restore: '運営権を戻す',
+    idea_adopt: '意見案を採用', ops_revoke: '運営権の剥奪', ops_grant: '運営権の付与', ops_restore: '運営権を戻す',
+    dev_code_set: '開発者コードを登録', dev_code_change: '開発者コードを変更', dev_code_fail: '開発者コードの入力ミス',
     bot_auto_reply: '自動返信', log_kept: '運営ログの保持', 'admin:restore-time': '管理コマンド: 時点への巻き戻し'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
@@ -208,7 +210,7 @@
     $('#app').hidden = false;
     $('#op-name').textContent = (me.developer ? '開発者: ' : '運営者: ') + me.name;
     state.developer = !!me.developer;
-    $('#tab-operators').hidden = !state.developer;
+    state.devCodeSet = !!me.devCodeSet;
     load();
     clearInterval(timer);
     timer = setInterval(function () {
@@ -979,63 +981,102 @@
     }).catch(function (err) { b.disabled = false; fail(err); });
   }
 
-  /* ------------------------------------------------------------ the operators (the developer only) --- */
+  /* ------------------------------------------------------------ the operators (developer code) --- */
   function loadOperators() {
     var list = $('#op-list');
     list.textContent = '';
     list.appendChild(el('p', 'muted', '読み込み中…'));
     request('GET', '/api/ops/operators').then(function (r) {
       state.operators = r.operators || [];
+      state.devCodeSet = !!r.devCodeSet;
       renderOperators();
     }, fail);
   }
   function renderOperators() {
+    // the developer registers the code once (it is kept only as a one-way hash)
+    var reg = $('#op-devcode');
+    reg.hidden = !state.developer;
+    $('#op-devcode-text').textContent = state.devCodeSet
+      ? '開発者コードは登録済みです（変更するときは今のコードが必要です）。'
+      : '開発者コードがまだ登録されていません。運営権の付与・剥奪に使うコードを、最初に一度だけ登録してください（サーバーには元に戻せない形でだけ保存されます）。';
+    $('#op-devcode-btn').textContent = state.devCodeSet ? '開発者コードを変更' : '開発者コードを登録';
     var list = $('#op-list');
     list.textContent = '';
     state.operators.forEach(function (o) {
-      var card = el('article', 'card' + (o.revoked ? ' done' : ''));
+      var card = el('article', 'card' + (o.operator ? '' : ' done'));
       var head = el('div', 'card-head');
       head.appendChild(person({ id: o.id, name: o.name, avatar: o.avatar }, o.registered ? (o.online ? 'オンライン' : '') : 'アカウント未登録'));
-      head.appendChild(el('span', 'kind ' + (o.developer ? 'dev' : o.revoked ? 'revoked' : 'op'), o.developer ? '開発者' : o.revoked ? '運営権なし（剥奪済み）' : '運営者'));
+      head.appendChild(el('span', 'kind ' + (o.developer ? 'dev' : o.operator ? 'op' : 'revoked'), o.developer ? '開発者' : o.operator ? '運営者' : '運営権なし（剥奪済み）'));
       card.appendChild(head);
       var a = el('div', 'acts');
+      if (o.changed && !o.developer) a.appendChild(el('span', 'muted', stamp(o.changed.at) + ' に' + (o.changed.by ? o.changed.by + 'が' : '') + (o.changed.granted ? '付与' : '剥奪')));
       if (o.developer) a.appendChild(el('span', 'muted', '開発者の運営権は剥奪できません'));
-      else if (o.revoked) {
-        a.appendChild(el('span', 'muted', stamp(o.revoked.at) + ' に' + (o.revoked.by ? o.revoked.by + 'が' : '') + '剥奪'));
-        var r = el('button', 'btn small', '運営権を戻す');
-        r.type = 'button';
-        r.dataset.restore = o.key;
-        a.appendChild(r);
-      } else {
-        var x = el('button', 'btn small danger', '運営権を剥奪する');
-        x.type = 'button';
-        x.dataset.revoke = o.key;
-        a.appendChild(x);
+      else if (o.registered) {
+        var b = el('button', o.operator ? 'btn small danger' : 'btn small', o.operator ? '運営権を剥奪する' : '運営権を戻す');
+        b.type = 'button';
+        b.dataset.opAct = o.operator ? 'revoke' : 'grant';
+        b.dataset.name = o.name;
+        a.appendChild(b);
       }
       card.appendChild(a);
       list.appendChild(card);
     });
   }
+  // the developer code for one action (asked every time, never kept here)
+  function withCode(o) {
+    return ask({ title: o.title, text: o.text + '（開発者コードが必要です）', ok: o.ok, danger: o.danger, input: { label: '開発者コード', type: 'password' },
+      check: function (v) { return /^[\d\s-]{4,40}$/.test(v) ? '' : '開発者コードを入力してください'; } });
+  }
+  function changeAccess(action, name, b) {
+    var revoke = action === 'revoke';
+    withCode(revoke
+      ? { title: name + ' さんの運営権を剥奪しますか？', text: name + ' さんはすぐにすべての端末でログアウトされ、運営サイトにログインできなくなります（ゲームには一般のプレイヤーとしてログインできます）。', ok: '剥奪する', danger: true }
+      : { title: name + ' さんに運営権を付与しますか？', text: name + ' さんは運営サイトにログインして、運営のすべての操作ができるようになります。', ok: '付与する' }
+    ).then(function (code) {
+      if (code === null) return null;
+      if (b) b.disabled = true;
+      return request('POST', '/api/ops/operator', { name: name, action: action, code: code }).then(function (r) {
+        toast(revoke ? name + ' さんの運営権を剥奪しました' : name + ' さんに運営権を付与しました');
+        state.operators = r.operators || [];
+        renderOperators();
+        $('#op-grant-name').value = '';
+      });
+    }).catch(function (err) { if (b) b.disabled = false; fail(err); });
+  }
   function onOperators(e) {
     var o = e.target.closest('[data-open]');
     if (o && Number(o.dataset.open)) { openDetail(Number(o.dataset.open)); return; }
-    var b = e.target.closest('[data-revoke], [data-restore]');
-    if (!b) return;
-    var revoke = !!b.dataset.revoke, key = b.dataset.revoke || b.dataset.restore;
-    var op = state.operators.find(function (x) { return x.key === key; });
-    var name = op ? op.name : key;
-    ask(revoke
-      ? { title: name + ' さんの運営権を剥奪しますか？', text: name + ' さんはすぐにすべての端末でログアウトされ、運営サイトにログインできなくなります（ゲームには一般のプレイヤーとしてログインできます）。あとで「運営権を戻す」で元に戻せます。', ok: '剥奪する', danger: true }
-      : { title: name + ' さんの運営権を戻しますか？', text: name + ' さんはまた運営サイトにログインできるようになります。', ok: '戻す' }
-    ).then(function (ok) {
-      if (!ok) return null;
-      b.disabled = true;
-      return request('POST', '/api/ops/operator', { name: key, action: revoke ? 'revoke' : 'restore' }).then(function (r) {
-        toast(revoke ? name + ' さんの運営権を剥奪しました' : name + ' さんの運営権を戻しました');
-        state.operators = r.operators || [];
-        renderOperators();
+    var b = e.target.closest('[data-op-act]');
+    if (b) changeAccess(b.dataset.opAct, b.dataset.name, b);
+  }
+  function onGrant(e) {
+    e.preventDefault();
+    var name = $('#op-grant-name').value.trim();
+    if (!name) { toast('運営権を付与するプレイヤーの名前を入力してください'); return; }
+    changeAccess('grant', name, null);
+  }
+  function registerCode() {
+    var change = state.devCodeSet;
+    (change
+      ? ask({ title: '開発者コードを変更', text: '今の開発者コードを入力してください。', ok: '次へ', input: { label: '今の開発者コード', type: 'password' } })
+      : Promise.resolve('')
+    ).then(function (old) {
+      if (old === null) return null;
+      return ask({
+        title: change ? '新しい開発者コード' : '開発者コードを登録',
+        text: '8〜32桁の数字。開発者だけが知っているコードにしてください（ここにもサーバーにも、元のコードは残りません）。',
+        ok: '登録する',
+        input: { label: '開発者コード', type: 'password' },
+        check: function (v) { return /^\d{8,32}$/.test(v.replace(/[\s-]/g, '')) ? '' : '8〜32桁の数字にしてください'; }
+      }).then(function (code) {
+        if (code === null) return null;
+        return request('POST', '/api/ops/dev-code', { code: code, old: old }).then(function () {
+          state.devCodeSet = true;
+          toast('開発者コードを登録しました');
+          renderOperators();
+        });
       });
-    }).catch(function (err) { b.disabled = false; fail(err); });
+    }).catch(fail);
   }
 
   /* ------------------------------------------------------------ the operators' log --- */
@@ -1257,6 +1298,8 @@
     });
     $('#fb-list').addEventListener('click', onFeedback);
     $('#op-list').addEventListener('click', onOperators);
+    $('#op-grant').addEventListener('submit', onGrant);
+    $('#op-devcode-btn').addEventListener('click', registerCode);
     $('#log-search').addEventListener('input', function () {
       clearTimeout(logTimer);
       logTimer = setTimeout(function () { state.logQ = $('#log-search').value.trim(); loadLog(true); }, 300);

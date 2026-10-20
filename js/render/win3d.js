@@ -1,7 +1,7 @@
 /* The 3D win titles: WIN, BIG WIN, SUPER BIG WIN and ULTRA BIG WIN (77777
    only), turning as they show, in place of the drawn titles of the win
    presentation (js/render/fx.js) and over the reels for a plain WIN.
-   three.js (js/vendor/three-win.js) and the models (img/3d/*.glb, made small
+   three.js (js/vendor/three-bundle.js) and the models (img/3d/*.glb, made small
    with glTF-Transform: meshopt geometry, WebP textures) load in the
    background once the game is up, online only. Until they are there — or
    without WebGL, or with 3Dの当たり文字 off in 演出設定 — the drawn titles
@@ -13,7 +13,7 @@
 (function (BR) {
   'use strict';
 
-  var SRC = 'js/vendor/three-win.js';
+  var SRC = 'js/vendor/three-bundle.js';
   var FILES = { win: 'img/3d/win.glb', big: 'img/3d/big.glb', super: 'img/3d/super.glb', ultra: 'img/3d/ultra.glb' };
   // each model's width on the stage (design px; ULTRA as tall as SUPER)
   var WIDTH = { win: 600, big: 1000, super: 840, ultra: 870 };
@@ -54,15 +54,20 @@
     } catch (e) { return false; }
   }
 
-  function script(src) {
-    return new Promise(function (resolve, reject) {
+  // three.js, once for the whole game (the cars use it too: js/render/garage3d.js)
+  var threeJs = null;
+  function three() {
+    if (window.BR3D) return Promise.resolve(window.BR3D);
+    if (threeJs) return threeJs;
+    threeJs = new Promise(function (resolve, reject) {
       var s = document.createElement('script');
-      s.src = src;
+      s.src = SRC;
       s.async = true;
-      s.onload = function () { resolve(); };
-      s.onerror = function () { reject(new Error('3D: ' + src)); };
+      s.onload = function () { if (window.BR3D) resolve(window.BR3D); else reject(new Error('3D: three.js')); };
+      s.onerror = function () { threeJs = null; reject(new Error('3D: ' + SRC)); };
       document.head.appendChild(s);
     });
+    return threeJs;
   }
 
   function setup() {
@@ -120,9 +125,8 @@
     if (loading || state === 'off') return loading;
     if (!online() || !wanted() || !webgl()) return null;
     state = 'loading';
-    loading = script(SRC).then(function () {
-      T = window.BR3D;
-      if (!T) throw new Error('3D: three.js');
+    loading = three().then(function (lib) {
+      T = lib;
       setup();
       // one after the other: the game goes on meanwhile
       return ['big', 'super', 'win', 'ultra'].reduce(function (p, k) {
@@ -222,6 +226,7 @@
   }
 
   BR.win3d = {
+    three: three,
     preload: preload,
     usable: usable,
     // the win presentation: the canvas in its layer (before `before`), a model on show

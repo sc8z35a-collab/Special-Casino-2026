@@ -76,6 +76,13 @@
 }
 .cb-n { font-size: 60px; letter-spacing: 1px; }
 .cb-word { font-size: 24px; letter-spacing: 3px; }
+/* from the fifth: every win pays double */
+.cb-x2 {
+  margin-top: 6px; padding: 3px 12px 4px; border-radius: 10px;
+  background: linear-gradient(180deg, #ff5a4e, #c41820); color: #fff;
+  font-family: var(--f-ui, inherit); font-size: 22px; font-weight: 900; letter-spacing: 1px; line-height: 1;
+  box-shadow: 0 0 0 2px #ffe27a, 0 0 14px rgba(255, 90, 60, .8);
+}
 .cb-badge .cb-inner { filter: drop-shadow(0 3px 0 #5a2a00) drop-shadow(0 6px 10px rgba(0, 0, 0, .6)); }
 @keyframes cbPop {
   0% { opacity: 0; transform: scale(.3); }

@@ -65,27 +65,105 @@ test('bans: the official bot says when (and when it ends); the login stays for t
   assert.equal(said.length, 4);
 });
 
-test('the developer alone takes an operator\'s rights away: logged out everywhere, kept out of the site', async () => {
+test('operator rights given and taken away with the developer code; the developer is never banned', async () => {
+  const CODE = '987654321098';   // (a test code: the real one is never written anywhere)
   assert.equal((await ops('GET', '/api/ops/me')).developer, true);
-  assert.equal((await ops('GET', '/api/ops/me', undefined, sub)).developer, false);
-  assert.equal((await ops('POST', '/api/ops/operator', { name: 'taku', action: 'revoke' }, sub)).error.code, 'not_developer');
-  assert.equal((await ops('POST', '/api/ops/operator', { name: 'taku', action: 'revoke' })).error.code, 'developer');
-  const r = await ops('POST', '/api/ops/operator', { name: 'Sub', action: 'revoke' });
-  assert.ok(r.operators.find((o) => o.key === 'sub').revoked);
-  // every login of theirs ends, saying why (once)
+  assert.equal((await ops('POST', '/api/ops/dev-code', { code: CODE }, sub)).error.code, 'not_developer');
+  assert.equal((await ops('POST', '/api/ops/operator', { name: 'Sub', action: 'revoke', code: CODE })).error.code, 'dev_code_unset');
+  assert.equal((await ops('POST', '/api/ops/dev-code', { code: CODE })).devCodeSet, true);
+  // the developer: never
+  assert.equal((await ops('POST', '/api/ops/operator', { name: 'TAKU', action: 'revoke', code: CODE }, sub)).error.code, 'developer');
+  assert.equal((await ops('POST', '/api/ops/ban', { id: taku.me.id, kind: 'perma' }, sub)).error.code, 'operator');
+  // a wrong code
+  assert.equal((await ops('POST', '/api/ops/operator', { name: 'Sub', action: 'revoke', code: '111111111111' })).error.code, 'dev_code');
+  // taken away: every login of theirs ends, saying why (once), and the site keeps them out
+  const r = await ops('POST', '/api/ops/operator', { name: 'Sub', action: 'revoke', code: CODE });
+  assert.equal(r.operators.find((o) => o.key === 'sub').operator, false);
   const gone = await call('GET', '/api/me', { token: sub.token });
   assert.deepEqual([gone.status, gone.error.code], [401, 'ended']);
   assert.match(gone.error.message, /運営権が剥奪/);
   assert.equal((await call('GET', '/api/me', { token: sub.token })).error.code, 'auth');
-  // the game as a player, the operator site no more
   const again = await call('POST', '/api/login', { body: { name: 'Sub', password: PASSWORD } });
   assert.equal(again.me.operator, false);
   const site = await call('GET', '/api/ops/me', { token: again.token });
   assert.deepEqual([site.status, site.error.code], [403, 'not_operator']);
   assert.match(site.error.message, /運営権が剥奪/);
-  // given back
-  await ops('POST', '/api/ops/operator', { name: 'Sub', action: 'restore' });
+  // given (back, or to anyone)
+  await ops('POST', '/api/ops/operator', { name: 'Sub', action: 'grant', code: CODE });
   assert.equal((await call('GET', '/api/ops/me', { token: again.token })).name, 'Sub');
+  const helper = await register('Helper7');
+  await ops('POST', '/api/ops/operator', { name: 'Helper7', action: 'grant', code: CODE }, again);
+  assert.equal((await call('GET', '/api/ops/me', { token: helper.token })).name, 'Helper7');
   const log = (await ops('GET', '/api/ops/log')).entries.map((e) => e.action);
-  assert.ok(log.includes('ops_revoke') && log.includes('ops_restore'));
+  for (const a of ['dev_code_set', 'dev_code_fail', 'ops_revoke', 'ops_grant']) assert.ok(log.includes(a), a);
+});
+
+test('wins in a row: from the fifth, every win pays double', async () => {
+  const { evaluate } = await import('../core/rules.js');
+  const p = await register('Combo7');
+  let checked = false;
+  for (let i = 0; i < 400 && !checked; i++) {
+    setUser(p.me.id, { tokens: 1000000, streak: 4 });
+    const r = (await call('POST', '/api/spin', { token: p.token, body: { bet: 100 } })).result;
+    if (r.total > 0) {
+      assert.deepEqual([r.combo, r.double, r.total], [5, true, evaluate(r.line, 100).total * 2]);
+      checked = true;
+    } else assert.equal(r.combo, 0);
+  }
+  assert.ok(checked);
+  // the fourth: as before
+  for (let i = 0; i < 400; i++) {
+    setUser(p.me.id, { streak: 3 });
+    const r = (await call('POST', '/api/spin', { token: p.token, body: { bet: 100 } })).result;
+    if (r.total > 0) { assert.deepEqual([r.combo, !!r.double, r.total], [4, false, evaluate(r.line, 100).total]); break; }
+  }
+});
+
+test('アクセス日数: $250,000 from the official bot at 5, 10 … 35 days, by itself', async () => {
+  const p = await register('Days7');
+  setUser(p.me.id, { login_days: 12 });
+  const before = dollars(p.me.id);
+  const l = await s.listen(p);
+  await l.waitFor('hello');
+  l.close();
+  const said = await fromBot(p);
+  assert.equal(dollars(p.me.id), before + 500000);
+  assert.deepEqual(said.filter((m) => m.kind === 'transfer').map((m) => m.amount), [250000, 250000]);
+  const texts = said.filter((m) => m.kind === 'text').map((m) => m.text);
+  assert.match(texts[0], /^【自動送信】\nおめでとうございます！アクセス日数5日を達成しました！！記念して250Kを送金します！/);
+  assert.match(texts[1], /アクセス日数10日/);
+  // once each
+  const l2 = await s.listen(p);
+  await l2.waitFor('hello');
+  l2.close();
+  assert.equal(dollars(p.me.id), before + 500000);
+});
+
+test('the garage: two cars, one more place for $1,000,000 each (for good); a full garage takes no more', async () => {
+  const { RULES } = await import('../core/rules.js');
+  const [a, b] = [await register('Garage7a'), await register('Garage7b')];
+  await s.befriend(a, b);
+  setUser(a.me.id, { dollars: 100000000 });
+  let g = await call('GET', '/api/cars', { token: a.token });
+  assert.deepEqual([g.capacity, g.slotPrice], [2, 1000000]);
+  const buy = async (who) => call('POST', '/api/cars/buy', { token: who.token, body: { model: 'two-state-sedan' } });
+  assert.equal((await buy(a)).status, 200);
+  assert.equal((await buy(a)).status, 200);
+  assert.equal((await buy(a)).error.code, 'garage_full');
+  const before = dollars(a.me.id);
+  const x = await call('POST', '/api/garage/expand', { token: a.token, body: {} });
+  assert.deepEqual([x.capacity, x.me.garage, dollars(a.me.id)], [3, 3, before - 1000000]);
+  assert.equal((await buy(a)).status, 200);
+  // the price of the moment (a sale may be on)
+  g = await call('GET', '/api/cars', { token: a.token });
+  const sedan = RULES.cars.find((c) => c.id === 'two-state-sedan');
+  const pct = g.sale && g.sale.pct[sedan.id] || 0;
+  assert.equal((await call('POST', '/api/cars/buy', { token: a.token, body: { model: sedan.id, price: 1 } })).error.code, 'price_changed');
+  assert.ok(pct >= 0 && pct <= 45);
+  // a friend's full garage
+  setUser(b.me.id, { dollars: 100000000 });
+  await buy(b);
+  await buy(b);
+  const car = g.cars[0].id;
+  assert.equal((await call('POST', '/api/cars/gift', { token: a.token, body: { to: b.me.id, car } })).error.code, 'their_garage_full');
 });
