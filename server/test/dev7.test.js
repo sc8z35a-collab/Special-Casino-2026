@@ -5,12 +5,12 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, PASSWORD } from './helpers.js';
 
-let s, call, register, setUser;
+let s, call, register, setUser, claimAll;
 let taku, sub;
 
 before(async () => {
   s = await startServer({ operators: ['taku', 'sub'], limits: { spin: [100000, 1000], shop: [100000, 1000], general: [100000, 1000], login: [100000, 1000], friend: [100000, 1000], transfer: [100000, 1000], dm: [100000, 1000] } });
-  ({ call, register, setUser } = s);
+  ({ call, register, setUser, claimAll } = s);
   taku = await register('TAKU');
   sub = await register('Sub');
 });
@@ -33,6 +33,7 @@ test('an adopted 意見案: 50,000 spin tokens from Ice Smoker公式 with its th
   const idea = list.find((f) => f.kind === 'idea' && f.user.id === p.me.id), bug = list.find((f) => f.kind === 'bug' && f.user.id === p.me.id);
   const before = tokens(p.me.id);
   assert.equal((await ops('POST', '/api/ops/feedback/adopt', { id: idea.id })).reward, 50000);
+  await claimAll(p);
   assert.equal(tokens(p.me.id), before + 50000);
   const said = await fromBot(p);
   assert.ok(said.some((m) => m.kind === 'transfer' && m.amount === 50000 && m.currency === 'tokens'));
@@ -128,6 +129,7 @@ test('アクセス日数: $250,000 from the official bot at 5, 10 … 35 days, b
   await l.waitFor('hello');
   l.close();
   const said = await fromBot(p);
+  assert.equal(await claimAll(p), 2);
   assert.equal(dollars(p.me.id), before + 500000);
   assert.deepEqual(said.filter((m) => m.kind === 'transfer').map((m) => m.amount), [250000, 250000]);
   const texts = said.filter((m) => m.kind === 'text').map((m) => m.text);

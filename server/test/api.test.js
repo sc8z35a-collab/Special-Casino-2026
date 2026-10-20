@@ -375,10 +375,15 @@ test('transfers: friends only, atomic, shown in the chat', async () => {
   assert.equal(r.balance.tokens, 5000 - 1234);
   assert.equal(r.message.kind, 'transfer');
   assert.equal(r.message.amount, 1234);
-  const bAfter = (await call('GET', '/api/me', { token: b.token })).me;
+  // it arrives with their tap (DEV9), once, and only for them
+  assert.equal(r.message.pending, true);
+  assert.equal((await call('GET', '/api/me', { token: b.token })).me.tokens, bBefore.tokens, 'not before the tap');
+  assert.equal((await call('POST', '/api/messages/claim', { token: a.token, body: { message: r.message.id } })).status, 404);
+  const bAfter = (await call('POST', '/api/messages/claim', { token: b.token, body: { message: r.message.id } })).me;
   assert.equal(bAfter.tokens, bBefore.tokens + 1234);
   assert.ok(bAfter.rev > bBefore.rev);
   assert.equal(bAfter.totalWon, bBefore.totalWon, 'received money is not winnings');
+  assert.equal((await call('POST', '/api/messages/claim', { token: b.token, body: { message: r.message.id } })).error.code, 'claimed');
   const d = await call('POST', '/api/transfer', { token: a.token, body: { to: b.me.id, amount: 100, currency: 'dollars' } });
   assert.equal(d.balance.dollars, 0);
 });
@@ -448,6 +453,9 @@ test('cars: Car Owner sells for $1,200,000; garage; gifts go to friends only', a
   assert.equal(r.message.kind, 'gift');
   assert.equal(r.message.text, 'two-state-sedan');
   assert.deepEqual((await call('GET', '/api/cars', { token: a.token })).cars, []);
+  // nobody's until they tap it (DEV9)
+  assert.deepEqual((await call('GET', '/api/cars', { token: b.token })).cars, []);
+  assert.equal((await call('POST', '/api/messages/claim', { token: b.token, body: { message: r.message.id } })).status, 200);
   garage = await call('GET', '/api/cars', { token: b.token });
   assert.equal(garage.cars[0].id, car.id);
   assert.equal(garage.cars[0].from.id, a.me.id);
@@ -550,7 +558,9 @@ test('live stream: tickets open one connection; messages and transfers are pushe
   const msg = await live.waitFor('msg', (d) => d.kind === 'text');
   assert.equal(msg.text, 'ライブ');
   assert.equal(msg.unread, 1);
-  await call('POST', '/api/transfer', { token: a.token, body: { to: b.me.id, amount: 60, currency: 'tokens' } });
+  const sent = await call('POST', '/api/transfer', { token: a.token, body: { to: b.me.id, amount: 60, currency: 'tokens' } });
+  assert.equal((await live.waitFor('msg', (d) => d.kind === 'transfer')).pending, true);
+  await call('POST', '/api/messages/claim', { token: b.token, body: { message: sent.message.id } });
   const bal = await live.waitFor('balance');
   assert.equal(bal.tokens, RULES.start.tokens + 60);
   live.close();

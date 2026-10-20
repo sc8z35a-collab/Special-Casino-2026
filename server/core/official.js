@@ -2,7 +2,8 @@
 // (always at the top, always online). Players can write to it, send a 報告
 // (a bug, an error, something odd) or a 意見案 (an idea for the game) of any
 // length; it cannot be blocked, reported or called. The operators answer
-// through it from the operator site (server/core/ops.js): messages, money,
+// through it from the operator site (server/core/ops.js): messages (taken
+// back within the hour if need be), money (it arrives with the player's tap),
 // thanks for an accepted report. A player who waited two days without an
 // answer gets an automatic one (and their messages are marked read).
 import { newRecoveryCode, sha256 } from './auth.js';
@@ -57,17 +58,16 @@ export function createOfficial(ctx) {
     });
     return deliver(userId, row);
   }
-  // Money (or spin tokens) from the operators: it arrives, and shows in the chat like a transfer.
+  // Money (or spin tokens) from the operators: a card in the chat like a
+  // transfer, and it arrives when the player taps it (POST /api/messages/claim).
   function pay(userId, amount, currency = 'dollars') {
     const bid = id();
     const col = currency === 'tokens' ? 'tokens' : 'dollars';
     const row = tx(() => {
-      q(`UPDATE users SET ${col} = ${col} + ?, rev = rev + 1 WHERE id = ?`).run(amount, userId);
-      const r = ctx.insertMessage({ channel: ctx.dmChannel(userId, bid), sender: getUser(bid), recipient: userId, kind: 'transfer', amount, currency: col });
+      const r = ctx.insertMessage({ channel: ctx.dmChannel(userId, bid), sender: getUser(bid), recipient: userId, kind: 'transfer', amount, currency: col, pending: true });
       ctx.touchConversations(userId, bid, r.id, userId);
       return r;
     });
-    ctx.balanceChanged(userId);
     return deliver(userId, row);
   }
 
@@ -124,13 +124,14 @@ export function createOfficial(ctx) {
     return done;
   }
 
-  // the messages of the conversation, oldest first (the operator site's chat)
+  // the messages of the conversation, oldest first (the operator site's chat;
+  // a message taken back still shows what it said: `original`)
   function conversation(userId, limit = 300) {
     const bid = id();
     const rows = q(`SELECT m.*, s.name AS sender_name, s.avatar AS sender_avatar FROM messages m LEFT JOIN users s ON s.id = m.sender_id
                     WHERE m.channel = ? ORDER BY m.id DESC LIMIT ?`).all(ctx.dmChannel(userId, bid), limit).reverse();
     const read = q('SELECT read_id FROM conversations WHERE user_id = ? AND other_id = ?').get(userId, bid);
-    return { messages: rows.map(ctx.msgDto), playerReadUpTo: read ? read.read_id : 0, thread: thread(userId) };
+    return { messages: rows.map((r) => (r.retracted_at ? { ...ctx.msgDto(r), original: r.body } : ctx.msgDto(r))), playerReadUpTo: read ? read.read_id : 0, thread: thread(userId) };
   }
 
   return { id, me, is: (userId) => userId === id(), say, pay, fromPlayer, answered, markRead, waiting, waitingIds, autoReplies, conversation, LONG };

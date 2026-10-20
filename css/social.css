@@ -376,6 +376,37 @@
 .theirs .bubble { background: rgba(255, 255, 255, .14); box-shadow: inset 0 0 0 calc(var(--u) * 1.6) rgba(255, 255, 255, .14); border-top-left-radius: calc(var(--u) * 6); }
 .mine .bubble { background: linear-gradient(180deg, #f6e15a, #e6c42c); color: #3a3410; border-top-right-radius: calc(var(--u) * 6); }
 .msg-time { margin: calc(var(--u) * 5) calc(var(--u) * 12) 0; font-family: var(--f-num); font-size: calc(var(--u) * 16); color: #a99da0; }
+/* the ⋯ under a message, and its menu (CSS px: it sits over the stage) */
+.msg-more {
+  min-width: calc(var(--u) * 44);
+  height: calc(var(--u) * 30);
+  margin-left: calc(var(--u) * 10);
+  padding: 0 calc(var(--u) * 8);
+  border-radius: calc(var(--u) * 8);
+  background: rgba(255, 255, 255, .08);
+  font: 800 calc(var(--u) * 20) var(--f-num);
+  line-height: 1;
+  color: #d9cdd0;
+  vertical-align: middle;
+  touch-action: manipulation;
+}
+.msg-more:active { background: rgba(255, 255, 255, .2); }
+.msg-menu {
+  position: fixed;
+  z-index: 1300;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 6px;
+  border-radius: 12px;
+  background: #2b0a10;
+  box-shadow: inset 0 0 0 1.4px #d6a94a, 0 8px 24px rgba(0, 0, 0, .55);
+}
+.msg-menu-item { height: 42px; padding: 0 14px; border-radius: 8px; font-size: 14.5px; font-weight: 700; text-align: left; color: #f1e7ea; touch-action: manipulation; }
+.msg-menu-item:active { background: rgba(255, 255, 255, .12); }
+.msg-menu-item.warn { color: #ff9c9c; }
+/* a message its sender took back */
+.msg.retracted .bubble { background: transparent; box-shadow: inset 0 0 0 calc(var(--u) * 1.6) rgba(255, 255, 255, .22); color: #b9adb0; font-style: italic; }
 .msg.sys, .msg.xfer { align-self: center; align-items: center; max-width: 92%; }
 .sys-text {
   display: block;

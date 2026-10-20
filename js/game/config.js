@@ -84,6 +84,11 @@
     // 通報: `perHour` a player, each one paid `reward` $ by Ice Smoker公式;
     // 意見案: `perDay` a player (days from 9:00 Japan time), an adopted one pays `reward` spin tokens
     report: { perHour: 3, reward: 5000 },
+    // 通報 of one message (the ⋯ under it): `perDay` a player (days from 6:00
+    // Japan time), `chars` characters at most; paid only if the operators accept it
+    messageReport: { perDay: 8, chars: 1000 },
+    // 送信の取り消し: a player's own words, for `minutes` after they were sent
+    retract: { minutes: 60 },
     idea: { perDay: 10, reward: 50000 },
     // a car sold to a friend in the chat: `min`-`max` % of what the seller paid for it
     carResale: { min: 50, max: 300 },

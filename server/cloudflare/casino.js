@@ -192,6 +192,14 @@ export class Casino extends DurableObject {
   async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname === '/api/live') return this.connect(request, url);
+    // the automatic filter's note about a request it stopped (from the Worker
+    // only: it hands on nothing but /api/*)
+    if (url.pathname === '/internal/filter') {
+      let note = {};
+      try { note = await request.json(); } catch { /* left empty */ }
+      this.api.filtered(coreRequest(request, url), note || {});
+      return json(200, { ok: true });
+    }
     const out = await this.api.handle(coreRequest(request, url));
     const bytes = new TextEncoder().encode(JSON.stringify(out.body));
     this.api.sent(bytes.byteLength, url.pathname);
