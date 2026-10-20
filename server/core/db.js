@@ -593,6 +593,61 @@ export const MIGRATIONS = [
        read_id INTEGER NOT NULL DEFAULT 0,
        PRIMARY KEY (user_id, peer_id)
      )`
+  ],
+  // the operator site's login waits (server/core/opslogin.js); the
+  // プレイヤーアーカイブ (a 永久BAN or a deleted account: when, why, when all
+  // of it goes, and the account it went with), the 永久BAN ones already there
+  // starting their 90 days now; the release the player's game last said it
+  // runs, and on what; the developer's backups (server/core/backup.js); the
+  // log's kinds looked up by action; the vault's short messages on a file
+  [
+    `CREATE TABLE ops_locks (
+       key   TEXT    PRIMARY KEY,
+       fails INTEGER NOT NULL DEFAULT 0,
+       step  INTEGER NOT NULL DEFAULT 0,
+       until INTEGER NOT NULL DEFAULT 0,
+       at    INTEGER NOT NULL DEFAULT 0
+     )`,
+    'ALTER TABLE users ADD COLUMN archived_at INTEGER NOT NULL DEFAULT 0',
+    "ALTER TABLE users ADD COLUMN archive_reason TEXT NOT NULL DEFAULT ''",
+    'ALTER TABLE users ADD COLUMN purge_at INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN archive_with INTEGER NOT NULL DEFAULT 0',
+    'CREATE INDEX users_archive ON users(archived_at)',
+    'CREATE INDEX users_purge ON users(purge_at)',
+    `UPDATE users SET archived_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000, archive_reason = 'perma',
+       purge_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000 + 90 * 86400000 WHERE banned = 1 AND ban_kind = 'perma'`,
+    'ALTER TABLE users ADD COLUMN client_release INTEGER NOT NULL DEFAULT 0',
+    "ALTER TABLE users ADD COLUMN client_build TEXT NOT NULL DEFAULT ''",
+    'ALTER TABLE users ADD COLUMN client_at INTEGER NOT NULL DEFAULT 0',
+    "ALTER TABLE users ADD COLUMN client_agent TEXT NOT NULL DEFAULT ''",
+    `CREATE TABLE backups (
+       id       TEXT    PRIMARY KEY,
+       at       INTEGER NOT NULL,
+       kind     TEXT    NOT NULL,
+       size     INTEGER NOT NULL,
+       sealed   INTEGER NOT NULL,
+       sha256   TEXT    NOT NULL,
+       store    TEXT    NOT NULL,
+       parts    INTEGER NOT NULL DEFAULT 0,
+       envelope TEXT    NOT NULL,
+       counts   TEXT    NOT NULL DEFAULT '{}'
+     )`,
+    `CREATE TABLE backup_parts (
+       backup_id TEXT    NOT NULL,
+       n         INTEGER NOT NULL,
+       data      TEXT    NOT NULL,
+       PRIMARY KEY (backup_id, n)
+     )`,
+    'CREATE INDEX ops_log_action ON ops_log(action)',
+    `CREATE TABLE vault_notes (
+       id         INTEGER PRIMARY KEY,
+       file_id    TEXT    NOT NULL,
+       by_id      INTEGER NOT NULL,
+       body       TEXT    NOT NULL,
+       created_at INTEGER NOT NULL,
+       until      INTEGER NOT NULL DEFAULT 0
+     )`,
+    'CREATE INDEX vault_notes_file ON vault_notes(file_id, id)'
   ]
 ];
 

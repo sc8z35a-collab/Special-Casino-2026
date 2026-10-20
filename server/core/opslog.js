@@ -6,10 +6,39 @@
 // restore from a backup or to an earlier time keeps every row (keep():
 // admin.js, server/node/admin-cli.js), and each row carries the hash of the
 // one before it, so a row changed or taken out behind the server's back
-// shows in verify().
+// shows in verify(). Outside the table, the host keeps the newest row's
+// number and hash where SQL cannot reach (`anchor`: Cloudflare's own storage
+// of the object, a file here), and every row's hash also goes to the host's
+// logs (Workers Logs): a chain rebuilt from the start, or rows cut off its
+// end, no longer match them.
+// Each entry has a kind: プレイヤー (what players did), 運営 (what the
+// operators did), セキュリティ, 保管庫 and 緊急. It follows from the action,
+// so the hash covers it too.
 import { sha256 } from './auth.js';
 
 const GENESIS = 'TWO STATE ops log';
+
+export const LOG_KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
+const PLAYER = ['pay_order', 'pay_paid', 'pay_slip', 'pay_unpaid', 'pay_refund'];
+const SECURITY = ['dev_code_fail', 'dev_code_set', 'dev_code_change', 'ops_grant', 'ops_revoke', 'ops_restore', 'pay_bad_signature', 'pay_unknown',
+  'pay_review', 'log_kept', 'account_delete', 'account_purge'];
+export function kindOf(action) {
+  const a = String(action || '');
+  if (a.startsWith('vault_')) return 'vault';
+  if (a.startsWith('emergency_') || a === 'filter_block') return 'emergency';
+  if (SECURITY.includes(a) || a.startsWith('admin:') || a.startsWith('backup_')) return 'security';
+  if (PLAYER.includes(a) || a.startsWith('player_')) return 'player';
+  return 'operator';
+}
+// the same in SQL (the actions are ours: no quotes in them)
+const list = (a) => a.map((x) => `'${x}'`).join(', ');
+const IS = {
+  vault: "substr(action, 1, 6) = 'vault_'",
+  emergency: "(substr(action, 1, 10) = 'emergency_' OR action = 'filter_block')",
+  security: `(action IN (${list(SECURITY)}) OR substr(action, 1, 6) = 'admin:' OR substr(action, 1, 7) = 'backup_')`,
+  player: `(action IN (${list(PLAYER)}) OR substr(action, 1, 7) = 'player_')`
+};
+IS.operator = `NOT (${IS.vault} OR ${IS.emergency} OR ${IS.security} OR ${IS.player})`;
 
 // "2026/10/20 05:31:12.345 JST"
 export function jst(ms) {
@@ -20,7 +49,8 @@ export function jst(ms) {
 
 const fields = (r) => JSON.stringify([r.id, r.at, r.actor_id, r.actor_name, r.action, r.target_id, r.target_name, r.summary, r.detail, r.prev_hash]);
 
-export function createOpsLog({ q }) {
+// anchor: { put(row), get() -> Promise({ id, hash, at } | null) } from the host (or none)
+export function createOpsLog({ q, anchor = null }) {
   // who did it from where: the request as far as it is known
   function requestInfo(req) {
     if (!req) return {};
@@ -52,6 +82,10 @@ export function createOpsLog({ q }) {
     q(`INSERT INTO ops_log (id, at, actor_id, actor_name, action, target_id, target_name, summary, detail, prev_hash, hash)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(r.id, r.at, r.actor_id, r.actor_name, r.action, r.target_id, r.target_name, r.summary, r.detail, r.prev_hash, r.hash);
+    // copies outside the table
+    if (anchor) {
+      try { anchor.put({ id: r.id, hash: r.hash, at: r.at }); } catch (e) { console.error('ops log anchor failed', e); }
+    }
   }
 
   // Rows from elsewhere (a backup, or this log as it was before the database
@@ -89,34 +123,47 @@ export function createOpsLog({ q }) {
     let detail = {};
     try { detail = JSON.parse(r.detail); } catch { /* kept as text below */ }
     return {
-      id: r.id, at: r.at, jst: jst(r.at), actor: { id: r.actor_id, name: r.actor_name }, action: r.action,
+      id: r.id, at: r.at, jst: jst(r.at), actor: { id: r.actor_id, name: r.actor_name }, action: r.action, kind: kindOf(r.action),
       target: r.target_id ? { id: r.target_id, name: r.target_name } : null, summary: r.summary, detail, raw: r.detail,
       prevHash: r.prev_hash, hash: r.hash
     };
   }
 
-  // newest first; `find`: words in the summary, names or action
-  function list({ before = 0, find = '', limit = 200 } = {}) {
+  // newest first; `find`: words in the summary, names or action; `kind`: one of LOG_KINDS
+  function list({ before = 0, find = '', kind = '', limit = 200 } = {}) {
     const like = '%' + String(find || '').slice(0, 60) + '%';
-    const rows = q(`SELECT * FROM ops_log WHERE id < ? AND (? = '%%' OR summary LIKE ? OR actor_name LIKE ? OR target_name LIKE ? OR action LIKE ?)
+    const only = IS[kind] ? `AND ${IS[kind]}` : '';
+    const rows = q(`SELECT * FROM ops_log WHERE id < ? ${only} AND (? = '%%' OR summary LIKE ? OR actor_name LIKE ? OR target_name LIKE ? OR action LIKE ?)
                     ORDER BY id DESC LIMIT ?`)
       .all(before > 0 ? before : Number.MAX_SAFE_INTEGER, like, like, like, like, like, Math.min(500, limit));
     return rows.map(dto);
   }
+  // how many of each kind
+  function counts() {
+    const out = {};
+    for (const k of Object.keys(LOG_KINDS)) out[k] = q(`SELECT COUNT(*) AS n FROM ops_log WHERE ${IS[k]}`).get().n;
+    return out;
+  }
 
-  // every row against the one before it and its own hash
-  function verify() {
+  // every row against the one before it and its own hash, and the newest
+  // row against the copy kept outside the table
+  async function verify() {
     let prev = sha256(GENESIS), n = 0, expectId = 1;
+    const kept = anchor ? await anchor.get().catch(() => null) : null;
+    let anchored = null;
     for (const r of q('SELECT * FROM ops_log ORDER BY id').all()) {
       if (r.id !== expectId) return { ok: false, count: n, brokenAt: r.id, reason: `${expectId}番の記録がありません` };
       if (r.prev_hash !== prev) return { ok: false, count: n, brokenAt: r.id, reason: 'ひとつ前の記録とつながっていません' };
       if (sha256(fields(r)) !== r.hash) return { ok: false, count: n, brokenAt: r.id, reason: '記録の内容が書き換えられています' };
+      if (kept && r.id === kept.id) anchored = r.hash === kept.hash;
       prev = r.hash;
       n++;
       expectId++;
     }
-    return { ok: true, count: n };
+    if (kept && anchored === null) return { ok: false, count: n, brokenAt: kept.id, reason: `${kept.id}番までの記録があったはずが、${n}番までしかありません（後ろが消されています）` };
+    if (kept && !anchored) return { ok: false, count: n, brokenAt: kept.id, reason: '記録が最初から作り直されています（外に控えたハッシュと違います）' };
+    return { ok: true, count: n, anchor: kept ? { id: kept.id, at: kept.at } : null };
   }
 
-  return { add, list, verify, dto, keep, all };
+  return { add, list, counts, verify, dto, keep, all };
 }

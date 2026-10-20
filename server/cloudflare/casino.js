@@ -171,8 +171,19 @@ export class Casino extends DurableObject {
       this.api = createApi({
         db: this.db, live: this.live, config: this.config, secret, defer, hostAdmin: (cmd, args) => this.hostAdmin(cmd, args),
         blobs: env.VAULT ? bucketBlobs(env.VAULT) : null,
-        // for the operator site's サーバー tab
-        host: { name: 'cloudflare', dbBytes: () => ctx.storage.sql.databaseSize, sockets: () => ctx.getWebSockets().length }
+        host: {
+          // for the operator site's サーバー tab
+          name: 'cloudflare', dbBytes: () => ctx.storage.sql.databaseSize, sockets: () => ctx.getWebSockets().length,
+          // the operators' log's newest hash, in the object's own storage (SQL cannot reach it) and in Workers Logs
+          anchor: {
+            put: (row) => { ctx.storage.put('ops_log_anchor', row); console.log(`[ops-log] #${row.id} ${row.hash}`); },
+            get: () => ctx.storage.get('ops_log_anchor')
+          },
+          // the emergency stop: every live connection closes
+          stop: () => { for (const ws of ctx.getWebSockets()) { try { ws.close(1012, 'emergency'); } catch { /* closing */ } } },
+          // the housekeeping sooner (a backup due)
+          reschedule: (at) => ctx.storage.getAlarm().then((cur) => (cur === null || cur > at ? ctx.storage.setAlarm(at) : null))
+        }
       });
       if ((await ctx.storage.getAlarm()) === null) await ctx.storage.setAlarm(Date.now() + HOUSEKEEPING_EVERY);
     });
@@ -183,7 +194,7 @@ export class Casino extends DurableObject {
     if (url.pathname === '/api/live') return this.connect(request, url);
     const out = await this.api.handle(coreRequest(request, url));
     const bytes = new TextEncoder().encode(JSON.stringify(out.body));
-    this.api.sent(bytes.byteLength);
+    this.api.sent(bytes.byteLength, url.pathname);
     return new Response(bytes, { status: out.status, headers: JSON_HEADERS });
   }
 
@@ -192,6 +203,7 @@ export class Casino extends DurableObject {
     if ((request.headers.get('upgrade') || '').toLowerCase() !== 'websocket') {
       return json(426, { error: { code: 'upgrade', message: 'WebSocket で接続してください' } });
     }
+    if (this.api.stopped()) return json(503, this.api.stoppedBody());
     const userId = this.api.consumeTicket(url.searchParams.get('ticket'));
     if (!userId) return json(401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } });
     const first = !this.live.isOnline(userId);
@@ -235,9 +247,10 @@ export class Casino extends DurableObject {
     if (!still) this.api.presence(a.u, false);
   }
 
+  // the housekeeping: every 6 hours, or sooner when the developer's backup is due
   async alarm() {
     await this.api.housekeeping();
-    await this.ctx.storage.setAlarm(Date.now() + HOUSEKEEPING_EVERY);
+    await this.ctx.storage.setAlarm(this.api.nextHousekeeping());
   }
 
   // Operator commands that only exist here (see README): point-in-time recovery.

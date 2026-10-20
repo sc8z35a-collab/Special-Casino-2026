@@ -18,6 +18,9 @@
 // out of every link at once, so used and unused material never mix, but kept
 // (the developer can bring it back). Nothing in the vault is ever deleted on
 // its own: only the developer deletes, one file at a time.
+// The developer can leave short messages on a file, good for a day, 3, 7, 30
+// or with no end; an AI's link shows them while they last (an old one stays
+// on the operator site, marked as over).
 //
 // Where the pieces are: in an R2 bucket when the host has one (Cloudflare:
 // the binding VAULT in wrangler.jsonc; 50GB by default), else in the database
@@ -58,8 +61,11 @@ const FOLDER_DEPTH = 8;
 const FOLDERS_MAX = 500;
 const MOVE_MAX = 500;
 const TO_BUCKET = 16;
-// labels kept on a file
+// labels kept on a file; a short message: how long it lasts (days, 0: no end), its length, how many on a file
 const LABELS_MAX = 30;
+export const NOTE_DAYS = [1, 3, 7, 30, 0];
+const NOTE_MAX = 500;
+const NOTES_MAX = 50;
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028-\u202E\u2066-\u2069\uFEFF]/g;
 
@@ -82,8 +88,9 @@ function folderName(raw) {
 }
 
 // blobs (from the host, or null): put(key, bytes, sha256), get(key) ->
-// { bytes, sha256 } | null, list(prefix) -> [{ key, sha256 }], del(keys)
-export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, blobs = null }) {
+// { bytes, sha256 } | null, list(prefix) -> [{ key, sha256 }], del(keys);
+// onDb(bytes): pieces written into the database (the emergency stop does not count them)
+export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, blobs = null, onDb = () => {} }) {
   const KEY = crypto.createHash('sha256').update(`${secret}:vault-ticket`).digest();
   const size = SIZES[blobs ? 'bucket' : config.plan === 'paid' ? 'paid' : 'db'];
   const maxBytes = (config.vaultMaxMb ?? size.all) * 1048576, fileBytes = (config.vaultFileMb ?? size.file) * 1048576;
@@ -142,11 +149,13 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     const live = links.filter((l) => !l.revoked && l.until > now);
     return { live: live.length, until: live.reduce((m, l) => Math.max(m, l.until), 0), uses: links.reduce((s, l) => s + l.uses, 0) };
   }
+  const notesOf = (f) => q('SELECT * FROM vault_notes WHERE file_id = ? ORDER BY id').all(f.id).map((n) => ({ id: n.id, text: n.body, at: n.created_at, until: n.until }));
+  const live = (n, now) => !n.until || n.until > now;
   function fileDto(f, now = Date.now()) {
     return {
       id: f.id, name: f.name, type: f.type, note: f.note, size: f.size, chunks: f.chunks, piece: f.piece, received: f.received, done: !!f.done_at,
       sha256: f.sha256, createdAt: f.created_at, doneAt: f.done_at, parent: f.parent || '', folder: f.folder || '', info: infoOf(f), preview: !!f.preview,
-      labels: labelsOf(f), implementedAt: f.implemented_at, links: linksOf(f.id, now)
+      labels: labelsOf(f), implementedAt: f.implemented_at, links: linksOf(f.id, now), notes: notesOf(f)
     };
   }
   // what a link shows of a file (no notes, no links)
@@ -154,7 +163,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     const light = q("SELECT * FROM vault_files WHERE parent = ? AND done_at > 0 ORDER BY created_at DESC LIMIT 1").get(f.id);
     return {
       id: f.id, name: f.name, type: f.type, size: f.size, chunks: f.chunks, chunk: f.piece, sha256: f.sha256, folder: f.folder || '', sentAt: f.created_at, doneAt: f.done_at,
-      labels: labelsOf(f), info: infoOf(f), preview: !!f.preview,
+      labels: labelsOf(f), info: infoOf(f), preview: !!f.preview, notes: notesOf(f).filter((n) => live(n, Date.now())).map(({ text, at, until }) => ({ text, at, until })),
       light: light ? { id: light.id, name: light.name, size: light.size, chunks: light.chunks, chunk: light.piece, sha256: light.sha256 } : null
     };
   }
@@ -209,6 +218,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       for (const x of files) {
         q('DELETE FROM vault_chunks WHERE file_id = ?').run(x.id);
         q('DELETE FROM vault_links WHERE file_id = ?').run(x.id);
+        q('DELETE FROM vault_notes WHERE file_id = ?').run(x.id);
         q('DELETE FROM vault_files WHERE id = ?').run(x.id);
       }
     });
@@ -353,6 +363,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
         if (!fileRow(f.id)) { await blobs.del([pieceKey(f.id, n)]); throw new ApiError(404, 'no_file', 'ファイルが見つかりません'); }
         return { n, stored: true, chunks: f.chunks };
       }
+      onDb(data.length);
       const out = tx(() => {
         q('INSERT INTO vault_chunks (file_id, n, sha256, data) VALUES (?, ?, ?, ?) ON CONFLICT(file_id, n) DO UPDATE SET sha256 = excluded.sha256, data = excluded.data')
           .run(f.id, n, want, bytes.toString('base64'));
@@ -397,6 +408,32 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       await remove(f);
       opsLog.add({ actor: u, action: 'vault_delete', req, summary: `保管庫の「${f.name}」（${mb(f.size)}）を削除`, detail: { file: f.id, name: f.name, size: f.size, sha256: f.sha256 } });
       return { ok: true, used: used() };
+    },
+
+    // a short message on a file (days: how long it lasts, 0 no end)
+    'POST /api/vault/notes': async (req, u) => {
+      need(req, u);
+      const body = await req.json();
+      const f = theFile(body.id);
+      const text = Array.from(String(body.text ?? '').replace(CONTROL, ' ').trim()).slice(0, NOTE_MAX).join('');
+      if (!text) throw new ApiError(400, 'empty', 'メッセージを書いてください');
+      const days = Number(body.days);
+      if (!NOTE_DAYS.includes(days)) throw new ApiError(400, 'bad_days', `期間は ${NOTE_DAYS.map((d) => (d ? d + '日' : '期限なし')).join('・')} から選んでください`);
+      if (q('SELECT COUNT(*) AS n FROM vault_notes WHERE file_id = ?').get(f.id).n >= NOTES_MAX) throw new ApiError(409, 'too_many', `1つのファイルにメッセージは${NOTES_MAX}件までです`);
+      const now = Date.now();
+      q('INSERT INTO vault_notes (file_id, by_id, body, created_at, until) VALUES (?, ?, ?, ?, ?)').run(f.id, u.id, text, now, days ? now + days * 86400000 : 0);
+      opsLog.add({ actor: u, action: 'vault_note', req, summary: `保管庫の「${f.name}」にメッセージ（${days ? days + '日間' : '期限なし'}）：${text}`, detail: { file: f.id, name: f.name, text, days } });
+      return { file: fileDto(fileRow(f.id)) };
+    },
+    'POST /api/vault/notes/delete': async (req, u) => {
+      need(req, u);
+      const body = await req.json();
+      const n = q('SELECT * FROM vault_notes WHERE id = ?').get(Number(body.note) || 0);
+      if (!n) throw new ApiError(404, 'no_note', 'メッセージが見つかりません');
+      const f = fileRow(n.file_id);
+      q('DELETE FROM vault_notes WHERE id = ?').run(n.id);
+      opsLog.add({ actor: u, action: 'vault_note_delete', req, summary: `保管庫の「${f ? f.name : '?'}」のメッセージを削除：${n.body}`, detail: { file: n.file_id, text: n.body } });
+      return { file: f ? fileDto(f) : null };
     },
 
     // back from 実装済み (the links see it again)
@@ -550,6 +587,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       opsLog.add({ actorName: 'リンク', action: 'vault_pull', req, summary: f ? `保管庫の「${f.name}」がリンクから取得された` : '保管庫全体の一覧がリンクから取得された', detail: { file: f ? f.id : ALL, name: f ? f.name : '', uses: l.uses + 1, until: l.until } });
       const how = {
         pieces: '&n=<piece> (base64, with its sha256; `chunk` bytes each)', picture: '&preview=1', file: '&f=<file id>', sha256: "the file's sha256 is the SHA-256 of all piece digests in order",
+        notes: "notes: the developer's short messages on a file (read them before working on it)",
         ...(l.ai ? { label: 'POST /api/vault/ai { t, f, text }', implemented: 'POST /api/vault/ai { t, f, text: where it went, implemented: true } (the file leaves the links; it stays in the vault)' } : {})
       };
       if (f) return { ...pullDto(f), until: l.until, ai: !!l.ai, how };

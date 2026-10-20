@@ -30,6 +30,13 @@
      goes on where it stopped, on its own once there is room or a connection),
      fetched back the same way, and time-limited links (for an AI too: what it
      takes and does is labelled; what it put in the game is 実装済み).
+   - アーカイブ: the 永久BAN and deleted accounts, all their data gone 90 days
+     after they came in; a 永久BAN can be lifted, a deleted account never
+     comes back. Only the developer sees the button that deletes an account
+     (with the developer code; the accounts on the same device go too).
+   - 緊急停止: when the server stops itself (far more use than usual), every
+     page shows it; the developer sees why and starts it again with the code.
+   The login waits after two wrong tries (5 minutes, then 10, 20 …).
    The site refreshes at the speed chosen at the top (kept on this browser).
    Passwords are kept only as one-way hashes, so they can be set, never shown.
    On a phone the site goes full screen and landscape at the first tap; held
@@ -54,6 +61,11 @@
     idea_adopt: '意見案を採用', ops_revoke: '運営権の剥奪', ops_grant: '運営権の付与', ops_restore: '運営権を戻す',
     dev_code_set: '開発者コードを登録', dev_code_change: '開発者コードを変更', dev_code_fail: '開発者コードの入力ミス',
     bot_auto_reply: '自動返信', log_kept: '運営ログの保持', 'admin:restore-time': '管理コマンド: 時点への巻き戻し',
+    account_delete: 'アカウント削除', account_purge: 'データの完全削除', emergency_stop: '緊急停止', emergency_release: '緊急停止の解除',
+    backup_key: 'バックアップの鍵', backup_run: 'バックアップ', backup_get: 'バックアップのダウンロード', backup_delete: 'バックアップの削除',
+    backup_settings: 'バックアップの設定', backup_failed: 'バックアップの失敗', vault_note: '保管庫のメッセージ', vault_note_delete: '保管庫のメッセージ削除',
+    player_register: '登録', player_login: 'ログイン', player_password: 'パスワード変更', player_recovery: '引き継ぎコード再発行',
+    player_transfer: '送金', player_report: '通報', player_feedback: '報告・意見案',
     pay_order: '支払いページ', pay_paid: '購入（入金を確認）', pay_slip: 'コンビニ払いの番号', pay_unpaid: 'コンビニ未払い', pay_refund: '返金',
     pay_review: '決済の不一致（保留）', pay_reply: '開発者の返信', pay_error: '決済ページのエラー', pay_unknown: '不明な決済通知', pay_bad_signature: '不正な決済通知を拒否',
     vault_open: '保管庫を開いた', vault_upload: '保管庫に保存', vault_delete: '保管庫から削除', vault_link: '保管庫のリンク作成',
@@ -61,6 +73,7 @@
     vault_bucket: '保管庫をR2へ移動', vault_ai_label: 'AIのラベル（保管庫）', vault_ai_done: 'AIが実装（保管庫）', vault_restore: '保管庫で実装済みから戻す'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
+  var KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
   var REPORT_PLACES = { profile: 'プロフィール', hub: '「一緒に稼ぐ」', search: 'フレンド検索', chat: 'チャット' };
   var FB_ITEMS = { slot: 'スロットの面白さ', features: 'スロット以外の機能の面白さ', clarity: '全体的なわかりやすさ', controls: '操作性', looks: '見やすさ', polish: '完成度' };
 
@@ -70,7 +83,7 @@
     view: 'players', players: [], total: 0, counts: {}, now: Date.now(), filter: 'all', sort: 'new', q: '', open: 0, busy: false,
     reportStatus: 'open', detAll: false, fb: 'open', feedback: [], log: [], logQ: '', logDone: false, chat: null,
     developer: false, operators: [], pay: null, payView: 'waiting', vault: null, vaultFiles: [], vaultFolders: [], vaultFolder: '', vaultPicked: {},
-    vaultShow: 'all', vaultPage: 0
+    vaultShow: 'all', vaultPage: 0, logKind: ''
   };
   var timer = 0, liveTimer = 0, searchTimer = 0, logTimer = 0, chatTimer = 0;
   var speed = 'normal';
@@ -90,8 +103,10 @@
         return res.json().catch(function () { return {}; }).then(function (j) {
           if (res.ok) return j;
           var e = j.error || {};
-          var err = { status: res.status, code: e.code || '', message: e.message || 'エラーが発生しました（' + res.status + '）' };
-          if (res.status === 401 || e.code === 'not_operator' || e.code === 'banned') signedOut(err.message);
+          var err = { status: res.status, code: e.code || '', message: e.message || 'エラーが発生しました（' + res.status + '）', until: e.until || 0 };
+          // the server stopped itself
+          if (res.status === 503 && e.emergency) showEmergency();
+          else if (res.status === 401 || e.code === 'not_operator' || e.code === 'banned') signedOut(err.message);
           throw err;
         });
       });
@@ -202,14 +217,42 @@
     setToken(null);
     showLogin(message);
   }
+  // this browser's own id (two wrong logins make it wait: server/core/opslogin.js)
+  var DEVICE_KEY = 'two-state-ops/device', lockTimer = 0, lockEnd = 0;
+  function opsDevice() {
+    var d = null;
+    try { d = localStorage.getItem(DEVICE_KEY); } catch (e) { d = null; }
+    if (!d || !/^[A-Za-z0-9_-]{16,64}$/.test(d)) {
+      var a = new Uint8Array(18);
+      crypto.getRandomValues(a);
+      d = btoa(String.fromCharCode.apply(null, a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      try { localStorage.setItem(DEVICE_KEY, d); } catch (e) { /* this tab only */ }
+    }
+    return d;
+  }
+  // the wait, counted down on the login card
+  function waitUntil(until) {
+    lockEnd = until;
+    clearInterval(lockTimer);
+    var go = $('#login-go');
+    function tick() {
+      var left = lockEnd - Date.now();
+      if (left <= 0) { clearInterval(lockTimer); go.disabled = false; $('#login-error').textContent = 'もう一度入力できます'; return; }
+      go.disabled = true;
+      $('#login-error').textContent = '入力制限中です。あと ' + Math.floor(left / 60000) + '分' + pad(Math.floor(left / 1000) % 60) + '秒で入力できます';
+    }
+    tick();
+    lockTimer = setInterval(tick, 1000);
+  }
   function onLogin(e) {
     e.preventDefault();
+    if (Date.now() < lockEnd) return;
     var name = $('#login-name').value.trim(), pass = $('#login-pass').value;
     if (!name || !pass) { $('#login-error').textContent = '名前とパスワードを入力してください'; return; }
     var go = $('#login-go');
     go.disabled = true;
     $('#login-error').textContent = '';
-    request('POST', '/api/login', { name: name, password: pass }).then(function (r) {
+    request('POST', '/api/ops/login', { name: name, password: pass }, { 'X-Ops-Device': opsDevice() }).then(function (r) {
       setToken(r.token);
       return request('GET', '/api/ops/me').then(function (me) {
         $('#login-pass').value = '';
@@ -221,8 +264,9 @@
         throw err;
       });
     }).catch(function (err) {
+      if (err.code === 'ops_locked' && err.until) { waitUntil(err.until); return; }
       $('#login-error').textContent = err.message;
-    }).then(function () { go.disabled = false; });
+    }).then(function () { if (Date.now() >= lockEnd) go.disabled = false; });
   }
   function logout() {
     var t = token;
@@ -279,15 +323,16 @@
   function setView(v) {
     state.view = v;
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
-    ['players', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'server', 'pay', 'vault'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
+    ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'server', 'pay', 'vault'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
     if (v === 'players') load();
+    else if (v === 'archive') loadArchive();
     else if (v === 'operators') loadOperators();
     else if (v === 'reports') loadReports();
     else if (v === 'detections') loadDetections();
     else if (v === 'feedback') loadFeedback();
     else if (v === 'log') { loadLog(true); verifyLog(); }
     else if (v === 'team') openTeamView();
-    else if (v === 'server') loadServer();
+    else if (v === 'server') { loadServer(); renderDevCards(); }
     else if (v === 'pay') loadPay();
     else if (v === 'vault') renderVault();
     scrollTop();
@@ -309,6 +354,7 @@
       setCount('reports', state.counts.reports);
       setCount('detections', state.counts.detections);
       setCount('feedback', state.counts.feedback);
+      setCount('archive', r.archived || 0);
       render();
       if (state.open && quiet) refreshDetail();
     }, function (err) { if (!quiet) fail(err); });
@@ -444,12 +490,19 @@
     t.appendChild(s);
     head.appendChild(t);
     box.appendChild(head);
+    // in the プレイヤーアーカイブ
+    if (p.archive) {
+      var left = Math.max(0, Math.ceil((p.archive.purgeAt - Date.now()) / 86400000));
+      box.appendChild(el('p', 'note bad', p.deleted
+        ? 'このアカウントは ' + date(p.archive.at, true) + ' に削除されました（取り消し不可）。' + date(p.archive.purgeAt, true) + '（あと' + left + '日）にデータを完全に削除します。'
+        : '永久BANでプレイヤーアーカイブに入っています。' + date(p.archive.purgeAt, true) + '（あと' + left + '日）にデータを完全に削除します（永久BANを解除すると一覧に戻ります）。'));
+    }
 
     var bot = section('Ice Smoker公式');
     if (p.waiting) bot.appendChild(el('p', 'note bad', 'このプレイヤーのメッセージが返信を待っています。'));
     var a = el('div', 'acts');
     a.appendChild(act('チャットを開く', 'chat', 'primary'));
-    a.appendChild(act('送金する', 'money'));
+    if (!p.deleted) a.appendChild(act('送金する', 'money'));
     bot.appendChild(a);
     box.appendChild(bot);
 
@@ -470,6 +523,7 @@
     g.appendChild(cell('このプレイヤーへの通報', fmt(p.reportsAgainst) + '件'));
     g.appendChild(cell('このプレイヤーからの通報', fmt(p.reportsBy) + '件'));
     g.appendChild(cell('未確認の検知', fmt(p.detections) + '件'));
+    g.appendChild(cell('ゲームのバージョン', versionEl(p.client), true));
     basic.appendChild(g);
     box.appendChild(basic);
 
@@ -495,8 +549,10 @@
     acc.appendChild(el('p', 'note', 'パスワードはハッシュでのみ保存しているため表示できません。忘れた人には再設定してください。'));
     a = el('div', 'acts');
     a.style.marginTop = '10px';
-    a.appendChild(act('引き継ぎコードを再発行', 'recovery'));
-    a.appendChild(act('パスワードを再設定', 'password'));
+    if (!p.deleted) {
+      a.appendChild(act('引き継ぎコードを再発行', 'recovery'));
+      a.appendChild(act('パスワードを再設定', 'password'));
+    }
     acc.appendChild(a);
     box.appendChild(acc);
 
@@ -506,7 +562,9 @@
       : p.deviceBlocked ? 'この端末にBAN中のアカウントがあるため、このアカウントもアクセスできません。'
         : '処分はありません。';
     ban.appendChild(now);
-    if (p.operator) {
+    if (p.deleted) {
+      ban.appendChild(el('p', 'muted', '削除したアカウントは、開発者でも元に戻せません。'));
+    } else if (p.operator) {
       ban.appendChild(el('p', 'muted', '運営者のアカウントには処分を使えません。'));
     } else {
       a = el('div', 'acts');
@@ -517,9 +575,19 @@
       if (p.ban) a.appendChild(act('処分を解除', 'ban', 'ok', 'none'));
       if (p.deviceBlocked) a.appendChild(act('端末のBANから外す', 'deviceOk', 'ok'));
       ban.appendChild(a);
-      ban.appendChild(el('p', 'muted', 'アクセス禁止は1週間、BANは30日で自動解除（いつでも解除可）。BAN・永久BANは同じ端末のほかのアカウントも止めます。'));
+      ban.appendChild(el('p', 'muted', 'アクセス禁止は1週間、BANは30日で自動解除（いつでも解除可）。BAN・永久BANは同じ端末のほかのアカウントも止めます。永久BANはプレイヤーアーカイブに移り、90日後にデータを完全に削除します。'));
     }
     box.appendChild(ban);
+    // the developer's eyes only: deleting the account
+    if (state.developer && !p.deleted && !p.operator) {
+      var del = section('アカウントの削除（開発者だけに表示）');
+      del.appendChild(el('p', 'muted', 'このプレイヤーと同じ端末のアカウントを削除します。すぐにログアウトされ、プレイヤーアーカイブに移り、90日後にデータを完全に削除します。開発者でも取り消せません（開発者コードが必要・ログに残ります）。'));
+      a = el('div', 'acts');
+      a.style.marginTop = '10px';
+      a.appendChild(act('アカウントを削除', 'delete', 'danger solid'));
+      del.appendChild(a);
+      box.appendChild(del);
+    }
 
     var det = section('検知された言葉');
     var dl = el('div', 'cards');
@@ -556,7 +624,7 @@
 
   /* ------------------------------------------------------------ actions --- */
   // a dialog: { title, text, ok, danger, input: { label, type, value } } -> Promise(value | null)
-  // (with both an input and a choice: { value, pick })
+  // (with more than one of input, select and area: { value, pick, text })
   function ask(o) {
     return new Promise(function (resolve) {
       $('#dialog-title').textContent = o.title;
@@ -581,8 +649,15 @@
         o.select.options.forEach(function (x) { var op = el('option', '', x.label); op.value = x.value; select.appendChild(op); });
         select.value = o.select.value || '';
       }
+      // several lines: { label, value }
+      var areaField = $('#dialog-area-field'), area = $('#dialog-area');
+      areaField.hidden = !o.area;
+      if (o.area) {
+        $('#dialog-area-label').textContent = o.area.label;
+        area.value = o.area.value || '';
+      }
       $('#dialog').hidden = false;
-      setTimeout(function () { (o.input ? input : o.select ? select : ok).focus(); }, 30);
+      setTimeout(function () { (o.input ? input : o.select ? select : o.area ? area : ok).focus(); }, 30);
       var done = function (v) {
         $('#dialog').hidden = true;
         $('#dialog-form').onsubmit = null;
@@ -595,7 +670,8 @@
           var problem = o.check(input.value);
           if (problem) { $('#dialog-error').textContent = problem; return; }
         }
-        done(o.input && o.select ? { value: input.value, pick: select.value } : o.input ? input.value : o.select ? select.value : true);
+        var many = [o.input, o.select, o.area].filter(Boolean).length > 1;
+        done(many ? { value: input.value, pick: select.value, text: area.value } : o.input ? input.value : o.select ? select.value : o.area ? area.value : true);
       };
       $('#dialog-cancel').onclick = function () { done(null); };
     });
@@ -642,6 +718,8 @@
           return ask({ title: '新しい引き継ぎコード', text: p.name + ' さんの新しいコードです: ' + r.code, ok: 'コピーして閉じる' }).then(function (c) { if (c) copy(r.code); });
         });
       }).catch(fail);
+    } else if (name === 'delete') {
+      deleteAccount(p);
     } else if (name === 'password') {
       ask({
         title: 'パスワードを再設定',
@@ -654,6 +732,140 @@
         return request('POST', '/api/ops/password', { id: p.id, password: pw }).then(function (r) { toast('パスワードを設定しました'); afterChange(r); });
       }).catch(fail);
     }
+  }
+
+  // what the player's game runs: 最新, or which DEV, on what and when it said so
+  function platformOf(ua) {
+    ua = String(ua || '');
+    var os = /Android/.test(ua) ? 'Android' : /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
+    var app = /; wv\)|TwoState/.test(ua) ? 'アプリ' : /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : /Firefox\//.test(ua) ? 'Firefox' : '';
+    return [os, app].filter(Boolean).join('・') || '不明';
+  }
+  function versionEl(c) {
+    var b = el('b', 'verline');
+    if (!c || !c.release) { b.textContent = '未確認（まだ新しい版で起動していません）'; return b; }
+    var newest = c.release >= c.newest;
+    b.appendChild(el('span', 'ver ' + (newest ? 'new' : 'old'), newest ? '最新' : 'DEV' + c.release));
+    b.appendChild(document.createTextNode(newest ? ' DEV' + c.release : ' 最新は DEV' + c.newest + '（更新されていません）'));
+    b.appendChild(el('small', 'muted', [c.build ? 'build ' + c.build : '', platformOf(c.agent), c.at ? date(c.at, true) + ' に確認' : ''].filter(Boolean).join('・')));
+    return b;
+  }
+  // the developer deletes an account (and the ones on the same device), with the developer code
+  function deleteAccount(p) {
+    request('GET', '/api/ops/delete-account?id=' + p.id).then(function (r) {
+      var subs = r.sameDevice.map(function (x) { return x.name; });
+      return withCode({
+        title: p.name + ' さんのアカウントを削除しますか？',
+        text: (subs.length ? '同じ端末の ' + subs.join('、') + ' さんのアカウントも一緒に削除します。' : '') + 'すぐにログアウトされ、プレイヤーアーカイブに移ります。' + r.days + '日後にデータを完全に削除します。この操作は開発者でも取り消せません。',
+        ok: '削除する', danger: true
+      }).then(function (code) {
+        if (code === null) return null;
+        return request('POST', '/api/ops/delete-account', { id: p.id, code: code }).then(function (d) {
+          toast(d.deleted.map(function (x) { return x.name; }).join('、') + ' さんのアカウントを削除しました');
+          afterChange(d);
+          load(true);
+        });
+      });
+    }).catch(fail);
+  }
+
+  /* ------------------------------------------------------------ 緊急停止 --- */
+  var emergencyOn = false;
+  function showEmergency() {
+    if (emergencyOn) return;
+    emergencyOn = true;
+    clearInterval(timer);
+    clearInterval(liveTimer);
+    clearInterval(chatTimer);
+    $('#emergency').hidden = false;
+    $('#em-list').textContent = '';
+    $('#em-release').hidden = true;
+    $('#em-text').textContent = 'いつもよりはるかに多い使用量を検知したため、サーバーを止めています。開発者が確認して再開するまでお待ちください。';
+    if (state.developer) loadEmergency();
+  }
+  function loadEmergency() {
+    request('GET', '/api/emergency').then(function (r) {
+      if (!r.stopped) { location.reload(); return; }
+      $('#em-text').textContent = stamp(r.at) + ' から停止中：' + r.reason;
+      $('#em-release').hidden = false;
+      var list = $('#em-list');
+      list.textContent = '';
+      list.appendChild(el('h3', '', '緊急ログ'));
+      r.entries.forEach(function (x) { list.appendChild(emergencyCard(x)); });
+    }, function () {});
+  }
+  function emergencyCard(x) {
+    var card = el('article', 'card');
+    var head = el('div', 'card-head');
+    head.appendChild(el('span', 'kind', actionName(x.action)));
+    head.appendChild(el('span', 'time', stamp(x.at)));
+    card.appendChild(head);
+    card.appendChild(el('p', 'body-text', x.summary));
+    var d = x.detail || {}, facts = el('div', 'facts');
+    (d.over || []).forEach(function (o) { fact(facts, o.what + '（1分）', fmt(o.value) + '（ふだん ' + fmt(o.usual) + '・下限 ' + fmt(o.floor) + '）'); });
+    var b = d.busiest || {};
+    if (b.addresses && b.addresses.length) fact(facts, '多かったアドレス', b.addresses.slice(0, 5).map(function (a) { return a.key + '（' + fmt(a.n) + '）'; }).join('・'));
+    if (b.accounts && b.accounts.length) fact(facts, '多かったアカウント', b.accounts.slice(0, 5).map(function (a) { return a.name + '（' + fmt(a.n) + '）'; }).join('・'));
+    if (b.apis && b.apis.length) fact(facts, '多かったAPI', b.apis.slice(0, 5).map(function (a) { return a.key + '（' + fmt(a.n) + '）'; }).join('・'));
+    card.appendChild(facts);
+    var more = el('details', 'more');
+    more.appendChild(el('summary', '', 'すべての記録'));
+    more.appendChild(el('pre', 'em-pre', JSON.stringify(d, null, 2)));
+    card.appendChild(more);
+    return card;
+  }
+  function releaseEmergency() {
+    withCode({ title: '緊急停止を解除しますか？', text: '原因を確かめてから解除してください。サーバーが再開し、解除から30分は自動で止まりません。', ok: '解除する', danger: true }).then(function (code) {
+      if (code === null) return null;
+      return request('POST', '/api/emergency/release', { code: code }).then(function () { toast('解除しました'); setTimeout(function () { location.reload(); }, 800); });
+    }).catch(fail);
+  }
+
+  /* ------------------------------------------------------------ プレイヤーアーカイブ --- */
+  function loadArchive() {
+    var list = $('#archive-list');
+    request('GET', '/api/ops/archive').then(function (r) {
+      list.textContent = '';
+      $('#archive-note').textContent = fmt(r.players.length) + '人';
+      if (!r.players.length) list.appendChild(el('p', 'empty muted', 'アーカイブにプレイヤーはいません'));
+      r.players.forEach(function (p) { list.appendChild(archiveCard(p, r.now)); });
+    }, fail);
+  }
+  function archiveCard(p, now) {
+    var a = p.archive || {};
+    var card = el('article', 'card archive-card' + (p.deleted ? ' gone' : ''));
+    var head = el('div', 'card-head');
+    head.appendChild(person(p, p.withName ? p.withName + ' さんと同じ端末' : ''));
+    head.appendChild(el('span', 'kind' + (p.deleted ? ' deleted' : ''), p.deleted ? 'アカウント削除' : '永久BAN'));
+    head.appendChild(el('span', 'time', 'アーカイブ ' + stamp(a.at)));
+    card.appendChild(head);
+    var facts = el('div', 'facts');
+    fact(facts, 'データの完全削除', date(a.purgeAt, true) + '（あと' + Math.max(0, Math.ceil((a.purgeAt - now) / 86400000)) + '日）');
+    fact(facts, '資産', '$' + fmt(p.worth));
+    fact(facts, '最終オンライン', date(p.lastSeen, true));
+    fact(facts, '登録', date(p.createdAt, true));
+    card.appendChild(facts);
+    var acts = el('div', 'acts');
+    if (p.deleted) acts.appendChild(el('span', 'muted', '削除したアカウントは元に戻せません'));
+    else {
+      var b = el('button', 'btn small ok', '永久BANを解除');
+      b.type = 'button';
+      b.dataset.lift = p.id;
+      acts.appendChild(b);
+    }
+    card.appendChild(acts);
+    return card;
+  }
+  function onArchive(e) {
+    var o = e.target.closest('[data-open]');
+    if (o) { openDetail(Number(o.dataset.open)); return; }
+    var b = e.target.closest('[data-lift]');
+    if (!b) return;
+    var id = Number(b.dataset.lift);
+    ask({ title: '永久BANを解除しますか？', text: 'プレイヤー一覧に戻り、データの完全削除の予定もなくなります。公式から解除のお知らせが届きます。', ok: '解除する' }).then(function (ok) {
+      if (!ok) return null;
+      return request('POST', '/api/ops/ban', { id: id, kind: 'none' }).then(function () { toast('永久BANを解除しました'); loadArchive(); load(true); });
+    }).catch(fail);
   }
 
   /* ------------------------------------------------------------ the chat with the official bot --- */
@@ -1080,7 +1292,8 @@
     state.operators.forEach(function (o) {
       var card = el('article', 'card' + (o.operator ? '' : ' done'));
       var head = el('div', 'card-head');
-      head.appendChild(person({ id: o.id, name: o.name, avatar: o.avatar }, o.registered ? (o.online ? 'オンライン' : '') : 'アカウント未登録'));
+      head.appendChild(person({ id: o.id, name: o.name, avatar: o.avatar }, !o.registered ? 'アカウント未登録'
+        : o.site ? '運営サイトにいます' : o.online ? 'ゲーム中' : o.seenAt ? '最終オンライン ' + date(o.seenAt, true) + '（' + ago(o.seenAt) + '）' : 'まだオンラインになっていません'));
       head.appendChild(el('span', 'kind ' + (o.developer ? 'dev' : o.operator ? 'op' : 'revoked'), o.developer ? '開発者' : o.operator ? '運営者' : '運営権なし（剥奪済み）'));
       card.appendChild(head);
       var a = el('div', 'acts');
@@ -1149,6 +1362,8 @@
           state.devCodeSet = true;
           toast('開発者コードを登録しました');
           renderOperators();
+          if (change) return relockBackupKey(old, code);
+          return null;
         });
       });
     }).catch(fail);
@@ -1279,11 +1494,13 @@
 
   /* ------------------------------------------------------------ 運営チャット --- */
   // the operators (who is on) and the conversation open: an operator's id, 0 for everyone, null none
-  var team = { list: null, peer: null, messages: [], theirRead: 0, seq: 0, busy: 0, again: false, sending: false };
+  // (the developer: also 'pair:<a>:<b>', a one-to-one talk between two others, read only)
+  var team = { list: null, peer: null, messages: [], theirRead: 0, seq: 0, busy: 0, again: false, sending: false, pairs: [] };
+  var isPair = function (peer) { return typeof peer === 'string'; };
   function teamUnread(r) { return r.all.unread + r.operators.reduce(function (n, o) { return n + o.unread; }, 0); }
   function peerRow(peer) {
     var r = team.list;
-    if (!r) return null;
+    if (!r || isPair(peer)) return null;
     return peer === 0 ? r.all : r.operators.filter(function (o) { return o.id === peer; })[0] || null;
   }
   function loadTeam(quiet) {
@@ -1294,6 +1511,7 @@
       if (open) open.unread = 0;
       setCount('team', teamUnread(r));
       if (state.view !== 'team') return null;
+      if (state.developer) request('GET', '/api/ops/team/pairs').then(function (p) { team.pairs = p.pairs; renderTeamList(); }, function () {});
       renderTeamList();
       renderTeamHead();
       return loadTeamMsgs(false, mustRead);
@@ -1312,7 +1530,7 @@
     var list = $('#team-msgs');
     list.textContent = '';
     list.appendChild(el('p', 'chat-empty', '読み込み中…'));
-    $('#team-form').hidden = false;
+    $('#team-form').hidden = isPair(peer);
     renderTeamList();
     renderTeamHead();
     loadTeamMsgs(true, true);
@@ -1324,16 +1542,17 @@
     if (peer === null) return Promise.resolve();
     if (team.busy === seq) { team.again = true; return Promise.resolve(); }
     team.busy = seq;
-    var after = lastTeamId();
-    return request('GET', '/api/ops/team/messages?with=' + peer + (after ? '&after=' + after : '')).then(function (r) {
+    var after = lastTeamId(), ab = isPair(peer) ? peer.split(':') : null;
+    var url = ab ? '/api/ops/team/pair?a=' + ab[1] + '&b=' + ab[2] : '/api/ops/team/messages?with=' + peer;
+    return request('GET', url + (after ? '&after=' + after : '')).then(function (r) {
       if (team.seq !== seq) return;
       var fresh = r.messages.filter(function (m) { return m.id > lastTeamId(); });
-      var seen = r.theirRead !== team.theirRead;
+      var seen = (r.theirRead || 0) !== team.theirRead;
       team.messages = team.messages.concat(fresh);
-      team.theirRead = r.theirRead;
+      team.theirRead = r.theirRead || 0;
       if (fresh.length || seen || !after) renderTeamMsgs(stick);
       var me = team.list ? team.list.me : 0;
-      if ((mustRead || fresh.some(function (m) { return m.from.id !== me; })) && lastTeamId() && !document.hidden) {
+      if (!ab && (mustRead || fresh.some(function (m) { return m.from.id !== me; })) && lastTeamId() && !document.hidden) {
         request('POST', '/api/ops/team/read', { with: peer, upTo: lastTeamId() }).catch(function () {});
       }
     }, function (err) { if (stick && team.seq === seq) fail(err); }).then(function () {
@@ -1387,13 +1606,32 @@
       if (o.unread) row.appendChild(unreadMark(o.unread));
       box.appendChild(row);
     });
+    // the developer: the talks between the others
+    if (state.developer && team.pairs.length) {
+      box.appendChild(el('p', 'team-sub', '運営者どうしの個人チャット（開発者だけ閲覧）'));
+      team.pairs.forEach(function (p) {
+        var key = 'pair:' + p.a.id + ':' + p.b.id;
+        var row = el('button', 'team-row pair' + (team.peer === key ? ' on' : ''));
+        row.type = 'button';
+        row.dataset.pair = key;
+        var w = el('span', 'team-who');
+        w.appendChild(el('b', '', p.a.name + ' ⇄ ' + p.b.name));
+        w.appendChild(el('small', '', fmt(p.count) + '件・' + p.last.from.name + '：' + p.last.text));
+        row.appendChild(w);
+        box.appendChild(row);
+      });
+    }
   }
   function renderTeamHead() {
     var h = $('#team-head'), r = team.list;
     h.textContent = '';
     if (!r || team.peer === null) { h.appendChild(el('span', 'muted', '左の一覧から相手を選んでください')); return; }
     var t = el('div');
-    if (team.peer === 0) {
+    if (isPair(team.peer)) {
+      var ab = team.peer.split(':'), pr = team.pairs.filter(function (p) { return String(p.a.id) === ab[1] && String(p.b.id) === ab[2]; })[0];
+      t.appendChild(el('b', '', pr ? pr.a.name + ' さんと ' + pr.b.name + ' さんの個人チャット' : '個人チャット'));
+      t.appendChild(el('small', '', '開発者だけが閲覧できます（書き込みはできません）'));
+    } else if (team.peer === 0) {
       h.appendChild(el('span', 'face team-all', '全'));
       t.appendChild(el('b', '', '全体チャット'));
       t.appendChild(el('small', '', '運営者全員（' + r.operators.length + '人）が見られます'));
@@ -1416,9 +1654,9 @@
     team.messages.forEach(function (m) {
       var day = date(m.at);
       if (day !== lastDay) { list.appendChild(el('div', 'day', day)); lastDay = day; }
-      var mine = m.from.id === me;
+      var mine = m.from.id === me && !isPair(team.peer);
       var node = el('div', 'msg ' + (mine ? 'bot' : 'player'));
-      if (!mine && team.peer === 0) node.appendChild(el('span', 'msg-from', m.from.name));
+      if (!mine && (team.peer === 0 || isPair(team.peer))) node.appendChild(el('span', 'msg-from', m.from.name));
       node.appendChild(el('div', 'bubble', m.text));
       var meta = el('div', 'msg-meta');
       if (mine && team.peer !== 0 && team.theirRead >= m.id) meta.appendChild(el('b', '', '既読'));
@@ -1617,6 +1855,245 @@
     ];
     if (m.disk) rows.push(['ディスク', bytes(m.disk.size - m.disk.free) + ' / ' + bytes(m.disk.size), (m.disk.size - m.disk.free) / m.disk.size]);
     srvCard(card, 'サーバーのマシン', rows);
+  }
+
+  /* ------------------------------------------------------------ the developer's own: backups and the emergency stop --- */
+  // Backups are encrypted for a key made here: an ECDH P-256 pair whose private
+  // half the server keeps only locked with the developer code (PBKDF2, then
+  // AES-GCM). Opening one happens in this browser, with the code.
+  var subtle = window.crypto && window.crypto.subtle;
+  var ROUNDS = 600000, INFO = 'TWO STATE backup v1';
+  var bk = { ticket: null, until: 0, data: null, timer: 0 };
+  function cleanCode(c) { return String(c || '').replace(/[\s-]/g, ''); }
+  function bytesOf(b64) { var s = atob(b64), u = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+  function lockKeyFor(code, salt) {
+    return subtle.importKey('raw', new TextEncoder().encode(cleanCode(code)), 'PBKDF2', false, ['deriveKey']).then(function (base) {
+      return subtle.deriveKey({ name: 'PBKDF2', salt: salt, iterations: ROUNDS, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    });
+  }
+  // the private half, locked with the code: { salt, iv, data, rounds }
+  function lockPrivate(pkcs8, code) {
+    var salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+    return lockKeyFor(code, salt).then(function (k) { return subtle.encrypt({ name: 'AES-GCM', iv: iv }, k, pkcs8); })
+      .then(function (data) { return { salt: base64(salt), iv: base64(iv), data: base64(new Uint8Array(data)), rounds: ROUNDS }; });
+  }
+  function unlockPrivate(locked, code) {
+    return lockKeyFor(code, bytesOf(locked.salt)).then(function (k) {
+      return subtle.decrypt({ name: 'AES-GCM', iv: bytesOf(locked.iv) }, k, bytesOf(locked.data));
+    }).catch(function () { throw { message: 'バックアップの鍵を開けません（鍵を作ったときの開発者コードが必要です）' }; });
+  }
+  function breq(method, path, body) {
+    return request(method, path, body, bk.ticket ? { 'X-Backup-Ticket': bk.ticket } : {}).catch(function (err) {
+      if (err.code === 'backup_locked') { bk.ticket = null; renderBackup(); }
+      throw err;
+    });
+  }
+  function openBackup() {
+    withCode({ title: 'バックアップを開く', text: '開発者だけが見られます。15分で閉じます。', ok: '開く' }).then(function (code) {
+      if (code === null) return null;
+      return request('POST', '/api/backup/open', { code: code }).then(function (r) {
+        bk.ticket = r.ticket;
+        bk.until = r.until;
+        clearTimeout(bk.timer);
+        bk.timer = setTimeout(function () { bk.ticket = null; bk.data = null; renderBackup(); }, Math.max(1000, r.until - Date.now() - 5000));
+        return loadBackup();
+      });
+    }).catch(fail);
+  }
+  function loadBackup() {
+    return breq('GET', '/api/backup').then(function (r) { bk.data = r; renderBackup(); }, fail);
+  }
+  var EVERY_NAMES = { off: '手動のみ', '5h': '5時間ごと', '12h': '12時間ごと', '24h': '1日ごと' };
+  function renderBackup() {
+    var c = $('#srv-backup');
+    c.textContent = '';
+    c.appendChild(el('h3', '', 'バックアップ（開発者だけに表示）'));
+    if (!bk.ticket || !bk.data) {
+      c.appendChild(el('p', 'muted', '保管庫以外の全データ（全プレイヤー・ログなど）のバックアップです。開発者以外は誰も設定・実行・ダウンロードできません。開くには開発者コードが必要です。'));
+      var o = el('button', 'btn primary small', '開発者コードで開く');
+      o.type = 'button';
+      o.dataset.bk = 'open';
+      c.appendChild(o);
+      return;
+    }
+    var r = bk.data;
+    if (!r.key) {
+      c.appendChild(el('p', 'note', 'まず「鍵を作る」を押してください。鍵はこのブラウザで作られ、開発者コードでしか開けない形でサーバーに保存されます（サーバーも中身を読めません）。'));
+      var k = el('button', 'btn primary small', '鍵を作る');
+      k.type = 'button';
+      k.dataset.bk = 'key';
+      c.appendChild(k);
+      return;
+    }
+    var form = el('div', 'bk-form');
+    var every = el('select');
+    every.id = 'bk-every';
+    r.every.forEach(function (x) { var op = el('option', '', EVERY_NAMES[x] || x); op.value = x; every.appendChild(op); });
+    every.value = r.settings.every;
+    var keep = el('select');
+    keep.id = 'bk-keep';
+    r.keepChoices.forEach(function (x) { var op = el('option', '', x ? x + '個' : 'すべて'); op.value = String(x); keep.appendChild(op); });
+    keep.value = String(r.settings.keep);
+    var l1 = el('label', '', '自動バックアップ '), l2 = el('label', '', '自動のものを残す数 ');
+    l1.appendChild(every);
+    l2.appendChild(keep);
+    form.appendChild(l1);
+    form.appendChild(l2);
+    [['設定を保存', 'save', ''], ['今すぐバックアップ', 'run', 'primary']].forEach(function (x) {
+      var b = el('button', 'btn small ' + x[2], x[0]);
+      b.type = 'button';
+      b.dataset.bk = x[1];
+      form.appendChild(b);
+    });
+    c.appendChild(form);
+    c.appendChild(el('p', 'muted', '保存先 ' + (r.store === 'bucket' ? 'R2' : 'データベース') + '・' + (r.next ? '次の自動バックアップ ' + stamp(r.next) : '自動バックアップはオフ') + '・鍵 ' + date(r.key.at, true) + ' 作成・手動のものは削除するまで残ります'));
+    var list = el('div', 'bk-list');
+    if (!r.backups.length) list.appendChild(el('p', 'muted', 'バックアップはまだありません'));
+    r.backups.forEach(function (b) {
+      var row = el('div', 'bk-row');
+      row.appendChild(el('b', '', stamp(b.at)));
+      row.appendChild(el('span', 'kind ' + (b.kind === 'auto' ? 'idea' : 'accepted'), b.kind === 'auto' ? '自動' : '手動'));
+      row.appendChild(el('span', 'muted', mb(b.sealed) + '・プレイヤー ' + fmt(b.tables.users || 0) + '人・ログ ' + fmt(b.tables.ops_log || 0) + '件'));
+      [['ダウンロード', 'get', ''], ['削除', 'del', 'danger']].forEach(function (x) {
+        var btn = el('button', 'btn small ' + x[2], x[0]);
+        btn.type = 'button';
+        btn.dataset.bk = x[1];
+        btn.dataset.id = b.id;
+        row.appendChild(btn);
+      });
+      list.appendChild(row);
+    });
+    c.appendChild(list);
+  }
+  // the key pair, made here; the private half goes to the server locked with the code
+  function makeKey() {
+    if (!subtle) { toast('このブラウザでは鍵を作れません（https で開いてください）'); return; }
+    withCode({ title: 'バックアップの鍵を作る', text: 'これからのバックアップはこの鍵で暗号化され、開発者コードがないと誰も開けません。', ok: '作る' }).then(function (code) {
+      if (code === null) return null;
+      return subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']).then(function (pair) {
+        return Promise.all([subtle.exportKey('jwk', pair.publicKey), subtle.exportKey('pkcs8', pair.privateKey)]);
+      }).then(function (k) {
+        return lockPrivate(k[1], code).then(function (locked) {
+          return breq('POST', '/api/backup/key', { code: code, public: { kty: 'EC', crv: 'P-256', x: k[0].x, y: k[0].y }, locked: locked });
+        });
+      }).then(function () { toast('鍵を作りました'); return loadBackup(); });
+    }).catch(fail);
+  }
+  // a new developer code: the key, unlocked with the old one, is locked with the new one
+  function relockBackupKey(oldCode, newCode) {
+    if (!subtle) return null;
+    return request('POST', '/api/backup/open', { code: newCode }).then(function (o) {
+      var h = { 'X-Backup-Ticket': o.ticket };
+      return request('POST', '/api/backup/locked-key', { code: newCode }, h).then(function (k) {
+        return unlockPrivate(k.locked, oldCode).then(function (pkcs8) { return lockPrivate(pkcs8, newCode); }).then(function (locked) {
+          return request('POST', '/api/backup/key', { code: newCode, public: k.public, locked: locked, rewrap: true }, h);
+        });
+      });
+    }).then(function () { toast('バックアップの鍵も新しい開発者コードにしました'); }, function (err) {
+      if (err && err.code === 'no_key') return;
+      toast('バックアップの鍵を新しいコードにできませんでした：' + ((err && err.message) || ''));
+    });
+  }
+  function saveBackupSettings() {
+    var every = $('#bk-every').value, keep = Number($('#bk-keep').value);
+    withCode({ title: 'バックアップの設定を保存', text: (EVERY_NAMES[every] || every) + '・自動のものを' + (keep ? keep + '個' : 'すべて') + '残す', ok: '保存する' }).then(function (code) {
+      if (code === null) return null;
+      return breq('POST', '/api/backup/settings', { code: code, every: every, keep: keep }).then(function () { toast('保存しました'); return loadBackup(); });
+    }).catch(fail);
+  }
+  function runBackup() {
+    withCode({ title: '今すぐバックアップしますか？', text: '保管庫以外の全データを暗号化して保存します。', ok: 'バックアップする' }).then(function (code) {
+      if (code === null) return null;
+      return breq('POST', '/api/backup/run', { code: code }).then(function () { toast('バックアップしました'); return loadBackup(); });
+    }).catch(fail);
+  }
+  // one backup: fetched, opened here with the code, and saved as a JSON file
+  function getBackup(id) {
+    if (!subtle || !window.DecompressionStream) { toast('このブラウザでは開けません（新しい Chrome / Safari で開いてください）'); return; }
+    withCode({ title: 'バックアップをダウンロード', text: 'このブラウザの中で開いて（復号して）、JSON ファイルとして保存します。', ok: 'ダウンロード' }).then(function (code) {
+      if (code === null) return null;
+      return breq('POST', '/api/backup/get', { code: code, id: id }).then(function (r) {
+        return unlockPrivate(r.locked, code).then(function (pkcs8) {
+          return Promise.all([
+            subtle.importKey('pkcs8', pkcs8, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']),
+            subtle.importKey('jwk', r.envelope.epk, { name: 'ECDH', namedCurve: 'P-256' }, false, [])
+          ]);
+        }).then(function (k) {
+          return subtle.deriveBits({ name: 'ECDH', public: k[1] }, k[0], 256);
+        }).then(function (bits) {
+          return subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
+        }).then(function (hk) {
+          return subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: new TextEncoder().encode(INFO) }, hk, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+        }).then(function (key) {
+          return subtle.decrypt({ name: 'AES-GCM', iv: bytesOf(r.envelope.iv) }, key, bytesOf(r.data));
+        }).then(function (gz) {
+          return new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'))).blob();
+        }).then(function (plain) {
+          var d = new Date(r.envelope.at), name = 'two-state-backup-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.json';
+          var url = URL.createObjectURL(new Blob([plain], { type: 'application/json' }));
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
+          toast('ダウンロードしました（' + name + '）');
+        });
+      });
+    }).catch(fail);
+  }
+  function deleteBackup(id) {
+    withCode({ title: 'このバックアップを削除しますか？', text: '元に戻せません。', ok: '削除する', danger: true }).then(function (code) {
+      if (code === null) return null;
+      return breq('POST', '/api/backup/delete', { code: code, id: id }).then(function () { toast('削除しました'); return loadBackup(); });
+    }).catch(fail);
+  }
+  function onBackup(e) {
+    var b = e.target.closest('[data-bk]');
+    if (!b) return;
+    var a = b.dataset.bk;
+    if (a === 'open') openBackup();
+    else if (a === 'key') makeKey();
+    else if (a === 'save') saveBackupSettings();
+    else if (a === 'run') runBackup();
+    else if (a === 'get') getBackup(b.dataset.id);
+    else if (a === 'del') deleteBackup(b.dataset.id);
+  }
+  // the emergency stop: what starts it, and the developer stopping it by hand
+  function renderStop() {
+    var c = $('#srv-stop');
+    c.textContent = '';
+    c.appendChild(el('h3', '', '緊急停止（開発者だけに表示）'));
+    c.appendChild(el('p', 'muted', '保管庫を除く使用量（リクエスト・送信量・ライブ通信・データベースの増え方、運営サイトの分も）が、ふだんの10倍以上かつ下限以上の状態で2分続くと、緊急ログに記録してサーバーを自動で止めます。解除は開発者コードで。手動でも止められます。'));
+    var t = el('table', 'srv-table');
+    c.appendChild(t);
+    request('GET', '/api/emergency').then(function (r) {
+      var NAMES = { requests: 'リクエスト', bytes: '送信量', wsIn: 'ライブ通信（受信）', dbGrowth: 'データベースの増加', opsRequests: '運営サイトのリクエスト', opsBytes: '運営サイトの送信量' };
+      Object.keys(r.floors).forEach(function (k) {
+        var big = /bytes|Bytes|dbGrowth/.test(k);
+        var tr = el('tr');
+        tr.appendChild(el('th', '', NAMES[k] || k));
+        tr.appendChild(el('td', '', 'ふだん ' + (big ? bytes(r.usual[k]) : fmt(Math.round(r.usual[k]))) + '/分・下限 ' + (big ? bytes(r.floors[k]) : fmt(r.floors[k])) + '/分'));
+        t.appendChild(tr);
+      });
+    }, function () {});
+    var b = el('button', 'btn small danger solid', '今すぐ緊急停止');
+    b.type = 'button';
+    b.dataset.stop = '1';
+    c.appendChild(b);
+  }
+  function stopNow() {
+    withCode({ title: 'サーバーを緊急停止しますか？', text: 'すべてのプレイヤーと運営者が使えなくなります（開発者だけが入れます）。解除は開発者コードで。', ok: '緊急停止する', danger: true }).then(function (code) {
+      if (code === null) return null;
+      return request('POST', '/api/emergency/stop', { code: code }).then(function () { showEmergency(); });
+    }).catch(fail);
+  }
+  function renderDevCards() {
+    $('#srv-dev').hidden = !state.developer;
+    if (!state.developer) return;
+    renderBackup();
+    renderStop();
   }
 
   /* ------------------------------------------------------------ 保管庫 (the developer's own) --- */
@@ -1885,6 +2362,83 @@
     if (i.skinned || i.morphs) fact(facts, 'ボーン / モーフ', fmt(i.skinned) + ' / ' + fmt(i.morphs));
     if (light) fact(facts, '軽量版', mb(light.size) + '（' + light.name + '）');
   }
+  // what kind of item: 3Dモデル, テキスト, 画像, 動画, 音声, 圧縮, その他 (each counts one on a page)
+  function fileKind(f) {
+    var n = String(f.name || '').toLowerCase(), t = String(f.type || '');
+    if (is3d(n)) return ['3Dモデル', 'k3d'];
+    if (/^text\//.test(t) || /\.(txt|md|json|csv|log|ya?ml|xml|html?|js|css)$/.test(n)) return ['テキスト', 'ktext'];
+    if (/^image\//.test(t) || /\.(png|jpe?g|webp|gif|bmp|svg)$/.test(n)) return ['画像', 'kimg'];
+    if (/^video\//.test(t) || /\.(mp4|mov|webm|mkv)$/.test(n)) return ['動画', 'kvid'];
+    if (/^audio\//.test(t) || /\.(mp3|wav|ogg|m4a|flac)$/.test(n)) return ['音声', 'kaud'];
+    if (/\.(zip|7z|rar|tar|gz)$/.test(n)) return ['圧縮', 'kzip'];
+    return ['その他', 'koth'];
+  }
+  // the beginning of a text file (its first piece), fetched once
+  var texts = {};
+  function textEl(f) {
+    var p = el('pre', 'vault-text', '読み込み中…');
+    if (texts[f.id] !== undefined) { p.textContent = texts[f.id]; return p; }
+    vreq('GET', '/api/vault/chunk?id=' + f.id + '&n=0').then(function (r) {
+      var s = new TextDecoder().decode(bytesOf(r.data));
+      texts[f.id] = Array.from(s).length > 1200 ? Array.from(s).slice(0, 1200).join('') + '\n…（続きはダウンロード）' : s;
+      p.textContent = texts[f.id];
+    }).catch(function () { p.textContent = '（読み込めませんでした）'; });
+    return p;
+  }
+  // an image (small ones), fetched once
+  function imageEl(f) {
+    var p = el('div', 'vault-pic');
+    p.dataset.vact = 'pic';
+    if (pics[f.id]) { p.style.backgroundImage = 'url("' + pics[f.id] + '")'; return p; }
+    fetchFile(f, null).then(function (blob) {
+      pics[f.id] = URL.createObjectURL(new Blob([blob], { type: f.type || 'image/png' }));
+      p.style.backgroundImage = 'url("' + pics[f.id] + '")';
+    }).catch(function () {});
+    return p;
+  }
+  // the developer's short messages on a file
+  var NOTE_DAYS = [[1, '1日'], [3, '3日'], [7, '7日'], [30, '30日'], [0, '期限なし']];
+  function notesEl(f) {
+    var box = el('div', 'vault-notes');
+    (f.notes || []).slice().reverse().forEach(function (n) {
+      var over = n.until && n.until <= Date.now();
+      var row = el('div', 'vnote' + (over ? ' over' : ''));
+      row.appendChild(el('span', 'vnote-text', n.text));
+      row.appendChild(el('small', '', date(n.at, true) + '・' + (over ? '期限切れ（AIには見えません）' : n.until ? date(n.until, true) + 'まで' : '期限なし')));
+      var x = el('button', 'vnote-del', '×');
+      x.type = 'button';
+      x.title = 'このメッセージを削除';
+      x.dataset.vact = 'notedel';
+      x.dataset.note = n.id;
+      row.appendChild(x);
+      box.appendChild(row);
+    });
+    return box;
+  }
+  function addNote(f) {
+    ask({
+      title: '「' + f.name + '」にメッセージ', text: 'AI用リンクにも、期限まで表示されます。期限が過ぎても消えずに残ります（AIには見えなくなります）。', ok: '残す',
+      input: { label: 'メッセージ（500文字まで）', type: 'text' },
+      select: { label: '期間', options: NOTE_DAYS.map(function (d) { return { value: String(d[0]), label: d[1] }; }), value: '7' },
+      check: function (v) { return v.trim() ? '' : 'メッセージを書いてください'; }
+    }).then(function (v) {
+      if (v === null) return null;
+      return vreq('POST', '/api/vault/notes', { id: f.id, text: v.value, days: Number(v.pick) }).then(function () { toast('メッセージを残しました'); return loadVault(); });
+    }).catch(fail);
+  }
+  // a text written here: saved as a .txt file (one item, like any other)
+  function newText() {
+    ask({
+      title: 'テキストを作る', text: '「' + pathName(state.vaultFolder) + '」に保存します。', ok: '保存する',
+      input: { label: '名前', type: 'text' }, area: { label: '本文' },
+      check: function (v) { return v.trim() ? '' : '名前を入れてください'; }
+    }).then(function (v) {
+      if (v === null) return null;
+      if (!v.text.trim()) { toast('本文を書いてください'); return null; }
+      var name = v.value.trim().replace(/\.txt$/i, '') + '.txt';
+      return upload(new File([v.text], name, { type: 'text/plain' }), { note: '', folder: state.vaultFolder });
+    }).catch(fail);
+  }
   // what an AI did with a file, newest first
   var LABEL_KINDS = { download: ['AIが取得', 'k-get'], ai: ['AIのラベル', 'k-ai'], implemented: ['実装済み', 'k-done'], restore: ['戻した', 'k-back'] };
   function labelsEl(f) {
@@ -1911,6 +2465,8 @@
     box.setAttribute('aria-label', '選択');
     pick.appendChild(box);
     head.appendChild(pick);
+    var kind = fileKind(f);
+    head.appendChild(el('span', 'fkind ' + kind[1], kind[0]));
     head.appendChild(el('b', 'vault-name', f.name));
     head.appendChild(el('span', 'kind ' + (f.done ? 'accepted' : 'bug'), f.done ? '保存済み' : 'アップロード途中 ' + f.received + '/' + f.chunks));
     if (f.implementedAt) head.appendChild(el('span', 'kind used', '実装済み'));
@@ -1920,6 +2476,7 @@
     var body = el('div', 'vault-body');
     if (f.preview) body.appendChild(picEl(f));
     else if (f.done && is3d(f.name)) body.appendChild(el('div', 'vault-pic none', 'プレビューなし'));
+    else if (f.done && kind[1] === 'kimg' && f.size <= 8 * 1048576) body.appendChild(imageEl(f));
     var facts = el('div', 'facts');
     fact(facts, '送信日時', stamp(f.createdAt));
     fact(facts, '保存完了', f.done ? stamp(f.doneAt) : '送信中');
@@ -1933,6 +2490,8 @@
     if (f.note) fact(facts, 'メモ', f.note);
     body.appendChild(facts);
     card.appendChild(body);
+    if (f.done && kind[1] === 'ktext') card.appendChild(textEl(f));
+    card.appendChild(notesEl(f));
     card.appendChild(labelsEl(f));
     var a = el('div', 'acts');
     function btn(label, act, cls) {
@@ -1952,6 +2511,7 @@
     } else {
       btn('続きから送る（同じファイルを選ぶ）', 'resume', 'primary');
     }
+    btn('＋ メッセージ', 'note');
     btn('移動', 'move');
     btn('削除', 'delete', 'danger');
     card.appendChild(a);
@@ -2261,6 +2821,13 @@
     else if (act === 'make') makePreview(f);
     else if (act === 'link') makeLink(f);
     else if (act === 'move') moveFiles([f.id]);
+    else if (act === 'note') addNote(f);
+    else if (act === 'notedel') {
+      ask({ title: 'このメッセージを削除しますか？', text: b.parentNode.querySelector('.vnote-text').textContent, ok: '削除する', danger: true }).then(function (ok) {
+        if (!ok) return null;
+        return vreq('POST', '/api/vault/notes/delete', { note: Number(b.dataset.note) }).then(function () { toast('削除しました'); return loadVault(); });
+      }).catch(fail);
+    }
     else if (act === 'resume') { state.resumeId = f.id; $('#vault-file').click(); }
     else if (act === 'restore') {
       ask({ title: '実装済みから戻しますか？', text: '「' + f.name + '」がまたリンクから取り出せるようになります。', ok: '戻す' }).then(function (ok) {
@@ -2307,8 +2874,14 @@
     var list = $('#log-list');
     if (reset) { state.log = []; state.logDone = false; list.textContent = ''; list.appendChild(el('p', 'empty muted', '読み込み中…')); }
     var before = !reset && state.log.length ? state.log[state.log.length - 1].id : 0;
-    request('GET', '/api/ops/log?q=' + encodeURIComponent(state.logQ) + (before ? '&before=' + before : '')).then(function (r) {
+    request('GET', '/api/ops/log?q=' + encodeURIComponent(state.logQ) + '&kind=' + state.logKind + (before ? '&before=' + before : '')).then(function (r) {
       if (reset) list.textContent = '';
+      if (r.counts) {
+        Array.prototype.forEach.call(document.querySelectorAll('#log-kinds [data-kind]'), function (c) {
+          var b = c.querySelector('b');
+          if (b) b.textContent = r.counts[c.dataset.kind] ? ' ' + fmt(r.counts[c.dataset.kind]) : '';
+        });
+      }
       state.log = state.log.concat(r.entries);
       state.logDone = r.entries.length < 200;
       if (!state.log.length) list.appendChild(el('p', 'empty muted', '記録はありません'));
@@ -2322,7 +2895,7 @@
     v.textContent = '';
     request('GET', '/api/ops/log/verify').then(function (r) {
       v.className = 'verify ' + (r.ok ? 'ok' : 'bad');
-      v.textContent = r.ok ? '✓ 改ざんチェック: すべての記録（' + fmt(r.count) + '件）が正しくつながっています'
+      v.textContent = r.ok ? '✓ 改ざんチェック: すべての記録（' + fmt(r.count) + '件）が正しくつながっていて、外に控えた最新のハッシュとも一致しています'
         : '⚠ 改ざんチェック: ' + r.brokenAt + '番の記録で異常があります（' + r.reason + '）';
     }, function () {});
   }
@@ -2331,6 +2904,7 @@
     var line = el('button', 'entry-line');
     line.type = 'button';
     line.appendChild(el('span', 'time', String(x.jst || '').replace(/\.\d+ JST$/, '')));
+    line.appendChild(el('span', 'lk k-' + x.kind, KINDS[x.kind] || ''));
     line.appendChild(el('span', 'who', x.actor.name));
     line.appendChild(el('span', 'sum', x.summary));
     line.addEventListener('click', function () {
@@ -2528,6 +3102,18 @@
       logTimer = setTimeout(function () { state.logQ = $('#log-search').value.trim(); loadLog(true); }, 300);
     });
     $('#log-more').addEventListener('click', function () { loadLog(false); });
+    $('#log-kinds').addEventListener('click', function (e) {
+      var c = e.target.closest('[data-kind]');
+      if (!c) return;
+      state.logKind = c.dataset.kind;
+      Array.prototype.forEach.call(document.querySelectorAll('#log-kinds .chip'), function (x) { x.classList.toggle('on', x === c); });
+      loadLog(true);
+    });
+    $('#archive-list').addEventListener('click', onArchive);
+    $('#em-release').addEventListener('click', releaseEmergency);
+    $('#em-reload').addEventListener('click', function () { location.reload(); });
+    $('#srv-backup').addEventListener('click', onBackup);
+    $('#srv-stop').addEventListener('click', function (e) { if (e.target.closest('[data-stop]')) stopNow(); });
     $('#pay-filter').addEventListener('click', function (e) {
       var c = e.target.closest('[data-pay]');
       if (!c) return;
@@ -2554,6 +3140,7 @@
       renderPicked();
     });
     $('#vault-new-folder').addEventListener('click', newFolder);
+    $('#vault-new-text').addEventListener('click', newText);
     $('#vault-filter').addEventListener('click', function (e) {
       var c = e.target.closest('[data-vf]');
       if (!c) return;
@@ -2599,6 +3186,8 @@
     window.addEventListener('beforeunload', function (e) { if (moving > 0 || waiting.length) { e.preventDefault(); e.returnValue = ''; } });
 
     $('#team-list').addEventListener('click', function (e) {
+      var p = e.target.closest('[data-pair]');
+      if (p) { openTeam(p.dataset.pair); return; }
       var b = e.target.closest('[data-peer]');
       if (b) openTeam(Number(b.dataset.peer));
     });

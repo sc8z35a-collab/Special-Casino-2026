@@ -13,11 +13,21 @@
 // kept only as one-way hashes, so an operator sets a new one.
 // Everything an operator does here that reaches anyone is written to the log
 // (server/core/opslog.js), with the request it came from.
+// プレイヤーアーカイブ: a player under a 永久BAN, or whose account the
+// developer deleted, leaves the list for the archive, and 90 days later all
+// their data goes (server/core/purge.js). A 永久BAN can be lifted (the player
+// comes back to the list); a deleted account never comes back, not even by
+// the developer. Only the developer sees the button that deletes one, and it
+// asks for the developer code; the accounts on the same device go with it.
 import { ApiError, posInt } from './errors.js';
 import { nameKey, cleanPassword, cleanText, hashPassword } from './auth.js';
-import { LEVEL, RULES, VIP } from './rules.js';
+import { LEVEL, RULES, VIP, RELEASE } from './rules.js';
 import { jst } from './opslog.js';
 import { createDevCode } from './devcode.js';
+import { purgePlayer } from './purge.js';
+
+export const ARCHIVE_DAYS = 90;
+export const DELETED = 'このアカウントは削除されました';
 
 const REWARDS = [600000, 1200000, 2400000];
 // an adopted 意見案: spin tokens
@@ -52,8 +62,11 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const r = accessRow(key);
       const by = r && getUser(r.by_id);
       const developer = !!p && isDeveloper(p);
+      // on the site now (seen in the last 40 seconds), and when last online anywhere
+      const site = p ? seen.get(p.id) || 0 : 0;
       return {
         key, name: p ? p.name : key, id: p ? p.id : 0, avatar: p ? p.avatar : '', registered: !!p, online: p ? live.isOnline(p.id) : false,
+        site: Date.now() - site < 40000, seenAt: p ? Math.max(site, p.last_seen) : 0,
         developer, operator: developer || (r ? r.granted === 1 : operators.has(key)), fromSettings: operators.has(key),
         changed: r ? { granted: r.granted === 1, at: r.at, by: by ? by.name : '' } : null
       };
@@ -100,7 +113,10 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       // 返信待ち: their message to the official bot has no answer yet
       waiting: waiting ? waiting.has(u.id) : official.waiting(u.id),
       // 検知: what the chat filter found and nobody looked at yet
-      detections: detections ? detections.get(u.id) || 0 : q('SELECT COUNT(*) AS n FROM detections WHERE sender_id = ? AND reviewed_at = 0').get(u.id).n
+      detections: detections ? detections.get(u.id) || 0 : q('SELECT COUNT(*) AS n FROM detections WHERE sender_id = ? AND reviewed_at = 0').get(u.id).n,
+      // in the プレイヤーアーカイブ: why ('perma' or 'deleted'), since when, and when all of it goes
+      archive: u.archived_at ? { reason: u.archive_reason, at: u.archived_at, purgeAt: u.purge_at, with: u.archive_with || 0 } : null,
+      deleted: u.ban_kind === 'deleted'
     };
   }
   // the other accounts seen on each of a player's devices
@@ -123,6 +139,21 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     if (!u || u.npc) throw new ApiError(404, 'not_found', 'プレイヤーが見つかりません');
     return u;
   }
+  // a player who can still be acted on (not a deleted account)
+  function alive(id) {
+    const u = target(id);
+    if (u.ban_kind === 'deleted') throw new ApiError(409, 'deleted', `${u.name}さんのアカウントは削除されています（取り消せません）`);
+    return u;
+  }
+  // the accounts sharing a device (its id) with a player: they go with it
+  // (never the developer's, an operator's, or one already deleted)
+  function sameDevice(u) {
+    return q(`SELECT DISTINCT o.* FROM devices d JOIN devices e ON e.device = d.device AND e.user_id != d.user_id JOIN users o ON o.id = e.user_id
+              WHERE d.user_id = ? AND substr(d.device, 1, 3) = 'id:' AND o.npc = '' AND o.ban_kind != 'deleted' ORDER BY o.id`).all(u.id)
+      .filter((o) => !isDeveloper(o) && !isOperator(o));
+  }
+  const archived = (u, reason, now, withId = 0) => q('UPDATE users SET archived_at = ?, archive_reason = ?, purge_at = ?, archive_with = ? WHERE id = ?')
+    .run(now, reason, now + ARCHIVE_DAYS * 86400000, withId, u.id);
   const brief = (u) => (u ? { id: u.id, name: u.name, avatar: u.avatar } : null);
   const BAN_NAMES = { suspend: 'アクセス禁止（1週間）', ban: 'BAN（1か月）', perma: '永久BAN', none: '処分の解除' };
   const KIND_NAMES = Object.fromEntries(RULES.reportKinds.map((k) => [k.id, k.name]));
@@ -158,17 +189,18 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       return { name: u.name, operators: config.operators, developer: isDeveloper(u), devCodeSet: devCode.isSet(), now: Date.now() };
     },
 
-    // everyone (a name to look for: part of it), the newest players first
+    // everyone but the archive (a name to look for: part of it), the newest players first
     'GET /api/ops/players': (req, u) => {
       need(u);
       const find = nameKey(req.query.get('q') || '');
-      const rows = q(`SELECT * FROM users WHERE npc = '' ${find ? 'AND instr(name_key, ?) > 0' : ''} ORDER BY id DESC LIMIT 1000`)
+      const rows = q(`SELECT * FROM users WHERE npc = '' AND archived_at = 0 ${find ? 'AND instr(name_key, ?) > 0' : ''} ORDER BY id DESC LIMIT 1000`)
         .all(...(find ? [find] : []));
       const waiting = official.waitingIds(), dets = flagged();
       const list = rows.map((p) => row(p, waiting, dets));
       return {
         players: list,
-        total: q("SELECT COUNT(*) AS n FROM users WHERE npc = ''").get().n,
+        total: q("SELECT COUNT(*) AS n FROM users WHERE npc = '' AND archived_at = 0").get().n,
+        archived: q("SELECT COUNT(*) AS n FROM users WHERE npc = '' AND archived_at > 0").get().n,
         online: list.filter((p) => p.online).length,
         waiting: waiting.size,
         reports: q("SELECT COUNT(*) AS n FROM reports WHERE status = 'open'").get().n,
@@ -200,7 +232,9 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
           deviceOkAt: p.device_ok_at,
           devices: devicesOf(p),
           reportsAgainst: q('SELECT COUNT(*) AS n FROM reports WHERE target_id = ?').get(p.id).n,
-          reportsBy: q('SELECT COUNT(*) AS n FROM reports WHERE reporter_id = ?').get(p.id).n
+          reportsBy: q('SELECT COUNT(*) AS n FROM reports WHERE reporter_id = ?').get(p.id).n,
+          // the release their game last said it runs (RELEASE: the newest), on what, and when
+          client: { release: p.client_release, build: p.client_build, agent: p.client_agent, at: p.client_at, newest: RELEASE }
         },
         now: Date.now()
       };
@@ -214,7 +248,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     'POST /api/ops/ban': async (req, u) => {
       need(u);
       const body = await req.json();
-      const p = target(body.id);
+      const p = alive(body.id);
       const kind = String(body.kind || '');
       if (kind !== 'none' && !(kind in BAN_DAYS)) throw new ApiError(400, 'bad_kind', '処分の種類が正しくありません');
       if (isDeveloper(p)) throw new ApiError(400, 'operator', '開発者のアカウントは処分できません');
@@ -225,8 +259,13 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       if (kind === 'none') {
         if (before) liftBan(p, 'lifted');
         else q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ?").run(p.id);
+        // (back from the archive)
+        q("UPDATE users SET archived_at = 0, archive_reason = '', purge_at = 0, archive_with = 0 WHERE id = ? AND archive_reason = 'perma'").run(p.id);
       } else {
         q('UPDATE users SET banned = 1, ban_kind = ?, ban_until = ?, ban_at = ? WHERE id = ?').run(kind, BAN_DAYS[kind] ? now + BAN_DAYS[kind] * 86400000 : 0, now, p.id);
+        // 永久BAN: to the archive (90 days); a shorter one takes it out of there
+        if (kind === 'perma') archived(p, 'perma', now);
+        else q("UPDATE users SET archived_at = 0, archive_reason = '', purge_at = 0, archive_with = 0 WHERE id = ? AND archive_reason = 'perma'").run(p.id);
         const after = getUser(p.id);
         live.send(p.id, 'kick', { code: 'banned', message: banMessage(after), ban: banState(after) });
         dropFromHub(p.id);
@@ -241,10 +280,61 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const after = getUser(p.id);
       opsLog.add({
         actor: u, action: 'ban:' + kind, target: p, req,
-        summary: `${p.name}さんに「${BAN_NAMES[kind]}」`,
-        detail: { kind, before, after: banOf(after), until: after.ban_until ? { ms: after.ban_until, jst: jst(after.ban_until) } : null, message: kind === 'none' ? '' : banMessage(after), sameDeviceAccounts: shut }
+        summary: `${p.name}さんに「${BAN_NAMES[kind]}」${kind === 'perma' ? `（プレイヤーアーカイブへ・${ARCHIVE_DAYS}日後にデータを完全削除）` : before && before.kind === 'perma' ? '（プレイヤーアーカイブから戻した）' : ''}`,
+        detail: {
+          kind, before, after: banOf(after), until: after.ban_until ? { ms: after.ban_until, jst: jst(after.ban_until) } : null, message: kind === 'none' ? '' : banMessage(after), sameDeviceAccounts: shut,
+          archive: after.archived_at ? { at: after.archived_at, purgeAt: after.purge_at, purgeJst: jst(after.purge_at) } : null
+        }
       });
       return { player: row(after) };
+    },
+
+    /* ----- プレイヤーアーカイブ ----- */
+
+    'GET /api/ops/archive': (req, u) => {
+      need(u);
+      const rows = q("SELECT * FROM users WHERE npc = '' AND archived_at > 0 ORDER BY archived_at DESC LIMIT 1000").all();
+      return { players: rows.map((p) => ({ ...row(p), withName: p.archive_with ? (getUser(p.archive_with) || { name: '?' }).name : '' })), days: ARCHIVE_DAYS, now: Date.now() };
+    },
+
+    // the developer only: who would go (the player and the accounts on the same device)
+    'GET /api/ops/delete-account': (req, u) => {
+      need(u);
+      if (!isDeveloper(u)) throw new ApiError(404, 'not_found', 'APIが見つかりません');
+      const p = alive(req.query.get('id'));
+      return { player: row(p), sameDevice: sameDevice(p).map((o) => row(o)), days: ARCHIVE_DAYS };
+    },
+
+    // The developer deletes an account, with the developer code: it can never
+    // come back. The player and the accounts on the same device are logged
+    // out at once and go to the archive; 90 days later their data goes.
+    'POST /api/ops/delete-account': async (req, u) => {
+      need(u);
+      if (!isDeveloper(u)) throw new ApiError(404, 'not_found', 'APIが見つかりません');
+      const body = await req.json();
+      const p = alive(body.id);
+      if (isDeveloper(p) || isOperator(p)) throw new ApiError(400, 'operator', '運営者のアカウントは削除できません（先に運営権を剥奪してください）');
+      await devCode.check(body.code, req, u);
+      const subs = sameDevice(p);
+      const now = Date.now();
+      const all = [p, ...subs];
+      tx(() => {
+        for (const x of all) {
+          q("UPDATE users SET banned = 1, ban_kind = 'deleted', ban_until = 0, ban_at = ? WHERE id = ?").run(now, x.id);
+          archived(x, 'deleted', now, x.id === p.id ? 0 : p.id);
+          q('DELETE FROM sessions WHERE user_id = ?').run(x.id);
+        }
+      });
+      for (const x of all) {
+        live.send(x.id, 'kick', { code: 'deleted', message: DELETED, ban: { code: 'banned', kind: 'deleted', message: DELETED } });
+        dropFromHub(x.id);
+      }
+      opsLog.add({
+        actor: u, action: 'account_delete', target: p, req,
+        summary: `${p.name}さんのアカウントを削除（開発者コードで・取り消し不可${subs.length ? `・同じ端末の ${subs.map((x) => x.name).join('、')} さんも` : ''}・${ARCHIVE_DAYS}日後にデータを完全削除）`,
+        detail: { player: { id: p.id, name: p.name }, sameDevice: subs.map((x) => ({ id: x.id, name: x.name })), purgeAt: { ms: now + ARCHIVE_DAYS * 86400000, jst: jst(now + ARCHIVE_DAYS * 86400000) } }
+      });
+      return { deleted: all.map((x) => ({ id: x.id, name: x.name })), player: row(getUser(p.id)) };
     },
 
     // lets the player play past the bans of other accounts on their devices
@@ -252,7 +342,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     'POST /api/ops/device-ok': async (req, u) => {
       need(u);
       const body = await req.json();
-      const p = target(body.id);
+      const p = alive(body.id);
       q('UPDATE users SET device_ok_at = ? WHERE id = ?').run(Date.now(), p.id);
       opsLog.add({ actor: u, action: 'device_ok', target: p, req, summary: `${p.name}さんの端末の利用を許可`, detail: { devices: devicesOf(p) } });
       return { player: row(getUser(p.id)) };
@@ -262,7 +352,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     'POST /api/ops/recovery': async (req, u) => {
       need(u);
       const body = await req.json();
-      const p = target(body.id);
+      const p = alive(body.id);
       const old = openCode(p.recovery_enc);
       const code = setRecovery(p.id);
       opsLog.add({ actor: u, action: 'recovery', target: p, req, summary: `${p.name}さんの引き継ぎコードを再発行`, detail: { oldCodeStart: old ? old.slice(0, 4) + '…' : '', newCodeStart: code.slice(0, 4) + '…' } });
@@ -273,7 +363,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     'POST /api/ops/password': async (req, u) => {
       need(u);
       const body = await req.json();
-      const p = target(body.id);
+      const p = alive(body.id);
       const pw = cleanPassword(body.password);
       q('UPDATE users SET password_hash = ? WHERE id = ?').run(await hashPassword(pw), p.id);
       opsLog.add({ actor: u, action: 'password', target: p, req, summary: `${p.name}さんのパスワードを再設定`, detail: { hadPassword: !!p.password_hash, length: pw.length } });
@@ -299,7 +389,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     'POST /api/ops/chat': async (req, u) => {
       need(u);
       const body = await req.json(1024 * 1024);
-      const p = target(body.id);
+      const p = alive(body.id);
       const subject = cleanText(body.subject, 100);
       const text = cleanText(body.body, 20000);
       const full = `【${subject}】\n\n${p.name}様\n\n${text}\n\nIce Smoker公式より`;
@@ -313,7 +403,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     'POST /api/ops/money': async (req, u) => {
       need(u);
       const body = await req.json();
-      const p = target(body.id);
+      const p = alive(body.id);
       const amount = Number(body.amount);
       if (!Number.isInteger(amount) || amount < 0 || amount > MONEY_MAX) throw new ApiError(400, 'bad_amount', `金額は $0〜${fmt(MONEY_MAX)} で選んでください`);
       const note = String(body.note ?? '').trim() ? cleanText(body.note, 2000) : '';
@@ -506,16 +596,33 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
 
     /* ----- the operators' log ----- */
 
+    // kind: player / operator / security / vault / emergency ('' all)
     'GET /api/ops/log': (req, u) => {
       need(u);
-      return { entries: opsLog.list({ before: Number(req.query.get('before')) || 0, find: req.query.get('q') || '' }), now: Date.now() };
+      const before = Number(req.query.get('before')) || 0;
+      return {
+        entries: opsLog.list({ before, find: req.query.get('q') || '', kind: req.query.get('kind') || '' }),
+        counts: before ? null : opsLog.counts(), now: Date.now()
+      };
     },
 
-    'GET /api/ops/log/verify': (req, u) => {
+    'GET /api/ops/log/verify': async (req, u) => {
       need(u);
       return opsLog.verify();
     }
   };
 
-  return { routes, isOperator, need, operatorList, mini };
+  // 90 days in the archive: all of it goes (from the housekeeping)
+  function purgeDue(now = Date.now()) {
+    for (const p of q("SELECT * FROM users WHERE npc = '' AND purge_at > 0 AND purge_at <= ? LIMIT 50").all(now)) {
+      const gone = purgePlayer(q, tx, p.id);
+      opsLog.add({
+        actorName: 'システム', action: 'account_purge', target: p,
+        summary: `${p.name}さんのデータを完全に削除（${p.archive_reason === 'deleted' ? 'アカウント削除' : '永久BAN'}でプレイヤーアーカイブに入って${ARCHIVE_DAYS}日）`,
+        detail: { player: { id: p.id, name: p.name }, reason: p.archive_reason, archivedAt: p.archived_at, rows: gone }
+      });
+    }
+  }
+
+  return { routes, isOperator, need, operatorList, mini, purgeDue };
 }
