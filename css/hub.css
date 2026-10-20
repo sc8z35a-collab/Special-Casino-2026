@@ -239,6 +239,9 @@
 .pay-card .pc-hub.down { background: linear-gradient(90deg, #1a62a8, #3aa0ff); }
 .rule-list li.rule-hub { height: auto; min-height: 50px; line-height: 1.6; padding-top: 7px; padding-bottom: 7px; }
 .rule-list li.rule-hub b { color: #ffb0e6; }
+/* サブアカウントの禁止 */
+.rule-list li.rule-ban { height: auto; min-height: 50px; line-height: 1.6; padding-top: 7px; padding-bottom: 7px; background: rgba(229, 38, 43, .16); box-shadow: inset 0 0 0 1.6px rgba(255, 120, 120, .55); }
+.rule-list li.rule-ban b { color: #ff9a8f; }
 
 /* ------------------------------------------------------------ invitation, friend list, call --- */
 .hb-invite .call-card { background: linear-gradient(180deg, #3a0c34, #1e0418); box-shadow: inset 0 0 0 2.4px #ff8ad8, 0 18px 50px rgba(0, 0, 0, .65); }

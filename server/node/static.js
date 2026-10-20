@@ -15,6 +15,7 @@ const TYPES = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.webp': 'image/webp',
+  '.glb': 'model/gltf-binary',
   '.woff2': 'font/woff2',
   '.wav': 'audio/wav',
   '.mp3': 'audio/mpeg',

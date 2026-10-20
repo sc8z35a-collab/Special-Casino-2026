@@ -1,4 +1,7 @@
-/* Win presentation layer: WIN / BIG WIN / SUPER BIG WIN.
+/* Win presentation layer: WIN / BIG WIN / SUPER BIG WIN (ULTRA BIG WIN for
+   77777 once its model is there). The titles are 3D models turning round
+   (js/render/win3d.js) once they have loaded; until then, and without 3D,
+   the drawn titles below.
    Everything is drawn on one canvas above the stage with pre-rendered
    sprites (titles, chips, rays, glints) so it stays smooth on phones.
    The big wins hit like the real thing: a turning sunburst and two stage
@@ -493,6 +496,7 @@
 
   FX.prototype.resize = function (W, H, res) {
     var changed = Math.abs(Math.min(res, 1.3) - this.res) > 0.01;
+    if (BR.win3d) BR.win3d.resize(res);
     this.W = W; this.H = H;
     this.res = Math.min(res, 1.3);
     this.pres = Math.min(res, 1);          // particle canvases
@@ -632,7 +636,10 @@
           nextFountain: 0, nextFirework: 1.2, lastTick: 0, shake: 0,
           sweep: -1, nextSweep: 0.8,
           // hit-stop: seconds the clock stands still; a camera kick; the title's heartbeat
-          freeze: 0, kick: 0, kickT: -1, landed: false, beat: 1.05, beatT: -1, nextBolt: 0, tickPop: -1
+          freeze: 0, kick: 0, kickT: -1, landed: false, beat: 1.05, beatT: -1, nextBolt: 0, tickPop: -1,
+          // the 3D title (null: the drawn ones), and what it becomes at the top: SUPER, or ULTRA for 77777
+          three: BR.win3d ? BR.win3d.begin(self.root, self.titles, tier === 1 ? 'win' : 'big') : null,
+          top: tier >= 3 ? (o.ultra ? 'ultra' : 'super') : null
         };
         self.mountTitle(self.titleM, tier === 1 ? sp.win : sp.bigWin);
         self.mountTitle(self.titleS, sp.superT);
@@ -774,6 +781,7 @@
     this.gb.clearRect(0, 0, this.back.width, this.back.height);
     this.gf.setTransform(1, 0, 0, 1, 0, 0);
     this.gf.clearRect(0, 0, this.front.width, this.front.height);
+    if (a.three && BR.win3d) BR.win3d.end();
     if (a.o.onCount) a.o.onCount(a.o.amount);
     a.resolve();
   };
@@ -782,6 +790,7 @@
   FX.prototype.upgrade = function () {
     var a = this.active;
     a.upgraded = a.t;
+    if (a.three) a.three = BR.win3d.swap(a.top) || a.three;
     var L = this.layout();
     this.burstSparks(L.burst.x, L.burst.y - 80, 40, 900, 0);
     BR.sfx.play('superWin');
@@ -1033,13 +1042,28 @@
       ts = tIn < 1 ? 2.3 - 1.3 * E.outBack(tIn, 1.9) : 1;
       ta = E.outQuad(U.clamp(tIn * 3, 0, 1));
     }
-    this.placeTitle(this.titleM, L.title, ts * breathe * outScale * pulse, ta * fade, sq[0], sq[1]);
-    if (sup) {
-      var ul = t - a.upgraded;
-      var usq = squash(ul - 0.2, 0.5, 0.26);
-      this.placeTitle(this.titleS, L.superT, fallIn(ul, 0.2, 3.6) * breathe * outScale * pulse, E.outQuad(U.clamp(ul / 0.12, 0, 1)) * fade, usq[0], usq[1]);
-    } else {
+    if (a.three) {
+      // the 3D title turning round: SUPER (or ULTRA) between where the two drawn lines were
+      setStyle(this.titleM, 'opacity', '0');
       setStyle(this.titleS, 'opacity', '0');
+      var W3 = BR.win3d;
+      if (sup) {
+        var u3 = t - a.upgraded, q3 = squash(u3 - 0.2, 0.5, 0.26);
+        W3.draw({ x: L.title.x + shx, y: (L.superT.y + L.title.y) / 2 - 14 + shy, scale: fallIn(u3, 0.2, 3.6) * breathe * outScale * pulse,
+          sx: q3[0], sy: q3[1], alpha: E.outQuad(U.clamp(u3 / 0.12, 0, 1)) * fade, ry: W3.turn(u3, 0.2, 3.6), rx: 0.06 * Math.sin(t * 1.7) });
+      } else {
+        W3.draw({ x: L.title.x + shx, y: L.title.y + shy, scale: ts * breathe * outScale * pulse, sx: sq[0], sy: sq[1], alpha: ta * fade,
+          ry: big ? W3.turn(t - 0.1, 0.26, 3.6) : W3.turn(t - 0.12, 0.55, 2.4), rx: 0.06 * Math.sin(t * 1.7) });
+      }
+    } else {
+      this.placeTitle(this.titleM, L.title, ts * breathe * outScale * pulse, ta * fade, sq[0], sq[1]);
+      if (sup) {
+        var ul = t - a.upgraded;
+        var usq = squash(ul - 0.2, 0.5, 0.26);
+        this.placeTitle(this.titleS, L.superT, fallIn(ul, 0.2, 3.6) * breathe * outScale * pulse, E.outQuad(U.clamp(ul / 0.12, 0, 1)) * fade, usq[0], usq[1]);
+      } else {
+        setStyle(this.titleS, 'opacity', '0');
+      }
     }
 
     // panel + amount

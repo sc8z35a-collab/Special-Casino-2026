@@ -230,6 +230,19 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     }
   }
 
+  // When each DEV went live here ({ 6: ms, … }): the operators' log has an
+  // entry for every release the server started with (Dev News shows the time).
+  function releasedAt() {
+    const out = {};
+    for (const r of q("SELECT at, detail FROM ops_log WHERE action = 'release' ORDER BY id").all()) {
+      let d = {};
+      try { d = JSON.parse(r.detail); } catch { d = {}; }
+      const n = Number(d.release);
+      if (n > 0 && !out[n]) out[n] = r.at;
+    }
+    return out;
+  }
+
   /* ----- phone notifications (server/core/push.js) ----- */
   const push = createPush({
     q,
@@ -2140,7 +2153,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     'POST /api/release': async (req, u) => {
       const body = await req.json();
       const theirs = Number(body.release) || 0;
-      if (theirs < RELEASE) return { release: RELEASE, outdated: true, bonus: 0, updates: 0 };
+      if (theirs < RELEASE) return { release: RELEASE, outdated: true, bonus: 0, updates: 0, released: releasedAt() };
       const updates = tx(() => {
         const cur = getUser(u.id);
         const n = RELEASE - cur.release_seen;
@@ -2150,7 +2163,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       const bonus = updates * RULES.updateBonus;
       if (bonus) balanceChanged(u.id);
-      return { release: RELEASE, outdated: false, bonus, updates, me: meDto(getUser(u.id)) };
+      return { release: RELEASE, outdated: false, bonus, updates, me: meDto(getUser(u.id)), released: releasedAt() };
     },
 
     /* ----- フレンド対決 ----- */

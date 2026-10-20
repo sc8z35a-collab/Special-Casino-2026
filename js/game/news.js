@@ -1,4 +1,7 @@
-/* Dev News: what each update brought, newest first. The newest entry's id is
+/* Dev News: what each update brought, newest first, with the date and the
+   time (Japan time) it went live: `time` is written in when the update goes
+   out, and the server's own record of the moment shows instead where it has
+   one (js/ui/news.js). The newest entry's id is
    the game's release number (BR.RELEASE): a player whose game is older is
    asked to update, and everyone who updates to a new release once gets
    BR.CONFIG.updateBonus $ (server/core/api.js). Add an entry with the next id
@@ -8,8 +11,20 @@
 
   BR.NEWS = [
     {
+      id: 7,
+      date: '2026-10-20',
+      title: 'DEV7：当たりの文字が回転する3Dに・サブアカウントの禁止',
+      items: [
+        'WIN・BIG WIN・SUPER BIG WIN の文字が、くるくる回転する立体（3D）の文字になりました。正面を向いたときはゆっくり、裏側はすばやく回るので読みやすくなっています',
+        '演出設定に「3Dの当たり文字」を追加。オフにすると今までの文字で表示します（動きが重くなる端末では自動で今までの文字になります）',
+        'ルールに「サブアカウントの禁止」を追加しました。サブアカウント（ひとりで2つ目以降のアカウント）の作成と使用は禁止です。違反が見つかった場合はアカウントの利用停止（BAN）の対象になります',
+        'Dev News に、各アップデートの日付と時刻（日本時間）を表示するようにしました'
+      ]
+    },
+    {
       id: 6,
       date: '2026-10-20',
+      time: '10:25',
       title: 'DEV6：金の生る木オープン・ジョンソン登場・公式ボット・プレゼント・スマホ通知',
       items: [
         '「金の生る木」がオープン！最初の1本は無料です。ワンタップで $5,000〜$100,000 を与えて育てると毎秒お金が増え、与えた金額が多いほど増える額もアップ。見た目は9段階で成長します',
@@ -34,6 +49,7 @@
     {
       id: 5,
       date: '2026-10-19',
+      time: '20:24',
       title: 'DEV5：友達と稼ぐがさらに便利に・運営サイト・金の生る木（予告）',
       items: [
         '「友達と稼ぐ」から自動で抜けることはなくなりました。抜けるときはハブバーの右上にある小さな「抜ける」ボタンを押してください',
@@ -57,6 +73,7 @@
     {
       id: 4,
       date: '2026-10-19',
+      time: '20:24',
       title: '「友達と稼ぐ」登場！クエスト大幅追加・週間協力クエスト',
       items: [
         '「友達と稼ぐ」を追加しました。フレンド一覧の「一緒に稼ぐ」で招待、届いた通知かフレンド一覧の「参加する」で最大5人まで一緒に遊べます（ひとりになると自動で解散。また招待すれば復活）',
@@ -76,6 +93,7 @@
     {
       id: 3,
       date: '2026-10-19',
+      time: '20:24',
       title: '演出を大幅パワーアップ！感謝料はアップデート回数分に',
       items: [
         'アップデートが何回分かたまっていたときは、感謝料も回数分まとめて受け取れるようになりました（2回分なら $500,000）。お知らせには見逃したアップデートの内容がすべて入ります',
@@ -96,6 +114,7 @@
     {
       id: 2,
       date: '2026-10-18',
+      time: '23:11',
       title: '初心者ガイド・グループチャット・フレンド対決！',
       items: [
         '初心者ガイドを追加しました。プレイ時間30分未満の方には、遊び方の案内が最初に表示されます（詳細からいつでも見直せます）',
@@ -120,6 +139,7 @@
     {
       id: 1,
       date: '2026-10-18',
+      time: '17:56',
       title: 'クエスト・バイト・プレイヤーレベル登場！',
       items: [
         'クエストを追加しました。ホーム画面のクエストボタンから、5時間・デイリー・週間・月極・特別の5種類に挑戦できます',
