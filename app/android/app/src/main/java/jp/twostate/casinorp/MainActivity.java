@@ -3,9 +3,13 @@ package jp.twostate.casinorp;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
@@ -51,10 +55,16 @@ import java.security.NoSuchAlgorithmException;
  * The whole app: the online game (BuildConfig.APP_URL) in a full-screen,
  * landscape WebView, with the microphone for voice chat, the back button
  * wired to the game, and updates of the app itself (download + install from
- * inside the app when the game's site offers a newer version).
+ * inside the app when the game's site offers a newer version), and the
+ * phone's notifications for messages, calls and invitations while the app
+ * is in the background (the page asks through the bridge: js/net/push.js).
  */
 public class MainActivity extends Activity {
     private static final int REQ_MIC = 1;
+    private static final int REQ_NOTIFY = 2;
+    private static final String EXTRA_OPEN = "jp.twostate.casinorp.OPEN";
+    private static final String CH_MESSAGES = "messages";
+    private static final String CH_CALLS = "calls";
     private static final String ACTION_INSTALL_STATUS = "jp.twostate.casinorp.INSTALL_STATUS";
     private static final String EXTRA_TOKEN = "jp.twostate.casinorp.TOKEN";
     private static final String OFFLINE_PAGE = "file:///android_asset/offline.html";
@@ -81,6 +91,7 @@ public class MainActivity extends Activity {
             w.setAttributes(lp);
         }
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
+        makeChannels();
 
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
@@ -98,8 +109,14 @@ public class MainActivity extends Activity {
         }
         hideBars();
         configure(web);
-        if (state == null || web.restoreState(state) == null) web.loadUrl(BuildConfig.APP_URL);
-        handleIntent(getIntent());
+        // opened from a notification: the game opens where it leads
+        String open = openOf(getIntent());
+        if (state == null || web.restoreState(state) == null) {
+            web.loadUrl(open == null ? BuildConfig.APP_URL : BuildConfig.APP_URL + "?open=" + Uri.encode(open));
+            if (open == null) handleIntent(getIntent());
+        } else {
+            handleIntent(getIntent());
+        }
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
@@ -235,6 +252,10 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(code, permissions, results);
+        if (code == REQ_NOTIFY) {
+            tellNotifyState();
+            return;
+        }
         if (code != REQ_MIC || pendingMic == null) return;
         PermissionRequest req = pendingMic;
         pendingMic = null;
@@ -286,6 +307,39 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void update(String apkUrl, String sha256) {
             runOnUiThread(() -> startUpdate(apkUrl, sha256));
+        }
+
+        /** "granted", "denied" or "default" (not asked yet, or turned off in the game). */
+        @JavascriptInterface
+        public String notifyState() {
+            return notifyStateNow();
+        }
+
+        /** The player wants notifications: the system asks for the permission if it has to. */
+        @JavascriptInterface
+        public void askNotify() {
+            runOnUiThread(() -> {
+                prefs().edit().putBoolean("notify_off", false).apply();
+                if (Build.VERSION.SDK_INT >= 33
+                        && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    prefs().edit().putBoolean("notify_asked", true).apply();
+                    requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFY);
+                } else {
+                    tellNotifyState();
+                }
+            });
+        }
+
+        /** Turned off in the game. */
+        @JavascriptInterface
+        public void notifyOff() {
+            prefs().edit().putBoolean("notify_off", true).apply();
+        }
+
+        /** A message, a call or an invitation while the app is in the background. */
+        @JavascriptInterface
+        public void notice(String title, String body, String tag, int call, String open) {
+            runOnUiThread(() -> showNotification(title, body, tag, call != 0, open));
         }
 
         /** The "try again" button of the offline page. */
@@ -458,6 +512,11 @@ public class MainActivity extends Activity {
 
     @SuppressWarnings("deprecation")
     private void handleIntent(Intent intent) {
+        String open = openOf(intent);
+        if (open != null) {
+            web.evaluateJavascript("window.BR&&BR.push&&BR.push.openTarget(" + JSONObject.quote(open) + ")", null);
+            return;
+        }
         if (intent == null || !ACTION_INSTALL_STATUS.equals(intent.getAction())) return;
         if (!updating || !installToken.equals(intent.getStringExtra(EXTRA_TOKEN))) return;
         int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
@@ -518,6 +577,69 @@ public class MainActivity extends Activity {
         StringBuilder sb = new StringBuilder(b.length * 2);
         for (byte x : b) sb.append(String.format("%02x", x));
         return sb.toString();
+    }
+
+    /* ------------------------------------------------------------ notifications --- */
+
+    private SharedPreferences prefs() {
+        return getSharedPreferences("app", MODE_PRIVATE);
+    }
+
+    private void makeChannels() {
+        if (Build.VERSION.SDK_INT < 26) return;
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        NotificationChannel msg = new NotificationChannel(CH_MESSAGES, "メッセージと招待", NotificationManager.IMPORTANCE_HIGH);
+        msg.setDescription("友達や運営からのメッセージ、「一緒に稼ぐ」の招待");
+        msg.enableVibration(true);
+        msg.setVibrationPattern(new long[] {0, 200, 100, 200});
+        NotificationChannel calls = new NotificationChannel(CH_CALLS, "通話", NotificationManager.IMPORTANCE_HIGH);
+        calls.setDescription("友達からの通話の呼び出し");
+        calls.enableVibration(true);
+        calls.setVibrationPattern(new long[] {0, 400, 200, 400, 200, 400});
+        nm.createNotificationChannel(msg);
+        nm.createNotificationChannel(calls);
+    }
+
+    private String notifyStateNow() {
+        if (prefs().getBoolean("notify_off", false)) return "default";
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            return prefs().getBoolean("notify_asked", false) && !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+                    ? "denied" : "default";
+        }
+        return nm.areNotificationsEnabled() ? "granted" : "denied";
+    }
+
+    private void tellNotifyState() {
+        String js = "window.BRNative&&BRNative.notifyState&&BRNative.notifyState(" + JSONObject.quote(notifyStateNow()) + ")";
+        web.evaluateJavascript(js, null);
+    }
+
+    /** Where a notification leads in the game ("dm:12", "group:3", "friends"), or null. */
+    private static String openOf(Intent intent) {
+        String open = intent == null ? null : intent.getStringExtra(EXTRA_OPEN);
+        return open != null && open.matches("(dm|group):\\d{1,12}|friends") ? open : null;
+    }
+
+    @SuppressWarnings("deprecation")
+    private void showNotification(String title, String body, String tag, boolean call, String open) {
+        if (!"granted".equals(notifyStateNow())) return;
+        Intent go = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        if (open != null && !open.isEmpty()) go.putExtra(EXTRA_OPEN, open);
+        int id = tag == null ? 0 : tag.hashCode();
+        PendingIntent pi = PendingIntent.getActivity(this, id, go, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b = Build.VERSION.SDK_INT >= 26
+                ? new Notification.Builder(this, call ? CH_CALLS : CH_MESSAGES)
+                : new Notification.Builder(this).setDefaults(Notification.DEFAULT_ALL).setPriority(Notification.PRIORITY_HIGH);
+        b.setSmallIcon(call ? android.R.drawable.stat_sys_phone_call : android.R.drawable.stat_notify_chat)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(new Notification.BigTextStyle().bigText(body))
+                .setCategory(call ? Notification.CATEGORY_CALL : Notification.CATEGORY_MESSAGE)
+                .setAutoCancel(true)
+                .setContentIntent(pi);
+        ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).notify(id, b.build());
     }
 
     /* ------------------------------------------------------------ lifecycle --- */

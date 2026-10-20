@@ -182,11 +182,6 @@
   background: linear-gradient(110deg, rgba(255, 220, 160, 0) 20%, rgba(255, 230, 180, .1) 42%, rgba(255, 240, 200, .16) 50%, rgba(255, 230, 180, .1) 58%, rgba(255, 220, 160, 0) 80%);
   transform: translateX(-110%);
 }
-#stage[data-screen="slot"] #bg::after { opacity: 1; animation: jcRoomSweep 14s ease-in-out infinite; }
-@keyframes jcRoomSweep {
-  0%, 70% { transform: translateX(-110%); }
-  100% { transform: translateX(240%); }
-}
 .jc-low #bg::after { display: none; }
 
 /* ------------------------------------------------------------ the curtains (title screen -> slot) --- */
@@ -277,7 +272,8 @@
 }
 @keyframes jcFrontIn { from { opacity: 0; transform: scale(.85); } }
 
-/* ------------------------------------------------------------ marquee lights round the reels --- */
+/* ------------------------------------------------------------ the bulbs round the reels --- */
+/* a still decoration: no light ever runs round them, the machine never moves */
 .mq { position: absolute; inset: 0; pointer-events: none; }
 .mq i {
   position: absolute;
@@ -288,78 +284,6 @@
   background: radial-gradient(circle at 38% 32%, #fff6da 0 16%, #e9b85a 42%, #8a5418 78%, #5a3008 100%);
   box-shadow: 0 0 0 1.6px rgba(50, 18, 4, .7), 0 2px 3px rgba(0, 0, 0, .5);
 }
-.mq i::after {
-  content: '';
-  position: absolute;
-  inset: -12px;
-  border-radius: 50%;
-  background: radial-gradient(circle, #fffef4 0 14%, rgba(255, 236, 160, .95) 26%, rgba(255, 190, 70, .55) 46%, rgba(255, 150, 30, 0) 72%);
-  opacity: 0;
-  will-change: opacity;
-}
-/* idle: a slow wave going round */
-.mq.idle i::after { animation: mqWave 3s ease-in-out infinite; animation-delay: calc(var(--i) * -.075s); }
-@keyframes mqWave { 0%, 100% { opacity: .08; } 50% { opacity: .85; } }
-/* the reels turn: every 4th bulb lit, running round */
-.mq.spin i::after { animation: mqChase .36s steps(1) infinite; animation-delay: calc(var(--i) * -.09s); }
-@keyframes mqChase { 0% { opacity: 1; } 25%, 100% { opacity: .05; } }
-/* リーチ: red, racing */
-.mq.antic i::after { background: radial-gradient(circle, #fff 0 12%, rgba(255, 150, 120, .95) 26%, rgba(255, 50, 30, .6) 46%, rgba(255, 30, 0, 0) 72%); animation: mqChase .16s steps(1) infinite; animation-delay: calc(var(--i) * -.04s); }
-/* a win: every other bulb, back and forth */
-.mq.win i::after { animation: mqFlash .3s steps(1) infinite; }
-.mq.win i:nth-child(odd)::after { animation-delay: -.15s; }
-@keyframes mqFlash { 0% { opacity: 1; } 50%, 100% { opacity: .08; } }
-/* a BIG WIN: every other bulb, fast (only the opacity moves: no repainting) */
-.mq.big i::after { animation: mqFlash .16s steps(1) infinite; }
-.mq.big i:nth-child(odd)::after { animation-delay: -.08s; }
-
-/* FEVER (js/render/combo.js): the bulbs burn in fire colours, and when
-   nothing else is on they chase round instead of breathing */
-.mq.fever:not(.antic) i::after { background: radial-gradient(circle, #fffef4 0 12%, rgba(255, 200, 120, .95) 26%, rgba(255, 96, 20, .62) 46%, rgba(255, 50, 0, 0) 72%); }
-.mq.fever:not(.antic) i:nth-child(3n)::after { background: radial-gradient(circle, #fff 0 12%, rgba(255, 160, 214, .95) 26%, rgba(255, 50, 150, .6) 46%, rgba(255, 0, 110, 0) 72%); }
-.mq.fever:not(.antic) i:nth-child(3n+1)::after { background: radial-gradient(circle, #fffef0 0 14%, rgba(255, 240, 150, .95) 26%, rgba(255, 190, 40, .6) 46%, rgba(255, 150, 0, 0) 72%); }
-.mq.fever.idle i::after { animation: mqChase .5s steps(1) infinite; animation-delay: calc(var(--i) * -.125s); }
-
-/* the reels jolt when they land: kept on a layer of their own so that costs nothing */
-#reels { will-change: transform; }
-
-/* left alone: the lights chase round like comets and SPIN asks to be pressed */
-.mq.attract i::after { animation: mqComet 2.4s linear infinite; animation-delay: calc(var(--i) / var(--n) * -2.4s); }
-@keyframes mqComet {
-  0%, 50% { opacity: 1; }
-  4%, 54% { opacity: .6; }
-  10%, 60% { opacity: .25; }
-  18%, 49.9%, 68%, 100% { opacity: .05; }
-}
-.spin-btn.attract .spin-disc { animation: jcAttract 2.6s ease-in-out infinite; }
-.spin-btn.attract .spin-glow { animation-duration: 1.1s; }
-@keyframes jcAttract {
-  0%, 68%, 100% { transform: none; }
-  74% { transform: scale(1.1) rotate(-6deg); }
-  80% { transform: scale(.96) rotate(4deg); }
-  86% { transform: scale(1.05) rotate(-2deg); }
-  92% { transform: scale(1); }
-}
-
-/* stars twinkling on the gold corners while nothing happens */
-.tw {
-  position: absolute;
-  z-index: 3;
-  width: 54px;
-  height: 54px;
-  margin: -27px 0 0 -27px;
-  pointer-events: none;
-  background: radial-gradient(circle, #fffef0 0 12%, rgba(255, 238, 175, .95) 22%, rgba(255, 200, 90, 0) 62%);
-  clip-path: polygon(50% 0, 56% 44%, 100% 50%, 56% 56%, 50% 100%, 44% 56%, 0 50%, 44% 44%);
-  opacity: 0;
-  animation: jcTwinkle 10.2s ease-in-out infinite;
-}
-@keyframes jcTwinkle {
-  0%, 84%, 100% { opacity: 0; transform: scale(.2) rotate(0); }
-  89% { opacity: 1; transform: scale(1.15) rotate(45deg); }
-  95% { opacity: .25; transform: scale(.5) rotate(90deg); }
-}
-
 /* a sweep of light across the reels when they start */
 .reel-sweep {
   position: absolute;
@@ -388,38 +312,11 @@
   100% { opacity: .2; left: 125%; }
 }
 
-/* リーチ: the reels beat like a heart */
-#reels.antic { animation: reelBeat .46s ease-in-out infinite; }
-@keyframes reelBeat {
-  0%, 100% { transform: scale(1); }
-  14% { transform: scale(1.018); }
-  28% { transform: scale(1.004); }
-  42% { transform: scale(1.012); }
-}
+/* リーチ: the frame glows (the machine itself stays still) */
 #reels.antic .reel-frame { filter: drop-shadow(0 0 18px rgba(255, 90, 20, .95)); }
 
 /* ------------------------------------------------------------ SPIN --- */
-/* a ring of light going round the button, faster while the reels turn */
-.spin-btn::before {
-  content: '';
-  position: absolute;
-  inset: -30px;
-  border-radius: 50%;
-  background: conic-gradient(from 0deg, rgba(255, 240, 180, 0) 0deg, rgba(255, 246, 200, .95) 24deg, rgba(255, 220, 120, 0) 70deg, rgba(255, 220, 120, 0) 180deg, rgba(255, 246, 200, .95) 204deg, rgba(255, 220, 120, 0) 250deg);
-  -webkit-mask: radial-gradient(closest-side, transparent 78%, #000 81%, #000 90%, transparent 94%);
-  mask: radial-gradient(closest-side, transparent 78%, #000 81%, #000 90%, transparent 94%);
-  animation: jcSpinRing 3.4s linear infinite;
-  pointer-events: none;
-}
-.spin-btn.spinning::before { animation-duration: .55s; filter: brightness(1.4); }
-.spin-btn:disabled::before { opacity: .25; }
-@keyframes jcSpinRing { to { transform: rotate(360deg); } }
-/* breathing glow, stronger than before */
-.spin-glow { animation: jcSpinGlow 2.2s ease-in-out infinite; }
-@keyframes jcSpinGlow {
-  0%, 100% { opacity: .85; transform: scale(1); filter: brightness(1); }
-  50% { opacity: 1; transform: scale(1.05); filter: brightness(1.35); }
-}
+/* still while it waits: nothing turns, glows or breathes */
 /* squash on the press, stretch back with a little overshoot */
 .spin-btn .spin-disc { transition: transform .22s var(--jc-snap), filter .15s ease; }
 .spin-btn:active .spin-disc, .spin-btn.pressed .spin-disc { transform: scale(.88, .84); filter: brightness(.9); transition: transform .06s ease-out; }
@@ -462,31 +359,7 @@
 .hud-circle:active, .sq-btn:not(:disabled):active { transform: scale(.86); transition: transform .05s ease-out; }
 .np-keys button:active, .np-actions button:active { transform: scale(.9); transition: transform .04s ease-out; }
 
-/* gold buttons: a gleam runs across now and then */
-:where(.act-btn.gold, .mini-btn.gold, .fr-btn.gold, .ov-btn.gold, .action-btn, .daily-btn.ready, .np-actions .np-ok, .pill) { position: relative; }
-.act-btn.gold::after, .mini-btn.gold::after, .fr-btn.gold::after, .ov-btn.gold::after, .action-btn:not(:disabled)::after, .daily-btn.ready::after, .np-actions .np-ok::after, .pill::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(105deg, rgba(255, 255, 255, 0) 40%, rgba(255, 255, 240, .32) 47%, rgba(255, 255, 255, .55) 50%, rgba(255, 255, 240, .32) 53%, rgba(255, 255, 255, 0) 60%) no-repeat;
-  background-size: 260% 100%;
-  background-position: 130% 0;
-  animation: jcGleam 4.2s ease-in-out infinite;
-}
-.pill::after { animation-duration: 5.4s; }
-.pill-max::after { animation-delay: -1.3s; }
-.pill-rules::after { animation-delay: -2.6s; }
-@keyframes jcGleam {
-  0%, 62% { background-position: 130% 0; }
-  88%, 100% { background-position: -30% 0; }
-}
-/* round picture buttons float a little */
-.hud-circle.pic .ic { animation: jcFloat 3.6s ease-in-out infinite; }
-.hud-quest .ic { animation-delay: -1.8s; }
-@keyframes jcFloat { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-5px) rotate(-3deg); } }
-.hud-circle.pic:active .ic { animation: none; transform: scale(.9); }
+.hud-circle.pic:active .ic { transform: scale(.9); }
 
 /* a badge pops in and wiggles for attention */
 .hud-badge:not([hidden]), .tab-badge:not([hidden]) { animation: jcBadgeIn .5s var(--jc-pop), jcBadgeWiggle 4s ease-in-out 1s infinite; }
@@ -512,7 +385,6 @@
   100% { opacity: 1; transform: none; }
 }
 #screen-slot.active #reels { animation: jcReelsIn .6s var(--jc-pop); }
-#screen-slot.active #reels.antic { animation: reelBeat .46s ease-in-out infinite; }
 @keyframes jcReelsIn { 0% { transform: scale(.9); opacity: .4; } 100% { transform: none; opacity: 1; } }
 #screen-slot.active .pill, #screen-slot.active .hud-circle, #screen-slot.active .spin-btn, #screen-slot.active .bet-group, #screen-slot.active .win-group {
   animation: jcHudIn .5s var(--jc-pop) backwards;
@@ -540,17 +412,19 @@
 .board-pane.active, .rules-pane.active { animation: jcPaneIn .34s var(--jc-out); }
 @keyframes jcPaneIn { 0% { opacity: 0; transform: translateY(16px); } 100% { opacity: 1; transform: none; } }
 
-/* lists come in one row after another (only when a screen or tab opens) */
+/* lists come in one row after another (only when a screen or tab opens; rows
+   drawn again meanwhile go on from --jc-skip instead of coming in twice) */
 .jc-enter .fr-row, .jc-enter .conv-row, .jc-enter .q-row, .jc-enter .shop-card, .jc-enter .car-card, .jc-enter .news-entry, .jc-enter .job-card, .jc-enter .more-card, .jc-enter .rule-list li, .jc-enter .pay-card, .jc-enter .garage-card, .jc-enter .items-card {
   animation: jcRowIn .46s var(--jc-out) backwards;
+  animation-delay: calc(0s - var(--jc-skip, 0s));
 }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(2) { animation-delay: .04s; }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(3) { animation-delay: .08s; }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(4) { animation-delay: .12s; }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(5) { animation-delay: .16s; }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(6) { animation-delay: .2s; }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(7) { animation-delay: .24s; }
-.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(n+8) { animation-delay: .28s; }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(2) { animation-delay: calc(.04s - var(--jc-skip, 0s)); }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(3) { animation-delay: calc(.08s - var(--jc-skip, 0s)); }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(4) { animation-delay: calc(.12s - var(--jc-skip, 0s)); }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(5) { animation-delay: calc(.16s - var(--jc-skip, 0s)); }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(6) { animation-delay: calc(.2s - var(--jc-skip, 0s)); }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(7) { animation-delay: calc(.24s - var(--jc-skip, 0s)); }
+.jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card):nth-child(n+8) { animation-delay: calc(.28s - var(--jc-skip, 0s)); }
 @keyframes jcRowIn { 0% { opacity: 0; transform: translateX(-40px) scale(.96); } 100% { opacity: 1; transform: none; } }
 
 /* ------------------------------------------------------------ dialogs --- */
@@ -572,19 +446,6 @@
 .modal:not([hidden]) > .modal-card > :nth-child(n+5) { animation-delay: .3s; }
 @keyframes jcContentIn { 0% { opacity: 0; transform: translateY(14px); } 100% { opacity: 1; transform: none; } }
 
-/* a gleam runs round the gold edge once it has landed */
-.modal:not([hidden]) > .modal-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(110deg, rgba(255, 255, 255, 0) 40%, rgba(255, 245, 210, .2) 48%, rgba(255, 255, 255, .35) 50%, rgba(255, 245, 210, .2) 52%, rgba(255, 255, 255, 0) 60%) no-repeat;
-  background-size: 300% 100%;
-  background-position: 150% 0;
-  animation: jcCardGleam 1.1s ease-in-out .35s;
-}
-@keyframes jcCardGleam { from { background-position: 150% 0; } to { background-position: -50% 0; } }
 /* the overlays outside the stage (sign-up, a new group) */
 .ov:not([hidden]) { animation: jcBackdropOv .3s ease-out; }
 @keyframes jcBackdropOv { from { opacity: 0; } }
@@ -636,16 +497,6 @@
 
 /* ------------------------------------------------------------ the player level --- */
 .lv-bar i { transition: width .9s var(--jc-out); }
-.lv-bar i::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .75), rgba(255, 255, 255, 0)) no-repeat;
-  background-size: 40% 100%;
-  background-position: -60% 0;
-  animation: jcBarShine 2.8s ease-in-out infinite;
-}
-@keyframes jcBarShine { 0%, 50% { background-position: -60% 0; } 100% { background-position: 160% 0; } }
 .me-card.jc-level { animation: jcLevelCard 1.2s var(--jc-pop); }
 @keyframes jcLevelCard {
   0% { transform: scale(1); filter: none; }
@@ -694,33 +545,70 @@
 @keyframes jcBest { 0%, 100% { transform: scale(1); filter: none; } 50% { transform: scale(1.06); filter: drop-shadow(0 0 16px rgba(255, 220, 110, .9)); } }
 @keyframes jcVs { 0% { transform: scale(0) rotate(-180deg); } 100% { transform: none; } }
 
-/* the quests that wait to be received gleam */
-.q-row.ready { position: relative; overflow: hidden; }
-.q-row.ready::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(105deg, rgba(255, 255, 255, 0) 40%, rgba(255, 245, 200, .16) 48%, rgba(255, 255, 255, .26) 50%, rgba(255, 245, 200, .16) 52%, rgba(255, 255, 255, 0) 60%) no-repeat;
-  background-size: 300% 100%;
-  animation: jcGleam 3.2s ease-in-out infinite;
-}
+/* a quest that waits to be received: its button asks */
 .q-take:not(:disabled) { animation: jcNudge 2s ease-in-out infinite; }
 
 /* ------------------------------------------------------------ a phone that cannot keep up --- */
 /* (js/render/juice.js turns this on when frames drop while effects run) */
-.jc-low #fx .fx-sun, .jc-low #fx .fx-beam, .jc-low .tw { display: none; }
-.jc-low .mq i::after { animation-duration: 0s !important; opacity: .45; }
-.jc-low .mq.antic i::after, .jc-low .mq.win i::after, .jc-low .mq.big i::after { opacity: .9; }
-.jc-low .hud-circle.pic .ic, .jc-low .pill::after, .jc-low .q-row.ready::after { animation: none; }
+.jc-low #fx .fx-sun, .jc-low #fx .fx-beam { display: none; }
 
 /* ------------------------------------------------------------ reduced motion --- */
 /* the game's own effects stay (they are the game), the ambient ones rest */
 @media (prefers-reduced-motion: reduce) {
-  .mq i::after, .tw, .spin-btn::before, .spin-btn.attract .spin-disc, .hud-circle.pic .ic, .pill::after, .act-btn.gold::after, .mini-btn.gold::after, .fr-btn.gold::after, .ov-btn.gold::after,
-  .action-btn::after, .daily-btn.ready::after, .np-actions .np-ok::after, .hud-badge, .tab-badge, #reels.antic, .bonus-day.today, .daily-btn.ready,
-  #confirm .act-btn.gold, .lv-bar i::after, .thanks-amt, .bonus-ok {
+  .hud-badge, .tab-badge, .bonus-day.today, .daily-btn.ready, #confirm .act-btn.gold, .thanks-amt, .bonus-ok {
     animation-iteration-count: 1 !important;
   }
   .screen.active, .board-pane.active, .rules-pane.active, .jc-enter * { animation-duration: .01s !important; }
 }
+
+/* ------------------------------------------------------------ 演出設定 (js/core/effects.js) --- */
+/* what the player switched off rests (the scripts leave out the rest) */
+.fx-off-screens .screen.active, .fx-off-screens .board-pane.active, .fx-off-screens .rules-pane.active,
+.fx-off-screens #screen-slot.active #reels, .fx-off-screens #screen-slot.active .pill, .fx-off-screens #screen-slot.active .hud-circle,
+.fx-off-screens #screen-slot.active .spin-btn, .fx-off-screens #screen-slot.active .bet-group, .fx-off-screens #screen-slot.active .win-group,
+.fx-off-screens .modal:not([hidden]), .fx-off-screens .modal:not([hidden]) > .modal-card, .fx-off-screens .numpad:not([hidden]),
+.fx-off-screens .numpad:not([hidden]) > .np-card, .fx-off-screens .ov:not([hidden]), .fx-off-screens .ov:not([hidden]) .ov-card { animation: none !important; }
+.fx-off-rows .jc-enter :is(.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card) { animation: none !important; }
+.fx-off-notices .toast.show, .fx-off-notices .toast.show::before, .fx-off-notices .quest-note.show, .fx-off-notices .quest-note.show .qn-icon,
+.fx-off-notices .quest-note.show .qn-level, .fx-off-notices .home-note:not([hidden]), .fx-off-notices .msg.jc-new, .fx-off-notices .msg.jc-new .xfer-card { animation: none !important; }
+.fx-off-pops .hud-badge, .fx-off-pops .tab-badge, .fx-off-pops .tab-dot, .fx-off-pops .tab.active, .fx-off-pops .tab.active::after, .fx-off-pops #confirm .act-btn.gold,
+.fx-off-pops .daily-btn.ready, .fx-off-pops .q-take, .fx-off-pops .bonus-ok, .fx-off-pops .bonus-day.today { animation: none !important; }
+.fx-off-celebrate .me-card.jc-level, .fx-off-celebrate .jc-glow-once, .fx-off-celebrate .thanks-amt, .fx-off-celebrate .pl-result-title,
+.fx-off-celebrate .pl-side.best, .fx-off-celebrate .tr-art.grow, .fx-off-celebrate .au-super { animation: none !important; }
+.fx-off-reach #reels.antic .reel-frame { filter: none; }
+.fx-off-line .payline-mark.lit { animation: none; }
+.fx-off-coins .tr-coins, .fx-off-coins .tr-drop { display: none; }
+
+/* the 「演出」 button next to the sound and its dialog */
+.fx-btn {
+  position: absolute;
+  left: 258px;
+  top: 150px;
+  z-index: 2;
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 21px;
+  background: rgba(0, 0, 0, .35);
+  box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .3);
+  font-size: 19px;
+  font-weight: 700;
+  color: #f1e7ea;
+}
+.fx-btn:active { transform: scale(.92); }
+.fx-card { width: 1180px; height: calc(100% - 60px); display: flex; flex-direction: column; }
+.fx-card .modal-title { margin-bottom: 16px; }
+.fx-simple, .fx-row { position: relative; display: flex; align-items: center; gap: 20px; cursor: pointer; }
+.fx-simple { padding: 16px 22px; border-radius: 10px; background: rgba(255, 226, 122, .1); box-shadow: inset 0 0 0 1.6px rgba(255, 226, 122, .45); }
+.fx-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 25px; font-weight: 700; color: #fff; }
+.fx-name small { font-size: 17px; font-weight: 400; line-height: 1.4; color: #c3b8bb; }
+.fx-simple input, .fx-row input { position: absolute; opacity: 0; pointer-events: none; }
+.fx-switch { flex: none; position: relative; width: 78px; height: 42px; border-radius: 21px; background: rgba(255, 255, 255, .16); box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .25); transition: background .15s; }
+.fx-switch::after { content: ''; position: absolute; left: 4px; top: 4px; width: 34px; height: 34px; border-radius: 50%; background: #e9e3e5; transition: transform .15s; }
+input:checked + .fx-switch { background: linear-gradient(180deg, #f4dc45, #d9b51e); }
+input:checked + .fx-switch::after { transform: translateX(36px); background: #fff; }
+.fx-groups { flex: 1; min-height: 0; margin-top: 16px; padding-right: 10px; }
+.fx-group h3 { margin: 18px 0 8px; font-size: 21px; color: #ffe27a; }
+.fx-group:first-child h3 { margin-top: 4px; }
+.fx-row { padding: 12px 6px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.fx-foot { display: flex; gap: 16px; margin-top: 18px; }
+.fx-foot .act-btn { height: 74px; font-size: 25px; }

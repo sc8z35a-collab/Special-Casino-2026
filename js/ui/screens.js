@@ -26,11 +26,45 @@
 
   // Lists in a screen or pane that just opened come in one row after another
   // (css/juice.css); only for a moment, so later updates do not replay it.
+  // A tab shows the list it remembers and then the fresh one from the server:
+  // rows put in again meanwhile carry on from where the first ones were
+  // (--jc-skip) instead of coming in a second time. Rows that come after
+  // 読み込み中 are the first ones and come in then.
+  var ROWS = '.fr-row, .conv-row, .q-row, .shop-card, .car-card, .news-entry, .job-card, .more-card, .rule-list li, .pay-card, .garage-card, .items-card';
+  var ENTER_MS = 1100;
   function enter(node) {
     if (!node) return;
     clearTimeout(node.jcEnter);
+    if (node.jcWatch) node.jcWatch.disconnect();
+    node.style.removeProperty('--jc-skip');
     node.classList.add('jc-enter');
-    node.jcEnter = setTimeout(function () { node.classList.remove('jc-enter'); }, 1100);
+    var t0 = U.now(), had = null;
+    function done() {
+      node.classList.remove('jc-enter');
+      node.style.removeProperty('--jc-skip');
+      if (node.jcWatch) { node.jcWatch.disconnect(); node.jcWatch = null; }
+    }
+    // rows put in by the same tap belong to the first list
+    setTimeout(function () { had = !!node.querySelector(ROWS); }, 0);
+    if (window.MutationObserver) {
+      node.jcWatch = new MutationObserver(function (changes) {
+        if (had === null) return;
+        var rows = changes.some(function (c) {
+          return Array.prototype.some.call(c.addedNodes, function (n) { return n.nodeType === 1 && (n.matches(ROWS) || !!n.querySelector(ROWS)); });
+        });
+        if (!rows) return;
+        if (!had) {
+          had = true;
+          t0 = U.now();
+          clearTimeout(node.jcEnter);
+          node.jcEnter = setTimeout(done, ENTER_MS);
+          return;
+        }
+        node.style.setProperty('--jc-skip', ((U.now() - t0) / 1000).toFixed(3) + 's');
+      });
+      node.jcWatch.observe(node, { childList: true, subtree: true });
+    }
+    node.jcEnter = setTimeout(done, ENTER_MS);
   }
 
   // The back button: a screen may step back inside itself first; the slot

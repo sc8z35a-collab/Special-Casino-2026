@@ -174,6 +174,7 @@
     peter: function () { return get('/api/peter'); },
     borrow: function (offer) { return post('/api/peter/borrow', { offer: offer }); },
     repay: function (amount) { return post('/api/peter/repay', { amount: amount }); },
+    johnson: function () { return get('/api/johnson'); },
 
     /* voice chat and watching */
     iceServers: function () { return get('/api/call/ice'); },
@@ -205,7 +206,19 @@
     /* the beginner guide and feedback to the operator */
     guideDone: function () { return post('/api/guide'); },
     sendFeedback: function (ratings, comment) { return post('/api/feedback', { ratings: ratings, comment: comment }); },
-    feedback: function () { return get('/api/feedback'); },
+
+    /* 18歳以上？, presents, 通報 and the official bot's 報告 / 意見案 */
+    age: function (adult) { return post('/api/age', { adult: !!adult }); },
+    present: function (to, id) { return post('/api/present', { to: to, id: id }); },
+    presentClaim: function (messageId) { return post('/api/present/claim', { message: messageId }); },
+    report: function (user, kind, text, place) { return post('/api/report', { user: user, kind: kind, text: text, place: place }); },
+    officialFeedback: function (kind, text) { return post('/api/official/feedback', { kind: kind, text: text }); },
+
+    /* phone notifications (js/net/push.js) */
+    pushKey: function () { return get('/api/push/key'); },
+    pushSubscribe: function (sub) { return post('/api/push/subscribe', sub); },
+    pushUnsubscribe: function (endpoint) { return post('/api/push/unsubscribe', { endpoint: endpoint }); },
+    sight: function (on) { return post('/api/sight', { on: on ? 1 : 0 }); },
 
     /* quests, バイト and updates */
     quests: function () { return get('/api/quests'); },
@@ -216,6 +229,16 @@
     stopJob: function (id) { return post('/api/jobs/stop', { id: id }); },
     collectJobs: function () { return post('/api/jobs/collect'); },
     release: function (n) { return post('/api/release', { release: n }); },
+
+    /* 金の生る木 and its auctions */
+    trees: function () { return get('/api/tree'); },
+    treeGive: function (tree, amount) { return post('/api/tree/give', { tree: tree, amount: amount }); },
+    treeStart: function (tree, cycle) { return post('/api/tree/start', { tree: tree, cycle: cycle }); },
+    treeHarvest: function (tree, next) { return post('/api/tree/harvest', { tree: tree, next: next }); },
+    auction: function () { return get('/api/tree/auction'); },
+    auctionStart: function (market) { return post('/api/tree/auction/start', { market: market }); },
+    auctionBid: function (steps) { return post('/api/tree/auction/bid', { steps: steps }); },
+    auctionLeave: function () { return post('/api/tree/auction/leave'); },
 
     loginBonus: function () { return post('/api/login-bonus'); },
     ticket: function () { return post('/api/stream-ticket'); }

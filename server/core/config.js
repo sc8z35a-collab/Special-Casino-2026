@@ -52,10 +52,13 @@ export function configFrom(env = {}, overrides = {}) {
     loginBonus: flag(env, 'LOGIN_BONUS', true),
     // Quest rewards (js/game/quests.js); off only for tests that count money exactly.
     quests: flag(env, 'QUESTS', true),
-    // The account (user name) that reads the players' feedback (運営へのフィードバック).
-    feedbackAdmin: str(env, 'FEEDBACK_ADMIN', 'taku'),
-    // The accounts (user names, comma separated) that may open the operator site (/ops/).
+    // ジョンソン's gifts coming by themselves (after spending, on connecting); off only for tests that count money exactly.
+    npcGifts: flag(env, 'NPC_GIFTS', true),
+    // The accounts (user names, comma separated) that may open the operator site (/ops/),
+    // where the players' feedback, 通報 and the official bot's messages are read.
     operators: str(env, 'OPERATORS', 'taku').split(',').map((s) => s.trim()).filter(Boolean),
+    // Phone notifications: who runs the server, for the push services (a mailto: or https: address; the site's own address if empty).
+    pushContact: str(env, 'PUSH_CONTACT', ''),
     // Accounts that may be made on one device (0 = no limit).
     accountsPerDevice: int(env, 'ACCOUNTS_PER_DEVICE', 2),
     // Daily caps (per UTC day, 0 = none): past one, players see the maintenance

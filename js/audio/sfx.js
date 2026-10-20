@@ -575,15 +575,6 @@
       tone({ t: t + 0.05, f: N.G5, f2: N.C5, glide: 0.6, d: 0.6, v: 0.07, type: 'triangle', wet: 0.3 });
       tone({ t: t + 0.05, f: N.E5, f2: N.A4 / 2, glide: 0.7, d: 0.7, v: 0.05, type: 'triangle', wet: 0.3 });
     },
-    // the curtains open on the machine: velvet sweeping aside and a ta-da
-    curtain: function (t) {
-      noise({ t: t, ftype: 'lowpass', f: 300, f2: 2400, q: 0.7, a: 0.3, d: 0.6, v: 0.16, wet: 0.2 });
-      noise({ t: t + 0.12, ftype: 'bandpass', f: 900, f2: 3000, q: 0.8, a: 0.25, d: 0.5, v: 0.07 });
-      brass([N.G4, N.B4, N.D5], t + 0.42, 0.1, 0.4);
-      brass([N.C5, N.E5, N.G5], t + 0.56, 0.7, 0.5);
-      cymbal(t + 0.56, 0.08, 1.3);
-      [N.G6, N.C7].forEach(function (f, i) { bell(f, t + 0.6 + i * 0.07, 0.05, 1.0); });
-    },
     // a fruit thrown or caught
     fruit: function (t) {
       tone({ t: t, f: 520, f2: 1240, glide: 0.08, d: 0.12, v: 0.12, type: 'triangle' });

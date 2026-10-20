@@ -6,13 +6,15 @@ import '../../js/game/engine.js';
 import '../../js/game/sale.js';
 import '../../js/game/quests.js';
 import '../../js/game/news.js';
+import '../../js/game/tree.js';
 
 const BR = globalThis.BR;
-if (!BR || !BR.CONFIG || !BR.engine || !BR.sale || !BR.QUESTS || !BR.LEVEL || !BR.RELEASE) throw new Error('could not load the game rules from js/');
+if (!BR || !BR.CONFIG || !BR.engine || !BR.sale || !BR.QUESTS || !BR.LEVEL || !BR.RELEASE || !BR.TREE) throw new Error('could not load the game rules from js/');
 
 export const RULES = BR.CONFIG;
 export const QUESTS = BR.QUESTS;
 export const LEVEL = BR.LEVEL;
+export const TREE = BR.TREE;
 // the newest Dev News entry: players on an older game are asked to update
 export const RELEASE = BR.RELEASE;
 export const JOBS = new Map(RULES.jobs.map((j) => [j.id, j]));

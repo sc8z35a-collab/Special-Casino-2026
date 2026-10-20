@@ -34,7 +34,6 @@
   var meListeners = [];
   function meChanged() {
     renderMeCard();
-    renderAdminTab();
     meListeners.forEach(function (fn) { try { fn(me); } catch (e) { if (window.console) console.warn(e); } });
   }
 
@@ -80,6 +79,8 @@
       BR.avatars.setShop(r.iconShop);
       BR.shop.setSale(r.itemShop);
       BR.peter.set(r.peter);
+      BR.johnson.set(r.johnson);
+      BR.official.set(r.official);
       BR.shop.renderCharm();
       BR.bonus.show(r.loginBonus);
       BR.bonus.schedule(r.loginReset);
@@ -115,6 +116,7 @@
     meChanged();
     BR.quests.reset();
     BR.jobs.reset();
+    if (BR.tree) BR.tree.reset();
     BR.entry.close();
     closeGroupForm();
     K.closeModals();
@@ -140,7 +142,8 @@
       p.appendChild(el('small', 'confirm-sub', '残高やフレンドはサーバーに保存されています。ユーザー名とパスワードでいつでも戻れます。'));
     }, 'ログアウト').then(function (ok) {
       if (!ok) return;
-      api.logout().catch(function () {}).then(function () {
+      // this phone stops getting the account's notifications first (while signed in)
+      (BR.push ? BR.push.forget() : Promise.resolve()).then(function () { return api.logout(); }).catch(function () {}).then(function () {
         signedOut();
         BR.screens.show('start');
         toast('ログアウトしました');
@@ -170,10 +173,12 @@
     if (d < 7 * 86400000) return Math.floor(d / 86400000) + '日前';
     return K.fmtDate(ts);
   }
-  // 「オンライン」 or when they were last here (ピーター: 金貸し)
+  // 「オンライン」 or when they were last here (the NPCs: what they are)
   function seenText(u) {
     if (!u) return '';
+    if (BR.official.is(u)) return '運営公式アカウント';
     if (BR.peter.is(u)) return '金貸し';
+    if (BR.johnson.is(u)) return '友達・いつでもオンライン';
     if (u.online) return 'オンライン';
     return u.lastSeen ? '最終オンライン ' + ago(u.lastSeen) : 'オフライン';
   }
@@ -213,6 +218,9 @@
       send.textContent = o.button || '送信';
       setError('');
       var feed = $('#entry-feed');
+      // the same size as on the (scaled) screen: typing must not make it bigger
+      var s = BR.app.view && BR.app.view.s;
+      if (s) feed.style.setProperty('--entry-u', s.toFixed(4) + 'px');
       if (o.feed) {
         home = o.feed.parentNode;
         homeNext = o.feed.nextSibling;
@@ -220,6 +228,7 @@
       }
       feed.hidden = !o.feed;
       root.classList.toggle('no-feed', !o.feed);
+      $('#entry-rule').hidden = !o.rule;
       root.hidden = false;
       K.fitOverlay(root);
       input.focus();
@@ -276,11 +285,6 @@
   function setOnline(n) {
     if (typeof n === 'number') $('#online-count').textContent = U.fmt(n) + '人がオンライン';
   }
-  // the operator's account reads the players' feedback
-  function renderAdminTab() {
-    $('#tab-feedback').hidden = !(me && me.feedbackAdmin);
-    if (!(me && me.feedbackAdmin) && view === 'feedback' && visible()) setView('friends');
-  }
 
   /* ------------------------------------------------------------ the menu --- */
   var tabs;
@@ -309,18 +313,17 @@
   // view -> its tab and its pane
   var TAB_OF = {
     friends: 'friends', messages: 'messages', dm: 'messages', group: 'messages', cars: 'cars', garage: 'cars',
-    shop: 'shop', items: 'shop', jobs: 'jobs', more: 'more', feedback: 'feedback'
+    shop: 'shop', items: 'shop', jobs: 'jobs', more: 'more'
   };
   var PANE_OF = {
     friends: 'friends', messages: 'messages', dm: 'chat', group: 'chat', cars: 'cars', garage: 'garage',
-    shop: 'shop', items: 'items', jobs: 'jobs', more: 'more', feedback: 'feedback'
+    shop: 'shop', items: 'items', jobs: 'jobs', more: 'more'
   };
-  var PANES = ['friends', 'messages', 'chat', 'cars', 'garage', 'shop', 'items', 'jobs', 'more', 'feedback'];
+  var PANES = ['friends', 'messages', 'chat', 'cars', 'garage', 'shop', 'items', 'jobs', 'more'];
   function setView(v) {
     if (!TAB_OF[v]) v = 'friends';
     if (v === 'dm' && !peer) v = 'messages';
     if (v === 'group' && !group) v = 'messages';
-    if (v === 'feedback' && !(me && me.feedbackAdmin)) v = 'friends';
     view = v;
     var tab = TAB_OF[v];
     if (tab !== 'messages') lastTab = v;
@@ -341,7 +344,6 @@
     else if (v === 'items') BR.shop.showItems();
     else if (v === 'jobs') BR.jobs.show();
     else if (v === 'more') BR.news.show();
-    else if (v === 'feedback' && BR.feedback) BR.feedback.showAdmin();
   }
 
   function knownUser(id) {
@@ -352,8 +354,10 @@
     if (!hit) (convs || []).forEach(function (c) { if (c.user.id === id) hit = c.user; });
     if (!hit) (groups || []).forEach(function (g) { g.members.forEach(function (m) { if (m.id === id) hit = hit || m; }); });
     if (!hit && found && found.user.id === id) hit = found.user;
-    // ピーター's row is there before he has written anything
+    // the NPCs' rows are there before they have written anything
     if (!hit) { var pc = BR.peter.placeholder(); if (pc && pc.user.id === id) hit = pc.user; }
+    if (!hit) { var jc = BR.johnson.placeholder(); if (jc && jc.user.id === id) hit = jc.user; }
+    if (!hit) { var oc = BR.official.placeholder(); if (oc && oc.user.id === id) hit = oc.user; }
     return hit;
   }
 
@@ -431,6 +435,7 @@
       else if (rel === 'incoming') { actBtn(p.acts, '承認する', 'accept', 'gold', 'check'); actBtn(p.acts, '拒否', 'decline'); }
       else actBtn(p.acts, 'フレンド申請', 'request', 'gold', 'friends');
       if (rel !== 'self') actBtn(p.acts, 'プロフィール', 'profile', 'muted');
+      if (rel !== 'self' && !f.npc) actBtn(p.acts, '通報', 'report', 'muted fr-report');
       var x = el('button', 'fr-clear', '×');
       x.type = 'button';
       x.dataset.act = 'clear';
@@ -448,6 +453,14 @@
       });
     }
     section(box, 'フレンド', friends.friends.length);
+    // ジョンソン, a friend from the start (an NPC: messages only)
+    var jc = BR.johnson.placeholder();
+    if (jc) {
+      var jp = personRow(jc.user, 'friend npc');
+      jp.acts.appendChild(el('span', 'fr-note', BR.johnson.intro));
+      actBtn(jp.acts, 'メッセージ', 'dm');
+      box.appendChild(jp.row);
+    }
     if (!friends.friends.length) {
       box.appendChild(el('div', 'empty fr-empty', 'まだフレンドはいません。\n上の検索でユーザー名を入力して、フレンド申請を送りましょう！\n承認されると通知が届き、会話できるようになります。'));
     }
@@ -505,6 +518,7 @@
     if (act === 'battle') { sfx('click'); if (BR.play) BR.play.challenge(u); return; }
     if (act === 'hubInvite') { if (BR.hub) BR.hub.invite(u); return; }
     if (act === 'hubJoin') { if (BR.hub) BR.hub.join(u.id); return; }
+    if (act === 'report') { BR.safety.report(u, 'search'); return; }
     var job;
     if (act === 'request') job = api.friendRequest(id).then(function (r) {
       sfx(r.friendship === 'friends' ? 'notify' : 'send');
@@ -562,30 +576,39 @@
     if (!convs) { renderConvNote('読み込み中…'); return; }
     var list = $('#conv-list');
     list.textContent = '';
-    // ピーター is always at the top, even before he has written
-    var peterConv = null, rest = [];
-    convs.forEach(function (c) { if (BR.peter.is(c.user)) peterConv = c; else rest.push({ at: c.at, row: convRow(c) }); });
+    // Ice Smoker公式ボット, マイクソン and ジョンソン are always at the top, even before they have written
+    var officialConv = null, peterConv = null, johnsonConv = null, rest = [];
+    convs.forEach(function (c) {
+      if (BR.official.is(c.user)) officialConv = c;
+      else if (BR.peter.is(c.user)) peterConv = c;
+      else if (BR.johnson.is(c.user)) johnsonConv = c;
+      else rest.push({ at: c.at, row: convRow(c) });
+    });
     (groups || []).forEach(function (g) { rest.push({ at: g.at, row: groupRow(g) }); });
     rest.sort(function (a, b) { return (b.at || 0) - (a.at || 0); });
+    officialConv = officialConv || BR.official.placeholder();
+    if (officialConv) list.appendChild(convRow(officialConv));
     peterConv = peterConv || BR.peter.placeholder();
     if (peterConv) list.appendChild(convRow(peterConv));
+    johnsonConv = johnsonConv || BR.johnson.placeholder();
+    if (johnsonConv) list.appendChild(convRow(johnsonConv));
     rest.forEach(function (x) { list.appendChild(x.row); });
     if (!rest.length) list.appendChild(el('li', 'empty', 'フレンドになると、ここで会話できます。\n「＋ グループを作る」でフレンドとのグループも作れます。'));
   }
   function convRow(c) {
-    var npc = BR.peter.is(c.user);
-    var li = el('li', 'conv-row' + (c.unread ? ' unread' : '') + (npc ? ' npc' : ''));
+    var lender = BR.peter.is(c.user), friend = BR.johnson.is(c.user), bot = BR.official.is(c.user), npc = lender || friend || bot;
+    var li = el('li', 'conv-row' + (c.unread ? ' unread' : '') + (npc ? ' npc' : '') + (bot ? ' official' : ''));
     li.dataset.uid = c.user.id;
     var av = K.avatarEl(c.user);
     av.appendChild(K.presence(npc || c.user.online));
     li.appendChild(av);
     var mid = el('div', 'conv-mid');
     var name = el('div', 'conv-name uname', c.user.name);
-    if (npc) name.appendChild(el('span', 'npc-tag', '金貸し'));
+    if (npc) name.appendChild(el('span', 'npc-tag' + (friend ? ' friend' : bot ? ' official' : ''), friend ? '友達' : bot ? '公式' : '金貸し'));
     mid.appendChild(name);
     var key = 'dm:' + c.user.id;
     mid.appendChild(el('div', 'conv-last' + (typingNames(key).length ? ' typing' : ''), typingNames(key).length ? '入力中…'
-      : c.last ? preview(c.last) : 'お金に困ったら相談においで。累計1100万円まで貸すよ（「100万貸して」と書いてね）'));
+      : c.last ? preview(c.last) : bot ? BR.official.intro : friend ? BR.johnson.intro + 'です' : 'お金に困ったら相談においで。累計1100万円まで貸すよ（「100万貸して」と書いてね）'));
     li.appendChild(mid);
     li.appendChild(convSide(c.at, c.unread));
     return li;
@@ -638,6 +661,7 @@
       return (last.mine ? '送金しました: ' : '受け取りました: ') + U.fmt(last.amount) + ' ' + (K.CUR[last.currency] || K.CUR.tokens).name;
     }
     if (last.kind === 'gift') return (last.mine ? 'プレゼントしました: ' : 'プレゼントが届きました: ') + carName(last.text);
+    if (last.kind === 'present') return BR.presents.preview(last);
     if (last.kind === 'item') return (last.mine ? '譲りました: ' : '届きました: ') + itemName(last.text) + ' ×' + last.amount;
     if (last.kind === 'offer') return K.clip(last.text, 60);
     if (last.kind === 'system') return K.clip(last.text, 60);
@@ -733,6 +757,7 @@
   function showChat(key) {
     var c = chan(key);
     var npc = key.indexOf('dm:') === 0 && peer && BR.peter.is(peer);
+    if (key.indexOf('dm:') === 0 && peer && BR.johnson.is(peer)) BR.johnson.opened();
     renderChat();
     scrollChat();
     if (!c.loaded) {
@@ -759,7 +784,8 @@
     if (!c.list.length) {
       list.appendChild(el('div', 'empty chat-empty', note || (!c.loaded ? '読み込み中…'
         : key.indexOf('group:') === 0 ? 'グループができました。\n最初のメッセージを送ってみましょう！'
-          : 'まだメッセージはありません。\nあいさつしてみましょう！')));
+          : peer && BR.official.is(peer) ? '運営へのお問い合わせはこちらから送れます。\n不具合は「報告」、ゲームへのアイデアは「意見案」からどうぞ。担当者が確認してお返事します。'
+            : 'まだメッセージはありません。\nあいさつしてみましょう！')));
     }
     renderTyping();
     renderChatBar();
@@ -809,6 +835,24 @@
     for (var i = c.list.length - 1; i >= 0; i--) if (c.list[i].id === id) return c.list[i];
     return null;
   }
+  function refreshMsg(id) {
+    var key = chatKey();
+    if (!key || !visible() || !chans[key]) return;
+    var c = chans[key], m = c.ids[id] ? find(c, id) : null;
+    var old = m && chatList().querySelector('[data-pid="' + id + '"]');
+    if (!old) return;
+    var node = msgEl(m, key, c.list[c.list.indexOf(m) - 1] || null);
+    old.parentNode.replaceChild(node, old);
+  }
+  // a present was received (on this device or another, by me or by the friend)
+  function onPresent(d) {
+    if (!d || !d.id) return;
+    Object.keys(chans).forEach(function (k) {
+      var m = chans[k].ids[d.id] ? find(chans[k], d.id) : null;
+      if (m && d.claimed) m.claimed = true;
+    });
+    refreshMsg(d.id);
+  }
 
   function msgEl(m, key, prev) {
     var mine = !!(m.from && me && m.from.id === me.id);
@@ -821,7 +865,9 @@
       return node;
     }
     if (m.kind === 'offer') return BR.peter.offerEl(m);
-    if (m.kind === 'transfer') {
+    if (m.kind === 'present') {
+      node = BR.presents.bubble(m, mine);
+    } else if (m.kind === 'transfer') {
       node = el('div', 'msg xfer' + (mine ? ' mine' : ' theirs'));
       card = el('div', 'xfer-card');
       card.appendChild(el('div', 'xfer-label', mine ? '送金しました' : '送金が届きました'));
@@ -870,7 +916,9 @@
     var d = drafts[key];
     var ph = $('#chat-placeholder');
     ph.textContent = d ? K.clip(d, 80) : view === 'group' ? 'グループにメッセージ…'
-      : peer && BR.peter.is(peer) ? '「100万貸して」「100万返す」のように書けます（累計1100万円まで）' : 'メッセージを入力…';
+      : peer && BR.peter.is(peer) ? '「100万貸して」「100万返す」のように書けます（累計1100万円まで）'
+      : peer && BR.johnson.is(peer) ? 'ジョンソンに話しかける…'
+      : peer && BR.official.is(peer) ? '運営へのメッセージを入力…（不具合は「報告」、アイデアは「意見案」からも送れます）' : 'メッセージを入力…';
     ph.classList.toggle('draft', !!d);
   }
 
@@ -928,7 +976,7 @@
   /* 入力中 */
   var typingSent = {};
   function sendTyping(key) {
-    if (key.indexOf('dm:') === 0 && peer && BR.peter.is(peer)) return;
+    if (key.indexOf('dm:') === 0 && peer && (BR.peter.is(peer) || BR.johnson.is(peer) || BR.official.is(peer))) return;
     var t = Date.now();
     if (typingSent[key] && t - typingSent[key] < 2500) return;
     typingSent[key] = t;
@@ -990,6 +1038,7 @@
       max: 300,
       placeholder: 'メッセージを入力',
       feed: chatList(),
+      rule: true,
       onDraft: function (t) { drafts[key] = t; if (t) sendTyping(key); },
       onSubmit: function (text) {
         return api.send(chat, text).then(function (r) {
@@ -1019,7 +1068,7 @@
     var u = $('#dm-user');
     u.textContent = '';
     var isGroup = view === 'group';
-    var npc = !isGroup && BR.peter.is(peer);
+    var npc = !isGroup && (BR.peter.is(peer) || BR.johnson.is(peer) || BR.official.is(peer));
     if (isGroup) {
       u.appendChild(groupFaces(group, 'head'));
       var gt = el('span', 'dm-id');
@@ -1044,8 +1093,15 @@
     $('#dm-coop').hidden = !isGroup;
     $('#dm-members').hidden = !isGroup;
     $('#dm-leave').hidden = !isGroup;
-    $('#dm-debt').hidden = !npc;
-    if (npc) BR.peter.renderHead();
+    $('#dm-debt').hidden = isGroup || !BR.peter.is(peer);
+    if (!isGroup && BR.peter.is(peer)) BR.peter.renderHead();
+    $('#dm-johnson').hidden = isGroup || !BR.johnson.is(peer);
+    if (!isGroup && BR.johnson.is(peer)) BR.johnson.renderHead();
+    $('#dm-official').hidden = isGroup || !BR.official.is(peer);
+    // presents go to a friend (not to a group or an NPC)
+    var gift = !isGroup && !npc;
+    $('#chat-gift').hidden = !gift;
+    $('#pane-chat').classList.toggle('can-gift', gift);
   }
 
   function enterChat(v) {
@@ -1180,7 +1236,7 @@
   var prof = { data: null, seq: 0 };
   function openProfile(user) {
     if (!user || !me) return;
-    if (BR.peter.is(user)) { openDm(user); return; }
+    if (BR.peter.is(user) || BR.johnson.is(user) || BR.official.is(user)) { openDm(user); return; }
     var seq = ++prof.seq;
     prof.data = null;
     fillProfile(user, null, user.id === me.id);
@@ -1253,7 +1309,8 @@
       pfBtn(a1, me && me.hasPassword ? 'パスワード変更' : 'パスワード設定', 'password', '', 'lock');
       pfBtn(a1, '引き継ぎコード発行', 'recovery', '', 'share');
       pfBtn(a1, 'コードでログイン', 'codeLogin', '', 'download');
-      if (me && me.operator) pfBtn(a1, '運営サイト', 'ops', 'ops', 'info');
+      pfBtn(a1, '演出設定', 'effects', '', 'sound');
+      if (BR.push && BR.push.mode() !== 'none') pfBtn(a1, '通知', 'push', '', 'chat', BR.push.permission() === 'granted' ? 'オン' : 'オフ');
       pfLink(a2, 'ログアウト', 'logout');
       loadBlocks();
       return;
@@ -1284,6 +1341,7 @@
       a1.appendChild(el('span', 'pf-hint', 'フレンドになると会話・送金・観戦・一緒に稼ぐができます'));
     }
     pfLink(a2, r.blocked ? 'ブロック解除' : 'ブロック', 'block');
+    pfLink(a2, '通報', 'report');
   }
   function profileUser() { return prof.data ? prof.data.user : null; }
 
@@ -1297,11 +1355,13 @@
       case 'recovery': sfx('click'); reissueCode(); break;
       // another account of mine: its 引き継ぎコード
       case 'codeLogin': sfx('click'); K.closeModal('profile'); BR.account.open('code-login', 'ほかのアカウントの引き継ぎコードを入力すると、そのアカウントに切り替わります。'); break;
-      case 'ops': sfx('click'); window.open('/ops/', '_blank', 'noopener'); break;
+      case 'effects': sfx('click'); K.closeModal('profile'); BR.effects.open(); break;
+      case 'push': sfx('click'); K.closeModal('profile'); BR.push.settings(); break;
       case 'logout': sfx('click'); logout(); break;
       case 'transfer': sfx('click'); openTransfer(u); break;
       case 'gift': sfx('click'); K.closeModal('profile'); BR.cars.giftTo(u); break;
       case 'block': toggleBlock(); break;
+      case 'report': K.closeModal('profile'); BR.safety.report(u, 'profile'); break;
       case 'dm': sfx('click'); openDm(u); break;
       case 'watch': sfx('click'); K.closeModal('profile'); BR.watch.start(u); break;
       case 'battle': sfx('click'); K.closeModal('profile'); if (BR.play) BR.play.challenge(u); break;
@@ -1319,21 +1379,32 @@
     var ask = blocked ? Promise.resolve(true) : K.confirmBox(function (p) {
       p.appendChild(K.nameSpan(u.name));
       p.appendChild(document.createTextNode('さんをブロックしますか？'));
-      p.appendChild(el('small', 'confirm-sub', 'フレンドも解除され、この人からの申請・メッセージ・送金が届かなくなります。'));
+      p.appendChild(el('small', 'confirm-sub', '相手には知らされません。ブロック中はこの人のメッセージ・送金・プレゼント・通話・招待があなたに届かなくなり、解除するとブロック中に送られたメッセージなどが届きます。'));
     }, 'ブロック');
     ask.then(function (ok) {
       if (!ok) return null;
       return api.block(u.id, !blocked).then(function (res) {
         r.blocked = res.blocked;
-        if (res.blocked) u.friendship = 'none';
         if (prof.data === r) fillProfile(u, r, false);
         sfx('click');
-        toast(res.blocked ? 'ブロックしました' : 'ブロックを解除しました');
-        if (res.blocked) friends = null;
+        blockChanged(u.id, res);
         // in a hub with them: their voice and quick chat go (or come back)
         if (BR.hub && BR.hub.blockChanged) BR.hub.blockChanged(u.id, res.blocked);
       });
     }).catch(fail);
+  }
+  // A block made or lifted (here, in a hub or in the list of blocks). It is
+  // silent: friends stay friends. Lifted, what they sent meanwhile arrives:
+  // the conversation and the list load again.
+  function blockChanged(id, res) {
+    if (res.blocked) { toast('ブロックしました（相手には知らされません）'); return; }
+    toast(res.released ? 'ブロックを解除しました。ブロック中のメッセージ ' + res.released + '件が届きました' : 'ブロックを解除しました', 3000);
+    if (typeof res.unread === 'number') setUnread(res.unread);
+    if (!res.released) return;
+    delete chans['dm:' + id];
+    convs = null;
+    if (visible() && view === 'messages') loadConversations();
+    if (visible() && view === 'dm' && peer && peer.id === id) showChat('dm:' + id);
   }
   function loadBlocks() {
     var box = $('#pf-blocks');
@@ -1348,9 +1419,9 @@
         var x = el('button', 'text-btn', '解除');
         x.addEventListener('click', function () {
           x.disabled = true;
-          api.block(b.id, false).then(function () {
+          api.block(b.id, false).then(function (res) {
             row.parentNode.removeChild(row);
-            toast('ブロックを解除しました');
+            blockChanged(b.id, res);
             if (BR.hub && BR.hub.blockChanged) BR.hub.blockChanged(b.id, false);
             if (!box.querySelector('.pf-block-row')) box.hidden = true;
           }, function (err) { x.disabled = false; fail(err); });
@@ -1450,7 +1521,7 @@
     else touchConv(m, Number(key.slice(3)), mine);
     if (mine) return;
     if (here) {
-      if (m.kind === 'transfer' || m.kind === 'gift' || m.kind === 'item') {
+      if (m.kind === 'transfer' || m.kind === 'gift' || m.kind === 'item' || m.kind === 'present') {
         sfx(m.kind === 'transfer' ? 'money' : 'purchase');
         // out of the card that just popped into the chat
         var cards = document.querySelectorAll('.msg.xfer.jc-new');
@@ -1481,6 +1552,10 @@
     } else if (m.kind === 'item') {
       sfx('purchase');
       toast(name + 'さんから ' + itemName(m.text) + ' ×' + m.amount + ' が届きました！', 4200, open);
+      if (BR.juice) BR.juice.reward('#toast', 2);
+    } else if (m.kind === 'present') {
+      sfx('purchase');
+      toast(name + 'さんから' + BR.presents.name(m.text) + 'のプレゼントが届きました！タップして受け取ろう', 4200, open);
       if (BR.juice) BR.juice.reward('#toast', 2);
     } else if (m.from && BR.peter.is(m.from)) {
       BR.peter.notify(m, open);
@@ -1560,6 +1635,8 @@
     BR.avatars.setShop(h.iconShop);
     BR.shop.setSale(h.itemShop);
     BR.peter.set(h.peter);
+    BR.johnson.set(h.johnson);
+    BR.official.set(h.official);
     BR.jobs.set(h.me);
     BR.quests.setReady(h.me.questsReady);
     BR.news.serverRelease(h.me.release);
@@ -1617,6 +1694,7 @@
     });
     $('#group-new').addEventListener('click', function () { sfx('click'); openGroupForm(); });
     $('#chat-bar').addEventListener('click', function () { sfx('click'); compose(); });
+    $('#chat-gift').addEventListener('click', function () { sfx('click'); if (peer) BR.presents.open(peer); });
     $('#dm-profile').addEventListener('click', function () { sfx('click'); openProfile(peer); });
     $('#dm-money').addEventListener('click', function () { sfx('click'); openTransfer(peer); });
     $('#dm-battle').addEventListener('click', function () { sfx('click'); if (BR.play) BR.play.challenge(peer); });
@@ -1721,6 +1799,7 @@
     BR.live.on('typing', onTyping);
     BR.live.on('balance', function (b) { BR.app.serverBalance(b, b.quiet); });
     BR.live.on('presence', onPresence);
+    BR.live.on('present', onPresent);
     BR.live.on('friend', onFriend);
     BR.live.on('status', function (on) { $('#board-info').classList.toggle('off', !on); });
     // 友達と稼ぐ: an invitation came or ran out, someone joined or left
@@ -1756,12 +1835,15 @@
     openGroup: openGroupById,
     onMsg: onMsg,
     seenText: seenText,
+    blockChanged: blockChanged,
+    refreshMsg: refreshMsg,
     // signing up (the story has played): nothing extra any more, the guide takes over
     firstRun: function () {},
     // Escape on a keyboard / the app's back button: close the top-most layer; true if something closed
     escape: function () {
       if (entry.isOpen()) { entry.close(); return true; }
       if (closeGroupForm()) return true;
+      if (BR.safety && BR.safety.close()) return true;
       if (BR.feedback && BR.feedback.isOpen && BR.feedback.isOpen()) { BR.feedback.close(); return true; }
       return K.escape();
     }

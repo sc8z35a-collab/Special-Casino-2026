@@ -311,13 +311,134 @@ export const MIGRATIONS = [
        PRIMARY KEY (user_id, device)
      )`,
     'CREATE INDEX devices_device ON devices(device)'
+  ],
+  // v8: 金の生る木: the trees (what was given, the harvest cycle running, the
+  // money grown in it so far) and the auctions for more trees
+  [
+    `CREATE TABLE trees (
+       id         INTEGER PRIMARY KEY,
+       user_id    INTEGER NOT NULL,
+       name       TEXT    NOT NULL,
+       super      INTEGER NOT NULL DEFAULT 0,
+       given      INTEGER NOT NULL DEFAULT 0,
+       cycle      TEXT    NOT NULL DEFAULT '',
+       cycle_at   INTEGER NOT NULL DEFAULT 0,
+       cycle_end  INTEGER NOT NULL DEFAULT 0,
+       grown      REAL    NOT NULL DEFAULT 0,
+       grown_at   INTEGER NOT NULL DEFAULT 0,
+       harvested  INTEGER NOT NULL DEFAULT 0,
+       price      INTEGER NOT NULL DEFAULT 0,
+       created_at INTEGER NOT NULL
+     )`,
+    'CREATE INDEX trees_user ON trees(user_id)',
+    `CREATE TABLE tree_auctions (
+       id         INTEGER PRIMARY KEY,
+       user_id    INTEGER NOT NULL,
+       market     TEXT    NOT NULL,
+       state      TEXT    NOT NULL,
+       status     TEXT    NOT NULL DEFAULT 'live',
+       price      INTEGER NOT NULL DEFAULT 0,
+       created_at INTEGER NOT NULL,
+       ended_at   INTEGER NOT NULL DEFAULT 0
+     )`,
+    'CREATE INDEX tree_auctions_user ON tree_auctions(user_id, status)'
+  ],
+  // v9: NPC friends (ジョンソン): when they last sent money, how much in all,
+  // and their one rescue
+  [
+    `CREATE TABLE npc_friends (
+       user_id    INTEGER NOT NULL,
+       npc        TEXT    NOT NULL,
+       gift_at    INTEGER NOT NULL DEFAULT 0,
+       gifts      INTEGER NOT NULL DEFAULT 0,
+       given      INTEGER NOT NULL DEFAULT 0,
+       rescued_at INTEGER NOT NULL DEFAULT 0,
+       PRIMARY KEY (user_id, npc)
+     )`
+  ],
+  // v10: the age check, presents in the chat (when one was received), what a
+  // silent block holds back, the official bot's conversations, reports
+  // (通報), what the chat filter found, the operators' log (append-only and
+  // chained: rows can be neither changed nor deleted) and push subscriptions
+  [
+    // 18歳以上？ NULL: not answered yet, 1: yes, 0: no
+    'ALTER TABLE users ADD COLUMN age_ok INTEGER',
+    'ALTER TABLE users ADD COLUMN age_at INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE messages ADD COLUMN claimed_at INTEGER NOT NULL DEFAULT 0',
+    // sent to someone who blocked the sender: shown to them once they unblock
+    'ALTER TABLE messages ADD COLUMN held INTEGER NOT NULL DEFAULT 0',
+    // 報告 (bug) / 意見案 (idea) / '' (the old ratings); when the operators handled it
+    "ALTER TABLE feedback ADD COLUMN kind TEXT NOT NULL DEFAULT ''",
+    'ALTER TABLE feedback ADD COLUMN handled_at INTEGER NOT NULL DEFAULT 0',
+    `CREATE TABLE reports (
+       id          INTEGER PRIMARY KEY,
+       reporter_id INTEGER NOT NULL,
+       target_id   INTEGER NOT NULL,
+       kind        TEXT    NOT NULL,
+       body        TEXT    NOT NULL,
+       place       TEXT    NOT NULL DEFAULT '',
+       context     TEXT    NOT NULL DEFAULT '{}',
+       status      TEXT    NOT NULL DEFAULT 'open',
+       reward      INTEGER NOT NULL DEFAULT 0,
+       handled_by  INTEGER NOT NULL DEFAULT 0,
+       handled_at  INTEGER NOT NULL DEFAULT 0,
+       created_at  INTEGER NOT NULL
+     )`,
+    'CREATE INDEX reports_status ON reports(status, id)',
+    `CREATE TABLE detections (
+       id           INTEGER PRIMARY KEY,
+       sender_id    INTEGER NOT NULL,
+       recipient_id INTEGER NOT NULL DEFAULT 0,
+       group_id     INTEGER NOT NULL DEFAULT 0,
+       place        TEXT    NOT NULL,
+       original     TEXT    NOT NULL,
+       masked       TEXT    NOT NULL,
+       words        TEXT    NOT NULL,
+       message_id   INTEGER NOT NULL DEFAULT 0,
+       reviewed_at  INTEGER NOT NULL DEFAULT 0,
+       created_at   INTEGER NOT NULL
+     )`,
+    'CREATE INDEX detections_sender ON detections(sender_id, reviewed_at)',
+    // a player's conversation with the official bot: waiting for an answer since
+    // (0: answered), when the operators last wrote, the automatic answer
+    `CREATE TABLE bot_threads (
+       user_id       INTEGER PRIMARY KEY,
+       waiting_since INTEGER NOT NULL DEFAULT 0,
+       ops_at        INTEGER NOT NULL DEFAULT 0,
+       auto_at       INTEGER NOT NULL DEFAULT 0
+     )`,
+    `CREATE TABLE ops_log (
+       id          INTEGER PRIMARY KEY,
+       at          INTEGER NOT NULL,
+       actor_id    INTEGER NOT NULL DEFAULT 0,
+       actor_name  TEXT    NOT NULL DEFAULT '',
+       action      TEXT    NOT NULL,
+       target_id   INTEGER NOT NULL DEFAULT 0,
+       target_name TEXT    NOT NULL DEFAULT '',
+       summary     TEXT    NOT NULL,
+       detail      TEXT    NOT NULL DEFAULT '{}',
+       prev_hash   TEXT    NOT NULL,
+       hash        TEXT    NOT NULL
+     )`,
+    `CREATE TRIGGER ops_log_no_delete BEFORE DELETE ON ops_log
+     BEGIN SELECT RAISE(ABORT, 'the operators log cannot be deleted'); END`,
+    `CREATE TRIGGER ops_log_no_update BEFORE UPDATE ON ops_log
+     BEGIN SELECT RAISE(ABORT, 'the operators log cannot be changed'); END`,
+    `CREATE TABLE push_subs (
+       endpoint   TEXT    PRIMARY KEY,
+       user_id    INTEGER NOT NULL,
+       p256dh     TEXT    NOT NULL,
+       auth       TEXT    NOT NULL,
+       created_at INTEGER NOT NULL
+     )`,
+    'CREATE INDEX push_subs_user ON push_subs(user_id)'
   ]
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
-  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'meta'];
+  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

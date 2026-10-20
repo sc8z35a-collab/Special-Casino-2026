@@ -550,9 +550,11 @@
     if (!sp) return;
     var hl = this.hl;
     var ht = hl ? Math.max(0, (now - hl.t0) / 1000) : 0;
+    // 演出設定 (js/core/effects.js): the light on the line, the symbols' dance
+    var fx = BR.fx, lineOn = !fx || fx.on('line'), symOn = !fx || fx.on('symbols'), landOn = !fx || fx.on('spin');
 
     // pay line beam behind the symbols, with a light running along it
-    if (hl && hl.cols.length) {
+    if (hl && hl.cols.length && lineOn) {
       var a = Math.min(1, ht / 0.35);
       var y = (ROW_PITCH + CELL_H / 2) * res;
       var bw = (20 + 6 * Math.sin(ht * 9)) * res;
@@ -590,6 +592,17 @@
         var sym = r.buf[k];
         var row = k - 1;
         var win = hl && r.phase === 'idle' && row === 1 && hl.cols.indexOf(i) >= 0;
+        if (win && !symOn) {
+          // switched off: the winning symbol only lights up
+          var sx = x + COL_W * res / 2, sy = (yy + CELL_H / 2) * res, ss = 250 * res;
+          g.save();
+          g.globalCompositeOperation = 'lighter';
+          g.globalAlpha = Math.min(1, ht / 0.25) * 0.7;
+          g.drawImage(this.glow, sx - ss / 2, sy - ss / 2, ss, ss);
+          g.restore();
+          g.drawImage(sp.sharp[sym], Math.round(x), Math.round(yy * res));
+          continue;
+        }
         if (win) {
           var pulse = 0.5 + 0.5 * Math.sin(ht * Math.PI * 2 * 1.3 - Math.PI / 2);
           var ga = Math.min(1, ht / 0.25) * (0.6 + 0.4 * pulse);
@@ -628,7 +641,7 @@
           if (this.flare) this.winFx(g, sym, cx, cy, ht, res, i, false);
           continue;
         }
-        if (set === sp.sharp && r.flash > 0.02) {
+        if (set === sp.sharp && r.flash > 0.02 && landOn) {
           // the symbols squash as the reel hits home, then spring back
           var since = 1 - r.flash, give = Math.exp(-5 * since) * Math.cos(since * 13);
           var sqx = 1 + 0.05 * give, sqy = 1 - 0.08 * give;

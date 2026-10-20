@@ -1,7 +1,6 @@
 /* 運営へのフィードバック: players rate six things from 1 to 5 stars (any of
    them may be left out) and write whatever they like, as long as they like;
-   only the operator's account (FEEDBACK_ADMIN on the server, "taku") reads it,
-   in the menu's フィードバック tab. Players who have played a while are asked
+   the operators read it on the operator site (/ops/). Players who have played a while are asked
    once (the form opens by itself); after ✕ a small icon stays at the top
    right of the slot screen until they have sent something. The form is an
    overlay outside the scaled stage, so the text field keeps a normal size. */
@@ -12,7 +11,6 @@
   var $ = U.$, $$ = U.$$;
   var el = K.el;
   var ASKED = 'blockbuster-reels/feedback-asked';   // the form has opened by itself once
-  var SEEN = 'blockbuster-reels/feedback-seen';     // the operator: how many have been read
   var NOTE = '改善点とかお構いなしに書いてくれると助かります。';
   var ITEMS = [
     { key: 'slot', label: 'スロットの面白さ' },
@@ -22,7 +20,6 @@
     { key: 'looks', label: '見やすさ' },
     { key: 'polish', label: '完成度' }
   ];
-  var LONG = 420;   // comments longer than this start folded in the operator's list
   // a speech bubble with a star
   var OFFER_SVG = '<svg viewBox="0 0 32 32" aria-hidden="true">' +
     '<path d="M6 5h20a4 4 0 0 1 4 4v11a4 4 0 0 1-4 4H14l-6 5v-5H6a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4z" fill="#fff"/>' +
@@ -32,11 +29,9 @@
   var root = null, ta = null, sendBtn = null, errBox = null, offer = null;
   var ratings = {}, sending = false;
   var prompting = false, promptTimer = 0, askedNow = false;
-  var admin = { data: null, seq: 0, count: null };
 
   function stored(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function store(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* kept for this visit only */ } }
-  function pad2(n) { return n < 10 ? '0' + n : String(n); }
 
   /* ------------------------------------------------------------ the form --- */
   function build() {
@@ -225,7 +220,7 @@
   function blocked() {
     var L = BR.launch;
     if (document.hidden) return true;
-    if (!L || !L.done() || L.introPlaying() || L.maintenance()) return true;
+    if (!L || !L.done() || L.maintenance()) return true;
     if (BR.account && BR.account.isOpen()) return true;
     if (BR.bonus && BR.bonus.busy()) return true;
     if (BR.guide && BR.guide.active && BR.guide.active()) return true;
@@ -248,169 +243,28 @@
     open();
   }
 
-  /* ------------------------------------------------------------ the operator's tab --- */
-  function seen() { return Number(stored(SEEN)) || 0; }
-  function adminCount() {
-    var n = me && me.feedbackAdmin ? me.feedbackCount || 0 : 0;
-    return admin.count !== null ? Math.max(admin.count, n) : n;
-  }
-  function renderDot() {
-    var dot = $('#feedback-dot');
-    if (dot) dot.hidden = !(me && me.feedbackAdmin && adminCount() > seen());
-  }
-  function paneShown() {
-    var p = $('#pane-feedback');
-    return BR.screens.current() === 'board' && !!p && p.classList.contains('active');
-  }
-
-  function starRow(v, cls) {
-    var box = el('span', 'fb-mini-stars' + (cls ? ' ' + cls : ''));
-    for (var i = 1; i <= 5; i++) {
-      var s = el('i');
-      if (v >= i - 0.25) s.className = 'on';
-      else if (v >= i - 0.75) s.className = 'half';
-      box.appendChild(s);
-    }
-    return box;
-  }
-  function stamp(ts) {
-    var d = new Date(ts);
-    return K.fmtDate(ts) + ' ' + d.getHours() + ':' + pad2(d.getMinutes());
-  }
-
-  function adminNote(text) {
-    var list = $('#fb-list');
-    list.textContent = '';
-    list.appendChild(el('div', 'empty', text));
-  }
-
-  function renderAdmin(r) {
-    var list = $('#fb-list');
-    list.textContent = '';
-    var sum = el('section', 'fb-sum');
-    var head = el('div', 'fb-sum-head');
-    head.appendChild(el('span', '', 'みんなのフィードバック'));
-    head.appendChild(el('b', '', U.fmt(r.count)));
-    head.appendChild(el('span', 'fb-sum-unit', '件'));
-    sum.appendChild(head);
-    var avg = el('div', 'fb-avg');
-    ITEMS.forEach(function (it) {
-      var v = r.average ? r.average[it.key] : null;
-      var cell = el('div', 'fb-avg-item');
-      cell.appendChild(el('span', 'fb-avg-label', it.label));
-      var val = el('span', 'fb-avg-val');
-      if (typeof v === 'number') {
-        val.appendChild(starRow(v));
-        val.appendChild(el('b', '', v.toFixed(1)));
-      } else {
-        val.appendChild(el('b', 'none', '–'));
-      }
-      cell.appendChild(val);
-      avg.appendChild(cell);
-    });
-    sum.appendChild(avg);
-    list.appendChild(sum);
-
-    if (!r.feedback.length) {
-      list.appendChild(el('div', 'empty', 'まだフィードバックはありません'));
-      return;
-    }
-    r.feedback.forEach(function (f) {
-      var item = el('article', 'fb-item');
-      var top = el('div', 'fb-item-head');
-      top.appendChild(K.avatarEl(f.user || {}, 'sm'));
-      top.appendChild(el('span', 'fb-item-name uname', f.user && f.user.name ? f.user.name : '（いないプレイヤー）'));
-      top.appendChild(el('span', 'fb-item-time', stamp(f.at)));
-      item.appendChild(top);
-      var rates = el('div', 'fb-item-rates');
-      ITEMS.forEach(function (it) {
-        var v = f.ratings ? f.ratings[it.key] : 0;
-        var row = el('div', 'fb-item-rate');
-        row.appendChild(el('span', 'fb-item-label', it.label));
-        row.appendChild(v > 0 ? starRow(v) : el('span', 'none', '–'));
-        rates.appendChild(row);
-      });
-      item.appendChild(rates);
-      var text = f.comment || '';
-      var c = el('p', 'fb-item-comment' + (text ? '' : ' none'), text || '（コメントなし）');
-      item.appendChild(c);
-      if (text.length > LONG || text.split('\n').length > 10) {
-        c.classList.add('long');
-        var more = el('button', 'text-btn fb-more', '全文を表示');
-        more.type = 'button';
-        item.appendChild(more);
-      }
-      list.appendChild(item);
-    });
-  }
-
-  function showAdmin() {
-    var list = $('#fb-list');
-    if (!list) return;
-    var seq = ++admin.seq;
-    if (admin.data) renderAdmin(admin.data);
-    else adminNote('読み込み中…');
-    api.feedback().then(function (r) {
-      if (seq !== admin.seq) return;
-      admin.data = r;
-      admin.count = r.count;
-      store(SEEN, String(r.count));
-      renderDot();
-      renderAdmin(r);
-    }, function (err) {
-      if (seq !== admin.seq) return;
-      if (admin.data) K.fail(err);
-      else adminNote(err && err.message ? err.message : '読み込めませんでした');
-    });
-  }
-
-  function onLive(d) {
-    if (!me || !me.feedbackAdmin) return;
-    admin.count = Math.max(admin.count || 0, (d && d.count) || 0);
-    K.sfx('message');
-    K.toast('新しいフィードバックが届きました' + (d && d.from && d.from.name ? '（' + K.clip(d.from.name, 12) + 'さん）' : ''), 3200);
-    if (paneShown()) showAdmin();
-    else renderDot();
-  }
-
   /* ------------------------------------------------------------ my profile --- */
   function onMe(m) {
     me = m;
     if (!m) {
       stopPrompt();
       close();
-      admin.data = null;
-      admin.count = null;
     }
     renderOffer();
-    renderDot();
     if (m && m.feedback === 'ask') maybePrompt();
     else stopPrompt();
   }
 
   function init() {
     buildOffer();
-    var list = $('#fb-list');
-    if (list) {
-      list.addEventListener('click', function (e) {
-        var b = e.target.closest('.fb-more');
-        if (!b) return;
-        var c = b.previousElementSibling;
-        if (c) c.classList.remove('long');
-        b.parentNode.removeChild(b);
-        K.sfx('click');
-      });
-    }
     if (!api.online) return;
     BR.social.onMe(onMe);
-    BR.live.on('feedback', onLive);
   }
 
   BR.feedback = {
     init: init,
     open: open,
     close: close,
-    isOpen: isOpen,
-    showAdmin: showAdmin
+    isOpen: isOpen
   };
 })(window.BR = window.BR || {});

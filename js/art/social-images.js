@@ -15,14 +15,24 @@
       vampire: 'img/avatars/vampire.webp',
       cap: 'img/avatars/cap.webp',
       catcap: 'img/avatars/catcap.webp',
-      // ピーター (not a player's icon)
-      peter: 'img/avatars/peter.webp'
+      // the NPCs マイクソン (once ピーター) and ジョンソン, and Ice Smoker公式ボット (not players' icons)
+      peter: 'img/avatars/peter.webp',
+      johnson: 'img/avatars/johnson.webp',
+      official: 'img/avatars/official.webp'
     },
     cars: {
       'two-state-sedan': 'img/cars/two-state-sedan.webp'
     },
     items: {
       omamori: 'img/items/omamori.webp'
+    },
+    // presents in a chat (js/ui/presents.js)
+    presents: {
+      cookie: 'img/gifts/cookie.webp',
+      bear: 'img/gifts/bear.webp',
+      snowman: 'img/gifts/snowman.webp',
+      pumpkin: 'img/gifts/pumpkin.webp',
+      diamond: 'img/gifts/diamond.webp'
     },
     fruits: {
       strawberry: 'img/fruits/strawberry.webp',
@@ -39,8 +49,12 @@
       menu: 'img/ui/menu.webp',
       tree: 'img/ui/money-tree.webp'
     },
-    // 金の生る木 (coming soon): its screen
-    treeBig: 'img/ui/money-tree-big.webp',
+    // 金の生る木: its nine looks, and the seed sold at the auctions
+    tree: {
+      stages: ['img/tree/stage-1.webp', 'img/tree/stage-2.webp', 'img/tree/stage-3.webp', 'img/tree/stage-4.webp', 'img/tree/stage-5.webp',
+        'img/tree/stage-6.webp', 'img/tree/stage-7.webp', 'img/tree/stage-8.webp', 'img/tree/stage-9.webp'],
+      seed: 'img/tree/seed.webp'
+    },
     // バイト
     jobs: {
       garage: 'img/jobs/garage.webp'
@@ -52,7 +66,6 @@
   BR.LAUNCH_MEDIA = {
     studio: 'video/studio.mp4',
     studioLite: 'video/studio-lite.mp4',
-    intro: 'video/intro.mp4',
     bgm: 'sounds/bgm-title.mp3',
     peter: ['sounds/peter-1.mp3', 'sounds/peter-2.mp3']
   };

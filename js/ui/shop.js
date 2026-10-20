@@ -41,7 +41,7 @@
 
   /* ------------------------------------------------------------ Shop --- */
   var LINES = {
-    omamori: ['回す前にワンタップで発動', '負けたスピンの損を 5〜20% 軽減', 'まれに 100% 軽減（大吉）']
+    omamori: ['回す前にワンタップで発動', '負けたスピンの損を 5〜20% 軽減（友達と稼ぐ 特典で最大70%）', 'まれに 100% 軽減（大吉・友達と稼ぐ 特典で確率2倍）']
   };
 
   function showShop() {
@@ -278,7 +278,7 @@
     var pop = el('div', 'charm-pop' + (full ? ' full' : ''));
     pop.appendChild(el('i', 'charm-pic'));
     var t = el('div', 'charm-pop-text');
-    t.appendChild(el('b', '', full ? '大吉！お守り加護' : 'お守り加護'));
+    t.appendChild(el('b', '', (full ? '大吉！お守り加護' : 'お守り加護') + (c.hub ? '（友達と稼ぐ）' : '')));
     t.appendChild(el('span', '', (full ? '100%' : c.pct + '%') + ' 軽減　+' + U.fmt(c.back)));
     pop.appendChild(t);
     (where || layer).appendChild(pop);

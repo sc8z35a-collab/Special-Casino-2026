@@ -257,12 +257,14 @@ test('friend requests: decline, cancel, crossing requests, blocking', async () =
   r = await call('POST', '/api/friends/request', { token: c.token, body: { user: a.me.id } });
   assert.equal(r.friendship, 'friends');
   assert.equal((await call('POST', '/api/friends/request', { token: a.token, body: { user: c.me.id } })).error.code, 'already');
-  // blocking ends the friendship and stops new requests
+  // a block is silent: the friendship stays, and a request to the one who
+  // blocked seems to go out but never reaches them
   await call('POST', '/api/block', { token: c.token, body: { user: a.me.id, blocked: true } });
-  assert.equal((await call('GET', `/api/user?id=${c.me.id}`, { token: a.token })).user.friendship, 'none');
-  assert.equal((await call('POST', '/api/friends/request', { token: a.token, body: { user: c.me.id } })).error.code, 'blocked');
+  assert.equal((await call('GET', `/api/user?id=${c.me.id}`, { token: a.token })).user.friendship, 'friends');
   await call('POST', '/api/block', { token: c.token, body: { user: a.me.id, blocked: false } });
-  assert.equal((await call('POST', '/api/friends/request', { token: a.token, body: { user: c.me.id } })).friendship, 'outgoing');
+  await call('POST', '/api/block', { token: c.token, body: { user: b.me.id, blocked: true } });
+  assert.equal((await call('POST', '/api/friends/request', { token: b.token, body: { user: c.me.id } })).friendship, 'outgoing');
+  assert.deepEqual((await call('GET', '/api/friends', { token: c.token })).incoming, []);
 });
 
 test('direct messages between friends: text is cleaned, unread counts, blocking', async () => {
@@ -285,11 +287,15 @@ test('direct messages between friends: text is cleaned, unread counts, blocking'
   const thread = await call('GET', `/api/messages?with=${a.me.id}`, { token: b.token });
   assert.deepEqual(thread.messages.map((m) => m.from && m.from.id), [null, a.me.id, b.me.id]);
   assert.equal((await call('POST', '/api/read', { token: b.token, body: { with: a.me.id } })).unread, 0);
+  // blocked: a still sends, b gets nothing until unblocking
   await call('POST', '/api/block', { token: b.token, body: { user: a.me.id, blocked: true } });
-  assert.equal((await call('POST', '/api/messages', { token: a.token, body: { to: b.me.id, text: 'まだ？' } })).status, 403);
+  assert.equal((await call('POST', '/api/messages', { token: a.token, body: { to: b.me.id, text: 'まだ？' } })).status, 200);
   assert.equal((await call('GET', `/api/user?id=${a.me.id}`, { token: b.token })).blocked, true);
+  assert.equal((await call('GET', '/api/conversations', { token: b.token })).unread, 0);
+  assert.equal((await call('POST', '/api/block', { token: b.token, body: { user: a.me.id, blocked: false } })).released, 1);
   conv = await call('GET', '/api/conversations', { token: b.token });
-  assert.equal(conv.conversations[0].friend, false);
+  assert.equal(conv.conversations[0].friend, true);
+  assert.equal(conv.unread, 1);
 });
 
 test('read receipts and 入力中 in a conversation', async () => {

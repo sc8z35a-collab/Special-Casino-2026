@@ -1,7 +1,6 @@
 /* Launching the game: the studio logos at every launch (they cannot be
-   skipped), the title music while the title screen is up, the story video
-   played once after signing up (skippable), and the maintenance notice when
-   the server's daily quota is used up. Browsers only play sound after a
+   skipped), the title music while the title screen is up, and the
+   maintenance notice when the server's daily quota is used up. Browsers only play sound after a
    tap, so outside the Android app a "TAP TO START" comes first. */
 (function (BR) {
   'use strict';
@@ -9,6 +8,7 @@
   var U = BR.util, api = BR.api;
   var $ = U.$;
   var M = BR.LAUNCH_MEDIA;
+  // (the story video after signing up was left out in DEV6: its old mark goes)
   var INTRO_KEY = 'blockbuster-reels/intro-pending';
 
   var done = false, waiting = [];
@@ -98,49 +98,8 @@
   }
 
   /* ------------------------------------------------------------ title music --- */
-  function musicOn() { whenDone(function () { if (BR.screens.current() === 'start' && !intro.on) BR.sfx.music.play(M.bgm); }); }
+  function musicOn() { whenDone(function () { if (BR.screens.current() === 'start') BR.sfx.music.play(M.bgm); }); }
   function musicOff() { BR.sfx.music.stop(); }
-
-  /* ------------------------------------------------------------ the story --- */
-  var intro = { on: false, next: null };
-
-  function prefetchIntro() { if (api.online) blobUrl(M.intro); }
-
-  // Plays the story once (after signing up), then `next`.
-  function playIntro(next) {
-    if (!api.online) { next(); return; }
-    try { localStorage.setItem(INTRO_KEY, '1'); } catch (e) { /* only this time */ }
-    intro.on = true;
-    intro.next = next;
-    musicOff();
-    var root = $('#intro'), v = $('#intro-video');
-    root.hidden = false;
-    root.classList.remove('out');
-    $('#intro-wait').hidden = false;
-    blobUrl(M.intro).then(function (url) {
-      if (!intro.on) return;
-      v.src = url;
-      v.muted = false;
-      var p = v.play();
-      if (p && p.catch) p.catch(function () { v.muted = true; v.play().catch(endIntro); });
-    });
-  }
-  function endIntro() {
-    if (!intro.on) return;
-    intro.on = false;
-    try { localStorage.removeItem(INTRO_KEY); } catch (e) { /* ignore */ }
-    var root = $('#intro'), v = $('#intro-video');
-    v.pause();
-    root.classList.add('out');
-    setTimeout(function () {
-      root.hidden = true;
-      v.removeAttribute('src');
-      v.load();
-    }, 400);
-    var f = intro.next;
-    intro.next = null;
-    if (f) f();
-  }
 
   /* ------------------------------------------------------------ maintenance --- */
   var maint = { on: false, timer: 0 };
@@ -175,18 +134,9 @@
 
   function init() {
     startSplash();
-    $('#intro-skip').addEventListener('click', function () { BR.sfx.play('click'); endIntro(); });
-    $('#intro-video').addEventListener('ended', endIntro);
-    $('#intro-video').addEventListener('error', endIntro);
-    $('#intro-video').addEventListener('playing', function () { $('#intro-wait').hidden = true; });
+    try { localStorage.removeItem(INTRO_KEY); } catch (e) { /* nothing kept */ }
     $('#maint-reload').addEventListener('click', function () { BR.sfx.play('click'); location.reload(); });
-    if (api.online) {
-      api.on('maintenance', showMaintenance);
-      // signed up but the app was closed during the story: it plays now
-      var pending = false;
-      try { pending = !!localStorage.getItem(INTRO_KEY); } catch (e) { /* ignore */ }
-      if (pending) whenDone(function () { api.restored.then(function () { if (api.hasToken()) playIntro(function () {}); }); });
-    }
+    if (api.online) api.on('maintenance', showMaintenance);
   }
 
   BR.launch = {
@@ -196,10 +146,6 @@
     blobUrl: blobUrl,
     musicOn: musicOn,
     musicOff: musicOff,
-    prefetchIntro: prefetchIntro,
-    playIntro: playIntro,
-    introPlaying: function () { return intro.on; },
-    skipIntro: endIntro,
     maintenance: function () { return maint.on; }
   };
 })(window.BR = window.BR || {});

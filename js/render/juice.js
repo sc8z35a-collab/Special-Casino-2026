@@ -5,7 +5,10 @@
    banners and coins that fly into the wallet. Positions are design px of the
    stage; at(node) finds an element there whatever the scale, also on the
    turned (portrait) stage. The canvas only runs while something is on it,
-   and every tap on a button answers with a small burst of light. */
+   and every tap on a button answers with a small burst of light. What the
+   player switched off in 演出設定 (js/core/effects.js) is left out here:
+   particles, coins, flashes, shakes, bumps and celebrations each have their
+   switch; whatever waits for a flight (a count, a callback) still runs. */
 (function (BR) {
   'use strict';
 
@@ -15,6 +18,8 @@
   // looks only: no need for the CSPRNG here
   function rr(a, b) { return a + (b - a) * Math.random(); }
   function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+  // 演出設定: is this kind of effect on?
+  function fxOn(k) { return !BR.fx || BR.fx.on(k); }
 
   var stage = null, cv = null, g = null, flashEl = null;
   var W = 2000, H = 924, pres = 1;
@@ -397,8 +402,9 @@
     return Math.max(0, Math.min(1, a)) * p.a;
   }
 
+  // (chips and coins are 演出設定's coins, everything else its particles)
   function add(p) {
-    if (parts.length >= MAX) return null;
+    if (parts.length >= MAX || !fxOn(p.k === PIC ? 'coins' : 'particles')) return null;
     p.age = 0;
     p.delay = p.delay || 0;
     p.rot = p.rot || 0; p.vr = p.vr || 0;
@@ -506,11 +512,13 @@
   }
   function ring(x, y, o) {
     o = o || {};
+    if (!fxOn('particles')) return;
     rings.push({ x: x, y: y, r0: o.r0 || 8, r1: o.r1 || 140, t: -(o.delay || 0), dur: o.dur || 0.5, w: o.w || 9, c: col(o.color || 'gold'), sy: o.sy || 1 });
     wake();
   }
   function bloom(x, y, o) {
     o = o || {};
+    if (!fxOn('particles')) return;
     blooms.push({ x: x, y: y, size: o.size || 300, t: -(o.delay || 0), dur: o.dur || 0.6, a: o.a === undefined ? 0.9 : o.a, sy: o.sy || 1 });
     wake();
   }
@@ -528,7 +536,7 @@
   }
   function bolt(x0, y0, x1, y1, o) {
     o = o || {};
-    if (calm) return;
+    if (calm || !fxOn('particles')) return;
     var b = { x0: x0, y0: y0, x1: x1, y1: y1, segs: o.segs || 12, amp: o.amp || 40, t: -(o.delay || 0), dur: o.dur || 0.35, w: o.w || 4, c: col(o.color || 'blue'), re: 0 };
     b.pts = jag(b);
     bolts.push(b);
@@ -537,13 +545,15 @@
 
   // a flash of the whole stage
   function flash(color, strength, ms) {
-    if (!flashEl || !flashEl.animate) return;
+    if (!flashEl || !flashEl.animate || !fxOn('flash')) return;
     flashEl.style.background = color || '#fff6dc';
     flashEl.animate([{ opacity: Math.min(1, (strength || 0.6) * (calm ? 0.4 : 1)) }, { opacity: 0 }], { duration: ms || 380, easing: 'ease-out' });
   }
-  // a camera shake of one element (the active screen by default)
+  // a camera shake of one element (the active screen by default); never
+  // while the reels turn (a reward coming in meanwhile): the machine stays
+  // still when it spins
   function shake(node, px, ms) {
-    if (calm) return;
+    if (calm || !fxOn('shake') || (BR.game && BR.game.spinning)) return;
     if (typeof node === 'string') node = $(node);
     node = node || $('.screen.active');
     if (!node || !node.animate) return;
@@ -555,24 +565,11 @@
     k.push({ transform: 'translate(0,0)' });
     node.animate(k, { duration: ms || 360, easing: 'linear' });
   }
-  // a push in one direction that springs back (a thud, a recoil)
-  function kick(node, dx, dy, ms) {
-    if (calm) return;
-    if (typeof node === 'string') node = $(node);
-    if (!node || !node.animate) return;
-    node.animate([
-      { transform: 'translate(0,0)' },
-      { transform: 'translate(' + dx + 'px,' + dy + 'px)', offset: 0.18 },
-      { transform: 'translate(' + (-dx * 0.35) + 'px,' + (-dy * 0.35) + 'px)', offset: 0.52 },
-      { transform: 'translate(' + (dx * 0.12) + 'px,' + (dy * 0.12) + 'px)', offset: 0.78 },
-      { transform: 'translate(0,0)' }
-    ], { duration: ms || 260, easing: 'ease-out' });
-  }
 
   // a bump of one element (a box that just got something)
   function bump(node, s) {
     if (typeof node === 'string') node = $(node);
-    if (!node || !node.animate) return;
+    if (!node || !node.animate || !fxOn('pops')) return;
     s = s || 1.18;
     node.animate([
       { transform: 'scale(1)' },
@@ -671,7 +668,7 @@
   var PRESS = 'button, .tab, [role="button"], .fr-row, .conv-row, .q-row, .bonus-day';
   var lastPress = null;
   function onPress(e) {
-    if (!stage || e.button > 0) return;
+    if (!stage || e.button > 0 || !fxOn('pops')) return;
     var b = e.target && e.target.closest && e.target.closest(PRESS);
     if (!b || b.disabled || !stage.contains(b)) return;
     var p = toStage(e.clientX, e.clientY);
@@ -700,6 +697,7 @@
 
   // something good happened at a point (a purchase, a reward)
   function celebrate(where, level) {
+    if (!fxOn('celebrate')) return;
     var p = at(where);
     level = level || 1;
     ring(p.x, p.y, { r0: 10, r1: 160 + level * 80, dur: 0.6, w: 10 + level * 2 });
@@ -748,6 +746,8 @@
     // many updates in a row (a count, a re-sync): one flight
     if (gainAt[k] && now - gainAt[k] < 300) return 0;
     if (held(k, amount)) return 0;
+    // coins switched off (演出設定): the wallet just counts
+    if (!fxOn('coins')) return 0;
     gainAt[k] = now;
     var src = from || freshSource();
     if (src) { flyIn(k, amount, src); return FIRST; }
@@ -760,7 +760,7 @@
   // o = { n, size }: more and bigger coins (a big win pouring out)
   function payout(k, amount, from, o) {
     var item = $('.wallet .w-' + k);
-    if (!stage || !item || !visible(item) || !(amount > 0)) return;
+    if (!stage || !item || !visible(item) || !(amount > 0) || !fxOn('coins')) return;
     if (gainAt[k] && U.now() - gainAt[k] < 400) return;
     gainAt[k] = U.now();
     flyIn(k, amount, from, o);
@@ -814,7 +814,7 @@
   BR.juice = {
     init: init, resize: resize, at: at, size: sizeOf, visible: visible, toStage: toStage,
     sparks: sparks, stars: stars, coins: coins, confetti: confetti, shards: shards, smoke: smoke,
-    ring: ring, bloom: bloom, bolt: bolt, flash: flash, shake: shake, kick: kick, bump: bump,
+    ring: ring, bloom: bloom, bolt: bolt, flash: flash, shake: shake, bump: bump,
     text: text, banner: banner, fly: fly, rain: rain,
     tap: tap, celebrate: celebrate, gain: gain, source: source, payout: payout, reward: reward, hold: hold,
     calm: function () { return calm; },

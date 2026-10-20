@@ -44,6 +44,7 @@
 
   /* ------------------------------------------------------------ a small win --- */
   function smallWin(res) {
+    if (BR.fx && !BR.fx.on('combo')) return;
     var f = el('div', 'cb-float');
     f.appendChild(el('i', 'ic ic-chip'));
     f.appendChild(el('span', '', '+' + U.fmt(res.total)));
@@ -63,6 +64,7 @@
 
   /* ------------------------------------------------------------ the streak --- */
   function badge(n, sound) {
+    if (BR.fx && !BR.fx.on('combo')) return;
     var lv = level(n);
     clearTimeout(badgeTimer);
     if (badgeNode && badgeNode.parentNode) badgeNode.parentNode.removeChild(badgeNode);
@@ -136,7 +138,8 @@
   var fever = null;   // { nodes, sign, timer, tick }
 
   function feverOn() {
-    if (fever) return;
+    // switched off in 演出設定: the streak goes on without the show
+    if (fever || (BR.fx && !BR.fx.on('fever'))) return;
     var J = BR.juice;
     var edge = el('div', 'fv-edge'), glowing = el('div', 'fv-reels'), sign = el('div', 'fv-sign');
     var word = el('div', 'fv-word');
@@ -149,7 +152,6 @@
     [edge, glowing, sign].forEach(function (n) { screen().appendChild(n); });
     screen().classList.add('fever');
     fever = { nodes: [edge, glowing, sign], sign: sign, timer: setInterval(embers, 140), tick: 0 };
-    if (BR.slotfx) BR.slotfx.fever(true);
     BR.sfx.fever(true);
     BR.sfx.play('fever');
     if (!J) return;
@@ -207,7 +209,6 @@
     fever = null;
     clearInterval(f.timer);
     screen().classList.remove('fever');
-    if (BR.slotfx) BR.slotfx.fever(false);
     BR.sfx.fever(false);
     var s = J && J.at(f.sign);
     f.nodes.forEach(function (n) { n.classList.add('out'); });

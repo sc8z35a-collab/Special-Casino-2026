@@ -46,7 +46,6 @@
     css += '.ic-menu{background-image:' + url(soc.buttons.menu) + '}\n';
     css += '.ic-quest,.q-icon,.qn-icon{background-image:' + url(soc.buttons.quest) + '}\n';
     css += '.ic-tree{background-image:' + url(soc.buttons.tree) + '}\n';
-    css += '.tree-art{background-image:' + url(soc.treeBig) + '}\n';
     css += '.av-chain{background-image:' + url(soc.chain) + '}\n';
     css += '.sale-badge{background-image:' + url(soc.sale) + '}\n';
     if (soc.items.omamori) css += '.charm-pic{background-image:' + url(soc.items.omamori) + '}\n';
@@ -383,7 +382,9 @@
     // the WIN box shows the win right away; the coins jump out of the winning
     // symbols into the wallet (a BIG WIN pays out when its overlay is over)
     var mid = BR.slotfx ? BR.slotfx.win(res, cols) : null;
-    setWinAmount(res.total, true, res.tier < 2);
+    // BIG WIN switched off in 演出設定: shown like a plain WIN (the WIN box counts up)
+    var overlay = res.tier >= 2 && (!BR.fx || BR.fx.on('bigwin'));
+    setWinAmount(res.total, true, !overlay);
     if (res.tier >= 2) game.hold = res.total;
     renderWallet(true, mid);
     renderBet();
@@ -401,9 +402,9 @@
       if (game.watch) nextWatched();
     };
     // a plain WIN has no overlay: the lit line, the WIN box and the sound
-    if (res.tier < 2) {
-      BR.sfx.play('win');
-      setTimeout(done, 700);
+    if (!overlay) {
+      BR.sfx.play(res.tier >= 2 ? 'bigWin' : 'win');
+      setTimeout(done, res.tier >= 2 ? 1400 : 700);
       return;
     }
     fx.play({ tier: res.tier, amount: res.total, bet: res.bet, mult: res.mult, cols: cols, auto: !!game.watch }).then(done);
@@ -566,8 +567,12 @@
     }
     press($('#btn-get'), nav('tokens'));
     press($('#btn-rules'), nav('rules'));
-    // 金の生る木: its own screen (coming soon)
-    press($('#btn-tree'), nav('tree'));
+    // 金の生る木 (online)
+    press($('#btn-tree'), function () {
+      if (game.busy()) { BR.sfx.play('deny'); return; }
+      BR.sfx.play('click');
+      BR.tree.open();
+    });
     press($('#w-plus'), function () {
       if (BR.screens.current() === 'tokens') return;
       nav('tokens')();
@@ -676,9 +681,16 @@
     BR.cars.init();
     BR.shop.init();
     BR.peter.init();
+    BR.johnson.init();
+    BR.official.init();
+    BR.presents.init();
+    BR.safety.init();
+    BR.push.init();
     BR.bonus.init();
     BR.quests.init();
     BR.jobs.init();
+    BR.tree.init();
+    BR.effects.init();
     BR.news.init();
     BR.call.init();
     BR.watch.init();

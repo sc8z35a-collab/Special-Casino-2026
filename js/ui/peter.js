@@ -1,4 +1,4 @@
-/* ピーター in the chat: always online, top of the message list. His own
+/* マイクソン (once ピーター), the lender, in the chat: always online, top of the message list. His own
    offers come with his voice, played once when the chat is opened, and a
    「借りる」 button while the offer stands; the chat header shows what is
    owed with a 「返済する」 button. Loans can also be asked for in plain words
@@ -125,7 +125,7 @@
       onOk: function (n) {
         if (!(n > 0)) return;
         K.confirmBox(function (p) {
-          p.appendChild(document.createTextNode('ピーターに'));
+          p.appendChild(document.createTextNode((who ? who.name : 'マイクソン') + 'に'));
           p.appendChild(K.amountEl(n, 'dollars', 'confirm-amt'));
           p.appendChild(document.createTextNode('返済しますか？'));
           p.appendChild(el('small', 'confirm-sub', n >= debt.owed ? 'これで全額返済です。' : '返済後の残り: $' + U.fmt(debt.owed - n)));
@@ -162,7 +162,7 @@
   // a message from him arrived (the chat is not open): tap to open it
   function notify(m, open) {
     sfx('notify');
-    toast('ピーター: ' + K.clip(m.text, 30), 4200, open);
+    toast((who ? who.name : 'マイクソン') + ': ' + K.clip(m.text, 30), 4200, open);
   }
 
   function init() {

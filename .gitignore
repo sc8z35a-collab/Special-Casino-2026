@@ -18,3 +18,9 @@ app/android/.gradle/
 app/android/build/
 app/android/app/build/
 app/android/local.properties
+
+# probes the app test writes while it runs
+download/test-*.apk
+
+# helper agents' working copies
+.claude/worktrees/
