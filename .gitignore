@@ -24,3 +24,6 @@ download/test-*.apk
 
 # helper agents' working copies
 .claude/worktrees/
+
+# the 3D models as exported (big; tools/3d/build.sh makes img/3d/*.glb from them)
+tools/3d/source/

@@ -78,25 +78,24 @@ test('bans: アクセス禁止 a week, BAN 30 days, 永久BAN until lifted; oper
   let r = await ops('POST', '/api/ops/ban', { id: p.me.id, kind: 'suspend' });
   assert.equal(r.player.ban.kind, 'suspend');
   assert.ok(Math.abs(r.player.ban.until - (Date.now() + 7 * 86400000)) < 60000);
+  // the game stops (the login stays, for the locked title screen to ask with)
   r = await me(p);
-  assert.equal(r.status, 401, 'signed out');
-  r = await login('Banned1');
-  assert.equal(r.status, 403);
-  assert.equal(r.error.code, 'banned');
-  assert.equal(r.error.kind, 'suspend');
+  assert.deepEqual([r.status, r.error.code, r.error.kind], [403, 'banned', 'suspend']);
   assert.match(r.error.message, /アクセス禁止/);
+  r = await login('Banned1');
+  assert.deepEqual([r.ban.code, r.ban.kind, r.me], ['banned', 'suspend', undefined]);
   // a week later it has run out
   setUser(p.me.id, { ban_until: Date.now() - 1000 });
-  assert.equal((await login('Banned1')).status, 200);
+  assert.ok((await login('Banned1')).me);
   // BAN: 30 days; 永久BAN: no end; both lifted whenever the operator likes
   r = await ops('POST', '/api/ops/ban', { id: p.me.id, kind: 'ban' });
   assert.ok(Math.abs(r.player.ban.until - (Date.now() + 30 * 86400000)) < 60000);
   r = await ops('POST', '/api/ops/ban', { id: p.me.id, kind: 'perma' });
   assert.deepEqual([r.player.ban.kind, r.player.ban.until], ['perma', 0]);
-  assert.match((await login('Banned1')).error.message, /永久BAN/);
+  assert.match((await login('Banned1')).ban.message, /永久BAN/);
   r = await ops('POST', '/api/ops/ban', { id: p.me.id, kind: 'none' });
   assert.equal(r.player.ban, null);
-  assert.equal((await login('Banned1')).status, 200);
+  assert.ok((await login('Banned1')).me);
   // the operator's own accounts
   assert.equal((await ops('POST', '/api/ops/ban', { id: taku.me.id, kind: 'perma' })).error.code, 'operator');
   assert.equal((await ops('POST', '/api/ops/ban', { id: p.me.id, kind: 'forever' })).error.code, 'bad_kind');

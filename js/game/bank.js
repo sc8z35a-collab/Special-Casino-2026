@@ -43,12 +43,22 @@
     return Math.max(0, Math.min(Math.floor(S.dollars / C.tokenPrice), C.dailyLimit - boughtToday()));
   }
 
+  var localStreak = 0;
   var local = {
     // settles asynchronously like the server does
     spin: function (bet) {
       return Promise.resolve().then(function () {
         if (S.tokens < bet) return fail('insufficient', 'スピントークンが不足しています');
         var res = BR.engine.spin(bet);
+        // wins in a row: from C.comboDouble on, a win pays double (as online)
+        localStreak = res.total > 0 ? localStreak + 1 : 0;
+        res.combo = localStreak;
+        if (res.total > 0 && localStreak >= C.comboDouble) {
+          res.total *= 2;
+          res.double = true;
+          var m = res.total / bet;
+          res.tier = m >= C.tiers.superBig ? 3 : m >= C.tiers.big ? 2 : 1;
+        }
         S.tokens = S.tokens - bet + res.total;
         S.stats.spins++;
         S.stats.won += res.total;

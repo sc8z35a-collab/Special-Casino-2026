@@ -5,11 +5,13 @@ import { ApiError } from '../core/errors.js';
 export const SECURITY_HEADERS = {
   'Content-Security-Policy': [
     "default-src 'self'",
-    "script-src 'self'",
+    // (wasm-unsafe-eval: the 3D models' geometry decoder is WebAssembly)
+    "script-src 'self' 'wasm-unsafe-eval'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    "connect-src 'self'",
+    // (blob: the 3D models' textures are read from the model file in the page)
+    "connect-src 'self' blob:",
     "manifest-src 'self'",
     "media-src 'self' data: blob:",
     "object-src 'none'",

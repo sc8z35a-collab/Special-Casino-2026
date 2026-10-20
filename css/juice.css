@@ -612,3 +612,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 .fx-row { padding: 12px 6px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
 .fx-foot { display: flex; gap: 16px; margin-top: 18px; }
 .fx-foot .act-btn { height: 74px; font-size: 25px; }
+
+/* the 3D win titles (js/render/win3d.js): in the BIG WIN layer, and over the reels for a plain WIN */
+.win3d { display: none; pointer-events: none; }
+#screen-slot > .win3d.win3d-pop { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 30; }
+.fx-off-model3d .win3d { display: none !important; }

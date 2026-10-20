@@ -198,6 +198,10 @@ test('update bonus: $250 000 for every release a player updates past; new player
     const a = await register('Updater');
     const release = () => call('POST', '/api/release', { token: a.token, body: { release: RELEASE } });
     assert.deepEqual(await release().then((r) => [r.bonus, r.updates, r.outdated]), [0, 0, false]);
+    // when each release went live here (Dev News shows it): the server's own start
+    const { released } = await release();
+    assert.deepEqual(Object.keys(released), [String(RELEASE)]);
+    assert.ok(Math.abs(released[RELEASE] - Date.now()) < 60000);
     setUser(a.me.id, { release_seen: RELEASE - 1 });
     assert.equal((await call('POST', '/api/release', { token: a.token, body: { release: RELEASE - 1 } })).outdated, true);
     let before = (await call('GET', '/api/me', { token: a.token })).me.dollars;

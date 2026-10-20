@@ -12,6 +12,8 @@
   /* ------------------------------------------------------------ navigation --- */
   function show(name) {
     if (name === current) return;
+    // banned: the title screen only (js/ui/banlock.js)
+    if (name !== 'start' && BR.banlock && BR.banlock.active()) return;
     var prev = current;
     current = name;
     $$('.screen').forEach(function (s) { s.classList.toggle('active', s.id === 'screen-' + name); });

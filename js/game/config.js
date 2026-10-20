@@ -22,6 +22,12 @@
     bets: [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000],
     // win presentation tiers by multiplier: WIN < 5x <= BIG WIN < 15x <= SUPER BIG WIN
     tiers: { big: 5, superBig: 15 },
+    // from this many wins in a row (the combo; in a hub the one everyone
+    // shares) every win pays double
+    comboDouble: 5,
+    // アクセス日数 (login days, all told): Ice Smoker公式ボット sends `amount` $
+    // by itself on each of these (not to a 永久BAN account)
+    accessDays: { at: [5, 10, 15, 20, 25, 30, 35], amount: 250000 },
     tokenPrice: 10,          // $ per spin token
     dailyLimit: 10000000,    // spin tokens that can be bought per UTC day
     dailyFree: 1000,         // free tokens claimable once per UTC day
@@ -41,12 +47,34 @@
       { id: 'red', name: 'レッド', price: 350000, rare: true },
       { id: 'vampire', name: 'ヴァンパイア', price: 800000, rare: true }
     ],
-    // Car Owner shop (price in $)
+    // Car Owner shop (price in $); `model`: a 3D model to look at
+    // (img/3d/cars/<id>.glb, js/render/garage3d.js)
     cars: [
-      { id: 'two-state-sedan', name: 'Two state セダン', price: 1200000 }
+      { id: 'two-state-sedan', name: 'Two state セダン', price: 1200000 },
+      { id: 'blue-lightning', name: 'ブルーライトニング', price: 6000000, model: true }
     ],
-    // Shop (price in $, always 10-40 % off like the icons); anything bought
-    // here can be given to friends, up to `max` per player
+    // the garage holds this many cars; one more place costs `slotPrice` $ (for good, any number)
+    garage: { slots: 2, slotPrice: 1000000 },
+    // Car Owner sales (js/game/sale.js), never two at once: on `chance` % of
+    // the days / weeks / months (the yearly one always), `hours` long, on
+    // `cars` cars at random (0: all of them), each `min`-`max` % off
+    carSales: {
+      day: { name: '極セール', chance: 5, hours: 5, cars: 2, min: 1, max: 10 },
+      week: { name: '超極セール', chance: 5, hours: 24, cars: 5, min: 10, max: 30 },
+      month: { name: '超ダイナミックセール', chance: 5, hours: 24, cars: 8, min: 20, max: 45 },
+      year: { name: '年感謝セール', chance: 100, hours: 24, cars: 0, min: 10, max: 30 }
+    },
+    // the car buy-back: a car's price now (with its sale) less `min`-`max` %,
+    // a new rate every Japan day; the 大廃棄セール (on `chance` % of the
+    // fortnights, a day long): every car less the same `min`-`max` % (by `step`)
+    carBuyback: { min: 10, max: 35, disposal: { name: '大廃棄セール', chance: 45, min: 2.5, max: 10, step: 0.5 } },
+    // renting cars out (any number of one's cars): every `hours` hours customers
+    // come (each of these with its chance), paying `min`-`max` $ each (the
+    // dearer the car, the more), and `vip.chance` of them `vip.pay` $; a car
+    // out is away for `hours` hours at least (stopping it waits for that)
+    carRental: { hours: 5, customers: [1, 0.9, 0.4, 0.3, 0.1], min: 10000, max: 60000, spread: 20000, vip: { chance: 0.03, pay: 150000 } },
+    // Shop (price in $, 10-40 % off for 5 hours a day: js/game/sale.js);
+    // anything bought here can be given to friends, up to `max` per player
     shop: [
       { id: 'omamori', name: 'お守り加護', price: 90000, max: 10 }
     ],

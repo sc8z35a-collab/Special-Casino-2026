@@ -24,7 +24,9 @@ function pays(res, combo) {
   let total = base.total;
   const sevens = base.wins.find((w) => w.symbol === 'seven' && w.count >= 3);
   if (sevens) total += Math.floor(sevens.amount * (HUB.sevens - 1));
-  return Math.floor(total * mult(combo));
+  total = Math.floor(total * mult(combo));
+  // from the fifth win in a row, double
+  return combo >= RULES.comboDouble ? total * 2 : total;
 }
 async function friends(...names) {
   const ps = [];

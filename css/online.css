@@ -347,13 +347,36 @@
   filter: drop-shadow(0 28px 20px rgba(0, 0, 0, .65));
   z-index: 1;
 }
-.car-pic.sold { animation: carSold 1s ease; }
+.car-pic.sold, .car-stage.sold .car-pic { animation: carSold 1s ease; }
+.car-stage.sold .car-3d { animation: carSold3d 1s ease; }
+@keyframes carSold3d { 30% { filter: brightness(1.6); } }
+/* the 3D studio (js/render/garage3d.js): in place of the picture */
+.car-3d { position: absolute; inset: 0 0 34px; z-index: 2; border-radius: 18px; overflow: hidden; box-shadow: inset 0 0 0 1.6px rgba(214, 169, 74, .35); }
+.car-3d[hidden] { display: none; }
+.car-3d .g3d-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.car-stage.three .car-pic, .car-stage.three .car-floor, .car-stage.three .car-light { display: none; }
+.car-3d-note { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; text-align: center; font-size: 19px; color: #b9aeb1; pointer-events: none; }
 @keyframes carSold { 0% { transform: scale(1); filter: drop-shadow(0 28px 20px rgba(0, 0, 0, .65)); } 30% { transform: scale(1.06); filter: drop-shadow(0 28px 20px rgba(0, 0, 0, .65)) brightness(1.5); } 100% { transform: scale(1); } }
 .car-floor { position: absolute; left: 70px; right: 70px; bottom: 44px; height: 80px; border-radius: 50%; background: radial-gradient(ellipse, rgba(0, 0, 0, .7), transparent 70%); }
 .car-info { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 18px; }
 .car-brand { font: 800 22px var(--f-num); letter-spacing: 7px; color: #d8b53a; }
 .car-name { margin: 0; font-size: 50px; font-weight: 700; line-height: 1.2; }
-.car-price { font: 800 56px var(--f-num); color: #ffe27a; }
+.car-price { display: flex; align-items: center; gap: 18px; font: 800 56px var(--f-num); color: #ffe27a; }
+.car-was { font: 700 30px var(--f-num); color: #9d9295; }
+.car-off { padding: 2px 12px; border-radius: 10px; background: #e5262b; color: #fff; font: 800 30px var(--f-num); font-style: normal; }
+/* the Car Owner sale and the picker */
+.car-sale { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px; padding: 8px 18px; border-radius: 12px; background: linear-gradient(90deg, rgba(229, 38, 43, .92), rgba(255, 140, 40, .88)); color: #fff; font-size: 21px; font-weight: 700; box-shadow: 0 0 22px rgba(255, 90, 60, .45); }
+.car-sale[hidden] { display: none; }
+.car-sale b { font-size: 26px; font-weight: 900; }
+.car-sale small { font: 800 22px var(--f-num); color: #fff3c4; }
+.car-picker { display: flex; gap: 14px; }
+.car-thumb { position: relative; width: 196px; height: 116px; padding: 6px 8px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1.6px rgba(214, 169, 74, .35); }
+.car-thumb.on { background: rgba(255, 226, 122, .16); box-shadow: inset 0 0 0 2.6px #ffe27a; }
+.car-thumb-pic { width: 100%; height: 72px; background: center / contain no-repeat; }
+.car-thumb-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 700; }
+.car-thumb-off { position: absolute; right: -8px; top: -10px; padding: 1px 8px; border-radius: 8px; background: #e5262b; color: #fff; font: 800 17px var(--f-num); font-style: normal; }
+.car-thumb-3d, .garage-3d, .garage-out { position: absolute; left: 6px; top: 6px; padding: 1px 7px; border-radius: 6px; background: rgba(60, 140, 255, .85); color: #fff; font: 800 14px var(--f-num); font-style: normal; }
+.garage-out { padding: 3px 12px; font-size: 17px; background: rgba(30, 110, 230, .92); }
 .car-price .amt { gap: 14px; }
 .car-price .ic { width: 54px; height: 54px; }
 .car-own { min-height: 30px; font-size: 22px; color: #c3b8bb; }
@@ -362,6 +385,15 @@
 .car-note { margin: 0; max-width: 560px; font-size: 19px; line-height: 1.6; color: #a99da0; }
 
 .garage-scroll { position: absolute; inset: 0; padding: 26px 30px 30px; }
+/* the garage's places, the takings of renting, the 大廃棄セール */
+.garage-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 30px; margin: 0 0 22px; }
+.garage-bar:empty { display: none; }
+.garage-disposal { flex-basis: 100%; display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; padding: 10px 20px; border-radius: 12px; background: linear-gradient(90deg, #1d8a4b, #39c272); color: #fff; font-size: 21px; font-weight: 700; box-shadow: 0 0 20px rgba(57, 194, 114, .4); }
+.garage-disposal b { font-size: 26px; font-weight: 900; }
+.garage-disposal small { margin-left: auto; font: 800 22px var(--f-num); }
+.garage-places, .garage-rent { display: flex; align-items: center; gap: 14px; font-size: 22px; color: #d8cfd1; }
+.garage-places b { font: 800 30px var(--f-num); color: #ffe27a; }
+.garage-rent .amt { font: 800 28px var(--f-num); color: #ffe27a; }
 .garage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
 .garage-grid .empty { grid-column: 1 / -1; }
 .garage-card {
@@ -374,10 +406,14 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, .08), rgba(0, 0, 0, .28));
   box-shadow: inset 0 0 0 1.6px rgba(214, 169, 74, .5);
 }
-.garage-pic { width: 100%; height: 230px; background: center / contain no-repeat; filter: drop-shadow(0 14px 10px rgba(0, 0, 0, .55)); }
+.garage-pic { position: relative; width: 100%; height: 230px; background: center / contain no-repeat; filter: drop-shadow(0 14px 10px rgba(0, 0, 0, .55)); }
+.garage-card.out { box-shadow: inset 0 0 0 1.6px rgba(90, 170, 255, .65); }
+.garage-card.out .garage-pic { opacity: .55; }
+.garage-status { min-height: 46px; white-space: pre-line; text-align: center; font-size: 17px; line-height: 1.4; color: #9fd0ff; }
+.garage-acts { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 2px; }
+.act-btn.garage-act { flex: none; width: 100%; height: 60px; font-size: 19px; }
 .garage-name { font-size: 27px; font-weight: 700; }
 .garage-from { min-height: 24px; font-size: 18px; color: #b3a7aa; }
-.act-btn.garage-gift { flex: none; width: 100%; height: 66px; margin-top: 4px; font-size: 22px; }
 
 .pick-card { width: 820px; }
 .pick-list { max-height: 560px; margin: 0 -14px; }
@@ -771,6 +807,9 @@
 .shop-price { display: flex; align-items: baseline; gap: 16px; }
 .shop-price s { font: 700 26px var(--f-num); color: #a39599; }
 .shop-price .shop-now { font: 800 50px var(--f-num); color: #ffe27a; }
+/* the Shop's sale: 5 hours a day */
+.shop-left { font: 700 20px var(--f-num); color: #a99da0; }
+.shop-left.on { color: #ff8a7a; }
 .shop-price .shop-now .ic { width: 46px; height: 46px; }
 .shop-price em { padding: 4px 12px; border-radius: 8px; background: #e5262b; font: 800 22px var(--f-num); font-style: normal; color: #fff; }
 .shop-price small { font-size: 20px; color: #c3b8bb; }

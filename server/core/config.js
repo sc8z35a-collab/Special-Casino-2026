@@ -57,6 +57,9 @@ export function configFrom(env = {}, overrides = {}) {
     // The accounts (user names, comma separated) that may open the operator site (/ops/),
     // where the players' feedback, 通報 and the official bot's messages are read.
     operators: str(env, 'OPERATORS', 'taku').split(',').map((s) => s.trim()).filter(Boolean),
+    // The developer: one of those operators, the only one who can take the others' rights
+    // away (and give them back) on the operator site; their own are never taken.
+    developer: str(env, 'DEVELOPER', 'taku'),
     // Phone notifications: who runs the server, for the push services (a mailto: or https: address; the site's own address if empty).
     pushContact: str(env, 'PUSH_CONTACT', ''),
     // Accounts that may be made on one device (0 = no limit).

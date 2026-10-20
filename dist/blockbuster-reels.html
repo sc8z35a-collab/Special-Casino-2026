@@ -1739,13 +1739,36 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
   filter: drop-shadow(0 28px 20px rgba(0, 0, 0, .65));
   z-index: 1;
 }
-.car-pic.sold { animation: carSold 1s ease; }
+.car-pic.sold, .car-stage.sold .car-pic { animation: carSold 1s ease; }
+.car-stage.sold .car-3d { animation: carSold3d 1s ease; }
+@keyframes carSold3d { 30% { filter: brightness(1.6); } }
+/* the 3D studio (js/render/garage3d.js): in place of the picture */
+.car-3d { position: absolute; inset: 0 0 34px; z-index: 2; border-radius: 18px; overflow: hidden; box-shadow: inset 0 0 0 1.6px rgba(214, 169, 74, .35); }
+.car-3d[hidden] { display: none; }
+.car-3d .g3d-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.car-stage.three .car-pic, .car-stage.three .car-floor, .car-stage.three .car-light { display: none; }
+.car-3d-note { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; text-align: center; font-size: 19px; color: #b9aeb1; pointer-events: none; }
 @keyframes carSold { 0% { transform: scale(1); filter: drop-shadow(0 28px 20px rgba(0, 0, 0, .65)); } 30% { transform: scale(1.06); filter: drop-shadow(0 28px 20px rgba(0, 0, 0, .65)) brightness(1.5); } 100% { transform: scale(1); } }
 .car-floor { position: absolute; left: 70px; right: 70px; bottom: 44px; height: 80px; border-radius: 50%; background: radial-gradient(ellipse, rgba(0, 0, 0, .7), transparent 70%); }
 .car-info { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 18px; }
 .car-brand { font: 800 22px var(--f-num); letter-spacing: 7px; color: #d8b53a; }
 .car-name { margin: 0; font-size: 50px; font-weight: 700; line-height: 1.2; }
-.car-price { font: 800 56px var(--f-num); color: #ffe27a; }
+.car-price { display: flex; align-items: center; gap: 18px; font: 800 56px var(--f-num); color: #ffe27a; }
+.car-was { font: 700 30px var(--f-num); color: #9d9295; }
+.car-off { padding: 2px 12px; border-radius: 10px; background: #e5262b; color: #fff; font: 800 30px var(--f-num); font-style: normal; }
+/* the Car Owner sale and the picker */
+.car-sale { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px; padding: 8px 18px; border-radius: 12px; background: linear-gradient(90deg, rgba(229, 38, 43, .92), rgba(255, 140, 40, .88)); color: #fff; font-size: 21px; font-weight: 700; box-shadow: 0 0 22px rgba(255, 90, 60, .45); }
+.car-sale[hidden] { display: none; }
+.car-sale b { font-size: 26px; font-weight: 900; }
+.car-sale small { font: 800 22px var(--f-num); color: #fff3c4; }
+.car-picker { display: flex; gap: 14px; }
+.car-thumb { position: relative; width: 196px; height: 116px; padding: 6px 8px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1.6px rgba(214, 169, 74, .35); }
+.car-thumb.on { background: rgba(255, 226, 122, .16); box-shadow: inset 0 0 0 2.6px #ffe27a; }
+.car-thumb-pic { width: 100%; height: 72px; background: center / contain no-repeat; }
+.car-thumb-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 700; }
+.car-thumb-off { position: absolute; right: -8px; top: -10px; padding: 1px 8px; border-radius: 8px; background: #e5262b; color: #fff; font: 800 17px var(--f-num); font-style: normal; }
+.car-thumb-3d, .garage-3d, .garage-out { position: absolute; left: 6px; top: 6px; padding: 1px 7px; border-radius: 6px; background: rgba(60, 140, 255, .85); color: #fff; font: 800 14px var(--f-num); font-style: normal; }
+.garage-out { padding: 3px 12px; font-size: 17px; background: rgba(30, 110, 230, .92); }
 .car-price .amt { gap: 14px; }
 .car-price .ic { width: 54px; height: 54px; }
 .car-own { min-height: 30px; font-size: 22px; color: #c3b8bb; }
@@ -1754,6 +1777,15 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 .car-note { margin: 0; max-width: 560px; font-size: 19px; line-height: 1.6; color: #a99da0; }
 
 .garage-scroll { position: absolute; inset: 0; padding: 26px 30px 30px; }
+/* the garage's places, the takings of renting, the 大廃棄セール */
+.garage-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 30px; margin: 0 0 22px; }
+.garage-bar:empty { display: none; }
+.garage-disposal { flex-basis: 100%; display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; padding: 10px 20px; border-radius: 12px; background: linear-gradient(90deg, #1d8a4b, #39c272); color: #fff; font-size: 21px; font-weight: 700; box-shadow: 0 0 20px rgba(57, 194, 114, .4); }
+.garage-disposal b { font-size: 26px; font-weight: 900; }
+.garage-disposal small { margin-left: auto; font: 800 22px var(--f-num); }
+.garage-places, .garage-rent { display: flex; align-items: center; gap: 14px; font-size: 22px; color: #d8cfd1; }
+.garage-places b { font: 800 30px var(--f-num); color: #ffe27a; }
+.garage-rent .amt { font: 800 28px var(--f-num); color: #ffe27a; }
 .garage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
 .garage-grid .empty { grid-column: 1 / -1; }
 .garage-card {
@@ -1766,10 +1798,14 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
   background: linear-gradient(180deg, rgba(255, 255, 255, .08), rgba(0, 0, 0, .28));
   box-shadow: inset 0 0 0 1.6px rgba(214, 169, 74, .5);
 }
-.garage-pic { width: 100%; height: 230px; background: center / contain no-repeat; filter: drop-shadow(0 14px 10px rgba(0, 0, 0, .55)); }
+.garage-pic { position: relative; width: 100%; height: 230px; background: center / contain no-repeat; filter: drop-shadow(0 14px 10px rgba(0, 0, 0, .55)); }
+.garage-card.out { box-shadow: inset 0 0 0 1.6px rgba(90, 170, 255, .65); }
+.garage-card.out .garage-pic { opacity: .55; }
+.garage-status { min-height: 46px; white-space: pre-line; text-align: center; font-size: 17px; line-height: 1.4; color: #9fd0ff; }
+.garage-acts { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 2px; }
+.act-btn.garage-act { flex: none; width: 100%; height: 60px; font-size: 19px; }
 .garage-name { font-size: 27px; font-weight: 700; }
 .garage-from { min-height: 24px; font-size: 18px; color: #b3a7aa; }
-.act-btn.garage-gift { flex: none; width: 100%; height: 66px; margin-top: 4px; font-size: 22px; }
 
 .pick-card { width: 820px; }
 .pick-list { max-height: 560px; margin: 0 -14px; }
@@ -2163,6 +2199,9 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 .shop-price { display: flex; align-items: baseline; gap: 16px; }
 .shop-price s { font: 700 26px var(--f-num); color: #a39599; }
 .shop-price .shop-now { font: 800 50px var(--f-num); color: #ffe27a; }
+/* the Shop's sale: 5 hours a day */
+.shop-left { font: 700 20px var(--f-num); color: #a99da0; }
+.shop-left.on { color: #ff8a7a; }
 .shop-price .shop-now .ic { width: 46px; height: 46px; }
 .shop-price em { padding: 4px 12px; border-radius: 8px; background: #e5262b; font: 800 22px var(--f-num); font-style: normal; color: #fff; }
 .shop-price small { font-size: 20px; color: #c3b8bb; }
@@ -3425,6 +3464,13 @@ button.watched-by:active { transform: scale(.96); }
 }
 .cb-n { font-size: 60px; letter-spacing: 1px; }
 .cb-word { font-size: 24px; letter-spacing: 3px; }
+/* from the fifth: every win pays double */
+.cb-x2 {
+  margin-top: 6px; padding: 3px 12px 4px; border-radius: 10px;
+  background: linear-gradient(180deg, #ff5a4e, #c41820); color: #fff;
+  font-family: var(--f-ui, inherit); font-size: 22px; font-weight: 900; letter-spacing: 1px; line-height: 1;
+  box-shadow: 0 0 0 2px #ffe27a, 0 0 14px rgba(255, 90, 60, .8);
+}
 .cb-badge .cb-inner { filter: drop-shadow(0 3px 0 #5a2a00) drop-shadow(0 6px 10px rgba(0, 0, 0, .6)); }
 @keyframes cbPop {
   0% { opacity: 0; transform: scale(.3); }
@@ -3870,6 +3916,9 @@ button.watched-by:active { transform: scale(.96); }
 .pay-card .pc-hub.down { background: linear-gradient(90deg, #1a62a8, #3aa0ff); }
 .rule-list li.rule-hub { height: auto; min-height: 50px; line-height: 1.6; padding-top: 7px; padding-bottom: 7px; }
 .rule-list li.rule-hub b { color: #ffb0e6; }
+/* サブアカウントの禁止 */
+.rule-list li.rule-ban { height: auto; min-height: 50px; line-height: 1.6; padding-top: 7px; padding-bottom: 7px; background: rgba(229, 38, 43, .16); box-shadow: inset 0 0 0 1.6px rgba(255, 120, 120, .55); }
+.rule-list li.rule-ban b { color: #ff9a8f; }
 
 /* ------------------------------------------------------------ invitation, friend list, call --- */
 .hb-invite .call-card { background: linear-gradient(180deg, #3a0c34, #1e0418); box-shadow: inset 0 0 0 2.4px #ff8ad8, 0 18px 50px rgba(0, 0, 0, .65); }
@@ -4320,6 +4369,61 @@ button.watched-by:active { transform: scale(.96); }
 .push-card { text-align: center; }
 .push-bell { position: relative; display: block; width: 64px; height: 64px; margin: 6px auto 0; border-radius: 50%; background: linear-gradient(180deg, #f6e04c, #e0bb22); box-shadow: 0 4px 12px rgba(0, 0, 0, .4); }
 .push-bell::before { content: ''; position: absolute; inset: 12px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a1.6 1.6 0 0 0-1.6 1.6v.5A6.2 6.2 0 0 0 5.8 10v4.4L3.8 17v1.2h16.4V17l-2-2.6V10a6.2 6.2 0 0 0-4.6-5.9v-.5A1.6 1.6 0 0 0 12 2zm-2.4 17.4a2.4 2.4 0 0 0 4.8 0z' fill='%233a2c00'/%3E%3C/svg%3E") center / contain no-repeat; }
+
+/* the registration form: the rule against sub-accounts */
+.ov-rule { margin: -2px 0 0; font-size: 11.5px; font-weight: 700; line-height: 1.5; color: #ff9a8f; }
+
+/* banned: the title screen locked until it ends (CSS px, over everything) */
+.ban-lock {
+  position: fixed; inset: 0; z-index: 1500;
+  display: flex; align-items: center; justify-content: center;
+  padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: radial-gradient(ellipse at 50% 40%, rgba(60, 4, 10, .86), rgba(8, 0, 2, .96));
+  touch-action: none;
+}
+.ban-lock[hidden] { display: none; }
+.ban-card {
+  width: 100%; max-width: 460px; padding: 20px 22px 18px;
+  display: flex; flex-direction: column; gap: 10px; text-align: center;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #3e070e, #200306);
+  box-shadow: inset 0 0 0 2px #e5262b, 0 20px 50px rgba(0, 0, 0, .65);
+}
+.ban-from { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 700; color: #d6c6c8; }
+.ban-from-icon { width: 26px; height: 26px; border-radius: 50%; background: #fff url("../img/avatars/official.webp") center / cover no-repeat; box-shadow: 0 0 0 1.5px #d6a94a; }
+.ban-title { margin: 2px 0 0; font-size: 26px; font-weight: 900; letter-spacing: 1px; color: #ff6b5e; }
+.ban-notice { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.6; color: #fff; white-space: pre-line; }
+.ban-until { margin: 0; font-size: 14px; font-weight: 700; color: #ffd38a; }
+.ban-until:empty { display: none; }
+.ban-sub { margin: 4px 0 0; font-size: 12.5px; line-height: 1.55; color: #c9b8bb; }
+.ban-lock .ov-btn { margin-top: 4px; }
+
+/* a car's 3D space (js/ui/cars.js, js/render/garage3d.js): full screen, CSS px */
+.g3d { position: fixed; inset: 0; z-index: 1100; background: #05060a; touch-action: none; -webkit-user-select: none; user-select: none; }
+.g3d[hidden] { display: none; }
+.g3d-view { position: absolute; inset: 0; }
+.g3d-view .g3d-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.g3d-top {
+  position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 10px; pointer-events: none;
+  padding: max(10px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 18px max(14px, env(safe-area-inset-left));
+  background: linear-gradient(180deg, rgba(0, 0, 0, .65), transparent);
+}
+.g3d-top > * { pointer-events: auto; }
+.g3d-name { font-size: 18px; font-weight: 800; color: #fff; white-space: nowrap; }
+.g3d-hint { flex: 1; min-width: 0; font-size: 12px; line-height: 1.35; color: #cfd6e6; }
+.g3d-btn { flex: none; height: 34px; padding: 0 14px; border-radius: 17px; background: rgba(255, 255, 255, .14); color: #fff; font-size: 13px; font-weight: 700; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .32); }
+.g3d-btn.close { background: rgba(229, 38, 43, .75); }
+#g3d-out, .g3d.walk #g3d-in { display: none; }
+.g3d.walk #g3d-out { display: inline-block; }
+.g3d-stick { position: absolute; left: max(24px, env(safe-area-inset-left)); bottom: max(24px, env(safe-area-inset-bottom)); width: 124px; height: 124px; border-radius: 50%; display: none; background: rgba(255, 255, 255, .08); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .3); touch-action: none; }
+.g3d.walk .g3d-stick { display: block; }
+.g3d-stick i { position: absolute; left: 37px; top: 37px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255, 255, 255, .5); box-shadow: 0 2px 8px rgba(0, 0, 0, .5); pointer-events: none; }
+.g3d-zoom { position: absolute; right: max(20px, env(safe-area-inset-right)); bottom: max(28px, env(safe-area-inset-bottom)); display: none; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 22px; background: rgba(0, 0, 0, .45); color: #fff; font: 700 12px var(--f-num); }
+.g3d.walk .g3d-zoom { display: flex; }
+.g3d-zoom input { width: 170px; accent-color: #ffe27a; }
+.g3d-zoom b { min-width: 42px; font-size: 16px; color: #ffe27a; }
+.g3d-load { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 15px; font-weight: 700; color: #e8ecf6; }
+.g3d-load[hidden] { display: none; }
 </style>
 <style>
 /* Motion for the whole game (js/render/juice.js, js/render/slotfx.js): the
@@ -4936,6 +5040,11 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 .fx-row { padding: 12px 6px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
 .fx-foot { display: flex; gap: 16px; margin-top: 18px; }
 .fx-foot .act-btn { height: 74px; font-size: 25px; }
+
+/* the 3D win titles (js/render/win3d.js): in the BIG WIN layer, and over the reels for a plain WIN */
+.win3d { display: none; pointer-events: none; }
+#screen-slot > .win3d.win3d-pop { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 30; }
+.fx-off-model3d .win3d { display: none !important; }
 </style>
 </head>
 <body>
@@ -5083,6 +5192,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
           <li><i class="ic ic-info"></i><span>スピン中にゲームを終了すると、賭金は放棄されます。</span></li>
           <li><i class="ic ic-info"></i><span>隣接するタブで、可能性のある組み合わせと倍率を見ることができます。</span></li>
           <li><i class="ic ic-info"></i><span>1日の上限: 10,000,000スピントークン。</span></li>
+          <li class="rule-ban"><i class="ic ic-info"></i><span><b>サブアカウントの禁止</b>：サブアカウント（ひとりで2つ目以降のアカウント）の作成と使用は禁止です。違反が見つかった場合は、アカウントの利用停止（アクセス禁止・BAN）の対象になります。</span></li>
         </ul>
       </div>
     </section>
@@ -5148,21 +5258,24 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       <div class="board-pane" id="pane-cars">
         <div class="sub-seg" data-seg="cars"><button class="seg-btn active" data-v="cars">Car Owner</button><button class="seg-btn" data-v="garage">ガレージ</button></div>
         <div class="car-show">
-          <div class="car-stage"><i class="car-light"></i><span class="car-pic" id="car-pic"></span><i class="car-floor"></i></div>
+          <div class="car-stage" id="car-stage"><i class="car-light"></i><span class="car-pic" id="car-pic"></span><i class="car-floor"></i>
+            <div class="car-3d" id="car-3d" hidden></div><span class="car-3d-note" id="car-3d-note"></span></div>
           <div class="car-info">
+            <div class="car-sale" id="car-sale" hidden></div>
             <div class="car-brand">CAR OWNER</div>
+            <div class="car-picker" id="car-picker"></div>
             <h3 class="car-name" id="car-name"></h3>
             <div class="car-price" id="car-price"></div>
             <div class="car-own" id="car-own"></div>
             <button class="act-btn gold car-buy" id="car-buy">購入する</button>
-            <p class="car-note">買った車は Garage で見られます。フレンドにプレゼントすることもできます。</p>
+            <p class="car-note">買った車は Garage で3D鑑賞・貸し出し・売却・フレンドへのプレゼントができます。</p>
           </div>
         </div>
       </div>
 
       <div class="board-pane" id="pane-garage">
         <div class="sub-seg" data-seg="cars"><button class="seg-btn" data-v="cars">Car Owner</button><button class="seg-btn active" data-v="garage">ガレージ</button></div>
-        <div class="scroller garage-scroll" id="garage-scroll"><div class="garage-grid" id="garage-grid"></div></div>
+        <div class="scroller garage-scroll" id="garage-scroll"><div class="garage-bar" id="garage-bar"></div><div class="garage-grid" id="garage-grid"></div></div>
       </div>
 
       <div class="board-pane" id="pane-shop">
@@ -5472,6 +5585,33 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   </div>
 </div>
 
+<!-- a car's 3D space (js/ui/cars.js, js/render/garage3d.js): full screen -->
+<div id="g3d" class="g3d" hidden>
+  <div class="g3d-view" id="g3d-view"></div>
+  <div class="g3d-top">
+    <b class="g3d-name" id="g3d-name"></b>
+    <span class="g3d-hint" id="g3d-hint"></span>
+    <button class="g3d-btn" type="button" id="g3d-in">一人称で入る</button>
+    <button class="g3d-btn" type="button" id="g3d-out">戻る</button>
+    <button class="g3d-btn close" type="button" id="g3d-close" aria-label="閉じる">閉じる</button>
+  </div>
+  <div class="g3d-stick" id="g3d-stick"><i></i></div>
+  <label class="g3d-zoom"><span>ZOOM</span><input type="range" id="g3d-zoom" min="1" max="5" step="0.01" value="1"><b id="g3d-zoom-n">×1.0</b></label>
+  <div class="g3d-load" id="g3d-load"></div>
+</div>
+
+<!-- banned: the title screen stays locked until it ends (js/ui/banlock.js) -->
+<div id="ban-lock" class="ban-lock" hidden role="alertdialog" aria-modal="true" aria-labelledby="ban-lock-title">
+  <div class="ban-card">
+    <div class="ban-from"><span class="ban-from-icon" aria-hidden="true"></span>Ice Smoker公式より</div>
+    <h2 class="ban-title" id="ban-lock-title">アクセス禁止中</h2>
+    <p class="ban-notice" id="ban-lock-notice"></p>
+    <p class="ban-until" id="ban-lock-until"></p>
+    <p class="ban-sub" id="ban-lock-sub"></p>
+    <button class="ov-btn gold" type="button" id="ban-lock-go" hidden>ゲームに戻る</button>
+  </div>
+</div>
+
 <!-- online: sign-up / log-in (outside the scaled stage so the text fields
      keep a normal size on phones) -->
 <div id="welcome" class="ov" hidden>
@@ -5482,6 +5622,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       <h2 class="ov-title">はじめまして！</h2>
       <p class="ov-notice" id="ov-notice-register" hidden></p>
       <p class="ov-text">ユーザー名とパスワードを決めてください。<b>ユーザー名はほかの人と同じものは使えません。</b>フレンドはこの名前であなたを探します。</p>
+      <p class="ov-rule">サブアカウント（ひとりで2つ目以降のアカウント）の作成・使用はルールで禁止されています。</p>
       <div class="ov-field">
         <input id="ov-name" class="ov-input" type="text" name="username" maxlength="24" placeholder="ユーザー名（2〜12文字）" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next">
         <p class="ov-hint" id="ov-name-hint"></p>
@@ -5782,7 +5923,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       official: ''
     },
     cars: {
-      'two-state-sedan': ''
+      'two-state-sedan': '',
+      'blue-lightning': ''
     },
     items: {
       omamori: ''
@@ -5949,7 +6091,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 </script>
 <script>
 /* Generated by tools/stamp.mjs: the build this page belongs to. */
-(function (BR) { BR.BUILD = 'adccbb5a097b'; })(window.BR = window.BR || {});
+(function (BR) { BR.BUILD = '29dfd189226d'; })(window.BR = window.BR || {});
 </script>
 <script>
 /* Small helpers shared by every module. */
@@ -6062,6 +6204,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       ['symbols', '当たり絵柄の動き', '当たった絵柄が飛び出して動く（7が燃える・ダイヤがきらめく など）'],
       ['combo', '小当たり・COMBO', 'WIN欄の光と浮かぶ金額、連続当たりのCOMBOバッジ'],
       ['bigwin', 'BIG WIN演出', 'BIG WIN・SUPER BIG WINの全画面演出（オフでも金額はWIN欄に出ます）'],
+      ['model3d', '3Dの当たり文字', 'WIN・BIG WIN・SUPER BIG WIN・ULTRA BIG WIN（77777）の文字を回転する3Dで表示（オフで従来の文字）'],
       ['fever', 'FEVER演出', '5回連続の当たりで画面が燃える演出'],
       ['curtain', '入場の幕', 'タイトル画面からカジノに入るときの幕と光'],
       ['glint', '待機中のきらめき', '何もしていないときに絵柄がきらっと光る']
@@ -6183,6 +6326,12 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     bets: [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000],
     // win presentation tiers by multiplier: WIN < 5x <= BIG WIN < 15x <= SUPER BIG WIN
     tiers: { big: 5, superBig: 15 },
+    // from this many wins in a row (the combo; in a hub the one everyone
+    // shares) every win pays double
+    comboDouble: 5,
+    // アクセス日数 (login days, all told): Ice Smoker公式ボット sends `amount` $
+    // by itself on each of these (not to a 永久BAN account)
+    accessDays: { at: [5, 10, 15, 20, 25, 30, 35], amount: 250000 },
     tokenPrice: 10,          // $ per spin token
     dailyLimit: 10000000,    // spin tokens that can be bought per UTC day
     dailyFree: 1000,         // free tokens claimable once per UTC day
@@ -6202,12 +6351,34 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       { id: 'red', name: 'レッド', price: 350000, rare: true },
       { id: 'vampire', name: 'ヴァンパイア', price: 800000, rare: true }
     ],
-    // Car Owner shop (price in $)
+    // Car Owner shop (price in $); `model`: a 3D model to look at
+    // (img/3d/cars/<id>.glb, js/render/garage3d.js)
     cars: [
-      { id: 'two-state-sedan', name: 'Two state セダン', price: 1200000 }
+      { id: 'two-state-sedan', name: 'Two state セダン', price: 1200000 },
+      { id: 'blue-lightning', name: 'ブルーライトニング', price: 6000000, model: true }
     ],
-    // Shop (price in $, always 10-40 % off like the icons); anything bought
-    // here can be given to friends, up to `max` per player
+    // the garage holds this many cars; one more place costs `slotPrice` $ (for good, any number)
+    garage: { slots: 2, slotPrice: 1000000 },
+    // Car Owner sales (js/game/sale.js), never two at once: on `chance` % of
+    // the days / weeks / months (the yearly one always), `hours` long, on
+    // `cars` cars at random (0: all of them), each `min`-`max` % off
+    carSales: {
+      day: { name: '極セール', chance: 5, hours: 5, cars: 2, min: 1, max: 10 },
+      week: { name: '超極セール', chance: 5, hours: 24, cars: 5, min: 10, max: 30 },
+      month: { name: '超ダイナミックセール', chance: 5, hours: 24, cars: 8, min: 20, max: 45 },
+      year: { name: '年感謝セール', chance: 100, hours: 24, cars: 0, min: 10, max: 30 }
+    },
+    // the car buy-back: a car's price now (with its sale) less `min`-`max` %,
+    // a new rate every Japan day; the 大廃棄セール (on `chance` % of the
+    // fortnights, a day long): every car less the same `min`-`max` % (by `step`)
+    carBuyback: { min: 10, max: 35, disposal: { name: '大廃棄セール', chance: 45, min: 2.5, max: 10, step: 0.5 } },
+    // renting cars out (any number of one's cars): every `hours` hours customers
+    // come (each of these with its chance), paying `min`-`max` $ each (the
+    // dearer the car, the more), and `vip.chance` of them `vip.pay` $; a car
+    // out is away for `hours` hours at least (stopping it waits for that)
+    carRental: { hours: 5, customers: [1, 0.9, 0.4, 0.3, 0.1], min: 10000, max: 60000, spread: 20000, vip: { chance: 0.03, pay: 150000 } },
+    // Shop (price in $, 10-40 % off for 5 hours a day: js/game/sale.js);
+    // anything bought here can be given to friends, up to `max` per player
     shop: [
       { id: 'omamori', name: 'お守り加護', price: 90000, max: 10 }
     ],
@@ -6340,12 +6511,28 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis
 </script>
 <script>
-/* The icon sale, shared with the server: every paid icon is always on sale
-   at 10-40 % off, with a new discount for each icon every UTC day. */
+/* Sales, shared with the server (the same hours and prices everywhere):
+   - the paid icons: always on sale at 10-40 % off, a new discount for each
+     icon every UTC day;
+   - the Shop (お守り加護): its 10-40 % off holds 5 hours a day only, from an
+     hour of its own each Japan day (BR.sale.shop);
+   - Car Owner, now and then, never two at once (BR.sale.cars; the odds and
+     discounts are BR.CONFIG.carSales):
+       極セール            5 % of the days: 5 hours, 2 cars 1-10 % off
+       超極セール          5 % of the weeks: 24 hours, 5 cars 10-30 % off
+       超ダイナミックセール  5 % of the months: 24 hours, 8 cars 20-45 % off
+       年感謝セール        once a year on a day of its own: 24 hours, every car 10-30 % off
+     A sale that would fall on a day a bigger one already has is called off
+     (the yearly one comes first, then the monthly, the weekly, the daily);
+   - the car buy-back (BR.sale.buyback): a car's price now (its sale price in
+     a sale) less 10-35 %, a new rate for each car every Japan day; in a
+     大廃棄セール (45 % of the fortnights, one day without a car sale) every
+     car less only 2.5-10 %, the same for all. */
 (function (BR) {
   'use strict';
 
   var STEPS = [10, 15, 20, 25, 30, 35, 40];
+  var HOUR = 3600000, DAY = 86400000, JST = 9 * HOUR;
 
   // FNV-1a: the same small hash in every browser and on the server
   function hash(s) {
@@ -6355,6 +6542,105 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       h = Math.imul(h, 0x01000193) >>> 0;
     }
     return h >>> 0;
+  }
+  // well stirred (keys that differ in one letter land far apart)
+  function mix(h) {
+    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+  // 0 .. n-1, the same for the same key
+  function pick(key, n) { return mix(hash(key)) % n; }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  // the Japan date of a moment
+  function jday(ms) {
+    var d = new Date(ms + JST);
+    return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate(), w: d.getUTCDay() };
+  }
+  function midnight(y, m, d) { return Date.UTC(y, m - 1, d) - JST; }   // 0:00 Japan time
+  function dayKey(ms) { var t = jday(ms); return t.y + '-' + pad(t.m) + '-' + pad(t.d); }
+  function round100(n) { return Math.round(n / 100) * 100; }
+
+  /* ------------------------------------------------------------ the Shop: 5 hours a day --- */
+  // that Japan day's sale hours (they end by midnight)
+  function shopWindow(ms) {
+    var t = jday(ms), k = dayKey(ms);
+    var start = midnight(t.y, t.m, t.d) + pick('shop-hour/' + k, 20) * HOUR;
+    return { day: k, start: start, end: start + 5 * HOUR };
+  }
+
+  /* ------------------------------------------------------------ Car Owner --- */
+  // 0:00 (Japan time) of the day each sale falls on (0: none that time)
+  function yearDay(y) {
+    var len = Math.round((Date.UTC(y + 1, 0, 1) - Date.UTC(y, 0, 1)) / DAY);
+    var d = new Date(Date.UTC(y, 0, 1) + pick('car-year/' + y, len) * DAY);
+    return midnight(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+  }
+  function monthDay(y, m) {
+    var k = y + '-' + pad(m);
+    if (pick('car-month/' + k + '/chance', 100) >= BR.CONFIG.carSales.month.chance) return 0;
+    var len = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    var at = midnight(y, m, 1 + pick('car-month/' + k + '/day', len));
+    return at === yearDay(y) ? 0 : at;
+  }
+  function mondayOf(dayMs) { return dayMs - ((jday(dayMs).w + 6) % 7) * DAY; }
+  function weekDay(monday) {
+    var k = dayKey(monday);
+    if (pick('car-week/' + k + '/chance', 100) >= BR.CONFIG.carSales.week.chance) return 0;
+    var at = monday + pick('car-week/' + k + '/day', 7) * DAY, t = jday(at);
+    return at === yearDay(t.y) || at === monthDay(t.y, t.m) ? 0 : at;
+  }
+  // a day's 極セール: when it starts (0: none)
+  function dayStart(dayMs) {
+    var c = BR.CONFIG.carSales.day, t = jday(dayMs), k = dayKey(dayMs);
+    if (pick('car-day/' + k + '/chance', 100) >= c.chance) return 0;
+    if (dayMs === yearDay(t.y) || dayMs === monthDay(t.y, t.m) || dayMs === weekDay(mondayOf(dayMs))) return 0;
+    return dayMs + pick('car-day/' + k + '/hour', 24 - c.hours + 1) * HOUR;
+  }
+
+  // is there a Car Owner sale on that Japan day (0:00 of it)?
+  function saleDay(dayMs) {
+    var t = jday(dayMs);
+    return dayMs === yearDay(t.y) || dayMs === monthDay(t.y, t.m) || dayMs === weekDay(mondayOf(dayMs)) || !!dayStart(dayMs);
+  }
+  // the 大廃棄セール of the fortnight `ms` is in: its day (0:00 Japan time) and
+  // its rate, or null (fortnights counted from Monday 2026-01-05)
+  var FORTNIGHT0 = Date.UTC(2026, 0, 5) - JST;
+  function disposal(ms) {
+    var c = BR.CONFIG.carBuyback.disposal, i = Math.floor((ms - FORTNIGHT0) / (14 * DAY)), from = FORTNIGHT0 + i * 14 * DAY;
+    if (pick('car-dispose/' + i + '/chance', 1000) >= c.chance * 10) return null;
+    // a day of its own in the fortnight; a car sale's day passes it to the next free one
+    var d0 = pick('car-dispose/' + i + '/day', 14);
+    for (var k = 0; k < 14; k++) {
+      var day = from + ((d0 + k) % 14) * DAY;
+      if (saleDay(day)) continue;
+      var steps = Math.round((c.max - c.min) / c.step) + 1;
+      return { name: c.name, start: day, end: day + DAY, pct: c.min + pick('car-dispose/' + i + '/rate', steps) * c.step };
+    }
+    return null;
+  }
+
+  // The Car Owner sale on at `ms`, or null: { kind, name, start, end, pct: { carId: % off } }
+  function carSale(ms, cars) {
+    var S = BR.CONFIG.carSales, t = jday(ms), today = midnight(t.y, t.m, t.d), on = null;
+    if (yearDay(t.y) === today) on = { kind: 'year', start: today, key: 'car-year/' + t.y };
+    else if (monthDay(t.y, t.m) === today) on = { kind: 'month', start: today, key: 'car-month/' + t.y + '-' + pad(t.m) };
+    else if (weekDay(mondayOf(today)) === today) on = { kind: 'week', start: today, key: 'car-week/' + dayKey(mondayOf(today)) };
+    else {
+      var s = dayStart(today);
+      if (s && ms >= s && ms < s + S.day.hours * HOUR) on = { kind: 'day', start: s, key: 'car-day/' + dayKey(today) };
+    }
+    if (!on) return null;
+    var c = S[on.kind];
+    // which cars (a shuffle of its own), and how much off each
+    var order = (cars || BR.CONFIG.cars).map(function (x) { return x.id; }).sort()
+      .map(function (id) { return { id: id, r: mix(hash(on.key + '/order/' + id)) }; })
+      .sort(function (a, b) { return a.r - b.r; });
+    var pct = {};
+    order.slice(0, c.cars ? Math.min(c.cars, order.length) : order.length).forEach(function (o) {
+      pct[o.id] = c.min + pick(on.key + '/pct/' + o.id, c.max - c.min + 1);
+    });
+    return { kind: on.kind, name: c.name, start: on.start, end: on.start + c.hours * HOUR, pct: pct };
   }
 
   BR.sale = {
@@ -6366,6 +6652,33 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     price: function (avatar, day) {
       if (!avatar || !(avatar.price > 0)) return 0;
       return Math.round(avatar.price * (100 - BR.sale.pct(avatar.id, day)) / 10000) * 100;
+    },
+    // A Shop item at `ms`: { price (what it costs now), pct (0 outside the sale
+    // hours), on, start, end (today's sale hours), next (when the next ones begin) }
+    shop: function (item, ms) {
+      var w = shopWindow(ms), on = ms >= w.start && ms < w.end;
+      var pct = on ? BR.sale.pct(item.id, w.day) : 0;
+      var next = ms < w.start ? w.start : shopWindow(midnight(jday(ms).y, jday(ms).m, jday(ms).d) + DAY).start;
+      return { price: on ? round100(item.price * (100 - pct) / 100) : item.price, pct: pct, on: on, start: w.start, end: w.end, next: on ? w.start : next };
+    },
+    // the Car Owner sale on at `ms` (null: none), and a car's price then
+    cars: carSale,
+    carPrice: function (car, sale) {
+      var pct = sale && sale.pct[car.id] || 0;
+      return { price: pct ? round100(car.price * (100 - pct) / 100) : car.price, pct: pct };
+    },
+    // the 大廃棄セール on at `ms` (null: none)
+    disposal: function (ms) {
+      var d = disposal(ms);
+      return d && ms >= d.start && ms < d.end ? d : null;
+    },
+    // What the buy-back pays for `car` at `ms`: its price now (`sale`: the car
+    // sale on now) less `pct` % (the day's rate, or the 大廃棄セール's).
+    buyback: function (car, ms, sale) {
+      var b = BR.CONFIG.carBuyback, d = BR.sale.disposal(ms);
+      var pct = d ? d.pct : b.min + pick('car-buyback/' + dayKey(ms) + '/' + car.id, b.max - b.min + 1);
+      var now = BR.sale.carPrice(car, sale).price;
+      return { price: round100(now * (100 - pct) / 100), pct: pct, disposal: !!d };
     }
   };
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis
@@ -6652,7 +6965,10 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis
 </script>
 <script>
-/* Dev News: what each update brought, newest first. The newest entry's id is
+/* Dev News: what each update brought, newest first, with the date and the
+   time (Japan time) it went live: `time` is written in when the update goes
+   out, and the server's own record of the moment shows instead where it has
+   one (js/ui/news.js). The newest entry's id is
    the game's release number (BR.RELEASE): a player whose game is older is
    asked to update, and everyone who updates to a new release once gets
    BR.CONFIG.updateBonus $ (server/core/api.js). Add an entry with the next id
@@ -6662,8 +6978,32 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 
   BR.NEWS = [
     {
+      id: 7,
+      date: '2026-10-20',
+      title: 'DEV7：3Dの当たり文字・3Dガレージと新車・車のセール／買取／貸し出し・コンボ報酬2倍',
+      items: [
+        'WIN・BIG WIN・SUPER BIG WIN の文字が、くるくる回転する立体（3D）の文字になりました。正面を向いたときはゆっくり、裏側はすばやく回るので読みやすくなっています',
+        '77777（7が5つ）がそろったときだけの特別な演出「ULTRA BIG WIN」が登場！虹色の3D文字が回転しながら現れます',
+        '演出設定に「3Dの当たり文字」を追加。オフにすると今までの文字で表示します（動きが重くなる端末では自動で今までの文字になります）',
+        '5回連続で当たると（5コンボ目から）、当たるたびに報酬が2倍に！COMBOの表示に「報酬×2」が出ます（友達と稼ぐ中はみんなで共有するコンボで数えます）',
+        'アクセス日数（ログインした日の合計）が5・10・15・20・25・30・35日になると、Ice Smoker公式ボットから $250,000 が自動で届きます',
+        '新車「ブルーライトニング」が Car Owner に登場！2つの照明と丸い台の3Dスタジオで、くるくる回る車を指でぐるっと見られます',
+        'ガレージの車は「3Dで見る」で3D空間に。ダブルタップで一人称視点になって車のまわりを歩けます。最大5倍のズームでは、ボケや色のにじみ・モアレまで本物のカメラのように再現',
+        'ガレージに置ける車は2台に。1台分 $1,000,000 で何台分でも広げられます（ずっと有効）',
+        'Car Owner にセールが登場：極セール（たまに5時間・2台が1〜10%OFF）・超極セール（たまに24時間・5台が10〜30%OFF）・超ダイナミックセール（まれに24時間・8台が20〜45%OFF）・年感謝セール（年に1日・全車10〜30%OFF）。セールが重なることはありません',
+        '車買取を開始。今の販売価格（セール中はセール価格）の10〜35%引きで買い取ります（買取率は毎日変わります）。2週間に一度くらい開かれる「大廃棄セール」の日は、全車両 2.5〜10%引きの高価買取！',
+        '車の貸し出しを開始。持っている車なら何台でも貸し出せ、5時間ごとにお客さんが来て1人 $10,000〜$60,000（高い車ほど高い）、まれに $150,000 払ってくれます。貸し出した車は少なくとも5時間使えません',
+        'Shop の お守り加護 のセールは1日5時間だけになりました（Shop に残り時間と次のセールの時間が出ます）',
+        '運営に送った意見案が採用されると、お礼として Ice Smoker公式ボットから $100,000 が届くようになりました',
+        'ルールに「サブアカウントの禁止」を追加しました。サブアカウント（ひとりで2つ目以降のアカウント）の作成と使用は禁止です。違反が見つかった場合はアカウントの利用停止（BAN）の対象になります',
+        'アクセス禁止・BANになると、すぐにタイトル画面に戻り、解除されるまで先へ進めなくなります。処分されたときと解除されたときは、Ice Smoker公式ボットからお知らせが届きます',
+        'Dev News に、各アップデートの日付と時刻（日本時間）を表示するようにしました'
+      ]
+    },
+    {
       id: 6,
       date: '2026-10-20',
+      time: '10:25',
       title: 'DEV6：金の生る木オープン・ジョンソン登場・公式ボット・プレゼント・スマホ通知',
       items: [
         '「金の生る木」がオープン！最初の1本は無料です。ワンタップで $5,000〜$100,000 を与えて育てると毎秒お金が増え、与えた金額が多いほど増える額もアップ。見た目は9段階で成長します',
@@ -6688,6 +7028,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     {
       id: 5,
       date: '2026-10-19',
+      time: '20:24',
       title: 'DEV5：友達と稼ぐがさらに便利に・運営サイト・金の生る木（予告）',
       items: [
         '「友達と稼ぐ」から自動で抜けることはなくなりました。抜けるときはハブバーの右上にある小さな「抜ける」ボタンを押してください',
@@ -6711,6 +7052,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     {
       id: 4,
       date: '2026-10-19',
+      time: '20:24',
       title: '「友達と稼ぐ」登場！クエスト大幅追加・週間協力クエスト',
       items: [
         '「友達と稼ぐ」を追加しました。フレンド一覧の「一緒に稼ぐ」で招待、届いた通知かフレンド一覧の「参加する」で最大5人まで一緒に遊べます（ひとりになると自動で解散。また招待すれば復活）',
@@ -6730,6 +7072,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     {
       id: 3,
       date: '2026-10-19',
+      time: '20:24',
       title: '演出を大幅パワーアップ！感謝料はアップデート回数分に',
       items: [
         'アップデートが何回分かたまっていたときは、感謝料も回数分まとめて受け取れるようになりました（2回分なら $500,000）。お知らせには見逃したアップデートの内容がすべて入ります',
@@ -6750,6 +7093,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     {
       id: 2,
       date: '2026-10-18',
+      time: '23:11',
       title: '初心者ガイド・グループチャット・フレンド対決！',
       items: [
         '初心者ガイドを追加しました。プレイ時間30分未満の方には、遊び方の案内が最初に表示されます（詳細からいつでも見直せます）',
@@ -6774,6 +7118,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     {
       id: 1,
       date: '2026-10-18',
+      time: '17:56',
       title: 'クエスト・バイト・プレイヤーレベル登場！',
       items: [
         'クエストを追加しました。ホーム画面のクエストボタンから、5時間・デイリー・週間・月極・特別の5種類に挑戦できます',
@@ -7205,8 +7550,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
         }
         var err = new ApiError(res.status, e.code || 'error', e.message || ('エラーが発生しました（' + res.status + '）'), e);
         if (res.status === 401 && token && path !== '/api/login' && path !== '/api/register') emit('auth-lost', err);
-        // banned (or another account on this device is): signed out, with why
-        if (res.status === 403 && (e.code === 'banned' || e.code === 'device_banned') && path !== '/api/login' && path !== '/api/register') emit('auth-lost', err);
+        // banned (or another account on this device is): the title screen, locked (js/ui/banlock.js)
+        if (res.status === 403 && (e.code === 'banned' || e.code === 'device_banned') && path !== '/api/login' && path !== '/api/register') emit('banned', err);
         throw err;
       });
     });
@@ -7239,6 +7584,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     recovery: function () { return post('/api/recovery'); },
     password: function (current, password) { return post('/api/password', { current: current, password: password }); },
     me: function () { return get('/api/me'); },
+    banState: function () { return get('/api/ban'); },
 
     /* the game */
     // (idle: how long ago the player last did something, for the hub: js/ui/activity.js)
@@ -7277,8 +7623,12 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     setAvatar: function (id) { return post('/api/avatar', { id: id }); },
     buyAvatar: function (id, price) { return post('/api/avatar/buy', { id: id, price: price }); },
     cars: function () { return get('/api/cars'); },
-    buyCar: function (model) { return post('/api/cars/buy', { model: model }); },
+    buyCar: function (model, price) { return post('/api/cars/buy', { model: model, price: price }); },
     giftCar: function (to, carId) { return post('/api/cars/gift', { to: to, car: carId }); },
+    sellCar: function (carId, price) { return post('/api/cars/sell', { car: carId, price: price }); },
+    rentCar: function (carId, action) { return post('/api/cars/rent', { car: carId, action: action }); },
+    collectRent: function () { return post('/api/cars/collect'); },
+    expandGarage: function () { return post('/api/garage/expand'); },
 
     /* Shop, 所有 and the お守り加護 */
     items: function () { return get('/api/items'); },
@@ -7538,12 +7888,22 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     return Math.max(0, Math.min(Math.floor(S.dollars / C.tokenPrice), C.dailyLimit - boughtToday()));
   }
 
+  var localStreak = 0;
   var local = {
     // settles asynchronously like the server does
     spin: function (bet) {
       return Promise.resolve().then(function () {
         if (S.tokens < bet) return fail('insufficient', 'スピントークンが不足しています');
         var res = BR.engine.spin(bet);
+        // wins in a row: from C.comboDouble on, a win pays double (as online)
+        localStreak = res.total > 0 ? localStreak + 1 : 0;
+        res.combo = localStreak;
+        if (res.total > 0 && localStreak >= C.comboDouble) {
+          res.total *= 2;
+          res.double = true;
+          var m = res.total / bet;
+          res.tier = m >= C.tiers.superBig ? 3 : m >= C.tiers.big ? 2 : 1;
+        }
         S.tokens = S.tokens - bet + res.total;
         S.stats.spins++;
         S.stats.won += res.total;
@@ -9263,7 +9623,10 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 })(window.BR = window.BR || {});
 </script>
 <script>
-/* Win presentation layer: WIN / BIG WIN / SUPER BIG WIN.
+/* Win presentation layer: WIN / BIG WIN / SUPER BIG WIN (ULTRA BIG WIN for
+   77777). The titles are 3D models turning round
+   (js/render/win3d.js) once they have loaded; until then, and without 3D,
+   the drawn titles below.
    Everything is drawn on one canvas above the stage with pre-rendered
    sprites (titles, chips, rays, glints) so it stays smooth on phones.
    The big wins hit like the real thing: a turning sunburst and two stage
@@ -9474,7 +9837,12 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       g.lineWidth = em * 0.042;
       g.strokeStyle = vgrad(opt.rimInner);
       g.strokeText(text, 0, base);
-      g.fillStyle = vgrad(opt.face);
+      if (opt.faceH) {
+        // left to right (ULTRA's rainbow)
+        var gr = g.createLinearGradient(-tw / 2, 0, tw / 2, 0);
+        opt.faceH.forEach(function (st) { gr.addColorStop(st[0], st[1]); });
+        g.fillStyle = gr;
+      } else g.fillStyle = vgrad(opt.face);
       g.fillText(text, 0, base);
     });
     // glossy upper half + bevel highlight on the face only
@@ -9520,6 +9888,10 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     rimInner: [[0, '#fff'], [1, '#ffe7a0']],
     face: [[0, '#fff7c2'], [0.3, '#ffd968'], [0.6, '#f0a92a'], [1, '#c4701a']]
   };
+  // ULTRA (77777): gold rims, a rainbow face
+  var STYLE_ULTRA = Object.assign({}, STYLE_GOLD, {
+    faceH: [[0, '#ff4a3d'], [0.2, '#ffa02e'], [0.4, '#ffe84a'], [0.6, '#46e08c'], [0.8, '#3a9cff'], [1, '#b44cff']]
+  });
 
   // dark amount panel with the double gold frame and concave corners
   function panelSprite(w, h, res) {
@@ -9758,6 +10130,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 
   FX.prototype.resize = function (W, H, res) {
     var changed = Math.abs(Math.min(res, 1.3) - this.res) > 0.01;
+    if (BR.win3d) BR.win3d.resize(res);
     this.W = W; this.H = H;
     this.res = Math.min(res, 1.3);
     this.pres = Math.min(res, 1);          // particle canvases
@@ -9797,11 +10170,12 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
         bigWin: titleSprite('BIG WIN', Object.assign({ em: 232, maxW: 870 }, STYLE_RED), res),
         win: titleSprite('WIN', Object.assign({ em: 200, maxW: 700 }, STYLE_RED), res),
         superT: titleSprite('SUPER', Object.assign({ em: 150, maxW: 700 }, STYLE_GOLD), res),
+        ultraT: titleSprite('ULTRA', Object.assign({ em: 150, maxW: 700 }, STYLE_ULTRA), res),
         panel: panelSprite(766, 156, res),
         panelS: panelSprite(560, 124, res)
       };
       // low-res masks for the CSS light sweep
-      ['bigWin', 'win', 'superT'].forEach(function (k) {
+      ['bigWin', 'win', 'superT', 'ultraT'].forEach(function (k) {
         var t = sp[k], m = canvas(t.w * 0.5, t.h * 0.5);
         m.getContext('2d').drawImage(t.mask, 0, 0, m.width, m.height);
         t.maskURL = m.toDataURL('image/png');
@@ -9897,10 +10271,13 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
           nextFountain: 0, nextFirework: 1.2, lastTick: 0, shake: 0,
           sweep: -1, nextSweep: 0.8,
           // hit-stop: seconds the clock stands still; a camera kick; the title's heartbeat
-          freeze: 0, kick: 0, kickT: -1, landed: false, beat: 1.05, beatT: -1, nextBolt: 0, tickPop: -1
+          freeze: 0, kick: 0, kickT: -1, landed: false, beat: 1.05, beatT: -1, nextBolt: 0, tickPop: -1,
+          // the 3D title (null: the drawn ones), and what it becomes at the top: SUPER, or ULTRA for 77777
+          three: BR.win3d ? BR.win3d.begin(self.root, self.titles, tier === 1 ? 'win' : 'big') : null,
+          top: tier >= 3 ? (o.ultra ? 'ultra' : 'super') : null
         };
         self.mountTitle(self.titleM, tier === 1 ? sp.win : sp.bigWin);
-        self.mountTitle(self.titleS, sp.superT);
+        self.mountTitle(self.titleS, o.ultra ? sp.ultraT : sp.superT);
         self.mountPanel(tier === 1 ? sp.panelS : sp.panel);
         self.amount.style.fontSize = (tier === 1 ? 70 : 88) + 'px';
         self.amount.textContent = '0';
@@ -10039,6 +10416,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     this.gb.clearRect(0, 0, this.back.width, this.back.height);
     this.gf.setTransform(1, 0, 0, 1, 0, 0);
     this.gf.clearRect(0, 0, this.front.width, this.front.height);
+    if (a.three && BR.win3d) BR.win3d.end();
     if (a.o.onCount) a.o.onCount(a.o.amount);
     a.resolve();
   };
@@ -10047,6 +10425,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   FX.prototype.upgrade = function () {
     var a = this.active;
     a.upgraded = a.t;
+    if (a.three) a.three = BR.win3d.swap(a.top) || a.three;
     var L = this.layout();
     this.burstSparks(L.burst.x, L.burst.y - 80, 40, 900, 0);
     BR.sfx.play('superWin');
@@ -10298,13 +10677,28 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       ts = tIn < 1 ? 2.3 - 1.3 * E.outBack(tIn, 1.9) : 1;
       ta = E.outQuad(U.clamp(tIn * 3, 0, 1));
     }
-    this.placeTitle(this.titleM, L.title, ts * breathe * outScale * pulse, ta * fade, sq[0], sq[1]);
-    if (sup) {
-      var ul = t - a.upgraded;
-      var usq = squash(ul - 0.2, 0.5, 0.26);
-      this.placeTitle(this.titleS, L.superT, fallIn(ul, 0.2, 3.6) * breathe * outScale * pulse, E.outQuad(U.clamp(ul / 0.12, 0, 1)) * fade, usq[0], usq[1]);
-    } else {
+    if (a.three) {
+      // the 3D title turning round: SUPER (or ULTRA) between where the two drawn lines were
+      setStyle(this.titleM, 'opacity', '0');
       setStyle(this.titleS, 'opacity', '0');
+      var W3 = BR.win3d;
+      if (sup) {
+        var u3 = t - a.upgraded, q3 = squash(u3 - 0.2, 0.5, 0.26);
+        W3.draw({ x: L.title.x + shx, y: (L.superT.y + L.title.y) / 2 - 14 + shy, scale: fallIn(u3, 0.2, 3.6) * breathe * outScale * pulse,
+          sx: q3[0], sy: q3[1], alpha: E.outQuad(U.clamp(u3 / 0.12, 0, 1)) * fade, ry: W3.turn(u3, 0.2, 3.6), rx: 0.06 * Math.sin(t * 1.7) });
+      } else {
+        W3.draw({ x: L.title.x + shx, y: L.title.y + shy, scale: ts * breathe * outScale * pulse, sx: sq[0], sy: sq[1], alpha: ta * fade,
+          ry: big ? W3.turn(t - 0.1, 0.26, 3.6) : W3.turn(t - 0.12, 0.55, 2.4), rx: 0.06 * Math.sin(t * 1.7) });
+      }
+    } else {
+      this.placeTitle(this.titleM, L.title, ts * breathe * outScale * pulse, ta * fade, sq[0], sq[1]);
+      if (sup) {
+        var ul = t - a.upgraded;
+        var usq = squash(ul - 0.2, 0.5, 0.26);
+        this.placeTitle(this.titleS, L.superT, fallIn(ul, 0.2, 3.6) * breathe * outScale * pulse, E.outQuad(U.clamp(ul / 0.12, 0, 1)) * fade, usq[0], usq[1]);
+      } else {
+        setStyle(this.titleS, 'opacity', '0');
+      }
     }
 
     // panel + amount
@@ -10435,6 +10829,769 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 
   BR.FX = FX;
   BR.fxSprites = { titleSprite: titleSprite, STYLE_RED: STYLE_RED, STYLE_GOLD: STYLE_GOLD, panelSprite: panelSprite, drawChip: drawChip };
+})(window.BR = window.BR || {});
+</script>
+<script>
+/* The 3D win titles: WIN, BIG WIN, SUPER BIG WIN and ULTRA BIG WIN (77777
+   only), turning as they show, in place of the drawn titles of the win
+   presentation (js/render/fx.js) and over the reels for a plain WIN.
+   three.js (js/vendor/three-bundle.js) and the models (img/3d/*.glb, made small
+   with glTF-Transform: meshopt geometry, WebP textures) load in the
+   background once the game is up, online only. Until they are there — or
+   without WebGL, or with 3Dの当たり文字 off in 演出設定 — the drawn titles
+   play as before.
+   The canvas covers the stage (2000×924 design px) and the camera sees the
+   stage plane at z = 0 one to one, so a title is placed in design px like the
+   drawn ones were. They turn round and round, slowly while they face the
+   player and quickly past their back, so they are easy to read. */
+(function (BR) {
+  'use strict';
+
+  var SRC = 'js/vendor/three-bundle.js';
+  var FILES = { win: 'img/3d/win.glb', big: 'img/3d/big.glb', super: 'img/3d/super.glb', ultra: 'img/3d/ultra.glb' };
+  // each model's width on the stage (design px; ULTRA as tall as SUPER)
+  var WIDTH = { win: 600, big: 1000, super: 840, ultra: 870 };
+  var FOV = 26;
+  var W = 2000, H = 924;
+
+  var T = null;                        // three.js (window.BR3D)
+  var state = 'idle';                  // idle | loading | ready | off
+  var renderer = null, scene = null, camera = null, canvas = null;
+  var models = {};                     // kind -> THREE.Group (centred, unit scale)
+  var shown = null;                    // the kind on show
+  var pres = 1;
+  var pop = null;                      // a plain WIN over the reels: { t0, raf }
+  // a phone too slow for it (the game's own low mode, or slow frames while a
+  // title turned) gets the drawn titles from then on
+  var SLOW = 'blockbuster-reels/3d-slow';
+  var slow = false, lastDraw = 0, frameAvg = 0, slowFor = 0;
+  try { slow = localStorage.getItem(SLOW) === '1'; } catch (e) { /* no storage */ }
+  function tooSlow() { return slow || document.documentElement.classList.contains('jc-low'); }
+  function watchSpeed() {
+    var now = performance.now(), ms = now - lastDraw;
+    lastDraw = now;
+    if (slow || ms <= 0 || ms > 250 || document.hidden) return;
+    frameAvg += (ms - frameAvg) * 0.1;
+    slowFor = frameAvg > 40 ? slowFor + ms : Math.max(0, slowFor - ms * 0.5);
+    if (slowFor > 2000) {
+      slow = true;
+      try { localStorage.setItem(SLOW, '1'); } catch (e) { /* this visit only */ }
+    }
+  }
+
+  function online() { return !!(BR.api && BR.api.online); }
+  function wanted() { return !BR.fx || BR.fx.on('model3d'); }
+  function webgl() {
+    try {
+      var c = document.createElement('canvas');
+      return !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl')));
+    } catch (e) { return false; }
+  }
+
+  // three.js, once for the whole game (the cars use it too: js/render/garage3d.js)
+  var threeJs = null;
+  function three() {
+    if (window.BR3D) return Promise.resolve(window.BR3D);
+    if (threeJs) return threeJs;
+    threeJs = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = SRC;
+      s.async = true;
+      s.onload = function () { if (window.BR3D) resolve(window.BR3D); else reject(new Error('3D: three.js')); };
+      s.onerror = function () { threeJs = null; reject(new Error('3D: ' + SRC)); };
+      document.head.appendChild(s);
+    });
+    return threeJs;
+  }
+
+  function setup() {
+    canvas = document.createElement('canvas');
+    canvas.className = 'fx-canvas win3d';
+    renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true, premultipliedAlpha: true, powerPreference: 'high-performance' });
+    renderer.setClearColor(0x000000, 0);
+    renderer.outputColorSpace = T.SRGBColorSpace;
+    renderer.toneMapping = T.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    renderer.setPixelRatio(1);
+    size();
+    scene = new T.Scene();
+    var pm = new T.PMREMGenerator(renderer);
+    scene.environment = pm.fromScene(new T.RoomEnvironment(), 0.04).texture;
+    pm.dispose();
+    var key = new T.DirectionalLight(0xfff2d6, 2.4);
+    key.position.set(-0.6, 0.9, 1.2);
+    scene.add(key);
+    // the camera sees the stage plane (z = 0) one design px to one unit
+    camera = new T.PerspectiveCamera(FOV, W / H, 10, 20000);
+    camera.position.set(0, 0, (H / 2) / Math.tan(FOV * Math.PI / 360));
+    canvas.addEventListener('webglcontextlost', function (e) {
+      e.preventDefault();
+      state = 'off';
+      hide();
+    });
+  }
+  function size() {
+    if (!renderer) return;
+    renderer.setSize(Math.round(W * pres), Math.round(H * pres), false);
+  }
+
+  function load(kind) {
+    return new Promise(function (resolve) {
+      var loader = new T.GLTFLoader().setMeshoptDecoder(T.MeshoptDecoder);
+      loader.load(FILES[kind], function (g) {
+        var inner = g.scene;
+        var box = new T.Box3().setFromObject(inner), c = box.getCenter(new T.Vector3()), s = box.getSize(new T.Vector3());
+        inner.position.set(-c.x, -c.y, -c.z);
+        var holder = new T.Group();
+        holder.add(inner);
+        holder.userData.width = s.x || 1;
+        holder.visible = false;
+        scene.add(holder);
+        models[kind] = holder;
+        resolve(true);
+      }, undefined, function () { resolve(false); });
+    });
+  }
+
+  // three.js and the models, in the background (once)
+  var loading = null;
+  function preload() {
+    if (loading || state === 'off') return loading;
+    if (!online() || !wanted() || !webgl()) return null;
+    state = 'loading';
+    loading = three().then(function (lib) {
+      T = lib;
+      setup();
+      // one after the other: the game goes on meanwhile
+      return ['big', 'super', 'win', 'ultra'].reduce(function (p, k) {
+        return p.then(function () { return load(k); });
+      }, Promise.resolve());
+    }).then(function () {
+      if (!models.big) throw new Error('3D: models');
+      // shaders and textures ready now, not at the first win
+      Object.keys(models).forEach(function (k) { models[k].visible = true; });
+      renderer.compile(scene, camera);
+      Object.keys(models).forEach(function (k) { models[k].visible = false; });
+      state = 'ready';
+    }).catch(function (e) {
+      state = 'off';
+      if (window.console) console.warn(e);
+    });
+    return loading;
+  }
+
+  // the model for a kind (ULTRA, should its model not load: SUPER)
+  function pick(kind) {
+    if (kind === 'ultra' && !models.ultra) kind = 'super';
+    return models[kind] ? kind : null;
+  }
+  function usable(kind) { return state === 'ready' && wanted() && !tooSlow() && !!pick(kind); }
+
+  function mount(parent, before) {
+    if (canvas.parentNode !== parent || (before && canvas.nextSibling !== before)) parent.insertBefore(canvas, before || null);
+    canvas.style.display = 'block';
+  }
+  function show(kind) {
+    kind = pick(kind);
+    lastDraw = 0;
+    Object.keys(models).forEach(function (k) { models[k].visible = k === kind; });
+    shown = kind;
+    return kind;
+  }
+  function hide() {
+    if (canvas) { canvas.style.display = 'none'; canvas.style.opacity = '0'; }
+    shown = null;
+  }
+
+  // o: { x, y (design px), scale, sx, sy, alpha, ry, rx }
+  function draw(o) {
+    var m = shown && models[shown];
+    if (!m) return;
+    var k = WIDTH[shown] / m.userData.width * (o.scale || 1);
+    m.position.set(o.x - W / 2, H / 2 - o.y, 0);
+    m.scale.set(k * (o.sx || 1), k * (o.sy || 1), k);
+    m.rotation.set(o.rx || 0, o.ry || 0, 0);
+    canvas.style.opacity = String(Math.max(0, Math.min(1, o.alpha === undefined ? 1 : o.alpha)));
+    renderer.render(scene, camera);
+    watchSpeed();
+  }
+
+  // The turn: `t` seconds since it started, landing facing the player at
+  // `land` after a fast spin in, then round and round every `period` s
+  // (slow at the front, quick past the back).
+  function turn(t, land, period) {
+    if (t < land) {
+      var p = Math.max(0, t / land);
+      return -Math.PI * 3 * Math.pow(1 - p, 3);
+    }
+    var u = (t - land) / (period || 3.6);
+    return Math.PI * 2 * u - 0.85 * Math.sin(Math.PI * 2 * u);
+  }
+
+  /* ------------------------------------------------------------ a plain WIN over the reels --- */
+  function popWin() {
+    if (!usable('win')) return false;
+    stopPop();
+    var host = document.getElementById('screen-slot');
+    if (!host) return false;
+    mount(host);
+    canvas.classList.add('win3d-pop');
+    show('win');
+    pop = { t0: performance.now(), raf: 0 };
+    var DUR = 1.6;
+    var step = function () {
+      if (!pop) return;
+      var t = (performance.now() - pop.t0) / 1000;
+      if (t >= DUR) { stopPop(); return; }
+      var inP = Math.min(1, t / 0.35), out = Math.max(0, (t - (DUR - 0.3)) / 0.3);
+      var scale = (0.4 + 0.6 * (1 - Math.pow(1 - inP, 3))) * (1 + 0.15 * out);
+      draw({ x: W / 2, y: H / 2 - 205, scale: scale, alpha: Math.min(1, inP * 2) * (1 - out), ry: turn(t, 0.45, 2.4), rx: 0.06 * Math.sin(t * 2) });
+      pop.raf = requestAnimationFrame(step);
+    };
+    step();
+    return true;
+  }
+  function stopPop() {
+    if (!pop) return;
+    cancelAnimationFrame(pop.raf);
+    pop = null;
+    if (canvas) canvas.classList.remove('win3d-pop');
+    hide();
+  }
+
+  BR.win3d = {
+    three: three,
+    preload: preload,
+    usable: usable,
+    // the win presentation: the canvas in its layer (before `before`), a model on show
+    begin: function (parent, before, kind) {
+      if (!usable(kind)) return null;
+      stopPop();
+      mount(parent, before);
+      return show(kind);
+    },
+    swap: function (kind) { return shown ? show(kind) : null; },
+    draw: draw,
+    end: hide,
+    turn: turn,
+    popWin: popWin,
+    stopPop: stopPop,
+    resize: function (res) {
+      var p = Math.min(res || 1, 1);
+      if (Math.abs(p - pres) < 0.01) return;
+      pres = p;
+      size();
+    }
+  };
+})(window.BR = window.BR || {});
+</script>
+<script>
+/* The cars in 3D: Car Owner's studio and the garage's 3D space.
+   The studio: the car on the round base (its pattern up), lit by two stage
+   lights (a moving head and a spotlight on a stand, each with a real light
+   and a soft beam) in a dark room with a glossy floor; the camera goes round
+   the car by itself, and a drag turns it.
+   The garage's 3D space (from the list of one's cars, full screen): the same
+   studio, the car in the middle. A double tap goes into it in first person:
+   walk round the car (the stick, or W A S D), look round with a drag, and
+   zoom up to 5x like a camera lens: the background melts into bokeh as the
+   lens gets longer, colour fringes at the edges (chromatic aberration), a
+   sensor's moire on fine detail, a vignette and a little grain. Another
+   double tap (or 戻る) comes back out.
+   three.js and the models load the first time they are needed (online only,
+   with WebGL); one renderer serves both places. */
+(function (BR) {
+  'use strict';
+
+  var STUDIO = { base: 'img/3d/studio/base.glb', moving: 'img/3d/studio/moving-head.glb', spot: 'img/3d/studio/spotlight.glb' };
+  function carFile(id) { return 'img/3d/cars/' + id + '.glb'; }
+  // sizes in metres
+  var CAR_LEN = 4.6, BASE_D = 6.8, MOVING_H = 0.95, SPOT_H = 2.45, EYE = 1.6, ROOM = 15;
+  var FOV = 42, ZOOM_MAX = 5;
+
+  var T = null;
+  var g = null;            // the one renderer and its studio
+  var loading = null;      // three.js and the studio models
+  var cars = {};           // car id -> Promise of its model (metres, standing on y = 0)
+  var mode = '';           // '' | 'show' (Car Owner) | 'space' (the garage) | 'walk' (first person)
+  var host = null, raf = 0, last = 0, carId = '';
+  var walk = null;         // first person: { yaw, pitch, zoom, keys, stick, focus }
+
+  function online() { return !!(BR.api && BR.api.online); }
+  function webgl() {
+    try {
+      var c = document.createElement('canvas');
+      return !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl')));
+    } catch (e) { return false; }
+  }
+  function supported() { return online() && webgl(); }
+  function has(id) {
+    var list = BR.CONFIG.cars;
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return !!list[i].model;
+    return false;
+  }
+
+  /* ------------------------------------------------------------ loading --- */
+  function gltf(url, progress) {
+    return new Promise(function (resolve, reject) {
+      new T.GLTFLoader().setMeshoptDecoder(T.MeshoptDecoder).load(url, function (r) { resolve(r.scene); }, function (e) {
+        if (progress && e && e.total) progress(e.loaded / e.total);
+      }, reject);
+    });
+  }
+  // a model scaled to `size` metres along `axis` ('x' or 'y'), centred on x/z, standing on y = 0
+  function fit(obj, axis, size) {
+    var box = new T.Box3().setFromObject(obj), s = box.getSize(new T.Vector3());
+    var k = size / (axis === 'x' ? s.x : s.y);
+    obj.scale.multiplyScalar(k);
+    box.setFromObject(obj);
+    var c = box.getCenter(new T.Vector3());
+    obj.position.x -= c.x;
+    obj.position.z -= c.z;
+    obj.position.y -= box.min.y;
+    var holder = new T.Group();
+    holder.add(obj);
+    return holder;
+  }
+  function shadows(obj, cast, receive) {
+    obj.traverse(function (o) { if (o.isMesh) { o.castShadow = cast; o.receiveShadow = receive; } });
+  }
+
+  function load(progress) {
+    if (loading) return loading;
+    var parts = 0, done = function () { parts++; if (progress) progress(parts / 4); };
+    loading = BR.win3d.three().then(function (lib) {
+      T = lib;
+      build();
+      return Promise.all([
+        gltf(STUDIO.base).then(function (m) { done(); return m; }),
+        gltf(STUDIO.moving).then(function (m) { done(); return m; }),
+        gltf(STUDIO.spot).then(function (m) { done(); return m; })
+      ]);
+    }).then(function (m) {
+      dress(m[0], m[1], m[2]);
+      return g;
+    }).catch(function (e) {
+      loading = null;
+      throw e;
+    });
+    return loading;
+  }
+  function car(id) {
+    if (!cars[id]) {
+      cars[id] = gltf(carFile(id)).then(function (m) {
+        // its nose to -x in the file: turned to face the front-left of the studio
+        var c = fit(m, 'x', CAR_LEN);
+        c.rotation.y = 0.55;
+        shadows(c, true, true);
+        return c;
+      }, function (e) { delete cars[id]; throw e; });
+    }
+    return cars[id];
+  }
+
+  /* ------------------------------------------------------------ the studio --- */
+  function build() {
+    var canvas = document.createElement('canvas');
+    canvas.className = 'g3d-canvas';
+    var renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: 'high-performance' });
+    renderer.outputColorSpace = T.SRGBColorSpace;
+    renderer.toneMapping = T.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = T.PCFSoftShadowMap;
+    var scene = new T.Scene();
+    scene.background = new T.Color(0x06070b);
+    scene.fog = new T.Fog(0x06070b, 16, 40);
+    var pm = new T.PMREMGenerator(renderer);
+    scene.environment = pm.fromScene(new T.RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.32;
+    pm.dispose();
+    scene.add(new T.HemisphereLight(0x8a96b8, 0x0b0b10, 0.45));
+    // the glossy floor, fading into the dark
+    var floor = new T.Mesh(new T.CircleGeometry(ROOM * 2, 64), new T.MeshStandardMaterial({ color: 0x15161d, roughness: 0.55, metalness: 0.1 }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+    var camera = new T.PerspectiveCamera(FOV, 16 / 9, 0.05, 80);
+    var controls = new T.OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.enablePan = false;
+    controls.minPolarAngle = Math.PI * 0.16;
+    controls.maxPolarAngle = Math.PI * 0.47;
+    controls.minDistance = 5;
+    controls.maxDistance = 13;
+    controls.target.set(0, 0.8, 0);
+    g = { canvas: canvas, renderer: renderer, scene: scene, camera: camera, controls: controls, composer: null, car: null, carId: '', beams: [], base: null, fps: 60 };
+    canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); stop(); }, false);
+  }
+
+  // a soft beam of light from `from` to `to` (a cone that fades along it and at its edges)
+  function beam(from, to, radius, color) {
+    var len = from.distanceTo(to);
+    var geo = new T.CylinderGeometry(0.06, radius, len, 40, 1, true);
+    geo.translate(0, -len / 2, 0);
+    geo.rotateX(-Math.PI / 2);
+    var mat = new T.ShaderMaterial({
+      uniforms: { color: { value: new T.Color(color) }, strength: { value: 0.42 } },
+      vertexShader: 'varying float vAlong; varying vec3 vN; varying vec3 vView;' +
+        'void main() { vAlong = clamp(position.z / ' + len.toFixed(3) + ', 0.0, 1.0);' +
+        'vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vView = normalize(-mv.xyz);' +
+        'gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'uniform vec3 color; uniform float strength; varying float vAlong; varying vec3 vN; varying vec3 vView;' +
+        'void main() { float edge = pow(abs(dot(vN, vView)), 1.6); float a = strength * edge * pow(1.0 - vAlong, 1.4);' +
+        'gl_FragColor = vec4(color * a, a); }',
+      transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide
+    });
+    var m = new T.Mesh(geo, mat);
+    m.position.copy(from);
+    m.lookAt(to);
+    m.renderOrder = 2;
+    return m;
+  }
+
+  // the glow of a lamp's lens (a soft round sprite, added light)
+  function glow(at, color, size) {
+    var c = document.createElement('canvas');
+    c.width = c.height = 128;
+    var x = c.getContext('2d'), gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(0.25, 'rgba(255,255,255,.55)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = gr;
+    x.fillRect(0, 0, 128, 128);
+    var sp = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(c), color: color, blending: T.AdditiveBlending, depthWrite: false, transparent: true }));
+    sp.position.copy(at);
+    sp.scale.set(size, size, 1);
+    return sp;
+  }
+
+  function dress(baseM, movingM, spotM) {
+    var s = g.scene;
+    // the round base, its pattern up (the pattern faces +z in the file)
+    baseM.rotation.x = -Math.PI / 2;
+    var base = fit(baseM, 'x', BASE_D);
+    shadows(base, false, true);
+    s.add(base);
+    g.base = base;
+    g.baseTop = new T.Box3().setFromObject(base).max.y;
+    var target = new T.Vector3(0, 0.75, 0);
+    // the moving head on the floor at the back left, its head towards the car
+    var moving = fit(movingM, 'y', MOVING_H);
+    moving.position.set(-4.1, 0, -2.5);
+    moving.rotation.y = Math.atan2(-moving.position.x, -moving.position.z) + Math.PI / 2;
+    shadows(moving, true, false);
+    s.add(moving);
+    // the spotlight on its stand at the front right, facing the car
+    var spot = fit(spotM, 'y', SPOT_H);
+    spot.position.set(4.6, 0, 3.0);
+    spot.rotation.y = Math.atan2(-spot.position.x, -spot.position.z);
+    shadows(spot, true, false);
+    s.add(spot);
+    // their lights: a warm key from the spotlight (the shadows), a cool one from the moving head
+    var keyFrom = new T.Vector3(4.6, SPOT_H * 0.86, 3.0);
+    var key = new T.SpotLight(0xfff0dc, 520, 0, 0.42, 0.6, 2);
+    key.position.copy(keyFrom);
+    key.target.position.copy(target);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.02;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 20;
+    s.add(key, key.target);
+    var coolFrom = new T.Vector3(-4.1, MOVING_H * 0.8, -2.5);
+    var cool = new T.SpotLight(0x8fc4ff, 420, 9, 0.3, 0.5, 2);
+    cool.position.copy(coolFrom);
+    cool.target.position.set(0, 0.9, 0);
+    s.add(cool, cool.target);
+    // the lamps' lenses glow, and the moving head is lit a little from the front
+    s.add(glow(coolFrom.clone().lerp(new T.Vector3(0, 0.9, 0), 0.05), 0x9fd0ff, 0.6));
+    s.add(glow(keyFrom.clone().lerp(target, 0.03), 0xfff0d0, 0.6));
+    var fill = new T.PointLight(0xc8d4ff, 6, 4, 2);
+    fill.position.set(-3.2, 1.4, -1.4);
+    s.add(fill);
+    // a soft top light on the car (its pool stays on the base), and a dim
+    // light behind so the stands and the moving head show against the dark
+    var top = new T.SpotLight(0xffffff, 110, 0, 0.42, 0.85, 2);
+    top.position.set(0, 9, 0);
+    top.target.position.set(0, 0, 0);
+    s.add(top, top.target);
+    var back = new T.PointLight(0x6f7fa8, 18, 14, 2);
+    back.position.set(0, 3.2, -6);
+    s.add(back);
+    g.beams = [beam(keyFrom, target, 1.5, 0xffe8c8), beam(coolFrom, new T.Vector3(0, 1.0, 0), 1.2, 0x9ccaff)];
+    g.beams.forEach(function (b) { s.add(b); });
+  }
+
+  function putCar(id) {
+    if (g.carId === id && g.car) return Promise.resolve();
+    g.carId = id;
+    return car(id).then(function (c) {
+      if (g.carId !== id) return;
+      if (g.car) g.scene.remove(g.car);
+      c.position.y = g.baseTop;
+      g.car = c;
+      g.scene.add(c);
+      g.renderer.compile(g.scene, g.camera);
+    });
+  }
+
+  /* ------------------------------------------------------------ the frame --- */
+  function size() {
+    if (!host) return;
+    var r = host.getBoundingClientRect();
+    var w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+    // sharp enough, never heavier than needed (and lighter once frames get slow)
+    var pr = Math.min(window.devicePixelRatio || 1, mode === 'show' ? 1.5 : 1.75) * (g.fps < 30 ? 0.7 : 1);
+    g.renderer.setPixelRatio(pr);
+    g.renderer.setSize(w, h, false);
+    g.camera.aspect = w / h;
+    g.camera.updateProjectionMatrix();
+    if (g.composer) {
+      g.composer.setPixelRatio(pr);
+      g.composer.setSize(w, h);
+    }
+  }
+
+  function frame(now) {
+    raf = requestAnimationFrame(frame);
+    var dt = Math.min(0.1, (now - (last || now)) / 1000);
+    last = now;
+    if (dt > 0) g.fps += (1 / dt - g.fps) * 0.05;
+    if (mode === 'walk') { stepWalk(dt); g.composer.render(dt); }
+    else {
+      g.controls.update();
+      g.renderer.render(g.scene, g.camera);
+    }
+  }
+  function run() { if (!raf) { last = 0; raf = requestAnimationFrame(frame); } }
+  function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
+
+  function attach(el, m) {
+    host = el;
+    mode = m;
+    if (g.canvas.parentNode !== el) el.appendChild(g.canvas);
+    size();
+  }
+
+  // the orbit for Car Owner (turning by itself) or the garage's space
+  function orbit(auto) {
+    var c = g.controls;
+    c.enabled = true;
+    c.autoRotate = true;
+    c.autoRotateSpeed = auto ? 0.9 : 0.35;
+    c.enableZoom = !auto;
+    g.camera.fov = FOV;
+    g.camera.position.set(4.9, 1.85, 5.2);
+    c.target.set(0, 0.8, 0);
+    g.camera.updateProjectionMatrix();
+    c.update();
+  }
+
+  /* ------------------------------------------------------------ first person --- */
+  // the lens: colour fringes, the sensor's moire on fine detail, vignette, grain
+  var LENS = {
+    uniforms: { tDiffuse: { value: null }, res: { value: null }, zoom: { value: 1 }, time: { value: 0 } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: [
+      'uniform sampler2D tDiffuse; uniform vec2 res; uniform float zoom; uniform float time; varying vec2 vUv;',
+      'float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }',
+      'void main() {',
+      '  vec2 c = vUv - 0.5; float r2 = dot(c, c);',
+      // chromatic aberration: wider towards the edges, and with a longer lens
+      '  float ca = 0.0012 + 0.0016 * (zoom - 1.0);',
+      '  vec3 col = vec3(texture2D(tDiffuse, vUv + c * ca).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - c * ca).b);',
+      // moire: the pixel grid beating against fine detail (it shows as the lens gets longer)
+      '  vec2 px = vUv * res; vec2 o = 1.0 / res;',
+      '  float l = luma(col);',
+      '  float d = abs(l - luma(texture2D(tDiffuse, vUv + vec2(o.x, 0.0)).rgb)) + abs(l - luma(texture2D(tDiffuse, vUv + vec2(0.0, o.y)).rgb));',
+      '  float detail = clamp(d * 5.0, 0.0, 1.0);',
+      '  float beat = sin(px.x * 0.92 + px.y * 0.23) * sin(px.y * 0.87 - px.x * 0.19);',
+      '  vec3 fringe = vec3(sin(beat * 3.1), sin(beat * 3.1 + 2.09), sin(beat * 3.1 + 4.19));',
+      '  col += fringe * detail * smoothstep(1.4, 5.0, zoom) * 0.07 * (0.4 + l);',
+      // vignette (a longer lens darkens the corners more) and a little grain
+      '  col *= 1.0 - smoothstep(0.18, 0.62, r2 * (1.0 + 0.18 * (zoom - 1.0))) * 0.55;',
+      '  col += (fract(sin(dot(px + time * 61.0, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 0.018;',
+      '  gl_FragColor = vec4(max(col, 0.0), 1.0);',
+      '}'
+    ].join('\n')
+  };
+
+  function composer() {
+    if (g.composer) return;
+    var c = new T.EffectComposer(g.renderer);
+    c.addPass(new T.RenderPass(g.scene, g.camera));
+    g.bokeh = new T.BokehPass(g.scene, g.camera, { focus: 6, aperture: 0.002, maxblur: 0.006 });
+    c.addPass(g.bokeh);
+    g.lens = new T.ShaderPass(LENS);
+    g.lens.uniforms.res.value = new T.Vector2(1, 1);
+    c.addPass(g.lens);
+    c.addPass(new T.OutputPass());
+    g.composer = c;
+    g.ray = new T.Raycaster();
+  }
+
+  function enterWalk() {
+    if (mode !== 'space' || !g.car) return;
+    composer();
+    mode = 'walk';
+    g.controls.enabled = false;
+    g.controls.autoRotate = false;
+    // standing a few steps from the car, looking at it
+    var p = g.camera.position.clone();
+    p.y = 0;
+    p.setLength(Math.max(4.2, Math.min(8, p.length())));
+    g.camera.position.set(p.x, EYE, p.z);
+    walk = { yaw: Math.atan2(-p.x, -p.z), pitch: -0.08, zoom: 1, keys: {}, stick: { x: 0, y: 0 }, focus: 6 };
+    size();
+    BR.garage3d.onMode && BR.garage3d.onMode('walk');
+  }
+  function leaveWalk() {
+    if (mode !== 'walk') return;
+    mode = 'space';
+    walk = null;
+    orbit(false);
+    size();
+    BR.garage3d.onMode && BR.garage3d.onMode('space');
+  }
+
+  function stepWalk(dt) {
+    var w = walk, cam = g.camera;
+    // moving: the stick or the keys, in the direction one looks
+    var fx = w.stick.y + (w.keys.w || w.keys.arrowup ? 1 : 0) - (w.keys.s || w.keys.arrowdown ? 1 : 0);
+    var sx = w.stick.x + (w.keys.d || w.keys.arrowright ? 1 : 0) - (w.keys.a || w.keys.arrowleft ? 1 : 0);
+    var speed = 2.6 / Math.sqrt(w.zoom);
+    var sin = Math.sin(w.yaw), cos = Math.cos(w.yaw);
+    var x = cam.position.x + (sin * fx - cos * sx) * speed * dt;
+    var z = cam.position.z + (cos * fx + sin * sx) * speed * dt;
+    // never into the car or out of the room
+    var r = Math.sqrt(x * x + z * z), min = BASE_D / 2 - 0.35;
+    if (r < min) { x *= min / r; z *= min / r; }
+    if (r > ROOM) { x *= ROOM / r; z *= ROOM / r; }
+    cam.position.set(x, EYE, z);
+    cam.rotation.set(w.pitch, w.yaw + Math.PI, 0, 'YXZ');
+    // the lens: a longer one narrows the view
+    cam.fov = 2 * Math.atan(Math.tan(FOV * Math.PI / 360) / w.zoom) * 180 / Math.PI;
+    cam.updateProjectionMatrix();
+    // focus where the middle of the view lands (the car, the base, else far away), eased like a real lens
+    g.ray.setFromCamera({ x: 0, y: 0 }, cam);
+    var hit = g.ray.intersectObjects([g.car, g.base], true)[0];
+    var want = hit ? hit.distance : 12;
+    w.focus += (want - w.focus) * Math.min(1, dt * 6);
+    var u = g.bokeh.uniforms;
+    u.focus.value = w.focus;
+    u.aperture.value = 0.0012 * w.zoom * w.zoom;
+    u.maxblur.value = 0.004 + 0.0028 * (w.zoom - 1);
+    var res = g.lens.uniforms.res.value;
+    g.renderer.getDrawingBufferSize(res);
+    g.lens.uniforms.zoom.value = w.zoom;
+    g.lens.uniforms.time.value = (performance.now() / 1000) % 100;
+  }
+
+  /* ------------------------------------------------------------ input in first person --- */
+  var drag = null, pinch = null, taps = [];
+  function onDown(e) {
+    // two taps close together: in, or back out
+    var now = performance.now();
+    taps = taps.filter(function (t) { return now - t.at < 320; });
+    if (taps.length && Math.abs(taps[0].x - e.clientX) < 40 && Math.abs(taps[0].y - e.clientY) < 40) {
+      taps = [];
+      if (mode === 'space') enterWalk(); else if (mode === 'walk') leaveWalk();
+      return;
+    }
+    taps.push({ at: now, x: e.clientX, y: e.clientY });
+    if (mode !== 'walk') return;
+    if (pointers.size === 0) drag = { x: e.clientX, y: e.clientY };
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      var p = Array.from(pointers.values());
+      pinch = { d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y), zoom: walk.zoom };
+      drag = null;
+    }
+  }
+  var pointers = new Map();
+  function onMove(e) {
+    if (mode !== 'walk' || !pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pointers.size === 2) {
+      var p = Array.from(pointers.values());
+      setZoom(pinch.zoom * Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) / pinch.d);
+      return;
+    }
+    if (!drag) return;
+    // looking round: slower the longer the lens
+    var k = 0.0042 / walk.zoom;
+    walk.yaw -= (e.clientX - drag.x) * k;
+    walk.pitch = Math.max(-1.1, Math.min(1.0, walk.pitch - (e.clientY - drag.y) * k));
+    drag = { x: e.clientX, y: e.clientY };
+  }
+  function onUp(e) {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = null;
+    if (!pointers.size) drag = null;
+  }
+  function onWheel(e) {
+    if (mode !== 'walk') return;
+    e.preventDefault();
+    setZoom(walk.zoom * Math.exp(-e.deltaY * 0.0015));
+  }
+  function onKey(e) {
+    if (mode !== 'walk') return;
+    var k = e.key.toLowerCase();
+    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].indexOf(k) < 0) return;
+    walk.keys[k] = e.type === 'keydown';
+    e.preventDefault();
+  }
+  function setZoom(z) {
+    if (!walk) return;
+    walk.zoom = Math.max(1, Math.min(ZOOM_MAX, z));
+    if (BR.garage3d.onZoom) BR.garage3d.onZoom(walk.zoom);
+  }
+  function listen(el) {
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onUp);
+    el.addEventListener('wheel', onWheel, { passive: false });
+  }
+  document.addEventListener('keydown', onKey);
+  document.addEventListener('keyup', onKey);
+  window.addEventListener('resize', function () { if (g && host) size(); });
+
+  /* ------------------------------------------------------------ the public side --- */
+  var listening = false;
+  function start(el, id, m, progress) {
+    return load(progress).then(function () {
+      if (!listening) { listen(g.canvas); listening = true; }
+      attach(el, m);
+      orbit(m === 'show');
+      return putCar(id);
+    }).then(function () {
+      if (host !== el) return;
+      run();
+    });
+  }
+
+  BR.garage3d = {
+    supported: supported,
+    has: has,
+    // Car Owner: the car turning in the studio inside `el` (progress(0..1) while loading)
+    show: function (el, id, progress) { carId = id; return start(el, id, 'show', progress); },
+    // the garage's 3D space inside `el` (double tap: first person)
+    space: function (el, id, progress) { carId = id; return start(el, id, 'space', progress); },
+    walk: function (on) { if (on) enterWalk(); else leaveWalk(); },
+    zoom: setZoom,
+    stick: function (x, y) { if (walk) { walk.stick.x = x; walk.stick.y = y; } },
+    mode: function () { return mode; },
+    // stops drawing (the canvas stays where it is until shown elsewhere)
+    stop: function () { stop(); if (mode === 'walk') leaveWalk(); mode = ''; host = null; },
+    onMode: null,
+    onZoom: null,
+    // (the studio, to look into it while working on it)
+    debug: function () { return g; }
+  };
 })(window.BR = window.BR || {});
 </script>
 <script>
@@ -11629,6 +12786,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   /* ------------------------------------------------------------ navigation --- */
   function show(name) {
     if (name === current) return;
+    // banned: the title screen only (js/ui/banlock.js)
+    if (name !== 'start' && BR.banlock && BR.banlock.active()) return;
     var prev = current;
     current = name;
     $$('.screen').forEach(function (s) { s.classList.toggle('active', s.id === 'screen-' + name); });
@@ -12433,7 +13592,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     api.loginCode(code).then(function (r) {
       $('#ov-code').value = '';
       welcomeBack(r);
-      if (!r.me.hasPassword) setTimeout(function () { K.toast('プロフィールからパスワードを設定すると、名前とパスワードでログインできます', 4200); }, 2600);
+      if (r.me && !r.me.hasPassword) setTimeout(function () { K.toast('プロフィールからパスワードを設定すると、名前とパスワードでログインできます', 4200); }, 2600);
     }, function (err) {
       setError('code-login', err.message);
       K.sfx('deny');
@@ -12441,6 +13600,13 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   }
 
   function welcomeBack(r) {
+    // banned: logged in, but only to the locked title screen (js/ui/banlock.js)
+    if (r.ban) {
+      after = null;
+      close();
+      BR.social.signInBanned(r.token, r.ban);
+      return;
+    }
     api.rememberName(r.me.name);
     BR.social.signIn(r.token, r.me);
     K.sfx('purchase');
@@ -12501,6 +13667,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   /* ------------------------------------------------------------ entry points --- */
   // Runs `next` when signed in; otherwise asks to sign up (or log in) first.
   function require(next, card) {
+    if (BR.banlock && BR.banlock.active()) return;
     if (api.hasToken()) { next(); return; }
     after = next;
     open(card || 'register');
@@ -12881,9 +14048,17 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     });
   }
 
-  function signedOut() {
+  // A banned account (js/ui/banlock.js): banned logins land here, and a ban
+  // while playing stops everything but keeps the login, to ask with.
+  function signInBanned(token, ban) {
+    api.setToken(token);
+    BR.banlock.lock(ban);
+  }
+  function lockDown() { signedOut(true); }
+
+  function signedOut(keepLogin) {
     BR.live.close();
-    api.setToken(null);
+    if (!keepLogin) api.setToken(null);
     BR.bank.reset();
     if (BR.call) BR.call.hangupAll();
     if (BR.watch) BR.watch.stop(true);
@@ -12899,17 +14074,22 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     BR.app.renderWallet(false);
   }
 
-  // The token stopped working (logged out elsewhere, banned). The money is
-  // safe on the server: logging in again brings everything back.
+  // The token stopped working (logged out elsewhere, or by the server: an
+  // operator's rights taken away). The money is safe on the server: logging
+  // in again brings everything back.
   function onAuthLost(err) {
     clearTimeout(retryTimer);
     signedOut();
     if (BR.screens.current() !== 'start' && BR.screens.current() !== 'slot') BR.screens.show('slot');
-    // banned (アクセス禁止 / BAN / 永久BAN, or another account on this device): the server says until when
-    var banned = err && (err.code === 'banned' || err.code === 'device_banned');
-    BR.account.open('login', banned
-      ? (err.message || 'このアカウントは利用停止されています') + '。'
+    BR.account.open('login', err && err.code === 'ended' && err.message
+      ? err.message + '。'
       : 'もう一度ログインしてください。ユーザー名とパスワードで、残高もそのまま戻ります。');
+  }
+  // banned (アクセス禁止 / BAN / 永久BAN, or another account on this device):
+  // locked on the title screen until it ends
+  function onBanned(err) {
+    clearTimeout(retryTimer);
+    BR.banlock.lock((err && err.extra && err.extra.ban) || err);
   }
 
   function logout() {
@@ -13100,6 +14280,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     if (!TAB_OF[v]) v = 'friends';
     if (v === 'dm' && !peer) v = 'messages';
     if (v === 'group' && !group) v = 'messages';
+    // the cars' 3D stops when Car Owner is left
+    if (v !== 'cars' && BR.cars && BR.cars.leave) BR.cars.leave();
     view = v;
     var tab = TAB_OF[v];
     if (tab !== 'messages') lastTab = v;
@@ -14567,8 +15749,13 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     bindModals();
     if (!online) return;
     api.on('auth-lost', onAuthLost);
-    // an operator has just banned this account (or one on this device)
-    BR.live.on('kick', function (ev) { if (me) onAuthLost(ev); });
+    api.on('banned', onBanned);
+    // an operator has just banned this account (or one on this device), or
+    // the server ended its logins
+    BR.live.on('kick', function (ev) {
+      if (ev.code === 'banned' || ev.code === 'device_banned') BR.banlock.lock(ev.ban || ev);
+      else if (me) onAuthLost(ev);
+    });
     BR.live.on('hello', onHello);
     BR.live.on('msg', onMsg);
     BR.live.on('read', onRead);
@@ -14591,6 +15778,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     init: init,
     open: openBoard,
     signIn: signIn,
+    signInBanned: signInBanned,
+    lockDown: lockDown,
     me: function () { return me; },
     onMe: function (fn) { meListeners.push(fn); },
     setMe: function (m) {
@@ -14629,7 +15818,17 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 </script>
 <script>
 /* Car Owner (the car shop) and Garage (the cars one owns), on the board
-   screen, plus giving a car to a friend. Prices are in $. */
+   screen. Prices are in $.
+   - Car Owner: every car of the catalog (the picker), a car with a 3D model
+     turning in the studio (js/render/garage3d.js), its price with the Car
+     Owner sale on now (極 / 超極 / 超ダイナミック / 年感謝セール, js/game/sale.js)
+     and how long it lasts.
+   - Garage: two places, one more for $1,000,000 each (for good). Every car can
+     be looked at in its 3D space (double tap: first person, a 5x lens), rented
+     out (any number of them: customers every 5 hours, the takings collected
+     here; a car out is away for 5 hours at the least), sold to the buy-back
+     (its price now less the day's rate; 大廃棄セール: far less taken off) or
+     given to a friend. */
 (function (BR) {
   'use strict';
 
@@ -14637,61 +15836,160 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   var $ = U.$;
   var el = K.el, sfx = K.sfx, toast = K.toast, fail = K.fail;
 
-  var garage = null;   // { catalog, cars } from the server
+  var garage = null;   // from the server: { catalog, cars, capacity, slotPrice, sale, disposal, buyback, now }
+  var skew = 0;        // the server's clock less ours
   var busy = false;
+  var sel = '';        // the car Car Owner shows
+  var tick = 0;        // the countdowns
 
+  function catalog() { return BR.CONFIG.cars; }
   function model(id) {
-    var list = BR.CONFIG.cars;
+    var list = catalog();
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;
   }
   function picture(id) { return BR.SOCIAL_IMG.cars[id] || ''; }
+  function now() { return Date.now() + skew; }
+  function money(n) { return '$' + U.fmt(n); }
   function load() {
-    return api.cars().then(function (r) { garage = r; return r; });
+    return api.cars().then(function (r) {
+      garage = r;
+      skew = (r.now || Date.now()) - Date.now();
+      return r;
+    });
   }
   function onBoard(view) { return BR.screens.current() === 'board' && $('#pane-' + view).classList.contains('active'); }
+  function left(ms) {
+    var s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+    return h + ':' + (m < 10 ? '0' : '') + m + ':' + (x < 10 ? '0' : '') + x;
+  }
+  function at(ms) {
+    var d = new Date(ms);
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
+  }
+  // the sale on now (the server's word once it has spoken; it ends by itself)
+  function sale() {
+    var s = garage && garage.sale;
+    if (s && now() < s.end) return s;
+    return BR.sale.cars(now(), catalog());
+  }
+  function priceOf(car) { return BR.sale.carPrice(car, sale()); }
+  function owned() { return garage ? garage.cars.length : 0; }
+  function capacity() { return garage ? garage.capacity : BR.CONFIG.garage.slots; }
 
   /* ------------------------------------------------------------ Car Owner --- */
   function showShop() {
-    var car = BR.CONFIG.cars[0];
-    $('#car-pic').style.backgroundImage = 'url("' + picture(car.id) + '")';
+    if (!sel || !model(sel)) sel = catalog()[catalog().length - 1].id;
+    renderShop();
+    load().then(function () { if (onBoard('cars')) renderShop(); }, function () {});
+    clearInterval(tick);
+    tick = setInterval(function () {
+      if (onBoard('cars')) renderSale();
+      else if (onBoard('garage')) renderBar();
+      else clearInterval(tick);
+    }, 1000);
+  }
+  function renderShop() {
+    var car = model(sel);
+    // the picker: every car, its sale mark
+    var pick = $('#car-picker');
+    pick.textContent = '';
+    var s = sale();
+    catalog().forEach(function (c) {
+      var b = el('button', 'car-thumb' + (c.id === sel ? ' on' : ''));
+      b.type = 'button';
+      var p = el('span', 'car-thumb-pic');
+      p.style.backgroundImage = 'url("' + picture(c.id) + '")';
+      b.appendChild(p);
+      b.appendChild(el('span', 'car-thumb-name', c.name));
+      if (s && s.pct[c.id]) b.appendChild(el('em', 'car-thumb-off', '-' + s.pct[c.id] + '%'));
+      if (c.model) b.appendChild(el('i', 'car-thumb-3d', '3D'));
+      b.addEventListener('click', function () {
+        if (sel === c.id) return;
+        sfx('click');
+        sel = c.id;
+        renderShop();
+      });
+      pick.appendChild(b);
+    });
     $('#car-name').textContent = car.name;
-    var price = $('#car-price');
+    var pr = priceOf(car), price = $('#car-price');
     price.textContent = '';
-    price.appendChild(K.amountEl(car.price, 'dollars'));
+    if (pr.pct) price.appendChild(el('s', 'car-was', money(car.price)));
+    price.appendChild(K.amountEl(pr.price, 'dollars'));
+    if (pr.pct) price.appendChild(el('em', 'car-off', '-' + pr.pct + '%'));
+    renderSale();
     renderOwned();
-    load().then(function () { if (onBoard('cars')) renderOwned(); }, function () {});
+    stage(car);
+  }
+  // the Car Owner sale and how long it has to go
+  function renderSale() {
+    var box = $('#car-sale'), s = sale();
+    box.hidden = !s;
+    if (!s) return;
+    var mine = s.pct[sel];
+    box.textContent = '';
+    box.appendChild(el('b', '', s.name + '開催中！'));
+    box.appendChild(el('span', '', mine ? 'この車 ' + mine + '%OFF' : '対象：' + Object.keys(s.pct).map(function (id) { var m = model(id); return (m ? m.name : id) + ' ' + s.pct[id] + '%OFF'; }).join('・')));
+    box.appendChild(el('small', '', '残り ' + left(s.end - now())));
   }
   function renderOwned() {
-    var car = BR.CONFIG.cars[0];
+    var car = model(sel);
     var n = garage ? garage.cars.filter(function (c) { return c.model === car.id; }).length : null;
-    $('#car-own').textContent = n === null ? '' : n > 0 ? 'Garage に ' + n + '台あります' : 'まだ持っていません';
+    $('#car-own').textContent = n === null ? '' : (n > 0 ? 'Garage に ' + n + '台' : 'まだ持っていません') + '・ガレージ ' + owned() + ' / ' + capacity() + '台';
     var buy = $('#car-buy');
     buy.disabled = busy;
-    buy.classList.toggle('short', S.dollars < car.price);
+    buy.classList.toggle('short', S.dollars < priceOf(car).price);
   }
+
+  // the 3D studio for a car with a model, its picture otherwise
+  function stage(car) {
+    var pic = $('#car-pic'), host = $('#car-3d'), note = $('#car-3d-note');
+    pic.style.backgroundImage = 'url("' + picture(car.id) + '")';
+    var three = !!car.model && BR.garage3d && BR.garage3d.supported() && !$('#g3d').classList.contains('on');
+    $('#car-stage').classList.toggle('three', three);
+    if (!three) { host.hidden = true; note.textContent = ''; if (BR.garage3d) BR.garage3d.stop(); return; }
+    host.hidden = false;
+    note.textContent = '3Dを読み込み中…';
+    var want = car.id;
+    BR.garage3d.show(host, car.id, function (p) { if (sel === want) note.textContent = '3Dを読み込み中… ' + Math.round(p * 100) + '%'; }).then(function () {
+      if (sel === want) note.textContent = 'ドラッグで回転';
+    }, function () {
+      // no 3D after all: the picture
+      $('#car-stage').classList.remove('three');
+      host.hidden = true;
+      note.textContent = '';
+    });
+  }
+  function leave() {
+    clearInterval(tick);
+    if (BR.garage3d && !$('#g3d').classList.contains('on')) BR.garage3d.stop();
+  }
+
   function buy() {
-    var car = BR.CONFIG.cars[0];
+    var car = model(sel);
     if (busy) return;
-    if (S.dollars < car.price) {
+    var pr = priceOf(car);
+    if (S.dollars < pr.price) {
       sfx('deny');
-      toast('$が足りません（' + U.fmt(car.price) + ' $ 必要です）');
+      toast('$が足りません（' + U.fmt(pr.price) + ' $ 必要です）');
       return;
     }
+    if (garage && owned() >= capacity()) { full(); return; }
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode(car.name + ' を'));
-      p.appendChild(K.amountEl(car.price, 'dollars', 'confirm-amt'));
+      p.appendChild(K.amountEl(pr.price, 'dollars', 'confirm-amt'));
       p.appendChild(document.createTextNode('で購入しますか？'));
-      p.appendChild(el('small', 'confirm-sub', '購入した車は Garage に入ります。'));
+      p.appendChild(el('small', 'confirm-sub', (pr.pct ? 'セール中 ' + pr.pct + '%OFF（通常 ' + money(car.price) + '）。' : '') + '購入した車は Garage に入ります。'));
     }, '購入する').then(function (ok) {
       if (!ok) return;
       busy = true;
       renderOwned();
-      api.buyCar(car.id).then(function (r) {
+      api.buyCar(car.id, pr.price).then(function (r) {
         BR.app.serverBalance(r.me);
         BR.social.setMe(r.me);
         sfx('register');
-        var pic = $('#car-pic');
+        var pic = $('#car-stage');
         pic.classList.remove('sold');
         void pic.offsetWidth;
         pic.classList.add('sold');
@@ -14702,11 +16000,23 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
         }
         toast(car.name + ' を購入しました！Garage で見られます', 3200);
         return load();
-      }).catch(fail).then(function () {
+      }).catch(function (err) {
+        if (err.code === 'garage_full') { full(); return null; }
+        if (err.code === 'price_changed') load().then(function () { if (onBoard('cars')) renderShop(); }, function () {});
+        fail(err);
+      }).then(function () {
         busy = false;
-        if (onBoard('cars')) renderOwned();
+        if (onBoard('cars')) renderShop();
       });
     });
+  }
+  function full() {
+    sfx('deny');
+    K.confirmBox(function (p) {
+      p.appendChild(document.createTextNode('ガレージがいっぱいです（' + capacity() + '台）。1台分広げますか？'));
+      p.appendChild(K.amountEl(BR.CONFIG.garage.slotPrice, 'dollars', 'confirm-amt'));
+      p.appendChild(el('small', 'confirm-sub', '広げた分はずっと使えます。何台分でも広げられます。'));
+    }, '広げる').then(function (ok) { if (ok) expand(true); });
   }
 
   /* ------------------------------------------------------------ Garage --- */
@@ -14715,13 +16025,52 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     load().then(function () { if (onBoard('garage')) renderGarage(); }, function (err) {
       if (!garage) garageNote(err.message);
     });
+    clearInterval(tick);
+    tick = setInterval(function () {
+      if (onBoard('garage')) { renderBar(); renderTimes(); } else if (onBoard('cars')) renderSale(); else clearInterval(tick);
+    }, 1000);
   }
   function garageNote(text) {
     var g = $('#garage-grid');
     g.textContent = '';
     g.appendChild(el('div', 'empty', text));
   }
+  // the bar: places, the takings, the 大廃棄セール
+  function renderBar() {
+    var bar = $('#garage-bar');
+    bar.textContent = '';
+    if (!garage) return;
+    var d = garage.disposal && now() < garage.disposal.end ? garage.disposal : null;
+    if (d) {
+      var dz = el('div', 'garage-disposal');
+      dz.appendChild(el('b', '', d.name + '開催中！'));
+      dz.appendChild(el('span', '', '全車両 買取 −' + d.pct + '% の高価買取'));
+      dz.appendChild(el('small', '', '残り ' + left(d.end - now())));
+      bar.appendChild(dz);
+    }
+    var places = el('div', 'garage-places');
+    places.appendChild(el('span', '', 'ガレージ'));
+    places.appendChild(el('b', '', owned() + ' / ' + capacity() + '台'));
+    var ex = el('button', 'mini-btn gold', '+1台分 広げる（' + money(BR.CONFIG.garage.slotPrice) + '）');
+    ex.type = 'button';
+    ex.disabled = busy;
+    ex.addEventListener('click', function () { sfx('click'); expand(false); });
+    places.appendChild(ex);
+    bar.appendChild(places);
+    var earned = garage.cars.reduce(function (n, c) { return n + (c.earned || 0); }, 0);
+    var rented = garage.cars.filter(function (c) { return c.rent; }).length;
+    var rent = el('div', 'garage-rent');
+    rent.appendChild(el('span', '', '貸し出し中 ' + rented + '台・売上'));
+    rent.appendChild(K.amountEl(earned, 'dollars'));
+    var get = el('button', 'mini-btn gold', '受け取る');
+    get.type = 'button';
+    get.disabled = busy || earned < 1;
+    get.addEventListener('click', function () { sfx('click'); collect(get); });
+    rent.appendChild(get);
+    bar.appendChild(rent);
+  }
   function renderGarage() {
+    renderBar();
     if (!garage) { garageNote('読み込み中…'); return; }
     var g = $('#garage-grid');
     g.textContent = '';
@@ -14730,22 +16079,206 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       return;
     }
     garage.cars.forEach(function (c) {
-      var m = model(c.model) || { name: c.model };
-      var card = el('div', 'garage-card');
+      var m = model(c.model) || { name: c.model, price: 0 };
+      var card = el('div', 'garage-card' + (c.rent ? ' out' : ''));
       card.dataset.car = c.id;
       var pic = el('span', 'garage-pic');
       pic.style.backgroundImage = 'url("' + picture(c.model) + '")';
+      if (c.rent) pic.appendChild(el('i', 'garage-out', '貸し出し中'));
+      else if (m.model) pic.appendChild(el('i', 'garage-3d', '3D'));
       card.appendChild(pic);
       card.appendChild(el('div', 'garage-name', m.name));
       card.appendChild(el('div', 'garage-from', c.from ? c.from.name + 'さんからのプレゼント' : K.fmtDate(c.acquiredAt) + ' に購入'));
-      var b = el('button', 'act-btn garage-gift');
-      b.type = 'button';
-      b.appendChild(K.icon('gift'));
-      b.appendChild(el('span', '', 'フレンドにあげる'));
-      b.addEventListener('click', function () { sfx('click'); chooseFriend(c); });
-      card.appendChild(b);
+      card.appendChild(el('div', 'garage-status'));
+      var row = el('div', 'garage-acts');
+      if (m.model) row.appendChild(button('', '3Dで見る', !!c.rent, function () { open3d(c); }));
+      row.appendChild(c.rent
+        ? button('', c.rent.until ? '停止予約済み' : '貸し出しを止める', !!c.rent.until, function () { stopRent(c); })
+        : button('', '貸し出す', false, function () { startRent(c); }));
+      var b = garage.buyback && garage.buyback[c.model];
+      if (b) row.appendChild(button('', '売る ' + money(b.price), !!c.rent, function () { sell(c); }));
+      row.appendChild(button('gift', 'あげる', !!c.rent, function () { chooseFriend(c); }));
+      card.appendChild(row);
       g.appendChild(card);
     });
+    renderTimes();
+  }
+  function button(ic, text, off, fn) {
+    var b = el('button', 'act-btn garage-act');
+    b.type = 'button';
+    if (ic) b.appendChild(K.icon(ic));
+    b.appendChild(el('span', '', text));
+    b.disabled = busy || off;
+    b.addEventListener('click', function () { sfx('click'); fn(); });
+    return b;
+  }
+  // the rented cars' clocks
+  function renderTimes() {
+    if (!garage) return;
+    garage.cars.forEach(function (c) {
+      var card = document.querySelector('#garage-grid .garage-card[data-car="' + c.id + '"] .garage-status');
+      if (!card) return;
+      var t = '';
+      if (c.rent && c.rent.until) t = at(c.rent.until) + ' に戻ります（' + left(c.rent.until - now()) + '）';
+      else if (c.rent) t = '次のお客さんの集計まで ' + left(c.rent.next - now());
+      if (c.last) t += (t ? '\n' : '') + '前回の5時間：' + c.last.n + '人 ' + money(c.last.sum) + (c.last.vip ? '（VIP ' + c.last.vip + '人！）' : '');
+      card.textContent = t;
+      // a block has passed: count it
+      if (c.rent && now() >= (c.rent.until || c.rent.next) + 1500 && !busy) {
+        busy = true;
+        load().then(function () { busy = false; if (onBoard('garage')) renderGarage(); }, function () { busy = false; });
+      }
+    });
+  }
+
+  function expand(thenBuy) {
+    var price = BR.CONFIG.garage.slotPrice;
+    if (S.dollars < price) { sfx('deny'); toast('$が足りません（' + U.fmt(price) + ' $ 必要です）'); return; }
+    var go = function () {
+      busy = true;
+      api.expandGarage().then(function (r) {
+        BR.app.serverBalance(r.me);
+        BR.social.setMe(r.me);
+        sfx('register');
+        toast('ガレージを広げました（' + r.capacity + '台）', 2800);
+        if (garage) garage.capacity = r.capacity;
+      }).catch(fail).then(function () {
+        busy = false;
+        if (onBoard('garage')) renderGarage();
+        if (onBoard('cars')) renderOwned();
+        if (thenBuy) buy();
+      });
+    };
+    if (thenBuy) { go(); return; }
+    K.confirmBox(function (p) {
+      p.appendChild(document.createTextNode('ガレージを1台分広げますか？'));
+      p.appendChild(K.amountEl(price, 'dollars', 'confirm-amt'));
+      p.appendChild(el('small', 'confirm-sub', '広げた分はずっと使えます（今 ' + capacity() + '台 → ' + (capacity() + 1) + '台）。'));
+    }, '広げる').then(function (ok) { if (ok) go(); });
+  }
+
+  function startRent(c) {
+    var m = model(c.model) || { name: c.model, price: 1000000 };
+    var R = BR.CONFIG.carRental;
+    var t = Math.max(0, Math.min(1, Math.log(m.price / 1e6) / Math.log(20)));
+    var lo = Math.round((R.min + (R.max - R.spread - R.min) * t) / 1000) * 1000;
+    K.confirmBox(function (p) {
+      p.appendChild(document.createTextNode(m.name + ' を貸し出しますか？'));
+      p.appendChild(el('small', 'confirm-sub', R.hours + '時間ごとにお客さんが1〜5人来て、1人 ' + money(lo) + '〜' + money(lo + R.spread) + ' 払ってくれます（まれに ' + money(R.vip.pay) + ' 払うお客さんも！）。' +
+        '貸し出し中は少なくとも' + R.hours + '時間、この車を売ったり・あげたり・3Dで見たりできません。'));
+    }, '貸し出す').then(function (ok) {
+      if (!ok) return;
+      busy = true;
+      api.rentCar(c.id, 'start').then(function () {
+        sfx('register');
+        toast(m.name + ' を貸し出しました。' + R.hours + '時間ごとにお客さんが来ます', 3200);
+        return load();
+      }).catch(fail).then(function () { busy = false; if (onBoard('garage')) renderGarage(); });
+    });
+  }
+  function stopRent(c) {
+    var m = model(c.model) || { name: c.model };
+    var B = BR.CONFIG.carRental.hours * 3600000;
+    var back = c.rent.start + Math.max(1, Math.ceil((now() - c.rent.start) / B)) * B;
+    K.confirmBox(function (p) {
+      p.appendChild(document.createTextNode(m.name + ' の貸し出しを止めますか？'));
+      p.appendChild(el('small', 'confirm-sub', '今の' + BR.CONFIG.carRental.hours + '時間が終わる ' + at(back) + ' に戻ってきます（それまでのお客さんの分も売上になります）。'));
+    }, '止める').then(function (ok) {
+      if (!ok) return;
+      busy = true;
+      api.rentCar(c.id, 'stop').then(function () { toast(at(back) + ' に戻ってきます', 2800); return load(); })
+        .catch(fail).then(function () { busy = false; if (onBoard('garage')) renderGarage(); });
+    });
+  }
+  function collect(btn) {
+    busy = true;
+    api.collectRent().then(function (r) {
+      BR.app.serverBalance(r.me);
+      BR.social.setMe(r.me);
+      sfx('money');
+      if (BR.juice) BR.juice.payout('dollars', r.paid, btn);
+      toast('貸し出しの売上 ' + money(r.paid) + ' を受け取りました', 2800);
+      return load();
+    }).catch(fail).then(function () { busy = false; if (onBoard('garage')) renderGarage(); });
+  }
+  function sell(c) {
+    var m = model(c.model) || { name: c.model };
+    var b = garage.buyback[c.model];
+    K.confirmBox(function (p) {
+      p.appendChild(document.createTextNode(m.name + ' を'));
+      p.appendChild(K.amountEl(b.price, 'dollars', 'confirm-amt'));
+      p.appendChild(document.createTextNode('で売りますか？'));
+      p.appendChild(el('small', 'confirm-sub', (b.disposal ? '大廃棄セールの高価買取' : '今日の買取') + '：今の販売価格の −' + b.pct + '%。売った車は戻りません。' + (c.earned ? 'この車の貸し出しの売上も一緒に受け取ります。' : '')));
+    }, '売る').then(function (ok) {
+      if (!ok) return;
+      busy = true;
+      api.sellCar(c.id, b.price).then(function (r) {
+        BR.app.serverBalance(r.me);
+        BR.social.setMe(r.me);
+        sfx('money');
+        toast(m.name + ' を ' + money(r.paid) + ' で売りました' + (r.earned ? '（貸し出しの売上 ' + money(r.earned) + ' も）' : ''), 3200);
+        return load();
+      }).catch(function (err) {
+        if (err.code === 'price_changed') load().then(function () { if (onBoard('garage')) renderGarage(); }, function () {});
+        fail(err);
+      }).then(function () { busy = false; if (onBoard('garage')) renderGarage(); });
+    });
+  }
+
+  /* ------------------------------------------------------------ the 3D space --- */
+  var space = null;
+  function open3d(c) {
+    if (!BR.garage3d || !BR.garage3d.supported()) { sfx('deny'); toast('この端末では3Dを表示できません', 2600); return; }
+    var m = model(c.model) || { name: c.model };
+    var box = $('#g3d');
+    box.hidden = false;
+    box.classList.add('on');
+    box.classList.remove('walk');
+    $('#g3d-name').textContent = m.name;
+    $('#g3d-hint').textContent = 'ドラッグで回転・ダブルタップで中に入る';
+    $('#g3d-load').hidden = false;
+    $('#g3d-load').textContent = '3Dを読み込み中…';
+    space = c.model;
+    BR.garage3d.onMode = function (mode) {
+      box.classList.toggle('walk', mode === 'walk');
+      $('#g3d-hint').textContent = mode === 'walk' ? 'ドラッグで見回す・スティックで歩く・2本指かスライダーでズーム（最大5倍）・ダブルタップで戻る' : 'ドラッグで回転・ダブルタップで中に入る';
+      zoomShown(1);
+    };
+    BR.garage3d.onZoom = zoomShown;
+    BR.garage3d.space($('#g3d-view'), c.model, function (p) { $('#g3d-load').textContent = '3Dを読み込み中… ' + Math.round(p * 100) + '%'; }).then(function () {
+      $('#g3d-load').hidden = true;
+    }, function () {
+      $('#g3d-load').textContent = '3Dを読み込めませんでした';
+    });
+  }
+  function close3d() {
+    if (!space) return;
+    space = null;
+    BR.garage3d.stop();
+    var box = $('#g3d');
+    box.classList.remove('on', 'walk');
+    box.hidden = true;
+    if (onBoard('cars')) renderShop();
+  }
+  function zoomShown(z) {
+    $('#g3d-zoom').value = String(z);
+    $('#g3d-zoom-n').textContent = '×' + z.toFixed(1);
+  }
+  // the stick: a thumb's push, -1..1 each way
+  function stick() {
+    var pad = $('#g3d-stick'), knob = pad.querySelector('i'), id = null;
+    function set(e) {
+      var r = pad.getBoundingClientRect(), rad = r.width / 2;
+      var x = (e.clientX - r.left - rad) / rad, y = (e.clientY - r.top - rad) / rad, l = Math.hypot(x, y);
+      if (l > 1) { x /= l; y /= l; }
+      knob.style.transform = 'translate(' + (x * rad * 0.6) + 'px,' + (y * rad * 0.6) + 'px)';
+      BR.garage3d.stick(x, -y);
+    }
+    pad.addEventListener('pointerdown', function (e) { id = e.pointerId; pad.setPointerCapture(id); set(e); e.stopPropagation(); });
+    pad.addEventListener('pointermove', function (e) { if (e.pointerId === id) set(e); });
+    var end = function (e) { if (e.pointerId !== id) return; id = null; knob.style.transform = ''; BR.garage3d.stick(0, 0); };
+    pad.addEventListener('pointerup', end);
+    pad.addEventListener('pointercancel', end);
   }
 
   /* ------------------------------------------------------------ gifts --- */
@@ -14777,16 +16310,17 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     }).catch(fail);
   }
 
-  // from a friend's profile: which car?
+  // from a friend's profile: which car? (not the rented ones)
   function giftTo(user) {
     load().then(function (r) {
-      if (!r.cars.length) {
+      var cars = r.cars.filter(function (c) { return !c.rent; });
+      if (!cars.length) {
         sfx('deny');
-        toast('あげられる車がありません。Car Owner で購入できます', 3200);
+        toast(r.cars.length ? '貸し出し中の車はあげられません' : 'あげられる車がありません。Car Owner で購入できます', 3200);
         return;
       }
-      if (r.cars.length === 1) { confirmGift(user, r.cars[0]); return; }
-      pickDialog(user.name + 'さんにあげる車', r.cars, function (row, c) {
+      if (cars.length === 1) { confirmGift(user, cars[0]); return; }
+      pickDialog(user.name + 'さんにあげる車', cars, function (row, c) {
         var pic = el('span', 'pick-car');
         pic.style.backgroundImage = 'url("' + picture(c.model) + '")';
         row.appendChild(pic);
@@ -14821,12 +16355,20 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     K.registerModal('pick');
     $('#car-buy').addEventListener('click', function () { sfx('click'); buy(); });
     K.dragScroll($('#pick-list'));
+    $('#g3d-close').addEventListener('click', function () { sfx('click'); close3d(); });
+    $('#g3d-out').addEventListener('click', function () { sfx('click'); BR.garage3d.walk(false); });
+    $('#g3d-in').addEventListener('click', function () { sfx('click'); BR.garage3d.walk(true); });
+    $('#g3d-zoom').addEventListener('input', function () { BR.garage3d.zoom(Number($('#g3d-zoom').value)); });
+    stick();
+    // leaving the board (or Car Owner) stops the 3D
+    BR.screens.onChange(function (name) { if (name !== 'board') { leave(); close3d(); } });
   }
 
   BR.cars = {
     init: init,
     showShop: showShop,
     showGarage: showGarage,
+    leave: leave,
     giftTo: giftTo,
     pickDialog: pickDialog,
     // a car arrived: refresh when the garage is on screen
@@ -14839,7 +16381,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 })(window.BR = window.BR || {});
 </script>
 <script>
-/* Shop (on the board screen; always on sale like the icons), 所有 (all one
+/* Shop (on the board screen; on sale 5 hours a day: js/game/sale.js), 所有 (all one
    owns: Shop items, cars, icons) and the お守り加護 on the slot screen: one
    tap before a spin switches it on, and the next losing spin gives back
    5-20 % of the lost tokens (now and then all of them). Shop items can be
@@ -14851,7 +16393,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   var $ = U.$;
   var el = K.el, sfx = K.sfx, toast = K.toast, fail = K.fail;
 
-  var sale = null;      // today's Shop prices from the server: { day, until, items: [{ id, price, salePrice, pct, max }] }
+  var skew = 0;        // the server's clock less ours (the Shop's sale hours are the server's)
+  var tick = 0;
   var qty = {};         // id -> how many to buy
   var busy = false;
 
@@ -14861,10 +16404,22 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;
   }
+  // the price now: on sale 5 hours a day ({ price, salePrice, pct, on, end, next, max })
   function saleOf(id) {
-    if (sale) for (var i = 0; i < sale.items.length; i++) if (sale.items[i].id === id) return sale.items[i];
-    var it = info(id), day = U.utcDay();
-    return { id: id, price: it.price, salePrice: BR.sale.price(it, day), pct: BR.sale.pct(id, day), max: it.max };
+    var it = info(id), s = BR.sale.shop(it, Date.now() + skew);
+    return { id: id, price: it.price, salePrice: s.price, pct: s.pct, on: s.on, end: s.end, next: s.next, max: it.max };
+  }
+  function setSale(shop) { if (shop && shop.now) skew = shop.now - Date.now(); }
+  function left(ms) {
+    var t = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), x = t % 60;
+    return h + ':' + (m < 10 ? '0' : '') + m + ':' + (x < 10 ? '0' : '') + x;
+  }
+  function when(ms) {
+    var d = new Date(ms - skew);
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
+  }
+  function saleLine(s) {
+    return s.on ? 'セール中 残り ' + left(s.end - Date.now() - skew) : '次のセール ' + when(s.next) + '〜（5時間）';
   }
   function me() { return BR.social.me(); }
   function owned(id) { var m = me(); return (m && m.items && m.items[id]) || 0; }
@@ -14887,8 +16442,20 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 
   function showShop() {
     renderShop();
+    clearInterval(tick);
+    tick = setInterval(function () {
+      if (!onBoard('shop')) { clearInterval(tick); return; }
+      var on = false;
+      Array.prototype.forEach.call(document.querySelectorAll('#shop-grid .shop-left'), function (n) {
+        var s = saleOf(n.dataset.id);
+        n.textContent = saleLine(s);
+        if (String(s.on) !== n.dataset.on) on = true;
+      });
+      // the sale has begun or ended: the prices change
+      if (on) renderShop();
+    }, 1000);
     api.items().then(function (r) {
-      sale = r.shop;
+      setSale(r.shop);
       var m = me();
       if (m) { m.items = r.items; m.charm = r.charm; }
       if (onBoard('shop')) renderShop();
@@ -14908,7 +16475,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       var pic = el('span', 'shop-pic');
       pic.style.backgroundImage = 'url("' + picture(it.id) + '")';
       stage.appendChild(pic);
-      if (room > 0) stage.appendChild(el('i', 'sale-badge'));
+      if (room > 0 && s.on) stage.appendChild(el('i', 'sale-badge'));
       card.appendChild(stage);
       var body = el('div', 'shop-body');
       body.appendChild(el('div', 'shop-brand', 'SHOP'));
@@ -14917,11 +16484,15 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       (LINES[it.id] || []).forEach(function (t) { ul.appendChild(el('li', '', t)); });
       body.appendChild(ul);
       var price = el('div', 'shop-price');
-      price.appendChild(el('s', '', money(s.price)));
+      if (s.on) price.appendChild(el('s', '', money(s.price)));
       price.appendChild(K.amountEl(s.salePrice, 'dollars', 'shop-now'));
-      price.appendChild(el('em', '', '-' + s.pct + '%'));
+      if (s.on) price.appendChild(el('em', '', '-' + s.pct + '%'));
       price.appendChild(el('small', '', '/ 個'));
       body.appendChild(price);
+      var sl = el('div', 'shop-left' + (s.on ? ' on' : ''), saleLine(s));
+      sl.dataset.id = it.id;
+      sl.dataset.on = String(s.on);
+      body.appendChild(sl);
       body.appendChild(el('div', 'shop-own', '所持 ' + have + ' / ' + it.max + '個'));
       var row = el('div', 'shop-buy-row');
       var minus = el('button', 'sq-btn minus');
@@ -14955,7 +16526,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       p.appendChild(document.createTextNode(it.name + ' ×' + n + ' を'));
       p.appendChild(K.amountEl(s.salePrice * n, 'dollars', 'confirm-amt'));
       p.appendChild(document.createTextNode('で購入しますか？'));
-      p.appendChild(el('small', 'confirm-sub', 'セール中 ' + s.pct + '%OFF（通常 ' + money(s.price) + ' / 個）'));
+      p.appendChild(el('small', 'confirm-sub', s.on ? 'セール中 ' + s.pct + '%OFF（通常 ' + money(s.price) + ' / 個）' : '通常価格（セールは1日5時間）'));
     }, '購入する').then(function (ok) {
       if (!ok) return;
       busy = true;
@@ -14967,7 +16538,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
         toast(it.name + ' ×' + n + ' を購入しました！スロット画面からワンタップで使えます', 3600);
         if (BR.juice) BR.juice.reward('#pane-shop .shop-pic', 2);
       }, function (err) {
-        if (err.code === 'price_changed' && err.extra.itemShop) sale = err.extra.itemShop;
+        if (err.code === 'price_changed' && err.extra.itemShop) setSale(err.extra.itemShop);
         fail(err);
       }).then(function () {
         busy = false;
@@ -14983,7 +16554,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     api.items().then(function (r) {
       var m = me();
       if (m) { m.items = r.items; m.charm = r.charm; }
-      sale = r.shop;
+      setSale(r.shop);
       if (onBoard('items')) renderItems();
       renderCharm();
     }, function () {});
@@ -15141,7 +16712,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   function init() {
     $('#btn-charm').addEventListener('click', useCharm);
     if (!api.online) return;
-    BR.live.on('hello', function (h) { if (h.itemShop) sale = h.itemShop; setTimeout(renderCharm, 0); });
+    BR.live.on('hello', function (h) { if (h.itemShop) setSale(h.itemShop); setTimeout(renderCharm, 0); });
     BR.live.on('items', function (e) {
       var m = me();
       if (m) m.items = e.items;
@@ -15155,7 +16726,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     init: init,
     showShop: showShop,
     showItems: showItems,
-    setSale: function (s) { if (s) sale = s; },
+    setSale: setSale,
     renderCharm: renderCharm,
     charmSaved: charmSaved,
     afterSpin: afterSpin,
@@ -15875,7 +17446,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     },
     idea: {
       title: '運営に意見案を送る',
-      lead: '「こんな機能がほしい」「ここをこう変えてほしい」など、ゲームへのアイデアを教えてください。',
+      lead: '「こんな機能がほしい」「ここをこう変えてほしい」など、ゲームへのアイデアを教えてください。採用された意見案には、お礼として Ice Smoker公式ボットから $100,000 をお送りします！',
       label: '意見案',
       placeholder: 'アイデアを自由に書いてください（文字数の制限はありません）'
     }
@@ -17892,17 +19463,28 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 
   var outdated = false;   // the server or this device has a newer game
   var latest = 0;         // the newest release the server knows (DEV number)
+  var released = {};      // DEV number -> when it went live (ms, from the server)
 
   function seen() { try { return Number(localStorage.getItem(SEEN)) || 0; } catch (e) { return 0; } }
   function renderDot() { $('#news-dot').hidden = seen() >= BR.RELEASE; }
 
   // the release number as the players know it: DEV5
   function devName(id) { return 'DEV' + id; }
+  // when it came: "2026/10/20 10:25" (Japan time): the moment the server
+  // started with it if known, else the date and time written in the news
+  function when(n) {
+    var at = released[n.id];
+    if (at) {
+      var d = new Date(at + 9 * 3600000), p = function (v) { return (v < 10 ? '0' : '') + v; };
+      return d.getUTCFullYear() + '/' + p(d.getUTCMonth() + 1) + '/' + p(d.getUTCDate()) + ' ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
+    }
+    return n.date.replace(/-/g, '/') + (n.time ? ' ' + n.time : '');
+  }
   function entryEl(n) {
     var box = el('article', 'news-entry' + (n.id === BR.RELEASE ? ' current' : ''));
     var head = el('div', 'news-head');
     head.appendChild(el('span', 'news-dev', devName(n.id)));
-    head.appendChild(el('span', 'news-date', n.date.replace(/-/g, '/')));
+    head.appendChild(el('span', 'news-date', when(n)));
     head.appendChild(el('h3', 'news-title', n.title));
     box.appendChild(head);
     var ul = el('ul', 'news-items');
@@ -17952,6 +19534,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   function checkRelease() {
     if (!api.online) return;
     api.release(BR.RELEASE).then(function (r) {
+      if (r.released) released = r.released;
       if (r.outdated) { remind(true, r.release); return; }
       // the money flies in with the thank-you, not before it
       if (r.bonus > 0 && BR.juice) BR.juice.hold('dollars', r.bonus);
@@ -19047,6 +20630,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
      3-4    bigger, glowing, pulsing
      5-7    rainbow, and the reels glow
      8+     the biggest, shaking, with confetti
+   From the fifth win in a row every win pays double (the server pays it;
+   the badge says 報酬×2).
    Every step of a streak lands with rings, sparks and stars round the badge
    (js/render/juice.js), louder the longer it goes. Five in a row and the
    screen catches FEVER: its edges burn, flames lick up from the bottom,
@@ -19113,6 +20698,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     var inner = el('div', 'cb-inner');
     inner.appendChild(el('b', 'cb-n', String(n)));
     inner.appendChild(el('span', 'cb-word', 'COMBO!'));
+    if (n >= BR.CONFIG.comboDouble) inner.appendChild(el('span', 'cb-x2', '報酬×2'));
     b.appendChild(inner);
     screen().appendChild(b);
     badgeNode = b;
@@ -19284,7 +20870,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       if (!streak) feverOff();
       return;
     }
-    streak = shared ? res.hub.combo : streak + 1;
+    // (the server says which combo the win made: the count survives a reload)
+    streak = shared ? res.hub.combo : res.combo > 0 ? res.combo : streak + 1;
     var n = streak;
     if (res.tier <= 1) {
       smallWin(res);
@@ -22288,11 +23875,13 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   }
 
   function onStart() {
+    if (BR.banlock && BR.banlock.active()) return;
     if (!api.online) { enterGame(); return; }
     api.restored.then(function () { BR.account.require(enterGame); });
   }
 
   function onFriends() {
+    if (BR.banlock && BR.banlock.active()) return;
     if (!api.online) {
       K.sfx('deny');
       K.toast('フレンド機能はオンライン版（サーバー公開後）で利用できます', 3200);
@@ -22332,6 +23921,137 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   }
 
   BR.start = { init: init, enterGame: enterGame };
+})(window.BR = window.BR || {});
+</script>
+<script>
+/* アクセス禁止 / BAN: the moment an operator bans the account (or a BAN on
+   another account of this device shuts it out), the game goes back to the
+   title screen and stays there. The notice from the official covers the
+   スタート and 友達 buttons: when the player was banned and until when.
+   Nothing else opens meanwhile (BR.screens keeps to the title screen). The
+   login is kept, so the game asks the server now and then (GET /api/ban) and
+   lets the player back in once the ban is lifted or has run out; the
+   official bot's messages about it wait in the chat. */
+(function (BR) {
+  'use strict';
+
+  var U = BR.util, K = BR.kit, api = BR.api;
+  var $ = U.$;
+
+  var KEY = 'blockbuster-reels/ban';
+  var CHECK_MS = 20000;
+  var KIND = { suspend: 'アクセス禁止', ban: 'BAN', perma: '永久BAN' };
+  var ban = null;          // { code: 'banned' | 'device_banned', kind, at, until, message, notice }
+  var timer = 0;
+
+  function load() { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; } }
+  function save(b) {
+    try { if (b) localStorage.setItem(KEY, JSON.stringify(b)); else localStorage.removeItem(KEY); } catch (e) { /* this visit only */ }
+  }
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  // 2026/10/27 12:34 (Japan time, as the server writes it)
+  function when(ms) {
+    var d = new Date(ms + 9 * 3600000);
+    return d.getUTCFullYear() + '/' + pad(d.getUTCMonth() + 1) + '/' + pad(d.getUTCDate()) + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+  }
+
+  function render() {
+    var device = ban.code === 'device_banned';
+    $('#ban-lock-title').textContent = device ? '利用停止中' : (KIND[ban.kind] || '利用停止') + (ban.until ? '中' : '');
+    $('#ban-lock-notice').textContent = device ? ban.message : (ban.notice || ban.message || 'このアカウントは利用停止されています').replace('に公式より', 'に\n公式より');
+    $('#ban-lock-until').textContent = device ? '' : ban.until ? '期間：' + when(ban.until) + ' まで' : '期間：解除されるまで';
+    $('#ban-lock-sub').textContent = '解除されると、自動でまた遊べるようになります。';
+    $('#ban-lock-go').hidden = true;
+  }
+
+  // Locks the game on the title screen (b: the server's ban state).
+  function lock(b) {
+    var first = !ban;
+    ban = b && b.code ? b : { code: 'banned', message: (b && b.message) || 'このアカウントは利用停止されています' };
+    save(ban);
+    if (first) {
+      // everything stops: calls, watching, the live connection, every dialog (the login stays)
+      if (BR.social && BR.social.lockDown) BR.social.lockDown();
+      if (BR.account && BR.account.isOpen()) BR.account.close();
+      BR.screens.show('start');
+      document.documentElement.classList.add('ban-locked');
+      K.sfx('deny');
+    }
+    render();
+    $('#ban-lock').hidden = false;
+    // (requests refused meanwhile lock it again: the next question stays when it was)
+    if (!timer) schedule();
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    timer = setTimeout(check, CHECK_MS);
+  }
+  function check() {
+    clearTimeout(timer);
+    timer = 0;
+    if (!ban) return;
+    if (!api.hasToken()) {
+      // no login to ask with: a ban with an end opens when its time is up
+      if (ban.until && Date.now() >= ban.until) lifted();
+      else schedule();
+      return;
+    }
+    api.banState().then(function (r) {
+      if (!ban) return;
+      if (r.ban) { ban = r.ban; save(ban); render(); schedule(); return; }
+      lifted();
+    }, function (err) {
+      if (err.status === 401) { free(); return; }
+      schedule();
+    });
+  }
+
+  // The ban is over: one tap and the game starts again (signed in as before).
+  function lifted() {
+    clearTimeout(timer);
+    timer = 0;
+    ban = null;
+    save(null);
+    $('#ban-lock-title').textContent = '解除されました';
+    $('#ban-lock-notice').textContent = '利用停止が解除されました。また TWO STATE で遊べます！';
+    $('#ban-lock-until').textContent = '';
+    $('#ban-lock-sub').textContent = 'Ice Smoker公式ボットからのお知らせは、メッセージで見られます。';
+    $('#ban-lock-go').hidden = false;
+    K.sfx('purchase');
+  }
+  // The login itself is gone: the title screen as for anyone signed out.
+  function free() {
+    clearTimeout(timer);
+    timer = 0;
+    ban = null;
+    save(null);
+    $('#ban-lock').hidden = true;
+    document.documentElement.classList.remove('ban-locked');
+  }
+
+  function init() {
+    if (!api.online) return;
+    $('#ban-lock-go').addEventListener('click', function () {
+      K.sfx('click');
+      location.reload();
+    });
+    // a phone back in front: ask now
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && ban) check(); });
+    // locked when the game was closed: locked again before anything else shows
+    var b = load();
+    if (b) {
+      lock(b);
+      check();
+    }
+  }
+
+  BR.banlock = {
+    init: init,
+    lock: lock,
+    active: function () { return !!ban; }
+  };
 })(window.BR = window.BR || {});
 </script>
 <script>
@@ -22975,6 +24695,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     $('#btn-spin').classList.add('spinning');
     $$('.payline-mark').forEach(function (m) { m.classList.remove('lit'); });
     reels.spin();
+    if (BR.win3d) BR.win3d.stopPop();
     if (BR.slotfx) BR.slotfx.spinStart();
     BR.sfx.play('spinStart');
     BR.sfx.startReels();
@@ -23069,10 +24790,14 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     // a plain WIN has no overlay: the lit line, the WIN box and the sound
     if (!overlay) {
       BR.sfx.play(res.tier >= 2 ? 'bigWin' : 'win');
+      // a plain WIN: the 3D WIN turns over the reels for a moment (js/render/win3d.js)
+      if (res.tier === 1 && BR.win3d) BR.win3d.popWin();
       setTimeout(done, res.tier >= 2 ? 1400 : 700);
       return;
     }
-    fx.play({ tier: res.tier, amount: res.total, bet: res.bet, mult: res.mult, cols: cols, auto: !!game.watch }).then(done);
+    // 77777 (five 7s on the line): ULTRA BIG WIN
+    var ultra = res.wins.some(function (w) { return w.symbol === 'seven' && w.count >= 5; });
+    fx.play({ tier: res.tier, amount: res.total, bet: res.bet, mult: res.mult, cols: cols, auto: !!game.watch, ultra: ultra }).then(done);
   }
 
   /* ------------------------------------------------------------ watching a friend --- */
@@ -23128,6 +24853,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     setWinGoodLuck();
     $$('.payline-mark').forEach(function (m) { m.classList.remove('lit'); });
     reels.spin();
+    if (BR.win3d) BR.win3d.stopPop();
     if (BR.slotfx) BR.slotfx.spinStart();
     BR.sfx.play('spinStart');
     BR.sfx.startReels();
@@ -23343,6 +25069,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     BR.account.init();
     BR.avatars.init();
     BR.social.init();
+    // banned: back to the title screen, locked (before anything else shows)
+    if (BR.banlock) BR.banlock.init();
     BR.cars.init();
     BR.shop.init();
     BR.peter.init();
@@ -23374,6 +25102,12 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     renderBet();
     layout();
     BR.launch.init();
+    // the 3D win titles load in the background once the game is up (js/render/win3d.js)
+    (function later() {
+      if (!BR.launch.done()) { setTimeout(later, 1500); return; }
+      setTimeout(function () { if (BR.win3d) BR.win3d.preload(); }, 2500);
+    })();
+    if (BR.fx && BR.fx.onChange) BR.fx.onChange(function () { if (BR.win3d && BR.launch.done()) BR.win3d.preload(); });
     var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
     fontsReady.then(function () { document.documentElement.classList.add('fonts-ready'); });
   }

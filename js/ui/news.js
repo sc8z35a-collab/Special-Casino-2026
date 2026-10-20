@@ -12,17 +12,28 @@
 
   var outdated = false;   // the server or this device has a newer game
   var latest = 0;         // the newest release the server knows (DEV number)
+  var released = {};      // DEV number -> when it went live (ms, from the server)
 
   function seen() { try { return Number(localStorage.getItem(SEEN)) || 0; } catch (e) { return 0; } }
   function renderDot() { $('#news-dot').hidden = seen() >= BR.RELEASE; }
 
   // the release number as the players know it: DEV5
   function devName(id) { return 'DEV' + id; }
+  // when it came: "2026/10/20 10:25" (Japan time): the moment the server
+  // started with it if known, else the date and time written in the news
+  function when(n) {
+    var at = released[n.id];
+    if (at) {
+      var d = new Date(at + 9 * 3600000), p = function (v) { return (v < 10 ? '0' : '') + v; };
+      return d.getUTCFullYear() + '/' + p(d.getUTCMonth() + 1) + '/' + p(d.getUTCDate()) + ' ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
+    }
+    return n.date.replace(/-/g, '/') + (n.time ? ' ' + n.time : '');
+  }
   function entryEl(n) {
     var box = el('article', 'news-entry' + (n.id === BR.RELEASE ? ' current' : ''));
     var head = el('div', 'news-head');
     head.appendChild(el('span', 'news-dev', devName(n.id)));
-    head.appendChild(el('span', 'news-date', n.date.replace(/-/g, '/')));
+    head.appendChild(el('span', 'news-date', when(n)));
     head.appendChild(el('h3', 'news-title', n.title));
     box.appendChild(head);
     var ul = el('ul', 'news-items');
@@ -72,6 +83,7 @@
   function checkRelease() {
     if (!api.online) return;
     api.release(BR.RELEASE).then(function (r) {
+      if (r.released) released = r.released;
       if (r.outdated) { remind(true, r.release); return; }
       // the money flies in with the thank-you, not before it
       if (r.bonus > 0 && BR.juice) BR.juice.hold('dollars', r.bonus);

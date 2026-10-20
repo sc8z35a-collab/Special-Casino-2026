@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import { createAdmin, AdminError } from '../core/admin.js';
 import { metaValue } from '../core/db.js';
-import { sealText, keyFrom } from '../core/auth.js';
+import { sealText, keyFrom, nameKey } from '../core/auth.js';
 import { fmt } from '../core/rules.js';
 
 const HELP = `BLOCKBUSTER REELS 管理コマンド
@@ -183,7 +183,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       db = openDb(loadConfig().dataDir);
       // codes issued here can be read on the operator site too (same key as the server)
       const key = keyFrom(metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url')), 'recovery-codes');
-      const admin = createAdmin(db, { seal: (code) => sealText(key, code) });
+      // (the developer's account: no ban, as on the server)
+      const cfg = loadConfig();
+      const dev = cfg.operators.some((n) => nameKey(n) === nameKey(cfg.developer || '')) ? nameKey(cfg.developer) : '';
+      const admin = createAdmin(db, { seal: (code) => sealText(key, code), isDeveloper: (u) => !!dev && u.name_key === dev });
       call = async (cmd, args) => admin.command(cmd, args);
     }
     process.exitCode = await run(argv, call);

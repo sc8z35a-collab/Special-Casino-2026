@@ -19,13 +19,13 @@ import {
 import { Limiter } from './ratelimit.js';
 import {
   RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE,
-  spin as spinReels, evaluate as evaluateLine, iconSale, itemSale, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
+  spin as spinReels, evaluate as evaluateLine, iconSale, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
 import { createPeter, reservedName } from './peter.js';
 import { createJohnson } from './johnson.js';
 import { createOfficial } from './official.js';
-import { createOpsLog } from './opslog.js';
+import { createOpsLog, jst } from './opslog.js';
 import { createPush } from './push.js';
 import { screen as filterText } from './filter.js';
 import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
@@ -107,6 +107,58 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const hasRequest = (from, to) => !!q('SELECT 1 AS x FROM friend_requests WHERE from_id = ? AND to_id = ?').get(from, to);
   const ownedAvatars = (u) => (u.avatars ? u.avatars.split(',') : []);
   const carCount = (id) => q('SELECT COUNT(*) AS n FROM cars WHERE owner_id = ?').get(id).n;
+  // how many cars a garage holds: two, and one more for every place bought
+  const garageSize = (u) => RULES.garage.slots + (u.garage_extra || 0);
+
+  // Renting cars out (RULES.carRental): for every 5-hour block a car is out,
+  // customers come (each of them with a chance of its own) and pay by how
+  // dear the car is, now and then one pays $150,000; it waits to be
+  // collected. Stopped, a car comes back at the end of its block (5 hours at
+  // the least). Counted when someone looks (and by the housekeeping).
+  const RENT = RULES.carRental, BLOCK = RENT.hours * 3600000;
+  function customer(model) {
+    if (randomInt(1, 10000) <= RENT.vip.chance * 10000) return { pay: RENT.vip.pay, vip: true };
+    // $1M cars and less: 10k-30k; $20M and more: 40k-60k
+    const t = Math.max(0, Math.min(1, Math.log((model ? model.price : 1e6) / 1e6) / Math.log(20)));
+    const lo = RENT.min + (RENT.max - RENT.spread - RENT.min) * t;
+    return { pay: Math.round(lo / 1000) * 1000 + randomInt(0, RENT.spread / 1000) * 1000, vip: false };
+  }
+  function settleRental(c, now = Date.now()) {
+    if (!c.rent_start) return false;
+    const back = c.rent_until > 0 && c.rent_until <= now;
+    const blocks = Math.floor(((back ? c.rent_until : now) - c.rent_start) / BLOCK);
+    if (blocks <= c.rent_blocks && !back) return false;
+    const model = CARS.get(c.model);
+    let earned = 0, last = null;
+    for (let b = c.rent_blocks; b < blocks; b++) {
+      let n = 0, sum = 0, vip = 0;
+      for (const chance of RENT.customers) {
+        if (randomInt(1, 10000) > chance * 10000) continue;
+        const x = customer(model);
+        n++;
+        sum += x.pay;
+        if (x.vip) vip++;
+      }
+      earned += sum;
+      last = { n, sum, vip, at: c.rent_start + (b + 1) * BLOCK };
+    }
+    // (counted once: another request that got here first wins)
+    return Number(q(`UPDATE cars SET rent_blocks = ?, rent_earned = rent_earned + ?, rent_last = ?, rent_start = ?, rent_until = ?
+                     WHERE id = ? AND rent_start = ? AND rent_blocks = ?`)
+      .run(back ? 0 : blocks, earned, last ? JSON.stringify(last) : c.rent_last, back ? 0 : c.rent_start, back ? 0 : c.rent_until, c.id, c.rent_start, c.rent_blocks).changes) > 0;
+  }
+  function settleRentals(userId) {
+    for (const c of q('SELECT * FROM cars WHERE owner_id = ? AND rent_start > 0').all(userId)) tx(() => settleRental(c));
+  }
+  function carDto(r) {
+    let last = null;
+    try { last = r.rent_last ? JSON.parse(r.rent_last) : null; } catch { last = null; }
+    return {
+      id: r.id, model: r.model, acquiredAt: r.acquired_at, from: r.from_id ? { id: r.from_id, name: r.from_name } : null,
+      rent: r.rent_start ? { start: r.rent_start, until: r.rent_until, next: r.rent_start + (r.rent_blocks + 1) * BLOCK } : null,
+      earned: r.rent_earned, last
+    };
+  }
   const itemCount = (userId, item) => { const r = q('SELECT count FROM items WHERE user_id = ? AND item = ?').get(userId, item); return r ? r.count : 0; };
   function addItems(userId, item, n) {
     q(`INSERT INTO items (user_id, item, count) VALUES (?, ?, ?)
@@ -155,23 +207,62 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return ids;
   }
   // may this device make an account? '' yes, 'full' (log in to one of its own), 'banned'
-  const DEVICE_BANNED_NEW = 'この端末のアカウントがBANされているため、新しいアカウントは作れません';
+  const DEVICE_BANNED_NEW = 'この端末のアカウントが利用停止（アクセス禁止・BAN）中のため、新しいアカウントは作れません';
   const deviceFull = () => `この端末ではアカウントを${config.accountsPerDevice}つまでしか作れません。前に作ったアカウントの引き継ぎコードを入力してログインしてください`;
   function deviceRoom(req) {
     const dev = deviceOf(req);
     if (!dev.id) return '';
-    if (devicesBanned(deviceKeys(dev, req.ip))) return 'banned';
+    // (no new account to play on while one of the device's is banned)
+    if (devicesBanned(deviceKeys(dev, req.ip), true)) return 'banned';
     if (config.accountsPerDevice > 0 && madeOn(dev, req.ip).size >= config.accountsPerDevice) return 'full';
     return '';
   }
   // Bans: アクセス禁止 (a week), BAN (30 days), 永久BAN (until an operator lifts it).
-  // A ban that has run out is lifted when it is next looked at.
+  // A ban that has run out is lifted when it is next looked at (or by the
+  // housekeeping). The banned player's game goes back to the title screen and
+  // stays there until the ban ends (its login is kept for GET /api/ban); the
+  // official bot tells them when they were banned, and again when it ends.
   const BAN_DAYS = { suspend: 7, ban: 30, perma: 0 };
   const BAN_NAME = { suspend: 'アクセス禁止', ban: 'BAN', perma: '永久BAN' };
+  // the developer (config.developer, one of config.operators): never shut out
+  // by any ban, and never loses the operator rights (server/core/ops.js)
+  const devKey = config.operators.some((n) => nameKey(n) === nameKey(config.developer || '')) ? nameKey(config.developer) : '';
+  const isDeveloper = (u) => !!u && !!devKey && !u.npc && u.name_key === devKey;
+  const DEVICE_BANNED = 'この端末のほかのアカウントがBANされているため、このアカウントも利用できません';
+  const when = (ms) => jst(ms).slice(0, 16);   // 2026/10/20 12:34 (Japan time)
+  // a letter from the official bot: 【件名】, 〇〇様, the matter, Ice Smoker公式より
+  const letter = (u, subject, text) => `【${subject}】\n\n${u.name}様\n\n${text}\n\nIce Smoker公式より`;
+  function banNotice(u) {
+    return `あなたは${when(u.ban_at || Date.now())}に公式より${BAN_NAME[u.ban_kind] || '利用停止'}されました。`;
+  }
+  function tellBanned(u) {
+    const name = BAN_NAME[u.ban_kind] || '利用停止';
+    official.say(u.id, letter(u, `${name}のお知らせ`, `${banNotice(u)}\n期間：${u.ban_until ? when(u.ban_until) + ' まで' : '解除されるまで'}\nその間は TWO STATE で遊ぶことはできません。`));
+  }
+  // The ban ends: lifted by the operators ('lifted') or its time is up
+  // ('expired'). False when there was none to end.
+  function liftBan(u, how) {
+    const now = Date.now();
+    const r = how === 'expired'
+      ? q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ? AND banned = 1 AND ban_until > 0 AND ban_until <= ?").run(u.id, now)
+      : q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ? AND banned = 1").run(u.id);
+    if (!Number(r.changes)) return false;
+    const name = BAN_NAME[u.ban_kind] || '利用停止';
+    official.say(u.id, letter(u, `${name}解除のお知らせ`,
+      `あなたの${name}は${when(now)}に${how === 'expired' ? '期間が終わり、' : '公式により'}解除されました。\nまた TWO STATE をお楽しみください。ルールを守って遊んでいただきますよう、お願いいたします。`));
+    return true;
+  }
   function liftExpired(u) {
     if (!u || !u.banned || !u.ban_until || u.ban_until > Date.now()) return u;
-    q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE id = ?").run(u.id);
-    return { ...u, banned: 0, ban_kind: '', ban_until: 0 };
+    liftBan(u, 'expired');
+    return getUser(u.id);
+  }
+  // what a banned player's title screen shows (null: free to play)
+  function banState(u) {
+    if (isDeveloper(u)) return null;
+    if (u.banned) return { code: 'banned', kind: u.ban_kind || 'perma', at: u.ban_at || 0, until: u.ban_until || 0, message: banMessage(u), notice: banNotice(u) };
+    if (deviceBanOf(u)) return { code: 'device_banned', message: DEVICE_BANNED };
+    return null;
   }
   function banMessage(u) {
     const name = BAN_NAME[u.ban_kind] || '利用停止';
@@ -183,21 +274,24 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // another account on one of this account's devices is under a BAN or a
   // 永久BAN placed after an operator last let this account play
   function deviceBanOf(u) {
+    if (isDeveloper(u)) return null;
     return q(`SELECT o.id FROM devices d JOIN devices e ON e.device = d.device AND e.user_id != d.user_id
               JOIN users o ON o.id = e.user_id
               WHERE d.user_id = ? AND ${BANNED_NOW} AND o.ban_at > ? LIMIT 1`).get(u.id, Date.now(), u.device_ok_at) || null;
   }
-  // an account on these devices is under a BAN or a 永久BAN
-  function devicesBanned(keys) {
+  // an account on these devices is under a BAN or a 永久BAN (or, `any`, an アクセス禁止 too)
+  function devicesBanned(keys, any = false) {
     if (!keys.length) return false;
+    const banned = any ? 'o.banned = 1 AND (o.ban_until = 0 OR o.ban_until > ?)' : BANNED_NOW;
     return !!q(`SELECT 1 AS x FROM devices d JOIN users o ON o.id = d.user_id
-                WHERE d.device IN (${keys.map(() => '?').join(', ')}) AND ${BANNED_NOW} LIMIT 1`).get(...keys, Date.now());
+                WHERE d.device IN (${keys.map(() => '?').join(', ')}) AND ${banned} LIMIT 1`).get(...keys, Date.now());
   }
   // May this account play now? Throws why not.
   function allowed(u) {
+    if (isDeveloper(u)) return u;
     u = liftExpired(u);
-    if (u.banned) throw new ApiError(403, 'banned', banMessage(u), { kind: u.ban_kind, until: u.ban_until });
-    if (deviceBanOf(u)) throw new ApiError(403, 'device_banned', 'この端末のほかのアカウントがBANされているため、このアカウントも利用できません');
+    if (u.banned) throw new ApiError(403, 'banned', banMessage(u), { kind: u.ban_kind, until: u.ban_until, ban: banState(u) });
+    if (deviceBanOf(u)) throw new ApiError(403, 'device_banned', DEVICE_BANNED, { ban: banState(u) });
     return u;
   }
   // 引き継ぎコード: kept as a hash to log in with, and sealed for the operator site
@@ -228,6 +322,19 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       opsLog.add({ action: 'release', summary: `DEV${RELEASE} を本番に反映（サーバーが起動）`, detail: { release: RELEASE, previous: seen ? Number(seen.value) : null, host: config.host || '' } });
       q("INSERT INTO meta (key, value) VALUES ('ops_log_release', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(RELEASE));
     }
+  }
+
+  // When each DEV went live here ({ 6: ms, … }): the operators' log has an
+  // entry for every release the server started with (Dev News shows the time).
+  function releasedAt() {
+    const out = {};
+    for (const r of q("SELECT at, detail FROM ops_log WHERE action = 'release' ORDER BY id").all()) {
+      let d = {};
+      try { d = JSON.parse(r.detail); } catch { d = {}; }
+      const n = Number(d.release);
+      if (n > 0 && !out[n]) out[n] = r.at;
+    }
+    return out;
   }
 
   /* ----- phone notifications (server/core/push.js) ----- */
@@ -394,6 +501,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       dailyReady: u.free_day !== today,
       hasPassword: !!u.password_hash,
       cars: carCount(u.id),
+      garage: garageSize(u),
       items: itemsOf(u.id),
       charm: u.charm > 0,
       debt: peter.owed(u.id),
@@ -435,6 +543,22 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return paid;
   }
 
+  // アクセス日数 (login days, all told): at 5, 10 … 35 Ice Smoker公式ボット
+  // sends $250,000 by itself, with its congratulations (one reached before is
+  // paid at the next visit; a 永久BAN account gets none).
+  function accessDayGifts(userId) {
+    const A = RULES.accessDays;
+    const cur = getUser(userId);
+    if (!cur || cur.npc || (cur.banned && cur.ban_kind === 'perma')) return;
+    for (const d of A.at) {
+      if (d > cur.login_days || d <= cur.days_paid) continue;
+      // (claimed first: two connections at once pay once)
+      if (!Number(q('UPDATE users SET days_paid = ? WHERE id = ? AND days_paid < ?').run(d, userId, d).changes)) continue;
+      official.say(userId, `【自動送信】\nおめでとうございます！アクセス日数${d}日を達成しました！！記念して250Kを送金します！今後ともTwo stateをよろしくお願いいたします！`);
+      official.pay(userId, A.amount);
+    }
+  }
+
   // Login days in a row (6:00 to 6:00 Japan time) and the longest run (the operator site).
   function countDay(userId) {
     const day = loginDay();
@@ -444,15 +568,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     q('UPDATE users SET streak_day = ?, day_streak = ?, day_best = MAX(day_best, ?) WHERE id = ?').run(day, run, run, cur.id);
   }
 
-  // Today's prices in the Shop (always on sale too).
+  // The Shop's prices now: on sale 5 hours a day (js/game/sale.js).
   function itemShop() {
-    const day = utcDay();
+    const now = Date.now();
     return {
-      day,
-      until: nextUtcMidnight(),
+      now,
       items: [...SHOP.values()].map((i) => {
-        const s = itemSale(i, day);
-        return { id: i.id, price: i.price, salePrice: s.price, pct: s.pct, max: i.max };
+        const s = shopSale(i, now);
+        return { id: i.id, price: i.price, salePrice: s.price, pct: s.pct, max: i.max, on: s.on, start: s.start, end: s.end, next: s.next };
       })
     };
   }
@@ -1011,7 +1134,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   /* ----- 運営へのフィードバック ----- */
   // (read on the operator site; the operators are not asked for any)
-  const isOperatorName = (u) => config.operators.some((n) => nameKey(n) === u.name_key);
+  // (the operators named in config.operators, less those whose rights were taken away: server/core/ops.js)
+  const isOperatorName = (u) => ops.isOperator(u);
   const feedbackCount = () => q('SELECT COUNT(*) AS n FROM feedback').get().n;
   // 'ask' for players who have played a while (and everyone from before it
   // existed) once the beginner guide is behind them; 'sent' once they did
@@ -1051,8 +1175,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // Also used by the live connection.
   function userForToken(token) {
     const h = sha256(token);
-    const s = q('SELECT user_id, last_used FROM sessions WHERE token_hash = ?').get(h);
+    const s = q('SELECT user_id, last_used, ended FROM sessions WHERE token_hash = ?').get(h);
     if (!s) throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
+    // ended by the server (an operator's rights taken away): why, once, then it is gone
+    if (s.ended) {
+      q('DELETE FROM sessions WHERE token_hash = ?').run(h);
+      throw new ApiError(401, 'ended', s.ended);
+    }
     let u = getUser(s.user_id);
     if (!u) throw new ApiError(401, 'auth', 'アカウントが見つかりません');
     u = allowed(u);
@@ -1183,9 +1312,26 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           throw new ApiError(401, 'bad_login', 'ユーザー名かパスワードが違います');
         }
       }
-      u = allowed(u);
+      // banned (or another account on this device is): logged in all the same,
+      // for the title screen that stays locked until the ban ends (GET /api/ban);
+      // nothing else accepts the login meanwhile
+      u = liftExpired(u);
+      const ban = banState(u);
+      if (ban) return { token: createSession(u.id), ban };
       seenOn(u.id, req);
       return { token: createSession(u.id), me: meDto(u) };
+    },
+
+    // Still banned? The question of a banned player's title screen: their
+    // login answers it (and nothing else) while the ban lasts.
+    'GET /api/ban': (req) => {
+      const m = /^Bearer ([A-Za-z0-9_-]{20,100})$/.exec(String(req.header('authorization') || ''));
+      const s = m ? q('SELECT user_id, ended FROM sessions WHERE token_hash = ?').get(sha256(m[1])) : null;
+      if (!s || s.ended) throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
+      rate(limit.general, s.user_id);
+      const u = getUser(s.user_id);
+      if (!u) throw new ApiError(401, 'auth', 'アカウントが見つかりません');
+      return { ban: banState(liftExpired(u)) };
     },
 
     'POST /api/logout': (req, u) => {
@@ -1246,6 +1392,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const hub = hm && hm.hub_id === on.hub.id ? hubRow(on.hub.id) : null;
         const r = spinReels(bet, hub ? HUB.weights : undefined);
         if (hub) boost = hubSpin(r, hub, bet);
+        // the combo this win makes (one's own wins in a row, or in a hub the
+        // one everyone shares): from RULES.comboDouble on, the win pays double
+        r.combo = r.total > 0 ? (hub ? boost.combo : cur.streak + 1) : 0;
+        if (r.combo >= RULES.comboDouble) {
+          r.total *= 2;
+          r.double = true;
+          const m = r.total / bet;
+          r.tier = m >= RULES.tiers.superBig ? 3 : m >= RULES.tiers.big ? 2 : 1;
+        }
         // an お守り加護 that is on softens the first losing spin, then it is used up
         // (友達と稼ぐ: up to CHARM.hub.max %, 大吉 twice as often)
         if (cur.charm > 0 && r.total < bet) {
@@ -1316,7 +1471,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       const after = getUser(u.id);
       questNotice(u.id, quests);
-      const out = { grid: result.grid, line: result.line, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet, charm: result.charm || null, hub: boost };
+      const out = { grid: result.grid, line: result.line, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet, charm: result.charm || null, hub: boost,
+        combo: result.combo, double: !!result.double };
       notifyWatchers(u.id, { type: 'spin', user: u.id, result: out, balance: balance(after) });
       if (boost && on) {
         // the others in the hub: the combo they share, and what everyone won
@@ -1690,30 +1846,124 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
     /* ----- cars ----- */
 
+    // the cars one owns (and how their renting goes), the garage's size, the
+    // Car Owner sale and the 大廃棄セール on now (if any), the buy-back prices
     'GET /api/cars': (req, u) => {
-      const rows = q(`SELECT c.id, c.model, c.acquired_at, c.from_id, f.name AS from_name FROM cars c LEFT JOIN users f ON f.id = c.from_id
+      settleRentals(u.id);
+      const rows = q(`SELECT c.*, f.name AS from_name FROM cars c LEFT JOIN users f ON f.id = c.from_id
                       WHERE c.owner_id = ? ORDER BY c.acquired_at DESC, c.id DESC`).all(u.id);
+      const now = Date.now();
       return {
         catalog: RULES.cars,
-        cars: rows.map((r) => ({ id: r.id, model: r.model, acquiredAt: r.acquired_at, from: r.from_id ? { id: r.from_id, name: r.from_name } : null }))
+        cars: rows.map(carDto),
+        capacity: garageSize(u),
+        slotPrice: RULES.garage.slotPrice,
+        sale: carSale(now),
+        disposal: carDisposal(now),
+        buyback: Object.fromEntries(RULES.cars.map((c) => [c.id, carBuyback(c, now)])),
+        rental: { hours: RENT.hours },
+        now
       };
     },
 
+    // the buy-back: the car goes, its price now arrives (`price`: the one shown;
+    // a rented car cannot go; what its renting earned comes along)
+    'POST /api/cars/sell': async (req, u) => {
+      const body = await req.json();
+      rate(limit.shop, u.id);
+      const id = posInt(body.car, '車');
+      settleRentals(u.id);
+      const r = tx(() => {
+        const c = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(id, u.id);
+        if (!c) throw new ApiError(404, 'no_car', 'この車は持っていません');
+        if (c.rent_start) throw new ApiError(409, 'rented', '貸し出し中の車は売れません（戻ってから売れます）');
+        const model = CARS.get(c.model);
+        if (!model) throw new ApiError(400, 'bad_model', 'この車は買い取れません');
+        const b = carBuyback(model);
+        if (body.price !== undefined && Number(body.price) !== b.price) {
+          throw new ApiError(409, 'price_changed', `買取価格が変わりました（今は $${fmt(b.price)}）`, { buyback: b });
+        }
+        q('DELETE FROM cars WHERE id = ?').run(c.id);
+        q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(b.price + c.rent_earned, u.id);
+        return { paid: b.price, earned: c.rent_earned, pct: b.pct, disposal: b.disposal };
+      });
+      return { ...r, me: meDto(balanceChanged(u.id)) };
+    },
+
+    // renting a car out ('start'), or asking it back ('stop': at the end of its block)
+    'POST /api/cars/rent': async (req, u) => {
+      const body = await req.json();
+      const id = posInt(body.car, '車');
+      settleRentals(u.id);
+      const now = Date.now();
+      tx(() => {
+        const c = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(id, u.id);
+        if (!c) throw new ApiError(404, 'no_car', 'この車は持っていません');
+        if (body.action === 'start') {
+          if (c.rent_start) throw new ApiError(409, 'rented', 'この車はもう貸し出し中です');
+          q('UPDATE cars SET rent_start = ?, rent_until = 0, rent_blocks = 0 WHERE id = ?').run(now, c.id);
+        } else if (body.action === 'stop') {
+          if (!c.rent_start) throw new ApiError(409, 'not_rented', 'この車は貸し出していません');
+          if (!c.rent_until) q('UPDATE cars SET rent_until = ? WHERE id = ?').run(c.rent_start + Math.max(1, Math.ceil((now - c.rent_start) / BLOCK)) * BLOCK, c.id);
+        } else {
+          throw new ApiError(400, 'bad_action', '処理を選んでください');
+        }
+      });
+      const row = q('SELECT c.*, f.name AS from_name FROM cars c LEFT JOIN users f ON f.id = c.from_id WHERE c.id = ?').get(id);
+      return { car: carDto(row) };
+    },
+
+    // what the customers paid, all of it
+    'POST /api/cars/collect': async (req, u) => {
+      await req.json();
+      settleRentals(u.id);
+      const paid = tx(() => {
+        const n = q('SELECT COALESCE(SUM(rent_earned), 0) AS n FROM cars WHERE owner_id = ?').get(u.id).n;
+        if (!n) return 0;
+        q('UPDATE cars SET rent_earned = 0 WHERE owner_id = ?').run(u.id);
+        q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(n, u.id);
+        return n;
+      });
+      if (!paid) throw new ApiError(409, 'nothing', 'まだ受け取れる売上はありません');
+      return { paid, me: meDto(balanceChanged(u.id)) };
+    },
+
+    // at the price of the moment (`price`: the one shown; a sale may have begun or ended)
     'POST /api/cars/buy': async (req, u) => {
       const body = await req.json();
       rate(limit.shop, u.id);
       const car = CARS.get(String(body.model || ''));
       if (!car) throw new ApiError(400, 'bad_model', 'この車は販売していません');
+      const cost = carPrice(car, carSale()).price;
+      if (body.price !== undefined && Number(body.price) !== cost) {
+        throw new ApiError(409, 'price_changed', `価格が変わりました（今は $${fmt(cost)}）`, { sale: carSale() });
+      }
       const id = tx(() => {
         const cur = getUser(u.id);
-        if (cur.dollars < car.price) throw new ApiError(409, 'insufficient', '$が足りません');
-        q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(car.price, cur.id);
+        if (carCount(cur.id) >= garageSize(cur)) throw new ApiError(409, 'garage_full', `ガレージがいっぱいです（${garageSize(cur)}台）。ガレージを拡張すると置けます`);
+        if (cur.dollars < cost) throw new ApiError(409, 'insufficient', '$が足りません');
+        q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(cost, cur.id);
         const now = Date.now();
         return Number(q('INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at) VALUES (?, ?, 0, ?, ?)').run(cur.id, car.id, now, now).lastInsertRowid);
       });
       const me = meDto(balanceChanged(u.id));
       afterSpend(u.id);
-      return { me, car: { id, model: car.id, acquiredAt: Date.now(), from: null } };
+      return { me, paid: cost, car: { id, model: car.id, acquiredAt: Date.now(), from: null } };
+    },
+
+    // one more place in the garage, for good ($1,000,000; any number of times)
+    'POST /api/garage/expand': async (req, u) => {
+      await req.json();
+      rate(limit.shop, u.id);
+      const price = RULES.garage.slotPrice;
+      tx(() => {
+        const cur = getUser(u.id);
+        if (cur.dollars < price) throw new ApiError(409, 'insufficient', '$が足りません');
+        q('UPDATE users SET dollars = dollars - ?, garage_extra = garage_extra + 1, rev = rev + 1 WHERE id = ?').run(price, cur.id);
+      });
+      const after = balanceChanged(u.id);
+      afterSpend(u.id);
+      return { me: meDto(after), capacity: garageSize(after) };
     },
 
     'POST /api/cars/gift': async (req, u) => {
@@ -1725,10 +1975,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       requireFriend(u, to, '車をあげる');
       if (isBlocked(to, u.id)) throw new ApiError(403, 'blocked', 'このユーザーにはあげられません');
       rate(limit.transfer, u.id, '少し待ってからお試しください');
+      settleRentals(u.id);
       const m = tx(() => {
         const car = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(carId, u.id);
         if (!car) throw new ApiError(404, 'no_car', 'この車は持っていません');
-        q('UPDATE cars SET owner_id = ?, from_id = ?, acquired_at = ? WHERE id = ?').run(to, u.id, Date.now(), car.id);
+        if (car.rent_start) throw new ApiError(409, 'rented', '貸し出し中の車はあげられません');
+        // what its renting earned stays with the giver
+        if (car.rent_earned) q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(car.rent_earned, u.id);
+        const them = getUser(to);
+        if (carCount(to) >= garageSize(them)) throw new ApiError(409, 'their_garage_full', `${them.name}さんのガレージがいっぱいです`);
+        q('UPDATE cars SET owner_id = ?, from_id = ?, acquired_at = ?, rent_earned = 0, rent_last = \'\' WHERE id = ?').run(to, u.id, Date.now(), car.id);
         const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'gift', body: car.model, amount: car.id });
         touchConversations(u.id, to, row.id);
         return row;
@@ -1885,16 +2141,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
     'GET /api/items': (req, u) => ({ items: itemsOf(u.id), charm: u.charm > 0, shop: itemShop() }),
 
-    // Charged at today's sale price (`price` per piece, as shown).
+    // Charged at the price of the moment (`price` per piece, as shown).
     'POST /api/shop/buy': async (req, u) => {
       const body = await req.json();
       rate(limit.shop, u.id);
       const item = SHOP.get(String(body.id || ''));
       if (!item) throw new ApiError(400, 'bad_item', 'この商品は販売していません');
       const count = body.count === undefined ? 1 : posInt(body.count, '個数');
-      const sale = itemSale(item, utcDay());
+      const sale = shopSale(item);
       if (body.price !== undefined && Number(body.price) !== sale.price) {
-        throw new ApiError(409, 'price_changed', `セール価格が変わりました（今日は $${fmt(sale.price)}）`, { itemShop: itemShop() });
+        throw new ApiError(409, 'price_changed', `価格が変わりました（今は $${fmt(sale.price)}）`, { itemShop: itemShop() });
       }
       tx(() => {
         const cur = getUser(u.id);
@@ -2140,7 +2396,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     'POST /api/release': async (req, u) => {
       const body = await req.json();
       const theirs = Number(body.release) || 0;
-      if (theirs < RELEASE) return { release: RELEASE, outdated: true, bonus: 0, updates: 0 };
+      if (theirs < RELEASE) return { release: RELEASE, outdated: true, bonus: 0, updates: 0, released: releasedAt() };
       const updates = tx(() => {
         const cur = getUser(u.id);
         const n = RELEASE - cur.release_seen;
@@ -2150,7 +2406,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       const bonus = updates * RULES.updateBonus;
       if (bonus) balanceChanged(u.id);
-      return { release: RELEASE, outdated: false, bonus, updates, me: meDto(getUser(u.id)) };
+      return { release: RELEASE, outdated: false, bonus, updates, me: meDto(getUser(u.id)), released: releasedAt() };
     },
 
     /* ----- フレンド対決 ----- */
@@ -2628,20 +2884,21 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the operator site (/ops/)
   const ops = createOps({
     q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub,
-    official, opsLog, balance
+    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper
   });
   Object.assign(routes, ops.routes);
   // 金の生る木
   const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
   Object.assign(routes, trees.routes);
 
-  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login']);
+  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban']);
 
   /* ---------------------------------------------------------------- live connection hooks */
 
   // First payload of a live connection.
   function hello(userId) {
     const bonus = loginBonus(userId);
+    try { accessDayGifts(userId); } catch (e) { console.error('access days', e); }
     const u = getUser(userId);
     return {
       loginBonus: bonus,
@@ -2691,8 +2948,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('DELETE FROM spins WHERE created_at < ?').run(Date.now() - 30 * 86400000);
       q('DELETE FROM sessions WHERE last_used < ?').run(Date.now() - 365 * 86400000);
       q('DELETE FROM watchers WHERE since < ?').run(Date.now() - 12 * 3600000);
-      // アクセス禁止 and BAN that have run out
-      q("UPDATE users SET banned = 0, ban_kind = '', ban_until = 0 WHERE banned = 1 AND ban_until > 0 AND ban_until <= ?").run(Date.now());
+      // rented cars: their customers counted, the ones asked back home again
+      for (const c of q('SELECT * FROM cars WHERE rent_start > 0').all()) tx(() => settleRental(c));
+      // アクセス禁止 and BAN that have run out (the official bot tells the player)
+      for (const b of q('SELECT * FROM users WHERE banned = 1 AND ban_until > 0 AND ban_until <= ?').all(Date.now())) liftBan(b, 'expired');
       // 観戦ベット whose player stopped spinning: the stake goes back
       for (const b of q("SELECT * FROM watch_bets WHERE state = 'open' AND created_at < ?").all(Date.now() - WB.refundMs)) {
         tx(() => {
@@ -2732,7 +2991,18 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return userId;
   }
 
-  const admin = createAdmin(db, { seal: (code) => sealText(CODE_KEY, code) });
+  // (a ban or its lifting by command reaches the player like one from the operator site)
+  const admin = createAdmin(db, {
+    seal: (code) => sealText(CODE_KEY, code),
+    isDeveloper,
+    onBan: (u, on) => {
+      if (!on) { liftBan(u, 'lifted'); return; }
+      const b = getUser(u.id);
+      tellBanned(b);
+      live.send(b.id, 'kick', { code: 'banned', message: banMessage(b), ban: banState(b) });
+      dropFromHub(b.id);
+    }
+  });
 
   async function handle(req) {
     const out = await answer(req);

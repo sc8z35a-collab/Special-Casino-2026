@@ -310,6 +310,7 @@
     $('#btn-spin').classList.add('spinning');
     $$('.payline-mark').forEach(function (m) { m.classList.remove('lit'); });
     reels.spin();
+    if (BR.win3d) BR.win3d.stopPop();
     if (BR.slotfx) BR.slotfx.spinStart();
     BR.sfx.play('spinStart');
     BR.sfx.startReels();
@@ -404,10 +405,14 @@
     // a plain WIN has no overlay: the lit line, the WIN box and the sound
     if (!overlay) {
       BR.sfx.play(res.tier >= 2 ? 'bigWin' : 'win');
+      // a plain WIN: the 3D WIN turns over the reels for a moment (js/render/win3d.js)
+      if (res.tier === 1 && BR.win3d) BR.win3d.popWin();
       setTimeout(done, res.tier >= 2 ? 1400 : 700);
       return;
     }
-    fx.play({ tier: res.tier, amount: res.total, bet: res.bet, mult: res.mult, cols: cols, auto: !!game.watch }).then(done);
+    // 77777 (five 7s on the line): ULTRA BIG WIN
+    var ultra = res.wins.some(function (w) { return w.symbol === 'seven' && w.count >= 5; });
+    fx.play({ tier: res.tier, amount: res.total, bet: res.bet, mult: res.mult, cols: cols, auto: !!game.watch, ultra: ultra }).then(done);
   }
 
   /* ------------------------------------------------------------ watching a friend --- */
@@ -463,6 +468,7 @@
     setWinGoodLuck();
     $$('.payline-mark').forEach(function (m) { m.classList.remove('lit'); });
     reels.spin();
+    if (BR.win3d) BR.win3d.stopPop();
     if (BR.slotfx) BR.slotfx.spinStart();
     BR.sfx.play('spinStart');
     BR.sfx.startReels();
@@ -678,6 +684,8 @@
     BR.account.init();
     BR.avatars.init();
     BR.social.init();
+    // banned: back to the title screen, locked (before anything else shows)
+    if (BR.banlock) BR.banlock.init();
     BR.cars.init();
     BR.shop.init();
     BR.peter.init();
@@ -709,6 +717,12 @@
     renderBet();
     layout();
     BR.launch.init();
+    // the 3D win titles load in the background once the game is up (js/render/win3d.js)
+    (function later() {
+      if (!BR.launch.done()) { setTimeout(later, 1500); return; }
+      setTimeout(function () { if (BR.win3d) BR.win3d.preload(); }, 2500);
+    })();
+    if (BR.fx && BR.fx.onChange) BR.fx.onChange(function () { if (BR.win3d && BR.launch.done()) BR.win3d.preload(); });
     var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
     fontsReady.then(function () { document.documentElement.classList.add('fonts-ready'); });
   }

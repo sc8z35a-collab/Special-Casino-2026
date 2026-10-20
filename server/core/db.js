@@ -432,13 +432,40 @@ export const MIGRATIONS = [
        created_at INTEGER NOT NULL
      )`,
     'CREATE INDEX push_subs_user ON push_subs(user_id)'
+  ],
+  // DEV7: 意見案 the operators adopted (with $100,000 from the official bot),
+  // operator rights given or taken away with the developer code, the access
+  // days the official bot has celebrated, and garage space
+  [
+    'ALTER TABLE feedback ADD COLUMN adopted_at INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE feedback ADD COLUMN adopted_by INTEGER NOT NULL DEFAULT 0',
+    // a session the server ended (why, said once at its next use)
+    "ALTER TABLE sessions ADD COLUMN ended TEXT NOT NULL DEFAULT ''",
+    // granted 1: an operator (besides config.operators), 0: rights taken away
+    `CREATE TABLE ops_access (
+       name_key TEXT    PRIMARY KEY,
+       granted  INTEGER NOT NULL,
+       at       INTEGER NOT NULL,
+       by_id    INTEGER NOT NULL DEFAULT 0
+     )`,
+    // the highest access-day milestone paid (5, 10 … 35)
+    'ALTER TABLE users ADD COLUMN days_paid INTEGER NOT NULL DEFAULT 0',
+    // garage places bought on top of the two everyone has
+    'ALTER TABLE users ADD COLUMN garage_extra INTEGER NOT NULL DEFAULT 0',
+    // a car rented out: since when (0: at home), when it comes back (0: not
+    // asked), the 5-hour blocks paid for, $ waiting, the last block's customers
+    'ALTER TABLE cars ADD COLUMN rent_start INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE cars ADD COLUMN rent_until INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE cars ADD COLUMN rent_blocks INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE cars ADD COLUMN rent_earned INTEGER NOT NULL DEFAULT 0',
+    "ALTER TABLE cars ADD COLUMN rent_last TEXT NOT NULL DEFAULT ''"
   ]
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
-  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'meta'];
+  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

@@ -11,7 +11,11 @@
      password, a message from the bot (件名, 〇〇様, the matter, Ice Smoker公式
      より) and money from the bot ($0〜1000万).
    - 通報: accepted with a reward of 60万 / 120万 / 240万 sent by the bot with
-     its thanks, or declined. 検知: the original words. 報告・意見案.
+     its thanks, or declined. 検知: the original words. 報告・意見案: an
+     意見案 adopted earns its player $100,000 from the bot with its thanks.
+   - 運営者: operator rights given to a player or taken away (they are logged
+     out everywhere at once and kept out of this site), each with the
+     developer code; the developer registers that code here once.
    - ログ: everything done here, and every DEV going live, newest first; a tap
      shows all that is known about it. It cannot be changed or deleted.
    Passwords are kept only as one-way hashes, so they can be set, never shown.
@@ -31,6 +35,8 @@
     release: 'DEV更新', open: 'サイトを開いた', 'ban:suspend': 'アクセス禁止', 'ban:ban': 'BAN', 'ban:perma': '永久BAN', 'ban:none': '処分の解除',
     device_ok: '端末の許可', recovery: '引き継ぎコード再発行', password: 'パスワード再設定', bot_read: 'チャットを既読', bot_message: '公式ボットのメッセージ',
     money: '送金', report_accept: '通報を受理', report_reject: '通報を不受理', detections_reviewed: '検知を確認', feedback_handled: '報告・意見案を対応済み',
+    idea_adopt: '意見案を採用', ops_revoke: '運営権の剥奪', ops_grant: '運営権の付与', ops_restore: '運営権を戻す',
+    dev_code_set: '開発者コードを登録', dev_code_change: '開発者コードを変更', dev_code_fail: '開発者コードの入力ミス',
     bot_auto_reply: '自動返信', log_kept: '運営ログの保持', 'admin:restore-time': '管理コマンド: 時点への巻き戻し'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
@@ -41,7 +47,8 @@
   var token = null;
   var state = {
     view: 'players', players: [], total: 0, counts: {}, now: Date.now(), filter: 'all', sort: 'new', q: '', open: 0, busy: false,
-    reportStatus: 'open', detAll: false, fb: 'open', feedback: [], log: [], logQ: '', logDone: false, chat: null
+    reportStatus: 'open', detAll: false, fb: 'open', feedback: [], log: [], logQ: '', logDone: false, chat: null,
+    developer: false, operators: []
   };
   var timer = 0, searchTimer = 0, logTimer = 0, chatTimer = 0;
 
@@ -201,7 +208,9 @@
   function start(me) {
     $('#login').hidden = true;
     $('#app').hidden = false;
-    $('#op-name').textContent = '運営者: ' + me.name;
+    $('#op-name').textContent = (me.developer ? '開発者: ' : '運営者: ') + me.name;
+    state.developer = !!me.developer;
+    state.devCodeSet = !!me.devCodeSet;
     load();
     clearInterval(timer);
     timer = setInterval(function () {
@@ -215,8 +224,9 @@
   function setView(v) {
     state.view = v;
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
-    ['players', 'reports', 'detections', 'feedback', 'log'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
+    ['players', 'reports', 'detections', 'feedback', 'log', 'operators'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
     if (v === 'players') load();
+    else if (v === 'operators') loadOperators();
     else if (v === 'reports') loadReports();
     else if (v === 'detections') loadDetections();
     else if (v === 'feedback') loadFeedback();
@@ -537,8 +547,8 @@
       var kind = b.dataset.kind;
       var info = BAN[kind];
       ask(kind === 'none'
-        ? { title: '処分を解除しますか？', text: p.name + ' さんはすぐにまた遊べるようになります。', ok: '解除する' }
-        : { title: info.long + 'にしますか？', text: p.name + ' さんはすぐにログアウトされ、' + (kind === 'perma' ? '解除するまで' : kind === 'ban' ? '30日間' : '1週間') + 'TWO STATE を遊べなくなります。' + (kind === 'suspend' ? '' : '同じ端末のほかのアカウントも止まります。'), ok: info.name + 'にする', danger: true }
+        ? { title: '処分を解除しますか？', text: p.name + ' さんはすぐにまた遊べるようになります。公式ボットから解除のお知らせが届きます。', ok: '解除する' }
+        : { title: info.long + 'にしますか？', text: p.name + ' さんのゲームはすぐにタイトル画面に戻り、' + (kind === 'perma' ? '解除するまで' : kind === 'ban' ? '30日間' : '1週間') + 'そこから先へ進めなくなります（TWO STATE を遊べません）。公式ボットから「' + date(Date.now(), true) + 'に公式より' + info.name + 'されました」とお知らせが届き、解除されたときもお知らせが届きます。' + (kind === 'suspend' ? '' : '同じ端末のほかのアカウントも止まります。'), ok: info.name + 'にする', danger: true }
       ).then(function (ok) {
         if (!ok) return null;
         state.busy = true;
@@ -919,12 +929,21 @@
         c.dataset.chat = f.user.id;
         a.appendChild(c);
       }
+      if (f.kind === 'idea') {
+        if (f.adoptedAt) a.appendChild(el('span', 'adopted', '採用済み・$100,000 を送金（' + stamp(f.adoptedAt) + '）'));
+        else {
+          var ad = el('button', 'btn small warn', '採用する（$100,000 を送る）');
+          ad.type = 'button';
+          ad.dataset.adopt = f.id;
+          a.appendChild(ad);
+        }
+      }
       if (!f.handledAt) {
         var h = el('button', 'btn small ok', '対応済みにする');
         h.type = 'button';
         h.dataset.handled = f.id;
         a.appendChild(h);
-      } else {
+      } else if (!f.adoptedAt) {
         a.appendChild(el('span', 'muted', '対応済み（' + stamp(f.handledAt) + '）'));
       }
       card.appendChild(a);
@@ -936,6 +955,8 @@
     if (o) { openDetail(Number(o.dataset.open)); return; }
     var c = e.target.closest('[data-chat]');
     if (c) { openChat(Number(c.dataset.chat)); return; }
+    var ad = e.target.closest('[data-adopt]');
+    if (ad) { adopt(Number(ad.dataset.adopt), ad); return; }
     var b = e.target.closest('[data-handled]');
     if (!b) return;
     b.disabled = true;
@@ -944,6 +965,118 @@
       loadFeedback(true);
       load(true);
     }, function (err) { b.disabled = false; fail(err); });
+  }
+
+  function adopt(id, b) {
+    var f = state.feedback.find(function (x) { return x.id === id; });
+    var who = f && f.user ? f.user.name : '';
+    ask({ title: 'この意見案を採用しますか？', text: who + ' さんに Ice Smoker公式ボットから $100,000 と感謝のメッセージが届きます（1つの意見案につき1回）。', ok: '採用する' }).then(function (ok) {
+      if (!ok) return null;
+      b.disabled = true;
+      return request('POST', '/api/ops/feedback/adopt', { id: id }).then(function () {
+        toast('採用して $100,000 を送りました');
+        loadFeedback(true);
+        load(true);
+      });
+    }).catch(function (err) { b.disabled = false; fail(err); });
+  }
+
+  /* ------------------------------------------------------------ the operators (developer code) --- */
+  function loadOperators() {
+    var list = $('#op-list');
+    list.textContent = '';
+    list.appendChild(el('p', 'muted', '読み込み中…'));
+    request('GET', '/api/ops/operators').then(function (r) {
+      state.operators = r.operators || [];
+      state.devCodeSet = !!r.devCodeSet;
+      renderOperators();
+    }, fail);
+  }
+  function renderOperators() {
+    // the developer registers the code once (it is kept only as a one-way hash)
+    var reg = $('#op-devcode');
+    reg.hidden = !state.developer;
+    $('#op-devcode-text').textContent = state.devCodeSet
+      ? '開発者コードは登録済みです（変更するときは今のコードが必要です）。'
+      : '開発者コードがまだ登録されていません。運営権の付与・剥奪に使うコードを、最初に一度だけ登録してください（サーバーには元に戻せない形でだけ保存されます）。';
+    $('#op-devcode-btn').textContent = state.devCodeSet ? '開発者コードを変更' : '開発者コードを登録';
+    var list = $('#op-list');
+    list.textContent = '';
+    state.operators.forEach(function (o) {
+      var card = el('article', 'card' + (o.operator ? '' : ' done'));
+      var head = el('div', 'card-head');
+      head.appendChild(person({ id: o.id, name: o.name, avatar: o.avatar }, o.registered ? (o.online ? 'オンライン' : '') : 'アカウント未登録'));
+      head.appendChild(el('span', 'kind ' + (o.developer ? 'dev' : o.operator ? 'op' : 'revoked'), o.developer ? '開発者' : o.operator ? '運営者' : '運営権なし（剥奪済み）'));
+      card.appendChild(head);
+      var a = el('div', 'acts');
+      if (o.changed && !o.developer) a.appendChild(el('span', 'muted', stamp(o.changed.at) + ' に' + (o.changed.by ? o.changed.by + 'が' : '') + (o.changed.granted ? '付与' : '剥奪')));
+      if (o.developer) a.appendChild(el('span', 'muted', '開発者の運営権は剥奪できません'));
+      else if (o.registered) {
+        var b = el('button', o.operator ? 'btn small danger' : 'btn small', o.operator ? '運営権を剥奪する' : '運営権を戻す');
+        b.type = 'button';
+        b.dataset.opAct = o.operator ? 'revoke' : 'grant';
+        b.dataset.name = o.name;
+        a.appendChild(b);
+      }
+      card.appendChild(a);
+      list.appendChild(card);
+    });
+  }
+  // the developer code for one action (asked every time, never kept here)
+  function withCode(o) {
+    return ask({ title: o.title, text: o.text + '（開発者コードが必要です）', ok: o.ok, danger: o.danger, input: { label: '開発者コード', type: 'password' },
+      check: function (v) { return /^[\d\s-]{4,40}$/.test(v) ? '' : '開発者コードを入力してください'; } });
+  }
+  function changeAccess(action, name, b) {
+    var revoke = action === 'revoke';
+    withCode(revoke
+      ? { title: name + ' さんの運営権を剥奪しますか？', text: name + ' さんはすぐにすべての端末でログアウトされ、運営サイトにログインできなくなります（ゲームには一般のプレイヤーとしてログインできます）。', ok: '剥奪する', danger: true }
+      : { title: name + ' さんに運営権を付与しますか？', text: name + ' さんは運営サイトにログインして、運営のすべての操作ができるようになります。', ok: '付与する' }
+    ).then(function (code) {
+      if (code === null) return null;
+      if (b) b.disabled = true;
+      return request('POST', '/api/ops/operator', { name: name, action: action, code: code }).then(function (r) {
+        toast(revoke ? name + ' さんの運営権を剥奪しました' : name + ' さんに運営権を付与しました');
+        state.operators = r.operators || [];
+        renderOperators();
+        $('#op-grant-name').value = '';
+      });
+    }).catch(function (err) { if (b) b.disabled = false; fail(err); });
+  }
+  function onOperators(e) {
+    var o = e.target.closest('[data-open]');
+    if (o && Number(o.dataset.open)) { openDetail(Number(o.dataset.open)); return; }
+    var b = e.target.closest('[data-op-act]');
+    if (b) changeAccess(b.dataset.opAct, b.dataset.name, b);
+  }
+  function onGrant(e) {
+    e.preventDefault();
+    var name = $('#op-grant-name').value.trim();
+    if (!name) { toast('運営権を付与するプレイヤーの名前を入力してください'); return; }
+    changeAccess('grant', name, null);
+  }
+  function registerCode() {
+    var change = state.devCodeSet;
+    (change
+      ? ask({ title: '開発者コードを変更', text: '今の開発者コードを入力してください。', ok: '次へ', input: { label: '今の開発者コード', type: 'password' } })
+      : Promise.resolve('')
+    ).then(function (old) {
+      if (old === null) return null;
+      return ask({
+        title: change ? '新しい開発者コード' : '開発者コードを登録',
+        text: '8〜32桁の数字。開発者だけが知っているコードにしてください（ここにもサーバーにも、元のコードは残りません）。',
+        ok: '登録する',
+        input: { label: '開発者コード', type: 'password' },
+        check: function (v) { return /^\d{8,32}$/.test(v.replace(/[\s-]/g, '')) ? '' : '8〜32桁の数字にしてください'; }
+      }).then(function (code) {
+        if (code === null) return null;
+        return request('POST', '/api/ops/dev-code', { code: code, old: old }).then(function () {
+          state.devCodeSet = true;
+          toast('開発者コードを登録しました');
+          renderOperators();
+        });
+      });
+    }).catch(fail);
   }
 
   /* ------------------------------------------------------------ the operators' log --- */
@@ -1164,6 +1297,9 @@
       renderFeedback();
     });
     $('#fb-list').addEventListener('click', onFeedback);
+    $('#op-list').addEventListener('click', onOperators);
+    $('#op-grant').addEventListener('submit', onGrant);
+    $('#op-devcode-btn').addEventListener('click', registerCode);
     $('#log-search').addEventListener('input', function () {
       clearTimeout(logTimer);
       logTimer = setTimeout(function () { state.logQ = $('#log-search').value.trim(); loadLog(true); }, 300);

@@ -1,0 +1,507 @@
+/* The cars in 3D: Car Owner's studio and the garage's 3D space.
+   The studio: the car on the round base (its pattern up), lit by two stage
+   lights (a moving head and a spotlight on a stand, each with a real light
+   and a soft beam) in a dark room with a glossy floor; the camera goes round
+   the car by itself, and a drag turns it.
+   The garage's 3D space (from the list of one's cars, full screen): the same
+   studio, the car in the middle. A double tap goes into it in first person:
+   walk round the car (the stick, or W A S D), look round with a drag, and
+   zoom up to 5x like a camera lens: the background melts into bokeh as the
+   lens gets longer, colour fringes at the edges (chromatic aberration), a
+   sensor's moire on fine detail, a vignette and a little grain. Another
+   double tap (or 戻る) comes back out.
+   three.js and the models load the first time they are needed (online only,
+   with WebGL); one renderer serves both places. */
+(function (BR) {
+  'use strict';
+
+  var STUDIO = { base: 'img/3d/studio/base.glb', moving: 'img/3d/studio/moving-head.glb', spot: 'img/3d/studio/spotlight.glb' };
+  function carFile(id) { return 'img/3d/cars/' + id + '.glb'; }
+  // sizes in metres
+  var CAR_LEN = 4.6, BASE_D = 6.8, MOVING_H = 0.95, SPOT_H = 2.45, EYE = 1.6, ROOM = 15;
+  var FOV = 42, ZOOM_MAX = 5;
+
+  var T = null;
+  var g = null;            // the one renderer and its studio
+  var loading = null;      // three.js and the studio models
+  var cars = {};           // car id -> Promise of its model (metres, standing on y = 0)
+  var mode = '';           // '' | 'show' (Car Owner) | 'space' (the garage) | 'walk' (first person)
+  var host = null, raf = 0, last = 0, carId = '';
+  var walk = null;         // first person: { yaw, pitch, zoom, keys, stick, focus }
+
+  function online() { return !!(BR.api && BR.api.online); }
+  function webgl() {
+    try {
+      var c = document.createElement('canvas');
+      return !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl')));
+    } catch (e) { return false; }
+  }
+  function supported() { return online() && webgl(); }
+  function has(id) {
+    var list = BR.CONFIG.cars;
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return !!list[i].model;
+    return false;
+  }
+
+  /* ------------------------------------------------------------ loading --- */
+  function gltf(url, progress) {
+    return new Promise(function (resolve, reject) {
+      new T.GLTFLoader().setMeshoptDecoder(T.MeshoptDecoder).load(url, function (r) { resolve(r.scene); }, function (e) {
+        if (progress && e && e.total) progress(e.loaded / e.total);
+      }, reject);
+    });
+  }
+  // a model scaled to `size` metres along `axis` ('x' or 'y'), centred on x/z, standing on y = 0
+  function fit(obj, axis, size) {
+    var box = new T.Box3().setFromObject(obj), s = box.getSize(new T.Vector3());
+    var k = size / (axis === 'x' ? s.x : s.y);
+    obj.scale.multiplyScalar(k);
+    box.setFromObject(obj);
+    var c = box.getCenter(new T.Vector3());
+    obj.position.x -= c.x;
+    obj.position.z -= c.z;
+    obj.position.y -= box.min.y;
+    var holder = new T.Group();
+    holder.add(obj);
+    return holder;
+  }
+  function shadows(obj, cast, receive) {
+    obj.traverse(function (o) { if (o.isMesh) { o.castShadow = cast; o.receiveShadow = receive; } });
+  }
+
+  function load(progress) {
+    if (loading) return loading;
+    var parts = 0, done = function () { parts++; if (progress) progress(parts / 4); };
+    loading = BR.win3d.three().then(function (lib) {
+      T = lib;
+      build();
+      return Promise.all([
+        gltf(STUDIO.base).then(function (m) { done(); return m; }),
+        gltf(STUDIO.moving).then(function (m) { done(); return m; }),
+        gltf(STUDIO.spot).then(function (m) { done(); return m; })
+      ]);
+    }).then(function (m) {
+      dress(m[0], m[1], m[2]);
+      return g;
+    }).catch(function (e) {
+      loading = null;
+      throw e;
+    });
+    return loading;
+  }
+  function car(id) {
+    if (!cars[id]) {
+      cars[id] = gltf(carFile(id)).then(function (m) {
+        // its nose to -x in the file: turned to face the front-left of the studio
+        var c = fit(m, 'x', CAR_LEN);
+        c.rotation.y = 0.55;
+        shadows(c, true, true);
+        return c;
+      }, function (e) { delete cars[id]; throw e; });
+    }
+    return cars[id];
+  }
+
+  /* ------------------------------------------------------------ the studio --- */
+  function build() {
+    var canvas = document.createElement('canvas');
+    canvas.className = 'g3d-canvas';
+    var renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: 'high-performance' });
+    renderer.outputColorSpace = T.SRGBColorSpace;
+    renderer.toneMapping = T.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = T.PCFSoftShadowMap;
+    var scene = new T.Scene();
+    scene.background = new T.Color(0x06070b);
+    scene.fog = new T.Fog(0x06070b, 16, 40);
+    var pm = new T.PMREMGenerator(renderer);
+    scene.environment = pm.fromScene(new T.RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.32;
+    pm.dispose();
+    scene.add(new T.HemisphereLight(0x8a96b8, 0x0b0b10, 0.45));
+    // the glossy floor, fading into the dark
+    var floor = new T.Mesh(new T.CircleGeometry(ROOM * 2, 64), new T.MeshStandardMaterial({ color: 0x15161d, roughness: 0.55, metalness: 0.1 }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+    var camera = new T.PerspectiveCamera(FOV, 16 / 9, 0.05, 80);
+    var controls = new T.OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.enablePan = false;
+    controls.minPolarAngle = Math.PI * 0.16;
+    controls.maxPolarAngle = Math.PI * 0.47;
+    controls.minDistance = 5;
+    controls.maxDistance = 13;
+    controls.target.set(0, 0.8, 0);
+    g = { canvas: canvas, renderer: renderer, scene: scene, camera: camera, controls: controls, composer: null, car: null, carId: '', beams: [], base: null, fps: 60 };
+    canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); stop(); }, false);
+  }
+
+  // a soft beam of light from `from` to `to` (a cone that fades along it and at its edges)
+  function beam(from, to, radius, color) {
+    var len = from.distanceTo(to);
+    var geo = new T.CylinderGeometry(0.06, radius, len, 40, 1, true);
+    geo.translate(0, -len / 2, 0);
+    geo.rotateX(-Math.PI / 2);
+    var mat = new T.ShaderMaterial({
+      uniforms: { color: { value: new T.Color(color) }, strength: { value: 0.42 } },
+      vertexShader: 'varying float vAlong; varying vec3 vN; varying vec3 vView;' +
+        'void main() { vAlong = clamp(position.z / ' + len.toFixed(3) + ', 0.0, 1.0);' +
+        'vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vView = normalize(-mv.xyz);' +
+        'gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'uniform vec3 color; uniform float strength; varying float vAlong; varying vec3 vN; varying vec3 vView;' +
+        'void main() { float edge = pow(abs(dot(vN, vView)), 1.6); float a = strength * edge * pow(1.0 - vAlong, 1.4);' +
+        'gl_FragColor = vec4(color * a, a); }',
+      transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide
+    });
+    var m = new T.Mesh(geo, mat);
+    m.position.copy(from);
+    m.lookAt(to);
+    m.renderOrder = 2;
+    return m;
+  }
+
+  // the glow of a lamp's lens (a soft round sprite, added light)
+  function glow(at, color, size) {
+    var c = document.createElement('canvas');
+    c.width = c.height = 128;
+    var x = c.getContext('2d'), gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(0.25, 'rgba(255,255,255,.55)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = gr;
+    x.fillRect(0, 0, 128, 128);
+    var sp = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(c), color: color, blending: T.AdditiveBlending, depthWrite: false, transparent: true }));
+    sp.position.copy(at);
+    sp.scale.set(size, size, 1);
+    return sp;
+  }
+
+  function dress(baseM, movingM, spotM) {
+    var s = g.scene;
+    // the round base, its pattern up (the pattern faces +z in the file)
+    baseM.rotation.x = -Math.PI / 2;
+    var base = fit(baseM, 'x', BASE_D);
+    shadows(base, false, true);
+    s.add(base);
+    g.base = base;
+    g.baseTop = new T.Box3().setFromObject(base).max.y;
+    var target = new T.Vector3(0, 0.75, 0);
+    // the moving head on the floor at the back left, its head towards the car
+    var moving = fit(movingM, 'y', MOVING_H);
+    moving.position.set(-4.1, 0, -2.5);
+    moving.rotation.y = Math.atan2(-moving.position.x, -moving.position.z) + Math.PI / 2;
+    shadows(moving, true, false);
+    s.add(moving);
+    // the spotlight on its stand at the front right, facing the car
+    var spot = fit(spotM, 'y', SPOT_H);
+    spot.position.set(4.6, 0, 3.0);
+    spot.rotation.y = Math.atan2(-spot.position.x, -spot.position.z);
+    shadows(spot, true, false);
+    s.add(spot);
+    // their lights: a warm key from the spotlight (the shadows), a cool one from the moving head
+    var keyFrom = new T.Vector3(4.6, SPOT_H * 0.86, 3.0);
+    var key = new T.SpotLight(0xfff0dc, 520, 0, 0.42, 0.6, 2);
+    key.position.copy(keyFrom);
+    key.target.position.copy(target);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.02;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 20;
+    s.add(key, key.target);
+    var coolFrom = new T.Vector3(-4.1, MOVING_H * 0.8, -2.5);
+    var cool = new T.SpotLight(0x8fc4ff, 420, 9, 0.3, 0.5, 2);
+    cool.position.copy(coolFrom);
+    cool.target.position.set(0, 0.9, 0);
+    s.add(cool, cool.target);
+    // the lamps' lenses glow, and the moving head is lit a little from the front
+    s.add(glow(coolFrom.clone().lerp(new T.Vector3(0, 0.9, 0), 0.05), 0x9fd0ff, 0.6));
+    s.add(glow(keyFrom.clone().lerp(target, 0.03), 0xfff0d0, 0.6));
+    var fill = new T.PointLight(0xc8d4ff, 6, 4, 2);
+    fill.position.set(-3.2, 1.4, -1.4);
+    s.add(fill);
+    // a soft top light on the car (its pool stays on the base), and a dim
+    // light behind so the stands and the moving head show against the dark
+    var top = new T.SpotLight(0xffffff, 110, 0, 0.42, 0.85, 2);
+    top.position.set(0, 9, 0);
+    top.target.position.set(0, 0, 0);
+    s.add(top, top.target);
+    var back = new T.PointLight(0x6f7fa8, 18, 14, 2);
+    back.position.set(0, 3.2, -6);
+    s.add(back);
+    g.beams = [beam(keyFrom, target, 1.5, 0xffe8c8), beam(coolFrom, new T.Vector3(0, 1.0, 0), 1.2, 0x9ccaff)];
+    g.beams.forEach(function (b) { s.add(b); });
+  }
+
+  function putCar(id) {
+    if (g.carId === id && g.car) return Promise.resolve();
+    g.carId = id;
+    return car(id).then(function (c) {
+      if (g.carId !== id) return;
+      if (g.car) g.scene.remove(g.car);
+      c.position.y = g.baseTop;
+      g.car = c;
+      g.scene.add(c);
+      g.renderer.compile(g.scene, g.camera);
+    });
+  }
+
+  /* ------------------------------------------------------------ the frame --- */
+  function size() {
+    if (!host) return;
+    var r = host.getBoundingClientRect();
+    var w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+    // sharp enough, never heavier than needed (and lighter once frames get slow)
+    var pr = Math.min(window.devicePixelRatio || 1, mode === 'show' ? 1.5 : 1.75) * (g.fps < 30 ? 0.7 : 1);
+    g.renderer.setPixelRatio(pr);
+    g.renderer.setSize(w, h, false);
+    g.camera.aspect = w / h;
+    g.camera.updateProjectionMatrix();
+    if (g.composer) {
+      g.composer.setPixelRatio(pr);
+      g.composer.setSize(w, h);
+    }
+  }
+
+  function frame(now) {
+    raf = requestAnimationFrame(frame);
+    var dt = Math.min(0.1, (now - (last || now)) / 1000);
+    last = now;
+    if (dt > 0) g.fps += (1 / dt - g.fps) * 0.05;
+    if (mode === 'walk') { stepWalk(dt); g.composer.render(dt); }
+    else {
+      g.controls.update();
+      g.renderer.render(g.scene, g.camera);
+    }
+  }
+  function run() { if (!raf) { last = 0; raf = requestAnimationFrame(frame); } }
+  function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
+
+  function attach(el, m) {
+    host = el;
+    mode = m;
+    if (g.canvas.parentNode !== el) el.appendChild(g.canvas);
+    size();
+  }
+
+  // the orbit for Car Owner (turning by itself) or the garage's space
+  function orbit(auto) {
+    var c = g.controls;
+    c.enabled = true;
+    c.autoRotate = true;
+    c.autoRotateSpeed = auto ? 0.9 : 0.35;
+    c.enableZoom = !auto;
+    g.camera.fov = FOV;
+    g.camera.position.set(4.9, 1.85, 5.2);
+    c.target.set(0, 0.8, 0);
+    g.camera.updateProjectionMatrix();
+    c.update();
+  }
+
+  /* ------------------------------------------------------------ first person --- */
+  // the lens: colour fringes, the sensor's moire on fine detail, vignette, grain
+  var LENS = {
+    uniforms: { tDiffuse: { value: null }, res: { value: null }, zoom: { value: 1 }, time: { value: 0 } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: [
+      'uniform sampler2D tDiffuse; uniform vec2 res; uniform float zoom; uniform float time; varying vec2 vUv;',
+      'float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }',
+      'void main() {',
+      '  vec2 c = vUv - 0.5; float r2 = dot(c, c);',
+      // chromatic aberration: wider towards the edges, and with a longer lens
+      '  float ca = 0.0012 + 0.0016 * (zoom - 1.0);',
+      '  vec3 col = vec3(texture2D(tDiffuse, vUv + c * ca).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - c * ca).b);',
+      // moire: the pixel grid beating against fine detail (it shows as the lens gets longer)
+      '  vec2 px = vUv * res; vec2 o = 1.0 / res;',
+      '  float l = luma(col);',
+      '  float d = abs(l - luma(texture2D(tDiffuse, vUv + vec2(o.x, 0.0)).rgb)) + abs(l - luma(texture2D(tDiffuse, vUv + vec2(0.0, o.y)).rgb));',
+      '  float detail = clamp(d * 5.0, 0.0, 1.0);',
+      '  float beat = sin(px.x * 0.92 + px.y * 0.23) * sin(px.y * 0.87 - px.x * 0.19);',
+      '  vec3 fringe = vec3(sin(beat * 3.1), sin(beat * 3.1 + 2.09), sin(beat * 3.1 + 4.19));',
+      '  col += fringe * detail * smoothstep(1.4, 5.0, zoom) * 0.07 * (0.4 + l);',
+      // vignette (a longer lens darkens the corners more) and a little grain
+      '  col *= 1.0 - smoothstep(0.18, 0.62, r2 * (1.0 + 0.18 * (zoom - 1.0))) * 0.55;',
+      '  col += (fract(sin(dot(px + time * 61.0, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 0.018;',
+      '  gl_FragColor = vec4(max(col, 0.0), 1.0);',
+      '}'
+    ].join('\n')
+  };
+
+  function composer() {
+    if (g.composer) return;
+    var c = new T.EffectComposer(g.renderer);
+    c.addPass(new T.RenderPass(g.scene, g.camera));
+    g.bokeh = new T.BokehPass(g.scene, g.camera, { focus: 6, aperture: 0.002, maxblur: 0.006 });
+    c.addPass(g.bokeh);
+    g.lens = new T.ShaderPass(LENS);
+    g.lens.uniforms.res.value = new T.Vector2(1, 1);
+    c.addPass(g.lens);
+    c.addPass(new T.OutputPass());
+    g.composer = c;
+    g.ray = new T.Raycaster();
+  }
+
+  function enterWalk() {
+    if (mode !== 'space' || !g.car) return;
+    composer();
+    mode = 'walk';
+    g.controls.enabled = false;
+    g.controls.autoRotate = false;
+    // standing a few steps from the car, looking at it
+    var p = g.camera.position.clone();
+    p.y = 0;
+    p.setLength(Math.max(4.2, Math.min(8, p.length())));
+    g.camera.position.set(p.x, EYE, p.z);
+    walk = { yaw: Math.atan2(-p.x, -p.z), pitch: -0.08, zoom: 1, keys: {}, stick: { x: 0, y: 0 }, focus: 6 };
+    size();
+    BR.garage3d.onMode && BR.garage3d.onMode('walk');
+  }
+  function leaveWalk() {
+    if (mode !== 'walk') return;
+    mode = 'space';
+    walk = null;
+    orbit(false);
+    size();
+    BR.garage3d.onMode && BR.garage3d.onMode('space');
+  }
+
+  function stepWalk(dt) {
+    var w = walk, cam = g.camera;
+    // moving: the stick or the keys, in the direction one looks
+    var fx = w.stick.y + (w.keys.w || w.keys.arrowup ? 1 : 0) - (w.keys.s || w.keys.arrowdown ? 1 : 0);
+    var sx = w.stick.x + (w.keys.d || w.keys.arrowright ? 1 : 0) - (w.keys.a || w.keys.arrowleft ? 1 : 0);
+    var speed = 2.6 / Math.sqrt(w.zoom);
+    var sin = Math.sin(w.yaw), cos = Math.cos(w.yaw);
+    var x = cam.position.x + (sin * fx - cos * sx) * speed * dt;
+    var z = cam.position.z + (cos * fx + sin * sx) * speed * dt;
+    // never into the car or out of the room
+    var r = Math.sqrt(x * x + z * z), min = BASE_D / 2 - 0.35;
+    if (r < min) { x *= min / r; z *= min / r; }
+    if (r > ROOM) { x *= ROOM / r; z *= ROOM / r; }
+    cam.position.set(x, EYE, z);
+    cam.rotation.set(w.pitch, w.yaw + Math.PI, 0, 'YXZ');
+    // the lens: a longer one narrows the view
+    cam.fov = 2 * Math.atan(Math.tan(FOV * Math.PI / 360) / w.zoom) * 180 / Math.PI;
+    cam.updateProjectionMatrix();
+    // focus where the middle of the view lands (the car, the base, else far away), eased like a real lens
+    g.ray.setFromCamera({ x: 0, y: 0 }, cam);
+    var hit = g.ray.intersectObjects([g.car, g.base], true)[0];
+    var want = hit ? hit.distance : 12;
+    w.focus += (want - w.focus) * Math.min(1, dt * 6);
+    var u = g.bokeh.uniforms;
+    u.focus.value = w.focus;
+    u.aperture.value = 0.0012 * w.zoom * w.zoom;
+    u.maxblur.value = 0.004 + 0.0028 * (w.zoom - 1);
+    var res = g.lens.uniforms.res.value;
+    g.renderer.getDrawingBufferSize(res);
+    g.lens.uniforms.zoom.value = w.zoom;
+    g.lens.uniforms.time.value = (performance.now() / 1000) % 100;
+  }
+
+  /* ------------------------------------------------------------ input in first person --- */
+  var drag = null, pinch = null, taps = [];
+  function onDown(e) {
+    // two taps close together: in, or back out
+    var now = performance.now();
+    taps = taps.filter(function (t) { return now - t.at < 320; });
+    if (taps.length && Math.abs(taps[0].x - e.clientX) < 40 && Math.abs(taps[0].y - e.clientY) < 40) {
+      taps = [];
+      if (mode === 'space') enterWalk(); else if (mode === 'walk') leaveWalk();
+      return;
+    }
+    taps.push({ at: now, x: e.clientX, y: e.clientY });
+    if (mode !== 'walk') return;
+    if (pointers.size === 0) drag = { x: e.clientX, y: e.clientY };
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      var p = Array.from(pointers.values());
+      pinch = { d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y), zoom: walk.zoom };
+      drag = null;
+    }
+  }
+  var pointers = new Map();
+  function onMove(e) {
+    if (mode !== 'walk' || !pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pointers.size === 2) {
+      var p = Array.from(pointers.values());
+      setZoom(pinch.zoom * Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) / pinch.d);
+      return;
+    }
+    if (!drag) return;
+    // looking round: slower the longer the lens
+    var k = 0.0042 / walk.zoom;
+    walk.yaw -= (e.clientX - drag.x) * k;
+    walk.pitch = Math.max(-1.1, Math.min(1.0, walk.pitch - (e.clientY - drag.y) * k));
+    drag = { x: e.clientX, y: e.clientY };
+  }
+  function onUp(e) {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = null;
+    if (!pointers.size) drag = null;
+  }
+  function onWheel(e) {
+    if (mode !== 'walk') return;
+    e.preventDefault();
+    setZoom(walk.zoom * Math.exp(-e.deltaY * 0.0015));
+  }
+  function onKey(e) {
+    if (mode !== 'walk') return;
+    var k = e.key.toLowerCase();
+    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].indexOf(k) < 0) return;
+    walk.keys[k] = e.type === 'keydown';
+    e.preventDefault();
+  }
+  function setZoom(z) {
+    if (!walk) return;
+    walk.zoom = Math.max(1, Math.min(ZOOM_MAX, z));
+    if (BR.garage3d.onZoom) BR.garage3d.onZoom(walk.zoom);
+  }
+  function listen(el) {
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onUp);
+    el.addEventListener('wheel', onWheel, { passive: false });
+  }
+  document.addEventListener('keydown', onKey);
+  document.addEventListener('keyup', onKey);
+  window.addEventListener('resize', function () { if (g && host) size(); });
+
+  /* ------------------------------------------------------------ the public side --- */
+  var listening = false;
+  function start(el, id, m, progress) {
+    return load(progress).then(function () {
+      if (!listening) { listen(g.canvas); listening = true; }
+      attach(el, m);
+      orbit(m === 'show');
+      return putCar(id);
+    }).then(function () {
+      if (host !== el) return;
+      run();
+    });
+  }
+
+  BR.garage3d = {
+    supported: supported,
+    has: has,
+    // Car Owner: the car turning in the studio inside `el` (progress(0..1) while loading)
+    show: function (el, id, progress) { carId = id; return start(el, id, 'show', progress); },
+    // the garage's 3D space inside `el` (double tap: first person)
+    space: function (el, id, progress) { carId = id; return start(el, id, 'space', progress); },
+    walk: function (on) { if (on) enterWalk(); else leaveWalk(); },
+    zoom: setZoom,
+    stick: function (x, y) { if (walk) { walk.stick.x = x; walk.stick.y = y; } },
+    mode: function () { return mode; },
+    // stops drawing (the canvas stays where it is until shown elsewhere)
+    stop: function () { stop(); if (mode === 'walk') leaveWalk(); mode = ''; host = null; },
+    onMode: null,
+    onZoom: null,
+    // (the studio, to look into it while working on it)
+    debug: function () { return g; }
+  };
+})(window.BR = window.BR || {});
