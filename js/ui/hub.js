@@ -419,7 +419,10 @@
     face.appendChild(el('i', 'hb-dot'));
     top.appendChild(face);
     var id = el('div', 'hb-mc-id');
-    id.appendChild(el('b', 'uname', m.name + (self ? '（あなた）' : '')));
+    var nm = el('span', 'fr-name-row');
+    nm.appendChild(el('b', 'uname', m.name + (self ? '（あなた）' : '')));
+    K.addVip(nm, m.vip);
+    id.appendChild(nm);
     var st = el('span', 'hb-mc-state ' + stateOf(m));
     st.appendChild(el('i', 'hb-dot'));
     st.appendChild(document.createTextNode(idleText(m)));
@@ -516,7 +519,9 @@
     switch (act) {
       case 'close': closeMember(); break;
       case 'profile': closeMember(); BR.social.openProfile(m); break;
-      case 'mic': BR.call.setMic(!BR.call.mic()).then(fillMember); fillMember(); break;
+      case 'mic':
+        if (BR.call.paused()) { BR.call.resume(); fillMember(); break; }
+        BR.call.setMic(!BR.call.mic()).then(fillMember); fillMember(); break;
       case 'deaf': BR.call.setDeaf(!BR.call.deaf()); fillMember(); break;
       case 'mute': {
         var v = BR.call.voice(m.id);

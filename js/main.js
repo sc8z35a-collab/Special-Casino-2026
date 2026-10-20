@@ -318,6 +318,7 @@
       if (seq === game.seq) land(r.result);
       BR.shop.afterSpin(r);
       BR.quests.setXp(r.xp);
+      if (r.vip && BR.vip) BR.vip.set(r.vip);
     }, function (err) {
       if (seq !== game.seq) return;
       land(null);
@@ -579,7 +580,9 @@
       BR.sfx.play('click');
       BR.tree.open();
     });
+    // the plus: ロイヤルコイン (the token shop while offline)
     press($('#w-plus'), function () {
+      if (BR.api.online && BR.support) { if (game.busy()) { BR.sfx.play('deny'); return; } BR.sfx.play('click'); BR.support.open(); return; }
       if (BR.screens.current() === 'tokens') return;
       nav('tokens')();
     });
@@ -692,6 +695,7 @@
     BR.johnson.init();
     BR.official.init();
     BR.presents.init();
+    BR.carsale.init();
     BR.safety.init();
     BR.push.init();
     BR.bonus.init();
@@ -710,6 +714,7 @@
     if (BR.feedback && BR.feedback.init) BR.feedback.init();
     if (BR.guide && BR.guide.init) BR.guide.init();
     if (BR.support) BR.support.init();
+    if (BR.vip) BR.vip.init();
     BR.start.init();
     BR.install.init();
     bind();

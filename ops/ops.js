@@ -316,6 +316,7 @@
     var t = el('div');
     var n = el('b', '', p.name);
     if (p.operator) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag op', '運営')); }
+    if (p.vip !== null && p.vip !== undefined) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag vip vip-' + p.vip, 'VIP' + p.vip)); }
     t.appendChild(n);
     t.appendChild(el('small', '', '登録 ' + date(p.createdAt)));
     w.appendChild(t);
@@ -437,6 +438,7 @@
     g.appendChild(cell('スピントークン', fmt(p.tokens)));
     g.appendChild(cell('ドル', '$' + fmt(p.dollars)));
     g.appendChild(cell('ロイヤルコイン', fmt(p.coins)));
+    g.appendChild(cell('VIP', (p.vip !== null && p.vip !== undefined ? 'VIP' + p.vip + '（' + stamp(p.vipUntil) + ' まで）' : '無効') + '・EXP ' + fmt(Math.floor(p.vipExp || 0))));
     g.appendChild(cell('スピン回数', fmt(p.spins) + '回'));
     g.appendChild(cell('最大勝利', fmt(p.biggestWin)));
     g.appendChild(cell('累計ベット', fmt(p.totalBet)));

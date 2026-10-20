@@ -276,7 +276,7 @@ test('direct messages between friends: text is cleaned, unread counts, blocking'
   assert.equal((await call('POST', '/api/messages', { token: a.token, body: { to: a.me.id, text: 'hi' } })).status, 400);
   assert.equal((await call('POST', '/api/messages', { token: a.token, body: { to: 999999, text: 'hi' } })).status, 404);
   assert.equal((await call('POST', '/api/messages', { token: a.token, body: { to: b.me.id, text: '   ' } })).status, 400);
-  assert.equal((await call('POST', '/api/messages', { token: a.token, body: { to: b.me.id, text: 'あ'.repeat(301) } })).status, 400);
+  assert.equal((await call('POST', '/api/messages', { token: a.token, body: { to: b.me.id, text: 'あ'.repeat(6001) } })).status, 413);
   const rlo = String.fromCharCode(0x202e), bell = String.fromCharCode(7), zwsp = String.fromCharCode(0x200b);
   const sent = await call('POST', '/api/messages', { token: a.token, body: { to: b.me.id, text: `<img src=x onerror=alert(1)>${rlo}こんに${zwsp}ちは${bell}` } });
   assert.equal(sent.status, 200);

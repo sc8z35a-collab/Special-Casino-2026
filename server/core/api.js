@@ -166,7 +166,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       id: r.id, model: r.model, acquiredAt: r.acquired_at, from: r.from_id ? { id: r.from_id, name: r.from_name } : null,
       rent: r.rent_start ? { start: r.rent_start, until: r.rent_until, next: r.rent_start + (r.rent_blocks + 1) * BLOCK } : null,
       earned: r.rent_earned, last,
-      paid: carPaid(r), used: !!r.used, offer: r.offer_id || 0
+      paid: carPaid(r), used: !!r.used, offer: r.offer_id || 0, via: r.via || (r.from_id ? 'gift' : '')
     };
   }
   // what the owner paid for a car (cars from before this was kept: its list price)
@@ -859,8 +859,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   // the people watching a player, and whether they may talk
   function homeMembers(hostId) {
-    return q('SELECT o.id, o.name, o.avatar, w.voice FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(hostId)
-      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, voice: !!r.voice }));
+    return q('SELECT o.id, o.name, o.avatar, o.vip_until, o.vip_exp, w.voice FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(hostId)
+      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, vip: vipLevel(r), voice: !!r.voice }));
   }
   // The chat of a home (the watched player and their watchers) is live only;
   // its last lines are kept in memory for people who come in.
@@ -1690,14 +1690,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     /* ----- chat ----- */
 
     'GET /api/conversations': (req, u) => {
-      const rows = q(`SELECT c.other_id AS id, c.unread, c.updated_at, o.name, o.avatar, o.banned, o.npc, o.last_seen, m.kind, m.body, m.amount, m.currency, m.sender_id
+      const rows = q(`SELECT c.other_id AS id, c.unread, c.updated_at, o.name, o.avatar, o.banned, o.npc, o.last_seen, o.vip_until, o.vip_exp, m.kind, m.body, m.amount, m.currency, m.sender_id
                       FROM conversations c JOIN users o ON o.id = c.other_id JOIN messages m ON m.id = c.last_id
                       WHERE c.user_id = ? ORDER BY c.updated_at DESC LIMIT 100`).all(u.id);
       const groups = q(`SELECT g.* FROM chat_members m JOIN chat_groups g ON g.id = m.group_id
                         WHERE m.user_id = ? ORDER BY g.updated_at DESC LIMIT 50`).all(u.id);
       return {
         conversations: rows.filter((r) => !r.banned).map((r) => ({
-          user: { id: r.id, name: r.name, avatar: r.avatar, online: isOnline(r), npc: r.npc || null, lastSeen: r.npc ? null : r.last_seen },
+          user: { id: r.id, name: r.name, avatar: r.avatar, online: isOnline(r), npc: r.npc || null, lastSeen: r.npc ? null : r.last_seen, vip: vipLevel(r) },
           friend: areFriends(u.id, r.id),
           unread: r.unread,
           at: r.updated_at,
@@ -2069,7 +2069,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (car.rent_earned) q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(car.rent_earned, u.id);
         const them = getUser(to);
         if (carCount(to) >= garageSize(them)) throw new ApiError(409, 'their_garage_full', `${them.name}さんのガレージがいっぱいです`);
-        q('UPDATE cars SET owner_id = ?, from_id = ?, acquired_at = ?, rent_earned = 0, rent_last = \'\' WHERE id = ?').run(to, u.id, Date.now(), car.id);
+        q("UPDATE cars SET owner_id = ?, from_id = ?, acquired_at = ?, via = 'gift', rent_earned = 0, rent_last = '' WHERE id = ?").run(to, u.id, Date.now(), car.id);
         const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'gift', body: car.model, amount: car.id });
         touchConversations(u.id, to, row.id);
         return row;
@@ -2143,7 +2143,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(row.amount, cur.id);
         // what its renting earned stays with the seller
         if (car.rent_earned) q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(car.rent_earned, row.sender_id);
-        q(`UPDATE cars SET owner_id = ?, from_id = ?, acquired_at = ?, paid = ?, used = 1, offer_id = 0, rent_earned = 0, rent_last = '' WHERE id = ?`)
+        q(`UPDATE cars SET owner_id = ?, from_id = ?, acquired_at = ?, paid = ?, used = 1, via = 'friend', offer_id = 0, rent_earned = 0, rent_last = '' WHERE id = ?`)
           .run(cur.id, row.sender_id, Date.now(), row.amount, car.id);
         q("UPDATE messages SET state = 'sold' WHERE id = ?").run(id);
         const sold = insertMessage({ channel: row.channel, sender: cur, recipient: row.sender_id, kind: 'car_sold', amount: row.amount, currency: 'dollars',

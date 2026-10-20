@@ -33,10 +33,17 @@
     return b;
   }
   function hubOn() { return !!(BR.hub && BR.hub.on && BR.hub.on()); }
+  // VIP: { until, mult } (mult 1: no more pay)
+  function vip() {
+    var m = BR.social.me(), v = m && m.vip;
+    return v ? { until: v.until, mult: BR.VIP.wage(v.level) } : { until: 0, mult: 1 };
+  }
+  function vipNow() { var v = vip(); return v.mult > 1 && v.until > now() ? v.mult : 1; }
   function earned(w) {
     var job = jobOf(w.id);
     if (!job) return 0;
-    var pay = Math.floor(Math.max(0, now() - w.since) * job.wage / 3600000);
+    var v = vip();
+    var pay = Math.floor(BR.VIP.earned(job.wage, w.since, now(), v.until, v.mult));
     // the time with a hub's benefits on: since loading too, while they are on (an estimate)
     var boost = (w.boost || 0) + (w === best() && hubOn() ? Math.max(0, Date.now() - state.at) : 0);
     return pay + Math.floor(boost * job.wage * (C.hub.wage - 1) / 3600000);
@@ -125,6 +132,7 @@
     wage.appendChild(el('span', 'job-per', '/ 1時間'));
     // 友達と稼ぐ: this one pays x1.5 now
     if (w && w === best() && hubOn()) wage.appendChild(el('span', 'job-boost', '友達と稼ぐ 時給×' + C.hub.wage));
+    if (vipNow() > 1) wage.appendChild(el('span', 'job-boost vip', 'VIP 時給×' + vipNow().toFixed(1)));
     info.appendChild(wage);
     info.appendChild(el('div', 'job-state', w ? '' : 'まだ働いていません'));
     var acts = el('div', 'job-acts');

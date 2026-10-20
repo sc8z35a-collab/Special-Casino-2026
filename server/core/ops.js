@@ -15,7 +15,7 @@
 // (server/core/opslog.js), with the request it came from.
 import { ApiError, posInt } from './errors.js';
 import { nameKey, cleanPassword, cleanText, hashPassword } from './auth.js';
-import { LEVEL, RULES } from './rules.js';
+import { LEVEL, RULES, VIP } from './rules.js';
 import { jst } from './opslog.js';
 import { createDevCode } from './devcode.js';
 
@@ -88,6 +88,10 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       playMs: u.play_ms,
       operator: isOperator(u),
       npc: !!u.npc,
+      // VIP: its level while it is on (null: off), until when, its EXP
+      vip: u.vip_until > Date.now() ? VIP.level(u.vip_exp) : null,
+      vipUntil: u.vip_until || 0,
+      vipExp: u.vip_exp || 0,
       // 18歳以上？ (null: not answered)
       age: u.age_ok === null || u.age_ok === undefined ? null : !!u.age_ok,
       ageAt: u.age_at || 0,

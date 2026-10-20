@@ -552,6 +552,8 @@ export const MIGRATIONS = [
     'ALTER TABLE cars ADD COLUMN paid INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE cars ADD COLUMN used INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE cars ADD COLUMN offer_id INTEGER NOT NULL DEFAULT 0',
+    // how it came: '' from Car Owner, 'gift', 'friend' (bought from one)
+    "ALTER TABLE cars ADD COLUMN via TEXT NOT NULL DEFAULT ''",
     // a car offer in a chat: '' open, 'sold', 'canceled'
     "ALTER TABLE messages ADD COLUMN state TEXT NOT NULL DEFAULT ''"
   ]

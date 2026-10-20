@@ -175,6 +175,9 @@
     av.id = 'me-avatar';
     old.parentNode.replaceChild(av, old);
     $('#me-name').textContent = me.name;
+    var v = $('#me-vip');
+    v.textContent = '';
+    K.addVip(v, me.vip && me.vip.on && me.vip.until > Date.now() ? me.vip.level : null);
   }
 
   /* ------------------------------------------------------------ last online --- */
@@ -409,7 +412,10 @@
     av.appendChild(K.presence(u.online));
     who.appendChild(av);
     var id = el('span', 'fr-id');
-    id.appendChild(el('span', 'fr-name uname', u.name));
+    var nm = el('span', 'fr-name-row');
+    nm.appendChild(el('span', 'fr-name uname', u.name));
+    K.addVip(nm, u.vip);
+    id.appendChild(nm);
     id.appendChild(el('span', 'fr-status' + (u.online ? ' on' : ''), seenText(u)));
     who.appendChild(id);
     row.appendChild(who);
@@ -677,6 +683,7 @@
     }
     if (last.kind === 'gift') return (last.mine ? 'プレゼントしました: ' : 'プレゼントが届きました: ') + carName(last.text);
     if (last.kind === 'present') return BR.presents.preview(last);
+    if (last.kind === 'car_offer' || last.kind === 'car_sold') return BR.carsale.preview(last);
     if (last.kind === 'item') return (last.mine ? '譲りました: ' : '届きました: ') + itemName(last.text) + ' ×' + last.amount;
     if (last.kind === 'offer') return K.clip(last.text, 60);
     if (last.kind === 'system') return K.clip(last.text, 60);
@@ -859,6 +866,14 @@
     var node = msgEl(m, key, c.list[c.list.indexOf(m) - 1] || null);
     old.parentNode.replaceChild(node, old);
   }
+  // a card changed (js/ui/carsale.js): every copy of the message, and the chat on screen
+  function patchMsg(id, patch) {
+    Object.keys(chans).forEach(function (k) {
+      var m = chans[k].ids[id] ? find(chans[k], id) : null;
+      if (m) Object.keys(patch).forEach(function (p) { m[p] = patch[p]; });
+    });
+    refreshMsg(id);
+  }
   // a present was received (on this device or another, by me or by the friend)
   function onPresent(d) {
     if (!d || !d.id) return;
@@ -882,6 +897,10 @@
     if (m.kind === 'offer') return BR.peter.offerEl(m);
     if (m.kind === 'present') {
       node = BR.presents.bubble(m, mine);
+    } else if (m.kind === 'car_offer') {
+      node = BR.carsale.offerEl(m, mine);
+    } else if (m.kind === 'car_sold') {
+      node = BR.carsale.soldEl(m, mine);
     } else if (m.kind === 'transfer') {
       node = el('div', 'msg xfer' + (mine ? ' mine' : ' theirs'));
       card = el('div', 'xfer-card');
@@ -1093,7 +1112,10 @@
     } else {
       u.appendChild(K.avatarEl(peer));
       var t = el('span', 'dm-id');
-      t.appendChild(el('span', 'dm-name uname', peer.name));
+      var nm = el('span', 'dm-name-row');
+      nm.appendChild(el('span', 'dm-name uname', peer.name));
+      K.addVip(nm, peer.vip);
+      t.appendChild(nm);
       var st = el('span', 'dm-status');
       st.appendChild(K.presence(npc || peer.online));
       st.appendChild(el('span', '', seenText(peer)));
@@ -1103,6 +1125,7 @@
     $('#dm-battle').hidden = isGroup || npc;
     $('#dm-battle').disabled = !isGroup && !npc && !peer.online;
     $('#dm-money').hidden = isGroup || npc;
+    $('#dm-car').hidden = isGroup || npc;
     $('#dm-profile').hidden = isGroup || npc;
     $('#dm-coop').hidden = !isGroup;
     $('#dm-members').hidden = !isGroup;
@@ -1125,7 +1148,7 @@
   }
   function openDm(user) {
     if (!user || !me || user.id === me.id) return;
-    peer = { id: user.id, name: user.name, avatar: user.avatar, online: !!user.online, npc: user.npc || null, lastSeen: user.lastSeen || null };
+    peer = { id: user.id, name: user.name, avatar: user.avatar, online: !!user.online, npc: user.npc || null, lastSeen: user.lastSeen || null, vip: user.vip };
     group = null;
     enterChat('dm');
     // クエスト「友達のチャットを覗く」 (the server checks the friendship)
@@ -1296,6 +1319,9 @@
     av.id = 'pf-avatar';
     old.parentNode.replaceChild(av, old);
     $('#pf-name').textContent = u.name;
+    var pv = $('#pf-vip');
+    pv.textContent = '';
+    K.addVip(pv, self ? (me && me.vip && me.vip.on ? me.vip.level : null) : r ? r.user.vip : u.vip);
     var lv = $('#pf-lv'), level = r ? r.user.level : null;
     lv.hidden = !level;
     lv.textContent = level ? 'Lv.' + level : '';
@@ -1324,6 +1350,7 @@
       pfBtn(a1, '引き継ぎコード発行', 'recovery', '', 'share');
       pfBtn(a1, 'コードでログイン', 'codeLogin', '', 'download');
       pfBtn(a1, '演出設定', 'effects', '', 'sound');
+      pfBtn(a1, 'VIP', 'vip', 'gold', 'crown', me && me.vip && me.vip.on ? 'VIP' + me.vip.level : '');
       if (BR.push && BR.push.mode() !== 'none') pfBtn(a1, '通知', 'push', '', 'chat', BR.push.permission() === 'granted' ? 'オン' : 'オフ');
       pfLink(a2, 'ログアウト', 'logout');
       loadBlocks();
@@ -1370,6 +1397,7 @@
       // another account of mine: its 引き継ぎコード
       case 'codeLogin': sfx('click'); K.closeModal('profile'); BR.account.open('code-login', 'ほかのアカウントの引き継ぎコードを入力すると、そのアカウントに切り替わります。'); break;
       case 'effects': sfx('click'); K.closeModal('profile'); BR.effects.open(); break;
+      case 'vip': sfx('click'); K.closeModal('profile'); BR.vip.open(); break;
       case 'push': sfx('click'); K.closeModal('profile'); BR.push.settings(); break;
       case 'logout': sfx('click'); logout(); break;
       case 'transfer': sfx('click'); openTransfer(u); break;
@@ -1535,7 +1563,7 @@
     else touchConv(m, Number(key.slice(3)), mine);
     if (mine) return;
     if (here) {
-      if (m.kind === 'transfer' || m.kind === 'gift' || m.kind === 'item' || m.kind === 'present') {
+      if (m.kind === 'transfer' || m.kind === 'gift' || m.kind === 'item' || m.kind === 'present' || m.kind === 'car_offer' || m.kind === 'car_sold') {
         sfx(m.kind === 'transfer' ? 'money' : 'purchase');
         // out of the card that just popped into the chat
         var cards = document.querySelectorAll('.msg.xfer.jc-new');
@@ -1571,6 +1599,11 @@
       sfx('purchase');
       toast(name + 'さんから' + BR.presents.name(m.text) + 'のプレゼントが届きました！タップして受け取ろう', 4200, open);
       if (BR.juice) BR.juice.reward('#toast', 2);
+    } else if (m.kind === 'car_offer' || m.kind === 'car_sold') {
+      sfx(m.kind === 'car_sold' ? 'register' : 'purchase');
+      toast(BR.carsale.note(m), 4200, open);
+      if (BR.juice) BR.juice.reward('#toast', 2);
+      if (m.kind === 'car_sold') BR.cars.changed();
     } else if (m.from && BR.peter.is(m.from)) {
       BR.peter.notify(m, open);
     } else if (key.indexOf('group:') === 0) {
@@ -1711,6 +1744,7 @@
     $('#chat-gift').addEventListener('click', function () { sfx('click'); if (peer) BR.presents.open(peer); });
     $('#dm-profile').addEventListener('click', function () { sfx('click'); openProfile(peer); });
     $('#dm-money').addEventListener('click', function () { sfx('click'); openTransfer(peer); });
+    $('#dm-car').addEventListener('click', function () { sfx('click'); BR.carsale.open(peer); });
     $('#dm-battle').addEventListener('click', function () { sfx('click'); if (BR.play) BR.play.challenge(peer); });
     $('#dm-coop').addEventListener('click', function () { sfx('click'); if (BR.play && group) BR.play.coopOpen(group); });
     $('#dm-members').addEventListener('click', function () { sfx('click'); showMembers(); });
@@ -1724,6 +1758,7 @@
       if (b.dataset.act === 'guide' && BR.guide) { BR.screens.show('slot'); BR.guide.start(true); }
       if (b.dataset.act === 'feedback' && BR.feedback) BR.feedback.open();
       if (b.dataset.act === 'support' && BR.support) BR.support.open();
+      if (b.dataset.act === 'vip' && BR.vip) BR.vip.open();
     });
     $$('#screen-board .scroller').forEach(K.dragScroll);
 
@@ -1792,9 +1827,11 @@
     });
     $('#tf-go').addEventListener('click', function () { sfx('click'); sendMoney(); });
     // my card on the slot screen: my profile (and the icon) from there
-    $('#me-card').addEventListener('click', function () {
+    // (the VIP badge on it opens VIP)
+    $('#me-card').addEventListener('click', function (e) {
       if (BR.game.busy()) { sfx('deny'); return; }
       sfx('click');
+      if (e.target.closest('.vip-badge') && BR.vip) { BR.vip.open(); return; }
       openProfile(me);
     });
   }
@@ -1859,6 +1896,8 @@
     seenText: seenText,
     blockChanged: blockChanged,
     refreshMsg: refreshMsg,
+    patchMsg: patchMsg,
+    renderMe: renderMeCard,
     // signing up (the story has played): nothing extra any more, the guide takes over
     firstRun: function () {},
     // Escape on a keyboard / the app's back button: close the top-most layer; true if something closed

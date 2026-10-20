@@ -1,0 +1,202 @@
+/* VIP (js/ui/vip.js), the VIP badge everywhere, selling cars to friends
+   (js/ui/carsale.js) and the money / item cards in the chat. Design px like
+   the rest (cards in the chat in --u). */
+
+/* ------------------------------------------------------------ the badge --- */
+.vip-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 1.35em;
+  padding: 0 .45em;
+  border-radius: .3em;
+  font: 900 .62em/1 var(--f-num);
+  font-style: normal;
+  letter-spacing: .04em;
+  vertical-align: middle;
+  color: #3a2600;
+  background: linear-gradient(180deg, #fff3b0, #f2c94a 45%, #c8901c);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .55), 0 1px 3px rgba(0, 0, 0, .45);
+  white-space: nowrap;
+}
+.vip-badge b { font-weight: 900; }
+.vip-badge.vip-0 { color: #2d2d2d; background: linear-gradient(180deg, #ffffff, #d6dbe4 50%, #9aa3b1); }
+.vip-badge.vip-2 { color: #fff; background: linear-gradient(180deg, #ffb3d1, #e0457d 50%, #9c1a4a); }
+.vip-badge.vip-3 { color: #fff; background: linear-gradient(120deg, #7ad7ff, #a77bff 35%, #ff6fb1 65%, #ffd36a); text-shadow: 0 1px 2px rgba(0, 0, 0, .45); }
+.me-name-row, .fr-name-row, .dm-name-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.me-name-row .vip-badge { font-size: 30px; cursor: pointer; }
+.fr-name-row .vip-badge { font-size: 26px; }
+.dm-name-row .vip-badge { font-size: 28px; }
+.pf-vip:empty { display: none; }
+.pf-vip .vip-badge { font-size: 34px; margin-left: 10px; }
+.hb-vip { font-size: 22px; margin-left: 6px; }
+
+/* ------------------------------------------------------------ VIP screen --- */
+.vp-head {
+  position: absolute;
+  left: 143px;
+  right: 144px;
+  top: 94px;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 22px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(122, 86, 12, .6), rgba(0, 0, 0, .2) 62%);
+  box-shadow: inset 0 0 0 1.6px rgba(248, 207, 44, .45);
+  z-index: 3;
+}
+.vp-crown { width: 50px; height: 50px; flex: none; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .5)); }
+.vp-title { margin: 0; font-size: 34px; font-weight: 900; letter-spacing: 2px; color: #ffe58a; }
+.vp-level .vip-badge { font-size: 40px; }
+.vp-state { margin-left: auto; padding: 8px 18px; border-radius: 999px; background: rgba(255, 255, 255, .1); font-size: 21px; font-weight: 700; color: #d9cdd0; white-space: nowrap; }
+.vp-state.on { background: rgba(86, 214, 130, .22); box-shadow: inset 0 0 0 1.6px rgba(120, 236, 160, .6); color: #b8f5cd; }
+
+.vp-body { position: absolute; left: 145px; right: 145px; top: 178px; bottom: 24px; display: flex; gap: 26px; }
+.vp-left { flex: .9; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+.vp-right { flex: 1.25; min-width: 0; overflow-y: auto; padding-right: 8px; }
+
+.vp-exp { padding: 18px 22px; border-radius: 10px; background: rgba(0, 0, 0, .3); box-shadow: inset 0 0 0 1.6px rgba(248, 207, 44, .32); }
+.vp-exp-head { display: flex; align-items: baseline; justify-content: space-between; font-size: 22px; font-weight: 800; color: #f1e7ea; }
+.vp-exp-head b { font-family: var(--f-num); font-size: 32px; color: #ffe27a; }
+.vp-bar { position: relative; height: 28px; margin-top: 10px; overflow: hidden; border-radius: 14px; background: rgba(10, 2, 4, .82); box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .18); }
+.vp-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 14px; background: linear-gradient(90deg, #7ad7ff, #a77bff 40%, #ff6fb1 75%, #ffd36a); box-shadow: 0 0 14px rgba(200, 150, 255, .6); transition: width 1s cubic-bezier(.2, .8, .2, 1); }
+.vp-exp-note { margin: 10px 0 0; font-size: 20px; font-weight: 700; color: #d9cdd0; }
+
+.vp-buy { padding: 18px 22px; border-radius: 10px; background: linear-gradient(180deg, rgba(70, 14, 20, .92), rgba(30, 4, 8, .92)); box-shadow: inset 0 0 0 2px rgba(214, 169, 74, .45); display: flex; flex-direction: column; gap: 14px; }
+.vp-days { display: flex; align-items: center; gap: 12px; height: 64px; }
+.vp-days .sq-btn { position: relative; flex: none; width: 60px; height: 60px; }
+.vp-days .vp-days-v { width: 150px; height: 60px; }
+.vp-days .vp-days-v b { line-height: 60px; }
+.vp-cost { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; }
+.vp-cost-line { display: flex; align-items: center; gap: 10px; font-size: 24px; font-weight: 700; color: #eadfc0; white-space: nowrap; }
+.vp-cost-line .ic { width: 40px; height: 40px; }
+.vp-cost-line b { font-family: var(--f-num); font-size: 36px; color: #fff; }
+.vp-back { padding: 4px 14px; border-radius: 999px; background: rgba(86, 214, 130, .2); font-size: 19px; font-weight: 800; color: #b8f5cd; white-space: nowrap; }
+.vp-have { margin-left: auto; font-size: 20px; font-weight: 700; color: #d9cdd0; white-space: nowrap; }
+.vp-go { height: 86px; font-size: 30px; }
+
+.vp-table { width: 100%; border-collapse: separate; border-spacing: 0 6px; font-size: 21px; }
+.vp-table th, .vp-table td { padding: 10px 8px; text-align: center; }
+.vp-table th { font-weight: 800; color: #f1e7ea; }
+.vp-table th .vip-badge { font-size: 30px; }
+.vp-table th small { display: block; margin-top: 6px; font: 700 16px var(--f-num); color: #b3a7aa; }
+.vp-table td { background: rgba(0, 0, 0, .28); font-weight: 800; color: #ffe27a; white-space: nowrap; }
+.vp-table td.vp-k { text-align: left; padding-left: 16px; border-radius: 8px 0 0 8px; font-weight: 700; color: #eadfc0; white-space: normal; }
+.vp-table td:last-child { border-radius: 0 8px 8px 0; }
+.vp-table td.no { color: rgba(255, 255, 255, .28); }
+.vp-table .vp-col.me { background: rgba(248, 207, 44, .14); }
+.vp-table .vp-col.me.on { background: rgba(248, 207, 44, .26); box-shadow: inset 0 0 0 1.4px rgba(248, 207, 44, .55); }
+.vp-table .vp-foot td { background: none; padding: 12px 6px 0; font-size: 18px; font-weight: 700; color: #b3a7aa; text-align: left; white-space: normal; }
+
+/* ------------------------------------------------------------ 中古車 / 販売中 --- */
+.used-tag { display: inline-flex; align-items: center; margin-left: .5em; padding: .12em .5em; border-radius: .3em; background: linear-gradient(180deg, #5fe08a, #23a653); color: #05310f; font-size: .62em; font-weight: 900; vertical-align: middle; white-space: nowrap; }
+.garage-used { position: absolute; right: 6px; top: 6px; padding: 3px 12px; border-radius: 6px; background: linear-gradient(180deg, #5fe08a, #23a653); color: #05310f; font: 900 17px var(--f-ui, inherit); font-style: normal; }
+.garage-offer { position: absolute; left: 6px; bottom: 6px; padding: 3px 12px; border-radius: 6px; background: rgba(230, 160, 30, .95); color: #2e1d00; font-size: 17px; font-weight: 900; font-style: normal; }
+.car-thumb-vip { position: absolute; right: 6px; top: 6px; font-size: 22px; }
+.car-vip-note { margin-left: 12px; font-size: 20px; font-weight: 800; color: #ffe27a; }
+
+/* the 車を売る dialog */
+.carsale-card { width: 1180px; }
+.cs-cars { display: flex; gap: 16px; overflow-x: auto; padding: 4px 2px 10px; }
+.cs-car { flex: none; width: 300px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 10px 14px; border-radius: 12px; background: rgba(0, 0, 0, .3); box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .16); }
+.cs-car.on { background: rgba(248, 207, 44, .16); box-shadow: inset 0 0 0 3px #f8cf2c; }
+.cs-pic { display: block; width: 260px; height: 120px; background: center / contain no-repeat; filter: drop-shadow(0 8px 6px rgba(0, 0, 0, .5)); }
+.cs-car .gift-name { font-size: 24px; }
+.cs-paid { font-size: 18px; font-weight: 700; color: #c3b8bb; }
+.cs-price { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 16px; }
+.cs-step { width: 74px; height: 74px; border-radius: 10px; background: rgba(255, 255, 255, .12); box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .3); font-size: 40px; font-weight: 800; }
+.cs-step:active { transform: scale(.94); }
+.cs-amount { width: 420px; }
+.cs-pct { min-width: 110px; font: 800 30px var(--f-num); color: #d9cdd0; }
+.cs-pct.up { color: #9ef0b9; }
+.cs-pct.down { color: #ffb38a; }
+.cs-range { width: 100%; margin: 18px 0 4px; accent-color: #f8cf2c; height: 34px; }
+.cs-note { margin: 0; text-align: center; font: 700 20px var(--f-num); color: #c3b8bb; }
+.cs-go { margin-top: 14px; width: 100%; }
+
+/* ------------------------------------------------------------ cards in the chat --- */
+/* money and things received: a dark velvet card in a gold frame, a ribbon,
+   the amount in gold leaf; a sheen crosses it once when it arrives */
+.msg.xfer .xfer-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  padding: calc(var(--u) * 22) calc(var(--u) * 40) calc(var(--u) * 22);
+  border-radius: calc(var(--u) * 16);
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 214, 120, .16), transparent 60%),
+    linear-gradient(180deg, #5e0d19 0%, #33060c 55%, #1c0306 100%);
+  box-shadow:
+    inset 0 0 0 calc(var(--u) * 2) #f3d27a,
+    inset 0 0 0 calc(var(--u) * 5) #5a2a08,
+    inset 0 0 0 calc(var(--u) * 6.5) rgba(243, 210, 122, .65),
+    0 calc(var(--u) * 6) calc(var(--u) * 18) rgba(0, 0, 0, .5),
+    0 0 calc(var(--u) * 26) rgba(255, 200, 90, .18);
+}
+.msg.xfer .xfer-card::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--u) * 9);
+  z-index: -1;
+  border-radius: calc(var(--u) * 10);
+  background:
+    linear-gradient(135deg, #f3d27a 0 calc(var(--u) * 14), transparent 0) top left,
+    linear-gradient(225deg, #f3d27a 0 calc(var(--u) * 14), transparent 0) top right,
+    linear-gradient(45deg, #f3d27a 0 calc(var(--u) * 14), transparent 0) bottom left,
+    linear-gradient(315deg, #f3d27a 0 calc(var(--u) * 14), transparent 0) bottom right;
+  background-size: 50% 50%;
+  background-repeat: no-repeat;
+  opacity: .55;
+}
+.msg.xfer.jc-new .xfer-card::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: -60%;
+  width: 40%;
+  z-index: 1;
+  background: linear-gradient(100deg, transparent, rgba(255, 246, 210, .55), transparent);
+  transform: skewX(-18deg);
+  animation: xferSheen 1.6s ease-out .5s 1 both;
+  pointer-events: none;
+}
+@keyframes xferSheen { from { left: -60%; } to { left: 130%; } }
+.msg.xfer .xfer-label {
+  display: inline-block;
+  margin-bottom: calc(var(--u) * 6);
+  padding: calc(var(--u) * 4) calc(var(--u) * 22);
+  border-radius: calc(var(--u) * 4);
+  background: linear-gradient(180deg, #f9e39a, #d9a63c 55%, #b07a1c);
+  box-shadow: 0 calc(var(--u) * 2) calc(var(--u) * 4) rgba(0, 0, 0, .4);
+  color: #3a2200;
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+.msg.xfer.mine .xfer-label { background: rgba(255, 255, 255, .14); color: #f1e7ea; box-shadow: none; }
+.msg.xfer .xfer-amount {
+  font-size: calc(var(--u) * 46);
+  background: linear-gradient(180deg, #fff6c8, #ffd556 45%, #e0a224 70%, #fff0a8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 calc(var(--u) * 2) calc(var(--u) * 2) rgba(0, 0, 0, .55));
+}
+.msg.xfer .xfer-amount .ic { filter: drop-shadow(0 0 calc(var(--u) * 6) rgba(255, 220, 120, .8)); }
+.msg.xfer .gift-name { font-size: calc(var(--u) * 28); text-shadow: 0 calc(var(--u) * 2) calc(var(--u) * 3) rgba(0, 0, 0, .6); }
+.msg.xfer .gift-car { filter: drop-shadow(0 calc(var(--u) * 10) calc(var(--u) * 8) rgba(0, 0, 0, .6)) drop-shadow(0 0 calc(var(--u) * 18) rgba(255, 220, 140, .25)); }
+.fx-off-notices .msg.xfer.jc-new .xfer-card::after { animation: none; display: none; }
+
+/* a car on sale / sold */
+.deal-act { display: block; width: 100%; margin-top: calc(var(--u) * 12); height: calc(var(--u) * 60); border-radius: calc(var(--u) * 8); background: rgba(255, 255, 255, .14); box-shadow: inset 0 0 0 calc(var(--u) * 1.6) rgba(255, 255, 255, .3); font-size: calc(var(--u) * 22); font-weight: 800; color: #fff; }
+.deal-act.gold { background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; }
+.deal-act:active { transform: scale(.97); }
+.deal-act:disabled { opacity: .55; }
+.car-deal.st-sold .xfer-card, .car-deal.st-canceled .xfer-card { filter: saturate(.55) brightness(.85); }
+.car-deal.can-claim .xfer-card { box-shadow: inset 0 0 0 calc(var(--u) * 3) #f4dc45, 0 calc(var(--u) * 4) calc(var(--u) * 18) rgba(244, 220, 69, .35); }
+.car-deal.can-claim .pr-state { background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; }
+.car-deal button.xfer-card { font: inherit; color: inherit; }
+.car-deal button.xfer-card:active { transform: scale(.97); }

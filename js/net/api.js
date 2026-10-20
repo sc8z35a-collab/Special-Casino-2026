@@ -176,7 +176,13 @@
     sellCar: function (carId, price) { return post('/api/cars/sell', { car: carId, price: price }); },
     rentCar: function (carId, action) { return post('/api/cars/rent', { car: carId, action: action }); },
     collectRent: function () { return post('/api/cars/collect'); },
-    expandGarage: function () { return post('/api/garage/expand'); },
+    expandGarage: function (price) { return post('/api/garage/expand', { price: price }); },
+    // a car sold to a friend in the chat
+    carOffer: function (to, carId, price) { return post('/api/cars/offer', { to: to, car: carId, price: price }); },
+    carOfferCancel: function (id) { return post('/api/cars/offer/cancel', { id: id }); },
+    carOfferBuy: function (id) { return post('/api/cars/offer/buy', { id: id }); },
+    carSoldClaim: function (id) { return post('/api/cars/sold/claim', { id: id }); },
+    vipExtend: function (days) { return post('/api/vip/extend', { days: days }); },
 
     /* Shop, 所有 and the お守り加護 */
     items: function () { return get('/api/items'); },

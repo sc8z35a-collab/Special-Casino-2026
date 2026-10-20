@@ -31,6 +31,7 @@
 <link rel="stylesheet" href="css/safety.css">
 <link rel="stylesheet" href="css/juice.css">
 <link rel="stylesheet" href="css/support.css">
+<link rel="stylesheet" href="css/vip.css">
 </head>
 <body>
 <div id="viewport">
@@ -59,7 +60,7 @@
       <button class="me-card" id="me-card" hidden aria-label="プロフィール">
         <span class="avatar" id="me-avatar"></span>
         <span class="me-id">
-          <b class="me-name uname" id="me-name"></b>
+          <span class="me-name-row"><b class="me-name uname" id="me-name"></b><span class="me-vip" id="me-vip"></span></span>
           <span class="me-lv"><b>Lv.<span id="lv-num">1</span></b><i class="lv-bar"><i id="lv-fill"></i></i></span>
         </span>
       </button>
@@ -285,7 +286,8 @@
           <div class="more-cards">
             <button class="more-card" data-act="guide"><b>初心者ガイド</b><span>遊び方の案内をもう一度見る</span></button>
             <button class="more-card" data-act="feedback"><b>運営にフィードバック</b><span>感想や改善してほしいことを送る</span></button>
-            <button class="more-card support" data-act="support"><b>開発者支援</b><span>ロイヤルコインで開発者を応援する</span></button>
+            <button class="more-card vip" data-act="vip"><b>VIP</b><span>ロイヤルコインでVIPを有効にする</span></button>
+            <button class="more-card support" data-act="support" hidden><b>有料ショップ</b><span>ロイヤルコインを購入する</span></button>
             <div class="more-card soon"><b>投資<small>COMING SOON</small></b><span>近日公開予定です。お楽しみに！</span></div>
           </div>
           <h3 class="more-title">Dev News</h3>
@@ -298,6 +300,7 @@
           <div class="dm-user" id="dm-user"></div>
           <button class="mini-btn" id="dm-battle"><span>フレンド対決</span></button>
           <button class="mini-btn gold" id="dm-money"><i class="ic ic-chip"></i><span>送金</span></button>
+          <button class="mini-btn" id="dm-car"><span>車を売る</span></button>
           <button class="mini-btn" id="dm-profile"><span>プロフィール</span></button>
           <button class="mini-btn gold" id="dm-coop" hidden><span>協力スロット</span></button>
           <button class="mini-btn" id="dm-members" hidden><span>メンバー</span></button>
@@ -380,11 +383,43 @@
             <li class="hot">買っていただいた金額や個数にかかわらず、ご購入いただけた場合は<b>開発者が直接熱いお言葉をかけさせていただきます。</b></li>
             <li>お支払いは決済代行会社 Stripe を通じて、<b>開発者の銀行口座に直接送金</b>されます。</li>
             <li>いただいたお金は <b>Two state の開発費にのみ</b>使用します。</li>
-            <li>ロイヤルコインは支援の証（記念のコイン）です。スロットに賭ける・トークンや $ に交換する・人に送る・換金することはできません。</li>
+            <li>ロイヤルコインはVIPを有効にするためのコインです（4枚で1日）。スロットに賭ける・トークンや $ に交換する・人に送る・換金することはできません。</li>
             <li>購入後のキャンセル・返金はできません（法令で認められる場合を除く）。18歳以上の方に限ります。お金の使いすぎ防止のため、24時間で<span id="sp-daily">10,000円</span>までです。</li>
           </ul>
           <div class="sp-orders" id="sp-orders"></div>
         </div>
+      </div>
+    </section>
+
+    <!-- ===================== VIP (js/ui/vip.js) ===================== -->
+    <section id="screen-vip" class="screen" aria-label="VIP">
+      <button class="back-btn back-jp" data-action="back"><i class="ic ic-back"></i><span>戻る</span></button>
+      <div class="vp-head">
+        <i class="ic ic-crown vp-crown"></i>
+        <h2 class="vp-title">VIP</h2>
+        <span class="vp-level" id="vp-level"></span>
+        <span class="vp-state" id="vp-state"></span>
+      </div>
+      <div class="vp-body">
+        <div class="vp-left">
+          <div class="vp-exp">
+            <div class="vp-exp-head"><span>VIP EXP</span><b id="vp-exp"></b></div>
+            <div class="vp-bar"><i id="vp-bar"></i></div>
+            <p class="vp-exp-note" id="vp-exp-note"></p>
+          </div>
+          <div class="vp-buy">
+            <div class="vp-days">
+              <span class="sp-label">日数</span>
+              <button class="sq-btn minus" id="vp-minus" type="button" aria-label="減らす"><i></i></button>
+              <button class="sp-qty-v vp-days-v" id="vp-days" type="button"><b id="vp-days-n">1</b><small>日</small><i class="ic ic-edit"></i></button>
+              <button class="sq-btn plus" id="vp-plus" type="button" aria-label="増やす"><i></i></button>
+              <div class="sp-quick" id="vp-quick"><button type="button" data-d="1">1</button><button type="button" data-d="7">7</button><button type="button" data-d="30">30</button></div>
+            </div>
+            <div class="vp-cost" id="vp-cost"></div>
+            <button class="action-btn vp-go" id="vp-go" type="button"></button>
+          </div>
+        </div>
+        <div class="vp-right scroller" id="vp-right"><table class="vp-table" id="vp-table"></table></div>
       </div>
     </section>
 
@@ -407,7 +442,7 @@
         <div class="pf-top">
           <div class="pf-face"><span class="avatar big" id="pf-avatar"></span><i class="pf-online" id="pf-online" hidden></i></div>
           <div class="pf-id">
-            <div class="pf-name-row"><span class="pf-lv" id="pf-lv" hidden></span><div class="pf-name uname" id="pf-name"></div></div>
+            <div class="pf-name-row"><span class="pf-lv" id="pf-lv" hidden></span><div class="pf-name uname" id="pf-name"></div><span class="pf-vip" id="pf-vip"></span></div>
             <div class="pf-status" id="pf-status"></div>
             <div class="pf-since" id="pf-since"></div>
           </div>
@@ -432,6 +467,24 @@
         <div class="pr-grid" id="pr-grid"></div>
         <p class="pr-note" id="pr-note"></p>
         <button class="action-btn pr-go" id="pr-go" disabled>プレゼントする</button>
+      </div>
+    </div>
+
+    <!-- a car sold to a friend in the chat (js/ui/carsale.js) -->
+    <div id="carsale" class="modal" hidden>
+      <div class="modal-card carsale-card" role="dialog" aria-label="車を売る">
+        <button class="modal-x" data-close aria-label="閉じる"></button>
+        <h3 class="modal-title"><span class="uname" id="cs-name"></span><span>さんに車を売る</span></h3>
+        <div class="scroller cs-cars" id="cs-cars"></div>
+        <div class="cs-price">
+          <button class="cs-step" id="cs-down" aria-label="下げる">−</button>
+          <button class="tp-input cs-amount" id="cs-amount"><i class="ic ic-dollar"></i><span class="v" id="cs-value">-</span><i class="ic ic-edit"></i></button>
+          <button class="cs-step" id="cs-up" aria-label="上げる">＋</button>
+          <b class="cs-pct" id="cs-pct"></b>
+        </div>
+        <input type="range" class="cs-range" id="cs-range" aria-label="価格">
+        <p class="cs-note" id="cs-note"></p>
+        <button class="action-btn cs-go" id="cs-go">出品する</button>
       </div>
     </div>
 
@@ -837,6 +890,8 @@
 <script src="js/ui/johnson.js"></script>
 <script src="js/ui/official.js"></script>
 <script src="js/ui/presents.js"></script>
+<script src="js/ui/carsale.js"></script>
+<script src="js/ui/vip.js"></script>
 <script src="js/ui/safety.js"></script>
 <script src="js/net/push.js"></script>
 <script src="js/ui/bonus.js"></script>

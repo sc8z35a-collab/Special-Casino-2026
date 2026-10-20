@@ -1,8 +1,7 @@
 // 開発者支援: players support the developer with real money (yen) and get
-// ロイヤルコイン, the coins in the wallet, as thanks (js/game/config.js
-// `support`). The coins are never bet, exchanged for tokens or $, sent to
-// anyone or paid out (nothing in the game spends them): what is bought is
-// support, not something to gamble with.
+// ロイヤルコイン, the coins in the wallet (js/game/config.js `support`). The
+// coins only make days of VIP (js/game/vip.js): they are never bet, exchanged
+// for tokens or $, sent to anyone or paid out.
 //
 // How a payment goes, and what keeps it safe:
 // - the player picks a plan, how many (1-100) and PayPay or konbini; the
@@ -357,7 +356,7 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
           unit_amount: plan.price,
           product_data: {
             name: `${plan.name}（ロイヤルコイン${plan.coins}枚${plan.bonus ? `＋感謝料${plan.bonus}枚` : ''}）`,
-            description: 'Two state Casino RP の開発者への支援です（開発費にのみ使われます）。お礼のロイヤルコインはゲーム内の記念のコインで、賭けたり交換・換金したりはできません。',
+            description: 'Two state Casino RP の開発者への支援です（開発費にのみ使われます）。ロイヤルコインはゲーム内でVIPを有効にするためのコインで、賭けたり交換・換金したりはできません。',
             images: [`${config.publicUrl}/icons/icon-512.png`]
           }
         }
