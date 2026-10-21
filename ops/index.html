@@ -154,12 +154,13 @@
     <div class="view-head">
       <h2>運営ログ</h2>
       <input class="search" id="log-search" type="search" placeholder="名前・内容で探す" autocomplete="off" spellcheck="false">
+      <button class="btn small" id="log-ai" type="button" title="表示中のログを、AI に貼り付けて報告できる文章にします">AIに報告する文章</button>
     </div>
     <div class="chips log-kinds" id="log-kinds">
-      <button class="chip on" data-kind="" type="button">すべて</button><button class="chip" data-kind="player" type="button">プレイヤー<b></b></button><button class="chip" data-kind="operator" type="button">運営<b></b></button><button class="chip" data-kind="security" type="button">セキュリティ<b></b></button><button class="chip" data-kind="vault" type="button">保管庫<b></b></button><button class="chip" data-kind="emergency" type="button">緊急<b></b></button>
+      <button class="chip on" data-kind="" type="button">すべて</button><button class="chip" data-kind="player" type="button">プレイヤー<b></b></button><button class="chip" data-kind="operator" type="button">運営<b></b></button><button class="chip" data-kind="security" type="button">セキュリティ<b></b></button><button class="chip" data-kind="vault" type="button">保管庫<b></b></button><button class="chip" data-kind="emergency" type="button">緊急<b></b></button><button class="chip" data-kind="activity" type="button">プレイヤーアクティビティ<b></b></button>
     </div>
     <p class="verify" id="log-verify"></p>
-    <p class="hint muted">プレイヤー・運営・セキュリティ・保管庫・緊急に分けて自動で記録されます。消去も書き換えもできず、最新の記録のハッシュはデータベースの外にも控えているので、書き換えや作り直しは「改ざんチェック」に出ます。行をタップで詳細。</p>
+    <p class="hint muted" id="log-hint">プレイヤー・運営・セキュリティ・保管庫・緊急に分けて自動で記録されます（プレイヤーアクティビティは、プレイヤーの登録・削除・処分・パスワードや権限の変更などをまとめたものです）。消去も書き換えもできず、最新の記録のハッシュはデータベースの外にも控えているので、書き換えや作り直しは「改ざんチェック」に出ます。行をタップすると関連する場所（プレイヤー・通報・保管庫など）が開き、「詳細」で記録のすべてを表示します。</p>
     <div class="log" id="log-list"></div>
     <button class="btn wide" id="log-more" type="button" hidden>さらに読み込む</button>
   </section>

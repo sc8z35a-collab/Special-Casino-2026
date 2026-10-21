@@ -41,6 +41,13 @@ const IS = {
   player: `(action IN (${list(PLAYER)}) OR substr(action, 1, 7) = 'player_')`
 };
 IS.operator = `NOT (${IS.vault} OR ${IS.emergency} OR ${IS.security} OR ${IS.player})`;
+// プレイヤーアクティビティ (a view across the kinds, not a kind of its own):
+// what happened to players' accounts — added, deleted, their data gone,
+// punished or let go, their chat stopped or freed, their password or code
+// reset, rights given or taken, and the admin commands on them
+export const ACTIVITY = ['player_register', 'account_delete', 'account_purge', 'chat_unban', 'filter_block', 'device_ok', 'password', 'recovery',
+  'ops_grant', 'ops_revoke', 'viewer_grant', 'viewer_revoke', 'admin:ban', 'admin:unban', 'admin:rename', 'admin:grant', 'admin:password', 'admin:recovery', 'admin:logout'];
+IS.activity = `(action IN (${list(ACTIVITY)}) OR substr(action, 1, 4) = 'ban:')`;
 
 // "2026/10/20 05:31:12.345 JST"
 export function jst(ms) {
@@ -147,7 +154,7 @@ export function createOpsLog({ q, anchor = null, onAdd = null }) {
   // how many of each kind
   function counts() {
     const out = {};
-    for (const k of Object.keys(LOG_KINDS)) out[k] = q(`SELECT COUNT(*) AS n FROM ops_log WHERE ${IS[k]}`).get().n;
+    for (const k of [...Object.keys(LOG_KINDS), 'activity']) out[k] = q(`SELECT COUNT(*) AS n FROM ops_log WHERE ${IS[k]}`).get().n;
     return out;
   }
 

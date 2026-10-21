@@ -150,3 +150,21 @@ test('閲覧者: only the developer gives or takes rights; a viewer only looks (
     await s.stop();
   }
 });
+
+test('プレイヤーアクティビティ: the log of what happened to players\' accounts, across the kinds', async () => {
+  const s = await startServer({ operators: ['taku'] });
+  try {
+    const taku = await s.register('TAKU');
+    const dev = (method, url, body) => s.call(method, url, { token: taku.token, body });
+    const p = await s.register('Act1');
+    await s.call('POST', '/api/ops/login', { body: { name: 'TAKU', password: 'pass1234' }, headers: { 'X-Ops-Device': 'browser-aaaaaaaaaaaaaaaa' } });
+    await dev('POST', '/api/ops/ban', { id: p.me.id, kind: 'suspend' });
+    await dev('POST', '/api/ops/ban', { id: p.me.id, kind: 'none' });
+    const r = await dev('GET', '/api/ops/log?kind=activity');
+    assert.deepEqual(r.entries.map((e) => e.action), ['ban:none', 'ban:suspend', 'player_register', 'player_register']);
+    assert.equal(r.counts.activity, 4);
+    assert.ok(!r.entries.some((e) => e.action === 'open' || e.action === 'player_login'));
+  } finally {
+    await s.stop();
+  }
+});

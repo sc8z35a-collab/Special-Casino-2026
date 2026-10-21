@@ -3986,23 +3986,104 @@
         : '⚠ 改ざんチェック: ' + r.brokenAt + '番の記録で異常があります（' + r.reason + '）';
     }, function () {});
   }
+  // One line of the log. A tap goes to the place it is about (a player, a
+  // report, the vault …; not for a 閲覧者, who only reads); 詳細 shows all of it.
   function logEntry(x) {
-    var row = el('div', 'entry');
-    var line = el('button', 'entry-line');
+    var row = el('div', 'entry'), go = state.viewer ? null : placeOf(x);
+    var line = el('button', 'entry-line' + (go ? ' go' : ''));
     line.type = 'button';
+    line.title = go ? go.label + 'を開く' : '詳細を表示';
     line.appendChild(el('span', 'time', String(x.jst || '').replace(/\.\d+ JST$/, '')));
     line.appendChild(el('span', 'lk k-' + x.kind, KINDS[x.kind] || ''));
     line.appendChild(el('span', 'who', x.actor.name));
     line.appendChild(el('span', 'sum', x.summary));
-    line.addEventListener('click', function () {
+    function details() {
       var open = row.classList.toggle('open');
+      more.classList.toggle('on', open);
       var d = row.querySelector('.entry-detail');
       if (!open) { if (d) d.hidden = true; return; }
       if (d) { d.hidden = false; return; }
       row.appendChild(logDetail(x));
-    });
-    row.appendChild(line);
+    }
+    line.addEventListener('click', function () { if (go) go.open(); else details(); });
+    var more = el('button', 'entry-more', '詳細');
+    more.type = 'button';
+    more.addEventListener('click', details);
+    var head = el('div', 'entry-head');
+    head.appendChild(line);
+    head.appendChild(more);
+    row.appendChild(head);
     return row;
+  }
+  // where a log line takes one: { label, open } (null: nowhere in particular)
+  function placeOf(x) {
+    var a = String(x.action || ''), d = x.detail || {}, t = x.target && x.target.id ? x.target : null;
+    // (what a player did: the player)
+    if (!t && /^player_/.test(a) && x.actor && x.actor.id) t = x.actor;
+    function to(label, open) { return { label: label, open: open }; }
+    function tab(v, label) { return to(label, function () { setView(v); }); }
+    if (/^vault_/.test(a)) {
+      if (a === 'vault_quota_request' || a === 'vault_quota_cancel' || a === 'vault_quota_approve' || a === 'vault_quota_decline' || a === 'vault_quota_set') return tab('vault', '保管庫の容量');
+      return to('保管庫', function () { openVaultAt(d.space || '', d.folder || ''); });
+    }
+    if (/^bot_/.test(a) && t) return to(t.name + ' さんとの公式チャット', function () { openChat(t.id); });
+    if (/^report_|^player_report$/.test(a)) return tab('reports', '通報');
+    if (a === 'detections_reviewed' || a === 'filter_block' || a === 'chat_unban') return t ? to(t.name + ' さん', function () { openDetail(t.id); }) : tab('detections', '検知');
+    if (a === 'feedback_handled' || a === 'idea_adopt' || a === 'player_feedback') return tab('feedback', '報告・意見案');
+    if (/^ops_|^viewer_|^dev_code_/.test(a)) return tab('operators', '運営者');
+    if (a === 'account_delete' || a === 'account_purge') return tab('archive', 'プレイヤーアーカイブ');
+    if (/^shield_|^lockdown|^emergency_|^sec_/.test(a)) return tab('security', 'セキュリティ');
+    if (/^backup_|^discord_/.test(a)) return tab('server', 'サーバー');
+    if (/^pay_/.test(a) && state.developer) return tab('pay', '課金');
+    if (t) return to(t.name + ' さん', function () { openDetail(t.id); });
+    return null;
+  }
+  // the vault at a vault and folder (from the log)
+  function openVaultAt(space, folder) {
+    setView('vault');
+    // (the developer's own vault: only the developer sees it)
+    if (!space && !state.developer) return;
+    (state.vault ? Promise.resolve() : openLook()).then(function () {
+      if (!state.vault) return null;
+      if (space !== state.vaultSpace) goSpace(space);
+      return loadVault().then(function () { if (folder && folderOf(folder)) goFolder(folder); });
+    }).catch(function () {});
+  }
+
+  /* the log as a text for an AI (what happened, without the addresses, the
+     devices and the hashes): the lines shown now, or one of them */
+  var KIND_JA = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
+  // (what could find a person or a machine stays out: addresses, devices, codes)
+  var AI_SECRET = /^(request|time|ip|ips|host|device|devices|fp|userAgent|ua|agent|origin|referer|token|code|codes|password|recovery|sameDevice|sameDeviceAccounts)$/i;
+  function aiSafe(v, depth) {
+    if (typeof v === 'string') return v.replace(/\b\d{1,3}(\.\d{1,3}){3}\b/g, '[IP]').replace(/\b[0-9a-f]{0,4}(:[0-9a-f]{0,4}){3,7}\b/gi, '[IP]');
+    if (!v || typeof v !== 'object' || depth > 4) return v;
+    if (Array.isArray(v)) return v.slice(0, 20).map(function (x) { return aiSafe(x, depth + 1); });
+    var out = {};
+    Object.keys(v).forEach(function (k) { if (!AI_SECRET.test(k)) out[k] = aiSafe(v[k], depth + 1); });
+    return out;
+  }
+  function aiLine(x) {
+    var rest = aiSafe(x.detail || {}, 0);
+    var detail = JSON.stringify(rest);
+    if (detail.length > 600) detail = detail.slice(0, 600) + '…（省略）';
+    return '#' + x.id + ' ' + String(x.jst || '').replace(/\.\d+ JST$/, '') + ' [' + (KIND_JA[x.kind] || x.kind) + '] ' + actionName(x.action) + '（' + x.action + '）\n'
+      + '  実行: ' + x.actor.name + (x.target ? ' / 対象: ' + x.target.name : '') + '\n'
+      + '  内容: ' + aiSafe(x.summary, 0) + (detail && detail !== '{}' ? '\n  詳細: ' + detail : '');
+  }
+  function aiReport(entries, what) {
+    if (!entries.length) { toast('ログがありません'); return; }
+    var first = entries[entries.length - 1], last = entries[0];
+    var text = 'TWO STATE（オンラインのカジノゲーム）の運営ログです。内容を確認して、問題や気になる点があれば、原因の見立てと対処を教えてください。\n'
+      + '範囲: ' + what + '・' + entries.length + '件（' + String(first.jst || '').slice(0, 16) + ' 〜 ' + String(last.jst || '').slice(0, 16) + ' 日本時間・新しい順）\n'
+      + '----\n' + entries.map(aiLine).join('\n\n') + '\n----\n（IPアドレス・端末ID・ブラウザの情報と記録のハッシュは含めていません）';
+    ask({ title: 'AIに報告する文章', text: 'コピーして AI に貼り付けてください。', area: { label: '報告文（' + entries.length + '件）', value: text }, ok: 'コピーして閉じる' }).then(function (v) {
+      if (v !== null) copy($('#dialog-area').value || text);
+    });
+  }
+  function logScope() {
+    var k = state.logKind, chip = document.querySelector('#log-kinds [data-kind="' + k + '"]');
+    return (k ? (chip ? chip.firstChild.textContent : k) + 'のログ' : 'すべてのログ') + (state.logQ ? '（「' + state.logQ + '」で検索）' : '');
   }
   function logDetail(x) {
     var box = el('div', 'entry-detail');
@@ -4033,7 +4114,19 @@
     box.appendChild(t);
     var rest = {};
     Object.keys(x.detail || {}).forEach(function (k) { if (k !== 'time' && k !== 'request') rest[k] = x.detail[k]; });
-    box.appendChild(el('pre', '', JSON.stringify(rest, null, 2)));
+    if (Object.keys(rest).length) box.appendChild(el('pre', '', JSON.stringify(rest, null, 2)));
+    var a = el('div', 'entry-acts'), ai = el('button', 'btn small', 'この記録をAIに報告する文章にする');
+    ai.type = 'button';
+    ai.addEventListener('click', function () { aiReport([x], '記録 #' + x.id); });
+    a.appendChild(ai);
+    var go = state.viewer ? null : placeOf(x);
+    if (go) {
+      var b = el('button', 'btn small primary', go.label + 'を開く');
+      b.type = 'button';
+      b.addEventListener('click', go.open);
+      a.appendChild(b);
+    }
+    box.appendChild(a);
     return box;
   }
 
@@ -4196,6 +4289,7 @@
       logTimer = setTimeout(function () { state.logQ = $('#log-search').value.trim(); loadLog(true); }, 300);
     });
     $('#log-more').addEventListener('click', function () { loadLog(false); });
+    $('#log-ai').addEventListener('click', function () { aiReport((state.log || []).slice(0, 100), logScope()); });
     $('#log-kinds').addEventListener('click', function (e) {
       var c = e.target.closest('[data-kind]');
       if (!c) return;

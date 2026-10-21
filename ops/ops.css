@@ -691,3 +691,11 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .op-sub { margin: 22px 0 4px; font-size: 15px; }
 body.role-viewer .view .acts, body.role-viewer #op-grant, body.role-viewer #op-devcode, body.role-viewer #sec-manual, body.role-viewer [data-unblock],
 body.role-viewer [data-stop], body.role-viewer #srv-dev, body.role-viewer .report-reward, body.role-viewer .compose { display: none !important; }
+
+/* the log: a line goes to its place, 詳細 beside it; the text for an AI */
+.entry-head { display: flex; align-items: stretch; }
+.entry-head .entry-line { flex: 1; min-width: 0; }
+.entry-line.go .sum { text-decoration: underline; text-decoration-color: #bfd4f6; text-underline-offset: 3px; }
+.entry-more { flex: none; margin: 4px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--muted); font-size: 12px; font-weight: 600; }
+.entry-more:hover, .entry-more.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.entry-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
