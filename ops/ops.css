@@ -685,3 +685,9 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .viewer-text { align-self: stretch; width: 100%; margin: 0; padding: 14px 16px; overflow: auto; background: #1f232a; color: #e8ecf2; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; tab-size: 4; }
 .viewer-media { max-width: 100%; max-height: 100%; }
+
+/* 閲覧者: the badge, their place on the 運営者 tab, and a viewer's site (looking only: no actions shown) */
+.tag.t-viewer, .kind.k-viewer { background: #efe9fb; color: #5b3fb3; }
+.op-sub { margin: 22px 0 4px; font-size: 15px; }
+body.role-viewer .view .acts, body.role-viewer #op-grant, body.role-viewer #op-devcode, body.role-viewer #sec-manual, body.role-viewer [data-unblock],
+body.role-viewer [data-stop], body.role-viewer #srv-dev, body.role-viewer .report-reward, body.role-viewer .compose { display: none !important; }

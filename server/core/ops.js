@@ -22,6 +22,15 @@
 // asks for the developer code; the accounts on the same device go with it.
 // A player whose chat the automatic filter stopped (server/core/attach.js)
 // carries a badge until an operator lets it go again.
+// 閲覧者 (viewers): players the developer — and only the developer, with the
+// developer code, as for every right — lets look at the operator site and
+// security HOME, read-only and nothing more: no players' list, no archive,
+// no vault, no chats (the operators' and Ice Smoker公式's), no backups, no
+// payments, and no action of any kind. Their site session is a 'view' one
+// that the API lets through only to an allowlist of reads (server/core/api.js:
+// VIEW_ONLY), and what they read leaves out the requests' addresses and the
+// log's details. Taken away, their site sessions end at once (the site
+// checks every 2 seconds and logs out).
 import { ApiError, posInt } from './errors.js';
 import { nameKey, cleanPassword, cleanText, hashPassword } from './auth.js';
 import { LEVEL, RULES, VIP, RELEASE } from './rules.js';
@@ -53,6 +62,25 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     const r = access ? access.get(u.name_key) : accessRow(u.name_key);
     return r ? r.granted === 1 : operators.has(u.name_key);
   }
+  // 閲覧者: one the developer let look (never an operator: they see all anyway)
+  const viewerRow = (id) => q('SELECT * FROM ops_viewers WHERE user_id = ?').get(id);
+  function isViewer(u) {
+    if (!u || u.npc || isOperator(u)) return false;
+    const r = viewerRow(u.id);
+    return !!r && r.granted === 1;
+  }
+  // an operator, or a viewer (the reads they may do)
+  function see(u) {
+    if (isViewer(u)) return u;
+    need(u);
+    return u;
+  }
+  function viewerList() {
+    return q('SELECT v.*, u.name, u.avatar FROM ops_viewers v JOIN users u ON u.id = v.user_id WHERE v.granted = 1 ORDER BY v.at DESC').all()
+      .map((v) => ({ id: v.user_id, name: v.name, avatar: v.avatar, at: v.at, by: (getUser(v.by_id) || { name: '?' }).name, online: live.isOnline(v.user_id), site: Date.now() - (seen.get(v.user_id) || 0) < 40000 }));
+  }
+  // the log as a viewer reads it: what happened, by whom, to whom (no request, no details)
+  const viewerEntry = (e) => ({ id: e.id, at: e.at, jst: e.jst, actor: e.actor, action: e.action, kind: e.kind, target: e.target, summary: e.summary, prevHash: e.prevHash, hash: e.hash });
   // (`seen`: when each operator last used the site, for who is on it now)
   function need(u) {
     if (isOperator(u)) { seen.set(u.id, Date.now()); return; }
@@ -102,7 +130,10 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     return c;
   }
   // what a whole list needs for every row, looked up once and not once a player
-  const listFacts = () => ({ access: new Map(q('SELECT * FROM ops_access').all().map((r) => [r.name_key, r])), devBans: deviceBans() });
+  const listFacts = () => ({
+    access: new Map(q('SELECT * FROM ops_access').all().map((r) => [r.name_key, r])), devBans: deviceBans(),
+    viewers: new Set(q('SELECT user_id FROM ops_viewers WHERE granted = 1').all().map((r) => r.user_id))
+  });
   function row(u, waiting = null, detections = null, facts = null) {
     return {
       id: u.id,
@@ -121,6 +152,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       createdAt: u.created_at,
       playMs: u.play_ms,
       operator: isOperator(u, facts && facts.access),
+      viewer: facts ? !!facts.viewers.has(u.id) : isViewer(u),
       developer: isDeveloper(u),
       npc: !!u.npc,
       // VIP: its level while it is on (null: off), until when, its EXP
@@ -203,12 +235,31 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
 
   const routes = {
     'GET /api/ops/me': (req, u) => {
-      need(u);
+      see(u);
+      const viewer = !isOperator(u);
       if (!opened.has(u.id) || Date.now() - opened.get(u.id) > 30 * 60000) {
         opened.set(u.id, Date.now());
-        opsLog.add({ actor: u, action: 'open', summary: `${u.name}が運営サイトを開いた`, req });
+        opsLog.add({ actor: u, action: 'open', summary: `${u.name}が運営サイトを開いた${viewer ? '（閲覧者）' : ''}`, req });
       }
-      return { name: u.name, operators: config.operators, developer: isDeveloper(u), devCodeSet: devCode.isSet(), now: Date.now() };
+      if (viewer) return { name: u.name, viewer: true, developer: false, now: Date.now() };
+      return { name: u.name, operators: config.operators, developer: isDeveloper(u), viewer: false, devCodeSet: devCode.isSet(), now: Date.now() };
+    },
+
+    // still allowed in (the site asks every 2 seconds for a viewer: rights
+    // taken away, it logs out at once)
+    'GET /api/ops/alive': (req, u) => {
+      see(u);
+      return { ok: true, viewer: !isOperator(u), now: Date.now() };
+    },
+
+    // what waits in each tab (a viewer has no players' list to bring them)
+    'GET /api/ops/counts': (req, u) => {
+      see(u);
+      return {
+        reports: q("SELECT COUNT(*) AS n FROM reports WHERE status = 'open'").get().n,
+        detections: q('SELECT COUNT(*) AS n FROM detections WHERE reviewed_at = 0').get().n,
+        feedback: q("SELECT COUNT(*) AS n FROM feedback WHERE handled_at = 0 AND kind != ''").get().n
+      };
     },
 
     // everyone but the archive (a name to look for: part of it), the newest players first
@@ -477,7 +528,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     /* ----- 通報 ----- */
 
     'GET /api/ops/reports': (req, u) => {
-      need(u);
+      see(u);
       const status = req.query.get('status') === 'done' ? "status != 'open'" : "status = 'open'";
       return { reports: q(`SELECT * FROM reports WHERE ${status} ORDER BY id DESC LIMIT 300`).all().map(reportDto), now: Date.now() };
     },
@@ -519,7 +570,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     /* ----- what the chat filter found ----- */
 
     'GET /api/ops/detections': (req, u) => {
-      need(u);
+      see(u);
       const who = Number(req.query.get('id')) || 0;
       const all = req.query.get('all') === '1';
       const rows = q(`SELECT * FROM detections WHERE (? = 0 OR sender_id = ?) AND (? = 1 OR reviewed_at = 0) ORDER BY id DESC LIMIT 300`).all(who, who, all ? 1 : 0);
@@ -548,7 +599,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     /* ----- 報告 / 意見案 (and the old feedback with stars) ----- */
 
     'GET /api/ops/feedback': (req, u) => {
-      need(u);
+      see(u);
       const rows = q(`SELECT f.*, o.name, o.avatar FROM feedback f LEFT JOIN users o ON o.id = f.user_id ORDER BY f.id DESC LIMIT 500`).all();
       return {
         feedback: rows.map((f) => {
@@ -602,8 +653,9 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     /* ----- the operators: rights given and taken away with the developer code ----- */
 
     'GET /api/ops/operators': (req, u) => {
-      need(u);
-      return { operators: operatorList(), devCodeSet: devCode.isSet(), now: Date.now() };
+      see(u);
+      if (!isOperator(u)) return { operators: operatorList().map(({ key, changed, fromSettings, ...o }) => o), viewers: viewerList(), now: Date.now() };
+      return { operators: operatorList(), viewers: viewerList(), devCodeSet: devCode.isSet(), now: Date.now() };
     },
 
     // 'grant': a player becomes an operator. 'revoke': an operator's rights
@@ -612,6 +664,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     // developer's own rights never go.
     'POST /api/ops/operator': async (req, u) => {
       need(u);
+      if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', '権限を変えられるのは開発者だけです');
       const body = await req.json();
       const action = body.action === 'grant' || body.action === 'revoke' ? body.action : '';
       if (!action) throw new ApiError(400, 'bad_action', '処理を選んでください');
@@ -622,8 +675,13 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       await devCode.check(body.code, req, u);
       if (action === 'grant') {
         if (isOperator(p)) throw new ApiError(409, 'done', `${p.name}さんはもう運営者です`);
-        q('INSERT INTO ops_access (name_key, granted, at, by_id) VALUES (?, 1, ?, ?) ON CONFLICT(name_key) DO UPDATE SET granted = 1, at = excluded.at, by_id = excluded.by_id')
-          .run(key, Date.now(), u.id);
+        tx(() => {
+          q('INSERT INTO ops_access (name_key, granted, at, by_id) VALUES (?, 1, ?, ?) ON CONFLICT(name_key) DO UPDATE SET granted = 1, at = excluded.at, by_id = excluded.by_id')
+            .run(key, Date.now(), u.id);
+          // (an operator sees everything: no longer a viewer; their look-only sessions end)
+          q('UPDATE ops_viewers SET granted = 0, at = ?, by_id = ? WHERE user_id = ? AND granted = 1').run(Date.now(), u.id, p.id);
+          q("UPDATE sessions SET ended = ? WHERE user_id = ? AND scope = 'view'").run('運営者になったため、運営サイトにもう一度ログインしてください', p.id);
+        });
         opsLog.add({ actor: u, action: 'ops_grant', target: p, req, summary: `${p.name}さんに運営権を付与（開発者コードで）`, detail: { name: key } });
       } else {
         if (!isOperator(p)) throw new ApiError(409, 'done', `${p.name}さんは運営者ではありません`);
@@ -640,6 +698,39 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       return { operators: operatorList() };
     },
 
+    // 閲覧者: 'grant' lets a player look at the operator site (and security
+    // HOME); 'revoke' takes it away and ends their site sessions at once (the
+    // game goes on). The developer only, with the developer code.
+    'POST /api/ops/viewer': async (req, u) => {
+      need(u);
+      if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', '権限を変えられるのは開発者だけです');
+      const body = await req.json();
+      const action = body.action === 'grant' || body.action === 'revoke' ? body.action : '';
+      if (!action) throw new ApiError(400, 'bad_action', '処理を選んでください');
+      const key = nameKey(String(body.name ?? ''));
+      const p = key ? q('SELECT * FROM users WHERE name_key = ?').get(key) || null : null;
+      if (!p || p.npc || p.ban_kind === 'deleted') throw new ApiError(404, 'not_found', 'その名前のプレイヤーはいません');
+      if (isOperator(p)) throw new ApiError(400, 'operator', `${p.name}さんは運営者です（運営者はもともとすべて見られます）`);
+      await devCode.check(body.code, req, u);
+      const now = Date.now();
+      if (action === 'grant') {
+        if (isViewer(p)) throw new ApiError(409, 'done', `${p.name}さんはもう閲覧者です`);
+        q('INSERT INTO ops_viewers (user_id, granted, at, by_id) VALUES (?, 1, ?, ?) ON CONFLICT(user_id) DO UPDATE SET granted = 1, at = excluded.at, by_id = excluded.by_id').run(p.id, now, u.id);
+        opsLog.add({ actor: u, action: 'viewer_grant', target: p, req, summary: `${p.name}さんに閲覧者の権限を付与（開発者コードで）`, detail: { user: p.id } });
+      } else {
+        if (!isViewer(p)) throw new ApiError(409, 'done', `${p.name}さんは閲覧者ではありません`);
+        let ended = 0;
+        tx(() => {
+          q('UPDATE ops_viewers SET granted = 0, at = ?, by_id = ? WHERE user_id = ?').run(now, u.id, p.id);
+          ended = Number(q("UPDATE sessions SET ended = ? WHERE user_id = ? AND scope = 'view'").run('閲覧者の権限がなくなったため、ログアウトされました', p.id).changes);
+        });
+        live.send(p.id, 'viewer', { on: false });
+        opsLog.add({ actor: u, action: 'viewer_revoke', target: p, req, summary: `${p.name}さんの閲覧者の権限を剥奪（開発者コードで・運営サイトとsecurity HOMEからすぐにログアウト）`, detail: { user: p.id, sessionsEnded: ended } });
+      }
+      if (action === 'grant') live.send(p.id, 'viewer', { on: true });
+      return { operators: operatorList(), viewers: viewerList() };
+    },
+
     // the developer code: registered once by the developer's account (never
     // written anywhere else), changed with the old one
     'POST /api/ops/dev-code': async (req, u) => {
@@ -654,16 +745,17 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
 
     // kind: player / operator / security / vault / emergency ('' all)
     'GET /api/ops/log': (req, u) => {
-      need(u);
+      see(u);
       const before = Number(req.query.get('before')) || 0;
+      const entries = opsLog.list({ before, find: req.query.get('q') || '', kind: req.query.get('kind') || '' });
       return {
-        entries: opsLog.list({ before, find: req.query.get('q') || '', kind: req.query.get('kind') || '' }),
+        entries: isOperator(u) ? entries : entries.map(viewerEntry), viewer: !isOperator(u),
         counts: before ? null : opsLog.counts(), now: Date.now()
       };
     },
 
     'GET /api/ops/log/verify': async (req, u) => {
-      need(u);
+      see(u);
       return opsLog.verify();
     }
   };
@@ -680,5 +772,5 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     }
   }
 
-  return { routes, isOperator, need, operatorList, mini, purgeDue };
+  return { routes, isOperator, isViewer, need, see, operatorList, mini, purgeDue };
 }

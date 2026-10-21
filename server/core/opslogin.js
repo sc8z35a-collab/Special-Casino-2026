@@ -1,5 +1,6 @@
 // The operator site's login (POST /api/ops/login): a name and password like
-// the game's, but only operators get in, and two wrong tries in a row (a
+// the game's, but only operators get in (and 閲覧者, with a session that can
+// only look: scope 'view'), and two wrong tries in a row (a
 // wrong name or password, or an account that is not an operator) make this
 // browser wait 5 minutes; two more after that, 10 minutes; then 20, 40 …
 // A login that works starts this browser over, and a day with no wrong try starts it all over.
@@ -19,7 +20,7 @@ const FORGET_MS = 86400000;
 
 // allow(u): may this operator come in now (while the server is stopped for
 // an emergency, the developer only; stoppedBody() is what the rest get)
-export function createOpsLogin({ q, findByName, isOperator, createSession, seenOn, rate, allow = () => true, stoppedBody = null }) {
+export function createOpsLogin({ q, findByName, isOperator, isViewer = () => false, createSession, seenOn, rate, allow = () => true, stoppedBody = null }) {
   // this browser on this address (the operator site keeps an id of its own), and the address
   function keysOf(req) {
     const ip = sha256(String(req.ip || '-')).slice(0, 40);
@@ -61,7 +62,7 @@ export function createOpsLogin({ q, findByName, isOperator, createSession, seenO
         const until = waitUntil(keys, Date.now());
         if (until) throw locked(until, Date.now());
         const u = findByName(String(body.name ?? ''));
-        const ok = !!u && !u.npc && !!u.password_hash && await verifyPassword(String(body.password ?? ''), u.password_hash) && isOperator(u);
+        const ok = !!u && !u.npc && !!u.password_hash && await verifyPassword(String(body.password ?? ''), u.password_hash) && (isOperator(u) || isViewer(u));
         const now = Date.now();
         if (!ok) {
           const w = wrong(keys, now);
@@ -75,7 +76,8 @@ export function createOpsLogin({ q, findByName, isOperator, createSession, seenO
           throw new ApiError(503, b.code, b.message, b);
         }
         seenOn(u.id, req);
-        return { token: createSession(u.id), name: u.name };
+        const viewer = !isOperator(u);
+        return { token: createSession(u.id, viewer ? 'view' : ''), name: u.name, viewer };
       }
     },
     // old waits go (from the housekeeping)

@@ -502,6 +502,7 @@
 .pf-chip.friend { background: rgba(80, 200, 110, .22); color: #8ff09c; }
 .pf-chip.hub { background: rgba(255, 120, 214, .22); color: #ffb0e6; }
 .pf-chip.op { background: rgba(120, 190, 255, .22); color: #bfe0ff; }
+.pf-chip.viewer { background: rgba(176, 146, 255, .24); color: #ddd0ff; }
 .pf-top .pf-since { margin-top: 10px; text-align: left; }
 .profile-card .modal-x { top: 26px; right: 26px; }
 .profile-card .pf-stats, .profile-card .pf-actions, .profile-card .pf-blocks { margin-left: 44px; margin-right: 44px; }

@@ -753,7 +753,17 @@ export const MIGRATIONS = [
     'ALTER TABLE vault_files ADD COLUMN removed_by INTEGER NOT NULL DEFAULT 0',
     "ALTER TABLE vault_files ADD COLUMN from_space TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE vault_files ADD COLUMN from_folder TEXT NOT NULL DEFAULT ''",
-    'CREATE INDEX vault_files_backup ON vault_files(backup_at)'
+    'CREATE INDEX vault_files_backup ON vault_files(backup_at)',
+    // 閲覧者: players the developer lets look at the operator site (granted 1;
+    // 0 once taken away), and the sessions of that look (scope 'view': they
+    // can do nothing but look, not even play)
+    `CREATE TABLE ops_viewers (
+       user_id INTEGER PRIMARY KEY,
+       granted INTEGER NOT NULL DEFAULT 1,
+       at      INTEGER NOT NULL,
+       by_id   INTEGER NOT NULL
+     )`,
+    "ALTER TABLE sessions ADD COLUMN scope TEXT NOT NULL DEFAULT ''"
   ]
 ];
 
@@ -762,7 +772,7 @@ export const SCHEMA_VERSION = MIGRATIONS.length;
 // has them; nor what goes with them, the operators' limits and requests)
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
-  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats',
+  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers',
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'meta'];
 
 export function migrate(db) {

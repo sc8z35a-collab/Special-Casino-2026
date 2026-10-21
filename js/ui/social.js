@@ -1454,6 +1454,7 @@
       if (!self && r.user.friendship === 'friends') st.appendChild(el('span', 'pf-chip friend', 'フレンド'));
       if (!self && BR.hub && BR.hub.isMember(u.id)) st.appendChild(el('span', 'pf-chip hub', '一緒に稼ぎ中'));
       if (self && me && me.operator) st.appendChild(el('span', 'pf-chip op', '運営'));
+      else if (self && me && me.viewer) st.appendChild(el('span', 'pf-chip viewer', '閲覧者'));
     }
     statAmount('#pf-total', r ? r.user.totalWon : null);
     statAmount('#pf-biggest', r ? r.user.biggestWin : null);
@@ -1980,6 +1981,8 @@
     BR.live.on('present', onPresent);
     BR.live.on('retract', onRetract);
     BR.live.on('chatban', onChatBan);
+    // 閲覧者 given or taken away (the badge on one's own profile)
+    BR.live.on('viewer', function (ev) { if (me) { me.viewer = !!(ev && ev.on); BR.social.renderMe(); } });
     // the ⋯ menu closes with a tap anywhere else
     document.addEventListener('pointerdown', function (e) { if (menu && !menu.contains(e.target)) closeMenu(); }, true);
     BR.live.on('friend', onFriend);

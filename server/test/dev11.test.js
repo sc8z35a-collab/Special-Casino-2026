@@ -70,3 +70,83 @@ test('a server that starts with players already past a milestone pays it at once
     await s.stop();
   }
 });
+
+const CODE = '987654321098';   // (a test code: the real one is never written anywhere)
+
+test('閲覧者: only the developer gives or takes rights; a viewer only looks (an allowlist), never acts, and is out at once when it goes', async () => {
+  const s = await startServer({ operators: ['taku', 'mod1'] });
+  try {
+    const taku = await s.register('TAKU');
+    const dev = (method, url, body) => s.call(method, url, { token: taku.token, body });
+    assert.equal((await dev('POST', '/api/ops/dev-code', { code: CODE })).devCodeSet, true);
+    const mod = await s.register('Mod1');
+    const watcher = await s.register('Watcher');
+    await s.register('Other1');
+    // rights: the developer only (an operator with the code too is refused)
+    assert.equal((await s.call('POST', '/api/ops/viewer', { token: mod.token, body: { name: 'Watcher', action: 'grant', code: CODE } })).error.code, 'not_developer');
+    assert.equal((await s.call('POST', '/api/ops/operator', { token: mod.token, body: { name: 'Other1', action: 'grant', code: CODE } })).error.code, 'not_developer');
+    assert.equal((await dev('POST', '/api/ops/viewer', { name: 'Watcher', action: 'grant', code: '000000000000' })).error.code, 'dev_code');
+    assert.equal((await dev('POST', '/api/ops/viewer', { name: 'Mod1', action: 'grant', code: CODE })).error.code, 'operator');
+    const g = await dev('POST', '/api/ops/viewer', { name: 'Watcher', action: 'grant', code: CODE });
+    assert.deepEqual(g.viewers.map((v) => v.name), ['Watcher']);
+    // the badge: the game knows, the operators' list shows it
+    assert.equal((await s.call('GET', '/api/me', { token: watcher.token })).me.viewer, true);
+    assert.equal((await dev('GET', '/api/ops/players')).players.find((p) => p.name === 'Watcher').viewer, true);
+
+    // the site's login gives a look-only session
+    const login = await s.call('POST', '/api/ops/login', { body: { name: 'Watcher', password: 'pass1234' }, headers: { 'X-Ops-Device': 'browser-vvvvvvvvvvvvvvvv' } });
+    assert.deepEqual([login.status, login.viewer], [200, true]);
+    const v = (method, url, body) => s.call(method, url, { token: login.token, body });
+    const me = await v('GET', '/api/ops/me');
+    assert.deepEqual([me.viewer, me.developer, me.operators], [true, false, undefined]);
+    for (const url of ['/api/ops/alive', '/api/ops/counts', '/api/ops/reports', '/api/ops/detections', '/api/ops/feedback', '/api/ops/log', '/api/ops/log/verify',
+      '/api/ops/operators', '/api/ops/server', '/api/ops/security', '/api/sec/me', '/api/sec/status', '/api/sec/log', '/api/sec/verify']) {
+      assert.equal((await v('GET', url)).status, 200, url);
+    }
+    // what they read leaves out the requests and the details
+    const log = await v('GET', '/api/ops/log');
+    assert.ok(log.entries.length > 0);
+    assert.ok(log.entries.every((e) => e.detail === undefined && e.raw === undefined), 'no details');
+    assert.equal((await v('GET', '/api/sec/me')).viewer, true);
+    assert.ok((await v('GET', '/api/sec/status')).security.every((e) => e.detail === undefined));
+    assert.equal((await v('GET', '/api/ops/operators')).operators.some((o) => 'changed' in o), false);
+    // nothing else: no players' list, archive, vault, chats, backups, payments, actions, nor the game
+    for (const [m, url, body] of [['GET', '/api/ops/players'], ['GET', '/api/ops/player?id=1'], ['GET', '/api/ops/archive'], ['GET', '/api/ops/team'],
+      ['GET', '/api/ops/team/messages?with=0'], ['GET', '/api/ops/chat?id=1'], ['GET', '/api/vault/spaces'], ['GET', '/api/vault/files'], ['GET', '/api/backup'],
+      ['GET', '/api/ops/pay'], ['GET', '/api/sec/messages'], ['POST', '/api/sec/messages', { text: 'x' }], ['POST', '/api/sec/lockdown', {}],
+      ['POST', '/api/ops/ban', { id: 1, kind: 'suspend' }], ['POST', '/api/ops/security/block', { scope: 'ip', target: '203.0.113.9' }],
+      ['POST', '/api/ops/report', { id: 1 }], ['POST', '/api/ops/team/messages', { to: 0, text: 'x' }], ['POST', '/api/emergency/stop', {}],
+      ['POST', '/api/ops/viewer', { name: 'Other1', action: 'grant', code: CODE }], ['GET', '/api/me'], ['POST', '/api/spin', { bet: 100 }],
+      ['POST', '/api/transfer', { to: 1, amount: 1, currency: 'dollars' }], ['POST', '/api/stream-ticket', {}]]) {
+      const r = await v(m, url, body);
+      assert.equal(r.status, 403, `${m} ${url}: ${JSON.stringify(r)}`);
+      assert.equal(r.error.code, 'viewer', `${m} ${url}`);
+    }
+    // their game account plays on as before, and still cannot act on the site
+    assert.equal((await s.call('GET', '/api/me', { token: watcher.token })).status, 200);
+    assert.equal((await s.call('GET', '/api/ops/players', { token: watcher.token })).error.code, 'not_operator');
+
+    // taken away: the site session ends at once (the game's does not), and no way back in
+    const r = await dev('POST', '/api/ops/viewer', { name: 'Watcher', action: 'revoke', code: CODE });
+    assert.deepEqual(r.viewers, []);
+    const out = await v('GET', '/api/ops/alive');
+    assert.deepEqual([out.status, out.error.code], [401, 'ended']);
+    assert.equal((await v('GET', '/api/sec/status')).status, 401, 'security HOME too');
+    assert.equal((await s.call('GET', '/api/me', { token: watcher.token })).me.viewer, false);
+    assert.equal((await s.call('POST', '/api/ops/login', { body: { name: 'Watcher', password: 'pass1234' }, headers: { 'X-Ops-Device': 'browser-wwwwwwwwwwwwwwww' } })).status, 401);
+    const logged = (await dev('GET', '/api/ops/log?kind=security')).entries.map((e) => e.action);
+    assert.ok(logged.includes('viewer_grant') && logged.includes('viewer_revoke'));
+
+    // a viewer made an operator: no longer a viewer, their look-only sessions end
+    await dev('POST', '/api/ops/viewer', { name: 'Watcher', action: 'grant', code: CODE });
+    const again = await s.call('POST', '/api/ops/login', { body: { name: 'Watcher', password: 'pass1234' }, headers: { 'X-Ops-Device': 'browser-vvvvvvvvvvvvvvvv' } });
+    assert.equal(again.viewer, true);
+    await dev('POST', '/api/ops/operator', { name: 'Watcher', action: 'grant', code: CODE });
+    assert.equal((await s.call('GET', '/api/ops/alive', { token: again.token })).status, 401);
+    const now = (await dev('GET', '/api/ops/operators'));
+    assert.ok(now.operators.some((o) => o.name === 'Watcher' && o.operator));
+    assert.deepEqual(now.viewers, []);
+  } finally {
+    await s.stop();
+  }
+});

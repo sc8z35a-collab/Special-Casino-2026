@@ -101,6 +101,8 @@
     $('#app').hidden = true; $('#login').hidden = false;
     $('#login-error').textContent = message || '';
     clearInterval(timer);
+    clearInterval(aliveTimer);
+    document.body.classList.remove('role-viewer');
     setTimeout(function () { $('#login-name').focus(); }, 50);
   }
   // signed out: what this operator saw goes with them, so the next one starts clean
@@ -151,23 +153,32 @@
   }
 
   /* ------------------------------------------------------------ start --- */
+  // A 閲覧者 (viewer): the status and the log only — no channel, no lockdown
+  // (the server refuses them anyway) — and every 2 seconds the question
+  // whether they still may: taken away, they are out at once.
   function start(m) {
     me = m; meId = m.id || 0; session++;
     seenChat = readSeen(); statusErr = '';
     $('#login').hidden = true; $('#app').hidden = false;
-    $('#op-name').textContent = (m.developer ? '開発者: ' : '運営者: ') + m.name;
+    $('#op-name').textContent = (m.developer ? '開発者: ' : m.viewer ? '閲覧者: ' : '運営者: ') + m.name;
+    document.body.classList.toggle('role-viewer', !!m.viewer);
     $('#speed').value = speed;
-    loadStatus(); loadLog(); loadChat();
+    if (m.viewer) setSide('log');
+    loadStatus(); loadLog();
+    if (!m.viewer) loadChat();
     startTimer();
   }
   function tick() {
     loadStatus();
-    loadChat();
+    if (!me || !me.viewer) loadChat();
     if (side === 'log' && !logQ) refreshLog();
   }
+  var aliveTimer = 0;
   function startTimer() {
     clearInterval(timer);
+    clearInterval(aliveTimer);
     timer = setInterval(function () { if (!document.hidden) tick(); }, SPEEDS[speed]);
+    if (me && me.viewer) aliveTimer = setInterval(function () { if (!document.hidden && me) request('GET', '/api/sec/me').catch(function () {}); }, 2000);
   }
 
   /* ------------------------------------------------------------ status --- */

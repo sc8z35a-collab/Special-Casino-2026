@@ -16,7 +16,7 @@ export const NOTIFY = {
   emergency_stop: '🚨', emergency_release: '✅', lockdown: '🔒', lockdown_release: '🔓', shield_auto_block: '🧱', filter_block: '🛡️',
   player_report: '🚩', player_feedback: '📝',
   pay_paid: '💰', pay_refund: '↩️', pay_review: '⚠️', pay_unknown: '⚠️', pay_bad_signature: '⚠️',
-  dev_code_fail: '🔐', ops_grant: '👤', ops_revoke: '👤', backup_failed: '⚠️', vault_quota_request: '📦'
+  dev_code_fail: '🔐', ops_grant: '👤', ops_revoke: '👤', viewer_grant: '👀', viewer_revoke: '👀', backup_failed: '⚠️', vault_quota_request: '📦'
 };
 const HOOK = /^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api\/webhooks\/\d{5,30}\/[\w-]{20,200}$/;
 const PER_MINUTE = 20;

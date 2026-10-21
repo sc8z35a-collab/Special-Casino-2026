@@ -629,8 +629,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       feedback: feedbackState(u),
       // the group whose 協力スロット table the player sits at (0: none)
       coop: u.coop_group || 0,
-      // may open the operator site (/ops/)
+      // may open the operator site (/ops/); or only look at it (閲覧者)
       operator: isOperatorName(u),
+      viewer: ops.isViewer(u),
       // 18歳以上？ (null: not answered yet)
       age: u.age_ok === null || u.age_ok === undefined ? null : !!u.age_ok,
       vip: vipDto(u),
@@ -1356,7 +1357,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // Also used by the live connection.
   function userForToken(token) {
     const h = sha256(token);
-    const s = q('SELECT user_id, last_used, ended FROM sessions WHERE token_hash = ?').get(h);
+    const s = q('SELECT user_id, last_used, ended, scope FROM sessions WHERE token_hash = ?').get(h);
     if (!s) throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
     // ended by the server (an operator's rights taken away): why, once, then it is gone
     if (s.ended) {
@@ -1376,13 +1377,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('UPDATE users SET last_seen = ?, play_ms = play_ms + ? WHERE id = ?').run(now, played, u.id);
     }
     if (now - s.last_used > 3600000) q('UPDATE sessions SET last_used = ? WHERE token_hash = ?').run(now, h);
+    // ('view': a 閲覧者's operator site session, good for nothing but looking)
+    u.scope = s.scope || '';
     return u;
   }
 
-  function createSession(userId) {
+  function createSession(userId, scope = '') {
     const token = newToken();
     const now = Date.now();
-    q('INSERT INTO sessions (token_hash, user_id, created_at, last_used) VALUES (?, ?, ?, ?)').run(sha256(token), userId, now, now);
+    q('INSERT INTO sessions (token_hash, user_id, created_at, last_used, scope) VALUES (?, ?, ?, ?, ?)').run(sha256(token), userId, now, now, scope);
     return token;
   }
 
@@ -3430,7 +3433,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   Object.assign(routes, ops.routes);
   // the operator site's own login (two wrong tries: a wait that doubles); while stopped, the developer's only
   const opsLogin = createOpsLogin({
-    q, findByName, isOperator: ops.isOperator, createSession, seenOn,
+    q, findByName, isOperator: ops.isOperator, isViewer: ops.isViewer, createSession, seenOn,
     rate: (req) => rate(limit.login, req.ip, '試行回数が多すぎます。しばらく待ってからお試しください'),
     // during a lockdown the operators still come in to reach the security base;
     // during a plain emergency stop, only the developer
@@ -3465,7 +3468,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const operatorsOnlineNow = () => { const now = Date.now(); return ops.operatorList().filter((o) => o.operator && o.id && now - (opsSeen.get(o.id) || 0) < 40000).length; };
   // the operator site's サーバー tab (every operator)
   routes['GET /api/ops/server'] = (req, u) => {
-    ops.need(u);
+    ops.see(u);
     return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on } };
   };
   // the developer tries the Discord notices: one goes out at once
@@ -3486,7 +3489,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // not reach the lockdown — blocking an address, account or device, or
   // lifting one (manual blocks are logged)
   routes['GET /api/ops/security'] = (req, u) => {
-    ops.need(u);
+    ops.see(u);
     return { shield: shield.snapshot(), emergency: emergency.info(), now: Date.now() };
   };
   routes['POST /api/ops/security/block'] = async (req, u) => {
@@ -3695,6 +3698,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return out;
   }
 
+  // All a 閲覧者's site session ('view') may ever reach: reads of what an
+  // operator sees, minus the players' list, the archive, the vault, the chats,
+  // the backups and the payments; and logging out. Anything else, game or
+  // site, is refused before its route runs (and each of these checks for an
+  // operator or a viewer on its own).
+  const VIEW_ONLY = new Set([
+    'GET /api/ops/me', 'GET /api/ops/alive', 'GET /api/ops/counts', 'GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback',
+    'GET /api/ops/log', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security',
+    'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify', 'POST /api/logout'
+  ]);
+
   // what still comes in while the server is stopped for an emergency: the
   // developer's way back in
   const WHILE_STOPPED = new Set(['POST /api/ops/login', 'GET /api/ops/me', 'GET /api/emergency', 'POST /api/emergency/release']);
@@ -3727,6 +3741,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!PUBLIC.has(key)) {
         user = authUser(req);
         req.userId = user.id;
+        // a viewer's look-only session: the allowlist, and only while they still are one
+        if (user.scope === 'view') {
+          if (!ops.isViewer(user)) throw new ApiError(401, 'ended', '閲覧者の権限がなくなったため、ログアウトされました');
+          if (!VIEW_ONLY.has(key)) throw new ApiError(403, 'viewer', '閲覧者は見ることだけができます（この操作はできません）');
+        }
         // during a plain emergency stop only the developer passes; during a
         // lockdown WHILE_LOCKED already allows only the security base, whose
         // routes check for an operator themselves

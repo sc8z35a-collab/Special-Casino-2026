@@ -5,6 +5,9 @@
 // another over a channel whose messages are sealed at rest, and raise or lift
 // the lockdown. It keeps working during a lockdown, when everything else is
 // shut: that is the point of it.
+// A 閲覧者 (server/core/ops.js) looks at the status and the log, read-only
+// (the log without its requests and details); never the sealed channel, and
+// never the lockdown. Their rights taken away, they are out at once.
 import { ApiError } from './errors.js';
 import { sealText, openText, keyFrom } from './auth.js';
 
@@ -21,6 +24,10 @@ export function createSec({ q, getUser, ops, emergency, shield, opsLog, health, 
   // operator site too, so it cannot tell the two apart)
   const here = new Map();
   const needOperator = (u) => { ops.need(u); here.set(u.id, Date.now()); return u; };
+  // an operator or a viewer (only the reads)
+  const needSee = (u) => { ops.see(u); here.set(u.id, Date.now()); return u; };
+  const viewing = (u) => !ops.isOperator(u);
+  const bare = (e) => ({ id: e.id, at: e.at, jst: e.jst, actor: e.actor, action: e.action, kind: e.kind, target: e.target, summary: e.summary, prevHash: e.prevHash, hash: e.hash });
 
   function channelMessage(r) {
     return { id: r.id, from: { id: r.from_id, name: r.from_name }, text: openText(KEY, r.body) || '（読み取れません）', at: r.created_at };
@@ -41,15 +48,21 @@ export function createSec({ q, getUser, ops, emergency, shield, opsLog, health, 
 
   const routes = {
     'GET /api/sec/me': (req, u) => {
-      needOperator(u);
+      needSee(u);
       if (seen) seen.set(u.id, Date.now());
-      return { id: u.id, name: u.name, developer: isDeveloper(u), now: Date.now() };
+      return { id: u.id, name: u.name, developer: isDeveloper(u), viewer: viewing(u), now: Date.now() };
     },
 
     // the realtime cyber-security view of the server and of TWO STATE
     'GET /api/sec/status': (req, u) => {
-      needOperator(u);
+      needSee(u);
       if (seen) seen.set(u.id, Date.now());
+      if (viewing(u)) {
+        return {
+          now: Date.now(), viewer: true, emergency: emergency.info(), shield: shield.snapshot(), health: health(), operators: operatorsNow(),
+          security: opsLog.list({ kind: 'security', limit: 12 }).map(bare), emergencyLog: opsLog.list({ kind: 'emergency', limit: 12 }).map(bare)
+        };
+      }
       return {
         now: Date.now(),
         emergency: emergency.info(),
@@ -65,15 +78,16 @@ export function createSec({ q, getUser, ops, emergency, shield, opsLog, health, 
 
     // the operators' log, the same the operator site shows (read-only here)
     'GET /api/sec/log': (req, u) => {
-      needOperator(u);
+      needSee(u);
       const before = Number(req.query.get('before')) || 0;
-      return { entries: opsLog.list({ before, find: req.query.get('q') || '', kind: req.query.get('kind') || '' }), counts: before ? null : opsLog.counts(), now: Date.now() };
+      const entries = opsLog.list({ before, find: req.query.get('q') || '', kind: req.query.get('kind') || '' });
+      return { entries: viewing(u) ? entries.map(bare) : entries, counts: before ? null : opsLog.counts(), now: Date.now() };
     },
 
     // the log's integrity (the tamper check), asked on its own so it never
     // slows the status panel
     'GET /api/sec/verify': async (req, u) => {
-      needOperator(u);
+      needSee(u);
       return opsLog.verify();
     },
 

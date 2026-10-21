@@ -164,21 +164,25 @@
     <button class="btn wide" id="log-more" type="button" hidden>さらに読み込む</button>
   </section>
 
-  <!-- 運営者: rights given and taken away with the developer code -->
+  <!-- 運営者: rights (operators', viewers') given and taken away by the developer alone, with the developer code -->
   <section class="view" id="view-operators" hidden>
     <div class="view-head">
       <h2>運営者</h2>
-      <form class="grant" id="op-grant" autocomplete="off">
+      <form class="grant" id="op-grant" autocomplete="off" hidden>
         <input class="search" id="op-grant-name" type="text" placeholder="プレイヤー名" spellcheck="false" autocapitalize="off">
         <button class="btn primary small" type="submit">運営権を付与</button>
+        <button class="btn small" type="button" id="op-grant-viewer">閲覧者にする</button>
       </form>
     </div>
-    <p class="hint muted">付与と剥奪には「開発者コード」が必要です。剥奪された人はすぐ全端末でログアウトされ、運営サイトに入れなくなります。開発者は剥奪・アクセス禁止・BANできません。</p>
+    <p class="hint muted" id="op-hint">権限の付与と剥奪は開発者だけが「開発者コード」でできます。運営権を剥奪された人はすぐ全端末でログアウトされ、運営サイトに入れなくなります。開発者は剥奪・アクセス禁止・BANできません。</p>
     <div class="devcode" id="op-devcode" hidden>
       <p id="op-devcode-text"></p>
       <button class="btn small" type="button" id="op-devcode-btn">開発者コードを登録</button>
     </div>
     <div class="cards" id="op-list"></div>
+    <h3 class="op-sub">閲覧者</h3>
+    <p class="hint muted">運営サイトと security HOME を<b>見ることだけ</b>ができる人です（プレイヤー一覧・アーカイブ・保管庫・チャット・バックアップ・課金は見られず、操作は一切できません）。剥奪するとその場で運営サイトと security HOME からログアウトされます（ゲームはそのまま）。</p>
+    <div class="cards" id="op-viewers"></div>
   </section>
 
   <!-- 課金 (開発者支援): who paid, waiting for the developer's words (the developer's own) -->

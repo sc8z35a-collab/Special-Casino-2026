@@ -223,10 +223,17 @@
     closeChat();
     clearInterval(timer);
     clearInterval(liveTimer);
+    clearInterval(aliveTimer);
     setTimeout(function () { $('#login-name').focus(); }, 50);
   }
   function signedOut(message) {
     setToken(null);
+    // a viewer: nothing they saw stays in the page (it starts over, the reason kept for the login)
+    if (state.viewer) {
+      try { sessionStorage.setItem('ops-out', message || ''); } catch (e) { /* the login says nothing then */ }
+      location.reload();
+      return;
+    }
     showLogin(message);
   }
   // this browser's own id (two wrong logins make it wait: server/core/opslogin.js)
@@ -288,13 +295,29 @@
   }
 
   /* ------------------------------------------------------------ views --- */
+  // what a 閲覧者 never sees (the server refuses it anyway): the players'
+  // list and the archive, the operators' chat, the payments and the vault
+  var VIEWER_HIDDEN = ['players', 'archive', 'team', 'pay', 'vault'];
   function start(me) {
     $('#login').hidden = true;
     $('#app').hidden = false;
-    $('#op-name').textContent = (me.developer ? '開発者: ' : '運営者: ') + me.name;
+    $('#op-name').textContent = (me.developer ? '開発者: ' : me.viewer ? '閲覧者: ' : '運営者: ') + me.name;
     state.name = me.name;
     state.developer = !!me.developer;
+    state.viewer = !!me.viewer;
     state.devCodeSet = !!me.devCodeSet;
+    document.body.classList.toggle('role-viewer', state.viewer);
+    Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.hidden = state.viewer && VIEWER_HIDDEN.indexOf(t.dataset.view) >= 0; });
+    if (state.viewer) {
+      // looking only: no players' list to load, the counts on their own, and
+      // every 2 seconds the question whether they still may (taken away: out)
+      $('#tab-pay').hidden = true;
+      $('#tab-vault').hidden = true;
+      loadCounts();
+      setView('reports');
+      startTimers();
+      return;
+    }
     // 課金: the developer's own; 保管庫: every operator (their own and the shared vaults; the developer's own changes with the code)
     $('#tab-pay').hidden = !state.developer;
     $('#tab-vault').hidden = false;
@@ -308,11 +331,34 @@
     loadTeam(true);
     startTimers();
   }
+  // a viewer's tabs: what waits in each (they have no players' list to bring them)
+  function loadCounts() {
+    return request('GET', '/api/ops/counts').then(function (r) {
+      setCount('reports', r.reports || 0);
+      setCount('detections', r.detections || 0);
+      setCount('feedback', r.feedback || 0);
+    }, function () {});
+  }
+  // a viewer: still one? (asked every 2 seconds while the page is seen; the answer 401 logs out)
+  var aliveTimer = 0;
+  function alive() {
+    if (!state.viewer || !token || document.hidden) return;
+    request('GET', '/api/ops/alive').catch(function () {});
+  }
   // the lists at one speed, the live views at a faster one (while the page is seen)
   function startTimers() {
     clearInterval(timer);
+    clearInterval(aliveTimer);
+    if (state.viewer) aliveTimer = setInterval(alive, 2000);
     timer = setInterval(function () {
       if (document.hidden || !$('#dialog').hidden || !$('#money').hidden) return;
+      if (state.viewer) {
+        loadCounts();
+        if (state.view === 'reports') loadReports(true);
+        else if (state.view === 'detections') loadDetections(true);
+        else if (state.view === 'feedback') loadFeedback(true);
+        return;
+      }
       load(true);
       if (state.view === 'reports') loadReports(true);
       else if (state.view === 'detections') loadDetections(true);
@@ -432,6 +478,7 @@
     var n = el('b', '', p.name);
     if (p.developer) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag maker', '開発者')); }
     if (p.operator) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag op', '運営')); }
+    if (p.viewer) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag t-viewer', '閲覧者')); }
     if (p.vip !== null && p.vip !== undefined) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag vip vip-' + p.vip, 'VIP' + p.vip)); }
     if (p.chatBan) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag chatban', 'チャット停止')); }
     t.appendChild(n);
@@ -1364,7 +1411,8 @@
     list.appendChild(el('p', 'muted', '読み込み中…'));
     request('GET', '/api/ops/operators').then(function (r) {
       state.operators = r.operators || [];
-      state.devCodeSet = !!r.devCodeSet;
+      state.viewers = r.viewers || [];
+      if (r.devCodeSet !== undefined) state.devCodeSet = !!r.devCodeSet;
       renderOperators();
     }, fail);
   }
@@ -1388,7 +1436,7 @@
       var a = el('div', 'acts');
       if (o.changed && !o.developer) a.appendChild(el('span', 'muted', stamp(o.changed.at) + ' に' + (o.changed.by ? o.changed.by + 'が' : '') + (o.changed.granted ? '付与' : '剥奪')));
       if (o.developer) a.appendChild(el('span', 'muted', '開発者の運営権は剥奪できません'));
-      else if (o.registered) {
+      else if (o.registered && state.developer) {
         var b = el('button', o.operator ? 'btn small danger' : 'btn small', o.operator ? '運営権を剥奪する' : '運営権を戻す');
         b.type = 'button';
         b.dataset.opAct = o.operator ? 'revoke' : 'grant';
@@ -1398,6 +1446,48 @@
       card.appendChild(a);
       list.appendChild(card);
     });
+    // rights: the developer only
+    $('#op-grant').hidden = !state.developer;
+    renderViewers();
+  }
+  // the viewers (閲覧者), each with when; the developer takes it away
+  function renderViewers() {
+    var box = $('#op-viewers');
+    box.textContent = '';
+    if (!(state.viewers || []).length) { box.appendChild(el('p', 'muted', '閲覧者はいません')); return; }
+    state.viewers.forEach(function (v) {
+      var card = el('article', 'card');
+      var head = el('div', 'card-head');
+      head.appendChild(person({ id: v.id, name: v.name, avatar: v.avatar }, v.site ? '運営サイトを見ています' : v.online ? 'ゲーム中' : '付与 ' + stamp(v.at) + (v.by ? '（' + v.by + '）' : '')));
+      head.appendChild(el('span', 'kind k-viewer', '閲覧者'));
+      card.appendChild(head);
+      if (state.developer) {
+        var a = el('div', 'acts'), b = el('button', 'btn small danger', '閲覧者の権限を剥奪する');
+        b.type = 'button';
+        b.dataset.viewerAct = 'revoke';
+        b.dataset.name = v.name;
+        a.appendChild(b);
+        card.appendChild(a);
+      }
+      box.appendChild(card);
+    });
+  }
+  function changeViewer(action, name, b) {
+    var revoke = action === 'revoke';
+    withCode(revoke
+      ? { title: name + ' さんの閲覧者の権限を剥奪しますか？', text: name + ' さんはすぐに運営サイトと security HOME からログアウトされます（ゲームはそのまま遊べます）。', ok: '剥奪する', danger: true }
+      : { title: name + ' さんを閲覧者にしますか？', text: name + ' さんは運営サイトと security HOME を見ることだけができるようになります（プレイヤー一覧・アーカイブ・保管庫・チャット・バックアップ・課金は見られず、操作は一切できません）。', ok: '閲覧者にする' }
+    ).then(function (code) {
+      if (code === null) return null;
+      if (b) b.disabled = true;
+      return request('POST', '/api/ops/viewer', { name: name, action: action, code: code }).then(function (r) {
+        toast(revoke ? name + ' さんの閲覧者の権限を剥奪しました' : name + ' さんを閲覧者にしました');
+        state.operators = r.operators || state.operators;
+        state.viewers = r.viewers || [];
+        renderOperators();
+        $('#op-grant-name').value = '';
+      });
+    }).catch(function (err) { if (b) b.disabled = false; fail(err); });
   }
   // the developer code for one action (asked every time, never kept here)
   function withCode(o) {
@@ -1425,6 +1515,8 @@
     if (o && Number(o.dataset.open)) { openDetail(Number(o.dataset.open)); return; }
     var b = e.target.closest('[data-op-act]');
     if (b) changeAccess(b.dataset.opAct, b.dataset.name, b);
+    var v = e.target.closest('[data-viewer-act]');
+    if (v) changeViewer(v.dataset.viewerAct, v.dataset.name, v);
   }
   function onGrant(e) {
     e.preventDefault();
@@ -4091,7 +4183,13 @@
     });
     $('#fb-list').addEventListener('click', onFeedback);
     $('#op-list').addEventListener('click', onOperators);
+    $('#op-viewers').addEventListener('click', onOperators);
     $('#op-grant').addEventListener('submit', onGrant);
+    $('#op-grant-viewer').addEventListener('click', function () {
+      var name = $('#op-grant-name').value.trim();
+      if (!name) { toast('閲覧者にするプレイヤーの名前を入力してください'); return; }
+      changeViewer('grant', name, null);
+    });
     $('#op-devcode-btn').addEventListener('click', registerCode);
     $('#log-search').addEventListener('input', function () {
       clearTimeout(logTimer);
@@ -4259,8 +4357,13 @@
       if (!$('#chat').hidden) { closeChat(); return; }
       closeDetail();
     });
-    if (!token) { showLogin(''); return; }
+    // (a viewer logged out a moment ago: why)
+    var out = '';
+    try { out = sessionStorage.getItem('ops-out') || ''; sessionStorage.removeItem('ops-out'); } catch (e) { /* none */ }
+    if (!token) { showLogin(out); return; }
     request('GET', '/api/ops/me').then(start, function (err) { if (err.status !== 401 && err.code !== 'not_operator') showLogin(err.message); });
+    // (back in sight: a viewer asks at once whether they still may)
+    document.addEventListener('visibilitychange', alive);
   }
 
   init();
