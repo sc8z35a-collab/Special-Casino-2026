@@ -144,7 +144,7 @@ test('the emergency stop: far above the usual two minutes running, a 緊急 entr
   }
 });
 
-test('プレイヤーアーカイブ: a 永久BAN goes there and comes back when lifted; a deleted account (the developer, with the code) never does, nor the same-device accounts; 90 days later all of it goes', async () => {
+test('プレイヤーアーカイブ: a 永久BAN goes there and comes back when lifted; a deleted account (the developer, with the code) never does, nor the same-device accounts; 90 days later their data goes but what was said stays', async () => {
   const s = await startServer({ operators: ['taku', 'mod1'] });
   try {
     const { call } = await developer(s);
@@ -155,6 +155,10 @@ test('プレイヤーアーカイブ: a 永久BAN goes there and comes back when
     const other = await s.register('Other1');
     await s.befriend(bad, other);
     await s.call('POST', '/api/messages', { token: bad.token, body: { to: other.me.id, text: 'こんにちは' } });
+    // money the deleted one never tapped goes back when the data goes
+    s.app.db.prepare('UPDATE users SET dollars = 1000 WHERE id = ?').run(other.me.id);
+    const sent = await s.call('POST', '/api/transfer', { token: other.token, body: { to: bad.me.id, amount: 300, currency: 'dollars' } });
+    assert.equal(sent.status, 200, JSON.stringify(sent));
 
     // 永久BAN: to the archive and back
     await ops('POST', '/api/ops/ban', { id: other.me.id, kind: 'perma' });
@@ -186,14 +190,27 @@ test('プレイヤーアーカイブ: a 永久BAN goes there and comes back when
     assert.deepEqual(a2.map((x) => [x.name, x.archive.reason, x.withName]).sort(), [['Bad1', 'deleted', ''], ['Bad2', 'deleted', 'Bad1']]);
     assert.ok((await call('GET', '/api/ops/log?kind=security')).entries.some((e) => e.action === 'account_delete'));
 
-    // 90 days later
+    // 90 days later: their data goes, what was said stays (only a name on it)
     s.app.db.prepare('UPDATE users SET purge_at = ? WHERE archived_at > 0').run(Date.now() - 1);
     await s.app.api.housekeeping();
     const left = (t, col, id) => s.app.db.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE ${col} = ?`).get(id).n;
-    assert.equal(left('users', 'id', bad.me.id) + left('users', 'id', sub.me.id), 0);
-    assert.equal(left('messages', 'sender_id', bad.me.id) + left('friends', 'user_id', bad.me.id) + left('devices', 'user_id', bad.me.id), 0);
+    assert.equal(left('friends', 'user_id', bad.me.id) + left('devices', 'user_id', bad.me.id) + left('sessions', 'user_id', bad.me.id), 0);
     assert.equal(left('friends', 'friend_id', bad.me.id), 0, 'gone from the friend too');
+    assert.equal(left('messages', 'sender_id', bad.me.id), 1, 'what they said stays');
+    assert.equal(left('conversations', 'other_id', bad.me.id), 1, 'in the friend\'s chats too');
+    const tomb = s.app.db.prepare('SELECT * FROM users WHERE id = ?').get(bad.me.id);
+    assert.deepEqual([tomb.name, tomb.name_key, tomb.password_hash, tomb.created_ip, tomb.dollars, tomb.ban_kind, tomb.purge_at, tomb.purged_at > 0],
+      ['Bad1（削除済み）', `gone:${bad.me.id}`, '', '', 0, 'deleted', 0, true]);
     assert.equal(left('users', 'id', other.me.id), 1, 'the others stay');
+    const chat = await s.call('GET', `/api/messages?with=${bad.me.id}`, { token: other.token });
+    assert.deepEqual(chat.messages.filter((m) => m.kind === 'text').map((m) => [m.text, m.from.name]), [['こんにちは', 'Bad1（削除済み）']]);
+    assert.deepEqual(chat.messages.filter((m) => m.kind === 'transfer').map((m) => [m.amount, m.claimed, m.returned]), [[300, true, true]]);
+    assert.equal(s.app.db.prepare('SELECT dollars FROM users WHERE id = ?').get(other.me.id).dollars, 1000, 'back to the friend');
+    assert.equal((await ops('GET', '/api/ops/archive')).players.length, 0, 'out of the archive');
+    assert.equal((await s.call('POST', '/api/login', { body: { name: 'Bad1', password: 'pass1234' } })).status, 401, 'no way in');
+    assert.equal((await call('POST', '/api/ops/ban', { id: bad.me.id, kind: 'none' })).error.code, 'deleted', 'never back');
+    const again = await s.register('Bad1');
+    assert.ok(again.me.id && again.me.id !== bad.me.id, 'the name is free again');
     const purged = (await call('GET', '/api/ops/log?kind=security')).entries.filter((e) => e.action === 'account_purge');
     assert.equal(purged.length, 2);
     assert.equal((await call('GET', '/api/ops/log/verify')).ok, true, 'the log stays whole');

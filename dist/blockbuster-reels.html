@@ -1193,6 +1193,7 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 .pf-chip.friend { background: rgba(80, 200, 110, .22); color: #8ff09c; }
 .pf-chip.hub { background: rgba(255, 120, 214, .22); color: #ffb0e6; }
 .pf-chip.op { background: rgba(120, 190, 255, .22); color: #bfe0ff; }
+.pf-chip.viewer { background: rgba(176, 146, 255, .24); color: #ddd0ff; }
 .pf-top .pf-since { margin-top: 10px; text-align: left; }
 .profile-card .modal-x { top: 26px; right: 26px; }
 .profile-card .pf-stats, .profile-card .pf-actions, .profile-card .pf-blocks { margin-left: 44px; margin-right: 44px; }
@@ -1871,6 +1872,17 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 .call-icon .ic { width: 32px; height: 32px; }
 .call-icon.off { background: rgba(229, 38, 43, .35); }
 .call-icon.end { background: #e5262b; }
+.call-icon.on { background: rgba(255, 255, 255, .34); }
+/* the call's two volumes (ボイス・効果音): under the bar, or over it when the bar sits low */
+.call-vol { position: absolute; top: calc(100% + 12px); right: 0; z-index: 2; width: 460px; padding: 16px 22px; display: flex; flex-direction: column; gap: 12px; border-radius: 22px; background: rgba(12, 30, 16, .96); box-shadow: inset 0 0 0 2px rgba(110, 230, 130, .7), 0 10px 26px rgba(0, 0, 0, .55); }
+.call-vol[hidden] { display: none; }
+.call-vol-row { display: flex; align-items: center; gap: 16px; font-size: 22px; font-weight: 700; }
+.call-vol-row span { flex: none; width: 90px; }
+.call-vol-row input { flex: 1; min-width: 0; height: 40px; accent-color: #6ee682; }
+.call-vol-row b { flex: none; width: 74px; text-align: right; font-variant-numeric: tabular-nums; }
+.call-bar.hub .call-vol { background: rgba(40, 8, 34, .96); box-shadow: inset 0 0 0 2px rgba(255, 140, 220, .7), 0 10px 26px rgba(0, 0, 0, .55); }
+.call-bar.hub .call-vol-row input { accent-color: #ff8ad8; }
+#stage.watching[data-screen="slot"] .call-vol { top: auto; bottom: calc(100% + 12px); left: 0; right: auto; }
 .call-icon:active { transform: scale(.92); }
 .call-icon:disabled { opacity: .4; }
 .call-in { position: absolute; left: 0; right: 0; top: 110px; z-index: 88; display: flex; justify-content: center; pointer-events: none; }
@@ -5473,6 +5485,39 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 .car-deal.can-claim .pr-state { background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; }
 .car-deal button.xfer-card { font: inherit; color: inherit; }
 .car-deal button.xfer-card:active { transform: scale(.97); }
+
+/* ------------------------------------------------------------ VIP: the free trial, まとめ買い --- */
+.vp-left { overflow-y: auto; padding-right: 8px; }
+.vp-left > * { flex: none; }
+.vp-trial { display: flex; align-items: center; gap: 18px; padding: 16px 20px; border-radius: 10px; background: linear-gradient(120deg, rgba(122, 215, 255, .22), rgba(167, 123, 255, .26) 40%, rgba(255, 111, 177, .26) 75%, rgba(255, 211, 106, .22)); box-shadow: inset 0 0 0 2px rgba(214, 180, 255, .6); }
+.vp-trial[hidden] { display: none; }
+.vp-trial-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.vp-trial-text b { font-size: 25px; font-weight: 900; color: #fff; }
+.vp-trial-text small { font-size: 18px; font-weight: 700; line-height: 1.35; color: #e9ddf5; }
+.vp-trial-go { flex: none; height: 64px; padding: 0 26px; border-radius: 12px; background: linear-gradient(180deg, #fff3b0, #f2c94a 45%, #c8901c); color: #3a2600; font-size: 24px; font-weight: 900; box-shadow: 0 3px 0 #7a5208, inset 0 0 0 1.5px rgba(255, 255, 255, .6); }
+.vp-trial-go[hidden] { display: none; }
+.vp-trial-go:disabled { filter: grayscale(.6) brightness(.8); }
+.vp-trial.on .vp-trial-text b { font-family: var(--f-num); }
+.vp-packs { padding: 14px 18px 18px; border-radius: 10px; background: linear-gradient(180deg, rgba(120, 10, 30, .95), rgba(50, 4, 12, .95)); box-shadow: inset 0 0 0 2px rgba(255, 98, 98, .6), 0 0 18px rgba(255, 60, 60, .25); }
+.vp-packs[hidden] { display: none; }
+.vp-packs-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.vp-packs-head b { padding: 4px 14px; border-radius: 6px; background: linear-gradient(180deg, #ff5a5a, #c9102c); color: #fff; font-size: 22px; font-weight: 900; letter-spacing: 1px; box-shadow: 0 2px 0 #6e0414; animation: vpSale 1.4s ease-in-out infinite; }
+.vp-packs-head span { font-size: 19px; font-weight: 700; color: #f3d7da; }
+@keyframes vpSale { 50% { transform: scale(1.06); } }
+.vp-packs-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.vp-pack { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 26px 6px 10px; border-radius: 10px; background: rgba(0, 0, 0, .35); box-shadow: inset 0 0 0 1.6px rgba(248, 207, 44, .5); color: #fff; }
+.vp-pack:disabled { opacity: .55; }
+.vp-pack .vp-pack-deal { position: absolute; left: 50%; top: -10px; transform: translateX(-50%); padding: 3px 10px; border-radius: 999px; background: #ffe27a; color: #6e0414; font: 900 18px/1.2 var(--f-num); white-space: nowrap; box-shadow: 0 2px 6px rgba(0, 0, 0, .4); }
+.vp-pack .vp-pack-days { font: 900 34px/1 var(--f-num); }
+.vp-pack .vp-pack-days small { font-size: 20px; margin-left: 2px; }
+.vp-pack .vp-pack-bonus { font-size: 19px; font-weight: 900; color: #7dffa8; }
+.vp-pack .vp-pack-price { display: flex; align-items: center; gap: 4px; margin-top: 4px; font: 800 20px var(--f-num); color: #eadfc0; }
+.vp-pack .vp-pack-price .ic { width: 26px; height: 26px; }
+.vp-pack.best { box-shadow: inset 0 0 0 2.4px #ffe27a, 0 0 16px rgba(255, 226, 122, .45); }
+.vp-rule { margin: 0; font-size: 17px; font-weight: 700; color: #b3a7aa; }
+.vp-state .vp-clock { font-family: var(--f-num); }
+.vp-state.trial { background: rgba(167, 123, 255, .28); box-shadow: inset 0 0 0 1.6px rgba(214, 180, 255, .7); color: #f1e4ff; }
+.vp-pack.short .vp-pack-price { color: #ff8f8f; }
 </style>
 </head>
 <body>
@@ -5843,11 +5888,21 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
         <span class="vp-state" id="vp-state"></span>
       </div>
       <div class="vp-body">
-        <div class="vp-left">
+        <div class="vp-left scroller" id="vp-left">
+          <!-- the free trial (once, for one who never had VIP), and while it lasts -->
+          <div class="vp-trial" id="vp-trial" hidden>
+            <div class="vp-trial-text"><b id="vp-trial-title"></b><small id="vp-trial-sub"></small></div>
+            <button class="vp-trial-go" id="vp-trial-go" type="button">無料で試す</button>
+          </div>
           <div class="vp-exp">
             <div class="vp-exp-head"><span>VIP EXP</span><b id="vp-exp"></b></div>
             <div class="vp-bar"><i id="vp-bar"></i></div>
             <p class="vp-exp-note" id="vp-exp-note"></p>
+          </div>
+          <!-- まとめ買い (今だけ特大セール) -->
+          <div class="vp-packs" id="vp-packs" hidden>
+            <div class="vp-packs-head"><b id="vp-packs-sale"></b><span>まとめて買うと日数おまけ</span></div>
+            <div class="vp-packs-list" id="vp-packs-list"></div>
           </div>
           <div class="vp-buy">
             <div class="vp-days">
@@ -5859,6 +5914,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
             </div>
             <div class="vp-cost" id="vp-cost"></div>
             <button class="action-btn vp-go" id="vp-go" type="button"></button>
+            <p class="vp-rule">1日 = 24時間（有効にした時刻から。延長は今の期限からさらに24時間ずつ）</p>
           </div>
         </div>
         <div class="vp-right scroller" id="vp-right"><table class="vp-table" id="vp-table"></table></div>
@@ -6108,7 +6164,13 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       <div class="call-id"><b class="uname" id="call-name"></b><span id="call-state"></span></div>
       <button class="call-icon" id="call-mute" aria-label="マイクのオン・オフ"><i class="ic ic-mic-on"></i></button>
       <button class="call-icon" id="call-deaf" aria-label="相手の声のオン・オフ"><i class="ic ic-speaker"></i></button>
+      <button class="call-icon" id="call-vol" aria-label="音量（ボイスと効果音）" aria-expanded="false"><i class="ic ic-sliders"></i></button>
       <button class="call-icon end" id="call-end" aria-label="通話を終了"><i class="ic ic-hangup"></i></button>
+      <!-- the call's two volumes: everyone's voices, and the game's sound effects while it lasts -->
+      <div class="call-vol" id="call-vol-panel" hidden>
+        <label class="call-vol-row"><span>ボイス</span><input type="range" id="call-vol-voice" min="0" max="100" step="5" aria-label="ボイスの音量"><b id="call-vol-voice-n"></b></label>
+        <label class="call-vol-row"><span>効果音</span><input type="range" id="call-vol-sfx" min="0" max="100" step="5" aria-label="効果音の音量"><b id="call-vol-sfx-n"></b></label>
+      </div>
     </div>
     <div id="call-audios" hidden></div>
 
@@ -6413,6 +6475,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     // play a recorded voice again
     speaker: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M5,15H12L21,7V33L12,25H5Z" fill="#fff"/><path d="M26,14Q30,20 26,26M30.5,10Q37.5,20 30.5,30" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>',
     speakerOff: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M5,15H12L21,7V33L12,25H5Z" fill="#fff" opacity=".55"/><path d="M26,14Q30,20 26,26M30.5,10Q37.5,20 30.5,30" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".55"/><path d="M6,5L34,35" stroke="#ff5a4f" stroke-width="4" stroke-linecap="round"/></svg>',
+    // the call's volumes (ボイス and 効果音): two sliders
+    sliders: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M13,6V34M27,6V34" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".55"/><rect x="7.5" y="20" width="11" height="7" rx="3.5" fill="#fff"/><rect x="21.5" y="11" width="11" height="7" rx="3.5" fill="#fff"/></svg>',
     // the chat of a home (a speech bubble)
     chat: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M7,6H33Q37,6 37,10V25Q37,29 33,29H19L10.5,35.5V29H7Q3,29 3,25V10Q3,6 7,6Z" fill="#fff"/><circle cx="12.5" cy="17.5" r="2.4" fill="#2a0408"/><circle cx="20" cy="17.5" r="2.4" fill="#2a0408"/><circle cx="27.5" cy="17.5" r="2.4" fill="#2a0408"/></svg>'
   };
@@ -6653,7 +6717,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 </script>
 <script>
 /* Generated by tools/stamp.mjs: the build this page belongs to. */
-(function (BR) { BR.BUILD = '13c7b030ff18'; })(window.BR = window.BR || {});
+(function (BR) { BR.BUILD = '8f217d554c1d'; })(window.BR = window.BR || {});
 </script>
 <script>
 /* Small helpers shared by every module. */
@@ -6894,6 +6958,9 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     // アクセス日数 (login days, all told): Ice Smoker公式 sends `amount` $
     // by itself on each of these (not to a 永久BAN account)
     accessDays: { at: [5, 10, 15, 20, 25, 30, 35], amount: 250000 },
+    // 登録者数の記念: when the accounts registered reach `players`, Ice
+    // Smoker公式 sends everyone then (not the プレイヤーアーカイブ) `dollars` $, once
+    milestones: [{ players: 10, dollars: 100000 }, { players: 20, dollars: 200000 }, { players: 50, dollars: 500000 }],
     tokenPrice: 10,          // $ per spin token
     dailyLimit: 10000000,    // spin tokens that can be bought per UTC day
     dailyFree: 1000,         // free tokens claimable once per UTC day
@@ -6931,9 +6998,16 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     // worked pay `wage[level]` times and an ULTRA BIG WIN `ultra` times;
     // calls at `voice` kbit/s (no VIP, VIP0-1, VIP2-3: the best in a call for
     // everyone in it). `cars` in the Car Owner list with `vip` are for that level on.
+    // A day of VIP is 24 hours from when it starts (or from the end of the days
+    // already bought). `packs`: まとめ買い, `days` paid for with `bonus` more
+    // free (`sale`: its label; '' ends it). `trial`: VIP`level` for `days`
+    // days, free, once in a player's life for one who never had VIP; days
+    // bought during it come after it, at the player's own level (VIP0 at first).
     vip: {
       coins: 4,
       maxDays: 365,
+      packs: { sale: '今だけ特大セール', list: [{ days: 10, bonus: 2 }, { days: 20, bonus: 7 }, { days: 30, bonus: 12 }, { days: 40, bonus: 25 }] },
+      trial: { days: 3, level: 3 },
       refund: { from: 1, coins: 2 },
       exp: { win: 4, quest: 0.1, ultra: 250, car: 30 },
       levels: [0, 1200, 2100, 4500],
@@ -6942,7 +7016,11 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       garageOff: 40,
       wage: [1, 2.5, 2.5, 3],
       ultra: 1.3,
-      voice: [32, 48, 64]
+      // a call's Opus bitrate (kbps) by tier: no VIP, VIP0-1, VIP2-3, and the
+      // one above VIP3; `voiceAll`: the tier every call has at least, for now
+      // (the paid plan has plenty of room: everyone gets more than VIP3)
+      voice: [32, 48, 64, 96],
+      voiceAll: 3
     },
     // 運営へのメッセージ・報告・意見案・通報・プレイヤー間のメッセージ: more than
     // `chars` characters or `bytes` bytes are not sent
@@ -6976,8 +7054,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     // Car Owner shop (price in $); `model`: a 3D model to look at
     // (img/3d/cars/<id>.glb, js/render/garage3d.js)
     cars: [
-      { id: 'two-state-sedan', name: 'Two state セダン', price: 1200000 },
-      { id: 'blue-lightning', name: 'ブルーライトニング', price: 6000000, model: true }
+      { id: 'two-state-sedan', name: 'Two state セダン', price: 26500000 },
+      { id: 'blue-lightning', name: 'ブルーライトニング', price: 65000000, model: true }
     ],
     // the garage holds this many cars; one more place costs `slotPrice` $ (for good, any number)
     garage: { slots: 2, slotPrice: 1000000 },
@@ -7033,13 +7111,16 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     // (then it starts over); a day runs from 6:00 to 6:00 Japan time
     loginBonus: { days: [45000, 50000, 65000, 90000], dayStartsJst: 6 },
     // Peter the money lender ($): never more than `max` in all (counted over
-    // every loan ever made to the player, repaid or not); he offers money on
-    // his own when a player is nearly broke (net worth below `brokeBelow` $)
+    // every loan ever made to the player, repaid or not, those before DEV11
+    // too); he offers money on his own when a player is nearly broke (net
+    // worth below `brokeBelow` $). `voice`: his recorded offers (they say
+    // 500万 and 600万: off while the offers are other amounts)
     lender: {
-      max: 11000000,
+      max: 2500000,
       brokeBelow: 10000,
       minLoan: 10000,
-      offers: [{ amount: 5000000, rate: [2, 5] }, { amount: 6000000, rate: [10, 10] }],
+      offers: [{ amount: 1500000, rate: [2, 5] }, { amount: 1000000, rate: [10, 10] }],
+      voice: false,
       // asked in the chat: like the first offer when nothing is owed, then 10 %
       chatRate: [[2, 5], [10, 10]]
     },
@@ -7599,8 +7680,9 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 <script>
 /* VIP, shared by the browser and the server (server/core/rules.js), so both
    count the same way (the numbers: BR.CONFIG.vip). ロイヤルコイン make days of
-   it; VIP EXP makes its level, VIP0 to VIP3, kept for good; what a level
-   gives only counts while VIP is on. */
+   it (a day: 24 hours), or a まとめ買い pack with free days; VIP EXP makes its
+   level, VIP0 to VIP3, kept for good; what a level gives only counts while
+   VIP is on. The free trial gives VIP3 while it lasts. */
 (function (BR) {
   'use strict';
 
@@ -7613,9 +7695,22 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     return l;
   }
 
+  // the level VIP gives at `now`: the trial's while it lasts, else the EXP's (null: off)
+  function current(until, exp, trialUntil, now) {
+    if (!(until > now)) return null;
+    return trialUntil > now ? V().trial.level : level(exp);
+  }
+
   BR.VIP = {
     day: DAY,
     level: level,
+    current: current,
+    // the same for the account's VIP as the server sends it ({ until, exp, trialUntil })
+    now: function (v, t) { return v ? current(v.until, v.exp, v.trialUntil || 0, t === undefined ? Date.now() : t) : null; },
+    // まとめ買い: the packs on sale now ([]: none), one by its days, and how much more it gives (%)
+    packs: function () { var p = V().packs; return p && p.sale ? p.list : []; },
+    pack: function (days) { return BR.VIP.packs().filter(function (p) { return p.days === days; })[0] || null; },
+    deal: function (p) { return Math.round(p.bonus / p.days * 100); },
     max: function () { return V().levels.length - 1; },
     // { level, exp, from: the EXP this level starts at, next: the next level's (0: the last) }
     info: function (exp) {
@@ -7630,16 +7725,20 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     // what the バイト being worked pay while VIP is on
     wage: function (lv) { return V().wage[lv] || 1; },
     // $ (not rounded) a job paying `wage` an hour has earned from `since` to
-    // `now`, VIP's part (up to `until`) at `mult` times
-    earned: function (wage, since, now, until, mult) {
-      var t = Math.max(0, now - since), v = mult > 1 ? Math.max(0, Math.min(now, until || 0) - since) : 0;
-      return wage * (t + (mult - 1) * v) / 3600000;
+    // `now`, VIP's part (up to `until`) at `mult` times, the trial's (up to
+    // `trialUntil`, inside VIP's) at `trialMult` times
+    earned: function (wage, since, now, until, mult, trialUntil, trialMult) {
+      var on = function (end) { return Math.max(0, Math.min(now, end || 0) - since); };
+      var extra = (mult - 1) * on(until) + (trialMult > mult ? (trialMult - mult) * on(trialUntil) : 0);
+      return wage * (Math.max(0, now - since) + extra) / 3600000;
     },
     // an ULTRA BIG WIN pays this many times
     ultra: function (lv) { return lv >= 1 ? V().ultra : 1; },
     // the call quality tier: 0 no VIP, 1 VIP0-1, 2 VIP2-3 (`lv` null: no VIP)
     tier: function (lv) { return lv === null || lv === undefined ? 0 : lv >= 2 ? 2 : 1; },
     kbps: function (tier) { var k = V().voice; return k[Math.max(0, Math.min(k.length - 1, tier | 0))]; },
+    // the tier every call has for now, whoever is in it (0: none; 3: above VIP3)
+    boost: function () { return V().voiceAll || 0; },
     // a car the level may buy (`vip` on a car: the level it is for)
     carOpen: function (car, lv) { return !car.vip || (lv !== null && lv !== undefined && lv >= car.vip); }
   };
@@ -7658,6 +7757,26 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   'use strict';
 
   BR.NEWS = [
+    {
+      id: 11,
+      date: '2026-10-21',
+      time: '12:00',
+      title: 'DEV11：VIP特大セール・VIP3無料お試し・今だけ全員が最高音質の通話・音量を別々に・登録者数の記念',
+      items: [
+        '今だけ特大セール：VIPをまとめて買うと日数がおまけで付きます（10日分で+2日〔20%お得〕・20日分で+7日〔35%お得〕・30日分で+12日〔40%お得〕・40日分で+25日〔63%お得〕）',
+        'VIPを一度も使ったことがない人は、一生に1回だけ VIP3 を3日間 無料でお試しできます。お試しのあとは、ロイヤルコインで追加した日数ぶん VIP0 に移ります（追加しなければそのまま終了）',
+        'VIPの1日は、有効にした時刻から24時間になりました。残り時間は秒まで表示されます',
+        '今だけ、VIPでなくても全員のボイス通話が VIP3 より高い音質（96kbps）になりました（フレンド・グループ・友達と稼ぐ・ホームのすべての通話）',
+        '通話中の音量ボタンから、「ボイス」と「効果音」の音量を別々に調整できるようになりました（端末に保存されます）',
+        '登録者数の記念：Two state の登録者数が10人・20人・50人を突破すると、そのときの全員に Ice Smoker公式から 100K・200K・500K が届きます（チャットのカードをタップして受け取り）',
+        '車の値段を変更しました：ブルーライトニング $65,000,000・Two state セダン $26,500,000',
+        'マイクソンが貸してくれるのは、これまでに借りた分も含めて累計250万円までになりました（向こうからの話は150万円と100万円）',
+        '戻るボタンで、ひとつ前に開いていた画面に戻るようになりました（1回まで）',
+        'Car Owner の3D：車が勝手に回らなくなり、最初から車に近い位置で見られます。ホイールやピンチで少しズームでき、照明を落としてドラマチックにしました',
+        'チャットの記録をずっと保存するようになりました（ホームのチャットと即席チャットも記録として残ります。画面に残らないのは今までどおりです）',
+        'サーバーの処理を速くしました（プレイ中は、しばらく操作しなかったあとの最初の操作も待たずに動きます）'
+      ]
+    },
     {
       id: 10,
       date: '2026-10-21',
@@ -8398,6 +8517,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     carOfferBuy: function (id) { return post('/api/cars/offer/buy', { id: id }); },
     carSoldClaim: function (id) { return post('/api/cars/sold/claim', { id: id }); },
     vipExtend: function (days) { return post('/api/vip/extend', { days: days }); },
+    vipPack: function (days) { return post('/api/vip/extend', { pack: days }); },
+    vipTrial: function () { return post('/api/vip/trial'); },
 
     /* Shop, 所有 and the お守り加護 */
     items: function () { return get('/api/items'); },
@@ -8498,7 +8619,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   'use strict';
 
   var EVENTS = ['hello', 'msg', 'read', 'typing', 'balance', 'presence', 'friend', 'call', 'watch', 'homechat', 'tip', 'items', 'quest',
-    'battle', 'coop', 'present', 'hub', 'bigwin', 'kick', 'pay', 'support', 'card', 'retract', 'chatban'];
+    'battle', 'coop', 'present', 'hub', 'bigwin', 'kick', 'pay', 'support', 'card', 'retract', 'chatban', 'viewer'];
   var conn = null, want = false, connected = false, timer = 0, backoff = 1000, opening = false, pinger = 0;
   var handlers = {};
 
@@ -8785,9 +8906,27 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   var AC = window.AudioContext || window.webkitAudioContext;
   var ctx = null, master = null, comp = null, verb = null, verbIn = null;
   var muted = false, unlocked = false;
-  // during a voice call phones play everything louder: the game's own sounds step back
-  var ducked = false, DUCK = 0.3;
-  function masterLevel() { return muted ? 0 : ducked ? 0.8 * DUCK : 0.8; }
+  // during a voice call phones play everything louder: the game's own sounds
+  // step back, to the 効果音 volume set in the call bar (30 % at first, kept on this phone)
+  var ducked = false, CALL_SFX = 'blockbuster-reels/call-sfx';
+  var callSfx = (function () {
+    try { var v = localStorage.getItem(CALL_SFX); return v === null || !isFinite(Number(v)) ? 30 : Math.max(0, Math.min(100, Number(v))); } catch (e) { return 30; }
+  })();
+  function duckBy() { return callSfx / 100; }
+  function masterLevel() { return muted ? 0 : ducked ? 0.8 * duckBy() : 0.8; }
+  // the effects (and the title music) to where they should be now, smoothly
+  function level() {
+    if (!ctx || !master) return;
+    var t = ctx.currentTime;
+    master.gain.cancelScheduledValues(t);
+    master.gain.setValueAtTime(master.gain.value, t);
+    master.gain.linearRampToValueAtTime(masterLevel(), t + 0.35);
+    if (music.gain) {
+      music.gain.gain.cancelScheduledValues(t);
+      music.gain.gain.setValueAtTime(music.gain.gain.value, t);
+      music.gain.gain.linearRampToValueAtTime(ducked ? MUSIC_LEVEL * duckBy() : MUSIC_LEVEL, t + 0.35);
+    }
+  }
   var noiseBuf = null;
   var reelLoop = null;
   var feverOn = false;   // FEVER (js/render/combo.js): the reels run faster
@@ -9462,16 +9601,15 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     duck: function (on) {
       if (ducked === !!on) return;
       ducked = !!on;
-      if (!ctx || !master) return;
-      var t = ctx.currentTime;
-      master.gain.cancelScheduledValues(t);
-      master.gain.setValueAtTime(master.gain.value, t);
-      master.gain.linearRampToValueAtTime(masterLevel(), t + 0.35);
-      if (music.gain) {
-        music.gain.gain.cancelScheduledValues(t);
-        music.gain.gain.setValueAtTime(music.gain.gain.value, t);
-        music.gain.gain.linearRampToValueAtTime(ducked ? MUSIC_LEVEL * DUCK : MUSIC_LEVEL, t + 0.35);
-      }
+      level();
+    },
+    // the 効果音 volume while a call is on (0..100; none given: what it is now)
+    callLevel: function (v) {
+      if (v === undefined) return callSfx;
+      callSfx = Math.round(Math.max(0, Math.min(100, Number(v) || 0)));
+      try { localStorage.setItem(CALL_SFX, String(callSfx)); } catch (e) { /* this time only */ }
+      if (ducked) level();
+      return callSfx;
     },
     suspend: function () { if (ctx && ctx.state === 'running') ctx.suspend(); },
     resume: function () { if (ctx && ctx.state === 'suspended' && !muted) ctx.resume().then(musicStart, function () {}); },
@@ -11865,10 +12003,11 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 </script>
 <script>
 /* The cars in 3D: Car Owner's studio and the garage's 3D space.
-   The studio: the car on the round base (its pattern up), lit by two stage
-   lights (a moving head and a spotlight on a stand, each with a real light
-   and a soft beam) in a dark room with a glossy floor; the camera goes round
-   the car by itself, and a drag turns it.
+   The studio: the car on the round base (its pattern up), lit low and
+   dramatic by two stage lights (a moving head and a spotlight on a stand,
+   each with a real light and a soft beam) in a dark room with a glossy floor.
+   In Car Owner the camera stands close to the car and stays still: a drag
+   turns it round the car, the wheel or a pinch zooms in and out a little.
    The garage's 3D space (from the list of one's cars, full screen): the same
    studio, the car in the middle. A double tap goes into it in first person:
    walk round the car (the stick, or W A S D), look round with a drag, and
@@ -11886,6 +12025,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   // sizes in metres
   var CAR_LEN = 4.6, BASE_D = 6.8, MOVING_H = 0.95, SPOT_H = 2.45, EYE = 1.6, ROOM = 15;
   var FOV = 42, ZOOM_MAX = 5;
+  // Car Owner's camera: how far from the car at first, and how near / far the zoom goes
+  var SHOW = { dist: 4.7, near: 3.3, far: 7.2 };
 
   var T = null;
   var g = null;            // the one renderer and its studio
@@ -11975,7 +12116,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     var renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: 'high-performance' });
     renderer.outputColorSpace = T.SRGBColorSpace;
     renderer.toneMapping = T.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = 0.78;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = T.PCFSoftShadowMap;
     var scene = new T.Scene();
@@ -11983,11 +12124,11 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     scene.fog = new T.Fog(0x06070b, 16, 40);
     var pm = new T.PMREMGenerator(renderer);
     scene.environment = pm.fromScene(new T.RoomEnvironment(), 0.04).texture;
-    scene.environmentIntensity = 0.32;
+    scene.environmentIntensity = 0.1;
     pm.dispose();
-    scene.add(new T.HemisphereLight(0x8a96b8, 0x0b0b10, 0.45));
+    scene.add(new T.HemisphereLight(0x8a96b8, 0x0b0b10, 0.12));
     // the glossy floor, fading into the dark
-    var floor = new T.Mesh(new T.CircleGeometry(ROOM * 2, 64), new T.MeshStandardMaterial({ color: 0x15161d, roughness: 0.55, metalness: 0.1 }));
+    var floor = new T.Mesh(new T.CircleGeometry(ROOM * 2, 64), new T.MeshStandardMaterial({ color: 0x0e0f14, roughness: 0.5, metalness: 0.1 }));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
@@ -12012,7 +12153,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     geo.translate(0, -len / 2, 0);
     geo.rotateX(-Math.PI / 2);
     var mat = new T.ShaderMaterial({
-      uniforms: { color: { value: new T.Color(color) }, strength: { value: 0.42 } },
+      uniforms: { color: { value: new T.Color(color) }, strength: { value: 0.24 } },
       vertexShader: 'varying float vAlong; varying vec3 vN; varying vec3 vView;' +
         'void main() { vAlong = clamp(position.z / ' + len.toFixed(3) + ', 0.0, 1.0);' +
         'vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vView = normalize(-mv.xyz);' +
@@ -12067,9 +12208,10 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     spot.rotation.y = Math.atan2(-spot.position.x, -spot.position.z);
     shadows(spot, true, false);
     s.add(spot);
-    // their lights: a warm key from the spotlight (the shadows), a cool one from the moving head
+    // their lights, low and dramatic: a warm key from the spotlight (the
+    // shadows), a cool one from the moving head picking out the car's edges
     var keyFrom = new T.Vector3(4.6, SPOT_H * 0.86, 3.0);
-    var key = new T.SpotLight(0xfff0dc, 520, 0, 0.42, 0.6, 2);
+    var key = new T.SpotLight(0xffe6c8, 150, 0, 0.36, 0.75, 2);
     key.position.copy(keyFrom);
     key.target.position.copy(target);
     key.castShadow = true;
@@ -12080,23 +12222,23 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     key.shadow.camera.far = 20;
     s.add(key, key.target);
     var coolFrom = new T.Vector3(-4.1, MOVING_H * 0.8, -2.5);
-    var cool = new T.SpotLight(0x8fc4ff, 420, 9, 0.3, 0.5, 2);
+    var cool = new T.SpotLight(0x8fc4ff, 230, 9, 0.3, 0.5, 2);
     cool.position.copy(coolFrom);
     cool.target.position.set(0, 0.9, 0);
     s.add(cool, cool.target);
     // the lamps' lenses glow, and the moving head is lit a little from the front
-    s.add(glow(coolFrom.clone().lerp(new T.Vector3(0, 0.9, 0), 0.05), 0x9fd0ff, 0.6));
-    s.add(glow(keyFrom.clone().lerp(target, 0.03), 0xfff0d0, 0.6));
-    var fill = new T.PointLight(0xc8d4ff, 6, 4, 2);
+    s.add(glow(coolFrom.clone().lerp(new T.Vector3(0, 0.9, 0), 0.05), 0x5f86b0, 0.45));
+    s.add(glow(keyFrom.clone().lerp(target, 0.03), 0xa08a70, 0.45));
+    var fill = new T.PointLight(0xc8d4ff, 2, 4, 2);
     fill.position.set(-3.2, 1.4, -1.4);
     s.add(fill);
-    // a soft top light on the car (its pool stays on the base), and a dim
+    // a faint top light on the car (its pool stays on the base), and a dim
     // light behind so the stands and the moving head show against the dark
-    var top = new T.SpotLight(0xffffff, 110, 0, 0.42, 0.85, 2);
+    var top = new T.SpotLight(0xffffff, 14, 0, 0.38, 0.9, 2);
     top.position.set(0, 9, 0);
     top.target.position.set(0, 0, 0);
     s.add(top, top.target);
-    var back = new T.PointLight(0x6f7fa8, 18, 14, 2);
+    var back = new T.PointLight(0x6f7fa8, 7, 14, 2);
     back.position.set(0, 3.2, -6);
     s.add(back);
     g.beams = [beam(keyFrom, target, 1.5, 0xffe8c8), beam(coolFrom, new T.Vector3(0, 1.0, 0), 1.2, 0x9ccaff)];
@@ -12119,10 +12261,15 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   /* ------------------------------------------------------------ the frame --- */
   function size() {
     if (!host) return;
+    // its own size (on a phone held upright the game is turned a quarter
+    // round, and the box on screen has the width and height swapped)
     var r = host.getBoundingClientRect();
-    var w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
-    // sharp enough, never heavier than needed (and lighter once frames get slow)
-    var pr = Math.min(window.devicePixelRatio || 1, mode === 'show' ? 1.5 : 1.75) * (g.fps < 30 ? 0.7 : 1);
+    var w = Math.max(1, host.clientWidth || Math.round(r.width)), h = Math.max(1, host.clientHeight || Math.round(r.height));
+    // sharp enough for the pixels it covers on screen (the game may be drawn
+    // smaller than its own size), never heavier than needed (and lighter once
+    // frames get slow)
+    var k = Math.max(r.width, r.height) / Math.max(w, h) || 1;
+    var pr = Math.min((window.devicePixelRatio || 1) * k, mode === 'show' ? 1.5 : 1.75) * (g.fps < 30 ? 0.7 : 1);
     g.renderer.setPixelRatio(pr);
     g.renderer.setSize(w, h, false);
     g.camera.aspect = w / h;
@@ -12154,16 +12301,21 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     size();
   }
 
-  // the orbit for Car Owner (turning by itself) or the garage's space
-  function orbit(auto) {
+  // the orbit for Car Owner (close to the car and still; a drag turns it, a
+  // little zoom) or the garage's space (going round slowly by itself)
+  function orbit(show) {
     var c = g.controls;
     c.enabled = true;
-    c.autoRotate = true;
-    c.autoRotateSpeed = auto ? 0.9 : 0.35;
-    c.enableZoom = !auto;
+    c.autoRotate = !show;
+    c.autoRotateSpeed = 0.35;
+    c.enableZoom = true;
+    c.zoomSpeed = show ? 0.6 : 1;
+    c.minDistance = show ? SHOW.near : 5;
+    c.maxDistance = show ? SHOW.far : 13;
     g.camera.fov = FOV;
+    c.target.set(0, show ? 0.7 : 0.8, 0);
     g.camera.position.set(4.9, 1.85, 5.2);
-    c.target.set(0, 0.8, 0);
+    if (show) g.camera.position.sub(c.target).setLength(SHOW.dist).add(c.target);
     g.camera.updateProjectionMatrix();
     c.update();
   }
@@ -12355,7 +12507,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   BR.garage3d = {
     supported: supported,
     has: has,
-    // Car Owner: the car turning in the studio inside `el` (progress(0..1) while loading)
+    // Car Owner: the car in the studio inside `el`, close up (progress(0..1) while loading)
     show: function (el, id, progress) { carId = id; return start(el, id, 'show', progress); },
     // the garage's 3D space inside `el` (double tap: first person)
     space: function (el, id, progress) { carId = id; return start(el, id, 'space', progress); },
@@ -13558,6 +13710,9 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   var U = BR.util, C = BR.CONFIG, S = BR.store.state;
   var $ = U.$, $$ = U.$$;
   var current = 'start';
+  // the screen before this one, for the back button: one step back at most
+  // (after going back there is nothing more to go back to but the usual way)
+  var last = '', goingBack = false;
   var hooks = {};   // extra screens: { open, close, back }
   var watchers = []; // told about every screen change: fn(name, previous)
 
@@ -13568,6 +13723,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     if (name !== 'start' && BR.banlock && BR.banlock.active()) return;
     var prev = current;
     current = name;
+    last = goingBack ? '' : prev;
     $$('.screen').forEach(function (s) { s.classList.toggle('active', s.id === 'screen-' + name); });
     $('#stage').dataset.screen = name;
     enter($('#screen-' + name));
@@ -13621,13 +13777,18 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     node.jcEnter = setTimeout(done, ENTER_MS);
   }
 
-  // The back button: a screen may step back inside itself first; the slot
-  // goes back to the start screen.
+  // The back button: a screen may step back inside itself first; then the
+  // screen one came from (once: one step back at most), else as before (the
+  // slot to the start screen, any other to the slot).
   function back() {
     var h = hooks[current];
     if (h && h.back && h.back()) return true;
     if (current === 'start') return false;
-    show(current === 'slot' ? 'start' : 'slot');
+    var to = last && last !== current ? last : current === 'slot' ? 'start' : 'slot';
+    goingBack = true;
+    try { show(to); } finally { goingBack = false; }
+    // (a screen that could not be shown, e.g. banned: nothing to go back to)
+    if (current !== to) last = '';
     return true;
   }
 
@@ -14908,7 +15069,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     $('#me-name').textContent = me.name;
     var v = $('#me-vip');
     v.textContent = '';
-    K.addVip(v, me.vip && me.vip.on && me.vip.until > Date.now() ? me.vip.level : null);
+    K.addVip(v, me.vip && me.vip.on ? BR.VIP.now(me.vip) : null);
   }
 
   /* ------------------------------------------------------------ last online --- */
@@ -15664,7 +15825,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   // under the card: whether it was received (`hint`: where it is once it is)
   function claimState(card, m, mine, hint) {
     if (m.pending) {
-      card.appendChild(el('div', 'pr-state', mine ? (m.claimed ? '受け取られました' : 'まだ受け取られていません')
+      card.appendChild(el('div', 'pr-state', mine ? (m.returned ? '相手のアカウントが削除されたため、あなたに戻りました' : m.claimed ? '受け取られました' : 'まだ受け取られていません')
         : m.claimed ? '受け取り済み' : claiming[m.id] ? '受け取っています…' : 'タップして受け取る'));
     }
     if (hint && !mine && (!m.pending || m.claimed)) card.appendChild(el('div', 'gift-hint', hint));
@@ -16171,7 +16332,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     $('#pf-name').textContent = u.name;
     var pv = $('#pf-vip');
     pv.textContent = '';
-    K.addVip(pv, self ? (me && me.vip && me.vip.on ? me.vip.level : null) : r ? r.user.vip : u.vip);
+    K.addVip(pv, self ? (me && me.vip && me.vip.on ? BR.VIP.now(me.vip) : null) : r ? r.user.vip : u.vip);
     var lv = $('#pf-lv'), level = r ? r.user.level : null;
     lv.hidden = !level;
     lv.textContent = level ? 'Lv.' + level : '';
@@ -16183,6 +16344,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       if (!self && r.user.friendship === 'friends') st.appendChild(el('span', 'pf-chip friend', 'フレンド'));
       if (!self && BR.hub && BR.hub.isMember(u.id)) st.appendChild(el('span', 'pf-chip hub', '一緒に稼ぎ中'));
       if (self && me && me.operator) st.appendChild(el('span', 'pf-chip op', '運営'));
+      else if (self && me && me.viewer) st.appendChild(el('span', 'pf-chip viewer', '閲覧者'));
     }
     statAmount('#pf-total', r ? r.user.totalWon : null);
     statAmount('#pf-biggest', r ? r.user.biggestWin : null);
@@ -16200,7 +16362,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       pfBtn(a1, '引き継ぎコード発行', 'recovery', '', 'share');
       pfBtn(a1, 'コードでログイン', 'codeLogin', '', 'download');
       pfBtn(a1, '演出設定', 'effects', '', 'sound');
-      pfBtn(a1, 'VIP', 'vip', 'gold', 'crown', me && me.vip && me.vip.on ? 'VIP' + me.vip.level : '');
+      pfBtn(a1, 'VIP', 'vip', 'gold', 'crown', me && me.vip && me.vip.on && BR.VIP.now(me.vip) !== null ? 'VIP' + BR.VIP.now(me.vip) : '');
       if (BR.push && BR.push.mode() !== 'none') pfBtn(a1, '通知', 'push', '', 'chat', BR.push.permission() === 'granted' ? 'オン' : 'オフ');
       pfLink(a2, 'ログアウト', 'logout');
       loadBlocks();
@@ -16709,6 +16871,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     BR.live.on('present', onPresent);
     BR.live.on('retract', onRetract);
     BR.live.on('chatban', onChatBan);
+    // 閲覧者 given or taken away (the badge on one's own profile)
+    BR.live.on('viewer', function (ev) { if (me) { me.viewer = !!(ev && ev.on); BR.social.renderMe(); } });
     // the ⋯ menu closes with a tap anywhere else
     document.addEventListener('pointerdown', function (e) { if (menu && !menu.contains(e.target)) closeMenu(); }, true);
     BR.live.on('friend', onFriend);
@@ -16828,7 +16992,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   // VIP's level while it is on (null: off)
   function vipLevel() {
     var m = BR.social.me();
-    return m && m.vip && m.vip.on && m.vip.until > now() ? m.vip.level : null;
+    return m && m.vip && m.vip.on ? BR.VIP.now(m.vip, now()) : null;
   }
   function priceOf(car) { return BR.sale.carPrice(car, sale(), vipLevel() === null ? 0 : BR.CONFIG.vip.carOff); }
   // one more garage place (the server's price once it has spoken)
@@ -16919,7 +17083,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     note.textContent = '3Dを読み込み中…';
     var want = car.id;
     BR.garage3d.show(host, car.id, function (p) { if (sel === want) note.textContent = '3Dを読み込み中… ' + Math.round(p * 100) + '%'; }).then(function () {
-      if (sel === want) note.textContent = 'ドラッグで回転';
+      if (sel === want) note.textContent = 'ドラッグで回転・ピンチ／ホイールでズーム';
     }, function () {
       // no 3D after all: the picture
       $('#car-stage').classList.remove('three');
@@ -17772,7 +17936,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     box.hidden = false;
     var owed = debt ? debt.owed : null;
     $('#dm-debt-amt').textContent = owed === null ? '-' : owed > 0 ? '$' + U.fmt(owed) : 'なし';
-    // he lends 累計1100万円 at most, ever (paying back does not bring it back)
+    // he lends 累計250万円 at most, ever (paying back does not bring it back)
     var max = debt ? debt.max : BR.CONFIG.lender.max;
     $('#dm-debt-cap').textContent = '累計' + yen(max) + 'まで' + (debt ? '（あと' + yen(debt.available) + '）' : '');
     $('#dm-repay').disabled = !(owed > 0) || busy;
@@ -17784,12 +17948,15 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     var bubble = el('div', 'bubble');
     bubble.appendChild(el('div', 'offer-text', m.text));
     var row = el('div', 'offer-acts');
-    var again = el('button', 'offer-voice');
-    again.type = 'button';
-    again.setAttribute('aria-label', 'もう一度聞く');
-    again.appendChild(K.icon('speaker'));
-    again.addEventListener('click', function () { sfx('click'); play(m.amount); });
-    row.appendChild(again);
+    // (his recorded voice only while it says these amounts: BR.CONFIG.lender.voice)
+    if (BR.CONFIG.lender.voice !== false) {
+      var again = el('button', 'offer-voice');
+      again.type = 'button';
+      again.setAttribute('aria-label', 'もう一度聞く');
+      again.appendChild(K.icon('speaker'));
+      again.addEventListener('click', function () { sfx('click'); play(m.amount); });
+      row.appendChild(again);
+    }
     var open = !!debt && debt.offer === m.amount;
     var take = el('button', 'act-btn gold offer-take', open ? '借りる（' + yen(offerAmount(m.amount)) + '）' : debt ? 'この話は終わりました' : '…');
     take.type = 'button';
@@ -17864,7 +18031,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     (list || []).forEach(function (m) { if (m.kind === 'offer') last = m; });
     if (last && heard.indexOf(last.id) < 0) {
       markVoiced(last.id);
-      play(last.amount);
+      if (BR.CONFIG.lender.voice !== false) play(last.amount);
     }
   }
 
@@ -18419,8 +18586,12 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
 </script>
 <script>
 /* VIP (js/game/vip.js, server: POST /api/vip/extend): ロイヤルコイン make
-   days of it, VIP EXP its level (VIP0-VIP3), and what each level gives. The
-   badge on one's card (and for friends) shows while it is on. */
+   days of it (a day: 24 hours, counted down to the second here), まとめ買い
+   packs give free days on top (今だけ特大セール), VIP EXP its level
+   (VIP0-VIP3), and what each level gives. The free trial (POST
+   /api/vip/trial): VIP3 for 3 days, once, for one who never had VIP; days
+   bought during it go on after it at their own level. The badge on one's
+   card (and for friends) shows while it is on. */
 (function (BR) {
   'use strict';
 
@@ -18429,23 +18600,28 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   var el = K.el, sfx = K.sfx, toast = K.toast, fail = K.fail;
   var DAY = V.day;
 
-  var days = 1, busy = false, lastLevel = null, timer = 0;
+  var days = 1, busy = false, lastLevel = null, timer = 0, trialSeen = 0;
+  var TRIAL = C.vip.trial;
 
   function me() { return BR.social.me(); }
   function vip() { var m = me(); return m && m.vip ? m.vip : null; }
   function isOn(v) { return !!v && v.on && v.until > Date.now(); }
+  function trialOn(v) { return isOn(v) && v.trialUntil > Date.now(); }
   // days that can still be added (VIP reaches `maxDays` ahead at most)
   function room() {
     var v = vip(), from = Math.max(Date.now(), v ? v.until : 0);
     return Math.max(0, Math.floor((Date.now() + C.vip.maxDays * DAY - from) / DAY));
   }
-  function left(ms) {
-    var h = Math.floor(ms / 3600000), d = Math.floor(h / 24);
-    return d > 0 ? d + '日' + (h % 24) + '時間' : h > 0 ? h + '時間' + Math.floor(ms % 3600000 / 60000) + '分' : Math.max(1, Math.ceil(ms / 60000)) + '分';
-  }
   function at(ms) {
     var d = new Date(ms);
     return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
+  }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  // what is left, to the second: 2日 03:12:45
+  function clock(ms) {
+    var s = Math.max(0, Math.floor(ms / 1000)), d = Math.floor(s / 86400);
+    var hms = pad(Math.floor(s % 86400 / 3600)) + ':' + pad(Math.floor(s % 3600 / 60)) + ':' + pad(s % 60);
+    return d > 0 ? d + '日 ' + hms : hms;
   }
 
   function open() {
@@ -18455,15 +18631,45 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     BR.screens.show('vip');
   }
 
+  // the parts that count down every second: the state, the trial's card
+  function renderClock() {
+    var v = vip() || { on: false, until: 0, exp: 0, level: 0, trialUntil: 0, trial: false };
+    var on = isOn(v), trial = trialOn(v), now = Date.now(), info = V.info(v.exp);
+    var st = $('#vp-state');
+    st.className = 'vp-state' + (trial ? ' on trial' : on ? ' on' : '');
+    st.textContent = '';
+    if (!on) st.textContent = '無効';
+    else {
+      st.appendChild(document.createTextNode((trial ? 'お試し中 残り ' : '有効 残り ')));
+      st.appendChild(el('span', 'vp-clock', clock((trial ? v.trialUntil : v.until) - now)));
+      st.appendChild(document.createTextNode('（' + at(trial ? v.trialUntil : v.until) + 'まで）'));
+    }
+    // the free trial: may be had (once), or going on
+    var box = $('#vp-trial');
+    box.hidden = !v.trial && !trial;
+    box.classList.toggle('on', trial);
+    $('#vp-trial-go').hidden = !v.trial;
+    $('#vp-trial-go').disabled = busy;
+    if (v.trial) {
+      $('#vp-trial-title').textContent = 'VIP' + TRIAL.level + ' を' + TRIAL.days + '日間 無料でお試し';
+      $('#vp-trial-sub').textContent = 'VIPを使ったことがない人だけ・一生に1回。お試しのあとは、ロイヤルコインで追加した日数ぶん VIP' + info.level + ' に移ります（追加しなければそのまま終了）';
+    } else if (trial) {
+      var after = Math.max(0, v.until - v.trialUntil);
+      $('#vp-trial-title').textContent = 'VIP' + TRIAL.level + ' お試し中　残り ' + clock(v.trialUntil - now);
+      $('#vp-trial-sub').textContent = after > 0
+        ? 'お試しのあと、追加した ' + clock(after) + ' は VIP' + info.level + ' で続きます'
+        : 'ロイヤルコインで日数を追加すると、お試しのあと VIP' + info.level + ' で続きます（追加しなければお試しで終了）';
+    }
+  }
+
   function render() {
-    var v = vip() || { on: false, until: 0, exp: 0, level: 0 };
-    var on = isOn(v), info = V.info(v.exp);
+    var v = vip() || { on: false, until: 0, exp: 0, level: 0, trialUntil: 0, trial: false };
+    var on = isOn(v), info = V.info(v.exp), now = V.now(v);
     var lv = $('#vp-level');
     lv.textContent = '';
-    lv.appendChild(K.vipBadge(info.level));
-    var st = $('#vp-state');
-    st.className = 'vp-state' + (on ? ' on' : '');
-    st.textContent = on ? '有効 残り' + left(v.until - Date.now()) + '（' + at(v.until) + 'まで）' : '無効';
+    lv.appendChild(K.vipBadge(on && now !== null ? now : info.level));
+    renderClock();
+    renderPacks(info.level);
     // EXP to the next level
     $('#vp-exp').textContent = info.next ? U.fmt(Math.floor(info.exp)) + ' / ' + U.fmt(info.next) : U.fmt(Math.floor(info.exp));
     var pct = info.next ? (info.exp - info.from) / (info.next - info.from) * 100 : 100;
@@ -18486,11 +18692,103 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     var go = $('#vp-go');
     go.textContent = busy ? '処理中…' : on ? days + '日延長する' : 'VIPを有効にする（' + days + '日）';
     go.disabled = busy || max < 1 || S.coins < cost.coins;
-    renderTable(info.level, on);
+    renderTable(on && now !== null ? now : info.level, on, trialOn(v) ? info.level : null);
   }
 
-  // what each level gives (the player's own level marked)
-  function renderTable(level, on) {
+  // まとめ買い: each pack, how much more it gives, what it costs (the best deal marked)
+  function renderPacks(level) {
+    var packs = V.packs();
+    $('#vp-packs').hidden = !packs.length;
+    if (!packs.length) return;
+    $('#vp-packs-sale').textContent = C.vip.packs.sale;
+    var list = $('#vp-packs-list'), best = 0, max = room();
+    packs.forEach(function (p) { best = Math.max(best, V.deal(p)); });
+    list.textContent = '';
+    packs.forEach(function (p) {
+      var cost = V.cost(p.days, level);
+      var b = el('button', 'vp-pack' + (V.deal(p) === best ? ' best' : ''));
+      b.type = 'button';
+      b.dataset.pack = p.days;
+      b.appendChild(el('span', 'vp-pack-deal', V.deal(p) + '%お得'));
+      var d = el('span', 'vp-pack-days', String(p.days));
+      d.appendChild(el('small', '', '日'));
+      b.appendChild(d);
+      b.appendChild(el('span', 'vp-pack-bonus', '+' + p.bonus + '日 おまけ'));
+      var price = el('span', 'vp-pack-price');
+      price.appendChild(el('i', 'ic ic-coin'));
+      price.appendChild(document.createTextNode(U.fmt(cost.coins) + '枚'));
+      b.appendChild(price);
+      b.disabled = busy || max < p.days + p.bonus;
+      b.classList.toggle('short', S.coins < cost.coins);
+      list.appendChild(b);
+    });
+  }
+  function buyPack(n) {
+    var p = V.pack(n), v = vip();
+    if (!p || busy) return;
+    var cost = V.cost(p.days, v ? v.level : 0);
+    if (S.coins < cost.coins) { sfx('deny'); toast('ロイヤルコインが足りません（' + U.fmt(cost.coins) + '枚 必要です）'); return; }
+    K.confirmBox(function (box) {
+      box.appendChild(document.createTextNode('VIP ' + p.days + '日 ＋ おまけ' + p.bonus + '日（計' + (p.days + p.bonus) + '日）を ロイヤルコイン ' + U.fmt(cost.coins) + '枚で購入しますか？'));
+      box.appendChild(el('small', 'confirm-sub', C.vip.packs.sale + '：' + V.deal(p) + '%お得。1日 = 24時間で、' + (isOn(v) ? '今の期限から' : '今から') + '数えます。'));
+    }, '購入する').then(function (ok) {
+      if (!ok) return;
+      busy = true;
+      render();
+      api.vipPack(p.days).then(function (r) {
+        busy = false;
+        BR.app.serverBalance(r.me);
+        BR.social.setMe(r.me);
+        sfx('register');
+        if (BR.juice) BR.juice.reward('#vp-packs', 3);
+        toast('VIPを ' + r.days + '日分 追加しました（おまけ ' + r.bonus + '日）', 3200);
+        render();
+      }, function (err) {
+        busy = false;
+        render();
+        fail(err);
+      });
+    });
+  }
+  // the free trial, once
+  function startTrial() {
+    var v = vip();
+    if (!v || !v.trial || busy) return;
+    K.confirmBox(function (box) {
+      box.appendChild(document.createTextNode('VIP' + TRIAL.level + ' を ' + TRIAL.days + '日間 無料で試しますか？'));
+      box.appendChild(el('small', 'confirm-sub', '一生に1回だけです。' + TRIAL.days + '日（' + TRIAL.days * 24 + '時間）たつと終わり、ロイヤルコインで追加した日数があれば VIP' + V.level(v.exp) + ' で続きます。'));
+    }, '無料で試す').then(function (ok) {
+      if (!ok) return;
+      busy = true;
+      render();
+      api.vipTrial().then(function (r) {
+        busy = false;
+        BR.app.serverBalance(r.me);
+        BR.social.setMe(r.me);
+        sfx('levelUp');
+        if (BR.juice) BR.juice.reward('#vp-trial', 3);
+        toast('VIP' + TRIAL.level + ' のお試しが始まりました（' + TRIAL.days + '日間）', 3200);
+        render();
+      }, function (err) {
+        busy = false;
+        render();
+        fail(err);
+      });
+    });
+  }
+  // the trial over (once each): on at the player's own level for the days bought, or over
+  function trialOver(v) {
+    if (!v || !(v.trialUntil > 0) || v.trialUntil > Date.now() || trialSeen === v.trialUntil) return;
+    var key = 'two-state-vip/trial-over/' + (me() ? me().id : 0);
+    trialSeen = v.trialUntil;
+    try { if (Number(localStorage.getItem(key)) === v.trialUntil) return; localStorage.setItem(key, String(v.trialUntil)); } catch (e) { /* once in this page */ }
+    if (Date.now() - v.trialUntil > 7 * DAY) return;
+    toast(v.until > Date.now() ? 'VIPのお試しが終わりました。追加した日数ぶん VIP' + V.level(v.exp) + ' で続きます' : 'VIPのお試しが終わりました', 4200, open);
+  }
+
+  // what each level gives (the player's own level marked; `own`: during the
+  // trial, the level of their EXP)
+  function renderTable(level, on, own) {
     var t = $('#vp-table');
     t.textContent = '';
     var L = C.vip.levels, n = L.length;
@@ -18531,6 +18829,21 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     td.colSpan = n + 1;
     foot.appendChild(td);
     t.appendChild(foot);
+    if (own !== null && own !== undefined) {
+      var tr = el('tr', 'vp-foot');
+      var tt = el('td', '', 'お試し中は VIP' + level + ' の特典が使えます（ロイヤルコイン還元だけは自分のレベル VIP' + own + ' で数えます）');
+      tt.colSpan = n + 1;
+      tr.appendChild(tt);
+      t.appendChild(tr);
+    }
+    // for now everybody's calls are better than VIP3's
+    if (V.boost() > V.tier(n - 1)) {
+      var now = el('tr', 'vp-foot');
+      var b = el('td', '', '今だけ：VIPでなくても、全員の通話が VIP3 より高い音質（' + V.kbps(V.boost()) + 'kbps）になっています');
+      b.colSpan = n + 1;
+      now.appendChild(b);
+      t.appendChild(now);
+    }
   }
 
   function go() {
@@ -18586,24 +18899,40 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       days = Number(b.dataset.d);
       render();
     });
+    $('#vp-trial-go').addEventListener('click', function () { sfx('click'); startTrial(); });
+    $('#vp-packs-list').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pack]');
+      if (!b || b.disabled) return;
+      sfx('click');
+      buyPack(Number(b.dataset.pack));
+    });
     $('#vp-days').addEventListener('click', function () {
       sfx('click');
       BR.screens.numpad({ icon: 'coin', value: days, max: Math.max(1, room()), onOk: function (n) { days = Math.max(1, n); render(); } });
     });
     K.dragScroll($('#vp-right'));
+    K.dragScroll($('#vp-left'));
     BR.screens.register('vip', { open: function () { render(); } });
     BR.social.onMe(function (m) {
       if (!m) { lastLevel = null; return; }
-      if (m.vip) seen(m.vip);
+      if (m.vip) { seen(m.vip); trialOver(m.vip); }
       if (BR.screens.current() === 'vip') render();
     });
-    // the badge goes when the days are over
+    // the badge goes when the days are over (and turns to one's own level when
+    // the trial is); on this screen the time left counts down every second
     clearInterval(timer);
+    var phase = '';
     timer = setInterval(function () {
       var v = vip();
-      if (v && v.on && v.until <= Date.now()) { v.on = false; BR.social.renderMe(); }
-      if (BR.screens.current() === 'vip') render();
-    }, 30000);
+      if (v && v.on && v.until <= Date.now()) v.on = false;
+      // (on, off, or in the trial: a change shows everywhere at once)
+      var now = v ? (trialOn(v) ? 'trial' : isOn(v) ? 'on' : 'off') : '';
+      var changed = now !== phase;
+      phase = now;
+      if (changed) { BR.social.renderMe(); if (BR.call && BR.call.quality) BR.call.quality(); }
+      if (v) trialOver(v);
+      if (BR.screens.current() === 'vip') { if (changed) render(); else renderClock(); }
+    }, 1000);
   }
 
   BR.vip = { init: init, open: open, set: set };
@@ -19873,17 +20202,20 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     return b;
   }
   function hubOn() { return !!(BR.hub && BR.hub.on && BR.hub.on()); }
-  // VIP: { until, mult } (mult 1: no more pay)
+  // VIP: { until, mult } (mult 1: no more pay), and the free trial's { trialUntil, trialMult }
   function vip() {
     var m = BR.social.me(), v = m && m.vip;
-    return v ? { until: v.until, mult: BR.VIP.wage(v.level) } : { until: 0, mult: 1 };
+    return v ? { until: v.until, mult: BR.VIP.wage(v.level), trialUntil: v.trialUntil || 0, trialMult: BR.VIP.wage(C.vip.trial.level) } : { until: 0, mult: 1, trialUntil: 0, trialMult: 1 };
   }
-  function vipNow() { var v = vip(); return v.mult > 1 && v.until > now() ? v.mult : 1; }
+  function vipNow() {
+    var v = vip(), t = now();
+    return v.trialUntil > t ? Math.max(v.mult, v.trialMult) : v.mult > 1 && v.until > t ? v.mult : 1;
+  }
   function earned(w) {
     var job = jobOf(w.id);
     if (!job) return 0;
     var v = vip();
-    var pay = Math.floor(BR.VIP.earned(job.wage, w.since, now(), v.until, v.mult));
+    var pay = Math.floor(BR.VIP.earned(job.wage, w.since, now(), v.until, v.mult, v.trialUntil, v.trialMult));
     // the time with a hub's benefits on: since loading too, while they are on (an estimate)
     var boost = (w.boost || 0) + (w === best() && hubOn() ? Math.max(0, Date.now() - state.at) : 0);
     return pay + Math.floor(boost * job.wage * (C.hub.wage - 1) / 3600000);
@@ -21113,9 +21445,12 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
    speaking into an open microphone counts as active (the time quests).
    A hub's voice cannot be hung up while in the hub; instead every voice has
    its own volume and mute (kept on this phone), the speaker button mutes
-   them all, and a block cuts a voice off both ways. A call that has gone on
-   for 2 hours ends (it can be started again). Its sound quality is the one
-   of the best VIP in it (js/game/vip.js), for everyone in it. */
+   them all, and a block cuts a voice off both ways. The bar's volume button
+   opens two sliders: ボイス (every voice together) and 効果音 (the game's own
+   sounds while the call lasts). A call that has gone on for 2 hours ends (it
+   can be started again). Its sound quality is the one of the best VIP in it
+   (js/game/vip.js), for everyone in it, and never below the quality everyone
+   has for now (vip.voiceAll: above VIP3's). */
 (function (BR) {
   'use strict';
 
@@ -21133,13 +21468,14 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   var lastHub = null;     // [hub id, people]
 
   /* ------------------------------------------------------------ each voice's volume and mute --- */
-  // { v: { id: volume 0..100 }, m: { id: 1 (muted) }, d: 1 (all voices muted) }
+  // { v: { id: volume 0..100 }, m: { id: 1 (muted) }, d: 1 (all voices muted),
+  //   a: every voice together 0..100 (the ボイス slider of the call bar) }
   var PREFS = 'blockbuster-reels/voice';
   var prefs = (function () {
     try {
       var p = JSON.parse(localStorage.getItem(PREFS) || '{}') || {};
-      return { v: p.v || {}, m: p.m || {}, d: p.d ? 1 : 0 };
-    } catch (e) { return { v: {}, m: {}, d: 0 }; }
+      return { v: p.v || {}, m: p.m || {}, d: p.d ? 1 : 0, a: typeof p.a === 'number' ? Math.max(0, Math.min(100, p.a)) : 100 };
+    } catch (e) { return { v: {}, m: {}, d: 0, a: 100 }; }
   })();
   function savePrefs() { try { localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch (e) { /* in memory only */ } }
   function volOf(id) { var v = prefs.v[id]; return typeof v === 'number' ? Math.max(0, Math.min(100, v)) : 100; }
@@ -21174,11 +21510,12 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     delete gains[id];
     try { g.src.disconnect(); g.node.disconnect(); } catch (e) { /* gone */ }
   }
-  // the voice of `id` as set: muted (by itself or with all of them), its volume
+  // the voice of `id` as set: muted (by itself or with all of them), its
+  // volume (its own times everyone's: the ボイス slider)
   function applyVoice(id) {
     var a = $('#call-audios [data-key="home-' + id + '"]');
     if (!a) return;
-    var off = !!prefs.d || mutedOf(id), vol = volOf(id) / 100;
+    var off = !!prefs.d || mutedOf(id), vol = volOf(id) / 100 * prefs.a / 100;
     var g = gains[id] || (vol < 1 && !volumeWorks() ? gainFor(id, a) : null);
     if (g) {
       a.muted = true;
@@ -21263,11 +21600,24 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     });
     if (users.length > 4) box.appendChild(el('span', 'call-more', '+' + (users.length - 4)));
   }
+  // the panel of the two volumes, open (shown as they are now) or closed
+  function volumes(open) {
+    var p = $('#call-vol-panel'), b = $('#call-vol');
+    p.hidden = !open;
+    b.classList.toggle('on', open);
+    b.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) return;
+    var sfxNow = BR.sfx.callLevel();
+    $('#call-vol-voice').value = String(prefs.a);
+    $('#call-vol-voice-n').textContent = prefs.a + '%';
+    $('#call-vol-sfx').value = String(sfxNow);
+    $('#call-vol-sfx-n').textContent = sfxNow + '%';
+  }
   function renderBar() {
     var bar = $('#call-bar');
     BR.sfx.duck(!!home);
     changed();
-    if (!home) { bar.hidden = true; return; }
+    if (!home) { bar.hidden = true; volumes(false); return; }
     var m = $('#call-mute'), end = $('#call-end');
     var people = Object.keys(home.members).map(function (k) { return home.members[k]; });
     var live = Object.keys(home.peers).filter(function (k) { return home.peers[k].live; }).length;
@@ -21347,10 +21697,11 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   }
 
   /* ------------------------------------------------------------ the sound quality --- */
-  // the tier of the call: the best VIP of everyone in it (me too)
+  // the tier of the call: the best VIP of everyone in it (me too), and
+  // never below the one everybody has for now (BR.VIP.boost)
   function tierOf(h) {
     var me = BR.social.me(), V = BR.VIP;
-    var t = V.tier(me && me.vip && me.vip.on && me.vip.until > Date.now() ? me.vip.level : null);
+    var t = Math.max(V.boost(), V.tier(me && me.vip && me.vip.on ? V.now(me.vip) : null));
     Object.keys(h.members).forEach(function (k) {
       var u = h.members[k];
       t = Math.max(t, V.tier(u && typeof u.vip === 'number' ? u.vip : null));
@@ -21641,6 +21992,22 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       setDeaf(!prefs.d);
       toast(prefs.d ? 'みんなの声をミュートしました' : 'みんなの声をオンにしました', 1800);
     });
+    // the two volumes: everyone's voices (ボイス) and the game's sounds while the call lasts (効果音)
+    $('#call-vol').addEventListener('click', function () {
+      if (!home) return;
+      sfx('click');
+      volumes(!!$('#call-vol-panel').hidden);
+    });
+    $('#call-vol-voice').addEventListener('input', function (e) {
+      prefs.a = Math.round(Math.max(0, Math.min(100, Number(e.target.value) || 0)));
+      savePrefs();
+      applyAll();
+      volumes(true);
+    });
+    $('#call-vol-sfx').addEventListener('input', function (e) {
+      BR.sfx.callLevel(e.target.value);
+      volumes(true);
+    });
     // hanging up: the watched player stops talking with everyone, a watcher
     // stops talking (a hub's voice has no hang-up: it stays while in the hub)
     $('#call-end').addEventListener('click', function () {
@@ -21700,6 +22067,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     },
     deaf: function () { return !!prefs.d; },
     setDeaf: setDeaf,
+    // everyone's voices together, 0..100 (the ボイス slider)
+    allVolume: function () { return prefs.a; },
     onChange: function (fn) { listeners.push(fn); },
     active: function () { return !!home; },
     // some voice of a friend comes through (a connection is up)
@@ -21944,7 +22313,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
   function renderFeed() {
     if (!chatFeed) return;
     chatFeed.textContent = '';
-    if (!chat.list.length) chatFeed.appendChild(el('div', 'empty chat-empty', 'ホームのみんなにメッセージ（保存されません）'));
+    if (!chat.list.length) chatFeed.appendChild(el('div', 'empty chat-empty', 'ホームのみんなにメッセージ（画面には残りません・記録は保存されます）'));
     chat.list.forEach(function (m) { chatFeed.appendChild(lineEl(m)); });
     var f = $('#entry-feed');
     f.scrollTop = f.scrollHeight;
@@ -23924,7 +24293,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     // the quick chat: the last lines, and a field to write in
     var box = el('div', 'hb-mc-chat');
     var lines = (chats[m.id] || []).slice(-3);
-    if (!lines.length) box.appendChild(el('p', 'hb-mc-empty', cut ? 'ブロック中は即席チャットも使えません' : m.name + 'さんに即席チャットを送れます（保存されません）'));
+    if (!lines.length) box.appendChild(el('p', 'hb-mc-empty', cut ? 'ブロック中は即席チャットも使えません' : m.name + 'さんに即席チャットを送れます（画面には残りません・記録は保存されます）'));
     lines.forEach(function (l) { box.appendChild(lineEl(l)); });
     root.appendChild(box);
     var acts = el('div', 'hb-mc-row');
@@ -24041,7 +24410,7 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
     if (!chatFeed) return;
     chatFeed.textContent = '';
     var list = chats[chatWith] || [];
-    if (!list.length) chatFeed.appendChild(el('div', 'empty chat-empty', '仲間に即席チャット（保存されません）'));
+    if (!list.length) chatFeed.appendChild(el('div', 'empty chat-empty', '仲間に即席チャット（画面には残りません・記録は保存されます）'));
     list.forEach(function (l) { chatFeed.appendChild(lineEl(l)); });
     BR.entry.scrollFeed();
   }
@@ -26446,7 +26815,8 @@ input:checked + .fx-switch::after { transform: translateX(36px); background: #ff
       lock: BR.ICONS.lock, phone: BR.ICONS.phone, hangup: BR.ICONS.hangup, 'mic-on': BR.ICONS.micOn, 'mic-off': BR.ICONS.micOff,
       eye: BR.ICONS.eye, car: BR.ICONS.car, gift: BR.ICONS.gift, friends: BR.ICONS.friends, search: BR.ICONS.search, check: BR.ICONS.check,
       share: BR.ICONS.share, 'add-home': BR.ICONS.addHome, download: BR.ICONS.download, android: BR.ICONS.android, apple: BR.ICONS.apple,
-      bag: BR.ICONS.bag, home: BR.ICONS.home, speaker: BR.ICONS.speaker, 'speaker-off': BR.ICONS.speakerOff, chat: BR.ICONS.chat
+      bag: BR.ICONS.bag, home: BR.ICONS.home, speaker: BR.ICONS.speaker, 'speaker-off': BR.ICONS.speakerOff, chat: BR.ICONS.chat,
+      sliders: BR.ICONS.sliders
     };
     function url(u) { return 'url("' + u.replace(/"/g, '%22') + '")'; }
     function svg(markup) { return url(BR.svgURL(markup)); }

@@ -25,11 +25,16 @@
      online), and their talk, one to one or all together (never taken back).
    - サーバー: what the server sees of itself, live: requests, bytes sent,
      connections, the database, the vault, the plan and this month's bill.
-   - 保管庫 (the developer's own, opened with the developer code): big files in
-     folders, 10 to a page, sent in pieces checked by SHA-256 (a stopped upload
-     goes on where it stopped, on its own once there is room or a connection),
-     fetched back the same way, and time-limited links (for an AI too: what it
-     takes and does is labelled; what it put in the game is 実装済み).
+   - 保管庫: the developer's own (opened with the developer code) and the
+     vaults operators share, one for every two of them (private: the two and
+     the developer, who only looks into the others'). Big files in folders, 10
+     to a page, sent in pieces checked by SHA-256 (a stopped upload goes on
+     where it stopped, on its own once there is room or a connection), fetched
+     back the same way; files and folders checked to move, download or delete
+     several at once. One room for all of them: in the shared ones each
+     operator keeps 1GB, more once the developer approves (with a limit). In
+     the developer's own, time-limited links (for an AI too: what it takes and
+     does is labelled; what it put in the game is 実装済み).
    - アーカイブ: the 永久BAN and deleted accounts, all their data gone 90 days
      after they came in; a 永久BAN can be lifted, a deleted account never
      comes back. Only the developer sees the button that deletes an account
@@ -61,18 +66,21 @@
     idea_adopt: '意見案を採用', ops_revoke: '運営権の剥奪', ops_grant: '運営権の付与', ops_restore: '運営権を戻す',
     dev_code_set: '開発者コードを登録', dev_code_change: '開発者コードを変更', dev_code_fail: '開発者コードの入力ミス',
     bot_auto_reply: '自動返信', log_kept: '運営ログの保持', 'admin:restore-time': '管理コマンド: 時点への巻き戻し',
-    account_delete: 'アカウント削除', account_purge: 'データの完全削除', emergency_stop: '緊急停止', emergency_release: '緊急停止の解除',
+    account_delete: 'アカウント削除', account_purge: 'データの削除（会話は保存）', emergency_stop: '緊急停止', emergency_release: '緊急停止の解除',
     lockdown: 'ロックダウン', lockdown_release: 'ロックダウンの解除', shield_block: '手動ブロック', shield_auto_block: '自動ブロック',
     shield_unblock: 'ブロックの解除', sec_message: 'セキュリティ基地の連絡',
     backup_key: 'バックアップの鍵', backup_run: 'バックアップ', backup_get: 'バックアップのダウンロード', backup_delete: 'バックアップの削除',
-    backup_settings: 'バックアップの設定', backup_failed: 'バックアップの失敗', vault_note: '保管庫のメッセージ', vault_note_delete: '保管庫のメッセージ削除',
+    backup_settings: 'バックアップの設定', backup_failed: 'バックアップの失敗', vault_note: '保管庫のコメント', vault_note_delete: '保管庫のコメント削除',
     player_register: '登録', player_login: 'ログイン', player_password: 'パスワード変更', player_recovery: '引き継ぎコード再発行',
     player_transfer: '送金', player_report: '通報', player_feedback: '報告・意見案',
     pay_order: '支払いページ', pay_paid: '購入（入金を確認）', pay_slip: 'コンビニ払いの番号', pay_unpaid: 'コンビニ未払い', pay_refund: '返金',
     pay_review: '決済の不一致（保留）', pay_reply: '開発者の返信', pay_error: '決済ページのエラー', pay_unknown: '不明な決済通知', pay_bad_signature: '不正な決済通知を拒否',
     vault_open: '保管庫を開いた', vault_upload: '保管庫に保存', vault_delete: '保管庫から削除', vault_link: '保管庫のリンク作成',
     vault_link_stop: '保管庫のリンク停止', vault_pull: '保管庫からリンクで取得', vault_folder: '保管庫のフォルダ', vault_move: '保管庫で移動',
-    vault_bucket: '保管庫をR2へ移動', vault_ai_label: 'AIのラベル（保管庫）', vault_ai_done: 'AIが実装（保管庫）', vault_restore: '保管庫で実装済みから戻す'
+    vault_bucket: '保管庫をR2へ移動', vault_ai_label: 'AIのラベル（保管庫）', vault_ai_done: 'AIが実装（保管庫）', vault_restore: '保管庫で実装済みから戻す',
+    vault_quota_request: '保管庫の容量の申請', vault_quota_cancel: '容量の申請の取り下げ', vault_quota_approve: '容量の申請を承認', vault_quota_decline: '容量の申請を見送り',
+    vault_quota_set: '保管庫の上限を変更', vault_rename: '保管庫で名前を変更', vault_backup: '保管庫のバックアップ', vault_backup_off: 'バックアップから外す',
+    vault_backup_restore: 'バックアップから戻す', vault_ai_comment: 'AIのコメント（保管庫）', milestone: '登録者数の記念', voice_notice: '通話品質アップのお知らせ'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
   var KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
@@ -85,7 +93,9 @@
     view: 'players', players: [], total: 0, counts: {}, now: Date.now(), filter: 'all', sort: 'new', q: '', open: 0, busy: false,
     reportStatus: 'open', detAll: false, fb: 'open', feedback: [], log: [], logQ: '', logDone: false, chat: null,
     developer: false, operators: [], pay: null, payView: 'waiting', vault: null, vaultFiles: [], vaultFolders: [], vaultFolder: '', vaultPicked: {},
-    vaultShow: 'all', vaultPage: 0, logKind: ''
+    vaultShow: 'all', vaultPage: 0, logKind: '',
+    // the vault open ('' the developer's own, 'p:<a>:<b>' a shared one), the ones to choose from, what one may do in it
+    vaultSpace: '', vaultSpaces: null, vaultInfo: null
   };
   var timer = 0, liveTimer = 0, searchTimer = 0, logTimer = 0, chatTimer = 0;
   var speed = 'normal';
@@ -203,18 +213,71 @@
   function fail(err) { toast(err && err.message ? err.message : 'エラーが発生しました'); }
 
   /* ------------------------------------------------------------ logging in --- */
-  function showLogin(message) {
+  // the site put away (for the login, or the day's ログイン button)
+  function leaveApp() {
+    if (call.on) callLeave();
+    opsLiveClose();
+    $('#dev-call').hidden = true;
     $('#app').hidden = true;
-    $('#login').hidden = false;
-    $('#login-error').textContent = message || '';
+    $('#enter').hidden = true;
     closeDetail();
     closeChat();
     clearInterval(timer);
     clearInterval(liveTimer);
+    clearInterval(aliveTimer);
+  }
+  function showLogin(message) {
+    leaveApp();
+    $('#login').hidden = false;
+    $('#login-error').textContent = message || '';
     setTimeout(function () { $('#login-name').focus(); }, 50);
+  }
+  // the first look of the day: ログイン to come in (the developer's ログインログ keeps it)
+  var ROLE = { developer: ['dev', '開発者'], operator: ['op', '運営者'], viewer: ['k-viewer', '閲覧者'] };
+  function roleOf(me) { return me.developer ? 'developer' : me.viewer ? 'viewer' : 'operator'; }
+  function showEnter(me) {
+    leaveApp();
+    $('#login').hidden = true;
+    $('#enter').hidden = false;
+    var r = ROLE[roleOf(me)];
+    $('#enter-role').className = 'kind ' + r[0];
+    $('#enter-role').textContent = r[1];
+    $('#enter-name').textContent = me.name;
+    $('#enter-day').textContent = '今日（' + me.day.replace(/-/g, '/') + '）はじめての運営サイトです。「ログイン」を押すと入れます。';
+    $('#enter-error').textContent = '';
+    $('#enter-go').disabled = false;
+    setTimeout(function () { $('#enter-go').focus(); }, 50);
+  }
+  function enter() {
+    var go = $('#enter-go');
+    go.disabled = true;
+    $('#enter-error').textContent = '';
+    request('POST', '/api/ops/enter').then(function () {
+      return request('GET', '/api/ops/me');
+    }).then(start, function (err) {
+      go.disabled = false;
+      if (err.status !== 401 && err.code !== 'not_operator') $('#enter-error').textContent = err.message;
+    });
+  }
+  // the site's first answer: in, or the day's ログイン first
+  function arrive(me) { if (me.entered === false) showEnter(me); else start(me); }
+  // still the same day (Japan time) as when the site was entered? A new one asks for ログイン again
+  function jstDay() { return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10); }
+  function dayCheck() {
+    if (!token || $('#app').hidden || document.hidden || !state.day || jstDay() === state.day) return;
+    request('GET', '/api/ops/me').then(function (me) {
+      if (me.entered === false) showEnter(me);
+      else state.day = me.day;
+    }, function () {});
   }
   function signedOut(message) {
     setToken(null);
+    // a viewer: nothing they saw stays in the page (it starts over, the reason kept for the login)
+    if (state.viewer) {
+      try { sessionStorage.setItem('ops-out', message || ''); } catch (e) { /* the login says nothing then */ }
+      location.reload();
+      return;
+    }
     showLogin(message);
   }
   // this browser's own id (two wrong logins make it wait: server/core/opslogin.js)
@@ -252,7 +315,8 @@
     var go = $('#login-go');
     go.disabled = true;
     $('#login-error').textContent = '';
-    request('POST', '/api/ops/login', { name: name, password: pass }, { 'X-Ops-Device': opsDevice() }).then(function (r) {
+    // (the day's ログイン as well: a login with the password is one)
+    request('POST', '/api/ops/login', { name: name, password: pass, enter: true }, { 'X-Ops-Device': opsDevice() }).then(function (r) {
       setToken(r.token);
       return request('GET', '/api/ops/me').then(function (me) {
         $('#login-pass').value = '';
@@ -276,38 +340,92 @@
   }
 
   /* ------------------------------------------------------------ views --- */
+  // what a 閲覧者 never sees (the server refuses it anyway): the players'
+  // list and the archive, the operators' chat, the payments and the vault
+  var VIEWER_HIDDEN = ['players', 'archive', 'team', 'pay', 'vault'];
   function start(me) {
     $('#login').hidden = true;
+    $('#enter').hidden = true;
     $('#app').hidden = false;
-    $('#op-name').textContent = (me.developer ? '開発者: ' : '運営者: ') + me.name;
+    state.day = me.day || jstDay();
+    $('#op-name').textContent = (me.developer ? '開発者: ' : me.viewer ? '閲覧者: ' : '運営者: ') + me.name;
     state.name = me.name;
     state.developer = !!me.developer;
+    state.viewer = !!me.viewer;
     state.devCodeSet = !!me.devCodeSet;
+    document.body.classList.toggle('role-viewer', state.viewer);
+    Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.hidden = state.viewer && VIEWER_HIDDEN.indexOf(t.dataset.view) >= 0; });
     // the refresh speed: everyone sees it, only the developer changes it
     $('#speed').disabled = !state.developer;
     $('#speed').title = state.developer ? '運営サイトの更新頻度（運営者全員に反映）' : '更新頻度は開発者だけが変えられます';
     useSpeed(me.speed, false);
-    // 課金 and 保管庫: the developer's own
+    if (state.viewer) {
+      // looking only: no players' list to load, the counts on their own, and
+      // every 2 seconds the question whether they still may (taken away: out)
+      $('#tab-pay').hidden = true;
+      $('#tab-vault').hidden = true;
+      loadCounts();
+      setView('reports');
+      startTimers();
+      return;
+    }
+    // 課金: the developer's own; 保管庫: every operator (their own and the shared vaults; the developer's own changes with the code)
     $('#tab-pay').hidden = !state.developer;
-    $('#tab-vault').hidden = !state.developer;
+    $('#tab-vault').hidden = false;
+    resetVault();
+    // (this account's uploads waiting in this browser)
+    Object.keys(up.cards).forEach(function (k) { up.cards[k].card.remove(); });
+    up.cards = {};
+    up.jobs = {};
+    refreshJobs().then(kick);
+    opsLiveOpen();
     if (state.developer) loadPay(true);
     load();
     // /ops/#vault: straight to the vault
-    if (state.developer && location.hash === '#vault') setView('vault');
+    if (location.hash === '#vault') setView('vault');
     loadTeam(true);
     startTimers();
+  }
+  // a viewer's tabs: what waits in each (they have no players' list to bring them)
+  function loadCounts() {
+    return request('GET', '/api/ops/counts').then(function (r) {
+      setCount('reports', r.reports || 0);
+      setCount('detections', r.detections || 0);
+      setCount('feedback', r.feedback || 0);
+      if (r.speed) useSpeed(r.speed, true);
+    }, function () {});
+  }
+  // a viewer: still one? (asked every 2 seconds while the page is seen; the answer 401 logs out)
+  var aliveTimer = 0;
+  function alive() {
+    if (!state.viewer || !token || document.hidden) return;
+    request('GET', '/api/ops/alive').catch(function () {});
   }
   // the lists at one speed, the live views at a faster one (while the page is seen)
   function startTimers() {
     clearInterval(timer);
+    clearInterval(aliveTimer);
+    if (state.viewer) aliveTimer = setInterval(alive, 2000);
     timer = setInterval(function () {
       if (document.hidden || !$('#dialog').hidden || !$('#money').hidden) return;
+      if (state.viewer) {
+        loadCounts();
+        if (state.view === 'reports') loadReports(true);
+        else if (state.view === 'detections') loadDetections(true);
+        else if (state.view === 'feedback') loadFeedback(true);
+        return;
+      }
       load(true);
       if (state.view === 'reports') loadReports(true);
       else if (state.view === 'detections') loadDetections(true);
       else if (state.view === 'feedback') loadFeedback(true);
       if (state.view !== 'team') loadTeam(true);
       if (state.developer && !(state.view === 'pay' && document.activeElement && document.activeElement.tagName === 'TEXTAREA')) loadPay(true);
+      // the vault open: what the other one of a shared vault did (not while files go up or down)
+      if (state.view === 'vault') {
+        if (!state.vault) openLook(true);
+        else if (!moving && $('#viewer').hidden && $('#vmenu').hidden) loadVault(true);
+      }
     }, SPEEDS[speed][0]);
     clearInterval(liveTimer);
     liveTimer = setInterval(function () {
@@ -350,10 +468,17 @@
     else if (v === 'security') loadSecurity();
     else if (v === 'server') { loadServer(); renderDevCards(); }
     else if (v === 'pay') loadPay();
-    else if (v === 'vault') renderVault();
+    else if (v === 'vault') { renderVault(); if (state.vault) loadVault(true); else openLook(); }
+    // (the call goes on elsewhere: its reminder)
+    renderCall();
     scrollTop();
   }
   function scrollTop() { if (turned) $('#app').scrollTop = 0; else window.scrollTo(0, 0); }
+  // the top bar's height: what stays in sight below it (the bar of checked items in the vault) starts there
+  function topBar() {
+    var top = document.querySelector('.top');
+    if (top && top.offsetHeight) document.documentElement.style.setProperty('--top-h', top.offsetHeight + 'px');
+  }
   function setCount(id, n) {
     var b = $('#count-' + id);
     b.hidden = !n;
@@ -372,6 +497,8 @@
       setCount('detections', state.counts.detections);
       setCount('feedback', state.counts.feedback);
       setCount('archive', r.archived || 0);
+      // (the developer: operators asking for more room in the shared vaults)
+      setCount('vault', state.developer ? r.vaultRequests || 0 : 0);
       render();
       if (state.open && quiet) refreshDetail();
     }, function (err) { if (!quiet) fail(err); });
@@ -420,6 +547,7 @@
     var n = el('b', '', p.name);
     if (p.developer) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag maker', '開発者')); }
     if (p.operator) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag op', '運営')); }
+    if (p.viewer) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag t-viewer', '閲覧者')); }
     if (p.vip !== null && p.vip !== undefined) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag vip vip-' + p.vip, 'VIP' + p.vip)); }
     if (p.chatBan) { n.appendChild(document.createTextNode(' ')); n.appendChild(el('span', 'tag chatban', 'チャット停止')); }
     t.appendChild(n);
@@ -512,8 +640,8 @@
     if (p.archive) {
       var left = Math.max(0, Math.ceil((p.archive.purgeAt - Date.now()) / 86400000));
       box.appendChild(el('p', 'note bad', p.deleted
-        ? 'このアカウントは ' + date(p.archive.at, true) + ' に削除されました（取り消し不可）。' + date(p.archive.purgeAt, true) + '（あと' + left + '日）にデータを完全に削除します。'
-        : '永久BANでプレイヤーアーカイブに入っています。' + date(p.archive.purgeAt, true) + '（あと' + left + '日）にデータを完全に削除します（永久BANを解除すると一覧に戻ります）。'));
+        ? 'このアカウントは ' + date(p.archive.at, true) + ' に削除されました（取り消し不可）。' + date(p.archive.purgeAt, true) + '（あと' + left + '日）にデータを削除します（会話とログは無期限で保存）。'
+        : '永久BANでプレイヤーアーカイブに入っています。' + date(p.archive.purgeAt, true) + '（あと' + left + '日）にデータを削除します（会話とログは無期限で保存・永久BANを解除すると一覧に戻ります）。'));
     }
 
     // the automatic filter stopped their chat: an operator lets it go again
@@ -603,13 +731,13 @@
       if (p.ban) a.appendChild(act('処分を解除', 'ban', 'ok', 'none'));
       if (p.deviceBlocked) a.appendChild(act('端末のBANから外す', 'deviceOk', 'ok'));
       ban.appendChild(a);
-      ban.appendChild(el('p', 'muted', 'アクセス禁止は1週間、BANは30日で自動解除（いつでも解除可）。BAN・永久BANは同じ端末のほかのアカウントも止めます。永久BANはプレイヤーアーカイブに移り、90日後にデータを完全に削除します。'));
+      ban.appendChild(el('p', 'muted', 'アクセス禁止は1週間、BANは30日で自動解除（いつでも解除可）。BAN・永久BANは同じ端末のほかのアカウントも止めます。永久BANはプレイヤーアーカイブに移り、90日後にデータを削除します（会話とログは無期限で保存）。'));
     }
     box.appendChild(ban);
     // the developer's eyes only: deleting the account
     if (state.developer && !p.deleted && !p.operator) {
       var del = section('アカウントの削除（開発者だけに表示）');
-      del.appendChild(el('p', 'muted', 'このプレイヤーと同じ端末のアカウントを削除します。すぐにログアウトされ、プレイヤーアーカイブに移り、90日後にデータを完全に削除します。開発者でも取り消せません（開発者コードが必要・ログに残ります）。'));
+      del.appendChild(el('p', 'muted', 'このプレイヤーと同じ端末のアカウントを削除します。すぐにログアウトされ、プレイヤーアーカイブに移り、90日後にデータを削除します（会話とログは無期限で保存）。開発者でも取り消せません（開発者コードが必要・ログに残ります）。'));
       a = el('div', 'acts');
       a.style.marginTop = '10px';
       a.appendChild(act('アカウントを削除', 'delete', 'danger solid'));
@@ -791,7 +919,7 @@
       var subs = r.sameDevice.map(function (x) { return x.name; });
       return withCode({
         title: p.name + ' さんのアカウントを削除しますか？',
-        text: (subs.length ? '同じ端末の ' + subs.join('、') + ' さんのアカウントも一緒に削除します。' : '') + 'すぐにログアウトされ、プレイヤーアーカイブに移ります。' + r.days + '日後にデータを完全に削除します。この操作は開発者でも取り消せません。',
+        text: (subs.length ? '同じ端末の ' + subs.join('、') + ' さんのアカウントも一緒に削除します。' : '') + 'すぐにログアウトされ、プレイヤーアーカイブに移ります。' + r.days + '日後にデータを削除します（会話とログは無期限で保存）。この操作は開発者でも取り消せません。',
         ok: '削除する', danger: true
       }).then(function (code) {
         if (code === null) return null;
@@ -883,7 +1011,7 @@
     head.appendChild(el('span', 'time', 'アーカイブ ' + stamp(a.at)));
     card.appendChild(head);
     var facts = el('div', 'facts');
-    fact(facts, 'データの完全削除', date(a.purgeAt, true) + '（あと' + Math.max(0, Math.ceil((a.purgeAt - now) / 86400000)) + '日）');
+    fact(facts, 'データの削除', date(a.purgeAt, true) + '（あと' + Math.max(0, Math.ceil((a.purgeAt - now) / 86400000)) + '日）');
     fact(facts, '資産', '$' + fmt(p.worth));
     fact(facts, '最終オンライン', date(p.lastSeen, true));
     fact(facts, '登録', date(p.createdAt, true));
@@ -905,7 +1033,7 @@
     var b = e.target.closest('[data-lift]');
     if (!b) return;
     var id = Number(b.dataset.lift);
-    ask({ title: '永久BANを解除しますか？', text: 'プレイヤー一覧に戻り、データの完全削除の予定もなくなります。公式から解除のお知らせが届きます。', ok: '解除する' }).then(function (ok) {
+    ask({ title: '永久BANを解除しますか？', text: 'プレイヤー一覧に戻り、データの削除の予定もなくなります。公式から解除のお知らせが届きます。', ok: '解除する' }).then(function (ok) {
       if (!ok) return null;
       return request('POST', '/api/ops/ban', { id: id, kind: 'none' }).then(function () { toast('永久BANを解除しました'); loadArchive(); load(true); });
     }).catch(fail);
@@ -1352,7 +1480,8 @@
     list.appendChild(el('p', 'muted', '読み込み中…'));
     request('GET', '/api/ops/operators').then(function (r) {
       state.operators = r.operators || [];
-      state.devCodeSet = !!r.devCodeSet;
+      state.viewers = r.viewers || [];
+      if (r.devCodeSet !== undefined) state.devCodeSet = !!r.devCodeSet;
       renderOperators();
     }, fail);
   }
@@ -1376,7 +1505,7 @@
       var a = el('div', 'acts');
       if (o.changed && !o.developer) a.appendChild(el('span', 'muted', stamp(o.changed.at) + ' に' + (o.changed.by ? o.changed.by + 'が' : '') + (o.changed.granted ? '付与' : '剥奪')));
       if (o.developer) a.appendChild(el('span', 'muted', '開発者の運営権は剥奪できません'));
-      else if (o.registered) {
+      else if (o.registered && state.developer) {
         var b = el('button', o.operator ? 'btn small danger' : 'btn small', o.operator ? '運営権を剥奪する' : '運営権を戻す');
         b.type = 'button';
         b.dataset.opAct = o.operator ? 'revoke' : 'grant';
@@ -1386,6 +1515,82 @@
       card.appendChild(a);
       list.appendChild(card);
     });
+    // rights: the developer only
+    $('#op-grant').hidden = !state.developer;
+    renderViewers();
+    $('#op-inlog-box').hidden = !state.developer;
+    if (state.developer) loadInlog(false);
+  }
+  // the ログインログ (the developer's): who came into the site first each day, newest first
+  var inlog = { rows: [], more: false, today: '' };
+  function loadInlog(more) {
+    var before = more && inlog.rows.length ? inlog.rows[inlog.rows.length - 1].id : 0;
+    if (!more && !inlog.rows.length) $('#op-inlog').textContent = '';
+    request('GET', '/api/ops/entries' + (before ? '?before=' + before : '')).then(function (r) {
+      inlog.rows = more ? inlog.rows.concat(r.entries) : r.entries;
+      inlog.more = !!r.more;
+      inlog.today = r.today;
+      renderInlog();
+    }, fail);
+  }
+  function renderInlog() {
+    var box = $('#op-inlog');
+    box.textContent = '';
+    if (!inlog.rows.length) box.appendChild(el('p', 'muted', 'まだ記録はありません'));
+    var day = '';
+    inlog.rows.forEach(function (e) {
+      if (e.day !== day) {
+        day = e.day;
+        box.appendChild(el('div', 'inlog-day', day.replace(/-/g, '/') + (day === inlog.today ? '（今日）' : '')));
+      }
+      var row = el('div', 'inlog-row');
+      row.appendChild(el('span', 'inlog-time', e.jst.slice(11, 19)));
+      var r = ROLE[e.role] || ROLE.operator;
+      row.appendChild(el('span', 'kind ' + r[0], r[1]));
+      row.appendChild(el('span', 'inlog-name', e.user.name));
+      row.appendChild(el('span', 'inlog-how', (e.how === 'password' ? 'パスワードでログイン' : 'ログインボタン') + ' · ' + e.agent));
+      box.appendChild(row);
+    });
+    $('#op-inlog-more').hidden = !inlog.more;
+  }
+  // the viewers (閲覧者), each with when; the developer takes it away
+  function renderViewers() {
+    var box = $('#op-viewers');
+    box.textContent = '';
+    if (!(state.viewers || []).length) { box.appendChild(el('p', 'muted', '閲覧者はいません')); return; }
+    state.viewers.forEach(function (v) {
+      var card = el('article', 'card');
+      var head = el('div', 'card-head');
+      head.appendChild(person({ id: v.id, name: v.name, avatar: v.avatar }, v.site ? '運営サイトを見ています' : v.online ? 'ゲーム中' : '付与 ' + stamp(v.at) + (v.by ? '（' + v.by + '）' : '')));
+      head.appendChild(el('span', 'kind k-viewer', '閲覧者'));
+      card.appendChild(head);
+      if (state.developer) {
+        var a = el('div', 'acts'), b = el('button', 'btn small danger', '閲覧者の権限を剥奪する');
+        b.type = 'button';
+        b.dataset.viewerAct = 'revoke';
+        b.dataset.name = v.name;
+        a.appendChild(b);
+        card.appendChild(a);
+      }
+      box.appendChild(card);
+    });
+  }
+  function changeViewer(action, name, b) {
+    var revoke = action === 'revoke';
+    withCode(revoke
+      ? { title: name + ' さんの閲覧者の権限を剥奪しますか？', text: name + ' さんはすぐに運営サイトと security HOME からログアウトされます（ゲームはそのまま遊べます）。', ok: '剥奪する', danger: true }
+      : { title: name + ' さんを閲覧者にしますか？', text: name + ' さんは運営サイトと security HOME を見ることだけができるようになります（プレイヤー一覧・アーカイブ・保管庫・チャット・バックアップ・課金は見られず、操作は一切できません）。', ok: '閲覧者にする' }
+    ).then(function (code) {
+      if (code === null) return null;
+      if (b) b.disabled = true;
+      return request('POST', '/api/ops/viewer', { name: name, action: action, code: code }).then(function (r) {
+        toast(revoke ? name + ' さんの閲覧者の権限を剥奪しました' : name + ' さんを閲覧者にしました');
+        state.operators = r.operators || state.operators;
+        state.viewers = r.viewers || [];
+        renderOperators();
+        $('#op-grant-name').value = '';
+      });
+    }).catch(function (err) { if (b) b.disabled = false; fail(err); });
   }
   // the developer code for one action (asked every time, never kept here)
   function withCode(o) {
@@ -1413,6 +1618,8 @@
     if (o && Number(o.dataset.open)) { openDetail(Number(o.dataset.open)); return; }
     var b = e.target.closest('[data-op-act]');
     if (b) changeAccess(b.dataset.opAct, b.dataset.name, b);
+    var v = e.target.closest('[data-viewer-act]');
+    if (v) changeViewer(v.dataset.viewerAct, v.dataset.name, v);
   }
   function onGrant(e) {
     e.preventDefault();
@@ -1583,6 +1790,7 @@
   function loadTeam(quiet) {
     return request('GET', '/api/ops/team').then(function (r) {
       team.list = r;
+      if (!call.on) call.members = r.call || [];
       // the conversation on the screen is read
       var open = state.view === 'team' && !document.hidden && team.peer !== null ? peerRow(team.peer) : null, mustRead = !!(open && open.unread);
       if (open) open.unread = 0;
@@ -1608,8 +1816,10 @@
     list.textContent = '';
     list.appendChild(el('p', 'chat-empty', '読み込み中…'));
     $('#team-form').hidden = isPair(peer);
+    closePick();
     renderTeamList();
     renderTeamHead();
+    renderCall();
     loadTeamMsgs(true, true);
   }
   function lastTeamId() { return team.messages.length ? team.messages[team.messages.length - 1].id : 0; }
@@ -1663,6 +1873,7 @@
     t.appendChild(el('b', '', '全体チャット'));
     t.appendChild(el('small', '', r.all.last ? r.all.last.from.name + '：' + r.all.last.text : '運営者全員で話せます'));
     all.appendChild(t);
+    if ((r.call || []).length) all.appendChild(el('span', 'team-calling', '🎙' + r.call.length));
     if (r.all.unread) all.appendChild(unreadMark(r.all.unread));
     box.appendChild(all);
     // me first, then on the site, in the game, and the rest by when they were last on
@@ -1712,6 +1923,7 @@
       h.appendChild(el('span', 'face team-all', '全'));
       t.appendChild(el('b', '', '全体チャット'));
       t.appendChild(el('small', '', '運営者全員（' + r.operators.length + '人）が見られます'));
+      renderCall();
     } else {
       var o = peerRow(team.peer);
       $('#team-form').hidden = !o;
@@ -1734,7 +1946,7 @@
       var mine = m.from.id === me && !isPair(team.peer);
       var node = el('div', 'msg ' + (mine ? 'bot' : 'player'));
       if (!mine && (team.peer === 0 || isPair(team.peer))) node.appendChild(el('span', 'msg-from', m.from.name));
-      node.appendChild(el('div', 'bubble', m.text));
+      node.appendChild(bubbleEl(m));
       var meta = el('div', 'msg-meta');
       if (mine && team.peer !== 0 && team.theirRead >= m.id) meta.appendChild(el('b', '', '既読'));
       meta.appendChild(document.createTextNode(stamp(m.at)));
@@ -1745,13 +1957,391 @@
   }
   function sendTeam(e) {
     e.preventDefault();
-    var peer = team.peer, text = $('#team-text').value.trim();
+    var peer = team.peer, text = withTokens($('#team-text').value.trim());
     if (peer === null || team.sending || !text) return;
     team.sending = true;
+    closePick();
     request('POST', '/api/ops/team/messages', { to: peer, text: text }).then(function () {
       $('#team-text').value = '';
+      team.refs = {};
       if (team.peer === peer) loadTeamMsgs(true);
     }, fail).then(function () { team.sending = false; });
+  }
+
+  /* what a message names: a player (@[p:<id>]: a tap opens them), the
+     developer (@[dev]: called at once) and a log line (@[log:<id>]: a tap
+     shows it). In the box they read "@名前", "@開発者", "［ログ#12］". */
+  var TOKEN = /@\[(p:\d+|dev|log:\d+)\]/g;
+  function bubbleEl(m) {
+    var b = el('div', 'bubble' + (m.refs && m.refs.dev ? ' calls-dev' : '')), text = String(m.text || ''), at = 0, t;
+    var refs = m.refs || { players: {}, logs: {} };
+    TOKEN.lastIndex = 0;
+    while ((t = TOKEN.exec(text))) {
+      if (t.index > at) b.appendChild(document.createTextNode(text.slice(at, t.index)));
+      b.appendChild(refEl(t[1], refs));
+      at = t.index + t[0].length;
+    }
+    if (at < text.length) b.appendChild(document.createTextNode(text.slice(at)));
+    return b;
+  }
+  function refEl(tok, refs) {
+    if (tok === 'dev') return el('span', 'mention dev', '@開発者');
+    var id = Number(tok.slice(tok.indexOf(':') + 1));
+    if (tok[0] === 'p') {
+      var p = (refs.players || {})[id];
+      if (!p) return el('span', 'mention gone', '@?');
+      var b = el('button', 'mention', '@' + p.name);
+      b.type = 'button';
+      b.dataset.player = id;
+      b.title = p.name + ' さんを開く';
+      return b;
+    }
+    var x = (refs.logs || {})[id];
+    var q = el('button', 'quote-log' + (x ? '' : ' gone'));
+    q.type = 'button';
+    q.dataset.log = id;
+    q.appendChild(el('small', '', 'ログ #' + id + (x ? '・' + stamp(x.at) + '・' + (KINDS[x.kind] || '') : '')));
+    q.appendChild(el('span', '', x ? x.summary : '（この記録は見つかりません）'));
+    return q;
+  }
+  // a tap on a name or a quote in the chat
+  function onTeamMsgs(e) {
+    var p = e.target.closest('[data-player]');
+    if (p) { openDetail(Number(p.dataset.player)); return; }
+    var l = e.target.closest('[data-log]');
+    if (l) showLogLine(Number(l.dataset.log));
+  }
+  // one line of the log, opened (from a quote)
+  function showLogLine(id) {
+    state.logQ = '#' + id;
+    state.logKind = '';
+    $('#log-search').value = state.logQ;
+    Array.prototype.forEach.call(document.querySelectorAll('#log-kinds .chip'), function (x) { x.classList.toggle('on', x.dataset.kind === ''); });
+    setView('log');
+    var tries = 0;
+    (function open() {
+      var more = document.querySelector('#log-list .entry-more');
+      if (more) { more.click(); return; }
+      if (++tries < 20) setTimeout(open, 150);
+    })();
+  }
+  // "@名前" and the rest back into what the server keeps
+  function withTokens(text) {
+    Object.keys(team.refs || {}).sort(function (a, b) { return b.length - a.length; }).forEach(function (k) { text = text.split(k).join(team.refs[k]); });
+    return text;
+  }
+  function insertAtCaret(ta, text, dropAt) {
+    var from = ta.selectionStart, to = ta.selectionEnd, v = ta.value;
+    // (the "@" just typed that opened the list goes)
+    if (dropAt && from > 0 && v.charAt(from - 1) === '@') from--;
+    ta.value = v.slice(0, from) + text + v.slice(to);
+    ta.selectionStart = ta.selectionEnd = from + text.length;
+    ta.focus();
+  }
+  // the list to pick from: 'at' (@開発者 first, then players) or 'log' (any line of the log)
+  var pick = { mode: '', timer: 0, typed: false, seq: 0 };
+  function openPick(mode, typed) {
+    if (team.peer === null || isPair(team.peer)) return;
+    pick.mode = mode;
+    pick.typed = !!typed;
+    $('#team-pick').hidden = false;
+    var q = $('#team-pick-q');
+    q.value = '';
+    q.placeholder = mode === 'log' ? '記録を探す（名前・内容・#番号）' : 'プレイヤー名で探す';
+    clearTimeout(pick.timer);
+    renderPick([], mode);
+    loadPick();
+    setTimeout(function () { q.focus(); }, 20);
+  }
+  function closePick() { $('#team-pick').hidden = true; pick.mode = ''; clearTimeout(pick.timer); pick.seq++; }
+  function loadPick() {
+    var mode = pick.mode, q = $('#team-pick-q').value.trim(), seq = ++pick.seq;
+    if (!mode) return;
+    var url = mode === 'log' ? '/api/ops/log?q=' + encodeURIComponent(q) : '/api/ops/players?q=' + encodeURIComponent(q);
+    request('GET', url).then(function (r) {
+      if (seq !== pick.seq || pick.mode !== mode) return;
+      renderPick(mode === 'log' ? (r.entries || []).slice(0, 30) : (r.players || []).slice(0, 30), mode);
+    }, function () {});
+  }
+  function renderPick(items, mode) {
+    var box = $('#team-pick-list');
+    mode = mode || pick.mode;
+    box.textContent = '';
+    function row(label, sub, data, cls) {
+      var b = el('button', 'team-pick-row' + (cls ? ' ' + cls : ''));
+      b.type = 'button';
+      b.setAttribute('role', 'option');
+      Object.keys(data).forEach(function (k) { b.dataset[k] = data[k]; });
+      b.appendChild(el('b', '', label));
+      if (sub) b.appendChild(el('small', '', sub));
+      box.appendChild(b);
+    }
+    if (mode === 'at') {
+      row('@開発者', '特別タグ：開発者にすぐ知らせます（運営サイト・スマホ・Discord）', { pickDev: '1' }, 'dev');
+      items.filter(function (p) { return p && p.name && !p.actor; }).forEach(function (p) { row('@' + p.name, (p.online ? 'オンライン・' : '') + '登録 ' + date(p.createdAt), { pickPlayer: p.id, name: p.name }); });
+    } else {
+      items.filter(function (x) { return x && x.actor; }).forEach(function (x) { row('#' + x.id + ' ' + x.summary, String(x.jst || '').slice(0, 16) + '・' + (KINDS[x.kind] || '') + '・' + x.actor.name, { pickLog: x.id }); });
+    }
+    if (!box.childNodes.length) box.appendChild(el('p', 'muted team-pick-empty', '見つかりません'));
+  }
+  function onPickList(e) {
+    var b = e.target.closest('.team-pick-row');
+    if (!b) return;
+    var ta = $('#team-text'), key;
+    team.refs = team.refs || {};
+    if (b.dataset.pickDev) { key = '@開発者'; team.refs[key] = '@[dev]'; }
+    else if (b.dataset.pickPlayer) { key = '@' + b.dataset.name; team.refs[key] = '@[p:' + b.dataset.pickPlayer + ']'; }
+    else { key = '［ログ#' + b.dataset.pickLog + '］'; team.refs[key] = '@[log:' + b.dataset.pickLog + ']'; }
+    var typed = pick.typed;
+    closePick();
+    insertAtCaret(ta, key + ' ', typed);
+  }
+  // a log line quoted from the log (its 詳細): into the 全体チャット's box
+  function quoteInChat(x) {
+    setView('team');
+    var go = function () {
+      if (team.peer === null || isPair(team.peer)) openTeam(0);
+      team.refs = team.refs || {};
+      var key = '［ログ#' + x.id + '］';
+      team.refs[key] = '@[log:' + x.id + ']';
+      insertAtCaret($('#team-text'), key + ' ');
+    };
+    setTimeout(go, 300);
+  }
+
+  /* the operator site's own live connection (an operator's): the 全体チャット's
+     call and the developer called. WebSocket on Cloudflare, Server-Sent
+     Events on the Node server (the page says which). */
+  var opsLive = null, opsLiveWant = false, opsLiveTimer = 0;
+  function liveSse() { var m = document.querySelector('meta[name="br-mode"]'); return !!m && m.getAttribute('data-live') === 'sse'; }
+  function opsLiveOpen() {
+    if (state.viewer || !token || opsLive) return;
+    opsLiveWant = true;
+    request('POST', '/api/ops/live-ticket', {}).then(function (r) {
+      if (!opsLiveWant || opsLive) return;
+      var path = '/api/' + (liveSse() ? 'stream' : 'live') + '?ops=' + encodeURIComponent(r.ticket), up = false;
+      if (liveSse()) {
+        var es = new EventSource(path);
+        opsLive = { close: function () { es.close(); } };
+        ['hello', 'opscall', 'opsping'].forEach(function (ev) {
+          es.addEventListener(ev, function (e) { up = true; var d = null; try { d = JSON.parse(e.data); } catch (x) { return; } onOpsLive(ev, d); });
+        });
+        es.onerror = function () { es.close(); opsLiveLost(up); };
+      } else {
+        var ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + path);
+        var ping = setInterval(function () { try { ws.send('ping'); } catch (x) { /* closing */ } }, 30000);
+        opsLive = { close: function () { clearInterval(ping); ws.onclose = null; try { ws.close(); } catch (x) { /* closed */ } } };
+        ws.onmessage = function (e) {
+          if (e.data === 'pong') return;
+          var m = null;
+          try { m = JSON.parse(e.data); } catch (x) { return; }
+          up = true;
+          onOpsLive(m.event, m.data);
+        };
+        ws.onclose = function () { clearInterval(ping); opsLiveLost(up); };
+      }
+    }, function () { opsLiveLost(false); });
+  }
+  function opsLiveLost(was) {
+    opsLive = null;
+    // (the call goes with the connection: the server has let us out)
+    if (call.on) { callEnd(); toast('接続が切れたため、通話から抜けました'); }
+    if (!opsLiveWant) return;
+    clearTimeout(opsLiveTimer);
+    opsLiveTimer = setTimeout(opsLiveOpen, was ? 1000 : 5000);
+  }
+  function opsLiveClose() {
+    opsLiveWant = false;
+    clearTimeout(opsLiveTimer);
+    if (opsLive) { opsLive.close(); opsLive = null; }
+  }
+  function onOpsLive(ev, d) {
+    if (ev === 'opscall') onCall(d);
+    else if (ev === 'opsping') devCalled(d);
+  }
+  // @開発者: the developer hears of it at once
+  function devCalled(d) {
+    var box = $('#dev-call');
+    box.textContent = '';
+    box.appendChild(el('b', '', '📣 ' + d.from.name + ' さんが' + (d.to ? '個人チャット' : '全体チャット') + 'で開発者を呼んでいます'));
+    box.appendChild(el('span', '', d.text));
+    var go = el('button', 'btn small primary', '開く');
+    go.type = 'button';
+    go.addEventListener('click', function () { box.hidden = true; setView('team'); setTimeout(function () { openTeam(d.to ? d.from.id : 0); }, 200); });
+    var x = el('button', 'close', '×');
+    x.type = 'button';
+    x.setAttribute('aria-label', '閉じる');
+    x.addEventListener('click', function () { box.hidden = true; });
+    box.appendChild(go);
+    box.appendChild(x);
+    box.hidden = false;
+    toast(d.from.name + ' さんが開発者を呼んでいます');
+    try { if (window.Notification && Notification.permission === 'granted') new Notification('運営チャットで開発者が呼ばれています', { body: d.from.name + '：' + d.text }); } catch (e) { /* none */ }
+  }
+
+  /* The 全体チャット's call: every operator who comes, for as long as they
+     like, everyone to everyone (the newcomer calls each one already in it).
+     High quality: Opus at 128 kbps with error correction, the microphone's
+     echo and noise cancelled. */
+  var CALL_BPS = 128000;
+  var call = { on: false, joining: false, stream: null, peers: {}, members: [], muted: false, ice: [] };
+  function hq(desc) {
+    var sdp = String(desc.sdp || ''), m = /a=rtpmap:(\d+) opus\/48000/i.exec(sdp);
+    if (m) {
+      var pt = m[1], line = new RegExp('a=fmtp:' + pt + ' ([^\\r\\n]*)');
+      var want = 'maxaveragebitrate=' + CALL_BPS + ';useinbandfec=1;usedtx=0;maxplaybackrate=48000';
+      sdp = line.test(sdp) ? sdp.replace(line, function (all, p) { return 'a=fmtp:' + pt + ' ' + p.split(';').filter(function (x) { return !/^(maxaveragebitrate|useinbandfec|usedtx|maxplaybackrate)=/.test(x); }).concat(want).join(';'); })
+        : sdp.replace(m[0], m[0] + '\r\na=fmtp:' + pt + ' ' + want);
+    }
+    return { type: desc.type, sdp: sdp };
+  }
+  function signal(to, data) { return request('POST', '/api/ops/call/signal', { to: to, data: data }).catch(function () {}); }
+  function plain(d) { return d && d.toJSON ? d.toJSON() : d; }
+  function peerFor(o, offer) {
+    var p = call.peers[o.id];
+    if (p) return p;
+    var pc = new RTCPeerConnection({ iceServers: call.ice });
+    p = call.peers[o.id] = { pc: pc, user: o, audio: null, pending: [], state: 'new' };
+    call.stream.getTracks().forEach(function (t) { pc.addTrack(t, call.stream); });
+    pc.onicecandidate = function (e) { if (e.candidate) signal(o.id, { candidate: plain(e.candidate) }); };
+    pc.ontrack = function (e) {
+      if (!p.audio) { p.audio = new Audio(); p.audio.autoplay = true; }
+      p.audio.srcObject = e.streams[0];
+      p.audio.play().catch(function () {});
+    };
+    pc.onconnectionstatechange = function () {
+      p.state = pc.connectionState;
+      if (p.state === 'connected') {
+        pc.getSenders().forEach(function (sd) {
+          if (!sd.track || sd.track.kind !== 'audio' || !sd.getParameters) return;
+          var prm = sd.getParameters();
+          prm.encodings = prm.encodings && prm.encodings.length ? prm.encodings : [{}];
+          prm.encodings[0].maxBitrate = CALL_BPS;
+          sd.setParameters(prm).catch(function () {});
+        });
+      }
+      renderCall();
+    };
+    if (offer) {
+      pc.createOffer().then(function (d) { return pc.setLocalDescription(hq(d)); })
+        .then(function () { return signal(o.id, { sdp: plain(pc.localDescription) }); }).catch(function () {});
+    }
+    return p;
+  }
+  function dropPeer(id) {
+    var p = call.peers[id];
+    if (!p) return;
+    try { p.pc.close(); } catch (e) { /* closed */ }
+    if (p.audio) { p.audio.srcObject = null; }
+    delete call.peers[id];
+  }
+  function onCall(d) {
+    if (d.members) call.members = d.members;
+    if (team.list) team.list.call = d.members || team.list.call;
+    if (!call.on) { renderCall(); renderTeamList(); return; }
+    if (d.type === 'leave') dropPeer(d.user.id);
+    else if (d.type === 'signal') {
+      var p = peerFor(d.from, false), pc = p.pc, x = d.data || {};
+      if (x.sdp) {
+        pc.setRemoteDescription(x.sdp).then(function () {
+          p.pending.splice(0).forEach(function (c) { pc.addIceCandidate(c).catch(function () {}); });
+          if (x.sdp.type !== 'offer') return null;
+          return pc.createAnswer().then(function (a) { return pc.setLocalDescription(hq(a)); })
+            .then(function () { return signal(d.from.id, { sdp: plain(pc.localDescription) }); });
+        }).catch(function () {});
+      } else if (x.candidate) {
+        if (pc.remoteDescription) pc.addIceCandidate(x.candidate).catch(function () {});
+        else p.pending.push(x.candidate);
+      }
+    }
+    renderCall();
+  }
+  function callJoin() {
+    if (call.on || call.joining) return;
+    if (!opsLive) { opsLiveOpen(); toast('接続を準備しています。少し待ってからもう一度押してください'); return; }
+    if (!navigator.mediaDevices || !window.RTCPeerConnection) { toast('このブラウザでは通話できません'); return; }
+    call.joining = true;
+    renderCall();
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 48000 } }).then(function (stream) {
+      call.stream = stream;
+      return request('POST', '/api/ops/call/join', {}).then(function (r) {
+        call.on = true;
+        call.muted = false;
+        call.ice = r.ice || [];
+        call.members = r.members || [];
+        (r.others || []).forEach(function (o) { peerFor(o, true); });
+        toast('通話に参加しました');
+      });
+    }).catch(function (err) {
+      stopMic();
+      fail(err && err.name === 'NotAllowedError' ? { message: 'マイクの使用が許可されていません' } : err && err.message ? err : { message: '通話に参加できませんでした' });
+    }).then(function () { call.joining = false; renderCall(); });
+  }
+  function stopMic() {
+    if (call.stream) call.stream.getTracks().forEach(function (t) { t.stop(); });
+    call.stream = null;
+  }
+  // out of the call here (the server is told by callLeave)
+  function callEnd() {
+    Object.keys(call.peers).forEach(dropPeer);
+    stopMic();
+    call.on = false;
+    renderCall();
+  }
+  function callLeave() {
+    if (!call.on) return;
+    callEnd();
+    request('POST', '/api/ops/call/leave', {}).then(function (r) { call.members = r.members || []; renderCall(); }, function () {});
+  }
+  function callMute() {
+    call.muted = !call.muted;
+    if (call.stream) call.stream.getAudioTracks().forEach(function (t) { t.enabled = !call.muted; });
+    renderCall();
+  }
+  function renderCall() {
+    var box = $('#team-call'), here = state.view === 'team' && team.peer === 0, n = (call.members || []).length;
+    box.hidden = !here || state.viewer;
+    box.textContent = '';
+    if (!box.hidden) {
+      var t = el('div', 'team-call-who');
+      t.appendChild(el('b', '', call.on ? '🎙 通話中（' + n + '人）' : n ? '🎙 ' + n + '人が通話中' : '🎙 全体チャットの通話'));
+      t.appendChild(el('small', '', n ? call.members.map(function (m) {
+        var p = call.peers[m.id];
+        return m.name + (p && p.state !== 'connected' && p.state !== 'new' ? '（' + (p.state === 'connecting' ? '接続中' : p.state === 'failed' ? '接続できません' : p.state) + '）' : '');
+      }).join('・') : '人数・時間の制限なし・高音質（128kbps）'));
+      box.appendChild(t);
+      function btn(label, act, cls) {
+        var b = el('button', 'btn small' + (cls ? ' ' + cls : ''), label);
+        b.type = 'button';
+        b.dataset.call = act;
+        box.appendChild(b);
+      }
+      if (call.on) { btn(call.muted ? 'マイクをオン' : 'マイクをミュート', 'mute', call.muted ? 'warn' : ''); btn('退出', 'leave', 'danger'); }
+      else btn(call.joining ? '参加中…' : '通話に参加', 'join', 'primary');
+    }
+    // elsewhere on the site: a small reminder that the call goes on
+    var pill = $('#call-pill');
+    pill.hidden = !call.on || here;
+    pill.textContent = '';
+    if (!pill.hidden) {
+      var go = el('button', 'call-pill-go', '🎙 通話中 ' + n + '人' + (call.muted ? '（ミュート）' : ''));
+      go.type = 'button';
+      go.dataset.call = 'open';
+      var out = el('button', 'call-pill-out', '退出');
+      out.type = 'button';
+      out.dataset.call = 'leave';
+      pill.appendChild(go);
+      pill.appendChild(out);
+    }
+  }
+  function onCallButtons(e) {
+    var b = e.target.closest('[data-call]');
+    if (!b) return;
+    var a = b.dataset.call;
+    if (a === 'join') callJoin();
+    else if (a === 'leave') callLeave();
+    else if (a === 'mute') callMute();
+    else if (a === 'open') { setView('team'); setTimeout(function () { openTeam(0); }, 200); }
   }
 
   /* ------------------------------------------------------------ サーバー --- */
@@ -1998,14 +2588,16 @@
     var v = r.vault;
     $('#srv-vault').hidden = !v;
     if (!v) return;
+    var s = v.shared || { files: 0, bytes: 0, vaults: 0, free: GB, requests: 0 };
     var rows = [
       ['保存先', v.store === 'bucket' ? 'R2' : 'データベース'],
-      ['使用量', bytes(v.used) + ' / ' + bytes(v.maxBytes), v.used / v.maxBytes],
+      ['使用量（全体）', bytes(v.used) + ' / ' + bytes(v.maxBytes), v.used / v.maxBytes],
       ['1ファイルの上限', bytes(v.fileBytes) + '（' + bytes(v.piece) + 'ずつ送信）'],
-      ['ファイル', fmt(v.files) + '件（実装済み ' + fmt(v.implemented) + '件）・フォルダ ' + fmt(v.folders) + '個']
+      ['開発者専用保管庫', fmt(v.files) + '件（実装済み ' + fmt(v.implemented) + '件）・フォルダ ' + fmt(v.folders) + '個'],
+      ['共有保管庫（運営者どうし）', fmt(s.vaults) + 'つで ' + fmt(s.files) + '件・' + bytes(s.bytes) + '（1人 ' + bytes(s.free) + 'まで・超えるには開発者の承認' + (s.requests ? '・申請 ' + fmt(s.requests) + '件' : '') + '）']
     ];
     if (v.inDb) rows.push(['データベースに残っている部分', fmt(v.inDb) + '（保管庫を開くと R2 へ移ります）']);
-    srvCard($('#srv-vault'), '保管庫', rows, v.store === 'bucket' ? '' : 'R2 をつなぐと 50GB になります（README「保管庫を R2 につなぐ」）。');
+    srvCard($('#srv-vault'), '保管庫', rows, (v.store === 'bucket' ? '' : 'R2 をつなぐと 50GB になります（README「保管庫を R2 につなぐ」）。') + '開発者専用保管庫と共有保管庫は同じ容量を使います。');
   }
   function srvCloudflare(r) {
     var x = r.cloudflare, card = $('#srv-cf'), title = 'Cloudflare の集計（今月）';
@@ -2279,8 +2871,17 @@
     renderStop();
   }
 
-  /* ------------------------------------------------------------ 保管庫 (the developer's own) --- */
-  var vaultTimer = 0, moving = 0, v3d = null, viewing = null, pics = {};
+  /* ------------------------------------------------------------ 保管庫 --- */
+  /* The developer's own vault (their login shows it; the developer code lets
+     them change it for 30 minutes), the backups they keep of any file, the
+     vaults operators share (one for every two of them) and each operator's
+     own: private, and their login is enough; the developer looks into every
+     one (no changes). One room for all of them; what an operator keeps is 1GB
+     until the developer approves more (with the limit they set). A file opens
+     with a tap on its icon; everything else is in its ⋯ menu (or a right
+     click, a long press), its 詳細 and its 💬. Files and folders are checked
+     to move, download, back up or delete several at once (Shift: a range). */
+  var vaultTimer = 0, moving = 0, v3d = null, viewing = null, viewUrl = '', pics = {}, vaultSig = '', lastPick = null, shown = {};
   // three.js for the 3D previews (ops/vault3d.js), loaded the first time it is needed
   function vault3d() {
     if (!v3d) {
@@ -2296,58 +2897,149 @@
   }
   var KINDS_3D = /\.(glb|gltf|obj|fbx|stl|ply)$/i;
   function is3d(name) { return KINDS_3D.test(String(name || '')); }
+  // (the developer's ticket goes with every call while they may change things; an operator has none)
   function vreq(method, path, body) {
-    return request(method, path, body, state.vault ? { 'X-Vault-Ticket': state.vault.ticket } : {}).catch(function (err) {
-      if (err.code === 'vault_locked') lockVault('保管庫が閉じました。もう一度開いてください');
+    return request(method, path, body, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}).catch(function (err) {
+      if (err.code === 'vault_locked' && state.vault && state.vault.ticket) relock('閲覧のみに戻りました。変更するには「編集する」から開発者コードを入力してください');
       throw err;
     });
   }
   function mb(n) {
+    if (!n) return '0MB';
     if (n >= 1073741824) return (n / 1073741824).toFixed(n >= 10737418240 ? 0 : 1) + 'GB';
     return n >= 1048576 ? (n / 1048576).toFixed(n >= 104857600 ? 0 : 1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB';
   }
-  function lockVault(message) {
+  // 2GB, 1.5GB: a limit in the shared vaults (one under 1GB in MB)
+  function gb(n) { return n >= GB ? Math.round(n / GB * 10) / 10 + 'GB' : mb(n); }
+  // nothing of the vault kept (closed, or someone else logged in)
+  function resetVault() {
     state.vault = null;
+    state.vaultMemo = '';
+    shown = {};
+    closeComments();
+    state.vaultSpaces = null;
+    state.vaultInfo = null;
+    state.vaultSpace = '';
     state.vaultFiles = [];
     state.vaultFolders = [];
     state.vaultFolder = '';
     state.vaultPicked = {};
+    state.vaultPage = 0;
+    vaultSig = '';
+    lastPick = null;
     clearTimeout(vaultTimer);
-    renderVault();
-    if (message) toast(message);
   }
-  function openVault() {
-    withCode({ title: '保管庫を開く', text: '開発者専用の保管庫を30分間開きます。', ok: '開く' }).then(function (code) {
+  // the developer back to looking only (the code's 30 minutes over, or 閉じる)
+  function relock(message) {
+    clearTimeout(vaultTimer);
+    if (!state.vault) return Promise.resolve();
+    state.vault.ticket = '';
+    state.vault.until = 0;
+    if (message) toast(message);
+    vaultSig = '';
+    renderVault();
+    return loadVault();
+  }
+  // the developer: the developer code lets them change things for 30 minutes
+  function unlockVault() {
+    withCode({ title: '保管庫を編集する', text: '開発者コードを入れると、30分間 保管庫を変更できます（それまでは閲覧のみです）。', ok: '編集する' }).then(function (code) {
       if (code === null) return null;
       return request('POST', '/api/vault/open', { code: code }).then(function (r) {
-        state.vault = r;
+        if (!state.vault) return null;
+        state.vault.ticket = r.ticket;
+        state.vault.until = r.until;
+        state.vault.hours = r.hours;
         clearTimeout(vaultTimer);
-        vaultTimer = setTimeout(function () { lockVault('30分たったので保管庫を閉じました'); }, Math.max(1000, r.until - Date.now() - 5000));
-        renderVault();
+        vaultTimer = setTimeout(function () { relock('30分たったので閲覧のみに戻りました'); }, Math.max(1000, r.until - Date.now() - 5000));
+        toast('30分間 編集できます');
+        vaultSig = '';
         return loadVault();
       });
     }).catch(fail);
   }
-  function loadVault() {
-    if (!state.vault) return Promise.resolve();
-    return vreq('GET', '/api/vault/files').then(function (r) {
-      state.vaultFiles = r.files || [];
-      state.vaultFolders = r.folders || [];
-      if (state.vault) { state.vault.used = r.used; state.vault.all = r.all; state.vault.store = r.store; state.vault.inDb = r.inDb; }
-      // (a folder that went: back to the top; picks of files that went)
-      if (state.vaultFolder && !folderOf(state.vaultFolder)) state.vaultFolder = '';
-      Object.keys(state.vaultPicked).forEach(function (id) {
-        if (!state.vaultFiles.some(function (f) { return f.id === id; })) delete state.vaultPicked[id];
-      });
+  // the vaults one sees (no code needed to look): the developer's own first
+  // (the developer), one's own (an operator)
+  function openLook(quiet) {
+    if (state.vault || openLook.busy) return Promise.resolve();
+    openLook.busy = true;
+    return request('GET', '/api/vault/spaces').then(function (sp) {
+      if (state.vault) return null;
+      state.vault = { ticket: '', until: 0, chunk: sp.pool.chunk, maxBytes: sp.pool.maxBytes, fileBytes: sp.pool.fileBytes, used: sp.pool.used, store: sp.pool.store, me: sp.me, hours: sp.hours };
+      state.vaultSpaces = sp;
+      state.vaultSpace = state.developer ? '' : sp.personal ? sp.personal.id : sp.spaces.length ? sp.spaces[0].id : '';
       renderVault();
+      return loadVault();
+    }, function (err) { if (!quiet) fail(err); }).then(function () { openLook.busy = false; });
+  }
+  // the vaults one sees and one's room, and the open one's files and folders
+  // (`quiet`: from the timer, redrawn only when something changed)
+  function loadVault(quiet) {
+    if (!state.vault) return Promise.resolve();
+    var space = state.vaultSpace, none = !space && !state.developer;
+    return Promise.all([
+      vreq('GET', '/api/vault/spaces'),
+      none ? null : vreq('GET', '/api/vault/files' + (space ? '?space=' + encodeURIComponent(space) : ''))
+    ]).then(function (rs) {
+      var sp = rs[0], r = rs[1];
+      if (!state.vault || state.vaultSpace !== space) return;
+      state.vaultSpaces = sp;
+      if (sp.requests) setCount('vault', sp.requests.length);
+      state.vault.used = sp.pool.used;
+      state.vault.maxBytes = sp.pool.maxBytes;
+      state.vault.me = sp.me;
+      if (sp.inDb !== undefined) state.vault.inDb = sp.inDb;
+      state.vaultInfo = r ? r.space : null;
+      state.vaultFiles = r ? r.files || [] : [];
+      state.vaultFolders = r ? r.folders || [] : [];
+      if (r) { state.vault.all = r.all; state.vault.store = r.store; }
+      // (the code's ticket no longer good: looking only)
+      if (r && r.locked && state.vault.ticket) { state.vault.ticket = ''; clearTimeout(vaultTimer); }
+      // (a folder that went: back to the top; checks on what went)
+      if (state.vaultFolder && !folderOf(state.vaultFolder)) state.vaultFolder = '';
+      Object.keys(state.vaultPicked).forEach(function (id) { if (!fileOf(id) && !folderOf(id)) delete state.vaultPicked[id]; });
+      // as it was: nothing redrawn (what is open on the page stays as it is)
+      var sig = JSON.stringify([space, sp, state.vaultFiles, state.vaultFolders]);
+      if (!quiet || sig !== vaultSig) { vaultSig = sig; renderVault(); }
+      if (commentsFor) renderComments();
       toBucket();
-      resumeWaiting(false);
-    }, fail);
+      renderResume();
+      roomCame();
+    }, function (err) {
+      // (a shared vault no longer there: back to the first one)
+      var first = state.vaultSpaces && state.vaultSpaces.spaces[0], back = state.developer ? '' : first ? first.id : '';
+      if (err && err.code === 'no_space' && state.vault && state.vaultSpace === space && back !== space) {
+        state.vaultSpace = back;
+        return loadVault();
+      }
+      if (!quiet) fail(err);
+      return null;
+    });
+  }
+  function fileOf(id) { return state.vaultFiles.filter(function (f) { return f.id === id; })[0] || null; }
+  // another vault: from its top, nothing checked
+  function goSpace(id) {
+    if (!state.vault || id === state.vaultSpace) return;
+    state.vaultSpace = id;
+    state.vaultInfo = null;
+    state.vaultFiles = [];
+    state.vaultFolders = [];
+    state.vaultFolder = '';
+    state.vaultPage = 0;
+    clearPicks();
+    setShow('all');
+    vaultSig = '';
+    renderVault();
+    loadVault();
+  }
+  // すべて / 未実装 / 実装済み (the developer's vault)
+  function setShow(v) {
+    state.vaultShow = v;
+    Array.prototype.forEach.call(document.querySelectorAll('#vault-filter .chip'), function (x) { x.classList.toggle('on', x.dataset.vf === v); });
   }
   // pieces kept in the database before R2 move into it while the vault is open
   var toBucketJob = null;
   function toBucket() {
-    if (!state.vault || state.vault.store !== 'bucket' || !state.vault.inDb || toBucketJob) return;
+    if (!state.vault || !state.vault.ticket || state.vault.store !== 'bucket' || !state.vault.inDb || toBucketJob) return;
     var total = state.vault.inDb, j = toBucketJob = job('R2 へ移動（データベースにある ' + fmt(total) + ' 部分）');
     j.set(0, total);
     (function step() {
@@ -2370,58 +3062,110 @@
     for (var d = folderOf(id); d && out.length < 10; d = folderOf(d.parent)) out.unshift(d);
     return out;
   }
-  function pathName(id) { return ['保管庫'].concat(trail(id).map(function (d) { return d.name; })).join(' / '); }
+  // the open vault's name at the top of its folders
+  function kindNow() { return state.vaultInfo ? state.vaultInfo.kind : state.vaultSpace === 'backup' ? 'backup' : ''; }
+  function rootName() { var k = kindNow(); return k === 'backup' ? 'バックアップ' : k === 'own' ? '個人保管庫' : k === 'pair' ? '共有保管庫' : '保管庫'; }
+  function pathName(id) { return [rootName()].concat(trail(id).map(function (d) { return d.name; })).join(' / '); }
   function byName(a, b) { return a.name.localeCompare(b.name, 'ja'); }
-  function filesIn(id) { return state.vaultFiles.filter(function (f) { return !f.parent && (f.folder || '') === id; }); }
+  // (the backups: every file at once, wherever it is)
+  function filesIn(id) {
+    var flat = state.vaultSpace === 'backup';
+    return state.vaultFiles.filter(function (f) { return !f.parent && (flat || (f.folder || '') === id); });
+  }
   function foldersIn(id) { return state.vaultFolders.filter(function (d) { return d.parent === id; }).sort(byName); }
-  // where something can go: the top and every folder (not `skip` nor what is inside it)
+  // where something can go: the top and every folder (not the `skip` ones nor what is inside them)
   function places(skip) {
     var out = state.vaultFolders.filter(function (d) {
-      return !skip || !trail(d.id).some(function (x) { return x.id === skip; });
+      return !trail(d.id).some(function (x) { return skip.indexOf(x.id) >= 0; });
     }).map(function (d) { return { value: d.id, label: pathName(d.id) }; });
     out.sort(function (a, b) { return a.label.localeCompare(b.label, 'ja'); });
-    return [{ value: '', label: '保管庫（いちばん上）' }].concat(out);
+    return [{ value: '', label: rootName() + '（いちばん上）' }].concat(out);
+  }
+  // what one may do in the open vault: change it (the developer only looks into the others')
+  function canWrite() { return !!(state.vaultInfo && state.vaultInfo.write); }
+  // a checkmark on a file or a folder
+  function checkEl(id, name) {
+    var label = el('label', 'vault-check'), box = el('input');
+    box.type = 'checkbox';
+    box.dataset.vpick = id;
+    box.checked = !!state.vaultPicked[id];
+    box.setAttribute('aria-label', name + ' を選択');
+    label.appendChild(box);
+    label.appendChild(el('i'));
+    return label;
+  }
+  // the icon of an item (a tap opens it): a folder, an APK, any other file
+  // (its extension written on it)
+  function iconEl(type, name, ext) {
+    var b = el('button', 'vicon vicon-' + type);
+    b.type = 'button';
+    b.dataset.vopen = '1';
+    b.title = '開く';
+    b.setAttribute('aria-label', name + ' を開く');
+    var img = el('img');
+    img.src = 'icons/' + type + '.svg';
+    img.alt = '';
+    img.draggable = false;
+    b.appendChild(img);
+    if (ext) b.appendChild(el('span', 'vicon-ext', ext));
+    return b;
+  }
+  // the ⋯ of an item: everything that can be done with it
+  function moreBtn(name) {
+    var b = el('button', 'vbtn vmore', '⋯');
+    b.type = 'button';
+    b.dataset.vact = 'menu';
+    b.title = 'メニュー';
+    b.setAttribute('aria-label', name + ' のメニュー');
+    b.setAttribute('aria-haspopup', 'menu');
+    return b;
   }
   function folderCard(d) {
-    var card = el('article', 'card vault-folder');
-    card.dataset.folder = d.id;
-    var head = el('div', 'card-head');
-    head.appendChild(el('b', 'vault-name', d.name));
+    var row = el('article', 'vitem vault-folder' + (state.vaultPicked[d.id] ? ' picked' : ''));
+    row.dataset.folder = d.id;
+    row.appendChild(checkEl(d.id, d.name));
+    row.appendChild(iconEl('folder', d.name));
+    var main = el('div', 'vitem-main');
+    main.appendChild(el('b', 'vault-name', d.name));
     var n = filesIn(d.id).length + foldersIn(d.id).length;
-    head.appendChild(el('span', 'time', n ? fmt(n) + '件' : '空'));
-    card.appendChild(head);
-    var a = el('div', 'acts');
-    [['開く', 'open', 'primary'], ['名前を変更', 'rename'], ['移動', 'move'], ['削除', 'delete', 'danger']].forEach(function (x) {
-      var b = el('button', 'btn small' + (x[2] ? ' ' + x[2] : ''), x[0]);
-      b.type = 'button';
-      b.dataset.fact = x[1];
-      a.appendChild(b);
-    });
-    card.appendChild(a);
-    return card;
+    main.appendChild(el('small', 'vitem-sub', 'フォルダ・' + (n ? fmt(n) + '件' : '空')));
+    row.appendChild(main);
+    var acts = el('div', 'vitem-acts');
+    acts.appendChild(moreBtn(d.name));
+    row.appendChild(acts);
+    return row;
   }
   function goFolder(id) {
     state.vaultFolder = id || '';
-    state.vaultPicked = {};
+    clearPicks();
     state.vaultPage = 0;
     renderVault();
   }
-  function onFolder(e) {
-    var crumb = e.target.closest('.vault-crumb');
-    if (crumb) { goFolder(crumb.dataset.folder); return; }
-    var card = e.target.closest('.vault-folder'), d = card && folderOf(card.dataset.folder);
-    if (!d) return;
-    var b = e.target.closest('[data-fact]'), act = b ? b.dataset.fact : 'open';
+  // what can be done with a folder (its ⋯, a right click)
+  function folderMenu(d) {
+    var items = [['開く', 'open']], write = canWrite();
+    if (write) items.push(['名前を変更', 'rename'], ['移動', 'move']);
+    if (state.developer && state.vault && state.vault.ticket) items.push(['中のファイルをすべてバックアップ', 'backup']);
+    if (write) items.push(['削除', 'delete', 'danger']);
+    return items;
+  }
+  function folderAct(d, act) {
     if (act === 'open') goFolder(d.id);
     else if (act === 'rename') renameFolder(d);
     else if (act === 'move') moveFolder(d);
+    else if (act === 'backup') backupItems([], [d], true);
     else if (act === 'delete') deleteFolder(d);
+  }
+  // the path above the list (保管庫 / 車 / 新車): each a way back
+  function onFolder(e) {
+    var crumb = e.target.closest('.vault-crumb');
+    if (crumb) goFolder(crumb.dataset.folder);
   }
   function named(v) { return v.trim() ? '' : '名前を入れてください'; }
   function newFolder() {
     ask({ title: 'フォルダを作る', text: '「' + pathName(state.vaultFolder) + '」の中に作ります。', ok: '作る', input: { label: 'フォルダの名前' }, check: named }).then(function (name) {
       if (name === null) return null;
-      return vreq('POST', '/api/vault/folders', { name: name, parent: state.vaultFolder }).then(function () { toast('フォルダを作りました'); return loadVault(); });
+      return vreq('POST', '/api/vault/folders', { name: name, parent: state.vaultFolder, space: state.vaultSpace }).then(function () { toast('フォルダを作りました'); return loadVault(); });
     }).catch(fail);
   }
   function renameFolder(d) {
@@ -2431,13 +3175,13 @@
     }).catch(fail);
   }
   function moveFolder(d) {
-    ask({ title: '「' + d.name + '」を移動', ok: '移動する', select: { label: '移動先', options: places(d.id), value: d.parent } }).then(function (to) {
+    ask({ title: '「' + d.name + '」を移動', ok: '移動する', select: { label: '移動先', options: places([d.id]), value: d.parent } }).then(function (to) {
       if (to === null || to === d.parent) return null;
       return vreq('POST', '/api/vault/folders/update', { id: d.id, parent: to }).then(function () { toast('移動しました'); return loadVault(); });
     }).catch(fail);
   }
   function deleteFolder(d) {
-    ask({ title: '「' + d.name + '」を削除しますか？', text: '中のファイルとフォルダは消えずに、ひとつ上（' + pathName(d.parent) + '）へ移ります。', ok: '削除する', danger: true }).then(function (ok) {
+    ask({ title: '本当に削除しますか？', text: 'フォルダ「' + d.name + '」を削除します。中のファイルとフォルダは消えずに、ひとつ上（' + pathName(d.parent) + '）へ移ります。', ok: '削除する', danger: true }).then(function (ok) {
       if (!ok) return null;
       return vreq('POST', '/api/vault/folders/delete', { id: d.id }).then(function () {
         if (trail(state.vaultFolder).some(function (x) { return x.id === d.id; })) state.vaultFolder = d.parent;
@@ -2446,40 +3190,419 @@
       });
     }).catch(fail);
   }
-  // files (the picked ones, or one) into a folder
-  function moveFiles(ids) {
-    if (!ids.length) return;
-    ask({ title: fmt(ids.length) + '件を移動', ok: '移動する', select: { label: '移動先', options: places(null), value: state.vaultFolder } }).then(function (to) {
+
+  /* the checkmarks: what is listed here (the folders, then the files of every
+     page), checked one by one, a range with Shift, or all at once */
+  function shownItems() {
+    var show = state.vaultShow;
+    return foldersIn(state.vaultFolder).map(function (d) { return d.id; }).concat(filesIn(state.vaultFolder).filter(function (f) {
+      return show === 'all' || (show === 'used') === !!f.implementedAt;
+    }).map(function (f) { return f.id; }));
+  }
+  function pick(id, on) {
+    if (on) state.vaultPicked[id] = folderOf(id) ? 'folder' : 'file';
+    else delete state.vaultPicked[id];
+  }
+  function clearPicks() { state.vaultPicked = {}; lastPick = null; }
+  function pickedFiles() { return state.vaultFiles.filter(function (f) { return state.vaultPicked[f.id] === 'file'; }); }
+  function pickedFolders() { return state.vaultFolders.filter(function (d) { return state.vaultPicked[d.id] === 'folder'; }); }
+  // a checkmark tapped (true: it was one)
+  function onPick(e) {
+    var box = e.target.closest('[data-vpick]');
+    if (!box) return false;
+    var id = box.dataset.vpick, ids = [id];
+    if (e.shiftKey && lastPick && lastPick !== id) {
+      var order = shownItems(), i = order.indexOf(lastPick), j = order.indexOf(id);
+      if (i >= 0 && j >= 0) ids = order.slice(Math.min(i, j), Math.max(i, j) + 1);
+    }
+    ids.forEach(function (x) { pick(x, box.checked); });
+    lastPick = id;
+    renderPicks();
+    return true;
+  }
+  function pickAll() {
+    var all = shownItems(), every = all.length > 0 && all.every(function (id) { return state.vaultPicked[id]; });
+    all.forEach(function (id) { pick(id, !every); });
+    lastPick = null;
+    renderPicks();
+  }
+  // the checks on the page as they are now (nothing else redrawn)
+  function renderPicks() {
+    Array.prototype.forEach.call(document.querySelectorAll('#vault-list [data-vpick], #vault-folders [data-vpick]'), function (b) {
+      b.checked = !!state.vaultPicked[b.dataset.vpick];
+      var card = b.closest('.card');
+      if (card) card.classList.toggle('picked', b.checked);
+    });
+    renderPicked();
+  }
+  function renderPicked() {
+    var all = shownItems(), ids = Object.keys(state.vaultPicked), n = ids.length;
+    var dirs = ids.filter(function (id) { return state.vaultPicked[id] === 'folder'; }).length;
+    var here = all.filter(function (id) { return state.vaultPicked[id]; }).length;
+    var bar = $('#vault-select'), box = $('#vault-pick-all');
+    bar.hidden = !state.vaultInfo || !all.length;
+    bar.classList.toggle('on', n > 0);
+    box.checked = all.length > 0 && here === all.length;
+    box.indeterminate = here > 0 && here < all.length;
+    $('#vault-picked-n').textContent = n
+      ? fmt(n) + '件を選択中' + (dirs ? '（フォルダ ' + fmt(dirs) + (n > dirs ? '・ファイル ' + fmt(n - dirs) : '') + '）' : '')
+      : 'すべて選択（' + fmt(all.length) + '件）';
+    $('#vault-select-hint').hidden = n > 0;
+    $('#vault-picked').hidden = !n;
+    var backups = state.vaultSpace === 'backup';
+    $('#vault-picked-move').hidden = !canWrite() || backups;
+    $('#vault-picked-delete').hidden = !canWrite();
+    $('#vault-picked-backup').hidden = !(state.developer && state.vault && state.vault.ticket) || backups;
+  }
+  // files and folders (the checked ones, or one file) into a folder
+  function moveItems(files, dirs) {
+    var n = files.length + dirs.length;
+    if (!n) return;
+    var skip = dirs.map(function (d) { return d.id; });
+    ask({ title: fmt(n) + '件を移動', ok: '移動する', select: { label: '移動先', options: places(skip), value: state.vaultFolder } }).then(function (to) {
       if (to === null) return null;
-      return vreq('POST', '/api/vault/move', { ids: ids, folder: to }).then(function (r) {
-        state.vaultPicked = {};
+      return vreq('POST', '/api/vault/move', { ids: files.map(function (f) { return f.id; }), folders: skip, folder: to }).then(function (r) {
+        clearPicks();
         toast(fmt(r.moved) + '件を「' + pathName(to) + '」へ移動しました');
         return loadVault();
       });
     }).catch(fail);
   }
-  function renderPicked() {
-    var n = Object.keys(state.vaultPicked).length;
-    $('#vault-picked').hidden = !n;
-    $('#vault-picked-n').textContent = fmt(n) + '件を選択中';
+  // every file in a folder and in the folders inside it
+  function filesUnder(id) {
+    return foldersIn(id).reduce(function (all, d) { return all.concat(filesUnder(d.id)); }, filesIn(id));
+  }
+  // the checked files, and the files in the checked folders: saved one after another
+  function downloadItems(files, dirs) {
+    var seen = {};
+    var list = dirs.reduce(function (all, d) { return all.concat(filesUnder(d.id)); }, files).filter(function (f) {
+      if (seen[f.id] || !f.done) return false;
+      seen[f.id] = true;
+      return true;
+    });
+    if (!list.length) { toast('ダウンロードできるファイルがありません（アップロード途中のものは除きます）'); return; }
+    (list.length > 1
+      ? ask({ title: fmt(list.length) + '件をダウンロード', text: '1件ずつ順に保存します' + (dirs.length ? '（フォルダの中のファイルも含みます）' : '') + '。ブラウザに複数のファイルのダウンロードを確かめられたら「許可」してください。', ok: 'ダウンロード' })
+      : Promise.resolve(true)
+    ).then(function (ok) {
+      if (!ok) return null;
+      return list.reduce(function (p, f) { return p.then(function () { return download(f); }); }, Promise.resolve());
+    }).catch(fail);
+  }
+  // the checked files go (for good, unless the developer backed them up);
+  // the checked folders go, what is in them moves up
+  function deleteItems(files, dirs) {
+    if (state.vaultSpace === 'backup') files = files.filter(function (f) { return f.space === 'backup'; });
+    var n = files.length + dirs.length;
+    if (!n) { toast('バックアップでは、保管庫から削除されたファイルだけを削除できます'); return; }
+    var size = files.reduce(function (s, f) { return s + f.size; }, 0), kept = files.filter(function (f) { return f.backup && f.space !== 'backup'; }).length, text = [];
+    if (state.vaultSpace === 'backup') text.push('ファイル ' + fmt(files.length) + '件（' + mb(size) + '）をバックアップから完全に削除します（元に戻せません）。');
+    else if (files.length) {
+      text.push('ファイル ' + fmt(files.length) + '件（' + mb(size) + '）を削除します。' + (kept < files.length ? '保管庫から完全に消えます（元に戻せません）。' + (state.vaultSpace ? '' : 'リンクも使えなくなります。') : ''));
+      if (kept) text.push('そのうち ' + fmt(kept) + '件は開発者のバックアップに残ります。');
+    }
+    if (dirs.length) text.push('フォルダ ' + fmt(dirs.length) + '個は削除され、中のファイルとフォルダは消えずにひとつ上へ移ります。');
+    ask({ title: '本当に削除しますか？', text: fmt(n) + '件を削除します。\n' + text.join('\n'), ok: '削除する', danger: true }).then(function (ok) {
+      if (!ok) return null;
+      return (files.length ? vreq('POST', '/api/vault/delete', { ids: files.map(function (f) { return f.id; }) }) : Promise.resolve()).then(function () {
+        return dirs.length ? vreq('POST', '/api/vault/folders/delete', { ids: dirs.map(function (d) { return d.id; }) }) : null;
+      }).then(function () {
+        clearPicks();
+        toast(fmt(n) + '件を削除しました');
+        return loadVault();
+      }, function (err) { fail(err); return loadVault(); });
+    }).catch(fail);
+  }
+
+  // the developer backs up files (and every file in folders) of any vault;
+  // `on` false: no longer
+  function backupItems(files, dirs, on) {
+    if (!files.length && !dirs.length) return;
+    vreq('POST', '/api/vault/backup', { ids: files.map(function (f) { return f.id; }), folders: dirs.map(function (d) { return d.id; }), on: on }).then(function (r) {
+      clearPicks();
+      toast(r.changed ? fmt(r.changed) + '件を' + (on ? 'バックアップしました' : 'バックアップから外しました') : on ? 'もうバックアップしてあります' : 'バックアップしたものはありません');
+      return loadVault();
+    }).catch(fail);
+  }
+  // a file deleted from its vault goes back there from the backups
+  function restoreBackup(f) {
+    var from = f.backup && f.backup.removed ? f.backup.removed.where : '保管庫';
+    ask({ title: '元の場所に戻しますか？', text: '「' + f.name + '」を' + from + 'に戻します（フォルダがなくなっていれば、いちばん上に戻ります）。バックアップはそのまま残ります。', ok: '戻す' }).then(function (ok) {
+      if (!ok) return null;
+      return vreq('POST', '/api/vault/backups/restore', { id: f.id }).then(function (r) { toast(r.file.where + 'に戻しました'); return loadVault(); });
+    }).catch(fail);
+  }
+
+  /* the vaults to choose from, one's room, whose the open one is */
+  function renderSpaces() {
+    var bar = $('#vault-spaces'), sp = state.vaultSpaces;
+    bar.textContent = '';
+    if (!sp) return;
+    function what(x) { return x.files || x.folders ? fmt(x.files) + '件・' + mb(x.bytes) : '空'; }
+    function chip(id, title, sub, cls) {
+      var b = el('button', 'vspace' + (cls ? ' ' + cls : '') + (state.vaultSpace === id ? ' on' : ''));
+      b.type = 'button';
+      b.dataset.space = id;
+      var t = el('span', 'vspace-who');
+      t.appendChild(el('b', '', title));
+      t.appendChild(el('small', '', sub));
+      b.appendChild(t);
+      bar.appendChild(b);
+      return b;
+    }
+    if (state.developer) {
+      var own = chip('', '開発者専用保管庫', what(sp.own), 'own');
+      own.insertBefore(el('span', 'face vspace-mark', '開'), own.firstChild);
+      var b = sp.backups || { files: 0, removed: 0, bytes: 0 };
+      var bk = chip('backup', 'バックアップ', b.files ? fmt(b.files) + '件' + (b.removed ? '（削除済み ' + fmt(b.removed) + '）' : '') : '空', 'own');
+      bk.insertBefore(el('span', 'face vspace-mark vspace-backup', '控'), bk.firstChild);
+    } else if (sp.personal) {
+      var mine = chip(sp.personal.id, 'あなたの個人保管庫', what(sp.personal), 'own');
+      mine.insertBefore(face(sp.personal.owner || { name: state.name || '自' }), mine.firstChild);
+    }
+    if (sp.spaces.length) bar.appendChild(el('span', 'vspace-label', '共有保管庫（非公開・運営者ふたりごと）'));
+    sp.spaces.forEach(function (x) {
+      var b = chip(x.id, x.with.name + ' と共有', (x.with.operator ? '' : '運営者ではありません・') + what(x), x.with.operator ? '' : 'gone');
+      b.insertBefore(face(x.with), b.firstChild);
+      if (x.with.developer) b.querySelector('b').appendChild(el('span', 'tag maker', '開発者'));
+    });
+    if (sp.others && sp.others.length) {
+      bar.appendChild(el('span', 'vspace-label', '運営者の保管庫（開発者だけ・閲覧のみ）'));
+      sp.others.forEach(function (x) { chip(x.id, x.personal ? x.members[0].name + ' の個人保管庫' : x.members.map(function (m) { return m.name; }).join(' ⇄ '), what(x), 'look'); });
+    }
+  }
+  function meterEl(used, limit) {
+    var r = limit ? used / limit : 0;
+    var m = el('span', 'meter' + (r >= 0.95 ? ' hot' : r >= 0.8 ? ' warm' : '')), i = el('i');
+    i.style.width = Math.min(100, r * 100).toFixed(1) + '%';
+    m.appendChild(i);
+    return m;
+  }
+  function roomBtn(label, act, cls, data) {
+    var b = el('button', 'btn small' + (cls ? ' ' + cls : ''), label);
+    b.type = 'button';
+    b.dataset.room = act;
+    Object.keys(data || {}).forEach(function (k) { b.dataset[k] = String(data[k]); });
+    return b;
+  }
+  function renderRoom() {
+    var box = $('#vault-room'), sp = state.vaultSpaces;
+    box.textContent = '';
+    box.hidden = !sp || !state.vault;
+    if (box.hidden) return;
+    if (state.developer) roomOfAll(box, sp); else roomOfMine(box, sp.me, sp.pool);
+  }
+  // an operator: what they keep in the shared vaults, their limit, their request
+  function roomOfMine(box, me, pool) {
+    var head = el('div', 'card-head');
+    head.appendChild(el('b', '', '保管庫であなたが使える容量'));
+    head.appendChild(el('span', 'time', me.approved ? '開発者が承認した上限（' + date(me.approved.at) + '）' : '標準（1人 ' + gb(me.free) + '）'));
+    box.appendChild(head);
+    var line = el('div', 'vroom-line');
+    line.appendChild(el('b', '', mb(me.used) + ' / ' + gb(me.limit)));
+    line.appendChild(meterEl(me.used, me.limit));
+    box.appendChild(line);
+    box.appendChild(el('p', 'muted vroom-note', 'あなたが送ったファイルの合計です（個人保管庫とどの共有保管庫の分も）。'
+      + (me.approved ? '開発者が承認した上限まで保存できます（もっと必要なら、また申請できます）。' : gb(me.free) + 'を超えて保存するには、開発者の承認と上限の設定が必要です。')
+      + '容量は開発者専用保管庫と共有です（保管庫全体の空き ' + mb(Math.max(0, pool.maxBytes - pool.used)) + '）。'));
+    var a = el('div', 'acts');
+    if (me.request) {
+      a.appendChild(el('span', 'kind idea', '申請中：' + gb(me.request.bytes) + '（' + date(me.request.at, true) + '）'));
+      if (me.request.reason) a.appendChild(el('span', 'muted vroom-why', '理由：' + me.request.reason));
+      a.appendChild(roomBtn('申請を取り下げる', 'cancel', 'ghost'));
+    } else {
+      a.appendChild(roomBtn(me.approved ? 'さらに容量を申請' : '容量を申請', 'request', 'primary'));
+      if (me.last) a.appendChild(el('span', 'kind ' + (me.last.status === 'approved' ? 'accepted' : 'rejected'), me.last.status === 'approved'
+        ? '承認されました：上限 ' + gb(me.last.limit) + '（' + date(me.last.handledAt, true) + '）' : '前回の申請（' + gb(me.last.bytes) + '）は見送られました（' + date(me.last.handledAt, true) + '）'));
+    }
+    box.appendChild(a);
+  }
+  // the developer: the room of all the vaults, the requests, each operator's use and limit
+  function roomOfAll(box, sp) {
+    var head = el('div', 'card-head');
+    head.appendChild(el('b', '', '容量の管理'));
+    head.appendChild(el('span', 'time', '運営者は1人 ' + gb(sp.pool.free) + 'まで（共有・個人保管庫の合計。超えるには承認と上限の設定）'));
+    box.appendChild(head);
+    var shared = sp.spaces.concat(sp.others || []).reduce(function (s, x) { return s + x.bytes; }, 0);
+    var line = el('div', 'vroom-line');
+    line.appendChild(el('b', '', '保管庫全体 ' + mb(sp.pool.used) + ' / ' + mb(sp.pool.maxBytes)));
+    line.appendChild(meterEl(sp.pool.used, sp.pool.maxBytes));
+    box.appendChild(line);
+    box.appendChild(el('p', 'muted vroom-note', '開発者専用保管庫 ' + mb(sp.own.bytes) + '・共有保管庫と個人保管庫 ' + mb(shared) + (sp.backups && sp.backups.bytes ? '・バックアップだけに残っているもの ' + mb(sp.backups.bytes) : '') + '（同じ容量を使います）。'));
+    if (sp.requests.length) {
+      box.appendChild(el('h4', 'vroom-sub', '容量の申請（' + fmt(sp.requests.length) + '件）'));
+      sp.requests.forEach(function (r) {
+        var p = sp.people.filter(function (x) { return x.id === r.user.id; })[0] || { used: 0, limit: sp.pool.free };
+        var row = el('div', 'vroom-req');
+        row.appendChild(face(r.user));
+        var t = el('div', 'vroom-who');
+        t.appendChild(el('b', '', r.user.name + '：' + gb(r.bytes) + ' を希望'));
+        t.appendChild(el('small', '', '使用 ' + mb(p.used) + ' / ' + gb(p.limit) + '・' + date(r.at, true)));
+        if (r.reason) t.appendChild(el('small', 'vroom-why', '理由：' + r.reason));
+        row.appendChild(t);
+        row.appendChild(roomBtn('承認して上限を決める', 'approve', 'primary', { id: r.id, bytes: r.bytes, name: r.user.name }));
+        row.appendChild(roomBtn('見送る', 'decline', 'ghost', { id: r.id, name: r.user.name }));
+        box.appendChild(row);
+      });
+    }
+    if (sp.people.length) {
+      box.appendChild(el('h4', 'vroom-sub', '運営者ごとの使用量（送ったファイルの合計）'));
+      var t = el('table', 'srv-table vroom-people');
+      sp.people.forEach(function (p) {
+        var tr = el('tr'), th = el('th', '', p.name), td = el('td'), go = el('td', 'num');
+        if (!p.operator) th.appendChild(el('small', '', '（運営者ではありません）'));
+        td.appendChild(el('span', '', mb(p.used) + ' / ' + gb(p.limit) + (p.approved ? '（承認済みの上限・' + date(p.approved.at) + '）' : '（標準）')));
+        td.appendChild(meterEl(p.used, p.limit));
+        go.appendChild(roomBtn('上限を変更', 'limit', 'ghost', { user: p.id, name: p.name, limit: p.limit }));
+        tr.appendChild(th);
+        tr.appendChild(td);
+        tr.appendChild(go);
+        t.appendChild(tr);
+      });
+      box.appendChild(t);
+    }
+  }
+  // a number of GB from a dialog, between `low` (not included unless `andLow`) and `high`
+  function gbIn(v, low, high, andLow) {
+    var n = Number(String(v).trim());
+    return isFinite(n) && (andLow ? n >= low : n > low) && n <= high ? n : null;
+  }
+  function onRoom(e) {
+    var b = e.target.closest('[data-room]');
+    if (!b || !state.vaultSpaces) return;
+    var d = b.dataset, pool = state.vaultSpaces.pool, free = pool.free / GB, most = pool.maxBytes / GB;
+    var range = gb(pool.free) + 'より大きく ' + gb(pool.maxBytes) + 'まで';
+    if (d.room === 'request') {
+      var me = state.vaultSpaces.me, now = me.limit / GB;
+      ask({
+        title: '共有保管庫の容量を申請',
+        text: '今の上限は ' + gb(me.limit) + '（使用 ' + mb(me.used) + '）です。開発者が承認すると、開発者が決めた上限まで使えるようになります（希望より小さいこともあります）。',
+        ok: '申請する',
+        input: { label: '希望する上限（GB・' + gb(me.limit) + 'より大きく ' + gb(pool.maxBytes) + 'まで）', value: String(Math.min(most, Math.max(2, Math.ceil(now * 2)))) },
+        area: { label: '理由（任意・開発者に届きます）' },
+        check: function (v) { return gbIn(v, now, most) === null ? gb(me.limit) + 'より大きく ' + gb(pool.maxBytes) + 'までの数を入れてください' : ''; }
+      }).then(function (v) {
+        if (v === null) return null;
+        return vreq('POST', '/api/vault/quota/request', { bytes: Math.round(gbIn(v.value, now, most) * GB), reason: v.text }).then(function () { toast('申請しました。開発者の承認を待っています'); return loadVault(); });
+      }).catch(fail);
+    } else if (d.room === 'cancel') {
+      ask({ title: '申請を取り下げますか？', ok: '取り下げる' }).then(function (ok) {
+        if (!ok) return null;
+        return vreq('POST', '/api/vault/quota/cancel', {}).then(function () { toast('申請を取り下げました'); return loadVault(); });
+      }).catch(fail);
+    } else if (d.room === 'approve') {
+      ask({
+        title: d.name + ' さんの申請を承認',
+        text: '希望は ' + gb(Number(d.bytes)) + ' です。承認するには上限を決めてください（' + range + '）。上限はあとから「上限を変更」で変えられます。',
+        ok: '承認する',
+        input: { label: '上限（GB）', value: String(Math.min(most, Math.round(Number(d.bytes) / GB * 10) / 10)) },
+        check: function (v) { return gbIn(v, free, most) === null ? range + 'の数を入れてください' : ''; }
+      }).then(function (v) {
+        if (v === null) return null;
+        return vreq('POST', '/api/vault/quota/decide', { id: Number(d.id), approve: true, limit: Math.round(gbIn(v, free, most) * GB) }).then(function () { toast(d.name + ' さんの申請を承認しました'); return loadVault(); });
+      }).catch(fail);
+    } else if (d.room === 'decline') {
+      ask({ title: d.name + ' さんの申請を見送りますか？', text: '上限は今のままです（' + d.name + ' さんには「見送られました」と表示されます）。', ok: '見送る' }).then(function (ok) {
+        if (!ok) return null;
+        return vreq('POST', '/api/vault/quota/decide', { id: Number(d.id), approve: false }).then(function () { toast('見送りました'); return loadVault(); });
+      }).catch(fail);
+    } else if (d.room === 'limit') {
+      ask({
+        title: d.name + ' さんの上限を変更',
+        text: '今は ' + gb(Number(d.limit)) + ' です。' + gb(pool.free) + ' を入れると標準に戻ります（' + gb(pool.free) + 'を超える分には上限が必要です）。',
+        ok: '変更する',
+        input: { label: '上限（GB・' + gb(pool.free) + '〜' + gb(pool.maxBytes) + '）', value: String(Math.round(Number(d.limit) / GB * 10) / 10) },
+        check: function (v) { return gbIn(v, free, most, true) === null ? gb(pool.free) + '〜' + gb(pool.maxBytes) + 'の数を入れてください' : ''; }
+      }).then(function (v) {
+        if (v === null) return null;
+        var n = gbIn(v, free, most, true);
+        return vreq('POST', '/api/vault/quota/set', { user: Number(d.user), limit: n <= free ? 0 : Math.round(n * GB) }).then(function () { toast(d.name + ' さんの上限を変更しました'); return loadVault(); });
+      }).catch(fail);
+    }
+  }
+  // the open vault: whose it is, and who sees it
+  function renderHead() {
+    var h = $('#vault-head'), info = state.vaultInfo, sp = state.vaultSpaces;
+    h.textContent = '';
+    if (!state.vault || !sp) return;
+    var t = el('div', 'vault-head-text');
+    var look = state.developer && !state.vault.ticket ? '閲覧のみ（変更するには右上の「編集する」から開発者コード）' : '';
+    if (!info) {
+      if (!state.developer && !sp.spaces.length && !sp.personal) t.appendChild(el('b', '', 'ほかの運営者がいないため、共有保管庫はまだありません'));
+    } else if (info.kind === 'dev') {
+      h.appendChild(el('span', 'face vspace-mark', '開'));
+      t.appendChild(el('b', '', '開発者専用保管庫'));
+      t.appendChild(el('small', '', look || '編集できます（' + stamp(state.vault.until).slice(11, 16) + 'まで）'));
+    } else if (info.kind === 'backup') {
+      h.appendChild(el('span', 'face vspace-mark vspace-backup', '控'));
+      t.appendChild(el('b', '', 'バックアップ'));
+      t.appendChild(el('small', '', '開発者がバックアップしたファイル（どの保管庫のものも）。保管庫から削除されても、ここに残ります' + (look ? '・' + look : '')));
+    } else if (info.kind === 'own') {
+      var owner = info.members[0];
+      h.appendChild(face(owner));
+      t.appendChild(el('b', '', info.mine ? 'あなたの個人保管庫' : owner.name + ' さんの個人保管庫'));
+      t.appendChild(el('small', '', info.mine ? '非公開：あなたと開発者だけが見られます' : '閲覧のみ：開発者だけが見られます（変更はできません）'));
+    } else {
+      var mine = sp.spaces.filter(function (x) { return x.id === info.id; })[0];
+      if (mine) {
+        h.appendChild(face(mine.with));
+        t.appendChild(el('b', '', mine.with.name + ' さんとの共有保管庫'));
+        t.appendChild(el('small', '', !mine.with.operator ? '相手は運営者ではなくなりました（見る・整理・削除はできます。新しいファイルは入れられません）'
+          : '非公開：' + (state.developer || mine.with.developer ? 'ふたりだけ' : 'ふたりと開発者だけ') + 'が見られます'));
+      } else {
+        info.members.forEach(function (m) { h.appendChild(face(m)); });
+        t.appendChild(el('b', '', info.members.map(function (m) { return m.name + ' さん'; }).join(' ⇄ ') + 'の共有保管庫'));
+        t.appendChild(el('small', '', '閲覧のみ：開発者だけが見られます（アップロード・変更・削除はできません）'));
+      }
+    }
+    h.appendChild(t);
+  }
+  // how much is used (the rest when the mouse is on it)
+  function vaultUsage() {
+    var v = state.vault, u = $('#vault-usage');
+    if (!v) { u.textContent = ''; u.title = ''; return; }
+    if (!state.developer && v.me) {
+      u.textContent = mb(v.me.used) + ' / ' + gb(v.me.limit);
+      u.title = 'あなたの使用量（共有保管庫と個人保管庫の合計）・1ファイル ' + mb(v.fileBytes) + 'まで';
+      return;
+    }
+    u.textContent = mb(v.used) + ' / ' + mb(v.maxBytes);
+    u.title = '全体の使用量（すべての保管庫の合計）・1ファイル ' + mb(v.fileBytes) + 'まで・保存先 ' + (v.store === 'bucket' ? 'R2' : 'データベース');
   }
   function renderVault() {
-    var open = !!state.vault;
-    $('#vault-closed').hidden = open;
+    var open = !!state.vault, info = state.vaultInfo;
+    topBar();
+    $('#vault-title').textContent = '保管庫';
     $('#vault-main').hidden = !open;
-    $('#vault-lock').hidden = !open;
-    $('#vault-usage').textContent = open ? '使用量 ' + mb(state.vault.used) + ' / ' + mb(state.vault.maxBytes) + '（1ファイル ' + mb(state.vault.fileBytes) + 'まで・保存先 ' + (state.vault.store === 'bucket' ? 'R2' : 'データベース') + '）' : '';
+    // the developer: 編集する (the code) while looking only, 閉じる while changing
+    var editing = open && state.developer && !!state.vault.ticket;
+    $('#vault-unlock').hidden = !open || !state.developer || editing;
+    $('#vault-lock').hidden = !editing;
+    $('#vault-lock').title = editing ? stamp(state.vault.until) + 'まで編集できます（閉じると閲覧のみ）' : '';
+    vaultUsage();
     var list = $('#vault-list'), folders = $('#vault-folders'), path = $('#vault-path');
     list.textContent = '';
     folders.textContent = '';
     path.textContent = '';
-    $('#vault-picked').hidden = true;
+    $('#vault-pager').textContent = '';
+    renderSpaces();
+    renderRoom();
+    renderHead();
     if (!open) return;
-    var all = state.vault.all || { live: 0 };
-    $('#vault-all-state').textContent = all.live ? '保管庫全体のリンク：' + all.live + '本 有効（' + stamp(all.until) + 'まで・取得 ' + fmt(all.uses) + '回）' : '保管庫全体のリンク：なし';
-    $('#vault-all-stop').hidden = !all.live;
+    // what the open vault lets one do: put files in (not after the other one
+    // left), change, links (the developer's own)
+    var own = !state.vaultSpace, add = !!(info && info.add);
+    $('#vault-up').hidden = !canWrite();
+    $('#vault-pick-files').hidden = !add;
+    $('#vault-link').hidden = !own || !info;
+    var links = state.vault.all || { live: 0 };
+    $('#vault-link').textContent = links.live ? 'リンク（有効 ' + links.live + '）' : 'リンク';
+    renderMemo();
+    $('#vault-filter').hidden = !own || !info;
+    $('#vault-path').hidden = !info || state.vaultSpace === 'backup';
+    if (!info) { renderPicked(); renderResume(); return; }
     // where it is: 保管庫 / 車 / 新車 (each a way back)
-    [{ id: '', name: '保管庫' }].concat(trail(state.vaultFolder)).forEach(function (d, i, a) {
+    [{ id: '', name: rootName() }].concat(trail(state.vaultFolder)).forEach(function (d, i, a) {
       if (i) path.appendChild(el('span', 'muted', '/'));
       var b = el('button', 'vault-crumb' + (i === a.length - 1 ? ' here' : ''), d.name);
       b.type = 'button';
@@ -2498,7 +3621,7 @@
     tops.slice(state.vaultPage * VAULT_PAGE, (state.vaultPage + 1) * VAULT_PAGE).forEach(function (f) { list.appendChild(vaultCard(f)); });
     renderPager(pages, tops.length);
     renderPicked();
-    renderWaiting();
+    renderResume();
   }
   var VAULT_PAGE = 10;
   function renderPager(pages, n) {
@@ -2545,25 +3668,34 @@
     if (i.skinned || i.morphs) fact(facts, 'ボーン / モーフ', fmt(i.skinned) + ' / ' + fmt(i.morphs));
     if (light) fact(facts, '軽量版', mb(light.size) + '（' + light.name + '）');
   }
-  // what kind of item: 3Dモデル, テキスト, 画像, 動画, 音声, 圧縮, その他 (each counts one on a page)
+  // what kind of item: 3Dモデル, APK, プログラム, テキスト, 画像, 動画, 音声, 圧縮, その他 (each counts one on a page)
+  var CODE_EXT = /\.(js|mjs|cjs|ts|tsx|jsx|py|rb|php|java|kt|kts|swift|go|rs|c|h|cpp|hpp|cc|cs|dart|lua|sh|bash|zsh|bat|cmd|ps1|sql|pl|r|scala|gd|vue|svelte|html?|css|scss|less|json|ya?ml|toml|ini|xml|gradle|glsl|hlsl|shader|wgsl)$/;
   function fileKind(f) {
     var n = String(f.name || '').toLowerCase(), t = String(f.type || '');
     if (is3d(n)) return ['3Dモデル', 'k3d'];
-    if (/^text\//.test(t) || /\.(txt|md|json|csv|log|ya?ml|xml|html?|js|css)$/.test(n)) return ['テキスト', 'ktext'];
-    if (/^image\//.test(t) || /\.(png|jpe?g|webp|gif|bmp|svg)$/.test(n)) return ['画像', 'kimg'];
-    if (/^video\//.test(t) || /\.(mp4|mov|webm|mkv)$/.test(n)) return ['動画', 'kvid'];
-    if (/^audio\//.test(t) || /\.(mp3|wav|ogg|m4a|flac)$/.test(n)) return ['音声', 'kaud'];
-    if (/\.(zip|7z|rar|tar|gz)$/.test(n)) return ['圧縮', 'kzip'];
+    if (/\.(apk|aab|apks|xapk)$/.test(n) || t === 'application/vnd.android.package-archive') return ['APK', 'kapk'];
+    if (CODE_EXT.test(n)) return ['プログラム', 'kcode'];
+    if (/^text\//.test(t) || /\.(txt|md|csv|tsv|log)$/.test(n)) return ['テキスト', 'ktext'];
+    if (/^image\//.test(t) || /\.(png|jpe?g|webp|gif|bmp|svg|avif)$/.test(n)) return ['画像', 'kimg'];
+    if (/^video\//.test(t) || /\.(mp4|mov|webm|mkv|m4v)$/.test(n)) return ['動画', 'kvid'];
+    if (/^audio\//.test(t) || /\.(mp3|wav|ogg|m4a|flac|aac|opus)$/.test(n)) return ['音声', 'kaud'];
+    if (/\.(zip|7z|rar|tar|gz|tgz|bz2|xz)$/.test(n)) return ['圧縮', 'kzip'];
     return ['その他', 'koth'];
   }
-  // the beginning of a text file (its first piece), fetched once
+  function isTextual(k) { return k === 'ktext' || k === 'kcode'; }
+  // a file's icon: the APK one, or the file one with its extension on it
+  function fileIcon(f, kind) {
+    var ext = (/\.([A-Za-z0-9]{1,6})$/.exec(f.name || '') || [])[1] || '';
+    return kind[1] === 'kapk' ? iconEl('apk', f.name) : iconEl('file', f.name, ext.toUpperCase());
+  }
+  // the beginning of a text or a program (its first piece), fetched once
   var texts = {};
   function textEl(f) {
     var p = el('pre', 'vault-text', '読み込み中…');
     if (texts[f.id] !== undefined) { p.textContent = texts[f.id]; return p; }
     vreq('GET', '/api/vault/chunk?id=' + f.id + '&n=0').then(function (r) {
       var s = new TextDecoder().decode(bytesOf(r.data));
-      texts[f.id] = Array.from(s).length > 1200 ? Array.from(s).slice(0, 1200).join('') + '\n…（続きはダウンロード）' : s;
+      texts[f.id] = Array.from(s).length > 1200 ? Array.from(s).slice(0, 1200).join('') + '\n…（続きはアイコンをタップ）' : s;
       p.textContent = texts[f.id];
     }).catch(function () { p.textContent = '（読み込めませんでした）'; });
     return p;
@@ -2579,49 +3711,121 @@
     }).catch(function () {});
     return p;
   }
-  // the developer's short messages on a file
-  var NOTE_DAYS = [[1, '1日'], [3, '3日'], [7, '7日'], [30, '30日'], [0, '期限なし']];
-  function notesEl(f) {
-    var box = el('div', 'vault-notes');
-    (f.notes || []).slice().reverse().forEach(function (n) {
-      var over = n.until && n.until <= Date.now();
-      var row = el('div', 'vnote' + (over ? ' over' : ''));
-      row.appendChild(el('span', 'vnote-text', n.text));
-      row.appendChild(el('small', '', date(n.at, true) + '・' + (over ? '期限切れ（AIには見えません）' : n.until ? date(n.until, true) + 'まで' : '期限なし')));
-      var x = el('button', 'vnote-del', '×');
-      x.type = 'button';
-      x.title = 'このメッセージを削除';
-      x.dataset.vact = 'notedel';
-      x.dataset.note = n.id;
-      row.appendChild(x);
-      box.appendChild(row);
-    });
-    return box;
+
+  /* comments on a file: the operators', the developer's and an AI's (from
+     its link), each for a day, 3, 7, 30 or with no end */
+  var commentsFor = null;
+  function openComments(f) {
+    commentsFor = f.id;
+    $('#vcomments-text').value = '';
+    $('#vcomments-days').value = '0';
+    renderComments();
+    $('#vcomments').hidden = false;
+    if (canWrite()) setTimeout(function () { $('#vcomments-text').focus(); }, 30);
   }
-  function addNote(f) {
-    ask({
-      title: '「' + f.name + '」にメッセージ', text: 'AI用リンクにも、期限まで表示されます。期限が過ぎても消えずに残ります（AIには見えなくなります）。', ok: '残す',
-      input: { label: 'メッセージ（500文字まで）', type: 'text' },
-      select: { label: '期間', options: NOTE_DAYS.map(function (d) { return { value: String(d[0]), label: d[1] }; }), value: '7' },
-      check: function (v) { return v.trim() ? '' : 'メッセージを書いてください'; }
-    }).then(function (v) {
-      if (v === null) return null;
-      return vreq('POST', '/api/vault/notes', { id: f.id, text: v.value, days: Number(v.pick) }).then(function () { toast('メッセージを残しました'); return loadVault(); });
+  function closeComments() { commentsFor = null; $('#vcomments').hidden = true; }
+  function renderComments() {
+    var f = fileOf(commentsFor);
+    if (!f) { closeComments(); return; }
+    $('#vcomments-name').textContent = f.name;
+    $('#vcomments-note').textContent = !f.space ? 'AI用リンクにも、期限まで表示されます' : f.space === 'backup' ? '' : 'この保管庫を使う人と開発者に見えます';
+    $('#vcomments-form').hidden = !canWrite() || state.vaultSpace === 'backup';
+    var list = $('#vcomments-list');
+    list.textContent = '';
+    if (!(f.notes || []).length) list.appendChild(el('p', 'muted vcomments-empty', 'コメントはまだありません'));
+    (f.notes || []).forEach(function (n) {
+      var over = n.until && n.until <= Date.now(), ai = n.by && n.by.ai;
+      var row = el('div', 'vcomment' + (over ? ' over' : '') + (ai ? ' ai' : ''));
+      var head = el('div', 'vcomment-head');
+      if (ai) head.appendChild(el('span', 'tag vai', 'AI'));
+      else head.appendChild(el('b', '', n.by ? n.by.name : '?'));
+      head.appendChild(el('small', '', date(n.at, true) + (n.until ? (over ? '・期限切れ' + (f.space ? '' : '（AIには見えません）') : '・' + date(n.until, true) + 'まで') : '')));
+      if (canWrite() && state.vaultSpace !== 'backup') {
+        var x = el('button', 'vnote-del', '×');
+        x.type = 'button';
+        x.title = 'このコメントを削除';
+        x.dataset.note = n.id;
+        head.appendChild(x);
+      }
+      row.appendChild(head);
+      row.appendChild(el('p', 'vcomment-text', n.text));
+      list.appendChild(row);
+    });
+    list.scrollTop = list.scrollHeight;
+  }
+  function sendComment(e) {
+    e.preventDefault();
+    var f = fileOf(commentsFor), t = $('#vcomments-text'), text = t.value.trim();
+    if (!f || !text) return;
+    vreq('POST', '/api/vault/notes', { id: f.id, text: text, days: Number($('#vcomments-days').value) }).then(function () {
+      t.value = '';
+      return loadVault();
     }).catch(fail);
   }
-  // a text written here: saved as a .txt file (one item, like any other)
-  function newText() {
+  function onComments(e) {
+    var x = e.target.closest('[data-note]');
+    if (!x) return;
+    ask({ title: '本当に削除しますか？', text: 'このコメントを削除します：\n' + x.closest('.vcomment').querySelector('.vcomment-text').textContent, ok: '削除する', danger: true }).then(function (ok) {
+      if (!ok) return null;
+      return vreq('POST', '/api/vault/notes/delete', { note: Number(x.dataset.note) }).then(function () { toast('削除しました'); return loadVault(); });
+    }).catch(fail);
+  }
+
+  /* making things here (the ＋): a folder, a file of any kind written here,
+     files with a memo on them */
+  var TEXT_TYPES = { txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json', html: 'text/html', htm: 'text/html', css: 'text/css', js: 'text/javascript', mjs: 'text/javascript', xml: 'application/xml', py: 'text/x-python', sh: 'application/x-sh' };
+  function newFile() {
     ask({
-      title: 'テキストを作る', text: '「' + pathName(state.vaultFolder) + '」に保存します。', ok: '保存する',
-      input: { label: '名前', type: 'text' }, area: { label: '本文' },
+      title: 'ファイルを作る', text: '「' + pathName(state.vaultFolder) + '」に保存します。名前に拡張子を付けると、その種類のファイルになります（例：memo.txt・main.py・index.html）。', ok: '保存する',
+      input: { label: '名前（拡張子つき）', type: 'text' }, area: { label: '中身' },
       check: function (v) { return v.trim() ? '' : '名前を入れてください'; }
     }).then(function (v) {
       if (v === null) return null;
-      if (!v.text.trim()) { toast('本文を書いてください'); return null; }
-      var name = v.value.trim().replace(/\.txt$/i, '') + '.txt';
-      return upload(new File([v.text], name, { type: 'text/plain' }), { note: '', folder: state.vaultFolder });
+      if (!v.text.length) { toast('中身を書いてください'); return null; }
+      var name = v.value.trim();
+      if (!/\.[A-Za-z0-9]{1,10}$/.test(name)) name += '.txt';
+      var ext = name.split('.').pop().toLowerCase();
+      return queueFile(new File([v.text], name, { type: TEXT_TYPES[ext] || 'text/plain' }), { note: '', folder: state.vaultFolder, space: state.vaultSpace });
     }).catch(fail);
   }
+  // a memo on the next files picked
+  function memoUpload() {
+    ask({ title: 'メモを付けてアップロード', text: '次に選ぶファイルに、このメモが付きます（詳細に表示されます）。', ok: 'ファイルを選ぶ', input: { label: 'メモ（500文字まで）', type: 'text', value: state.vaultMemo || '' } }).then(function (v) {
+      if (v === null) return;
+      state.vaultMemo = Array.from(v.trim()).slice(0, 500).join('');
+      renderMemo();
+      $('#vault-file').click();
+    });
+  }
+  function renderMemo() {
+    var m = $('#vault-memo');
+    m.hidden = !state.vaultMemo;
+    m.textContent = state.vaultMemo ? 'メモ「' + state.vaultMemo + '」を次のアップロードに付けます（タップで取り消し）' : '';
+  }
+  function plusMenu() {
+    var info = state.vaultInfo, items = [['フォルダを作る', 'folder']];
+    if (info && info.add) items.push(['ファイルを作る（テキスト・プログラム）', 'file'], ['メモを付けてアップロード', 'memo']);
+    menuAt($('#vault-plus'), items, function (a) {
+      if (a === 'folder') newFolder();
+      else if (a === 'file') newFile();
+      else if (a === 'memo') memoUpload();
+    });
+  }
+  // the developer's own vault: a link to all of it, or stopping those
+  function linkMenu() {
+    var links = state.vault.all || { live: 0 }, items = [['保管庫全体のリンクを作る', 'make']];
+    if (links.live) items.push(['全体リンクを停止（有効 ' + links.live + '本・' + stamp(links.until) + 'まで・取得 ' + fmt(links.uses) + '回）', 'stop', 'danger']);
+    menuAt($('#vault-link'), items, function (a) {
+      if (a === 'make') makeLink(null);
+      else if (a === 'stop') {
+        ask({ title: '全体リンクを停止しますか？', text: '保管庫全体のリンクがすべて、すぐに使えなくなります。', ok: '停止する', danger: true }).then(function (ok) {
+          if (!ok) return null;
+          return vreq('POST', '/api/vault/link/stop', { id: '*' }).then(function (r) { toast('リンクを停止しました（' + r.stopped + '本）'); return loadVault(); });
+        }).catch(fail);
+      }
+    });
+  }
+
   // what an AI did with a file, newest first
   var LABEL_KINDS = { download: ['AIが取得', 'k-get'], ai: ['AIのラベル', 'k-ai'], implemented: ['実装済み', 'k-done'], restore: ['戻した', 'k-back'] };
   function labelsEl(f) {
@@ -2637,25 +3841,59 @@
     });
     return box;
   }
+  // where a file of the backups is
+  function whereOf(f) {
+    return f.backup && f.backup.removed ? '削除済み（元：' + f.backup.removed.where + '）' : f.where || '保管庫';
+  }
+  // a file's 💬: how many comments
+  function commentBtn(f) {
+    var n = (f.notes || []).length;
+    var b = el('button', 'vbtn vcomment-btn' + (n ? ' has' : ''));
+    b.type = 'button';
+    b.dataset.vact = 'comments';
+    b.title = 'コメント';
+    b.setAttribute('aria-label', 'コメント' + (n ? '（' + n + '件）' : ''));
+    b.appendChild(el('span', 'vcomment-ic', '💬'));
+    if (n) b.appendChild(el('b', '', String(n)));
+    return b;
+  }
   function vaultCard(f) {
-    var card = el('article', 'card vault-card' + (f.done ? '' : ' done') + (f.implementedAt ? ' used' : ''));
-    card.dataset.file = f.id;
-    var head = el('div', 'card-head');
-    var pick = el('label', 'vault-check'), box = el('input');
-    box.type = 'checkbox';
-    box.dataset.vpick = f.id;
-    box.checked = !!state.vaultPicked[f.id];
-    box.setAttribute('aria-label', '選択');
-    pick.appendChild(box);
-    head.appendChild(pick);
-    var kind = fileKind(f);
-    head.appendChild(el('span', 'fkind ' + kind[1], kind[0]));
-    head.appendChild(el('b', 'vault-name', f.name));
-    head.appendChild(el('span', 'kind ' + (f.done ? 'accepted' : 'bug'), f.done ? '保存済み' : 'アップロード途中 ' + f.received + '/' + f.chunks));
-    if (f.implementedAt) head.appendChild(el('span', 'kind used', '実装済み'));
-    head.appendChild(el('span', 'time', '送信 ' + stamp(f.createdAt)));
-    card.appendChild(head);
-    var light = lightOf(f);
+    var kind = fileKind(f), inBackups = state.vaultSpace === 'backup';
+    var row = el('article', 'vitem vault-card' + (f.done ? '' : ' undone') + (f.implementedAt ? ' used' : '') + (state.vaultPicked[f.id] ? ' picked' : '') + (shown[f.id] ? ' open' : ''));
+    row.dataset.file = f.id;
+    row.appendChild(checkEl(f.id, f.name));
+    row.appendChild(fileIcon(f, kind));
+    var main = el('div', 'vitem-main');
+    main.appendChild(el('b', 'vault-name', f.name));
+    var who = f.by && (inBackups || (state.vaultInfo && state.vaultInfo.kind === 'pair')) ? '・' + f.by.name : '';
+    main.appendChild(el('small', 'vitem-sub', kind[0] + '・' + mb(f.size) + '・' + stamp(f.createdAt) + who));
+    var tags = el('div', 'vitem-tags');
+    if (!f.done) tags.appendChild(el('span', 'kind bug', 'アップロード途中 ' + f.received + '/' + f.chunks));
+    if (f.implementedAt) tags.appendChild(el('span', 'kind used', '実装済み'));
+    if (f.backup) {
+      var b = el('span', 'kind vbackup', f.backup.removed ? 'バックアップのみ' : 'バックアップ');
+      b.title = '開発者がバックアップ（' + date(f.backup.at, true) + '）';
+      tags.appendChild(b);
+    }
+    if (inBackups) tags.appendChild(el('span', 'kind vwhere', whereOf(f)));
+    if (!f.space && f.links && f.links.live) tags.appendChild(el('span', 'kind vlink', 'リンク有効'));
+    if (tags.childNodes.length) main.appendChild(tags);
+    row.appendChild(main);
+    var acts = el('div', 'vitem-acts');
+    acts.appendChild(commentBtn(f));
+    var d = el('button', 'vbtn vdetail' + (shown[f.id] ? ' on' : ''), '詳細');
+    d.type = 'button';
+    d.dataset.vact = 'details';
+    d.setAttribute('aria-expanded', shown[f.id] ? 'true' : 'false');
+    acts.appendChild(d);
+    acts.appendChild(moreBtn(f.name));
+    row.appendChild(acts);
+    if (shown[f.id]) row.appendChild(detailsEl(f, kind));
+    return row;
+  }
+  // everything about a file (its 詳細)
+  function detailsEl(f, kind) {
+    var box = el('div', 'vitem-detail'), light = lightOf(f);
     var body = el('div', 'vault-body');
     if (f.preview) body.appendChild(picEl(f));
     else if (f.done && is3d(f.name)) body.appendChild(el('div', 'vault-pic none', 'プレビューなし'));
@@ -2663,42 +3901,27 @@
     var facts = el('div', 'facts');
     fact(facts, '送信日時', stamp(f.createdAt));
     fact(facts, '保存完了', f.done ? stamp(f.doneAt) : '送信中');
+    if (f.by) fact(facts, '送った人', f.by.name);
+    if (state.vaultSpace === 'backup') fact(facts, '場所', whereOf(f));
     if (f.implementedAt) fact(facts, '実装済みになった日時', stamp(f.implementedAt));
     if (f.info) modelFacts(facts, f.info, light);
     fact(facts, '大きさ', mb(f.size) + '（' + fmt(f.size) + 'バイト）');
-    fact(facts, '種類', f.type || '-');
+    fact(facts, '種類', kind[0] + (f.type ? '（' + f.type + '）' : ''));
     fact(facts, 'SHA-256（部分ごとのハッシュの並び）', f.sha256 || '-');
-    fact(facts, 'リンク', f.links.live ? f.links.live + '本 有効（' + stamp(f.links.until) + 'まで）' : 'なし');
-    fact(facts, 'リンクからの取得', fmt(f.links.uses) + '回');
+    if (!f.space) {
+      fact(facts, 'リンク', f.links.live ? f.links.live + '本 有効（' + stamp(f.links.until) + 'まで）' : 'なし');
+      fact(facts, 'リンクからの取得', fmt(f.links.uses) + '回');
+    }
     if (f.note) fact(facts, 'メモ', f.note);
+    if (f.backup) {
+      fact(facts, 'バックアップ', date(f.backup.at, true) + '（' + f.backup.by.name + '）');
+      if (f.backup.removed) fact(facts, '保管庫から削除', date(f.backup.removed.at, true) + '（' + f.backup.removed.by.name + '・元：' + f.backup.removed.where + '）');
+    }
     body.appendChild(facts);
-    card.appendChild(body);
-    if (f.done && kind[1] === 'ktext') card.appendChild(textEl(f));
-    card.appendChild(notesEl(f));
-    card.appendChild(labelsEl(f));
-    var a = el('div', 'acts');
-    function btn(label, act, cls) {
-      var b = el('button', 'btn small' + (cls ? ' ' + cls : ''), label);
-      b.type = 'button';
-      b.dataset.vact = act;
-      a.appendChild(b);
-    }
-    if (f.done) {
-      if (f.info) btn('3Dで見る', 'view', 'primary');
-      else if (is3d(f.name)) btn('プレビューを作る', 'make');
-      btn('ダウンロード', 'get');
-      if (light) btn('軽量版をダウンロード', 'getlight');
-      if (f.implementedAt) btn('実装済みから戻す', 'restore', 'ok');
-      else btn('リンクを作る', 'link', 'primary');
-      if (f.links.live) btn('リンクを停止', 'stop', 'warn');
-    } else {
-      btn('続きから送る（同じファイルを選ぶ）', 'resume', 'primary');
-    }
-    btn('＋ メッセージ', 'note');
-    btn('移動', 'move');
-    btn('削除', 'delete', 'danger');
-    card.appendChild(a);
-    return card;
+    box.appendChild(body);
+    if (f.done && isTextual(kind[1])) box.appendChild(textEl(f));
+    box.appendChild(labelsEl(f));
+    return box;
   }
   // progress of one upload or download
   function job(name) {
@@ -2747,142 +3970,309 @@
     }
     return Promise.all([worker(), worker(), worker(), worker()]).then(function () { if (failed) throw failed; });
   }
-  // o: { id: an unfinished one to go on with, parent: the model of a light
-  // copy, note, folder, rec: the stopped upload this takes up again }
-  function upload(file, o) {
-    o = o || {};
-    var j = job(file.name + '（アップロード）'), made = null;
-    var begin = o.id
-      ? vreq('GET', '/api/vault/missing?id=' + o.id).then(function (r) {
-        if (r.file.size !== file.size) throw { message: 'ファイルの大きさが違います。同じファイルを選んでください' };
-        var todo = [];
-        r.missing.forEach(function (m) { for (var n = m[0]; n <= m[1]; n++) todo.push(n); });
-        return { file: r.file, todo: todo };
-      })
-      : vreq('POST', '/api/vault/files', { name: file.name, size: file.size, type: file.type || '', note: o.parent ? '' : o.note || '', parent: o.parent || undefined, folder: o.parent ? undefined : o.folder || '' }).then(function (r) {
-        var todo = [];
-        for (var n = 0; n < r.file.chunks; n++) todo.push(n);
-        return { file: r.file, todo: todo };
-      });
-    return begin.then(function (b) {
-      made = b.file;
-      var CH = b.file.piece || state.vault.chunk, done = b.file.chunks - b.todo.length;
-      j.set(done, b.file.chunks);
-      return pieces(b.todo, function (n) {
-        return file.slice(n * CH, Math.min(file.size, (n + 1) * CH)).arrayBuffer().then(function (buf) {
-          return sha(buf).then(function (h) {
-            return vreq('POST', '/api/vault/chunk', { id: b.file.id, n: n, sha256: hex(h), data: base64(new Uint8Array(buf)) });
-          });
-        }).then(function () { done++; j.set(done, b.file.chunks); });
-      });
-    }).then(function () {
-      // every piece sent: the server puts the file together (R2 keeps no count of them)
-      return vreq('POST', '/api/vault/finish', { id: made.id });
-    }).then(function (r) {
-      if (!r.done) throw { code: 'missing', message: '届いていない部分があります' };
-      j.finish('保存しました（SHA-256 ' + String(r.sha256).slice(0, 16) + '…）');
-      return loadVault().then(function () { if (!o.parent && made && is3d(file.name)) return preview(made, file); });
-    }, function (err) {
-      var why = stalled(err);
-      if (why) {
-        wait(file, { id: made ? made.id : o.id, parent: o.parent, note: o.note, folder: o.folder, rec: o.rec }, why);
-        j.pause('止まりました：' + WHY[why]);
-      } else j.fail((err && err.message) || 'アップロードできませんでした');
-      return loadVault();
-    });
-  }
-
-  /* uploads that stopped (the vault full, the connection gone, the vault
-     closed) go on where they stopped, on their own, while this page is open */
-  var waiting = [], resuming = false;
-  var WHY = {
-    full: '保管庫がいっぱいです。空きができしだい続きから送ります',
-    net: '通信が切れました。戻りしだい続きから送ります',
-    locked: '保管庫が閉じました。開きしだい続きから送ります'
+  /* ------------------------------------------------------------ uploads --- */
+  /* The files go up on their own (ops/vault-upload.js): in the site's
+     background worker (ops/ops-sw.js) where there is one, so they go on with
+     the vault closed and with this page closed; else here. Each one waits in
+     this browser with its upload's own pass, and is shown here while it goes:
+     a stopped one (the connection, the server busy, the room) goes on by
+     itself, and 「再開」 sends every stopped one again at once. */
+  var up = { mode: '', reg: null, engine: null, jobs: {}, cards: {}, mem: {}, ready: null };
+  var UP_WHY = {
+    net: '通信が切れたか、サーバーが混み合っています。自動で続きから送ります',
+    locked: 'アップロードの許可（1週間）が切れました。「編集する」で開発者コードを入れて「再開」を押してください',
+    login: 'ログインが切れました。ログインし直して「再開」を押してください',
+    full: '保管庫がいっぱいです。空きができしだい送ります',
+    room: 'あなたの容量の上限です。開発者の承認か空きができしだい送ります（「容量を申請」から申請できます）',
+    gone: 'このファイルは保管庫から削除されました',
+    error: ''
   };
-  function stalled(err) {
-    if (!err) return '';
-    if (err.code === 'vault_full') return 'full';
-    if (err.code === 'vault_locked') return 'locked';
-    if (err.code === 'missing' || err.status === 0 || err.status === 429 || err.status >= 500) return 'net';
-    return '';
+  function upInit() {
+    var page = function () {
+      up.mode = 'page';
+      up.engine = VaultUploads.engine({ tell: onJob, mine: function () { return true; }, file: function (key) { return up.mem[key] || null; } });
+      return 'page';
+    };
+    if ('serviceWorker' in navigator && window.isSecureContext && window.indexedDB) {
+      navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.type === 'vault-upload') onJob(e.data.job); });
+      up.ready = navigator.serviceWorker.register('/ops/ops-sw.js', { scope: '/ops/' }).then(function (reg) {
+        up.reg = reg;
+        return activeOf(reg);
+      }).then(function () {
+        up.mode = 'sw';
+        // (a file only this page holds: sent from here)
+        up.engine = VaultUploads.engine({ tell: onJob, mine: function (j) { return !!j.mem; }, file: function (key) { return up.mem[key] || null; } });
+        return 'sw';
+      }, page);
+    } else up.ready = Promise.resolve(window.indexedDB ? page() : 'none');
+    up.ready.then(function () { refreshJobs(); kick(); });
   }
-  function wait(file, o, why) {
-    var w = o.rec || { file: file, tries: 0 };
-    if (waiting.indexOf(w) < 0) waiting.push(w);
-    w.id = o.id || null;
-    w.parent = o.parent || null;
-    w.note = o.note;
-    w.folder = o.folder;
-    w.why = why;
-    w.tries++;
-    // (tried again after 5 s, then 10, 20, 40, and every minute)
-    w.next = Date.now() + Math.min(60000, 5000 * Math.pow(2, Math.min(4, w.tries - 1)));
-    renderWaiting();
-  }
-  // `now`: all of them at once (the button)
-  function resumeWaiting(now) {
-    if (resuming || !state.vault || !waiting.length) return;
-    var free = state.vault.maxBytes - state.vault.used, t = Date.now();
-    var go = waiting.filter(function (w) {
-      if (now) return true;
-      // a new file waits for room (and then goes at once)
-      if (w.why === 'full' && !w.id) return w.file.size <= free;
-      if (w.next > t) return false;
-      return w.why !== 'net' || navigator.onLine !== false;
+  function activeOf(reg) {
+    return new Promise(function (ok, no) {
+      var w = reg.active || reg.waiting || reg.installing;
+      if (!w) { no(new Error('no worker')); return; }
+      if (w.state === 'activated') { ok(w); return; }
+      w.addEventListener('statechange', function () { if (w.state === 'activated') ok(w); else if (w.state === 'redundant') no(new Error('redundant')); });
     });
-    if (!go.length) return;
-    waiting = waiting.filter(function (w) { return go.indexOf(w) < 0; });
-    renderWaiting();
-    resuming = true;
-    go.reduce(function (p, w) {
-      return p.then(function () {
-        if (!state.vault) { wait(w.file, w, 'locked'); return null; }
-        return upload(w.file, { id: w.id, parent: w.parent, note: w.note, folder: w.folder, rec: w });
-      });
-    }, Promise.resolve()).then(function () { resuming = false; });
   }
-  function renderWaiting() {
-    var box = $('#vault-waiting');
-    box.textContent = '';
-    box.hidden = !waiting.length;
-    if (!waiting.length) return;
-    var head = el('div', 'card-head');
-    head.appendChild(el('b', '', '止まっているアップロード ' + waiting.length + '件'));
-    var now = el('button', 'btn small primary', '今すぐ再開');
-    now.type = 'button';
-    now.dataset.wait = 'now';
-    head.appendChild(now);
-    box.appendChild(head);
-    waiting.forEach(function (w, i) {
-      var row = el('div', 'vault-wait');
-      row.appendChild(el('b', '', w.file.name));
-      row.appendChild(el('span', 'muted', mb(w.file.size) + '・' + WHY[w.why]));
+  // the files go (whichever runs them)
+  function kick() {
+    if (!up.ready) return;
+    up.ready.then(function (mode) {
+      if (mode === 'sw' && up.reg && up.reg.active) up.reg.active.postMessage({ type: 'kick' });
+      if (up.engine && (mode === 'page' || Object.keys(up.mem).length)) up.engine.run();
+    });
+  }
+  // what waits in this browser, shown (this account's only; finished ones go after a while)
+  function refreshJobs() {
+    if (!window.indexedDB) return Promise.resolve();
+    return VaultUploads.all().then(function (list) {
+      list.forEach(function (j) { if (j.who === state.name) onJob(j); });
+    }, function () {});
+  }
+  function upMine(j) { return j && j.who === state.name; }
+  function onJob(j) {
+    if (!upMine(j)) return;
+    var was = up.jobs[j.key];
+    up.jobs[j.key] = j;
+    renderJob(j);
+    if (j.state === 'done' && (!was || was.state !== 'done')) jobDone(j);
+    renderResume();
+  }
+  function jobText(j) {
+    var p = j.chunks ? Math.round(j.sent / j.chunks * 100) : 0;
+    if (j.state === 'done') return '保存しました' + (j.sha256 ? '（SHA-256 ' + String(j.sha256).slice(0, 16) + '…）' : '');
+    if (j.state === 'run') return '送信中… ' + mb(Math.min(j.size, j.sent * (j.piece || 0))) + ' / ' + mb(j.size) + '（' + p + '%）';
+    if (j.state === 'wait') return '順番待ち（' + mb(j.size) + '）';
+    var why = UP_WHY[j.why] || '';
+    if (j.state === 'fail') return 'できませんでした：' + (j.message || why || 'もう一度ファイルを選んでください');
+    return '止まりました：' + (j.why === 'error' || !why ? (j.message || 'もう一度「再開」を押してください') : why) + (j.chunks ? '（' + p + '% 送信済み）' : '');
+  }
+  function renderJob(j) {
+    var c = up.cards[j.key];
+    if (!c) {
+      var card = el('article', 'card job up-job');
+      var head = el('div', 'up-job-head');
+      head.appendChild(el('b', '', j.name + (j.parent ? '（軽量版）' : '')));
       var x = el('button', 'btn small ghost', 'やめる');
       x.type = 'button';
-      x.dataset.wait = String(i);
-      row.appendChild(x);
-      box.appendChild(row);
+      x.dataset.upCancel = j.key;
+      head.appendChild(x);
+      card.appendChild(head);
+      var bar = el('div', 'bar'), fill = el('i');
+      bar.appendChild(fill);
+      card.appendChild(bar);
+      var note = el('span', 'muted');
+      card.appendChild(note);
+      $('#vault-jobs').insertBefore(card, $('#vault-jobs').firstChild);
+      c = up.cards[j.key] = { card: card, fill: fill, note: note, x: x };
+    }
+    var p = j.state === 'done' ? 100 : j.chunks ? j.sent / j.chunks * 100 : 0;
+    c.fill.style.width = p.toFixed(1) + '%';
+    c.note.textContent = jobText(j);
+    c.card.classList.toggle('ok', j.state === 'done');
+    c.card.classList.toggle('paused', j.state === 'stop');
+    c.card.classList.toggle('bad', j.state === 'fail');
+    c.x.hidden = j.state === 'done';
+  }
+  // a file in: the list again; a model's picture made here (its file kept for it till then)
+  function jobDone(j) {
+    if (state.vault) loadVault();
+    var go = Promise.resolve();
+    if (j.model && !j.parent) {
+      go = Promise.resolve(j.mem ? up.mem[j.key] : VaultUploads.fileOf(j.key)).then(function (blob) {
+        if (blob) return preview({ id: j.id, name: j.name }, blob, j);
+        return null;
+      });
+    }
+    go.then(function () {
+      setTimeout(function () { dropJob(j.key, true); }, 20000);
     });
   }
-  // A model: its picture, what is in it, and its light copy (uploaded as a file of its own)
-  function preview(f, file) {
+  function dropJob(key, quiet) {
+    var c = up.cards[key];
+    if (c) c.card.remove();
+    delete up.cards[key];
+    delete up.jobs[key];
+    delete up.mem[key];
+    renderResume();
+    return VaultUploads.forget(key).catch(function () {}).then(function () { if (!quiet) kick(); });
+  }
+  function cancelJob(key) {
+    var j = up.jobs[key];
+    if (!j) return;
+    if (up.reg && up.reg.active) up.reg.active.postMessage({ type: 'cancel', key: key });
+    if (up.engine) up.engine.cancel(key);
+    dropJob(key);
+    toast('「' + j.name + '」のアップロードをやめました' + (j.id ? '（届いた部分は保管庫に「アップロード途中」で残ります。削除もできます）' : ''));
+  }
+  var upSeq = 0;
+  // Files into the vault open now: each gets its place on the server (its
+  // upload's own pass with it) and waits in this browser to go. `o`: { note,
+  // space, folder, parent (a model's light copy: its pass), id (an unfinished
+  // one to go on with) }
+  function queueFile(file, o) {
+    o = o || {};
+    var j = {
+      key: Date.now().toString(36) + '-' + (++upSeq) + '-' + Math.random().toString(36).slice(2, 8),
+      who: state.name, id: o.id || '', name: file.name, size: file.size, type: file.type || '',
+      note: o.note || '', space: o.parent ? '' : o.space || '', folder: o.folder || '', parent: o.parent || '',
+      model: !o.parent && is3d(file.name) && file.size > 0, token: token, pass: o.pass || '', piece: 0, chunks: 0, sent: 0,
+      state: 'wait', why: '', message: '', tries: 0, next: 0, at: Date.now(), mem: false
+    };
+    if (!file.size) { toast('「' + file.name + '」は中身が空（0バイト）か、端末から読み込めませんでした。中身のあるファイルを選んでください'); return Promise.resolve(null); }
+    if (state.vault && file.size > state.vault.fileBytes) { toast('「' + file.name + '」は大きすぎます（1ファイル ' + mb(state.vault.fileBytes) + 'まで）'); return Promise.resolve(null); }
+    // kept in this browser (too big for its storage: in this page only, and sent from here)
+    return VaultUploads.add(j, file).catch(function () {
+      j.mem = true;
+      up.mem[j.key] = file;
+      return VaultUploads.add(j, null);
+    }).then(function () {
+      if (j.mem) up.mem[j.key] = file;
+      onJob(j);
+      return j.id ? passFor(j) : place(j);
+    }).then(function () { kick(); return j; });
+  }
+  // its place on the server (and its pass); the room not there: it waits
+  function place(j) {
+    var extra = j.parent && j.pass ? { 'X-Vault-Upload': j.pass } : null;
+    var body = { name: j.name, size: j.size, type: j.type, note: j.parent ? '' : j.note, parent: j.parent || undefined, space: j.parent ? undefined : j.space, folder: j.parent ? undefined : j.folder };
+    var call = extra ? request('POST', '/api/vault/files', body, Object.assign({}, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, extra)) : vreq('POST', '/api/vault/files', body);
+    return call.then(function (r) {
+      j.id = r.file.id;
+      j.pass = r.upload;
+      j.piece = r.file.piece;
+      j.chunks = r.file.chunks;
+      j.state = 'wait';
+      j.why = '';
+      j.message = '';
+      return VaultUploads.save(j).then(function () { onJob(j); });
+    }, function (err) { return stopJob(j, err); });
+  }
+  // an unfinished one on the server, gone on with: a new pass for it
+  function passFor(j) {
+    return vreq('GET', '/api/vault/missing?id=' + j.id).then(function (r) {
+      if (r.file.size !== j.size) {
+        // (not the same file after all: a new one)
+        j.id = '';
+        return place(j);
+      }
+      j.pass = r.upload;
+      j.state = 'wait';
+      j.why = '';
+      return VaultUploads.save(j).then(function () { onJob(j); });
+    }, function (err) { return stopJob(j, err); });
+  }
+  function stopJob(j, err) {
+    var code = err && err.code;
+    j.state = code === 'no_file' ? 'fail' : 'stop';
+    j.why = code === 'vault_full' ? 'full' : code === 'need_approval' || code === 'over_limit' ? 'room' : code === 'vault_locked' ? 'locked'
+      : err && (err.status === 0 || err.status === 429 || err.status >= 500) ? 'net' : code === 'no_file' ? 'gone' : 'error';
+    j.message = (err && err.message) || '';
+    j.next = Date.now() + 15000;
+    return VaultUploads.save(j).then(function () { onJob(j); });
+  }
+  // 「再開」: every stopped file again at once (its place or its pass first
+  // where it needs one); unfinished files with nothing here: picked again
+  function resumeAll() {
+    var list = Object.keys(up.jobs).map(function (k) { return up.jobs[k]; }).filter(function (j) { return j.state !== 'done'; });
+    var tasks = list.map(function (j) {
+      j.token = token;
+      j.tries = 0;
+      j.next = 0;
+      if (!j.id) return place(j);
+      if (j.why === 'locked' || j.state === 'fail' && j.why !== 'gone') return passFor(j);
+      if (j.why === 'gone') return dropJob(j.key, true);
+      j.state = 'wait';
+      j.why = '';
+      j.message = '';
+      return VaultUploads.save(j).then(function () { onJob(j); });
+    });
+    return Promise.all(tasks).then(function () {
+      kick();
+      var known = {};
+      list.forEach(function (j) { if (j.id) known[j.id] = true; });
+      var left = (state.vaultFiles || []).filter(function (f) { return !f.done && !known[f.id]; });
+      if (left.length && canWrite()) {
+        toast('続きを送るファイルを選んでください（' + left.length + '件：' + left.slice(0, 3).map(function (f) { return f.name; }).join('、') + (left.length > 3 ? ' ほか' : '') + '）');
+        $('#vault-file').click();
+      } else if (list.length) toast('止まっていたアップロードを再開しました（' + list.length + '件）');
+      else if (!left.length) toast('止まっているアップロードはありません');
+      else toast('「編集する」で開発者コードを入れると、途中のファイルの続きを送れます');
+    });
+  }
+  // an unfinished file tapped: its upload waiting here goes on at once;
+  // without one here, the same file is picked again (its pieces go on)
+  function goOn(f) {
+    var j = Object.keys(up.jobs).map(function (k) { return up.jobs[k]; }).filter(function (x) { return x.id === f.id && x.state !== 'done'; })[0];
+    if (j) {
+      j.state = 'wait';
+      j.next = 0;
+      j.tries = 0;
+      VaultUploads.save(j).then(function () { onJob(j); kick(); toast('「' + f.name + '」の続きを送ります'); });
+      return;
+    }
+    if (!canWrite()) { toast('アップロードの途中です（「編集する」で開発者コードを入れると、続きを送れます）'); return; }
+    state.resumeId = f.id;
+    toast('「' + f.name + '」（' + mb(f.size) + '）と同じファイルを選んでください。届いた部分の続きから送ります');
+    $('#vault-file').click();
+  }
+  // the room for a new file in a vault: all the vaults' room, and in a
+  // shared one an operator's own (the developer has no limit)
+  function roomIn(space) {
+    var v = state.vault, free = v.maxBytes - v.used;
+    if (space && !state.developer && v.me && v.me.limit) free = Math.min(free, v.me.limit - v.me.used);
+    return free;
+  }
+  // a new file may get its place from here now (the developer: with the code)
+  function canWriteIn() { return !state.developer || !!(state.vault && state.vault.ticket); }
+  // room again (a file deleted, a limit raised): the files waiting for it get their place
+  function roomCame() {
+    if (!state.vault) return;
+    Object.keys(up.jobs).forEach(function (k) {
+      var j = up.jobs[k];
+      if (j.id || j.state !== 'stop' || (j.why !== 'full' && j.why !== 'room') || j.next > Date.now()) return;
+      if (j.size <= roomIn(j.space) && canWriteIn(j.space)) { j.next = Date.now() + 15000; place(j).then(kick); }
+    });
+  }
+  // the 再開 button: whenever something is stopped or unfinished
+  function renderResume() {
+    var b = $('#vault-resume');
+    if (!b) return;
+    var mine = Object.keys(up.jobs).map(function (k) { return up.jobs[k]; });
+    var stopped = mine.filter(function (j) { return j.state === 'stop' || j.state === 'fail' && j.why !== 'gone'; }).length;
+    var known = {};
+    mine.forEach(function (j) { if (j.id) known[j.id] = true; });
+    var half = (state.vaultFiles || []).filter(function (f) { return !f.done && !known[f.id]; }).length;
+    b.hidden = !(stopped + half);
+    b.textContent = '再開（' + (stopped + half) + '件）';
+  }
+  // A model: its picture, what is in it, and its light copy (uploaded as a
+  // file of its own); `up`: its upload (its pass: the vault may be closed by now)
+  function preview(f, file, upj) {
     var j = job(f.name + '（3Dプレビュー）');
     j.set(0, 3);
+    var pass = upj && upj.pass ? { 'X-Vault-Upload': upj.pass } : null;
     return vault3d().then(function (V) {
       return V.analyze(file, f.name);
     }).then(function (r) {
       j.set(1, 3);
-      return vreq('POST', '/api/vault/meta', { id: f.id, preview: r.preview, info: r.info }).then(function () {
-        pics[f.id] = r.preview;
-        j.set(2, 3);
-        if (!r.light) return null;
-        var base = f.name.replace(/\.[^.]+$/, '');
-        return upload(new File([r.light], base + '.light.glb', { type: 'model/gltf-binary' }), { parent: f.id });
+      return (pass ? Promise.resolve(pass) : passOf(f.id)).then(function (h) {
+        return request('POST', '/api/vault/meta', { id: f.id, preview: r.preview, info: r.info }, Object.assign({}, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, h)).then(function () {
+          pics[f.id] = r.preview;
+          j.set(2, 3);
+          if (!r.light) return null;
+          var base = f.name.replace(/\.[^.]+$/, '');
+          return queueFile(new File([r.light], base + '.light.glb', { type: 'model/gltf-binary' }), { parent: f.id, pass: h['X-Vault-Upload'] || '' });
+        });
       });
-    }).then(function () { j.finish('プレビューを作りました'); return loadVault(); }, function (err) {
+    }).then(function () { j.finish('プレビューを作りました'); if (state.vault) return loadVault(); return null; }, function (err) {
       j.fail('プレビューを作れませんでした：' + ((err && err.message) || ''));
     });
+  }
+  // a file's upload pass, from the server (the vault open, or no code needed)
+  function passOf(id) {
+    return vreq('GET', '/api/vault/missing?id=' + id).then(function (r) { return { 'X-Vault-Upload': r.upload }; }, function () { return {}; });
   }
   // a whole file from the vault, its hashes checked: a Blob
   function fetchFile(f, j) {
@@ -2927,11 +4317,68 @@
   }
   function closeViewer() {
     if (viewing) { viewing.stop(); viewing = null; }
+    if (viewUrl) { URL.revokeObjectURL(viewUrl); viewUrl = ''; }
     var box = $('#viewer-box');
     box.textContent = '';
-    box.classList.remove('big');
+    box.classList.remove('big', 'fit');
     box.style.backgroundImage = '';
     $('#viewer').hidden = true;
+  }
+  // a whole file shown here (`make` puts it in the box)
+  function showBlob(f, make) {
+    closeViewer();
+    $('#viewer-name').textContent = f.name;
+    $('#viewer-note').textContent = '読み込み中…';
+    $('#viewer').hidden = false;
+    fetchFile(f, { set: function (d, t) { $('#viewer-note').textContent = '読み込み中… ' + Math.round(d / t * 100) + '%'; } }).then(function (blob) {
+      if ($('#viewer').hidden) return null;
+      var box = $('#viewer-box');
+      box.textContent = '';
+      box.classList.add('fit');
+      return Promise.resolve(make(box, blob)).then(function () { $('#viewer-note').textContent = mb(f.size); });
+    }).catch(function (err) { $('#viewer-note').textContent = (err && err.message) || '表示できませんでした'; });
+  }
+  function urlOf(blob, type) {
+    if (viewUrl) URL.revokeObjectURL(viewUrl);
+    viewUrl = URL.createObjectURL(new Blob([blob], { type: type }));
+    return viewUrl;
+  }
+  function showImage(f) {
+    showBlob(f, function (box, blob) {
+      var img = el('img', 'viewer-img');
+      img.src = urlOf(blob, f.type || 'image/png');
+      img.alt = f.name;
+      box.appendChild(img);
+    });
+  }
+  function showText(f) {
+    showBlob(f, function (box, blob) {
+      return blob.text().then(function (text) { box.appendChild(el('pre', 'viewer-text', text)); });
+    });
+  }
+  function showMedia(f, video) {
+    showBlob(f, function (box, blob) {
+      var m = el(video ? 'video' : 'audio', 'viewer-media');
+      m.controls = true;
+      m.src = urlOf(blob, f.type || (video ? 'video/mp4' : 'audio/mpeg'));
+      box.appendChild(m);
+    });
+  }
+  // A tap on a file's icon: a model turns in 3D, a picture, a text or a
+  // program, a video or a sound shows here; anything else (an APK, a zip) is
+  // saved. One still going up goes on (the same file picked again).
+  var SHOW_TEXT = 2 * 1048576, SHOW_PIC = 40 * 1048576, SHOW_MEDIA = 300 * 1048576;
+  function openFile(f) {
+    if (!f.done) {
+      goOn(f);
+      return;
+    }
+    var k = fileKind(f)[1];
+    if (k === 'k3d') view3d(f);
+    else if (k === 'kimg' && f.size <= SHOW_PIC) showImage(f);
+    else if (isTextual(k) && f.size <= SHOW_TEXT) showText(f);
+    else if ((k === 'kvid' || k === 'kaud') && f.size <= SHOW_MEDIA) showMedia(f, k === 'kvid');
+    else download(f);
   }
   // the picture, big
   function showPic(f) {
@@ -2969,7 +4416,7 @@
   function makeLink(f) {
     var hours = state.vault.hours || [1, 6, 24, 72];
     ask({
-      title: f ? 'リンクを作る' : '保管庫全体のリンクを作る',
+      title: f ? '「' + f.name + '」のリンクを作る' : '保管庫全体のリンクを作る',
       text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき・実装済みは除く）') + 'をログインなしで取り出せるリンクです（表示は一度だけ）。AI用にすると、AI が取ったファイルと AI の作業にラベルが付き、AI がゲームに入れたファイルは実装済みになってリンクから外れます。',
       ok: '作る',
       input: { label: '有効時間（' + hours.join('・') + ' 時間）', type: 'text', value: '24' },
@@ -2991,65 +4438,228 @@
       });
     }).catch(fail);
   }
-  function onVault(e) {
-    var b = e.target.closest('[data-vact]'), card = b && b.closest('[data-file]');
-    if (!card) return;
-    var f = state.vaultFiles.filter(function (x) { return x.id === card.dataset.file; })[0];
-    if (!f) return;
-    var act = b.dataset.vact;
-    if (act === 'get') download(f);
+  /* the menu of an item: its ⋯ (under it), a right click or a long press (where it was) */
+  var menuDo = null, menuAt0 = 0, menuWidth = 0;
+  function openMenu(items, at, then) {
+    var m = $('#vmenu');
+    m.textContent = '';
+    items.forEach(function (x) {
+      var b = el('button', 'vmenu-item' + (x[2] ? ' ' + x[2] : ''), x[0]);
+      b.type = 'button';
+      b.setAttribute('role', 'menuitem');
+      b.dataset.mact = x[1];
+      m.appendChild(b);
+    });
+    menuDo = then;
+    menuAt0 = Date.now();
+    menuWidth = window.innerWidth;
+    m.hidden = false;
+    // in sight: moved in where it would go out
+    var w = m.offsetWidth, h = m.offsetHeight;
+    m.style.left = Math.max(8, Math.min(at.x, window.innerWidth - w - 8)) + 'px';
+    m.style.top = Math.max(8, at.y + h + 8 > window.innerHeight ? at.y - h - (at.below || 0) : at.y) + 'px';
+    var first = m.querySelector('button');
+    if (first) first.focus({ preventScroll: true });
+  }
+  function menuAt(b, items, then) {
+    var r = b.getBoundingClientRect();
+    openMenu(items, { x: r.left, y: r.bottom + 4, below: r.height + 8 }, then);
+  }
+  function closeMenu() { $('#vmenu').hidden = true; menuDo = null; }
+  // (the page scrolled or turned: the menu goes; not for what opening it moved,
+  // nor a phone's address bar coming and going)
+  function menuMoved(e) {
+    if ($('#vmenu').hidden || Date.now() - menuAt0 < 400) return;
+    if (e.type === 'resize' && window.innerWidth === menuWidth) return;
+    if (e.type === 'scroll' && e.target && e.target.closest && e.target.closest('#vmenu')) return;
+    closeMenu();
+  }
+  function onMenu(e) {
+    var b = e.target.closest('[data-mact]');
+    if (!b || !menuDo) return;
+    var then = menuDo;
+    closeMenu();
+    then(b.dataset.mact);
+  }
+
+  // what can be done with a file (its ⋯, a right click)
+  function fileMenu(f) {
+    var write = canWrite(), own = !f.space, kind = fileKind(f), inBackups = state.vaultSpace === 'backup';
+    var dev = state.developer && state.vault && state.vault.ticket, items = [];
+    if (f.done) {
+      items.push(['開く', 'open'], ['ダウンロード', 'get']);
+      if (lightOf(f)) items.push(['軽量版をダウンロード', 'getlight']);
+      if (!f.info && kind[1] === 'k3d' && write && !inBackups && (own || state.vaultInfo.add)) items.push(['3Dプレビューを作る', 'make']);
+    } else if (write) items.push(['続きから送る（同じファイルを選ぶ）', 'resume']);
+    items.push([shown[f.id] ? '詳細を閉じる' : '詳細', 'details'], ['コメント', 'comments']);
+    if (write && !inBackups) items.push(['名前を変更', 'rename'], ['移動', 'move']);
+    if (own && f.done && write) {
+      if (f.implementedAt) items.push(['実装済みから戻す', 'restore']);
+      else items.push(['リンクを作る', 'link']);
+      if (f.links.live) items.push(['リンクを停止', 'stop']);
+    }
+    if (dev && f.done) {
+      if (f.backup && f.backup.removed) items.push(['元の場所に戻す', 'unremove']);
+      else items.push(f.backup ? ['バックアップから外す', 'unbackup'] : ['バックアップする', 'backup']);
+    }
+    if (write && (!inBackups || f.space === 'backup')) items.push([inBackups ? '完全に削除' : '削除', 'delete', 'danger']);
+    return items;
+  }
+  function fileAct(f, act) {
+    if (act === 'open') openFile(f);
+    else if (act === 'details') { shown[f.id] = !shown[f.id]; renderVault(); }
+    else if (act === 'comments') openComments(f);
+    else if (act === 'get') download(f);
     else if (act === 'getlight') { if (lightOf(f)) download(lightOf(f)); }
-    else if (act === 'view') view3d(f);
     else if (act === 'pic') showPic(f);
     else if (act === 'make') makePreview(f);
     else if (act === 'link') makeLink(f);
-    else if (act === 'move') moveFiles([f.id]);
-    else if (act === 'note') addNote(f);
-    else if (act === 'notedel') {
-      ask({ title: 'このメッセージを削除しますか？', text: b.parentNode.querySelector('.vnote-text').textContent, ok: '削除する', danger: true }).then(function (ok) {
-        if (!ok) return null;
-        return vreq('POST', '/api/vault/notes/delete', { note: Number(b.dataset.note) }).then(function () { toast('削除しました'); return loadVault(); });
-      }).catch(fail);
-    }
-    else if (act === 'resume') { state.resumeId = f.id; $('#vault-file').click(); }
+    else if (act === 'rename') renameFile(f);
+    else if (act === 'move') moveItems([f], []);
+    else if (act === 'backup' || act === 'unbackup') backupItems([f], [], act === 'backup');
+    else if (act === 'unremove') restoreBackup(f);
+    else if (act === 'resume') goOn(f);
     else if (act === 'restore') {
       ask({ title: '実装済みから戻しますか？', text: '「' + f.name + '」がまたリンクから取り出せるようになります。', ok: '戻す' }).then(function (ok) {
         if (!ok) return null;
         return vreq('POST', '/api/vault/restore', { id: f.id }).then(function () { toast('戻しました'); return loadVault(); });
       }).catch(fail);
-    }
-    else if (act === 'stop') {
-      ask({ title: 'リンクを停止しますか？', text: '「' + f.name + '」の読み取り専用リンクがすべて、すぐに使えなくなります。', ok: '停止する', danger: true }).then(function (ok) {
+    } else if (act === 'stop') {
+      ask({ title: 'リンクを停止しますか？', text: '「' + f.name + '」のリンクがすべて、すぐに使えなくなります。', ok: '停止する', danger: true }).then(function (ok) {
         if (!ok) return null;
         return vreq('POST', '/api/vault/link/stop', { id: f.id }).then(function (r) { toast('リンクを停止しました（' + r.stopped + '本）'); return loadVault(); });
       }).catch(fail);
-    } else if (act === 'delete') {
-      ask({ title: '「' + f.name + '」を削除しますか？', text: '保管庫から完全に消えます（元に戻せません）。リンクも使えなくなります。', ok: '削除する', danger: true }).then(function (ok) {
-        if (!ok) return null;
-        return vreq('POST', '/api/vault/delete', { id: f.id }).then(function () { toast('削除しました'); return loadVault(); });
-      }).catch(fail);
-    }
+    } else if (act === 'delete') deleteFile(f);
   }
-  // files picked: one after another, with the note and into the folder open
-  // now (an unfinished one with the same name and size goes on where it stopped)
+  function renameFile(f) {
+    ask({ title: '名前を変更', ok: '変更する', input: { label: 'ファイルの名前', value: f.name }, check: named }).then(function (name) {
+      if (name === null || name.trim() === f.name) return null;
+      return vreq('POST', '/api/vault/rename', { id: f.id, name: name.trim() }).then(function () { toast('名前を変更しました'); return loadVault(); });
+    }).catch(fail);
+  }
+  function deleteFile(f) {
+    var text = f.space === 'backup' ? 'バックアップから完全に削除します（元に戻せません）。'
+      : f.backup ? '保管庫から削除します。開発者のバックアップには残ります。'
+        : '保管庫から完全に削除します（元に戻せません）。' + (f.space ? '' : 'リンクも使えなくなります。');
+    ask({ title: '本当に削除しますか？', text: '「' + f.name + '」を' + text, ok: '削除する', danger: true }).then(function (ok) {
+      if (!ok) return null;
+      return vreq('POST', '/api/vault/delete', { id: f.id }).then(function (r) { toast(r.kept ? '削除しました（バックアップに残っています）' : '削除しました'); return loadVault(); });
+    }).catch(fail);
+  }
+  // a tap in the lists: a checkmark checks, an icon opens, a button does its part
+  function onItems(e) {
+    if (onPick(e)) return;
+    var row = e.target.closest('.vitem');
+    if (!row) return;
+    var f = row.dataset.file ? fileOf(row.dataset.file) : null, d = row.dataset.folder ? folderOf(row.dataset.folder) : null;
+    var b = e.target.closest('[data-vact], [data-vopen]');
+    if (d) {
+      if (b && b.dataset.vact === 'menu') menuAt(b, folderMenu(d), function (a) { folderAct(d, a); });
+      else if (b || e.target.closest('.vault-name')) goFolder(d.id);
+      return;
+    }
+    if (!f || !b) return;
+    if (b.dataset.vopen) openFile(f);
+    else if (b.dataset.vact === 'menu') menuAt(b, fileMenu(f), function (a) { fileAct(f, a); });
+    else fileAct(f, b.dataset.vact);
+  }
+  // a right click (or a long press): the item's menu where it was
+  function onItemsMenu(e) {
+    var row = e.target.closest('.vitem');
+    if (!row) return;
+    var f = row.dataset.file ? fileOf(row.dataset.file) : null, d = row.dataset.folder ? folderOf(row.dataset.folder) : null;
+    if (!f && !d) return;
+    e.preventDefault();
+    openMenu(f ? fileMenu(f) : folderMenu(d), { x: e.clientX, y: e.clientY }, function (a) { if (f) fileAct(f, a); else folderAct(d, a); });
+  }
+  // files picked: into the vault and folder open now, with the note (an
+  // unfinished one of the same size goes on where it stopped: the one tapped,
+  // or one with the same name)
   function onFiles() {
     var input = $('#vault-file'), files = Array.prototype.slice.call(input.files || []), resume = state.resumeId;
     input.value = '';
     state.resumeId = null;
+    sendFiles(files, resume, state.vaultFolder);
+  }
+  // `folder`: where they go in the vault open now ('' : its top)
+  function sendFiles(files, resume, folder) {
     if (!state.vault) return;
-    var note = $('#vault-note').value.trim(), folder = state.vaultFolder;
-    $('#vault-note').value = '';
+    var note = state.vaultMemo || '', space = state.vaultSpace, taken = {};
+    if (files.length) { state.vaultMemo = ''; renderMemo(); }
+    // (each unfinished one is gone on with once, by the file it was: same size, and the one tapped or the same name)
+    Object.keys(up.jobs).forEach(function (k) { if (up.jobs[k].id) taken[up.jobs[k].id] = true; });
+    var half = function (file) {
+      var same = state.vaultFiles.filter(function (x) { return !x.done && !taken[x.id] && x.size === file.size; });
+      var f = same.filter(function (x) { return resume && x.id === resume; })[0] || same.filter(function (x) { return x.name === file.name; })[0];
+      if (f) taken[f.id] = true;
+      return f;
+    };
     files.reduce(function (p, file) {
       return p.then(function () {
-        if (!state.vault) return null;
-        if (file.size > state.vault.fileBytes) { toast('「' + file.name + '」は大きすぎます（1ファイル ' + mb(state.vault.fileBytes) + 'まで）'); return null; }
-        // (one that stopped, picked again: this takes it over)
-        waiting = waiting.filter(function (w) { return !(w.file.name === file.name && w.file.size === file.size); });
-        renderWaiting();
-        var half = state.vaultFiles.filter(function (x) { return !x.done && (resume ? x.id === resume : x.name === file.name && x.size === file.size); })[0];
-        return upload(file, { id: half ? half.id : null, note: note, folder: folder });
+        // (the same file again while it still waits here: that one goes on)
+        var dup = Object.keys(up.jobs).map(function (k) { return up.jobs[k]; }).filter(function (j) { return j.state !== 'done' && j.name === file.name && j.size === file.size && j.space === space; })[0];
+        if (dup) { dup.state = 'wait'; dup.next = 0; return VaultUploads.save(dup).then(function () { onJob(dup); kick(); }); }
+        var f = half(file);
+        return queueFile(file, { id: f ? f.id : '', note: note, space: space, folder: folder });
       });
     }, Promise.resolve());
+  }
+
+  // files dragged in from the computer: dropped on the vault, into the folder
+  // open now; dropped on a folder, into that folder (only while it may be
+  // changed; never opened by the browser itself)
+  var dragDepth = 0;
+  function dragFiles(e) { return !!e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; }
+  function dropFolder(e) {
+    var row = e.target.closest && e.target.closest('.vitem[data-folder]');
+    return row && $('#vault-folders').contains(row) ? row : null;
+  }
+  function markDrop(row) {
+    Array.prototype.forEach.call(document.querySelectorAll('.vitem.drop-in'), function (r) { if (r !== row) r.classList.remove('drop-in'); });
+    if (row) row.classList.add('drop-in');
+  }
+  function endDrag() {
+    dragDepth = 0;
+    $('#vault-main').classList.remove('vault-drag');
+    markDrop(null);
+  }
+  function onDragEnter(e) {
+    if (!dragFiles(e)) return;
+    e.preventDefault();
+    dragDepth++;
+    if (canWrite()) $('#vault-main').classList.add('vault-drag');
+  }
+  function onDragOver(e) {
+    if (!dragFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = canWrite() ? 'copy' : 'none';
+    if (canWrite()) markDrop(dropFolder(e));
+  }
+  function onDragLeave(e) {
+    if (!dragFiles(e)) return;
+    if (--dragDepth <= 0) endDrag();
+  }
+  function onDrop(e) {
+    if (!dragFiles(e)) return;
+    e.preventDefault();
+    var row = dropFolder(e);
+    endDrag();
+    if (!canWrite()) {
+      toast(!$('#vault-unlock').hidden ? '「編集する」を押してから入れてください' : 'この保管庫には入れられません');
+      return;
+    }
+    // (a folder from the computer is not taken: the files in it are)
+    var items = Array.prototype.slice.call(e.dataTransfer.items || []), dirs = 0;
+    items.forEach(function (it) { var en = it.webkitGetAsEntry && it.webkitGetAsEntry(); if (en && en.isDirectory) dirs++; });
+    var files = Array.prototype.slice.call(e.dataTransfer.files || []).filter(function (f, i) {
+      var en = items[i] && items[i].webkitGetAsEntry && items[i].webkitGetAsEntry();
+      return !(en && en.isDirectory);
+    });
+    if (dirs) toast('フォルダはそのまま入れられません（中のファイルを選んで入れてください）');
+    if (!files.length) return;
+    var folder = row ? row.dataset.folder : state.vaultFolder;
+    if (row) toast('「' + folderOf(folder).name + '」に ' + files.length + '個 入れます');
+    sendFiles(files, null, folder);
   }
 
   /* ------------------------------------------------------------ the operators' log --- */
@@ -3082,23 +4692,104 @@
         : '⚠ 改ざんチェック: ' + r.brokenAt + '番の記録で異常があります（' + r.reason + '）';
     }, function () {});
   }
+  // One line of the log. A tap goes to the place it is about (a player, a
+  // report, the vault …; not for a 閲覧者, who only reads); 詳細 shows all of it.
   function logEntry(x) {
-    var row = el('div', 'entry');
-    var line = el('button', 'entry-line');
+    var row = el('div', 'entry'), go = state.viewer ? null : placeOf(x);
+    var line = el('button', 'entry-line' + (go ? ' go' : ''));
     line.type = 'button';
+    line.title = go ? go.label + 'を開く' : '詳細を表示';
     line.appendChild(el('span', 'time', String(x.jst || '').replace(/\.\d+ JST$/, '')));
     line.appendChild(el('span', 'lk k-' + x.kind, KINDS[x.kind] || ''));
     line.appendChild(el('span', 'who', x.actor.name));
     line.appendChild(el('span', 'sum', x.summary));
-    line.addEventListener('click', function () {
+    function details() {
       var open = row.classList.toggle('open');
+      more.classList.toggle('on', open);
       var d = row.querySelector('.entry-detail');
       if (!open) { if (d) d.hidden = true; return; }
       if (d) { d.hidden = false; return; }
       row.appendChild(logDetail(x));
-    });
-    row.appendChild(line);
+    }
+    line.addEventListener('click', function () { if (go) go.open(); else details(); });
+    var more = el('button', 'entry-more', '詳細');
+    more.type = 'button';
+    more.addEventListener('click', details);
+    var head = el('div', 'entry-head');
+    head.appendChild(line);
+    head.appendChild(more);
+    row.appendChild(head);
     return row;
+  }
+  // where a log line takes one: { label, open } (null: nowhere in particular)
+  function placeOf(x) {
+    var a = String(x.action || ''), d = x.detail || {}, t = x.target && x.target.id ? x.target : null;
+    // (what a player did: the player)
+    if (!t && /^player_/.test(a) && x.actor && x.actor.id) t = x.actor;
+    function to(label, open) { return { label: label, open: open }; }
+    function tab(v, label) { return to(label, function () { setView(v); }); }
+    if (/^vault_/.test(a)) {
+      if (a === 'vault_quota_request' || a === 'vault_quota_cancel' || a === 'vault_quota_approve' || a === 'vault_quota_decline' || a === 'vault_quota_set') return tab('vault', '保管庫の容量');
+      return to('保管庫', function () { openVaultAt(d.space || '', d.folder || ''); });
+    }
+    if (/^bot_/.test(a) && t) return to(t.name + ' さんとの公式チャット', function () { openChat(t.id); });
+    if (/^report_|^player_report$/.test(a)) return tab('reports', '通報');
+    if (a === 'detections_reviewed' || a === 'filter_block' || a === 'chat_unban') return t ? to(t.name + ' さん', function () { openDetail(t.id); }) : tab('detections', '検知');
+    if (a === 'feedback_handled' || a === 'idea_adopt' || a === 'player_feedback') return tab('feedback', '報告・意見案');
+    if (/^ops_|^viewer_|^dev_code_/.test(a)) return tab('operators', '運営者');
+    if (a === 'account_delete' || a === 'account_purge') return tab('archive', 'プレイヤーアーカイブ');
+    if (/^shield_|^lockdown|^emergency_|^sec_/.test(a)) return tab('security', 'セキュリティ');
+    if (/^backup_|^discord_/.test(a)) return tab('server', 'サーバー');
+    if (/^pay_/.test(a) && state.developer) return tab('pay', '課金');
+    if (t) return to(t.name + ' さん', function () { openDetail(t.id); });
+    return null;
+  }
+  // the vault at a vault and folder (from the log)
+  function openVaultAt(space, folder) {
+    setView('vault');
+    // (the developer's own vault: only the developer sees it)
+    if (!space && !state.developer) return;
+    (state.vault ? Promise.resolve() : openLook()).then(function () {
+      if (!state.vault) return null;
+      if (space !== state.vaultSpace) goSpace(space);
+      return loadVault().then(function () { if (folder && folderOf(folder)) goFolder(folder); });
+    }).catch(function () {});
+  }
+
+  /* the log as a text for an AI (what happened, without the addresses, the
+     devices and the hashes): the lines shown now, or one of them */
+  var KIND_JA = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
+  // (what could find a person or a machine stays out: addresses, devices, codes)
+  var AI_SECRET = /^(request|time|ip|ips|host|device|devices|fp|userAgent|ua|agent|origin|referer|token|code|codes|password|recovery|sameDevice|sameDeviceAccounts)$/i;
+  function aiSafe(v, depth) {
+    if (typeof v === 'string') return v.replace(/\b\d{1,3}(\.\d{1,3}){3}\b/g, '[IP]').replace(/\b[0-9a-f]{0,4}(:[0-9a-f]{0,4}){3,7}\b/gi, '[IP]');
+    if (!v || typeof v !== 'object' || depth > 4) return v;
+    if (Array.isArray(v)) return v.slice(0, 20).map(function (x) { return aiSafe(x, depth + 1); });
+    var out = {};
+    Object.keys(v).forEach(function (k) { if (!AI_SECRET.test(k)) out[k] = aiSafe(v[k], depth + 1); });
+    return out;
+  }
+  function aiLine(x) {
+    var rest = aiSafe(x.detail || {}, 0);
+    var detail = JSON.stringify(rest);
+    if (detail.length > 600) detail = detail.slice(0, 600) + '…（省略）';
+    return '#' + x.id + ' ' + String(x.jst || '').replace(/\.\d+ JST$/, '') + ' [' + (KIND_JA[x.kind] || x.kind) + '] ' + actionName(x.action) + '（' + x.action + '）\n'
+      + '  実行: ' + x.actor.name + (x.target ? ' / 対象: ' + x.target.name : '') + '\n'
+      + '  内容: ' + aiSafe(x.summary, 0) + (detail && detail !== '{}' ? '\n  詳細: ' + detail : '');
+  }
+  function aiReport(entries, what) {
+    if (!entries.length) { toast('ログがありません'); return; }
+    var first = entries[entries.length - 1], last = entries[0];
+    var text = 'TWO STATE（オンラインのカジノゲーム）の運営ログです。内容を確認して、問題や気になる点があれば、原因の見立てと対処を教えてください。\n'
+      + '範囲: ' + what + '・' + entries.length + '件（' + String(first.jst || '').slice(0, 16) + ' 〜 ' + String(last.jst || '').slice(0, 16) + ' 日本時間・新しい順）\n'
+      + '----\n' + entries.map(aiLine).join('\n\n') + '\n----\n（IPアドレス・端末ID・ブラウザの情報と記録のハッシュは含めていません）';
+    ask({ title: 'AIに報告する文章', text: 'コピーして AI に貼り付けてください。', area: { label: '報告文（' + entries.length + '件）', value: text }, ok: 'コピーして閉じる' }).then(function (v) {
+      if (v !== null) copy($('#dialog-area').value || text);
+    });
+  }
+  function logScope() {
+    var k = state.logKind, chip = document.querySelector('#log-kinds [data-kind="' + k + '"]');
+    return (k ? (chip ? chip.firstChild.textContent : k) + 'のログ' : 'すべてのログ') + (state.logQ ? '（「' + state.logQ + '」で検索）' : '');
   }
   function logDetail(x) {
     var box = el('div', 'entry-detail');
@@ -3129,7 +4820,26 @@
     box.appendChild(t);
     var rest = {};
     Object.keys(x.detail || {}).forEach(function (k) { if (k !== 'time' && k !== 'request') rest[k] = x.detail[k]; });
-    box.appendChild(el('pre', '', JSON.stringify(rest, null, 2)));
+    if (Object.keys(rest).length) box.appendChild(el('pre', '', JSON.stringify(rest, null, 2)));
+    var a = el('div', 'entry-acts'), ai = el('button', 'btn small', 'この記録をAIに報告する文章にする');
+    ai.type = 'button';
+    ai.addEventListener('click', function () { aiReport([x], '記録 #' + x.id); });
+    a.appendChild(ai);
+    var go = state.viewer ? null : placeOf(x);
+    if (go) {
+      var b = el('button', 'btn small primary', go.label + 'を開く');
+      b.type = 'button';
+      b.addEventListener('click', go.open);
+      a.appendChild(b);
+    }
+    // (an operator: into the 運営チャット)
+    if (!state.viewer) {
+      var qb = el('button', 'btn small', '運営チャットで引用');
+      qb.type = 'button';
+      qb.addEventListener('click', function () { quoteInChat(x); });
+      a.appendChild(qb);
+    }
+    box.appendChild(a);
     return box;
   }
 
@@ -3208,12 +4918,16 @@
     turn();
     dragScroll();
     window.addEventListener('resize', turn);
-    window.addEventListener('orientationchange', function () { setTimeout(turn, 200); });
+    window.addEventListener('resize', topBar);
+    window.addEventListener('orientationchange', function () { setTimeout(function () { turn(); topBar(); }, 200); });
     // a tap: full screen and landscape where the phone allows it (again after leaving it)
     document.addEventListener('pointerup', fullscreen, true);
 
     $('#login-form').addEventListener('submit', onLogin);
     $('#logout').addEventListener('click', logout);
+    $('#enter-go').addEventListener('click', enter);
+    $('#enter-other').addEventListener('click', logout);
+    $('#op-inlog-more').addEventListener('click', function () { loadInlog(true); });
     $('#tabs').addEventListener('click', function (e) {
       var t = e.target.closest('[data-view]');
       if (t) setView(t.dataset.view);
@@ -3278,13 +4992,20 @@
     });
     $('#fb-list').addEventListener('click', onFeedback);
     $('#op-list').addEventListener('click', onOperators);
+    $('#op-viewers').addEventListener('click', onOperators);
     $('#op-grant').addEventListener('submit', onGrant);
+    $('#op-grant-viewer').addEventListener('click', function () {
+      var name = $('#op-grant-name').value.trim();
+      if (!name) { toast('閲覧者にするプレイヤーの名前を入力してください'); return; }
+      changeViewer('grant', name, null);
+    });
     $('#op-devcode-btn').addEventListener('click', registerCode);
     $('#log-search').addEventListener('input', function () {
       clearTimeout(logTimer);
       logTimer = setTimeout(function () { state.logQ = $('#log-search').value.trim(); loadLog(true); }, 300);
     });
     $('#log-more').addEventListener('click', function () { loadLog(false); });
+    $('#log-ai').addEventListener('click', function () { aiReport((state.log || []).slice(0, 100), logScope()); });
     $('#log-kinds').addEventListener('click', function (e) {
       var c = e.target.closest('[data-kind]');
       if (!c) return;
@@ -3325,25 +5046,54 @@
       var t = e.target.closest('[data-draft]');
       if (t) drafts[t.dataset.draft] = t.value;
     });
-    $('#vault-open').addEventListener('click', openVault);
-    $('#vault-lock').addEventListener('click', function () { lockVault('保管庫を閉じました'); });
-    $('#vault-list').addEventListener('click', onVault);
-    $('#vault-list').addEventListener('change', function (e) {
-      var box = e.target.closest('[data-vpick]');
-      if (!box) return;
-      if (box.checked) state.vaultPicked[box.dataset.vpick] = true; else delete state.vaultPicked[box.dataset.vpick];
-      renderPicked();
+    $('#vault-unlock').addEventListener('click', unlockVault);
+    $('#vault-lock').addEventListener('click', function () { relock('閉じました（閲覧のみ）'); });
+    // (a checkmark first: it only checks; an icon opens; the ⋯, 詳細 and 💬)
+    ['#vault-list', '#vault-folders'].forEach(function (id) {
+      $(id).addEventListener('click', onItems);
+      $(id).addEventListener('contextmenu', onItemsMenu);
+      // (a double click opens it too)
+      $(id).addEventListener('dblclick', function (e) {
+        if (e.target.closest('button, .vault-check, .vitem-detail')) return;
+        var row = e.target.closest('.vitem');
+        if (row && row.dataset.folder) goFolder(row.dataset.folder);
+        else if (row && fileOf(row.dataset.file)) openFile(fileOf(row.dataset.file));
+      });
     });
-    $('#vault-new-folder').addEventListener('click', newFolder);
-    $('#vault-new-text').addEventListener('click', newText);
+    $('#vault-plus').addEventListener('click', plusMenu);
+    $('#vault-link').addEventListener('click', linkMenu);
+    $('#vault-memo').addEventListener('click', function () { state.vaultMemo = ''; renderMemo(); });
+    $('#vmenu').addEventListener('click', onMenu);
+    document.addEventListener('mousedown', function (e) { if (!$('#vmenu').hidden && !e.target.closest('#vmenu')) closeMenu(); }, true);
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (!$('#vmenu').hidden) closeMenu();
+      else if (!$('#vcomments').hidden) closeComments();
+    });
+    window.addEventListener('scroll', menuMoved, true);
+    window.addEventListener('resize', menuMoved);
+    $('#vcomments-close').addEventListener('click', closeComments);
+    $('#vcomments').addEventListener('click', function (e) { if (e.target.id === 'vcomments') closeComments(); });
+    $('#vcomments-form').addEventListener('submit', sendComment);
+    $('#vcomments-list').addEventListener('click', onComments);
+    $('#vcomments-text').addEventListener('keydown', function (e) {
+      // (Ctrl / ⌘ + Enter sends)
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendComment(e);
+    });
     $('#vault-filter').addEventListener('click', function (e) {
       var c = e.target.closest('[data-vf]');
       if (!c) return;
-      state.vaultShow = c.dataset.vf;
+      setShow(c.dataset.vf);
       state.vaultPage = 0;
-      Array.prototype.forEach.call(document.querySelectorAll('#vault-filter .chip'), function (x) { x.classList.toggle('on', x === c); });
+      clearPicks();
       renderVault();
     });
+    $('#vault-spaces').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-space]');
+      if (b) goSpace(b.dataset.space);
+    });
+    $('#vault-room').addEventListener('click', onRoom);
+    $('#vault-pick-all').addEventListener('click', pickAll);
     $('#vault-pager').addEventListener('click', function (e) {
       var b = e.target.closest('[data-page]');
       if (!b || b.disabled) return;
@@ -3351,34 +5101,49 @@
       renderVault();
       $('#vault-path').scrollIntoView({ block: 'start' });
     });
-    $('#vault-waiting').addEventListener('click', function (e) {
-      var b = e.target.closest('[data-wait]');
-      if (!b) return;
-      if (b.dataset.wait === 'now') resumeWaiting(true);
-      else { waiting.splice(Number(b.dataset.wait), 1); renderWaiting(); }
+    // uploads: やめる, 再開; the connection back: at once; and a look every 15 s
+    upInit();
+    $('#vault-jobs').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-up-cancel]');
+      if (b) cancelJob(b.dataset.upCancel);
     });
-    // stopped uploads: the connection back, or a look every 20 s for room
+    $('#vault-resume').addEventListener('click', function () { resumeAll().catch(fail); });
     window.addEventListener('online', function () {
-      waiting.forEach(function (w) { if (w.why === 'net') w.next = 0; });
-      resumeWaiting(false);
+      Promise.all(Object.keys(up.jobs).map(function (k) {
+        var j = up.jobs[k];
+        if (j.state !== 'stop' || j.why !== 'net') return null;
+        j.next = 0;
+        return VaultUploads.save(j);
+      })).then(kick, kick);
     });
-    setInterval(function () { if (waiting.length && state.vault && !resuming) loadVault(); }, 20000);
-    $('#vault-folders').addEventListener('click', onFolder);
+    setInterval(function () {
+      if (!token || $('#app').hidden || !Object.keys(up.jobs).some(function (k) { return up.jobs[k].state !== 'done'; })) return;
+      kick();
+      if (state.vault && !document.hidden) loadVault(true);
+    }, 15000);
     $('#vault-path').addEventListener('click', onFolder);
-    $('#vault-picked-move').addEventListener('click', function () { moveFiles(Object.keys(state.vaultPicked)); });
-    $('#vault-picked-clear').addEventListener('click', function () { state.vaultPicked = {}; renderVault(); });
-    $('#vault-all-link').addEventListener('click', function () { makeLink(null); });
-    $('#vault-all-stop').addEventListener('click', function () {
-      ask({ title: '全体リンクを停止しますか？', text: '保管庫全体の読み取り専用リンクがすべて、すぐに使えなくなります。', ok: '停止する', danger: true }).then(function (ok) {
-        if (!ok) return null;
-        return vreq('POST', '/api/vault/link/stop', { id: '*' }).then(function (r) { toast('リンクを停止しました（' + r.stopped + '本）'); return loadVault(); });
-      }).catch(fail);
-    });
+    $('#vault-picked-move').addEventListener('click', function () { moveItems(pickedFiles(), pickedFolders()); });
+    $('#vault-picked-get').addEventListener('click', function () { downloadItems(pickedFiles(), pickedFolders()); });
+    $('#vault-picked-delete').addEventListener('click', function () { deleteItems(pickedFiles(), pickedFolders()); });
+    $('#vault-picked-clear').addEventListener('click', function () { clearPicks(); renderPicks(); });
+    $('#vault-picked-backup').addEventListener('click', function () { backupItems(pickedFiles(), pickedFolders(), true); });
     $('#viewer-close').addEventListener('click', closeViewer);
     $('#viewer').addEventListener('click', function (e) { if (e.target.id === 'viewer') closeViewer(); });
     $('#vault-file').addEventListener('change', onFiles);
+    var vm = $('#vault-main');
+    vm.addEventListener('dragenter', onDragEnter);
+    vm.addEventListener('dragover', onDragOver);
+    vm.addEventListener('dragleave', onDragLeave);
+    vm.addEventListener('drop', onDrop);
+    // (a file dropped anywhere else on the site is not opened in its place)
+    window.addEventListener('dragover', function (e) { if (dragFiles(e)) e.preventDefault(); });
+    window.addEventListener('drop', function (e) { if (dragFiles(e)) e.preventDefault(); });
     // leaving in the middle of an upload or a download
-    window.addEventListener('beforeunload', function (e) { if (moving > 0 || waiting.length) { e.preventDefault(); e.returnValue = ''; } });
+    // (uploads in the background worker go on: no question for them)
+    window.addEventListener('beforeunload', function (e) {
+      var here = Object.keys(up.jobs).some(function (k) { var j = up.jobs[k]; return j.state !== 'done' && (up.mode !== 'sw' || j.mem); });
+      if (moving > 0 || here) { e.preventDefault(); e.returnValue = ''; }
+    });
 
     $('#team-list').addEventListener('click', function (e) {
       var p = e.target.closest('[data-pair]');
@@ -3387,6 +5152,24 @@
       if (b) openTeam(Number(b.dataset.peer));
     });
     $('#team-form').addEventListener('submit', sendTeam);
+    $('#team-msgs').addEventListener('click', onTeamMsgs);
+    $('#team-call').addEventListener('click', onCallButtons);
+    $('#call-pill').addEventListener('click', onCallButtons);
+    $('#team-at').addEventListener('click', function () { if (pick.mode === 'at') closePick(); else openPick('at', false); });
+    $('#team-quote').addEventListener('click', function () { if (pick.mode === 'log') closePick(); else openPick('log', false); });
+    $('#team-pick-list').addEventListener('click', onPickList);
+    $('#team-pick-q').addEventListener('input', function () { clearTimeout(pick.timer); pick.timer = setTimeout(loadPick, 250); });
+    $('#team-pick-q').addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.stopPropagation(); closePick(); $('#team-text').focus(); }
+      else if (e.key === 'Enter') { e.preventDefault(); var first = document.querySelector('#team-pick-list .team-pick-row'); if (first) first.click(); }
+    });
+    // "@" typed after a space (or at the start): the list opens
+    $('#team-text').addEventListener('input', function (e) {
+      var ta = e.target, i = ta.selectionStart, prev = ta.value.charAt(i - 2);
+      if (e.data === '@' && ta.value.charAt(i - 1) === '@' && (i === 1 || /\s/.test(prev))) openPick('at', true);
+    });
+    // (the call goes when the page does)
+    window.addEventListener('pagehide', function () { if (call.on) callLeave(); });
     $('#team-text').addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendTeam(e); });
     $('#speed').addEventListener('change', function () { setSpeed($('#speed').value); });
 
@@ -3421,8 +5204,15 @@
       if (!$('#chat').hidden) { closeChat(); return; }
       closeDetail();
     });
-    if (!token) { showLogin(''); return; }
-    request('GET', '/api/ops/me').then(start, function (err) { if (err.status !== 401 && err.code !== 'not_operator') showLogin(err.message); });
+    // (a viewer logged out a moment ago: why)
+    var out = '';
+    try { out = sessionStorage.getItem('ops-out') || ''; sessionStorage.removeItem('ops-out'); } catch (e) { /* none */ }
+    if (!token) { showLogin(out); return; }
+    request('GET', '/api/ops/me').then(arrive, function (err) { if (err.status !== 401 && err.code !== 'not_operator') showLogin(err.message); });
+    // (back in sight: a viewer asks at once whether they still may; a new day, ログイン again)
+    document.addEventListener('visibilitychange', alive);
+    document.addEventListener('visibilitychange', dayCheck);
+    setInterval(dayCheck, 60000);
   }
 
   init();

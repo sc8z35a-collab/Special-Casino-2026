@@ -65,6 +65,11 @@ test('友達と稼ぐ: invitations between friends who are online; joining forms
     assert.equal(h3.id, hub.id);
     assert.equal(h3.members.length, 3);
     assert.equal((await lb.waitFor('hub', (e) => e.type === 'join')).user.id, c.me.id);
+    // 即席チャット: to the one tapped; the server's record keeps it
+    assert.equal((await call('POST', '/api/hub/say', { token: c.token, body: { to: b.me.id, text: 'ナイス！' } })).line.text, 'ナイス！');
+    assert.equal((await lb.waitFor('hub', (e) => e.type === 'say')).text, 'ナイス！');
+    const said = s.app.db.prepare("SELECT room, sender_id, recipient_id, body FROM live_chats WHERE place = 'hub'").all();
+    assert.deepEqual(said.map((x) => ({ ...x })), [{ room: hub.id, sender_id: c.me.id, recipient_id: b.me.id, body: 'ナイス！' }]);
     // saying no: the sender is told
     const d = await register('HubD');
     await befriend(a, d);

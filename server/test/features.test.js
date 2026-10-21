@@ -185,6 +185,9 @@ test('homes: ten watchers at most; members hear about each other; fruits go to t
   const outsider = await register('Outsider');
   assert.equal((await call('POST', '/api/home/chat', { token: outsider.token, body: { room: host.me.id, text: 'やあ' } })).error.code, 'not_home');
   assert.equal((await call('GET', '/api/watchers', { token: host.token })).chat.length, 1);
+  // (written down for good, too)
+  const saved = s.app.db.prepare('SELECT place, room, sender_id, body FROM live_chats').all();
+  assert.deepEqual(saved.map((x) => ({ ...x })), [{ place: 'home', room: host.me.id, sender_id: fans[2].me.id, body: 'がんばれ！' }]);
   // the home call is the only voice: no 1:1 invitations, no 参加要請
   r = await call('POST', '/api/call', { token: host.token, body: { to: fans[9].me.id, type: 'invite', callId: 'c-123457' } });
   assert.equal(r.error.code, 'bad_type');
@@ -244,29 +247,29 @@ test('Peter: offers money when a player is nearly broke, twice; debts stack up; 
   assert.equal(r.error.code, 'offer_gone');
   r = await call('POST', '/api/peter/borrow', { token: a.token, body: { offer: 1 } });
   assert.equal(r.status, 200, JSON.stringify(r));
-  assert.equal(r.amount, 5000000);
+  assert.equal(r.amount, 1500000);
   assert.ok(r.rate >= 2 && r.rate <= 5);
-  assert.equal(r.owed, 5000000 + 5000000 * r.rate / 100);
-  assert.equal(r.me.dollars, 5000000);
+  assert.equal(r.owed, 1500000 + 1500000 * r.rate / 100);
+  assert.equal(r.me.dollars, 1500000);
   assert.equal(r.me.debt, r.owed);
   const owed1 = r.owed;
   assert.equal((await call('POST', '/api/peter/borrow', { token: a.token, body: { offer: 1 } })).error.code, 'offer_gone');
 
-  // spent it all: the second offer, 600万 at 10 %
+  // spent it all: the second offer, 100万 at 10 %
   await goBroke(2);
   offer = await la.waitFor('msg', (m) => m.kind === 'offer' && m.amount === 2);
   assert.equal(offer.text, OFFER_LINES[1]);
   r = await call('POST', '/api/peter/borrow', { token: a.token, body: { offer: 2 } });
   assert.equal(r.rate, 10);
-  assert.equal(r.debt.owed, owed1 + 6600000);
-  assert.equal(r.debt.principal, 11000000);
+  assert.equal(r.debt.owed, owed1 + 1100000);
+  assert.equal(r.debt.principal, 2500000);
   // that is all he lends: no third offer, no more in the chat
   setUser(a.me.id, { dollars: 0, tokens: 100 });
   await call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
   st = await call('GET', '/api/peter', { token: a.token });
   assert.equal(st.debt.offer, 0);
   r = await call('POST', '/api/messages', { token: a.token, body: { to: peterId, text: '100万貸して' } });
-  assert.match(r.reply.text, /累計1100万円までなんだ/);
+  assert.match(r.reply.text, /累計250万円までなんだ/);
   assert.equal(r.debt.available, 0);
 
   // repaying: partly, then all of it (a clean slate)
@@ -274,16 +277,16 @@ test('Peter: offers money when a player is nearly broke, twice; debts stack up; 
   r = await call('POST', '/api/peter/repay', { token: a.token, body: { amount: 1000000 } });
   assert.equal(r.status, 200, JSON.stringify(r));
   assert.equal(r.paid, 1000000);
-  assert.equal(r.debt.owed, owed1 + 6600000 - 1000000);
+  assert.equal(r.debt.owed, owed1 + 1100000 - 1000000);
   assert.match(r.reply.text, /残りは/);
   r = await call('POST', '/api/peter/repay', { token: a.token, body: { amount: 99999999 } });
-  assert.equal(r.paid, owed1 + 6600000 - 1000000);
+  assert.equal(r.paid, owed1 + 1100000 - 1000000);
   assert.deepEqual([r.debt.owed, r.debt.principal, r.debt.stage], [0, 0, 0]);
   assert.match(r.reply.text, /全額返済/);
-  assert.equal(r.me.dollars, 20000000 - owed1 - 6600000);
+  assert.equal(r.me.dollars, 20000000 - owed1 - 1100000);
   assert.equal((await call('POST', '/api/peter/repay', { token: a.token, body: { amount: 1 } })).error.code, 'no_debt');
-  // 累計1100万円: paying back does not open his purse again
-  assert.deepEqual([r.debt.lent, r.debt.available], [11000000, 0]);
+  // 累計250万円: paying back does not open his purse again
+  assert.deepEqual([r.debt.lent, r.debt.available], [2500000, 0]);
   r = await call('POST', '/api/messages', { token: a.token, body: { to: peterId, text: '100万貸して' } });
   assert.match(r.reply.text, /もう貸せない/);
   setUser(a.me.id, { dollars: 0, tokens: 100 });
@@ -299,21 +302,21 @@ test('Peter: loans asked for in the chat stop his own offers until repaid', asyn
   assert.equal(r.status, 200);
   assert.match(r.reply.text, /100万貸して/);
   r = await call('POST', '/api/messages', { token: a.token, body: { to: peterId, text: '2000万貸してほしい' } });
-  assert.match(r.reply.text, /累計1100万円まで、あと1100万円/);
+  assert.match(r.reply.text, /累計250万円まで、あと250万円/);
   r = await call('POST', '/api/messages', { token: a.token, body: { to: peterId, text: '0.5万貸して' } });
   assert.match(r.reply.text, /はした金/);
   const before = (await call('GET', '/api/me', { token: a.token })).me.dollars;
-  r = await call('POST', '/api/messages', { token: a.token, body: { to: peterId, text: '300万貸して' } });
-  assert.match(r.reply.text, /300万円貸すよ/);
+  r = await call('POST', '/api/messages', { token: a.token, body: { to: peterId, text: '60万貸して' } });
+  assert.match(r.reply.text, /60万円貸すよ/);
   // every loan leaves this line in his chat
-  assert.deepEqual([r.lent.kind, r.lent.text], ['system', '300万円貸しました']);
-  assert.equal(r.debt.principal, 3000000);
+  assert.deepEqual([r.lent.kind, r.lent.text], ['system', '60万円貸しました']);
+  assert.equal(r.debt.principal, 600000);
   assert.equal(r.debt.chat, true);
   const rate = Number(/利息は(\d+)%/.exec(r.reply.text)[1]);
   assert.ok(rate >= 2 && rate <= 5);
-  assert.equal((await call('GET', '/api/me', { token: a.token })).me.dollars, before + 3000000);
+  assert.equal((await call('GET', '/api/me', { token: a.token })).me.dollars, before + 600000);
   // a second one costs 10 %
-  r = await call('POST', '/api/messages', { token: a.token, body: { to: peterId, text: '100万' } });
+  r = await call('POST', '/api/messages', { token: a.token, body: { to: peterId, text: '40万' } });
   assert.match(r.reply.text, /利息は10%/);
   // broke now, but no offer of his own
   setUser(a.me.id, { dollars: 0, tokens: 100 });

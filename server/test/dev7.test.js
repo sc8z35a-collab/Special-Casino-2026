@@ -67,14 +67,15 @@ test('bans: the official bot says when (and when it ends); the login stays for t
   assert.equal(said.length, 4);
 });
 
-test('operator rights given and taken away with the developer code; the developer is never banned', async () => {
+test('operator rights given and taken away by the developer only, with the developer code; the developer is never banned', async () => {
   const CODE = '987654321098';   // (a test code: the real one is never written anywhere)
   assert.equal((await ops('GET', '/api/ops/me')).developer, true);
   assert.equal((await ops('POST', '/api/ops/dev-code', { code: CODE }, sub)).error.code, 'not_developer');
   assert.equal((await ops('POST', '/api/ops/operator', { name: 'Sub', action: 'revoke', code: CODE })).error.code, 'dev_code_unset');
   assert.equal((await ops('POST', '/api/ops/dev-code', { code: CODE })).devCodeSet, true);
-  // the developer: never
-  assert.equal((await ops('POST', '/api/ops/operator', { name: 'TAKU', action: 'revoke', code: CODE }, sub)).error.code, 'developer');
+  // rights: the developer only (another operator, even with the code, cannot); the developer's own: never
+  assert.equal((await ops('POST', '/api/ops/operator', { name: 'TAKU', action: 'revoke', code: CODE }, sub)).error.code, 'not_developer');
+  assert.equal((await ops('POST', '/api/ops/operator', { name: 'TAKU', action: 'revoke', code: CODE })).error.code, 'developer');
   assert.equal((await ops('POST', '/api/ops/ban', { id: taku.me.id, kind: 'perma' }, sub)).error.code, 'operator');
   // a wrong code
   assert.equal((await ops('POST', '/api/ops/operator', { name: 'Sub', action: 'revoke', code: '111111111111' })).error.code, 'dev_code');
@@ -94,7 +95,8 @@ test('operator rights given and taken away with the developer code; the develope
   await ops('POST', '/api/ops/operator', { name: 'Sub', action: 'grant', code: CODE });
   assert.equal((await call('GET', '/api/ops/me', { token: again.token })).name, 'Sub');
   const helper = await register('Helper7');
-  await ops('POST', '/api/ops/operator', { name: 'Helper7', action: 'grant', code: CODE }, again);
+  assert.equal((await ops('POST', '/api/ops/operator', { name: 'Helper7', action: 'grant', code: CODE }, again)).error.code, 'not_developer');
+  await ops('POST', '/api/ops/operator', { name: 'Helper7', action: 'grant', code: CODE });
   assert.equal((await call('GET', '/api/ops/me', { token: helper.token })).name, 'Helper7');
   const log = (await ops('GET', '/api/ops/log')).entries.map((e) => e.action);
   for (const a of ['dev_code_set', 'dev_code_fail', 'ops_revoke', 'ops_grant']) assert.ok(log.includes(a), a);
@@ -174,7 +176,7 @@ test('the garage: two cars, one more place for $1,000,000 each (for good); a ful
 test('buy-back and renting out: the day\'s price, customers every 5 hours, back after the block', async () => {
   const { RULES, carBuyback } = await import('../core/rules.js');
   const p = await register('Rent7');
-  setUser(p.me.id, { dollars: 100000000, garage_extra: 3 });
+  setUser(p.me.id, { dollars: 200000000, garage_extra: 3 });
   const buy = async () => (await call('POST', '/api/cars/buy', { token: p.token, body: { model: 'blue-lightning' } })).car.id;
   const [a, b] = [await buy(), await buy()];
   let g = await call('GET', '/api/cars', { token: p.token });

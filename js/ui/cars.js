@@ -59,7 +59,7 @@
   // VIP's level while it is on (null: off)
   function vipLevel() {
     var m = BR.social.me();
-    return m && m.vip && m.vip.on && m.vip.until > now() ? m.vip.level : null;
+    return m && m.vip && m.vip.on ? BR.VIP.now(m.vip, now()) : null;
   }
   function priceOf(car) { return BR.sale.carPrice(car, sale(), vipLevel() === null ? 0 : BR.CONFIG.vip.carOff); }
   // one more garage place (the server's price once it has spoken)
@@ -150,7 +150,7 @@
     note.textContent = '3Dを読み込み中…';
     var want = car.id;
     BR.garage3d.show(host, car.id, function (p) { if (sel === want) note.textContent = '3Dを読み込み中… ' + Math.round(p * 100) + '%'; }).then(function () {
-      if (sel === want) note.textContent = 'ドラッグで回転';
+      if (sel === want) note.textContent = 'ドラッグで回転・ピンチ／ホイールでズーム';
     }, function () {
       // no 3D after all: the picture
       $('#car-stage').classList.remove('three');

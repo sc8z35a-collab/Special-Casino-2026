@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 56" width="48" height="56">
+  <!-- 仮のAPKアイコン（差し替えるときはこのファイルを置き換え） -->
+  <path d="M9 2h21l13 13v35a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4z" fill="#ecfaf2" stroke="#2fbf71" stroke-width="2"/>
+  <path d="M30 2v9a4 4 0 0 0 4 4h9" fill="#c9f0da" stroke="#2fbf71" stroke-width="2" stroke-linejoin="round"/>
+  <!-- a package -->
+  <path d="M24 17l9 4.5v10L24 36l-9-4.5v-10z" fill="#2fbf71"/>
+  <path d="M15 21.5l9 4.5 9-4.5M24 26v10" fill="none" stroke="#ecfaf2" stroke-width="1.6" stroke-linejoin="round"/>
+  <rect x="9" y="40" width="30" height="10" rx="3" fill="#2fbf71"/>
+  <text x="24" y="47.6" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="700" fill="#ffffff">APK</text>
+</svg>

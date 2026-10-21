@@ -188,3 +188,6 @@ body {
   .level-ring { width: 96px; height: 96px; }
   .level-ring.lv-lockdown b { font-size: 14px; }
 }
+
+/* a 閲覧者 (viewer): looking only — no channel, no lockdown */
+body.role-viewer .side-tab[data-side="chat"], body.role-viewer #side-chat, body.role-viewer #btn-lockdown, body.role-viewer #lock-release { display: none !important; }

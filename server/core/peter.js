@@ -1,6 +1,6 @@
 // マイクソン (once ピーター), the money lender: an NPC account that is always online. When a
-// player is nearly broke he offers a loan on his own (500万 at 2-5 %, and once
-// that is spent too, 600万 at 10 %), he lends what players ask for in his chat
+// player is nearly broke he offers a loan on his own (150万 at 2-5 %, and once
+// that is spent too, 100万 at 10 %), he lends what players ask for in his chat
 // ("300万貸して") and takes repayments. He lends one player RULES.lender.max
 // in all, ever: repaying does not bring that back (debts.lent counts every
 // loan). A loan asked for in the chat stops his own offers until everything
@@ -14,11 +14,12 @@ import { newRecoveryCode, sha256 } from './auth.js';
 
 const L = RULES.lender;
 
-// What he says on his own; the voice recordings (sounds/peter-1.mp3,
-// sounds/peter-2.mp3) say exactly this.
+// What he says on his own (RULES.lender.offers: the amounts). The voice
+// recordings (sounds/peter-1.mp3, sounds/peter-2.mp3) say the first ones,
+// 500万 and 600万: they are not played while the amounts differ (voice: false).
 export const OFFER_LINES = [
-  '返済時に利息2~5％付きで借りてかない？500万円貸すよ',
-  'おや、もう使い切ってしまったのかい？ギャンブラーだね。じゃあ利息10パーセントで600万貸そう'
+  '返済時に利息2~5％付きで借りてかない？150万円貸すよ',
+  'おや、もう使い切ってしまったのかい？ギャンブラーだね。じゃあ利息10パーセントで100万貸そう'
 ];
 
 // the NPCs' names (and the lender's old one) are not for players

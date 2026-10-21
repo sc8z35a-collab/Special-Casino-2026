@@ -266,8 +266,14 @@ test('the vault: the developer code opens it, every piece is checked, a link fet
   assert.equal((await vault('POST', '/api/ops/dev-code', { code: CODE })).devCodeSet, true);
   assert.equal((await vault('POST', '/api/vault/open', { code: '111111111111' })).error.code, 'dev_code');
   const { ticket, chunk } = await vault('POST', '/api/vault/open', { code: CODE });
-  assert.equal((await vault('GET', '/api/vault/files')).error.code, 'vault_locked');
-  assert.equal((await vault('GET', '/api/vault/files', undefined, ticket + 'x')).error.code, 'vault_locked');
+  // without the code (or with a wrong ticket): the developer only looks
+  const look = await vault('GET', '/api/vault/files');
+  assert.deepEqual([look.locked, look.space.write, look.space.add], [true, false, false]);
+  assert.equal((await vault('GET', '/api/vault/files', undefined, ticket + 'x')).locked, true);
+  assert.equal((await vault('POST', '/api/vault/files', { name: 'x.txt', size: 10 })).error.code, 'vault_locked');
+  assert.equal((await vault('POST', '/api/vault/folders', { name: '資料' }, ticket + 'x')).error.code, 'vault_locked');
+  const open = await vault('GET', '/api/vault/files', undefined, ticket);
+  assert.deepEqual([open.locked, open.space.write], [false, true]);
 
   const data = crypto.randomBytes(2 * chunk + 1000);
   const parts = [0, 1, 2].map((n) => data.subarray(n * chunk, (n + 1) * chunk));

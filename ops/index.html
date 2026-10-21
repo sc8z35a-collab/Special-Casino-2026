@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
+<!-- the operator site's own live connection: WebSocket here (the Node server says sse) -->
+<meta name="br-mode" content="online" data-live="ws">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#ffffff">
 <meta name="mobile-web-app-capable" content="yes">
@@ -40,6 +42,19 @@
   </form>
 </main>
 
+<!-- the first look of the day: ログイン to come in (written in the developer's ログインログ) -->
+<main class="login" id="enter" hidden>
+  <div class="login-card enter-card">
+    <div class="brand"><span class="brand-mark">TS</span><span>TWO STATE</span></div>
+    <h1>サーバー運営サイト</h1>
+    <p class="muted" id="enter-day"></p>
+    <div class="enter-who"><span class="kind" id="enter-role"></span><b id="enter-name"></b></div>
+    <p class="error" id="enter-error" role="alert"></p>
+    <button class="btn primary wide" type="button" id="enter-go">ログイン</button>
+    <button class="btn ghost small wide" type="button" id="enter-other">別のアカウントでログイン</button>
+  </div>
+</main>
+
 <div class="app" id="app" hidden>
   <header class="top">
     <div class="brand"><span class="brand-mark">TS</span><span>TWO STATE</span><small>サーバー運営</small></div>
@@ -55,7 +70,7 @@
       <button class="tab" data-view="security" type="button">セキュリティ<b class="count" id="count-security" hidden></b></button>
       <button class="tab" data-view="server" type="button">サーバー</button>
       <button class="tab" data-view="pay" type="button" id="tab-pay" hidden>課金<b class="count" id="count-pay" hidden></b></button>
-      <button class="tab" data-view="vault" type="button" id="tab-vault" hidden>保管庫</button>
+      <button class="tab" data-view="vault" type="button" id="tab-vault" hidden>保管庫<b class="count" id="count-vault" hidden></b></button>
     </nav>
     <div class="top-right">
       <label class="speed" title="運営サイトの更新頻度"><span>更新</span><select id="speed">
@@ -108,7 +123,7 @@
   <!-- プレイヤーアーカイブ: 永久BAN and deleted accounts, gone for good 90 days later -->
   <section class="view" id="view-archive" hidden>
     <div class="view-head"><h2>プレイヤーアーカイブ</h2><span class="muted" id="archive-note"></span></div>
-    <p class="hint muted">永久BANとアカウント削除をしたプレイヤーです。ここに入って90日たつと、その人のデータはすべて自動で完全に削除されます。永久BANは解除するとプレイヤー一覧に戻ります。削除したアカウントは誰も元に戻せません。</p>
+    <p class="hint muted">永久BANとアカウント削除をしたプレイヤーです。ここに入って90日たつと、その人のデータ（ログイン・端末・お金・車・フレンドなど）は自動で削除されます。会話とログは無期限で保存され、名前は「〇〇（削除済み）」として残ります。永久BANは解除するとプレイヤー一覧に戻ります。削除したアカウントは誰も元に戻せません。</p>
     <div class="cards" id="archive-list"></div>
   </section>
 
@@ -155,31 +170,42 @@
     <div class="view-head">
       <h2>運営ログ</h2>
       <input class="search" id="log-search" type="search" placeholder="名前・内容で探す" autocomplete="off" spellcheck="false">
+      <button class="btn small" id="log-ai" type="button" title="表示中のログを、AI に貼り付けて報告できる文章にします">AIに報告する文章</button>
     </div>
     <div class="chips log-kinds" id="log-kinds">
-      <button class="chip on" data-kind="" type="button">すべて</button><button class="chip" data-kind="player" type="button">プレイヤー<b></b></button><button class="chip" data-kind="operator" type="button">運営<b></b></button><button class="chip" data-kind="security" type="button">セキュリティ<b></b></button><button class="chip" data-kind="vault" type="button">保管庫<b></b></button><button class="chip" data-kind="emergency" type="button">緊急<b></b></button>
+      <button class="chip on" data-kind="" type="button">すべて</button><button class="chip" data-kind="player" type="button">プレイヤー<b></b></button><button class="chip" data-kind="operator" type="button">運営<b></b></button><button class="chip" data-kind="security" type="button">セキュリティ<b></b></button><button class="chip" data-kind="vault" type="button">保管庫<b></b></button><button class="chip" data-kind="emergency" type="button">緊急<b></b></button><button class="chip" data-kind="activity" type="button">プレイヤーアクティビティ<b></b></button>
     </div>
     <p class="verify" id="log-verify"></p>
-    <p class="hint muted">プレイヤー・運営・セキュリティ・保管庫・緊急に分けて自動で記録されます。消去も書き換えもできず、最新の記録のハッシュはデータベースの外にも控えているので、書き換えや作り直しは「改ざんチェック」に出ます。行をタップで詳細。</p>
+    <p class="hint muted" id="log-hint">プレイヤー・運営・セキュリティ・保管庫・緊急に分けて自動で記録されます（プレイヤーアクティビティは、プレイヤーの登録・削除・処分・パスワードや権限の変更などをまとめたものです）。消去も書き換えもできず、最新の記録のハッシュはデータベースの外にも控えているので、書き換えや作り直しは「改ざんチェック」に出ます。行をタップすると関連する場所（プレイヤー・通報・保管庫など）が開き、「詳細」で記録のすべてを表示します。</p>
     <div class="log" id="log-list"></div>
     <button class="btn wide" id="log-more" type="button" hidden>さらに読み込む</button>
   </section>
 
-  <!-- 運営者: rights given and taken away with the developer code -->
+  <!-- 運営者: rights (operators', viewers') given and taken away by the developer alone, with the developer code -->
   <section class="view" id="view-operators" hidden>
     <div class="view-head">
       <h2>運営者</h2>
-      <form class="grant" id="op-grant" autocomplete="off">
+      <form class="grant" id="op-grant" autocomplete="off" hidden>
         <input class="search" id="op-grant-name" type="text" placeholder="プレイヤー名" spellcheck="false" autocapitalize="off">
         <button class="btn primary small" type="submit">運営権を付与</button>
+        <button class="btn small" type="button" id="op-grant-viewer">閲覧者にする</button>
       </form>
     </div>
-    <p class="hint muted">付与と剥奪には「開発者コード」が必要です。剥奪された人はすぐ全端末でログアウトされ、運営サイトに入れなくなります。開発者は剥奪・アクセス禁止・BANできません。</p>
+    <p class="hint muted" id="op-hint">権限の付与と剥奪は開発者だけが「開発者コード」でできます。運営権を剥奪された人はすぐ全端末でログアウトされ、運営サイトに入れなくなります。開発者は剥奪・アクセス禁止・BANできません。</p>
     <div class="devcode" id="op-devcode" hidden>
       <p id="op-devcode-text"></p>
       <button class="btn small" type="button" id="op-devcode-btn">開発者コードを登録</button>
     </div>
     <div class="cards" id="op-list"></div>
+    <h3 class="op-sub">閲覧者</h3>
+    <p class="hint muted">運営サイトと security HOME を<b>見ることだけ</b>ができる人です（プレイヤー一覧・アーカイブ・保管庫・チャット・バックアップ・課金は見られず、操作は一切できません）。剥奪するとその場で運営サイトと security HOME からログアウトされます（ゲームはそのまま）。</p>
+    <div class="cards" id="op-viewers"></div>
+    <div id="op-inlog-box" hidden>
+      <h3 class="op-sub">ログインログ <span class="kind dev">開発者だけ</span></h3>
+      <p class="hint muted">開発者・運営者・閲覧者がその日はじめて運営サイトに入った記録です（日本時間で1日1回。「ログイン」ボタンか、パスワードでのログイン）。開発者だけが見られます。</p>
+      <div class="inlog" id="op-inlog"></div>
+      <button class="btn small" type="button" id="op-inlog-more" hidden>もっと見る</button>
+    </div>
   </section>
 
   <!-- 課金 (開発者支援): who paid, waiting for the developer's words (the developer's own) -->
@@ -200,13 +226,25 @@
   <!-- 運営チャット: the operators, live; one to one or all together -->
   <section class="view" id="view-team" hidden>
     <div class="view-head"><h2>運営チャット</h2><span class="muted" id="team-note"></span></div>
-    <p class="hint muted">運営者だけの連絡用です。緑は運営サイトにいる人、青はゲーム中の人。送ったメッセージは取り消せません。個人チャットは開発者も見られます。</p>
+    <p class="hint muted">運営者だけの連絡用です。緑は運営サイトにいる人、青はゲーム中の人。送ったメッセージは取り消せません。個人チャットは開発者も見られます。「＠」でプレイヤーや <b>@開発者</b>（開発者にすぐ知らせます）を、「ログ」で運営ログの記録を引用できます。全体チャットでは人数・時間の制限なしで高音質のグループ通話ができます。</p>
     <div class="team">
       <aside class="team-list" id="team-list"></aside>
       <section class="team-chat">
         <div class="team-head" id="team-head"></div>
+        <div class="team-call" id="team-call" hidden></div>
         <div class="team-scroll" id="team-scroll"><div class="chat-list" id="team-msgs"></div></div>
-        <form class="team-compose" id="team-form" hidden><textarea id="team-text" rows="2" maxlength="2000" placeholder="メッセージ（Ctrl+Enter で送信）"></textarea><button class="btn primary" type="submit">送信</button></form>
+        <form class="team-compose" id="team-form" hidden>
+          <div class="team-tools">
+            <button class="btn small ghost" id="team-at" type="button" title="プレイヤーや開発者を引用">＠</button>
+            <button class="btn small ghost" id="team-quote" type="button" title="運営ログの記録を引用">ログ</button>
+          </div>
+          <textarea id="team-text" rows="2" maxlength="2000" placeholder="メッセージ（Ctrl+Enter で送信・＠でメンション）"></textarea>
+          <button class="btn primary" type="submit">送信</button>
+          <div class="team-pick" id="team-pick" hidden>
+            <input class="search" id="team-pick-q" type="search" autocomplete="off" spellcheck="false">
+            <div class="team-pick-list" id="team-pick-list" role="listbox"></div>
+          </div>
+        </form>
       </section>
     </div>
   </section>
@@ -262,42 +300,78 @@
     </div>
   </section>
 
-  <!-- 保管庫: the developer's files (the developer code opens it) -->
+  <!-- 保管庫: the developer's own (seen with the login, changed with the developer code), the
+       ones two operators share and each operator's own (their login is enough), the developer's backups -->
   <section class="view" id="view-vault" hidden>
-    <div class="view-head">
-      <h2>開発者専用保管庫</h2>
+    <div class="view-head vault-top">
+      <h2 id="vault-title">保管庫</h2>
       <span class="muted" id="vault-usage"></span>
-      <button class="btn small ghost" id="vault-lock" type="button" hidden>閉じる</button>
-    </div>
-    <p class="hint muted">開発者コードで開きます（30分で閉じます）。ファイルはフォルダにまとめられます（チェックして「フォルダへ移動」）。3Dモデルは4方向の画像・情報・軽量版が自動で作られます。止まったアップロードは、このページを開いている間、空きや通信が戻りしだい自動で続きから送ります（閉じたあとは同じファイルを選び直すと続きから）。AI用リンクで AI が取ったファイルと AI の作業にはラベルが付き、AI がゲームに入れたファイルは「実装済み」に移ってリンクから外れます。保管庫のファイルが自動で消えることはありません。</p>
-    <div class="vault-closed" id="vault-closed">
-      <button class="btn primary" id="vault-open" type="button">開発者コードで開く</button>
+      <!-- every stopped upload again at once (they also go on by themselves) -->
+      <button class="btn small primary vault-resume" id="vault-resume" type="button" hidden>再開</button>
+      <span class="vault-mode" id="vault-mode">
+        <button class="btn small primary" id="vault-unlock" type="button" hidden>編集する</button>
+        <button class="btn small ghost" id="vault-lock" type="button" hidden>閉じる</button>
+      </span>
     </div>
     <div id="vault-main" hidden>
-      <div class="vault-up">
-        <label class="btn primary" for="vault-file">ファイルを選んでアップロード</label>
-        <button class="btn" id="vault-new-folder" type="button">＋ フォルダを作る</button>
-        <button class="btn" id="vault-new-text" type="button">＋ テキストを作る</button>
+      <!-- which vault: the developer's own and the backups, one's own, the shared ones, (the developer) the others' to look into -->
+      <nav class="vault-spaces" id="vault-spaces" aria-label="保管庫を選ぶ"></nav>
+      <!-- the room in the shared vaults: one's own use, limit and request; (the developer) everyone's, and the requests -->
+      <div class="card vault-room" id="vault-room" hidden></div>
+      <div class="vault-head" id="vault-head"></div>
+      <div class="vault-up" id="vault-up">
+        <label class="btn primary" for="vault-file" id="vault-pick-files" title="ファイルをこの画面にドラッグ＆ドロップしても入れられます">アップロード</label>
+        <button class="btn vault-plus" id="vault-plus" type="button" aria-haspopup="menu" aria-label="作る（フォルダ・ファイル・メモ）" title="フォルダ・ファイル・メモ">＋</button>
+        <button class="btn" id="vault-link" type="button" aria-haspopup="menu">リンク</button>
+        <span class="muted vault-memo" id="vault-memo" hidden></span>
         <input id="vault-file" type="file" multiple hidden>
-        <input class="search" id="vault-note" type="text" maxlength="500" placeholder="メモ（任意・次に選ぶファイルに付きます）">
-      </div>
-      <div class="vault-all">
-        <span id="vault-all-state"></span>
-        <button class="btn small primary" id="vault-all-link" type="button">保管庫全体のリンクを作る</button>
-        <button class="btn small warn" id="vault-all-stop" type="button" hidden>全体リンクを停止</button>
       </div>
       <div class="cards" id="vault-jobs"></div>
-      <div class="card vault-waiting" id="vault-waiting" hidden></div>
       <div class="vault-path" id="vault-path"></div>
-      <div class="vault-picked" id="vault-picked" hidden><b id="vault-picked-n"></b><button class="btn small primary" id="vault-picked-move" type="button">フォルダへ移動</button><button class="btn small ghost" id="vault-picked-clear" type="button">選択を解除</button></div>
-      <div class="vault-folders" id="vault-folders"></div>
       <div class="chips vault-filter" id="vault-filter">
         <button class="chip on" data-vf="all" type="button">すべて</button><button class="chip" data-vf="open" type="button">未実装</button><button class="chip" data-vf="used" type="button">実装済み</button>
       </div>
-      <div class="cards" id="vault-list"></div>
+      <!-- the checkmarks: everything here at once, and what to do with the checked ones -->
+      <div class="vault-select" id="vault-select" hidden>
+        <label class="vault-check"><input type="checkbox" id="vault-pick-all" aria-label="このフォルダのすべてを選択"><i aria-hidden="true"></i></label>
+        <b id="vault-picked-n"></b>
+        <span class="muted" id="vault-select-hint">チェックで複数選択（Shift を押しながらで範囲）</span>
+        <span class="vault-select-acts" id="vault-picked" hidden>
+          <button class="btn small primary" id="vault-picked-move" type="button">移動</button>
+          <button class="btn small" id="vault-picked-get" type="button">ダウンロード</button>
+          <button class="btn small" id="vault-picked-backup" type="button">バックアップ</button>
+          <button class="btn small danger" id="vault-picked-delete" type="button">削除</button>
+          <button class="btn small ghost" id="vault-picked-clear" type="button">選択を解除</button>
+        </span>
+      </div>
+      <div class="vault-items" id="vault-folders"></div>
+      <div class="vault-items" id="vault-list"></div>
       <div class="vault-pager" id="vault-pager"></div>
     </div>
   </section>
+</div>
+
+<!-- the developer called in the operators' chat (@開発者) -->
+<div class="dev-call" id="dev-call" hidden role="alert"></div>
+<!-- the 全体チャット's call, while another tab is open -->
+<div class="call-pill" id="call-pill" hidden></div>
+
+<!-- what can be done with a vault item (the … button, a right click, a long press) -->
+<div class="vmenu" id="vmenu" role="menu" hidden></div>
+
+<!-- the comments on a vault file (the operators', the developer's and an AI's) -->
+<div class="viewer-back" id="vcomments" hidden>
+  <div class="viewer vcomments" role="dialog" aria-label="コメント">
+    <div class="viewer-head"><b id="vcomments-name"></b><span class="muted" id="vcomments-note"></span><button class="close" id="vcomments-close" type="button" aria-label="閉じる">×</button></div>
+    <div class="vcomments-list" id="vcomments-list"></div>
+    <form class="vcomments-form" id="vcomments-form" autocomplete="off">
+      <textarea id="vcomments-text" rows="2" maxlength="500" placeholder="コメントを書く"></textarea>
+      <select id="vcomments-days" aria-label="表示する期間">
+        <option value="0">期限なし</option><option value="1">1日</option><option value="3">3日</option><option value="7">7日</option><option value="30">30日</option>
+      </select>
+      <button class="btn primary small" type="submit">送る</button>
+    </form>
+  </div>
 </div>
 
 <!-- a vault model in 3D (ops/vault3d.js) -->
@@ -384,6 +458,7 @@
 <div class="toast" id="toast" hidden></div>
 </div>
 
+<script src="vault-upload.js"></script>
 <script src="ops.js"></script>
 </body>
 </html>

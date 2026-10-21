@@ -3,7 +3,9 @@
 // host's settings, never in the repository): the emergency stop and the
 // lockdown, the shield blocking an attacker, the automatic filter stopping a
 // chat, 通報, 報告 / 意見案, payments, a wrong developer code, operator rights,
-// a failed backup, and every new version of the server going live. Only the one-line summary the operators' log has
+// a failed backup, an operator asking for more room in the shared vaults (it
+// waits for the developer's approval), and every new version of the server
+// going live. Only the one-line summary the operators' log has
 // anyway, and a link to the operator site (no message text). Lines close
 // together go out as one message; past PER_MINUTE a minute the rest are only
 // counted (the log has them all). Nobody can be pinged (a player's name is
@@ -14,7 +16,7 @@ export const NOTIFY = {
   emergency_stop: '🚨', emergency_release: '✅', lockdown: '🔒', lockdown_release: '🔓', shield_auto_block: '🧱', filter_block: '🛡️',
   player_report: '🚩', player_feedback: '📝',
   pay_paid: '💰', pay_refund: '↩️', pay_review: '⚠️', pay_unknown: '⚠️', pay_bad_signature: '⚠️',
-  dev_code_fail: '🔐', ops_grant: '👤', ops_revoke: '👤', backup_failed: '⚠️'
+  dev_code_fail: '🔐', ops_grant: '👤', ops_revoke: '👤', viewer_grant: '👀', viewer_revoke: '👀', backup_failed: '⚠️', vault_quota_request: '📦'
 };
 const HOOK = /^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api\/webhooks\/\d{5,30}\/[\w-]{20,200}$/;
 const PER_MINUTE = 20;

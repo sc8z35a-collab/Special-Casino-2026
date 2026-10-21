@@ -35,6 +35,7 @@ import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
 import { readQuests, stepQuests, claimQuests, questsReady, questView } from './quests.js';
 import { createOps, DELETED, ARCHIVE_DAYS } from './ops.js';
 import { createOpsLogin } from './opslogin.js';
+import { createOpsEntry } from './opsentry.js';
 import { createEmergency } from './emergency.js';
 import { createShield } from './shield.js';
 import { createSec } from './sec.js';
@@ -103,7 +104,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return hostLive.broadcast(event, data, filter);
     },
     isOnline: (id) => hostLive.isOnline(id),
-    onlineCount: () => hostLive.onlineCount()
+    onlineCount: () => hostLive.onlineCount(),
+    // the operator site's own live connection (the 運営チャット's call, the developer called)
+    sendOps(userId, event, data) {
+      stats.wsOut();
+      return hostLive.sendOps ? hostLive.sendOps(userId, event, data) : undefined;
+    },
+    opsOnline: (id) => !!(hostLive.opsOnline && hostLive.opsOnline(id))
   };
   const start = {
     tokens: config.startTokens ?? RULES.start.tokens,
@@ -325,6 +332,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
               JOIN users o ON o.id = e.user_id
               WHERE d.user_id = ? AND ${BANNED_NOW} AND o.ban_at > ? LIMIT 1`).get(u.id, Date.now(), u.device_ok_at) || null;
   }
+  // the same for every account at once (the operator site's list): by account,
+  // the newest such BAN on one of its devices (blocked when after device_ok_at)
+  function deviceBans() {
+    const m = new Map();
+    for (const r of q(`SELECT d.user_id AS id, MAX(o.ban_at) AS at FROM devices d JOIN devices e ON e.device = d.device AND e.user_id != d.user_id
+                       JOIN users o ON o.id = e.user_id WHERE ${BANNED_NOW} GROUP BY d.user_id`).all(Date.now())) m.set(r.id, r.at);
+    return m;
+  }
   // an account on these devices is under a BAN or a 永久BAN (or, `any`, an アクセス禁止 too)
   function devicesBanned(keys, any = false) {
     if (!keys.length) return false;
@@ -519,15 +534,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // a hub's benefits on (RULES.hub.wage: x1.5) the extra half of the wage.
   function settleJobs(cur, now) {
     const jobs = readJobs(cur.jobs);
-    const mult = VIP.wage(VIP.level(cur.vip_exp));
+    // (during the free trial, the trial's level's wage)
+    const mult = VIP.wage(VIP.level(cur.vip_exp)), trialMult = VIP.wage(VIP_RULES.trial.level);
+    const rate = cur.vip_trial_until > now ? Math.max(mult, trialMult) : cur.vip_until > now ? mult : 1;
     let pay = 0;
     for (const j of jobs) {
       const wage = JOBS.get(j.id).wage;
-      const value = VIP.earned(wage, j.since, now, cur.vip_until, mult);
+      const value = VIP.earned(wage, j.since, now, cur.vip_until, mult, cur.vip_trial_until, trialMult);
       const p = Math.floor(value);
       if (p > 0) {
         pay += p;
-        j.since = now - Math.floor((value - p) * 3600000 / (wage * (cur.vip_until > now ? mult : 1)));
+        j.since = now - Math.floor((value - p) * 3600000 / (wage * rate));
       }
       const extra = wage * (RULES.hub.wage - 1);
       const b = j.boost > 0 && extra > 0 ? Math.floor(j.boost * extra / 3600000) : 0;
@@ -572,11 +589,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   /* ----- VIP (js/game/vip.js) ----- */
   const VIP_RULES = RULES.vip;
   const vipOn = (u, now = Date.now()) => !!u && !u.npc && u.vip_until > now;
-  // its level while it is on, null while it is off
-  const vipLevel = (u, now = Date.now()) => (vipOn(u, now) ? VIP.level(u.vip_exp) : null);
+  // its level while it is on (VIP${trial level} during the free trial), null while it is off
+  const vipLevel = (u, now = Date.now()) => (vipOn(u, now) ? VIP.current(u.vip_until, u.vip_exp, u.vip_trial_until || 0, now) : null);
+  // the free trial: for one who never had VIP, once
+  const canTrial = (u) => !!u && !u.npc && !(u.vip_until > 0) && !(u.vip_trial_until > 0);
+  // (`level`: the EXP's; `trialUntil`: when the free trial ends or ended, 0 never had it; `trial`: it may be had)
   function vipDto(u, now = Date.now()) {
     const i = VIP.info(u.vip_exp);
-    return { on: vipOn(u, now), until: u.vip_until, exp: Math.floor(i.exp * 10 + 1e-6) / 10, level: i.level, from: i.from, next: i.next };
+    return {
+      on: vipOn(u, now), until: u.vip_until, exp: Math.floor(i.exp * 10 + 1e-6) / 10, level: i.level, from: i.from, next: i.next,
+      trialUntil: u.vip_trial_until || 0, trial: canTrial(u)
+    };
   }
   // VIP EXP, inside the caller's transaction (`cur`: the row as it is now).
   // Reaching VIP${VIP_RULES.refund.from} while days are paid ahead gives back their coins at once.
@@ -584,8 +607,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (!cur || cur.npc || !(gain > 0)) return;
     const exp = Math.round((cur.vip_exp + gain) * 1000) / 1000;
     const from = VIP_RULES.refund.from;
+    // (the days bought, not the free trial's)
     const back = VIP.level(cur.vip_exp) < from && VIP.level(exp) >= from && cur.vip_until > now
-      ? VIP_RULES.refund.coins * Math.floor((cur.vip_until - now) / VIP.day) : 0;
+      ? VIP_RULES.refund.coins * Math.max(0, Math.floor((cur.vip_until - Math.max(now, cur.vip_trial_until || 0)) / VIP.day)) : 0;
     q('UPDATE users SET vip_exp = ?, coins = coins + ?, rev = rev + ? WHERE id = ?').run(exp, back, back ? 1 : 0, cur.id);
     cur.vip_exp = exp;
   }
@@ -621,8 +645,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       feedback: feedbackState(u),
       // the group whose 協力スロット table the player sits at (0: none)
       coop: u.coop_group || 0,
-      // may open the operator site (/ops/)
+      // may open the operator site (/ops/); or only look at it (閲覧者)
       operator: isOperatorName(u),
+      viewer: ops.isViewer(u),
       // 18歳以上？ (null: not answered yet)
       age: u.age_ok === null || u.age_ok === undefined ? null : !!u.age_ok,
       vip: vipDto(u),
@@ -666,6 +691,44 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       official.say(userId, `【自動送信】\nおめでとうございます！アクセス日数${d}日を達成しました！！記念して250Kを送金します！今後ともTwo stateをよろしくお願いいたします！`);
       official.pay(userId, A.amount);
     }
+  }
+
+  // something done once on this server, ever (claimed first: two at once do it once)
+  const onceOnly = (key) => Number(q('INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)').run(key, String(Date.now())).changes) > 0;
+  const everyone = () => q("SELECT id, name FROM users WHERE npc = '' AND archived_at = 0 ORDER BY id").all();
+
+  // 登録者数の記念 (RULES.milestones): when the accounts registered reach 10,
+  // 20 and 50, everyone then gets $100K, $200K and $500K from Ice Smoker公式,
+  // once each (one already reached when this came out: at once).
+  function milestones() {
+    if (config.milestones === false) return;
+    const n = q("SELECT COUNT(*) AS n FROM users WHERE npc = ''").get().n;
+    for (const m of RULES.milestones) {
+      if (n < m.players || !onceOnly(`milestone_${m.players}`)) continue;
+      const all = everyone();
+      for (const p of all) {
+        official.say(p.id, `【自動送信】\nおめでとうございます！Two stateの登録者数が${m.players}人を突破しました！！記念して全員に${m.dollars / 1000}Kを送金します！今後ともTwo stateをよろしくお願いいたします！`);
+        official.pay(p.id, m.dollars);
+      }
+      opsLog.add({
+        actorName: 'システム', action: 'milestone',
+        summary: `登録者数${m.players}人突破の記念に全員（${all.length}人）へ $${m.dollars.toLocaleString('en-US')}`,
+        detail: { players: m.players, registered: n, dollars: m.dollars, to: all.length }
+      });
+    }
+  }
+  // 今だけ: everyone's calls above VIP3 (BR.CONFIG.vip.voiceAll): every player
+  // then is told once, by Ice Smoker公式
+  function voiceNotice() {
+    const tier = RULES.vip.voiceAll || 0;
+    if (!tier || !onceOnly(`voice_all_${tier}`)) return;
+    const kbps = RULES.vip.voice[Math.min(tier, RULES.vip.voice.length - 1)];
+    const all = everyone();
+    for (const p of all) {
+      official.say(p.id, letter(p, '通話品質アップのお知らせ',
+        `サーバーの有料枠に大きな余裕があるため、今だけ、全プレイヤーのボイス通話を VIP3 より高い音質（${kbps}kbps）にしました。\nVIPでなくても、フレンド・グループ・友達と稼ぐ・ホームのすべての通話が自動で高音質になります（最新版に更新すると有効になります）。\nあわせて、通話中の音量ボタンから「ボイス」と「効果音」の音量を別々に調整できるようになりました。`));
+    }
+    opsLog.add({ actorName: 'システム', action: 'voice_notice', summary: `全員（${all.length}人）に通話品質アップ（${kbps}kbps）のお知らせ`, detail: { tier, kbps, to: all.length } });
   }
 
   // Login days in a row (6:00 to 6:00 Japan time) and the longest run (the operator site).
@@ -749,6 +812,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // money, a car or an item that arrives with the recipient's tap
       pending: m.pending ? true : undefined,
       claimed: m.kind === 'present' || m.kind === 'car_sold' || m.pending ? !!m.claimed_at : undefined,
+      // back to its sender: the account it was for was deleted (server/core/purge.js)
+      returned: m.pending && m.state === 'returned' ? true : undefined,
       retracted: gone ? m.retracted_at : undefined,
       state: m.kind === 'car_offer' ? m.state || 'open' : undefined,
       at: m.created_at
@@ -921,7 +986,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   // the people watching a player, and whether they may talk
   function homeMembers(hostId) {
-    return q('SELECT o.id, o.name, o.avatar, o.vip_until, o.vip_exp, w.voice FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(hostId)
+    return q('SELECT o.id, o.name, o.avatar, o.vip_until, o.vip_exp, o.vip_trial_until, w.voice FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(hostId)
       .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, vip: vipLevel(r), voice: !!r.voice }));
   }
   // The chat of a home (the watched player and their watchers) is live only;
@@ -929,6 +994,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const homeChats = new Map();
   let homeChatSeq = 0;
   const homeChatOf = (room) => homeChats.get(room) || [];
+  // the chats the game shows only while they happen, written down for good
+  // (`original`: what was typed, when the filter masked some of it)
+  const keepLive = (place, room, from, to, text, raw, at) =>
+    q('INSERT INTO live_chats (place, room, sender_id, recipient_id, body, original, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(place, room, from, to, text, raw === text ? '' : raw, at);
 
   /* ----- 観戦ベット ----- */
   const WB = RULES.watchBet;
@@ -1076,7 +1145,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       .filter((r) => isActive(r.active_at, now)).map((r) => r.id);
   }
   function hubPeople(hubId, now = Date.now()) {
-    return q(`SELECT o.id, o.name, o.avatar, o.active_at, o.vip_until, o.vip_exp FROM hub_members m JOIN users o ON o.id = m.user_id
+    return q(`SELECT o.id, o.name, o.avatar, o.active_at, o.vip_until, o.vip_exp, o.vip_trial_until FROM hub_members m JOIN users o ON o.id = m.user_id
               WHERE m.hub_id = ? ORDER BY m.joined_at, o.id`).all(hubId)
       .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, vip: vipLevel(r, now), online: live.isOnline(r.id), idle: Math.min(86400000, Math.max(0, now - (r.active_at || 0))) }));
   }
@@ -1304,7 +1373,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // Also used by the live connection.
   function userForToken(token) {
     const h = sha256(token);
-    const s = q('SELECT user_id, last_used, ended FROM sessions WHERE token_hash = ?').get(h);
+    const s = q('SELECT user_id, last_used, ended, scope FROM sessions WHERE token_hash = ?').get(h);
     if (!s) throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
     // ended by the server (an operator's rights taken away): why, once, then it is gone
     if (s.ended) {
@@ -1324,13 +1393,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('UPDATE users SET last_seen = ?, play_ms = play_ms + ? WHERE id = ?').run(now, played, u.id);
     }
     if (now - s.last_used > 3600000) q('UPDATE sessions SET last_used = ? WHERE token_hash = ?').run(now, h);
+    // ('view': a 閲覧者's operator site session, good for nothing but looking)
+    u.scope = s.scope || '';
     return u;
   }
 
-  function createSession(userId) {
+  function createSession(userId, scope = '') {
     const token = newToken();
     const now = Date.now();
-    q('INSERT INTO sessions (token_hash, user_id, created_at, last_used) VALUES (?, ?, ?, ?)').run(sha256(token), userId, now, now);
+    q('INSERT INTO sessions (token_hash, user_id, created_at, last_used, scope) VALUES (?, ?, ?, ?, ?)').run(sha256(token), userId, now, now, scope);
     return token;
   }
 
@@ -1424,6 +1495,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         throw e;
       }
       opsLog.add({ actor: user, action: 'player_register', req, summary: `${user.name}さんが登録`, detail: { avatar } });
+      // (the 10th, 20th or 50th: everyone's 登録者数の記念, the newcomer too)
+      milestones();
       return { token, recoveryCode: code, me: meDto(user) };
     },
 
@@ -1702,9 +1775,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     /* ----- friends ----- */
 
     'GET /api/friends': (req, u) => {
-      const friends = q(`SELECT o.id, o.name, o.avatar, o.npc, o.vip_until, o.vip_exp, o.last_seen AS lastSeen, f.created_at AS since FROM friends f JOIN users o ON o.id = f.friend_id
+      const friends = q(`SELECT o.id, o.name, o.avatar, o.npc, o.vip_until, o.vip_exp, o.vip_trial_until, o.last_seen AS lastSeen, f.created_at AS since FROM friends f JOIN users o ON o.id = f.friend_id
                          WHERE f.user_id = ? AND o.banned = 0 ORDER BY o.name_key`).all(u.id)
-        .map(({ npc, vip_until: until, vip_exp: exp, ...r }) => ({ ...r, vip: vipLevel({ npc, vip_until: until, vip_exp: exp }) }));
+        .map(({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial, ...r }) => ({ ...r, vip: vipLevel({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial }) }));
       const incoming = q(`SELECT o.id, o.name, o.avatar, r.created_at AS at FROM friend_requests r JOIN users o ON o.id = r.from_id
                           WHERE r.to_id = ? AND o.banned = 0 ORDER BY r.created_at DESC`).all(u.id);
       const outgoing = q(`SELECT o.id, o.name, o.avatar, r.created_at AS at FROM friend_requests r JOIN users o ON o.id = r.to_id
@@ -1764,7 +1837,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     /* ----- chat ----- */
 
     'GET /api/conversations': (req, u) => {
-      const rows = q(`SELECT c.other_id AS id, c.unread, c.updated_at, o.name, o.avatar, o.banned, o.npc, o.last_seen, o.vip_until, o.vip_exp, m.kind, m.body, m.amount, m.currency, m.sender_id, m.retracted_at
+      const rows = q(`SELECT c.other_id AS id, c.unread, c.updated_at, o.name, o.avatar, o.banned, o.npc, o.last_seen, o.vip_until, o.vip_exp, o.vip_trial_until, m.kind, m.body, m.amount, m.currency, m.sender_id, m.retracted_at
                       FROM conversations c JOIN users o ON o.id = c.other_id JOIN messages m ON m.id = c.last_id
                       WHERE c.user_id = ? ORDER BY c.updated_at DESC LIMIT 100`).all(u.id);
       const groups = q(`SELECT g.* FROM chat_members m JOIN chat_groups g ON g.id = m.group_id
@@ -1938,14 +2011,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const g = myGroup(u.id, posInt(body.group, 'グループ'));
       q('DELETE FROM chat_members WHERE group_id = ? AND user_id = ?').run(g.id, u.id);
       q('UPDATE users SET coop_group = 0 WHERE id = ? AND coop_group = ?').run(u.id, g.id);
-      if (!memberIds(g.id).length) {
-        tx(() => {
-          q('DELETE FROM messages WHERE channel = ?').run(groupChannel(g.id));
-          q('DELETE FROM chat_groups WHERE id = ?').run(g.id);
-        });
-      } else {
-        postToGroup(g, null, 'system', `${u.name}さんがグループを抜けました`);
-      }
+      // (the last one out: the group and what was said in it stay, kept for good)
+      if (memberIds(g.id).length) postToGroup(g, null, 'system', `${u.name}さんがグループを抜けました`);
       return { left: g.id, unread: unreadTotal(u.id) };
     },
 
@@ -2445,6 +2512,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       detected(u, f, { to: room, place: room === u.id ? 'home' : 'home:' + room, original: raw });
       const message = { id: `${Date.now().toString(36)}-${++homeChatSeq}`, room, from: mini(u), text, at: Date.now() };
       homeChats.set(room, homeChatOf(room).concat(message).slice(-HOME_CHAT_KEEP));
+      // written down for good (the home shows only its last ones, while it is open)
+      keepLive('home', room, u.id, 0, text, raw, message.at);
       live.send(room, 'homechat', message);
       for (const id of watcherIds(room)) live.send(id, 'homechat', message);
       track(u.id, [['chat', 1]]);
@@ -2731,17 +2800,22 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     /* ----- VIP ----- */
 
     // `days` more days of VIP for ロイヤルコイン (from VIP1 some come back at
-    // once); the バイト are paid up first, so VIP's wage counts from now
+    // once), each 24 hours from the end of those already bought (or from now);
+    // or a まとめ買い pack (`pack`: its days, paid for, and its free days on
+    // top). The バイト are paid up first, so VIP's wage counts from now.
     'POST /api/vip/extend': async (req, u) => {
       const body = await req.json();
-      const days = posInt(body.days, '日数');
+      const pack = body.pack !== undefined ? VIP.pack(Number(body.pack)) : null;
+      if (body.pack !== undefined && !pack) throw new ApiError(409, 'no_pack', 'このまとめ買いは今はありません');
+      const bought = pack ? pack.days : posInt(body.days, '日数');
+      const bonus = pack ? pack.bonus : 0, days = bought + bonus;
       rate(limit.shop, u.id);
       const now = Date.now();
       const r = tx(() => {
         const cur = getUser(u.id);
         const until = Math.max(now, cur.vip_until) + days * VIP.day;
         if (until > now + VIP_RULES.maxDays * VIP.day) throw new ApiError(409, 'too_long', `VIPは${VIP_RULES.maxDays}日先までです`);
-        const c = VIP.cost(days, VIP.level(cur.vip_exp));
+        const c = VIP.cost(bought, VIP.level(cur.vip_exp));
         if (cur.coins < c.coins) throw new ApiError(409, 'insufficient', 'ロイヤルコインが足りません');
         const s = settleJobs(cur, now);
         saveJobs(cur.id, s.jobs, s.pay);
@@ -2750,7 +2824,26 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       if (r.paid) track(u.id, [['jobpay', r.paid]]);
       const me = meDto(balanceChanged(u.id));
-      return { days, coins: r.coins, back: r.back, paid: r.paid, me };
+      return { days, bonus, coins: r.coins, back: r.back, paid: r.paid, me };
+    },
+
+    // VIP's free trial: VIP${trial level} for its days, once in a life, for
+    // one who never had VIP. Days bought during it come after it, at the
+    // player's own level (VIP0 at first); none bought, VIP simply ends.
+    'POST /api/vip/trial': async (req, u) => {
+      rate(limit.shop, u.id);
+      const now = Date.now();
+      const r = tx(() => {
+        const cur = getUser(u.id);
+        if (!canTrial(cur)) throw new ApiError(409, 'trial_used', 'VIPの無料お試しは、VIPを一度も使ったことがない人が1回だけ使えます');
+        const until = now + VIP_RULES.trial.days * VIP.day;
+        const s = settleJobs(cur, now);
+        saveJobs(cur.id, s.jobs, s.pay);
+        q('UPDATE users SET vip_until = ?, vip_trial_until = ?, rev = rev + 1 WHERE id = ?').run(until, until, cur.id);
+        return { until, paid: s.pay };
+      });
+      if (r.paid) track(u.id, [['jobpay', r.paid]]);
+      return { until: r.until, paid: r.paid, me: meDto(balanceChanged(u.id)) };
     },
 
     /* ----- updates ----- */
@@ -2970,7 +3063,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { hub: null };
     },
 
-    // 即席チャット: a line to someone in my hub (from their icon), not stored
+    // 即席チャット: a line to someone in my hub (from their icon); the game
+    // keeps it only on the screen, the server's record keeps it for good
     'POST /api/hub/say': async (req, u) => {
       const body = await req.json();
       const to = posInt(body.to, '宛先');
@@ -2983,6 +3077,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const f = filterText(text);
       detected(u, f, { to, place: 'hub', original: text });
       const line = { from: mini(u), to, text: f.masked, at: Date.now() };
+      keepLive('hub', a.hub_id, u.id, to, line.text, text, line.at);
       if (!isBlocked(to, u.id) && !isBlocked(u.id, to)) live.send(to, 'hub', { type: 'say', ...line });
       track(u.id, [['chat', 1]]);
       return { line };
@@ -3372,13 +3467,18 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     }
   };
   const ops = createOps({
-    q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub,
+    q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, deviceBans, dropFromHub,
     official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen
   });
   Object.assign(routes, ops.routes);
+  // the operator site's ログインログ (the day's ログイン button; the developer's alone to read)
+  const opsEntry = createOpsEntry({ q, getUser, see: ops.see, isOperator: ops.isOperator, isDeveloper });
+  Object.assign(routes, opsEntry.routes);
+  const opsMe = routes['GET /api/ops/me'];
+  routes['GET /api/ops/me'] = (req, u) => ({ ...opsMe(req, u), ...opsEntry.state(u) });
   // the operator site's own login (two wrong tries: a wait that doubles); while stopped, the developer's only
   const opsLogin = createOpsLogin({
-    q, findByName, isOperator: ops.isOperator, createSession, seenOn,
+    q, findByName, isOperator: ops.isOperator, isViewer: ops.isViewer, createSession, seenOn, entered: opsEntry.record,
     rate: (req) => rate(limit.login, req.ip, '試行回数が多すぎます。しばらく待ってからお試しください'),
     // during a lockdown the operators still come in to reach the security base;
     // during a plain emergency stop, only the developer
@@ -3386,11 +3486,28 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   });
   Object.assign(routes, opsLogin.routes);
   // 運営チャット
-  Object.assign(routes, createTeam({ q, getUser, live, ops, seen: opsSeen, isDeveloper }).routes);
+  // @開発者 in the 運営チャット: the developer hears of it at once — on the
+  // operator site (its live connection), on their phone (unless the game is
+  // in sight) and on Discord
+  function callDeveloper(u, m, to) {
+    const dev = findByName(config.developer);
+    if (!dev) return;
+    const text = String(m.text).replace(/@\[(p|log):\d+\]/g, '…').replace(/@\[dev\]/g, '@開発者').slice(0, 140);
+    live.sendOps(dev.id, 'opsping', { from: mini(u), to, text, id: m.id });
+    phone(dev.id, { kind: 'ops', title: `${u.name}さんが運営チャットで開発者を呼んでいます`, body: text, tag: `opsping:${u.id}`, open: 'ops' }, 30000);
+    discord.say('📣', `${u.name}が運営チャット（${to ? '個人チャット' : '全体チャット'}）で開発者を呼んでいます：${text}`);
+  }
+  const team = createTeam({ q, getUser, live, ops, seen: opsSeen, isDeveloper, callDeveloper, ice: () => iceServers() });
+  Object.assign(routes, team.routes);
+  // the operator site's live connection: a ticket of its own (an operator's)
+  routes['POST /api/ops/live-ticket'] = (req, u) => {
+    ops.need(u);
+    return { ticket: signTicket(opsSecret, u.id) };
+  };
   // 金の生る木
   const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
   Object.assign(routes, trees.routes);
-  // 開発者支援 (real money for ロイヤルコイン) and the developer's vault
+  // 開発者支援 (real money for ロイヤルコイン), the developer's vault and the ones operators share
   const pay = createPay({ q, tx, live, config, getUser, balanceChanged, official, opsLog, isDeveloper });
   Object.assign(routes, pay.routes);
   // (the bucket's operations counted: R2 bills writes and lists, and reads)
@@ -3400,7 +3517,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     list: (...a) => { stats.r2('a'); return blobs.list(...a); },
     del: (...a) => blobs.del(...a)
   };
-  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, blobs: bucket, onDb: (n) => emergency.vaultDb(n) });
+  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, blobs: bucket, onDb: (n) => emergency.vaultDb(n) });
   Object.assign(routes, vault.routes);
   // the developer's backups of everything but the vault
   const backup = createBackup({
@@ -3413,7 +3530,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const operatorsOnlineNow = () => { const now = Date.now(); return ops.operatorList().filter((o) => o.operator && o.id && now - (opsSeen.get(o.id) || 0) < 40000).length; };
   // the operator site's サーバー tab (every operator)
   routes['GET /api/ops/server'] = (req, u) => {
-    ops.need(u);
+    ops.see(u);
     return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on } };
   };
   // the developer tries the Discord notices: one goes out at once
@@ -3434,7 +3551,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // not reach the lockdown — blocking an address, account or device, or
   // lifting one (manual blocks are logged)
   routes['GET /api/ops/security'] = (req, u) => {
-    ops.need(u);
+    ops.see(u);
     return { shield: shield.snapshot(), emergency: emergency.info(), now: Date.now() };
   };
   routes['POST /api/ops/security/block'] = async (req, u) => {
@@ -3544,6 +3661,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       opsLogin.prune();
       // 90 days in the プレイヤーアーカイブ: their data goes
       ops.purgeDue();
+      milestones();
       quota.flush();
       stats.flush();
     } catch (e) {
@@ -3564,6 +3682,18 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   // Stream tickets are signed and expire within a minute; each opens one connection.
   const usedTickets = new Map();
+  // the operator site's live connection (an operator's ticket, signed apart)
+  const opsSecret = `${secret}:ops-live`;
+  function consumeOpsTicket(ticket) {
+    const userId = verifyTicket(opsSecret, ticket);
+    if (!userId) return null;
+    const now = Date.now();
+    for (const [t, until] of usedTickets) if (until < now) usedTickets.delete(t);
+    if (usedTickets.has(ticket)) return null;
+    usedTickets.set(ticket, now + 70000);
+    const u = getUser(userId);
+    return u && ops.isOperator(u) ? userId : null;
+  }
   function consumeTicket(ticket) {
     const userId = verifyTicket(secret, ticket);
     if (!userId) return null;
@@ -3622,12 +3752,18 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return true;
   }
 
+  let announced = false;
   async function handle(req) {
     // (the address players use: the link in the Discord notices)
     noteHost(req);
     // (a minute over: the emergency stop looks at it before this answer)
     emergency.tick();
     const out = await answer(req);
+    // (after a new version starts: its announcements, once)
+    if (!announced && !emergency.locked()) {
+      announced = true;
+      try { voiceNotice(); milestones(); } catch (e) { console.error('announcements failed', e); }
+    }
     stats.request();
     emergency.request({ path: req.path, ip: req.ip, userId: req.userId || 0, status: out.status });
     // the shield learns from the outcome (a failed login, a guess at the keys)
@@ -3636,9 +3772,20 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return out;
   }
 
+  // All a 閲覧者's site session ('view') may ever reach: reads of what an
+  // operator sees, minus the players' list, the archive, the vault, the chats,
+  // the backups and the payments; and logging out. Anything else, game or
+  // site, is refused before its route runs (and each of these checks for an
+  // operator or a viewer on its own).
+  const VIEW_ONLY = new Set([
+    'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/ops/alive', 'GET /api/ops/counts', 'GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback',
+    'GET /api/ops/log', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security',
+    'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify', 'POST /api/logout'
+  ]);
+
   // what still comes in while the server is stopped for an emergency: the
   // developer's way back in
-  const WHILE_STOPPED = new Set(['POST /api/ops/login', 'GET /api/ops/me', 'GET /api/emergency', 'POST /api/emergency/release']);
+  const WHILE_STOPPED = new Set(['POST /api/ops/login', 'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/emergency', 'POST /api/emergency/release']);
   // what still comes in during a lockdown: the security base (/sec/) for the
   // operators, the operator login they reach it with (and the logout that
   // ends it, so 出る really signs out), and the developer's emergency page.
@@ -3668,6 +3815,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!PUBLIC.has(key)) {
         user = authUser(req);
         req.userId = user.id;
+        // a viewer's look-only session: the allowlist, and only while they still are one
+        if (user.scope === 'view') {
+          if (!ops.isViewer(user)) throw new ApiError(401, 'ended', '閲覧者の権限がなくなったため、ログアウトされました');
+          if (!VIEW_ONLY.has(key)) throw new ApiError(403, 'viewer', '閲覧者は見ることだけができます（この操作はできません）');
+        }
         // during a plain emergency stop only the developer passes; during a
         // lockdown WHILE_LOCKED already allows only the security base, whose
         // routes check for an operator themselves
@@ -3715,6 +3867,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     housekeeping,
     userForToken,
     consumeTicket,
+    consumeOpsTicket,
+    // the operator site's live connection gone: out of the 全体チャット's call
+    opsGone: (userId) => team.gone(userId),
     socketCall,
     socketTyping,
     socketBeat,

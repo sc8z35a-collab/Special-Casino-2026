@@ -179,7 +179,7 @@
     $('#me-name').textContent = me.name;
     var v = $('#me-vip');
     v.textContent = '';
-    K.addVip(v, me.vip && me.vip.on && me.vip.until > Date.now() ? me.vip.level : null);
+    K.addVip(v, me.vip && me.vip.on ? BR.VIP.now(me.vip) : null);
   }
 
   /* ------------------------------------------------------------ last online --- */
@@ -935,7 +935,7 @@
   // under the card: whether it was received (`hint`: where it is once it is)
   function claimState(card, m, mine, hint) {
     if (m.pending) {
-      card.appendChild(el('div', 'pr-state', mine ? (m.claimed ? '受け取られました' : 'まだ受け取られていません')
+      card.appendChild(el('div', 'pr-state', mine ? (m.returned ? '相手のアカウントが削除されたため、あなたに戻りました' : m.claimed ? '受け取られました' : 'まだ受け取られていません')
         : m.claimed ? '受け取り済み' : claiming[m.id] ? '受け取っています…' : 'タップして受け取る'));
     }
     if (hint && !mine && (!m.pending || m.claimed)) card.appendChild(el('div', 'gift-hint', hint));
@@ -1442,7 +1442,7 @@
     $('#pf-name').textContent = u.name;
     var pv = $('#pf-vip');
     pv.textContent = '';
-    K.addVip(pv, self ? (me && me.vip && me.vip.on ? me.vip.level : null) : r ? r.user.vip : u.vip);
+    K.addVip(pv, self ? (me && me.vip && me.vip.on ? BR.VIP.now(me.vip) : null) : r ? r.user.vip : u.vip);
     var lv = $('#pf-lv'), level = r ? r.user.level : null;
     lv.hidden = !level;
     lv.textContent = level ? 'Lv.' + level : '';
@@ -1454,6 +1454,7 @@
       if (!self && r.user.friendship === 'friends') st.appendChild(el('span', 'pf-chip friend', 'フレンド'));
       if (!self && BR.hub && BR.hub.isMember(u.id)) st.appendChild(el('span', 'pf-chip hub', '一緒に稼ぎ中'));
       if (self && me && me.operator) st.appendChild(el('span', 'pf-chip op', '運営'));
+      else if (self && me && me.viewer) st.appendChild(el('span', 'pf-chip viewer', '閲覧者'));
     }
     statAmount('#pf-total', r ? r.user.totalWon : null);
     statAmount('#pf-biggest', r ? r.user.biggestWin : null);
@@ -1471,7 +1472,7 @@
       pfBtn(a1, '引き継ぎコード発行', 'recovery', '', 'share');
       pfBtn(a1, 'コードでログイン', 'codeLogin', '', 'download');
       pfBtn(a1, '演出設定', 'effects', '', 'sound');
-      pfBtn(a1, 'VIP', 'vip', 'gold', 'crown', me && me.vip && me.vip.on ? 'VIP' + me.vip.level : '');
+      pfBtn(a1, 'VIP', 'vip', 'gold', 'crown', me && me.vip && me.vip.on && BR.VIP.now(me.vip) !== null ? 'VIP' + BR.VIP.now(me.vip) : '');
       if (BR.push && BR.push.mode() !== 'none') pfBtn(a1, '通知', 'push', '', 'chat', BR.push.permission() === 'granted' ? 'オン' : 'オフ');
       pfLink(a2, 'ログアウト', 'logout');
       loadBlocks();
@@ -1980,6 +1981,8 @@
     BR.live.on('present', onPresent);
     BR.live.on('retract', onRetract);
     BR.live.on('chatban', onChatBan);
+    // 閲覧者 given or taken away (the badge on one's own profile)
+    BR.live.on('viewer', function (ev) { if (me) { me.viewer = !!(ev && ev.on); BR.social.renderMe(); } });
     // the ⋯ menu closes with a tap anywhere else
     document.addEventListener('pointerdown', function (e) { if (menu && !menu.contains(e.target)) closeMenu(); }, true);
     BR.live.on('friend', onFriend);

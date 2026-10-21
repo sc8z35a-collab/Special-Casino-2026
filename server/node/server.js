@@ -53,6 +53,7 @@ export function createApp({ blobs = null, ...overrides } = {}) {
   const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
   const api = createApi({ db, live, config, secret, blobs, host: machine(config.dataDir, live, config.logRequests) });
   live.onPresence = (userId, online) => api.presence(userId, online);
+  live.onOpsGone = (userId) => api.opsGone(userId);
   // The page is online with WebSocket live updates (Cloudflare); here they come as SSE.
   const serveStatic = createStatic(ROOT, {
     transformHtml: (html) => html.replace('<meta name="br-mode" content="online" data-live="ws">', '<meta name="br-mode" content="online" data-live="sse">')
@@ -78,6 +79,13 @@ export function createApp({ blobs = null, ...overrides } = {}) {
       }
       if (req.method === 'GET' && url.pathname === '/api/stream') {
         if (api.stopped()) { sendJson(res, 503, api.stoppedBody()); return; }
+        // the operator site's own connection
+        if (url.searchParams.has('ops')) {
+          const opsId = api.consumeOpsTicket(url.searchParams.get('ops'));
+          if (!opsId) { sendJson(res, 401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } }); return; }
+          live.attachOps(req, res, opsId);
+          return;
+        }
         const userId = api.consumeTicket(url.searchParams.get('ticket'));
         if (!userId) { sendJson(res, 401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } }); return; }
         live.attach(req, res, userId, () => api.hello(userId));

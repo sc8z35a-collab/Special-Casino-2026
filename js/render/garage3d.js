@@ -1,8 +1,9 @@
 /* The cars in 3D: Car Owner's studio and the garage's 3D space.
-   The studio: the car on the round base (its pattern up), lit by two stage
-   lights (a moving head and a spotlight on a stand, each with a real light
-   and a soft beam) in a dark room with a glossy floor; the camera goes round
-   the car by itself, and a drag turns it.
+   The studio: the car on the round base (its pattern up), lit low and
+   dramatic by two stage lights (a moving head and a spotlight on a stand,
+   each with a real light and a soft beam) in a dark room with a glossy floor.
+   In Car Owner the camera stands close to the car and stays still: a drag
+   turns it round the car, the wheel or a pinch zooms in and out a little.
    The garage's 3D space (from the list of one's cars, full screen): the same
    studio, the car in the middle. A double tap goes into it in first person:
    walk round the car (the stick, or W A S D), look round with a drag, and
@@ -20,6 +21,8 @@
   // sizes in metres
   var CAR_LEN = 4.6, BASE_D = 6.8, MOVING_H = 0.95, SPOT_H = 2.45, EYE = 1.6, ROOM = 15;
   var FOV = 42, ZOOM_MAX = 5;
+  // Car Owner's camera: how far from the car at first, and how near / far the zoom goes
+  var SHOW = { dist: 4.7, near: 3.3, far: 7.2 };
 
   var T = null;
   var g = null;            // the one renderer and its studio
@@ -109,7 +112,7 @@
     var renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: 'high-performance' });
     renderer.outputColorSpace = T.SRGBColorSpace;
     renderer.toneMapping = T.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = 0.78;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = T.PCFSoftShadowMap;
     var scene = new T.Scene();
@@ -117,11 +120,11 @@
     scene.fog = new T.Fog(0x06070b, 16, 40);
     var pm = new T.PMREMGenerator(renderer);
     scene.environment = pm.fromScene(new T.RoomEnvironment(), 0.04).texture;
-    scene.environmentIntensity = 0.32;
+    scene.environmentIntensity = 0.1;
     pm.dispose();
-    scene.add(new T.HemisphereLight(0x8a96b8, 0x0b0b10, 0.45));
+    scene.add(new T.HemisphereLight(0x8a96b8, 0x0b0b10, 0.12));
     // the glossy floor, fading into the dark
-    var floor = new T.Mesh(new T.CircleGeometry(ROOM * 2, 64), new T.MeshStandardMaterial({ color: 0x15161d, roughness: 0.55, metalness: 0.1 }));
+    var floor = new T.Mesh(new T.CircleGeometry(ROOM * 2, 64), new T.MeshStandardMaterial({ color: 0x0e0f14, roughness: 0.5, metalness: 0.1 }));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
@@ -146,7 +149,7 @@
     geo.translate(0, -len / 2, 0);
     geo.rotateX(-Math.PI / 2);
     var mat = new T.ShaderMaterial({
-      uniforms: { color: { value: new T.Color(color) }, strength: { value: 0.42 } },
+      uniforms: { color: { value: new T.Color(color) }, strength: { value: 0.24 } },
       vertexShader: 'varying float vAlong; varying vec3 vN; varying vec3 vView;' +
         'void main() { vAlong = clamp(position.z / ' + len.toFixed(3) + ', 0.0, 1.0);' +
         'vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vView = normalize(-mv.xyz);' +
@@ -201,9 +204,10 @@
     spot.rotation.y = Math.atan2(-spot.position.x, -spot.position.z);
     shadows(spot, true, false);
     s.add(spot);
-    // their lights: a warm key from the spotlight (the shadows), a cool one from the moving head
+    // their lights, low and dramatic: a warm key from the spotlight (the
+    // shadows), a cool one from the moving head picking out the car's edges
     var keyFrom = new T.Vector3(4.6, SPOT_H * 0.86, 3.0);
-    var key = new T.SpotLight(0xfff0dc, 520, 0, 0.42, 0.6, 2);
+    var key = new T.SpotLight(0xffe6c8, 150, 0, 0.36, 0.75, 2);
     key.position.copy(keyFrom);
     key.target.position.copy(target);
     key.castShadow = true;
@@ -214,23 +218,23 @@
     key.shadow.camera.far = 20;
     s.add(key, key.target);
     var coolFrom = new T.Vector3(-4.1, MOVING_H * 0.8, -2.5);
-    var cool = new T.SpotLight(0x8fc4ff, 420, 9, 0.3, 0.5, 2);
+    var cool = new T.SpotLight(0x8fc4ff, 230, 9, 0.3, 0.5, 2);
     cool.position.copy(coolFrom);
     cool.target.position.set(0, 0.9, 0);
     s.add(cool, cool.target);
     // the lamps' lenses glow, and the moving head is lit a little from the front
-    s.add(glow(coolFrom.clone().lerp(new T.Vector3(0, 0.9, 0), 0.05), 0x9fd0ff, 0.6));
-    s.add(glow(keyFrom.clone().lerp(target, 0.03), 0xfff0d0, 0.6));
-    var fill = new T.PointLight(0xc8d4ff, 6, 4, 2);
+    s.add(glow(coolFrom.clone().lerp(new T.Vector3(0, 0.9, 0), 0.05), 0x5f86b0, 0.45));
+    s.add(glow(keyFrom.clone().lerp(target, 0.03), 0xa08a70, 0.45));
+    var fill = new T.PointLight(0xc8d4ff, 2, 4, 2);
     fill.position.set(-3.2, 1.4, -1.4);
     s.add(fill);
-    // a soft top light on the car (its pool stays on the base), and a dim
+    // a faint top light on the car (its pool stays on the base), and a dim
     // light behind so the stands and the moving head show against the dark
-    var top = new T.SpotLight(0xffffff, 110, 0, 0.42, 0.85, 2);
+    var top = new T.SpotLight(0xffffff, 14, 0, 0.38, 0.9, 2);
     top.position.set(0, 9, 0);
     top.target.position.set(0, 0, 0);
     s.add(top, top.target);
-    var back = new T.PointLight(0x6f7fa8, 18, 14, 2);
+    var back = new T.PointLight(0x6f7fa8, 7, 14, 2);
     back.position.set(0, 3.2, -6);
     s.add(back);
     g.beams = [beam(keyFrom, target, 1.5, 0xffe8c8), beam(coolFrom, new T.Vector3(0, 1.0, 0), 1.2, 0x9ccaff)];
@@ -253,10 +257,15 @@
   /* ------------------------------------------------------------ the frame --- */
   function size() {
     if (!host) return;
+    // its own size (on a phone held upright the game is turned a quarter
+    // round, and the box on screen has the width and height swapped)
     var r = host.getBoundingClientRect();
-    var w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
-    // sharp enough, never heavier than needed (and lighter once frames get slow)
-    var pr = Math.min(window.devicePixelRatio || 1, mode === 'show' ? 1.5 : 1.75) * (g.fps < 30 ? 0.7 : 1);
+    var w = Math.max(1, host.clientWidth || Math.round(r.width)), h = Math.max(1, host.clientHeight || Math.round(r.height));
+    // sharp enough for the pixels it covers on screen (the game may be drawn
+    // smaller than its own size), never heavier than needed (and lighter once
+    // frames get slow)
+    var k = Math.max(r.width, r.height) / Math.max(w, h) || 1;
+    var pr = Math.min((window.devicePixelRatio || 1) * k, mode === 'show' ? 1.5 : 1.75) * (g.fps < 30 ? 0.7 : 1);
     g.renderer.setPixelRatio(pr);
     g.renderer.setSize(w, h, false);
     g.camera.aspect = w / h;
@@ -288,16 +297,21 @@
     size();
   }
 
-  // the orbit for Car Owner (turning by itself) or the garage's space
-  function orbit(auto) {
+  // the orbit for Car Owner (close to the car and still; a drag turns it, a
+  // little zoom) or the garage's space (going round slowly by itself)
+  function orbit(show) {
     var c = g.controls;
     c.enabled = true;
-    c.autoRotate = true;
-    c.autoRotateSpeed = auto ? 0.9 : 0.35;
-    c.enableZoom = !auto;
+    c.autoRotate = !show;
+    c.autoRotateSpeed = 0.35;
+    c.enableZoom = true;
+    c.zoomSpeed = show ? 0.6 : 1;
+    c.minDistance = show ? SHOW.near : 5;
+    c.maxDistance = show ? SHOW.far : 13;
     g.camera.fov = FOV;
+    c.target.set(0, show ? 0.7 : 0.8, 0);
     g.camera.position.set(4.9, 1.85, 5.2);
-    c.target.set(0, 0.8, 0);
+    if (show) g.camera.position.sub(c.target).setLength(SHOW.dist).add(c.target);
     g.camera.updateProjectionMatrix();
     c.update();
   }
@@ -489,7 +503,7 @@
   BR.garage3d = {
     supported: supported,
     has: has,
-    // Car Owner: the car turning in the studio inside `el` (progress(0..1) while loading)
+    // Car Owner: the car in the studio inside `el`, close up (progress(0..1) while loading)
     show: function (el, id, progress) { carId = id; return start(el, id, 'show', progress); },
     // the garage's 3D space inside `el` (double tap: first person)
     space: function (el, id, progress) { carId = id; return start(el, id, 'space', progress); },

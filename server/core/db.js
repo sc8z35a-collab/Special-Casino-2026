@@ -692,14 +692,112 @@ export const MIGRATIONS = [
        body       TEXT    NOT NULL,
        created_at INTEGER NOT NULL
      )`
+  ],
+  // 保管庫のアップデート: the vault two operators share (server/core/vault.js).
+  // A file's or a folder's vault ('' the developer's own, 'p:<a>:<b>' the one
+  // the operators with ids a < b share); what one operator may keep in the
+  // shared vaults when the developer approved more than 1GB (always a limit),
+  // and their requests for it.
+  [
+    "ALTER TABLE vault_files ADD COLUMN space TEXT NOT NULL DEFAULT ''",
+    'CREATE INDEX vault_files_space ON vault_files(space, folder)',
+    'CREATE INDEX vault_files_by ON vault_files(created_by, space)',
+    "ALTER TABLE vault_folders ADD COLUMN space TEXT NOT NULL DEFAULT ''",
+    'CREATE INDEX vault_folders_space ON vault_folders(space, parent)',
+    `CREATE TABLE vault_quotas (
+       user_id INTEGER PRIMARY KEY,
+       bytes   INTEGER NOT NULL,
+       by_id   INTEGER NOT NULL,
+       at      INTEGER NOT NULL
+     )`,
+    // status: open → approved (limit_bytes: the limit the developer set), declined or canceled
+    `CREATE TABLE vault_requests (
+       id          INTEGER PRIMARY KEY,
+       user_id     INTEGER NOT NULL,
+       bytes       INTEGER NOT NULL,
+       reason      TEXT    NOT NULL DEFAULT '',
+       status      TEXT    NOT NULL DEFAULT 'open',
+       created_at  INTEGER NOT NULL,
+       handled_by  INTEGER NOT NULL DEFAULT 0,
+       handled_at  INTEGER NOT NULL DEFAULT 0,
+       limit_bytes INTEGER NOT NULL DEFAULT 0
+     )`,
+    'CREATE INDEX vault_requests_user ON vault_requests(user_id, id)',
+    'CREATE INDEX vault_requests_status ON vault_requests(status, id)'
+  ],
+  // DEV11: what was said is kept for good — an account 90 days in the archive
+  // keeps only its name on it (purged_at: when the rest went), and the chats
+  // once only in memory are written down too: a home's chat (place 'home',
+  // room: the host) and 友達と稼ぐ's 即席チャット ('hub', room: the hub).
+  // The vault's backups and personal vaults (below).
+  [
+    'ALTER TABLE users ADD COLUMN purged_at INTEGER NOT NULL DEFAULT 0',
+    `CREATE TABLE live_chats (
+       id           INTEGER PRIMARY KEY,
+       place        TEXT    NOT NULL,
+       room         INTEGER NOT NULL,
+       sender_id    INTEGER NOT NULL,
+       recipient_id INTEGER NOT NULL DEFAULT 0,
+       body         TEXT    NOT NULL,
+       original     TEXT    NOT NULL DEFAULT '',
+       created_at   INTEGER NOT NULL
+     )`,
+    'CREATE INDEX live_chats_room ON live_chats(place, room, id)',
+    'CREATE INDEX live_chats_sender ON live_chats(sender_id, id)',
+    // the vault: the developer's backups of any file (backup_at: since when;
+    // one deleted from its vault then waits in the backups, `from_*` saying
+    // where it was), and each operator's own vault ('u:<id>', a new space)
+    'ALTER TABLE vault_files ADD COLUMN backup_at INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE vault_files ADD COLUMN backup_by INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE vault_files ADD COLUMN removed_at INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE vault_files ADD COLUMN removed_by INTEGER NOT NULL DEFAULT 0',
+    "ALTER TABLE vault_files ADD COLUMN from_space TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE vault_files ADD COLUMN from_folder TEXT NOT NULL DEFAULT ''",
+    'CREATE INDEX vault_files_backup ON vault_files(backup_at)',
+    // 閲覧者: players the developer lets look at the operator site (granted 1;
+    // 0 once taken away), and the sessions of that look (scope 'view': they
+    // can do nothing but look, not even play)
+    `CREATE TABLE ops_viewers (
+       user_id INTEGER PRIMARY KEY,
+       granted INTEGER NOT NULL DEFAULT 1,
+       at      INTEGER NOT NULL,
+       by_id   INTEGER NOT NULL
+     )`,
+    "ALTER TABLE sessions ADD COLUMN scope TEXT NOT NULL DEFAULT ''",
+    // the operators' group call of the 全体チャット: who is in it (kept here so
+    // the server going to sleep does not forget; one whose site connection
+    // is gone is not counted)
+    `CREATE TABLE ops_call (
+       user_id INTEGER PRIMARY KEY,
+       at      INTEGER NOT NULL
+     )`
+  ],
+  // DEV11 (2): the operator site's ログインログ — the first time each day
+  // (Japan time) an operator, the developer or a 閲覧者 comes into the site
+  // (how: 'button', the day's ログイン button; 'password', a login with the
+  // password), seen by the developer only — and VIP's free trial (VIP3 for
+  // 3 days, once in a player's life: vip_trial_until, when it ends; 0: never)
+  [
+    `CREATE TABLE ops_entries (
+       id      INTEGER PRIMARY KEY,
+       user_id INTEGER NOT NULL,
+       role    TEXT    NOT NULL,
+       day     TEXT    NOT NULL,
+       at      INTEGER NOT NULL,
+       how     TEXT    NOT NULL,
+       agent   TEXT    NOT NULL DEFAULT ''
+     )`,
+    'CREATE UNIQUE INDEX ops_entries_day ON ops_entries(user_id, day)',
+    'ALTER TABLE users ADD COLUMN vip_trial_until INTEGER NOT NULL DEFAULT 0'
   ]
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
-// what a backup holds (not the vault's files: they are big, and the developer has them)
+// what a backup holds (not the vault's files: they are big, and the developer
+// has them; nor what goes with them, the operators' limits and requests)
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
-  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access',
+  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers', 'ops_entries',
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'meta'];
 
 export function migrate(db) {

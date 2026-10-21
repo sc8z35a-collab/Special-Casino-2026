@@ -401,11 +401,21 @@
         <span class="vp-state" id="vp-state"></span>
       </div>
       <div class="vp-body">
-        <div class="vp-left">
+        <div class="vp-left scroller" id="vp-left">
+          <!-- the free trial (once, for one who never had VIP), and while it lasts -->
+          <div class="vp-trial" id="vp-trial" hidden>
+            <div class="vp-trial-text"><b id="vp-trial-title"></b><small id="vp-trial-sub"></small></div>
+            <button class="vp-trial-go" id="vp-trial-go" type="button">無料で試す</button>
+          </div>
           <div class="vp-exp">
             <div class="vp-exp-head"><span>VIP EXP</span><b id="vp-exp"></b></div>
             <div class="vp-bar"><i id="vp-bar"></i></div>
             <p class="vp-exp-note" id="vp-exp-note"></p>
+          </div>
+          <!-- まとめ買い (今だけ特大セール) -->
+          <div class="vp-packs" id="vp-packs" hidden>
+            <div class="vp-packs-head"><b id="vp-packs-sale"></b><span>まとめて買うと日数おまけ</span></div>
+            <div class="vp-packs-list" id="vp-packs-list"></div>
           </div>
           <div class="vp-buy">
             <div class="vp-days">
@@ -417,6 +427,7 @@
             </div>
             <div class="vp-cost" id="vp-cost"></div>
             <button class="action-btn vp-go" id="vp-go" type="button"></button>
+            <p class="vp-rule">1日 = 24時間（有効にした時刻から。延長は今の期限からさらに24時間ずつ）</p>
           </div>
         </div>
         <div class="vp-right scroller" id="vp-right"><table class="vp-table" id="vp-table"></table></div>
@@ -666,7 +677,13 @@
       <div class="call-id"><b class="uname" id="call-name"></b><span id="call-state"></span></div>
       <button class="call-icon" id="call-mute" aria-label="マイクのオン・オフ"><i class="ic ic-mic-on"></i></button>
       <button class="call-icon" id="call-deaf" aria-label="相手の声のオン・オフ"><i class="ic ic-speaker"></i></button>
+      <button class="call-icon" id="call-vol" aria-label="音量（ボイスと効果音）" aria-expanded="false"><i class="ic ic-sliders"></i></button>
       <button class="call-icon end" id="call-end" aria-label="通話を終了"><i class="ic ic-hangup"></i></button>
+      <!-- the call's two volumes: everyone's voices, and the game's sound effects while it lasts -->
+      <div class="call-vol" id="call-vol-panel" hidden>
+        <label class="call-vol-row"><span>ボイス</span><input type="range" id="call-vol-voice" min="0" max="100" step="5" aria-label="ボイスの音量"><b id="call-vol-voice-n"></b></label>
+        <label class="call-vol-row"><span>効果音</span><input type="range" id="call-vol-sfx" min="0" max="100" step="5" aria-label="効果音の音量"><b id="call-vol-sfx-n"></b></label>
+      </div>
     </div>
     <div id="call-audios" hidden></div>
 

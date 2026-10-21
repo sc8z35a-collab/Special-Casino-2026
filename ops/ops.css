@@ -76,6 +76,18 @@ button { cursor: pointer; }
 .login-card h1 { margin: 18px 0 6px; font-size: 22px; }
 .login-card p { margin: 0; font-size: 13px; }
 .login-card .btn { margin-top: 14px; }
+.enter-card .btn.ghost { margin-top: 8px; }
+.enter-who { display: flex; align-items: center; gap: 10px; margin-top: 18px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); font-size: 16px; }
+.enter-who b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the developer's ログインログ */
+.inlog { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+.inlog > p { margin: 0; padding: 14px; }
+.inlog-day { padding: 8px 14px; background: var(--soft); font-size: 12px; font-weight: 700; color: var(--muted); }
+.inlog-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 13px; }
+.inlog-row .inlog-time { flex: none; width: 64px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.inlog-row .inlog-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.inlog-row .inlog-how { margin-left: auto; flex: none; color: var(--muted); font-size: 12px; text-align: right; }
+#op-inlog-more { margin-top: 10px; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: 1.5px; }
 .brand small { margin-left: 4px; font-weight: 600; letter-spacing: 0; color: var(--muted); }
 .brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 13px; letter-spacing: 0; }
@@ -363,15 +375,25 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .vault-crumb { padding: 2px 8px; border: 0; border-radius: 8px; background: none; color: var(--accent); font-weight: 600; }
 .vault-crumb:hover { background: var(--accent-soft); }
 .vault-crumb.here { color: var(--text); background: none; cursor: default; }
-.vault-picked { position: sticky; top: 8px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid #bfd4f6; border-radius: var(--radius); background: var(--accent-soft); }
-.vault-picked b { flex: 1; min-width: 120px; font-size: 14px; color: var(--accent); }
-.vault-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; margin: 0 0 12px; }
-.vault-folders:empty { display: none; }
-.vault-folder { display: flex; flex-direction: column; gap: 10px; background: var(--soft); cursor: pointer; }
-.vault-folder:hover { border-color: #bfd4f6; }
-.vault-folder .vault-name::before { content: '\1F4C1'; margin-right: 6px; }
-.vault-check { display: inline-flex; align-items: center; }
-.vault-check input { width: 18px; height: 18px; margin: 0; cursor: pointer; accent-color: var(--accent); }
+/* the checkmarks: everything here at once, and what to do with the checked ones (stays in sight while some are checked) */
+.vault-select { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
+.vault-select.on { position: sticky; top: calc(var(--top-h, 0px) + 8px); z-index: 4; border-color: #bfd4f6; background: var(--accent-soft); box-shadow: 0 4px 14px rgba(29, 39, 51, .08); }
+.vault-select > b { font-size: 14px; }
+.vault-select.on > b { color: var(--accent); }
+.vault-select > .muted { font-size: 12px; }
+.vault-select-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+/* a checkmark: a square that fills in with ✓ (the real checkbox lies on top of it, unseen) */
+.vault-check { position: relative; flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; cursor: pointer; }
+.vault-check input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.vault-check i { display: grid; place-items: center; width: 22px; height: 22px; border: 2px solid #b9c3d0; border-radius: 7px; background: #fff; font-style: normal; transition: background .12s, border-color .12s; }
+.vault-check i::after { content: '✓'; color: #fff; font-size: 14px; font-weight: 800; line-height: 1; opacity: 0; transform: scale(.5); transition: opacity .12s, transform .12s; }
+.vault-check:hover i { border-color: var(--accent); }
+.vault-check input:checked + i, .vault-check input:indeterminate + i { border-color: var(--accent); background: var(--accent); }
+.vault-check input:checked + i::after { opacity: 1; transform: none; }
+.vault-check input:indeterminate + i::after { content: '−'; opacity: 1; transform: none; }
+.vault-check input:focus-visible + i { outline: 3px solid #bfd4f6; outline-offset: 1px; }
+.card.picked { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.vault-folder.picked { background: var(--accent-soft); }
 .vault-all { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); }
 .vault-all span { flex: 1; min-width: 180px; font-size: 13px; }
 .vault-body { display: flex; gap: 14px; align-items: flex-start; }
@@ -408,12 +430,49 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .vlabel.k-back i { background: var(--ok); }
 .vlabel span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vlabel small { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
-.vault-waiting { margin-bottom: 12px; border-color: #efd7a8; background: var(--warn-soft); }
-.vault-waiting .card-head .btn { margin-left: auto; }
-.vault-wait { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 8px; font-size: 13px; }
-.vault-wait b { word-break: break-all; }
-.vault-wait .btn { margin-left: auto; }
+/* uploads: each file's card (やめる on it), and 再開 at the top */
+.up-job-head { display: flex; align-items: center; gap: 10px; }
+.up-job-head b { min-width: 0; word-break: break-all; }
+.up-job-head .btn { margin-left: auto; flex: none; }
+.vault-resume { flex: none; }
 .vault-filter { margin: 0 0 10px; }
+
+/* which vault: the developer's own, the shared ones, the others' to look into */
+.vault-spaces { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin: 0 0 12px; }
+.vault-spaces:empty { display: none; }
+.vspace-label { flex-basis: 100%; margin: 4px 2px 0; font-size: 11.5px; font-weight: 700; color: var(--muted); }
+.vspace { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; padding: 6px 12px 6px 6px; border: 1px solid var(--line); border-radius: 12px; background: #fff; text-align: left; }
+.vspace:hover { border-color: #bfd4f6; background: var(--soft); }
+.vspace.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 1px 4px rgba(29, 39, 51, .06); }
+.vspace .face { width: 30px; height: 30px; font-size: 13px; }
+.vspace.look { padding-left: 12px; border-style: dashed; }
+.vspace.gone { opacity: .75; }
+.vspace-who { min-width: 0; }
+.vspace-who b { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 13.5px; word-break: break-all; }
+.vspace-who small { display: block; font-size: 11.5px; color: var(--muted); }
+.face.vspace-mark { background: #fff3d6; color: #9a6400; font-size: 13px; }
+/* the room in the shared vaults */
+.vault-room { margin: 0 0 12px; }
+.vroom-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.vroom-line .meter { flex: 1 1 200px; margin-top: 0; height: 8px; border-radius: 4px; }
+.vroom-note { margin: 6px 0 0; font-size: 12px; }
+.vroom-sub { margin: 14px 0 6px; font-size: 13px; color: var(--muted); }
+.vroom-req { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; border: 1px solid #bfd4f6; border-radius: 10px; background: var(--accent-soft); }
+.vroom-req + .vroom-req { margin-top: 6px; }
+.vroom-who { flex: 1; min-width: 200px; }
+.vroom-who b { display: block; font-size: 14px; }
+.vroom-who small { display: block; font-size: 12px; color: var(--muted); }
+.vroom-why { white-space: pre-wrap; word-break: break-word; }
+.vroom-people th { width: 30%; }
+.vroom-people td .meter { max-width: 220px; }
+.vroom-people th small { display: block; font-weight: 400; }
+.vroom-people td.num { width: 1%; white-space: nowrap; }
+/* the open vault: whose, who sees it */
+.vault-head { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; }
+.vault-head:empty { display: none; }
+.vault-head .face + .face { margin-left: -14px; box-shadow: 0 0 0 2px #fff; }
+.vault-head-text b { display: block; font-size: 15px; }
+.vault-head-text small { display: block; font-size: 12px; color: var(--muted); }
 .vault-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
 .vault-pager:empty { display: none; }
 .vault-pager > .muted:last-child { margin-left: 8px; font-size: 12px; }
@@ -566,3 +625,132 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .sec-block-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .sec-block-form select { flex: none; }
 .sec-block-form .search { flex: 1; min-width: 140px; }
+
+/* 保管庫 (DEV11): the header (編集する / 閉じる at the right), the toolbar, the
+   items as rows (a tap on the icon opens; 💬, 詳細 and ⋯ at the right), their
+   menu, and the comments of a file */
+.vault-top #vault-usage { font-size: 13px; font-variant-numeric: tabular-nums; cursor: help; }
+.vault-mode { display: inline-flex; gap: 8px; margin-left: auto; }
+.vault-plus { width: 44px; padding: 0; font-size: 22px; font-weight: 600; line-height: 1; }
+.vault-memo { font-size: 12.5px; cursor: pointer; }
+.vault-memo:hover { color: var(--bad); text-decoration: line-through; }
+.vault-items { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
+.vault-items:empty { display: none; }
+.vitem { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
+.vitem:hover { border-color: #bfd4f6; }
+.vitem.picked { border-color: var(--accent); background: var(--accent-soft); }
+.vitem.used { background: #fffcf3; }
+.vitem.undone { border-style: dashed; }
+.vault-folder { background: var(--soft); }
+.vault-folder .vault-name { cursor: pointer; }
+.vicon { position: relative; display: grid; place-items: center; width: 48px; height: 52px; padding: 0; border: 0; border-radius: 8px; background: none; cursor: pointer; }
+.vicon:hover { background: var(--accent-soft); }
+.vicon:focus-visible { outline: 3px solid #bfd4f6; }
+.vicon img { width: 40px; height: 46px; pointer-events: none; }
+.vicon-folder img { width: 44px; height: 38px; }
+.vicon-ext { position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%); max-width: 44px; padding: 0 4px; overflow: hidden; border-radius: 4px; background: var(--accent); color: #fff; font-size: 9px; font-weight: 800; line-height: 14px; letter-spacing: .02em; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+.vitem-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vitem-main .vault-name { font-size: 14.5px; line-height: 1.35; }
+.vitem-sub { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.vitem-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.kind.vbackup { background: #e3f6f1; color: #0b7a5f; }
+.kind.vwhere { background: var(--soft); color: var(--muted); }
+.kind.vlink { background: var(--accent-soft); color: var(--accent); }
+.vitem-acts { display: flex; align-items: center; gap: 4px; }
+.vbtn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 34px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--text, #1d2733); font-size: 12.5px; font-weight: 600; }
+.vbtn:hover { background: var(--soft); }
+.vbtn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.vmore { padding: 0 8px; font-size: 18px; letter-spacing: -1px; }
+.vcomment-btn { padding: 0 8px; }
+.vcomment-btn .vcomment-ic { font-size: 14px; filter: grayscale(1); opacity: .65; }
+.vcomment-btn.has .vcomment-ic { filter: none; opacity: 1; }
+.vcomment-btn b { font-size: 12px; color: var(--accent); }
+.vitem-detail { grid-column: 1 / -1; padding-top: 8px; border-top: 1px dashed var(--line); }
+@media (max-width: 560px) {
+  .vitem { grid-template-columns: auto auto minmax(0, 1fr); }
+  .vitem-acts { grid-column: 2 / -1; justify-content: flex-end; }
+}
+/* the menu of an item */
+.vmenu { position: fixed; z-index: 70; display: flex; flex-direction: column; min-width: 200px; max-width: min(360px, calc(100vw - 16px)); padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 10px 30px rgba(29, 39, 51, .18); }
+.vmenu-item { padding: 9px 12px; border: 0; border-radius: 8px; background: none; color: inherit; font-size: 13.5px; text-align: left; }
+.vmenu-item:hover, .vmenu-item:focus-visible { background: var(--accent-soft); outline: none; }
+.vmenu-item.danger { color: var(--bad); }
+.vmenu-item.danger:hover { background: var(--bad-soft); }
+/* the comments of a file */
+.viewer.vcomments { width: min(560px, 100%); height: min(640px, 100%); }
+.vcomments-list { flex: 1; min-height: 0; overflow: auto; padding: 12px; background: var(--soft); }
+.vcomments-empty { margin: 24px 0; text-align: center; }
+.vcomment { margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.vcomment.ai { border-color: #d9ccf5; background: #faf7ff; }
+.vcomment.over { opacity: .6; }
+.vcomment-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.vcomment-head small { color: var(--muted); }
+.vcomment-head .vnote-del { margin-left: auto; }
+.vcomment-text { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 14px; }
+.tag.vai { background: #6b46c1; color: #fff; }
+.vcomments-form { display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.vcomments-form textarea { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; resize: vertical; }
+.vcomments-form select { height: 32px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font: inherit; font-size: 12.5px; }
+.face.vspace-backup { background: #e3f6f1; color: #0b7a5f; }
+/* a file opened here: a picture, a text or a program, a video or a sound */
+.viewer-box.fit { display: flex; align-items: center; justify-content: center; overflow: auto; touch-action: auto; }
+.viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.viewer-text { align-self: stretch; width: 100%; margin: 0; padding: 14px 16px; overflow: auto; background: #1f232a; color: #e8ecf2; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; tab-size: 4; }
+.viewer-media { max-width: 100%; max-height: 100%; }
+
+/* 閲覧者: the badge, their place on the 運営者 tab, and a viewer's site (looking only: no actions shown) */
+.tag.t-viewer, .kind.k-viewer { background: #efe9fb; color: #5b3fb3; }
+.op-sub { margin: 22px 0 4px; font-size: 15px; }
+body.role-viewer .view .acts, body.role-viewer #op-grant, body.role-viewer #op-devcode, body.role-viewer #sec-manual, body.role-viewer [data-unblock],
+body.role-viewer [data-stop], body.role-viewer #srv-dev, body.role-viewer .report-reward, body.role-viewer .compose { display: none !important; }
+
+/* the log: a line goes to its place, 詳細 beside it; the text for an AI */
+.entry-head { display: flex; align-items: stretch; }
+.entry-head .entry-line { flex: 1; min-width: 0; }
+.entry-line.go .sum { text-decoration: underline; text-decoration-color: #bfd4f6; text-underline-offset: 3px; }
+.entry-more { flex: none; margin: 4px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--muted); font-size: 12px; font-weight: 600; }
+.entry-more:hover, .entry-more.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.entry-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+/* 運営チャット (DEV11): ＠ and ログ beside the box, the list to pick from,
+   names and quoted log lines in a message, the developer called, the call */
+.team-compose { position: relative; }
+.team-tools { display: flex; flex-direction: column; gap: 4px; }
+.team-tools .btn { width: 44px; padding: 0; }
+.team-pick { position: absolute; left: 12px; right: 12px; bottom: calc(100% - 4px); z-index: 5; display: flex; flex-direction: column; gap: 6px; max-height: 320px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 10px 30px rgba(29, 39, 51, .16); }
+.team-pick .search { max-width: none; }
+.team-pick-list { overflow: auto; }
+.team-pick-row { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 7px 10px; border: 0; border-radius: 8px; background: none; text-align: left; }
+.team-pick-row:hover, .team-pick-row:focus-visible { background: var(--accent-soft); outline: none; }
+.team-pick-row b { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-pick-row small { font-size: 11.5px; color: var(--muted); }
+.team-pick-row.dev b { color: #c0262d; }
+.team-pick-empty { margin: 8px; }
+.mention { display: inline; padding: 0 4px; border: 0; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; }
+.mention.dev { background: #ffe1e1; color: #c0262d; cursor: default; }
+.mention.gone { background: var(--soft); color: var(--muted); cursor: default; }
+.quote-log { display: flex; flex-direction: column; gap: 2px; width: 100%; margin: 6px 0; padding: 6px 10px; border: 0; border-left: 3px solid var(--accent); border-radius: 6px; background: rgba(37, 99, 201, .07); color: inherit; font: inherit; font-size: 13px; text-align: left; white-space: normal; cursor: pointer; }
+.quote-log small { font-size: 11px; color: var(--muted); }
+.quote-log.gone { border-left-color: var(--line); cursor: default; }
+.bubble.calls-dev { box-shadow: inset 0 0 0 2px #f2a7aa; }
+.team-calling { margin-left: auto; padding: 1px 8px; border-radius: 10px; background: var(--ok-soft); color: var(--ok); font-size: 11px; font-weight: 700; }
+.team-call { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--soft); }
+.team-call-who { flex: 1; min-width: 180px; }
+.team-call-who b { display: block; font-size: 13.5px; }
+.team-call-who small { display: block; font-size: 12px; color: var(--muted); }
+.call-pill { position: fixed; right: 16px; bottom: 16px; z-index: 55; display: flex; overflow: hidden; border-radius: 22px; background: #1d2733; box-shadow: 0 6px 20px rgba(0, 0, 0, .25); }
+.call-pill button { padding: 10px 14px; border: 0; background: none; color: #fff; font-size: 13px; font-weight: 700; }
+.call-pill .call-pill-out { background: #c0262d; }
+.dev-call { position: fixed; left: 50%; top: 12px; z-index: 65; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; width: min(720px, calc(100vw - 24px)); padding: 10px 14px; transform: translateX(-50%); border: 2px solid #f2a7aa; border-radius: 12px; background: #fff5f5; box-shadow: 0 10px 30px rgba(29, 39, 51, .18); }
+.dev-call b { color: #c0262d; }
+.dev-call span { flex: 1; min-width: 160px; font-size: 13px; }
+.dev-call .close { position: static; }
+/* (in one's own blue bubble) */
+.msg.bot .bubble .quote-log { border-left-color: #fff; background: rgba(255, 255, 255, .16); }
+.msg.bot .bubble .quote-log small { color: rgba(255, 255, 255, .82); }
+.msg.bot .bubble .mention { background: rgba(255, 255, 255, .92); }
+/* files dragged in from the computer: the vault lights up, and the folder under the pointer */
+#vault-main { position: relative; }
+#vault-main.vault-drag { outline: 2px dashed var(--accent); outline-offset: 6px; border-radius: var(--radius); }
+#vault-main.vault-drag::after { content: 'ここにドロップしてアップロード（フォルダの上ならそのフォルダへ）'; position: sticky; bottom: 16px; display: block; width: max-content; max-width: 100%; margin: 12px auto 0; padding: 10px 18px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; box-shadow: 0 6px 18px rgba(29, 39, 51, .18); pointer-events: none; }
+.vitem.drop-in { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent); }

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 48" width="56" height="48">
+  <!-- 仮のフォルダアイコン（差し替えるときはこのファイルを置き換え） -->
+  <path d="M4 10a4 4 0 0 1 4-4h13l5 6h22a4 4 0 0 1 4 4v24a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" fill="#f4c04e"/>
+  <path d="M4 18a4 4 0 0 1 4-4h40a4 4 0 0 1 4 4v22a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" fill="#ffd56b"/>
+</svg>

@@ -54,6 +54,8 @@ export function configFrom(env = {}, overrides = {}) {
     quests: flag(env, 'QUESTS', true),
     // ジョンソン's gifts coming by themselves (after spending, on connecting); off only for tests that count money exactly.
     npcGifts: flag(env, 'NPC_GIFTS', true),
+    // 登録者数の記念 (js/game/config.js: milestones); off only for tests that count messages exactly.
+    milestones: flag(env, 'MILESTONES', true),
     // The accounts (user names, comma separated) that may open the operator site (/ops/),
     // where the players' feedback, 通報 and the official bot's messages are read.
     operators: str(env, 'OPERATORS', 'taku').split(',').map((s) => s.trim()).filter(Boolean),
@@ -97,6 +99,9 @@ export function configFrom(env = {}, overrides = {}) {
     vaultMaxMb: int(env, 'VAULT_MAX_MB', undefined),
     vaultFileMb: int(env, 'VAULT_FILE_MB', undefined),
     vaultPieceMb: int(env, 'VAULT_PIECE_MB', undefined),
+    // what one operator may keep in the vaults operators share without the
+    // developer's approval (MB; unset: 1024, 1GB a person)
+    vaultFreeMb: int(env, 'VAULT_FREE_MB', undefined),
     // the Cloudflare plan the game runs on ('free' or 'paid'): its allowances
     // and prices on the operator site's サーバー tab, and the vault's sizes
     plan: str(env, 'CF_PLAN', 'free').toLowerCase() === 'paid' ? 'paid' : 'free',

@@ -23,7 +23,7 @@
     lockdown: 'ロックダウン', lockdown_release: 'ロックダウンの解除', shield_block: '手動ブロック', shield_auto_block: '自動ブロック',
     shield_unblock: 'ブロック解除', sec_message: 'セキュリティ基地の連絡', dev_code_fail: '開発者コードの入力ミス',
     dev_code_set: '開発者コードを登録', dev_code_change: '開発者コードを変更', ops_grant: '運営権の付与', ops_revoke: '運営権の剥奪',
-    account_delete: 'アカウント削除', account_purge: 'データの完全削除', backup_run: 'バックアップ', backup_failed: 'バックアップの失敗',
+    account_delete: 'アカウント削除', account_purge: 'データの削除（会話は保存）', backup_run: 'バックアップ', backup_failed: 'バックアップの失敗',
     'ban:suspend': 'アクセス禁止', 'ban:ban': 'BAN', 'ban:perma': '永久BAN', 'ban:none': '処分の解除',
     player_register: '登録', player_login: 'ログイン', bot_message: '公式のメッセージ', money: '送金'
   };
@@ -99,6 +99,8 @@
     $('#app').hidden = true; $('#login').hidden = false;
     $('#login-error').textContent = message || '';
     clearInterval(timer);
+    clearInterval(aliveTimer);
+    document.body.classList.remove('role-viewer');
     setTimeout(function () { $('#login-name').focus(); }, 50);
   }
   // signed out: what this operator saw goes with them, so the next one starts clean
@@ -149,20 +151,26 @@
   }
 
   /* ------------------------------------------------------------ start --- */
+  // A 閲覧者 (viewer): the status and the log only — no channel, no lockdown
+  // (the server refuses them anyway) — and every 2 seconds the question
+  // whether they still may: taken away, they are out at once.
   function start(m) {
     me = m; meId = m.id || 0; session++;
     seenChat = readSeen(); statusErr = '';
     $('#login').hidden = true; $('#app').hidden = false;
-    $('#op-name').textContent = (m.developer ? '開発者: ' : '運営者: ') + m.name;
+    $('#op-name').textContent = (m.developer ? '開発者: ' : m.viewer ? '閲覧者: ' : '運営者: ') + m.name;
+    document.body.classList.toggle('role-viewer', !!m.viewer);
     $('#speed').disabled = !m.developer;
     $('#speed').title = m.developer ? '更新頻度（運営者全員に反映）' : '更新頻度は開発者だけが変えられます';
     useSpeed(m.speed, false);
-    loadStatus(); loadLog(); loadChat();
+    if (m.viewer) setSide('log');
+    loadStatus(); loadLog();
+    if (!m.viewer) loadChat();
     startTimer();
   }
   function tick() {
     loadStatus();
-    loadChat();
+    if (!me || !me.viewer) loadChat();
     if (side === 'log' && !logQ) refreshLog();
   }
   function useSpeed(v, restart) {
@@ -172,9 +180,12 @@
     speed = v;
     if (restart) startTimer();
   }
+  var aliveTimer = 0;
   function startTimer() {
     clearInterval(timer);
+    clearInterval(aliveTimer);
     timer = setInterval(function () { if (!document.hidden) tick(); }, SPEEDS[speed]);
+    if (me && me.viewer) aliveTimer = setInterval(function () { if (!document.hidden && me) request('GET', '/api/sec/me').catch(function () {}); }, 2000);
   }
 
   /* ------------------------------------------------------------ status --- */

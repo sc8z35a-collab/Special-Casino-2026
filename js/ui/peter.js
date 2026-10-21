@@ -63,7 +63,7 @@
     box.hidden = false;
     var owed = debt ? debt.owed : null;
     $('#dm-debt-amt').textContent = owed === null ? '-' : owed > 0 ? '$' + U.fmt(owed) : 'なし';
-    // he lends 累計1100万円 at most, ever (paying back does not bring it back)
+    // he lends 累計250万円 at most, ever (paying back does not bring it back)
     var max = debt ? debt.max : BR.CONFIG.lender.max;
     $('#dm-debt-cap').textContent = '累計' + yen(max) + 'まで' + (debt ? '（あと' + yen(debt.available) + '）' : '');
     $('#dm-repay').disabled = !(owed > 0) || busy;
@@ -75,12 +75,15 @@
     var bubble = el('div', 'bubble');
     bubble.appendChild(el('div', 'offer-text', m.text));
     var row = el('div', 'offer-acts');
-    var again = el('button', 'offer-voice');
-    again.type = 'button';
-    again.setAttribute('aria-label', 'もう一度聞く');
-    again.appendChild(K.icon('speaker'));
-    again.addEventListener('click', function () { sfx('click'); play(m.amount); });
-    row.appendChild(again);
+    // (his recorded voice only while it says these amounts: BR.CONFIG.lender.voice)
+    if (BR.CONFIG.lender.voice !== false) {
+      var again = el('button', 'offer-voice');
+      again.type = 'button';
+      again.setAttribute('aria-label', 'もう一度聞く');
+      again.appendChild(K.icon('speaker'));
+      again.addEventListener('click', function () { sfx('click'); play(m.amount); });
+      row.appendChild(again);
+    }
     var open = !!debt && debt.offer === m.amount;
     var take = el('button', 'act-btn gold offer-take', open ? '借りる（' + yen(offerAmount(m.amount)) + '）' : debt ? 'この話は終わりました' : '…');
     take.type = 'button';
@@ -155,7 +158,7 @@
     (list || []).forEach(function (m) { if (m.kind === 'offer') last = m; });
     if (last && heard.indexOf(last.id) < 0) {
       markVoiced(last.id);
-      play(last.amount);
+      if (BR.CONFIG.lender.voice !== false) play(last.amount);
     }
   }
 

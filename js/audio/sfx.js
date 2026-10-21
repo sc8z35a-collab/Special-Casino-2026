@@ -10,9 +10,27 @@
   var AC = window.AudioContext || window.webkitAudioContext;
   var ctx = null, master = null, comp = null, verb = null, verbIn = null;
   var muted = false, unlocked = false;
-  // during a voice call phones play everything louder: the game's own sounds step back
-  var ducked = false, DUCK = 0.3;
-  function masterLevel() { return muted ? 0 : ducked ? 0.8 * DUCK : 0.8; }
+  // during a voice call phones play everything louder: the game's own sounds
+  // step back, to the 効果音 volume set in the call bar (30 % at first, kept on this phone)
+  var ducked = false, CALL_SFX = 'blockbuster-reels/call-sfx';
+  var callSfx = (function () {
+    try { var v = localStorage.getItem(CALL_SFX); return v === null || !isFinite(Number(v)) ? 30 : Math.max(0, Math.min(100, Number(v))); } catch (e) { return 30; }
+  })();
+  function duckBy() { return callSfx / 100; }
+  function masterLevel() { return muted ? 0 : ducked ? 0.8 * duckBy() : 0.8; }
+  // the effects (and the title music) to where they should be now, smoothly
+  function level() {
+    if (!ctx || !master) return;
+    var t = ctx.currentTime;
+    master.gain.cancelScheduledValues(t);
+    master.gain.setValueAtTime(master.gain.value, t);
+    master.gain.linearRampToValueAtTime(masterLevel(), t + 0.35);
+    if (music.gain) {
+      music.gain.gain.cancelScheduledValues(t);
+      music.gain.gain.setValueAtTime(music.gain.gain.value, t);
+      music.gain.gain.linearRampToValueAtTime(ducked ? MUSIC_LEVEL * duckBy() : MUSIC_LEVEL, t + 0.35);
+    }
+  }
   var noiseBuf = null;
   var reelLoop = null;
   var feverOn = false;   // FEVER (js/render/combo.js): the reels run faster
@@ -687,16 +705,15 @@
     duck: function (on) {
       if (ducked === !!on) return;
       ducked = !!on;
-      if (!ctx || !master) return;
-      var t = ctx.currentTime;
-      master.gain.cancelScheduledValues(t);
-      master.gain.setValueAtTime(master.gain.value, t);
-      master.gain.linearRampToValueAtTime(masterLevel(), t + 0.35);
-      if (music.gain) {
-        music.gain.gain.cancelScheduledValues(t);
-        music.gain.gain.setValueAtTime(music.gain.gain.value, t);
-        music.gain.gain.linearRampToValueAtTime(ducked ? MUSIC_LEVEL * DUCK : MUSIC_LEVEL, t + 0.35);
-      }
+      level();
+    },
+    // the 効果音 volume while a call is on (0..100; none given: what it is now)
+    callLevel: function (v) {
+      if (v === undefined) return callSfx;
+      callSfx = Math.round(Math.max(0, Math.min(100, Number(v) || 0)));
+      try { localStorage.setItem(CALL_SFX, String(callSfx)); } catch (e) { /* this time only */ }
+      if (ducked) level();
+      return callSfx;
     },
     suspend: function () { if (ctx && ctx.state === 'running') ctx.suspend(); },
     resume: function () { if (ctx && ctx.state === 'suspended' && !muted) ctx.resume().then(musicStart, function () {}); },

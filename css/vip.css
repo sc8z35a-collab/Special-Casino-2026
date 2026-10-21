@@ -203,3 +203,36 @@
 .car-deal.can-claim .pr-state { background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; }
 .car-deal button.xfer-card { font: inherit; color: inherit; }
 .car-deal button.xfer-card:active { transform: scale(.97); }
+
+/* ------------------------------------------------------------ VIP: the free trial, まとめ買い --- */
+.vp-left { overflow-y: auto; padding-right: 8px; }
+.vp-left > * { flex: none; }
+.vp-trial { display: flex; align-items: center; gap: 18px; padding: 16px 20px; border-radius: 10px; background: linear-gradient(120deg, rgba(122, 215, 255, .22), rgba(167, 123, 255, .26) 40%, rgba(255, 111, 177, .26) 75%, rgba(255, 211, 106, .22)); box-shadow: inset 0 0 0 2px rgba(214, 180, 255, .6); }
+.vp-trial[hidden] { display: none; }
+.vp-trial-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.vp-trial-text b { font-size: 25px; font-weight: 900; color: #fff; }
+.vp-trial-text small { font-size: 18px; font-weight: 700; line-height: 1.35; color: #e9ddf5; }
+.vp-trial-go { flex: none; height: 64px; padding: 0 26px; border-radius: 12px; background: linear-gradient(180deg, #fff3b0, #f2c94a 45%, #c8901c); color: #3a2600; font-size: 24px; font-weight: 900; box-shadow: 0 3px 0 #7a5208, inset 0 0 0 1.5px rgba(255, 255, 255, .6); }
+.vp-trial-go[hidden] { display: none; }
+.vp-trial-go:disabled { filter: grayscale(.6) brightness(.8); }
+.vp-trial.on .vp-trial-text b { font-family: var(--f-num); }
+.vp-packs { padding: 14px 18px 18px; border-radius: 10px; background: linear-gradient(180deg, rgba(120, 10, 30, .95), rgba(50, 4, 12, .95)); box-shadow: inset 0 0 0 2px rgba(255, 98, 98, .6), 0 0 18px rgba(255, 60, 60, .25); }
+.vp-packs[hidden] { display: none; }
+.vp-packs-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.vp-packs-head b { padding: 4px 14px; border-radius: 6px; background: linear-gradient(180deg, #ff5a5a, #c9102c); color: #fff; font-size: 22px; font-weight: 900; letter-spacing: 1px; box-shadow: 0 2px 0 #6e0414; animation: vpSale 1.4s ease-in-out infinite; }
+.vp-packs-head span { font-size: 19px; font-weight: 700; color: #f3d7da; }
+@keyframes vpSale { 50% { transform: scale(1.06); } }
+.vp-packs-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.vp-pack { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 26px 6px 10px; border-radius: 10px; background: rgba(0, 0, 0, .35); box-shadow: inset 0 0 0 1.6px rgba(248, 207, 44, .5); color: #fff; }
+.vp-pack:disabled { opacity: .55; }
+.vp-pack .vp-pack-deal { position: absolute; left: 50%; top: -10px; transform: translateX(-50%); padding: 3px 10px; border-radius: 999px; background: #ffe27a; color: #6e0414; font: 900 18px/1.2 var(--f-num); white-space: nowrap; box-shadow: 0 2px 6px rgba(0, 0, 0, .4); }
+.vp-pack .vp-pack-days { font: 900 34px/1 var(--f-num); }
+.vp-pack .vp-pack-days small { font-size: 20px; margin-left: 2px; }
+.vp-pack .vp-pack-bonus { font-size: 19px; font-weight: 900; color: #7dffa8; }
+.vp-pack .vp-pack-price { display: flex; align-items: center; gap: 4px; margin-top: 4px; font: 800 20px var(--f-num); color: #eadfc0; }
+.vp-pack .vp-pack-price .ic { width: 26px; height: 26px; }
+.vp-pack.best { box-shadow: inset 0 0 0 2.4px #ffe27a, 0 0 16px rgba(255, 226, 122, .45); }
+.vp-rule { margin: 0; font-size: 17px; font-weight: 700; color: #b3a7aa; }
+.vp-state .vp-clock { font-family: var(--f-num); }
+.vp-state.trial { background: rgba(167, 123, 255, .28); box-shadow: inset 0 0 0 1.6px rgba(214, 180, 255, .7); color: #f1e4ff; }
+.vp-pack.short .vp-pack-price { color: #ff8f8f; }

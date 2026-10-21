@@ -209,6 +209,8 @@
     carOfferBuy: function (id) { return post('/api/cars/offer/buy', { id: id }); },
     carSoldClaim: function (id) { return post('/api/cars/sold/claim', { id: id }); },
     vipExtend: function (days) { return post('/api/vip/extend', { days: days }); },
+    vipPack: function (days) { return post('/api/vip/extend', { pack: days }); },
+    vipTrial: function () { return post('/api/vip/trial'); },
 
     /* Shop, 所有 and the お守り加護 */
     items: function () { return get('/api/items'); },
