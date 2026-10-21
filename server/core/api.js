@@ -3640,11 +3640,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // developer's way back in
   const WHILE_STOPPED = new Set(['POST /api/ops/login', 'GET /api/ops/me', 'GET /api/emergency', 'POST /api/emergency/release']);
   // what still comes in during a lockdown: the security base (/sec/) for the
-  // operators, the operator login they reach it with, and the developer's
-  // emergency page. Everything else — players, the operator site, the
-  // developer's own tools — is shut.
+  // operators, the operator login they reach it with (and the logout that
+  // ends it, so 出る really signs out), and the developer's emergency page.
+  // Everything else — players, the operator site, the developer's own tools —
+  // is shut.
   const WHILE_LOCKED = new Set([
-    'POST /api/ops/login', 'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify',
+    'POST /api/ops/login', 'POST /api/logout', 'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify',
     'GET /api/sec/messages', 'POST /api/sec/messages', 'POST /api/sec/lockdown', 'POST /api/sec/release',
     'GET /api/emergency', 'POST /api/emergency/release'
   ]);

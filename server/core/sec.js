@@ -17,7 +17,10 @@ const TEXT_MAX = 4000;
 // a site (shared with the operator site).
 export function createSec({ q, getUser, ops, emergency, shield, opsLog, health, secret, isDeveloper, live, seen }) {
   const KEY = keyFrom(secret, 'sec-channel');
-  const needOperator = (u) => { ops.need(u); return u; };
+  // when each operator was last here, on the base itself (`seen` counts the
+  // operator site too, so it cannot tell the two apart)
+  const here = new Map();
+  const needOperator = (u) => { ops.need(u); here.set(u.id, Date.now()); return u; };
 
   function channelMessage(r) {
     return { id: r.id, from: { id: r.from_id, name: r.from_name }, text: openText(KEY, r.body) || '（読み取れません）', at: r.created_at };
@@ -29,7 +32,10 @@ export function createSec({ q, getUser, ops, emergency, shield, opsLog, health, 
     return ops.operatorList().filter((o) => o.operator && o.id).map((o) => {
       const p = getUser(o.id);
       const at = (seen && seen.get(o.id)) || 0;
-      return { id: o.id, name: o.name, avatar: o.avatar, developer: o.developer, site: now - at < 40000, game: live.isOnline(o.id), seenAt: Math.max(at, p ? p.last_seen : 0) };
+      return {
+        id: o.id, name: o.name, avatar: o.avatar, developer: o.developer,
+        base: now - (here.get(o.id) || 0) < 40000, site: now - at < 40000, game: live.isOnline(o.id), seenAt: Math.max(at, p ? p.last_seen : 0)
+      };
     });
   }
 
