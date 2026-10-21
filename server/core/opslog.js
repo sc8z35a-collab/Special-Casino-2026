@@ -51,8 +51,9 @@ export function jst(ms) {
 
 const fields = (r) => JSON.stringify([r.id, r.at, r.actor_id, r.actor_name, r.action, r.target_id, r.target_name, r.summary, r.detail, r.prev_hash]);
 
-// anchor: { put(row), get() -> Promise({ id, hash, at } | null) } from the host (or none)
-export function createOpsLog({ q, anchor = null }) {
+// anchor: { put(row), get() -> Promise({ id, hash, at } | null) } from the host (or none);
+// onAdd(row): told of each new entry once it is written (the Discord notices)
+export function createOpsLog({ q, anchor = null, onAdd = null }) {
   // who did it from where: the request as far as it is known
   function requestInfo(req) {
     if (!req) return {};
@@ -78,6 +79,9 @@ export function createOpsLog({ q, anchor = null }) {
     };
     row.hash = sha256(fields(row));
     insert(row);
+    if (onAdd) {
+      try { onAdd(row); } catch (e) { console.error('ops log notice failed', e); }
+    }
     return row;
   }
   function insert(r) {

@@ -1906,7 +1906,23 @@
     srvDb(r);
     srvVault(r);
     srvCloudflare(r);
+    srvDiscord(r);
     srvMachine(r);
+  }
+  // the developer's Discord notices: on or not, and (the developer) a test
+  function srvDiscord(r) {
+    var d = r.discord || {}, card = $('#srv-discord');
+    srvCard(card, 'Discord 通知', [['状態', d.on ? 'オン' : '未設定']], d.on
+      ? '緊急停止・ロックダウン・攻撃元の自動ブロック・チャット停止・通報・報告／意見案・課金・開発者コードの間違い・運営権・バックアップの失敗・新しい版の反映を、Discord のチャンネルに送ります。'
+      : 'Discord のチャンネルの Webhook の URL を、シークレット DISCORD_WEBHOOK_URL として入れるとオンになります（README「Discord に通知する」）。');
+    if (!d.on || !state.developer) return;
+    var b = el('button', 'btn small', 'テスト送信');
+    b.type = 'button';
+    b.addEventListener('click', function () {
+      b.disabled = true;
+      request('POST', '/api/ops/discord/test', {}).then(function () { toast('Discord に送りました'); }, fail).then(function () { b.disabled = false; });
+    });
+    card.appendChild(b);
   }
   function svg(tag, attrs) {
     var n = document.createElementNS('http://www.w3.org/2000/svg', tag);

@@ -46,6 +46,7 @@ import { createTeam } from './team.js';
 import { createStats } from './stats.js';
 import { createVault } from './vault.js';
 import { REASONS as FILTERED } from './attach.js';
+import { createDiscord } from './discord.js';
 
 const PAGE = 50;
 const CURRENCIES = ['tokens', 'dollars'];
@@ -359,14 +360,28 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const official = createOfficial({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel,
     onDelivered: (userId, dto) => phone(userId, dmNote(dto)) });
   official.id();
+  // notices for the developer in a Discord channel (server/core/discord.js), from the log's entries
+  const discord = createDiscord({ url: config.discordWebhook, defer, jst, publicUrl: config.publicUrl });
+  // the address players use, for the link in the notices: only where the host
+  // vouches for it (Cloudflare routes by it; elsewhere PUBLIC_URL)
+  const noteHost = (req) => { if (host && host.name === 'cloudflare') discord.host(req.header('host')); };
   // (the host keeps the newest entry's hash where SQL cannot reach: server/core/opslog.js)
-  const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null });
+  const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => discord.log(row) });
   // a new DEV going live is the first entry of its own
   {
     const seen = q("SELECT value FROM meta WHERE key = 'ops_log_release'").get();
     if (!seen || Number(seen.value) !== RELEASE) {
       opsLog.add({ action: 'release', summary: `DEV${RELEASE} を本番に反映（サーバーが起動）`, detail: { release: RELEASE, previous: seen ? Number(seen.value) : null, host: config.host || '' } });
       q("INSERT INTO meta (key, value) VALUES ('ops_log_release', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(RELEASE));
+    }
+  }
+  // every new version of the server going live (the host says which), once
+  // each, to Discord: the first request after a deploy wakes the server
+  if (host && host.version && host.version.id) {
+    const was = q("SELECT value FROM meta WHERE key = 'live_version'").get();
+    if (!was || was.value !== host.version.id) {
+      q("INSERT INTO meta (key, value) VALUES ('live_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(host.version.id);
+      if (was) discord.say('🚀', `本番に新しい版を反映しました（DEV${RELEASE}・バージョン ${host.version.id.slice(0, 8)}）`);
     }
   }
 
@@ -3399,7 +3414,20 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the operator site's サーバー tab (every operator)
   routes['GET /api/ops/server'] = (req, u) => {
     ops.need(u);
-    return stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() });
+    return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on } };
+  };
+  // the developer tries the Discord notices: one goes out at once
+  routes['POST /api/ops/discord/test'] = async (req, u) => {
+    ops.need(u);
+    if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
+    await req.json();
+    if (!discord.on) throw new ApiError(409, 'not_set', 'Discord の Webhook（DISCORD_WEBHOOK_URL）が設定されていないか、形が正しくありません');
+    noteHost(req);
+    discord.say('🔔', `テスト通知です（運営サイトから ${u.name} が送信）`);
+    const ok = await discord.flush();
+    opsLog.add({ actor: u, action: 'discord_test', req, summary: `${u.name}が Discord 通知をテスト送信（${ok ? '届いた' : '送れなかった'}）` });
+    if (!ok) throw new ApiError(502, 'discord_failed', 'Discord に送れませんでした。Webhook の URL が正しいか、Discord 側で消されていないか確かめてください');
+    return { ok: true };
   };
   // the operator site's セキュリティ tab (every operator): the shield and the
   // emergency/lockdown state; and the operators' actions on attacks that did
@@ -3595,6 +3623,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
 
   async function handle(req) {
+    // (the address players use: the link in the Discord notices)
+    noteHost(req);
     // (a minute over: the emergency stop looks at it before this answer)
     emergency.tick();
     const out = await answer(req);

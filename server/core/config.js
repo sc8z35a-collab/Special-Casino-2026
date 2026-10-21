@@ -107,6 +107,9 @@ export function configFrom(env = {}, overrides = {}) {
     cfApiToken: str(env, 'CF_API_TOKEN'),
     cfScript: str(env, 'CF_SCRIPT_NAME', 'blockbuster-reels'),
     cfBucket: str(env, 'CF_BUCKET_NAME', 'blockbuster-reels-vault'),
+    // notices for the developer in a Discord channel (server/core/discord.js):
+    // the channel's webhook address (a secret)
+    discordWebhook: str(env, 'DISCORD_WEBHOOK_URL'),
     limits: {},
     ...overrides
   };
