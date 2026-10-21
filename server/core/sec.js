@@ -43,7 +43,7 @@ export function createSec({ q, getUser, ops, emergency, shield, opsLog, health, 
     'GET /api/sec/me': (req, u) => {
       needOperator(u);
       if (seen) seen.set(u.id, Date.now());
-      return { id: u.id, name: u.name, developer: isDeveloper(u), now: Date.now() };
+      return { id: u.id, name: u.name, developer: isDeveloper(u), speed: ops.speedNow(), now: Date.now() };
     },
 
     // the realtime cyber-security view of the server and of TWO STATE
@@ -52,6 +52,8 @@ export function createSec({ q, getUser, ops, emergency, shield, opsLog, health, 
       if (seen) seen.set(u.id, Date.now());
       return {
         now: Date.now(),
+        // the refresh speed the developer chose (the same as the operator site's)
+        speed: ops.speedNow(),
         emergency: emergency.info(),
         shield: shield.snapshot(),
         health: health(),

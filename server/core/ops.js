@@ -38,11 +38,20 @@ const MONEY_MAX = 10000000;
 // 送信の取り消し of the bot's words: within the hour (RULES.retract)
 const RETRACT_MS = RULES.retract.minutes * 60000;
 const fmt = (n) => Number(n).toLocaleString('en-US');
+// how often the operator site and security HOME refresh: one setting for
+// everyone, chosen by the developer only (極めて高い … 極めて遅い)
+export const SPEEDS = ['max', 'high', 'normal', 'slow', 'slowest'];
+const SPEED_NAMES = { max: '極めて高い', high: '高い', normal: '通常', slow: '遅い', slowest: '極めて遅い' };
 
 export function createOps({ q, tx, live, config, getUser, mini, openCode, setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub, official, opsLog, balance,
   banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode = createDevCode({ q, opsLog }), seen = new Map() }) {
   const operators = new Set(config.operators.map(nameKey));
   const accessRow = (key) => q('SELECT * FROM ops_access WHERE name_key = ?').get(key);
+  // the refresh speed the developer chose (通常 until then)
+  function speedNow() {
+    const r = q("SELECT value FROM meta WHERE key = 'ops_speed'").get();
+    return r && SPEEDS.includes(r.value) ? r.value : 'normal';
+  }
   // an operator: the developer always; otherwise as given or taken away on
   // the site, or as named in config.operators
   function isOperator(u) {
@@ -192,7 +201,22 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         opened.set(u.id, Date.now());
         opsLog.add({ actor: u, action: 'open', summary: `${u.name}が運営サイトを開いた`, req });
       }
-      return { name: u.name, operators: config.operators, developer: isDeveloper(u), devCodeSet: devCode.isSet(), now: Date.now() };
+      return { name: u.name, operators: config.operators, developer: isDeveloper(u), devCodeSet: devCode.isSet(), speed: speedNow(), now: Date.now() };
+    },
+
+    // the refresh speed of the operator site and security HOME (the developer only)
+    'POST /api/ops/speed': async (req, u) => {
+      need(u);
+      if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', '更新頻度は開発者だけが変えられます');
+      const body = await req.json();
+      const v = String(body.speed || '');
+      if (!SPEEDS.includes(v)) throw new ApiError(400, 'bad_speed', '更新頻度を選んでください');
+      const was = speedNow();
+      if (v !== was) {
+        q("INSERT INTO meta (key, value) VALUES ('ops_speed', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(v);
+        opsLog.add({ actor: u, action: 'ops_speed', req, summary: `${u.name}が運営サイトの更新頻度を「${SPEED_NAMES[was]}」から「${SPEED_NAMES[v]}」に変更`, detail: { from: was, to: v } });
+      }
+      return { speed: v };
     },
 
     // everyone but the archive (a name to look for: part of it), the newest players first
@@ -212,6 +236,8 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         reports: q("SELECT COUNT(*) AS n FROM reports WHERE status = 'open'").get().n,
         detections: q('SELECT COUNT(*) AS n FROM detections WHERE reviewed_at = 0').get().n,
         feedback: q("SELECT COUNT(*) AS n FROM feedback WHERE handled_at = 0 AND kind != ''").get().n,
+        // (the developer's choice reaches every operator's site)
+        speed: speedNow(),
         now: Date.now()
       };
     },
@@ -662,5 +688,5 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     }
   }
 
-  return { routes, isOperator, need, operatorList, mini, purgeDue };
+  return { routes, isOperator, need, operatorList, mini, speedNow, purgeDue };
 }
