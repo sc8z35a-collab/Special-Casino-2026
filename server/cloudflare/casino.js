@@ -174,6 +174,8 @@ export class Casino extends DurableObject {
         host: {
           // for the operator site's サーバー tab
           name: 'cloudflare', dbBytes: () => ctx.storage.sql.databaseSize, sockets: () => ctx.getWebSockets().length,
+          // which version of the Worker this is (wrangler.jsonc: version_metadata): a new one is told to Discord
+          version: env.CF_VERSION_METADATA ? { id: String(env.CF_VERSION_METADATA.id || ''), tag: String(env.CF_VERSION_METADATA.tag || '') } : null,
           // the operators' log's newest hash, in the object's own storage (SQL cannot reach it) and in Workers Logs
           anchor: {
             put: (row) => { ctx.storage.put('ops_log_anchor', row); console.log(`[ops-log] #${row.id} ${row.hash}`); },
