@@ -37,7 +37,8 @@
    - 緊急停止: when the server stops itself (far more use than usual), every
      page shows it; the developer sees why and starts it again with the code.
    The login waits after two wrong tries (5 minutes, then 10, 20 …).
-   The site refreshes at the speed chosen at the top (kept on this browser).
+   The site refreshes at the speed shown at the top: one setting for every
+   operator, which only the developer changes.
    Passwords are kept only as one-way hashes, so they can be set, never shown.
    On a phone the site goes full screen and landscape at the first tap; held
    upright where that is not possible, the whole site is turned sideways. */
@@ -45,10 +46,9 @@
   'use strict';
 
   var KEY = 'two-state-ops/token';
-  // how often the site refreshes, chosen at the top: [the lists, the live views
-  // (サーバー, 運営チャット, a chat with a player)] in ms
-  var SPEEDS = { max: [3000, 1000], high: [5000, 2000], normal: [15000, 5000], slow: [60000, 15000] };
-  var SPEED_KEY = 'two-state-ops/speed';
+  // how often the site refreshes (the developer's choice, from the server):
+  // [the lists, the live views (サーバー, 運営チャット, a chat with a player)] in ms
+  var SPEEDS = { max: [3000, 1000], high: [5000, 2000], normal: [15000, 5000], slow: [60000, 15000], slowest: [300000, 60000] };
   var BAN = {
     suspend: { name: 'アクセス禁止', long: 'アクセス禁止（1週間）', cls: 'k-suspend' },
     ban: { name: 'BAN', long: 'BAN（30日）', cls: 'k-ban' },
@@ -91,8 +91,6 @@
   var speed = 'normal';
 
   try { token = localStorage.getItem(KEY); } catch (e) { token = null; }
-  try { speed = localStorage.getItem(SPEED_KEY) || 'normal'; } catch (e) { /* this tab only */ }
-  if (!SPEEDS[speed]) speed = 'normal';
 
   /* ------------------------------------------------------------ the server --- */
   function request(method, path, body, headers) {
@@ -285,6 +283,10 @@
     state.name = me.name;
     state.developer = !!me.developer;
     state.devCodeSet = !!me.devCodeSet;
+    // the refresh speed: everyone sees it, only the developer changes it
+    $('#speed').disabled = !state.developer;
+    $('#speed').title = state.developer ? '運営サイトの更新頻度（運営者全員に反映）' : '更新頻度は開発者だけが変えられます';
+    useSpeed(me.speed, false);
     // 課金 and 保管庫: the developer's own
     $('#tab-pay').hidden = !state.developer;
     $('#tab-vault').hidden = !state.developer;
@@ -316,12 +318,22 @@
     }, SPEEDS[speed][1]);
     if (state.chat) chatEvery();
   }
-  function setSpeed(v) {
-    if (!SPEEDS[v]) return;
+  // the speed from the server (`restart`: the timers already run)
+  function useSpeed(v, restart) {
+    if (!SPEEDS[v]) v = 'normal';
+    $('#speed').value = v;
+    if (v === speed) return;
     speed = v;
-    try { localStorage.setItem(SPEED_KEY, v); } catch (e) { /* this tab only */ }
-    if (!$('#app').hidden) startTimers();
-    toast('更新頻度：' + $('#speed').selectedOptions[0].textContent + '（一覧 ' + SPEEDS[v][0] / 1000 + '秒・サーバーとチャット ' + SPEEDS[v][1] / 1000 + '秒ごと）');
+    if (restart && !$('#app').hidden) startTimers();
+  }
+  // the developer picks one: every operator's site follows
+  function setSpeed(v) {
+    if (!SPEEDS[v] || !state.developer) { $('#speed').value = speed; return; }
+    request('POST', '/api/ops/speed', { speed: v }).then(function (r) {
+      useSpeed(r.speed, true);
+      var s = SPEEDS[speed];
+      toast('更新頻度：' + $('#speed').selectedOptions[0].textContent + '（一覧 ' + (s[0] >= 60000 ? s[0] / 60000 + '分' : s[0] / 1000 + '秒') + '・サーバーとチャット ' + s[1] / 1000 + '秒ごと。運営者全員に反映）');
+    }, function (err) { $('#speed').value = speed; fail(err); });
   }
   function setView(v) {
     state.view = v;
@@ -353,6 +365,7 @@
     return request('GET', '/api/ops/players' + (state.q ? '?q=' + encodeURIComponent(state.q) : '')).then(function (r) {
       state.players = r.players || [];
       state.total = r.total || 0;
+      if (r.speed) useSpeed(r.speed, true);
       state.now = r.now || Date.now();
       state.counts = { waiting: r.waiting || 0, reports: r.reports || 0, detections: r.detections || 0, feedback: r.feedback || 0 };
       setCount('reports', state.counts.reports);
@@ -3375,7 +3388,6 @@
     });
     $('#team-form').addEventListener('submit', sendTeam);
     $('#team-text').addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendTeam(e); });
-    $('#speed').value = speed;
     $('#speed').addEventListener('change', function () { setSpeed($('#speed').value); });
 
     $('#chat-close').addEventListener('click', closeChat);

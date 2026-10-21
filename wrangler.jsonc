@@ -19,6 +19,8 @@
   "durable_objects": {
     "bindings": [{ "name": "CASINO", "class_name": "Casino" }]
   },
+  // the developer's vault keeps its files here (50GB; server/core/vault.js)
+  "r2_buckets": [{ "binding": "VAULT", "bucket_name": "blockbuster-reels-vault" }],
   // NEVER edit or remove this entry: every player's account and money is
   // stored in the "Casino" object it creates. New code can be deployed any
   // number of times; the data stays.
