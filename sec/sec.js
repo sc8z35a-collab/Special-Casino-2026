@@ -13,10 +13,10 @@
 
   var TOKEN_KEY = 'two-state-sec/token';
   var DEVICE_KEY = 'two-state-sec/device';
-  var SPEED_KEY = 'two-state-sec/speed';
   // the newest channel message each operator has seen here (+ their id)
   var SEEN_KEY = 'two-state-sec/seen/';
-  var SPEEDS = { max: 1000, high: 2000, normal: 5000, slow: 15000 };
+  // how often it refreshes: the developer's one choice for every operator (server/core/ops.js)
+  var SPEEDS = { max: 1000, high: 2000, normal: 5000, slow: 15000, slowest: 60000 };
   var PAGE = 200;   // log entries per answer (server/core/opslog.js)
   var ACTIONS = {
     release: 'DEV更新', open: 'サイトを開いた', emergency_stop: '緊急停止', emergency_release: '緊急停止の解除',
@@ -40,8 +40,6 @@
   var locked = false, closeDialog = null;
 
   try { token = localStorage.getItem(TOKEN_KEY); } catch (e) { token = null; }
-  try { speed = localStorage.getItem(SPEED_KEY) || 'normal'; } catch (e) { /* this tab */ }
-  if (!SPEEDS[speed]) speed = 'normal';
 
   /* ------------------------------------------------------------ server --- */
   function device() {
@@ -162,7 +160,9 @@
     $('#login').hidden = true; $('#app').hidden = false;
     $('#op-name').textContent = (m.developer ? '開発者: ' : m.viewer ? '閲覧者: ' : '運営者: ') + m.name;
     document.body.classList.toggle('role-viewer', !!m.viewer);
-    $('#speed').value = speed;
+    $('#speed').disabled = !m.developer;
+    $('#speed').title = m.developer ? '更新頻度（運営者全員に反映）' : '更新頻度は開発者だけが変えられます';
+    useSpeed(m.speed, false);
     if (m.viewer) setSide('log');
     loadStatus(); loadLog();
     if (!m.viewer) loadChat();
@@ -172,6 +172,13 @@
     loadStatus();
     if (!me || !me.viewer) loadChat();
     if (side === 'log' && !logQ) refreshLog();
+  }
+  function useSpeed(v, restart) {
+    if (!SPEEDS[v]) v = 'normal';
+    $('#speed').value = v;
+    if (v === speed) return;
+    speed = v;
+    if (restart) startTimer();
   }
   var aliveTimer = 0;
   function startTimer() {
@@ -200,6 +207,7 @@
     return request('GET', '/api/sec/status').then(function (r) {
       if (s !== session) return;
       statusErr = ''; $('.status-col').classList.remove('stale');
+      if (r.speed) useSpeed(r.speed, true);
       renderStatus(r);
     }, function (err) {
       if (s !== session) return;
@@ -522,7 +530,12 @@
   function init() {
     $('#login-form').addEventListener('submit', onLogin);
     $('#logout').addEventListener('click', logout);
-    $('#speed').addEventListener('change', function () { speed = $('#speed').value; if (!SPEEDS[speed]) speed = 'normal'; try { localStorage.setItem(SPEED_KEY, speed); } catch (e) { /* this tab */ } startTimer(); });
+    // the developer only (the server says no to anyone else)
+    $('#speed').addEventListener('change', function () {
+      var v = $('#speed').value;
+      request('POST', '/api/ops/speed', { speed: v }).then(function (r) { useSpeed(r.speed, true); toast('更新頻度を変えました（運営者全員に反映）'); },
+        function (err) { $('#speed').value = speed; fail(err); });
+    });
     $('#btn-lockdown').addEventListener('click', askLockdown);
     $('#btn-verify').addEventListener('click', verify);
     $('#lock-release').addEventListener('click', releaseLockdown);
