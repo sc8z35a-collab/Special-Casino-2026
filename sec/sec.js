@@ -14,7 +14,10 @@
   var TOKEN_KEY = 'two-state-sec/token';
   var DEVICE_KEY = 'two-state-sec/device';
   var SPEED_KEY = 'two-state-sec/speed';
+  // the newest channel message each operator has seen here (+ their id)
+  var SEEN_KEY = 'two-state-sec/seen/';
   var SPEEDS = { max: 1000, high: 2000, normal: 5000, slow: 15000 };
+  var PAGE = 200;   // log entries per answer (server/core/opslog.js)
   var ACTIONS = {
     release: 'DEV更新', open: 'サイトを開いた', emergency_stop: '緊急停止', emergency_release: '緊急停止の解除',
     lockdown: 'ロックダウン', lockdown_release: 'ロックダウンの解除', shield_block: '手動ブロック', shield_auto_block: '自動ブロック',
@@ -28,11 +31,13 @@
   function actionName(a) { return ACTIONS[a] || a; }
 
   var $ = function (s) { return document.querySelector(s); };
-  var token = null, me = null, speed = 'normal';
-  var timer = 0, lockEnd = 0, lockTimer = 0;
-  var side = 'log', log = [], logQ = '', logKind = '', logDone = false, logTimer = 0;
-  var lastChatId = 0, lastSeenChat = 0, chatOpen = false;
-  var locked = false;
+  var token = null, me = null, meId = 0, speed = 'normal';
+  // each sign-in and sign-out starts a new session: answers to an older one are dropped
+  var session = 0;
+  var timer = 0, lockEnd = 0, lockTimer = 0, statusErr = '';
+  var side = 'log', log = [], logQ = '', logKind = '', logDone = false, logTimer = 0, logGen = 0, logMoreBusy = false;
+  var lastChatId = 0, seenChat = 0, unread = 0, chatLoaded = false, chatOpen = false, sending = false;
+  var locked = false, closeDialog = null;
 
   try { token = localStorage.getItem(TOKEN_KEY); } catch (e) { token = null; }
   try { speed = localStorage.getItem(SPEED_KEY) || 'normal'; } catch (e) { /* this tab */ }
@@ -54,6 +59,7 @@
     var h = { 'Content-Type': 'application/json' };
     if (token) h.Authorization = 'Bearer ' + token;
     if (headers) Object.keys(headers).forEach(function (k) { h[k] = headers[k]; });
+    var s = session;
     return fetch(path, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' })
       .catch(function () { throw { status: 0, message: '通信できませんでした' }; })
       .then(function (res) {
@@ -61,12 +67,24 @@
           if (res.ok) return j;
           var e = j.error || {};
           var err = { status: res.status, code: e.code || '', message: e.message || ('エラー（' + res.status + '）'), until: e.until || 0 };
-          if (res.status === 401 || e.code === 'not_operator') signedOut(err.message);
+          // signed out on the server: only while signed in, and in this same
+          // session (not a wrong password, nor a late answer to the last one)
+          if ((res.status === 401 || e.code === 'not_operator') && token && s === session) signedOut(err.message);
           throw err;
         });
       });
   }
   function setToken(t) { token = t || null; try { if (token) localStorage.setItem(TOKEN_KEY, token); else localStorage.removeItem(TOKEN_KEY); } catch (e) { /* this tab */ } }
+  // one request of a kind at a time, so a slow server never piles them up nor
+  // answers them out of order; asked for again meanwhile, it runs once more after
+  function single(fn) {
+    var busy = false, again = false;
+    return function run() {
+      if (busy) { again = true; return; }
+      busy = true; again = false;
+      Promise.resolve().then(fn).then(null, function () {}).then(function () { busy = false; if (again && token) run(); });
+    };
+  }
 
   /* ------------------------------------------------------------ helpers --- */
   function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined && text !== null) n.textContent = text; return n; }
@@ -85,7 +103,19 @@
     clearInterval(timer);
     setTimeout(function () { $('#login-name').focus(); }, 50);
   }
-  function signedOut(message) { setToken(null); me = null; showLogin(message); }
+  // signed out: what this operator saw goes with them, so the next one starts clean
+  function signedOut(message) {
+    setToken(null); me = null; meId = 0; session++;
+    if (closeDialog) closeDialog(null);
+    log = []; logGen++; $('#log-list').textContent = '';
+    lastChatId = 0; unread = 0; chatLoaded = false; $('#chat-list').textContent = ''; markChatDot();
+    $('#verify-line').className = 'verify'; $('#verify-line').textContent = '';
+    showLogin(message);
+  }
+  // the server forgets a token (best effort)
+  function revoke(t) {
+    if (t) fetch('/api/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: '{}' }).catch(function () {});
+  }
   function waitUntil(until) {
     lockEnd = until; clearInterval(lockTimer);
     var go = $('#login-go');
@@ -103,10 +133,11 @@
     var name = $('#login-name').value.trim(), pass = $('#login-pass').value;
     if (!name || !pass) { $('#login-error').textContent = '名前とパスワードを入力してください'; return; }
     var go = $('#login-go'); go.disabled = true; $('#login-error').textContent = '';
+    setToken(null);   // (one left from before is of no use: a new one comes)
     request('POST', '/api/ops/login', { name: name, password: pass }, { 'X-Ops-Device': device() }).then(function (r) {
       setToken(r.token);
       return request('GET', '/api/sec/me').then(function (m) { $('#login-pass').value = ''; start(m); }, function (err) {
-        fetch('/api/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + r.token, 'Content-Type': 'application/json' }, body: '{}' }).catch(function () {});
+        revoke(r.token);
         setToken(null); throw err;
       });
     }).catch(function (err) {
@@ -115,29 +146,28 @@
     }).then(function () { if (Date.now() >= lockEnd) go.disabled = false; });
   }
   function logout() {
-    var t = token; setToken(null); me = null;
-    if (t) fetch('/api/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: '{}' }).catch(function () {});
-    showLogin('出ました');
+    revoke(token);
+    signedOut('出ました');
   }
 
   /* ------------------------------------------------------------ start --- */
   function start(m) {
-    me = m;
-    meId = m.id || meId;
+    me = m; meId = m.id || 0; session++;
+    seenChat = readSeen(); statusErr = '';
     $('#login').hidden = true; $('#app').hidden = false;
     $('#op-name').textContent = (m.developer ? '開発者: ' : '運営者: ') + m.name;
     $('#speed').value = speed;
-    loadStatus(); loadLog(true); loadChat();
+    loadStatus(); loadLog(); loadChat();
     startTimer();
+  }
+  function tick() {
+    loadStatus();
+    loadChat();
+    if (side === 'log' && !logQ) refreshLog();
   }
   function startTimer() {
     clearInterval(timer);
-    timer = setInterval(function () {
-      if (document.hidden) return;
-      loadStatus();
-      loadChat();
-      if (side === 'log' && !logQ) loadLog(true, true);
-    }, SPEEDS[speed]);
+    timer = setInterval(function () { if (!document.hidden) tick(); }, SPEEDS[speed]);
   }
 
   /* ------------------------------------------------------------ status --- */
@@ -154,9 +184,21 @@
     if (m.authFails >= 5) return 'watch';
     return 'safe';
   }
-  function loadStatus() {
-    return request('GET', '/api/sec/status').then(renderStatus, function (err) { if (err.status) fail(err); });
-  }
+  var loadStatus = single(function () {
+    var s = session;
+    return request('GET', '/api/sec/status').then(function (r) {
+      if (s !== session) return;
+      statusErr = ''; $('.status-col').classList.remove('stale');
+      renderStatus(r);
+    }, function (err) {
+      if (s !== session) return;
+      // what is shown is no longer live; the same trouble every tick is told once
+      $('.status-col').classList.add('stale');
+      if (err.code === 'maintenance') $('#emergency-state').textContent = err.message;
+      if (err.message !== statusErr) fail(err);
+      statusErr = err.message;
+    });
+  });
   function stat(box, label, value, cls) {
     var s = el('div', 'stat' + (cls ? ' ' + cls : ''));
     s.appendChild(el('span', '', label));
@@ -236,10 +278,11 @@
     var ops = $('#ops-now'); ops.textContent = '';
     (s.operators || []).forEach(function (o) {
       var r = el('div', 'ops-row');
-      r.appendChild(el('span', 'dot ' + (o.site ? 'site' : o.game ? 'game' : ''), ''));
+      r.appendChild(el('span', 'dot ' + (o.base || o.site ? 'site' : o.game ? 'game' : ''), ''));
       r.appendChild(el('span', '', o.name));
       if (o.developer) r.appendChild(el('span', 'dev', '開発者'));
-      r.appendChild(el('span', 'seen', o.site ? 'セキュリティ基地' : o.game ? 'ゲーム中' : ago(o.seenAt)));
+      // here, on the operator site, in the game, or when last online
+      r.appendChild(el('span', 'seen', o.base ? 'セキュリティ基地' : o.site ? '運営サイト' : o.game ? 'ゲーム中' : ago(o.seenAt)));
       ops.appendChild(r);
     });
   }
@@ -297,19 +340,63 @@
   }
 
   /* ------------------------------------------------------------ the log --- */
-  function loadLog(reset, quiet) {
-    var list = $('#log-list');
-    if (reset && !quiet) { log = []; logDone = false; list.textContent = ''; list.appendChild(el('p', 'empty', '読み込み中…')); }
-    var before = !reset && log.length ? log[log.length - 1].id : 0;
-    request('GET', '/api/sec/log?q=' + encodeURIComponent(logQ) + '&kind=' + logKind + (before ? '&before=' + before : '')).then(function (r) {
-      if (reset) { log = []; list.textContent = ''; }
-      log = log.concat(r.entries);
-      logDone = r.entries.length < 200;
+  function logUrl(before) {
+    return '/api/sec/log?q=' + encodeURIComponent(logQ) + '&kind=' + encodeURIComponent(logKind) + (before ? '&before=' + before : '');
+  }
+  // the list from the start (signing in, a search, a kind)
+  function loadLog() {
+    var gen = ++logGen, s = session, list = $('#log-list');
+    log = []; logDone = false; list.textContent = ''; list.scrollTop = 0;
+    list.appendChild(el('p', 'empty', '読み込み中…'));
+    $('#log-more').hidden = true;
+    request('GET', logUrl(0)).then(function (r) {
+      if (gen !== logGen || s !== session) return;
+      list.textContent = '';
+      log = r.entries;
       if (!log.length) list.appendChild(el('p', 'empty', '記録はありません'));
-      if (reset) r.entries.forEach(function (x) { list.appendChild(logEntry(x)); });
-      else r.entries.forEach(function (x) { list.appendChild(logEntry(x)); });
+      log.forEach(function (x) { list.appendChild(logEntry(x)); });
+      logDone = log.length < PAGE;
       $('#log-more').hidden = logDone || !!logQ;
-    }, function (err) { if (!quiet && err.status) fail(err); });
+    }, function (err) {
+      if (gen !== logGen || s !== session) return;
+      list.textContent = ''; list.appendChild(el('p', 'empty', '読み込めませんでした'));
+      if (err.status) fail(err);
+    });
+  }
+  // the newer entries on top, quietly: what is open, read further down and
+  // scrolled to stays as it is (the whole list is not built again)
+  var refreshLog = single(function () {
+    var gen = logGen, s = session;
+    return request('GET', logUrl(0)).then(function (r) {
+      if (gen !== logGen || s !== session) return;
+      var top = log.length ? log[0].id : 0;
+      var fresh = r.entries.filter(function (x) { return x.id > top; });
+      if (!fresh.length) return;
+      // a whole page came in since the last look: start over rather than leave a gap
+      if (top && fresh.length >= PAGE) { loadLog(); return; }
+      var list = $('#log-list'), at = list.scrollTop, height = list.scrollHeight;
+      var empty = list.querySelector('.empty'); if (empty) list.removeChild(empty);
+      var rows = document.createDocumentFragment();
+      fresh.forEach(function (x) { rows.appendChild(logEntry(x)); });
+      list.insertBefore(rows, list.firstChild);
+      log = fresh.concat(log);
+      if (at > 0) list.scrollTop = at + list.scrollHeight - height;
+      if (!top) { logDone = r.entries.length < PAGE; $('#log-more').hidden = logDone || !!logQ; }
+    });
+  });
+  // the older entries at the end (one page at a time, never the same twice)
+  function moreLog() {
+    if (logMoreBusy || logDone || !log.length) return;
+    var gen = logGen, s = session, btn = $('#log-more');
+    logMoreBusy = true; btn.disabled = true;
+    request('GET', logUrl(log[log.length - 1].id)).then(function (r) {
+      if (gen !== logGen || s !== session) return;
+      var list = $('#log-list');
+      r.entries.forEach(function (x) { list.appendChild(logEntry(x)); });
+      log = log.concat(r.entries);
+      logDone = r.entries.length < PAGE;
+      btn.hidden = logDone || !!logQ;
+    }, function (err) { if (err.status) fail(err); }).then(function () { logMoreBusy = false; btn.disabled = false; });
   }
   function logEntry(x) {
     var row = el('div', 'entry');
@@ -344,37 +431,52 @@
   }
 
   /* ------------------------------------------------------------ channel --- */
-  function loadChat() {
+  var loadChat = single(function () {
+    var s = session;
     return request('GET', '/api/sec/messages' + (lastChatId ? '?after=' + lastChatId : '')).then(function (r) {
-      var fresh = r.messages || [];
-      if (lastChatId && !fresh.length) return;
-      var box = $('#chat-list');
-      if (!lastChatId) box.textContent = '';
-      fresh.forEach(function (m) { box.appendChild(msgEl(m)); lastChatId = Math.max(lastChatId, m.id); });
-      if (!fresh.length && !box.children.length) box.appendChild(el('p', 'empty', 'まだメッセージはありません'));
-      if (chatOpen) { lastSeenChat = lastChatId; markChatDot(); var sc = $('#chat-scroll'); sc.scrollTop = sc.scrollHeight; }
+      if (s !== session) return;
+      var box = $('#chat-list'), sc = $('#chat-scroll');
+      // (only what is not shown yet: a message never appears twice)
+      var fresh = (r.messages || []).filter(function (m) { return m.id > lastChatId; });
+      // the first time on this browser, what is already here counts as read
+      if (!chatLoaded && !seenChat && fresh.length) { seenChat = fresh[fresh.length - 1].id; saveSeen(); }
+      chatLoaded = true;
+      if (!fresh.length) { if (!box.children.length) box.appendChild(el('p', 'empty', 'まだメッセージはありません')); return; }
+      var empty = box.querySelector('.empty'); if (empty) box.removeChild(empty);
+      // (reading further up: new ones do not pull the view down, unless mine)
+      var atEnd = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 40, mine = false;
+      fresh.forEach(function (m) {
+        box.appendChild(msgEl(m));
+        lastChatId = Math.max(lastChatId, m.id);
+        if (m.from.id === meId) mine = true;
+        else if (m.id > seenChat) unread++;
+      });
+      if (chatOpen) { markSeen(); if (atEnd || mine) sc.scrollTop = sc.scrollHeight; }
       else markChatDot();
-    }, function () {});
-  }
+    });
+  });
   function msgEl(m) {
-    var box = el('div', 'msg' + (me && m.from.id === me_id() ? ' mine' : ''));
+    var box = el('div', 'msg' + (m.from.id === meId ? ' mine' : ''));
     var who = el('div', 'who'); who.appendChild(el('span', '', m.from.name)); who.appendChild(el('span', '', stamp(m.at))); box.appendChild(who);
     box.appendChild(el('div', 'body', m.text));
     return box;
   }
-  function me_id() { return meId; }
-  var meId = 0;
+  function readSeen() { try { return Number(localStorage.getItem(SEEN_KEY + meId)) || 0; } catch (e) { return 0; } }
+  function saveSeen() { try { localStorage.setItem(SEEN_KEY + meId, String(seenChat)); } catch (e) { /* this tab */ } }
+  // the channel is in sight: everything in it is read
+  function markSeen() { seenChat = Math.max(seenChat, lastChatId); unread = 0; saveSeen(); markChatDot(); }
+  // (the other operators' messages not read yet)
   function markChatDot() {
     var dot = $('#chat-dot');
-    var n = Math.max(0, lastChatId - lastSeenChat);
-    dot.hidden = chatOpen || !n;
-    dot.textContent = n > 99 ? '99+' : String(n);
+    dot.hidden = chatOpen || !unread;
+    dot.textContent = unread > 99 ? '99+' : String(unread);
   }
   function sendChat(e) {
     e.preventDefault();
     var ta = $('#chat-text'), text = ta.value.trim();
-    if (!text) return;
-    request('POST', '/api/sec/messages', { text: text }).then(function () { ta.value = ''; loadChat(); }, fail);
+    if (!text || sending) return;
+    sending = true;
+    request('POST', '/api/sec/messages', { text: text }).then(function () { ta.value = ''; loadChat(); }, fail).then(function () { sending = false; });
   }
 
   /* ------------------------------------------------------------ dialog --- */
@@ -390,7 +492,8 @@
       var ok = $('#dialog-ok'); ok.textContent = o.ok || 'OK'; ok.className = 'btn ' + (o.danger ? 'danger solid' : 'primary');
       back.hidden = false;
       setTimeout(function () { (o.area ? area : ok).focus(); }, 40);
-      function close(v) { back.hidden = true; form.onsubmit = null; $('#dialog-cancel').onclick = null; resolve(v); }
+      function close(v) { back.hidden = true; form.onsubmit = null; $('#dialog-cancel').onclick = null; closeDialog = null; resolve(v); }
+      closeDialog = close;
       form.onsubmit = function (ev) { ev.preventDefault(); close(o.area ? area.value.trim() : true); };
       $('#dialog-cancel').onclick = function () { close(null); };
     });
@@ -402,7 +505,8 @@
     Array.prototype.forEach.call(document.querySelectorAll('.side-tab'), function (t) { t.classList.toggle('on', t.dataset.side === v); });
     $('#side-log').hidden = v !== 'log';
     $('#side-chat').hidden = v !== 'chat';
-    if (v === 'chat') { lastSeenChat = lastChatId; markChatDot(); var sc = $('#chat-scroll'); sc.scrollTop = sc.scrollHeight; }
+    if (v === 'chat') { markSeen(); var sc = $('#chat-scroll'); sc.scrollTop = sc.scrollHeight; }
+    else if (me && !logQ) refreshLog();
   }
   function init() {
     $('#login-form').addEventListener('submit', onLogin);
@@ -411,21 +515,23 @@
     $('#btn-lockdown').addEventListener('click', askLockdown);
     $('#btn-verify').addEventListener('click', verify);
     $('#lock-release').addEventListener('click', releaseLockdown);
-    $('#log-search').addEventListener('input', function () { clearTimeout(logTimer); logTimer = setTimeout(function () { logQ = $('#log-search').value.trim(); loadLog(true); }, 300); });
-    $('#log-more').addEventListener('click', function () { loadLog(false); });
+    $('#log-search').addEventListener('input', function () { clearTimeout(logTimer); logTimer = setTimeout(function () { logQ = $('#log-search').value.trim(); loadLog(); }, 300); });
+    $('#log-more').addEventListener('click', moreLog);
     $('#log-kinds').addEventListener('click', function (e) {
       var c = e.target.closest('[data-kind]'); if (!c) return;
       logKind = c.dataset.kind;
       Array.prototype.forEach.call(document.querySelectorAll('#log-kinds .chip'), function (x) { x.classList.toggle('on', x === c); });
-      loadLog(true);
+      loadLog();
     });
     Array.prototype.forEach.call(document.querySelectorAll('.side-tab'), function (t) { t.addEventListener('click', function () { setSide(t.dataset.side); }); });
     $('#chat-form').addEventListener('submit', sendChat);
     $('#chat-text').addEventListener('keydown', function (e) { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); sendChat(e); } });
+    // back in sight: up to date at once, not at the next tick
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && me) tick(); });
 
-    // the operator id, once we know it, for 'mine' messages
     if (token) {
-      request('GET', '/api/sec/me').then(function (m) { meId = m.id || 0; start(m); }, function () { showLogin(''); });
+      // (signed out on the server: request() has shown why; anything else is told here)
+      request('GET', '/api/sec/me').then(start, function (err) { if (!me && err.status !== 401 && err.code !== 'not_operator') showLogin(err.message); });
     } else {
       showLogin('');
     }

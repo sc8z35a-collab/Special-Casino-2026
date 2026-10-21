@@ -3,11 +3,15 @@
 // operators block and unblock by hand), the lockdown (a breach shuts everyone
 // out but the security base, cuts outbound, writes a 緊急 entry, and an
 // operator lifts it), and the security base (/sec/) — its realtime status, its
-// read of the log, and its sealed channel. Cyber-attack tests are intended.
+// read of the log, its sealed channel, its page keeping what it hides hidden,
+// its 出る during a lockdown and who is on it. Cyber-attack tests are intended.
 // npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { startServer } from './helpers.js';
+import { ROOT } from '../node/config.js';
 
 const LIMITS = { general: [100000, 1000], login: [100000, 1000], spin: [100000, 1000], friend: [100000, 1000], transfer: [100000, 1000] };
 const CODE = '987654321098';
@@ -192,6 +196,39 @@ test('the security base site is served, apart from the game and the operator sit
     assert.ok(html.indexOf('security HOME') >= 0);
     assert.equal((await fetch(s.base + '/sec/sec.js')).status, 200);
     assert.equal((await fetch(s.base + '/sec/sec.css')).status, 200);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('the security base page keeps what it hides hidden; 出る ends the session during a lockdown; the base is told apart from the operator site', async () => {
+  // (without this rule the empty dialog covered the login, and the lockdown
+  // banner showed when there was none: .dialog-back and the rest set a display)
+  const css = fs.readFileSync(path.join(ROOT, 'sec', 'sec.css'), 'utf8');
+  assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}/);
+
+  const s = await startServer({ operators: ['taku', 'mod1'], limits: LIMITS });
+  try {
+    const taku = await operator(s, 'TAKU');
+    const mod = await operator(s, 'Mod1');
+
+    // TAKU is on the base; Mod1 only on the operator site
+    await s.call('GET', '/api/ops/team', { token: mod.token });
+    const st = await s.call('GET', '/api/sec/status', { token: taku.token });
+    const who = Object.fromEntries(st.operators.map((o) => [o.name, o]));
+    assert.equal(who.TAKU.base, true);
+    assert.equal(who.Mod1.base, false, 'the operator site is not the base');
+    assert.equal(who.Mod1.site, true);
+
+    // locked down: leaving the base really ends that session, and only that
+    await s.call('POST', '/api/sec/lockdown', { token: taku.token, body: { reason: '点検' } });
+    const out = await s.call('POST', '/api/logout', { token: taku.token, body: {} });
+    assert.equal(out.status, 200, JSON.stringify(out));
+    assert.equal((await s.call('GET', '/api/sec/status', { token: taku.token })).status, 401);
+    assert.equal((await s.call('GET', '/api/sec/status', { token: mod.token })).status, 200);
+    // the rest stays shut
+    assert.equal((await s.call('GET', '/api/me', { token: mod.token })).status, 503);
+    assert.equal((await s.call('POST', '/api/sec/release', { token: mod.token })).locked, false);
   } finally {
     await s.stop();
   }

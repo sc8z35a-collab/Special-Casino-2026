@@ -18,6 +18,9 @@
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
 }
 * { box-sizing: border-box; }
+/* hidden wins over the display rules below, as on the operator site (else the
+   empty dialog, the banner and the login stay on screen) */
+[hidden] { display: none !important; }
 html, body { margin: 0; padding: 0; }
 body {
   background: radial-gradient(1200px 600px at 80% -10%, #0d1a2e 0, var(--bg) 60%) fixed;
@@ -67,18 +70,22 @@ body {
 .speed select { width: auto; padding: 5px 8px; font-size: 12px; }
 
 /* lockdown banner */
-.lock-banner { display: flex; align-items: center; gap: 14px; margin: 14px 18px 0; padding: 14px 18px; background: linear-gradient(180deg, #2a0e14, #1c0a10); border: 1px solid #5a2130; border-radius: 12px; }
+.lock-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin: 14px 18px 0; padding: 14px 18px; background: linear-gradient(180deg, #2a0e14, #1c0a10); border: 1px solid #5a2130; border-radius: 12px; }
 .lock-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 0 rgba(255, 77, 94, .6); animation: pulse 1.4s infinite; flex: none; }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 77, 94, .55); } 70% { box-shadow: 0 0 0 12px rgba(255, 77, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 77, 94, 0); } }
-.lock-text { display: flex; flex-direction: column; }
+.lock-text { display: flex; flex-direction: column; flex: 1; min-width: 180px; }
 .lock-text b { color: #ff7a86; font-size: 17px; }
 .lock-text span { color: var(--muted); font-size: 13px; }
+/* (on a phone the button goes under the text, whole) */
 .lock-acts { margin-left: auto; }
+.lock-acts .btn { white-space: nowrap; }
 
 /* two columns */
 .columns { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; padding: 16px 18px 40px; align-items: start; }
 .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .side-col { position: sticky; top: 64px; }
+/* the status could not be read: what is shown is not live */
+.status-col.stale { opacity: .5; }
 
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 13px; padding: 15px 16px; }
 .card h3 { margin: 0 0 10px; font-size: 14px; letter-spacing: .02em; color: var(--muted); font-weight: 700; display: flex; align-items: center; gap: 8px; }
@@ -93,6 +100,7 @@ body {
 .level-ring.lv-elevated { border-color: var(--warn); } .level-ring.lv-elevated b { color: var(--warn); }
 .level-ring.lv-high { border-color: #ff7a3c; } .level-ring.lv-high b { color: #ff7a3c; }
 .level-ring.lv-breach, .level-ring.lv-lockdown { border-color: var(--danger); animation: pulse 1.4s infinite; } .level-ring.lv-breach b, .level-ring.lv-lockdown b { color: var(--danger); }
+.level-ring.lv-lockdown b { font-size: 16px; }
 .level-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; flex: 1; min-width: 0; }
 .level-facts div { display: flex; flex-direction: column; }
 .level-facts span { font-size: 11px; color: var(--muted); }
@@ -140,7 +148,8 @@ body {
 .chip { background: var(--bg2); border: 1px solid var(--line); border-radius: 20px; padding: 5px 12px; font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; }
 .chip.on { background: var(--panel2); color: var(--ink); border-color: var(--accent2); }
 
-.log { display: flex; flex-direction: column; max-height: calc(100vh - 220px); overflow: auto; }
+/* (sec.js keeps the place when newer entries come in on top) */
+.log { display: flex; flex-direction: column; max-height: calc(100vh - 220px); overflow: auto; overflow-anchor: none; }
 .entry { border-bottom: 1px solid var(--line); }
 .entry-line { width: 100%; text-align: left; background: none; border: 0; color: var(--ink); padding: 9px 4px; display: grid; grid-template-columns: auto auto 1fr; gap: 4px 9px; align-items: baseline; cursor: pointer; font: inherit; }
 .entry-line:hover { background: var(--panel2); }
@@ -177,4 +186,5 @@ body {
   .columns { grid-template-columns: 1fr; }
   .side-col { position: static; }
   .level-ring { width: 96px; height: 96px; }
+  .level-ring.lv-lockdown b { font-size: 14px; }
 }
