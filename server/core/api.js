@@ -3390,7 +3390,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // 金の生る木
   const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
   Object.assign(routes, trees.routes);
-  // 開発者支援 (real money for ロイヤルコイン) and the developer's vault
+  // 開発者支援 (real money for ロイヤルコイン), the developer's vault and the ones operators share
   const pay = createPay({ q, tx, live, config, getUser, balanceChanged, official, opsLog, isDeveloper });
   Object.assign(routes, pay.routes);
   // (the bucket's operations counted: R2 bills writes and lists, and reads)
@@ -3400,7 +3400,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     list: (...a) => { stats.r2('a'); return blobs.list(...a); },
     del: (...a) => blobs.del(...a)
   };
-  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, blobs: bucket, onDb: (n) => emergency.vaultDb(n) });
+  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, blobs: bucket, onDb: (n) => emergency.vaultDb(n) });
   Object.assign(routes, vault.routes);
   // the developer's backups of everything but the vault
   const backup = createBackup({

@@ -212,6 +212,8 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         reports: q("SELECT COUNT(*) AS n FROM reports WHERE status = 'open'").get().n,
         detections: q('SELECT COUNT(*) AS n FROM detections WHERE reviewed_at = 0').get().n,
         feedback: q("SELECT COUNT(*) AS n FROM feedback WHERE handled_at = 0 AND kind != ''").get().n,
+        // (the developer: operators asking for more room in their shared vaults)
+        vaultRequests: isDeveloper(u) ? q("SELECT COUNT(*) AS n FROM vault_requests WHERE status = 'open'").get().n : 0,
         now: Date.now()
       };
     },

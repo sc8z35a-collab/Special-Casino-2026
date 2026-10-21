@@ -25,11 +25,16 @@
      online), and their talk, one to one or all together (never taken back).
    - サーバー: what the server sees of itself, live: requests, bytes sent,
      connections, the database, the vault, the plan and this month's bill.
-   - 保管庫 (the developer's own, opened with the developer code): big files in
-     folders, 10 to a page, sent in pieces checked by SHA-256 (a stopped upload
-     goes on where it stopped, on its own once there is room or a connection),
-     fetched back the same way, and time-limited links (for an AI too: what it
-     takes and does is labelled; what it put in the game is 実装済み).
+   - 保管庫: the developer's own (opened with the developer code) and the
+     vaults operators share, one for every two of them (private: the two and
+     the developer, who only looks into the others'). Big files in folders, 10
+     to a page, sent in pieces checked by SHA-256 (a stopped upload goes on
+     where it stopped, on its own once there is room or a connection), fetched
+     back the same way; files and folders checked to move, download or delete
+     several at once. One room for all of them: in the shared ones each
+     operator keeps 1GB, more once the developer approves (with a limit). In
+     the developer's own, time-limited links (for an AI too: what it takes and
+     does is labelled; what it put in the game is 実装済み).
    - アーカイブ: the 永久BAN and deleted accounts, all their data gone 90 days
      after they came in; a 永久BAN can be lifted, a deleted account never
      comes back. Only the developer sees the button that deletes an account
@@ -72,7 +77,9 @@
     pay_review: '決済の不一致（保留）', pay_reply: '開発者の返信', pay_error: '決済ページのエラー', pay_unknown: '不明な決済通知', pay_bad_signature: '不正な決済通知を拒否',
     vault_open: '保管庫を開いた', vault_upload: '保管庫に保存', vault_delete: '保管庫から削除', vault_link: '保管庫のリンク作成',
     vault_link_stop: '保管庫のリンク停止', vault_pull: '保管庫からリンクで取得', vault_folder: '保管庫のフォルダ', vault_move: '保管庫で移動',
-    vault_bucket: '保管庫をR2へ移動', vault_ai_label: 'AIのラベル（保管庫）', vault_ai_done: 'AIが実装（保管庫）', vault_restore: '保管庫で実装済みから戻す'
+    vault_bucket: '保管庫をR2へ移動', vault_ai_label: 'AIのラベル（保管庫）', vault_ai_done: 'AIが実装（保管庫）', vault_restore: '保管庫で実装済みから戻す',
+    vault_quota_request: '保管庫の容量の申請', vault_quota_cancel: '容量の申請の取り下げ', vault_quota_approve: '容量の申請を承認', vault_quota_decline: '容量の申請を見送り',
+    vault_quota_set: '保管庫の上限を変更'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
   var KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
@@ -85,7 +92,9 @@
     view: 'players', players: [], total: 0, counts: {}, now: Date.now(), filter: 'all', sort: 'new', q: '', open: 0, busy: false,
     reportStatus: 'open', detAll: false, fb: 'open', feedback: [], log: [], logQ: '', logDone: false, chat: null,
     developer: false, operators: [], pay: null, payView: 'waiting', vault: null, vaultFiles: [], vaultFolders: [], vaultFolder: '', vaultPicked: {},
-    vaultShow: 'all', vaultPage: 0, logKind: ''
+    vaultShow: 'all', vaultPage: 0, logKind: '',
+    // the vault open ('' the developer's own, 'p:<a>:<b>' a shared one), the ones to choose from, what one may do in it
+    vaultSpace: '', vaultSpaces: null, vaultInfo: null
   };
   var timer = 0, liveTimer = 0, searchTimer = 0, logTimer = 0, chatTimer = 0;
   var speed = 'normal';
@@ -285,13 +294,16 @@
     state.name = me.name;
     state.developer = !!me.developer;
     state.devCodeSet = !!me.devCodeSet;
-    // 課金 and 保管庫: the developer's own
+    // 課金: the developer's own; 保管庫: every operator (the shared vaults; the developer's own opens with the code)
     $('#tab-pay').hidden = !state.developer;
-    $('#tab-vault').hidden = !state.developer;
+    $('#tab-vault').hidden = false;
+    resetVault();
+    waiting = [];
+    renderWaiting();
     if (state.developer) loadPay(true);
     load();
     // /ops/#vault: straight to the vault
-    if (state.developer && location.hash === '#vault') setView('vault');
+    if (location.hash === '#vault') setView('vault');
     loadTeam(true);
     startTimers();
   }
@@ -306,6 +318,11 @@
       else if (state.view === 'feedback') loadFeedback(true);
       if (state.view !== 'team') loadTeam(true);
       if (state.developer && !(state.view === 'pay' && document.activeElement && document.activeElement.tagName === 'TEXTAREA')) loadPay(true);
+      // the vault open: what the other one of a shared vault did (not while files go up or down)
+      if (state.view === 'vault') {
+        if (!state.vault && !state.developer) openShared(true);
+        else if (state.vault && !moving && !resuming && $('#viewer').hidden) loadVault(true);
+      }
     }, SPEEDS[speed][0]);
     clearInterval(liveTimer);
     liveTimer = setInterval(function () {
@@ -338,10 +355,15 @@
     else if (v === 'security') loadSecurity();
     else if (v === 'server') { loadServer(); renderDevCards(); }
     else if (v === 'pay') loadPay();
-    else if (v === 'vault') renderVault();
+    else if (v === 'vault') { renderVault(); if (state.vault) loadVault(true); else openShared(); }
     scrollTop();
   }
   function scrollTop() { if (turned) $('#app').scrollTop = 0; else window.scrollTo(0, 0); }
+  // the top bar's height: what stays in sight below it (the bar of checked items in the vault) starts there
+  function topBar() {
+    var top = document.querySelector('.top');
+    if (top && top.offsetHeight) document.documentElement.style.setProperty('--top-h', top.offsetHeight + 'px');
+  }
   function setCount(id, n) {
     var b = $('#count-' + id);
     b.hidden = !n;
@@ -359,6 +381,8 @@
       setCount('detections', state.counts.detections);
       setCount('feedback', state.counts.feedback);
       setCount('archive', r.archived || 0);
+      // (the developer: operators asking for more room in the shared vaults)
+      setCount('vault', state.developer ? r.vaultRequests || 0 : 0);
       render();
       if (state.open && quiet) refreshDetail();
     }, function (err) { if (!quiet) fail(err); });
@@ -1985,14 +2009,16 @@
     var v = r.vault;
     $('#srv-vault').hidden = !v;
     if (!v) return;
+    var s = v.shared || { files: 0, bytes: 0, vaults: 0, free: GB, requests: 0 };
     var rows = [
       ['保存先', v.store === 'bucket' ? 'R2' : 'データベース'],
-      ['使用量', bytes(v.used) + ' / ' + bytes(v.maxBytes), v.used / v.maxBytes],
+      ['使用量（全体）', bytes(v.used) + ' / ' + bytes(v.maxBytes), v.used / v.maxBytes],
       ['1ファイルの上限', bytes(v.fileBytes) + '（' + bytes(v.piece) + 'ずつ送信）'],
-      ['ファイル', fmt(v.files) + '件（実装済み ' + fmt(v.implemented) + '件）・フォルダ ' + fmt(v.folders) + '個']
+      ['開発者専用保管庫', fmt(v.files) + '件（実装済み ' + fmt(v.implemented) + '件）・フォルダ ' + fmt(v.folders) + '個'],
+      ['共有保管庫（運営者どうし）', fmt(s.vaults) + 'つで ' + fmt(s.files) + '件・' + bytes(s.bytes) + '（1人 ' + bytes(s.free) + 'まで・超えるには開発者の承認' + (s.requests ? '・申請 ' + fmt(s.requests) + '件' : '') + '）']
     ];
     if (v.inDb) rows.push(['データベースに残っている部分', fmt(v.inDb) + '（保管庫を開くと R2 へ移ります）']);
-    srvCard($('#srv-vault'), '保管庫', rows, v.store === 'bucket' ? '' : 'R2 をつなぐと 50GB になります（README「保管庫を R2 につなぐ」）。');
+    srvCard($('#srv-vault'), '保管庫', rows, (v.store === 'bucket' ? '' : 'R2 をつなぐと 50GB になります（README「保管庫を R2 につなぐ」）。') + '開発者専用保管庫と共有保管庫は同じ容量を使います。');
   }
   function srvCloudflare(r) {
     var x = r.cloudflare, card = $('#srv-cf'), title = 'Cloudflare の集計（今月）';
@@ -2266,8 +2292,15 @@
     renderStop();
   }
 
-  /* ------------------------------------------------------------ 保管庫 (the developer's own) --- */
-  var vaultTimer = 0, moving = 0, v3d = null, viewing = null, pics = {};
+  /* ------------------------------------------------------------ 保管庫 --- */
+  /* The developer's own vault (the developer code opens it for 30 minutes)
+     and the vaults operators share, one for every two of them: private, and
+     their login is enough; the developer, with their vault open, also looks
+     into the others' (no changes). One room for all of them; what an operator
+     keeps in the shared ones is 1GB until the developer approves more (with
+     the limit they set). Files and folders are checked to move, download or
+     delete several at once (Shift: a range). */
+  var vaultTimer = 0, moving = 0, v3d = null, viewing = null, pics = {}, vaultSig = '', lastPick = null;
   // three.js for the 3D previews (ops/vault3d.js), loaded the first time it is needed
   function vault3d() {
     if (!v3d) {
@@ -2283,53 +2316,126 @@
   }
   var KINDS_3D = /\.(glb|gltf|obj|fbx|stl|ply)$/i;
   function is3d(name) { return KINDS_3D.test(String(name || '')); }
+  // (the developer's ticket goes with every call; an operator has none)
   function vreq(method, path, body) {
-    return request(method, path, body, state.vault ? { 'X-Vault-Ticket': state.vault.ticket } : {}).catch(function (err) {
+    return request(method, path, body, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}).catch(function (err) {
       if (err.code === 'vault_locked') lockVault('保管庫が閉じました。もう一度開いてください');
       throw err;
     });
   }
   function mb(n) {
+    if (!n) return '0MB';
     if (n >= 1073741824) return (n / 1073741824).toFixed(n >= 10737418240 ? 0 : 1) + 'GB';
     return n >= 1048576 ? (n / 1048576).toFixed(n >= 104857600 ? 0 : 1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB';
   }
-  function lockVault(message) {
+  // 2GB, 1.5GB: a limit in the shared vaults (one under 1GB in MB)
+  function gb(n) { return n >= GB ? Math.round(n / GB * 10) / 10 + 'GB' : mb(n); }
+  // nothing of the vault kept (closed, or someone else logged in)
+  function resetVault() {
     state.vault = null;
+    state.vaultSpaces = null;
+    state.vaultInfo = null;
+    state.vaultSpace = '';
     state.vaultFiles = [];
     state.vaultFolders = [];
     state.vaultFolder = '';
     state.vaultPicked = {};
+    state.vaultPage = 0;
+    vaultSig = '';
+    lastPick = null;
     clearTimeout(vaultTimer);
+  }
+  function lockVault(message) {
+    resetVault();
     renderVault();
     if (message) toast(message);
   }
+  // the developer: the developer code opens their own vault (and the look into the shared ones)
   function openVault() {
-    withCode({ title: '保管庫を開く', text: '開発者専用の保管庫を30分間開きます。', ok: '開く' }).then(function (code) {
+    withCode({ title: '保管庫を開く', text: '開発者専用保管庫を30分間開きます（運営者どうしの共有保管庫も閲覧できます）。', ok: '開く' }).then(function (code) {
       if (code === null) return null;
       return request('POST', '/api/vault/open', { code: code }).then(function (r) {
+        resetVault();
         state.vault = r;
-        clearTimeout(vaultTimer);
         vaultTimer = setTimeout(function () { lockVault('30分たったので保管庫を閉じました'); }, Math.max(1000, r.until - Date.now() - 5000));
         renderVault();
         return loadVault();
       });
     }).catch(fail);
   }
-  function loadVault() {
-    if (!state.vault) return Promise.resolve();
-    return vreq('GET', '/api/vault/files').then(function (r) {
-      state.vaultFiles = r.files || [];
-      state.vaultFolders = r.folders || [];
-      if (state.vault) { state.vault.used = r.used; state.vault.all = r.all; state.vault.store = r.store; state.vault.inDb = r.inDb; }
-      // (a folder that went: back to the top; picks of files that went)
-      if (state.vaultFolder && !folderOf(state.vaultFolder)) state.vaultFolder = '';
-      Object.keys(state.vaultPicked).forEach(function (id) {
-        if (!state.vaultFiles.some(function (f) { return f.id === id; })) delete state.vaultPicked[id];
-      });
+  // an operator: the shared vaults, no code (their login is enough); the first one opens
+  function openShared(quiet) {
+    if (state.vault || state.developer || openShared.busy) return Promise.resolve();
+    openShared.busy = true;
+    return request('GET', '/api/vault/spaces').then(function (sp) {
+      if (state.vault || state.developer) return null;
+      state.vault = { ticket: '', chunk: sp.pool.chunk, maxBytes: sp.pool.maxBytes, fileBytes: sp.pool.fileBytes, used: sp.pool.used, store: sp.pool.store, me: sp.me };
+      state.vaultSpaces = sp;
+      state.vaultSpace = sp.spaces.length ? sp.spaces[0].id : '';
       renderVault();
+      return loadVault();
+    }, function (err) { if (!quiet) fail(err); }).then(function () { openShared.busy = false; });
+  }
+  // the vaults one sees and one's room, and the open one's files and folders
+  // (`quiet`: from the timer, redrawn only when something changed)
+  function loadVault(quiet) {
+    if (!state.vault) return Promise.resolve();
+    var space = state.vaultSpace, none = !space && !state.developer;
+    return Promise.all([
+      vreq('GET', '/api/vault/spaces'),
+      none ? null : vreq('GET', '/api/vault/files' + (space ? '?space=' + encodeURIComponent(space) : ''))
+    ]).then(function (rs) {
+      var sp = rs[0], r = rs[1];
+      if (!state.vault || state.vaultSpace !== space) return;
+      state.vaultSpaces = sp;
+      if (sp.requests) setCount('vault', sp.requests.length);
+      state.vault.used = sp.pool.used;
+      state.vault.maxBytes = sp.pool.maxBytes;
+      state.vault.me = sp.me;
+      if (sp.inDb !== undefined) state.vault.inDb = sp.inDb;
+      state.vaultInfo = r ? r.space : null;
+      state.vaultFiles = r ? r.files || [] : [];
+      state.vaultFolders = r ? r.folders || [] : [];
+      if (r) { state.vault.all = r.all; state.vault.store = r.store; }
+      // (a folder that went: back to the top; checks on what went)
+      if (state.vaultFolder && !folderOf(state.vaultFolder)) state.vaultFolder = '';
+      Object.keys(state.vaultPicked).forEach(function (id) { if (!fileOf(id) && !folderOf(id)) delete state.vaultPicked[id]; });
+      // as it was: nothing redrawn (what is open on the page stays as it is)
+      var sig = JSON.stringify([space, sp, state.vaultFiles, state.vaultFolders]);
+      if (!quiet || sig !== vaultSig) { vaultSig = sig; renderVault(); }
       toBucket();
       resumeWaiting(false);
-    }, fail);
+    }, function (err) {
+      // (a shared vault no longer there: back to the first one)
+      var first = state.vaultSpaces && state.vaultSpaces.spaces[0], back = state.developer ? '' : first ? first.id : '';
+      if (err && err.code === 'no_space' && state.vault && state.vaultSpace === space && back !== space) {
+        state.vaultSpace = back;
+        return loadVault();
+      }
+      if (!quiet) fail(err);
+      return null;
+    });
+  }
+  function fileOf(id) { return state.vaultFiles.filter(function (f) { return f.id === id; })[0] || null; }
+  // another vault: from its top, nothing checked
+  function goSpace(id) {
+    if (!state.vault || id === state.vaultSpace) return;
+    state.vaultSpace = id;
+    state.vaultInfo = null;
+    state.vaultFiles = [];
+    state.vaultFolders = [];
+    state.vaultFolder = '';
+    state.vaultPage = 0;
+    clearPicks();
+    setShow('all');
+    vaultSig = '';
+    renderVault();
+    loadVault();
+  }
+  // すべて / 未実装 / 実装済み (the developer's vault)
+  function setShow(v) {
+    state.vaultShow = v;
+    Array.prototype.forEach.call(document.querySelectorAll('#vault-filter .chip'), function (x) { x.classList.toggle('on', x.dataset.vf === v); });
   }
   // pieces kept in the database before R2 move into it while the vault is open
   var toBucketJob = null;
@@ -2357,28 +2463,44 @@
     for (var d = folderOf(id); d && out.length < 10; d = folderOf(d.parent)) out.unshift(d);
     return out;
   }
-  function pathName(id) { return ['保管庫'].concat(trail(id).map(function (d) { return d.name; })).join(' / '); }
+  // the open vault's name at the top of its folders
+  function rootName() { return state.vaultSpace ? '共有保管庫' : '保管庫'; }
+  function pathName(id) { return [rootName()].concat(trail(id).map(function (d) { return d.name; })).join(' / '); }
   function byName(a, b) { return a.name.localeCompare(b.name, 'ja'); }
   function filesIn(id) { return state.vaultFiles.filter(function (f) { return !f.parent && (f.folder || '') === id; }); }
   function foldersIn(id) { return state.vaultFolders.filter(function (d) { return d.parent === id; }).sort(byName); }
-  // where something can go: the top and every folder (not `skip` nor what is inside it)
+  // where something can go: the top and every folder (not the `skip` ones nor what is inside them)
   function places(skip) {
     var out = state.vaultFolders.filter(function (d) {
-      return !skip || !trail(d.id).some(function (x) { return x.id === skip; });
+      return !trail(d.id).some(function (x) { return skip.indexOf(x.id) >= 0; });
     }).map(function (d) { return { value: d.id, label: pathName(d.id) }; });
     out.sort(function (a, b) { return a.label.localeCompare(b.label, 'ja'); });
-    return [{ value: '', label: '保管庫（いちばん上）' }].concat(out);
+    return [{ value: '', label: rootName() + '（いちばん上）' }].concat(out);
+  }
+  // what one may do in the open vault: change it (the developer only looks into the others')
+  function canWrite() { return !!(state.vaultInfo && state.vaultInfo.write); }
+  // a checkmark on a file or a folder
+  function checkEl(id, name) {
+    var label = el('label', 'vault-check'), box = el('input');
+    box.type = 'checkbox';
+    box.dataset.vpick = id;
+    box.checked = !!state.vaultPicked[id];
+    box.setAttribute('aria-label', name + ' を選択');
+    label.appendChild(box);
+    label.appendChild(el('i'));
+    return label;
   }
   function folderCard(d) {
-    var card = el('article', 'card vault-folder');
+    var card = el('article', 'card vault-folder' + (state.vaultPicked[d.id] ? ' picked' : ''));
     card.dataset.folder = d.id;
     var head = el('div', 'card-head');
+    head.appendChild(checkEl(d.id, d.name));
     head.appendChild(el('b', 'vault-name', d.name));
     var n = filesIn(d.id).length + foldersIn(d.id).length;
     head.appendChild(el('span', 'time', n ? fmt(n) + '件' : '空'));
     card.appendChild(head);
     var a = el('div', 'acts');
-    [['開く', 'open', 'primary'], ['名前を変更', 'rename'], ['移動', 'move'], ['削除', 'delete', 'danger']].forEach(function (x) {
+    [['開く', 'open', 'primary']].concat(canWrite() ? [['名前を変更', 'rename'], ['移動', 'move'], ['削除', 'delete', 'danger']] : []).forEach(function (x) {
       var b = el('button', 'btn small' + (x[2] ? ' ' + x[2] : ''), x[0]);
       b.type = 'button';
       b.dataset.fact = x[1];
@@ -2389,13 +2511,15 @@
   }
   function goFolder(id) {
     state.vaultFolder = id || '';
-    state.vaultPicked = {};
+    clearPicks();
     state.vaultPage = 0;
     renderVault();
   }
   function onFolder(e) {
     var crumb = e.target.closest('.vault-crumb');
     if (crumb) { goFolder(crumb.dataset.folder); return; }
+    // (a tap on the checkmark only checks it)
+    if (e.target.closest('.vault-check')) return;
     var card = e.target.closest('.vault-folder'), d = card && folderOf(card.dataset.folder);
     if (!d) return;
     var b = e.target.closest('[data-fact]'), act = b ? b.dataset.fact : 'open';
@@ -2408,7 +2532,7 @@
   function newFolder() {
     ask({ title: 'フォルダを作る', text: '「' + pathName(state.vaultFolder) + '」の中に作ります。', ok: '作る', input: { label: 'フォルダの名前' }, check: named }).then(function (name) {
       if (name === null) return null;
-      return vreq('POST', '/api/vault/folders', { name: name, parent: state.vaultFolder }).then(function () { toast('フォルダを作りました'); return loadVault(); });
+      return vreq('POST', '/api/vault/folders', { name: name, parent: state.vaultFolder, space: state.vaultSpace }).then(function () { toast('フォルダを作りました'); return loadVault(); });
     }).catch(fail);
   }
   function renameFolder(d) {
@@ -2418,7 +2542,7 @@
     }).catch(fail);
   }
   function moveFolder(d) {
-    ask({ title: '「' + d.name + '」を移動', ok: '移動する', select: { label: '移動先', options: places(d.id), value: d.parent } }).then(function (to) {
+    ask({ title: '「' + d.name + '」を移動', ok: '移動する', select: { label: '移動先', options: places([d.id]), value: d.parent } }).then(function (to) {
       if (to === null || to === d.parent) return null;
       return vreq('POST', '/api/vault/folders/update', { id: d.id, parent: to }).then(function () { toast('移動しました'); return loadVault(); });
     }).catch(fail);
@@ -2433,40 +2557,383 @@
       });
     }).catch(fail);
   }
-  // files (the picked ones, or one) into a folder
-  function moveFiles(ids) {
-    if (!ids.length) return;
-    ask({ title: fmt(ids.length) + '件を移動', ok: '移動する', select: { label: '移動先', options: places(null), value: state.vaultFolder } }).then(function (to) {
+
+  /* the checkmarks: what is listed here (the folders, then the files of every
+     page), checked one by one, a range with Shift, or all at once */
+  function shownItems() {
+    var show = state.vaultShow;
+    return foldersIn(state.vaultFolder).map(function (d) { return d.id; }).concat(filesIn(state.vaultFolder).filter(function (f) {
+      return show === 'all' || (show === 'used') === !!f.implementedAt;
+    }).map(function (f) { return f.id; }));
+  }
+  function pick(id, on) {
+    if (on) state.vaultPicked[id] = folderOf(id) ? 'folder' : 'file';
+    else delete state.vaultPicked[id];
+  }
+  function clearPicks() { state.vaultPicked = {}; lastPick = null; }
+  function pickedFiles() { return state.vaultFiles.filter(function (f) { return state.vaultPicked[f.id] === 'file'; }); }
+  function pickedFolders() { return state.vaultFolders.filter(function (d) { return state.vaultPicked[d.id] === 'folder'; }); }
+  // a checkmark tapped (true: it was one)
+  function onPick(e) {
+    var box = e.target.closest('[data-vpick]');
+    if (!box) return false;
+    var id = box.dataset.vpick, ids = [id];
+    if (e.shiftKey && lastPick && lastPick !== id) {
+      var order = shownItems(), i = order.indexOf(lastPick), j = order.indexOf(id);
+      if (i >= 0 && j >= 0) ids = order.slice(Math.min(i, j), Math.max(i, j) + 1);
+    }
+    ids.forEach(function (x) { pick(x, box.checked); });
+    lastPick = id;
+    renderPicks();
+    return true;
+  }
+  function pickAll() {
+    var all = shownItems(), every = all.length > 0 && all.every(function (id) { return state.vaultPicked[id]; });
+    all.forEach(function (id) { pick(id, !every); });
+    lastPick = null;
+    renderPicks();
+  }
+  // the checks on the page as they are now (nothing else redrawn)
+  function renderPicks() {
+    Array.prototype.forEach.call(document.querySelectorAll('#vault-list [data-vpick], #vault-folders [data-vpick]'), function (b) {
+      b.checked = !!state.vaultPicked[b.dataset.vpick];
+      var card = b.closest('.card');
+      if (card) card.classList.toggle('picked', b.checked);
+    });
+    renderPicked();
+  }
+  function renderPicked() {
+    var all = shownItems(), ids = Object.keys(state.vaultPicked), n = ids.length;
+    var dirs = ids.filter(function (id) { return state.vaultPicked[id] === 'folder'; }).length;
+    var here = all.filter(function (id) { return state.vaultPicked[id]; }).length;
+    var bar = $('#vault-select'), box = $('#vault-pick-all');
+    bar.hidden = !state.vaultInfo || !all.length;
+    bar.classList.toggle('on', n > 0);
+    box.checked = all.length > 0 && here === all.length;
+    box.indeterminate = here > 0 && here < all.length;
+    $('#vault-picked-n').textContent = n
+      ? fmt(n) + '件を選択中' + (dirs ? '（フォルダ ' + fmt(dirs) + (n > dirs ? '・ファイル ' + fmt(n - dirs) : '') + '）' : '')
+      : 'すべて選択（' + fmt(all.length) + '件）';
+    $('#vault-select-hint').hidden = n > 0;
+    $('#vault-picked').hidden = !n;
+    $('#vault-picked-move').hidden = !canWrite();
+    $('#vault-picked-delete').hidden = !canWrite();
+  }
+  // files and folders (the checked ones, or one file) into a folder
+  function moveItems(files, dirs) {
+    var n = files.length + dirs.length;
+    if (!n) return;
+    var skip = dirs.map(function (d) { return d.id; });
+    ask({ title: fmt(n) + '件を移動', ok: '移動する', select: { label: '移動先', options: places(skip), value: state.vaultFolder } }).then(function (to) {
       if (to === null) return null;
-      return vreq('POST', '/api/vault/move', { ids: ids, folder: to }).then(function (r) {
-        state.vaultPicked = {};
+      return vreq('POST', '/api/vault/move', { ids: files.map(function (f) { return f.id; }), folders: skip, folder: to }).then(function (r) {
+        clearPicks();
         toast(fmt(r.moved) + '件を「' + pathName(to) + '」へ移動しました');
         return loadVault();
       });
     }).catch(fail);
   }
-  function renderPicked() {
-    var n = Object.keys(state.vaultPicked).length;
-    $('#vault-picked').hidden = !n;
-    $('#vault-picked-n').textContent = fmt(n) + '件を選択中';
+  // every file in a folder and in the folders inside it
+  function filesUnder(id) {
+    return foldersIn(id).reduce(function (all, d) { return all.concat(filesUnder(d.id)); }, filesIn(id));
+  }
+  // the checked files, and the files in the checked folders: saved one after another
+  function downloadItems(files, dirs) {
+    var seen = {};
+    var list = dirs.reduce(function (all, d) { return all.concat(filesUnder(d.id)); }, files).filter(function (f) {
+      if (seen[f.id] || !f.done) return false;
+      seen[f.id] = true;
+      return true;
+    });
+    if (!list.length) { toast('ダウンロードできるファイルがありません（アップロード途中のものは除きます）'); return; }
+    (list.length > 1
+      ? ask({ title: fmt(list.length) + '件をダウンロード', text: '1件ずつ順に保存します' + (dirs.length ? '（フォルダの中のファイルも含みます）' : '') + '。ブラウザに複数のファイルのダウンロードを確かめられたら「許可」してください。', ok: 'ダウンロード' })
+      : Promise.resolve(true)
+    ).then(function (ok) {
+      if (!ok) return null;
+      return list.reduce(function (p, f) { return p.then(function () { return download(f); }); }, Promise.resolve());
+    }).catch(fail);
+  }
+  // the checked files go for good; the checked folders go, what is in them moves up
+  function deleteItems(files, dirs) {
+    var n = files.length + dirs.length;
+    if (!n) return;
+    var size = files.reduce(function (s, f) { return s + f.size; }, 0), text = [];
+    if (files.length) text.push('ファイル ' + fmt(files.length) + '件（' + mb(size) + '）は保管庫から完全に消えます（元に戻せません）。' + (state.vaultSpace ? '' : 'リンクも使えなくなります。'));
+    if (dirs.length) text.push('フォルダ ' + fmt(dirs.length) + '個は削除され、中のファイルとフォルダは消えずにひとつ上へ移ります。');
+    ask({ title: fmt(n) + '件を削除しますか？', text: text.join('\n'), ok: '削除する', danger: true }).then(function (ok) {
+      if (!ok) return null;
+      return (files.length ? vreq('POST', '/api/vault/delete', { ids: files.map(function (f) { return f.id; }) }) : Promise.resolve()).then(function () {
+        return dirs.length ? vreq('POST', '/api/vault/folders/delete', { ids: dirs.map(function (d) { return d.id; }) }) : null;
+      }).then(function () {
+        clearPicks();
+        toast(fmt(n) + '件を削除しました');
+        return loadVault();
+      }, function (err) { fail(err); return loadVault(); });
+    }).catch(fail);
+  }
+
+  /* the vaults to choose from, one's room, whose the open one is */
+  function renderSpaces() {
+    var bar = $('#vault-spaces'), sp = state.vaultSpaces;
+    bar.textContent = '';
+    if (!sp) return;
+    function what(x) { return x.files || x.folders ? fmt(x.files) + '件・' + mb(x.bytes) : '空'; }
+    function chip(id, title, sub, cls) {
+      var b = el('button', 'vspace' + (cls ? ' ' + cls : '') + (state.vaultSpace === id ? ' on' : ''));
+      b.type = 'button';
+      b.dataset.space = id;
+      var t = el('span', 'vspace-who');
+      t.appendChild(el('b', '', title));
+      t.appendChild(el('small', '', sub));
+      b.appendChild(t);
+      bar.appendChild(b);
+      return b;
+    }
+    if (state.developer) {
+      var own = chip('', '開発者専用保管庫', what(sp.own), 'own');
+      own.insertBefore(el('span', 'face vspace-mark', '開'), own.firstChild);
+    }
+    if (sp.spaces.length) bar.appendChild(el('span', 'vspace-label', '共有保管庫（非公開・運営者ふたりごと）'));
+    sp.spaces.forEach(function (x) {
+      var b = chip(x.id, x.with.name + ' と共有', (x.with.operator ? '' : '運営者ではありません・') + what(x), x.with.operator ? '' : 'gone');
+      b.insertBefore(face(x.with), b.firstChild);
+      if (x.with.developer) b.querySelector('b').appendChild(el('span', 'tag maker', '開発者'));
+    });
+    if (sp.others && sp.others.length) {
+      bar.appendChild(el('span', 'vspace-label', '運営者どうしの共有保管庫（開発者だけ・閲覧のみ）'));
+      sp.others.forEach(function (x) { chip(x.id, x.members.map(function (m) { return m.name; }).join(' ⇄ '), what(x), 'look'); });
+    }
+  }
+  function meterEl(used, limit) {
+    var r = limit ? used / limit : 0;
+    var m = el('span', 'meter' + (r >= 0.95 ? ' hot' : r >= 0.8 ? ' warm' : '')), i = el('i');
+    i.style.width = Math.min(100, r * 100).toFixed(1) + '%';
+    m.appendChild(i);
+    return m;
+  }
+  function roomBtn(label, act, cls, data) {
+    var b = el('button', 'btn small' + (cls ? ' ' + cls : ''), label);
+    b.type = 'button';
+    b.dataset.room = act;
+    Object.keys(data || {}).forEach(function (k) { b.dataset[k] = String(data[k]); });
+    return b;
+  }
+  function renderRoom() {
+    var box = $('#vault-room'), sp = state.vaultSpaces;
+    box.textContent = '';
+    box.hidden = !sp || !state.vault;
+    if (box.hidden) return;
+    if (state.developer) roomOfAll(box, sp); else roomOfMine(box, sp.me, sp.pool);
+  }
+  // an operator: what they keep in the shared vaults, their limit, their request
+  function roomOfMine(box, me, pool) {
+    var head = el('div', 'card-head');
+    head.appendChild(el('b', '', '共有保管庫であなたが使える容量'));
+    head.appendChild(el('span', 'time', me.approved ? '開発者が承認した上限（' + date(me.approved.at) + '）' : '標準（1人 ' + gb(me.free) + '）'));
+    box.appendChild(head);
+    var line = el('div', 'vroom-line');
+    line.appendChild(el('b', '', mb(me.used) + ' / ' + gb(me.limit)));
+    line.appendChild(meterEl(me.used, me.limit));
+    box.appendChild(line);
+    box.appendChild(el('p', 'muted vroom-note', 'あなたが送ったファイルの合計です（どの共有保管庫の分も）。'
+      + (me.approved ? '開発者が承認した上限まで保存できます（もっと必要なら、また申請できます）。' : gb(me.free) + 'を超えて保存するには、開発者の承認と上限の設定が必要です。')
+      + '容量は開発者専用保管庫と共有です（保管庫全体の空き ' + mb(Math.max(0, pool.maxBytes - pool.used)) + '）。'));
+    var a = el('div', 'acts');
+    if (me.request) {
+      a.appendChild(el('span', 'kind idea', '申請中：' + gb(me.request.bytes) + '（' + date(me.request.at, true) + '）'));
+      if (me.request.reason) a.appendChild(el('span', 'muted vroom-why', '理由：' + me.request.reason));
+      a.appendChild(roomBtn('申請を取り下げる', 'cancel', 'ghost'));
+    } else {
+      a.appendChild(roomBtn(me.approved ? 'さらに容量を申請' : '容量を申請', 'request', 'primary'));
+      if (me.last) a.appendChild(el('span', 'kind ' + (me.last.status === 'approved' ? 'accepted' : 'rejected'), me.last.status === 'approved'
+        ? '承認されました：上限 ' + gb(me.last.limit) + '（' + date(me.last.handledAt, true) + '）' : '前回の申請（' + gb(me.last.bytes) + '）は見送られました（' + date(me.last.handledAt, true) + '）'));
+    }
+    box.appendChild(a);
+  }
+  // the developer: the room of all the vaults, the requests, each operator's use and limit
+  function roomOfAll(box, sp) {
+    var head = el('div', 'card-head');
+    head.appendChild(el('b', '', '容量の管理'));
+    head.appendChild(el('span', 'time', '共有保管庫は1人 ' + gb(sp.pool.free) + 'まで（超えるには承認と上限の設定）'));
+    box.appendChild(head);
+    var shared = sp.spaces.concat(sp.others || []).reduce(function (s, x) { return s + x.bytes; }, 0);
+    var line = el('div', 'vroom-line');
+    line.appendChild(el('b', '', '保管庫全体 ' + mb(sp.pool.used) + ' / ' + mb(sp.pool.maxBytes)));
+    line.appendChild(meterEl(sp.pool.used, sp.pool.maxBytes));
+    box.appendChild(line);
+    box.appendChild(el('p', 'muted vroom-note', '開発者専用保管庫 ' + mb(sp.own.bytes) + '・共有保管庫 ' + mb(shared) + '（同じ容量を使います）。'));
+    if (sp.requests.length) {
+      box.appendChild(el('h4', 'vroom-sub', '容量の申請（' + fmt(sp.requests.length) + '件）'));
+      sp.requests.forEach(function (r) {
+        var p = sp.people.filter(function (x) { return x.id === r.user.id; })[0] || { used: 0, limit: sp.pool.free };
+        var row = el('div', 'vroom-req');
+        row.appendChild(face(r.user));
+        var t = el('div', 'vroom-who');
+        t.appendChild(el('b', '', r.user.name + '：' + gb(r.bytes) + ' を希望'));
+        t.appendChild(el('small', '', '使用 ' + mb(p.used) + ' / ' + gb(p.limit) + '・' + date(r.at, true)));
+        if (r.reason) t.appendChild(el('small', 'vroom-why', '理由：' + r.reason));
+        row.appendChild(t);
+        row.appendChild(roomBtn('承認して上限を決める', 'approve', 'primary', { id: r.id, bytes: r.bytes, name: r.user.name }));
+        row.appendChild(roomBtn('見送る', 'decline', 'ghost', { id: r.id, name: r.user.name }));
+        box.appendChild(row);
+      });
+    }
+    if (sp.people.length) {
+      box.appendChild(el('h4', 'vroom-sub', '運営者ごとの使用量（送ったファイルの合計）'));
+      var t = el('table', 'srv-table vroom-people');
+      sp.people.forEach(function (p) {
+        var tr = el('tr'), th = el('th', '', p.name), td = el('td'), go = el('td', 'num');
+        if (!p.operator) th.appendChild(el('small', '', '（運営者ではありません）'));
+        td.appendChild(el('span', '', mb(p.used) + ' / ' + gb(p.limit) + (p.approved ? '（承認済みの上限・' + date(p.approved.at) + '）' : '（標準）')));
+        td.appendChild(meterEl(p.used, p.limit));
+        go.appendChild(roomBtn('上限を変更', 'limit', 'ghost', { user: p.id, name: p.name, limit: p.limit }));
+        tr.appendChild(th);
+        tr.appendChild(td);
+        tr.appendChild(go);
+        t.appendChild(tr);
+      });
+      box.appendChild(t);
+    }
+  }
+  // a number of GB from a dialog, between `low` (not included unless `andLow`) and `high`
+  function gbIn(v, low, high, andLow) {
+    var n = Number(String(v).trim());
+    return isFinite(n) && (andLow ? n >= low : n > low) && n <= high ? n : null;
+  }
+  function onRoom(e) {
+    var b = e.target.closest('[data-room]');
+    if (!b || !state.vaultSpaces) return;
+    var d = b.dataset, pool = state.vaultSpaces.pool, free = pool.free / GB, most = pool.maxBytes / GB;
+    var range = gb(pool.free) + 'より大きく ' + gb(pool.maxBytes) + 'まで';
+    if (d.room === 'request') {
+      var me = state.vaultSpaces.me, now = me.limit / GB;
+      ask({
+        title: '共有保管庫の容量を申請',
+        text: '今の上限は ' + gb(me.limit) + '（使用 ' + mb(me.used) + '）です。開発者が承認すると、開発者が決めた上限まで使えるようになります（希望より小さいこともあります）。',
+        ok: '申請する',
+        input: { label: '希望する上限（GB・' + gb(me.limit) + 'より大きく ' + gb(pool.maxBytes) + 'まで）', value: String(Math.min(most, Math.max(2, Math.ceil(now * 2)))) },
+        area: { label: '理由（任意・開発者に届きます）' },
+        check: function (v) { return gbIn(v, now, most) === null ? gb(me.limit) + 'より大きく ' + gb(pool.maxBytes) + 'までの数を入れてください' : ''; }
+      }).then(function (v) {
+        if (v === null) return null;
+        return vreq('POST', '/api/vault/quota/request', { bytes: Math.round(gbIn(v.value, now, most) * GB), reason: v.text }).then(function () { toast('申請しました。開発者の承認を待っています'); return loadVault(); });
+      }).catch(fail);
+    } else if (d.room === 'cancel') {
+      ask({ title: '申請を取り下げますか？', ok: '取り下げる' }).then(function (ok) {
+        if (!ok) return null;
+        return vreq('POST', '/api/vault/quota/cancel', {}).then(function () { toast('申請を取り下げました'); return loadVault(); });
+      }).catch(fail);
+    } else if (d.room === 'approve') {
+      ask({
+        title: d.name + ' さんの申請を承認',
+        text: '希望は ' + gb(Number(d.bytes)) + ' です。承認するには上限を決めてください（' + range + '）。上限はあとから「上限を変更」で変えられます。',
+        ok: '承認する',
+        input: { label: '上限（GB）', value: String(Math.min(most, Math.round(Number(d.bytes) / GB * 10) / 10)) },
+        check: function (v) { return gbIn(v, free, most) === null ? range + 'の数を入れてください' : ''; }
+      }).then(function (v) {
+        if (v === null) return null;
+        return vreq('POST', '/api/vault/quota/decide', { id: Number(d.id), approve: true, limit: Math.round(gbIn(v, free, most) * GB) }).then(function () { toast(d.name + ' さんの申請を承認しました'); return loadVault(); });
+      }).catch(fail);
+    } else if (d.room === 'decline') {
+      ask({ title: d.name + ' さんの申請を見送りますか？', text: '上限は今のままです（' + d.name + ' さんには「見送られました」と表示されます）。', ok: '見送る' }).then(function (ok) {
+        if (!ok) return null;
+        return vreq('POST', '/api/vault/quota/decide', { id: Number(d.id), approve: false }).then(function () { toast('見送りました'); return loadVault(); });
+      }).catch(fail);
+    } else if (d.room === 'limit') {
+      ask({
+        title: d.name + ' さんの上限を変更',
+        text: '今は ' + gb(Number(d.limit)) + ' です。' + gb(pool.free) + ' を入れると標準に戻ります（' + gb(pool.free) + 'を超える分には上限が必要です）。',
+        ok: '変更する',
+        input: { label: '上限（GB・' + gb(pool.free) + '〜' + gb(pool.maxBytes) + '）', value: String(Math.round(Number(d.limit) / GB * 10) / 10) },
+        check: function (v) { return gbIn(v, free, most, true) === null ? gb(pool.free) + '〜' + gb(pool.maxBytes) + 'の数を入れてください' : ''; }
+      }).then(function (v) {
+        if (v === null) return null;
+        var n = gbIn(v, free, most, true);
+        return vreq('POST', '/api/vault/quota/set', { user: Number(d.user), limit: n <= free ? 0 : Math.round(n * GB) }).then(function () { toast(d.name + ' さんの上限を変更しました'); return loadVault(); });
+      }).catch(fail);
+    }
+  }
+  // the open vault: whose it is, and who sees it
+  function renderHead() {
+    var h = $('#vault-head'), info = state.vaultInfo, sp = state.vaultSpaces;
+    h.textContent = '';
+    if (!state.vault || !sp) return;
+    var t = el('div', 'vault-head-text');
+    if (!info) {
+      if (!state.developer && !sp.spaces.length) t.appendChild(el('b', '', 'ほかの運営者がいないため、共有保管庫はまだありません'));
+    } else if (!info.shared) {
+      h.appendChild(el('span', 'face vspace-mark', '開'));
+      t.appendChild(el('b', '', '開発者専用保管庫'));
+      t.appendChild(el('small', '', '開発者だけが使えます（開発者コードで開く）'));
+    } else {
+      var mine = sp.spaces.filter(function (x) { return x.id === info.id; })[0];
+      if (mine) {
+        h.appendChild(face(mine.with));
+        t.appendChild(el('b', '', mine.with.name + ' さんとの共有保管庫'));
+        t.appendChild(el('small', '', !mine.with.operator ? '相手は運営者ではなくなりました（見る・整理・削除はできます。新しいファイルは入れられません）'
+          : '非公開：' + (state.developer || mine.with.developer ? 'ふたりだけ' : 'ふたりと開発者だけ') + 'が見られます'));
+      } else {
+        info.members.forEach(function (m) { h.appendChild(face(m)); });
+        t.appendChild(el('b', '', info.members.map(function (m) { return m.name + ' さん'; }).join(' ⇄ ') + 'の共有保管庫'));
+        t.appendChild(el('small', '', '閲覧のみ：開発者だけが見られます（アップロード・変更・削除はできません）'));
+      }
+    }
+    h.appendChild(t);
+  }
+  function vaultHint() {
+    var info = state.vaultInfo;
+    if (!state.developer) {
+      return '運営者どうしでファイルを共有する保管庫です（運営者ふたりごとに1つ）。非公開で、見られるのはふたりと開発者だけです。容量は開発者専用保管庫と共有で、1人1GBまで（送った人の分として数えます）。それを超えて使うには「容量を申請」し、開発者の承認と上限の設定が必要です。'
+        + 'チェックで複数のファイル・フォルダを選んで、まとめて移動・ダウンロード・削除できます（Shift を押しながらで範囲選択）。止まったアップロードは、このページを開いている間、空きや通信が戻りしだい自動で続きから送ります。';
+    }
+    if (!state.vault) return '開発者コードで開きます（30分で閉じます）。開くと、開発者専用保管庫・各運営者との共有保管庫・運営者どうしの共有保管庫（閲覧のみ）が使えます。';
+    if (info && info.shared && !info.mine) return '運営者どうしの共有保管庫を閲覧しています（ふたりの非公開の保管庫で、ほかの運営者には見えません）。開発者は中身を見ることとダウンロードだけができ、変更はできません。';
+    if (info && info.shared) return 'この運営者とふたりで使う共有保管庫です（非公開）。容量は開発者専用保管庫と共有で、開発者のファイルは1人の上限に数えません。チェックで複数選択して、まとめて移動・ダウンロード・削除できます（Shift で範囲選択）。';
+    return '開発者コードで開きます（30分で閉じます）。ファイルはフォルダにまとめられ、チェックで複数のファイル・フォルダを選んで、まとめて移動・ダウンロード・削除できます（Shift を押しながらで範囲選択）。3Dモデルは4方向の画像・情報・軽量版が自動で作られます。止まったアップロードは、このページを開いている間、空きや通信が戻りしだい自動で続きから送ります（閉じたあとは同じファイルを選び直すと続きから）。'
+      + 'AI用リンクで AI が取ったファイルと AI の作業にはラベルが付き、AI がゲームに入れたファイルは「実装済み」に移ってリンクから外れます（共有保管庫にはリンクは届きません）。保管庫のファイルが自動で消えることはありません。';
+  }
+  function vaultUsage() {
+    var v = state.vault;
+    if (!v) return '';
+    if (!state.developer && v.me) return 'あなたの使用量 ' + mb(v.me.used) + ' / ' + gb(v.me.limit) + '（1ファイル ' + mb(v.fileBytes) + 'まで）';
+    return '全体の使用量 ' + mb(v.used) + ' / ' + mb(v.maxBytes) + '（開発者専用と共有保管庫の合計・1ファイル ' + mb(v.fileBytes) + 'まで・保存先 ' + (v.store === 'bucket' ? 'R2' : 'データベース') + '）';
   }
   function renderVault() {
-    var open = !!state.vault;
-    $('#vault-closed').hidden = open;
+    var open = !!state.vault, info = state.vaultInfo;
+    topBar();
+    $('#vault-title').textContent = state.developer ? '保管庫' : '共有保管庫';
+    $('#vault-closed').hidden = open || !state.developer;
     $('#vault-main').hidden = !open;
-    $('#vault-lock').hidden = !open;
-    $('#vault-usage').textContent = open ? '使用量 ' + mb(state.vault.used) + ' / ' + mb(state.vault.maxBytes) + '（1ファイル ' + mb(state.vault.fileBytes) + 'まで・保存先 ' + (state.vault.store === 'bucket' ? 'R2' : 'データベース') + '）' : '';
+    $('#vault-lock').hidden = !open || !state.developer;
+    $('#vault-usage').textContent = vaultUsage();
+    $('#vault-hint').textContent = vaultHint();
     var list = $('#vault-list'), folders = $('#vault-folders'), path = $('#vault-path');
     list.textContent = '';
     folders.textContent = '';
     path.textContent = '';
-    $('#vault-picked').hidden = true;
+    $('#vault-pager').textContent = '';
+    renderSpaces();
+    renderRoom();
+    renderHead();
     if (!open) return;
-    var all = state.vault.all || { live: 0 };
-    $('#vault-all-state').textContent = all.live ? '保管庫全体のリンク：' + all.live + '本 有効（' + stamp(all.until) + 'まで・取得 ' + fmt(all.uses) + '回）' : '保管庫全体のリンク：なし';
-    $('#vault-all-stop').hidden = !all.live;
+    // what the open vault lets one do: put files in (not after the other one left), change, links (the developer's own)
+    var own = !state.vaultSpace, add = !!(info && info.add);
+    $('#vault-up').hidden = !canWrite();
+    $('#vault-pick-files').hidden = !add;
+    $('#vault-new-text').hidden = !add;
+    $('#vault-note').hidden = !add;
+    $('#vault-all').hidden = !own || !info;
+    $('#vault-filter').hidden = !own || !info;
+    $('#vault-path').hidden = !info;
+    if (!info) { renderPicked(); renderWaiting(); return; }
+    if (own) {
+      var links = state.vault.all || { live: 0 };
+      $('#vault-all-state').textContent = links.live ? '保管庫全体のリンク：' + links.live + '本 有効（' + stamp(links.until) + 'まで・取得 ' + fmt(links.uses) + '回）' : '保管庫全体のリンク：なし';
+      $('#vault-all-stop').hidden = !links.live;
+    }
     // where it is: 保管庫 / 車 / 新車 (each a way back)
-    [{ id: '', name: '保管庫' }].concat(trail(state.vaultFolder)).forEach(function (d, i, a) {
+    [{ id: '', name: rootName() }].concat(trail(state.vaultFolder)).forEach(function (d, i, a) {
       if (i) path.appendChild(el('span', 'muted', '/'));
       var b = el('button', 'vault-crumb' + (i === a.length - 1 ? ' here' : ''), d.name);
       b.type = 'button';
@@ -2566,7 +3033,7 @@
     }).catch(function () {});
     return p;
   }
-  // the developer's short messages on a file
+  // short messages on a file (in a shared vault: which of the two wrote it)
   var NOTE_DAYS = [[1, '1日'], [3, '3日'], [7, '7日'], [30, '30日'], [0, '期限なし']];
   function notesEl(f) {
     var box = el('div', 'vault-notes');
@@ -2574,20 +3041,23 @@
       var over = n.until && n.until <= Date.now();
       var row = el('div', 'vnote' + (over ? ' over' : ''));
       row.appendChild(el('span', 'vnote-text', n.text));
-      row.appendChild(el('small', '', date(n.at, true) + '・' + (over ? '期限切れ（AIには見えません）' : n.until ? date(n.until, true) + 'まで' : '期限なし')));
-      var x = el('button', 'vnote-del', '×');
-      x.type = 'button';
-      x.title = 'このメッセージを削除';
-      x.dataset.vact = 'notedel';
-      x.dataset.note = n.id;
-      row.appendChild(x);
+      row.appendChild(el('small', '', (f.space && n.by ? n.by.name + '・' : '') + date(n.at, true) + '・' + (over ? (f.space ? '期限切れ' : '期限切れ（AIには見えません）') : n.until ? date(n.until, true) + 'まで' : '期限なし')));
+      if (canWrite()) {
+        var x = el('button', 'vnote-del', '×');
+        x.type = 'button';
+        x.title = 'このメッセージを削除';
+        x.dataset.vact = 'notedel';
+        x.dataset.note = n.id;
+        row.appendChild(x);
+      }
       box.appendChild(row);
     });
     return box;
   }
   function addNote(f) {
     ask({
-      title: '「' + f.name + '」にメッセージ', text: 'AI用リンクにも、期限まで表示されます。期限が過ぎても消えずに残ります（AIには見えなくなります）。', ok: '残す',
+      title: '「' + f.name + '」にメッセージ', ok: '残す',
+      text: f.space ? 'この共有保管庫のふたり（と開発者）に表示されます。期限が過ぎても消えずに残ります。' : 'AI用リンクにも、期限まで表示されます。期限が過ぎても消えずに残ります（AIには見えなくなります）。',
       input: { label: 'メッセージ（500文字まで）', type: 'text' },
       select: { label: '期間', options: NOTE_DAYS.map(function (d) { return { value: String(d[0]), label: d[1] }; }), value: '7' },
       check: function (v) { return v.trim() ? '' : 'メッセージを書いてください'; }
@@ -2606,7 +3076,7 @@
       if (v === null) return null;
       if (!v.text.trim()) { toast('本文を書いてください'); return null; }
       var name = v.value.trim().replace(/\.txt$/i, '') + '.txt';
-      return upload(new File([v.text], name, { type: 'text/plain' }), { note: '', folder: state.vaultFolder });
+      return upload(new File([v.text], name, { type: 'text/plain' }), { note: '', folder: state.vaultFolder, space: state.vaultSpace });
     }).catch(fail);
   }
   // what an AI did with a file, newest first
@@ -2625,16 +3095,11 @@
     return box;
   }
   function vaultCard(f) {
-    var card = el('article', 'card vault-card' + (f.done ? '' : ' done') + (f.implementedAt ? ' used' : ''));
+    var shared = !!f.space, write = canWrite();
+    var card = el('article', 'card vault-card' + (f.done ? '' : ' done') + (f.implementedAt ? ' used' : '') + (state.vaultPicked[f.id] ? ' picked' : ''));
     card.dataset.file = f.id;
     var head = el('div', 'card-head');
-    var pick = el('label', 'vault-check'), box = el('input');
-    box.type = 'checkbox';
-    box.dataset.vpick = f.id;
-    box.checked = !!state.vaultPicked[f.id];
-    box.setAttribute('aria-label', '選択');
-    pick.appendChild(box);
-    head.appendChild(pick);
+    head.appendChild(checkEl(f.id, f.name));
     var kind = fileKind(f);
     head.appendChild(el('span', 'fkind ' + kind[1], kind[0]));
     head.appendChild(el('b', 'vault-name', f.name));
@@ -2650,13 +3115,16 @@
     var facts = el('div', 'facts');
     fact(facts, '送信日時', stamp(f.createdAt));
     fact(facts, '保存完了', f.done ? stamp(f.doneAt) : '送信中');
+    if (shared && f.by) fact(facts, '送った人', f.by.name);
     if (f.implementedAt) fact(facts, '実装済みになった日時', stamp(f.implementedAt));
     if (f.info) modelFacts(facts, f.info, light);
     fact(facts, '大きさ', mb(f.size) + '（' + fmt(f.size) + 'バイト）');
     fact(facts, '種類', f.type || '-');
     fact(facts, 'SHA-256（部分ごとのハッシュの並び）', f.sha256 || '-');
-    fact(facts, 'リンク', f.links.live ? f.links.live + '本 有効（' + stamp(f.links.until) + 'まで）' : 'なし');
-    fact(facts, 'リンクからの取得', fmt(f.links.uses) + '回');
+    if (!shared) {
+      fact(facts, 'リンク', f.links.live ? f.links.live + '本 有効（' + stamp(f.links.until) + 'まで）' : 'なし');
+      fact(facts, 'リンクからの取得', fmt(f.links.uses) + '回');
+    }
     if (f.note) fact(facts, 'メモ', f.note);
     body.appendChild(facts);
     card.appendChild(body);
@@ -2670,20 +3138,25 @@
       b.dataset.vact = act;
       a.appendChild(b);
     }
+    // (links and 実装済み: the developer's vault only; looking into another's: only seeing and saving)
     if (f.done) {
       if (f.info) btn('3Dで見る', 'view', 'primary');
-      else if (is3d(f.name)) btn('プレビューを作る', 'make');
+      else if (is3d(f.name) && write && (!shared || state.vaultInfo.add)) btn('プレビューを作る', 'make');
       btn('ダウンロード', 'get');
       if (light) btn('軽量版をダウンロード', 'getlight');
-      if (f.implementedAt) btn('実装済みから戻す', 'restore', 'ok');
-      else btn('リンクを作る', 'link', 'primary');
-      if (f.links.live) btn('リンクを停止', 'stop', 'warn');
-    } else {
+      if (!shared) {
+        if (f.implementedAt) btn('実装済みから戻す', 'restore', 'ok');
+        else btn('リンクを作る', 'link', 'primary');
+        if (f.links.live) btn('リンクを停止', 'stop', 'warn');
+      }
+    } else if (write) {
       btn('続きから送る（同じファイルを選ぶ）', 'resume', 'primary');
     }
-    btn('＋ メッセージ', 'note');
-    btn('移動', 'move');
-    btn('削除', 'delete', 'danger');
+    if (write) {
+      btn('＋ メッセージ', 'note');
+      btn('移動', 'move');
+      btn('削除', 'delete', 'danger');
+    }
     card.appendChild(a);
     return card;
   }
@@ -2735,7 +3208,8 @@
     return Promise.all([worker(), worker(), worker(), worker()]).then(function () { if (failed) throw failed; });
   }
   // o: { id: an unfinished one to go on with, parent: the model of a light
-  // copy, note, folder, rec: the stopped upload this takes up again }
+  // copy, note, space and folder (where it goes), rec: the stopped upload
+  // this takes up again }
   function upload(file, o) {
     o = o || {};
     var j = job(file.name + '（アップロード）'), made = null;
@@ -2746,7 +3220,10 @@
         r.missing.forEach(function (m) { for (var n = m[0]; n <= m[1]; n++) todo.push(n); });
         return { file: r.file, todo: todo };
       })
-      : vreq('POST', '/api/vault/files', { name: file.name, size: file.size, type: file.type || '', note: o.parent ? '' : o.note || '', parent: o.parent || undefined, folder: o.parent ? undefined : o.folder || '' }).then(function (r) {
+      : vreq('POST', '/api/vault/files', {
+        name: file.name, size: file.size, type: file.type || '', note: o.parent ? '' : o.note || '', parent: o.parent || undefined,
+        space: o.parent ? undefined : o.space || '', folder: o.parent ? undefined : o.folder || ''
+      }).then(function (r) {
         var todo = [];
         for (var n = 0; n < r.file.chunks; n++) todo.push(n);
         return { file: r.file, todo: todo };
@@ -2772,24 +3249,27 @@
     }, function (err) {
       var why = stalled(err);
       if (why) {
-        wait(file, { id: made ? made.id : o.id, parent: o.parent, note: o.note, folder: o.folder, rec: o.rec }, why);
+        wait(file, { id: made ? made.id : o.id, parent: o.parent, note: o.note, space: o.space, folder: o.folder, rec: o.rec }, why);
         j.pause('止まりました：' + WHY[why]);
       } else j.fail((err && err.message) || 'アップロードできませんでした');
       return loadVault();
     });
   }
 
-  /* uploads that stopped (the vault full, the connection gone, the vault
-     closed) go on where they stopped, on their own, while this page is open */
+  /* uploads that stopped (the vault full, one's own room in the shared vaults
+     used up, the connection gone, the vault closed) go on where they
+     stopped, on their own, while this page is open */
   var waiting = [], resuming = false;
   var WHY = {
     full: '保管庫がいっぱいです。空きができしだい続きから送ります',
+    room: 'あなたの容量の上限です。開発者の承認か空きができしだい続きから送ります（「容量を申請」から申請できます）',
     net: '通信が切れました。戻りしだい続きから送ります',
     locked: '保管庫が閉じました。開きしだい続きから送ります'
   };
   function stalled(err) {
     if (!err) return '';
     if (err.code === 'vault_full') return 'full';
+    if (err.code === 'need_approval' || err.code === 'over_limit') return 'room';
     if (err.code === 'vault_locked') return 'locked';
     if (err.code === 'missing' || err.status === 0 || err.status === 429 || err.status >= 500) return 'net';
     return '';
@@ -2800,6 +3280,7 @@
     w.id = o.id || null;
     w.parent = o.parent || null;
     w.note = o.note;
+    w.space = o.space || '';
     w.folder = o.folder;
     w.why = why;
     w.tries++;
@@ -2807,14 +3288,21 @@
     w.next = Date.now() + Math.min(60000, 5000 * Math.pow(2, Math.min(4, w.tries - 1)));
     renderWaiting();
   }
+  // the room for a new file in a vault: all the vaults' room, and in a
+  // shared one an operator's own (the developer has no limit)
+  function roomIn(space) {
+    var v = state.vault, free = v.maxBytes - v.used;
+    if (space && !state.developer && v.me && v.me.limit) free = Math.min(free, v.me.limit - v.me.used);
+    return free;
+  }
   // `now`: all of them at once (the button)
   function resumeWaiting(now) {
     if (resuming || !state.vault || !waiting.length) return;
-    var free = state.vault.maxBytes - state.vault.used, t = Date.now();
+    var t = Date.now();
     var go = waiting.filter(function (w) {
       if (now) return true;
       // a new file waits for room (and then goes at once)
-      if (w.why === 'full' && !w.id) return w.file.size <= free;
+      if ((w.why === 'full' || w.why === 'room') && !w.id) return w.file.size <= roomIn(w.space);
       if (w.next > t) return false;
       return w.why !== 'net' || navigator.onLine !== false;
     });
@@ -2825,7 +3313,7 @@
     go.reduce(function (p, w) {
       return p.then(function () {
         if (!state.vault) { wait(w.file, w, 'locked'); return null; }
-        return upload(w.file, { id: w.id, parent: w.parent, note: w.note, folder: w.folder, rec: w });
+        return upload(w.file, { id: w.id, parent: w.parent, note: w.note, space: w.space, folder: w.folder, rec: w });
       });
     }, Promise.resolve()).then(function () { resuming = false; });
   }
@@ -2990,7 +3478,7 @@
     else if (act === 'pic') showPic(f);
     else if (act === 'make') makePreview(f);
     else if (act === 'link') makeLink(f);
-    else if (act === 'move') moveFiles([f.id]);
+    else if (act === 'move') moveItems([f], []);
     else if (act === 'note') addNote(f);
     else if (act === 'notedel') {
       ask({ title: 'このメッセージを削除しますか？', text: b.parentNode.querySelector('.vnote-text').textContent, ok: '削除する', danger: true }).then(function (ok) {
@@ -3017,14 +3505,15 @@
       }).catch(fail);
     }
   }
-  // files picked: one after another, with the note and into the folder open
-  // now (an unfinished one with the same name and size goes on where it stopped)
+  // files picked: one after another, with the note and into the vault and
+  // folder open now (an unfinished one with the same name and size goes on
+  // where it stopped)
   function onFiles() {
     var input = $('#vault-file'), files = Array.prototype.slice.call(input.files || []), resume = state.resumeId;
     input.value = '';
     state.resumeId = null;
     if (!state.vault) return;
-    var note = $('#vault-note').value.trim(), folder = state.vaultFolder;
+    var note = $('#vault-note').value.trim(), folder = state.vaultFolder, space = state.vaultSpace;
     $('#vault-note').value = '';
     files.reduce(function (p, file) {
       return p.then(function () {
@@ -3034,7 +3523,7 @@
         waiting = waiting.filter(function (w) { return !(w.file.name === file.name && w.file.size === file.size); });
         renderWaiting();
         var half = state.vaultFiles.filter(function (x) { return !x.done && (resume ? x.id === resume : x.name === file.name && x.size === file.size); })[0];
-        return upload(file, { id: half ? half.id : null, note: note, folder: folder });
+        return upload(file, { id: half ? half.id : null, note: note, space: space, folder: folder });
       });
     }, Promise.resolve());
   }
@@ -3195,7 +3684,8 @@
     turn();
     dragScroll();
     window.addEventListener('resize', turn);
-    window.addEventListener('orientationchange', function () { setTimeout(turn, 200); });
+    window.addEventListener('resize', topBar);
+    window.addEventListener('orientationchange', function () { setTimeout(function () { turn(); topBar(); }, 200); });
     // a tap: full screen and landscape where the phone allows it (again after leaving it)
     document.addEventListener('pointerup', fullscreen, true);
 
@@ -3314,23 +3804,24 @@
     });
     $('#vault-open').addEventListener('click', openVault);
     $('#vault-lock').addEventListener('click', function () { lockVault('保管庫を閉じました'); });
-    $('#vault-list').addEventListener('click', onVault);
-    $('#vault-list').addEventListener('change', function (e) {
-      var box = e.target.closest('[data-vpick]');
-      if (!box) return;
-      if (box.checked) state.vaultPicked[box.dataset.vpick] = true; else delete state.vaultPicked[box.dataset.vpick];
-      renderPicked();
-    });
+    // (a checkmark first: it only checks)
+    $('#vault-list').addEventListener('click', function (e) { if (!onPick(e)) onVault(e); });
     $('#vault-new-folder').addEventListener('click', newFolder);
     $('#vault-new-text').addEventListener('click', newText);
     $('#vault-filter').addEventListener('click', function (e) {
       var c = e.target.closest('[data-vf]');
       if (!c) return;
-      state.vaultShow = c.dataset.vf;
+      setShow(c.dataset.vf);
       state.vaultPage = 0;
-      Array.prototype.forEach.call(document.querySelectorAll('#vault-filter .chip'), function (x) { x.classList.toggle('on', x === c); });
+      clearPicks();
       renderVault();
     });
+    $('#vault-spaces').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-space]');
+      if (b) goSpace(b.dataset.space);
+    });
+    $('#vault-room').addEventListener('click', onRoom);
+    $('#vault-pick-all').addEventListener('click', pickAll);
     $('#vault-pager').addEventListener('click', function (e) {
       var b = e.target.closest('[data-page]');
       if (!b || b.disabled) return;
@@ -3350,10 +3841,12 @@
       resumeWaiting(false);
     });
     setInterval(function () { if (waiting.length && state.vault && !resuming) loadVault(); }, 20000);
-    $('#vault-folders').addEventListener('click', onFolder);
+    $('#vault-folders').addEventListener('click', function (e) { if (!onPick(e)) onFolder(e); });
     $('#vault-path').addEventListener('click', onFolder);
-    $('#vault-picked-move').addEventListener('click', function () { moveFiles(Object.keys(state.vaultPicked)); });
-    $('#vault-picked-clear').addEventListener('click', function () { state.vaultPicked = {}; renderVault(); });
+    $('#vault-picked-move').addEventListener('click', function () { moveItems(pickedFiles(), pickedFolders()); });
+    $('#vault-picked-get').addEventListener('click', function () { downloadItems(pickedFiles(), pickedFolders()); });
+    $('#vault-picked-delete').addEventListener('click', function () { deleteItems(pickedFiles(), pickedFolders()); });
+    $('#vault-picked-clear').addEventListener('click', function () { clearPicks(); renderPicks(); });
     $('#vault-all-link').addEventListener('click', function () { makeLink(null); });
     $('#vault-all-stop').addEventListener('click', function () {
       ask({ title: '全体リンクを停止しますか？', text: '保管庫全体の読み取り専用リンクがすべて、すぐに使えなくなります。', ok: '停止する', danger: true }).then(function (ok) {

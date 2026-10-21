@@ -54,7 +54,7 @@
       <button class="tab" data-view="security" type="button">セキュリティ<b class="count" id="count-security" hidden></b></button>
       <button class="tab" data-view="server" type="button">サーバー</button>
       <button class="tab" data-view="pay" type="button" id="tab-pay" hidden>課金<b class="count" id="count-pay" hidden></b></button>
-      <button class="tab" data-view="vault" type="button" id="tab-vault" hidden>保管庫</button>
+      <button class="tab" data-view="vault" type="button" id="tab-vault" hidden>保管庫<b class="count" id="count-vault" hidden></b></button>
     </nav>
     <div class="top-right">
       <label class="speed" title="運営サイトの更新頻度"><span>更新</span><select id="speed">
@@ -261,26 +261,31 @@
     </div>
   </section>
 
-  <!-- 保管庫: the developer's files (the developer code opens it) -->
+  <!-- 保管庫: the developer's own (the developer code opens it) and the ones two operators share (their login is enough) -->
   <section class="view" id="view-vault" hidden>
     <div class="view-head">
-      <h2>開発者専用保管庫</h2>
+      <h2 id="vault-title">保管庫</h2>
       <span class="muted" id="vault-usage"></span>
       <button class="btn small ghost" id="vault-lock" type="button" hidden>閉じる</button>
     </div>
-    <p class="hint muted">開発者コードで開きます（30分で閉じます）。ファイルはフォルダにまとめられます（チェックして「フォルダへ移動」）。3Dモデルは4方向の画像・情報・軽量版が自動で作られます。止まったアップロードは、このページを開いている間、空きや通信が戻りしだい自動で続きから送ります（閉じたあとは同じファイルを選び直すと続きから）。AI用リンクで AI が取ったファイルと AI の作業にはラベルが付き、AI がゲームに入れたファイルは「実装済み」に移ってリンクから外れます。保管庫のファイルが自動で消えることはありません。</p>
-    <div class="vault-closed" id="vault-closed">
+    <p class="hint muted" id="vault-hint"></p>
+    <div class="vault-closed" id="vault-closed" hidden>
       <button class="btn primary" id="vault-open" type="button">開発者コードで開く</button>
     </div>
     <div id="vault-main" hidden>
-      <div class="vault-up">
-        <label class="btn primary" for="vault-file">ファイルを選んでアップロード</label>
+      <!-- which vault: the developer's own, the shared ones, (the developer) the others' to look into -->
+      <nav class="vault-spaces" id="vault-spaces" aria-label="保管庫を選ぶ"></nav>
+      <!-- the room in the shared vaults: one's own use, limit and request; (the developer) everyone's, and the requests -->
+      <div class="card vault-room" id="vault-room" hidden></div>
+      <div class="vault-head" id="vault-head"></div>
+      <div class="vault-up" id="vault-up">
+        <label class="btn primary" for="vault-file" id="vault-pick-files">ファイルを選んでアップロード</label>
         <button class="btn" id="vault-new-folder" type="button">＋ フォルダを作る</button>
         <button class="btn" id="vault-new-text" type="button">＋ テキストを作る</button>
         <input id="vault-file" type="file" multiple hidden>
         <input class="search" id="vault-note" type="text" maxlength="500" placeholder="メモ（任意・次に選ぶファイルに付きます）">
       </div>
-      <div class="vault-all">
+      <div class="vault-all" id="vault-all">
         <span id="vault-all-state"></span>
         <button class="btn small primary" id="vault-all-link" type="button">保管庫全体のリンクを作る</button>
         <button class="btn small warn" id="vault-all-stop" type="button" hidden>全体リンクを停止</button>
@@ -288,11 +293,22 @@
       <div class="cards" id="vault-jobs"></div>
       <div class="card vault-waiting" id="vault-waiting" hidden></div>
       <div class="vault-path" id="vault-path"></div>
-      <div class="vault-picked" id="vault-picked" hidden><b id="vault-picked-n"></b><button class="btn small primary" id="vault-picked-move" type="button">フォルダへ移動</button><button class="btn small ghost" id="vault-picked-clear" type="button">選択を解除</button></div>
-      <div class="vault-folders" id="vault-folders"></div>
       <div class="chips vault-filter" id="vault-filter">
         <button class="chip on" data-vf="all" type="button">すべて</button><button class="chip" data-vf="open" type="button">未実装</button><button class="chip" data-vf="used" type="button">実装済み</button>
       </div>
+      <!-- the checkmarks: everything here at once, and what to do with the checked ones -->
+      <div class="vault-select" id="vault-select" hidden>
+        <label class="vault-check"><input type="checkbox" id="vault-pick-all" aria-label="このフォルダのすべてを選択"><i aria-hidden="true"></i></label>
+        <b id="vault-picked-n"></b>
+        <span class="muted" id="vault-select-hint">チェックで複数選択（Shift を押しながらで範囲）</span>
+        <span class="vault-select-acts" id="vault-picked" hidden>
+          <button class="btn small primary" id="vault-picked-move" type="button">移動</button>
+          <button class="btn small" id="vault-picked-get" type="button">ダウンロード</button>
+          <button class="btn small danger" id="vault-picked-delete" type="button">削除</button>
+          <button class="btn small ghost" id="vault-picked-clear" type="button">選択を解除</button>
+        </span>
+      </div>
+      <div class="vault-folders" id="vault-folders"></div>
       <div class="cards" id="vault-list"></div>
       <div class="vault-pager" id="vault-pager"></div>
     </div>

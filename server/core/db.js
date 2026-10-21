@@ -692,11 +692,44 @@ export const MIGRATIONS = [
        body       TEXT    NOT NULL,
        created_at INTEGER NOT NULL
      )`
+  ],
+  // 保管庫のアップデート: the vault two operators share (server/core/vault.js).
+  // A file's or a folder's vault ('' the developer's own, 'p:<a>:<b>' the one
+  // the operators with ids a < b share); what one operator may keep in the
+  // shared vaults when the developer approved more than 1GB (always a limit),
+  // and their requests for it.
+  [
+    "ALTER TABLE vault_files ADD COLUMN space TEXT NOT NULL DEFAULT ''",
+    'CREATE INDEX vault_files_space ON vault_files(space, folder)',
+    'CREATE INDEX vault_files_by ON vault_files(created_by, space)',
+    "ALTER TABLE vault_folders ADD COLUMN space TEXT NOT NULL DEFAULT ''",
+    'CREATE INDEX vault_folders_space ON vault_folders(space, parent)',
+    `CREATE TABLE vault_quotas (
+       user_id INTEGER PRIMARY KEY,
+       bytes   INTEGER NOT NULL,
+       by_id   INTEGER NOT NULL,
+       at      INTEGER NOT NULL
+     )`,
+    // status: open → approved (limit_bytes: the limit the developer set), declined or canceled
+    `CREATE TABLE vault_requests (
+       id          INTEGER PRIMARY KEY,
+       user_id     INTEGER NOT NULL,
+       bytes       INTEGER NOT NULL,
+       reason      TEXT    NOT NULL DEFAULT '',
+       status      TEXT    NOT NULL DEFAULT 'open',
+       created_at  INTEGER NOT NULL,
+       handled_by  INTEGER NOT NULL DEFAULT 0,
+       handled_at  INTEGER NOT NULL DEFAULT 0,
+       limit_bytes INTEGER NOT NULL DEFAULT 0
+     )`,
+    'CREATE INDEX vault_requests_user ON vault_requests(user_id, id)',
+    'CREATE INDEX vault_requests_status ON vault_requests(status, id)'
   ]
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
-// what a backup holds (not the vault's files: they are big, and the developer has them)
+// what a backup holds (not the vault's files: they are big, and the developer
+// has them; nor what goes with them, the operators' limits and requests)
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
   'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access',

@@ -363,15 +363,30 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .vault-crumb { padding: 2px 8px; border: 0; border-radius: 8px; background: none; color: var(--accent); font-weight: 600; }
 .vault-crumb:hover { background: var(--accent-soft); }
 .vault-crumb.here { color: var(--text); background: none; cursor: default; }
-.vault-picked { position: sticky; top: 8px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid #bfd4f6; border-radius: var(--radius); background: var(--accent-soft); }
-.vault-picked b { flex: 1; min-width: 120px; font-size: 14px; color: var(--accent); }
+/* the checkmarks: everything here at once, and what to do with the checked ones (stays in sight while some are checked) */
+.vault-select { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
+.vault-select.on { position: sticky; top: calc(var(--top-h, 0px) + 8px); z-index: 4; border-color: #bfd4f6; background: var(--accent-soft); box-shadow: 0 4px 14px rgba(29, 39, 51, .08); }
+.vault-select > b { font-size: 14px; }
+.vault-select.on > b { color: var(--accent); }
+.vault-select > .muted { font-size: 12px; }
+.vault-select-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .vault-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; margin: 0 0 12px; }
 .vault-folders:empty { display: none; }
 .vault-folder { display: flex; flex-direction: column; gap: 10px; background: var(--soft); cursor: pointer; }
 .vault-folder:hover { border-color: #bfd4f6; }
 .vault-folder .vault-name::before { content: '\1F4C1'; margin-right: 6px; }
-.vault-check { display: inline-flex; align-items: center; }
-.vault-check input { width: 18px; height: 18px; margin: 0; cursor: pointer; accent-color: var(--accent); }
+/* a checkmark: a square that fills in with ✓ (the real checkbox lies on top of it, unseen) */
+.vault-check { position: relative; flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; cursor: pointer; }
+.vault-check input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.vault-check i { display: grid; place-items: center; width: 22px; height: 22px; border: 2px solid #b9c3d0; border-radius: 7px; background: #fff; font-style: normal; transition: background .12s, border-color .12s; }
+.vault-check i::after { content: '✓'; color: #fff; font-size: 14px; font-weight: 800; line-height: 1; opacity: 0; transform: scale(.5); transition: opacity .12s, transform .12s; }
+.vault-check:hover i { border-color: var(--accent); }
+.vault-check input:checked + i, .vault-check input:indeterminate + i { border-color: var(--accent); background: var(--accent); }
+.vault-check input:checked + i::after { opacity: 1; transform: none; }
+.vault-check input:indeterminate + i::after { content: '−'; opacity: 1; transform: none; }
+.vault-check input:focus-visible + i { outline: 3px solid #bfd4f6; outline-offset: 1px; }
+.card.picked { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.vault-folder.picked { background: var(--accent-soft); }
 .vault-all { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); }
 .vault-all span { flex: 1; min-width: 180px; font-size: 13px; }
 .vault-body { display: flex; gap: 14px; align-items: flex-start; }
@@ -414,6 +429,43 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .vault-wait b { word-break: break-all; }
 .vault-wait .btn { margin-left: auto; }
 .vault-filter { margin: 0 0 10px; }
+
+/* which vault: the developer's own, the shared ones, the others' to look into */
+.vault-spaces { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin: 0 0 12px; }
+.vault-spaces:empty { display: none; }
+.vspace-label { flex-basis: 100%; margin: 4px 2px 0; font-size: 11.5px; font-weight: 700; color: var(--muted); }
+.vspace { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; padding: 6px 12px 6px 6px; border: 1px solid var(--line); border-radius: 12px; background: #fff; text-align: left; }
+.vspace:hover { border-color: #bfd4f6; background: var(--soft); }
+.vspace.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 1px 4px rgba(29, 39, 51, .06); }
+.vspace .face { width: 30px; height: 30px; font-size: 13px; }
+.vspace.look { padding-left: 12px; border-style: dashed; }
+.vspace.gone { opacity: .75; }
+.vspace-who { min-width: 0; }
+.vspace-who b { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 13.5px; word-break: break-all; }
+.vspace-who small { display: block; font-size: 11.5px; color: var(--muted); }
+.face.vspace-mark { background: #fff3d6; color: #9a6400; font-size: 13px; }
+/* the room in the shared vaults */
+.vault-room { margin: 0 0 12px; }
+.vroom-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.vroom-line .meter { flex: 1 1 200px; margin-top: 0; height: 8px; border-radius: 4px; }
+.vroom-note { margin: 6px 0 0; font-size: 12px; }
+.vroom-sub { margin: 14px 0 6px; font-size: 13px; color: var(--muted); }
+.vroom-req { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; border: 1px solid #bfd4f6; border-radius: 10px; background: var(--accent-soft); }
+.vroom-req + .vroom-req { margin-top: 6px; }
+.vroom-who { flex: 1; min-width: 200px; }
+.vroom-who b { display: block; font-size: 14px; }
+.vroom-who small { display: block; font-size: 12px; color: var(--muted); }
+.vroom-why { white-space: pre-wrap; word-break: break-word; }
+.vroom-people th { width: 30%; }
+.vroom-people td .meter { max-width: 220px; }
+.vroom-people th small { display: block; font-weight: 400; }
+.vroom-people td.num { width: 1%; white-space: nowrap; }
+/* the open vault: whose, who sees it */
+.vault-head { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; }
+.vault-head:empty { display: none; }
+.vault-head .face + .face { margin-left: -14px; box-shadow: 0 0 0 2px #fff; }
+.vault-head-text b { display: block; font-size: 15px; }
+.vault-head-text small { display: block; font-size: 12px; color: var(--muted); }
 .vault-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
 .vault-pager:empty { display: none; }
 .vault-pager > .muted:last-child { margin-left: 8px; font-size: 12px; }
