@@ -95,10 +95,11 @@ test('a vault two operators share: only the two of them, the developer looks wit
     assert.equal((await a.call('POST', '/api/vault/files', { name: 'x', size: 10 })).error.code, 'not_developer');
     assert.equal((await a.call('POST', '/api/vault/open', { code: CODE })).error.code, 'not_developer');
 
-    // the developer: with the vault open, looks into it, changes nothing
+    // the developer: looks into it (with the code or without), changes nothing
     const closed = { ...taku, ticket: '' };
     closed.call = (method, url, body) => s.call(method, url, { token: taku.token, body });
-    assert.equal((await closed.call('GET', `/api/vault/files?space=${ab}`)).error.code, 'vault_locked');
+    const peek = await closed.call('GET', `/api/vault/files?space=${ab}`);
+    assert.deepEqual([peek.files.length, peek.locked, peek.space.write], [1, true, false]);
     const look = await taku.call('GET', '/api/vault/spaces');
     assert.deepEqual(look.others.map((x) => [x.id, x.files, x.bytes]), [[ab, 1, 1500]]);
     assert.deepEqual(look.spaces.map((x) => x.with.name).sort(), ['Mod1', 'Mod2', 'Mod3']);
@@ -313,6 +314,134 @@ test('checked items: files and folders moved or deleted together, in the develop
     assert.ok(log.some((e) => e.action === 'vault_delete' && /共有保管庫（Mod1⇄Mod2）のファイル2件（.+）を削除$/.test(e.summary)));
     assert.ok(log.some((e) => e.action === 'vault_folder' && e.summary.includes('共有保管庫（Mod1⇄Mod2）のフォルダ2個を削除')));
     assert.ok(log.some((e) => e.action === 'vault_move' && e.summary === '共有保管庫（Mod1⇄Mod2）で3件を移動'));
+  } finally {
+    await s.stop();
+  }
+});
+
+test('each operator\'s own vault: only theirs (the developer looks), files of any kind made in it, counted in their 1GB', async () => {
+  const s = await startServer({ operators: ['taku', 'mod1', 'mod2'], limits: LIMITS, vaultFreeMb: 1, vaultMaxMb: 10 });
+  try {
+    const taku = await developer(s);
+    const a = await person(s, 'Mod1'), b = await person(s, 'Mod2');
+    const mine = `u:${a.id}`;
+    const sp = await a.call('GET', '/api/vault/spaces');
+    assert.deepEqual([sp.personal.id, sp.personal.files], [mine, 0]);
+    assert.ok(!sp.spaces.some((x) => x.id === mine), 'not among the shared ones');
+    // an APK and a program, kept as they are
+    const apk = await put(a, { space: mine, name: 'two-state-1.2.apk', data: crypto.randomBytes(3000) });
+    const code = Buffer.from('print("hello")\n');
+    const py = await a.call('POST', '/api/vault/files', { space: mine, name: 'main.py', size: code.length, type: 'text/x-python' });
+    assert.deepEqual([py.file.name, py.file.type, apk.name], ['main.py', 'text/x-python', 'two-state-1.2.apk']);
+    const f = await a.call('GET', `/api/vault/files?space=${mine}`);
+    assert.deepEqual([f.space.kind, f.space.mine, f.space.write, f.space.add], ['own', true, true, true]);
+    assert.ok(f.files.some((x) => x.name === 'two-state-1.2.apk'));
+    // a folder, a new name
+    assert.equal((await a.call('POST', '/api/vault/folders', { space: mine, name: 'アプリ' })).folder.space, mine);
+    const renamed = await a.call('POST', '/api/vault/rename', { id: apk.id, name: 'two-state-1.3.apk' });
+    assert.equal(renamed.file.name, 'two-state-1.3.apk');
+    // nobody else's: another operator never sees it, the developer looks without changing
+    assert.equal((await b.call('GET', `/api/vault/files?space=${mine}`)).error.code, 'no_space');
+    assert.equal((await b.call('POST', '/api/vault/rename', { id: apk.id, name: 'x.apk' })).status, 404);
+    const look = await taku.call('GET', `/api/vault/files?space=${mine}`);
+    assert.deepEqual([look.files.length, look.space.write, look.space.kind], [2, false, 'own']);
+    assert.equal((await taku.call('POST', '/api/vault/rename', { id: apk.id, name: 'x.apk' })).error.code, 'read_only');
+    assert.deepEqual((await taku.call('GET', '/api/vault/spaces')).others.filter((x) => x.personal).map((x) => [x.id, x.members[0].name]), [[mine, 'Mod1']]);
+    // the 1GB of each person (here 1MB) counts their own vault too
+    const big = await a.call('POST', '/api/vault/files', { space: mine, name: 'big.bin', size: mbs(1) });
+    assert.equal(big.error.code, 'need_approval');
+    // the log names no file of it
+    const log = await actions(taku);
+    assert.ok(log.some((e) => e.action === 'vault_rename' && e.summary === '個人保管庫（Mod1）のファイル（3KB）の名前を変更'));
+    assert.ok(!log.some((e) => e.summary.includes('two-state')));
+  } finally {
+    await s.stop();
+  }
+});
+
+test('the developer\'s backups: any file of any vault (or a folder\'s), a badge on it, deleted it waits in the backups, back or gone for good', async () => {
+  const bucket = memoryBucket();
+  const s = await startServer({ operators: ['taku', 'mod1', 'mod2'], limits: LIMITS, blobs: bucket });
+  try {
+    const taku = await developer(s);
+    const a = await person(s, 'Mod1'), b = await person(s, 'Mod2');
+    const ab = pair(a, b);
+    const theirs = await put(a, { space: ab, name: 'design.psd', data: crypto.randomBytes(5000) });
+    const own = await put(a, { space: `u:${a.id}`, name: 'notes.txt', data: Buffer.from('メモ') });
+    const dir = (await taku.call('POST', '/api/vault/folders', { name: '車' })).folder;
+    const inner = (await taku.call('POST', '/api/vault/folders', { name: '新車', parent: dir.id })).folder;
+    const car = await put(taku, { name: 'car.glb', data: crypto.randomBytes(2000), folder: inner.id });
+
+    // the developer only, with the code
+    assert.equal((await a.call('POST', '/api/vault/backup', { ids: [theirs.id] })).error.code, 'not_developer');
+    const locked = { ...taku, ticket: '' };
+    locked.call = (method, url, body) => s.call(method, url, { token: taku.token, body });
+    assert.equal((await locked.call('POST', '/api/vault/backup', { ids: [theirs.id] })).error.code, 'vault_locked');
+    const r = await taku.call('POST', '/api/vault/backup', { ids: [theirs.id, own.id], folders: [dir.id] });
+    assert.equal(r.changed, 3, JSON.stringify(r));
+    // the badge, everyone who sees the file sees it
+    const seen = (await a.call('GET', `/api/vault/files?space=${ab}`)).files.find((x) => x.id === theirs.id);
+    assert.deepEqual([!!seen.backup, seen.backup.by.name, seen.backup.removed], [true, 'TAKU', null]);
+    const list = await taku.call('GET', '/api/vault/files?space=backup');
+    assert.deepEqual(list.files.map((x) => x.name).sort(), ['car.glb', 'design.psd', 'notes.txt']);
+    assert.equal(list.space.kind, 'backup');
+    assert.deepEqual((await taku.call('GET', '/api/vault/spaces')).backups, { files: 3, removed: 0, bytes: 0 });
+
+    // deleted from its vault (by the operators): gone for them, waiting in the backups
+    const del = await a.call('POST', '/api/vault/delete', { id: theirs.id });
+    assert.deepEqual([del.deleted, del.kept], [1, 1]);
+    assert.ok(!(await a.call('GET', `/api/vault/files?space=${ab}`)).files.some((x) => x.id === theirs.id));
+    assert.equal((await a.call('GET', '/api/vault/spaces')).me.used, 6, 'no longer theirs to count (the personal one\'s 6 bytes left)');
+    const waiting = (await taku.call('GET', '/api/vault/files?space=backup')).files.find((x) => x.id === theirs.id);
+    assert.deepEqual([waiting.space, waiting.backup.removed.from, waiting.backup.removed.by.name], ['backup', ab, 'Mod1']);
+    assert.ok([...bucket.objects.keys()].some((k) => k.startsWith(`vault/${theirs.id}/`)), 'its pieces stay');
+    // nothing new goes into the backups directly
+    assert.equal((await taku.call('POST', '/api/vault/files', { space: 'backup', name: 'x', size: 10 })).error.code, 'not_here');
+    // back where it was
+    const back = await taku.call('POST', '/api/vault/backups/restore', { id: theirs.id });
+    assert.deepEqual([back.file.space, back.file.backup.removed], [ab, null]);
+    assert.ok((await b.call('GET', `/api/vault/files?space=${ab}`)).files.some((x) => x.id === theirs.id));
+
+    // the developer's own, deleted, then deleted from the backups: gone for good
+    await taku.call('POST', '/api/vault/delete', { id: car.id });
+    assert.equal((await taku.call('GET', `/api/vault/files`)).files.length, 0);
+    const gone = await taku.call('POST', '/api/vault/delete', { id: car.id });
+    assert.deepEqual([gone.deleted, gone.kept], [1, 0]);
+    assert.ok(![...bucket.objects.keys()].some((k) => k.startsWith(`vault/${car.id}/`)), 'out of the bucket');
+    // no longer backed up: deleting it takes it for good
+    await taku.call('POST', '/api/vault/backup', { ids: [own.id], on: false });
+    assert.equal((await a.call('GET', `/api/vault/files?space=u:${a.id}`)).files[0].backup, null);
+    assert.equal((await a.call('POST', '/api/vault/delete', { id: own.id })).kept, 0);
+
+    const log = await actions(taku);
+    assert.ok(log.some((e) => e.action === 'vault_backup' && e.summary === '共有保管庫（Mod1⇄Mod2）・個人保管庫（Mod1）・保管庫の3件（7KB）をバックアップ'));
+    assert.ok(log.some((e) => e.action === 'vault_delete' && e.summary === '共有保管庫（Mod1⇄Mod2）のファイル（5KB）を削除（開発者のバックアップに残ります）'));
+    assert.ok(log.some((e) => e.action === 'vault_delete' && e.summary === 'バックアップの「car.glb」（2KB）を削除（完全に削除）'));
+    assert.ok(log.some((e) => e.action === 'vault_backup_restore'));
+  } finally {
+    await s.stop();
+  }
+});
+
+test('an AI comments on a file through its link; the developer sees it as by AI', async () => {
+  const s = await startServer({ operators: ['taku'], limits: LIMITS });
+  try {
+    const taku = await developer(s);
+    const f = await put(taku, { name: 'sedan.glb', data: crypto.randomBytes(500) });
+    const { token } = await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1, ai: true });
+    const ai = (body) => s.call('POST', '/api/vault/ai', { body: { t: token, f: f.id, ...body } });
+    assert.equal((await ai({ comment: '' })).error.code, 'empty');
+    assert.equal((await ai({ comment: 'x', days: 2 })).error.code, 'bad_days');
+    const r = await ai({ comment: 'テクスチャが重いので軽量版を使います' });
+    assert.deepEqual(r.notes.map((n) => [n.text, n.by]), [['テクスチャが重いので軽量版を使います', 'AI']]);
+    const mine = (await taku.call('GET', '/api/vault/files')).files[0].notes;
+    assert.deepEqual(mine.map((n) => [n.text, n.by.name, !!n.by.ai, n.until]), [['テクスチャが重いので軽量版を使います', 'AI', true, 0]]);
+    const pulled = await s.call('GET', `/api/vault/pull?t=${token}`);
+    assert.deepEqual(pulled.notes.map((n) => n.by), ['AI']);
+    assert.ok(pulled.how.comment.includes('comment'));
+    // a plain link cannot comment
+    const plain = (await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1 })).token;
+    assert.equal((await s.call('POST', '/api/vault/ai', { body: { t: plain, f: f.id, comment: 'x' } })).status, 404);
   } finally {
     await s.stop();
   }

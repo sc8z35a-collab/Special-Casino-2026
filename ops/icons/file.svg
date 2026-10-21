@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 56" width="48" height="56">
+  <!-- 仮のファイルアイコン（差し替えるときはこのファイルを置き換え） -->
+  <path d="M9 2h21l13 13v35a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4z" fill="#ffffff" stroke="#9fb0c4" stroke-width="2"/>
+  <path d="M30 2v9a4 4 0 0 0 4 4h9" fill="#e6edf6" stroke="#9fb0c4" stroke-width="2" stroke-linejoin="round"/>
+  <rect x="12" y="21" width="17" height="3" rx="1.5" fill="#cfd9e6"/>
+  <rect x="12" y="27" width="24" height="3" rx="1.5" fill="#cfd9e6"/>
+  <rect x="12" y="33" width="21" height="3" rx="1.5" fill="#cfd9e6"/>
+</svg>

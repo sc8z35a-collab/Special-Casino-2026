@@ -728,7 +728,8 @@ export const MIGRATIONS = [
   // DEV11: what was said is kept for good — an account 90 days in the archive
   // keeps only its name on it (purged_at: when the rest went), and the chats
   // once only in memory are written down too: a home's chat (place 'home',
-  // room: the host) and 友達と稼ぐ's 即席チャット ('hub', room: the hub)
+  // room: the host) and 友達と稼ぐ's 即席チャット ('hub', room: the hub).
+  // The vault's backups and personal vaults (below).
   [
     'ALTER TABLE users ADD COLUMN purged_at INTEGER NOT NULL DEFAULT 0',
     `CREATE TABLE live_chats (
@@ -742,7 +743,17 @@ export const MIGRATIONS = [
        created_at   INTEGER NOT NULL
      )`,
     'CREATE INDEX live_chats_room ON live_chats(place, room, id)',
-    'CREATE INDEX live_chats_sender ON live_chats(sender_id, id)'
+    'CREATE INDEX live_chats_sender ON live_chats(sender_id, id)',
+    // the vault: the developer's backups of any file (backup_at: since when;
+    // one deleted from its vault then waits in the backups, `from_*` saying
+    // where it was), and each operator's own vault ('u:<id>', a new space)
+    'ALTER TABLE vault_files ADD COLUMN backup_at INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE vault_files ADD COLUMN backup_by INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE vault_files ADD COLUMN removed_at INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE vault_files ADD COLUMN removed_by INTEGER NOT NULL DEFAULT 0',
+    "ALTER TABLE vault_files ADD COLUMN from_space TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE vault_files ADD COLUMN from_folder TEXT NOT NULL DEFAULT ''",
+    'CREATE INDEX vault_files_backup ON vault_files(backup_at)'
   ]
 ];
 

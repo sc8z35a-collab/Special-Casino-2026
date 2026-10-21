@@ -1,16 +1,21 @@
-// The vault: big files (3D models and the like, up to a few GB) kept on the
-// game's own server, to fetch from anywhere. Two kinds, in one store with one
-// room for all of them (VAULT_MAX_MB):
+// The vault: big files (3D models, APKs, programs and the like, up to a few
+// GB) kept on the game's own server, to fetch from anywhere. Three kinds, in
+// one store with one room for all of them (VAULT_MAX_MB):
 //  - the developer's own (開発者専用保管庫): only the developer's account
-//    opens it, and only with the developer code (server/core/devcode.js: the
-//    same counted and logged tries) for a signed ticket good for 30 minutes;
+//    sees it; their login is enough to look (open, download), and the
+//    developer code (server/core/devcode.js: the same counted and logged
+//    tries) gives a signed ticket good for 30 minutes to change anything;
 //  - the vaults operators share (共有保管庫), one for every two operators
-//    ('p:<a>:<b>', their account ids, a < b). Private: the two of them use it
-//    from the operator site (their login is enough), and the developer, with
-//    their vault open, looks into the others' too (no changes). What one
-//    operator keeps there (the files they sent, in all their shared vaults)
-//    is 1GB at most (VAULT_FREE_MB) until they ask the developer for more; an
-//    approval always comes with the limit the developer sets.
+//    ('p:<a>:<b>', their account ids, a < b), and each operator's own
+//    (個人保管庫, 'u:<id>'). Private: the operators use theirs from the
+//    operator site (their login is enough), and the developer looks into
+//    every one too (no changes). What one operator keeps there (the files they
+//    sent, in all of them) is 1GB at most (VAULT_FREE_MB) until they ask the
+//    developer for more; an approval always comes with the limit the
+//    developer sets.
+// The developer backs up any file (or a folder's files) of any vault: it
+// carries a バックアップ badge, and deleted from its vault it waits in the
+// backups ('backup', the developer's only) to go back or to go for good.
 // A file comes in pieces (1 MiB, or bigger with a bucket: VAULT_PIECE_MB),
 // each checked against its SHA-256 as it arrives (a broken upload carries on
 // where it stopped); it is whole once every piece is in, and its fingerprint
@@ -65,8 +70,11 @@ const ID_RE = /^[0-9a-f]{32}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const TOKEN_RE = /^[\w-]{43}$/;
-// a shared vault: its two operators' account ids, the smaller first
+// a shared vault: its two operators' account ids, the smaller first; an
+// operator's own vault: their id; the developer's backups
 const SPACE_RE = /^p:(\d{1,15}):(\d{1,15})$/;
+const OWN_RE = /^u:(\d{1,15})$/;
+const BACKUP = 'backup';
 // a model's picture (a WebP or JPEG data URL) and what is in it (JSON)
 const PREVIEW_MAX = 600 * 1024;
 const PREVIEW_RE = /^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/]+={0,2}$/;
@@ -146,51 +154,65 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     const got = Buffer.from(m[3], 'base64url'), want = sign(`${m[1]}.${m[2]}`);
     return got.length === want.length && crypto.timingSafeEqual(got, want);
   }
-  // an operator; the developer with their ticket (403, not 401: the site
-  // stays logged in, only the vault closes)
-  function need(req, u) {
+  // an operator; the developer looks with their login alone and changes
+  // anything (`write`) with their ticket (403, not 401: the site stays
+  // logged in, only the changes wait for the code)
+  function need(req, u, write = false) {
     ops.need(u);
-    if (isDeveloper(u) && !ticketOk(req, u)) throw new ApiError(403, 'vault_locked', '保管庫が閉じています。開発者コードを入力して開いてください');
+    if (write && isDeveloper(u) && !ticketOk(req, u)) throw new ApiError(403, 'vault_locked', '閲覧のみです。変更するには開発者コードを入力してください');
     rate(limits.work, u.id);
   }
+  // whether `u` may change things now (the developer: with the ticket)
+  const unlocked = (req, u) => !isDeveloper(u) || ticketOk(req, u);
   const developerOnly = (u, what) => {
     if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', `${what}は開発者だけができます`);
   };
 
   /* -------------------------------------------------------------- vaults --- */
-  // the two operators of a shared vault (null: the developer's own, or no vault)
+  // who uses a vault: a shared one's two operators, a personal one's owner
+  // (null: the developer's own, the backups, or no vault)
   function membersOf(space) {
-    const m = SPACE_RE.exec(String(space || ''));
-    return m && Number(m[1]) < Number(m[2]) ? [Number(m[1]), Number(m[2])] : null;
+    const s = String(space || '');
+    const m = SPACE_RE.exec(s);
+    if (m) return Number(m[1]) < Number(m[2]) ? [Number(m[1]), Number(m[2])] : null;
+    const o = OWN_RE.exec(s);
+    return o ? [Number(o[1])] : null;
   }
+  const personal = (space) => OWN_RE.test(String(space || ''));
   const pairOf = (a, b) => (a < b ? `p:${a}:${b}` : `p:${b}:${a}`);
   const otherOf = (m, id) => (m[0] === id ? m[1] : m[0]);
   const operatorId = (id) => { const p = getUser(id); return !!p && ops.isOperator(p); };
-  // Who sees a vault: the developer every one (their own, and each shared
-  // one); an operator the shared ones they are in. To anyone else it is not there.
+  // Who sees a vault: the developer every one (their own, the backups, each
+  // shared one and each operator's own); an operator the shared ones they are
+  // in and their own. To anyone else it is not there.
   function sees(u, space) {
     const m = membersOf(space);
-    if (isDeveloper(u)) return !space || !!m;
+    if (isDeveloper(u)) return !space || space === BACKUP || (!!m && !(m.length === 1 && m[0] === u.id));
     return !!m && m.includes(u.id);
   }
   // `u` sees the vault (else `missing()`), and as `how` says changes what is
   // in it ('change') or puts a new file in ('add'): only in their own (the
-  // developer's vault, a shared one they are in), the developer only looks
-  // into the others'. A new file needs the other one to be an operator still.
+  // developer's vault and the backups, a shared one they are in, their
+  // personal one), the developer only looks into the others'. A new file in a
+  // shared one needs the other one to be an operator still; nothing new goes
+  // into the backups but by a backup.
   function check(u, space, how, missing) {
     if (!sees(u, space)) throw missing();
+    if (how === 'add' && space === BACKUP) throw new ApiError(400, 'not_here', 'バックアップには直接ファイルを入れられません');
     const m = membersOf(space);
     if (!how || !m) return;
-    if (!m.includes(u.id)) throw new ApiError(403, 'read_only', 'ほかの運営者どうしの共有保管庫は見るだけです（変更はできません）');
-    if (how === 'add' && !operatorId(otherOf(m, u.id))) throw new ApiError(409, 'partner_gone', '相手が運営者ではなくなったため、新しいファイルは入れられません（見る・整理・削除はできます）');
+    if (!m.includes(u.id)) {
+      throw new ApiError(403, 'read_only', m.length === 1 ? 'ほかの運営者の個人保管庫は見るだけです（変更はできません）' : 'ほかの運営者どうしの共有保管庫は見るだけです（変更はできません）');
+    }
+    if (how === 'add' && m.length === 2 && !operatorId(otherOf(m, u.id))) throw new ApiError(409, 'partner_gone', '相手が運営者ではなくなったため、新しいファイルは入れられません（見る・整理・削除はできます）');
   }
   const noFile = () => new ApiError(404, 'no_file', 'ファイルが見つかりません');
   const noFolder = () => new ApiError(404, 'no_folder', 'フォルダが見つかりません');
-  // the vault a request names: '' (the developer's own) or a shared one
+  // the vault a request names: '' (the developer's own), the backups, a shared or a personal one
   function spaceFor(u, raw, how = '') {
     const space = String(raw ?? '');
-    if (space && !membersOf(space)) throw new ApiError(400, 'bad_space', '保管庫の指定が正しくありません');
-    check(u, space, how, () => (space ? new ApiError(404, 'no_space', 'この共有保管庫は見られません')
+    if (space && space !== BACKUP && !membersOf(space)) throw new ApiError(400, 'bad_space', '保管庫の指定が正しくありません');
+    check(u, space, how, () => (space ? new ApiError(404, 'no_space', 'この保管庫は見られません')
       : new ApiError(403, 'not_developer', '開発者専用保管庫は開発者のアカウントだけが使えます')));
     return space;
   }
@@ -199,10 +221,14 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     if (rows.some((x) => x.space !== rows[0].space)) throw new ApiError(400, 'mixed', '別々の保管庫のものは一度に扱えません');
     return rows[0].space;
   }
-  // where, for the log: 保管庫 (the developer's) or the shared one of two operators
+  // where, for the log: 保管庫 (the developer's), the backups, the shared one
+  // of two operators or an operator's own
   function whereName(space) {
+    if (space === BACKUP) return 'バックアップ';
     const m = membersOf(space);
-    return m ? `共有保管庫（${m.map((id) => (getUser(id) || { name: '?' }).name).join('⇄')}）` : '保管庫';
+    if (!m) return '保管庫';
+    const names = m.map((id) => (getUser(id) || { name: '?' }).name);
+    return m.length === 1 ? `個人保管庫（${names[0]}）` : `共有保管庫（${names.join('⇄')}）`;
   }
   // a file in the log: its name in the developer's vault, only its size in a shared one
   const what = (f) => (f.space ? `ファイル（${mb(f.size)}）` : `「${f.name}」（${mb(f.size)}）`);
@@ -218,9 +244,10 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   }
   // all the files together: the developer's vault and the shared ones are one room
   const used = () => q('SELECT COALESCE(SUM(size), 0) AS n FROM vault_files').get().n;
-  // what one operator keeps in the shared vaults (the files they sent), and
-  // what they may: 1GB, or the limit the developer set approving more
-  const keeps = (id) => q("SELECT COALESCE(SUM(size), 0) AS n FROM vault_files WHERE created_by = ? AND space != ''").get(id).n;
+  // what one operator keeps in the shared vaults and their own (the files
+  // they sent; not what waits in the developer's backups), and what they may:
+  // 1GB, or the limit the developer set approving more
+  const keeps = (id) => q("SELECT COALESCE(SUM(size), 0) AS n FROM vault_files WHERE created_by = ? AND space != '' AND space != ?").get(id, BACKUP).n;
   const quotaOf = (id) => q('SELECT * FROM vault_quotas WHERE user_id = ?').get(id);
   const limitOf = (id) => (quotaOf(id) || { bytes: freeBytes }).bytes;
   // pieces still in the database (moving into the bucket)
@@ -245,13 +272,18 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     const live = links.filter((l) => !l.revoked && l.until > now);
     return { live: live.length, until: live.reduce((m, l) => Math.max(m, l.until), 0), uses: links.reduce((s, l) => s + l.uses, 0) };
   }
-  const notesOf = (f) => q('SELECT * FROM vault_notes WHERE file_id = ? ORDER BY id').all(f.id).map((n) => ({ id: n.id, text: n.body, at: n.created_at, until: n.until, by: who(n.by_id) }));
+  // (a comment by an AI, from its link: by_id 0)
+  const notesOf = (f) => q('SELECT * FROM vault_notes WHERE file_id = ? ORDER BY id').all(f.id)
+    .map((n) => ({ id: n.id, text: n.body, at: n.created_at, until: n.until, by: n.by_id ? who(n.by_id) : { id: 0, name: 'AI', avatar: '', ai: true } }));
   const live = (n, now) => !n.until || n.until > now;
   function fileDto(f, now = Date.now()) {
     return {
       id: f.id, name: f.name, type: f.type, note: f.note, size: f.size, chunks: f.chunks, piece: f.piece, received: f.received, done: !!f.done_at,
       sha256: f.sha256, createdAt: f.created_at, doneAt: f.done_at, parent: f.parent || '', folder: f.folder || '', info: infoOf(f), preview: !!f.preview,
-      labels: labelsOf(f), implementedAt: f.implemented_at, links: linksOf(f.id, now), notes: notesOf(f), space: f.space, by: who(f.created_by)
+      labels: labelsOf(f), implementedAt: f.implemented_at, links: linksOf(f.id, now), notes: notesOf(f), space: f.space, by: who(f.created_by),
+      // the developer's backup of it (removed: deleted from its vault, waiting in the backups; `from`: where it was)
+      backup: f.backup_at ? { at: f.backup_at, by: who(f.backup_by), removed: f.removed_at ? { at: f.removed_at, by: who(f.removed_by), from: f.from_space, folder: f.from_folder, where: whereName(f.from_space) } : null } : null,
+      where: whereName(f.space)
     };
   }
   // what a link shows of a file (no notes' writers, no links)
@@ -259,16 +291,21 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     const light = q("SELECT * FROM vault_files WHERE parent = ? AND done_at > 0 ORDER BY created_at DESC LIMIT 1").get(f.id);
     return {
       id: f.id, name: f.name, type: f.type, size: f.size, chunks: f.chunks, chunk: f.piece, sha256: f.sha256, folder: f.folder || '', sentAt: f.created_at, doneAt: f.done_at,
-      labels: labelsOf(f), info: infoOf(f), preview: !!f.preview, notes: notesOf(f).filter((n) => live(n, Date.now())).map(({ text, at, until }) => ({ text, at, until })),
+      labels: labelsOf(f), info: infoOf(f), preview: !!f.preview, notes: notesOf(f).filter((n) => live(n, Date.now())).map(({ text, at, until, by }) => ({ text, at, until, by: by.ai ? 'AI' : 'developer' })),
       light: light ? { id: light.id, name: light.name, size: light.size, chunks: light.chunks, chunk: light.piece, sha256: light.sha256 } : null
     };
   }
-  // a vault as the site shows it: whose, and what `u` may do in it
-  function spaceDto(u, space) {
+  // a vault as the site shows it: whose, and what `u` may do in it now
+  // (`open`: the developer's ticket, or an operator's login)
+  function spaceDto(u, space, open = true) {
+    if (space === BACKUP) return { id: BACKUP, kind: 'backup', shared: false, mine: true, write: open, add: false, members: [] };
     const m = membersOf(space);
-    if (!m) return { id: '', shared: false, mine: true, write: true, add: true, members: [] };
-    const mine = m.includes(u.id);
-    return { id: space, shared: true, mine, write: mine, add: mine && operatorId(otherOf(m, u.id)), members: m.map((id) => ({ ...who(id), operator: operatorId(id), developer: isDeveloper(getUser(id)) })) };
+    if (!m) return { id: '', kind: 'dev', shared: false, mine: true, write: open, add: open, members: [] };
+    const mine = m.includes(u.id), one = m.length === 1;
+    return {
+      id: space, kind: one ? 'own' : 'pair', shared: !one, mine, write: mine && open, add: mine && open && (one || operatorId(otherOf(m, u.id))),
+      members: m.map((id) => ({ ...who(id), operator: operatorId(id), developer: isDeveloper(getUser(id)) }))
+    };
   }
 
   /* -------------------------------------------------------------- pieces --- */
@@ -314,8 +351,26 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     return sum;
   }
 
-  // files and their light copies leave the vault (and the bucket)
-  async function remove(files) {
+  // Files (with their light copies) out of their vault: a backed-up one
+  // waits in the backups (where it was kept with it, its links stopped);
+  // any other, and one deleted from the backups, goes for good (and from
+  // the bucket). How many of each.
+  async function remove(files, u) {
+    const keep = files.filter((f) => f.backup_at && f.space !== BACKUP);
+    if (keep.length) {
+      const now = Date.now();
+      tx(() => {
+        for (const f of keep) {
+          q('UPDATE vault_files SET removed_at = ?, removed_by = ?, from_space = space, from_folder = folder, space = ?, folder = ? WHERE id = ? OR parent = ?').run(now, u.id, BACKUP, '', f.id, f.id);
+          q('UPDATE vault_links SET revoked = 1 WHERE file_id = ?').run(f.id);
+        }
+      });
+    }
+    const gone = files.filter((f) => !keep.includes(f));
+    if (gone.length) await erase(gone);
+    return { kept: keep.length, gone: gone.length };
+  }
+  async function erase(files) {
     const all = [...new Map(files.flatMap((f) => [f, ...q('SELECT * FROM vault_files WHERE parent = ?').all(f.id)]).map((x) => [x.id, x])).values()];
     tx(() => {
       for (const x of all) {
@@ -331,7 +386,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   // the vaults in figures (the operator site's サーバー tab: every operator, so no names)
   function summary() {
     const n = q("SELECT COUNT(*) AS files, COALESCE(SUM(CASE WHEN implemented_at > 0 THEN 1 ELSE 0 END), 0) AS implemented FROM vault_files WHERE parent = '' AND space = ''").get();
-    const s = q("SELECT COUNT(CASE WHEN parent = '' THEN 1 END) AS files, COALESCE(SUM(size), 0) AS bytes, COUNT(DISTINCT space) AS vaults FROM vault_files WHERE space != ''").get();
+    const s = q("SELECT COUNT(CASE WHEN parent = '' THEN 1 END) AS files, COALESCE(SUM(size), 0) AS bytes, COUNT(DISTINCT space) AS vaults FROM vault_files WHERE space != '' AND space != ?").get(BACKUP);
     return {
       store: blobs ? 'bucket' : 'db', used: used(), maxBytes, fileBytes, piece: pieceBytes, files: n.files, implemented: n.implemented,
       folders: q("SELECT COUNT(*) AS n FROM vault_folders WHERE space = ''").get().n, inDb: inDb(),
@@ -452,7 +507,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     const partners = new Set(ops.operatorList().filter((o) => o.operator && o.id && o.id !== u.id).map((o) => o.id));
     for (const space of have.keys()) {
       const m = membersOf(space);
-      if (m && m.includes(u.id)) partners.add(otherOf(m, u.id));
+      if (m && m.length === 2 && m.includes(u.id)) partners.add(otherOf(m, u.id));
     }
     const mine = [...partners].map((id) => {
       const p = getUser(id);
@@ -462,16 +517,22 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       me: room(u), spaces: mine,
       pool: { used: used(), maxBytes, fileBytes, chunk: pieceBytes, store: blobs ? 'bucket' : 'db', free: freeBytes }
     };
-    if (!isDeveloper(u)) return out;
+    if (!isDeveloper(u)) return { ...out, personal: { id: `u:${u.id}`, owner: who(u.id), ...box(`u:${u.id}`) } };
+    const b = q(`SELECT COUNT(CASE WHEN parent = '' AND backup_at > 0 THEN 1 END) AS files, COUNT(CASE WHEN parent = '' AND space = ? THEN 1 END) AS removed,
+                        COALESCE(SUM(CASE WHEN space = ? THEN size ELSE 0 END), 0) AS bytes FROM vault_files WHERE backup_at > 0 OR space = ?`).get(BACKUP, BACKUP, BACKUP);
     return {
-      ...out, own: box(''), inDb: inDb(), hours: LINK_HOURS,
+      ...out, own: box(''), inDb: inDb(), hours: LINK_HOURS, backups: { files: b.files, removed: b.removed, bytes: b.bytes },
       others: [...have.keys()].filter((s) => { const m = membersOf(s); return m && !m.includes(u.id); })
-        .map((s) => ({ id: s, members: membersOf(s).map((id) => ({ ...who(id), operator: operatorId(id) })), ...box(s) }))
+        .map((s) => ({ id: s, personal: personal(s), members: membersOf(s).map((id) => ({ ...who(id), operator: operatorId(id) })), ...box(s) }))
         .sort((a, b) => b.last - a.last),
       people: people(),
       requests: q("SELECT * FROM vault_requests WHERE status = 'open' ORDER BY id").all().map(requestDto)
     };
   }
+  // the files of the developer's backups: every backed-up one (in its vault
+  // or deleted from it) and their light copies
+  const backedUp = () => q(`SELECT * FROM vault_files WHERE backup_at > 0 OR space = ? OR parent IN (SELECT id FROM vault_files WHERE backup_at > 0)
+                             ORDER BY backup_at DESC, created_at DESC`).all(BACKUP);
 
   const routes = {
     // the developer code opens the developer's vault for 30 minutes (and for
@@ -491,15 +552,17 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       return spaces(u);
     },
 
-    // one vault's files and folders (`space`: a shared one; none: the developer's own)
+    // one vault's files and folders (`space`: a shared or a personal one, or
+    // the backups; none: the developer's own). `locked`: the developer
+    // without the code, who only looks.
     'GET /api/vault/files': (req, u) => {
       need(req, u);
       const space = spaceFor(u, req.query.get('space'));
-      const now = Date.now();
+      const now = Date.now(), open = unlocked(req, u);
       return {
-        space: spaceDto(u, space),
-        files: q('SELECT * FROM vault_files WHERE space = ? ORDER BY created_at DESC').all(space).map((f) => fileDto(f, now)),
-        folders: q('SELECT * FROM vault_folders WHERE space = ? ORDER BY name').all(space).map(folderDto),
+        space: spaceDto(u, space, open), locked: !open,
+        files: (space === BACKUP ? backedUp() : q('SELECT * FROM vault_files WHERE space = ? ORDER BY created_at DESC').all(space)).map((f) => fileDto(f, now)),
+        folders: space === BACKUP ? [] : q('SELECT * FROM vault_folders WHERE space = ? ORDER BY name').all(space).map(folderDto),
         used: used(), maxBytes, fileBytes, chunk: pieceBytes, store: blobs ? 'bucket' : 'db', inDb: isDeveloper(u) ? inDb() : 0,
         all: space ? null : linksOf(ALL, now), me: room(u), now
       };
@@ -507,7 +570,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // a 3D model's picture and what is in it (made on the operator site)
     'POST /api/vault/meta': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       const body = await req.json(PREVIEW_MAX + INFO_MAX + 4096);
       const f = theFile(u, body.id, 'change');
       const preview = String(body.preview || '');
@@ -526,7 +589,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // a new file: its name, size, type, vault and folder; the pieces follow
     'POST /api/vault/files': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       const body = await req.json();
       const size = Number(body.size);
       if (!Number.isSafeInteger(size) || size < 1) throw new ApiError(400, 'bad_size', 'ファイルの大きさが正しくありません');
@@ -553,7 +616,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // what an unfinished upload still needs
     'GET /api/vault/missing': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       const f = theFile(u, req.query.get('id'), 'change');
       const have = await piecesOf(f);
       if (!f.done_at && have.size !== f.received) q('UPDATE vault_files SET received = ? WHERE id = ?').run(have.size, f.id);
@@ -562,7 +625,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // one piece (base64, with its SHA-256)
     'POST /api/vault/chunk': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       const body = await req.json(pieceBody);
       const f = theFile(u, body.id, 'change');
       if (f.done_at) throw new ApiError(409, 'done', 'このファイルはもうそろっています');
@@ -597,7 +660,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     // every piece sent: the file is whole once all of them are in (what is
     // still missing otherwise)
     'POST /api/vault/finish': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       const body = await req.json();
       const f = theFile(u, body.id, 'change');
       if (f.done_at) return { file: fileDto(f), done: true, sha256: f.sha256, missing: [] };
@@ -620,7 +683,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     // files (each with its light copy) out of the vault for good: `id`, or
     // `ids` (the ones checked; any already gone are passed over)
     'POST /api/vault/delete': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       const body = await req.json(64 * 1024);
       const found = (body.ids === undefined ? [String(body.id ?? '')] : idsOf(body.ids)).map(fileRow).filter(Boolean);
       for (const f of found) check(u, f.space, 'change', noFile);
@@ -629,21 +692,24 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const files = found.filter((f) => !ids.has(f.parent));
       if (!files.length) throw noFile();
       const space = oneVault(files);
-      await remove(files);
+      const r = await remove(files, u);
       const bytes = files.reduce((s, f) => s + f.size, 0);
+      // (a backed-up file waits in the backups; one deleted there is gone for good)
+      const kept = r.kept ? `（${files.length === 1 ? '' : r.kept + '件は'}開発者のバックアップに残ります）` : space === BACKUP ? '（完全に削除）' : '';
+      const named = space === BACKUP ? (f) => `「${f.name}」（${mb(f.size)}）` : what;
       opsLog.add(files.length === 1
-        ? { actor: u, action: 'vault_delete', req, summary: `${whereName(space)}の${what(files[0])}を削除`, detail: { ...fileNote(files[0]), sha256: files[0].sha256 } }
+        ? { actor: u, action: 'vault_delete', req, summary: `${whereName(space)}の${named(files[0])}を削除${kept}`, detail: { ...fileNote(files[0]), sha256: files[0].sha256, kept: r.kept } }
         : {
           actor: u, action: 'vault_delete', req,
-          summary: space ? `${whereName(space)}のファイル${files.length}件（${mb(bytes)}）を削除` : `保管庫の${files.length}件（${mb(bytes)}）を削除：${some(files.map((f) => `「${f.name}」`))}`,
-          detail: { space, files: files.map((f) => ({ ...fileNote(f), sha256: f.sha256 })) }
+          summary: space && space !== BACKUP ? `${whereName(space)}のファイル${files.length}件（${mb(bytes)}）を削除${kept}` : `${whereName(space)}の${files.length}件（${mb(bytes)}）を削除${kept}：${some(files.map((f) => `「${f.name}」`))}`,
+          detail: { space, files: files.map((f) => ({ ...fileNote(f), sha256: f.sha256 })), kept: r.kept }
         });
-      return { ok: true, deleted: files.length, used: used() };
+      return { ok: true, deleted: files.length, kept: r.kept, used: used() };
     },
 
     // a short message on a file (days: how long it lasts, 0 no end)
     'POST /api/vault/notes': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       const body = await req.json();
       const f = theFile(u, body.id, 'change');
       const text = Array.from(String(body.text ?? '').replace(CONTROL, ' ').trim()).slice(0, NOTE_MAX).join('');
@@ -660,7 +726,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       return { file: fileDto(fileRow(f.id)) };
     },
     'POST /api/vault/notes/delete': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       const body = await req.json();
       const noNote = () => new ApiError(404, 'no_note', 'メッセージが見つかりません');
       const n = q('SELECT * FROM vault_notes WHERE id = ?').get(Number(body.note) || 0);
@@ -676,7 +742,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // back from 実装済み (the links see it again)
     'POST /api/vault/restore': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       const body = await req.json();
       const f = theFile(u, body.id, 'change');
       if (f.space) throw new ApiError(400, 'not_here', '実装済みがあるのは開発者専用保管庫だけです');
@@ -689,10 +755,82 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       return { file: fileDto(fileRow(f.id)) };
     },
 
+    // a file's new name (its light copy keeps its own)
+    'POST /api/vault/rename': async (req, u) => {
+      need(req, u, true);
+      const body = await req.json();
+      const f = theFile(u, body.id, 'change');
+      if (f.parent) throw new ApiError(400, 'light', '軽量版の名前は変えられません（元のモデルの名前を変えてください）');
+      const name = cleanName(body.name);
+      if (name === f.name) return { file: fileDto(f) };
+      q('UPDATE vault_files SET name = ? WHERE id = ?').run(name, f.id);
+      opsLog.add(f.space && f.space !== BACKUP
+        ? { actor: u, action: 'vault_rename', req, summary: `${whereName(f.space)}のファイル（${mb(f.size)}）の名前を変更`, detail: { file: f.id, space: f.space } }
+        : { actor: u, action: 'vault_rename', req, summary: `${whereName(f.space)}の「${f.name}」を「${name}」に名前変更`, detail: { file: f.id, before: f.name, name } });
+      return { file: fileDto(fileRow(f.id)) };
+    },
+
+    // The developer backs up files (`ids`) and every file in folders
+    // (`folders`, and the folders inside them) of any vault they see (`on`
+    // false: no longer; not for one already deleted from its vault).
+    'POST /api/vault/backup': async (req, u) => {
+      need(req, u, true);
+      developerOnly(u, 'バックアップ');
+      const body = await req.json(64 * 1024);
+      const on = body.on !== false;
+      const files = idsOf(body.ids).map(fileRow).filter((f) => f && !f.parent);
+      const dirs = idsOf(body.folders).map(folderRow).filter(Boolean);
+      for (const f of files) check(u, f.space, '', noFile);
+      for (const d of dirs) check(u, d.space, '', noFolder);
+      // the files in the folders, and in the folders inside them
+      const under = new Set(dirs.map((d) => d.id));
+      for (let grew = true, i = 0; grew && i <= FOLDER_DEPTH; i++) {
+        grew = false;
+        for (const d of q('SELECT id FROM vault_folders WHERE parent IN (SELECT value FROM json_each(?))').all(JSON.stringify([...under]))) {
+          if (!under.has(d.id)) { under.add(d.id); grew = true; }
+        }
+      }
+      const all = new Map(files.map((f) => [f.id, f]));
+      if (under.size) for (const f of q("SELECT * FROM vault_files WHERE parent = '' AND folder IN (SELECT value FROM json_each(?))").all(JSON.stringify([...under]))) all.set(f.id, f);
+      const list = [...all.values()].filter((f) => f.space !== BACKUP && (on ? !f.backup_at : f.backup_at));
+      if (!all.size) throw new ApiError(400, 'no_files', 'バックアップするファイルを選んでください');
+      const now = Date.now();
+      tx(() => {
+        for (const f of list) q('UPDATE vault_files SET backup_at = ?, backup_by = ? WHERE id = ?').run(on ? now : 0, on ? u.id : 0, f.id);
+      });
+      if (list.length) {
+        const bytes = list.reduce((n, f) => n + f.size, 0), spaces = [...new Set(list.map((f) => f.space))];
+        opsLog.add({
+          actor: u, action: on ? 'vault_backup' : 'vault_backup_off', req,
+          summary: `${spaces.map(whereName).join('・')}の${list.length}件（${mb(bytes)}）を${on ? 'バックアップ' : 'バックアップから外した'}${spaces.every((x) => !x) ? `：${some(list.map((f) => `「${f.name}」`))}` : ''}`,
+          detail: { on, files: list.map(fileNote) }
+        });
+      }
+      return { changed: list.length, files: list.map((f) => fileDto(fileRow(f.id))) };
+    },
+
+    // a file deleted from its vault goes back from the backups: where it was
+    // (its folder, when it is still there), or the developer's own vault
+    'POST /api/vault/backups/restore': async (req, u) => {
+      need(req, u, true);
+      developerOnly(u, 'バックアップからの復元');
+      const body = await req.json();
+      const f = theFile(u, body.id, 'change');
+      if (f.space !== BACKUP || f.parent) throw new ApiError(409, 'not_removed', 'このファイルは保管庫にあります');
+      const back = f.from_space === '' || membersOf(f.from_space) ? f.from_space : '';
+      const d = f.from_folder ? folderRow(f.from_folder) : null;
+      const folder = d && d.space === back ? d.id : '';
+      tx(() => {
+        q("UPDATE vault_files SET space = ?, folder = ?, removed_at = 0, removed_by = 0, from_space = '', from_folder = '' WHERE id = ? OR parent = ?").run(back, folder, f.id, f.id);
+      });
+      opsLog.add({ actor: u, action: 'vault_backup_restore', req, summary: `${whereName(back)}に${back ? what(f) : `「${f.name}」`}をバックアップから戻した`, detail: { ...fileNote(f), to: back, folder } });
+      return { file: fileDto(fileRow(f.id)) };
+    },
+
     // pieces kept in the database before the bucket came move into it, a few
     // at a time (the operator site asks again while some are left)
     'POST /api/vault/to-bucket': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       developerOnly(u, 'R2 への移動');
       if (!blobs) return { moved: 0, left: 0 };
       const rows = q('SELECT file_id, n, sha256, data FROM vault_chunks LIMIT ?').all(TO_BUCKET);
@@ -707,11 +845,12 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // a folder at the top of a vault (`space`) or in another folder
     'POST /api/vault/folders': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       const body = await req.json();
       const name = folderName(body.name);
       const up = body.parent ? theFolder(u, body.parent, 'change') : null;
       const space = up ? up.space : spaceFor(u, body.space, 'change');
+      if (space === BACKUP) throw new ApiError(400, 'not_here', 'バックアップにはフォルダを作れません');
       const parent = up ? up.id : '';
       if (depthOf(parent) >= FOLDER_DEPTH) throw new ApiError(400, 'too_deep', `フォルダは${FOLDER_DEPTH}階層までです`);
       if (q('SELECT COUNT(*) AS n FROM vault_folders WHERE space = ?').get(space).n >= FOLDERS_MAX) throw new ApiError(409, 'too_many', `フォルダは${FOLDERS_MAX}個までです`);
@@ -726,7 +865,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // a new name, or a new place in its vault (never inside itself)
     'POST /api/vault/folders/update': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       const body = await req.json();
       const d = theFolder(u, body.id, 'change');
       const name = body.name === undefined ? d.name : folderName(body.name);
@@ -744,7 +883,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     // folders go (`id`, or `ids`: the ones checked); what was in each moves
     // up to where it was
     'POST /api/vault/folders/delete': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       const body = await req.json(64 * 1024);
       const dirs = (body.ids === undefined ? [String(body.id ?? '')] : idsOf(body.ids)).map(folderRow).filter(Boolean);
       for (const d of dirs) check(u, d.space, 'change', noFolder);
@@ -773,7 +912,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     // files (with their light copies, `ids`) and folders (`folders`) into a
     // folder of their vault ('' the top)
     'POST /api/vault/move': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       const body = await req.json(64 * 1024);
       const files = idsOf(body.ids).map(fileRow).filter((f) => f && !f.parent);
       const dirs = idsOf(body.folders).map(folderRow).filter(Boolean);
@@ -804,7 +943,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     // '*'), good for `hours`; the secret is shown once. The developer's
     // vault only: a shared one is never reached from outside.
     'POST /api/vault/link': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       developerOnly(u, 'リンクを作るの');
       const body = await req.json();
       const all = body.id === ALL;
@@ -824,7 +963,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // every link of a file (or of the whole vault: id '*') stops working at once
     'POST /api/vault/link/stop': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       developerOnly(u, 'リンクの停止');
       const body = await req.json();
       const all = body.id === ALL;
@@ -867,8 +1006,11 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       opsLog.add({ actorName: 'リンク', action: 'vault_pull', req, summary: f ? `保管庫の「${f.name}」がリンクから取得された` : '保管庫全体の一覧がリンクから取得された', detail: { file: f ? f.id : ALL, name: f ? f.name : '', uses: l.uses + 1, until: l.until } });
       const how = {
         pieces: '&n=<piece> (base64, with its sha256; `chunk` bytes each)', picture: '&preview=1', file: '&f=<file id>', sha256: "the file's sha256 is the SHA-256 of all piece digests in order",
-        notes: "notes: the developer's short messages on a file (read them before working on it)",
-        ...(l.ai ? { label: 'POST /api/vault/ai { t, f, text }', implemented: 'POST /api/vault/ai { t, f, text: where it went, implemented: true } (the file leaves the links; it stays in the vault)' } : {})
+        notes: "notes: the comments on a file, the developer's and an AI's (read them before working on it)",
+        ...(l.ai ? {
+          label: 'POST /api/vault/ai { t, f, text }', comment: 'POST /api/vault/ai { t, f, comment, days?: 1 | 3 | 7 | 30 | 0 (no end, the default) } (shown to the developer as by "AI")',
+          implemented: 'POST /api/vault/ai { t, f, text: where it went, implemented: true } (the file leaves the links; it stays in the vault)'
+        } : {})
       };
       if (f) return { ...pullDto(f), until: l.until, ai: !!l.ai, how };
       return {
@@ -879,9 +1021,10 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     },
 
     // An AI with a link made for it (no login): its label on a file it works
-    // on (text), or the file is in the game now (implemented, text: where it
-    // went): the file moves to 実装済み, out of every link at once (it stays
-    // in the vault).
+    // on (text), a comment on it (comment: shown with the developer's, by
+    // "AI"; days as for theirs, none: no end), or the file is in the game now
+    // (implemented, text: where it went): the file moves to 実装済み, out of
+    // every link at once (it stays in the vault).
     'POST /api/vault/ai': async (req) => {
       rate(limits.pull, req.ip || '-');
       const body = await req.json();
@@ -889,6 +1032,17 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       if (!l.ai) throw gone();
       const f = fileRow(body.f);
       if (!f || f.space || !f.done_at || f.implemented_at || f.parent || !(l.file_id === ALL || l.file_id === f.id)) throw noFile();
+      if (body.comment !== undefined) {
+        const said = Array.from(String(body.comment ?? '').replace(CONTROL, ' ').trim()).slice(0, NOTE_MAX).join('');
+        if (!said) throw new ApiError(400, 'empty', 'コメントを書いてください');
+        const days = body.days === undefined ? 0 : Number(body.days);
+        if (!NOTE_DAYS.includes(days)) throw new ApiError(400, 'bad_days', `days は ${NOTE_DAYS.join(' / ')} のどれかです（0: 期限なし）`);
+        if (q('SELECT COUNT(*) AS n FROM vault_notes WHERE file_id = ?').get(f.id).n >= NOTES_MAX) throw new ApiError(409, 'too_many', `1つのファイルにコメントは${NOTES_MAX}件までです`);
+        const now = Date.now();
+        q('INSERT INTO vault_notes (file_id, by_id, body, created_at, until) VALUES (?, 0, ?, ?, ?)').run(f.id, said, now, days ? now + days * 86400000 : 0);
+        opsLog.add({ actorName: 'AI', action: 'vault_ai_comment', req, summary: `AIが保管庫の「${f.name}」にコメント：${said}`, detail: { file: f.id, name: f.name, text: said, days } });
+        return { ok: true, notes: notesOf(f).filter((n) => live(n, Date.now())).map(({ text, at, until, by }) => ({ text, at, until, by: by.name })) };
+      }
       const text = Array.from(String(body.text ?? '').replace(CONTROL, ' ').trim()).slice(0, 200).join('');
       if (!text) throw new ApiError(400, 'empty', body.implemented ? 'どこに入れたかを書いてください' : 'ラベルの内容を書いてください');
       if (body.implemented === true) {
@@ -936,7 +1090,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     // The developer answers a request: approved always with the limit they
     // set (more than 1GB; it may be less than was asked), or declined.
     'POST /api/vault/quota/decide': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       developerOnly(u, '容量の承認');
       const body = await req.json();
       const r = q('SELECT * FROM vault_requests WHERE id = ?').get(Number(body.id) || 0);
@@ -962,7 +1116,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     // the developer sets one operator's limit (more than 1GB), or takes it
     // back to the 1GB everyone has (`limit` 0)
     'POST /api/vault/quota/set': async (req, u) => {
-      need(req, u);
+      need(req, u, true);
       developerOnly(u, '上限の設定');
       const body = await req.json();
       const p = getUser(Number(body.user) || 0);

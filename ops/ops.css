@@ -370,11 +370,6 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .vault-select.on > b { color: var(--accent); }
 .vault-select > .muted { font-size: 12px; }
 .vault-select-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
-.vault-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; margin: 0 0 12px; }
-.vault-folders:empty { display: none; }
-.vault-folder { display: flex; flex-direction: column; gap: 10px; background: var(--soft); cursor: pointer; }
-.vault-folder:hover { border-color: #bfd4f6; }
-.vault-folder .vault-name::before { content: '\1F4C1'; margin-right: 6px; }
 /* a checkmark: a square that fills in with ✓ (the real checkbox lies on top of it, unseen) */
 .vault-check { position: relative; flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; cursor: pointer; }
 .vault-check input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
@@ -618,3 +613,75 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .sec-block-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .sec-block-form select { flex: none; }
 .sec-block-form .search { flex: 1; min-width: 140px; }
+
+/* 保管庫 (DEV11): the header (編集する / 閉じる at the right), the toolbar, the
+   items as rows (a tap on the icon opens; 💬, 詳細 and ⋯ at the right), their
+   menu, and the comments of a file */
+.vault-top #vault-usage { font-size: 13px; font-variant-numeric: tabular-nums; cursor: help; }
+.vault-mode { display: inline-flex; gap: 8px; margin-left: auto; }
+.vault-plus { width: 44px; padding: 0; font-size: 22px; font-weight: 600; line-height: 1; }
+.vault-memo { font-size: 12.5px; cursor: pointer; }
+.vault-memo:hover { color: var(--bad); text-decoration: line-through; }
+.vault-items { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
+.vault-items:empty { display: none; }
+.vitem { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
+.vitem:hover { border-color: #bfd4f6; }
+.vitem.picked { border-color: var(--accent); background: var(--accent-soft); }
+.vitem.used { background: #fffcf3; }
+.vitem.undone { border-style: dashed; }
+.vault-folder { background: var(--soft); }
+.vault-folder .vault-name { cursor: pointer; }
+.vicon { position: relative; display: grid; place-items: center; width: 48px; height: 52px; padding: 0; border: 0; border-radius: 8px; background: none; cursor: pointer; }
+.vicon:hover { background: var(--accent-soft); }
+.vicon:focus-visible { outline: 3px solid #bfd4f6; }
+.vicon img { width: 40px; height: 46px; pointer-events: none; }
+.vicon-folder img { width: 44px; height: 38px; }
+.vicon-ext { position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%); max-width: 44px; padding: 0 4px; overflow: hidden; border-radius: 4px; background: var(--accent); color: #fff; font-size: 9px; font-weight: 800; line-height: 14px; letter-spacing: .02em; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+.vitem-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vitem-main .vault-name { font-size: 14.5px; line-height: 1.35; }
+.vitem-sub { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.vitem-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.kind.vbackup { background: #e3f6f1; color: #0b7a5f; }
+.kind.vwhere { background: var(--soft); color: var(--muted); }
+.kind.vlink { background: var(--accent-soft); color: var(--accent); }
+.vitem-acts { display: flex; align-items: center; gap: 4px; }
+.vbtn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 34px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--text, #1d2733); font-size: 12.5px; font-weight: 600; }
+.vbtn:hover { background: var(--soft); }
+.vbtn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.vmore { padding: 0 8px; font-size: 18px; letter-spacing: -1px; }
+.vcomment-btn { padding: 0 8px; }
+.vcomment-btn .vcomment-ic { font-size: 14px; filter: grayscale(1); opacity: .65; }
+.vcomment-btn.has .vcomment-ic { filter: none; opacity: 1; }
+.vcomment-btn b { font-size: 12px; color: var(--accent); }
+.vitem-detail { grid-column: 1 / -1; padding-top: 8px; border-top: 1px dashed var(--line); }
+@media (max-width: 560px) {
+  .vitem { grid-template-columns: auto auto minmax(0, 1fr); }
+  .vitem-acts { grid-column: 2 / -1; justify-content: flex-end; }
+}
+/* the menu of an item */
+.vmenu { position: fixed; z-index: 70; display: flex; flex-direction: column; min-width: 200px; max-width: min(360px, calc(100vw - 16px)); padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 10px 30px rgba(29, 39, 51, .18); }
+.vmenu-item { padding: 9px 12px; border: 0; border-radius: 8px; background: none; color: inherit; font-size: 13.5px; text-align: left; }
+.vmenu-item:hover, .vmenu-item:focus-visible { background: var(--accent-soft); outline: none; }
+.vmenu-item.danger { color: var(--bad); }
+.vmenu-item.danger:hover { background: var(--bad-soft); }
+/* the comments of a file */
+.viewer.vcomments { width: min(560px, 100%); height: min(640px, 100%); }
+.vcomments-list { flex: 1; min-height: 0; overflow: auto; padding: 12px; background: var(--soft); }
+.vcomments-empty { margin: 24px 0; text-align: center; }
+.vcomment { margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.vcomment.ai { border-color: #d9ccf5; background: #faf7ff; }
+.vcomment.over { opacity: .6; }
+.vcomment-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.vcomment-head small { color: var(--muted); }
+.vcomment-head .vnote-del { margin-left: auto; }
+.vcomment-text { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 14px; }
+.tag.vai { background: #6b46c1; color: #fff; }
+.vcomments-form { display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.vcomments-form textarea { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; resize: vertical; }
+.vcomments-form select { height: 32px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font: inherit; font-size: 12.5px; }
+.face.vspace-backup { background: #e3f6f1; color: #0b7a5f; }
+/* a file opened here: a picture, a text or a program, a video or a sound */
+.viewer-box.fit { display: flex; align-items: center; justify-content: center; overflow: auto; touch-action: auto; }
+.viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.viewer-text { align-self: stretch; width: 100%; margin: 0; padding: 14px 16px; overflow: auto; background: #1f232a; color: #e8ecf2; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; tab-size: 4; }
+.viewer-media { max-width: 100%; max-height: 100%; }
