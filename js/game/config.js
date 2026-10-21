@@ -174,13 +174,16 @@
     // (then it starts over); a day runs from 6:00 to 6:00 Japan time
     loginBonus: { days: [45000, 50000, 65000, 90000], dayStartsJst: 6 },
     // Peter the money lender ($): never more than `max` in all (counted over
-    // every loan ever made to the player, repaid or not); he offers money on
-    // his own when a player is nearly broke (net worth below `brokeBelow` $)
+    // every loan ever made to the player, repaid or not, those before DEV11
+    // too); he offers money on his own when a player is nearly broke (net
+    // worth below `brokeBelow` $). `voice`: his recorded offers (they say
+    // 500万 and 600万: off while the offers are other amounts)
     lender: {
-      max: 11000000,
+      max: 2500000,
       brokeBelow: 10000,
       minLoan: 10000,
-      offers: [{ amount: 5000000, rate: [2, 5] }, { amount: 6000000, rate: [10, 10] }],
+      offers: [{ amount: 1500000, rate: [2, 5] }, { amount: 1000000, rate: [10, 10] }],
+      voice: false,
       // asked in the chat: like the first offer when nothing is owed, then 10 %
       chatRate: [[2, 5], [10, 10]]
     },

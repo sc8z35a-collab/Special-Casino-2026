@@ -150,7 +150,7 @@
     note.textContent = '3Dを読み込み中…';
     var want = car.id;
     BR.garage3d.show(host, car.id, function (p) { if (sel === want) note.textContent = '3Dを読み込み中… ' + Math.round(p * 100) + '%'; }).then(function () {
-      if (sel === want) note.textContent = 'ドラッグで回転';
+      if (sel === want) note.textContent = 'ドラッグで回転・ピンチ／ホイールでズーム';
     }, function () {
       // no 3D after all: the picture
       $('#car-stage').classList.remove('three');

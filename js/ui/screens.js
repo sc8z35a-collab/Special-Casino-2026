@@ -6,6 +6,9 @@
   var U = BR.util, C = BR.CONFIG, S = BR.store.state;
   var $ = U.$, $$ = U.$$;
   var current = 'start';
+  // the screen before this one, for the back button: one step back at most
+  // (after going back there is nothing more to go back to but the usual way)
+  var last = '', goingBack = false;
   var hooks = {};   // extra screens: { open, close, back }
   var watchers = []; // told about every screen change: fn(name, previous)
 
@@ -16,6 +19,7 @@
     if (name !== 'start' && BR.banlock && BR.banlock.active()) return;
     var prev = current;
     current = name;
+    last = goingBack ? '' : prev;
     $$('.screen').forEach(function (s) { s.classList.toggle('active', s.id === 'screen-' + name); });
     $('#stage').dataset.screen = name;
     enter($('#screen-' + name));
@@ -69,13 +73,18 @@
     node.jcEnter = setTimeout(done, ENTER_MS);
   }
 
-  // The back button: a screen may step back inside itself first; the slot
-  // goes back to the start screen.
+  // The back button: a screen may step back inside itself first; then the
+  // screen one came from (once: one step back at most), else as before (the
+  // slot to the start screen, any other to the slot).
   function back() {
     var h = hooks[current];
     if (h && h.back && h.back()) return true;
     if (current === 'start') return false;
-    show(current === 'slot' ? 'start' : 'slot');
+    var to = last && last !== current ? last : current === 'slot' ? 'start' : 'slot';
+    goingBack = true;
+    try { show(to); } finally { goingBack = false; }
+    // (a screen that could not be shown, e.g. banned: nothing to go back to)
+    if (current !== to) last = '';
     return true;
   }
 
