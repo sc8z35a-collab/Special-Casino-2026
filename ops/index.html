@@ -41,6 +41,19 @@
   </form>
 </main>
 
+<!-- the first look of the day: ログイン to come in (written in the developer's ログインログ) -->
+<main class="login" id="enter" hidden>
+  <div class="login-card enter-card">
+    <div class="brand"><span class="brand-mark">TS</span><span>TWO STATE</span></div>
+    <h1>サーバー運営サイト</h1>
+    <p class="muted" id="enter-day"></p>
+    <div class="enter-who"><span class="kind" id="enter-role"></span><b id="enter-name"></b></div>
+    <p class="error" id="enter-error" role="alert"></p>
+    <button class="btn primary wide" type="button" id="enter-go">ログイン</button>
+    <button class="btn ghost small wide" type="button" id="enter-other">別のアカウントでログイン</button>
+  </div>
+</main>
+
 <div class="app" id="app" hidden>
   <header class="top">
     <div class="brand"><span class="brand-mark">TS</span><span>TWO STATE</span><small>サーバー運営</small></div>
@@ -186,6 +199,12 @@
     <h3 class="op-sub">閲覧者</h3>
     <p class="hint muted">運営サイトと security HOME を<b>見ることだけ</b>ができる人です（プレイヤー一覧・アーカイブ・保管庫・チャット・バックアップ・課金は見られず、操作は一切できません）。剥奪するとその場で運営サイトと security HOME からログアウトされます（ゲームはそのまま）。</p>
     <div class="cards" id="op-viewers"></div>
+    <div id="op-inlog-box" hidden>
+      <h3 class="op-sub">ログインログ <span class="kind dev">開発者だけ</span></h3>
+      <p class="hint muted">開発者・運営者・閲覧者がその日はじめて運営サイトに入った記録です（日本時間で1日1回。「ログイン」ボタンか、パスワードでのログイン）。開発者だけが見られます。</p>
+      <div class="inlog" id="op-inlog"></div>
+      <button class="btn small" type="button" id="op-inlog-more" hidden>もっと見る</button>
+    </div>
   </section>
 
   <!-- 課金 (開発者支援): who paid, waiting for the developer's words (the developer's own) -->

@@ -76,6 +76,18 @@ button { cursor: pointer; }
 .login-card h1 { margin: 18px 0 6px; font-size: 22px; }
 .login-card p { margin: 0; font-size: 13px; }
 .login-card .btn { margin-top: 14px; }
+.enter-card .btn.ghost { margin-top: 8px; }
+.enter-who { display: flex; align-items: center; gap: 10px; margin-top: 18px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); font-size: 16px; }
+.enter-who b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the developer's ログインログ */
+.inlog { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+.inlog > p { margin: 0; padding: 14px; }
+.inlog-day { padding: 8px 14px; background: var(--soft); font-size: 12px; font-weight: 700; color: var(--muted); }
+.inlog-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 13px; }
+.inlog-row .inlog-time { flex: none; width: 64px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.inlog-row .inlog-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.inlog-row .inlog-how { margin-left: auto; flex: none; color: var(--muted); font-size: 12px; text-align: right; }
+#op-inlog-more { margin-top: 10px; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: 1.5px; }
 .brand small { margin-left: 4px; font-weight: 600; letter-spacing: 0; color: var(--muted); }
 .brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 13px; letter-spacing: 0; }

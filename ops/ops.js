@@ -215,19 +215,62 @@
   function fail(err) { toast(err && err.message ? err.message : 'エラーが発生しました'); }
 
   /* ------------------------------------------------------------ logging in --- */
-  function showLogin(message) {
+  // the site put away (for the login, or the day's ログイン button)
+  function leaveApp() {
     if (call.on) callLeave();
     opsLiveClose();
     $('#dev-call').hidden = true;
     $('#app').hidden = true;
-    $('#login').hidden = false;
-    $('#login-error').textContent = message || '';
+    $('#enter').hidden = true;
     closeDetail();
     closeChat();
     clearInterval(timer);
     clearInterval(liveTimer);
     clearInterval(aliveTimer);
+  }
+  function showLogin(message) {
+    leaveApp();
+    $('#login').hidden = false;
+    $('#login-error').textContent = message || '';
     setTimeout(function () { $('#login-name').focus(); }, 50);
+  }
+  // the first look of the day: ログイン to come in (the developer's ログインログ keeps it)
+  var ROLE = { developer: ['dev', '開発者'], operator: ['op', '運営者'], viewer: ['k-viewer', '閲覧者'] };
+  function roleOf(me) { return me.developer ? 'developer' : me.viewer ? 'viewer' : 'operator'; }
+  function showEnter(me) {
+    leaveApp();
+    $('#login').hidden = true;
+    $('#enter').hidden = false;
+    var r = ROLE[roleOf(me)];
+    $('#enter-role').className = 'kind ' + r[0];
+    $('#enter-role').textContent = r[1];
+    $('#enter-name').textContent = me.name;
+    $('#enter-day').textContent = '今日（' + me.day.replace(/-/g, '/') + '）はじめての運営サイトです。「ログイン」を押すと入れます。';
+    $('#enter-error').textContent = '';
+    $('#enter-go').disabled = false;
+    setTimeout(function () { $('#enter-go').focus(); }, 50);
+  }
+  function enter() {
+    var go = $('#enter-go');
+    go.disabled = true;
+    $('#enter-error').textContent = '';
+    request('POST', '/api/ops/enter').then(function () {
+      return request('GET', '/api/ops/me');
+    }).then(start, function (err) {
+      go.disabled = false;
+      if (err.status !== 401 && err.code !== 'not_operator') $('#enter-error').textContent = err.message;
+    });
+  }
+  // the site's first answer: in, or the day's ログイン first
+  function arrive(me) { if (me.entered === false) showEnter(me); else start(me); }
+  // still the same day (Japan time) as when the site was entered? A new one asks for ログイン again
+  function jstDay() { return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10); }
+  function dayCheck() {
+    if (!token || $('#app').hidden || document.hidden || !state.day || jstDay() === state.day) return;
+    request('GET', '/api/ops/me').then(function (me) {
+      if (me.entered === false) showEnter(me);
+      else state.day = me.day;
+    }, function () {});
   }
   function signedOut(message) {
     setToken(null);
@@ -274,7 +317,8 @@
     var go = $('#login-go');
     go.disabled = true;
     $('#login-error').textContent = '';
-    request('POST', '/api/ops/login', { name: name, password: pass }, { 'X-Ops-Device': opsDevice() }).then(function (r) {
+    // (the day's ログイン as well: a login with the password is one)
+    request('POST', '/api/ops/login', { name: name, password: pass, enter: true }, { 'X-Ops-Device': opsDevice() }).then(function (r) {
       setToken(r.token);
       return request('GET', '/api/ops/me').then(function (me) {
         $('#login-pass').value = '';
@@ -303,7 +347,9 @@
   var VIEWER_HIDDEN = ['players', 'archive', 'team', 'pay', 'vault'];
   function start(me) {
     $('#login').hidden = true;
+    $('#enter').hidden = true;
     $('#app').hidden = false;
+    state.day = me.day || jstDay();
     $('#op-name').textContent = (me.developer ? '開発者: ' : me.viewer ? '閲覧者: ' : '運営者: ') + me.name;
     state.name = me.name;
     state.developer = !!me.developer;
@@ -1455,6 +1501,40 @@
     // rights: the developer only
     $('#op-grant').hidden = !state.developer;
     renderViewers();
+    $('#op-inlog-box').hidden = !state.developer;
+    if (state.developer) loadInlog(false);
+  }
+  // the ログインログ (the developer's): who came into the site first each day, newest first
+  var inlog = { rows: [], more: false, today: '' };
+  function loadInlog(more) {
+    var before = more && inlog.rows.length ? inlog.rows[inlog.rows.length - 1].id : 0;
+    if (!more && !inlog.rows.length) $('#op-inlog').textContent = '';
+    request('GET', '/api/ops/entries' + (before ? '?before=' + before : '')).then(function (r) {
+      inlog.rows = more ? inlog.rows.concat(r.entries) : r.entries;
+      inlog.more = !!r.more;
+      inlog.today = r.today;
+      renderInlog();
+    }, fail);
+  }
+  function renderInlog() {
+    var box = $('#op-inlog');
+    box.textContent = '';
+    if (!inlog.rows.length) box.appendChild(el('p', 'muted', 'まだ記録はありません'));
+    var day = '';
+    inlog.rows.forEach(function (e) {
+      if (e.day !== day) {
+        day = e.day;
+        box.appendChild(el('div', 'inlog-day', day.replace(/-/g, '/') + (day === inlog.today ? '（今日）' : '')));
+      }
+      var row = el('div', 'inlog-row');
+      row.appendChild(el('span', 'inlog-time', e.jst.slice(11, 19)));
+      var r = ROLE[e.role] || ROLE.operator;
+      row.appendChild(el('span', 'kind ' + r[0], r[1]));
+      row.appendChild(el('span', 'inlog-name', e.user.name));
+      row.appendChild(el('span', 'inlog-how', (e.how === 'password' ? 'パスワードでログイン' : 'ログインボタン') + ' · ' + e.agent));
+      box.appendChild(row);
+    });
+    $('#op-inlog-more').hidden = !inlog.more;
   }
   // the viewers (閲覧者), each with when; the developer takes it away
   function renderViewers() {
@@ -4608,6 +4688,9 @@
 
     $('#login-form').addEventListener('submit', onLogin);
     $('#logout').addEventListener('click', logout);
+    $('#enter-go').addEventListener('click', enter);
+    $('#enter-other').addEventListener('click', logout);
+    $('#op-inlog-more').addEventListener('click', function () { loadInlog(true); });
     $('#tabs').addEventListener('click', function (e) {
       var t = e.target.closest('[data-view]');
       if (t) setView(t.dataset.view);
@@ -4869,9 +4952,11 @@
     var out = '';
     try { out = sessionStorage.getItem('ops-out') || ''; sessionStorage.removeItem('ops-out'); } catch (e) { /* none */ }
     if (!token) { showLogin(out); return; }
-    request('GET', '/api/ops/me').then(start, function (err) { if (err.status !== 401 && err.code !== 'not_operator') showLogin(err.message); });
-    // (back in sight: a viewer asks at once whether they still may)
+    request('GET', '/api/ops/me').then(arrive, function (err) { if (err.status !== 401 && err.code !== 'not_operator') showLogin(err.message); });
+    // (back in sight: a viewer asks at once whether they still may; a new day, ログイン again)
     document.addEventListener('visibilitychange', alive);
+    document.addEventListener('visibilitychange', dayCheck);
+    setInterval(dayCheck, 60000);
   }
 
   init();

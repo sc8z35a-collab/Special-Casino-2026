@@ -258,3 +258,54 @@ test('運営チャット: a player named (@), the developer called at once, a lo
     await s.stop();
   }
 });
+
+test('ログインログ: the day\'s ログイン on the operator site, once a day each, read by the developer alone', async () => {
+  const s = await startServer({ operators: ['taku', 'mod1'] });
+  try {
+    const taku = await s.register('TAKU');
+    const dev = (method, url, body) => s.call(method, url, { token: taku.token, body });
+    await dev('POST', '/api/ops/dev-code', { code: CODE });
+    const mod = await s.register('Mod1');
+    await s.register('Watcher');
+    await dev('POST', '/api/ops/viewer', { name: 'Watcher', action: 'grant', code: CODE });
+    const day = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+    const iphone = { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' };
+
+    // the first look of the day: not in yet; ログイン puts them in (once: a second press adds nothing)
+    assert.deepEqual(await s.call('GET', '/api/ops/me', { token: mod.token }).then((m) => [m.entered, m.day]), [false, day]);
+    const e = await s.call('POST', '/api/ops/enter', { token: mod.token, headers: iphone });
+    assert.deepEqual([e.status, e.entered], [200, true]);
+    await s.call('POST', '/api/ops/enter', { token: mod.token });
+    assert.equal((await s.call('GET', '/api/ops/me', { token: mod.token })).entered, true);
+    // a login with the password from the site is the day's ログイン too (a 閲覧者 as well);
+    // security HOME's login (no `enter`) is not
+    const v = await s.call('POST', '/api/ops/login', { body: { name: 'Watcher', password: 'pass1234', enter: true }, headers: { 'X-Ops-Device': 'browser-vvvvvvvvvvvvvvvv' } });
+    assert.equal((await s.call('GET', '/api/ops/me', { token: v.token })).entered, true);
+    assert.equal((await s.call('POST', '/api/ops/enter', { token: v.token })).status, 200, 'a viewer may press it');
+    await s.call('POST', '/api/ops/login', { body: { name: 'TAKU', password: 'pass1234' }, headers: { 'X-Ops-Device': 'browser-tttttttttttttttt' } });
+    assert.equal((await dev('GET', '/api/ops/me')).entered, false);
+
+    // the developer's alone
+    assert.equal((await s.call('GET', '/api/ops/entries', { token: mod.token })).error.code, 'developer_only');
+    assert.equal((await s.call('GET', '/api/ops/entries', { token: v.token })).error.code, 'viewer');
+    const list = await dev('GET', '/api/ops/entries');
+    assert.deepEqual(list.entries.map((x) => [x.user.name, x.role, x.how, x.day]), [['Watcher', 'viewer', 'password', day], ['Mod1', 'operator', 'button', day]]);
+    assert.equal(list.entries[1].agent, 'iPhone / Safari');
+    assert.equal(list.more, false);
+    // not the operators' log
+    assert.equal(s.app.db.prepare("SELECT COUNT(*) AS n FROM ops_log WHERE action LIKE '%enter%'").get().n, 0);
+
+    // a new day: ログイン again
+    s.app.db.prepare("UPDATE ops_entries SET day = '2000-01-01'").run();
+    assert.equal((await s.call('GET', '/api/ops/me', { token: mod.token })).entered, false);
+    // pages of 100
+    const add = s.app.db.prepare("INSERT INTO ops_entries (user_id, role, day, at, how, agent) VALUES (?, 'operator', ?, ?, 'button', '')");
+    for (let i = 0; i < 105; i++) add.run(mod.me.id, `1999-01-${String(i).padStart(3, '0')}`, i);
+    const p1 = await dev('GET', '/api/ops/entries');
+    assert.deepEqual([p1.entries.length, p1.more], [100, true]);
+    const p2 = await dev('GET', '/api/ops/entries?before=' + p1.entries[99].id);
+    assert.deepEqual([p2.entries.length, p2.more], [7, false]);
+  } finally {
+    await s.stop();
+  }
+});

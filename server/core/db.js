@@ -771,6 +771,24 @@ export const MIGRATIONS = [
        user_id INTEGER PRIMARY KEY,
        at      INTEGER NOT NULL
      )`
+  ],
+  // DEV11 (2): the operator site's ログインログ — the first time each day
+  // (Japan time) an operator, the developer or a 閲覧者 comes into the site
+  // (how: 'button', the day's ログイン button; 'password', a login with the
+  // password), seen by the developer only — and VIP's free trial (VIP3 for
+  // 3 days, once in a player's life: vip_trial_until, when it ends; 0: never)
+  [
+    `CREATE TABLE ops_entries (
+       id      INTEGER PRIMARY KEY,
+       user_id INTEGER NOT NULL,
+       role    TEXT    NOT NULL,
+       day     TEXT    NOT NULL,
+       at      INTEGER NOT NULL,
+       how     TEXT    NOT NULL,
+       agent   TEXT    NOT NULL DEFAULT ''
+     )`,
+    'CREATE UNIQUE INDEX ops_entries_day ON ops_entries(user_id, day)',
+    'ALTER TABLE users ADD COLUMN vip_trial_until INTEGER NOT NULL DEFAULT 0'
   ]
 ];
 
@@ -779,7 +797,7 @@ export const SCHEMA_VERSION = MIGRATIONS.length;
 // has them; nor what goes with them, the operators' limits and requests)
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
-  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers',
+  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers', 'ops_entries',
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'meta'];
 
 export function migrate(db) {

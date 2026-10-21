@@ -35,6 +35,7 @@ import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
 import { readQuests, stepQuests, claimQuests, questsReady, questView } from './quests.js';
 import { createOps, DELETED, ARCHIVE_DAYS } from './ops.js';
 import { createOpsLogin } from './opslogin.js';
+import { createOpsEntry } from './opsentry.js';
 import { createEmergency } from './emergency.js';
 import { createShield } from './shield.js';
 import { createSec } from './sec.js';
@@ -3437,9 +3438,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen
   });
   Object.assign(routes, ops.routes);
+  // the operator site's ログインログ (the day's ログイン button; the developer's alone to read)
+  const opsEntry = createOpsEntry({ q, getUser, see: ops.see, isOperator: ops.isOperator, isDeveloper });
+  Object.assign(routes, opsEntry.routes);
+  const opsMe = routes['GET /api/ops/me'];
+  routes['GET /api/ops/me'] = (req, u) => ({ ...opsMe(req, u), ...opsEntry.state(u) });
   // the operator site's own login (two wrong tries: a wait that doubles); while stopped, the developer's only
   const opsLogin = createOpsLogin({
-    q, findByName, isOperator: ops.isOperator, isViewer: ops.isViewer, createSession, seenOn,
+    q, findByName, isOperator: ops.isOperator, isViewer: ops.isViewer, createSession, seenOn, entered: opsEntry.record,
     rate: (req) => rate(limit.login, req.ip, '試行回数が多すぎます。しばらく待ってからお試しください'),
     // during a lockdown the operators still come in to reach the security base;
     // during a plain emergency stop, only the developer
@@ -3739,14 +3745,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // site, is refused before its route runs (and each of these checks for an
   // operator or a viewer on its own).
   const VIEW_ONLY = new Set([
-    'GET /api/ops/me', 'GET /api/ops/alive', 'GET /api/ops/counts', 'GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback',
+    'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/ops/alive', 'GET /api/ops/counts', 'GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback',
     'GET /api/ops/log', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security',
     'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify', 'POST /api/logout'
   ]);
 
   // what still comes in while the server is stopped for an emergency: the
   // developer's way back in
-  const WHILE_STOPPED = new Set(['POST /api/ops/login', 'GET /api/ops/me', 'GET /api/emergency', 'POST /api/emergency/release']);
+  const WHILE_STOPPED = new Set(['POST /api/ops/login', 'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/emergency', 'POST /api/emergency/release']);
   // what still comes in during a lockdown: the security base (/sec/) for the
   // operators, the operator login they reach it with (and the logout that
   // ends it, so 出る really signs out), and the developer's emergency page.
