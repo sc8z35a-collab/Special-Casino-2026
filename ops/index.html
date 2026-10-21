@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
+<!-- the operator site's own live connection: WebSocket here (the Node server says sse) -->
+<meta name="br-mode" content="online" data-live="ws">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#ffffff">
 <meta name="mobile-web-app-capable" content="yes">
@@ -204,13 +206,25 @@
   <!-- 運営チャット: the operators, live; one to one or all together -->
   <section class="view" id="view-team" hidden>
     <div class="view-head"><h2>運営チャット</h2><span class="muted" id="team-note"></span></div>
-    <p class="hint muted">運営者だけの連絡用です。緑は運営サイトにいる人、青はゲーム中の人。送ったメッセージは取り消せません。個人チャットは開発者も見られます。</p>
+    <p class="hint muted">運営者だけの連絡用です。緑は運営サイトにいる人、青はゲーム中の人。送ったメッセージは取り消せません。個人チャットは開発者も見られます。「＠」でプレイヤーや <b>@開発者</b>（開発者にすぐ知らせます）を、「ログ」で運営ログの記録を引用できます。全体チャットでは人数・時間の制限なしで高音質のグループ通話ができます。</p>
     <div class="team">
       <aside class="team-list" id="team-list"></aside>
       <section class="team-chat">
         <div class="team-head" id="team-head"></div>
+        <div class="team-call" id="team-call" hidden></div>
         <div class="team-scroll" id="team-scroll"><div class="chat-list" id="team-msgs"></div></div>
-        <form class="team-compose" id="team-form" hidden><textarea id="team-text" rows="2" maxlength="2000" placeholder="メッセージ（Ctrl+Enter で送信）"></textarea><button class="btn primary" type="submit">送信</button></form>
+        <form class="team-compose" id="team-form" hidden>
+          <div class="team-tools">
+            <button class="btn small ghost" id="team-at" type="button" title="プレイヤーや開発者を引用">＠</button>
+            <button class="btn small ghost" id="team-quote" type="button" title="運営ログの記録を引用">ログ</button>
+          </div>
+          <textarea id="team-text" rows="2" maxlength="2000" placeholder="メッセージ（Ctrl+Enter で送信・＠でメンション）"></textarea>
+          <button class="btn primary" type="submit">送信</button>
+          <div class="team-pick" id="team-pick" hidden>
+            <input class="search" id="team-pick-q" type="search" autocomplete="off" spellcheck="false">
+            <div class="team-pick-list" id="team-pick-list" role="listbox"></div>
+          </div>
+        </form>
       </section>
     </div>
   </section>
@@ -315,6 +329,11 @@
     </div>
   </section>
 </div>
+
+<!-- the developer called in the operators' chat (@開発者) -->
+<div class="dev-call" id="dev-call" hidden role="alert"></div>
+<!-- the 全体チャット's call, while another tab is open -->
+<div class="call-pill" id="call-pill" hidden></div>
 
 <!-- what can be done with a vault item (the … button, a right click, a long press) -->
 <div class="vmenu" id="vmenu" role="menu" hidden></div>

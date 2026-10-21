@@ -763,7 +763,14 @@ export const MIGRATIONS = [
        at      INTEGER NOT NULL,
        by_id   INTEGER NOT NULL
      )`,
-    "ALTER TABLE sessions ADD COLUMN scope TEXT NOT NULL DEFAULT ''"
+    "ALTER TABLE sessions ADD COLUMN scope TEXT NOT NULL DEFAULT ''",
+    // the operators' group call of the 全体チャット: who is in it (kept here so
+    // the server going to sleep does not forget; one whose site connection
+    // is gone is not counted)
+    `CREATE TABLE ops_call (
+       user_id INTEGER PRIMARY KEY,
+       at      INTEGER NOT NULL
+     )`
   ]
 ];
 

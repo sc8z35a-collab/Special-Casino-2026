@@ -103,7 +103,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return hostLive.broadcast(event, data, filter);
     },
     isOnline: (id) => hostLive.isOnline(id),
-    onlineCount: () => hostLive.onlineCount()
+    onlineCount: () => hostLive.onlineCount(),
+    // the operator site's own live connection (the 運営チャット's call, the developer called)
+    sendOps(userId, event, data) {
+      stats.wsOut();
+      return hostLive.sendOps ? hostLive.sendOps(userId, event, data) : undefined;
+    },
+    opsOnline: (id) => !!(hostLive.opsOnline && hostLive.opsOnline(id))
   };
   const start = {
     tokens: config.startTokens ?? RULES.start.tokens,
@@ -3441,7 +3447,24 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   });
   Object.assign(routes, opsLogin.routes);
   // 運営チャット
-  Object.assign(routes, createTeam({ q, getUser, live, ops, seen: opsSeen, isDeveloper }).routes);
+  // @開発者 in the 運営チャット: the developer hears of it at once — on the
+  // operator site (its live connection), on their phone (unless the game is
+  // in sight) and on Discord
+  function callDeveloper(u, m, to) {
+    const dev = findByName(config.developer);
+    if (!dev) return;
+    const text = String(m.text).replace(/@\[(p|log):\d+\]/g, '…').replace(/@\[dev\]/g, '@開発者').slice(0, 140);
+    live.sendOps(dev.id, 'opsping', { from: mini(u), to, text, id: m.id });
+    phone(dev.id, { kind: 'ops', title: `${u.name}さんが運営チャットで開発者を呼んでいます`, body: text, tag: `opsping:${u.id}`, open: 'ops' }, 30000);
+    discord.say('📣', `${u.name}が運営チャット（${to ? '個人チャット' : '全体チャット'}）で開発者を呼んでいます：${text}`);
+  }
+  const team = createTeam({ q, getUser, live, ops, seen: opsSeen, isDeveloper, callDeveloper, ice: () => iceServers() });
+  Object.assign(routes, team.routes);
+  // the operator site's live connection: a ticket of its own (an operator's)
+  routes['POST /api/ops/live-ticket'] = (req, u) => {
+    ops.need(u);
+    return { ticket: signTicket(opsSecret, u.id) };
+  };
   // 金の生る木
   const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
   Object.assign(routes, trees.routes);
@@ -3620,6 +3643,18 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   // Stream tickets are signed and expire within a minute; each opens one connection.
   const usedTickets = new Map();
+  // the operator site's live connection (an operator's ticket, signed apart)
+  const opsSecret = `${secret}:ops-live`;
+  function consumeOpsTicket(ticket) {
+    const userId = verifyTicket(opsSecret, ticket);
+    if (!userId) return null;
+    const now = Date.now();
+    for (const [t, until] of usedTickets) if (until < now) usedTickets.delete(t);
+    if (usedTickets.has(ticket)) return null;
+    usedTickets.set(ticket, now + 70000);
+    const u = getUser(userId);
+    return u && ops.isOperator(u) ? userId : null;
+  }
   function consumeTicket(ticket) {
     const userId = verifyTicket(secret, ticket);
     if (!userId) return null;
@@ -3793,6 +3828,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     housekeeping,
     userForToken,
     consumeTicket,
+    consumeOpsTicket,
+    // the operator site's live connection gone: out of the 全体チャット's call
+    opsGone: (userId) => team.gone(userId),
     socketCall,
     socketTyping,
     socketBeat,

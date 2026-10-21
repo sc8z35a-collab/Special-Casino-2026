@@ -216,6 +216,9 @@
 
   /* ------------------------------------------------------------ logging in --- */
   function showLogin(message) {
+    if (call.on) callLeave();
+    opsLiveClose();
+    $('#dev-call').hidden = true;
     $('#app').hidden = true;
     $('#login').hidden = false;
     $('#login-error').textContent = message || '';
@@ -324,6 +327,7 @@
     resetVault();
     waiting = [];
     renderWaiting();
+    opsLiveOpen();
     if (state.developer) loadPay(true);
     load();
     // /ops/#vault: straight to the vault
@@ -403,6 +407,8 @@
     else if (v === 'server') { loadServer(); renderDevCards(); }
     else if (v === 'pay') loadPay();
     else if (v === 'vault') { renderVault(); if (state.vault) loadVault(true); else openLook(); }
+    // (the call goes on elsewhere: its reminder)
+    renderCall();
     scrollTop();
   }
   function scrollTop() { if (turned) $('#app').scrollTop = 0; else window.scrollTo(0, 0); }
@@ -1687,6 +1693,7 @@
   function loadTeam(quiet) {
     return request('GET', '/api/ops/team').then(function (r) {
       team.list = r;
+      if (!call.on) call.members = r.call || [];
       // the conversation on the screen is read
       var open = state.view === 'team' && !document.hidden && team.peer !== null ? peerRow(team.peer) : null, mustRead = !!(open && open.unread);
       if (open) open.unread = 0;
@@ -1712,8 +1719,10 @@
     list.textContent = '';
     list.appendChild(el('p', 'chat-empty', '読み込み中…'));
     $('#team-form').hidden = isPair(peer);
+    closePick();
     renderTeamList();
     renderTeamHead();
+    renderCall();
     loadTeamMsgs(true, true);
   }
   function lastTeamId() { return team.messages.length ? team.messages[team.messages.length - 1].id : 0; }
@@ -1767,6 +1776,7 @@
     t.appendChild(el('b', '', '全体チャット'));
     t.appendChild(el('small', '', r.all.last ? r.all.last.from.name + '：' + r.all.last.text : '運営者全員で話せます'));
     all.appendChild(t);
+    if ((r.call || []).length) all.appendChild(el('span', 'team-calling', '🎙' + r.call.length));
     if (r.all.unread) all.appendChild(unreadMark(r.all.unread));
     box.appendChild(all);
     // me first, then on the site, in the game, and the rest by when they were last on
@@ -1816,6 +1826,7 @@
       h.appendChild(el('span', 'face team-all', '全'));
       t.appendChild(el('b', '', '全体チャット'));
       t.appendChild(el('small', '', '運営者全員（' + r.operators.length + '人）が見られます'));
+      renderCall();
     } else {
       var o = peerRow(team.peer);
       $('#team-form').hidden = !o;
@@ -1838,7 +1849,7 @@
       var mine = m.from.id === me && !isPair(team.peer);
       var node = el('div', 'msg ' + (mine ? 'bot' : 'player'));
       if (!mine && (team.peer === 0 || isPair(team.peer))) node.appendChild(el('span', 'msg-from', m.from.name));
-      node.appendChild(el('div', 'bubble', m.text));
+      node.appendChild(bubbleEl(m));
       var meta = el('div', 'msg-meta');
       if (mine && team.peer !== 0 && team.theirRead >= m.id) meta.appendChild(el('b', '', '既読'));
       meta.appendChild(document.createTextNode(stamp(m.at)));
@@ -1849,13 +1860,391 @@
   }
   function sendTeam(e) {
     e.preventDefault();
-    var peer = team.peer, text = $('#team-text').value.trim();
+    var peer = team.peer, text = withTokens($('#team-text').value.trim());
     if (peer === null || team.sending || !text) return;
     team.sending = true;
+    closePick();
     request('POST', '/api/ops/team/messages', { to: peer, text: text }).then(function () {
       $('#team-text').value = '';
+      team.refs = {};
       if (team.peer === peer) loadTeamMsgs(true);
     }, fail).then(function () { team.sending = false; });
+  }
+
+  /* what a message names: a player (@[p:<id>]: a tap opens them), the
+     developer (@[dev]: called at once) and a log line (@[log:<id>]: a tap
+     shows it). In the box they read "@名前", "@開発者", "［ログ#12］". */
+  var TOKEN = /@\[(p:\d+|dev|log:\d+)\]/g;
+  function bubbleEl(m) {
+    var b = el('div', 'bubble' + (m.refs && m.refs.dev ? ' calls-dev' : '')), text = String(m.text || ''), at = 0, t;
+    var refs = m.refs || { players: {}, logs: {} };
+    TOKEN.lastIndex = 0;
+    while ((t = TOKEN.exec(text))) {
+      if (t.index > at) b.appendChild(document.createTextNode(text.slice(at, t.index)));
+      b.appendChild(refEl(t[1], refs));
+      at = t.index + t[0].length;
+    }
+    if (at < text.length) b.appendChild(document.createTextNode(text.slice(at)));
+    return b;
+  }
+  function refEl(tok, refs) {
+    if (tok === 'dev') return el('span', 'mention dev', '@開発者');
+    var id = Number(tok.slice(tok.indexOf(':') + 1));
+    if (tok[0] === 'p') {
+      var p = (refs.players || {})[id];
+      if (!p) return el('span', 'mention gone', '@?');
+      var b = el('button', 'mention', '@' + p.name);
+      b.type = 'button';
+      b.dataset.player = id;
+      b.title = p.name + ' さんを開く';
+      return b;
+    }
+    var x = (refs.logs || {})[id];
+    var q = el('button', 'quote-log' + (x ? '' : ' gone'));
+    q.type = 'button';
+    q.dataset.log = id;
+    q.appendChild(el('small', '', 'ログ #' + id + (x ? '・' + stamp(x.at) + '・' + (KINDS[x.kind] || '') : '')));
+    q.appendChild(el('span', '', x ? x.summary : '（この記録は見つかりません）'));
+    return q;
+  }
+  // a tap on a name or a quote in the chat
+  function onTeamMsgs(e) {
+    var p = e.target.closest('[data-player]');
+    if (p) { openDetail(Number(p.dataset.player)); return; }
+    var l = e.target.closest('[data-log]');
+    if (l) showLogLine(Number(l.dataset.log));
+  }
+  // one line of the log, opened (from a quote)
+  function showLogLine(id) {
+    state.logQ = '#' + id;
+    state.logKind = '';
+    $('#log-search').value = state.logQ;
+    Array.prototype.forEach.call(document.querySelectorAll('#log-kinds .chip'), function (x) { x.classList.toggle('on', x.dataset.kind === ''); });
+    setView('log');
+    var tries = 0;
+    (function open() {
+      var more = document.querySelector('#log-list .entry-more');
+      if (more) { more.click(); return; }
+      if (++tries < 20) setTimeout(open, 150);
+    })();
+  }
+  // "@名前" and the rest back into what the server keeps
+  function withTokens(text) {
+    Object.keys(team.refs || {}).sort(function (a, b) { return b.length - a.length; }).forEach(function (k) { text = text.split(k).join(team.refs[k]); });
+    return text;
+  }
+  function insertAtCaret(ta, text, dropAt) {
+    var from = ta.selectionStart, to = ta.selectionEnd, v = ta.value;
+    // (the "@" just typed that opened the list goes)
+    if (dropAt && from > 0 && v.charAt(from - 1) === '@') from--;
+    ta.value = v.slice(0, from) + text + v.slice(to);
+    ta.selectionStart = ta.selectionEnd = from + text.length;
+    ta.focus();
+  }
+  // the list to pick from: 'at' (@開発者 first, then players) or 'log' (any line of the log)
+  var pick = { mode: '', timer: 0, typed: false, seq: 0 };
+  function openPick(mode, typed) {
+    if (team.peer === null || isPair(team.peer)) return;
+    pick.mode = mode;
+    pick.typed = !!typed;
+    $('#team-pick').hidden = false;
+    var q = $('#team-pick-q');
+    q.value = '';
+    q.placeholder = mode === 'log' ? '記録を探す（名前・内容・#番号）' : 'プレイヤー名で探す';
+    clearTimeout(pick.timer);
+    renderPick([], mode);
+    loadPick();
+    setTimeout(function () { q.focus(); }, 20);
+  }
+  function closePick() { $('#team-pick').hidden = true; pick.mode = ''; clearTimeout(pick.timer); pick.seq++; }
+  function loadPick() {
+    var mode = pick.mode, q = $('#team-pick-q').value.trim(), seq = ++pick.seq;
+    if (!mode) return;
+    var url = mode === 'log' ? '/api/ops/log?q=' + encodeURIComponent(q) : '/api/ops/players?q=' + encodeURIComponent(q);
+    request('GET', url).then(function (r) {
+      if (seq !== pick.seq || pick.mode !== mode) return;
+      renderPick(mode === 'log' ? (r.entries || []).slice(0, 30) : (r.players || []).slice(0, 30), mode);
+    }, function () {});
+  }
+  function renderPick(items, mode) {
+    var box = $('#team-pick-list');
+    mode = mode || pick.mode;
+    box.textContent = '';
+    function row(label, sub, data, cls) {
+      var b = el('button', 'team-pick-row' + (cls ? ' ' + cls : ''));
+      b.type = 'button';
+      b.setAttribute('role', 'option');
+      Object.keys(data).forEach(function (k) { b.dataset[k] = data[k]; });
+      b.appendChild(el('b', '', label));
+      if (sub) b.appendChild(el('small', '', sub));
+      box.appendChild(b);
+    }
+    if (mode === 'at') {
+      row('@開発者', '特別タグ：開発者にすぐ知らせます（運営サイト・スマホ・Discord）', { pickDev: '1' }, 'dev');
+      items.filter(function (p) { return p && p.name && !p.actor; }).forEach(function (p) { row('@' + p.name, (p.online ? 'オンライン・' : '') + '登録 ' + date(p.createdAt), { pickPlayer: p.id, name: p.name }); });
+    } else {
+      items.filter(function (x) { return x && x.actor; }).forEach(function (x) { row('#' + x.id + ' ' + x.summary, String(x.jst || '').slice(0, 16) + '・' + (KINDS[x.kind] || '') + '・' + x.actor.name, { pickLog: x.id }); });
+    }
+    if (!box.childNodes.length) box.appendChild(el('p', 'muted team-pick-empty', '見つかりません'));
+  }
+  function onPickList(e) {
+    var b = e.target.closest('.team-pick-row');
+    if (!b) return;
+    var ta = $('#team-text'), key;
+    team.refs = team.refs || {};
+    if (b.dataset.pickDev) { key = '@開発者'; team.refs[key] = '@[dev]'; }
+    else if (b.dataset.pickPlayer) { key = '@' + b.dataset.name; team.refs[key] = '@[p:' + b.dataset.pickPlayer + ']'; }
+    else { key = '［ログ#' + b.dataset.pickLog + '］'; team.refs[key] = '@[log:' + b.dataset.pickLog + ']'; }
+    var typed = pick.typed;
+    closePick();
+    insertAtCaret(ta, key + ' ', typed);
+  }
+  // a log line quoted from the log (its 詳細): into the 全体チャット's box
+  function quoteInChat(x) {
+    setView('team');
+    var go = function () {
+      if (team.peer === null || isPair(team.peer)) openTeam(0);
+      team.refs = team.refs || {};
+      var key = '［ログ#' + x.id + '］';
+      team.refs[key] = '@[log:' + x.id + ']';
+      insertAtCaret($('#team-text'), key + ' ');
+    };
+    setTimeout(go, 300);
+  }
+
+  /* the operator site's own live connection (an operator's): the 全体チャット's
+     call and the developer called. WebSocket on Cloudflare, Server-Sent
+     Events on the Node server (the page says which). */
+  var opsLive = null, opsLiveWant = false, opsLiveTimer = 0;
+  function liveSse() { var m = document.querySelector('meta[name="br-mode"]'); return !!m && m.getAttribute('data-live') === 'sse'; }
+  function opsLiveOpen() {
+    if (state.viewer || !token || opsLive) return;
+    opsLiveWant = true;
+    request('POST', '/api/ops/live-ticket', {}).then(function (r) {
+      if (!opsLiveWant || opsLive) return;
+      var path = '/api/' + (liveSse() ? 'stream' : 'live') + '?ops=' + encodeURIComponent(r.ticket), up = false;
+      if (liveSse()) {
+        var es = new EventSource(path);
+        opsLive = { close: function () { es.close(); } };
+        ['hello', 'opscall', 'opsping'].forEach(function (ev) {
+          es.addEventListener(ev, function (e) { up = true; var d = null; try { d = JSON.parse(e.data); } catch (x) { return; } onOpsLive(ev, d); });
+        });
+        es.onerror = function () { es.close(); opsLiveLost(up); };
+      } else {
+        var ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + path);
+        var ping = setInterval(function () { try { ws.send('ping'); } catch (x) { /* closing */ } }, 30000);
+        opsLive = { close: function () { clearInterval(ping); ws.onclose = null; try { ws.close(); } catch (x) { /* closed */ } } };
+        ws.onmessage = function (e) {
+          if (e.data === 'pong') return;
+          var m = null;
+          try { m = JSON.parse(e.data); } catch (x) { return; }
+          up = true;
+          onOpsLive(m.event, m.data);
+        };
+        ws.onclose = function () { clearInterval(ping); opsLiveLost(up); };
+      }
+    }, function () { opsLiveLost(false); });
+  }
+  function opsLiveLost(was) {
+    opsLive = null;
+    // (the call goes with the connection: the server has let us out)
+    if (call.on) { callEnd(); toast('接続が切れたため、通話から抜けました'); }
+    if (!opsLiveWant) return;
+    clearTimeout(opsLiveTimer);
+    opsLiveTimer = setTimeout(opsLiveOpen, was ? 1000 : 5000);
+  }
+  function opsLiveClose() {
+    opsLiveWant = false;
+    clearTimeout(opsLiveTimer);
+    if (opsLive) { opsLive.close(); opsLive = null; }
+  }
+  function onOpsLive(ev, d) {
+    if (ev === 'opscall') onCall(d);
+    else if (ev === 'opsping') devCalled(d);
+  }
+  // @開発者: the developer hears of it at once
+  function devCalled(d) {
+    var box = $('#dev-call');
+    box.textContent = '';
+    box.appendChild(el('b', '', '📣 ' + d.from.name + ' さんが' + (d.to ? '個人チャット' : '全体チャット') + 'で開発者を呼んでいます'));
+    box.appendChild(el('span', '', d.text));
+    var go = el('button', 'btn small primary', '開く');
+    go.type = 'button';
+    go.addEventListener('click', function () { box.hidden = true; setView('team'); setTimeout(function () { openTeam(d.to ? d.from.id : 0); }, 200); });
+    var x = el('button', 'close', '×');
+    x.type = 'button';
+    x.setAttribute('aria-label', '閉じる');
+    x.addEventListener('click', function () { box.hidden = true; });
+    box.appendChild(go);
+    box.appendChild(x);
+    box.hidden = false;
+    toast(d.from.name + ' さんが開発者を呼んでいます');
+    try { if (window.Notification && Notification.permission === 'granted') new Notification('運営チャットで開発者が呼ばれています', { body: d.from.name + '：' + d.text }); } catch (e) { /* none */ }
+  }
+
+  /* The 全体チャット's call: every operator who comes, for as long as they
+     like, everyone to everyone (the newcomer calls each one already in it).
+     High quality: Opus at 128 kbps with error correction, the microphone's
+     echo and noise cancelled. */
+  var CALL_BPS = 128000;
+  var call = { on: false, joining: false, stream: null, peers: {}, members: [], muted: false, ice: [] };
+  function hq(desc) {
+    var sdp = String(desc.sdp || ''), m = /a=rtpmap:(\d+) opus\/48000/i.exec(sdp);
+    if (m) {
+      var pt = m[1], line = new RegExp('a=fmtp:' + pt + ' ([^\\r\\n]*)');
+      var want = 'maxaveragebitrate=' + CALL_BPS + ';useinbandfec=1;usedtx=0;maxplaybackrate=48000';
+      sdp = line.test(sdp) ? sdp.replace(line, function (all, p) { return 'a=fmtp:' + pt + ' ' + p.split(';').filter(function (x) { return !/^(maxaveragebitrate|useinbandfec|usedtx|maxplaybackrate)=/.test(x); }).concat(want).join(';'); })
+        : sdp.replace(m[0], m[0] + '\r\na=fmtp:' + pt + ' ' + want);
+    }
+    return { type: desc.type, sdp: sdp };
+  }
+  function signal(to, data) { return request('POST', '/api/ops/call/signal', { to: to, data: data }).catch(function () {}); }
+  function plain(d) { return d && d.toJSON ? d.toJSON() : d; }
+  function peerFor(o, offer) {
+    var p = call.peers[o.id];
+    if (p) return p;
+    var pc = new RTCPeerConnection({ iceServers: call.ice });
+    p = call.peers[o.id] = { pc: pc, user: o, audio: null, pending: [], state: 'new' };
+    call.stream.getTracks().forEach(function (t) { pc.addTrack(t, call.stream); });
+    pc.onicecandidate = function (e) { if (e.candidate) signal(o.id, { candidate: plain(e.candidate) }); };
+    pc.ontrack = function (e) {
+      if (!p.audio) { p.audio = new Audio(); p.audio.autoplay = true; }
+      p.audio.srcObject = e.streams[0];
+      p.audio.play().catch(function () {});
+    };
+    pc.onconnectionstatechange = function () {
+      p.state = pc.connectionState;
+      if (p.state === 'connected') {
+        pc.getSenders().forEach(function (sd) {
+          if (!sd.track || sd.track.kind !== 'audio' || !sd.getParameters) return;
+          var prm = sd.getParameters();
+          prm.encodings = prm.encodings && prm.encodings.length ? prm.encodings : [{}];
+          prm.encodings[0].maxBitrate = CALL_BPS;
+          sd.setParameters(prm).catch(function () {});
+        });
+      }
+      renderCall();
+    };
+    if (offer) {
+      pc.createOffer().then(function (d) { return pc.setLocalDescription(hq(d)); })
+        .then(function () { return signal(o.id, { sdp: plain(pc.localDescription) }); }).catch(function () {});
+    }
+    return p;
+  }
+  function dropPeer(id) {
+    var p = call.peers[id];
+    if (!p) return;
+    try { p.pc.close(); } catch (e) { /* closed */ }
+    if (p.audio) { p.audio.srcObject = null; }
+    delete call.peers[id];
+  }
+  function onCall(d) {
+    if (d.members) call.members = d.members;
+    if (team.list) team.list.call = d.members || team.list.call;
+    if (!call.on) { renderCall(); renderTeamList(); return; }
+    if (d.type === 'leave') dropPeer(d.user.id);
+    else if (d.type === 'signal') {
+      var p = peerFor(d.from, false), pc = p.pc, x = d.data || {};
+      if (x.sdp) {
+        pc.setRemoteDescription(x.sdp).then(function () {
+          p.pending.splice(0).forEach(function (c) { pc.addIceCandidate(c).catch(function () {}); });
+          if (x.sdp.type !== 'offer') return null;
+          return pc.createAnswer().then(function (a) { return pc.setLocalDescription(hq(a)); })
+            .then(function () { return signal(d.from.id, { sdp: plain(pc.localDescription) }); });
+        }).catch(function () {});
+      } else if (x.candidate) {
+        if (pc.remoteDescription) pc.addIceCandidate(x.candidate).catch(function () {});
+        else p.pending.push(x.candidate);
+      }
+    }
+    renderCall();
+  }
+  function callJoin() {
+    if (call.on || call.joining) return;
+    if (!opsLive) { opsLiveOpen(); toast('接続を準備しています。少し待ってからもう一度押してください'); return; }
+    if (!navigator.mediaDevices || !window.RTCPeerConnection) { toast('このブラウザでは通話できません'); return; }
+    call.joining = true;
+    renderCall();
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 48000 } }).then(function (stream) {
+      call.stream = stream;
+      return request('POST', '/api/ops/call/join', {}).then(function (r) {
+        call.on = true;
+        call.muted = false;
+        call.ice = r.ice || [];
+        call.members = r.members || [];
+        (r.others || []).forEach(function (o) { peerFor(o, true); });
+        toast('通話に参加しました');
+      });
+    }).catch(function (err) {
+      stopMic();
+      fail(err && err.name === 'NotAllowedError' ? { message: 'マイクの使用が許可されていません' } : err && err.message ? err : { message: '通話に参加できませんでした' });
+    }).then(function () { call.joining = false; renderCall(); });
+  }
+  function stopMic() {
+    if (call.stream) call.stream.getTracks().forEach(function (t) { t.stop(); });
+    call.stream = null;
+  }
+  // out of the call here (the server is told by callLeave)
+  function callEnd() {
+    Object.keys(call.peers).forEach(dropPeer);
+    stopMic();
+    call.on = false;
+    renderCall();
+  }
+  function callLeave() {
+    if (!call.on) return;
+    callEnd();
+    request('POST', '/api/ops/call/leave', {}).then(function (r) { call.members = r.members || []; renderCall(); }, function () {});
+  }
+  function callMute() {
+    call.muted = !call.muted;
+    if (call.stream) call.stream.getAudioTracks().forEach(function (t) { t.enabled = !call.muted; });
+    renderCall();
+  }
+  function renderCall() {
+    var box = $('#team-call'), here = state.view === 'team' && team.peer === 0, n = (call.members || []).length;
+    box.hidden = !here || state.viewer;
+    box.textContent = '';
+    if (!box.hidden) {
+      var t = el('div', 'team-call-who');
+      t.appendChild(el('b', '', call.on ? '🎙 通話中（' + n + '人）' : n ? '🎙 ' + n + '人が通話中' : '🎙 全体チャットの通話'));
+      t.appendChild(el('small', '', n ? call.members.map(function (m) {
+        var p = call.peers[m.id];
+        return m.name + (p && p.state !== 'connected' && p.state !== 'new' ? '（' + (p.state === 'connecting' ? '接続中' : p.state === 'failed' ? '接続できません' : p.state) + '）' : '');
+      }).join('・') : '人数・時間の制限なし・高音質（128kbps）'));
+      box.appendChild(t);
+      function btn(label, act, cls) {
+        var b = el('button', 'btn small' + (cls ? ' ' + cls : ''), label);
+        b.type = 'button';
+        b.dataset.call = act;
+        box.appendChild(b);
+      }
+      if (call.on) { btn(call.muted ? 'マイクをオン' : 'マイクをミュート', 'mute', call.muted ? 'warn' : ''); btn('退出', 'leave', 'danger'); }
+      else btn(call.joining ? '参加中…' : '通話に参加', 'join', 'primary');
+    }
+    // elsewhere on the site: a small reminder that the call goes on
+    var pill = $('#call-pill');
+    pill.hidden = !call.on || here;
+    pill.textContent = '';
+    if (!pill.hidden) {
+      var go = el('button', 'call-pill-go', '🎙 通話中 ' + n + '人' + (call.muted ? '（ミュート）' : ''));
+      go.type = 'button';
+      go.dataset.call = 'open';
+      var out = el('button', 'call-pill-out', '退出');
+      out.type = 'button';
+      out.dataset.call = 'leave';
+      pill.appendChild(go);
+      pill.appendChild(out);
+    }
+  }
+  function onCallButtons(e) {
+    var b = e.target.closest('[data-call]');
+    if (!b) return;
+    var a = b.dataset.call;
+    if (a === 'join') callJoin();
+    else if (a === 'leave') callLeave();
+    else if (a === 'mute') callMute();
+    else if (a === 'open') { setView('team'); setTimeout(function () { openTeam(0); }, 200); }
   }
 
   /* ------------------------------------------------------------ サーバー --- */
@@ -4126,6 +4515,13 @@
       b.addEventListener('click', go.open);
       a.appendChild(b);
     }
+    // (an operator: into the 運営チャット)
+    if (!state.viewer) {
+      var qb = el('button', 'btn small', '運営チャットで引用');
+      qb.type = 'button';
+      qb.addEventListener('click', function () { quoteInChat(x); });
+      a.appendChild(qb);
+    }
     box.appendChild(a);
     return box;
   }
@@ -4416,6 +4812,24 @@
       if (b) openTeam(Number(b.dataset.peer));
     });
     $('#team-form').addEventListener('submit', sendTeam);
+    $('#team-msgs').addEventListener('click', onTeamMsgs);
+    $('#team-call').addEventListener('click', onCallButtons);
+    $('#call-pill').addEventListener('click', onCallButtons);
+    $('#team-at').addEventListener('click', function () { if (pick.mode === 'at') closePick(); else openPick('at', false); });
+    $('#team-quote').addEventListener('click', function () { if (pick.mode === 'log') closePick(); else openPick('log', false); });
+    $('#team-pick-list').addEventListener('click', onPickList);
+    $('#team-pick-q').addEventListener('input', function () { clearTimeout(pick.timer); pick.timer = setTimeout(loadPick, 250); });
+    $('#team-pick-q').addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.stopPropagation(); closePick(); $('#team-text').focus(); }
+      else if (e.key === 'Enter') { e.preventDefault(); var first = document.querySelector('#team-pick-list .team-pick-row'); if (first) first.click(); }
+    });
+    // "@" typed after a space (or at the start): the list opens
+    $('#team-text').addEventListener('input', function (e) {
+      var ta = e.target, i = ta.selectionStart, prev = ta.value.charAt(i - 2);
+      if (e.data === '@' && ta.value.charAt(i - 1) === '@' && (i === 1 || /\s/.test(prev))) openPick('at', true);
+    });
+    // (the call goes when the page does)
+    window.addEventListener('pagehide', function () { if (call.on) callLeave(); });
     $('#team-text').addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendTeam(e); });
     $('#speed').value = speed;
     $('#speed').addEventListener('change', function () { setSpeed($('#speed').value); });

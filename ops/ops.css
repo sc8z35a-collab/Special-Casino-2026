@@ -699,3 +699,41 @@ body.role-viewer [data-stop], body.role-viewer #srv-dev, body.role-viewer .repor
 .entry-more { flex: none; margin: 4px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--muted); font-size: 12px; font-weight: 600; }
 .entry-more:hover, .entry-more.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .entry-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+/* 運営チャット (DEV11): ＠ and ログ beside the box, the list to pick from,
+   names and quoted log lines in a message, the developer called, the call */
+.team-compose { position: relative; }
+.team-tools { display: flex; flex-direction: column; gap: 4px; }
+.team-tools .btn { width: 44px; padding: 0; }
+.team-pick { position: absolute; left: 12px; right: 12px; bottom: calc(100% - 4px); z-index: 5; display: flex; flex-direction: column; gap: 6px; max-height: 320px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 10px 30px rgba(29, 39, 51, .16); }
+.team-pick .search { max-width: none; }
+.team-pick-list { overflow: auto; }
+.team-pick-row { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 7px 10px; border: 0; border-radius: 8px; background: none; text-align: left; }
+.team-pick-row:hover, .team-pick-row:focus-visible { background: var(--accent-soft); outline: none; }
+.team-pick-row b { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-pick-row small { font-size: 11.5px; color: var(--muted); }
+.team-pick-row.dev b { color: #c0262d; }
+.team-pick-empty { margin: 8px; }
+.mention { display: inline; padding: 0 4px; border: 0; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; }
+.mention.dev { background: #ffe1e1; color: #c0262d; cursor: default; }
+.mention.gone { background: var(--soft); color: var(--muted); cursor: default; }
+.quote-log { display: flex; flex-direction: column; gap: 2px; width: 100%; margin: 6px 0; padding: 6px 10px; border: 0; border-left: 3px solid var(--accent); border-radius: 6px; background: rgba(37, 99, 201, .07); color: inherit; font: inherit; font-size: 13px; text-align: left; white-space: normal; cursor: pointer; }
+.quote-log small { font-size: 11px; color: var(--muted); }
+.quote-log.gone { border-left-color: var(--line); cursor: default; }
+.bubble.calls-dev { box-shadow: inset 0 0 0 2px #f2a7aa; }
+.team-calling { margin-left: auto; padding: 1px 8px; border-radius: 10px; background: var(--ok-soft); color: var(--ok); font-size: 11px; font-weight: 700; }
+.team-call { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--soft); }
+.team-call-who { flex: 1; min-width: 180px; }
+.team-call-who b { display: block; font-size: 13.5px; }
+.team-call-who small { display: block; font-size: 12px; color: var(--muted); }
+.call-pill { position: fixed; right: 16px; bottom: 16px; z-index: 55; display: flex; overflow: hidden; border-radius: 22px; background: #1d2733; box-shadow: 0 6px 20px rgba(0, 0, 0, .25); }
+.call-pill button { padding: 10px 14px; border: 0; background: none; color: #fff; font-size: 13px; font-weight: 700; }
+.call-pill .call-pill-out { background: #c0262d; }
+.dev-call { position: fixed; left: 50%; top: 12px; z-index: 65; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; width: min(720px, calc(100vw - 24px)); padding: 10px 14px; transform: translateX(-50%); border: 2px solid #f2a7aa; border-radius: 12px; background: #fff5f5; box-shadow: 0 10px 30px rgba(29, 39, 51, .18); }
+.dev-call b { color: #c0262d; }
+.dev-call span { flex: 1; min-width: 160px; font-size: 13px; }
+.dev-call .close { position: static; }
+/* (in one's own blue bubble) */
+.msg.bot .bubble .quote-log { border-left-color: #fff; background: rgba(255, 255, 255, .16); }
+.msg.bot .bubble .quote-log small { color: rgba(255, 255, 255, .82); }
+.msg.bot .bubble .mention { background: rgba(255, 255, 255, .92); }

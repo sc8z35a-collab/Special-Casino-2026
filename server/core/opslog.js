@@ -144,6 +144,12 @@ export function createOpsLog({ q, anchor = null, onAdd = null }) {
 
   // newest first; `find`: words in the summary, names or action; `kind`: one of LOG_KINDS
   function list({ before = 0, find = '', kind = '', limit = 200 } = {}) {
+    // "#123": that line (a log line quoted in the 運営チャット)
+    const one = /^#(\d{1,15})$/.exec(String(find || '').trim());
+    if (one) {
+      const r = q(`SELECT * FROM ops_log WHERE id = ? ${IS[kind] ? `AND ${IS[kind]}` : ''}`).get(Number(one[1]));
+      return r ? [dto(r)] : [];
+    }
     const like = '%' + String(find || '').slice(0, 60) + '%';
     const only = IS[kind] ? `AND ${IS[kind]}` : '';
     const rows = q(`SELECT * FROM ops_log WHERE id < ? ${only} AND (? = '%%' OR summary LIKE ? OR actor_name LIKE ? OR target_name LIKE ? OR action LIKE ?)

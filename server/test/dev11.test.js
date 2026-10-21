@@ -168,3 +168,93 @@ test('プレイヤーアクティビティ: the log of what happened to players\
     await s.stop();
   }
 });
+
+// the operator site's own live connection (server/node/live.js: attachOps)
+async function opsListen(s, token) {
+  const { ticket } = await s.call('POST', '/api/ops/live-ticket', { token });
+  const events = [];
+  let wake = null;
+  const http = await import('node:http');
+  const req = await new Promise((resolve, reject) => {
+    const r = http.get(`${s.base}/api/stream?ops=${encodeURIComponent(ticket)}`, (res) => {
+      if (res.statusCode !== 200) { reject(new Error('status ' + res.statusCode)); return; }
+      let buf = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        buf += chunk;
+        let i;
+        while ((i = buf.indexOf('\n\n')) >= 0) {
+          const block = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          const ev = /^event: (.+)$/m.exec(block), data = /^data: (.+)$/m.exec(block);
+          if (ev && data) { events.push({ name: ev[1], data: JSON.parse(data[1]) }); if (wake) wake(); }
+        }
+      });
+      resolve(r);
+    });
+    r.on('error', reject);
+  });
+  function waitFor(name, pred = () => true, ms = 3000) {
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => { wake = null; reject(new Error('timeout waiting for ' + name)); }, ms);
+      const check = () => {
+        const hit = events.find((e) => !e.used && e.name === name && pred(e.data));
+        if (hit) { hit.used = true; clearTimeout(t); wake = null; resolve(hit.data); } else wake = check;
+      };
+      check();
+    });
+  }
+  return { events, waitFor, close: () => req.destroy() };
+}
+
+test('運営チャット: a player named (@), the developer called at once, a log line quoted; the 全体チャット call for every operator', async () => {
+  const s = await startServer({ operators: ['taku', 'mod1', 'mod2'] });
+  try {
+    const taku = await s.register('TAKU'), m1 = await s.register('Mod1'), m2 = await s.register('Mod2');
+    const p = await s.register('Quoted1');
+    const as = (who) => (method, url, body) => s.call(method, url, { token: who.token, body });
+    const dev = as(taku), a = as(m1), b = as(m2);
+    const line = (await dev('GET', '/api/ops/log?kind=player')).entries[0];
+    const devLive = await opsListen(s, taku.token);
+    // a player, the developer and a log line, in the 全体チャット
+    const sent = await a('POST', '/api/ops/team/messages', { to: 0, text: `@[p:${p.me.id}] の件です @[dev] 見てください @[log:${line.id}] @[p:999999] @[log:999999]` });
+    const m = sent.message;
+    assert.equal(m.text, `@[p:${p.me.id}] の件です @[dev] 見てください @[log:${line.id}] @? `.trim());
+    assert.deepEqual([m.refs.dev, m.refs.players[p.me.id].name, m.refs.logs[line.id].summary], [true, 'Quoted1', line.summary]);
+    const ping = await devLive.waitFor('opsping');
+    assert.deepEqual([ping.from.name, ping.to], ['Mod1', 0]);
+    assert.ok(ping.text.includes('@開発者'));
+    // the others read it with what it names
+    const read = (await b('GET', '/api/ops/team/messages?with=0')).messages.at(-1);
+    assert.equal(read.refs.players[p.me.id].name, 'Quoted1');
+    // "#id" finds one log line
+    assert.deepEqual((await dev('GET', `/api/ops/log?q=%23${line.id}`)).entries.map((e) => e.id), [line.id]);
+
+    // the call: only with the site's live connection; the others are told; signals go between two in it
+    assert.equal((await a('POST', '/api/ops/call/join', {})).error.code, 'no_live');
+    const aLive = await opsListen(s, m1.token), bLive = await opsListen(s, m2.token);
+    const j1 = await a('POST', '/api/ops/call/join', {});
+    assert.deepEqual([j1.others, j1.members.map((x) => x.name)], [[], ['Mod1']]);
+    assert.ok(Array.isArray(j1.ice));
+    const j2 = await b('POST', '/api/ops/call/join', {});
+    assert.deepEqual(j2.others.map((x) => x.name), ['Mod1']);
+    assert.equal((await aLive.waitFor('opscall', (e) => e.type === 'join')).user.name, 'Mod2');
+    await b('POST', '/api/ops/call/signal', { to: m1.me.id, data: { sdp: 'offer' } });
+    const sig = await aLive.waitFor('opscall', (e) => e.type === 'signal');
+    assert.deepEqual([sig.from.name, sig.data.sdp], ['Mod2', 'offer']);
+    assert.equal((await dev('POST', '/api/ops/call/signal', { to: m1.me.id, data: {} })).error.code, 'not_in_call');
+    assert.deepEqual((await dev('GET', '/api/ops/team')).call.map((x) => x.name), ['Mod1', 'Mod2']);
+    // the site closed: out of the call, the other one told
+    bLive.close();
+    assert.equal((await aLive.waitFor('opscall', (e) => e.type === 'leave')).user.name, 'Mod2');
+    assert.deepEqual((await a('GET', '/api/ops/call')).members.map((x) => x.name), ['Mod1']);
+    await a('POST', '/api/ops/call/leave', {});
+    assert.deepEqual((await a('GET', '/api/ops/call')).members, []);
+    // a player's own game connection never hears the operators' call
+    aLive.close();
+    devLive.close();
+    assert.equal((await s.call('POST', '/api/ops/live-ticket', { token: p.token })).status, 403);
+  } finally {
+    await s.stop();
+  }
+});

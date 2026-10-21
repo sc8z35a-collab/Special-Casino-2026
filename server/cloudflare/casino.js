@@ -77,13 +77,22 @@ function bucketBlobs(bucket) {
   };
 }
 
-// Pushes events to connected players. Each socket is tagged "u:<user id>".
+// Pushes events to connected players. Each socket is tagged "u:<user id>";
+// an operator site's own one "o:<user id>" (no game events, not a player
+// online: the 運営チャット's call and the developer called).
 class SocketHub {
   constructor(ctx) { this.ctx = ctx; }
 
   static isOpen(ws) { return ws.readyState === 1; }
 
   sockets(userId) { return this.ctx.getWebSockets(`u:${userId}`).filter(SocketHub.isOpen); }
+
+  sendOps(userId, event, data) {
+    const text = JSON.stringify({ event, data });
+    for (const ws of this.ctx.getWebSockets(`o:${userId}`)) if (SocketHub.isOpen(ws)) this.write(ws, text);
+  }
+
+  opsOnline(userId) { return this.ctx.getWebSockets(`o:${userId}`).some(SocketHub.isOpen); }
 
   write(ws, text) {
     try { ws.send(text); } catch { /* closing */ }
@@ -99,7 +108,7 @@ class SocketHub {
     for (const ws of this.ctx.getWebSockets()) {
       if (!SocketHub.isOpen(ws)) continue;
       const a = ws.deserializeAttachment();
-      if (!a || (filter && !filter(a.u))) continue;
+      if (!a || a.ops || (filter && !filter(a.u))) continue;
       this.write(ws, text);
     }
   }
@@ -111,7 +120,7 @@ class SocketHub {
     for (const ws of this.ctx.getWebSockets()) {
       if (!SocketHub.isOpen(ws)) continue;
       const a = ws.deserializeAttachment();
-      if (a) users.add(a.u);
+      if (a && !a.ops) users.add(a.u);
     }
     return users.size;
   }
@@ -244,6 +253,16 @@ export class Casino extends DurableObject {
       return json(426, { error: { code: 'upgrade', message: 'WebSocket で接続してください' } });
     }
     if (this.api.stopped()) return json(503, this.api.stoppedBody());
+    // the operator site's own connection (an operator's ticket of its own)
+    if (url.searchParams.has('ops')) {
+      const opsId = this.api.consumeOpsTicket(url.searchParams.get('ops'));
+      if (!opsId) return json(401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } });
+      const [c, sv] = Object.values(new WebSocketPair());
+      this.ctx.acceptWebSocket(sv, [`o:${opsId}`]);
+      sv.serializeAttachment({ u: opsId, ops: true });
+      sv.send(JSON.stringify({ event: 'hello', data: { ops: true } }));
+      return new Response(null, { status: 101, webSocket: c });
+    }
     const userId = this.api.consumeTicket(url.searchParams.get('ticket'));
     if (!userId) return json(401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } });
     const first = !this.live.isOnline(userId);
@@ -263,6 +282,8 @@ export class Casino extends DurableObject {
     if (typeof message !== 'string' || message.length > 32 * 1024) return;
     const a = ws.deserializeAttachment();
     if (!a) return;
+    // (the operator site's connection only listens)
+    if (a.ops) return;
     let body;
     try { body = JSON.parse(message); } catch { return; }
     // (a beat from a game nobody touched for a minute is not someone playing)
@@ -285,6 +306,10 @@ export class Casino extends DurableObject {
   left(ws) {
     const a = ws.deserializeAttachment();
     if (!a) return;
+    if (a.ops) {
+      if (!this.ctx.getWebSockets(`o:${a.u}`).some((other) => other !== ws && SocketHub.isOpen(other))) this.api.opsGone(a.u);
+      return;
+    }
     const still = this.ctx.getWebSockets(`u:${a.u}`).some((other) => other !== ws && SocketHub.isOpen(other));
     if (!still) this.api.presence(a.u, false);
   }

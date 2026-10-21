@@ -61,7 +61,12 @@ self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const open = (e.notification.data && e.notification.data.open) || '';
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-    const c = list.find((w) => new URL(w.url).origin === self.location.origin);
+    // (the developer called in the operators' chat: the operator site)
+    if (open === 'ops') {
+      const site = list.find((w) => new URL(w.url).pathname.startsWith('/ops/'));
+      return site ? site.focus() : self.clients.openWindow('./ops/#team');
+    }
+    const c = list.find((w) => new URL(w.url).origin === self.location.origin && !new URL(w.url).pathname.startsWith('/ops/'));
     if (c) {
       c.postMessage({ type: 'open', open });
       return c.focus();
