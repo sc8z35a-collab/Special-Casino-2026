@@ -179,7 +179,7 @@
     $('#me-name').textContent = me.name;
     var v = $('#me-vip');
     v.textContent = '';
-    K.addVip(v, me.vip && me.vip.on && me.vip.until > Date.now() ? me.vip.level : null);
+    K.addVip(v, me.vip && me.vip.on ? BR.VIP.now(me.vip) : null);
   }
 
   /* ------------------------------------------------------------ last online --- */
@@ -1442,7 +1442,7 @@
     $('#pf-name').textContent = u.name;
     var pv = $('#pf-vip');
     pv.textContent = '';
-    K.addVip(pv, self ? (me && me.vip && me.vip.on ? me.vip.level : null) : r ? r.user.vip : u.vip);
+    K.addVip(pv, self ? (me && me.vip && me.vip.on ? BR.VIP.now(me.vip) : null) : r ? r.user.vip : u.vip);
     var lv = $('#pf-lv'), level = r ? r.user.level : null;
     lv.hidden = !level;
     lv.textContent = level ? 'Lv.' + level : '';
@@ -1472,7 +1472,7 @@
       pfBtn(a1, '引き継ぎコード発行', 'recovery', '', 'share');
       pfBtn(a1, 'コードでログイン', 'codeLogin', '', 'download');
       pfBtn(a1, '演出設定', 'effects', '', 'sound');
-      pfBtn(a1, 'VIP', 'vip', 'gold', 'crown', me && me.vip && me.vip.on ? 'VIP' + me.vip.level : '');
+      pfBtn(a1, 'VIP', 'vip', 'gold', 'crown', me && me.vip && me.vip.on && BR.VIP.now(me.vip) !== null ? 'VIP' + BR.VIP.now(me.vip) : '');
       if (BR.push && BR.push.mode() !== 'none') pfBtn(a1, '通知', 'push', '', 'chat', BR.push.permission() === 'granted' ? 'オン' : 'オフ');
       pfLink(a2, 'ログアウト', 'logout');
       loadBlocks();

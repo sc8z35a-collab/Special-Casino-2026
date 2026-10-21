@@ -4409,8 +4409,12 @@
     var input = $('#vault-file'), files = Array.prototype.slice.call(input.files || []), resume = state.resumeId;
     input.value = '';
     state.resumeId = null;
+    sendFiles(files, resume, state.vaultFolder);
+  }
+  // `folder`: where they go in the vault open now ('' : its top)
+  function sendFiles(files, resume, folder) {
     if (!state.vault) return;
-    var note = state.vaultMemo || '', folder = state.vaultFolder, space = state.vaultSpace;
+    var note = state.vaultMemo || '', space = state.vaultSpace;
     if (files.length) { state.vaultMemo = ''; renderMemo(); }
     files.reduce(function (p, file) {
       return p.then(function () {
@@ -4423,6 +4427,63 @@
         return upload(file, { id: half ? half.id : null, note: note, space: space, folder: folder });
       });
     }, Promise.resolve());
+  }
+
+  // files dragged in from the computer: dropped on the vault, into the folder
+  // open now; dropped on a folder, into that folder (only while it may be
+  // changed; never opened by the browser itself)
+  var dragDepth = 0;
+  function dragFiles(e) { return !!e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; }
+  function dropFolder(e) {
+    var row = e.target.closest && e.target.closest('.vitem[data-folder]');
+    return row && $('#vault-folders').contains(row) ? row : null;
+  }
+  function markDrop(row) {
+    Array.prototype.forEach.call(document.querySelectorAll('.vitem.drop-in'), function (r) { if (r !== row) r.classList.remove('drop-in'); });
+    if (row) row.classList.add('drop-in');
+  }
+  function endDrag() {
+    dragDepth = 0;
+    $('#vault-main').classList.remove('vault-drag');
+    markDrop(null);
+  }
+  function onDragEnter(e) {
+    if (!dragFiles(e)) return;
+    e.preventDefault();
+    dragDepth++;
+    if (canWrite()) $('#vault-main').classList.add('vault-drag');
+  }
+  function onDragOver(e) {
+    if (!dragFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = canWrite() ? 'copy' : 'none';
+    if (canWrite()) markDrop(dropFolder(e));
+  }
+  function onDragLeave(e) {
+    if (!dragFiles(e)) return;
+    if (--dragDepth <= 0) endDrag();
+  }
+  function onDrop(e) {
+    if (!dragFiles(e)) return;
+    e.preventDefault();
+    var row = dropFolder(e);
+    endDrag();
+    if (!canWrite()) {
+      toast(!$('#vault-unlock').hidden ? '「編集する」を押してから入れてください' : 'この保管庫には入れられません');
+      return;
+    }
+    // (a folder from the computer is not taken: the files in it are)
+    var items = Array.prototype.slice.call(e.dataTransfer.items || []), dirs = 0;
+    items.forEach(function (it) { var en = it.webkitGetAsEntry && it.webkitGetAsEntry(); if (en && en.isDirectory) dirs++; });
+    var files = Array.prototype.slice.call(e.dataTransfer.files || []).filter(function (f, i) {
+      var en = items[i] && items[i].webkitGetAsEntry && items[i].webkitGetAsEntry();
+      return !(en && en.isDirectory);
+    });
+    if (dirs) toast('フォルダはそのまま入れられません（中のファイルを選んで入れてください）');
+    if (!files.length) return;
+    var folder = row ? row.dataset.folder : state.vaultFolder;
+    if (row) toast('「' + folderOf(folder).name + '」に ' + files.length + '個 入れます');
+    sendFiles(files, null, folder);
   }
 
   /* ------------------------------------------------------------ the operators' log --- */
@@ -4885,6 +4946,14 @@
     $('#viewer-close').addEventListener('click', closeViewer);
     $('#viewer').addEventListener('click', function (e) { if (e.target.id === 'viewer') closeViewer(); });
     $('#vault-file').addEventListener('change', onFiles);
+    var vm = $('#vault-main');
+    vm.addEventListener('dragenter', onDragEnter);
+    vm.addEventListener('dragover', onDragOver);
+    vm.addEventListener('dragleave', onDragLeave);
+    vm.addEventListener('drop', onDrop);
+    // (a file dropped anywhere else on the site is not opened in its place)
+    window.addEventListener('dragover', function (e) { if (dragFiles(e)) e.preventDefault(); });
+    window.addEventListener('drop', function (e) { if (dragFiles(e)) e.preventDefault(); });
     // leaving in the middle of an upload or a download
     window.addEventListener('beforeunload', function (e) { if (moving > 0 || waiting.length) { e.preventDefault(); e.returnValue = ''; } });
 

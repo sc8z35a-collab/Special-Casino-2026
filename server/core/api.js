@@ -534,15 +534,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // a hub's benefits on (RULES.hub.wage: x1.5) the extra half of the wage.
   function settleJobs(cur, now) {
     const jobs = readJobs(cur.jobs);
-    const mult = VIP.wage(VIP.level(cur.vip_exp));
+    // (during the free trial, the trial's level's wage)
+    const mult = VIP.wage(VIP.level(cur.vip_exp)), trialMult = VIP.wage(VIP_RULES.trial.level);
+    const rate = cur.vip_trial_until > now ? Math.max(mult, trialMult) : cur.vip_until > now ? mult : 1;
     let pay = 0;
     for (const j of jobs) {
       const wage = JOBS.get(j.id).wage;
-      const value = VIP.earned(wage, j.since, now, cur.vip_until, mult);
+      const value = VIP.earned(wage, j.since, now, cur.vip_until, mult, cur.vip_trial_until, trialMult);
       const p = Math.floor(value);
       if (p > 0) {
         pay += p;
-        j.since = now - Math.floor((value - p) * 3600000 / (wage * (cur.vip_until > now ? mult : 1)));
+        j.since = now - Math.floor((value - p) * 3600000 / (wage * rate));
       }
       const extra = wage * (RULES.hub.wage - 1);
       const b = j.boost > 0 && extra > 0 ? Math.floor(j.boost * extra / 3600000) : 0;
@@ -587,11 +589,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   /* ----- VIP (js/game/vip.js) ----- */
   const VIP_RULES = RULES.vip;
   const vipOn = (u, now = Date.now()) => !!u && !u.npc && u.vip_until > now;
-  // its level while it is on, null while it is off
-  const vipLevel = (u, now = Date.now()) => (vipOn(u, now) ? VIP.level(u.vip_exp) : null);
+  // its level while it is on (VIP${trial level} during the free trial), null while it is off
+  const vipLevel = (u, now = Date.now()) => (vipOn(u, now) ? VIP.current(u.vip_until, u.vip_exp, u.vip_trial_until || 0, now) : null);
+  // the free trial: for one who never had VIP, once
+  const canTrial = (u) => !!u && !u.npc && !(u.vip_until > 0) && !(u.vip_trial_until > 0);
+  // (`level`: the EXP's; `trialUntil`: when the free trial ends or ended, 0 never had it; `trial`: it may be had)
   function vipDto(u, now = Date.now()) {
     const i = VIP.info(u.vip_exp);
-    return { on: vipOn(u, now), until: u.vip_until, exp: Math.floor(i.exp * 10 + 1e-6) / 10, level: i.level, from: i.from, next: i.next };
+    return {
+      on: vipOn(u, now), until: u.vip_until, exp: Math.floor(i.exp * 10 + 1e-6) / 10, level: i.level, from: i.from, next: i.next,
+      trialUntil: u.vip_trial_until || 0, trial: canTrial(u)
+    };
   }
   // VIP EXP, inside the caller's transaction (`cur`: the row as it is now).
   // Reaching VIP${VIP_RULES.refund.from} while days are paid ahead gives back their coins at once.
@@ -599,8 +607,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (!cur || cur.npc || !(gain > 0)) return;
     const exp = Math.round((cur.vip_exp + gain) * 1000) / 1000;
     const from = VIP_RULES.refund.from;
+    // (the days bought, not the free trial's)
     const back = VIP.level(cur.vip_exp) < from && VIP.level(exp) >= from && cur.vip_until > now
-      ? VIP_RULES.refund.coins * Math.floor((cur.vip_until - now) / VIP.day) : 0;
+      ? VIP_RULES.refund.coins * Math.max(0, Math.floor((cur.vip_until - Math.max(now, cur.vip_trial_until || 0)) / VIP.day)) : 0;
     q('UPDATE users SET vip_exp = ?, coins = coins + ?, rev = rev + ? WHERE id = ?').run(exp, back, back ? 1 : 0, cur.id);
     cur.vip_exp = exp;
   }
@@ -977,7 +986,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   // the people watching a player, and whether they may talk
   function homeMembers(hostId) {
-    return q('SELECT o.id, o.name, o.avatar, o.vip_until, o.vip_exp, w.voice FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(hostId)
+    return q('SELECT o.id, o.name, o.avatar, o.vip_until, o.vip_exp, o.vip_trial_until, w.voice FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(hostId)
       .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, vip: vipLevel(r), voice: !!r.voice }));
   }
   // The chat of a home (the watched player and their watchers) is live only;
@@ -1136,7 +1145,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       .filter((r) => isActive(r.active_at, now)).map((r) => r.id);
   }
   function hubPeople(hubId, now = Date.now()) {
-    return q(`SELECT o.id, o.name, o.avatar, o.active_at, o.vip_until, o.vip_exp FROM hub_members m JOIN users o ON o.id = m.user_id
+    return q(`SELECT o.id, o.name, o.avatar, o.active_at, o.vip_until, o.vip_exp, o.vip_trial_until FROM hub_members m JOIN users o ON o.id = m.user_id
               WHERE m.hub_id = ? ORDER BY m.joined_at, o.id`).all(hubId)
       .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, vip: vipLevel(r, now), online: live.isOnline(r.id), idle: Math.min(86400000, Math.max(0, now - (r.active_at || 0))) }));
   }
@@ -1766,9 +1775,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     /* ----- friends ----- */
 
     'GET /api/friends': (req, u) => {
-      const friends = q(`SELECT o.id, o.name, o.avatar, o.npc, o.vip_until, o.vip_exp, o.last_seen AS lastSeen, f.created_at AS since FROM friends f JOIN users o ON o.id = f.friend_id
+      const friends = q(`SELECT o.id, o.name, o.avatar, o.npc, o.vip_until, o.vip_exp, o.vip_trial_until, o.last_seen AS lastSeen, f.created_at AS since FROM friends f JOIN users o ON o.id = f.friend_id
                          WHERE f.user_id = ? AND o.banned = 0 ORDER BY o.name_key`).all(u.id)
-        .map(({ npc, vip_until: until, vip_exp: exp, ...r }) => ({ ...r, vip: vipLevel({ npc, vip_until: until, vip_exp: exp }) }));
+        .map(({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial, ...r }) => ({ ...r, vip: vipLevel({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial }) }));
       const incoming = q(`SELECT o.id, o.name, o.avatar, r.created_at AS at FROM friend_requests r JOIN users o ON o.id = r.from_id
                           WHERE r.to_id = ? AND o.banned = 0 ORDER BY r.created_at DESC`).all(u.id);
       const outgoing = q(`SELECT o.id, o.name, o.avatar, r.created_at AS at FROM friend_requests r JOIN users o ON o.id = r.to_id
@@ -1828,7 +1837,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     /* ----- chat ----- */
 
     'GET /api/conversations': (req, u) => {
-      const rows = q(`SELECT c.other_id AS id, c.unread, c.updated_at, o.name, o.avatar, o.banned, o.npc, o.last_seen, o.vip_until, o.vip_exp, m.kind, m.body, m.amount, m.currency, m.sender_id, m.retracted_at
+      const rows = q(`SELECT c.other_id AS id, c.unread, c.updated_at, o.name, o.avatar, o.banned, o.npc, o.last_seen, o.vip_until, o.vip_exp, o.vip_trial_until, m.kind, m.body, m.amount, m.currency, m.sender_id, m.retracted_at
                       FROM conversations c JOIN users o ON o.id = c.other_id JOIN messages m ON m.id = c.last_id
                       WHERE c.user_id = ? ORDER BY c.updated_at DESC LIMIT 100`).all(u.id);
       const groups = q(`SELECT g.* FROM chat_members m JOIN chat_groups g ON g.id = m.group_id
@@ -2791,17 +2800,22 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     /* ----- VIP ----- */
 
     // `days` more days of VIP for ロイヤルコイン (from VIP1 some come back at
-    // once); the バイト are paid up first, so VIP's wage counts from now
+    // once), each 24 hours from the end of those already bought (or from now);
+    // or a まとめ買い pack (`pack`: its days, paid for, and its free days on
+    // top). The バイト are paid up first, so VIP's wage counts from now.
     'POST /api/vip/extend': async (req, u) => {
       const body = await req.json();
-      const days = posInt(body.days, '日数');
+      const pack = body.pack !== undefined ? VIP.pack(Number(body.pack)) : null;
+      if (body.pack !== undefined && !pack) throw new ApiError(409, 'no_pack', 'このまとめ買いは今はありません');
+      const bought = pack ? pack.days : posInt(body.days, '日数');
+      const bonus = pack ? pack.bonus : 0, days = bought + bonus;
       rate(limit.shop, u.id);
       const now = Date.now();
       const r = tx(() => {
         const cur = getUser(u.id);
         const until = Math.max(now, cur.vip_until) + days * VIP.day;
         if (until > now + VIP_RULES.maxDays * VIP.day) throw new ApiError(409, 'too_long', `VIPは${VIP_RULES.maxDays}日先までです`);
-        const c = VIP.cost(days, VIP.level(cur.vip_exp));
+        const c = VIP.cost(bought, VIP.level(cur.vip_exp));
         if (cur.coins < c.coins) throw new ApiError(409, 'insufficient', 'ロイヤルコインが足りません');
         const s = settleJobs(cur, now);
         saveJobs(cur.id, s.jobs, s.pay);
@@ -2810,7 +2824,26 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       if (r.paid) track(u.id, [['jobpay', r.paid]]);
       const me = meDto(balanceChanged(u.id));
-      return { days, coins: r.coins, back: r.back, paid: r.paid, me };
+      return { days, bonus, coins: r.coins, back: r.back, paid: r.paid, me };
+    },
+
+    // VIP's free trial: VIP${trial level} for its days, once in a life, for
+    // one who never had VIP. Days bought during it come after it, at the
+    // player's own level (VIP0 at first); none bought, VIP simply ends.
+    'POST /api/vip/trial': async (req, u) => {
+      rate(limit.shop, u.id);
+      const now = Date.now();
+      const r = tx(() => {
+        const cur = getUser(u.id);
+        if (!canTrial(cur)) throw new ApiError(409, 'trial_used', 'VIPの無料お試しは、VIPを一度も使ったことがない人が1回だけ使えます');
+        const until = now + VIP_RULES.trial.days * VIP.day;
+        const s = settleJobs(cur, now);
+        saveJobs(cur.id, s.jobs, s.pay);
+        q('UPDATE users SET vip_until = ?, vip_trial_until = ?, rev = rev + 1 WHERE id = ?').run(until, until, cur.id);
+        return { until, paid: s.pay };
+      });
+      if (r.paid) track(u.id, [['jobpay', r.paid]]);
+      return { until: r.until, paid: r.paid, me: meDto(balanceChanged(u.id)) };
     },
 
     /* ----- updates ----- */

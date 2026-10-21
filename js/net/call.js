@@ -269,7 +269,7 @@
   // never below the one everybody has for now (BR.VIP.boost)
   function tierOf(h) {
     var me = BR.social.me(), V = BR.VIP;
-    var t = Math.max(V.boost(), V.tier(me && me.vip && me.vip.on && me.vip.until > Date.now() ? me.vip.level : null));
+    var t = Math.max(V.boost(), V.tier(me && me.vip && me.vip.on ? V.now(me.vip) : null));
     Object.keys(h.members).forEach(function (k) {
       var u = h.members[k];
       t = Math.max(t, V.tier(u && typeof u.vip === 'number' ? u.vip : null));

@@ -68,9 +68,16 @@
     // worked pay `wage[level]` times and an ULTRA BIG WIN `ultra` times;
     // calls at `voice` kbit/s (no VIP, VIP0-1, VIP2-3: the best in a call for
     // everyone in it). `cars` in the Car Owner list with `vip` are for that level on.
+    // A day of VIP is 24 hours from when it starts (or from the end of the days
+    // already bought). `packs`: まとめ買い, `days` paid for with `bonus` more
+    // free (`sale`: its label; '' ends it). `trial`: VIP`level` for `days`
+    // days, free, once in a player's life for one who never had VIP; days
+    // bought during it come after it, at the player's own level (VIP0 at first).
     vip: {
       coins: 4,
       maxDays: 365,
+      packs: { sale: '今だけ特大セール', list: [{ days: 10, bonus: 2 }, { days: 20, bonus: 7 }, { days: 30, bonus: 12 }, { days: 40, bonus: 25 }] },
+      trial: { days: 3, level: 3 },
       refund: { from: 1, coins: 2 },
       exp: { win: 4, quest: 0.1, ultra: 250, car: 30 },
       levels: [0, 1200, 2100, 4500],

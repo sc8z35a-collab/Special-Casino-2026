@@ -33,17 +33,20 @@
     return b;
   }
   function hubOn() { return !!(BR.hub && BR.hub.on && BR.hub.on()); }
-  // VIP: { until, mult } (mult 1: no more pay)
+  // VIP: { until, mult } (mult 1: no more pay), and the free trial's { trialUntil, trialMult }
   function vip() {
     var m = BR.social.me(), v = m && m.vip;
-    return v ? { until: v.until, mult: BR.VIP.wage(v.level) } : { until: 0, mult: 1 };
+    return v ? { until: v.until, mult: BR.VIP.wage(v.level), trialUntil: v.trialUntil || 0, trialMult: BR.VIP.wage(C.vip.trial.level) } : { until: 0, mult: 1, trialUntil: 0, trialMult: 1 };
   }
-  function vipNow() { var v = vip(); return v.mult > 1 && v.until > now() ? v.mult : 1; }
+  function vipNow() {
+    var v = vip(), t = now();
+    return v.trialUntil > t ? Math.max(v.mult, v.trialMult) : v.mult > 1 && v.until > t ? v.mult : 1;
+  }
   function earned(w) {
     var job = jobOf(w.id);
     if (!job) return 0;
     var v = vip();
-    var pay = Math.floor(BR.VIP.earned(job.wage, w.since, now(), v.until, v.mult));
+    var pay = Math.floor(BR.VIP.earned(job.wage, w.since, now(), v.until, v.mult, v.trialUntil, v.trialMult));
     // the time with a hub's benefits on: since loading too, while they are on (an estimate)
     var boost = (w.boost || 0) + (w === best() && hubOn() ? Math.max(0, Date.now() - state.at) : 0);
     return pay + Math.floor(boost * job.wage * (C.hub.wage - 1) / 3600000);

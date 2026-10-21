@@ -59,7 +59,7 @@
   // VIP's level while it is on (null: off)
   function vipLevel() {
     var m = BR.social.me();
-    return m && m.vip && m.vip.on && m.vip.until > now() ? m.vip.level : null;
+    return m && m.vip && m.vip.on ? BR.VIP.now(m.vip, now()) : null;
   }
   function priceOf(car) { return BR.sale.carPrice(car, sale(), vipLevel() === null ? 0 : BR.CONFIG.vip.carOff); }
   // one more garage place (the server's price once it has spoken)

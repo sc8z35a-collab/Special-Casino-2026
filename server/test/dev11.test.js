@@ -309,3 +309,71 @@ test('ログインログ: the day\'s ログイン on the operator site, once a d
     await s.stop();
   }
 });
+
+test('VIP: まとめ買い packs (free days on top), the free VIP3 trial once for one who never had VIP, and a day of 24 hours', async () => {
+  const s = await startServer();
+  try {
+    const DAY = 86400000;
+    const near = (a, b, what) => assert.ok(Math.abs(a - b) < 5000, `${what}: ${a} vs ${b}`);
+    const vipOf = async (p, other) => (await s.call('GET', '/api/user?id=' + p.me.id, { token: other.token })).user.vip ?? null;
+    const a = await s.register('Matome');
+    const b = await s.register('Otameshi');
+    const c = await s.register('Yamete');
+    s.app.db.prepare('UPDATE users SET coins = 1000').run();
+    assert.deepEqual(RULES.vip.packs.list.map((p) => [p.days, p.bonus]), [[10, 2], [20, 7], [30, 12], [40, 25]]);
+    assert.equal(RULES.vip.packs.sale, '今だけ特大セール');
+
+    // a pack: 10 days paid, 12 days of VIP, each 24 hours from now
+    let me = (await s.call('GET', '/api/me', { token: a.token })).me;
+    assert.deepEqual([me.vip.trial, me.vip.trialUntil], [true, 0]);
+    const t0 = Date.now();
+    const r = await s.call('POST', '/api/vip/extend', { token: a.token, body: { pack: 10 } });
+    assert.deepEqual([r.days, r.bonus, r.coins], [12, 2, 40]);
+    near(r.me.vip.until, t0 + 12 * DAY, 'until');
+    assert.equal(r.me.coins, 960);
+    // the next one adds on from the end of those (40 days + 25)
+    const r2 = await s.call('POST', '/api/vip/extend', { token: a.token, body: { pack: 40 } });
+    assert.deepEqual([r2.days, r2.coins], [65, 160]);
+    near(r2.me.vip.until, t0 + 77 * DAY, 'added on');
+    assert.equal((await s.call('POST', '/api/vip/extend', { token: a.token, body: { pack: 15 } })).error.code, 'no_pack');
+    // one day: 24 hours, as before
+    const r3 = await s.call('POST', '/api/vip/extend', { token: a.token, body: { days: 1 } });
+    near(r3.me.vip.until, t0 + 78 * DAY, 'a day');
+    // had VIP: no trial
+    assert.equal(r3.me.vip.trial, false);
+    assert.equal((await s.call('POST', '/api/vip/trial', { token: a.token })).error.code, 'trial_used');
+    assert.equal(await vipOf(a, b), 0);
+
+    // the trial: VIP3 for 3 days, once
+    const t1 = Date.now();
+    const tr = await s.call('POST', '/api/vip/trial', { token: b.token });
+    assert.equal(tr.status, 200, JSON.stringify(tr));
+    near(tr.me.vip.until, t1 + 3 * DAY, 'trial until');
+    assert.equal(tr.me.vip.trialUntil, tr.me.vip.until);
+    assert.deepEqual([tr.me.vip.trial, tr.me.vip.level, tr.me.coins], [false, 0, 1000], 'free, the EXP\'s level stays');
+    assert.equal(await vipOf(b, a), 3, 'VIP3 while it lasts');
+    assert.equal((await s.call('POST', '/api/vip/trial', { token: b.token })).error.code, 'trial_used');
+    // days bought during it come after it, at the player's own level (VIP0)
+    const bb = await s.call('POST', '/api/vip/extend', { token: b.token, body: { days: 2 } });
+    assert.equal(bb.me.vip.until, tr.me.vip.until + 2 * DAY);
+    assert.equal(bb.back, 0, 'no VIP1 refund for a VIP0 bought during the trial');
+    s.app.db.prepare('UPDATE users SET vip_trial_until = ?, vip_until = ? WHERE id = ?').run(Date.now() - 1000, Date.now() + 2 * DAY - 1000, b.me.id);
+    assert.equal(await vipOf(b, a), 0, 'the trial over: VIP0 for the days bought');
+    me = (await s.call('GET', '/api/me', { token: b.token })).me;
+    assert.deepEqual([me.vip.on, me.vip.trial], [true, false]);
+
+    // none bought: VIP simply ends with the trial
+    await s.call('POST', '/api/vip/trial', { token: c.token });
+    s.app.db.prepare('UPDATE users SET vip_trial_until = ?, vip_until = ? WHERE id = ?').run(Date.now() - 1000, Date.now() - 1000, c.me.id);
+    assert.equal(await vipOf(c, a), null);
+    me = (await s.call('GET', '/api/me', { token: c.token })).me;
+    assert.deepEqual([me.vip.on, me.vip.trial], [false, false], 'and never again');
+
+    // the バイト's wage: the trial's level for the trial's time, then one's own
+    const V = globalThis.BR.VIP;
+    assert.equal(V.earned(1000, 0, 2 * 3600000, 2 * 3600000, 1, 3600000, V.wage(3)), 1000 * (2 + (V.wage(3) - 1)));
+    assert.equal(V.earned(1000, 0, 2 * 3600000, 2 * 3600000, 2.5), 1000 * (2 + 1.5 * 2));
+  } finally {
+    await s.stop();
+  }
+});

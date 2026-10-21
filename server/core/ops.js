@@ -156,7 +156,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       developer: isDeveloper(u),
       npc: !!u.npc,
       // VIP: its level while it is on (null: off), until when, its EXP
-      vip: u.vip_until > Date.now() ? VIP.level(u.vip_exp) : null,
+      vip: VIP.current(u.vip_until, u.vip_exp, u.vip_trial_until || 0, Date.now()),
       vipUntil: u.vip_until || 0,
       vipExp: u.vip_exp || 0,
       // 18歳以上？ (null: not answered)
