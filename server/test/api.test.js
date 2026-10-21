@@ -349,6 +349,13 @@ test('group chats: friends only; messages, unread, 既読 and typing reach every
   assert.equal((await call('GET', `/api/messages?group=${gid}`, { token: stranger.token })).status, 404);
   assert.equal((await call('POST', '/api/groups/leave', { token: c.token, body: { group: gid } })).left, gid);
   assert.equal((await call('POST', '/api/messages', { token: c.token, body: { group: gid, text: 'まだいる？' } })).status, 404);
+  // the last one out: what was said stays, for good
+  await call('POST', '/api/groups/leave', { token: a.token, body: { group: gid } });
+  await call('POST', '/api/groups/leave', { token: b.token, body: { group: gid } });
+  assert.equal((await call('GET', `/api/messages?group=${gid}`, { token: b.token })).status, 404);
+  const kept = s.app.db.prepare("SELECT body FROM messages WHERE channel = ? AND kind = 'text'").all(`group:${gid}`).map((m) => m.body);
+  assert.deepEqual(kept, ['よろしく']);
+  assert.equal(s.app.db.prepare('SELECT COUNT(*) AS n FROM chat_groups WHERE id = ?').get(gid).n, 1);
   lb.close();
   lc.close();
 });
@@ -429,22 +436,22 @@ test('icons: free ones anytime; paid ones at the daily sale price, once', async 
   assert.equal(r.me.dollars, 2000000 - vamp.salePrice);
 });
 
-test('cars: Car Owner sells for $1,200,000; garage; gifts go to friends only', async () => {
+test('cars: Car Owner sells for $26,500,000; garage; gifts go to friends only', async () => {
   const a = await register();
   const b = await register();
   const c = await register();
   await befriend(a, b);
-  setUser(a.me.id, { dollars: 1199999 });
+  setUser(a.me.id, { dollars: 26499999 });
   assert.equal((await call('POST', '/api/cars/buy', { token: a.token, body: { model: 'two-state-sedan' } })).error.code, 'insufficient');
   assert.equal((await call('POST', '/api/cars/buy', { token: a.token, body: { model: 'tank' } })).status, 400);
-  setUser(a.me.id, { dollars: 2500000 });
+  setUser(a.me.id, { dollars: 30000000 });
   let r = await call('POST', '/api/cars/buy', { token: a.token, body: { model: 'two-state-sedan' } });
   assert.equal(r.status, 200);
-  assert.equal(r.me.dollars, 1300000);
+  assert.equal(r.me.dollars, 3500000);
   assert.equal(r.me.cars, 1);
   const car = r.car;
   let garage = await call('GET', '/api/cars', { token: a.token });
-  assert.equal(garage.catalog[0].price, 1200000);
+  assert.equal(garage.catalog[0].price, 26500000);
   assert.deepEqual(garage.cars.map((x) => x.id), [car.id]);
   assert.equal((await call('POST', '/api/cars/gift', { token: a.token, body: { to: c.me.id, car: car.id } })).error.code, 'not_friends');
   assert.equal((await call('POST', '/api/cars/gift', { token: b.token, body: { to: a.me.id, car: car.id } })).error.code, 'no_car');

@@ -10,6 +10,7 @@ import { configFrom } from '../core/config.js';
 import { migrate, metaValue } from '../core/db.js';
 import { ApiError } from '../core/errors.js';
 import { newToken } from '../core/auth.js';
+import { nextAlarm, monthOf } from './awake.js';
 
 const HOUSEKEEPING_EVERY = 6 * 3600000;
 const JSON_HEADERS = {
@@ -159,6 +160,11 @@ export class Casino extends DurableObject {
     super(ctx, env);
     this.db = sqlAdapter(ctx);
     this.live = new SocketHub(ctx);
+    // staying awake while played (server/cloudflare/awake.js): the last
+    // player's action (0: none since this wake-up), the alarm set, the ticks
+    this.activeAt = 0;
+    this.alarmAt = null;
+    this.awake = { month: monthOf(Date.now()), ticks: 0 };
     // spins are not logged one by one here: it keeps the free plan's daily row writes for players
     this.config = configFrom({ LOG_SPINS: 'false', ...env });
     // "ping" is answered by Cloudflare itself, without waking the object
@@ -184,15 +190,39 @@ export class Casino extends DurableObject {
           // the emergency stop: every live connection closes
           stop: () => { for (const ws of ctx.getWebSockets()) { try { ws.close(1012, 'emergency'); } catch { /* closing */ } } },
           // the housekeeping sooner (a backup due)
-          reschedule: (at) => ctx.storage.getAlarm().then((cur) => (cur === null || cur > at ? ctx.storage.setAlarm(at) : null))
+          reschedule: (at) => this.housekeepSoon(at)
         }
       });
-      if ((await ctx.storage.getAlarm()) === null) await ctx.storage.setAlarm(Date.now() + HOUSEKEEPING_EVERY);
+      // the housekeeping's time (the alarm also rings in between to stay awake;
+      // an alarm from before that was for the housekeeping)
+      const alarm = await ctx.storage.getAlarm();
+      this.housekeepAt = (await ctx.storage.get('housekeep_at')) || alarm || Date.now() + HOUSEKEEPING_EVERY;
+      await ctx.storage.put('housekeep_at', this.housekeepAt);
+      this.awake.ticks = (await ctx.storage.get(`awake:${this.awake.month}`)) || 0;
+      this.alarmAt = alarm;
+      if (alarm === null || alarm > this.housekeepAt) await this.setAlarm(this.housekeepAt);
     });
+  }
+
+  setAlarm(at) {
+    this.alarmAt = at;
+    return this.ctx.storage.setAlarm(at);
+  }
+  housekeepSoon(at) {
+    if (at >= this.housekeepAt) return null;
+    this.housekeepAt = at;
+    return Promise.all([this.ctx.storage.put('housekeep_at', at), this.alarmAt === null || this.alarmAt > at ? this.setAlarm(at) : null]);
+  }
+  // a player did something: stay awake for a while (the alarm sooner, once)
+  touch() {
+    this.activeAt = Date.now();
+    const at = nextAlarm({ now: this.activeAt, housekeepAt: this.housekeepAt, sockets: this.ctx.getWebSockets().length, activeAt: this.activeAt, ticks: this.awake.ticks });
+    if (this.alarmAt === null || at < this.alarmAt - 1000) this.setAlarm(at);
   }
 
   async fetch(request) {
     const url = new URL(request.url);
+    this.touch();
     if (url.pathname === '/api/live') return this.connect(request, url);
     // the automatic filter's note about a request it stopped (from the Worker
     // only: it hands on nothing but /api/*)
@@ -235,6 +265,8 @@ export class Casino extends DurableObject {
     if (!a) return;
     let body;
     try { body = JSON.parse(message); } catch { return; }
+    // (a beat from a game nobody touched for a minute is not someone playing)
+    if (body && body.op !== 'sight' && !(body.op === 'beat' && Number(body.idle) > 60000)) this.touch();
     if (body && body.op === 'call') this.api.socketCall(a.u, body);
     else if (body && body.op === 'typing') this.api.socketTyping(a.u, body);
     else if (body && body.op === 'beat') this.api.socketBeat(a.u, body);
@@ -257,10 +289,20 @@ export class Casino extends DurableObject {
     if (!still) this.api.presence(a.u, false);
   }
 
-  // the housekeeping: every 6 hours, or sooner when the developer's backup is due
+  // the housekeeping: every 6 hours, or sooner when the developer's backup is
+  // due; in between, while played, a tick to stay awake (counted by the month)
   async alarm() {
-    await this.api.housekeeping();
-    await this.ctx.storage.setAlarm(this.api.nextHousekeeping());
+    const now = Date.now();
+    if (now >= this.housekeepAt - 1000) {
+      await this.api.housekeeping();
+      this.housekeepAt = this.api.nextHousekeeping();
+      await this.ctx.storage.put('housekeep_at', this.housekeepAt);
+    }
+    const month = monthOf(now);
+    if (this.awake.month !== month) this.awake = { month, ticks: 0 };
+    const at = nextAlarm({ now, housekeepAt: this.housekeepAt, sockets: this.ctx.getWebSockets().length, activeAt: this.activeAt, ticks: this.awake.ticks });
+    if (at < this.housekeepAt && ++this.awake.ticks % 50 === 0) await this.ctx.storage.put(`awake:${month}`, this.awake.ticks);
+    await this.setAlarm(at);
   }
 
   // Operator commands that only exist here (see README): point-in-time recovery.

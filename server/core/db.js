@@ -724,6 +724,25 @@ export const MIGRATIONS = [
      )`,
     'CREATE INDEX vault_requests_user ON vault_requests(user_id, id)',
     'CREATE INDEX vault_requests_status ON vault_requests(status, id)'
+  ],
+  // DEV11: what was said is kept for good — an account 90 days in the archive
+  // keeps only its name on it (purged_at: when the rest went), and the chats
+  // once only in memory are written down too: a home's chat (place 'home',
+  // room: the host) and 友達と稼ぐ's 即席チャット ('hub', room: the hub)
+  [
+    'ALTER TABLE users ADD COLUMN purged_at INTEGER NOT NULL DEFAULT 0',
+    `CREATE TABLE live_chats (
+       id           INTEGER PRIMARY KEY,
+       place        TEXT    NOT NULL,
+       room         INTEGER NOT NULL,
+       sender_id    INTEGER NOT NULL,
+       recipient_id INTEGER NOT NULL DEFAULT 0,
+       body         TEXT    NOT NULL,
+       original     TEXT    NOT NULL DEFAULT '',
+       created_at   INTEGER NOT NULL
+     )`,
+    'CREATE INDEX live_chats_room ON live_chats(place, room, id)',
+    'CREATE INDEX live_chats_sender ON live_chats(sender_id, id)'
   ]
 ];
 
@@ -732,7 +751,7 @@ export const SCHEMA_VERSION = MIGRATIONS.length;
 // has them; nor what goes with them, the operators' limits and requests)
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
-  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access',
+  'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats',
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'meta'];
 
 export function migrate(db) {

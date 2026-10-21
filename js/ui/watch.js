@@ -225,7 +225,7 @@
   function renderFeed() {
     if (!chatFeed) return;
     chatFeed.textContent = '';
-    if (!chat.list.length) chatFeed.appendChild(el('div', 'empty chat-empty', 'ホームのみんなにメッセージ（保存されません）'));
+    if (!chat.list.length) chatFeed.appendChild(el('div', 'empty chat-empty', 'ホームのみんなにメッセージ（画面には残りません・記録は保存されます）'));
     chat.list.forEach(function (m) { chatFeed.appendChild(lineEl(m)); });
     var f = $('#entry-feed');
     f.scrollTop = f.scrollHeight;

@@ -66,7 +66,7 @@
     idea_adopt: '意見案を採用', ops_revoke: '運営権の剥奪', ops_grant: '運営権の付与', ops_restore: '運営権を戻す',
     dev_code_set: '開発者コードを登録', dev_code_change: '開発者コードを変更', dev_code_fail: '開発者コードの入力ミス',
     bot_auto_reply: '自動返信', log_kept: '運営ログの保持', 'admin:restore-time': '管理コマンド: 時点への巻き戻し',
-    account_delete: 'アカウント削除', account_purge: 'データの完全削除', emergency_stop: '緊急停止', emergency_release: '緊急停止の解除',
+    account_delete: 'アカウント削除', account_purge: 'データの削除（会話は保存）', emergency_stop: '緊急停止', emergency_release: '緊急停止の解除',
     lockdown: 'ロックダウン', lockdown_release: 'ロックダウンの解除', shield_block: '手動ブロック', shield_auto_block: '自動ブロック',
     shield_unblock: 'ブロックの解除', sec_message: 'セキュリティ基地の連絡',
     backup_key: 'バックアップの鍵', backup_run: 'バックアップ', backup_get: 'バックアップのダウンロード', backup_delete: 'バックアップの削除',
@@ -523,8 +523,8 @@
     if (p.archive) {
       var left = Math.max(0, Math.ceil((p.archive.purgeAt - Date.now()) / 86400000));
       box.appendChild(el('p', 'note bad', p.deleted
-        ? 'このアカウントは ' + date(p.archive.at, true) + ' に削除されました（取り消し不可）。' + date(p.archive.purgeAt, true) + '（あと' + left + '日）にデータを完全に削除します。'
-        : '永久BANでプレイヤーアーカイブに入っています。' + date(p.archive.purgeAt, true) + '（あと' + left + '日）にデータを完全に削除します（永久BANを解除すると一覧に戻ります）。'));
+        ? 'このアカウントは ' + date(p.archive.at, true) + ' に削除されました（取り消し不可）。' + date(p.archive.purgeAt, true) + '（あと' + left + '日）にデータを削除します（会話とログは無期限で保存）。'
+        : '永久BANでプレイヤーアーカイブに入っています。' + date(p.archive.purgeAt, true) + '（あと' + left + '日）にデータを削除します（会話とログは無期限で保存・永久BANを解除すると一覧に戻ります）。'));
     }
 
     // the automatic filter stopped their chat: an operator lets it go again
@@ -614,13 +614,13 @@
       if (p.ban) a.appendChild(act('処分を解除', 'ban', 'ok', 'none'));
       if (p.deviceBlocked) a.appendChild(act('端末のBANから外す', 'deviceOk', 'ok'));
       ban.appendChild(a);
-      ban.appendChild(el('p', 'muted', 'アクセス禁止は1週間、BANは30日で自動解除（いつでも解除可）。BAN・永久BANは同じ端末のほかのアカウントも止めます。永久BANはプレイヤーアーカイブに移り、90日後にデータを完全に削除します。'));
+      ban.appendChild(el('p', 'muted', 'アクセス禁止は1週間、BANは30日で自動解除（いつでも解除可）。BAN・永久BANは同じ端末のほかのアカウントも止めます。永久BANはプレイヤーアーカイブに移り、90日後にデータを削除します（会話とログは無期限で保存）。'));
     }
     box.appendChild(ban);
     // the developer's eyes only: deleting the account
     if (state.developer && !p.deleted && !p.operator) {
       var del = section('アカウントの削除（開発者だけに表示）');
-      del.appendChild(el('p', 'muted', 'このプレイヤーと同じ端末のアカウントを削除します。すぐにログアウトされ、プレイヤーアーカイブに移り、90日後にデータを完全に削除します。開発者でも取り消せません（開発者コードが必要・ログに残ります）。'));
+      del.appendChild(el('p', 'muted', 'このプレイヤーと同じ端末のアカウントを削除します。すぐにログアウトされ、プレイヤーアーカイブに移り、90日後にデータを削除します（会話とログは無期限で保存）。開発者でも取り消せません（開発者コードが必要・ログに残ります）。'));
       a = el('div', 'acts');
       a.style.marginTop = '10px';
       a.appendChild(act('アカウントを削除', 'delete', 'danger solid'));
@@ -802,7 +802,7 @@
       var subs = r.sameDevice.map(function (x) { return x.name; });
       return withCode({
         title: p.name + ' さんのアカウントを削除しますか？',
-        text: (subs.length ? '同じ端末の ' + subs.join('、') + ' さんのアカウントも一緒に削除します。' : '') + 'すぐにログアウトされ、プレイヤーアーカイブに移ります。' + r.days + '日後にデータを完全に削除します。この操作は開発者でも取り消せません。',
+        text: (subs.length ? '同じ端末の ' + subs.join('、') + ' さんのアカウントも一緒に削除します。' : '') + 'すぐにログアウトされ、プレイヤーアーカイブに移ります。' + r.days + '日後にデータを削除します（会話とログは無期限で保存）。この操作は開発者でも取り消せません。',
         ok: '削除する', danger: true
       }).then(function (code) {
         if (code === null) return null;
@@ -894,7 +894,7 @@
     head.appendChild(el('span', 'time', 'アーカイブ ' + stamp(a.at)));
     card.appendChild(head);
     var facts = el('div', 'facts');
-    fact(facts, 'データの完全削除', date(a.purgeAt, true) + '（あと' + Math.max(0, Math.ceil((a.purgeAt - now) / 86400000)) + '日）');
+    fact(facts, 'データの削除', date(a.purgeAt, true) + '（あと' + Math.max(0, Math.ceil((a.purgeAt - now) / 86400000)) + '日）');
     fact(facts, '資産', '$' + fmt(p.worth));
     fact(facts, '最終オンライン', date(p.lastSeen, true));
     fact(facts, '登録', date(p.createdAt, true));
@@ -916,7 +916,7 @@
     var b = e.target.closest('[data-lift]');
     if (!b) return;
     var id = Number(b.dataset.lift);
-    ask({ title: '永久BANを解除しますか？', text: 'プレイヤー一覧に戻り、データの完全削除の予定もなくなります。公式から解除のお知らせが届きます。', ok: '解除する' }).then(function (ok) {
+    ask({ title: '永久BANを解除しますか？', text: 'プレイヤー一覧に戻り、データの削除の予定もなくなります。公式から解除のお知らせが届きます。', ok: '解除する' }).then(function (ok) {
       if (!ok) return null;
       return request('POST', '/api/ops/ban', { id: id, kind: 'none' }).then(function () { toast('永久BANを解除しました'); loadArchive(); load(true); });
     }).catch(fail);

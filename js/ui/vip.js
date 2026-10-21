@@ -111,6 +111,14 @@
     td.colSpan = n + 1;
     foot.appendChild(td);
     t.appendChild(foot);
+    // for now everybody's calls are better than VIP3's
+    if (V.boost() > V.tier(n - 1)) {
+      var now = el('tr', 'vp-foot');
+      var b = el('td', '', '今だけ：VIPでなくても、全員の通話が VIP3 より高い音質（' + V.kbps(V.boost()) + 'kbps）になっています');
+      b.colSpan = n + 1;
+      now.appendChild(b);
+      t.appendChild(now);
+    }
   }
 
   function go() {

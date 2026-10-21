@@ -23,7 +23,7 @@
     lockdown: 'ロックダウン', lockdown_release: 'ロックダウンの解除', shield_block: '手動ブロック', shield_auto_block: '自動ブロック',
     shield_unblock: 'ブロック解除', sec_message: 'セキュリティ基地の連絡', dev_code_fail: '開発者コードの入力ミス',
     dev_code_set: '開発者コードを登録', dev_code_change: '開発者コードを変更', ops_grant: '運営権の付与', ops_revoke: '運営権の剥奪',
-    account_delete: 'アカウント削除', account_purge: 'データの完全削除', backup_run: 'バックアップ', backup_failed: 'バックアップの失敗',
+    account_delete: 'アカウント削除', account_purge: 'データの削除（会話は保存）', backup_run: 'バックアップ', backup_failed: 'バックアップの失敗',
     'ban:suspend': 'アクセス禁止', 'ban:ban': 'BAN', 'ban:perma': '永久BAN', 'ban:none': '処分の解除',
     player_register: '登録', player_login: 'ログイン', bot_message: '公式のメッセージ', money: '送金'
   };

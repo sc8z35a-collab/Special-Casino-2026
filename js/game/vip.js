@@ -41,6 +41,8 @@
     // the call quality tier: 0 no VIP, 1 VIP0-1, 2 VIP2-3 (`lv` null: no VIP)
     tier: function (lv) { return lv === null || lv === undefined ? 0 : lv >= 2 ? 2 : 1; },
     kbps: function (tier) { var k = V().voice; return k[Math.max(0, Math.min(k.length - 1, tier | 0))]; },
+    // the tier every call has for now, whoever is in it (0: none; 3: above VIP3)
+    boost: function () { return V().voiceAll || 0; },
     // a car the level may buy (`vip` on a car: the level it is for)
     carOpen: function (car, lv) { return !car.vip || (lv !== null && lv !== undefined && lv >= car.vip); }
   };

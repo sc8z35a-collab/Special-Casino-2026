@@ -174,7 +174,7 @@ test('the garage: two cars, one more place for $1,000,000 each (for good); a ful
 test('buy-back and renting out: the day\'s price, customers every 5 hours, back after the block', async () => {
   const { RULES, carBuyback } = await import('../core/rules.js');
   const p = await register('Rent7');
-  setUser(p.me.id, { dollars: 100000000, garage_extra: 3 });
+  setUser(p.me.id, { dollars: 200000000, garage_extra: 3 });
   const buy = async () => (await call('POST', '/api/cars/buy', { token: p.token, body: { model: 'blue-lightning' } })).car.id;
   const [a, b] = [await buy(), await buy()];
   let g = await call('GET', '/api/cars', { token: p.token });

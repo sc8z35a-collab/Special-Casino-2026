@@ -935,7 +935,7 @@
   // under the card: whether it was received (`hint`: where it is once it is)
   function claimState(card, m, mine, hint) {
     if (m.pending) {
-      card.appendChild(el('div', 'pr-state', mine ? (m.claimed ? '受け取られました' : 'まだ受け取られていません')
+      card.appendChild(el('div', 'pr-state', mine ? (m.returned ? '相手のアカウントが削除されたため、あなたに戻りました' : m.claimed ? '受け取られました' : 'まだ受け取られていません')
         : m.claimed ? '受け取り済み' : claiming[m.id] ? '受け取っています…' : 'タップして受け取る'));
     }
     if (hint && !mine && (!m.pending || m.claimed)) card.appendChild(el('div', 'gift-hint', hint));

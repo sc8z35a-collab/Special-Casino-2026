@@ -11,15 +11,18 @@ export const PASSWORD = 'pass1234';
 // a device of its own (js/net/device.js): the game sends one, and a device makes two accounts at most
 export const newDevice = (fp = '') => crypto.randomBytes(16).toString('hex') + (fp ? '~' + fp : '');
 
-export async function startServer(overrides = {}) {
+// (`warm`: one request first, so the one-time announcements of a new version
+// — server/core/api.js: voiceNotice — find no players and stay out of the tests)
+export async function startServer(overrides = {}, { warm = true } = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'br-test-'));
   const app = createApp({
-    dataDir, logRequests: false, registrationsPerIp: 0, registerPerMinute: 100000, loginBonus: false, quests: false, npcGifts: false,
+    dataDir, logRequests: false, registrationsPerIp: 0, registerPerMinute: 100000, loginBonus: false, quests: false, npcGifts: false, milestones: false,
     limits: { spin: [100000, 1000], shop: [100000, 1000], general: [100000, 1000], login: [100000, 1000], friend: [100000, 1000], transfer: [100000, 1000] },
     ...overrides
   });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${app.server.address().port}`;
+  if (warm) await fetch(base + '/api/health');
   let seq = 0;
 
   // { status, ...json body } (the HTTP status wins over a body field of that name)

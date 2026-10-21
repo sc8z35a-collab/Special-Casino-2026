@@ -14,8 +14,9 @@
 // Everything an operator does here that reaches anyone is written to the log
 // (server/core/opslog.js), with the request it came from.
 // プレイヤーアーカイブ: a player under a 永久BAN, or whose account the
-// developer deleted, leaves the list for the archive, and 90 days later all
-// their data goes (server/core/purge.js). A 永久BAN can be lifted (the player
+// developer deleted, leaves the list for the archive, and 90 days later their
+// data goes, but not what was said: conversations and logs are kept for good
+// (server/core/purge.js). A 永久BAN can be lifted (the player
 // comes back to the list); a deleted account never comes back, not even by
 // the developer. Only the developer sees the button that deletes one, and it
 // asks for the developer code; the accounts on the same device go with it.
@@ -26,7 +27,7 @@ import { nameKey, cleanPassword, cleanText, hashPassword } from './auth.js';
 import { LEVEL, RULES, VIP, RELEASE } from './rules.js';
 import { jst } from './opslog.js';
 import { createDevCode } from './devcode.js';
-import { purgePlayer } from './purge.js';
+import { purgePlayer, KEPT_ROWS } from './purge.js';
 
 export const ARCHIVE_DAYS = 90;
 export const DELETED = 'このアカウントは削除されました';
@@ -39,16 +40,17 @@ const MONEY_MAX = 10000000;
 const RETRACT_MS = RULES.retract.minutes * 60000;
 const fmt = (n) => Number(n).toLocaleString('en-US');
 
-export function createOps({ q, tx, live, config, getUser, mini, openCode, setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub, official, opsLog, balance,
+export function createOps({ q, tx, live, config, getUser, mini, openCode, setRecovery, banMessage, BAN_DAYS, deviceBanOf, deviceBans, dropFromHub, official, opsLog, balance,
   banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode = createDevCode({ q, opsLog }), seen = new Map() }) {
   const operators = new Set(config.operators.map(nameKey));
   const accessRow = (key) => q('SELECT * FROM ops_access WHERE name_key = ?').get(key);
   // an operator: the developer always; otherwise as given or taken away on
   // the site, or as named in config.operators
-  function isOperator(u) {
+  // (`access`: ops_access by name_key, looked up once for a whole list)
+  function isOperator(u, access = null) {
     if (!u || u.npc) return false;
     if (isDeveloper(u)) return true;
-    const r = accessRow(u.name_key);
+    const r = access ? access.get(u.name_key) : accessRow(u.name_key);
     return r ? r.granted === 1 : operators.has(u.name_key);
   }
   // (`seen`: when each operator last used the site, for who is on it now)
@@ -87,7 +89,21 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     for (const r of q('SELECT sender_id, COUNT(*) AS n FROM detections WHERE reviewed_at = 0 GROUP BY sender_id').all()) m.set(r.sender_id, r.n);
     return m;
   };
-  function row(u, waiting = null, detections = null) {
+  // the 引き継ぎコード, opened once for each sealed value (a list opens hundreds)
+  const codes = new Map();
+  function codeOf(sealed) {
+    if (!sealed) return '';
+    let c = codes.get(sealed);
+    if (c === undefined) {
+      if (codes.size >= 5000) codes.clear();
+      c = openCode(sealed);
+      codes.set(sealed, c);
+    }
+    return c;
+  }
+  // what a whole list needs for every row, looked up once and not once a player
+  const listFacts = () => ({ access: new Map(q('SELECT * FROM ops_access').all().map((r) => [r.name_key, r])), devBans: deviceBans() });
+  function row(u, waiting = null, detections = null, facts = null) {
     return {
       id: u.id,
       name: u.name,
@@ -97,14 +113,14 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       dollars: u.dollars,
       coins: u.coins,
       worth: worth(u),
-      code: openCode(u.recovery_enc),
+      code: codeOf(u.recovery_enc),
       hasPassword: !!u.password_hash,
       ban: banOf(u),
-      deviceBlocked: !u.banned && !!deviceBanOf(u),
+      deviceBlocked: !u.banned && (facts ? !isDeveloper(u) && (facts.devBans.get(u.id) || 0) > u.device_ok_at : !!deviceBanOf(u)),
       lastSeen: u.last_seen,
       createdAt: u.created_at,
       playMs: u.play_ms,
-      operator: isOperator(u),
+      operator: isOperator(u, facts && facts.access),
       developer: isDeveloper(u),
       npc: !!u.npc,
       // VIP: its level while it is on (null: off), until when, its EXP
@@ -201,12 +217,12 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const find = nameKey(req.query.get('q') || '');
       const rows = q(`SELECT * FROM users WHERE npc = '' AND archived_at = 0 ${find ? 'AND instr(name_key, ?) > 0' : ''} ORDER BY id DESC LIMIT 1000`)
         .all(...(find ? [find] : []));
-      const waiting = official.waitingIds(), dets = flagged();
-      const list = rows.map((p) => row(p, waiting, dets));
+      const waiting = official.waitingIds(), dets = flagged(), facts = listFacts();
+      const list = rows.map((p) => row(p, waiting, dets, facts));
       return {
         players: list,
         total: q("SELECT COUNT(*) AS n FROM users WHERE npc = '' AND archived_at = 0").get().n,
-        archived: q("SELECT COUNT(*) AS n FROM users WHERE npc = '' AND archived_at > 0").get().n,
+        archived: q("SELECT COUNT(*) AS n FROM users WHERE npc = '' AND archived_at > 0 AND purged_at = 0").get().n,
         online: list.filter((p) => p.online).length,
         waiting: waiting.size,
         reports: q("SELECT COUNT(*) AS n FROM reports WHERE status = 'open'").get().n,
@@ -288,7 +304,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const after = getUser(p.id);
       opsLog.add({
         actor: u, action: 'ban:' + kind, target: p, req,
-        summary: `${p.name}さんに「${BAN_NAMES[kind]}」${kind === 'perma' ? `（プレイヤーアーカイブへ・${ARCHIVE_DAYS}日後にデータを完全削除）` : before && before.kind === 'perma' ? '（プレイヤーアーカイブから戻した）' : ''}`,
+        summary: `${p.name}さんに「${BAN_NAMES[kind]}」${kind === 'perma' ? `（プレイヤーアーカイブへ・${ARCHIVE_DAYS}日後にデータを削除・会話とログは保存）` : before && before.kind === 'perma' ? '（プレイヤーアーカイブから戻した）' : ''}`,
         detail: {
           kind, before, after: banOf(after), until: after.ban_until ? { ms: after.ban_until, jst: jst(after.ban_until) } : null, message: kind === 'none' ? '' : banMessage(after), sameDeviceAccounts: shut,
           archive: after.archived_at ? { at: after.archived_at, purgeAt: after.purge_at, purgeJst: jst(after.purge_at) } : null
@@ -301,7 +317,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
 
     'GET /api/ops/archive': (req, u) => {
       need(u);
-      const rows = q("SELECT * FROM users WHERE npc = '' AND archived_at > 0 ORDER BY archived_at DESC LIMIT 1000").all();
+      const rows = q("SELECT * FROM users WHERE npc = '' AND archived_at > 0 AND purged_at = 0 ORDER BY archived_at DESC LIMIT 1000").all();
       return { players: rows.map((p) => ({ ...row(p), withName: p.archive_with ? (getUser(p.archive_with) || { name: '?' }).name : '' })), days: ARCHIVE_DAYS, now: Date.now() };
     },
 
@@ -339,7 +355,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       }
       opsLog.add({
         actor: u, action: 'account_delete', target: p, req,
-        summary: `${p.name}さんのアカウントを削除（開発者コードで・取り消し不可${subs.length ? `・同じ端末の ${subs.map((x) => x.name).join('、')} さんも` : ''}・${ARCHIVE_DAYS}日後にデータを完全削除）`,
+        summary: `${p.name}さんのアカウントを削除（開発者コードで・取り消し不可${subs.length ? `・同じ端末の ${subs.map((x) => x.name).join('、')} さんも` : ''}・${ARCHIVE_DAYS}日後にデータを削除・会話とログは保存）`,
         detail: { player: { id: p.id, name: p.name }, sameDevice: subs.map((x) => ({ id: x.id, name: x.name })), purgeAt: { ms: now + ARCHIVE_DAYS * 86400000, jst: jst(now + ARCHIVE_DAYS * 86400000) } }
       });
       return { deleted: all.map((x) => ({ id: x.id, name: x.name })), player: row(getUser(p.id)) };
@@ -652,14 +668,14 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     }
   };
 
-  // 90 days in the archive: all of it goes (from the housekeeping)
+  // 90 days in the archive: their data goes, what was said stays (from the housekeeping)
   function purgeDue(now = Date.now()) {
     for (const p of q("SELECT * FROM users WHERE npc = '' AND purge_at > 0 AND purge_at <= ? LIMIT 50").all(now)) {
-      const gone = purgePlayer(q, tx, p.id);
+      const gone = purgePlayer(q, tx, p.id, now);
       opsLog.add({
         actorName: 'システム', action: 'account_purge', target: p,
-        summary: `${p.name}さんのデータを完全に削除（${p.archive_reason === 'deleted' ? 'アカウント削除' : '永久BAN'}でプレイヤーアーカイブに入って${ARCHIVE_DAYS}日）`,
-        detail: { player: { id: p.id, name: p.name }, reason: p.archive_reason, archivedAt: p.archived_at, rows: gone }
+        summary: `${p.name}さんのデータを削除（${p.archive_reason === 'deleted' ? 'アカウント削除' : '永久BAN'}でプレイヤーアーカイブに入って${ARCHIVE_DAYS}日・会話と記録は無期限で保存）`,
+        detail: { player: { id: p.id, name: p.name }, reason: p.archive_reason, archivedAt: p.archived_at, rows: gone, kept: KEPT_ROWS }
       });
     }
   }

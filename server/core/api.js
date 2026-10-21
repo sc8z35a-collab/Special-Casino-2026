@@ -325,6 +325,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
               JOIN users o ON o.id = e.user_id
               WHERE d.user_id = ? AND ${BANNED_NOW} AND o.ban_at > ? LIMIT 1`).get(u.id, Date.now(), u.device_ok_at) || null;
   }
+  // the same for every account at once (the operator site's list): by account,
+  // the newest such BAN on one of its devices (blocked when after device_ok_at)
+  function deviceBans() {
+    const m = new Map();
+    for (const r of q(`SELECT d.user_id AS id, MAX(o.ban_at) AS at FROM devices d JOIN devices e ON e.device = d.device AND e.user_id != d.user_id
+                       JOIN users o ON o.id = e.user_id WHERE ${BANNED_NOW} GROUP BY d.user_id`).all(Date.now())) m.set(r.id, r.at);
+    return m;
+  }
   // an account on these devices is under a BAN or a 永久BAN (or, `any`, an アクセス禁止 too)
   function devicesBanned(keys, any = false) {
     if (!keys.length) return false;
@@ -668,6 +676,44 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     }
   }
 
+  // something done once on this server, ever (claimed first: two at once do it once)
+  const onceOnly = (key) => Number(q('INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)').run(key, String(Date.now())).changes) > 0;
+  const everyone = () => q("SELECT id, name FROM users WHERE npc = '' AND archived_at = 0 ORDER BY id").all();
+
+  // 登録者数の記念 (RULES.milestones): when the accounts registered reach 10,
+  // 20 and 50, everyone then gets $100K, $200K and $500K from Ice Smoker公式,
+  // once each (one already reached when this came out: at once).
+  function milestones() {
+    if (config.milestones === false) return;
+    const n = q("SELECT COUNT(*) AS n FROM users WHERE npc = ''").get().n;
+    for (const m of RULES.milestones) {
+      if (n < m.players || !onceOnly(`milestone_${m.players}`)) continue;
+      const all = everyone();
+      for (const p of all) {
+        official.say(p.id, `【自動送信】\nおめでとうございます！Two stateの登録者数が${m.players}人を突破しました！！記念して全員に${m.dollars / 1000}Kを送金します！今後ともTwo stateをよろしくお願いいたします！`);
+        official.pay(p.id, m.dollars);
+      }
+      opsLog.add({
+        actorName: 'システム', action: 'milestone',
+        summary: `登録者数${m.players}人突破の記念に全員（${all.length}人）へ $${m.dollars.toLocaleString('en-US')}`,
+        detail: { players: m.players, registered: n, dollars: m.dollars, to: all.length }
+      });
+    }
+  }
+  // 今だけ: everyone's calls above VIP3 (BR.CONFIG.vip.voiceAll): every player
+  // then is told once, by Ice Smoker公式
+  function voiceNotice() {
+    const tier = RULES.vip.voiceAll || 0;
+    if (!tier || !onceOnly(`voice_all_${tier}`)) return;
+    const kbps = RULES.vip.voice[Math.min(tier, RULES.vip.voice.length - 1)];
+    const all = everyone();
+    for (const p of all) {
+      official.say(p.id, letter(p, '通話品質アップのお知らせ',
+        `サーバーの有料枠に大きな余裕があるため、今だけ、全プレイヤーのボイス通話を VIP3 より高い音質（${kbps}kbps）にしました。\nVIPでなくても、フレンド・グループ・友達と稼ぐ・ホームのすべての通話が自動で高音質になります（最新版に更新すると有効になります）。\nあわせて、通話中の音量ボタンから「ボイス」と「効果音」の音量を別々に調整できるようになりました。`));
+    }
+    opsLog.add({ actorName: 'システム', action: 'voice_notice', summary: `全員（${all.length}人）に通話品質アップ（${kbps}kbps）のお知らせ`, detail: { tier, kbps, to: all.length } });
+  }
+
   // Login days in a row (6:00 to 6:00 Japan time) and the longest run (the operator site).
   function countDay(userId) {
     const day = loginDay();
@@ -749,6 +795,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // money, a car or an item that arrives with the recipient's tap
       pending: m.pending ? true : undefined,
       claimed: m.kind === 'present' || m.kind === 'car_sold' || m.pending ? !!m.claimed_at : undefined,
+      // back to its sender: the account it was for was deleted (server/core/purge.js)
+      returned: m.pending && m.state === 'returned' ? true : undefined,
       retracted: gone ? m.retracted_at : undefined,
       state: m.kind === 'car_offer' ? m.state || 'open' : undefined,
       at: m.created_at
@@ -929,6 +977,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const homeChats = new Map();
   let homeChatSeq = 0;
   const homeChatOf = (room) => homeChats.get(room) || [];
+  // the chats the game shows only while they happen, written down for good
+  // (`original`: what was typed, when the filter masked some of it)
+  const keepLive = (place, room, from, to, text, raw, at) =>
+    q('INSERT INTO live_chats (place, room, sender_id, recipient_id, body, original, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(place, room, from, to, text, raw === text ? '' : raw, at);
 
   /* ----- 観戦ベット ----- */
   const WB = RULES.watchBet;
@@ -1424,6 +1476,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         throw e;
       }
       opsLog.add({ actor: user, action: 'player_register', req, summary: `${user.name}さんが登録`, detail: { avatar } });
+      // (the 10th, 20th or 50th: everyone's 登録者数の記念, the newcomer too)
+      milestones();
       return { token, recoveryCode: code, me: meDto(user) };
     },
 
@@ -1938,14 +1992,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const g = myGroup(u.id, posInt(body.group, 'グループ'));
       q('DELETE FROM chat_members WHERE group_id = ? AND user_id = ?').run(g.id, u.id);
       q('UPDATE users SET coop_group = 0 WHERE id = ? AND coop_group = ?').run(u.id, g.id);
-      if (!memberIds(g.id).length) {
-        tx(() => {
-          q('DELETE FROM messages WHERE channel = ?').run(groupChannel(g.id));
-          q('DELETE FROM chat_groups WHERE id = ?').run(g.id);
-        });
-      } else {
-        postToGroup(g, null, 'system', `${u.name}さんがグループを抜けました`);
-      }
+      // (the last one out: the group and what was said in it stay, kept for good)
+      if (memberIds(g.id).length) postToGroup(g, null, 'system', `${u.name}さんがグループを抜けました`);
       return { left: g.id, unread: unreadTotal(u.id) };
     },
 
@@ -2445,6 +2493,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       detected(u, f, { to: room, place: room === u.id ? 'home' : 'home:' + room, original: raw });
       const message = { id: `${Date.now().toString(36)}-${++homeChatSeq}`, room, from: mini(u), text, at: Date.now() };
       homeChats.set(room, homeChatOf(room).concat(message).slice(-HOME_CHAT_KEEP));
+      // written down for good (the home shows only its last ones, while it is open)
+      keepLive('home', room, u.id, 0, text, raw, message.at);
       live.send(room, 'homechat', message);
       for (const id of watcherIds(room)) live.send(id, 'homechat', message);
       track(u.id, [['chat', 1]]);
@@ -2970,7 +3020,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { hub: null };
     },
 
-    // 即席チャット: a line to someone in my hub (from their icon), not stored
+    // 即席チャット: a line to someone in my hub (from their icon); the game
+    // keeps it only on the screen, the server's record keeps it for good
     'POST /api/hub/say': async (req, u) => {
       const body = await req.json();
       const to = posInt(body.to, '宛先');
@@ -2983,6 +3034,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const f = filterText(text);
       detected(u, f, { to, place: 'hub', original: text });
       const line = { from: mini(u), to, text: f.masked, at: Date.now() };
+      keepLive('hub', a.hub_id, u.id, to, line.text, text, line.at);
       if (!isBlocked(to, u.id) && !isBlocked(u.id, to)) live.send(to, 'hub', { type: 'say', ...line });
       track(u.id, [['chat', 1]]);
       return { line };
@@ -3372,7 +3424,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     }
   };
   const ops = createOps({
-    q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, dropFromHub,
+    q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, deviceBans, dropFromHub,
     official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen
   });
   Object.assign(routes, ops.routes);
@@ -3544,6 +3596,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       opsLogin.prune();
       // 90 days in the プレイヤーアーカイブ: their data goes
       ops.purgeDue();
+      milestones();
       quota.flush();
       stats.flush();
     } catch (e) {
@@ -3622,12 +3675,18 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return true;
   }
 
+  let announced = false;
   async function handle(req) {
     // (the address players use: the link in the Discord notices)
     noteHost(req);
     // (a minute over: the emergency stop looks at it before this answer)
     emergency.tick();
     const out = await answer(req);
+    // (after a new version starts: its announcements, once)
+    if (!announced && !emergency.locked()) {
+      announced = true;
+      try { voiceNotice(); milestones(); } catch (e) { console.error('announcements failed', e); }
+    }
     stats.request();
     emergency.request({ path: req.path, ip: req.ip, userId: req.userId || 0, status: out.status });
     // the shield learns from the outcome (a failed login, a guess at the keys)

@@ -185,6 +185,9 @@ test('homes: ten watchers at most; members hear about each other; fruits go to t
   const outsider = await register('Outsider');
   assert.equal((await call('POST', '/api/home/chat', { token: outsider.token, body: { room: host.me.id, text: 'やあ' } })).error.code, 'not_home');
   assert.equal((await call('GET', '/api/watchers', { token: host.token })).chat.length, 1);
+  // (written down for good, too)
+  const saved = s.app.db.prepare('SELECT place, room, sender_id, body FROM live_chats').all();
+  assert.deepEqual(saved.map((x) => ({ ...x })), [{ place: 'home', room: host.me.id, sender_id: fans[2].me.id, body: 'がんばれ！' }]);
   // the home call is the only voice: no 1:1 invitations, no 参加要請
   r = await call('POST', '/api/call', { token: host.token, body: { to: fans[9].me.id, type: 'invite', callId: 'c-123457' } });
   assert.equal(r.error.code, 'bad_type');

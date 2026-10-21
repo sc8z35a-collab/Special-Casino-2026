@@ -13,9 +13,12 @@
    speaking into an open microphone counts as active (the time quests).
    A hub's voice cannot be hung up while in the hub; instead every voice has
    its own volume and mute (kept on this phone), the speaker button mutes
-   them all, and a block cuts a voice off both ways. A call that has gone on
-   for 2 hours ends (it can be started again). Its sound quality is the one
-   of the best VIP in it (js/game/vip.js), for everyone in it. */
+   them all, and a block cuts a voice off both ways. The bar's volume button
+   opens two sliders: ボイス (every voice together) and 効果音 (the game's own
+   sounds while the call lasts). A call that has gone on for 2 hours ends (it
+   can be started again). Its sound quality is the one of the best VIP in it
+   (js/game/vip.js), for everyone in it, and never below the quality everyone
+   has for now (vip.voiceAll: above VIP3's). */
 (function (BR) {
   'use strict';
 
@@ -33,13 +36,14 @@
   var lastHub = null;     // [hub id, people]
 
   /* ------------------------------------------------------------ each voice's volume and mute --- */
-  // { v: { id: volume 0..100 }, m: { id: 1 (muted) }, d: 1 (all voices muted) }
+  // { v: { id: volume 0..100 }, m: { id: 1 (muted) }, d: 1 (all voices muted),
+  //   a: every voice together 0..100 (the ボイス slider of the call bar) }
   var PREFS = 'blockbuster-reels/voice';
   var prefs = (function () {
     try {
       var p = JSON.parse(localStorage.getItem(PREFS) || '{}') || {};
-      return { v: p.v || {}, m: p.m || {}, d: p.d ? 1 : 0 };
-    } catch (e) { return { v: {}, m: {}, d: 0 }; }
+      return { v: p.v || {}, m: p.m || {}, d: p.d ? 1 : 0, a: typeof p.a === 'number' ? Math.max(0, Math.min(100, p.a)) : 100 };
+    } catch (e) { return { v: {}, m: {}, d: 0, a: 100 }; }
   })();
   function savePrefs() { try { localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch (e) { /* in memory only */ } }
   function volOf(id) { var v = prefs.v[id]; return typeof v === 'number' ? Math.max(0, Math.min(100, v)) : 100; }
@@ -74,11 +78,12 @@
     delete gains[id];
     try { g.src.disconnect(); g.node.disconnect(); } catch (e) { /* gone */ }
   }
-  // the voice of `id` as set: muted (by itself or with all of them), its volume
+  // the voice of `id` as set: muted (by itself or with all of them), its
+  // volume (its own times everyone's: the ボイス slider)
   function applyVoice(id) {
     var a = $('#call-audios [data-key="home-' + id + '"]');
     if (!a) return;
-    var off = !!prefs.d || mutedOf(id), vol = volOf(id) / 100;
+    var off = !!prefs.d || mutedOf(id), vol = volOf(id) / 100 * prefs.a / 100;
     var g = gains[id] || (vol < 1 && !volumeWorks() ? gainFor(id, a) : null);
     if (g) {
       a.muted = true;
@@ -163,11 +168,24 @@
     });
     if (users.length > 4) box.appendChild(el('span', 'call-more', '+' + (users.length - 4)));
   }
+  // the panel of the two volumes, open (shown as they are now) or closed
+  function volumes(open) {
+    var p = $('#call-vol-panel'), b = $('#call-vol');
+    p.hidden = !open;
+    b.classList.toggle('on', open);
+    b.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) return;
+    var sfxNow = BR.sfx.callLevel();
+    $('#call-vol-voice').value = String(prefs.a);
+    $('#call-vol-voice-n').textContent = prefs.a + '%';
+    $('#call-vol-sfx').value = String(sfxNow);
+    $('#call-vol-sfx-n').textContent = sfxNow + '%';
+  }
   function renderBar() {
     var bar = $('#call-bar');
     BR.sfx.duck(!!home);
     changed();
-    if (!home) { bar.hidden = true; return; }
+    if (!home) { bar.hidden = true; volumes(false); return; }
     var m = $('#call-mute'), end = $('#call-end');
     var people = Object.keys(home.members).map(function (k) { return home.members[k]; });
     var live = Object.keys(home.peers).filter(function (k) { return home.peers[k].live; }).length;
@@ -247,10 +265,11 @@
   }
 
   /* ------------------------------------------------------------ the sound quality --- */
-  // the tier of the call: the best VIP of everyone in it (me too)
+  // the tier of the call: the best VIP of everyone in it (me too), and
+  // never below the one everybody has for now (BR.VIP.boost)
   function tierOf(h) {
     var me = BR.social.me(), V = BR.VIP;
-    var t = V.tier(me && me.vip && me.vip.on && me.vip.until > Date.now() ? me.vip.level : null);
+    var t = Math.max(V.boost(), V.tier(me && me.vip && me.vip.on && me.vip.until > Date.now() ? me.vip.level : null));
     Object.keys(h.members).forEach(function (k) {
       var u = h.members[k];
       t = Math.max(t, V.tier(u && typeof u.vip === 'number' ? u.vip : null));
@@ -541,6 +560,22 @@
       setDeaf(!prefs.d);
       toast(prefs.d ? 'みんなの声をミュートしました' : 'みんなの声をオンにしました', 1800);
     });
+    // the two volumes: everyone's voices (ボイス) and the game's sounds while the call lasts (効果音)
+    $('#call-vol').addEventListener('click', function () {
+      if (!home) return;
+      sfx('click');
+      volumes(!!$('#call-vol-panel').hidden);
+    });
+    $('#call-vol-voice').addEventListener('input', function (e) {
+      prefs.a = Math.round(Math.max(0, Math.min(100, Number(e.target.value) || 0)));
+      savePrefs();
+      applyAll();
+      volumes(true);
+    });
+    $('#call-vol-sfx').addEventListener('input', function (e) {
+      BR.sfx.callLevel(e.target.value);
+      volumes(true);
+    });
     // hanging up: the watched player stops talking with everyone, a watcher
     // stops talking (a hub's voice has no hang-up: it stays while in the hub)
     $('#call-end').addEventListener('click', function () {
@@ -600,6 +635,8 @@
     },
     deaf: function () { return !!prefs.d; },
     setDeaf: setDeaf,
+    // everyone's voices together, 0..100 (the ボイス slider)
+    allVolume: function () { return prefs.a; },
     onChange: function (fn) { listeners.push(fn); },
     active: function () { return !!home; },
     // some voice of a friend comes through (a connection is up)

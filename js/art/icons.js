@@ -117,6 +117,8 @@
     // play a recorded voice again
     speaker: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M5,15H12L21,7V33L12,25H5Z" fill="#fff"/><path d="M26,14Q30,20 26,26M30.5,10Q37.5,20 30.5,30" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>',
     speakerOff: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M5,15H12L21,7V33L12,25H5Z" fill="#fff" opacity=".55"/><path d="M26,14Q30,20 26,26M30.5,10Q37.5,20 30.5,30" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".55"/><path d="M6,5L34,35" stroke="#ff5a4f" stroke-width="4" stroke-linecap="round"/></svg>',
+    // the call's volumes (ボイス and 効果音): two sliders
+    sliders: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M13,6V34M27,6V34" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".55"/><rect x="7.5" y="20" width="11" height="7" rx="3.5" fill="#fff"/><rect x="21.5" y="11" width="11" height="7" rx="3.5" fill="#fff"/></svg>',
     // the chat of a home (a speech bubble)
     chat: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><path d="M7,6H33Q37,6 37,10V25Q37,29 33,29H19L10.5,35.5V29H7Q3,29 3,25V10Q3,6 7,6Z" fill="#fff"/><circle cx="12.5" cy="17.5" r="2.4" fill="#2a0408"/><circle cx="20" cy="17.5" r="2.4" fill="#2a0408"/><circle cx="27.5" cy="17.5" r="2.4" fill="#2a0408"/></svg>'
   };

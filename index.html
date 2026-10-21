@@ -666,7 +666,13 @@
       <div class="call-id"><b class="uname" id="call-name"></b><span id="call-state"></span></div>
       <button class="call-icon" id="call-mute" aria-label="マイクのオン・オフ"><i class="ic ic-mic-on"></i></button>
       <button class="call-icon" id="call-deaf" aria-label="相手の声のオン・オフ"><i class="ic ic-speaker"></i></button>
+      <button class="call-icon" id="call-vol" aria-label="音量（ボイスと効果音）" aria-expanded="false"><i class="ic ic-sliders"></i></button>
       <button class="call-icon end" id="call-end" aria-label="通話を終了"><i class="ic ic-hangup"></i></button>
+      <!-- the call's two volumes: everyone's voices, and the game's sound effects while it lasts -->
+      <div class="call-vol" id="call-vol-panel" hidden>
+        <label class="call-vol-row"><span>ボイス</span><input type="range" id="call-vol-voice" min="0" max="100" step="5" aria-label="ボイスの音量"><b id="call-vol-voice-n"></b></label>
+        <label class="call-vol-row"><span>効果音</span><input type="range" id="call-vol-sfx" min="0" max="100" step="5" aria-label="効果音の音量"><b id="call-vol-sfx-n"></b></label>
+      </div>
     </div>
     <div id="call-audios" hidden></div>
 

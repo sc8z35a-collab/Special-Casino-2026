@@ -21,7 +21,8 @@
       lock: BR.ICONS.lock, phone: BR.ICONS.phone, hangup: BR.ICONS.hangup, 'mic-on': BR.ICONS.micOn, 'mic-off': BR.ICONS.micOff,
       eye: BR.ICONS.eye, car: BR.ICONS.car, gift: BR.ICONS.gift, friends: BR.ICONS.friends, search: BR.ICONS.search, check: BR.ICONS.check,
       share: BR.ICONS.share, 'add-home': BR.ICONS.addHome, download: BR.ICONS.download, android: BR.ICONS.android, apple: BR.ICONS.apple,
-      bag: BR.ICONS.bag, home: BR.ICONS.home, speaker: BR.ICONS.speaker, 'speaker-off': BR.ICONS.speakerOff, chat: BR.ICONS.chat
+      bag: BR.ICONS.bag, home: BR.ICONS.home, speaker: BR.ICONS.speaker, 'speaker-off': BR.ICONS.speakerOff, chat: BR.ICONS.chat,
+      sliders: BR.ICONS.sliders
     };
     function url(u) { return 'url("' + u.replace(/"/g, '%22') + '")'; }
     function svg(markup) { return url(BR.svgURL(markup)); }

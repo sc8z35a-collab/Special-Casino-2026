@@ -464,7 +464,7 @@
     // the quick chat: the last lines, and a field to write in
     var box = el('div', 'hb-mc-chat');
     var lines = (chats[m.id] || []).slice(-3);
-    if (!lines.length) box.appendChild(el('p', 'hb-mc-empty', cut ? 'ブロック中は即席チャットも使えません' : m.name + 'さんに即席チャットを送れます（保存されません）'));
+    if (!lines.length) box.appendChild(el('p', 'hb-mc-empty', cut ? 'ブロック中は即席チャットも使えません' : m.name + 'さんに即席チャットを送れます（画面には残りません・記録は保存されます）'));
     lines.forEach(function (l) { box.appendChild(lineEl(l)); });
     root.appendChild(box);
     var acts = el('div', 'hb-mc-row');
@@ -581,7 +581,7 @@
     if (!chatFeed) return;
     chatFeed.textContent = '';
     var list = chats[chatWith] || [];
-    if (!list.length) chatFeed.appendChild(el('div', 'empty chat-empty', '仲間に即席チャット（保存されません）'));
+    if (!list.length) chatFeed.appendChild(el('div', 'empty chat-empty', '仲間に即席チャット（画面には残りません・記録は保存されます）'));
     list.forEach(function (l) { chatFeed.appendChild(lineEl(l)); });
     BR.entry.scrollFeed();
   }

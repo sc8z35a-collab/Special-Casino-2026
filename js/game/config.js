@@ -28,6 +28,9 @@
     // アクセス日数 (login days, all told): Ice Smoker公式 sends `amount` $
     // by itself on each of these (not to a 永久BAN account)
     accessDays: { at: [5, 10, 15, 20, 25, 30, 35], amount: 250000 },
+    // 登録者数の記念: when the accounts registered reach `players`, Ice
+    // Smoker公式 sends everyone then (not the プレイヤーアーカイブ) `dollars` $, once
+    milestones: [{ players: 10, dollars: 100000 }, { players: 20, dollars: 200000 }, { players: 50, dollars: 500000 }],
     tokenPrice: 10,          // $ per spin token
     dailyLimit: 10000000,    // spin tokens that can be bought per UTC day
     dailyFree: 1000,         // free tokens claimable once per UTC day
@@ -76,7 +79,11 @@
       garageOff: 40,
       wage: [1, 2.5, 2.5, 3],
       ultra: 1.3,
-      voice: [32, 48, 64]
+      // a call's Opus bitrate (kbps) by tier: no VIP, VIP0-1, VIP2-3, and the
+      // one above VIP3; `voiceAll`: the tier every call has at least, for now
+      // (the paid plan has plenty of room: everyone gets more than VIP3)
+      voice: [32, 48, 64, 96],
+      voiceAll: 3
     },
     // 運営へのメッセージ・報告・意見案・通報・プレイヤー間のメッセージ: more than
     // `chars` characters or `bytes` bytes are not sent
@@ -110,8 +117,8 @@
     // Car Owner shop (price in $); `model`: a 3D model to look at
     // (img/3d/cars/<id>.glb, js/render/garage3d.js)
     cars: [
-      { id: 'two-state-sedan', name: 'Two state セダン', price: 1200000 },
-      { id: 'blue-lightning', name: 'ブルーライトニング', price: 6000000, model: true }
+      { id: 'two-state-sedan', name: 'Two state セダン', price: 26500000 },
+      { id: 'blue-lightning', name: 'ブルーライトニング', price: 65000000, model: true }
     ],
     // the garage holds this many cars; one more place costs `slotPrice` $ (for good, any number)
     garage: { slots: 2, slotPrice: 1000000 },

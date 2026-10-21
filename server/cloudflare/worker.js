@@ -13,6 +13,10 @@ export { Casino };
 // The same name forever: it is the address of the database with every player in it.
 const DATABASE = 'main';
 const MAX_BODY = 9 * 1024 * 1024;
+// a piece of a vault file (base64 inside JSON): with R2 on Workers Paid a
+// piece is 8 MiB, about 11.2 MB as sent, and at most 16 MiB (VAULT_PIECE_MB);
+// the route itself checks the exact size (server/core/vault.js)
+const VAULT_PIECE_BODY = 23 * 1024 * 1024;
 // what the object is told about a request the automatic filter stopped
 const PASS = ['authorization', 'user-agent', 'x-device', 'origin', 'referer', 'cf-connecting-ip'];
 
@@ -31,7 +35,8 @@ export default {
     try {
       if (request.method === 'GET' || request.method === 'HEAD') return await casino.fetch(request);
       // bodies are small; reading them here lets the object answer early (e.g. 403) cleanly
-      if (Number(request.headers.get('content-length') || 0) > MAX_BODY) {
+      const most = request.method === 'POST' && url.pathname === '/api/vault/chunk' ? VAULT_PIECE_BODY : MAX_BODY;
+      if (Number(request.headers.get('content-length') || 0) > most) {
         return Response.json({ error: { code: 'too_large', message: '送信できません。大きすぎます。' } }, { status: 413 });
       }
       const bytes = await request.arrayBuffer();
