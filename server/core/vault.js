@@ -19,7 +19,15 @@
 // A file comes in pieces (1 MiB, or bigger with a bucket: VAULT_PIECE_MB),
 // each checked against its SHA-256 as it arrives (a broken upload carries on
 // where it stopped); it is whole once every piece is in, and its fingerprint
-// is the SHA-256 of its pieces' hashes in order.
+// is the SHA-256 of its pieces' hashes in order. A piece is sent as it is
+// (POST /api/vault/piece, no base64); on Cloudflare with a bucket it never
+// passes through the object at all: the Worker asks the object whether it may
+// go (POST /api/vault/permit, a few bytes) and streams it into R2, which
+// checks its SHA-256 (server/cloudflare/worker.js) — the game's one object is
+// never held up, nor filled up, by big files. Each new file comes with its
+// upload's own pass (a week, that file only): its pieces go on with the
+// vault closed again, and from the site's background worker with the page
+// closed (ops/vault-upload.js).
 // A 3D model gets, from the operator site (ops/vault3d.js, made in the
 // browser), a small picture of it from four sides, what is in it, and a light
 // copy (a file of its own whose `parent` is the model).
@@ -97,6 +105,10 @@ const REASON_MAX = 500;
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028-\u202E\u2066-\u2069\uFEFF]/g;
 
+// an upload's own pass: how long it lasts
+const UPLOAD_MS = 7 * 86400000;
+const UPLOAD_RE = /^(\d{1,15})\.([0-9a-f]{32})\.(\d{13})\.([\w-]{43})$/;
+
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 // 1GB, 1.5GB, 12MB, 300KB (nothing: 0MB)
 const mb = (n) => (!n ? '0MB' : n >= 1073741824 ? `${(n / 1073741824).toFixed(n < 10737418240 ? 1 : 0)}GB`
@@ -159,11 +171,33 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   // logged in, only the changes wait for the code)
   function need(req, u, write = false) {
     ops.need(u);
-    if (write && isDeveloper(u) && !ticketOk(req, u)) throw new ApiError(403, 'vault_locked', '閲覧のみです。変更するには開発者コードを入力してください');
+    if (write && isDeveloper(u) && !ticketOk(req, u)) throw locked();
     rate(limits.work, u.id);
   }
   // whether `u` may change things now (the developer: with the ticket)
   const unlocked = (req, u) => !isDeveloper(u) || ticketOk(req, u);
+  // an upload's own pass: its sender, that one file, a week
+  function uploadFor(u, f) {
+    const body = `${u.id}.${f.id}.${Date.now() + UPLOAD_MS}`;
+    return `${body}.${sign(`up:${body}`).toString('base64url')}`;
+  }
+  function uploadOk(req, u, id) {
+    const m = UPLOAD_RE.exec(String(req.header('x-vault-upload') || ''));
+    if (!m || Number(m[1]) !== u.id || m[2] !== String(id) || Number(m[3]) <= Date.now()) return false;
+    const got = Buffer.from(m[4], 'base64url'), want = sign(`up:${m[1]}.${m[2]}.${m[3]}`);
+    return got.length === want.length && crypto.timingSafeEqual(got, want);
+  }
+  const locked = () => new ApiError(403, 'vault_locked', '閲覧のみです。変更するには開発者コードを入力してください');
+  // a file being sent (its pieces, what is missing, the end, a model's
+  // picture): one who may change it; the developer with the ticket, or with
+  // the upload's own pass (so it goes on with the vault closed)
+  function sending(req, u, id) {
+    ops.need(u);
+    const f = theFile(u, id, 'change');
+    if (isDeveloper(u) && !ticketOk(req, u) && !uploadOk(req, u, f.id)) throw locked();
+    rate(limits.work, u.id);
+    return f;
+  }
   const developerOnly = (u, what) => {
     if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', `${what}は開発者だけができます`);
   };
@@ -340,8 +374,37 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   }
   function pieceNo(f, raw) {
     const n = Number(raw);
-    if (!Number.isInteger(n) || n < 0 || n >= f.chunks) throw new ApiError(400, 'bad_piece', '部分の番号が正しくありません');
+    if (!Number.isInteger(n) || n < 0 || n >= f.chunks) throw new ApiError(400, 'bad_piece', 'ファイルの区切り（何番目の部分か）が合いません。「再開」を押すと、最初から確かめ直して送ります');
     return n;
+  }
+  // how long piece `n` is (the last one: what is left)
+  const pieceLen = (f, n) => (n === f.chunks - 1 ? f.size - n * f.piece : f.piece);
+  const pieceSize = () => new ApiError(400, 'piece_size', '送った部分の大きさが合いませんでした（通信が途中で切れたようです）。自動でもう一度送ります');
+  const badHash = () => new ApiError(400, 'bad_hash', '送った部分が途中で壊れていました（ハッシュが一致しません）。自動でもう一度送ります');
+  const isDone = () => new ApiError(409, 'done', 'このファイルはもう全部届いています');
+  // one piece in (checked): into the bucket, or the database
+  async function storePiece(f, n, bytes, want, req, u) {
+    if (bytes.length !== pieceLen(f, n)) throw pieceSize();
+    if (sha(bytes) !== want) throw badHash();
+    if (blobs) {
+      // (nothing written to the database: POST /api/vault/finish once all are sent)
+      await blobs.put(pieceKey(f.id, n), bytes, want);
+      if (!fileRow(f.id)) { await blobs.del([pieceKey(f.id, n)]); throw noFile(); }
+      return { n, stored: true, chunks: f.chunks };
+    }
+    const data = Buffer.from(bytes).toString('base64');
+    onDb(data.length);
+    const out = tx(() => {
+      q('INSERT INTO vault_chunks (file_id, n, sha256, data) VALUES (?, ?, ?, ?) ON CONFLICT(file_id, n) DO UPDATE SET sha256 = excluded.sha256, data = excluded.data')
+        .run(f.id, n, want, data);
+      const received = q('SELECT COUNT(*) AS n FROM vault_chunks WHERE file_id = ?').get(f.id).n;
+      if (received < f.chunks) {
+        q('UPDATE vault_files SET received = ? WHERE id = ?').run(received, f.id);
+        return { received, sum: '' };
+      }
+      return { received, sum: finish(f, q('SELECT sha256 FROM vault_chunks WHERE file_id = ? ORDER BY n').all(f.id).map((r) => r.sha256), req, u) };
+    });
+    return { n, received: out.received, chunks: f.chunks, done: !!out.sum, sha256: out.sum };
   }
   // every piece in: the file's fingerprint, and it is whole
   function finish(f, digests, req, u) {
@@ -570,9 +633,8 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // a 3D model's picture and what is in it (made on the operator site)
     'POST /api/vault/meta': async (req, u) => {
-      need(req, u, true);
       const body = await req.json(PREVIEW_MAX + INFO_MAX + 4096);
-      const f = theFile(u, body.id, 'change');
+      const f = sending(req, u, body.id);
       const preview = String(body.preview || '');
       if (preview && (preview.length > PREVIEW_MAX || !PREVIEW_RE.test(preview))) throw new ApiError(400, 'bad_preview', 'プレビュー画像の形式が正しくありません');
       const info = body.info && typeof body.info === 'object' && !Array.isArray(body.info) ? JSON.stringify(body.info) : '';
@@ -588,11 +650,13 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     },
 
     // a new file: its name, size, type, vault and folder; the pieces follow
+    // (with the upload's own pass that comes back). A model's light copy may
+    // also come with the model's pass (the vault closed meanwhile).
     'POST /api/vault/files': async (req, u) => {
-      need(req, u, true);
       const body = await req.json();
+      if (body.parent && uploadOk(req, u, String(body.parent))) { ops.need(u); rate(limits.work, u.id); } else need(req, u, true);
       const size = Number(body.size);
-      if (!Number.isSafeInteger(size) || size < 1) throw new ApiError(400, 'bad_size', 'ファイルの大きさが正しくありません');
+      if (!Number.isSafeInteger(size) || size < 1) throw new ApiError(400, 'bad_size', 'このファイルは中身が空（0バイト）か、端末から読み込めませんでした。中身のあるファイルを選び直してください（クラウドにだけあるファイルは、先に端末に保存してから選んでください）');
       if (size > fileBytes) throw new ApiError(413, 'too_large', `1つのファイルは${mb(fileBytes)}までです`);
       const name = cleanName(body.name);
       const type = /^[\w.+-]{1,60}\/[\w.+-]{1,60}$/.test(String(body.type || '')) ? String(body.type) : '';
@@ -611,58 +675,64 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
         q('INSERT INTO vault_files (id, name, type, note, size, chunks, piece, created_by, created_at, parent, folder, space) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
           .run(id, name, type, note, size, Math.ceil(size / pieceBytes), pieceBytes, u.id, Date.now(), parent ? parent.id : '', folder, space);
       });
-      return { file: fileDto(fileRow(id)) };
+      return { file: fileDto(fileRow(id)), upload: uploadFor(u, { id }) };
     },
 
-    // what an unfinished upload still needs
+    // what an unfinished upload still needs (and a new pass for it)
     'GET /api/vault/missing': async (req, u) => {
-      need(req, u, true);
-      const f = theFile(u, req.query.get('id'), 'change');
+      const f = sending(req, u, req.query.get('id'));
       const have = await piecesOf(f);
       if (!f.done_at && have.size !== f.received) q('UPDATE vault_files SET received = ? WHERE id = ?').run(have.size, f.id);
-      return { file: fileDto(fileRow(f.id)), missing: gaps(f, have) };
+      return { file: fileDto(fileRow(f.id)), missing: gaps(f, have), upload: uploadFor(u, f) };
     },
 
-    // one piece (base64, with its SHA-256)
+    // one piece as it is (?id=…&n=…, its SHA-256 in X-Piece-SHA256)
+    'POST /api/vault/piece': async (req, u) => {
+      const f = sending(req, u, req.query.get('id'));
+      if (f.done_at) throw isDone();
+      const n = pieceNo(f, req.query.get('n'));
+      const want = String(req.header('x-piece-sha256') || '').toLowerCase();
+      if (!HEX64.test(want)) throw new ApiError(400, 'bad_piece', '送った部分の確認用の値（SHA-256）がありません。ページを読み込み直してください');
+      const bytes = await req.bytes(pieceLen(f, n)).catch((e) => { throw e.code === 'too_large' ? pieceSize() : e; });
+      return storePiece(f, n, Buffer.from(bytes), want, req, u);
+    },
+
+    // one piece (base64 in JSON: the operator site before DEV11)
     'POST /api/vault/chunk': async (req, u) => {
-      need(req, u, true);
       const body = await req.json(pieceBody);
-      const f = theFile(u, body.id, 'change');
-      if (f.done_at) throw new ApiError(409, 'done', 'このファイルはもうそろっています');
+      const f = sending(req, u, body.id);
+      if (f.done_at) throw isDone();
       const n = pieceNo(f, body.n);
       const want = String(body.sha256 || '').toLowerCase();
       const data = String(body.data || '');
-      if (!HEX64.test(want) || !B64.test(data)) throw new ApiError(400, 'bad_piece', '部分の形式が正しくありません');
-      const bytes = Buffer.from(data, 'base64');
-      const expect = n === f.chunks - 1 ? f.size - n * f.piece : f.piece;
-      if (bytes.length !== expect) throw new ApiError(400, 'bad_piece', '部分の大きさが正しくありません');
-      if (sha(bytes) !== want) throw new ApiError(400, 'bad_hash', '部分が途中で壊れています（ハッシュが一致しません）。もう一度送ってください');
-      if (blobs) {
-        // into the bucket (nothing written to the database: POST /api/vault/finish once all are sent)
-        await blobs.put(pieceKey(f.id, n), bytes, want);
-        if (!fileRow(f.id)) { await blobs.del([pieceKey(f.id, n)]); throw noFile(); }
-        return { n, stored: true, chunks: f.chunks };
-      }
-      onDb(data.length);
-      const out = tx(() => {
-        q('INSERT INTO vault_chunks (file_id, n, sha256, data) VALUES (?, ?, ?, ?) ON CONFLICT(file_id, n) DO UPDATE SET sha256 = excluded.sha256, data = excluded.data')
-          .run(f.id, n, want, bytes.toString('base64'));
-        const received = q('SELECT COUNT(*) AS n FROM vault_chunks WHERE file_id = ?').get(f.id).n;
-        if (received < f.chunks) {
-          q('UPDATE vault_files SET received = ? WHERE id = ?').run(received, f.id);
-          return { received, sum: '' };
-        }
-        return { received, sum: finish(f, q('SELECT sha256 FROM vault_chunks WHERE file_id = ? ORDER BY n').all(f.id).map((r) => r.sha256), req, u) };
-      });
-      return { received: out.received, chunks: f.chunks, done: !!out.sum, sha256: out.sum };
+      if (!HEX64.test(want) || !B64.test(data)) throw new ApiError(400, 'bad_piece', '送った部分の形式が正しくありません。ページを読み込み直してください');
+      return storePiece(f, n, Buffer.from(data, 'base64'), want, req, u);
+    },
+
+    // Cloudflare: may this piece go straight into the bucket (the Worker
+    // asks, with the piece's size and SHA-256), and under which key ('' : no
+    // bucket, the object takes it itself)
+    'POST /api/vault/permit': async (req, u) => {
+      const body = await req.json();
+      const f = sending(req, u, req.query.get('id'));
+      if (f.done_at) throw isDone();
+      const n = pieceNo(f, req.query.get('n'));
+      if (!HEX64.test(String(body.sha256 || ''))) throw new ApiError(400, 'bad_piece', '送った部分の確認用の値（SHA-256）がありません。ページを読み込み直してください');
+      if (Number(body.size) !== pieceLen(f, n)) throw pieceSize();
+      return { n, key: blobs ? pieceKey(f.id, n) : '' };
+    },
+    // …and after it went in: is the file still there (deleted meanwhile: the Worker takes the piece out again)
+    'POST /api/vault/stored': (req, u) => {
+      ops.need(u);
+      const f = theFile(u, req.query.get('id'));
+      return { ok: true, chunks: f.chunks };
     },
 
     // every piece sent: the file is whole once all of them are in (what is
     // still missing otherwise)
     'POST /api/vault/finish': async (req, u) => {
-      need(req, u, true);
       const body = await req.json();
-      const f = theFile(u, body.id, 'change');
+      const f = sending(req, u, body.id);
       if (f.done_at) return { file: fileDto(f), done: true, sha256: f.sha256, missing: [] };
       const have = await piecesOf(f);
       if (have.size < f.chunks) {

@@ -17,8 +17,47 @@ const MAX_BODY = 9 * 1024 * 1024;
 // piece is 8 MiB, about 11.2 MB as sent, and at most 16 MiB (VAULT_PIECE_MB);
 // the route itself checks the exact size (server/core/vault.js)
 const VAULT_PIECE_BODY = 23 * 1024 * 1024;
+// a vault piece sent as it is (POST /api/vault/piece): at most this big (the
+// object says the exact size)
+const VAULT_PIECE_MAX = 16 * 1024 * 1024;
 // what the object is told about a request the automatic filter stopped
 const PASS = ['authorization', 'user-agent', 'x-device', 'origin', 'referer', 'cf-connecting-ip'];
+// …and what it needs to say whether a vault piece may go
+const ASK = [...PASS, 'x-vault-ticket', 'x-vault-upload'];
+
+const answer = (status, error) => Response.json({ error }, { status, headers: { 'Cache-Control': 'no-store' } });
+
+// A piece of a vault file, straight into R2: the object (the whole game, one
+// at a time) is only asked whether it may go and where — a few bytes — and
+// the piece streams from the operator site into the bucket, which checks its
+// SHA-256 itself. So big uploads never fill the object's memory (that
+// stopped the whole site) nor keep the game waiting.
+async function vaultPiece(request, env, casino, url) {
+  const size = Number(request.headers.get('content-length') || -1);
+  const sha = String(request.headers.get('x-piece-sha256') || '').toLowerCase();
+  if (!(size > 0)) return answer(411, { code: 'length_required', message: '送る部分の大きさがわかりませんでした。ページを読み込み直してください' });
+  if (size > VAULT_PIECE_MAX) return answer(413, { code: 'too_large', message: '送信できません。大きすぎます。' });
+  const headers = new Headers({ 'content-type': 'application/json' });
+  for (const k of ASK) if (request.headers.has(k)) headers.set(k, request.headers.get(k));
+  const ask = (path, body) => casino.fetch(new Request(new URL(path + url.search, url), { method: 'POST', headers, body: JSON.stringify(body) }));
+  const permit = await ask('/api/vault/permit', { size, sha256: sha });
+  if (!permit.ok) return permit;
+  const p = await permit.json();
+  // (no bucket: the object takes it itself)
+  if (!p.key) return casino.fetch(new Request(request));
+  try {
+    await env.VAULT.put(p.key, request.body, { sha256: sha, customMetadata: { sha256: sha } });
+  } catch (e) {
+    const broken = /digest|checksum|sha-?256|integrity|length/i.test(String(e && e.message));
+    return broken
+      ? answer(400, { code: 'bad_hash', message: '送った部分が途中で壊れていました（ハッシュが一致しません）。自動でもう一度送ります' })
+      : answer(503, { code: 'unavailable', message: '保存先（R2）が混み合っています。自動でもう一度送ります' });
+  }
+  // still there? (deleted meanwhile: the piece goes again)
+  const still = await ask('/api/vault/stored', {});
+  if (still.status === 404) { await env.VAULT.delete(p.key); return still; }
+  return Response.json({ n: p.n, stored: true }, { headers: { 'Cache-Control': 'no-store' } });
+}
 
 function failure(e) {
   const body = isQuotaError(e)
@@ -34,6 +73,7 @@ export default {
     const casino = env.CASINO.get(env.CASINO.idFromName(DATABASE));
     try {
       if (request.method === 'GET' || request.method === 'HEAD') return await casino.fetch(request);
+      if (request.method === 'POST' && url.pathname === '/api/vault/piece' && env.VAULT) return await vaultPiece(request, env, casino, url);
       // bodies are small; reading them here lets the object answer early (e.g. 403) cleanly
       const most = request.method === 'POST' && url.pathname === '/api/vault/chunk' ? VAULT_PIECE_BODY : MAX_BODY;
       if (Number(request.headers.get('content-length') || 0) > most) {

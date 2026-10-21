@@ -7,7 +7,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { register } from 'node:module';
 import { startServer } from './helpers.js';
+
+// 'cloudflare:workers' as far as the Worker (server/cloudflare/worker.js → casino.js) needs it
+const STUB = 'export class DurableObject { constructor(ctx, env) { this.ctx = ctx; this.env = env; } }';
+register('data:text/javascript,' + encodeURIComponent(`export async function resolve(spec, ctx, next) {
+  if (spec === 'cloudflare:workers') return { url: 'data:text/javascript,' + encodeURIComponent(${JSON.stringify(STUB)}), shortCircuit: true };
+  return next(spec, ctx);
+}`));
+globalThis.WebSocketRequestResponsePair ??= class { constructor(a, b) { this.request = a; this.response = b; } };
 
 const CODE = '987654321098';   // (a test code: the real one is never written anywhere)
 const LIMITS = { general: [100000, 1000], login: [100000, 1000], vaultWork: [100000, 1000], vaultPull: [100000, 1000], vaultOpen: [100000, 1000] };
@@ -442,6 +451,124 @@ test('an AI comments on a file through its link; the developer sees it as by AI'
     // a plain link cannot comment
     const plain = (await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1 })).token;
     assert.equal((await s.call('POST', '/api/vault/ai', { body: { t: plain, f: f.id, comment: 'x' } })).status, 404);
+  } finally {
+    await s.stop();
+  }
+});
+
+// a piece sent as it is (POST /api/vault/piece), with its SHA-256
+const sendPiece = (s, who, f, n, part, headers = {}) => fetch(`${s.base}/api/vault/piece?id=${f.id}&n=${n}`, {
+  method: 'POST', body: part,
+  headers: { Authorization: `Bearer ${who.token}`, 'Content-Type': 'application/octet-stream', 'X-Piece-SHA256': hash(part), ...headers }
+}).then(async (r) => ({ ...(await r.json()), status: r.status }));
+
+test('big uploads: pieces sent as they are, the upload\'s own pass goes on with the vault closed, clear refusals', async () => {
+  for (const blobs of [null, memoryBucket()]) {
+    const s = await startServer({ operators: ['taku', 'mod1'], limits: LIMITS, blobs, vaultPieceMb: 1 });
+    try {
+      const taku = await developer(s);
+      const mod = await person(s, 'Mod1');
+      const data = crypto.randomBytes(mbs(2.5));
+      const r = await taku.call('POST', '/api/vault/files', { name: 'big.glb', size: data.length, type: 'model/gltf-binary' });
+      assert.equal(r.file.chunks, 3);
+      assert.match(r.upload, /^\d+\.[0-9a-f]{32}\.\d{13}\.[\w-]{43}$/, 'the upload\'s own pass');
+      const f = r.file, part = (n) => data.subarray(n * f.piece, (n + 1) * f.piece);
+      // the first piece with the ticket
+      assert.equal((await sendPiece(s, taku, f, 0, part(0), { 'X-Vault-Ticket': taku.ticket })).status, 200);
+      // the vault closed (no ticket): the pass alone is enough for this file's pieces and its end
+      const pass = { 'X-Vault-Upload': r.upload };
+      assert.equal((await sendPiece(s, taku, f, 1, part(1))).error.code, 'vault_locked', 'neither ticket nor pass');
+      assert.equal((await sendPiece(s, taku, f, 1, part(1), pass)).status, 200);
+      // a broken or short piece: told plainly, and nothing kept
+      const bad = Buffer.from(part(2)); bad[0] ^= 1;
+      const broken = await fetch(`${s.base}/api/vault/piece?id=${f.id}&n=2`, { method: 'POST', body: bad, headers: { Authorization: `Bearer ${taku.token}`, 'X-Piece-SHA256': hash(part(2)), ...pass } }).then((x) => x.json());
+      assert.equal(broken.error.code, 'bad_hash');
+      assert.match(broken.error.message, /自動でもう一度送ります/);
+      const short = await sendPiece(s, taku, f, 2, part(2).subarray(0, 100), pass);
+      assert.equal(short.error.code, 'piece_size');
+      const missing = await s.call('GET', `/api/vault/missing?id=${f.id}`, { token: taku.token, headers: pass });
+      assert.deepEqual(missing.missing, [[2, 2]]);
+      assert.match(missing.upload, /^\d+\./, 'a new pass with it');
+      assert.equal((await sendPiece(s, taku, f, 2, part(2), pass)).status, 200);
+      const done = await s.call('POST', '/api/vault/finish', { token: taku.token, body: { id: f.id }, headers: pass });
+      assert.equal(done.done, true, JSON.stringify(done));
+      // the whole file comes back the same
+      const back = [];
+      for (let n = 0; n < 3; n++) back.push(Buffer.from((await taku.call('GET', `/api/vault/chunk?id=${f.id}&n=${n}`)).data, 'base64'));
+      assert.ok(Buffer.concat(back).equals(data));
+      // the pass is that file's and that person's only: another file still needs the ticket
+      const other = await taku.call('POST', '/api/vault/files', { name: 'other.bin', size: 10 });
+      assert.equal((await sendPiece(s, taku, other.file, 0, Buffer.alloc(10, 1), pass)).error.code, 'vault_locked');
+      // a model's light copy may come with the model's pass (the vault closed meanwhile)
+      const light = await s.call('POST', '/api/vault/files', { token: taku.token, body: { name: 'big.light.glb', size: 5, parent: f.id }, headers: pass });
+      assert.equal(light.status, 200, JSON.stringify(light));
+      assert.equal((await s.call('POST', '/api/vault/files', { token: taku.token, body: { name: 'x.bin', size: 5 }, headers: pass })).error.code, 'vault_locked', 'not a new file of its own');
+      // an operator's own upload needs no code; someone else's pass is nothing to them
+      const own = await mod.call('POST', '/api/vault/files', { space: `u:${mod.id}`, name: 'a.bin', size: 4 });
+      assert.equal((await sendPiece(s, mod, own.file, 0, Buffer.from('abcd'))).status, 200);
+      assert.equal((await sendPiece(s, mod, f, 0, part(0), pass)).error.code, 'no_file');
+      // an empty file: what to do about it, said plainly
+      const empty = await taku.call('POST', '/api/vault/files', { name: 'empty.txt', size: 0 });
+      assert.equal(empty.error.code, 'bad_size');
+      assert.match(empty.error.message, /0バイト/);
+    } finally {
+      await s.stop();
+    }
+  }
+});
+
+test('Cloudflare: a vault piece goes from the Worker straight into R2 (the object is only asked), R2 checks its hash', async () => {
+  const bucket = memoryBucket();
+  const s = await startServer({ operators: ['taku'], limits: LIMITS, blobs: bucket, vaultPieceMb: 1 });
+  try {
+    const taku = await developer(s);
+    // the object: here, the Node server (the same core); R2: the bucket the server reads, checking SHA-256 as R2 does
+    const asked = [];
+    const casino = { fetch: async (req) => {
+      const u = new URL(req.url);
+      asked.push(u.pathname);
+      const body = req.method === 'GET' ? undefined : await req.arrayBuffer();
+      return fetch(s.base + u.pathname + u.search, { method: req.method, headers: req.headers, body });
+    } };
+    const VAULT = {
+      async put(key, stream, opts) {
+        const bytes = Buffer.from(await new Response(stream).arrayBuffer());
+        if (hash(bytes) !== opts.sha256) throw new Error('put: The SHA-256 checksum you specified did not match what we received.');
+        await bucket.put(key, bytes, opts.customMetadata.sha256);
+      },
+      async delete(key) { await bucket.del([key]); }
+    };
+    const env = { VAULT, ASSETS: { fetch: () => new Response('') }, CASINO: { idFromName: () => 'main', get: () => casino } };
+    const { default: worker } = await import('../cloudflare/worker.js');
+    const data = crypto.randomBytes(mbs(1.5));
+    const r = await taku.call('POST', '/api/vault/files', { name: 'car.glb', size: data.length });
+    const f = r.file, part = (n) => data.subarray(n * f.piece, (n + 1) * f.piece);
+    const put = (n, body, sha = hash(part(n)), extra = {}) => worker.fetch(new Request(`https://x/api/vault/piece?id=${f.id}&n=${n}`, {
+      method: 'POST', body, headers: { Authorization: `Bearer ${taku.token}`, 'X-Vault-Upload': r.upload, 'X-Piece-SHA256': sha, 'Content-Length': String(body.length), ...extra }
+    }), env).then(async (x) => ({ ...(await x.json()), status: x.status }));
+    const a = await put(0, part(0));
+    assert.deepEqual([a.status, a.stored], [200, true], JSON.stringify(a));
+    assert.deepEqual(asked, ['/api/vault/permit', '/api/vault/stored'], 'the object only asked, never sent the piece');
+    assert.ok(bucket.objects.has(`vault/${f.id}/0`));
+    // broken on the way: R2 refuses it, said plainly
+    const bad = Buffer.from(part(1)); bad[5] ^= 1;
+    const b = await put(1, bad, hash(part(1)));
+    assert.deepEqual([b.status, b.error.code], [400, 'bad_hash']);
+    // the wrong size: the object says no before anything is stored
+    const c = await put(1, part(1).subarray(0, 10));
+    assert.equal(c.error.code, 'piece_size');
+    assert.equal((await put(1, part(1))).status, 200);
+    const done = await s.call('POST', '/api/vault/finish', { token: taku.token, body: { id: f.id }, headers: { 'X-Vault-Upload': r.upload } });
+    assert.equal(done.done, true, JSON.stringify(done));
+    // a file deleted while its piece was on the way: the piece does not stay
+    const g = await taku.call('POST', '/api/vault/files', { name: 'gone.bin', size: 100 });
+    const gonePut = VAULT.put;
+    VAULT.put = async (key, stream, opts) => { await gonePut(key, stream, opts); await taku.call('POST', '/api/vault/delete', { id: g.file.id }); };
+    const gone = await worker.fetch(new Request(`https://x/api/vault/piece?id=${g.file.id}&n=0`, {
+      method: 'POST', body: Buffer.alloc(100, 7), headers: { Authorization: `Bearer ${taku.token}`, 'X-Vault-Upload': g.upload, 'X-Piece-SHA256': hash(Buffer.alloc(100, 7)), 'Content-Length': '100' }
+    }), env);
+    assert.equal(gone.status, 404);
+    assert.ok(![...bucket.objects.keys()].some((k) => k.startsWith(`vault/${g.file.id}/`)));
   } finally {
     await s.stop();
   }

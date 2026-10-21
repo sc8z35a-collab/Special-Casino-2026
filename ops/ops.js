@@ -373,8 +373,11 @@
     $('#tab-pay').hidden = !state.developer;
     $('#tab-vault').hidden = false;
     resetVault();
-    waiting = [];
-    renderWaiting();
+    // (this account's uploads waiting in this browser)
+    Object.keys(up.cards).forEach(function (k) { up.cards[k].card.remove(); });
+    up.cards = {};
+    up.jobs = {};
+    refreshJobs().then(kick);
     opsLiveOpen();
     if (state.developer) loadPay(true);
     load();
@@ -421,7 +424,7 @@
       // the vault open: what the other one of a shared vault did (not while files go up or down)
       if (state.view === 'vault') {
         if (!state.vault) openLook(true);
-        else if (!moving && !resuming && $('#viewer').hidden && $('#vmenu').hidden) loadVault(true);
+        else if (!moving && $('#viewer').hidden && $('#vmenu').hidden) loadVault(true);
       }
     }, SPEEDS[speed][0]);
     clearInterval(liveTimer);
@@ -2999,7 +3002,8 @@
       if (!quiet || sig !== vaultSig) { vaultSig = sig; renderVault(); }
       if (commentsFor) renderComments();
       toBucket();
-      resumeWaiting(false);
+      renderResume();
+      roomCame();
     }, function (err) {
       // (a shared vault no longer there: back to the first one)
       var first = state.vaultSpaces && state.vaultSpaces.spaces[0], back = state.developer ? '' : first ? first.id : '';
@@ -3596,7 +3600,7 @@
     renderMemo();
     $('#vault-filter').hidden = !own || !info;
     $('#vault-path').hidden = !info || state.vaultSpace === 'backup';
-    if (!info) { renderPicked(); renderWaiting(); return; }
+    if (!info) { renderPicked(); renderResume(); return; }
     // where it is: 保管庫 / 車 / 新車 (each a way back)
     [{ id: '', name: rootName() }].concat(trail(state.vaultFolder)).forEach(function (d, i, a) {
       if (i) path.appendChild(el('span', 'muted', '/'));
@@ -3617,7 +3621,7 @@
     tops.slice(state.vaultPage * VAULT_PAGE, (state.vaultPage + 1) * VAULT_PAGE).forEach(function (f) { list.appendChild(vaultCard(f)); });
     renderPager(pages, tops.length);
     renderPicked();
-    renderWaiting();
+    renderResume();
   }
   var VAULT_PAGE = 10;
   function renderPager(pages, n) {
@@ -3781,7 +3785,7 @@
       var name = v.value.trim();
       if (!/\.[A-Za-z0-9]{1,10}$/.test(name)) name += '.txt';
       var ext = name.split('.').pop().toLowerCase();
-      return upload(new File([v.text], name, { type: TEXT_TYPES[ext] || 'text/plain' }), { note: '', folder: state.vaultFolder, space: state.vaultSpace });
+      return queueFile(new File([v.text], name, { type: TEXT_TYPES[ext] || 'text/plain' }), { note: '', folder: state.vaultFolder, space: state.vaultSpace });
     }).catch(fail);
   }
   // a memo on the next files picked
@@ -3966,86 +3970,252 @@
     }
     return Promise.all([worker(), worker(), worker(), worker()]).then(function () { if (failed) throw failed; });
   }
-  // o: { id: an unfinished one to go on with, parent: the model of a light
-  // copy, note, space and folder (where it goes), rec: the stopped upload
-  // this takes up again }
-  function upload(file, o) {
-    o = o || {};
-    var j = job(file.name + '（アップロード）'), made = null;
-    var begin = o.id
-      ? vreq('GET', '/api/vault/missing?id=' + o.id).then(function (r) {
-        if (r.file.size !== file.size) throw { message: 'ファイルの大きさが違います。同じファイルを選んでください' };
-        var todo = [];
-        r.missing.forEach(function (m) { for (var n = m[0]; n <= m[1]; n++) todo.push(n); });
-        return { file: r.file, todo: todo };
-      })
-      : vreq('POST', '/api/vault/files', {
-        name: file.name, size: file.size, type: file.type || '', note: o.parent ? '' : o.note || '', parent: o.parent || undefined,
-        space: o.parent ? undefined : o.space || '', folder: o.parent ? undefined : o.folder || ''
-      }).then(function (r) {
-        var todo = [];
-        for (var n = 0; n < r.file.chunks; n++) todo.push(n);
-        return { file: r.file, todo: todo };
-      });
-    return begin.then(function (b) {
-      made = b.file;
-      var CH = b.file.piece || state.vault.chunk, done = b.file.chunks - b.todo.length;
-      j.set(done, b.file.chunks);
-      return pieces(b.todo, function (n) {
-        return file.slice(n * CH, Math.min(file.size, (n + 1) * CH)).arrayBuffer().then(function (buf) {
-          return sha(buf).then(function (h) {
-            return vreq('POST', '/api/vault/chunk', { id: b.file.id, n: n, sha256: hex(h), data: base64(new Uint8Array(buf)) });
-          });
-        }).then(function () { done++; j.set(done, b.file.chunks); });
-      });
-    }).then(function () {
-      // every piece sent: the server puts the file together (R2 keeps no count of them)
-      return vreq('POST', '/api/vault/finish', { id: made.id });
-    }).then(function (r) {
-      if (!r.done) throw { code: 'missing', message: '届いていない部分があります' };
-      j.finish('保存しました（SHA-256 ' + String(r.sha256).slice(0, 16) + '…）');
-      return loadVault().then(function () { if (!o.parent && made && is3d(file.name)) return preview(made, file); });
-    }, function (err) {
-      var why = stalled(err);
-      if (why) {
-        wait(file, { id: made ? made.id : o.id, parent: o.parent, note: o.note, space: o.space, folder: o.folder, rec: o.rec }, why);
-        j.pause('止まりました：' + WHY[why]);
-      } else j.fail((err && err.message) || 'アップロードできませんでした');
-      return loadVault();
+  /* ------------------------------------------------------------ uploads --- */
+  /* The files go up on their own (ops/vault-upload.js): in the site's
+     background worker (ops/ops-sw.js) where there is one, so they go on with
+     the vault closed and with this page closed; else here. Each one waits in
+     this browser with its upload's own pass, and is shown here while it goes:
+     a stopped one (the connection, the server busy, the room) goes on by
+     itself, and 「再開」 sends every stopped one again at once. */
+  var up = { mode: '', reg: null, engine: null, jobs: {}, cards: {}, mem: {}, ready: null };
+  var UP_WHY = {
+    net: '通信が切れたか、サーバーが混み合っています。自動で続きから送ります',
+    locked: 'アップロードの許可（1週間）が切れました。「編集する」で開発者コードを入れて「再開」を押してください',
+    login: 'ログインが切れました。ログインし直して「再開」を押してください',
+    full: '保管庫がいっぱいです。空きができしだい送ります',
+    room: 'あなたの容量の上限です。開発者の承認か空きができしだい送ります（「容量を申請」から申請できます）',
+    gone: 'このファイルは保管庫から削除されました',
+    error: ''
+  };
+  function upInit() {
+    var page = function () {
+      up.mode = 'page';
+      up.engine = VaultUploads.engine({ tell: onJob, mine: function () { return true; }, file: function (key) { return up.mem[key] || null; } });
+      return 'page';
+    };
+    if ('serviceWorker' in navigator && window.isSecureContext && window.indexedDB) {
+      navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.type === 'vault-upload') onJob(e.data.job); });
+      up.ready = navigator.serviceWorker.register('/ops/ops-sw.js', { scope: '/ops/' }).then(function (reg) {
+        up.reg = reg;
+        return activeOf(reg);
+      }).then(function () {
+        up.mode = 'sw';
+        // (a file only this page holds: sent from here)
+        up.engine = VaultUploads.engine({ tell: onJob, mine: function (j) { return !!j.mem; }, file: function (key) { return up.mem[key] || null; } });
+        return 'sw';
+      }, page);
+    } else up.ready = Promise.resolve(window.indexedDB ? page() : 'none');
+    up.ready.then(function () { refreshJobs(); kick(); });
+  }
+  function activeOf(reg) {
+    return new Promise(function (ok, no) {
+      var w = reg.active || reg.waiting || reg.installing;
+      if (!w) { no(new Error('no worker')); return; }
+      if (w.state === 'activated') { ok(w); return; }
+      w.addEventListener('statechange', function () { if (w.state === 'activated') ok(w); else if (w.state === 'redundant') no(new Error('redundant')); });
     });
   }
-
-  /* uploads that stopped (the vault full, one's own room in the shared vaults
-     used up, the connection gone, the vault closed) go on where they
-     stopped, on their own, while this page is open */
-  var waiting = [], resuming = false;
-  var WHY = {
-    full: '保管庫がいっぱいです。空きができしだい続きから送ります',
-    room: 'あなたの容量の上限です。開発者の承認か空きができしだい続きから送ります（「容量を申請」から申請できます）',
-    net: '通信が切れました。戻りしだい続きから送ります',
-    locked: '保管庫が閉じました。開きしだい続きから送ります'
-  };
-  function stalled(err) {
-    if (!err) return '';
-    if (err.code === 'vault_full') return 'full';
-    if (err.code === 'need_approval' || err.code === 'over_limit') return 'room';
-    if (err.code === 'vault_locked') return 'locked';
-    if (err.code === 'missing' || err.status === 0 || err.status === 429 || err.status >= 500) return 'net';
-    return '';
+  // the files go (whichever runs them)
+  function kick() {
+    if (!up.ready) return;
+    up.ready.then(function (mode) {
+      if (mode === 'sw' && up.reg && up.reg.active) up.reg.active.postMessage({ type: 'kick' });
+      if (up.engine && (mode === 'page' || Object.keys(up.mem).length)) up.engine.run();
+    });
   }
-  function wait(file, o, why) {
-    var w = o.rec || { file: file, tries: 0 };
-    if (waiting.indexOf(w) < 0) waiting.push(w);
-    w.id = o.id || null;
-    w.parent = o.parent || null;
-    w.note = o.note;
-    w.space = o.space || '';
-    w.folder = o.folder;
-    w.why = why;
-    w.tries++;
-    // (tried again after 5 s, then 10, 20, 40, and every minute)
-    w.next = Date.now() + Math.min(60000, 5000 * Math.pow(2, Math.min(4, w.tries - 1)));
-    renderWaiting();
+  // what waits in this browser, shown (this account's only; finished ones go after a while)
+  function refreshJobs() {
+    if (!window.indexedDB) return Promise.resolve();
+    return VaultUploads.all().then(function (list) {
+      list.forEach(function (j) { if (j.who === state.name) onJob(j); });
+    }, function () {});
+  }
+  function upMine(j) { return j && j.who === state.name; }
+  function onJob(j) {
+    if (!upMine(j)) return;
+    var was = up.jobs[j.key];
+    up.jobs[j.key] = j;
+    renderJob(j);
+    if (j.state === 'done' && (!was || was.state !== 'done')) jobDone(j);
+    renderResume();
+  }
+  function jobText(j) {
+    var p = j.chunks ? Math.round(j.sent / j.chunks * 100) : 0;
+    if (j.state === 'done') return '保存しました' + (j.sha256 ? '（SHA-256 ' + String(j.sha256).slice(0, 16) + '…）' : '');
+    if (j.state === 'run') return '送信中… ' + mb(Math.min(j.size, j.sent * (j.piece || 0))) + ' / ' + mb(j.size) + '（' + p + '%）';
+    if (j.state === 'wait') return '順番待ち（' + mb(j.size) + '）';
+    var why = UP_WHY[j.why] || '';
+    if (j.state === 'fail') return 'できませんでした：' + (j.message || why || 'もう一度ファイルを選んでください');
+    return '止まりました：' + (j.why === 'error' || !why ? (j.message || 'もう一度「再開」を押してください') : why) + (j.chunks ? '（' + p + '% 送信済み）' : '');
+  }
+  function renderJob(j) {
+    var c = up.cards[j.key];
+    if (!c) {
+      var card = el('article', 'card job up-job');
+      var head = el('div', 'up-job-head');
+      head.appendChild(el('b', '', j.name + (j.parent ? '（軽量版）' : '')));
+      var x = el('button', 'btn small ghost', 'やめる');
+      x.type = 'button';
+      x.dataset.upCancel = j.key;
+      head.appendChild(x);
+      card.appendChild(head);
+      var bar = el('div', 'bar'), fill = el('i');
+      bar.appendChild(fill);
+      card.appendChild(bar);
+      var note = el('span', 'muted');
+      card.appendChild(note);
+      $('#vault-jobs').insertBefore(card, $('#vault-jobs').firstChild);
+      c = up.cards[j.key] = { card: card, fill: fill, note: note, x: x };
+    }
+    var p = j.state === 'done' ? 100 : j.chunks ? j.sent / j.chunks * 100 : 0;
+    c.fill.style.width = p.toFixed(1) + '%';
+    c.note.textContent = jobText(j);
+    c.card.classList.toggle('ok', j.state === 'done');
+    c.card.classList.toggle('paused', j.state === 'stop');
+    c.card.classList.toggle('bad', j.state === 'fail');
+    c.x.hidden = j.state === 'done';
+  }
+  // a file in: the list again; a model's picture made here (its file kept for it till then)
+  function jobDone(j) {
+    if (state.vault) loadVault();
+    var go = Promise.resolve();
+    if (j.model && !j.parent) {
+      go = Promise.resolve(j.mem ? up.mem[j.key] : VaultUploads.fileOf(j.key)).then(function (blob) {
+        if (blob) return preview({ id: j.id, name: j.name }, blob, j);
+        return null;
+      });
+    }
+    go.then(function () {
+      setTimeout(function () { dropJob(j.key, true); }, 20000);
+    });
+  }
+  function dropJob(key, quiet) {
+    var c = up.cards[key];
+    if (c) c.card.remove();
+    delete up.cards[key];
+    delete up.jobs[key];
+    delete up.mem[key];
+    renderResume();
+    return VaultUploads.forget(key).catch(function () {}).then(function () { if (!quiet) kick(); });
+  }
+  function cancelJob(key) {
+    var j = up.jobs[key];
+    if (!j) return;
+    if (up.reg && up.reg.active) up.reg.active.postMessage({ type: 'cancel', key: key });
+    if (up.engine) up.engine.cancel(key);
+    dropJob(key);
+    toast('「' + j.name + '」のアップロードをやめました' + (j.id ? '（届いた部分は保管庫に「アップロード途中」で残ります。削除もできます）' : ''));
+  }
+  var upSeq = 0;
+  // Files into the vault open now: each gets its place on the server (its
+  // upload's own pass with it) and waits in this browser to go. `o`: { note,
+  // space, folder, parent (a model's light copy: its pass), id (an unfinished
+  // one to go on with) }
+  function queueFile(file, o) {
+    o = o || {};
+    var j = {
+      key: Date.now().toString(36) + '-' + (++upSeq) + '-' + Math.random().toString(36).slice(2, 8),
+      who: state.name, id: o.id || '', name: file.name, size: file.size, type: file.type || '',
+      note: o.note || '', space: o.parent ? '' : o.space || '', folder: o.folder || '', parent: o.parent || '',
+      model: !o.parent && is3d(file.name) && file.size > 0, token: token, pass: o.pass || '', piece: 0, chunks: 0, sent: 0,
+      state: 'wait', why: '', message: '', tries: 0, next: 0, at: Date.now(), mem: false
+    };
+    if (!file.size) { toast('「' + file.name + '」は中身が空（0バイト）か、端末から読み込めませんでした。中身のあるファイルを選んでください'); return Promise.resolve(null); }
+    if (state.vault && file.size > state.vault.fileBytes) { toast('「' + file.name + '」は大きすぎます（1ファイル ' + mb(state.vault.fileBytes) + 'まで）'); return Promise.resolve(null); }
+    // kept in this browser (too big for its storage: in this page only, and sent from here)
+    return VaultUploads.add(j, file).catch(function () {
+      j.mem = true;
+      up.mem[j.key] = file;
+      return VaultUploads.add(j, null);
+    }).then(function () {
+      if (j.mem) up.mem[j.key] = file;
+      onJob(j);
+      return j.id ? passFor(j) : place(j);
+    }).then(function () { kick(); return j; });
+  }
+  // its place on the server (and its pass); the room not there: it waits
+  function place(j) {
+    var extra = j.parent && j.pass ? { 'X-Vault-Upload': j.pass } : null;
+    var body = { name: j.name, size: j.size, type: j.type, note: j.parent ? '' : j.note, parent: j.parent || undefined, space: j.parent ? undefined : j.space, folder: j.parent ? undefined : j.folder };
+    var call = extra ? request('POST', '/api/vault/files', body, Object.assign({}, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, extra)) : vreq('POST', '/api/vault/files', body);
+    return call.then(function (r) {
+      j.id = r.file.id;
+      j.pass = r.upload;
+      j.piece = r.file.piece;
+      j.chunks = r.file.chunks;
+      j.state = 'wait';
+      j.why = '';
+      j.message = '';
+      return VaultUploads.save(j).then(function () { onJob(j); });
+    }, function (err) { return stopJob(j, err); });
+  }
+  // an unfinished one on the server, gone on with: a new pass for it
+  function passFor(j) {
+    return vreq('GET', '/api/vault/missing?id=' + j.id).then(function (r) {
+      if (r.file.size !== j.size) {
+        // (not the same file after all: a new one)
+        j.id = '';
+        return place(j);
+      }
+      j.pass = r.upload;
+      j.state = 'wait';
+      j.why = '';
+      return VaultUploads.save(j).then(function () { onJob(j); });
+    }, function (err) { return stopJob(j, err); });
+  }
+  function stopJob(j, err) {
+    var code = err && err.code;
+    j.state = code === 'no_file' ? 'fail' : 'stop';
+    j.why = code === 'vault_full' ? 'full' : code === 'need_approval' || code === 'over_limit' ? 'room' : code === 'vault_locked' ? 'locked'
+      : err && (err.status === 0 || err.status === 429 || err.status >= 500) ? 'net' : code === 'no_file' ? 'gone' : 'error';
+    j.message = (err && err.message) || '';
+    j.next = Date.now() + 15000;
+    return VaultUploads.save(j).then(function () { onJob(j); });
+  }
+  // 「再開」: every stopped file again at once (its place or its pass first
+  // where it needs one); unfinished files with nothing here: picked again
+  function resumeAll() {
+    var list = Object.keys(up.jobs).map(function (k) { return up.jobs[k]; }).filter(function (j) { return j.state !== 'done'; });
+    var tasks = list.map(function (j) {
+      j.token = token;
+      j.tries = 0;
+      j.next = 0;
+      if (!j.id) return place(j);
+      if (j.why === 'locked' || j.state === 'fail' && j.why !== 'gone') return passFor(j);
+      if (j.why === 'gone') return dropJob(j.key, true);
+      j.state = 'wait';
+      j.why = '';
+      j.message = '';
+      return VaultUploads.save(j).then(function () { onJob(j); });
+    });
+    return Promise.all(tasks).then(function () {
+      kick();
+      var known = {};
+      list.forEach(function (j) { if (j.id) known[j.id] = true; });
+      var left = (state.vaultFiles || []).filter(function (f) { return !f.done && !known[f.id]; });
+      if (left.length && canWrite()) {
+        toast('続きを送るファイルを選んでください（' + left.length + '件：' + left.slice(0, 3).map(function (f) { return f.name; }).join('、') + (left.length > 3 ? ' ほか' : '') + '）');
+        $('#vault-file').click();
+      } else if (list.length) toast('止まっていたアップロードを再開しました（' + list.length + '件）');
+      else if (!left.length) toast('止まっているアップロードはありません');
+      else toast('「編集する」で開発者コードを入れると、途中のファイルの続きを送れます');
+    });
+  }
+  // an unfinished file tapped: its upload waiting here goes on at once;
+  // without one here, the same file is picked again (its pieces go on)
+  function goOn(f) {
+    var j = Object.keys(up.jobs).map(function (k) { return up.jobs[k]; }).filter(function (x) { return x.id === f.id && x.state !== 'done'; })[0];
+    if (j) {
+      j.state = 'wait';
+      j.next = 0;
+      j.tries = 0;
+      VaultUploads.save(j).then(function () { onJob(j); kick(); toast('「' + f.name + '」の続きを送ります'); });
+      return;
+    }
+    if (!canWrite()) { toast('アップロードの途中です（「編集する」で開発者コードを入れると、続きを送れます）'); return; }
+    state.resumeId = f.id;
+    toast('「' + f.name + '」（' + mb(f.size) + '）と同じファイルを選んでください。届いた部分の続きから送ります');
+    $('#vault-file').click();
   }
   // the room for a new file in a vault: all the vaults' room, and in a
   // shared one an operator's own (the developer has no limit)
@@ -4054,69 +4224,55 @@
     if (space && !state.developer && v.me && v.me.limit) free = Math.min(free, v.me.limit - v.me.used);
     return free;
   }
-  // `now`: all of them at once (the button)
-  function resumeWaiting(now) {
-    if (resuming || !state.vault || !waiting.length) return;
-    var t = Date.now();
-    var go = waiting.filter(function (w) {
-      if (now) return true;
-      // a new file waits for room (and then goes at once)
-      if ((w.why === 'full' || w.why === 'room') && !w.id) return w.file.size <= roomIn(w.space);
-      if (w.next > t) return false;
-      return w.why !== 'net' || navigator.onLine !== false;
-    });
-    if (!go.length) return;
-    waiting = waiting.filter(function (w) { return go.indexOf(w) < 0; });
-    renderWaiting();
-    resuming = true;
-    go.reduce(function (p, w) {
-      return p.then(function () {
-        if (!state.vault) { wait(w.file, w, 'locked'); return null; }
-        return upload(w.file, { id: w.id, parent: w.parent, note: w.note, space: w.space, folder: w.folder, rec: w });
-      });
-    }, Promise.resolve()).then(function () { resuming = false; });
-  }
-  function renderWaiting() {
-    var box = $('#vault-waiting');
-    box.textContent = '';
-    box.hidden = !waiting.length;
-    if (!waiting.length) return;
-    var head = el('div', 'card-head');
-    head.appendChild(el('b', '', '止まっているアップロード ' + waiting.length + '件'));
-    var now = el('button', 'btn small primary', '今すぐ再開');
-    now.type = 'button';
-    now.dataset.wait = 'now';
-    head.appendChild(now);
-    box.appendChild(head);
-    waiting.forEach(function (w, i) {
-      var row = el('div', 'vault-wait');
-      row.appendChild(el('b', '', w.file.name));
-      row.appendChild(el('span', 'muted', mb(w.file.size) + '・' + WHY[w.why]));
-      var x = el('button', 'btn small ghost', 'やめる');
-      x.type = 'button';
-      x.dataset.wait = String(i);
-      row.appendChild(x);
-      box.appendChild(row);
+  // a new file may get its place from here now (the developer: with the code)
+  function canWriteIn() { return !state.developer || !!(state.vault && state.vault.ticket); }
+  // room again (a file deleted, a limit raised): the files waiting for it get their place
+  function roomCame() {
+    if (!state.vault) return;
+    Object.keys(up.jobs).forEach(function (k) {
+      var j = up.jobs[k];
+      if (j.id || j.state !== 'stop' || (j.why !== 'full' && j.why !== 'room') || j.next > Date.now()) return;
+      if (j.size <= roomIn(j.space) && canWriteIn(j.space)) { j.next = Date.now() + 15000; place(j).then(kick); }
     });
   }
-  // A model: its picture, what is in it, and its light copy (uploaded as a file of its own)
-  function preview(f, file) {
+  // the 再開 button: whenever something is stopped or unfinished
+  function renderResume() {
+    var b = $('#vault-resume');
+    if (!b) return;
+    var mine = Object.keys(up.jobs).map(function (k) { return up.jobs[k]; });
+    var stopped = mine.filter(function (j) { return j.state === 'stop' || j.state === 'fail' && j.why !== 'gone'; }).length;
+    var known = {};
+    mine.forEach(function (j) { if (j.id) known[j.id] = true; });
+    var half = (state.vaultFiles || []).filter(function (f) { return !f.done && !known[f.id]; }).length;
+    b.hidden = !(stopped + half);
+    b.textContent = '再開（' + (stopped + half) + '件）';
+  }
+  // A model: its picture, what is in it, and its light copy (uploaded as a
+  // file of its own); `up`: its upload (its pass: the vault may be closed by now)
+  function preview(f, file, upj) {
     var j = job(f.name + '（3Dプレビュー）');
     j.set(0, 3);
+    var pass = upj && upj.pass ? { 'X-Vault-Upload': upj.pass } : null;
     return vault3d().then(function (V) {
       return V.analyze(file, f.name);
     }).then(function (r) {
       j.set(1, 3);
-      return vreq('POST', '/api/vault/meta', { id: f.id, preview: r.preview, info: r.info }).then(function () {
-        pics[f.id] = r.preview;
-        j.set(2, 3);
-        if (!r.light) return null;
-        var base = f.name.replace(/\.[^.]+$/, '');
-        return upload(new File([r.light], base + '.light.glb', { type: 'model/gltf-binary' }), { parent: f.id });
+      return (pass ? Promise.resolve(pass) : passOf(f.id)).then(function (h) {
+        return request('POST', '/api/vault/meta', { id: f.id, preview: r.preview, info: r.info }, Object.assign({}, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, h)).then(function () {
+          pics[f.id] = r.preview;
+          j.set(2, 3);
+          if (!r.light) return null;
+          var base = f.name.replace(/\.[^.]+$/, '');
+          return queueFile(new File([r.light], base + '.light.glb', { type: 'model/gltf-binary' }), { parent: f.id, pass: h['X-Vault-Upload'] || '' });
+        });
       });
-    }).then(function () { j.finish('プレビューを作りました'); return loadVault(); }, function (err) {
+    }).then(function () { j.finish('プレビューを作りました'); if (state.vault) return loadVault(); return null; }, function (err) {
       j.fail('プレビューを作れませんでした：' + ((err && err.message) || ''));
     });
+  }
+  // a file's upload pass, from the server (the vault open, or no code needed)
+  function passOf(id) {
+    return vreq('GET', '/api/vault/missing?id=' + id).then(function (r) { return { 'X-Vault-Upload': r.upload }; }, function () { return {}; });
   }
   // a whole file from the vault, its hashes checked: a Blob
   function fetchFile(f, j) {
@@ -4214,7 +4370,7 @@
   var SHOW_TEXT = 2 * 1048576, SHOW_PIC = 40 * 1048576, SHOW_MEDIA = 300 * 1048576;
   function openFile(f) {
     if (!f.done) {
-      if (canWrite()) { state.resumeId = f.id; $('#vault-file').click(); } else toast('アップロードの途中です');
+      goOn(f);
       return;
     }
     var k = fileKind(f)[1];
@@ -4362,7 +4518,7 @@
     else if (act === 'move') moveItems([f], []);
     else if (act === 'backup' || act === 'unbackup') backupItems([f], [], act === 'backup');
     else if (act === 'unremove') restoreBackup(f);
-    else if (act === 'resume') { state.resumeId = f.id; $('#vault-file').click(); }
+    else if (act === 'resume') goOn(f);
     else if (act === 'restore') {
       ask({ title: '実装済みから戻しますか？', text: '「' + f.name + '」がまたリンクから取り出せるようになります。', ok: '戻す' }).then(function (ok) {
         if (!ok) return null;
@@ -4416,9 +4572,9 @@
     e.preventDefault();
     openMenu(f ? fileMenu(f) : folderMenu(d), { x: e.clientX, y: e.clientY }, function (a) { if (f) fileAct(f, a); else folderAct(d, a); });
   }
-  // files picked: one after another, with the note and into the vault and
-  // folder open now (an unfinished one with the same name and size goes on
-  // where it stopped)
+  // files picked: into the vault and folder open now, with the note (an
+  // unfinished one of the same size goes on where it stopped: the one tapped,
+  // or one with the same name)
   function onFiles() {
     var input = $('#vault-file'), files = Array.prototype.slice.call(input.files || []), resume = state.resumeId;
     input.value = '';
@@ -4428,17 +4584,23 @@
   // `folder`: where they go in the vault open now ('' : its top)
   function sendFiles(files, resume, folder) {
     if (!state.vault) return;
-    var note = state.vaultMemo || '', space = state.vaultSpace;
+    var note = state.vaultMemo || '', space = state.vaultSpace, taken = {};
     if (files.length) { state.vaultMemo = ''; renderMemo(); }
+    // (each unfinished one is gone on with once, by the file it was: same size, and the one tapped or the same name)
+    Object.keys(up.jobs).forEach(function (k) { if (up.jobs[k].id) taken[up.jobs[k].id] = true; });
+    var half = function (file) {
+      var same = state.vaultFiles.filter(function (x) { return !x.done && !taken[x.id] && x.size === file.size; });
+      var f = same.filter(function (x) { return resume && x.id === resume; })[0] || same.filter(function (x) { return x.name === file.name; })[0];
+      if (f) taken[f.id] = true;
+      return f;
+    };
     files.reduce(function (p, file) {
       return p.then(function () {
-        if (!state.vault) return null;
-        if (file.size > state.vault.fileBytes) { toast('「' + file.name + '」は大きすぎます（1ファイル ' + mb(state.vault.fileBytes) + 'まで）'); return null; }
-        // (one that stopped, picked again: this takes it over)
-        waiting = waiting.filter(function (w) { return !(w.file.name === file.name && w.file.size === file.size); });
-        renderWaiting();
-        var half = state.vaultFiles.filter(function (x) { return !x.done && (resume ? x.id === resume : x.name === file.name && x.size === file.size); })[0];
-        return upload(file, { id: half ? half.id : null, note: note, space: space, folder: folder });
+        // (the same file again while it still waits here: that one goes on)
+        var dup = Object.keys(up.jobs).map(function (k) { return up.jobs[k]; }).filter(function (j) { return j.state !== 'done' && j.name === file.name && j.size === file.size && j.space === space; })[0];
+        if (dup) { dup.state = 'wait'; dup.next = 0; return VaultUploads.save(dup).then(function () { onJob(dup); kick(); }); }
+        var f = half(file);
+        return queueFile(file, { id: f ? f.id : '', note: note, space: space, folder: folder });
       });
     }, Promise.resolve());
   }
@@ -4939,18 +5101,26 @@
       renderVault();
       $('#vault-path').scrollIntoView({ block: 'start' });
     });
-    $('#vault-waiting').addEventListener('click', function (e) {
-      var b = e.target.closest('[data-wait]');
-      if (!b) return;
-      if (b.dataset.wait === 'now') resumeWaiting(true);
-      else { waiting.splice(Number(b.dataset.wait), 1); renderWaiting(); }
+    // uploads: やめる, 再開; the connection back: at once; and a look every 15 s
+    upInit();
+    $('#vault-jobs').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-up-cancel]');
+      if (b) cancelJob(b.dataset.upCancel);
     });
-    // stopped uploads: the connection back, or a look every 20 s for room
+    $('#vault-resume').addEventListener('click', function () { resumeAll().catch(fail); });
     window.addEventListener('online', function () {
-      waiting.forEach(function (w) { if (w.why === 'net') w.next = 0; });
-      resumeWaiting(false);
+      Promise.all(Object.keys(up.jobs).map(function (k) {
+        var j = up.jobs[k];
+        if (j.state !== 'stop' || j.why !== 'net') return null;
+        j.next = 0;
+        return VaultUploads.save(j);
+      })).then(kick, kick);
     });
-    setInterval(function () { if (waiting.length && state.vault && !resuming) loadVault(); }, 20000);
+    setInterval(function () {
+      if (!token || $('#app').hidden || !Object.keys(up.jobs).some(function (k) { return up.jobs[k].state !== 'done'; })) return;
+      kick();
+      if (state.vault && !document.hidden) loadVault(true);
+    }, 15000);
     $('#vault-path').addEventListener('click', onFolder);
     $('#vault-picked-move').addEventListener('click', function () { moveItems(pickedFiles(), pickedFolders()); });
     $('#vault-picked-get').addEventListener('click', function () { downloadItems(pickedFiles(), pickedFolders()); });
@@ -4969,7 +5139,11 @@
     window.addEventListener('dragover', function (e) { if (dragFiles(e)) e.preventDefault(); });
     window.addEventListener('drop', function (e) { if (dragFiles(e)) e.preventDefault(); });
     // leaving in the middle of an upload or a download
-    window.addEventListener('beforeunload', function (e) { if (moving > 0 || waiting.length) { e.preventDefault(); e.returnValue = ''; } });
+    // (uploads in the background worker go on: no question for them)
+    window.addEventListener('beforeunload', function (e) {
+      var here = Object.keys(up.jobs).some(function (k) { var j = up.jobs[k]; return j.state !== 'done' && (up.mode !== 'sw' || j.mem); });
+      if (moving > 0 || here) { e.preventDefault(); e.returnValue = ''; }
+    });
 
     $('#team-list').addEventListener('click', function (e) {
       var p = e.target.closest('[data-pair]');

@@ -430,11 +430,11 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .vlabel.k-back i { background: var(--ok); }
 .vlabel span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vlabel small { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
-.vault-waiting { margin-bottom: 12px; border-color: #efd7a8; background: var(--warn-soft); }
-.vault-waiting .card-head .btn { margin-left: auto; }
-.vault-wait { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 8px; font-size: 13px; }
-.vault-wait b { word-break: break-all; }
-.vault-wait .btn { margin-left: auto; }
+/* uploads: each file's card (やめる on it), and 再開 at the top */
+.up-job-head { display: flex; align-items: center; gap: 10px; }
+.up-job-head b { min-width: 0; word-break: break-all; }
+.up-job-head .btn { margin-left: auto; flex: none; }
+.vault-resume { flex: none; }
 .vault-filter { margin: 0 0 10px; }
 
 /* which vault: the developer's own, the shared ones, the others' to look into */

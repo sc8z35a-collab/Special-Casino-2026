@@ -306,6 +306,8 @@
     <div class="view-head vault-top">
       <h2 id="vault-title">保管庫</h2>
       <span class="muted" id="vault-usage"></span>
+      <!-- every stopped upload again at once (they also go on by themselves) -->
+      <button class="btn small primary vault-resume" id="vault-resume" type="button" hidden>再開</button>
       <span class="vault-mode" id="vault-mode">
         <button class="btn small primary" id="vault-unlock" type="button" hidden>編集する</button>
         <button class="btn small ghost" id="vault-lock" type="button" hidden>閉じる</button>
@@ -325,7 +327,6 @@
         <input id="vault-file" type="file" multiple hidden>
       </div>
       <div class="cards" id="vault-jobs"></div>
-      <div class="card vault-waiting" id="vault-waiting" hidden></div>
       <div class="vault-path" id="vault-path"></div>
       <div class="chips vault-filter" id="vault-filter">
         <button class="chip on" data-vf="all" type="button">すべて</button><button class="chip" data-vf="open" type="button">未実装</button><button class="chip" data-vf="used" type="button">実装済み</button>
@@ -457,6 +458,7 @@
 <div class="toast" id="toast" hidden></div>
 </div>
 
+<script src="vault-upload.js"></script>
 <script src="ops.js"></script>
 </body>
 </html>
