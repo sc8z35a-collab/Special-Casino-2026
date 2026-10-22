@@ -32,7 +32,10 @@
 // browser), a small picture of it from four sides, what is in it, and a light
 // copy (a file of its own whose `parent` is the model).
 // Files sit in folders (folders in folders too), each vault its own; files
-// and folders move or go several at once (the ones checked on the site). The
+// and folders move or go several at once (the ones checked on the site). A
+// file can hold files too (a file in a file in a file, 8 deep): they are in
+// its vault and folder and go where it goes; a file deleted, the ones in it
+// move up to where it was (as a folder's do). The
 // developer can also make a read-only link for one file of their vault, or for
 // the whole of it (good for 1 to 72 hours, stopped at any time; only the hash
 // of its secret is kept) to fetch it somewhere else; no link ever reaches a
@@ -107,6 +110,8 @@ const ALL = '*';
 // folders: how deep, how many in one vault; files and folders moved or
 // deleted at once; pieces moved into the bucket at once
 const FOLDER_DEPTH = 8;
+// files in files: how deep (a file in a file in a file …)
+const INSIDE_DEPTH = 8;
 const FOLDERS_MAX = 500;
 const MOVE_MAX = 500;
 const TO_BUCKET = 16;
@@ -138,7 +143,7 @@ export const VAULT_SPEEDS = {
 export const VAULT_BULK = new Set(['POST /api/vault/piece', 'POST /api/vault/chunk', 'POST /api/vault/permit', 'POST /api/vault/stored', 'GET /api/vault/chunk']);
 // a file's row as read for everything but its picture (up to 600KB, read
 // only when it is shown): `preview` is 1 when it has one
-const COLS = `id, name, type, note, size, chunks, piece, received, sha256, created_by, created_at, done_at, parent, folder, space, labels, implemented_at, info,
+const COLS = `id, name, type, note, size, chunks, piece, received, sha256, created_by, created_at, done_at, parent, folder, inside, space, labels, implemented_at, info,
   backup_at, backup_by, removed_at, removed_by, from_space, from_folder, (preview != '') AS preview`;
 // the guard: what is not one's own asked for this often in 10 minutes keeps
 // one out of the vault for 15; wrong links from one address this often, out
@@ -386,6 +391,27 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     check(u, f.space, how, noFile);
     return f;
   }
+  // Files in a file: how deep one is (itself 1, one in a file 2, …), the
+  // files in it and in them (not itself), and how many levels it holds
+  // (itself 1).
+  function insideDepth(id) {
+    let n = 0;
+    for (let f = fileRow(id); f && n <= INSIDE_DEPTH; f = f.inside ? fileRow(f.inside) : null) n++;
+    return n;
+  }
+  function within(id, seen = 0) {
+    if (seen > INSIDE_DEPTH) return [];
+    return q(`SELECT ${COLS} FROM vault_files WHERE inside = ?`).all(id).flatMap((f) => [f, ...within(f.id, seen + 1)]);
+  }
+  function insideHeight(id, seen = 0) {
+    if (seen > INSIDE_DEPTH) return seen;
+    return 1 + q('SELECT id FROM vault_files WHERE inside = ?').all(id).reduce((m, f) => Math.max(m, insideHeight(f.id, seen + 1)), 0);
+  }
+  const tooDeep = () => new ApiError(400, 'too_deep', `ファイルの中のファイルは${INSIDE_DEPTH}階層までです`);
+  // the files in these (going out of their vault) move up to where each was
+  function liftOut(files) {
+    for (const f of files) q('UPDATE vault_files SET inside = (SELECT inside FROM vault_files WHERE id = ?) WHERE inside = ?').run(f.id, f.id);
+  }
   // all the files together: the developer's vault and the shared ones are one room
   const used = () => q('SELECT COALESCE(SUM(size), 0) AS n FROM vault_files').get().n;
   // what one operator keeps in the shared vaults and their own (the files
@@ -423,7 +449,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   function fileDto(f, now = Date.now()) {
     return {
       id: f.id, name: f.name, type: f.type, note: f.note, size: f.size, chunks: f.chunks, piece: f.piece, received: f.received, done: !!f.done_at,
-      sha256: f.sha256, createdAt: f.created_at, doneAt: f.done_at, parent: f.parent || '', folder: f.folder || '', info: infoOf(f), preview: !!f.preview,
+      sha256: f.sha256, createdAt: f.created_at, doneAt: f.done_at, parent: f.parent || '', folder: f.folder || '', inside: f.inside || '', info: infoOf(f), preview: !!f.preview,
       labels: labelsOf(f), implementedAt: f.implemented_at, links: linksOf(f.id, now), notes: notesOf(f), space: f.space, by: who(f.created_by),
       // the developer's backup of it (removed: deleted from its vault, waiting in the backups; `from`: where it was)
       backup: f.backup_at ? { at: f.backup_at, by: who(f.backup_by), removed: f.removed_at ? { at: f.removed_at, by: who(f.removed_by), from: f.from_space, folder: f.from_folder, where: whereName(f.from_space) } : null } : null,
@@ -444,7 +470,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     const place = (space) => { if (!places.has(space)) places.set(space, whereName(space)); return places.get(space); };
     return files.map((f) => ({
       id: f.id, name: f.name, type: f.type, size: f.size, chunks: f.chunks, piece: f.piece, received: f.received, done: !!f.done_at, sha256: f.sha256,
-      createdAt: f.created_at, doneAt: f.done_at, parent: f.parent || '', folder: f.folder || '', space: f.space, preview: !!f.preview, info: !!f.info,
+      createdAt: f.created_at, doneAt: f.done_at, parent: f.parent || '', folder: f.folder || '', inside: f.inside || '', space: f.space, preview: !!f.preview, info: !!f.info,
       implementedAt: f.implemented_at, by: person(f.created_by), where: place(f.space), links: { live: live.get(f.id) || 0 },
       noteCount: notes.get(f.id) || 0, labelCount: labelsOf(f).length,
       backup: f.backup_at ? { at: f.backup_at, removed: f.removed_at ? { at: f.removed_at, from: f.from_space, where: place(f.from_space) } : null } : null,
@@ -468,7 +494,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   function pullDto(f) {
     const light = q(`SELECT ${COLS} FROM vault_files WHERE parent = ? AND done_at > 0 ORDER BY created_at DESC LIMIT 1`).get(f.id);
     return {
-      id: f.id, name: f.name, type: f.type, size: f.size, chunks: f.chunks, chunk: f.piece, sha256: f.sha256, folder: f.folder || '', sentAt: f.created_at, doneAt: f.done_at,
+      id: f.id, name: f.name, type: f.type, size: f.size, chunks: f.chunks, chunk: f.piece, sha256: f.sha256, folder: f.folder || '', inside: f.inside || '', sentAt: f.created_at, doneAt: f.done_at,
       labels: labelsOf(f), info: infoOf(f), preview: !!f.preview, notes: notesOf(f).filter((n) => live(n, Date.now())).map(({ text, at, until, by }) => ({ text, at, until, by: by.ai ? 'AI' : 'developer' })),
       light: light ? { id: light.id, name: light.name, size: light.size, chunks: light.chunks, chunk: light.piece, sha256: light.sha256 } : null
     };
@@ -840,8 +866,12 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       // a model's light copy (in the model's vault and folder)
       const parent = body.parent ? theFile(u, body.parent, 'add') : null;
       if (parent && parent.parent) throw new ApiError(400, 'bad_parent', '軽量版の軽量版は作れません');
-      const space = parent ? parent.space : spaceFor(u, body.space, 'add');
-      const folder = parent ? parent.folder : placeIn(space, body.folder);
+      // a file inside another one (in its vault and folder)
+      const into = !parent && body.inside ? theFile(u, body.inside, 'add', req) : null;
+      if (into && into.parent) throw new ApiError(400, 'bad_inside', '軽量版の中にはファイルを入れられません');
+      if (into && insideDepth(into.id) >= INSIDE_DEPTH) throw tooDeep();
+      const space = parent ? parent.space : into ? into.space : spaceFor(u, body.space, 'add');
+      const folder = parent ? parent.folder : into ? into.folder : placeIn(space, body.folder);
       const id = crypto.randomBytes(16).toString('hex');
       const pieceBytes = pieceNow();
       tx(() => {
@@ -849,8 +879,8 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
         if (all + size > maxBytes) throw new ApiError(413, 'vault_full', `保管庫がいっぱいです（${mb(all)} / ${mb(maxBytes)}）。いらないファイルを削除してください`);
         // an operator's own room in the shared vaults (the developer has no limit)
         if (space && !isDeveloper(u)) roomFor(u, size);
-        q('INSERT INTO vault_files (id, name, type, note, size, chunks, piece, created_by, created_at, parent, folder, space) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-          .run(id, name, type, note, size, Math.ceil(size / pieceBytes), pieceBytes, u.id, Date.now(), parent ? parent.id : '', folder, space);
+        q('INSERT INTO vault_files (id, name, type, note, size, chunks, piece, created_by, created_at, parent, folder, inside, space) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(id, name, type, note, size, Math.ceil(size / pieceBytes), pieceBytes, u.id, Date.now(), parent ? parent.id : '', folder, into ? into.id : '', space);
       });
       return { file: fileDto(fileRow(id)), upload: uploadFor(u, { id }) };
     },
@@ -943,6 +973,8 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const files = found.filter((f) => !ids.has(f.parent));
       if (!files.length) throw noFile();
       const space = oneVault(files);
+      // (the files in them stay, up where each was)
+      tx(() => liftOut(files));
       const r = await remove(files, u);
       const bytes = files.reduce((s, f) => s + f.size, 0);
       // (a backed-up file waits in the backups; one deleted there is gone for good)
@@ -1072,7 +1104,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const d = f.from_folder ? folderRow(f.from_folder) : null;
       const folder = d && d.space === back ? d.id : '';
       tx(() => {
-        q("UPDATE vault_files SET space = ?, folder = ?, removed_at = 0, removed_by = 0, from_space = '', from_folder = '' WHERE id = ? OR parent = ?").run(back, folder, f.id, f.id);
+        q("UPDATE vault_files SET space = ?, folder = ?, inside = '', removed_at = 0, removed_by = 0, from_space = '', from_folder = '' WHERE id = ? OR parent = ?").run(back, folder, f.id, f.id);
       });
       opsLog.add({ actor: u, action: 'vault_backup_restore', req, summary: `${whereName(back)}に${back ? what(f) : `「${f.name}」`}をバックアップから戻した`, detail: { ...fileNote(f), to: back, folder } });
       return { file: fileDto(fileRow(f.id)) };
@@ -1171,7 +1203,18 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       for (const d of dirs) check(u, d.space, 'change', noFolder);
       if (!files.length && !dirs.length) throw new ApiError(400, 'no_files', '移すものを選んでください');
       const space = oneVault([...files, ...dirs]);
-      const folder = placeIn(space, body.folder);
+      // into a file (files only: never into itself nor into one inside it), or into a folder
+      const into = body.into ? theFile(u, body.into, 'change', req) : null;
+      if (into) {
+        if (dirs.length) throw new ApiError(400, 'not_into_file', 'フォルダはファイルの中に入れられません（ファイルだけ入れられます）');
+        if (into.parent) throw new ApiError(400, 'bad_inside', '軽量版の中にはファイルを入れられません');
+        if (into.space !== space) throw new ApiError(400, 'mixed', '別々の保管庫のものは一度に扱えません');
+        for (const f of files) {
+          if (f.id === into.id || within(f.id).some((x) => x.id === into.id)) throw new ApiError(400, 'inside', 'ファイルをそれ自身の中には入れられません');
+          if (insideDepth(into.id) + insideHeight(f.id) > INSIDE_DEPTH) throw tooDeep();
+        }
+      }
+      const folder = into ? into.folder : placeIn(space, body.folder);
       // (two folders of one name never end up side by side)
       const names = new Set();
       for (const d of dirs) {
@@ -1180,13 +1223,19 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
         names.add(d.name);
       }
       tx(() => {
-        for (const f of files) q('UPDATE vault_files SET folder = ? WHERE id = ? OR parent = ?').run(folder, f.id, f.id);
+        for (const f of files) {
+          q('UPDATE vault_files SET folder = ?, inside = ? WHERE id = ?').run(folder, into ? into.id : '', f.id);
+          // (its light copy, and the files in it and their light copies, go with it)
+          q('UPDATE vault_files SET folder = ? WHERE parent = ?').run(folder, f.id);
+          for (const x of within(f.id)) q('UPDATE vault_files SET folder = ? WHERE id = ? OR parent = ?').run(folder, x.id, x.id);
+        }
         for (const d of dirs) q('UPDATE vault_folders SET parent = ? WHERE id = ?').run(folder, d.id);
       });
       const n = files.length + dirs.length;
+      const to = into ? (space ? 'ファイルの中' : `「${into.name}」の中`) : `「${pathOf(folder)}」`;
       opsLog.add(space
-        ? { actor: u, action: 'vault_move', req, summary: `${whereName(space)}で${n}件を移動`, detail: { space, folder, files: files.map((f) => f.id), folders: dirs.map((d) => d.id) } }
-        : { actor: u, action: 'vault_move', req, summary: `保管庫の${n}件を「${pathOf(folder)}」へ移動`, detail: { folder, files: files.slice(0, 50).map((f) => f.name), folders: dirs.slice(0, 50).map((d) => d.name) } });
+        ? { actor: u, action: 'vault_move', req, summary: `${whereName(space)}で${n}件を${into ? 'ファイルの中へ' : ''}移動`, detail: { space, folder, into: into ? into.id : '', files: files.map((f) => f.id), folders: dirs.map((d) => d.id) } }
+        : { actor: u, action: 'vault_move', req, summary: `保管庫の${n}件を${to}へ移動`, detail: { folder, into: into ? into.id : '', files: files.slice(0, 50).map((f) => f.name), folders: dirs.slice(0, 50).map((d) => d.name) } });
       return { moved: n };
     },
 

@@ -53,8 +53,8 @@ async function developer(s) {
 const pair = (a, b) => (a.id < b.id ? `p:${a.id}:${b.id}` : `p:${b.id}:${a.id}`);
 
 // a whole file into a vault (every piece, then finished): its row, or the refusal
-async function put(who, { space, name, data, folder, parent }) {
-  const r = await who.call('POST', '/api/vault/files', { space, name, size: data.length, type: 'application/octet-stream', folder, parent });
+async function put(who, { space, name, data, folder, parent, inside }) {
+  const r = await who.call('POST', '/api/vault/files', { space, name, size: data.length, type: 'application/octet-stream', folder, parent, inside });
   if (!r.file) return r;
   for (let n = 0; n < r.file.chunks; n++) {
     const part = data.subarray(n * r.file.piece, (n + 1) * r.file.piece);
@@ -689,6 +689,57 @@ test('the guard: asking again and again for what is not one\'s own keeps an oper
     const took = (await actions(taku)).filter((e) => e.action === 'vault_take');
     assert.equal(took.length, 1);
     assert.match(took[0].summary, /Mod2が個人保管庫（Mod2）のファイル（\d+KB）を開いた／ダウンロードした/);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('files inside a file: made or moved in (8 deep, never into itself), they go where it goes, and when it goes they move up', async () => {
+  const s = await startServer({ operators: ['taku', 'mod1', 'mod2'], limits: LIMITS, blobs: memoryBucket() });
+  try {
+    const taku = await developer(s);
+    const a = await person(s, 'Mod1'), b = await person(s, 'Mod2');
+    const data = Buffer.from('x');
+    const car = await put(taku, { name: 'car.glb', data });
+    const tex = await put(taku, { name: 'texture.png', data, inside: car.id });
+    const note = await put(taku, { name: 'memo.txt', data, inside: tex.id });
+    const list = async () => (await taku.call('GET', '/api/vault/files')).files;
+    const at = async (id) => (await list()).find((f) => f.id === id);
+    assert.deepEqual([(await at(tex.id)).inside, (await at(note.id)).inside, (await at(car.id)).inside], [car.id, tex.id, '']);
+    // 8 deep at most
+    let deepest = note;
+    for (let i = 3; i < 8; i++) deepest = await put(taku, { name: `d${i}.txt`, data, inside: deepest.id });
+    assert.equal((await taku.call('POST', '/api/vault/files', { name: 'too.txt', size: 1, inside: deepest.id })).error.code, 'too_deep');
+    // moved in, never into itself (nor into one inside it)
+    const loose = await put(taku, { name: 'loose.bin', data });
+    assert.equal((await taku.call('POST', '/api/vault/move', { ids: [loose.id], into: car.id })).moved, 1);
+    assert.equal((await at(loose.id)).inside, car.id);
+    assert.equal((await taku.call('POST', '/api/vault/move', { ids: [car.id], into: note.id })).error.code, 'inside');
+    assert.equal((await taku.call('POST', '/api/vault/move', { ids: [car.id], into: car.id })).error.code, 'inside');
+    // a folder goes into a folder only
+    const dir = await taku.call('POST', '/api/vault/folders', { name: '車' });
+    assert.equal((await taku.call('POST', '/api/vault/move', { ids: [], folders: [dir.folder.id], into: car.id })).error.code, 'not_into_file');
+    // the file into a folder: what is in it goes with it
+    await taku.call('POST', '/api/vault/move', { ids: [car.id], folder: dir.folder.id });
+    for (const id of [car.id, tex.id, note.id, loose.id]) assert.equal((await at(id)).folder, dir.folder.id, id);
+    assert.equal((await at(tex.id)).inside, car.id, 'still in it');
+    // out of a file: into a folder (the top)
+    await taku.call('POST', '/api/vault/move', { ids: [loose.id], folder: '' });
+    assert.deepEqual([(await at(loose.id)).inside, (await at(loose.id)).folder], ['', '']);
+    // the file deleted: the ones in it move up to where it was (the ones in those stay in them)
+    await taku.call('POST', '/api/vault/delete', { id: car.id });
+    assert.deepEqual([(await at(tex.id)).inside, (await at(tex.id)).folder, (await at(note.id)).inside], ['', dir.folder.id, tex.id]);
+    // never into someone else's file
+    const theirs = await put(b, { space: `u:${b.id}`, name: 'theirs.bin', data });
+    assert.equal((await a.call('POST', '/api/vault/files', { name: 'x.bin', size: 1, inside: theirs.id })).error.code, 'no_file');
+    // in an operator's own vault too
+    const mine = await put(a, { space: `u:${a.id}`, name: 'project.zip', data });
+    const part = await put(a, { name: 'part.bin', data, inside: mine.id });
+    assert.equal((await a.call('GET', `/api/vault/files?space=u:${a.id}`)).files.find((f) => f.id === part.id).inside, mine.id);
+    // an AI's link says where each one is
+    const link = await taku.call('POST', '/api/vault/link', { id: '*', hours: 1, ai: true });
+    const pulled = await s.call('GET', link.path);
+    assert.equal(pulled.files.find((f) => f.id === note.id).inside, tex.id);
   } finally {
     await s.stop();
   }

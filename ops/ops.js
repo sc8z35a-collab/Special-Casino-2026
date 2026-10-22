@@ -93,7 +93,7 @@
     view: 'players', players: [], total: 0, counts: {}, now: Date.now(), filter: 'all', sort: 'new', q: '', open: 0, busy: false,
     reportStatus: 'open', detAll: false, fb: 'open', feedback: [], log: [], logQ: '', logDone: false, chat: null,
     developer: false, operators: [], pay: null, payView: 'waiting', vault: null, vaultFiles: [], vaultFolders: [], vaultFolder: '', vaultPicked: {},
-    vaultShow: 'all', vaultPage: 0, logKind: '',
+    vaultShow: 'all', vaultPage: 0, logKind: '', vaultIn: '',
     // the vault open ('' the developer's own, 'p:<a>:<b>' a shared one), the ones to choose from, what one may do in it
     vaultSpace: '', vaultSpaces: null, vaultInfo: null,
     // the revisions of the lists this page has (the server answers "the same" while nothing changed), when they last came in full
@@ -458,6 +458,7 @@
     }, function (err) { $('#speed').value = speed; fail(err); });
   }
   function setView(v) {
+    var again = state.view === v;
     state.view = v;
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
     ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
@@ -472,7 +473,11 @@
     else if (v === 'security') loadSecurity();
     else if (v === 'server') { loadServer(); renderDevCards(); }
     else if (v === 'pay') loadPay();
-    else if (v === 'vault') { renderVault(); if (state.vault) loadVault(true); else openLook(); }
+    else if (v === 'vault') {
+      // (the 保管庫 tab again while in it: its top)
+      if (again && state.vault && (state.vaultFolder || state.vaultIn)) { goTop(); return; }
+      renderVault(); if (state.vault) loadVault(true); else openLook();
+    }
     // (the call goes on elsewhere: its reminder)
     renderCall();
     scrollTop();
@@ -2927,6 +2932,7 @@
     state.vaultFiles = [];
     state.vaultFolders = [];
     state.vaultFolder = '';
+    state.vaultIn = '';
     state.vaultPicked = {};
     state.vaultPage = 0;
     state.vaultRev = { files: '', spaces: '', full: 0 };
@@ -3039,9 +3045,11 @@
   function fileOf(id) { return state.vaultFiles.filter(function (f) { return f.id === id; })[0] || null; }
   // another vault: from its top, nothing checked
   function goSpace(id) {
-    if (!state.vault || id === state.vaultSpace) return;
+    if (!state.vault) return;
+    if (id === state.vaultSpace) { goTop(); return; }
     state.vaultRev.full = 0;
     state.vaultSpace = id;
+    state.vaultIn = '';
     state.vaultInfo = null;
     state.vaultFiles = [];
     state.vaultFolders = [];
@@ -3089,10 +3097,45 @@
   function rootName() { var k = kindNow(); return k === 'backup' ? 'バックアップ' : k === 'own' ? '個人保管庫' : k === 'pair' ? '共有保管庫' : '保管庫'; }
   function pathName(id) { return [rootName()].concat(trail(id).map(function (d) { return d.name; })).join(' / '); }
   function byName(a, b) { return a.name.localeCompare(b.name, 'ja'); }
-  // (the backups: every file at once, wherever it is)
+  // the files of a folder (not the ones inside a file there; the backups:
+  // every file at once, wherever it is)
   function filesIn(id) {
     var flat = state.vaultSpace === 'backup';
-    return state.vaultFiles.filter(function (f) { return !f.parent && (flat || (f.folder || '') === id); });
+    return state.vaultFiles.filter(function (f) { return !f.parent && (flat || ((f.folder || '') === id && !f.inside)); });
+  }
+  /* files in a file: the ones in it (and in them), the files from the
+     outermost down to `id`, and the list shown now (a file's, or a folder's) */
+  function inFile(id) { return state.vaultFiles.filter(function (f) { return !f.parent && f.inside === id; }); }
+  function inFileAll(id, seen) {
+    if ((seen || 0) > 8) return [];
+    return inFile(id).reduce(function (all, f) { return all.concat([f], inFileAll(f.id, (seen || 0) + 1)); }, []);
+  }
+  function fileTrail(id) {
+    var out = [];
+    for (var f = fileOf(id); f && out.length < 10; f = f.inside ? fileOf(f.inside) : null) out.unshift(f);
+    return out;
+  }
+  function listed() { return state.vaultIn ? inFile(state.vaultIn) : filesIn(state.vaultFolder); }
+  // a file's inside open: the files in it (none: another file can be put in, or made here)
+  function goInside(f) {
+    state.vaultIn = f.id;
+    state.vaultFolder = f.folder || '';
+    clearPicks();
+    state.vaultPage = 0;
+    renderVault();
+    scrollTop();
+  }
+  // the top of the vault open now (its icon, its name, the 保管庫 tab again)
+  function goTop() {
+    if (!state.vault) return;
+    var was = state.vaultFolder || state.vaultIn;
+    state.vaultFolder = '';
+    state.vaultIn = '';
+    clearPicks();
+    state.vaultPage = 0;
+    renderVault();
+    scrollTop();
+    if (was) toast(rootName() + 'のいちばん上に戻りました');
   }
   function foldersIn(id) { return state.vaultFolders.filter(function (d) { return d.parent === id; }).sort(byName); }
   // where something can go: the top and every folder (not the `skip` ones nor what is inside them)
@@ -3159,6 +3202,7 @@
   }
   function goFolder(id) {
     state.vaultFolder = id || '';
+    state.vaultIn = '';
     clearPicks();
     state.vaultPage = 0;
     renderVault();
@@ -3181,7 +3225,9 @@
   // the path above the list (保管庫 / 車 / 新車): each a way back
   function onFolder(e) {
     var crumb = e.target.closest('.vault-crumb');
-    if (crumb) goFolder(crumb.dataset.folder);
+    if (!crumb) return;
+    if (crumb.dataset.infile) { var f = fileOf(crumb.dataset.infile); if (f) goInside(f); }
+    else goFolder(crumb.dataset.folder);
   }
   function named(v) { return v.trim() ? '' : '名前を入れてください'; }
   function newFolder() {
@@ -3217,7 +3263,7 @@
      page), checked one by one, a range with Shift, or all at once */
   function shownItems() {
     var show = state.vaultShow;
-    return foldersIn(state.vaultFolder).map(function (d) { return d.id; }).concat(filesIn(state.vaultFolder).filter(function (f) {
+    return (state.vaultIn ? [] : foldersIn(state.vaultFolder)).map(function (d) { return d.id; }).concat(listed().filter(function (f) {
       return show === 'all' || (show === 'used') === !!f.implementedAt;
     }).map(function (f) { return f.id; }));
   }
@@ -3276,23 +3322,40 @@
     $('#vault-picked-delete').hidden = !canWrite();
     $('#vault-picked-backup').hidden = !(state.developer && state.vault && state.vault.ticket) || backups;
   }
-  // files and folders (the checked ones, or one file) into a folder
+  // a file's place as words: 保管庫 / 車 / model.glb
+  function fileWhere(f) { return pathName(f.folder || '') + ' / ' + fileTrail(f.id).map(function (x) { return x.name; }).join(' / '); }
+  // the files something can go into: any file of the vault (not a light copy,
+  // not one being moved nor one inside those), as 'f:<id>'
+  function fileTargets(files) {
+    var skip = {};
+    files.forEach(function (f) { skip[f.id] = true; inFileAll(f.id).forEach(function (x) { skip[x.id] = true; }); });
+    return state.vaultFiles.filter(function (f) { return !f.parent && !skip[f.id] && f.space !== 'backup' && fileTrail(f.id).length < 8; })
+      .map(function (f) { return { value: 'f:' + f.id, label: '📄 ' + fileWhere(f) + ' の中' }; })
+      .sort(function (a, b) { return a.label.localeCompare(b.label, 'ja'); });
+  }
+  // files and folders (the checked ones, or one file) into a folder; files
+  // only, into a file too
   function moveItems(files, dirs) {
     var n = files.length + dirs.length;
     if (!n) return;
     var skip = dirs.map(function (d) { return d.id; });
-    ask({ title: fmt(n) + '件を移動', ok: '移動する', select: { label: '移動先', options: places(skip), value: state.vaultFolder } }).then(function (to) {
+    var options = places(skip).concat(dirs.length ? [] : fileTargets(files));
+    ask({ title: fmt(n) + '件を移動', text: dirs.length ? '' : 'フォルダのほか、ほかのファイルの中（📄）にも移せます。', ok: '移動する', select: { label: '移動先', options: options, value: state.vaultIn ? 'f:' + state.vaultIn : state.vaultFolder } }).then(function (to) {
       if (to === null) return null;
-      return vreq('POST', '/api/vault/move', { ids: files.map(function (f) { return f.id; }), folders: skip, folder: to }).then(function (r) {
+      var into = to.indexOf('f:') === 0 ? to.slice(2) : '';
+      var body = { ids: files.map(function (f) { return f.id; }), folders: skip };
+      if (into) body.into = into; else body.folder = to;
+      return vreq('POST', '/api/vault/move', body).then(function (r) {
         clearPicks();
-        toast(fmt(r.moved) + '件を「' + pathName(to) + '」へ移動しました');
+        toast(fmt(r.moved) + '件を' + (into ? '「' + (fileOf(into) || { name: '' }).name + '」の中' : '「' + pathName(to) + '」') + 'へ移動しました');
         return loadVault();
       });
     }).catch(fail);
   }
-  // every file in a folder and in the folders inside it
+  // every file in a folder and in the folders inside it (and the files in those files)
   function filesUnder(id) {
-    return foldersIn(id).reduce(function (all, d) { return all.concat(filesUnder(d.id)); }, filesIn(id));
+    var here = filesIn(id).reduce(function (all, f) { return all.concat([f], inFileAll(f.id)); }, []);
+    return foldersIn(id).reduce(function (all, d) { return all.concat(filesUnder(d.id)); }, here);
   }
   // the checked files, and the files in the checked folders: saved one after another
   function downloadItems(files, dirs) {
@@ -3324,6 +3387,7 @@
       if (kept) text.push('そのうち ' + fmt(kept) + '件は開発者のバックアップに残ります。');
     }
     if (dirs.length) text.push('フォルダ ' + fmt(dirs.length) + '個は削除され、中のファイルとフォルダは消えずにひとつ上へ移ります。');
+    if (files.some(function (f) { return inFile(f.id).length; })) text.push('ファイルの中に入っているファイルは消えずに、ひとつ上へ移ります。');
     ask({ title: '本当に削除しますか？', text: fmt(n) + '件を削除します。\n' + text.join('\n'), ok: '削除する', danger: true }).then(function (ok) {
       if (!ok) return null;
       return (files.length ? vreq('POST', '/api/vault/delete', { ids: files.map(function (f) { return f.id; }) }) : Promise.resolve()).then(function () {
@@ -3577,6 +3641,14 @@
         t.appendChild(el('small', '', '閲覧のみ：開発者だけが見られます（アップロード・変更・削除はできません）'));
       }
     }
+    // (its icon: back to the top of it)
+    Array.prototype.forEach.call(h.querySelectorAll('.face'), function (x) {
+      x.classList.add('vault-home');
+      x.dataset.vtop = '1';
+      x.title = 'いちばん上に戻る';
+      x.setAttribute('role', 'button');
+      x.setAttribute('aria-label', 'この保管庫のいちばん上に戻る');
+    });
     h.appendChild(t);
   }
   // how much is used (the rest when the mouse is on it)
@@ -3627,19 +3699,29 @@
     // where it is: 保管庫 / 車 / 新車 (each a way back)
     [{ id: '', name: rootName() }].concat(trail(state.vaultFolder)).forEach(function (d, i, a) {
       if (i) path.appendChild(el('span', 'muted', '/'));
-      var b = el('button', 'vault-crumb' + (i === a.length - 1 ? ' here' : ''), d.name);
+      var b = el('button', 'vault-crumb' + (i === a.length - 1 && !state.vaultIn ? ' here' : ''), d.name);
       b.type = 'button';
       b.dataset.folder = d.id;
       path.appendChild(b);
     });
-    var inside = foldersIn(state.vaultFolder);
+    // (a file whose inside was open, gone meanwhile: where it was)
+    if (state.vaultIn && !fileOf(state.vaultIn)) state.vaultIn = '';
+    fileTrail(state.vaultIn).forEach(function (f, i, a) {
+      path.appendChild(el('span', 'muted', '/'));
+      var b = el('button', 'vault-crumb vault-crumb-file' + (i === a.length - 1 ? ' here' : ''), f.name);
+      b.type = 'button';
+      b.dataset.infile = f.id;
+      b.title = 'ファイル「' + f.name + '」の中';
+      path.appendChild(b);
+    });
+    var inside = state.vaultIn ? [] : foldersIn(state.vaultFolder);
     inside.forEach(function (d) { folders.appendChild(folderCard(d)); });
     // a model's light copy shows with the model; 10 to a page
-    var all = filesIn(state.vaultFolder), show = state.vaultShow;
+    var all = listed(), show = state.vaultShow;
     var tops = all.filter(function (f) { return show === 'all' || (show === 'used') === !!f.implementedAt; });
     var pages = Math.max(1, Math.ceil(tops.length / VAULT_PAGE));
     if (state.vaultPage >= pages) state.vaultPage = pages - 1;
-    if (!all.length && !inside.length) list.appendChild(el('p', 'empty muted', state.vaultFolder ? 'このフォルダは空です' : 'ファイルはまだありません'));
+    if (!all.length && !inside.length) list.appendChild(el('p', 'empty muted', state.vaultIn ? 'このファイルの中はまだ空です（アップロード・ドラッグ＆ドロップ・「＋」で入れられます）' : state.vaultFolder ? 'このフォルダは空です' : 'ファイルはまだありません'));
     else if (!tops.length && all.length) list.appendChild(el('p', 'empty muted', show === 'used' ? '実装済みのファイルはありません' : '未実装のファイルはありません'));
     tops.slice(state.vaultPage * VAULT_PAGE, (state.vaultPage + 1) * VAULT_PAGE).forEach(function (f) { list.appendChild(vaultCard(f)); });
     renderPager(pages, tops.length);
@@ -3824,7 +3906,7 @@
   var TEXT_TYPES = { txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json', html: 'text/html', htm: 'text/html', css: 'text/css', js: 'text/javascript', mjs: 'text/javascript', xml: 'application/xml', py: 'text/x-python', sh: 'application/x-sh' };
   function newFile() {
     ask({
-      title: 'ファイルを作る', text: '「' + pathName(state.vaultFolder) + '」に保存します。名前に拡張子を付けると、その種類のファイルになります（例：memo.txt・main.py・index.html）。', ok: '保存する',
+      title: 'ファイルを作る', text: (state.vaultIn ? 'ファイル「' + (fileOf(state.vaultIn) || { name: '' }).name + '」の中' : '「' + pathName(state.vaultFolder) + '」') + 'に保存します。名前に拡張子を付けると、その種類のファイルになります（例：memo.txt・main.py・index.html）。', ok: '保存する',
       input: { label: '名前（拡張子つき）', type: 'text' }, area: { label: '中身' },
       check: function (v) { return v.trim() ? '' : '名前を入れてください'; }
     }).then(function (v) {
@@ -3833,7 +3915,7 @@
       var name = v.value.trim();
       if (!/\.[A-Za-z0-9]{1,10}$/.test(name)) name += '.txt';
       var ext = name.split('.').pop().toLowerCase();
-      return queueFile(new File([v.text], name, { type: TEXT_TYPES[ext] || 'text/plain' }), { note: '', folder: state.vaultFolder, space: state.vaultSpace });
+      return queueFile(new File([v.text], name, { type: TEXT_TYPES[ext] || 'text/plain' }), { note: '', folder: state.vaultFolder, inside: state.vaultIn, space: state.vaultSpace });
     }).catch(fail);
   }
   // a memo on the next files picked
@@ -3851,7 +3933,7 @@
     m.textContent = state.vaultMemo ? 'メモ「' + state.vaultMemo + '」を次のアップロードに付けます（タップで取り消し）' : '';
   }
   function plusMenu() {
-    var info = state.vaultInfo, items = [['フォルダを作る', 'folder']];
+    var info = state.vaultInfo, items = state.vaultIn ? [] : [['フォルダを作る', 'folder']];
     if (info && info.add) items.push(['ファイルを作る（テキスト・プログラム）', 'file'], ['メモを付けてアップロード', 'memo']);
     menuAt($('#vault-plus'), items, function (a) {
       if (a === 'folder') newFolder();
@@ -3924,6 +4006,14 @@
       tags.appendChild(b);
     }
     if (inBackups) tags.appendChild(el('span', 'kind vwhere', whereOf(f)));
+    var held = inBackups ? 0 : inFile(f.id).length;
+    if (held) {
+      var hb = el('button', 'kind vinside', '中のファイル ' + fmt(held) + '件');
+      hb.type = 'button';
+      hb.dataset.vact = 'inside';
+      hb.title = '「' + f.name + '」の中を開く';
+      tags.appendChild(hb);
+    }
     if (!f.space && f.links && f.links.live) tags.appendChild(el('span', 'kind vlink', 'リンク有効'));
     if (tags.childNodes.length) main.appendChild(tags);
     row.appendChild(main);
@@ -4230,7 +4320,7 @@
     var j = {
       key: Date.now().toString(36) + '-' + (++upSeq) + '-' + Math.random().toString(36).slice(2, 8),
       who: state.name, id: o.id || '', name: file.name, size: file.size, type: file.type || '',
-      note: o.note || '', space: o.parent ? '' : o.space || '', folder: o.folder || '', parent: o.parent || '',
+      note: o.note || '', space: o.parent ? '' : o.space || '', folder: o.folder || '', inside: o.parent ? '' : o.inside || '', parent: o.parent || '',
       model: !o.parent && is3d(file.name) && file.size > 0, token: token, pass: o.pass || '', piece: 0, chunks: 0, sent: 0,
       state: 'wait', why: '', message: '', tries: 0, next: 0, at: Date.now(), mem: false
     };
@@ -4250,7 +4340,7 @@
   // its place on the server (and its pass); the room not there: it waits
   function place(j) {
     var extra = j.parent && j.pass ? { 'X-Vault-Upload': j.pass } : null;
-    var body = { name: j.name, size: j.size, type: j.type, note: j.parent ? '' : j.note, parent: j.parent || undefined, space: j.parent ? undefined : j.space, folder: j.parent ? undefined : j.folder };
+    var body = { name: j.name, size: j.size, type: j.type, note: j.parent ? '' : j.note, parent: j.parent || undefined, space: j.parent ? undefined : j.space, folder: j.parent ? undefined : j.folder, inside: j.inside || undefined };
     var call = extra ? request('POST', '/api/vault/files', body, Object.assign({}, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, extra)) : vreq('POST', '/api/vault/files', body);
     return call.then(function (r) {
       j.id = r.file.id;
@@ -4605,6 +4695,10 @@
       if (lightOf(f)) items.push(['軽量版をダウンロード', 'getlight']);
       if (!f.info && kind[1] === 'k3d' && write && !inBackups && (own || state.vaultInfo.add)) items.push(['3Dプレビューを作る', 'make']);
     } else if (write) items.push(['続きから送る（同じファイルを選ぶ）', 'resume']);
+    if (!inBackups) {
+      var held = inFile(f.id).length;
+      if (held || (write && fileTrail(f.id).length < 8)) items.push([held ? '中のファイルを開く（' + fmt(held) + '件）' : '中を開く（このファイルの中にファイルを入れる）', 'inside']);
+    }
     items.push([shown[f.id] ? '詳細を閉じる' : '詳細', 'details'], ['コメント', 'comments']);
     if (write && !inBackups) items.push(['名前を変更', 'rename'], ['移動', 'move']);
     if (own && f.done && write) {
@@ -4621,6 +4715,7 @@
   }
   function fileAct(f, act) {
     if (act === 'open') openFile(f);
+    else if (act === 'inside') goInside(f);
     else if (act === 'details') { shown[f.id] = !shown[f.id]; renderVault(); }
     else if (act === 'comments') openComments(f);
     else if (act === 'get') download(f);
@@ -4655,6 +4750,7 @@
     var text = f.space === 'backup' ? 'バックアップから完全に削除します（元に戻せません）。'
       : f.backup ? '保管庫から削除します。開発者のバックアップには残ります。'
         : '保管庫から完全に削除します（元に戻せません）。' + (f.space ? '' : 'リンクも使えなくなります。');
+    if (f.space !== 'backup' && inFile(f.id).length) text += '中に入っているファイル（' + fmt(inFile(f.id).length) + '件）は消えずに、ひとつ上へ移ります。';
     ask({ title: '本当に削除しますか？', text: '「' + f.name + '」を' + text, ok: '削除する', danger: true }).then(function (ok) {
       if (!ok) return null;
       return vreq('POST', '/api/vault/delete', { id: f.id }).then(function (r) { toast(r.kept ? '削除しました（バックアップに残っています）' : '削除しました'); return loadVault(); });
@@ -4693,10 +4789,10 @@
     var input = $('#vault-file'), files = Array.prototype.slice.call(input.files || []), resume = state.resumeId;
     input.value = '';
     state.resumeId = null;
-    sendFiles(files, resume, state.vaultFolder);
+    sendFiles(files, resume, state.vaultFolder, state.vaultIn);
   }
-  // `folder`: where they go in the vault open now ('' : its top)
-  function sendFiles(files, resume, folder) {
+  // `folder`: where they go in the vault open now ('' : its top); `inside`: into that file
+  function sendFiles(files, resume, folder, inside) {
     if (!state.vault) return;
     var note = state.vaultMemo || '', space = state.vaultSpace, taken = {};
     if (files.length) { state.vaultMemo = ''; renderMemo(); }
@@ -4714,7 +4810,7 @@
         var dup = Object.keys(up.jobs).map(function (k) { return up.jobs[k]; }).filter(function (j) { return j.state !== 'done' && j.name === file.name && j.size === file.size && j.space === space; })[0];
         if (dup) { dup.state = 'wait'; dup.next = 0; return VaultUploads.save(dup).then(function () { onJob(dup); kick(); }); }
         var f = half(file);
-        return queueFile(file, { id: f ? f.id : '', note: note, space: space, folder: folder });
+        return queueFile(file, { id: f ? f.id : '', note: note, space: space, folder: folder, inside: inside || '' });
       });
     }, Promise.resolve());
   }
@@ -4724,9 +4820,12 @@
   // changed; never opened by the browser itself)
   var dragDepth = 0;
   function dragFiles(e) { return !!e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; }
+  // the folder dropped on, or the file (into it)
   function dropFolder(e) {
-    var row = e.target.closest && e.target.closest('.vitem[data-folder]');
-    return row && $('#vault-folders').contains(row) ? row : null;
+    var row = e.target.closest && e.target.closest('.vitem[data-folder], .vitem[data-file]');
+    if (!row) return null;
+    if (row.dataset.folder) return $('#vault-folders').contains(row) ? row : null;
+    return $('#vault-list').contains(row) && state.vaultSpace !== 'backup' && fileTrail(row.dataset.file).length < 8 ? row : null;
   }
   function markDrop(row) {
     Array.prototype.forEach.call(document.querySelectorAll('.vitem.drop-in'), function (r) { if (r !== row) r.classList.remove('drop-in'); });
@@ -4771,9 +4870,15 @@
     });
     if (dirs) toast('フォルダはそのまま入れられません（中のファイルを選んで入れてください）');
     if (!files.length) return;
+    if (row && row.dataset.file) {
+      var into = fileOf(row.dataset.file);
+      toast('「' + into.name + '」の中に ' + files.length + '個 入れます');
+      sendFiles(files, null, into.folder || '', into.id);
+      return;
+    }
     var folder = row ? row.dataset.folder : state.vaultFolder;
     if (row) toast('「' + folderOf(folder).name + '」に ' + files.length + '個 入れます');
-    sendFiles(files, null, folder);
+    sendFiles(files, null, folder, row ? '' : state.vaultIn);
   }
 
   /* ------------------------------------------------------------ the operators' log --- */
@@ -5206,6 +5311,9 @@
       var b = e.target.closest('[data-space]');
       if (b) goSpace(b.dataset.space);
     });
+    // the vault's icon or its name: back to its top
+    $('#vault-head').addEventListener('click', function (e) { if (e.target.closest('[data-vtop]')) goTop(); });
+    $('#vault-title').addEventListener('click', goTop);
     $('#vault-room').addEventListener('click', onRoom);
     $('#vault-pick-all').addEventListener('click', pickAll);
     $('#vault-pager').addEventListener('click', function (e) {
