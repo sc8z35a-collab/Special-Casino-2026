@@ -1,11 +1,11 @@
 {
   "name": "Two state Casino",
-  "versionCode": 108,
-  "versionName": "1.0.8",
+  "versionCode": 109,
+  "versionName": "1.0.9",
   "apk": "download/two-state-casino.apk",
-  "size": 356441,
-  "sha256": "02af505548fa9a795d9d12e2ed368406a82d315cb1df469123b61be3d2c0e1d7",
+  "size": 344449,
+  "sha256": "733048c59b3896248442b7e0c4c7ea060a9673db690f27d3fb7a3b4991e6bbcb",
   "certSha256": "c75ca921c837d1e1f84a358467d59762886744e03654f2347a105e2082181cfc",
   "url": "https://blockbuster-reels.sc8z-35a.workers.dev/",
-  "builtAt": "2026-10-20T01:25:59Z"
+  "builtAt": "2026-10-22T03:57:36Z"
 }
