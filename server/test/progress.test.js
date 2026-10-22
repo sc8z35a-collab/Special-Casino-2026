@@ -3,7 +3,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
 import { QUESTS, LEVEL, RELEASE, RULES } from '../core/rules.js';
-import { stepQuests, claimQuests, questsReady } from '../core/quests.js';
+import { stepQuests as advanceQuests, claimQuests, questsReady } from '../core/quests.js';
+
+// Normal draws isolate progress/reward assertions from the bonus lottery.
+const stepQuests = (state, events, now, boost) => advanceQuests(state, events, now, boost, () => 999);
 
 const H = 3600000;
 const ids = (r) => r.done.map((q) => q.id).sort();

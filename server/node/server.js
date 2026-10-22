@@ -46,12 +46,12 @@ function machine(dataDir, live, trail) {
 }
 
 // `blobs`: a bucket for the developer's vault (the tests' stand-in for R2; none here)
-export function createApp({ blobs = null, ...overrides } = {}) {
+export function createApp({ blobs = null, questRewardRoll, ...overrides } = {}) {
   const config = loadConfig(overrides);
   const db = openDb(config.dataDir);
   const live = new Live();
   const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
-  const api = createApi({ db, live, config, secret, blobs, host: machine(config.dataDir, live, config.logRequests) });
+  const api = createApi({ db, live, config, secret, blobs, questRewardRoll, host: machine(config.dataDir, live, config.logRequests) });
   live.onPresence = (userId, online) => api.presence(userId, online);
   live.onOpsGone = (userId) => api.opsGone(userId);
   // The page is online with WebSocket live updates (Cloudflare); here they come as SSE.

@@ -76,10 +76,11 @@
     vip: {
       coins: 4,
       maxDays: 365,
-      packs: { sale: '今だけ特大セール', list: [{ days: 10, bonus: 2 }, { days: 20, bonus: 7 }, { days: 30, bonus: 12 }, { days: 40, bonus: 25 }] },
+      packs: { sale: '今だけ特大セール', list: [{ days: 10, bonus: 2 }, { days: 20, bonus: 7 },
+        { days: 30, bonus: 12, resetTickets: 1 }, { days: 40, bonus: 25, resetTickets: 1 }] },
       trial: { days: 3, level: 3 },
       refund: { from: 1, coins: 2 },
-      exp: { win: 4, quest: 0.1, ultra: 250, car: 30 },
+      exp: { win: 1, quest: 0.1, ultra: 250, car: 30 },
       levels: [0, 1200, 2100, 4500],
       hubXp: 1.5,
       carOff: 3,
@@ -225,6 +226,7 @@
     ],
     jobSlots: 1,
     jobSlotEvery: 3,
+    jobMaxPay: 15000000,
     // $ for every player who updates the game to a new release (js/game/news.js)
     updateBonus: 250000,
     // 金の生る木 (js/game/tree.js): money given to a tree (one tap: `amounts`)

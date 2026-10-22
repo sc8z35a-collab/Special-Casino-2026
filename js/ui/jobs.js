@@ -49,7 +49,7 @@
     var pay = Math.floor(BR.VIP.earned(job.wage, w.since, now(), v.until, v.mult, v.trialUntil, v.trialMult));
     // the time with a hub's benefits on: since loading too, while they are on (an estimate)
     var boost = (w.boost || 0) + (w === best() && hubOn() ? Math.max(0, Date.now() - state.at) : 0);
-    return pay + Math.floor(boost * job.wage * (C.hub.wage - 1) / 3600000);
+    return Math.min(C.jobMaxPay, pay + Math.floor(boost * job.wage * (C.hub.wage - 1) / 3600000));
   }
   function level() {
     var xp = BR.quests && BR.quests.xp();
@@ -99,23 +99,6 @@
     var list = $('#jobs-list');
     list.textContent = '';
     C.jobs.forEach(function (job) { list.appendChild(card(job)); });
-    var lv = level();
-    var slots = LV.jobSlots(lv), every = state.every;
-    var info = el('div', 'jobs-note');
-    var head = el('div', 'jobs-lv');
-    head.appendChild(el('b', '', 'Lv.' + lv));
-    head.appendChild(el('span', '', '同時にできるバイト ' + slots + 'つ'));
-    // the next level that adds one
-    var next = (Math.floor(lv / every) + 1) * every;
-    head.appendChild(el('small', 'jobs-next', 'Lv.' + next + 'で' + (slots + 1) + 'つに'));
-    info.appendChild(head);
-    info.appendChild(el('p', 'jobs-rule', 'レベルが' + every + '上がるごとに、同時にできるバイトが1つ増えます。'));
-    var hub = el('p', 'jobs-hub' + (hubOn() ? ' on' : ''));
-    hub.appendChild(el('b', '', '友達と稼ぐ 特典'));
-    hub.appendChild(document.createTextNode('特典が有効なあいだ、勤務中でいちばん高いバイトの時給が×' + C.hub.wage + 'になります。'));
-    info.appendChild(hub);
-    info.appendChild(el('p', '', 'バイトはいつでも変更できます。給料はゲームを閉じていてもたまり、「給料を受け取る」で受け取れます。'));
-    list.appendChild(info);
     tick();
   }
 
@@ -173,6 +156,7 @@
       pay.appendChild(document.createTextNode('受け取れる給料 '));
       pay.appendChild(K.amountEl(earned(w), 'dollars'));
       st.appendChild(pay);
+      if (earned(w) >= C.jobMaxPay) st.appendChild(el('span', 'job-cap', '給料が上限の1,500万円に達しました'));
       var b = c.querySelector('[data-act="collect"]');
       if (b) b.disabled = busy || earned(w) < 1;
     });

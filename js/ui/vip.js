@@ -14,7 +14,10 @@
   var DAY = V.day;
 
   var days = 1, busy = false, lastLevel = null, timer = 0, trialSeen = 0;
+  var cart = {};
   var TRIAL = C.vip.trial;
+
+  function cartItems() { return Object.keys(cart).map(function (days) { return { days: Number(days), qty: cart[days] }; }); }
 
   function me() { return BR.social.me(); }
   function vip() { var m = me(); return m && m.vip ? m.vip : null; }
@@ -92,19 +95,31 @@
     var max = room();
     days = Math.max(1, Math.min(days, Math.max(1, max)));
     $('#vp-days-n').textContent = U.fmt(days);
-    var cost = V.cost(days, info.level);
+    var quote = V.cart(cartItems(), info.level);
+    var cost = quote || V.cost(days, info.level);
+    $('#vp-minus').disabled = busy || !!quote || days <= 1;
+    $('#vp-plus').disabled = busy || !!quote || days >= max;
+    $('#vp-cart-clear').hidden = !quote;
+    $('#vp-cart-clear').disabled = busy;
     var box = $('#vp-cost');
     box.textContent = '';
     var line = el('div', 'vp-cost-line');
     line.appendChild(el('i', 'ic ic-coin'));
-    line.appendChild(el('span', '', C.vip.coins + '枚 × ' + days + '日 ='));
+    if (!quote) line.appendChild(el('span', '', C.vip.coins + '枚 × ' + days + '日 ='));
     line.appendChild(el('b', '', U.fmt(cost.coins) + '枚'));
     box.appendChild(line);
     if (cost.back) box.appendChild(el('div', 'vp-back', 'VIP' + C.vip.refund.from + '以上：' + U.fmt(cost.back) + '枚還元'));
-    box.appendChild(el('div', 'vp-have', '所持 ' + U.fmt(S.coins) + '枚'));
+    if (quote) box.appendChild(el('div', 'vp-cart-summary', '合計' + quote.days + '日（おまけ' + quote.bonus + '日を含む）'));
+    if (quote && quote.resetTickets) box.appendChild(el('div', 'vp-ticket-bonus', '5時間クエストリセット券 ' + quote.resetTickets + '枚付き'));
     var go = $('#vp-go');
-    go.textContent = busy ? '処理中…' : on ? days + '日延長する' : 'VIPを有効にする（' + days + '日）';
-    go.disabled = busy || max < 1 || S.coins < cost.coins;
+    go.textContent = '';
+    go.appendChild(el('span', 'vp-go-label', busy ? '処理中…' : quote ? '購入する' : '購入する（' + days + '日）'));
+    if (quote) {
+      var badges = el('span', 'vp-cart-badges');
+      quote.packs.forEach(function (p) { badges.appendChild(el('span', 'vp-cart-badge', p.days + '日プラン ×' + p.qty)); });
+      go.appendChild(badges);
+    }
+    go.disabled = busy || max < (quote ? quote.days : days) || S.coins < cost.coins;
     renderTable(on && now !== null ? now : info.level, on, trialOn(v) ? info.level : null);
   }
 
@@ -114,7 +129,7 @@
     $('#vp-packs').hidden = !packs.length;
     if (!packs.length) return;
     $('#vp-packs-sale').textContent = C.vip.packs.sale;
-    var list = $('#vp-packs-list'), best = 0, max = room();
+    var list = $('#vp-packs-list'), best = 0, max = room(), quote = V.cart(cartItems(), level);
     packs.forEach(function (p) { best = Math.max(best, V.deal(p)); });
     list.textContent = '';
     packs.forEach(function (p) {
@@ -127,40 +142,31 @@
       d.appendChild(el('small', '', '日'));
       b.appendChild(d);
       b.appendChild(el('span', 'vp-pack-bonus', '+' + p.bonus + '日 おまけ'));
+      if (p.resetTickets) b.appendChild(el('span', 'vp-pack-ticket', '5時間リセット券' + p.resetTickets + '枚付き'));
       var price = el('span', 'vp-pack-price');
       price.appendChild(el('i', 'ic ic-coin'));
       price.appendChild(document.createTextNode(U.fmt(cost.coins) + '枚'));
       b.appendChild(price);
-      b.disabled = busy || max < p.days + p.bonus;
+      b.disabled = busy || max < (quote ? quote.days : 0) + p.days + p.bonus;
       b.classList.toggle('short', S.coins < cost.coins);
+      if (cart[p.days]) b.appendChild(el('span', 'vp-pack-in-cart', 'カート：' + cart[p.days]));
       list.appendChild(b);
     });
   }
-  function buyPack(n) {
+  function addPack(n) {
     var p = V.pack(n), v = vip();
     if (!p || busy) return;
     var cost = V.cost(p.days, v ? v.level : 0);
-    if (S.coins < cost.coins) { sfx('deny'); toast('ロイヤルコインが足りません（' + U.fmt(cost.coins) + '枚 必要です）'); return; }
     K.confirmBox(function (box) {
-      box.appendChild(document.createTextNode('VIP ' + p.days + '日 ＋ おまけ' + p.bonus + '日（計' + (p.days + p.bonus) + '日）を ロイヤルコイン ' + U.fmt(cost.coins) + '枚で購入しますか？'));
-      box.appendChild(el('small', 'confirm-sub', C.vip.packs.sale + '：' + V.deal(p) + '%お得。1日 = 24時間で、' + (isOn(v) ? '今の期限から' : '今から') + '数えます。'));
-    }, '購入する').then(function (ok) {
+      box.appendChild(document.createTextNode('VIP ' + p.days + '日プランをカートに追加しますか？'));
+      box.appendChild(el('small', 'confirm-sub', 'おまけ' + p.bonus + '日・ロイヤルコイン' + cost.coins + '枚'
+        + (p.resetTickets ? '・5時間クエストリセット券' + p.resetTickets + '枚付き' : '') + '。購入ボタンでまとめて購入できます。'));
+    }, 'はい', 'いいえ').then(function (ok) {
       if (!ok) return;
-      busy = true;
+      var current = V.cart(cartItems(), v ? v.level : 0);
+      if ((current ? current.days : 0) + p.days + p.bonus > room()) { toast('VIPの追加日数の上限を超えます'); return; }
+      cart[p.days] = (cart[p.days] || 0) + 1;
       render();
-      api.vipPack(p.days).then(function (r) {
-        busy = false;
-        BR.app.serverBalance(r.me);
-        BR.social.setMe(r.me);
-        sfx('register');
-        if (BR.juice) BR.juice.reward('#vp-packs', 3);
-        toast('VIPを ' + r.days + '日分 追加しました（おまけ ' + r.bonus + '日）', 3200);
-        render();
-      }, function (err) {
-        busy = false;
-        render();
-        fail(err);
-      });
     });
   }
   // the free trial, once
@@ -261,18 +267,21 @@
 
   function go() {
     if (busy) return;
-    var n = days, v = vip(), on = isOn(v);
-    var cost = V.cost(n, v ? v.level : 0);
+    var n = days, v = vip(), items = cartItems();
+    var quote = V.cart(items, v ? v.level : 0);
+    var cost = quote || V.cost(n, v ? v.level : 0);
     if (S.coins < cost.coins) { sfx('deny'); toast('ロイヤルコインが足りません'); return; }
     busy = true;
     render();
-    api.vipExtend(n).then(function (r) {
+    (quote ? api.vipCart(items) : api.vipExtend(n)).then(function (r) {
       busy = false;
+      cart = {};
       BR.app.serverBalance(r.me);
       BR.social.setMe(r.me);
       sfx('register');
       if (BR.juice) BR.juice.reward('#vp-go', 3);
-      toast((on ? 'VIPを' + n + '日延長しました' : 'VIPが有効になりました（' + n + '日）') + (r.back ? '・ロイヤルコイン ' + r.back + '枚還元' : ''), 3200);
+      toast('VIPを' + r.days + '日分追加しました' + (r.back ? '・ロイヤルコイン ' + r.back + '枚還元' : '')
+        + (r.resetTickets ? '・5時間リセット券' + r.resetTickets + '枚を獲得' : ''), 4000);
       render();
     }, function (err) {
       busy = false;
@@ -305,29 +314,19 @@
     $('#vp-go').addEventListener('click', function () { sfx('click'); go(); });
     $('#vp-minus').addEventListener('click', function () { sfx('click'); days = Math.max(1, days - 1); render(); });
     $('#vp-plus').addEventListener('click', function () { sfx('click'); days = Math.min(Math.max(1, room()), days + 1); render(); });
-    $('#vp-quick').addEventListener('click', function (e) {
-      var b = e.target.closest('[data-d]');
-      if (!b) return;
-      sfx('click');
-      days = Number(b.dataset.d);
-      render();
-    });
+    $('#vp-cart-clear').addEventListener('click', function () { if (busy) return; sfx('click'); cart = {}; render(); });
     $('#vp-trial-go').addEventListener('click', function () { sfx('click'); startTrial(); });
     $('#vp-packs-list').addEventListener('click', function (e) {
       var b = e.target.closest('[data-pack]');
       if (!b || b.disabled) return;
       sfx('click');
-      buyPack(Number(b.dataset.pack));
-    });
-    $('#vp-days').addEventListener('click', function () {
-      sfx('click');
-      BR.screens.numpad({ icon: 'coin', value: days, max: Math.max(1, room()), onOk: function (n) { days = Math.max(1, n); render(); } });
+      addPack(Number(b.dataset.pack));
     });
     K.dragScroll($('#vp-right'));
     K.dragScroll($('#vp-left'));
     BR.screens.register('vip', { open: function () { render(); } });
     BR.social.onMe(function (m) {
-      if (!m) { lastLevel = null; return; }
+      if (!m) { lastLevel = null; cart = {}; return; }
       if (m.vip) { seen(m.vip); trialOver(m.vip); }
       if (BR.screens.current() === 'vip') render();
     });

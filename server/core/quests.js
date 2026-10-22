@@ -3,13 +3,28 @@
 // writes anyway:
 //   { "<period>": { "k": <period index>, "m": { "<metric>": n },
 //                   "c": [finished, not received yet], "d": [received] }, ... }
+// A period may also have "b": { "<quest id>": "pro" | "ultra" }, drawn
+// once when that STEP finishes. Older finished steps without it are normal.
+// "tickets" is root-level inventory; each period's "v" is its manual reset
+// revision in the current natural cycle (never a new five-hour/day window).
 // A finished quest waits for the player to receive it (受け取る); a period
 // whose index is not the current one has started over (what was not received
 // by then is gone; 特別 never starts over). Every quest pays $.
-import { QUESTS } from './rules.js';
+import { QUESTS, LEVEL } from './rules.js';
+import { randomInt } from 'node:crypto';
+import { ApiError } from './errors.js';
 
 const PERIODS = QUESTS.periods;
 const MAX = new Set(QUESTS.maxMetrics);
+const BONUS = QUESTS.bonuses;
+const drawBonus = () => randomInt(BONUS.rolls);
+
+function rewardFor(q, bonus) {
+  const mode = bonus === 'pro' || bonus === 'ultra' ? bonus : 'normal';
+  const rule = BONUS[mode];
+  return { id: q.id, mode, multiplier: rule ? rule.multiplier : 1,
+    dollars: q.reward * (rule ? rule.multiplier : 1), coins: rule ? rule.coins : 0 };
+}
 // period -> metric -> its quests
 const BY = {};
 for (const p of PERIODS) BY[p.id] = {};
@@ -24,6 +39,47 @@ export function readQuests(json) {
   }
 }
 
+// Tickets live outside the period slots, so natural/manual resets never
+// erase inventory. Level rewards use actual XP increases without retroactive
+// gifts; qualifying VIP packs can also add tickets to this same inventory.
+export function questTickets(state) {
+  const tickets = state.tickets || {};
+  const count = period => Number.isSafeInteger(tickets[period]) && tickets[period] > 0 ? tickets[period] : 0;
+  return { '5h': count('5h'), day: count('day') };
+}
+
+export function grantLevelTickets(state, beforeXp, afterXp) {
+  const before = LEVEL.of(beforeXp), after = LEVEL.of(afterXp);
+  const gained = { '5h': Math.max(0, after - before), day: Math.max(0, Math.floor(after / 5) - Math.floor(before / 5)) };
+  if (gained['5h']) {
+    const tickets = questTickets(state);
+    state.tickets = { '5h': tickets['5h'] + gained['5h'], day: tickets.day + gained.day };
+  }
+  return gained;
+}
+
+// The caller commits this together with consuming the ticket. A cycle start
+// and manual revision prevent a retried/double-clicked request spending twice.
+export function resetQuestPeriod(state, period, expected, now = Date.now()) {
+  if (period !== '5h' && period !== 'day') throw new ApiError(400, 'quest_period', 'リセットできるのは5時間・デイリークエストです');
+  const range = QUESTS.range(period, now);
+  const p = state[period];
+  const active = p && p.k === range.k;
+  const version = active ? p.v || 0 : 0;
+  if (!expected || expected.start !== range.start || expected.version !== version) {
+    throw new ApiError(409, 'quests_changed', 'クエストが更新されました。確認し直してからお使いください');
+  }
+  const tickets = questTickets(state);
+  if (!tickets[period]) throw new ApiError(409, 'quest_ticket', 'リセットチケットがありません');
+  if (active && p.c && p.c.length) throw new ApiError(409, 'quests_pending', '先にこの期間の報酬をすべて受け取ってください');
+  if (!active || (!Object.values(p.m || {}).some(n => n > 0) && !(p.d && p.d.length))) {
+    throw new ApiError(409, 'quests_empty', 'まだ進捗がないため、リセットする必要はありません');
+  }
+  tickets[period]--;
+  state.tickets = tickets;
+  state[period] = { k: range.k, m: {}, c: [], d: [], v: version + 1 };
+}
+
 function slot(state, period, now) {
   const { k } = QUESTS.range(period, now);
   let p = state[period.id];
@@ -35,7 +91,7 @@ function slot(state, period, now) {
 function current(state, period, now) {
   const { k } = QUESTS.range(period, now);
   const p = state[period.id];
-  return p && p.k === k ? { m: p.m || {}, c: p.c || [], d: p.d || [] } : { m: {}, c: [], d: [] };
+  return p && p.k === k ? { m: p.m || {}, c: p.c || [], d: p.d || [], b: p.b || {}, v: p.v || 0 } : { m: {}, c: [], d: [], b: {}, v: 0 };
 }
 
 // Adds events ([[metric, amount], ...]) to every period and finishes what they
@@ -45,7 +101,7 @@ function current(state, period, now) {
 // a quest that is off this week) are not counted: the JSON only changes when
 // it matters. `boost`: { <period>: times } counts faster in those periods
 // (5時間 in a hub). Returns { changed, done: [quest] }.
-export function stepQuests(state, events, now = Date.now(), boost = null) {
+export function stepQuests(state, events, now = Date.now(), boost = null, rollBonus = drawBonus) {
   const done = [];
   let changed = false;
   let queue = events.filter(([, n]) => n > 0);
@@ -67,6 +123,9 @@ export function stepQuests(state, events, now = Date.now(), boost = null) {
         changed = true;
         for (const q of open) {
           if (v < q.goal) continue;
+          const roll = rollBonus();
+          const mode = roll < BONUS.ultra.rolls ? 'ultra' : roll < BONUS.ultra.rolls + BONUS.pro.rolls ? 'pro' : null;
+          if (mode) (p.b || (p.b = {}))[q.id] = mode;
           p.c.push(q.id);
           done.push(q);
           next.push(['clear', 1]);
@@ -80,10 +139,12 @@ export function stepQuests(state, events, now = Date.now(), boost = null) {
 }
 
 // 受け取る: the finished quests (`ids`, or all of them) of the current
-// periods. Returns { claimed: [quest], dollars } (what to pay).
+// periods. Pay the STEP's saved result without drawing again. Returns its
+// actual dollars, royal coins and individual rewards (including bulk claims).
 export function claimQuests(state, ids, now = Date.now()) {
   const claimed = [];
-  let dollars = 0;
+  const rewards = [];
+  let dollars = 0, coins = 0;
   for (const period of PERIODS) {
     const p = state[period.id];
     if (!p || !p.c || !p.c.length || p.k !== QUESTS.range(period, now).k) continue;
@@ -91,13 +152,16 @@ export function claimQuests(state, ids, now = Date.now()) {
     for (const id of take) {
       const q = QUESTS.get(id);
       if (!q) continue;
+      const reward = rewardFor(q, p.b && p.b[id]);
       claimed.push(q);
-      dollars += q.reward;
+      rewards.push(reward);
+      dollars += reward.dollars;
+      coins += reward.coins;
     }
     p.c = p.c.filter((id) => !take.includes(id));
     p.d = (p.d || []).concat(take);
   }
-  return { claimed, dollars };
+  return { claimed, dollars, coins, rewards };
 }
 
 // How many finished quests are waiting to be received.
@@ -116,10 +180,12 @@ export function questView(state, now = Date.now()) {
       id: period.id,
       start: r.start,
       end: r.end,
+      resetVersion: p.v,
       quests: QUESTS.list.filter((q) => q.period === period.id && QUESTS.active(q, r.k)).map((q) => {
         const st = p.d.includes(q.id) ? 'received' : p.c.includes(q.id) ? 'ready' : 'open';
         // (a boosted count can be part way to the next one)
-        return { id: q.id, state: st, progress: st === 'open' ? Math.min(q.goal, Math.floor((p.m[q.metric] || 0) + 1e-9)) : q.goal };
+        return { id: q.id, state: st, progress: st === 'open' ? Math.min(q.goal, Math.floor((p.m[q.metric] || 0) + 1e-9)) : q.goal,
+          ...(st !== 'open' && p.b[q.id] ? { reward: rewardFor(q, p.b[q.id]) } : {}) };
       })
     };
   });

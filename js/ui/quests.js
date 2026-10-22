@@ -23,6 +23,7 @@
   var xp = null;          // the player's XP (null until known)
   var ready = 0;          // finished quests waiting to be received
   var claiming = false;
+  var resetting = false;
   var batch = null;       // the notice being collected: { ids, level, until, shown }
   var noteTimer = 0, waitTimer = 0, ticker = 0, reloadTimer = 0;
 
@@ -40,7 +41,7 @@
     var after = LV.of(xp);
     var levelled = !quiet && before !== null && after > before;
     renderLevel(levelled);
-    if (levelled) note({ level: after });
+    if (levelled) note({ level: after, jobSlots: LV.jobSlots(after) > LV.jobSlots(before) ? LV.jobSlots(after) : 0 });
     else if (grew && !quiet) xpSparkle();
   }
   // XP came in: a little glitter where the bar has grown to
@@ -88,9 +89,10 @@
   function note(add) {
     var t = Date.now();
     // a new window of 10 s, unless the last notice never got shown
-    if (!batch || (t > batch.until && batch.shown)) batch = { ids: [], level: 0, until: t + BATCH_MS, shown: false };
+    if (!batch || (t > batch.until && batch.shown)) batch = { ids: [], level: 0, jobSlots: 0, until: t + BATCH_MS, shown: false };
     if (add.ids) batch.ids = batch.ids.concat(add.ids);
     if (add.level) batch.level = Math.max(batch.level, add.level);
+    if (add.jobSlots) batch.jobSlots = Math.max(batch.jobSlots, add.jobSlots);
     // away from the slot screen: shown (all of it) when the player is back
     if (!home()) { batch.shown = false; return; }
     showNote();
@@ -111,7 +113,8 @@
     }
     if (b.level) {
       text.appendChild(el('b', 'qn-level', 'Lv.' + b.level + ' にアップ！'));
-      levelUp(b.level);
+      if (b.jobSlots) text.appendChild(el('span', 'qn-jobs', 'バイトの枠が増えました！同時に' + b.jobSlots + '件できます'));
+      levelUp(b.level, b.jobSlots);
     }
     box.appendChild(text);
     box.hidden = false;
@@ -150,14 +153,14 @@
 
   // LEVEL UP across the screen, the card at the top left lights up
   var levelShown = 0;
-  function levelUp(n) {
+  function levelUp(n, slots) {
     setTimeout(turnOver, 420);
     if (n <= levelShown) return;
     levelShown = n;
     var J = BR.juice, card = $('#me-card');
     sfx('levelUp');
     if (!J) return;
-    J.banner('LEVEL UP!', 'level', 2000, 'Lv.' + n);
+    J.banner('LEVEL UP!', 'level', 2000, 'Lv.' + n + (slots ? '・バイト' + slots + '枠に！' : ''));
     J.flash('#fff3c0', 0.3, 420);
     J.rain({ kind: 'confetti', dur: 1.2, rate: 40 });
     if (card && !card.hidden) {
@@ -184,7 +187,14 @@
 
   // a quest was finished (pushed by the server)
   function onQuest(ev) {
-    if (!ev || !ev.done || !ev.done.length) return;
+    if (!ev) return;
+    if (ev.tickets && data) { data.tickets = ev.tickets; renderTickets(); }
+    if (typeof ev.xp === 'number') setXp(ev.xp);
+    if (ev.changed) {
+      setReady(ev.ready);
+      if (visible()) reloadSoon();
+    }
+    if (!ev.done || !ev.done.length) return;
     setReady(typeof ev.ready === 'number' ? ev.ready : ready + ev.done.length);
     note({ ids: ev.done });
     if (visible()) reloadSoon();
@@ -246,7 +256,7 @@
     coop: '毎週日曜 9:00 に更新・友達と稼ぐ中だけ進む', month: '毎月18日 9:00 に更新', special: 'リセットなし（一度きり）'
   };
   function resetText(p, end) {
-    var every = '報酬はドル・' + EVERY[p.id];
+    var every = '基本報酬はドル・' + EVERY[p.id];
     if (!end) return every;
     var d = new Date(end);
     var when = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
@@ -291,6 +301,7 @@
     $('#q-sub').textContent = p ? resetText(def, p.end) : '';
     $('#screen-quests').dataset.period = tab;
     renderClock();
+    renderTickets();
     if (!p) { renderNote('読み込み中…'); return; }
     var list = $('#q-list');
     list.textContent = '';
@@ -310,12 +321,61 @@
   function renderClaimAll() {
     var btn = $('#q-claim-all');
     btn.hidden = !ready;
-    btn.disabled = claiming;
+    btn.disabled = claiming || resetting;
     $('#q-claim-n').textContent = ready > 99 ? '99+' : String(ready);
     if (!data) return;
     data.periods.forEach(function (p) {
       var t = document.querySelector('#q-tabs .tab[data-tab="' + p.id + '"]');
       if (t) t.classList.toggle('has-ready', p.quests.some(function (q) { return q.state === 'ready'; }));
+    });
+  }
+
+  function ticketStatus(period) {
+    var p = data && data.periods.filter(function (p) { return p.id === period; })[0];
+    var count = data && data.tickets ? data.tickets[period] || 0 : 0;
+    var pending = p && p.quests.some(function (q) { return q.state === 'ready'; });
+    var progressed = p && p.quests.some(function (q) { return q.progress > 0; });
+    var reason = !p ? '読み込み中…' : !count ? (period === '5h' ? 'LvUPで入手' : 'Lv5ごとに入手')
+      : pending ? '先に報酬を受け取る' : !progressed ? 'まだ進捗がありません' : '1枚使ってリセット';
+    return { period: p, count: count, enabled: !!(p && count && !pending && progressed && !claiming && !resetting), reason: reason };
+  }
+
+  function renderTickets() {
+    ['5h', 'day'].forEach(function (period) {
+      var status = ticketStatus(period), btn = $('#q-ticket-' + period);
+      btn.textContent = '';
+      btn.appendChild(el('b', '', (period === '5h' ? '5時間券' : 'デイリー券') + '：' + status.count + '枚'));
+      btn.appendChild(el('small', '', status.reason));
+      btn.disabled = !status.enabled;
+    });
+  }
+
+  function useTicket(period) {
+    var status = ticketStatus(period);
+    if (!status.enabled) return;
+    var target = status.period;
+    resetting = true;
+    render();
+    K.confirmBox(function (p) {
+      p.appendChild(el('b', '', Q.period(period).name + 'クエストを最初からやり直しますか？'));
+      p.appendChild(el('small', 'confirm-sub', 'リセットチケットを1枚使い、全STEPの進捗をリセットします。次の自動更新時刻は変わりません。'));
+    }, '1枚使う').then(function (ok) {
+      if (!ok) { resetting = false; if (visible()) render(); return; }
+      api.resetQuests(period, target.start, target.resetVersion).then(function (r) {
+        resetting = false;
+        data = r;
+        offset = r.now - Date.now();
+        setReady(r.ready);
+        setXp(r.xp, true);
+        if (r.balance) BR.app.serverBalance(r.balance);
+        if (visible()) render();
+        toast(Q.period(period).name + 'クエストをリセットしました', 3200);
+      }, function (err) {
+        resetting = false;
+        if (visible()) render();
+        K.fail(err);
+        load().catch(function () {});
+      });
     });
   }
 
@@ -338,7 +398,8 @@
 
   // the badge of a quest by what it counts
   var MARK = {
-    spin: 'SPIN', win: 'WIN', bet: 'BET', combo: 'COMBO', earn: '$', coopEarn: '$', online: 'TIME', hubSec: 'TIME',
+    spin: 'SPIN', win: 'WIN', barWin: 'BAR', revolver5: 'GUN', snowman: 'GIFT',
+    bet: 'BET', casinoSpend: 'BET', combo: 'COMBO', earn: '$', coopEarn: '$', online: 'TIME', hubSec: 'TIME',
     talkSec: 'TALK', talk: 'TALK', call: 'CALL', chat: 'CHAT', peek: 'CHAT', watch: 'WATCH', wbet: 'BET', hub: 'HUB',
     sent: 'SEND', friend: 'FRIEND', strawberry: 'FRUIT', watermelon: 'FRUIT', melon: 'FRUIT', borrow: 'LOAN',
     clear: 'QUEST', sclear: 'QUEST', broke: '$0'
@@ -347,7 +408,9 @@
   function chainRow(c) {
     var n = c.steps.length, i = c.cur < 0 ? n - 1 : c.cur;
     var def = c.steps[i].def, st = c.steps[i].st, state = chainState(c);
+    var bonus = st.reward;
     var r = el('div', 'q-row t-' + Q.tier(def.reward) + ' ' + state + (c.emergency ? ' emergency' : '') + (n > 1 ? ' chain' : ''));
+    if (bonus) r.classList.add('bonus-' + bonus.mode);
     r.dataset.quest = def.id;
     var gem = el('i', 'q-gem');
     gem.appendChild(el('b', '', MARK[def.metric] || 'Q'));
@@ -355,6 +418,11 @@
     var main = el('div', 'q-main');
     var head = el('div', 'q-headline');
     if (c.emergency) head.appendChild(el('span', 'q-flag', '臨時緊急'));
+    if (bonus) {
+      var badge = el('span', 'q-bonus ' + bonus.mode, bonus.mode.toUpperCase() + ' ×' + bonus.multiplier);
+      badge.title = 'このSTEPのみ報酬' + bonus.multiplier + '倍' + (bonus.coins ? '＋ロイヤルコイン' + bonus.coins + '枚' : '');
+      head.appendChild(badge);
+    }
     head.appendChild(el('span', 'q-text', def.text));
     if (n > 1) head.appendChild(el('span', 'q-step', 'STEP ' + (i + 1) + '/' + n));
     main.appendChild(head);
@@ -374,12 +442,19 @@
     if (state === 'received') {
       rew.appendChild(el('span', 'q-got', n > 1 ? '全段階クリア' : '受け取り済み'));
     } else {
-      rew.appendChild(K.amountEl(def.reward, 'dollars'));
+      rew.appendChild(K.amountEl(bonus ? bonus.dollars : def.reward, 'dollars'));
+      if (bonus && bonus.coins) {
+        rew.classList.add('q-reward-bonus');
+        var coins = el('span', 'q-royal');
+        coins.appendChild(el('i', 'ic ic-coin'));
+        coins.appendChild(document.createTextNode('ロイヤルコイン +' + bonus.coins + '枚'));
+        rew.appendChild(coins);
+      }
       if (state === 'ready') {
         var b = el('button', 'act-btn gold q-take', '受け取る');
         b.type = 'button';
         b.dataset.claim = def.id;
-        b.disabled = claiming;
+        b.disabled = claiming || resetting;
         rew.appendChild(b);
       }
     }
@@ -391,15 +466,27 @@
     var box = el('div', 'q-chain');
     var pips = el('span', 'q-pips');
     c.steps.forEach(function (s, k) {
-      pips.appendChild(el('i', s.st.state === 'received' ? 'got' : s.st.state === 'ready' ? 'ready' : k === c.cur ? 'now' : ''));
+      var pip = el('i', s.st.state === 'received' ? 'got' : s.st.state === 'ready' ? 'ready' : k === c.cur ? 'now' : '');
+      pip.title = s.def.text;
+      if (s.st.reward) {
+        pip.classList.add('bonus-' + s.st.reward.mode);
+        pip.title += '（' + s.st.reward.mode.toUpperCase() + ' ×' + s.st.reward.multiplier + '）';
+      }
+      pips.appendChild(pip);
     });
     box.appendChild(pips);
-    var total = 0, left = 0;
-    c.steps.forEach(function (s) { total += s.def.reward; if (s.st.state !== 'received') left += s.def.reward; });
+    var total = 0, left = 0, coins = 0;
+    c.steps.forEach(function (s) {
+      var amount = s.st.reward ? s.st.reward.dollars : s.def.reward;
+      total += amount;
+      if (s.st.state !== 'received') left += amount;
+      if (s.st.reward) coins += s.st.reward.coins;
+    });
     box.appendChild(el('span', 'q-final', '最終目標：' + c.steps[c.steps.length - 1].def.text));
     var sum = el('span', 'q-sum');
     sum.appendChild(document.createTextNode('全' + c.steps.length + '段階の合計 '));
     sum.appendChild(el('b', '', '$' + U.fmt(total)));
+    if (coins) sum.appendChild(document.createTextNode('＋ロイヤルコイン' + coins + '枚'));
     if (left && left < total) sum.appendChild(document.createTextNode('（のこり $' + U.fmt(left) + '）'));
     box.appendChild(sum);
     return box;
@@ -407,20 +494,28 @@
 
   // 受け取る (one quest) / 一括受け取り (ids: null)
   function claim(ids) {
-    if (claiming) return;
+    if (claiming || resetting) return;
     claiming = true;
     renderClaimAll();
+    renderTickets();
     $$('#q-list .q-take').forEach(function (b) { b.disabled = true; });
     api.claimQuests(ids).then(function (r) {
       claiming = false;
       if (data) data.periods = r.periods;
+      if (data && r.tickets) data.tickets = r.tickets;
       setReady(r.ready);
       setXp(r.xp);
       if (r.balance) BR.app.serverBalance(r.balance);
       if (r.claimed.length) {
         sfx('money');
         if (BR.juice) BR.juice.reward(null, r.claimed.length > 1 ? 3 : 2);
-        toast((r.claimed.length > 1 ? r.claimed.length + '件の' : '') + '報酬を受け取りました' + (r.dollars ? '：$' + U.fmt(r.dollars) : ''), 3200);
+        var bonuses = [];
+        ['pro', 'ultra'].forEach(function (mode) {
+          var count = (r.rewards || []).filter(function (reward) { return reward.mode === mode; }).length;
+          if (count) bonuses.push(mode.toUpperCase() + ' ' + count + '件');
+        });
+        toast((r.claimed.length > 1 ? r.claimed.length + '件の' : '') + '報酬を受け取りました' + (r.dollars ? '：$' + U.fmt(r.dollars) : '')
+          + (bonuses.length ? '（' + bonuses.join('・') + '）' : '') + (r.coins ? '＋ロイヤルコイン' + r.coins + '枚' : ''), bonuses.length ? 5000 : 3200);
       }
       if (visible()) render();
     }, function (err) {
@@ -457,9 +552,15 @@
       claim([b.dataset.claim]);
     });
     $('#q-claim-all').addEventListener('click', function () {
-      if (claiming) return;
+      if (claiming || resetting) return;
       sfx('click');
       claim(null);
+    });
+    $('#q-ticket-bar').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-reset-period]');
+      if (!b || b.disabled) return;
+      sfx('click');
+      useTicket(b.dataset.resetPeriod);
     });
     BR.screens.register('quests', {
       open: function () {

@@ -210,6 +210,7 @@
     carSoldClaim: function (id) { return post('/api/cars/sold/claim', { id: id }); },
     vipExtend: function (days) { return post('/api/vip/extend', { days: days }); },
     vipPack: function (days) { return post('/api/vip/extend', { pack: days }); },
+    vipCart: function (packs) { return post('/api/vip/extend', { packs: packs }); },
     vipTrial: function () { return post('/api/vip/trial'); },
 
     /* Shop, 所有 and the お守り加護 */
@@ -272,6 +273,7 @@
     /* quests, バイト and updates */
     quests: function () { return get('/api/quests'); },
     claimQuests: function (ids) { return post('/api/quests/claim', ids ? { ids: ids } : {}); },
+    resetQuests: function (period, start, version) { return post('/api/quests/reset', { period: period, start: start, version: version }); },
     peek: function (withId) { return post('/api/quests/peek', { with: withId }); },
     jobs: function () { return get('/api/jobs'); },
     startJob: function (id) { return post('/api/jobs/start', { id: id }); },

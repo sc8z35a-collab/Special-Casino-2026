@@ -45,7 +45,9 @@
   // friends), friend (a new friend), strawberry / watermelon / melon (fruits
   // given), borrow (money from ピーター), clear (quests finished, all kinds),
   // sclear (特別 quests finished), broke (net worth below `brokeBelow` $),
-  // jobpay ($ received from バイト).
+  // jobpay ($ received from バイト), snowman (snowman presents sent), barWin
+  // (a paying BAR combination), revolver5 (all five centre reels are guns),
+  // casinoSpend (spin tokens bet, converted to dollars; payouts not deducted).
   // How the progress reads: `money` an amount of $, `tokens` of spin
   // tokens, `sec` seconds (shown in minutes).
   var MAX_METRICS = ['combo'];
@@ -74,15 +76,31 @@
       { id: '5h-win20', period: '5h', metric: 'win', goal: 20, reward: 40000, text: 'カジノで20回当たる' },
       { id: '5h-win30', period: '5h', metric: 'win', goal: 30, reward: 50000, text: 'カジノで30回当たる' }
     ],
+    steps('5h', 'spin', [['spin20', 20, 25000], ['spin30', 30, 35000], ['spin40', 40, 50000], ['spin50', 50, 75000],
+      ['spin60', 60, 80000], ['spin70', 70, 80000], ['spin80', 80, 80000], ['spin90', 90, 100000], ['spin100', 100, 100000]],
+      function (n) { return { text: 'カジノを' + n + '回回す' }; }),
+    steps('5h', 'barWin', [['bar1', 1, 10000], ['bar2', 2, 15000], ['bar3', 3, 20000]],
+      function (n) { return { text: 'BARを揃えて' + n + '回当たる' }; }),
+    steps('5h', 'revolver5', [['revolver5-1', 1, 5000], ['revolver5-2', 2, 6000], ['revolver5-3', 3, 7000],
+      ['revolver5-4', 4, 8000], ['revolver5-5', 5, 9000]],
+      function (n) { return { text: '銃を5列揃えて' + n + '回当たる' }; }),
+    steps('5h', 'snowman', [['snowman1', 1, 10000], ['snowman2', 2, 20000], ['snowman3', 3, 30000],
+      ['snowman5', 5, 50000], ['snowman10', 10, 120000]],
+      function (n) { return { text: '友達に雪だるまを' + n + '回送る' }; }),
     steps('5h', 'win', [['win50', 50, 80000], ['win70', 70, 90000], ['win90', 90, 110000], ['win100', 100, 120000],
       ['win150', 150, 250000], ['win200', 200, 450000]],
       function (n) { return { text: 'カジノで' + n + '回当たる' }; }),
-    steps('5h', 'combo', [['combo2', 2, 5000], ['combo3', 3, 10000], ['combo4', 4, 20000]],
+    steps('5h', 'combo', [['combo2', 2, 5000], ['combo3', 3, 10000], ['combo4', 4, 20000],
+      ['combo5', 5, 100000], ['combo6', 6, 250000], ['combo7', 7, 400000], ['combo8', 8, 950000]],
       function (n) { return { text: 'カジノで' + n + 'コンボする' }; }),
     steps('5h', 'bet', [['bet10k', 10000, 10000], ['bet20k', 20000, 20000], ['bet50k', 50000, 30000], ['bet100k', 100000, 40000],
       ['bet200k', 200000, 50000], ['bet300k', 300000, 100000], ['bet500k', 500000, 200000], ['bet1m', 1e6, 80000],
       ['bet2m', 2e6, 100000], ['bet3m', 3e6, 120000], ['bet4m', 4e6, 150000], ['bet5m', 5e6, 200000], ['bet6m', 6e6, 220000]],
       function (n) { return { text: 'カジノで' + man(n) + 'トークン賭ける（累計）', tokens: true }; }),
+    steps('5h', 'casinoSpend', [['spend30k', 30000, 10000], ['spend100k', 100000, 20000], ['spend200k', 200000, 30000],
+      ['spend500k', 500000, 35000], ['spend1m', 1e6, 65000], ['spend2m', 2e6, 85000], ['spend3m', 3e6, 115000]],
+      function (n) { return { text: 'カジノで' + man(n) + 'ドル使う（累計）', money: true,
+        note: '賭けたトークンを1トークン＝$10に換算（払い戻しは差し引きません）' }; }),
     [
       { id: '5h-earn10k', period: '5h', metric: 'earn', goal: 10000, reward: 15000, text: '10kを稼ぐ', money: true },
       { id: '5h-earn20k', period: '5h', metric: 'earn', goal: 20000, reward: 25000, text: '20kを稼ぐ', money: true },
@@ -96,6 +114,11 @@
       ['online150', 150 * M, 12000], ['online180', 180 * M, 15000], ['online200', 200 * M, 20000], ['online250', 250 * M, 30000]],
       function (n) { return { text: n / M + '分間オンラインでいる', sec: true }; }),
     [{ id: '5h-join', period: '5h', metric: 'hub', goal: 1, reward: 5000, text: '稼ぎに参加する（友達と稼ぐ）' }],
+    steps('5h', 'hub', [['join2', 2, 10000], ['join3', 3, 15000], ['join4', 4, 20000], ['join5', 5, 25000], ['join6', 6, 35000]],
+      function (n) { return { text: '稼ぎに' + n + '回参加する（友達と稼ぐ）' }; }),
+    steps('5h', 'clear', [['clear10', 10, 10000], ['clear20', 20, 15000], ['clear30', 30, 25000],
+      ['clear40', 40, 35000], ['clear50', 50, 40000], ['clear60', 60, 60000]],
+      function (n) { return { text: 'クエストを' + n + '個クリアする' }; }),
     steps('5h', 'wbet', [['wbet1', 1, 5000], ['wbet2', 2, 10000], ['wbet3', 3, 15000], ['wbet4', 4, 20000], ['wbet5', 5, 30000], ['wbet6', 6, 40000]],
       function (n) { return { text: '友達の観戦に' + n + '回賭ける（観戦ベット）' }; }),
 
@@ -122,6 +145,10 @@
       { id: 'week-melon3', period: 'week', metric: 'watermelon', goal: 3, reward: 100000, text: '友達にスイカを3個与える', emergency: true },
       { id: 'week-melon5', period: 'week', metric: 'watermelon', goal: 5, reward: 200000, text: '友達にスイカを5個与える', emergency: true }
     ],
+
+    steps('day', 'sent', [['send500k', 500000, 35000], ['send850k', 850000, 55000], ['send1.1m', 1100000, 65000],
+      ['send1.85m', 1850000, 78000], ['send2.1m', 2100000, 89000]],
+      function (n) { return { text: '友達に' + man(n) + 'ドル以上送金する（お金換算）', money: true }; }),
 
     steps('coop', 'coopEarn', [['earn1m', 1e6, 100000], ['earn1.5m', 1.5e6, 150000], ['earn3m', 3e6, 200000], ['earn4m', 4e6, 250000],
       ['earn5m', 5e6, 300000], ['earn10m', 1e7, 500000], ['earn15m', 1.5e7, 800000]],
@@ -199,6 +226,12 @@
     epoch: EPOCH,
     periods: PERIODS,
     list: LIST,
+    // One exclusive draw per completed STEP (out of 1000), saved until reset.
+    bonuses: {
+      rolls: 1000,
+      ultra: { rolls: 1, multiplier: 6, coins: 8 },
+      pro: { rolls: 50, multiplier: 3, coins: 0 }
+    },
     // metrics that keep the biggest value instead of adding up
     maxMetrics: MAX_METRICS,
     // "無一文" means less than this in $ (spin tokens counted at their price)

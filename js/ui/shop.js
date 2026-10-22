@@ -11,7 +11,6 @@
   var el = K.el, sfx = K.sfx, toast = K.toast, fail = K.fail;
 
   var skew = 0;        // the server's clock less ours (the Shop's sale hours are the server's)
-  var tick = 0;
   var qty = {};         // id -> how many to buy
   var busy = false;
 
@@ -26,17 +25,18 @@
     var it = info(id), s = BR.sale.shop(it, Date.now() + skew);
     return { id: id, price: it.price, salePrice: s.price, pct: s.pct, on: s.on, end: s.end, next: s.next, max: it.max };
   }
-  function setSale(shop) { if (shop && shop.now) skew = shop.now - Date.now(); }
-  function left(ms) {
-    var t = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), x = t % 60;
-    return h + ':' + (m < 10 ? '0' : '') + m + ':' + (x < 10 ? '0' : '') + x;
+  function setSale(shop) {
+    if (shop && shop.now) skew = shop.now - Date.now();
+    refreshSale();
   }
-  function when(ms) {
-    var d = new Date(ms - skew);
-    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
-  }
-  function saleLine(s) {
-    return s.on ? 'セール中 残り ' + left(s.end - Date.now() - skew) : '次のセール ' + when(s.next) + '〜（5時間）';
+  function refreshSale() {
+    $('#shop-sale-badge').hidden = !catalog().some(function (it) { return saleOf(it.id).on; });
+    // Keep prices and the tab badge current even while another pane is open.
+    if (!onBoard('shop')) return;
+    var changed = Array.prototype.some.call(document.querySelectorAll('#shop-grid .shop-card'), function (card) {
+      return card.dataset.sale !== String(saleOf(card.dataset.id).salePrice);
+    });
+    if (changed) renderShop();
   }
   function me() { return BR.social.me(); }
   function owned(id) { var m = me(); return (m && m.items && m.items[id]) || 0; }
@@ -54,23 +54,12 @@
 
   /* ------------------------------------------------------------ Shop --- */
   var LINES = {
-    omamori: ['回す前にワンタップで発動', '負けたスピンの損を 5〜20% 軽減（友達と稼ぐ 特典で最大70%）', 'まれに 100% 軽減（大吉・友達と稼ぐ 特典で確率2倍）']
+    omamori: ['スピン損の5〜20％軽減（特典最大70％）', 'まれに100％軽減（特典で確率二倍）']
   };
 
   function showShop() {
     renderShop();
-    clearInterval(tick);
-    tick = setInterval(function () {
-      if (!onBoard('shop')) { clearInterval(tick); return; }
-      var on = false;
-      Array.prototype.forEach.call(document.querySelectorAll('#shop-grid .shop-left'), function (n) {
-        var s = saleOf(n.dataset.id);
-        n.textContent = saleLine(s);
-        if (String(s.on) !== n.dataset.on) on = true;
-      });
-      // the sale has begun or ended: the prices change
-      if (on) renderShop();
-    }, 1000);
+    refreshSale();
     api.items().then(function (r) {
       setSale(r.shop);
       var m = me();
@@ -88,14 +77,15 @@
       var n = Math.max(1, Math.min(qty[it.id] || 1, room || 1));
       qty[it.id] = n;
       var card = el('div', 'shop-card');
+      card.dataset.id = it.id;
+      card.dataset.sale = String(s.salePrice);
       var stage = el('div', 'shop-stage');
       var pic = el('span', 'shop-pic');
       pic.style.backgroundImage = 'url("' + picture(it.id) + '")';
       stage.appendChild(pic);
-      if (room > 0 && s.on) stage.appendChild(el('i', 'sale-badge'));
+      if (s.on) stage.appendChild(el('i', 'sale-badge'));
       card.appendChild(stage);
       var body = el('div', 'shop-body');
-      body.appendChild(el('div', 'shop-brand', 'SHOP'));
       body.appendChild(el('h3', 'shop-name', it.name));
       var ul = el('ul', 'shop-lines');
       (LINES[it.id] || []).forEach(function (t) { ul.appendChild(el('li', '', t)); });
@@ -106,11 +96,6 @@
       if (s.on) price.appendChild(el('em', '', '-' + s.pct + '%'));
       price.appendChild(el('small', '', '/ 個'));
       body.appendChild(price);
-      var sl = el('div', 'shop-left' + (s.on ? ' on' : ''), saleLine(s));
-      sl.dataset.id = it.id;
-      sl.dataset.on = String(s.on);
-      body.appendChild(sl);
-      body.appendChild(el('div', 'shop-own', '所持 ' + have + ' / ' + it.max + '個'));
       var row = el('div', 'shop-buy-row');
       var minus = el('button', 'sq-btn minus');
       minus.appendChild(el('i'));
@@ -328,6 +313,8 @@
 
   function init() {
     $('#btn-charm').addEventListener('click', useCharm);
+    refreshSale();
+    setInterval(refreshSale, 1000);
     if (!api.online) return;
     BR.live.on('hello', function (h) { if (h.itemShop) setSale(h.itemShop); setTimeout(renderCharm, 0); });
     BR.live.on('items', function (e) {
