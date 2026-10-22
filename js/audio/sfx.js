@@ -33,7 +33,65 @@
   }
   var noiseBuf = null;
   var reelLoop = null;
+  var auctionRoom = null, auctionRoomBuffer = null;
   var feverOn = false;   // FEVER (js/render/combo.js): the reels run faster
+
+  // Temporary room chatter, made locally because no crowd recording was
+  // supplied. A periodic eight-second noise bed loops without a seam; several
+  // speech-range filters and syllabic envelopes make an indistinct murmur.
+  // It uses the effects master, including call ducking and audio suspension.
+  function auctionCrowd(on) {
+    if (!on) {
+      if (auctionRoom) {
+        auctionRoom.sources.forEach(function (s) { try { s.stop(); } catch (e) { /* stopped */ } });
+        auctionRoom.gain.disconnect();
+        auctionRoom = null;
+      }
+      return;
+    }
+    if (auctionRoom || !ctx || ctx.state !== 'running') return;
+    if (!auctionRoomBuffer) {
+      var rate = 22050, count = rate * 8;
+      auctionRoomBuffer = ctx.createBuffer(1, count, rate);
+      var out = auctionRoomBuffer.getChannelData(0), low = 0, seed = 74629;
+      for (var j = 0; j < count; j++) {
+        seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+        var noise = (seed >>> 0) / 2147483648 - 1;
+        low += .12 * (noise - low);
+        out[j] = low;
+      }
+      // Crossfade the endpoints to make the stored buffer periodic.
+      for (var k = 0; k < 1100; k++) {
+        var w = k / 1100;
+        out[count - 1100 + k] = out[count - 1100 + k] * (1 - w) + out[k] * w;
+      }
+    }
+    var roomGain = ctx.createGain();
+    roomGain.gain.value = .32;
+    roomGain.connect(master);
+    var sources = [];
+    [260, 420, 730, 1180, 1800].forEach(function (freq, i) {
+      var src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+      src.buffer = auctionRoomBuffer;
+      src.loop = true;
+      filter.type = 'bandpass';
+      filter.frequency.value = freq;
+      filter.Q.value = .8;
+      gain.gain.value = .6;
+      var lfo = ctx.createOscillator(), depth = ctx.createGain();
+      lfo.frequency.value = .7 + i * .37;
+      depth.gain.value = .38;
+      lfo.connect(depth);
+      depth.connect(gain.gain);
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(roomGain);
+      src.start(0, i * 1.31);
+      lfo.start();
+      sources.push(src, lfo);
+    });
+    auctionRoom = { sources: sources, gain: roomGain };
+  }
 
   /* ------------------------------------------------------------ recordings --- */
   var RECORDINGS = {
@@ -661,6 +719,7 @@
     },
     // names of the recordings decoded so far (diagnostics)
     recordings: function () { return Object.keys(buffers); },
+    auctionCrowd: auctionCrowd,
     // title music: play(url) / stop(); it starts as soon as sound is allowed
     music: {
       play: function (url) {

@@ -19,15 +19,23 @@ import { RULES, TREE } from './rules.js';
 
 const T = RULES.tree;
 const CLOSE_MS = 6000;              // no new bid for this long: sold (going, going, gone)
+const INTRO_MS = 7000;              // camera visits every participant before bidding
+const MIN_MS = 90000, MAX_MS = 180000; // bidding lasts 90–180 seconds, excluding the introduction
 const FIRST_MS = 1500;              // the first NPC bid after the start
-const DELAY = [600, 2000];          // an NPC answers a bid after this long (ms)
+const DELAY = [2800, 5200];          // leave time to see the supplied hand-raising animation
 const OPEN = 0.55;                  // the opening price, of the average
 // the NPCs' limits, of the average: exp(N(MU, SIGMA)), now and then a big buyer
 const MU = -0.21, SIGMA = 0.13, WHALE = 0.12;
 
 const KINDS = ['ガジュマル', 'パキラ', 'オリーブ', 'カネノナルキ', 'モンステラ', 'オーク', 'メープル', 'イチョウ', 'バオバブ', 'サクラ'];
 const ADJ = ['幸運の', '黄金の', '大富豪の', '星降る', '夜明けの', '王様の', '虹色の', '伝説の', '月光の', '宝石の'];
-const BIDDERS = ['ゴールド伯爵', 'ミセス・リッチ', '株王タナカ', '謎の投資家X', 'マダム・ジュエル', '石油王アリ', 'ロイヤル佐藤', 'ミスター・ダイヤ', 'カジノ王ベガス', '富豪エリザベス', '若社長ケンジ', 'ドクター・マネー'];
+const BIDDERS = [
+  { name: 'ジョウモンさん', model: 'joumon' },
+  { name: 'ナターシャ', model: 'natasha' },
+  { name: 'ミスタースミスジョンソン', model: 'johnson' },
+  { name: '神谷社長', model: 'kamiya' },
+  { name: '野生を生きる男', model: 'wild' }
+];
 
 // (getRandomValues: the same on Node and Cloudflare Workers)
 function rand() {
@@ -115,8 +123,9 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged }) {
   function bid(s, who, price, at) {
     s.price = price;
     s.leader = who;
-    s.close = at + CLOSE_MS;
-    s.bids.push({ who, price, at });
+    s.close = Math.min(s.deadline || Infinity, Math.max(s.minEnd || 0, at + CLOSE_MS));
+    s.seq = (s.seq || 0) + 1;
+    s.bids.push({ who, price, at, seq: s.seq });
     if (s.bids.length > 14) s.bids.splice(0, s.bids.length - 14);
     s.next = willing(s).length ? at + delay() : 0;
   }
@@ -182,10 +191,20 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged }) {
       price: s.price,
       leader: s.leader === 0 ? 'me' : s.leader > 0 ? s.npcs[s.leader - 1].name : null,
       bidders: s.npcs.map((n) => n.name),
-      bids: s.bids.slice(-8).map((b) => ({ who: b.who === 0 ? 'me' : s.npcs[b.who - 1].name, price: b.price, at: b.at })),
+      bids: s.bids.slice(-8).map((b) => ({ who: b.who === 0 ? 'me' : s.npcs[b.who - 1].name, price: b.price, at: b.at, seq: b.seq })),
       closeIn: done ? 0 : Math.max(0, s.close - now),
       closeMs: CLOSE_MS,
-      winner: s.winner || null,
+      participants: [{ id: 'me', name: 'あなた', model: 'dennis' }].concat(s.npcs.map((n, i) => ({
+        id: n.name, name: n.name, model: n.model || BIDDERS[i % BIDDERS.length].model
+      }))),
+      phase: done ? 'result' : now < (s.starts || 0) ? 'intro' : 'bidding',
+      introMs: INTRO_MS,
+      startsAt: s.starts || row.created_at,
+      minEndsAt: s.minEnd || 0,
+      deadlineAt: s.deadline || s.close,
+      closesAt: s.close,
+      bidSeq: s.seq || s.bids.length,
+      winner: won ? 'me' : s.winner || null,
       tree: t ? dto(t, now) : null,
       now
     };
@@ -205,10 +224,13 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged }) {
       given = Math.round((lo + rand() * (hi - lo) * 0.9) / 1000) * 1000;
     }
     const lot = { name: pick(ADJ) + pick(KINDS) + (market === 'seed' ? 'の種' : ''), given, super: rand() < T.superChance };
-    const npcs = shuffle(BIDDERS.slice()).slice(0, 3 + Math.floor(rand() * 3)).map((name) => ({ name, limit: Math.round(avg * Math.exp(MU + SIGMA * gauss())) }));
+    const npcs = shuffle(BIDDERS.slice()).map((person) => ({ ...person, limit: Math.round(avg * Math.exp(MU + SIGMA * gauss())) }));
     if (rand() < WHALE) npcs[0].limit = Math.max(npcs[0].limit, Math.round(avg * (1.25 + rand() * 0.5)));
     const now = Date.now();
-    const s = { avg, step, price: Math.round(avg * OPEN / step) * step, leader: -1, npcs, lot, bids: [], next: now + FIRST_MS, close: now + FIRST_MS + CLOSE_MS };
+    const starts = now + INTRO_MS;
+    const s = { avg, step, price: Math.round(avg * OPEN / step) * step, leader: -1, npcs, lot, bids: [], seq: 0,
+      starts, minEnd: starts + MIN_MS, deadline: starts + MAX_MS,
+      next: starts + FIRST_MS, close: starts + MIN_MS };
     const id = Number(q('INSERT INTO tree_auctions (user_id, market, state, price, created_at) VALUES (?, ?, ?, ?, ?)')
       .run(userId, market, JSON.stringify(s), s.price, now).lastInsertRowid);
     return q('SELECT * FROM tree_auctions WHERE id = ?').get(id);
@@ -312,6 +334,7 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged }) {
         const a = current(u.id, now);
         if (!a || a.status !== 'live') throw new ApiError(409, 'over', 'この競りは終わりました');
         const s = JSON.parse(a.state);
+        if (now < (s.starts || 0)) throw new ApiError(409, 'introducing', '参加者を紹介しています。競りの開始までお待ちください');
         if (s.leader === 0) throw new ApiError(409, 'leading', 'いまあなたが最高額です');
         const price = s.price + steps * s.step;
         if (getUser(u.id).dollars < price) throw new ApiError(409, 'insufficient', '$が足りません（入札には $' + price.toLocaleString('ja-JP') + ' 必要です）');

@@ -97,6 +97,7 @@ test('金の生る木 auctions: NPC bidders, leaving, winning (SUPER shows only 
   r = await call('POST', '/api/tree/auction/start', { token: p.token, body: { market: 'grown' } });
   const row = s.app.db.prepare("SELECT * FROM tree_auctions WHERE user_id = ? AND status = 'live'").get(p.me.id);
   const st = JSON.parse(row.state);
+  st.starts = Date.now() - 1;
   st.npcs.forEach((n) => { n.limit = st.price; });
   st.lot.super = true;
   s.app.db.prepare('UPDATE tree_auctions SET state = ? WHERE id = ?').run(JSON.stringify(st), row.id);
@@ -122,6 +123,9 @@ test('金の生る木 auctions: NPC bidders, leaving, winning (SUPER shows only 
   // nobody else wants it: the NPCs bid it up among themselves and one wins
   const row3 = s.app.db.prepare("SELECT * FROM tree_auctions WHERE user_id = ? AND status = 'live'").get(p.me.id);
   const st3 = JSON.parse(row3.state);
+  st3.starts = Date.now() - 200000;
+  st3.minEnd = Date.now() - 100000;
+  st3.deadline = Date.now() - 1000;
   st3.next = Date.now() - 60000;
   st3.close = Date.now() - 60000 + 6000;
   s.app.db.prepare('UPDATE tree_auctions SET state = ? WHERE id = ?').run(JSON.stringify(st3), row3.id);
@@ -129,6 +133,88 @@ test('金の生る木 auctions: NPC bidders, leaving, winning (SUPER shows only 
   assert.equal(r.auction.status, 'lost');
   assert.ok(r.auction.winner);
   assert.equal((await call('GET', '/api/tree', { token: p.token })).trees.length, 2);
+});
+
+test('3D auction: named cast, seven-second introduction and no bids or charges during it', async () => {
+  const p = await register('AuctionCast');
+  setUser(p.me.id, { dollars: 500000000 });
+  const r = await call('POST', '/api/tree/auction/start', { token: p.token, body: { market: 'seed' } });
+  const a = r.auction;
+  assert.equal(a.phase, 'intro');
+  assert.equal(a.introMs, 7000);
+  assert.ok(a.startsAt - a.now > 6500 && a.startsAt - a.now <= 7000);
+  assert.equal(a.minEndsAt - a.startsAt, 90000);
+  assert.equal(a.deadlineAt - a.startsAt, 180000);
+  assert.equal(a.participants.length, 6);
+  assert.deepEqual(a.participants[0], { id: 'me', name: 'あなた', model: 'dennis' });
+  assert.deepEqual(a.bidders.slice().sort(), ['ジョウモンさん', 'ナターシャ', 'ミスタースミスジョンソン', '神谷社長', '野生を生きる男'].sort());
+  assert.equal(new Set(a.participants.map((n) => n.model)).size, 6);
+  assert.ok(a.participants.every((n) => !('limit' in n)), 'hidden budgets stay on the server');
+  assert.equal((await call('POST', '/api/tree/auction/bid', { token: p.token, body: {} })).error.code, 'introducing');
+  const fresh = await call('GET', '/api/tree/auction', { token: p.token });
+  assert.equal(fresh.auction.bids.length, 0);
+  assert.equal(fresh.balance.dollars, 500000000);
+  await call('POST', '/api/tree/auction/leave', { token: p.token });
+});
+
+test('3D auction: an uncontested bid stays live until 90 seconds and settles exactly once', async () => {
+  const p = await register('AucMin');
+  setUser(p.me.id, { dollars: 500000000 });
+  await call('POST', '/api/tree/auction/start', { token: p.token, body: { market: 'grown' } });
+  const row = s.app.db.prepare("SELECT * FROM tree_auctions WHERE user_id = ? AND status = 'live'").get(p.me.id);
+  const st = JSON.parse(row.state), now = Date.now();
+  st.starts = now - 20000;
+  st.minEnd = st.starts + 90000;
+  st.deadline = st.starts + 180000;
+  st.close = st.minEnd;
+  st.next = 0;
+  st.npcs.forEach((n) => { n.limit = 0; });
+  s.app.db.prepare('UPDATE tree_auctions SET state = ? WHERE id = ?').run(JSON.stringify(st), row.id);
+  let r = await call('POST', '/api/tree/auction/bid', { token: p.token, body: {} });
+  assert.equal(r.auction.phase, 'bidding');
+  assert.equal(r.auction.leader, 'me');
+  assert.ok(r.auction.closeIn > 69000);
+  assert.equal(r.auction.closesAt, st.minEnd);
+  assert.equal(r.balance.dollars, 500000000);
+  const price = r.auction.price;
+  const done = JSON.parse(s.app.db.prepare('SELECT state FROM tree_auctions WHERE id = ?').get(row.id).state);
+  const shift = 71000;
+  for (const k of ['starts', 'minEnd', 'deadline', 'close']) done[k] -= shift;
+  s.app.db.prepare('UPDATE tree_auctions SET state = ? WHERE id = ?').run(JSON.stringify(done), row.id);
+  r = await call('GET', '/api/tree/auction', { token: p.token });
+  assert.equal(r.auction.status, 'won');
+  assert.equal(r.auction.winner, 'me');
+  assert.equal(r.balance.dollars, 500000000 - price);
+  const again = await call('GET', '/api/tree/auction', { token: p.token });
+  assert.equal(again.balance.dollars, r.balance.dollars);
+  assert.equal(again.auction.tree.id, r.auction.tree.id);
+});
+
+test('3D auction: late player and NPC bids cannot extend the three-minute deadline', async () => {
+  const p = await register('AucMax');
+  setUser(p.me.id, { dollars: 500000000 });
+  await call('POST', '/api/tree/auction/start', { token: p.token, body: { market: 'seed' } });
+  const row = s.app.db.prepare("SELECT * FROM tree_auctions WHERE user_id = ? AND status = 'live'").get(p.me.id);
+  const st = JSON.parse(row.state), now = Date.now();
+  st.starts = now - 179000;
+  st.minEnd = st.starts + 90000;
+  st.deadline = st.starts + 180000;
+  st.close = st.deadline;
+  st.next = 0;
+  s.app.db.prepare('UPDATE tree_auctions SET state = ? WHERE id = ?').run(JSON.stringify(st), row.id);
+  let r = await call('POST', '/api/tree/auction/bid', { token: p.token, body: {} });
+  assert.equal(r.auction.closesAt, st.deadline);
+  const late = JSON.parse(s.app.db.prepare('SELECT state FROM tree_auctions WHERE id = ?').get(row.id).state);
+  for (const k of ['starts', 'minEnd', 'deadline', 'close']) late[k] -= 2000;
+  late.next = late.deadline - 10;
+  late.npcs.forEach((n) => { n.limit = 500000000; });
+  s.app.db.prepare('UPDATE tree_auctions SET state = ? WHERE id = ?').run(JSON.stringify(late), row.id);
+  r = await call('GET', '/api/tree/auction', { token: p.token });
+  assert.equal(r.auction.status, 'lost');
+  assert.ok(r.auction.winner);
+  const final = s.app.db.prepare('SELECT * FROM tree_auctions WHERE id = ?').get(row.id);
+  assert.equal(final.ended_at, late.deadline);
+  assert.equal(r.balance.dollars, 500000000);
 });
 
 test('金の生る木 auctions: the average winning price is about the market price', () => {

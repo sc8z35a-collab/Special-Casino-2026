@@ -30,6 +30,8 @@
   var ticker = 0, poller = 0, badgeTimer = 0, loading = null, bidding = false;
   var harvestNext = null;  // the time picked for after the harvest
   var liveId = 0;          // the auction the live view on screen was built for
+  var arena = null, arenaWanted = null, arenaLoading = false, arenaEpoch = 0;
+  var polling = false;
 
   try {
     var saved = Number(localStorage.getItem(AMOUNT));
@@ -115,6 +117,7 @@
   }
   function onHide() {
     clearInterval(ticker);
+    stopArena();
     // a running auction goes on without the screen: its end shows when it is opened again
     stopPolling();
   }
@@ -141,7 +144,7 @@
     var onTree = tab !== 'auction' && !!treeOf(tab);
     $('#tree-pane').classList.toggle('active', onTree);
     $('#auction-pane').classList.toggle('active', !onTree);
-    if (onTree) renderTree();
+    if (onTree) { stopArena(); renderTree(); }
     else renderAuction();
   }
 
@@ -441,9 +444,32 @@
   // a new look at the auction; `quiet`: no sounds (just opened)
   function setAuction(a, quiet) {
     var was = auction;
+    // A slow poll must not overwrite a newer bid, result or newly joined lot.
+    if (a && was && (a.id < was.id || (a.id === was.id &&
+      (a.now < was.now || (was.status !== 'live' && a.status === 'live'))))) return;
     auction = a || null;
     if (!auction) return;
     auction.seen = Date.now();
+    offset = auction.now - auction.seen;
+    if (was && was.id === auction.id && shown() && tab === 'auction') {
+      var oldBids = {};
+      was.bids.forEach(function (b) { oldBids[b.at + ':' + b.price + ':' + b.who] = true; });
+      auction.bids.forEach(function (b) {
+        if (!oldBids[b.at + ':' + b.price + ':' + b.who] && auction.now - b.at < 4000) {
+          sfx('money');
+          // Keep the price feedback available on devices without WebGL too.
+          var host = $('#auction-pane .au3d-failed');
+          if (host) {
+            var flash = el('div', 'au3d-bid-fallback'), cash = el('img');
+            cash.src = 'img/3d/auction/cash.webp'; cash.alt = '';
+            flash.appendChild(cash);
+            flash.appendChild(el('b', '', (b.who === 'me' ? 'あなた' : b.who) + '　' + money(b.price)));
+            host.appendChild(flash);
+            setTimeout(function () { flash.remove(); }, 1350);
+          }
+        }
+      });
+    }
     if (auction.status === 'live') {
       watched = auction.id;
       if (!quiet && was && was.id === auction.id && was.leader === 'me' && auction.leader !== 'me') sfx('notify');
@@ -465,18 +491,64 @@
     if (poller) return;
     poller = setInterval(function () {
       if (!shown()) { stopPolling(); return; }
-      if (bidding) return;
+      if (bidding || polling) return;
+      polling = true;
       api.auction().then(function (r) {
+        polling = false;
         var was = auction ? auction.status : '';
         if (r.balance) BR.app.serverBalance(r.balance);
         setAuction(r.auction);
         if (!shown()) return;
         if ((auction ? auction.status : '') !== was) renderTabs();
         if (tab === 'auction') renderAuction();
-      }, function () {});
+      }, function () { polling = false; });
     }, POLL);
   }
   function stopPolling() { clearInterval(poller); poller = 0; }
+
+  function stopArena() {
+    arenaEpoch++;
+    arenaWanted = null;
+    if (arena) arena.dispose();
+    arena = null;
+    Array.prototype.forEach.call(document.querySelectorAll('.au3d-failed'), function (host) { host.classList.remove('au3d-failed'); });
+    if (BR.sfx.auctionCrowd) BR.sfx.auctionCrowd(false);
+  }
+  function arenaView(cls) {
+    var host = el('div', 'au3d-stage ' + (cls || ''));
+    host.appendChild(el('p', 'au3d-loading', '3D競り会場を準備しています…'));
+    return host;
+  }
+  function showArena(host, a) {
+    if (!host || !shown()) return;
+    if (host.classList.contains('au3d-failed')) return;
+    arenaWanted = { host: host, auction: a };
+    if (arena && (arena.destroyed || arena.data.id !== a.id)) { arena.dispose(); arena = null; }
+    if (arena) {
+      if (arena.host !== host) arena.attach(host);
+      arena.update(a);
+      return;
+    }
+    if (arenaLoading || !BR.auction3d) return;
+    var epoch = arenaEpoch;
+    arenaLoading = true;
+    BR.auction3d.mount(host, a).then(function (view) {
+      arenaLoading = false;
+      var wanted = arenaWanted;
+      if (epoch !== arenaEpoch || !wanted || !shown()) { view.dispose(); if (wanted) showArena(wanted.host, wanted.auction); return; }
+      arena = view;
+      if (view.host !== wanted.host) view.attach(wanted.host);
+      view.update(wanted.auction);
+    }, function (err) {
+      arenaLoading = false;
+      console.warn('Auction 3D:', err);
+      if (host.isConnected) {
+        host.classList.add('au3d-failed');
+        host.textContent = '';
+        host.appendChild(el('p', 'au3d-loading', '3D表示を読み込めませんでした。価格と入札操作は利用できます。画面を開き直すと再試行します。'));
+      }
+    });
+  }
 
   function renderAuction() {
     var pane = $('#auction-pane');
@@ -487,19 +559,17 @@
         liveId = auction.id;
       }
       updateLive(auction);
+      showArena(pane.querySelector('.au3d-stage'), auction);
       tickAuction();
       return;
     }
     liveId = 0;
     pane.textContent = '';
     pane.appendChild(marketsView());
-    if (ended) pane.appendChild(resultView(ended));
-  }
-
-  function lotArt(a) {
-    var pic = el('div', 'au-art');
-    pic.style.backgroundImage = 'url("' + (a.market === 'seed' ? IMG.seed : IMG.stages[(a.lot.stage || 1) - 1]) + '")';
-    return pic;
+    if (ended) {
+      pane.appendChild(resultView(ended));
+      showArena(pane.querySelector('.au-result .au3d-stage'), ended);
+    } else stopArena();
   }
 
   function marketsView() {
@@ -537,8 +607,8 @@
     var notes = el('ul', 'au-notes');
     [
       owned >= R.max ? '金の生る木は' + R.max + '本までです。' : 'いまの木は' + owned + '本。落札すると' + (owned + 1) + '本目になります（' + R.max + '本まで）。',
-      '相手はNPCです。いつでも離脱でき、離脱すれば支払いはありません。',
-      '落札価格は平均より安くも高くもなります。入札がないまま' + 6 + '秒たつと落札です。',
+      'あなたはデニスとして参加します。仲卸業者5人との最大6人の3D競りです。いつでも離脱でき、離脱すれば支払いはありません。',
+      '最初の7秒で参加者を紹介。その後90秒〜最大3分で競ります。90秒以降は6秒入札がないと落札、3分で必ず終了します。',
       'SUPERの木かどうかは落札するまでわかりません。SUPERなら収穫はずっと' + multText(R.superMult) + '！'
     ].forEach(function (s) { notes.appendChild(el('li', '', s)); });
     v.appendChild(notes);
@@ -547,9 +617,9 @@
 
   function liveView(a) {
     var v = el('div', 'au-live');
+    v.appendChild(arenaView());
     // what is sold
     var lot = el('div', 'au-lot');
-    lot.appendChild(lotArt(a));
     lot.appendChild(el('div', 'au-mystery', 'SUPER ？'));
     lot.appendChild(el('h3', 'au-lot-name', a.lot.name));
     lot.appendChild(el('p', 'au-lot-sub', R.markets[a.market].name + (a.market === 'grown' ? '・見た目 ' + a.lot.stage + ' / ' + TR.stages : '')));
@@ -563,6 +633,7 @@
     mid.appendChild(el('small', 'au-label', '現在の価格'));
     mid.appendChild(K.amountEl(a.price, 'dollars', 'au-price'));
     mid.appendChild(el('div', 'au-leader'));
+    mid.appendChild(el('div', 'au-duration'));
     var hammer = el('div', 'au-hammer');
     hammer.appendChild(el('i'));
     mid.appendChild(hammer);
@@ -602,7 +673,7 @@
     Array.prototype.forEach.call(pane.querySelectorAll('.au-bid'), function (b) {
       var price = a.price + Number(b.dataset.steps) * a.step;
       b.querySelector('.amt span').textContent = U.fmt(price);
-      b.disabled = mine || bidding || S.dollars < price;
+      b.disabled = now() < a.startsAt || mine || bidding || S.dollars < price;
     });
     pane.querySelector('.au-me').classList.toggle('lead', mine);
     Array.prototype.forEach.call(pane.querySelectorAll('.au-who [data-name]'), function (x) { x.classList.toggle('lead', x.dataset.name === a.leader); });
@@ -621,13 +692,28 @@
     var a = auction;
     var bar = $('#auction-pane .au-hammer i'), text = $('#auction-pane .au-close');
     if (!a || !bar) return;
+    var at = a.now + Math.max(0, Date.now() - a.seen);
+    var intro = at < a.startsAt;
+    var phase = $('#auction-pane .au-duration');
+    if (phase) phase.textContent = intro ? '参加者紹介中・あと' + Math.ceil((a.startsAt - at) / 1000) + '秒'
+      : '経過 ' + shortClock(at - a.startsAt) + ' / 最大 3:00';
+    if (BR.sfx.auctionCrowd) BR.sfx.auctionCrowd(!intro && a.status === 'live' && shown() && !document.hidden);
+    Array.prototype.forEach.call($('#auction-pane').querySelectorAll('.au-bid'), function (b) {
+      b.disabled = intro || a.leader === 'me' || bidding || S.dollars < a.price + Number(b.dataset.steps) * a.step;
+    });
     var left = Math.max(0, a.closeIn - (Date.now() - a.seen));
     bar.style.width = U.clamp(left / a.closeMs, 0, 1) * 100 + '%';
     bar.parentNode.classList.toggle('soon', left < 2500);
     var s = (Math.ceil(left / 100) / 10).toFixed(1);
-    text.textContent = !a.bids.length ? '入札者が集まっています…'
+    text.textContent = intro ? '全員の紹介が終わると競りが始まります'
+      : at < a.minEndsAt ? '最低90秒まで競りは続きます・落札まで ' + shortClock(left)
+      : !a.bids.length ? '入札を待っています…'
       : a.leader === 'me' ? 'このまま ' + s + '秒 入札がなければ、あなたが落札！'
       : '入札がなければ ' + s + '秒 で ' + a.leader + ' が落札';
+  }
+  function shortClock(ms) {
+    var seconds = Math.max(0, Math.ceil(ms / 1000));
+    return Math.floor(seconds / 60) + ':' + (seconds % 60 < 10 ? '0' : '') + seconds % 60;
   }
 
   function resultView(a) {
@@ -635,10 +721,10 @@
     var card = el('div', 'au-result-card');
     var title = { won: '落札しました！', lost: '落札できませんでした', left: '競りから離脱しました', unpaid: '落札できませんでした', full: '落札できませんでした' }[a.status] || '競りは終わりました';
     card.appendChild(el('h3', '', title));
+    card.appendChild(arenaView('au3d-result-stage'));
+    card.appendChild(el('b', 'au-result-lot uname', a.lot.name));
+    if (BR.sfx.auctionCrowd) BR.sfx.auctionCrowd(false);
     if (a.status === 'won' && a.tree) {
-      var pic = el('div', 'au-art');
-      pic.style.backgroundImage = 'url("' + IMG.stages[a.tree.stage - 1] + '")';
-      card.appendChild(pic);
       if (a.lot.super) card.appendChild(el('div', 'au-super', 'SUPER'));
       card.appendChild(el('b', 'au-result-name uname', a.tree.name));
       card.appendChild(el('p', '', a.lot.super ? 'SUPERの木です！この木の収穫はずっと' + multText(R.superMult) + 'になります。' : (trees ? trees.length : '') + '本目の金の生る木として植えました。'));
@@ -671,26 +757,32 @@
     if (busy) return;
     busy = true;
     ended = null;
-    api.auctionStart(market).then(function (r) {
+    stopArena();
+    renderAuction();
+    var note = el('p', 'au-preparing', '3Dモデルを読み込み中…');
+    $('#auction-pane').appendChild(note);
+    var ready = BR.auction3d ? BR.auction3d.preload(function (p) { note.textContent = '3Dモデルを読み込み中… ' + Math.round(p * 100) + '%'; }) : Promise.resolve();
+    ready.then(function () { return api.auctionStart(market); }).then(function (r) {
       busy = false;
+      note.remove();
       setAuction(r.auction, true);
       sfx('chance');
       if (shown()) { renderTabs(); renderAuction(); }
     }, function (err) {
       busy = false;
+      note.remove();
       fail(err);
       api.auction().then(function (r) { setAuction(r.auction, true); if (shown()) render(); }, function () {});
     });
   }
   function bid(steps) {
-    if (bidding || !auction || auction.status !== 'live') return;
+    if (bidding || !auction || auction.status !== 'live' || now() < auction.startsAt) return;
     bidding = true;
     updateLive(auction);
     api.auctionBid(steps).then(function (r) {
       bidding = false;
       if (r.balance) BR.app.serverBalance(r.balance);
       setAuction(r.auction, true);
-      sfx('betUp');
       if (shown() && tab === 'auction') { renderTabs(); renderAuction(); }
     }, function (err) {
       bidding = false;
@@ -713,6 +805,9 @@
   }
   /* ------------------------------------------------------------ init --- */
   function init() {
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden && BR.sfx.auctionCrowd) BR.sfx.auctionCrowd(false);
+    });
     $('#tree-tabs').addEventListener('click', function (e) {
       var b = e.target.closest('.tab');
       if (!b || b.classList.contains('active')) return;
@@ -759,6 +854,6 @@
     init: init,
     open: open,
     // signed out: nothing to show until the next player
-    reset: function () { trees = null; auction = null; ended = null; watched = 0; tab = null; stopPolling(); renderBadge(); }
+    reset: function () { trees = null; auction = null; ended = null; watched = 0; tab = null; stopPolling(); stopArena(); renderBadge(); }
   };
 })(window.BR = window.BR || {});
