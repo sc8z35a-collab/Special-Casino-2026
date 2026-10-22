@@ -25,7 +25,8 @@ const PASS = ['authorization', 'user-agent', 'x-device', 'origin', 'referer', 'c
 // …and what it needs to say whether a vault piece may go
 const ASK = [...PASS, 'x-vault-ticket', 'x-vault-upload'];
 
-const answer = (status, error) => Response.json({ error }, { status, headers: { 'Cache-Control': 'no-store' } });
+const NO_STORE = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
+const answer = (status, error) => Response.json({ error }, { status, headers: NO_STORE });
 
 // A piece of a vault file, straight into R2: the object (the whole game, one
 // at a time) is only asked whether it may go and where — a few bytes — and
@@ -35,6 +36,7 @@ const answer = (status, error) => Response.json({ error }, { status, headers: { 
 async function vaultPiece(request, env, casino, url) {
   const size = Number(request.headers.get('content-length') || -1);
   const sha = String(request.headers.get('x-piece-sha256') || '').toLowerCase();
+  if (!/^application\/octet-stream\b/i.test(String(request.headers.get('content-type') || ''))) return answer(415, { code: 'content_type', message: '送る部分の形式が正しくありません。ページを読み込み直してください' });
   if (!(size > 0)) return answer(411, { code: 'length_required', message: '送る部分の大きさがわかりませんでした。ページを読み込み直してください' });
   if (size > VAULT_PIECE_MAX) return answer(413, { code: 'too_large', message: '送信できません。大きすぎます。' });
   const headers = new Headers({ 'content-type': 'application/json' });
@@ -56,7 +58,7 @@ async function vaultPiece(request, env, casino, url) {
   // still there? (deleted meanwhile: the piece goes again)
   const still = await ask('/api/vault/stored', {});
   if (still.status === 404) { await env.VAULT.delete(p.key); return still; }
-  return Response.json({ n: p.n, stored: true }, { headers: { 'Cache-Control': 'no-store' } });
+  return Response.json({ n: p.n, stored: true }, { headers: NO_STORE });
 }
 
 function failure(e) {

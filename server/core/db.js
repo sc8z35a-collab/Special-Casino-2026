@@ -789,6 +789,13 @@ export const MIGRATIONS = [
      )`,
     'CREATE UNIQUE INDEX ops_entries_day ON ops_entries(user_id, day)',
     'ALTER TABLE users ADD COLUMN vip_trial_until INTEGER NOT NULL DEFAULT 0'
+  ],
+  // DEV12: files inside a file in the vault (inside: the file it is in; ''
+  // none). Such a file keeps its container's vault and folder, so it moves
+  // with it.
+  [
+    "ALTER TABLE vault_files ADD COLUMN inside TEXT NOT NULL DEFAULT ''",
+    'CREATE INDEX vault_files_inside ON vault_files(inside)'
   ]
 ];
 

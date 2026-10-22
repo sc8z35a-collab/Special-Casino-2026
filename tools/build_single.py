@@ -39,7 +39,7 @@ def inline_css(match):
 MEDIA = {'webp': 'image/webp', 'png': 'image/png', 'wav': 'audio/wav', 'mp3': 'audio/mpeg', 'mp4': 'video/mp4'}
 # only used by the online features (or the full-size start video): left out of the offline file
 ONLINE_ONLY = re.compile(r'^(img/avatars/|img/cars/|img/items/|img/fruits/|img/jobs/|img/tree/|img/gifts/|img/ui/chain\.webp|img/ui/sale\.webp|img/ui/login-bonus\.webp|'
-                         r'video/title\.mp4|video/studio\.mp4|sounds/peter-)')
+                         r'img/symbols/turn/|img/ui/fire\.webp|video/title\.mp4|video/studio\.mp4|sounds/peter-)')
 
 
 def embed(m):

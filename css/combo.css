@@ -285,3 +285,39 @@
   .cb-badge .cb-inner, .cb-glow.on { animation-duration: .01s; animation-iteration-count: 1; }
   .fv-edge, .fv-edge::before, .fv-edge::after, .fv-reels, .fv-word b { animation-iteration-count: 1; }
 }
+
+/* ------------------------------------------------------------ 3D --- */
+/* COMBO in 3D lettering (gold, rainbow from five in a row: js/main.js sets the pictures) */
+.cb-word3d { display: block; width: 200px; height: 40px; margin-top: 2px; background: center / contain no-repeat; }
+.cb-badge.lv2 .cb-word3d { width: 225px; height: 45px; }
+.cb-badge.lv3 .cb-word3d { width: 255px; height: 51px; }
+.cb-badge.lv4 .cb-word3d { width: 300px; height: 60px; }
+/* the FEVER sign: the 3D lettering itself (no box), swaying */
+.fv-word.three { padding: 0; background: none; box-shadow: none; }
+.fv-word3d {
+  display: block; width: 330px; height: 88px; background: center / contain no-repeat;
+  filter: drop-shadow(0 0 12px rgba(255, 200, 90, .85)) drop-shadow(0 0 32px rgba(255, 80, 20, .6));
+  animation: fvSway 1.3s ease-in-out infinite;
+}
+@keyframes fvSway {
+  0%, 100% { transform: translateY(0) rotate(0) scale(1); }
+  30% { transform: translateY(-9px) rotate(-3deg) scale(1.07); }
+  60% { transform: translateY(2px) rotate(2deg) scale(.98); }
+}
+/* the FEVER!! banner in 3D lettering */
+.jc-banner.fever b.jc-3d {
+  display: block; width: 960px; height: 227px;
+  background: center / contain no-repeat;
+  -webkit-background-clip: border-box; background-clip: border-box;
+  filter: drop-shadow(0 0 22px rgba(255, 210, 110, .9)) drop-shadow(0 0 48px rgba(255, 80, 20, .7));
+}
+/* the 3D flames along the bottom (they take the place of the drawn tongues), behind the buttons, the bet and the WIN */
+.fv-fire { position: absolute; z-index: 0; left: 0; right: 0; bottom: -4px; width: 100%; height: 230px; pointer-events: none; animation: fvIn .6s ease-out both; }
+.fv-fire.out { animation: fvOut .8s ease-out forwards; }
+/* the bet and the WIN over the flames: darker boxes, outlined labels */
+#screen-slot.fever .hud-box { background-color: rgba(40, 6, 4, .62); transition: background-color .6s; }
+#screen-slot.fever .hud-label { text-shadow: 0 0 6px #3a0000, 0 0 3px #3a0000, 0 2px 4px rgba(0, 0, 0, .8); }
+.fv-edge.three::before, .fv-edge.three::after { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .fv-word3d { animation-iteration-count: 1; }
+}

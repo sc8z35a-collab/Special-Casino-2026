@@ -159,7 +159,7 @@ test('pieces kept in the database move into the bucket once there is one', async
   }
 });
 
-test('the vault\'s sizes follow the plan: 3GB in the database on Workers Paid, 8MB pieces with a bucket', async () => {
+test('the vault\'s sizes follow the plan: 3GB in the database on Workers Paid, 16MB pieces with a bucket at 最速 (8MB at 標準)', async () => {
   const paid = await startServer({ operators: ['taku'], limits: LIMITS, plan: 'paid' });
   try {
     const { open } = await developer(paid);
@@ -169,8 +169,10 @@ test('the vault\'s sizes follow the plan: 3GB in the database on Workers Paid, 8
   }
   const both = await startServer({ operators: ['taku'], limits: LIMITS, plan: 'paid', blobs: memoryBucket() });
   try {
-    const { open } = await developer(both);
-    assert.deepEqual([open.store, open.chunk], ['bucket', 8 * 1024 * 1024]);
+    const { open, vault } = await developer(both);
+    assert.deepEqual([open.store, open.chunk, open.speed.id], ['bucket', 16 * 1024 * 1024, 'max']);
+    const slow = await vault('POST', '/api/vault/speed', { speed: 'normal' });
+    assert.deepEqual([slow.speed.name, slow.chunk], ['標準', 8 * 1024 * 1024]);
   } finally {
     await both.stop();
   }
@@ -188,7 +190,7 @@ test('an AI\'s link: what it takes is labelled, its own labels, and a file it pu
     const plain = await vault('POST', '/api/vault/link', { id: '*', hours: 1 });
     const ai = await vault('POST', '/api/vault/link', { id: '*', hours: 6, ai: true });
     assert.deepEqual([plain.ai, ai.ai], [false, true]);
-    const labels = async (id) => (await vault('GET', '/api/vault/files')).files.find((f) => f.id === id).labels;
+    const labels = async (id) => (await vault('GET', `/api/vault/file?id=${id}`)).file.labels;
 
     // a plain link labels nothing; an AI's labels a download once
     await s.call('GET', `${plain.path}&f=${up.file.id}&n=0`);
@@ -216,7 +218,8 @@ test('an AI\'s link: what it takes is labelled, its own labels, and a file it pu
     assert.equal((await say(tokenOf(ai), { f: up.file.id, text: 'もう一度' })).status, 404);
     const mine = (await vault('GET', '/api/vault/files')).files.find((f) => f.id === up.file.id);
     assert.ok(mine.implementedAt > 0);
-    assert.deepEqual(mine.labels.map((l) => l.kind), ['download', 'ai', 'implemented']);
+    assert.equal(mine.labelCount, 3);
+    assert.deepEqual((await labels(up.file.id)).map((l) => l.kind), ['download', 'ai', 'implemented']);
 
     // the developer brings it back; it goes again, and nothing ever deletes it on its own
     assert.equal((await vault('POST', '/api/vault/restore', { id: up.file.id })).file.implementedAt, 0);

@@ -31,6 +31,7 @@
     css += '.ic-chip{background-image:' + url(art.chip) + '}\n';
     css += '.ic-coin{background-image:' + url(art.coin) + '}\n';
     css += '.ic-dollar{background-image:' + url(art.dollar) + '}\n';
+    css += '.ic-garage{background-image:' + url(art.garage) + '}\n';
     css += '.ic-sound{background-image:' + svg(BR.ICONS.soundOff) + '}\n';
     css += '.sound-on .ic-sound{background-image:' + svg(BR.ICONS.soundOn) + '}\n';
     css += '.payline-mark{background-image:' + svg(BR.UISVG.payline()) + '}\n';
@@ -42,6 +43,10 @@
     css += '.chip-pile{background-image:' + url(art.chipPile) + '}\n';
     css += '#bg{background-image:' + url(art.bg) + '}\n';
     css += '#frame{border-image-source:' + url(art.frame) + '}\n';
+    css += '.cb-word3d{background-image:' + url(art.combo) + '}\n';
+    css += '.cb-badge.lv3 .cb-word3d,.cb-badge.lv4 .cb-word3d{background-image:' + url(art.comboRainbow) + '}\n';
+    css += '.fv-word3d{background-image:' + url(art.fever) + '}\n';
+    css += '.jc-banner.fever b.jc-3d{background-image:' + url(art.feverBanner) + '}\n';
     var soc = BR.SOCIAL_IMG;
     // the round buttons on the slot screen: menu, quests
     css += '.ic-menu{background-image:' + url(soc.buttons.menu) + '}\n';
@@ -56,7 +61,14 @@
     var st = document.createElement('style');
     st.textContent = css;
     document.head.appendChild(st);
-    $('.reel-frame').innerHTML = BR.UISVG.reelFrame();
+    // the reel window: its 3D model (the drawn frame if that cannot load)
+    var rf = $('.reel-frame'), frameImg = new Image();
+    frameImg.alt = '';
+    frameImg.draggable = false;
+    frameImg.onerror = function () { rf.innerHTML = BR.UISVG.reelFrame(); };
+    frameImg.src = art.reelFrame;
+    rf.textContent = '';
+    rf.appendChild(frameImg);
   }
 
   /* ------------------------------------------------------------ layout --- */

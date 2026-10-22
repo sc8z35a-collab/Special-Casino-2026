@@ -7,21 +7,37 @@
    itself, its id on the server, the upload's own pass for it (a week: no
    developer code needed meanwhile) and the site's login. Nothing is lost when
    the page or the worker stops: the next start asks the server which pieces
-   it has and sends the rest, four at a time, each as it is (no base64) with
-   its SHA-256 (POST /api/vault/piece; on Cloudflare straight into R2).
+   it has and sends the rest, each as it is (no base64) with its SHA-256 (POST
+   /api/vault/piece; on Cloudflare straight into R2).
+   How fast: as the server says (the developer's 標準 / 高速 / 最速, with
+   each file's /missing): so many MiB of pieces in the air at once (half on a
+   device with little memory) and so many files at once.
+   When something stops it, it starts again by itself: a piece at once, then
+   after a moment, a few times; then the whole file after 1 s, 3, 10, 30 and
+   every minute for as long as it takes (the connection, the server busy). Any
+   other trouble: again after 15 s, 1 minute, 3, 10 and every 10 minutes; a
+   lost login or pass, every 10 minutes (and at once when the site has a new
+   one). Only a file deleted from the vault stops for good.
    A job: { key, who, id, name, size, type, space, folder, parent, model,
-   token, pass, piece, chunks, sent, state: 'wait' | 'run' | 'stop' | 'done' |
-   'fail', why: 'net' | 'locked' | 'login' | 'full' | 'room' | 'error' |
-   'gone' | '', message, tries, next, at, sha256, mem } */
+   token, pass, piece, chunks, sent, rate (bytes a second, while it goes),
+   state: 'wait' | 'run' | 'stop' | 'done' | 'fail', why: 'net' | 'locked' |
+   'login' | 'full' | 'room' | 'error' | 'gone' | '', message, tries, next, at,
+   sha256, mem } */
 var VaultUploads = (function () {
   'use strict';
 
   var NAME = 'two-state-ops-uploads', JOBS = 'jobs', FILES = 'files';
-  var LANES = 4;
-  // a piece that fails for the connection is tried again this often before the whole file stops (and waits)
-  var PIECE_TRIES = 4;
+  // what the server says about how fast (each /missing): MiB of pieces in the air at once, files at once
+  var pace = { budgetMb: 128, files: 3 };
+  // a device with little memory: half as much in the air
+  var small = typeof navigator !== 'undefined' && navigator.deviceMemory && navigator.deviceMemory <= 4;
+  function lanesFor(piece) { return Math.max(2, Math.min(16, Math.floor(pace.budgetMb * (small ? 0.5 : 1) * 1048576 / Math.max(1, piece || 1048576)))); }
+  // a piece that fails for the connection: again at once, then after these waits (ms), before the whole file waits
+  var PIECE_WAITS = [0, 400, 1200, 3000, 6000, 10000];
+  // a whole file stopped: again after these waits, the last one over and over
+  var WAITS = { net: [1000, 3000, 10000, 30000, 60000], error: [15000, 60000, 180000, 600000], login: [600000], locked: [600000] };
   // what stops for the connection or the server being busy: tried again on its own
-  var AGAIN = { offline: 1, missing: 1, piece_size: 1, bad_hash: 1, rate_limited: 1, unavailable: 1, length_required: 1 };
+  var AGAIN = { offline: 1, missing: 1, piece_size: 1, bad_hash: 1, rate_limited: 1, unavailable: 1, length_required: 1, internal: 1 };
 
   /* ------------------------------------------------------------ the store --- */
   var opened = null;
@@ -69,7 +85,7 @@ var VaultUploads = (function () {
   /* ------------------------------------------------------------ the engine --- */
   // host: { tell(job), file(key) -> a File the page holds (mem jobs), mine(job) -> whether this engine sends it }
   function engine(host) {
-    var running = null, again = false, cancelled = {};
+    var cancelled = {};
     // (a copy: the site's own pages only)
     function tell(j) { try { host.tell(Object.assign({}, j)); } catch (e) { /* a page gone */ } }
 
@@ -103,27 +119,40 @@ var VaultUploads = (function () {
         });
       });
     }
-    // the pieces still missing, LANES at a time (one that fails for the connection: again, a few times)
+    // the pieces still missing, as many at a time as the speed allows (one
+    // that fails for the connection: again at once, then after a moment)
     function pieces(j, blob, todo) {
-      var queue = todo.slice(), failed = null, told = 0;
+      var queue = todo.slice(), failed = null, told = 0, recent = [];
+      j.retry = 0;
       function one(n, tries) {
         if (cancelled[j.key]) return Promise.reject({ code: 'cancelled' });
         return sendPiece(j, blob, n).catch(function (err) {
-          if (tries + 1 < PIECE_TRIES && retry(err)) return later(1500 * (tries + 1)).then(function () { return one(n, tries + 1); });
+          if (tries < PIECE_WAITS.length && retry(err)) {
+            // (sent again at once: shown as such meanwhile)
+            if (j.retry < tries + 1) { j.retry = tries + 1; j.rate = 0; tell(j); }
+            return later(PIECE_WAITS[tries]).then(function () { return one(n, tries + 1); });
+          }
           throw err;
         });
       }
       function lane() {
         if (failed || !queue.length) return Promise.resolve();
-        return one(queue.shift(), 0).then(function () {
+        var n = queue.shift();
+        return one(n, 0).then(function () {
           j.sent++;
+          j.retry = 0;
           var now = Date.now();
+          // (how fast: over the last 5 seconds)
+          recent.push([now, n === j.chunks - 1 ? j.size - n * j.piece : j.piece]);
+          while (recent.length > 1 && recent[0][0] < now - 5000) recent.shift();
+          var span = (now - recent[0][0]) / 1000;
+          if (recent.length > 1 && span > 0.3) j.rate = Math.round(recent.slice(1).reduce(function (sum, x) { return sum + x[1]; }, 0) / span);
           if (now - told > 400 || j.sent === j.chunks) { told = now; tell(j); save(j).catch(function () {}); }
           return lane();
         }, function (err) { failed = failed || err; });
       }
       var lanes = [];
-      for (var i = 0; i < Math.min(LANES, queue.length); i++) lanes.push(lane());
+      for (var i = 0; i < Math.min(lanesFor(j.piece), queue.length); i++) lanes.push(lane());
       return Promise.all(lanes).then(function () { if (failed) throw failed; });
     }
     function retry(err) { return !!err && (AGAIN[err.code] || err.status === 0 || err.status === 429 || err.status >= 500); }
@@ -138,6 +167,7 @@ var VaultUploads = (function () {
         return call(j, 'GET', '/api/vault/missing?id=' + j.id);
       }).then(function (r) {
         if (r.upload) j.pass = r.upload;
+        if (r.speed) pace = { budgetMb: r.speed.budgetMb, files: r.speed.files };
         j.piece = r.file.piece;
         j.chunks = r.file.chunks;
         if (r.file.done) return { done: true, sha256: r.file.sha256 };
@@ -157,6 +187,7 @@ var VaultUploads = (function () {
         j.sha256 = r.sha256 || '';
         j.sent = j.chunks;
         j.tries = 0;
+        j.rate = 0;
         j.doneAt = Date.now();
         // (a model's file stays until the page has made its picture)
         return (j.model ? save(j) : save(j).then(function () { return forgetFile(j.key); })).then(function () { tell(j); });
@@ -175,48 +206,77 @@ var VaultUploads = (function () {
       j.state = why === 'gone' ? 'fail' : 'stop';
       j.why = why;
       j.message = err.message || '';
+      j.rate = 0;
       j.tries = (j.tries || 0) + 1;
-      // (again after 5 s, then 10, 20, 40, and every minute)
-      j.next = Date.now() + Math.min(60000, 5000 * Math.pow(2, Math.min(4, j.tries - 1)));
+      // (again after a while: longer each time, then the longest over and over)
+      var w = WAITS[why] || WAITS.error;
+      j.next = Date.now() + w[Math.min(w.length - 1, j.tries - 1)];
       return save(j).then(function () { tell(j); }, function () { tell(j); });
     }
+    // a stopped file that goes again by itself when its time comes
+    function again(j) { return j.state === 'stop' && !!WAITS[j.why]; }
 
-    // every file that is due, one after another (the stopped ones when their time comes)
-    function loop() {
+    // Each slot sends one file after another: the ones waiting, then the
+    // stopped ones when their time comes (as many slots as the speed allows
+    // files at once). A slot with nothing to do waits for the next one due
+    // within two minutes (a new file wakes it), else it ends (the browser or
+    // the page brings it back).
+    var active = {}, slots = 0, naps = [];
+    function nap(ms) {
+      return new Promise(function (ok) {
+        var t = setTimeout(done, ms);
+        function done() { clearTimeout(t); naps = naps.filter(function (x) { return x !== done; }); ok(); }
+        naps.push(done);
+      });
+    }
+    function slot() {
       return all().then(function (list) {
         var now = Date.now();
-        var mine = list.filter(function (j) { return j.id && j.token && host.mine(j); });
+        var mine = list.filter(function (j) { return j.id && j.token && host.mine(j) && !active[j.key]; });
         var due = mine.filter(function (j) {
-          return j.state === 'wait' || j.state === 'run' || (j.state === 'stop' && j.why === 'net' && j.next <= now);
+          return j.state === 'wait' || j.state === 'run' || (again(j) && j.next <= now);
         }).sort(function (a, b) { return a.at - b.at; })[0];
-        if (due) return send(due).then(loop);
-        // one waiting for the connection soon: waited for here
-        var soon = mine.filter(function (j) { return j.state === 'stop' && j.why === 'net'; }).reduce(function (m, j) { return Math.min(m, j.next); }, Infinity);
-        if (soon - now < 120000) return later(Math.max(1000, soon - now)).then(loop);
+        if (due) {
+          active[due.key] = true;
+          var free = function () { delete active[due.key]; };
+          return send(due).then(free, free).then(slot);
+        }
+        var soon = mine.filter(again).reduce(function (m, j) { return Math.min(m, j.next); }, Infinity);
+        if (soon - now < 120000) return nap(Math.max(500, soon - now)).then(slot);
         return null;
       });
     }
+    // up to as many slots as files may go at once; the promise: when every slot has ended
+    var waiting = [];
     function run() {
-      if (running) { again = true; return running; }
-      running = loop().then(done, done);
-      function done() {
-        running = null;
-        if (again) { again = false; return run(); }
-        return null;
-      }
-      return running;
+      naps.slice().forEach(function (wake) { wake(); });
+      while (slots < Math.max(1, pace.files)) { slots++; slot().then(end, end); }
+      return new Promise(function (ok) { waiting.push(ok); });
+    }
+    function end() {
+      if (--slots) return;
+      var l = waiting;
+      waiting = [];
+      l.forEach(function (ok) { ok(); });
     }
     // whether files still wait to go (for the browser to come back to them)
     function pending() {
       return all().then(function (list) {
-        return list.some(function (j) { return j.id && host.mine(j) && (j.state === 'wait' || j.state === 'run' || (j.state === 'stop' && j.why === 'net')); });
+        return list.some(function (j) { return j.id && host.mine(j) && (j.state === 'wait' || j.state === 'run' || again(j)); });
       });
+    }
+    // now, not later: every stopped file that goes again by itself (the connection back, a new login)
+    function wake() {
+      return all().then(function (list) {
+        return Promise.all(list.filter(function (j) { return host.mine(j) && again(j); }).map(function (j) { j.next = 0; return save(j); }));
+      }).then(run, run);
     }
     return {
       run: run,
+      wake: wake,
       pending: pending,
       cancel: function (key) { cancelled[key] = true; },
-      busy: function () { return !!running; }
+      busy: function () { return slots > 0; }
     };
   }
 

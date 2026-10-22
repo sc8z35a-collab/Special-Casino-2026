@@ -188,6 +188,12 @@
 .g3d-hint { flex: 1; min-width: 0; font-size: 12px; line-height: 1.35; color: #cfd6e6; }
 .g3d-btn { flex: none; height: 34px; padding: 0 14px; border-radius: 17px; background: rgba(255, 255, 255, .14); color: #fff; font-size: 13px; font-weight: 700; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .32); }
 .g3d-btn.close { background: rgba(229, 38, 43, .75); }
+/* a narrow screen (a phone held upright): the name and the buttons on one line, the hint under them */
+@media (max-width: 600px) {
+  .g3d-top { flex-wrap: wrap; row-gap: 6px; }
+  .g3d-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 16px; }
+  .g3d-hint { order: 3; flex-basis: 100%; }
+}
 #g3d-out, .g3d.walk #g3d-in { display: none; }
 .g3d.walk #g3d-out { display: inline-block; }
 .g3d-stick { position: absolute; left: max(24px, env(safe-area-inset-left)); bottom: max(24px, env(safe-area-inset-bottom)); width: 124px; height: 124px; border-radius: 50%; display: none; background: rgba(255, 255, 255, .08); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .3); touch-action: none; }

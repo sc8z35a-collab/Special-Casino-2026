@@ -24,6 +24,8 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener('message', (e) => {
   const m = e.data || {};
   if (m.type === 'kick') e.waitUntil(work());
+  // (the connection back, a new login: the stopped files at once)
+  else if (m.type === 'wake') e.waitUntil(engine.wake().then(work));
   else if (m.type === 'cancel' && m.key) engine.cancel(m.key);
 });
 // the browser coming back to what is left (Background Sync, where there is one)

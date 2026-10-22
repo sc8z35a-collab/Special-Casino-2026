@@ -14,6 +14,9 @@
    embers rise, a FEVER sign hangs off the top-right corner of the reels and
    the marquee runs in fire colours; every win in a FEVER throws more fire,
    and the first spin without a win puts it out in smoke.
+   COMBO and FEVER are 3D lettering from their models (COMBO gold and then
+   rainbow, FEVER rainbow), and the fire is the 3D row of flames, moving
+   (js/render/fire3d.js), drawn flames until it is in.
    Spins of a watched friend count the same way (a separate streak). In a
    hub (友達と稼ぐ, js/ui/hub.js) the combo is everyone's: the server counts
    it, a miss or two do not end it, and the others' wins show on it too. A
@@ -73,7 +76,9 @@
     var b = el('div', 'cb-badge lv' + lv);
     var inner = el('div', 'cb-inner');
     inner.appendChild(el('b', 'cb-n', String(n)));
-    inner.appendChild(el('span', 'cb-word', 'COMBO!'));
+    var word = el('i', 'cb-word3d');
+    word.setAttribute('aria-label', 'COMBO');
+    inner.appendChild(word);
     if (n >= BR.CONFIG.comboDouble) inner.appendChild(el('span', 'cb-x2', '報酬×2'));
     b.appendChild(inner);
     screen().appendChild(b);
@@ -84,6 +89,8 @@
     }, 2600);
     burst(b, lv);
     if (lv >= 3) glowReels(lv);
+    // (the FEVER's fire on its way: ready by the fifth)
+    if (n >= 3 && BR.fire3d) BR.fire3d.sheet();
     if (lv >= 4) confetti(b);
     if (sound) BR.sfx.play(lv >= 4 ? 'purchase' : lv >= 3 ? 'notify' : 'betUp');
   }
@@ -145,21 +152,24 @@
     if (fever || (BR.fx && !BR.fx.on('fever'))) return;
     var J = BR.juice;
     var edge = el('div', 'fv-edge'), glowing = el('div', 'fv-reels'), sign = el('div', 'fv-sign');
-    var word = el('div', 'fv-word');
-    'FEVER'.split('').forEach(function (ch, i) {
-      var b = el('b', '', ch);
-      b.style.setProperty('--i', String(i));
-      word.appendChild(b);
-    });
+    var word = el('div', 'fv-word three');
+    var letters = el('i', 'fv-word3d');
+    letters.setAttribute('aria-label', 'FEVER');
+    word.appendChild(letters);
     sign.appendChild(word);
     [edge, glowing, sign].forEach(function (n) { screen().appendChild(n); });
+    // the flames along the bottom: the 3D fire, over the reels' foot but
+    // behind the buttons, the bet and the WIN so they stay readable (the
+    // drawn tongues while it loads)
+    var fire = BR.fire3d ? BR.fire3d.row(screen(), 230, $('#btn-charm'), edge) : null;
     screen().classList.add('fever');
-    fever = { nodes: [edge, glowing, sign], sign: sign, timer: setInterval(embers, 140), tick: 0 };
+    fever = { nodes: [edge, glowing, sign].concat(fire ? [fire.node] : []), sign: sign, fire: fire, timer: setInterval(embers, 140), tick: 0 };
     BR.sfx.fever(true);
     BR.sfx.play('fever');
     if (!J) return;
     var W = J.W(), H = J.H(), r = J.at('#reels');
-    J.banner('FEVER!!', 'fever', 1800);
+    var bn = J.banner('FEVER!!', 'fever', 1800), bt = bn && bn.querySelector('b');
+    if (bt) { bt.classList.add('jc-3d'); bt.setAttribute('aria-label', 'FEVER!!'); bt.textContent = ''; }
     J.flash('#ff7a2a', 0.38, 420);
     J.shake(null, 12, 520);
     J.ring(r.x, r.y, { r0: 200, r1: 1100, dur: 0.8, w: 18, sy: 0.55, color: 'fire' });
@@ -215,7 +225,10 @@
     BR.sfx.fever(false);
     var s = J && J.at(f.sign);
     f.nodes.forEach(function (n) { n.classList.add('out'); });
-    setTimeout(function () { f.nodes.forEach(function (n) { if (n.parentNode) n.parentNode.removeChild(n); }); }, 900);
+    setTimeout(function () {
+      if (f.fire) f.fire.stop();
+      f.nodes.forEach(function (n) { if (n.parentNode) n.parentNode.removeChild(n); });
+    }, 900);
     if (quiet || !J || BR.screens.current() !== 'slot') return;
     BR.sfx.play('feverEnd');
     var W = J.W(), H = J.H();
