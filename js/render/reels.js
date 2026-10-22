@@ -318,7 +318,7 @@
       if (sym === 'seven') {
         // the 3D fire (js/render/fire3d.js) up from the bottom of the cell; the drawn flames until it is in
         var fh = CELL_H * 0.78 * res;
-        if (!BR.fire3d || !BR.fire3d.draw(g, x0 - 8 * res, base - fh, COL_W * res + 16 * res, fh, t + i * 0.31, (COL_W + 16) * res * 0.55)) {
+        if (!BR.fire3d || !BR.fire3d.draw(g, x0 - 8 * res, base - fh, COL_W * res + 16 * res, fh, t + i * 0.31)) {
           flames(g, x0, COL_W * res, base, res, t, i + 9, 0.6, ['rgba(255,220,110,0.9)', 'rgba(255,120,30,0.75)', 'rgba(230,40,0,0.4)', 'rgba(180,10,0,0)']);
         }
       } else if (sym === 'statue') {

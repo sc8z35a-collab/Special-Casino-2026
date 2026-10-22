@@ -3,12 +3,13 @@
 # (meshopt geometry, WebP textures, fewer triangles):
 #   the win titles (js/render/win3d.js)   img/3d/{win,big,super,ultra}.glb
 #   the cars (js/render/garage3d.js)      img/3d/cars/<car id>.glb
-#   the car studio                        img/3d/studio/{base,moving-head,spotlight}.glb
+#   the car studio                        img/3d/studio/{base,moving-head,spotlight,bookshelf}.glb
+#   the garage (ガレージ3D)                img/3d/garage/garage.glb
 #   three.js (one bundle for both)        js/vendor/three-bundle.js
 # The originals (Meshy AI exports, 10-30 MB each) are not kept in the
 # repository: put them in tools/3d/source/ (win.glb, big.glb, super.glb,
 # ultra.glb, car-<car id>.glb, studio-base.glb, studio-moving-head.glb,
-# studio-spotlight.glb: any of them) and run
+# studio-spotlight.glb, studio-bookshelf.glb, garage.glb: any of them) and run
 #   sh tools/3d/build.sh
 # then `node tools/stamp.mjs`. Needs Node.js 18+; the tools come from npm.
 set -e
@@ -24,10 +25,11 @@ mkdir -p js/vendor
   --outfile=js/vendor/three-bundle.js
 
 # source:output:how far the triangles are cut:texture size (the error limit keeps the shapes)
-mkdir -p img/3d/cars img/3d/studio
+mkdir -p img/3d/cars img/3d/studio img/3d/garage
 for job in win:win:0.18:1024 big:big:0.14:1024 super:super:0.09:1024 ultra:ultra:0.12:1024 \
     car-blue-lightning:cars/blue-lightning:0.16:2048 \
-    studio-base:studio/base:0.12:1024 studio-moving-head:studio/moving-head:0.08:1024 studio-spotlight:studio/spotlight:0.12:1024; do
+    studio-base:studio/base:0.12:1024 studio-moving-head:studio/moving-head:0.08:1024 studio-spotlight:studio/spotlight:0.12:1024 \
+    studio-bookshelf:studio/bookshelf:0.08:1024 garage:garage/garage:0.1:2048; do
   src=${job%%:*}; rest=${job#*:}; out=${rest%%:*}; rest=${rest#*:}; ratio=${rest%%:*}; tex=${rest#*:}
   [ -f "tools/3d/source/$src.glb" ] || continue
   "$T/node_modules/.bin/gltf-transform" optimize "tools/3d/source/$src.glb" "img/3d/$out.glb" \

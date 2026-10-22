@@ -31,6 +31,7 @@
     css += '.ic-chip{background-image:' + url(art.chip) + '}\n';
     css += '.ic-coin{background-image:' + url(art.coin) + '}\n';
     css += '.ic-dollar{background-image:' + url(art.dollar) + '}\n';
+    css += '.ic-garage{background-image:' + url(art.garage) + '}\n';
     css += '.ic-sound{background-image:' + svg(BR.ICONS.soundOff) + '}\n';
     css += '.sound-on .ic-sound{background-image:' + svg(BR.ICONS.soundOn) + '}\n';
     css += '.payline-mark{background-image:' + svg(BR.UISVG.payline()) + '}\n';

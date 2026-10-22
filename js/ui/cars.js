@@ -4,8 +4,10 @@
      turning in the studio (js/render/garage3d.js), its price with the Car
      Owner sale on now (極 / 超極 / 超ダイナミック / 年感謝セール, js/game/sale.js)
      and how long it lasts.
-   - Garage: two places, one more for $1,000,000 each (for good). Every car can
-     be looked at in its 3D space (double tap: first person, a 5x lens), rented
+   - Garage: two places, one more for $1,000,000 each (for good; the garage
+     coin, from its 3D model, marks it). ガレージ3D: the garage itself in 3D
+     with a car parked in it (double tap: first person, a 5x lens); every car
+     with a 3D model can be looked at there ("3Dで見る"). Every car can be rented
      out (any number of them: customers every 5 hours, the takings collected
      here; a car out is away for 5 hours at the least), sold to the buy-back
      (its price now less the day's rate; 大廃棄セール: far less taken off) or
@@ -210,6 +212,7 @@
   function full() {
     sfx('deny');
     K.confirmBox(function (p) {
+      p.appendChild(K.icon('garage confirm-garage'));
       p.appendChild(document.createTextNode('ガレージがいっぱいです（' + capacity() + '台）。1台分広げますか？'));
       p.appendChild(K.amountEl(garage ? garage.slotPrice : slotPrice(), 'dollars', 'confirm-amt'));
       p.appendChild(el('small', 'confirm-sub', '広げた分はずっと使えます。'));
@@ -246,14 +249,24 @@
       bar.appendChild(dz);
     }
     var places = el('div', 'garage-places');
+    places.appendChild(K.icon('garage'));
     places.appendChild(el('span', '', 'ガレージ'));
     places.appendChild(el('b', '', owned() + ' / ' + capacity() + '台'));
-    var ex = el('button', 'mini-btn gold', '+1台分 広げる（' + money(garage.slotPrice) + '）');
+    // one more place: bought with the garage coin
+    var ex = el('button', 'mini-btn gold garage-buy');
+    ex.appendChild(K.icon('garage'));
+    ex.appendChild(el('span', '', '+1台分 広げる（' + money(garage.slotPrice) + '）'));
     ex.type = 'button';
     ex.disabled = busy;
     ex.addEventListener('click', function () { sfx('click'); expand(false); });
     places.appendChild(ex);
     bar.appendChild(places);
+    // the garage in 3D: the first car that can be seen in it parked inside (none: the empty garage)
+    var in3d = garage.cars.filter(function (c) { return !c.rent && (model(c.model) || {}).model; })[0];
+    var g3 = el('button', 'mini-btn gold garage-3d-btn', 'ガレージ3D');
+    g3.type = 'button';
+    g3.addEventListener('click', function () { sfx('click'); open3d(in3d || null); });
+    bar.appendChild(g3);
     var earned = garage.cars.reduce(function (n, c) { return n + (c.earned || 0); }, 0);
     var rented = garage.cars.filter(function (c) { return c.rent; }).length;
     var rent = el('div', 'garage-rent');
@@ -352,6 +365,7 @@
     };
     if (thenBuy) { go(); return; }
     K.confirmBox(function (p) {
+      p.appendChild(K.icon('garage confirm-garage'));
       p.appendChild(document.createTextNode('ガレージを1台分広げますか？'));
       p.appendChild(K.amountEl(price, 'dollars', 'confirm-amt'));
       p.appendChild(el('small', 'confirm-sub', '広げた分はずっと使えます（今 ' + capacity() + '台 → ' + (capacity() + 1) + '台）。'));
@@ -428,32 +442,34 @@
 
   /* ------------------------------------------------------------ the 3D space --- */
   var space = null;
+  var HINT = 'ドラッグで見る向きを変える・ダブルタップでガレージの中へ';
+  // the garage in 3D, `c` parked in it (null: the garage alone)
   function open3d(c) {
     if (!BR.garage3d || !BR.garage3d.supported()) { sfx('deny'); toast('この端末では3Dを表示できません', 2600); return; }
-    var m = model(c.model) || { name: c.model };
+    var m = c ? model(c.model) || { name: c.model } : null;
     var box = $('#g3d');
     box.hidden = false;
     box.classList.add('on');
     box.classList.remove('walk');
-    $('#g3d-name').textContent = m.name;
-    $('#g3d-hint').textContent = 'ドラッグで回転・ダブルタップで中に入る';
+    $('#g3d-name').textContent = 'ガレージ3D' + (m ? '・' + m.name : '');
+    $('#g3d-hint').textContent = HINT;
     $('#g3d-load').hidden = false;
     $('#g3d-load').textContent = '3Dを読み込み中…';
-    space = c.model;
+    space = c ? c.model : '';
     BR.garage3d.onMode = function (mode) {
       box.classList.toggle('walk', mode === 'walk');
-      $('#g3d-hint').textContent = mode === 'walk' ? 'ドラッグで見回す・スティックで歩く・2本指でズーム・ダブルタップで戻る' : 'ドラッグで回転・ダブルタップで中に入る';
+      $('#g3d-hint').textContent = mode === 'walk' ? 'ドラッグで見回す・スティックで歩く・2本指でズーム・ダブルタップで戻る' : HINT;
       zoomShown(1);
     };
     BR.garage3d.onZoom = zoomShown;
-    BR.garage3d.space($('#g3d-view'), c.model, function (p) { $('#g3d-load').textContent = '3Dを読み込み中… ' + Math.round(p * 100) + '%'; }).then(function () {
+    BR.garage3d.space($('#g3d-view'), space, function (p) { $('#g3d-load').textContent = '3Dを読み込み中… ' + Math.round(p * 100) + '%'; }).then(function () {
       $('#g3d-load').hidden = true;
     }, function () {
       $('#g3d-load').textContent = '3Dを読み込めませんでした';
     });
   }
   function close3d() {
-    if (!space) return;
+    if (space === null) return;
     space = null;
     BR.garage3d.stop();
     var box = $('#g3d');

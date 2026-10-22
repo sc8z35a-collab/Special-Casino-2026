@@ -393,6 +393,11 @@
 .garage-disposal small { margin-left: auto; font: 800 22px var(--f-num); }
 .garage-places, .garage-rent { display: flex; align-items: center; gap: 14px; font-size: 22px; color: #d8cfd1; }
 .garage-places b { font: 800 30px var(--f-num); color: #ffe27a; }
+/* the garage coin (a garage place bought) */
+.garage-places > .ic-garage { width: 46px; height: 46px; margin-right: -4px; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .45)); }
+.garage-buy { display: inline-flex; align-items: center; gap: 8px; }
+.garage-buy .ic-garage { width: 34px; height: 34px; margin-left: -6px; }
+.confirm-garage { display: block; width: 120px; height: 120px; margin: 0 auto 14px; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .5)) drop-shadow(0 0 18px rgba(255, 200, 80, .35)); }
 .garage-rent .amt { font: 800 28px var(--f-num); color: #ffe27a; }
 .garage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
 .garage-grid .empty { grid-column: 1 / -1; }

@@ -2,7 +2,8 @@
 
     python3 tools/art/ui_images.py
 
-- chip / coin / dollar: wallet and HUD icons
+- chip / coin / dollar: wallet and HUD icons; garage: the garage coin (a
+  garage place bought)
 - spin.webp + spin-arrows.webp: the SPIN button face with the arrows lifted
   onto their own layer (they turn while the reels spin)
 - pill-get / pill-max: the two left HUD buttons as supplied; pill.webp is the
@@ -85,7 +86,7 @@ def lift(rgb, base, core):
 
 
 def icons():
-    for name, size in (('chip', 160), ('coin', 160), ('dollar', 160)):
+    for name, size in (('chip', 160), ('coin', 160), ('dollar', 160), ('garage', 160)):
         save(square(trim(load(name + '.webp'))).resize((size, size), Image.LANCZOS), name + '.webp', 90)
 
 

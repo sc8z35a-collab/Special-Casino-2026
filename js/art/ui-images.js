@@ -18,13 +18,14 @@
     // frame over the reels, and the panels behind the symbols
     reelFrame: 'img/ui/reel-frame.webp',
     reelBack: 'img/ui/reel-back.webp',
-    // 3D lettering: COMBO from its models (the gold one, and the rainbow one
-    // from five in a row), FEVER made in three.js; the fire as a volume
-    // (js/render/fire3d.js)
+    // 3D lettering from the models: COMBO (the gold one, and the rainbow one
+    // from five in a row), the rainbow FEVER; the 3D row of flames, moving
+    // (js/render/fire3d.js); the garage coin (a garage place bought)
     combo: 'img/ui/combo.webp',
     comboRainbow: 'img/ui/combo-rainbow.webp',
     fever: 'img/ui/fever.webp',
     feverBanner: 'img/ui/fever-banner.webp',
-    fire: 'img/ui/fire.webp'
+    fire: 'img/ui/fire.webp',
+    garage: 'img/ui/garage.webp'
   };
 })(window.BR = window.BR || {});

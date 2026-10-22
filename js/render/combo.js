@@ -14,8 +14,8 @@
    embers rise, a FEVER sign hangs off the top-right corner of the reels and
    the marquee runs in fire colours; every win in a FEVER throws more fire,
    and the first spin without a win puts it out in smoke.
-   COMBO and FEVER are 3D lettering (COMBO from its models, gold and then
-   rainbow; FEVER made in three.js), and the fire is a 3D volume of flames
+   COMBO and FEVER are 3D lettering from their models (COMBO gold and then
+   rainbow, FEVER rainbow), and the fire is the 3D row of flames, moving
    (js/render/fire3d.js), drawn flames until it is in.
    Spins of a watched friend count the same way (a separate streak). In a
    hub (友達と稼ぐ, js/ui/hub.js) the combo is everyone's: the server counts
@@ -158,10 +158,12 @@
     word.appendChild(letters);
     sign.appendChild(word);
     [edge, glowing, sign].forEach(function (n) { screen().appendChild(n); });
-    // the flames along the bottom: the 3D fire (the drawn tongues while it loads)
-    var fire = BR.fire3d ? BR.fire3d.row(edge, 230) : null;
+    // the flames along the bottom: the 3D fire, over the reels' foot but
+    // behind the buttons, the bet and the WIN so they stay readable (the
+    // drawn tongues while it loads)
+    var fire = BR.fire3d ? BR.fire3d.row(screen(), 230, $('#btn-charm'), edge) : null;
     screen().classList.add('fever');
-    fever = { nodes: [edge, glowing, sign], sign: sign, fire: fire, timer: setInterval(embers, 140), tick: 0 };
+    fever = { nodes: [edge, glowing, sign].concat(fire ? [fire.node] : []), sign: sign, fire: fire, timer: setInterval(embers, 140), tick: 0 };
     BR.sfx.fever(true);
     BR.sfx.play('fever');
     if (!J) return;
