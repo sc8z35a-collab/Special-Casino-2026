@@ -45,7 +45,7 @@ import { createDevCode } from './devcode.js';
 import { createPay } from './pay.js';
 import { createTeam } from './team.js';
 import { createStats } from './stats.js';
-import { createVault } from './vault.js';
+import { createVault, VAULT_BULK } from './vault.js';
 import { REASONS as FILTERED } from './attach.js';
 import { createDiscord } from './discord.js';
 
@@ -3440,7 +3440,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   let emergencyRef = null, backupRef = null;
   const shield = createShield({
     q, config, opsLog, clock: config.clock || Date.now,
-    onBreach: (info) => { if (emergencyRef) emergencyRef.breach(info); }
+    onBreach: (info) => { if (emergencyRef) emergencyRef.breach(info); },
+    // a vault's pieces: many a second at full speed, under their own limit (each operator, signed in)
+    bulk: (req) => VAULT_BULK.has(`${req.method} ${req.path}`) && /^Bearer /.test(String(req.header('authorization') || ''))
   });
   const emergency = createEmergency({
     q, config, opsLog, devCode, isDeveloper, getUser, clock: config.clock || Date.now,
@@ -3824,7 +3826,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         // lockdown WHILE_LOCKED already allows only the security base, whose
         // routes check for an operator themselves
         if (emergency.stopped() && !emergency.locked() && !isDeveloper(user)) return { status: 503, body: emergency.body() };
-        rate(limit.general, user.id);
+        // (a vault's pieces: their own limit, in server/core/vault.js)
+        if (!VAULT_BULK.has(key)) rate(limit.general, user.id);
       }
       return { status: 200, body: await route(req, user) };
     } catch (e) {

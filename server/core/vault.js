@@ -42,6 +42,21 @@
 // and unused material never mix, but kept (the developer can bring it back).
 // Nothing in a vault is ever deleted on its own: only the people who use it
 // delete.
+// How fast it goes is the developer's choice for everyone (標準 / 高速 / 最速,
+// 最速 until they choose): how big a new file's pieces are (with a bucket),
+// how many pieces each browser sends at once and how many files, and how many
+// pieces the server takes from each operator a minute (the pieces have their
+// own limit, not the site's general one, so nothing else waits on them).
+// The list of a vault is light: no pictures (up to 600KB each: read only
+// when one is shown), no notes, links or labels, only their counts; a file's
+// 詳細 asks for all of it (GET /api/vault/file). The site sends the list's
+// revision back and hears "the same" while nothing has changed.
+// A guard watches the vault: an operator who keeps asking for what is not
+// theirs (one different file or vault after another that they do not see) is
+// kept out of the vault for 15 minutes, and an address that keeps trying
+// different links that are not right is kept from the links for 30; both are
+// logged.
+// What leaves the vault (a file opened or downloaded) is logged too.
 // Short messages on a file last a day, 3, 7, 30 or with no end; an AI's link
 // shows them while they last (an old one stays on the operator site, marked
 // as over).
@@ -109,6 +124,27 @@ const CONTROL = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028-\u202E\u2066-\u2
 const UPLOAD_MS = 7 * 86400000;
 const UPLOAD_RE = /^(\d{1,15})\.([0-9a-f]{32})\.(\d{13})\.([\w-]{43})$/;
 
+// how fast the vault goes (the developer's choice, for everyone): a new
+// file's pieces with a bucket (MiB), what each browser sends at once (MiB of
+// pieces; half on a phone with little memory) and how many files at once,
+// and the pieces each operator may send a minute [a minute, burst]
+export const VAULT_SPEEDS = {
+  normal: { name: '標準', pieceMb: 8, budgetMb: 32, files: 1, perMinute: [1200, 300] },
+  fast: { name: '高速', pieceMb: 8, budgetMb: 64, files: 2, perMinute: [3000, 600] },
+  max: { name: '最速', pieceMb: 16, budgetMb: 128, files: 3, perMinute: [9000, 1500] }
+};
+// the routes that carry pieces (their own limit: not the site's general one,
+// nor the shield's count of requests from one address)
+export const VAULT_BULK = new Set(['POST /api/vault/piece', 'POST /api/vault/chunk', 'POST /api/vault/permit', 'POST /api/vault/stored', 'GET /api/vault/chunk']);
+// a file's row as read for everything but its picture (up to 600KB, read
+// only when it is shown): `preview` is 1 when it has one
+const COLS = `id, name, type, note, size, chunks, piece, received, sha256, created_by, created_at, done_at, parent, folder, space, labels, implemented_at, info,
+  backup_at, backup_by, removed_at, removed_by, from_space, from_folder, (preview != '') AS preview`;
+// the guard: what is not one's own asked for this often in 10 minutes keeps
+// one out of the vault for 15; wrong links from one address this often, out
+// of the links for 30
+const GUARD = { tries: 20, windowMs: 10 * 60000, blockMs: 15 * 60000, linkTries: 12, linkBlockMs: 30 * 60000 };
+
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 // 1GB, 1.5GB, 12MB, 300KB (nothing: 0MB)
 const mb = (n) => (!n ? '0MB' : n >= 1073741824 ? `${(n / 1073741824).toFixed(n < 10737418240 ? 1 : 0)}GB`
@@ -143,15 +179,81 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   const size = SIZES[blobs ? 'bucket' : config.plan === 'paid' ? 'paid' : 'db'];
   const maxBytes = (config.vaultMaxMb ?? size.all) * 1048576, fileBytes = (config.vaultFileMb ?? size.file) * 1048576;
   const freeBytes = (config.vaultFreeMb ?? FREE_MB) * 1048576;
-  // a piece: 8 MiB in a bucket on Workers Paid (a request may work for 30 s), else 1 MiB
-  const pieceBytes = Math.min(size.piece, Math.max(1, config.vaultPieceMb ?? (blobs && config.plan === 'paid' ? 8 : 1))) * CHUNK;
+  // how fast (the developer's choice; 最速 until then)
+  function speedNow() {
+    const r = q("SELECT value FROM meta WHERE key = 'vault_speed'").get();
+    return r && VAULT_SPEEDS[r.value] ? r.value : 'max';
+  }
+  const speedDto = () => { const v = speedNow(), x = VAULT_SPEEDS[v]; return { id: v, name: x.name, budgetMb: x.budgetMb, files: x.files }; };
+  // a new file's pieces: VAULT_PIECE_MB when set; else with a bucket as the
+  // speed says (they stream from the Worker into R2, never held in memory),
+  // in the database 1 MiB
+  const pieceNow = () => Math.min(size.piece, Math.max(1, config.vaultPieceMb ?? (blobs ? VAULT_SPEEDS[speedNow()].pieceMb : 1))) * CHUNK;
   // a piece as base64 inside JSON
   const pieceBody = Math.ceil(size.piece * CHUNK * 4 / 3) + 64 * 1024;
   // [a minute, burst]: tries to open it, pieces and lists (each operator), fetching with a link (an address)
   const L = { vaultOpen: [10, 5], vaultWork: [1200, 300], vaultPull: [600, 200], ...config.limits };
   const limits = { open: new Limiter(...L.vaultOpen), work: new Limiter(...L.vaultWork), pull: new Limiter(...L.vaultPull) };
+  // the pieces, at each speed (each operator)
+  const pieceLimits = Object.fromEntries(Object.entries(VAULT_SPEEDS).map(([k, v]) => [k, new Limiter(...(config.limits?.vaultPieces || v.perMinute))]));
   function rate(l, key) {
     if (!l.take(String(key))) throw new ApiError(429, 'rate_limited', '操作が速すぎます。少し待ってください');
+  }
+
+  /* --------------------------------------------------------------- guard --- */
+  // What is not one's own, asked for: counted (each operator, each address
+  // for links), each different thing once (a file asked for again and again
+  // by an upload going on in several lanes is one).
+  const strikes = new Map(), barred = new Map();
+  function strike(key, what, tries, blockMs, log) {
+    const now = Date.now();
+    const seen = new Map([...(strikes.get(key) || new Map())].filter(([, t]) => t > now - GUARD.windowMs));
+    seen.set(String(what), now);
+    strikes.set(key, seen);
+    if (strikes.size > 5000) for (const [k, v] of strikes) if (Math.max(...v.values()) <= now - GUARD.windowMs) strikes.delete(k);
+    if (seen.size < tries || barred.get(key) > now) return;
+    barred.set(key, now + blockMs);
+    if (barred.size > 5000) for (const [k, t] of barred) if (t <= now) barred.delete(k);
+    strikes.delete(key);
+    log();
+  }
+  function barredNow(key) {
+    const until = barred.get(key);
+    if (!until) return false;
+    if (until > Date.now()) return true;
+    barred.delete(key);
+    return false;
+  }
+  // an operator who keeps asking for what is not theirs
+  function denied(req, u, why, what) {
+    if (!u || isDeveloper(u)) return;
+    strike(`u:${u.id}`, what, GUARD.tries, GUARD.blockMs, () => opsLog.add({
+      actor: u, action: 'vault_guard', req,
+      summary: `保管庫の見張り：${u.name}が自分のものではないファイル・保管庫を何度も求めたため、保管庫を15分間止めた（最後：${why}）`, detail: { user: u.id, why, minutes: GUARD.blockMs / 60000 }
+    }));
+  }
+  function guarded(u) {
+    if (barredNow(`u:${u.id}`)) throw new ApiError(429, 'vault_guard', '自分のものではないファイルへのアクセスが続いたため、保管庫を15分間使えません');
+  }
+  // an address that keeps trying links that are not right
+  function linkMiss(req, token) {
+    const ip = req.ip || '-';
+    strike(`ip:${ip}`, sha(String(token || '')).slice(0, 16), GUARD.linkTries, GUARD.linkBlockMs, () => opsLog.add({
+      actorName: 'リンク', action: 'vault_guard', req,
+      summary: `保管庫の見張り：無効なリンクが同じアドレスから何度も使われたため、そのアドレスからのリンクを30分間止めた`, detail: { ip, minutes: GUARD.linkBlockMs / 60000 }
+    }));
+  }
+  function linkGuarded(req) {
+    if (barredNow(`ip:${req.ip || '-'}`)) throw new ApiError(429, 'vault_guard', 'しばらくリンクを使えません。少し待ってからお試しください');
+  }
+  // what left the vault (opened or downloaded), once an hour for each one and each file
+  const outs = new Map();
+  function tookOut(req, u, f) {
+    const key = `${u.id}:${f.id}`, now = Date.now();
+    if (outs.get(key) > now - 3600000) return;
+    outs.set(key, now);
+    if (outs.size > 5000) for (const [k, t] of outs) if (t <= now - 3600000) outs.delete(k);
+    opsLog.add({ actor: u, action: 'vault_take', req, summary: `${u.name}が${whereName(f.space)}の${what(f)}を開いた／ダウンロードした`, detail: fileNote(f) });
   }
 
   const sign = (body) => crypto.createHmac('sha256', KEY).update(body).digest();
@@ -171,6 +273,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   // logged in, only the changes wait for the code)
   function need(req, u, write = false) {
     ops.need(u);
+    guarded(u);
     if (write && isDeveloper(u) && !ticketOk(req, u)) throw locked();
     rate(limits.work, u.id);
   }
@@ -191,11 +294,13 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   // a file being sent (its pieces, what is missing, the end, a model's
   // picture): one who may change it; the developer with the ticket, or with
   // the upload's own pass (so it goes on with the vault closed)
-  function sending(req, u, id) {
+  // (`bulk`: a piece, under the pieces' own limit)
+  function sending(req, u, id, bulk = false) {
     ops.need(u);
-    const f = theFile(u, id, 'change');
+    guarded(u);
+    const f = theFile(u, id, 'change', req);
     if (isDeveloper(u) && !ticketOk(req, u) && !uploadOk(req, u, f.id)) throw locked();
-    rate(limits.work, u.id);
+    rate(bulk ? pieceLimits[speedNow()] : limits.work, u.id);
     return f;
   }
   const developerOnly = (u, what) => {
@@ -243,9 +348,10 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   const noFile = () => new ApiError(404, 'no_file', 'ファイルが見つかりません');
   const noFolder = () => new ApiError(404, 'no_folder', 'フォルダが見つかりません');
   // the vault a request names: '' (the developer's own), the backups, a shared or a personal one
-  function spaceFor(u, raw, how = '') {
+  function spaceFor(u, raw, how = '', req = null) {
     const space = String(raw ?? '');
     if (space && space !== BACKUP && !membersOf(space)) throw new ApiError(400, 'bad_space', '保管庫の指定が正しくありません');
+    if (req && !sees(u, space)) denied(req, u, 'ほかの人の保管庫', `space:${space}`);
     check(u, space, how, () => (space ? new ApiError(404, 'no_space', 'この保管庫は見られません')
       : new ApiError(403, 'not_developer', '開発者専用保管庫は開発者のアカウントだけが使えます')));
     return space;
@@ -268,11 +374,15 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   const what = (f) => (f.space ? `ファイル（${mb(f.size)}）` : `「${f.name}」（${mb(f.size)}）`);
   const fileNote = (f) => ({ file: f.id, ...(f.space ? { space: f.space } : { name: f.name }), size: f.size });
 
-  const fileRow = (id) => (ID_RE.test(String(id || '')) ? q('SELECT * FROM vault_files WHERE id = ?').get(String(id)) : null);
+  const fileRow = (id) => (ID_RE.test(String(id || '')) ? q(`SELECT ${COLS} FROM vault_files WHERE id = ?`).get(String(id)) : null);
+  // a file's picture (read only when it is shown)
+  const pictureOf = (f) => (f.preview ? (q('SELECT preview FROM vault_files WHERE id = ?').get(f.id) || {}).preview || null : null);
   // a file `u` sees (and may change or add to, as `how` says); any other is not there
-  function theFile(u, id, how = '') {
+  // (`req`: one who asks for what they do not see is counted by the guard)
+  function theFile(u, id, how = '', req = null) {
     const f = fileRow(id);
     if (!f) throw noFile();
+    if (req && !sees(u, f.space)) { denied(req, u, 'ほかの人のファイル', f.id); throw noFile(); }
     check(u, f.space, how, noFile);
     return f;
   }
@@ -320,9 +430,43 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       where: whereName(f.space)
     };
   }
+  // The files as a vault's list shows them: light (counts of their links,
+  // notes and labels, whether there is a picture or what is in it: no more;
+  // each file's 詳細 asks for fileDto). One query for the links and one for
+  // the notes of all of them, each person and each vault's name looked up once.
+  function cards(files, now) {
+    if (!files.length) return [];
+    const ids = JSON.stringify(files.map((f) => f.id));
+    const live = new Map(q('SELECT file_id, COUNT(*) AS n FROM vault_links WHERE revoked = 0 AND until > ? AND file_id IN (SELECT value FROM json_each(?)) GROUP BY file_id').all(now, ids).map((r) => [r.file_id, r.n]));
+    const notes = new Map(q('SELECT file_id, COUNT(*) AS n FROM vault_notes WHERE file_id IN (SELECT value FROM json_each(?)) GROUP BY file_id').all(ids).map((r) => [r.file_id, r.n]));
+    const people = new Map(), places = new Map();
+    const person = (id) => { if (!people.has(id)) people.set(id, who(id)); return people.get(id); };
+    const place = (space) => { if (!places.has(space)) places.set(space, whereName(space)); return places.get(space); };
+    return files.map((f) => ({
+      id: f.id, name: f.name, type: f.type, size: f.size, chunks: f.chunks, piece: f.piece, received: f.received, done: !!f.done_at, sha256: f.sha256,
+      createdAt: f.created_at, doneAt: f.done_at, parent: f.parent || '', folder: f.folder || '', space: f.space, preview: !!f.preview, info: !!f.info,
+      implementedAt: f.implemented_at, by: person(f.created_by), where: place(f.space), links: { live: live.get(f.id) || 0 },
+      noteCount: notes.get(f.id) || 0, labelCount: labelsOf(f).length,
+      backup: f.backup_at ? { at: f.backup_at, removed: f.removed_at ? { at: f.removed_at, from: f.from_space, where: place(f.from_space) } : null } : null,
+      light: true
+    }));
+  }
+  // The vaults' revision: up by one with every change, and when a link or a
+  // note runs out (a list the site has is the same until then). It starts
+  // from the time the server started, so a restart is never the same.
+  let rev = Date.now(), nextOut = 0;
+  const bump = () => { rev++; nextOut = 0; };
+  function revNow(now) {
+    if (nextOut && now >= nextOut) { rev++; nextOut = 0; }
+    if (!nextOut) {
+      nextOut = Math.min(q('SELECT MIN(until) AS t FROM vault_links WHERE revoked = 0 AND until > ?').get(now).t || Infinity,
+        q('SELECT MIN(until) AS t FROM vault_notes WHERE until > ?').get(now).t || Infinity);
+    }
+    return rev;
+  }
   // what a link shows of a file (no notes' writers, no links)
   function pullDto(f) {
-    const light = q("SELECT * FROM vault_files WHERE parent = ? AND done_at > 0 ORDER BY created_at DESC LIMIT 1").get(f.id);
+    const light = q(`SELECT ${COLS} FROM vault_files WHERE parent = ? AND done_at > 0 ORDER BY created_at DESC LIMIT 1`).get(f.id);
     return {
       id: f.id, name: f.name, type: f.type, size: f.size, chunks: f.chunks, chunk: f.piece, sha256: f.sha256, folder: f.folder || '', sentAt: f.created_at, doneAt: f.done_at,
       labels: labelsOf(f), info: infoOf(f), preview: !!f.preview, notes: notesOf(f).filter((n) => live(n, Date.now())).map(({ text, at, until, by }) => ({ text, at, until, by: by.ai ? 'AI' : 'developer' })),
@@ -404,6 +548,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       }
       return { received, sum: finish(f, q('SELECT sha256 FROM vault_chunks WHERE file_id = ? ORDER BY n').all(f.id).map((r) => r.sha256), req, u) };
     });
+    bump();
     return { n, received: out.received, chunks: f.chunks, done: !!out.sum, sha256: out.sum };
   }
   // every piece in: the file's fingerprint, and it is whole
@@ -434,7 +579,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     return { kept: keep.length, gone: gone.length };
   }
   async function erase(files) {
-    const all = [...new Map(files.flatMap((f) => [f, ...q('SELECT * FROM vault_files WHERE parent = ?').all(f.id)]).map((x) => [x.id, x])).values()];
+    const all = [...new Map(files.flatMap((f) => [f, ...q(`SELECT ${COLS} FROM vault_files WHERE parent = ?`).all(f.id)]).map((x) => [x.id, x])).values()];
     tx(() => {
       for (const x of all) {
         q('DELETE FROM vault_chunks WHERE file_id = ?').run(x.id);
@@ -451,7 +596,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     const n = q("SELECT COUNT(*) AS files, COALESCE(SUM(CASE WHEN implemented_at > 0 THEN 1 ELSE 0 END), 0) AS implemented FROM vault_files WHERE parent = '' AND space = ''").get();
     const s = q("SELECT COUNT(CASE WHEN parent = '' THEN 1 END) AS files, COALESCE(SUM(size), 0) AS bytes, COUNT(DISTINCT space) AS vaults FROM vault_files WHERE space != '' AND space != ?").get(BACKUP);
     return {
-      store: blobs ? 'bucket' : 'db', used: used(), maxBytes, fileBytes, piece: pieceBytes, files: n.files, implemented: n.implemented,
+      store: blobs ? 'bucket' : 'db', used: used(), maxBytes, fileBytes, piece: pieceNow(), speed: speedDto(), files: n.files, implemented: n.implemented,
       folders: q("SELECT COUNT(*) AS n FROM vault_folders WHERE space = ''").get().n, inDb: inDb(),
       shared: { files: s.files, bytes: s.bytes, vaults: s.vaults, free: freeBytes, requests: q("SELECT COUNT(*) AS n FROM vault_requests WHERE status = 'open'").get().n }
     };
@@ -462,6 +607,10 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     const l = TOKEN_RE.test(String(token || '')) ? q('SELECT * FROM vault_links WHERE token_hash = ?').get(sha(String(token))) : null;
     if (!l || l.revoked || l.until <= Date.now()) throw gone();
     return l;
+  }
+  // (a wrong one counted against the address that tried it)
+  function linkFor(req, token) {
+    try { return linkOf(token); } catch (e) { linkMiss(req, token); throw e; }
   }
 
   /* ------------------------------------------------------------- folders --- */
@@ -578,7 +727,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     }).sort((a, b) => (b.with.operator - a.with.operator) || (b.with.developer - a.with.developer) || a.with.name.localeCompare(b.with.name));
     const out = {
       me: room(u), spaces: mine,
-      pool: { used: used(), maxBytes, fileBytes, chunk: pieceBytes, store: blobs ? 'bucket' : 'db', free: freeBytes }
+      pool: { used: used(), maxBytes, fileBytes, chunk: pieceNow(), store: blobs ? 'bucket' : 'db', free: freeBytes }, speed: speedDto()
     };
     if (!isDeveloper(u)) return { ...out, personal: { id: `u:${u.id}`, owner: who(u.id), ...box(`u:${u.id}`) } };
     const b = q(`SELECT COUNT(CASE WHEN parent = '' AND backup_at > 0 THEN 1 END) AS files, COUNT(CASE WHEN parent = '' AND space = ? THEN 1 END) AS removed,
@@ -594,7 +743,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   }
   // the files of the developer's backups: every backed-up one (in its vault
   // or deleted from it) and their light copies
-  const backedUp = () => q(`SELECT * FROM vault_files WHERE backup_at > 0 OR space = ? OR parent IN (SELECT id FROM vault_files WHERE backup_at > 0)
+  const backedUp = () => q(`SELECT ${COLS} FROM vault_files WHERE backup_at > 0 OR space = ? OR parent IN (SELECT id FROM vault_files WHERE backup_at > 0)
                              ORDER BY backup_at DESC, created_at DESC`).all(BACKUP);
 
   const routes = {
@@ -606,29 +755,56 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const body = await req.json();
       await devCode.check(body.code, req, u);
       opsLog.add({ actor: u, action: 'vault_open', req, summary: '開発者が保管庫を開いた（開発者コードで）', detail: {} });
-      return { ticket: ticketFor(u), until: Date.now() + TICKET_MS, chunk: pieceBytes, maxBytes, fileBytes, used: used(), hours: LINK_HOURS, store: blobs ? 'bucket' : 'db', free: freeBytes };
+      return { ticket: ticketFor(u), until: Date.now() + TICKET_MS, chunk: pieceNow(), speed: speedDto(), maxBytes, fileBytes, used: used(), hours: LINK_HOURS, store: blobs ? 'bucket' : 'db', free: freeBytes };
     },
 
     // the vaults one sees, one's room in the shared ones (and the developer's look at everyone's)
     'GET /api/vault/spaces': (req, u) => {
       need(req, u);
-      return spaces(u);
+      const r = String(revNow(Date.now()));
+      if (req.query.get('rev') === r) return { same: true, rev: r };
+      return { ...spaces(u), rev: r };
     },
 
     // one vault's files and folders (`space`: a shared or a personal one, or
     // the backups; none: the developer's own). `locked`: the developer
-    // without the code, who only looks.
+    // without the code, who only looks. The files are light (cardDto: each
+    // one's 詳細 asks for the rest); `rev`: the list the site has, answered
+    // with `same` while nothing has changed since.
     'GET /api/vault/files': (req, u) => {
       need(req, u);
-      const space = spaceFor(u, req.query.get('space'));
-      const now = Date.now(), open = unlocked(req, u);
+      const space = spaceFor(u, req.query.get('space'), '', req);
+      const now = Date.now(), open = unlocked(req, u), r = revNow(now);
+      const key = `${r}:${open ? 1 : 0}`;
+      if (req.query.get('rev') === key) return { same: true, rev: key, now };
+      const files = space === BACKUP ? backedUp() : q(`SELECT ${COLS} FROM vault_files WHERE space = ? ORDER BY created_at DESC`).all(space);
       return {
-        space: spaceDto(u, space, open), locked: !open,
-        files: (space === BACKUP ? backedUp() : q('SELECT * FROM vault_files WHERE space = ? ORDER BY created_at DESC').all(space)).map((f) => fileDto(f, now)),
+        space: spaceDto(u, space, open), locked: !open, rev: key,
+        files: cards(files, now),
         folders: space === BACKUP ? [] : q('SELECT * FROM vault_folders WHERE space = ? ORDER BY name').all(space).map(folderDto),
-        used: used(), maxBytes, fileBytes, chunk: pieceBytes, store: blobs ? 'bucket' : 'db', inDb: isDeveloper(u) ? inDb() : 0,
+        used: used(), maxBytes, fileBytes, chunk: pieceNow(), speed: speedDto(), store: blobs ? 'bucket' : 'db', inDb: isDeveloper(u) ? inDb() : 0,
         all: space ? null : linksOf(ALL, now), me: room(u), now
       };
+    },
+    // everything about one file (its 詳細: what is in it, its notes, labels, links, backup)
+    'GET /api/vault/file': (req, u) => {
+      need(req, u);
+      return { file: fileDto(theFile(u, req.query.get('id'), '', req)) };
+    },
+
+    // how fast the vault goes (the developer: for everyone)
+    'POST /api/vault/speed': async (req, u) => {
+      need(req, u);
+      developerOnly(u, '保管庫の速さの変更');
+      const body = await req.json();
+      const v = String(body.speed || '');
+      if (!VAULT_SPEEDS[v]) throw new ApiError(400, 'bad_speed', '速さを選んでください（標準・高速・最速）');
+      const was = speedNow();
+      if (v !== was) {
+        q("INSERT INTO meta (key, value) VALUES ('vault_speed', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(v);
+        opsLog.add({ actor: u, action: 'vault_speed', req, summary: `保管庫の速さを「${VAULT_SPEEDS[was].name}」から「${VAULT_SPEEDS[v].name}」に変更`, detail: { from: was, to: v } });
+      }
+      return { speed: speedDto(), chunk: pieceNow() };
     },
 
     // a 3D model's picture and what is in it (made on the operator site)
@@ -645,8 +821,8 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     'GET /api/vault/preview': (req, u) => {
       need(req, u);
-      const f = theFile(u, req.query.get('id'));
-      return { id: f.id, preview: f.preview || null };
+      const f = theFile(u, req.query.get('id'), '', req);
+      return { id: f.id, preview: pictureOf(f) };
     },
 
     // a new file: its name, size, type, vault and folder; the pieces follow
@@ -667,6 +843,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const space = parent ? parent.space : spaceFor(u, body.space, 'add');
       const folder = parent ? parent.folder : placeIn(space, body.folder);
       const id = crypto.randomBytes(16).toString('hex');
+      const pieceBytes = pieceNow();
       tx(() => {
         const all = used();
         if (all + size > maxBytes) throw new ApiError(413, 'vault_full', `保管庫がいっぱいです（${mb(all)} / ${mb(maxBytes)}）。いらないファイルを削除してください`);
@@ -682,13 +859,14 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     'GET /api/vault/missing': async (req, u) => {
       const f = sending(req, u, req.query.get('id'));
       const have = await piecesOf(f);
-      if (!f.done_at && have.size !== f.received) q('UPDATE vault_files SET received = ? WHERE id = ?').run(have.size, f.id);
-      return { file: fileDto(fileRow(f.id)), missing: gaps(f, have), upload: uploadFor(u, f) };
+      if (!f.done_at && have.size !== f.received) { q('UPDATE vault_files SET received = ? WHERE id = ?').run(have.size, f.id); bump(); }
+      return { file: fileDto(fileRow(f.id)), missing: gaps(f, have), upload: uploadFor(u, f), speed: speedDto() };
     },
 
     // one piece as it is (?id=…&n=…, its SHA-256 in X-Piece-SHA256)
     'POST /api/vault/piece': async (req, u) => {
-      const f = sending(req, u, req.query.get('id'));
+      if (!/^application\/octet-stream\b/i.test(String(req.header('content-type') || ''))) throw new ApiError(415, 'content_type', '送る部分の形式が正しくありません。ページを読み込み直してください');
+      const f = sending(req, u, req.query.get('id'), true);
       if (f.done_at) throw isDone();
       const n = pieceNo(f, req.query.get('n'));
       const want = String(req.header('x-piece-sha256') || '').toLowerCase();
@@ -700,7 +878,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     // one piece (base64 in JSON: the operator site before DEV11)
     'POST /api/vault/chunk': async (req, u) => {
       const body = await req.json(pieceBody);
-      const f = sending(req, u, body.id);
+      const f = sending(req, u, body.id, true);
       if (f.done_at) throw isDone();
       const n = pieceNo(f, body.n);
       const want = String(body.sha256 || '').toLowerCase();
@@ -714,7 +892,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     // bucket, the object takes it itself)
     'POST /api/vault/permit': async (req, u) => {
       const body = await req.json();
-      const f = sending(req, u, req.query.get('id'));
+      const f = sending(req, u, req.query.get('id'), true);
       if (f.done_at) throw isDone();
       const n = pieceNo(f, req.query.get('n'));
       if (!HEX64.test(String(body.sha256 || ''))) throw new ApiError(400, 'bad_piece', '送った部分の確認用の値（SHA-256）がありません。ページを読み込み直してください');
@@ -723,8 +901,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     },
     // …and after it went in: is the file still there (deleted meanwhile: the Worker takes the piece out again)
     'POST /api/vault/stored': (req, u) => {
-      ops.need(u);
-      const f = theFile(u, req.query.get('id'));
+      const f = sending(req, u, req.query.get('id'), true);
       return { ok: true, chunks: f.chunks };
     },
 
@@ -745,9 +922,13 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // one piece back (the site puts the file together and checks every hash)
     'GET /api/vault/chunk': async (req, u) => {
-      need(req, u);
-      const f = theFile(u, req.query.get('id'));
-      return piece(f, pieceNo(f, req.query.get('n')));
+      ops.need(u);
+      guarded(u);
+      rate(pieceLimits[speedNow()], u.id);
+      const f = theFile(u, req.query.get('id'), '', req);
+      const n = pieceNo(f, req.query.get('n'));
+      if (n === 0) tookOut(req, u, f);
+      return piece(f, n);
     },
 
     // files (each with its light copy) out of the vault for good: `id`, or
@@ -861,7 +1042,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
         }
       }
       const all = new Map(files.map((f) => [f.id, f]));
-      if (under.size) for (const f of q("SELECT * FROM vault_files WHERE parent = '' AND folder IN (SELECT value FROM json_each(?))").all(JSON.stringify([...under]))) all.set(f.id, f);
+      if (under.size) for (const f of q(`SELECT ${COLS} FROM vault_files WHERE parent = '' AND folder IN (SELECT value FROM json_each(?))`).all(JSON.stringify([...under]))) all.set(f.id, f);
       const list = [...all.values()].filter((f) => f.space !== BACKUP && (on ? !f.backup_at : f.backup_at));
       if (!all.size) throw new ApiError(400, 'no_files', 'バックアップするファイルを選んでください');
       const now = Date.now();
@@ -1051,8 +1232,9 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     // vault. Any problem (wrong, stopped, expired) looks the same from
     // outside. An AI's link labels a file as taken (once an hour).
     'GET /api/vault/pull': async (req) => {
+      linkGuarded(req);
       rate(limits.pull, req.ip || '-');
-      const l = linkOf(req.query.get('t'));
+      const l = linkFor(req, req.query.get('t'));
       const all = l.file_id === ALL;
       const top = all ? null : fileRow(l.file_id);
       if (!all && (!top || top.space || !top.done_at || top.implemented_at)) throw gone();
@@ -1071,7 +1253,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
         if (model && !recent) addLabel(model, 'download', f.parent ? 'AIが軽量版をダウンロード' : 'AIがダウンロード');
       }
       if (f && n !== null && n !== '') return piece(f, pieceNo(f, n));
-      if (f && req.query.get('preview')) return { id: f.id, preview: f.preview || null };
+      if (f && req.query.get('preview')) return { id: f.id, preview: pictureOf(f) };
       q('UPDATE vault_links SET uses = uses + 1 WHERE token_hash = ?').run(l.token_hash);
       opsLog.add({ actorName: 'リンク', action: 'vault_pull', req, summary: f ? `保管庫の「${f.name}」がリンクから取得された` : '保管庫全体の一覧がリンクから取得された', detail: { file: f ? f.id : ALL, name: f ? f.name : '', uses: l.uses + 1, until: l.until } });
       const how = {
@@ -1086,7 +1268,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       return {
         vault: true, until: l.until, ai: !!l.ai,
         folders: q("SELECT * FROM vault_folders WHERE space = '' ORDER BY name").all().map(folderDto).map(({ space, ...d }) => d),
-        files: q("SELECT * FROM vault_files WHERE space = '' AND done_at > 0 AND parent = '' AND implemented_at = 0 ORDER BY created_at DESC").all().map(pullDto), how
+        files: q(`SELECT ${COLS} FROM vault_files WHERE space = '' AND done_at > 0 AND parent = '' AND implemented_at = 0 ORDER BY created_at DESC`).all().map(pullDto), how
       };
     },
 
@@ -1096,9 +1278,10 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     // (implemented, text: where it went): the file moves to 実装済み, out of
     // every link at once (it stays in the vault).
     'POST /api/vault/ai': async (req) => {
+      linkGuarded(req);
       rate(limits.pull, req.ip || '-');
       const body = await req.json();
-      const l = linkOf(body.t);
+      const l = linkFor(req, body.t);
       if (!l.ai) throw gone();
       const f = fileRow(body.f);
       if (!f || f.space || !f.done_at || f.implemented_at || f.parent || !(l.file_id === ALL || l.file_id === f.id)) throw noFile();
@@ -1204,5 +1387,11 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     }
   };
 
-  return { routes, summary, public: ['GET /api/vault/pull', 'POST /api/vault/ai'] };
+  // every change (but a piece into the bucket, which changes no list): the lists' revision up
+  for (const [key, fn] of Object.entries(routes)) {
+    if (!key.startsWith('POST ') || VAULT_BULK.has(key)) continue;
+    routes[key] = async (req, u) => { try { return await fn(req, u); } finally { bump(); } };
+  }
+
+  return { routes, summary, speedNow, public: ['GET /api/vault/pull', 'POST /api/vault/ai'] };
 }

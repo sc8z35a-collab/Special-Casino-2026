@@ -335,10 +335,11 @@ test('short messages on a vault file: kept for 1, 3, 7, 30 days or with no end, 
     const link = await vault('POST', '/api/vault/link', { id: '*', hours: 1, ai: true });
     const listed = (await s.call('GET', link.path)).files[0];
     assert.deepEqual(listed.notes.map((n) => n.text), ['車のモデルに使って'], 'an AI sees the ones that last');
-    const mine = (await vault('GET', '/api/vault/files')).files[0].notes;
+    const mine = (await vault('GET', `/api/vault/file?id=${file.id}`)).file.notes;
     assert.equal(mine.length, 2, 'the developer sees the old one too (nothing goes on its own)');
+    assert.equal((await vault('GET', '/api/vault/files')).files[0].noteCount, 2, 'the list counts them');
     await vault('POST', '/api/vault/notes/delete', { note: mine[1].id });
-    assert.equal((await vault('GET', '/api/vault/files')).files[0].notes.length, 1);
+    assert.equal((await vault('GET', `/api/vault/file?id=${file.id}`)).file.notes.length, 1);
   } finally {
     await s.stop();
   }

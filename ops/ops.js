@@ -95,7 +95,9 @@
     developer: false, operators: [], pay: null, payView: 'waiting', vault: null, vaultFiles: [], vaultFolders: [], vaultFolder: '', vaultPicked: {},
     vaultShow: 'all', vaultPage: 0, logKind: '',
     // the vault open ('' the developer's own, 'p:<a>:<b>' a shared one), the ones to choose from, what one may do in it
-    vaultSpace: '', vaultSpaces: null, vaultInfo: null
+    vaultSpace: '', vaultSpaces: null, vaultInfo: null,
+    // the revisions of the lists this page has (the server answers "the same" while nothing changed), when they last came in full
+    vaultRev: { files: '', spaces: '', full: 0 }, vaultSpeed: null
   };
   var timer = 0, liveTimer = 0, searchTimer = 0, logTimer = 0, chatTimer = 0;
   var speed = 'normal';
@@ -334,6 +336,7 @@
   }
   function logout() {
     var t = token;
+    if (state.name) dropLogin(state.name);
     setToken(null);
     if (t) fetch('/api/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: '{}' }).catch(function () {});
     showLogin('ログアウトしました');
@@ -377,7 +380,8 @@
     Object.keys(up.cards).forEach(function (k) { up.cards[k].card.remove(); });
     up.cards = {};
     up.jobs = {};
-    refreshJobs().then(kick);
+    // (after a new login: the files that waited for one go now)
+    refreshJobs().then(adoptJobs).then(kick);
     opsLiveOpen();
     if (state.developer) loadPay(true);
     load();
@@ -2925,6 +2929,7 @@
     state.vaultFolder = '';
     state.vaultPicked = {};
     state.vaultPage = 0;
+    state.vaultRev = { files: '', spaces: '', full: 0 };
     vaultSig = '';
     lastPick = null;
     clearTimeout(vaultTimer);
@@ -2953,6 +2958,7 @@
         vaultTimer = setTimeout(function () { relock('30分たったので閲覧のみに戻りました'); }, Math.max(1000, r.until - Date.now() - 5000));
         toast('30分間 編集できます');
         vaultSig = '';
+        renewPasses();
         return loadVault();
       });
     }).catch(fail);
@@ -2966,22 +2972,37 @@
       if (state.vault) return null;
       state.vault = { ticket: '', until: 0, chunk: sp.pool.chunk, maxBytes: sp.pool.maxBytes, fileBytes: sp.pool.fileBytes, used: sp.pool.used, store: sp.pool.store, me: sp.me, hours: sp.hours };
       state.vaultSpaces = sp;
+      state.vaultSpeed = sp.speed || null;
       state.vaultSpace = state.developer ? '' : sp.personal ? sp.personal.id : sp.spaces.length ? sp.spaces[0].id : '';
       renderVault();
       return loadVault();
     }, function (err) { if (!quiet) fail(err); }).then(function () { openLook.busy = false; });
   }
   // the vaults one sees and one's room, and the open one's files and folders
-  // (`quiet`: from the timer, redrawn only when something changed)
+  // (`quiet`: from the timer, redrawn only when something changed). The
+  // lists are light; from the timer the server only says "the same" while
+  // nothing has changed (in full once a minute all the same).
   function loadVault(quiet) {
     if (!state.vault) return Promise.resolve();
-    var space = state.vaultSpace, none = !space && !state.developer;
+    var space = state.vaultSpace, none = !space && !state.developer, rv = state.vaultRev;
+    var cheap = quiet && Date.now() - rv.full < 60000 && rv.space === space;
+    var q = function (path, rev) { return path + (path.indexOf('?') < 0 ? '?' : '&') + 'rev=' + encodeURIComponent(rev); };
+    var filesPath = '/api/vault/files' + (space ? '?space=' + encodeURIComponent(space) : '');
     return Promise.all([
-      vreq('GET', '/api/vault/spaces'),
-      none ? null : vreq('GET', '/api/vault/files' + (space ? '?space=' + encodeURIComponent(space) : ''))
+      vreq('GET', cheap && rv.spaces ? q('/api/vault/spaces', rv.spaces) : '/api/vault/spaces'),
+      none ? null : vreq('GET', cheap && rv.files ? q(filesPath, rv.files) : filesPath)
     ]).then(function (rs) {
       var sp = rs[0], r = rs[1];
       if (!state.vault || state.vaultSpace !== space) return;
+      // (nothing changed: as it is)
+      if (sp.same && (!r || r.same)) return;
+      if (sp.same) sp = state.vaultSpaces;
+      if (r && r.same) r = { space: state.vaultInfo, files: state.vaultFiles, folders: state.vaultFolders, all: state.vault.all, store: state.vault.store, rev: rv.files };
+      rv.spaces = sp.rev || '';
+      rv.files = r ? r.rev || '' : '';
+      rv.space = space;
+      if (!cheap) rv.full = Date.now();
+      if (sp.speed) state.vaultSpeed = sp.speed;
       state.vaultSpaces = sp;
       if (sp.requests) setCount('vault', sp.requests.length);
       state.vault.used = sp.pool.used;
@@ -3019,6 +3040,7 @@
   // another vault: from its top, nothing checked
   function goSpace(id) {
     if (!state.vault || id === state.vaultSpace) return;
+    state.vaultRev.full = 0;
     state.vaultSpace = id;
     state.vaultInfo = null;
     state.vaultFiles = [];
@@ -3572,6 +3594,7 @@
   function renderVault() {
     var open = !!state.vault, info = state.vaultInfo;
     topBar();
+    renderSpeed();
     $('#vault-title').textContent = '保管庫';
     $('#vault-main').hidden = !open;
     // the developer: 編集する (the code) while looking only, 閉じる while changing
@@ -3624,6 +3647,26 @@
     renderResume();
   }
   var VAULT_PAGE = 10;
+  // how fast the vault goes (the developer changes it, for everyone)
+  var SPEED_NOTE = { max: '最速：大きな部分（R2 では 16MB）を一度にたくさん、3ファイルずつ', fast: '高速：8MB の部分を一度に多めに、2ファイルずつ', normal: '標準：8MB の部分を少しずつ、1ファイルずつ' };
+  function renderSpeed() {
+    var box = $('#vault-speed-box'), sp = state.vaultSpeed;
+    box.hidden = !state.vault || !sp;
+    if (!sp) return;
+    $('#vault-speed').value = sp.id;
+    $('#vault-speed').disabled = !state.developer;
+    box.title = (SPEED_NOTE[sp.id] || '') + (state.developer ? '（運営者全員に反映）' : '（速さは開発者だけが変えられます）');
+  }
+  function setVaultSpeed(v) {
+    if (!state.developer || !state.vaultSpeed) { renderSpeed(); return; }
+    vreq('POST', '/api/vault/speed', { speed: v }).then(function (r) {
+      state.vaultSpeed = r.speed;
+      if (state.vault) state.vault.chunk = r.chunk;
+      renderSpeed();
+      toast('保管庫の速さ：' + r.speed.name + '（' + SPEED_NOTE[r.speed.id].replace(/^[^：]+：/, '') + '。運営者全員に反映）');
+      kick();
+    }, function (err) { renderSpeed(); fail(err); });
+  }
   function renderPager(pages, n) {
     var box = $('#vault-pager'), at = state.vaultPage;
     box.textContent = '';
@@ -3722,17 +3765,22 @@
     renderComments();
     $('#vcomments').hidden = false;
     if (canWrite()) setTimeout(function () { $('#vcomments-text').focus(); }, 30);
+    if (!fullOf(f)) loadFull(f).then(function () { if (commentsFor === f.id) renderComments(); }, fail);
   }
   function closeComments() { commentsFor = null; $('#vcomments').hidden = true; }
   function renderComments() {
     var f = fileOf(commentsFor);
     if (!f) { closeComments(); return; }
+    var full = fullOf(f);
+    if (!full && f.noteCount && commentsFor) loadFull(f).then(function () { if (commentsFor === f.id) renderComments(); }, function () {});
+    f = full || f;
     $('#vcomments-name').textContent = f.name;
     $('#vcomments-note').textContent = !f.space ? 'AI用リンクにも、期限まで表示されます' : f.space === 'backup' ? '' : 'この保管庫を使う人と開発者に見えます';
     $('#vcomments-form').hidden = !canWrite() || state.vaultSpace === 'backup';
     var list = $('#vcomments-list');
     list.textContent = '';
-    if (!(f.notes || []).length) list.appendChild(el('p', 'muted vcomments-empty', 'コメントはまだありません'));
+    if (!full && f.noteCount) list.appendChild(el('p', 'muted vcomments-empty', '読み込み中…'));
+    else if (!(f.notes || []).length) list.appendChild(el('p', 'muted vcomments-empty', 'コメントはまだありません'));
     (f.notes || []).forEach(function (n) {
       var over = n.until && n.until <= Date.now(), ai = n.by && n.by.ai;
       var row = el('div', 'vcomment' + (over ? ' over' : '') + (ai ? ' ai' : ''));
@@ -3847,7 +3895,7 @@
   }
   // a file's 💬: how many comments
   function commentBtn(f) {
-    var n = (f.notes || []).length;
+    var n = f.noteCount !== undefined ? f.noteCount : (f.notes || []).length;
     var b = el('button', 'vbtn vcomment-btn' + (n ? ' has' : ''));
     b.type = 'button';
     b.dataset.vact = 'comments';
@@ -3891,8 +3939,33 @@
     if (shown[f.id]) row.appendChild(detailsEl(f, kind));
     return row;
   }
-  // everything about a file (its 詳細)
+  // A file's 詳細: everything about it, asked for when it opens (the list is
+  // light), and kept while the list is the same.
+  var fulls = {};
+  function fullOf(f) {
+    var c = fulls[f.id];
+    return c && c.rev === state.vaultRev.files ? c.file : null;
+  }
+  function loadFull(f) {
+    var rev = state.vaultRev.files;
+    return vreq('GET', '/api/vault/file?id=' + f.id).then(function (r) {
+      fulls[f.id] = { rev: rev, file: r.file };
+      return r.file;
+    });
+  }
+  // one card drawn again (its 詳細 in)
+  function redrawCard(id) {
+    var row = document.querySelector('#vault-list [data-file="' + id + '"]'), f = fileOf(id);
+    if (row && f) row.replaceWith(vaultCard(f));
+  }
   function detailsEl(f, kind) {
+    var full = fullOf(f);
+    if (!full) {
+      var wait = el('div', 'vitem-detail loading', '詳細を読み込み中…');
+      loadFull(f).then(function () { redrawCard(f.id); }, function (err) { wait.textContent = '詳細を読み込めませんでした：' + ((err && err.message) || ''); });
+      return wait;
+    }
+    f = full;
     var box = el('div', 'vitem-detail'), light = lightOf(f);
     var body = el('div', 'vault-body');
     if (f.preview) body.appendChild(picEl(f));
@@ -3979,14 +4052,16 @@
      itself, and 「再開」 sends every stopped one again at once. */
   var up = { mode: '', reg: null, engine: null, jobs: {}, cards: {}, mem: {}, ready: null };
   var UP_WHY = {
-    net: '通信が切れたか、サーバーが混み合っています。自動で続きから送ります',
-    locked: 'アップロードの許可（1週間）が切れました。「編集する」で開発者コードを入れて「再開」を押してください',
-    login: 'ログインが切れました。ログインし直して「再開」を押してください',
+    net: '通信が切れたか、サーバーが混み合っています。自動で何度でも続きから送ります',
+    locked: 'アップロードの許可（1週間）が切れました。「編集する」で開発者コードを入れると、自動で続きを送ります',
+    login: 'ログインが切れました。ログインし直すと、自動で続きを送ります',
     full: '保管庫がいっぱいです。空きができしだい送ります',
     room: 'あなたの容量の上限です。開発者の承認か空きができしだい送ります（「容量を申請」から申請できます）',
     gone: 'このファイルは保管庫から削除されました',
     error: ''
   };
+  // the stopped ones that go again by themselves (ops/vault-upload.js)
+  var AGAIN_WHY = { net: 1, error: 1, login: 1, locked: 1 };
   function upInit() {
     var page = function () {
       up.mode = 'page';
@@ -4005,7 +4080,42 @@
         return 'sw';
       }, page);
     } else up.ready = Promise.resolve(window.indexedDB ? page() : 'none');
-    up.ready.then(function () { refreshJobs(); kick(); });
+    up.ready.then(function () { refreshJobs().then(adoptJobs); kick(); });
+  }
+  // this account's files waiting here take the site's login as it is now (a
+  // new one after logging in again: the ones stopped for it go at once)
+  function adoptJobs() {
+    if (!window.indexedDB || !token) return Promise.resolve();
+    var me = state.name, now = token;
+    return VaultUploads.all().then(function (list) {
+      return Promise.all(list.filter(function (j) { return j.who === me && j.state !== 'done' && j.token !== now; }).map(function (j) {
+        j.token = now;
+        if (j.state === 'stop' && j.why === 'login') { j.next = 0; j.tries = 0; }
+        return VaultUploads.save(j).then(function () { onJob(j); });
+      }));
+    }).then(wakeJobs, wakeJobs);
+  }
+  // logging out: the login kept with this account's files here goes too (they wait for the next login)
+  function dropLogin(me) {
+    if (!window.indexedDB) return Promise.resolve();
+    return VaultUploads.all().then(function (list) {
+      return Promise.all(list.filter(function (j) { return j.who === me && j.token; }).map(function (j) { j.token = ''; return VaultUploads.save(j); }));
+    }).catch(function () {});
+  }
+  // now, not later: every stopped file that goes again by itself
+  function wakeJobs() {
+    if (!up.ready) return;
+    up.ready.then(function (mode) {
+      if (mode === 'sw' && up.reg && up.reg.active) up.reg.active.postMessage({ type: 'wake' });
+      if (up.engine && (mode === 'page' || Object.keys(up.mem).length)) up.engine.wake();
+    });
+  }
+  // the developer code in again: the files whose pass ran out get a new one and go on
+  function renewPasses() {
+    Object.keys(up.jobs).forEach(function (k) {
+      var j = up.jobs[k];
+      if (j.id && j.state === 'stop' && j.why === 'locked') passFor(j).then(kick);
+    });
   }
   function activeOf(reg) {
     return new Promise(function (ok, no) {
@@ -4042,11 +4152,15 @@
   function jobText(j) {
     var p = j.chunks ? Math.round(j.sent / j.chunks * 100) : 0;
     if (j.state === 'done') return '保存しました' + (j.sha256 ? '（SHA-256 ' + String(j.sha256).slice(0, 16) + '…）' : '');
-    if (j.state === 'run') return '送信中… ' + mb(Math.min(j.size, j.sent * (j.piece || 0))) + ' / ' + mb(j.size) + '（' + p + '%）';
+    if (j.state === 'run' && j.retry) return '通信が途切れたので、すぐに送り直しています…（' + p + '% 送信済み・' + j.retry + '回目）';
+    if (j.state === 'run') return '送信中… ' + mb(Math.min(j.size, j.sent * (j.piece || 0))) + ' / ' + mb(j.size) + '（' + p + '%）' + (j.rate ? '・' + mb(j.rate) + '/秒' : '');
     if (j.state === 'wait') return '順番待ち（' + mb(j.size) + '）';
     var why = UP_WHY[j.why] || '';
     if (j.state === 'fail') return 'できませんでした：' + (j.message || why || 'もう一度ファイルを選んでください');
-    return '止まりました：' + (j.why === 'error' || !why ? (j.message || 'もう一度「再開」を押してください') : why) + (j.chunks ? '（' + p + '% 送信済み）' : '');
+    // (when it goes again by itself)
+    var wait = j.next ? Math.max(0, Math.ceil((j.next - Date.now()) / 1000)) : 0;
+    var again = AGAIN_WHY[j.why] ? (wait ? '・' + (wait >= 60 ? Math.ceil(wait / 60) + '分' : wait + '秒') + '後に自動で再開' : '・自動で再開中') : '';
+    return '止まりました：' + (j.why === 'error' || !why ? (j.message || 'もう一度「再開」を押してください') : why) + (j.chunks ? '（' + p + '% 送信済み' + again + '）' : again ? '（' + again.slice(1) + '）' : '');
   }
   function renderJob(j) {
     var c = up.cards[j.key];
@@ -5108,19 +5222,22 @@
       if (b) cancelJob(b.dataset.upCancel);
     });
     $('#vault-resume').addEventListener('click', function () { resumeAll().catch(fail); });
-    window.addEventListener('online', function () {
-      Promise.all(Object.keys(up.jobs).map(function (k) {
-        var j = up.jobs[k];
-        if (j.state !== 'stop' || j.why !== 'net') return null;
-        j.next = 0;
-        return VaultUploads.save(j);
-      })).then(kick, kick);
-    });
+    // the connection back: the stopped files at once
+    window.addEventListener('online', wakeJobs);
     setInterval(function () {
       if (!token || $('#app').hidden || !Object.keys(up.jobs).some(function (k) { return up.jobs[k].state !== 'done'; })) return;
       kick();
       if (state.vault && !document.hidden) loadVault(true);
+      // the server answering again: the files stopped for the connection go at once, not at their next try
+      if (Object.keys(up.jobs).some(function (k) { return up.jobs[k].state === 'stop' && up.jobs[k].why === 'net'; })) {
+        fetch('/api/health', { cache: 'no-store' }).then(function (r) { if (r.ok) wakeJobs(); }, function () {});
+      }
     }, 15000);
+    // (the countdown to each stopped file going again)
+    setInterval(function () {
+      Object.keys(up.jobs).forEach(function (k) { var j = up.jobs[k]; if (j.state === 'stop' && up.cards[k]) up.cards[k].note.textContent = jobText(j); });
+    }, 1000);
+    $('#vault-speed').addEventListener('change', function () { setVaultSpeed($('#vault-speed').value); });
     $('#vault-path').addEventListener('click', onFolder);
     $('#vault-picked-move').addEventListener('click', function () { moveItems(pickedFiles(), pickedFolders()); });
     $('#vault-picked-get').addEventListener('click', function () { downloadItems(pickedFiles(), pickedFolders()); });

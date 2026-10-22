@@ -68,7 +68,11 @@ const blankMinute = (m) => ({ minute: m, requests: 0, attacks: 0, probes: 0, flo
 // opsLog: notable events (blocks, breach) go to the セキュリティ log, never one
 // per request. onBreach({reason, detail}): the perimeter looks breached — the
 // controller may lock the server down. clock: the time (tests move it).
-export function createShield({ q, config, opsLog, onBreach = () => {}, clock = Date.now }) {
+// bulk(req): requests that come many a second by design (a vault's pieces,
+// each under its own per-account limit, from a signed-in operator): checked
+// like any other, but each counts a fifth against the address's volumetric
+// ceiling (a flood of them is still a flood).
+export function createShield({ q, config, opsLog, onBreach = () => {}, clock = Date.now, bulk = () => false }) {
   const on = config.shield !== 'off';
   const C = {
     blockScore: BLOCK_SCORE, blockMs: BLOCK_MS, perIpPerMinute: 1500,
@@ -231,7 +235,7 @@ export function createShield({ q, config, opsLog, onBreach = () => {}, clock = D
     let pm = perMinuteIp.get(ip);
     const m = minuteOf(now);
     if (!pm || pm.minute !== m) { pm = { minute: m, n: 0 }; perMinuteIp.set(ip, pm); if (perMinuteIp.size > KEYS_MAX) trimPerMinute(m); }
-    pm.n++;
+    pm.n += bulk(req) ? 0.2 : 1;
     if (pm.n > C.perIpPerMinute) {
       const sc = score(ip, 'flood', now, 'flood');
       cur.floods++; totals.floods++; countCat('flood');

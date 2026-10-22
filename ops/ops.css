@@ -630,6 +630,10 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
    items as rows (a tap on the icon opens; 💬, 詳細 and ⋯ at the right), their
    menu, and the comments of a file */
 .vault-top #vault-usage { font-size: 13px; font-variant-numeric: tabular-nums; cursor: help; }
+.vault-speed select { font-weight: 700; }
+.vault-speed select:disabled { opacity: .75; }
+/* a file's 詳細 while it comes */
+.vitem-detail.loading { padding: 14px; color: var(--muted); font-size: 13px; }
 .vault-mode { display: inline-flex; gap: 8px; margin-left: auto; }
 .vault-plus { width: 44px; padding: 0; font-size: 22px; font-weight: 600; line-height: 1; }
 .vault-memo { font-size: 12.5px; cursor: pointer; }
