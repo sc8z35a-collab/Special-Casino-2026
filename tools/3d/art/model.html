@@ -1,0 +1,67 @@
+<!doctype html><meta charset="utf-8"><body style="margin:0;background:#0000">
+<script src="/js/vendor/three-bundle.js"></script>
+<script>
+// Renders a model to a transparent PNG: o = { url, size, yaw, pitch, roll, fov, ortho, pad, exposure, env, key, aspect }
+const T = BR3D;
+const cache = {};
+let renderer = null;
+function load(url) {
+  if (!cache[url]) cache[url] = new Promise((ok, no) => new T.GLTFLoader().setMeshoptDecoder(T.MeshoptDecoder).load(url, (g) => ok(g.scene), undefined, no));
+  return cache[url];
+}
+window.renderModel = async function (o) {
+  const W = o.size || 1024, H = Math.round(W / (o.aspect || 1));
+  if (!renderer) {
+    renderer = new T.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.outputColorSpace = T.SRGBColorSpace;
+    renderer.toneMapping = T.ACESFilmicToneMapping;
+    document.body.appendChild(renderer.domElement);
+  }
+  renderer.setPixelRatio(1);
+  renderer.setSize(W, H, false);
+  renderer.toneMappingExposure = o.exposure ?? 1.0;
+  renderer.setClearColor(0x000000, 0);
+  const scene = new T.Scene();
+  const pm = new T.PMREMGenerator(renderer);
+  scene.environment = pm.fromScene(new T.RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = o.env ?? 0.9;
+  // a warm key from the top left front, a soft fill, a cool rim behind
+  const key = new T.DirectionalLight(0xfff1dc, o.key ?? 2.2); key.position.set(-3, 4, 5); scene.add(key);
+  const fill = new T.DirectionalLight(0xffe2c4, 0.5); fill.position.set(4, 1, 3); scene.add(fill);
+  const rim = new T.DirectionalLight(0xcfe0ff, 1.2); rim.position.set(2, 3, -5); scene.add(rim);
+  scene.add(new T.AmbientLight(0xffffff, o.ambient ?? 0.15));
+  const src = (await load(o.url)).clone(true);
+  const holder = new T.Group(); holder.add(src);
+  // centred on its box
+  const box0 = new T.Box3().setFromObject(src), c0 = box0.getCenter(new T.Vector3());
+  src.position.sub(c0);
+  holder.rotation.set((o.pitch || 0) * Math.PI / 180, (o.yaw || 0) * Math.PI / 180, (o.roll || 0) * Math.PI / 180, 'YXZ');
+  scene.add(holder);
+  holder.updateMatrixWorld(true);
+  const box = new T.Box3().setFromObject(holder), size = box.getSize(new T.Vector3()), ctr = box.getCenter(new T.Vector3());
+  // (a turntable: one camera for every angle, fitted to the model's sphere round its centre)
+  if (o.sphere) {
+    const r = box0.getSize(new T.Vector3()).length() / 2;
+    size.set(2 * r, 2 * r, 2 * r);
+    ctr.set(0, 0, 0);
+  }
+  const pad = o.pad ?? 1.04;
+  let cam;
+  if (o.ortho) {
+    const hw = Math.max(size.x / 2, size.y / 2 * (W / H)) * pad, hh = hw * H / W;
+    cam = new T.OrthographicCamera(-hw, hw, hh, -hh, 0.01, 100);
+    cam.position.set(ctr.x, ctr.y, ctr.z + 20);
+  } else {
+    const fov = o.fov || 18;
+    cam = new T.PerspectiveCamera(fov, W / H, 0.01, 200);
+    const t = Math.tan(fov * Math.PI / 360);
+    const need = Math.max(size.y / 2 / t, size.x / 2 / (t * W / H)) * pad + size.z / 2;
+    cam.position.set(ctr.x, ctr.y, ctr.z + need);
+  }
+  cam.lookAt(ctr);
+  renderer.render(scene, cam);
+  pm.dispose();
+  return renderer.domElement.toDataURL('image/png');
+};
+window.ready = true;
+</script>

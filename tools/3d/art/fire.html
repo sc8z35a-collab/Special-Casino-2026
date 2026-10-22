@@ -1,0 +1,77 @@
+<!doctype html><meta charset="utf-8"><body style="margin:0"><canvas id="c"></canvas>
+<script>
+// A row of flames as a volume: ray-marched through 3D turbulence that rises
+// (periodic in x and y, so the frames tile sideways and loop in time).
+const VS = `#version 300 es
+in vec2 p; out vec2 uv; void main(){ uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0., 1.); }`;
+const FS = `#version 300 es
+precision highp float;
+in vec2 uv; out vec4 o;
+uniform float t;        // 0..1: the loop
+uniform float tongues;  // flames across the frame
+uniform float seed;
+const float PX = 8.0, PY = 6.0;   // the noise's period (x across the frame, y over the loop)
+float h(vec3 p){ p = fract(p * 0.3183099 + vec3(0.1, 0.17, 0.13) + seed); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float n(vec3 x, float px, float py){
+  vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  float x0 = mod(i.x, px), x1 = mod(i.x + 1.0, px), y0 = mod(i.y, py), y1 = mod(i.y + 1.0, py);
+  float a = mix(mix(h(vec3(x0, y0, i.z)), h(vec3(x1, y0, i.z)), f.x), mix(h(vec3(x0, y1, i.z)), h(vec3(x1, y1, i.z)), f.x), f.y);
+  float b = mix(mix(h(vec3(x0, y0, i.z + 1.0)), h(vec3(x1, y0, i.z + 1.0)), f.x), mix(h(vec3(x0, y1, i.z + 1.0)), h(vec3(x1, y1, i.z + 1.0)), f.x), f.y);
+  return mix(a, b, f.z);
+}
+float fbm(vec3 p){
+  float s = 0.0, a = 0.5, px = PX, py = PY;
+  for (int k = 0; k < 5; k++) { s += a * n(p, px, py); p *= 2.0; px *= 2.0; py *= 2.0; a *= 0.5; }
+  return s;
+}
+vec3 ramp(float T){   // the colour of fire by its heat
+  vec3 c = mix(vec3(0.35, 0.02, 0.0), vec3(0.95, 0.12, 0.0), smoothstep(0.0, 0.35, T));
+  c = mix(c, vec3(1.0, 0.45, 0.02), smoothstep(0.3, 0.6, T));
+  c = mix(c, vec3(1.0, 0.78, 0.18), smoothstep(0.6, 0.88, T));
+  return mix(c, vec3(1.0, 0.95, 0.7), smoothstep(0.93, 1.0, T));
+}
+void main(){
+  float x = uv.x, y = uv.y;
+  vec3 col = vec3(0.0); float al = 0.0;
+  // through the volume, front to back
+  for (int s = 0; s < 40; s++) {
+    float z = -1.0 + 2.0 * (float(s) + 0.5) / 40.0;
+    // where it is in the noise (it rises: y scrolls a whole period over the loop)
+    vec3 q = vec3(x * PX, y * PY * 0.55 - t * PY, z * 1.3);
+    float turb = fbm(q + vec3(0.0, 0.0, 3.1)) ;
+    float warp = fbm(q * vec3(1.0, 1.0, 1.0) + vec3(5.2, 1.3, 0.0)) - 0.5;
+    // the tongues: each its own height, swaying with the turbulence
+    float lx = x * tongues + warp * 0.9;
+    float id = floor(lx);
+    float k = fract(lx) - 0.5;
+    float tall = 0.55 + 0.4 * fract(sin((mod(id, tongues) + seed * 7.0) * 12.9898) * 43758.5453);
+    float yy = y / tall;
+    float width = 0.5 * pow(max(0.0, 1.0 - yy), 0.55);
+    float shape = 1.0 - (k * k) / max(1e-3, width * width) - z * z * 1.4;
+    float d = shape - yy * 0.6 + (turb - 0.5) * 1.1;
+    d = clamp(d * 1.6, 0.0, 1.0) * smoothstep(0.0, 0.06, y);
+    // hotter low down and in the core
+    float T = clamp(d * (0.95 - yy * 0.75), 0.0, 1.0);
+    float a = d * 0.085;
+    col += (1.0 - al) * ramp(T) * a;
+    al += (1.0 - al) * a;
+  }
+  o = vec4(col / max(al, 1e-4), clamp(al * 1.25, 0.0, 1.0));
+}`;
+const c = document.getElementById('c');
+const gl = c.getContext('webgl2', { premultipliedAlpha: false, preserveDrawingBuffer: true, alpha: true });
+function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr); gl.useProgram(pr);
+const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+window.frame = (o) => {
+  c.width = o.w; c.height = o.h; gl.viewport(0, 0, o.w, o.h);
+  gl.uniform1f(gl.getUniformLocation(pr, 't'), o.t);
+  gl.uniform1f(gl.getUniformLocation(pr, 'tongues'), o.tongues);
+  gl.uniform1f(gl.getUniformLocation(pr, 'seed'), o.seed || 0);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  return c.toDataURL('image/png');
+};
+window.ready = true;
+</script>

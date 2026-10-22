@@ -71,6 +71,35 @@
     return cache[key];
   }
 
+  /* A symbol's full 3D turn (BR.SYMBOL_TURN): { img, fw, fh, cols, frames }
+     once its sheet is in, null until then (it starts loading on the first
+     ask). A sheet nobody asked for in 20 s is let go (it is big). */
+  var turns = {};
+  function turn(id) {
+    var t = turns[id];
+    if (!t) {
+      var src = BR.SYMBOL_TURN && BR.SYMBOL_TURN[id];
+      if (!src) return null;
+      t = turns[id] = { sheet: null, used: 0 };
+      loadImage(src).then(function (img) {
+        var S = BR.SYMBOL_TURN_SHEET;
+        t.sheet = { img: img, cols: S.cols, frames: S.frames, fw: img.width / S.cols, fh: img.height / Math.ceil(S.frames / S.cols), pad: S.pad };
+      }, function () { t.failed = true; });
+    }
+    t.used = Date.now();
+    return t.sheet;
+  }
+  setInterval(function () {
+    var now = Date.now();
+    Object.keys(turns).forEach(function (k) { if (turns[k].sheet && now - turns[k].used > 20000) delete turns[k]; });
+  }, 10000);
+  // the reel window's panels (its 3D model's), once loaded
+  var reelBack = null;
+  function backImage() {
+    if (!reelBack && BR.UI_IMG && BR.UI_IMG.reelBack) reelBack = loadImage(BR.UI_IMG.reelBack);
+    return reelBack;
+  }
+
   // Generic: render an svg string to a canvas of w x h device px.
   function rasterize(svg, w, h) {
     return loadSVG(svg).then(function (img) {
@@ -80,5 +109,5 @@
     });
   }
 
-  BR.assets = { buildSymbols: buildSymbols, rasterize: rasterize, makeCanvas: makeCanvas, CELL_W: CELL_W, CELL_H: CELL_H };
+  BR.assets = { buildSymbols: buildSymbols, rasterize: rasterize, makeCanvas: makeCanvas, turn: turn, backImage: backImage, CELL_W: CELL_W, CELL_H: CELL_H };
 })(window.BR = window.BR || {});

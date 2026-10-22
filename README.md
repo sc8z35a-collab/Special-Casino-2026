@@ -426,6 +426,7 @@ WIN・BIG WIN・SUPER BIG WIN の文字は **回転する 3D の文字**（`img/
 - 回すとき：SPIN ボタンから衝撃波と光、リールを光が横切る。止まるたびにリールの上下が光って揺れ、火花が散る
 - お金・コインが入るときは、出どころ（当たったシンボル・ログインボーナスのカード・クエストの「受け取る」・感謝料・届いた送金の通知など）からコインが財布へ次々に飛び込み、1 枚ごとに「チャリン」と鳴って、最後に「+金額」。ダイアログの上でも財布が手前に出てきて受け取ります
 - リールが止まるたびに、そろったシンボルが光の枠で囲まれていく（あと何個で当たりかが見える）。7・BAR・女神像が止まると専用の演出
+- **絵柄とリールの枠は 3D**（DEV12、保管庫の 3D モデルから描いたもの）。当たった絵柄は **3D でくるっと一回転**（リールごとに少しずつずれて、2.8 秒ごとにもう一回）。チップ・コイン・$ のアイコン、チップの山、COMBO、アプリのアイコン（7）も 3D モデルから。FEVER の文字は 3D の立体文字、炎は立体の炎（3D の乱流を光線で追って描いたもの）
 - 当たりの演出はシンボルごと：7 は炎、女神像は光の柱、ダイヤは虹色のきらめき、スターは回転、BAR は光沢、金塊は四隅のきらめき、銃は発砲と硝煙。当たったシンボル同士は稲妻でつながる
 - 5 回連続で当たると FEVER：画面のふちが燃え、炎と火の粉が上がり、リールの右上に FEVER の看板、電飾は炎の色に（外れると煙とともに鎮火）
 - タイトル画面からスロットに入ると赤い幕が開く。何もしていないときもシンボルがきらめき、15 秒放っておくと電飾と SPIN ボタンが誘う
@@ -484,7 +485,13 @@ npm run dev       # Cloudflare 版をローカルで起動して確認
 
 ```sh
 pip install numpy pillow scipy opencv-python-headless fonttools brotli
-python3 tools/art/symbol_images.py  # シンボル画像 → img/symbols/*.webp
+# 3D から作る絵（DEV12）：保管庫の 3D モデルを tools/3d/source/ に置いて（revolver gold diamond star bar seven statue
+# frame chip coin dollar chip-pile combo combo-rainbow app-seven .glb）、Chromium で描く（Playwright が必要）
+node tools/3d/render-art.mjs out-3d          # リールの絵柄・その 3D の一回転・リールの枠・チップ・コイン・$・チップの山・COMBO・アプリの 7、FEVER の 3D 文字、炎（立体の炎）
+python3 tools/art/symbol_3d.py out-3d        # → img/symbols/*.webp（リールの絵）と img/symbols/turn/*.webp（当たったときの 3D の一回転、24 コマ）
+python3 tools/art/reel_frame_3d.py out-3d/frame.png  # → img/ui/reel-frame.webp（リールの上の金の枠と仕切り）・reel-back.webp（絵柄の後ろのパネル）
+python3 tools/art/art_3d.py out-3d           # → tools/art/source/ui/ のチップ・コイン・$・チップの山・アプリの 7、img/ui/combo*.webp・fever*.webp・fire.webp
+python3 tools/art/symbol_images.py  # （2D の元の絵から作るとき）シンボル画像 → img/symbols/*.webp
 python3 tools/art/ui_images.py      # アイコン・SPIN・ボタン・チップの山・背景 → img/ui/*.webp
 python3 tools/art/social_images.py  # プレイヤーアイコン・鎖・Sale バッジ・車・お守り・フルーツ・マイクソン・ログインボーナス・ボタン・バイト → img/
 python3 tools/art/icons.py          # アプリアイコン（大きな 7）→ icons/*.png・Android アプリのアイコン

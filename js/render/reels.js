@@ -181,6 +181,15 @@
     this.canvas.width = Math.round(VIEW_W * res);
     this.canvas.height = Math.round(VIEW_H * res);
     this.back = this.renderBack(res);
+    // the panels of the reel window's 3D model, once loaded (until then the drawn ones)
+    var back = BR.assets.backImage();
+    if (back) back.then(function (img) {
+      if (self.res !== res) return;
+      var c = BR.assets.makeCanvas(VIEW_W * res, VIEW_H * res);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      self.back = c;
+      self.invalidate();
+    }, function () {});
     this.front = this.renderFront(res);
     this.glow = this.renderGlow(res);
     this.rays = this.renderRays(res);
@@ -194,7 +203,8 @@
   };
 
   // Cream cells (static background of the window): every column is a
-  // cylinder - warm peach at the edges, pale cream in the middle.
+  // cylinder - warm peach at the edges, pale cream in the middle. (Shown
+  // until the 3D model's panels are in: img/ui/reel-back.webp.)
   Reels.prototype.renderBack = function (res) {
     var c = BR.assets.makeCanvas(VIEW_W * res, VIEW_H * res), g = c.getContext('2d');
     g.setTransform(res, 0, 0, res, 0, 0);
@@ -214,7 +224,9 @@
     return c;
   };
 
-  // Separators, frame shadows and row seams drawn over the symbols.
+  // Frame shadows over the symbols (the gold bars between the reels and the
+  // row seams are the reel window's 3D model's: img/ui/reel-frame.webp over
+  // the canvas, img/ui/reel-back.webp under the symbols).
   Reels.prototype.renderFront = function (res) {
     var c = BR.assets.makeCanvas(VIEW_W * res, VIEW_H * res), g = c.getContext('2d');
     g.setTransform(res, 0, 0, res, 0, 0);
@@ -229,26 +241,6 @@
     v.addColorStop(1, 'rgba(70,40,15,0.3)');
     g.fillStyle = v;
     g.fillRect(0, VIEW_H - 16, VIEW_W, 16);
-    // row seams
-    for (var r = 1; r < 3; r++) {
-      var y = r * ROW_PITCH - 4;
-      g.fillStyle = 'rgba(95,75,62,0.33)';
-      g.fillRect(0, y, VIEW_W, 2);
-      g.fillStyle = 'rgba(95,75,62,0.06)';
-      g.fillRect(0, y + 2, VIEW_W, 2);
-    }
-    // gold column separators (profile sampled from the reference)
-    var prof = [[-9.5, '#d7b58f'], [-8.5, '#a27e5a'], [-7.5, '#b79568'], [-6.5, '#cba66f'], [-5.5, '#d4ad72'], [-4.5, '#ddb480'],
-      [-3.5, '#d9ad7e'], [-2.5, '#8f6439'], [-1.5, '#7b5121'], [-0.5, '#754c18'], [0.5, '#744b15'], [1.5, '#81582a'],
-      [2.5, '#ad8456'], [3.5, '#deb985'], [4.5, '#dab580'], [5.5, '#ceaa76'], [6.5, '#c39f6f'], [7.5, '#b48f65'],
-      [8.5, '#ba946d'], [9.5, '#e2c092']];
-    for (var i = 0; i < 4; i++) {
-      var cx = colC(i) + COL_PITCH / 2;
-      var s = g.createLinearGradient(cx - 10, 0, cx + 10, 0);
-      prof.forEach(function (p) { s.addColorStop((p[0] + 10) / 20, p[1]); });
-      g.fillStyle = s;
-      g.fillRect(cx - 10, 0, 20, VIEW_H);
-    }
     return c;
   };
 
@@ -324,7 +316,11 @@
     g.save();
     if (back) {
       if (sym === 'seven') {
-        flames(g, x0, COL_W * res, base, res, t, i + 9, 0.6, ['rgba(255,220,110,0.9)', 'rgba(255,120,30,0.75)', 'rgba(230,40,0,0.4)', 'rgba(180,10,0,0)']);
+        // the 3D fire (js/render/fire3d.js) up from the bottom of the cell; the drawn flames until it is in
+        var fh = CELL_H * 0.78 * res;
+        if (!BR.fire3d || !BR.fire3d.draw(g, x0 - 8 * res, base - fh, COL_W * res + 16 * res, fh, t + i * 0.31, (COL_W + 16) * res * 0.55)) {
+          flames(g, x0, COL_W * res, base, res, t, i + 9, 0.6, ['rgba(255,220,110,0.9)', 'rgba(255,120,30,0.75)', 'rgba(230,40,0,0.4)', 'rgba(180,10,0,0)']);
+        }
       } else if (sym === 'statue') {
         g.globalCompositeOperation = 'lighter';
         var pg = g.createLinearGradient(0, 0, 0, base);
@@ -393,7 +389,16 @@
     }
     g.restore();
   };
-  // the extra turn of a winning symbol: the star rocks, the revolver recoils
+  // a winning symbol's 3D turn (degrees, 0: facing the front as in the reel):
+  // once right round as it lands (one reel after another), then again every 2.8 s
+  var TURN_S = 0.85, TURN_EVERY = 2.8;
+  function turnAngle(ht, i) {
+    var t = ht - 0.12 - 0.09 * i;
+    if (t < 0) return 0;
+    var p = t % TURN_EVERY;
+    return p < TURN_S ? 360 * U.ease.inOutCubic(p / TURN_S) % 360 : 0;
+  }
+  // the extra turn of a winning symbol between its 3D turns: the star rocks, the revolver recoils
   function winTurn(sym, ht, i) {
     var t = ht + i * 0.15;
     if (sym === 'star') return Math.sin(t * 2.6) * 0.22;
@@ -625,11 +630,17 @@
           var pin = Math.min(1, ht / 0.32);
           var punch = pin < 1 ? 1.25 - 0.25 * U.ease.outBack(pin, 2.4) : 1;
           var sc = punch * (1 + 0.1 * pulse * pin);
-          var wob = (Math.sin(ht * 7.5 + i) * 0.035 + winTurn(sym, ht, i)) * pin;
+          // the 3D model turns right round as it wins, and again now and then
+          var tn = BR.assets.turn(sym), deg = turnAngle(ht, i);
+          var wob = (Math.sin(ht * 7.5 + i) * 0.035 + (tn && deg ? 0 : winTurn(sym, ht, i))) * pin;
           g.save();
           g.translate(cx, cy);
           g.rotate(wob);
-          g.drawImage(sp.sharp[sym], -COL_W * res * sc / 2, -CELL_H * res * sc / 2, COL_W * res * sc, CELL_H * res * sc);
+          if (tn && deg) {
+            var f = Math.round(deg / (360 / tn.frames)) % tn.frames;
+            var dw = COL_W * tn.pad * res * sc, dh = CELL_H * tn.pad * res * sc;
+            g.drawImage(tn.img, (f % tn.cols) * tn.fw, Math.floor(f / tn.cols) * tn.fh, tn.fw, tn.fh, -dw / 2, -dh / 2, dw, dh);
+          } else g.drawImage(sp.sharp[sym], -COL_W * res * sc / 2, -CELL_H * res * sc / 2, COL_W * res * sc, CELL_H * res * sc);
           // a white flash on the way in
           if (pin < 1) {
             g.globalCompositeOperation = 'lighter';
