@@ -251,3 +251,56 @@
 @media (prefers-reduced-motion: reduce) {
   .tree-pane.growing .tr-coins i, .tr-drop, .tr-art.grow, .au-result-card, .au-super, .au-bid-line.top:first-child { animation: none; }
 }
+
+/* The 3D auction: the room stays large, with a compact bidding desk below. */
+.au-live { grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: minmax(280px, 1fr) 205px; gap: 14px; }
+.au3d-stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; border-radius: 12px; background: #151b22; box-shadow: inset 0 0 0 1px rgba(236, 218, 175, .24); }
+.au-live > .au3d-stage { grid-column: 1; grid-row: 1; }
+.au3d-canvas { display: block; width: 100%; height: 100%; }
+.au3d-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.au3d-name { position: absolute; padding: 5px 10px; transform: translate(-50%, -100%); max-width: 270px; white-space: nowrap; font-size: 21px; font-weight: 800; color: #fff3d7; background: rgba(10, 14, 19, .86); border: 1px solid #a28e64; border-radius: 7px; box-shadow: 0 3px 12px #0006; }
+.au3d-name.me { color: #c0ffc8; border-color: #8bdf9e; }
+.au3d-name.lead { color: #ffe78b; background: #51401ce8; border-color: #ffe78b; }
+.au3d-cash { position: absolute; width: 95px; height: 95px; object-fit: contain; transform: translate(-50%, -155%); filter: drop-shadow(0 5px 8px #0009); animation: auCash 1.35s ease-out infinite; }
+.au3d-labels.result { display: none; }
+.au3d-bid-fallback { position: absolute; top: 20px; right: 20px; display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-radius: 10px; background: #102c22; color: #ffe9a0; font-size: 22px; }
+.au3d-bid-fallback img { width: 90px; height: 70px; object-fit: contain; }
+.au3d-banner { position: absolute; left: 0; right: 0; bottom: 0; padding: 9px 16px; background: linear-gradient(transparent, #060e12e8 32%); color: #ffedc4; font-size: 20px; text-align: center; pointer-events: none; }
+.au3d-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: 30px; font-size: 23px; text-align: center; color: #ffeab2; }
+.au-preparing { position: absolute; inset: 0; z-index: 4; display: flex; align-items: center; justify-content: center; margin: 0; border-radius: 12px; background: #07150fea; color: #ffe27a; font-size: 30px; }
+.au-live .au-lot { grid-column: 2; grid-row: 2; gap: 5px; justify-content: center; padding: 14px; }
+.au-live .au-lot-name { font-size: 23px; width: 100%; }
+.au-live .au-lot-sub { font-size: 16px; }
+.au-live .au-mystery { position: static; padding: 2px 10px; font-size: 15px; }
+.au-live .au-lot .au-avg { font-size: 16px; }
+.au-live .au-lot .au-avg .amt { font-size: 22px; }
+.au-live .au-mid { grid-column: 1; grid-row: 2; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 24px 50px 26px 25px 28px; gap: 2px 18px; padding: 14px 22px; align-items: center; }
+.au-live .au-label { grid-column: 1; grid-row: 1; margin: 0; font-size: 18px; }
+.au-live .au-price { grid-column: 1; grid-row: 2; font-size: 45px; }
+.au-live .au-price .ic { width: 36px; height: 36px; }
+.au-live .au-leader { grid-column: 1; grid-row: 3; min-height: 0; font-size: 20px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.au-duration { grid-column: 1; grid-row: 4; font: 700 18px var(--f-num); color: #c3cfd5; }
+.au-live .au-hammer { grid-column: 1; grid-row: 5; width: 100%; height: 8px; }
+.au-live .au-close { grid-column: 2; grid-row: 1; min-height: 0; font-size: 17px; }
+.au-live .au-acts { grid-column: 2; grid-row: 2 / 5; margin: 0; gap: 10px; }
+.au-live .act-btn.au-bid { height: 100px; font-size: 17px; }
+.au-live .act-btn.au-bid .amt { font-size: 26px; }
+.au-live .text-btn.au-leave { grid-column: 2; grid-row: 5; height: 28px; font-size: 17px; }
+.au-live .au-side { grid-column: 2; grid-row: 1; padding: 16px; gap: 8px; }
+.au-live .au-side h4 { font-size: 18px; }
+.au-live .au-who { gap: 5px; }
+.au-live .au-who span { padding: 3px 9px; font-size: 16px; }
+.au-live .au-bid-line { padding: 6px 9px; font-size: 16px; }
+.au-live .au-bid-line .amt { font-size: 19px; }
+.au-result { background: #06100af5; }
+.au-result-card { width: min(1400px, 97%); height: 100%; max-height: 100%; padding: 18px 24px; gap: 8px; }
+.au-result-card h3 { font-size: 34px; }
+.au3d-result-stage { width: 100%; flex: 1 1 300px; min-height: 240px; }
+.au-result-card .au3d-loading { font-size: 23px; }
+.au-result-lot { font-size: 25px; color: #ffedc4; }
+.au-result-card .au-result-name { display: none; }
+.au-result-card p { font-size: 20px; }
+.au-result-card .act-btn.au-ok { height: 60px; margin-top: 0; font-size: 24px; }
+.au-result .au-super { top: 65px; right: 40px; z-index: 2; font-size: 26px; }
+@keyframes auCash { 0% { opacity: 0; transform: translate(-50%, -100%) scale(.6); } 16% { opacity: 1; transform: translate(-50%, -155%) scale(1.08); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -200%) scale(.95); } }
+@media (prefers-reduced-motion: reduce) { .au3d-cash { animation: none; } }
