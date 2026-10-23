@@ -114,20 +114,24 @@
     idea: { perDay: 10, reward: 50000 },
     // a car sold to a friend in the chat: `min`-`max` % of what the seller paid for it
     carResale: { min: 50, max: 300 },
-    // player icons: price in $ (0 = free); "rare" ones are locked at sign-up
-    // Player icons (img/avatars/<id>.webp). Paid ones are chained on the
-    // sign-up screen and sold later for $, always 10-40 % off (js/game/sale.js).
+    // Player portraits: one free starter; the others have fixed dollar prices.
+    defaultAvatar: 'traveler-green',
+    avatarRarities: { green: '緑', blue: '青', purple: '紫', gold: '金色', red: '赤', cyan: '水色', secret: 'シークレット' },
     avatars: [
-      { id: 'bald', name: 'スキンヘッド', price: 0 },
-      { id: 'beard', name: 'ヒゲ', price: 0 },
-      { id: 'curly', name: 'くせ毛', price: 0 },
-      { id: 'blond', name: '金髪', price: 0 },
-      { id: 'witch', name: '魔女ハット', price: 0 },
-      { id: 'cap', name: '黒キャップ', price: 0 },
-      { id: 'catcap', name: 'ネコキャップ', price: 0 },
-      { id: 'pumpkin', name: 'パンプキン', price: 100000 },
-      { id: 'red', name: 'レッド', price: 350000, rare: true },
-      { id: 'vampire', name: 'ヴァンパイア', price: 800000, rare: true }
+      { id: 'traveler-green', name: '旅人', rarity: 'green', price: 0 },
+      { id: 'adventurer-blue', name: '冒険者', rarity: 'blue', price: 100000 },
+      { id: 'magician-purple', name: '魔法使い', rarity: 'purple', price: 350000 },
+      { id: 'dealer-purple', name: 'ディーラー', rarity: 'purple', price: 350000 },
+      { id: 'adventurer-gold', name: '大冒険者', rarity: 'gold', price: 600000 },
+      { id: 'knight-gold', name: '騎士', rarity: 'gold', price: 600000 },
+      { id: 'karate-red', name: '空手家', rarity: 'red', price: 950000 },
+      { id: 'rogue-red', name: '放浪者', rarity: 'red', price: 950000 },
+      { id: 'swordsman-red', name: '剣士', rarity: 'red', price: 950000 },
+      { id: 'pilot-cyan', name: '飛行士', rarity: 'cyan', price: 1200000 },
+      { id: 'explorer-cyan', name: '探検家', rarity: 'cyan', price: 1200000 },
+      { id: 'healer-cyan', name: 'ヒーラー', rarity: 'cyan', price: 1200000 },
+      { id: 'gambler-secret', name: '勝負師', rarity: 'secret', price: 2100000, rare: true },
+      { id: 'adam-secret', name: 'アダム', rarity: 'secret', price: 2100000, rare: true }
     ],
     // Car Owner shop (price in $); `model`: a 3D model to look at
     // (img/3d/cars/<id>.glb, js/render/garage3d.js)

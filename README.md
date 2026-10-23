@@ -7,7 +7,7 @@
 ログインボーナス・クエスト・バイト・プレイヤーレベル・演出設定・Dev News・運営へのフィードバック・開発者支援（ロイヤルコイン）・VIP・友達に車を売るが使えます。運営はサーバー運営サイト（`/ops/`）で管理します。
 **サーバーは Cloudflare の無料プランで動きます**（下の「無料サーバーで公開する」）。
 
-リールのシンボル、各アイコン、SPIN ボタン、背景、アプリアイコン、プレイヤーアイコン、鎖、Sale バッジ、車・お守り・フルーツ・
+リールのシンボル、各アイコン、SPIN ボタン、背景、アプリアイコン、プレイヤーアイコン、Shop の Sale バッジ、車・お守り・フルーツ・
 マイクソン・ジョンソン・ログインボーナス・クエスト / メニューのボタン・バイト・金の生る木（9 段階と種）・プレゼント（クッキー・クマのぬいぐるみ・雪だるま・
 パンプキンヘッド・ダイヤモンド）の画像、起動画面・製作会社の動画は提供素材（`tools/art/source/`、`tools/video/source/`）、
 効果音・タイトル BGM・マイクソンの声は提供された録音（`tools/sound/source/`）を使用しています。
@@ -35,8 +35,8 @@
 | ログイン | 機種変更やデータ削除のあとは **ユーザー名＋パスワード** でログインすると、残高・フレンド・車がそのまま戻ります。パスワードを忘れたときは登録時の **引き継ぎコード**（16 文字）でもログインできます（ログイン画面・新規登録画面の「引き継ぎコード」から。自分のプロフィールの「コードでログイン」でほかのアカウントに切り替えも可） |
 | 端末ごとの上限 | **1 つの端末で作れるアカウントは 2 つまで**。3 つ目を作ろうとすると「前に作ったアカウントの引き継ぎコードを入力して」と引き継ぎコードの画面になります。端末は、ブラウザの 4 か所（localStorage・Cookie・IndexedDB・Cache Storage）に保存したランダムな ID と、端末の特徴（画面・CPU・メモリ・言語・時間帯・GPU・文字の描画）から作る指紋で見分けます（指紋は同じ回線からのときだけ照合）。`ACCOUNTS_PER_DEVICE` で変更可 |
 | 利用停止 | 運営サイトから **アクセス禁止**（1 週間で自動解除）・**BAN**（30 日で自動解除）・**永久BAN**（解除するまで）。どれもいつでも解除できます。BAN・永久BAN のたびに、そのプレイヤーが使った端末のほかのアカウントもアクセスできなくなり（新しいアカウントも作れません）、運営は個別に外せます。止められた人はすぐにログアウトされ、ログイン画面に理由と期限が表示されます |
-| アイコン | 10 種類。スキンヘッド・ヒゲ・くせ毛・金髪・魔女ハット・黒キャップ・ネコキャップは最初から選べます。**パンプキン（$100,000）・レッド（$350,000）・ヴァンパイア（$800,000）** はレアで、最初の選択画面では鎖でロックされています。あとからプロフィールの「アイコン変更」で購入できます |
-| セール | 有料アイコンは常に **10〜40% オフ**（割引率はアイコンごとに毎日 0:00 UTC に変わります）。Sale バッジは持っていない人にだけ表示され、購入すると鎖が外れる演出が入ります |
+| アイコン | 提供画像の14種類。緑背景の旅人だけ無料。青 $100K・紫 $350K・金色 $600K・赤 $950K・水色 $1.2M・グラデーション背景のシークレット $2.1M の固定価格。プロフィールの「アイコン変更」で購入できます。アイコンのセール・鎖・ロック表示は廃止。既存プレイヤーのアイコンと旧アイコンの所有情報は初回移行時に緑の旅人へ統一されます。以後の購入・選択は再起動しても保持されます |
+| 通貨の見た目 | ロイヤルコインは赤い宝石付きの金色コイン、スロットコイン（スピントークン）は赤白のコイン、ドルは緑色の札束。残高・報酬・購入確認など共通の通貨アイコンに適用 |
 | フレンド | 最初は 0 人。フレンドタブの検索で **ユーザー名をそのまま入力**（完全一致）→「フレンド申請」。相手が承認すると「〜さんからフレンド承認されました」と通知が届き、会話できるようになります。お互いに申請した場合はその場でフレンドになります |
 | 初心者ガイド | プレイ時間 30 分未満で、まだガイドを終えていない人には、最初に遊び方の案内（約 2 分）が表示されます（ホーム画面のボタン → SPIN を実際に回す → メニューの各タブ → 戻る）。右上の「スキップ」を 2 回タップすると終わりにできます。メニュー →「詳細」からいつでも見直せます |
 | メニュー | 三本線のボタンから。フレンド・メッセージ・Car Owner（ガレージ）・Shop（所有）・バイト・詳細（初心者ガイド・フィードバック・投資・Dev News）。「戻る」はどこからでも 1 回でホームに戻ります |
@@ -561,14 +561,16 @@ npm run dev       # Cloudflare 版をローカルで起動して確認
 ```sh
 pip install numpy pillow scipy opencv-python-headless fonttools brotli
 # 3D から作る絵（DEV12）：保管庫の 3D モデルを tools/3d/source/ に置いて（revolver gold diamond star bar seven statue
-# frame chip coin dollar garage-icon chip-pile combo combo-rainbow fever fire app-seven .glb）、Chromium で描く（Playwright が必要）
+# frame garage-icon chip-pile combo combo-rainbow fever fire app-seven .glb）、Chromium で描く（Playwright が必要）
 node tools/3d/render-art.mjs out-3d          # リールの絵柄・その 3D の一回転・リールの枠・チップ・コイン・$・ガレージコイン・チップの山・COMBO・FEVER・炎・アプリの 7
 python3 tools/art/symbol_3d.py out-3d        # → img/symbols/*.webp（リールの絵）と img/symbols/turn/*.webp（当たったときの 3D の一回転、24 コマ）
 python3 tools/art/reel_frame_3d.py out-3d/frame.png  # → img/ui/reel-frame.webp（リールの上の金の枠と仕切り）・reel-back.webp（絵柄の後ろのパネル）
-python3 tools/art/art_3d.py out-3d           # → tools/art/source/ui/ のチップ・コイン・$・ガレージコイン・チップの山・アプリの 7、img/ui/combo*.webp・fever*.webp・fire.webp（炎の 24 コマ）
+python3 tools/art/art_3d.py out-3d           # → tools/art/source/ui/ のガレージコイン・チップの山・アプリの 7（通貨3種は提供PNGを優先）、img/ui/combo*.webp・fever*.webp・fire.webp（炎の 24 コマ）
 python3 tools/art/symbol_images.py  # （2D の元の絵から作るとき）シンボル画像 → img/symbols/*.webp
 python3 tools/art/ui_images.py      # アイコン・SPIN・ボタン・チップの山・背景 → img/ui/*.webp
-python3 tools/art/social_images.py  # プレイヤーアイコン・鎖・Sale バッジ・車・お守り・フルーツ・マイクソン・ログインボーナス・ボタン・バイト → img/
+python3 tools/art/social_images.py --avatars-only  # プレイヤーアイコンのみ再生成
+python3 tools/art/ui_images.py --currency-only     # 添付PNGから通貨アイコンのみ再生成
+python3 tools/art/social_images.py  # プレイヤーアイコン・Shop の Sale バッジ・車・お守り・フルーツ・マイクソン・ログインボーナス・ボタン・バイト → img/
 python3 tools/art/icons.py          # アプリアイコン（大きな 7）→ icons/*.png・Android アプリのアイコン
 sh tools/video/encode_title.sh      # 起動画面の動画（ffmpeg を使用）→ video/
 sh tools/video/encode_launch.sh     # 製作会社ロゴの動画 → video/studio*.mp4

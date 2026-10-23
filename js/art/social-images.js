@@ -5,16 +5,20 @@
 
   BR.SOCIAL_IMG = {
     avatars: {
-      bald: 'img/avatars/bald.webp',
-      beard: 'img/avatars/beard.webp',
-      curly: 'img/avatars/curly.webp',
-      blond: 'img/avatars/blond.webp',
-      witch: 'img/avatars/witch.webp',
-      pumpkin: 'img/avatars/pumpkin.webp',
-      red: 'img/avatars/red.webp',
-      vampire: 'img/avatars/vampire.webp',
-      cap: 'img/avatars/cap.webp',
-      catcap: 'img/avatars/catcap.webp',
+      'traveler-green': 'img/avatars/traveler-green.webp',
+      'adventurer-blue': 'img/avatars/adventurer-blue.webp',
+      'magician-purple': 'img/avatars/magician-purple.webp',
+      'dealer-purple': 'img/avatars/dealer-purple.webp',
+      'adventurer-gold': 'img/avatars/adventurer-gold.webp',
+      'knight-gold': 'img/avatars/knight-gold.webp',
+      'karate-red': 'img/avatars/karate-red.webp',
+      'rogue-red': 'img/avatars/rogue-red.webp',
+      'swordsman-red': 'img/avatars/swordsman-red.webp',
+      'pilot-cyan': 'img/avatars/pilot-cyan.webp',
+      'explorer-cyan': 'img/avatars/explorer-cyan.webp',
+      'healer-cyan': 'img/avatars/healer-cyan.webp',
+      'gambler-secret': 'img/avatars/gambler-secret.webp',
+      'adam-secret': 'img/avatars/adam-secret.webp',
       // the NPCs マイクソン (once ピーター) and ジョンソン, and Ice Smoker公式 (not players' icons)
       peter: 'img/avatars/peter.webp',
       johnson: 'img/avatars/johnson.webp',
@@ -40,7 +44,6 @@
       watermelon: 'img/fruits/watermelon.webp',
       melon: 'img/fruits/melon.webp'
     },
-    chain: 'img/ui/chain.webp',
     sale: 'img/ui/sale.webp',
     loginBonus: 'img/ui/login-bonus.webp',
     // round buttons on the slot screen

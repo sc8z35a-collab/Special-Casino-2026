@@ -1,6 +1,4 @@
 /* Sales, shared with the server (the same hours and prices everywhere):
-   - the paid icons: always on sale at 10-40 % off, a new discount for each
-     icon every UTC day;
    - the Shop (お守り加護): its 10-40 % off holds 5 hours a day only, from an
      hour of its own each Japan day (BR.sale.shop);
    - Car Owner, now and then, never two at once (BR.sale.cars; the odds and
@@ -131,14 +129,12 @@
   }
 
   BR.sale = {
-    // discount in percent of icon `id` on `day` (BR.util.utcDay() format)
+    // Older servers still call this accessor for portraits. Keep that call
+    // compatible while charging only the catalog's fixed dollar price.
+    price: function (avatar) { return avatar && avatar.price > 0 ? avatar.price : 0; },
+    // Discount of a Shop item on the Japan date `day`.
     pct: function (id, day) {
       return STEPS[hash(day + '/' + id) % STEPS.length];
-    },
-    // what the icon costs that day (0 for free icons)
-    price: function (avatar, day) {
-      if (!avatar || !(avatar.price > 0)) return 0;
-      return Math.round(avatar.price * (100 - BR.sale.pct(avatar.id, day)) / 10000) * 100;
     },
     // A Shop item at `ms`: { price (what it costs now), pct (0 outside the sale
     // hours), on, start, end (today's sale hours), next (when the next ones begin) }

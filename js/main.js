@@ -52,7 +52,6 @@
     css += '.ic-menu{background-image:' + url(soc.buttons.menu) + '}\n';
     css += '.ic-quest,.q-icon,.qn-icon{background-image:' + url(soc.buttons.quest) + '}\n';
     css += '.ic-tree{background-image:' + url(soc.buttons.tree) + '}\n';
-    css += '.av-chain{background-image:' + url(soc.chain) + '}\n';
     css += '.sale-badge{background-image:' + url(soc.sale) + '}\n';
     if (soc.items.omamori) css += '.charm-pic{background-image:' + url(soc.items.omamori) + '}\n';
     Object.keys(soc.fruits).forEach(function (k) {

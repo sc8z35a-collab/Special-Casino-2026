@@ -15,7 +15,7 @@
   var CARDS = ['register', 'avatar', 'login', 'code-login', 'codecard', 'password'];
   var busy = false;
   var after = null;          // what to do once signed in (start the game, open friends, ...)
-  var draft = { name: '', password: '', avatar: 'bald' };
+  var draft = { name: '', password: '', avatar: BR.CONFIG.defaultAvatar };
   var codeFirst = false;
 
   var NAME_RE = /^[A-Za-z0-9_\-ぁ-ゖァ-ヺー・々〆一-鿿㐀-䶿]+$/;
@@ -147,7 +147,7 @@
       draft.avatar = id;
       setError('avatar', '');
     }, function (a) {
-      setError('avatar', '「' + a.name + '」はレアアイコンのため今は選べません。ゲームの中で$を貯めて購入しよう！');
+      setError('avatar', '「' + a.name + '」は有料アイコンです。登録後にアイコン変更から購入できます。');
     });
     show('avatar');
   }
