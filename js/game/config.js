@@ -83,7 +83,14 @@
       exp: { win: 1, quest: 0.1, ultra: 250, car: 30 },
       levels: [0, 1200, 2100, 4500, 8800, 14800],
       labels: ['0', '1', '2', '3', '3.1', '4'],
-      badgeImages: {},
+      badgeImages: {
+        '0': 'img/vip/vip-0.webp',
+        '1': 'img/vip/vip-1.webp',
+        '2': 'img/vip/vip-2.webp',
+        '3': 'img/vip/vip-3.webp',
+        '3.1': 'img/vip/vip-3.1.webp',
+        '4': 'img/vip/vip-4.webp'
+      },
       modes: { normal: { coins: 0, multiplier: 1 }, pro: { coins: 8, multiplier: 1.6 }, ultra: { coins: 12, multiplier: 2 } },
       permanent: { from: 5, level: 2 },
       specialLogin: { from: 4, days: 60, rewards: [] },

@@ -80,8 +80,8 @@
     return [
       { sym: 'statue', title: '女神像の確率アップ', text: pct(W.statue) + ' → ' + pct(H.statue), up: true },
       { sym: 'seven', title: '7の確率アップ', text: pct(W.seven) + ' → ' + pct(H.seven), up: true },
-      { sym: 'revolver', title: '銃の確率ダウン（はずれにくい）', text: pct(W.revolver) + ' → ' + pct(H.revolver), up: false },
-      { sym: 'diamond', title: 'ダイヤ確定', text: pct(HUB.diamonds) + 'の確率でダイヤ5つがそろう（20倍）' },
+      { sym: 'revolver', title: 'コインの確率ダウン（はずれにくい）', text: pct(W.revolver) + ' → ' + pct(H.revolver), up: false },
+      { sym: 'diamond', title: '時計確定', text: pct(HUB.diamonds) + 'の確率で時計5つがそろう（20倍）' },
       { badge: 'COMBO', title: 'コンボをみんなで共有', text: '1コンボごとに報酬が' + times(HUB.comboStep) + 'ずつアップ（2コンボ目 ×1.1・3コンボ目 ×1.21…）。' + HUB.misses + '回続けて外れるまで続く' },
       { badge: '777', title: '777ボーナス', text: '7が3つ以上そろうと、7の報酬が' + times(HUB.sevens) },
       { badge: 'EXP', title: 'レベルブースト', text: '経験値が' + times(HUB.xp) + '（抜けるまで自動）' },
@@ -667,7 +667,7 @@
     if (!J) return;
     var w = J.at('.win-box');
     if (h.diamonds) {
-      J.banner('ダイヤ確定！！', 'chance', 1500, '友達と稼ぐボーナス');
+      J.banner('時計確定！！', 'chance', 1500, '友達と稼ぐボーナス');
       J.flash('#b6e3ff', 0.35, 360);
     }
     var parts = [];
@@ -719,7 +719,7 @@
     n.appendChild(K.avatarEl(ev.user, 'sm'));
     var t = el('span', 'hb-pop-text');
     t.appendChild(el('b', 'uname', ev.user.name));
-    t.appendChild(el('span', '', ev.diamonds ? 'さんがダイヤ確定！' : ev.tier >= 3 ? 'さんがSUPER BIG WIN！' : ev.tier >= 2 ? 'さんがBIG WIN！' : 'さんが当たり！'));
+    t.appendChild(el('span', '', ev.diamonds ? 'さんが時計確定！' : ev.tier >= 3 ? 'さんがSUPER BIG WIN！' : ev.tier >= 2 ? 'さんがBIG WIN！' : 'さんが当たり！'));
     n.appendChild(t);
     n.appendChild(K.amountEl(ev.win, 'tokens', 'hb-pop-amt'));
     if (ev.combo >= 2) n.appendChild(el('b', 'hb-pop-combo', ev.combo + ' COMBO'));

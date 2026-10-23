@@ -45,10 +45,15 @@
     loginBonus: 'img/ui/login-bonus.webp',
     // round buttons on the slot screen
     buttons: {
-      quest: 'img/ui/quest.webp',
+      quest: 'img/ui/lowpoly/quest.webp',
       lobby: 'img/ui/lobby.webp',
-      menu: 'img/ui/menu.webp',
-      tree: 'img/ui/money-tree.webp'
+      menu: 'img/ui/lowpoly/menu.webp',
+      tree: 'img/ui/lowpoly/money-tree.webp'
+    },
+    tabs: {
+      friends: 'img/ui/lowpoly/friends.webp',
+      messages: 'img/ui/lowpoly/messages.webp',
+      jobs: 'img/ui/lowpoly/jobs.webp'
     },
     // 金の生る木: its nine looks, and the seed sold at the auctions
     tree: {
@@ -72,10 +77,6 @@
     peter: ['sounds/peter-1.mp3', 'sounds/peter-2.mp3']
   };
 
-  // the start screen: the full video online, the small one in the single-file build
-  BR.START_VIDEO = {
-    full: 'video/title.mp4',
-    lite: 'video/title-lite.mp4',
-    poster: 'video/title-poster.webp'
-  };
+  // supplied title picture, also embedded by tools/build_single.py
+  BR.START_ART = 'img/ui/lowpoly/title.webp';
 })(window.BR = window.BR || {});

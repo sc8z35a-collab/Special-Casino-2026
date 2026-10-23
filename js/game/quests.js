@@ -85,7 +85,7 @@
       function (n) { return { text: 'BARを揃えて' + n + '回当たる' }; }),
     steps('5h', 'revolver5', [['revolver5-1', 1, 5000], ['revolver5-2', 2, 6000], ['revolver5-3', 3, 7000],
       ['revolver5-4', 4, 8000], ['revolver5-5', 5, 9000]],
-      function (n) { return { text: '銃を5列揃えて' + n + '回当たる' }; }),
+      function (n) { return { text: 'コインを5列揃えて' + n + '回当たる' }; }),
     steps('5h', 'snowman', [['snowman1', 1, 10000], ['snowman2', 2, 20000], ['snowman3', 3, 30000],
       ['snowman5', 5, 50000], ['snowman10', 10, 120000]],
       function (n) { return { text: '友達に雪だるまを' + n + '回送る' }; }),

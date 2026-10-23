@@ -422,7 +422,7 @@
 
   // the badge of a quest by what it counts
   var MARK = {
-    spin: 'SPIN', win: 'WIN', barWin: 'BAR', revolver5: 'GUN', snowman: 'GIFT',
+    spin: 'SPIN', win: 'WIN', barWin: 'BAR', revolver5: 'COIN', snowman: 'GIFT',
     bet: 'BET', casinoSpend: 'BET', combo: 'COMBO', earn: '$', coopEarn: '$', online: 'TIME', hubSec: 'TIME',
     talkSec: 'TALK', talk: 'TALK', call: 'CALL', chat: 'CHAT', peek: 'CHAT', watch: 'WATCH', wbet: 'BET', hub: 'HUB',
     sent: 'SEND', friend: 'FRIEND', strawberry: 'FRUIT', watermelon: 'FRUIT', melon: 'FRUIT', borrow: 'LOAN',

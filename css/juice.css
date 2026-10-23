@@ -320,7 +320,7 @@
 /* squash on the press, stretch back with a little overshoot */
 .spin-btn .spin-disc { transition: transform .22s var(--jc-snap), filter .15s ease; }
 .spin-btn:active .spin-disc, .spin-btn.pressed .spin-disc { transform: scale(.88, .84); filter: brightness(.9); transition: transform .06s ease-out; }
-.spin-btn.spinning .spin-arrows { animation: spinArrows .5s linear infinite; }
+.spin-btn.spinning .spin-disc { animation: spinArrows .5s linear infinite; }
 
 /* the pay line marks pulse while a win is shown */
 .payline-mark.lit { animation: jcMark .5s ease-in-out infinite; }

@@ -6,13 +6,14 @@
     chip: 'img/ui/chip.webp',
     coin: 'img/ui/coin.webp',
     dollar: 'img/ui/dollar.webp',
-    spin: 'img/ui/spin.webp',
-    spinArrows: 'img/ui/spin-arrows.webp',
+    spin: 'img/ui/lowpoly/spin.webp',
+    exit: 'img/ui/lowpoly/exit.webp',
+    shop: 'img/ui/lowpoly/shop.webp',
     pill: 'img/ui/pill.webp',
     pillGet: 'img/ui/pill-get.webp',
     pillMax: 'img/ui/pill-max.webp',
     chipPile: 'img/ui/chip-pile.webp',
-    bg: 'img/ui/bg.webp',
+    bg: 'img/ui/lowpoly/bg.webp',
     frame: 'img/ui/frame.webp',
     // the reel window, from its 3D model (tools/art/reel_frame_3d.py): the
     // frame over the reels, and the panels behind the symbols

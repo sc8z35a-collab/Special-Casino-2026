@@ -335,14 +335,8 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
   box-shadow: 0 6px 14px rgba(0,0,0,.45);
   transition: transform .1s ease, filter .15s ease;
 }
-.spin-arrows {
-  position: absolute;
-  inset: 0;
-  background: center / 100% 100% no-repeat;
-  transition: transform .5s cubic-bezier(.2,.7,.3,1);
-}
 .spin-btn:active .spin-disc, .spin-btn.pressed .spin-disc { transform: scale(.95); filter: brightness(.95); }
-.spin-btn.spinning .spin-arrows { animation: spinArrows .8s linear infinite; }
+.spin-btn.spinning .spin-disc { animation: spinArrows .8s linear infinite; }
 @keyframes spinArrows { to { transform: rotate(360deg); } }
 .spin-btn:disabled .spin-disc { filter: grayscale(.35) brightness(.8); }
 .spin-btn:disabled .spin-glow { opacity: .3; }

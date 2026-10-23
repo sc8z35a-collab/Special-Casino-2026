@@ -32,11 +32,12 @@
     css += '.ic-coin{background-image:' + url(art.coin) + '}\n';
     css += '.ic-dollar{background-image:' + url(art.dollar) + '}\n';
     css += '.ic-garage{background-image:' + url(art.garage) + '}\n';
+    css += '.ic-exit{background-image:' + url(art.exit) + '}\n';
+    css += '.ic-bag{background-image:' + url(art.shop) + '}\n';
     css += '.ic-sound{background-image:' + svg(BR.ICONS.soundOff) + '}\n';
     css += '.sound-on .ic-sound{background-image:' + svg(BR.ICONS.soundOn) + '}\n';
     css += '.payline-mark{background-image:' + svg(BR.UISVG.payline()) + '}\n';
     css += '.spin-disc{background-image:' + url(art.spin) + '}\n';
-    css += '.spin-arrows{background-image:' + url(art.spinArrows) + '}\n';
     css += '.pill{background-image:' + url(art.pill) + '}\n';
     css += '.pill-get{background-image:' + url(art.pillGet) + '}\n';
     css += '.pill-max{background-image:' + url(art.pillMax) + '}\n';
@@ -52,6 +53,9 @@
     css += '.ic-menu{background-image:' + url(soc.buttons.menu) + '}\n';
     css += '.ic-quest,.q-icon,.qn-icon{background-image:' + url(soc.buttons.quest) + '}\n';
     css += '.ic-tree{background-image:' + url(soc.buttons.tree) + '}\n';
+    Object.keys(soc.tabs).forEach(function (k) {
+      css += '.ic-tab-' + k + '{background-image:' + url(soc.tabs[k]) + '}\n';
+    });
     css += '.av-chain{background-image:' + url(soc.chain) + '}\n';
     css += '.sale-badge{background-image:' + url(soc.sale) + '}\n';
     if (soc.items.omamori) css += '.charm-pic{background-image:' + url(soc.items.omamori) + '}\n';
@@ -90,9 +94,6 @@
     var W = Math.round(w / s), H = Math.round(h / s);
     stage.style.width = W + 'px';
     stage.style.height = H + 'px';
-    // the start video covers the stage like a background picture, but never
-    // crops into its two buttons (tablets get bands above and below instead)
-    stage.style.setProperty('--cover', String(Math.min(Math.max(W / REF_W, H / REF_H), W / 1640)));
     stage.style.transform = portrait
       ? 'translate(' + vw + 'px,0) rotate(90deg) scale(' + s + ')'
       : 'scale(' + s + ')';
@@ -633,7 +634,17 @@
     document.addEventListener('keydown', function (e) {
       if (inField(e)) return;
       if (e.key === 'Escape' && BR.social.escape()) { e.preventDefault(); return; }
-      if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); if (BR.screens.current() === 'slot') spin(); }
+      if (e.code === 'Space' || e.code === 'Enter') {
+        if (BR.screens.current() === 'start') {
+          var control = e.target && e.target.closest && e.target.closest('button, a');
+          if (control && control.id !== 'start-go') return;
+          e.preventDefault();
+          if (!e.repeat) $('#start-go').click();
+          return;
+        }
+        e.preventDefault();
+        if (BR.screens.current() === 'slot') spin();
+      }
     });
     // iPhone: no pinch zoom; when the keyboard goes, the page goes back in
     // place (Safari may leave it scrolled up) before the layout catches up
