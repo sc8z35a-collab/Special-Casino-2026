@@ -8,6 +8,7 @@ import '../../js/game/quests.js';
 import '../../js/game/news.js';
 import '../../js/game/tree.js';
 import '../../js/game/vip.js';
+import '../../js/game/receipts.js';
 
 const BR = globalThis.BR;
 if (!BR || !BR.CONFIG || !BR.engine || !BR.sale || !BR.QUESTS || !BR.LEVEL || !BR.RELEASE || !BR.TREE || !BR.VIP) throw new Error('could not load the game rules from js/');
@@ -17,6 +18,7 @@ export const QUESTS = BR.QUESTS;
 export const LEVEL = BR.LEVEL;
 export const TREE = BR.TREE;
 export const VIP = BR.VIP;
+export const RECEIPTS = BR.receipts;
 // the newest Dev News entry: players on an older game are asked to update
 export const RELEASE = BR.RELEASE;
 export const JOBS = new Map(RULES.jobs.map((j) => [j.id, j]));

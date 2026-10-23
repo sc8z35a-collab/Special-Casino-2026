@@ -285,12 +285,13 @@
     var re = new RegExp('a=fmtp:' + pt + ' ([^\\r\\n]*)');
     if (re.test(sdp)) {
       return sdp.replace(re, function (all, params) {
-        var p = params.split(';').filter(function (x) { return x && !/^\s*maxaveragebitrate=/.test(x); });
+        var p = params.split(';').filter(function (x) { return x && !/^\s*(maxaveragebitrate|maxplaybackrate)=/.test(x); });
         p.push('maxaveragebitrate=' + bps);
+        if (tier >= 4) p.push('maxplaybackrate=48000');
         return 'a=fmtp:' + pt + ' ' + p.join(';');
       });
     }
-    return sdp.replace(m[0], m[0] + '\r\na=fmtp:' + pt + ' minptime=10;useinbandfec=1;maxaveragebitrate=' + bps);
+    return sdp.replace(m[0], m[0] + '\r\na=fmtp:' + pt + ' minptime=10;useinbandfec=1;maxaveragebitrate=' + bps + (tier >= 4 ? ';maxplaybackrate=48000' : ''));
   }
   function capSender(p, tier) {
     if (!p.sender || !p.sender.getParameters) return;

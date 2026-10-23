@@ -87,10 +87,10 @@ test('VIP casino wins give one EXP; misses give none and ULTRA keeps its separat
   }
 });
 
-test('offline salary caps each job at 15 million including VIP/hub, and collecting discards excess accrual', async t => {
+test('offline salary caps each job at 6 million including VIP/hub, and collecting discards excess accrual', async t => {
   const s = await startServer();
   t.after(() => s.stop());
-  assert.equal(RULES.jobMaxPay, 15000000);
+  assert.equal(RULES.jobMaxPay, 6000000);
   for (const [i, settings] of [
     { hours: 1000 },
     { hours: 1000, vip_until: Date.now() + DAY, vip_exp: RULES.vip.levels[3] },
@@ -100,8 +100,8 @@ test('offline salary caps each job at 15 million including VIP/hub, and collecti
     s.setUser(a.me.id, { jobs: JSON.stringify([{ id: 'garage', since: Date.now() - settings.hours * HOUR, boost: settings.boost || 0 }]),
       vip_until: settings.vip_until || 0, vip_exp: settings.vip_exp || 0 });
     const r = await s.call('POST', '/api/jobs/collect', { token: a.token });
-    assert.equal(r.paid, 15000000);
-    assert.equal(r.balance.dollars, a.me.dollars + 15000000);
+    assert.equal(r.paid, 6000000);
+    assert.equal(r.balance.dollars, a.me.dollars + 6000000);
     const again = await s.call('POST', '/api/jobs/collect', { token: a.token });
     assert.ok(again.paid < 10, 'a second collection cannot take the discarded overflow');
   }
@@ -116,7 +116,7 @@ test('the salary cap is per job, and VIP purchase also settles capped wages', as
   s.setUser(a.me.id, { xp: LEVEL.at(3), coins: 1000,
     jobs: JSON.stringify(['garage', 'second-test-job'].map(id => ({ id, since: Date.now() - 2000 * HOUR }))) });
   const r = await s.call('POST', '/api/vip/extend', { token: a.token, body: { pack: 30 } });
-  assert.equal(r.paid, 30000000);
-  assert.equal(r.me.dollars, a.me.dollars + 30000000);
+  assert.equal(r.paid, 12000000);
+  assert.equal(r.me.dollars, a.me.dollars + 12000000);
   assert.equal(r.me.questTickets['5h'], 1);
 });

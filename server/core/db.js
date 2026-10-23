@@ -796,6 +796,17 @@ export const MIGRATIONS = [
   [
     "ALTER TABLE vault_files ADD COLUMN inside TEXT NOT NULL DEFAULT ''",
     'CREATE INDEX vault_files_inside ON vault_files(inside)'
+  ],
+  // VIP extension schedules and permanent VIP2 benefits after earning VIP4.
+  [
+    "ALTER TABLE users ADD COLUMN vip_modes TEXT NOT NULL DEFAULT '[]'",
+    'ALTER TABLE users ADD COLUMN vip_permanent_at INTEGER NOT NULL DEFAULT 0'
+  ],
+  // A full rental waits for collection; its next block starts when collected.
+  [
+    'ALTER TABLE cars ADD COLUMN rent_paused INTEGER NOT NULL DEFAULT 0',
+    `UPDATE cars SET rent_paused = CASE WHEN rent_start > 0 AND rent_until = 0 THEN 1 ELSE 0 END,
+       rent_start = 0, rent_until = 0, rent_blocks = 0, rent_earned = 4500000 WHERE rent_earned >= 4500000`
   ]
 ];
 

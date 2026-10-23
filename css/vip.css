@@ -243,3 +243,31 @@
 .vp-state .vp-clock { font-family: var(--f-num); }
 .vp-state.trial { background: rgba(167, 123, 255, .28); box-shadow: inset 0 0 0 1.6px rgba(214, 180, 255, .7); color: #f1e4ff; }
 .vp-pack.short .vp-pack-price { color: #ff8f8f; }
+
+/* VIP3.1 and VIP4; indices stay separate from their player-facing names. */
+.vip-badge.vip-4 { color: #fff; background: linear-gradient(120deg, #124e68, #318eac 40%, #b886df 70%, #fff0ae); }
+.vip-badge.vip-5 { color: #ffeab4; background: linear-gradient(120deg, #161019, #67317e 48%, #17171f); box-shadow: inset 0 0 0 1.5px #e6be61, 0 0 9px #dab75a55; }
+.vp-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.vp-modes button { display: flex; flex-direction: column; gap: 5px; padding: 12px 4px; border-radius: 10px; background: #17090e; box-shadow: inset 0 0 0 1.5px #704552; color: #d9cdd0; }
+.vp-modes b { font: 900 24px var(--f-num); }
+.vp-modes small { font-size: 16px; }
+.vp-modes .active { background: linear-gradient(135deg, #594013, #27200d); box-shadow: inset 0 0 0 2px #ffe27a; color: #fff0ab; }
+.vp-modes [data-mode="pro"].active { background: linear-gradient(135deg, #164752, #181328); box-shadow: inset 0 0 0 2px #7de5ff; color: #b8f5ff; }
+.vp-modes [data-mode="ultra"].active { background: linear-gradient(135deg, #542066, #1b123b); box-shadow: inset 0 0 0 2px #e8b3ff; color: #f9d5ff; }
+.vp-mode-rule { margin: 0; color: #d9cdd0; font-size: 17px; }
+.vp-mode-schedule { display: flex; flex-direction: column; gap: 6px; font-size: 18px; color: #c6eeff; }
+.vp-mode-schedule small { font-size: 16px; color: #c4b9c8; }
+.vp-mode-schedule:empty { display: none; }
+.vp-active-mode { margin-left: 12px; color: #a6edff; }
+.vp-active-mode.ultra { color: #edb4ff; }
+.vp-table { font-size: 18px; }
+.vp-table th .vip-badge { font-size: 25px; }
+.vp-table td { white-space: normal; min-width: 78px; }
+.vp-table .vp-k { min-width: 165px; }
+.receipt-deadline { margin-top: calc(var(--u) * 8); font-size: calc(var(--u) * 17); color: #dac798; }
+.receipt-deadline.expired { color: #e2a1a1; font-weight: 800; }
+.reward3d { position: absolute; inset: 0; z-index: 150; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; background: radial-gradient(ellipse 38% 28% at center, #1b071987, transparent); }
+.reward3d canvas { width: 1100px; height: 400px; filter: drop-shadow(0 10px 24px #000b); }
+.reward3d-sub { margin-top: -32px; padding: 10px 28px; border-radius: 30px; color: #fff0ad; background: #180611da; box-shadow: inset 0 0 0 1.5px #dab75a; font: 900 30px var(--f-num); text-shadow: 0 2px 4px #000; }
+.vip-badge.image { padding: 0; background: none; box-shadow: none; }
+.vip-badge.image img { display: block; height: 100%; width: auto; max-width: 4em; object-fit: contain; }

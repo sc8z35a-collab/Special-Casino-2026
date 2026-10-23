@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
 import { QUESTS, LEVEL, evaluate } from '../core/rules.js';
-import { stepQuests, claimQuests, questView, readQuests } from '../core/quests.js';
+import { stepQuests, claimQuests, questView, readQuests, questBonuses } from '../core/quests.js';
 
 const NOW = Date.UTC(2026, 9, 22, 1);
 const view = (state, id, now = NOW) => questView(state, now).flatMap(p => p.quests).find(q => q.id === id);
@@ -87,7 +87,9 @@ for (const bulk of [false, true]) {
     const spin = () => s.call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
     await spin(); await spin();
     const getQuests = () => s.call('GET', '/api/quests', { token: a.token });
-    const pending = (await getQuests()).periods.find(p => p.id === '5h').quests;
+    const snapshot = await getQuests();
+    assert.deepEqual(snapshot.bonuses['5h'], { pro: 1, ultra: 1 });
+    const pending = snapshot.periods.find(p => p.id === '5h').quests;
     assert.equal(pending.find(q => q.id === '5h-spin1').reward.mode, 'pro');
     assert.equal(pending.find(q => q.id === '5h-spin2').reward.mode, 'ultra');
     assert.equal((await s.call('GET', '/api/me', { token: a.token })).me.coins, a.me.coins, 'no coins before claiming');
@@ -105,6 +107,7 @@ for (const bulk of [false, true]) {
     }
     const duplicate = await claim(null);
     assert.deepEqual([duplicate.dollars, duplicate.coins], [0, 0]);
+    assert.deepEqual(duplicate.bonuses['5h'], { pro: 0, ultra: 0 });
     assert.equal(draws, 2, 'GET, claim and retries do not draw again');
     const me = (await s.call('GET', '/api/me', { token: a.token })).me;
     assert.deepEqual([me.dollars, me.coins, me.xp], [1105000, a.me.coins + 8, 2 * LEVEL.spinXp + 2 * LEVEL.questXp]);
@@ -122,4 +125,23 @@ test('bulk claims add eight royal coins for every ULTRA STEP', () => {
   assert.equal(paid.dollars, (7000 + 5000) * 6);
   assert.equal(paid.coins, 16);
   assert.equal(claimQuests(state, null, NOW).coins, 0);
+});
+
+
+test('quest bonus badge counts include only waiting STEPs in each current period, and clear after claims or rollover', () => {
+  const state = {};
+  stepQuests(state, [['spin', 1]], NOW, null, () => 1);
+  stepQuests(state, [['sent', 100000]], NOW, null, () => 0);
+  let summary = questBonuses(state, NOW);
+  assert.deepEqual(summary['5h'], { pro: 1, ultra: 0 });
+  assert.ok(summary.day.ultra > 0);
+  const day = summary.day.ultra;
+  claimQuests(state, ['5h-spin1'], NOW);
+  summary = questBonuses(state, NOW);
+  assert.deepEqual(summary['5h'], { pro: 0, ultra: 0 });
+  assert.equal(summary.day.ultra, day);
+  const later = NOW + 32 * 86400000;
+  assert.deepEqual(questBonuses(state, later).day, { pro: 0, ultra: 0 });
+  claimQuests(state, null, NOW);
+  assert.ok(Object.values(questBonuses(state, NOW)).every(c => c.pro === 0 && c.ultra === 0));
 });

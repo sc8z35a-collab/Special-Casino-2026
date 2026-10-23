@@ -75,10 +75,34 @@
   function vipBadge(level) {
     if (level === null || level === undefined) return null;
     var b = el('i', 'vip-badge vip-' + level, 'VIP');
-    b.appendChild(el('b', '', String(level)));
+    b.appendChild(el('b', '', BR.VIP.label(level)));
+    b.setAttribute('aria-label', 'VIP' + BR.VIP.label(level));
+    var src = BR.CONFIG.vip.badgeImages[BR.VIP.label(level)];
+    if (src) {
+      b.classList.add('image');
+      b.textContent = '';
+      var img = document.createElement('img');
+      img.src = src;
+      img.alt = 'VIP' + BR.VIP.label(level);
+      b.appendChild(img);
+    }
     return b;
   }
   function addVip(node, level) { var b = vipBadge(level); if (b) node.appendChild(b); return node; }
+  function vipLevel(user) {
+    if (!user) return null;
+    return user.vip && typeof user.vip === 'object' ? BR.VIP.badge(user.vip)
+      : typeof user.vipBadge === 'number' ? user.vipBadge : user.vip;
+  }
+  function receiptExpired(m) { return !!m.expired || BR.receipts.expired(m); }
+  function receiptHint(card, m) {
+    var end = m.expiresAt || BR.receipts.deadline(m);
+    if (!end || m.claimed) return;
+    var d = new Date(end);
+    var text = receiptExpired(m) ? '受け取り期限切れ' : '受け取り期限 ' + (d.getMonth() + 1) + '/' + d.getDate() + ' '
+      + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes() + '（' + BR.receipts.days(m) + '日間）';
+    card.appendChild(el('div', 'receipt-deadline' + (receiptExpired(m) ? ' expired' : ''), text));
+  }
   function toast(msg, ms, tap) { BR.app.toast(msg, ms, tap); }
   function sfx(n, arg) { BR.sfx.play(n, arg); }
   function fail(err) {
@@ -247,7 +271,8 @@
     init: init,
     el: el, icon: icon, fmtTime: fmtTime, fmtDay: fmtDay, fmtDate: fmtDate, sameDay: sameDay, clip: clip, nfkc: nfkc,
     CUR: CUR, amountEl: amountEl, avatarEl: avatarEl, avatarInfo: avatarInfo, avatarSrc: avatarSrc,
-    presence: presence, nameSpan: nameSpan, vipBadge: vipBadge, addVip: addVip, toast: toast, sfx: sfx, fail: fail, badge: badge,
+    presence: presence, nameSpan: nameSpan, vipBadge: vipBadge, addVip: addVip, vipLevel: vipLevel,
+    receiptExpired: receiptExpired, receiptHint: receiptHint, toast: toast, sfx: sfx, fail: fail, badge: badge,
     registerModal: registerModal, showModal: showModal, closeModal: closeModal, closeModals: closeModals, isOpen: isOpen,
     confirmBox: confirmBox, escape: escape, fitOverlay: fitOverlay, copyText: copyText, dragScroll: dragScroll
   };

@@ -47,10 +47,12 @@
   // sclear (特別 quests finished), broke (net worth below `brokeBelow` $),
   // jobpay ($ received from バイト), snowman (snowman presents sent), barWin
   // (a paying BAR combination), revolver5 (all five centre reels are guns),
-  // casinoSpend (spin tokens bet, converted to dollars; payouts not deducted).
+  // casinoSpend (spin tokens bet, converted to dollars; payouts not deducted),
+  // level / vipLevel (highest earned rank), vipUse (ever activated VIP),
+  // carBuy (successful car purchases, including buying from a friend).
   // How the progress reads: `money` an amount of $, `tokens` of spin
   // tokens, `sec` seconds (shown in minutes).
-  var MAX_METRICS = ['combo'];
+  var MAX_METRICS = ['combo', 'level', 'vipLevel', 'vipUse'];
 
   function steps(period, metric, list, make) {
     return list.map(function (x) {
@@ -149,6 +151,15 @@
     steps('day', 'sent', [['send500k', 500000, 35000], ['send850k', 850000, 55000], ['send1.1m', 1100000, 65000],
       ['send1.85m', 1850000, 78000], ['send2.1m', 2100000, 89000]],
       function (n) { return { text: '友達に' + man(n) + 'ドル以上送金する（お金換算）', money: true }; }),
+    steps('day', 'earn', [['earn2.5m', 2.5e6, 7000], ['earn3m', 3e6, 10000], ['earn3.5m', 3.5e6, 16000],
+      ['earn4m', 4e6, 26000], ['earn5m', 5e6, 35000], ['earn7m', 7e6, 46000], ['earn9m', 9e6, 56000], ['earn10m', 10e6, 60000]],
+      function (n) { return { text: n / 1e6 + 'Mを稼ぐ（累計）', money: true }; }),
+    steps('day', 'watermelon', [['watermelon2', 2, 40000], ['watermelon3', 3, 50000], ['watermelon5', 5, 60000]],
+      function (n) { return { text: '友達にスイカを' + n + '個与える' }; }),
+    steps('day', 'melon', [['melon2', 2, 60000], ['melon3', 3, 70000], ['melon5', 5, 80000]],
+      function (n) { return { text: '友達にメロンを' + n + '個与える' }; }),
+    steps('day', 'friend', [['friend2', 2, 200000], ['friend3', 3, 300000]],
+      function (n) { return { text: '友達を' + n + '人追加する' }; }),
 
     steps('coop', 'coopEarn', [['earn1m', 1e6, 100000], ['earn1.5m', 1.5e6, 150000], ['earn3m', 3e6, 200000], ['earn4m', 4e6, 250000],
       ['earn5m', 5e6, 300000], ['earn10m', 1e7, 500000], ['earn15m', 1.5e7, 800000]],
@@ -171,7 +182,17 @@
       { id: 'special-win100', period: 'special', metric: 'win', goal: 100, reward: 100000, text: 'カジノで100回当たる' },
       { id: 'special-win500', period: 'special', metric: 'win', goal: 500, reward: 500000, text: 'カジノで500回当たる' },
       { id: 'special-broke', period: 'special', metric: 'broke', goal: 1, reward: 1000000, text: '無一文になってしまう', note: 'トークンも$に換算した総額が5万を下回ったとき（ロイヤルコインは除く）' }
-    ]
+    ],
+    steps('special', 'level', [['level10', 10, 125000], ['level20', 20, 220000], ['level30', 30, 650000],
+      ['level40', 40, 1200000], ['level50', 50, 3000000]],
+      function (n) { return { text: 'プレイヤーレベルを' + n + 'にする' }; }),
+    [{ id: 'special-vip-first', period: 'special', metric: 'vipUse', goal: 1, reward: 45000, text: 'VIPを初めて使う' }],
+    steps('special', 'vipLevel', [['vip1', 1, 250000], ['vip2', 2, 500000], ['vip3', 3, 750000], ['vip3.1', 4, 1000000], ['vip4', 5, 2000000]],
+      function (n) { return { text: 'VIP' + ['0', '1', '2', '3', '3.1', '4'][n] + 'にする' }; }),
+    steps('special', 'earn', [['earn50m', 50e6, 300000], ['earn200m', 200e6, 1000000], ['earn500m', 500e6, 3000000]],
+      function (n) { return { text: n / 1e6 + 'M稼ぐ（累計）', money: true }; }),
+    steps('special', 'carBuy', [['car1', 1, 100000], ['car2', 2, 250000], ['car3', 3, 500000], ['car4', 4, 750000], ['car5', 5, 750000]],
+      function (n) { return { text: '車を' + n + '台買う' }; })
   );
 
   // index of the period `now` falls in, with its start and end (ms; end 0: never)

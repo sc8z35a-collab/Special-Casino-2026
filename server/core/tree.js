@@ -83,6 +83,7 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged }) {
       super: !!t.super,
       given: t.given,
       rate,
+      activeRate: c && now < t.cycle_end ? rate : 0,
       stage,
       next: stage < T.stages.length ? T.stages[stage] : 0,
       cycle: c ? { id: c.id, at: t.cycle_at, end: t.cycle_end, mult: c.mult } : null,

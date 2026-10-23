@@ -50,6 +50,7 @@
       <button class="start-app" id="start-app" hidden><i class="ic ic-add-home"></i><span>アプリで遊ぶ</span></button>
       <!-- 開発者支援: the law asks for this page to be reachable from the top page -->
       <a class="start-law" id="start-law" href="/law" target="_blank" rel="noopener">特定商取引法に基づく表記</a>
+      <p class="start-terms-notice">TWO STATEの機能を一つでも自ら利用した場合、<button id="start-terms" type="button">規約（近日公開）</button>に同意したものとみなします。</p>
     </section>
 
     <!-- ===================== SLOT SCREEN ===================== -->
@@ -103,7 +104,7 @@
       <button id="btn-max" class="pill pill-left pill-max" data-sfx="click" aria-label="最大ベット"></button>
 
       <button id="btn-radio" class="hud-circle hud-radio pic" aria-label="メニュー（フレンド・メッセージ・Car Owner・Shop・バイト）"><i class="ic ic-menu"></i><b class="hud-badge" id="radio-badge" hidden></b></button>
-      <button id="btn-quest" class="hud-circle hud-quest pic" aria-label="クエスト"><i class="ic ic-quest"></i><b class="hud-badge" id="quest-badge" hidden></b></button>
+      <button id="btn-quest" class="hud-circle hud-quest pic" aria-label="クエスト"><i class="ic ic-quest"></i><b class="hud-badge" id="quest-badge" hidden></b><span class="quest-bonus-badges" id="quest-bonus-badges" hidden></span></button>
       <button id="btn-tree" class="hud-circle hud-tree pic" aria-label="金の生る木"><i class="ic ic-tree"></i><b class="hud-badge" id="tree-badge" hidden></b></button>
       <!-- the top middle: the update reminder, then フレンド対決 / 協力スロット (js/ui/play.js) -->
       <div class="mode-stack" id="mode-stack">
@@ -194,7 +195,8 @@
         <div class="tr-scene">
           <div class="tr-glow"></div>
           <div class="tr-coins" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-          <img class="tr-art" id="tr-art" alt="" draggable="false">
+          <div class="tr-art" id="tr-art"><img class="tr-art-fallback" alt="" draggable="false"></div>
+          <div class="tr-view-tools"><span>ドラッグで360°回転・2本指 / ホイールでズーム</span><button id="tr-zoom-in" type="button" aria-label="木を拡大">＋</button><button id="tr-zoom-out" type="button" aria-label="木を縮小">−</button></div>
           <div class="tr-name"><span class="tr-super" id="tr-super" hidden>SUPER</span><b class="uname" id="tr-name"></b></div>
           <div class="tr-look">
             <div class="tr-look-head"><span>見た目</span><b id="tr-look"></b><small id="tr-look-next"></small></div>
@@ -289,6 +291,9 @@
             <button class="more-card vip" data-act="vip"><b>VIP</b><span>ロイヤルコインでVIPを有効にする</span></button>
             <button class="more-card support" data-act="support" hidden><b>有料ショップ</b><span>ロイヤルコインを購入する</span></button>
             <div class="more-card soon"><b>投資<small>COMING SOON</small></b><span>近日公開予定</span></div>
+            <button class="more-card soon" data-act="dev-diary"><b>開発者日記<small>近日公開</small></b><span>制作の様子をお届けします</span></button>
+            <button class="more-card soon" data-act="studio-credits"><b>スタジオクレジット<small>近日公開</small></b><span>制作に関わるスタジオ・スタッフ</span></button>
+            <button class="more-card soon" data-act="terms"><b>規約<small>近日公開</small></b><span>TWO STATEの利用について</span></button>
           </div>
           <h3 class="more-title">Dev News</h3>
           <div class="news-list" id="news-list"></div>
@@ -423,6 +428,12 @@
             <div class="vp-packs-list" id="vp-packs-list"></div>
           </div>
           <div class="vp-buy">
+            <div class="vp-modes" id="vp-modes" role="group" aria-label="VIP EXP倍率">
+              <button type="button" data-mode="normal" class="active"><b>通常</b><small>追加なし・EXP ×1</small></button>
+              <button type="button" data-mode="pro"><b>PRO</b><small>＋8枚・EXP ×1.6</small></button>
+              <button type="button" data-mode="ultra"><b>ULTRA</b><small>＋12枚・EXP ×2</small></button>
+            </div>
+            <p class="vp-mode-rule">追加料金は購入1回ごと。今回追加する全日数に適用されます。</p>
             <div class="vp-days">
               <span class="sp-label">日数</span>
               <button class="sq-btn minus" id="vp-minus" type="button" aria-label="減らす"><i></i></button>
@@ -431,6 +442,7 @@
             </div>
             <button class="act-btn vp-cart-clear" id="vp-cart-clear" type="button" hidden>カートを空にする</button>
             <div class="vp-cost" id="vp-cost"></div>
+            <div class="vp-mode-schedule" id="vp-mode-schedule"></div>
             <button class="action-btn vp-go" id="vp-go" type="button"></button>
             <p class="vp-rule">1日 = 24時間（有効にした時刻から。延長は今の期限からさらに24時間ずつ）</p>
           </div>
@@ -603,6 +615,16 @@
         </div>
         <p class="bonus-text" id="bonus-text"></p>
         <button class="act-btn gold bonus-ok" id="bonus-ok">OK</button>
+      </div>
+    </div>
+
+    <div id="more-soon" class="modal" hidden>
+      <div class="modal-card more-soon-card" role="dialog" aria-modal="true" aria-labelledby="more-soon-title">
+        <button class="modal-close" type="button" data-close aria-label="閉じる"></button>
+        <h3 class="modal-title" id="more-soon-title"></h3>
+        <b class="more-soon-label">近日公開</b>
+        <p id="more-soon-consent" hidden>TWO STATEの機能を一つでも自ら利用した場合、本規約に同意したものとみなします。</p>
+        <button class="act-btn gold" type="button" data-close>閉じる</button>
       </div>
     </div>
 
@@ -886,6 +908,7 @@
 <script src="js/game/quests.js"></script>
 <script src="js/game/tree.js"></script>
 <script src="js/game/vip.js"></script>
+<script src="js/game/receipts.js"></script>
 <script src="js/game/news.js"></script>
 <script src="js/core/store.js"></script>
 <script src="js/game/engine.js"></script>
@@ -899,6 +922,9 @@
 <script src="js/render/reels.js"></script>
 <script src="js/render/fx.js"></script>
 <script src="js/render/win3d.js"></script>
+<script src="js/render/reward3d.js"></script>
+<script src="js/art/tree-models.js"></script>
+<script src="js/render/tree3d.js"></script>
 <script src="js/render/garage3d.js"></script>
 <script src="js/render/juice.js"></script>
 <script src="js/render/slotfx.js"></script>

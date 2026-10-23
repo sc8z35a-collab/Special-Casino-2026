@@ -217,6 +217,7 @@
   /* ------------------------------------------------------------ logging in --- */
   // the site put away (for the login, or the day's ログイン button)
   function leaveApp() {
+    stopInline3d();
     if (call.on) callLeave();
     opsLiveClose();
     $('#dev-call').hidden = true;
@@ -458,6 +459,7 @@
     }, function (err) { $('#speed').value = speed; fail(err); });
   }
   function setView(v) {
+    if (v !== 'vault') stopInline3d();
     var again = state.view === v;
     state.view = v;
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
@@ -2904,6 +2906,75 @@
     }
     return v3d;
   }
+  // Visible cards show the model without opening the icon. Offscreen cards
+  // release their meshes; two downloads at a time, one WebGL renderer total.
+  var inline3dSession = null;
+  function stopInline3d() {
+    var s = inline3dSession;
+    if (!s) return;
+    s.alive = false;
+    if (s.observer) s.observer.disconnect();
+    s.items.forEach(function (i) { if (i.view) i.view.stop(); });
+    if (s.gallery) s.gallery.stop();
+    inline3dSession = null;
+  }
+  function inline3dEl(f) {
+    if (!inline3dSession) inline3dSession = { alive: true, items: [], loading: 0, gallery: null, observer: null };
+    var box = el('div', 'vault-inline3d'), model = el('div', 'vault-inline3d-model');
+    var note = el('small', 'muted', '3Dを読み込み中…');
+    box.appendChild(model);
+    box.appendChild(note);
+    inline3dSession.items.push({ file: f, box: box, host: model, note: note, visible: false, loading: false, failed: false, view: null });
+    return box;
+  }
+  function watchInline3d() {
+    var s = inline3dSession;
+    if (!s || !s.alive) return;
+    s.items = s.items.filter(function (i) {
+      if (i.box.isConnected) return true;
+      if (i.view) i.view.stop();
+      if (s.observer) s.observer.unobserve(i.box);
+      return false;
+    });
+    if (!s.observer && window.IntersectionObserver) s.observer = new IntersectionObserver(function (changes) {
+      changes.forEach(function (c) {
+        var i = s.items.filter(function (x) { return x.box === c.target; })[0];
+        if (!i) return;
+        i.visible = c.isIntersecting;
+        if (!i.visible && i.view) { i.view.stop(); i.view = null; }
+      });
+      pumpInline3d(s);
+    });
+    s.items.forEach(function (i) {
+      if (s.observer) s.observer.observe(i.box);
+      else i.visible = true;
+    });
+    pumpInline3d(s);
+  }
+  function pumpInline3d(s) {
+    if (!s.alive || state.view !== 'vault') return;
+    s.items.forEach(function (i) {
+      if (s.loading >= 2 || !i.visible || i.loading || i.failed || i.view || !i.box.isConnected) return;
+      i.loading = true;
+      s.loading++;
+      var src = lightOf(i.file) || i.file;
+      Promise.all([vault3d(), fetchFile(src, null)]).then(function (r) {
+        if (!s.alive || !i.visible || !i.box.isConnected) return null;
+        if (!s.gallery) s.gallery = r[0].gallery();
+        return r[1].arrayBuffer().then(function (buf) { return s.gallery.add(i.host, buf, src.name); });
+      }).then(function (view) {
+        if (!view) return;
+        if (!s.alive || !i.visible || !i.box.isConnected) { view.stop(); return; }
+        i.view = view;
+        i.note.textContent = 'ドラッグで回転・2本指 / ホイールでズーム';
+      }).catch(function () {
+        i.failed = true;
+        if (!s.alive || !i.box.isConnected) return;
+        i.note.textContent = '3Dを表示できませんでした。アイコンから再試行できます。';
+        if (i.file.preview) i.host.appendChild(picEl(i.file));
+      }).then(function () { i.loading = false; s.loading--; if (s.alive) pumpInline3d(s); });
+    });
+  }
   var KINDS_3D = /\.(glb|gltf|obj|fbx|stl|ply)$/i;
   function is3d(name) { return KINDS_3D.test(String(name || '')); }
   // (the developer's ticket goes with every call while they may change things; an operator has none)
@@ -3664,6 +3735,7 @@
     u.title = '全体の使用量（すべての保管庫の合計）・1ファイル ' + mb(v.fileBytes) + 'まで・保存先 ' + (v.store === 'bucket' ? 'R2' : 'データベース');
   }
   function renderVault() {
+    stopInline3d();
     var open = !!state.vault, info = state.vaultInfo;
     topBar();
     renderSpeed();
@@ -3724,6 +3796,7 @@
     if (!all.length && !inside.length) list.appendChild(el('p', 'empty muted', state.vaultIn ? 'このファイルの中はまだ空です（アップロード・ドラッグ＆ドロップ・「＋」で入れられます）' : state.vaultFolder ? 'このフォルダは空です' : 'ファイルはまだありません'));
     else if (!tops.length && all.length) list.appendChild(el('p', 'empty muted', show === 'used' ? '実装済みのファイルはありません' : '未実装のファイルはありません'));
     tops.slice(state.vaultPage * VAULT_PAGE, (state.vaultPage + 1) * VAULT_PAGE).forEach(function (f) { list.appendChild(vaultCard(f)); });
+    watchInline3d();
     renderPager(pages, tops.length);
     renderPicked();
     renderResume();
@@ -4026,6 +4099,7 @@
     acts.appendChild(d);
     acts.appendChild(moreBtn(f.name));
     row.appendChild(acts);
+    if (f.done && kind[1] === 'k3d') row.appendChild(inline3dEl(f));
     if (shown[f.id]) row.appendChild(detailsEl(f, kind));
     return row;
   }
@@ -4046,7 +4120,7 @@
   // one card drawn again (its 詳細 in)
   function redrawCard(id) {
     var row = document.querySelector('#vault-list [data-file="' + id + '"]'), f = fileOf(id);
-    if (row && f) row.replaceWith(vaultCard(f));
+    if (row && f) { row.replaceWith(vaultCard(f)); watchInline3d(); }
   }
   function detailsEl(f, kind) {
     var full = fullOf(f);
@@ -5273,7 +5347,7 @@
       $(id).addEventListener('contextmenu', onItemsMenu);
       // (a double click opens it too)
       $(id).addEventListener('dblclick', function (e) {
-        if (e.target.closest('button, .vault-check, .vitem-detail')) return;
+        if (e.target.closest('button, .vault-check, .vitem-detail, .vault-inline3d')) return;
         var row = e.target.closest('.vitem');
         if (row && row.dataset.folder) goFolder(row.dataset.folder);
         else if (row && fileOf(row.dataset.file)) openFile(fileOf(row.dataset.file));

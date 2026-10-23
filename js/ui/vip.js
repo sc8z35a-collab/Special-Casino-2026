@@ -14,14 +14,14 @@
   var DAY = V.day;
 
   var days = 1, busy = false, lastLevel = null, timer = 0, trialSeen = 0;
-  var cart = {};
+  var cart = {}, mode = 'normal';
   var TRIAL = C.vip.trial;
 
   function cartItems() { return Object.keys(cart).map(function (days) { return { days: Number(days), qty: cart[days] }; }); }
 
   function me() { return BR.social.me(); }
   function vip() { var m = me(); return m && m.vip ? m.vip : null; }
-  function isOn(v) { return !!v && v.on && v.until > Date.now(); }
+  function isOn(v) { return !!v && V.now(v) !== null; }
   function trialOn(v) { return isOn(v) && v.trialUntil > Date.now(); }
   // days that can still be added (VIP reaches `maxDays` ahead at most)
   function room() {
@@ -33,6 +33,10 @@
     return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
   }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function expText(n) {
+    var parts = String(Math.round(n * 1000) / 1000).split('.');
+    return U.fmt(Number(parts[0])) + (parts[1] ? '.' + parts[1] : '');
+  }
   // what is left, to the second: 2日 03:12:45
   function clock(ms) {
     var s = Math.max(0, Math.floor(ms / 1000)), d = Math.floor(s / 86400);
@@ -54,11 +58,14 @@
     var st = $('#vp-state');
     st.className = 'vp-state' + (trial ? ' on trial' : on ? ' on' : '');
     st.textContent = '';
-    if (!on) st.textContent = '無効';
+    if (v.permanent && !(v.until > now)) st.textContent = 'VIP2特典 永続有効';
+    else if (!on) st.textContent = '無効';
     else {
       st.appendChild(document.createTextNode((trial ? 'お試し中 残り ' : '有効 残り ')));
       st.appendChild(el('span', 'vp-clock', clock((trial ? v.trialUntil : v.until) - now)));
       st.appendChild(document.createTextNode('（' + at(trial ? v.trialUntil : v.until) + 'まで）'));
+      var activeMode = V.modeAt(v.modes, now);
+      if (activeMode !== 'normal') st.appendChild(el('b', 'vp-active-mode ' + activeMode, activeMode.toUpperCase() + ' EXP ×' + V.mode(activeMode).multiplier));
     }
     // the free trial: may be had (once), or going on
     var box = $('#vp-trial');
@@ -68,13 +75,13 @@
     $('#vp-trial-go').disabled = busy;
     if (v.trial) {
       $('#vp-trial-title').textContent = 'VIP' + TRIAL.level + ' を' + TRIAL.days + '日間 無料でお試し';
-      $('#vp-trial-sub').textContent = 'VIPを使ったことがない人だけ・一生に1回。お試しのあとは、ロイヤルコインで追加した日数ぶん VIP' + info.level + ' に移ります（追加しなければそのまま終了）';
+      $('#vp-trial-sub').textContent = 'VIPを使ったことがない人だけ・一生に1回。お試しのあとは、ロイヤルコインで追加した日数ぶん VIP' + V.label(info.level) + ' に移ります（追加しなければそのまま終了）';
     } else if (trial) {
       var after = Math.max(0, v.until - v.trialUntil);
       $('#vp-trial-title').textContent = 'VIP' + TRIAL.level + ' お試し中　残り ' + clock(v.trialUntil - now);
       $('#vp-trial-sub').textContent = after > 0
-        ? 'お試しのあと、追加した ' + clock(after) + ' は VIP' + info.level + ' で続きます'
-        : 'ロイヤルコインで日数を追加すると、お試しのあと VIP' + info.level + ' で続きます（追加しなければお試しで終了）';
+        ? 'お試しのあと、追加した ' + clock(after) + ' は VIP' + V.label(info.level) + ' で続きます'
+        : 'ロイヤルコインで日数を追加すると、お試しのあと VIP' + V.label(info.level) + ' で続きます（追加しなければお試しで終了）';
     }
   }
 
@@ -83,20 +90,31 @@
     var on = isOn(v), info = V.info(v.exp), now = V.now(v);
     var lv = $('#vp-level');
     lv.textContent = '';
-    lv.appendChild(K.vipBadge(on && now !== null ? now : info.level));
+    lv.appendChild(K.vipBadge(V.badge(v) === null ? info.level : V.badge(v)));
     renderClock();
     renderPacks(info.level);
     // EXP to the next level
-    $('#vp-exp').textContent = info.next ? U.fmt(Math.floor(info.exp)) + ' / ' + U.fmt(info.next) : U.fmt(Math.floor(info.exp));
+    $('#vp-exp').textContent = info.next ? expText(info.exp) + ' / ' + U.fmt(info.next) : expText(info.exp);
     var pct = info.next ? (info.exp - info.from) / (info.next - info.from) * 100 : 100;
     $('#vp-bar').style.width = Math.max(0, Math.min(100, pct)) + '%';
-    $('#vp-exp-note').textContent = info.next ? 'VIP' + (info.level + 1) + 'まで あと ' + U.fmt(Math.ceil(info.next - info.exp)) + ' EXP' : 'VIP' + info.level + '（最高レベル）';
+    $('#vp-exp-note').textContent = info.next ? 'VIP' + V.label(info.level + 1) + 'まで あと ' + U.fmt(Math.ceil(info.next - info.exp)) + ' EXP' : 'VIP' + V.label(info.level) + '（最高レベル）';
     // the days
     var max = room();
     days = Math.max(1, Math.min(days, Math.max(1, max)));
     $('#vp-days-n').textContent = U.fmt(days);
-    var quote = V.cart(cartItems(), info.level);
-    var cost = quote || V.cost(days, info.level);
+    var quote = V.cart(cartItems(), info.level, mode);
+    var cost = quote || V.cost(days, info.level, mode);
+    Array.prototype.forEach.call(document.querySelectorAll('#vp-modes [data-mode]'), function (b) {
+      b.classList.toggle('active', b.dataset.mode === mode);
+      b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
+      b.disabled = busy;
+    });
+    var schedule = $('#vp-mode-schedule');
+    schedule.textContent = '';
+    if (mode !== 'normal') schedule.appendChild(el('div', '', mode.toUpperCase() + ' EXP ×' + V.mode(mode).multiplier + '：' + at(Math.max(Date.now(), v.until)) + '〜' + at(Math.max(Date.now(), v.until) + (quote ? quote.days : days) * DAY)));
+    (v.modes || []).filter(function (p) { return p.end > Date.now(); }).forEach(function (p) {
+      schedule.appendChild(el('small', '', '購入済み ' + p.mode.toUpperCase() + '：' + at(p.start) + '〜' + at(p.end)));
+    });
     $('#vp-minus').disabled = busy || !!quote || days <= 1;
     $('#vp-plus').disabled = busy || !!quote || days >= max;
     $('#vp-cart-clear').hidden = !quote;
@@ -105,7 +123,7 @@
     box.textContent = '';
     var line = el('div', 'vp-cost-line');
     line.appendChild(el('i', 'ic ic-coin'));
-    if (!quote) line.appendChild(el('span', '', C.vip.coins + '枚 × ' + days + '日 ='));
+    if (!quote) line.appendChild(el('span', '', C.vip.coins + '枚 × ' + days + '日' + (mode === 'normal' ? '' : ' ＋ ' + V.mode(mode).coins + '枚') + ' ='));
     line.appendChild(el('b', '', U.fmt(cost.coins) + '枚'));
     box.appendChild(line);
     if (cost.back) box.appendChild(el('div', 'vp-back', 'VIP' + C.vip.refund.from + '以上：' + U.fmt(cost.back) + '枚還元'));
@@ -175,7 +193,7 @@
     if (!v || !v.trial || busy) return;
     K.confirmBox(function (box) {
       box.appendChild(document.createTextNode('VIP' + TRIAL.level + ' を ' + TRIAL.days + '日間 無料で試しますか？'));
-      box.appendChild(el('small', 'confirm-sub', '一生に1回だけです。' + TRIAL.days + '日（' + TRIAL.days * 24 + '時間）たつと終わり、ロイヤルコインで追加した日数があれば VIP' + V.level(v.exp) + ' で続きます。'));
+      box.appendChild(el('small', 'confirm-sub', '一生に1回だけです。' + TRIAL.days + '日（' + TRIAL.days * 24 + '時間）たつと終わり、ロイヤルコインで追加した日数があれば VIP' + V.label(V.level(v.exp)) + ' で続きます。'));
     }, '無料で試す').then(function (ok) {
       if (!ok) return;
       busy = true;
@@ -202,7 +220,7 @@
     trialSeen = v.trialUntil;
     try { if (Number(localStorage.getItem(key)) === v.trialUntil) return; localStorage.setItem(key, String(v.trialUntil)); } catch (e) { /* once in this page */ }
     if (Date.now() - v.trialUntil > 7 * DAY) return;
-    toast(v.until > Date.now() ? 'VIPのお試しが終わりました。追加した日数ぶん VIP' + V.level(v.exp) + ' で続きます' : 'VIPのお試しが終わりました', 4200, open);
+    toast(v.until > Date.now() ? 'VIPのお試しが終わりました。追加した日数ぶん VIP' + V.label(V.level(v.exp)) + ' で続きます' : 'VIPのお試しが終わりました', 4200, open);
   }
 
   // what each level gives (the player's own level marked; `own`: during the
@@ -224,13 +242,16 @@
     var rows = [
       ['友達と稼ぐの経験値', function () { return '×' + C.vip.hubXp; }],
       ['VIPバッジ', function () { return yes; }],
-      ['車両VIP割引', function () { return C.vip.carOff + '%OFF'; }],
+      ['車両VIP割引', function (l) { return V.carDiscount(l) + '%OFF'; }],
       ['ガレージ拡張', function () { return C.vip.garageOff + '%OFF'; }],
-      ['通話品質', function (l) { return V.tier(l) >= 2 ? '最高' : '向上'; }],
-      ['新機能のアーリーアクセス', function () { return yes; }],
-      ['限定車', function (l) { return l >= 1 ? 'VIP' + (l === 1 ? '1' : '1〜' + l) : no; }],
+      ['通話品質', function (l) { return l >= 4 ? 'ULTRA 256kbps' : V.tier(l) >= 2 ? '最高' : '向上'; }],
+      ['新機能のアーリーアクセス', function (l) { return l >= 4 ? '最高等級' : yes; }],
+      ['限定車', function (l) { return l >= 1 ? 'VIP' + (l === 1 ? '1' : '1〜' + V.label(l)) : no; }],
       ['ロイヤルコイン還元（1日）', function (l) { return l >= C.vip.refund.from ? C.vip.refund.coins + '枚' : no; }],
       ['バイトの時給', function (l) { return V.wage(l) > 1 ? '×' + V.wage(l).toFixed(1) : no; }],
+      ['VIP3.1限定車（準備中）', function (l) { return l >= 4 ? '解放' : no; }],
+      ['VIP3.1特別ログイン（内容準備中）', function (l) { return l >= 4 ? '最大60日' : no; }],
+      ['VIP終了後の永続特典', function (l) { return l >= 5 ? 'VIP2まで' : no; }],
       ['ULTRA BIG WIN 報酬', function (l) { return V.ultra(l) > 1 ? '×' + V.ultra(l) : no; }]
     ];
     rows.forEach(function (r) {
@@ -244,19 +265,19 @@
     });
     var E = C.vip.exp;
     var foot = el('tr', 'vp-foot');
-    var td = el('td', '', 'EXP：カジノで当たる +' + E.win + '・クエストクリア +' + E.quest + '・ULTRA BIG WIN +' + E.ultra + '（VIP有効中）／車を購入 +' + E.car);
+    var td = el('td', '', 'EXP：カジノで当たる +' + E.win + '・クエストクリア +' + E.quest + '・ULTRA BIG WIN +' + E.ultra + '（VIP特典有効中）／車を購入 +' + E.car);
     td.colSpan = n + 1;
     foot.appendChild(td);
     t.appendChild(foot);
     if (own !== null && own !== undefined) {
       var tr = el('tr', 'vp-foot');
-      var tt = el('td', '', 'お試し中は VIP' + level + ' の特典が使えます（ロイヤルコイン還元だけは自分のレベル VIP' + own + ' で数えます）');
+      var tt = el('td', '', 'お試し中は VIP' + V.label(level) + ' の特典が使えます（ロイヤルコイン還元だけは自分のレベル VIP' + V.label(own) + ' で数えます）');
       tt.colSpan = n + 1;
       tr.appendChild(tt);
       t.appendChild(tr);
     }
     // for now everybody's calls are better than VIP3's
-    if (V.boost() > V.tier(n - 1)) {
+    if (V.boost() > V.tier(3)) {
       var now = el('tr', 'vp-foot');
       var b = el('td', '', '今だけ：VIPでなくても、全員の通話が VIP3 より高い音質（' + V.kbps(V.boost()) + 'kbps）になっています');
       b.colSpan = n + 1;
@@ -268,18 +289,21 @@
   function go() {
     if (busy) return;
     var n = days, v = vip(), items = cartItems();
-    var quote = V.cart(items, v ? v.level : 0);
-    var cost = quote || V.cost(n, v ? v.level : 0);
+    var quote = V.cart(items, v ? v.level : 0, mode);
+    var cost = quote || V.cost(n, v ? v.level : 0, mode);
     if (S.coins < cost.coins) { sfx('deny'); toast('ロイヤルコインが足りません'); return; }
     busy = true;
     render();
-    (quote ? api.vipCart(items) : api.vipExtend(n)).then(function (r) {
+    (quote ? api.vipCart(items, mode) : api.vipExtend(n, mode)).then(function (r) {
       busy = false;
       cart = {};
       BR.app.serverBalance(r.me);
       BR.social.setMe(r.me);
       sfx('register');
       if (BR.juice) BR.juice.reward('#vp-go', 3);
+      if (!BR.reward3d || !BR.reward3d.play('vip', '+' + r.days + '日' + (r.mode !== 'normal' ? '・' + r.mode.toUpperCase() : ''))) {
+        if (BR.juice) BR.juice.banner('VIP EXTENDED!', 'level', 2200, '+' + r.days + '日');
+      }
       toast('VIPを' + r.days + '日分追加しました' + (r.back ? '・ロイヤルコイン ' + r.back + '枚還元' : '')
         + (r.resetTickets ? '・5時間リセット券' + r.resetTickets + '枚を獲得' : ''), 4000);
       render();
@@ -303,7 +327,7 @@
   function seen(v) {
     if (lastLevel !== null && v.level > lastLevel) {
       sfx('levelUp');
-      toast('VIP' + v.level + ' になりました！', 3200, open);
+      toast('VIP' + V.label(v.level) + ' になりました！', 3200, open);
       if (BR.juice) BR.juice.reward('#me-card', 3);
     }
     lastLevel = v.level;
@@ -311,6 +335,11 @@
 
   function init() {
     if (!api.online) return;
+    $('#vp-modes').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-mode]');
+      if (!b || busy) return;
+      mode = b.dataset.mode; sfx('click'); render();
+    });
     $('#vp-go').addEventListener('click', function () { sfx('click'); go(); });
     $('#vp-minus').addEventListener('click', function () { sfx('click'); days = Math.max(1, days - 1); render(); });
     $('#vp-plus').addEventListener('click', function () { sfx('click'); days = Math.min(Math.max(1, room()), days + 1); render(); });
@@ -326,7 +355,7 @@
     K.dragScroll($('#vp-left'));
     BR.screens.register('vip', { open: function () { render(); } });
     BR.social.onMe(function (m) {
-      if (!m) { lastLevel = null; cart = {}; return; }
+      if (!m) { lastLevel = null; cart = {}; mode = 'normal'; return; }
       if (m.vip) { seen(m.vip); trialOver(m.vip); }
       if (BR.screens.current() === 'vip') render();
     });
@@ -336,9 +365,9 @@
     var phase = '';
     timer = setInterval(function () {
       var v = vip();
-      if (v && v.on && v.until <= Date.now()) v.on = false;
+      if (v) v.on = V.now(v) !== null;
       // (on, off, or in the trial: a change shows everywhere at once)
-      var now = v ? (trialOn(v) ? 'trial' : isOn(v) ? 'on' : 'off') : '';
+      var now = v ? (trialOn(v) ? 'trial' : isOn(v) ? 'on/' + V.modeAt(v.modes, Date.now()) + '/' + String(v.until > Date.now()) : 'off') : '';
       var changed = now !== phase;
       phase = now;
       if (changed) { BR.social.renderMe(); if (BR.call && BR.call.quality) BR.call.quality(); }

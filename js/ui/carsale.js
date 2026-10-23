@@ -139,7 +139,7 @@
   }
   // sold: the seller taps it for the money
   function soldEl(m, mine) {
-    var b = info(m), open = !mine && !m.claimed;
+    var b = info(m), open = !mine && !m.claimed && !K.receiptExpired(m);
     var node = el('div', 'msg xfer car-deal sold ' + (mine ? 'mine' : 'theirs') + (open ? ' can-claim' : ''));
     node.dataset.pid = m.id;
     var card = el(open ? 'button' : 'div', 'xfer-card gift-card');
@@ -148,8 +148,9 @@
     card.appendChild(carPic(b.model));
     card.appendChild(nameRow(b.model, true));
     card.appendChild(K.amountEl(m.amount, 'dollars', 'xfer-amount'));
-    card.appendChild(el('div', 'pr-state', mine ? (m.claimed ? '売上金が受け取られました' : 'Garage に入りました')
+    card.appendChild(el('div', 'pr-state', K.receiptExpired(m) ? '期限を過ぎたため受け取れません' : mine ? (m.claimed ? '売上金が受け取られました' : 'Garage に入りました')
       : m.claimed ? '受け取り済み' : working[m.id] ? '受け取っています…' : 'タップして売上金を受け取る'));
+    K.receiptHint(card, m);
     if (open) card.addEventListener('click', function () { claim(m); });
     node.appendChild(card);
     return node;
@@ -200,7 +201,7 @@
     });
   }
   function claim(m) {
-    if (m.claimed || working[m.id]) return;
+    if (m.claimed || K.receiptExpired(m) || working[m.id]) return;
     busyOn(m, true);
     api.carSoldClaim(m.id).then(function (r) {
       BR.social.patchMsg(m.id, { claimed: true });
@@ -211,6 +212,7 @@
       if (BR.juice && BR.juice.reward) BR.juice.reward('#toast', 2);
     }, function (err) {
       if (err && err.code === 'claimed') BR.social.patchMsg(m.id, { claimed: true });
+      if (err && err.code === 'expired') BR.social.patchMsg(m.id, { expired: true });
       busyOn(m, false);
       fail(err);
     });

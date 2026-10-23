@@ -81,18 +81,25 @@
       trial: { days: 3, level: 3 },
       refund: { from: 1, coins: 2 },
       exp: { win: 1, quest: 0.1, ultra: 250, car: 30 },
-      levels: [0, 1200, 2100, 4500],
+      levels: [0, 1200, 2100, 4500, 8800, 14800],
+      labels: ['0', '1', '2', '3', '3.1', '4'],
+      badgeImages: {},
+      modes: { normal: { coins: 0, multiplier: 1 }, pro: { coins: 8, multiplier: 1.6 }, ultra: { coins: 12, multiplier: 2 } },
+      permanent: { from: 5, level: 2 },
+      specialLogin: { from: 4, days: 60, rewards: [] },
       hubXp: 1.5,
       carOff: 3,
+      carOff31: 15,
       garageOff: 40,
-      wage: [1, 2.5, 2.5, 3],
+      wage: [1, 2.5, 2.5, 3, 3, 3],
       ultra: 1.3,
       // a call's Opus bitrate (kbps) by tier: no VIP, VIP0-1, VIP2-3, and the
       // one above VIP3; `voiceAll`: the tier every call has at least, for now
       // (the paid plan has plenty of room: everyone gets more than VIP3)
-      voice: [32, 48, 64, 96],
+      voice: [32, 48, 64, 96, 256],
       voiceAll: 3
     },
+    receiveDays: { money: 30, item: 90 },
     // 運営へのメッセージ・報告・意見案・通報・プレイヤー間のメッセージ: more than
     // `chars` characters or `bytes` bytes are not sent
     sendMax: { chars: 6000, bytes: 2097152 },
@@ -147,7 +154,7 @@
     // come (each of these with its chance), paying `min`-`max` $ each (the
     // dearer the car, the more), and `vip.chance` of them `vip.pay` $; a car
     // out is away for `hours` hours at least (stopping it waits for that)
-    carRental: { hours: 5, customers: [1, 0.9, 0.4, 0.3, 0.1], min: 10000, max: 60000, spread: 20000, vip: { chance: 0.03, pay: 150000 } },
+    carRental: { hours: 5, maxPay: 4500000, customers: [1, 0.9, 0.4, 0.3, 0.1], min: 10000, max: 60000, spread: 20000, vip: { chance: 0.03, pay: 150000 } },
     // Shop (price in $, 10-40 % off for 5 hours a day: js/game/sale.js);
     // anything bought here can be given to friends, up to `max` per player
     shop: [
@@ -226,7 +233,7 @@
     ],
     jobSlots: 1,
     jobSlotEvery: 3,
-    jobMaxPay: 15000000,
+    jobMaxPay: 6000000,
     // $ for every player who updates the game to a new release (js/game/news.js)
     updateBonus: 250000,
     // 金の生る木 (js/game/tree.js): money given to a tree (one tap: `amounts`)
@@ -239,7 +246,7 @@
     // for every one after it), at most `max`.
     tree: {
       amounts: [5000, 10000, 20000, 50000, 100000],
-      rate: [[0, 5], [150000, 10], [200000, 12], [500000, 14], [1500000, 15], [3000000, 18], [6000000, 20], [10000000, 21]],
+      rate: [[0, 5], [150000, 7], [200000, 8], [500000, 9], [1500000, 10], [3000000, 11], [6000000, 12], [10000000, 13], [20000000, 14]],
       cycles: [
         { id: '30m', name: '30分', ms: 1800000, mult: 1 },
         { id: '2h', name: '2時間', ms: 7200000, mult: 1.1 },

@@ -5,7 +5,8 @@
    the game's release number (BR.RELEASE): a player whose game is older is
    asked to update, and everyone who updates to a new release once gets
    BR.CONFIG.updateBonus $ (server/core/api.js). Add an entry with the next id
-   for every update meant to reach the players. */
+   for every update meant to reach the players. Quest additions in future
+   entries are summarised as「クエストを○個追加」rather than listing every STEP. */
 (function (BR) {
   'use strict';
 

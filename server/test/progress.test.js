@@ -78,8 +78,8 @@ test('quests: chains of one metric, the longest combo, 特別 clears, 臨時緊�
   assert.ok(weeks.filter(Boolean).length > 15 && weeks.filter(Boolean).length < 37, String(weeks.filter(Boolean).length));
   const on = weeks.indexOf(true), off = weeks.indexOf(false);
   const at = (k) => QUESTS.epoch + k * 7 * 24 * H + H;
-  assert.deepEqual(ids(stepQuests({}, [['watermelon', 3]], at(on))), ['day-watermelon', 'week-melon3']);
-  assert.deepEqual(ids(stepQuests({}, [['watermelon', 3]], at(off))), ['day-watermelon']);
+  assert.deepEqual(ids(stepQuests({}, [['watermelon', 3]], at(on))), ['day-watermelon', 'day-watermelon2', 'day-watermelon3', 'week-melon3']);
+  assert.deepEqual(ids(stepQuests({}, [['watermelon', 3]], at(off))), ['day-watermelon', 'day-watermelon2', 'day-watermelon3']);
 });
 
 test('server: quests finish on spins, 送金 and 無一文, and pay when received', async () => {

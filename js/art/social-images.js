@@ -54,7 +54,8 @@
     tree: {
       stages: ['img/tree/stage-1.webp', 'img/tree/stage-2.webp', 'img/tree/stage-3.webp', 'img/tree/stage-4.webp', 'img/tree/stage-5.webp',
         'img/tree/stage-6.webp', 'img/tree/stage-7.webp', 'img/tree/stage-8.webp', 'img/tree/stage-9.webp'],
-      seed: 'img/tree/seed.webp'
+      seed: 'img/tree/seed.webp',
+      preview: 'img/tree/preview.webp'
     },
     // バイト
     jobs: {

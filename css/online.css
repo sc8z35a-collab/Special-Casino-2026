@@ -1429,4 +1429,23 @@ button.watched-by:active { transform: scale(.96); }
 .hp-acts .act-btn { flex: none; height: 70px; padding: 0 36px; font-size: 24px; }
 
 /* quests: a dot on a period with something to receive */
-#q-tabs .tab.has-ready > span::after { content: ''; display: inline-block; width: 12px; height: 12px; margin-left: 8px; border-radius: 50%; background: #f4dc45; vertical-align: 3px; }
+#q-tabs .tab.has-ready > span:first-child::after { content: ''; display: inline-block; width: 12px; height: 12px; margin-left: 8px; border-radius: 50%; background: #f4dc45; vertical-align: 3px; }
+
+/* Detail previews and the terms notice are reachable before play. */
+.more-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.more-card.soon[data-act] { opacity: 1; background: linear-gradient(145deg, #2a1722, #19080e); box-shadow: inset 0 0 0 1.5px #ac824c; }
+.more-card.soon[data-act] b { flex-wrap: wrap; }
+.more-soon-card { width: 920px; display: flex; flex-direction: column; align-items: center; gap: 26px; padding: 48px; }
+.more-soon-label { padding: 10px 30px; border-radius: 24px; background: #dab75a22; color: #ffe27a; font-size: 28px; }
+.more-soon-card p { margin: 0; font-size: 25px; line-height: 1.8; color: #eadfc0; }
+.more-soon-card > .act-btn { min-width: 280px; height: 64px; font-size: 24px; }
+.start-terms-notice { position: absolute; left: 180px; right: 180px; bottom: 54px; margin: 0; padding: 8px 16px; border-radius: 10px; text-align: center; background: #16070cbd; color: #e5d8c7; font-size: 18px; }
+.start-terms-notice button { color: #ffe27a; text-decoration: underline; font: inherit; }
+.q-bonus-chip { padding: 3px 6px; border-radius: 6px; font: 900 12px/1 var(--f-num); letter-spacing: .5px; white-space: nowrap; box-shadow: inset 0 0 0 1px #ffffff55, 0 1px 5px #160719; }
+.q-bonus-chip.pro { background: #793db5; color: #f1deff; }
+.q-bonus-chip.ultra { background: linear-gradient(110deg, #90f0ed, #ffe58d); color: #39200a; }
+.quest-bonus-badges { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; gap: 3px; pointer-events: none; }
+.quest-bonus-badges .q-bonus-chip { font-size: 14px; padding: 4px 6px; }
+#q-tabs .tab { position: relative; }
+#q-tabs .tab.has-bonus { min-width: 125px; }
+#q-tabs .q-tab-bonuses { position: absolute; top: 3px; right: 4px; display: flex; gap: 3px; pointer-events: none; }

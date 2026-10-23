@@ -16,7 +16,7 @@ set -e
 cd "$(dirname "$0")/../.."
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
-npm install --prefix "$T" --no-audit --no-fund --silent three@0.170.0 esbuild@0.24.0 @gltf-transform/cli@4.1.1
+npm install --prefix "$T" --no-audit --no-fund --silent three@0.170.0 esbuild@0.24.0 @gltf-transform/cli@4.1.1 cannon-es@0.20.0
 
 cp tools/3d/three-entry.js "$T/entry.js"
 mkdir -p js/vendor
@@ -24,12 +24,23 @@ mkdir -p js/vendor
   --banner:js="/*! three.js r170 (MIT License, Copyright 2010-2024 Three.js Authors, https://threejs.org) and meshoptimizer's decoder (MIT License, Copyright 2016-2024 Arseny Kapoulkine), bundled with esbuild for the game's 3D (js/render/win3d.js, js/render/garage3d.js). */" \
   --outfile=js/vendor/three-bundle.js
 
+cp tools/3d/tree-physics-entry.js "$T/tree-physics-entry.js"
+"$T/node_modules/.bin/esbuild" "$T/tree-physics-entry.js" --bundle --format=iife --global-name=BRTreePhysics --minify --legal-comments=inline --target=es2018 \
+  --banner:js="/*! cannon-es 0.20.0 (MIT License, Copyright 2020 cannon-es contributors). */" \
+  --outfile=js/vendor/tree-physics.js
+cp "$T/node_modules/cannon-es/LICENSE" js/vendor/cannon-es.LICENSE.txt
+
 # source:output:how far the triangles are cut:texture size (the error limit keeps the shapes)
-mkdir -p img/3d/cars img/3d/studio img/3d/garage
-for job in win:win:0.18:1024 big:big:0.14:1024 super:super:0.09:1024 ultra:ultra:0.12:1024 \
+mkdir -p img/3d/cars img/3d/studio img/3d/garage img/3d/tree
+for job in win:win:0.18:1024 big:big:0.14:1024 super:super:0.09:1024 ultra:ultra:0.12:1024 level-up:level-up:0.18:1024 vip-extend:vip-extend:0.16:1024 \
     car-blue-lightning:cars/blue-lightning:0.16:2048 \
     studio-base:studio/base:0.12:1024 studio-moving-head:studio/moving-head:0.08:1024 studio-spotlight:studio/spotlight:0.12:1024 \
-    studio-bookshelf:studio/bookshelf:0.08:1024 garage:garage/garage:0.1:2048; do
+    studio-bookshelf:studio/bookshelf:0.08:1024 garage:garage/garage:0.1:2048 \
+    tree-stage-1:tree/stage-1:0.6:1024 tree-stage-2:tree/stage-2:0.6:1024 tree-stage-3:tree/stage-3:0.6:1024 \
+    tree-stage-4:tree/stage-4:0.6:1024 tree-stage-5:tree/stage-5:0.6:1024 tree-stage-6:tree/stage-6:0.6:1024 \
+    tree-stage-7:tree/stage-7:0.6:1024 tree-stage-8:tree/stage-8:0.6:1024 tree-stage-9:tree/stage-9:0.6:1024 \
+    tree-seed:tree/seed:0.6:768 tree-preview:tree/preview:0.4:1024 tree-soil:tree/soil:0.6:1024 \
+    tree-fertilizer:tree/fertilizer:0.6:768; do
   src=${job%%:*}; rest=${job#*:}; out=${rest%%:*}; rest=${rest#*:}; ratio=${rest%%:*}; tex=${rest#*:}
   [ -f "tools/3d/source/$src.glb" ] || continue
   "$T/node_modules/.bin/gltf-transform" optimize "tools/3d/source/$src.glb" "img/3d/$out.glb" \
@@ -37,3 +48,10 @@ for job in win:win:0.18:1024 big:big:0.14:1024 super:super:0.09:1024 ultra:ultra
     --simplify true --simplify-ratio "$ratio" --simplify-error 0.0008
   echo "img/3d/$out.glb: $(wc -c < "img/3d/$out.glb") bytes"
 done
+# Preserve the supplied fertilizer model on future builds. Generate the
+# temporary bag only when no original or previously imported model exists.
+if [ ! -f img/3d/tree/fertilizer.glb ]; then
+  cp tools/3d/make-fertilizer.mjs "$T/make-fertilizer.mjs"
+  node "$T/make-fertilizer.mjs" "$PWD/img/3d/tree/fertilizer.glb"
+fi
+node tools/3d/tree-manifest.mjs

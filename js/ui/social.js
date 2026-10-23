@@ -179,7 +179,7 @@
     $('#me-name').textContent = me.name;
     var v = $('#me-vip');
     v.textContent = '';
-    K.addVip(v, me.vip && me.vip.on ? BR.VIP.now(me.vip) : null);
+    K.addVip(v, K.vipLevel(me));
   }
 
   /* ------------------------------------------------------------ last online --- */
@@ -416,7 +416,7 @@
     var id = el('span', 'fr-id');
     var nm = el('span', 'fr-name-row');
     nm.appendChild(el('span', 'fr-name uname', u.name));
-    K.addVip(nm, u.vip);
+    K.addVip(nm, K.vipLevel(u));
     id.appendChild(nm);
     id.appendChild(el('span', 'fr-status' + (u.online ? ' on' : ''), seenText(u)));
     who.appendChild(id);
@@ -897,7 +897,7 @@
 
   // money, a car or an item: the tap that receives it
   function claimMsg(m) {
-    if (!m.pending || m.claimed || claiming[m.id]) return;
+    if (!m.pending || m.claimed || K.receiptExpired(m) || claiming[m.id]) return;
     claiming[m.id] = true;
     refreshMsg(m.id);
     api.claim(m.id).then(function (r) {
@@ -912,12 +912,13 @@
     }, function (err) {
       delete claiming[m.id];
       if (err && err.code === 'claimed') patchMsg(m.id, { claimed: true });
+      else if (err && err.code === 'expired') patchMsg(m.id, { expired: true });
       else refreshMsg(m.id);
       fail(err);
     });
   }
   // the card of money, a car or an item (since DEV9 it waits for the tap: m.pending)
-  function canClaim(m, mine) { return !!m.pending && !mine && !m.claimed; }
+  function canClaim(m, mine) { return !!m.pending && !mine && !m.claimed && !K.receiptExpired(m); }
   function cardNode(m, mine, cls) {
     var node = el('div', 'msg xfer' + (cls ? ' ' + cls : '') + (mine ? ' mine' : ' theirs') + (canClaim(m, mine) ? ' can-claim' : '') + (m.pending && m.claimed ? ' claimed' : ''));
     node.dataset.pid = m.id;
@@ -935,9 +936,10 @@
   // under the card: whether it was received (`hint`: where it is once it is)
   function claimState(card, m, mine, hint) {
     if (m.pending) {
-      card.appendChild(el('div', 'pr-state', mine ? (m.returned ? '相手のアカウントが削除されたため、あなたに戻りました' : m.claimed ? '受け取られました' : 'まだ受け取られていません')
+      card.appendChild(el('div', 'pr-state', K.receiptExpired(m) ? '期限を過ぎたため受け取れません' : mine ? (m.returned ? '相手のアカウントが削除されたため、あなたに戻りました' : m.claimed ? '受け取られました' : 'まだ受け取られていません')
         : m.claimed ? '受け取り済み' : claiming[m.id] ? '受け取っています…' : 'タップして受け取る'));
     }
+    K.receiptHint(card, m);
     if (hint && !mine && (!m.pending || m.claimed)) card.appendChild(el('div', 'gift-hint', hint));
   }
 
@@ -1235,7 +1237,7 @@
       var t = el('span', 'dm-id');
       var nm = el('span', 'dm-name-row');
       nm.appendChild(el('span', 'dm-name uname', peer.name));
-      K.addVip(nm, peer.vip);
+      K.addVip(nm, K.vipLevel(peer));
       t.appendChild(nm);
       var st = el('span', 'dm-status');
       st.appendChild(K.presence(npc || peer.online));
@@ -1269,7 +1271,7 @@
   }
   function openDm(user) {
     if (!user || !me || user.id === me.id) return;
-    peer = { id: user.id, name: user.name, avatar: user.avatar, online: !!user.online, npc: user.npc || null, lastSeen: user.lastSeen || null, vip: user.vip };
+    peer = { id: user.id, name: user.name, avatar: user.avatar, online: !!user.online, npc: user.npc || null, lastSeen: user.lastSeen || null, vip: user.vip, vipBadge: user.vipBadge };
     group = null;
     enterChat('dm');
     // クエスト「友達のチャットを覗く」 (the server checks the friendship)
@@ -1442,7 +1444,7 @@
     $('#pf-name').textContent = u.name;
     var pv = $('#pf-vip');
     pv.textContent = '';
-    K.addVip(pv, self ? (me && me.vip && me.vip.on ? BR.VIP.now(me.vip) : null) : r ? r.user.vip : u.vip);
+    K.addVip(pv, K.vipLevel(self ? me : r ? r.user : u));
     var lv = $('#pf-lv'), level = r ? r.user.level : null;
     lv.hidden = !level;
     lv.textContent = level ? 'Lv.' + level : '';
@@ -1472,7 +1474,7 @@
       pfBtn(a1, '引き継ぎコード発行', 'recovery', '', 'share');
       pfBtn(a1, 'コードでログイン', 'codeLogin', '', 'download');
       pfBtn(a1, '演出設定', 'effects', '', 'sound');
-      pfBtn(a1, 'VIP', 'vip', 'gold', 'crown', me && me.vip && me.vip.on && BR.VIP.now(me.vip) !== null ? 'VIP' + BR.VIP.now(me.vip) : '');
+      pfBtn(a1, 'VIP', 'vip', 'gold', 'crown', me && me.vip && me.vip.on && BR.VIP.now(me.vip) !== null ? 'VIP' + BR.VIP.label(BR.VIP.badge(me.vip)) : '');
       if (BR.push && BR.push.mode() !== 'none') pfBtn(a1, '通知', 'push', '', 'chat', BR.push.permission() === 'granted' ? 'オン' : 'オフ');
       pfLink(a2, 'ログアウト', 'logout');
       loadBlocks();
@@ -1881,6 +1883,8 @@
       if (b.dataset.act === 'feedback' && BR.feedback) BR.feedback.open();
       if (b.dataset.act === 'support' && BR.support) BR.support.open();
       if (b.dataset.act === 'vip' && BR.vip) BR.vip.open();
+      var soon = { 'dev-diary': '開発者日記', 'studio-credits': 'スタジオクレジット', terms: '規約' };
+      if (soon[b.dataset.act]) showSoon(soon[b.dataset.act]);
     });
     $$('#screen-board .scroller').forEach(K.dragScroll);
 
@@ -1958,12 +1962,27 @@
     });
   }
 
+  function showSoon(title) {
+    $('#more-soon-title').textContent = title;
+    $('#more-soon-consent').hidden = title !== '規約';
+    K.showModal('more-soon');
+  }
+
   function init() {
     entry.init();
+    K.registerModal('more-soon');
+    $('#start-terms').addEventListener('click', function () { sfx('click'); showSoon('規約'); });
     bindBoard();
     bindGroupForm();
     bindModals();
     if (!online) return;
+    setInterval(function () {
+      var key = chatKey(), c = key && chans[key];
+      if (!visible() || !c) return;
+      c.list.forEach(function (m) {
+        if (!m.expired && K.receiptExpired(m)) { m.expired = true; refreshMsg(m.id); }
+      });
+    }, 1000);
     api.on('auth-lost', onAuthLost);
     api.on('banned', onBanned);
     // an operator has just banned this account (or one on this device), or
@@ -2009,6 +2028,7 @@
       BR.bank.applyMe(m, true);
       BR.quests.setXp(m.xp);
       BR.quests.setReady(m.questsReady);
+      BR.quests.setBonuses(m.questBonuses);
       BR.shop.renderCharm();
       meChanged();
     },

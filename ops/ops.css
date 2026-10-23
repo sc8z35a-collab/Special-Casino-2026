@@ -678,6 +678,11 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .vcomment-btn.has .vcomment-ic { filter: none; opacity: 1; }
 .vcomment-btn b { font-size: 12px; color: var(--accent); }
 .vitem-detail { grid-column: 1 / -1; padding-top: 8px; border-top: 1px dashed var(--line); }
+.vault-inline3d { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 5px; padding-top: 8px; }
+.vault-inline3d-model { height: 230px; overflow: hidden; border-radius: 9px; background: #2c3038; }
+.vault-inline3d-model canvas { display: block; cursor: grab; touch-action: none; }
+.vault-inline3d-model canvas:active { cursor: grabbing; }
+.vault-inline3d-model .vault-pic { width: 100%; height: 100%; margin: 0; }
 @media (max-width: 560px) {
   .vitem { grid-template-columns: auto auto minmax(0, 1fr); }
   .vitem-acts { grid-column: 2 / -1; justify-content: flex-end; }

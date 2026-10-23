@@ -1,7 +1,7 @@
 /* 金の生る木: the player's trees, a tab each. Money is given with one tap (the
    amount picked from RULES.tree.amounts): every bit raises the $ a second the
    tree earns, and at set totals it grows into its next look (the nine
-   pictures in img/tree). A harvest time is picked once (30分 x1.0 … 1週間
+   3D models in img/3d/tree). A harvest time is picked once (30分 x1.0 … 1週間
    x1.6); the money grows until then, cannot be harvested before, and the same
    time (or another) starts again with the harvest. More trees come from the
    auctions (the last tab): bidding against NPC buyers, leaving whenever, and
@@ -115,6 +115,7 @@
   }
   function onHide() {
     clearInterval(ticker);
+    BR.tree3d.pause();
     // a running auction goes on without the screen: its end shows when it is opened again
     stopPolling();
   }
@@ -139,6 +140,7 @@
   function render() {
     renderTabs();
     var onTree = tab !== 'auction' && !!treeOf(tab);
+    if (!onTree) BR.tree3d.pause();
     $('#tree-pane').classList.toggle('active', onTree);
     $('#auction-pane').classList.toggle('active', !onTree);
     if (onTree) renderTree();
@@ -156,6 +158,7 @@
       var pic = el('i', 'tr-tab-pic');
       pic.style.backgroundImage = 'url("' + IMG.stages[t.stage - 1] + '")';
       b.appendChild(pic);
+      BR.tree3d.icon(pic, 'stage', t.stage);
       b.appendChild(el('span', 'uname', t.name));
       if (ready(t, at)) b.appendChild(el('b', 'tab-dot'));
       box.appendChild(b);
@@ -173,9 +176,10 @@
   function renderTree() {
     var t = treeOf(tab);
     var art = $('#tr-art');
-    var src = IMG.stages[t.stage - 1];
-    if (art.getAttribute('src') !== src) art.setAttribute('src', src);
-    art.alt = t.name;
+    var src = IMG.stages[t.stage - 1], fallback = art.querySelector('.tr-art-fallback');
+    if (fallback.getAttribute('src') !== src) fallback.setAttribute('src', src);
+    fallback.alt = t.name;
+    BR.tree3d.show(art, t);
     $('#tr-name').textContent = t.name.replace(/^SUPER /, '');
     $('#tr-super').hidden = !t.super;
     $('#tr-super').textContent = 'SUPER ' + multText(R.superMult);
@@ -185,7 +189,9 @@
     $('#tr-look-bar').style.width = (hi ? U.clamp((t.given - lo) / (hi - lo), 0, 1) * 100 : 100) + '%';
     $('#tr-look-next').textContent = hi ? '次の姿まで あと ' + money(hi - t.given) : 'いちばん大きな姿です';
     // giving money
-    $('#tr-rate').textContent = (Math.round(t.rate * 100) / 100).toFixed(2);
+    $('#tr-rate').textContent = ready(t, now()) ? '0.00' : (Math.round(t.rate * 100) / 100).toFixed(2);
+    $('#tree-pane').classList.toggle('production-stopped', ready(t, now()));
+    $('#tree-pane').classList.toggle('growing', !!t.cycle && !ready(t, now()));
     $('#tr-given').textContent = U.fmt(t.given);
     var more = TR.rateOf(t.given + amount) - t.rate;
     $('#tr-rate-next').textContent = more > 0.0001
@@ -246,7 +252,7 @@
       if (shown() && tab === id) {
         renderTree();
         renderTabs();
-        coinsIn();
+        BR.tree3d.toss(id);
       }
       if (r.tree.stage > was) grewUp(r.tree);
       giveNext(id);
@@ -256,17 +262,6 @@
       if (shown() && tab === id) renderGive();
       fail(err);
     });
-  }
-  // coins drop into the tree
-  function coinsIn() {
-    var box = $('#tree-pane .tr-scene');
-    for (var i = 0; i < 4; i++) {
-      var c = el('i', 'tr-drop');
-      c.style.left = (300 + Math.random() * 160) + 'px';
-      c.style.animationDelay = (i * 0.07) + 's';
-      box.appendChild(c);
-      setTimeout(function (n) { n.remove(); }.bind(null, c), 1100);
-    }
   }
   function grewUp(t) {
     sfx('levelUp');
@@ -302,7 +297,7 @@
     if (!t.cycle) {
       head.appendChild(el('h3', '', '収穫の時期を選ぶ'));
       box.appendChild(el('p', 'tr-note', t.given > 0
-        ? '長く待つほど収穫が増えます。一度決めると、その時期まで変更も収穫もできません。'
+        ? '長く待つほど収穫が増えます。設定時刻で生産は停止し、収穫するまで再開しません。その時期まで変更も収穫もできません。'
         : 'お金をあげると、収穫の時期を選べるようになります。'));
       var row = el('div', 'tr-cycles');
       R.cycles.forEach(function (c) {
@@ -332,6 +327,7 @@
       wait.type = 'button';
       wait.disabled = true;
       box.appendChild(wait);
+      box.appendChild(el('p', 'tr-note', '収穫時刻になると生産を停止します。収穫すると再開します。'));
       tickHarvest(t, at);
       return;
     }
@@ -341,6 +337,7 @@
     var got = el('div', 'tr-got');
     got.appendChild(K.amountEl(value(t, at), 'dollars', 'tr-got-amt'));
     box.appendChild(got);
+    box.appendChild(el('p', 'tr-note tr-stopped', '生産停止中 — 収穫して次の育成を始めましょう。'));
     box.appendChild(el('p', 'tr-note', '収穫後は次の時期で育て直します:'));
     var pick = el('div', 'tr-cycles small');
     var next = harvestNext || t.cycle.id;
@@ -384,6 +381,8 @@
       else if (state === 'growing') tickHarvest(t, at);
       else if (state === 'ready') { var g = box.querySelector('.tr-got-amt span'); if (g) g.textContent = U.fmt(value(t, at)); }
       $('#tree-pane').classList.toggle('growing', state === 'growing');
+      $('#tree-pane').classList.toggle('production-stopped', state === 'ready');
+      $('#tr-rate').textContent = state === 'ready' ? '0.00' : t.rate.toFixed(2);
     } else if (auction && auction.status === 'live') {
       tickAuction();
     }
@@ -498,7 +497,8 @@
 
   function lotArt(a) {
     var pic = el('div', 'au-art');
-    pic.style.backgroundImage = 'url("' + (a.market === 'seed' ? IMG.seed : IMG.stages[(a.lot.stage || 1) - 1]) + '")';
+    pic.style.backgroundImage = 'url("' + (a.market === 'seed' ? IMG.seed : IMG.preview) + '")';
+    BR.tree3d.icon(pic, a.market === 'seed' ? 'seed' : 'preview');
     return pic;
   }
 
@@ -510,7 +510,8 @@
       var m = R.markets[id];
       var card = el('div', 'au-market');
       var pic = el('div', 'au-art');
-      pic.style.backgroundImage = 'url("' + (id === 'seed' ? IMG.seed : IMG.stages[2]) + '")';
+      pic.style.backgroundImage = 'url("' + (id === 'seed' ? IMG.seed : IMG.preview) + '")';
+      BR.tree3d.icon(pic, id === 'seed' ? 'seed' : 'preview');
       card.appendChild(pic);
       var info = el('div', 'au-market-info');
       info.appendChild(el('h3', '', m.name));
@@ -638,6 +639,7 @@
     if (a.status === 'won' && a.tree) {
       var pic = el('div', 'au-art');
       pic.style.backgroundImage = 'url("' + IMG.stages[a.tree.stage - 1] + '")';
+      BR.tree3d.icon(pic, 'stage', a.tree.stage);
       card.appendChild(pic);
       if (a.lot.super) card.appendChild(el('div', 'au-super', 'SUPER'));
       card.appendChild(el('b', 'au-result-name uname', a.tree.name));
@@ -728,6 +730,9 @@
       if (treeOf(tab)) renderTree();
     });
     $('#tr-give').addEventListener('click', give);
+    ['in', 'out'].forEach(function (direction) {
+      $('#tr-zoom-' + direction).addEventListener('click', function () { BR.tree3d.zoom(direction === 'in' ? 0.85 : 1.18); });
+    });
     $('#tr-harvest').addEventListener('click', function (e) {
       var b = e.target.closest('button');
       if (!b || b.disabled) return;
@@ -759,6 +764,6 @@
     init: init,
     open: open,
     // signed out: nothing to show until the next player
-    reset: function () { trees = null; auction = null; ended = null; watched = 0; tab = null; stopPolling(); renderBadge(); }
+    reset: function () { trees = null; auction = null; ended = null; watched = 0; tab = null; BR.tree3d.pause(); stopPolling(); renderBadge(); }
   };
 })(window.BR = window.BR || {});

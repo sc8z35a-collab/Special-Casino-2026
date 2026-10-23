@@ -22,6 +22,7 @@
   var loading = null;
   var xp = null;          // the player's XP (null until known)
   var ready = 0;          // finished quests waiting to be received
+  var bonusCounts = {}, bonusCycles = {};
   var claiming = false;
   var resetting = false;
   var batch = null;       // the notice being collected: { ids, level, until, shown }
@@ -160,7 +161,8 @@
     var J = BR.juice, card = $('#me-card');
     sfx('levelUp');
     if (!J) return;
-    J.banner('LEVEL UP!', 'level', 2000, 'Lv.' + n + (slots ? '・バイト' + slots + '枠に！' : ''));
+    var subtitle = 'Lv.' + n + (slots ? '・バイト' + slots + '枠に！' : '');
+    if (!BR.reward3d || !BR.reward3d.play('level', subtitle)) J.banner('LEVEL UP!', 'level', 2000, subtitle);
     J.flash('#fff3c0', 0.3, 420);
     J.rain({ kind: 'confetti', dur: 1.2, rate: 40 });
     if (card && !card.hidden) {
@@ -184,10 +186,43 @@
     K.badge($('#quest-badge'), ready);
     renderClaimAll();
   }
+  function bonusTags(host, counts) {
+    host.textContent = '';
+    ['pro', 'ultra'].forEach(function (mode) {
+      if (counts[mode]) host.appendChild(el('b', 'q-bonus-chip ' + mode, mode.toUpperCase() + (counts[mode] > 1 ? ' ×' + counts[mode] : '')));
+    });
+    host.hidden = !host.childNodes.length;
+  }
+  function renderBonuses() {
+    var total = { pro: 0, ultra: 0 };
+    Q.periods.forEach(function (p) {
+      var counts = bonusCounts[p.id] || { pro: 0, ultra: 0 };
+      total.pro += counts.pro; total.ultra += counts.ultra;
+      var t = document.querySelector('#q-tabs .tab[data-tab="' + p.id + '"]');
+      if (!t) return;
+      var tags = t.querySelector('.q-tab-bonuses');
+      if (!tags) { tags = el('span', 'q-tab-bonuses'); t.appendChild(tags); }
+      bonusTags(tags, counts);
+      t.classList.toggle('has-bonus', !tags.hidden);
+      t.setAttribute('aria-label', p.name + (counts.pro ? '・PRO ' + counts.pro + '件' : '') + (counts.ultra ? '・ULTRA ' + counts.ultra + '件' : ''));
+    });
+    bonusTags($('#quest-bonus-badges'), total);
+    $('#btn-quest').setAttribute('aria-label', 'クエスト' + (total.pro ? '・PRO ' + total.pro + '件' : '') + (total.ultra ? '・ULTRA ' + total.ultra + '件' : ''));
+  }
+  function setBonuses(summary) {
+    if (!summary) return;
+    Q.periods.forEach(function (p) {
+      var c = summary[p.id] || {};
+      bonusCounts[p.id] = { pro: Math.max(0, Number(c.pro) || 0), ultra: Math.max(0, Number(c.ultra) || 0) };
+      bonusCycles[p.id] = Q.range(p, now()).k;
+    });
+    renderBonuses();
+  }
 
   // a quest was finished (pushed by the server)
   function onQuest(ev) {
     if (!ev) return;
+    setBonuses(ev.bonuses);
     if (ev.tickets && data) { data.tickets = ev.tickets; renderTickets(); }
     if (typeof ev.xp === 'number') setXp(ev.xp);
     if (ev.changed) {
@@ -215,6 +250,7 @@
       loading = null;
       offset = r.now - Date.now();
       data = r;
+      setBonuses(r.bonuses);
       setXp(r.xp, true);
       setReady(r.ready);
       if (visible()) render();
@@ -246,6 +282,7 @@
   }
   // how a quest's progress reads: minutes, $, spin tokens or a count
   function amount(def, v) {
+    if (def.metric === 'vipLevel') return 'VIP' + BR.VIP.label(v);
     if (def.sec) return Math.floor(v / 60) + '分';
     if (def.money) return '$' + short(v);
     if (def.tokens) return short(v);
@@ -365,6 +402,7 @@
         resetting = false;
         data = r;
         offset = r.now - Date.now();
+        setBonuses(r.bonuses);
         setReady(r.ready);
         setXp(r.xp, true);
         if (r.balance) BR.app.serverBalance(r.balance);
@@ -402,7 +440,7 @@
     bet: 'BET', casinoSpend: 'BET', combo: 'COMBO', earn: '$', coopEarn: '$', online: 'TIME', hubSec: 'TIME',
     talkSec: 'TALK', talk: 'TALK', call: 'CALL', chat: 'CHAT', peek: 'CHAT', watch: 'WATCH', wbet: 'BET', hub: 'HUB',
     sent: 'SEND', friend: 'FRIEND', strawberry: 'FRUIT', watermelon: 'FRUIT', melon: 'FRUIT', borrow: 'LOAN',
-    clear: 'QUEST', sclear: 'QUEST', broke: '$0'
+    clear: 'QUEST', sclear: 'QUEST', broke: '$0', level: 'LEVEL', vipLevel: 'VIP', vipUse: 'VIP', carBuy: 'CAR'
   };
 
   function chainRow(c) {
@@ -503,6 +541,7 @@
       claiming = false;
       if (data) data.periods = r.periods;
       if (data && r.tickets) data.tickets = r.tickets;
+      setBonuses(r.bonuses);
       setReady(r.ready);
       setXp(r.xp);
       if (r.balance) BR.app.serverBalance(r.balance);
@@ -582,9 +621,20 @@
       if (name === 'slot' && batch && !batch.shown) showNote();
       if (name !== 'slot') { clearTimeout(noteTimer); $('#quest-note').hidden = true; }
     });
+    renderBonuses();
     if (!api.online) return;
+    setInterval(function () {
+      var changed = false;
+      Q.periods.forEach(function (p) {
+        if (bonusCycles[p.id] !== undefined && bonusCycles[p.id] !== Q.range(p, now()).k) {
+          bonusCycles[p.id] = Q.range(p, now()).k;
+          bonusCounts[p.id] = { pro: 0, ultra: 0 }; changed = true;
+        }
+      });
+      if (changed) renderBonuses();
+    }, 1000);
     BR.live.on('quest', onQuest);
-    BR.live.on('hello', function (h) { if (h.me) { setXp(h.me.xp, xp === null); setReady(h.me.questsReady); } });
+    BR.live.on('hello', function (h) { if (h.me) { setXp(h.me.xp, xp === null); setReady(h.me.questsReady); setBonuses(h.me.questBonuses); } });
   }
 
   BR.quests = {
@@ -592,8 +642,9 @@
     open: open,
     setXp: setXp,
     setReady: setReady,
+    setBonuses: setBonuses,
     xp: function () { return xp; },
     // signed out: nothing to show until the next player
-    reset: function () { xp = null; data = null; batch = null; setReady(0); renderLevel(); }
+    reset: function () { xp = null; data = null; batch = null; setBonuses({}); setReady(0); renderLevel(); }
   };
 })(window.BR = window.BR || {});

@@ -63,7 +63,7 @@
     var m = BR.social.me();
     return m && m.vip && m.vip.on ? BR.VIP.now(m.vip, now()) : null;
   }
-  function priceOf(car) { return BR.sale.carPrice(car, sale(), vipLevel() === null ? 0 : BR.CONFIG.vip.carOff); }
+  function priceOf(car) { return BR.sale.carPrice(car, sale(), BR.VIP.carDiscount(vipLevel())); }
   // one more garage place (the server's price once it has spoken)
   function slotPrice() {
     var p = BR.CONFIG.garage.slotPrice;
@@ -137,7 +137,7 @@
     var buy = $('#car-buy');
     var locked = !BR.VIP.carOpen(car, vipLevel());
     buy.disabled = busy || locked;
-    buy.textContent = locked ? 'VIP' + car.vip + '限定車' : '購入する';
+    buy.textContent = locked ? 'VIP' + BR.VIP.label(car.vip) + '限定車' : '購入する';
     buy.classList.toggle('short', S.dollars < priceOf(car).price);
   }
 
@@ -268,7 +268,7 @@
     g3.addEventListener('click', function () { sfx('click'); open3d(in3d || null); });
     bar.appendChild(g3);
     var earned = garage.cars.reduce(function (n, c) { return n + (c.earned || 0); }, 0);
-    var rented = garage.cars.filter(function (c) { return c.rent; }).length;
+    var rented = garage.cars.filter(function (c) { return c.rent && !c.rent.paused; }).length;
     var rent = el('div', 'garage-rent');
     rent.appendChild(el('span', '', '貸し出し中 ' + rented + '台・売上'));
     rent.appendChild(K.amountEl(earned, 'dollars'));
@@ -294,7 +294,8 @@
       card.dataset.car = c.id;
       var pic = el('span', 'garage-pic');
       pic.style.backgroundImage = 'url("' + picture(c.model) + '")';
-      if (c.rent) pic.appendChild(el('i', 'garage-out', '貸し出し中'));
+      if (c.waiting) pic.appendChild(el('i', 'garage-out', '回収待ち'));
+      else if (c.rent) pic.appendChild(el('i', 'garage-out', '貸し出し中'));
       else if (m.model) pic.appendChild(el('i', 'garage-3d', '3D'));
       if (c.used) pic.appendChild(el('i', 'garage-used', '中古車'));
       if (c.offer) pic.appendChild(el('i', 'garage-offer', '販売中'));
@@ -307,7 +308,7 @@
       if (m.model) row.appendChild(button('', '3Dで見る', !!c.rent, function () { open3d(c); }));
       row.appendChild(c.rent
         ? button('', c.rent.until ? '停止予約済み' : '貸し出しを止める', !!c.rent.until, function () { stopRent(c); })
-        : button('', '貸し出す', !!c.offer, function () { startRent(c); }));
+        : button('', '貸し出す', !!c.offer || c.waiting, function () { startRent(c); }));
       var b = garage.buyback && garage.buyback[c.model];
       if (b) row.appendChild(button('', '売る ' + money(b.price), held, function () { sell(c); }));
       row.appendChild(button('gift', 'あげる', held, function () { chooseFriend(c); }));
@@ -333,12 +334,13 @@
       var card = document.querySelector('#garage-grid .garage-card[data-car="' + c.id + '"] .garage-status');
       if (!card) return;
       var t = '';
-      if (c.rent && c.rent.until) t = at(c.rent.until) + ' に戻ります（' + left(c.rent.until - now()) + '）';
+      if (c.waiting) t = '回収待ち';
+      else if (c.rent && c.rent.until) t = at(c.rent.until) + ' に戻ります（' + left(c.rent.until - now()) + '）';
       else if (c.rent) t = '次のお客さんの集計まで ' + left(c.rent.next - now());
-      if (c.last) t += (t ? '\n' : '') + '前回の5時間：' + c.last.n + '人 ' + money(c.last.sum) + (c.last.vip ? '（VIP ' + c.last.vip + '人！）' : '');
+      if (c.last && !c.waiting) t += (t ? '\n' : '') + '前回の5時間：' + c.last.n + '人 ' + money(c.last.sum) + (c.last.vip ? '（VIP ' + c.last.vip + '人！）' : '');
       card.textContent = t;
       // a block has passed: count it
-      if (c.rent && now() >= (c.rent.until || c.rent.next) + 1500 && !busy) {
+      if (c.rent && !c.rent.paused && now() >= (c.rent.until || c.rent.next) + 1500 && !busy) {
         busy = true;
         load().then(function () { busy = false; if (onBoard('garage')) renderGarage(); }, function () { busy = false; });
       }
@@ -397,11 +399,11 @@
     var back = c.rent.start + Math.max(1, Math.ceil((now() - c.rent.start) / B)) * B;
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode(m.name + ' の貸し出しを止めますか？'));
-      p.appendChild(el('small', 'confirm-sub', at(back) + ' に戻ってきます（それまでの分も売上になります）。'));
+      if (!c.rent.paused) p.appendChild(el('small', 'confirm-sub', at(back) + ' に戻ってきます（それまでの分も売上になります）。'));
     }, '止める').then(function (ok) {
       if (!ok) return;
       busy = true;
-      api.rentCar(c.id, 'stop').then(function () { toast(at(back) + ' に戻ってきます', 2800); return load(); })
+      api.rentCar(c.id, 'stop').then(function () { toast(c.rent.paused ? '貸し出しを止めました' : at(back) + ' に戻ってきます', 2800); return load(); })
         .catch(fail).then(function () { busy = false; if (onBoard('garage')) renderGarage(); });
     });
   }

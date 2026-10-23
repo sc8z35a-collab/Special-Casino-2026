@@ -21,7 +21,7 @@ import {
 } from './auth.js';
 import { Limiter } from './ratelimit.js';
 import {
-  RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, VIP,
+  RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, VIP, RECEIPTS,
   spin as spinReels, evaluate as evaluateLine, iconSale, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
@@ -32,7 +32,7 @@ import { createOpsLog, jst } from './opslog.js';
 import { createPush } from './push.js';
 import { screen as filterText } from './filter.js';
 import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
-import { readQuests, stepQuests, claimQuests, questsReady, questView, questTickets, grantLevelTickets, resetQuestPeriod } from './quests.js';
+import { readQuests, stepQuests, claimQuests, questsReady, questView, questTickets, grantLevelTickets, resetQuestPeriod, questBonuses } from './quests.js';
 import { createOps, DELETED, ARCHIVE_DAYS } from './ops.js';
 import { createOpsLogin } from './opslogin.js';
 import { createOpsEntry } from './opsentry.js';
@@ -150,7 +150,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // how many cars a garage holds: two, and one more for every place bought
   const garageSize = (u) => RULES.garage.slots + (u.garage_extra || 0);
   // what one more place costs (VIP: RULES.vip.garageOff % off)
-  const slotPrice = (u) => (u.vip_until > Date.now() ? Math.round(RULES.garage.slotPrice * (100 - RULES.vip.garageOff) / 10000) * 100 : RULES.garage.slotPrice);
+  const slotPrice = (u) => (vipOn(u) ? Math.round(RULES.garage.slotPrice * (100 - RULES.vip.garageOff) / 10000) * 100 : RULES.garage.slotPrice);
 
   // Renting cars out (RULES.carRental): for every 5-hour block a car is out,
   // customers come (each of them with a chance of its own) and pay by how
@@ -169,10 +169,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (!c.rent_start) return false;
     const back = c.rent_until > 0 && c.rent_until <= now;
     const blocks = Math.floor(((back ? c.rent_until : now) - c.rent_start) / BLOCK);
-    if (blocks <= c.rent_blocks && !back) return false;
+    if (blocks <= c.rent_blocks && !back && c.rent_earned < RENT.maxPay) return false;
     const model = CARS.get(c.model);
     let earned = 0, last = null;
-    for (let b = c.rent_blocks; b < blocks; b++) {
+    for (let b = c.rent_blocks; b < blocks && c.rent_earned + earned < RENT.maxPay; b++) {
       let n = 0, sum = 0, vip = 0;
       for (const chance of RENT.customers) {
         if (randomInt(1, 10000) > chance * 10000) continue;
@@ -181,13 +181,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         sum += x.pay;
         if (x.vip) vip++;
       }
+      sum = Math.min(sum, RENT.maxPay - c.rent_earned - earned);
       earned += sum;
       last = { n, sum, vip, at: c.rent_start + (b + 1) * BLOCK };
     }
     // (counted once: another request that got here first wins)
-    return Number(q(`UPDATE cars SET rent_blocks = ?, rent_earned = rent_earned + ?, rent_last = ?, rent_start = ?, rent_until = ?
+    const full = c.rent_earned + earned >= RENT.maxPay, stopped = back || full;
+    return Number(q(`UPDATE cars SET rent_blocks = ?, rent_earned = MIN(?, rent_earned + ?), rent_last = ?, rent_start = ?, rent_until = ?, rent_paused = ?
                      WHERE id = ? AND rent_start = ? AND rent_blocks = ?`)
-      .run(back ? 0 : blocks, earned, last ? JSON.stringify(last) : c.rent_last, back ? 0 : c.rent_start, back ? 0 : c.rent_until, c.id, c.rent_start, c.rent_blocks).changes) > 0;
+      .run(stopped ? 0 : blocks, RENT.maxPay, earned, last ? JSON.stringify(last) : c.rent_last,
+        stopped ? 0 : c.rent_start, stopped ? 0 : c.rent_until, full && !c.rent_until ? 1 : 0, c.id, c.rent_start, c.rent_blocks).changes) > 0;
   }
   function settleRentals(userId) {
     for (const c of q('SELECT * FROM cars WHERE owner_id = ? AND rent_start > 0').all(userId)) tx(() => settleRental(c));
@@ -197,8 +200,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     try { last = r.rent_last ? JSON.parse(r.rent_last) : null; } catch { last = null; }
     return {
       id: r.id, model: r.model, acquiredAt: r.acquired_at, from: r.from_id ? { id: r.from_id, name: r.from_name } : null,
-      rent: r.rent_start ? { start: r.rent_start, until: r.rent_until, next: r.rent_start + (r.rent_blocks + 1) * BLOCK } : null,
-      earned: r.rent_earned, last,
+      rent: r.rent_paused ? { paused: true, start: 0, until: 0, next: 0 }
+        : r.rent_start ? { start: r.rent_start, until: r.rent_until, next: r.rent_start + (r.rent_blocks + 1) * BLOCK } : null,
+      earned: Math.min(RENT.maxPay, r.rent_earned), waiting: r.rent_earned >= RENT.maxPay, last,
       paid: carPaid(r), used: !!r.used, offer: r.offer_id || 0, via: r.via || (r.from_id ? 'gift' : '')
     };
   }
@@ -486,17 +490,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const r = config.quests ? stepQuests(state, events, Date.now(), boost, questRewardRoll) : { changed: false, done: [] };
     const ticketGain = grantLevelTickets(state, cur.xp, cur.xp + xpGain);
     return { ...r, changed: r.changed || ticketGain['5h'] > 0, json: JSON.stringify(state), ready: questsReady(state),
-      tickets: questTickets(state), ticketGain };
+      tickets: questTickets(state), bonuses: questBonuses(state), ticketGain };
   }
   // Tells the player what was finished (and how many wait to be received);
   // with VIP on, each one is VIP EXP.
   function questNotice(userId, r) {
     if (!r || (!r.done.length && !r.ticketGain['5h'])) return;
-    live.send(userId, 'quest', { done: r.done.map((x) => x.id), ready: r.ready, tickets: r.tickets, xp: getUser(userId).xp });
+    live.send(userId, 'quest', { done: r.done.map((x) => x.id), ready: r.ready, tickets: r.tickets, bonuses: r.bonuses, xp: getUser(userId).xp });
     if (r.done.length && vipOn(getUser(userId))) tx(() => addVipExp(getUser(userId), r.done.length * VIP_RULES.exp.quest));
   }
   // Progress from one of the player's actions, saved in a transaction of its own.
-  function track(userId, events) {
+  function track(userId, events, reconcile = true) {
     const boost = questBoost(userId);
     const r = tx(() => {
       const cur = getUser(userId);
@@ -507,7 +511,24 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return st;
     });
     questNotice(userId, r);
+    if (reconcile && r?.done.length) syncMilestones(userId);
     return r;
+  }
+  // Absolute milestones also recognise existing players. Lifetime casino
+  // income is reconciled only into 特別, never into today's fresh counters.
+  function syncMilestones(userId) {
+    if (!config.quests) return;
+    for (let pass = 0; pass < 16; pass++) {
+      const cur = getUser(userId);
+      if (!cur || cur.npc) return;
+      const state = readQuests(cur.quests);
+      const earned = state.special?.m?.earn || 0;
+      const r = track(userId, [['level', LEVEL.of(cur.xp)], ['vipLevel', VIP.level(cur.vip_exp)],
+        ['vipUse', cur.vip_until > 0 || cur.vip_trial_until > 0 ? 1 : 0],
+        ['earn', Math.max(0, cur.total_won * RULES.tokenPrice - earned), 'special']], false);
+      // A completion can award VIP EXP and cross another milestone.
+      if (!r || !r.done.length) break;
+    }
   }
   // After the player spent money (or came back): 「無一文になってしまう」, ジョンソン's
   // gift or rescue (first: a friend helps before the lender offers a loan) and
@@ -537,11 +558,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const jobs = readJobs(cur.jobs);
     // (during the free trial, the trial's level's wage)
     const mult = VIP.wage(VIP.level(cur.vip_exp)), trialMult = VIP.wage(VIP_RULES.trial.level);
-    const rate = cur.vip_trial_until > now ? Math.max(mult, trialMult) : cur.vip_until > now ? mult : 1;
+    const rate = VIP.wage(vipLevel(cur, now));
     let pay = 0;
     for (const j of jobs) {
       const wage = JOBS.get(j.id).wage;
-      const value = VIP.earned(wage, j.since, now, cur.vip_until, mult, cur.vip_trial_until, trialMult);
+      const value = VIP.earned(wage, j.since, now, cur.vip_until, mult, cur.vip_trial_until, trialMult, cur.vip_permanent_at);
       const p = Math.floor(value);
       const extra = wage * (RULES.hub.wage - 1);
       const b = j.boost > 0 && extra > 0 ? Math.floor(j.boost * extra / 3600000) : 0;
@@ -567,15 +588,25 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // jobs at once: one more every RULES.jobSlotEvery levels (LEVEL.jobSlots)
   function jobsDto(u) {
     const level = LEVEL.of(u.xp);
-    return { level, slots: LEVEL.jobSlots(level), every: RULES.jobSlotEvery, working: readJobs(u.jobs), now: Date.now() };
+    const now = Date.now();
+    return { level, slots: LEVEL.jobSlots(level), every: RULES.jobSlotEvery,
+      working: readJobs(u.jobs).map(j => ({ ...j, paused: jobPending(u, j, now) >= RULES.jobMaxPay })), now };
+  }
+  function jobPending(cur, j, now = Date.now()) {
+    const wage = JOBS.get(j.id).wage;
+    return Math.floor(VIP.earned(wage, j.since, now, cur.vip_until, VIP.wage(VIP.level(cur.vip_exp)),
+      cur.vip_trial_until, VIP.wage(VIP_RULES.trial.level), cur.vip_permanent_at))
+      + Math.floor((j.boost || 0) * wage * (RULES.hub.wage - 1) / 3600000);
   }
   // A hub's benefits were on for `ms` of play: the best paid job being worked
   // earns x RULES.hub.wage for that time (inside the caller's transaction).
   function boostJobs(cur, ms) {
     const jobs = readJobs(cur.jobs);
     if (!jobs.length || ms <= 0) return null;
-    let best = jobs[0];
-    for (const j of jobs) if (JOBS.get(j.id).wage > JOBS.get(best.id).wage) best = j;
+    const available = jobs.filter(j => jobPending(cur, j) < RULES.jobMaxPay);
+    if (!available.length) return null;
+    let best = available[0];
+    for (const j of available) if (JOBS.get(j.id).wage > JOBS.get(best.id).wage) best = j;
     best.boost = (best.boost || 0) + ms;
     return JSON.stringify(jobs);
   }
@@ -592,35 +623,44 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // `vip`: the VIP level of someone whose VIP is on (the badge others see)
   function mini(u) {
     const v = vipLevel(u);
-    return v === null ? { id: u.id, name: u.name, avatar: u.avatar } : { id: u.id, name: u.name, avatar: u.avatar, vip: v };
+    return v === null ? { id: u.id, name: u.name, avatar: u.avatar } : { id: u.id, name: u.name, avatar: u.avatar, vip: v, vipBadge: vipBadgeLevel(u) };
   }
 
   /* ----- VIP (js/game/vip.js) ----- */
   const VIP_RULES = RULES.vip;
-  const vipOn = (u, now = Date.now()) => !!u && !u.npc && u.vip_until > now;
-  // its level while it is on (VIP${trial level} during the free trial), null while it is off
+  const vipOn = (u, now = Date.now()) => !!u && !u.npc && VIP.current(u.vip_until, u.vip_exp, u.vip_trial_until || 0, now) !== null;
+  // Effective benefits: a paid/trial level, or permanent VIP2 after VIP4.
   const vipLevel = (u, now = Date.now()) => (vipOn(u, now) ? VIP.current(u.vip_until, u.vip_exp, u.vip_trial_until || 0, now) : null);
+  const vipBadgeLevel = (u, now = Date.now()) => u && !u.npc ? VIP.badge({ until: u.vip_until, exp: u.vip_exp, trialUntil: u.vip_trial_until || 0 }, now) : null;
   // the free trial: for one who never had VIP, once
   const canTrial = (u) => !!u && !u.npc && !(u.vip_until > 0) && !(u.vip_trial_until > 0);
   // (`level`: the EXP's; `trialUntil`: when the free trial ends or ended, 0 never had it; `trial`: it may be had)
   function vipDto(u, now = Date.now()) {
     const i = VIP.info(u.vip_exp);
     return {
-      on: vipOn(u, now), until: u.vip_until, exp: Math.floor(i.exp * 10 + 1e-6) / 10, level: i.level, from: i.from, next: i.next,
-      trialUntil: u.vip_trial_until || 0, trial: canTrial(u)
+      on: vipOn(u, now), paid: u.vip_until > now, permanent: VIP.permanent(u.vip_exp), permanentAt: u.vip_permanent_at,
+      until: u.vip_until, exp: Math.round(i.exp * 1000) / 1000, level: i.level, from: i.from, next: i.next,
+      trialUntil: u.vip_trial_until || 0, trial: canTrial(u), mode: u.vip_until > now ? VIP.modeAt(u.vip_modes, now) : 'normal',
+      modes: VIP.intervals(u.vip_modes).filter(p => p.end > now),
+      earlyAccess: VIP.earlyAccess(vipLevel(u, now)),
+      exclusive31: { unlocked: vipLevel(u, now) >= 4, configured: RULES.cars.some(car => car.vip === 4) },
+      specialLogin: { eligible: vipLevel(u, now) >= VIP_RULES.specialLogin.from, days: VIP_RULES.specialLogin.days, configured: VIP_RULES.specialLogin.rewards.length > 0 }
     };
   }
   // VIP EXP, inside the caller's transaction (`cur`: the row as it is now).
   // Reaching VIP${VIP_RULES.refund.from} while days are paid ahead gives back their coins at once.
   function addVipExp(cur, gain, now = Date.now()) {
     if (!cur || cur.npc || !(gain > 0)) return;
-    const exp = Math.round((cur.vip_exp + gain) * 1000) / 1000;
+    const multiplier = cur.vip_until > now ? VIP.multiplier(cur.vip_modes, now) : 1;
+    const exp = Math.round((cur.vip_exp + gain * multiplier) * 1000) / 1000;
     const from = VIP_RULES.refund.from;
     // (the days bought, not the free trial's)
     const back = VIP.level(cur.vip_exp) < from && VIP.level(exp) >= from && cur.vip_until > now
       ? VIP_RULES.refund.coins * Math.max(0, Math.floor((cur.vip_until - Math.max(now, cur.vip_trial_until || 0)) / VIP.day)) : 0;
-    q('UPDATE users SET vip_exp = ?, coins = coins + ?, rev = rev + ? WHERE id = ?').run(exp, back, back ? 1 : 0, cur.id);
+    const permanentAt = cur.vip_permanent_at || (VIP.permanent(exp) ? now : 0);
+    q('UPDATE users SET vip_exp = ?, vip_permanent_at = ?, coins = coins + ?, rev = rev + ? WHERE id = ?').run(exp, permanentAt, back, back ? 1 : 0, cur.id);
     cur.vip_exp = exp;
+    cur.vip_permanent_at = permanentAt;
   }
 
   function meDto(u) {
@@ -646,9 +686,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       charm: u.charm > 0,
       debt: peter.owed(u.id),
       xp: u.xp,
-      jobs: readJobs(u.jobs),
+      jobs: jobsDto(u).working,
       questsReady: questsReady(quests),
       questTickets: questTickets(quests),
+      questBonuses: questBonuses(quests),
       // the newest release: a browser running an older game asks the player to update
       release: RELEASE,
       // the beginner guide: everyone under 30 minutes of play until they finish it
@@ -800,7 +841,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       lastSeen: u.npc ? null : u.last_seen,
       cars: carCount(u.id),
       level: LEVEL.of(u.xp),
-      vip: vipLevel(u),
+      vip: vipLevel(u), vipBadge: vipBadgeLevel(u),
       friendship: friendship(viewerId, u.id)
     };
   }
@@ -825,6 +866,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       claimed: m.kind === 'present' || m.kind === 'car_sold' || m.pending ? !!m.claimed_at : undefined,
       // back to its sender: the account it was for was deleted (server/core/purge.js)
       returned: m.pending && m.state === 'returned' ? true : undefined,
+      expiresAt: RECEIPTS.deadline(m) || undefined,
+      expired: RECEIPTS.expired(m) || undefined,
       retracted: gone ? m.retracted_at : undefined,
       state: m.kind === 'car_offer' ? m.state || 'open' : undefined,
       at: m.created_at
@@ -998,7 +1041,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the people watching a player, and whether they may talk
   function homeMembers(hostId) {
     return q('SELECT o.id, o.name, o.avatar, o.vip_until, o.vip_exp, o.vip_trial_until, w.voice FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(hostId)
-      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, vip: vipLevel(r), voice: !!r.voice }));
+      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, vip: vipLevel(r), vipBadge: vipBadgeLevel(r), voice: !!r.voice }));
   }
   // The chat of a home (the watched player and their watchers) is live only;
   // its last lines are kept in memory for people who come in.
@@ -1158,7 +1201,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function hubPeople(hubId, now = Date.now()) {
     return q(`SELECT o.id, o.name, o.avatar, o.active_at, o.vip_until, o.vip_exp, o.vip_trial_until FROM hub_members m JOIN users o ON o.id = m.user_id
               WHERE m.hub_id = ? ORDER BY m.joined_at, o.id`).all(hubId)
-      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, vip: vipLevel(r, now), online: live.isOnline(r.id), idle: Math.min(86400000, Math.max(0, now - (r.active_at || 0))) }));
+      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, vip: vipLevel(r, now), vipBadge: vipBadgeLevel(r, now), online: live.isOnline(r.id), idle: Math.min(86400000, Math.max(0, now - (r.active_at || 0))) }));
   }
   function hubDto(h) {
     if (!h) return null;
@@ -1338,6 +1381,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return r;
     });
     questNotice(u.id, st);
+    syncMilestones(u.id);
     return { counted: sec };
   }
 
@@ -1397,6 +1441,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (!isDeveloper(u) && shield.accountBlocked(u.id)) throw new ApiError(403, 'blocked', 'このアカウントは一時的に制限されています。しばらく待ってからお試しください');
     u = allowed(u);
     const now = Date.now();
+    if (VIP.permanent(u.vip_exp) && !u.vip_permanent_at) {
+      q('UPDATE users SET vip_permanent_at = ? WHERE id = ?').run(now, u.id);
+      u.vip_permanent_at = now;
+    }
     // once a minute at most: the time since the last request is play time,
     // unless the player was away (then a new session starts)
     if (now - u.last_seen > 60000) {
@@ -1577,25 +1625,28 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { me: meDto(getUser(u.id)) };
     },
 
-    'GET /api/me': (req, u) => ({
-      loginBonus: loginBonus(u.id),
-      loginReset: nextLoginReset(),
-      me: meDto(getUser(u.id)),
-      unread: unreadTotal(u.id),
-      friendRequests: pendingRequests(u.id),
-      iconShop: iconShop(),
-      itemShop: itemShop(),
-      peter: peter.me(),
-      johnson: johnson.me(),
-      official: official.me(),
-      online: live.onlineCount(),
-      now: Date.now(),
-      nextReset: nextUtcMidnight(),
-      rules: {
-        bets: RULES.bets, tokenPrice: RULES.tokenPrice, dailyLimit: RULES.dailyLimit, dailyFree: RULES.dailyFree,
-        maxTransfer: { tokens: config.maxTransferTokens, dollars: config.maxTransferDollars }
-      }
-    }),
+    'GET /api/me': (req, u) => {
+      syncMilestones(u.id);
+      return {
+        loginBonus: loginBonus(u.id),
+        loginReset: nextLoginReset(),
+        me: meDto(getUser(u.id)),
+        unread: unreadTotal(u.id),
+        friendRequests: pendingRequests(u.id),
+        iconShop: iconShop(),
+        itemShop: itemShop(),
+        peter: peter.me(),
+        johnson: johnson.me(),
+        official: official.me(),
+        online: live.onlineCount(),
+        now: Date.now(),
+        nextReset: nextUtcMidnight(),
+        rules: {
+          bets: RULES.bets, tokenPrice: RULES.tokenPrice, dailyLimit: RULES.dailyLimit, dailyFree: RULES.dailyFree,
+          maxTransfer: { tokens: config.maxTransferTokens, dollars: config.maxTransferDollars }
+        }
+      };
+    },
 
     'POST /api/spin': async (req, u) => {
       const body = await req.json();
@@ -1707,8 +1758,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (vip !== null) addVipExp(cur, (r.total > 0 ? VIP_RULES.exp.win : 0) + (ultra ? VIP_RULES.exp.ultra : 0));
         return r;
       });
-      const after = getUser(u.id);
       questNotice(u.id, quests);
+      syncMilestones(u.id);
+      const after = getUser(u.id);
       const out = { grid: result.grid, line: result.line, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet, charm: result.charm || null, hub: boost,
         combo: result.combo, double: !!result.double, vip: !!result.vip };
       notifyWatchers(u.id, { type: 'spin', user: u.id, result: out, balance: balance(after) });
@@ -1731,6 +1783,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         charm: after.charm > 0,
         xp: after.xp,
         questTickets: questTickets(readQuests(after.quests)),
+        questBonuses: questBonuses(readQuests(after.quests)),
         vip: vipDto(after),
         stats: { totalWon: after.total_won, biggestWin: after.biggest_win, spins: after.spins }
       };
@@ -1794,7 +1847,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     'GET /api/friends': (req, u) => {
       const friends = q(`SELECT o.id, o.name, o.avatar, o.npc, o.vip_until, o.vip_exp, o.vip_trial_until, o.last_seen AS lastSeen, f.created_at AS since FROM friends f JOIN users o ON o.id = f.friend_id
                          WHERE f.user_id = ? AND o.banned = 0 ORDER BY o.name_key`).all(u.id)
-        .map(({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial, ...r }) => ({ ...r, vip: vipLevel({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial }) }));
+        .map(({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial, ...r }) => ({ ...r, vip: vipLevel({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial }), vipBadge: vipBadgeLevel({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial }) }));
       const incoming = q(`SELECT o.id, o.name, o.avatar, r.created_at AS at FROM friend_requests r JOIN users o ON o.id = r.from_id
                           WHERE r.to_id = ? AND o.banned = 0 ORDER BY r.created_at DESC`).all(u.id);
       const outgoing = q(`SELECT o.id, o.name, o.avatar, r.created_at AS at FROM friend_requests r JOIN users o ON o.id = r.to_id
@@ -1861,7 +1914,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
                         WHERE m.user_id = ? ORDER BY g.updated_at DESC LIMIT 50`).all(u.id);
       return {
         conversations: rows.filter((r) => !r.banned).map((r) => ({
-          user: { id: r.id, name: r.name, avatar: r.avatar, online: isOnline(r), npc: r.npc || null, lastSeen: r.npc ? null : r.last_seen, vip: vipLevel(r) },
+          user: { id: r.id, name: r.name, avatar: r.avatar, online: isOnline(r), npc: r.npc || null, lastSeen: r.npc ? null : r.last_seen, vip: vipLevel(r), vipBadge: vipBadgeLevel(r) },
           friend: areFriends(u.id, r.id),
           unread: r.unread,
           at: r.updated_at,
@@ -2088,6 +2141,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const row = q('SELECT * FROM messages WHERE id = ?').get(id);
         if (!row || !row.pending || row.recipient_id !== u.id || row.held) throw new ApiError(404, 'not_found', 'これは受け取れません');
         if (row.claimed_at) throw new ApiError(409, 'claimed', 'もう受け取りました');
+        if (RECEIPTS.expired(row, now)) throw new ApiError(410, 'expired', '受け取り期限が過ぎています');
         if (row.kind === 'transfer' && CURRENCIES.includes(row.currency)) {
           q(`UPDATE users SET ${row.currency} = ${row.currency} + ?, rev = rev + 1 WHERE id = ?`).run(row.amount, u.id);
           const from = getUser(row.sender_id);
@@ -2171,7 +2225,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         cars: rows.map(carDto),
         capacity: garageSize(u),
         slotPrice: slotPrice(u),
-        vip: vipLevel(u),
+        vip: vipLevel(u), vipBadge: vipBadgeLevel(u),
         sale: carSale(now),
         disposal: carDisposal(now),
         buyback: Object.fromEntries(RULES.cars.map((c) => [c.id, carBuyback(c, now)])),
@@ -2190,7 +2244,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const r = tx(() => {
         const c = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(id, u.id);
         if (!c) throw new ApiError(404, 'no_car', 'この車は持っていません');
-        if (c.rent_start) throw new ApiError(409, 'rented', '貸し出し中の車は売れません');
+        if (c.rent_start || c.rent_paused) throw new ApiError(409, 'rented', '貸し出し中の車は売れません');
         if (c.offer_id) throw new ApiError(409, 'on_offer', '販売中の車です');
         const model = CARS.get(c.model);
         if (!model) throw new ApiError(400, 'bad_model', 'この車は買い取れません');
@@ -2215,10 +2269,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const c = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(id, u.id);
         if (!c) throw new ApiError(404, 'no_car', 'この車は持っていません');
         if (body.action === 'start') {
+          if (c.rent_paused || c.rent_earned >= RENT.maxPay) throw new ApiError(409, 'collect_first', '先に売上を受け取ってください');
           if (c.rent_start) throw new ApiError(409, 'rented', 'この車はもう貸し出し中です');
           if (c.offer_id) throw new ApiError(409, 'on_offer', '販売中の車です');
           q('UPDATE cars SET rent_start = ?, rent_until = 0, rent_blocks = 0 WHERE id = ?').run(now, c.id);
         } else if (body.action === 'stop') {
+          if (c.rent_paused) {
+            q('UPDATE cars SET rent_paused = 0 WHERE id = ?').run(c.id);
+            return;
+          }
           if (!c.rent_start) throw new ApiError(409, 'not_rented', 'この車は貸し出していません');
           if (!c.rent_until) q('UPDATE cars SET rent_until = ? WHERE id = ?').run(c.rent_start + Math.max(1, Math.ceil((now - c.rent_start) / BLOCK)) * BLOCK, c.id);
         } else {
@@ -2234,9 +2293,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       await req.json();
       settleRentals(u.id);
       const paid = tx(() => {
-        const n = q('SELECT COALESCE(SUM(rent_earned), 0) AS n FROM cars WHERE owner_id = ?').get(u.id).n;
+        const n = q('SELECT COALESCE(SUM(MIN(rent_earned, ?)), 0) AS n FROM cars WHERE owner_id = ?').get(RENT.maxPay, u.id).n;
         if (!n) return 0;
-        q('UPDATE cars SET rent_earned = 0 WHERE owner_id = ?').run(u.id);
+        q(`UPDATE cars SET rent_earned = 0,
+          rent_start = CASE WHEN rent_paused = 1 THEN ? ELSE rent_start END,
+          rent_until = CASE WHEN rent_paused = 1 THEN 0 ELSE rent_until END,
+          rent_blocks = CASE WHEN rent_paused = 1 THEN 0 ELSE rent_blocks END,
+          rent_paused = 0 WHERE owner_id = ?`).run(Date.now(), u.id);
         q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(n, u.id);
         return n;
       });
@@ -2251,8 +2314,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const car = CARS.get(String(body.model || ''));
       if (!car) throw new ApiError(400, 'bad_model', 'この車は販売していません');
       const vip = vipLevel(u);
-      if (!VIP.carOpen(car, vip)) throw new ApiError(403, 'vip_only', `VIP${car.vip}限定車です`);
-      const cost = carPrice(car, carSale(), vip === null ? 0 : VIP_RULES.carOff).price;
+      if (!VIP.carOpen(car, vip)) throw new ApiError(403, 'vip_only', `VIP${VIP.label(car.vip)}限定車です`);
+      const cost = carPrice(car, carSale(), VIP.carDiscount(vip)).price;
       if (body.price !== undefined && Number(body.price) !== cost) {
         throw new ApiError(409, 'price_changed', `価格が変わりました（今は $${fmt(cost)}）`, { sale: carSale() });
       }
@@ -2265,6 +2328,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const now = Date.now();
         return Number(q('INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid) VALUES (?, ?, 0, ?, ?, ?)').run(cur.id, car.id, now, now, cost).lastInsertRowid);
       });
+      track(u.id, [['carBuy', 1]]);
+      syncMilestones(u.id);
       const me = meDto(balanceChanged(u.id));
       afterSpend(u.id);
       return { me, paid: cost, car: { id, model: car.id, acquiredAt: Date.now(), from: null, paid: cost, used: false, offer: 0 } };
@@ -2300,7 +2365,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const m = tx(() => {
         const car = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(carId, u.id);
         if (!car) throw new ApiError(404, 'no_car', 'この車は持っていません');
-        if (car.rent_start) throw new ApiError(409, 'rented', '貸し出し中の車はあげられません');
+        if (car.rent_start || car.rent_paused) throw new ApiError(409, 'rented', '貸し出し中の車はあげられません');
         if (car.offer_id) throw new ApiError(409, 'on_offer', '販売中の車です');
         // what its renting earned stays with the giver
         if (car.rent_earned) q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(car.rent_earned, u.id);
@@ -2333,7 +2398,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const m = tx(() => {
         const car = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(carId, u.id);
         if (!car) throw new ApiError(404, 'no_car', 'この車は持っていません');
-        if (car.rent_start) throw new ApiError(409, 'rented', '貸し出し中の車は売れません');
+        if (car.rent_start || car.rent_paused) throw new ApiError(409, 'rented', '貸し出し中の車は売れません');
         if (car.offer_id) throw new ApiError(409, 'on_offer', 'この車はもう販売中です');
         const r = resaleRange(car);
         if (price < r.min || price > r.max) throw new ApiError(400, 'bad_price', `価格は $${fmt(r.min)}〜$${fmt(r.max)} です`);
@@ -2392,6 +2457,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       cardChanged(r.row, { state: 'sold' });
       deliverDm(r.sold, u.id, r.row.sender_id);
       if (r.earned) balanceChanged(r.row.sender_id);
+      track(u.id, [['carBuy', 1]]);
+      syncMilestones(u.id);
       const me = meDto(balanceChanged(u.id));
       afterSpend(u.id);
       return { state: 'sold', car: r.carId, me };
@@ -2404,6 +2471,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const m = tx(() => {
         const row = q("SELECT * FROM messages WHERE id = ? AND kind = 'car_sold' AND recipient_id = ?").get(id, u.id);
         if (!row) throw new ApiError(404, 'not_found', 'この売上は見つかりません');
+        if (RECEIPTS.expired(row)) throw new ApiError(410, 'expired', '売上金の受け取り期限が過ぎています');
         if (!Number(q('UPDATE messages SET claimed_at = ? WHERE id = ? AND claimed_at = 0').run(Date.now(), id).changes)) {
           throw new ApiError(409, 'claimed', 'この売上はもう受け取りました');
         }
@@ -2612,7 +2680,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (have < count) throw new ApiError(409, 'insufficient', `${item.name}が足りません（${have}個）`);
         // (what already waits for their tap counts too)
         const theirs = itemCount(to, item.id) + q(`SELECT COALESCE(SUM(amount), 0) AS n FROM messages
-          WHERE recipient_id = ? AND pending = 1 AND claimed_at = 0 AND kind = 'item' AND body = ?`).get(to, item.id).n;
+          WHERE recipient_id = ? AND pending = 1 AND claimed_at = 0 AND kind = 'item' AND body = ? AND created_at > ?`).get(to, item.id, Date.now() - RULES.receiveDays.item * 86400000).n;
         if (theirs + count > item.max) {
           throw new ApiError(409, 'their_max', theirs >= item.max
             ? `${t.name}さんは${item.name}を上限（${item.max}個）まで持っています`
@@ -2712,9 +2780,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     /* ----- quests and XP ----- */
 
     'GET /api/quests': (req, u) => {
+      syncMilestones(u.id);
       const cur = getUser(u.id);
       const state = readQuests(cur.quests);
-      return { periods: questView(state), ready: questsReady(state), tickets: questTickets(state), xp: cur.xp, now: Date.now() };
+      return { periods: questView(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: cur.xp, now: Date.now() };
     },
 
     // 受け取る: the finished quests in `ids`, or all of them (一括受け取り)
@@ -2736,11 +2805,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         return { ...c, state };
       });
       if (r.claimed.length) balanceChanged(u.id);
+      syncMilestones(u.id);
       const after = getUser(u.id);
-      if (r.claimed.length) live.send(u.id, 'quest', { changed: true, ready: questsReady(r.state), tickets: questTickets(r.state), xp: after.xp });
+      const state = readQuests(after.quests);
+      if (r.claimed.length) live.send(u.id, 'quest', { changed: true, ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp });
       return {
         claimed: r.claimed.map((x) => x.id), dollars: r.dollars, coins: r.coins, rewards: r.rewards, tokens: 0,
-        periods: questView(r.state), ready: questsReady(r.state), tickets: questTickets(r.state), xp: after.xp, balance: balance(after)
+        periods: questView(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp, balance: balance(after)
       };
     },
 
@@ -2755,8 +2826,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         return state;
       });
       const after = getUser(u.id);
-      live.send(u.id, 'quest', { changed: true, ready: questsReady(state), tickets: questTickets(state), xp: after.xp });
-      return { periods: questView(state), ready: questsReady(state), tickets: questTickets(state), xp: after.xp, now: Date.now(), balance: balance(after) };
+      live.send(u.id, 'quest', { changed: true, ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp });
+      return { periods: questView(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp, now: Date.now(), balance: balance(after) };
     },
 
     // the beginner guide is finished
@@ -2839,6 +2910,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // top). The バイト are paid up first, so VIP's wage counts from now.
     'POST /api/vip/extend': async (req, u) => {
       const body = await req.json();
+      const mode = body.mode === undefined ? 'normal' : body.mode;
+      if (typeof mode !== 'string' || !VIP.mode(mode)) throw new ApiError(400, 'vip_mode', '通常・PRO・ULTRAから選んでください');
       if (body.packs !== undefined && (body.pack !== undefined || body.days !== undefined)) throw new ApiError(400, 'vip_cart', '購入するプランを確認してください');
       const pack = body.pack !== undefined ? VIP.pack(Number(body.pack)) : null;
       if (body.pack !== undefined && !pack) throw new ApiError(409, 'no_pack', 'このまとめ買いは今はありません');
@@ -2851,9 +2924,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const now = Date.now();
       const r = tx(() => {
         const cur = getUser(u.id);
-        const until = Math.max(now, cur.vip_until) + days * VIP.day;
+        const start = Math.max(now, cur.vip_until), until = start + days * VIP.day;
         if (until > now + VIP_RULES.maxDays * VIP.day) throw new ApiError(409, 'too_long', `VIPは${VIP_RULES.maxDays}日先までです`);
-        const c = VIP.cost(bought, VIP.level(cur.vip_exp));
+        const c = VIP.cost(bought, VIP.level(cur.vip_exp), mode);
         if (cur.coins < c.coins) throw new ApiError(409, 'insufficient', 'ロイヤルコインが足りません');
         const s = settleJobs(cur, now);
         saveJobs(cur.id, s.jobs, s.pay);
@@ -2863,13 +2936,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           state.tickets = { '5h': tickets['5h'] + resetTickets, day: tickets.day };
           quests = JSON.stringify(state);
         }
-        q('UPDATE users SET coins = coins - ? + ?, vip_until = ?, quests = ?, rev = rev + 1 WHERE id = ?').run(c.coins, c.back, until, quests, cur.id);
-        return { ...c, paid: s.pay };
+        const modes = VIP.intervals(cur.vip_modes).filter(p => p.end > now);
+        if (mode !== 'normal') modes.push({ start, end: until, mode });
+        q('UPDATE users SET coins = coins - ? + ?, vip_until = ?, vip_modes = ?, quests = ?, rev = rev + 1 WHERE id = ?').run(c.coins, c.back, until, JSON.stringify(modes), quests, cur.id);
+        return { ...c, paid: s.pay, start, until };
       });
       if (r.paid) track(u.id, [['jobpay', r.paid]]);
+      syncMilestones(u.id);
       const me = meDto(balanceChanged(u.id));
-      if (resetTickets) live.send(u.id, 'quest', { changed: true, ready: me.questsReady, tickets: me.questTickets, xp: me.xp });
-      return { days, bonus, coins: r.coins, back: r.back, resetTickets, packs: cart ? cart.packs : [], paid: r.paid, me };
+      if (resetTickets) live.send(u.id, 'quest', { changed: true, ready: me.questsReady, tickets: me.questTickets, bonuses: me.questBonuses, xp: me.xp });
+      return { days, bonus, coins: r.coins, back: r.back, resetTickets, packs: cart ? cart.packs : [], paid: r.paid, mode, startsAt: r.start, endsAt: r.until, me };
     },
 
     // VIP's free trial: VIP${trial level} for its days, once in a life, for
@@ -2888,6 +2964,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         return { until, paid: s.pay };
       });
       if (r.paid) track(u.id, [['jobpay', r.paid]]);
+      syncMilestones(u.id);
       return { until: r.until, paid: r.paid, me: meDto(balanceChanged(u.id)) };
     },
 
@@ -3214,6 +3291,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const m = q('SELECT * FROM messages WHERE id = ?').get(id);
         if (!m || m.kind !== 'present' || m.recipient_id !== u.id || m.held) throw new ApiError(404, 'no_present', 'このプレゼントは受け取れません');
         if (m.claimed_at) throw new ApiError(409, 'claimed', 'このプレゼントはもう受け取りました');
+        if (RECEIPTS.expired(m)) throw new ApiError(410, 'expired', 'プレゼントの受け取り期限が過ぎています');
         q('UPDATE messages SET claimed_at = ? WHERE id = ? AND claimed_at = 0').run(Date.now(), m.id);
         q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(m.amount, u.id);
         q('INSERT INTO transfers (from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?)').run(m.sender_id, u.id, 'dollars', m.amount, Date.now());
@@ -3629,6 +3707,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function hello(userId) {
     const bonus = loginBonus(userId);
     try { accessDayGifts(userId); } catch (e) { console.error('access days', e); }
+    syncMilestones(userId);
     const u = getUser(userId);
     return {
       loginBonus: bonus,

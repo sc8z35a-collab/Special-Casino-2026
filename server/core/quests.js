@@ -107,8 +107,9 @@ export function stepQuests(state, events, now = Date.now(), boost = null, rollBo
   let queue = events.filter(([, n]) => n > 0);
   while (queue.length) {
     const next = [];
-    for (const [metric, n] of queue) {
+    for (const [metric, n, onlyPeriod] of queue) {
       for (const period of PERIODS) {
+        if (onlyPeriod && period.id !== onlyPeriod) continue;
         const quests = BY[period.id][metric];
         if (!quests) continue;
         const { k } = QUESTS.range(period, now);
@@ -167,6 +168,17 @@ export function claimQuests(state, ids, now = Date.now()) {
 // How many finished quests are waiting to be received.
 export function questsReady(state, now = Date.now()) {
   return PERIODS.reduce((n, period) => n + current(state, period, now).c.length, 0);
+}
+
+// Only unclaimed STEP bonuses in the current cycle light the icon and tabs.
+export function questBonuses(state, now = Date.now()) {
+  const out = {};
+  for (const period of PERIODS) {
+    const p = current(state, period, now), counts = { pro: 0, ultra: 0 };
+    for (const id of p.c) if (p.b[id] === 'pro' || p.b[id] === 'ultra') counts[p.b[id]]++;
+    out[period.id] = counts;
+  }
+  return out;
 }
 
 // What the quest screen shows: per period its reset time (end 0: never) and,

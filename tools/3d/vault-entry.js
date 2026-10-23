@@ -272,3 +272,108 @@ export async function view(host, buf, name) {
     }
   };
 }
+
+// All inline previews share a renderer, avoiding WebGL's context limit when
+// a vault page has ten models. Controls bind to each model's output canvas.
+export function gallery() {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(1);
+  renderer.setSize(640, 640, false);
+  renderer.setClearColor(0x2c3038, 1);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.setScissorTest(true);
+  const pm = new THREE.PMREMGenerator(renderer);
+  const env = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+  pm.dispose();
+  const entries = new Set();
+  let alive = true, raf = 0, last = 0;
+  function free(root) {
+    const geometries = new Set(), materials = new Set(), textures = new Set();
+    root.traverse((o) => {
+      if (o.geometry) geometries.add(o.geometry);
+      materialsOf(o).forEach((m) => {
+        materials.add(m);
+        Object.values(m).forEach((v) => { if (v && v.isTexture) textures.add(v); });
+      });
+    });
+    geometries.forEach((g) => g.dispose());
+    materials.forEach((m) => m.dispose());
+    textures.forEach((t) => { t.dispose(); if (t.source?.data?.close) t.source.data.close(); });
+  }
+  function frame(at) {
+    if (!alive) return;
+    raf = requestAnimationFrame(frame);
+    if (document.hidden || at - last < 1000 / 24) return;
+    const dt = Math.min(0.1, (at - last) / 1000);
+    last = at;
+    for (const e of entries) {
+      const rect = e.host.getBoundingClientRect();
+      if (!e.host.isConnected || !rect.width || !rect.height || rect.bottom < 0 || rect.top > innerHeight) continue;
+      const ratio = Math.min(devicePixelRatio || 1, 1.5);
+      const w = Math.max(1, Math.min(640, Math.round(rect.width * ratio)));
+      const h = Math.max(1, Math.min(640, Math.round(rect.height * ratio)));
+      if (e.canvas.width !== w || e.canvas.height !== h) { e.canvas.width = w; e.canvas.height = h; }
+      e.camera.aspect = w / h;
+      e.camera.updateProjectionMatrix();
+      e.controls.update(dt);
+      renderer.setViewport(0, 0, w, h);
+      renderer.setScissor(0, 0, w, h);
+      renderer.clear();
+      renderer.render(e.scene, e.camera);
+      e.ctx.drawImage(renderer.domElement, 0, 640 - h, w, h, 0, 0, w, h);
+    }
+  }
+  raf = requestAnimationFrame(frame);
+  return {
+    async add(host, buf, name) {
+      const { root } = await load(buf, kindOf(name) || 'glb');
+      if (!alive || !host.isConnected) { free(root); return { stop() {} }; }
+      const canvas = document.createElement('canvas');
+      canvas.setAttribute('role', 'img');
+      canvas.setAttribute('aria-label', name + '・ドラッグで回転・2本指でズーム');
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      host.appendChild(canvas);
+      const scene = new THREE.Scene();
+      scene.environment = env;
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x3a3a44, 1.2));
+      const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+      sun.position.set(3, 5, 4);
+      scene.add(sun, root);
+      const sphere = new THREE.Box3().setFromObject(root).getBoundingSphere(new THREE.Sphere());
+      const r = sphere.radius || 1;
+      const camera = new THREE.PerspectiveCamera(35, 1, r / 100, r * 100);
+      camera.position.copy(sphere.center).add(new THREE.Vector3(1, 0.65, 1).normalize().multiplyScalar(r / Math.sin(17.5 * Math.PI / 180) * 1.08));
+      const controls = new OrbitControls(camera, canvas);
+      controls.target.copy(sphere.center);
+      controls.enableDamping = true;
+      controls.enablePan = false;
+      controls.minDistance = r * 1.2;
+      controls.maxDistance = r * 10;
+      controls.autoRotate = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+      controls.autoRotateSpeed = 0.6;
+      controls.addEventListener('start', () => { controls.autoRotate = false; });
+      const e = { host, canvas, ctx: canvas.getContext('2d'), scene, camera, controls };
+      entries.add(e);
+      let stopped = false;
+      e.stop = () => {
+        if (stopped) return;
+        stopped = true;
+        entries.delete(e);
+        controls.dispose();
+        canvas.remove();
+        free(root);
+      };
+      return e;
+    },
+    stop() {
+      alive = false;
+      cancelAnimationFrame(raf);
+      for (const e of entries) e.stop();
+      env.dispose();
+      renderer.dispose();
+      renderer.forceContextLoss();
+    }
+  };
+}

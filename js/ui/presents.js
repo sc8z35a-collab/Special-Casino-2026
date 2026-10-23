@@ -84,7 +84,7 @@
   // the card: the friend's to tap (once); the sender sees whether it was received
   function bubble(m, mine) {
     var p = info(m.text);
-    var open = !mine && !m.claimed;
+    var open = !mine && !m.claimed && !K.receiptExpired(m);
     var node = el('div', 'msg xfer present' + (mine ? ' mine' : ' theirs') + (open ? ' can-claim' : '') + (m.claimed ? ' claimed' : ''));
     node.dataset.pid = m.id;
     var card = el(open ? 'button' : 'div', 'xfer-card present-card');
@@ -93,14 +93,15 @@
     card.appendChild(pic(m.text, 'big'));
     card.appendChild(el('div', 'gift-name', p ? p.name : 'プレゼント'));
     card.appendChild(K.amountEl(m.amount || (p ? p.price : 0), 'dollars', 'pr-worth'));
-    card.appendChild(el('div', 'pr-state', mine ? (m.claimed ? '受け取られました' : 'まだ受け取られていません')
+    card.appendChild(el('div', 'pr-state', K.receiptExpired(m) ? '期限を過ぎたため受け取れません' : mine ? (m.claimed ? '受け取られました' : 'まだ受け取られていません')
       : m.claimed ? '受け取り済み' : claiming[m.id] ? '受け取っています…' : 'タップして受け取る'));
+    K.receiptHint(card, m);
     if (open) card.addEventListener('click', function () { claim(m); });
     node.appendChild(card);
     return node;
   }
   function claim(m) {
-    if (m.claimed || claiming[m.id]) return;
+    if (m.claimed || K.receiptExpired(m) || claiming[m.id]) return;
     claiming[m.id] = true;
     BR.social.refreshMsg(m.id);
     api.presentClaim(m.id).then(function (r) {
@@ -114,6 +115,7 @@
     }, function (err) {
       delete claiming[m.id];
       if (err && err.code === 'claimed') m.claimed = true;
+      if (err && err.code === 'expired') m.expired = true;
       BR.social.refreshMsg(m.id);
       K.fail(err);
     });

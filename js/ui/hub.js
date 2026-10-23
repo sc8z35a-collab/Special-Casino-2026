@@ -421,7 +421,7 @@
     var id = el('div', 'hb-mc-id');
     var nm = el('span', 'fr-name-row');
     nm.appendChild(el('b', 'uname', m.name + (self ? '（あなた）' : '')));
-    K.addVip(nm, m.vip);
+    K.addVip(nm, K.vipLevel(m));
     id.appendChild(nm);
     var st = el('span', 'hb-mc-state ' + stateOf(m));
     st.appendChild(el('i', 'hb-dot'));

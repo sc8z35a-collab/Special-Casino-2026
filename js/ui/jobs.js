@@ -28,25 +28,26 @@
   // the best paid job being worked: the one 友達と稼ぐ pays x1.5
   function best() {
     if (!state || !state.working.length) return null;
-    var b = state.working[0];
-    state.working.forEach(function (w) { if (jobOf(w.id).wage > jobOf(b.id).wage) b = w; });
+    var b = null;
+    state.working.forEach(function (w) { if (!w.paused && (!b || jobOf(w.id).wage > jobOf(b.id).wage)) b = w; });
     return b;
   }
   function hubOn() { return !!(BR.hub && BR.hub.on && BR.hub.on()); }
   // VIP: { until, mult } (mult 1: no more pay), and the free trial's { trialUntil, trialMult }
   function vip() {
     var m = BR.social.me(), v = m && m.vip;
-    return v ? { until: v.until, mult: BR.VIP.wage(v.level), trialUntil: v.trialUntil || 0, trialMult: BR.VIP.wage(C.vip.trial.level) } : { until: 0, mult: 1, trialUntil: 0, trialMult: 1 };
+    return v ? { until: v.until, mult: BR.VIP.wage(v.level), trialUntil: v.trialUntil || 0, trialMult: BR.VIP.wage(C.vip.trial.level), permanentAt: v.permanentAt || 0 } : { until: 0, mult: 1, trialUntil: 0, trialMult: 1 };
   }
   function vipNow() {
     var v = vip(), t = now();
-    return v.trialUntil > t ? Math.max(v.mult, v.trialMult) : v.mult > 1 && v.until > t ? v.mult : 1;
+    return v.trialUntil > t ? Math.max(v.mult, v.trialMult) : v.mult > 1 && v.until > t ? v.mult : v.permanentAt ? BR.VIP.wage(C.vip.permanent.level) : 1;
   }
   function earned(w) {
+    if (w.paused) return C.jobMaxPay;
     var job = jobOf(w.id);
     if (!job) return 0;
     var v = vip();
-    var pay = Math.floor(BR.VIP.earned(job.wage, w.since, now(), v.until, v.mult, v.trialUntil, v.trialMult));
+    var pay = Math.floor(BR.VIP.earned(job.wage, w.since, now(), v.until, v.mult, v.trialUntil, v.trialMult, v.permanentAt));
     // the time with a hub's benefits on: since loading too, while they are on (an estimate)
     var boost = (w.boost || 0) + (w === best() && hubOn() ? Math.max(0, Date.now() - state.at) : 0);
     return Math.min(C.jobMaxPay, pay + Math.floor(boost * job.wage * (C.hub.wage - 1) / 3600000));
@@ -151,12 +152,15 @@
       if (!c) return;
       var st = c.querySelector('.job-state');
       st.textContent = '';
-      st.appendChild(el('span', 'job-time', '勤務中 ' + clock(now() - w.since)));
+      var waiting = earned(w) >= C.jobMaxPay;
+      if (waiting) w.paused = true;
+      c.classList.toggle('waiting', waiting);
+      c.querySelector('.job-live').textContent = waiting ? '回収待ち' : '勤務中';
+      st.appendChild(el('span', 'job-time', waiting ? '回収待ち' : '勤務中 ' + clock(now() - w.since)));
       var pay = el('span', 'job-pay');
       pay.appendChild(document.createTextNode('受け取れる給料 '));
       pay.appendChild(K.amountEl(earned(w), 'dollars'));
       st.appendChild(pay);
-      if (earned(w) >= C.jobMaxPay) st.appendChild(el('span', 'job-cap', '給料が上限の1,500万円に達しました'));
       var b = c.querySelector('[data-act="collect"]');
       if (b) b.disabled = busy || earned(w) < 1;
     });

@@ -739,9 +739,9 @@
     // the 3D win titles load in the background once the game is up (js/render/win3d.js)
     (function later() {
       if (!BR.launch.done()) { setTimeout(later, 1500); return; }
-      setTimeout(function () { if (BR.win3d) BR.win3d.preload(); }, 2500);
+      setTimeout(function () { if (BR.win3d) BR.win3d.preload(); if (BR.reward3d) BR.reward3d.preload(); }, 2500);
     })();
-    if (BR.fx && BR.fx.onChange) BR.fx.onChange(function () { if (BR.win3d && BR.launch.done()) BR.win3d.preload(); });
+    if (BR.fx && BR.fx.onChange) BR.fx.onChange(function () { if (BR.launch.done()) { if (BR.win3d) BR.win3d.preload(); if (BR.reward3d) BR.reward3d.preload(); } });
     var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
     fontsReady.then(function () { document.documentElement.classList.add('fonts-ready'); });
   }
