@@ -203,8 +203,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       rent: r.rent_paused ? { paused: true, start: 0, until: 0, next: 0 }
         : r.rent_start ? { start: r.rent_start, until: r.rent_until, next: r.rent_start + (r.rent_blocks + 1) * BLOCK } : null,
       earned: Math.min(RENT.maxPay, r.rent_earned), waiting: r.rent_earned >= RENT.maxPay, last,
-      paid: carPaid(r), used: !!r.used, offer: r.offer_id || 0, via: r.via || (r.from_id ? 'gift' : '')
+      paid: carPaid(r), used: !!r.used, offer: r.offer_id || 0, via: r.via || (r.from_id ? 'gift' : ''),
+      engine: r.engine || null, buyback: ownedCarBuyback(r)
     };
+  }
+  function ownedCarBuyback(c) {
+    const model = CARS.get(c.model);
+    if (!model) return null;
+    const price = carBuyback(model), engine = SHOP.get(c.engine);
+    return { ...price, price: price.price + (engine && engine.kind === 'engine' ? Math.floor(engine.price * 0.9) : 0) };
   }
   // what the owner paid for a car (cars from before this was kept: its list price)
   const carPaid = (c) => c.paid || (CARS.get(c.model) ? CARS.get(c.model).price : 0);
@@ -2248,7 +2255,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (c.offer_id) throw new ApiError(409, 'on_offer', '販売中の車です');
         const model = CARS.get(c.model);
         if (!model) throw new ApiError(400, 'bad_model', 'この車は買い取れません');
-        const b = carBuyback(model);
+        const b = ownedCarBuyback(c);
         if (body.price !== undefined && Number(body.price) !== b.price) {
           throw new ApiError(409, 'price_changed', `買取価格が変わりました（今は $${fmt(b.price)}）`, { buyback: b });
         }
@@ -2257,6 +2264,31 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         return { paid: b.price, earned: c.rent_earned, pct: b.pct, disposal: b.disposal };
       });
       return { ...r, me: meDto(balanceChanged(u.id)) };
+    },
+
+    // Atomic inventory/car exchange; a repeated equip cannot duplicate or consume an engine.
+    'POST /api/cars/engine': async (req, u) => {
+      const body = await req.json();
+      rate(limit.shop, u.id);
+      const id = posInt(body.car, '車');
+      const engineId = body.engine === null ? '' : String(body.engine || '');
+      const engine = SHOP.get(engineId);
+      if (body.engine !== null && (!engine || engine.kind !== 'engine')) throw new ApiError(400, 'bad_engine', 'このエンジンは装着できません');
+      tx(() => {
+        const car = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(id, u.id);
+        if (!car) throw new ApiError(404, 'no_car', 'この車は持っていません');
+        if (car.rent_start || car.rent_paused) throw new ApiError(409, 'rented', '貸し出し中の車には装着できません');
+        if (car.offer_id) throw new ApiError(409, 'on_offer', '販売中の車には装着できません');
+        if ((car.engine || '') === engineId) return;
+        if (engine && itemCount(u.id, engineId) < 1) throw new ApiError(409, 'insufficient', 'このエンジンを持っていません');
+        const previous = SHOP.get(car.engine);
+        if (previous && itemCount(u.id, previous.id) >= previous.max) throw new ApiError(409, 'max', '取り外すエンジンの所持数が上限です');
+        if (engine) addItems(u.id, engineId, -1);
+        if (previous && previous.kind === 'engine') addItems(u.id, previous.id, 1);
+        q('UPDATE cars SET engine = ? WHERE id = ?').run(engineId, id);
+        q('UPDATE users SET rev = rev + 1 WHERE id = ?').run(u.id);
+      });
+      return { car: carDto(q('SELECT * FROM cars WHERE id = ?').get(id)), me: meDto(balanceChanged(u.id)) };
     },
 
     // renting a car out ('start'), or asking it back ('stop': at the end of its block)

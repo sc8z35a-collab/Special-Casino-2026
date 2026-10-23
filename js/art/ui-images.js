@@ -9,6 +9,7 @@
     spin: 'img/ui/lowpoly/spin.webp',
     exit: 'img/ui/lowpoly/exit.webp',
     shop: 'img/ui/lowpoly/shop.webp',
+    questBadges: { pro: 'img/ui/lowpoly/quest-pro.webp', ultra: 'img/ui/lowpoly/quest-ultra.webp' },
     pill: 'img/ui/pill.webp',
     pillGet: 'img/ui/pill-get.webp',
     pillMax: 'img/ui/pill-max.webp',

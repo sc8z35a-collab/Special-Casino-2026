@@ -165,7 +165,13 @@
     // Shop (price in $, 10-40 % off for 5 hours a day: js/game/sale.js);
     // anything bought here can be given to friends, up to `max` per player
     shop: [
-      { id: 'omamori', name: 'お守り加護', price: 90000, max: 10 }
+      { id: 'omamori', name: 'お守り加護', price: 90000, max: 10 },
+      { id: 'repair-kit', name: '車修理キット', price: 250000, max: 999, category: 'car', fixedPrice: true },
+      { id: 'car-oil-medium', name: '車オイル中型', price: 100000, max: 999, category: 'car', fixedPrice: true },
+      { id: 'gasoline-full', name: 'ガソリン満杯', price: 10000, max: 999, category: 'car', fixedPrice: true },
+      { id: 'engine-v1', name: '高機動エンジンVI', price: 1100000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
+      { id: 'engine-v2', name: '高機動エンジンV2', price: 2500000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
+      { id: 'engine-v3', name: '高機動エンジンV3', price: 3000000, max: 999, category: 'car', kind: 'engine', fixedPrice: true }
     ],
     // お守り加護, switched on before a spin: the next losing spin gives back
     // min-max % of the lost tokens (all of them `fullChance` of the time);

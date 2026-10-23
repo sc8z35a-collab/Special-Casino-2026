@@ -807,7 +807,9 @@ export const MIGRATIONS = [
     'ALTER TABLE cars ADD COLUMN rent_paused INTEGER NOT NULL DEFAULT 0',
     `UPDATE cars SET rent_paused = CASE WHEN rent_start > 0 AND rent_until = 0 THEN 1 ELSE 0 END,
        rent_start = 0, rent_until = 0, rent_blocks = 0, rent_earned = 4500000 WHERE rent_earned >= 4500000`
-  ]
+  ],
+  // An installed engine belongs to its car and travels with a transferred car.
+  ["ALTER TABLE cars ADD COLUMN engine TEXT NOT NULL DEFAULT ''"]
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

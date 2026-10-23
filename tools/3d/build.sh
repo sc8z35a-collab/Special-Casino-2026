@@ -31,8 +31,8 @@ cp tools/3d/tree-physics-entry.js "$T/tree-physics-entry.js"
 cp "$T/node_modules/cannon-es/LICENSE" js/vendor/cannon-es.LICENSE.txt
 
 # source:output:how far the triangles are cut:texture size (the error limit keeps the shapes)
-mkdir -p img/3d/cars img/3d/studio img/3d/garage img/3d/tree
-for job in win:win:0.18:1024 big:big:0.14:1024 super:super:0.09:1024 ultra:ultra:0.12:1024 level-up:level-up:0.18:1024 vip-extend:vip-extend:0.16:1024 \
+mkdir -p img/3d/effects-lite img/3d/cars img/3d/studio img/3d/garage img/3d/tree
+for job in win:effects-lite/win:0.06:384 big:effects-lite/big:0.05:384 super:effects-lite/super:0.03:384 ultra:effects-lite/ultra:0.04:384 level-up:effects-lite/level-up:0.06:384 vip-extend:effects-lite/vip-extend:0.05:384 \
     car-blue-lightning:cars/blue-lightning:0.16:2048 \
     studio-base:studio/base:0.12:1024 studio-moving-head:studio/moving-head:0.08:1024 studio-spotlight:studio/spotlight:0.12:1024 \
     studio-bookshelf:studio/bookshelf:0.08:1024 garage:garage/garage:0.1:2048 \

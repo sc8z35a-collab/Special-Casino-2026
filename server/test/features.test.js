@@ -34,7 +34,7 @@ test('Shop: お守り加護 at the price of the moment (on sale 5 hours a day), 
   assert.equal(hours.length, 5);
   assert.equal(hours[4] - hours[0], 4);
   const me = await call('GET', '/api/me', { token: a.token });
-  assert.deepEqual(me.itemShop.items.map((i) => [i.id, i.salePrice, i.max]), [['omamori', p, 10]]);
+  assert.deepEqual(me.itemShop.items.filter(i => i.id === 'omamori').map((i) => [i.id, i.salePrice, i.max]), [['omamori', p, 10]]);
   assert.deepEqual(me.me.items, {});
   assert.equal(me.me.charm, false);
 

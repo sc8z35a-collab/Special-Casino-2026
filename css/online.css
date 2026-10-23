@@ -567,20 +567,8 @@
 .movie video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
 .movie.out { opacity: 0; pointer-events: none; }
 .splash { z-index: 210; }
-.splash-tap {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  background: radial-gradient(ellipse at 50% 50%, rgba(80, 10, 16, .55), #000 70%);
-  color: #fff;
-}
-.splash-tap span { font: 800 64px var(--f-num); letter-spacing: 10px; animation: tapPulse 1.6s ease-in-out infinite; }
-.splash-tap small { font-size: 26px; font-weight: 700; color: #d6c3c6; }
-@keyframes tapPulse { 50% { opacity: .35; } }
+.splash video { transition: opacity .7s linear; }
+.splash.skipping video { opacity: 0; }
 .movie-wait { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 26px; font-weight: 700; color: #bbb; }
 
 /* ------------------------------------------------------------ maintenance --- */
@@ -1388,3 +1376,13 @@ button.watched-by:active { transform: scale(.96); }
 #q-tabs .tab { position: relative; }
 #q-tabs .tab.has-bonus { min-width: 125px; }
 #q-tabs .q-tab-bonuses { position: absolute; top: 3px; right: 4px; display: flex; gap: 3px; pointer-events: none; }
+
+/* Supplied small quest labels retain numeric reward/count information. */
+.q-bonus.image, .q-bonus-chip.image { display: inline-flex; align-items: center; gap: 5px; padding: 0; background: none; box-shadow: none; color: #ffe27a; }
+.q-bonus-art { display: block; width: auto; height: 22px; max-width: 96px; object-fit: contain; }
+.q-mode-art { display: block; width: auto; height: 26px; margin: 0 auto; object-fit: contain; }
+.q-bonus-chip .q-bonus-art { height: 16px; }
+.quest-bonus-badges .q-bonus-art { height: 18px; }
+.garage-engine { color: #a9e8ff; font-size: 19px; font-weight: 700; padding: 4px 8px; }
+.equipped-engine { box-shadow: inset 0 0 0 2px #78cbea55; }
+.item-equip { flex: none; padding: 0 20px; }

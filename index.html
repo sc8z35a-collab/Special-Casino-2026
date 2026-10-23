@@ -78,7 +78,6 @@
       <button class="watched-by" id="watched-by" hidden><i class="ic ic-eye"></i><span id="watched-count"></span><b class="watched-talk" id="watched-talk" hidden></b></button>
       <div class="home-chat" id="home-chat" aria-live="polite"></div>
 
-      <button id="btn-sound" class="sound-btn" aria-label="サウンド"><i class="ic ic-sound"></i></button>
       <button id="btn-fx" class="fx-btn" aria-label="演出設定"><span>演出</span></button>
 
       <div id="reels">
@@ -264,12 +263,12 @@
       </div>
 
       <div class="board-pane" id="pane-shop">
-        <div class="sub-seg shop-switch" data-seg="shop"><button class="seg-btn active" data-v="shop"><i class="ic ic-bag"></i>SHOP</button><button class="seg-btn" data-v="items"><i class="ic ic-gift"></i>所有</button></div>
+        <div class="sub-seg shop-switch" data-seg="shop"><button class="seg-btn active" data-v="shop"><i class="ic ic-bag"></i>SHOP</button><button class="seg-btn" data-v="carshop"><i class="ic ic-car"></i>CAR SHOP</button><button class="seg-btn" data-v="items"><i class="ic ic-gift"></i>所有</button></div>
         <div class="scroller shop-scroll" id="shop-scroll"><div class="shop-grid" id="shop-grid"></div></div>
       </div>
 
       <div class="board-pane" id="pane-items">
-        <div class="sub-seg shop-switch" data-seg="shop"><button class="seg-btn" data-v="shop"><i class="ic ic-bag"></i>SHOP</button><button class="seg-btn active" data-v="items"><i class="ic ic-gift"></i>所有</button></div>
+        <div class="sub-seg shop-switch" data-seg="shop"><button class="seg-btn" data-v="shop"><i class="ic ic-bag"></i>SHOP</button><button class="seg-btn" data-v="carshop"><i class="ic ic-car"></i>CAR SHOP</button><button class="seg-btn active" data-v="items"><i class="ic ic-gift"></i>所有</button></div>
         <div class="scroller items-scroll" id="items-scroll"><div class="items-list" id="items-list"></div></div>
       </div>
 
@@ -425,8 +424,8 @@
           <div class="vp-buy">
             <div class="vp-modes" id="vp-modes" role="group" aria-label="VIP EXP倍率">
               <button type="button" data-mode="normal" class="active"><b>通常</b><small>追加なし・EXP ×1</small></button>
-              <button type="button" data-mode="pro"><b>PRO</b><small>＋8枚・EXP ×1.6</small></button>
-              <button type="button" data-mode="ultra"><b>ULTRA</b><small>＋12枚・EXP ×2</small></button>
+              <button type="button" data-mode="pro"><img class="q-mode-art" src="img/ui/lowpoly/quest-pro.webp" alt="PRO"><small>＋8枚・EXP ×1.6</small></button>
+              <button type="button" data-mode="ultra"><img class="q-mode-art" src="img/ui/lowpoly/quest-ultra.webp" alt="ULTRA"><small>＋12枚・EXP ×2</small></button>
             </div>
             <p class="vp-mode-rule">追加料金は購入1回ごと。今回追加する全日数に適用されます。</p>
             <div class="vp-days">
@@ -665,11 +664,9 @@
     <!-- 演出設定 (js/ui/effects.js) -->
     <div id="fx-settings" class="modal" hidden>
       <div class="modal-card fx-card" role="dialog" aria-label="演出設定">
-        <button class="modal-x" data-close aria-label="閉じる"></button>
         <h2 class="modal-title"><span>演出設定</span></h2>
         <label class="fx-simple"><span class="fx-name">シンプル演出<small>豪華な演出をまとめてオフ（結果や支払いは変わりません）</small></span><input type="checkbox" id="fx-simple"><i class="fx-switch"></i></label>
         <div class="fx-groups scroller" id="fx-groups"></div>
-        <div class="fx-foot"><button class="act-btn" id="fx-reset" type="button">すべてオンに戻す</button><button class="act-btn gold" data-close type="button">閉じる</button></div>
       </div>
     </div>
 
@@ -733,10 +730,9 @@
 
     <!-- the story, once after signing up -->
 
-    <!-- the studio logos at every launch (no skipping) -->
+    <!-- Optional studio logo; tap anywhere to fade to the title. -->
     <div id="splash" class="movie splash">
       <video id="splash-video" playsinline preload="auto" disablepictureinpicture></video>
-      <button class="splash-tap" id="splash-tap" hidden><span>TAP TO START</span><small>タップしてスタート</small></button>
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>

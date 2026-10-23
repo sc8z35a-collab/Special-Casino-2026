@@ -545,13 +545,6 @@
     }
   }
 
-  function setSound(muted) {
-    S.muted = muted;
-    BR.store.save();
-    BR.sfx.setMuted(muted);
-    $('#btn-sound').classList.toggle('sound-on', !muted);
-  }
-
   /* ------------------------------------------------------------ input --- */
   // Pressed look on pointerdown; the action itself fires on click.
   function press(el, fn) {
@@ -600,7 +593,6 @@
       if (BR.screens.current() === 'tokens') return;
       nav('tokens')();
     });
-    press($('#btn-sound'), function () { setSound(!S.muted); BR.sfx.play('click'); });
     $('#toast').addEventListener('click', function () {
       var f = toastTap;
       if (!f) return;
@@ -742,7 +734,6 @@
     BR.start.init();
     BR.install.init();
     bind();
-    $('#btn-sound').classList.toggle('sound-on', !S.muted);
     renderWallet(false);
     renderBet();
     layout();

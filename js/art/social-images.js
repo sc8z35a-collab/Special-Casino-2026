@@ -25,7 +25,13 @@
       'blue-lightning': 'img/cars/blue-lightning.webp'
     },
     items: {
-      omamori: 'img/items/omamori.webp'
+      omamori: 'img/items/lowpoly/omamori.webp',
+      'repair-kit': 'img/items/lowpoly/repair-kit.webp',
+      'car-oil-medium': 'img/items/lowpoly/car-oil-medium.webp',
+      'gasoline-full': 'img/items/lowpoly/gasoline-full.webp',
+      'engine-v1': 'img/items/lowpoly/engine-v1.webp',
+      'engine-v2': 'img/items/lowpoly/engine-v2.webp',
+      'engine-v3': 'img/items/lowpoly/engine-v3.webp'
     },
     // presents in a chat (js/ui/presents.js)
     presents: {
@@ -68,11 +74,9 @@
     }
   };
 
-  // the studio logos (every launch; the small one in the single-file build),
-  // the story after signing up, the title music and Peter's voice
+  // Optional studio logo, title music and Peter's voice.
   BR.LAUNCH_MEDIA = {
-    studio: 'video/studio.mp4',
-    studioLite: 'video/studio-lite.mp4',
+    studio: 'video/studio-low.mp4',
     bgm: 'sounds/bgm-title.mp3',
     peter: ['sounds/peter-1.mp3', 'sounds/peter-2.mp3']
   };

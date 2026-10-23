@@ -66,6 +66,9 @@ def main():
     for icon in ('icons/icon-192.png', 'icons/icon-180.png'):
         for attr in ('href', 'src'):
             html = html.replace('%s="%s"' % (attr, icon), '%s="data:image/png;base64,%s"' % (attr, b64(icon)))
+    # Static image labels (such as PRO / ULTRA) also need their bytes offline.
+    html = re.sub(r'src="(img/[A-Za-z0-9_/.-]+\.(webp|png))"',
+                  lambda m: 'src="data:%s;base64,%s"' % (MEDIA[m.group(2)], b64(m.group(1))), html)
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, 'w', encoding='utf-8') as fh:
         fh.write(html)

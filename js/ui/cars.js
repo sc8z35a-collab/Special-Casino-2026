@@ -299,6 +299,10 @@
       if (c.offer) pic.appendChild(el('i', 'garage-offer', '販売中'));
       card.appendChild(pic);
       card.appendChild(el('div', 'garage-name', m.name));
+      if (c.engine) {
+        var engine = BR.CONFIG.shop.filter(function (it) { return it.id === c.engine; })[0];
+        if (engine) card.appendChild(el('div', 'garage-engine', engine.name));
+      }
       card.appendChild(el('div', 'garage-from', c.from ? c.from.name + (c.via === 'friend' ? 'さんから購入' : 'さんからのプレゼント') : K.fmtDate(c.acquiredAt) + ' に購入'));
       card.appendChild(el('div', 'garage-status'));
       var row = el('div', 'garage-acts');
@@ -307,7 +311,7 @@
       row.appendChild(c.rent
         ? button('', c.rent.until ? '停止予約済み' : '貸し出しを止める', !!c.rent.until, function () { stopRent(c); })
         : button('', '貸し出す', !!c.offer || c.waiting, function () { startRent(c); }));
-      var b = garage.buyback && garage.buyback[c.model];
+      var b = c.buyback || garage.buyback && garage.buyback[c.model];
       if (b) row.appendChild(button('', '売る ' + money(b.price), held, function () { sell(c); }));
       row.appendChild(button('gift', 'あげる', held, function () { chooseFriend(c); }));
       row.appendChild(button('', '友達に売る', held, function () { chooseFriend(c, true); }));
@@ -418,12 +422,12 @@
   }
   function sell(c) {
     var m = model(c.model) || { name: c.model };
-    var b = garage.buyback[c.model];
+    var b = c.buyback || garage.buyback[c.model];
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode(m.name + ' を'));
       p.appendChild(K.amountEl(b.price, 'dollars', 'confirm-amt'));
       p.appendChild(document.createTextNode('で売りますか？'));
-      p.appendChild(el('small', 'confirm-sub', (b.disposal ? '大廃棄セールの高価買取' : '今日の買取') + '：今の販売価格の −' + b.pct + '%。売った車は戻りません。' + (c.earned ? '貸し出しの売上も受け取ります。' : '')));
+      p.appendChild(el('small', 'confirm-sub', (b.disposal ? '大廃棄セールの高価買取' : '今日の買取') + (c.engine ? '。' : '：今の販売価格の −' + b.pct + '%。') + '売った車は戻りません。' + (c.earned ? '貸し出しの売上も受け取ります。' : '')));
     }, '売る').then(function (ok) {
       if (!ok) return;
       busy = true;

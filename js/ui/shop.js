@@ -13,6 +13,7 @@
   var skew = 0;        // the server's clock less ours (the Shop's sale hours are the server's)
   var qty = {};         // id -> how many to buy
   var busy = false;
+  var category = 'general', ownedCars = [];
 
   function catalog() { return BR.CONFIG.shop; }
   function info(id) {
@@ -57,7 +58,11 @@
     omamori: ['スピン損の5〜20％軽減（特典最大70％）', 'まれに100％軽減（特典で確率二倍）']
   };
 
-  function showShop() {
+  function showShop(section) {
+    category = section === 'car' ? 'car' : 'general';
+    document.querySelectorAll('#pane-shop .shop-switch .seg-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.v === (category === 'car' ? 'carshop' : 'shop'));
+    });
     renderShop();
     refreshSale();
     api.items().then(function (r) {
@@ -72,7 +77,7 @@
   function renderShop() {
     var grid = $('#shop-grid');
     grid.textContent = '';
-    catalog().forEach(function (it) {
+    catalog().filter(function (it) { return category === 'car' ? it.category === 'car' : it.category !== 'car'; }).forEach(function (it) {
       var s = saleOf(it.id), have = owned(it.id), room = Math.max(0, it.max - have);
       var n = Math.max(1, Math.min(qty[it.id] || 1, room || 1));
       qty[it.id] = n;
@@ -128,7 +133,7 @@
       p.appendChild(document.createTextNode(it.name + ' ×' + n + ' を'));
       p.appendChild(K.amountEl(s.salePrice * n, 'dollars', 'confirm-amt'));
       p.appendChild(document.createTextNode('で購入しますか？'));
-      p.appendChild(el('small', 'confirm-sub', s.on ? 'セール中 ' + s.pct + '%OFF（通常 ' + money(s.price) + ' / 個）' : '通常価格（セールは1日5時間）'));
+      p.appendChild(el('small', 'confirm-sub', it.fixedPrice ? '所有に追加されます' : s.on ? 'セール中 ' + s.pct + '%OFF（通常 ' + money(s.price) + ' / 個）' : '通常価格（セールは1日5時間）'));
     }, '購入する').then(function (ok) {
       if (!ok) return;
       busy = true;
@@ -137,7 +142,7 @@
         BR.app.serverBalance(r.me);
         setMe(r.me);
         sfx('register');
-        toast(it.name + ' ×' + n + ' を購入しました！スロット画面で使えます', 3600);
+        toast(it.name + ' ×' + n + ' を購入しました！' + (it.category === 'car' ? '所有から確認できます' : 'スロット画面で使えます'), 3600);
         if (BR.juice) BR.juice.reward('#pane-shop .shop-pic', 2);
       }, function (err) {
         if (err.code === 'price_changed' && err.extra.itemShop) setSale(err.extra.itemShop);
@@ -153,7 +158,9 @@
   // 所有 (in the Shop tab): the items one owns, nothing else
   function showItems() {
     renderItems();
-    api.items().then(function (r) {
+    Promise.all([api.items(), api.cars()]).then(function (results) {
+      var r = results[0];
+      ownedCars = results[1].cars;
       var m = me();
       if (m) { m.items = r.items; m.charm = r.charm; }
       setSale(r.shop);
@@ -179,15 +186,69 @@
       mid.appendChild(el('div', 'item-name', it.name));
       mid.appendChild(el('div', 'item-sub', '×' + n + '（最大' + it.max + '個）' + (active ? '　＋ 発動中 1' : '')));
       row.appendChild(mid);
+      if (it.kind === 'engine') {
+        var mount = el('button', 'act-btn gold item-equip', '車に装着');
+        mount.disabled = busy || !n;
+        mount.addEventListener('click', function () { chooseCar(it); });
+        row.appendChild(mount);
+      }
       var give = el('button', 'act-btn item-give');
       give.appendChild(K.icon('gift'));
       give.appendChild(el('span', '', 'フレンドに譲る'));
-      give.disabled = !n;
+      give.disabled = busy || !n;
       give.addEventListener('click', function () { sfx('click'); chooseFriend(it); });
       row.appendChild(give);
       box.appendChild(row);
     });
+    ownedCars.filter(function (c) { return c.engine; }).forEach(function (c) {
+      var engine = info(c.engine), car = BR.CONFIG.cars.filter(function (m) { return m.id === c.model; })[0];
+      if (!engine) return;
+      any = true;
+      var row = el('div', 'item-row equipped-engine');
+      var pic = el('span', 'item-pic');
+      pic.style.backgroundImage = 'url("' + picture(engine.id) + '")';
+      row.appendChild(pic);
+      var mid = el('div', 'item-mid');
+      mid.appendChild(el('div', 'item-name', engine.name));
+      mid.appendChild(el('div', 'item-sub', (car ? car.name : c.model) + ' に装着中'));
+      row.appendChild(mid);
+      var detach = el('button', 'act-btn', '取り外す');
+      detach.disabled = busy || !!c.rent || !!c.offer;
+      detach.addEventListener('click', function () { changeEngine(c, null); });
+      row.appendChild(detach); box.appendChild(row);
+    });
     if (!any) box.appendChild(el('div', 'empty items-empty', 'まだアイテムを持っていません。Shop で買えます。'));
+  }
+
+  function chooseCar(engine) {
+    if (busy) return;
+    sfx('click');
+    api.cars().then(function (r) {
+      ownedCars = r.cars;
+      var available = r.cars.filter(function (c) { return !c.rent && !c.offer && c.engine !== engine.id; });
+      BR.cars.pickDialog('装着する車', available, function (row, c) {
+        var model = BR.CONFIG.cars.filter(function (m) { return m.id === c.model; })[0];
+        row.appendChild(el('span', 'pick-name', (model ? model.name : c.model) + ' #' + c.id));
+        if (c.engine && info(c.engine)) row.appendChild(el('span', 'pick-sub', info(c.engine).name));
+      }, function (c) { changeEngine(c, engine.id); }, '装着できる車がありません。');
+    }).catch(fail);
+  }
+  function changeEngine(car, id) {
+    if (busy) return;
+    var engine = id && info(id);
+    K.confirmBox(function (p) {
+      p.textContent = engine ? engine.name + ' を装着しますか？' : 'エンジンを取り外して所有に戻しますか？';
+    }, engine ? '装着する' : '取り外す').then(function (ok) {
+      if (!ok || busy) return;
+      busy = true; renderItems();
+      api.equipEngine(car.id, id).then(function (r) {
+        BR.app.serverBalance(r.me); setMe(r.me);
+        return api.cars();
+      }).then(function (r) {
+        ownedCars = r.cars; sfx('register');
+        toast(engine ? engine.name + ' を装着しました' : 'エンジンを所有に戻しました', 2600);
+      }).catch(fail).then(function () { busy = false; if (onBoard('items')) renderItems(); });
+    });
   }
 
   // giving: which friend, how many

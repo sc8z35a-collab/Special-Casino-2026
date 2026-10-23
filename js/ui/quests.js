@@ -186,10 +186,19 @@
     K.badge($('#quest-badge'), ready);
     renderClaimAll();
   }
+  function bonusBadge(mode, cls, suffix) {
+    var badge = el('b', cls + ' image ' + mode);
+    badge.setAttribute('aria-label', mode.toUpperCase() + (suffix ? ' ' + suffix : ''));
+    var img = el('img', 'q-bonus-art');
+    img.src = BR.UI_IMG.questBadges[mode]; img.alt = ''; img.setAttribute('aria-hidden', 'true');
+    badge.appendChild(img);
+    if (suffix) badge.appendChild(el('span', '', suffix));
+    return badge;
+  }
   function bonusTags(host, counts) {
     host.textContent = '';
     ['pro', 'ultra'].forEach(function (mode) {
-      if (counts[mode]) host.appendChild(el('b', 'q-bonus-chip ' + mode, mode.toUpperCase() + (counts[mode] > 1 ? ' ×' + counts[mode] : '')));
+      if (counts[mode]) host.appendChild(bonusBadge(mode, 'q-bonus-chip', counts[mode] > 1 ? '×' + counts[mode] : ''));
     });
     host.hidden = !host.childNodes.length;
   }
@@ -443,7 +452,7 @@
     var head = el('div', 'q-headline');
     if (c.emergency) head.appendChild(el('span', 'q-flag', '臨時緊急'));
     if (bonus) {
-      var badge = el('span', 'q-bonus ' + bonus.mode, bonus.mode.toUpperCase() + ' ×' + bonus.multiplier);
+      var badge = bonusBadge(bonus.mode, 'q-bonus', '×' + bonus.multiplier);
       badge.title = 'このSTEPのみ報酬' + bonus.multiplier + '倍' + (bonus.coins ? '＋ロイヤルコイン' + bonus.coins + '枚' : '');
       head.appendChild(badge);
     }

@@ -143,6 +143,7 @@
     // A Shop item at `ms`: { price (what it costs now), pct (0 outside the sale
     // hours), on, start, end (today's sale hours), next (when the next ones begin) }
     shop: function (item, ms) {
+      if (item.fixedPrice) return { price: item.price, pct: 0, on: false, start: 0, end: 0, next: 0 };
       var w = shopWindow(ms), on = ms >= w.start && ms < w.end;
       var pct = on ? BR.sale.pct(item.id, w.day) : 0;
       var next = ms < w.start ? w.start : shopWindow(midnight(jday(ms).y, jday(ms).m, jday(ms).d) + DAY).start;

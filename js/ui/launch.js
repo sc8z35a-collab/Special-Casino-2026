@@ -1,7 +1,5 @@
-/* Launching the game: the studio logos at every launch (they cannot be
-   skipped), the title music while the title screen is up, and the
-   maintenance notice when the server's daily quota is used up. Browsers only play sound after a
-   tap, so outside the Android app a "TAP TO START" comes first. */
+/* Optional studio logo (one tap fades to black), title music and maintenance notice.
+   Browsers that block autoplay with sound retry the logo muted. */
 (function (BR) {
   'use strict';
 
@@ -41,60 +39,51 @@
   }
 
   /* ------------------------------------------------------------ studio logos --- */
-  var splash = { video: null, timer: 0, started: false };
+  var splash = { video: null, timer: 0, skipping: false };
 
   function finishSplash() {
     if (done) return;
     done = true;
     clearTimeout(splash.timer);
-    var root = $('#splash'), v = splash.video;
-    root.classList.add('out');
-    setTimeout(function () {
-      root.hidden = true;
-      v.removeAttribute('src');
-      v.load();
-    }, 450);
+    $('#splash').hidden = true;
+    var v = splash.video;
+    if (v) { v.pause(); v.removeAttribute('src'); v.load(); }
     waiting.splice(0).forEach(function (f) { try { f(); } catch (e) { if (window.console) console.warn(e); } });
   }
-
+  function skipSplash() {
+    if (done || splash.skipping) return;
+    splash.skipping = true;
+    clearTimeout(splash.timer);
+    BR.sfx.unlock();
+    if (splash.video) splash.video.pause();
+    $('#splash').classList.add('skipping');
+    splash.timer = setTimeout(finishSplash, 700);
+  }
   function startSplash() {
-    var v = splash.video = $('#splash-video');
-    var tap = $('#splash-tap');
+    var root = $('#splash'), v = splash.video = $('#splash-video');
+    if (BR.fx && !BR.fx.on('logo')) { finishSplash(); return; }
+    root.addEventListener('click', skipSplash);
+    v.muted = false;
     v.addEventListener('playing', function () {
-      splash.started = true;
-      tap.hidden = true;
+      if (splash.skipping || done) { v.pause(); return; }
       clearTimeout(splash.timer);
-      // a stalled video does not keep the game shut
-      splash.timer = setTimeout(finishSplash, Math.max(8, (v.duration || 6) + 3) * 1000);
+      splash.timer = setTimeout(finishSplash, Math.max(8, (v.duration || 5) + 3) * 1000);
     });
-    v.addEventListener('ended', finishSplash);
-    v.addEventListener('error', finishSplash);
-    function play() {
-      // the Android app may play sound right away; browsers wait for the tap
-      if (BR.platform && BR.platform.app) BR.sfx.unlock();
-      v.muted = false;
-      var p = v.play();
-      if (p && p.catch) {
-        p.catch(function (e) {
-          if (e && e.name === 'NotAllowedError') {
-            // sound needs a tap first: wait for it (no skipping either way)
-            tap.hidden = false;
-          } else {
-            finishSplash();
-          }
-        });
-      }
-    }
-    tap.addEventListener('click', function () {
-      tap.hidden = true;
-      play();
-    });
-    blobUrl(api.online ? M.studio : M.studioLite).then(function (url) {
+    function videoFinished() { if (!splash.skipping) finishSplash(); }
+    v.addEventListener('ended', videoFinished);
+    v.addEventListener('error', videoFinished);
+    blobUrl(M.studio).then(function (url) {
+      if (done || splash.skipping) return;
       v.src = url;
-      play();
+      var p = v.play();
+      if (p && p.catch) p.catch(function () {
+        if (done || splash.skipping) return;
+        v.muted = true;
+        var retry = v.play();
+        if (retry && retry.catch) retry.catch(videoFinished);
+      });
     });
-    // the file never came: carry on
-    splash.timer = setTimeout(function () { if (!splash.started && tap.hidden) finishSplash(); }, 15000);
+    splash.timer = setTimeout(finishSplash, 15000);
   }
 
   /* ------------------------------------------------------------ title music --- */
