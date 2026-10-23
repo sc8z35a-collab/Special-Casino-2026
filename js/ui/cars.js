@@ -74,7 +74,11 @@
 
   /* ------------------------------------------------------------ Car Owner --- */
   function showShop() {
-    if (!sel || !model(sel)) sel = catalog()[catalog().length - 1].id;
+    if (!sel || !model(sel)) {
+      var priced = catalog().filter(BR.sale.carPriced);
+      var choices = priced.length ? priced : catalog();
+      sel = choices[choices.length - 1].id;
+    }
     renderShop();
     load().then(function () { if (onBoard('cars')) renderShop(); }, function () {});
     clearInterval(tick);
@@ -88,17 +92,22 @@
     var car = model(sel);
     // the picker: every car, its sale mark
     var pick = $('#car-picker');
+    var scroll = pick.scrollLeft;
     pick.textContent = '';
     var s = sale();
     catalog().forEach(function (c) {
       var b = el('button', 'car-thumb' + (c.id === sel ? ' on' : ''));
       b.type = 'button';
+      b.title = c.name + (BR.sale.carPriced(c) ? '' : '（価格未定）');
+      b.setAttribute('aria-label', b.title);
+      b.setAttribute('aria-pressed', String(c.id === sel));
       var p = el('span', 'car-thumb-pic');
       p.style.backgroundImage = 'url("' + picture(c.id) + '")';
       b.appendChild(p);
       b.appendChild(el('span', 'car-thumb-name', c.name));
       if (s && s.pct[c.id]) b.appendChild(el('em', 'car-thumb-off', '-' + s.pct[c.id] + '%'));
       if (c.model) b.appendChild(el('i', 'car-thumb-3d', '3D'));
+      if (!BR.sale.carPriced(c)) b.appendChild(el('em', 'car-thumb-pending', '価格未定'));
       if (c.vip) { var vb = K.vipBadge(c.vip); vb.classList.add('car-thumb-vip'); b.appendChild(vb); }
       b.addEventListener('click', function () {
         if (sel === c.id) return;
@@ -108,11 +117,19 @@
       });
       pick.appendChild(b);
     });
+    pick.scrollLeft = scroll;
+    var active = pick.querySelector('.on');
+    if (active) {
+      if (active.offsetLeft < pick.scrollLeft) pick.scrollLeft = active.offsetLeft;
+      else if (active.offsetLeft + active.offsetWidth > pick.scrollLeft + pick.clientWidth) pick.scrollLeft = active.offsetLeft + active.offsetWidth - pick.clientWidth;
+    }
     $('#car-name').textContent = car.name;
+    $('#car-name').classList.toggle('long', car.name.length > 14);
     var pr = priceOf(car), price = $('#car-price');
     price.textContent = '';
     if (pr.pct || pr.vip) price.appendChild(el('s', 'car-was', money(car.price)));
-    price.appendChild(K.amountEl(pr.price, 'dollars'));
+    if (pr.price === null) price.appendChild(el('span', 'car-price-pending', '価格未定'));
+    else price.appendChild(K.amountEl(pr.price, 'dollars'));
     if (pr.pct) price.appendChild(el('em', 'car-off', '-' + pr.pct + '%'));
     if (pr.vip) price.appendChild(el('em', 'car-vip-note', 'VIP -' + pr.vip + '%'));
     renderSale();
@@ -135,10 +152,11 @@
     var n = garage ? garage.cars.filter(function (c) { return c.model === car.id; }).length : null;
     $('#car-own').textContent = n === null ? '' : (n > 0 ? '所有 ' + n + '台' : '未所有') + '・ガレージ ' + owned() + ' / ' + capacity() + '台';
     var buy = $('#car-buy');
+    var pending = !BR.sale.carPriced(car);
     var locked = !BR.VIP.carOpen(car, vipLevel());
-    buy.disabled = busy || locked;
-    buy.textContent = locked ? 'VIP' + BR.VIP.label(car.vip) + '限定車' : '購入する';
-    buy.classList.toggle('short', S.dollars < priceOf(car).price);
+    buy.disabled = busy || locked || pending;
+    buy.textContent = pending ? '価格未定' : locked ? 'VIP' + BR.VIP.label(car.vip) + '限定車' : '購入する';
+    buy.classList.toggle('short', !pending && S.dollars < priceOf(car).price);
   }
 
   // the 3D studio for a car with a model, its picture otherwise
@@ -154,6 +172,7 @@
     BR.garage3d.show(host, car.id, function (p) { if (sel === want) note.textContent = '3Dを読み込み中… ' + Math.round(p * 100) + '%'; }).then(function () {
       if (sel === want) note.textContent = 'ドラッグで回転・ピンチ／ホイールでズーム';
     }, function () {
+      if (sel !== want) return;
       // no 3D after all: the picture
       $('#car-stage').classList.remove('three');
       host.hidden = true;
@@ -168,6 +187,7 @@
   function buy() {
     var car = model(sel);
     if (busy) return;
+    if (!BR.sale.carPriced(car)) { sfx('deny'); toast('この車は価格未定のため、まだ購入できません'); return; }
     var pr = priceOf(car);
     if (S.dollars < pr.price) {
       sfx('deny');

@@ -22,7 +22,16 @@
     },
     cars: {
       'two-state-sedan': 'img/cars/two-state-sedan.webp',
-      'blue-lightning': 'img/cars/blue-lightning.webp'
+      'blue-lightning': 'img/cars/blue-lightning.webp',
+      onvoro: 'img/cars/onvoro.webp',
+      'ferrari-325': 'img/cars/ferrari-325.webp',
+      'mercedes-benz-one': 'img/cars/mercedes-benz-one.webp',
+      'lamborghini-aventador': 'img/cars/lamborghini-aventador.webp',
+      'lamborghini-urus': 'img/cars/lamborghini-urus.webp',
+      'lamborghini-kuia-spyder': 'img/cars/lamborghini-kuia-spyder.webp',
+      'nissan-gt-r': 'img/cars/nissan-gt-r.webp',
+      'lamborghini-revuelto': 'img/cars/lamborghini-revuelto.webp',
+      'mercedes-amg-one-white': 'img/cars/mercedes-amg-one-white.webp'
     },
     items: {
       omamori: 'img/items/omamori.webp'

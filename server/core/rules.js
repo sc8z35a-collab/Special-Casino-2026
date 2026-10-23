@@ -23,7 +23,9 @@ export const RECEIPTS = BR.receipts;
 export const RELEASE = BR.RELEASE;
 export const JOBS = new Map(RULES.jobs.map((j) => [j.id, j]));
 export const AVATARS = new Map(RULES.avatars.map((a) => [a.id, a]));
-export const CARS = new Map(RULES.cars.map((c) => [c.id, c]));
+// Pending models stay in the display catalog; existing server actions only
+// accept cars with a settled price (including the purchase API's bad_model guard).
+export const CARS = new Map(RULES.cars.filter(carPriced).map((c) => [c.id, c]));
 export const SHOP = new Map(RULES.shop.map((i) => [i.id, i]));
 export const FRUITS = new Map(RULES.fruits.map((f) => [f.id, f]));
 
@@ -38,6 +40,7 @@ export function shopSale(item, now = Date.now()) { return BR.sale.shop(item, now
 export function carSale(now = Date.now()) { return BR.sale.cars(now, RULES.cars); }
 // `off`: VIP's % off on top of the sale
 export function carPrice(car, sale, off = 0) { return BR.sale.carPrice(car, sale, off); }
+export function carPriced(car) { return BR.sale.carPriced(car); }
 // what the buy-back pays for a car at `now` (and the 大廃棄セール on then)
 export function carBuyback(car, now = Date.now()) { return BR.sale.buyback(car, now, BR.sale.cars(now, RULES.cars)); }
 export function carDisposal(now = Date.now()) { return BR.sale.disposal(now); }

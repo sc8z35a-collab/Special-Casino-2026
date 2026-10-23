@@ -130,10 +130,20 @@
       { id: 'vampire', name: 'ヴァンパイア', price: 800000, rare: true }
     ],
     // Car Owner shop (price in $); `model`: a 3D model to look at
-    // (img/3d/cars/<id>.glb, js/render/garage3d.js)
+    // (img/3d/cars/<id>.glb, js/render/garage3d.js). A null price means the
+    // car can be previewed but cannot be bought or included in a sale.
     cars: [
       { id: 'two-state-sedan', name: 'Two state セダン', price: 26500000 },
-      { id: 'blue-lightning', name: 'ブルーライトニング', price: 65000000, model: true }
+      { id: 'blue-lightning', name: 'ブルーライトニング', price: 65000000, model: true },
+      { id: 'onvoro', name: 'オンヴォーロ', price: 4500000, model: true },
+      { id: 'ferrari-325', name: 'フェラーリ325', price: 55000000, model: true },
+      { id: 'mercedes-benz-one', name: 'メルセデスベンツ one', price: 135000000, model: true },
+      { id: 'lamborghini-aventador', name: 'ランボルギーニアベンタドール', price: 142000000, model: true },
+      { id: 'lamborghini-urus', name: 'ランボルギーニウルス', price: 56500000, model: true },
+      { id: 'lamborghini-kuia-spyder', name: 'ランボルギーニクイヤスパイダー', price: 34000000, model: true },
+      { id: 'nissan-gt-r', name: '日産 GT-R', price: 45000000, model: true },
+      { id: 'lamborghini-revuelto', name: 'ランボルギーニ レヴエルト', price: null, model: true },
+      { id: 'mercedes-amg-one-white', name: 'メルセデスAMG ONE（ホワイト）', price: null, model: true }
     ],
     // the garage holds this many cars; one more place costs `slotPrice` $ (for good, any number)
     garage: { slots: 2, slotPrice: 1000000 },
