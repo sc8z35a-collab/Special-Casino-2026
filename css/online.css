@@ -361,6 +361,7 @@
 .car-info { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 18px; }
 .car-brand { font: 800 22px var(--f-num); letter-spacing: 7px; color: #d8b53a; }
 .car-name { margin: 0; font-size: 50px; font-weight: 700; line-height: 1.2; }
+.car-name.long { font-size: 40px; }
 .car-price { display: flex; align-items: center; gap: 18px; font: 800 56px var(--f-num); color: #ffe27a; }
 .car-was { font: 700 30px var(--f-num); color: #9d9295; }
 .car-off { padding: 2px 12px; border-radius: 10px; background: #e5262b; color: #fff; font: 800 30px var(--f-num); font-style: normal; }
@@ -369,12 +370,14 @@
 .car-sale[hidden] { display: none; }
 .car-sale b { font-size: 26px; font-weight: 900; }
 .car-sale small { font: 800 22px var(--f-num); color: #fff3c4; }
-.car-picker { display: flex; gap: 14px; }
-.car-thumb { position: relative; width: 196px; height: 116px; padding: 6px 8px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1.6px rgba(214, 169, 74, .35); }
+.car-picker { position: relative; display: flex; flex: none; width: 100%; gap: 14px; padding: 12px 8px 8px; overflow-x: auto; touch-action: pan-x; }
+.car-thumb { position: relative; flex: 0 0 196px; width: 196px; height: 116px; padding: 6px 8px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1.6px rgba(214, 169, 74, .35); }
 .car-thumb.on { background: rgba(255, 226, 122, .16); box-shadow: inset 0 0 0 2.6px #ffe27a; }
 .car-thumb-pic { width: 100%; height: 72px; background: center / contain no-repeat; }
 .car-thumb-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 700; }
 .car-thumb-off { position: absolute; right: -8px; top: -10px; padding: 1px 8px; border-radius: 8px; background: #e5262b; color: #fff; font: 800 17px var(--f-num); font-style: normal; }
+.car-thumb-pending { position: absolute; right: 6px; top: 6px; padding: 1px 7px; border-radius: 6px; background: #514958; color: #fff; font-size: 14px; font-style: normal; }
+.car-price-pending { font-size: 40px; font-weight: 700; color: #c3b8bb; }
 .car-thumb-3d, .garage-3d, .garage-out { position: absolute; left: 6px; top: 6px; padding: 1px 7px; border-radius: 6px; background: rgba(60, 140, 255, .85); color: #fff; font: 800 14px var(--f-num); font-style: normal; }
 .garage-out { padding: 3px 12px; font-size: 17px; background: rgba(30, 110, 230, .92); }
 .car-price .amt { gap: 14px; }
