@@ -288,18 +288,6 @@
     if (def.tokens) return short(v);
     return String(v);
   }
-  var EVERY = {
-    '5h': '5時間ごとに更新', day: '毎日 9:00 に更新', week: '毎週日曜 9:00 に更新',
-    coop: '毎週日曜 9:00 に更新・友達と稼ぐ中だけ進む', month: '毎月18日 9:00 に更新', special: 'リセットなし（一度きり）'
-  };
-  function resetText(p, end) {
-    var every = '基本報酬はドル・' + EVERY[p.id];
-    if (!end) return every;
-    var d = new Date(end);
-    var when = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
-    return every + '（次は ' + when + '）';
-  }
-
   function renderNote(text) {
     var list = $('#q-list');
     list.textContent = '';
@@ -335,7 +323,6 @@
   function render() {
     var def = Q.period(tab), p = current();
     $('#q-title').textContent = def.name + 'クエスト';
-    $('#q-sub').textContent = p ? resetText(def, p.end) : '';
     $('#screen-quests').dataset.period = tab;
     renderClock();
     renderTickets();
@@ -349,8 +336,6 @@
     var order = { ready: 0, open: 1, received: 2 };
     cs.sort(function (a, b) { return (b.emergency - a.emergency) || (order[chainState(a)] - order[chainState(b)]); });
     cs.forEach(function (c) { list.appendChild(chainRow(c)); });
-    var done = p.quests.filter(function (q) { return q.state !== 'open'; }).length;
-    $('#q-sub').textContent += '　達成 ' + done + ' / ' + p.quests.length;
     renderClaimAll();
   }
 
@@ -381,8 +366,9 @@
     ['5h', 'day'].forEach(function (period) {
       var status = ticketStatus(period), btn = $('#q-ticket-' + period);
       btn.textContent = '';
-      btn.appendChild(el('b', '', (period === '5h' ? '5時間券' : 'デイリー券') + '：' + status.count + '枚'));
-      btn.appendChild(el('small', '', status.reason));
+      var label = (period === '5h' ? '5時間券' : 'デイリー券') + '：' + status.count + '枚';
+      btn.appendChild(el('b', '', label));
+      btn.setAttribute('aria-label', label + '。' + status.reason);
       btn.disabled = !status.enabled;
     });
   }

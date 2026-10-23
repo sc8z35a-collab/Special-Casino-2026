@@ -206,10 +206,9 @@
         <div class="tr-side">
           <div class="tr-card tr-grow">
             <div class="tr-card-head">
-              <h3>お金をあげて育てる</h3>
+              <small class="tr-rate-next" id="tr-rate-next"></small>
               <div class="tr-rate"><small>毎秒</small><i class="ic ic-dollar"></i><b id="tr-rate"></b></div>
             </div>
-            <div class="tr-given"><span>あげた合計</span><i class="ic ic-dollar"></i><b id="tr-given"></b><small id="tr-rate-next"></small></div>
             <div class="tr-amounts" id="tr-amounts"></div>
             <button class="act-btn gold tr-give" id="tr-give" type="button"></button>
           </div>
@@ -252,13 +251,10 @@
             <div class="car-3d" id="car-3d" hidden></div><span class="car-3d-note" id="car-3d-note"></span></div>
           <div class="car-info">
             <div class="car-sale" id="car-sale" hidden></div>
-            <div class="car-brand">CAR OWNER</div>
             <div class="car-picker" id="car-picker"></div>
             <h3 class="car-name" id="car-name"></h3>
             <div class="car-price" id="car-price"></div>
-            <div class="car-own" id="car-own"></div>
             <button class="act-btn gold car-buy" id="car-buy">購入する</button>
-            <p class="car-note">買った車はガレージで3D鑑賞・貸し出し・売却・プレゼント・販売ができます。</p>
           </div>
         </div>
       </div>
@@ -286,14 +282,14 @@
       <div class="board-pane" id="pane-more">
         <div class="scroller more-scroll" id="more-scroll">
           <div class="more-cards">
-            <button class="more-card" data-act="guide"><b>初心者ガイド</b><span>遊び方の案内をもう一度見る</span></button>
-            <button class="more-card" data-act="feedback"><b>運営にフィードバック</b><span>感想や改善してほしいことを送る</span></button>
-            <button class="more-card vip" data-act="vip"><b>VIP</b><span>ロイヤルコインでVIPを有効にする</span></button>
+            <button class="more-card" data-act="guide"><b>ガイド</b></button>
+            <button class="more-card" data-act="feedback"><b>フィードバック</b></button>
+            <button class="more-card vip" data-act="vip"><b>VIP</b></button>
             <button class="more-card support" data-act="support" hidden><b>有料ショップ</b><span>ロイヤルコインを購入する</span></button>
             <div class="more-card soon"><b>投資<small>COMING SOON</small></b><span>近日公開予定</span></div>
-            <button class="more-card soon" data-act="dev-diary"><b>開発者日記<small>近日公開</small></b><span>制作の様子をお届けします</span></button>
-            <button class="more-card soon" data-act="studio-credits"><b>スタジオクレジット<small>近日公開</small></b><span>制作に関わるスタジオ・スタッフ</span></button>
-            <button class="more-card soon" data-act="terms"><b>規約<small>近日公開</small></b><span>TWO STATEの利用について</span></button>
+            <button class="more-card soon" data-act="dev-diary"><b>開発者日記<small>近日公開</small></b></button>
+            <button class="more-card soon" data-act="studio-credits"><b>スタジオクレジット<small>近日公開</small></b></button>
+            <button class="more-card soon" data-act="terms"><b>規約<small>近日公開</small></b></button>
           </div>
           <h3 class="more-title">Dev News</h3>
           <div class="news-list" id="news-list"></div>
@@ -337,12 +333,12 @@
       <div class="board-pane active q-pane">
         <div class="q-head">
           <i class="q-icon"></i>
-          <div class="q-title"><h2 id="q-title"></h2><p id="q-sub"></p><p class="q-bonus-help" title="達成時にSTEPごとに抽選。次のSTEPには引き継ぎません。一括受け取りにも対応。">達成時に抽選：PRO 5％で報酬3倍・ULTRA 0.1％で6倍＋ロイヤルコイン8枚</p></div>
+          <div class="q-title"><h2 id="q-title"></h2></div>
           <button class="act-btn gold q-claim-all" id="q-claim-all" hidden><span>一括受け取り</span><b id="q-claim-n"></b></button>
           <div class="q-reset"><small>リセットまで</small><b id="q-reset">-</b></div>
         </div>
         <div class="q-ticket-bar" id="q-ticket-bar">
-          <div class="q-ticket-help"><b>リセットチケット</b><small>LvUPごとに5時間券1枚・Lv5ごとにデイリー券1枚</small></div>
+          <div class="q-ticket-help"><b>リセットチケット</b></div>
           <button class="act-btn q-ticket-use" type="button" data-reset-period="5h" id="q-ticket-5h" disabled></button>
           <button class="act-btn q-ticket-use" type="button" data-reset-period="day" id="q-ticket-day" disabled></button>
         </div>

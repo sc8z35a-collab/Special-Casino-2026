@@ -132,8 +132,6 @@
   }
   function renderOwned() {
     var car = model(sel);
-    var n = garage ? garage.cars.filter(function (c) { return c.model === car.id; }).length : null;
-    $('#car-own').textContent = n === null ? '' : (n > 0 ? '所有 ' + n + '台' : '未所有') + '・ガレージ ' + owned() + ' / ' + capacity() + '台';
     var buy = $('#car-buy');
     var locked = !BR.VIP.carOpen(car, vipLevel());
     buy.disabled = busy || locked;
@@ -152,7 +150,7 @@
     note.textContent = '3Dを読み込み中…';
     var want = car.id;
     BR.garage3d.show(host, car.id, function (p) { if (sel === want) note.textContent = '3Dを読み込み中… ' + Math.round(p * 100) + '%'; }).then(function () {
-      if (sel === want) note.textContent = 'ドラッグで回転・ピンチ／ホイールでズーム';
+      if (sel === want) note.textContent = '';
     }, function () {
       // no 3D after all: the picture
       $('#car-stage').classList.remove('three');
