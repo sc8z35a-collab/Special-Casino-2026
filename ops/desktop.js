@@ -10,13 +10,15 @@
   var APPS = [
     ['players', 'プレイヤー一覧', 'players'], ['archive', 'アーカイブ', 'archive'],
     ['reports', '通報', 'reports'], ['detections', '検知', 'detections'],
-    ['feedback', '報告・意見案', 'reports'], ['log', 'ログ', 'log'],
+    ['feedback', '報告・意見案', 'feedback'], ['log', 'ログ', 'log'],
     ['operators', '運営者', 'operators'], ['team', '運営チャット', 'team'],
     ['security', 'セキュリティ', 'security'], ['server', 'サーバー', 'server'],
-    ['pay', '課金', 'pay'], ['vault', '保管庫', 'vault']
+    ['pay', '課金', 'pay'], ['vault', '保管庫', 'vault'],
+    ['devunit', 'DEV UNIT', 'devunit'], ['securityhome', 'セキュリティーホーム', 'securityhome']
   ];
   var windows = {}, active = null, order = 0, signedIn = false, grouped = false;
   var overview = false, desktopSaved = null, silentRouting = false, suppressedRoute = '';
+  var internalLaunch = false;
   var menu = null, overlay = null, returnFocus = null, editingTarget = null;
   var motion = window.matchMedia('(prefers-reduced-motion: reduce)');
   var desktop, icons, area, dock, launcher, help, menuHost, account, announce;
@@ -105,6 +107,12 @@
   dockHome.addEventListener('click', showDesktop); dock.appendChild(dockHome);
   dock.appendChild(node('span', 'mac-dock-divider')); dock.appendChild(tabs); app.appendChild(dock);
   tabs.setAttribute('aria-label', '運営アプリケーション');
+  tabs.addEventListener('click', function (e) {
+    var tab = e.target.closest('[data-view]'), w = tab && windows[tab.dataset.view];
+    if (!w || internalLaunch || app.hidden || isBlocked()) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (w.open && !w.minimized) minimize(w.id); else activate(w.id);
+  }, true);
 
   APPS.forEach(function (a) {
     var id = a[0], tab = tabs.querySelector('[data-view="' + id + '"]');
@@ -193,7 +201,7 @@
   });
   help = node('div', 'mac-help mac-overlay'); help.hidden = true; help.setAttribute('role', 'dialog'); help.setAttribute('aria-modal', 'true'); help.setAttribute('aria-label', 'デスクトップの使い方');
   var helpPanel = node('div', 'mac-help-panel'); helpPanel.appendChild(picture('site')); helpPanel.appendChild(node('h2', '', 'TWO STATE デスクトップ'));
-  helpPanel.appendChild(node('p', '', 'Dockはクリック、デスクトップのアイコンはダブルクリックで開きます。ウインドウの上部をドラッグして移動し、右下をドラッグして大きさを変えられます。'));
+  helpPanel.appendChild(node('p', '', 'Dockはクリックで表示・非表示を切り替え、デスクトップのアイコンはダブルクリックで開きます。ウインドウの上部をドラッグして移動し、右下をドラッグして大きさを変えられます。'));
   var helpList = node('dl', 'mac-shortcuts');
   [['Ctrl / ⌘ K', 'アプリケーションを検索'], ['Alt W', 'ウインドウを閉じる'], ['Alt M', '最小化'], ['Alt Enter', '最大化 / 元に戻す'], ['Alt `', '次のウインドウ'], ['Esc', '一覧やメニューを閉じる']].forEach(function (r) { helpList.appendChild(node('dt', '', r[0])); helpList.appendChild(node('dd', '', r[1])); });
   helpPanel.appendChild(helpList); helpPanel.appendChild(node('p', 'mac-help-note', '「ウインドウ」メニューからタブ表示に切り替えられます。閉じても入力中の内容はこのページに残ります。'));
@@ -226,7 +234,9 @@
     if (!b || !aw || !ah) return;
     b.width = Math.max(Math.min(480, aw - 12), Math.min(b.width, aw - 12));
     b.height = Math.max(Math.min(280, ah - 8), Math.min(b.height, ah - 8));
-    b.x = Math.max(6, Math.min(b.x, aw - b.width - 6)); b.y = Math.max(4, Math.min(b.y, ah - b.height - 4));
+    // Keep enough of the titlebar reachable while allowing windows off-screen.
+    b.x = Math.max(96 - b.width, Math.min(b.x, aw - 96));
+    b.y = Math.max(0, Math.min(b.y, ah - Math.min(51, ah)));
   }
   function layout() {
     var list = openWindows(), aw = area.clientWidth, ah = area.clientHeight;
@@ -295,6 +305,7 @@
   }
   function present(id) {
     var w = windows[id]; if (!w || !allowed(w) || app.hidden) return;
+    var restoring = w.open && w.minimized;
     var fresh = !w.open || w.minimized; stopAnimation(w); closeMenu(); desktopSaved = null;
     if (overview) setOverview(false);
     w.open = true; w.minimized = false; active = id;
@@ -303,14 +314,20 @@
     w.rank = ++order; if (order > 14) { order = openWindows().length; w.rank = order; }
     render();
     if (fresh) {
-      animate(w, [{ opacity: 0, transform: 'translateY(20px) scale(.95)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }], 240);
+      var rect = w.node.getBoundingClientRect(), target = w.tab.getBoundingClientRect();
+      var dx = target.left + target.width / 2 - rect.left - rect.width / 2;
+      var dy = target.top + target.height / 2 - rect.top - rect.height / 2;
+      if (frame.classList.contains('turned')) { var t = dx; dx = dy; dy = -t; }
+      animate(w, [{ opacity: 0, transform: restoring ? 'translate(' + dx + 'px,' + dy + 'px) scale(.12)' : 'translateY(28px) scale(.92)' }, { opacity: 1, transform: 'translate(0,0) scale(1)' }], restoring ? 360 : 280);
       if (!reduced() && w.tab.animate) w.tab.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-13px)', offset: .4 }, { transform: 'translateY(0)' }], { duration: 450, easing: 'ease-out' });
       say(w.name + 'を開きました');
     }
   }
   function activate(id) {
     var w = windows[id]; if (!w || !allowed(w) || app.hidden || isBlocked()) return;
-    closeOverlay(false); suppressedRoute = ''; w.tab.click();
+    closeOverlay(false); suppressedRoute = '';
+    internalLaunch = true;
+    try { w.tab.click(); } finally { internalLaunch = false; }
   }
   // Keep the original app's active-view semantics even when the last window
   // is put away (notably the existing background-call reminder). No endpoint
@@ -320,7 +337,7 @@
     if (next) { activate(next.id); return; }
     active = null;
     var fallback = APPS.map(function (a) { return windows[a[0]]; }).find(allowed);
-    if (fallback) { suppressedRoute = fallback.id; silentRouting = true; fallback.tab.click(); silentRouting = false; }
+    if (fallback) { suppressedRoute = fallback.id; silentRouting = true; internalLaunch = true; try { fallback.tab.click(); } finally { internalLaunch = false; silentRouting = false; } }
     render();
   }
   function closeWindow(id) {
@@ -362,9 +379,14 @@
   }
   function installDrag(w, handle, resizing) {
     handle.addEventListener('pointerdown', function (e) {
-      if (e.button !== 0 || overview || grouped || (!resizing && e.target.closest('button')) || w.zoomed) return;
+      if (e.button !== 0 || overview || grouped || (!resizing && e.target.closest('button')) || (resizing && w.zoomed)) return;
       e.preventDefault(); stopAnimation(w); if (active !== w.id) activate(w.id);
-      var start = point(e), b = Object.assign({}, w.bounds); handle.setPointerCapture(e.pointerId); w.node.classList.add('is-dragging');
+      var start = point(e);
+      if (w.zoomed) {
+        var ratio = Math.max(0, Math.min(1, start.x / area.clientWidth));
+        w.zoomed = false; w.bounds.x = start.x - w.bounds.width * ratio; w.bounds.y = start.y - 25; clamp(w); render();
+      }
+      var b = Object.assign({}, w.bounds); handle.setPointerCapture(e.pointerId); w.node.classList.add('is-dragging');
       function move(e) {
         var p = point(e), dx = p.x - start.x, dy = p.y - start.y;
         w.bounds = resizing ? { x: b.x, y: b.y, width: b.width + dx, height: b.height + dy } : { x: b.x + dx, y: b.y + dy, width: b.width, height: b.height };

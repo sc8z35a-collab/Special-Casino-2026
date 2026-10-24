@@ -73,6 +73,8 @@ export function createStatic(root, { transformHtml } = {}) {
       'ETag': entry.etag,
       'Vary': 'Accept-Encoding'
     };
+    // Only security HOME may be embedded, by a page on this same origin.
+    if (rel === '/sec/index.html') headers['Content-Security-Policy'] = headers['Content-Security-Policy'].replace("frame-ancestors 'none'", "frame-ancestors 'self'");
     if (req.headers['if-none-match'] === entry.etag) {
       res.writeHead(304, headers);
       res.end();

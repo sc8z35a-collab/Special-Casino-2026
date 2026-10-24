@@ -14,7 +14,7 @@ const { chromium } = require('playwright');
   const errors = [];
   const shotDir = process.env.OPS_DESKTOP_SCREENSHOTS;
   const code = '987654321098';
-  const ids = ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault'];
+  const ids = ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome'];
   async function check(name, fn) { await fn(); checks++; console.log('PASS ' + name); }
   async function shot(page, name) {
     if (!shotDir) return;
@@ -29,7 +29,9 @@ const { chromium } = require('playwright');
     await page.locator('#login-go').click(); await page.locator('#app').waitFor({ state: 'visible' });
   }
   async function open(page, id) {
-    await page.locator('#tabs [data-view="' + id + '"]').click();
+    await page.keyboard.press('Control+k');
+    await page.locator('.mac-launch-search').fill(id);
+    await page.locator('.mac-launch-search').press('Enter');
     await page.locator('#mac-window-' + id + '.is-active').waitFor({ state: 'visible' });
   }
   async function menu(page, item) {
@@ -59,8 +61,8 @@ const { chromium } = require('playwright');
       await shot(page, 'login');
     });
     await signIn(page, 'taku');
-    await check('desktop has all 12 authorized apps and the supplied home background', async () => {
-      assert.equal(await page.locator('.mac-desktop-app:visible').count(), 12);
+    await check('desktop has all 14 authorized apps and the supplied home background', async () => {
+      assert.equal(await page.locator('.mac-desktop-app:visible').count(), 14);
       assert.equal(await page.locator('.mac-window.is-open').count(), 0);
       assert.match(await page.locator('#app').evaluate(n => getComputedStyle(n).backgroundImage), /wallpaper-desktop/);
       await shot(page, 'desktop');
@@ -68,8 +70,40 @@ const { chromium } = require('playwright');
     for (const id of ids) await check('original ' + id + ' app opens in its own window', async () => {
       await open(page, id); assert.equal(await page.locator('#view-' + id).isVisible(), true);
     });
+    await check('Dock toggles visible background and active windows without losing form state', async () => {
+      await open(page, 'players'); await page.locator('#search').fill('PlayerQA');
+      await page.locator('#tabs [data-view="players"]').click(); await page.locator('#mac-window-players').waitFor({ state: 'hidden' });
+      await page.locator('#tabs [data-view="players"]').click(); await page.locator('#mac-window-players.is-active').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#search').inputValue(), 'PlayerQA');
+      await open(page, 'log'); await page.locator('#tabs [data-view="players"]').click();
+      await page.locator('#mac-window-players').waitFor({ state: 'hidden' });
+      await page.locator('#tabs [data-view="players"]').click();
+    });
+    await check('DEV UNIT renders README and comments as inert text and persists unread notifications', async () => {
+      await open(page, 'devunit'); await page.locator('#devunit-readme summary').first().waitFor();
+      await page.locator('#devunit-text').fill('<img src=x onerror=alert(1)> test comment');
+      await page.locator('#devunit-form [type="submit"]').click();
+      await page.waitForFunction(() => document.querySelector('#devunit-comments').textContent.includes('test comment'));
+      assert.equal(await page.locator('#devunit-comments img').count(), 0);
+      await open(page, 'log');
+      const other = await s.call('POST', '/api/ops/login', { body: { name: 'OperatorQA', password: 'pass1234', device: 'qa-device-devunit-123456' } });
+      assert.equal(other.status, 200);
+      const posted = await s.call('POST', '/api/ops/devunit/comments', { token: other.token, body: { text: 'new operator comment' } });
+      assert.equal(posted.status, 200);
+      await page.locator('#count-devunit').waitFor({ state: 'visible' });
+      await open(page, 'devunit');
+      await page.waitForFunction(() => document.querySelector('#devunit-comments').textContent.includes('new operator comment'));
+      await page.locator('#count-devunit').waitFor({ state: 'hidden' });
+      await page.locator('#devunit-search').fill('DEV13'); assert.ok(await page.locator('#devunit-readme details').count());
+      await shot(page, 'devunit');
+    });
+    await check('security HOME loads as an independent authenticated page in the app', async () => {
+      await open(page, 'securityhome');
+      await page.frameLocator('#securityhome-frame').locator('#login').waitFor({ state: 'visible' });
+      assert.equal(new URL(page.frames().find(f => f.url().endsWith('/sec/')).url()).pathname, '/sec/');
+    });
     await check('all app windows and original DOM IDs stay unique', async () => {
-      assert.equal(await page.locator('.mac-window.is-open').count(), 12);
+      assert.equal(await page.locator('.mac-window.is-open').count(), 14);
       const duplicates = await page.evaluate(() => { const ids = Array.from(document.querySelectorAll('[id]')).map(n => n.id); return ids.filter((id, i) => ids.indexOf(id) !== i); });
       assert.deepEqual(duplicates, []);
     });
@@ -95,6 +129,24 @@ const { chromium } = require('playwright');
       before = after; b = await win.locator('.mac-resize').boundingBox();
       await page.mouse.move(b.x + 12, b.y + 12); await page.mouse.down(); await page.mouse.move(b.x - 60, b.y - 50, { steps: 5 }); await page.mouse.up();
       after = await win.boundingBox(); assert.ok(after.width < before.width - 30 && after.height < before.height - 30);
+    });
+    await check('windows move beyond the right and bottom edges and stay recoverable; dragging restores maximized windows', async () => {
+      const win = page.locator('#mac-window-players'), bar = win.locator('.mac-titlebar');
+      let b = await bar.boundingBox();
+      await page.mouse.move(b.x + 180, b.y + 23); await page.mouse.down();
+      await page.mouse.move(1370, 760, { steps: 8 }); await page.mouse.up();
+      let r = await win.boundingBox(), area = await page.locator('#mac-windows').boundingBox();
+      assert.ok(r.x + r.width > area.x + area.width && r.y + r.height > area.y + area.height);
+      assert.ok(r.x <= area.x + area.width - 95 && r.y <= area.y + area.height - 50);
+      b = await bar.boundingBox(); await page.mouse.move(Math.min(1390, b.x + 110), b.y + 23); await page.mouse.down();
+      await page.mouse.move(430, 180, { steps: 8 }); await page.mouse.up();
+      await win.locator('.mac-zoom').click();
+      await page.waitForFunction(() => Math.abs(document.querySelector('#mac-window-players').getBoundingClientRect().width - (document.querySelector('#mac-windows').clientWidth - 12)) < 2);
+      await win.evaluate(n => Promise.all(n.getAnimations().map(a => a.finished.catch(() => {}))));
+      b = await bar.boundingBox(); await page.mouse.move(b.x + 200, b.y + 23); await page.mouse.down();
+      await page.mouse.move(520, 230, { steps: 8 }); await page.mouse.up();
+      assert.equal(await win.evaluate(n => n.classList.contains('is-zoomed')), false);
+      assert.ok((await win.boundingBox()).width < area.width - 30);
     });
     await check('minimize, Dock restore and close retain the search field', async () => {
       await page.locator('#mac-window-players .mac-minimize').click();
@@ -164,7 +216,7 @@ const { chromium } = require('playwright');
     });
     await check('every attached icon and wallpaper decodes in Chromium', async () => {
       const paths = await page.evaluate(() => Array.from(new Set(Array.from(document.images).map(n => n.src))));
-      for (const file of fs.readdirSync(path.resolve(__dirname, '../ops/assets'))) paths.push(new URL('assets/' + file, page.url()).href);
+      for (const file of fs.readdirSync(path.resolve(__dirname, '../ops/assets')).filter(f => /\.(png|webp|svg)$/.test(f))) paths.push(new URL('assets/' + file, page.url()).href);
       const failures = await page.evaluate(async paths => {
         const bad = []; for (const src of paths) { const im = new Image(); im.src = src; try { await im.decode(); } catch { bad.push(src); } } return bad;
       }, paths); assert.deepEqual(failures, []);
@@ -183,18 +235,18 @@ const { chromium } = require('playwright');
     });
     await check('normal operators retain their original permissions', async () => {
       await out(page); await signIn(page, 'OperatorQA');
-      assert.equal(await page.locator('.mac-desktop-app:visible').count(), 11);
+      assert.equal(await page.locator('.mac-desktop-app:visible').count(), 13);
       assert.equal(await page.locator('#tab-pay').isVisible(), false); assert.equal(await page.locator('#speed').isDisabled(), true);
       await open(page, 'vault'); assert.equal(await page.locator('#view-vault').isVisible(), true);
     });
-    await check('viewers see exactly their 7 original allowed apps', async () => {
+    await check('viewers see their allowed apps including security HOME', async () => {
       await out(page); await signIn(page, 'ViewerQA');
-      assert.equal(await page.locator('.mac-desktop-app:visible').count(), 7);
-      for (const id of ['players', 'archive', 'team', 'pay', 'vault']) {
+      assert.equal(await page.locator('.mac-desktop-app:visible').count(), 8);
+      for (const id of ['players', 'archive', 'team', 'pay', 'vault', 'devunit']) {
         assert.equal(await page.locator('#tabs [data-view="' + id + '"]').isVisible(), false);
         assert.equal(await page.locator('#mac-window-' + id).isVisible(), false);
       }
-      await page.keyboard.press('Control+k'); assert.equal(await page.locator('.mac-launch-app:visible').count(), 7); await page.keyboard.press('Escape');
+      await page.keyboard.press('Control+k'); assert.equal(await page.locator('.mac-launch-app:visible').count(), 8); await page.keyboard.press('Escape');
       await shot(page, 'viewer');
     });
     await check('revoking viewer access still signs out the existing session', async () => {

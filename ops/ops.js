@@ -217,6 +217,7 @@
   /* ------------------------------------------------------------ logging in --- */
   // the site put away (for the login, or the day's ログイン button)
   function leaveApp() {
+    resetDevUnit();
     stopInline3d();
     if (call.on) callLeave();
     opsLiveClose();
@@ -343,10 +344,112 @@
     showLogin('ログアウトしました');
   }
 
+  /* DEV UNIT uses the same authenticated request helper as the operator apps. */
+  var devUnit = { comments: [], latest: 0, unread: null, busy: false, generation: 0, readme: null, loadingDoc: false };
+  function devUnitVisible() {
+    var w = $('#mac-window-devunit');
+    return !document.hidden && !$('#app').hidden && state.view === 'devunit' && w && w.classList.contains('is-active') && !w.classList.contains('is-minimized');
+  }
+  function resetDevUnit() {
+    devUnit.generation++; devUnit.comments = []; devUnit.latest = 0; devUnit.unread = null; devUnit.busy = false; devUnit.loadingDoc = false;
+    $('#devunit-comments').replaceChildren(); $('#devunit-text').value = ''; $('#devunit-error').textContent = ''; setCount('devunit', 0);
+    $('#securityhome-frame').removeAttribute('src');
+  }
+  function renderDevDoc() {
+    var root = $('#devunit-readme'), query = $('#devunit-search').value.trim().toLocaleLowerCase(); root.replaceChildren();
+    if (devUnit.readme === null) return;
+    var sections = devUnit.readme.split(/\n(?=#{1,3} )/), found = 0;
+    sections.forEach(function (text, i) {
+      if (query && text.toLocaleLowerCase().indexOf(query) < 0) return;
+      var lines = text.split('\n'), title = lines.shift().replace(/^#+\s*/, '') || 'README DEV';
+      var item = el('details'); item.open = !!query || i === 0;
+      item.appendChild(el('summary', '', title)); item.appendChild(el('pre', '', lines.join('\n'))); root.appendChild(item); found++;
+    });
+    $('#devunit-doc-status').textContent = found ? 'README.md · ' + found + ' 項目' : '該当する項目はありません';
+  }
+  function loadDevDoc() {
+    if (devUnit.readme !== null) { renderDevDoc(); return; }
+    if (devUnit.loadingDoc) return;
+    var gen = devUnit.generation; devUnit.loadingDoc = true;
+    $('#devunit-doc-status').textContent = '資料を読み込み中…';
+    fetch('assets/readme-dev.txt', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw Error('READMEを読み込めません'); return r.text(); }).then(function (text) {
+      if (gen !== devUnit.generation) return; devUnit.loadingDoc = false; devUnit.readme = text; renderDevDoc();
+    }, function () { if (gen !== devUnit.generation) return; devUnit.loadingDoc = false; $('#devunit-doc-status').textContent = '資料を読み込めませんでした。アプリを開き直してください。'; });
+  }
+  function renderDevComments() {
+    var box = $('#devunit-comments'), bottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    box.replaceChildren();
+    devUnit.comments.forEach(function (c) {
+      var item = el('article', 'devunit-comment');
+      item.appendChild(el('b', '', c.from.name + (c.from.developer ? ' · 開発者' : ' · 運営者')));
+      item.appendChild(el('p', '', c.text)); item.appendChild(el('small', '', new Date(c.at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }))); box.appendChild(item);
+    });
+    if (!devUnit.comments.length) box.appendChild(el('p', 'muted', 'まだコメントはありません'));
+    if (bottom) box.scrollTop = box.scrollHeight;
+  }
+  function readDevComments() {
+    if (!devUnitVisible() || !devUnit.latest) return;
+    var gen = devUnit.generation;
+    request('POST', '/api/ops/devunit/read', { id: devUnit.latest }).then(function () {
+      if (gen !== devUnit.generation) return; devUnit.unread = 0; setCount('devunit', 0);
+    }, function () {});
+  }
+  function loadDevComments(older) {
+    if (devUnit.busy || state.viewer || !token || $('#app').hidden) return;
+    devUnit.busy = true;
+    var gen = devUnit.generation, first = devUnit.comments[0];
+    request('GET', '/api/ops/devunit/comments' + (older && first ? '?before=' + first.id : '')).then(function (r) {
+      if (gen !== devUnit.generation) return; devUnit.busy = false;
+      if (older) { devUnit.comments = r.comments.concat(devUnit.comments); $('#devunit-more').hidden = !r.more; }
+      else {
+        // Merge the newest page without discarding already loaded older comments.
+        var merged = new Map(); devUnit.comments.concat(r.comments).forEach(function (c) { merged.set(c.id, c); });
+        devUnit.comments = Array.from(merged.values()).sort(function (a, b) { return a.id - b.id; });
+        if (!first) $('#devunit-more').hidden = !r.more;
+      }
+      devUnit.latest = devUnit.comments.length ? devUnit.comments[devUnit.comments.length - 1].id : 0;
+      renderDevComments(); readDevComments(); $('#devunit-error').textContent = '';
+    }, function (e) { if (gen !== devUnit.generation) return; devUnit.busy = false; $('#devunit-error').textContent = e.message; });
+  }
+  function devUnitCounts() {
+    if (!token || state.viewer || $('#app').hidden) return;
+    var gen = devUnit.generation;
+    request('GET', '/api/ops/devunit/counts').then(function (r) {
+      if (gen !== devUnit.generation) return;
+      if (devUnit.unread !== null && r.unread > devUnit.unread) {
+        toast('DEV UNITに新しいコメントが届きました');
+        if (window.Notification && Notification.permission === 'granted') {
+          try { var n = new Notification('DEV UNIT', { body: '新しいコメントが届きました', tag: 'devunit', icon: 'assets/devunit.webp' }); n.onclick = function () { window.focus(); setView('devunit'); n.close(); }; } catch (e) { /* The unread badge remains available. */ }
+        }
+      }
+      devUnit.unread = r.unread; setCount('devunit', r.unread);
+      if (devUnitVisible()) loadDevComments(false);
+    }, function () {});
+  }
+  function initDevUnit() {
+    $('#devunit-search').addEventListener('input', renderDevDoc);
+    $('#devunit-more').addEventListener('click', function () { loadDevComments(true); });
+    $('#devunit-notify').hidden = !window.Notification;
+    $('#devunit-notify').addEventListener('click', function () {
+      Notification.requestPermission().then(function (p) { toast(p === 'granted' ? 'DEV UNITの通知を有効にしました' : 'アプリ内の未読バッジでお知らせします'); });
+    });
+    $('#devunit-form').addEventListener('submit', function (e) {
+      e.preventDefault(); var input = $('#devunit-text'), text = input.value.trim(), submit = this.querySelector('[type="submit"]');
+      if (!text || submit.disabled) return;
+      var gen = devUnit.generation; submit.disabled = true;
+      request('POST', '/api/ops/devunit/comments', { text: text }).then(function (r) {
+        if (gen !== devUnit.generation) return;
+        if (input.value.trim() === text) input.value = '';
+        devUnit.comments = devUnit.comments.filter(function (c) { return c.id !== r.comment.id; }).concat([r.comment]).sort(function (a, b) { return a.id - b.id; }); devUnit.latest = devUnit.comments[devUnit.comments.length - 1].id; renderDevComments(); readDevComments(); $('#devunit-error').textContent = '';
+      }, function (err) { if (gen === devUnit.generation) $('#devunit-error').textContent = err.message; }).then(function () { submit.disabled = false; });
+    });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) devUnitCounts(); });
+  }
+
   /* ------------------------------------------------------------ views --- */
   // what a 閲覧者 never sees (the server refuses it anyway): the players'
   // list and the archive, the operators' chat, the payments and the vault
-  var VIEWER_HIDDEN = ['players', 'archive', 'team', 'pay', 'vault'];
+  var VIEWER_HIDDEN = ['players', 'archive', 'team', 'pay', 'vault', 'devunit'];
   function start(me) {
     $('#login').hidden = true;
     $('#enter').hidden = true;
@@ -384,6 +487,7 @@
     // (after a new login: the files that waited for one go now)
     refreshJobs().then(adoptJobs).then(kick);
     opsLiveOpen();
+    devUnitCounts();
     if (state.developer) loadPay(true);
     load();
     // /ops/#vault: straight to the vault
@@ -421,6 +525,7 @@
         return;
       }
       load(true);
+      devUnitCounts();
       if (state.view === 'reports') loadReports(true);
       else if (state.view === 'detections') loadDetections(true);
       else if (state.view === 'feedback') loadFeedback(true);
@@ -463,13 +568,15 @@
     var again = state.view === v;
     state.view = v;
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
-    ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
+    ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
     if (v === 'players') load();
     else if (v === 'archive') loadArchive();
     else if (v === 'operators') loadOperators();
     else if (v === 'reports') loadReports();
     else if (v === 'detections') loadDetections();
     else if (v === 'feedback') loadFeedback();
+    else if (v === 'devunit' && !state.viewer) { loadDevDoc(); loadDevComments(false); }
+    else if (v === 'securityhome' && !$('#securityhome-frame').getAttribute('src')) $('#securityhome-frame').src = '/sec/';
     else if (v === 'log') { loadLog(true); verifyLog(); }
     else if (v === 'team') openTeamView();
     else if (v === 'security') loadSecurity();
@@ -2134,7 +2241,7 @@
       if (liveSse()) {
         var es = new EventSource(path);
         opsLive = { close: function () { es.close(); } };
-        ['hello', 'opscall', 'opsping'].forEach(function (ev) {
+        ['hello', 'opscall', 'opsping', 'devunit'].forEach(function (ev) {
           es.addEventListener(ev, function (e) { up = true; var d = null; try { d = JSON.parse(e.data); } catch (x) { return; } onOpsLive(ev, d); });
         });
         es.onerror = function () { es.close(); opsLiveLost(up); };
@@ -2167,7 +2274,8 @@
     if (opsLive) { opsLive.close(); opsLive = null; }
   }
   function onOpsLive(ev, d) {
-    if (ev === 'opscall') onCall(d);
+    if (ev === 'devunit') devUnitCounts();
+    else if (ev === 'opscall') onCall(d);
     else if (ev === 'opsping') devCalled(d);
   }
   // @開発者: the developer hears of it at once
@@ -5217,6 +5325,7 @@
     document.addEventListener('pointerup', fullscreen, true);
 
     $('#login-form').addEventListener('submit', onLogin);
+    initDevUnit();
     $('#logout').addEventListener('click', logout);
     $('#enter-go').addEventListener('click', enter);
     $('#enter-other').addEventListener('click', logout);

@@ -76,6 +76,8 @@
       <button class="tab" data-view="server" type="button">サーバー</button>
       <button class="tab" data-view="pay" type="button" id="tab-pay" hidden>課金<b class="count" id="count-pay" hidden></b></button>
       <button class="tab" data-view="vault" type="button" id="tab-vault" hidden>保管庫<b class="count" id="count-vault" hidden></b></button>
+      <button class="tab" data-view="devunit" type="button">DEV UNIT<b class="count" id="count-devunit" hidden></b></button>
+      <button class="tab" data-view="securityhome" type="button">セキュリティーホーム</button>
     </nav>
     <div class="top-right">
       <label class="speed" title="運営サイトの更新頻度"><span>更新</span><select id="speed">
@@ -86,6 +88,20 @@
     </div>
   </header>
 
+  <section class="view" id="view-devunit" hidden>
+    <div class="bar"><h2>DEV UNIT</h2><button class="btn small" id="devunit-notify" type="button">通知を許可</button></div>
+    <p class="muted">README DEV · 開発資料と運営者・開発者のコメント</p>
+    <div class="devunit-layout">
+      <div class="devunit-document"><label class="field"><span>資料内を検索</span><input id="devunit-search" type="search" placeholder="キーワードで絞り込む"></label><p class="muted" id="devunit-doc-status" role="status"></p><div id="devunit-readme"></div></div>
+      <div class="devunit-discussion"><h3>コメント</h3><button class="btn small" id="devunit-more" type="button" hidden>以前のコメント</button><div id="devunit-comments" role="log" aria-label="DEV UNITのコメント"></div>
+      <form id="devunit-form"><label class="field"><span>コメントを追加</span><textarea id="devunit-text" rows="3" maxlength="2000" required></textarea></label><button class="btn primary" type="submit">送信</button><p class="error" id="devunit-error" role="alert"></p></form></div>
+    </div>
+  </section>
+  <section class="view" id="view-securityhome" hidden>
+    <div class="bar"><h2>セキュリティーホーム</h2><a class="btn small" href="/sec/" target="_blank" rel="noopener">別ウィンドウで開く</a></div>
+    <p class="muted">独立したセキュリティーホームを表示します。ログイン・権限・操作は元のサイトのままです。</p>
+    <iframe id="securityhome-frame" title="セキュリティーホーム" referrerpolicy="no-referrer"></iframe>
+  </section>
   <!-- the players -->
   <section class="view" id="view-players">
     <div class="summary">
