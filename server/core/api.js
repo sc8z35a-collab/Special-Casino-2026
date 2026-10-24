@@ -13,6 +13,7 @@
 // keeps the developer's vault's files (server/core/vault.js). `host` tells
 // the operator site's サーバー tab about the machine (server/core/stats.js),
 // and the host reports the bytes of each answer it sends: api.sent(bytes).
+import { createDevUnit } from './devunit.js';
 import { ApiError, posInt } from './errors.js';
 import { statements } from './db.js';
 import {
@@ -3636,6 +3637,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen
   });
   Object.assign(routes, ops.routes);
+  Object.assign(routes, createDevUnit({ q, ops, live, getUser, isDeveloper }).routes);
   // the operator site's ログインログ (the day's ログイン button; the developer's alone to read)
   const opsEntry = createOpsEntry({ q, getUser, see: ops.see, isOperator: ops.isOperator, isDeveloper });
   Object.assign(routes, opsEntry.routes);
