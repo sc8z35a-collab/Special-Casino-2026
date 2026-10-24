@@ -3709,6 +3709,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     ops.see(u);
     return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on } };
   };
+  // the tab bar's poll also carries the month's usage colour (cheap), so the
+  // サーバー button is green / blue / purple / red from every tab
+  const opsCounts = routes['GET /api/ops/counts'];
+  routes['GET /api/ops/counts'] = (req, u) => {
+    const out = opsCounts(req, u);
+    const v = vault.summary();
+    return { ...out, usage: stats.usage(v && v.store === 'bucket' ? v.used : 0) };
+  };
   // the developer tries the Discord notices: one goes out at once
   routes['POST /api/ops/discord/test'] = async (req, u) => {
     ops.need(u);

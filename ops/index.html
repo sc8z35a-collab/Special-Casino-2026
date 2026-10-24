@@ -321,6 +321,7 @@
   <section class="view" id="view-server" hidden>
     <div class="view-head"><h2>サーバー</h2><span class="muted" id="srv-at"></span></div>
     <p class="hint muted">料金はサーバーが数えた分からの目安です（1ドル150円で計算）。正確な請求額は Cloudflare のダッシュボードの「請求」で確認できます。</p>
+    <div class="srv-usage" id="srv-usage" aria-live="polite"></div>
     <div class="summary srv-live" id="srv-live"></div>
     <div class="card srv-chart">
       <div class="srv-chart-head"><b>直近5分（1秒ごと）</b><span class="srv-key"><i class="k-req"></i>リクエスト <i class="k-bytes"></i>送信量</span><span class="muted" id="srv-chart-note"></span></div>
@@ -329,6 +330,7 @@
     <div class="srv-grid">
       <article class="card" id="srv-plan"></article>
       <article class="card" id="srv-bill"></article>
+      <article class="card" id="srv-breakdown"></article>
       <article class="card" id="srv-db"></article>
       <article class="card" id="srv-vault"></article>
       <article class="card" id="srv-cf"></article>

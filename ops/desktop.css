@@ -604,3 +604,9 @@
   .mac-window .summary .stat:last-child { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; }
   .mac-window .summary .stat:last-child b { font-size: 14px; }
 }
+
+/* the サーバー icon in the dock glows in the month's usage colour (ops.css: .tab.usage-*) */
+.mac-dock .tab.usage-green > img { filter: drop-shadow(0 0 5px var(--u-green, #1f9d55)) drop-shadow(0 2px 2px #0002); }
+.mac-dock .tab.usage-blue > img { filter: drop-shadow(0 0 5px var(--u-blue, #2563c9)) drop-shadow(0 2px 2px #0002); }
+.mac-dock .tab.usage-purple > img { filter: drop-shadow(0 0 5px var(--u-purple, #7c3aed)) drop-shadow(0 2px 2px #0002); }
+.mac-dock .tab.usage-red > img { filter: drop-shadow(0 0 6px var(--u-red, #c53030)) drop-shadow(0 2px 2px #0002); }

@@ -496,6 +496,7 @@
     devUnitCounts();
     if (state.developer) loadPay(true);
     load();
+    loadCounts();
     // /ops/#vault: straight to the vault
     if (location.hash === '#vault') setView('vault');
     loadTeam(true);
@@ -508,6 +509,8 @@
       setCount('detections', r.detections || 0);
       setCount('feedback', r.feedback || 0);
       if (r.speed) useSpeed(r.speed, true);
+      // the サーバー button's colour for the month's usage, from every tab
+      if (r.usage) paintUsageTab(r.usage.tier || '');
     }, function () {});
   }
   // a viewer: still one? (asked every 2 seconds while the page is seen; the answer 401 logs out)
@@ -531,6 +534,7 @@
         return;
       }
       load(true);
+      loadCounts();
       devUnitCounts();
       if (diaryProfile) diaryProfile.refresh();
       if (state.view === 'reports') loadReports(true);
@@ -2633,13 +2637,53 @@
     srvStat(box, 'ライブ通信', fmt(l60.wsOut) + '件/分', '受信 ' + fmt(l60.wsIn) + '件/分');
     srvStat(box, '今日（UTC）', count(r.today.requests) + '回', bytes(r.today.bytes) + ' 送信');
     srvChart(r.rate.history);
+    srvUsage(r);
     srvPlan(r);
     srvBill(r);
+    srvBreakdown(r);
     srvDb(r);
     srvVault(r);
     srvCloudflare(r);
     srvDiscord(r);
     srvMachine(r);
+  }
+  // how full the month's allowances are: the サーバー tab (and its button in the
+  // bar, seen from every tab) turns green past 10%, blue 30%, purple 50%, red 70%
+  var USAGE_TIERS = ['green', 'blue', 'purple', 'red'];
+  var USAGE_NAMES = { green: '10%超', blue: '30%超', purple: '50%超', red: '70%超' };
+  function paintUsageTab(tier) {
+    var tab = document.querySelector('.tab[data-view="server"]');
+    if (!tab) return;
+    USAGE_TIERS.forEach(function (t) { tab.classList.remove('usage-' + t); });
+    if (tier) tab.classList.add('usage-' + tier);
+  }
+  function srvUsage(r) {
+    var e = r.estimate || {}, box = $('#srv-usage'), tier = e.usageTier || '';
+    paintUsageTab(tier);
+    if (!box) return;
+    box.className = 'srv-usage' + (tier ? ' tier-' + tier : '');
+    box.textContent = '';
+    box.appendChild(el('b', '', '今月のサーバー使用量 ' + (Number(e.usagePercent) || 0).toFixed(1) + '%'));
+    if (tier) box.appendChild(el('span', 'srv-usage-tier', USAGE_NAMES[tier]));
+    var p = e.usagePeak;
+    box.appendChild(el('small', 'muted', p ? 'いちばん多い項目：' + p.label + '（込みの分の ' + p.percent.toFixed(1) + '%）' : 'まだ使用量がありません'));
+  }
+  // where this month's sent bytes went: play, the screen view / 観戦 stream, call signalling
+  function srvBreakdown(r) {
+    var card = $('#srv-breakdown');
+    if (!card) return;
+    var b = (r.breakdown && r.breakdown.month) || { game: 0, video: 0, voice: 0, total: 0 };
+    var t = (r.breakdown && r.breakdown.today) || { game: 0, video: 0, voice: 0, total: 0 };
+    var whole = b.game + b.video + b.voice;
+    var share = function (n) { return whole ? n / whole : 0; };
+    var pct = function (n) { return whole ? ' ・' + (n / whole * 100).toFixed(1) + '%' : ''; };
+    srvCard(card, '通信量の内訳（今月）', [
+      ['映像通信（画面を見る・観戦）', bytes(b.video) + pct(b.video), share(b.video)],
+      ['プレイヤーの処理（ゲーム・運営サイト）', bytes(b.game) + pct(b.game), share(b.game)],
+      ['音声（通話の合図）', bytes(b.voice) + pct(b.voice), share(b.voice)],
+      ['合計', bytes(whole)],
+      ['今日（UTC）', '映像 ' + bytes(t.video) + '・処理 ' + bytes(t.game) + '・音声 ' + bytes(t.voice)]
+    ], '通話の音声そのものは端末どうしで直接つながるため、サーバーを通るのは合図だけです。');
   }
   // the developer's Discord notices: on or not, and (the developer) a test
   function srvDiscord(r) {
