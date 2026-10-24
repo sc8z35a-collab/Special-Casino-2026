@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIRS = ['css', 'js', 'fonts', 'icons', 'img', 'sounds', 'video'];
-const FILES = ['index.html', 'manifest.webmanifest'];
+const FILES = ['index.html', 'exit.html', 'manifest.webmanifest'];
 const GENERATED = new Set(['js/version.js']);
 
 function walk(dir, out) {

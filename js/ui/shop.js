@@ -308,6 +308,8 @@
     btn.classList.toggle('on', !!m.charm);
     btn.classList.toggle('none', !n && !m.charm);
     $('#charm-label').textContent = m.charm ? '発動中' : 'お守り加護';
+    $('#btn-charm').setAttribute('aria-label', 'お守り加護・所持' + n + '個' + (m.charm ? '・発動中' : ''));
+    $('#btn-charm').setAttribute('aria-pressed', String(!!m.charm));
   }
 
   function useCharm() {

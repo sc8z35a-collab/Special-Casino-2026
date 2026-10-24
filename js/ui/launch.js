@@ -131,9 +131,29 @@
     return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
   }
 
+  // Native app closes its Activity; browsers may block window.close() for
+  // a tab they did not open. Replace the game with a stopped exit page then.
+  function exitGame() {
+    clearTimeout(maint.timer);
+    if (BR.live) BR.live.close();
+    if (BR.call) BR.call.hangupAll();
+    if (BR.garage3d) BR.garage3d.stop();
+    if (BR.sfx) { BR.sfx.music.stop(); BR.sfx.stopReels(); BR.sfx.suspend(); }
+    try {
+      if (window.TwoStateApp && typeof window.TwoStateApp.exit === 'function') {
+        window.TwoStateApp.exit(); return;
+      }
+    } catch (e) { /* browser fallback */ }
+    try { window.close(); } catch (e) { /* tab belongs to the browser */ }
+    // A separate document stops timers, rendering and any pending requests.
+    location.replace(BR.api.online ? 'exit.html' : 'about:blank');
+  }
+
   function init() {
     if (initialized) return;
     initialized = true;
+    $('#maint-art').src = BR.UI_IMG.maintenance;
+    $('#maint-exit').addEventListener('click', exitGame);
     startSplash();
     try { localStorage.removeItem(INTRO_KEY); } catch (e) { /* nothing kept */ }
     $('#maint-reload').addEventListener('click', function () { BR.sfx.play('click'); location.reload(); });
@@ -142,6 +162,7 @@
 
   BR.launch = {
     init: init,
+    exit: exitGame,
     whenDone: whenDone,
     done: function () { return done; },
     blobUrl: blobUrl,

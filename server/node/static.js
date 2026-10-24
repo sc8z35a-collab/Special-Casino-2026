@@ -26,7 +26,7 @@ const TYPES = {
 const TEXT = new Set(['.html', '.css', '.js', '.json', '.webmanifest', '.svg', '.txt']);
 // (ops/: the operator site, /ops/ — what it shows needs an operator's login;
 // sec/: the security base, /sec/ — likewise; law.html: 特定商取引法に基づく表記, for anyone)
-const ALLOWED = /^\/(?:index\.html|law\.html|manifest\.webmanifest|sw\.js|version\.json|(?:css|js|fonts|icons|img|sounds|video|download|ops|sec)\/[A-Za-z0-9._\/-]+)$/;
+const ALLOWED = /^\/(?:index\.html|law\.html|exit\.html|manifest\.webmanifest|sw\.js|version\.json|(?:css|js|fonts|icons|img|sounds|video|download|ops|sec)\/[A-Za-z0-9._\/-]+)$/;
 
 export function createStatic(root, { transformHtml } = {}) {
   const cache = new Map();   // path -> { mtime, size, body, gz, etag }
