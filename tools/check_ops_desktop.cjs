@@ -32,8 +32,8 @@ const { chromium } = require('playwright');
     const win = page.locator('#mac-window-' + id);
     if (await win.isVisible()) {
       if (await win.evaluate(n => n.classList.contains('is-active'))) return;
-      await page.keyboard.press('Alt+Space');
-      await page.locator('#mac-menu').getByText(await win.getAttribute('aria-label'), { exact: true }).click();
+      // (the system menu no longer lists windows: a window behind comes forward from its Dock icon)
+      await page.locator('.mac-taskbar-edge').hover(); await page.locator('#tabs [data-view="' + id + '"]').click();
     } else { await page.locator('.mac-taskbar-edge').hover(); await page.locator('#tabs [data-view="' + id + '"]').click(); }
     await page.locator('#mac-window-' + id + '.is-active').waitFor({ state: 'visible' });
   }
@@ -73,7 +73,14 @@ const { chromium } = require('playwright');
       await shot(page, 'desktop');
     });
     await check('diary artwork matches the other icon sizes and Dock magnification is clearly visible', async () => {
-      assert.equal(await page.locator('#tabs [data-view="diary"] img').evaluate(n => getComputedStyle(n).scale), '1.42');
+      // (the artwork itself is trimmed to fill its frame: no CSS zoom, and the same opaque share as the others)
+      assert.equal(await page.locator('#tabs [data-view="diary"] img').evaluate(n => getComputedStyle(n).scale), 'none');
+      const fill = await page.locator('#tabs [data-view="diary"] img').evaluate(async n => {
+        const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); x.drawImage(n, 0, 0, 64, 64);
+        const d = x.getImageData(0, 0, 64, 64).data; let minX = 64, maxX = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 40) { const px = (i / 4) % 64; minX = Math.min(minX, px); maxX = Math.max(maxX, px); }
+        return maxX - minX + 1;
+      });
+      assert.ok(fill >= 56, 'diary icon fills its frame: ' + fill);
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       const tab = page.locator('#tabs [data-view="players"]'); await tab.hover();
       assert.ok(await tab.evaluate(n => Number(n.style.getPropertyValue('--dock-scale')) > 1.45));
@@ -134,7 +141,10 @@ const { chromium } = require('playwright');
       await page.locator('#tabs [data-view="players"]').click(); await page.locator('#mac-window-players').waitFor({ state: 'hidden' });
       await page.locator('#tabs [data-view="players"]').click(); await page.locator('#mac-window-players.is-active').waitFor({ state: 'visible' });
       assert.equal(await page.locator('#search').inputValue(), 'PlayerQA');
+      // a visible window behind another comes to the front; once in front, the next click puts it away
       await open(page, 'log'); await page.locator('#tabs [data-view="players"]').click();
+      await page.locator('#mac-window-players.is-active').waitFor({ state: 'visible' });
+      await page.locator('#tabs [data-view="players"]').click();
       await page.locator('#mac-window-players').waitFor({ state: 'hidden' });
       await page.locator('#tabs [data-view="players"]').click();
     });

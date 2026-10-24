@@ -41,7 +41,6 @@
   }
   function picture(name, cls) {
     var img = node('img', cls); img.src = 'assets/' + name + '.webp';
-    if (name === 'diary') img.classList.add('mac-icon-diary');
     img.alt = ''; img.draggable = false; img.width = 64; img.height = 64;
     return img;
   }
@@ -118,8 +117,55 @@
   taskbarEdge.addEventListener('pointerenter', revealTaskbar);
   taskbarEdge.addEventListener('click', revealTaskbar);
   taskbarEdge.addEventListener('focus', revealTaskbar);
-  function revealTaskbar() { document.body.classList.add('mac-dock-revealed'); }
+  function revealTaskbar() { document.body.classList.add('mac-dock-revealed'); showDock(true); }
   dock.addEventListener('pointerleave', function () { document.body.classList.remove('mac-dock-revealed'); });
+  // With the mouse wheel the app bar moves left and right, so no app is cut off at its ends.
+  dock.addEventListener('wheel', function (e) {
+    if (e.ctrlKey || tabs.scrollWidth <= tabs.clientWidth + 1) return;
+    var d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (!d) return;
+    e.preventDefault();
+    tabs.scrollBy({ left: d * (e.deltaMode === 1 ? 32 : 1), behavior: 'auto' });
+  }, { passive: false });
+
+  // The app bar sinks out of sight like a drop of water when the mouse is away from it, and rises
+  // again when the mouse comes to the bottom of the screen (mouse only: a touch screen keeps it).
+  var hoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)');
+  var autoHide = prefs('autohide') !== 'no', dockShown = true, hideTimer = 0;
+  var dockHint = node('span', 'mac-dock-hint'); app.appendChild(dockHint);
+  function canHide() {
+    if (!autoHide || !hoverPointer.matches || app.hidden || menu || overlay || !signedIn) return false;
+    var f = document.activeElement;
+    if (f && dock.contains(f) && f.matches && f.matches(':focus-visible')) return false;
+    return !document.body.classList.contains('mac-dock-revealed') || !dock.matches(':hover');
+  }
+  function showDock(now) {
+    clearTimeout(hideTimer);
+    if (dockShown && !dock.classList.contains('mac-dock-away')) return;
+    dockShown = true;
+    dock.classList.remove('mac-dock-away'); dock.classList.add('mac-dock-back');
+    document.body.classList.remove('mac-dock-hidden');
+  }
+  function hideDock() {
+    if (!dockShown || !canHide()) return;
+    dockShown = false; tooltip.hidden = true;
+    dock.classList.remove('mac-dock-back'); dock.classList.add('mac-dock-away');
+    document.body.classList.add('mac-dock-hidden');
+  }
+  function scheduleHide(ms) { clearTimeout(hideTimer); hideTimer = setTimeout(hideDock, ms === undefined ? 700 : ms); }
+  function nearDock(e) {
+    var p = app.getBoundingClientRect(), cx = p.left + app.clientWidth / 2, half = dock.offsetWidth / 2 + 90;
+    var bottom = p.bottom - e.clientY;
+    return bottom < (dockShown ? dock.offsetHeight + 40 : 46) && Math.abs(e.clientX - cx) < half;
+  }
+  document.addEventListener('pointermove', function (e) {
+    if (e.pointerType !== 'mouse' || !autoHide || !signedIn) return;
+    if (nearDock(e)) showDock(); else if (dockShown) scheduleHide();
+  }, { passive: true });
+  document.documentElement.addEventListener('pointerleave', function () { if (autoHide) scheduleHide(250); });
+  dock.addEventListener('focusin', function () { showDock(); });
+  dock.addEventListener('focusout', function () { if (autoHide) scheduleHide(1200); });
+  hoverPointer.addEventListener('change', function () { if (!hoverPointer.matches) showDock(true); });
   app.appendChild(taskbarEdge);
   tabs.setAttribute('aria-label', '運営アプリケーション');
   tabs.setAttribute('tabindex', '0');
@@ -127,7 +173,8 @@
     var tab = e.target.closest('[data-view]'), w = tab && windows[tab.dataset.view];
     if (!w || internalLaunch || app.hidden || isBlocked()) return;
     e.preventDefault(); e.stopImmediatePropagation();
-    if (w.open && !w.minimized) minimize(w.id); else activate(w.id);
+    // (a window in the background comes to the front; the one in front is put away)
+    if (w.open && !w.minimized && active === w.id) minimize(w.id); else activate(w.id);
   }, true);
 
   APPS.forEach(function (a) {
@@ -329,6 +376,12 @@
       w.node.querySelector('.mac-zoom').setAttribute('aria-pressed', w.zoomed ? 'true' : 'false');
     });
     buildStrips(); layout();
+    var cur = active && windows[active] && windows[active].tab;
+    if (cur && tabs.scrollWidth > tabs.clientWidth) {
+      var l = cur.getBoundingClientRect().left - tabs.getBoundingClientRect().left + tabs.scrollLeft, pad = 40;
+      if (l < tabs.scrollLeft + pad) tabs.scrollLeft = Math.max(0, l - pad);
+      else if (l + cur.offsetWidth > tabs.scrollLeft + tabs.clientWidth - pad) tabs.scrollLeft = l + cur.offsetWidth - tabs.clientWidth + pad;
+    }
   }
   function buildStrips() {
     if (!grouped) return;
@@ -547,10 +600,11 @@
     menuItem('ウインドウを一覧表示', function () { setOverview(true); }, '', !openWindows().length);
     menuItem('ウインドウをタブにまとめる', function () { grouped = !grouped; prefs('tabs', grouped ? 'yes' : 'no'); if (!active) nextWindow(); render(); }, '', false, grouped);
     divider();
-    openWindows().forEach(function (win) { menuItem(win.name + (win.minimized ? '（最小化）' : ''), function () { activate(win.id); }); });
-    if (openWindows().length) divider();
+    // lighter on a slow phone or computer: no blur behind the glass, no gliding
+    menuItem('リキッドグラス（ぼかし）', function () { var flat = document.body.classList.toggle('mac-flat'); prefs('glass', flat ? 'off' : 'on'); }, '', false, !document.body.classList.contains('mac-flat'));
+    menuItem('滑らかなアニメーション', function () { var off = document.body.classList.toggle('mac-reduce-motion'); prefs('motion', off ? 'reduce' : 'full'); }, '', false, !document.body.classList.contains('mac-reduce-motion'));
+    if (hoverPointer.matches) menuItem('アプリ一覧を自動で隠す', function () { autoHide = !autoHide; prefs('autohide', autoHide ? 'yes' : 'no'); if (autoHide) scheduleHide(300); else showDock(true); }, '', false, autoHide);
     menuItem('予備の背景を使う', function () { var on = document.body.classList.toggle('mac-reserve-wallpaper'); prefs('wallpaper', on ? 'reserve' : 'desktop'); }, '', false, document.body.classList.contains('mac-reserve-wallpaper'));
-    menuItem('動きを減らす', function () { var on = document.body.classList.toggle('mac-reduce-motion'); prefs('motion', on ? 'reduce' : 'full'); }, '', false, document.body.classList.contains('mac-reduce-motion'));
     menuItem('デスクトップの使い方', showHelp);
     menuHost.hidden = false;
     var r = trigger.getBoundingClientRect(), p = app.getBoundingClientRect();
@@ -599,6 +653,7 @@
       APPS.forEach(function (a) { var w = windows[a[0]]; stopAnimation(w); w.open = false; w.minimized = false; w.zoomed = false; w.bounds = null; });
     }
     syncPermissions(); render();
+    if (now) { showDock(true); scheduleHide(2600); }
   }
   function syncDialog() {
     var field = document.getElementById('dialog-field'), input = document.getElementById('dialog-input');
@@ -686,6 +741,7 @@
 
   document.body.classList.toggle('mac-reserve-wallpaper', prefs('wallpaper') === 'reserve');
   document.body.classList.toggle('mac-reduce-motion', prefs('motion') === 'reduce');
+  document.body.classList.toggle('mac-flat', prefs('glass') === 'off');
   grouped = prefs('tabs') === 'yes';
   document.body.classList.add('mac-ui'); syncSession(); syncDialog(); syncPermissions(); render();
 })();

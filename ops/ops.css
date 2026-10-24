@@ -823,3 +823,13 @@ body.role-viewer [data-stop], body.role-viewer #srv-dev, body.role-viewer .repor
 .watch-write input { flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
 .watch-back button:disabled, .watch-back input:disabled, .watch-back select:disabled { opacity: .5; cursor: not-allowed; }
 @media (max-width: 720px) { .watch-back { padding: 0; } .watch { border-radius: 0; } .watch-side { flex-basis: 100%; } }
+
+/* 運営ログ「すべて」: 運営 and プレイヤー lines folded person by person */
+.log-section { margin: 14px 2px 6px; font-size: 13px; color: var(--muted); }
+.log-group { margin: 0 0 6px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.log-group > summary { cursor: pointer; padding: 9px 12px; list-style: none; font-size: 14px; }
+.log-group > summary::-webkit-details-marker { display: none; }
+.log-group > summary::before { content: '▸'; display: inline-block; width: 14px; color: var(--muted); }
+.log-group[open] > summary::before { content: '▾'; }
+.log-group > .entry { margin: 0 8px; }
+.log-group[open] { padding-bottom: 6px; }

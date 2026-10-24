@@ -5165,9 +5165,57 @@
       state.log = state.log.concat(r.entries);
       state.logDone = r.entries.length < 200;
       if (!state.log.length) list.appendChild(el('p', 'empty muted', '記録はありません'));
-      r.entries.forEach(function (x) { list.appendChild(logEntry(x)); });
+      // all of them at once: the operators' and the players' lines gathered by person
+      if (!state.logKind) renderLogGroups();
+      else r.entries.forEach(function (x) { list.appendChild(logEntry(x)); });
       $('#log-more').hidden = state.logDone;
     }, fail);
+  }
+  // 「すべて」: 運営 and プレイヤー lines are shown person by person (a fold for each, the newest first
+  // inside it); the security, vault and emergency lines follow as they happened
+  var logOpen = {};
+  function logPerson(x) {
+    var p = x.kind === 'player' && x.actor && x.actor.id ? x.actor : x.kind === 'player' && x.target ? x.target : x.actor;
+    return { id: p && p.id ? p.id : 0, name: (p && p.name) || 'システム' };
+  }
+  function renderLogGroups() {
+    var list = $('#log-list');
+    list.textContent = '';
+    if (!state.log.length) { list.appendChild(el('p', 'empty muted', '記録はありません')); return; }
+    var sections = { operator: { title: '運営', people: {}, order: [] }, player: { title: 'プレイヤー', people: {}, order: [] } }, rest = [];
+    state.log.forEach(function (x) {
+      var sec = sections[x.kind];
+      if (!sec) { rest.push(x); return; }
+      var who = logPerson(x), key = x.kind + ':' + (who.id || who.name);
+      var g = sec.people[key];
+      if (!g) { g = sec.people[key] = { key: key, name: who.name, entries: [] }; sec.order.push(g); }
+      g.entries.push(x);
+    });
+    ['operator', 'player'].forEach(function (k) {
+      var sec = sections[k];
+      if (!sec.order.length) return;
+      var h = el('h3', 'log-section', sec.title + '（' + sec.order.length + '人）');
+      list.appendChild(h);
+      sec.order.forEach(function (g) {
+        var d = el('details', 'log-group');
+        d.open = !!logOpen[g.key];
+        var sum = el('summary');
+        sum.appendChild(el('b', '', g.name));
+        sum.appendChild(el('span', 'muted', ' ' + fmt(g.entries.length) + '件・最新 ' + String(g.entries[0].jst || '').replace(/\.\d+ JST$/, '').slice(5)));
+        d.appendChild(sum);
+        d.addEventListener('toggle', function () { logOpen[g.key] = d.open; });
+        // (the lines inside are built when the fold is first opened)
+        var built = false;
+        function build() { if (built || !d.open) return; built = true; g.entries.forEach(function (x) { d.appendChild(logEntry(x)); }); }
+        d.addEventListener('toggle', build);
+        build();
+        list.appendChild(d);
+      });
+    });
+    if (rest.length) {
+      list.appendChild(el('h3', 'log-section', 'セキュリティ・保管庫・緊急など'));
+      rest.forEach(function (x) { list.appendChild(logEntry(x)); });
+    }
   }
   function verifyLog() {
     var v = $('#log-verify');
