@@ -934,15 +934,15 @@
 .q-lv { gap: 12px; }
 .q-lv-num { font: 800 24px var(--f-num); color: #ffe27a; }
 .q-lv .lv-bar { width: 150px; }
-.q-lv-xp { font-size: 17px; color: #c3b8bb; }
+.q-lv-xp { display: flex; flex-direction: column; gap: 3px; font-size: 17px; color: #c3b8bb; white-space: nowrap; }
+.q-lv-next { font-size: 15px; color: #ffe27a; }
 
 /* A quest (one step of a chain): the badge in its colour, the step on now
-   with its bar, the chain under it, the reward and 受け取る. Colours by the
-   reward: grey < 5k <= blue < 10k <= purple < 20k <= gold < 50k <= red < 100k
-   <= aqua < 1M <= aqua + gold. */
+   with its bar, the chain under it, the reward and 受け取る. Nine supplied
+   backgrounds follow the shared dollar bands in js/game/quests.js. */
 .q-row {
-  --tc: #a7adb5;
-  --tc2: #6b7078;
+  --tc: #a8ef91;
+  --tc2: #368f31;
   position: relative;
   display: flex;
   align-items: center;
@@ -950,9 +950,10 @@
   min-height: 108px;
   padding: 14px 22px 14px 16px;
   border-radius: 16px;
-  background:
-    linear-gradient(115deg, rgba(255, 255, 255, .06) 0%, rgba(255, 255, 255, 0) 38%),
-    linear-gradient(180deg, rgba(30, 12, 16, .9), rgba(12, 4, 7, .92));
+  background-color: #120711;
+  background-image: linear-gradient(90deg, rgba(10, 7, 18, .48), rgba(10, 7, 18, .66) 40%, rgba(10, 7, 18, .58)), var(--q-art, none);
+  background-position: center;
+  background-size: cover;
   box-shadow: inset 0 0 0 1.6px color-mix(in srgb, var(--tc) 55%, transparent), inset 0 1px 0 rgba(255, 255, 255, .12), 0 4px 14px rgba(0, 0, 0, .35);
   overflow: hidden;
 }
@@ -968,10 +969,12 @@
 }
 .q-row.t-blue { --tc: #7aaeff; --tc2: #3a6fd0; }
 .q-row.t-purple { --tc: #b597ff; --tc2: #7a4fe0; }
+.q-row.t-orange { --tc: #ffc18b; --tc2: #d87324; }
 .q-row.t-gold { --tc: #f0c860; --tc2: #c08a1e; }
 .q-row.t-red { --tc: #ff8a7a; --tc2: #d0342a; }
-.q-row.t-aqua { --tc: #6fd6e6; --tc2: #1f9cb4; }
-.q-row.t-prism { --tc: #8fe0e8; --tc2: #e9c46a; }
+.q-row.t-red-gold { --tc: #ffd582; --tc2: #d94a26; }
+.q-row.t-aqua-purple { --tc: #b1eafa; --tc2: #b18ade; }
+.q-row.t-dark { --tc: #e2c49c; --tc2: #74588f; }
 
 /* the badge: a cut gem in the quest's colour with what it counts */
 .q-gem {
@@ -994,7 +997,8 @@
   background: linear-gradient(180deg, rgba(20, 6, 10, .55), rgba(20, 6, 10, .85));
 }
 .q-gem b { position: relative; z-index: 1; font: 800 16px/1 var(--f-num); letter-spacing: .5px; color: var(--tc); text-shadow: 0 0 8px color-mix(in srgb, var(--tc) 70%, transparent); }
-.q-row.t-prism .q-gem { background: linear-gradient(160deg, #e9fbff 0%, #6fd6e6 40%, #e9c46a 100%); }
+.q-row.t-red-gold .q-gem { background: linear-gradient(160deg, #ffe084, #d94a26); }
+.q-row.t-aqua-purple .q-gem { background: linear-gradient(160deg, #8be7fa, #b18ade); }
 
 .q-main { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9px; }
 .q-headline { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -1003,7 +1007,7 @@
 .q-bonus { flex: none; padding: 5px 9px; border-radius: 7px; font: 800 17px/1 var(--f-num); letter-spacing: .5px; }
 .q-bonus.pro { color: #f1deff; background: #793db5; box-shadow: 0 0 12px rgba(185, 125, 255, .45); }
 .q-bonus.ultra { color: #39200a; background: linear-gradient(110deg, #90f0ed, #ffe58d); box-shadow: 0 0 14px rgba(255, 222, 105, .6); }
-.q-note { margin-top: -4px; font-size: 17px; color: #b9adb0; }
+.q-note { margin-top: -4px; font-size: 17px; color: #eee5e9; }
 .q-prog { display: flex; align-items: center; gap: 16px; }
 .q-bar {
   position: relative;
@@ -1028,20 +1032,6 @@
   box-shadow: 0 0 10px color-mix(in srgb, var(--tc) 60%, transparent);
   transition: width .6s cubic-bezier(.16, .84, .3, 1);
 }
-/* a gleam running along the bar */
-.q-bar i::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 60px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .6), rgba(255, 255, 255, 0));
-  transform: translateX(-80px);
-  animation: qBarGleam 2.6s ease-in-out infinite;
-}
-@keyframes qBarGleam { 0%, 40% { transform: translateX(-80px); } 100% { transform: translateX(600px); } }
-.q-row.t-prism .q-bar i { background: linear-gradient(90deg, #6fd6e6, #e9c46a); }
 .q-count { flex: none; min-width: 120px; font: 700 20px var(--f-num); color: #e9dfe1; }
 
 /* a chain: its steps, where it ends and what all of it pays */
@@ -1070,7 +1060,6 @@
   font: 800 28px var(--f-num);
   color: var(--tc);
 }
-.q-row.t-prism .q-reward .amt { background: linear-gradient(90deg, rgba(111, 214, 230, .16), rgba(233, 196, 106, .16)); }
 .q-reward .ic { width: 30px; height: 30px; }
 .q-reward-bonus { display: grid; grid-template-columns: auto auto; gap: 6px 14px; }
 .q-reward-bonus .q-take { grid-column: 2; grid-row: 1 / 3; }
@@ -1096,12 +1085,10 @@
 @keyframes qReady { 50% { opacity: 1; } }
 /* all received: out of the way until the period starts over */
 .q-row.received { opacity: .55; filter: saturate(.6); }
-.q-row.received .q-bar i::after { display: none; }
 .q-got { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 10px; font: 800 19px var(--f-jp); color: #9fe3a8; box-shadow: inset 0 0 0 1.6px rgba(159, 227, 168, .55); transform: rotate(-4deg); white-space: nowrap; }
 .q-got::before { content: '✓'; }
 
 /* 臨時緊急: red, blinking, only this week */
-.q-row.emergency { --tc: #ff7a5a; --tc2: #c81e0a; background: repeating-linear-gradient(135deg, rgba(255, 60, 30, .08) 0 18px, rgba(0, 0, 0, 0) 18px 36px), linear-gradient(180deg, rgba(48, 8, 6, .94), rgba(20, 3, 2, .94)); }
 .q-flag { flex: none; padding: 4px 12px; border-radius: 8px; background: linear-gradient(180deg, #ff5a3a, #c0160c); font-size: 17px; font-weight: 800; color: #fff; box-shadow: 0 0 12px rgba(255, 70, 40, .8); animation: qFlag 1s steps(1) infinite; }
 @keyframes qFlag { 50% { background: linear-gradient(180deg, #ffb347, #e0400c); } }
 
@@ -1118,7 +1105,7 @@
 #q-tabs .tab { min-width: 100px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .q-bar i::after, .q-row.ready::after, .q-flag { animation: none; }
+  .q-row.ready::after, .q-flag { animation: none; }
 }
 
 /* ------------------------------------------------------------ the menu: more tabs --- */
@@ -1234,11 +1221,12 @@
 }
 .me-card:active { transform: scale(.97); }
 .me-card .avatar { flex: none; width: 60px; height: 60px; font-size: 28px; }
-.me-id { min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.me-id { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .me-name { max-width: 340px; font-size: 26px; font-weight: 700; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .me-lv { display: flex; align-items: center; gap: 12px; }
 .me-lv b { font: 800 20px/1 var(--f-num); color: #ffe27a; letter-spacing: .5px; }
 .me-lv .lv-bar { width: 160px; height: 8px; }
+.me-xp { font: 600 15px/1.1 var(--f-num); color: #dfd3bc; white-space: nowrap; }
 #screen-slot.watching .me-card { display: none; }
 
 /* the top middle: the update reminder, then フレンド対決 / 協力スロット */

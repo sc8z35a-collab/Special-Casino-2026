@@ -63,27 +63,39 @@
   }
   // The level shows on my card (top left of the slot screen) and on the
   // quest screen. A new level: the bar on the card fills up to the end and
-  // stays full until the LEVEL UP shows (levelUp), then the number turns
-  // over and the bar starts again from nothing.
+  // stays full until the LEVEL UP shows (levelUp), then starts again from
+  // nothing. The current level and remaining XP update immediately.
   var turn = null, turnTimer = 0;
   function pct(info) { return Math.round(info.into / info.need * 100) + '%'; }
   function renderLevel(levelled) {
     var q = $('#q-lv');
     q.textContent = '';
-    if (xp === null) return;
+    if (xp === null) {
+      clearTimeout(turnTimer); turn = null;
+      $('#lv-num').textContent = '1';
+      $('#lv-fill').style.width = '0%';
+      $('#lv-xp').textContent = '';
+      $('#me-card').setAttribute('aria-label', 'プロフィール');
+      return;
+    }
     var info = LV.info(xp);
+    var next = '次Lv.' + (info.level + 1) + 'まで あと' + U.fmt(Math.ceil(info.need - info.into)) + ' XP';
+    $('#lv-num').textContent = info.level;
+    $('#lv-xp').textContent = next;
+    $('#me-card').setAttribute('aria-label', 'プロフィール・Lv.' + info.level + '・' + next);
     if (levelled || turn) {
       turn = info;
       $('#lv-fill').style.width = '100%';
       clearTimeout(turnTimer);
       turnTimer = setTimeout(turnOver, 20000);
     } else {
-      $('#lv-num').textContent = info.level;
       $('#lv-fill').style.width = pct(info);
     }
     q.appendChild(el('b', 'q-lv-num', 'Lv.' + info.level));
     q.appendChild(levelBar(info));
-    q.appendChild(el('span', 'q-lv-xp', U.fmt(info.into) + ' / ' + U.fmt(info.need) + ' XP'));
+    var detail = el('span', 'q-lv-xp', U.fmt(info.into) + ' / ' + U.fmt(info.need) + ' XP');
+    detail.appendChild(el('small', 'q-lv-next', next));
+    q.appendChild(detail);
   }
 
   /* ------------------------------------------------------------ notices --- */
@@ -442,7 +454,8 @@
     var n = c.steps.length, i = c.cur < 0 ? n - 1 : c.cur;
     var def = c.steps[i].def, st = c.steps[i].st, state = chainState(c);
     var bonus = st.reward;
-    var r = el('div', 'q-row t-' + Q.tier(def.reward) + ' ' + state + (c.emergency ? ' emergency' : '') + (n > 1 ? ' chain' : ''));
+    var dollars = bonus ? bonus.dollars : def.reward;
+    var r = el('div', 'q-row t-' + Q.tier(dollars) + ' ' + state + (c.emergency ? ' emergency' : '') + (n > 1 ? ' chain' : ''));
     if (bonus) r.classList.add('bonus-' + bonus.mode);
     r.dataset.quest = def.id;
     var gem = el('i', 'q-gem');

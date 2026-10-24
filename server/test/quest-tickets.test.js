@@ -31,18 +31,18 @@ test('additional combo, hub, clear and daily transfer stages have the requested 
   assert.ok(['5h-join2', '5h-join6', '5h-clear10', '5h-clear60'].every(id => completed.includes(id)));
 });
 
-test('level rewards include every crossed level and every multiple of five, including 25 and above', () => {
+test('winning level draws include every crossed level and every multiple of five, including 25 and above', () => {
   const state = {};
   assert.deepEqual(questTickets(state), { '5h': 0, day: 0 });
   for (let level = 2; level <= 100; level++) {
-    const gain = grantLevelTickets(state, LEVEL.at(level - 1), LEVEL.at(level));
+    const gain = grantLevelTickets(state, LEVEL.at(level - 1), LEVEL.at(level), () => 0);
     assert.deepEqual(gain, { '5h': 1, day: level % 5 === 0 ? 1 : 0 });
     assert.deepEqual(questTickets(state), { '5h': level - 1, day: Math.floor(level / 5) });
   }
   const jumped = {};
-  assert.deepEqual(grantLevelTickets(jumped, LEVEL.at(4), LEVEL.at(31)), { '5h': 27, day: 6 });
-  grantLevelTickets(jumped, LEVEL.at(31), LEVEL.at(31));
-  grantLevelTickets(jumped, LEVEL.at(31), LEVEL.at(2));
+  assert.deepEqual(grantLevelTickets(jumped, LEVEL.at(4), LEVEL.at(31), () => 0), { '5h': 27, day: 6 });
+  grantLevelTickets(jumped, LEVEL.at(31), LEVEL.at(31), () => { throw new Error('no new level'); });
+  grantLevelTickets(jumped, LEVEL.at(31), LEVEL.at(2), () => { throw new Error('no new level'); });
   assert.deepEqual(questTickets(readQuests(JSON.stringify(jumped))), { '5h': 27, day: 6 });
   advance(jumped, [['spin', 1]], NOW + 5 * 3600000);
   assert.deepEqual(questTickets(jumped), { '5h': 27, day: 6 }, 'natural period changes preserve tickets');
@@ -113,7 +113,7 @@ for (const bulk of [false, true]) {
   });
 }
 
-test('bulk XP that crosses several levels awards every five-hour ticket', async t => {
+test('winning draws during bulk XP grant a five-hour ticket for each crossed level', async t => {
   const s = await startServer({ quests: true });
   t.after(() => s.stop());
   const a = await s.register('JumpTickets');
@@ -177,4 +177,61 @@ test('period rollover invalidates stale reset requests while preserving both tic
   const later = NOW + 5 * 3600000;
   assert.throws(() => resetQuestPeriod(state, '5h', { start: p.start, version: p.resetVersion }, later), e => e.code === 'quests_changed');
   assert.deepEqual(questTickets(state), { '5h': 2, day: 3 });
+});
+
+test('ticket draws have exact 10/100 and 30/100 boundaries and remain independent', () => {
+  const totals = { '5h': 0, day: 0 };
+  for (let draw = 0; draw < 100; draw++) {
+    const state = {};
+    const gain = grantLevelTickets(state, LEVEL.at(4), LEVEL.at(5), () => draw);
+    assert.deepEqual(gain, { '5h': draw < 10 ? 1 : 0, day: draw < 30 ? 1 : 0 });
+    totals['5h'] += gain['5h']; totals.day += gain.day;
+    assert.deepEqual(questTickets(state), gain);
+  }
+  assert.deepEqual(totals, { '5h': 10, day: 30 });
+  const state = {}, draws = [99, 29];
+  assert.deepEqual(grantLevelTickets(state, LEVEL.at(4), LEVEL.at(5), () => draws.shift()), { '5h': 0, day: 1 });
+  assert.deepEqual(questTickets(state), { '5h': 0, day: 1 });
+  assert.equal(draws.length, 0);
+  let calls = 0;
+  assert.deepEqual(grantLevelTickets({}, LEVEL.at(5), LEVEL.at(6), () => { calls++; return 0; }), { '5h': 1, day: 0 });
+  assert.equal(calls, 1, 'nonmilestone levels do not draw daily tickets');
+});
+
+test('missed draws do not change inventory, including when jumping levels', () => {
+  const state = { tickets: { '5h': 3, day: 4 } };
+  let calls = 0;
+  assert.deepEqual(grantLevelTickets(state, LEVEL.at(4), LEVEL.at(16), () => { calls++; return 99; }), { '5h': 0, day: 0 });
+  assert.equal(calls, 15, '12 level draws and three milestone draws');
+  assert.deepEqual(questTickets(state), { '5h': 3, day: 4 });
+});
+
+test('a daily-only draw persists on spin XP even with quest progress disabled', async t => {
+  const draws = [99, 29];
+  const s = await startServer({ quests: false, questTicketRoll: () => {
+    assert.ok(draws.length > 0, 'draws must not repeat on reads/retries'); return draws.shift();
+  } });
+  t.after(() => s.stop());
+  const p = await s.register('DailyOnly');
+  s.setUser(p.me.id, { xp: LEVEL.at(5) - 1, tokens: 10000 });
+  const spin = await s.call('POST', '/api/spin', { token: p.token, body: { bet: 100 } });
+  assert.equal(spin.status, 200);
+  assert.deepEqual(spin.questTickets, { '5h': 0, day: 1 });
+  assert.deepEqual((await s.call('GET', '/api/me', { token: p.token })).me.questTickets, { '5h': 0, day: 1 });
+  assert.equal(draws.length, 0);
+});
+
+test('losing quest-claim draws cannot be rerolled by claiming or refreshing again', async t => {
+  let calls = 0;
+  const s = await startServer({ quests: true, questTicketRoll: () => { calls++; return 99; } });
+  t.after(() => s.stop());
+  const p = await s.register('NoReroll'), state = {};
+  advance(state, [['spin', 2]], Date.now());
+  s.setUser(p.me.id, { xp: LEVEL.at(5) - 30, quests: JSON.stringify(state) });
+  const claim = () => s.call('POST', '/api/quests/claim', { token: p.token, body: {} });
+  assert.deepEqual((await claim()).tickets, { '5h': 0, day: 0 });
+  assert.equal(calls, 2);
+  assert.deepEqual((await claim()).tickets, { '5h': 0, day: 0 });
+  await s.call('GET', '/api/quests', { token: p.token });
+  assert.equal(calls, 2);
 });

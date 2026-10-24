@@ -18,6 +18,7 @@ const PERIODS = QUESTS.periods;
 const MAX = new Set(QUESTS.maxMetrics);
 const BONUS = QUESTS.bonuses;
 const drawBonus = () => randomInt(BONUS.rolls);
+const drawTicket = () => randomInt(100);
 
 function rewardFor(q, bonus) {
   const mode = bonus === 'pro' || bonus === 'ultra' ? bonus : 'normal';
@@ -48,10 +49,15 @@ export function questTickets(state) {
   return { '5h': count('5h'), day: count('day') };
 }
 
-export function grantLevelTickets(state, beforeXp, afterXp) {
+export function grantLevelTickets(state, beforeXp, afterXp, roll = drawTicket) {
   const before = LEVEL.of(beforeXp), after = LEVEL.of(afterXp);
-  const gained = { '5h': Math.max(0, after - before), day: Math.max(0, Math.floor(after / 5) - Math.floor(before / 5)) };
-  if (gained['5h']) {
+  const gained = { '5h': 0, day: 0 };
+  // Each reached level gets its own draw; the milestone draw is independent.
+  for (let level = before + 1; level <= after; level++) {
+    if (roll() < 10) gained['5h']++;
+    if (level % 5 === 0 && roll() < 30) gained.day++;
+  }
+  if (gained['5h'] || gained.day) {
     const tickets = questTickets(state);
     state.tickets = { '5h': tickets['5h'] + gained['5h'], day: tickets.day + gained.day };
   }

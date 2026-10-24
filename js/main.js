@@ -28,6 +28,9 @@
     function svg(markup) { return url(BR.svgURL(markup)); }
     Object.keys(map).forEach(function (k) { css += '.ic-' + k + '{background-image:' + svg(map[k]) + '}\n'; });
     var art = BR.UI_IMG;
+    Object.keys(art.questTiers).forEach(function (tier) {
+      css += '.q-row.t-' + tier + '{--q-art:' + url(art.questTiers[tier]) + '}\n';
+    });
     css += '.ic-chip{background-image:' + url(art.chip) + '}\n';
     css += '.ic-coin{background-image:' + url(art.coin) + '}\n';
     css += '.ic-dollar{background-image:' + url(art.dollar) + '}\n';

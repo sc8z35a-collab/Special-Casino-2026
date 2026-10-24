@@ -232,15 +232,17 @@
       .sort(function (a, b) { return a.goal - b.goal; });
   }
 
-  // the colour of a quest by its reward
+  // Shared dollar reward bands; PRO/ULTRA rows use their displayed dollar payout.
   function tier(reward) {
-    if (reward >= 1000000) return 'prism';   // 水色と金色
-    if (reward >= 100000) return 'aqua';
-    if (reward >= 50000) return 'red';
-    if (reward >= 20000) return 'gold';
-    if (reward >= 10000) return 'purple';
-    if (reward >= 5000) return 'blue';
-    return 'gray';
+    if (reward >= 2000000) return 'dark';
+    if (reward >= 1000000) return 'aqua-purple';
+    if (reward >= 700000) return 'red-gold';
+    if (reward >= 300000) return 'red';
+    if (reward >= 100000) return 'gold';
+    if (reward >= 70000) return 'orange';
+    if (reward >= 40000) return 'purple';
+    if (reward >= 20000) return 'blue';
+    return 'green';
   }
 
   BR.QUESTS = {

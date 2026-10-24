@@ -10,6 +10,17 @@
     exit: 'img/ui/lowpoly/exit.webp',
     shop: 'img/ui/lowpoly/shop.webp',
     questBadges: { pro: 'img/ui/lowpoly/quest-pro.webp', ultra: 'img/ui/lowpoly/quest-ultra.webp' },
+    questTiers: {
+      green: 'img/ui/quest-tiers/green.webp',
+      blue: 'img/ui/quest-tiers/blue.webp',
+      purple: 'img/ui/quest-tiers/purple.webp',
+      orange: 'img/ui/quest-tiers/orange.webp',
+      gold: 'img/ui/quest-tiers/gold.webp',
+      red: 'img/ui/quest-tiers/red.webp',
+      'red-gold': 'img/ui/quest-tiers/red-gold.webp',
+      'aqua-purple': 'img/ui/quest-tiers/aqua-purple.webp',
+      dark: 'img/ui/quest-tiers/dark.webp'
+    },
     pill: 'img/ui/pill.webp',
     pillGet: 'img/ui/pill-get.webp',
     pillMax: 'img/ui/pill-max.webp',

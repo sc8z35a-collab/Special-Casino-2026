@@ -21,7 +21,7 @@ test('quest periods start 2026-10-18 9:00 Japan time: every 5 h, day, week (å”å
   assert.deepEqual(QUESTS.range('special', Date.UTC(2031, 0, 18)), { k: 0, start: QUESTS.epoch, end: 0 });
   // every quest pays $; ids are unique
   assert.equal(new Set(QUESTS.list.map((q) => q.id)).size, QUESTS.list.length);
-  assert.deepEqual([2000, 5000, 10000, 20000, 50000, 100000, 1000000].map(QUESTS.tier), ['gray', 'blue', 'purple', 'gold', 'red', 'aqua', 'prism']);
+  assert.deepEqual([2000, 5000, 10000, 20000, 50000, 100000, 1000000].map(QUESTS.tier), ['green', 'green', 'green', 'blue', 'purple', 'gold', 'aqua-purple']);
   assert.deepEqual([0, 99, 100, 299, 300, 600].map(LEVEL.of), [1, 1, 2, 2, 3, 4]);
 });
 
