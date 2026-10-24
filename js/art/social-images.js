@@ -102,14 +102,23 @@
     css.rel = 'stylesheet';
     css.href = 'css/profile-custom.css';
     document.head.appendChild(css);
-    var art = document.createElement('script');
-    art.src = 'js/art/profile-images.js';
-    art.onload = function () {
-      var script = document.createElement('script');
-      script.src = 'js/ui/profile-custom.js';
-      document.body.appendChild(script);
-    };
-    document.body.appendChild(art);
+    var assets = [
+      'profile-images.js', 'profile-images-2.js', 'profile-images-3.js',
+      'profile-images-4.js', 'profile-images-5.js', 'profile-images-6.js'
+    ];
+    function loadAsset(index) {
+      if (index === assets.length) {
+        var script = document.createElement('script');
+        script.src = 'js/ui/profile-custom.js';
+        document.body.appendChild(script);
+        return;
+      }
+      var art = document.createElement('script');
+      art.src = 'js/art/' + assets[index];
+      art.onload = function () { loadAsset(index + 1); };
+      document.body.appendChild(art);
+    }
+    loadAsset(0);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadProfileCustomisations);
   else loadProfileCustomisations();
