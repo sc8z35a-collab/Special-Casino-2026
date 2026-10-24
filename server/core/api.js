@@ -96,16 +96,25 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const tx = (fn) => db.tx(fn);
   const quota = createQuota(db, { requests: config.dailyRequestLimit, megabytes: config.dailyMbLimit });
   const stats = createStats({ db, q, config, host: host || {}, defer });
-  // live pushes: counted for the サーバー tab, and towards the bytes sent when a cap is set
+  // live pushes: counted for the サーバー tab, and towards the bytes sent when a cap is set. Their
+  // bytes go into the tab's breakdown by what they are for: a friend's 観戦 (and the start / stop of an
+  // operator's screen view) is 映像通信, a call's signalling is 音声 (the voice itself goes between the
+  // phones), everything else is the game's own.
+  const PUSH_KIND = { watch: 'video', view: 'video', call: 'voice' };
+  const pushSize = (data) => String(JSON.stringify(data) || '').length + 32;
   const live = {
     send(userId, event, data) {
       stats.wsOut();
-      if (quota.on) quota.sent(JSON.stringify(data).length + 32);
+      const size = pushSize(data);
+      if (quota.on) quota.sent(size);
+      if (hostLive.isOnline(userId)) stats.pushed(size, PUSH_KIND[event]);
       return hostLive.send(userId, event, data);
     },
     broadcast(event, data, filter) {
       stats.wsOut(hostLive.onlineCount());
-      if (quota.on) quota.sent((JSON.stringify(data).length + 32) * hostLive.onlineCount());
+      const size = pushSize(data);
+      if (quota.on) quota.sent(size * hostLive.onlineCount());
+      stats.pushed(size * hostLive.onlineCount(), PUSH_KIND[event]);
       return hostLive.broadcast(event, data, filter);
     },
     isOnline: (id) => hostLive.isOnline(id),

@@ -1278,6 +1278,7 @@ button.more-card:active { transform: scale(.98); }
 .watch-tools { position: absolute; left: 240px; top: 98px; z-index: 6; display: flex; align-items: center; gap: 12px; }
 .watch-tools[hidden] { display: none; }
 .tool-btn { height: 52px; padding: 0 22px 0 14px; display: flex; align-items: center; gap: 10px; border-radius: 26px; background: rgba(0, 0, 0, .58); box-shadow: inset 0 0 0 2px rgba(120, 255, 140, .55); font-size: 21px; font-weight: 700; color: #eafbe9; }
+.tool-btn[hidden] { display: none; }
 .tool-btn .ic { width: 30px; height: 30px; }
 .tool-btn:active { transform: scale(.95); }
 /* being watched: who (tap: pick who to talk with) */

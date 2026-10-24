@@ -71,3 +71,32 @@ test('GET /api/ops/server carries the usage share, its colour and the breakdown'
     await s.stop();
   }
 });
+
+test('the breakdown counts what is pushed live: a friend\'s 観戦 as 映像通信, the rest as the game\'s own', async () => {
+  const s = await startServer();
+  try {
+    const taku = await s.register('TAKU');
+    const a = await s.register('みる人');
+    const b = await s.register('みられる人');
+    await s.befriend(a, b);
+    s.setUser(b.me.id, { tokens: 100000 });
+    const la = await s.listen(a), lb = await s.listen(b);
+    const read = async () => (await s.call('GET', '/api/ops/server', { token: taku.token })).breakdown.month;
+    const before = await read();
+    const joined = await s.call('POST', '/api/watch', { token: a.token, body: { user: b.me.id, on: true } });
+    assert.equal(joined.status, 200, JSON.stringify(joined));
+    for (let i = 0; i < 3; i++) {
+      assert.equal((await s.call('POST', '/api/spin', { token: b.token, body: { bet: 100 } })).status, 200);
+      await new Promise((r) => setTimeout(r, 1100));
+    }
+    await la.waitFor('watch', (d) => d.type === 'spin');
+    const after = await read();
+    assert.ok(after.video > before.video, `映像通信 ${before.video} → ${after.video}`);
+    assert.ok(after.video - before.video < 20000, 'a few spins are a few KB, not a video');
+    assert.ok(after.game > before.game);
+    la.close();
+    lb.close();
+  } finally {
+    await s.stop();
+  }
+});

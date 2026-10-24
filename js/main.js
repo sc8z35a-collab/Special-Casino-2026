@@ -109,6 +109,9 @@
       : 'scale(' + s + ')';
     var dpr = Math.min(window.devicePixelRatio || 1, 3);
     var res = s * dpr;
+    // watching a friend: no more than the chosen quality (720P / 460P) is drawn (js/ui/watchquality.js)
+    var cap = BR.watchQuality ? BR.watchQuality.resCap(H) : Infinity;
+    if (res > cap) res = cap;
     // keep full-screen canvases within a sane pixel budget on huge displays
     var maxPx = 4.2e6;
     if (W * H * res * res > maxPx) res = Math.sqrt(maxPx / (W * H));
@@ -116,7 +119,7 @@
     view.W = W; view.H = H; view.s = s; view.res = res; view.portrait = portrait;
     if (!changed) return;
     view.ready = true;
-    reels.resize(Math.max(1, Math.min(s * dpr, 3)));
+    reels.resize(Math.min(Math.max(1, Math.min(s * dpr, 3)), cap));
     fx.resize(W, H, res);
     if (BR.juice) BR.juice.resize(W, H, res);
   }
@@ -448,6 +451,7 @@
     renderWallet(false);
     renderBet();
     BR.shop.renderCharm();
+    if (BR.watchQuality) BR.watchQuality.enter();
   }
   function watchExit() {
     var w = game.watch;
@@ -461,6 +465,7 @@
     renderWallet(false);
     renderBet();
     BR.shop.renderCharm();
+    if (BR.watchQuality) BR.watchQuality.exit();
   }
   function watchBalance(b) {
     if (!game.watch) return;
