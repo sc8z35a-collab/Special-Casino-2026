@@ -110,7 +110,7 @@ const ROUNDS = 100000;
 export function cleanPassword(raw) {
   const pw = String(raw ?? '');
   const len = Array.from(pw).length;
-  if (len < 4) throw new ApiError(400, 'password_short', 'パスワードは4文字以上にしてください');
+  if (len < 8) throw new ApiError(400, 'password_short', 'パスワードは8文字以上にしてください');
   if (len > 64) throw new ApiError(400, 'password_long', 'パスワードは64文字までです');
   return pw;
 }
@@ -128,6 +128,8 @@ export async function hashPassword(pw) {
 }
 
 export async function verifyPassword(pw, stored) {
+  // Check stored credentials without the policy for newly chosen passwords.
+  // Accounts created with 4-7 characters must still be able to sign in.
   const m = /^pbkdf2\$(\d+)\$([\w-]+)\$([\w-]+)$/.exec(String(stored || ''));
   if (!m) return false;
   const want = Buffer.from(m[3], 'base64url');
