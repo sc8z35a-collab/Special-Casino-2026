@@ -12,8 +12,9 @@ test('upgrading existing rentals clamps each old balance and preserves the inten
   const raw = new DatabaseSync(':memory:');
   try {
     raw.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
-    for (const sql of MIGRATIONS.slice(0, -1).flat()) raw.exec(sql);
-    raw.prepare("INSERT INTO meta VALUES ('schema', ?)").run(String(MIGRATIONS.length - 1));
+    const rentalMigration = MIGRATIONS.findIndex(batch => batch.some(sql => sql.includes('ADD COLUMN rent_paused')));
+    for (const sql of MIGRATIONS.slice(0, rentalMigration).flat()) raw.exec(sql);
+    raw.prepare("INSERT INTO meta VALUES ('schema', ?)").run(String(rentalMigration));
     const insert = raw.prepare("INSERT INTO cars (owner_id, model, created_at, acquired_at, rent_start, rent_until, rent_earned) VALUES (1, 'two-state-sedan', 1, 1, 1, ?, ?)");
     insert.run(0, 9000000); insert.run(10, 4500000); insert.run(0, 1000000);
     migrate({ exec: sql => raw.exec(sql), prepare: sql => raw.prepare(sql), tx: fn => fn() });

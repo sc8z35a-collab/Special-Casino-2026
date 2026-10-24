@@ -30,8 +30,6 @@ export const FRUITS = new Map(RULES.fruits.map((f) => [f.id, f]));
 // `weights`: other odds than the usual ones (a hub's, RULES.hub.weights)
 export function spin(bet, weights) { return BR.engine.spin(bet, weights); }
 export function evaluate(line, bet) { return BR.engine.evaluate(line, bet); }
-// today's price of a paid icon and its discount in percent
-export function iconSale(avatar, day) { return { price: BR.sale.price(avatar, day), pct: BR.sale.pct(avatar.id, day) }; }
 // a Shop item at `now` (on sale 5 hours a day: { price, pct, on, start, end, next })
 export function shopSale(item, now = Date.now()) { return BR.sale.shop(item, now); }
 // the Car Owner sale on at `now` (or null), and a car's price with it

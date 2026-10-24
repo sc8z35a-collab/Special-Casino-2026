@@ -39,7 +39,7 @@ export async function startServer(overrides = {}, { warm = true } = {}) {
     return { ...json, status: res.status };
   }
 
-  async function register(name, { password = PASSWORD, avatar = 'bald', device } = {}) {
+  async function register(name, { password = PASSWORD, avatar = 'traveler-green', device } = {}) {
     const r = await call('POST', '/api/register', { body: { name: name || `ユーザー${++seq}`, password, avatar }, headers: device ? { 'X-Device': device } : {} });
     assert.equal(r.status, 200, JSON.stringify(r));
     return r;

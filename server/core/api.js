@@ -22,7 +22,7 @@ import {
 import { Limiter } from './ratelimit.js';
 import {
   RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, VIP, RECEIPTS,
-  spin as spinReels, evaluate as evaluateLine, iconSale, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
+  spin as spinReels, evaluate as evaluateLine, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
 import { createPeter, reservedName } from './peter.js';
@@ -804,16 +804,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     };
   }
 
-  // Today's prices of the paid icons (always on sale, see js/game/sale.js).
+  // Fixed prices; the server validates the amount shown before charging it.
   function iconShop() {
-    const day = utcDay();
     return {
-      day,
-      until: nextUtcMidnight(),
-      items: [...AVATARS.values()].filter((a) => a.price > 0).map((a) => {
-        const s = iconSale(a, day);
-        return { id: a.id, price: a.price, salePrice: s.price, pct: s.pct };
-      })
+      items: [...AVATARS.values()].filter((a) => a.price > 0)
+        .map((a) => ({ id: a.id, price: a.price, rarity: a.rarity }))
     };
   }
 
@@ -1517,10 +1512,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const body = await req.json();
       const { name, key } = cleanName(body.name);
       const password = cleanPassword(body.password);
-      const avatar = String(body.avatar || 'bald');
+      const avatar = String(body.avatar || RULES.defaultAvatar);
       const choice = AVATARS.get(avatar);
       if (!choice) throw new ApiError(400, 'bad_avatar', 'アイコンを選んでください');
-      if (choice.price > 0) throw new ApiError(403, 'locked', 'このアイコンはレアのため、今は選べません');
+      if (choice.price > 0) throw new ApiError(403, 'locked', 'このアイコンは登録後に購入できます');
       if (config.registrationsPerIp > 0) {
         const n = q('SELECT COUNT(*) AS n FROM users WHERE created_ip = ? AND created_at > ?').get(req.ip, Date.now() - 86400000).n;
         if (n >= config.registrationsPerIp) throw new ApiError(429, 'too_many_accounts', 'この接続からはこれ以上アカウントを作成できません');
@@ -2187,28 +2182,26 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { me: meDto(getUser(u.id)) };
     },
 
-    // Charged at today's sale price. `price` is what the player was shown: if
-    // the sale changed at midnight in between, nothing is charged.
+    // Prices do not depend on the date; unowned icons require a purchase.
     'POST /api/avatar/buy': async (req, u) => {
       const body = await req.json();
       rate(limit.shop, u.id);
       const a = AVATARS.get(String(body.id || ''));
       if (!a || !(a.price > 0)) throw new ApiError(400, 'bad_avatar', 'このアイコンは購入できません');
-      const sale = iconSale(a, utcDay());
-      if (body.price !== undefined && Number(body.price) !== sale.price) {
-        throw new ApiError(409, 'price_changed', `セール価格が変わりました（今日は $${fmt(sale.price)}）`, { iconShop: iconShop() });
+      if (body.price !== undefined && Number(body.price) !== a.price) {
+        throw new ApiError(409, 'price_changed', `価格を確認してください（$${fmt(a.price)}）`, { iconShop: iconShop() });
       }
       tx(() => {
         const cur = getUser(u.id);
         const owned = ownedAvatars(cur);
         if (owned.includes(a.id)) throw new ApiError(409, 'owned', 'すでに持っています');
-        if (cur.dollars < sale.price) throw new ApiError(409, 'insufficient', '$が足りません');
+        if (cur.dollars < a.price) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, avatars = ?, avatar = ?, rev = rev + 1 WHERE id = ?')
-          .run(sale.price, [...owned, a.id].join(','), a.id, cur.id);
+          .run(a.price, [...owned, a.id].join(','), a.id, cur.id);
       });
       const me = meDto(balanceChanged(u.id));
       afterSpend(u.id);
-      return { me, paid: sale.price, pct: sale.pct };
+      return { me, paid: a.price };
     },
 
     /* ----- cars ----- */
