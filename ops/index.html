@@ -7,14 +7,16 @@
 <!-- the operator site's own live connection: WebSocket here (the Node server says sse) -->
 <meta name="br-mode" content="online" data-live="ws">
 <meta name="referrer" content="no-referrer">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#d8e4ee">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>TWO STATE サーバー運営サイト</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="/icons/ops-192.png" type="image/png">
-<link rel="apple-touch-icon" href="/icons/ops-180.png">
+<link rel="icon" href="assets/site-192.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/site-180.png">
 <link rel="stylesheet" href="ops.css">
+<link rel="stylesheet" href="desktop.css">
+<link rel="preload" as="image" href="assets/wallpaper-login.webp">
 </head>
 <body>
 <div class="frame" id="frame">
@@ -32,27 +34,30 @@
 <!-- the first time: the operator's name and password -->
 <main class="login" id="login" hidden>
   <form class="login-card" id="login-form" autocomplete="on" novalidate>
-    <div class="brand"><span class="brand-mark">TS</span><span>TWO STATE</span></div>
+    <img class="mac-login-avatar" src="assets/operators.webp" alt="" width="96" height="96">
+    <div class="brand"><span>TWO STATE</span></div>
     <h1>サーバー運営サイト</h1>
     <p class="muted">運営者のアカウントだけがログインできます（入力は最初の1回だけ）。</p>
-    <label class="field"><span>名前</span><input id="login-name" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
-    <label class="field"><span>パスワード</span><input id="login-pass" name="password" type="password" autocomplete="current-password" required></label>
+    <label class="field"><span>名前</span><input id="login-name" name="username" type="text" placeholder="名前" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+    <label class="field"><span>パスワード</span><input id="login-pass" name="password" type="password" placeholder="パスワード" autocomplete="current-password" required></label>
     <p class="error" id="login-error" role="alert"></p>
     <button class="btn primary wide" type="submit" id="login-go">ログイン</button>
   </form>
+  <div class="mac-login-actions"><button type="button" data-mac-reload><span aria-hidden="true">↻</span>再読み込み</button><a href="/"><span aria-hidden="true">⌂</span>ゲームへ戻る</a></div>
 </main>
 
 <!-- the first look of the day: ログイン to come in (written in the developer's ログインログ) -->
 <main class="login" id="enter" hidden>
   <div class="login-card enter-card">
-    <div class="brand"><span class="brand-mark">TS</span><span>TWO STATE</span></div>
+    <img class="mac-login-avatar" src="assets/operators.webp" alt="" width="96" height="96">
+    <div class="brand"><span>TWO STATE</span></div>
     <h1>サーバー運営サイト</h1>
     <p class="muted" id="enter-day"></p>
     <div class="enter-who"><span class="kind" id="enter-role"></span><b id="enter-name"></b></div>
     <p class="error" id="enter-error" role="alert"></p>
     <button class="btn primary wide" type="button" id="enter-go">ログイン</button>
-    <button class="btn ghost small wide" type="button" id="enter-other">別のアカウントでログイン</button>
   </div>
+  <div class="mac-login-actions"><button type="button" data-mac-reload><span aria-hidden="true">↻</span>再読み込み</button><button type="button" id="enter-other"><span aria-hidden="true">⇄</span>別のアカウントでログイン</button><a href="/"><span aria-hidden="true">⌂</span>ゲームへ戻る</a></div>
 </main>
 
 <div class="app" id="app" hidden>
@@ -463,6 +468,8 @@
 </div>
 
 <script src="vault-upload.js"></script>
+<!-- Presentation only: the existing operator handlers and API calls stay in ops.js. -->
+<script src="desktop.js"></script>
 <script src="ops.js"></script>
 </body>
 </html>
