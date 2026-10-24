@@ -1,37 +1,82 @@
-/* Optional per-scene artwork. Every file is local; no network image hosts.
- * The file:// single-file build replaces the relative paths with data URIs.
- */
+/* Pictures of the online features and the start screen video. Paths are
+   written out in full so tools/build_single.py can embed them. */
 (function (BR) {
   'use strict';
 
-  // Tile / face art. The renderer falls back to the procedural look if a file is absent.
   BR.SOCIAL_IMG = {
-    tiles: {
-      bamboo: 'img/tiles/bamboo.webp',
-      characters: 'img/tiles/characters.webp',
-      dots: 'img/tiles/dots.webp',
-      honors: 'img/tiles/honors.webp'
+    avatars: {
+      'traveler-green': 'img/avatars/traveler-green.webp',
+      'adventurer-blue': 'img/avatars/adventurer-blue.webp',
+      'magician-purple': 'img/avatars/magician-purple.webp',
+      'dealer-purple': 'img/avatars/dealer-purple.webp',
+      'adventurer-gold': 'img/avatars/adventurer-gold.webp',
+      'knight-gold': 'img/avatars/knight-gold.webp',
+      'karate-red': 'img/avatars/karate-red.webp',
+      'rogue-red': 'img/avatars/rogue-red.webp',
+      'swordsman-red': 'img/avatars/swordsman-red.webp',
+      'pilot-cyan': 'img/avatars/pilot-cyan.webp',
+      'explorer-cyan': 'img/avatars/explorer-cyan.webp',
+      'healer-cyan': 'img/avatars/healer-cyan.webp',
+      'gambler-secret': 'img/avatars/gambler-secret.webp',
+      'adam-secret': 'img/avatars/adam-secret.webp',
+      // the NPCs マイクソン (once ピーター) and ジョンソン, and Ice Smoker公式 (not players' icons)
+      peter: 'img/avatars/peter.webp',
+      johnson: 'img/avatars/johnson.webp',
+      official: 'img/avatars/official.webp'
     },
-    faces: {
-      peter: 'img/faces/peter.webp',
-      job: 'img/faces/job.webp',
-      butters: 'img/faces/butters.webp',
-      cartman: 'img/faces/cartman.webp',
-      kenny: 'img/faces/kenny.webp',
-      kyle: 'img/faces/kyle.webp',
-      stan: 'img/faces/stan.webp',
-      wendy: 'img/faces/wendy.webp'
+    cars: {
+      'two-state-sedan': 'img/cars/two-state-sedan.webp',
+      'blue-lightning': 'img/cars/blue-lightning.webp',
+      onvoro: 'img/cars/onvoro.webp',
+      'ferrari-325': 'img/cars/ferrari-325.webp',
+      'mercedes-benz-one': 'img/cars/mercedes-benz-one.webp',
+      'lamborghini-aventador': 'img/cars/lamborghini-aventador.webp',
+      'lamborghini-kuia-spyder': 'img/cars/lamborghini-kuia-spyder.webp',
+      'nissan-gt-r': 'img/cars/nissan-gt-r.webp',
+      'lamborghini-aventador': 'img/cars/lamborghini-aventador.webp',
+      'lamborghini-revuelto': 'img/cars/lamborghini-revuelto.webp',
+      'mercedes-amg-one-white': 'img/cars/mercedes-amg-one-white.webp'
     },
-    // Lobby and table background art
-    lobby: 'img/bg/lobby.webp',
-    table: 'img/bg/table.webp',
-    felt: 'img/bg/felt.webp',
-    // Auction / collection / tree
-    auction: 'img/bg/auction.webp',
-    vault: 'img/bg/vault.webp',
+    items: {
+      omamori: 'img/items/lowpoly/omamori.webp',
+      'repair-kit': 'img/items/lowpoly/repair-kit.webp',
+      'car-oil-medium': 'img/items/lowpoly/car-oil-medium.webp',
+      'gasoline-full': 'img/items/lowpoly/gasoline-full.webp',
+      'engine-v1': 'img/items/lowpoly/engine-v1.webp',
+      'engine-v2': 'img/items/lowpoly/engine-v2.webp',
+      'engine-v3': 'img/items/lowpoly/engine-v3.webp'
+    },
+    // presents in a chat (js/ui/presents.js)
+    presents: {
+      cookie: 'img/gifts/cookie.webp',
+      bear: 'img/gifts/bear.webp',
+      snowman: 'img/gifts/snowman.webp',
+      pumpkin: 'img/gifts/pumpkin.webp',
+      diamond: 'img/gifts/diamond.webp'
+    },
+    fruits: {
+      strawberry: 'img/fruits/strawberry.webp',
+      watermelon: 'img/fruits/watermelon.webp',
+      melon: 'img/fruits/melon.webp'
+    },
+    sale: 'img/ui/sale.webp',
+    loginBonus: 'img/ui/login-bonus.webp',
+    // round buttons on the slot screen
+    buttons: {
+      quest: 'img/ui/lowpoly/quest.webp',
+      lobby: 'img/ui/lobby.webp',
+      menu: 'img/ui/lowpoly/menu.webp',
+      tree: 'img/ui/lowpoly/money-tree.webp'
+    },
+    tabs: {
+      friends: 'img/ui/lowpoly/friends.webp',
+      messages: 'img/ui/lowpoly/messages.webp',
+      jobs: 'img/ui/lowpoly/jobs.webp'
+    },
+    // 金の生る木: its nine looks, and the seed sold at the auctions
     tree: {
-      stages: ['img/tree/stage-1.webp', 'img/tree/stage-2.webp', 'img/tree/stage-3.webp', 'img/tree/stage-4.webp',
-        'img/tree/stage-5.webp', 'img/tree/stage-6.webp', 'img/tree/stage-7.webp', 'img/tree/stage-8.webp', 'img/tree/stage-9.webp'],
+      stages: ['img/tree/stage-1.webp', 'img/tree/stage-2.webp', 'img/tree/stage-3.webp', 'img/tree/stage-4.webp', 'img/tree/stage-5.webp',
+        'img/tree/stage-6.webp', 'img/tree/stage-7.webp', 'img/tree/stage-8.webp', 'img/tree/stage-9.webp'],
       seed: 'img/tree/seed.webp',
       preview: 'img/tree/preview.webp'
     },
