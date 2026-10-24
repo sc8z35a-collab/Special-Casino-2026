@@ -45,8 +45,9 @@ test('held receipts and deleting message history cannot restore the sending allo
 });
 
 test('allowance rolls over precisely at midnight Japan time, not UTC or a rolling 24 hours', async t => {
-  const { s, a, b } = await players(t);
+  // Freeze before setup too: limiter buckets must never jump back from real time.
   let now = Date.UTC(2026, 9, 24, 14, 59, 59, 999); t.mock.method(Date, 'now', () => now);
+  const { s, a, b } = await players(t);
   assert.equal((await send(s, a, b, 5000000)).status, 200);
   assert.equal((await send(s, a, b, 1)).error.code, 'transfer_daily_limit');
   now++;
@@ -70,8 +71,9 @@ test('failed and simultaneous transfers cannot consume or exceed the allowance',
 });
 
 test('the first counter includes existing same-day messages but excludes older and incoming messages', async t => {
-  const { s, a, b } = await players(t);
+  // Setup and requests share a clock, independent of the day the suite is run.
   const now = Date.UTC(2026, 9, 24, 12); t.mock.method(Date, 'now', () => now);
+  const { s, a, b } = await players(t);
   const start = Date.UTC(2026, 9, 23, 15);
   const insert = s.app.db.prepare("INSERT INTO messages(channel,sender_id,recipient_id,kind,amount,currency,created_at) VALUES(?,?,?,'transfer',?,?,?)");
   const channel = [a.me.id, b.me.id].sort((x,y) => x-y).join(':');
