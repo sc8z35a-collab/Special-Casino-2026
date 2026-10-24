@@ -1,4 +1,4 @@
-/* Supplied UI artwork, prepared by tools/art/ui_images.py. */
+/* Supplied UI artwork, prepared by tools/art/ui_images.py and import_refresh.py. */
 (function (BR) {
   'use strict';
 
@@ -22,15 +22,26 @@
       dark: 'img/ui/quest-tiers/dark.webp'
     },
     pill: 'img/ui/pill.webp',
-    pillGet: 'img/ui/pill-get.webp',
-    pillMax: 'img/ui/pill-max.webp',
+    pillGet: 'img/ui/refresh/token.webp',
     chipPile: 'img/ui/chip-pile.webp',
-    bg: 'img/ui/lowpoly/bg.webp',
+    bg: 'img/ui/refresh/background.webp',
+    homeBg: 'img/ui/refresh/home.webp',
+    info: 'img/ui/refresh/info.webp',
+    plus: 'img/ui/refresh/plus.webp',
+    minus: 'img/ui/refresh/minus.webp',
+    car: 'img/ui/refresh/car.webp',
+    guide: 'img/ui/refresh/guide.webp',
+    feedback: 'img/ui/refresh/feedback.webp',
+    vip: 'img/ui/refresh/vip.webp',
+    investment: 'img/ui/refresh/investment.webp',
+    diary: 'img/ui/refresh/diary.webp',
+    dev: 'img/ui/refresh/dev.webp',
+    maintenance: 'img/ui/refresh/maintenance.webp',
     frame: 'img/ui/frame.webp',
-    // the reel window, from its 3D model (tools/art/reel_frame_3d.py): the
-    // frame over the reels, and the panels behind the symbols
-    reelFrame: 'img/ui/reel-frame.webp',
-    reelBack: 'img/ui/reel-back.webp',
+    // Supplied jungle frame: transparent cell openings in front, cream
+    // panels behind the symbols, aligned to the existing 5x3 reel geometry.
+    reelFrame: 'img/ui/refresh/reel-frame.webp',
+    reelBack: 'img/ui/refresh/reel-back.webp',
     // 3D lettering from the models: COMBO (the gold one, and the rainbow one
     // from five in a row), the rainbow FEVER; the 3D row of flames, moving
     // (js/render/fire3d.js); the garage coin (a garage place bought)

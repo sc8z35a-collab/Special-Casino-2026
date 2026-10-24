@@ -1,0 +1,41 @@
+/* Supplied low-poly artwork: use complete pictures as the controls. */
+.pill-get, .pill-rules { width: 118px; height: 118px; background-size: contain; border-radius: 0; box-shadow: none; }
+.pill-get { left: 201px; }
+.pill-rules { right: 198px; }
+.reel-frame { inset: -57px -60px; }
+.sq-btn, .sq-btn:disabled { background-color: transparent; background-size: contain; background-position: center; background-repeat: no-repeat; box-shadow: none; }
+.sq-btn i { display: none; }
+.sq-btn:disabled { opacity: .4; }
+.win-group .hud-label { display: none; }
+.win-box:has(.win-text:empty) { visibility: hidden; }
+.w-plus { background: none; box-shadow: none; }
+#screen-slot > .back-btn { width: 100px; height: 100px; top: 12px; left: 128px; }
+#screen-slot > .back-btn .ic { width: 88px; height: 88px; }
+.charm-btn, .charm-btn.on { width: 88px; height: 104px; left: 216px; top: calc(50% - 190px); background: none; box-shadow: none; padding: 0; border-radius: 0; }
+.charm-btn .charm-pic { inset: 0; width: 100%; height: 100%; transform: none; }
+.charm-count, .charm-label { display: none; }
+.charm-btn.on .charm-pic { filter: drop-shadow(0 0 9px #ffe27a); }
+.more-card .more-art { width: 92px; height: 80px; align-self: center; }
+.more-card { align-items: center; text-align: center; }
+.more-card b { justify-content: center; }
+.tab[data-tab="more"] .ic-more { width: 60px; height: 54px; }
+.news-dev { display: inline-flex; align-items: center; gap: 4px; padding: 0; background: none; color: #fff; }
+.news-dev .ic-dev { width: 78px; height: 40px; }
+.car-stage, .car-3d { background: #fff; }
+.car-stage .car-light, .car-stage .car-floor { display: none; }
+.car-pic { filter: none; }
+.car-3d { box-shadow: none; }
+.car-3d-note { background: rgba(255, 255, 255, .92); color: #34424d; }
+.g3d { background: #fff; }
+.g3d-top { background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,0)); }
+.g3d-name, .g3d-hint, .g3d-load { color: #253746; }
+.g3d-btn.close { background: #cb3841; }
+.maint { background: #dceefe; }
+.maint-card { width: 1180px; max-height: 96%; padding: 22px; gap: 10px; background: #f6fbff; color: #243a4c; box-shadow: 0 12px 50px #496d8340; }
+.maint-art { width: 100%; max-height: 560px; object-fit: contain; border-radius: 12px; }
+.maint-card h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.maint-card p { font-size: 23px; }
+.maint-card small { color: #425d70; font-size: 20px; }
+.maint-actions { display: flex; gap: 22px; }
+.maint-actions .act-btn { width: 300px; height: 72px; margin: 0; }
+.maint-actions #maint-exit { background: #b83d43; color: white; }

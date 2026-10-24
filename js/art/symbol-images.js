@@ -1,7 +1,6 @@
-/* Supplied reel artwork (tools/art/import_supplied.py) in transparent
-   192x182 cells at 3x. Internal ids stay stable for payouts and saved progress:
-   revolver is now the coin, diamond the watch. Only the unchanged statue
-   uses its old 3D turn; the supplied pictures keep their appearance on wins. */
+/* Supplied low-poly symbols in transparent 192x182 cells at 1.5x.
+   Internal payout/save ids stay stable: revolver is the coin, diamond the
+   watch, statue the decorated goddess coin. No obsolete turn sheets load. */
 (function (BR) {
   'use strict';
   BR.SYMBOL_IMG = {
@@ -11,10 +10,8 @@
     star: 'img/symbols/lowpoly/star.webp',
     bar: 'img/symbols/lowpoly/bar.webp',
     seven: 'img/symbols/lowpoly/seven.webp',
-    statue: 'img/symbols/statue.webp'
+    statue: 'img/symbols/lowpoly/statue.webp'
   };
-  BR.SYMBOL_TURN = {
-    statue: 'img/symbols/turn/statue.webp'
-  };
+  BR.SYMBOL_TURN = {}; // Supplied coins stay visually consistent during wins.
   BR.SYMBOL_TURN_SHEET = { frames: 24, cols: 6, pad: 1.4, scale: 1.25 };
 })(window.BR = window.BR || {});

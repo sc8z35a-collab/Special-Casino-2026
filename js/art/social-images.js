@@ -20,8 +20,8 @@
       'gambler-secret': 'img/avatars/gambler-secret.webp',
       'adam-secret': 'img/avatars/adam-secret.webp',
       // the NPCs マイクソン (once ピーター) and ジョンソン, and Ice Smoker公式 (not players' icons)
-      peter: 'img/avatars/peter.webp',
-      johnson: 'img/avatars/johnson.webp',
+      peter: 'img/avatars/rogue-red.webp',
+      johnson: 'img/avatars/karate-red.webp',
       official: 'img/avatars/official.webp'
     },
     cars: {
@@ -38,7 +38,7 @@
       'mercedes-amg-one-white': 'img/cars/mercedes-amg-one-white.webp'
     },
     items: {
-      omamori: 'img/items/lowpoly/omamori.webp',
+      omamori: 'img/ui/refresh/charm.webp',
       'repair-kit': 'img/items/lowpoly/repair-kit.webp',
       'car-oil-medium': 'img/items/lowpoly/car-oil-medium.webp',
       'gasoline-full': 'img/items/lowpoly/gasoline-full.webp',

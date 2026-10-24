@@ -1,0 +1,452 @@
+[
+  {
+    "path": "img/ui/refresh/home.webp",
+    "before": 156827,
+    "after": 8310
+  },
+  {
+    "path": "img/ui/refresh/background.webp",
+    "before": 161770,
+    "after": 8780
+  },
+  {
+    "path": "img/ui/refresh/info.webp",
+    "before": 102693,
+    "after": 6204
+  },
+  {
+    "path": "img/ui/refresh/token.webp",
+    "before": 94140,
+    "after": 6880
+  },
+  {
+    "path": "img/ui/refresh/plus.webp",
+    "before": 73235,
+    "after": 2506
+  },
+  {
+    "path": "img/ui/refresh/minus.webp",
+    "before": 60411,
+    "after": 1130
+  },
+  {
+    "path": "img/ui/refresh/car.webp",
+    "before": 1323304,
+    "after": 4404
+  },
+  {
+    "path": "img/ui/refresh/guide.webp",
+    "before": 223474,
+    "after": 6250
+  },
+  {
+    "path": "img/ui/refresh/feedback.webp",
+    "before": 238704,
+    "after": 6058
+  },
+  {
+    "path": "img/ui/refresh/vip.webp",
+    "before": 110585,
+    "after": 4996
+  },
+  {
+    "path": "img/ui/refresh/investment.webp",
+    "before": 164495,
+    "after": 7100
+  },
+  {
+    "path": "img/ui/refresh/diary.webp",
+    "before": 216838,
+    "after": 6670
+  },
+  {
+    "path": "img/ui/refresh/dev.webp",
+    "before": 132442,
+    "after": 3864
+  },
+  {
+    "path": "img/ui/refresh/charm.webp",
+    "before": 194621,
+    "after": 5188
+  },
+  {
+    "path": "img/ui/refresh/maintenance.webp",
+    "before": 548296,
+    "after": 20614
+  },
+  {
+    "path": "img/symbols/lowpoly/bar.webp",
+    "before": 14706,
+    "after": 5772
+  },
+  {
+    "path": "img/symbols/lowpoly/diamond.webp",
+    "before": 21718,
+    "after": 8192
+  },
+  {
+    "path": "img/symbols/lowpoly/gold.webp",
+    "before": 10810,
+    "after": 4626
+  },
+  {
+    "path": "img/symbols/lowpoly/revolver.webp",
+    "before": 13128,
+    "after": 5294
+  },
+  {
+    "path": "img/symbols/lowpoly/seven.webp",
+    "before": 15726,
+    "after": 6230
+  },
+  {
+    "path": "img/symbols/lowpoly/star.webp",
+    "before": 17600,
+    "after": 6756
+  },
+  {
+    "path": "img/symbols/lowpoly/statue.webp",
+    "before": 10968,
+    "after": 7292
+  },
+  {
+    "path": "img/avatars/adam-secret.webp",
+    "before": 27012,
+    "after": 2348
+  },
+  {
+    "path": "img/avatars/adventurer-blue.webp",
+    "before": 24500,
+    "after": 2566
+  },
+  {
+    "path": "img/avatars/adventurer-gold.webp",
+    "before": 32384,
+    "after": 3032
+  },
+  {
+    "path": "img/avatars/dealer-purple.webp",
+    "before": 23116,
+    "after": 2112
+  },
+  {
+    "path": "img/avatars/explorer-cyan.webp",
+    "before": 29148,
+    "after": 2912
+  },
+  {
+    "path": "img/avatars/gambler-secret.webp",
+    "before": 31378,
+    "after": 3034
+  },
+  {
+    "path": "img/avatars/healer-cyan.webp",
+    "before": 34310,
+    "after": 3120
+  },
+  {
+    "path": "img/avatars/johnson.webp",
+    "before": 13362,
+    "after": 2184
+  },
+  {
+    "path": "img/avatars/karate-red.webp",
+    "before": 31212,
+    "after": 2510
+  },
+  {
+    "path": "img/avatars/knight-gold.webp",
+    "before": 31268,
+    "after": 2650
+  },
+  {
+    "path": "img/avatars/magician-purple.webp",
+    "before": 30716,
+    "after": 2814
+  },
+  {
+    "path": "img/avatars/official.webp",
+    "before": 11928,
+    "after": 2906
+  },
+  {
+    "path": "img/avatars/peter.webp",
+    "before": 17066,
+    "after": 2600
+  },
+  {
+    "path": "img/avatars/pilot-cyan.webp",
+    "before": 31510,
+    "after": 2550
+  },
+  {
+    "path": "img/avatars/rogue-red.webp",
+    "before": 32552,
+    "after": 2630
+  },
+  {
+    "path": "img/avatars/swordsman-red.webp",
+    "before": 34916,
+    "after": 2578
+  },
+  {
+    "path": "img/avatars/traveler-green.webp",
+    "before": 26932,
+    "after": 2640
+  },
+  {
+    "path": "img/ui/lowpoly/exit.webp",
+    "before": 6122,
+    "after": 5514
+  },
+  {
+    "path": "img/ui/lowpoly/friends.webp",
+    "before": 9850,
+    "after": 8740
+  },
+  {
+    "path": "img/ui/lowpoly/jobs.webp",
+    "before": 10276,
+    "after": 9434
+  },
+  {
+    "path": "img/ui/lowpoly/menu.webp",
+    "before": 8822,
+    "after": 5792
+  },
+  {
+    "path": "img/ui/lowpoly/messages.webp",
+    "before": 7346,
+    "after": 6726
+  },
+  {
+    "path": "img/ui/lowpoly/money-tree.webp",
+    "before": 13768,
+    "after": 8486
+  },
+  {
+    "path": "img/ui/lowpoly/quest-pro.webp",
+    "before": 2688,
+    "after": 2564
+  },
+  {
+    "path": "img/ui/lowpoly/quest-ultra.webp",
+    "before": 3814,
+    "after": 3526
+  },
+  {
+    "path": "img/ui/lowpoly/quest.webp",
+    "before": 15722,
+    "after": 9638
+  },
+  {
+    "path": "img/ui/lowpoly/shop.webp",
+    "before": 9372,
+    "after": 8316
+  },
+  {
+    "path": "img/ui/lowpoly/spin.webp",
+    "before": 48986,
+    "after": 13238
+  },
+  {
+    "path": "img/items/lowpoly/car-oil-medium.webp",
+    "before": 12498,
+    "after": 5434
+  },
+  {
+    "path": "img/items/lowpoly/engine-v1.webp",
+    "before": 21546,
+    "after": 6400
+  },
+  {
+    "path": "img/items/lowpoly/engine-v2.webp",
+    "before": 22370,
+    "after": 6242
+  },
+  {
+    "path": "img/items/lowpoly/engine-v3.webp",
+    "before": 23786,
+    "after": 6730
+  },
+  {
+    "path": "img/items/lowpoly/gasoline-full.webp",
+    "before": 11740,
+    "after": 5218
+  },
+  {
+    "path": "img/items/lowpoly/omamori.webp",
+    "before": 19658,
+    "after": 8244
+  },
+  {
+    "path": "img/items/lowpoly/repair-kit.webp",
+    "before": 16020,
+    "after": 6848
+  },
+  {
+    "path": "img/ui/quest-tiers/aqua-purple.webp",
+    "before": 38960,
+    "after": 1674
+  },
+  {
+    "path": "img/ui/quest-tiers/blue.webp",
+    "before": 4254,
+    "after": 1276
+  },
+  {
+    "path": "img/ui/quest-tiers/dark.webp",
+    "before": 4182,
+    "after": 980
+  },
+  {
+    "path": "img/ui/quest-tiers/gold.webp",
+    "before": 6602,
+    "after": 1898
+  },
+  {
+    "path": "img/ui/quest-tiers/green.webp",
+    "before": 6784,
+    "after": 1976
+  },
+  {
+    "path": "img/ui/quest-tiers/orange.webp",
+    "before": 8840,
+    "after": 2304
+  },
+  {
+    "path": "img/ui/quest-tiers/purple.webp",
+    "before": 5626,
+    "after": 1572
+  },
+  {
+    "path": "img/ui/quest-tiers/red-gold.webp",
+    "before": 33694,
+    "after": 3036
+  },
+  {
+    "path": "img/ui/quest-tiers/red.webp",
+    "before": 7014,
+    "after": 1740
+  },
+  {
+    "path": "img/vip/vip-0.webp",
+    "before": 17164,
+    "after": 9830
+  },
+  {
+    "path": "img/vip/vip-1.webp",
+    "before": 20946,
+    "after": 7886
+  },
+  {
+    "path": "img/vip/vip-2.webp",
+    "before": 18358,
+    "after": 10030
+  },
+  {
+    "path": "img/vip/vip-3.1.webp",
+    "before": 29502,
+    "after": 10602
+  },
+  {
+    "path": "img/vip/vip-3.webp",
+    "before": 19860,
+    "after": 9884
+  },
+  {
+    "path": "img/vip/vip-4.webp",
+    "before": 14426,
+    "after": 9482
+  },
+  {
+    "path": "img/cars/blue-lightning.webp",
+    "before": 69832,
+    "after": 21768
+  },
+  {
+    "path": "img/cars/ferrari-325.webp",
+    "before": 64202,
+    "after": 19142
+  },
+  {
+    "path": "img/cars/lamborghini-aventador.webp",
+    "before": 57726,
+    "after": 18250
+  },
+  {
+    "path": "img/cars/lamborghini-kuia-spyder.webp",
+    "before": 68274,
+    "after": 20728
+  },
+  {
+    "path": "img/cars/lamborghini-revuelto.webp",
+    "before": 58944,
+    "after": 17516
+  },
+  {
+    "path": "img/cars/lamborghini-urus.webp",
+    "before": 66030,
+    "after": 20584
+  },
+  {
+    "path": "img/cars/mercedes-amg-one-white.webp",
+    "before": 50304,
+    "after": 16332
+  },
+  {
+    "path": "img/cars/mercedes-benz-one.webp",
+    "before": 54334,
+    "after": 18658
+  },
+  {
+    "path": "img/cars/nissan-gt-r.webp",
+    "before": 45644,
+    "after": 15988
+  },
+  {
+    "path": "img/cars/onvoro.webp",
+    "before": 86942,
+    "after": 24764
+  },
+  {
+    "path": "img/cars/two-state-sedan.webp",
+    "before": 92706,
+    "after": 28408
+  },
+  {
+    "path": "img/ui/chip.webp",
+    "before": 19632,
+    "after": 4628
+  },
+  {
+    "path": "img/ui/coin.webp",
+    "before": 20346,
+    "after": 5072
+  },
+  {
+    "path": "img/ui/dollar.webp",
+    "before": 16614,
+    "after": 4226
+  },
+  {
+    "path": "img/ui/chip-pile.webp",
+    "before": 62840,
+    "after": 23704
+  },
+  {
+    "path": "img/ui/frame.webp",
+    "before": 27330,
+    "after": 3112
+  },
+  {
+    "path": "img/ui/garage.webp",
+    "before": 10464,
+    "after": 5118
+  },
+  {
+    "path": "img/ui/login-bonus.webp",
+    "before": 106694,
+    "after": 35280
+  }
+]
