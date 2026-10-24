@@ -14,6 +14,8 @@
 // the operator site's サーバー tab about the machine (server/core/stats.js),
 // and the host reports the bytes of each answer it sends: api.sent(bytes).
 import { createDevUnit } from './devunit.js';
+import { createDiary } from './diary.js';
+import { createOpsMfa } from './opsmfa.js';
 import { ApiError, posInt } from './errors.js';
 import { statements } from './db.js';
 import {
@@ -112,7 +114,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       stats.wsOut();
       return hostLive.sendOps ? hostLive.sendOps(userId, event, data) : undefined;
     },
-    opsOnline: (id) => !!(hostLive.opsOnline && hostLive.opsOnline(id))
+    opsOnline: (id) => !!(hostLive.opsOnline && hostLive.opsOnline(id)),
+    dropOps: (id) => { if (hostLive.dropOps) hostLive.dropOps(id); }
   };
   const start = {
     tokens: config.startTokens ?? RULES.start.tokens,
@@ -1432,7 +1435,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // Also used by the live connection.
   function userForToken(token) {
     const h = sha256(token);
-    const s = q('SELECT user_id, last_used, ended, scope FROM sessions WHERE token_hash = ?').get(h);
+    const s = q('SELECT user_id, last_used, ended, scope, ops_mfa_version FROM sessions WHERE token_hash = ?').get(h);
     if (!s) throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
     // ended by the server (an operator's rights taken away): why, once, then it is gone
     if (s.ended) {
@@ -1458,13 +1461,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (now - s.last_used > 3600000) q('UPDATE sessions SET last_used = ? WHERE token_hash = ?').run(now, h);
     // ('view': a 閲覧者's operator site session, good for nothing but looking)
     u.scope = s.scope || '';
+    u.opsMfaVersion = s.ops_mfa_version || 0;
     return u;
   }
 
-  function createSession(userId, scope = '') {
+  function createSession(userId, scope = '', mfaVersion = 0) {
     const token = newToken();
     const now = Date.now();
-    q('INSERT INTO sessions (token_hash, user_id, created_at, last_used, scope) VALUES (?, ?, ?, ?, ?)').run(sha256(token), userId, now, now, scope);
+    q('INSERT INTO sessions (token_hash, user_id, created_at, last_used, scope, ops_mfa_version) VALUES (?, ?, ?, ?, ?, ?)').run(sha256(token), userId, now, now, scope, mfaVersion);
     return token;
   }
 
@@ -3637,15 +3641,19 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen
   });
   Object.assign(routes, ops.routes);
+  const opsMfa = createOpsMfa({ q, tx, secret, ops, opsLog, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now });
+  Object.assign(routes, opsMfa.routes);
+  Object.assign(routes, createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed,
+    commentRate: (u) => rate(limit.dm, u.id), opsLog }).routes);
   Object.assign(routes, createDevUnit({ q, ops, live, getUser, isDeveloper }).routes);
   // the operator site's ログインログ (the day's ログイン button; the developer's alone to read)
   const opsEntry = createOpsEntry({ q, getUser, see: ops.see, isOperator: ops.isOperator, isDeveloper });
   Object.assign(routes, opsEntry.routes);
   const opsMe = routes['GET /api/ops/me'];
-  routes['GET /api/ops/me'] = (req, u) => ({ ...opsMe(req, u), ...opsEntry.state(u) });
+  routes['GET /api/ops/me'] = (req, u) => ({ ...opsMe(req, u), ...opsEntry.state(u), mfa: ops.isOperator(u) ? opsMfa.status(u) : undefined });
   // the operator site's own login (two wrong tries: a wait that doubles); while stopped, the developer's only
   const opsLogin = createOpsLogin({
-    q, findByName, isOperator: ops.isOperator, isViewer: ops.isViewer, createSession, seenOn, entered: opsEntry.record,
+    q, findByName, isOperator: ops.isOperator, isViewer: ops.isViewer, createSession, seenOn, entered: opsEntry.record, verifyMfa: opsMfa.verify,
     rate: (req) => rate(limit.login, req.ip, '試行回数が多すぎます。しばらく待ってからお試しください'),
     // during a lockdown the operators still come in to reach the security base;
     // during a plain emergency stop, only the developer
@@ -3669,7 +3677,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the operator site's live connection: a ticket of its own (an operator's)
   routes['POST /api/ops/live-ticket'] = (req, u) => {
     ops.need(u);
-    return { ticket: signTicket(opsSecret, u.id) };
+    return { ticket: signTicket(`${opsSecret}:${opsMfa.version(u.id)}`, u.id) };
   };
   // 金の生る木
   const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
@@ -3853,7 +3861,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the operator site's live connection (an operator's ticket, signed apart)
   const opsSecret = `${secret}:ops-live`;
   function consumeOpsTicket(ticket) {
-    const userId = verifyTicket(opsSecret, ticket);
+    const id = Number(String(ticket).split('.')[0]);
+    if (!Number.isSafeInteger(id) || id <= 0) return null;
+    const userId = verifyTicket(`${opsSecret}:${opsMfa.version(id)}`, ticket);
     if (!userId) return null;
     const now = Date.now();
     for (const [t, until] of usedTickets) if (until < now) usedTickets.delete(t);
@@ -3983,6 +3993,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!PUBLIC.has(key)) {
         user = authUser(req);
         req.userId = user.id;
+        if (/^\/api\/(?:ops\/|sec\/|vault\/|backup(?:\/|$)|emergency(?:\/|$))/.test(req.path)) opsMfa.guard(user);
+        if (req.method === 'POST' && req.path.startsWith('/api/ops/profile/')) rate(limit.login, 'mfa:' + user.id);
         // a viewer's look-only session: the allowlist, and only while they still are one
         if (user.scope === 'view') {
           if (!ops.isViewer(user)) throw new ApiError(401, 'ended', '閲覧者の権限がなくなったため、ログアウトされました');

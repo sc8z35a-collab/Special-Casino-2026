@@ -33,6 +33,7 @@
 <link rel="stylesheet" href="css/support.css">
 <link rel="stylesheet" href="css/vip.css">
 <link rel="stylesheet" href="css/refresh.css">
+<link rel="stylesheet" href="css/diary.css">
 </head>
 <body>
 <div id="viewport">
@@ -286,7 +287,7 @@
             <button class="more-card vip" data-act="vip" aria-label="VIP"><i class="ic more-art ic-vip"></i><b>VIP</b></button>
             <button class="more-card support" data-act="support" hidden><b>有料ショップ</b><span>ロイヤルコインを購入する</span></button>
             <div class="more-card soon investment"><i class="ic more-art ic-investment"></i><b>投資<small>COMING SOON</small></b><span>近日公開予定</span></div>
-            <button class="more-card soon" data-act="dev-diary" aria-label="開発者日記"><i class="ic more-art ic-diary"></i><b>開発者日記<small>近日公開</small></b></button>
+            <button class="more-card" data-act="dev-diary" aria-label="開発者日記"><i class="ic more-art ic-diary"></i><b>開発者日記</b></button>
             <button class="more-card soon" data-act="studio-credits"><b>スタジオクレジット<small>近日公開</small></b></button>
             <button class="more-card soon" data-act="terms"><b>規約<small>近日公開</small></b></button>
           </div>
@@ -613,6 +614,14 @@
       </div>
     </div>
 
+    <div id="developer-diary" class="modal" hidden>
+      <div class="modal-card diary-card" role="dialog" aria-modal="true" aria-label="開発者日記">
+        <button class="modal-x" type="button" data-close aria-label="閉じる"></button>
+        <h2>開発者日記</h2>
+        <div class="diary-toolbar"><button class="mini-btn" type="button" id="diary-saved" aria-pressed="false">ブックマークだけ表示</button><button class="mini-btn" type="button" id="diary-refresh">更新</button></div>
+        <div id="diary-list" aria-live="polite"></div><button class="mini-btn" type="button" id="diary-more" hidden>以前の投稿</button>
+      </div>
+    </div>
     <div id="more-soon" class="modal" hidden>
       <div class="modal-card more-soon-card" role="dialog" aria-modal="true" aria-labelledby="more-soon-title">
         <button class="modal-close" type="button" data-close aria-label="閉じる"></button>
@@ -938,6 +947,7 @@
 <script src="js/ui/tree.js"></script>
 <script src="js/ui/effects.js"></script>
 <script src="js/ui/news.js"></script>
+<script src="js/ui/diary.js"></script>
 <script src="js/net/call.js"></script>
 <script src="js/ui/watch.js"></script>
 <script src="js/render/combo.js"></script>

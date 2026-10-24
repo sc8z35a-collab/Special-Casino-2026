@@ -67,7 +67,7 @@
           var err = { status: res.status, code: e.code || '', message: e.message || ('エラー（' + res.status + '）'), until: e.until || 0 };
           // signed out on the server: only while signed in, and in this same
           // session (not a wrong password, nor a late answer to the last one)
-          if ((res.status === 401 || e.code === 'not_operator') && token && s === session) signedOut(err.message);
+          if ((res.status === 401 || e.code === 'not_operator' || e.code === 'mfa_required') && path !== '/api/ops/login' && token && s === session) signedOut(err.message);
           throw err;
         });
       });
@@ -134,13 +134,14 @@
     if (!name || !pass) { $('#login-error').textContent = '名前とパスワードを入力してください'; return; }
     var go = $('#login-go'); go.disabled = true; $('#login-error').textContent = '';
     setToken(null);   // (one left from before is of no use: a new one comes)
-    request('POST', '/api/ops/login', { name: name, password: pass }, { 'X-Ops-Device': device() }).then(function (r) {
+    request('POST', '/api/ops/login', { name: name, password: pass, otp: $('#login-otp').value.trim(), phrase: $('#login-phrase').value, recovery: $('#login-backup').value.trim() }, { 'X-Ops-Device': device() }).then(function (r) {
       setToken(r.token);
-      return request('GET', '/api/sec/me').then(function (m) { $('#login-pass').value = ''; start(m); }, function (err) {
+      return request('GET', '/api/sec/me').then(function (m) { $('#login-pass').value = ''; $('#login-otp').value = ''; $('#login-phrase').value = ''; $('#login-backup').value = ''; $('#login-extra').open = false; start(m); }, function (err) {
         revoke(r.token);
         setToken(null); throw err;
       });
     }).catch(function (err) {
+      if (err.code === 'mfa_required' || err.code === 'mfa_invalid') { $('#login-extra').open = true; $('#login-otp').focus(); }
       if (err.code === 'ops_locked' && err.until) { waitUntil(err.until); return; }
       $('#login-error').textContent = err.message;
     }).then(function () { if (Date.now() >= lockEnd) go.disabled = false; });

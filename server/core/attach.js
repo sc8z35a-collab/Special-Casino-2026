@@ -11,6 +11,7 @@
 
 // the routes, and the fields the game sends to each
 export const CHAT_ROUTES = {
+  'POST /api/diary/comments': ['text', 'post'],
   'POST /api/messages': ['text', 'to', 'group'],
   'POST /api/home/chat': ['text', 'room'],
   'POST /api/hub/say': ['text', 'to'],
@@ -18,7 +19,7 @@ export const CHAT_ROUTES = {
   'POST /api/report': ['text', 'user', 'kind', 'place'],
   'POST /api/report/message': ['text', 'message', 'kind']
 };
-const IDS = new Set(['to', 'group', 'room', 'user', 'message']);
+const IDS = new Set(['to', 'group', 'room', 'user', 'message', 'post']);
 const WORDS = new Set(['kind', 'place']);
 export const REASONS = {
   not_json: 'テキスト以外の形式で送られた',

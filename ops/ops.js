@@ -88,6 +88,7 @@
 
   var $ = function (s) { return document.querySelector(s); };
   var token = null;
+  var diaryProfile = null;
   var state = {
     view: 'players', players: [], total: 0, counts: {}, now: Date.now(), filter: 'all', sort: 'new', q: '', open: 0, busy: false,
     reportStatus: 'open', detAll: false, fb: 'open', feedback: [], log: [], logQ: '', logDone: false, chat: null,
@@ -114,10 +115,11 @@
         return res.json().catch(function () { return {}; }).then(function (j) {
           if (res.ok) return j;
           var e = j.error || {};
-          var err = { status: res.status, code: e.code || '', message: e.message || 'エラーが発生しました（' + res.status + '）', until: e.until || 0 };
+          var err = { status: res.status, code: e.code || '', message: e.message || 'エラーが発生しました（' + res.status + '）', until: e.until || 0, mode: e.mode || 0 };
           // the server stopped itself (a plain emergency stop, or a lockdown)
           if (res.status === 503 && e.emergency) showEmergency(e);
           else if (res.status === 401 || e.code === 'not_operator' || e.code === 'banned') signedOut(err.message);
+          else if (e.code === 'mfa_required' && path !== '/api/ops/login') showLogin(err.message);
           throw err;
         });
       });
@@ -227,6 +229,7 @@
     clearInterval(aliveTimer);
   }
   function showLogin(message) {
+    if (diaryProfile) diaryProfile.reset();
     leaveApp();
     $('#login').hidden = false;
     $('#login-error').textContent = message || '';
@@ -316,10 +319,11 @@
     go.disabled = true;
     $('#login-error').textContent = '';
     // (the day's ログイン as well: a login with the password is one)
-    request('POST', '/api/ops/login', { name: name, password: pass, enter: true }, { 'X-Ops-Device': opsDevice() }).then(function (r) {
+    request('POST', '/api/ops/login', { name: name, password: pass, enter: true, otp: $('#login-otp').value.trim(), phrase: $('#login-phrase').value, recovery: $('#login-backup').value.trim() }, { 'X-Ops-Device': opsDevice() }).then(function (r) {
       setToken(r.token);
       return request('GET', '/api/ops/me').then(function (me) {
         $('#login-pass').value = '';
+        $('#login-otp').value = ''; $('#login-phrase').value = ''; $('#login-backup').value = ''; $('#login-extra').open = false;
         start(me);
       }, function (err) {
         // not an operator: the session just made goes again
@@ -328,6 +332,7 @@
         throw err;
       });
     }).catch(function (err) {
+      if (err.code === 'mfa_required' || err.code === 'mfa_invalid') { $('#login-extra').open = true; $('#login-otp').focus(); }
       if (err.code === 'ops_locked' && err.until) { waitUntil(err.until); return; }
       $('#login-error').textContent = err.message;
     }).then(function () { if (Date.now() >= lockEnd) go.disabled = false; });
@@ -347,7 +352,7 @@
     return !document.hidden && !$('#app').hidden && state.view === 'devunit' && w && w.classList.contains('is-active') && !w.classList.contains('is-minimized');
   }
   function resetDevUnit() {
-    devUnit.generation++; devUnit.comments = []; devUnit.latest = 0; devUnit.unread = null; devUnit.busy = false; devUnit.loadingDoc = false;
+    devUnit.generation++; devUnit.comments = []; devUnit.latest = 0; devUnit.unread = null; devUnit.busy = false; devUnit.loadingDoc = false; devUnit.readme = null;
     $('#devunit-comments').replaceChildren(); $('#devunit-text').value = ''; $('#devunit-error').textContent = ''; setCount('devunit', 0);
     $('#securityhome-frame').removeAttribute('src');
   }
@@ -361,14 +366,14 @@
       var item = el('details'); item.open = !!query || i === 0;
       item.appendChild(el('summary', '', title)); item.appendChild(el('pre', '', lines.join('\n'))); root.appendChild(item); found++;
     });
-    $('#devunit-doc-status').textContent = found ? 'README.md · ' + found + ' 項目' : '該当する項目はありません';
+    $('#devunit-doc-status').textContent = found ? $('#devunit-doc').selectedOptions[0].textContent + ' · ' + found + ' 項目' : '該当する項目はありません';
   }
   function loadDevDoc() {
     if (devUnit.readme !== null) { renderDevDoc(); return; }
     if (devUnit.loadingDoc) return;
     var gen = devUnit.generation; devUnit.loadingDoc = true;
     $('#devunit-doc-status').textContent = '資料を読み込み中…';
-    fetch('assets/readme-dev.txt', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw Error('READMEを読み込めません'); return r.text(); }).then(function (text) {
+    fetch('assets/' + $('#devunit-doc').value, { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw Error('READMEを読み込めません'); return r.text(); }).then(function (text) {
       if (gen !== devUnit.generation) return; devUnit.loadingDoc = false; devUnit.readme = text; renderDevDoc();
     }, function () { if (gen !== devUnit.generation) return; devUnit.loadingDoc = false; $('#devunit-doc-status').textContent = '資料を読み込めませんでした。アプリを開き直してください。'; });
   }
@@ -423,6 +428,7 @@
     }, function () {});
   }
   function initDevUnit() {
+    $('#devunit-doc').addEventListener('change', function () { devUnit.generation++; devUnit.busy = false; devUnit.loadingDoc = false; devUnit.readme = null; loadDevDoc(); loadDevComments(false); });
     $('#devunit-search').addEventListener('input', renderDevDoc);
     $('#devunit-more').addEventListener('click', function () { loadDevComments(true); });
     $('#devunit-notify').hidden = !window.Notification;
@@ -445,7 +451,7 @@
   /* ------------------------------------------------------------ views --- */
   // what a 閲覧者 never sees (the server refuses it anyway): the players'
   // list and the archive, the operators' chat, the payments and the vault
-  var VIEWER_HIDDEN = ['players', 'archive', 'team', 'pay', 'vault', 'devunit'];
+  var VIEWER_HIDDEN = ['players', 'archive', 'team', 'pay', 'vault', 'devunit', 'diary', 'profile'];
   function start(me) {
     $('#login').hidden = true;
     $('#enter').hidden = true;
@@ -455,9 +461,13 @@
     state.name = me.name;
     state.developer = !!me.developer;
     state.viewer = !!me.viewer;
+    $('#tab-diary').hidden = !state.developer;
+    $('#tab-profile').hidden = state.viewer;
+    if (diaryProfile) diaryProfile.start(me);
     state.devCodeSet = !!me.devCodeSet;
     document.body.classList.toggle('role-viewer', state.viewer);
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.hidden = state.viewer && VIEWER_HIDDEN.indexOf(t.dataset.view) >= 0; });
+    $('#tab-diary').hidden = !state.developer;
     // the refresh speed: everyone sees it, only the developer changes it
     $('#speed').disabled = !state.developer;
     $('#speed').title = state.developer ? '運営サイトの更新頻度（運営者全員に反映）' : '更新頻度は開発者だけが変えられます';
@@ -522,6 +532,7 @@
       }
       load(true);
       devUnitCounts();
+      if (diaryProfile) diaryProfile.refresh();
       if (state.view === 'reports') loadReports(true);
       else if (state.view === 'detections') loadDetections(true);
       else if (state.view === 'feedback') loadFeedback(true);
@@ -564,7 +575,8 @@
     var again = state.view === v;
     state.view = v;
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
-    ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
+    ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
+    if (diaryProfile) diaryProfile.view(v);
     if (v === 'players') load();
     else if (v === 'archive') loadArchive();
     else if (v === 'operators') loadOperators();
@@ -1627,6 +1639,7 @@
         b.dataset.name = o.name;
         a.appendChild(b);
       }
+      if (o.operator && o.registered && !o.mfaMode) a.appendChild(el('span', 'auth-warning', '！追加認証未設定'));
       card.appendChild(a);
       list.appendChild(card);
     });
@@ -5252,6 +5265,7 @@
 
     $('#login-form').addEventListener('submit', onLogin);
     initDevUnit();
+    diaryProfile = window.OpsDiaryProfile({ request: request, el: el, state: state, face: face, setView: setView, openDetail: openDetail, toast: toast, fail: fail });
     $('#logout').addEventListener('click', logout);
     $('#enter-go').addEventListener('click', enter);
     $('#enter-other').addEventListener('click', logout);

@@ -710,6 +710,7 @@
     BR.tree.init();
     BR.effects.init();
     BR.news.init();
+    BR.diary.init();
     BR.call.init();
     BR.watch.init();
     if (BR.activity) BR.activity.init();

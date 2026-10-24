@@ -83,6 +83,11 @@ export class Live {
 
   opsOnline(userId) { return this.opsClients.has(userId); }
 
+  dropOps(userId) {
+    const set = this.opsClients.get(userId);
+    if (set) for (const res of [...set]) res.end();
+  }
+
   write(res, event, data) {
     if (res.writableLength > MAX_BUFFERED) { res.destroy(); return; }
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);

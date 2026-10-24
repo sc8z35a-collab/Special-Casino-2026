@@ -158,6 +158,13 @@
     banState: function () { return get('/api/ban'); },
 
     /* the game */
+    diary: function (saved, before) { return get('/api/diary?bookmarks=' + (saved ? '1' : '0') + (before ? '&before=' + q(before) : '')); },
+    diaryRead: function (id) { return post('/api/diary/read', { post: id }); },
+    diaryImage: function (id) { return get('/api/diary/image?post=' + q(id)); },
+    diaryReact: function (id, kind, on) { return post('/api/diary/react', { post: id, kind: kind, on: on }); },
+    diaryComments: function (id, before) { return get('/api/diary/comments?post=' + q(id) + (before ? '&before=' + q(before) : '')); },
+    diaryComment: function (id, text) { return words('/api/diary/comments', { post: id, text: text }); },
+    diaryClaim: function (id) { return post('/api/diary/claim', { post: id }); },
     // (idle: how long ago the player last did something, for the hub: js/ui/activity.js)
     spin: function (bet) { return post('/api/spin', { bet: bet, idle: BR.activity ? Math.round(BR.activity.idle()) : 0 }); },
     buy: function (n) { return post('/api/buy', { amount: n }); },
