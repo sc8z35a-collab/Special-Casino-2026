@@ -31,9 +31,9 @@
       'ferrari-325': 'img/cars/ferrari-325.webp',
       'mercedes-benz-one': 'img/cars/mercedes-benz-one.webp',
       'lamborghini-aventador': 'img/cars/lamborghini-aventador.webp',
-      'lamborghini-urus': 'img/cars/lamborghini-urus.webp',
       'lamborghini-kuia-spyder': 'img/cars/lamborghini-kuia-spyder.webp',
       'nissan-gt-r': 'img/cars/nissan-gt-r.webp',
+      'lamborghini-aventador': 'img/cars/lamborghini-aventador.webp',
       'lamborghini-revuelto': 'img/cars/lamborghini-revuelto.webp',
       'mercedes-amg-one-white': 'img/cars/mercedes-amg-one-white.webp'
     },
@@ -95,4 +95,32 @@
 
   // supplied title picture, also embedded by tools/build_single.py
   BR.START_ART = 'img/ui/lowpoly/title.webp';
+
+  // Profile customisations load after the regular boot modules have initialised.
+  function loadProfileCustomisations() {
+    var css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'css/profile-custom.css';
+    document.head.appendChild(css);
+    var assets = [
+      'profile-images.js', 'profile-images-2.js', 'profile-images-2-password.js',
+      'profile-images-2-notification.js', 'profile-images-3.js',
+      'profile-images-4.js', 'profile-images-5.js', 'profile-images-6.js'
+    ];
+    function loadAsset(index) {
+      if (index === assets.length) {
+        var script = document.createElement('script');
+        script.src = 'js/ui/profile-custom.js';
+        document.body.appendChild(script);
+        return;
+      }
+      var art = document.createElement('script');
+      art.src = 'js/art/' + assets[index];
+      art.onload = function () { loadAsset(index + 1); };
+      document.body.appendChild(art);
+    }
+    loadAsset(0);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadProfileCustomisations);
+  else loadProfileCustomisations();
 })(window.BR = window.BR || {});
