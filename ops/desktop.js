@@ -26,6 +26,7 @@
   var desktop, area, dock, help, menuHost, account, announce;
   var noticeLayout = window.matchMedia('(min-width: 1100px)');
   var notices = [], noticeCounts = {}, noticeSequence = 0, noticesOpen = noticeLayout.matches, noticeSignature = '';
+  var noticesMinimized = prefs('notices-minimized') === 'yes';
 
   function node(tag, cls, text) {
     var n = document.createElement(tag);
@@ -40,6 +41,7 @@
   }
   function picture(name, cls) {
     var img = node('img', cls); img.src = 'assets/' + name + '.webp';
+    if (name === 'diary') img.classList.add('mac-icon-diary');
     img.alt = ''; img.draggable = false; img.width = 64; img.height = 64;
     return img;
   }
@@ -74,7 +76,13 @@
   notificationToggle.appendChild(notificationBadge);
   notificationToggle.setAttribute('aria-controls', 'mac-notifications');
   notificationToggle.setAttribute('aria-expanded', 'false');
-  notificationToggle.addEventListener('click', function () { setNoticesOpen(!noticesOpen); });
+  notificationToggle.addEventListener('click', function () {
+    var behindWindows = !document.body.classList.contains('mac-notices-raised') && openWindows().some(function (w) { return !w.minimized; });
+    var on = !noticesOpen || noticesMinimized || behindWindows;
+    if (on) setNoticesMinimized(false);
+    setNoticesOpen(on);
+    document.body.classList.toggle('mac-notices-raised', on);
+  });
   status.appendChild(notificationToggle);
   var profile = button('mac-status-button mac-profile', '', '運営アカウントと更新頻度');
   profile.appendChild(picture('operators')); profile.dataset.menu = 'account';
@@ -92,6 +100,12 @@
   desktop.addEventListener('pointerdown', function () { closeMenu(); });
   app.insertBefore(desktop, top.nextSibling);
   area = node('div', 'mac-windows'); area.id = 'mac-windows'; app.appendChild(area);
+  area.addEventListener('pointerdown', function (e) {
+    document.body.classList.remove('mac-notices-raised', 'mac-dock-revealed');
+    if (dock.contains(document.activeElement)) {
+      var win = e.target.closest('.mac-window'); if (win) win.focus({ preventScroll: true });
+    }
+  });
 
   dock = node('div', 'mac-dock'); dock.setAttribute('aria-label', 'Dock');
   var dockHome = button('mac-dock-home', '', 'デスクトップを表示');
@@ -176,12 +190,25 @@
   var notifications = node('aside', 'mac-notifications'); notifications.id = 'mac-notifications';
   notifications.setAttribute('aria-label', 'すべてのアプリの通知');
   var noticeHead = node('div', 'mac-notice-head'); noticeHead.appendChild(node('h2', '', '通知センター'));
+  var noticeMinimize = button('mac-notice-minimize', '−', '通知ウィジェットを最小化');
+  noticeMinimize.setAttribute('aria-controls', 'mac-notice-content');
+  noticeMinimize.addEventListener('click', function () { setNoticesMinimized(!noticesMinimized); });
+  noticeHead.appendChild(noticeMinimize);
   var noticeClose = button('mac-notice-close', '×', '通知センターを閉じる');
   noticeClose.addEventListener('click', function () { setNoticesOpen(false); notificationToggle.focus(); }); noticeHead.appendChild(noticeClose);
   notifications.appendChild(noticeHead);
-  var noticePending = node('div', 'mac-notice-pending'); notifications.appendChild(noticePending);
-  var noticeHistory = node('div', 'mac-notice-history'); noticeHistory.setAttribute('role', 'log'); noticeHistory.setAttribute('aria-label', '通知の履歴'); notifications.appendChild(noticeHistory);
+  var noticeContent = node('div', 'mac-notice-content'); noticeContent.id = 'mac-notice-content'; notifications.appendChild(noticeContent);
+  var noticePending = node('div', 'mac-notice-pending'); noticeContent.appendChild(noticePending);
+  var noticeHistory = node('div', 'mac-notice-history'); noticeHistory.setAttribute('role', 'log'); noticeHistory.setAttribute('aria-label', '通知の履歴'); noticeContent.appendChild(noticeHistory);
   app.appendChild(notifications);
+  function setNoticesMinimized(on) {
+    noticesMinimized = on; prefs('notices-minimized', on ? 'yes' : 'no');
+    notifications.classList.toggle('is-minimized', on); noticeContent.hidden = on;
+    noticeMinimize.textContent = on ? '+' : '−';
+    noticeMinimize.setAttribute('aria-expanded', on ? 'false' : 'true');
+    noticeMinimize.setAttribute('aria-label', on ? '通知ウィジェットを元に戻す' : '通知ウィジェットを最小化');
+  }
+  setNoticesMinimized(noticesMinimized);
   function setNoticesOpen(on) {
     noticesOpen = on; document.body.classList.toggle('mac-notices-open', on);
     document.body.classList.toggle('mac-notices-hidden', !on);
@@ -298,6 +325,7 @@
       w.node.style.zIndex = selected ? order + 1 : Math.max(1, w.rank);
       w.tab.classList.toggle('mac-running', w.open); w.tab.classList.toggle('mac-visible', w.open && !w.minimized); w.tab.classList.toggle('mac-focused', selected);
       w.tab.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      w.tab.setAttribute('aria-label', w.name + (selected ? '（操作中）' : w.open ? w.minimized ? '（最小化）' : '（表示中）' : ''));
       w.node.querySelector('.mac-zoom').setAttribute('aria-pressed', w.zoomed ? 'true' : 'false');
     });
     buildStrips(); layout();
@@ -334,6 +362,7 @@
     var w = windows[id]; if (!w || !allowed(w) || app.hidden) return;
     var restoring = w.open && w.minimized;
     var fresh = !w.open || w.minimized; stopAnimation(w); closeMenu(); desktopSaved = null;
+    document.body.classList.remove('mac-notices-raised');
     if (overview) setOverview(false);
     w.open = true; w.minimized = false; active = id;
     // Ranks stay below the overlays; renumbering avoids an ever-growing z-index.
@@ -613,7 +642,7 @@
     if (e.pointerType === 'touch' || reduced()) return;
     Array.prototype.forEach.call(dock.querySelectorAll('.tab:not([hidden]), .mac-dock-home'), function (b) {
       var r = b.getBoundingClientRect(), dist = frame.classList.contains('turned') ? Math.abs(e.clientY - r.top - r.height / 2) : Math.abs(e.clientX - r.left - r.width / 2);
-      b.style.setProperty('--dock-scale', 1 + .12 * Math.pow(Math.max(0, 1 - dist / 110), 2));
+      b.style.setProperty('--dock-scale', 1 + .5 * Math.pow(Math.max(0, 1 - dist / 110), 2));
     });
   });
   dock.addEventListener('pointerleave', function () { dock.querySelectorAll('button').forEach(function (b) { b.style.removeProperty('--dock-scale'); }); });

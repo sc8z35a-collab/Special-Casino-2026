@@ -72,6 +72,60 @@ const { chromium } = require('playwright');
       assert.match(await page.locator('#app').evaluate(n => getComputedStyle(n).backgroundImage), /wallpaper-desktop/);
       await shot(page, 'desktop');
     });
+    await check('diary artwork matches the other icon sizes and Dock magnification is clearly visible', async () => {
+      assert.equal(await page.locator('#tabs [data-view="diary"] img').evaluate(n => getComputedStyle(n).scale), '1.42');
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      const tab = page.locator('#tabs [data-view="players"]'); await tab.hover();
+      assert.ok(await tab.evaluate(n => Number(n.style.getPropertyValue('--dock-scale')) > 1.45));
+      const fits = await tab.locator('img').evaluate(async n => {
+        await Promise.all(n.getAnimations().map(a => a.finished.catch(() => {})));
+        const r = n.getBoundingClientRect(), p = document.querySelector('#tabs').getBoundingClientRect();
+        return r.top >= p.top && r.bottom <= p.bottom;
+      }); assert.equal(fits, true, 'magnified artwork must not be clipped by the Dock scroller');
+      await page.mouse.move(5, 5); await page.emulateMedia({ reducedMotion: 'reduce' });
+    });
+    await check('notification widget minimizes, preserves history and restores after reload', async () => {
+      await page.evaluate(() => document.dispatchEvent(new CustomEvent('ops:notice', { detail: { app: 'players', text: 'widget test notification' } })));
+      await page.locator('.mac-notice-minimize').click();
+      assert.equal(await page.locator('#mac-notice-content').isVisible(), false);
+      assert.equal(await page.locator('.mac-notice-minimize').getAttribute('aria-expanded'), 'false');
+      assert.ok((await page.locator('#mac-notifications').boundingBox()).height < 100);
+      assert.match(await page.locator('.mac-notice-history').textContent(), /widget test notification/);
+      await page.locator('.mac-notice-minimize').click();
+      assert.equal(await page.locator('#mac-notice-content').isVisible(), true);
+      assert.match(await page.locator('.mac-notice-history').textContent(), /widget test notification/);
+      await page.locator('.mac-notice-minimize').click(); await page.reload();
+      await page.locator('#app').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#mac-notice-content').isVisible(), false);
+      await page.locator('.mac-notification-toggle').click();
+      assert.equal(await page.locator('#mac-notice-content').isVisible(), true);
+    });
+    await check('windows cover notifications and Dock while system controls remain recoverable', async () => {
+      await open(page, 'players'); await page.locator('#mac-window-players .mac-zoom').click();
+      await page.locator('#mac-window-players .mac-window-title').click();
+      await page.mouse.move(500, 200);
+      const result = await page.evaluate(() => {
+        const area = document.querySelector('#mac-windows').getBoundingClientRect();
+        const points = ['#mac-notifications', '.mac-dock-home'].map(sel => {
+          const r = document.querySelector(sel).getBoundingClientRect();
+          return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2).closest('.mac-window')?.id;
+        });
+        return { width: area.width, points };
+      }); assert.equal(result.width, 1440); assert.deepEqual(result.points, ['mac-window-players', 'mac-window-players']);
+      await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-notification-toggle').click();
+      assert.equal(await page.locator('#mac-notifications').isVisible(), true);
+      await page.locator('.mac-notice-minimize').click(); await page.locator('.mac-notice-minimize').click();
+      await page.locator('#mac-window-players .mac-window-title').click();
+      await page.locator('#mac-window-players .mac-zoom').click();
+      await page.locator('.mac-taskbar-edge').hover();
+      const selected = page.locator('#tabs [data-view="players"]');
+      assert.equal(await selected.getAttribute('aria-label'), 'プレイヤー一覧（操作中）');
+      assert.equal(await selected.evaluate(n => getComputedStyle(n, '::after').width), '18px');
+      await selected.click();
+      assert.equal(await selected.getAttribute('aria-label'), 'プレイヤー一覧（最小化）');
+      await selected.click();
+      await shot(page, 'dock-window-notifications');
+    });
     for (const id of ids) await check('original ' + id + ' app opens in its own window', async () => {
       await open(page, id); assert.equal(await page.locator('#view-' + id).isVisible(), true);
     });
@@ -215,7 +269,7 @@ const { chromium } = require('playwright');
       assert.notEqual(scale, 'none');
       await page.locator('#tabs [data-view="players"]').hover();
       await page.locator('.mac-tooltip').waitFor({ state: 'visible' });
-      assert.equal(await page.locator('.mac-tooltip').textContent(), 'プレイヤー一覧');
+      assert.equal(await page.locator('.mac-tooltip').textContent(), 'プレイヤー一覧（操作中）');
       await page.mouse.move(5, 5);
     });
     await check('double click enters real browser fullscreen and Escape restores the window', async () => {
