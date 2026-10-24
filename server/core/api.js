@@ -51,6 +51,7 @@ import { createStats } from './stats.js';
 import { createVault, VAULT_BULK } from './vault.js';
 import { REASONS as FILTERED } from './attach.js';
 import { createDiscord } from './discord.js';
+import { createOpsWatch } from './opswatch.js';
 
 const PAGE = 50;
 const CURRENCIES = ['tokens', 'dollars'];
@@ -3566,6 +3567,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const socketTyping = fromSocket(relayTyping);
   const socketBeat = fromSocket(beat);
   const socketSight = fromSocket(seeing);
+  // a sealed frame of the game's state for an operator's screen view (server/core/opswatch.js)
+  const socketView = fromSocket((u, body) => { if (watchRef) watchRef.frame(u, body); });
 
   // Friendship both ways, the request(s) gone, a note in their conversation.
   function makeFriends(requester, accepter) {
@@ -3606,7 +3609,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // lockdown (server/core/emergency.js). The shield can call for the lockdown,
   // which needs the shield's forensics and a protective backup, so the three
   // know one another through late-bound references.
-  let emergencyRef = null, backupRef = null;
+  let emergencyRef = null, backupRef = null, watchRef = null;
   const shield = createShield({
     q, config, opsLog, clock: config.clock || Date.now,
     onBreach: (info) => { if (emergencyRef) emergencyRef.breach(info); },
@@ -3616,7 +3619,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const emergency = createEmergency({
     q, config, opsLog, devCode, isDeveloper, getUser, clock: config.clock || Date.now,
     shield, verifyLog: () => opsLog.verify(), protect: () => (backupRef ? backupRef.lockdownBackup() : null), defer: defer || ((p) => p),
-    host: { dbBytes: host && host.dbBytes ? host.dbBytes : null, stop: () => { if (host && host.stop) host.stop(); } }
+    // (every operator screen view ends first — the operator and the player are told —
+    // then the live connections close: server/core/opswatch.js)
+    host: { dbBytes: host && host.dbBytes ? host.dbBytes : null, stop: () => {
+      if (watchRef) watchRef.terminateAll(emergencyRef && emergencyRef.locked() ? 'lockdown' : 'emergency');
+      if (host && host.stop) host.stop();
+    } }
   });
   emergencyRef = emergency;
   Object.assign(routes, emergency.routes);
@@ -3642,6 +3650,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen
   });
   Object.assign(routes, ops.routes);
+  // the operators' screen view (見る): state only, sealed, one way, 30 minutes at most, logged
+  const watch = createOpsWatch({
+    q, live, ops, opsLog, official, emergency, shield, discord, getUser, isDeveloper, clock: config.clock || Date.now,
+    count: (bytes) => stats.pushed(bytes, 'video'),
+    usage: () => stats.usage(0).percent
+  });
+  watchRef = watch;
+  Object.assign(routes, watch.routes);
+  // the players' list also says which ones this operator marked ★
+  const opsPlayers = routes['GET /api/ops/players'];
+  routes['GET /api/ops/players'] = (req, u) => ({ ...opsPlayers(req, u), favorites: watch.favoriteIds(u.id) });
   const opsMfa = createOpsMfa({ q, tx, secret, ops, opsLog, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now });
   Object.assign(routes, opsMfa.routes);
   Object.assign(routes, createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed,
@@ -4064,6 +4083,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     socketTyping,
     socketBeat,
     socketSight,
+    socketView,
     quota,
     // the bytes of an answer, as the host sent it (and the path it answered)
     sent: (bytes, path = '') => { stats.sent(bytes); emergency.sent(bytes, path); },

@@ -28,7 +28,7 @@ export function kindOf(action) {
   // the emergency stop and the lockdown (server/core/emergency.js)
   if (a.startsWith('emergency_') || a.startsWith('lockdown') || a === 'filter_block') return 'emergency';
   // the security shield's blocks and the security base's messages (/sec/)
-  if (SECURITY.includes(a) || a.startsWith('shield_') || a.startsWith('sec_') || a.startsWith('admin:') || a.startsWith('backup_')) return 'security';
+  if (SECURITY.includes(a) || a.startsWith('shield_') || a.startsWith('sec_') || a.startsWith('admin:') || a.startsWith('backup_') || a.startsWith('watch_')) return 'security';
   if (PLAYER.includes(a) || a.startsWith('player_')) return 'player';
   return 'operator';
 }
@@ -37,7 +37,7 @@ const list = (a) => a.map((x) => `'${x}'`).join(', ');
 const IS = {
   vault: "substr(action, 1, 6) = 'vault_'",
   emergency: "(substr(action, 1, 10) = 'emergency_' OR substr(action, 1, 8) = 'lockdown' OR action = 'filter_block')",
-  security: `(action IN (${list(SECURITY)}) OR substr(action, 1, 7) = 'shield_' OR substr(action, 1, 4) = 'sec_' OR substr(action, 1, 6) = 'admin:' OR substr(action, 1, 7) = 'backup_')`,
+  security: `(action IN (${list(SECURITY)}) OR substr(action, 1, 7) = 'shield_' OR substr(action, 1, 4) = 'sec_' OR substr(action, 1, 6) = 'admin:' OR substr(action, 1, 7) = 'backup_' OR substr(action, 1, 6) = 'watch_')`,
   player: `(action IN (${list(PLAYER)}) OR substr(action, 1, 7) = 'player_')`
 };
 IS.operator = `NOT (${IS.vault} OR ${IS.emergency} OR ${IS.security} OR ${IS.player})`;
