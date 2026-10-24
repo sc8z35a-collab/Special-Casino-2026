@@ -45,8 +45,7 @@
    The site refreshes at the speed shown at the top: one setting for every
    operator, which only the developer changes.
    Passwords are kept only as one-way hashes, so they can be set, never shown.
-   On a phone the site goes full screen and landscape at the first tap; held
-   upright where that is not possible, the whole site is turned sideways. */
+   Phones use their natural orientation; full screen is an explicit window action. */
 (function () {
   'use strict';
 
@@ -204,14 +203,11 @@
     var t = $('#toast');
     t.textContent = text;
     t.hidden = false;
+    document.dispatchEvent(new CustomEvent('ops:notice', { detail: { app: state.view || 'players', text: String(text) } }));
     clearTimeout(toast.timer);
     toast.timer = setTimeout(function () { t.hidden = true; }, 2600);
   }
-  function copy(text) {
-    var done = function () { toast('コピーしました'); };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () { toast(text); });
-    else toast(text);
-  }
+  function copy() { toast('この運営サイトではコピーできません'); }
   function fail(err) { toast(err && err.message ? err.message : 'エラーが発生しました'); }
 
   /* ------------------------------------------------------------ logging in --- */
@@ -417,7 +413,7 @@
     request('GET', '/api/ops/devunit/counts').then(function (r) {
       if (gen !== devUnit.generation) return;
       if (devUnit.unread !== null && r.unread > devUnit.unread) {
-        toast('DEV UNITに新しいコメントが届きました');
+        document.dispatchEvent(new CustomEvent('ops:notice', { detail: { app: 'devunit', text: '新しいコメントが届きました' } }));
         if (window.Notification && Notification.permission === 'granted') {
           try { var n = new Notification('DEV UNIT', { body: '新しいコメントが届きました', tag: 'devunit', icon: 'assets/devunit.webp' }); n.onclick = function () { window.focus(); setView('devunit'); n.close(); }; } catch (e) { /* The unread badge remains available. */ }
         }
@@ -601,6 +597,7 @@
     var b = $('#count-' + id);
     b.hidden = !n;
     b.textContent = n > 99 ? '99+' : String(n || 0);
+    document.dispatchEvent(new CustomEvent('ops:count', { detail: { app: id, count: n } }));
   }
 
   /* ------------------------------------------------------------ the players --- */
@@ -996,7 +993,7 @@
         if (!ok) return null;
         return request('POST', '/api/ops/recovery', { id: p.id }).then(function (r) {
           afterChange(r);
-          return ask({ title: '新しい引き継ぎコード', text: p.name + ' さんの新しいコードです: ' + r.code, ok: 'コピーして閉じる' }).then(function (c) { if (c) copy(r.code); });
+          return ask({ title: '新しい引き継ぎコード', text: p.name + ' さんの新しいコードです: ' + r.code, ok: '閉じる' }).then(function (c) { if (c) copy(r.code); });
         });
       }).catch(fail);
     } else if (name === 'delete') {
@@ -2294,7 +2291,7 @@
     box.appendChild(go);
     box.appendChild(x);
     box.hidden = false;
-    toast(d.from.name + ' さんが開発者を呼んでいます');
+    document.dispatchEvent(new CustomEvent('ops:notice', { detail: { app: 'team', text: d.from.name + ' さんが開発者を呼んでいます' } }));
     try { if (window.Notification && Notification.permission === 'granted') new Notification('運営チャットで開発者が呼ばれています', { body: d.from.name + '：' + d.text }); } catch (e) { /* none */ }
   }
 
@@ -4816,7 +4813,7 @@
         copy(url);
         loadVault();
         return ask({
-          title: (ai ? 'AI用' : '読み取り専用') + 'リンクを作りました（' + v.value + '時間有効・コピー済み）',
+          title: (ai ? 'AI用' : '読み取り専用') + 'リンクを作りました（' + v.value + '時間有効）',
           text: url + '\n\n' + (f ? '期限まで、このファイルだけを取り出せます。' : '期限まで、保管庫のすべてのファイルを取り出せます。') + '用が済んだら停止してください。'
             + (ai ? '\n\nAI には「このURLを開いて how の説明どおりに使い、作業したらラベルを付け、ゲームに入れたら implemented: true で報告して」と伝えてください。' : ''),
           ok: 'OK'
@@ -5184,7 +5181,7 @@
     var text = 'TWO STATE（オンラインのカジノゲーム）の運営ログです。内容を確認して、問題や気になる点があれば、原因の見立てと対処を教えてください。\n'
       + '範囲: ' + what + '・' + entries.length + '件（' + String(first.jst || '').slice(0, 16) + ' 〜 ' + String(last.jst || '').slice(0, 16) + ' 日本時間・新しい順）\n'
       + '----\n' + entries.map(aiLine).join('\n\n') + '\n----\n（IPアドレス・端末ID・ブラウザの情報と記録のハッシュは含めていません）';
-    ask({ title: 'AIに報告する文章', text: 'コピーして AI に貼り付けてください。', area: { label: '報告文（' + entries.length + '件）', value: text }, ok: 'コピーして閉じる' }).then(function (v) {
+    ask({ title: 'AIに報告する文章', text: '運営ログの報告文です。', area: { label: '報告文（' + entries.length + '件）', value: text }, ok: '閉じる' }).then(function (v) {
       if (v !== null) copy($('#dialog-area').value || text);
     });
   }
@@ -5244,85 +5241,14 @@
     return box;
   }
 
-  /* ------------------------------------------------------------ phones: landscape, full screen --- */
-  var turned = false, askedAt = 0;
-  function phone() { return window.matchMedia && window.matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) <= 600; }
-  // held upright (the keyboard coming up must not count)
-  function upright() {
-    if (screen.orientation && screen.orientation.type) return screen.orientation.type.indexOf('portrait') === 0;
-    if (typeof window.orientation === 'number') return window.orientation === 0 || window.orientation === 180;
-    return window.innerHeight > window.innerWidth;
-  }
-  function fullscreen() {
-    if (!phone() || document.fullscreenElement || Date.now() - askedAt < 5000) return;
-    askedAt = Date.now();
-    var d = document.documentElement;
-    var go = !document.fullscreenElement && d.requestFullscreen ? d.requestFullscreen({ navigationUI: 'hide' }) : null;
-    Promise.resolve(go).then(function () {
-      if (screen.orientation && screen.orientation.lock) return screen.orientation.lock('landscape');
-      return null;
-    }).catch(function () { /* not here (iPhone): the site turns itself */ }).then(turn);
-  }
-  // held upright: the whole site turned sideways (and scrolled by hand)
-  function turn() {
-    var on = phone() && upright();
-    if (on === turned) return;
-    turned = on;
-    $('#frame').classList.toggle('turned', on);
-  }
-  function scrollerOf(node, vertical) {
-    for (var n = node; n && n !== document.body; n = n.parentElement) {
-      var cs = getComputedStyle(n), o = vertical ? cs.overflowY : cs.overflowX;
-      if ((o === 'auto' || o === 'scroll') && (vertical ? n.scrollHeight > n.clientHeight : n.scrollWidth > n.clientWidth)) return n;
-    }
-    return null;
-  }
-  function dragScroll() {
-    var f = $('#frame'), d = null, fling = 0;
-    f.addEventListener('touchstart', function (e) {
-      cancelAnimationFrame(fling);
-      if (!turned || e.touches.length !== 1) { d = null; return; }
-      var t = e.touches[0];
-      d = { x: t.clientX, y: t.clientY, v: 0, h: 0, at: Date.now(), sv: null, sh: null, target: e.target };
-    }, { passive: true });
-    f.addEventListener('touchmove', function (e) {
-      if (!turned || !d) return;
-      var t = e.touches[0], dx = t.clientX - d.x, dy = t.clientY - d.y, now = Date.now();
-      d.x = t.clientX;
-      d.y = t.clientY;
-      // turned 90°: across the screen is up and down on the page
-      if (!d.sv) d.sv = scrollerOf(d.target, true) || $('#app');
-      if (!d.sh) d.sh = scrollerOf(d.target, false);
-      d.sv.scrollTop += dx;
-      if (d.sh) d.sh.scrollLeft -= dy;
-      var dt = Math.max(1, now - d.at);
-      d.v = dx / dt;
-      d.at = now;
-      e.preventDefault();
-    }, { passive: false });
-    f.addEventListener('touchend', function () {
-      if (!turned || !d || !d.sv) return;
-      var sc = d.sv, v = d.v * 16;
-      d = null;
-      var step = function () {
-        if (Math.abs(v) < 0.5) return;
-        sc.scrollTop += v;
-        v *= 0.94;
-        fling = requestAnimationFrame(step);
-      };
-      fling = requestAnimationFrame(step);
-    });
-  }
+  // Keep the operator UI upright in both portrait and landscape. The game
+  // retains its own landscape behavior; fullscreen belongs to desktop.js.
+  var turned = false;
 
   /* ------------------------------------------------------------ start --- */
   function init() {
-    turn();
-    dragScroll();
-    window.addEventListener('resize', turn);
     window.addEventListener('resize', topBar);
-    window.addEventListener('orientationchange', function () { setTimeout(function () { turn(); topBar(); }, 200); });
-    // a tap: full screen and landscape where the phone allows it (again after leaving it)
-    document.addEventListener('pointerup', fullscreen, true);
+    window.addEventListener('orientationchange', topBar);
 
     $('#login-form').addEventListener('submit', onLogin);
     initDevUnit();

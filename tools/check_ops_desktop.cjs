@@ -29,17 +29,20 @@ const { chromium } = require('playwright');
     await page.locator('#login-go').click(); await page.locator('#app').waitFor({ state: 'visible' });
   }
   async function open(page, id) {
-    await page.keyboard.press('Control+k');
-    await page.locator('.mac-launch-search').fill(id);
-    await page.locator('.mac-launch-search').press('Enter');
+    const win = page.locator('#mac-window-' + id);
+    if (await win.isVisible()) {
+      if (await win.evaluate(n => n.classList.contains('is-active'))) return;
+      await page.keyboard.press('Alt+Space');
+      await page.locator('#mac-menu').getByText(await win.getAttribute('aria-label'), { exact: true }).click();
+    } else { await page.locator('.mac-taskbar-edge').hover(); await page.locator('#tabs [data-view="' + id + '"]').click(); }
     await page.locator('#mac-window-' + id + '.is-active').waitFor({ state: 'visible' });
   }
   async function menu(page, item) {
-    await page.locator('.mac-menu-trigger[data-menu="window"]').click();
+    await page.keyboard.press('Alt+Space');
     await page.locator('#mac-menu').getByText(item, { exact: true }).click();
   }
   async function out(page) {
-    await page.locator('.mac-profile').click(); await page.locator('#logout').click();
+    await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-profile').click(); await page.locator('#logout').click();
     await page.locator('#login').waitFor({ state: 'visible' });
   }
   try {
@@ -61,8 +64,10 @@ const { chromium } = require('playwright');
       await shot(page, 'login');
     });
     await signIn(page, 'taku');
-    await check('desktop has all 14 authorized apps and the supplied home background', async () => {
-      assert.equal(await page.locator('.mac-desktop-app:visible').count(), 14);
+    await check('bottom bar has all 14 authorized apps and the desktop stays empty', async () => {
+      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 14);
+      assert.equal(await page.locator('.mac-desktop-app, .mac-launch-search, .mac-menu-buttons').count(), 0);
+      const tray = await page.locator('.top').boundingBox(); assert.ok(tray.y > 750);
       assert.equal(await page.locator('.mac-window.is-open').count(), 0);
       assert.match(await page.locator('#app').evaluate(n => getComputedStyle(n).backgroundImage), /wallpaper-desktop/);
       await shot(page, 'desktop');
@@ -91,6 +96,8 @@ const { chromium } = require('playwright');
       const posted = await s.call('POST', '/api/ops/devunit/comments', { token: other.token, body: { text: 'new operator comment' } });
       assert.equal(posted.status, 200);
       await page.locator('#count-devunit').waitFor({ state: 'visible' });
+      await page.locator('.mac-notice-pending .mac-notice-open[aria-label^="DEV UNIT"]').waitFor();
+      await page.locator('.mac-notice-history .mac-notice-open[aria-label^="DEV UNIT"]').waitFor();
       await open(page, 'devunit');
       await page.waitForFunction(() => document.querySelector('#devunit-comments').textContent.includes('new operator comment'));
       await page.locator('#count-devunit').waitFor({ state: 'hidden' });
@@ -183,18 +190,50 @@ const { chromium } = require('playwright');
       await menu(page, 'ウインドウをタブにまとめる');
     });
     await check('overview, desktop hiding and restoring work without destroying windows', async () => {
-      await page.locator('.mac-mission-icon').click(); await page.locator('body.mac-overview').waitFor({ state: 'attached' });
+      await menu(page, 'ウインドウを一覧表示'); await page.locator('body.mac-overview').waitFor({ state: 'attached' });
       const count = await page.locator('.mac-window.is-open').count();
       await page.locator('.mac-window.is-open .mac-window-shade').first().click();
       assert.equal(await page.locator('body.mac-overview').count(), 0);
       await page.locator('.mac-dock-home').click(); assert.equal(await page.locator('.mac-window:visible').count(), 0);
       await page.locator('.mac-dock-home').click(); assert.equal(await page.locator('.mac-window:visible').count(), count);
     });
-    await check('keyboard search launches only the matching authorized app', async () => {
-      await page.keyboard.press('Control+k'); await page.locator('#mac-launchpad').waitFor({ state: 'visible' });
-      await page.locator('.mac-launch-search').fill('サーバー'); assert.equal(await page.locator('.mac-launch-app:visible').count(), 1);
-      await page.locator('.mac-launch-search').press('Enter'); await page.locator('#mac-window-server.is-active').waitFor();
-      assert.equal(await page.locator('#mac-launchpad').isVisible(), false);
+    await check('selection, copying and the native context menu are blocked while typing remains available', async () => {
+      await open(page, 'players'); await page.locator('#search').fill('editable input');
+      assert.equal(await page.locator('#search').inputValue(), 'editable input');
+      const events = await page.evaluate(() => {
+        const title = document.querySelector('#mac-window-players .mac-window-title');
+        return ['selectstart', 'copy', 'cut', 'contextmenu'].map(type => !title.dispatchEvent(new Event(type, { bubbles: true, cancelable: true })));
+      }); assert.deepEqual(events, [true, true, true, true]);
+      await page.locator('#search').fill('PlayerQA');
+    });
+    await check('visible apps have larger dock icons and simple tooltips', async () => {
+      await open(page, 'players');
+      const scale = await page.locator('#tabs [data-view="players"] img').evaluate(n => getComputedStyle(n).transform);
+      assert.notEqual(scale, 'none');
+      await page.locator('#tabs [data-view="players"]').hover();
+      await page.locator('.mac-tooltip').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('.mac-tooltip').textContent(), 'プレイヤー一覧');
+      await page.mouse.move(5, 5);
+    });
+    await check('double click enters real browser fullscreen and Escape restores the window', async () => {
+      await open(page, 'players');
+      const win = page.locator('#mac-window-players');
+      await win.locator('.mac-window-title').dblclick();
+      await page.waitForFunction(() => document.fullscreenElement === document.querySelector('#app'));
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.fullscreenElement && !document.body.classList.contains('mac-fullscreen'));
+      assert.equal(await win.evaluate(n => n.classList.contains('is-zoomed')), false);
+    });
+    await check('background dragging works and does not hijack input interactions', async () => {
+      await open(page, 'devunit'); const win = page.locator('#mac-window-devunit');
+      const before = await win.boundingBox();
+      const text = await win.locator('p.muted').first().boundingBox();
+      await page.mouse.move(text.x + 20, text.y + 5); await page.mouse.down(); await page.mouse.move(text.x + 65, text.y + 45, { steps: 5 }); await page.mouse.up();
+      const after = await win.boundingBox(); assert.ok(after.x - before.x > 30 && after.y - before.y > 30);
+      await page.locator('#devunit-text').fill('draft retained');
+      await page.locator('#mac-window-devunit .mac-minimize').click(); await open(page, 'devunit');
+      assert.equal(await page.locator('#devunit-text').inputValue(), 'draft retained');
+      await page.locator('#devunit-text').fill('');
     });
     await check('developer-code confirmation preserves real validation and submission', async () => {
       await open(page, 'operators'); await page.locator('#op-devcode-btn').click();
@@ -220,10 +259,10 @@ const { chromium } = require('playwright');
       const failures = await page.evaluate(async paths => {
         const bad = []; for (const src of paths) { const im = new Image(); im.src = src; try { await im.decode(); } catch { bad.push(src); } } return bad;
       }, paths); assert.deepEqual(failures, []);
-      await page.locator('.mac-menu-trigger[data-menu="view"]').click();
+      await page.keyboard.press('Alt+Space');
       await page.locator('#mac-menu').getByText('予備の背景を使う', { exact: true }).click();
       assert.match(await page.locator('#app').evaluate(n => getComputedStyle(n).backgroundImage), /wallpaper-reserve/);
-      await page.locator('.mac-menu-trigger[data-menu="view"]').click();
+      await page.keyboard.press('Alt+Space');
       await page.locator('#mac-menu').getByText('予備の背景を使う', { exact: true }).click();
     });
     await check('daily login retains the existing once-per-day recording', async () => {
@@ -235,31 +274,60 @@ const { chromium } = require('playwright');
     });
     await check('normal operators retain their original permissions', async () => {
       await out(page); await signIn(page, 'OperatorQA');
-      assert.equal(await page.locator('.mac-desktop-app:visible').count(), 13);
+      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 13);
       assert.equal(await page.locator('#tab-pay').isVisible(), false); assert.equal(await page.locator('#speed').isDisabled(), true);
       await open(page, 'vault'); assert.equal(await page.locator('#view-vault').isVisible(), true);
     });
     await check('viewers see their allowed apps including security HOME', async () => {
       await out(page); await signIn(page, 'ViewerQA');
-      assert.equal(await page.locator('.mac-desktop-app:visible').count(), 8);
+      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 8);
       for (const id of ['players', 'archive', 'team', 'pay', 'vault', 'devunit']) {
         assert.equal(await page.locator('#tabs [data-view="' + id + '"]').isVisible(), false);
         assert.equal(await page.locator('#mac-window-' + id).isVisible(), false);
       }
-      await page.keyboard.press('Control+k'); assert.equal(await page.locator('.mac-launch-app:visible').count(), 8); await page.keyboard.press('Escape');
+      assert.equal(await page.locator('.mac-launch-search').count(), 0);
       await shot(page, 'viewer');
     });
     await check('revoking viewer access still signs out the existing session', async () => {
       assert.equal((await devCall('POST', '/api/ops/viewer', { name: 'ViewerQA', action: 'revoke', code })).status, 200);
       await page.locator('#login').waitFor({ state: 'visible', timeout: 10000 }); assert.equal(await page.locator('#app').isVisible(), false);
     });
-    await check('touch portrait retains the existing landscape rotation and usable windows', async () => {
+    await check('touch portrait stays upright with compact windows and readable inputs', async () => {
       const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
       const p = await phone.newPage(); p.on('pageerror', e => errors.push(e.message));
-      await p.goto(s.base + '/ops/'); await p.locator('#frame.turned').waitFor(); await shot(p, 'phone-login');
+      await p.goto(s.base + '/ops/'); await p.locator('#login').waitFor({ state: 'visible' }); assert.equal(await p.locator('#frame.turned').count(), 0); await shot(p, 'phone-login');
       await signIn(p, 'taku'); await open(p, 'players');
       const box = await p.locator('#mac-window-players').boundingBox(); assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= 391 && box.y + box.height <= 845);
+      assert.equal(await p.locator('#search').evaluate(n => getComputedStyle(n).fontSize), '16px');
+      assert.equal(await p.evaluate(() => document.fullscreenElement), null);
+      await p.locator('.mac-notification-toggle').click(); await p.locator('#mac-notifications').waitFor({ state: 'visible' });
+      await p.locator('.mac-notice-close').click(); await p.locator('#mac-notifications').waitFor({ state: 'hidden' });
+      assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       await shot(p, 'phone-desktop'); await phone.close();
+    });
+    await check('game rarity artwork is translucent without fading labels; all app icons decode', async () => {
+      const game = await context.newPage(); game.on('pageerror', e => errors.push(e.message));
+      await game.goto(s.base + '/');
+      await game.waitForFunction(() => window.BR && BR.UI_IMG && document.querySelector('style'));
+      const result = await game.evaluate(async () => {
+        const tierNames = ['green', 'blue', 'purple', 'orange', 'gold', 'red', 'red-gold', 'aqua-purple', 'dark'];
+        const host = document.createElement('div');
+        host.style.cssText = 'position:fixed;inset:0;z-index:999999;background:#34223e;padding:24px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;color:white';
+        for (const tier of tierNames) {
+          const row = document.createElement('div'); row.className = 'q-row t-' + tier;
+          row.style.setProperty('--q-art', 'url("' + BR.UI_IMG.questTiers[tier] + '")');
+          const label = document.createElement('strong'); label.textContent = tier; label.style.cssText = 'font-size:22px;opacity:1'; row.appendChild(label); host.appendChild(row);
+        }
+        document.body.appendChild(host);
+        const failures = [];
+        const manifest = await fetch('/manifest.webmanifest').then(r => r.json());
+        const urls = Object.values(BR.UI_IMG.questTiers).concat(manifest.icons.map(i => i.src), ['icons/icon-180.png']);
+        for (const src of urls) { const im = new Image(); im.src = src; try { await im.decode(); } catch { failures.push(src); } }
+        return { failures, layers: Array.from(host.children).map(n => ({ art: getComputedStyle(n, '::before').backgroundImage, alpha: getComputedStyle(n, '::before').opacity, label: getComputedStyle(n.firstChild).opacity })) };
+      });
+      assert.deepEqual(result.failures, []); assert.equal(result.layers.length, 9);
+      result.layers.forEach(l => { assert.ok(l.art.includes('.webp')); assert.equal(l.alpha, '0.84'); assert.equal(l.label, '1'); });
+      await shot(game, 'quest-rarities'); await game.close();
     });
     await check('no uncaught browser errors', async () => assert.deepEqual(errors, []));
     console.log('PASS ' + checks + ' browser checks; developer, operator and viewer; real local API.');

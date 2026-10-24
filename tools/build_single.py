@@ -65,7 +65,8 @@ def main():
     html = html.replace('<link rel="manifest" href="manifest.webmanifest">\n', '')
     for icon in ('icons/icon-192.png', 'icons/icon-180.png'):
         for attr in ('href', 'src'):
-            html = html.replace('%s="%s"' % (attr, icon), '%s="data:image/png;base64,%s"' % (attr, b64(icon)))
+            html = re.sub(r'%s="%s(?:\?[^"]*)?"' % (attr, re.escape(icon)),
+                          '%s="data:image/png;base64,%s"' % (attr, b64(icon)), html)
     # Static image labels (such as PRO / ULTRA) also need their bytes offline.
     html = re.sub(r'src="(img/[A-Za-z0-9_/.-]+\.(webp|png))"',
                   lambda m: 'src="data:%s;base64,%s"' % (MEDIA[m.group(2)], b64(m.group(1))), html)

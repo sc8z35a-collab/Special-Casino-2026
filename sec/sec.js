@@ -91,7 +91,7 @@
   function stamp(ts) { if (!ts) return '-'; var d = new Date(ts); return d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); }
   function ago(ts) { if (!ts) return '-'; var s = Math.max(0, (Date.now() - ts) / 1000); if (s < 60) return 'たった今'; if (s < 3600) return Math.floor(s / 60) + '分前'; if (s < 86400) return Math.floor(s / 3600) + '時間前'; return Math.floor(s / 86400) + '日前'; }
   function bytes(n) { n = Number(n || 0); if (n < 1024) return n + 'B'; if (n < 1048576) return (n / 1024).toFixed(1) + 'KB'; if (n < 1073741824) return (n / 1048576).toFixed(1) + 'MB'; return (n / 1073741824).toFixed(2) + 'GB'; }
-  function toast(t) { var n = $('#toast'); n.textContent = t; n.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(function () { n.hidden = true; }, 2600); }
+  function toast(t) { securityNotice({ text: String(t) }); var n = $('#toast'); n.textContent = t; n.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(function () { n.hidden = true; }, 2600); }
   function fail(e) { toast(e && e.message ? e.message : 'エラーが発生しました'); }
 
   /* ------------------------------------------------------------ login --- */
@@ -485,10 +485,14 @@
   // the channel is in sight: everything in it is read
   function markSeen() { seenChat = Math.max(seenChat, lastChatId); unread = 0; saveSeen(); markChatDot(); }
   // (the other operators' messages not read yet)
+  function securityNotice(detail) {
+    if (window.parent !== window) window.parent.postMessage(Object.assign({ type: 'ops:security-notice' }, detail), location.origin);
+  }
   function markChatDot() {
     var dot = $('#chat-dot');
     dot.hidden = chatOpen || !unread;
     dot.textContent = unread > 99 ? '99+' : String(unread);
+    securityNotice({ count: chatOpen ? 0 : unread });
   }
   function sendChat(e) {
     e.preventDefault();
