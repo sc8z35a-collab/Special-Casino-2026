@@ -44,7 +44,11 @@ export function computeBuild() {
 
 export function stampedBuild() {
   try {
-    return JSON.parse(fs.readFileSync(path.join(ROOT, 'version.json'), 'utf8')).build;
+    const json = JSON.parse(fs.readFileSync(path.join(ROOT, 'version.json'), 'utf8')).build;
+    const js = fs.readFileSync(path.join(ROOT, 'js/version.js'), 'utf8').match(/BR\.BUILD = '([^']+)'/)?.[1];
+    const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8').match(/const BUILD = '([^']+)'/)?.[1];
+    // A partially stamped release looks permanently outdated to players.
+    return json && json === js && js === sw ? json : null;
   } catch {
     return null;
   }
