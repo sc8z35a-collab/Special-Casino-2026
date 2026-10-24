@@ -200,6 +200,7 @@
     buyCar: function (model, price) { return post('/api/cars/buy', { model: model, price: price }); },
     giftCar: function (to, carId) { return post('/api/cars/gift', { to: to, car: carId }); },
     sellCar: function (carId, price) { return post('/api/cars/sell', { car: carId, price: price }); },
+    equipEngine: function (carId, engine) { return post('/api/cars/engine', { car: carId, engine: engine }); },
     rentCar: function (carId, action) { return post('/api/cars/rent', { car: carId, action: action }); },
     collectRent: function () { return post('/api/cars/collect'); },
     expandGarage: function (price) { return post('/api/garage/expand', { price: price }); },

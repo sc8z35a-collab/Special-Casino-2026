@@ -19,6 +19,8 @@ export async function startServer(overrides = {}, { warm = true } = {}) {
     // Keep ordinary progress/balance tests deterministic; bonus tests inject
     // boundary draws and exercise PRO/ULTRA through the same completion path.
     questRewardRoll: () => 999,
+    // Existing ticket-flow tests use winning draws; probability tests inject boundaries.
+    questTicketRoll: () => 0,
     dataDir, logRequests: false, registrationsPerIp: 0, registerPerMinute: 100000, loginBonus: false, quests: false, npcGifts: false, milestones: false,
     limits: { spin: [100000, 1000], shop: [100000, 1000], general: [100000, 1000], login: [100000, 1000], friend: [100000, 1000], transfer: [100000, 1000] },
     ...overrides

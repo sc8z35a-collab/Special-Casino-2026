@@ -808,6 +808,16 @@ export const MIGRATIONS = [
     `UPDATE cars SET rent_paused = CASE WHEN rent_start > 0 AND rent_until = 0 THEN 1 ELSE 0 END,
        rent_start = 0, rent_until = 0, rent_blocks = 0, rent_earned = 4500000 WHERE rent_earned >= 4500000`
   ],
+  // An installed engine belongs to its car and travels with a transferred car.
+  ["ALTER TABLE cars ADD COLUMN engine TEXT NOT NULL DEFAULT ''"],
+  // Durable sending totals, independent of message receipt/expiry/deletion.
+  [`CREATE TABLE player_transfer_days (
+      user_id INTEGER NOT NULL,
+      day INTEGER NOT NULL,
+      dollars INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, day)
+    )`,
+    'CREATE INDEX messages_sender_time ON messages(sender_id, created_at)'],
   // Replace the retired player catalog once. NPC portraits remain their own;
   // later restarts must keep purchased portraits and the player's selection.
   [
@@ -818,7 +828,7 @@ export const MIGRATIONS = [
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
-export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'blocks', 'spins',
+export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'player_transfer_days', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
   'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers', 'ops_entries',
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'meta'];

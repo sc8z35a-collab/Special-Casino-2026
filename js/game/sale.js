@@ -105,6 +105,8 @@
     return null;
   }
 
+  function carPriced(car) { return !!car && typeof car.price === 'number' && isFinite(car.price) && car.price > 0; }
+
   // The Car Owner sale on at `ms`, or null: { kind, name, start, end, pct: { carId: % off } }
   function carSale(ms, cars) {
     var S = BR.CONFIG.carSales, t = jday(ms), today = midnight(t.y, t.m, t.d), on = null;
@@ -118,7 +120,7 @@
     if (!on) return null;
     var c = S[on.kind];
     // which cars (a shuffle of its own), and how much off each
-    var order = (cars || BR.CONFIG.cars).map(function (x) { return x.id; }).sort()
+    var order = (cars || BR.CONFIG.cars).filter(carPriced).map(function (x) { return x.id; }).sort()
       .map(function (id) { return { id: id, r: mix(hash(on.key + '/order/' + id)) }; })
       .sort(function (a, b) { return a.r - b.r; });
     var pct = {};
@@ -139,6 +141,7 @@
     // A Shop item at `ms`: { price (what it costs now), pct (0 outside the sale
     // hours), on, start, end (today's sale hours), next (when the next ones begin) }
     shop: function (item, ms) {
+      if (item.fixedPrice) return { price: item.price, pct: 0, on: false, start: 0, end: 0, next: 0 };
       var w = shopWindow(ms), on = ms >= w.start && ms < w.end;
       var pct = on ? BR.sale.pct(item.id, w.day) : 0;
       var next = ms < w.start ? w.start : shopWindow(midnight(jday(ms).y, jday(ms).m, jday(ms).d) + DAY).start;
@@ -147,7 +150,9 @@
     // the Car Owner sale on at `ms` (null: none), and a car's price then
     // (`off`: VIP's % off on top of it)
     cars: carSale,
+    carPriced: carPriced,
     carPrice: function (car, sale, off) {
+      if (!carPriced(car)) return { price: null, pct: 0, vip: 0 };
       var pct = sale && sale.pct[car.id] || 0, all = pct + (off || 0);
       return { price: all ? round100(car.price * (100 - all) / 100) : car.price, pct: pct, vip: off || 0 };
     },
@@ -159,6 +164,7 @@
     // What the buy-back pays for `car` at `ms`: its price now (`sale`: the car
     // sale on now) less `pct` % (the day's rate, or the 大廃棄セール's).
     buyback: function (car, ms, sale) {
+      if (!carPriced(car)) return null;
       var b = BR.CONFIG.carBuyback, d = BR.sale.disposal(ms);
       var pct = d ? d.pct : b.min + pick('car-buyback/' + dayKey(ms) + '/' + car.id, b.max - b.min + 1);
       var now = BR.sale.carPrice(car, sale).price;

@@ -309,7 +309,7 @@
      device px (`back`: the layer behind it, else the one in front): the 7
      burns, a pillar of light comes down on the statue, the diamond throws
      rainbow glints, sparks circle the star, a gleam passes over the BAR,
-     the gold bar glints at its corners, the revolver fires. Times run from
+     the gold bar and the coin glint at their edges. Times run from
      the moment the win is shown, a little apart from one reel to the next. */
   Reels.prototype.winFx = function (g, sym, cx, cy, ht, res, i, back) {
     var t = ht + i * 0.15, x0 = cx - COL_W * res / 2, base = cy + CELL_H * res / 2;
@@ -368,23 +368,10 @@
         var gz = 90 * res * Math.sin(gp * Math.PI);
         g.drawImage(this.flare, cx + corner[0] * res - gz / 2, cy + corner[1] * res - gz / 2, gz, gz);
       } else if (sym === 'revolver') {
-        // it fires: a flash at the muzzle, then a wisp of smoke
-        var shot = t % 1.3, mx = cx + 66 * res, my = cy - 44 * res;
-        if (shot < 0.12) {
-          var fa = 1 - shot / 0.12, ms = 120 * res;
-          g.globalAlpha = fa;
-          g.drawImage(this.glow, mx - ms / 2, my - ms / 2, ms, ms);
-          var fz = 130 * res * fa;
-          g.drawImage(this.flare, mx - fz / 2, my - fz / 2, fz, fz);
-        } else if (shot < 0.8) {
-          var sx = mx + shot * 20 * res, sy = my - shot * 55 * res, sr = (12 + shot * 34) * res;
-          var sg = g.createRadialGradient(sx, sy, 0, sx, sy, sr);
-          sg.addColorStop(0, 'rgba(215,205,200,' + (0.5 * (1 - (shot - 0.12) / 0.68)) + ')');
-          sg.addColorStop(1, 'rgba(215,205,200,0)');
-          g.globalCompositeOperation = 'source-over';
-          g.fillStyle = sg;
-          g.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
-        }
+        var ca = t * 2.4, cz = (42 + 18 * Math.sin(t * 4)) * res;
+        g.globalAlpha = .8;
+        g.drawImage(this.flare, cx + Math.cos(ca) * 44 * res - cz / 2,
+          cy + Math.sin(ca) * 34 * res - cz / 2, cz, cz);
       }
     }
     g.restore();
@@ -398,14 +385,12 @@
     var p = t % TURN_EVERY;
     return p < TURN_S ? 360 * U.ease.inOutCubic(p / TURN_S) % 360 : 0;
   }
-  // the extra turn of a winning symbol between its 3D turns: the star rocks, the revolver recoils
+  // The supplied star and coin rock gently between win pulses.
   function winTurn(sym, ht, i) {
     var t = ht + i * 0.15;
     if (sym === 'star') return Math.sin(t * 2.6) * 0.22;
-    if (sym === 'revolver') {
-      var shot = t % 1.3;
-      return shot < 0.45 ? -0.3 * Math.exp(-shot * 9) * Math.sin(Math.min(1, shot / 0.04) * Math.PI / 2) : 0;
-    }
+    if (sym === 'revolver') return Math.sin(t * 2.1) * 0.08;
+
     return 0;
   }
 

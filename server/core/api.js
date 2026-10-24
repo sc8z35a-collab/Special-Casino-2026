@@ -51,6 +51,7 @@ import { createDiscord } from './discord.js';
 
 const PAGE = 50;
 const CURRENCIES = ['tokens', 'dollars'];
+const PLAYER_TRANSFER_DAILY_DOLLARS = 5000000;
 // voice: the home call (a player and everyone watching them)
 const CALL_TYPES = new Set(['home', 'hub']);
 // the push services browsers subscribe with (Chrome / Android, Firefox, Safari / iPhone, Edge)
@@ -86,7 +87,7 @@ function randomInt(lo, hi) {
   return lo + (r[0] % (hi - lo + 1));
 }
 
-export function createApi({ db, live: hostLive, config, secret, hostAdmin = null, defer = null, blobs = null, host = null, questRewardRoll }) {
+export function createApi({ db, live: hostLive, config, secret, hostAdmin = null, defer = null, blobs = null, host = null, questRewardRoll, questTicketRoll }) {
   const q = statements(db);
   const tx = (fn) => db.tx(fn);
   const quota = createQuota(db, { requests: config.dailyRequestLimit, megabytes: config.dailyMbLimit });
@@ -203,8 +204,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       rent: r.rent_paused ? { paused: true, start: 0, until: 0, next: 0 }
         : r.rent_start ? { start: r.rent_start, until: r.rent_until, next: r.rent_start + (r.rent_blocks + 1) * BLOCK } : null,
       earned: Math.min(RENT.maxPay, r.rent_earned), waiting: r.rent_earned >= RENT.maxPay, last,
-      paid: carPaid(r), used: !!r.used, offer: r.offer_id || 0, via: r.via || (r.from_id ? 'gift' : '')
+      paid: carPaid(r), used: !!r.used, offer: r.offer_id || 0, via: r.via || (r.from_id ? 'gift' : ''),
+      engine: r.engine || null, buyback: ownedCarBuyback(r)
     };
+  }
+  function ownedCarBuyback(c) {
+    const model = CARS.get(c.model);
+    if (!model) return null;
+    const price = carBuyback(model), engine = SHOP.get(c.engine);
+    return { ...price, price: price.price + (engine && engine.kind === 'engine' ? Math.floor(engine.price * 0.9) : 0) };
   }
   // what the owner paid for a car (cars from before this was kept: its list price)
   const carPaid = (c) => c.paid || (CARS.get(c.model) ? CARS.get(c.model).price : 0);
@@ -488,14 +496,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function questStep(cur, events, boost = null, xpGain = 0) {
     const state = readQuests(cur.quests);
     const r = config.quests ? stepQuests(state, events, Date.now(), boost, questRewardRoll) : { changed: false, done: [] };
-    const ticketGain = grantLevelTickets(state, cur.xp, cur.xp + xpGain);
-    return { ...r, changed: r.changed || ticketGain['5h'] > 0, json: JSON.stringify(state), ready: questsReady(state),
+    const ticketGain = grantLevelTickets(state, cur.xp, cur.xp + xpGain, questTicketRoll);
+    return { ...r, changed: r.changed || ticketGain['5h'] > 0 || ticketGain.day > 0, json: JSON.stringify(state), ready: questsReady(state),
       tickets: questTickets(state), bonuses: questBonuses(state), ticketGain };
   }
   // Tells the player what was finished (and how many wait to be received);
   // with VIP on, each one is VIP EXP.
   function questNotice(userId, r) {
-    if (!r || (!r.done.length && !r.ticketGain['5h'])) return;
+    if (!r || (!r.done.length && !r.ticketGain['5h'] && !r.ticketGain.day)) return;
     live.send(userId, 'quest', { done: r.done.map((x) => x.id), ready: r.ready, tickets: r.tickets, bonuses: r.bonuses, xp: getUser(userId).xp });
     if (r.done.length && vipOn(getUser(userId))) tx(() => addVipExp(getUser(userId), r.done.length * VIP_RULES.exp.quest));
   }
@@ -871,8 +879,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   // `held`: the recipient blocked the sender; it reaches them once they unblock.
   // `pending`: money, a car or an item waiting for the recipient's tap (POST /api/messages/claim).
-  function insertMessage({ channel, sender, recipient = null, kind, body = '', amount = null, currency = null, held = false, pending = false }) {
-    const now = Date.now();
+  function insertMessage({ channel, sender, recipient = null, kind, body = '', amount = null, currency = null, held = false, pending = false, at = Date.now() }) {
+    const now = at;
     const r = q('INSERT INTO messages (channel, sender_id, recipient_id, kind, body, amount, currency, held, pending, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .run(channel, sender ? sender.id : 0, recipient, kind, body, amount, currency, held ? 1 : 0, pending ? 1 : 0, now);
     return {
@@ -2104,9 +2112,23 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (cur[currency] < amount) {
           throw new ApiError(409, 'insufficient', currency === 'tokens' ? 'スピントークンが足りません' : '$が足りません');
         }
+        // Per sender, across all recipients and both currencies; midnight in Japan.
+        // The counter records sending, including pending/held/expired receipts.
+        const now = Date.now();
+        const day = Math.floor((now + 9 * 3600000) / 86400000);
+        const start = day * 86400000 - 9 * 3600000;
+        const dollars = currency === 'tokens' ? amount * RULES.tokenPrice : amount;
+        // Seed existing accounts from today's messages when the counter is first used.
+        q(`INSERT OR IGNORE INTO player_transfer_days (user_id, day, dollars)
+           SELECT ?, ?, COALESCE(SUM(CASE WHEN currency = 'tokens' THEN amount * ? ELSE amount END), 0)
+           FROM messages WHERE sender_id = ? AND kind = 'transfer' AND created_at >= ? AND created_at < ?`)
+          .run(u.id, day, RULES.tokenPrice, u.id, start, start + 86400000);
+        const used = q('SELECT dollars FROM player_transfer_days WHERE user_id = ? AND day = ?').get(u.id, day).dollars;
+        if (used + dollars > PLAYER_TRANSFER_DAILY_DOLLARS) throw new ApiError(409, 'transfer_daily_limit', '本日はこれ以上送金できません');
+        q('UPDATE player_transfer_days SET dollars = dollars + ? WHERE user_id = ? AND day = ?').run(dollars, u.id, day);
         // `currency` is one of CURRENCIES, so it is safe as a column name
         q(`UPDATE users SET ${currency} = ${currency} - ?, rev = rev + 1 WHERE id = ?`).run(amount, u.id);
-        const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'transfer', amount, currency, held, pending: true });
+        const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'transfer', amount, currency, held, pending: true, at: now });
         if (held) touchOwn(u.id, to, row.id);
         else touchConversations(u.id, to, row.id);
         return row;
@@ -2241,7 +2263,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (c.offer_id) throw new ApiError(409, 'on_offer', '販売中の車です');
         const model = CARS.get(c.model);
         if (!model) throw new ApiError(400, 'bad_model', 'この車は買い取れません');
-        const b = carBuyback(model);
+        const b = ownedCarBuyback(c);
         if (body.price !== undefined && Number(body.price) !== b.price) {
           throw new ApiError(409, 'price_changed', `買取価格が変わりました（今は $${fmt(b.price)}）`, { buyback: b });
         }
@@ -2250,6 +2272,31 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         return { paid: b.price, earned: c.rent_earned, pct: b.pct, disposal: b.disposal };
       });
       return { ...r, me: meDto(balanceChanged(u.id)) };
+    },
+
+    // Atomic inventory/car exchange; a repeated equip cannot duplicate or consume an engine.
+    'POST /api/cars/engine': async (req, u) => {
+      const body = await req.json();
+      rate(limit.shop, u.id);
+      const id = posInt(body.car, '車');
+      const engineId = body.engine === null ? '' : String(body.engine || '');
+      const engine = SHOP.get(engineId);
+      if (body.engine !== null && (!engine || engine.kind !== 'engine')) throw new ApiError(400, 'bad_engine', 'このエンジンは装着できません');
+      tx(() => {
+        const car = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(id, u.id);
+        if (!car) throw new ApiError(404, 'no_car', 'この車は持っていません');
+        if (car.rent_start || car.rent_paused) throw new ApiError(409, 'rented', '貸し出し中の車には装着できません');
+        if (car.offer_id) throw new ApiError(409, 'on_offer', '販売中の車には装着できません');
+        if ((car.engine || '') === engineId) return;
+        if (engine && itemCount(u.id, engineId) < 1) throw new ApiError(409, 'insufficient', 'このエンジンを持っていません');
+        const previous = SHOP.get(car.engine);
+        if (previous && itemCount(u.id, previous.id) >= previous.max) throw new ApiError(409, 'max', '取り外すエンジンの所持数が上限です');
+        if (engine) addItems(u.id, engineId, -1);
+        if (previous && previous.kind === 'engine') addItems(u.id, previous.id, 1);
+        q('UPDATE cars SET engine = ? WHERE id = ?').run(engineId, id);
+        q('UPDATE users SET rev = rev + 1 WHERE id = ?').run(u.id);
+      });
+      return { car: carDto(q('SELECT * FROM cars WHERE id = ?').get(id)), me: meDto(balanceChanged(u.id)) };
     },
 
     // renting a car out ('start'), or asking it back ('stop': at the end of its block)
@@ -2792,7 +2839,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         // XP, x1.2 in a hub with its benefits on (and VIP's x1.5 there)
         const boost = hubOn(cur.id) ? HUB.xp * (vipOn(cur) ? VIP_RULES.hubXp : 1) : 1;
         const xp = Math.floor(c.claimed.length * LEVEL.questXp * boost + 1e-9);
-        grantLevelTickets(state, cur.xp, cur.xp + xp);
+        grantLevelTickets(state, cur.xp, cur.xp + xp, questTicketRoll);
         q('UPDATE users SET quests = ?, dollars = dollars + ?, coins = coins + ?, xp = xp + ?, rev = rev + 1 WHERE id = ?')
           .run(JSON.stringify(state), c.dollars, c.coins, xp, cur.id);
         return { ...c, state };

@@ -63,27 +63,39 @@
   }
   // The level shows on my card (top left of the slot screen) and on the
   // quest screen. A new level: the bar on the card fills up to the end and
-  // stays full until the LEVEL UP shows (levelUp), then the number turns
-  // over and the bar starts again from nothing.
+  // stays full until the LEVEL UP shows (levelUp), then starts again from
+  // nothing. The current level and remaining XP update immediately.
   var turn = null, turnTimer = 0;
   function pct(info) { return Math.round(info.into / info.need * 100) + '%'; }
   function renderLevel(levelled) {
     var q = $('#q-lv');
     q.textContent = '';
-    if (xp === null) return;
+    if (xp === null) {
+      clearTimeout(turnTimer); turn = null;
+      $('#lv-num').textContent = '1';
+      $('#lv-fill').style.width = '0%';
+      $('#lv-xp').textContent = '';
+      $('#me-card').setAttribute('aria-label', 'プロフィール');
+      return;
+    }
     var info = LV.info(xp);
+    var next = '次Lv.' + (info.level + 1) + 'まで あと' + U.fmt(Math.ceil(info.need - info.into)) + ' XP';
+    $('#lv-num').textContent = info.level;
+    $('#lv-xp').textContent = next;
+    $('#me-card').setAttribute('aria-label', 'プロフィール・Lv.' + info.level + '・' + next);
     if (levelled || turn) {
       turn = info;
       $('#lv-fill').style.width = '100%';
       clearTimeout(turnTimer);
       turnTimer = setTimeout(turnOver, 20000);
     } else {
-      $('#lv-num').textContent = info.level;
       $('#lv-fill').style.width = pct(info);
     }
     q.appendChild(el('b', 'q-lv-num', 'Lv.' + info.level));
     q.appendChild(levelBar(info));
-    q.appendChild(el('span', 'q-lv-xp', U.fmt(info.into) + ' / ' + U.fmt(info.need) + ' XP'));
+    var detail = el('span', 'q-lv-xp', U.fmt(info.into) + ' / ' + U.fmt(info.need) + ' XP');
+    detail.appendChild(el('small', 'q-lv-next', next));
+    q.appendChild(detail);
   }
 
   /* ------------------------------------------------------------ notices --- */
@@ -186,10 +198,19 @@
     K.badge($('#quest-badge'), ready);
     renderClaimAll();
   }
+  function bonusBadge(mode, cls, suffix) {
+    var badge = el('b', cls + ' image ' + mode);
+    badge.setAttribute('aria-label', mode.toUpperCase() + (suffix ? ' ' + suffix : ''));
+    var img = el('img', 'q-bonus-art');
+    img.src = BR.UI_IMG.questBadges[mode]; img.alt = ''; img.setAttribute('aria-hidden', 'true');
+    badge.appendChild(img);
+    if (suffix) badge.appendChild(el('span', '', suffix));
+    return badge;
+  }
   function bonusTags(host, counts) {
     host.textContent = '';
     ['pro', 'ultra'].forEach(function (mode) {
-      if (counts[mode]) host.appendChild(el('b', 'q-bonus-chip ' + mode, mode.toUpperCase() + (counts[mode] > 1 ? ' ×' + counts[mode] : '')));
+      if (counts[mode]) host.appendChild(bonusBadge(mode, 'q-bonus-chip', counts[mode] > 1 ? '×' + counts[mode] : ''));
     });
     host.hidden = !host.childNodes.length;
   }
@@ -288,18 +309,6 @@
     if (def.tokens) return short(v);
     return String(v);
   }
-  var EVERY = {
-    '5h': '5時間ごとに更新', day: '毎日 9:00 に更新', week: '毎週日曜 9:00 に更新',
-    coop: '毎週日曜 9:00 に更新・友達と稼ぐ中だけ進む', month: '毎月18日 9:00 に更新', special: 'リセットなし（一度きり）'
-  };
-  function resetText(p, end) {
-    var every = '基本報酬はドル・' + EVERY[p.id];
-    if (!end) return every;
-    var d = new Date(end);
-    var when = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
-    return every + '（次は ' + when + '）';
-  }
-
   function renderNote(text) {
     var list = $('#q-list');
     list.textContent = '';
@@ -335,7 +344,6 @@
   function render() {
     var def = Q.period(tab), p = current();
     $('#q-title').textContent = def.name + 'クエスト';
-    $('#q-sub').textContent = p ? resetText(def, p.end) : '';
     $('#screen-quests').dataset.period = tab;
     renderClock();
     renderTickets();
@@ -349,8 +357,6 @@
     var order = { ready: 0, open: 1, received: 2 };
     cs.sort(function (a, b) { return (b.emergency - a.emergency) || (order[chainState(a)] - order[chainState(b)]); });
     cs.forEach(function (c) { list.appendChild(chainRow(c)); });
-    var done = p.quests.filter(function (q) { return q.state !== 'open'; }).length;
-    $('#q-sub').textContent += '　達成 ' + done + ' / ' + p.quests.length;
     renderClaimAll();
   }
 
@@ -381,8 +387,9 @@
     ['5h', 'day'].forEach(function (period) {
       var status = ticketStatus(period), btn = $('#q-ticket-' + period);
       btn.textContent = '';
-      btn.appendChild(el('b', '', (period === '5h' ? '5時間券' : 'デイリー券') + '：' + status.count + '枚'));
-      btn.appendChild(el('small', '', status.reason));
+      var label = (period === '5h' ? '5時間券' : 'デイリー券') + '：' + status.count + '枚';
+      btn.appendChild(el('b', '', label));
+      btn.setAttribute('aria-label', label + '。' + status.reason);
       btn.disabled = !status.enabled;
     });
   }
@@ -436,7 +443,7 @@
 
   // the badge of a quest by what it counts
   var MARK = {
-    spin: 'SPIN', win: 'WIN', barWin: 'BAR', revolver5: 'GUN', snowman: 'GIFT',
+    spin: 'SPIN', win: 'WIN', barWin: 'BAR', revolver5: 'COIN', snowman: 'GIFT',
     bet: 'BET', casinoSpend: 'BET', combo: 'COMBO', earn: '$', coopEarn: '$', online: 'TIME', hubSec: 'TIME',
     talkSec: 'TALK', talk: 'TALK', call: 'CALL', chat: 'CHAT', peek: 'CHAT', watch: 'WATCH', wbet: 'BET', hub: 'HUB',
     sent: 'SEND', friend: 'FRIEND', strawberry: 'FRUIT', watermelon: 'FRUIT', melon: 'FRUIT', borrow: 'LOAN',
@@ -447,7 +454,8 @@
     var n = c.steps.length, i = c.cur < 0 ? n - 1 : c.cur;
     var def = c.steps[i].def, st = c.steps[i].st, state = chainState(c);
     var bonus = st.reward;
-    var r = el('div', 'q-row t-' + Q.tier(def.reward) + ' ' + state + (c.emergency ? ' emergency' : '') + (n > 1 ? ' chain' : ''));
+    var dollars = bonus ? bonus.dollars : def.reward;
+    var r = el('div', 'q-row t-' + Q.tier(dollars) + ' ' + state + (c.emergency ? ' emergency' : '') + (n > 1 ? ' chain' : ''));
     if (bonus) r.classList.add('bonus-' + bonus.mode);
     r.dataset.quest = def.id;
     var gem = el('i', 'q-gem');
@@ -457,7 +465,7 @@
     var head = el('div', 'q-headline');
     if (c.emergency) head.appendChild(el('span', 'q-flag', '臨時緊急'));
     if (bonus) {
-      var badge = el('span', 'q-bonus ' + bonus.mode, bonus.mode.toUpperCase() + ' ×' + bonus.multiplier);
+      var badge = bonusBadge(bonus.mode, 'q-bonus', '×' + bonus.multiplier);
       badge.title = 'このSTEPのみ報酬' + bonus.multiplier + '倍' + (bonus.coins ? '＋ロイヤルコイン' + bonus.coins + '枚' : '');
       head.appendChild(badge);
     }

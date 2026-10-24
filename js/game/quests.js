@@ -85,7 +85,7 @@
       function (n) { return { text: 'BARを揃えて' + n + '回当たる' }; }),
     steps('5h', 'revolver5', [['revolver5-1', 1, 5000], ['revolver5-2', 2, 6000], ['revolver5-3', 3, 7000],
       ['revolver5-4', 4, 8000], ['revolver5-5', 5, 9000]],
-      function (n) { return { text: '銃を5列揃えて' + n + '回当たる' }; }),
+      function (n) { return { text: 'コインを5列揃えて' + n + '回当たる' }; }),
     steps('5h', 'snowman', [['snowman1', 1, 10000], ['snowman2', 2, 20000], ['snowman3', 3, 30000],
       ['snowman5', 5, 50000], ['snowman10', 10, 120000]],
       function (n) { return { text: '友達に雪だるまを' + n + '回送る' }; }),
@@ -232,15 +232,17 @@
       .sort(function (a, b) { return a.goal - b.goal; });
   }
 
-  // the colour of a quest by its reward
+  // Shared dollar reward bands; PRO/ULTRA rows use their displayed dollar payout.
   function tier(reward) {
-    if (reward >= 1000000) return 'prism';   // 水色と金色
-    if (reward >= 100000) return 'aqua';
-    if (reward >= 50000) return 'red';
-    if (reward >= 20000) return 'gold';
-    if (reward >= 10000) return 'purple';
-    if (reward >= 5000) return 'blue';
-    return 'gray';
+    if (reward >= 2000000) return 'dark';
+    if (reward >= 1000000) return 'aqua-purple';
+    if (reward >= 700000) return 'red-gold';
+    if (reward >= 300000) return 'red';
+    if (reward >= 100000) return 'gold';
+    if (reward >= 70000) return 'orange';
+    if (reward >= 40000) return 'purple';
+    if (reward >= 20000) return 'blue';
+    return 'green';
   }
 
   BR.QUESTS = {

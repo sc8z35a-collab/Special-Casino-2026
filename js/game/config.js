@@ -83,7 +83,14 @@
       exp: { win: 1, quest: 0.1, ultra: 250, car: 30 },
       levels: [0, 1200, 2100, 4500, 8800, 14800],
       labels: ['0', '1', '2', '3', '3.1', '4'],
-      badgeImages: {},
+      badgeImages: {
+        '0': 'img/vip/vip-0.webp',
+        '1': 'img/vip/vip-1.webp',
+        '2': 'img/vip/vip-2.webp',
+        '3': 'img/vip/vip-3.webp',
+        '3.1': 'img/vip/vip-3.1.webp',
+        '4': 'img/vip/vip-4.webp'
+      },
       modes: { normal: { coins: 0, multiplier: 1 }, pro: { coins: 8, multiplier: 1.6 }, ultra: { coins: 12, multiplier: 2 } },
       permanent: { from: 5, level: 2 },
       specialLogin: { from: 4, days: 60, rewards: [] },
@@ -134,10 +141,20 @@
       { id: 'adam-secret', name: 'アダム', rarity: 'secret', price: 2100000, rare: true }
     ],
     // Car Owner shop (price in $); `model`: a 3D model to look at
-    // (img/3d/cars/<id>.glb, js/render/garage3d.js)
+    // (img/3d/cars/<id>.glb, js/render/garage3d.js). A null price means the
+    // car can be previewed but cannot be bought or included in a sale.
     cars: [
       { id: 'two-state-sedan', name: 'Two state セダン', price: 26500000 },
-      { id: 'blue-lightning', name: 'ブルーライトニング', price: 65000000, model: true }
+      { id: 'blue-lightning', name: 'ブルーライトニング', price: 65000000, model: true },
+      { id: 'onvoro', name: 'オンヴォーロ', price: 4500000, model: true },
+      { id: 'ferrari-325', name: 'フェラーリ325', price: 55000000, model: true },
+      { id: 'mercedes-benz-one', name: 'メルセデスベンツ one', price: 135000000, model: true },
+      { id: 'lamborghini-aventador', name: 'ランボルギーニアベンタドール', price: 142000000, model: true },
+      { id: 'lamborghini-urus', name: 'ランボルギーニウルス', price: 56500000, model: true },
+      { id: 'lamborghini-kuia-spyder', name: 'ランボルギーニクイヤスパイダー', price: 34000000, model: true },
+      { id: 'nissan-gt-r', name: '日産 GT-R', price: 45000000, model: true },
+      { id: 'lamborghini-revuelto', name: 'ランボルギーニ レヴエルト', price: null, model: true },
+      { id: 'mercedes-amg-one-white', name: 'メルセデスAMG ONE（ホワイト）', price: null, model: true }
     ],
     // the garage holds this many cars; one more place costs `slotPrice` $ (for good, any number)
     garage: { slots: 2, slotPrice: 1000000 },
@@ -162,7 +179,13 @@
     // Shop (price in $, 10-40 % off for 5 hours a day: js/game/sale.js);
     // anything bought here can be given to friends, up to `max` per player
     shop: [
-      { id: 'omamori', name: 'お守り加護', price: 90000, max: 10 }
+      { id: 'omamori', name: 'お守り加護', price: 90000, max: 10 },
+      { id: 'repair-kit', name: '車修理キット', price: 250000, max: 999, category: 'car', fixedPrice: true },
+      { id: 'car-oil-medium', name: '車オイル中型', price: 100000, max: 999, category: 'car', fixedPrice: true },
+      { id: 'gasoline-full', name: 'ガソリン満杯', price: 10000, max: 999, category: 'car', fixedPrice: true },
+      { id: 'engine-v1', name: '高機動エンジンVI', price: 1100000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
+      { id: 'engine-v2', name: '高機動エンジンV2', price: 2500000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
+      { id: 'engine-v3', name: '高機動エンジンV3', price: 3000000, max: 999, category: 'car', kind: 'engine', fixedPrice: true }
     ],
     // お守り加護, switched on before a spin: the next losing spin gives back
     // min-max % of the lost tokens (all of them `fullChance` of the time);

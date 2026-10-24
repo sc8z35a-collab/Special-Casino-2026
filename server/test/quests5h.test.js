@@ -13,19 +13,19 @@ const CHAINS = [
   { metric: 'spin', prefix: 'spin', previous: 4,
     goals: [20, 30, 40, 50, 60, 70, 80, 90, 100],
     rewards: [25000, 35000, 50000, 75000, 80000, 80000, 80000, 100000, 100000],
-    tiers: ['gold', 'gold', 'red', 'red', 'red', 'red', 'red', 'aqua', 'aqua'] },
+    tiers: ['blue', 'blue', 'purple', 'orange', 'orange', 'orange', 'orange', 'gold', 'gold'] },
   { metric: 'snowman', prefix: 'snowman', previous: 0,
     goals: [1, 2, 3, 5, 10], rewards: [10000, 20000, 30000, 50000, 120000],
-    tiers: ['purple', 'gold', 'gold', 'red', 'aqua'] },
+    tiers: ['green', 'blue', 'blue', 'purple', 'gold'] },
   { metric: 'barWin', prefix: 'bar', previous: 0,
-    goals: [1, 2, 3], rewards: [10000, 15000, 20000], tiers: ['purple', 'purple', 'gold'] },
+    goals: [1, 2, 3], rewards: [10000, 15000, 20000], tiers: ['green', 'green', 'blue'] },
   { metric: 'revolver5', prefix: 'revolver5-', previous: 0,
     goals: [1, 2, 3, 4, 5], rewards: [5000, 6000, 7000, 8000, 9000],
-    tiers: ['blue', 'blue', 'blue', 'blue', 'blue'] },
+    tiers: ['green', 'green', 'green', 'green', 'green'] },
   { metric: 'casinoSpend', prefix: 'spend', previous: 0,
     goals: [30000, 100000, 200000, 500000, 1000000, 2000000, 3000000],
     rewards: [10000, 20000, 30000, 35000, 65000, 85000, 115000],
-    tiers: ['purple', 'gold', 'gold', 'gold', 'red', 'red', 'aqua'] }
+    tiers: ['green', 'blue', 'blue', 'blue', 'purple', 'orange', 'gold'] }
 ];
 const questId = (chain, goal) => '5h-' + chain.prefix + (chain.metric === 'casinoSpend'
   ? goal >= 1000000 ? goal / 1000000 + 'm' : goal / 1000 + 'k' : goal);

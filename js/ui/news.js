@@ -47,7 +47,6 @@
     list.textContent = '';
     // which one this game is (and that a newer one is out)
     var ver = el('div', 'news-version');
-    ver.appendChild(el('span', '', 'このゲームのバージョン'));
     ver.appendChild(el('b', '', devName(BR.RELEASE)));
     if (latest > BR.RELEASE) {
       var up = el('button', 'mini-btn gold news-update');

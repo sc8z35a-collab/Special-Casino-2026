@@ -122,7 +122,7 @@
     flashEl.className = 'jc-flash';
     stage.appendChild(flashEl);
     buildSprites();
-    // every tap on a button in the stage answers with light
+    // Remember the last pressed control for reward origins.
     document.addEventListener('pointerdown', onPress, true);
   }
 
@@ -660,20 +660,13 @@
   }
 
   /* ------------------------------------------------------------ moments --- */
-  // a tap: a ring and a few sparks where the finger is
-  function tap(x, y, big) {
-    ring(x, y, { r0: 6, r1: big ? 120 : 70, dur: big ? 0.5 : 0.38, w: big ? 8 : 5, color: 'white' });
-    sparks(x, y, { n: big ? 14 : 6, speed: big ? 640 : 380, life: 0.5, g: 200, size: big ? 1 : 0.7 });
-  }
   var PRESS = 'button, .tab, [role="button"], .fr-row, .conv-row, .q-row, .bonus-day';
   var lastPress = null;
   function onPress(e) {
     if (!stage || e.button > 0 || !fxOn('pops')) return;
     var b = e.target && e.target.closest && e.target.closest(PRESS);
     if (!b || b.disabled || !stage.contains(b)) return;
-    var p = toStage(e.clientX, e.clientY);
     lastPress = { el: b, at: U.now() };
-    tap(p.x, p.y, b.classList.contains('act-btn') || b.classList.contains('pill') || b.classList.contains('spin-btn'));
   }
 
   // Where something good (a purchase, a reward) happened: `where` if it is on
@@ -816,7 +809,7 @@
     sparks: sparks, stars: stars, coins: coins, confetti: confetti, shards: shards, smoke: smoke,
     ring: ring, bloom: bloom, bolt: bolt, flash: flash, shake: shake, bump: bump,
     text: text, banner: banner, fly: fly, rain: rain,
-    tap: tap, celebrate: celebrate, gain: gain, source: source, payout: payout, reward: reward, hold: hold,
+    celebrate: celebrate, gain: gain, source: source, payout: payout, reward: reward, hold: hold,
     calm: function () { return calm; },
     low: function () { return low; },
     W: function () { return W; }, H: function () { return H; }

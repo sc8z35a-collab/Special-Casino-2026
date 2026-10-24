@@ -117,6 +117,7 @@
   }
   function onHide() {
     clearInterval(ticker);
+    $('#stage').classList.remove('auction-running');
     BR.tree3d.pause();
     stopArena();
     // a running auction goes on without the screen: its end shows when it is opened again
@@ -124,6 +125,7 @@
   }
 
   function renderNote(text) {
+    $('#stage').classList.remove('auction-running');
     $('#tree-pane').classList.remove('active');
     var pane = $('#auction-pane');
     pane.classList.add('active');
@@ -143,6 +145,7 @@
   function render() {
     renderTabs();
     var onTree = tab !== 'auction' && !!treeOf(tab);
+    $('#stage').classList.toggle('auction-running', shown() && !onTree && !!auction && auction.status === 'live');
     if (!onTree) BR.tree3d.pause();
     $('#tree-pane').classList.toggle('active', onTree);
     $('#auction-pane').classList.toggle('active', !onTree);
@@ -190,12 +193,11 @@
     $('#tr-look').textContent = t.stage + ' / ' + TR.stages;
     var lo = R.stages[t.stage - 1], hi = t.next;
     $('#tr-look-bar').style.width = (hi ? U.clamp((t.given - lo) / (hi - lo), 0, 1) * 100 : 100) + '%';
-    $('#tr-look-next').textContent = hi ? '次の姿まで あと ' + money(hi - t.given) : 'いちばん大きな姿です';
+    $('#tr-look-next').textContent = hi ? money(hi - t.given) : 'いちばん大きな姿です';
     // giving money
     $('#tr-rate').textContent = ready(t, now()) ? '0.00' : (Math.round(t.rate * 100) / 100).toFixed(2);
     $('#tree-pane').classList.toggle('production-stopped', ready(t, now()));
     $('#tree-pane').classList.toggle('growing', !!t.cycle && !ready(t, now()));
-    $('#tr-given').textContent = U.fmt(t.given);
     var more = TR.rateOf(t.given + amount) - t.rate;
     $('#tr-rate-next').textContent = more > 0.0001
       ? 'ワンタップで 毎秒 +$' + (Math.round(more * 100) / 100).toFixed(2)
@@ -316,21 +318,20 @@
       head.appendChild(el('h3', '', '育成中'));
       head.appendChild(el('span', 'tr-chip', c.name + ' ' + multText(c.mult) + (t.super ? ' ・ SUPER ' + multText(R.superMult) : '')));
       var time = el('div', 'tr-time');
-      time.appendChild(el('small', '', '収穫まで あと'));
+      time.appendChild(el('small', '', '収穫'));
       time.appendChild(el('b', '', clock(t.cycle.end - at)));
       box.appendChild(time);
       var bar = el('div', 'tr-bar big');
       bar.appendChild(el('i'));
       box.appendChild(bar);
       var rows = el('div', 'tr-rows');
-      rows.appendChild(rowOf('いま実っているお金', 'now'));
+      rows.appendChild(rowOf('', 'now'));
       rows.appendChild(rowOf('収穫時の見込み', 'end'));
       box.appendChild(rows);
       var wait = el('button', 'act-btn tr-harvest-btn', '収穫は ' + K.fmtTime(t.cycle.end - offset) + ' から');
       wait.type = 'button';
       wait.disabled = true;
       box.appendChild(wait);
-      box.appendChild(el('p', 'tr-note', '収穫時刻になると生産を停止します。収穫すると再開します。'));
       tickHarvest(t, at);
       return;
     }
@@ -354,7 +355,7 @@
   }
   function rowOf(label, key) {
     var r = el('div', 'tr-row');
-    r.appendChild(el('span', '', label));
+    if (label) r.appendChild(el('span', '', label));
     var v = K.amountEl(0, 'dollars');
     v.dataset.v = key;
     r.appendChild(v);
@@ -551,6 +552,7 @@
 
   function renderAuction() {
     var pane = $('#auction-pane');
+    $('#stage').classList.toggle('auction-running', shown() && tab === 'auction' && !!auction && auction.status === 'live');
     if (auction && auction.status === 'live') {
       if (liveId !== auction.id || !pane.querySelector('.au-live')) {
         pane.textContent = '';
@@ -576,25 +578,13 @@
     var v = el('div', 'au-markets-view');
     var row = el('div', 'au-markets');
     ['seed', 'grown'].forEach(function (id) {
-      var m = R.markets[id];
       var card = el('div', 'au-market');
       var pic = el('div', 'au-art');
       pic.style.backgroundImage = 'url("' + (id === 'seed' ? IMG.seed : IMG.preview) + '")';
       BR.tree3d.icon(pic, id === 'seed' ? 'seed' : 'preview');
       card.appendChild(pic);
       var info = el('div', 'au-market-info');
-      info.appendChild(el('h3', '', m.name));
-      info.appendChild(el('p', 'au-desc', id === 'seed'
-        ? '種から育てる新しい金の生る木。'
-        : '少し育った金の生る木（見た目 2〜4）。'));
-      var avg = el('div', 'au-avgs');
-      [['2本目', m.second, owned <= 1], ['3本目以降', m.more, owned >= 2]].forEach(function (x) {
-        var line = el('div', 'au-avg' + (x[2] ? ' now' : ''));
-        line.appendChild(el('span', '', x[0] + 'の平均落札価格'));
-        line.appendChild(K.amountEl(x[1], 'dollars'));
-        avg.appendChild(line);
-      });
-      info.appendChild(avg);
+      info.appendChild(el('h3', '', R.markets[id].name.replace(/市場$/, '')));
       var b = el('button', 'act-btn gold au-join', '競りに参加する');
       b.type = 'button';
       b.dataset.market = id;
@@ -604,40 +594,18 @@
       row.appendChild(card);
     });
     v.appendChild(row);
-    var notes = el('ul', 'au-notes');
-    [
-      owned >= R.max ? '金の生る木は' + R.max + '本までです。' : 'いまの木は' + owned + '本。落札すると' + (owned + 1) + '本目になります（' + R.max + '本まで）。',
-      'あなたはデニスとして参加します。仲卸業者5人との最大6人の3D競りです。いつでも離脱でき、離脱すれば支払いはありません。',
-      '最初の7秒で参加者を紹介。その後90秒〜最大3分で競ります。90秒以降は6秒入札がないと落札、3分で必ず終了します。',
-      'SUPERの木かどうかは落札するまでわかりません。SUPERなら収穫はずっと' + multText(R.superMult) + '！'
-    ].forEach(function (s) { notes.appendChild(el('li', '', s)); });
-    v.appendChild(notes);
     return v;
   }
 
   function liveView(a) {
     var v = el('div', 'au-live');
     v.appendChild(arenaView());
-    // what is sold
-    var lot = el('div', 'au-lot');
-    lot.appendChild(el('div', 'au-mystery', 'SUPER ？'));
-    lot.appendChild(el('h3', 'au-lot-name', a.lot.name));
-    lot.appendChild(el('p', 'au-lot-sub', R.markets[a.market].name + (a.market === 'grown' ? '・見た目 ' + a.lot.stage + ' / ' + TR.stages : '')));
-    var avg = el('div', 'au-avg now');
-    avg.appendChild(el('span', '', '平均落札価格'));
-    avg.appendChild(K.amountEl(a.avg, 'dollars'));
-    lot.appendChild(avg);
-    v.appendChild(lot);
-    // the price, who leads, the hammer, the buttons
+    // Keep the controls below the room so the 3D view can fill its width.
     var mid = el('div', 'au-mid');
-    mid.appendChild(el('small', 'au-label', '現在の価格'));
     mid.appendChild(K.amountEl(a.price, 'dollars', 'au-price'));
-    mid.appendChild(el('div', 'au-leader'));
-    mid.appendChild(el('div', 'au-duration'));
     var hammer = el('div', 'au-hammer');
     hammer.appendChild(el('i'));
     mid.appendChild(hammer);
-    mid.appendChild(el('div', 'au-close'));
     var acts = el('div', 'au-acts');
     [1, 5].forEach(function (n) {
       var b = el('button', 'act-btn gold au-bid');
@@ -648,20 +616,10 @@
       acts.appendChild(b);
     });
     mid.appendChild(acts);
-    var leave = el('button', 'text-btn au-leave', '競りから離脱する');
+    var leave = el('button', 'act-btn au-leave', '競りから離脱する');
     leave.type = 'button';
     mid.appendChild(leave);
     v.appendChild(mid);
-    // the bidders and what they bid
-    var side = el('div', 'au-side');
-    side.appendChild(el('h4', '', '入札者'));
-    var who = el('div', 'au-who');
-    who.appendChild(el('span', 'au-me', 'あなた'));
-    a.bidders.forEach(function (n) { var x = el('span', '', n); x.dataset.name = n; who.appendChild(x); });
-    side.appendChild(who);
-    side.appendChild(el('h4', '', '入札の記録'));
-    side.appendChild(el('div', 'au-log'));
-    v.appendChild(side);
     return v;
   }
   function updateLive(a) {
@@ -669,34 +627,19 @@
     var mine = a.leader === 'me';
     pane.querySelector('.au-mid').classList.toggle('mine', mine);
     pane.querySelector('.au-price span').textContent = U.fmt(a.price);
-    pane.querySelector('.au-leader').textContent = mine ? 'あなたが最高額です！' : a.leader ? '最高額: ' + a.leader : 'まだ入札はありません';
     Array.prototype.forEach.call(pane.querySelectorAll('.au-bid'), function (b) {
       var price = a.price + Number(b.dataset.steps) * a.step;
       b.querySelector('.amt span').textContent = U.fmt(price);
       b.disabled = now() < a.startsAt || mine || bidding || S.dollars < price;
     });
-    pane.querySelector('.au-me').classList.toggle('lead', mine);
-    Array.prototype.forEach.call(pane.querySelectorAll('.au-who [data-name]'), function (x) { x.classList.toggle('lead', x.dataset.name === a.leader); });
-    var log = pane.querySelector('.au-log');
-    log.textContent = '';
-    a.bids.slice().reverse().forEach(function (b, i) {
-      var line = el('div', 'au-bid-line' + (b.who === 'me' ? ' mine' : '') + (i === 0 ? ' top' : ''));
-      line.appendChild(el('span', 'uname', b.who === 'me' ? 'あなた' : b.who));
-      line.appendChild(K.amountEl(b.price, 'dollars'));
-      log.appendChild(line);
-    });
-    if (!a.bids.length) log.appendChild(el('div', 'au-empty', 'まもなく競りが始まります…'));
   }
   // the hammer counts down between looks
   function tickAuction() {
     var a = auction;
-    var bar = $('#auction-pane .au-hammer i'), text = $('#auction-pane .au-close');
+    var bar = $('#auction-pane .au-hammer i');
     if (!a || !bar) return;
     var at = a.now + Math.max(0, Date.now() - a.seen);
     var intro = at < a.startsAt;
-    var phase = $('#auction-pane .au-duration');
-    if (phase) phase.textContent = intro ? '参加者紹介中・あと' + Math.ceil((a.startsAt - at) / 1000) + '秒'
-      : '経過 ' + shortClock(at - a.startsAt) + ' / 最大 3:00';
     if (BR.sfx.auctionCrowd) BR.sfx.auctionCrowd(!intro && a.status === 'live' && shown() && !document.hidden);
     Array.prototype.forEach.call($('#auction-pane').querySelectorAll('.au-bid'), function (b) {
       b.disabled = intro || a.leader === 'me' || bidding || S.dollars < a.price + Number(b.dataset.steps) * a.step;
@@ -704,16 +647,6 @@
     var left = Math.max(0, a.closeIn - (Date.now() - a.seen));
     bar.style.width = U.clamp(left / a.closeMs, 0, 1) * 100 + '%';
     bar.parentNode.classList.toggle('soon', left < 2500);
-    var s = (Math.ceil(left / 100) / 10).toFixed(1);
-    text.textContent = intro ? '全員の紹介が終わると競りが始まります'
-      : at < a.minEndsAt ? '最低90秒まで競りは続きます・落札まで ' + shortClock(left)
-      : !a.bids.length ? '入札を待っています…'
-      : a.leader === 'me' ? 'このまま ' + s + '秒 入札がなければ、あなたが落札！'
-      : '入札がなければ ' + s + '秒 で ' + a.leader + ' が落札';
-  }
-  function shortClock(ms) {
-    var seconds = Math.max(0, Math.ceil(ms / 1000));
-    return Math.floor(seconds / 60) + ':' + (seconds % 60 < 10 ? '0' : '') + seconds % 60;
   }
 
   function resultView(a) {
@@ -857,6 +790,6 @@
     init: init,
     open: open,
     // signed out: nothing to show until the next player
-    reset: function () { trees = null; auction = null; ended = null; watched = 0; tab = null; BR.tree3d.pause(); stopPolling(); stopArena(); renderBadge(); }
+    reset: function () { trees = null; auction = null; ended = null; watched = 0; tab = null; $('#stage').classList.remove('auction-running'); BR.tree3d.pause(); stopPolling(); stopArena(); renderBadge(); }
   };
 })(window.BR = window.BR || {});
