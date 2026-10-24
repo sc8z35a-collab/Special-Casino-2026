@@ -283,20 +283,23 @@
 
   function init() {
     K = BR.kit;
-    // Supplied artwork for every update entry point. The labels stay in the
-    // DOM for assistive technology, while the picture is the visible button.
-    var art = document.createElement('style');
-    art.textContent = '#start-app.update,#update-note-go,#up-go,.news-update{' +
-      'background-image:url("' + BR.LAUNCH_ASSETS.updateButton + '");' +
-      'background-position:center;background-size:100% 100%;background-repeat:no-repeat;' +
-      'box-shadow:0 5px 14px rgba(0,0,0,.45);color:transparent;text-shadow:none;border-radius:12px}' +
-      '#start-app.update{width:250px;height:76px;padding:0}' +
-      '#start-app.update .ic{visibility:hidden}' +
-      '#update-note-go{width:210px;min-height:58px}' +
-      '#up-go{width:290px;height:86px}' +
-      '.news-update{width:250px;min-height:68px}' +
-      '#up-go:disabled{opacity:.55}';
-    document.head.appendChild(art);
+    // Artwork is optional: keep the normal labelled buttons when the asset
+    // manifest is absent, so a cosmetic setting can never stop game startup.
+    var updateButton = BR.LAUNCH_ASSETS && BR.LAUNCH_ASSETS.updateButton;
+    if (updateButton) {
+      var art = document.createElement('style');
+      art.textContent = '#start-app.update,#update-note-go,#up-go,.news-update{' +
+        'background-image:url("' + updateButton + '");' +
+        'background-position:center;background-size:100% 100%;background-repeat:no-repeat;' +
+        'box-shadow:0 5px 14px rgba(0,0,0,.45);color:transparent;text-shadow:none;border-radius:12px}' +
+        '#start-app.update{width:250px;height:76px;padding:0}' +
+        '#start-app.update .ic{visibility:hidden}' +
+        '#update-note-go{width:210px;min-height:58px}' +
+        '#up-go{width:290px;height:86px}' +
+        '.news-update{width:250px;min-height:68px}' +
+        '#up-go:disabled{opacity:.55}';
+      document.head.appendChild(art);
+    }
     api = BR.api;
     K.registerModal('install');
     K.registerModal('update');
