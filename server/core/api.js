@@ -127,7 +127,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     register: [config.registerPerMinute, Math.max(1, Math.ceil(config.registerPerMinute / 2))],
     login: [10, 5],
     nameCheck: [60, 20],
-    spin: [120, 6],
+    // at most one spin per second (no banking: burst 1, one token refilled a second)
+    spin: [60, 1],
     shop: [60, 10],
     typing: [120, 20],
     dm: [40, 8],
