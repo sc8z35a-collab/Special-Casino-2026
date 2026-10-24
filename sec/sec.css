@@ -191,3 +191,45 @@ body {
 
 /* a 閲覧者 (viewer): looking only — no channel, no lockdown */
 body.role-viewer .side-tab[data-side="chat"], body.role-viewer #side-chat, body.role-viewer #btn-lockdown, body.role-viewer #lock-release { display: none !important; }
+
+/* The independent security app shares the operator desktop's glass surface. */
+:root { --bg: #dae8fa; --bg2: #ffffffa6; --panel: #f2f7ffd6; --panel2: #e5efffb8; --line: #ffffffb3; --ink: #21314d; --muted: #526681; --dim: #6d819c; --accent: #087d67; --accent2: #2174d1; --danger: #c12e48; --ok: #087d67; }
+body { background: #afc9e5 url('/ops/assets/wallpaper-desktop.webp') center / cover fixed; font-size: 13px; }
+body * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea { -webkit-user-select: text; user-select: text; }
+.app { padding-bottom: 100px; }
+.top { position: fixed; top: auto; bottom: max(12px, env(safe-area-inset-bottom)); left: 14px; right: 14px; width: auto; border: 1px solid #ffffffb8; border-radius: 24px; padding: 13px 18px; z-index: 20; }
+.top, .card, .level-card, .side-col, .login-card, .dialog { background: linear-gradient(135deg, #f5f9ffdb, #dbe9ffb3); border-color: #ffffffc4; border-radius: 24px; backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%); box-shadow: inset 0 2px 1px #ffffffd9, 0 12px 34px #24436324; }
+.side-col { top: 14px; padding: 14px; }
+.btn, .btn.small, .chip { border-radius: 12px; }
+.btn:hover { background: #ffffffd9; }
+.btn.primary { color: white; }
+.btn.danger { color: #b12743; background: #ffe0e799; border-color: #f2b2c2; }
+.field input, .field textarea, .search, select { border-radius: 15px; }
+.side-tabs { border-radius: 15px; background: #ffffff6b; }
+.side-tab { border-radius: 12px; color: #50647d; }
+.side-tab.on { background: #ffffffc2; color: #2068bd; }
+.msg, .log-entry { border-radius: 17px; background: #ffffff61; }
+.lock-banner { border-radius: 22px; background: #ffe4ebeb; border-color: #eea5b7; }
+.lock-text b { color: #b22844; }
+.toast { bottom: 110px; border-radius: 18px; background: #ecf4fff2; color: #21314d; }
+@media (max-width: 700px) {
+  .columns { grid-template-columns: minmax(0, 1fr); padding: 12px 10px 25px; gap: 12px; }
+  .side-col { position: static; }
+  .top { left: 8px; right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); padding: 10px 12px; gap: 8px; }
+  .top .brand { font-size: 14px; }
+  .top .brand small, .top .brand-mark { display: none; }
+  .top-right { gap: 8px; flex-wrap: wrap; }
+  .speed select { max-width: 100px; }
+  .field input, .field textarea, .search, select, #chat-text { font-size: 16px; }
+  .level-card, .card { padding: 14px; }
+  .level-ring { width: 94px; height: 94px; }
+  .app { padding-bottom: 140px; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .top, .card, .level-card, .side-col, .login-card, .dialog { background: #eaf2fcf5; }
+}
+.msg.mine { background: #d8eee7b8; border-color: #93cbb8; }
+.tag, .lk.k-player { background: #dce8facf; color: #426184; }
+:root { --warn: #94630b; }
+.chat-compose textarea { border: 1px solid var(--line); border-radius: 17px; padding: 10px 12px; background: #ffffffad; color: var(--ink); }

@@ -19,9 +19,12 @@
   var windows = {}, active = null, order = 0, signedIn = false, grouped = false;
   var overview = false, desktopSaved = null, silentRouting = false, suppressedRoute = '';
   var internalLaunch = false;
-  var menu = null, overlay = null, returnFocus = null, editingTarget = null;
+  var menu = null, overlay = null, returnFocus = null;
+  var fullscreenWindow = null, fullscreenZoomed = false;
   var motion = window.matchMedia('(prefers-reduced-motion: reduce)');
-  var desktop, icons, area, dock, launcher, help, menuHost, account, announce;
+  var desktop, area, dock, help, menuHost, account, announce;
+  var noticeLayout = window.matchMedia('(min-width: 1100px)');
+  var notices = [], noticeCounts = {}, noticeSequence = 0, noticesOpen = noticeLayout.matches, noticeSignature = '';
 
   function node(tag, cls, text) {
     var n = document.createElement(tag);
@@ -56,27 +59,22 @@
     return null;
   }
 
-  // The old top bar becomes the menu bar; its existing account controls live
-  // in a popover and its actual tabs become the Dock (no duplicate IDs).
+  // Keep original account controls, but place the system tray in the bottom bar.
   var brand = top.querySelector('.brand'), controls = top.querySelector('.top-right');
   brand.replaceChildren();
-  var home = button('mac-system-menu', '', 'TWO STATE メニュー');
-  home.appendChild(picture('site')); home.dataset.menu = 'system';
+  var home = button('mac-system-menu', '☰', 'ウインドウとデスクトップの設定');
+  home.dataset.menu = 'system';
   home.setAttribute('aria-haspopup', 'menu'); home.setAttribute('aria-expanded', 'false');
   brand.appendChild(home);
-  brand.appendChild(node('strong', 'mac-active-app', 'TWO STATE'));
-  var menuButtons = node('div', 'mac-menu-buttons');
-  [['file', 'ファイル'], ['edit', '編集'], ['view', '表示'], ['window', 'ウインドウ'], ['help', 'ヘルプ']].forEach(function (m) {
-    var b = button('mac-menu-trigger', m[1]); b.dataset.menu = m[0];
-    b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', 'false'); menuButtons.appendChild(b);
-  });
-  top.appendChild(menuButtons);
   var status = node('div', 'mac-status');
-  var search = button('mac-status-button mac-search-icon', '', 'アプリケーションを検索（Ctrl / ⌘ K）');
-  search.addEventListener('click', function () { showLauncher(); }); status.appendChild(search);
-  var mission = button('mac-status-button mac-mission-icon', '▦', '開いているウインドウを一覧表示');
-  mission.addEventListener('click', function () { setOverview(!overview); }); status.appendChild(mission);
-  var connection = node('span', 'mac-connection'); connection.setAttribute('role', 'img'); status.appendChild(connection);
+  var notificationToggle = button('mac-status-button mac-notification-toggle', '', '通知センター');
+  notificationToggle.appendChild(node('span', 'mac-bell'));
+  var notificationBadge = node('b', 'mac-notification-badge'); notificationBadge.hidden = true;
+  notificationToggle.appendChild(notificationBadge);
+  notificationToggle.setAttribute('aria-controls', 'mac-notifications');
+  notificationToggle.setAttribute('aria-expanded', 'false');
+  notificationToggle.addEventListener('click', function () { setNoticesOpen(!noticesOpen); });
+  status.appendChild(notificationToggle);
   var profile = button('mac-status-button mac-profile', '', '運営アカウントと更新頻度');
   profile.appendChild(picture('operators')); profile.dataset.menu = 'account';
   profile.setAttribute('aria-haspopup', 'true'); profile.setAttribute('aria-expanded', 'false'); status.appendChild(profile);
@@ -90,14 +88,7 @@
   menuHost.setAttribute('role', 'menu'); app.appendChild(menuHost);
 
   desktop = node('div', 'mac-desktop'); desktop.setAttribute('aria-label', 'デスクトップ');
-  icons = node('div', 'mac-desktop-icons'); desktop.appendChild(icons);
-  desktop.appendChild(node('span', 'mac-desktop-note', 'TWO STATE · サーバー運営サイト'));
-  desktop.addEventListener('pointerdown', function (e) {
-    if (e.target === desktop) {
-      icons.querySelectorAll('.is-selected').forEach(function (n) { n.classList.remove('is-selected'); });
-      closeMenu();
-    }
-  });
+  desktop.addEventListener('pointerdown', function () { closeMenu(); });
   app.insertBefore(desktop, top.nextSibling);
   area = node('div', 'mac-windows'); area.id = 'mac-windows'; app.appendChild(area);
 
@@ -105,8 +96,18 @@
   var dockHome = button('mac-dock-home', '', 'デスクトップを表示');
   dockHome.appendChild(picture('site')); dockHome.appendChild(node('span', 'mac-dock-label', 'デスクトップ'));
   dockHome.addEventListener('click', showDesktop); dock.appendChild(dockHome);
-  dock.appendChild(node('span', 'mac-dock-divider')); dock.appendChild(tabs); app.appendChild(dock);
+  dock.appendChild(node('span', 'mac-dock-divider')); dock.appendChild(tabs); dock.appendChild(top); app.appendChild(dock);
+  // Windows may cover the taskbar. Its bottom edge and keyboard shortcut
+  // keep every application reachable without constraining window movement.
+  var taskbarEdge = button('mac-taskbar-edge', '', 'アプリバーを表示');
+  taskbarEdge.addEventListener('pointerenter', revealTaskbar);
+  taskbarEdge.addEventListener('click', revealTaskbar);
+  taskbarEdge.addEventListener('focus', revealTaskbar);
+  function revealTaskbar() { document.body.classList.add('mac-dock-revealed'); }
+  dock.addEventListener('pointerleave', function () { document.body.classList.remove('mac-dock-revealed'); });
+  app.appendChild(taskbarEdge);
   tabs.setAttribute('aria-label', '運営アプリケーション');
+  tabs.setAttribute('tabindex', '0');
   tabs.addEventListener('click', function (e) {
     var tab = e.target.closest('[data-view]'), w = tab && windows[tab.dataset.view];
     if (!w || internalLaunch || app.hidden || isBlocked()) return;
@@ -121,24 +122,13 @@
     var w = windows[id] = { id: id, name: a[1], image: a[2], tab: tab, view: view, open: false, minimized: false, zoomed: false, rank: 0, animation: null, bounds: null };
     tab.replaceChildren(picture(w.image), node('span', 'mac-dock-label', w.name));
     if (count) tab.appendChild(count);
-    tab.setAttribute('aria-label', w.name); tab.title = w.name;
-
-    var launch = button('mac-desktop-app', '', w.name + 'を開く'); launch.dataset.app = id;
-    launch.appendChild(picture(w.image)); launch.appendChild(node('span', 'mac-desktop-label', w.name));
-    launch.appendChild(node('b', 'mac-desktop-badge')); icons.appendChild(launch); w.launch = launch;
-    launch.addEventListener('click', function () {
-      icons.querySelectorAll('.is-selected').forEach(function (n) { n.classList.remove('is-selected'); });
-      launch.classList.add('is-selected');
-      if (window.matchMedia('(pointer: coarse)').matches) activate(id);
-    });
-    launch.addEventListener('dblclick', function () { activate(id); });
-    launch.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); activate(id); } });
+    tab.setAttribute('aria-label', w.name); tab.removeAttribute('title');
 
     var win = node('section', 'mac-window'); win.id = 'mac-window-' + id;
     win.setAttribute('role', 'region'); win.setAttribute('aria-label', w.name); win.tabIndex = -1;
-    var titlebar = node('div', 'mac-titlebar'), lights = node('div', 'mac-traffic-lights');
-    [['close', '×', '閉じる'], ['minimize', '−', '最小化'], ['zoom', '↗', '最大化 / 元に戻す']].forEach(function (a) {
-      var b = button('mac-light mac-' + a[0], a[1], w.name + '：' + a[2]); b.title = a[2];
+    var titlebar = node('div', 'mac-titlebar'), lights = node('div', 'mac-window-controls');
+    [['minimize', '−', '最小化'], ['zoom', '□', '最大化 / 元に戻す'], ['close', '×', '閉じる']].forEach(function (a) {
+      var b = button('mac-window-control mac-' + a[0], a[1], w.name + '：' + a[2]); b.title = a[2];
       b.addEventListener('click', function () {
         if (a[0] === 'close') closeWindow(id);
         else if (a[0] === 'minimize') minimize(id);
@@ -148,9 +138,6 @@
     titlebar.appendChild(lights);
     var title = node('div', 'mac-window-title'); title.appendChild(picture(w.image)); title.appendChild(node('strong', '', w.name));
     titlebar.appendChild(title);
-    var allApps = button('mac-window-apps', '▦', '別のアプリケーションを開く');
-    allApps.addEventListener('click', function () { showLauncher(); }); titlebar.appendChild(allApps);
-    titlebar.addEventListener('dblclick', function (e) { if (!e.target.closest('button')) zoom(id); });
     win.appendChild(titlebar);
     var strip = node('div', 'mac-window-tabs'); strip.setAttribute('role', 'tablist'); strip.setAttribute('aria-label', '開いているアプリケーション');
     win.appendChild(strip); win.appendChild(view);
@@ -166,48 +153,89 @@
       clamp(w); layout();
     }); win.appendChild(resize);
     w.node = win; w.strip = strip; w.titlebar = titlebar;
-    area.appendChild(win); installDrag(w, titlebar, false); installDrag(w, resize, true);
+    area.appendChild(win); installDrag(w, win, false); installDrag(w, resize, true);
+    win.addEventListener('dblclick', function (e) {
+      if (movableTarget(e.target) && (!w.lastTouchFullscreen || Date.now() - w.lastTouchFullscreen > 500)) { e.preventDefault(); realFullscreen(id); }
+    });
     titlebar.addEventListener('pointerdown', function (e) {
       if (!overview && !e.target.closest('button') && active !== id) activate(id);
     });
   });
 
-  // Search and help contain UI controls only; they never copy any app content.
-  launcher = node('div', 'mac-launchpad mac-overlay'); launcher.id = 'mac-launchpad'; launcher.hidden = true;
-  launcher.setAttribute('role', 'dialog'); launcher.setAttribute('aria-modal', 'true'); launcher.setAttribute('aria-label', 'アプリケーション');
-  var launchPanel = node('div', 'mac-launch-panel'), launchHead = node('div', 'mac-launch-head');
-  launchHead.appendChild(node('h2', '', 'アプリケーション'));
-  var launchClose = button('mac-overlay-close', '×', 'アプリケーション一覧を閉じる'); launchClose.addEventListener('click', closeOverlay); launchHead.appendChild(launchClose);
-  launchPanel.appendChild(launchHead);
-  var launchSearch = node('input', 'mac-launch-search'); launchSearch.type = 'search'; launchSearch.placeholder = 'アプリケーションを検索'; launchSearch.setAttribute('aria-label', 'アプリケーションを検索');
-  launchPanel.appendChild(launchSearch);
-  var launchGrid = node('div', 'mac-launch-grid'); launchPanel.appendChild(launchGrid);
-  var launchEmpty = node('p', 'mac-launch-empty', '該当するアプリケーションはありません'); launchEmpty.hidden = true; launchPanel.appendChild(launchEmpty);
-  launcher.appendChild(launchPanel); app.appendChild(launcher);
-  APPS.forEach(function (a) {
-    var w = windows[a[0]], b = button('mac-launch-app', '', w.name + 'を開く'); b.dataset.app = w.id;
-    b.appendChild(picture(w.image)); b.appendChild(node('span', '', w.name)); w.searchButton = b;
-    b.addEventListener('click', function () { closeOverlay(false); activate(w.id); w.node.focus({ preventScroll: true }); }); launchGrid.appendChild(b);
-  });
-  function filterLauncher() {
-    var q = launchSearch.value.trim().toLocaleLowerCase(), n = 0;
-    APPS.forEach(function (a) { var w = windows[a[0]]; w.searchButton.hidden = !allowed(w) || (w.name + ' ' + w.id).toLocaleLowerCase().indexOf(q) < 0; if (!w.searchButton.hidden) n++; });
-    launchEmpty.hidden = !!n;
-  }
-  launchSearch.addEventListener('input', filterLauncher);
-  launchSearch.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { var first = launchGrid.querySelector('button:not([hidden])'); if (first) first.click(); }
-    if (e.key === 'ArrowDown') { var next = launchGrid.querySelector('button:not([hidden])'); if (next) { e.preventDefault(); next.focus(); } }
-  });
   help = node('div', 'mac-help mac-overlay'); help.hidden = true; help.setAttribute('role', 'dialog'); help.setAttribute('aria-modal', 'true'); help.setAttribute('aria-label', 'デスクトップの使い方');
   var helpPanel = node('div', 'mac-help-panel'); helpPanel.appendChild(picture('site')); helpPanel.appendChild(node('h2', '', 'TWO STATE デスクトップ'));
-  helpPanel.appendChild(node('p', '', 'Dockはクリックで表示・非表示を切り替え、デスクトップのアイコンはダブルクリックで開きます。ウインドウの上部をドラッグして移動し、右下をドラッグして大きさを変えられます。'));
+  helpPanel.appendChild(node('p', '', '下のアイコンでアプリを表示・非表示にします。ウインドウの余白をドラッグして移動、右下でサイズ変更、余白をダブルクリックすると全画面になります。スマホでは上部をドラッグして移動、内容はスワイプでスクロールできます。'));
   var helpList = node('dl', 'mac-shortcuts');
-  [['Ctrl / ⌘ K', 'アプリケーションを検索'], ['Alt W', 'ウインドウを閉じる'], ['Alt M', '最小化'], ['Alt Enter', '最大化 / 元に戻す'], ['Alt `', '次のウインドウ'], ['Esc', '一覧やメニューを閉じる']].forEach(function (r) { helpList.appendChild(node('dt', '', r[0])); helpList.appendChild(node('dd', '', r[1])); });
-  helpPanel.appendChild(helpList); helpPanel.appendChild(node('p', 'mac-help-note', '「ウインドウ」メニューからタブ表示に切り替えられます。閉じても入力中の内容はこのページに残ります。'));
+  [['Alt W', 'ウインドウを閉じる'], ['Alt M', '最小化'], ['Alt Enter', '最大化 / 元に戻す'], ['Alt `', '次のウインドウ'], ['Esc', '一覧やメニューを閉じる']].forEach(function (r) { helpList.appendChild(node('dt', '', r[0])); helpList.appendChild(node('dd', '', r[1])); });
+  helpPanel.appendChild(helpList); helpPanel.appendChild(node('p', 'mac-help-note', '下部のメニューからタブ表示に切り替えられます。閉じても入力中の内容はこのページに残ります。'));
   var helpClose = button('btn primary', '閉じる'); helpClose.addEventListener('click', closeOverlay); helpPanel.appendChild(helpClose); help.appendChild(helpPanel); app.appendChild(help);
-  [launcher, help].forEach(function (n) { n.addEventListener('click', function (e) { if (e.target === n) closeOverlay(); }); });
+  help.addEventListener('click', function (e) { if (e.target === help) closeOverlay(); });
   announce = node('div', 'mac-sr-only'); announce.setAttribute('role', 'status'); announce.setAttribute('aria-live', 'polite'); app.appendChild(announce);
+
+  var notifications = node('aside', 'mac-notifications'); notifications.id = 'mac-notifications';
+  notifications.setAttribute('aria-label', 'すべてのアプリの通知');
+  var noticeHead = node('div', 'mac-notice-head'); noticeHead.appendChild(node('h2', '', '通知センター'));
+  var noticeClose = button('mac-notice-close', '×', '通知センターを閉じる');
+  noticeClose.addEventListener('click', function () { setNoticesOpen(false); notificationToggle.focus(); }); noticeHead.appendChild(noticeClose);
+  notifications.appendChild(noticeHead);
+  var noticePending = node('div', 'mac-notice-pending'); notifications.appendChild(noticePending);
+  var noticeHistory = node('div', 'mac-notice-history'); noticeHistory.setAttribute('role', 'log'); noticeHistory.setAttribute('aria-label', '通知の履歴'); notifications.appendChild(noticeHistory);
+  app.appendChild(notifications);
+  function setNoticesOpen(on) {
+    noticesOpen = on; document.body.classList.toggle('mac-notices-open', on);
+    document.body.classList.toggle('mac-notices-hidden', !on);
+    notificationToggle.setAttribute('aria-expanded', on ? 'true' : 'false');
+  }
+  setNoticesOpen(noticesOpen);
+  noticeLayout.addEventListener('change', function (e) { setNoticesOpen(e.matches); });
+  function noticeCard(id, text, at, dismiss) {
+    var card = node('article', 'mac-notice-card'), w = windows[id];
+    var open = button('mac-notice-open', '', w.name + '：' + text);
+    open.appendChild(picture(w.image));
+    var body = node('span', 'mac-notice-body'); body.appendChild(node('strong', '', w.name)); body.appendChild(node('span', '', text));
+    if (at) body.appendChild(node('time', '', new Date(at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })));
+    open.appendChild(body); open.addEventListener('click', function () { activate(id); if (window.innerWidth < 1100) setNoticesOpen(false); }); card.appendChild(open);
+    if (dismiss) { var x = button('mac-notice-dismiss', '×', 'この通知を消す'); x.addEventListener('click', dismiss); card.appendChild(x); }
+    return card;
+  }
+  function renderNotices() {
+    if (!noticePending) return;
+    var signature = JSON.stringify([noticeCounts, notices.map(function (n) { return n.id; }), APPS.map(function (a) { return allowed(windows[a[0]]); })]);
+    if (signature === noticeSignature) return; noticeSignature = signature;
+    noticePending.replaceChildren(); noticeHistory.replaceChildren();
+    var total = 0;
+    APPS.forEach(function (a) {
+      var w = windows[a[0]], n = noticeCounts[w.id] || 0;
+      if (!allowed(w) || !n) return;
+      total += n; noticePending.appendChild(noticeCard(w.id, '未確認 ' + n + '件'));
+    });
+    notices.filter(function (n) { return allowed(windows[n.app]); }).forEach(function (n) {
+      noticeHistory.appendChild(noticeCard(n.app, n.text, n.at, function () { notices = notices.filter(function (item) { return item.id !== n.id; }); renderNotices(); }));
+    });
+    if (!total && !noticeHistory.children.length) noticeHistory.appendChild(node('p', 'mac-notice-empty', '新しい通知はありません'));
+    notificationBadge.textContent = total > 99 ? '99+' : String(total); notificationBadge.hidden = !total;
+    notificationToggle.setAttribute('aria-label', '通知センター' + (total ? '・未確認 ' + total + '件' : ''));
+  }
+  function addNotice(id, text) {
+    if (app.hidden || !windows[id] || !allowed(windows[id]) || typeof text !== 'string' || !text.trim()) return;
+    var previous = notices[0];
+    if (previous && previous.app === id && previous.text === text && Date.now() - previous.at < 2000) return;
+    notices.unshift({ id: ++noticeSequence, app: id, text: text.slice(0, 1000), at: Date.now() }); notices.length = Math.min(notices.length, 50); renderNotices();
+  }
+  document.addEventListener('ops:notice', function (e) { var n = e.detail || {}; addNotice(n.app, n.text); });
+  document.addEventListener('ops:count', function (e) {
+    var n = e.detail || {}; if (app.hidden || !windows[n.app] || !allowed(windows[n.app])) return;
+    noticeCounts[n.app] = Math.max(0, Number(n.count) || 0); renderNotices();
+  });
+  // Accept the independent security app's notifications only from its own frame.
+  window.addEventListener('message', function (e) {
+    var embedded = document.getElementById('securityhome-frame'), n = e.data;
+    if (e.origin !== location.origin || !embedded || e.source !== embedded.contentWindow || !n || app.hidden) return;
+    if (n.type === 'ops:desktop-shortcut' && n.action === 'menu') { if (!isBlocked()) openMenu(home); return; }
+    if (n.type !== 'ops:security-notice') return;
+    if (n.text) addNotice('securityhome', n.text);
+    if (typeof n.count === 'number') { noticeCounts.securityhome = Math.max(0, n.count); renderNotices(); }
+  });
 
   var loginStatus = node('div', 'mac-login-status');
   var loginBrand = node('span', 'mac-login-brand'); loginBrand.appendChild(picture('site')); loginBrand.appendChild(node('span', '', 'TWO STATE')); loginStatus.appendChild(loginBrand);
@@ -220,13 +248,15 @@
   function updateClock() {
     var date = new Date(), text = date.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
     [clock, loginClock].forEach(function (n) { n.textContent = text; n.dateTime = date.toISOString(); });
-    [connection, loginConnection].forEach(function (n) { n.classList.toggle('is-offline', !navigator.onLine); n.setAttribute('aria-label', navigator.onLine ? 'ネットワーク接続あり' : 'オフライン'); n.title = n.getAttribute('aria-label'); });
+    [loginConnection].forEach(function (n) { n.classList.toggle('is-offline', !navigator.onLine); n.setAttribute('aria-label', navigator.onLine ? 'ネットワーク接続あり' : 'オフライン'); n.title = n.getAttribute('aria-label'); });
   }
   updateClock(); setInterval(updateClock, 30000); window.addEventListener('online', updateClock); window.addEventListener('offline', updateClock);
 
   function defaultBounds(w) {
-    var i = openWindows().length % 5, width = Math.min(1060, area.clientWidth - 56), height = Math.min(690, area.clientHeight - 36);
-    w.bounds = { x: (area.clientWidth - width) / 2 + i * 15 - 30, y: 16 + i * 18, width: width, height: height };
+    var compact = area.clientWidth <= 700, i = compact ? 0 : openWindows().length % 4;
+    var width = Math.min(1320, area.clientWidth - (compact ? 16 : 48));
+    var height = Math.min(860, area.clientHeight - (compact ? 108 : 148));
+    w.bounds = { x: compact ? 8 : (area.clientWidth - width) / 2 + i * 12 - 18, y: (compact ? 8 : 16) + i * 12, width: width, height: height };
     clamp(w);
   }
   function clamp(w) {
@@ -241,7 +271,6 @@
   function layout() {
     var list = openWindows(), aw = area.clientWidth, ah = area.clientHeight;
     if (!aw || !ah) return;
-    icons.style.setProperty('--desktop-rows', Math.max(2, Math.min(5, Math.floor((ah - 24) / (ah < 420 ? 78 : 104)))));
     var cols = Math.min(3, Math.max(1, Math.ceil(Math.sqrt(list.length * aw / Math.max(ah, 1))))), rows = Math.ceil(list.length / cols);
     list.forEach(function (w, index) {
       if (!w.bounds) defaultBounds(w); clamp(w);
@@ -266,12 +295,10 @@
       var shown = w.open && (!w.minimized || overview) && (!grouped || selected || overview);
       w.node.inert = !shown; w.node.setAttribute('aria-hidden', shown ? 'false' : 'true');
       w.node.style.zIndex = selected ? 16 : Math.max(1, w.rank);
-      w.tab.classList.toggle('mac-running', w.open); w.tab.classList.toggle('mac-focused', selected);
+      w.tab.classList.toggle('mac-running', w.open); w.tab.classList.toggle('mac-visible', w.open && !w.minimized); w.tab.classList.toggle('mac-focused', selected);
       w.tab.setAttribute('aria-pressed', selected ? 'true' : 'false');
       w.node.querySelector('.mac-zoom').setAttribute('aria-pressed', w.zoomed ? 'true' : 'false');
     });
-    var focused = active && windows[active];
-    top.querySelector('.mac-active-app').textContent = focused ? focused.name : 'TWO STATE';
     buildStrips(); layout();
   }
   function buildStrips() {
@@ -291,7 +318,6 @@
         });
         cell.appendChild(b); var x = button('mac-tab-close', '×', w.name + 'のタブを閉じる'); x.addEventListener('click', function () { closeWindow(w.id); }); cell.appendChild(x); host.strip.appendChild(cell);
       });
-      var add = button('mac-new-tab', '+', 'アプリケーションをタブで開く'); add.addEventListener('click', function () { showLauncher(); }); host.strip.appendChild(add);
     });
   }
   function stopAnimation(w) {
@@ -324,6 +350,7 @@
     }
   }
   function activate(id) {
+    if (fullscreenWindow && fullscreenWindow !== id) leaveFullscreen();
     var w = windows[id]; if (!w || !allowed(w) || app.hidden || isBlocked()) return;
     closeOverlay(false); suppressedRoute = '';
     internalLaunch = true;
@@ -341,6 +368,7 @@
     render();
   }
   function closeWindow(id) {
+    if (fullscreenWindow === id) leaveFullscreen();
     var w = windows[id]; if (!w || !w.open) return;
     stopAnimation(w); var wasActive = active === id; w.open = false; w.minimized = false;
     w.node.classList.add('is-closing');
@@ -350,6 +378,7 @@
     if (wasActive) { var focus = active ? windows[active].node : w.tab; focus.focus({ preventScroll: true }); }
   }
   function minimize(id) {
+    if (fullscreenWindow === id) leaveFullscreen();
     var w = windows[id]; if (!w || !w.open || w.minimized) return;
     stopAnimation(w); var rect = w.node.getBoundingClientRect(), target = w.tab.getBoundingClientRect();
     w.minimized = true; w.node.classList.add('is-minimizing');
@@ -360,12 +389,40 @@
     animate(w, [{ opacity: 1, transform: 'translate(0,0) scale(1)' }, { opacity: 0, transform: 'translate(' + dx + 'px,' + dy + 'px) scale(.12)' }], 280, function () { w.node.classList.remove('is-minimizing'); });
     say(w.name + 'を最小化しました'); if (wasActive) w.tab.focus({ preventScroll: true });
   }
-  function zoom(id) { var w = windows[id]; if (!w || !w.open) return; stopAnimation(w); if (active !== id) activate(id); w.zoomed = !w.zoomed; render(); }
+  function zoom(id) {
+    var w = windows[id]; if (!w || !w.open) return;
+    if (fullscreenWindow) { leaveFullscreen(); return; }
+    stopAnimation(w); if (active !== id) activate(id); w.zoomed = !w.zoomed; render();
+  }
+  function leaveFullscreen() {
+    var id = fullscreenWindow; fullscreenWindow = null;
+    document.body.classList.remove('mac-fullscreen');
+    if (id && windows[id]) windows[id].zoomed = fullscreenZoomed;
+    if (document.fullscreenElement === app && document.exitFullscreen) document.exitFullscreen().catch(function () {});
+    render();
+  }
+  function realFullscreen(id) {
+    if (app.hidden || isBlocked()) return;
+    if (fullscreenWindow) { leaveFullscreen(); return; }
+    var w = windows[id]; if (!w || !w.open) return;
+    if (!app.requestFullscreen) { zoom(id); say('このブラウザではウインドウを最大化します'); return; }
+    fullscreenZoomed = w.zoomed; fullscreenWindow = id;
+    activate(id); w.zoomed = true; document.body.classList.add('mac-fullscreen'); render();
+    app.requestFullscreen({ navigationUI: 'hide' }).catch(function () {
+      fullscreenWindow = null; document.body.classList.remove('mac-fullscreen'); render();
+      say('全画面を利用できないため、ウインドウを最大化しました');
+    });
+  }
+  document.addEventListener('fullscreenchange', function () {
+    if (fullscreenWindow && document.fullscreenElement !== app) leaveFullscreen();
+    requestAnimationFrame(layout);
+  });
   function setOverview(on) {
-    closeMenu(); if (!openWindows().length) { if (on) showLauncher(); return; }
+    closeMenu(); if (!openWindows().length) return;
     overview = on; render(); if (on) say('開いているウインドウを一覧表示しています');
   }
   function showDesktop() {
+    if (fullscreenWindow) leaveFullscreen();
     closeMenu(); closeOverlay(false); if (overview) overview = false;
     if (desktopSaved) {
       var saved = desktopSaved; desktopSaved = null;
@@ -377,23 +434,59 @@
     }
     render();
   }
+  // Operational controls retain their clicks, text editing and native scrolling.
+  function movableTarget(target) {
+    return !target.closest('button, a, input, textarea, select, label, summary, iframe, canvas, video, audio, [contenteditable], [role="button"], [role="tab"], tr[data-id], [data-chat], [data-vact], .vitem, #vault-list, #vault-folders, #vault-backups, .mac-window-tabs');
+  }
   function installDrag(w, handle, resizing) {
     handle.addEventListener('pointerdown', function (e) {
-      if (e.button !== 0 || overview || grouped || (!resizing && e.target.closest('button')) || (resizing && w.zoomed)) return;
-      e.preventDefault(); stopAnimation(w); if (active !== w.id) activate(w.id);
-      var start = point(e);
-      if (w.zoomed) {
-        var ratio = Math.max(0, Math.min(1, start.x / area.clientWidth));
-        w.zoomed = false; w.bounds.x = start.x - w.bounds.width * ratio; w.bounds.y = start.y - 25; clamp(w); render();
+      if (e.button !== 0 || !e.isPrimary || overview || isBlocked() || (!resizing && !movableTarget(e.target)) || (resizing && w.zoomed)) return;
+      // On touch screens body swipes scroll; a deliberate long press moves the
+      // window. The titlebar always moves immediately without scrolling.
+      var touchBody = e.pointerType === 'touch' && !e.target.closest('.mac-titlebar');
+      var start = point(e), dragging = false, ready = !touchBody, b, timer;
+      if (!touchBody) e.preventDefault();
+      function begin() {
+        if (fullscreenWindow) leaveFullscreen();
+        if (grouped) { grouped = false; prefs('tabs', 'no'); }
+        stopAnimation(w); if (active !== w.id) activate(w.id);
+        if (w.zoomed) {
+          var ratio = Math.max(0, Math.min(1, start.x / area.clientWidth));
+          w.zoomed = false; w.bounds.x = start.x - w.bounds.width * ratio; w.bounds.y = Math.max(0, start.y - 28);
+        }
+        b = Object.assign({}, w.bounds); dragging = true;
+        handle.setPointerCapture(e.pointerId); w.node.classList.add('is-dragging'); render();
       }
-      var b = Object.assign({}, w.bounds); handle.setPointerCapture(e.pointerId); w.node.classList.add('is-dragging');
-      function move(e) {
-        var p = point(e), dx = p.x - start.x, dy = p.y - start.y;
+      function move(ev) {
+        if (ev.pointerId !== e.pointerId) return;
+        var p = point(ev), dx = p.x - start.x, dy = p.y - start.y;
+        if (!dragging) {
+          if (!ready) { if (Math.hypot(dx, dy) > 6) done(); return; }
+          if (Math.hypot(dx, dy) < 5) return;
+          begin();
+        }
+        ev.preventDefault();
         w.bounds = resizing ? { x: b.x, y: b.y, width: b.width + dx, height: b.height + dy } : { x: b.x + dx, y: b.y + dy, width: b.width, height: b.height };
         clamp(w); layout();
       }
-      function done() { w.node.classList.remove('is-dragging'); handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', done); handle.removeEventListener('pointercancel', done); handle.removeEventListener('lostpointercapture', done); }
-      handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', done); handle.addEventListener('pointercancel', done); handle.addEventListener('lostpointercapture', done);
+      function done(ev) {
+        if (ev && ev.pointerId !== e.pointerId) return;
+        clearTimeout(timer); w.node.classList.remove('is-dragging');
+        window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', done); window.removeEventListener('pointercancel', done); handle.removeEventListener('lostpointercapture', done);
+        if (handle.hasPointerCapture(e.pointerId)) handle.releasePointerCapture(e.pointerId);
+        if (dragging) {
+          // A drag must not trigger a click on whichever control it ends over.
+          var cancelClick = function (event) { event.preventDefault(); event.stopImmediatePropagation(); };
+          window.addEventListener('click', cancelClick, { once: true, capture: true });
+          setTimeout(function () { window.removeEventListener('click', cancelClick, true); }, 0);
+        } else if (ev && ev.type === 'pointerup' && e.pointerType === 'touch') {
+          var now = Date.now();
+          if (w.lastTap && now - w.lastTap.at < 350 && Math.hypot(ev.clientX - w.lastTap.x, ev.clientY - w.lastTap.y) < 20) { w.lastTap = null; w.lastTouchFullscreen = now; realFullscreen(w.id); }
+          else w.lastTap = { at: now, x: ev.clientX, y: ev.clientY };
+        }
+      }
+      if (touchBody) timer = setTimeout(function () { ready = true; begin(); }, 280);
+      window.addEventListener('pointermove', move, { passive: false }); window.addEventListener('pointerup', done); window.addEventListener('pointercancel', done); handle.addEventListener('lostpointercapture', done);
     });
   }
   function point(e) {
@@ -414,47 +507,21 @@
     b.addEventListener('click', function () { closeMenu(); action(); }); menuHost.appendChild(b);
   }
   function divider() { var d = node('div', 'mac-menu-separator'); d.setAttribute('role', 'separator'); menuHost.appendChild(d); }
-  function selectedText() {
-    var n = editingTarget;
-    if (n && /^(INPUT|TEXTAREA)$/.test(n.tagName) && n.type !== 'password' && typeof n.selectionStart === 'number') return n.value.slice(n.selectionStart, n.selectionEnd);
-    return String(window.getSelection() || '');
-  }
   function openMenu(trigger) {
     if (menu === trigger) { closeMenu(true); return; }
-    if (document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) editingTarget = document.activeElement;
     closeMenu(); menu = trigger; trigger.setAttribute('aria-expanded', 'true');
     var key = trigger.dataset.menu;
     if (key === 'account') { account.hidden = false; var first = account.querySelector('select:not(:disabled), button'); if (first) first.focus(); return; }
-    menuHost.replaceChildren(); var w = active && windows[active];
-    if (key === 'system') {
-      menuItem('このデスクトップについて', function () { showHelp(); }); divider();
-      menuItem('アプリケーション…', showLauncher, '⌘ K'); menuItem('デスクトップを表示', showDesktop); divider();
-      menuItem('ログアウト…', function () { document.getElementById('logout').click(); });
-    } else if (key === 'file') {
-      menuItem('アプリケーションを開く…', showLauncher, '⌘ K'); divider();
-      menuItem('ウインドウを閉じる', function () { closeWindow(active); }, 'Alt W', !w);
-    } else if (key === 'edit') {
-      menuItem('選択部分をコピー', function () {
-        var text = selectedText(); if (!text) return;
-        if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () { say('コピーしました'); }, function () { say('コピーできませんでした。Ctrl / ⌘ C を使ってください'); });
-      }, '⌘ C', !selectedText());
-      menuItem('すべて選択', function () {
-        if (editingTarget && /^(INPUT|TEXTAREA)$/.test(editingTarget.tagName)) { editingTarget.focus(); editingTarget.select(); }
-        else if (w) { var range = document.createRange(); range.selectNodeContents(w.view); var s = window.getSelection(); s.removeAllRanges(); s.addRange(range); }
-      }, '⌘ A', !w && !(editingTarget && /^(INPUT|TEXTAREA)$/.test(editingTarget.tagName)));
-    } else if (key === 'view') {
-      menuItem('デスクトップを表示', showDesktop); menuItem('アプリケーション一覧', showLauncher); divider();
-      menuItem('予備の背景を使う', function () { var on = document.body.classList.toggle('mac-reserve-wallpaper'); prefs('wallpaper', on ? 'reserve' : 'desktop'); }, '', false, document.body.classList.contains('mac-reserve-wallpaper'));
-      menuItem('Dockを小さくする', function () { var on = document.body.classList.toggle('mac-small-dock'); prefs('dock', on ? 'small' : 'normal'); layout(); }, '', false, document.body.classList.contains('mac-small-dock'));
-      menuItem('動きを減らす', function () { var on = document.body.classList.toggle('mac-reduce-motion'); prefs('motion', on ? 'reduce' : 'full'); }, '', false, document.body.classList.contains('mac-reduce-motion'));
-    } else if (key === 'window') {
-      menuItem('最小化', function () { minimize(active); }, 'Alt M', !w);
-      menuItem('拡大 / 縮小', function () { zoom(active); }, 'Alt ↵', !w);
-      menuItem('ウインドウを一覧表示', function () { setOverview(true); }, '', !openWindows().length); divider();
-      menuItem('ウインドウをタブにまとめる', function () { grouped = !grouped; prefs('tabs', grouped ? 'yes' : 'no'); if (!active) nextWindow(); render(); }, '', false, grouped);
-      if (openWindows().length) divider();
-      openWindows().forEach(function (win) { menuItem(win.name + (win.minimized ? '（最小化）' : ''), function () { activate(win.id); }, '', false, active === win.id); });
-    } else menuItem('デスクトップの使い方', showHelp);
+    menuHost.replaceChildren();
+    menuItem('デスクトップを表示', showDesktop);
+    menuItem('ウインドウを一覧表示', function () { setOverview(true); }, '', !openWindows().length);
+    menuItem('ウインドウをタブにまとめる', function () { grouped = !grouped; prefs('tabs', grouped ? 'yes' : 'no'); if (!active) nextWindow(); render(); }, '', false, grouped);
+    divider();
+    openWindows().forEach(function (win) { menuItem(win.name + (win.minimized ? '（最小化）' : ''), function () { activate(win.id); }); });
+    if (openWindows().length) divider();
+    menuItem('予備の背景を使う', function () { var on = document.body.classList.toggle('mac-reserve-wallpaper'); prefs('wallpaper', on ? 'reserve' : 'desktop'); }, '', false, document.body.classList.contains('mac-reserve-wallpaper'));
+    menuItem('動きを減らす', function () { var on = document.body.classList.toggle('mac-reduce-motion'); prefs('motion', on ? 'reduce' : 'full'); }, '', false, document.body.classList.contains('mac-reduce-motion'));
+    menuItem('デスクトップの使い方', showHelp);
     menuHost.hidden = false;
     var r = trigger.getBoundingClientRect(), p = app.getBoundingClientRect();
     var left = frame.classList.contains('turned') ? r.top - p.top : r.left - p.left;
@@ -462,7 +529,6 @@
     var item = menuHost.querySelector('button:not(:disabled)'); if (item) item.focus();
   }
   top.addEventListener('click', function (e) { var b = e.target.closest('[data-menu]'); if (b) openMenu(b); });
-  top.addEventListener('pointerdown', function (e) { if (e.target.closest('[data-menu]')) editingTarget = document.activeElement; });
   document.addEventListener('pointerdown', function (e) { if (menu && !e.target.closest('.mac-dropdown, .mac-account, [data-menu]')) closeMenu(); }, true);
 
   function showOverlay(n) {
@@ -472,12 +538,11 @@
   function closeOverlay(restore) {
     if (!overlay) return; overlay.hidden = true; overlay = null;
     if (restore !== false) {
-      var target = returnFocus && returnFocus.isConnected && returnFocus.getClientRects().length ? returnFocus : search;
+      var target = returnFocus && returnFocus.isConnected && returnFocus.getClientRects().length ? returnFocus : home;
       target.focus({ preventScroll: true });
     }
     returnFocus = null;
   }
-  function showLauncher() { if (app.hidden || isBlocked()) return; launchSearch.value = ''; filterLauncher(); showOverlay(launcher); launchSearch.focus(); }
   function showHelp() { if (!app.hidden) showOverlay(help); }
 
   // Capture clicks only to update the window chrome. The ORIGINAL bubbling
@@ -488,18 +553,18 @@
   }, true);
   function syncPermissions() {
     APPS.forEach(function (a) {
-      var w = windows[a[0]]; w.launch.hidden = !allowed(w);
+      var w = windows[a[0]];
       if (!allowed(w)) { stopAnimation(w); w.open = false; w.minimized = false; if (active === w.id) active = null; }
-      var count = w.tab.querySelector('.count'), badge = w.launch.querySelector('.mac-desktop-badge');
-      badge.hidden = !count || count.hidden; badge.textContent = count ? count.textContent : '';
     });
-    if (overlay === launcher) filterLauncher();
+    renderNotices();
   }
   function syncSession() {
     var now = !app.hidden;
     document.body.classList.toggle('mac-signed-in', now);
     if (now === signedIn) return; signedIn = now;
     if (!now) {
+      if (fullscreenWindow) leaveFullscreen();
+      notices = []; noticeCounts = {}; renderNotices();
       active = null; overview = false; desktopSaved = null; suppressedRoute = ''; closeOverlay(false); closeMenu();
       APPS.forEach(function (a) { var w = windows[a[0]]; stopAnimation(w); w.open = false; w.minimized = false; w.zoomed = false; w.bounds = null; });
     }
@@ -530,11 +595,24 @@
   var authObserver = new MutationObserver(syncDialog);
   [dialog, document.getElementById('dialog-field'), document.getElementById('dialog-input')].forEach(function (n) { authObserver.observe(n, { attributes: true, attributeFilter: ['hidden', 'type'] }); });
 
+  var tooltip = node('div', 'mac-tooltip'); tooltip.hidden = true; app.appendChild(tooltip);
+  function showTooltip(e) {
+    var tab = e.target.closest('#tabs .tab'); if (!tab) return;
+    var r = tab.getBoundingClientRect(), p = app.getBoundingClientRect();
+    tooltip.textContent = tab.getAttribute('aria-label'); tooltip.hidden = false;
+    tooltip.style.bottom = p.bottom - r.top + 12 + 'px';
+    tooltip.style.left = Math.max(10, Math.min(r.left - p.left + r.width / 2 - tooltip.offsetWidth / 2, app.clientWidth - tooltip.offsetWidth - 10)) + 'px';
+  }
+  tabs.addEventListener('pointerover', function (e) { if (e.pointerType !== 'touch') showTooltip(e); });
+  tabs.addEventListener('focusin', showTooltip);
+  tabs.addEventListener('focusout', function () { tooltip.hidden = true; });
+  tabs.addEventListener('pointerleave', function () { tooltip.hidden = true; });
+  tabs.addEventListener('click', function () { tooltip.hidden = true; }, true);
   dock.addEventListener('pointermove', function (e) {
     if (e.pointerType === 'touch' || reduced()) return;
     Array.prototype.forEach.call(dock.querySelectorAll('.tab:not([hidden]), .mac-dock-home'), function (b) {
       var r = b.getBoundingClientRect(), dist = frame.classList.contains('turned') ? Math.abs(e.clientY - r.top - r.height / 2) : Math.abs(e.clientX - r.left - r.width / 2);
-      b.style.setProperty('--dock-scale', 1 + .38 * Math.pow(Math.max(0, 1 - dist / 110), 2));
+      b.style.setProperty('--dock-scale', 1 + .12 * Math.pow(Math.max(0, 1 - dist / 110), 2));
     });
   });
   dock.addEventListener('pointerleave', function () { dock.querySelectorAll('button').forEach(function (b) { b.style.removeProperty('--dock-scale'); }); });
@@ -562,7 +640,9 @@
       if (e.key === 'Tab') closeMenu();
     }
     if (isBlocked()) return;
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); showLauncher(); return; }
+    if (e.altKey && e.code === 'Space') { e.preventDefault(); openMenu(home); return; }
+    if (e.key === 'Escape' && fullscreenWindow) { e.preventDefault(); leaveFullscreen(); return; }
+    if (e.key === 'Escape' && noticesOpen) { setNoticesOpen(false); notificationToggle.focus(); return; }
     if (e.key === 'Escape' && overview) { e.preventDefault(); setOverview(false); return; }
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     if (e.key.toLowerCase() === 'w' && active) { e.preventDefault(); closeWindow(active); }
@@ -575,7 +655,6 @@
   }, true);
 
   document.body.classList.toggle('mac-reserve-wallpaper', prefs('wallpaper') === 'reserve');
-  document.body.classList.toggle('mac-small-dock', prefs('dock') === 'small');
   document.body.classList.toggle('mac-reduce-motion', prefs('motion') === 'reduce');
   grouped = prefs('tabs') === 'yes';
   document.body.classList.add('mac-ui'); syncSession(); syncDialog(); syncPermissions(); render();

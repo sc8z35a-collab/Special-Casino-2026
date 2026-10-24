@@ -14,15 +14,15 @@ from PIL import Image, ImageEnhance
 import import_supplied as art
 
 ASSETS = [
-    ('名称未設定のデザイン(5).png', 'green'),
-    ('名称未設定のデザイン (7)(2).png', 'blue'),
-    ('名称未設定のデザイン (6)(2).png', 'purple'),
-    ('名称未設定のデザイン (14).png', 'orange'),
-    ('名称未設定のデザイン (10).png', 'gold'),
-    ('名称未設定のデザイン (5)(1).png', 'red'),
-    ('名称未設定のデザイン (11).png', 'red-gold'),
-    ('名称未設定のデザイン (13).png', 'aqua-purple'),
-    ('名称未設定のデザイン (15).png', 'dark'),
+    ('ノーマルレア度.png', 'green'),
+    ('名称未設定のデザイン (7)(4).png', 'blue'),
+    ('名称未設定のデザイン (6)(4).png', 'purple'),
+    ('名称未設定のデザイン (14)(2).png', 'orange'),
+    ('名称未設定のデザイン (10)(1).png', 'gold'),
+    ('名称未設定のデザイン (5)(3).png', 'red'),
+    ('名称未設定のデザイン (11)(3).png', 'red-gold'),
+    ('名称未設定のデザイン (13)(3).png', 'aqua-purple'),
+    ('名称未設定のデザイン (15)(4).png', 'dark'),
 ]
 
 def export(im):

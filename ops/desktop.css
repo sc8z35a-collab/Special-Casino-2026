@@ -433,3 +433,174 @@
 #securityhome-frame { display: block; flex: 1; width: 100%; min-height: 340px; border: 0; background: #10151f; }
 .mac-window #view-securityhome { display: flex; flex-direction: column; }
 @container mac-app (max-width: 660px) { .devunit-layout { grid-template-columns: 1fr; } }
+
+/* Liquid glass desktop: the taskbar is the only persistent control surface. */
+.mac-ui { --mac-menu-height: 0px; --mac-dock-space: 100px; --notice-width: 280px; --text: #23304a; --muted: #57677e; }
+.mac-ui *, .mac-ui #dialog-text { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.mac-ui input, .mac-ui textarea, .mac-ui [contenteditable="true"] { -webkit-user-select: text; user-select: text; }
+.mac-ui .frame { height: 100dvh; }
+.mac-desktop { inset: 0; }
+.mac-windows { inset: 0 var(--notice-width) 0 0; z-index: 20; }
+.mac-dock {
+  --dock-icon: 40px;
+  z-index: 15; width: min(1160px, calc(100% - 32px)); max-width: calc(100% - 32px);
+  height: 78px; bottom: max(14px, env(safe-area-inset-bottom)); gap: 16px; padding: 12px 20px 17px;
+  border-radius: 28px; border: 1px solid #ffffffb5;
+  background: linear-gradient(135deg, #ffffff80, #e1edff33 52%, #ffffff70);
+  backdrop-filter: blur(30px) saturate(165%); -webkit-backdrop-filter: blur(30px) saturate(165%);
+  box-shadow: inset 0 2px 1px #ffffffd6, inset 0 -2px 1px #6b89ab38, 0 10px 36px #17355540, 0 2px 5px #ffffff45;
+}
+.mac-ui #tabs.tabs { flex: 1; gap: clamp(10px, 1.2vw, 22px); padding: 10px 7px 9px; margin: -10px 0 -9px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; scroll-behavior: smooth; }
+.mac-ui #tabs.tabs::-webkit-scrollbar { display: none; }
+.mac-ui .mac-dock .tab { flex: 0 0 var(--dock-icon); min-width: var(--dock-icon); }
+.mac-dock .tab > img { --running-scale: 1; transform: translateY(calc((var(--dock-scale, 1) - 1) * -8px)) scale(calc(var(--dock-scale, 1) * var(--running-scale))); }
+.mac-dock .mac-visible > img { --running-scale: 1.12; }
+.mac-dock .mac-focused > img { --running-scale: 1.17; filter: drop-shadow(0 4px 4px #214e9a55); }
+.mac-ui .mac-dock .top { position: static; width: auto; height: 44px; min-height: 44px; padding: 0 0 0 12px; flex: none; border: 0; border-left: 1px solid #ffffff73; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; gap: 3px; }
+.mac-ui .mac-dock .top .brand { flex: none; }
+.mac-status { gap: 3px; }
+.mac-system-menu, .mac-status-button { width: 34px; height: 38px; border-radius: 13px; }
+.mac-system-menu { font-size: 19px; }
+.mac-clock { width: 69px; max-height: 32px; white-space: normal; line-height: 1.4; font-size: 10px; margin-left: 5px; }
+.mac-dock-label { bottom: calc(100% + 10px); padding: 4px 8px; border-radius: 7px; background: #f7faffed; box-shadow: none; font-size: 11px; }
+.mac-dock-label::after { display: none; }
+/* Tooltips live outside the scroller so both end icons remain readable. */
+.mac-ui .mac-dock .tab .mac-dock-label { display: none; }
+.mac-tooltip { position: absolute; z-index: 95; max-width: calc(100% - 20px); padding: 5px 9px; border-radius: 8px; background: #f7fafff0; color: #25334a; font-size: 11px; pointer-events: none; }
+.mac-ui .mac-popover, .mac-dropdown { top: auto; bottom: 104px; border-radius: 22px; background: #f0f6ffce; box-shadow: inset 0 1px 1px #fff, 0 16px 45px #19385c40; }
+.mac-account { right: 22px; }
+.mac-dropdown { max-height: calc(100% - 124px); }
+.mac-menu-item { border-radius: 12px; min-height: 36px; }
+.mac-window {
+  border-radius: 28px; border-color: #ffffffb3; outline-color: #c3dcff50;
+  background: linear-gradient(145deg, #f5f9ffe6, #e4eeffc9);
+  backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%);
+  box-shadow: inset 0 2px 1px #ffffffe6, inset 0 -1px 1px #5379a42e, 0 18px 54px #142e553d;
+}
+.mac-window.is-active { box-shadow: inset 0 2px 1px #ffffffed, inset 0 -1px 2px #597c9e40, 0 25px 70px #15315959; }
+.mac-titlebar, .mac-window:not(.is-active) .mac-titlebar { height: 64px; min-height: 64px; padding: 0 16px; background: linear-gradient(135deg, #ffffff8c, #f1f6ff30); border-bottom-color: #ffffff83; }
+.mac-window-controls { display: flex; gap: 6px; align-items: center; flex: none; }
+.mac-window-control, .mac-window:not(.is-active) .mac-window-control {
+  width: 40px; height: 38px; padding: 0; display: grid; place-items: center; min-width: 40px;
+  border: 1px solid #ffffffc2; border-radius: 13px; color: #3b4c67; font: 24px/1 system-ui;
+  background: linear-gradient(145deg, #ffffffb0, #e4eeff70); box-shadow: inset 0 1px 1px #fff, 0 2px 4px #46618015;
+}
+.mac-window-control.mac-zoom { font-size: 21px; }
+.mac-window-control:hover { background: #fff; }
+.mac-window-control.mac-close:hover { background: #e64a59; border-color: #fa8292; color: #fff; }
+.mac-window-title { position: static; transform: none; justify-content: flex-start; max-width: calc(100% - 152px); margin-left: 10px; font-size: 13px; }
+.mac-window-title img { width: 28px; height: 28px; }
+.mac-window-shade { inset: 64px 0 0; border-radius: 0 0 28px 28px; background: #ffffff0d; }
+.mac-window > .view, .mac-window.is-open > .view[hidden], .mac-window.is-closing > .view[hidden] { padding: 20px 24px 28px; background: linear-gradient(140deg, #ffffff72, #f4f8ff40); }
+.mac-resize { bottom: 9px; right: 9px; width: 23px; height: 23px; }
+.mac-window :is(.stat, .card, .entry, .srv-card, .table-wrap, .vault-space, .devunit-document, .devunit-discussion) { border-radius: 20px; border-color: #ffffffa6; background-color: #ffffff70; box-shadow: inset 0 1px 1px #ffffff9c, 0 3px 12px #5679a00d; }
+.mac-ui .btn, .mac-ui .chip { border-radius: 12px; }
+.mac-ui .field input, .mac-ui .search, .mac-ui select, .mac-ui .field textarea { border-radius: 13px; background-color: #ffffffa8; }
+.mac-window .table-wrap { overflow: auto; }
+.mac-window .players { min-width: 710px; }
+.mac-window .summary { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.mac-window .stat { min-width: 0; }
+.mac-ui .login-card { border-radius: 30px; }
+.mac-ui .drawer { top: 12px; bottom: 106px; border-radius: 25px; background: #f1f7fff0; }
+.mac-ui .dialog, .mac-ui .chat-panel, .mac-ui .em-card { border-radius: 26px; }
+.mac-ui .toast, .mac-ui .call-pill { bottom: 110px; border-radius: 18px; }
+/* Notifications stay alongside desktop windows, and become a sheet on phones. */
+.mac-notifications { position: absolute; z-index: 25; top: 16px; right: 14px; bottom: 112px; width: calc(var(--notice-width) - 26px); padding: 16px 12px; display: flex; flex-direction: column; gap: 10px; overflow: auto; border: 1px solid #ffffff91; border-radius: 28px; color: #25334b; background: linear-gradient(135deg, #f5faffb3, #e0edff5c); backdrop-filter: blur(26px) saturate(160%); -webkit-backdrop-filter: blur(26px) saturate(160%); box-shadow: inset 0 1px 1px #ffffffeb, 0 16px 45px #16345124; }
+.mac-notice-head { display: flex; align-items: center; gap: 8px; padding: 0 4px 6px; }
+.mac-notice-head h2 { font-size: 14px; margin: 0; flex: 1; }
+.mac-notice-close, .mac-notice-dismiss { border: 0; border-radius: 50%; background: #ffffff6b; color: #52647c; font-size: 18px; width: 28px; height: 28px; padding: 0; flex: none; }
+.mac-notice-close { display: none; }
+.mac-notice-card { display: flex; align-items: flex-start; border: 1px solid #ffffffb2; background: #ffffff68; border-radius: 19px; padding: 10px 8px; margin-bottom: 9px; box-shadow: inset 0 1px 1px #fff, 0 3px 10px #27496d0a; }
+.mac-notice-open { display: flex; align-items: flex-start; gap: 9px; padding: 0; flex: 1; min-width: 0; background: none; color: inherit; border: 0; text-align: left; }
+.mac-notice-open img { width: 34px; height: 34px; flex: none; }
+.mac-notice-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.mac-notice-body strong { font-size: 11px; }
+.mac-notice-body time { color: #64748d; font-size: 10px; }
+.mac-notice-empty { padding: 24px 7px; font-size: 12px; color: #586b85; text-align: center; }
+.mac-notification-toggle { position: relative; }
+.mac-bell { width: 15px; height: 17px; display: block; border: 1.6px solid currentColor; border-radius: 9px 9px 5px 5px; position: relative; }
+.mac-bell::after { content: ''; position: absolute; width: 5px; height: 2px; border-radius: 50%; background: currentColor; left: 3px; bottom: -5px; }
+.mac-notification-badge { position: absolute; top: -1px; right: -2px; min-width: 16px; height: 16px; border-radius: 9px; padding: 1px 4px; font-size: 9px; line-height: 14px; background: #ef5269; color: #fff; }
+/* DEV UNIT uses grouped iPhone-style glass cards and message bubbles. */
+#view-devunit { --accent: #167af5; }
+#view-devunit > .bar h2 { font-size: 26px; letter-spacing: -.8px; }
+.devunit-document, .devunit-discussion { padding: 18px; }
+#devunit-readme details { border-radius: 18px; border-color: #ffffffb3; background: #ffffff80; box-shadow: inset 0 1px 1px #fff; }
+#devunit-readme summary { padding: 17px; font-size: 13px; }
+#devunit-readme pre { padding: 0 17px 17px; }
+.devunit-comment { border: 1px solid #ffffffbf; border-radius: 20px 20px 20px 7px; padding: 13px; margin: 10px 4px 10px 0; background: linear-gradient(135deg, #ffffffc2, #e2eeff99); box-shadow: inset 0 1px 1px #fff; font-size: 12px; }
+#devunit-form { padding-top: 10px; }
+#devunit-form textarea { border-radius: 22px; }
+#devunit-form .btn { border-radius: 20px; min-width: 85px; }
+#securityhome-frame { min-height: 260px; border-radius: 20px; background: #e4eeff; }
+.mac-fullscreen .mac-windows { right: 0; }
+.mac-fullscreen .mac-notifications { display: none; }
+.mac-fullscreen .mac-window.is-zoomed { border-radius: 0; }
+@container mac-app (max-width: 760px) {
+  .mac-window .summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mac-window .toolbar { flex-wrap: wrap; }
+  .mac-window .toolbar .search { width: 100%; flex: 1 0 100%; }
+  .mac-window .team { grid-template-columns: minmax(0, 1fr); }
+  .mac-window .team-side { max-height: 180px; overflow: auto; }
+}
+@container mac-app (max-width: 480px) {
+  .mac-window .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .mac-window .stat { padding: 10px; }
+  .mac-window .stat b { font-size: 20px; }
+  .mac-window .chips { max-width: 100%; }
+  .devunit-document, .devunit-discussion { padding: 12px; }
+  .devunit-layout { gap: 12px; }
+}
+@media (max-width: 1099px) {
+  .mac-ui { --notice-width: 0px; }
+  .mac-notifications { display: none; z-index: 94; width: min(340px, calc(100% - 24px)); top: 12px; right: 12px; bottom: 112px; background: #edf5ffed; }
+  .mac-notices-open .mac-notifications { display: flex; }
+  .mac-notice-close { display: block; }
+  .mac-dock { width: calc(100% - 24px); max-width: calc(100% - 24px); gap: 10px; padding-left: 14px; padding-right: 14px; }
+}
+@media (max-width: 700px) {
+  .mac-ui { font-size: 12px; }
+  .mac-ui .frame { height: 100dvh; }
+  .mac-dock { --dock-icon: 36px; bottom: max(10px, env(safe-area-inset-bottom)); height: 72px; border-radius: 24px; gap: 9px; padding: 10px 12px 16px; }
+  .mac-ui #tabs.tabs { gap: 14px; }
+  .mac-dock-divider, .mac-dock .mac-clock { display: none; }
+  .mac-ui .mac-dock .top { padding-left: 4px; gap: 0; }
+  .mac-status { gap: 0; }
+  .mac-system-menu, .mac-status-button { width: 30px; }
+  .mac-dock-home { width: 32px; flex-basis: 32px; }
+  .mac-titlebar, .mac-window:not(.is-active) .mac-titlebar { height: 58px; min-height: 58px; padding: 0 10px; gap: 6px; }
+  .mac-window-control { min-width: 36px; width: 36px; height: 36px; }
+  .mac-window-controls { gap: 4px; }
+  .mac-window-title { max-width: calc(100% - 126px); margin-left: 3px; gap: 5px; font-size: 12px; }
+  .mac-window-title img { width: 22px; height: 22px; }
+  .mac-window { border-radius: 23px; }
+  .mac-window-shade { inset: 58px 0 0; }
+  .mac-window > .view, .mac-window.is-open > .view[hidden] { padding: 12px 12px 20px; }
+  .mac-ui .field input, .mac-ui .search, .mac-ui select, .mac-ui .field textarea, .mac-ui textarea { font-size: 16px; }
+  .mac-ui .btn { min-height: 34px; height: auto; padding-top: 6px; padding-bottom: 6px; }
+  .mac-ui .mac-account { width: min(300px, calc(100% - 24px)); right: 12px; }
+  .mac-ui .drawer { left: 8px; right: 8px; width: auto; bottom: 96px; }
+  .mac-ui .chat-back { padding: 12px 8px 94px; }
+  .mac-ui .login { padding: 48px 20px 115px; overflow: auto; }
+  .mac-ui .login-card { max-width: 340px; width: 100%; }
+  .mac-ui .login-card .field input { height: 44px; font-size: 16px; }
+  .mac-ui .dialog input, .mac-ui .dialog textarea { font-size: 16px; }
+  .mac-login-actions { bottom: max(20px, env(safe-area-inset-bottom)); }
+}
+@media (max-height: 500px) {
+  .mac-dock { height: 62px; --dock-icon: 32px; bottom: 6px; }
+  .mac-ui .mac-dock .top { height: 34px; min-height: 34px; }
+  .mac-notifications { bottom: 80px; }
+  .mac-ui .login { padding: 28px 20px 75px; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .mac-window, .mac-dock, .mac-notifications { background: #e9f1fcf5; }
+}
+.mac-taskbar-edge { position: absolute; z-index: 88; bottom: 0; left: 0; right: 0; height: 6px; min-height: 0; padding: 0; width: 100%; border: 0; background: transparent; }
+.mac-dock-revealed .mac-dock, .mac-dock:focus-within { z-index: 90; }
+.mac-ui.mac-notices-hidden { --notice-width: 0px; }
+.mac-notices-hidden .mac-notifications { display: none; }
+@container mac-app (max-width: 480px) {
+  .mac-window .summary .stat:last-child { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; }
+  .mac-window .summary .stat:last-child b { font-size: 14px; }
+}

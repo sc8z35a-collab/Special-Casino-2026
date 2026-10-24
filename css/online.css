@@ -915,10 +915,8 @@
   min-height: 108px;
   padding: 14px 22px 14px 16px;
   border-radius: 16px;
-  background-color: #120711;
-  background-image: linear-gradient(90deg, rgba(10, 7, 18, .48), rgba(10, 7, 18, .66) 40%, rgba(10, 7, 18, .58)), var(--q-art, none);
-  background-position: center;
-  background-size: cover;
+  isolation: isolate;
+  background-color: rgba(18, 7, 17, .2);
   box-shadow: inset 0 0 0 1.6px color-mix(in srgb, var(--tc) 55%, transparent), inset 0 1px 0 rgba(255, 255, 255, .12), 0 4px 14px rgba(0, 0, 0, .35);
   overflow: hidden;
 }
@@ -928,9 +926,13 @@
   left: 0;
   top: 0;
   bottom: 0;
-  width: 46%;
+  right: 0;
+  z-index: -1;
   pointer-events: none;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tc) 16%, transparent), transparent);
+  opacity: .84;
+  background-image: linear-gradient(90deg, rgba(10, 7, 18, .48), rgba(10, 7, 18, .66) 40%, rgba(10, 7, 18, .58)), var(--q-art, none);
+  background-position: center;
+  background-size: cover;
 }
 .q-row.t-blue { --tc: #7aaeff; --tc2: #3a6fd0; }
 .q-row.t-purple { --tc: #b597ff; --tc2: #7a4fe0; }
