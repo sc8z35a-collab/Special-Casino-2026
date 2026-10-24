@@ -440,7 +440,7 @@
 .mac-ui input, .mac-ui textarea, .mac-ui [contenteditable="true"] { -webkit-user-select: text; user-select: text; }
 .mac-ui .frame { height: 100dvh; }
 .mac-desktop { inset: 0; }
-.mac-windows { inset: 0 var(--notice-width) 0 0; z-index: 20; }
+.mac-windows { inset: 0; z-index: 20; }
 .mac-dock {
   --dock-icon: 40px;
   z-index: 15; width: min(1160px, calc(100% - 32px)); max-width: calc(100% - 32px);
@@ -450,12 +450,19 @@
   backdrop-filter: blur(30px) saturate(165%); -webkit-backdrop-filter: blur(30px) saturate(165%);
   box-shadow: inset 0 2px 1px #ffffffd6, inset 0 -2px 1px #6b89ab38, 0 10px 36px #17355540, 0 2px 5px #ffffff45;
 }
-.mac-ui #tabs.tabs { flex: 1; gap: clamp(10px, 1.2vw, 22px); padding: 10px 7px 9px; margin: -10px 0 -9px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; scroll-behavior: smooth; }
+.mac-ui #tabs.tabs { flex: 1; gap: clamp(10px, 1.2vw, 22px); padding: 44px 20px 14px; margin: -44px -13px -14px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; scroll-behavior: smooth; }
 .mac-ui #tabs.tabs::-webkit-scrollbar { display: none; }
 .mac-ui .mac-dock .tab { flex: 0 0 var(--dock-icon); min-width: var(--dock-icon); }
 .mac-dock .tab > img { --running-scale: 1; transform: translateY(calc((var(--dock-scale, 1) - 1) * -8px)) scale(calc(var(--dock-scale, 1) * var(--running-scale))); }
 .mac-dock .mac-visible > img { --running-scale: 1.12; }
 .mac-dock .mac-focused > img { --running-scale: 1.17; filter: drop-shadow(0 4px 4px #214e9a55); }
+/* The diary source has more transparent padding than the other app artwork. */
+.mac-icon-diary { scale: 1.42; }
+.mac-ui .mac-dock .tab.mac-focused { background: #d6eaff80; box-shadow: 0 0 0 2px #498cff99, 0 0 16px #167aff40; }
+.mac-dock .mac-running::after { width: 6px; height: 6px; left: calc(50% - 3px); bottom: -10px; box-shadow: 0 1px 2px #fff8; }
+.mac-dock .mac-visible::after { background: #2f6bd8; }
+.mac-dock .mac-focused::after { width: 18px; left: calc(50% - 9px); border-radius: 4px; background: #087aff; }
+.mac-dock .mac-running:not(.mac-visible)::after { background: transparent; border: 1px solid #35465f; }
 .mac-ui .mac-dock .top { position: static; width: auto; height: 44px; min-height: 44px; padding: 0 0 0 12px; flex: none; border: 0; border-left: 1px solid #ffffff73; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; gap: 3px; }
 .mac-ui .mac-dock .top .brand { flex: none; }
 .mac-status { gap: 3px; }
@@ -504,12 +511,17 @@
 .mac-ui .drawer { top: 12px; bottom: 106px; border-radius: 25px; background: #f1f7fff0; }
 .mac-ui .dialog, .mac-ui .chat-panel, .mac-ui .em-card { border-radius: 26px; }
 .mac-ui .toast, .mac-ui .call-pill { bottom: 110px; border-radius: 18px; }
-/* Notifications stay alongside desktop windows, and become a sheet on phones. */
+/* Notifications sit behind app windows; the bell can temporarily raise them. */
 .mac-notifications { position: absolute; z-index: 25; top: 16px; right: 14px; bottom: 112px; width: calc(var(--notice-width) - 26px); padding: 16px 12px; display: flex; flex-direction: column; gap: 10px; overflow: auto; border: 1px solid #ffffff91; border-radius: 28px; color: #25334b; background: linear-gradient(135deg, #f5faffb3, #e0edff5c); backdrop-filter: blur(26px) saturate(160%); -webkit-backdrop-filter: blur(26px) saturate(160%); box-shadow: inset 0 1px 1px #ffffffeb, 0 16px 45px #16345124; }
 .mac-notice-head { display: flex; align-items: center; gap: 8px; padding: 0 4px 6px; }
 .mac-notice-head h2 { font-size: 14px; margin: 0; flex: 1; }
 .mac-notice-close, .mac-notice-dismiss { border: 0; border-radius: 50%; background: #ffffff6b; color: #52647c; font-size: 18px; width: 28px; height: 28px; padding: 0; flex: none; }
 .mac-notice-close { display: none; }
+.mac-notice-minimize { border: 0; border-radius: 50%; background: #ffffff90; color: #52647c; font-size: 20px; width: 28px; height: 28px; padding: 0; flex: none; }
+.mac-notice-head { flex: none; }
+.mac-notice-content { min-height: 0; overflow: auto; }
+.mac-notifications.is-minimized { bottom: auto; }
+.mac-notifications.is-minimized .mac-notice-head { padding-bottom: 0; }
 .mac-notice-card { display: flex; align-items: flex-start; border: 1px solid #ffffffb2; background: #ffffff68; border-radius: 19px; padding: 10px 8px; margin-bottom: 9px; box-shadow: inset 0 1px 1px #fff, 0 3px 10px #27496d0a; }
 .mac-notice-open { display: flex; align-items: flex-start; gap: 9px; padding: 0; flex: 1; min-width: 0; background: none; color: inherit; border: 0; text-align: left; }
 .mac-notice-open img { width: 34px; height: 34px; flex: none; }
@@ -600,6 +612,8 @@
 .mac-dock-revealed .mac-dock, .mac-dock:focus-within { z-index: 90; }
 .mac-ui.mac-notices-hidden { --notice-width: 0px; }
 .mac-notices-hidden .mac-notifications { display: none; }
+.mac-notifications { z-index: 10; overflow: hidden; }
+.mac-notices-raised .mac-notifications { z-index: 85; }
 @container mac-app (max-width: 480px) {
   .mac-window .summary .stat:last-child { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; }
   .mac-window .summary .stat:last-child b { font-size: 14px; }
