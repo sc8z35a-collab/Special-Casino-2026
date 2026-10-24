@@ -60,17 +60,32 @@ test('Discord danger reports: the situation in detail and both the operator site
   assert.match(b, /運営ログに改ざんの疑い/);
   assert.match(b, /\/sec\/>/);
 
+  // the shield blocking an address, and a lockdown with the shield's own picture
+  d.log({ action: 'shield_auto_block', summary: 'アドレス 203.0.113.50 を自動でブロック（SQLインジェクション・60分）', at: Date.now(), detail: { scope: 'ip', target: '203.0.113.50', reason: 'SQLインジェクション', at: 1000, until: 1000 + 60 * 60000 } });
+  d.log({
+    action: 'lockdown', summary: '防御の突破を検知し、ロックダウンを発動', at: Date.now(),
+    detail: { why: 'breach', reason: '多数のアドレスから同時攻撃', shield: { pressure: { attackers: 9, criticals: 2 }, topAttackers: [{ ip: '198.51.100.7', score: 88, hits: 410, flags: ['scan', 'sqli'] }], totals: { attacks: 120, floods: 33 } } }
+  });
+  await d.flush();
+  const sb = sent[2].content;
+  assert.match(sb, /🧱 【危険】アドレス 203\.0\.113\.50 を自動でブロック/);
+  assert.match(sb, /ブロックしたアドレス：203\.0\.113\.50/);
+  assert.match(sb, /ブロックの長さ：60分/);
+  assert.match(sb, /同時に攻撃しているアドレス：9・鍵への総当たり：2回/);
+  assert.match(sb, /攻撃元の上位：198\.51\.100\.7（スコア88・410回・scan\/sqli）/);
+  assert.match(sb, /遮断の合計：attacks 120・floods 33/);
+
   // an ordinary notice alone: only the operator site, no 【危険】
   d.log({ action: 'player_report', summary: '通報が届きました', at: Date.now() });
   await d.flush();
-  assert.doesNotMatch(sent[2].content, /【危険】|\/sec\//);
-  assert.match(sent[2].content, /\/ops\/>/);
+  assert.doesNotMatch(sent[3].content, /【危険】|\/sec\//);
+  assert.match(sent[3].content, /\/ops\/>/);
 
   // a danger raised directly (not from the log), with its own lines
   d.danger('🚨', '画面を見る機能を緊急事案で強制終了', ['・対象：3件の閲覧', '・理由：ロックダウン']);
   await d.flush();
-  assert.match(sent[3].content, /【危険】画面を見る機能を緊急事案で強制終了（[^）]+）\n・対象：3件の閲覧\n・理由：ロックダウン/);
-  assert.match(sent[3].content, /\/sec\/>/);
+  assert.match(sent[4].content, /【危険】画面を見る機能を緊急事案で強制終了（[^）]+）\n・対象：3件の閲覧\n・理由：ロックダウン/);
+  assert.match(sent[4].content, /\/sec\/>/);
   // nobody is pinged in any of them
   for (const m of sent) assert.deepEqual(m.allowed_mentions, { parse: [] });
 });

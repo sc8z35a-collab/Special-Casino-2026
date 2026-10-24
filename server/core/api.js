@@ -52,6 +52,7 @@ import { createVault, VAULT_BULK } from './vault.js';
 import { REASONS as FILTERED } from './attach.js';
 import { createDiscord } from './discord.js';
 import { createOpsWatch } from './opswatch.js';
+import { createUsageAlert } from './usagealert.js';
 
 const PAGE = 50;
 const CURRENCIES = ['tokens', 'dollars'];
@@ -409,6 +410,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const noteHost = (req) => { if (host && host.name === 'cloudflare') discord.host(req.header('host')); };
   // (the host keeps the newest entry's hash where SQL cannot reach: server/core/opslog.js)
   const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => discord.log(row) });
+  // the month's usage in the red (over 70%) or nearly all used (over 90%): told to Discord, once for each
+  const usageAlert = createUsageAlert({ q, report: () => stats.report(0), discord, clock: config.clock || Date.now });
   // a new DEV going live is the first entry of its own
   {
     const seen = q("SELECT value FROM meta WHERE key = 'ops_log_release'").get();
@@ -3847,6 +3850,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     emergency.tick();
     if (emergency.locked()) return Promise.resolve();
     try {
+      // (the month's usage: told to Discord when it reaches the red; also checked here for quiet hours)
+      try { usageAlert.check(); } catch (e) { console.error('usage alert failed', e); }
       q('DELETE FROM spins WHERE created_at < ?').run(Date.now() - 30 * 86400000);
       shield.prune();
       q('DELETE FROM sessions WHERE last_used < ?').run(Date.now() - 365 * 86400000);
@@ -3982,6 +3987,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       try { voiceNotice(); milestones(); } catch (e) { console.error('announcements failed', e); }
     }
     stats.request();
+    try { usageAlert.check(); } catch (e) { console.error('usage alert failed', e); }
     emergency.request({ path: req.path, ip: req.ip, userId: req.userId || 0, status: out.status });
     // the shield learns from the outcome (a failed login, a guess at the keys)
     shield.request({ path: req.path, ip: req.ip, userId: req.userId || 0, status: out.status, code: out.body && out.body.error ? out.body.error.code : '' });

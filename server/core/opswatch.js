@@ -102,7 +102,9 @@ export function createOpsWatch({ q, live, ops, opsLog, official, emergency, shie
   const sessions = new Map();           // sid → session (memory only: a restart ends them all)
   const limits = {
     start: new Limiter(30, 12), quality: new Limiter(40, 10), message: new Limiter(20, 6),
-    favorite: new Limiter(90, 30), hello: new Limiter(30, 6), read: new Limiter(120, 20)
+    favorite: new Limiter(90, 30), hello: new Limiter(30, 6), read: new Limiter(120, 20),
+    // frames a player's game may send: 30 a second at most (the stream is 20 at most), whatever they are
+    frames: new Limiter(1800, 60)
   };
   const rate = (name, key) => {
     if (!limits[name].take(String(key))) throw new ApiError(429, 'rate_limited', '操作が速すぎます。少し待ってください');
@@ -147,7 +149,7 @@ export function createOpsWatch({ q, live, ops, opsLog, official, emergency, shie
   }
 
   // The watch is over: written down, both ends told, the player's game stopped.
-  function end(s, reason, { by = null, req = null } = {}) {
+  function end(s, reason, { req = null } = {}) {
     if (!sessions.delete(s.id)) return;
     schedule();
     const now = clock();
@@ -284,7 +286,7 @@ export function createOpsWatch({ q, live, ops, opsLog, official, emergency, shie
 
   function stop(u, body, req) {
     const s = mineBy(u, body.sid);
-    const detail = end(s, 'operator', { by: u, req });
+    const detail = end(s, 'operator', { req });
     return { stopped: true, bytes: detail ? detail.bytes : 0, ms: detail ? detail.ms : 0 };
   }
 
@@ -342,6 +344,7 @@ export function createOpsWatch({ q, live, ops, opsLog, official, emergency, shie
   // One sealed frame. The server cannot read it: it checks who sent it, how
   // big and how fast, and hands it on.
   function frame(u, body) {
+    if (!limits.frames.take(String(u.id))) return { ok: false };
     const s = sessions.get(String(body.sid || ''));
     if (!s || s.playerId !== u.id) return { ok: false };
     const now = clock();

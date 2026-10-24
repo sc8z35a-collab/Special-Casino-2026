@@ -240,6 +240,17 @@ export function createStats({ db, q, config, host = {}, defer = null }) {
     wsOut(n = 1) { slot().o += n; add('wsOut', n); },
     r2(kind) { add(kind === 'b' ? 'r2b' : 'r2a', 1); },
     flush: save,
+    // what the month's usage is made of, for a Discord warning: the share, the three biggest items,
+    // where the sent bytes went and the estimated bill (cheap: no Cloudflare call)
+    report(bucketBytes = 0) {
+      roll();
+      const planId = PLANS[config.plan] ? config.plan : 'free';
+      const e = estimate(planId, host.dbBytes ? host.dbBytes() : null, bucketBytes);
+      return {
+        month: mon.key, percent: e.usagePercent, tier: e.usageTier, shares: e.usageShares.slice(0, 3),
+        breakdown: { game: mon.catGame, video: mon.catVideo, voice: mon.catVoice }, usd: e.total, yen: e.yen
+      };
+    },
     // the month's share and its colour alone — cheap (no Cloudflare call), for
     // the tab bar's poll so the サーバー button shows its colour from every tab
     usage(bucketBytes = 0) {

@@ -54,14 +54,28 @@ export function createDiscord({ url = '', defer = null, jst, publicUrl = '', fet
       }
       if (d.reason) out.push(`・理由：${d.reason}`);
       if (d.why && d.why !== 'manual') out.push(`・種別：${d.why === 'breach' ? '防御の突破' : d.why}`);
+      // the shield blocking one address / account / device
+      if (action === 'shield_auto_block' && d.target) {
+        const what = { ip: 'アドレス', account: 'アカウント', fp: '端末' }[d.scope] || d.scope || '';
+        out.push(`・ブロックした${what}：${d.target}`);
+        if (d.until && d.at) out.push(`・ブロックの長さ：${Math.round((d.until - d.at) / 60000)}分`);
+      }
+      // the busiest addresses and APIs (an emergency stop) or the shield's own picture (a lockdown)
       const busy = (u.busiest || (d.shield && d.shield.busiest) || {});
       const addr = (busy.addresses || [])[0];
       if (addr) out.push(`・多いアドレス：${addr.key}（${addr.n}）`);
       const api = (busy.apis || [])[0];
       if (api) out.push(`・多いAPI：${api.key}（${api.n}）`);
+      const sh = d.shield;
+      if (sh) {
+        if (sh.pressure) out.push(`・同時に攻撃しているアドレス：${sh.pressure.attackers}・鍵への総当たり：${sh.pressure.criticals}回`);
+        const top = (sh.topAttackers || [])[0];
+        if (top) out.push(`・攻撃元の上位：${top.ip}（スコア${top.score}・${top.hits}回${top.flags && top.flags.length ? '・' + top.flags.slice(0, 3).join('/') : ''}）`);
+        if (sh.totals) out.push(`・遮断の合計：${Object.entries(sh.totals).slice(0, 4).map(([k, v]) => `${k} ${v}`).join('・')}`);
+      }
       if (d.logIntegrity && d.logIntegrity.ok === false) out.push('・運営ログに改ざんの疑い');
     } catch { /* detail was not what we expected */ }
-    return out.slice(0, 6);
+    return out.slice(0, 9);
   }
 
   async function flush() {

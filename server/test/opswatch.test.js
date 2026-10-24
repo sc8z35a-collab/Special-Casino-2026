@@ -246,28 +246,43 @@ test('a watch is refused for the wrong player, the wrong settings, the wrong per
 });
 
 test('the 300 kbps ceiling: frames over it are dropped, not sent', async () => {
-  const s = await startServer({ operators: ['taku'], limits: LIMITS });
+  // (the clock stands still, so the count is exact and does not depend on how fast this machine is)
+  let now = 1_800_000_000_000;
+  const s = await startServer({ operators: ['taku'], limits: LIMITS, clock: () => now });
   try {
     const taku = await s.register('TAKU');
     const p = await s.register('帯域の人');
     const pl = await s.listen(p), ol = await openOps(s, taku);
     const w = await begin(s, taku, ol, p, pl);
-    // ~3 KB frames, far faster than 37,500 bytes a second
+    // 37,500 bytes a second, and two seconds' worth saved up at the start; ~2.7 KB frames, far faster than that
+    const CEILING = 37500;
+    let tokens = CEILING * 2, sent = 0, dropped = 0;
     const big = { v: 1, s: 'slot', pad: 'x'.repeat(2000) };
-    let sent = 0, dropped = 0;
-    for (let i = 0; i < 60; i++) {
-      const { out } = await w.send(big);
-      if (out.dropped) dropped++; else if (out.ok) sent++;
-    }
-    assert.ok(dropped > 20, `dropped ${dropped}`);
-    // the burst allowed is two seconds of the ceiling
-    assert.ok(sent * 2800 <= 37500 * 2 + 2800 * 2, `sent ${sent} frames`);
-    const row = s.app.db.prepare('SELECT COUNT(*) AS n FROM ops_watch_log').get();
-    assert.equal(row.n, 1);
+    const go = async (n) => {
+      for (let i = 0; i < n; i++) {
+        const { out, d } = await w.send(big);
+        const size = d.length + 40;
+        const fits = tokens >= size;
+        if (fits) tokens -= size;
+        assert.equal(out.ok, true, JSON.stringify(out));
+        assert.equal(!out.dropped, fits, `frame ${sent + dropped}: ${size} bytes, ${Math.round(tokens)} left`);
+        if (fits) sent++; else dropped++;
+      }
+    };
+    await go(40);
+    assert.ok(dropped > 10, `dropped ${dropped} of 40`);
+    // a second later the ceiling lets another second's worth through
+    now += 1000;
+    tokens = Math.min(CEILING * 2, tokens + CEILING);
+    const sentBefore = sent;
+    await go(12);
+    assert.ok(sent > sentBefore, 'a second later more goes through');
     await s.call('POST', '/api/ops/watch/stop', { token: taku.token, body: { sid: w.sid } });
     const end = (await s.call('GET', '/api/ops/log?kind=security', { token: taku.token })).entries.find((e) => e.action === 'watch_end');
     assert.equal(end.detail.droppedFrames, dropped);
-    assert.ok(end.detail.bytes <= 37500 * 3, `bytes ${end.detail.bytes}`);
+    assert.equal(end.detail.frames, sent);
+    // never more than the ceiling allows: the saved-up two seconds plus one second more
+    assert.ok(end.detail.bytes <= CEILING * 3, `bytes ${end.detail.bytes}`);
     pl.close();
     ol.close();
   } finally {
@@ -337,7 +352,7 @@ test('an emergency ends every watch at once, reports it to Discord and leaves it
       assert.ok(forced, entries.map((e) => e.action).join(','));
       assert.equal(forced.detail.forced, true);
       assert.equal(forced.detail.reason, 'lockdown');
-      await new Promise((r) => setTimeout(r, 2300));
+      for (let i = 0; i < 80 && !sent.length; i++) await new Promise((r) => setTimeout(r, 100));
       const text = sent.map((m) => m.content).join('\n');
       assert.match(text, /【危険】画面を見る機能を緊急事案で強制終了しました/);
       assert.match(text, /見ていた人：TAKU/);
@@ -445,4 +460,54 @@ test('while watching: a short message from Ice Smoker公式, and ★ favourites'
   } finally {
     await s.stop();
   }
+});
+
+test('a player\'s game cannot flood the frame route, and the operator page reduces what arrives to safe numbers', async () => {
+  const s = await startServer({ operators: ['taku'], limits: LIMITS });
+  try {
+    const taku = await s.register('TAKU');
+    const p = await s.register('連打する人');
+    const pl = await s.listen(p), ol = await openOps(s, taku);
+    const w = await begin(s, taku, ol, p, pl);
+    let refused = 0;
+    for (let i = 0; i < 150; i++) {
+      const r = await s.call('POST', '/api/watch/frame', { token: p.token, body: { sid: w.sid, e: w.e, n: 1000 + i, d: 'AAAA' } });
+      if (r.ok === false) refused++;
+    }
+    assert.ok(refused >= 60, `refused ${refused} of 150`);
+    pl.close();
+    ol.close();
+  } finally {
+    await s.stop();
+  }
+
+  // the operator page: whatever a modified game sends is cut down to numbers in known ranges and our own words
+  globalThis.window = globalThis;
+  await import('../../ops/watch.js');
+  const sane = globalThis.OpsWatch.sane;
+  assert.equal(sane(null), null);
+  assert.equal(sane('<img onerror=1>'), null);
+  assert.equal(sane({ v: 2 }), null);
+  const evil = sane({
+    v: 1, s: '<script>alert(1)</script>', t: ['x', -5, 1e30], b: {}, r: 'abcde', g: [[99, -99, 'x'], null, 'str', [[1]], [0, 1, 2, 3, 4]],
+    w: NaN, x: 99, c: Infinity, sp: 'yes', k: [], extra: { __proto__: { polluted: 1 } }
+  });
+  assert.deepEqual(evil.t, [0, 0, 9e15]);
+  assert.equal(evil.s, '', 'an unknown screen is not shown as sent');
+  assert.equal(evil.b, 0);
+  assert.deepEqual(evil.r, [0, 0, 0, 0, 0]);
+  assert.deepEqual(evil.g[0], [6, -1, -1]);
+  assert.deepEqual(evil.g[4], [0, 1, 2]);
+  assert.equal(evil.x, 3);
+  assert.equal(evil.c, 0);
+  assert.equal(evil.w, 0);
+  assert.equal(({}).polluted, undefined);
+  for (const name of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) assert.equal(sane({ v: 1, s: name }).s, '', name);
+  assert.equal(sane({ v: 1, s: 'slot' }).s, 'slot');
+  // the symbols the page draws are the game's own, in the game's order
+  const cfg = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '../../js/game/config.js'), 'utf8');
+  const list = /symbols: \[([^\]]+)\]/.exec(cfg)[1].split(',').map((x) => x.trim().replace(/'/g, ''));
+  const src = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '../../ops/watch.js'), 'utf8');
+  const mine = /var SYMBOLS = \[([^\]]+)\]/.exec(src)[1].split(',').map((x) => x.trim().replace(/'/g, ''));
+  assert.deepEqual(mine, list);
 });
