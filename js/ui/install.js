@@ -85,9 +85,19 @@
     var sw = navigator.serviceWorker && navigator.serviceWorker.getRegistrations ? navigator.serviceWorker.getRegistrations().then(function (rs) {
       return Promise.all(rs.map(function (r) { return r.update().catch(function () {}); }));
     }) : Promise.resolve();
-    var go = function () { location.reload(); };
+    // The network requests and the fallback timer may finish together. Only
+    // the first one may navigate: two reloads would play the studio logo twice.
+    var navigated = false;
+    var fallback = setTimeout(go, 2500);
+    function go() {
+      if (navigated) return;
+      navigated = true;
+      clearTimeout(fallback);
+      var url = new URL(location.href);
+      url.searchParams.set('_update', String(Date.now()));
+      location.replace(url.href);
+    }
     Promise.all([clear, sw]).then(go, go);
-    setTimeout(go, 2500);
   }
   // nothing would be lost by loading the page again now
   function idle() {
@@ -273,6 +283,20 @@
 
   function init() {
     K = BR.kit;
+    // Supplied artwork for every update entry point. The labels stay in the
+    // DOM for assistive technology, while the picture is the visible button.
+    var art = document.createElement('style');
+    art.textContent = '#start-app.update,#update-note-go,#up-go,.news-update{' +
+      'background-image:url("' + BR.LAUNCH_ASSETS.updateButton + '");' +
+      'background-position:center;background-size:100% 100%;background-repeat:no-repeat;' +
+      'box-shadow:0 5px 14px rgba(0,0,0,.45);color:transparent;text-shadow:none;border-radius:12px}' +
+      '#start-app.update{width:250px;height:76px;padding:0}' +
+      '#start-app.update .ic{visibility:hidden}' +
+      '#update-note-go{width:210px;min-height:58px}' +
+      '#up-go{width:290px;height:86px}' +
+      '.news-update{width:250px;min-height:68px}' +
+      '#up-go:disabled{opacity:.55}';
+    document.head.appendChild(art);
     api = BR.api;
     K.registerModal('install');
     K.registerModal('update');
