@@ -97,7 +97,9 @@
     // the vault open ('' the developer's own, 'p:<a>:<b>' a shared one), the ones to choose from, what one may do in it
     vaultSpace: '', vaultSpaces: null, vaultInfo: null,
     // the revisions of the lists this page has (the server answers "the same" while nothing changed), when they last came in full
-    vaultRev: { files: '', spaces: '', full: 0 }, vaultSpeed: null
+    vaultRev: { files: '', spaces: '', full: 0 }, vaultSpeed: null,
+    // the players this operator marked ★
+    favorites: []
   };
   var timer = 0, liveTimer = 0, searchTimer = 0, logTimer = 0, chatTimer = 0;
   var speed = 'normal';
@@ -493,6 +495,7 @@
     // (after a new login: the files that waited for one go now)
     refreshJobs().then(adoptJobs).then(kick);
     opsLiveOpen();
+    if (window.OpsWatch) OpsWatch.sync();
     devUnitCounts();
     if (state.developer) loadPay(true);
     load();
@@ -621,6 +624,7 @@
     return request('GET', '/api/ops/players' + (state.q ? '?q=' + encodeURIComponent(state.q) : '')).then(function (r) {
       state.players = r.players || [];
       state.total = r.total || 0;
+      state.favorites = r.favorites || [];
       if (r.speed) useSpeed(r.speed, true);
       state.now = r.now || Date.now();
       state.counts = { waiting: r.waiting || 0, reports: r.reports || 0, detections: r.detections || 0, feedback: r.feedback || 0 };
@@ -640,6 +644,7 @@
       if (state.filter === 'waiting') return p.waiting;
       if (state.filter === 'detected') return p.detections > 0;
       if (state.filter === 'banned') return !!p.ban || p.deviceBlocked;
+      if (state.filter === 'fav') return state.favorites.indexOf(p.id) >= 0;
       return true;
     });
     var by = {
@@ -697,7 +702,33 @@
     tr.appendChild(td('引き継ぎコード', codeEl(p)));
     tr.appendChild(td('パスワード', el('span', 'muted', p.hasPassword ? '設定済み（非公開）' : '未設定')));
     tr.appendChild(td('処分', banBadge(p)));
+    tr.appendChild(td('画面', watchCell(p)));
     return tr;
+  }
+  // 見る (the player's game as it is played; server/core/opswatch.js) and ★ (this operator's favourites)
+  function watchCell(p) {
+    var box = el('div', 'watch-cell');
+    var fav = state.favorites.indexOf(p.id) >= 0;
+    var star = el('button', 'star' + (fav ? ' on' : ''), fav ? '★' : '☆');
+    star.type = 'button';
+    star.dataset.fav = p.id;
+    star.title = fav ? 'お気に入りから外す' : 'お気に入りに追加';
+    star.setAttribute('aria-label', star.title);
+    var eye = el('button', 'btn small', '見る');
+    eye.type = 'button';
+    eye.dataset.watch = p.id;
+    // (the server checks again: online, not punished, not the developer's, one watch at a time)
+    eye.disabled = !p.online || (p.developer && !state.developer) || !!p.ban || p.deleted;
+    eye.title = !p.online ? 'オンラインではありません' : 'ゲーム画面をリアルタイムで見る（操作はできません）';
+    box.appendChild(eye);
+    box.appendChild(star);
+    return box;
+  }
+  function setFavorite(id, on) {
+    return request('POST', '/api/ops/favorite', { player: id, on: on }).then(function (r) {
+      state.favorites = r.favorites || [];
+      render();
+    });
   }
   function codeEl(p) {
     var c = el('span', 'code');
@@ -2255,7 +2286,7 @@
       if (liveSse()) {
         var es = new EventSource(path);
         opsLive = { close: function () { es.close(); } };
-        ['hello', 'opscall', 'opsping', 'devunit'].forEach(function (ev) {
+        ['hello', 'opscall', 'opsping', 'devunit', 'watchhello', 'watchframe', 'watchstat', 'watchend'].forEach(function (ev) {
           es.addEventListener(ev, function (e) { up = true; var d = null; try { d = JSON.parse(e.data); } catch (x) { return; } onOpsLive(ev, d); });
         });
         es.onerror = function () { es.close(); opsLiveLost(up); };
@@ -2288,6 +2319,7 @@
     if (opsLive) { opsLive.close(); opsLive = null; }
   }
   function onOpsLive(ev, d) {
+    if (ev.indexOf('watch') === 0) { if (window.OpsWatch) OpsWatch.onLive(ev, d); return; }
     if (ev === 'devunit') devUnitCounts();
     else if (ev === 'opscall') onCall(d);
     else if (ev === 'opsping') devCalled(d);
@@ -5318,6 +5350,14 @@
       var t = e.target.closest('[data-view]');
       if (t) setView(t.dataset.view);
     });
+    // the screen view's window (ops/watch.js) uses these of this page
+    if (window.OpsWatch) {
+      OpsWatch.init({
+        request: request, toast: toast, fail: fail, ask: ask, bytes: bytes, reload: function () { load(true); },
+        isFavorite: function (id) { return state.favorites.indexOf(id) >= 0; },
+        setFavorite: setFavorite
+      });
+    }
     $('#search').addEventListener('input', function () {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(function () { state.q = $('#search').value.trim(); load(); }, 250);
@@ -5331,6 +5371,20 @@
     });
     $('#sort').addEventListener('change', function () { state.sort = $('#sort').value; render(); });
     $('#rows').addEventListener('click', function (e) {
+      var eye = e.target.closest('[data-watch]');
+      if (eye) {
+        e.stopPropagation();
+        var wp = state.players.filter(function (x) { return x.id === Number(eye.dataset.watch); })[0];
+        if (wp && !eye.disabled && window.OpsWatch) OpsWatch.start(wp);
+        return;
+      }
+      var star = e.target.closest('[data-fav]');
+      if (star) {
+        e.stopPropagation();
+        var fid = Number(star.dataset.fav);
+        setFavorite(fid, state.favorites.indexOf(fid) < 0).catch(fail);
+        return;
+      }
       var c = e.target.closest('[data-copy]');
       if (c) { e.stopPropagation(); copy(c.dataset.copy); return; }
       var f = e.target.closest('[data-chat]');

@@ -166,6 +166,7 @@
         <button class="chip" data-filter="waiting" type="button">返信待ち</button>
         <button class="chip" data-filter="detected" type="button">検知あり</button>
         <button class="chip" data-filter="banned" type="button">処分中</button>
+        <button class="chip" data-filter="fav" type="button">★ お気に入り</button>
       </div>
       <label class="sort"><span>並び順</span>
         <select id="sort">
@@ -176,11 +177,11 @@
         </select>
       </label>
     </div>
-    <p class="hint muted">アイコンで公式チャット、行で詳細が開きます。</p>
+    <p class="hint muted">アイコンで公式チャット、行で詳細が開きます。「見る」でオンラインのプレイヤーのゲーム画面をリアルタイムで見られます（操作はできません。1回の監視は最大30分で自動的に終わります）。</p>
     <div class="table-wrap">
       <table class="players">
         <thead>
-          <tr><th>プレイヤー</th><th>オンライン状況</th><th class="num">資産</th><th>18歳以上</th><th>引き継ぎコード</th><th>パスワード</th><th>処分</th></tr>
+          <tr><th>プレイヤー</th><th>オンライン状況</th><th class="num">資産</th><th>18歳以上</th><th>引き継ぎコード</th><th>パスワード</th><th>処分</th><th>画面</th></tr>
         </thead>
         <tbody id="rows"></tbody>
       </table>
@@ -529,10 +530,53 @@
   </form>
 </div>
 
+<!-- 画面を見る: the player's game state, sealed, drawn again here (server/core/opswatch.js, ops/watch.js) -->
+<div class="watch-back" id="watch" hidden role="dialog" aria-modal="true" aria-label="プレイヤーの画面">
+  <div class="watch">
+    <div class="watch-head">
+      <span class="watch-who"><b id="watch-name"></b><small class="muted" id="watch-state"></small></span>
+      <label class="watch-pick">画質<select id="watch-q"><option value="540">540P</option><option value="480">480P</option><option value="360">360P</option><option value="240">240P</option></select></label>
+      <label class="watch-pick">更新<select id="watch-fps"><option value="20">20fps</option><option value="15">15fps</option><option value="10">10fps</option></select></label>
+      <button class="btn small" id="watch-fav" type="button">☆ お気に入りに追加</button>
+      <button class="btn small danger" id="watch-end" type="button">見るのをやめる</button>
+    </div>
+    <div class="watch-body">
+      <div class="watch-screen">
+        <canvas id="watch-canvas" width="779" height="360" aria-label="プレイヤーのゲーム画面（見るだけ）"></canvas>
+        <p class="watch-stat" id="watch-stat"></p>
+        <p class="watch-note muted">ゲームの状態だけを暗号化して受け取り、ここで描き直しています（映像・音声・入力内容は届きません）。この画面からプレイヤーの操作はできません。</p>
+      </div>
+      <div class="watch-side">
+        <h3>簡易メッセージ（Ice Smoker公式から）</h3>
+        <div class="watch-presets">
+          <button class="btn small" type="button" data-preset="cheat" title="不正行為の疑いがあるため、プレイ状況を確認しています。">不正の確認</button>
+          <button class="btn small" type="button" data-preset="sub" title="サブアカウントの利用は禁止されています。">サブ垢の注意</button>
+          <button class="btn small" type="button" data-preset="manners" title="他のプレイヤーが不快になる言動はおやめください。">言動の注意</button>
+          <button class="btn small" type="button" data-preset="contact" title="公式チャットで状況をお知らせください。">連絡のお願い</button>
+          <button class="btn small" type="button" data-preset="thanks" title="いつもご利用ありがとうございます。">お礼</button>
+        </div>
+        <div class="watch-write">
+          <input id="watch-text" type="text" maxlength="200" placeholder="短いメッセージ（200文字まで）" autocomplete="off">
+          <button class="btn small primary" id="watch-send" type="button">送る</button>
+        </div>
+        <h3>処分</h3>
+        <div class="watch-bans">
+          <button class="btn small danger" type="button" data-ban="suspend">アクセス禁止（1週間）</button>
+          <button class="btn small danger" type="button" data-ban="ban">BAN（30日）</button>
+          <button class="btn small danger" type="button" data-ban="perma">永久BAN</button>
+        </div>
+        <p class="watch-note muted">見ていることはプレイヤーに知らされません。見た人・時間・通信量は運営ログ（セキュリティ）に残ります。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast" hidden></div>
 </div>
 
 <script src="vault-upload.js"></script>
+<script src="../js/net/watchcrypto.js"></script>
+<script src="watch.js"></script>
 <!-- Presentation only: the existing operator handlers and API calls stay in ops.js. -->
 <script src="desktop.js"></script>
 <script src="diary-profile.js"></script>

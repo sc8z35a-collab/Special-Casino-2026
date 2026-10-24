@@ -3792,7 +3792,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       loginReset: nextLoginReset(),
       me: meDto(u), unread: unreadTotal(userId), friendRequests: pendingRequests(userId), iconShop: iconShop(), itemShop: itemShop(),
       peter: peter.me(), johnson: johnson.me(), official: official.me(), online: live.onlineCount(),
-      hub: myHub(userId), hubInvites: hubInvites(userId)
+      hub: myHub(userId), hubInvites: hubInvites(userId),
+      // a screen view under way when the game (re)connects: it starts sending again (nothing is shown)
+      view: watchRef ? watchRef.viewFor(userId) : null
     };
   }
 

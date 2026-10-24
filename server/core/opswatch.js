@@ -232,6 +232,8 @@ export function createOpsWatch({ q, live, ops, opsLog, official, emergency, shie
     if (isDeveloper(p) && !isDeveloper(u)) throw new ApiError(403, 'developer', '開発者のアカウントの画面は見られません');
     if (p.banned) throw new ApiError(409, 'banned', `${p.name}さんは処分中のため、画面はありません`);
     if (!live.isOnline(p.id)) throw new ApiError(409, 'offline', `${p.name}さんは今オンラインではありません`);
+    // the operator's page hears of the player's key over its live connection: it must be up
+    if (!live.opsOnline(u.id)) throw new ApiError(409, 'not_connected', '運営サイトのリアルタイム接続がまだ始まっていません。数秒待ってからもう一度お試しください');
     const there = byPlayer(p.id);
     if (there && there.opId !== u.id) throw new ApiError(409, 'busy', `${p.name}さんの画面は、ほかの運営者が見ています`);
     if (usage() >= WATCH.budgetPercent) throw new ApiError(503, 'budget', '今月のサーバー使用量が上限に近いため、画面は見られません');
@@ -291,7 +293,8 @@ export function createOpsWatch({ q, live, ops, opsLog, official, emergency, shie
     const s = byOperator(u.id);
     const t = usageOf(u.id);
     return {
-      session: s ? { sid: s.id, quality: s.quality, fps: s.fps, player: brief(getUser(s.playerId) || { id: s.playerId, name: s.playerName, avatar: '' }), bytes: s.bytes, hasKey: !!s.playerPub } : null,
+      // (the player's public key is not a secret: it is what the page needs if the live message that carried it was missed)
+      session: s ? { sid: s.id, quality: s.quality, fps: s.fps, player: brief(getUser(s.playerId) || { id: s.playerId, name: s.playerName, avatar: '' }), bytes: s.bytes, hasKey: !!s.playerPub, pub: s.playerPub, e: s.epoch } : null,
       totals: t, presets: Object.keys(PRESETS).map((k) => ({ id: k, text: PRESETS[k] })), customMax: CUSTOM_MAX,
       qualities: WATCH.qualities, fps: WATCH.fps, limits: { bytesPerSec: WATCH.bytesPerSec }
     };
@@ -361,8 +364,9 @@ export function createOpsWatch({ q, live, ops, opsLog, official, emergency, shie
     count(size);
     live.sendOps(s.opId, 'watchframe', { sid: s.id, e, n, d });
     // once a second the operator is told what it costs (the server's own count)
-    if (now - s.statAt >= 1000) {
-      const rate1 = Math.round(s.secBytes * 1000 / Math.max(1, now - s.statAt));
+    if (!s.statSent || now - s.statAt >= 1000) {
+      s.statSent = true;
+      const rate1 = Math.round(s.secBytes * 1000 / Math.max(250, now - s.statAt));
       live.sendOps(s.opId, 'watchstat', { sid: s.id, bytes: s.bytes, perSec: rate1, frames: s.frames, dropped: s.dropped, total: usageOf(s.opId).bytes + s.bytes });
       s.statAt = now;
       s.secBytes = 0;
@@ -397,6 +401,12 @@ export function createOpsWatch({ q, live, ops, opsLog, official, emergency, shie
     }));
   }
 
+  // the watch a player's game should be sending for (told again when it reconnects)
+  function viewFor(playerId) {
+    const s = byPlayer(playerId);
+    return s ? { sid: s.id, on: true, q: s.quality, fps: s.fps, pub: s.opPub } : null;
+  }
+
   const routes = {
     'POST /api/ops/watch/start': async (req, u) => { ops.need(u); return start(u, await req.json(), req); },
     'POST /api/ops/watch/quality': async (req, u) => { ops.need(u); return setQuality(u, await req.json()); },
@@ -411,7 +421,7 @@ export function createOpsWatch({ q, live, ops, opsLog, official, emergency, shie
   };
 
   return {
-    routes, tick, terminateAll, frame, favoriteIds,
+    routes, tick, terminateAll, frame, favoriteIds, viewFor,
     active: () => [...sessions.values()].map((s) => ({ sid: s.id, op: s.opId, player: s.playerId, quality: s.quality, fps: s.fps, bytes: s.bytes, frames: s.frames }))
   };
 }

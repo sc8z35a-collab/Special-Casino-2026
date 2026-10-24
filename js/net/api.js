@@ -308,6 +308,9 @@
     paySeller: function () { return get('/api/pay/seller'); },
 
     loginBonus: function () { return post('/api/login-bonus'); },
-    ticket: function () { return post('/api/stream-ticket'); }
+    ticket: function () { return post('/api/stream-ticket'); },
+    // the operators' screen view (js/net/watchfeed.js): our public key, and a sealed frame without a WebSocket
+    watchHello: function (sid, pub) { return post('/api/watch/hello', { sid: sid, pub: pub }); },
+    watchFrame: function (msg) { return post('/api/watch/frame', { sid: msg.sid, e: msg.e, n: msg.n, d: msg.d }); }
   };
 })(window.BR = window.BR || {});
