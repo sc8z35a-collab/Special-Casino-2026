@@ -83,7 +83,14 @@
       exp: { win: 1, quest: 0.1, ultra: 250, car: 30 },
       levels: [0, 1200, 2100, 4500, 8800, 14800],
       labels: ['0', '1', '2', '3', '3.1', '4'],
-      badgeImages: {},
+      badgeImages: {
+        '0': 'img/vip/vip-0.webp',
+        '1': 'img/vip/vip-1.webp',
+        '2': 'img/vip/vip-2.webp',
+        '3': 'img/vip/vip-3.webp',
+        '3.1': 'img/vip/vip-3.1.webp',
+        '4': 'img/vip/vip-4.webp'
+      },
       modes: { normal: { coins: 0, multiplier: 1 }, pro: { coins: 8, multiplier: 1.6 }, ultra: { coins: 12, multiplier: 2 } },
       permanent: { from: 5, level: 2 },
       specialLogin: { from: 4, days: 60, rewards: [] },
@@ -114,26 +121,40 @@
     idea: { perDay: 10, reward: 50000 },
     // a car sold to a friend in the chat: `min`-`max` % of what the seller paid for it
     carResale: { min: 50, max: 300 },
-    // player icons: price in $ (0 = free); "rare" ones are locked at sign-up
-    // Player icons (img/avatars/<id>.webp). Paid ones are chained on the
-    // sign-up screen and sold later for $, always 10-40 % off (js/game/sale.js).
+    // Player portraits: one free starter; the others have fixed dollar prices.
+    defaultAvatar: 'traveler-green',
+    avatarRarities: { green: '緑', blue: '青', purple: '紫', gold: '金色', red: '赤', cyan: '水色', secret: 'シークレット' },
     avatars: [
-      { id: 'bald', name: 'スキンヘッド', price: 0 },
-      { id: 'beard', name: 'ヒゲ', price: 0 },
-      { id: 'curly', name: 'くせ毛', price: 0 },
-      { id: 'blond', name: '金髪', price: 0 },
-      { id: 'witch', name: '魔女ハット', price: 0 },
-      { id: 'cap', name: '黒キャップ', price: 0 },
-      { id: 'catcap', name: 'ネコキャップ', price: 0 },
-      { id: 'pumpkin', name: 'パンプキン', price: 100000 },
-      { id: 'red', name: 'レッド', price: 350000, rare: true },
-      { id: 'vampire', name: 'ヴァンパイア', price: 800000, rare: true }
+      { id: 'traveler-green', name: '旅人', rarity: 'green', price: 0 },
+      { id: 'adventurer-blue', name: '冒険者', rarity: 'blue', price: 100000 },
+      { id: 'magician-purple', name: '魔法使い', rarity: 'purple', price: 350000 },
+      { id: 'dealer-purple', name: 'ディーラー', rarity: 'purple', price: 350000 },
+      { id: 'adventurer-gold', name: '大冒険者', rarity: 'gold', price: 600000 },
+      { id: 'knight-gold', name: '騎士', rarity: 'gold', price: 600000 },
+      { id: 'karate-red', name: '空手家', rarity: 'red', price: 950000 },
+      { id: 'rogue-red', name: '放浪者', rarity: 'red', price: 950000 },
+      { id: 'swordsman-red', name: '剣士', rarity: 'red', price: 950000 },
+      { id: 'pilot-cyan', name: '飛行士', rarity: 'cyan', price: 1200000 },
+      { id: 'explorer-cyan', name: '探検家', rarity: 'cyan', price: 1200000 },
+      { id: 'healer-cyan', name: 'ヒーラー', rarity: 'cyan', price: 1200000 },
+      { id: 'gambler-secret', name: '勝負師', rarity: 'secret', price: 2100000, rare: true },
+      { id: 'adam-secret', name: 'アダム', rarity: 'secret', price: 2100000, rare: true }
     ],
     // Car Owner shop (price in $); `model`: a 3D model to look at
-    // (img/3d/cars/<id>.glb, js/render/garage3d.js)
+    // (img/3d/cars/<id>.glb, js/render/garage3d.js). A null price means the
+    // car can be previewed but cannot be bought or included in a sale.
     cars: [
       { id: 'two-state-sedan', name: 'Two state セダン', price: 26500000 },
-      { id: 'blue-lightning', name: 'ブルーライトニング', price: 65000000, model: true }
+      { id: 'blue-lightning', name: 'ブルーライトニング', price: 65000000, model: true },
+      { id: 'onvoro', name: 'オンヴォーロ', price: 4500000, model: true },
+      { id: 'ferrari-325', name: 'フェラーリ325', price: 55000000, model: true },
+      { id: 'mercedes-benz-one', name: 'メルセデスベンツ one', price: 135000000, model: true },
+      { id: 'lamborghini-aventador', name: 'ランボルギーニアベンタドール', price: 142000000, model: true },
+      { id: 'lamborghini-urus', name: 'ランボルギーニウルス', price: 56500000, model: true },
+      { id: 'lamborghini-kuia-spyder', name: 'ランボルギーニクイヤスパイダー', price: 34000000, model: true },
+      { id: 'nissan-gt-r', name: '日産 GT-R', price: 45000000, model: true },
+      { id: 'lamborghini-revuelto', name: 'ランボルギーニ レヴエルト', price: null, model: true },
+      { id: 'mercedes-amg-one-white', name: 'メルセデスAMG ONE（ホワイト）', price: null, model: true }
     ],
     // the garage holds this many cars; one more place costs `slotPrice` $ (for good, any number)
     garage: { slots: 2, slotPrice: 1000000 },
@@ -158,7 +179,13 @@
     // Shop (price in $, 10-40 % off for 5 hours a day: js/game/sale.js);
     // anything bought here can be given to friends, up to `max` per player
     shop: [
-      { id: 'omamori', name: 'お守り加護', price: 90000, max: 10 }
+      { id: 'omamori', name: 'お守り加護', price: 90000, max: 10 },
+      { id: 'repair-kit', name: '車修理キット', price: 250000, max: 999, category: 'car', fixedPrice: true },
+      { id: 'car-oil-medium', name: '車オイル中型', price: 100000, max: 999, category: 'car', fixedPrice: true },
+      { id: 'gasoline-full', name: 'ガソリン満杯', price: 10000, max: 999, category: 'car', fixedPrice: true },
+      { id: 'engine-v1', name: '高機動エンジンVI', price: 1100000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
+      { id: 'engine-v2', name: '高機動エンジンV2', price: 2500000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
+      { id: 'engine-v3', name: '高機動エンジンV3', price: 3000000, max: 999, category: 'car', kind: 'engine', fixedPrice: true }
     ],
     // お守り加護, switched on before a spin: the next losing spin gives back
     // min-max % of the lost tokens (all of them `fullChance` of the time);

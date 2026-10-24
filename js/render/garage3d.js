@@ -45,7 +45,8 @@
   var studio = null;       // the places: { scene, car, carId, exposure, place(car) }
   var garage = null;
   var three = null, studioLoad = null, garageLoad = null;
-  var cars = {};           // car id -> Promise of its model (metres, standing on y = 0)
+  var cars = {};           // car id -> { promise, model, used } (metres, standing on y = 0)
+  var carUse = 0, CAR_CACHE = 3; // only recently viewed cars, to bound phone memory
   var mode = '';           // '' | 'show' (Car Owner) | 'space' (the garage) | 'walk' (first person in the garage)
   var host = null, raf = 0, last = 0;
   var walk = null;         // first person: { yaw, pitch, zoom, keys, stick, focus }
@@ -132,15 +133,43 @@
   }
   function car(id) {
     if (!cars[id]) {
-      cars[id] = gltf(carFile(id)).then(function (m) {
+      var entry = { model: null, used: ++carUse };
+      cars[id] = entry;
+      entry.promise = gltf(carFile(id)).then(function (m) {
         // its nose to -x in the file: turned to face the front-left of the studio
         var c = fit(m, 'x', CAR_LEN);
         c.rotation.y = 0.55;
         shadows(c, true, true);
+        entry.model = c;
         return c;
       }, function (e) { delete cars[id]; throw e; });
     }
-    return cars[id];
+    cars[id].used = ++carUse;
+    return cars[id].promise;
+  }
+  function trimCars() {
+    var loaded = Object.keys(cars).filter(function (id) { return !!cars[id].model; });
+    loaded.sort(function (a, b) { return cars[a].used - cars[b].used; });
+    var count = loaded.length;
+    loaded.forEach(function (id) {
+      if (count <= CAR_CACHE || (studio && (studio.carId === id || studio.car === cars[id].model)) ||
+          (garage && (garage.carId === id || garage.car === cars[id].model))) return;
+      var geometries = new Set(), materials = new Set(), textures = new Set();
+      cars[id].model.traverse(function (o) {
+        if (!o.isMesh) return;
+        geometries.add(o.geometry);
+        (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) {
+          if (!m) return;
+          materials.add(m);
+          Object.keys(m).forEach(function (key) { if (m[key] && m[key].isTexture) textures.add(m[key]); });
+        });
+      });
+      geometries.forEach(function (o) { o.dispose(); });
+      materials.forEach(function (o) { o.dispose(); });
+      textures.forEach(function (o) { o.dispose(); if (o.image && o.image.close) o.image.close(); });
+      delete cars[id];
+      count--;
+    });
   }
 
   /* ------------------------------------------------------------ the renderer --- */
@@ -373,13 +402,14 @@
       return Promise.resolve();
     }
     return car(id).then(function (c) {
-      if (w.carId !== id) return;
+      if (w.carId !== id) { trimCars(); return; }
       if (w.car && w.car !== c) w.scene.remove(w.car);
       [studio, garage].forEach(function (o) { if (o && o !== w && o.car === c) { o.car = null; o.carId = ''; } });
       w.place(c);
       w.car = c;
       w.scene.add(c);
       g.renderer.compile(w.scene, g.camera);
+      trimCars();
     });
   }
 
@@ -672,6 +702,6 @@
     onMode: null,
     onZoom: null,
     // (the renderer and the places, to look into them while working on them)
-    debug: function () { return { g: g, studio: studio, garage: garage }; }
+    debug: function () { return { g: g, studio: studio, garage: garage, cachedCars: Object.keys(cars) }; }
   };
 })(window.BR = window.BR || {});

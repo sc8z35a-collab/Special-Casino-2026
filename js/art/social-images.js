@@ -5,16 +5,20 @@
 
   BR.SOCIAL_IMG = {
     avatars: {
-      bald: 'img/avatars/bald.webp',
-      beard: 'img/avatars/beard.webp',
-      curly: 'img/avatars/curly.webp',
-      blond: 'img/avatars/blond.webp',
-      witch: 'img/avatars/witch.webp',
-      pumpkin: 'img/avatars/pumpkin.webp',
-      red: 'img/avatars/red.webp',
-      vampire: 'img/avatars/vampire.webp',
-      cap: 'img/avatars/cap.webp',
-      catcap: 'img/avatars/catcap.webp',
+      'traveler-green': 'img/avatars/traveler-green.webp',
+      'adventurer-blue': 'img/avatars/adventurer-blue.webp',
+      'magician-purple': 'img/avatars/magician-purple.webp',
+      'dealer-purple': 'img/avatars/dealer-purple.webp',
+      'adventurer-gold': 'img/avatars/adventurer-gold.webp',
+      'knight-gold': 'img/avatars/knight-gold.webp',
+      'karate-red': 'img/avatars/karate-red.webp',
+      'rogue-red': 'img/avatars/rogue-red.webp',
+      'swordsman-red': 'img/avatars/swordsman-red.webp',
+      'pilot-cyan': 'img/avatars/pilot-cyan.webp',
+      'explorer-cyan': 'img/avatars/explorer-cyan.webp',
+      'healer-cyan': 'img/avatars/healer-cyan.webp',
+      'gambler-secret': 'img/avatars/gambler-secret.webp',
+      'adam-secret': 'img/avatars/adam-secret.webp',
       // the NPCs マイクソン (once ピーター) and ジョンソン, and Ice Smoker公式 (not players' icons)
       peter: 'img/avatars/peter.webp',
       johnson: 'img/avatars/johnson.webp',
@@ -22,10 +26,25 @@
     },
     cars: {
       'two-state-sedan': 'img/cars/two-state-sedan.webp',
-      'blue-lightning': 'img/cars/blue-lightning.webp'
+      'blue-lightning': 'img/cars/blue-lightning.webp',
+      onvoro: 'img/cars/onvoro.webp',
+      'ferrari-325': 'img/cars/ferrari-325.webp',
+      'mercedes-benz-one': 'img/cars/mercedes-benz-one.webp',
+      'lamborghini-aventador': 'img/cars/lamborghini-aventador.webp',
+      'lamborghini-urus': 'img/cars/lamborghini-urus.webp',
+      'lamborghini-kuia-spyder': 'img/cars/lamborghini-kuia-spyder.webp',
+      'nissan-gt-r': 'img/cars/nissan-gt-r.webp',
+      'lamborghini-revuelto': 'img/cars/lamborghini-revuelto.webp',
+      'mercedes-amg-one-white': 'img/cars/mercedes-amg-one-white.webp'
     },
     items: {
-      omamori: 'img/items/omamori.webp'
+      omamori: 'img/items/lowpoly/omamori.webp',
+      'repair-kit': 'img/items/lowpoly/repair-kit.webp',
+      'car-oil-medium': 'img/items/lowpoly/car-oil-medium.webp',
+      'gasoline-full': 'img/items/lowpoly/gasoline-full.webp',
+      'engine-v1': 'img/items/lowpoly/engine-v1.webp',
+      'engine-v2': 'img/items/lowpoly/engine-v2.webp',
+      'engine-v3': 'img/items/lowpoly/engine-v3.webp'
     },
     // presents in a chat (js/ui/presents.js)
     presents: {
@@ -40,15 +59,19 @@
       watermelon: 'img/fruits/watermelon.webp',
       melon: 'img/fruits/melon.webp'
     },
-    chain: 'img/ui/chain.webp',
     sale: 'img/ui/sale.webp',
     loginBonus: 'img/ui/login-bonus.webp',
     // round buttons on the slot screen
     buttons: {
-      quest: 'img/ui/quest.webp',
+      quest: 'img/ui/lowpoly/quest.webp',
       lobby: 'img/ui/lobby.webp',
-      menu: 'img/ui/menu.webp',
-      tree: 'img/ui/money-tree.webp'
+      menu: 'img/ui/lowpoly/menu.webp',
+      tree: 'img/ui/lowpoly/money-tree.webp'
+    },
+    tabs: {
+      friends: 'img/ui/lowpoly/friends.webp',
+      messages: 'img/ui/lowpoly/messages.webp',
+      jobs: 'img/ui/lowpoly/jobs.webp'
     },
     // 金の生る木: its nine looks, and the seed sold at the auctions
     tree: {
@@ -63,19 +86,13 @@
     }
   };
 
-  // the studio logos (every launch; the small one in the single-file build),
-  // the story after signing up, the title music and Peter's voice
+  // Optional studio logo, title music and Peter's voice.
   BR.LAUNCH_MEDIA = {
-    studio: 'video/studio.mp4',
-    studioLite: 'video/studio-lite.mp4',
+    studio: 'video/studio-low.mp4',
     bgm: 'sounds/bgm-title.mp3',
     peter: ['sounds/peter-1.mp3', 'sounds/peter-2.mp3']
   };
 
-  // the start screen: the full video online, the small one in the single-file build
-  BR.START_VIDEO = {
-    full: 'video/title.mp4',
-    lite: 'video/title-lite.mp4',
-    poster: 'video/title-poster.webp'
-  };
+  // supplied title picture, also embedded by tools/build_single.py
+  BR.START_ART = 'img/ui/lowpoly/title.webp';
 })(window.BR = window.BR || {});

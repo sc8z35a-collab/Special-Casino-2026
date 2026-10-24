@@ -3,7 +3,7 @@
    never interrupts a slot win. Text banners remain the fallback. */
 (function (BR) {
   'use strict';
-  var FILES = { level: 'img/3d/level-up.glb', vip: 'img/3d/vip-extend.glb' };
+  var FILES = { level: 'img/3d/effects-lite/level-up.glb', vip: 'img/3d/effects-lite/vip-extend.glb' };
   var T, renderer, scene, camera, node, canvas, active, loading;
   var models = {}, off = false;
   function wanted() { return !BR.fx || (BR.fx.on('model3d') && BR.fx.on('celebrate')); }

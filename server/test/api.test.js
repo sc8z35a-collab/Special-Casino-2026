@@ -2,7 +2,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, PASSWORD } from './helpers.js';
-import { evaluate, RULES, AVATARS, iconSale, utcDay } from '../core/rules.js';
+import { evaluate, RULES, AVATARS, utcDay } from '../core/rules.js';
 
 let s, call, register, setUser, befriend, listen;
 
@@ -30,19 +30,21 @@ test('registration validates names, passwords and icons', async () => {
   assert.equal((await call('POST', '/api/register', { body: { name: 'NoPass', password: 'abc' } })).error.code, 'password_short');
   assert.equal((await call('POST', '/api/register', { body: { name: 'NoPass', password: 'x'.repeat(65) } })).error.code, 'password_long');
   assert.equal((await call('POST', '/api/register', { body: { name: 'NoPass', password: PASSWORD, avatar: 'ghost' } })).error.code, 'bad_avatar');
-  // paid icons are chained at sign-up
+  // Only the green portrait is free at sign-up.
   for (const a of [...AVATARS.values()].filter((x) => x.price > 0)) {
-    const r = await call('POST', '/api/register', { body: { name: 'Chained', password: PASSWORD, avatar: a.id } });
+    const r = await call('POST', '/api/register', { body: { name: 'PaidIcon', password: PASSWORD, avatar: a.id } });
     assert.equal(r.status, 403, a.id);
     assert.equal(r.error.code, 'locked', a.id);
   }
-  for (const id of ['bald', 'beard', 'curly', 'blond', 'witch']) {
-    assert.equal(AVATARS.get(id).price, 0, `${id} is free from the start`);
+  assert.deepEqual([...AVATARS.values()].filter(a => a.price === 0).map(a => a.id), ['traveler-green']);
+  for (const avatar of ['bald', 'beard', 'curly', 'blond', 'witch', 'cap', 'catcap', 'pumpkin', 'red', 'vampire']) {
+    assert.equal((await call('POST', '/api/register', { body: { name: 'Retired', password: PASSWORD, avatar } })).error.code, 'bad_avatar');
   }
-  const ok = await register('Taro_01', { avatar: 'witch' });
+  const ok = await call('POST', '/api/register', { body: { name: 'Taro_01', password: PASSWORD } });
+  assert.equal(ok.status, 200);
   assert.match(ok.recoveryCode, /^[0-9A-Z]{4}(-[0-9A-Z]{4}){3}$/);
   assert.equal(ok.me.name, 'Taro_01');
-  assert.equal(ok.me.avatar, 'witch');
+  assert.equal(ok.me.avatar, 'traveler-green');
   assert.equal(ok.me.hasPassword, true);
   assert.equal(ok.me.tokens, RULES.start.tokens);
   assert.equal(ok.me.dollars, RULES.start.dollars);
@@ -176,7 +178,7 @@ test('spins are settled on the server and add up', async () => {
 });
 
 test('profiles: no ranking any more; when a player was last online', async () => {
-  const a = await register('ボードA', { avatar: 'curly' });
+  const a = await register('ボードA');
   const b = await register('ボードB');
   assert.equal((await call('GET', '/api/board?type=total', { token: b.token })).status, 404);
   setUser(b.me.id, { last_seen: 1234567 });
@@ -395,45 +397,52 @@ test('transfers: friends only, atomic, shown in the chat', async () => {
   assert.equal(d.balance.dollars, 0);
 });
 
-test('icons: free ones anytime; paid ones at the daily sale price, once', async () => {
-  const u = await register('IconBuyer', { avatar: 'blond' });
-  let r = await call('POST', '/api/avatar', { token: u.token, body: { id: 'witch' } });
-  assert.equal(r.me.avatar, 'witch');
-  assert.equal((await call('POST', '/api/avatar', { token: u.token, body: { id: 'vampire' } })).error.code, 'locked');
+test('icons: one free portrait and every rarity at its fixed price, without sales', async () => {
+  const u = await register('IconBuyer');
+  assert.deepEqual(u.me.avatars, ['traveler-green']);
   const shop = (await call('GET', '/api/me', { token: u.token })).iconShop;
-  assert.equal(shop.day, utcDay());
-  assert.deepEqual(shop.items.map((i) => i.id).sort(), ['pumpkin', 'red', 'vampire']);
-  const full = { pumpkin: 100000, red: 350000, vampire: 800000 };
-  for (const item of shop.items) {
-    assert.equal(item.price, full[item.id]);
-    assert.ok(item.pct >= 10 && item.pct <= 40, `${item.id} ${item.pct}% off`);
-    assert.equal(item.salePrice, Math.round(full[item.id] * (100 - item.pct) / 100));
-    assert.deepEqual(iconSale(AVATARS.get(item.id), shop.day), { price: item.salePrice, pct: item.pct });
+  const expected = [
+    ['adventurer-blue', 'blue', 100000],
+    ['magician-purple', 'purple', 350000], ['dealer-purple', 'purple', 350000],
+    ['adventurer-gold', 'gold', 600000], ['knight-gold', 'gold', 600000],
+    ['karate-red', 'red', 950000], ['rogue-red', 'red', 950000], ['swordsman-red', 'red', 950000],
+    ['pilot-cyan', 'cyan', 1200000], ['explorer-cyan', 'cyan', 1200000], ['healer-cyan', 'cyan', 1200000],
+    ['gambler-secret', 'secret', 2100000], ['adam-secret', 'secret', 2100000]
+  ];
+  assert.deepEqual(shop.items.map(i => [i.id, i.rarity, i.price]), expected);
+  assert.deepEqual(Object.keys(shop), ['items']);
+  for (const item of shop.items) assert.deepEqual(Object.keys(item).sort(), ['id', 'price', 'rarity']);
+  assert.equal((await call('POST', '/api/avatar', { token: u.token, body: { id: 'adam-secret' } })).error.code, 'locked');
+  for (const path of ['/api/avatar', '/api/avatar/buy']) {
+    assert.equal((await call('POST', path, { token: u.token, body: { id: 'vampire' } })).error.code, 'bad_avatar');
   }
-  // the discount moves between 10 and 40 % from day to day
-  const seen = new Set();
-  for (let d = 1; d <= 60; d++) seen.add(iconSale(AVATARS.get('red'), `2027-1-${d}`).pct);
-  assert.ok(seen.size >= 5 && Math.min(...seen) === 10 && Math.max(...seen) === 40, [...seen].join(','));
-  const vamp = shop.items.find((i) => i.id === 'vampire');
-  setUser(u.me.id, { dollars: vamp.salePrice - 1 });
-  assert.equal((await call('POST', '/api/avatar/buy', { token: u.token, body: { id: 'vampire', price: vamp.salePrice } })).error.code, 'insufficient');
-  setUser(u.me.id, { dollars: 2000000 });
-  r = await call('POST', '/api/avatar/buy', { token: u.token, body: { id: 'vampire', price: vamp.price } });
-  assert.equal(r.error.code, 'price_changed', 'a price the player was not shown is never charged');
-  assert.equal((await call('GET', '/api/me', { token: u.token })).me.dollars, 2000000);
-  r = await call('POST', '/api/avatar/buy', { token: u.token, body: { id: 'vampire', price: vamp.salePrice } });
-  assert.equal(r.status, 200);
-  assert.equal(r.paid, vamp.salePrice);
-  assert.equal(r.me.dollars, 2000000 - vamp.salePrice);
-  assert.equal(r.me.avatar, 'vampire');
-  assert.ok(r.me.avatars.includes('vampire'));
-  assert.equal((await call('POST', '/api/avatar/buy', { token: u.token, body: { id: 'vampire' } })).error.code, 'owned');
-  assert.equal((await call('POST', '/api/avatar/buy', { token: u.token, body: { id: 'bald' } })).error.code, 'bad_avatar');
-  // owned icons can be switched back and forth for free
-  assert.equal((await call('POST', '/api/avatar', { token: u.token, body: { id: 'curly' } })).me.avatar, 'curly');
-  r = await call('POST', '/api/avatar', { token: u.token, body: { id: 'vampire' } });
-  assert.equal(r.me.avatar, 'vampire');
-  assert.equal(r.me.dollars, 2000000 - vamp.salePrice);
+  setUser(u.me.id, { dollars: 99999 });
+  assert.equal((await call('POST', '/api/avatar/buy', { token: u.token, body: { id: 'adventurer-blue' } })).error.code, 'insufficient');
+  assert.equal((await call('GET', '/api/me', { token: u.token })).me.dollars, 99999);
+  let dollars = 20000000;
+  setUser(u.me.id, { dollars });
+  for (const price of [0, -1, 1470000]) {
+    const r = await call('POST', '/api/avatar/buy', { token: u.token, body: { id: 'adam-secret', price } });
+    assert.equal(r.error.code, 'price_changed');
+    assert.deepEqual(r.error.iconShop, shop);
+  }
+  assert.equal((await call('GET', '/api/me', { token: u.token })).me.dollars, dollars);
+  for (const [id, rarity, price] of expected) {
+    const r = await call('POST', '/api/avatar/buy', { token: u.token, body: { id, price } });
+    dollars -= price;
+    assert.equal(r.status, 200, id);
+    assert.equal(r.paid, price, rarity);
+    assert.equal(r.pct, undefined);
+    assert.equal(r.me.dollars, dollars);
+    assert.equal(r.me.avatar, id);
+    assert.ok(r.me.avatars.includes(id));
+    assert.equal((await call('POST', '/api/avatar/buy', { token: u.token, body: { id } })).error.code, 'owned');
+  }
+  assert.equal((await call('POST', '/api/avatar/buy', { token: u.token, body: { id: 'traveler-green' } })).error.code, 'bad_avatar');
+  assert.equal((await call('POST', '/api/avatar', { token: u.token, body: { id: 'traveler-green' } })).me.avatar, 'traveler-green');
+  const changed = await call('POST', '/api/avatar', { token: u.token, body: { id: 'adam-secret' } });
+  assert.equal(changed.me.avatar, 'adam-secret');
+  assert.equal(changed.me.dollars, dollars, 'owned portraits can be selected again without charging');
 });
 
 test('cars: Car Owner sells for $26,500,000; garage; gifts go to friends only', async () => {
@@ -558,7 +567,7 @@ test('live stream: tickets open one connection; messages and transfers are pushe
   const live = await listen(b);
   const hello = await live.waitFor('hello');
   assert.equal(hello.me.id, b.me.id);
-  assert.equal(hello.iconShop.items.length, 3);
+  assert.equal(hello.iconShop.items.length, 13);
   await assert.rejects(s.openStream(live.ticket, () => {}), 'a ticket works once');
   await assert.rejects(s.openStream('1.2.3', () => {}));
   await call('POST', '/api/messages', { token: a.token, body: { to: b.me.id, text: 'ライブ' } });

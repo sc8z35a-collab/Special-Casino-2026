@@ -331,11 +331,11 @@
   // view -> its tab and its pane
   var TAB_OF = {
     friends: 'friends', messages: 'messages', dm: 'messages', group: 'messages', cars: 'cars', garage: 'cars',
-    shop: 'shop', items: 'shop', jobs: 'jobs', more: 'more'
+    shop: 'shop', carshop: 'shop', items: 'shop', jobs: 'jobs', more: 'more'
   };
   var PANE_OF = {
     friends: 'friends', messages: 'messages', dm: 'chat', group: 'chat', cars: 'cars', garage: 'garage',
-    shop: 'shop', items: 'items', jobs: 'jobs', more: 'more'
+    shop: 'shop', carshop: 'shop', items: 'items', jobs: 'jobs', more: 'more'
   };
   var PANES = ['friends', 'messages', 'chat', 'cars', 'garage', 'shop', 'items', 'jobs', 'more'];
   function setView(v) {
@@ -361,6 +361,7 @@
     else if (v === 'cars') BR.cars.showShop();
     else if (v === 'garage') BR.cars.showGarage();
     else if (v === 'shop') BR.shop.showShop();
+    else if (v === 'carshop') BR.shop.showShop('car');
     else if (v === 'items') BR.shop.showItems();
     else if (v === 'jobs') BR.jobs.show();
     else if (v === 'more') BR.news.show();

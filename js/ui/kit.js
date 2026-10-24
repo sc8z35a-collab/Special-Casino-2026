@@ -52,7 +52,10 @@
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;
   }
-  function avatarSrc(id) { return (BR.SOCIAL_IMG && BR.SOCIAL_IMG.avatars[id]) || null; }
+  function avatarSrc(id) {
+    var images = BR.SOCIAL_IMG && BR.SOCIAL_IMG.avatars;
+    return images && (images[id] || images[BR.CONFIG.defaultAvatar]) || null;
+  }
   // the portrait (or the first letter of the name for an unknown icon)
   function avatarEl(user, cls) {
     var a = el('span', 'avatar' + (cls ? ' ' + cls : ''));

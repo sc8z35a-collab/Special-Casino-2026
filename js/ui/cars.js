@@ -74,7 +74,11 @@
 
   /* ------------------------------------------------------------ Car Owner --- */
   function showShop() {
-    if (!sel || !model(sel)) sel = catalog()[catalog().length - 1].id;
+    if (!sel || !model(sel)) {
+      var priced = catalog().filter(BR.sale.carPriced);
+      var choices = priced.length ? priced : catalog();
+      sel = choices[choices.length - 1].id;
+    }
     renderShop();
     load().then(function () { if (onBoard('cars')) renderShop(); }, function () {});
     clearInterval(tick);
@@ -88,17 +92,22 @@
     var car = model(sel);
     // the picker: every car, its sale mark
     var pick = $('#car-picker');
+    var scroll = pick.scrollLeft;
     pick.textContent = '';
     var s = sale();
     catalog().forEach(function (c) {
       var b = el('button', 'car-thumb' + (c.id === sel ? ' on' : ''));
       b.type = 'button';
+      b.title = c.name + (BR.sale.carPriced(c) ? '' : '（価格未定）');
+      b.setAttribute('aria-label', b.title);
+      b.setAttribute('aria-pressed', String(c.id === sel));
       var p = el('span', 'car-thumb-pic');
       p.style.backgroundImage = 'url("' + picture(c.id) + '")';
       b.appendChild(p);
       b.appendChild(el('span', 'car-thumb-name', c.name));
       if (s && s.pct[c.id]) b.appendChild(el('em', 'car-thumb-off', '-' + s.pct[c.id] + '%'));
       if (c.model) b.appendChild(el('i', 'car-thumb-3d', '3D'));
+      if (!BR.sale.carPriced(c)) b.appendChild(el('em', 'car-thumb-pending', '価格未定'));
       if (c.vip) { var vb = K.vipBadge(c.vip); vb.classList.add('car-thumb-vip'); b.appendChild(vb); }
       b.addEventListener('click', function () {
         if (sel === c.id) return;
@@ -108,11 +117,19 @@
       });
       pick.appendChild(b);
     });
+    pick.scrollLeft = scroll;
+    var active = pick.querySelector('.on');
+    if (active) {
+      if (active.offsetLeft < pick.scrollLeft) pick.scrollLeft = active.offsetLeft;
+      else if (active.offsetLeft + active.offsetWidth > pick.scrollLeft + pick.clientWidth) pick.scrollLeft = active.offsetLeft + active.offsetWidth - pick.clientWidth;
+    }
     $('#car-name').textContent = car.name;
+    $('#car-name').classList.toggle('long', car.name.length > 14);
     var pr = priceOf(car), price = $('#car-price');
     price.textContent = '';
     if (pr.pct || pr.vip) price.appendChild(el('s', 'car-was', money(car.price)));
-    price.appendChild(K.amountEl(pr.price, 'dollars'));
+    if (pr.price === null) price.appendChild(el('span', 'car-price-pending', '価格未定'));
+    else price.appendChild(K.amountEl(pr.price, 'dollars'));
     if (pr.pct) price.appendChild(el('em', 'car-off', '-' + pr.pct + '%'));
     if (pr.vip) price.appendChild(el('em', 'car-vip-note', 'VIP -' + pr.vip + '%'));
     renderSale();
@@ -132,13 +149,12 @@
   }
   function renderOwned() {
     var car = model(sel);
-    var n = garage ? garage.cars.filter(function (c) { return c.model === car.id; }).length : null;
-    $('#car-own').textContent = n === null ? '' : (n > 0 ? '所有 ' + n + '台' : '未所有') + '・ガレージ ' + owned() + ' / ' + capacity() + '台';
     var buy = $('#car-buy');
+    var pending = !BR.sale.carPriced(car);
     var locked = !BR.VIP.carOpen(car, vipLevel());
-    buy.disabled = busy || locked;
-    buy.textContent = locked ? 'VIP' + BR.VIP.label(car.vip) + '限定車' : '購入する';
-    buy.classList.toggle('short', S.dollars < priceOf(car).price);
+    buy.disabled = busy || locked || pending;
+    buy.textContent = pending ? '価格未定' : locked ? 'VIP' + BR.VIP.label(car.vip) + '限定車' : '購入する';
+    buy.classList.toggle('short', !pending && S.dollars < priceOf(car).price);
   }
 
   // the 3D studio for a car with a model, its picture otherwise
@@ -152,8 +168,9 @@
     note.textContent = '3Dを読み込み中…';
     var want = car.id;
     BR.garage3d.show(host, car.id, function (p) { if (sel === want) note.textContent = '3Dを読み込み中… ' + Math.round(p * 100) + '%'; }).then(function () {
-      if (sel === want) note.textContent = 'ドラッグで回転・ピンチ／ホイールでズーム';
+      if (sel === want) note.textContent = '';
     }, function () {
+      if (sel !== want) return;
       // no 3D after all: the picture
       $('#car-stage').classList.remove('three');
       host.hidden = true;
@@ -168,6 +185,7 @@
   function buy() {
     var car = model(sel);
     if (busy) return;
+    if (!BR.sale.carPriced(car)) { sfx('deny'); toast('この車は価格未定のため、まだ購入できません'); return; }
     var pr = priceOf(car);
     if (S.dollars < pr.price) {
       sfx('deny');
@@ -301,6 +319,10 @@
       if (c.offer) pic.appendChild(el('i', 'garage-offer', '販売中'));
       card.appendChild(pic);
       card.appendChild(el('div', 'garage-name', m.name));
+      if (c.engine) {
+        var engine = BR.CONFIG.shop.filter(function (it) { return it.id === c.engine; })[0];
+        if (engine) card.appendChild(el('div', 'garage-engine', engine.name));
+      }
       card.appendChild(el('div', 'garage-from', c.from ? c.from.name + (c.via === 'friend' ? 'さんから購入' : 'さんからのプレゼント') : K.fmtDate(c.acquiredAt) + ' に購入'));
       card.appendChild(el('div', 'garage-status'));
       var row = el('div', 'garage-acts');
@@ -309,7 +331,7 @@
       row.appendChild(c.rent
         ? button('', c.rent.until ? '停止予約済み' : '貸し出しを止める', !!c.rent.until, function () { stopRent(c); })
         : button('', '貸し出す', !!c.offer || c.waiting, function () { startRent(c); }));
-      var b = garage.buyback && garage.buyback[c.model];
+      var b = c.buyback || garage.buyback && garage.buyback[c.model];
       if (b) row.appendChild(button('', '売る ' + money(b.price), held, function () { sell(c); }));
       row.appendChild(button('gift', 'あげる', held, function () { chooseFriend(c); }));
       row.appendChild(button('', '友達に売る', held, function () { chooseFriend(c, true); }));
@@ -420,12 +442,12 @@
   }
   function sell(c) {
     var m = model(c.model) || { name: c.model };
-    var b = garage.buyback[c.model];
+    var b = c.buyback || garage.buyback[c.model];
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode(m.name + ' を'));
       p.appendChild(K.amountEl(b.price, 'dollars', 'confirm-amt'));
       p.appendChild(document.createTextNode('で売りますか？'));
-      p.appendChild(el('small', 'confirm-sub', (b.disposal ? '大廃棄セールの高価買取' : '今日の買取') + '：今の販売価格の −' + b.pct + '%。売った車は戻りません。' + (c.earned ? '貸し出しの売上も受け取ります。' : '')));
+      p.appendChild(el('small', 'confirm-sub', (b.disposal ? '大廃棄セールの高価買取' : '今日の買取') + (c.engine ? '。' : '：今の販売価格の −' + b.pct + '%。') + '売った車は戻りません。' + (c.earned ? '貸し出しの売上も受け取ります。' : '')));
     }, '売る').then(function (ok) {
       if (!ok) return;
       busy = true;

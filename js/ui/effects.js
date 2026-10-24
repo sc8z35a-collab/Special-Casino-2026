@@ -55,12 +55,7 @@
       BR.fx.set(id, e.target.checked);
       render();
     });
-    $('#fx-reset').addEventListener('click', function () {
-      sfx('click');
-      BR.fx.reset();
-      render();
-      K.toast('すべての演出をオンに戻しました', 2200);
-    });
+
   }
 
   BR.effects = { init: init, open: open };

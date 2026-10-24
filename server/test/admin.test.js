@@ -126,7 +126,7 @@ test('money survives restarts and redeploys: the database is reopened as it was'
       });
       return res.json();
     };
-    const reg = await post(base, '/api/register', { name: 'Durable', password: PASSWORD, avatar: 'beard' });
+    const reg = await post(base, '/api/register', { name: 'Durable', password: PASSWORD, avatar: 'traveler-green' });
     app.db.prepare('UPDATE users SET tokens = 777777, dollars = 123456789 WHERE id = ?').run(reg.me.id);
     await app.close();
     app = createApp(opts);
@@ -135,7 +135,7 @@ test('money survives restarts and redeploys: the database is reopened as it was'
     const login = await post(base, '/api/login', { name: 'Durable', password: PASSWORD });
     assert.equal(login.me.tokens, 777777);
     assert.equal(login.me.dollars, 123456789);
-    assert.equal(login.me.avatar, 'beard');
+    assert.equal(login.me.avatar, 'traveler-green');
     // the old session still works too
     const me = await (await fetch(base + '/api/me', { headers: { Authorization: `Bearer ${reg.token}` } })).json();
     assert.equal(me.me.dollars, 123456789);
@@ -162,7 +162,7 @@ test('a database from the first release is upgraded in place, balances untouched
     const login = await res.json();
     assert.equal(res.status, 200);
     assert.deepEqual([login.me.tokens, login.me.dollars, login.me.coins, login.me.totalWon], [4242, 9876543, 74, 5555]);
-    assert.equal(login.me.avatar, 'bald');
+    assert.equal(login.me.avatar, 'traveler-green');
     assert.equal(login.me.hasPassword, false);
     assert.equal(app.db.prepare("SELECT value FROM meta WHERE key = 'schema'").get().value, String(SCHEMA_VERSION));
     await app.close();

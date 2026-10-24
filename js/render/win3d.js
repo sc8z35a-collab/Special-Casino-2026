@@ -14,7 +14,7 @@
   'use strict';
 
   var SRC = 'js/vendor/three-bundle.js';
-  var FILES = { win: 'img/3d/win.glb', big: 'img/3d/big.glb', super: 'img/3d/super.glb', ultra: 'img/3d/ultra.glb' };
+  var FILES = { win: 'img/3d/effects-lite/win.glb', big: 'img/3d/effects-lite/big.glb', super: 'img/3d/effects-lite/super.glb', ultra: 'img/3d/effects-lite/ultra.glb' };
   // each model's width on the stage (design px; ULTRA as tall as SUPER)
   var WIDTH = { win: 600, big: 1000, super: 840, ultra: 870 };
   var FOV = 26;
