@@ -842,6 +842,40 @@ export const MIGRATIONS = [
   [
     `CREATE TABLE ops_mfa (user_id INTEGER PRIMARY KEY, mode INTEGER NOT NULL DEFAULT 0, secret TEXT NOT NULL DEFAULT '', phrase_hash TEXT NOT NULL DEFAULT '', recovery TEXT NOT NULL DEFAULT '[]', last_step INTEGER NOT NULL DEFAULT -1, version INTEGER NOT NULL DEFAULT 0, pending_secret TEXT NOT NULL DEFAULT '', pending_until INTEGER NOT NULL DEFAULT 0)`,
     'ALTER TABLE sessions ADD COLUMN ops_mfa_version INTEGER NOT NULL DEFAULT 0'
+  ],
+  // The operator screen view (server/core/opswatch.js): an operator may mark a
+  // player a favourite (ops_favorites), and every watch is written down when
+  // it ends — who watched whom, for how long and how many bytes it cost
+  // (ops_watch_log) — with each operator's running total kept for the サーバー
+  // tab (ops_watch_usage). The watch sessions themselves are live only (memory).
+  [
+    `CREATE TABLE ops_favorites (
+       op_id      INTEGER NOT NULL,
+       player_id  INTEGER NOT NULL,
+       created_at INTEGER NOT NULL,
+       PRIMARY KEY (op_id, player_id)
+     )`,
+    'CREATE INDEX ops_favorites_player ON ops_favorites(player_id)',
+    `CREATE TABLE ops_watch_log (
+       id         INTEGER PRIMARY KEY,
+       op_id      INTEGER NOT NULL,
+       player_id  INTEGER NOT NULL,
+       started_at INTEGER NOT NULL,
+       ended_at   INTEGER NOT NULL,
+       ms         INTEGER NOT NULL,
+       bytes      INTEGER NOT NULL,
+       frames     INTEGER NOT NULL DEFAULT 0,
+       quality    TEXT    NOT NULL DEFAULT '',
+       reason     TEXT    NOT NULL DEFAULT ''
+     )`,
+    'CREATE INDEX ops_watch_log_op ON ops_watch_log(op_id, id)',
+    'CREATE INDEX ops_watch_log_player ON ops_watch_log(player_id, id)',
+    `CREATE TABLE ops_watch_usage (
+       op_id   INTEGER PRIMARY KEY,
+       bytes   INTEGER NOT NULL DEFAULT 0,
+       ms      INTEGER NOT NULL DEFAULT 0,
+       watches INTEGER NOT NULL DEFAULT 0
+     )`
   ]
 ];
 
@@ -852,7 +886,8 @@ export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transf
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
   'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers', 'ops_entries',
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'devunit_comments', 'devunit_reads',
-  'diary_posts', 'diary_reads', 'diary_reactions', 'diary_comments', 'diary_claims', 'ops_mfa', 'meta'];
+  'diary_posts', 'diary_reads', 'diary_reactions', 'diary_comments', 'diary_claims', 'ops_mfa',
+  'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

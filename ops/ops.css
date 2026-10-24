@@ -773,3 +773,53 @@ body.role-viewer [data-stop], body.role-viewer #srv-dev, body.role-viewer .repor
 .vitem.drop-in { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent); }
 /* Developer diary and personal authentication settings. */
 .ops-diary-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(260px,1fr);gap:20px;align-items:start}.ops-diary-panel,.ops-diary-post,.ops-diary-comment,.ops-profile-card{padding:20px;border-radius:20px;background:rgba(255,255,255,.65);border:1px solid rgba(90,110,140,.18);margin:12px 0;overflow-wrap:anywhere}.ops-diary-image{display:block;max-width:100%;max-height:360px;object-fit:contain;border-radius:14px;margin:12px auto}.ops-diary-image[hidden]{display:none}.diary-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}.diary-admin-actions{display:flex;flex-wrap:wrap;gap:8px}.ops-diary-comment .face{margin-right:10px}.ops-diary-comment small{display:block;margin-top:8px}.ops-profile-card{max-width:720px}.profile-secret{white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;padding:12px;font-size:15px;background:rgba(90,120,170,.1);border-radius:12px}.profile-secret:empty{display:none}.auth-warning{color:#c42836;font-weight:700}.mfa-unset .mac-profile{position:relative}.mfa-unset .mac-profile::after{content:'!';position:absolute;right:0;top:0;border-radius:50%;background:#cf2638;color:#fff;font:bold 12px sans-serif;width:15px;height:15px;text-align:center}.ops-profile-card input,.ops-diary-panel textarea,.ops-diary-panel input{font-size:16px}#login-extra{margin:12px 0}#login-extra summary{cursor:pointer}#profile-setup{margin:18px 0;padding:16px;border-radius:16px;border:1px solid #a8bbd1}@media(max-width:850px){.ops-diary-layout{grid-template-columns:minmax(0,1fr)}.ops-diary-panel,.ops-profile-card{padding:14px}}
+
+/* the サーバー tab: how full the month's allowances are (green past 10%,
+   blue 30%, purple 50%, red 70%), on its banner and on its button in the bar */
+:root { --u-green: #1f9d55; --u-green-soft: #e7f6ee; --u-blue: #2563c9; --u-blue-soft: #e9f0fc; --u-purple: #7c3aed; --u-purple-soft: #f1eafe; --u-red: #c53030; --u-red-soft: #fdecec; }
+.srv-usage { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--soft); }
+.srv-usage b { font-size: 15px; }
+.srv-usage small { flex-basis: 100%; font-size: 12px; }
+.srv-usage-tier { padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; }
+.srv-usage.tier-green { border-color: var(--u-green); background: var(--u-green-soft); }
+.srv-usage.tier-green b, .tab.usage-green { color: var(--u-green); }
+.srv-usage.tier-green .srv-usage-tier { background: var(--u-green); }
+.srv-usage.tier-blue { border-color: var(--u-blue); background: var(--u-blue-soft); }
+.srv-usage.tier-blue b, .tab.usage-blue { color: var(--u-blue); }
+.srv-usage.tier-blue .srv-usage-tier { background: var(--u-blue); }
+.srv-usage.tier-purple { border-color: var(--u-purple); background: var(--u-purple-soft); }
+.srv-usage.tier-purple b, .tab.usage-purple { color: var(--u-purple); }
+.srv-usage.tier-purple .srv-usage-tier { background: var(--u-purple); }
+.srv-usage.tier-red { border-color: var(--u-red); background: var(--u-red-soft); }
+.srv-usage.tier-red b, .tab.usage-red { color: var(--u-red); }
+.srv-usage.tier-red .srv-usage-tier { background: var(--u-red); }
+.tab.usage-green { box-shadow: inset 0 -3px 0 var(--u-green); }
+.tab.usage-blue { box-shadow: inset 0 -3px 0 var(--u-blue); }
+.tab.usage-purple { box-shadow: inset 0 -3px 0 var(--u-purple); }
+.tab.usage-red { box-shadow: inset 0 -3px 0 var(--u-red); }
+
+/* 画面を見る (ops/watch.js): the player's game state drawn again, and the list's 見る / ★ */
+.watch-cell { display: flex; align-items: center; gap: 8px; }
+.watch-cell .btn:disabled { opacity: .45; cursor: not-allowed; }
+.star { width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; font-size: 20px; line-height: 1; color: #b9c2cf; cursor: pointer; }
+.star:hover { background: var(--soft); }
+.star.on { color: #e0a800; }
+.watch-back { position: fixed; inset: 0; z-index: 26; display: flex; align-items: stretch; justify-content: center; padding: 12px; background: rgba(13, 16, 24, .72); }
+.watch { display: flex; flex-direction: column; gap: 10px; width: min(1480px, 100%); max-height: 100%; overflow: auto; padding: 14px 16px 16px; border-radius: 16px; background: #fff; box-shadow: 0 24px 60px rgba(0, 0, 0, .35); }
+.watch-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.watch-who { display: flex; flex-direction: column; margin-right: auto; min-width: 0; }
+.watch-who b { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.watch-pick { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.watch-pick select { height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-size: 13px; }
+.watch-body { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+.watch-screen { flex: 1 1 560px; min-width: 0; }
+.watch-screen canvas { display: block; width: 100%; height: auto; max-height: calc(100vh - 220px); object-fit: contain; border-radius: 12px; background: #0d1018; }
+.watch-stat { margin: 6px 2px 0; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.watch-note { margin: 6px 2px 0; font-size: 11px; line-height: 1.5; }
+.watch-side { flex: 0 1 340px; min-width: 260px; }
+.watch-side h3 { margin: 4px 0 6px; font-size: 13px; }
+.watch-presets, .watch-bans { display: flex; flex-wrap: wrap; gap: 6px; }
+.watch-write { display: flex; gap: 6px; margin: 8px 0 12px; }
+.watch-write input { flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+.watch-back button:disabled, .watch-back input:disabled, .watch-back select:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 720px) { .watch-back { padding: 0; } .watch { border-radius: 0; } .watch-side { flex-basis: 100%; } }

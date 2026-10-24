@@ -51,6 +51,8 @@ import { createStats } from './stats.js';
 import { createVault, VAULT_BULK } from './vault.js';
 import { REASONS as FILTERED } from './attach.js';
 import { createDiscord } from './discord.js';
+import { createOpsWatch } from './opswatch.js';
+import { createUsageAlert } from './usagealert.js';
 
 const PAGE = 50;
 const CURRENCIES = ['tokens', 'dollars'];
@@ -95,16 +97,25 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const tx = (fn) => db.tx(fn);
   const quota = createQuota(db, { requests: config.dailyRequestLimit, megabytes: config.dailyMbLimit });
   const stats = createStats({ db, q, config, host: host || {}, defer });
-  // live pushes: counted for the サーバー tab, and towards the bytes sent when a cap is set
+  // live pushes: counted for the サーバー tab, and towards the bytes sent when a cap is set. Their
+  // bytes go into the tab's breakdown by what they are for: a friend's 観戦 (and the start / stop of an
+  // operator's screen view) is 映像通信, a call's signalling is 音声 (the voice itself goes between the
+  // phones), everything else is the game's own.
+  const PUSH_KIND = { watch: 'video', view: 'video', call: 'voice' };
+  const pushSize = (data) => String(JSON.stringify(data) || '').length + 32;
   const live = {
     send(userId, event, data) {
       stats.wsOut();
-      if (quota.on) quota.sent(JSON.stringify(data).length + 32);
+      const size = pushSize(data);
+      if (quota.on) quota.sent(size);
+      if (hostLive.isOnline(userId)) stats.pushed(size, PUSH_KIND[event]);
       return hostLive.send(userId, event, data);
     },
     broadcast(event, data, filter) {
       stats.wsOut(hostLive.onlineCount());
-      if (quota.on) quota.sent((JSON.stringify(data).length + 32) * hostLive.onlineCount());
+      const size = pushSize(data);
+      if (quota.on) quota.sent(size * hostLive.onlineCount());
+      stats.pushed(size * hostLive.onlineCount(), PUSH_KIND[event]);
       return hostLive.broadcast(event, data, filter);
     },
     isOnline: (id) => hostLive.isOnline(id),
@@ -127,7 +138,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     register: [config.registerPerMinute, Math.max(1, Math.ceil(config.registerPerMinute / 2))],
     login: [10, 5],
     nameCheck: [60, 20],
-    spin: [120, 6],
+    // at most one spin per second (no banking: burst 1, one token refilled a second)
+    spin: [60, 1],
     shop: [60, 10],
     typing: [120, 20],
     dm: [40, 8],
@@ -398,6 +410,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const noteHost = (req) => { if (host && host.name === 'cloudflare') discord.host(req.header('host')); };
   // (the host keeps the newest entry's hash where SQL cannot reach: server/core/opslog.js)
   const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => discord.log(row) });
+  // the month's usage in the red (over 70%) or nearly all used (over 90%): told to Discord, once for each
+  const usageAlert = createUsageAlert({ q, report: () => stats.report(0), discord, clock: config.clock || Date.now });
   // a new DEV going live is the first entry of its own
   {
     const seen = q("SELECT value FROM meta WHERE key = 'ops_log_release'").get();
@@ -3565,6 +3579,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const socketTyping = fromSocket(relayTyping);
   const socketBeat = fromSocket(beat);
   const socketSight = fromSocket(seeing);
+  // a sealed frame of the game's state for an operator's screen view (server/core/opswatch.js)
+  const socketView = fromSocket((u, body) => { if (watchRef) watchRef.frame(u, body); });
 
   // Friendship both ways, the request(s) gone, a note in their conversation.
   function makeFriends(requester, accepter) {
@@ -3605,7 +3621,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // lockdown (server/core/emergency.js). The shield can call for the lockdown,
   // which needs the shield's forensics and a protective backup, so the three
   // know one another through late-bound references.
-  let emergencyRef = null, backupRef = null;
+  let emergencyRef = null, backupRef = null, watchRef = null;
   const shield = createShield({
     q, config, opsLog, clock: config.clock || Date.now,
     onBreach: (info) => { if (emergencyRef) emergencyRef.breach(info); },
@@ -3615,7 +3631,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const emergency = createEmergency({
     q, config, opsLog, devCode, isDeveloper, getUser, clock: config.clock || Date.now,
     shield, verifyLog: () => opsLog.verify(), protect: () => (backupRef ? backupRef.lockdownBackup() : null), defer: defer || ((p) => p),
-    host: { dbBytes: host && host.dbBytes ? host.dbBytes : null, stop: () => { if (host && host.stop) host.stop(); } }
+    // (every operator screen view ends first — the operator and the player are told —
+    // then the live connections close: server/core/opswatch.js)
+    host: { dbBytes: host && host.dbBytes ? host.dbBytes : null, stop: () => {
+      if (watchRef) watchRef.terminateAll(emergencyRef && emergencyRef.locked() ? 'lockdown' : 'emergency');
+      if (host && host.stop) host.stop();
+    } }
   });
   emergencyRef = emergency;
   Object.assign(routes, emergency.routes);
@@ -3641,6 +3662,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen
   });
   Object.assign(routes, ops.routes);
+  // the operators' screen view (見る): state only, sealed, one way, 30 minutes at most, logged
+  const watch = createOpsWatch({
+    q, live, ops, opsLog, official, emergency, shield, discord, getUser, isDeveloper, clock: config.clock || Date.now,
+    count: (bytes) => stats.pushed(bytes, 'video'),
+    usage: () => stats.usage(0).percent
+  });
+  watchRef = watch;
+  Object.assign(routes, watch.routes);
+  // the players' list also says which ones this operator marked ★
+  const opsPlayers = routes['GET /api/ops/players'];
+  routes['GET /api/ops/players'] = (req, u) => ({ ...opsPlayers(req, u), favorites: watch.favoriteIds(u.id) });
   const opsMfa = createOpsMfa({ q, tx, secret, ops, opsLog, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now });
   Object.assign(routes, opsMfa.routes);
   Object.assign(routes, createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed,
@@ -3708,6 +3740,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     ops.see(u);
     return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on } };
   };
+  // the tab bar's poll also carries the month's usage colour (cheap), so the
+  // サーバー button is green / blue / purple / red from every tab
+  const opsCounts = routes['GET /api/ops/counts'];
+  routes['GET /api/ops/counts'] = (req, u) => {
+    const out = opsCounts(req, u);
+    const v = vault.summary();
+    return { ...out, usage: stats.usage(v && v.store === 'bucket' ? v.used : 0) };
+  };
   // the developer tries the Discord notices: one goes out at once
   routes['POST /api/ops/discord/test'] = async (req, u) => {
     ops.need(u);
@@ -3764,7 +3804,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       loginReset: nextLoginReset(),
       me: meDto(u), unread: unreadTotal(userId), friendRequests: pendingRequests(userId), iconShop: iconShop(), itemShop: itemShop(),
       peter: peter.me(), johnson: johnson.me(), official: official.me(), online: live.onlineCount(),
-      hub: myHub(userId), hubInvites: hubInvites(userId)
+      hub: myHub(userId), hubInvites: hubInvites(userId),
+      // a screen view under way when the game (re)connects: it starts sending again (nothing is shown)
+      view: watchRef ? watchRef.viewFor(userId) : null
     };
   }
 
@@ -3808,6 +3850,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     emergency.tick();
     if (emergency.locked()) return Promise.resolve();
     try {
+      // (the month's usage: told to Discord when it reaches the red; also checked here for quiet hours)
+      try { usageAlert.check(); } catch (e) { console.error('usage alert failed', e); }
       q('DELETE FROM spins WHERE created_at < ?').run(Date.now() - 30 * 86400000);
       shield.prune();
       q('DELETE FROM sessions WHERE last_used < ?').run(Date.now() - 365 * 86400000);
@@ -3943,6 +3987,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       try { voiceNotice(); milestones(); } catch (e) { console.error('announcements failed', e); }
     }
     stats.request();
+    try { usageAlert.check(); } catch (e) { console.error('usage alert failed', e); }
     emergency.request({ path: req.path, ip: req.ip, userId: req.userId || 0, status: out.status });
     // the shield learns from the outcome (a failed login, a guess at the keys)
     shield.request({ path: req.path, ip: req.ip, userId: req.userId || 0, status: out.status, code: out.body && out.body.error ? out.body.error.code : '' });
@@ -4055,6 +4100,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     socketTyping,
     socketBeat,
     socketSight,
+    socketView,
     quota,
     // the bytes of an answer, as the host sent it (and the path it answered)
     sent: (bytes, path = '') => { stats.sent(bytes); emergency.sent(bytes, path); },

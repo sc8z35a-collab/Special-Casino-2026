@@ -346,6 +346,9 @@ export function createShield({ q, config, opsLog, onBreach = () => {}, clock = D
   return {
     on,
     inspect, request, snapshot, forensic, blockList, block, unblock, accountBlocked,
+    // how many addresses attack and how hard the keys are hammered right now, and
+    // where that becomes a breach (the operators' screen view stops well before)
+    threat: (now = clock()) => ({ ...pressure(now), breachAt: C.breachAttackers, criticalAt: C.breachCritical }),
     // old blocks and decayed addresses go (from the housekeeping)
     prune() {
       const now = clock();

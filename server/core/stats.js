@@ -37,11 +37,26 @@ const NUMBERED = ['messages', 'transfers', 'spins', 'ops_log', 'detections'];
 
 const month = (t = Date.now()) => new Date(t).toISOString().slice(0, 7);
 
+// The サーバー tab's colour for how full the month's allowances are: past
+// 10% green, 30% blue, 50% purple, 70% red (at or below 10%: none).
+export function usageTier(percent) {
+  const p = Number(percent) || 0;
+  if (p > 70) return 'red';
+  if (p > 50) return 'purple';
+  if (p > 30) return 'blue';
+  if (p > 10) return 'green';
+  return '';
+}
+
 // host: { name, dbBytes() -> number | null, sockets() -> number | null, extra() -> {} | null }
 export function createStats({ db, q, config, host = {}, defer = null }) {
   const startedAt = Date.now();
-  const ring = Array.from({ length: WINDOW }, () => ({ s: 0, r: 0, b: 0, i: 0, o: 0 }));
-  const blank = (k) => ({ key: k, requests: 0, bytes: 0, wsIn: 0, wsOut: 0, r2a: 0, r2b: 0 });
+  const ring = Array.from({ length: WINDOW }, () => ({ s: 0, r: 0, b: 0, i: 0, o: 0, v: 0 }));
+  // bytes are also split by what they are for, for the サーバー tab's breakdown:
+  // game = ordinary play and the operator site, video = the operator screen
+  // view and the in-game 観戦 stream, voice = call/home-chat signalling
+  const blank = (k) => ({ key: k, requests: 0, bytes: 0, wsIn: 0, wsOut: 0, r2a: 0, r2b: 0, catGame: 0, catVideo: 0, catVoice: 0 });
+  const CAT_FIELD = { game: 'catGame', video: 'catVideo', voice: 'catVoice' };
   let day = blank(utcDay()), mon = blank(month()), since = startedAt, savedAt = Date.now(), dirty = false;
   try {
     const row = db.prepare("SELECT value FROM meta WHERE key = 'stats'").get();
@@ -56,7 +71,7 @@ export function createStats({ db, q, config, host = {}, defer = null }) {
   function slot() {
     const sec = Math.floor(Date.now() / 1000);
     const x = ring[sec % WINDOW];
-    if (x.s !== sec) { x.s = sec; x.r = 0; x.b = 0; x.i = 0; x.o = 0; }
+    if (x.s !== sec) { x.s = sec; x.r = 0; x.b = 0; x.i = 0; x.o = 0; x.v = 0; }
     return x;
   }
   function roll() {
@@ -84,13 +99,13 @@ export function createStats({ db, q, config, host = {}, defer = null }) {
     const now = Math.floor(Date.now() / 1000), out = [];
     for (let s = now - WINDOW + 1; s <= now; s++) {
       const x = ring[((s % WINDOW) + WINDOW) % WINDOW];
-      out.push(x.s === s ? [s, x.r, x.b, x.i, x.o] : [s, 0, 0, 0, 0]);
+      out.push(x.s === s ? [s, x.r, x.b, x.i, x.o, x.v] : [s, 0, 0, 0, 0, 0]);
     }
     return out;
   }
   function recent(h, secs) {
     const part = h.slice(-secs);
-    return { requests: part.reduce((n, x) => n + x[1], 0), bytes: part.reduce((n, x) => n + x[2], 0), wsIn: part.reduce((n, x) => n + x[3], 0), wsOut: part.reduce((n, x) => n + x[4], 0), seconds: secs };
+    return { requests: part.reduce((n, x) => n + x[1], 0), bytes: part.reduce((n, x) => n + x[2], 0), wsIn: part.reduce((n, x) => n + x[3], 0), wsOut: part.reduce((n, x) => n + x[4], 0), video: part.reduce((n, x) => n + (x[5] || 0), 0), seconds: secs };
   }
 
   let tables = null;
@@ -125,10 +140,19 @@ export function createStats({ db, q, config, host = {}, defer = null }) {
     lines.push({ key: 'r2a', label: 'R2 の書き込み・一覧（Class A）', used: mon.r2a, included: R2.classA, unit: '回', cost: over(mon.r2a, R2.classA) / 1e6 * R2.classAPrice });
     lines.push({ key: 'r2b', label: 'R2 の読み取り（Class B）', used: mon.r2b, included: R2.classB, unit: '回', cost: over(mon.r2b, R2.classB) / 1e6 * R2.classBPrice });
     const total = lines.reduce((s, l) => s + l.cost, 0);
-    return { lines, total, yen: Math.round(total * YEN_PER_USD), rate: YEN_PER_USD };
+    // how full the month's included allowances are: the peak share across the
+    // metered resources (the サーバー tab turns this into a colour — green past
+    // 10%, blue 30%, purple 50%, red 70%). The base monthly fee has no
+    // allowance, so it is left out of the share.
+    const shares = lines
+      .filter((l) => l.included > 0 && l.used !== undefined)
+      .map((l) => ({ key: l.key, label: l.label, used: l.used, included: l.included, unit: l.unit, percent: +(l.used / l.included * 100).toFixed(1) }))
+      .sort((a, b) => b.percent - a.percent);
+    const peak = shares[0] || null;
+    const usagePercent = peak ? peak.percent : 0;
+    return { lines, total, yen: Math.round(total * YEN_PER_USD), rate: YEN_PER_USD, usagePercent, usageTier: usageTier(usagePercent), usagePeak: peak, usageShares: shares };
   }
 
-  /* ------------------------------------------- Cloudflare's own figures --- */
   let cf = { at: 0, data: null, busy: null };
   async function graphql(query, variables) {
     const res = await fetch('https://api.cloudflare.com/client/v4/graphql', {
@@ -202,11 +226,39 @@ export function createStats({ db, q, config, host = {}, defer = null }) {
   return {
     // one API request answered; the bytes of an answer (from the host, once written)
     request() { slot().r++; add('requests', 1); },
-    sent(bytes) { slot().b += bytes; add('bytes', bytes); },
+    sent(bytes, cat = 'game') { slot().b += bytes; add('bytes', bytes); add(CAT_FIELD[cat] || 'catGame', bytes); },
+    // bytes pushed over a live connection, by what they are for (a 観戦 /
+    // screen-view frame is 'video'): they count towards the month's bytes too
+    pushed(bytes, cat = 'game') {
+      const x = slot();
+      x.b += bytes;
+      if (cat === 'video') x.v += bytes;
+      add('bytes', bytes);
+      add(CAT_FIELD[cat] || 'catGame', bytes);
+    },
     wsIn() { slot().i++; add('wsIn', 1); },
     wsOut(n = 1) { slot().o += n; add('wsOut', n); },
     r2(kind) { add(kind === 'b' ? 'r2b' : 'r2a', 1); },
     flush: save,
+    // what the month's usage is made of, for a Discord warning: the share, the three biggest items,
+    // where the sent bytes went and the estimated bill (cheap: no Cloudflare call)
+    report(bucketBytes = 0) {
+      roll();
+      const planId = PLANS[config.plan] ? config.plan : 'free';
+      const e = estimate(planId, host.dbBytes ? host.dbBytes() : null, bucketBytes);
+      return {
+        month: mon.key, percent: e.usagePercent, tier: e.usageTier, shares: e.usageShares.slice(0, 3),
+        breakdown: { game: mon.catGame, video: mon.catVideo, voice: mon.catVoice }, usd: e.total, yen: e.yen
+      };
+    },
+    // the month's share and its colour alone — cheap (no Cloudflare call), for
+    // the tab bar's poll so the サーバー button shows its colour from every tab
+    usage(bucketBytes = 0) {
+      roll();
+      const planId = PLANS[config.plan] ? config.plan : 'free';
+      const e = estimate(planId, host.dbBytes ? host.dbBytes() : null, bucketBytes);
+      return { percent: e.usagePercent, tier: e.usageTier };
+    },
     // the サーバー tab's figures
     snapshot({ online, operatorsOnline, vault }) {
       roll();
@@ -219,6 +271,12 @@ export function createStats({ db, q, config, host = {}, defer = null }) {
         live: { online, operatorsOnline, sockets: host.sockets ? host.sockets() : null },
         rate: { last10: recent(h, 10), last60: recent(h, 60), history: h },
         today: day, month: mon,
+        // where the month's sent bytes went: play + operator site, the screen
+        // view / 観戦 stream, and call signalling
+        breakdown: {
+          month: { game: mon.catGame, video: mon.catVideo, voice: mon.catVoice, total: mon.bytes },
+          today: { game: day.catGame, video: day.catVideo, voice: day.catVoice, total: day.bytes }
+        },
         database: { bytes: dbBytes, ...tableRows() },
         vault,
         estimate: estimate(planId, dbBytes, vault && vault.store === 'bucket' ? vault.used : 0),

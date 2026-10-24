@@ -281,8 +281,10 @@ export class Casino extends DurableObject {
   }
 
   // Players mostly listen: what they do goes through the HTTP API, except
-  // voice chat signalling ({ op: "call", ... }), 入力中 ({ op: "typing" }) and
-  // the activity beat of the time quests ({ op: "beat" }), which are chatty.
+  // voice chat signalling ({ op: "call", ... }), 入力中 ({ op: "typing" }),
+  // the activity beat of the time quests ({ op: "beat" }) and, only while an
+  // operator watches, the sealed frames of the game's state ({ op: "view" }),
+  // which are chatty.
   async webSocketMessage(ws, message) {
     if (message === 'ping') { this.live.write(ws, 'pong'); return; }
     if (typeof message !== 'string' || message.length > 32 * 1024) return;
@@ -292,12 +294,14 @@ export class Casino extends DurableObject {
     if (a.ops) return;
     let body;
     try { body = JSON.parse(message); } catch { return; }
-    // (a beat from a game nobody touched for a minute is not someone playing)
-    if (body && body.op !== 'sight' && !(body.op === 'beat' && Number(body.idle) > 60000)) this.touch();
+    // (a beat from a game nobody touched for a minute is not someone playing; nor is a
+    // frame of the operators' screen view)
+    if (body && body.op !== 'sight' && body.op !== 'view' && !(body.op === 'beat' && Number(body.idle) > 60000)) this.touch();
     if (body && body.op === 'call') this.api.socketCall(a.u, body);
     else if (body && body.op === 'typing') this.api.socketTyping(a.u, body);
     else if (body && body.op === 'beat') this.api.socketBeat(a.u, body);
     else if (body && body.op === 'sight') this.api.socketSight(a.u, body);
+    else if (body && body.op === 'view') this.api.socketView(a.u, body);
   }
 
   async webSocketClose(ws, code) {
