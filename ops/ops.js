@@ -1004,10 +1004,10 @@
     } else if (name === 'password') {
       ask({
         title: 'パスワードを再設定',
-        text: p.name + ' さんの新しいパスワード（4〜64文字）。本人確認のうえで設定してください。',
+        text: p.name + ' さんの新しいパスワード（8〜64文字）。本人確認のうえで設定してください。',
         ok: '設定する',
         input: { label: '新しいパスワード', type: 'text' },
-        check: function (v) { var n = Array.from(v).length; return n < 4 ? '4文字以上にしてください' : n > 64 ? '64文字までです' : ''; }
+        check: function (v) { var n = Array.from(v).length; return n < 8 ? '8文字以上にしてください' : n > 64 ? '64文字までです' : ''; }
       }).then(function (pw) {
         if (pw === null) return null;
         return request('POST', '/api/ops/password', { id: p.id, password: pw }).then(function (r) { toast('パスワードを設定しました'); afterChange(r); });
