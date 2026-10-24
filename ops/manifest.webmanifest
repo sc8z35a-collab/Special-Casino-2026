@@ -6,11 +6,11 @@
   "scope": "/ops/",
   "display": "fullscreen",
   "orientation": "landscape",
-  "background_color": "#ffffff",
-  "theme_color": "#ffffff",
+  "background_color": "#d8e4ee",
+  "theme_color": "#d8e4ee",
   "icons": [
-    { "src": "/icons/ops-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icons/ops-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/icons/ops-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "assets/site-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/site-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/site-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

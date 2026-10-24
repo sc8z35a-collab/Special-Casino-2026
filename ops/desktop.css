@@ -1,0 +1,413 @@
+/* The desktop is a presentation layer. The original ops.css continues to
+   style every operational view; all overrides are scoped to this UI. */
+.mac-ui {
+  --mac-glass: rgba(244, 246, 250, .78);
+  --mac-stroke: rgba(255, 255, 255, .55);
+  --mac-ink: #202228;
+  --mac-menu-height: 30px;
+  --mac-dock-space: 100px;
+  --accent: #087aff;
+  --accent-soft: #e7f0ff;
+  --line: #e2e3e8;
+  --text: #282a30;
+  --muted: #6b6e78;
+  --soft: #f3f4f7;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+  background: #4d778e;
+}
+.mac-ui .frame { position: fixed; inset: 0; overflow: hidden; }
+.mac-ui .frame.turned { inset: auto; left: 0; top: 0; }
+.mac-ui .app,
+.mac-ui .frame.turned > .app {
+  position: absolute; inset: 0; max-width: none; width: 100%; height: 100%;
+  margin: 0; padding: 0; overflow: hidden; isolation: isolate;
+  background: #598fbe url('assets/wallpaper-desktop.webp') center / cover no-repeat;
+}
+.mac-ui.mac-reserve-wallpaper .app { background-image: url('assets/wallpaper-reserve.webp'); }
+.mac-ui button { -webkit-tap-highlight-color: transparent; }
+.mac-ui button:focus-visible, .mac-ui a:focus-visible { outline: 3px solid #72b2ff; outline-offset: 3px; }
+.mac-sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip-path: inset(50%); white-space: nowrap; border: 0 !important; }
+
+/* Menu bar */
+.mac-ui .top {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 90;
+  height: var(--mac-menu-height); min-height: 0; padding: 0 14px; gap: 0;
+  display: flex; align-items: center; justify-content: flex-start; flex-wrap: nowrap;
+  border: 0; border-bottom: 1px solid rgba(0, 0, 0, .12);
+  background: rgba(235, 244, 253, .72); color: #1f2530;
+  backdrop-filter: blur(30px) saturate(160%); -webkit-backdrop-filter: blur(30px) saturate(160%);
+  box-shadow: 0 1px 4px #00000008; user-select: none;
+}
+.mac-ui .top .brand { gap: 10px; font-size: 12px; letter-spacing: 0; font-weight: 700; flex-shrink: 0; }
+.mac-system-menu, .mac-menu-trigger, .mac-status-button {
+  display: inline-flex; align-items: center; justify-content: center; height: 29px; padding: 0 10px;
+  border: 0; border-radius: 4px; color: inherit; background: transparent; font-size: 12px; font-weight: 500;
+}
+.mac-system-menu { width: 32px; padding: 2px; }
+.mac-system-menu img { width: 23px; height: 23px; object-fit: contain; }
+.mac-active-app { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mac-menu-buttons { display: flex; align-items: center; margin-left: 12px; height: 100%; }
+.mac-menu-trigger:hover, .mac-system-menu:hover, .mac-status-button:hover,
+.mac-menu-trigger[aria-expanded="true"], .mac-system-menu[aria-expanded="true"], .mac-status-button[aria-expanded="true"] { background: rgba(255, 255, 255, .45); }
+.mac-status { margin-left: auto; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.mac-status-button { width: 30px; padding: 4px; }
+.mac-mission-icon { font-size: 21px; line-height: 1; }
+.mac-profile img { width: 24px; height: 24px; }
+.mac-search-icon::before { content: ''; width: 10px; height: 10px; border: 1.7px solid currentColor; border-radius: 50%; }
+.mac-search-icon::after { content: ''; width: 6px; height: 1.7px; background: currentColor; transform: translate(-1px, 5px) rotate(48deg); }
+.mac-clock { font-size: 11.5px; font-weight: 500; font-variant-numeric: tabular-nums; margin-left: 7px; }
+.mac-connection { position: relative; width: 16px; height: 14px; display: inline-block; flex: none; overflow: hidden; margin: 0 5px; }
+.mac-connection::before { content: ''; position: absolute; width: 17px; height: 17px; left: -.5px; top: 3px; border: 2px solid currentColor; border-radius: 50%; box-shadow: inset 0 0 0 2px transparent; clip-path: polygon(50% 50%, 0 0, 100% 0); }
+.mac-connection::after { content: ''; position: absolute; left: 6px; bottom: 1px; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+.mac-connection.is-offline { opacity: .45; }
+.mac-connection.is-offline::after { left: 0; top: 7px; width: 18px; height: 1px; transform: rotate(-45deg); border-radius: 0; }
+.mac-dropdown, .mac-popover {
+  position: absolute; z-index: 100; top: calc(var(--mac-menu-height) + 4px);
+  background: rgba(249, 249, 252, .9); border: 1px solid rgba(255, 255, 255, .7);
+  outline: 1px solid #00000013; border-radius: 9px;
+  backdrop-filter: blur(35px) saturate(150%); -webkit-backdrop-filter: blur(35px) saturate(150%);
+  box-shadow: 0 12px 34px #15273c38, 0 3px 7px #0000000f; animation: mac-menu-in .12s ease-out;
+}
+.mac-dropdown { min-width: 248px; max-width: calc(100% - 12px); max-height: calc(100% - 70px); overflow: auto; padding: 5px; }
+.mac-menu-item { display: flex; align-items: center; gap: 5px; border: 0; border-radius: 5px; background: none; width: 100%; min-height: 29px; padding: 3px 9px 3px 3px; text-align: left; font-size: 12px; }
+.mac-menu-check { width: 16px; text-align: center; flex: none; font-size: 13px; }
+.mac-menu-item:not(:disabled):hover, .mac-menu-item:focus-visible { color: #fff; background: #087aff; outline: none; }
+.mac-menu-item:disabled { opacity: .38; cursor: default; }
+.mac-menu-item kbd { margin-left: auto; padding-left: 22px; opacity: .6; font: 11px inherit; white-space: nowrap; }
+.mac-menu-separator { height: 1px; margin: 4px 8px; background: #0000001a; }
+.mac-account { right: 14px; width: 300px; padding: 16px; }
+.mac-account-head { display: flex; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid #00000012; font-size: 13px; font-weight: 700; }
+.mac-account-head img { width: 45px; height: 45px; }
+.mac-ui .mac-account .top-right { display: flex; align-items: stretch; flex-direction: column; gap: 14px; padding-top: 12px; }
+.mac-account #op-name { order: -1; color: var(--text); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.mac-account .speed { justify-content: space-between; }
+.mac-account .speed select { max-width: 180px; }
+.mac-account #logout { text-align: center; background: #ffffffa8; }
+
+/* Desktop and Dock */
+.mac-desktop { position: absolute; inset: var(--mac-menu-height) 0 var(--mac-dock-space); }
+.mac-desktop-icons {
+  position: absolute; left: 22px; top: 20px; display: grid; grid-auto-flow: column;
+  grid-template-rows: repeat(var(--desktop-rows, 4), 98px); grid-auto-columns: 100px; gap: 6px 14px;
+}
+.mac-desktop-app { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 4px; width: 100px; min-width: 0; height: 98px; padding: 3px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #fff; user-select: none; }
+.mac-desktop-app img { width: 62px; height: 62px; object-fit: contain; filter: drop-shadow(0 3px 3px #16334b40); }
+.mac-desktop-label { max-width: 100%; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; font-weight: 600; line-height: 1.45; text-shadow: 0 1px 3px #16354a, 0 1px 7px #16354acc; text-align: center; }
+.mac-desktop-app:hover { background: #ffffff17; border-color: #ffffff38; }
+.mac-desktop-app.is-selected img { filter: brightness(.85) drop-shadow(0 3px 3px #16334b40); }
+.mac-desktop-app.is-selected .mac-desktop-label { background: #1266d9; text-shadow: none; }
+.mac-desktop-badge { position: absolute; top: 0; right: 11px; min-width: 19px; height: 19px; line-height: 19px; border-radius: 10px; background: #ff474f; box-shadow: 0 1px 4px #0003; color: #fff; padding: 0 5px; font-size: 10px; }
+.mac-desktop-note { position: absolute; bottom: 6px; right: 20px; font-size: 11px; font-weight: 500; color: #fff9; text-shadow: 0 1px 4px #24435c99; pointer-events: none; }
+.mac-dock {
+  --dock-icon: clamp(26px, 4.2vw, 57px);
+  position: absolute; z-index: 80; bottom: 12px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: flex-end; gap: 8px; width: max-content; max-width: calc(100% - 24px);
+  height: calc(var(--dock-icon) + 25px); padding: 8px 10px 11px;
+  border: 1px solid rgba(255, 255, 255, .5); border-radius: 20px;
+  background: rgba(232, 242, 252, .32); backdrop-filter: blur(30px) saturate(170%); -webkit-backdrop-filter: blur(30px) saturate(170%);
+  box-shadow: inset 0 1px 0 #ffffff7a, 0 8px 22px #17384c38; user-select: none;
+}
+.mac-ui #tabs.tabs { display: flex; align-items: flex-end; gap: clamp(2px, .35vw, 6px); order: initial; flex-basis: auto; flex-wrap: nowrap; flex-shrink: 1; margin: 0; padding: 0; min-width: 0; overflow: visible; border: 0; }
+.mac-ui .mac-dock .tab, .mac-dock-home {
+  position: relative; display: block; flex: 0 1 var(--dock-icon); width: var(--dock-icon); min-width: 21px; height: var(--dock-icon);
+  margin: 0; padding: 0; border: 0; border-radius: 9px; background: transparent; color: #1c2631;
+}
+.mac-dock-home { flex-shrink: 0; }
+.mac-ui .mac-dock .tab.on, .mac-ui .mac-dock .tab:hover { background: transparent; color: inherit; border: 0; box-shadow: none; }
+.mac-dock .tab > img, .mac-dock-home > img { display: block; width: 100%; height: 100%; object-fit: contain; transform: translateY(calc((var(--dock-scale, 1) - 1) * -12px)) scale(var(--dock-scale, 1)); transform-origin: center bottom; transition: transform .15s ease-out, filter .15s; filter: drop-shadow(0 2px 2px #0002); }
+.mac-dock .tab:active > img, .mac-dock-home:active > img { filter: brightness(.78); }
+.mac-dock-divider { height: calc(var(--dock-icon) - 8px); width: 1px; background: #0002; align-self: center; flex: none; }
+.mac-dock-label { position: absolute; left: 50%; bottom: calc(100% + 21px); transform: translate(-50%, 4px); padding: 5px 10px; border-radius: 6px; background: #f4f5f9ed; color: #25272c; font-size: 12px; font-weight: 500; line-height: 1.4; white-space: nowrap; box-shadow: 0 4px 14px #0002; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .12s, transform .12s; }
+.mac-dock-label::after { content: ''; position: absolute; left: calc(50% - 4px); bottom: -4px; width: 8px; height: 8px; background: #f4f5f9ed; transform: rotate(45deg); }
+.mac-dock button:hover .mac-dock-label, .mac-dock button:focus-visible .mac-dock-label { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+.mac-dock .mac-running::after { content: ''; position: absolute; left: calc(50% - 2px); bottom: -7px; width: 4px; height: 4px; border-radius: 50%; background: #22313e; }
+.mac-dock .mac-focused::after { background: #0b5bd4; }
+.mac-ui .mac-dock .count { position: absolute; top: -3px; right: -3px; height: 18px; min-width: 18px; line-height: 18px; margin: 0; padding: 0 5px; background: #ff454e; color: #fff; border-radius: 10px; box-shadow: 0 1px 4px #0002; font-size: 10px; font-weight: 700; pointer-events: none; }
+.mac-small-dock .mac-dock { --dock-icon: clamp(25px, 3.3vw, 42px); border-radius: 16px; }
+
+/* Each existing section stays intact, inside its own window. ops.js still
+   tracks the focused view with [hidden]. Open background windows stay drawn;
+   their activation shield requires focusing before an operational click. */
+.mac-windows { position: absolute; inset: var(--mac-menu-height) 0 var(--mac-dock-space); z-index: 10; pointer-events: none; }
+.mac-window {
+  position: absolute; display: none; flex-direction: column; min-width: 0; min-height: 0;
+  overflow: hidden; border: 1px solid #ffffffb3; outline: 1px solid #10172230; border-radius: 11px;
+  background: #fafafc; box-shadow: 0 12px 35px #152a4440, 0 2px 8px #0002; color: var(--text);
+  pointer-events: auto; container-type: inline-size; container-name: mac-app;
+  transition: box-shadow .2s ease, left .24s cubic-bezier(.22,.8,.26,1), top .24s cubic-bezier(.22,.8,.26,1), width .24s cubic-bezier(.22,.8,.26,1), height .24s cubic-bezier(.22,.8,.26,1);
+}
+.mac-window.is-open { display: flex; }
+.mac-window.is-minimized:not(.is-minimizing), .mac-grouped .mac-window.is-open:not(.is-active):not(.is-minimizing) { display: none; }
+.mac-window.is-active { box-shadow: 0 22px 60px #142c5060, 0 3px 13px #0003; }
+.mac-window.is-closing { display: flex !important; pointer-events: none; }
+.mac-window.is-minimizing { display: flex !important; pointer-events: none; }
+.mac-window.is-dragging { box-shadow: 0 25px 70px #142c5070, 0 3px 13px #0003; transition: none; }
+.mac-window:focus { outline: 1px solid #10172230; }
+.mac-window:focus-visible { outline: 2px solid #4597ff; }
+.mac-titlebar { position: relative; flex: none; height: 51px; min-height: 51px; display: flex; align-items: center; gap: 14px; padding: 0 16px; background: linear-gradient(#f8f8fbd9, #ececf1e6); border-bottom: 1px solid #00000010; user-select: none; touch-action: none; cursor: default; }
+.mac-window:not(.is-active) .mac-titlebar { background: #f3f3f6; color: #8f9097; }
+.mac-traffic-lights { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+.mac-light { display: grid; place-content: center; width: 13px; height: 13px; min-width: 13px; padding: 0; border: 1px solid #00000018; border-radius: 50%; font: 12px/1 Arial, sans-serif; color: transparent; }
+.mac-close { background: #ff5f57; }
+.mac-minimize { background: #febc2e; }
+.mac-zoom { background: #28c840; font-size: 10px; }
+.mac-traffic-lights:hover .mac-light, .mac-light:focus-visible { color: #0008; }
+.mac-window:not(.is-active) .mac-light { background: #d1d2d6; border-color: #0000000a; }
+.mac-window:not(.is-active) .mac-traffic-lights:hover .mac-close { background: #ff5f57; }
+.mac-window:not(.is-active) .mac-traffic-lights:hover .mac-minimize { background: #febc2e; }
+.mac-window:not(.is-active) .mac-traffic-lights:hover .mac-zoom { background: #28c840; }
+.mac-window-title { position: absolute; left: 50%; transform: translateX(-50%); max-width: calc(100% - 250px); display: flex; align-items: center; justify-content: center; gap: 7px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; font-weight: 600; }
+.mac-window-title img { width: 24px; height: 24px; }
+.mac-window-title strong { overflow: hidden; text-overflow: ellipsis; }
+.mac-window-apps { margin-left: auto; width: 29px; height: 28px; line-height: 1; font-size: 21px; padding: 0; border: 0; border-radius: 5px; color: #71747c; background: transparent; }
+.mac-window-apps:hover { background: #00000008; }
+.mac-window > .view,
+.mac-window.is-open > .view[hidden],
+.mac-window.is-closing > .view[hidden] {
+  --top-h: 0px; display: block !important; flex: 1; min-height: 0; margin: 0; padding: 18px 22px 26px;
+  overflow: auto; overscroll-behavior: contain; background: #fff; scrollbar-width: thin; scrollbar-color: #b9bdc5 transparent;
+}
+.mac-window-shade { position: absolute; inset: 51px 0 0; z-index: 8; display: block; padding: 0; border: 0; background: #fff2; cursor: default; }
+.mac-window.is-active .mac-window-shade { display: none; }
+.mac-resize { position: absolute; bottom: 1px; right: 1px; z-index: 9; height: 17px; width: 17px; border: 0; background: repeating-linear-gradient(135deg, transparent 0 3px, #8885 3px 4px, transparent 4px 6px); clip-path: polygon(100% 0, 100% 100%, 0 100%); cursor: nwse-resize; opacity: .45; touch-action: none; }
+.mac-window.is-zoomed .mac-resize, .mac-grouped .mac-resize { display: none; }
+.mac-overview .mac-windows { background: #152d474d; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.mac-overview .mac-window.is-open { display: flex !important; transition: left .22s ease, top .22s ease, transform .22s ease; }
+.mac-overview .mac-window-shade { display: block !important; inset: 0; background: transparent; }
+.mac-overview .mac-resize { display: none; }
+.mac-overview .mac-window:hover { outline: 4px solid #6baaff; }
+.mac-window-tabs { display: none; flex: none; min-height: 35px; overflow-x: auto; scrollbar-width: thin; background: #e7e8ee; border-bottom: 1px solid #0000000e; }
+.mac-grouped .mac-window-tabs { display: flex; align-items: stretch; padding: 4px 5px 0; }
+.mac-app-tab { display: flex; align-items: center; flex: 1 0 130px; max-width: 240px; min-width: 110px; height: 31px; border-radius: 6px 6px 0 0; border-right: 1px solid #00000012; }
+.mac-app-tab.is-selected { background: #fff; box-shadow: 0 -1px 2px #00000006; border: 0; }
+.mac-tab-switch { display: flex; align-items: center; gap: 6px; border: 0; background: none; min-width: 0; flex: 1; height: 100%; padding: 0 7px; font-size: 11px; color: #555860; }
+.mac-tab-switch span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mac-tab-switch img { width: 18px; height: 18px; }
+.mac-tab-close { height: 20px; width: 20px; padding: 0; flex: none; margin-right: 3px; border: 0; border-radius: 4px; background: none; color: #696c75; font-size: 14px; }
+.mac-tab-close:hover { background: #00000010; }
+.mac-new-tab { width: 30px; flex: none; border: 0; background: none; font-size: 20px; color: #72757d; }
+
+/* Native-like controls, without changing the contents or behavior of a view. */
+.mac-ui .btn { height: 32px; padding: 0 13px; font-size: 12px; font-weight: 500; border-radius: 6px; border-color: #d7d8df; box-shadow: 0 1px 2px #0000000a; }
+.mac-ui .btn:not(.primary):not(.danger):not(.warn):not(.ok) { background: linear-gradient(#fff, #fbfbfd); }
+.mac-ui .btn:hover { filter: brightness(.98); }
+.mac-ui .btn.primary { background: linear-gradient(#228aff, #0875ec); border-color: #0c75e6; }
+.mac-ui .btn.ghost { box-shadow: none; }
+.mac-ui .btn.small { height: 28px; padding: 0 10px; font-size: 12px; }
+.mac-ui .btn.tiny { height: 23px; font-size: 11px; }
+.mac-ui .btn.wide { height: 36px; }
+.mac-ui .field input, .mac-ui .search, .mac-ui select, .mac-ui .field textarea { height: 33px; padding: 0 10px; font-size: 13px; border-radius: 6px; border-color: #d6d7dd; box-shadow: inset 0 1px 2px #00000005; }
+.mac-ui .field textarea { height: auto; padding: 8px 10px; }
+.mac-ui .field { font-size: 12px; }
+.mac-ui .chip { border-radius: 5px; height: 28px; padding: 0 12px; font-size: 12px; font-weight: 500; color: #686b74; background: #f0f1f5; border-color: transparent; }
+.mac-ui .chip.on { background: #fff; color: #2a2e35; border-color: #d9dae1; box-shadow: 0 1px 3px #00000012; }
+.mac-window .chips { flex-wrap: wrap; gap: 4px; }
+.mac-window .summary { gap: 10px; margin-top: 0; }
+.mac-window .stat { padding: 11px 13px; background: #f8f9fc; border: 1px solid #e9eaf0; border-radius: 8px; }
+.mac-window .stat b { font-size: 22px; font-weight: 650; }
+.mac-window .stat span { font-size: 11px; }
+.mac-window .view-head { margin-top: 0; margin-bottom: 12px; }
+.mac-window .view-head h2 { font-size: 18px; letter-spacing: -.4px; font-weight: 650; }
+.mac-window .hint { font-size: 11.5px; line-height: 1.8; color: #757985; }
+.mac-window .table-wrap { border-radius: 7px; border-color: #e7e8ee; }
+.mac-window .players { font-size: 12px; }
+.mac-window .players th { font-weight: 500; color: #7b7d86; background: #f3f4f8; font-size: 11px; }
+.mac-window .players td { padding-top: 10px; padding-bottom: 10px; }
+.mac-window .players tbody tr:nth-child(even) { background: #f8f9fc; }
+.mac-window .players tbody tr:hover { background: #eaf2ff; }
+.mac-window .card { border-radius: 8px; border-color: #e4e5eb; }
+.mac-window .sort { font-size: 11px; gap: 5px; }
+.mac-window .sort select { height: 30px; font-size: 11px; }
+.mac-window .search { flex-basis: 200px; }
+.mac-window .vault-select.on { top: 0; border-radius: 6px; }
+.mac-window .team { min-height: 380px; height: auto; }
+.mac-window .team-chat { min-height: 420px; }
+.mac-window .team-scroll { max-height: 460px; }
+.mac-window .team-list { background: #f2f4f9; }
+.mac-window .team-compose textarea { font-size: 13px; }
+.mac-window .srv-grid { gap: 12px; }
+.mac-ui .toast { bottom: 110px; background: #f9fafbed; color: #282b33; border: 1px solid #fff9; box-shadow: 0 8px 30px #0003; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); font-size: 13px; border-radius: 10px; }
+.mac-ui .call-pill { bottom: 110px; }
+.mac-ui .dev-call { top: 40px; }
+.mac-ui .drawer { top: 42px; right: 12px; bottom: 108px; border: 1px solid #fff; border-radius: 12px; background: #fafbfdeb; backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: 0 20px 70px #0004; }
+.mac-ui .drawer-back { background: #1d27331f; }
+.mac-ui .chat-back { padding: 44px 24px 105px; background: #1d273337; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.mac-ui .chat { border: 1px solid #ffffff9c; border-radius: 12px; overflow: hidden; box-shadow: 0 22px 65px #0004; }
+.mac-ui .chat-head, .mac-ui .viewer-head { background: linear-gradient(#fafafc, #eff0f5); }
+.mac-ui .dialog-back { backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px); background: #152b4b38; }
+.mac-ui .dialog { max-width: 410px; padding: 25px 25px 20px; border: 1px solid #ffffffb3; border-radius: 14px; background: #f6f7faf5; box-shadow: 0 20px 75px #15254055; animation: mac-alert-in .2s ease-out; }
+.mac-dialog-icon { display: block; width: 58px; height: 58px; object-fit: contain; margin: 0 auto 16px; }
+.mac-ui .dialog h2 { font-size: 16px; font-weight: 650; text-align: center; margin-bottom: 10px; }
+.mac-ui .dialog p { font-size: 12px; line-height: 1.8; }
+.mac-ui .dialog-acts { gap: 8px; margin-top: 20px; }
+.mac-ui .dialog-acts > .btn { flex: 1; }
+.mac-ui .viewer { border: 1px solid #fff9; border-radius: 12px; box-shadow: 0 22px 65px #0005; }
+.mac-ui .viewer-back { background: #13213c66; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+
+/* Login and password confirmations: the first attached landscape, with the
+   same centered avatar, translucent fields and bottom actions as the reference. */
+.mac-ui .login,
+.mac-ui .frame.turned > .login {
+  position: absolute; inset: 0; display: flex; min-height: 0; height: 100%; padding: 45px 16px 88px;
+  overflow: auto; background: #6fa2cf url('assets/wallpaper-login.webp') center / cover no-repeat;
+}
+.mac-ui .login::before { content: ''; position: absolute; inset: 0; background: linear-gradient(#12304716, #102e4145); pointer-events: none; }
+.mac-ui .login-card { position: relative; width: 100%; max-width: 310px; margin: auto; padding: 16px 10px; background: transparent; box-shadow: none; border: 0; border-radius: 0; color: #fff; text-align: center; animation: mac-login-in .5s ease-out; }
+.mac-login-avatar { display: block; width: 96px; height: 96px; object-fit: contain; margin: 0 auto 16px; filter: drop-shadow(0 3px 8px #10273e40); }
+.mac-ui .login-card .brand { justify-content: center; font-size: 18px; font-weight: 650; letter-spacing: .5px; text-shadow: 0 1px 7px #18334966; }
+.mac-ui .login-card h1 { font-size: 12px; font-weight: 500; margin: 3px 0 18px; color: #fffd; text-shadow: 0 1px 4px #17394b66; }
+.mac-ui .login-card p.muted { margin: 0 auto 14px; max-width: 240px; font-size: 10.5px; line-height: 1.7; color: #ffffffe6; text-shadow: 0 1px 3px #16364caa; }
+.mac-ui .login-card .field { position: relative; margin: 9px auto 0; max-width: 236px; }
+.mac-ui .login-card .field > span { position: absolute; height: 1px; width: 1px; overflow: hidden; clip-path: inset(50%); }
+.mac-ui .login-card .field input { width: 100%; height: 33px; padding: 0 14px; border: 1px solid #ffffff21; border-radius: 18px; background: #ffffff38; color: #fff; font-size: 12px; font-weight: 400; box-shadow: inset 0 1px 1px #ffffff0d; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.mac-ui .login-card input::placeholder { color: #ffffffe0; }
+.mac-ui .login-card input:focus-visible { outline: 2px solid #ffffffa8; outline-offset: 1px; background: #ffffff4d; }
+.mac-ui .login-card .error { min-height: 18px; max-width: 260px; margin: 8px auto 0; color: #fff; text-shadow: 0 1px 4px #542327; font-size: 11px; line-height: 1.7; font-weight: 500; }
+.mac-ui .login-card .btn.primary { width: auto; min-width: 116px; height: 32px; margin-top: 10px; padding: 0 14px; border-radius: 20px; border: 1px solid #ffffff5e; background: #ffffff24; color: #fff; box-shadow: 0 2px 8px #18394a14; font-size: 12px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.mac-ui .login-card .btn.primary::after { content: '➜'; display: inline-block; margin-left: 10px; font-size: 12px; }
+.mac-ui .login-card .btn.primary:hover { background: #ffffff45; }
+.mac-ui .enter-who { justify-content: center; flex-direction: column-reverse; gap: 5px; margin: 0; padding: 0 0 12px; border: 0; background: none; color: #fff; }
+.mac-ui .enter-card { display: flex; flex-direction: column; align-items: center; }
+.mac-ui .enter-card .brand, .mac-ui .enter-card h1 { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); }
+.mac-ui .enter-card .mac-login-avatar { order: 0; }
+.mac-ui .enter-card .enter-who { order: 1; }
+.mac-ui .enter-card #enter-day { order: 2; }
+.mac-ui .enter-card #enter-error { order: 3; }
+.mac-ui .enter-card #enter-go { order: 4; }
+.mac-ui #enter-name { font-size: 22px; max-width: 280px; font-weight: 600; text-shadow: 0 1px 6px #17374b55; }
+.mac-ui #enter-role { color: #fff; background: #ffffff24; border-color: #ffffff2e; font-size: 10px; padding: 0 9px; }
+.mac-login-actions { position: absolute; left: 16px; right: 16px; bottom: 28px; display: flex; justify-content: center; gap: 36px; }
+.mac-login-actions button, .mac-login-actions a { display: flex; align-items: center; flex-direction: column; gap: 5px; min-width: 62px; max-width: 130px; padding: 0; border: 0; background: none; color: #fff; text-decoration: none; font-size: 10px; text-shadow: 0 1px 4px #16374b66; }
+.mac-login-actions button > span, .mac-login-actions a > span { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid #ffffff72; border-radius: 50%; font: 21px/1 system-ui, sans-serif; background: #ffffff0d; transition: background .15s; }
+.mac-login-actions button:hover > span, .mac-login-actions a:hover > span { background: #ffffff3b; }
+.mac-login-status { position: absolute; left: 0; right: 0; top: 0; z-index: 12; display: flex; align-items: center; justify-content: space-between; padding: 8px 18px; color: #fff; font-size: 10px; text-shadow: 0 1px 4px #1b3c5266; pointer-events: none; }
+.mac-signed-in .mac-login-status { display: none; }
+.mac-login-brand, .mac-login-info { display: flex; align-items: center; gap: 9px; }
+.mac-login-brand img { width: 23px; height: 23px; }
+.mac-login-status .mac-clock { font-size: 10px; }
+.mac-ui .mac-auth-dialog { padding: 40px 16px; background: #6fa2cf url('assets/wallpaper-login.webp') center / cover no-repeat; }
+.mac-ui .mac-auth-dialog::before { content: ''; position: absolute; inset: 0; background: #122e4547; }
+.mac-ui .mac-auth-dialog .dialog { position: relative; max-width: 330px; padding: 16px; color: #fff; border: 0; border-radius: 0; background: transparent; box-shadow: none; text-align: center; }
+.mac-ui .mac-auth-dialog .mac-dialog-icon { width: 94px; height: 94px; margin-bottom: 20px; }
+.mac-ui .mac-auth-dialog .dialog h2 { font-size: 20px; font-weight: 550; margin-bottom: 12px; text-shadow: 0 1px 6px #16364c66; }
+.mac-ui .mac-auth-dialog .dialog .muted { color: #ffffffe0; font-size: 11px; text-shadow: 0 1px 4px #16364c80; }
+.mac-ui .mac-auth-dialog .field { color: #fff; font-size: 11px; text-align: center; }
+.mac-ui .mac-auth-dialog .field input { border-radius: 18px; height: 34px; border: 1px solid #ffffff3a; background: #ffffff38; color: #fff; text-align: center; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.mac-ui .mac-auth-dialog .error { color: #fff; text-shadow: 0 1px 3px #602e2e; font-size: 11px; }
+.mac-ui #dialog.mac-auth-dialog .dialog-acts .btn { border-radius: 18px; border: 1px solid #ffffff4d; background: #ffffff28; color: #fff; box-shadow: none; }
+.mac-ui #dialog.mac-auth-dialog .dialog-acts .btn.primary { background: #ffffff4d; }
+
+/* Launchpad, help and animations */
+.mac-overlay { position: absolute; z-index: 95; inset: var(--mac-menu-height) 0 0; display: flex; justify-content: center; align-items: flex-start; padding: 6vh 24px 104px; overflow: auto; background: #1c37536e; backdrop-filter: blur(28px) saturate(130%); -webkit-backdrop-filter: blur(28px) saturate(130%); animation: mac-alert-in .2s ease-out; }
+.mac-launch-panel { width: min(820px, 100%); padding: 10px; }
+.mac-launch-head { display: flex; align-items: center; justify-content: space-between; color: #fff; padding: 0 12px 18px; }
+.mac-launch-head h2 { font-size: 20px; font-weight: 500; margin: 0; letter-spacing: -.4px; }
+.mac-overlay-close { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid #ffffff38; border-radius: 50%; color: #fff; background: #ffffff1c; font-size: 20px; }
+.mac-launch-search { display: block; width: min(300px, 100%); margin: 0 auto 26px; height: 34px; padding: 0 14px; border: 1px solid #ffffff3b; border-radius: 8px; background: #ffffff2b; color: #fff; text-align: center; font: 13px inherit; }
+.mac-launch-search::placeholder { color: #ffffffbd; }
+.mac-launch-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px 12px; }
+.mac-launch-app { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 9px 4px; min-width: 0; border: 1px solid transparent; border-radius: 14px; background: none; color: #fff; font-size: 12px; text-shadow: 0 1px 5px #10243c; }
+.mac-launch-app img { width: 76px; height: 76px; filter: drop-shadow(0 5px 8px #0d243e33); transition: transform .18s; }
+.mac-launch-app:hover { background: #ffffff15; border-color: #ffffff2d; }
+.mac-launch-app:hover img { transform: translateY(-3px); }
+.mac-launch-empty { color: #fffd; text-align: center; padding: 30px; }
+.mac-help { align-items: center; }
+.mac-help-panel { width: min(430px, 100%); padding: 28px; border: 1px solid #ffffffb3; border-radius: 16px; background: #f7f8fcf0; box-shadow: 0 25px 70px #1525404d; text-align: center; }
+.mac-help-panel > img { width: 76px; height: 76px; }
+.mac-help-panel h2 { font-size: 18px; letter-spacing: -.5px; }
+.mac-help-panel p { font-size: 12px; line-height: 1.8; color: #656974; }
+.mac-shortcuts { display: grid; grid-template-columns: 110px 1fr; gap: 8px 14px; margin: 20px 0; font-size: 12px; text-align: left; }
+.mac-shortcuts dt { font-weight: 600; }
+.mac-shortcuts dd { margin: 0; color: #686b74; }
+.mac-help-note { padding-top: 12px; border-top: 1px solid #0001; }
+.mac-help-panel .btn { width: 100%; }
+@keyframes mac-login-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes mac-alert-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: scale(1); } }
+@keyframes mac-menu-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
+@container mac-app (max-width: 760px) {
+  .mac-window .summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mac-window .toolbar { gap: 8px; }
+  .mac-window .sort { width: 100%; }
+  .mac-window .srv-grid { grid-template-columns: 1fr; }
+  .mac-window .view-head { gap: 8px; }
+  .mac-window .team { grid-template-columns: 160px minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .mac-ui .top { padding: 0 7px; }
+  .mac-menu-buttons { margin-left: 5px; }
+  .mac-menu-trigger { padding: 0 6px; font-size: 11px; }
+  .mac-ui .top .brand { gap: 4px; }
+  .mac-active-app { max-width: 94px; font-size: 11px; }
+  .mac-status { gap: 0; }
+  .mac-clock { font-size: 10px; margin-left: 4px; }
+  .mac-status .mac-connection { margin: 0 2px; }
+  .mac-dock { gap: 5px; padding-left: 7px; padding-right: 7px; border-radius: 14px; }
+  .mac-desktop-icons { left: 12px; }
+  .mac-launch-grid { grid-template-columns: repeat(4, 1fr); }
+  .mac-window > .view { padding: 14px; }
+}
+@media (max-height: 560px) {
+  .mac-ui { --mac-dock-space: 72px; }
+  .mac-dock { --dock-icon: 39px; bottom: 7px; height: 60px; border-radius: 14px; }
+  .mac-desktop-icons { top: 12px; grid-template-rows: repeat(var(--desktop-rows, 3), 73px); grid-auto-columns: 90px; gap: 5px 7px; }
+  .mac-desktop-app { height: 73px; width: 90px; gap: 1px; }
+  .mac-desktop-app img { width: 47px; height: 47px; }
+  .mac-desktop-label { font-size: 10px; }
+  .mac-ui .login { padding: 32px 12px 65px; }
+  .mac-ui .login-card { padding: 5px; }
+  .mac-login-avatar { width: 70px; height: 70px; margin-bottom: 9px; }
+  .mac-ui .login-card h1 { margin-bottom: 7px; }
+  .mac-ui .login-card p.muted { margin-bottom: 6px; }
+  .mac-login-actions { bottom: 15px; }
+  .mac-login-actions button > span, .mac-login-actions a > span { width: 26px; height: 26px; font-size: 18px; }
+  .mac-ui .login-card .field { margin-top: 6px; }
+  .mac-overlay { padding-top: 20px; padding-bottom: 78px; }
+  .mac-launch-grid { gap: 8px; }
+  .mac-launch-app img { width: 58px; height: 58px; }
+  .mac-launch-search { margin-bottom: 14px; }
+  .mac-ui .drawer { bottom: 78px; }
+  .mac-ui .chat-back { padding: 38px 14px 75px; }
+  .mac-ui .toast, .mac-ui .call-pill { bottom: 80px; }
+}
+@media (max-width: 500px) {
+  .mac-menu-buttons .mac-menu-trigger[data-menu="edit"], .mac-menu-buttons .mac-menu-trigger[data-menu="help"], .mac-status .mac-mission-icon, .mac-status .mac-connection { display: none; }
+  .mac-status .mac-clock { max-width: 104px; overflow: hidden; white-space: nowrap; }
+  .mac-launch-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mac-overlay { padding-left: 10px; padding-right: 10px; }
+  .mac-titlebar { padding: 0 12px; }
+  .mac-window-title { max-width: calc(100% - 190px); }
+  .mac-ui .dialog { max-height: calc(100% - 16px); overflow: auto; }
+}
+/* The original phone rotation is retained. Viewport queries refer to the
+   physical screen, so the rotated desktop gets its own compact dimensions. */
+.mac-ui .frame.turned { --mac-menu-height: 28px; --mac-dock-space: 69px; }
+.mac-ui .frame.turned .mac-dock { --dock-icon: 36px; height: 57px; bottom: 5px; }
+.mac-ui .frame.turned .mac-windows { bottom: 69px; }
+.mac-ui .frame.turned .mac-desktop-icons { top: 10px; grid-template-rows: repeat(var(--desktop-rows, 3), 72px); grid-auto-columns: 86px; gap: 5px 7px; }
+.mac-ui .frame.turned .mac-desktop-app { width: 86px; height: 72px; }
+.mac-ui .frame.turned .mac-desktop-app img { width: 46px; height: 46px; }
+.mac-ui .frame.turned .mac-login-avatar { width: 64px; height: 64px; margin-bottom: 5px; }
+.mac-ui .frame.turned .login { padding: 28px 10px 56px; overflow: auto; }
+.mac-ui .frame.turned .login-card { padding: 0; }
+.mac-ui .frame.turned .login-card .brand { font-size: 15px; }
+.mac-ui .frame.turned .login-card h1 { margin: 2px 0 5px; font-size: 10px; }
+.mac-ui .frame.turned .login-card p.muted { font-size: 9px; margin-bottom: 5px; }
+.mac-ui .frame.turned .login-card .field { margin-top: 5px; }
+.mac-ui .frame.turned .login-card .field input { height: 29px; }
+.mac-ui .frame.turned .login-card .error { min-height: 13px; margin-top: 4px; }
+.mac-ui .frame.turned .login-card .btn.primary { height: 29px; margin-top: 5px; }
+.mac-ui .frame.turned .mac-login-actions { bottom: 12px; }
+.mac-ui .frame.turned .mac-login-actions button > span, .mac-ui .frame.turned .mac-login-actions a > span { width: 24px; height: 24px; font-size: 17px; }
+.mac-ui .frame.turned .mac-launch-grid { grid-template-columns: repeat(6, 1fr); gap: 9px; }
+.mac-ui .frame.turned .mac-overlay { padding-top: 15px; padding-bottom: 72px; }
+.mac-ui .frame.turned .mac-launch-head { padding-bottom: 8px; }
+.mac-ui .frame.turned .mac-launch-search { margin-bottom: 12px; }
+.mac-ui .frame.turned .mac-launch-app img { width: 52px; height: 52px; }
+.mac-ui .frame.turned .mac-auth-dialog .dialog { max-height: 100%; overflow: auto; }
+.mac-ui .frame.turned .mac-auth-dialog .mac-dialog-icon { width: 58px; height: 58px; margin-bottom: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .mac-ui *, .mac-ui *::before, .mac-ui *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}
+.mac-ui.mac-reduce-motion *, .mac-ui.mac-reduce-motion *::before, .mac-ui.mac-reduce-motion *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
