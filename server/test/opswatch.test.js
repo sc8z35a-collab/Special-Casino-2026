@@ -127,11 +127,13 @@ test('a watch: sealed state from the player to the operator, nothing else, and e
     await assert.rejects(WC.open(w.key, w.sid, w.e, 8, sealed));
     await assert.rejects(WC.open(w.key, 'x'.repeat(22), w.e, 7, sealed));
 
-    // while it runs the operator is told what it costs, a second at a time
+    // while it runs the operator is told what it costs: at once for the first frame, then a second at a time
+    const first = await ol.waitFor('watchstat', (d) => d.sid === w.sid);
+    assert.ok(first.bytes > 0 && first.perSec > 0 && first.frames >= 1, JSON.stringify(first));
     await new Promise((r) => setTimeout(r, 1050));
     await w.send(state);
-    const stat = await ol.waitFor('watchstat', (d) => d.sid === w.sid);
-    assert.ok(stat.bytes > 0 && stat.perSec > 0 && stat.frames >= 2, JSON.stringify(stat));
+    const stat = await ol.waitFor('watchstat', (d) => d.sid === w.sid && d.frames >= 2);
+    assert.ok(stat.bytes > first.bytes && stat.perSec > 0, JSON.stringify(stat));
     assert.ok(stat.total >= stat.bytes);
 
     // it goes one way only: the operator's page can ask the player's game for nothing but a display setting
