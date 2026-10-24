@@ -1,0 +1,72 @@
+[
+  {
+    "path": "img/3d/cars/blue-lightning.glb",
+    "before": 1725300,
+    "after": 780656,
+    "beforeTriangles": 129742,
+    "afterTriangles": 71357
+  },
+  {
+    "path": "img/3d/cars/ferrari-325.glb",
+    "before": 942176,
+    "after": 450816,
+    "beforeTriangles": 66716,
+    "afterTriangles": 36691
+  },
+  {
+    "path": "img/3d/cars/lamborghini-aventador.glb",
+    "before": 1102980,
+    "after": 500240,
+    "beforeTriangles": 75783,
+    "afterTriangles": 41675
+  },
+  {
+    "path": "img/3d/cars/lamborghini-kuia-spyder.glb",
+    "before": 1848364,
+    "after": 906184,
+    "beforeTriangles": 129988,
+    "afterTriangles": 71491
+  },
+  {
+    "path": "img/3d/cars/lamborghini-revuelto.glb",
+    "before": 1328752,
+    "after": 643088,
+    "beforeTriangles": 108790,
+    "afterTriangles": 59832
+  },
+  {
+    "path": "img/3d/cars/lamborghini-urus.glb",
+    "before": 937512,
+    "after": 438500,
+    "beforeTriangles": 60718,
+    "afterTriangles": 33391
+  },
+  {
+    "path": "img/3d/cars/mercedes-amg-one-white.glb",
+    "before": 1163984,
+    "after": 557544,
+    "beforeTriangles": 95394,
+    "afterTriangles": 52464
+  },
+  {
+    "path": "img/3d/cars/mercedes-benz-one.glb",
+    "before": 1271172,
+    "after": 591444,
+    "beforeTriangles": 92786,
+    "afterTriangles": 51029
+  },
+  {
+    "path": "img/3d/cars/nissan-gt-r.glb",
+    "before": 1320452,
+    "after": 635708,
+    "beforeTriangles": 96767,
+    "afterTriangles": 53219
+  },
+  {
+    "path": "img/3d/cars/onvoro.glb",
+    "before": 1402640,
+    "after": 722716,
+    "beforeTriangles": 124151,
+    "afterTriangles": 68282
+  }
+]

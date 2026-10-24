@@ -286,6 +286,12 @@ public class MainActivity extends Activity {
     /* ------------------------------------------------------------ the page's bridge --- */
 
     private class Bridge {
+        /** Explicit player exit; close the game task rather than navigating back. */
+        @JavascriptInterface
+        public void exit() {
+            runOnUiThread(() -> finishAndRemoveTask());
+        }
+
         @JavascriptInterface
         public int versionCode() {
             return BuildConfig.VERSION_CODE;

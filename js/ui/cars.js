@@ -1,12 +1,11 @@
 /* Car Owner (the car shop) and Garage (the cars one owns), on the board
    screen. Prices are in $.
    - Car Owner: every car of the catalog (the picker), a car with a 3D model
-     turning in the studio (js/render/garage3d.js), its price with the Car
+     in a white 360-degree viewer (js/render/garage3d.js), its price with the Car
      Owner sale on now (極 / 超極 / 超ダイナミック / 年感謝セール, js/game/sale.js)
      and how long it lasts.
    - Garage: two places, one more for $1,000,000 each (for good; the garage
-     coin, from its 3D model, marks it). ガレージ3D: the garage itself in 3D
-     with a car parked in it (double tap: first person, a 5x lens); every car
+     coin, from its 3D model, marks it). ガレージ3D: a fixed-angle car preview on white; every car
      with a 3D model can be looked at there ("3Dで見る"). Every car can be rented
      out (any number of them: customers every 5 hours, the takings collected
      here; a car out is away for 5 hours at the least), sold to the buy-back
@@ -168,7 +167,7 @@
     note.textContent = '3Dを読み込み中…';
     var want = car.id;
     BR.garage3d.show(host, car.id, function (p) { if (sel === want) note.textContent = '3Dを読み込み中… ' + Math.round(p * 100) + '%'; }).then(function () {
-      if (sel === want) note.textContent = '';
+      if (sel === want) note.textContent = 'ドラッグで360°回転・2本指 / ホイールでズーム';
     }, function () {
       if (sel !== want) return;
       // no 3D after all: the picture
@@ -466,7 +465,7 @@
 
   /* ------------------------------------------------------------ the 3D space --- */
   var space = null;
-  var HINT = 'ドラッグで見る向きを変える・ダブルタップでガレージの中へ';
+  var HINT = '固定アングルで車を表示';
   // the garage in 3D, `c` parked in it (null: the garage alone)
   function open3d(c) {
     if (!BR.garage3d || !BR.garage3d.supported()) { sfx('deny'); toast('この端末では3Dを表示できません', 2600); return; }
@@ -480,12 +479,6 @@
     $('#g3d-load').hidden = false;
     $('#g3d-load').textContent = '3Dを読み込み中…';
     space = c ? c.model : '';
-    BR.garage3d.onMode = function (mode) {
-      box.classList.toggle('walk', mode === 'walk');
-      $('#g3d-hint').textContent = mode === 'walk' ? 'ドラッグで見回す・スティックで歩く・2本指でズーム・ダブルタップで戻る' : HINT;
-      zoomShown(1);
-    };
-    BR.garage3d.onZoom = zoomShown;
     BR.garage3d.space($('#g3d-view'), space, function (p) { $('#g3d-load').textContent = '3Dを読み込み中… ' + Math.round(p * 100) + '%'; }).then(function () {
       $('#g3d-load').hidden = true;
     }, function () {
@@ -501,27 +494,6 @@
     box.hidden = true;
     if (onBoard('cars')) renderShop();
   }
-  function zoomShown(z) {
-    $('#g3d-zoom').value = String(z);
-    $('#g3d-zoom-n').textContent = '×' + z.toFixed(1);
-  }
-  // the stick: a thumb's push, -1..1 each way
-  function stick() {
-    var pad = $('#g3d-stick'), knob = pad.querySelector('i'), id = null;
-    function set(e) {
-      var r = pad.getBoundingClientRect(), rad = r.width / 2;
-      var x = (e.clientX - r.left - rad) / rad, y = (e.clientY - r.top - rad) / rad, l = Math.hypot(x, y);
-      if (l > 1) { x /= l; y /= l; }
-      knob.style.transform = 'translate(' + (x * rad * 0.6) + 'px,' + (y * rad * 0.6) + 'px)';
-      BR.garage3d.stick(x, -y);
-    }
-    pad.addEventListener('pointerdown', function (e) { id = e.pointerId; pad.setPointerCapture(id); set(e); e.stopPropagation(); });
-    pad.addEventListener('pointermove', function (e) { if (e.pointerId === id) set(e); });
-    var end = function (e) { if (e.pointerId !== id) return; id = null; knob.style.transform = ''; BR.garage3d.stick(0, 0); };
-    pad.addEventListener('pointerup', end);
-    pad.addEventListener('pointercancel', end);
-  }
-
   /* ------------------------------------------------------------ gifts --- */
   // a list of choices in the pick dialog; onPick(item)
   function pickDialog(title, items, render, onPick, emptyText) {
@@ -598,10 +570,6 @@
     $('#car-buy').addEventListener('click', function () { sfx('click'); buy(); });
     K.dragScroll($('#pick-list'));
     $('#g3d-close').addEventListener('click', function () { sfx('click'); close3d(); });
-    $('#g3d-out').addEventListener('click', function () { sfx('click'); BR.garage3d.walk(false); });
-    $('#g3d-in').addEventListener('click', function () { sfx('click'); BR.garage3d.walk(true); });
-    $('#g3d-zoom').addEventListener('input', function () { BR.garage3d.zoom(Number($('#g3d-zoom').value)); });
-    stick();
     // leaving the board (or Car Owner) stops the 3D
     BR.screens.onChange(function (name) { if (name !== 'board') { leave(); close3d(); } });
   }

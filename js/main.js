@@ -43,9 +43,15 @@
     css += '.spin-disc{background-image:' + url(art.spin) + '}\n';
     css += '.pill{background-image:' + url(art.pill) + '}\n';
     css += '.pill-get{background-image:' + url(art.pillGet) + '}\n';
-    css += '.pill-max{background-image:' + url(art.pillMax) + '}\n';
     css += '.chip-pile{background-image:' + url(art.chipPile) + '}\n';
     css += '#bg{background-image:' + url(art.bg) + '}\n';
+    css += '#stage[data-screen="slot"] #bg{background-image:' + url(art.homeBg) + '}\n';
+    css += '.pill-rules{background-image:' + url(art.info) + '}\n';
+    ['plus', 'minus', 'car', 'guide', 'feedback', 'vip', 'investment', 'diary', 'dev'].forEach(function (key) {
+      css += '.ic-' + key + '{background-image:' + url(art[key]) + '}\n';
+    });
+    css += '.sq-btn.plus{background-image:' + url(art.plus) + '}\n';
+    css += '.sq-btn.minus{background-image:' + url(art.minus) + '}\n';
     css += '#frame{border-image-source:' + url(art.frame) + '}\n';
     css += '.cb-word3d{background-image:' + url(art.combo) + '}\n';
     css += '.cb-badge.lv3 .cb-word3d,.cb-badge.lv4 .cb-word3d{background-image:' + url(art.comboRainbow) + '}\n';
@@ -56,6 +62,7 @@
     css += '.ic-menu{background-image:' + url(soc.buttons.menu) + '}\n';
     css += '.ic-quest,.q-icon,.qn-icon{background-image:' + url(soc.buttons.quest) + '}\n';
     css += '.ic-tree{background-image:' + url(soc.buttons.tree) + '}\n';
+    css += '.ic-more{background-image:' + url(soc.tabs.messages) + '}\n';
 
     Object.keys(soc.tabs).forEach(function (k) {
       css += '.ic-tab-' + k + '{background-image:' + url(soc.tabs[k]) + '}\n';
@@ -209,7 +216,7 @@
     if (winRoll) { winRoll(); winRoll = null; }
     var box = $('.win-box');
     box.classList.remove('flash');
-    box.innerHTML = '<span id="win-value" class="win-text">グッドラック！</span>';
+    box.innerHTML = '<span id="win-value" class="win-text"></span>';
   }
   // `roll`: count up to it (a plain WIN has no overlay doing that), else at once
   function setWinAmount(v, flash, roll) {
@@ -528,26 +535,6 @@
     }
   }
 
-  function maxBet() {
-    if (game.busy() || betLocked()) return;
-    var idx = 0;
-    for (var i = C.bets.length - 1; i >= 0; i--) if (C.bets[i] <= S.tokens) { idx = i; break; }
-    if (S.tokens < C.bets[0]) toast('スピントークンが不足しています');
-    var was = S.betIndex;
-    S.betIndex = idx;
-    BR.store.save();
-    renderBet();
-    BR.sfx.play('betUp');
-    // all in: the bet box flares up
-    if (BR.juice && idx > was) {
-      var box = $('.bet-box');
-      var p = BR.juice.at(box);
-      BR.juice.ring(p.x, p.y, { r0: 20, r1: 220, dur: 0.5, w: 8, sy: 0.4 });
-      BR.juice.sparks(p.x, p.y, { n: 18, speed: 560, life: 0.7, g: 500 });
-      BR.juice.bump(box, 1.12);
-    }
-  }
-
   /* ------------------------------------------------------------ input --- */
   // Pressed look on pointerdown; the action itself fires on click.
   function press(el, fn) {
@@ -573,7 +560,7 @@
     // the sound button only changes its look: every sound plays regardless
     press($('#bet-minus'), function () { changeBet(-1); });
     press($('#bet-plus'), function () { changeBet(1); });
-    press($('#btn-max'), function () { BR.sfx.play('click'); maxBet(); });
+    press($('#game-exit'), function () { BR.launch.exit(); });
     // the machine is locked while the reels turn or a win is being paid out
     function nav(screen) {
       return function () {

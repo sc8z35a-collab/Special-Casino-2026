@@ -29,10 +29,17 @@
     }
     return n.date.replace(/-/g, '/') + (n.time ? ' ' + n.time : '');
   }
+  function devBadge(id) {
+    var b = el('span', 'news-dev');
+    b.setAttribute('aria-label', devName(id));
+    b.appendChild(el('i', 'ic ic-dev'));
+    b.appendChild(el('span', '', id));
+    return b;
+  }
   function entryEl(n) {
     var box = el('article', 'news-entry' + (n.id === BR.RELEASE ? ' current' : ''));
     var head = el('div', 'news-head');
-    head.appendChild(el('span', 'news-dev', devName(n.id)));
+    head.appendChild(devBadge(n.id));
     head.appendChild(el('span', 'news-date', when(n)));
     head.appendChild(el('h3', 'news-title', n.title));
     box.appendChild(head);
@@ -47,7 +54,7 @@
     list.textContent = '';
     // which one this game is (and that a newer one is out)
     var ver = el('div', 'news-version');
-    ver.appendChild(el('b', '', devName(BR.RELEASE)));
+    ver.appendChild(devBadge(BR.RELEASE));
     if (latest > BR.RELEASE) {
       var up = el('button', 'mini-btn gold news-update');
       up.type = 'button';
