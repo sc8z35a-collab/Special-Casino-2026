@@ -9,7 +9,7 @@
   // (the story video after signing up was left out in DEV6: its old mark goes)
   var INTRO_KEY = 'blockbuster-reels/intro-pending';
 
-  var done = false, waiting = [];
+  var done = false, initialized = false, waiting = [];
   function whenDone(fn) { if (done) fn(); else waiting.push(fn); }
 
   // A video loaded whole and played from a Blob URL: Safari plays video URLs
@@ -60,6 +60,7 @@
     splash.timer = setTimeout(finishSplash, 700);
   }
   function startSplash() {
+    if (done || splash.video) return;
     var root = $('#splash'), v = splash.video = $('#splash-video');
     if (BR.fx && !BR.fx.on('logo')) { finishSplash(); return; }
     root.addEventListener('click', skipSplash);
@@ -131,6 +132,8 @@
   }
 
   function init() {
+    if (initialized) return;
+    initialized = true;
     startSplash();
     try { localStorage.removeItem(INTRO_KEY); } catch (e) { /* nothing kept */ }
     $('#maint-reload').addEventListener('click', function () { BR.sfx.play('click'); location.reload(); });
