@@ -1884,7 +1884,8 @@
       if (b.dataset.act === 'feedback' && BR.feedback) BR.feedback.open();
       if (b.dataset.act === 'support' && BR.support) BR.support.open();
       if (b.dataset.act === 'vip' && BR.vip) BR.vip.open();
-      var soon = { 'dev-diary': '開発者日記', 'studio-credits': 'スタジオクレジット', terms: '規約' };
+      if (b.dataset.act === 'dev-diary' && BR.diary) BR.diary.open();
+      var soon = { 'studio-credits': 'スタジオクレジット', terms: '規約' };
       if (soon[b.dataset.act]) showSoon(soon[b.dataset.act]);
     });
     $$('#screen-board .scroller').forEach(K.dragScroll);

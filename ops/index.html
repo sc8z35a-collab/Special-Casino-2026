@@ -40,6 +40,11 @@
     <p class="muted">運営者のアカウントだけがログインできます（入力は最初の1回だけ）。</p>
     <label class="field"><span>名前</span><input id="login-name" name="username" type="text" placeholder="名前" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
     <label class="field"><span>パスワード</span><input id="login-pass" name="password" type="password" placeholder="パスワード" autocomplete="current-password" required></label>
+    <details id="login-extra"><summary>追加認証（設定済みの方）</summary>
+      <label class="field"><span>認証アプリの6桁コード</span><input id="login-otp" placeholder="認証アプリの6桁コード" aria-label="認証アプリの6桁コード" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label>
+      <label class="field"><span>専用確認フレーズ（三段階のみ）</span><input id="login-phrase" placeholder="専用確認フレーズ（三段階のみ）" aria-label="専用確認フレーズ（三段階のみ）" type="password" autocomplete="off" maxlength="64"></label>
+      <label class="field"><span>アプリを使えない場合の復旧コード</span><input id="login-backup" placeholder="復旧コード（アプリを使えない場合）" aria-label="アプリを使えない場合の復旧コード" autocomplete="off" maxlength="20"></label>
+    </details>
     <p class="error" id="login-error" role="alert"></p>
     <button class="btn primary wide" type="submit" id="login-go">ログイン</button>
   </form>
@@ -78,6 +83,8 @@
       <button class="tab" data-view="vault" type="button" id="tab-vault" hidden>保管庫<b class="count" id="count-vault" hidden></b></button>
       <button class="tab" data-view="devunit" type="button">DEV UNIT<b class="count" id="count-devunit" hidden></b></button>
       <button class="tab" data-view="securityhome" type="button">セキュリティーホーム</button>
+      <button class="tab" data-view="diary" id="tab-diary" type="button" hidden>開発者日記</button>
+      <button class="tab" data-view="profile" id="tab-profile" type="button" hidden>自分のプロフィール<b class="count" id="count-profile" hidden>!</b></button>
     </nav>
     <div class="top-right">
       <label class="speed" title="運営サイトの更新頻度"><span>更新</span><select id="speed">
@@ -88,9 +95,49 @@
     </div>
   </header>
 
+  <section class="view" id="view-diary" hidden>
+    <div class="bar"><h2>開発者日記</h2><button class="btn small" id="ops-diary-refresh" type="button">更新</button></div>
+    <p class="muted">開発者専用。公開した投稿はゲームへすぐ反映されます。コメントは開発者と送信者だけが閲覧できます。</p>
+    <div class="ops-diary-layout"><div>
+      <form id="ops-diary-form" class="ops-diary-panel">
+        <h3>新しい投稿</h3>
+        <label class="field"><span>タイトル</span><input id="diary-title" maxlength="100" required></label>
+        <label class="field"><span>本文</span><textarea id="diary-text" rows="8" maxlength="20000" required></textarea></label>
+        <label class="field"><span>画像（PNG・JPEG・WebP、1枚）</span><input id="diary-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+        <img id="diary-preview" class="ops-diary-image" alt="添付画像のプレビュー" hidden>
+        <label class="field"><span>添付する報酬</span><select id="diary-reward"></select></label>
+        <p class="muted">公開から30日間・1プレイヤー1回まで。一時非表示中は受け取れません。再公開しても期限は延長されません。</p>
+        <button id="diary-publish" class="btn primary" type="submit">今すぐ公開</button><p id="diary-error" role="status"></p>
+      </form>
+      <h3>過去の投稿</h3><div id="ops-diary-list"></div><button id="ops-diary-more" class="btn small" type="button" hidden>以前の投稿</button>
+    </div><aside class="ops-diary-panel"><h3 id="diary-comments-title">投稿を選んでコメントを表示</h3><div id="ops-diary-comments"></div><button id="diary-comments-more" class="btn small" type="button" hidden>以前のコメント</button></aside></div>
+  </section>
+  <section class="view" id="view-profile" hidden>
+    <div class="bar"><h2>自分のプロフィール</h2></div><div class="ops-profile-card">
+      <div id="profile-avatar"></div><h3 id="profile-name"></h3><p id="profile-auth-status" role="status"></p>
+      <p>二段階：パスワード＋認証アプリ。三段階：さらに専用確認フレーズを入力します。</p>
+      <form id="profile-mfa-form">
+        <label class="field"><span>現在のパスワード</span><input id="profile-password" type="password" autocomplete="current-password"></label>
+        <label class="field"><span>現在の認証コード（設定済みの場合）</span><input id="profile-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label>
+        <label class="field"><span>現在の専用確認フレーズ（三段階の場合）</span><input id="profile-phrase" type="password" autocomplete="off" maxlength="64"></label>
+        <label class="field"><span>復旧コード（認証アプリを使えない場合のみ）</span><input id="profile-backup" autocomplete="off" maxlength="20"></label>
+        <button id="profile-begin" class="btn primary" type="button">認証アプリの登録を始める／再設定</button>
+        <div id="profile-setup" hidden>
+          <p>認証アプリで「設定キーを入力」を選び、次の鍵を登録してください。</p><pre id="profile-secret" class="profile-secret"></pre><a id="profile-uri" class="btn small">認証アプリで開く</a>
+          <label class="field"><span>認証方式</span><select id="profile-mode"><option value="2">二段階認証</option><option value="3">三段階認証</option></select></label>
+          <label class="field" id="profile-new-phrase-field" hidden><span>新しい専用確認フレーズ（パスワードと異なる12〜64文字）</span><input id="profile-new-phrase" type="password" autocomplete="new-password" maxlength="64"></label>
+          <label class="field"><span>新しく登録した認証アプリの6桁コード</span><input id="profile-setup-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label>
+          <button class="btn primary" type="submit">コードを確認して有効化</button>
+        </div>
+        <button id="profile-disable" class="btn danger" type="button">追加認証を解除</button><p id="profile-auth-error" class="error" role="alert"></p>
+        <pre id="profile-recovery" class="profile-secret" aria-live="polite"></pre>
+      </form><p class="muted">コードは一度だけ使用できます。設定直後や再設定の際は、次のコードに切り替わってから操作してください。復旧コードは各1回限りです。三段階では復旧時も専用確認フレーズが必要です。</p>
+    </div>
+  </section>
   <section class="view" id="view-devunit" hidden>
     <div class="bar"><h2>DEV UNIT</h2><button class="btn small" id="devunit-notify" type="button">通知を許可</button></div>
-    <p class="muted">README DEV · 開発資料と運営者・開発者のコメント</p>
+    <p class="muted">README DEV / README DEV NEWS · 開発資料と技術更新の詳細、運営者・開発者のコメント</p>
+    <label class="field"><span>資料</span><select id="devunit-doc"><option value="readme-dev-news.txt">README DEV NEWS（技術更新）</option><option value="readme-dev.txt">README DEV（開発資料）</option></select></label>
     <div class="devunit-layout">
       <div class="devunit-document"><label class="field"><span>資料内を検索</span><input id="devunit-search" type="search" placeholder="キーワードで絞り込む"></label><p class="muted" id="devunit-doc-status" role="status"></p><div id="devunit-readme"></div></div>
       <div class="devunit-discussion"><h3>コメント</h3><button class="btn small" id="devunit-more" type="button" hidden>以前のコメント</button><div id="devunit-comments" role="log" aria-label="DEV UNITのコメント"></div>
@@ -486,6 +533,7 @@
 <script src="vault-upload.js"></script>
 <!-- Presentation only: the existing operator handlers and API calls stay in ops.js. -->
 <script src="desktop.js"></script>
+<script src="diary-profile.js"></script>
 <script src="ui-guard.js"></script>
 <script src="ops.js"></script>
 </body>

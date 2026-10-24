@@ -827,6 +827,21 @@ export const MIGRATIONS = [
   [
     `CREATE TABLE devunit_comments (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL)`,
     `CREATE TABLE devunit_reads (user_id INTEGER PRIMARY KEY, last_id INTEGER NOT NULL DEFAULT 0)`
+  ],
+  // Live developer diary and private feedback. AUTOINCREMENT prevents deleted
+  // post identifiers from becoming another post (and another reward).
+  [
+    `CREATE TABLE diary_posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, body TEXT NOT NULL, image TEXT NOT NULL DEFAULT '', reward INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, hidden INTEGER NOT NULL DEFAULT 0)`,
+    `CREATE TABLE diary_reads (post_id INTEGER NOT NULL, user_id INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(post_id, user_id))`,
+    `CREATE TABLE diary_reactions (post_id INTEGER NOT NULL, user_id INTEGER NOT NULL, liked INTEGER NOT NULL DEFAULT 0, bookmarked INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(post_id, user_id))`,
+    `CREATE TABLE diary_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, post_id INTEGER NOT NULL, user_id INTEGER NOT NULL, body TEXT NOT NULL, original TEXT NOT NULL, words TEXT NOT NULL, created_at INTEGER NOT NULL)`,
+    'CREATE INDEX diary_comments_post ON diary_comments(post_id, id)',
+    'CREATE INDEX diary_comments_author ON diary_comments(post_id, user_id, id)',
+    `CREATE TABLE diary_claims (post_id INTEGER NOT NULL, user_id INTEGER NOT NULL, amount INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(post_id, user_id))`
+  ],
+  [
+    `CREATE TABLE ops_mfa (user_id INTEGER PRIMARY KEY, mode INTEGER NOT NULL DEFAULT 0, secret TEXT NOT NULL DEFAULT '', phrase_hash TEXT NOT NULL DEFAULT '', recovery TEXT NOT NULL DEFAULT '[]', last_step INTEGER NOT NULL DEFAULT -1, version INTEGER NOT NULL DEFAULT 0, pending_secret TEXT NOT NULL DEFAULT '', pending_until INTEGER NOT NULL DEFAULT 0)`,
+    'ALTER TABLE sessions ADD COLUMN ops_mfa_version INTEGER NOT NULL DEFAULT 0'
   ]
 ];
 
@@ -836,7 +851,8 @@ export const SCHEMA_VERSION = MIGRATIONS.length;
 export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'player_transfer_days', 'blocks', 'spins',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
   'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers', 'ops_entries',
-  'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'devunit_comments', 'devunit_reads', 'meta'];
+  'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'devunit_comments', 'devunit_reads',
+  'diary_posts', 'diary_reads', 'diary_reactions', 'diary_comments', 'diary_claims', 'ops_mfa', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

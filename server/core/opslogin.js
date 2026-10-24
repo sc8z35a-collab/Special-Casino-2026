@@ -23,7 +23,7 @@ const FORGET_MS = 86400000;
 // allow(u): may this operator come in now (while the server is stopped for
 // an emergency, the developer only; stoppedBody() is what the rest get);
 // entered(u, req, how): the day's entry in the ログインログ
-export function createOpsLogin({ q, findByName, isOperator, isViewer = () => false, createSession, seenOn, rate, allow = () => true, stoppedBody = null, entered = () => {} }) {
+export function createOpsLogin({ q, findByName, isOperator, isViewer = () => false, createSession, seenOn, rate, allow = () => true, stoppedBody = null, entered = () => {}, verifyMfa = async () => 0 }) {
   // this browser on this address (the operator site keeps an id of its own), and the address
   function keysOf(req) {
     const ip = sha256(String(req.ip || '-')).slice(0, 40);
@@ -72,6 +72,17 @@ export function createOpsLogin({ q, findByName, isOperator, isViewer = () => fal
           if (w.until) throw locked(w.until, now);
           throw new ApiError(401, 'bad_login', `名前かパスワードが違います（あと1回間違えると${minutes(w.next)}分間入力できません）`);
         }
+        let mfaVersion = 0;
+        if (isOperator(u)) {
+          try { mfaVersion = await verifyMfa(u, body); }
+          catch (e) {
+            if (e.code !== 'mfa_required') {
+              const w = wrong(keys, now);
+              if (w.until) throw locked(w.until, now);
+            }
+            throw e;
+          }
+        }
         // (this browser starts over; the address's count does not, nor does it go up)
         q('DELETE FROM ops_locks WHERE key = ?').run(keys[0].key);
         if (!allow(u)) {
@@ -81,7 +92,7 @@ export function createOpsLogin({ q, findByName, isOperator, isViewer = () => fal
         seenOn(u.id, req);
         if (body.enter === true) entered(u, req, 'password');
         const viewer = !isOperator(u);
-        return { token: createSession(u.id, viewer ? 'view' : ''), name: u.name, viewer };
+        return { token: createSession(u.id, viewer ? 'view' : '', mfaVersion), name: u.name, viewer };
       }
     },
     // old waits go (from the housekeeping)

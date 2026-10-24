@@ -111,6 +111,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         key, name: p ? p.name : key, id: p ? p.id : 0, avatar: p ? p.avatar : '', registered: !!p, online: p ? live.isOnline(p.id) : false,
         site: Date.now() - site < 40000, seenAt: p ? Math.max(site, p.last_seen) : 0,
         developer, operator: developer || (r ? r.granted === 1 : operators.has(key)), fromSettings: operators.has(key),
+        mfaMode: p ? q('SELECT mode FROM ops_mfa WHERE user_id = ?').get(p.id)?.mode || 0 : 0,
         changed: r ? { granted: r.granted === 1, at: r.at, by: by ? by.name : '' } : null
       };
     }).sort((a, b) => (b.developer - a.developer) || (b.operator - a.operator) || a.name.localeCompare(b.name));

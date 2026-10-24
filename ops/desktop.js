@@ -14,7 +14,8 @@
     ['operators', '運営者', 'operators'], ['team', '運営チャット', 'team'],
     ['security', 'セキュリティ', 'security'], ['server', 'サーバー', 'server'],
     ['pay', '課金', 'pay'], ['vault', '保管庫', 'vault'],
-    ['devunit', 'DEV UNIT', 'devunit'], ['securityhome', 'セキュリティーホーム', 'securityhome']
+    ['devunit', 'DEV UNIT', 'devunit'], ['securityhome', 'セキュリティーホーム', 'securityhome'],
+    ['diary', '開発者日記', 'diary'], ['profile', '自分のプロフィール', 'operators']
   ];
   var windows = {}, active = null, order = 0, signedIn = false, grouped = false;
   var overview = false, desktopSaved = null, silentRouting = false, suppressedRoute = '';
@@ -294,7 +295,7 @@
       w.node.classList.toggle('is-active', selected); w.node.classList.toggle('is-zoomed', w.zoomed);
       var shown = w.open && (!w.minimized || overview) && (!grouped || selected || overview);
       w.node.inert = !shown; w.node.setAttribute('aria-hidden', shown ? 'false' : 'true');
-      w.node.style.zIndex = selected ? 16 : Math.max(1, w.rank);
+      w.node.style.zIndex = selected ? order + 1 : Math.max(1, w.rank);
       w.tab.classList.toggle('mac-running', w.open); w.tab.classList.toggle('mac-visible', w.open && !w.minimized); w.tab.classList.toggle('mac-focused', selected);
       w.tab.setAttribute('aria-pressed', selected ? 'true' : 'false');
       w.node.querySelector('.mac-zoom').setAttribute('aria-pressed', w.zoomed ? 'true' : 'false');

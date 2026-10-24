@@ -94,6 +94,12 @@ class SocketHub {
 
   opsOnline(userId) { return this.ctx.getWebSockets(`o:${userId}`).some(SocketHub.isOpen); }
 
+  dropOps(userId) {
+    for (const ws of this.ctx.getWebSockets(`o:${userId}`)) {
+      try { ws.close(1000, 'Authentication settings changed'); } catch { /* already closed */ }
+    }
+  }
+
   write(ws, text) {
     try { ws.send(text); } catch { /* closing */ }
   }

@@ -18,6 +18,9 @@ import { RECEIPTS } from './rules.js';
 // [table, the columns that hold the player's id]: rows matching any go
 export const PLAYER_ROWS = [
   ['sessions', ['user_id']],
+  ['ops_mfa', ['user_id']],
+  ['diary_reads', ['user_id']],
+  ['diary_reactions', ['user_id']],
   ['blocks', ['user_id', 'blocked_id']],
   ['spins', ['user_id']],
   ['friends', ['user_id', 'friend_id']],
