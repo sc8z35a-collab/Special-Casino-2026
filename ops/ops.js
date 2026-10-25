@@ -2837,6 +2837,7 @@
     srvDiscord(r);
     srvLine(r);
     srvPatrol(r);
+    srvStele(r);
     srvMachine(r);
   }
   // how full the month's allowances are: the サーバー tab (and its button in the
@@ -2909,6 +2910,57 @@
       }, fail).then(function () { b.disabled = false; });
     });
     card.appendChild(b);
+  }
+  // the 石碑 (server/core/stele.js): the log's copies in files of their own, how far they go, and the room left
+  function srvStele(r) {
+    var s = r.stele, card = $('#srv-stele');
+    if (!card || !s) return;
+    var c = s.capacity || {};
+    var rows = [
+      ['外の控え', !s.on ? 'ありません（このサーバーに保管先がありません）' : s.sealed ? '刻んでいます（' + fmt(s.segs) + 'か所・#1〜#' + fmt(s.sealed) + '）' : 'まだ刻んでいません（まもなく刻みます）'],
+      ['まだ刻んでいない記録', fmt(s.pending) + '件' + (s.at ? '・最後に刻んだのは ' + stamp(s.at) : '')],
+      ['前回の確認', s.check ? stamp(s.check.at) + (s.check.ok ? '・異常なし' : '・要確認 ' + s.check.problems.length + '件') : 'まだありません（6時間ごとに自動で行います）']
+    ];
+    if (s.failSince) rows.push(['！ 刻めていません', (s.failText || '原因不明') + '（' + stamp(s.failSince) + ' から）']);
+    if (s.diverged) rows.push(['！ 食い違い', '#' + s.diverged.id + ' が、刻んだものと違います']);
+    ((s.check && s.check.problems) || []).slice(0, 4).forEach(function (p) { rows.push(['！ 異常', p.text]); });
+    rows.push(['運営ログ', fmt(c.rows) + '件・約' + mb(c.logBytes || 0)]);
+    if (c.dbBytes) rows.push(['データベース', mb(c.dbBytes) + (c.ratio ? '（上限の' + (c.ratio < 0.01 ? '1%未満' : Math.round(c.ratio * 100) + '%') + '）' : ''), c.ratio || null]);
+    srvCard(card, 'ログの石碑（消えない控え）', rows, '運営ログの1行ずつを、書き換えも上書きもできないファイルにして、データベースとは別の場所にも残します。データベースが壊れても、行が書き換えられても、消されても見つかり、控えから戻せます。1日に1回、いちばん新しい行のハッシュが Discord / LINE に届きます。');
+    if (!state.developer) return;
+    var row = el('div', 'srv-actions');
+    var run = el('button', 'btn small', '今すぐ刻んで全部確かめる');
+    run.type = 'button';
+    run.addEventListener('click', function () {
+      run.disabled = true;
+      request('POST', '/api/ops/stele/run', {}).then(function (t) {
+        r.stele = t.stele;
+        srvStele(r);
+        toast(t.ran.ok ? '異常なし（' + fmt(t.stele.sealed) + '件まで刻んであります）' : '気になる点があります');
+      }, fail).then(function () { run.disabled = false; });
+    });
+    var save = el('button', 'btn small ghost', 'ログを書き出す');
+    save.type = 'button';
+    save.addEventListener('click', function () {
+      save.disabled = true;
+      var lines = [], count = 0, head = null;
+      (function more(after) {
+        return request('GET', '/api/ops/log/archive?after=' + after + '&limit=1000').then(function (p) {
+          p.rows.forEach(function (a) { var o = {}; p.cols.forEach(function (k, i) { o[k] = a[i]; }); lines.push(JSON.stringify(o)); count++; });
+          head = p.head;
+          return p.more ? more(p.last) : null;
+        });
+      })(0).then(function () {
+        lines.push(JSON.stringify({ end: true, count: count, head: head }));
+        var a = el('a');
+        a.href = URL.createObjectURL(new Blob([lines.join('\n') + '\n'], { type: 'application/x-ndjson' }));
+        a.download = 'ops-log-' + new Date().toISOString().slice(0, 10) + '.jsonl';
+        document.body.appendChild(a); a.click(); a.remove();
+        toast('運営ログ ' + fmt(count) + '件を書き出しました');
+      }, fail).then(function () { save.disabled = false; });
+    });
+    row.appendChild(run); row.appendChild(save);
+    card.appendChild(row);
   }
   // the developer's Discord notices: on or not, and (the developer) a test
   function srvDiscord(r) {

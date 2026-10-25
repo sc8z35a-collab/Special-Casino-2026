@@ -882,3 +882,4 @@ body.role-viewer [data-stop], body.role-viewer #srv-dev, body.role-viewer .repor
 .links-ended { margin: 14px 0 0; }
 .links-ended summary { cursor: pointer; font-weight: 600; margin-bottom: 6px; }
 .field input[type="range"] { padding: 0; height: 28px; accent-color: #087aff; }
+.srv-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
