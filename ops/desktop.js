@@ -995,7 +995,7 @@
 
   var tooltip = node('div', 'mac-tooltip'); tooltip.hidden = true; app.appendChild(tooltip);
   function showTooltip(e) {
-    var tab = e.target.closest('#tabs .tab'); if (!tab) return;
+    var tab = e.target.closest('#tabs .tab'); if (!tab || document.body.classList.contains('mac-phone')) return;
     var r = tab.getBoundingClientRect(), p = app.getBoundingClientRect();
     tooltip.textContent = tab.getAttribute('aria-label'); tooltip.hidden = false;
     tooltip.style.bottom = p.bottom - r.top + 12 + 'px';

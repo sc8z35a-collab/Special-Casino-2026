@@ -83,3 +83,71 @@ test('the shipped UI image manifest provides the larger update artwork', () => {
   assert.equal(s.elements.get('#start-app').hidden, false);
   assert.equal(s.elements.get('#start-app span').textContent, '今すぐアップデート');
 });
+
+/* ------------------------------------------------------------ a newer Android app --- */
+// The toast about a newer app is gone in a few seconds; the slot screen keeps a note with 今すぐアップデート,
+// which asks for the update, and an app that cannot update itself gets the file to download instead.
+function appContext({ update }) {
+  const elements = new Map(), notes = [], toasts = [], shown = [], updates = [];
+  function element(selector) {
+    if (!elements.has(selector)) elements.set(selector, {
+      hidden: false, disabled: false, textContent: '', style: {},
+      classList: { toggle() {} },
+      addEventListener(event, fn) { this[event] = fn; },
+      querySelector(child) { return element(selector + ' ' + child); }
+    });
+    return elements.get(selector);
+  }
+  const BR = {
+    util: { $: element },
+    api: { online: true },
+    kit: { registerModal() {}, toast(text) { toasts.push(text); }, sfx() {}, showModal(name) { shown.push(name); }, closeModal() {} },
+    screens: { current() { return 'slot'; } },
+    news: { remind() {}, appNew(text) { notes.push(text); } }
+  };
+  const location = { protocol: 'https:', hostname: 'example.test', search: '', href: 'https://example.test/' };
+  const context = vm.createContext({
+    window: {
+      BR, addEventListener() {},
+      TwoStateApp: { versionCode: () => 112, signature: () => '', update(url, sha) { updates.push([url, sha]); update(url, sha); } }
+    },
+    document: { head: { appendChild() {} }, createElement() { return {}; }, addEventListener() {}, hidden: false },
+    navigator: { userAgent: 'Mozilla/5.0 TwoStateCasinoApp/1.0.12' },
+    location,
+    fetch: async (url) => String(url).indexOf('download/app.json') === 0
+      ? { ok: true, json: async () => ({ versionCode: 113, versionName: '1.0.13', apk: 'download/two-state-casino.apk', size: 114161, sha256: 'abc' }) }
+      : { ok: false, status: 404 },
+    Date, Number, String, URL, Math,
+    setTimeout() {}, setInterval() {}
+  });
+  vm.runInContext(source, context, { filename: 'js/ui/install.js' });
+  BR.install.init();
+  return { BR, elements, notes, toasts, shown, updates, location };
+}
+
+test('a newer Android app keeps a note on the slot screen, and the note starts the update', async () => {
+  const s = appContext({ update() {} });
+  s.BR.install.check();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(s.notes.at(-1), 'アプリの新しいバージョン（1.0.13）があります');
+  assert.match(s.toasts[0], /1\.0\.13.*今すぐアップデート/);
+  assert.equal(s.elements.get('#start-app span').textContent, 'アプリを更新');
+  s.BR.install.update();                                   // the note's button
+  assert.deepEqual(s.shown, ['update']);
+  s.elements.get('#up-go').onclick();                      // アップデート in the dialog
+  assert.deepEqual(s.updates, [['download/two-state-casino.apk?v=113', 'abc']]);
+  assert.equal(s.elements.get('#up-go').disabled, true);
+});
+
+test('an app that cannot update itself leaves the button free and offers the file', async () => {
+  const s = appContext({ update() { throw new TypeError('update is not a function'); } });
+  s.BR.install.check();
+  await new Promise((resolve) => setImmediate(resolve));
+  s.BR.install.update();
+  s.elements.get('#up-go').onclick();
+  assert.equal(s.elements.get('#up-go').disabled, false);
+  assert.equal(s.elements.get('#up-go').textContent, 'ダウンロード');
+  assert.match(s.elements.get('#up-text').textContent, /自動アップデートできません/);
+  s.elements.get('#up-go').onclick();
+  assert.equal(s.location.href, 'download/two-state-casino.apk?v=113');
+});

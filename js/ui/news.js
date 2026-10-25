@@ -74,8 +74,15 @@
     outdated = outdated || !!on;
     if (outdated && !was && BR.install && BR.install.outdated) BR.install.outdated();
     if (release > latest) latest = release;
-    $('#update-note').hidden = !outdated;
-    if (latest > BR.RELEASE) $('#update-note-text').textContent = '新しいバージョン（' + devName(latest) + '）があります';
+    paintNote();
+  }
+  // a newer Android app (js/ui/install.js): the same note with its own words, so the update can be started from the slot screen
+  var appText = '';
+  function appNew(text) { appText = text || ''; paintNote(); }
+  function paintNote() {
+    $('#update-note').hidden = !outdated && !appText;
+    if (outdated && latest > BR.RELEASE) $('#update-note-text').textContent = '新しいバージョン（' + devName(latest) + '）があります';
+    else if (!outdated) $('#update-note-text').textContent = appText;
   }
   // one tap: the newest game right away (the web page and the app alike)
   function update() {
@@ -175,6 +182,7 @@
     init: init,
     show: show,
     remind: remind,
+    appNew: appNew,
     checkRelease: checkRelease,
     // the server's newest release (me.release): newer than this game -> update
     serverRelease: function (n) { if (typeof n === 'number' && n > BR.RELEASE) remind(true, n); },

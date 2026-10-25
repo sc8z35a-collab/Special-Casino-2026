@@ -274,9 +274,8 @@
     button.hidden = card.hidden;
     button.setAttribute('aria-label', 'VIP');
     button.title = 'VIP';
-    var crown = node('i', 'ic me-vip-crown');
-    crown.style.backgroundImage = 'url("' + BR.svgURL(BR.ICONS.crown) + '")';
-    button.appendChild(crown);
+    // the game's own VIP picture (the one of the VIP card in the menu: .ic-vip)
+    button.appendChild(node('i', 'ic ic-vip me-vip-crown'));
     button.addEventListener('click', function () {
       if (BR.game.busy()) { BR.sfx.play('deny'); return; }
       BR.sfx.play('click');

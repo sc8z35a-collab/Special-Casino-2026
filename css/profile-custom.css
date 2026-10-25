@@ -185,26 +185,27 @@
 /* ------------------------------------------------------------ home VIP --- */
 .me-vip-button {
   position: absolute;
-  left: 825px;
-  top: 16px;
+  left: 581px;      /* right of the profile card (x 247, 318 wide), on its middle line */
+  top: 15px;
   z-index: 6;
-  width: 76px;
-  height: 76px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(180deg, rgba(255, 230, 116, .96), rgba(211, 147, 26, .96));
-  box-shadow: inset 0 0 0 2px #fff1a8, 0 5px 15px rgba(0, 0, 0, .45), 0 0 18px rgba(255, 205, 65, .24);
+  width: 140px;
+  height: 79px;     /* the picture's own 16:9 */
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .5));
   transition: transform .08s ease, filter .15s ease;
 }
 .me-vip-button:active {
   transform: scale(.92);
 }
 .me-vip-crown {
-  width: 49px;
-  height: 49px;
-  filter: brightness(.3) drop-shadow(0 2px 1px rgba(255, 255, 255, .3));
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 #screen-slot.watching .me-vip-button {
   display: none;

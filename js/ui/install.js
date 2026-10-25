@@ -50,8 +50,9 @@
     b.classList.toggle('update', update);
     b.querySelector('span').textContent = state.web ? '今すぐアップデート' : state.app ? 'アプリを更新' : 'アプリで遊ぶ';
     b.querySelector('.ic').className = 'ic ' + (update ? 'ic-download' : 'ic-add-home');
-    // and on the slot screen: the 今すぐアップデート note
+    // and on the slot screen: the 今すぐアップデート note (a newer app has its own words: the toast is gone in a few seconds)
     if (state.web && BR.news) BR.news.remind(true);
+    else if (state.app && BR.news) BR.news.appNew('アプリの新しいバージョン（' + state.app.versionName + '）があります');
   }
 
   // 今すぐアップデート (the slot screen's note, Dev News): the newest game,
@@ -141,7 +142,7 @@
       if (state.app && state.app.versionCode === info.versionCode) return;
       state.app = info;
       renderButton();
-      tell('アプリの新しいバージョン（' + info.versionName + '）があります');
+      tell('アプリの新しいバージョン（' + info.versionName + '）があります（「今すぐアップデート」で更新）');
     }, function () { /* no app published, or offline */ });
   }
 
@@ -180,7 +181,15 @@
     progress(0);
     setUpdateText('ダウンロードしています…');
     $('#up-go').disabled = true;
-    window.TwoStateApp.update(info.apk + '?v=' + info.versionCode, info.sha256 || '');
+    // an older app without the update bridge (or one that refuses): the button must not stay stuck, the file can be taken from the browser
+    try {
+      window.TwoStateApp.update(info.apk + '?v=' + info.versionCode, info.sha256 || '');
+    } catch (e) {
+      onAppUpdate({ state: 'error', message: 'このアプリでは自動アップデートできません。「ダウンロード」から新しいアプリを入れてください' });
+      var go = $('#up-go');
+      go.textContent = 'ダウンロード';
+      go.onclick = function () { K.sfx('click'); location.href = info.apk + '?v=' + info.versionCode; };
+    }
   }
 
   // events from the Android app: { state, progress?, message? }

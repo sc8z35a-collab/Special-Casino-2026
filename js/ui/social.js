@@ -281,6 +281,8 @@
       }).then(function () {
         sending = false;
         send.disabled = false;
+        // still writing: the keyboard stays up, the next line goes in the same place
+        if (opts === o && !root.hidden) input.focus();
       });
     }
     // the feed being shown above the field scrolls with new lines

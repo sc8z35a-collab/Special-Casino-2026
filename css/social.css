@@ -714,8 +714,8 @@
   box-shadow: inset 0 -1px 0 rgba(214, 169, 74, .55);
 }
 .entry-bar input {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 140px;
+  min-width: 120px;   /* the field never shrinks away between the name and 送信 */
   height: 42px;
   padding: 0 16px;
   border-radius: 21px;
