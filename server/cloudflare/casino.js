@@ -187,7 +187,8 @@ function coreRequest(request, url) {
     query: url.searchParams,
     host: url.host,
     ip: request.headers.get('cf-connecting-ip') || '',
-    meta: { cf: edgeOf(request.cf) },
+    // (`scheme`: how the edge was reached, for the secure channel's word on whether the connection was encrypted: server/core/seccomm.js)
+    meta: { cf: edgeOf(request.cf), scheme: url.protocol },
     header: (name) => request.headers.get(name),
     async json(limit = 16 * 1024) {
       if (!/^application\/json\b/i.test(request.headers.get('content-type') || '')) {

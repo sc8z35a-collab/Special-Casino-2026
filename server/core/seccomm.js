@@ -38,7 +38,8 @@ const fingerprint = (spki) => crypto.createHash('sha256').update(spki).digest('h
 export function transportOf(req) {
   const m = req.meta || {}, cf = m.cf || {}, sock = m.socket || {};
   const proxied = /^https$/i.test(String(req.header('x-forwarded-proto') || '').split(',')[0].trim());
-  const tls = cf.tlsVersion || sock.tls || (proxied ? 'proxy' : '');
+  // (the edge's own word for the version; or, on the edge, that the address it was reached at is https; or a proxy that says so)
+  const tls = cf.tlsVersion || sock.tls || (m.scheme === 'https:' ? 'https' : '') || (proxied ? 'proxy' : '');
   const http = cf.httpProtocol || (sock.http ? `HTTP/${sock.http}` : '');
   return { tls: String(tls).slice(0, 24), http: String(http).slice(0, 24) };
 }
