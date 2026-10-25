@@ -1,7 +1,7 @@
 {
-  "files": 200,
-  "before": 5606149,
-  "after": 2272581,
+  "files": 203,
+  "before": 5621841,
+  "after": 2286383,
   "images": [
     {
       "path": "app/android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
@@ -1018,6 +1018,19 @@
       ]
     },
     {
+      "path": "img/symbols/lowpoly/bar.webp",
+      "before": 5772,
+      "after": 5244,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        288,
+        273
+      ]
+    },
+    {
       "path": "img/symbols/lowpoly/diamond.webp",
       "before": 8192,
       "after": 8192,
@@ -1044,9 +1057,35 @@
       ]
     },
     {
+      "path": "img/symbols/lowpoly/gold.webp",
+      "before": 4626,
+      "after": 3630,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        288,
+        273
+      ]
+    },
+    {
       "path": "img/symbols/lowpoly/revolver.webp",
       "before": 5294,
       "after": 5294,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        288,
+        273
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/revolver.webp",
+      "before": 5294,
+      "after": 4176,
       "beforeSize": [
         288,
         273
@@ -2346,14 +2385,14 @@
     {
       "path": "ops/assets/diary.webp",
       "before": 4906,
-      "after": 2720,
+      "after": 3472,
       "beforeSize": [
         256,
         256
       ],
       "afterSize": [
-        256,
-        256
+        128,
+        128
       ]
     },
     {
@@ -2603,5 +2642,6 @@
         720
       ]
     }
-  ]
+  ],
+  "note": "Merged concurrent main changes: keep the newly trimmed diary icon, the FX icon and additional lowpoly image compression. Earlier decode/render validation predates this merge."
 }
