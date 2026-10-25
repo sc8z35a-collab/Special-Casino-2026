@@ -91,21 +91,18 @@ const { chromium } = require('playwright');
       }); assert.equal(fits, true, 'magnified artwork must not be clipped by the Dock scroller');
       await page.mouse.move(5, 5); await page.emulateMedia({ reducedMotion: 'reduce' });
     });
-    await check('notification widget minimizes, preserves history and restores after reload', async () => {
+    await check('notification centre is a small tab until the pointer comes, opens on hover and folds when it leaves', async () => {
       await page.evaluate(() => document.dispatchEvent(new CustomEvent('ops:notice', { detail: { app: 'players', text: 'widget test notification' } })));
-      await page.locator('.mac-notice-minimize').click();
+      assert.equal(await page.locator('.mac-notice-minimize').count(), 0, 'no minimize button any more');
+      await page.mouse.move(700, 400); await page.waitForTimeout(700);
       assert.equal(await page.locator('#mac-notice-content').isVisible(), false);
-      assert.equal(await page.locator('.mac-notice-minimize').getAttribute('aria-expanded'), 'false');
       assert.ok((await page.locator('#mac-notifications').boundingBox()).height < 100);
+      const box = await page.locator('#mac-notifications').boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + 20);
+      await page.locator('#mac-notice-content').waitFor({ state: 'visible' });
       assert.match(await page.locator('.mac-notice-history').textContent(), /widget test notification/);
-      await page.locator('.mac-notice-minimize').click();
-      assert.equal(await page.locator('#mac-notice-content').isVisible(), true);
-      assert.match(await page.locator('.mac-notice-history').textContent(), /widget test notification/);
-      await page.locator('.mac-notice-minimize').click(); await page.reload();
-      await page.locator('#app').waitFor({ state: 'visible' });
-      assert.equal(await page.locator('#mac-notice-content').isVisible(), false);
-      await page.locator('.mac-notification-toggle').click();
-      assert.equal(await page.locator('#mac-notice-content').isVisible(), true);
+      await page.mouse.move(700, 400);
+      await page.locator('#mac-notice-content').waitFor({ state: 'hidden' });
     });
     await check('windows cover notifications and Dock while system controls remain recoverable', async () => {
       await open(page, 'players'); await page.locator('#mac-window-players .mac-zoom').click();
@@ -121,7 +118,6 @@ const { chromium } = require('playwright');
       }); assert.equal(result.width, 1440); assert.deepEqual(result.points, ['mac-window-players', 'mac-window-players']);
       await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-notification-toggle').click();
       assert.equal(await page.locator('#mac-notifications').isVisible(), true);
-      await page.locator('.mac-notice-minimize').click(); await page.locator('.mac-notice-minimize').click();
       await page.locator('#mac-window-players .mac-window-title').click();
       await page.locator('#mac-window-players .mac-zoom').click();
       await page.locator('.mac-taskbar-edge').hover();
@@ -163,6 +159,7 @@ const { chromium } = require('playwright');
       const posted = await s.call('POST', '/api/ops/devunit/comments', { token: other.token, body: { text: 'new operator comment' } });
       assert.equal(posted.status, 200);
       await page.locator('#count-devunit').waitFor({ state: 'visible' });
+      await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-notification-toggle').click();
       await page.locator('.mac-notice-pending .mac-notice-open[aria-label^="DEV UNIT"]').waitFor();
       await page.locator('.mac-notice-history .mac-notice-open[aria-label^="DEV UNIT"]').waitFor();
       await open(page, 'devunit');
@@ -261,8 +258,9 @@ const { chromium } = require('playwright');
       const count = await page.locator('.mac-window.is-open').count();
       await page.locator('.mac-window.is-open .mac-window-shade').first().click();
       assert.equal(await page.locator('body.mac-overview').count(), 0);
-      await page.locator('.mac-dock-home').click(); assert.equal(await page.locator('.mac-window:visible').count(), 0);
-      await page.locator('.mac-dock-home').click(); assert.equal(await page.locator('.mac-window:visible').count(), count);
+      const home = async () => { await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-home').click(); };
+      await home(); assert.equal(await page.locator('.mac-window:visible').count(), 0);
+      await home(); assert.equal(await page.locator('.mac-window:visible').count(), count);
     });
     await check('selection, copying and the native context menu are blocked while typing remains available', async () => {
       await open(page, 'players'); await page.locator('#search').fill('editable input');
@@ -277,6 +275,8 @@ const { chromium } = require('playwright');
       await open(page, 'players');
       const scale = await page.locator('#tabs [data-view="players"] img').evaluate(n => getComputedStyle(n).transform);
       assert.notEqual(scale, 'none');
+      // (the app bar sinks when the mouse is away: bring it up first and let it settle)
+      await page.locator('.mac-taskbar-edge').hover(); await page.waitForFunction(() => document.querySelector('.mac-dock').getAnimations().every(a => a.playState !== 'running'));
       await page.locator('#tabs [data-view="players"]').hover();
       await page.locator('.mac-tooltip').waitFor({ state: 'visible' });
       assert.equal(await page.locator('.mac-tooltip').textContent(), 'プレイヤー一覧（操作中）');
@@ -327,11 +327,19 @@ const { chromium } = require('playwright');
       const failures = await page.evaluate(async paths => {
         const bad = []; for (const src of paths) { const im = new Image(); im.src = src; try { await im.decode(); } catch { bad.push(src); } } return bad;
       }, paths); assert.deepEqual(failures, []);
-      await page.keyboard.press('Alt+Space');
-      await page.locator('#mac-menu').getByText('予備の背景を使う', { exact: true }).click();
+      // 背景: the dialog lists the two wallpapers that came with the site (more come from assets/wallpapers.json)
+      await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-tool[aria-label="背景を変える"]').click();
+      await page.locator('.mac-wall-item', { hasText: '予備' }).click();
       assert.match(await page.locator('#app').evaluate(n => getComputedStyle(n).backgroundImage), /wallpaper-reserve/);
-      await page.keyboard.press('Alt+Space');
-      await page.locator('#mac-menu').getByText('予備の背景を使う', { exact: true }).click();
+      await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-tool[aria-label="背景を変える"]').click();
+      await page.locator('.mac-wall-item', { hasText: '標準' }).click();
+      assert.match(await page.locator('#app').evaluate(n => getComputedStyle(n).backgroundImage), /wallpaper-desktop/);
+      // 軽量化: one tap turns the glass and the animations off, another turns them back on
+      await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-tool[aria-label^="軽量化"]').click();
+      assert.equal(await page.evaluate(() => document.body.classList.contains('mac-flat') && document.body.classList.contains('mac-reduce-motion')), true);
+      assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.mac-dock')).backdropFilter), 'none');
+      await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-tool[aria-label^="軽量化"]').click();
+      assert.equal(await page.evaluate(() => document.body.classList.contains('mac-flat') || document.body.classList.contains('mac-reduce-motion')), false);
     });
     await check('daily login retains the existing once-per-day recording', async () => {
       s.app.db.prepare('DELETE FROM ops_entries WHERE user_id = ?').run(dev.me.id);

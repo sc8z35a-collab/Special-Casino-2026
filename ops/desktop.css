@@ -110,14 +110,14 @@
   box-shadow: inset 0 1px 0 #ffffff7a, 0 8px 22px #17384c38; user-select: none;
 }
 .mac-ui #tabs.tabs { display: flex; align-items: flex-end; gap: clamp(2px, .35vw, 6px); order: initial; flex-basis: auto; flex-wrap: nowrap; flex-shrink: 1; margin: 0; padding: 0; min-width: 0; overflow: visible; border: 0; }
-.mac-ui .mac-dock .tab, .mac-dock-home {
+.mac-ui .mac-dock .tab, .mac-dock-home, .mac-dock-tool {
   position: relative; display: block; flex: 0 1 var(--dock-icon); width: var(--dock-icon); min-width: 21px; height: var(--dock-icon);
   margin: 0; padding: 0; border: 0; border-radius: 9px; background: transparent; color: #1c2631;
 }
-.mac-dock-home { flex-shrink: 0; }
+.mac-dock-home, .mac-dock-tool { flex-shrink: 0; }
 .mac-ui .mac-dock .tab.on, .mac-ui .mac-dock .tab:hover { background: transparent; color: inherit; border: 0; box-shadow: none; }
-.mac-dock .tab > img, .mac-dock-home > img { display: block; width: 100%; height: 100%; object-fit: contain; transform: translateY(calc((var(--dock-scale, 1) - 1) * -12px)) scale(var(--dock-scale, 1)); transform-origin: center bottom; transition: transform .15s ease-out, filter .15s; filter: drop-shadow(0 2px 2px #0002); }
-.mac-dock .tab:active > img, .mac-dock-home:active > img { filter: brightness(.78); }
+.mac-dock .tab > img, .mac-dock-home > img, .mac-dock-tool > img { display: block; width: 100%; height: 100%; object-fit: contain; transform: translateY(calc((var(--dock-scale, 1) - 1) * -12px)) scale(var(--dock-scale, 1)); transform-origin: center bottom; transition: transform .15s ease-out, filter .15s; filter: drop-shadow(0 2px 2px #0002); }
+.mac-dock .tab:active > img, .mac-dock-home:active > img, .mac-dock-tool:active > img { filter: brightness(.78); }
 .mac-dock-divider { height: calc(var(--dock-icon) - 8px); width: 1px; background: #0002; align-self: center; flex: none; }
 .mac-dock-label { position: absolute; left: 50%; bottom: calc(100% + 21px); transform: translate(-50%, 4px); padding: 5px 10px; border-radius: 6px; background: #f4f5f9ed; color: #25272c; font-size: 12px; font-weight: 500; line-height: 1.4; white-space: nowrap; box-shadow: 0 4px 14px #0002; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .12s, transform .12s; }
 .mac-dock-label::after { content: ''; position: absolute; left: calc(50% - 4px); bottom: -4px; width: 8px; height: 8px; background: #f4f5f9ed; transform: rotate(45deg); }
@@ -576,7 +576,7 @@
   .mac-ui .mac-dock .top { padding-left: 4px; gap: 0; }
   .mac-status { gap: 0; }
   .mac-system-menu, .mac-status-button { width: 30px; }
-  .mac-dock-home { width: 32px; flex-basis: 32px; }
+  .mac-dock-home, .mac-dock-tool { width: 32px; flex-basis: 32px; }
   .mac-titlebar, .mac-window:not(.is-active) .mac-titlebar { height: 58px; min-height: 58px; padding: 0 10px; gap: 6px; }
   .mac-window-control { min-width: 36px; width: 36px; height: 36px; }
   .mac-window-controls { gap: 4px; }
@@ -668,3 +668,14 @@
   .mac-window .chips .chip { padding: 4px 9px; font-size: 12px; }
   .mac-dock-hint { display: none; }
 }
+
+/* ---- the pictures in the bar: ☰ and the bell, 軽量化 and 背景 ---- */
+.mac-system-menu img { width: 26px; height: 26px; }
+.mac-bell-img { display: block; width: 24px; height: 24px; object-fit: contain; }
+.mac-dock-tool.is-on { background: #d6eaff80; box-shadow: 0 0 0 2px #498cff99, 0 0 16px #167aff40; border-radius: 12px; }
+.mac-ui.mac-custom-wallpaper .app { background-image: var(--mac-wall); }
+.mac-wall-panel { width: min(640px, 100%); }
+.mac-wall-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 10px 0 14px; max-height: 50vh; overflow: auto; }
+.mac-wall-item { display: flex; flex-direction: column; gap: 4px; padding: 5px; border: 2px solid transparent; border-radius: 14px; background: #ffffff70; text-align: center; font-size: 12px; }
+.mac-wall-item img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 9px; }
+.mac-wall-item.is-selected { border-color: #498cff; background: #d6eaff; }
