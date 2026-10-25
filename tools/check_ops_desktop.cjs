@@ -329,11 +329,38 @@ const { chromium } = require('playwright');
       }, paths); assert.deepEqual(failures, []);
       // 背景: the dialog lists the two wallpapers that came with the site (more come from assets/wallpapers.json)
       await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-tool[aria-label="背景を変える"]').click();
-      await page.locator('.mac-wall-item', { hasText: '予備' }).click();
+      await page.locator('.mac-wall-item', { hasText: '予備' }).click(); await page.keyboard.press('Escape');
       assert.match(await page.locator('#app').evaluate(n => getComputedStyle(n).backgroundImage), /wallpaper-reserve/);
       await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-tool[aria-label="背景を変える"]').click();
-      await page.locator('.mac-wall-item', { hasText: '標準' }).click();
+      await page.locator('.mac-wall-item', { hasText: '標準' }).click(); await page.keyboard.press('Escape');
       assert.match(await page.locator('#app').evaluate(n => getComputedStyle(n).backgroundImage), /wallpaper-desktop/);
+      // ランダム: every picture once per cycle, a new one every 10 minutes, and the next cycle never starts with the last one
+      await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-tool[aria-label="背景を変える"]').click();
+      await page.locator('.mac-wall-mode', { hasText: 'ランダム' }).click();
+      await page.locator('.mac-wall-info', { hasText: '10分ごと' }).waitFor();
+      const total = await page.locator('.mac-wall-item').count(); assert.ok(total >= 60, 'the vault landscapes are in: ' + total);
+      const KEY = 'two-state-ops/ui/wallbag';
+      const seen = await page.evaluate(async (KEY) => {
+        const out = [];
+        const read = () => JSON.parse(localStorage.getItem(KEY));
+        out.push(read().last);
+        for (let i = 0; i < 140; i++) {
+          const st = read(); st.at = Date.now() - 10 * 60000 - 1; localStorage.setItem(KEY, JSON.stringify(st));
+          document.dispatchEvent(new Event('visibilitychange'));
+          out.push(read().last);
+        }
+        return out;
+      }, KEY);
+      const n = total; assert.equal(new Set(seen.slice(0, n)).size, n, 'the first cycle shows every picture once');
+      assert.equal(new Set(seen.slice(n, 2 * n)).size, n, 'the second cycle too');
+      assert.notEqual(seen[n], seen[n - 1], 'the next cycle does not start with the last picture');
+      // not yet ten minutes: nothing changes
+      const same = await page.evaluate((KEY) => { const a = JSON.parse(localStorage.getItem(KEY)).last; document.dispatchEvent(new Event('visibilitychange')); return a === JSON.parse(localStorage.getItem(KEY)).last; }, KEY);
+      assert.equal(same, true);
+      // choosing one by hand is 手動 again
+      await page.locator('.mac-wall-item', { hasText: '標準' }).click();
+      assert.equal(await page.evaluate(() => localStorage.getItem('two-state-ops/ui/wallmode')), 'manual');
+      await page.locator('.mac-wall-info', { hasText: '選んだ背景のまま' }).waitFor(); await page.keyboard.press('Escape');
       // 軽量化: one tap turns the glass and the animations off, another turns them back on
       await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-tool[aria-label^="軽量化"]').click();
       assert.equal(await page.evaluate(() => document.body.classList.contains('mac-flat') && document.body.classList.contains('mac-reduce-motion')), true);

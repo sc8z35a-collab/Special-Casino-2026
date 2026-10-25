@@ -679,3 +679,9 @@
 .mac-wall-item { display: flex; flex-direction: column; gap: 4px; padding: 5px; border: 2px solid transparent; border-radius: 14px; background: #ffffff70; text-align: center; font-size: 12px; }
 .mac-wall-item img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 9px; }
 .mac-wall-item.is-selected { border-color: #498cff; background: #d6eaff; }
+
+.mac-wall-modes { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }
+.mac-wall-mode { padding: 8px 14px; border: 2px solid transparent; border-radius: 14px; background: #ffffff80; font-size: 13px; font-weight: 700; }
+.mac-wall-mode.is-selected { border-color: #498cff; background: #d6eaff; }
+.mac-wall-info { margin: 4px 0 0; font-size: 12px; color: #4a5c75; line-height: 1.6; }
+.mac-wall-item img { background: #bcd; }

@@ -638,27 +638,71 @@
   function syncLite() { var on = isLite(); liteButton.classList.toggle('is-on', on); liteButton.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   new MutationObserver(syncLite).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
-  // 背景: the two that came with the site, and any listed in assets/wallpapers.json
-  // ([{ "id": "…", "name": "…", "file": "name.webp" }], the pictures in assets/wallpapers/)
+  // 背景: the two that came with the site, and every one listed in assets/wallpapers.json
+  // ([{ "id": "…", "name": "…", "file": "name.webp" }], the pictures in assets/wallpapers/).
+  // 手動: the one chosen stays. ランダム: one every 10 minutes from a shuffled bag that holds each
+  // picture once; when the bag is empty (every picture has been shown once: one cycle) it is
+  // shuffled again, and the first of the next cycle is never the last of the one before.
   var WALLS = [{ id: 'desktop', name: '標準', url: 'assets/wallpaper-desktop.webp' }, { id: 'reserve', name: '予備', url: 'assets/wallpaper-reserve.webp' }];
-  var wallsLoaded = false, wallOverlay = null;
+  var WALL_EVERY = 10 * 60000, wallsLoaded = null, wallOverlay = null, wallTimer = 0;
+  function wall(id) { return WALLS.filter(function (x) { return x.id === id; })[0] || WALLS[0]; }
   function applyWallpaper(id) {
-    var w = WALLS.filter(function (x) { return x.id === id; })[0] || WALLS[0];
-    document.body.classList.toggle('mac-reserve-wallpaper', w.id === 'reserve');
-    document.body.classList.toggle('mac-custom-wallpaper', w.id !== 'desktop' && w.id !== 'reserve');
-    if (w.id !== 'desktop' && w.id !== 'reserve') document.body.style.setProperty('--mac-wall', "url('" + w.url + "')");
-    else document.body.style.removeProperty('--mac-wall');
+    var w = wall(id), custom = w.id !== 'desktop' && w.id !== 'reserve';
+    function set() {
+      document.body.classList.toggle('mac-reserve-wallpaper', w.id === 'reserve');
+      document.body.classList.toggle('mac-custom-wallpaper', custom);
+      if (custom) document.body.style.setProperty('--mac-wall', "url('" + w.url + "')"); else document.body.style.removeProperty('--mac-wall');
+    }
+    // (the next picture is read first, so the screen never flashes empty)
+    if (!custom) { set(); return; }
+    var im = new Image(); im.onload = im.onerror = set; im.src = w.url;
+  }
+  function shuffled(list, notFirst) {
+    var a = list.slice();
+    for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; }
+    if (a.length > 1 && a[0] === notFirst) { var t2 = a[0]; a[0] = a[1]; a[1] = t2; }
+    return a;
+  }
+  function readJson(key) { try { return JSON.parse(prefs(key) || 'null'); } catch (e) { return null; } }
+  function wallMode() { return prefs('wallmode') === 'random' ? 'random' : 'manual'; }
+  // the bag: { bag: [ids still to show], last: id, at: when the picture changed, cycle: how many cycles are done }
+  function stepWallpaper(force) {
+    if (wallMode() !== 'random' || !wallsLoaded) return;
+    var ids = WALLS.map(function (x) { return x.id; }), st = readJson('wallbag') || { bag: [], last: '', at: 0, cycle: 0 };
+    st.bag = (st.bag || []).filter(function (id) { return ids.indexOf(id) >= 0; });
+    var now = Date.now(), due = force || !st.at || now - st.at >= WALL_EVERY || st.at > now;
+    if (!due) { applyWallpaper(st.last); return; }
+    if (!st.bag.length) { st.bag = shuffled(ids, st.last); if (st.last) st.cycle = (st.cycle || 0) + 1; }
+    st.last = st.bag.shift(); st.at = now;
+    prefs('wallbag', JSON.stringify(st)); prefs('wallpaper', st.last); applyWallpaper(st.last);
+  }
+  function wallTick() {
+    clearInterval(wallTimer); wallTimer = 0;
+    if (wallMode() !== 'random') return;
+    wallTimer = setInterval(function () { stepWallpaper(false); }, 15000);
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) stepWallpaper(false); });
+  function setWallMode(m) {
+    prefs('wallmode', m);
+    if (m === 'random') {
+      // (the picture shown now counts as shown: it is not in the bag again this cycle)
+      var cur = prefs('wallpaper') || 'desktop', ids = WALLS.map(function (x) { return x.id; });
+      prefs('wallbag', JSON.stringify({ bag: shuffled(ids.filter(function (id) { return id !== cur; }), cur), last: cur, at: Date.now(), cycle: 0 }));
+    }
+    wallTick();
   }
   function loadWalls() {
-    if (wallsLoaded) return Promise.resolve();
-    wallsLoaded = true;
-    return fetch('assets/wallpapers.json', { cache: 'no-cache', credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : []; }).then(function (list) {
-      (Array.isArray(list) ? list : []).slice(0, 60).forEach(function (x) {
+    if (wallsLoaded) return wallsLoaded;
+    wallsLoaded = fetch('assets/wallpapers.json', { cache: 'no-cache', credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : []; }).then(function (list) {
+      (Array.isArray(list) ? list : []).slice(0, 200).forEach(function (x) {
         if (!x || !/^[\w-]{1,40}$/.test(x.id) || !/^[\w.-]{1,80}\.(webp|jpg|jpeg|png)$/i.test(x.file)) return;
         if (!WALLS.some(function (w) { return w.id === x.id; })) WALLS.push({ id: x.id, name: String(x.name || x.id).slice(0, 20), url: 'assets/wallpapers/' + x.file });
       });
-      applyWallpaper(prefs('wallpaper') || 'desktop');
-    }).catch(function () { /* only the two that came with the site */ });
+    }).catch(function () { /* only the two that came with the site */ }).then(function () {
+      if (wallMode() === 'random') stepWallpaper(false); else applyWallpaper(prefs('wallpaper') || 'desktop');
+      wallTick();
+    });
+    return wallsLoaded;
   }
   function showWallpapers() {
     if (app.hidden) return;
@@ -669,16 +713,36 @@
         app.appendChild(wallOverlay);
       }
       var panel = node('div', 'mac-help-panel mac-wall-panel'); panel.appendChild(picture('wallpaper-app')); panel.appendChild(node('h2', '', '背景を変える'));
-      var grid = node('div', 'mac-wall-grid'), current = prefs('wallpaper') || 'desktop';
+      var modes = node('div', 'mac-wall-modes'); modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', '切り替え方');
+      var info = node('p', 'mac-wall-info');
+      function drawInfo() {
+        var st = readJson('wallbag') || {};
+        info.textContent = wallMode() === 'random'
+          ? '10分ごとに、全部で ' + WALLS.length + ' 枚の背景を1枚ずつ順に出します（全部出し終わるまで同じ画像は出ません。出し終えたら次のサイクル）。いまの周回：' + (WALLS.length - (st.bag || []).length) + ' / ' + WALLS.length + ' 枚目'
+          : '選んだ背景のままです。';
+      }
+      var current = prefs('wallpaper') || 'desktop', grid = node('div', 'mac-wall-grid');
+      function paint() {
+        Array.prototype.forEach.call(modes.children, function (b) { var on = b.dataset.mode === wallMode(); b.classList.toggle('is-selected', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+        current = prefs('wallpaper') || 'desktop';
+        Array.prototype.forEach.call(grid.children, function (b) { var on = b.dataset.id === current; b.classList.toggle('is-selected', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+        drawInfo();
+      }
+      [['manual', '手動'], ['random', 'ランダム（10分ごと）']].forEach(function (m) {
+        var b = button('mac-wall-mode', m[1]); b.dataset.mode = m[0];
+        b.addEventListener('click', function () { setWallMode(m[0]); paint(); });
+        modes.appendChild(b);
+      });
       WALLS.forEach(function (w) {
-        var b = button('mac-wall-item' + (w.id === current ? ' is-selected' : ''), '', w.name); b.setAttribute('aria-pressed', w.id === current ? 'true' : 'false');
-        var img = node('img'); img.src = w.url; img.alt = ''; img.loading = 'lazy'; img.draggable = false; b.appendChild(img); b.appendChild(node('span', '', w.name));
-        b.addEventListener('click', function () { prefs('wallpaper', w.id); applyWallpaper(w.id); closeOverlay(); });
+        var b = button('mac-wall-item', '', w.name); b.dataset.id = w.id;
+        var img = node('img'); img.src = w.url; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.draggable = false; b.appendChild(img); b.appendChild(node('span', '', w.name));
+        // (choosing one by hand is choosing 手動)
+        b.addEventListener('click', function () { if (wallMode() !== 'manual') setWallMode('manual'); prefs('wallpaper', w.id); applyWallpaper(w.id); paint(); });
         grid.appendChild(b);
       });
-      panel.appendChild(grid);
+      panel.appendChild(modes); panel.appendChild(info); panel.appendChild(grid);
       var close = button('btn primary', '閉じる'); close.addEventListener('click', function () { closeOverlay(); }); panel.appendChild(close);
-      wallOverlay.replaceChildren(panel); showOverlay(wallOverlay);
+      wallOverlay.replaceChildren(panel); paint(); showOverlay(wallOverlay);
     });
   }
 
@@ -807,7 +871,7 @@
   }, true);
 
   document.body.classList.toggle('mac-reserve-wallpaper', prefs('wallpaper') === 'reserve');
-  if (prefs('wallpaper') && prefs('wallpaper') !== 'desktop' && prefs('wallpaper') !== 'reserve') loadWalls();
+  loadWalls();
   document.body.classList.toggle('mac-reduce-motion', prefs('motion') === 'reduce');
   document.body.classList.toggle('mac-flat', prefs('glass') === 'off');
   grouped = prefs('tabs') === 'yes';
