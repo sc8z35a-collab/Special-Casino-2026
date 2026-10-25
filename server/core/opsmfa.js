@@ -30,7 +30,10 @@ function matchStep(secret, code, last = -1, at = Date.now()) {
   }
   return -1;
 }
-export function createOpsMfa({ q, tx, secret, ops, opsLog, revokeStreams = () => {}, clock = Date.now }) {
+// the pages open to a developer who has not set an extra login up yet (REQUIRE_DEV_MFA): the setting up itself
+const SETUP = /^\/api\/ops\/(?:profile(?:\/|$)|me$|enter$)/;
+
+export function createOpsMfa({ q, tx, secret, ops, opsLog, isDeveloper = () => false, requireDevMfa = false, revokeStreams = () => {}, clock = Date.now }) {
   const key = keyFrom(secret, 'ops-mfa');
   const row = id => q('SELECT * FROM ops_mfa WHERE user_id = ?').get(id);
   const status = u => { const r = row(u.id); return { mode: r?.mode || 0, recoveryLeft: r ? JSON.parse(r.recovery).length : 0 }; };
@@ -55,10 +58,14 @@ export function createOpsMfa({ q, tx, secret, ops, opsLog, revokeStreams = () =>
     if (typeof body.password !== 'string' || !await verifyPassword(body.password, u.password_hash)) throw new ApiError(403, 'bad_password', '現在のパスワードが違います');
     await verify(u, body);
   }
-  const guard = u => {
+  const guard = (u, req = null) => {
     if (!ops.isOperator(u)) return;
     const r = row(u.id);
     if (r?.mode && u.opsMfaVersion !== r.version) throw new ApiError(403, 'mfa_required', '運営サイトへ追加認証付きでログインし直してください', { mode: r.mode });
+    // the developer's account can do everything: with REQUIRE_DEV_MFA it is not used before an extra login is set up
+    if (requireDevMfa && !r?.mode && isDeveloper(u) && !(req && SETUP.test(req.path))) {
+      throw new ApiError(403, 'mfa_setup_required', '開発者のアカウントは、追加認証（認証アプリ）を設定してから運営サイトを使えます。プロフィールから設定してください');
+    }
   };
   return { status, verify, guard, version: id => row(id)?.version || 0, routes: {
     'GET /api/ops/profile': (req, u) => { ops.need(u); return { id: u.id, name: u.name, avatar: u.avatar, mfa: status(u) }; },

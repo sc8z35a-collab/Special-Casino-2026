@@ -70,6 +70,8 @@ export function configFrom(env = {}, overrides = {}) {
     // notice until 00:00 UTC. Cloudflare's own free-plan limits do that by themselves.
     dailyRequestLimit: int(env, 'DAILY_REQUEST_LIMIT', 0),
     dailyMbLimit: int(env, 'DAILY_MB_LIMIT', 0),
+    // The developer's account is not used on the operator site (or security HOME) before an extra login (an authenticator app) is set up on its profile.
+    requireDevMfa: flag(env, 'REQUIRE_DEV_MFA', false),
     // 開発者支援 (server/core/pay.js): real money through Stripe, off until the
     // secret key, the webhook's signing secret(s) (comma separated while one is
     // being replaced) and the game's public address are all set. Secrets live

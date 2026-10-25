@@ -1,0 +1,14 @@
+# Updates are proposed as pull requests, never applied by themselves.
+# GitHub Actions: the versions the workflows use (a tag that moves is how a build gets poisoned).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

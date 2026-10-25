@@ -3724,7 +3724,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the players' list also says which ones this operator marked ★
   const opsPlayers = routes['GET /api/ops/players'];
   routes['GET /api/ops/players'] = (req, u) => ({ ...opsPlayers(req, u), favorites: watch.favoriteIds(u.id) });
-  const opsMfa = createOpsMfa({ q, tx, secret, ops, opsLog, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now });
+  const opsMfa = createOpsMfa({ q, tx, secret, ops, opsLog, isDeveloper, requireDevMfa: config.requireDevMfa, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now });
   Object.assign(routes, opsMfa.routes);
   Object.assign(routes, createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed,
     commentRate: (u) => rate(limit.dm, u.id), opsLog }).routes);
@@ -4120,7 +4120,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           user = authUser(req);
           req.userId = user.id;
           if (GATED.test(req.path)) {
-            opsMfa.guard(user);
+            opsMfa.guard(user, req);
             await pk.guard(req, user);
           }
         }

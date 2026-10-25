@@ -98,3 +98,22 @@ test('parallel logins consume each TOTP or recovery code only once', async () =>
     assert.equal((await s.call('GET', '/api/ops/profile', { token: dev.token })).mfa.recoveryLeft, 9);
   } finally { await s.stop(); }
 });
+
+test('REQUIRE_DEV_MFA: the developer reaches the profile to set an extra login up, and nothing else before', async () => {
+  const s = await startServer({ operators: ['taku', 'Mod'], clock: () => NOW, requireDevMfa: true });
+  try {
+    const dev = await s.register('taku'), mod = await s.register('Mod');
+    const call = (u, method, path, body) => s.call(method, path, { token: u.token, body });
+    for (const path of ['/api/ops/players', '/api/ops/log', '/api/sec/me', '/api/vault/spaces', '/api/backup']) {
+      const r = await call(dev, 'GET', path);
+      assert.deepEqual([r.status, r.error.code], [403, 'mfa_setup_required'], path);
+    }
+    assert.equal((await call(dev, 'GET', '/api/ops/me')).status, 200);
+    assert.equal((await call(dev, 'GET', '/api/ops/profile')).status, 200);
+    assert.equal((await call(mod, 'GET', '/api/ops/players')).status, 200, 'an operator is not asked');
+    const setup = await call(dev, 'POST', prefix + 'begin', { password: PASSWORD });
+    const enabled = await call(dev, 'POST', prefix + 'enable', { password: PASSWORD, mode: 2, otp: code(setup.secret) });
+    assert.equal(enabled.status, 200);
+    assert.equal((await call(dev, 'GET', '/api/ops/players')).status, 200, 'with the extra login set up, the site opens');
+  } finally { await s.stop(); }
+});

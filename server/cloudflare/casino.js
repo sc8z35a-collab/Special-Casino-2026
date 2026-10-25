@@ -14,6 +14,7 @@ import { nextAlarm, monthOf } from './awake.js';
 
 const HOUSEKEEPING_EVERY = 6 * 3600000;
 const JSON_HEADERS = {
+  'Strict-Transport-Security': 'max-age=31536000',
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff',
