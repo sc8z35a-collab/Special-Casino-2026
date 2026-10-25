@@ -950,6 +950,22 @@ MIGRATIONS.push([
    )`
 ]);
 
+// the browsers an operator's account has been logged in from (server/core/opslogin.js): a wait on the
+// account, which strangers can start, does not shut out a browser the account has used; the browser's
+// id is kept as a hash
+MIGRATIONS.push([
+  `CREATE TABLE ops_devices (
+     name_key TEXT    NOT NULL,
+     dev      TEXT    NOT NULL,
+     first_at INTEGER NOT NULL,
+     at       INTEGER NOT NULL,
+     uses     INTEGER NOT NULL DEFAULT 1,
+     ip_hash  TEXT    NOT NULL DEFAULT '',
+     agent    TEXT    NOT NULL DEFAULT '',
+     PRIMARY KEY (name_key, dev)
+   )`
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)

@@ -80,7 +80,7 @@
     vault_bucket: '保管庫をR2へ移動', vault_ai_label: 'AIのラベル（保管庫）', vault_ai_done: 'AIが実装（保管庫）', vault_restore: '保管庫で実装済みから戻す',
     vault_quota_request: '保管庫の容量の申請', vault_quota_cancel: '容量の申請の取り下げ', vault_quota_approve: '容量の申請を承認', vault_quota_decline: '容量の申請を見送り',
     vault_quota_set: '保管庫の上限を変更', vault_rename: '保管庫で名前を変更', vault_backup: '保管庫のバックアップ', vault_backup_off: 'バックアップから外す',
-    vault_backup_restore: 'バックアップから戻す', vault_ai_comment: 'AIのコメント（保管庫）', vault_implemented: '保管庫で実装済みにする', staff_name_reused: '運営の名前を別のアカウントが使用', patrol_alert: '自動点検：異常', patrol_notice: '自動点検：お知らせ', patrol_clear: '自動点検：解消', pk_fail: 'パスキーの入力ミス', pk_issue: 'パスキーを取得（Discord）', pk_breakglass: '非常口でパスキー認証を開いた', vault_link_trip: '保管庫のリンクを自動停止', milestone: '登録者数の記念', voice_notice: '通話品質アップのお知らせ'
+    vault_backup_restore: 'バックアップから戻す', vault_ai_comment: 'AIのコメント（保管庫）', vault_implemented: '保管庫で実装済みにする', staff_name_reused: '運営の名前を別のアカウントが使用', patrol_alert: '自動点検：異常', patrol_notice: '自動点検：お知らせ', patrol_clear: '自動点検：解消', pk_fail: 'パスキーの入力ミス', login_fail: 'ログインの失敗', login_lock: 'ログインの失敗でロック', login_burst: 'ログインの失敗が多すぎる', pk_issue: 'パスキーを取得（Discord）', pk_breakglass: '非常口でパスキー認証を開いた', vault_link_trip: '保管庫のリンクを自動停止', milestone: '登録者数の記念', voice_notice: '通話品質アップのお知らせ'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
   var KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
@@ -122,7 +122,7 @@
         return res.json().catch(function () { return {}; }).then(function (j) {
           if (res.ok) return j;
           var e = j.error || {};
-          var err = { status: res.status, code: e.code || '', message: e.message || 'エラーが発生しました（' + res.status + '）', until: e.until || 0, mode: e.mode || 0 };
+          var err = { status: res.status, code: e.code || '', message: e.message || 'エラーが発生しました（' + res.status + '）', until: e.until || 0, left: e.left || 0, scope: e.scope || '', mode: e.mode || 0 };
           // the server stopped itself (a plain emergency stop, or a lockdown)
           if (res.status === 503 && e.emergency) showEmergency(e);
           else if (e.code === 'pk_required' || e.code === 'pk_expired') showPasskey(e.code === 'pk_required' && err.message === PK_DEFAULT ? '' : err.message);
@@ -242,6 +242,12 @@
     leaveApp();
     $('#login').hidden = false;
     $('#login-error').textContent = message || '';
+    // (a name that was tried in this tab comes back after a reload; the server says how long it must still wait)
+    var last = '';
+    try { last = sessionStorage.getItem(NAME_KEY) || ''; } catch (e) { last = ''; }
+    if (last && !$('#login-name').value) $('#login-name').value = last;
+    askWait();
+    setTimeout(askWait, 900);
     setTimeout(function () { $('#login-name').focus(); }, 50);
   }
   // The passkey (server/core/pk.js), asked each time this page opens and after
@@ -370,8 +376,8 @@
     }
     showLogin(message);
   }
-  // this browser's own id (two wrong logins make it wait: server/core/opslogin.js)
-  var DEVICE_KEY = 'two-state-ops/device', lockTimer = 0, lockEnd = 0;
+  // this browser's own id (the server keeps it apart from other browsers: server/core/opslogin.js)
+  var DEVICE_KEY = 'two-state-ops/device', NAME_KEY = 'two-state-ops/login-name', deviceNew = false;
   function opsDevice() {
     var d = null;
     try { d = localStorage.getItem(DEVICE_KEY); } catch (e) { d = null; }
@@ -379,38 +385,68 @@
       var a = new Uint8Array(18);
       crypto.getRandomValues(a);
       d = btoa(String.fromCharCode.apply(null, a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      deviceNew = true;
       try { localStorage.setItem(DEVICE_KEY, d); } catch (e) { /* this tab only */ }
     }
     return d;
   }
-  // the wait, counted down on the login card
-  function waitUntil(until) {
-    lockEnd = until;
+  // The wait after wrong tries is the server's: it counts it (for the name typed, for this browser and
+  // for the address) and says how much is left. This page only shows that, counting down from what it
+  // was told with its own timer, so a reload, another tab or browser, or a wrong clock on this
+  // computer changes nothing. Nothing of the count is kept here.
+  var lockTimer = 0, lockLeft = 0, lockStamp = 0, askTimer = 0, askSeq = 0;
+  function lockRest() { return lockLeft > 0 ? Math.max(0, lockLeft - (performance.now() - lockStamp)) : 0; }
+  function showWait(left, scope) {
+    lockLeft = left; lockStamp = performance.now();
     clearInterval(lockTimer);
-    var go = $('#login-go');
+    var go = $('#login-go'), what = scope === 'account' ? 'このアカウントは入力制限中です' : 'この接続からの入力が制限されています';
     function tick() {
-      var left = lockEnd - Date.now();
-      if (left <= 0) { clearInterval(lockTimer); go.disabled = false; $('#login-error').textContent = 'もう一度入力できます'; return; }
+      var rest = lockRest();
+      // (the time is up: the server is asked once more, and it has the last word)
+      if (rest <= 0) { clearInterval(lockTimer); askWait(true); return; }
       go.disabled = true;
-      $('#login-error').textContent = '入力制限中です。あと ' + Math.floor(left / 60000) + '分' + pad(Math.floor(left / 1000) % 60) + '秒で入力できます';
+      $('#login-error').textContent = what + '。あと ' + Math.floor(rest / 60000) + '分' + pad(Math.floor(rest / 1000) % 60) + '秒で入力できます';
     }
     tick();
     lockTimer = setInterval(tick, 1000);
   }
+  function clearWait(said) {
+    var was = lockLeft > 0;
+    clearInterval(lockTimer); lockLeft = 0;
+    $('#login-go').disabled = false;
+    if (was || /入力制限|制限されて/.test($('#login-error').textContent)) $('#login-error').textContent = said ? 'もう一度入力できます' : '';
+  }
+  // ask the server how long the name typed (or, with none, this browser and address) must still wait
+  function askWait(ended) {
+    var name = $('#login-name').value.trim(), seq = ++askSeq;
+    request('POST', '/api/ops/login-wait', { name: name }, { 'X-Ops-Device': opsDevice() }).then(function (r) {
+      if (seq !== askSeq || $('#login').hidden) return;
+      if (r.left > 0) showWait(r.left, r.scope); else clearWait(ended === true);
+    }, function () { /* the login itself tells the wait when it is tried */ });
+  }
+  // (the name typed, or filled in by the browser: asked a moment after the last change)
+  function askSoon() { clearTimeout(askTimer); askTimer = setTimeout(askWait, 350); }
   function onLogin(e) {
     e.preventDefault();
-    if (Date.now() < lockEnd) return;
+    if (lockRest() > 0) return;
     var name = $('#login-name').value.trim(), pass = $('#login-pass').value;
     if (!name || !pass) { $('#login-error').textContent = '名前とパスワードを入力してください'; return; }
     var go = $('#login-go');
     go.disabled = true;
     $('#login-error').textContent = '';
-    // (the day's ログイン as well: a login with the password is one)
-    request('POST', '/api/ops/login', { name: name, password: pass, enter: true, otp: $('#login-otp').value.trim(), phrase: $('#login-phrase').value, recovery: $('#login-backup').value.trim() }, { 'X-Ops-Device': opsDevice() }).then(function (r) {
+    // (the name stays for this tab only, so that a reload can ask the server how long it must still wait)
+    try { sessionStorage.setItem(NAME_KEY, name); } catch (e2) { /* the page asks for what is typed */ }
+    var device = opsDevice();
+    // (the day's ログイン as well: a login with the password is one; and what the browser can say of the
+    // device goes with it, to be written to the log if the try is wrong)
+    (window.OpsDevice ? OpsDevice.collect('ops', deviceNew) : Promise.resolve({})).then(function (client) {
+      return request('POST', '/api/ops/login', { name: name, password: pass, enter: true, otp: $('#login-otp').value.trim(), phrase: $('#login-phrase').value, recovery: $('#login-backup').value.trim(), client: client }, { 'X-Ops-Device': device });
+    }).then(function (r) {
       setToken(r.token);
       return request('GET', '/api/ops/me').then(function (me) {
         $('#login-pass').value = '';
         $('#login-otp').value = ''; $('#login-phrase').value = ''; $('#login-backup').value = ''; $('#login-extra').open = false;
+        try { sessionStorage.removeItem(NAME_KEY); } catch (e2) { /* nothing was kept */ }
         start(me);
       }, function (err) {
         // the passkey is asked for next (its page is up already): the login stays
@@ -422,9 +458,9 @@
       });
     }).catch(function (err) {
       if (err.code === 'mfa_required' || err.code === 'mfa_invalid') { $('#login-extra').open = true; $('#login-otp').focus(); }
-      if (err.code === 'ops_locked' && err.until) { waitUntil(err.until); return; }
+      if (err.code === 'ops_locked') { showWait(err.left || Math.max(1000, (err.until || 0) - Date.now()), err.scope); return; }
       $('#login-error').textContent = err.message;
-    }).then(function () { if (Date.now() >= lockEnd) go.disabled = false; });
+    }).then(function () { if (lockRest() <= 0) go.disabled = false; });
   }
   function logout() {
     var t = token;
@@ -5524,7 +5560,7 @@
     if (a === 'feedback_handled' || a === 'idea_adopt' || a === 'player_feedback') return tab('feedback', '報告・意見案');
     if (/^ops_|^viewer_|^dev_code_/.test(a)) return tab('operators', '運営者');
     if (a === 'account_delete' || a === 'account_purge') return tab('archive', 'プレイヤーアーカイブ');
-    if (/^shield_|^lockdown|^emergency_|^sec_/.test(a)) return tab('security', 'セキュリティ');
+    if (/^shield_|^lockdown|^emergency_|^sec_|^login_/.test(a)) return tab('security', 'セキュリティ');
     if (/^backup_|^discord_/.test(a)) return tab('server', 'サーバー');
     if (/^pay_/.test(a) && state.developer) return tab('pay', '課金');
     if (t) return to(t.name + ' さん', function () { openDetail(t.id); });
@@ -5639,6 +5675,9 @@
     window.addEventListener('orientationchange', topBar);
 
     $('#login-form').addEventListener('submit', onLogin);
+    $('#login-name').addEventListener('input', askSoon);
+    $('#login-name').addEventListener('change', askSoon);
+    if (window.OpsDevice) OpsDevice.watch($('#login-form'));
     initDevUnit();
     diaryProfile = window.OpsDiaryProfile({ request: request, el: el, state: state, face: face, setView: setView, openDetail: openDetail, toast: toast, fail: fail });
     $('#logout').addEventListener('click', logout);

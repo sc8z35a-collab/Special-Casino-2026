@@ -93,6 +93,7 @@ test('parallel logins consume each TOTP or recovery code only once', async () =>
     const login = (i, fields) => s.call('POST', '/api/ops/login', { body: { name: 'taku', password: PASSWORD, ...fields }, headers: { 'X-Ops-Device': 'parallel-device-' + String(i).padStart(4, '0') } });
     const otpResults = await Promise.all([0,1,2].map(i => login(i, { otp: code(setup.secret, 1) })));
     assert.equal(otpResults.filter(r => r.token).length, 1);
+    s.app.db.prepare('DELETE FROM ops_locks').run();   // (the replays were wrong tries on the account: its wait is not what this tests)
     const backupResults = await Promise.all([3,4,5].map(i => login(i, { recovery: enabled.recovery[0] })));
     assert.equal(backupResults.filter(r => r.token).length, 1);
     assert.equal((await s.call('GET', '/api/ops/profile', { token: dev.token })).mfa.recoveryLeft, 9);

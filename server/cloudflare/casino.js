@@ -133,6 +133,22 @@ class SocketHub {
   }
 }
 
+// What Cloudflare's edge knows of the connection (request.cf), for the operators' log when a login
+// is got wrong (server/core/reqinfo.js). Plain values only; what the plan does not give is not there.
+const CF_FIELDS = ['country', 'region', 'regionCode', 'city', 'postalCode', 'timezone', 'latitude', 'longitude', 'continent', 'metroCode', 'isEUCountry', 'asn', 'asOrganization',
+  'colo', 'httpProtocol', 'tlsVersion', 'tlsCipher', 'clientTcpRtt', 'clientQuicRtt', 'verifiedBotCategory', 'requestPriority', 'edgeRequestKeepAliveStatus'];
+function edgeOf(cf) {
+  if (!cf || typeof cf !== 'object') return null;
+  const out = {};
+  for (const k of CF_FIELDS) if (cf[k] !== undefined && cf[k] !== null && typeof cf[k] !== 'object') out[k] = cf[k];
+  const bm = cf.botManagement;
+  if (bm && typeof bm === 'object') {
+    out.botManagement = {};
+    for (const k of ['score', 'verifiedBot', 'staticResource', 'corporateProxy', 'ja3Hash', 'ja4']) if (bm[k] !== undefined && bm[k] !== null && typeof bm[k] !== 'object') out.botManagement[k] = bm[k];
+  }
+  return out;
+}
+
 // The host-independent request the core API understands.
 function coreRequest(request, url) {
   return {
@@ -140,6 +156,7 @@ function coreRequest(request, url) {
     path: url.pathname,
     query: url.searchParams,
     ip: request.headers.get('cf-connecting-ip') || '',
+    meta: { cf: edgeOf(request.cf) },
     header: (name) => request.headers.get(name),
     async json(limit = 16 * 1024) {
       if (!/^application\/json\b/i.test(request.headers.get('content-type') || '')) {

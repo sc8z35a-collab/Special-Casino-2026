@@ -13,6 +13,7 @@
 
   var TOKEN_KEY = 'two-state-sec/token';
   var DEVICE_KEY = 'two-state-sec/device';
+  var NAME_KEY = 'two-state-sec/login-name';
   // the newest channel message each operator has seen here (+ their id)
   var SEEN_KEY = 'two-state-sec/seen/';
   // how often it refreshes: the developer's one choice for every operator (server/core/ops.js)
@@ -34,7 +35,7 @@
   var token = null, me = null, meId = 0, speed = 'normal';
   // each sign-in and sign-out starts a new session: answers to an older one are dropped
   var session = 0;
-  var timer = 0, lockEnd = 0, lockTimer = 0, statusErr = '';
+  var timer = 0, lockLeft = 0, lockStamp = 0, lockTimer = 0, askTimer = 0, askSeq = 0, statusErr = '', deviceNew = false;
   var side = 'log', log = [], logQ = '', logKind = '', logDone = false, logTimer = 0, logGen = 0, logMoreBusy = false;
   var lastChatId = 0, seenChat = 0, unread = 0, chatLoaded = false, chatOpen = false, sending = false;
   var locked = false, closeDialog = null;
@@ -49,6 +50,7 @@
       var a = new Uint8Array(18);
       crypto.getRandomValues(a);
       d = btoa(String.fromCharCode.apply(null, a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      deviceNew = true;
       try { localStorage.setItem(DEVICE_KEY, d); } catch (e) { /* this tab */ }
     }
     return d;
@@ -68,7 +70,7 @@
         return res.json().catch(function () { return {}; }).then(function (j) {
           if (res.ok) return j;
           var e = j.error || {};
-          var err = { status: res.status, code: e.code || '', message: e.message || ('エラー（' + res.status + '）'), until: e.until || 0 };
+          var err = { status: res.status, code: e.code || '', message: e.message || ('エラー（' + res.status + '）'), until: e.until || 0, left: e.left || 0, scope: e.scope || '' };
           // the passkey is asked for (this page is new, or its hour is up)
           if ((e.code === 'pk_required' || e.code === 'pk_expired') && token && s === session) showPasskey(e.code === 'pk_required' && err.message === PK_DEFAULT ? '' : err.message);
           // signed out on the server: only while signed in, and in this same
@@ -173,6 +175,12 @@
     $('#pk').hidden = true;
     $('#app').hidden = true; $('#login').hidden = false;
     $('#login-error').textContent = message || '';
+    // (a name tried in this tab comes back after a reload; the server says how long it must still wait)
+    var last = '';
+    try { last = sessionStorage.getItem(NAME_KEY) || ''; } catch (e) { last = ''; }
+    if (last && !$('#login-name').value) $('#login-name').value = last;
+    askWait();
+    setTimeout(askWait, 900);
     clearInterval(timer);
     clearInterval(aliveTimer);
     document.body.classList.remove('role-viewer');
@@ -189,27 +197,53 @@
   function revoke(t) {
     if (t) fetch('/api/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: '{}' }).catch(function () {});
   }
-  function waitUntil(until) {
-    lockEnd = until; clearInterval(lockTimer);
-    var go = $('#login-go');
+  // The wait after wrong tries is the server's (server/core/opslogin.js): it counts it and says how much
+  // is left; this page only shows that, so a reload or another tab shows the same count.
+  function lockRest() { return lockLeft > 0 ? Math.max(0, lockLeft - (performance.now() - lockStamp)) : 0; }
+  function showWait(left, scope) {
+    lockLeft = left; lockStamp = performance.now(); clearInterval(lockTimer);
+    var go = $('#login-go'), what = scope === 'account' ? 'このアカウントは入力制限中です' : 'この接続からの入力が制限されています';
     function tick() {
-      var left = lockEnd - Date.now();
-      if (left <= 0) { clearInterval(lockTimer); go.disabled = false; $('#login-error').textContent = 'もう一度入力できます'; return; }
+      var rest = lockRest();
+      if (rest <= 0) { clearInterval(lockTimer); askWait(true); return; }
       go.disabled = true;
-      $('#login-error').textContent = '入力制限中です。あと ' + Math.floor(left / 60000) + '分' + pad(Math.floor(left / 1000) % 60) + '秒';
+      $('#login-error').textContent = what + '。あと ' + Math.floor(rest / 60000) + '分' + pad(Math.floor(rest / 1000) % 60) + '秒';
     }
     tick(); lockTimer = setInterval(tick, 1000);
   }
+  function clearWait(said) {
+    var was = lockLeft > 0;
+    clearInterval(lockTimer); lockLeft = 0;
+    $('#login-go').disabled = false;
+    if (was || /入力制限|制限されて/.test($('#login-error').textContent)) $('#login-error').textContent = said ? 'もう一度入力できます' : '';
+  }
+  function askWait(ended) {
+    var name = $('#login-name').value.trim(), seq = ++askSeq;
+    request('POST', '/api/ops/login-wait', { name: name }, { 'X-Ops-Device': device() }).then(function (r) {
+      if (seq !== askSeq || $('#login').hidden) return;
+      if (r.left > 0) showWait(r.left, r.scope); else clearWait(ended === true);
+    }, function () { /* the login itself tells the wait when it is tried */ });
+  }
+  function askSoon() { clearTimeout(askTimer); askTimer = setTimeout(askWait, 350); }
   function onLogin(e) {
     e.preventDefault();
-    if (Date.now() < lockEnd) return;
+    if (lockRest() > 0) return;
     var name = $('#login-name').value.trim(), pass = $('#login-pass').value;
     if (!name || !pass) { $('#login-error').textContent = '名前とパスワードを入力してください'; return; }
     var go = $('#login-go'); go.disabled = true; $('#login-error').textContent = '';
+    try { sessionStorage.setItem(NAME_KEY, name); } catch (e2) { /* the page asks for what is typed */ }
     setToken(null);   // (one left from before is of no use: a new one comes)
-    request('POST', '/api/ops/login', { name: name, password: pass, otp: $('#login-otp').value.trim(), phrase: $('#login-phrase').value, recovery: $('#login-backup').value.trim() }, { 'X-Ops-Device': device() }).then(function (r) {
+    var dev = device();
+    // (what the browser can say of the device goes with the login, to be written to the log if the try is wrong)
+    (window.OpsDevice ? OpsDevice.collect('sec', deviceNew) : Promise.resolve({})).then(function (client) {
+      return request('POST', '/api/ops/login', { name: name, password: pass, otp: $('#login-otp').value.trim(), phrase: $('#login-phrase').value, recovery: $('#login-backup').value.trim(), client: client }, { 'X-Ops-Device': dev });
+    }).then(function (r) {
       setToken(r.token);
-      return request('GET', '/api/sec/me').then(function (m) { $('#login-pass').value = ''; $('#login-otp').value = ''; $('#login-phrase').value = ''; $('#login-backup').value = ''; $('#login-extra').open = false; start(m); }, function (err) {
+      return request('GET', '/api/sec/me').then(function (m) {
+        $('#login-pass').value = ''; $('#login-otp').value = ''; $('#login-phrase').value = ''; $('#login-backup').value = ''; $('#login-extra').open = false;
+        try { sessionStorage.removeItem(NAME_KEY); } catch (e2) { /* nothing was kept */ }
+        start(m);
+      }, function (err) {
         // the passkey is asked for next (its page is up already): the login stays
         if (err.code === 'pk_required' || err.code === 'pk_expired') { $('#login-pass').value = ''; $('#login-otp').value = ''; $('#login-phrase').value = ''; $('#login-backup').value = ''; return; }
         revoke(r.token);
@@ -217,9 +251,9 @@
       });
     }).catch(function (err) {
       if (err.code === 'mfa_required' || err.code === 'mfa_invalid') { $('#login-extra').open = true; $('#login-otp').focus(); }
-      if (err.code === 'ops_locked' && err.until) { waitUntil(err.until); return; }
+      if (err.code === 'ops_locked') { showWait(err.left || Math.max(1000, (err.until || 0) - Date.now()), err.scope); return; }
       $('#login-error').textContent = err.message;
-    }).then(function () { if (Date.now() >= lockEnd) go.disabled = false; });
+    }).then(function () { if (lockRest() <= 0) go.disabled = false; });
   }
   function logout() {
     revoke(token);
@@ -609,6 +643,9 @@
   }
   function init() {
     $('#login-form').addEventListener('submit', onLogin);
+    $('#login-name').addEventListener('input', askSoon);
+    $('#login-name').addEventListener('change', askSoon);
+    if (window.OpsDevice) OpsDevice.watch($('#login-form'));
     $('#pk-form').addEventListener('submit', onPasskey);
     $('#pk-other').addEventListener('click', logout);
     $('#logout').addEventListener('click', logout);

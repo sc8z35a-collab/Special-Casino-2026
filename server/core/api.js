@@ -149,6 +149,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const LIMITS = {
     register: [config.registerPerMinute, Math.max(1, Math.ceil(config.registerPerMinute / 2))],
     login: [10, 5],
+    // (the operator site asking how long a name must still wait: when the page opens and as a name is typed)
+    loginWait: [60, 20],
     nameCheck: [60, 20],
     // at most one spin per second (no banking: burst 1, one token refilled a second)
     spin: [60, 1],
@@ -3750,8 +3752,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   routes['GET /api/ops/me'] = (req, u) => ({ ...opsMe(req, u), ...opsEntry.state(u), mfa: ops.isOperator(u) ? opsMfa.status(u) : undefined });
   // the operator site's own login (two wrong tries: a wait that doubles); while stopped, the developer's only
   const opsLogin = createOpsLogin({
-    q, findByName, isOperator: ops.isOperator, isViewer: ops.isViewer, createSession, seenOn, entered: opsEntry.record, verifyMfa: opsMfa.verify,
+    q, findByName, isOperator: ops.isOperator, isViewer: ops.isViewer, isDeveloper, createSession, seenOn, entered: opsEntry.record, verifyMfa: opsMfa.verify,
+    opsLog, secret, clock: config.clock || Date.now,
     rate: (req) => rate(limit.login, req.ip, '試行回数が多すぎます。しばらく待ってからお試しください'),
+    rateWait: (req) => rate(limit.loginWait, req.ip, '確認が多すぎます。しばらく待ってからお試しください'),
     // during a lockdown the operators still come in to reach the security base;
     // during a plain emergency stop, only the developer
     allow: (u) => emergency.locked() || !emergency.stopped() || isDeveloper(u), stoppedBody: () => emergency.body()
@@ -3894,7 +3898,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const sec = createSec({ q, getUser, ops, emergency, shield, opsLog, health, secret, isDeveloper, live, seen: opsSeen });
   Object.assign(routes, sec.routes);
 
-  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', ...pay.public, ...vault.public, ...bot.public, ...lineBot.public, ...ext.publicKeys]);
+  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', 'POST /api/ops/login-wait', ...pay.public, ...vault.public, ...bot.public, ...lineBot.public, ...ext.publicKeys]);
 
   /* ---------------------------------------------------------------- live connection hooks */
 
@@ -4044,6 +4048,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const admin = createAdmin(db, {
     seal: (code) => sealText(CODE_KEY, code),
     isDeveloper,
+    unlockLogins: (name) => opsLogin.unlock(name),
     onBan: (u, on) => {
       if (!on) { liftBan(u, 'lifted'); return; }
       // (a 永久BAN: to the プレイヤーアーカイブ, like one from the operator site)
@@ -4114,14 +4119,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // operator or a viewer on its own).
   const VIEW_ONLY = new Set([
     'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/ops/alive', 'GET /api/ops/counts', 'GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback',
-    'GET /api/ops/log', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security', 'GET /api/ops/patrol', 'GET /api/ops/ext',
+    'GET /api/ops/log', 'GET /api/ops/log/entries', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security', 'GET /api/ops/patrol', 'GET /api/ops/ext',
     'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify', 'POST /api/logout',
     'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close'
   ]);
 
   // what still comes in while the server is stopped for an emergency: the
   // developer's way back in
-  const WHILE_STOPPED = new Set(['POST /api/ops/login', 'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/emergency', 'POST /api/emergency/release',
+  const WHILE_STOPPED = new Set(['POST /api/ops/login', 'POST /api/ops/login-wait', 'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/emergency', 'POST /api/emergency/release',
     'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close', 'POST /api/pk/breakglass', 'POST /api/discord/interactions', 'POST /api/line/webhook']);
   // what still comes in during a lockdown: the security base (/sec/) for the
   // operators, the operator login they reach it with (and the logout that
@@ -4129,7 +4134,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // Everything else — players, the operator site, the developer's own tools —
   // is shut.
   const WHILE_LOCKED = new Set([
-    'POST /api/ops/login', 'POST /api/logout', 'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify',
+    'POST /api/ops/login', 'POST /api/ops/login-wait', 'POST /api/logout', 'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify',
     'GET /api/sec/messages', 'POST /api/sec/messages', 'POST /api/sec/lockdown', 'POST /api/sec/release',
     'GET /api/emergency', 'POST /api/emergency/release',
     'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close', 'POST /api/pk/breakglass', 'POST /api/discord/interactions', 'POST /api/line/webhook'

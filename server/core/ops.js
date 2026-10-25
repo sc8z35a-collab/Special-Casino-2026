@@ -781,11 +781,20 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     'GET /api/ops/log': (req, u) => {
       see(u);
       const before = Number(req.query.get('before')) || 0;
-      const entries = opsLog.list({ before, find: req.query.get('q') || '', kind: req.query.get('kind') || '' });
+      // slim=1: the lines only (a list); each one's detail comes when it is opened (/api/ops/log/entries)
+      const slim = req.query.get('slim') === '1';
+      const entries = opsLog.list({ before, find: req.query.get('q') || '', kind: req.query.get('kind') || '', slim });
       return {
-        entries: isOperator(u) ? entries : entries.map(viewerEntry), viewer: !isOperator(u),
+        entries: isOperator(u) || slim ? entries : entries.map(viewerEntry), viewer: !isOperator(u),
         counts: before ? null : opsLog.counts(), now: Date.now()
       };
+    },
+
+    // some lines in full (≤ 100, by number): what a list leaves out, for the lines that are opened
+    'GET /api/ops/log/entries': (req, u) => {
+      see(u);
+      const entries = opsLog.many(String(req.query.get('ids') || '').split(',').slice(0, 100));
+      return { entries: isOperator(u) ? entries : entries.map(viewerEntry) };
     },
 
     'GET /api/ops/log/verify': async (req, u) => {

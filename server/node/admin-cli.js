@@ -27,6 +27,7 @@ const HELP = `BLOCKBUSTER REELS 管理コマンド
   staff-pin <ユーザー>               運営の名前の権限を、そのアカウントに固定する（元のアカウントが消えたあと、別の人が同じ名前を使っているとき）
   staff-unpin <名前>                 運営の名前の固定を解除する（その名前をもう一度登録できるようになる）
   ext-forget <部品の名前>            外れてアップロードを止めている追加部品を、外したままでよいことにする
+  login-unlock [名前]                運営サイトのログインの待ち時間を解除する（名前を省くとすべて）
   messages [ユーザー]                ロビーの最新メッセージ（ユーザー指定でその人の発言）
   redact <メッセージID>              メッセージを削除済みにする
   backup <ファイル>                  全データをファイルに保存（.json）
@@ -112,6 +113,11 @@ export async function run(argv, call, print = console.log) {
     case 'ext-forget': {
       const r = await call('ext-forget', [args.join(' ')]);
       print(r.removed ? `「${r.id}」を、外したままでよいことにしました` : `「${r.id}」はもともと記録にありません`);
+      break;
+    }
+    case 'login-unlock': {
+      const r = await call('login-unlock', [args.join(' ')]);
+      print(`${r.name ? `「${r.name}」の` : 'すべての'}待ち時間を解除しました（${r.cleared}件）`);
       break;
     }
     case 'staff-unpin': {

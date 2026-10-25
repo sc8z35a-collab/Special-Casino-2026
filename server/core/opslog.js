@@ -20,7 +20,7 @@ const GENESIS = 'TWO STATE ops log';
 
 export const LOG_KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
 const PLAYER = ['pay_order', 'pay_paid', 'pay_slip', 'pay_unpaid', 'pay_refund'];
-const SECURITY = ['patrol_alert', 'patrol_notice', 'patrol_clear', 'staff_name_reused', 'dev_code_fail', 'dev_code_set', 'dev_code_change', 'ops_grant', 'ops_revoke', 'ops_restore', 'viewer_grant', 'viewer_revoke', 'pay_bad_signature', 'pay_unknown',
+const SECURITY = ['login_fail', 'login_lock', 'login_burst', 'patrol_alert', 'patrol_notice', 'patrol_clear', 'staff_name_reused', 'dev_code_fail', 'dev_code_set', 'dev_code_change', 'ops_grant', 'ops_revoke', 'ops_restore', 'viewer_grant', 'viewer_revoke', 'pay_bad_signature', 'pay_unknown',
   'pay_review', 'log_kept', 'account_delete', 'account_purge'];
 export function kindOf(action) {
   const a = String(action || '');
@@ -142,20 +142,36 @@ export function createOpsLog({ q, anchor = null, onAdd = null }) {
     };
   }
 
-  // newest first; `find`: words in the summary, names or action; `kind`: one of LOG_KINDS
-  function list({ before = 0, find = '', kind = '', limit = 200 } = {}) {
+  // A line for a list: no detail, no hashes (they are fetched, one line at a time, when a line is
+  // opened). A vault line carries where it was (`place`), so the list can still lead to it.
+  function lean(r) {
+    const out = { id: r.id, at: r.at, jst: jst(r.at), actor: { id: r.actor_id, name: r.actor_name }, action: r.action, kind: kindOf(r.action), target: r.target_id ? { id: r.target_id, name: r.target_name } : null, summary: r.summary };
+    if (r.action.startsWith('vault_')) {
+      try { const d = JSON.parse(r.detail); out.place = { space: typeof d.space === 'string' ? d.space : '', folder: typeof d.folder === 'string' ? d.folder : '' }; } catch { out.place = { space: '', folder: '' }; }
+    }
+    return out;
+  }
+  // newest first; `find`: words in the summary, names or action; `kind`: one of LOG_KINDS; `slim`: lines for a list
+  function list({ before = 0, find = '', kind = '', limit = 200, slim = false } = {}) {
+    const shape = slim ? lean : dto;
     // "#123": that line (a log line quoted in the 運営チャット)
     const one = /^#(\d{1,15})$/.exec(String(find || '').trim());
     if (one) {
       const r = q(`SELECT * FROM ops_log WHERE id = ? ${IS[kind] ? `AND ${IS[kind]}` : ''}`).get(Number(one[1]));
-      return r ? [dto(r)] : [];
+      return r ? [shape(r)] : [];
     }
     const like = '%' + String(find || '').slice(0, 60) + '%';
     const only = IS[kind] ? `AND ${IS[kind]}` : '';
     const rows = q(`SELECT * FROM ops_log WHERE id < ? ${only} AND (? = '%%' OR summary LIKE ? OR actor_name LIKE ? OR target_name LIKE ? OR action LIKE ?)
                     ORDER BY id DESC LIMIT ?`)
       .all(before > 0 ? before : Number.MAX_SAFE_INTEGER, like, like, like, like, like, Math.min(500, limit));
-    return rows.map(dto);
+    return rows.map(shape);
+  }
+  // some lines in full, by number (at most 100): the line that was opened, or the lines of a report
+  function many(ids) {
+    const want = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter((n) => Number.isSafeInteger(n) && n > 0))].slice(0, 100);
+    if (!want.length) return [];
+    return q(`SELECT * FROM ops_log WHERE id IN (${want.map(() => '?').join(',')}) ORDER BY id DESC`).all(...want).map(dto);
   }
   // how many of each kind
   function counts() {
@@ -202,5 +218,5 @@ export function createOpsLog({ q, anchor = null, onAdd = null }) {
     return { ok: true, count: n, last, anchor: kept ? { id: kept.id, at: kept.at } : null };
   }
 
-  return { add, list, counts, verify, dto, keep, all };
+  return { add, list, many, counts, verify, dto, keep, all };
 }

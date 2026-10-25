@@ -122,11 +122,14 @@ export function clientIp(req, trustProxy, ipHeader) {
 
 // The host-independent request the core API understands.
 export function coreRequest(req, url, ip) {
+  const sock = req.socket || {};
   return {
     method: req.method,
     path: url.pathname,
     query: url.searchParams,
     ip,
+    // what this host knows of the connection (for the operators' log when a login is got wrong)
+    meta: { socket: { remote: sock.remoteAddress || '', port: sock.remotePort || 0, family: sock.remoteFamily || '', http: req.httpVersion || '', tls: sock.encrypted ? (sock.getProtocol ? sock.getProtocol() : 'tls') : '' } },
     header: (name) => req.headers[name.toLowerCase()] ?? null,
     json: (limit) => readJson(req, limit),
     bytes: (limit) => readBytes(req, limit)

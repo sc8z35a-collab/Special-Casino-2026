@@ -10,6 +10,7 @@ const STAFF = /^\/api\/(?:ops|sec|vault|backup|emergency|admin|discord|line|pk|e
 // the staff routes that are open on purpose, with what a stranger / a plain player is told
 const OPEN = new Map([
   ['POST /api/ops/login', [401, 429]],          // the login itself (two wrong tries wait)
+  ['POST /api/ops/login-wait', [200, 429]],     // how long a name must still wait (the same for any name)
   ['POST /api/admin', [403]],                   // ADMIN_TOKEN
   ['POST /api/discord/interactions', [401]],    // signed by Discord
   ['POST /api/line/webhook', [401]],            // signed by LINE
