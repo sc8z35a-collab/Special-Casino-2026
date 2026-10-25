@@ -109,6 +109,8 @@ const BACKUP = 'backup';
 // (the pictures are made small on the operator site: a list's at a few KB, the enlarged view's at tens of KB)
 const PREVIEW_MAX = 160 * 1024;
 const THUMBNAIL_MAX = 16 * 1024;
+// how many times a file may be sent again from its beginning (POST /api/vault/restart)
+const RESTARTS_MAX = 5;
 const PREVIEW_RE = /^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/]+={0,2}$/;
 const INFO_MAX = 8 * 1024;
 // a link to every file (of the developer's vault)
@@ -156,14 +158,16 @@ const UPLOAD_RE = /^(\d{1,15})\.([0-9a-f]{32})\.(\d{13})\.([\w-]{43})$/;
 export const VAULT_SPEEDS = {
   normal: { name: '標準', pieceMb: 8, budgetMb: 32, files: 1, perMinute: [1200, 300] },
   fast: { name: '高速', pieceMb: 8, budgetMb: 64, files: 2, perMinute: [3000, 600] },
-  max: { name: '最速', pieceMb: 16, budgetMb: 128, files: 3, perMinute: [9000, 1500] }
+  max: { name: '最速', pieceMb: 16, budgetMb: 128, files: 3, perMinute: [9000, 1500] },
+  // 上限速: the most the sending allows: twice what 最速 keeps in the air, five files at once
+  limit: { name: '上限速', pieceMb: 16, budgetMb: 256, files: 5, perMinute: [20000, 3000] }
 };
 // the routes that carry pieces (their own limit: not the site's general one,
 // nor the shield's count of requests from one address)
 export const VAULT_BULK = new Set(['POST /api/vault/piece', 'POST /api/vault/chunk', 'POST /api/vault/permit', 'POST /api/vault/stored', 'GET /api/vault/chunk']);
 // a file's row as read for everything but its picture (up to 600KB, read
 // only when it is shown): `preview` is 1 when it has one
-const COLS = `id, name, type, note, size, chunks, piece, received, sha256, created_by, created_at, done_at, parent, folder, inside, space, labels, implemented_at, info,
+const COLS = `id, name, type, note, size, chunks, piece, received, sha256, created_by, created_at, done_at, parent, folder, inside, space, labels, implemented_at, info, restarts,
   backup_at, backup_by, removed_at, removed_by, from_space, from_folder, (preview != '') AS preview, (thumbnail != '') AS thumbnail`;
 // the guard: what is not one's own asked for this often in 10 minutes keeps
 // one out of the vault for 15; wrong links from one address this often, out
@@ -329,7 +333,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   }
   // the routes a pass sends alone
   // (`meta`: the small pictures made on the page while the file was in hand go up with the end of the file, even with the page gone)
-  const PASS_ROUTES = new Set(['GET /api/vault/missing', 'POST /api/vault/piece', 'POST /api/vault/chunk', 'POST /api/vault/permit', 'POST /api/vault/stored', 'POST /api/vault/finish', 'POST /api/vault/meta']);
+  const PASS_ROUTES = new Set(['GET /api/vault/missing', 'POST /api/vault/piece', 'POST /api/vault/chunk', 'POST /api/vault/permit', 'POST /api/vault/stored', 'POST /api/vault/finish', 'POST /api/vault/meta', 'POST /api/vault/restart']);
   const passFor = (key, req) => (PASS_ROUTES.has(key) ? passParse(req.header('x-vault-upload')) : null);
   const locked = () => new ApiError(403, 'vault_locked', '閲覧のみです。変更するには開発者コードを入力してください');
   // a file being sent (its pieces, what is missing, the end, a model's
@@ -620,7 +624,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       });
     } catch (e) {
       // a file an extension refused is taken out again (the pieces stored earlier too)
-      if (e.refusedFile) { await erase([e.refusedFile]); bump(); }
+      if (e.refusedFile) { await erase([e.refusedFile]); bump(); e.extra = { ...(e.extra || {}), final: true }; }
       throw e;
     }
     bump();
@@ -940,7 +944,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       developerOnly(u, '保管庫の速さの変更');
       const body = await req.json();
       const v = String(body.speed || '');
-      if (!VAULT_SPEEDS[v]) throw new ApiError(400, 'bad_speed', '速さを選んでください（標準・高速・最速）');
+      if (!VAULT_SPEEDS[v]) throw new ApiError(400, 'bad_speed', '速さを選んでください（標準・高速・最速・上限速）');
       const was = speedNow();
       if (v !== was) {
         q("INSERT INTO meta (key, value) VALUES ('vault_speed', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(v);
@@ -1017,7 +1021,9 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const id = crypto.randomBytes(16).toString('hex');
       const pieceBytes = pieceNow();
       // (an extension may refuse a file before it is made: server/core/ext.js)
-      if (gate) gate.create({ user: u, req, name, size, type, light: !!parent, inside: !!into });
+      if (gate) {
+        try { gate.create({ user: u, req, name, size, type, light: !!parent, inside: !!into }); } catch (e) { if (e instanceof ApiError && e.status < 500) e.extra = { ...(e.extra || {}), final: true }; throw e; }
+      }
       tx(() => {
         const all = used();
         if (all + size > maxBytes) throw new ApiError(413, 'vault_full', `保管庫がいっぱいです（${mb(all)} / ${mb(maxBytes)}）。いらないファイルを削除してください`);
@@ -1081,6 +1087,27 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // every piece sent: the file is whole once all of them are in (what is
     // still missing otherwise)
+    // An unfinished file sent again from its very beginning (the page does it by itself, at most 5 times, 10 seconds apart, when
+    // sending stopped for any reason but a refusal): what had arrived is taken away, then every piece comes again. An extension
+    // standing at the gate (server/core/ext.js) may say no (its `restart` hook); the end of the file is checked as ever, so the same
+    // bytes pass and others do not. Not for a finished file.
+    'POST /api/vault/restart': async (req, u) => {
+      const body = await req.json();
+      const f = sending(req, u, body.id);
+      if (f.done_at) throw new ApiError(409, 'done', 'このファイルはもう全部届いています');
+      if (f.restarts >= RESTARTS_MAX) throw new ApiError(409, 'restarts_used', `最初からのやり直しは1つのファイルにつき${RESTARTS_MAX}回までです。通信などを確かめて、もう一度ファイルを選んでください`);
+      if (gate && gate.restart) {
+        try { gate.restart({ file: f, restarts: f.restarts, user: u, req }); } catch (e) { if (e instanceof ApiError && e.status < 500) e.extra = { ...(e.extra || {}), final: true }; throw e; }
+      }
+      tx(() => {
+        q('DELETE FROM vault_chunks WHERE file_id = ?').run(f.id);
+        q('UPDATE vault_files SET received = 0, restarts = restarts + 1 WHERE id = ?').run(f.id);
+      });
+      if (blobs) await blobs.del(Array.from({ length: f.chunks }, (_, n) => pieceKey(f.id, n)));
+      bump();
+      return { ok: true, restarts: f.restarts + 1, chunks: f.chunks };
+    },
+
     'POST /api/vault/finish': async (req, u) => {
       const body = await req.json();
       const f = sending(req, u, body.id);
@@ -1094,7 +1121,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       try {
         sum = finish(f, Array.from({ length: f.chunks }, (_, n) => have.get(n)), req, u);
       } catch (e) {
-        if (e.refusedFile) { await erase([e.refusedFile]); bump(); }
+        if (e.refusedFile) { await erase([e.refusedFile]); bump(); e.extra = { ...(e.extra || {}), final: true }; }
         throw e;
       }
       return { file: fileDto(fileRow(f.id)), done: true, sha256: sum, missing: [] };

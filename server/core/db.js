@@ -966,6 +966,9 @@ MIGRATIONS.push([
    )`
 ]);
 
+// how many times a vault file was sent again from its beginning (server/core/vault.js: POST /api/vault/restart)
+MIGRATIONS.push(['ALTER TABLE vault_files ADD COLUMN restarts INTEGER NOT NULL DEFAULT 0']);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)

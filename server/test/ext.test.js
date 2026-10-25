@@ -34,6 +34,7 @@ const sample = (log = []) => ({
   hooks: {
     create(info, ctx) { log.push(['create', info.name, info.size, info.user.name]); if (info.name.endsWith('.nope')) throw new ctx.ApiError(403, 'refused', 'refused at the door'); },
     finish(info, ctx) { log.push(['finish', info.file.name, info.fingerprint.length, info.digests.length]); if (info.file.name.startsWith('bad-')) throw new ctx.ApiError(403, 'refused', 'refused at the end'); },
+    restart(info, ctx) { log.push(['restart', info.file.name, info.restarts]); if (info.file.name.startsWith('no-again-')) throw new ctx.ApiError(403, 'refused', 'not again'); },
     inline(info, ctx) { log.push(['inline', info.kind, info.bytes ? info.bytes.length : 0]); if (info.kind === 'diary' && info.refuse) throw new ctx.ApiError(403, 'refused', 'refused'); }
   },
   assets: {
@@ -156,4 +157,35 @@ test('a part that guarded the uploads and is gone shuts them, the patrol says so
   const again = await s.call('POST', '/api/vault/files', { token: dev.token, body: { name: 'two.bin', size: 1, type: 'application/octet-stream' }, headers: { 'X-Vault-Ticket': open } });
   assert.equal(again.status, 200);
   await s.stop();
+});
+
+test('a file sent again from its beginning (by itself, five times at most): what arrived goes, a refusal at the gate is final, 上限速 is a speed', async (t) => {
+  const log = [];
+  const s = await startServer({ operators: ['taku'], limits: LIMITS, extensions: [sample(log)], vaultPieceMb: 1 });
+  t.after(() => s.stop());
+  const dev = await developer(s);
+  const unfinished = async (name) => {
+    const data = crypto.randomBytes(2.5 * 1048576), r = await dev.vcall('POST', '/api/vault/files', { name, size: data.length, type: 'application/octet-stream' });
+    const part = data.subarray(0, r.file.piece);
+    assert.equal((await dev.vcall('POST', '/api/vault/chunk', { id: r.file.id, n: 0, sha256: sha(part), data: part.toString('base64') })).status, 200);
+    return r.file;
+  };
+  const f = await unfinished('again.bin');
+  assert.deepEqual((await dev.vcall('GET', `/api/vault/missing?id=${f.id}`)).missing, [[1, 2]]);
+  for (let i = 1; i <= 5; i++) {
+    const r = await dev.vcall('POST', '/api/vault/restart', { id: f.id });
+    assert.deepEqual([r.ok, r.restarts], [true, i]);
+  }
+  assert.deepEqual((await dev.vcall('GET', `/api/vault/missing?id=${f.id}`)).missing, [[0, 2]], 'every piece again');
+  const sixth = await dev.vcall('POST', '/api/vault/restart', { id: f.id });
+  assert.deepEqual([sixth.status, sixth.error.code], [409, 'restarts_used']);
+  assert.ok(log.filter((e) => e[0] === 'restart' && e[1] === 'again.bin').length >= 5, 'the part at the gate was asked each time');
+  // what the part refuses is final (the page does not send it again), and what it lets pass is checked at the end as ever
+  const refused = await unfinished('no-again-' + 'x.bin');
+  const no = await dev.vcall('POST', '/api/vault/restart', { id: refused.id });
+  assert.deepEqual([no.status, no.error.code, no.error.final], [403, 'refused', true]);
+  assert.equal((await dev.vcall('POST', '/api/vault/restart', { id: 'f'.repeat(32) })).status, 404);
+  // the speed above 最速
+  const top = await dev.call('POST', '/api/vault/speed', { speed: 'limit' });
+  assert.deepEqual([top.speed.id, top.speed.name, top.speed.files], ['limit', '上限速', 5]);
 });

@@ -4163,7 +4163,7 @@
   }
   var VAULT_PAGE = 60;
   // how fast the vault goes (the developer changes it, for everyone)
-  var SPEED_NOTE = { max: '最速：大きな部分（R2 では 16MB）を一度にたくさん、3ファイルずつ', fast: '高速：8MB の部分を一度に多めに、2ファイルずつ', normal: '標準：8MB の部分を少しずつ、1ファイルずつ' };
+  var SPEED_NOTE = { limit: '上限速：最速の2倍の量を一度に、5ファイルずつ（通信量・端末のメモリを多く使います）', max: '最速：大きな部分（R2 では 16MB）を一度にたくさん、3ファイルずつ', fast: '高速：8MB の部分を一度に多めに、2ファイルずつ', normal: '標準：8MB の部分を少しずつ、1ファイルずつ' };
   function renderSpeed() {
     var box = $('#vault-speed-box'), sp = state.vaultSpeed;
     box.hidden = !state.vault || !sp;
@@ -4776,10 +4776,13 @@
     full: '保管庫がいっぱいです。空きができしだい送ります',
     room: 'あなたの容量の上限です。開発者の承認か空きができしだい送ります（「容量を申請」から申請できます）',
     gone: 'このファイルは保管庫から削除されました',
+    restart: '',
+    gave_up: '最初から5回、10秒おきに自動でやり直しましたが送れませんでした。通信などを確かめて「再開」を押してください（通信が戻ると自動でもう一度やり直します）',
+    blocked: '',
     error: ''
   };
   // the stopped ones that go again by themselves (ops/vault-upload.js)
-  var AGAIN_WHY = { net: 1, error: 1, login: 1, locked: 1 };
+  var AGAIN_WHY = { net: 1, error: 1, login: 1, locked: 1, restart: 1 };
   function upInit() {
     var page = function () {
       up.mode = 'page';
@@ -4877,6 +4880,11 @@
     if (j.state === 'wait') return '順番待ち（' + mb(j.size) + '）';
     var why = UP_WHY[j.why] || '';
     if (j.state === 'fail') return 'できませんでした：' + (j.message || why || 'もう一度ファイルを選んでください');
+    // (sent again from its very beginning by itself: which time it is, and when)
+    if (j.why === 'restart') {
+      var left = j.next ? Math.max(0, Math.ceil((j.next - Date.now()) / 1000)) : 0;
+      return '止まりました：' + (j.message ? j.message + '・' : '') + '最初から自動でやり直します（' + (j.restarts || 1) + ' / 5 回目・' + (left ? left + '秒後' : 'まもなく') + '）';
+    }
     // (when it goes again by itself)
     var wait = j.next ? Math.max(0, Math.ceil((j.next - Date.now()) / 1000)) : 0;
     var again = AGAIN_WHY[j.why] ? (wait ? '・' + (wait >= 60 ? Math.ceil(wait / 60) + '分' : wait + '秒') + '後に自動で再開' : '・自動で再開中') : '';
@@ -5073,6 +5081,7 @@
     var list = Object.keys(up.jobs).map(function (k) { return up.jobs[k]; }).filter(function (j) { return j.state !== 'done'; });
     var tasks = list.map(function (j) {
       j.tries = 0;
+      j.restarts = 0;
       j.next = 0;
       if (!j.id) return place(j);
       if (j.why === 'locked' || j.state === 'fail' && j.why !== 'gone') return passFor(j);

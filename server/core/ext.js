@@ -77,7 +77,7 @@ export function createExtensions({ list = [], ctx, secret, clock = Date.now }) {
     for (const e of guarding(name)) e.hooks[name](info, ctx);
   };
   // what the vault and the diary ask before taking a file in
-  const gate = { create: ask('create'), finish: ask('finish'), inline: ask('inline') };
+  const gate = { create: ask('create'), finish: ask('finish'), inline: ask('inline'), restart: ask('restart') };
 
   const routes = {};
   for (const e of active) {
