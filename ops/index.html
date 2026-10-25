@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="ops.css">
 <link rel="stylesheet" href="desktop.css">
 <link rel="stylesheet" href="glass.css">
+<link rel="stylesheet" href="cdw.css">
 <link rel="stylesheet" href="phone.css">
 <link rel="preload" as="image" href="assets/wallpaper-login.webp">
 </head>
@@ -103,6 +104,8 @@
       <button class="tab" data-view="securityhome" type="button">セキュリティーホーム</button>
       <button class="tab" data-view="diary" id="tab-diary" type="button" hidden>開発者日記</button>
       <button class="tab" data-view="profile" id="tab-profile" type="button" hidden>自分のプロフィール<b class="count" id="count-profile" hidden>!</b></button>
+      <button class="tab" data-view="devapp" id="tab-devapp" type="button" hidden>DEV APP</button>
+      <button class="tab" data-view="calendar" id="tab-calendar" type="button">カレンダー</button>
     </nav>
     <div class="top-right">
       <label class="speed" title="運営サイトの更新頻度"><span>更新</span><select id="speed">
@@ -162,6 +165,10 @@
       <form id="devunit-form"><label class="field"><span>コメントを追加</span><textarea id="devunit-text" rows="3" maxlength="2000" required></textarea></label><button class="btn primary" type="submit">送信</button><p class="error" id="devunit-error" role="alert"></p></form></div>
     </div>
   </section>
+  <!-- the calendar (opened from the date in the bar) and the DEV APP (the developer's alone: what is in it comes from the server) -->
+  <section class="view" id="view-calendar" hidden></section>
+  <section class="view" id="view-devapp" hidden></section>
+
   <section class="view" id="view-securityhome" hidden>
     <div class="bar"><h2>セキュリティーホーム</h2><a class="btn small" href="/sec/" target="_blank" rel="noopener">別ウィンドウで開く</a></div>
     <p class="muted">独立したセキュリティーホームを表示します。ログイン・権限・操作は元のサイトのままです。</p>
@@ -607,6 +614,9 @@
 <!-- Presentation only: the existing operator handlers and API calls stay in ops.js. -->
 <script src="desktop.js"></script>
 <script src="glass.js"></script>
+<script src="calendar.js"></script>
+<script src="devapp.js"></script>
+<script src="cdw.js"></script>
 <script src="diary-profile.js"></script>
 <script src="ui-guard.js"></script>
 <script src="pk.js"></script>

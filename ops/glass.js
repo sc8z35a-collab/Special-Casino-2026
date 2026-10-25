@@ -22,8 +22,12 @@
   var phone = window.matchMedia('(max-width: 700px)');
   var coarse = window.matchMedia('(hover: none)');
 
-  // what gets a lens: selector, how far the edge pushes (px), how wide the bent rim is (px), whether a phone leaves it out
+  // what gets a lens: selector, how far the edge pushes (px), how wide the bent rim is (px), whether a phone leaves it out,
+  // and (the upgraded glass of CDW) how much the colours part at the rim: red is bent by (1 - that) of the push, blue by (1 + that)
   var KINDS = [
+    ['.cdw-widget', 22, 34, true, .22],
+    ['.cdw-bar', 8, 16, true, .16],
+    ['.cdw-palette', 12, 24, true, .18],
     ['.mac-dock', 12, 22, false],
     ['.mac-window', 20, 30, true],
     ['.mac-notifications', 14, 24, false],
@@ -85,16 +89,37 @@
     }
     return host.firstChild;
   }
-  function make(shift) {
+  var SPLIT = [['r', '1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0', -1], ['g', '0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0', 0], ['b', '0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0', 1]];
+  function make(shift, split) {
     var id = 'lg' + (++counter);
     var f = document.createElementNS(NS, 'filter');
     f.setAttribute('id', id); f.setAttribute('x', '0'); f.setAttribute('y', '0'); f.setAttribute('width', '1'); f.setAttribute('height', '1');
     f.setAttribute('filterUnits', 'objectBoundingBox'); f.setAttribute('primitiveUnits', 'userSpaceOnUse'); f.setAttribute('color-interpolation-filters', 'sRGB');
     var image = document.createElementNS(NS, 'feImage');
     image.setAttribute('x', '0'); image.setAttribute('y', '0'); image.setAttribute('preserveAspectRatio', 'none'); image.setAttribute('result', 'map');
-    var disp = document.createElementNS(NS, 'feDisplacementMap');
-    disp.setAttribute('in', 'SourceGraphic'); disp.setAttribute('in2', 'map'); disp.setAttribute('xChannelSelector', 'R'); disp.setAttribute('yChannelSelector', 'G'); disp.setAttribute('scale', String(shift * 2));
-    f.appendChild(image); f.appendChild(disp); defs().appendChild(f);
+    f.appendChild(image);
+    function bend(scale, result) {
+      var d = document.createElementNS(NS, 'feDisplacementMap');
+      d.setAttribute('in', 'SourceGraphic'); d.setAttribute('in2', 'map'); d.setAttribute('xChannelSelector', 'R'); d.setAttribute('yChannelSelector', 'G'); d.setAttribute('scale', String(scale));
+      if (result) d.setAttribute('result', result);
+      f.appendChild(d);
+    }
+    if (!split) bend(shift * 2);
+    else {
+      // three pictures of what is behind, each bent by its own amount and kept to one colour, laid back together
+      SPLIT.forEach(function (c) {
+        bend(shift * 2 * (1 + c[2] * split), 'b' + c[0]);
+        var m = document.createElementNS(NS, 'feColorMatrix');
+        m.setAttribute('in', 'b' + c[0]); m.setAttribute('type', 'matrix'); m.setAttribute('values', c[1]); m.setAttribute('result', 'c' + c[0]);
+        f.appendChild(m);
+      });
+      [['cr', 'cg', 'rg'], ['rg', 'cb', '']].forEach(function (p) {
+        var bl = document.createElementNS(NS, 'feBlend');
+        bl.setAttribute('in', p[0]); bl.setAttribute('in2', p[1]); bl.setAttribute('mode', 'screen'); if (p[2]) bl.setAttribute('result', p[2]);
+        f.appendChild(bl);
+      });
+    }
+    defs().appendChild(f);
     return { id: id, filter: f, image: image, w: 0, h: 0, timer: 0 };
   }
 
@@ -104,7 +129,7 @@
     var w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
     if (!w || !h) return;
     var rec = items.get(el);
-    if (!rec) { rec = make(kind[1]); items.set(el, rec); }
+    if (!rec) { rec = make(kind[1], kind[4] || 0); items.set(el, rec); }
     // the map follows the size at once (stretched); it is drawn again when the size has settled
     rec.image.setAttribute('width', String(w)); rec.image.setAttribute('height', String(h));
     if (rec.w === w && rec.h === h) return;

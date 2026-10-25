@@ -31,6 +31,7 @@ import { createAdmin } from './admin.js';
 import { createStaffPins } from './staffpin.js';
 import { createPatrol } from './patrol.js';
 import { createStele } from './stele.js';
+import { createCdw } from './cdw.js';
 import { createExtensions } from './ext.js';
 import { Raw } from './raw.js';
 import extensions from '../ext/index.js';
@@ -3744,6 +3745,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   routes['GET /api/ops/players'] = (req, u) => ({ ...opsPlayers(req, u), favorites: watch.favoriteIds(u.id) });
   const opsMfa = createOpsMfa({ q, tx, secret, ops, opsLog, isDeveloper, requireDevMfa: config.requireDevMfa, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now });
   Object.assign(routes, opsMfa.routes);
+  // the small windows on the operator site's desktop, and the DEV APP: who may have what is kept here (server/core/cdw.js)
+  Object.assign(routes, createCdw({ q, ops, isDeveloper, opsLog, clock: config.clock || Date.now }).routes);
   // parts this deployment adds, if it has any (server/core/ext.js; the list is server/ext/index.js)
   const extCtx = { q, tx, exec: (sql) => db.exec(sql), config, opsLog, getUser, isDeveloper, ops, secret, clock: config.clock || Date.now, notice, ApiError, keyFrom, nameKey, sha256, holdsTicket: () => false };
   const ext = createExtensions({ list: extraParts, secret, clock: config.clock || Date.now, ctx: extCtx });
@@ -3855,6 +3858,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the operator site's サーバー tab (every operator)
   routes['GET /api/ops/server'] = (req, u) => {
     ops.see(u);
+    // lean=1: what a small window on the desktop draws (the figures and the five-minute history), not the whole tab
+    if (req.query.get('lean') === '1') {
+      const snap = stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() });
+      return { now: snap.now, host: snap.host, live: snap.live, rate: snap.rate, today: { requests: snap.today.requests, bytes: snap.today.bytes }, usage: { percent: snap.estimate.usagePercent, tier: snap.estimate.usageTier, yen: snap.estimate.yen } };
+    }
     return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on }, line: line.status(), patrol: patrolDto(), stele: stele.status() };
   };
   // the 石碑: how it stands (every operator), carved and looked over now (the developer), and the log's rows to keep a copy of (the developer)

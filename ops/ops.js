@@ -583,7 +583,7 @@
   /* ------------------------------------------------------------ views --- */
   // what a 閲覧者 never sees (the server refuses it anyway): the players'
   // list and the archive, the operators' chat, the payments and the vault
-  var VIEWER_HIDDEN = ['players', 'archive', 'team', 'pay', 'vault', 'devunit', 'diary', 'profile'];
+  var VIEWER_HIDDEN = ['players', 'archive', 'team', 'pay', 'vault', 'devunit', 'diary', 'profile', 'devapp'];
   function start(me) {
     $('#login').hidden = true;
     $('#enter').hidden = true;
@@ -602,6 +602,8 @@
     document.body.classList.toggle('role-viewer', state.viewer);
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.hidden = state.viewer && VIEWER_HIDDEN.indexOf(t.dataset.view) >= 0; });
     $('#tab-diary').hidden = !state.developer;
+    // the DEV APP: the developer's alone (and what is in it comes from a route that answers no one else)
+    $('#tab-devapp').hidden = !state.developer;
     // the refresh speed: everyone sees it, only the developer changes it
     $('#speed').disabled = !state.developer;
     $('#speed').title = state.developer ? '運営サイトの更新頻度（運営者全員に反映）' : '更新頻度は開発者だけが変えられます';
@@ -714,7 +716,7 @@
     var again = state.view === v;
     state.view = v;
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
-    ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
+    ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile', 'calendar', 'devapp'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
     if (diaryProfile) diaryProfile.view(v);
     if (v === 'players') load();
     else if (v === 'archive') loadArchive();
@@ -724,6 +726,8 @@
     else if (v === 'feedback') loadFeedback();
     else if (v === 'devunit' && !state.viewer) { loadDevDoc(); loadDevComments(false); }
     else if (v === 'securityhome' && !$('#securityhome-frame').getAttribute('src')) $('#securityhome-frame').src = '/sec/';
+    else if (v === 'calendar') { if (window.OpsCalendar) OpsCalendar.show($('#view-calendar')); }
+    else if (v === 'devapp') { if (window.OpsDevApp) OpsDevApp.show($('#view-devapp'), request, toast); }
     else if (v === 'log') { loadLog(true); verifyLog(); }
     else if (v === 'team') openTeamView();
     else if (v === 'security') loadSecurity();

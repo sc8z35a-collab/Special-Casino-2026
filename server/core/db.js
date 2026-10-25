@@ -968,6 +968,12 @@ MIGRATIONS.push([
 
 // how many times a vault file was sent again from its beginning (server/core/vault.js: POST /api/vault/restart)
 MIGRATIONS.push(['ALTER TABLE vault_files ADD COLUMN restarts INTEGER NOT NULL DEFAULT 0']);
+// the small windows each operator put on the desktop (server/core/cdw.js): one row each, the layout as the server accepted it
+MIGRATIONS.push([`CREATE TABLE ops_cdw (
+  user_id    INTEGER PRIMARY KEY,
+  layout     TEXT    NOT NULL,
+  updated_at INTEGER NOT NULL
+)`]);
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
@@ -977,7 +983,7 @@ export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transf
   'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers', 'ops_entries',
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'devunit_comments', 'devunit_reads',
   'diary_posts', 'diary_reads', 'diary_reactions', 'diary_comments', 'diary_claims', 'ops_mfa',
-  'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'meta'];
+  'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
