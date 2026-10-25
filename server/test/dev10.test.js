@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { startServer } from './helpers.js';
+import { sealedCall } from './secure.js';
 import { ROOT } from '../node/config.js';
 
 const LIMITS = { general: [100000, 1000], login: [100000, 1000], spin: [100000, 1000], friend: [100000, 1000], transfer: [100000, 1000] };
@@ -115,37 +116,37 @@ test('a breach triggers the lockdown: everyone is shut out but the security base
     assert.equal((await s.call('GET', '/api/ops/players', { token: taku.token })).status, 503);
 
     // the security base keeps working for an operator
-    const status = await s.call('GET', '/api/sec/status', { token: taku.token });
+    const status = await sealedCall(s)('GET', '/api/sec/status', { token: taku.token });
     assert.equal(status.status, 200, JSON.stringify(status));
     assert.equal(status.emergency.level, 'lockdown');
     assert.equal(status.health.outbound, false, 'outbound is cut during a lockdown');
     assert.ok(status.shield.blocks.length >= 3);
 
     // a normal player cannot use the security base
-    assert.equal((await s.call('GET', '/api/sec/status', { token: player.token })).status, 403);
+    assert.equal((await sealedCall(s)('GET', '/api/sec/status', { token: player.token })).status, 403);
 
     // the lockdown is in the 緊急 log
-    const elog = (await s.call('GET', '/api/sec/log?kind=emergency', { token: mod.token })).entries.map((e) => e.action);
+    const elog = (await sealedCall(s)('GET', '/api/sec/log?kind=emergency', { token: mod.token })).entries.map((e) => e.action);
     assert.ok(elog.includes('lockdown'), JSON.stringify(elog));
 
     // the sealed channel: a message goes in and comes back, stored encrypted
-    const sent = await s.call('POST', '/api/sec/messages', { token: taku.token, body: { text: '攻撃を確認、監視中' } });
+    const sent = await sealedCall(s)('POST', '/api/sec/messages', { token: taku.token, body: { text: '攻撃を確認、監視中' } });
     assert.equal(sent.status, 200);
-    const msgs = await s.call('GET', '/api/sec/messages', { token: mod.token });
+    const msgs = await sealedCall(s)('GET', '/api/sec/messages', { token: mod.token });
     assert.ok(msgs.messages.some((m) => m.text === '攻撃を確認、監視中'), 'the channel shows it');
     const stored = s.app.db.prepare('SELECT body FROM sec_messages ORDER BY id DESC LIMIT 1').get().body;
     assert.ok(stored.indexOf('攻撃') < 0, 'stored sealed, not in the clear');
 
     // an operator lifts the lockdown by hand (any operator, any time)
-    const rel = await s.call('POST', '/api/sec/release', { token: mod.token });
+    const rel = await sealedCall(s)('POST', '/api/sec/release', { token: mod.token });
     assert.equal(rel.status, 200);
     assert.equal(rel.locked, false);
 
     // the game is back; the staff's logins are over (they log in again), a player's is not
     assert.equal((await s.call('GET', '/api/me', { token: player.token })).status, 200);
-    assert.equal((await s.call('GET', '/api/sec/status', { token: taku.token })).error.code, 'ended');
+    assert.equal((await sealedCall(s)('GET', '/api/sec/status', { token: taku.token })).error.code, 'ended');
     const again = await s.call('POST', '/api/login', { body: { name: 'taku', password: 'pass1234' } });
-    const back = await s.call('GET', '/api/sec/status', { token: again.token });
+    const back = await sealedCall(s)('GET', '/api/sec/status', { token: again.token });
     assert.equal(back.emergency.level, '');
     assert.equal(back.health.outbound, true);
 
@@ -162,7 +163,7 @@ test('an operator can raise the lockdown by hand from the security base, and it 
   try {
     const s1 = await startServer({ operators: ['taku'], limits: LIMITS, dataDir });
     const taku = await operator(s1, 'TAKU');
-    const raise = await s1.call('POST', '/api/sec/lockdown', { token: taku.token, body: { reason: '点検' } });
+    const raise = await sealedCall(s1)('POST', '/api/sec/lockdown', { token: taku.token, body: { reason: '点検' } });
     assert.equal(raise.locked, true);
     assert.equal((await s1.call('GET', '/api/me', { token: taku.token })).status, 503);
     await s1.stop();
@@ -175,9 +176,9 @@ test('an operator can raise the lockdown by hand from the security base, and it 
       assert.equal((await s2.call('POST', '/api/login', { body: { name: 'TAKU', password: 'pass1234' } })).status, 503, 'the game login is shut during a lockdown');
       const login = await s2.call('POST', '/api/ops/login', { body: { name: 'TAKU', password: 'pass1234' }, headers: { 'X-Ops-Device': 'browser-aaaaaaaaaaaaaaaa' } });
       assert.ok(login.token, JSON.stringify(login));
-      assert.equal((await s2.call('GET', '/api/sec/status', { token: login.token })).emergency.level, 'lockdown', 'held through the restart');
+      assert.equal((await sealedCall(s2)('GET', '/api/sec/status', { token: login.token })).emergency.level, 'lockdown', 'held through the restart');
       // lifted
-      assert.equal((await s2.call('POST', '/api/sec/release', { token: login.token })).locked, false);
+      assert.equal((await sealedCall(s2)('POST', '/api/sec/release', { token: login.token })).locked, false);
       assert.equal((await s2.call('GET', '/api/me', { token: login.token })).error.code, 'ended', 'the staff log in again after a lockdown');
       const again = await s2.call('POST', '/api/login', { body: { name: 'TAKU', password: 'pass1234' } });
       assert.equal((await s2.call('GET', '/api/me', { token: again.token })).status, 200);
@@ -217,21 +218,21 @@ test('the security base page keeps what it hides hidden; 出る ends the session
 
     // TAKU is on the base; Mod1 only on the operator site
     await s.call('GET', '/api/ops/team', { token: mod.token });
-    const st = await s.call('GET', '/api/sec/status', { token: taku.token });
+    const st = await sealedCall(s)('GET', '/api/sec/status', { token: taku.token });
     const who = Object.fromEntries(st.operators.map((o) => [o.name, o]));
     assert.equal(who.TAKU.base, true);
     assert.equal(who.Mod1.base, false, 'the operator site is not the base');
     assert.equal(who.Mod1.site, true);
 
     // locked down: leaving the base really ends that session, and only that
-    await s.call('POST', '/api/sec/lockdown', { token: taku.token, body: { reason: '点検' } });
+    await sealedCall(s)('POST', '/api/sec/lockdown', { token: taku.token, body: { reason: '点検' } });
     const out = await s.call('POST', '/api/logout', { token: taku.token, body: {} });
     assert.equal(out.status, 200, JSON.stringify(out));
-    assert.equal((await s.call('GET', '/api/sec/status', { token: taku.token })).status, 401);
-    assert.equal((await s.call('GET', '/api/sec/status', { token: mod.token })).status, 200);
+    assert.equal((await sealedCall(s)('GET', '/api/sec/status', { token: taku.token })).status, 401);
+    assert.equal((await sealedCall(s)('GET', '/api/sec/status', { token: mod.token })).status, 200);
     // the rest stays shut
     assert.equal((await s.call('GET', '/api/me', { token: mod.token })).status, 503);
-    assert.equal((await s.call('POST', '/api/sec/release', { token: mod.token })).locked, false);
+    assert.equal((await sealedCall(s)('POST', '/api/sec/release', { token: mod.token })).locked, false);
   } finally {
     await s.stop();
   }

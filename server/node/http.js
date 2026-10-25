@@ -128,6 +128,8 @@ export function coreRequest(req, url, ip) {
     path: url.pathname,
     query: url.searchParams,
     ip,
+    // the address it was sent to (the secure channel checks that the page came from it)
+    host: String(req.headers.host || ''),
     // what this host knows of the connection (for the operators' log when a login is got wrong)
     meta: { socket: { remote: sock.remoteAddress || '', port: sock.remotePort || 0, family: sock.remoteFamily || '', http: req.httpVersion || '', tls: sock.encrypted ? (sock.getProtocol ? sock.getProtocol() : 'tls') : '' } },
     header: (name) => req.headers[name.toLowerCase()] ?? null,

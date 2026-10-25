@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { startServer, PASSWORD } from './helpers.js';
+import { secureClient } from './secure.js';
 import { createLine } from '../core/line.js';
 import { createNotifier, describe } from '../core/notify.js';
 import { passkeyFor } from '../core/pk.js';
@@ -350,7 +351,8 @@ test('LINE on a real server: the server tab shows the allowance, the test button
     assert.equal((await signed('GET', '/api/ops/server')).line.used, 2);
 
     // a lockdown: told as a danger, and the bot still answers (the staff need the passkey to reach the security base)
-    assert.equal((await signed('POST', '/api/sec/lockdown', { reason: 'test' })).locked, true);
+    const sealed = secureClient(b.s, token, { sign: async (method, path) => ({ 'X-Gate': await header(p1, method, path) }) });
+    assert.equal((await sealed.call('POST', '/api/sec/lockdown', { reason: 'test' })).locked, true);
     const lock = await until(() => pushes().find((x) => /🔒 【危険】/.test(x.body.messages[0].text)), 6000);
     assert.ok(lock, 'the lockdown is told');
     const before = b.replies().length;

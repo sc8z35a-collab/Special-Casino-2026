@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { startServer } from './helpers.js';
+import { sealedCall } from './secure.js';
 import { openDb } from '../node/sqlite.js';
 import { statements } from '../core/db.js';
 import { createOpsLog } from '../core/opslog.js';
@@ -170,9 +171,9 @@ test('a lockdown changes the passkey at once, and its lifting ends the staff\'s 
   const plain = await s.register('Plainone');
   assert.equal((await s.call('GET', '/api/ops/me', { token: mod.token })).status, 200);
   const epoch = s.app.api.pk.epoch();
-  assert.equal((await s.call('POST', '/api/sec/lockdown', { token: dev.token, body: { reason: 'a test' } })).locked, true);
+  assert.equal((await sealedCall(s)('POST', '/api/sec/lockdown', { token: dev.token, body: { reason: 'a test' } })).locked, true);
   assert.equal(s.app.api.pk.epoch(), epoch + 1, 'every gate ends and the day\'s passkey is another');
-  assert.equal((await s.call('POST', '/api/sec/release', { token: dev.token, body: {} })).locked, false);
+  assert.equal((await sealedCall(s)('POST', '/api/sec/release', { token: dev.token, body: {} })).locked, false);
   // the operators\' logins (and the developer\'s own) are over; a player\'s is not
   assert.deepEqual([(await s.call('GET', '/api/ops/me', { token: mod.token })).error.code, (await s.call('GET', '/api/ops/me', { token: dev.token })).error.code], ['ended', 'ended']);
   assert.equal((await s.call('GET', '/api/me', { token: plain.token })).status, 200);

@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { startServer } from './helpers.js';
+import { sealedCall } from './secure.js';
 
 // the same code the browsers run
 globalThis.window = globalThis;
@@ -339,7 +340,7 @@ test('an emergency ends every watch at once, reports it to Discord and leaves it
       assert.equal((await w.send({ v: 1 })).out.ok, true);
 
       // the lockdown (an operator raises it from the security base)
-      assert.equal((await s.call('POST', '/api/sec/lockdown', { token: taku.token, body: { reason: '点検' } })).locked, true);
+      assert.equal((await sealedCall(s)('POST', '/api/sec/lockdown', { token: taku.token, body: { reason: '点検' } })).locked, true);
       const ended = await ol.waitFor('watchend', (d) => d.sid === w.sid);
       assert.equal(ended.reason, 'lockdown');
       await pl.waitFor('view', (d) => d.sid === w.sid && d.on === false);
@@ -347,7 +348,7 @@ test('an emergency ends every watch at once, reports it to Discord and leaves it
 
       // …the log says it was forced, and Discord gets it as a danger with both links
       const login = await s.call('POST', '/api/ops/login', { body: { name: 'TAKU', password: 'pass1234' }, headers: { 'X-Ops-Device': 'browser-aaaaaaaaaaaaaaaa' } });
-      const entries = (await s.call('GET', '/api/sec/log', { token: login.token })).entries;
+      const entries = (await sealedCall(s)('GET', '/api/sec/log', { token: login.token })).entries;
       const forced = entries.find((e) => e.action === 'watch_force_end');
       assert.ok(forced, entries.map((e) => e.action).join(','));
       assert.equal(forced.detail.forced, true);

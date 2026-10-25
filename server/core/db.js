@@ -975,6 +975,14 @@ MIGRATIONS.push([`CREATE TABLE ops_cdw (
   updated_at INTEGER NOT NULL
 )`]);
 
+// the server's own identity for the secure channel (server/core/seccomm.js): the public half, and the private half sealed with the server's secret
+MIGRATIONS.push([`CREATE TABLE sec_identity (
+  id         INTEGER PRIMARY KEY CHECK (id = 1),
+  pub        TEXT    NOT NULL,
+  priv       TEXT    NOT NULL,
+  created_at INTEGER NOT NULL
+)`]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
@@ -983,7 +991,7 @@ export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transf
   'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers', 'ops_entries',
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'devunit_comments', 'devunit_reads',
   'diary_posts', 'diary_reads', 'diary_reactions', 'diary_comments', 'diary_claims', 'ops_mfa',
-  'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'meta'];
+  'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'sec_identity', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

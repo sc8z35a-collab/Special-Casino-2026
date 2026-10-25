@@ -185,6 +185,7 @@ function coreRequest(request, url) {
     method: request.method,
     path: url.pathname,
     query: url.searchParams,
+    host: url.host,
     ip: request.headers.get('cf-connecting-ip') || '',
     meta: { cf: edgeOf(request.cf) },
     header: (name) => request.headers.get(name),

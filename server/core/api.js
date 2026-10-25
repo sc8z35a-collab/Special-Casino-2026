@@ -50,7 +50,8 @@ import { createDiscordBot } from './discordbot.js';
 import { createOpsEntry } from './opsentry.js';
 import { createEmergency } from './emergency.js';
 import { createShield } from './shield.js';
-import { createSec } from './sec.js';
+import { createSec, SEC_KEYS } from './sec.js';
+import { createSecComm } from './seccomm.js';
 import { createBackup } from './backup.js';
 import { createTrees } from './tree.js';
 import { createDevCode } from './devcode.js';
@@ -3855,14 +3856,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     }
     return n;
   }
+  // the figures of the サーバー tab that a small window (and the security base) draws
+  function leanServer() {
+    const snap = stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() });
+    return { now: snap.now, host: snap.host, live: snap.live, rate: snap.rate, today: { requests: snap.today.requests, bytes: snap.today.bytes }, usage: { percent: snap.estimate.usagePercent, tier: snap.estimate.usageTier, yen: snap.estimate.yen } };
+  }
   // the operator site's サーバー tab (every operator)
   routes['GET /api/ops/server'] = (req, u) => {
     ops.see(u);
     // lean=1: what a small window on the desktop draws (the figures and the five-minute history), not the whole tab
-    if (req.query.get('lean') === '1') {
-      const snap = stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() });
-      return { now: snap.now, host: snap.host, live: snap.live, rate: snap.rate, today: { requests: snap.today.requests, bytes: snap.today.bytes }, usage: { percent: snap.estimate.usagePercent, tier: snap.estimate.usageTier, yen: snap.estimate.yen } };
-    }
+    if (req.query.get('lean') === '1') return leanServer();
     return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on }, line: line.status(), patrol: patrolDto(), stele: stele.status() };
   };
   // the 石碑: how it stands (every operator), carved and looked over now (the developer), and the log's rows to keep a copy of (the developer)
@@ -3927,8 +3930,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     sockets: host && host.sockets ? host.sockets() : null, dbBytes: host && host.dbBytes ? host.dbBytes() : null,
     quota: quota.on ? quota.state() : null, outbound: emergency.outboundAllowed(), startedAt: stats.startedAt || 0, host: (host && host.name) || 'node'
   });
-  const sec = createSec({ q, getUser, ops, emergency, shield, opsLog, health, secret, isDeveloper, live, seen: opsSeen });
+  // the secure channel the base and the operator site's lock are talked over (server/core/seccomm.js), and the base itself
+  const comm = createSecComm({ q, secret, opsLog, clock: config.clock || Date.now, roleOf: (u) => (isDeveloper(u) ? 'developer' : ops.isOperator(u) ? 'operator' : ops.isViewer(u) ? 'viewer' : '') });
+  const sec = createSec({
+    q, getUser, ops, emergency, shield, opsLog, health, lean: leanServer, secret, isDeveloper, live, seen: opsSeen, comm, patrol, stele,
+    facts: { hsts: () => !!(host && host.name === 'cloudflare'), passkey: () => pk.active(), devMfa: () => !!config.requireDevMfa, devCode: () => devCode.isSet() }
+  });
+  // (only staff open a channel; and the developer's panels are not there for anyone else, channel or not)
+  routes[SEC_KEYS.open] = (req, u) => { ops.see(u); return comm.routes[SEC_KEYS.open](req, u); };
   Object.assign(routes, sec.routes);
+  const DEV_ONLY = new Set(SEC_KEYS.developer);
 
   const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', 'POST /api/ops/login-wait', ...pay.public, ...vault.public, ...bot.public, ...lineBot.public, ...ext.publicKeys]);
 
@@ -4152,7 +4163,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const VIEW_ONLY = new Set([
     'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/ops/alive', 'GET /api/ops/counts', 'GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback',
     'GET /api/ops/log', 'GET /api/ops/log/entries', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security', 'GET /api/ops/patrol', 'GET /api/ops/ext',
-    'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify', 'POST /api/logout',
+    SEC_KEYS.open, ...SEC_KEYS.viewer, 'POST /api/logout',
     'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close'
   ]);
 
@@ -4166,8 +4177,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // Everything else — players, the operator site, the developer's own tools —
   // is shut.
   const WHILE_LOCKED = new Set([
-    'POST /api/ops/login', 'POST /api/ops/login-wait', 'POST /api/logout', 'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify',
-    'GET /api/sec/messages', 'POST /api/sec/messages', 'POST /api/sec/lockdown', 'POST /api/sec/release',
+    'POST /api/ops/login', 'POST /api/ops/login-wait', 'POST /api/logout', SEC_KEYS.open, ...SEC_KEYS.viewer, ...SEC_KEYS.operator, ...SEC_KEYS.developer,
     'GET /api/emergency', 'POST /api/emergency/release',
     'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close', 'POST /api/pk/breakglass', 'POST /api/discord/interactions', 'POST /api/line/webhook'
   ]);
@@ -4216,7 +4226,19 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         // (a vault's pieces: their own limit, in server/core/vault.js)
         if (!VAULT_BULK.has(key)) rate(limit.general, user.id);
       }
+      // the security base speaks only through its secure channel: what does not come sealed (or comes from another login, a repeat,
+      // a body that was touched) is turned away before the route knows of it; and what is answered is sealed
+      let sealed = null;
+      if (comm.covers(key)) {
+        // (a person who is not staff gets the refusal the route would give, and not a word about channels; a person who is not the
+        // developer gets what a route that does not exist gets, for the developer's panels)
+        ops.see(user);
+        if (DEV_ONLY.has(key) && !isDeveloper(user)) throw new ApiError(404, 'not_found', 'APIが見つかりません');
+        sealed = await comm.enter(req, user);
+        if (sealed.body) req.json = async () => sealed.body;
+      }
       const result = await route(req, user);
+      if (sealed) return { status: 200, body: await comm.seal(sealed, result) };
       // (a script or a file, not JSON: the host sends it as it is)
       return result instanceof Raw ? { status: result.status, raw: result } : { status: 200, body: result };
     } catch (e) {

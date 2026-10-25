@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, PASSWORD } from './helpers.js';
+import { sealedCall } from './secure.js';
 import { base32, totp } from '../core/opsmfa.js';
 
 const NOW = Date.UTC(2026, 9, 25, 0, 0, 10);
@@ -39,7 +40,7 @@ test('staff MFA enrollment rejects players, verifies setup, encrypts seeds and b
     assert.equal(passwordOnly.error.code, 'mfa_required'); assert.equal(passwordOnly.token, undefined);
     const replay = await s.call('POST', '/api/ops/login', { body: { name: 'taku', password: PASSWORD, otp: code(setup.secret) } }); assert.equal(replay.error.code, 'mfa_invalid');
     const recovered = await s.call('POST', '/api/ops/login', { body: { name: 'taku', password: PASSWORD, recovery: enabled.recovery[0] } }); assert.equal(recovered.status, 200);
-    assert.equal((await call(recovered, 'GET', '/api/sec/me')).status, 200);
+    assert.equal((await sealedCall(s)('GET', '/api/sec/me', { token: recovered.token })).status, 200);
     assert.equal((await call(recovered, 'GET', '/api/ops/profile')).mfa.recoveryLeft, 9);
     const reuse = await s.call('POST', '/api/ops/login', { body: { name: 'taku', password: PASSWORD, recovery: enabled.recovery[0] } }); assert.equal(reuse.error.code, 'mfa_invalid');
     const disabled = await call(recovered, 'POST', prefix + 'disable', { password: PASSWORD, recovery: enabled.recovery[1] }); assert.equal(disabled.status, 200); assert.equal(disabled.mfa.mode, 0);

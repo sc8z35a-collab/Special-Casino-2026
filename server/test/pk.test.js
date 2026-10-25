@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { startServer, PASSWORD } from './helpers.js';
+import { secureClient } from './secure.js';
 import { passkeyFor, GATED, GATE_MS, LOCK_MS } from '../core/pk.js';
 import { jstDay } from '../core/opsentry.js';
 import { totp } from '../core/opsmfa.js';
@@ -320,18 +321,20 @@ test('during a lockdown the staff still reach the passkey, the bot and the secur
   try {
     const taku = await staff(s, 'taku'), mod = await staff(s, 'mod');
     await openGate(s, taku);
-    assert.equal((await sc(s, taku, 'POST', '/api/sec/lockdown', { reason: 'test' })).locked, true);
+    // (the security base is spoken to through its sealed channel, which the page's gate signs)
+    const base = secureClient(s, taku.token, { sign: async (m, p) => ({ 'X-Gate': await header(taku.page, m, p, { now: s.box.now }) }) });
+    assert.equal((await base.call('POST', '/api/sec/lockdown', { reason: 'test' })).locked, true);
     // a breach: nothing old is trusted — the open page's gate has ended and the day's passkey is another
-    assert.equal((await sc(s, taku, 'GET', '/api/sec/me')).error.code, 'pk_required');
+    assert.equal((await base.call('GET', '/api/sec/me')).error.code, 'pk_required');
     assert.equal((await openGate(s, mod, today(s.box.now))).error.code, 'pk_wrong', 'the old passkey no longer opens');
     // the new passkey, then the security base — and the operator site stays shut
     s.box.now += 3600000 + 1; // (the wrong try above kept that account out for an hour: the clock moves on)
     assert.equal((await s.call('GET', '/api/pk/state', { token: taku.token })).status, 200);
     assert.equal((await openGate(s, taku, today(s.box.now, 1))).status, 200);
-    assert.equal((await sc(s, taku, 'GET', '/api/sec/me')).status, 200);
+    assert.equal((await base.call('GET', '/api/sec/me')).status, 200, 'a new gate, a new channel (the page opens it by itself)');
     assert.equal((await sc(s, taku, 'GET', '/api/ops/me')).status, 503);
     assert.equal((await interaction(s, command([ROLE]))).data.content.includes(today(s.box.now, 1)), true, 'the bot answers with the new one: it reads and writes nothing');
-    assert.equal((await sc(s, taku, 'POST', '/api/sec/release', {})).locked, false);
+    assert.equal((await base.call('POST', '/api/sec/release', {})).locked, false);
     // lifting it ends the staff\'s logins: they log in again
     assert.equal((await s.call('GET', '/api/pk/state', { token: mod.token })).error.code, 'ended');
   } finally { await s.stop(); }

@@ -175,6 +175,8 @@ export function createPk({ q, tx, config, opsLog, ops, isDeveloper, mfa, entered
       ok = await subtle().verify({ name: 'ECDSA', hash: 'SHA-256' }, key, Buffer.from(sig, 'base64url'), Buffer.from(text, 'utf8'));
     } catch { ok = false; }
     if (!ok) { nonces.delete(id); throw required('パスキーの確認ができませんでした。ページを読み込み直してください'); }
+    // (the secure channel is tied to the gate in force: server/core/seccomm.js)
+    req.gateId = gid;
   }
   // a person with no gate open (any more): their live connections end
   function revokeIfNone(userId, now = clock()) {
