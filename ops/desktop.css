@@ -93,7 +93,10 @@
   grid-template-rows: repeat(var(--desktop-rows, 4), 98px); grid-auto-columns: 100px; gap: 6px 14px;
 }
 .mac-desktop-app { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 4px; width: 100px; min-width: 0; height: 98px; padding: 3px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #fff; user-select: none; }
-.mac-desktop-app img { width: 50px; height: 50px; object-fit: contain; filter: drop-shadow(0 3px 3px #16334b40); }
+.mac-desktop-tile { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 19px; background: #ffffff38; border: 1px solid #ffffff6b; box-shadow: 0 4px 12px #17385a40; }
+.mac-desktop-app img { width: 44px; height: 44px; object-fit: contain; filter: drop-shadow(0 3px 3px #16334b40); }
+.mac-desktop-app.is-on .mac-desktop-tile { background: #ffffff7a; border-color: #fff; box-shadow: 0 0 0 2px #087aff, 0 4px 12px #17385a40; }
+.mac-desktop-app:focus-visible { outline: 3px solid #72b2ff; outline-offset: 2px; }
 .mac-desktop-label { max-width: 100%; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; font-weight: 600; line-height: 1.45; text-shadow: 0 1px 3px #16354a, 0 1px 7px #16354acc; text-align: center; }
 .mac-desktop-app:hover { background: #ffffff17; border-color: #ffffff38; }
 .mac-desktop-app.is-selected img { filter: brightness(.85) drop-shadow(0 3px 3px #16334b40); }
@@ -431,7 +434,12 @@
 .devunit-comment p { white-space: pre-wrap; margin: 7px 0; }
 .devunit-comment small { color: #6d7181; }
 #securityhome-frame { display: block; flex: 1; width: 100%; min-height: 340px; border: 0; background: #10151f; }
-.mac-window #view-securityhome { display: flex; flex-direction: column; }
+/* the security home fills its whole window: no heading or words above it, only a slim bar with the link */
+.mac-window > #view-securityhome, .mac-window.is-open > #view-securityhome[hidden], .mac-window.is-closing > #view-securityhome[hidden] { display: flex !important; flex-direction: column; padding: 0; overflow: hidden; }
+#view-securityhome > .bar { flex: none; margin: 0; padding: 6px 14px; min-height: 0; }
+#view-securityhome > .bar h2 { display: none; }
+#view-securityhome > .muted { display: none; }
+#view-securityhome > #securityhome-frame { flex: 1 1 auto; min-height: 0; height: auto; border-radius: 0 0 24px 24px; }
 @container mac-app (max-width: 660px) { .devunit-layout { grid-template-columns: 1fr; } }
 
 /* Liquid glass desktop: the taskbar is the only persistent control surface. */
@@ -632,26 +640,65 @@
 .mac-flat.mac-ui .drawer, .mac-flat .drawer { background: #f7faff; }
 .mac-flat .mac-window-control { background: #eef4ff; box-shadow: none; }
 
-/* ---- the app bar sinks like a drop of water when the mouse is away, and rises when it comes back ---- */
-.mac-dock-away { animation: dockDrip .66s cubic-bezier(.55, 0, .8, .35) forwards; pointer-events: none; }
-.mac-dock-back { animation: dockRise .78s cubic-bezier(.2, .8, .3, 1) both; }
+/* ---- water: the app bar and the notification centre are out of sight until the pointer comes near ----
+   They sink into a drop of water and swell out of it again, with a spring that overshoots a little and settles, and a ripple
+   spreads over the glass where they surfaced. Only transforms, border radii and opacity move (nothing that makes the glass behind
+   them be drawn again), so it stays smooth. With the animations off (the system menu, 軽量化, or the system's own setting) they
+   simply appear and disappear. */
+.mac-ui {
+  --water-spring: linear(0, 0.006, 0.024 2.1%, 0.098 4.7%, 0.246 7.4%, 0.48 10.4%, 0.73 13.2%, 0.92 15.9%, 1.05 18.4%, 1.108 20.9%, 1.126 23.6%, 1.12 26.2%, 1.095 29.7%, 1.045 35%, 1.015 40.3%, 0.997 46%, 0.99 52.4%, 0.994 59.6%, 1.002 70%, 1);
+  --water-sink: cubic-bezier(.5, 0, .9, .45);
+}
+.mac-dock-away { animation: dockDrip .74s var(--water-sink) forwards; pointer-events: none; }
+.mac-dock-back { animation: dockRise 1.05s var(--water-spring) both, dockRound .7s cubic-bezier(.2, .8, .3, 1) both; will-change: transform; }
 @keyframes dockDrip {
   0% { transform: translateX(-50%) translateY(0) scale(1, 1); opacity: 1; visibility: visible; }
-  22% { transform: translateX(-50%) translateY(-6px) scale(1.02, .95); }
-  58% { transform: translateX(-50%) translateY(26%) scale(.88, 1.14); border-radius: 44px 44px 64px 64px / 40px 40px 80px 80px; opacity: 1; }
-  100% { transform: translateX(-50%) translateY(175%) scale(.5, 1.6); border-radius: 50% 50% 50% 50% / 30% 30% 70% 70%; opacity: 0; visibility: hidden; }
+  26% { transform: translateX(-50%) translateY(-5px) scale(1.015, .96); }
+  62% { transform: translateX(-50%) translateY(34%) scale(.82, 1.12); border-radius: 44px 44px 64px 64px / 40px 40px 80px 80px; opacity: 1; }
+  100% { transform: translateX(-50%) translateY(190%) scale(.2, 1.5); border-radius: 50% 50% 50% 50% / 30% 30% 70% 70%; opacity: 0; visibility: hidden; }
 }
 @keyframes dockRise {
-  0% { transform: translateX(-50%) translateY(175%) scale(.5, 1.6); border-radius: 50%; opacity: 0; }
-  50% { opacity: 1; }
-  62% { transform: translateX(-50%) translateY(-9px) scale(1.04, .94); }
-  80% { transform: translateX(-50%) translateY(2px) scale(.99, 1.02); }
+  0% { transform: translateX(-50%) translateY(150%) scale(.18, .5); opacity: 0; }
+  14% { opacity: 1; }
   100% { transform: translateX(-50%) translateY(0) scale(1, 1); }
 }
-/* a small drop of light where it went */
-.mac-dock-hint { position: absolute; z-index: 14; left: 50%; bottom: 5px; width: 46px; height: 6px; margin-left: -23px; border-radius: 6px; background: linear-gradient(90deg, #ffffff00, #ffffffb5, #ffffff00); box-shadow: 0 0 10px #ffffff80; opacity: 0; transform: scaleX(.4); transition: opacity .4s .3s, transform .5s .3s; pointer-events: none; }
+/* (the roundness has its own, calmer, easing: the spring overshoots, and a radius cannot go below nothing) */
+@keyframes dockRound { 0% { border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; } }
+.mac-notifications { transform-origin: 100% 0; }
+.mac-notice-away { animation: noticeDrip .62s var(--water-sink) forwards; pointer-events: none; }
+.mac-notice-away.mac-notice-quick { animation-duration: .001ms; }
+.mac-notice-back { animation: noticeRise 1s var(--water-spring) both, noticeRound .7s cubic-bezier(.2, .8, .3, 1) both; will-change: transform; }
+@keyframes noticeDrip {
+  0% { transform: none; opacity: 1; visibility: visible; }
+  34% { transform: translate(2%, -1%) scale(.97, .96); border-radius: 30px; }
+  100% { transform: translate(12%, -6%) scale(.06, .08); border-radius: 50%; opacity: 0; visibility: hidden; }
+}
+@keyframes noticeRise {
+  0% { transform: translate(12%, -6%) scale(.06, .08); opacity: 0; }
+  12% { opacity: 1; }
+  100% { transform: none; }
+}
+@keyframes noticeRound { 0% { border-radius: 50%; } }
+/* the ripple: two rings that spread and fade */
+.mac-ripple { position: absolute; z-index: 79; width: 150px; height: 150px; margin: -75px 0 0 -75px; border-radius: 50%; pointer-events: none; opacity: 0; }
+.mac-ripple::before, .mac-ripple::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255, 255, 255, .7), 0 0 18px 2px rgba(190, 225, 255, .55), inset 0 0 14px rgba(255, 255, 255, .45); }
+.mac-ripple-dock { left: 50%; bottom: 8px; margin-top: 0; }
+.mac-ripple-notice { right: 90px; top: 70px; left: auto; z-index: 86; }
+.mac-ripple.go { animation: ripple 1.15s cubic-bezier(.15, .6, .3, 1) both; }
+.mac-ripple.go::after { animation: ripple-fade 1.15s .14s cubic-bezier(.15, .6, .3, 1) both; }
+@keyframes ripple { 0% { transform: scale(.15); opacity: .95; } 100% { transform: scale(4.2); opacity: 0; } }
+@keyframes ripple-fade { 0% { transform: scale(.55); opacity: 0; } 18% { opacity: .7; } 100% { transform: scale(1.3); opacity: 0; } }
+.mac-ripple-dock.go { animation-name: ripple-dock; }
+@keyframes ripple-dock { 0% { transform: scale(.12, .06); opacity: .95; } 100% { transform: scale(7.5, 2.2); opacity: 0; } }
+/* with the animations off: simply there, or simply gone */
+.mac-ui.mac-reduce-motion .mac-dock-away, .mac-ui.mac-reduce-motion .mac-dock-back, .mac-ui.mac-reduce-motion .mac-notice-away, .mac-ui.mac-reduce-motion .mac-notice-back { animation: none; }
+.mac-ui.mac-reduce-motion .mac-dock-away { opacity: 0; visibility: hidden; }
+.mac-ui.mac-reduce-motion .mac-notice-away { opacity: 0; visibility: hidden; }
+.mac-ui.mac-reduce-motion .mac-ripple { display: none; }
+@media (prefers-reduced-motion: reduce) { .mac-ripple { display: none; } }
+/* a small drop of light where the bar went */
+.mac-dock-hint { position: absolute; z-index: 14; left: 50%; bottom: 5px; width: 46px; height: 6px; margin-left: -23px; border-radius: 6px; background: linear-gradient(90deg, #ffffff00, #ffffffb5, #ffffff00); box-shadow: 0 0 10px #ffffff80; opacity: 0; transform: scaleX(.3); transition: opacity .5s .3s, transform .6s .3s cubic-bezier(.2, .8, .3, 1); pointer-events: none; }
 .mac-dock-hidden .mac-dock-hint { opacity: 1; transform: scaleX(1); }
-.mac-ui.mac-reduce-motion .mac-dock-away, .mac-ui.mac-reduce-motion .mac-dock-back { animation-duration: .001ms !important; }
 
 /* ---- a phone held upright: fewer words on the screen (the details are one tap away) ---- */
 @media (max-width: 700px) and (orientation: portrait) {

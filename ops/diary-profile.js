@@ -6,12 +6,25 @@
     var epoch = 0, rows = [], more = false, busy = false, imageData = '', selected = 0, commentBefore = 0, mode = 0;
     function button(label, run, danger) { var b = el('button', 'btn small' + (danger ? ' danger' : ''), label); b.type = 'button'; b.addEventListener('click', run); return b; }
     function status(text) { $('#diary-error').textContent = text || ''; }
+    // the bytes of a data: address
+    function bytesOf(url) { var raw = atob(String(url).slice(String(url).indexOf(',') + 1)), out = new Uint8Array(raw.length); for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i); return out; }
+    // the ! on the profile tab: no extra login set up (for staff), or a password too easy
+    var weak = '';
+    function badge() { $('#count-profile').hidden = !(weak || (!mode && !state.viewer)); $('#count-profile').textContent = '!'; }
     function markMfa(value) {
       mode = value || 0;
       document.body.classList.toggle('mfa-unset', !mode && !state.viewer);
-      $('#count-profile').hidden = !!mode || state.viewer; $('#count-profile').textContent = '!';
+      badge();
       $('#profile-auth-status').textContent = mode ? mode + '段階認証を設定済み' : '！ 追加認証が未設定です';
       $('#profile-auth-status').classList.toggle('auth-warning', !mode);
+    }
+    // a password too easy for staff (the login says so): the profile says why, and where to change it
+    var WEAK = { short: '12文字より短い', digits: '数字だけ', repeat: '同じ文字が多い' };
+    function markPassword(value) {
+      weak = value || '';
+      $('#profile-password-status').textContent = weak ? '！ パスワードが弱いです（' + (WEAK[weak] || '簡単すぎる') + '）。ゲームの設定から、12文字以上で数字だけではないものに変えてください' : '';
+      $('#profile-password-status').classList.toggle('auth-warning', !!weak);
+      badge();
     }
     function reset() {
       epoch++; rows = []; busy = false; imageData = ''; selected = 0; commentBefore = 0;
@@ -19,7 +32,7 @@
       $('#ops-diary-form').reset(); $('#diary-preview').removeAttribute('src'); $('#diary-preview').hidden = true;
       $('#profile-mfa-form').reset(); $('#profile-setup').hidden = true; $('#profile-secret').textContent = ''; $('#profile-recovery').textContent = ''; $('#profile-uri').removeAttribute('href');
       $('#profile-name').textContent = ''; $('#profile-avatar').replaceChildren();
-      document.body.classList.remove('mfa-unset'); $('#count-profile').hidden = true;
+      document.body.classList.remove('mfa-unset'); $('#count-profile').hidden = true; weak = ''; $('#profile-password-status').textContent = '';
     }
     function loadDiary(older) {
       if (!state.developer || busy) return; busy = true; var gen = epoch;
@@ -99,7 +112,11 @@
     });
     $('#ops-diary-form').addEventListener('submit', function (e) {
       e.preventDefault(); var gen = epoch, submit = $('#diary-publish'); submit.disabled = true; status('');
-      request('POST', '/api/ops/diary', { title: $('#diary-title').value, text: $('#diary-text').value, image: imageData, reward: Number($('#diary-reward').value) }).then(function () {
+      // (a picture is looked at first by what the deployment has put in front of it, if anything: ops/ext.js)
+      var item = imageData ? { kind: 'diary', name: 'diary-image', bytes: bytesOf(imageData) } : null;
+      (item ? OpsExt.run('beforeInline', null, item, { request: request, toast: status }) : Promise.resolve()).then(function () {
+        return request('POST', '/api/ops/diary', { title: $('#diary-title').value, text: $('#diary-text').value, image: imageData, reward: Number($('#diary-reward').value) });
+      }).then(function () {
         if (gen !== epoch) return; $('#ops-diary-form').reset(); imageData = ''; $('#diary-preview').hidden = true; $('#diary-preview').removeAttribute('src'); status('投稿を公開しました'); loadDiary(false);
       }, function (e) { if (gen === epoch) status(e.message); }).then(function () { submit.disabled = false; });
     });
@@ -118,6 +135,6 @@
       authAction('/api/ops/profile/mfa/disable', credentials(), function (r) { markMfa(r.mfa.mode); clearCredentials(); $('#profile-setup').hidden = true; $('#profile-secret').textContent = ''; $('#profile-recovery').textContent = ''; $('#profile-uri').removeAttribute('href'); ctx.toast('追加認証を解除しました'); });
     });
     $('#profile-mode').addEventListener('change', function () { $('#profile-new-phrase-field').hidden = this.value !== '3'; });
-    return { reset: reset, start: function (me) { markMfa(me.mfa ? me.mfa.mode : 0); }, view: function (v) { if (v === 'diary') loadDiary(false); if (v === 'profile') profile(); }, refresh: function () { if (state.view === 'diary') { loadDiary(false); loadComments(false); } } };
+    return { reset: reset, start: function (me) { markMfa(me.mfa ? me.mfa.mode : 0); markPassword(me.weakPassword); }, view: function (v) { if (v === 'diary') loadDiary(false); if (v === 'profile') profile(); }, refresh: function () { if (state.view === 'diary') { loadDiary(false); loadComments(false); } } };
   };
 })();

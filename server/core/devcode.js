@@ -38,6 +38,8 @@ export function createDevCode({ q, opsLog }) {
     if (/^\d{4,32}$/.test(c) && await verifyPassword(c, h)) return true;
     mine.push(now);
     byIp.set(ip, mine);
+    // (addresses that have not tried for an hour are forgotten)
+    if (byIp.size > 200) for (const [k, times] of byIp) if (now - times[times.length - 1] >= HOUR) byIp.delete(k);
     setMeta('dev_code_fails', JSON.stringify({ since: all.since, n: all.n + 1 }));
     opsLog.add({ actor: who, action: 'dev_code_fail', summary: `開発者コードの入力が違っていた${who ? `（${who.name}）` : ''}`, req, detail: { tries: { thisAddressThisHour: mine.length, everyoneThisHour: all.n + 1 } } });
     throw new ApiError(403, 'dev_code', '開発者コードが違います');

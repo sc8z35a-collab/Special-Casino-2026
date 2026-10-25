@@ -2,7 +2,11 @@
 
 export class ApiError extends Error {
   constructor(status, code, message, extra) {
+    // (a refusal the player is told about, not a fault: no stack to build)
+    const depth = Error.stackTraceLimit;
+    if (status < 500) Error.stackTraceLimit = 0;
     super(message);
+    Error.stackTraceLimit = depth;
     this.status = status;
     this.code = code;
     this.extra = extra;

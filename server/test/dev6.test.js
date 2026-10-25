@@ -6,12 +6,12 @@ import { startServer } from './helpers.js';
 import { screen } from '../core/filter.js';
 import { AUTO_TEXT, WAIT_MS } from '../core/official.js';
 
-let s, call, register, setUser, befriend, claimAll;
+let s, call, register, befriend, claimAll;
 let taku;
 
 before(async () => {
   s = await startServer({ limits: { spin: [100000, 1000], shop: [100000, 1000], general: [100000, 1000], login: [100000, 1000], friend: [100000, 1000], transfer: [100000, 1000], dm: [100000, 1000] } });
-  ({ call, register, setUser, befriend, claimAll } = s);
+  ({ call, register, befriend, claimAll } = s);
   taku = await register('TAKU');
 });
 after(() => s.stop());

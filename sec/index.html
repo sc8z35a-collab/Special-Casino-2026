@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
-<meta name="theme-color" content="#060a12">
+<meta name="theme-color" content="#050912">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>security HOME — TWO STATE</title>
@@ -19,8 +19,8 @@
 <!-- the first time: an operator's name and password (operators only) -->
 <main class="login" id="login" hidden>
   <form class="login-card" id="login-form" autocomplete="on" novalidate>
-    <div class="brand"><span class="brand-mark">◆</span><span>security HOME</span></div>
-    <p class="muted">TWO STATE 運営者だけのセキュリティ基地です。運営サイトとは独立した環境で、サーバーのセキュリティ状況の監視・ログの閲覧・運営者どうしの連絡・ロックダウンだけを行います。</p>
+    <div class="brand"><img class="brand-logo" src="/ops/assets/lockdown.webp" alt="" width="40" height="40"><span>security HOME</span></div>
+    <p class="muted">TWO STATE 運営者だけのセキュリティ基地です。運営サイトとは独立した環境で、サーバーの状況と脅威の確認・ログの閲覧・運営者どうしの連絡・ロックダウンだけを行います。ここでのやりとりはすべて、封印された通信（セキュア通信）で行われます。</p>
     <label class="field"><span>名前</span><input id="login-name" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
     <label class="field"><span>パスワード</span><input id="login-pass" name="password" type="password" autocomplete="current-password" required></label>
     <details id="login-extra"><summary>追加認証（設定済みの方）</summary>
@@ -33,16 +33,48 @@
   </form>
 </main>
 
+<!-- every time this page is opened (and after an hour on it): today's passkey, from Discord's /passkey (server/core/pk.js) -->
+<main class="login" id="pk" hidden>
+  <form class="login-card" id="pk-form" autocomplete="off" novalidate>
+    <div class="brand"><img class="brand-logo" src="/ops/assets/lockdown.webp" alt="" width="40" height="40"><span>security HOME</span></div>
+    <h1 class="pk-title">今日のパスキー</h1>
+    <p class="muted" id="pk-day"></p>
+    <p class="pk-who"><span id="pk-role"></span> <b id="pk-name"></b></p>
+    <label class="field"><span>パスキー（6桁）</span><input id="pk-code" class="pk-code" placeholder="000000" aria-label="パスキー（6桁）" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" spellcheck="false"></label>
+    <p class="muted pk-help">Discord で <b>/passkey</b> と送ると、あなただけに見える形で表示されます。ページを開き直すたび、また1時間たつたびに入力が必要です。<b>間違えると、1時間は入力できなくなります。</b>よく見て入力してください。</p>
+    <p class="error" id="pk-error" role="alert"></p>
+    <button class="btn primary wide" type="submit" id="pk-go">入る</button>
+    <button class="btn wide" type="button" id="pk-other">別のアカウントでログイン</button>
+  </form>
+</main>
+
+<!-- the server is not the one this page kept the first time: nothing is shown until this is answered -->
+<main class="login" id="identity" hidden>
+  <div class="login-card alarm" role="alertdialog" aria-labelledby="identity-title">
+    <div class="brand"><img class="brand-logo" src="/ops/assets/lockdown.webp" alt="" width="40" height="40"><span>security HOME</span></div>
+    <h1 id="identity-title">サーバーの身元が前回と違います</h1>
+    <p>この接続の相手は、前に確かめたサーバーと別のものです。接続を止めました。ネットワークの途中に別のものが入っているか、偽のサイトを開いている可能性があります。</p>
+    <p class="muted">前に確かめたもの：<code id="identity-was"></code><br>いま名乗っているもの：<code id="identity-now"></code></p>
+    <p class="muted">サーバーを入れ替えた覚えがあり、開発者に「いまのものが正しい」と確かめてから、信頼し直してください。</p>
+    <button class="btn wide" type="button" id="identity-reload">やめて、開き直す</button>
+    <button class="btn danger wide" type="button" id="identity-trust">いまのものを信頼し直す</button>
+  </div>
+</main>
+
 <div class="app" id="app" hidden>
   <header class="top">
-    <div class="brand"><span class="brand-mark">◆</span><span>security HOME</span><small>最終安全基地</small></div>
+    <div class="brand"><img class="brand-logo" src="/ops/assets/lockdown.webp" alt="" width="34" height="34"><span>security HOME</span><small>最終安全基地</small></div>
+    <button class="chan" id="chan" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="chan-pop">
+      <img src="/ops/assets/secure.webp" alt="" width="20" height="20"><span id="chan-text">接続を確かめています…</span>
+    </button>
     <div class="top-right">
       <label class="speed" title="更新頻度"><span>更新</span><select id="speed">
         <option value="max">極めて高い</option><option value="high">高い</option><option value="normal" selected>通常</option><option value="slow">遅い</option><option value="slowest">極めて遅い</option>
       </select></label>
-      <span class="muted" id="op-name"></span>
+      <span class="who" id="op-name"></span>
       <button class="btn ghost small" id="logout" type="button">出る</button>
     </div>
+    <div class="chan-pop" id="chan-pop" hidden role="dialog" aria-label="セキュア通信の確認"></div>
   </header>
 
   <!-- the lockdown banner (ふだんは隠れています) -->
@@ -54,83 +86,10 @@
     </div>
   </div>
 
-  <div class="columns">
-    <!-- 左: realtime cyber status -->
-    <section class="col status-col">
-      <div class="level-card" id="level-card">
-        <div class="level-ring" id="level-ring"><b id="level-word">—</b><span>脅威レベル</span></div>
-        <div class="level-facts" id="level-facts"></div>
-      </div>
-
-      <article class="card" id="card-shield">
-        <h3>シールド（直近5分）</h3>
-        <div class="stats" id="shield-stats"></div>
-        <svg class="spark" id="shield-spark" viewBox="0 0 320 60" preserveAspectRatio="none" aria-hidden="true"></svg>
-      </article>
-
-      <article class="card" id="card-server">
-        <h3>サーバー</h3>
-        <div class="stats" id="server-stats"></div>
-      </article>
-
-      <article class="card" id="card-emergency">
-        <h3>緊急システム</h3>
-        <p class="muted" id="emergency-state"></p>
-        <div class="acts" id="emergency-acts">
-          <button class="btn danger small" id="btn-lockdown" type="button">ロックダウンを発動</button>
-          <button class="btn small" id="btn-verify" type="button">ログ整合性を確認</button>
-        </div>
-        <p class="verify" id="verify-line"></p>
-      </article>
-
-      <article class="card" id="card-blocks">
-        <h3>ブロック中 <b class="count" id="blocks-count"></b></h3>
-        <div class="blocks" id="blocks-list"></div>
-      </article>
-
-      <article class="card" id="card-attackers">
-        <h3>脅威スコアの高いアドレス</h3>
-        <div class="attackers" id="attackers-list"></div>
-      </article>
-
-      <article class="card" id="card-ops">
-        <h3>運営者</h3>
-        <div class="ops-now" id="ops-now"></div>
-      </article>
-    </section>
-
-    <!-- 右: the log and the operators' channel -->
-    <section class="col side-col">
-      <div class="side-tabs">
-        <button class="side-tab on" data-side="log" type="button">ログ</button>
-        <button class="side-tab" data-side="chat" type="button">連絡チャンネル<b class="count" id="chat-dot" hidden></b></button>
-      </div>
-
-      <div class="side-view" id="side-log">
-        <div class="log-head">
-          <input class="search" id="log-search" type="search" placeholder="名前・内容で探す" autocomplete="off" spellcheck="false">
-        </div>
-        <div class="chips log-kinds" id="log-kinds">
-          <button class="chip on" data-kind="" type="button">すべて</button>
-          <button class="chip" data-kind="security" type="button">セキュリティ</button>
-          <button class="chip" data-kind="emergency" type="button">緊急</button>
-          <button class="chip" data-kind="operator" type="button">運営</button>
-          <button class="chip" data-kind="player" type="button">プレイヤー</button>
-          <button class="chip" data-kind="vault" type="button">保管庫</button>
-        </div>
-        <div class="log" id="log-list"></div>
-        <button class="btn wide small" id="log-more" type="button" hidden>さらに読み込む</button>
-      </div>
-
-      <div class="side-view" id="side-chat" hidden>
-        <p class="hint muted">運営者だけの連絡チャンネルです。メッセージはサーバーに暗号化して保存されます（データベースを直接見ても読めません）。ロックダウン中もここは使えます。</p>
-        <div class="chat-scroll" id="chat-scroll"><div class="chat-list" id="chat-list"></div></div>
-        <form class="chat-compose" id="chat-form">
-          <textarea id="chat-text" rows="2" maxlength="4000" placeholder="メッセージ（Ctrl+Enter で送信）"></textarea>
-          <button class="btn primary" type="submit">送信</button>
-        </form>
-      </div>
-    </section>
+  <div class="shell">
+    <!-- the panels this person has: the server says which (GET /api/sec/me), and this is built from that and from nothing else -->
+    <nav class="rail" id="rail" aria-label="パネル"></nav>
+    <main class="stage" id="stage"></main>
   </div>
 </div>
 
@@ -152,6 +111,9 @@
 </div>
 
 <script src="/ops/ui-guard.js"></script>
+<script src="/ops/deviceinfo.js"></script>
+<script src="/js/net/secchannel.js"></script>
+<script src="pk.js"></script>
 <script src="sec.js"></script>
 </body>
 </html>

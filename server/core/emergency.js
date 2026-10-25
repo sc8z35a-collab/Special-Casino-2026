@@ -54,9 +54,11 @@ const show = (k, v) => (UNIT[k] ? `${(v / MB).toFixed(1)}MB` : Math.round(v).toL
 // host: { dbBytes() -> number | null, stop() (close the live connections) };
 // shield: server/core/shield.js (its forensic report goes into a lockdown);
 // verifyLog(): the operators' log's integrity (checked on a lockdown);
+// onLockdown(): told once a lockdown starts, onRelease(): once one is lifted (a breach: what was
+// trusted before is not, and an intruder's login does not come back with the site);
 // protect(reason): best-effort, keep the important data safe (an encrypted
 // backup); clock: the time (tests move it).
-export function createEmergency({ q, config, opsLog, host = {}, devCode, isDeveloper, getUser, shield = null, verifyLog = null, protect = null, defer = (p) => p, clock = Date.now }) {
+export function createEmergency({ q, config, opsLog, host = {}, devCode, isDeveloper, getUser, shield = null, verifyLog = null, protect = null, onLockdown = null, onRelease = null, defer = (p) => p, clock = Date.now }) {
   const floors = { ...FLOORS, ...(config.emergencyFloors || {}) };
   const on = config.emergency !== 'off';
   const read = (key, fallback) => {
@@ -147,6 +149,7 @@ export function createEmergency({ q, config, opsLog, host = {}, devCode, isDevel
     state = { stopped: true, level: 'lockdown', at: now, by: by ? by.id : 0, reason: detail.reason, entry: entry.id, releaseAt: now + LOCKDOWN_MS, why };
     write('emergency', state);
     if (host.stop) host.stop();
+    if (onLockdown) safe(() => onLockdown(state), null);
     // protect what we can, without letting a failure hold up the lockdown
     if (protect) defer(Promise.resolve().then(() => protect('lockdown')).catch((e) => {
       opsLog.add({ actorName: 'システム', action: 'lockdown', summary: `ロックダウン時の保護処理に失敗：${String((e && e.message) || e).slice(0, 200)}`, detail: { step: 'protect' } });
@@ -172,6 +175,7 @@ export function createEmergency({ q, config, opsLog, host = {}, devCode, isDevel
       summary: `${auto ? '自動で' : by ? `${by.name}が` : ''}${kind}を解除（${auto ? '発動から1か月' : by ? '手動' : ''}・停止していた時間 ${Math.round((now - (was.at || now)) / 60000)}分）`,
       detail: { level: was.level, stoppedAt: was.at, reason: was.reason, entry: was.entry, auto, graceMinutes: GRACE_MS / 60000 }
     });
+    if (was.level === 'lockdown' && onRelease) safe(() => onRelease(was), null);
     return { stopped: false };
   }
 

@@ -33,8 +33,9 @@
      back the same way; files and folders checked to move, download or delete
      several at once. One room for all of them: in the shared ones each
      operator keeps 1GB, more once the developer approves (with a limit). In
-     the developer's own, time-limited links (for an AI too: what it takes and
-     does is labelled; what it put in the game is 実装済み).
+     the developer's own, time-limited links (for an AI too): a link only
+     looks, takes and comments (150 characters); the developer says a file is
+     実装済み, signed in with the code.
    - アーカイブ: the 永久BAN and deleted accounts, all their data gone 90 days
      after they came in; a 永久BAN can be lifted, a deleted account never
      comes back. Only the developer sees the button that deletes an account
@@ -79,7 +80,7 @@
     vault_bucket: '保管庫をR2へ移動', vault_ai_label: 'AIのラベル（保管庫）', vault_ai_done: 'AIが実装（保管庫）', vault_restore: '保管庫で実装済みから戻す',
     vault_quota_request: '保管庫の容量の申請', vault_quota_cancel: '容量の申請の取り下げ', vault_quota_approve: '容量の申請を承認', vault_quota_decline: '容量の申請を見送り',
     vault_quota_set: '保管庫の上限を変更', vault_rename: '保管庫で名前を変更', vault_backup: '保管庫のバックアップ', vault_backup_off: 'バックアップから外す',
-    vault_backup_restore: 'バックアップから戻す', vault_ai_comment: 'AIのコメント（保管庫）', milestone: '登録者数の記念', voice_notice: '通話品質アップのお知らせ'
+    vault_backup_restore: 'バックアップから戻す', vault_ai_comment: 'AIのコメント（保管庫）', vault_implemented: '保管庫で実装済みにする', staff_name_reused: '運営の名前を別のアカウントが使用', patrol_alert: '自動点検：異常', patrol_notice: '自動点検：お知らせ', patrol_clear: '自動点検：解消', pk_fail: 'パスキーの入力ミス', login_fail: 'ログインの失敗', login_lock: 'ログインの失敗でロック', login_burst: 'ログインの失敗が多すぎる', pk_issue: 'パスキーを取得（Discord）', pk_breakglass: '非常口でパスキー認証を開いた', vault_link_trip: '保管庫のリンクを自動停止', milestone: '登録者数の記念', voice_notice: '通話品質アップのお知らせ'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
   var KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
@@ -111,15 +112,20 @@
     var h = { 'Content-Type': 'application/json' };
     if (token) h.Authorization = 'Bearer ' + token;
     if (headers) Object.keys(headers).forEach(function (k) { h[k] = headers[k]; });
-    return fetch(path, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' })
+    // (signed with this page's key once today's passkey is in: ops/pk.js)
+    return OpsPk.header(method, path).catch(function () { return null; }).then(function (gate) {
+      if (gate) h['X-Gate'] = gate;
+      return fetch(path, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' });
+    })
       .catch(function () { throw { status: 0, message: '通信できませんでした' }; })
       .then(function (res) {
         return res.json().catch(function () { return {}; }).then(function (j) {
           if (res.ok) return j;
           var e = j.error || {};
-          var err = { status: res.status, code: e.code || '', message: e.message || 'エラーが発生しました（' + res.status + '）', until: e.until || 0, mode: e.mode || 0 };
+          var err = { status: res.status, code: e.code || '', message: e.message || 'エラーが発生しました（' + res.status + '）', until: e.until || 0, left: e.left || 0, scope: e.scope || '', mode: e.mode || 0 };
           // the server stopped itself (a plain emergency stop, or a lockdown)
           if (res.status === 503 && e.emergency) showEmergency(e);
+          else if (e.code === 'pk_required' || e.code === 'pk_expired') showPasskey(e.code === 'pk_required' && err.message === PK_DEFAULT ? '' : err.message);
           else if (res.status === 401 || e.code === 'not_operator' || e.code === 'banned') signedOut(err.message);
           else if (e.code === 'mfa_required' && path !== '/api/ops/login') showLogin(err.message);
           throw err;
@@ -215,10 +221,11 @@
   function fail(err) { toast(err && err.message ? err.message : 'エラーが発生しました'); }
 
   /* ------------------------------------------------------------ logging in --- */
-  // the site put away (for the login, or the day's ログイン button)
+  // the site put away (for the login, the passkey, or the day's ログイン button)
   function leaveApp() {
+    $('#pk').hidden = true;
     resetDevUnit();
-    stopInline3d();
+    stopThumbnails();
     if (call.on) callLeave();
     opsLiveClose();
     $('#dev-call').hidden = true;
@@ -235,8 +242,90 @@
     leaveApp();
     $('#login').hidden = false;
     $('#login-error').textContent = message || '';
+    // (a name that was tried in this tab comes back after a reload; the server says how long it must still wait)
+    var last = '';
+    try { last = sessionStorage.getItem(NAME_KEY) || ''; } catch (e) { last = ''; }
+    if (last && !$('#login-name').value) $('#login-name').value = last;
+    askWait();
+    setTimeout(askWait, 900);
     setTimeout(function () { $('#login-name').focus(); }, 50);
   }
+  // The passkey (server/core/pk.js), asked each time this page opens and after
+  // an hour on it: today's six digits from Discord's /passkey. A wrong one
+  // keeps the account out for an hour. The page's key lives in its memory only
+  // (ops/pk.js): a page that is reloaded or left asks again, and the page
+  // starts over when the hour is up.
+  var PK_DEFAULT = '今日のパスキーを入力してください', pkTimer = 0, pkWarn = 0, pkLockTimer = 0, pkLockEnd = 0;
+  function showPasskey(message) {
+    if (!token) return;
+    // (many requests fail at once when it is asked for: the screen is put up once)
+    if (!$('#pk').hidden) { if (message) $('#pk-error').textContent = message; return; }
+    leaveApp();
+    clearTimeout(pkTimer); clearTimeout(pkWarn);
+    OpsPk.close();
+    $('#login').hidden = true;
+    $('#enter').hidden = true;
+    $('#pk').hidden = false;
+    $('#pk-code').value = '';
+    $('#pk-error').textContent = message || '';
+    $('#pk-go').disabled = false;
+    pkLockEnd = 0;
+    clearInterval(pkLockTimer);
+    request('GET', '/api/pk/state').then(function (st) {
+      $('#pk-day').textContent = '今日（' + st.day.replace(/-/g, '/') + '）のパスキーを入力してください。';
+      var r = ROLE[st.role] || ROLE.operator;
+      $('#pk-role').className = 'kind ' + r[0];
+      $('#pk-role').textContent = r[1];
+      $('#pk-name').textContent = st.name;
+      if (st.locked > Date.now()) pkWait(st.locked);
+    }, function () {});
+    setTimeout(function () { $('#pk-code').focus(); }, 50);
+  }
+  // the hour's wait after a wrong passkey, counted down
+  function pkWait(until) {
+    pkLockEnd = until;
+    clearInterval(pkLockTimer);
+    var go = $('#pk-go');
+    function tick() {
+      var left = pkLockEnd - Date.now();
+      if (left <= 0) { clearInterval(pkLockTimer); go.disabled = false; $('#pk-error').textContent = 'もう一度入力できます'; return; }
+      go.disabled = true;
+      $('#pk-error').textContent = 'パスキーを間違えたため入力できません。あと ' + Math.floor(left / 60000) + '分' + pad(Math.floor(left / 1000) % 60) + '秒で入力できます';
+    }
+    tick();
+    pkLockTimer = setInterval(tick, 1000);
+  }
+  // the hour: a warning five minutes before, and the page starts over (nothing of it stays) when it is up
+  function pkSchedule(until) {
+    clearTimeout(pkTimer); clearTimeout(pkWarn);
+    var left = until - Date.now();
+    pkWarn = setTimeout(function () { toast('あと5分で、パスキーをもう一度入力することになります'); }, Math.max(0, left - 5 * 60000));
+    pkTimer = setTimeout(function () { location.reload(); }, Math.max(0, left));
+  }
+  function onPasskey(e) {
+    e.preventDefault();
+    if (Date.now() < pkLockEnd) return;
+    var code = $('#pk-code').value.replace(/\s/g, '');
+    // (a slip of the fingers is not a try: only six digits are sent)
+    if (!/^\d{6}$/.test(code)) { $('#pk-error').textContent = '6桁の数字を入力してください'; return; }
+    var go = $('#pk-go');
+    go.disabled = true;
+    $('#pk-error').textContent = '';
+    OpsPk.publicKey().then(function (pub) {
+      return request('POST', '/api/pk/open', { passkey: code, pub: pub });
+    }).then(function (r) {
+      OpsPk.open(r.gid, r.until);
+      pkSchedule(r.until);
+      $('#pk').hidden = true;
+      $('#pk-code').value = '';
+      return request('GET', '/api/ops/me').then(arrive);
+    }).catch(function (err) {
+      if (err.code === 'pk_wrong' || err.code === 'pk_locked') { $('#pk-error').textContent = err.message; if (err.until) pkWait(err.until); return; }
+      go.disabled = false;
+      if (err.status !== 401 && err.code !== 'not_operator' && err.code !== 'pk_required') $('#pk-error').textContent = err.message || 'エラーが発生しました';
+    });
+  }
+
   // the first look of the day: ログイン to come in (the developer's ログインログ keeps it)
   var ROLE = { developer: ['dev', '開発者'], operator: ['op', '運営者'], viewer: ['k-viewer', '閲覧者'] };
   function roleOf(me) { return me.developer ? 'developer' : me.viewer ? 'viewer' : 'operator'; }
@@ -277,16 +366,18 @@
   }
   function signedOut(message) {
     setToken(null);
-    // a viewer: nothing they saw stays in the page (it starts over, the reason kept for the login)
-    if (state.viewer) {
+    OpsPk.close();
+    // a viewer: nothing they saw stays in the page (it starts over, the reason kept for the login); so does
+    // a page that has parts of a deployment's in it (ops/ext.js)
+    if (state.viewer || OpsExt.active()) {
       try { sessionStorage.setItem('ops-out', message || ''); } catch (e) { /* the login says nothing then */ }
       location.reload();
       return;
     }
     showLogin(message);
   }
-  // this browser's own id (two wrong logins make it wait: server/core/opslogin.js)
-  var DEVICE_KEY = 'two-state-ops/device', lockTimer = 0, lockEnd = 0;
+  // this browser's own id (the server keeps it apart from other browsers: server/core/opslogin.js)
+  var DEVICE_KEY = 'two-state-ops/device', NAME_KEY = 'two-state-ops/login-name', deviceNew = false;
   function opsDevice() {
     var d = null;
     try { d = localStorage.getItem(DEVICE_KEY); } catch (e) { d = null; }
@@ -294,40 +385,72 @@
       var a = new Uint8Array(18);
       crypto.getRandomValues(a);
       d = btoa(String.fromCharCode.apply(null, a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      deviceNew = true;
       try { localStorage.setItem(DEVICE_KEY, d); } catch (e) { /* this tab only */ }
     }
     return d;
   }
-  // the wait, counted down on the login card
-  function waitUntil(until) {
-    lockEnd = until;
+  // The wait after wrong tries is the server's: it counts it (for the name typed, for this browser and
+  // for the address) and says how much is left. This page only shows that, counting down from what it
+  // was told with its own timer, so a reload, another tab or browser, or a wrong clock on this
+  // computer changes nothing. Nothing of the count is kept here.
+  var lockTimer = 0, lockLeft = 0, lockStamp = 0, askTimer = 0, askSeq = 0;
+  function lockRest() { return lockLeft > 0 ? Math.max(0, lockLeft - (performance.now() - lockStamp)) : 0; }
+  function showWait(left, scope) {
+    lockLeft = left; lockStamp = performance.now();
     clearInterval(lockTimer);
-    var go = $('#login-go');
+    var go = $('#login-go'), what = scope === 'account' ? 'このアカウントは入力制限中です' : 'この接続からの入力が制限されています';
     function tick() {
-      var left = lockEnd - Date.now();
-      if (left <= 0) { clearInterval(lockTimer); go.disabled = false; $('#login-error').textContent = 'もう一度入力できます'; return; }
+      var rest = lockRest();
+      // (the time is up: the server is asked once more, and it has the last word)
+      if (rest <= 0) { clearInterval(lockTimer); askWait(true); return; }
       go.disabled = true;
-      $('#login-error').textContent = '入力制限中です。あと ' + Math.floor(left / 60000) + '分' + pad(Math.floor(left / 1000) % 60) + '秒で入力できます';
+      $('#login-error').textContent = what + '。あと ' + Math.floor(rest / 60000) + '分' + pad(Math.floor(rest / 1000) % 60) + '秒で入力できます';
     }
     tick();
     lockTimer = setInterval(tick, 1000);
   }
+  function clearWait(said) {
+    var was = lockLeft > 0;
+    clearInterval(lockTimer); lockLeft = 0;
+    $('#login-go').disabled = false;
+    if (was || /入力制限|制限されて/.test($('#login-error').textContent)) $('#login-error').textContent = said ? 'もう一度入力できます' : '';
+  }
+  // ask the server how long the name typed (or, with none, this browser and address) must still wait
+  function askWait(ended) {
+    var name = $('#login-name').value.trim(), seq = ++askSeq;
+    request('POST', '/api/ops/login-wait', { name: name }, { 'X-Ops-Device': opsDevice() }).then(function (r) {
+      if (seq !== askSeq || $('#login').hidden) return;
+      if (r.left > 0) showWait(r.left, r.scope); else clearWait(ended === true);
+    }, function () { /* the login itself tells the wait when it is tried */ });
+  }
+  // (the name typed, or filled in by the browser: asked a moment after the last change)
+  function askSoon() { clearTimeout(askTimer); askTimer = setTimeout(askWait, 350); }
   function onLogin(e) {
     e.preventDefault();
-    if (Date.now() < lockEnd) return;
+    if (lockRest() > 0) return;
     var name = $('#login-name').value.trim(), pass = $('#login-pass').value;
     if (!name || !pass) { $('#login-error').textContent = '名前とパスワードを入力してください'; return; }
     var go = $('#login-go');
     go.disabled = true;
     $('#login-error').textContent = '';
-    // (the day's ログイン as well: a login with the password is one)
-    request('POST', '/api/ops/login', { name: name, password: pass, enter: true, otp: $('#login-otp').value.trim(), phrase: $('#login-phrase').value, recovery: $('#login-backup').value.trim() }, { 'X-Ops-Device': opsDevice() }).then(function (r) {
+    // (the name stays for this tab only, so that a reload can ask the server how long it must still wait)
+    try { sessionStorage.setItem(NAME_KEY, name); } catch (e2) { /* the page asks for what is typed */ }
+    var device = opsDevice();
+    // (the day's ログイン as well: a login with the password is one; and what the browser can say of the
+    // device goes with it, to be written to the log if the try is wrong)
+    (window.OpsDevice ? OpsDevice.collect('ops', deviceNew) : Promise.resolve({})).then(function (client) {
+      return request('POST', '/api/ops/login', { name: name, password: pass, enter: true, otp: $('#login-otp').value.trim(), phrase: $('#login-phrase').value, recovery: $('#login-backup').value.trim(), client: client }, { 'X-Ops-Device': device });
+    }).then(function (r) {
       setToken(r.token);
       return request('GET', '/api/ops/me').then(function (me) {
         $('#login-pass').value = '';
         $('#login-otp').value = ''; $('#login-phrase').value = ''; $('#login-backup').value = ''; $('#login-extra').open = false;
+        try { sessionStorage.removeItem(NAME_KEY); } catch (e2) { /* nothing was kept */ }
         start(me);
       }, function (err) {
+        // the passkey is asked for next (its page is up already): the login stays
+        if (err.code === 'pk_required' || err.code === 'pk_expired') { $('#login-pass').value = ''; $('#login-otp').value = ''; $('#login-phrase').value = ''; $('#login-backup').value = ''; return; }
         // not an operator: the session just made goes again
         fetch('/api/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + r.token, 'Content-Type': 'application/json' }, body: '{}' }).catch(function () {});
         setToken(null);
@@ -335,15 +458,22 @@
       });
     }).catch(function (err) {
       if (err.code === 'mfa_required' || err.code === 'mfa_invalid') { $('#login-extra').open = true; $('#login-otp').focus(); }
-      if (err.code === 'ops_locked' && err.until) { waitUntil(err.until); return; }
+      if (err.code === 'ops_locked') { showWait(err.left || Math.max(1000, (err.until || 0) - Date.now()), err.scope); return; }
       $('#login-error').textContent = err.message;
-    }).then(function () { if (Date.now() >= lockEnd) go.disabled = false; });
+    }).then(function () { if (lockRest() <= 0) go.disabled = false; });
   }
   function logout() {
     var t = token;
+    VaultThumbnails.cache.clear();
     if (state.name) dropLogin(state.name);
     setToken(null);
+    OpsPk.close();
     if (t) fetch('/api/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: '{}' }).catch(function () {});
+    if (OpsExt.active()) {
+      try { sessionStorage.setItem('ops-out', 'ログアウトしました'); } catch (e) { /* the login says nothing then */ }
+      location.reload();
+      return;
+    }
     showLogin('ログアウトしました');
   }
 
@@ -453,7 +583,7 @@
   /* ------------------------------------------------------------ views --- */
   // what a 閲覧者 never sees (the server refuses it anyway): the players'
   // list and the archive, the operators' chat, the payments and the vault
-  var VIEWER_HIDDEN = ['players', 'archive', 'team', 'pay', 'vault', 'devunit', 'diary', 'profile'];
+  var VIEWER_HIDDEN = ['players', 'archive', 'team', 'pay', 'vault', 'devunit', 'diary', 'profile', 'devapp'];
   function start(me) {
     $('#login').hidden = true;
     $('#enter').hidden = true;
@@ -463,6 +593,8 @@
     state.name = me.name;
     state.developer = !!me.developer;
     state.viewer = !!me.viewer;
+    // (parts this deployment adds, if any: ops/ext.js; files held for their check go on from where they were)
+    OpsExt.load(request, { vault: vreq, toast: toast, progress: function (j, f) { j.prep = Math.max(0, Math.min(100, Math.round(f * 100))); onJob(j); } }).then(resumeHeld);
     $('#tab-diary').hidden = !state.developer;
     $('#tab-profile').hidden = state.viewer;
     if (diaryProfile) diaryProfile.start(me);
@@ -470,6 +602,8 @@
     document.body.classList.toggle('role-viewer', state.viewer);
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.hidden = state.viewer && VIEWER_HIDDEN.indexOf(t.dataset.view) >= 0; });
     $('#tab-diary').hidden = !state.developer;
+    // the DEV APP: the developer's alone (and what is in it comes from a route that answers no one else)
+    $('#tab-devapp').hidden = !state.developer;
     // the refresh speed: everyone sees it, only the developer changes it
     $('#speed').disabled = !state.developer;
     $('#speed').title = state.developer ? '運営サイトの更新頻度（運営者全員に反映）' : '更新頻度は開発者だけが変えられます';
@@ -578,11 +712,11 @@
     }, function (err) { $('#speed').value = speed; fail(err); });
   }
   function setView(v) {
-    if (v !== 'vault') stopInline3d();
+    if (v !== 'vault') stopThumbnails();
     var again = state.view === v;
     state.view = v;
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
-    ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
+    ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile', 'calendar', 'devapp'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
     if (diaryProfile) diaryProfile.view(v);
     if (v === 'players') load();
     else if (v === 'archive') loadArchive();
@@ -592,6 +726,8 @@
     else if (v === 'feedback') loadFeedback();
     else if (v === 'devunit' && !state.viewer) { loadDevDoc(); loadDevComments(false); }
     else if (v === 'securityhome' && !$('#securityhome-frame').getAttribute('src')) $('#securityhome-frame').src = '/sec/';
+    else if (v === 'calendar') { if (window.OpsCalendar) OpsCalendar.show($('#view-calendar')); }
+    else if (v === 'devapp') { if (window.OpsDevApp) OpsDevApp.show($('#view-devapp'), request, toast); }
     else if (v === 'log') { loadLog(true); verifyLog(); }
     else if (v === 'team') openTeamView();
     else if (v === 'security') loadSecurity();
@@ -958,8 +1094,14 @@
       field.hidden = !o.input;
       if (o.input) {
         $('#dialog-label').textContent = o.input.label;
-        input.type = o.input.type || 'text';
+        input.type = o.input.range ? 'range' : o.input.type || 'text';
         input.value = o.input.value || '';
+        // a slider (`range`: [from, to]): its value shown in the label as it moves
+        if (o.input.range) {
+          input.min = o.input.range[0]; input.max = o.input.range[1]; input.step = 1; input.value = o.input.value || o.input.range[0];
+          input.oninput = function () { $('#dialog-label').textContent = o.input.label + '：' + input.value + (o.input.unit || ''); };
+          input.oninput();
+        } else { input.removeAttribute('min'); input.removeAttribute('max'); input.removeAttribute('step'); input.oninput = null; }
         if (o.shareURL) {
           var shareCopy = el('button', 'btn small vault-share-copy', 'URLをコピー'); shareCopy.type = 'button';
           shareCopy.addEventListener('click', function () { copyVaultURL(input.value); }); field.appendChild(shareCopy);
@@ -973,19 +1115,31 @@
         select.textContent = '';
         o.select.options.forEach(function (x) { var op = el('option', '', x.label); op.value = x.value; select.appendChild(op); });
         select.value = o.select.value || '';
-      }
+        // (what the choice does to the field: the address shown for the one picked)
+        select.onchange = o.select.change ? function () { o.select.change(select.value, input); } : null;
+      } else select.onchange = null;
       // several lines: { label, value }
       var areaField = $('#dialog-area-field'), area = $('#dialog-area');
       areaField.hidden = !o.area;
+      var oldAreaCopy = areaField.querySelector('.vault-share-copy'); if (oldAreaCopy) oldAreaCopy.remove();
+      // (`shareArea`: several generated addresses, read-only, the only thing besides one address that can be copied from here)
+      area.readOnly = !!(o.area && o.shareArea);
+      if (o.area && o.shareArea) area.dataset.vaultShareUrl = '1'; else delete area.dataset.vaultShareUrl;
       if (o.area) {
         $('#dialog-area-label').textContent = o.area.label;
         area.value = o.area.value || '';
+        if (o.shareArea) {
+          var areaCopy = el('button', 'btn small vault-share-copy', 'まとめてコピー'); areaCopy.type = 'button';
+          areaCopy.addEventListener('click', function () { copyVaultURL(area.value); }); areaField.appendChild(areaCopy);
+        }
       }
       $('#dialog').hidden = false;
       setTimeout(function () { (o.input ? input : o.select ? select : o.area ? area : ok).focus(); }, 30);
       var done = function (v) {
         $('#dialog').hidden = true;
         delete input.dataset.vaultShareUrl; input.readOnly = false;
+        delete area.dataset.vaultShareUrl; area.readOnly = false;
+        input.oninput = null; select.onchange = null;
         $('#dialog-form').onsubmit = null;
         $('#dialog-cancel').onclick = null;
         resolve(v);
@@ -2228,7 +2382,7 @@
   function loadPick() {
     var mode = pick.mode, q = $('#team-pick-q').value.trim(), seq = ++pick.seq;
     if (!mode) return;
-    var url = mode === 'log' ? '/api/ops/log?q=' + encodeURIComponent(q) : '/api/ops/players?q=' + encodeURIComponent(q);
+    var url = mode === 'log' ? '/api/ops/log?slim=1&q=' + encodeURIComponent(q) : '/api/ops/players?q=' + encodeURIComponent(q);
     request('GET', url).then(function (r) {
       if (seq !== pick.seq || pick.mode !== mode) return;
       renderPick(mode === 'log' ? (r.entries || []).slice(0, 30) : (r.players || []).slice(0, 30), mode);
@@ -2685,6 +2839,9 @@
     srvVault(r);
     srvCloudflare(r);
     srvDiscord(r);
+    srvLine(r);
+    srvPatrol(r);
+    srvStele(r);
     srvMachine(r);
   }
   // how full the month's allowances are: the サーバー tab (and its button in the
@@ -2725,18 +2882,104 @@
       ['今日（UTC）', '映像 ' + bytes(t.video) + '・処理 ' + bytes(t.game) + '・音声 ' + bytes(t.voice)]
     ], '通話の音声そのものは端末どうしで直接つながるため、サーバーを通るのは合図だけです。');
   }
+  // the developer's LINE notices: on or not, how much of the month's allowance is used
+  function srvLine(r) {
+    var l = r.line || {}, card = $('#srv-line');
+    var rows = [['状態', l.on ? 'オン' : l.bot ? '返信のみ（通知先が未設定）' : '未設定']];
+    if (l.bot) rows.push(['今月の送信数', fmt(l.used) + ' / ' + fmt(l.limit) + '通（' + (l.month || '') + '）' + (l.exhausted ? '・使い切り' : ''), l.limit ? Math.min(1, l.used / l.limit) : null]);
+    if (l.dropped) rows.push(['送信枠のため送らなかった通知', fmt(l.dropped) + '件']);
+    srvCard(card, 'LINE 通知', rows, l.on
+      ? 'Discord と同じ内容を LINE に送ります。LINE は1か月の送信数に上限があるため（無料プランは200通）、危険な知らせはすぐに、ふつうの通知は数分まとめて1通にして、枠の6割までに送ります。「パスキー」と送ると、運営の方に今日のパスキーを返信します（返信は枠に数えません）。'
+      : 'LINE のチャネルアクセストークン（LINE_CHANNEL_ACCESS_TOKEN）と送信先（LINE_STAFF_USER_IDS）を入れるとオンになります（README「LINE に通知する」）。');
+  }
+  // the server's look over itself (server/core/patrol.js): when, and what it found
+  function srvPatrol(r) {
+    var p = r.patrol, card = $('#srv-patrol');
+    if (!card) return;
+    var rows = [['最後の点検', p ? stamp(p.at) + '（' + p.ms + 'ミリ秒）' : 'まだありません（6時間ごとに自動で行います）']];
+    if (p) {
+      rows.push(['結果', p.findings.length ? '気になる点が' + p.findings.length + '件' : '異常なし']);
+      p.findings.slice(0, 6).forEach(function (f) { rows.push([f.level === 'high' ? '！ 異常' : 'お知らせ', f.text]); });
+    }
+    srvCard(card, '自動点検', rows, '運営ログの鎖・運営権や閲覧者の付与の記録との突き合わせ・サーバーの設定の変化などを、サーバー自身が見張ります。異常は運営ログとDiscord／LINEに出ます。');
+    if (!state.developer) return;
+    var b = el('button', 'btn small', '今すぐ点検');
+    b.type = 'button';
+    b.addEventListener('click', function () {
+      b.disabled = true;
+      request('POST', '/api/ops/patrol/run', {}).then(function (t) {
+        r.patrol = t.patrol;
+        srvPatrol(r);
+        toast(t.patrol && t.patrol.findings.length ? '気になる点があります' : '異常なし');
+      }, fail).then(function () { b.disabled = false; });
+    });
+    card.appendChild(b);
+  }
+  // the 石碑 (server/core/stele.js): the log's copies in files of their own, how far they go, and the room left
+  function srvStele(r) {
+    var s = r.stele, card = $('#srv-stele');
+    if (!card || !s) return;
+    var c = s.capacity || {};
+    var rows = [
+      ['外の控え', !s.on ? 'ありません（このサーバーに保管先がありません）' : s.sealed ? '刻んでいます（' + fmt(s.segs) + 'か所・#1〜#' + fmt(s.sealed) + '）' : 'まだ刻んでいません（まもなく刻みます）'],
+      ['まだ刻んでいない記録', fmt(s.pending) + '件' + (s.at ? '・最後に刻んだのは ' + stamp(s.at) : '')],
+      ['前回の確認', s.check ? stamp(s.check.at) + (s.check.ok ? '・異常なし' : '・要確認 ' + s.check.problems.length + '件') : 'まだありません（6時間ごとに自動で行います）']
+    ];
+    if (s.failSince) rows.push(['！ 刻めていません', (s.failText || '原因不明') + '（' + stamp(s.failSince) + ' から）']);
+    if (s.diverged) rows.push(['！ 食い違い', '#' + s.diverged.id + ' が、刻んだものと違います']);
+    ((s.check && s.check.problems) || []).slice(0, 4).forEach(function (p) { rows.push(['！ 異常', p.text]); });
+    rows.push(['運営ログ', fmt(c.rows) + '件・約' + mb(c.logBytes || 0)]);
+    if (c.dbBytes) rows.push(['データベース', mb(c.dbBytes) + (c.ratio ? '（上限の' + (c.ratio < 0.01 ? '1%未満' : Math.round(c.ratio * 100) + '%') + '）' : ''), c.ratio || null]);
+    srvCard(card, 'ログの石碑（消えない控え）', rows, '運営ログの1行ずつを、書き換えも上書きもできないファイルにして、データベースとは別の場所にも残します。データベースが壊れても、行が書き換えられても、消されても見つかり、控えから戻せます。1日に1回、いちばん新しい行のハッシュが Discord / LINE に届きます。');
+    if (!state.developer) return;
+    var row = el('div', 'srv-actions');
+    var run = el('button', 'btn small', '今すぐ刻んで全部確かめる');
+    run.type = 'button';
+    run.addEventListener('click', function () {
+      run.disabled = true;
+      request('POST', '/api/ops/stele/run', {}).then(function (t) {
+        r.stele = t.stele;
+        srvStele(r);
+        toast(t.ran.ok ? '異常なし（' + fmt(t.stele.sealed) + '件まで刻んであります）' : '気になる点があります');
+      }, fail).then(function () { run.disabled = false; });
+    });
+    var save = el('button', 'btn small ghost', 'ログを書き出す');
+    save.type = 'button';
+    save.addEventListener('click', function () {
+      save.disabled = true;
+      var lines = [], count = 0, head = null;
+      (function more(after) {
+        return request('GET', '/api/ops/log/archive?after=' + after + '&limit=1000').then(function (p) {
+          p.rows.forEach(function (a) { var o = {}; p.cols.forEach(function (k, i) { o[k] = a[i]; }); lines.push(JSON.stringify(o)); count++; });
+          head = p.head;
+          return p.more ? more(p.last) : null;
+        });
+      })(0).then(function () {
+        lines.push(JSON.stringify({ end: true, count: count, head: head }));
+        var a = el('a');
+        a.href = URL.createObjectURL(new Blob([lines.join('\n') + '\n'], { type: 'application/x-ndjson' }));
+        a.download = 'ops-log-' + new Date().toISOString().slice(0, 10) + '.jsonl';
+        document.body.appendChild(a); a.click(); a.remove();
+        toast('運営ログ ' + fmt(count) + '件を書き出しました');
+      }, fail).then(function () { save.disabled = false; });
+    });
+    row.appendChild(run); row.appendChild(save);
+    card.appendChild(row);
+  }
   // the developer's Discord notices: on or not, and (the developer) a test
   function srvDiscord(r) {
     var d = r.discord || {}, card = $('#srv-discord');
     srvCard(card, 'Discord 通知', [['状態', d.on ? 'オン' : '未設定']], d.on
       ? '緊急停止・ロックダウン・攻撃元の自動ブロック・チャット停止・通報・報告／意見案・課金・開発者コードの間違い・運営権・バックアップの失敗・新しい版の反映を、Discord のチャンネルに送ります。ゲーム・運営サイト・サーバーが危険な状況（緊急停止・ロックダウン・攻撃元の自動ブロック・画面を見る機能の強制終了）のときは【危険】として状況をできるだけ詳しく送り、運営サイトとセキュリティHOMEの URL を添えます。'
       : 'Discord のチャンネルの Webhook の URL を、シークレット DISCORD_WEBHOOK_URL として入れるとオンになります（README「Discord に通知する」）。');
-    if (!d.on || !state.developer) return;
-    var b = el('button', 'btn small', 'テスト送信');
+    if (!(d.on || (r.line && r.line.on)) || !state.developer) return;
+    var b = el('button', 'btn small', 'テスト送信（Discord・LINE）');
     b.type = 'button';
     b.addEventListener('click', function () {
       b.disabled = true;
-      request('POST', '/api/ops/discord/test', {}).then(function () { toast('Discord に送りました'); }, fail).then(function () { b.disabled = false; });
+      request('POST', '/api/ops/discord/test', {}).then(function (t) {
+        toast('送りました：' + [t.discord !== null && t.discord !== undefined ? 'Discord' : '', t.line !== null && t.line !== undefined ? 'LINE' : ''].filter(Boolean).join('・'));
+      }, fail).then(function () { b.disabled = false; });
     });
     card.appendChild(b);
   }
@@ -3126,76 +3369,6 @@
     }
     return v3d;
   }
-  // Visible cards show the model without opening the icon. Offscreen cards
-  // release their meshes; two downloads at a time, one WebGL renderer total.
-  var inline3dSession = null;
-  function stopInline3d() {
-    stopThumbnails();
-    var s = inline3dSession;
-    if (!s) return;
-    s.alive = false;
-    if (s.observer) s.observer.disconnect();
-    s.items.forEach(function (i) { if (i.view) i.view.stop(); });
-    if (s.gallery) s.gallery.stop();
-    inline3dSession = null;
-  }
-  function inline3dEl(f) {
-    if (!inline3dSession) inline3dSession = { alive: true, items: [], loading: 0, gallery: null, observer: null };
-    var box = el('div', 'vault-inline3d'), model = el('div', 'vault-inline3d-model');
-    var note = el('small', 'muted', '3Dを読み込み中…');
-    box.appendChild(model);
-    box.appendChild(note);
-    inline3dSession.items.push({ file: f, box: box, host: model, note: note, visible: false, loading: false, failed: false, view: null });
-    return box;
-  }
-  function watchInline3d() {
-    var s = inline3dSession;
-    if (!s || !s.alive) return;
-    s.items = s.items.filter(function (i) {
-      if (i.box.isConnected) return true;
-      if (i.view) i.view.stop();
-      if (s.observer) s.observer.unobserve(i.box);
-      return false;
-    });
-    if (!s.observer && window.IntersectionObserver) s.observer = new IntersectionObserver(function (changes) {
-      changes.forEach(function (c) {
-        var i = s.items.filter(function (x) { return x.box === c.target; })[0];
-        if (!i) return;
-        i.visible = c.isIntersecting;
-        if (!i.visible && i.view) { i.view.stop(); i.view = null; }
-      });
-      pumpInline3d(s);
-    });
-    s.items.forEach(function (i) {
-      if (s.observer) s.observer.observe(i.box);
-      else i.visible = true;
-    });
-    pumpInline3d(s);
-  }
-  function pumpInline3d(s) {
-    if (!s.alive || state.view !== 'vault') return;
-    s.items.forEach(function (i) {
-      if (s.loading >= 2 || !i.visible || i.loading || i.failed || i.view || !i.box.isConnected) return;
-      i.loading = true;
-      s.loading++;
-      var src = lightOf(i.file) || i.file;
-      Promise.all([vault3d(), fetchFile(src, null)]).then(function (r) {
-        if (!s.alive || !i.visible || !i.box.isConnected) return null;
-        if (!s.gallery) s.gallery = r[0].gallery();
-        return r[1].arrayBuffer().then(function (buf) { return s.gallery.add(i.host, buf, src.name); });
-      }).then(function (view) {
-        if (!view) return;
-        if (!s.alive || !i.visible || !i.box.isConnected) { view.stop(); return; }
-        i.view = view;
-        i.note.textContent = 'ドラッグで回転・2本指 / ホイールでズーム';
-      }).catch(function () {
-        i.failed = true;
-        if (!s.alive || !i.box.isConnected) return;
-        i.note.textContent = '3Dを表示できませんでした。アイコンから再試行できます。';
-        if (i.file.preview) i.host.appendChild(picEl(i.file));
-      }).then(function () { i.loading = false; s.loading--; if (s.alive) pumpInline3d(s); });
-    });
-  }
   var KINDS_3D = /\.(glb|gltf|obj|fbx|stl|ply)$/i;
   function is3d(name) { return KINDS_3D.test(String(name || '')); }
   // (the developer's ticket goes with every call while they may change things; an operator has none)
@@ -3253,7 +3426,7 @@
         if (!state.vault) return null;
         state.vault.ticket = r.ticket;
         state.vault.until = r.until;
-        state.vault.hours = r.hours;
+        state.vault.linkHours = r.linkHours;
         clearTimeout(vaultTimer);
         vaultTimer = setTimeout(function () { relock('30分たったので閲覧のみに戻りました'); }, Math.max(1000, r.until - Date.now() - 5000));
         toast('30分間 編集できます');
@@ -3270,7 +3443,7 @@
     openLook.busy = true;
     return request('GET', '/api/vault/spaces').then(function (sp) {
       if (state.vault) return null;
-      state.vault = { ticket: '', until: 0, chunk: sp.pool.chunk, maxBytes: sp.pool.maxBytes, fileBytes: sp.pool.fileBytes, used: sp.pool.used, store: sp.pool.store, me: sp.me, hours: sp.hours };
+      state.vault = { ticket: '', until: 0, chunk: sp.pool.chunk, maxBytes: sp.pool.maxBytes, fileBytes: sp.pool.fileBytes, used: sp.pool.used, store: sp.pool.store, me: sp.me, linkHours: sp.linkHours };
       state.vaultSpaces = sp;
       state.vaultSpeed = sp.speed || null;
       state.vaultSpace = state.developer ? '' : sp.personal ? sp.personal.id : sp.spaces.length ? sp.spaces[0].id : '';
@@ -3976,7 +4149,7 @@
     u.title = '全体の使用量（すべての保管庫の合計）・1ファイル ' + mb(v.fileBytes) + 'まで・保存先 ' + (v.store === 'bucket' ? 'R2' : 'データベース');
   }
   function renderVault() {
-    stopInline3d();
+    stopThumbnails();
     stopThumbnails();
     var open = !!state.vault, info = state.vaultInfo;
     topBar();
@@ -4006,7 +4179,7 @@
     $('#vault-pick-files').hidden = !add;
     $('#vault-link').hidden = !own || !info;
     var links = state.vault.all || { live: 0 };
-    $('#vault-link').textContent = links.live ? 'リンク（有効 ' + links.live + '）' : 'リンク';
+    $('#vault-link').textContent = links.live ? 'URL（有効 ' + links.live + '）' : 'URL';
     renderMemo();
     $('#vault-filter').hidden = !own || !info;
     $('#vault-path').hidden = !info || state.vaultSpace === 'backup';
@@ -4046,7 +4219,7 @@
   }
   var VAULT_PAGE = 60;
   // how fast the vault goes (the developer changes it, for everyone)
-  var SPEED_NOTE = { max: '最速：大きな部分（R2 では 16MB）を一度にたくさん、3ファイルずつ', fast: '高速：8MB の部分を一度に多めに、2ファイルずつ', normal: '標準：8MB の部分を少しずつ、1ファイルずつ' };
+  var SPEED_NOTE = { limit: '上限速：最速の2倍の量を一度に、5ファイルずつ（通信量・端末のメモリを多く使います）', max: '最速：大きな部分（R2 では 16MB）を一度にたくさん、3ファイルずつ', fast: '高速：8MB の部分を一度に多めに、2ファイルずつ', normal: '標準：8MB の部分を少しずつ、1ファイルずつ' };
   function renderSpeed() {
     var box = $('#vault-speed-box'), sp = state.vaultSpeed;
     box.hidden = !state.vault || !sp;
@@ -4094,11 +4267,19 @@
     var p = el('div', 'vault-pic');
     p.dataset.vact = 'pic';
     if (pics[f.id]) { p.style.backgroundImage = 'url("' + pics[f.id] + '")'; return p; }
-    vreq('GET', '/api/vault/preview?id=' + f.id).then(function (r) {
-      if (!r.preview) return;
-      pics[f.id] = r.preview;
-      p.style.backgroundImage = 'url("' + r.preview + '")';
-    }).catch(function () {});
+    // (the medium picture: tens of KB; up to five tries, then the card)
+    VaultThumbnails.attempt(function () { return vreq('GET', '/api/vault/preview?id=' + f.id); }, 5, 1000).then(function (r) {
+      pics[f.id] = r.preview || cardFor(f, true);
+      p.style.backgroundImage = 'url("' + pics[f.id] + '")';
+    }).catch(function () { p.style.backgroundImage = 'url("' + cardFor(f, true) + '")'; });
+    return p;
+  }
+  // a file's card, big (nothing is downloaded to show what it is)
+  function cardEl(f) {
+    var p = el('div', 'vault-pic');
+    p.dataset.vact = 'pic';
+    pics[f.id] = pics[f.id] || cardFor(f, true);
+    p.style.backgroundImage = 'url("' + pics[f.id] + '")';
     return p;
   }
   function modelFacts(facts, i, light) {
@@ -4129,38 +4310,87 @@
     var ext = (/\.([A-Za-z0-9]{1,6})$/.exec(f.name || '') || [])[1] || '';
     var b = kind[1] === 'kapk' ? iconEl('apk', f.name) : iconEl('file', f.name, ext.toUpperCase());
     b.classList.add('vault-thumb');
-    if (f.done && (f.thumbnail || f.preview || (kind[1] === 'kimg' && f.size <= 256 * 1024))) b.dataset.thumbnail = f.id;
+    // (every finished file: its small picture, or the card drawn here: no file is left without one)
+    if (f.done) b.dataset.thumbnail = f.id;
     return b;
   }
-  var thumbnails = {}, thumbnailObserver = null, thumbnailQueue = [], thumbnailEpoch = 0, thumbnailLoading = 0;
+  // The picture of each finished file in the list: its card (drawn here, no traffic) at once; then the small
+  // picture the server holds for it, fetched with the others on the screen in one request and kept in this
+  // browser for next time (up to five tries; the card stays if it cannot come). A file with no small
+  // picture at all (an old one) keeps its card; an editor's page makes a small image's own, once.
+  var thumbnails = {}, cards = {}, thumbnailObserver = null, thumbnailEpoch = 0, thumbnailFetching = 0, thumbnailWaiting = [], thumbnailTimer = 0, backfillBusy = false, backfillQueue = [];
   function stopThumbnails() {
-    thumbnailEpoch++; thumbnailQueue = []; thumbnailLoading = 0;
+    thumbnailEpoch++; thumbnailWaiting = []; thumbnailFetching = 0; backfillQueue = []; backfillBusy = false; clearTimeout(thumbnailTimer);
     if (thumbnailObserver) thumbnailObserver.disconnect(); thumbnailObserver = null;
+  }
+  function sigOf(f) { return f.size + ':' + (f.doneAt || 0); }
+  function cardFor(f, big) {
+    var k = (big ? 'b' : 's') + f.id;
+    return cards[k] || (cards[k] = VaultThumbnails.card({ name: f.name, size: f.size, kind: fileKind(f)[1] }, !!big));
+  }
+  function putPicture(b, src, real) {
+    var img = el('img'); img.src = src; img.alt = ''; img.draggable = false; img.decoding = 'async';
+    b.replaceChildren(img); b.classList.add('has-thumbnail'); b.classList.toggle('is-card', !real);
+  }
+  // the small pictures of some files, from this browser's keeping or the server (one request): { id: picture }
+  function fetchPictures(files) {
+    var got = {}, need = [];
+    return VaultThumbnails.cache.use(state.name || '').then(function () {
+      return Promise.all(files.map(function (f) { return VaultThumbnails.cache.get(f.id, sigOf(f)).then(function (src) { if (src) got[f.id] = src; else need.push(f); }); }));
+    }).then(function () {
+      if (!need.length) return got;
+      return VaultThumbnails.attempt(function () {
+        return vreq('GET', '/api/vault/thumbnails?ids=' + need.map(function (f) { return f.id; }).join(',')).then(function (r) {
+          need.forEach(function (f) { var src = r.thumbnails && r.thumbnails[f.id]; if (src) { got[f.id] = src; VaultThumbnails.cache.put(f.id, sigOf(f), src); } });
+        });
+      }, 5, 1000).then(function () { return got; }, function () { return got; });
+    });
   }
   function watchThumbnails() {
     var epoch = thumbnailEpoch;
-    function schedule(b) { if (b.dataset.thumbQueued) return; b.dataset.thumbQueued = '1'; thumbnailQueue.push(b); pump(); }
-    function pump() {
-      if (epoch !== thumbnailEpoch || thumbnailLoading >= 2 || !thumbnailQueue.length) return;
-      var b = thumbnailQueue.shift(), f = fileOf(b.dataset.thumbnail); if (!f) return pump();
-      thumbnailLoading++;
-      var cached = thumbnails[f.id], source = cached ? Promise.resolve(cached) : f.thumbnail
-        ? vreq('GET', '/api/vault/thumbnail?id=' + f.id).then(function (r) { return r.thumbnail; })
-        : f.preview ? vreq('GET', '/api/vault/preview?id=' + f.id).then(function (r) { return r.preview ? VaultThumbnails.make(r.preview) : null; })
-          : fetchFile(f, null).then(function (blob) { return VaultThumbnails.make(blob); });
-      source.then(function (src) {
-        if (!src || epoch !== thumbnailEpoch || !b.isConnected) return;
-        thumbnails[f.id] = src;
-        var img = el('img'); img.src = src; img.alt = ''; img.draggable = false; img.decoding = 'async';
-        b.replaceChildren(img); b.classList.add('has-thumbnail');
-        if (!f.thumbnail && canWrite()) vreq('POST', '/api/vault/meta', { id: f.id, thumbnail: src }).then(function () { f.thumbnail = true; }).catch(function () {});
-      }).catch(function () {}).then(function () { if (epoch !== thumbnailEpoch) return; thumbnailLoading--; pump(); });
-      pump();
+    function see(b) {
+      var f = fileOf(b.dataset.thumbnail);
+      if (!f || epoch !== thumbnailEpoch) return;
+      if (thumbnails[f.id]) { putPicture(b, thumbnails[f.id], true); return; }
+      putPicture(b, cardFor(f), false);
+      if (f.thumbnail) { thumbnailWaiting.push(b); clearTimeout(thumbnailTimer); thumbnailTimer = setTimeout(flush, 30); }
+      else if (canWrite() && fileKind(f)[1] === 'kimg' && f.size <= 256 * 1024) backfill(b, f);
+    }
+    function flush() {
+      if (epoch !== thumbnailEpoch || thumbnailFetching >= 2 || !thumbnailWaiting.length) return;
+      var batch = thumbnailWaiting.splice(0, 12).filter(function (b) { return b.isConnected; });
+      var files = batch.map(function (b) { return fileOf(b.dataset.thumbnail); }).filter(Boolean);
+      if (!files.length) { flush(); return; }
+      thumbnailFetching++;
+      fetchPictures(files).then(function (got) {
+        if (epoch !== thumbnailEpoch) return;
+        batch.forEach(function (b) {
+          var f = fileOf(b.dataset.thumbnail);
+          if (f && got[f.id]) { thumbnails[f.id] = got[f.id]; if (b.isConnected) putPicture(b, got[f.id], true); }
+        });
+      }).catch(function () {}).then(function () { if (epoch !== thumbnailEpoch) return; thumbnailFetching--; flush(); });
+      flush();
+    }
+    // an old small image with no small picture yet: made here from the file (small enough to be cheap), kept on the server
+    function backfill(b, f) {
+      backfillQueue.push([b, f]);
+      if (backfillBusy) return;
+      backfillBusy = true;
+      (function next() {
+        var item = backfillQueue.shift();
+        if (!item || epoch !== thumbnailEpoch) { backfillBusy = false; return; }
+        fetchFile(item[1], null).then(function (blob) { return VaultThumbnails.fromFile(new File([blob], item[1].name, { type: item[1].type || '' }), 'kimg'); }).then(function (p) {
+          if (!p.thumbnail || p.card) return null;
+          thumbnails[item[1].id] = p.thumbnail;
+          if (item[0].isConnected) putPicture(item[0], p.thumbnail, true);
+          return vreq('POST', '/api/vault/meta', { id: item[1].id, thumbnail: p.thumbnail, preview: p.preview }).then(function () { item[1].thumbnail = true; item[1].preview = true; });
+        }).catch(function () {}).then(next);
+      })();
     }
     if (window.IntersectionObserver) thumbnailObserver = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) { if (entry.isIntersecting) { thumbnailObserver.unobserve(entry.target); schedule(entry.target); } });
+      entries.forEach(function (entry) { if (entry.isIntersecting) { thumbnailObserver.unobserve(entry.target); see(entry.target); } });
     }, { root: $('#view-vault'), rootMargin: '100px' });
-    document.querySelectorAll('#vault-list [data-thumbnail]').forEach(function (b) { if (thumbnailObserver) thumbnailObserver.observe(b); else schedule(b); });
+    document.querySelectorAll('#vault-list [data-thumbnail]').forEach(function (b) { if (thumbnailObserver) thumbnailObserver.observe(b); else see(b); });
   }
   // the beginning of a text or a program (its first piece), fetched once
   var texts = {};
@@ -4217,7 +4447,7 @@
     if (!full && f.noteCount && commentsFor) loadFull(f).then(function () { if (commentsFor === f.id) renderComments(); }, function () {});
     f = full || f;
     $('#vcomments-name').textContent = f.name;
-    $('#vcomments-note').textContent = !f.space ? 'AI用リンクにも、期限まで表示されます' : f.space === 'backup' ? '' : 'この保管庫を使う人と開発者に見えます';
+    $('#vcomments-note').textContent = !f.space ? 'URLを知っている人にも、期限まで表示されます' : f.space === 'backup' ? '' : 'この保管庫を使う人と開発者に見えます';
     $('#vcomments-form').hidden = !canWrite() || state.vaultSpace === 'backup';
     var list = $('#vcomments-list');
     list.textContent = '';
@@ -4302,46 +4532,110 @@
       else if (a === 'memo') memoUpload();
     });
   }
-  // the developer's own vault: a link to all of it, or stopping those
-  function linkMenu() {
-    var links = state.vault.all || { live: 0 }, items = [['発行済みリンク・再コピー', 'issued'], ['保管庫全体のリンクを作る', 'make']];
-    if (links.live) items.push(['全体リンクを停止（有効 ' + links.live + '本・' + stamp(links.until) + 'まで・取得 ' + fmt(links.uses) + '回）', 'stop', 'danger']);
-    menuAt($('#vault-link'), items, function (a) {
-      if (a === 'issued') openVaultLinks();
-      else if (a === 'make') makeLink(null);
-      else if (a === 'stop') {
-        ask({ title: '全体リンクを停止しますか？', text: '保管庫全体のリンクがすべて、すぐに使えなくなります。', ok: '停止する', danger: true }).then(function (ok) {
-          if (!ok) return null;
-          return vreq('POST', '/api/vault/link/stop', { id: '*' }).then(function (r) { toast('リンクを停止しました（' + r.stopped + '本）'); return loadVault(); });
-        }).catch(fail);
-      }
+  // How an address is shown to be shared: the page for people (the secret after the #, which no browser sends anywhere) and the one
+  // for an AI or a program (JSON; the same secret). Each is a way to reach the same link, which can look, take and comment, nothing else.
+  function linkURLs(path) {
+    var t = (/[?&]t=([\w-]+)/.exec(path) || [])[1] || '';
+    return { page: location.origin + '/link/#' + t, api: location.origin + path };
+  }
+  // an address just issued, or one issued before: the page's, or the AI's, to copy
+  function showIssuedVaultLink(link, title) {
+    var u = linkURLs(link.path);
+    ask({
+      title: title || (link.file === '*' ? '保管庫全体' : 'ファイル：' + link.name) + 'のURL',
+      text: '有効期限：' + stamp(link.until) + '。このURLを知っている人は、人でも AI でも、見る・ダウンロードする・コメントを書く（150文字まで）ことだけができます。用が済んだらURL確認から停止してください。AI には「このURLを開いて how の説明どおりに使い、作業したらコメントで知らせて」と伝えてください（AI が使うのは下の「AI・プログラム用」です）。',
+      input: { label: '共有URL（ここだけコピーできます）', value: u.page }, shareURL: true,
+      select: { label: 'どちらを共有しますか', options: [{ value: 'page', label: '人が開くページ' }, { value: 'api', label: 'AI・プログラム用（JSON）' }], value: 'page', change: function (v, input) { input.value = v === 'api' ? u.api : u.page; } },
+      ok: '閉じる'
     });
   }
-
-  function showIssuedVaultLink(link) {
-    ask({ title: (link.file === '*' ? '保管庫全体' : 'ファイル：' + link.name) + 'の共有URL',
-      text: '有効期限：' + stamp(link.until) + '・' + (link.ai ? 'AI用' : '読み取り専用'),
-      input: { label: '共有URL（コピーできます）', value: location.origin + link.path }, shareURL: true, ok: '閉じる' });
-  }
+  // The URL tab: every address that works (and what ended in the last days), with what each has done, to look at, copy and stop
+  // one by one or all together.
   function openVaultLinks() {
-    if (!canWrite()) { toast('リンクを見るには「編集する」から開発者コードを入力してください'); return; }
-    vaultWorkspace().open('links', '発行済みリンク', { show: function (pane) {
-      pane.replaceChildren(el('p', 'muted', 'リンクを読み込み中…'));
-      vreq('GET', '/api/vault/links').then(function (r) {
-        if (!pane.isConnected || !state.developer) return;
-        pane.replaceChildren(el('h3', '', '発行済みリンク（有効なもの）'));
-        if (!r.links.length) pane.appendChild(el('p', 'muted', '有効なリンクはありません'));
-        r.links.forEach(function (link) {
-          var row = el('article', 'card vault-issued-link');
-          row.appendChild(el('b', '', link.file === '*' ? '保管庫全体' : 'ファイル：' + link.name));
-          row.appendChild(el('small', 'muted', (link.ai ? 'AI用' : '読み取り専用') + '・' + stamp(link.until) + 'まで・取得 ' + fmt(link.uses) + '回'));
-          var b = el('button', 'btn small primary', link.path ? 'URLを表示・コピー' : 'URLを再発行'); b.type = 'button';
-          b.addEventListener('click', function () { if (link.path) { showIssuedVaultLink(link); return; } var file = link.file === '*' ? null : fileOf(link.file); if (link.file !== '*' && !file) { toast('ファイルが見つかりません。一覧を更新してください'); return; } makeLink(file); }); row.appendChild(b);
-          if (!link.path) row.appendChild(el('p', 'muted', '以前の方式で発行したURLは復元できません。再発行後のURLはこの一覧から再コピーできます。'));
-          pane.appendChild(row);
+    if (!canWrite()) { toast('URLを見るには「編集する」から開発者コードを入力してください'); return; }
+    vaultWorkspace().open('links', 'URL確認', { show: drawLinks });
+  }
+  function leftText(ms) {
+    var m = Math.max(0, Math.floor(ms / 60000));
+    return m >= 60 ? Math.floor(m / 60) + '時間' + (m % 60 ? (m % 60) + '分' : '') : m + '分';
+  }
+  function drawLinks(pane) {
+    pane.replaceChildren(el('p', 'muted', 'URLを読み込み中…'));
+    vreq('GET', '/api/vault/links').then(function (r) {
+      if (!pane.isConnected || !state.developer) return;
+      var now = r.now || Date.now(), live = r.links.filter(function (l) { return l.state === 'live'; }), ended = r.links.filter(function (l) { return l.state !== 'live'; });
+      pane.replaceChildren();
+      pane.appendChild(el('h3', '', 'URL確認（有効 ' + live.length + ' 本）'));
+      pane.appendChild(el('p', 'hint muted', '発行したURLを知っている人は、人でも AI でも、見る・ダウンロードする・コメントを書くことだけができます（ファイルは変えられません）。有効時間は 1〜48 時間。あまりに多くの場所から使われたURLは自動で止まります。'));
+      var bar = el('div', 'vault-tab-actions');
+      function btn(text, cls, fn) { var b = el('button', 'btn small' + (cls ? ' ' + cls : ''), text); b.type = 'button'; b.addEventListener('click', fn); bar.appendChild(b); return b; }
+      btn('保管庫全体のURLを発行', 'primary', function () { makeLink(null); });
+      btn('更新', '', function () { drawLinks(pane); });
+      var showSel = btn('選んだURLを表示・コピー', '', function () { shareMany(chosen()); });
+      var stopSel = btn('選んだURLを停止', 'danger', function () { stopLinks(chosen(), pane); });
+      btn('有効なURLをすべて停止', 'danger', function () { stopLinks(live, pane); });
+      pane.appendChild(bar);
+      var rows = [];
+      function chosen() { return rows.filter(function (x) { return x.pick.checked; }).map(function (x) { return x.link; }); }
+      function sync() { var n = chosen().length; showSel.disabled = stopSel.disabled = !n; all.checked = !!n && n === rows.length; all.indeterminate = n > 0 && n < rows.length; }
+      var allLabel = el('label', 'links-all'), all = el('input');
+      all.type = 'checkbox'; allLabel.appendChild(all); allLabel.appendChild(el('span', '', 'すべて選ぶ'));
+      all.addEventListener('change', function () { rows.forEach(function (x) { x.pick.checked = all.checked; }); sync(); });
+      if (live.length) pane.appendChild(allLabel); else pane.appendChild(el('p', 'muted', '有効なURLはありません（ファイルの「⋯」→「URLを発行」で作れます）'));
+      live.forEach(function (l) {
+        var row = el('article', 'card vault-issued-link'), head = el('label', 'links-title'), pick = el('input');
+        pick.type = 'checkbox'; pick.addEventListener('change', sync);
+        head.appendChild(pick); head.appendChild(el('b', '', l.file === '*' ? '保管庫全体' : l.name));
+        head.appendChild(el('small', 'muted', l.file === '*' ? 'すべてのファイル' : 'このファイルだけ'));
+        row.appendChild(head);
+        var total = Math.max(1, l.until - l.createdAt), life = el('div', 'links-life'), fill = el('i');
+        fill.style.width = Math.max(2, Math.min(100, (l.until - now) / total * 100)).toFixed(1) + '%';
+        life.appendChild(fill); row.appendChild(life);
+        row.appendChild(el('small', 'muted', 'あと ' + leftText(l.until - now) + '（' + stamp(l.until).slice(5, 16) + ' まで）・取得 ' + fmt(l.uses) + '回・取り出し ' + mb(l.bytesUsed || 0) + ' / ' + mb(l.maxBytes || 0)
+          + '・使われた場所 ' + l.places + ' / ' + (l.placesMax + 1) + '・' + (l.lastAt ? '最後に使われたのは ' + ago(l.lastAt) : 'まだ使われていません')));
+        var acts = el('div', 'vault-tab-actions');
+        var view = el('button', 'btn small primary', l.path ? 'URLを表示・コピー' : 'URLを作り直す'); view.type = 'button';
+        view.addEventListener('click', function () {
+          if (l.path) { showIssuedVaultLink(l); return; }
+          var file = l.file === '*' ? null : fileOf(l.file);
+          if (l.file !== '*' && !file) { toast('ファイルが見つかりません。一覧を更新してください'); return; }
+          makeLink(file);
         });
-      }).catch(function (err) { if (pane.isConnected) pane.replaceChildren(el('p', 'error', err.message || 'リンクを読み込めませんでした')); });
-    } });
+        var stop = el('button', 'btn small danger', '停止'); stop.type = 'button';
+        stop.addEventListener('click', function () { stopLinks([l], pane); });
+        acts.appendChild(view); acts.appendChild(stop); row.appendChild(acts);
+        if (!l.path) row.appendChild(el('p', 'muted', '以前の方式で発行したURLは復元できません。作り直すと、この一覧から再コピーできます。'));
+        rows.push({ link: l, pick: pick });
+        pane.appendChild(row);
+      });
+      sync();
+      if (ended.length) {
+        var d = el('details', 'links-ended');
+        d.appendChild(el('summary', '', '最近終わったURL（' + ended.length + ' 本・3日分）'));
+        ended.forEach(function (l) {
+          d.appendChild(el('p', 'muted', (l.file === '*' ? '保管庫全体' : l.name) + '・' + (l.state === 'stopped' ? '停止（または使われすぎて自動停止）' : '期限切れ') + '・' + stamp(l.until).slice(5, 16) + '・取得 ' + fmt(l.uses) + '回・場所 ' + l.places));
+        });
+        pane.appendChild(d);
+      }
+    }).catch(function (err) { if (pane.isConnected) pane.replaceChildren(el('p', 'error', (err && err.message) || 'URLを読み込めませんでした')); });
+  }
+  // several addresses at once, to copy (the page's and the AI's of each)
+  function shareMany(list) {
+    if (!list.length) return;
+    var lines = [];
+    list.forEach(function (l) {
+      if (!l.path) return;
+      var u = linkURLs(l.path);
+      lines.push('【' + (l.file === '*' ? '保管庫全体' : l.name) + '】' + stamp(l.until).slice(5, 16) + ' まで', '人が開くページ: ' + u.page, 'AI・プログラム用: ' + u.api, '');
+    });
+    ask({ title: list.length + '本のURL', text: '選んだURLです。このURLを知っている人は、見る・ダウンロードする・コメントを書くことだけができます。', area: { label: '共有URL（ここだけコピーできます）', value: lines.join('\n').trim() }, shareArea: true, ok: '閉じる' });
+  }
+  function stopLinks(list, pane) {
+    if (!list.length) { toast('停止するURLがありません'); return; }
+    ask({ title: list.length + '本のURLを停止しますか？', text: '停止したURLは、すぐに使えなくなります（元に戻せません。必要なら新しく発行してください）。', ok: '停止する', danger: true }).then(function (ok) {
+      if (!ok) return null;
+      return vreq('POST', '/api/vault/link/stop', { links: list.map(function (l) { return l.id; }) }).then(function (r) { toast('URLを停止しました（' + r.stopped + '本）'); loadVault(); drawLinks(pane); });
+    }).catch(fail);
   }
 
   // what an AI did with a file, newest first
@@ -4449,8 +4743,8 @@
     var box = el('div', 'vitem-detail'), light = lightOf(f);
     var body = el('div', 'vault-body');
     if (f.preview) body.appendChild(picEl(f));
-    else if (f.done && is3d(f.name)) body.appendChild(el('div', 'vault-pic none', 'プレビューなし'));
-    else if (f.done && kind[1] === 'kimg' && f.size <= 8 * 1048576) body.appendChild(imageEl(f));
+    else if (f.done && kind[1] === 'kimg' && f.size <= 256 * 1024) body.appendChild(imageEl(f));
+    else if (f.done) body.appendChild(cardEl(f));
     var facts = el('div', 'facts');
     fact(facts, '送信日時', stamp(f.createdAt));
     fact(facts, '保存完了', f.done ? stamp(f.doneAt) : '送信中');
@@ -4530,7 +4824,7 @@
      this browser with its upload's own pass, and is shown here while it goes:
      a stopped one (the connection, the server busy, the room) goes on by
      itself, and 「再開」 sends every stopped one again at once. */
-  var up = { mode: '', reg: null, engine: null, jobs: {}, cards: {}, mem: {}, ready: null };
+  var up = { mode: '', reg: null, engine: null, jobs: {}, cards: {}, mem: {}, checking: {}, ready: null };
   var UP_WHY = {
     net: '通信が切れたか、サーバーが混み合っています。自動で何度でも続きから送ります',
     locked: 'アップロードの許可（1週間）が切れました。「編集する」で開発者コードを入れると、自動で続きを送ります',
@@ -4538,10 +4832,13 @@
     full: '保管庫がいっぱいです。空きができしだい送ります',
     room: 'あなたの容量の上限です。開発者の承認か空きができしだい送ります（「容量を申請」から申請できます）',
     gone: 'このファイルは保管庫から削除されました',
+    restart: '',
+    gave_up: '最初から5回、10秒おきに自動でやり直しましたが送れませんでした。通信などを確かめて「再開」を押してください（通信が戻ると自動でもう一度やり直します）',
+    blocked: '',
     error: ''
   };
   // the stopped ones that go again by themselves (ops/vault-upload.js)
-  var AGAIN_WHY = { net: 1, error: 1, login: 1, locked: 1 };
+  var AGAIN_WHY = { net: 1, error: 1, login: 1, locked: 1, restart: 1 };
   function upInit() {
     var page = function () {
       up.mode = 'page';
@@ -4562,24 +4859,26 @@
     } else up.ready = Promise.resolve(window.indexedDB ? page() : 'none');
     up.ready.then(function () { refreshJobs().then(adoptJobs); kick(); });
   }
-  // this account's files waiting here take the site's login as it is now (a
-  // new one after logging in again: the ones stopped for it go at once)
+  // This account's files waiting here with no pass (logging out took it, or it
+  // ran out, or the file never got its place) get one now that they are in
+  // again; the ones stopped for the login go at once. A file sends only its own
+  // pass (ops/vault-upload.js): no login is kept with it.
   function adoptJobs() {
     if (!window.indexedDB || !token) return Promise.resolve();
-    var me = state.name, now = token;
+    var me = state.name;
     return VaultUploads.all().then(function (list) {
-      return Promise.all(list.filter(function (j) { return j.who === me && j.state !== 'done' && j.token !== now; }).map(function (j) {
-        j.token = now;
-        if (j.state === 'stop' && j.why === 'login') { j.next = 0; j.tries = 0; }
-        return VaultUploads.save(j).then(function () { onJob(j); });
+      return Promise.all(list.filter(function (j) { return j.who === me && j.state !== 'done' && !j.mem && (!j.pass || (j.state === 'stop' && j.why === 'login')); }).map(function (j) {
+        j.tries = 0;
+        j.next = 0;
+        return j.id ? passFor(j) : place(j);
       }));
     }).then(wakeJobs, wakeJobs);
   }
-  // logging out: the login kept with this account's files here goes too (they wait for the next login)
+  // logging out: the pass kept with this account's files here goes too (they wait for the next login)
   function dropLogin(me) {
     if (!window.indexedDB) return Promise.resolve();
     return VaultUploads.all().then(function (list) {
-      return Promise.all(list.filter(function (j) { return j.who === me && j.token; }).map(function (j) { j.token = ''; return VaultUploads.save(j); }));
+      return Promise.all(list.filter(function (j) { return j.who === me && j.pass; }).map(function (j) { j.pass = ''; return VaultUploads.save(j); }));
     }).catch(function () {});
   }
   // now, not later: every stopped file that goes again by itself
@@ -4634,9 +4933,16 @@
     if (j.state === 'done') return '保存しました' + (j.sha256 ? '（SHA-256 ' + String(j.sha256).slice(0, 16) + '…）' : '');
     if (j.state === 'run' && j.retry) return '通信が途切れたので、すぐに送り直しています…（' + p + '% 送信済み・' + j.retry + '回目）';
     if (j.state === 'run') return '送信中… ' + mb(Math.min(j.size, j.sent * (j.piece || 0))) + ' / ' + mb(j.size) + '（' + p + '%）' + (j.rate ? '・' + mb(j.rate) + '/秒' : '');
+    // (held for the checks a deployment puts in front of the sending: ops/ext.js)
+    if (j.state === 'wait' && j.hold) return '準備中…' + (j.prep ? ' ' + j.prep + '%' : '') + '（' + mb(j.size) + '）';
     if (j.state === 'wait') return '順番待ち（' + mb(j.size) + '）';
     var why = UP_WHY[j.why] || '';
     if (j.state === 'fail') return 'できませんでした：' + (j.message || why || 'もう一度ファイルを選んでください');
+    // (sent again from its very beginning by itself: which time it is, and when)
+    if (j.why === 'restart') {
+      var left = j.next ? Math.max(0, Math.ceil((j.next - Date.now()) / 1000)) : 0;
+      return '止まりました：' + (j.message ? j.message + '・' : '') + '最初から自動でやり直します（' + (j.restarts || 1) + ' / 5 回目・' + (left ? left + '秒後' : 'まもなく') + '）';
+    }
     // (when it goes again by itself)
     var wait = j.next ? Math.max(0, Math.ceil((j.next - Date.now()) / 1000)) : 0;
     var again = AGAIN_WHY[j.why] ? (wait ? '・' + (wait >= 60 ? Math.ceil(wait / 60) + '分' : wait + '秒') + '後に自動で再開' : '・自動で再開中') : '';
@@ -4669,7 +4975,9 @@
     c.card.classList.toggle('bad', j.state === 'fail');
     c.x.hidden = j.state === 'done';
   }
-  // a file in: the list again; a model's picture made here (its file kept for it till then)
+  // a file in: the list again; a model's picture made here (its file kept for it till then). The other files' small
+  // pictures were made while each was in hand and went up with its end (ops/vault-upload.js); here, only when they
+  // were not ready then.
   function jobDone(j) {
     if (state.vault) loadVault();
     var go = Promise.resolve();
@@ -4678,18 +4986,29 @@
         if (blob) return preview({ id: j.id, name: j.name }, blob, j);
         return null;
       });
-    } else if (/\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(j.name) && !j.parent) {
-      go = Promise.resolve(j.mem ? up.mem[j.key] : VaultUploads.fileOf(j.key)).then(function (blob) {
-        if (!blob) return;
-        return VaultThumbnails.make(blob).then(function (thumbnail) {
-          var h = j.pass ? { 'X-Vault-Upload': j.pass } : {};
-          return request('POST', '/api/vault/meta', { id: j.id, thumbnail: thumbnail }, h);
-        });
+    } else if (!j.parent && !j.pictured && picWait[j.key]) {
+      go = picWait[j.key].then(function (pics) {
+        if (!pics) return null;
+        var h = j.pass ? { 'X-Vault-Upload': j.pass } : {};
+        return VaultThumbnails.attempt(function () { return request('POST', '/api/vault/meta', { id: j.id, thumbnail: pics.thumbnail, preview: pics.preview }, h); }, 5, 1500);
       }).catch(function () {});
     }
     go.then(function () {
       setTimeout(function () { dropJob(j.key, true); }, 20000);
     });
+  }
+  // The small pictures of a file, made from it while it is in hand (before it goes up), one file at a time: an image shrunk,
+  // a video's frame, a sound's wave, a text's first lines, a document's or an APK's own picture, or at least a card. They are
+  // kept with the job, and whoever finishes the upload saves them with it. Nothing is downloaded.
+  var picQueue = Promise.resolve(), picWait = {};
+  function startPictures(j, file) {
+    if (j.parent || j.model || !window.VaultThumbnails) return;
+    var kind = fileKind({ name: j.name, type: j.type })[1];
+    picWait[j.key] = picQueue = picQueue.then(function () { return VaultThumbnails.fromFile(file, kind); }).then(function (p) {
+      if (!p.thumbnail) return null;
+      var pics = { thumbnail: p.thumbnail, preview: p.preview };
+      return VaultUploads.patch(j.key, { pics: pics }).then(function () { return pics; });
+    }).catch(function () { return null; });
   }
   function dropJob(key, quiet) {
     var c = up.cards[key];
@@ -4697,6 +5016,7 @@
     delete up.cards[key];
     delete up.jobs[key];
     delete up.mem[key];
+    delete picWait[key];
     renderResume();
     return VaultUploads.forget(key).catch(function () {}).then(function () { if (!quiet) kick(); });
   }
@@ -4719,7 +5039,9 @@
       key: Date.now().toString(36) + '-' + (++upSeq) + '-' + Math.random().toString(36).slice(2, 8),
       who: state.name, id: o.id || '', name: file.name, size: file.size, type: file.type || '',
       note: o.note || '', space: o.parent ? '' : o.space || '', folder: o.folder || '', inside: o.parent ? '' : o.inside || '', parent: o.parent || '',
-      model: !o.parent && is3d(file.name) && file.size > 0, token: token, pass: o.pass || '', piece: 0, chunks: 0, sent: 0,
+      model: !o.parent && is3d(file.name) && file.size > 0, pass: o.pass || '', piece: 0, chunks: 0, sent: 0,
+      // (held for the checks a deployment puts in front of the sending: ops/ext.js)
+      hold: OpsExt.has('beforeSend') || OpsExt.expected(),
       state: 'wait', why: '', message: '', tries: 0, next: 0, at: Date.now(), mem: false
     };
     if (!file.size) { toast('「' + file.name + '」は中身が空（0バイト）か、端末から読み込めませんでした。中身のあるファイルを選んでください'); return Promise.resolve(null); }
@@ -4731,9 +5053,46 @@
       return VaultUploads.add(j, null);
     }).then(function () {
       if (j.mem) up.mem[j.key] = file;
+      startPictures(j, file);
       onJob(j);
       return j.id ? passFor(j) : place(j);
     }).then(function () { kick(); return j; });
+  }
+  // A file waits for the checks the deployment has put in front of its sending (ops/ext.js), if it
+  // has any: it is stored held (the sending engine passes it by) and goes on when the check answers.
+  // Refused: it ends there, for good, with the words the check gave. Not waited for by the callers:
+  // the next file is placed meanwhile, and the check decides how many run at once.
+  function check(j) {
+    if (!j.hold || !j.id || j.state === 'fail' || up.checking[j.key]) return Promise.resolve();
+    if (!OpsExt.has('beforeSend')) return endJob(j, '追加部品を読み込めませんでした。ページを読み込み直して、もう一度ファイルを選んでください');
+    up.checking[j.key] = true;
+    return (up.mem[j.key] ? Promise.resolve(up.mem[j.key]) : VaultUploads.fileOf(j.key)).then(function (file) {
+      if (!file) return null;
+      return OpsExt.run('beforeSend', null, j, file, OpsExt.io());
+    }).then(function () {
+      delete up.checking[j.key];
+      j.hold = false;
+      return VaultUploads.save(j).then(function () { onJob(j); kick(); });
+    }, function (err) {
+      delete up.checking[j.key];
+      return endJob(j, (err && err.message) || 'できませんでした');
+    }).catch(function () { /* the browser's storage failed: the file shows as it was */ });
+  }
+  function endJob(j, message) {
+    j.hold = false;
+    j.state = 'fail';
+    j.why = 'gone';
+    j.message = message;
+    j.next = 0;
+    return VaultUploads.save(j).then(function () { onJob(j); return j; });
+  }
+  // after a reload: the files that were held for their check are checked again
+  function resumeHeld() {
+    if (!window.indexedDB || !token) return Promise.resolve();
+    var me = state.name;
+    return VaultUploads.all().then(function (list) {
+      list.filter(function (j) { return j.who === me && j.hold && j.state !== 'done'; }).forEach(function (j) { check(j); });
+    }, function () {});
   }
   // its place on the server (and its pass); the room not there: it waits
   function place(j) {
@@ -4748,7 +5107,7 @@
       j.state = 'wait';
       j.why = '';
       j.message = '';
-      return VaultUploads.save(j).then(function () { onJob(j); });
+      return VaultUploads.save(j).then(function () { onJob(j); check(j); });
     }, function (err) { return stopJob(j, err); });
   }
   // an unfinished one on the server, gone on with: a new pass for it
@@ -4762,7 +5121,7 @@
       j.pass = r.upload;
       j.state = 'wait';
       j.why = '';
-      return VaultUploads.save(j).then(function () { onJob(j); });
+      return VaultUploads.save(j).then(function () { onJob(j); check(j); });
     }, function (err) { return stopJob(j, err); });
   }
   function stopJob(j, err) {
@@ -4779,8 +5138,8 @@
   function resumeAll() {
     var list = Object.keys(up.jobs).map(function (k) { return up.jobs[k]; }).filter(function (j) { return j.state !== 'done'; });
     var tasks = list.map(function (j) {
-      j.token = token;
       j.tries = 0;
+      j.restarts = 0;
       j.next = 0;
       if (!j.id) return place(j);
       if (j.why === 'locked' || j.state === 'fail' && j.why !== 'gone') return passFor(j);
@@ -4859,9 +5218,10 @@
       return V.analyze(file, f.name);
     }).then(function (r) {
       j.set(1, 3);
-      return VaultThumbnails.make(r.preview).then(function (thumbnail) { return (pass ? Promise.resolve(pass) : passOf(f.id)).then(function (h) {
-        return request('POST', '/api/vault/meta', { id: f.id, preview: r.preview, info: r.info, thumbnail: thumbnail }, Object.assign({}, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, h)).then(function () {
-          pics[f.id] = r.preview;
+      // (the 3D engine's picture is large: what is kept is a medium one and a tiny one, a few tens of KB in all)
+      return Promise.all([VaultThumbnails.make(r.preview), VaultThumbnails.medium(r.preview)]).then(function (two) { var thumbnail = two[0], medium = two[1]; return (pass ? Promise.resolve(pass) : passOf(f.id)).then(function (h) {
+        return request('POST', '/api/vault/meta', { id: f.id, preview: medium, info: r.info, thumbnail: thumbnail }, Object.assign({}, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, h)).then(function () {
+          pics[f.id] = medium;
           j.set(2, 3);
           if (!r.light) return null;
           var base = f.name.replace(/\.[^.]+$/, '');
@@ -4870,6 +5230,11 @@
       }); });
     }).then(function () { j.finish('プレビューを作りました'); if (state.vault) return loadVault(); return null; }, function (err) {
       j.fail('プレビューを作れませんでした：' + ((err && err.message) || ''));
+      // (the 3D engine could not: the item still gets a card, so it is not left without a picture)
+      return VaultThumbnails.fromFile(file, 'k3d').then(function (p) {
+        if (!p.thumbnail) return null;
+        return (pass ? Promise.resolve(pass) : passOf(f.id)).then(function (h) { return request('POST', '/api/vault/meta', { id: f.id, thumbnail: p.thumbnail, preview: p.preview }, Object.assign({}, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, h)); });
+      }).catch(function () {});
     });
   }
   // a file's upload pass, from the server (the vault open, or no code needed)
@@ -4975,12 +5340,36 @@
       goOn(f);
       return;
     }
+    if (fileKind(f)[1] === 'k3d') view3d(f);
+    else showLook(f);
+  }
+  // A file's enlarged view is its medium picture (tens of KB at most), not the file: the original comes only
+  // when it is asked for (the buttons under the picture), and what cannot be shown here is saved.
+  function showLook(f) {
     var k = fileKind(f)[1];
-    if (k === 'k3d') view3d(f);
-    else if (k === 'kimg' && f.size <= SHOW_PIC) showImage(f);
-    else if (isTextual(k) && f.size <= SHOW_TEXT) showText(f);
-    else if ((k === 'kvid' || k === 'kaud') && f.size <= SHOW_MEDIA) showMedia(f, k === 'kvid');
-    else download(f);
+    closeViewer();
+    $('#viewer-name').textContent = f.name;
+    $('#viewer-note').textContent = '読み込み中…';
+    $('#viewer').hidden = false;
+    var box = $('#viewer-box'), wrap = el('div', 'viewer-look'), img = el('img', 'viewer-img'), acts = el('div', 'viewer-acts');
+    box.classList.add('fit');
+    img.alt = f.name;
+    function button(text, fn, cls) { var b = el('button', 'btn small' + (cls ? ' ' + cls : ''), text); b.type = 'button'; b.addEventListener('click', fn); acts.appendChild(b); }
+    if (k === 'kimg' && f.size <= SHOW_PIC) button('元の画像を表示（' + mb(f.size) + '）', function () { showImage(f); });
+    if (isTextual(k) && f.size <= SHOW_TEXT) button('全文を読み込む（' + mb(f.size) + '）', function () { showText(f); });
+    if ((k === 'kvid' || k === 'kaud') && f.size <= SHOW_MEDIA) button('再生する（' + mb(f.size) + ' を読み込みます）', function () { showMedia(f, k === 'kvid'); });
+    button('ダウンロード（' + mb(f.size) + '）', function () { download(f); }, 'primary');
+    wrap.appendChild(img); wrap.appendChild(acts); box.appendChild(wrap);
+    function show(src, real) {
+      if ($('#viewer').hidden || !wrap.isConnected) return;
+      img.src = src;
+      $('#viewer-note').textContent = real ? 'プレビュー（低解像度）・元のファイルは ' + mb(f.size) : '種類を表す絵です（元のファイルは ' + mb(f.size) + '）';
+    }
+    if (pics[f.id] && f.preview) { show(pics[f.id], true); return; }
+    if (!f.preview) { show(cardFor(f, true), false); return; }
+    VaultThumbnails.attempt(function () { return vreq('GET', '/api/vault/preview?id=' + f.id); }, 5, 1000).then(function (r) {
+      if (r.preview) { pics[f.id] = r.preview; show(r.preview, true); } else show(cardFor(f, true), false);
+    }).catch(function () { show(cardFor(f, true), false); });
   }
   // the picture, big
   function showPic(f) {
@@ -5014,35 +5403,27 @@
       j.finish('ダウンロードしました（ハッシュ一致を確認済み）');
     }).catch(function (err) { j.fail((err && err.message) || 'ダウンロードできませんでした'); });
   }
-  // `f`: a file, or null for the whole vault
+  // `f`: a file, or null for the whole vault. Every address is the same: whoever has it (a person or an AI) may look, take and
+  // comment; the developer only says for how many hours (1 to 48, on a slider).
   function makeLink(f) {
-    var hours = state.vault.hours || [1, 6, 24, 72];
+    var range = (state.vault && state.vault.linkHours) || { min: 1, max: 48 };
     ask({
-      title: f ? '「' + f.name + '」のリンクを作る' : '保管庫全体のリンクを作る',
-      text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき・実装済みは除く）') + 'をログインなしで取り出せるリンクです。発行後も「リンク」の発行済み一覧から再コピーできます。AI用にすると、AI が取ったファイルと AI の作業にラベルが付き、AI がゲームに入れたファイルは実装済みになってリンクから外れます。',
-      ok: '作る',
-      input: { label: '有効時間（' + hours.join('・') + ' 時間）', type: 'text', value: '24' },
-      select: { label: 'リンクの種類', options: [{ value: 'plain', label: '読み取り専用' }, { value: 'ai', label: 'AI用（ラベルと実装済みの報告つき）' }], value: 'plain' },
-      check: function (v) { return hours.indexOf(Number(v)) >= 0 ? '' : hours.join('・') + ' のどれかを入れてください'; }
+      title: f ? '「' + f.name + '」のURLを発行' : '保管庫全体のURLを発行',
+      text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき・実装済みは除く）') + 'を、このURLを知っている人なら誰でも（人でも AI でも）、ログインなしで、見る・ダウンロードする・コメントを書く（150文字まで）ことだけができるURLです。ファイルは変えられません。取り出せる量は5GBまで、あまりに多くの場所から使われると自動で止まります。「URL」の確認画面でいつでも停止・再コピーできます。',
+      ok: '発行する',
+      input: { label: '有効時間', range: [range.min, range.max], unit: ' 時間', value: '24' },
+      check: function (v) { var n = Number(v); return Number.isInteger(n) && n >= range.min && n <= range.max ? '' : range.min + '〜' + range.max + ' 時間で決めてください'; }
     }).then(function (v) {
       if (v === null) return null;
-      var ai = v.pick === 'ai';
-      return vreq('POST', '/api/vault/link', { id: f ? f.id : '*', hours: Number(v.value), ai: ai }).then(function (r) {
-        var url = location.origin + r.path;
+      return vreq('POST', '/api/vault/link', { id: f ? f.id : '*', hours: Number(v) }).then(function (r) {
         loadVault(); if (vaultWork) vaultWork.render('links');
-        return ask({
-          title: (ai ? 'AI用' : '読み取り専用') + 'リンクを作りました（' + v.value + '時間有効）',
-          text: url + '\n\n' + (f ? '期限まで、このファイルだけを取り出せます。' : '期限まで、保管庫のすべてのファイルを取り出せます。') + '用が済んだら停止してください。'
-            + (ai ? '\n\nAI には「このURLを開いて how の説明どおりに使い、作業したらラベルを付け、ゲームに入れたら implemented: true で報告して」と伝えてください。' : ''),
-          input: { label: '共有URL（ここだけコピーできます）', value: url }, shareURL: true,
-          ok: '閉じる'
-        });
+        showIssuedVaultLink({ file: f ? f.id : '*', name: f ? f.name : '', until: r.until, path: r.path }, 'URLを発行しました（' + v + '時間有効）');
       });
     }).catch(fail);
   }
   function copyVaultURL(url) {
-    var input = $('#dialog-input');
-    if ($('#dialog').hidden || !input.readOnly || input.dataset.vaultShareUrl !== '1' || input.value !== url) return;
+    var input = [$('#dialog-input'), $('#dialog-area')].filter(function (x) { return x.readOnly && x.dataset.vaultShareUrl === '1' && x.value === url; })[0];
+    if ($('#dialog').hidden || !input) return;
     function fallback() { input.focus(); input.select(); try { if (!document.execCommand('copy')) throw new Error(); toast('共有URLをコピーしました'); } catch (e) { toast('URLを選択してコピーしてください'); } }
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function () { toast('共有URLをコピーしました'); }, fallback);
     else fallback();
@@ -5097,7 +5478,7 @@
     var dev = state.developer && state.vault && state.vault.ticket, items = [];
     if (f.done) {
       items.push(['開く', 'open'], ['ダウンロード', 'get']);
-      if (kind[1] === 'kimg' && !f.thumbnail && write) items.push(['一覧用の画像を作る', 'thumbnail']);
+      if (f.done && !f.thumbnail && write && f.size <= 100 * 1048576 && kind[1] !== 'k3d') items.push(['プレビューを作る（ダウンロードして作成）', 'thumbnail']);
       if (lightOf(f)) items.push(['軽量版をダウンロード', 'getlight']);
       if (!f.info && kind[1] === 'k3d' && write && !inBackups && (own || state.vaultInfo.add)) items.push(['3Dプレビューを作る', 'make']);
     } else if (write) items.push(['続きから送る（同じファイルを選ぶ）', 'resume']);
@@ -5109,8 +5490,8 @@
     if (write && !inBackups) items.push(['名前を変更', 'rename'], ['移動', 'move']);
     if (own && f.done && write) {
       if (f.implementedAt) items.push(['実装済みから戻す', 'restore']);
-      else items.push(['リンクを作る', 'link']);
-      if (f.links.live) items.push(['リンクを停止', 'stop']);
+      else items.push(['実装済みにする', 'implement'], ['URLを発行', 'link']);
+      if (f.links.live) items.push(['このファイルのURLをすべて停止', 'stop']);
     }
     if (dev && f.done) {
       if (f.backup && f.backup.removed) items.push(['元の場所に戻す', 'unremove']);
@@ -5129,10 +5510,11 @@
     else if (act === 'pic') showPic(f);
     else if (act === 'make') makePreview(f);
     else if (act === 'thumbnail') {
-      var task = job(f.name + '（一覧用の画像）');
-      fetchFile(f, task).then(function (blob) { return VaultThumbnails.make(blob); }).then(function (thumbnail) {
-        return vreq('POST', '/api/vault/meta', { id: f.id, thumbnail: thumbnail });
-      }).then(function () { task.finish('一覧用の画像を保存しました'); return loadVault(); }).catch(function (err) { task.fail(err.message || '画像を作れませんでした'); });
+      var task = job(f.name + '（プレビュー）');
+      fetchFile(f, task).then(function (blob) { return VaultThumbnails.fromFile(new File([blob], f.name, { type: f.type || '' }), fileKind(f)[1]); }).then(function (p) {
+        delete thumbnails[f.id]; delete pics[f.id]; delete cards['s' + f.id]; delete cards['b' + f.id];
+        return vreq('POST', '/api/vault/meta', { id: f.id, thumbnail: p.thumbnail, preview: p.preview });
+      }).then(function () { task.finish('プレビューを保存しました'); return loadVault(); }).catch(function (err) { task.fail(err.message || 'プレビューを作れませんでした'); });
     }
     else if (act === 'link') makeLink(f);
     else if (act === 'rename') renameFile(f);
@@ -5140,7 +5522,12 @@
     else if (act === 'backup' || act === 'unbackup') backupItems([f], [], act === 'backup');
     else if (act === 'unremove') restoreBackup(f);
     else if (act === 'resume') goOn(f);
-    else if (act === 'restore') {
+    else if (act === 'implement') {
+      ask({ title: '実装済みにしますか？', text: '「' + f.name + '」がゲームに入ったとき押します。すべてのリンクから外れます（保管庫には残り、あとで戻せます）。', ok: '実装済みにする', input: { label: 'どこに入れたか（例：js/game/cars.js の新車）' }, check: function (v) { return v.trim() ? '' : 'どこに入れたかを書いてください'; } }).then(function (where) {
+        if (where === null) return null;
+        return vreq('POST', '/api/vault/implemented', { id: f.id, text: where.trim() }).then(function () { toast('実装済みにしました'); return loadVault(); });
+      }).catch(fail);
+    } else if (act === 'restore') {
       ask({ title: '実装済みから戻しますか？', text: '「' + f.name + '」がまたリンクから取り出せるようになります。', ok: '戻す' }).then(function (ok) {
         if (!ok) return null;
         return vreq('POST', '/api/vault/restore', { id: f.id }).then(function () { toast('戻しました'); return loadVault(); });
@@ -5299,7 +5686,8 @@
     var list = $('#log-list');
     if (reset) { state.log = []; state.logDone = false; list.textContent = ''; list.appendChild(el('p', 'empty muted', '読み込み中…')); }
     var before = !reset && state.log.length ? state.log[state.log.length - 1].id : 0;
-    request('GET', '/api/ops/log?q=' + encodeURIComponent(state.logQ) + '&kind=' + state.logKind + (before ? '&before=' + before : '')).then(function (r) {
+    // (lines only: the detail of a line, most of the bytes, is fetched when that line is opened)
+    request('GET', '/api/ops/log?slim=1&q=' + encodeURIComponent(state.logQ) + '&kind=' + state.logKind + (before ? '&before=' + before : '')).then(function (r) {
       if (reset) list.textContent = '';
       if (r.counts) {
         Array.prototype.forEach.call(document.querySelectorAll('#log-kinds [data-kind]'), function (c) {
@@ -5372,6 +5760,21 @@
         : '⚠ 改ざんチェック: ' + r.brokenAt + '番の記録で異常があります（' + r.reason + '）';
     }, function () {});
   }
+  // The lines of a list come without their detail (it is most of the bytes). The detail of the lines
+  // asked for comes in one request (at most 100 at a time), once, and stays on the line.
+  function fullLog(list) {
+    var need = list.filter(function (x) { return !x.full; }), jobs = [];
+    for (var i = 0; i < need.length; i += 100) {
+      (function (part) {
+        jobs.push(request('GET', '/api/ops/log/entries?ids=' + part.map(function (x) { return x.id; }).join(',')).then(function (r) {
+          var by = {};
+          (r.entries || []).forEach(function (e) { by[e.id] = e; });
+          part.forEach(function (x) { var e = by[x.id]; if (e) { x.detail = e.detail; x.prevHash = e.prevHash; x.hash = e.hash; x.full = true; } });
+        }));
+      })(need.slice(i, i + 100));
+    }
+    return Promise.all(jobs);
+  }
   // One line of the log. A tap goes to the place it is about (a player, a
   // report, the vault …; not for a 閲覧者, who only reads); 詳細 shows all of it.
   function logEntry(x) {
@@ -5389,7 +5792,13 @@
       var d = row.querySelector('.entry-detail');
       if (!open) { if (d) d.hidden = true; return; }
       if (d) { d.hidden = false; return; }
-      row.appendChild(logDetail(x));
+      // (the line came without its detail: it is fetched now, once, and stays on the line)
+      var wait = el('div', 'entry-detail loading', '詳細を読み込み中…');
+      row.appendChild(wait);
+      fullLog([x]).then(function () {
+        wait.replaceWith(logDetail(x));
+        if (!row.classList.contains('open')) row.querySelector('.entry-detail').hidden = true;
+      }, function (err) { wait.textContent = '詳細を読み込めませんでした：' + ((err && err.message) || ''); setTimeout(function () { wait.remove(); row.classList.remove('open'); more.classList.remove('on'); }, 2500); });
     }
     line.addEventListener('click', function () { if (go) go.open(); else details(); });
     var more = el('button', 'entry-more', '詳細');
@@ -5403,7 +5812,7 @@
   }
   // where a log line takes one: { label, open } (null: nowhere in particular)
   function placeOf(x) {
-    var a = String(x.action || ''), d = x.detail || {}, t = x.target && x.target.id ? x.target : null;
+    var a = String(x.action || ''), d = x.detail || x.place || {}, t = x.target && x.target.id ? x.target : null;
     // (what a player did: the player)
     if (!t && /^player_/.test(a) && x.actor && x.actor.id) t = x.actor;
     function to(label, open) { return { label: label, open: open }; }
@@ -5418,7 +5827,7 @@
     if (a === 'feedback_handled' || a === 'idea_adopt' || a === 'player_feedback') return tab('feedback', '報告・意見案');
     if (/^ops_|^viewer_|^dev_code_/.test(a)) return tab('operators', '運営者');
     if (a === 'account_delete' || a === 'account_purge') return tab('archive', 'プレイヤーアーカイブ');
-    if (/^shield_|^lockdown|^emergency_|^sec_/.test(a)) return tab('security', 'セキュリティ');
+    if (/^shield_|^lockdown|^emergency_|^sec_|^login_/.test(a)) return tab('security', 'セキュリティ');
     if (/^backup_|^discord_/.test(a)) return tab('server', 'サーバー');
     if (/^pay_/.test(a) && state.developer) return tab('pay', '課金');
     if (t) return to(t.name + ' さん', function () { openDetail(t.id); });
@@ -5459,6 +5868,8 @@
   }
   function aiReport(entries, what) {
     if (!entries.length) { toast('ログがありません'); return; }
+    // (the lines of a list have no detail yet: it comes now, for these lines only)
+    if (entries.some(function (x) { return !x.full && x.detail === undefined; })) { fullLog(entries).then(function () { aiReport(entries, what); }, fail); return; }
     var first = entries[entries.length - 1], last = entries[0];
     var text = 'TWO STATE（オンラインのカジノゲーム）の運営ログです。内容を確認して、問題や気になる点があれば、原因の見立てと対処を教えてください。\n'
       + '範囲: ' + what + '・' + entries.length + '件（' + String(first.jst || '').slice(0, 16) + ' 〜 ' + String(last.jst || '').slice(0, 16) + ' 日本時間・新しい順）\n'
@@ -5533,11 +5944,16 @@
     window.addEventListener('orientationchange', topBar);
 
     $('#login-form').addEventListener('submit', onLogin);
+    $('#login-name').addEventListener('input', askSoon);
+    $('#login-name').addEventListener('change', askSoon);
+    if (window.OpsDevice) OpsDevice.watch($('#login-form'));
     initDevUnit();
     diaryProfile = window.OpsDiaryProfile({ request: request, el: el, state: state, face: face, setView: setView, openDetail: openDetail, toast: toast, fail: fail });
     $('#logout').addEventListener('click', logout);
     $('#enter-go').addEventListener('click', enter);
     $('#enter-other').addEventListener('click', logout);
+    $('#pk-form').addEventListener('submit', onPasskey);
+    $('#pk-other').addEventListener('click', logout);
     $('#op-inlog-more').addEventListener('click', function () { loadInlog(true); });
     $('#tabs').addEventListener('click', function (e) {
       var t = e.target.closest('[data-view]');
@@ -5687,14 +6103,14 @@
       $(id).addEventListener('contextmenu', onItemsMenu);
       // (a double click opens it too)
       $(id).addEventListener('dblclick', function (e) {
-        if (e.target.closest('button, .vault-check, .vitem-detail, .vault-inline3d')) return;
+        if (e.target.closest('button, .vault-check, .vitem-detail')) return;
         var row = e.target.closest('.vitem');
         if (row && row.dataset.folder) goFolder(row.dataset.folder);
         else if (row && fileOf(row.dataset.file)) openFile(fileOf(row.dataset.file));
       });
     });
     $('#vault-plus').addEventListener('click', plusMenu);
-    $('#vault-link').addEventListener('click', linkMenu);
+    $('#vault-link').addEventListener('click', openVaultLinks);
     $('#vault-work-panes').addEventListener('click', function (e) {
       var action = e.target.closest('[data-vact]'), pane = e.target.closest('[data-vault-file]');
       if (action && pane) { var f = fileOf(pane.dataset.vaultFile); if (f) fileAct(f, action.dataset.vact); }
@@ -5852,7 +6268,7 @@
     var out = '';
     try { out = sessionStorage.getItem('ops-out') || ''; sessionStorage.removeItem('ops-out'); } catch (e) { /* none */ }
     if (!token) { showLogin(out); return; }
-    request('GET', '/api/ops/me').then(arrive, function (err) { if (err.status !== 401 && err.code !== 'not_operator') showLogin(err.message); });
+    request('GET', '/api/ops/me').then(arrive, function (err) { if (err.status !== 401 && err.code !== 'not_operator' && err.code !== 'pk_required' && err.code !== 'pk_expired') showLogin(err.message); });
     // (back in sight: a viewer asks at once whether they still may; a new day, ログイン again)
     document.addEventListener('visibilitychange', alive);
     document.addEventListener('visibilitychange', dayCheck);

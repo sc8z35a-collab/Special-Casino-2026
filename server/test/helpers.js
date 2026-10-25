@@ -13,7 +13,7 @@ export const newDevice = (fp = '') => crypto.randomBytes(16).toString('hex') + (
 
 // (`warm`: one request first, so the one-time announcements of a new version
 // — server/core/api.js: voiceNotice — find no players and stay out of the tests)
-export async function startServer(overrides = {}, { warm = true } = {}) {
+export async function startServer(overrides = {}, { warm = true } = {}) {  // (overrides.extensions: the parts this server has, server/core/ext.js)
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'br-test-'));
   const app = createApp({
     // Keep ordinary progress/balance tests deterministic; bonus tests inject

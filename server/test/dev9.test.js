@@ -178,7 +178,7 @@ test('the vault\'s sizes follow the plan: 3GB in the database on Workers Paid, 1
   }
 });
 
-test('an AI\'s link: what it takes is labelled, its own labels, and a file it put in the game leaves the links but stays', async () => {
+test('an AI\'s link looks, takes and comments, nothing more; the developer, signed in, says a file is in the game: it leaves the links but stays', async () => {
   const s = await startServer({ operators: ['taku'], limits: LIMITS });
   try {
     const { open, vault } = await developer(s);
@@ -190,45 +190,49 @@ test('an AI\'s link: what it takes is labelled, its own labels, and a file it pu
     const plain = await vault('POST', '/api/vault/link', { id: '*', hours: 1 });
     const ai = await vault('POST', '/api/vault/link', { id: '*', hours: 6, ai: true });
     assert.deepEqual([plain.ai, ai.ai], [false, true]);
+    assert.deepEqual([plain.caps, ai.caps], [['view', 'get', 'note'], ['view', 'get', 'note']], 'every link is the same now');
     const labels = async (id) => (await vault('GET', `/api/vault/file?id=${id}`)).file.labels;
 
-    // a plain link labels nothing; an AI's labels a download once
+    // taking is looked at but never written onto the file: no labels, for either link
     await s.call('GET', `${plain.path}&f=${up.file.id}&n=0`);
-    assert.deepEqual(await labels(up.file.id), []);
     const list = await s.call('GET', ai.path);
     assert.equal(list.ai, true);
     assert.ok(list.files.every((f) => f.sentAt > 0 && f.doneAt >= f.sentAt), 'when each was sent');
     await s.call('GET', `${ai.path}&f=${up.file.id}`);
     await s.call('GET', `${ai.path}&f=${up.file.id}&n=0`);
-    assert.deepEqual((await labels(up.file.id)).map((l) => l.kind), ['download']);
+    assert.deepEqual(await labels(up.file.id), []);
+    assert.equal(s.app.db.prepare('SELECT COUNT(*) AS n FROM vault_link_files WHERE file_id = ?').get(up.file.id).n, 2, 'which link took the file is kept apart');
 
-    // its own labels; the read-only link cannot
+    // a link cannot label or say "in the game"
     const say = (t, body) => s.call('POST', '/api/vault/ai', { body: { t, ...body } });
     const tokenOf = (l) => l.path.split('t=')[1];
-    assert.equal((await say(tokenOf(plain), { f: up.file.id, text: '変換中' })).status, 404);
-    assert.equal((await say(tokenOf(ai), { f: up.file.id, text: '' })).error.code, 'empty');
-    assert.equal((await say(tokenOf(ai), { f: up.file.id, text: '車のモデルに変換中' })).ok, true);
-    assert.deepEqual((await labels(up.file.id)).map((l) => [l.kind, l.text]).slice(1), [['ai', '車のモデルに変換中']]);
+    assert.equal((await say(tokenOf(plain), { f: up.file.id, comment: '変換中' })).ok, true, 'every link may comment now');
+    assert.equal((await say(tokenOf(ai), { f: up.file.id, text: '車のモデルに変換中' })).error.code, 'not_allowed');
+    assert.equal((await say(tokenOf(ai), { f: up.file.id, text: 'img/3d/cars/car.glb', implemented: true })).error.code, 'not_allowed');
+    assert.equal((await say(tokenOf(ai), { f: up.file.id, comment: '車のモデルに変換中' })).ok, true);
+    assert.deepEqual(await labels(up.file.id), []);
+    assert.equal((await vault('GET', '/api/vault/files')).files.find((f) => f.id === up.file.id).implementedAt, 0);
 
-    // in the game: out of every link at once, 実装済み in the vault
-    const done = await say(tokenOf(ai), { f: up.file.id, text: 'img/3d/cars/car.glb（DEV9）', implemented: true });
-    assert.equal(done.implemented, true);
+    // the developer says it is in the game: out of every link at once, 実装済み in the vault
+    const done = await vault('POST', '/api/vault/implemented', { id: up.file.id, text: 'img/3d/cars/car.glb（DEV9）' });
+    assert.ok(done.file.implementedAt > 0);
     assert.deepEqual((await s.call('GET', ai.path)).files.map((f) => f.name), ['garage.glb']);
     assert.equal((await s.call('GET', `${ai.path}&f=${up.file.id}&n=0`)).status, 404);
-    assert.equal((await say(tokenOf(ai), { f: up.file.id, text: 'もう一度' })).status, 404);
+    assert.equal((await say(tokenOf(ai), { f: up.file.id, comment: 'もう一度' })).status, 404);
     const mine = (await vault('GET', '/api/vault/files')).files.find((f) => f.id === up.file.id);
     assert.ok(mine.implementedAt > 0);
-    assert.equal(mine.labelCount, 3);
-    assert.deepEqual((await labels(up.file.id)).map((l) => l.kind), ['download', 'ai', 'implemented']);
+    assert.equal(mine.labelCount, 1);
+    assert.deepEqual((await labels(up.file.id)).map((l) => l.kind), ['implemented']);
 
     // the developer brings it back; it goes again, and nothing ever deletes it on its own
     assert.equal((await vault('POST', '/api/vault/restore', { id: up.file.id })).file.implementedAt, 0);
-    await say(tokenOf(ai), { f: up.file.id, text: 'img/3d/cars/car.glb', implemented: true });
+    await vault('POST', '/api/vault/implemented', { id: up.file.id, text: 'img/3d/cars/car.glb' });
     s.app.db.prepare('UPDATE vault_files SET implemented_at = ? WHERE id = ?').run(Date.now() - 400 * 86400000, up.file.id);
     await s.app.api.housekeeping();
     assert.deepEqual((await vault('GET', '/api/vault/files')).files.map((f) => f.name).sort(), ['car.glb', 'garage.glb']);
     const log = (await s.call('GET', '/api/ops/log', { token: (await s.call('POST', '/api/login', { body: { name: 'TAKU', password: 'pass1234' } })).token })).entries.map((e) => e.action);
-    for (const a of ['vault_ai_label', 'vault_ai_done', 'vault_restore']) assert.ok(log.includes(a), a);
+    for (const a of ['vault_ai_comment', 'vault_implemented', 'vault_restore']) assert.ok(log.includes(a), a);
+    assert.ok(!log.includes('vault_ai_label') && !log.includes('vault_ai_done'), 'a link no longer labels');
   } finally {
     await s.stop();
   }

@@ -274,7 +274,7 @@ export function createShield({ q, config, opsLog, onBreach = () => {}, clock = D
       cur.authFails++; totals.authFails++; countCat('authFail');
     }
     // the server's keys: wrong admin token, or wrong developer code
-    if ((a === '/api/admin' && status === 403) || code === 'dev_code' || code === 'dev_code_locked') {
+    if ((a === '/api/admin' && status === 403) || code === 'dev_code' || code === 'dev_code_locked' || code === 'pk_wrong') {
       criticals.push(now);
       totals.critical++;
       const sc = score(ip || '-', 'critical', now, 'keyGuess');
@@ -357,6 +357,7 @@ export function createShield({ q, config, opsLog, onBreach = () => {}, clock = D
       for (const [ip, s] of ips) if (decayed(s, now) < 0.5 && now - s.at > SCORE_HALFLIFE_MS) ips.delete(ip);
       const m = minuteOf(now);
       for (const [k, v] of perMinuteIp) if (v.minute !== m) perMinuteIp.delete(k);
+      for (const [k, at] of loggedBlock) if (now - at >= 60000) loggedBlock.delete(k);
       if (now - savedBase > 0) savedBase = now;
     }
   };

@@ -5,6 +5,8 @@ import { statements, TABLES, SCHEMA_VERSION } from './db.js';
 import { createOpsLog } from './opslog.js';
 import { cleanName, nameKey, newRecoveryCode, normalizeRecoveryCode, sha256, cleanPassword, hashPassword } from './auth.js';
 import { utcDay } from './rules.js';
+import { createStaffPins } from './staffpin.js';
+import { forgetExtension } from './ext.js';
 
 const CURRENCIES = ['tokens', 'dollars', 'coins'];
 const REDACTED = '（このメッセージは削除されました）';
@@ -20,11 +22,13 @@ export class AdminError extends Error {
 // `onBan(user, on)`: in the server, a ban reaches the player at once and the
 // official bot tells them (lifting it too: then it is what lifts it);
 // `isDeveloper(user)`: the developer's account, which no ban reaches
-export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = () => false } = {}) {
+// `unlockLogins(name)`: the operator site's login waits cleared (one name's, or all), by the server that holds them
+export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = () => false, unlockLogins = () => 0 } = {}) {
   const q = statements(db);
   const tx = (fn) => db.tx(fn);
   // what the commands change goes to the operators' log (server/core/opslog.js)
   const log = createOpsLog({ q });
+  const pins = createStaffPins({ q });
 
   // "#12" or "12" = user id, anything else = user name (case-insensitive)
   function find(ref) {
@@ -124,6 +128,34 @@ export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = (
       return { id: u.id, name: u.name, sessions: Number(r.changes) };
     },
 
+    // the staff rights of a name are bound to this account (after the first one went), or let go
+    staffPin(ref) {
+      const u = find(ref);
+      pins.bind(u, 'admin command');
+      return { id: u.id, name: u.name };
+    },
+    staffUnpin(ref) {
+      const key = nameKey(String(ref ?? '').replace(/^#/, ''));
+      const s = String(ref ?? '').trim();
+      const u = /^#?\d+$/.test(s) ? q('SELECT name_key, name FROM users WHERE id = ?').get(Number(s.replace('#', ''))) : null;
+      const name = u ? u.name_key : key;
+      if (!name) throw new AdminError('名前（または ID）を指定してください');
+      return { name: u ? u.name : s, removed: pins.forget(name) };
+    },
+
+    // the operator site's login waits cleared by hand: a name's (when someone shut an account out), or all of them
+    loginUnlock(name) {
+      const given = String(name ?? '').trim();
+      return { name: given, cleared: unlockLogins(given) };
+    },
+
+    // an added part that guarded the uploads is gone on purpose: the uploads open again
+    extForget(id) {
+      const name = String(id ?? '').trim();
+      if (!name) throw new AdminError('部品の名前を指定してください');
+      return { id: name, removed: forgetExtension(q, name) };
+    },
+
     messages({ limit = 30, ref = null } = {}) {
       if (ref) {
         const u = find(ref);
@@ -208,6 +240,10 @@ export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = (
     recovery: (r) => `${r.name}さんの引き継ぎコードを再発行`,
     password: (r) => `${r.name}さんのパスワードを再設定`,
     logout: (r) => `${r.name}さんのログインを ${r.sessions}件解除`,
+    'staff-pin': (r) => `運営の名前「${r.name}」の権限を、このアカウントに固定`,
+    'ext-forget': (r) => `追加部品「${r.id}」が外れていても構わないことにした（${r.removed ? '記録を消した' : 'もともと記録なし'}）`,
+    'staff-unpin': (r) => `運営の名前「${r.name}」の固定を解除（${r.removed ? '解除した' : 'もともと固定なし'}）`,
+    'login-unlock': (r) => `運営サイトのログインの待ち時間を解除（${r.name ? `「${r.name}」` : 'すべて'}・${r.cleared}件）`,
     redact: (r) => `メッセージ #${r.id} を削除済みにした`,
     export: () => '全データのバックアップを書き出した',
     import: (r) => `バックアップから復元（${Object.entries(r).map(([t, n]) => `${t} ${n}`).join(', ')}）`
@@ -247,6 +283,10 @@ export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = (
       case 'recovery': return admin.recovery(args[0]);
       case 'password': return admin.password(args[0], args[1]);
       case 'logout': return admin.logout(args[0]);
+      case 'staff-pin': return admin.staffPin(args[0]);
+      case 'staff-unpin': return admin.staffUnpin(args[0]);
+      case 'ext-forget': return admin.extForget(args[0]);
+      case 'login-unlock': return admin.loginUnlock(args[0]);
       case 'messages': return admin.messages({ ref: args[0] || null });
       case 'redact': return admin.redact(args[0]);
       case 'export': return admin.export();

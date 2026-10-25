@@ -4,8 +4,11 @@
    where they were the next time the site is opened); a browser without one
    runs them in the page (the same code).
    Each file waits in this browser's IndexedDB with what it needs: the file
-   itself, its id on the server, the upload's own pass for it (a week: no
-   developer code needed meanwhile) and the site's login. Nothing is lost when
+   itself, its id on the server and the upload's own pass for it (a week: no
+   developer code needed meanwhile). The pass is all it sends: no login is kept
+   here (a stolen one would be worth nothing without the page's key, but there
+   is none to steal), and the server takes the pass alone for the pieces and
+   the end of that one file (server/core/vault.js: passFor). Nothing is lost when
    the page or the worker stops: the next start asks the server which pieces
    it has and sends the rest, each as it is (no base64) with its SHA-256 (POST
    /api/vault/piece; on Cloudflare straight into R2).
@@ -19,10 +22,10 @@
    lost login or pass, every 10 minutes (and at once when the site has a new
    one). Only a file deleted from the vault stops for good.
    A job: { key, who, id, name, size, type, space, folder, parent, model,
-   token, pass, piece, chunks, sent, rate (bytes a second, while it goes),
+   pass, piece, chunks, sent, rate (bytes a second, while it goes),
    state: 'wait' | 'run' | 'stop' | 'done' | 'fail', why: 'net' | 'locked' |
-   'login' | 'full' | 'room' | 'error' | 'gone' | '', message, tries, next, at,
-   sha256, mem } */
+   'login' | 'full' | 'room' | 'error' | 'gone' | 'restart' | 'gave_up' | 'blocked' | '', message, tries, restarts, fresh, next, at,
+   sha256, mem, pics (the small pictures the page made while the file was in hand: { thumbnail, preview }), pictured } */
 var VaultUploads = (function () {
   'use strict';
 
@@ -35,7 +38,11 @@ var VaultUploads = (function () {
   // a piece that fails for the connection: again at once, then after these waits (ms), before the whole file waits
   var PIECE_WAITS = [0, 400, 1200, 3000, 6000, 10000];
   // a whole file stopped: again after these waits, the last one over and over
-  var WAITS = { net: [1000, 3000, 10000, 30000, 60000], error: [15000, 60000, 180000, 600000], login: [600000], locked: [600000] };
+  var WAITS = { net: [1000, 3000, 10000, 30000, 60000], error: [15000, 60000, 180000, 600000], login: [600000], locked: [600000], restart: [10000] };
+  // A file that stops for any reason but a refusal (or a need for a person: the login, the code, the room) is sent again from its very
+  // beginning by itself: at most RESTARTS times, RESTART_GAP apart; the server takes what had arrived away first (POST /api/vault/restart).
+  // What an extension at the server's gate refused (`final`) is not sent again. After the last one it waits for 「再開」, or for the connection to be back.
+  var RESTARTS = 5, RESTART_GAP = 10000;
   // what stops for the connection or the server being busy: tried again on its own
   var AGAIN = { offline: 1, missing: 1, piece_size: 1, bad_hash: 1, rate_limited: 1, unavailable: 1, length_required: 1, internal: 1 };
 
@@ -70,7 +77,26 @@ var VaultUploads = (function () {
   }
   function all() { return tx([JOBS], 'readonly', function (s) { return s[JOBS].getAll(); }).then(function (l) { return l || []; }); }
   function get(key) { return tx([JOBS], 'readonly', function (s) { return s[JOBS].get(key); }); }
-  function save(j) { return tx([JOBS], 'readwrite', function (s) { s[JOBS].put(j); }); }
+  // (what the page adds to a record while the worker holds its own copy of the job, the small pictures, is kept)
+  function save(j) {
+    return tx([JOBS], 'readwrite', function (s) {
+      var r = s[JOBS].get(j.key);
+      r.onsuccess = function () {
+        var copy = Object.assign({}, j);
+        if (r.result && r.result.pics && !copy.pics) copy.pics = r.result.pics;
+        s[JOBS].put(copy);
+      };
+      return r;
+    });
+  }
+  // fields into a job's record as it is now (another context may have changed other fields meanwhile)
+  function patch(key, fields) {
+    return tx([JOBS], 'readwrite', function (s) {
+      var r = s[JOBS].get(key);
+      r.onsuccess = function () { if (r.result) s[JOBS].put(Object.assign(r.result, fields)); };
+      return r;
+    });
+  }
   // a new job with its file (`file` null: the page keeps it, `mem`)
   function add(j, file) {
     return tx([JOBS, FILES], 'readwrite', function (s) {
@@ -90,8 +116,8 @@ var VaultUploads = (function () {
     function tell(j) { try { host.tell(Object.assign({}, j)); } catch (e) { /* a page gone */ } }
 
     function call(j, method, path, body) {
-      var h = { Authorization: 'Bearer ' + j.token };
-      if (j.pass) h['X-Vault-Upload'] = j.pass;
+      if (!j.pass) return Promise.reject({ status: 401, code: 'auth', message: 'ログインが必要です' });
+      var h = { 'X-Vault-Upload': j.pass };
       if (body !== undefined) h['Content-Type'] = 'application/json';
       return fetch(path, { method: method, headers: h, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', credentials: 'same-origin' })
         .then(answer, offline);
@@ -100,7 +126,7 @@ var VaultUploads = (function () {
       return res.json().catch(function () { return {}; }).then(function (b) {
         if (res.ok) return b;
         var e = b.error || {};
-        throw { status: res.status, code: e.code || '', message: e.message || '' };
+        throw { status: res.status, code: e.code || '', message: e.message || '', final: !!e.final };
       });
     }
     function offline() { throw { status: 0, code: 'offline', message: '' }; }
@@ -114,7 +140,7 @@ var VaultUploads = (function () {
         return crypto.subtle.digest('SHA-256', buf).then(function (h) {
           return fetch('/api/vault/piece?id=' + j.id + '&n=' + n, {
             method: 'POST', body: buf, cache: 'no-store', credentials: 'same-origin',
-            headers: { Authorization: 'Bearer ' + j.token, 'X-Vault-Upload': j.pass, 'Content-Type': 'application/octet-stream', 'X-Piece-SHA256': hex(h) }
+            headers: { 'X-Vault-Upload': j.pass, 'Content-Type': 'application/octet-stream', 'X-Piece-SHA256': hex(h) }
           }).then(answer, offline);
         });
       });
@@ -157,6 +183,23 @@ var VaultUploads = (function () {
     }
     function retry(err) { return !!err && (AGAIN[err.code] || err.status === 0 || err.status === 429 || err.status >= 500); }
 
+    // The small pictures the page made from the file while it was in hand (kept with the job), saved with up to five tries;
+    // when they were not ready yet, the page saves them itself when they are.
+    function pictured(j) {
+      if (j.parent || j.model) return Promise.resolve();
+      return get(j.key).then(function (rec) {
+        if (!rec || !rec.pics || !rec.pics.thumbnail) return null;
+        var n = 0;
+        function go() {
+          return call(j, 'POST', '/api/vault/meta', { id: j.id, thumbnail: rec.pics.thumbnail, preview: rec.pics.preview }).then(function () { j.pictured = true; }, function (err) {
+            if (++n < 5 && retry(err)) return later(800 * n).then(go);
+            return null;
+          });
+        }
+        return go();
+      }).catch(function () { /* the page does it */ });
+    }
+
     // a whole file: what the server still needs, those pieces, then the end
     function send(j) {
       j.state = 'run';
@@ -164,6 +207,10 @@ var VaultUploads = (function () {
       j.message = '';
       return save(j).then(function () {
         tell(j);
+        // (sent again from its beginning: what had arrived is taken away first, so every piece comes again)
+        if (!j.fresh) return null;
+        return call(j, 'POST', '/api/vault/restart', { id: j.id }).then(function () { j.fresh = false; j.sent = 0; });
+      }).then(function () {
         return call(j, 'GET', '/api/vault/missing?id=' + j.id);
       }).then(function (r) {
         if (r.upload) j.pass = r.upload;
@@ -187,16 +234,22 @@ var VaultUploads = (function () {
         j.sha256 = r.sha256 || '';
         j.sent = j.chunks;
         j.tries = 0;
+        j.restarts = 0;
         j.rate = 0;
         j.doneAt = Date.now();
-        // (a model's file stays until the page has made its picture)
-        return (j.model ? save(j) : save(j).then(function () { return forgetFile(j.key); })).then(function () { tell(j); });
+        // (the small pictures the page made while the file was in hand go up with its end; a model's file stays until the page has made its picture)
+        return pictured(j).then(function () { return (j.model ? save(j) : save(j).then(function () { return forgetFile(j.key); })); }).then(function () { tell(j); });
       }).catch(function (err) { return stopped(j, err); });
     }
     function stopped(j, err) {
       err = err || {};
       if (err.code === 'cancelled' || cancelled[j.key]) return null;
       var code = err.code || '', st = err.status;
+      // a refusal at the gate (an extension said no to this file): the end of it, nothing is sent again
+      if (err.final) {
+        j.state = 'fail'; j.why = 'blocked'; j.message = err.message || ''; j.rate = 0; j.next = 0;
+        return save(j).then(function () { tell(j); }, function () { tell(j); });
+      }
       var why = retry(err) ? 'net'
         : code === 'vault_locked' ? 'locked'
         : st === 401 || code === 'not_operator' || code === 'banned' || code === 'ended' ? 'login'
@@ -208,6 +261,17 @@ var VaultUploads = (function () {
       j.message = err.message || '';
       j.rate = 0;
       j.tries = (j.tries || 0) + 1;
+      // From its very beginning, by itself, up to RESTARTS times: for any reason the sending stopped (the connection, the server,
+      // a piece that would not go) but those that need a person. When they are used up (or the server says so): it waits for 「再開」.
+      if ((why === 'net' || why === 'error') && j.id) {
+        if ((j.restarts || 0) < RESTARTS && code !== 'restarts_used') {
+          j.restarts = (j.restarts || 0) + 1; j.fresh = true; j.why = 'restart'; j.sent = 0; j.next = Date.now() + RESTART_GAP;
+          return save(j).then(function () { tell(j); }, function () { tell(j); });
+        }
+        j.why = 'gave_up';
+        j.next = 0;
+        return save(j).then(function () { tell(j); }, function () { tell(j); });
+      }
       // (again after a while: longer each time, then the longest over and over)
       var w = WAITS[why] || WAITS.error;
       j.next = Date.now() + w[Math.min(w.length - 1, j.tries - 1)];
@@ -232,7 +296,8 @@ var VaultUploads = (function () {
     function slot() {
       return all().then(function (list) {
         var now = Date.now();
-        var mine = list.filter(function (j) { return j.id && j.token && host.mine(j) && !active[j.key]; });
+        // (a file held for a check before it goes — ops/ext.js — waits)
+        var mine = list.filter(function (j) { return j.id && j.pass && !j.hold && host.mine(j) && !active[j.key]; });
         var due = mine.filter(function (j) {
           return j.state === 'wait' || j.state === 'run' || (again(j) && j.next <= now);
         }).sort(function (a, b) { return a.at - b.at; })[0];
@@ -268,7 +333,11 @@ var VaultUploads = (function () {
     // now, not later: every stopped file that goes again by itself (the connection back, a new login)
     function wake() {
       return all().then(function (list) {
-        return Promise.all(list.filter(function (j) { return host.mine(j) && again(j); }).map(function (j) { j.next = 0; return save(j); }));
+        // (the connection is back or there is a new login: the ones that gave up have their five again)
+        return Promise.all(list.filter(function (j) { return host.mine(j) && (again(j) || (j.state === 'stop' && j.why === 'gave_up')); }).map(function (j) {
+          if (j.why === 'gave_up') { j.why = 'net'; j.restarts = 0; j.tries = 0; }
+          j.next = 0; return save(j);
+        }));
       }).then(run, run);
     }
     return {
@@ -280,6 +349,6 @@ var VaultUploads = (function () {
     };
   }
 
-  return { all: all, get: get, save: save, add: add, fileOf: fileOf, forget: forget, forgetFile: forgetFile, engine: engine };
+  return { all: all, get: get, save: save, patch: patch, add: add, fileOf: fileOf, forget: forget, forgetFile: forgetFile, engine: engine };
 })();
 if (typeof self !== 'undefined') self.VaultUploads = VaultUploads;

@@ -14,10 +14,13 @@ import { nextAlarm, monthOf } from './awake.js';
 
 const HOUSEKEEPING_EVERY = 6 * 3600000;
 const JSON_HEADERS = {
+  'Strict-Transport-Security': 'max-age=31536000',
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'no-referrer'
+  'Referrer-Policy': 'no-referrer',
+  // (no search engine or archive keeps an address that carries a link's secret)
+  'X-Robots-Tag': 'noindex, nofollow, noarchive'
 };
 
 // The adapter the shared core expects, on top of the object's SQL storage.
@@ -77,6 +80,34 @@ function bucketBlobs(bucket) {
   };
 }
 
+// The 石碑 (server/core/stele.js): the operators' log's copies, in a bucket of their own when the Worker has one (binding OPLOG;
+// a bucket lock on the prefix oplog/ makes the files impossible to delete or replace), else in the vault's bucket (VAULT) under
+// that prefix. A file is made once: a second write under the same name is refused unless the bytes are the same.
+function bucketStele(bucket) {
+  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const read = async (key) => { const o = await bucket.get(key); return o ? new Uint8Array(await o.arrayBuffer()) : null; };
+  return {
+    async put(key, bytes) {
+      const wrote = await bucket.put(key, bytes, { onlyIf: { etagDoesNotMatch: '*' } });
+      if (wrote === null) {
+        const have = await read(key);
+        if (!have || !same(have, bytes)) throw new Error('その名前の控えがすでにあり、内容が違います（上書きはしません）');
+      }
+    },
+    get: read,
+    async list(prefix) {
+      const out = [];
+      let cursor;
+      do {
+        const r = await bucket.list({ prefix, cursor });
+        for (const o of r.objects) out.push(o.key);
+        cursor = r.truncated ? r.cursor : undefined;
+      } while (cursor);
+      return out;
+    }
+  };
+}
+
 // Pushes events to connected players. Each socket is tagged "u:<user id>";
 // an operator site's own one "o:<user id>" (no game events, not a player
 // online: the 運営チャット's call and the developer called).
@@ -132,13 +163,32 @@ class SocketHub {
   }
 }
 
+// What Cloudflare's edge knows of the connection (request.cf), for the operators' log when a login
+// is got wrong (server/core/reqinfo.js). Plain values only; what the plan does not give is not there.
+const CF_FIELDS = ['country', 'region', 'regionCode', 'city', 'postalCode', 'timezone', 'latitude', 'longitude', 'continent', 'metroCode', 'isEUCountry', 'asn', 'asOrganization',
+  'colo', 'httpProtocol', 'tlsVersion', 'tlsCipher', 'clientTcpRtt', 'clientQuicRtt', 'verifiedBotCategory', 'requestPriority', 'edgeRequestKeepAliveStatus'];
+function edgeOf(cf) {
+  if (!cf || typeof cf !== 'object') return null;
+  const out = {};
+  for (const k of CF_FIELDS) if (cf[k] !== undefined && cf[k] !== null && typeof cf[k] !== 'object') out[k] = cf[k];
+  const bm = cf.botManagement;
+  if (bm && typeof bm === 'object') {
+    out.botManagement = {};
+    for (const k of ['score', 'verifiedBot', 'staticResource', 'corporateProxy', 'ja3Hash', 'ja4']) if (bm[k] !== undefined && bm[k] !== null && typeof bm[k] !== 'object') out.botManagement[k] = bm[k];
+  }
+  return out;
+}
+
 // The host-independent request the core API understands.
 function coreRequest(request, url) {
   return {
     method: request.method,
     path: url.pathname,
     query: url.searchParams,
+    host: url.host,
     ip: request.headers.get('cf-connecting-ip') || '',
+    // (`scheme`: how the edge was reached, for the secure channel's word on whether the connection was encrypted: server/core/seccomm.js)
+    meta: { cf: edgeOf(request.cf), scheme: url.protocol },
     header: (name) => request.headers.get(name),
     async json(limit = 16 * 1024) {
       if (!/^application\/json\b/i.test(request.headers.get('content-type') || '')) {
@@ -202,6 +252,7 @@ export class Casino extends DurableObject {
             put: (row) => { ctx.storage.put('ops_log_anchor', row); console.log(`[ops-log] #${row.id} ${row.hash}`); },
             get: () => ctx.storage.get('ops_log_anchor')
           },
+          stele: env.OPLOG || env.VAULT ? bucketStele(env.OPLOG || env.VAULT) : null,
           // the emergency stop: every live connection closes
           stop: () => { for (const ws of ctx.getWebSockets()) { try { ws.close(1012, 'emergency'); } catch { /* closing */ } } },
           // the housekeeping sooner (a backup due)
@@ -248,6 +299,12 @@ export class Casino extends DurableObject {
       return json(200, { ok: true });
     }
     const out = await this.api.handle(coreRequest(request, url));
+    // (a script or a file, not JSON: server/core/raw.js)
+    if (out.raw) {
+      const body = typeof out.raw.body === 'string' ? new TextEncoder().encode(out.raw.body) : out.raw.body;
+      this.api.sent(body.byteLength, url.pathname);
+      return new Response(body, { status: out.status, headers: { ...JSON_HEADERS, 'Content-Type': out.raw.type, ...out.raw.headers } });
+    }
     const bytes = new TextEncoder().encode(JSON.stringify(out.body));
     this.api.sent(bytes.byteLength, url.pathname);
     return new Response(bytes, { status: out.status, headers: JSON_HEADERS });

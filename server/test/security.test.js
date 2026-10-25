@@ -22,41 +22,53 @@ async function developer(s) {
 }
 const opsLogin = (s, name, password, device = 'browser-aaaaaaaaaaaaaaaa') => s.call('POST', '/api/ops/login', { body: { name, password }, headers: { 'X-Ops-Device': device } });
 
-test('the operator site\'s login: two wrong tries wait 5 minutes, then 10, 20 …; a good one starts over; nothing logged', async () => {
+test('the operator site\'s login: two wrong tries on a name hold that ACCOUNT (any browser) 5 minutes, then 10, 20 …; the server counts the wait; a good one starts over', async () => {
   const s = await startServer({ operators: ['taku', 'mod1'] });
   try {
     await s.register('Mod1');
     await s.register('Player1');
-    const lock = (d) => s.app.db.prepare('SELECT * FROM ops_locks').all().filter((r) => r.key.startsWith(d));
-    assert.equal((await opsLogin(s, 'Mod1', 'pass1234')).name, 'Mod1');
+    const locks = (prefix) => s.app.db.prepare('SELECT * FROM ops_locks').all().filter((r) => r.key.startsWith(prefix));
+    const wait = (name, device) => s.call('POST', '/api/ops/login-wait', { body: { name }, headers: { 'X-Ops-Device': device } });
+    assert.equal((await opsLogin(s, 'Mod1', 'pass1234', 'home-browser-00000001')).name, 'Mod1');
+    assert.equal((await wait('Mod1', 'other-browser-0000001')).left, 0, 'no wait yet');
 
-    const first = await opsLogin(s, 'Mod1', 'wrong');
+    const first = await opsLogin(s, 'Mod1', 'wrong', 'other-browser-0000001');
     assert.equal(first.error.code, 'bad_login');
     assert.match(first.error.message, /5分間/);
-    // a player (not an operator) is a wrong try too
-    const second = await opsLogin(s, 'Player1', 'pass1234');
+    // the second wrong try, from ANOTHER browser, is the same account's: it waits 5 minutes
+    const second = await opsLogin(s, 'Mod1', 'wrong', 'other-browser-0000002');
     assert.equal(second.status, 429);
     assert.equal(second.error.code, 'ops_locked');
+    assert.equal(second.error.scope, 'account');
     assert.ok(Math.abs(second.error.until - (Date.now() + 5 * 60000)) < 5000, '5 minutes');
-    // the right password waits too
-    assert.equal((await opsLogin(s, 'Mod1', 'pass1234')).error.code, 'ops_locked');
+    assert.ok(second.error.left > 290000 && second.error.left <= 300000, 'the time left, from the server\'s own clock');
+    // the right password waits too, whatever the browser; a name that is not locked does not
+    assert.equal((await opsLogin(s, 'Mod1', 'pass1234', 'other-browser-0000003')).error.code, 'ops_locked');
+    assert.equal((await opsLogin(s, 'Player1', 'pass1234', 'other-browser-0000003')).error.code, 'bad_login', 'a player is a wrong try on its own name');
+    // the page asks the server (after a reload, in another tab): the same wait, in time left, for that name only
+    const asked = await wait('mod1', 'other-browser-0000003');
+    assert.equal(asked.scope, 'account');
+    assert.ok(asked.left > 290000 && asked.left <= 300000);
+    assert.equal((await wait('Somebody', 'other-browser-0000003')).left, 0);
+    assert.equal(locks('acct:').length >= 1, true);
+
+    // a browser the account has been logged in with is not held by what a stranger started
+    assert.equal((await wait('Mod1', 'home-browser-00000001')).left, 0);
 
     // 5 minutes later: two more wrong ones, 10 minutes
     s.app.db.prepare('UPDATE ops_locks SET until = ?').run(Date.now() - 1000);
-    assert.match((await opsLogin(s, 'Mod1', 'x')).error.message, /10分間/);
-    const third = await opsLogin(s, 'Mod1', 'y');
+    assert.match((await opsLogin(s, 'Mod1', 'x', 'other-browser-0000004')).error.message, /10分間/);
+    const third = await opsLogin(s, 'Mod1', 'y', 'other-browser-0000005');
     assert.ok(Math.abs(third.error.until - (Date.now() + 10 * 60000)) < 5000, '10 minutes');
     s.app.db.prepare('UPDATE ops_locks SET until = ?').run(Date.now() - 1000);
-    await opsLogin(s, 'Mod1', 'x');
-    assert.ok(Math.abs((await opsLogin(s, 'Mod1', 'y')).error.until - (Date.now() + 20 * 60000)) < 5000, '20 minutes');
+    await opsLogin(s, 'Mod1', 'x', 'other-browser-0000006');
+    assert.ok(Math.abs((await opsLogin(s, 'Mod1', 'y', 'other-browser-0000007')).error.until - (Date.now() + 20 * 60000)) < 5000, '20 minutes');
 
     // a good login starts it over
     s.app.db.prepare('UPDATE ops_locks SET until = ?').run(Date.now() - 1000);
-    assert.ok((await opsLogin(s, 'Mod1', 'pass1234')).token);
-    assert.equal(lock('dev:').length, 0, 'this browser starts over');
-    assert.match((await opsLogin(s, 'Mod1', 'x')).error.message, /5分間/);
-    const log = s.app.db.prepare("SELECT COUNT(*) AS n FROM ops_log WHERE summary LIKE '%入力制限%' OR action LIKE 'ops_login%'").get().n;
-    assert.equal(log, 0, 'not in the log');
+    assert.ok((await opsLogin(s, 'Mod1', 'pass1234', 'other-browser-0000008')).token);
+    assert.equal(locks('acct:mod1').length, 0, 'the account starts over');
+    assert.match((await opsLogin(s, 'Mod1', 'x', 'other-browser-0000008')).error.message, /5分間/);
   } finally {
     await s.stop();
   }
@@ -345,22 +357,29 @@ test('short messages on a vault file: kept for 1, 3, 7, 30 days or with no end, 
   }
 });
 
-test('the login\'s waits: two wrong tries wait this browser only; ten from one address wait the whole address', async () => {
+test('the login\'s waits: a browser the account was logged in with is held only by its own wait; ten from one address wait the whole address', async () => {
   const s = await startServer({ operators: ['taku', 'mod1'] });
   try {
     await s.register('TAKU');
     await s.register('Mod1');
-    await opsLogin(s, 'Mod1', 'x', 'attacker-browser-0001');
-    assert.equal((await opsLogin(s, 'Mod1', 'y', 'attacker-browser-0001')).error.code, 'ops_locked');
-    // the developer on the same network, in another browser, still gets in
     assert.ok((await opsLogin(s, 'TAKU', 'pass1234', 'developer-browser-01')).token);
-    // new browser ids do not get round it: ten in all from one address
-    for (let i = 2; i <= 5; i++) {
-      await opsLogin(s, 'Mod1', 'x', `attacker-browser-000${i}`);
-      await opsLogin(s, 'Mod1', 'y', `attacker-browser-000${i}`);
-    }
-    const r = await opsLogin(s, 'TAKU', 'pass1234', 'developer-browser-02');
+    // strangers shut the account (two wrong tries, a different browser each)…
+    await opsLogin(s, 'TAKU', 'x', 'attacker-browser-0001');
+    assert.equal((await opsLogin(s, 'TAKU', 'y', 'attacker-browser-0002')).error.code, 'ops_locked');
+    assert.equal((await opsLogin(s, 'TAKU', 'pass1234', 'attacker-browser-0003')).error.code, 'ops_locked');
+    // …and the developer, in the browser the account has been logged in with, still gets in
+    assert.ok((await opsLogin(s, 'TAKU', 'pass1234', 'developer-browser-01')).token);
+    // that browser is held by its own wait when IT gets it wrong
+    await opsLogin(s, 'TAKU', 'x', 'developer-browser-01');
+    const held = await opsLogin(s, 'TAKU', 'y', 'developer-browser-01');
+    assert.equal(held.error.code, 'ops_locked');
+    assert.equal(held.error.scope, 'device');
+    assert.equal((await opsLogin(s, 'TAKU', 'pass1234', 'developer-browser-01')).error.code, 'ops_locked');
+    // new browser ids and new names do not get round the address: ten wrong in a row from it
+    for (let i = 1; i <= 10; i++) await opsLogin(s, `ghost${i}`, 'x', `attacker-browser-1${String(i).padStart(3, '0')}`);
+    const r = await opsLogin(s, 'Mod1', 'pass1234', 'mod-browser-000000001');
     assert.equal(r.error.code, 'ops_locked', 'the address waits');
+    assert.equal(r.error.scope, 'address');
   } finally {
     await s.stop();
   }

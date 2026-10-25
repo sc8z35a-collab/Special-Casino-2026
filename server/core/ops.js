@@ -54,7 +54,7 @@ export const SPEEDS = ['max', 'high', 'normal', 'slow', 'slowest'];
 const SPEED_NAMES = { max: '極めて高い', high: '高い', normal: '通常', slow: '遅い', slowest: '極めて遅い' };
 
 export function createOps({ q, tx, live, config, getUser, mini, openCode, setRecovery, banMessage, BAN_DAYS, deviceBanOf, deviceBans, dropFromHub, official, opsLog, balance,
-  banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode = createDevCode({ q, opsLog }), seen = new Map() }) {
+  banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode = createDevCode({ q, opsLog }), seen = new Map(), pins }) {
   const operators = new Set(config.operators.map(nameKey));
   const accessRow = (key) => q('SELECT * FROM ops_access WHERE name_key = ?').get(key);
   // the refresh speed the developer chose (通常 until then)
@@ -69,7 +69,8 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     if (!u || u.npc) return false;
     if (isDeveloper(u)) return true;
     const r = access ? access.get(u.name_key) : accessRow(u.name_key);
-    return r ? r.granted === 1 : operators.has(u.name_key);
+    // (the name carries the rights; only the account bound to the name may use them: server/core/staffpin.js)
+    return (r ? r.granted === 1 : operators.has(u.name_key)) && pins.holds(u);
   }
   // 閲覧者: one the developer let look (never an operator: they see all anyway)
   const viewerRow = (id) => q('SELECT * FROM ops_viewers WHERE user_id = ?').get(id);
@@ -105,12 +106,15 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const r = accessRow(key);
       const by = r && getUser(r.by_id);
       const developer = !!p && isDeveloper(p);
+      const named = r ? r.granted === 1 : operators.has(key);
+      // (the name is in use by another account than the one its rights were bound to)
+      const reused = !!p && named && !developer && pins.peek(p) === 'other';
       // on the site now (seen in the last 40 seconds), and when last online anywhere
       const site = p ? seen.get(p.id) || 0 : 0;
       return {
         key, name: p ? p.name : key, id: p ? p.id : 0, avatar: p ? p.avatar : '', registered: !!p, online: p ? live.isOnline(p.id) : false,
         site: Date.now() - site < 40000, seenAt: p ? Math.max(site, p.last_seen) : 0,
-        developer, operator: developer || (r ? r.granted === 1 : operators.has(key)), fromSettings: operators.has(key),
+        developer, operator: developer || (named && !reused), reused, fromSettings: operators.has(key),
         mfaMode: p ? q('SELECT mode FROM ops_mfa WHERE user_id = ?').get(p.id)?.mode || 0 : 0,
         changed: r ? { granted: r.granted === 1, at: r.at, by: by ? by.name : '' } : null
       };
@@ -251,8 +255,8 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         opened.set(u.id, Date.now());
         opsLog.add({ actor: u, action: 'open', summary: `${u.name}が運営サイトを開いた${viewer ? '（閲覧者）' : ''}`, req });
       }
-      if (viewer) return { name: u.name, viewer: true, developer: false, speed: speedNow(), now: Date.now() };
-      return { name: u.name, operators: config.operators, developer: isDeveloper(u), viewer: false, devCodeSet: devCode.isSet(), speed: speedNow(), now: Date.now() };
+      if (viewer) return { name: u.name, viewer: true, developer: false, weakPassword: u.pwWeak || '', speed: speedNow(), now: Date.now() };
+      return { name: u.name, operators: config.operators, developer: isDeveloper(u), viewer: false, devCodeSet: devCode.isSet(), weakPassword: u.pwWeak || '', speed: speedNow(), now: Date.now() };
     },
 
     // the refresh speed of the operator site and security HOME (the developer only)
@@ -706,6 +710,8 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         tx(() => {
           q('INSERT INTO ops_access (name_key, granted, at, by_id) VALUES (?, 1, ?, ?) ON CONFLICT(name_key) DO UPDATE SET granted = 1, at = excluded.at, by_id = excluded.by_id')
             .run(key, Date.now(), u.id);
+          // (the developer's own word, with the code: the rights are this account's)
+          pins.bind(p, 'granted');
           // (an operator sees everything: no longer a viewer; their look-only sessions end)
           q('UPDATE ops_viewers SET granted = 0, at = ?, by_id = ? WHERE user_id = ? AND granted = 1').run(Date.now(), u.id, p.id);
           q("UPDATE sessions SET ended = ? WHERE user_id = ? AND scope = 'view'").run('運営者になったため、運営サイトにもう一度ログインしてください', p.id);
@@ -775,11 +781,20 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     'GET /api/ops/log': (req, u) => {
       see(u);
       const before = Number(req.query.get('before')) || 0;
-      const entries = opsLog.list({ before, find: req.query.get('q') || '', kind: req.query.get('kind') || '' });
+      // slim=1: the lines only (a list); each one's detail comes when it is opened (/api/ops/log/entries)
+      const slim = req.query.get('slim') === '1';
+      const entries = opsLog.list({ before, find: req.query.get('q') || '', kind: req.query.get('kind') || '', slim });
       return {
-        entries: isOperator(u) ? entries : entries.map(viewerEntry), viewer: !isOperator(u),
+        entries: isOperator(u) || slim ? entries : entries.map(viewerEntry), viewer: !isOperator(u),
         counts: before ? null : opsLog.counts(), now: Date.now()
       };
+    },
+
+    // some lines in full (≤ 100, by number): what a list leaves out, for the lines that are opened
+    'GET /api/ops/log/entries': (req, u) => {
+      see(u);
+      const entries = opsLog.many(String(req.query.get('ids') || '').split(',').slice(0, 100));
+      return { entries: isOperator(u) ? entries : entries.map(viewerEntry) };
     },
 
     'GET /api/ops/log/verify': async (req, u) => {
@@ -800,5 +815,5 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     }
   }
 
-  return { routes, isOperator, isViewer, need, see, operatorList, mini, speedNow, purgeDue };
+  return { routes, isOperator, isViewer, need, see, operatorList, viewerList, mini, speedNow, purgeDue };
 }

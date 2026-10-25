@@ -5,7 +5,7 @@
   "start_url": "/ops/",
   "scope": "/ops/",
   "display": "fullscreen",
-  "orientation": "landscape",
+  "orientation": "any",
   "background_color": "#d8e4ee",
   "theme_color": "#d8e4ee",
   "icons": [

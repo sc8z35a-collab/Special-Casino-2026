@@ -16,6 +16,9 @@
 <link rel="apple-touch-icon" href="assets/site-180.png">
 <link rel="stylesheet" href="ops.css">
 <link rel="stylesheet" href="desktop.css">
+<link rel="stylesheet" href="glass.css">
+<link rel="stylesheet" href="cdw.css">
+<link rel="stylesheet" href="phone.css">
 <link rel="preload" as="image" href="assets/wallpaper-login.webp">
 </head>
 <body>
@@ -65,6 +68,22 @@
   <div class="mac-login-actions"><button type="button" data-mac-reload><span aria-hidden="true">↻</span>再読み込み</button><button type="button" id="enter-other"><span aria-hidden="true">⇄</span>別のアカウントでログイン</button><a href="/"><span aria-hidden="true">⌂</span>ゲームへ戻る</a></div>
 </main>
 
+<!-- every time this page is opened (and after an hour on it): today's passkey, from Discord's /passkey (server/core/pk.js) -->
+<main class="login" id="pk" hidden>
+  <form class="login-card" id="pk-form" autocomplete="off" novalidate>
+    <img class="mac-login-avatar" src="assets/operators.webp" alt="" width="96" height="96">
+    <div class="brand"><span>TWO STATE</span></div>
+    <h1>今日のパスキー</h1>
+    <p class="muted" id="pk-day"></p>
+    <div class="enter-who"><span class="kind" id="pk-role"></span><b id="pk-name"></b></div>
+    <label class="field"><span>パスキー（6桁）</span><input id="pk-code" class="pk-code" placeholder="000000" aria-label="パスキー（6桁）" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" spellcheck="false"></label>
+    <p class="muted pk-help">Discord で <b>/passkey</b> と送ると、あなただけに見える形で表示されます。ページを開き直すたび、また1時間たつたびに入力が必要です。<b>間違えると、1時間は入力できなくなります。</b>よく見て入力してください。</p>
+    <p class="error" id="pk-error" role="alert"></p>
+    <button class="btn primary wide" type="submit" id="pk-go">入る</button>
+  </form>
+  <div class="mac-login-actions"><button type="button" data-mac-reload><span aria-hidden="true">↻</span>再読み込み</button><button type="button" id="pk-other"><span aria-hidden="true">⇄</span>別のアカウントでログイン</button><a href="/"><span aria-hidden="true">⌂</span>ゲームへ戻る</a></div>
+</main>
+
 <div class="app" id="app" hidden>
   <header class="top">
     <div class="brand"><span class="brand-mark">TS</span><span>TWO STATE</span><small>サーバー運営</small></div>
@@ -85,6 +104,8 @@
       <button class="tab" data-view="securityhome" type="button">セキュリティーホーム</button>
       <button class="tab" data-view="diary" id="tab-diary" type="button" hidden>開発者日記</button>
       <button class="tab" data-view="profile" id="tab-profile" type="button" hidden>自分のプロフィール<b class="count" id="count-profile" hidden>!</b></button>
+      <button class="tab" data-view="devapp" id="tab-devapp" type="button" hidden>DEV APP</button>
+      <button class="tab" data-view="calendar" id="tab-calendar" type="button">カレンダー</button>
     </nav>
     <div class="top-right">
       <label class="speed" title="運営サイトの更新頻度"><span>更新</span><select id="speed">
@@ -114,7 +135,7 @@
   </section>
   <section class="view" id="view-profile" hidden>
     <div class="bar"><h2>自分のプロフィール</h2></div><div class="ops-profile-card">
-      <div id="profile-avatar"></div><h3 id="profile-name"></h3><p id="profile-auth-status" role="status"></p>
+      <div id="profile-avatar"></div><h3 id="profile-name"></h3><p id="profile-auth-status" role="status"></p><p id="profile-password-status" role="status"></p>
       <p>二段階：パスワード＋認証アプリ。三段階：さらに専用確認フレーズを入力します。</p>
       <form id="profile-mfa-form">
         <label class="field"><span>現在のパスワード</span><input id="profile-password" type="password" autocomplete="current-password"></label>
@@ -144,6 +165,10 @@
       <form id="devunit-form"><label class="field"><span>コメントを追加</span><textarea id="devunit-text" rows="3" maxlength="2000" required></textarea></label><button class="btn primary" type="submit">送信</button><p class="error" id="devunit-error" role="alert"></p></form></div>
     </div>
   </section>
+  <!-- the calendar (opened from the date in the bar) and the DEV APP (the developer's alone: what is in it comes from the server) -->
+  <section class="view" id="view-calendar" hidden></section>
+  <section class="view" id="view-devapp" hidden></section>
+
   <section class="view" id="view-securityhome" hidden>
     <div class="bar"><h2>セキュリティーホーム</h2><a class="btn small" href="/sec/" target="_blank" rel="noopener">別ウィンドウで開く</a></div>
     <p class="muted">独立したセキュリティーホームを表示します。ログイン・権限・操作は元のサイトのままです。</p>
@@ -336,6 +361,9 @@
       <article class="card" id="srv-vault"></article>
       <article class="card" id="srv-cf"></article>
       <article class="card" id="srv-discord"></article>
+      <article class="card" id="srv-line"></article>
+      <article class="card" id="srv-patrol"></article>
+      <article class="card" id="srv-stele"></article>
       <article class="card" id="srv-machine" hidden></article>
     </div>
     <!-- the developer's own: backups and the emergency stop -->
@@ -381,7 +409,7 @@
       <button class="btn small primary vault-resume" id="vault-resume" type="button" hidden>再開</button>
       <!-- how fast the vault goes: everyone sees it, only the developer changes it -->
       <label class="speed vault-speed" id="vault-speed-box" hidden><span>速さ</span><select id="vault-speed">
-        <option value="max">最速</option><option value="fast">高速</option><option value="normal">標準</option>
+        <option value="limit">上限速</option><option value="max">最速</option><option value="fast">高速</option><option value="normal">標準</option>
       </select></label>
       <span class="vault-mode" id="vault-mode">
         <button class="btn small primary" id="vault-unlock" type="button" hidden>編集する</button>
@@ -398,7 +426,7 @@
       <div class="vault-up" id="vault-up">
         <label class="btn primary" for="vault-file" id="vault-pick-files" title="ファイルをこの画面にドラッグ＆ドロップしても入れられます">アップロード</label>
         <button class="btn vault-plus" id="vault-plus" type="button" aria-haspopup="menu" aria-label="作る（フォルダ・ファイル・メモ）" title="フォルダ・ファイル・メモ">＋</button>
-        <button class="btn" id="vault-link" type="button" aria-haspopup="menu">リンク</button>
+        <button class="btn" id="vault-link" type="button">URL</button>
         <span class="muted vault-memo" id="vault-memo" hidden></span>
         <input id="vault-file" type="file" multiple hidden>
       </div>
@@ -582,11 +610,20 @@
 <script src="vault-thumbnails.js"></script>
 <script src="vault-tabs.js"></script>
 <script src="../js/net/watchcrypto.js"></script>
+<script src="../js/net/secchannel.js"></script>
 <script src="watch.js"></script>
 <!-- Presentation only: the existing operator handlers and API calls stay in ops.js. -->
 <script src="desktop.js"></script>
+<script src="glass.js"></script>
+<script src="calendar.js"></script>
+<script src="devapp.js"></script>
+<script src="cdw.js"></script>
+<script src="secure.js"></script>
 <script src="diary-profile.js"></script>
 <script src="ui-guard.js"></script>
+<script src="pk.js"></script>
+<script src="ext.js"></script>
+<script src="deviceinfo.js"></script>
 <script src="ops.js"></script>
 </body>
 </html>

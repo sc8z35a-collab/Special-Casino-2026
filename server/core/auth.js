@@ -61,6 +61,21 @@ export function openText(key, sealed) {
 }
 export function keyFrom(secret, purpose) { return crypto.createHash('sha256').update(`${secret}:${purpose}`).digest(); }
 
+/* ------------------------------------------------------- staff password --- */
+
+// Whoever runs the game needs more than the players' eight characters: the
+// reason this password is too easy ('' = it is fine) — under twelve characters,
+// digits only, or hardly any different characters. Told to the operator site at
+// login (the password is only ever in hand there); nothing is kept but the word.
+export function staffPasswordWeakness(raw) {
+  const pw = String(raw ?? '');
+  const chars = Array.from(pw);
+  if (chars.length < 12) return 'short';
+  if (/^\d+$/.test(pw)) return 'digits';
+  if (new Set(chars).size < 5) return 'repeat';
+  return '';
+}
+
 /* ------------------------------------------------------------ names --- */
 
 const NAME_CHARS = /^[A-Za-z0-9_\-ぁ-ゖァ-ヺー・々〆一-鿿㐀-䶿]+$/u;

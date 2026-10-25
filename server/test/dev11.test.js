@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
+import { sealedCall } from './secure.js';
 import { RULES } from '../core/rules.js';
 
 const officialMessages = (s, id) => s.app.db.prepare(
@@ -96,7 +97,8 @@ test('閲覧者: only the developer gives or takes rights; a viewer only looks (
     // the site's login gives a look-only session
     const login = await s.call('POST', '/api/ops/login', { body: { name: 'Watcher', password: 'pass1234' }, headers: { 'X-Ops-Device': 'browser-vvvvvvvvvvvvvvvv' } });
     assert.deepEqual([login.status, login.viewer], [200, true]);
-    const v = (method, url, body) => s.call(method, url, { token: login.token, body });
+    // (the security base is spoken to through its sealed channel; the rest as it is)
+    const v = (method, url, body) => (/^\/api\/sec\//.test(url) ? sealedCall(s) : s.call.bind(s))(method, url, { token: login.token, body });
     const me = await v('GET', '/api/ops/me');
     assert.deepEqual([me.viewer, me.developer, me.operators], [true, false, undefined]);
     for (const url of ['/api/ops/alive', '/api/ops/counts', '/api/ops/reports', '/api/ops/detections', '/api/ops/feedback', '/api/ops/log', '/api/ops/log/verify',

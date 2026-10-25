@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, PASSWORD } from './helpers.js';
+import { sealedCall } from './secure.js';
 import { base32, totp } from '../core/opsmfa.js';
 
 const NOW = Date.UTC(2026, 9, 25, 0, 0, 10);
@@ -39,7 +40,7 @@ test('staff MFA enrollment rejects players, verifies setup, encrypts seeds and b
     assert.equal(passwordOnly.error.code, 'mfa_required'); assert.equal(passwordOnly.token, undefined);
     const replay = await s.call('POST', '/api/ops/login', { body: { name: 'taku', password: PASSWORD, otp: code(setup.secret) } }); assert.equal(replay.error.code, 'mfa_invalid');
     const recovered = await s.call('POST', '/api/ops/login', { body: { name: 'taku', password: PASSWORD, recovery: enabled.recovery[0] } }); assert.equal(recovered.status, 200);
-    assert.equal((await call(recovered, 'GET', '/api/sec/me')).status, 200);
+    assert.equal((await sealedCall(s)('GET', '/api/sec/me', { token: recovered.token })).status, 200);
     assert.equal((await call(recovered, 'GET', '/api/ops/profile')).mfa.recoveryLeft, 9);
     const reuse = await s.call('POST', '/api/ops/login', { body: { name: 'taku', password: PASSWORD, recovery: enabled.recovery[0] } }); assert.equal(reuse.error.code, 'mfa_invalid');
     const disabled = await call(recovered, 'POST', prefix + 'disable', { password: PASSWORD, recovery: enabled.recovery[1] }); assert.equal(disabled.status, 200); assert.equal(disabled.mfa.mode, 0);
@@ -93,8 +94,28 @@ test('parallel logins consume each TOTP or recovery code only once', async () =>
     const login = (i, fields) => s.call('POST', '/api/ops/login', { body: { name: 'taku', password: PASSWORD, ...fields }, headers: { 'X-Ops-Device': 'parallel-device-' + String(i).padStart(4, '0') } });
     const otpResults = await Promise.all([0,1,2].map(i => login(i, { otp: code(setup.secret, 1) })));
     assert.equal(otpResults.filter(r => r.token).length, 1);
+    s.app.db.prepare('DELETE FROM ops_locks').run();   // (the replays were wrong tries on the account: its wait is not what this tests)
     const backupResults = await Promise.all([3,4,5].map(i => login(i, { recovery: enabled.recovery[0] })));
     assert.equal(backupResults.filter(r => r.token).length, 1);
     assert.equal((await s.call('GET', '/api/ops/profile', { token: dev.token })).mfa.recoveryLeft, 9);
+  } finally { await s.stop(); }
+});
+
+test('REQUIRE_DEV_MFA: the developer reaches the profile to set an extra login up, and nothing else before', async () => {
+  const s = await startServer({ operators: ['taku', 'Mod'], clock: () => NOW, requireDevMfa: true });
+  try {
+    const dev = await s.register('taku'), mod = await s.register('Mod');
+    const call = (u, method, path, body) => s.call(method, path, { token: u.token, body });
+    for (const path of ['/api/ops/players', '/api/ops/log', '/api/sec/me', '/api/vault/spaces', '/api/backup']) {
+      const r = await call(dev, 'GET', path);
+      assert.deepEqual([r.status, r.error.code], [403, 'mfa_setup_required'], path);
+    }
+    assert.equal((await call(dev, 'GET', '/api/ops/me')).status, 200);
+    assert.equal((await call(dev, 'GET', '/api/ops/profile')).status, 200);
+    assert.equal((await call(mod, 'GET', '/api/ops/players')).status, 200, 'an operator is not asked');
+    const setup = await call(dev, 'POST', prefix + 'begin', { password: PASSWORD });
+    const enabled = await call(dev, 'POST', prefix + 'enable', { password: PASSWORD, mode: 2, otp: code(setup.secret) });
+    assert.equal(enabled.status, 200);
+    assert.equal((await call(dev, 'GET', '/api/ops/players')).status, 200, 'with the extra login set up, the site opens');
   } finally { await s.stop(); }
 });

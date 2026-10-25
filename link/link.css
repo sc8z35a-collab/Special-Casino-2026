@@ -1,0 +1,26 @@
+:root { --bg: #f4f6fa; --card: #fff; --ink: #1d2a44; --muted: #5b6a85; --line: #dde3ee; --accent: #087aff; --ok: #1f9d55; --bad: #c53030; color-scheme: light dark; }
+@media (prefers-color-scheme: dark) { :root { --bg: #11151d; --card: #1a202b; --ink: #e8edf6; --muted: #98a6bf; --line: #2b3444; --accent: #4a9bff; --ok: #44c27f; --bad: #ff7a7a; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif; }
+#app { max-width: 760px; margin: 0 auto; padding: 18px 16px 60px; }
+.top { margin-bottom: 14px; }
+h1 { font-size: 20px; margin: 0 0 2px; }
+.until { margin: 0; color: var(--muted); font-size: 13px; }
+.status { padding: 14px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+.status.bad { color: var(--bad); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; margin: 12px 0; overflow-wrap: anywhere; }
+.card h2 { font-size: 16px; margin: 0 0 4px; }
+.meta { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
+.pic { display: block; max-width: 100%; max-height: 360px; margin: 0 0 10px; border-radius: 10px; background: #0001; }
+.acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+button { font: inherit; border: 0; border-radius: 10px; padding: 8px 14px; background: var(--accent); color: #fff; cursor: pointer; }
+button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+button:disabled { opacity: .55; cursor: default; }
+.bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 6px 0; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+.note-list { list-style: none; margin: 8px 0; padding: 0; }
+.note-list li { padding: 8px 10px; border-radius: 10px; background: var(--bg); margin: 6px 0; font-size: 14px; }
+.note-list small { display: block; color: var(--muted); font-size: 11.5px; }
+textarea { width: 100%; min-height: 64px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; resize: vertical; }
+.count { color: var(--muted); font-size: 12px; text-align: right; }
+.ok { color: var(--ok); } .bad { color: var(--bad); }

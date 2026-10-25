@@ -27,15 +27,20 @@ export const SECURITY_HEADERS = {
   'Permissions-Policy': 'camera=(), microphone=(self), geolocation=(), payment=()'
 };
 
+// (made once: every answer starts from these)
+const JSON_HEADERS = { ...SECURITY_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow, noarchive' };
+
 export function sendJson(res, status, body, headers) {
   const data = Buffer.from(JSON.stringify(body));
-  res.writeHead(status, {
-    ...SECURITY_HEADERS,
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': data.length,
-    'Cache-Control': 'no-store',
-    ...headers
-  });
+  res.writeHead(status, { ...JSON_HEADERS, 'Content-Length': data.length, ...headers });
+  res.end(data);
+  return data.length;
+}
+
+// An answer that is not JSON (server/core/raw.js): sent as it is, the page's security headers on it.
+export function sendRaw(res, status, raw) {
+  const data = typeof raw.body === 'string' ? Buffer.from(raw.body) : Buffer.from(raw.body || '');
+  res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': raw.type, 'Content-Length': data.length, 'Cache-Control': 'no-store', ...raw.headers });
   res.end(data);
   return data.length;
 }
@@ -117,11 +122,16 @@ export function clientIp(req, trustProxy, ipHeader) {
 
 // The host-independent request the core API understands.
 export function coreRequest(req, url, ip) {
+  const sock = req.socket || {};
   return {
     method: req.method,
     path: url.pathname,
     query: url.searchParams,
     ip,
+    // the address it was sent to (the secure channel checks that the page came from it)
+    host: String(req.headers.host || ''),
+    // what this host knows of the connection (for the operators' log when a login is got wrong)
+    meta: { socket: { remote: sock.remoteAddress || '', port: sock.remotePort || 0, family: sock.remoteFamily || '', http: req.httpVersion || '', tls: sock.encrypted ? (sock.getProtocol ? sock.getProtocol() : 'tls') : '' } },
     header: (name) => req.headers[name.toLowerCase()] ?? null,
     json: (limit) => readJson(req, limit),
     bytes: (limit) => readBytes(req, limit)

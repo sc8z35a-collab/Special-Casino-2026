@@ -15,7 +15,9 @@
     ['security', 'セキュリティ', 'security'], ['server', 'サーバー', 'server'],
     ['pay', '課金', 'pay'], ['vault', '保管庫', 'vault'],
     ['devunit', 'DEV UNIT', 'devunit'], ['securityhome', 'セキュリティーホーム', 'securityhome'],
-    ['diary', '開発者日記', 'diary'], ['profile', '自分のプロフィール', 'operators']
+    ['diary', '開発者日記', 'diary'], ['profile', '自分のプロフィール', 'operators'],
+    // (the calendar is opened from the clock, so its tab stays off the bar; DEV APP is the developer's alone, the server says so)
+    ['calendar', 'カレンダー', 'calendar'], ['devapp', 'DEV APP', 'devapp']
   ];
   var windows = {}, active = null, order = 0, signedIn = false, grouped = false;
   var overview = false, desktopSaved = null, silentRouting = false, suppressedRoute = '';
@@ -89,12 +91,42 @@
   var profile = button('mac-status-button mac-profile', '', '運営アカウントと更新頻度');
   profile.appendChild(picture('operators')); profile.dataset.menu = 'account';
   profile.setAttribute('aria-haspopup', 'true'); profile.setAttribute('aria-expanded', 'false'); status.appendChild(profile);
-  var clock = node('time', 'mac-clock'); status.appendChild(clock); top.appendChild(status);
+  // the date and time is the way into the calendar
+  var secureButton = button('mac-status-button mac-secure-toggle', '', 'セキュア通信'); secureButton.appendChild(picture('secure')); secureButton.hidden = true;
+  status.insertBefore(secureButton, notificationToggle);
+  var clock = node('time', 'mac-clock'), clockButton = button('mac-status-button mac-clock-button', '', 'カレンダーを開く');
+  clockButton.appendChild(clock); status.appendChild(clockButton); top.appendChild(status);
+  clockButton.addEventListener('click', function () { openApp('calendar'); });
+  secureButton.addEventListener('click', function () { openApp('securityhome'); });
 
   account = node('div', 'mac-account mac-popover'); account.id = 'mac-account'; account.hidden = true;
   var accountHead = node('div', 'mac-account-head'); accountHead.appendChild(picture('operators'));
   accountHead.appendChild(node('span', '', '運営アカウント')); account.appendChild(accountHead);
   account.appendChild(controls); app.appendChild(account);
+  // items other parts of the page add to the account menu (ops/ext.js)
+  var extras = node('div', 'mac-account-extras'); account.appendChild(extras);
+  window.OpsDesktop = {
+    addItem: function (label, fn) {
+      var b = button('btn small mac-account-item', label);
+      b.addEventListener('click', function () { account.hidden = true; fn(); });
+      extras.appendChild(b);
+    },
+    clearItems: function () { extras.replaceChildren(); },
+    // an app opened by the desktop's own windows (CDW): the same as pressing its icon
+    open: function (id) { if (windows[id]) openApp(id, true); },
+    // CDW turned on or off (ops/cdw.js)
+    cdwChanged: function (on) {
+      cdwButton.classList.toggle('is-on', on); cdwButton.setAttribute('aria-pressed', on ? 'true' : 'false');
+      closeMenu(); clearTimeout(noticeTimer); document.body.classList.remove('mac-notices-raised');
+      if (on) showDock(true); else scheduleHide(1800);
+      say(on ? 'デスクトップの窓：オン' : 'デスクトップの窓：オフ');
+    },
+    // the lock shown beside the bell: only when this page has shown it is on a secure connection (ops/secure.js)
+    secure: function (text) {
+      secureButton.hidden = !text;
+      if (text) { secureButton.setAttribute('aria-label', text); secureButton.title = text; }
+    }
+  };
   menuHost = node('div', 'mac-dropdown'); menuHost.id = 'mac-menu'; menuHost.hidden = true;
   menuHost.setAttribute('role', 'menu'); app.appendChild(menuHost);
 
@@ -110,19 +142,81 @@
   });
 
   dock = node('div', 'mac-dock'); dock.setAttribute('aria-label', 'Dock');
-  var dockHome = button('mac-dock-home', '', 'デスクトップを表示');
-  dockHome.appendChild(picture('site')); dockHome.appendChild(node('span', 'mac-dock-label', 'デスクトップ'));
-  dockHome.addEventListener('click', showDesktop); dock.appendChild(dockHome);
+  // 背景・軽量化・デスクトップ are not apps of the bar: they sit on the desktop itself, in a column of their own
+  var deskIcons = node('div', 'mac-desktop-icons'); deskIcons.setAttribute('role', 'group'); deskIcons.setAttribute('aria-label', 'デスクトップのアイコン');
+  function deskIcon(image, label, hint, action) {
+    var b = button('mac-desktop-app', '', hint); b.dataset.desk = image;
+    var tile = node('span', 'mac-desktop-tile'); tile.appendChild(picture(image));
+    b.appendChild(tile); b.appendChild(node('span', 'mac-desktop-label', label));
+    b.addEventListener('click', action); deskIcons.appendChild(b);
+    return b;
+  }
+  // デスクトップ: the apps turn to ghosts, the notification centre goes, and the windows of CDW can be put on the desktop (ops/cdw.js).
+  // A phone has no room for them: there it still puts the apps away.
+  // (an app window can cover the icon, so the system menu and Alt C reach the same thing)
+  function toggleCdw() {
+    if (document.body.classList.contains('mac-phone') || !window.OpsCDW || isBlocked()) { showDesktop(); return; }
+    closeMenu(); closeOverlay(false); OpsCDW.toggle();
+  }
+  var cdwButton = deskIcon('site', 'デスクトップ', 'デスクトップの窓（CDW 1.0）を表示 / 戻す', toggleCdw);
+  cdwButton.setAttribute('aria-pressed', 'false');
+  var wallButton = deskIcon('wallpaper-app', '背景', '背景を変える', function () { showWallpapers(); });
   // 軽量化: one tap turns the liquid glass and the gliding animations off together (and back on)
-  var liteButton = button('mac-dock-tool', '', '軽量化（リキッドグラスとアニメーションをオフ）');
-  liteButton.appendChild(picture('lite')); liteButton.appendChild(node('span', 'mac-dock-label', '軽量化'));
-  liteButton.addEventListener('click', function () { setLite(!isLite()); });
-  // 背景: the pictures to put behind the windows
-  var wallButton = button('mac-dock-tool', '', '背景を変える');
-  wallButton.appendChild(picture('wallpaper-app')); wallButton.appendChild(node('span', 'mac-dock-label', '背景'));
-  wallButton.addEventListener('click', function () { showWallpapers(); });
-  dock.appendChild(liteButton); dock.appendChild(wallButton);
-  dock.appendChild(node('span', 'mac-dock-divider')); dock.appendChild(tabs); dock.appendChild(top); app.appendChild(dock);
+  var liteButton = deskIcon('lite', '軽量化', '軽量化（リキッドグラスとアニメーションをオフ）', function () { setLite(!isLite()); });
+  // 退出 is the log-out (the page's own button does it; this only asks first)
+  deskIcon('exit', '退出', 'ログアウト', function () { askExit(); });
+  dock.appendChild(tabs); dock.appendChild(top); app.appendChild(dock);
+  desktop.appendChild(deskIcons);
+
+  /* ---- the phone: a home screen of the apps, an app fills the screen with a way back, five buttons at the bottom ----
+     (ops/phone.css). The bar's own app buttons are the grid of the home screen (they move there on a phone and back on a
+     computer), so their badges, glow and permissions are the same ones; what a phone has instead of windows is the
+     switcher (開いているアプリ). */
+  var phoneMedia = window.matchMedia('(max-width: 700px), (max-height: 520px) and (pointer: coarse)');
+  var homeLayer = node('div', 'mac-home'), homeHead = node('header', 'mac-home-head'), homeClock = node('time', 'mac-home-clock'), homeDate = button('mac-home-date', '', 'カレンダーを開く'), homeGrid = node('nav', 'mac-home-grid');
+  homeGrid.setAttribute('aria-label', 'アプリ');
+  homeHead.appendChild(homeClock); homeHead.appendChild(homeDate);
+  homeDate.addEventListener('click', function () { openApp('calendar'); });
+  homeLayer.appendChild(homeHead); homeLayer.appendChild(homeGrid); desktop.appendChild(homeLayer);
+  function navLabel(b, text) { b.appendChild(node('span', 'mac-nav-label', text)); }
+  function navButton(cls, label) { var b = button('mac-nav-btn ' + cls, '', label); b.appendChild(node('span', 'mac-nav-glyph')); navLabel(b, label); return b; }
+  var navHome = navButton('mac-nav-home', 'ホーム'), navSwitch = navButton('mac-nav-switch', '切替');
+  navHome.addEventListener('click', function () { if (isBlocked()) return; closeOverlay(false); closeMenu(); if (openWindows().some(function (w) { return !w.minimized; })) showDesktop(); });
+  navSwitch.addEventListener('click', function () { if (!isBlocked()) showSwitcher(); });
+  // (the labels under the system menu's, the bell's and the account's buttons: seen on a phone only)
+  navLabel(home, 'メニュー'); navLabel(notificationToggle, '通知'); navLabel(profile, 'アカウント');
+  var switcher = node('div', 'mac-help mac-overlay mac-switcher'); switcher.hidden = true; switcher.setAttribute('role', 'dialog'); switcher.setAttribute('aria-modal', 'true'); switcher.setAttribute('aria-label', '開いているアプリ');
+  app.appendChild(switcher);
+  switcher.addEventListener('click', function (e) { if (e.target === switcher) closeOverlay(); });
+  function showSwitcher() {
+    var panel = node('div', 'mac-help-panel mac-switch-panel'), list = openWindows().sort(function (a, b) { return b.rank - a.rank; });
+    panel.appendChild(node('h2', '', '開いているアプリ'));
+    if (!list.length) panel.appendChild(node('p', '', '開いているアプリはありません。ホームのアプリを押して開いてください。'));
+    list.forEach(function (w) {
+      var row = node('div', 'mac-switch-row'), go = button('mac-switch-go', '', w.name + 'を表示'), x = button('mac-switch-x', '×', w.name + 'を閉じる');
+      go.appendChild(picture(w.image)); go.appendChild(node('span', '', w.name + (w.id === active && !w.minimized ? '（表示中）' : w.minimized ? '（しまってあります）' : '')));
+      go.addEventListener('click', function () { closeOverlay(false); activate(w.id); });
+      x.addEventListener('click', function () { closeWindow(w.id); showSwitcher(); });
+      row.appendChild(go); row.appendChild(x); panel.appendChild(row);
+    });
+    var shut = button('btn primary', '閉じる'); shut.addEventListener('click', function () { closeOverlay(); }); panel.appendChild(shut);
+    switcher.replaceChildren(panel); showOverlay(switcher);
+  }
+  // a phone, or not (the screen turned, a window made small): the app buttons and the 背景 / 軽量化 icons go where they belong
+  function setPhone(on) {
+    if (on === document.body.classList.contains('mac-phone')) return;
+    document.body.classList.toggle('mac-phone', on);
+    if (on) {
+      grouped = false; document.body.classList.remove('mac-grouped');
+      homeGrid.appendChild(tabs); homeLayer.insertBefore(deskIcons, homeGrid);
+      dock.insertBefore(navHome, dock.firstChild); dock.insertBefore(navSwitch, navHome.nextSibling);
+    } else {
+      dock.insertBefore(tabs, top); desktop.appendChild(deskIcons); navHome.remove(); navSwitch.remove();
+      closeOverlay(false);
+    }
+    render();
+  }
+  phoneMedia.addEventListener('change', function () { setPhone(phoneMedia.matches); });
   // Windows may cover the taskbar. Its bottom edge and keyboard shortcut
   // keep every application reachable without constraining window movement.
   var taskbarEdge = button('mac-taskbar-edge', '', 'アプリバーを表示');
@@ -131,6 +225,7 @@
   taskbarEdge.addEventListener('focus', revealTaskbar);
   function revealTaskbar() { document.body.classList.add('mac-dock-revealed'); showDock(true); }
   dock.addEventListener('pointerleave', function () { document.body.classList.remove('mac-dock-revealed'); });
+  dock.addEventListener('animationend', function (e) { if (e.animationName === 'dockRise') dock.classList.remove('mac-dock-back'); });
   // With the mouse wheel the app bar moves left and right, so no app is cut off at its ends.
   dock.addEventListener('wheel', function (e) {
     if (e.ctrlKey || tabs.scrollWidth <= tabs.clientWidth + 1) return;
@@ -145,8 +240,12 @@
   var hoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)');
   var autoHide = prefs('autohide') !== 'no', dockShown = true, hideTimer = 0;
   var dockHint = node('span', 'mac-dock-hint'); app.appendChild(dockHint);
+  // a ripple spreading over the glass where something rose out of the water (not with the animations off)
+  var dockRipple = node('span', 'mac-ripple mac-ripple-dock'); app.appendChild(dockRipple);
+  function splash(n) { if (reduced()) return; n.classList.remove('go'); void n.offsetWidth; n.classList.add('go'); }
+  dockRipple.addEventListener('animationend', function () { dockRipple.classList.remove('go'); });
   function canHide() {
-    if (!autoHide || !hoverPointer.matches || app.hidden || menu || overlay || !signedIn) return false;
+    if (!autoHide || !hoverPointer.matches || app.hidden || menu || overlay || !signedIn || document.body.classList.contains('mac-cdw')) return false;
     var f = document.activeElement;
     if (f && dock.contains(f) && f.matches && f.matches(':focus-visible')) return false;
     return !document.body.classList.contains('mac-dock-revealed') || !dock.matches(':hover');
@@ -155,7 +254,7 @@
     clearTimeout(hideTimer);
     if (dockShown && !dock.classList.contains('mac-dock-away')) return;
     dockShown = true;
-    dock.classList.remove('mac-dock-away'); dock.classList.add('mac-dock-back');
+    dock.classList.remove('mac-dock-away'); dock.classList.add('mac-dock-back'); splash(dockRipple);
     document.body.classList.remove('mac-dock-hidden');
   }
   function hideDock() {
@@ -185,8 +284,10 @@
     var tab = e.target.closest('[data-view]'), w = tab && windows[tab.dataset.view];
     if (!w || internalLaunch || app.hidden || isBlocked()) return;
     e.preventDefault(); e.stopImmediatePropagation();
+    // (with CDW on the apps are ghosts: pressing an icon brings that app back)
+    var ghost = window.OpsCDW && OpsCDW.on();
     // (a window in the background comes to the front; the one in front is put away)
-    if (w.open && !w.minimized && active === w.id) minimize(w.id); else activate(w.id);
+    if (w.open && !w.minimized && active === w.id && !ghost) minimize(w.id); else activate(w.id);
   }, true);
 
   APPS.forEach(function (a) {
@@ -240,7 +341,7 @@
   var helpPanel = node('div', 'mac-help-panel'); helpPanel.appendChild(picture('site')); helpPanel.appendChild(node('h2', '', 'TWO STATE デスクトップ'));
   helpPanel.appendChild(node('p', '', '下のアイコンでアプリを表示・非表示にします。ウインドウの余白をドラッグして移動、右下でサイズ変更、余白をダブルクリックすると全画面になります。スマホでは上部をドラッグして移動、内容はスワイプでスクロールできます。'));
   var helpList = node('dl', 'mac-shortcuts');
-  [['Alt W', 'ウインドウを閉じる'], ['Alt M', '最小化'], ['Alt Enter', '最大化 / 元に戻す'], ['Alt `', '次のウインドウ'], ['Esc', '一覧やメニューを閉じる']].forEach(function (r) { helpList.appendChild(node('dt', '', r[0])); helpList.appendChild(node('dd', '', r[1])); });
+  [['Alt C', 'デスクトップの窓（CDW）を表示 / 戻す'], ['Alt W', 'ウインドウを閉じる'], ['Alt M', '最小化'], ['Alt Enter', '最大化 / 元に戻す'], ['Alt `', '次のウインドウ'], ['Esc', '一覧やメニューを閉じる']].forEach(function (r) { helpList.appendChild(node('dt', '', r[0])); helpList.appendChild(node('dd', '', r[1])); });
   helpPanel.appendChild(helpList); helpPanel.appendChild(node('p', 'mac-help-note', '下部のメニューからタブ表示に切り替えられます。閉じても入力中の内容はこのページに残ります。'));
   var helpClose = button('btn primary', '閉じる'); helpClose.addEventListener('click', closeOverlay); helpPanel.appendChild(helpClose); help.appendChild(helpPanel); app.appendChild(help);
   help.addEventListener('click', function (e) { if (e.target === help) closeOverlay(); });
@@ -256,10 +357,47 @@
   var noticePending = node('div', 'mac-notice-pending'); noticeContent.appendChild(noticePending);
   var noticeHistory = node('div', 'mac-notice-history'); noticeHistory.setAttribute('role', 'log'); noticeHistory.setAttribute('aria-label', '通知の履歴'); noticeContent.appendChild(noticeHistory);
   app.appendChild(notifications);
-  function setNoticesMinimized(on) {
+  // With a mouse the notification centre is out of sight until the pointer comes to its corner: it sinks into a drop of water
+  // there when the pointer goes away, and swells out of it, with a ripple, when the pointer comes back (ops/desktop.css).
+  var noticeRipple = node('span', 'mac-ripple mac-ripple-notice'); app.appendChild(noticeRipple);
+  noticeRipple.addEventListener('animationend', function () { noticeRipple.classList.remove('go'); });
+  function setNoticesMinimized(on, quick) {
     noticesMinimized = on;
-    notifications.classList.toggle('is-minimized', on); noticeContent.hidden = on;
+    notifications.classList.toggle('mac-notice-quick', !!quick);
+    if (on) {
+      notifications.classList.remove('mac-notice-back'); notifications.classList.add('mac-notice-away'); notifications.inert = true;
+      return;
+    }
+    notifications.inert = false;
+    var wasAway = notifications.classList.contains('mac-notice-away');
+    notifications.classList.remove('mac-notice-away');
+    if (wasAway && !quick) {
+      notifications.classList.remove('mac-notice-back'); void notifications.offsetWidth; notifications.classList.add('mac-notice-back'); splash(noticeRipple);
+    }
   }
+  notifications.addEventListener('animationend', function (e) { if (e.animationName === 'noticeRise') notifications.classList.remove('mac-notice-back'); });
+  // the corner the pointer must come to (and, once it is out, the pane itself)
+  function nearNotices(e) {
+    var p = app.getBoundingClientRect();
+    if (noticesMinimized) return e.clientX > p.right - 300 && e.clientY < p.top + 150;
+    // (the box it has in the layout, not the one the animation is drawing: while it swells out of its drop it is tiny for a moment)
+    var l = p.left + notifications.offsetLeft, t = p.top + notifications.offsetTop;
+    return e.clientX > l - 36 && e.clientX < l + notifications.offsetWidth + 36 && e.clientY > t - 36 && e.clientY < t + notifications.offsetHeight + 36;
+  }
+  document.addEventListener('pointermove', function (e) {
+    if (e.pointerType !== 'mouse' || !signedIn || app.hidden || !autoNotices() || document.body.classList.contains('mac-cdw')) return;
+    if (nearNotices(e)) {
+      clearTimeout(noticeTimer);
+      if (noticesMinimized) { setNoticesMinimized(false); document.body.classList.add('mac-notices-raised'); }
+    } else if (!noticesMinimized && !notifications.contains(document.activeElement)) {
+      clearTimeout(noticeTimer);
+      noticeTimer = setTimeout(function () { if (!notifications.matches(':hover') && !notifications.contains(document.activeElement)) { setNoticesMinimized(true); document.body.classList.remove('mac-notices-raised'); } }, 900);
+    }
+  }, { passive: true });
+  document.documentElement.addEventListener('pointerleave', function () {
+    if (!autoNotices() || noticesMinimized) return;
+    clearTimeout(noticeTimer); noticeTimer = setTimeout(function () { setNoticesMinimized(true); document.body.classList.remove('mac-notices-raised'); }, 400);
+  });
   function autoNotices() { return noticeHover.matches && noticeLayout.matches; }
   notifications.addEventListener('pointerenter', function (e) {
     if (e.pointerType !== 'mouse' || !autoNotices()) return;
@@ -270,14 +408,14 @@
     clearTimeout(noticeTimer);
     noticeTimer = setTimeout(function () { if (!notifications.matches(':hover') && !notifications.contains(document.activeElement)) { setNoticesMinimized(true); document.body.classList.remove('mac-notices-raised'); } }, 450);
   });
-  setNoticesMinimized(noticesMinimized);
+  setNoticesMinimized(noticesMinimized, true);
   function setNoticesOpen(on) {
     noticesOpen = on; document.body.classList.toggle('mac-notices-open', on);
     document.body.classList.toggle('mac-notices-hidden', !on);
     notificationToggle.setAttribute('aria-expanded', on ? 'true' : 'false');
   }
   setNoticesOpen(noticesOpen);
-  noticeLayout.addEventListener('change', function (e) { setNoticesOpen(e.matches); setNoticesMinimized(autoNotices()); });
+  noticeLayout.addEventListener('change', function (e) { setNoticesOpen(e.matches); setNoticesMinimized(autoNotices(), true); });
   function noticeCard(id, text, at, dismiss) {
     var card = node('article', 'mac-notice-card'), w = windows[id];
     var open = button('mac-notice-open', '', w.name + '：' + text);
@@ -338,15 +476,20 @@
   function updateClock() {
     var date = new Date(), text = date.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
     [clock, loginClock].forEach(function (n) { n.textContent = text; n.dateTime = date.toISOString(); });
+    clockButton.setAttribute('aria-label', 'カレンダーを開く（' + text + '）');
+    homeClock.textContent = date.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hour12: false }); homeClock.dateTime = date.toISOString();
+    homeDate.textContent = date.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'long', day: 'numeric', weekday: 'long' });
     [loginConnection].forEach(function (n) { n.classList.toggle('is-offline', !navigator.onLine); n.setAttribute('aria-label', navigator.onLine ? 'ネットワーク接続あり' : 'オフライン'); n.title = n.getAttribute('aria-label'); });
   }
   updateClock(); setInterval(updateClock, 30000); window.addEventListener('online', updateClock); window.addEventListener('offline', updateClock);
 
   function defaultBounds(w) {
     var compact = area.clientWidth <= 700, i = compact ? 0 : openWindows().length % 4;
-    var width = Math.min(1320, area.clientWidth - (compact ? 16 : 48));
-    var height = Math.min(860, area.clientHeight - (compact ? 108 : 148));
-    w.bounds = { x: compact ? 8 : (area.clientWidth - width) / 2 + i * 12 - 18, y: (compact ? 8 : 16) + i * 12, width: width, height: height };
+    // the security home is a whole page of its own: it opens as large as the screen allows (the bar stays in view)
+    var big = w.id === 'securityhome' && !compact;
+    var width = big ? area.clientWidth - 24 : Math.min(1320, area.clientWidth - (compact ? 16 : 48));
+    var height = big ? area.clientHeight - 112 : Math.min(860, area.clientHeight - (compact ? 108 : 148));
+    w.bounds = { x: compact ? 8 : big ? 12 : (area.clientWidth - width) / 2 + i * 12 - 18, y: compact ? 8 : big ? 10 : 16 + i * 12, width: width, height: height };
     clamp(w);
   }
   function clamp(w) {
@@ -391,6 +534,10 @@
       w.node.querySelector('.mac-zoom').setAttribute('aria-pressed', w.zoomed ? 'true' : 'false');
     });
     buildStrips(); layout();
+    // (a phone with no app in view shows its home screen)
+    var inView = openWindows().some(function (w) { return !w.minimized; }), phone = document.body.classList.contains('mac-phone');
+    document.body.classList.toggle('mac-phone-home', phone && !inView);
+    homeLayer.inert = phone && inView;
     var cur = active && windows[active] && windows[active].tab;
     if (cur && tabs.scrollWidth > tabs.clientWidth) {
       var l = cur.getBoundingClientRect().left - tabs.getBoundingClientRect().left + tabs.scrollLeft, pad = 40;
@@ -428,6 +575,7 @@
   }
   function present(id) {
     var w = windows[id]; if (!w || !allowed(w) || app.hidden) return;
+    if (window.OpsCDW && OpsCDW.on()) OpsCDW.off();
     var restoring = w.open && w.minimized;
     var fresh = !w.open || w.minimized; stopAnimation(w); closeMenu(); desktopSaved = null;
     document.body.classList.remove('mac-notices-raised');
@@ -518,6 +666,28 @@
   function setOverview(on) {
     closeMenu(); if (!openWindows().length) return;
     overview = on; render(); if (on) say('開いているウインドウを一覧表示しています');
+  }
+  // an app opened from the clock, a window of CDW, the lock: the one in front is put away by the same press, as with the bar
+  function openApp(id, forward) {
+    var w = windows[id]; if (!w || !allowed(w) || app.hidden || isBlocked()) return;
+    if (!forward && w.open && !w.minimized && active === id && !(window.OpsCDW && OpsCDW.on())) minimize(id); else activate(id);
+  }
+  var exitOverlay = null;
+  function askExit() {
+    if (app.hidden || isBlocked()) return;
+    if (!exitOverlay) {
+      exitOverlay = node('div', 'mac-help mac-overlay'); exitOverlay.setAttribute('role', 'dialog'); exitOverlay.setAttribute('aria-modal', 'true'); exitOverlay.setAttribute('aria-label', 'ログアウト');
+      exitOverlay.addEventListener('click', function (e) { if (e.target === exitOverlay) closeOverlay(); });
+      app.appendChild(exitOverlay);
+    }
+    var panel = node('div', 'mac-help-panel mac-exit-panel'); panel.appendChild(picture('exit')); panel.appendChild(node('h2', '', 'ログアウトしますか？'));
+    panel.appendChild(node('p', '', 'この端末での運営サイトの接続を終えます。入力中の内容は消えます。'));
+    var acts = node('div', 'mac-exit-acts'), stay = button('btn', 'キャンセル'), go = button('btn primary', 'ログアウト');
+    stay.addEventListener('click', function () { closeOverlay(); });
+    go.addEventListener('click', function () { closeOverlay(false); var out = document.getElementById('logout'); if (out) out.click(); });
+    acts.appendChild(stay); acts.appendChild(go); panel.appendChild(acts);
+    exitOverlay.replaceChildren(panel); showOverlay(exitOverlay);
+    stay.focus();
   }
   function showDesktop() {
     if (fullscreenWindow) leaveFullscreen();
@@ -611,14 +781,21 @@
     var key = trigger.dataset.menu;
     if (key === 'account') { account.hidden = false; var first = account.querySelector('select:not(:disabled), button'); if (first) first.focus(); return; }
     menuHost.replaceChildren();
-    menuItem('デスクトップを表示', showDesktop);
-    menuItem('ウインドウを一覧表示', function () { setOverview(true); }, '', !openWindows().length);
-    menuItem('ウインドウをタブにまとめる', function () { grouped = !grouped; prefs('tabs', grouped ? 'yes' : 'no'); if (!active) nextWindow(); render(); }, '', false, grouped);
+    var onPhone = document.body.classList.contains('mac-phone');
+    if (onPhone) {
+      menuItem('ホームへ戻る', function () { if (openWindows().some(function (w) { return !w.minimized; })) showDesktop(); });
+      menuItem('開いているアプリ', showSwitcher);
+    } else {
+      menuItem('デスクトップを表示', showDesktop);
+      menuItem('デスクトップの窓（CDW 1.0）', toggleCdw, 'Alt C', false, !!(window.OpsCDW && OpsCDW.on()));
+      menuItem('ウインドウを一覧表示', function () { setOverview(true); }, '', !openWindows().length);
+      menuItem('ウインドウをタブにまとめる', function () { grouped = !grouped; prefs('tabs', grouped ? 'yes' : 'no'); if (!active) nextWindow(); render(); }, '', false, grouped);
+    }
     divider();
     // lighter on a slow phone or computer: no blur behind the glass, no gliding
     menuItem('リキッドグラス（ぼかし）', function () { var flat = document.body.classList.toggle('mac-flat'); prefs('glass', flat ? 'off' : 'on'); }, '', false, !document.body.classList.contains('mac-flat'));
     menuItem('滑らかなアニメーション', function () { var off = document.body.classList.toggle('mac-reduce-motion'); prefs('motion', off ? 'reduce' : 'full'); }, '', false, !document.body.classList.contains('mac-reduce-motion'));
-    if (hoverPointer.matches) menuItem('アプリ一覧を自動で隠す', function () { autoHide = !autoHide; prefs('autohide', autoHide ? 'yes' : 'no'); if (autoHide) scheduleHide(300); else showDock(true); }, '', false, autoHide);
+    if (hoverPointer.matches && !onPhone) menuItem('アプリ一覧を自動で隠す', function () { autoHide = !autoHide; prefs('autohide', autoHide ? 'yes' : 'no'); if (autoHide) scheduleHide(300); else showDock(true); }, '', false, autoHide);
     menuItem('背景を変える', showWallpapers);
     menuItem('デスクトップの使い方', showHelp);
     menuHost.hidden = false;
@@ -748,6 +925,7 @@
 
   function showOverlay(n) {
     closeMenu(); closeOverlay(false); returnFocus = document.activeElement; overlay = n; n.hidden = false;
+    if (window.OpsGlass) OpsGlass.scan();
     var input = n.querySelector('input, button'); if (input) input.focus();
   }
   function closeOverlay(restore) {
@@ -777,6 +955,10 @@
     var now = !app.hidden;
     document.body.classList.toggle('mac-signed-in', now);
     if (now === signedIn) return; signedIn = now;
+    // (the next person to sign in starts with nothing of this one's windows)
+    if (window.OpsCDW) OpsCDW.session(now);
+    // (the lock beside the bell: looked for again for each person, and only shown once the page has checked the connection)
+    if (window.OpsSecure) OpsSecure.session(now);
     if (!now) {
       if (fullscreenWindow) leaveFullscreen();
       notices = []; noticeCounts = {}; renderNotices();
@@ -864,6 +1046,7 @@
     if (e.key.toLowerCase() === 'w' && active) { e.preventDefault(); closeWindow(active); }
     else if (e.key.toLowerCase() === 'm' && active) { e.preventDefault(); minimize(active); }
     else if (e.key === 'Enter' && active) { e.preventDefault(); zoom(active); }
+    else if (e.key.toLowerCase() === 'c') { e.preventDefault(); toggleCdw(); }
     else if (e.code === 'Backquote') {
       var list = openWindows().filter(function (w) { return !w.minimized; }); if (!list.length) return;
       e.preventDefault(); var index = list.findIndex(function (w) { return w.id === active; }); activate(list[(index + 1) % list.length].id);
@@ -875,5 +1058,5 @@
   document.body.classList.toggle('mac-reduce-motion', prefs('motion') === 'reduce');
   document.body.classList.toggle('mac-flat', prefs('glass') === 'off');
   grouped = prefs('tabs') === 'yes';
-  document.body.classList.add('mac-ui'); syncSession(); syncDialog(); syncPermissions(); render(); syncLite();
+  document.body.classList.add('mac-ui'); syncSession(); syncDialog(); syncPermissions(); setPhone(phoneMedia.matches); render(); syncLite();
 })();

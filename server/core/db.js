@@ -881,6 +881,107 @@ export const MIGRATIONS = [
 
 MIGRATIONS.push(["ALTER TABLE vault_files ADD COLUMN thumbnail TEXT NOT NULL DEFAULT ''"]);
 MIGRATIONS.push(["ALTER TABLE vault_links ADD COLUMN sealed_token TEXT NOT NULL DEFAULT ''"]);
+// 保管庫のリンク: what a link may do (caps: view, get, note — nothing else), how
+// much it may send out (max_bytes, 0: no cap; bytes_used) and from where it
+// was used (places: hashed address prefixes); who wrote a comment through a
+// link and from where; and which file each link took
+MIGRATIONS.push([
+  "ALTER TABLE vault_links ADD COLUMN caps TEXT NOT NULL DEFAULT 'view,get'",
+  'ALTER TABLE vault_links ADD COLUMN max_bytes INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE vault_links ADD COLUMN bytes_used INTEGER NOT NULL DEFAULT 0',
+  "ALTER TABLE vault_links ADD COLUMN places TEXT NOT NULL DEFAULT '[]'",
+  "UPDATE vault_links SET caps = 'view,get,note' WHERE ai = 1",
+  "ALTER TABLE vault_notes ADD COLUMN link_hash TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE vault_notes ADD COLUMN ip_hash TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE vault_notes ADD COLUMN via TEXT NOT NULL DEFAULT ''",
+  `CREATE TABLE vault_link_files (
+     link_hash TEXT    NOT NULL,
+     file_id   TEXT    NOT NULL,
+     first_at  INTEGER NOT NULL,
+     last_at   INTEGER NOT NULL,
+     n         INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (link_hash, file_id)
+   )`,
+  'CREATE INDEX vault_link_files_file ON vault_link_files(file_id)'
+]);
+
+// パスキー認証 (server/core/pk.js): a wrong passkey keeps that account out for an
+// hour (pk_locks); each page that is open has a gate, its own public key and an
+// hour at most (pk_gates); a session made by the operator site's login says so
+// (sessions.ops: it gets a shorter life)
+MIGRATIONS.push([
+  'ALTER TABLE sessions ADD COLUMN ops INTEGER NOT NULL DEFAULT 0',
+  `CREATE TABLE pk_locks (
+     user_id INTEGER PRIMARY KEY,
+     until   INTEGER NOT NULL,
+     at      INTEGER NOT NULL,
+     ip_hash TEXT    NOT NULL DEFAULT '',
+     wrong   INTEGER NOT NULL DEFAULT 1
+   )`,
+  `CREATE TABLE pk_gates (
+     gid        TEXT    PRIMARY KEY,
+     token_hash TEXT    NOT NULL,
+     user_id    INTEGER NOT NULL,
+     pub        TEXT    NOT NULL,
+     opened_at  INTEGER NOT NULL,
+     until      INTEGER NOT NULL,
+     epoch      INTEGER NOT NULL DEFAULT 0,
+     ip_hash    TEXT    NOT NULL DEFAULT '',
+     agent      TEXT    NOT NULL DEFAULT ''
+   )`,
+  'CREATE INDEX pk_gates_token ON pk_gates(token_hash)',
+  'CREATE INDEX pk_gates_user ON pk_gates(user_id)'
+]);
+
+// the operator site's login says when the password it was opened with is too easy
+// for a member of staff (server/core/auth.js: staffPasswordWeakness); the site asks for a better one
+MIGRATIONS.push([
+  "ALTER TABLE sessions ADD COLUMN pw_weak TEXT NOT NULL DEFAULT ''"
+]);
+
+// the account each staff name's rights are bound to (server/core/staffpin.js)
+MIGRATIONS.push([
+  `CREATE TABLE staff_pins (
+     name_key TEXT    PRIMARY KEY,
+     user_id  INTEGER NOT NULL,
+     born     INTEGER NOT NULL,
+     at       INTEGER NOT NULL,
+     by       TEXT    NOT NULL DEFAULT ''
+   )`
+]);
+
+// the browsers an operator's account has been logged in from (server/core/opslogin.js): a wait on the
+// account, which strangers can start, does not shut out a browser the account has used; the browser's
+// id is kept as a hash
+MIGRATIONS.push([
+  `CREATE TABLE ops_devices (
+     name_key TEXT    NOT NULL,
+     dev      TEXT    NOT NULL,
+     first_at INTEGER NOT NULL,
+     at       INTEGER NOT NULL,
+     uses     INTEGER NOT NULL DEFAULT 1,
+     ip_hash  TEXT    NOT NULL DEFAULT '',
+     agent    TEXT    NOT NULL DEFAULT '',
+     PRIMARY KEY (name_key, dev)
+   )`
+]);
+
+// how many times a vault file was sent again from its beginning (server/core/vault.js: POST /api/vault/restart)
+MIGRATIONS.push(['ALTER TABLE vault_files ADD COLUMN restarts INTEGER NOT NULL DEFAULT 0']);
+// the small windows each operator put on the desktop (server/core/cdw.js): one row each, the layout as the server accepted it
+MIGRATIONS.push([`CREATE TABLE ops_cdw (
+  user_id    INTEGER PRIMARY KEY,
+  layout     TEXT    NOT NULL,
+  updated_at INTEGER NOT NULL
+)`]);
+
+// the server's own identity for the secure channel (server/core/seccomm.js): the public half, and the private half sealed with the server's secret
+MIGRATIONS.push([`CREATE TABLE sec_identity (
+  id         INTEGER PRIMARY KEY CHECK (id = 1),
+  pub        TEXT    NOT NULL,
+  priv       TEXT    NOT NULL,
+  created_at INTEGER NOT NULL
+)`]);
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
@@ -890,7 +991,7 @@ export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transf
   'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers', 'ops_entries',
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'devunit_comments', 'devunit_reads',
   'diary_posts', 'diary_reads', 'diary_reactions', 'diary_comments', 'diary_claims', 'ops_mfa',
-  'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'meta'];
+  'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'sec_identity', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
@@ -916,12 +1017,18 @@ export function metaValue(db, key, make) {
   return db.prepare('SELECT value FROM meta WHERE key = ?').get(key).value;
 }
 
-// Prepared statement cache.
+// Prepared statement cache. (The SQL is almost all fixed text; a few are built from
+// a list, so the cache starts over rather than grow with every shape.)
+const MAX_STATEMENTS = 1500;
 export function statements(db) {
   const cache = new Map();
   return (sql) => {
     let st = cache.get(sql);
-    if (!st) { st = db.prepare(sql); cache.set(sql, st); }
+    if (!st) {
+      st = db.prepare(sql);
+      if (cache.size >= MAX_STATEMENTS) cache.clear();
+      cache.set(sql, st);
+    }
     return st;
   };
 }

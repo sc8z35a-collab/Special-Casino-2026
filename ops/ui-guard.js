@@ -5,9 +5,10 @@
   function editable(target) {
     return target && target.closest && target.closest('input, textarea, [contenteditable="true"]');
   }
+  // (what the vault generated to be shared: the one address, or the addresses of several URLs, in the open dialog's read-only field)
   function shareURL(target) {
-    var input = target && target.closest && target.closest('#dialog:not([hidden]) input[data-vault-share-url="1"]');
-    return input && input.readOnly;
+    var field = target && target.closest && target.closest('#dialog:not([hidden]) input[data-vault-share-url="1"], #dialog:not([hidden]) textarea[data-vault-share-url="1"]');
+    return field && field.readOnly;
   }
   document.addEventListener('selectstart', function (e) {
     if (!editable(e.target)) e.preventDefault();

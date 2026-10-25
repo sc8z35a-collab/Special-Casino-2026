@@ -96,7 +96,7 @@ export function createPeter(ctx) {
 
   // His account: created once, found again after a restore.
   function id() {
-    const cached = peterId && getUser(peterId);
+    const cached = peterId && q('SELECT npc FROM users WHERE id = ?').get(peterId);
     if (cached && cached.npc === 'peter') return peterId;
     let row = q("SELECT id FROM users WHERE npc = 'peter' LIMIT 1").get();
     if (!row) {
@@ -111,7 +111,8 @@ export function createPeter(ctx) {
     q('UPDATE users SET name = ? WHERE id = ? AND name <> ?').run(NAME, peterId, NAME);
     return peterId;
   }
-  function me() { const p = getUser(id()); return { id: p.id, name: p.name, avatar: p.avatar, npc: 'peter' }; }
+  // (on every /api/me: only the three columns it shows are read)
+  function me() { const p = q('SELECT id, name, avatar FROM users WHERE id = ?').get(id()); return { id: p.id, name: p.name, avatar: p.avatar, npc: 'peter' }; }
 
   function debt(userId) {
     return q('SELECT * FROM debts WHERE user_id = ?').get(userId)

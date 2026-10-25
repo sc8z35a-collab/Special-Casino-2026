@@ -28,6 +28,13 @@ import {
   spin as spinReels, evaluate as evaluateLine, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
+import { createStaffPins } from './staffpin.js';
+import { createPatrol } from './patrol.js';
+import { createStele } from './stele.js';
+import { createCdw } from './cdw.js';
+import { createExtensions } from './ext.js';
+import { Raw } from './raw.js';
+import extensions from '../ext/index.js';
 import { createPeter, reservedName } from './peter.js';
 import { createJohnson } from './johnson.js';
 import { createOfficial } from './official.js';
@@ -38,10 +45,13 @@ import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
 import { readQuests, stepQuests, claimQuests, questsReady, questView, questTickets, grantLevelTickets, resetQuestPeriod, questBonuses } from './quests.js';
 import { createOps, DELETED, ARCHIVE_DAYS } from './ops.js';
 import { createOpsLogin } from './opslogin.js';
+import { createPk, GATED } from './pk.js';
+import { createDiscordBot } from './discordbot.js';
 import { createOpsEntry } from './opsentry.js';
 import { createEmergency } from './emergency.js';
 import { createShield } from './shield.js';
-import { createSec } from './sec.js';
+import { createSec, SEC_KEYS } from './sec.js';
+import { createSecComm } from './seccomm.js';
 import { createBackup } from './backup.js';
 import { createTrees } from './tree.js';
 import { createDevCode } from './devcode.js';
@@ -51,6 +61,8 @@ import { createStats } from './stats.js';
 import { createVault, VAULT_BULK } from './vault.js';
 import { REASONS as FILTERED } from './attach.js';
 import { createDiscord } from './discord.js';
+import { createLine, createLineBot } from './line.js';
+import { createNotifier } from './notify.js';
 import { createOpsWatch } from './opswatch.js';
 import { createUsageAlert } from './usagealert.js';
 
@@ -70,6 +82,9 @@ const GROUP_NAME_MAX = 20;
 const GUIDE_MS = 30 * 60000;
 // two requests further apart than this are two sessions (the gap is not play time)
 const SESSION_GAP = 5 * 60000;
+// an operator-site login lasts a day at most and 8 hours without a request (OPS_SESSION_HOURS, OPS_IDLE_HOURS); the game's logins last as ever
+const OPS_SESSION_MS = 24 * 3600000;
+const OPS_IDLE_MS = 8 * 3600000;
 // feedback: ratings 0-5 (0 = not rated) of these, and a comment of any length
 const FEEDBACK_KEYS = ['slot', 'features', 'clarity', 'controls', 'looks', 'polish'];
 const FEEDBACK_MAX = 100000;
@@ -92,7 +107,7 @@ function randomInt(lo, hi) {
   return lo + (r[0] % (hi - lo + 1));
 }
 
-export function createApi({ db, live: hostLive, config, secret, hostAdmin = null, defer = null, blobs = null, host = null, questRewardRoll, questTicketRoll }) {
+export function createApi({ db, live: hostLive, config, secret, hostAdmin = null, defer = null, blobs = null, host = null, questRewardRoll, questTicketRoll, extensions: extraParts = extensions }) {
   const q = statements(db);
   const tx = (fn) => db.tx(fn);
   const quota = createQuota(db, { requests: config.dailyRequestLimit, megabytes: config.dailyMbLimit });
@@ -137,6 +152,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const LIMITS = {
     register: [config.registerPerMinute, Math.max(1, Math.ceil(config.registerPerMinute / 2))],
     login: [10, 5],
+    // (the operator site asking how long a name must still wait: when the page opens and as a name is typed)
+    loginWait: [60, 20],
     nameCheck: [60, 20],
     // at most one spin per second (no banking: burst 1, one token refilled a second)
     spin: [60, 1],
@@ -305,7 +322,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the developer (config.developer, one of config.operators): never shut out
   // by any ban, and never loses the operator rights (server/core/ops.js)
   const devKey = config.operators.some((n) => nameKey(n) === nameKey(config.developer || '')) ? nameKey(config.developer) : '';
-  const isDeveloper = (u) => !!u && !!devKey && !u.npc && u.name_key === devKey;
+  // (the rights of a staff name belong to the account that first used them, not to the name: server/core/staffpin.js)
+  let staffReused = () => {};
+  const pins = createStaffPins({ q, clock: config.clock || Date.now, onMismatch: (u, pin) => staffReused(u, pin) });
+  const isDeveloper = (u) => !!u && !!devKey && !u.npc && u.name_key === devKey && pins.holds(u);
   const DEVICE_BANNED = 'この端末のほかのアカウントがBANされているため、このアカウントも利用できません';
   const when = (ms) => jst(ms).slice(0, 16);   // 2026/10/20 12:34 (Japan time)
   // a letter from the official bot: 【件名】, 〇〇様, the matter, Ice Smoker公式より
@@ -403,15 +423,40 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const official = createOfficial({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel,
     onDelivered: (userId, dto) => phone(userId, dmNote(dto)) });
   official.id();
-  // notices for the developer in a Discord channel (server/core/discord.js), from the log's entries
+  // notices for the developer, from the log's entries: in a Discord channel
+  // (server/core/discord.js) and in LINE (server/core/line.js), the same in
+  // both (server/core/notify.js)
   const discord = createDiscord({ url: config.discordWebhook, defer, jst, publicUrl: config.publicUrl });
+  const kv = {
+    get(key) {
+      const r = q('SELECT value FROM meta WHERE key = ?').get(key);
+      try { return r ? JSON.parse(r.value) : null; } catch { return null; }
+    },
+    set: (key, value) => q('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value))
+  };
+  const line = createLine({
+    token: config.lineAccessToken, to: config.lineNotifyTo.length ? config.lineNotifyTo : config.lineStaffUserIds.slice(0, 1), limit: config.lineMonthlyLimit,
+    kv, defer, jst, publicUrl: config.publicUrl, api: config.lineApi, clock: config.clock || Date.now,
+    // (the allowance used up is told on the other place)
+    onTrouble: (text) => discord.say('⚠️', text)
+  });
+  const notice = createNotifier([discord, line]);
   // the address players use, for the link in the notices: only where the host
   // vouches for it (Cloudflare routes by it; elsewhere PUBLIC_URL)
-  const noteHost = (req) => { if (host && host.name === 'cloudflare') discord.host(req.header('host')); };
+  const noteHost = (req) => { if (host && host.name === 'cloudflare') notice.host(req.header('host')); };
   // (the host keeps the newest entry's hash where SQL cannot reach: server/core/opslog.js)
-  const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => discord.log(row) });
-  // the month's usage in the red (over 70%) or nearly all used (over 90%): told to Discord, once for each
-  const usageAlert = createUsageAlert({ q, report: () => stats.report(0), discord, clock: config.clock || Date.now });
+  let steleRef = null;
+  const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => { notice.log(row); if (steleRef) steleRef.touch(); } });
+  // …and copies of every row in a place of their own, written once and checked now and then (server/core/stele.js)
+  const stele = createStele({
+    q, opsLog, store: host && host.stele ? host.stele : null, secret, notice, clock: config.clock || Date.now,
+    reschedule: host && host.reschedule ? host.reschedule : null, dbBytes: host && host.dbBytes ? host.dbBytes : null
+  });
+  steleRef = stele;
+  staffReused = (u, pin) => opsLog.add({ actorName: 'セキュリティ', action: 'staff_name_reused', target: u,
+    summary: `運営の名前「${u.name}」を、別のアカウントが使っています（この名前の運営権は付けていません）`, detail: { account: u.id, boundTo: pin ? pin.user_id : 0, since: pin ? pin.at : 0 } });
+  // the month's usage in the red (over 70%) or nearly all used (over 90%): told to the notices' places, once for each
+  const usageAlert = createUsageAlert({ q, report: () => stats.report(0), discord: notice, clock: config.clock || Date.now });
   // a new DEV going live is the first entry of its own
   {
     const seen = q("SELECT value FROM meta WHERE key = 'ops_log_release'").get();
@@ -426,7 +471,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const was = q("SELECT value FROM meta WHERE key = 'live_version'").get();
     if (!was || was.value !== host.version.id) {
       q("INSERT INTO meta (key, value) VALUES ('live_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(host.version.id);
-      if (was) discord.say('🚀', `本番に新しい版を反映しました（DEV${RELEASE}・バージョン ${host.version.id.slice(0, 8)}）`);
+      if (was) notice.say('🚀', `本番に新しい版を反映しました（DEV${RELEASE}・バージョン ${host.version.id.slice(0, 8)}）`);
     }
   }
 
@@ -1449,8 +1494,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // Also used by the live connection.
   function userForToken(token) {
     const h = sha256(token);
-    const s = q('SELECT user_id, last_used, ended, scope, ops_mfa_version FROM sessions WHERE token_hash = ?').get(h);
+    const s = q('SELECT user_id, created_at, last_used, ended, scope, ops, ops_mfa_version, pw_weak FROM sessions WHERE token_hash = ?').get(h);
     if (!s) throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
+    // the operator site's login: a day at most, 8 hours without a request (then the name and password again)
+    if (s.ops) {
+      const t = Date.now();
+      if (t - s.created_at > (config.opsSessionHours ? config.opsSessionHours * 3600000 : OPS_SESSION_MS) || t - s.last_used > (config.opsIdleHours ? config.opsIdleHours * 3600000 : OPS_IDLE_MS)) {
+        q('DELETE FROM sessions WHERE token_hash = ?').run(h);
+        throw new ApiError(401, 'auth', 'ログインの有効期限が切れました。もう一度ログインしてください');
+      }
+    }
     // ended by the server (an operator's rights taken away): why, once, then it is gone
     if (s.ended) {
       q('DELETE FROM sessions WHERE token_hash = ?').run(h);
@@ -1476,20 +1529,34 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // ('view': a 閲覧者's operator site session, good for nothing but looking)
     u.scope = s.scope || '';
     u.opsMfaVersion = s.ops_mfa_version || 0;
+    u.pwWeak = s.pw_weak || '';
     return u;
   }
 
-  function createSession(userId, scope = '', mfaVersion = 0) {
+  function createSession(userId, scope = '', mfaVersion = 0, ops = false, weak = '') {
     const token = newToken();
     const now = Date.now();
-    q('INSERT INTO sessions (token_hash, user_id, created_at, last_used, scope, ops_mfa_version) VALUES (?, ?, ?, ?, ?, ?)').run(sha256(token), userId, now, now, scope, mfaVersion);
+    q('INSERT INTO sessions (token_hash, user_id, created_at, last_used, scope, ops, ops_mfa_version, pw_weak) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(sha256(token), userId, now, now, scope, ops ? 1 : 0, mfaVersion, weak);
     return token;
+  }
+
+  // An upload's own pass alone (no login): its sender, as a login would give
+  // them — a banned or blocked account gets nothing from it either
+  function userForPass(userId) {
+    let u = getUser(userId);
+    if (!u) throw new ApiError(401, 'auth', 'アカウントが見つかりません');
+    if (!isDeveloper(u) && shield.accountBlocked(u.id)) throw new ApiError(403, 'blocked', 'このアカウントは一時的に制限されています。しばらく待ってからお試しください');
+    u = allowed(u);
+    u.scope = '';
+    u.opsMfaVersion = 0;
+    u.tokenHash = '';
+    return u;
   }
 
   function nameProblem(raw) {
     let key;
     try { ({ key } = cleanName(raw)); } catch (e) { return e.message; }
-    if (reservedName(key)) return 'この名前は使えません';
+    if (reservedName(key) || pins.taken(key)) return 'この名前は使えません';
     if (q('SELECT 1 AS x FROM users WHERE name_key = ?').get(key)) return 'このユーザー名はすでに使われています';
     return null;
   }
@@ -1547,7 +1614,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const n = q('SELECT COUNT(*) AS n FROM users WHERE created_ip = ? AND created_at > ?').get(req.ip, Date.now() - 86400000).n;
         if (n >= config.registrationsPerIp) throw new ApiError(429, 'too_many_accounts', 'この接続からはこれ以上アカウントを作成できません');
       }
-      if (reservedName(key)) throw new ApiError(409, 'name_taken', 'この名前は使えません');
+      if (reservedName(key) || pins.taken(key)) throw new ApiError(409, 'name_taken', 'この名前は使えません');
       if (q('SELECT 1 AS x FROM users WHERE name_key = ?').get(key)) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
       // two accounts a device at most (then: log in to one of them), none on a device with a BAN
       const dev = deviceOf(req);
@@ -3621,16 +3688,20 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // lockdown (server/core/emergency.js). The shield can call for the lockdown,
   // which needs the shield's forensics and a protective backup, so the three
   // know one another through late-bound references.
-  let emergencyRef = null, backupRef = null, watchRef = null;
+  let emergencyRef = null, backupRef = null, watchRef = null, vaultRef = null;
   const shield = createShield({
     q, config, opsLog, clock: config.clock || Date.now,
     onBreach: (info) => { if (emergencyRef) emergencyRef.breach(info); },
     // a vault's pieces: many a second at full speed, under their own limit (each operator, signed in)
-    bulk: (req) => VAULT_BULK.has(`${req.method} ${req.path}`) && /^Bearer /.test(String(req.header('authorization') || ''))
+    bulk: (req) => VAULT_BULK.has(`${req.method} ${req.path}`) && (/^Bearer /.test(String(req.header('authorization') || '')) || !!(vaultRef && vaultRef.passFor(`${req.method} ${req.path}`, req)))
   });
   const emergency = createEmergency({
     q, config, opsLog, devCode, isDeveloper, getUser, clock: config.clock || Date.now,
     shield, verifyLog: () => opsLog.verify(), protect: () => (backupRef ? backupRef.lockdownBackup() : null), defer: defer || ((p) => p),
+    // a lockdown: every open page's gate ends and the day's passkey changes; when it is lifted the staff's
+    // logins end too, so what an intruder may have kept does not come back with the site
+    onLockdown: () => pk.bump(),
+    onRelease: () => endStaffLogins('ロックダウンが解除されたため、運営サイトにもう一度ログインしてください'),
     // (every operator screen view ends first — the operator and the player are told —
     // then the live connections close: server/core/opswatch.js)
     host: { dbBytes: host && host.dbBytes ? host.dbBytes : null, stop: () => {
@@ -3659,12 +3730,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   };
   const ops = createOps({
     q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, deviceBans, dropFromHub,
-    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen
+    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen, pins
   });
   Object.assign(routes, ops.routes);
   // the operators' screen view (見る): state only, sealed, one way, 30 minutes at most, logged
   const watch = createOpsWatch({
-    q, live, ops, opsLog, official, emergency, shield, discord, getUser, isDeveloper, clock: config.clock || Date.now,
+    q, live, ops, opsLog, official, emergency, shield, discord: notice, getUser, isDeveloper, clock: config.clock || Date.now,
     count: (bytes) => stats.pushed(bytes, 'video'),
     usage: () => stats.usage(0).percent
   });
@@ -3673,10 +3744,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the players' list also says which ones this operator marked ★
   const opsPlayers = routes['GET /api/ops/players'];
   routes['GET /api/ops/players'] = (req, u) => ({ ...opsPlayers(req, u), favorites: watch.favoriteIds(u.id) });
-  const opsMfa = createOpsMfa({ q, tx, secret, ops, opsLog, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now });
+  const opsMfa = createOpsMfa({ q, tx, secret, ops, opsLog, isDeveloper, requireDevMfa: config.requireDevMfa, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now });
   Object.assign(routes, opsMfa.routes);
+  // the small windows on the operator site's desktop, and the DEV APP: who may have what is kept here (server/core/cdw.js)
+  Object.assign(routes, createCdw({ q, ops, isDeveloper, opsLog, clock: config.clock || Date.now }).routes);
+  // parts this deployment adds, if it has any (server/core/ext.js; the list is server/ext/index.js)
+  const extCtx = { q, tx, exec: (sql) => db.exec(sql), config, opsLog, getUser, isDeveloper, ops, secret, clock: config.clock || Date.now, notice, ApiError, keyFrom, nameKey, sha256, holdsTicket: () => false };
+  const ext = createExtensions({ list: extraParts, secret, clock: config.clock || Date.now, ctx: extCtx });
+  Object.assign(routes, ext.routes);
   Object.assign(routes, createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed,
-    commentRate: (u) => rate(limit.dm, u.id), opsLog }).routes);
+    commentRate: (u) => rate(limit.dm, u.id), opsLog, gate: ext.gate }).routes);
   Object.assign(routes, createDevUnit({ q, ops, live, getUser, isDeveloper }).routes);
   // the operator site's ログインログ (the day's ログイン button; the developer's alone to read)
   const opsEntry = createOpsEntry({ q, getUser, see: ops.see, isOperator: ops.isOperator, isDeveloper });
@@ -3685,13 +3762,26 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   routes['GET /api/ops/me'] = (req, u) => ({ ...opsMe(req, u), ...opsEntry.state(u), mfa: ops.isOperator(u) ? opsMfa.status(u) : undefined });
   // the operator site's own login (two wrong tries: a wait that doubles); while stopped, the developer's only
   const opsLogin = createOpsLogin({
-    q, findByName, isOperator: ops.isOperator, isViewer: ops.isViewer, createSession, seenOn, entered: opsEntry.record, verifyMfa: opsMfa.verify,
+    q, findByName, isOperator: ops.isOperator, isViewer: ops.isViewer, isDeveloper, createSession, seenOn, entered: opsEntry.record, verifyMfa: opsMfa.verify,
+    opsLog, secret, clock: config.clock || Date.now,
     rate: (req) => rate(limit.login, req.ip, '試行回数が多すぎます。しばらく待ってからお試しください'),
+    rateWait: (req) => rate(limit.loginWait, req.ip, '確認が多すぎます。しばらく待ってからお試しください'),
     // during a lockdown the operators still come in to reach the security base;
     // during a plain emergency stop, only the developer
     allow: (u) => emergency.locked() || !emergency.stopped() || isDeveloper(u), stoppedBody: () => emergency.body()
   });
   Object.assign(routes, opsLogin.routes);
+  // the passkey, asked every time a page of the operator site or the security base is opened (off until GATE_KEY is set)
+  const pk = createPk({
+    q, tx, config, opsLog, ops, isDeveloper, mfa: opsMfa, entered: opsEntry.record, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now
+  });
+  Object.assign(routes, pk.routes);
+  // the Discord bot that gives it to the staff role: Discord calls this address
+  const bot = createDiscordBot({ config, pk, opsLog, clock: config.clock || Date.now });
+  Object.assign(routes, bot.routes);
+  // …and LINE's: the same passkey for the staff in a talk of their own
+  const lineBot = createLineBot({ config, line, pk, opsLog, defer, clock: config.clock || Date.now });
+  Object.assign(routes, lineBot.routes);
   // 運営チャット
   // @開発者 in the 運営チャット: the developer hears of it at once — on the
   // operator site (its live connection), on their phone (unless the game is
@@ -3702,7 +3792,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const text = String(m.text).replace(/@\[(p|log):\d+\]/g, '…').replace(/@\[dev\]/g, '@開発者').slice(0, 140);
     live.sendOps(dev.id, 'opsping', { from: mini(u), to, text, id: m.id });
     phone(dev.id, { kind: 'ops', title: `${u.name}さんが運営チャットで開発者を呼んでいます`, body: text, tag: `opsping:${u.id}`, open: 'ops' }, 30000);
-    discord.say('📣', `${u.name}が運営チャット（${to ? '個人チャット' : '全体チャット'}）で開発者を呼んでいます：${text}`);
+    notice.say('📣', `${u.name}が運営チャット（${to ? '個人チャット' : '全体チャット'}）で開発者を呼んでいます：${text}`);
   }
   const team = createTeam({ q, getUser, live, ops, seen: opsSeen, isDeveloper, callDeveloper, ice: () => iceServers() });
   Object.assign(routes, team.routes);
@@ -3724,7 +3814,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     list: (...a) => { stats.r2('a'); return blobs.list(...a); },
     del: (...a) => blobs.del(...a)
   };
-  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, blobs: bucket, onDb: (n) => emergency.vaultDb(n) });
+  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, gate: ext.gate, blobs: bucket, onDb: (n) => emergency.vaultDb(n), epoch: pk.epoch });
+  // (what an extension's route may ask: does this request hold the developer's code ticket, the 30 minutes after the code was put in)
+  extCtx.holdsTicket = (req, u) => vault.unlocked(req, u);
+  vaultRef = vault;
   Object.assign(routes, vault.routes);
   // the developer's backups of everything but the vault
   const backup = createBackup({
@@ -3735,10 +3828,59 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   Object.assign(routes, backup.routes);
   backupRef = backup;
   const operatorsOnlineNow = () => { const now = Date.now(); return ops.operatorList().filter((o) => o.operator && o.id && now - (opsSeen.get(o.id) || 0) < 40000).length; };
+  // the server looks over itself (server/core/patrol.js): with the housekeeping, and when the developer asks
+  const settingsNow = () => ({
+    gateKey: !!config.gateKey, discordBot: !!config.discordAppKey, discord: !!discord.on, line: !!line.on, adminToken: !!config.adminToken, stripe: !!config.stripeSecretKey,
+    requireDevMfa: !!config.requireDevMfa, developer: nameKey(config.developer || ''), operators: sha256(config.operators.map(nameKey).sort().join(',')).slice(0, 12)
+  });
+  const patrol = createPatrol({
+    q, opsLog, config, settings: settingsNow, clock: config.clock || Date.now,
+    isStaff: (u) => isDeveloper(u) || ops.isOperator(u) || ops.isViewer(u), extMissing: () => ext.missing(),
+    // (the log's copies are carved, looked over and, if rows are missing, put back; what is wrong is what the patrol says)
+    more: [{ id: 'stele', label: '運営ログの石碑（外の控え）', fn: async () => { await stele.tick(); return stele.findings(); } }, ...ext.checks()]
+  });
+  const patrolDto = () => { const r = patrol.last(); return r && { at: r.at, ms: r.ms, by: r.by, checks: r.checks, findings: r.findings }; };
+  routes['GET /api/ops/patrol'] = (req, u) => { ops.see(u); return { patrol: patrolDto(), now: Date.now() }; };
+  routes['POST /api/ops/patrol/run'] = async (req, u) => {
+    ops.need(u);
+    if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
+    await req.json();
+    await patrol.run({ by: u });
+    return { patrol: patrolDto(), now: Date.now() };
+  };
+  // the logins of everyone who is staff end (they log in again; the message says why)
+  function endStaffLogins(why) {
+    let n = 0;
+    for (const id of new Set([...ops.operatorList().map((o) => o.id), ...ops.viewerList().map((v) => v.id)])) {
+      if (id) n += Number(q("UPDATE sessions SET ended = ? WHERE user_id = ? AND ended = ''").run(why, id).changes);
+    }
+    return n;
+  }
+  // the figures of the サーバー tab that a small window (and the security base) draws
+  function leanServer() {
+    const snap = stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() });
+    return { now: snap.now, host: snap.host, live: snap.live, rate: snap.rate, today: { requests: snap.today.requests, bytes: snap.today.bytes }, usage: { percent: snap.estimate.usagePercent, tier: snap.estimate.usageTier, yen: snap.estimate.yen } };
+  }
   // the operator site's サーバー tab (every operator)
   routes['GET /api/ops/server'] = (req, u) => {
     ops.see(u);
-    return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on } };
+    // lean=1: what a small window on the desktop draws (the figures and the five-minute history), not the whole tab
+    if (req.query.get('lean') === '1') return leanServer();
+    return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on }, line: line.status(), patrol: patrolDto(), stele: stele.status() };
+  };
+  // the 石碑: how it stands (every operator), carved and looked over now (the developer), and the log's rows to keep a copy of (the developer)
+  routes['GET /api/ops/stele'] = (req, u) => { ops.see(u); return { stele: stele.status(), now: Date.now() }; };
+  routes['POST /api/ops/stele/run'] = async (req, u) => {
+    ops.need(u);
+    if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
+    await req.json();
+    const r = await stele.tick({ deep: true });
+    return { stele: stele.status(), ran: { sealed: r.sealed, recovered: r.recover ? r.recover.restored || 0 : 0, ok: r.check ? r.check.ok : true }, now: Date.now() };
+  };
+  routes['GET /api/ops/log/archive'] = (req, u) => {
+    ops.need(u);
+    if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
+    return stele.archive({ after: req.query.get('after'), limit: req.query.get('limit') });
   };
   // the tab bar's poll also carries the month's usage colour (cheap), so the
   // サーバー button is green / blue / purple / red from every tab
@@ -3748,18 +3890,20 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const v = vault.summary();
     return { ...out, usage: stats.usage(v && v.store === 'bucket' ? v.used : 0) };
   };
-  // the developer tries the Discord notices: one goes out at once
+  // the developer tries the notices (Discord, LINE): one goes out at once to each
   routes['POST /api/ops/discord/test'] = async (req, u) => {
     ops.need(u);
     if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
     await req.json();
-    if (!discord.on) throw new ApiError(409, 'not_set', 'Discord の Webhook（DISCORD_WEBHOOK_URL）が設定されていないか、形が正しくありません');
+    if (!notice.on) throw new ApiError(409, 'not_set', '通知先が設定されていません（Discord の Webhook：DISCORD_WEBHOOK_URL、または LINE：LINE_CHANNEL_ACCESS_TOKEN と LINE_STAFF_USER_IDS）');
     noteHost(req);
-    discord.say('🔔', `テスト通知です（運営サイトから ${u.name} が送信）`);
-    const ok = await discord.flush();
-    opsLog.add({ actor: u, action: 'discord_test', req, summary: `${u.name}が Discord 通知をテスト送信（${ok ? '届いた' : '送れなかった'}）` });
-    if (!ok) throw new ApiError(502, 'discord_failed', 'Discord に送れませんでした。Webhook の URL が正しいか、Discord 側で消されていないか確かめてください');
-    return { ok: true };
+    notice.say('🔔', `テスト通知です（運営サイトから ${u.name} が送信）`);
+    const sent = await notice.flushEach();
+    const told = [sent.discord !== null && `Discord ${sent.discord ? '届いた' : '送れなかった'}`, sent.line !== null && `LINE ${sent.line ? '届いた' : '送れなかった'}`].filter(Boolean).join('・');
+    opsLog.add({ actor: u, action: 'discord_test', req, summary: `${u.name}が通知をテスト送信（${told}）` });
+    if (sent.discord === false) throw new ApiError(502, 'discord_failed', 'Discord に送れませんでした。Webhook の URL が正しいか、Discord 側で消されていないか確かめてください');
+    if (sent.line === false) throw new ApiError(502, 'line_failed', 'LINE に送れませんでした。チャネルアクセストークンと送信先のID、今月の送信枠（無料は200通）を確かめてください');
+    return { ok: true, discord: sent.discord, line: sent.line };
   };
   // the operator site's セキュリティ tab (every operator): the shield and the
   // emergency/lockdown state; and the operators' actions on attacks that did
@@ -3786,10 +3930,18 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     sockets: host && host.sockets ? host.sockets() : null, dbBytes: host && host.dbBytes ? host.dbBytes() : null,
     quota: quota.on ? quota.state() : null, outbound: emergency.outboundAllowed(), startedAt: stats.startedAt || 0, host: (host && host.name) || 'node'
   });
-  const sec = createSec({ q, getUser, ops, emergency, shield, opsLog, health, secret, isDeveloper, live, seen: opsSeen });
+  // the secure channel the base and the operator site's lock are talked over (server/core/seccomm.js), and the base itself
+  const comm = createSecComm({ q, secret, opsLog, clock: config.clock || Date.now, roleOf: (u) => (isDeveloper(u) ? 'developer' : ops.isOperator(u) ? 'operator' : ops.isViewer(u) ? 'viewer' : '') });
+  const sec = createSec({
+    q, getUser, ops, emergency, shield, opsLog, health, lean: leanServer, secret, isDeveloper, live, seen: opsSeen, comm, patrol, stele,
+    facts: { hsts: () => !!(host && host.name === 'cloudflare'), passkey: () => pk.active(), devMfa: () => !!config.requireDevMfa, devCode: () => devCode.isSet() }
+  });
+  // (only staff open a channel; and the developer's panels are not there for anyone else, channel or not)
+  routes[SEC_KEYS.open] = (req, u) => { ops.see(u); return comm.routes[SEC_KEYS.open](req, u); };
   Object.assign(routes, sec.routes);
+  const DEV_ONLY = new Set(SEC_KEYS.developer);
 
-  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', ...pay.public, ...vault.public]);
+  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', 'POST /api/ops/login-wait', ...pay.public, ...vault.public, ...bot.public, ...lineBot.public, ...ext.publicKeys]);
 
   /* ---------------------------------------------------------------- live connection hooks */
 
@@ -3873,6 +4025,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('DELETE FROM hub_invites WHERE created_at < ?').run(Date.now() - HUB.inviteMs);
       for (const h of q('SELECT id FROM hubs').all()) settleHub(h.id);
       for (const [k, until] of voiceKept) if (until < Date.now()) voiceKept.delete(k);
+      // (the longest gap a phone notice waits is two minutes)
+      for (const [k, at] of pushedAt) if (at < Date.now() - 600000) pushedAt.delete(k);
       // the official bot: two days without the operators' answer, it answers on its own
       for (const p of official.autoReplies()) {
         opsLog.add({ action: 'bot_auto_reply', target: p, summary: `${p.name}さんへ自動返信（2日以上未返信のため既読に）`, detail: { text: 'AUTO' } });
@@ -3891,7 +4045,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // the developer's automatic backup when it is time
     return Promise.all([
       pay.sweep().catch((e) => console.error('pay sweep failed', e)),
-      backup.due().catch((e) => console.error('backup failed', e))
+      backup.due().catch((e) => console.error('backup failed', e)),
+      // (the LINE notices that have waited long enough go out together)
+      Promise.resolve(line.tick()).catch((e) => console.error('line notices failed', e)),
+      // the server looks over itself
+      patrol.run().catch((e) => console.error('patrol failed', e))
     ]);
   }
   // when the host should run the housekeeping next: in 6 hours, or sooner for a backup
@@ -3933,6 +4091,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const admin = createAdmin(db, {
     seal: (code) => sealText(CODE_KEY, code),
     isDeveloper,
+    unlockLogins: (name) => opsLogin.unlock(name),
     onBan: (u, on) => {
       if (!on) { liftBan(u, 'lifted'); return; }
       // (a 永久BAN: to the プレイヤーアーカイブ, like one from the operator site)
@@ -3980,6 +4139,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     noteHost(req);
     // (a minute over: the emergency stop looks at it before this answer)
     emergency.tick();
+    pk.sweep();
     const out = await answer(req);
     // (after a new version starts: its announcements, once)
     if (!announced && !emergency.locked()) {
@@ -4002,22 +4162,24 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // operator or a viewer on its own).
   const VIEW_ONLY = new Set([
     'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/ops/alive', 'GET /api/ops/counts', 'GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback',
-    'GET /api/ops/log', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security',
-    'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify', 'POST /api/logout'
+    'GET /api/ops/log', 'GET /api/ops/log/entries', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security', 'GET /api/ops/patrol', 'GET /api/ops/ext',
+    SEC_KEYS.open, ...SEC_KEYS.viewer, 'POST /api/logout',
+    'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close'
   ]);
 
   // what still comes in while the server is stopped for an emergency: the
   // developer's way back in
-  const WHILE_STOPPED = new Set(['POST /api/ops/login', 'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/emergency', 'POST /api/emergency/release']);
+  const WHILE_STOPPED = new Set(['POST /api/ops/login', 'POST /api/ops/login-wait', 'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/emergency', 'POST /api/emergency/release',
+    'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close', 'POST /api/pk/breakglass', 'POST /api/discord/interactions', 'POST /api/line/webhook']);
   // what still comes in during a lockdown: the security base (/sec/) for the
   // operators, the operator login they reach it with (and the logout that
   // ends it, so 出る really signs out), and the developer's emergency page.
   // Everything else — players, the operator site, the developer's own tools —
   // is shut.
   const WHILE_LOCKED = new Set([
-    'POST /api/ops/login', 'POST /api/logout', 'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify',
-    'GET /api/sec/messages', 'POST /api/sec/messages', 'POST /api/sec/lockdown', 'POST /api/sec/release',
-    'GET /api/emergency', 'POST /api/emergency/release'
+    'POST /api/ops/login', 'POST /api/ops/login-wait', 'POST /api/logout', SEC_KEYS.open, ...SEC_KEYS.viewer, ...SEC_KEYS.operator, ...SEC_KEYS.developer,
+    'GET /api/emergency', 'POST /api/emergency/release',
+    'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close', 'POST /api/pk/breakglass', 'POST /api/discord/interactions', 'POST /api/line/webhook'
   ]);
 
   async function answer(req) {
@@ -4036,9 +4198,21 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!route) throw new ApiError(404, 'not_found', 'APIが見つかりません');
       let user = null;
       if (!PUBLIC.has(key)) {
-        user = authUser(req);
-        req.userId = user.id;
-        if (/^\/api\/(?:ops\/|sec\/|vault\/|backup(?:\/|$)|emergency(?:\/|$))/.test(req.path)) opsMfa.guard(user);
+        // an upload's own pass sends its pieces alone (the background worker holds no login);
+        // a request that does carry a login is that login's, the pass only helping it
+        const pass = req.header('authorization') ? null : vault.passFor(key, req);
+        if (pass) {
+          user = userForPass(pass.userId);
+          req.passFile = pass.fileId;
+          req.userId = user.id;
+        } else {
+          user = authUser(req);
+          req.userId = user.id;
+          if (GATED.test(req.path)) {
+            opsMfa.guard(user, req);
+            await pk.guard(req, user);
+          }
+        }
         if (req.method === 'POST' && req.path.startsWith('/api/ops/profile/')) rate(limit.login, 'mfa:' + user.id);
         // a viewer's look-only session: the allowlist, and only while they still are one
         if (user.scope === 'view') {
@@ -4052,7 +4226,21 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         // (a vault's pieces: their own limit, in server/core/vault.js)
         if (!VAULT_BULK.has(key)) rate(limit.general, user.id);
       }
-      return { status: 200, body: await route(req, user) };
+      // the security base speaks only through its secure channel: what does not come sealed (or comes from another login, a repeat,
+      // a body that was touched) is turned away before the route knows of it; and what is answered is sealed
+      let sealed = null;
+      if (comm.covers(key)) {
+        // (a person who is not the developer gets what a route that does not exist gets, for the developer's panels, whoever they are;
+        // a person who is not staff gets the refusal the route would give, and not a word about channels)
+        if (DEV_ONLY.has(key) && !isDeveloper(user)) throw new ApiError(404, 'not_found', 'APIが見つかりません');
+        ops.see(user);
+        sealed = await comm.enter(req, user);
+        if (sealed.body) req.json = async () => sealed.body;
+      }
+      const result = await route(req, user);
+      if (sealed) return { status: 200, body: await comm.seal(sealed, result) };
+      // (a script or a file, not JSON: the host sends it as it is)
+      return result instanceof Raw ? { status: result.status, raw: result } : { status: 200, body: result };
     } catch (e) {
       if (e instanceof ApiError) return { status: e.status, body: { error: { code: e.code, message: e.message, ...(e.extra || {}) } } };
       // the host's daily quota ran out (e.g. database writes on the free plan)
@@ -4077,6 +4265,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // and gives it back after, so none of it is lost (server/core/opslog.js)
       if (cmd === 'log-export') return { ok: true, result: { rows: admin.logRows() } };
       if (cmd === 'log-keep') return { ok: true, result: admin.keepLog(args[0], args[1] || {}, req) };
+      // the 石碑 (server/core/stele.js): how it stands, carved and looked over now, or the log put back from it (`force`: files signed with another key too)
+      if (cmd === 'stele') {
+        const mode = String(args[0] || 'status');
+        if (mode === 'check') { const r = await stele.tick({ deep: true }); return { ok: true, result: { ...stele.status(), ran: { sealed: r.sealed, ok: r.check ? r.check.ok : true, recover: r.recover || null } } }; }
+        if (mode === 'restore') { const r = await stele.recover({ force: args[1] === true || args[1] === 'force' }); await stele.seal(); return { ok: true, result: { ...stele.status(), restore: r } }; }
+        return { ok: true, result: stele.status() };
+      }
       const own = hostAdmin ? await hostAdmin(cmd, args) : undefined;
       return { ok: true, result: own !== undefined ? own : await admin.command(cmd, args, req) };
     } catch (e) {
@@ -4087,6 +4282,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   return {
     handle,
+    // (the tests: every route the server answers)
+    routeKeys: () => Object.keys(routes),
+    pk,
+    line,
     filtered,
     hello,
     presence,

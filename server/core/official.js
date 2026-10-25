@@ -19,7 +19,7 @@ export function createOfficial(ctx) {
   let botId = 0;
 
   function id() {
-    const cached = botId && getUser(botId);
+    const cached = botId && q('SELECT npc FROM users WHERE id = ?').get(botId);
     if (cached && cached.npc === 'official') return botId;
     let row = q("SELECT id FROM users WHERE npc = 'official' LIMIT 1").get();
     if (!row) {
@@ -33,7 +33,7 @@ export function createOfficial(ctx) {
     botId = row.id;
     return botId;
   }
-  function me() { const b = getUser(id()); return { id: b.id, name: b.name, avatar: b.avatar, npc: 'official' }; }
+  function me() { const b = q('SELECT id, name, avatar FROM users WHERE id = ?').get(id()); return { id: b.id, name: b.name, avatar: b.avatar, npc: 'official' }; }
   const thread = (userId) => q('SELECT * FROM bot_threads WHERE user_id = ?').get(userId) || { user_id: userId, waiting_since: 0, ops_at: 0, auto_at: 0 };
   function saveThread(t) {
     q(`INSERT INTO bot_threads (user_id, waiting_since, ops_at, auto_at) VALUES (?, ?, ?, ?)
