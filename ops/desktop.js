@@ -957,6 +957,8 @@
     if (now === signedIn) return; signedIn = now;
     // (the next person to sign in starts with nothing of this one's windows)
     if (window.OpsCDW) OpsCDW.session(now);
+    // (the lock beside the bell: looked for again for each person, and only shown once the page has checked the connection)
+    if (window.OpsSecure) OpsSecure.session(now);
     if (!now) {
       if (fullscreenWindow) leaveFullscreen();
       notices = []; noticeCounts = {}; renderNotices();

@@ -16,6 +16,9 @@
 .mac-home-head { text-align: center; color: #fff; text-shadow: 0 1px 10px #17385acc; margin: 8px 0 18px; }
 .mac-home-clock { display: block; font-size: 52px; font-weight: 250; letter-spacing: -1.5px; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .mac-home-date { font-size: 14px; font-weight: 500; opacity: .92; }
+/* (the date is the way into the calendar: a button that does not look like one) */
+button.mac-home-date { appearance: none; border: 0; background: transparent; color: inherit; font-family: inherit; padding: 4px 14px; border-radius: 14px; cursor: pointer; }
+button.mac-home-date:active { background: #ffffff40; }
 /* 背景 and 軽量化: a row of their own above the apps */
 .mac-phone .mac-home .mac-desktop-icons { position: static; display: flex; justify-content: center; gap: 22px; margin: 0 0 20px; grid-template-rows: none; }
 .mac-phone .mac-home .mac-desktop-app { width: 84px; height: auto; gap: 6px; padding: 0; }
