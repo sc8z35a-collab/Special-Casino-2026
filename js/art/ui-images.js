@@ -3,6 +3,7 @@
   'use strict';
 
   BR.UI_IMG = {
+    updateButton: 'img/ui/refresh/update.webp',
     chip: 'img/ui/chip.webp',
     coin: 'img/ui/coin.webp',
     dollar: 'img/ui/dollar.webp',

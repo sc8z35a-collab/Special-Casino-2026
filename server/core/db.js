@@ -880,6 +880,7 @@ export const MIGRATIONS = [
 ];
 
 MIGRATIONS.push(["ALTER TABLE vault_files ADD COLUMN thumbnail TEXT NOT NULL DEFAULT ''"]);
+MIGRATIONS.push(["ALTER TABLE vault_links ADD COLUMN sealed_token TEXT NOT NULL DEFAULT ''"]);
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer

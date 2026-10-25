@@ -82,6 +82,7 @@ import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { ApiError } from './errors.js';
 import { Limiter } from './ratelimit.js';
+import { keyFrom, sealText, openText } from './auth.js';
 
 export const CHUNK = 1024 * 1024;
 const TICKET_MS = 30 * 60000;
@@ -181,6 +182,7 @@ const idsOf = (raw) => [...new Set(Array.isArray(raw) ? raw.map(String) : [])].s
 // written into the database (the emergency stop does not count them)
 export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, blobs = null, onDb = () => {} }) {
   const KEY = crypto.createHash('sha256').update(`${secret}:vault-ticket`).digest();
+  const LINK_KEY = keyFrom(secret, 'vault-link-storage');
   const size = SIZES[blobs ? 'bucket' : config.plan === 'paid' ? 'paid' : 'db'];
   const maxBytes = (config.vaultMaxMb ?? size.all) * 1048576, fileBytes = (config.vaultFileMb ?? size.file) * 1048576;
   const freeBytes = (config.vaultFreeMb ?? FREE_MB) * 1048576;
@@ -1266,10 +1268,26 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const ai = body.ai === true;
       const token = crypto.randomBytes(32).toString('base64url');
       const until = Date.now() + hours * 3600000;
-      q('INSERT INTO vault_links (token_hash, file_id, until, created_by, created_at, ai) VALUES (?, ?, ?, ?, ?, ?)').run(sha(token), all ? ALL : f.id, until, u.id, Date.now(), ai ? 1 : 0);
+      q('INSERT INTO vault_links (token_hash, file_id, until, created_by, created_at, ai, sealed_token) VALUES (?, ?, ?, ?, ?, ?, ?)').run(sha(token), all ? ALL : f.id, until, u.id, Date.now(), ai ? 1 : 0, sealText(LINK_KEY, token));
       const where = all ? '保管庫全体' : `保管庫の「${f.name}」`;
       opsLog.add({ actor: u, action: 'vault_link', req, summary: `${where}の${ai ? 'AI用' : '読み取り専用'}リンクを作成（${hours}時間有効）`, detail: { file: all ? ALL : f.id, name: all ? '' : f.name, hours, until, ai } });
       return { token, until, ai, path: `/api/vault/pull?t=${token}` };
+    },
+
+    // Only the same authenticated, unlocked developer who can issue links
+    // may recover the encrypted URL. Public readers still use the hash only.
+    'GET /api/vault/links': (req, u) => {
+      need(req, u, true);
+      developerOnly(u, 'リンクの一覧');
+      const links = q('SELECT * FROM vault_links WHERE revoked = 0 AND until > ? ORDER BY created_at DESC LIMIT 200').all(Date.now()).flatMap(l => {
+        const f = l.file_id === ALL ? null : fileRow(l.file_id);
+        if (l.file_id !== ALL && (!f || f.space || f.implemented_at)) return [];
+        let token = '';
+        try { if (l.sealed_token) token = openText(LINK_KEY, l.sealed_token); } catch (e) { /* old host key: reissue instead */ }
+        if (!TOKEN_RE.test(token) || sha(token) !== l.token_hash) token = '';
+        return [{ file: l.file_id, name: f ? f.name : '保管庫全体', until: l.until, createdAt: l.created_at, ai: !!l.ai, uses: l.uses, path: token ? `/api/vault/pull?t=${token}` : null }];
+      });
+      return { links };
     },
 
     // every link of a file (or of the whole vault: id '*') stops working at once

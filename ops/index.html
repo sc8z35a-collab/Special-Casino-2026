@@ -388,7 +388,8 @@
         <button class="btn small ghost" id="vault-lock" type="button" hidden>閉じる</button>
       </span>
     </div>
-    <div id="vault-main" hidden>
+    <nav class="vault-work-tabs" id="vault-work-tabs" role="tablist" aria-label="保管庫のタブ"></nav>
+    <div id="vault-main" role="tabpanel" hidden>
       <!-- which vault: the developer's own and the backups, one's own, the shared ones, (the developer) the others' to look into -->
       <nav class="vault-spaces" id="vault-spaces" aria-label="保管庫を選ぶ"></nav>
       <!-- the room in the shared vaults: one's own use, limit and request; (the developer) everyone's, and the requests -->
@@ -425,6 +426,7 @@
       </div>
       <div class="vault-pager" id="vault-pager"></div>
     </div>
+    <div id="vault-work-panes"></div>
   </section>
 </div>
 
@@ -578,6 +580,7 @@
 
 <script src="vault-upload.js"></script>
 <script src="vault-thumbnails.js"></script>
+<script src="vault-tabs.js"></script>
 <script src="../js/net/watchcrypto.js"></script>
 <script src="watch.js"></script>
 <!-- Presentation only: the existing operator handlers and API calls stay in ops.js. -->
