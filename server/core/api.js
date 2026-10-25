@@ -30,6 +30,7 @@ import {
 import { createAdmin } from './admin.js';
 import { createStaffPins } from './staffpin.js';
 import { createPatrol } from './patrol.js';
+import { createStele } from './stele.js';
 import { createExtensions } from './ext.js';
 import { Raw } from './raw.js';
 import extensions from '../ext/index.js';
@@ -442,7 +443,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // vouches for it (Cloudflare routes by it; elsewhere PUBLIC_URL)
   const noteHost = (req) => { if (host && host.name === 'cloudflare') notice.host(req.header('host')); };
   // (the host keeps the newest entry's hash where SQL cannot reach: server/core/opslog.js)
-  const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => notice.log(row) });
+  let steleRef = null;
+  const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => { notice.log(row); if (steleRef) steleRef.touch(); } });
+  // …and copies of every row in a place of their own, written once and checked now and then (server/core/stele.js)
+  const stele = createStele({
+    q, opsLog, store: host && host.stele ? host.stele : null, secret, notice, clock: config.clock || Date.now,
+    reschedule: host && host.reschedule ? host.reschedule : null, dbBytes: host && host.dbBytes ? host.dbBytes : null
+  });
+  steleRef = stele;
   staffReused = (u, pin) => opsLog.add({ actorName: 'セキュリティ', action: 'staff_name_reused', target: u,
     summary: `運営の名前「${u.name}」を、別のアカウントが使っています（この名前の運営権は付けていません）`, detail: { account: u.id, boundTo: pin ? pin.user_id : 0, since: pin ? pin.at : 0 } });
   // the month's usage in the red (over 70%) or nearly all used (over 90%): told to the notices' places, once for each
@@ -3823,7 +3831,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   });
   const patrol = createPatrol({
     q, opsLog, config, settings: settingsNow, clock: config.clock || Date.now,
-    isStaff: (u) => isDeveloper(u) || ops.isOperator(u) || ops.isViewer(u), extMissing: () => ext.missing()
+    isStaff: (u) => isDeveloper(u) || ops.isOperator(u) || ops.isViewer(u), extMissing: () => ext.missing(),
+    // (the log's copies are carved, looked over and, if rows are missing, put back; what is wrong is what the patrol says)
+    more: [{ id: 'stele', label: '運営ログの石碑（外の控え）', fn: async () => { await stele.tick(); return stele.findings(); } }]
   });
   const patrolDto = () => { const r = patrol.last(); return r && { at: r.at, ms: r.ms, by: r.by, checks: r.checks, findings: r.findings }; };
   routes['GET /api/ops/patrol'] = (req, u) => { ops.see(u); return { patrol: patrolDto(), now: Date.now() }; };
@@ -3845,7 +3855,21 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the operator site's サーバー tab (every operator)
   routes['GET /api/ops/server'] = (req, u) => {
     ops.see(u);
-    return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on }, line: line.status(), patrol: patrolDto() };
+    return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on }, line: line.status(), patrol: patrolDto(), stele: stele.status() };
+  };
+  // the 石碑: how it stands (every operator), carved and looked over now (the developer), and the log's rows to keep a copy of (the developer)
+  routes['GET /api/ops/stele'] = (req, u) => { ops.see(u); return { stele: stele.status(), now: Date.now() }; };
+  routes['POST /api/ops/stele/run'] = async (req, u) => {
+    ops.need(u);
+    if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
+    await req.json();
+    const r = await stele.tick({ deep: true });
+    return { stele: stele.status(), ran: { sealed: r.sealed, recovered: r.recover ? r.recover.restored || 0 : 0, ok: r.check ? r.check.ok : true }, now: Date.now() };
+  };
+  routes['GET /api/ops/log/archive'] = (req, u) => {
+    ops.need(u);
+    if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
+    return stele.archive({ after: req.query.get('after'), limit: req.query.get('limit') });
   };
   // the tab bar's poll also carries the month's usage colour (cheap), so the
   // サーバー button is green / blue / purple / red from every tab
@@ -4211,6 +4235,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // and gives it back after, so none of it is lost (server/core/opslog.js)
       if (cmd === 'log-export') return { ok: true, result: { rows: admin.logRows() } };
       if (cmd === 'log-keep') return { ok: true, result: admin.keepLog(args[0], args[1] || {}, req) };
+      // the 石碑 (server/core/stele.js): how it stands, carved and looked over now, or the log put back from it (`force`: files signed with another key too)
+      if (cmd === 'stele') {
+        const mode = String(args[0] || 'status');
+        if (mode === 'check') { const r = await stele.tick({ deep: true }); return { ok: true, result: { ...stele.status(), ran: { sealed: r.sealed, ok: r.check ? r.check.ok : true, recover: r.recover || null } } }; }
+        if (mode === 'restore') { const r = await stele.recover({ force: args[1] === true || args[1] === 'force' }); await stele.seal(); return { ok: true, result: { ...stele.status(), restore: r } }; }
+        return { ok: true, result: stele.status() };
+      }
       const own = hostAdmin ? await hostAdmin(cmd, args) : undefined;
       return { ok: true, result: own !== undefined ? own : await admin.command(cmd, args, req) };
     } catch (e) {

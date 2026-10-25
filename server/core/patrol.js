@@ -25,7 +25,8 @@ const DAY_MS = 86400000;
 const WATCHED = new Set(['adminToken', 'developer', 'operators']);
 const NAMES = { gateKey: 'パスキーの鍵', discordBot: 'Discordボット', discord: 'Discord通知', line: 'LINE通知', adminToken: '管理用トークン', stripe: '決済の鍵', requireDevMfa: '開発者の追加認証の必須', developer: '開発者の名前', operators: '運営の名前の一覧' };
 
-export function createPatrol({ q, opsLog, config, isStaff, settings, extMissing = () => [], clock = Date.now }) {
+// `more`: checks that other parts bring ({ id, label, fn(s, now) → findings }), run after these
+export function createPatrol({ q, opsLog, config, isStaff, settings, extMissing = () => [], more = [], clock = Date.now }) {
   const load = () => {
     try { const r = q('SELECT value FROM meta WHERE key = ?').get(KEY); return r ? JSON.parse(r.value) : {}; } catch { return {}; }
   };
@@ -139,6 +140,8 @@ export function createPatrol({ q, opsLog, config, isStaff, settings, extMissing 
   const lastResult = () => load().last || null;
 
   // look over everything now; what is news goes to the operators' log
+  for (const m of more) check(m.id, m.label, m.fn);
+
   async function run({ by = null } = {}) {
     const s = load();
     const now = clock();

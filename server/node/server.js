@@ -17,6 +17,7 @@ import { SECURITY_HEADERS, sendJson, sendRaw, clientIp, coreRequest, bufferedReq
 import { createApi } from '../core/api.js';
 import { CHAT_ROUTES, screenChat, BLOCKED } from '../core/attach.js';
 import { metaValue } from '../core/db.js';
+import { fileStele, logMirror } from './stele-files.js';
 
 // This machine for the operator site's サーバー tab: the database's size,
 // the live connections, memory, load and disk; the operators' log's newest
@@ -24,6 +25,8 @@ import { metaValue } from '../core/db.js';
 function machine(dataDir, live, trail) {
   const size = (f) => { try { return fs.statSync(path.join(dataDir, f)).size; } catch { return 0; } };
   const anchorFile = path.join(dataDir, 'ops-log.anchor.json');
+  // (and every row whole, on a line of a file that is only added to: server/node/stele-files.js)
+  const mirror = logMirror(path.join(dataDir, 'ops-log.jsonl'));
   return {
     name: 'node',
     anchor: {
@@ -31,6 +34,9 @@ function machine(dataDir, live, trail) {
         fs.writeFileSync(anchorFile, JSON.stringify(row));
         if (trail) console.log(`[ops-log] #${row.id} ${row.hash}`);
       },
+      // (the whole row too, as it was written: `put` is told only its number and hash)
+      mirror: (row) => mirror.put(row),
+      spill: (row) => mirror.spill(row),
       get: async () => { try { return JSON.parse(fs.readFileSync(anchorFile, 'utf8')); } catch { return null; } }
     },
     stop: () => live.drop(),
@@ -46,12 +52,12 @@ function machine(dataDir, live, trail) {
 }
 
 // `blobs`: a bucket for the developer's vault (the tests' stand-in for R2; none here)
-export function createApp({ blobs = null, questRewardRoll, questTicketRoll, extensions, ...overrides } = {}) {
+export function createApp({ blobs = null, questRewardRoll, questTicketRoll, extensions, stele = null, ...overrides } = {}) {
   const config = loadConfig(overrides);
   const db = openDb(config.dataDir);
   const live = new Live();
   const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
-  const api = createApi({ db, live, config, secret, blobs, questRewardRoll, questTicketRoll, extensions, host: machine(config.dataDir, live, config.logRequests) });
+  const api = createApi({ db, live, config, secret, blobs, questRewardRoll, questTicketRoll, extensions, host: { ...machine(config.dataDir, live, config.logRequests), stele: stele || fileStele(path.join(config.dataDir, 'stele')) } });
   live.onPresence = (userId, online) => api.presence(userId, online);
   live.onOpsGone = (userId) => api.opsGone(userId);
   // The page is online with WebSocket live updates (Cloudflare); here they come as SSE.

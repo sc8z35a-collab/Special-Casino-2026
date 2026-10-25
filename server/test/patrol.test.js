@@ -24,7 +24,7 @@ test('nothing wrong: the patrol finds nothing, says nothing, and the developer c
   assert.equal((await s.call('GET', '/api/ops/patrol', { token: dev.token })).patrol, null, 'not yet looked');
   const first = await run();
   assert.deepEqual(first.findings, []);
-  assert.deepEqual(first.checks.map((c) => c.ok), [true, true, true, true, true]);
+  assert.deepEqual(first.checks.map((c) => c.ok), [true, true, true, true, true, true]);
   assert.equal(logs('patrol_alert').length + logs('patrol_notice').length, 0);
   const again = await run();
   assert.ok(again.at >= first.at && again.findings.length === 0);

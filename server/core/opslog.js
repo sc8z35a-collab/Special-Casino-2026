@@ -57,6 +57,9 @@ export function jst(ms) {
 }
 
 const fields = (r) => JSON.stringify([r.id, r.at, r.actor_id, r.actor_name, r.action, r.target_id, r.target_name, r.summary, r.detail, r.prev_hash]);
+// a row's own hash, and where the chain starts: for whoever holds a copy of the rows outside the table (server/core/stele.js)
+export const rowHash = (r) => sha256(fields(r));
+export const GENESIS_HASH = sha256(GENESIS);
 
 // anchor: { put(row), get() -> Promise({ id, hash, at } | null) } from the host (or none);
 // onAdd(row): told of each new entry once it is written (the Discord notices)
@@ -92,12 +95,23 @@ export function createOpsLog({ q, anchor = null, onAdd = null }) {
     return row;
   }
   function insert(r) {
-    q(`INSERT INTO ops_log (id, at, actor_id, actor_name, action, target_id, target_name, summary, detail, prev_hash, hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(r.id, r.at, r.actor_id, r.actor_name, r.action, r.target_id, r.target_name, r.summary, r.detail, r.prev_hash, r.hash);
+    try {
+      q(`INSERT INTO ops_log (id, at, actor_id, actor_name, action, target_id, target_name, summary, detail, prev_hash, hash)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(r.id, r.at, r.actor_id, r.actor_name, r.action, r.target_id, r.target_name, r.summary, r.detail, r.prev_hash, r.hash);
+    } catch (e) {
+      // The row could not be written (a full or damaged database). It is told to the host's own record first (a file that can only
+      // be added to; Workers Logs), whole, so it is not lost with the failure; then the failure goes on (the action it belongs to
+      // does not happen when it is inside the same transaction, and it is raised either way).
+      try { if (anchor && anchor.spill) anchor.spill(r); } catch { /* the failure below is the one that matters */ }
+      console.error(`[ops-log:spill] ${JSON.stringify(r)}`);
+      throw e;
+    }
     // copies outside the table
     if (anchor) {
       try { anchor.put({ id: r.id, hash: r.hash, at: r.at }); } catch (e) { console.error('ops log anchor failed', e); }
+      // (a host that keeps every row whole where the database cannot reach: server/node/stele-files.js)
+      if (anchor.mirror) { try { anchor.mirror(r); } catch (e) { console.error('ops log mirror failed', e); } }
     }
   }
 

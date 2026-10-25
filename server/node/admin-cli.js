@@ -12,6 +12,7 @@ import { createAdmin, AdminError } from '../core/admin.js';
 import { metaValue } from '../core/db.js';
 import { sealText, keyFrom, nameKey } from '../core/auth.js';
 import { fmt } from '../core/rules.js';
+import { rowHash, GENESIS_HASH } from '../core/opslog.js';
 
 const HELP = `BLOCKBUSTER REELS 管理コマンド
 
@@ -28,6 +29,8 @@ const HELP = `BLOCKBUSTER REELS 管理コマンド
   staff-unpin <名前>                 運営の名前の固定を解除する（その名前をもう一度登録できるようになる）
   ext-forget <部品の名前>            外れてアップロードを止めている追加部品を、外したままでよいことにする
   login-unlock [名前]                運営サイトのログインの待ち時間を解除する（名前を省くとすべて）
+  stele [check|restore [--trust-unsigned]]  運営ログの石碑（外の控え）の状態 / いま刻んで全部確かめる / 失われた行を控えから戻す
+  log-save <ファイル>                運営ログの全部を、1行1件のファイルに書き出す（つながりを確かめてから。上書きはしません）
   messages [ユーザー]                ロビーの最新メッセージ（ユーザー指定でその人の発言）
   redact <メッセージID>              メッセージを削除済みにする
   backup <ファイル>                  全データをファイルに保存（.json）
@@ -113,6 +116,30 @@ export async function run(argv, call, print = console.log) {
     case 'ext-forget': {
       const r = await call('ext-forget', [args.join(' ')]);
       print(r.removed ? `「${r.id}」を、外したままでよいことにしました` : `「${r.id}」はもともと記録にありません`);
+      break;
+    }
+    case 'stele': {
+      const mode = ['check', 'restore'].includes(args[0]) ? args[0] : 'status';
+      const r = await call('stele', [mode, args.includes('--trust-unsigned')]);
+      print(`刻んだ範囲: #1〜#${r.sealed}（${r.segs}か所）／まだ刻んでいない記録: ${r.pending}件／最後に刻んだ時刻: ${time(r.at)}`);
+      print(`保管先: ${r.on ? 'あり' : 'なし（外の控えがありません）'}／前回の確認: ${r.check ? `${time(r.check.at)} ${r.check.ok ? '異常なし' : `要確認 ${r.check.problems.length}件`}` : 'まだ'}${r.failSince ? `／刻めていない（${r.failText}）` : ''}`);
+      if (r.diverged) print(`！ #${r.diverged.id} が、刻んだものと違います`);
+      for (const p of (r.check && r.check.problems) || []) print(`  - ${p.text}`);
+      print(`データベース: ${r.capacity.dbBytes ? `${(r.capacity.dbBytes / 1048576).toFixed(1)}MB（上限の${(r.capacity.ratio * 100).toFixed(1)}%）` : '大きさ不明'}／運営ログ ${r.capacity.rows}件`);
+      if (r.restore) print(r.restore.blocked ? `戻せませんでした：${r.restore.blocked}` : `戻した行: ${r.restore.restored}件${r.restore.unsigned ? '（署名は確かめられていません）' : ''}`);
+      break;
+    }
+    case 'log-save': {
+      if (!args[0]) throw new AdminError('書き出すファイルの名前を指定してください');
+      const { rows } = await call('log-export', []);
+      let prev = GENESIS_HASH;
+      for (const r of rows) {
+        if (r.prev_hash !== prev || rowHash(r) !== r.hash) throw new AdminError(`運営ログの #${r.id} がつながっていません。書き出しません（石碑から確かめてください：stele check）`);
+        prev = r.hash;
+      }
+      const out = `${rows.map((r) => JSON.stringify(r)).join('\n')}\n${JSON.stringify({ end: true, count: rows.length, head: rows.length ? { id: rows[rows.length - 1].id, hash: prev } : null })}\n`;
+      fs.writeFileSync(path.resolve(args[0]), out, { flag: 'wx' });
+      print(`運営ログ ${rows.length}件を ${args[0]} に書き出しました（先頭から最後までのつながりを確かめ済み。最後のハッシュ ${prev.slice(0, 16)}…）`);
       break;
     }
     case 'login-unlock': {
@@ -211,7 +238,26 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       const cfg = loadConfig();
       const dev = cfg.operators.some((n) => nameKey(n) === nameKey(cfg.developer || '')) ? nameKey(cfg.developer) : '';
       const admin = createAdmin(db, { seal: (code) => sealText(key, code), isDeveloper: (u) => !!dev && u.name_key === dev });
-      call = async (cmd, args) => admin.command(cmd, args);
+      const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
+      // (the 石碑 and the whole log, here too: the same files and the same key as the server's)
+      let stele = null;
+      const localStele = async () => {
+        if (stele) return stele;
+        const [{ statements }, { createOpsLog }, { createStele }, { fileStele }] = await Promise.all([import('../core/db.js'), import('../core/opslog.js'), import('../core/stele.js'), import('./stele-files.js')]);
+        const q = statements(db);
+        stele = createStele({ q, opsLog: createOpsLog({ q }), store: fileStele(path.join(cfg.dataDir, 'stele')), secret });
+        return stele;
+      };
+      call = async (cmd, args) => {
+        if (cmd === 'log-export') return { rows: admin.logRows() };
+        if (cmd === 'stele') {
+          const s = await localStele();
+          if (args[0] === 'check') { const r = await s.tick({ deep: true }); return { ...s.status(), ran: r }; }
+          if (args[0] === 'restore') { const r = await s.recover({ force: args[1] === true }); await s.seal(); return { ...s.status(), restore: r }; }
+          return s.status();
+        }
+        return admin.command(cmd, args);
+      };
     }
     process.exitCode = await run(argv, call);
   } catch (e) {

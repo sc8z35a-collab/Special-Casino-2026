@@ -80,6 +80,34 @@ function bucketBlobs(bucket) {
   };
 }
 
+// The 石碑 (server/core/stele.js): the operators' log's copies, in a bucket of their own when the Worker has one (binding OPLOG;
+// a bucket lock on the prefix oplog/ makes the files impossible to delete or replace), else in the vault's bucket (VAULT) under
+// that prefix. A file is made once: a second write under the same name is refused unless the bytes are the same.
+function bucketStele(bucket) {
+  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const read = async (key) => { const o = await bucket.get(key); return o ? new Uint8Array(await o.arrayBuffer()) : null; };
+  return {
+    async put(key, bytes) {
+      const wrote = await bucket.put(key, bytes, { onlyIf: { etagDoesNotMatch: '*' } });
+      if (wrote === null) {
+        const have = await read(key);
+        if (!have || !same(have, bytes)) throw new Error('その名前の控えがすでにあり、内容が違います（上書きはしません）');
+      }
+    },
+    get: read,
+    async list(prefix) {
+      const out = [];
+      let cursor;
+      do {
+        const r = await bucket.list({ prefix, cursor });
+        for (const o of r.objects) out.push(o.key);
+        cursor = r.truncated ? r.cursor : undefined;
+      } while (cursor);
+      return out;
+    }
+  };
+}
+
 // Pushes events to connected players. Each socket is tagged "u:<user id>";
 // an operator site's own one "o:<user id>" (no game events, not a player
 // online: the 運営チャット's call and the developer called).
@@ -222,6 +250,7 @@ export class Casino extends DurableObject {
             put: (row) => { ctx.storage.put('ops_log_anchor', row); console.log(`[ops-log] #${row.id} ${row.hash}`); },
             get: () => ctx.storage.get('ops_log_anchor')
           },
+          stele: env.OPLOG || env.VAULT ? bucketStele(env.OPLOG || env.VAULT) : null,
           // the emergency stop: every live connection closes
           stop: () => { for (const ws of ctx.getWebSockets()) { try { ws.close(1012, 'emergency'); } catch { /* closing */ } } },
           // the housekeeping sooner (a backup due)
