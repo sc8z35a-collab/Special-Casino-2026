@@ -125,6 +125,9 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
+        // Always validate the game's stable script/style URLs with the server.
+        // Storage (login/session) is independent of this HTTP cache setting.
+        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setUseWideViewPort(true);
         s.setLoadWithOverviewMode(false);
@@ -286,6 +289,11 @@ public class MainActivity extends Activity {
     /* ------------------------------------------------------------ the page's bridge --- */
 
     private class Bridge {
+        @JavascriptInterface
+        public void clearWebCache() {
+            runOnUiThread(() -> web.clearCache(true));
+        }
+
         /** Explicit player exit; close the game task rather than navigating back. */
         @JavascriptInterface
         public void exit() {

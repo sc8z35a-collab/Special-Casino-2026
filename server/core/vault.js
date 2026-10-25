@@ -144,7 +144,7 @@ export const VAULT_BULK = new Set(['POST /api/vault/piece', 'POST /api/vault/chu
 // a file's row as read for everything but its picture (up to 600KB, read
 // only when it is shown): `preview` is 1 when it has one
 const COLS = `id, name, type, note, size, chunks, piece, received, sha256, created_by, created_at, done_at, parent, folder, inside, space, labels, implemented_at, info,
-  backup_at, backup_by, removed_at, removed_by, from_space, from_folder, (preview != '') AS preview`;
+  backup_at, backup_by, removed_at, removed_by, from_space, from_folder, (preview != '') AS preview, (thumbnail != '') AS thumbnail`;
 // the guard: what is not one's own asked for this often in 10 minutes keeps
 // one out of the vault for 15; wrong links from one address this often, out
 // of the links for 30
@@ -449,7 +449,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   function fileDto(f, now = Date.now()) {
     return {
       id: f.id, name: f.name, type: f.type, note: f.note, size: f.size, chunks: f.chunks, piece: f.piece, received: f.received, done: !!f.done_at,
-      sha256: f.sha256, createdAt: f.created_at, doneAt: f.done_at, parent: f.parent || '', folder: f.folder || '', inside: f.inside || '', info: infoOf(f), preview: !!f.preview,
+      sha256: f.sha256, createdAt: f.created_at, doneAt: f.done_at, parent: f.parent || '', folder: f.folder || '', inside: f.inside || '', info: infoOf(f), preview: !!f.preview, thumbnail: !!f.thumbnail,
       labels: labelsOf(f), implementedAt: f.implemented_at, links: linksOf(f.id, now), notes: notesOf(f), space: f.space, by: who(f.created_by),
       // the developer's backup of it (removed: deleted from its vault, waiting in the backups; `from`: where it was)
       backup: f.backup_at ? { at: f.backup_at, by: who(f.backup_by), removed: f.removed_at ? { at: f.removed_at, by: who(f.removed_by), from: f.from_space, folder: f.from_folder, where: whereName(f.from_space) } : null } : null,
@@ -470,7 +470,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     const place = (space) => { if (!places.has(space)) places.set(space, whereName(space)); return places.get(space); };
     return files.map((f) => ({
       id: f.id, name: f.name, type: f.type, size: f.size, chunks: f.chunks, piece: f.piece, received: f.received, done: !!f.done_at, sha256: f.sha256,
-      createdAt: f.created_at, doneAt: f.done_at, parent: f.parent || '', folder: f.folder || '', inside: f.inside || '', space: f.space, preview: !!f.preview, info: !!f.info,
+      createdAt: f.created_at, doneAt: f.done_at, parent: f.parent || '', folder: f.folder || '', inside: f.inside || '', space: f.space, preview: !!f.preview, thumbnail: !!f.thumbnail, info: !!f.info,
       implementedAt: f.implemented_at, by: person(f.created_by), where: place(f.space), links: { live: live.get(f.id) || 0 },
       noteCount: notes.get(f.id) || 0, labelCount: labelsOf(f).length,
       backup: f.backup_at ? { at: f.backup_at, removed: f.removed_at ? { at: f.removed_at, from: f.from_space, where: place(f.from_space) } : null } : null,
@@ -835,13 +835,18 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // a 3D model's picture and what is in it (made on the operator site)
     'POST /api/vault/meta': async (req, u) => {
-      const body = await req.json(PREVIEW_MAX + INFO_MAX + 4096);
+      const body = await req.json(PREVIEW_MAX + INFO_MAX + 24 * 1024 + 4096);
       const f = sending(req, u, body.id);
       const preview = String(body.preview || '');
       if (preview && (preview.length > PREVIEW_MAX || !PREVIEW_RE.test(preview))) throw new ApiError(400, 'bad_preview', 'プレビュー画像の形式が正しくありません');
       const info = body.info && typeof body.info === 'object' && !Array.isArray(body.info) ? JSON.stringify(body.info) : '';
       if (info.length > INFO_MAX) throw new ApiError(400, 'bad_info', 'モデルの情報が大きすぎます');
-      q('UPDATE vault_files SET preview = ?, info = ? WHERE id = ?').run(preview, info, f.id);
+      const thumbnail = body.thumbnail === undefined ? null : String(body.thumbnail || '');
+      if (thumbnail && (thumbnail.length > 24 * 1024 || !PREVIEW_RE.test(thumbnail))) throw new ApiError(400, 'bad_thumbnail', '小さなプレビュー画像の形式が正しくありません');
+      if (body.preview !== undefined) q('UPDATE vault_files SET preview = ? WHERE id = ?').run(preview, f.id);
+      if (body.info !== undefined) q('UPDATE vault_files SET info = ? WHERE id = ?').run(info, f.id);
+      if (thumbnail !== null) q('UPDATE vault_files SET thumbnail = ? WHERE id = ?').run(thumbnail, f.id);
+      bump();
       return { file: fileDto(fileRow(f.id)) };
     },
 
@@ -849,6 +854,12 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       need(req, u);
       const f = theFile(u, req.query.get('id'), '', req);
       return { id: f.id, preview: pictureOf(f) };
+    },
+
+    'GET /api/vault/thumbnail': (req, u) => {
+      need(req, u);
+      const f = theFile(u, req.query.get('id'), '', req);
+      return { id: f.id, thumbnail: (q('SELECT thumbnail FROM vault_files WHERE id = ?').get(f.id) || {}).thumbnail || null };
     },
 
     // a new file: its name, size, type, vault and folder; the pieces follow
