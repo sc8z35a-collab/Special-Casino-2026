@@ -228,9 +228,10 @@ export function createStele({ q, opsLog, store = null, secret, clock = Date.now,
 
   // ---- the room
   function capacity() {
-    const rows = q('SELECT COUNT(*) AS n, COALESCE(SUM(length(detail) + length(summary) + 160), 0) AS b FROM ops_log').get();
+    // (from the log's running account: counting every row on each look held the whole game up)
+    const rows = opsLog.size();
     const bytes = dbBytes ? dbBytes() : 0;
-    return { rows: rows.n, logBytes: rows.b, dbBytes: bytes, limit: dbLimit, ratio: dbLimit && bytes ? bytes / dbLimit : 0 };
+    return { rows: rows.rows, logBytes: rows.bytes, dbBytes: bytes, limit: dbLimit, ratio: dbLimit && bytes ? bytes / dbLimit : 0 };
   }
 
   // ---- what is told, and what the patrol hears

@@ -52,7 +52,7 @@ const SIGNAL_ACTIONS = SIGNALS.flatMap((s) => s.actions);
 
 const KEYS = {
   // [route key, the least a person must be]
-  viewer: ['GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/threats', 'GET /api/sec/posture', 'GET /api/sec/log', 'GET /api/sec/verify', 'POST /api/sec/channel/close'],
+  viewer: ['GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/threats', 'GET /api/sec/posture', 'GET /api/sec/log', 'GET /api/sec/log/entries', 'GET /api/sec/verify', 'POST /api/sec/channel/close'],
   operator: ['GET /api/sec/messages', 'POST /api/sec/messages', 'POST /api/sec/lockdown', 'POST /api/sec/release'],
   developer: ['GET /api/sec/dev/patrol', 'POST /api/sec/dev/patrol/run', 'GET /api/sec/dev/stele', 'POST /api/sec/dev/stele/run', 'GET /api/sec/dev/channels', 'POST /api/sec/dev/channels/close', 'GET /api/sec/dev/access']
 };
@@ -79,6 +79,8 @@ export function createSec({ q, getUser, ops, emergency, shield, opsLog, health, 
   };
   const viewing = (u) => !ops.isOperator(u);
   const bare = (e) => ({ id: e.id, at: e.at, jst: e.jst, actor: e.actor, action: e.action, kind: e.kind, target: e.target, summary: e.summary, prevHash: e.prevHash, hash: e.hash });
+  // (the figures of the サーバー tab, without the minute-by-minute history: the base draws its own chart from the shield's)
+  const leanNow = () => { const v = lean(); return { ...v, rate: { last10: v.rate.last10, last60: v.rate.last60 } }; };
   const panelsFor = (role) => PANELS.filter((p) => may(role, p.role)).map((p) => ({ id: p.id, name: p.name }));
 
   function channelMessage(r) {
@@ -111,7 +113,15 @@ export function createSec({ q, getUser, ops, emergency, shield, opsLog, health, 
 
   // what threatens the operator site, from the operators' own log: counts of each kind of event in the last hour and day, and an
   // hour-by-hour line for the day; with a score and a word (the log is the record of what happened: nothing is guessed)
+  // (asked on every look of every open base; the answer moves slowly, so it is made again every 10 seconds at most)
+  let made = null;
   function threats(now = Date.now()) {
+    if (made && now - made.at < 10000) return made.value;
+    const value = compute(now);
+    made = { at: now, value };
+    return value;
+  }
+  function compute(now) {
     const since = now - 24 * HOUR;
     const marks = SIGNAL_ACTIONS.map(() => '?').join(',');
     const per = new Map();
@@ -149,20 +159,19 @@ export function createSec({ q, getUser, ops, emergency, shield, opsLog, health, 
       const sh = shield.snapshot(), em = emergency.info(), site = threats();
       const own = levelOf(sh, em), level = ORDER[Math.max(ORDER.indexOf(own), ORDER.indexOf(site.level))];
       const common = {
-        now: Date.now(), speed: ops.speedNow(), level, emergency: em, shield: sh, health: health(), server: lean(), operators: operatorsNow(), site: { level: site.level, score: site.score },
+        now: Date.now(), speed: ops.speedNow(), level, emergency: em, shield: sh, health: health(), server: leanNow(), operators: operatorsNow(), site: { level: site.level, score: site.score },
         // the most recent security and emergency log lines, for the panel (the full tamper check is GET /api/sec/verify, so it never waits)
-        security: opsLog.list({ kind: 'security', limit: 12 }), emergencyLog: opsLog.list({ kind: 'emergency', limit: 12 })
+        // (lines only: a line's detail comes when it is opened, GET /api/sec/log/entries; so it is the same for an operator and a viewer)
+        security: opsLog.list({ kind: 'security', limit: 12, slim: true }), emergencyLog: opsLog.list({ kind: 'emergency', limit: 12, slim: true })
       };
-      if (viewing(u)) return { ...common, viewer: true, security: common.security.map(bare), emergencyLog: common.emergencyLog.map(bare) };
-      return common;
+      return viewing(u) ? { ...common, viewer: true } : common;
     },
 
     // what threatens the operator site: the signals, the day hour by hour, who attacks, what is blocked
     'GET /api/sec/threats': (req, u) => {
       needSee(u);
       const sh = shield.snapshot(), t = threats();
-      const recent = opsLog.list({ kind: 'security', limit: 10 });
-      return { now: Date.now(), ...t, blocks: sh.blocks || [], attackers: (sh.topAttackers || []).filter((x) => x.score > 0).slice(0, 12), recent: viewing(u) ? recent.map(bare) : recent };
+      return { now: Date.now(), ...t, blocks: sh.blocks || [], attackers: (sh.topAttackers || []).filter((x) => x.score > 0).slice(0, 12), recent: opsLog.list({ kind: 'security', limit: 10, slim: true }) };
     },
 
     // how the server says it is set, and how this very connection arrived (what the page weighs before it shows the lock)
@@ -187,11 +196,18 @@ export function createSec({ q, getUser, ops, emergency, shield, opsLog, health, 
     },
 
     // the operators' log, the same the operator site shows (read-only here)
+    // slim=1: the lines only (a list); since=N: only the lines after number N (a page that has the older ones keeps up with this)
     'GET /api/sec/log': (req, u) => {
       needSee(u);
-      const before = Number(req.query.get('before')) || 0;
-      const entries = opsLog.list({ before, find: req.query.get('q') || '', kind: req.query.get('kind') || '' });
-      return { entries: viewing(u) ? entries.map(bare) : entries, counts: before ? null : opsLog.counts(), now: Date.now() };
+      const before = Number(req.query.get('before')) || 0, since = Number(req.query.get('since')) || 0, slim = req.query.get('slim') === '1';
+      const entries = opsLog.list({ before, since, find: req.query.get('q') || '', kind: req.query.get('kind') || '', slim });
+      return { entries: viewing(u) && !slim ? entries.map(bare) : entries, counts: before || since ? null : opsLog.counts(), now: Date.now() };
+    },
+    // some lines in full (at most 100, by number): what a list leaves out, for the lines that are opened
+    'GET /api/sec/log/entries': (req, u) => {
+      needSee(u);
+      const entries = opsLog.many(String(req.query.get('ids') || '').split(',').slice(0, 100));
+      return { entries: viewing(u) ? entries.map(bare) : entries };
     },
     // the log's integrity (the tamper check), asked on its own so it never slows the status panel
     'GET /api/sec/verify': async (req, u) => {

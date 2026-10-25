@@ -983,6 +983,10 @@ MIGRATIONS.push([`CREATE TABLE sec_identity (
   created_at INTEGER NOT NULL
 )`]);
 
+// what happened in the last hour or day, of the kinds of event that matter (the base's threats: server/core/sec.js): by the action and the time,
+// so the look reads only those rows and not the whole log
+MIGRATIONS.push(['CREATE INDEX ops_log_action_at ON ops_log(action, at)']);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)

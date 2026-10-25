@@ -6,7 +6,7 @@
 (function (BR) {
   'use strict';
 
-  var U = BR.util, K = BR.kit, api = BR.api;
+  var U = BR.util, api = BR.api;
   var $ = U.$;
 
   var who = null;      // { id, name, avatar, npc: 'official' }

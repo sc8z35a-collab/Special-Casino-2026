@@ -1158,9 +1158,6 @@
     clearTimeout(typingTimer);
     typingTimer = setTimeout(function () { Object.keys(typers).forEach(typingChanged); }, 4600);
   }
-  function clearTyping(key, userId) {
-    if (typers[key] && typers[key][userId]) { delete typers[key][userId]; typingChanged(key); }
-  }
   function typingChanged(key) {
     if (!visible()) return;
     if (chatKey() === key) renderTyping();

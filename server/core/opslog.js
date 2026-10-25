@@ -36,7 +36,8 @@ export function kindOf(action) {
 const list = (a) => a.map((x) => `'${x}'`).join(', ');
 const IS = {
   vault: "substr(action, 1, 6) = 'vault_'",
-  emergency: "(substr(action, 1, 10) = 'emergency_' OR substr(action, 1, 8) = 'lockdown' OR action = 'filter_block')",
+  // (a name that begins so, written as a range of names: the same rows, and the index on the action can be used)
+  emergency: "((action >= 'emergency_' AND action < 'emergency`') OR (action >= 'lockdown' AND action < 'lockdowo') OR action = 'filter_block')",
   security: `(action IN (${list(SECURITY)}) OR substr(action, 1, 7) = 'shield_' OR substr(action, 1, 4) = 'sec_' OR substr(action, 1, 6) = 'admin:' OR substr(action, 1, 7) = 'backup_' OR substr(action, 1, 6) = 'watch_' OR substr(action, 1, 3) = 'pk_')`,
   player: `(action IN (${list(PLAYER)}) OR substr(action, 1, 7) = 'player_')`
 };
@@ -166,13 +167,19 @@ export function createOpsLog({ q, anchor = null, onAdd = null }) {
     return out;
   }
   // newest first; `find`: words in the summary, names or action; `kind`: one of LOG_KINDS; `slim`: lines for a list
-  function list({ before = 0, find = '', kind = '', limit = 200, slim = false } = {}) {
+  // `since`: only the lines after that number (what a page that has the older ones asks for), from the account
+  function list({ before = 0, since = 0, find = '', kind = '', limit = 200, slim = false } = {}) {
     const shape = slim ? lean : dto;
     // "#123": that line (a log line quoted in the 運営チャット)
     const one = /^#(\d{1,15})$/.exec(String(find || '').trim());
     if (one) {
       const r = q(`SELECT * FROM ops_log WHERE id = ? ${IS[kind] ? `AND ${IS[kind]}` : ''}`).get(Number(one[1]));
       return r ? [shape(r)] : [];
+    }
+    // the first page of a kind, with nothing searched for: the account has it
+    if (!String(find || '') && !(before > 0) && limit <= RING) {
+      const lines = newest(IS[kind] ? kind : '');
+      return (since > 0 ? lines.filter((r) => r.id > since) : lines).slice(0, Math.max(0, limit)).map(shape);
     }
     const like = '%' + String(find || '').slice(0, 60) + '%';
     const only = IS[kind] ? `AND ${IS[kind]}` : '';
@@ -181,17 +188,67 @@ export function createOpsLog({ q, anchor = null, onAdd = null }) {
       .all(before > 0 ? before : Number.MAX_SAFE_INTEGER, like, like, like, like, like, Math.min(500, limit));
     return rows.map(shape);
   }
+  /* ---- a running account of the log ----
+     The log only ever grows (nothing in it is changed or removed), and it is long: counting it, or looking through it for the newest line of a
+     rare kind, reads every row, again each time the page asks (it asks every few seconds), and the whole game waits meanwhile. So the account
+     is kept: how many rows of each kind, about how big, and the newest lines of each kind; each time it is asked it reads only the rows that
+     were added since the last time (the newest row's number and hash say whether anything else happened to the table, and then it starts again). */
+  const RING = 200, REBUILD_MS = 24 * 3600000, FAR = 5000, KINDS = [...Object.keys(LOG_KINDS), 'activity'];
+  const isActivity = (a) => ACTIVITY.includes(a) || a.startsWith('ban:');
+  const classes = (a) => (isActivity(a) ? [kindOf(a), 'activity'] : [kindOf(a)]);
+  let ledger = null;
+  const SUMS = 'COUNT(*) AS n, COALESCE(SUM(length(detail) + length(summary) + 160), 0) AS b';
+  function look() {
+    const now = Date.now();
+    const tail = q('SELECT id, hash FROM ops_log ORDER BY id DESC LIMIT 1').get() || { id: 0, hash: '' };
+    if (ledger && (now - ledger.at > REBUILD_MS || tail.id < ledger.upTo || tail.id - ledger.upTo > FAR || (tail.id === ledger.upTo && tail.hash !== ledger.hash))) ledger = null;
+    if (ledger && tail.id === ledger.upTo) return ledger;
+    if (!ledger) {
+      ledger = { at: now, upTo: tail.id, hash: tail.hash, rows: 0, bytes: 0, counts: Object.fromEntries(KINDS.map((k) => [k, 0])), recent: {} };
+      for (const r of q(`SELECT action, ${SUMS} FROM ops_log WHERE id <= ? GROUP BY action`).all(tail.id)) {
+        ledger.rows += r.n; ledger.bytes += r.b;
+        for (const k of classes(r.action)) ledger.counts[k] += r.n;
+      }
+      return ledger;
+    }
+    // only what came after
+    for (const r of q(`SELECT action, ${SUMS} FROM ops_log WHERE id > ? AND id <= ? GROUP BY action`).all(ledger.upTo, tail.id)) {
+      ledger.rows += r.n; ledger.bytes += r.b;
+      for (const k of classes(r.action)) ledger.counts[k] += r.n;
+    }
+    if (Object.keys(ledger.recent).length) {
+      for (const r of q('SELECT * FROM ops_log WHERE id > ? AND id <= ? ORDER BY id').all(ledger.upTo, tail.id)) {
+        for (const k of ['', ...classes(r.action)]) {
+          const lines = ledger.recent[k];
+          if (lines) { lines.unshift(r); if (lines.length > RING) lines.pop(); }
+        }
+      }
+    }
+    ledger.upTo = tail.id; ledger.hash = tail.hash;
+    return ledger;
+  }
+  // the newest lines of a kind ('' for all), from the account: the first look at a kind reads the table once
+  function newest(kind) {
+    const L = look();
+    if (!L.recent[kind]) L.recent[kind] = q(`SELECT * FROM ops_log ${IS[kind] ? `WHERE ${IS[kind]}` : ''} ORDER BY id DESC LIMIT ?`).all(RING);
+    return L.recent[kind];
+  }
+
   // some lines in full, by number (at most 100): the line that was opened, or the lines of a report
   function many(ids) {
     const want = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter((n) => Number.isSafeInteger(n) && n > 0))].slice(0, 100);
     if (!want.length) return [];
     return q(`SELECT * FROM ops_log WHERE id IN (${want.map(() => '?').join(',')}) ORDER BY id DESC`).all(...want).map(dto);
   }
-  // how many of each kind
-  function counts() {
+  // how many of each kind, and how big the log is (from the account)
+  const counts = () => ({ ...look().counts });
+  const size = () => { const L = look(); return { rows: L.rows, bytes: L.bytes }; };
+  // the same by reading every row (for the tests: the account must equal it)
+  function scan() {
     const out = {};
-    for (const k of [...Object.keys(LOG_KINDS), 'activity']) out[k] = q(`SELECT COUNT(*) AS n FROM ops_log WHERE ${IS[k]}`).get().n;
-    return out;
+    for (const k of KINDS) out[k] = q(`SELECT COUNT(*) AS n FROM ops_log WHERE ${IS[k]}`).get().n;
+    const t = q(`SELECT ${SUMS} FROM ops_log`).get();
+    return { counts: out, rows: t.n, bytes: t.b };
   }
 
   // every row against the one before it and its own hash, and the newest
@@ -232,5 +289,5 @@ export function createOpsLog({ q, anchor = null, onAdd = null }) {
     return { ok: true, count: n, last, anchor: kept ? { id: kept.id, at: kept.at } : null };
   }
 
-  return { add, list, many, counts, verify, dto, keep, all };
+  return { add, list, many, counts, size, scan, verify, dto, keep, all };
 }
