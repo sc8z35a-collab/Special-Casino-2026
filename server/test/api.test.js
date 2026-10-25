@@ -2,7 +2,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, PASSWORD } from './helpers.js';
-import { evaluate, RULES, AVATARS, utcDay } from '../core/rules.js';
+import { evaluate, RULES, AVATARS } from '../core/rules.js';
 
 let s, call, register, setUser, befriend, listen;
 

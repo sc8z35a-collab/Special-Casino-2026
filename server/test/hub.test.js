@@ -141,7 +141,7 @@ test('友達と稼ぐ: spins share one combo (x1.1 a win, three misses end it), 
     const hub = await hubOf(a, b);
     setUser(a.me.id, { tokens: 10000000 });
     setUser(b.me.id, { tokens: 10000000 });
-    let wins = 0, misses = 0, ended = 0;
+    let wins = 0, misses = 0;
     for (let i = 0; i < 80; i++) {
       const p = i % 2 ? b : a;
       const before = hubRow(hub.id);
@@ -156,7 +156,7 @@ test('友達と稼ぐ: spins share one combo (x1.1 a win, three misses end it), 
         assert.equal(res.total, pays(res, before.combo + 1), JSON.stringify(res));
       } else {
         misses++;
-        if (before.misses + 1 >= HUB.misses) { ended++; assert.deepEqual([res.hub.combo, res.hub.misses], [0, 0]); } else {
+        if (before.misses + 1 >= HUB.misses) { assert.deepEqual([res.hub.combo, res.hub.misses], [0, 0]); } else {
           assert.deepEqual([res.hub.combo, res.hub.misses], [before.combo, before.misses + 1], 'a miss alone does not end it');
         }
       }

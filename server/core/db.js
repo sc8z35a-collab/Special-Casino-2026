@@ -967,12 +967,18 @@ export function metaValue(db, key, make) {
   return db.prepare('SELECT value FROM meta WHERE key = ?').get(key).value;
 }
 
-// Prepared statement cache.
+// Prepared statement cache. (The SQL is almost all fixed text; a few are built from
+// a list, so the cache starts over rather than grow with every shape.)
+const MAX_STATEMENTS = 1500;
 export function statements(db) {
   const cache = new Map();
   return (sql) => {
     let st = cache.get(sql);
-    if (!st) { st = db.prepare(sql); cache.set(sql, st); }
+    if (!st) {
+      st = db.prepare(sql);
+      if (cache.size >= MAX_STATEMENTS) cache.clear();
+      cache.set(sql, st);
+    }
     return st;
   };
 }

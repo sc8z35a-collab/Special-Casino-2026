@@ -357,6 +357,7 @@ export function createShield({ q, config, opsLog, onBreach = () => {}, clock = D
       for (const [ip, s] of ips) if (decayed(s, now) < 0.5 && now - s.at > SCORE_HALFLIFE_MS) ips.delete(ip);
       const m = minuteOf(now);
       for (const [k, v] of perMinuteIp) if (v.minute !== m) perMinuteIp.delete(k);
+      for (const [k, at] of loggedBlock) if (now - at >= 60000) loggedBlock.delete(k);
       if (now - savedBase > 0) savedBase = now;
     }
   };

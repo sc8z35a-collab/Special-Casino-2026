@@ -27,15 +27,12 @@ export const SECURITY_HEADERS = {
   'Permissions-Policy': 'camera=(), microphone=(self), geolocation=(), payment=()'
 };
 
+// (made once: every answer starts from these)
+const JSON_HEADERS = { ...SECURITY_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+
 export function sendJson(res, status, body, headers) {
   const data = Buffer.from(JSON.stringify(body));
-  res.writeHead(status, {
-    ...SECURITY_HEADERS,
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': data.length,
-    'Cache-Control': 'no-store',
-    ...headers
-  });
+  res.writeHead(status, { ...JSON_HEADERS, 'Content-Length': data.length, ...headers });
   res.end(data);
   return data.length;
 }

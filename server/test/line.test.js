@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { startServer, PASSWORD } from './helpers.js';
-import { createLine, createLineBot } from '../core/line.js';
+import { createLine } from '../core/line.js';
 import { createNotifier, describe } from '../core/notify.js';
 import { passkeyFor } from '../core/pk.js';
 import { jstDay } from '../core/opsentry.js';

@@ -48,7 +48,7 @@ export function createJohnson(ctx) {
 
   // His account: created once, found again after a restore.
   function id() {
-    const cached = johnsonId && getUser(johnsonId);
+    const cached = johnsonId && q('SELECT npc FROM users WHERE id = ?').get(johnsonId);
     if (cached && cached.npc === 'johnson') return johnsonId;
     let row = q("SELECT id FROM users WHERE npc = 'johnson' LIMIT 1").get();
     if (!row) {
@@ -61,7 +61,7 @@ export function createJohnson(ctx) {
     johnsonId = row.id;
     return johnsonId;
   }
-  function me() { const j = getUser(id()); return { id: j.id, name: j.name, avatar: j.avatar, npc: 'johnson' }; }
+  function me() { const j = q('SELECT id, name, avatar FROM users WHERE id = ?').get(id()); return { id: j.id, name: j.name, avatar: j.avatar, npc: 'johnson' }; }
 
   function stateOf(userId) {
     return q("SELECT * FROM npc_friends WHERE user_id = ? AND npc = 'johnson'").get(userId)

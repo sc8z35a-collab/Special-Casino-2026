@@ -74,7 +74,12 @@ export function createStats({ db, q, config, host = {}, defer = null }) {
     if (x.s !== sec) { x.s = sec; x.r = 0; x.b = 0; x.i = 0; x.o = 0; x.v = 0; }
     return x;
   }
+  // (the keys change at UTC midnight only: they are made again when the day number has)
+  let rolledOn = -1;
   function roll() {
+    const today = Math.floor(Date.now() / 86400000);
+    if (today === rolledOn) return;
+    rolledOn = today;
     if (day.key !== utcDay()) day = blank(utcDay());
     if (mon.key !== month()) mon = blank(month());
   }

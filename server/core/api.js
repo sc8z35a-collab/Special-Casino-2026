@@ -3931,6 +3931,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('DELETE FROM hub_invites WHERE created_at < ?').run(Date.now() - HUB.inviteMs);
       for (const h of q('SELECT id FROM hubs').all()) settleHub(h.id);
       for (const [k, until] of voiceKept) if (until < Date.now()) voiceKept.delete(k);
+      // (the longest gap a phone notice waits is two minutes)
+      for (const [k, at] of pushedAt) if (at < Date.now() - 600000) pushedAt.delete(k);
       // the official bot: two days without the operators' answer, it answers on its own
       for (const p of official.autoReplies()) {
         opsLog.add({ action: 'bot_auto_reply', target: p, summary: `${p.name}さんへ自動返信（2日以上未返信のため既読に）`, detail: { text: 'AUTO' } });

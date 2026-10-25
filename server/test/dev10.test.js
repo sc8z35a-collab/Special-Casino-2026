@@ -14,7 +14,6 @@ import { startServer } from './helpers.js';
 import { ROOT } from '../node/config.js';
 
 const LIMITS = { general: [100000, 1000], login: [100000, 1000], spin: [100000, 1000], friend: [100000, 1000], transfer: [100000, 1000] };
-const CODE = '987654321098';
 
 // a request from an address out on the internet (behind the proxy): the game
 // sends the real client address in X-Forwarded-For, which the shield watches

@@ -19,7 +19,7 @@ const shot = (page, name) => (OUT ? page.screenshot({ path: path.join(OUT, name 
   let browser;
   const errors = [];
   try {
-    const taku = await s.register('taku');
+    await s.register('taku');
     const player = await s.register('PlayerQA');
     // (a disposable account that has already been through the first-run questions and the guide)
     s.setUser(player.me.id, { tokens: 500000, age_ok: 1, guide_done: 1 });
