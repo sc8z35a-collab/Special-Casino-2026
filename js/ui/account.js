@@ -31,7 +31,7 @@
   }
   function passwordProblem(pw) {
     var n = Array.from(pw || '').length;
-    if (n < 4) return 'パスワードは4文字以上にしてください';
+    if (n < 8) return 'パスワードは8文字以上にしてください';
     if (n > 64) return 'パスワードは64文字までです';
     return null;
   }

@@ -1,7 +1,7 @@
 /* Service worker: makes the game installable as an app ("ホーム画面に追加",
    Chrome's install) and lets it open without a connection. Always the
    network first, the cache only as a fallback; the API is never cached. */
-const BUILD = 'c93cc95b024e';          // written by tools/stamp.mjs
+const BUILD = '6fcb736d42b0';          // written by tools/stamp.mjs
 const CACHE = 'two-state-' + BUILD;
 
 self.addEventListener('install', (e) => {
@@ -51,8 +51,8 @@ self.addEventListener('push', (e) => {
       requireInteraction: call,
       silent: false,
       vibrate: call ? [400, 200, 400, 200, 400] : [200, 100, 200],
-      icon: 'icons/icon-192.png?v=coin-refresh-20261025',
-      badge: 'icons/icon-192.png?v=coin-refresh-20261025',
+      icon: 'icons/icon-192.png?v=coin-20261025',
+      badge: 'icons/icon-192.png?v=coin-20261025',
       timestamp: n.at || Date.now(),
       data: { open: n.open || '' }
     });

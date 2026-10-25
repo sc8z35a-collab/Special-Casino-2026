@@ -54,4 +54,5 @@ if [ ! -f img/3d/tree/fertilizer.glb ]; then
   cp tools/3d/make-fertilizer.mjs "$T/make-fertilizer.mjs"
   node "$T/make-fertilizer.mjs" "$PWD/img/3d/tree/fertilizer.glb"
 fi
+node tools/3d/compress-previews.cjs
 node tools/3d/tree-manifest.mjs
