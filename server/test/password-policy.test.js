@@ -83,7 +83,7 @@ test('operator and command-line password resets enforce the same eight-character
 
 test('a password too easy for staff is named, and the operator site is told at login', async t => {
   const { staffPasswordWeakness } = await import('../core/auth.js');
-  for (const [pw, why] of [['', 'short'], ['25209', 'short'], ['elevenchars', 'short'], ['123456789012', 'digits'], ['aaaaaaaaaaaaaaa', 'repeat'], ['abababababab', 'repeat'],
+  for (const [pw, why] of [['', 'short'], ['24680', 'short'], ['elevenchars', 'short'], ['123456789012', 'digits'], ['aaaaaaaaaaaaaaa', 'repeat'], ['abababababab', 'repeat'],
     ['correct horse battery', ''], ['Tw0-State-Casino!', ''], ['日本語のながいあいことば', '']]) {
     assert.equal(staffPasswordWeakness(pw), why, JSON.stringify(pw));
   }
