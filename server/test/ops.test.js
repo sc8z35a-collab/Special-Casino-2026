@@ -142,7 +142,7 @@ test('admin: a new password from the command line; codes made there can be read 
   const admin = createAdmin(s.app.db, { seal: (code) => sealText(key, code) });
   assert.equal((await admin.password('CliPass', 'fromcli77')).name, 'CliPass');
   assert.equal((await login('CliPass', 'fromcli77')).status, 200);
-  await assert.rejects(admin.password('CliPass', 'x'), /4文字以上/);
+  await assert.rejects(admin.password('CliPass', 'x'), /8文字以上/);
   const out = admin.recovery('CliPass');
   const enc = s.app.db.prepare('SELECT recovery_enc FROM users WHERE id = ?').get(p.me.id).recovery_enc;
   assert.equal(openText(key, enc), out.recoveryCode);
