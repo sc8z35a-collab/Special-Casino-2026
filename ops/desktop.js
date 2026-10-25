@@ -380,8 +380,9 @@
   function nearNotices(e) {
     var p = app.getBoundingClientRect();
     if (noticesMinimized) return e.clientX > p.right - 300 && e.clientY < p.top + 150;
-    var r = notifications.getBoundingClientRect();
-    return e.clientX > r.left - 36 && e.clientX < r.right + 36 && e.clientY > r.top - 36 && e.clientY < r.bottom + 36;
+    // (the box it has in the layout, not the one the animation is drawing: while it swells out of its drop it is tiny for a moment)
+    var l = p.left + notifications.offsetLeft, t = p.top + notifications.offsetTop;
+    return e.clientX > l - 36 && e.clientX < l + notifications.offsetWidth + 36 && e.clientY > t - 36 && e.clientY < t + notifications.offsetHeight + 36;
   }
   document.addEventListener('pointermove', function (e) {
     if (e.pointerType !== 'mouse' || !signedIn || app.hidden || !autoNotices() || document.body.classList.contains('mac-cdw')) return;

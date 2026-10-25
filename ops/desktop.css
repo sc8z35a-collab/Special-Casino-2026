@@ -650,7 +650,7 @@
   --water-sink: cubic-bezier(.5, 0, .9, .45);
 }
 .mac-dock-away { animation: dockDrip .74s var(--water-sink) forwards; pointer-events: none; }
-.mac-dock-back { animation: dockRise 1.05s cubic-bezier(.2, .9, .3, 1.15) both; animation-timing-function: var(--water-spring); will-change: transform; }
+.mac-dock-back { animation: dockRise 1.05s var(--water-spring) both, dockRound .7s cubic-bezier(.2, .8, .3, 1) both; will-change: transform; }
 @keyframes dockDrip {
   0% { transform: translateX(-50%) translateY(0) scale(1, 1); opacity: 1; visibility: visible; }
   26% { transform: translateX(-50%) translateY(-5px) scale(1.015, .96); }
@@ -658,24 +658,27 @@
   100% { transform: translateX(-50%) translateY(190%) scale(.2, 1.5); border-radius: 50% 50% 50% 50% / 30% 30% 70% 70%; opacity: 0; visibility: hidden; }
 }
 @keyframes dockRise {
-  0% { transform: translateX(-50%) translateY(150%) scale(.18, .5); border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; opacity: 0; }
+  0% { transform: translateX(-50%) translateY(150%) scale(.18, .5); opacity: 0; }
   14% { opacity: 1; }
   100% { transform: translateX(-50%) translateY(0) scale(1, 1); }
 }
+/* (the roundness has its own, calmer, easing: the spring overshoots, and a radius cannot go below nothing) */
+@keyframes dockRound { 0% { border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; } }
 .mac-notifications { transform-origin: 100% 0; }
 .mac-notice-away { animation: noticeDrip .62s var(--water-sink) forwards; pointer-events: none; }
 .mac-notice-away.mac-notice-quick { animation-duration: .001ms; }
-.mac-notice-back { animation: noticeRise 1s cubic-bezier(.2, .9, .3, 1.15) both; animation-timing-function: var(--water-spring); will-change: transform; }
+.mac-notice-back { animation: noticeRise 1s var(--water-spring) both, noticeRound .7s cubic-bezier(.2, .8, .3, 1) both; will-change: transform; }
 @keyframes noticeDrip {
   0% { transform: none; opacity: 1; visibility: visible; }
   34% { transform: translate(2%, -1%) scale(.97, .96); border-radius: 30px; }
   100% { transform: translate(12%, -6%) scale(.06, .08); border-radius: 50%; opacity: 0; visibility: hidden; }
 }
 @keyframes noticeRise {
-  0% { transform: translate(12%, -6%) scale(.06, .08); border-radius: 50%; opacity: 0; }
+  0% { transform: translate(12%, -6%) scale(.06, .08); opacity: 0; }
   12% { opacity: 1; }
   100% { transform: none; }
 }
+@keyframes noticeRound { 0% { border-radius: 50%; } }
 /* the ripple: two rings that spread and fade */
 .mac-ripple { position: absolute; z-index: 79; width: 150px; height: 150px; margin: -75px 0 0 -75px; border-radius: 50%; pointer-events: none; opacity: 0; }
 .mac-ripple::before, .mac-ripple::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255, 255, 255, .7), 0 0 18px 2px rgba(190, 225, 255, .55), inset 0 0 14px rgba(255, 255, 255, .45); }
