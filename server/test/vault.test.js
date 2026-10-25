@@ -744,3 +744,30 @@ test('files inside a file: made or moved in (8 deep, never into itself), they go
     await s.stop();
   }
 });
+
+test('small vault thumbnails retain model metadata, stay out of lists and enforce the file permissions', async () => {
+  const s = await startServer({ operators: ['taku', 'mod1', 'mod2'], limits: LIMITS, blobs: memoryBucket() });
+  try {
+    const dev = await developer(s), a = await person(s, 'Mod1'), b = await person(s, 'Mod2');
+    const f = await put(a, { space: 'u:' + a.id, name: 'model.glb', data: Buffer.from('model') });
+    const pic = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhYQAAAAASUVORK5CYII=';
+    assert.equal((await a.call('POST', '/api/vault/meta', { id: f.id, preview: pic, info: { triangles: 12 } })).status, 200);
+    const before = await a.call('GET', '/api/vault/files?space=' + encodeURIComponent('u:' + a.id));
+    assert.equal((await a.call('POST', '/api/vault/meta', { id: f.id, thumbnail: pic })).status, 200);
+    const list = await a.call('GET', '/api/vault/files?space=' + encodeURIComponent('u:' + a.id));
+    assert.notEqual(before.rev, list.rev);
+    assert.equal(list.files[0].thumbnail, true);
+    assert.ok(!JSON.stringify(list).includes('data:image/'));
+    const full = await a.call('GET', '/api/vault/file?id=' + f.id);
+    assert.equal(full.file.info.triangles, 12);
+    assert.equal((await a.call('GET', '/api/vault/preview?id=' + f.id)).preview, pic);
+    assert.equal((await a.call('GET', '/api/vault/thumbnail?id=' + f.id)).thumbnail, pic);
+    assert.equal((await b.call('GET', '/api/vault/thumbnail?id=' + f.id)).status, 404);
+    assert.equal((await b.call('POST', '/api/vault/meta', { id: f.id, thumbnail: pic })).status, 404);
+    assert.equal((await a.call('POST', '/api/vault/meta', { id: f.id, thumbnail: 'data:image/svg+xml;base64,AAAA' })).status, 400);
+    assert.equal((await a.call('POST', '/api/vault/meta', { id: f.id, thumbnail: 'data:image/png;base64,' + 'A'.repeat(24 * 1024) })).status, 400);
+    // A rejected write must not erase the last valid picture or model info.
+    assert.equal((await a.call('GET', '/api/vault/thumbnail?id=' + f.id)).thumbnail, pic);
+    assert.equal((await dev.call('GET', '/api/vault/thumbnail?id=' + f.id)).status, 200);
+  } finally { await s.stop(); }
+});

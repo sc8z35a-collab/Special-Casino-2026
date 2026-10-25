@@ -952,11 +952,18 @@
       ok.textContent = o.ok || 'OK';
       ok.className = 'btn ' + (o.danger ? 'danger solid' : 'primary');
       var field = $('#dialog-field'), input = $('#dialog-input');
+      input.readOnly = !!o.shareURL;
+      if (o.shareURL) input.dataset.vaultShareUrl = '1'; else delete input.dataset.vaultShareUrl;
+      var oldCopy = field.querySelector('.vault-share-copy'); if (oldCopy) oldCopy.remove();
       field.hidden = !o.input;
       if (o.input) {
         $('#dialog-label').textContent = o.input.label;
         input.type = o.input.type || 'text';
         input.value = o.input.value || '';
+        if (o.shareURL) {
+          var shareCopy = el('button', 'btn small vault-share-copy', 'URLをコピー'); shareCopy.type = 'button';
+          shareCopy.addEventListener('click', function () { copyVaultURL(input.value); }); field.appendChild(shareCopy);
+        }
       }
       // a choice from a list: { label, options: [{ value, label }], value }
       var pick = $('#dialog-pick'), select = $('#dialog-select');
@@ -978,6 +985,7 @@
       setTimeout(function () { (o.input ? input : o.select ? select : o.area ? area : ok).focus(); }, 30);
       var done = function (v) {
         $('#dialog').hidden = true;
+        delete input.dataset.vaultShareUrl; input.readOnly = false;
         $('#dialog-form').onsubmit = null;
         $('#dialog-cancel').onclick = null;
         resolve(v);
@@ -3104,6 +3112,7 @@
   // release their meshes; two downloads at a time, one WebGL renderer total.
   var inline3dSession = null;
   function stopInline3d() {
+    stopThumbnails();
     var s = inline3dSession;
     if (!s) return;
     s.alive = false;
@@ -3187,6 +3196,7 @@
   function gb(n) { return n >= GB ? Math.round(n / GB * 10) / 10 + 'GB' : mb(n); }
   // nothing of the vault kept (closed, or someone else logged in)
   function resetVault() {
+    stopThumbnails(); thumbnails = {};
     state.vault = null;
     state.vaultMemo = '';
     shown = {};
@@ -3457,10 +3467,11 @@
     row.appendChild(iconEl('folder', d.name));
     var main = el('div', 'vitem-main');
     main.appendChild(el('b', 'vault-name', d.name));
-    var n = filesIn(d.id).length + foldersIn(d.id).length;
-    main.appendChild(el('small', 'vitem-sub', 'フォルダ・' + (n ? fmt(n) + '件' : '空')));
+    var stats = folderStats(d);
+    main.appendChild(el('small', 'vitem-sub', 'フォルダ・' + fmt(stats.files) + 'ファイル・' + mb(stats.bytes)));
     row.appendChild(main);
     var acts = el('div', 'vitem-acts');
+    var detail = el('button', 'vbtn', '詳細'); detail.type = 'button'; detail.dataset.vact = 'details'; acts.appendChild(detail);
     acts.appendChild(moreBtn(d.name));
     row.appendChild(acts);
     return row;
@@ -3474,7 +3485,7 @@
   }
   // what can be done with a folder (its ⋯, a right click)
   function folderMenu(d) {
-    var items = [['開く', 'open']], write = canWrite();
+    var items = [['開く', 'open'], ['詳細', 'details']], write = canWrite();
     if (write) items.push(['名前を変更', 'rename'], ['移動', 'move']);
     if (state.developer && state.vault && state.vault.ticket) items.push(['中のファイルをすべてバックアップ', 'backup']);
     if (write) items.push(['削除', 'delete', 'danger']);
@@ -3482,10 +3493,23 @@
   }
   function folderAct(d, act) {
     if (act === 'open') goFolder(d.id);
+    else if (act === 'details') folderDetails(d);
     else if (act === 'rename') renameFolder(d);
     else if (act === 'move') moveFolder(d);
     else if (act === 'backup') backupItems([], [d], true);
     else if (act === 'delete') deleteFolder(d);
+  }
+  function folderStats(d) {
+    var ids = {}; ids[d.id] = true;
+    var pending = [d.id];
+    while (pending.length) foldersIn(pending.shift()).forEach(function (x) { if (!ids[x.id]) { ids[x.id] = true; pending.push(x.id); } });
+    // Every stored file counts once, including light versions and nested files.
+    var files = state.vaultFiles.filter(function (f) { return ids[f.folder || '']; });
+    return { files: files.length, folders: Object.keys(ids).length - 1, bytes: files.reduce(function (n, f) { return n + Number(f.size || 0); }, 0), unfinished: files.filter(function (f) { return !f.done; }).length };
+  }
+  function folderDetails(d) {
+    var s = folderStats(d);
+    ask({ title: 'フォルダの詳細：' + d.name, ok: '閉じる', text: '場所：' + pathName(d.id) + '\n作成日時：' + stamp(d.createdAt) + '\n容量：' + mb(s.bytes) + '（' + fmt(s.bytes) + 'バイト）\nファイル：' + fmt(s.files) + '件\nサブフォルダ：' + fmt(s.folders) + '件\nアップロード途中：' + fmt(s.unfinished) + '件\n\n容量はサブフォルダ・軽量版・ファイル内のファイルを含む保存予定サイズの合計です。' });
   }
   // the path above the list (保管庫 / 車 / 新車): each a way back
   function onFolder(e) {
@@ -3532,7 +3556,7 @@
       return show === 'all' || (show === 'used') === !!f.implementedAt;
     }).map(function (f) { return f.id; }));
   }
-  function pick(id, on) {
+  function vaultPick(id, on) {
     if (on) state.vaultPicked[id] = folderOf(id) ? 'folder' : 'file';
     else delete state.vaultPicked[id];
   }
@@ -3548,14 +3572,14 @@
       var order = shownItems(), i = order.indexOf(lastPick), j = order.indexOf(id);
       if (i >= 0 && j >= 0) ids = order.slice(Math.min(i, j), Math.max(i, j) + 1);
     }
-    ids.forEach(function (x) { pick(x, box.checked); });
+    ids.forEach(function (x) { vaultPick(x, box.checked); });
     lastPick = id;
     renderPicks();
     return true;
   }
-  function pickAll() {
-    var all = shownItems(), every = all.length > 0 && all.every(function (id) { return state.vaultPicked[id]; });
-    all.forEach(function (id) { pick(id, !every); });
+  function pickAll(e) {
+    var all = shownItems(), on = e.target.checked;
+    all.forEach(function (id) { vaultPick(id, on); });
     lastPick = null;
     renderPicks();
   }
@@ -3563,7 +3587,7 @@
   function renderPicks() {
     Array.prototype.forEach.call(document.querySelectorAll('#vault-list [data-vpick], #vault-folders [data-vpick]'), function (b) {
       b.checked = !!state.vaultPicked[b.dataset.vpick];
-      var card = b.closest('.card');
+      var card = b.closest('.vitem');
       if (card) card.classList.toggle('picked', b.checked);
     });
     renderPicked();
@@ -3930,6 +3954,7 @@
   }
   function renderVault() {
     stopInline3d();
+    stopThumbnails();
     var open = !!state.vault, info = state.vaultInfo;
     topBar();
     renderSpeed();
@@ -3990,12 +4015,12 @@
     if (!all.length && !inside.length) list.appendChild(el('p', 'empty muted', state.vaultIn ? 'このファイルの中はまだ空です（アップロード・ドラッグ＆ドロップ・「＋」で入れられます）' : state.vaultFolder ? 'このフォルダは空です' : 'ファイルはまだありません'));
     else if (!tops.length && all.length) list.appendChild(el('p', 'empty muted', show === 'used' ? '実装済みのファイルはありません' : '未実装のファイルはありません'));
     tops.slice(state.vaultPage * VAULT_PAGE, (state.vaultPage + 1) * VAULT_PAGE).forEach(function (f) { list.appendChild(vaultCard(f)); });
-    watchInline3d();
+    watchThumbnails();
     renderPager(pages, tops.length);
     renderPicked();
     renderResume();
   }
-  var VAULT_PAGE = 10;
+  var VAULT_PAGE = 60;
   // how fast the vault goes (the developer changes it, for everyone)
   var SPEED_NOTE = { max: '最速：大きな部分（R2 では 16MB）を一度にたくさん、3ファイルずつ', fast: '高速：8MB の部分を一度に多めに、2ファイルずつ', normal: '標準：8MB の部分を少しずつ、1ファイルずつ' };
   function renderSpeed() {
@@ -4078,7 +4103,40 @@
   // a file's icon: the APK one, or the file one with its extension on it
   function fileIcon(f, kind) {
     var ext = (/\.([A-Za-z0-9]{1,6})$/.exec(f.name || '') || [])[1] || '';
-    return kind[1] === 'kapk' ? iconEl('apk', f.name) : iconEl('file', f.name, ext.toUpperCase());
+    var b = kind[1] === 'kapk' ? iconEl('apk', f.name) : iconEl('file', f.name, ext.toUpperCase());
+    b.classList.add('vault-thumb');
+    if (f.done && (f.thumbnail || f.preview || (kind[1] === 'kimg' && f.size <= 256 * 1024))) b.dataset.thumbnail = f.id;
+    return b;
+  }
+  var thumbnails = {}, thumbnailObserver = null, thumbnailQueue = [], thumbnailEpoch = 0, thumbnailLoading = 0;
+  function stopThumbnails() {
+    thumbnailEpoch++; thumbnailQueue = []; thumbnailLoading = 0;
+    if (thumbnailObserver) thumbnailObserver.disconnect(); thumbnailObserver = null;
+  }
+  function watchThumbnails() {
+    var epoch = thumbnailEpoch;
+    function schedule(b) { if (b.dataset.thumbQueued) return; b.dataset.thumbQueued = '1'; thumbnailQueue.push(b); pump(); }
+    function pump() {
+      if (epoch !== thumbnailEpoch || thumbnailLoading >= 2 || !thumbnailQueue.length) return;
+      var b = thumbnailQueue.shift(), f = fileOf(b.dataset.thumbnail); if (!f) return pump();
+      thumbnailLoading++;
+      var cached = thumbnails[f.id], source = cached ? Promise.resolve(cached) : f.thumbnail
+        ? vreq('GET', '/api/vault/thumbnail?id=' + f.id).then(function (r) { return r.thumbnail; })
+        : f.preview ? vreq('GET', '/api/vault/preview?id=' + f.id).then(function (r) { return r.preview ? VaultThumbnails.make(r.preview) : null; })
+          : fetchFile(f, null).then(function (blob) { return VaultThumbnails.make(blob); });
+      source.then(function (src) {
+        if (!src || epoch !== thumbnailEpoch || !b.isConnected) return;
+        thumbnails[f.id] = src;
+        var img = el('img'); img.src = src; img.alt = ''; img.draggable = false; img.decoding = 'async';
+        b.replaceChildren(img); b.classList.add('has-thumbnail');
+        if (!f.thumbnail && canWrite()) vreq('POST', '/api/vault/meta', { id: f.id, thumbnail: src }).then(function () { f.thumbnail = true; }).catch(function () {});
+      }).catch(function () {}).then(function () { if (epoch !== thumbnailEpoch) return; thumbnailLoading--; pump(); });
+      pump();
+    }
+    if (window.IntersectionObserver) thumbnailObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) { if (entry.isIntersecting) { thumbnailObserver.unobserve(entry.target); schedule(entry.target); } });
+    }, { root: $('#view-vault'), rootMargin: '100px' });
+    document.querySelectorAll('#vault-list [data-thumbnail]').forEach(function (b) { if (thumbnailObserver) thumbnailObserver.observe(b); else schedule(b); });
   }
   // the beginning of a text or a program (its first piece), fetched once
   var texts = {};
@@ -4263,7 +4321,8 @@
     var main = el('div', 'vitem-main');
     main.appendChild(el('b', 'vault-name', f.name));
     var who = f.by && (inBackups || (state.vaultInfo && state.vaultInfo.kind === 'pair')) ? '・' + f.by.name : '';
-    main.appendChild(el('small', 'vitem-sub', kind[0] + '・' + mb(f.size) + '・' + stamp(f.createdAt) + who));
+    var summary = el('small', 'vitem-sub', kind[0] + '・' + mb(f.size) + who);
+    summary.title = '送信日時：' + stamp(f.createdAt); main.appendChild(summary);
     var tags = el('div', 'vitem-tags');
     if (!f.done) tags.appendChild(el('span', 'kind bug', 'アップロード途中 ' + f.received + '/' + f.chunks));
     if (f.implementedAt) tags.appendChild(el('span', 'kind used', '実装済み'));
@@ -4293,7 +4352,6 @@
     acts.appendChild(d);
     acts.appendChild(moreBtn(f.name));
     row.appendChild(acts);
-    if (f.done && kind[1] === 'k3d') row.appendChild(inline3dEl(f));
     if (shown[f.id]) row.appendChild(detailsEl(f, kind));
     return row;
   }
@@ -4314,7 +4372,7 @@
   // one card drawn again (its 詳細 in)
   function redrawCard(id) {
     var row = document.querySelector('#vault-list [data-file="' + id + '"]'), f = fileOf(id);
-    if (row && f) { row.replaceWith(vaultCard(f)); watchInline3d(); }
+    if (row && f) { stopThumbnails(); row.replaceWith(vaultCard(f)); watchThumbnails(); }
   }
   function detailsEl(f, kind) {
     var full = fullOf(f);
@@ -4556,6 +4614,14 @@
         if (blob) return preview({ id: j.id, name: j.name }, blob, j);
         return null;
       });
+    } else if (/\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(j.name) && !j.parent) {
+      go = Promise.resolve(j.mem ? up.mem[j.key] : VaultUploads.fileOf(j.key)).then(function (blob) {
+        if (!blob) return;
+        return VaultThumbnails.make(blob).then(function (thumbnail) {
+          var h = j.pass ? { 'X-Vault-Upload': j.pass } : {};
+          return request('POST', '/api/vault/meta', { id: j.id, thumbnail: thumbnail }, h);
+        });
+      }).catch(function () {});
     }
     go.then(function () {
       setTimeout(function () { dropJob(j.key, true); }, 20000);
@@ -4729,15 +4795,15 @@
       return V.analyze(file, f.name);
     }).then(function (r) {
       j.set(1, 3);
-      return (pass ? Promise.resolve(pass) : passOf(f.id)).then(function (h) {
-        return request('POST', '/api/vault/meta', { id: f.id, preview: r.preview, info: r.info }, Object.assign({}, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, h)).then(function () {
+      return VaultThumbnails.make(r.preview).then(function (thumbnail) { return (pass ? Promise.resolve(pass) : passOf(f.id)).then(function (h) {
+        return request('POST', '/api/vault/meta', { id: f.id, preview: r.preview, info: r.info, thumbnail: thumbnail }, Object.assign({}, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, h)).then(function () {
           pics[f.id] = r.preview;
           j.set(2, 3);
           if (!r.light) return null;
           var base = f.name.replace(/\.[^.]+$/, '');
           return queueFile(new File([r.light], base + '.light.glb', { type: 'model/gltf-binary' }), { parent: f.id, pass: h['X-Vault-Upload'] || '' });
         });
-      });
+      }); });
     }).then(function () { j.finish('プレビューを作りました'); if (state.vault) return loadVault(); return null; }, function (err) {
       j.fail('プレビューを作れませんでした：' + ((err && err.message) || ''));
     });
@@ -4899,16 +4965,23 @@
       var ai = v.pick === 'ai';
       return vreq('POST', '/api/vault/link', { id: f ? f.id : '*', hours: Number(v.value), ai: ai }).then(function (r) {
         var url = location.origin + r.path;
-        copy(url);
         loadVault();
         return ask({
           title: (ai ? 'AI用' : '読み取り専用') + 'リンクを作りました（' + v.value + '時間有効）',
           text: url + '\n\n' + (f ? '期限まで、このファイルだけを取り出せます。' : '期限まで、保管庫のすべてのファイルを取り出せます。') + '用が済んだら停止してください。'
             + (ai ? '\n\nAI には「このURLを開いて how の説明どおりに使い、作業したらラベルを付け、ゲームに入れたら implemented: true で報告して」と伝えてください。' : ''),
-          ok: 'OK'
+          input: { label: '共有URL（ここだけコピーできます）', value: url }, shareURL: true,
+          ok: '閉じる'
         });
       });
     }).catch(fail);
+  }
+  function copyVaultURL(url) {
+    var input = $('#dialog-input');
+    if ($('#dialog').hidden || !input.readOnly || input.dataset.vaultShareUrl !== '1' || input.value !== url) return;
+    function fallback() { input.focus(); input.select(); try { if (!document.execCommand('copy')) throw new Error(); toast('共有URLをコピーしました'); } catch (e) { toast('URLを選択してコピーしてください'); } }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function () { toast('共有URLをコピーしました'); }, fallback);
+    else fallback();
   }
   /* the menu of an item: its ⋯ (under it), a right click or a long press (where it was) */
   var menuDo = null, menuAt0 = 0, menuWidth = 0;
@@ -4960,6 +5033,7 @@
     var dev = state.developer && state.vault && state.vault.ticket, items = [];
     if (f.done) {
       items.push(['開く', 'open'], ['ダウンロード', 'get']);
+      if (kind[1] === 'kimg' && !f.thumbnail && write) items.push(['一覧用の画像を作る', 'thumbnail']);
       if (lightOf(f)) items.push(['軽量版をダウンロード', 'getlight']);
       if (!f.info && kind[1] === 'k3d' && write && !inBackups && (own || state.vaultInfo.add)) items.push(['3Dプレビューを作る', 'make']);
     } else if (write) items.push(['続きから送る（同じファイルを選ぶ）', 'resume']);
@@ -4990,6 +5064,12 @@
     else if (act === 'getlight') { if (lightOf(f)) download(lightOf(f)); }
     else if (act === 'pic') showPic(f);
     else if (act === 'make') makePreview(f);
+    else if (act === 'thumbnail') {
+      var task = job(f.name + '（一覧用の画像）');
+      fetchFile(f, task).then(function (blob) { return VaultThumbnails.make(blob); }).then(function (thumbnail) {
+        return vreq('POST', '/api/vault/meta', { id: f.id, thumbnail: thumbnail });
+      }).then(function () { task.finish('一覧用の画像を保存しました'); return loadVault(); }).catch(function (err) { task.fail(err.message || '画像を作れませんでした'); });
+    }
     else if (act === 'link') makeLink(f);
     else if (act === 'rename') renameFile(f);
     else if (act === 'move') moveItems([f], []);
@@ -5033,6 +5113,7 @@
     var b = e.target.closest('[data-vact], [data-vopen]');
     if (d) {
       if (b && b.dataset.vact === 'menu') menuAt(b, folderMenu(d), function (a) { folderAct(d, a); });
+      else if (b && b.dataset.vact === 'details') folderDetails(d);
       else if (b || e.target.closest('.vault-name')) goFolder(d.id);
       return;
     }
@@ -5536,7 +5617,7 @@
     $('#vault-head').addEventListener('click', function (e) { if (e.target.closest('[data-vtop]')) goTop(); });
     $('#vault-title').addEventListener('click', goTop);
     $('#vault-room').addEventListener('click', onRoom);
-    $('#vault-pick-all').addEventListener('click', pickAll);
+    $('#vault-pick-all').addEventListener('change', pickAll);
     $('#vault-pager').addEventListener('click', function (e) {
       var b = e.target.closest('[data-page]');
       if (!b || b.disabled) return;
