@@ -7,6 +7,7 @@
 import { Casino } from './casino.js';
 import { maintenanceBody, isQuotaError } from '../core/quota.js';
 import { screenChat, BLOCKED } from '../core/attach.js';
+import { LINK_BODY_MAX } from '../core/vault.js';
 
 export { Casino };
 
@@ -61,6 +62,28 @@ async function vaultPiece(request, env, casino, url) {
   return Response.json({ n: p.n, stored: true }, { headers: NO_STORE });
 }
 
+// A body of `max` bytes at most, or null: read no further than that (a request
+// with no length cannot make the Worker hold more), and before the object
+// hears of it. For what anyone with a link may send (no login).
+async function readAtMost(request, max) {
+  if (Number(request.headers.get('content-length') || 0) > max) return null;
+  if (!request.body) return new Uint8Array(0);
+  const reader = request.body.getReader();
+  const parts = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) { await reader.cancel().catch(() => {}); return null; }
+    parts.push(value);
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const p of parts) { out.set(p, at); at += p.byteLength; }
+  return out;
+}
+
 function failure(e) {
   const body = isQuotaError(e)
     ? maintenanceBody()
@@ -76,6 +99,12 @@ export default {
     try {
       if (request.method === 'GET' || request.method === 'HEAD') return await casino.fetch(request);
       if (request.method === 'POST' && url.pathname === '/api/vault/piece' && env.VAULT) return await vaultPiece(request, env, casino, url);
+      // a comment through a link: a few hundred bytes; more is turned away here
+      if (request.method === 'POST' && url.pathname === '/api/vault/ai') {
+        const small = await readAtMost(request, LINK_BODY_MAX);
+        if (!small) return answer(413, { code: 'too_large', message: '送信できません。大きすぎます。' });
+        return await casino.fetch(new Request(request, { body: small }));
+      }
       // bodies are small; reading them here lets the object answer early (e.g. 403) cleanly
       const most = request.method === 'POST' && url.pathname === '/api/vault/chunk' ? VAULT_PIECE_BODY : MAX_BODY;
       if (Number(request.headers.get('content-length') || 0) > most) {

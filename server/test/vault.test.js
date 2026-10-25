@@ -131,7 +131,7 @@ test('a vault two operators share: only the two of them, the developer looks wit
     assert.deepEqual(pulled.files.map((x) => x.name), ['garage.glb']);
     assert.equal((await s.call('GET', `${link.path}&f=${f.id}`)).status, 404);
     assert.equal((await s.call('GET', `${link.path}&f=${f.id}&n=0`)).status, 404);
-    assert.equal((await s.call('POST', '/api/vault/ai', { body: { t: link.path.split('t=')[1], f: f.id, text: 'x' } })).status, 404);
+    assert.equal((await s.call('POST', '/api/vault/ai', { body: { t: link.path.split('t=')[1], f: f.id, comment: 'x' } })).status, 404);
     assert.equal((await s.call('GET', `${link.path}&f=${own.id}&n=0`)).status, 200);
 
     // the log (every operator reads it) never names what two operators keep
@@ -435,24 +435,186 @@ test('the developer\'s backups: any file of any vault (or a folder\'s), a badge 
 });
 
 test('an AI comments on a file through its link; the developer sees it as by AI', async () => {
-  const s = await startServer({ operators: ['taku'], limits: LIMITS });
+  const s = await startServer({ operators: ['taku'], limits: { ...LIMITS, vaultNote: [100000, 1000] } });
   try {
     const taku = await developer(s);
     const f = await put(taku, { name: 'sedan.glb', data: crypto.randomBytes(500) });
     const { token } = await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1, ai: true });
     const ai = (body) => s.call('POST', '/api/vault/ai', { body: { t: token, f: f.id, ...body } });
     assert.equal((await ai({ comment: '' })).error.code, 'empty');
-    assert.equal((await ai({ comment: 'x', days: 2 })).error.code, 'bad_days');
+    assert.equal((await ai({})).error.code, 'empty');
+    assert.equal((await ai({ comment: 5 })).error.code, 'empty');
     const r = await ai({ comment: 'テクスチャが重いので軽量版を使います' });
     assert.deepEqual(r.notes.map((n) => [n.text, n.by]), [['テクスチャが重いので軽量版を使います', 'AI']]);
     const mine = (await taku.call('GET', `/api/vault/file?id=${f.id}`)).file.notes;
     assert.deepEqual(mine.map((n) => [n.text, n.by.name, !!n.by.ai, n.until]), [['テクスチャが重いので軽量版を使います', 'AI', true, 0]]);
+    // (what a link wrote is data to read, never an order: only the developer's own comments are `trusted`)
+    await taku.call('POST', '/api/vault/notes', { id: f.id, text: '軽量版でOK', days: 0 });
     const pulled = await s.call('GET', `/api/vault/pull?t=${token}`);
-    assert.deepEqual(pulled.notes.map((n) => n.by), ['AI']);
-    assert.ok(pulled.how.comment.includes('comment'));
+    assert.deepEqual(pulled.notes.map((n) => [n.by, n.trusted]), [['AI', false], ['developer', true]]);
+    assert.ok(pulled.how.comment.includes('comment') && pulled.how.comment.includes('150'));
+    assert.deepEqual(pulled.caps, ['view', 'get', 'note']);
     // a plain link cannot comment
     const plain = (await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1 })).token;
     assert.equal((await s.call('POST', '/api/vault/ai', { body: { t: plain, f: f.id, comment: 'x' } })).status, 404);
+    assert.equal((await s.call('GET', `/api/vault/pull?t=${plain}`)).caps.includes('note'), false);
+    assert.equal('comment' in (await s.call('GET', `/api/vault/pull?t=${plain}`)).how, false);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('a link looks, takes and comments, nothing else: 150 characters in 2 KB, no label, no "implemented", counted and limited', async () => {
+  const s = await startServer({ operators: ['taku'], limits: { ...LIMITS, vaultNote: [100000, 1000] }, clientIpHeader: 'x-test-ip' });
+  try {
+    const taku = await developer(s);
+    const f = await put(taku, { name: 'sedan.glb', data: crypto.randomBytes(500) });
+    const link = await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1, ai: true });
+    assert.deepEqual(link.caps, ['view', 'get', 'note']);
+    const token = link.token;
+    const say = (body) => s.call('POST', '/api/vault/ai', { body: { t: token, f: f.id, ...body } });
+    const state = async () => (await taku.call('GET', `/api/vault/file?id=${f.id}`)).file;
+
+    // 150 characters in, 151 out (not cut): counted as people see them, so one emoji is one
+    assert.equal((await say({ comment: 'あ'.repeat(150) })).ok, true);
+    const tooLong = await say({ comment: 'あ'.repeat(151) });
+    assert.deepEqual([tooLong.status, tooLong.error.code], [400, 'too_long']);
+    assert.equal((await say({ comment: '😀'.repeat(150) })).ok, true);
+    assert.equal((await say({ comment: '😀'.repeat(151) })).error.code, 'too_long');
+    // (line breaks and invisible controls become one space each and cannot stretch it: what is kept has none)
+    assert.equal((await say({ comment: 'a\n\u202E'.repeat(60) })).ok, true);
+    const kept = (await state()).notes.at(-1).text;
+    assert.ok(kept.length <= 150 && !/[\u0000-\u001F\u202E]/.test(kept) && kept.startsWith('a a a'), kept);
+    assert.equal((await state()).notes.length, 3);
+
+    // nothing a link says changes a file: no label, no "implemented", no days, nothing unknown
+    for (const extra of [{ text: 'ラベル' }, { text: 'ゲームに入れた', implemented: true }, { comment: 'x', days: 7 }, { comment: 'x', name: 'y' }, { implemented: true }]) {
+      const r = await say(extra);
+      assert.deepEqual([r.status, r.error.code], [400, 'not_allowed'], JSON.stringify(extra));
+    }
+    const still = await state();
+    assert.deepEqual([still.implementedAt, still.labels.length, still.notes.length], [0, 0, 3]);
+    assert.equal((await s.call('GET', `/api/vault/pull?t=${token}`)).name, 'sedan.glb');
+
+    // a request of more than 2 KB is turned away before it is read on (here the connection may be cut)
+    const big = await fetch(`${s.base}/api/vault/ai`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ t: token, f: f.id, comment: 'x', pad: 'y'.repeat(3000) }) })
+      .then((r) => r.status, () => 413);
+    assert.equal(big, 413);
+    assert.equal((await state()).notes.length, 3);
+
+    // the secret may come in the Authorization header instead of the address
+    const viaHeader = await s.call('GET', '/api/vault/pull', { headers: { Authorization: `Bearer ${token}` } });
+    assert.equal(viaHeader.name, 'sedan.glb');
+    const wrongHeader = await s.call('GET', '/api/vault/pull', { headers: { Authorization: `Bearer ${crypto.randomBytes(32).toString('base64url')}` } });
+    assert.equal(wrongHeader.error.code, 'no_link');
+
+    // the same words again from the same link are already there; each link writes 20 at most
+    assert.equal((await say({ comment: 'こんにちは' })).ok, true);
+    assert.equal((await say({ comment: 'こんにちは' })).ok, true);
+    assert.equal((await state()).notes.length, 4);
+    for (let i = 0; i < 16; i++) assert.equal((await say({ comment: `メモ${i}` })).ok, true);
+    const full = await say({ comment: '二十一件目' });
+    assert.deepEqual([full.status, full.error.code], [429, 'link_notes']);
+    // one address writes 20 comments an hour at most, whatever the links
+    const other = await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1, ai: true });
+    const sameAddress = await s.call('POST', '/api/vault/ai', { body: { t: other.token, f: f.id, comment: '同じ場所から' } });
+    assert.deepEqual([sameAddress.status, sameAddress.error.code], [429, 'rate_limited']);
+    // a second link has its own 20 but the file takes 30 from links in all
+    let ok = 0, last;
+    for (let i = 0; i < 12; i++) { last = await s.call('POST', '/api/vault/ai', { body: { t: other.token, f: f.id, comment: `別${i}` }, headers: { 'x-test-ip': '198.51.100.20' } }); if (last.ok) ok++; }
+    assert.equal(ok, 10);
+    assert.equal(last.error.code, 'too_many');
+    // …leaving the developer room to answer (50 in all)
+    assert.equal((await taku.call('POST', '/api/vault/notes', { id: f.id, text: '返信', days: 0 })).file.notes.length, 31);
+
+    // the log names what was said and through which link, never the secret
+    const log = (await actions(taku)).filter((e) => e.action === 'vault_ai_comment');
+    assert.ok(log.length >= 20 && log.every((e) => !JSON.stringify(e).includes(token)));
+  } finally {
+    await s.stop();
+  }
+});
+
+test('a link\'s comment is slow by design: 6 a minute for each link', async () => {
+  const s = await startServer({ operators: ['taku'], limits: { general: [100000, 1000], login: [100000, 1000], vaultWork: [100000, 1000], vaultPull: [100000, 1000], vaultOpen: [100000, 1000] } });
+  try {
+    const taku = await developer(s);
+    const f = await put(taku, { name: 'a.glb', data: crypto.randomBytes(100) });
+    const { token } = await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1, ai: true });
+    let ok = 0, last;
+    for (let i = 0; i < 9; i++) { last = await s.call('POST', '/api/vault/ai', { body: { t: token, f: f.id, comment: `n${i}` } }); if (last.ok) ok++; }
+    assert.equal(ok, 6);
+    assert.deepEqual([last.status, last.error.code], [429, 'rate_limited']);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('"implemented" is the signed-in developer\'s to say, with the code; no link moves a file', async () => {
+  const s = await startServer({ operators: ['taku', 'mod1'], limits: LIMITS });
+  try {
+    const taku = await developer(s);
+    const mod = await person(s, 'Mod1');
+    const f = await put(taku, { name: 'car.glb', data: crypto.randomBytes(300) });
+    const { token } = await taku.call('POST', '/api/vault/link', { id: '*', hours: 1, ai: true });
+    assert.equal((await s.call('GET', `/api/vault/pull?t=${token}`)).files.length, 1);
+    // an operator is not the developer; the developer without the code only looks
+    assert.equal((await mod.call('POST', '/api/vault/implemented', { id: f.id, text: 'x' })).error.code, 'not_developer');
+    const locked = await s.call('POST', '/api/vault/implemented', { token: taku.token, body: { id: f.id, text: 'x' } });
+    assert.equal(locked.error.code, 'vault_locked');
+    assert.equal((await taku.call('POST', '/api/vault/implemented', { id: f.id, text: '' })).error.code, 'empty');
+    const done = await taku.call('POST', '/api/vault/implemented', { id: f.id, text: 'js/game/cars.js の新車に入れた' });
+    assert.ok(done.file.implementedAt > 0);
+    assert.equal(done.file.labels.at(-1).kind, 'implemented');
+    // out of every link at once; it stays in the vault and can come back
+    assert.equal((await s.call('GET', `/api/vault/pull?t=${token}`)).files.length, 0);
+    assert.equal((await taku.call('GET', `/api/vault/file?id=${f.id}`)).file.name, 'car.glb');
+    assert.ok((await actions(taku)).some((e) => e.action === 'vault_implemented'));
+    await taku.call('POST', '/api/vault/restore', { id: f.id });
+    assert.equal((await s.call('GET', `/api/vault/pull?t=${token}`)).files.length, 1);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('a link\'s reach is counted: what it takes out is limited, one used from too many places stops, one look is one log line an hour', async () => {
+  const s = await startServer({ operators: ['taku'], limits: LIMITS, linkPlaces: 2, clientIpHeader: 'x-test-ip' });
+  try {
+    const taku = await developer(s);
+    const f = await put(taku, { name: 'big.glb', data: crypto.randomBytes(Math.round(2.5 * MB)) });
+    assert.equal(f.chunks, 3);
+    // a limit of 1MB: the first piece (1MiB) goes, the second would be past it
+    const small = await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1, maxMb: 1 });
+    assert.equal(small.maxBytes, MB);
+    assert.equal((await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1, maxMb: 0 })).error.code, 'bad_limit');
+    assert.equal((await s.call('GET', `${small.path}&n=0`)).n, 0);
+    const over = await s.call('GET', `${small.path}&n=1`);
+    assert.deepEqual([over.status, over.error.code], [429, 'link_quota']);
+    const listed = (await taku.call('GET', '/api/vault/links')).links.find((x) => x.path === small.path);
+    assert.deepEqual([listed.bytesUsed, listed.maxBytes, listed.caps], [MB, MB, ['view', 'get']]);
+
+    // looking again and again is one line in the log an hour (and the count of uses goes up)
+    const link = await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1 });
+    const looks = async () => (await actions(taku)).filter((e) => e.action === 'vault_pull').length;
+    const before = await looks();
+    for (let i = 0; i < 5; i++) assert.equal((await s.call('GET', link.path)).name, 'big.glb');
+    assert.equal(await looks() - before, 1);
+    assert.equal((await taku.call('GET', '/api/vault/links')).links.find((x) => x.path === link.path).uses, 5);
+
+    // the files it took: the first piece counts as taking the file
+    const taken = s.app.db.prepare('SELECT n FROM vault_link_files WHERE file_id = ?').all(f.id);
+    assert.deepEqual(taken.map((x) => x.n), [1]);
+
+    // two places are allowed (here), the third stops the link
+    const wide = await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1 });
+    const from = (ip) => s.call('GET', wide.path, { headers: { 'x-test-ip': ip } });
+    assert.equal((await from('203.0.113.5')).name, 'big.glb');
+    assert.equal((await from('203.0.113.99')).name, 'big.glb');     // (the same /24: the same place)
+    assert.equal((await from('198.51.100.7')).name, 'big.glb');
+    const tripped = await from('192.0.2.9');
+    assert.deepEqual([tripped.status, tripped.error.code], [404, 'no_link']);
+    assert.equal((await from('203.0.113.5')).error.code, 'no_link');
+    assert.ok((await actions(taku)).some((e) => e.action === 'vault_link_trip'));
   } finally {
     await s.stop();
   }
@@ -576,6 +738,43 @@ test('Cloudflare: a vault piece goes from the Worker straight into R2 (the objec
     }), env);
     assert.equal(gone.status, 404);
     assert.ok(![...bucket.objects.keys()].some((k) => k.startsWith(`vault/${g.file.id}/`)));
+  } finally {
+    await s.stop();
+  }
+});
+
+test('Cloudflare: a link\'s comment is read no further than 2 KB, before the object hears of it', async () => {
+  const s = await startServer({ operators: ['taku'], limits: { ...LIMITS, vaultNote: [100000, 1000] } });
+  try {
+    const taku = await developer(s);
+    const f = await put(taku, { name: 'sedan.glb', data: crypto.randomBytes(200) });
+    const { token } = await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1, ai: true });
+    const asked = [];
+    const casino = { fetch: async (req) => {
+      const u = new URL(req.url);
+      asked.push(u.pathname);
+      const body = req.method === 'GET' ? undefined : await req.arrayBuffer();
+      return fetch(s.base + u.pathname + u.search, { method: req.method, headers: req.headers, body });
+    } };
+    const env = { ASSETS: { fetch: () => new Response('') }, CASINO: { idFromName: () => 'main', get: () => casino } };
+    const { default: worker } = await import('../cloudflare/worker.js');
+    const send = (body, headers = {}) => worker.fetch(new Request('https://x/api/vault/ai', { method: 'POST', body, headers: { 'Content-Type': 'application/json', ...headers } }), env)
+      .then(async (x) => ({ ...(await x.json()), status: x.status }));
+    const ok = await send(JSON.stringify({ t: token, f: f.id, comment: 'テクスチャが重いです' }));
+    assert.deepEqual([ok.status, ok.ok], [200, true]);
+    assert.deepEqual(asked, ['/api/vault/ai']);
+    // too big, said by its length…
+    const big = JSON.stringify({ t: token, f: f.id, comment: 'x', pad: 'y'.repeat(3000) });
+    const a = await send(big, { 'Content-Length': String(big.length) });
+    assert.deepEqual([a.status, a.error.code], [413, 'too_large']);
+    // …and with no length at all (a stream): read no further than the limit
+    let sent = 0;
+    const stream = new ReadableStream({ pull(c) { sent += 1000; if (sent > 100000) c.close(); else c.enqueue(new TextEncoder().encode('z'.repeat(1000))); } });
+    const b = await worker.fetch(new Request('https://x/api/vault/ai', { method: 'POST', body: stream, duplex: 'half', headers: { 'Content-Type': 'application/json' } }), env)
+      .then(async (x) => ({ ...(await x.json()), status: x.status }));
+    assert.deepEqual([b.status, b.error.code], [413, 'too_large']);
+    assert.ok(sent < 20000, `read on to ${sent} bytes`);
+    assert.deepEqual(asked, ['/api/vault/ai'], 'the object heard of the first one only');
   } finally {
     await s.stop();
   }

@@ -33,8 +33,9 @@
      back the same way; files and folders checked to move, download or delete
      several at once. One room for all of them: in the shared ones each
      operator keeps 1GB, more once the developer approves (with a limit). In
-     the developer's own, time-limited links (for an AI too: what it takes and
-     does is labelled; what it put in the game is 実装済み).
+     the developer's own, time-limited links (for an AI too): a link only
+     looks, takes and comments (150 characters); the developer says a file is
+     実装済み, signed in with the code.
    - アーカイブ: the 永久BAN and deleted accounts, all their data gone 90 days
      after they came in; a 永久BAN can be lifted, a deleted account never
      comes back. Only the developer sees the button that deletes an account
@@ -79,7 +80,7 @@
     vault_bucket: '保管庫をR2へ移動', vault_ai_label: 'AIのラベル（保管庫）', vault_ai_done: 'AIが実装（保管庫）', vault_restore: '保管庫で実装済みから戻す',
     vault_quota_request: '保管庫の容量の申請', vault_quota_cancel: '容量の申請の取り下げ', vault_quota_approve: '容量の申請を承認', vault_quota_decline: '容量の申請を見送り',
     vault_quota_set: '保管庫の上限を変更', vault_rename: '保管庫で名前を変更', vault_backup: '保管庫のバックアップ', vault_backup_off: 'バックアップから外す',
-    vault_backup_restore: 'バックアップから戻す', vault_ai_comment: 'AIのコメント（保管庫）', milestone: '登録者数の記念', voice_notice: '通話品質アップのお知らせ'
+    vault_backup_restore: 'バックアップから戻す', vault_ai_comment: 'AIのコメント（保管庫）', vault_implemented: '保管庫で実装済みにする', vault_link_trip: '保管庫のリンクを自動停止', milestone: '登録者数の記念', voice_notice: '通話品質アップのお知らせ'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
   var KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
@@ -4334,7 +4335,7 @@
         r.links.forEach(function (link) {
           var row = el('article', 'card vault-issued-link');
           row.appendChild(el('b', '', link.file === '*' ? '保管庫全体' : 'ファイル：' + link.name));
-          row.appendChild(el('small', 'muted', (link.ai ? 'AI用' : '読み取り専用') + '・' + stamp(link.until) + 'まで・取得 ' + fmt(link.uses) + '回'));
+          row.appendChild(el('small', 'muted', (link.ai ? 'AI用' : '読み取り専用') + (link.caps && link.caps.indexOf('note') >= 0 ? '・コメント可' : '') + '・' + stamp(link.until) + 'まで・取得 ' + fmt(link.uses) + '回' + (link.maxBytes ? '・' + mb(link.bytesUsed || 0) + ' / ' + mb(link.maxBytes) : '')));
           var b = el('button', 'btn small primary', link.path ? 'URLを表示・コピー' : 'URLを再発行'); b.type = 'button';
           b.addEventListener('click', function () { if (link.path) { showIssuedVaultLink(link); return; } var file = link.file === '*' ? null : fileOf(link.file); if (link.file !== '*' && !file) { toast('ファイルが見つかりません。一覧を更新してください'); return; } makeLink(file); }); row.appendChild(b);
           if (!link.path) row.appendChild(el('p', 'muted', '以前の方式で発行したURLは復元できません。再発行後のURLはこの一覧から再コピーできます。'));
@@ -5019,10 +5020,10 @@
     var hours = state.vault.hours || [1, 6, 24, 72];
     ask({
       title: f ? '「' + f.name + '」のリンクを作る' : '保管庫全体のリンクを作る',
-      text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき・実装済みは除く）') + 'をログインなしで取り出せるリンクです。発行後も「リンク」の発行済み一覧から再コピーできます。AI用にすると、AI が取ったファイルと AI の作業にラベルが付き、AI がゲームに入れたファイルは実装済みになってリンクから外れます。',
+      text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき・実装済みは除く）') + 'をログインなしで取り出せるリンクです。リンクでできるのは、見ること・取り出すこと・コメントを書くこと（AI用だけ・150文字まで）だけです。ファイルは変えられません。取り出せる量は5GBまで、あまりに多くの場所から使われると自動で止まります。発行後も「リンク」の発行済み一覧から再コピーできます。',
       ok: '作る',
       input: { label: '有効時間（' + hours.join('・') + ' 時間）', type: 'text', value: '24' },
-      select: { label: 'リンクの種類', options: [{ value: 'plain', label: '読み取り専用' }, { value: 'ai', label: 'AI用（ラベルと実装済みの報告つき）' }], value: 'plain' },
+      select: { label: 'リンクの種類', options: [{ value: 'plain', label: '読み取り専用（見る・取り出す）' }, { value: 'ai', label: 'AI用（見る・取り出す・150文字までのコメント）' }], value: 'plain' },
       check: function (v) { return hours.indexOf(Number(v)) >= 0 ? '' : hours.join('・') + ' のどれかを入れてください'; }
     }).then(function (v) {
       if (v === null) return null;
@@ -5033,7 +5034,7 @@
         return ask({
           title: (ai ? 'AI用' : '読み取り専用') + 'リンクを作りました（' + v.value + '時間有効）',
           text: url + '\n\n' + (f ? '期限まで、このファイルだけを取り出せます。' : '期限まで、保管庫のすべてのファイルを取り出せます。') + '用が済んだら停止してください。'
-            + (ai ? '\n\nAI には「このURLを開いて how の説明どおりに使い、作業したらラベルを付け、ゲームに入れたら implemented: true で報告して」と伝えてください。' : ''),
+            + (ai ? '\n\nAI には「このURLを開いて how の説明どおりに使い、作業したらコメントで知らせて」と伝えてください。ゲームに入れたと知らせるコメントを見たら、ファイルのメニューから「実装済みにする」を押します。' : ''),
           input: { label: '共有URL（ここだけコピーできます）', value: url }, shareURL: true,
           ok: '閉じる'
         });
@@ -5109,7 +5110,7 @@
     if (write && !inBackups) items.push(['名前を変更', 'rename'], ['移動', 'move']);
     if (own && f.done && write) {
       if (f.implementedAt) items.push(['実装済みから戻す', 'restore']);
-      else items.push(['リンクを作る', 'link']);
+      else items.push(['実装済みにする', 'implement'], ['リンクを作る', 'link']);
       if (f.links.live) items.push(['リンクを停止', 'stop']);
     }
     if (dev && f.done) {
@@ -5140,7 +5141,12 @@
     else if (act === 'backup' || act === 'unbackup') backupItems([f], [], act === 'backup');
     else if (act === 'unremove') restoreBackup(f);
     else if (act === 'resume') goOn(f);
-    else if (act === 'restore') {
+    else if (act === 'implement') {
+      ask({ title: '実装済みにしますか？', text: '「' + f.name + '」がゲームに入ったとき押します。すべてのリンクから外れます（保管庫には残り、あとで戻せます）。', ok: '実装済みにする', input: { label: 'どこに入れたか（例：js/game/cars.js の新車）' }, check: function (v) { return v.trim() ? '' : 'どこに入れたかを書いてください'; } }).then(function (where) {
+        if (where === null) return null;
+        return vreq('POST', '/api/vault/implemented', { id: f.id, text: where.trim() }).then(function () { toast('実装済みにしました'); return loadVault(); });
+      }).catch(fail);
+    } else if (act === 'restore') {
       ask({ title: '実装済みから戻しますか？', text: '「' + f.name + '」がまたリンクから取り出せるようになります。', ok: '戻す' }).then(function (ok) {
         if (!ok) return null;
         return vreq('POST', '/api/vault/restore', { id: f.id }).then(function () { toast('戻しました'); return loadVault(); });

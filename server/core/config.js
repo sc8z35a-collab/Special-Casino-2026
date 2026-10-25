@@ -102,6 +102,8 @@ export function configFrom(env = {}, overrides = {}) {
     // what one operator may keep in the vaults operators share without the
     // developer's approval (MB; unset: 1024, 1GB a person)
     vaultFreeMb: int(env, 'VAULT_FREE_MB', undefined),
+    // how many places (address prefixes) a vault link may be used from before it stops by itself (unset: 8)
+    linkPlaces: int(env, 'LINK_PLACES', undefined),
     // the Cloudflare plan the game runs on ('free' or 'paid'): its allowances
     // and prices on the operator site's サーバー tab, and the vault's sizes
     plan: str(env, 'CF_PLAN', 'free').toLowerCase() === 'paid' ? 'paid' : 'free',

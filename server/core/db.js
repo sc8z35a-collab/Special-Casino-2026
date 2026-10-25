@@ -881,6 +881,29 @@ export const MIGRATIONS = [
 
 MIGRATIONS.push(["ALTER TABLE vault_files ADD COLUMN thumbnail TEXT NOT NULL DEFAULT ''"]);
 MIGRATIONS.push(["ALTER TABLE vault_links ADD COLUMN sealed_token TEXT NOT NULL DEFAULT ''"]);
+// 保管庫のリンク: what a link may do (caps: view, get, note — nothing else), how
+// much it may send out (max_bytes, 0: no cap; bytes_used) and from where it
+// was used (places: hashed address prefixes); who wrote a comment through a
+// link and from where; and which file each link took
+MIGRATIONS.push([
+  "ALTER TABLE vault_links ADD COLUMN caps TEXT NOT NULL DEFAULT 'view,get'",
+  'ALTER TABLE vault_links ADD COLUMN max_bytes INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE vault_links ADD COLUMN bytes_used INTEGER NOT NULL DEFAULT 0',
+  "ALTER TABLE vault_links ADD COLUMN places TEXT NOT NULL DEFAULT '[]'",
+  "UPDATE vault_links SET caps = 'view,get,note' WHERE ai = 1",
+  "ALTER TABLE vault_notes ADD COLUMN link_hash TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE vault_notes ADD COLUMN ip_hash TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE vault_notes ADD COLUMN via TEXT NOT NULL DEFAULT ''",
+  `CREATE TABLE vault_link_files (
+     link_hash TEXT    NOT NULL,
+     file_id   TEXT    NOT NULL,
+     first_at  INTEGER NOT NULL,
+     last_at   INTEGER NOT NULL,
+     n         INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (link_hash, file_id)
+   )`,
+  'CREATE INDEX vault_link_files_file ON vault_link_files(file_id)'
+]);
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
