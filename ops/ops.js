@@ -594,7 +594,7 @@
     state.developer = !!me.developer;
     state.viewer = !!me.viewer;
     // (parts this deployment adds, if any: ops/ext.js; files held for their check go on from where they were)
-    OpsExt.load(request).then(resumeHeld);
+    OpsExt.load(request, { vault: vreq, toast: toast, progress: function (j, f) { j.prep = Math.max(0, Math.min(100, Math.round(f * 100))); onJob(j); } }).then(resumeHeld);
     $('#tab-diary').hidden = !state.developer;
     $('#tab-profile').hidden = state.viewer;
     if (diaryProfile) diaryProfile.start(me);
@@ -4877,6 +4877,8 @@
     if (j.state === 'done') return '保存しました' + (j.sha256 ? '（SHA-256 ' + String(j.sha256).slice(0, 16) + '…）' : '');
     if (j.state === 'run' && j.retry) return '通信が途切れたので、すぐに送り直しています…（' + p + '% 送信済み・' + j.retry + '回目）';
     if (j.state === 'run') return '送信中… ' + mb(Math.min(j.size, j.sent * (j.piece || 0))) + ' / ' + mb(j.size) + '（' + p + '%）' + (j.rate ? '・' + mb(j.rate) + '/秒' : '');
+    // (held for the checks a deployment puts in front of the sending: ops/ext.js)
+    if (j.state === 'wait' && j.hold) return '準備中…' + (j.prep ? ' ' + j.prep + '%' : '') + '（' + mb(j.size) + '）';
     if (j.state === 'wait') return '順番待ち（' + mb(j.size) + '）';
     var why = UP_WHY[j.why] || '';
     if (j.state === 'fail') return 'できませんでした：' + (j.message || why || 'もう一度ファイルを選んでください');
@@ -5010,7 +5012,7 @@
     up.checking[j.key] = true;
     return (up.mem[j.key] ? Promise.resolve(up.mem[j.key]) : VaultUploads.fileOf(j.key)).then(function (file) {
       if (!file) return null;
-      return OpsExt.run('beforeSend', null, j, file, { request: request, toast: toast });
+      return OpsExt.run('beforeSend', null, j, file, OpsExt.io());
     }).then(function () {
       delete up.checking[j.key];
       j.hold = false;

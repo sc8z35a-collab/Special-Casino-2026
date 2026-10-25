@@ -140,6 +140,8 @@ export function configFrom(env = {}, overrides = {}) {
     lineStaffUserIds: str(env, 'LINE_STAFF_USER_IDS').split(',').map((s) => s.trim()).filter(Boolean),
     lineMonthlyLimit: int(env, 'LINE_MONTHLY_LIMIT', 200),
     lineApi: str(env, 'LINE_API', 'https://api.line.me').replace(/\/+$/, ''),
+    // settings of the parts a deployment adds (server/core/ext.js): every variable that begins with EXT_, as it is
+    ext: Object.fromEntries(Object.entries(env || {}).filter(([k, v]) => k.startsWith('EXT_') && typeof v === 'string')),
     limits: {},
     ...overrides
   };
