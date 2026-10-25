@@ -28,6 +28,7 @@ import {
   spin as spinReels, evaluate as evaluateLine, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
+import { createStaffPins } from './staffpin.js';
 import { createPeter, reservedName } from './peter.js';
 import { createJohnson } from './johnson.js';
 import { createOfficial } from './official.js';
@@ -312,7 +313,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the developer (config.developer, one of config.operators): never shut out
   // by any ban, and never loses the operator rights (server/core/ops.js)
   const devKey = config.operators.some((n) => nameKey(n) === nameKey(config.developer || '')) ? nameKey(config.developer) : '';
-  const isDeveloper = (u) => !!u && !!devKey && !u.npc && u.name_key === devKey;
+  // (the rights of a staff name belong to the account that first used them, not to the name: server/core/staffpin.js)
+  let staffReused = () => {};
+  const pins = createStaffPins({ q, clock: config.clock || Date.now, onMismatch: (u, pin) => staffReused(u, pin) });
+  const isDeveloper = (u) => !!u && !!devKey && !u.npc && u.name_key === devKey && pins.holds(u);
   const DEVICE_BANNED = 'この端末のほかのアカウントがBANされているため、このアカウントも利用できません';
   const when = (ms) => jst(ms).slice(0, 16);   // 2026/10/20 12:34 (Japan time)
   // a letter from the official bot: 【件名】, 〇〇様, the matter, Ice Smoker公式より
@@ -433,6 +437,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const noteHost = (req) => { if (host && host.name === 'cloudflare') notice.host(req.header('host')); };
   // (the host keeps the newest entry's hash where SQL cannot reach: server/core/opslog.js)
   const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => notice.log(row) });
+  staffReused = (u, pin) => opsLog.add({ actorName: 'セキュリティ', action: 'staff_name_reused', target: u,
+    summary: `運営の名前「${u.name}」を、別のアカウントが使っています（この名前の運営権は付けていません）`, detail: { account: u.id, boundTo: pin ? pin.user_id : 0, since: pin ? pin.at : 0 } });
   // the month's usage in the red (over 70%) or nearly all used (over 90%): told to the notices' places, once for each
   const usageAlert = createUsageAlert({ q, report: () => stats.report(0), discord: notice, clock: config.clock || Date.now });
   // a new DEV going live is the first entry of its own
@@ -1472,7 +1478,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // Also used by the live connection.
   function userForToken(token) {
     const h = sha256(token);
-    const s = q('SELECT user_id, created_at, last_used, ended, scope, ops, ops_mfa_version FROM sessions WHERE token_hash = ?').get(h);
+    const s = q('SELECT user_id, created_at, last_used, ended, scope, ops, ops_mfa_version, pw_weak FROM sessions WHERE token_hash = ?').get(h);
     if (!s) throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
     // the operator site's login: a day at most, 8 hours without a request (then the name and password again)
     if (s.ops) {
@@ -1507,13 +1513,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // ('view': a 閲覧者's operator site session, good for nothing but looking)
     u.scope = s.scope || '';
     u.opsMfaVersion = s.ops_mfa_version || 0;
+    u.pwWeak = s.pw_weak || '';
     return u;
   }
 
-  function createSession(userId, scope = '', mfaVersion = 0, ops = false) {
+  function createSession(userId, scope = '', mfaVersion = 0, ops = false, weak = '') {
     const token = newToken();
     const now = Date.now();
-    q('INSERT INTO sessions (token_hash, user_id, created_at, last_used, scope, ops, ops_mfa_version) VALUES (?, ?, ?, ?, ?, ?, ?)').run(sha256(token), userId, now, now, scope, ops ? 1 : 0, mfaVersion);
+    q('INSERT INTO sessions (token_hash, user_id, created_at, last_used, scope, ops, ops_mfa_version, pw_weak) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(sha256(token), userId, now, now, scope, ops ? 1 : 0, mfaVersion, weak);
     return token;
   }
 
@@ -1533,7 +1540,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function nameProblem(raw) {
     let key;
     try { ({ key } = cleanName(raw)); } catch (e) { return e.message; }
-    if (reservedName(key)) return 'この名前は使えません';
+    if (reservedName(key) || pins.taken(key)) return 'この名前は使えません';
     if (q('SELECT 1 AS x FROM users WHERE name_key = ?').get(key)) return 'このユーザー名はすでに使われています';
     return null;
   }
@@ -1591,7 +1598,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const n = q('SELECT COUNT(*) AS n FROM users WHERE created_ip = ? AND created_at > ?').get(req.ip, Date.now() - 86400000).n;
         if (n >= config.registrationsPerIp) throw new ApiError(429, 'too_many_accounts', 'この接続からはこれ以上アカウントを作成できません');
       }
-      if (reservedName(key)) throw new ApiError(409, 'name_taken', 'この名前は使えません');
+      if (reservedName(key) || pins.taken(key)) throw new ApiError(409, 'name_taken', 'この名前は使えません');
       if (q('SELECT 1 AS x FROM users WHERE name_key = ?').get(key)) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
       // two accounts a device at most (then: log in to one of them), none on a device with a BAN
       const dev = deviceOf(req);
@@ -3703,7 +3710,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   };
   const ops = createOps({
     q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, deviceBans, dropFromHub,
-    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen
+    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen, pins
   });
   Object.assign(routes, ops.routes);
   // the operators' screen view (見る): state only, sealed, one way, 30 minutes at most, logged
@@ -4165,6 +4172,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   return {
     handle,
+    // (the tests: every route the server answers)
+    routeKeys: () => Object.keys(routes),
     pk,
     line,
     filtered,

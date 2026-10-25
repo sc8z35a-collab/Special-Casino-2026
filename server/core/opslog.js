@@ -20,7 +20,7 @@ const GENESIS = 'TWO STATE ops log';
 
 export const LOG_KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
 const PLAYER = ['pay_order', 'pay_paid', 'pay_slip', 'pay_unpaid', 'pay_refund'];
-const SECURITY = ['dev_code_fail', 'dev_code_set', 'dev_code_change', 'ops_grant', 'ops_revoke', 'ops_restore', 'viewer_grant', 'viewer_revoke', 'pay_bad_signature', 'pay_unknown',
+const SECURITY = ['staff_name_reused', 'dev_code_fail', 'dev_code_set', 'dev_code_change', 'ops_grant', 'ops_revoke', 'ops_restore', 'viewer_grant', 'viewer_revoke', 'pay_bad_signature', 'pay_unknown',
   'pay_review', 'log_kept', 'account_delete', 'account_purge'];
 export function kindOf(action) {
   const a = String(action || '');

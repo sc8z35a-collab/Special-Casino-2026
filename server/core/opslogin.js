@@ -4,6 +4,7 @@
 // wrong name or password, or an account that is not an operator) make this
 // browser wait 5 minutes; two more after that, 10 minutes; then 20, 40 …
 // A login that works starts this browser over, and a day with no wrong try starts it all over.
+// A password too easy for staff (short, digits only) works too, and the site is told to ask for a better one.
 // One from the operator site itself (`enter`) is also that day's ログイン in
 // the ログインログ (server/core/opsentry.js); security HOME's is not.
 // Ten in a row from one address make the whole address wait the same way
@@ -11,7 +12,7 @@
 // network does not shut an operator out with two). The waits are kept in
 // the database (a restart keeps them) and, as asked, are not written to the log.
 import { ApiError } from './errors.js';
-import { sha256, verifyPassword } from './auth.js';
+import { sha256, verifyPassword, staffPasswordWeakness } from './auth.js';
 
 const TRIES = 2;
 const TRIES_ADDRESS = 10;
@@ -92,7 +93,8 @@ export function createOpsLogin({ q, findByName, isOperator, isViewer = () => fal
         seenOn(u.id, req);
         if (body.enter === true) entered(u, req, 'password');
         const viewer = !isOperator(u);
-        return { token: createSession(u.id, viewer ? 'view' : '', mfaVersion, true), name: u.name, viewer };
+        // (the password is in hand only here: its weakness, if any, goes with the session)
+        return { token: createSession(u.id, viewer ? 'view' : '', mfaVersion, true, staffPasswordWeakness(body.password)), name: u.name, viewer };
       }
     },
     // old waits go (from the housekeeping)

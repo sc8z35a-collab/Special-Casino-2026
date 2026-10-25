@@ -11,7 +11,7 @@
 
 // the operators' log actions that go out, and their mark
 export const NOTIFY = {
-  emergency_stop: '🚨', emergency_release: '✅', lockdown: '🔒', lockdown_release: '🔓', shield_auto_block: '🧱', filter_block: '🛡️',
+  emergency_stop: '🚨', emergency_release: '✅', staff_name_reused: '🪪', lockdown: '🔒', lockdown_release: '🔓', shield_auto_block: '🧱', filter_block: '🛡️',
   player_report: '🚩', player_feedback: '📝',
   pay_paid: '💰', pay_refund: '↩️', pay_review: '⚠️', pay_unknown: '⚠️', pay_bad_signature: '⚠️',
   dev_code_fail: '🔐', pk_fail: '🔑', pk_breakglass: '🆘', ops_grant: '👤', ops_revoke: '👤', viewer_grant: '👀', viewer_revoke: '👀', backup_failed: '⚠️', vault_quota_request: '📦'
@@ -19,7 +19,7 @@ export const NOTIFY = {
 // the game / operator site / server in danger: these go out with as much of
 // the situation as fits and with BOTH the operator site and the security HOME
 // (/sec/) links, so the developer can act from either
-export const DANGER = new Set(['emergency_stop', 'lockdown', 'shield_auto_block', 'pk_fail', 'pk_breakglass']);
+export const DANGER = new Set(['emergency_stop', 'lockdown', 'shield_auto_block', 'pk_fail', 'pk_breakglass', 'staff_name_reused']);
 
 // a few short lines of what is happening, pulled from an operators' log
 // entry's detail (shapes from server/core/emergency.js and shield.js); all

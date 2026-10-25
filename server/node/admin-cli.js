@@ -24,6 +24,8 @@ const HELP = `BLOCKBUSTER REELS 管理コマンド
   recovery <ユーザー>                新しい引き継ぎコードを発行（本人確認のうえで）
   password <ユーザー> <新しいパスワード>  パスワードを設定し直す（本人確認のうえで）
   logout <ユーザー>                  全端末からログアウトさせる
+  staff-pin <ユーザー>               運営の名前の権限を、そのアカウントに固定する（元のアカウントが消えたあと、別の人が同じ名前を使っているとき）
+  staff-unpin <名前>                 運営の名前の固定を解除する（その名前をもう一度登録できるようになる）
   messages [ユーザー]                ロビーの最新メッセージ（ユーザー指定でその人の発言）
   redact <メッセージID>              メッセージを削除済みにする
   backup <ファイル>                  全データをファイルに保存（.json）
@@ -99,6 +101,16 @@ export async function run(argv, call, print = console.log) {
     case 'logout': {
       const r = await call('logout', [args.join(' ')]);
       print(`${r.name} (#${r.id}) のログインを ${r.sessions} 件解除しました`);
+      break;
+    }
+    case 'staff-pin': {
+      const r = await call('staff-pin', [args.join(' ')]);
+      print(`${r.name} (#${r.id}) を、この名前の運営権の持ち主にしました`);
+      break;
+    }
+    case 'staff-unpin': {
+      const r = await call('staff-unpin', [args.join(' ')]);
+      print(r.removed ? `「${r.name}」の固定を解除しました` : `「${r.name}」はもともと固定されていません`);
       break;
     }
     case 'messages':

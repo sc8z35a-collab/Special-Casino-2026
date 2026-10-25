@@ -80,3 +80,24 @@ test('operator and command-line password resets enforce the same eight-character
   await admin.password(p.me.name, 'other888');
   assert.equal(await verifyPassword('other888', stored(s, p.me.id)), true);
 });
+
+test('a password too easy for staff is named, and the operator site is told at login', async t => {
+  const { staffPasswordWeakness } = await import('../core/auth.js');
+  for (const [pw, why] of [['', 'short'], ['25209', 'short'], ['elevenchars', 'short'], ['123456789012', 'digits'], ['aaaaaaaaaaaaaaa', 'repeat'], ['abababababab', 'repeat'],
+    ['correct horse battery', ''], ['Tw0-State-Casino!', ''], ['日本語のながいあいことば', '']]) {
+    assert.equal(staffPasswordWeakness(pw), why, JSON.stringify(pw));
+  }
+  const s = await setup(t);
+  await s.register('taku', { password: '123456789012' });
+  const login = (password, device) => s.call('POST', '/api/ops/login', { body: { name: 'taku', password }, headers: { 'X-Ops-Device': device } });
+  const weak = await login('123456789012', 'browser-weak0000000000');
+  assert.equal(weak.status, 200);
+  assert.equal((await s.call('GET', '/api/ops/me', { token: weak.token })).weakPassword, 'digits');
+  // a better password (set the way the game does) is not named
+  s.app.db.prepare('UPDATE users SET password_hash = ? WHERE name_key = ?').run(await hashPassword('Tw0-State-Casino!'), 'taku');
+  const strong = await login('Tw0-State-Casino!', 'browser-strong00000000');
+  assert.equal(strong.status, 200);
+  assert.equal((await s.call('GET', '/api/ops/me', { token: strong.token })).weakPassword, '');
+  // each login keeps its own word
+  assert.equal((await s.call('GET', '/api/ops/me', { token: weak.token })).weakPassword, 'digits');
+});

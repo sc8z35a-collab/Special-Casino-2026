@@ -933,6 +933,23 @@ MIGRATIONS.push([
   'CREATE INDEX pk_gates_user ON pk_gates(user_id)'
 ]);
 
+// the operator site's login says when the password it was opened with is too easy
+// for a member of staff (server/core/auth.js: staffPasswordWeakness); the site asks for a better one
+MIGRATIONS.push([
+  "ALTER TABLE sessions ADD COLUMN pw_weak TEXT NOT NULL DEFAULT ''"
+]);
+
+// the account each staff name's rights are bound to (server/core/staffpin.js)
+MIGRATIONS.push([
+  `CREATE TABLE staff_pins (
+     name_key TEXT    PRIMARY KEY,
+     user_id  INTEGER NOT NULL,
+     born     INTEGER NOT NULL,
+     at       INTEGER NOT NULL,
+     by       TEXT    NOT NULL DEFAULT ''
+   )`
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
@@ -941,7 +958,7 @@ export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transf
   'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers', 'ops_entries',
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'devunit_comments', 'devunit_reads',
   'diary_posts', 'diary_reads', 'diary_reactions', 'diary_comments', 'diary_claims', 'ops_mfa',
-  'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'meta'];
+  'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

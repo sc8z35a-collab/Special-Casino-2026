@@ -80,7 +80,7 @@
     vault_bucket: '保管庫をR2へ移動', vault_ai_label: 'AIのラベル（保管庫）', vault_ai_done: 'AIが実装（保管庫）', vault_restore: '保管庫で実装済みから戻す',
     vault_quota_request: '保管庫の容量の申請', vault_quota_cancel: '容量の申請の取り下げ', vault_quota_approve: '容量の申請を承認', vault_quota_decline: '容量の申請を見送り',
     vault_quota_set: '保管庫の上限を変更', vault_rename: '保管庫で名前を変更', vault_backup: '保管庫のバックアップ', vault_backup_off: 'バックアップから外す',
-    vault_backup_restore: 'バックアップから戻す', vault_ai_comment: 'AIのコメント（保管庫）', vault_implemented: '保管庫で実装済みにする', pk_fail: 'パスキーの入力ミス', pk_issue: 'パスキーを取得（Discord）', pk_breakglass: '非常口でパスキー認証を開いた', vault_link_trip: '保管庫のリンクを自動停止', milestone: '登録者数の記念', voice_notice: '通話品質アップのお知らせ'
+    vault_backup_restore: 'バックアップから戻す', vault_ai_comment: 'AIのコメント（保管庫）', vault_implemented: '保管庫で実装済みにする', staff_name_reused: '運営の名前を別のアカウントが使用', pk_fail: 'パスキーの入力ミス', pk_issue: 'パスキーを取得（Discord）', pk_breakglass: '非常口でパスキー認証を開いた', vault_link_trip: '保管庫のリンクを自動停止', milestone: '登録者数の記念', voice_notice: '通話品質アップのお知らせ'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
   var KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
