@@ -7,7 +7,7 @@
       "dennis.3.bin",
       "dennis.4.bin"
     ],
-    "bytes": 1030640
+    "bytes": 778484
   },
   "johnson": {
     "files": [
@@ -16,7 +16,7 @@
       "johnson.2.bin",
       "johnson.3.bin"
     ],
-    "bytes": 961116
+    "bytes": 564264
   },
   "joumon": {
     "files": [
@@ -25,7 +25,7 @@
       "joumon.2.bin",
       "joumon.3.bin"
     ],
-    "bytes": 919432
+    "bytes": 541364
   },
   "kamiya": {
     "files": [
@@ -36,13 +36,13 @@
       "kamiya.4.bin",
       "kamiya.5.bin"
     ],
-    "bytes": 1446496
+    "bytes": 1128852
   },
   "lectern": {
     "files": [
       "lectern.glb"
     ],
-    "bytes": 257088
+    "bytes": 134680
   },
   "natasha": {
     "files": [
@@ -51,7 +51,7 @@
       "natasha.2.bin",
       "natasha.3.bin"
     ],
-    "bytes": 876476
+    "bytes": 534236
   },
   "room": {
     "files": [
@@ -59,13 +59,13 @@
       "room.1.bin",
       "room.2.bin"
     ],
-    "bytes": 601624
+    "bytes": 392252
   },
   "seed": {
     "files": [
       "seed.glb"
     ],
-    "bytes": 287472
+    "bytes": 146440
   },
   "tree": {
     "files": [
@@ -73,7 +73,7 @@
       "tree.1.bin",
       "tree.2.bin"
     ],
-    "bytes": 605800
+    "bytes": 337952
   },
   "wild": {
     "files": [
@@ -83,6 +83,6 @@
       "wild.3.bin",
       "wild.4.bin"
     ],
-    "bytes": 1111460
+    "bytes": 651616
   }
 }

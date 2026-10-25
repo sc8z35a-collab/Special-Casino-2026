@@ -29,7 +29,9 @@
     Object.keys(map).forEach(function (k) { css += '.ic-' + k + '{background-image:' + svg(map[k]) + '}\n'; });
     var art = BR.UI_IMG;
     Object.keys(art.questTiers).forEach(function (tier) {
-      css += '.q-row.t-' + tier + '{--q-art:' + url(art.questTiers[tier]) + '}\n';
+      // Custom-property URLs are resolved by the stylesheet that uses them.
+      // Use the game's base URL so online.css never requests /css/img/… .
+      css += '.q-row.t-' + tier + '{--q-art:' + url(new URL(art.questTiers[tier], document.baseURI).href) + '}\n';
     });
     css += '.ic-chip{background-image:' + url(art.chip) + '}\n';
     css += '.ic-coin{background-image:' + url(art.coin) + '}\n';

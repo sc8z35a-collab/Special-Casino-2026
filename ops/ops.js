@@ -3095,6 +3095,24 @@
      click, a long press), its 詳細 and its 💬. Files and folders are checked
      to move, download, back up or delete several at once (Shift: a range). */
   var vaultTimer = 0, moving = 0, v3d = null, viewing = null, viewUrl = '', pics = {}, vaultSig = '', lastPick = null, shown = {};
+  var vaultWork = null, commentDrafts = {};
+  function vaultWorkspace() { if (!vaultWork) vaultWork = createVaultTabs(); return vaultWork; }
+  function resetVaultTabs() { if (vaultWork) vaultWork.reset(); commentDrafts = {}; }
+  function openVaultDetails(f) {
+    shown[f.id] = true;
+    vaultWorkspace().open('details:' + f.id, '詳細：' + f.name, {
+      show: function (pane) {
+        var current = fileOf(f.id); pane.dataset.vaultFile = f.id; pane.replaceChildren();
+        if (!current) { pane.appendChild(el('p', 'muted', 'このファイルは移動または削除されました')); return; }
+        pane.appendChild(el('h3', '', current.name)); var actions = el('div', 'vault-tab-actions');
+        if (!current.space && current.done && !current.implementedAt && canWrite()) {
+          var link = el('button', 'btn primary', 'このファイルのURLを発行'); link.type = 'button'; link.addEventListener('click', function () { makeLink(current); }); actions.appendChild(link);
+        }
+        var comments = el('button', 'btn', 'コメントを開く'); comments.type = 'button'; comments.addEventListener('click', function () { openComments(current); }); actions.appendChild(comments); pane.appendChild(actions);
+        pane.appendChild(detailsEl(current, fileKind(current)));
+      }, close: function () { delete shown[f.id]; redrawCard(f.id); }
+    });
+  }
   // three.js for the 3D previews (ops/vault3d.js), loaded the first time it is needed
   function vault3d() {
     if (!v3d) {
@@ -3196,6 +3214,7 @@
   function gb(n) { return n >= GB ? Math.round(n / GB * 10) / 10 + 'GB' : mb(n); }
   // nothing of the vault kept (closed, or someone else logged in)
   function resetVault() {
+    resetVaultTabs();
     stopThumbnails(); thumbnails = {};
     state.vault = null;
     state.vaultMemo = '';
@@ -3322,6 +3341,7 @@
   function goSpace(id) {
     if (!state.vault) return;
     if (id === state.vaultSpace) { goTop(); return; }
+    resetVaultTabs();
     state.vaultRev.full = 0;
     state.vaultSpace = id;
     state.vaultIn = '';
@@ -3508,8 +3528,11 @@
     return { files: files.length, folders: Object.keys(ids).length - 1, bytes: files.reduce(function (n, f) { return n + Number(f.size || 0); }, 0), unfinished: files.filter(function (f) { return !f.done; }).length };
   }
   function folderDetails(d) {
-    var s = folderStats(d);
-    ask({ title: 'フォルダの詳細：' + d.name, ok: '閉じる', text: '場所：' + pathName(d.id) + '\n作成日時：' + stamp(d.createdAt) + '\n容量：' + mb(s.bytes) + '（' + fmt(s.bytes) + 'バイト）\nファイル：' + fmt(s.files) + '件\nサブフォルダ：' + fmt(s.folders) + '件\nアップロード途中：' + fmt(s.unfinished) + '件\n\n容量はサブフォルダ・軽量版・ファイル内のファイルを含む保存予定サイズの合計です。' });
+    vaultWorkspace().open('folder:' + d.id, '詳細：' + d.name, { show: function (pane) {
+      pane.replaceChildren(); var current = folderOf(d.id); if (!current) { pane.appendChild(el('p', 'muted', 'このフォルダは移動または削除されました')); return; }
+      var st = folderStats(current), facts = el('div', 'facts'); pane.appendChild(el('h3', '', current.name));
+      fact(facts, '場所', pathName(current.id)); fact(facts, '作成日時', stamp(current.createdAt)); fact(facts, '容量', mb(st.bytes) + '（' + fmt(st.bytes) + 'バイト）'); fact(facts, 'ファイル', fmt(st.files) + '件'); fact(facts, 'サブフォルダ', fmt(st.folders) + '件'); fact(facts, 'アップロード途中', fmt(st.unfinished) + '件'); pane.appendChild(facts);
+    } });
   }
   // the path above the list (保管庫 / 車 / 新車): each a way back
   function onFolder(e) {
@@ -3960,6 +3983,7 @@
     renderSpeed();
     $('#vault-title').textContent = '保管庫';
     $('#vault-main').hidden = !open;
+    if (open) vaultWorkspace().refresh();
     // the developer: 編集する (the code) while looking only, 閉じる while changing
     var editing = open && state.developer && !!state.vault.ticket;
     $('#vault-unlock').hidden = !open || !state.developer || editing;
@@ -4166,15 +4190,26 @@
      its link), each for a day, 3, 7, 30 or with no end */
   var commentsFor = null;
   function openComments(f) {
-    commentsFor = f.id;
-    $('#vcomments-text').value = '';
-    $('#vcomments-days').value = '0';
-    renderComments();
-    $('#vcomments').hidden = false;
-    if (canWrite()) setTimeout(function () { $('#vcomments-text').focus(); }, 30);
-    if (!fullOf(f)) loadFull(f).then(function () { if (commentsFor === f.id) renderComments(); }, fail);
+    vaultWorkspace().open('comments:' + f.id, 'コメント：' + f.name, {
+      show: function (pane) {
+        var changing = commentsFor !== f.id, draft = commentDrafts[f.id] || { text: '', days: '0' };
+        commentsFor = f.id; var box = $('#vcomments'); if (box.parentNode !== pane) pane.appendChild(box); box.hidden = false;
+        box.querySelector('.viewer').setAttribute('role', 'region');
+        if (changing) { $('#vcomments-text').value = draft.text; $('#vcomments-days').value = draft.days; }
+        renderComments();
+        if (!fullOf(f)) loadFull(f).then(function () { if (commentsFor === f.id) renderComments(); }, fail);
+      },
+      hide: function () {
+        if (commentsFor !== f.id) return;
+        commentDrafts[f.id] = { text: $('#vcomments-text').value, days: $('#vcomments-days').value };
+        commentsFor = null; var box = $('#vcomments'); box.hidden = true; $('#app').appendChild(box);
+      }, close: function () { delete commentDrafts[f.id]; }
+    });
   }
-  function closeComments() { commentsFor = null; $('#vcomments').hidden = true; }
+  function closeComments() {
+    if (vaultWork && commentsFor) { vaultWork.close('comments:' + commentsFor); return; }
+    commentsFor = null; $('#vcomments').hidden = true;
+  }
   function renderComments() {
     var f = fileOf(commentsFor);
     if (!f) { closeComments(); return; }
@@ -4213,7 +4248,8 @@
     var f = fileOf(commentsFor), t = $('#vcomments-text'), text = t.value.trim();
     if (!f || !text) return;
     vreq('POST', '/api/vault/notes', { id: f.id, text: text, days: Number($('#vcomments-days').value) }).then(function () {
-      t.value = '';
+      if (commentsFor === f.id && t.value.trim() === text) t.value = '';
+      else if (commentDrafts[f.id] && commentDrafts[f.id].text.trim() === text) commentDrafts[f.id].text = '';
       return loadVault();
     }).catch(fail);
   }
@@ -4268,10 +4304,11 @@
   }
   // the developer's own vault: a link to all of it, or stopping those
   function linkMenu() {
-    var links = state.vault.all || { live: 0 }, items = [['保管庫全体のリンクを作る', 'make']];
+    var links = state.vault.all || { live: 0 }, items = [['発行済みリンク・再コピー', 'issued'], ['保管庫全体のリンクを作る', 'make']];
     if (links.live) items.push(['全体リンクを停止（有効 ' + links.live + '本・' + stamp(links.until) + 'まで・取得 ' + fmt(links.uses) + '回）', 'stop', 'danger']);
     menuAt($('#vault-link'), items, function (a) {
-      if (a === 'make') makeLink(null);
+      if (a === 'issued') openVaultLinks();
+      else if (a === 'make') makeLink(null);
       else if (a === 'stop') {
         ask({ title: '全体リンクを停止しますか？', text: '保管庫全体のリンクがすべて、すぐに使えなくなります。', ok: '停止する', danger: true }).then(function (ok) {
           if (!ok) return null;
@@ -4279,6 +4316,32 @@
         }).catch(fail);
       }
     });
+  }
+
+  function showIssuedVaultLink(link) {
+    ask({ title: (link.file === '*' ? '保管庫全体' : 'ファイル：' + link.name) + 'の共有URL',
+      text: '有効期限：' + stamp(link.until) + '・' + (link.ai ? 'AI用' : '読み取り専用'),
+      input: { label: '共有URL（コピーできます）', value: location.origin + link.path }, shareURL: true, ok: '閉じる' });
+  }
+  function openVaultLinks() {
+    if (!canWrite()) { toast('リンクを見るには「編集する」から開発者コードを入力してください'); return; }
+    vaultWorkspace().open('links', '発行済みリンク', { show: function (pane) {
+      pane.replaceChildren(el('p', 'muted', 'リンクを読み込み中…'));
+      vreq('GET', '/api/vault/links').then(function (r) {
+        if (!pane.isConnected || !state.developer) return;
+        pane.replaceChildren(el('h3', '', '発行済みリンク（有効なもの）'));
+        if (!r.links.length) pane.appendChild(el('p', 'muted', '有効なリンクはありません'));
+        r.links.forEach(function (link) {
+          var row = el('article', 'card vault-issued-link');
+          row.appendChild(el('b', '', link.file === '*' ? '保管庫全体' : 'ファイル：' + link.name));
+          row.appendChild(el('small', 'muted', (link.ai ? 'AI用' : '読み取り専用') + '・' + stamp(link.until) + 'まで・取得 ' + fmt(link.uses) + '回'));
+          var b = el('button', 'btn small primary', link.path ? 'URLを表示・コピー' : 'URLを再発行'); b.type = 'button';
+          b.addEventListener('click', function () { if (link.path) { showIssuedVaultLink(link); return; } var file = link.file === '*' ? null : fileOf(link.file); if (link.file !== '*' && !file) { toast('ファイルが見つかりません。一覧を更新してください'); return; } makeLink(file); }); row.appendChild(b);
+          if (!link.path) row.appendChild(el('p', 'muted', '以前の方式で発行したURLは復元できません。再発行後のURLはこの一覧から再コピーできます。'));
+          pane.appendChild(row);
+        });
+      }).catch(function (err) { if (pane.isConnected) pane.replaceChildren(el('p', 'error', err.message || 'リンクを読み込めませんでした')); });
+    } });
   }
 
   // what an AI did with a file, newest first
@@ -4352,7 +4415,7 @@
     acts.appendChild(d);
     acts.appendChild(moreBtn(f.name));
     row.appendChild(acts);
-    if (shown[f.id]) row.appendChild(detailsEl(f, kind));
+
     return row;
   }
   // A file's 詳細: everything about it, asked for when it opens (the list is
@@ -4373,6 +4436,7 @@
   function redrawCard(id) {
     var row = document.querySelector('#vault-list [data-file="' + id + '"]'), f = fileOf(id);
     if (row && f) { stopThumbnails(); row.replaceWith(vaultCard(f)); watchThumbnails(); }
+    if (vaultWork) vaultWork.render('details:' + id);
   }
   function detailsEl(f, kind) {
     var full = fullOf(f);
@@ -4955,7 +5019,7 @@
     var hours = state.vault.hours || [1, 6, 24, 72];
     ask({
       title: f ? '「' + f.name + '」のリンクを作る' : '保管庫全体のリンクを作る',
-      text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき・実装済みは除く）') + 'をログインなしで取り出せるリンクです（表示は一度だけ）。AI用にすると、AI が取ったファイルと AI の作業にラベルが付き、AI がゲームに入れたファイルは実装済みになってリンクから外れます。',
+      text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき・実装済みは除く）') + 'をログインなしで取り出せるリンクです。発行後も「リンク」の発行済み一覧から再コピーできます。AI用にすると、AI が取ったファイルと AI の作業にラベルが付き、AI がゲームに入れたファイルは実装済みになってリンクから外れます。',
       ok: '作る',
       input: { label: '有効時間（' + hours.join('・') + ' 時間）', type: 'text', value: '24' },
       select: { label: 'リンクの種類', options: [{ value: 'plain', label: '読み取り専用' }, { value: 'ai', label: 'AI用（ラベルと実装済みの報告つき）' }], value: 'plain' },
@@ -4965,7 +5029,7 @@
       var ai = v.pick === 'ai';
       return vreq('POST', '/api/vault/link', { id: f ? f.id : '*', hours: Number(v.value), ai: ai }).then(function (r) {
         var url = location.origin + r.path;
-        loadVault();
+        loadVault(); if (vaultWork) vaultWork.render('links');
         return ask({
           title: (ai ? 'AI用' : '読み取り専用') + 'リンクを作りました（' + v.value + '時間有効）',
           text: url + '\n\n' + (f ? '期限まで、このファイルだけを取り出せます。' : '期限まで、保管庫のすべてのファイルを取り出せます。') + '用が済んだら停止してください。'
@@ -5041,7 +5105,7 @@
       var held = inFile(f.id).length;
       if (held || (write && fileTrail(f.id).length < 8)) items.push([held ? '中のファイルを開く（' + fmt(held) + '件）' : '中を開く（このファイルの中にファイルを入れる）', 'inside']);
     }
-    items.push([shown[f.id] ? '詳細を閉じる' : '詳細', 'details'], ['コメント', 'comments']);
+    items.push(['詳細を開く', 'details'], ['コメント', 'comments']);
     if (write && !inBackups) items.push(['名前を変更', 'rename'], ['移動', 'move']);
     if (own && f.done && write) {
       if (f.implementedAt) items.push(['実装済みから戻す', 'restore']);
@@ -5058,7 +5122,7 @@
   function fileAct(f, act) {
     if (act === 'open') openFile(f);
     else if (act === 'inside') goInside(f);
-    else if (act === 'details') { shown[f.id] = !shown[f.id]; renderVault(); }
+    else if (act === 'details') openVaultDetails(f);
     else if (act === 'comments') openComments(f);
     else if (act === 'get') download(f);
     else if (act === 'getlight') { if (lightOf(f)) download(lightOf(f)); }
@@ -5583,6 +5647,11 @@
     });
     $('#vault-plus').addEventListener('click', plusMenu);
     $('#vault-link').addEventListener('click', linkMenu);
+    $('#vault-work-panes').addEventListener('click', function (e) {
+      var action = e.target.closest('[data-vact]'), pane = e.target.closest('[data-vault-file]');
+      if (action && pane) { var f = fileOf(pane.dataset.vaultFile); if (f) fileAct(f, action.dataset.vact); }
+    });
+
     $('#vault-memo').addEventListener('click', function () { state.vaultMemo = ''; renderMemo(); });
     $('#vmenu').addEventListener('click', onMenu);
     document.addEventListener('mousedown', function (e) { if (!$('#vmenu').hidden && !e.target.closest('#vmenu')) closeMenu(); }, true);

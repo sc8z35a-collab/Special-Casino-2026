@@ -51,7 +51,7 @@
   function say(text) { announce.textContent = text; }
   function isBlocked() {
     return ['dialog', 'money', 'chat', 'viewer', 'vcomments', 'emergency'].some(function (id) {
-      var n = document.getElementById(id); return n && !n.hidden;
+      var n = document.getElementById(id); return n && !n.hidden && !n.closest('.vault-work-pane');
     });
   }
   function prefs(key, value) {

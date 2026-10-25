@@ -20,17 +20,17 @@
   ],
   "icons": [
     {
-      "src": "icons/icon-192.png?v=coin-20261025",
+      "src": "icons/icon-192.png?v=coin-refresh-20261025",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "icons/icon-512.png?v=coin-20261025",
+      "src": "icons/icon-512.png?v=coin-refresh-20261025",
       "sizes": "512x512",
       "type": "image/png"
     },
     {
-      "src": "icons/icon-maskable-512.png?v=coin-20261025",
+      "src": "icons/icon-maskable-512.png?v=coin-refresh-20261025",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -43,7 +43,7 @@
       "url": "./?open=friends",
       "icons": [
         {
-          "src": "icons/icon-192.png?v=coin-20261025",
+          "src": "icons/icon-192.png?v=coin-refresh-20261025",
           "sizes": "192x192",
           "type": "image/png"
         }
@@ -55,7 +55,7 @@
       "url": "./?open=slot",
       "icons": [
         {
-          "src": "icons/icon-192.png?v=coin-20261025",
+          "src": "icons/icon-192.png?v=coin-refresh-20261025",
           "sizes": "192x192",
           "type": "image/png"
         }
