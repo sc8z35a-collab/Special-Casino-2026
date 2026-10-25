@@ -18,7 +18,9 @@ const JSON_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'no-referrer'
+  'Referrer-Policy': 'no-referrer',
+  // (no search engine or archive keeps an address that carries a link's secret)
+  'X-Robots-Tag': 'noindex, nofollow, noarchive'
 };
 
 // The adapter the shared core expects, on top of the object's SQL storage.

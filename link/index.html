@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>共有されたファイル</title>
+<link rel="stylesheet" href="link.css">
+</head>
+<body>
+<!-- A page for whoever is given a link to the vault (an AI uses the same address as JSON: /api/vault/pull).
+     The link's secret is the part after the # of the address: a browser never sends that part anywhere, and
+     this page sends it only as a header to this server. It can look, take and comment, nothing else. -->
+<main id="app">
+  <header class="top"><h1>共有されたファイル</h1><p class="until" id="until"></p></header>
+  <p class="status" id="status" role="status">読み込み中…</p>
+  <section id="files" aria-live="polite"></section>
+</main>
+<script src="link.js"></script>
+</body>
+</html>

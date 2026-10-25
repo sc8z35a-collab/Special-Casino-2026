@@ -14,7 +14,7 @@ export const NOTIFY = {
   emergency_stop: '🚨', emergency_release: '✅', staff_name_reused: '🪪', patrol_alert: '🔎', patrol_notice: '🔎', lockdown: '🔒', lockdown_release: '🔓', shield_auto_block: '🧱', filter_block: '🛡️',
   player_report: '🚩', player_feedback: '📝',
   pay_paid: '💰', pay_refund: '↩️', pay_review: '⚠️', pay_unknown: '⚠️', pay_bad_signature: '⚠️',
-  dev_code_fail: '🔐', login_lock: '🚫', pk_fail: '🔑', pk_breakglass: '🆘', ops_grant: '👤', ops_revoke: '👤', viewer_grant: '👀', viewer_revoke: '👀', backup_failed: '⚠️', vault_quota_request: '📦'
+  dev_code_fail: '🔐', login_lock: '🚫', vault_link_trip: '🔗', pk_fail: '🔑', pk_breakglass: '🆘', ops_grant: '👤', ops_revoke: '👤', viewer_grant: '👀', viewer_revoke: '👀', backup_failed: '⚠️', vault_quota_request: '📦'
 };
 // the game / operator site / server in danger: these go out with as much of
 // the situation as fits and with BOTH the operator site and the security HOME

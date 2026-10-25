@@ -28,7 +28,7 @@ export const SECURITY_HEADERS = {
 };
 
 // (made once: every answer starts from these)
-const JSON_HEADERS = { ...SECURITY_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+const JSON_HEADERS = { ...SECURITY_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow, noarchive' };
 
 export function sendJson(res, status, body, headers) {
   const data = Buffer.from(JSON.stringify(body));

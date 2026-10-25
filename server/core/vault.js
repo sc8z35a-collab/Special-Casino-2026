@@ -83,10 +83,13 @@ import { Buffer } from 'node:buffer';
 import { ApiError } from './errors.js';
 import { Limiter } from './ratelimit.js';
 import { keyFrom, sealText, openText } from './auth.js';
+import { agentOf } from './opsentry.js';
+import { requestProfile } from './reqinfo.js';
 
 export const CHUNK = 1024 * 1024;
 const TICKET_MS = 30 * 60000;
-export const LINK_HOURS = [1, 6, 24, 72];
+// a link lives from 1 to 48 hours, as many as the developer sets on the slider
+export const LINK_RANGE = { min: 1, max: 48 };
 // all files together and one file (MB), and the biggest piece (MiB): with a
 // bucket, and in the database (a database value holds 2 MB at most) on
 // Workers Paid and on the free plan
@@ -215,8 +218,9 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   // a piece as base64 inside JSON
   const pieceBody = Math.ceil(size.piece * CHUNK * 4 / 3) + 64 * 1024;
   // [a minute, burst]: tries to open it, pieces and lists (each operator), fetching with a link (an address)
-  const L = { vaultOpen: [10, 5], vaultWork: [1200, 300], vaultPull: [600, 200], vaultNote: [6, 6], ...config.limits };
-  const limits = { open: new Limiter(...L.vaultOpen), work: new Limiter(...L.vaultWork), pull: new Limiter(...L.vaultPull), note: new Limiter(...L.vaultNote) };
+  // (`vaultLink`: one link's own limit, all the places it is used from together: a leaked link cannot be hammered from many addresses)
+  const L = { vaultOpen: [10, 5], vaultWork: [1200, 300], vaultPull: [600, 200], vaultNote: [6, 6], vaultLink: [900, 300], ...config.limits };
+  const limits = { open: new Limiter(...L.vaultOpen), work: new Limiter(...L.vaultWork), pull: new Limiter(...L.vaultPull), note: new Limiter(...L.vaultNote), link: new Limiter(...L.vaultLink) };
   const linkPlaces = config.linkPlaces ?? LINK_PLACES;
   // the pieces, at each speed (each operator)
   const pieceLimits = Object.fromEntries(Object.entries(VAULT_SPEEDS).map(([k, v]) => [k, new Limiter(...(config.limits?.vaultPieces || v.perMinute))]));
@@ -723,6 +727,12 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     }
     places.push(place);
     q('UPDATE vault_links SET places = ? WHERE token_hash = ?').run(JSON.stringify(places), l.token_hash);
+    // (a place the link is used from for the first time: written with what is known of it, at most `linkPlaces` times for a link)
+    opsLog.add({
+      actorName: 'リンク', action: 'vault_link_place', req,
+      summary: `保管庫のURLが新しい場所から使われた（${places.length}/${linkPlaces + 1}か所目・${agentOf(req.header('user-agent'))}${req.meta && req.meta.cf && req.meta.cf.country ? '・' + req.meta.cf.country : ''}）`,
+      detail: { file: l.file_id, link: l.token_hash.slice(0, 12), place, n: places.length, net: requestProfile(req) }
+    });
   }
   // `bytes` taken out through a link: counted, and refused past the link's own limit
   function took(l, bytes) {
@@ -865,7 +875,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     const b = q(`SELECT COUNT(CASE WHEN parent = '' AND backup_at > 0 THEN 1 END) AS files, COUNT(CASE WHEN parent = '' AND space = ? THEN 1 END) AS removed,
                         COALESCE(SUM(CASE WHEN space = ? THEN size ELSE 0 END), 0) AS bytes FROM vault_files WHERE backup_at > 0 OR space = ?`).get(BACKUP, BACKUP, BACKUP);
     return {
-      ...out, own: box(''), inDb: inDb(), hours: LINK_HOURS, backups: { files: b.files, removed: b.removed, bytes: b.bytes },
+      ...out, own: box(''), inDb: inDb(), linkHours: LINK_RANGE, backups: { files: b.files, removed: b.removed, bytes: b.bytes },
       others: [...have.keys()].filter((s) => { const m = membersOf(s); return m && !m.includes(u.id); })
         .map((s) => ({ id: s, personal: personal(s), members: membersOf(s).map((id) => ({ ...who(id), operator: operatorId(id) })), ...box(s) }))
         .sort((a, b) => b.last - a.last),
@@ -887,7 +897,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const body = await req.json();
       await devCode.check(body.code, req, u);
       opsLog.add({ actor: u, action: 'vault_open', req, summary: '開発者が保管庫を開いた（開発者コードで）', detail: {} });
-      return { ticket: ticketFor(u), until: Date.now() + TICKET_MS, chunk: pieceNow(), speed: speedDto(), maxBytes, fileBytes, used: used(), hours: LINK_HOURS, store: blobs ? 'bucket' : 'db', free: freeBytes };
+      return { ticket: ticketFor(u), until: Date.now() + TICKET_MS, chunk: pieceNow(), speed: speedDto(), maxBytes, fileBytes, used: used(), linkHours: LINK_RANGE, store: blobs ? 'bucket' : 'db', free: freeBytes };
     },
 
     // the vaults one sees, one's room in the shared ones (and the developer's look at everyone's)
@@ -1391,11 +1401,12 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       if (f && f.space) throw new ApiError(400, 'not_here', '共有保管庫のファイルにはリンクを作れません（共有保管庫は非公開です）');
       if (f && !f.done_at) throw new ApiError(409, 'not_done', 'アップロードが終わってからリンクを作れます');
       const hours = Number(body.hours);
-      if (!LINK_HOURS.includes(hours)) throw new ApiError(400, 'bad_hours', `有効期間は ${LINK_HOURS.join(' / ')} 時間から選んでください`);
+      if (!Number.isInteger(hours) || hours < LINK_RANGE.min || hours > LINK_RANGE.max) throw new ApiError(400, 'bad_hours', `有効期間は ${LINK_RANGE.min}〜${LINK_RANGE.max} 時間で決めてください`);
+      // Every link is the same: whoever has it (an AI, or a person) may look, take and comment, nothing else. (`ai` only names the
+      // comments "AI" instead of "link", for the ones who still ask for it; it changes nothing a link may do.)
       const ai = body.ai === true;
-      // (what it may do: look and take; also comment — for an AI's, unless said not to)
-      const note = body.note === undefined ? ai : body.note === true;
-      const caps = ['view', 'get', ...(note ? ['note'] : [])].join(',');
+      const note = true;
+      const caps = 'view,get,note';
       // (how much it may send out: 5GB unless the developer says another, in MB)
       let maxBytes = LINK_BYTES;
       if (body.maxMb !== undefined) {
@@ -1408,8 +1419,8 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       q('INSERT INTO vault_links (token_hash, file_id, until, created_by, created_at, ai, sealed_token, caps, max_bytes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(sha(token), all ? ALL : f.id, until, u.id, Date.now(), ai ? 1 : 0, sealText(LINK_KEY, token), caps, maxBytes);
       const where = all ? '保管庫全体' : `保管庫の「${f.name}」`;
-      opsLog.add({ actor: u, action: 'vault_link', req, summary: `${where}の${ai ? 'AI用' : '読み取り専用'}リンクを作成（${hours}時間有効・${note ? '見る・取り出す・コメント' : '見る・取り出す'}）`, detail: { file: all ? ALL : f.id, name: all ? '' : f.name, hours, until, ai, caps, maxBytes } });
-      return { token, until, ai, caps: caps.split(','), maxBytes, path: `/api/vault/pull?t=${token}` };
+      opsLog.add({ actor: u, action: 'vault_link', req, summary: `${where}のURLを発行（${hours}時間有効・見る・取り出す・コメント）`, detail: { file: all ? ALL : f.id, name: all ? '' : f.name, hours, until, ai, caps, maxBytes, link: sha(token).slice(0, 12) } });
+      return { id: sha(token).slice(0, 16), token, until, ai, caps: caps.split(','), maxBytes, path: `/api/vault/pull?t=${token}` };
     },
 
     // Only the same authenticated, unlocked developer who can issue links
@@ -1417,22 +1428,42 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     'GET /api/vault/links': (req, u) => {
       need(req, u, true);
       developerOnly(u, 'リンクの一覧');
-      const links = q('SELECT * FROM vault_links WHERE revoked = 0 AND until > ? ORDER BY created_at DESC LIMIT 200').all(Date.now()).flatMap(l => {
+      const now = Date.now();
+      // (the live ones, and those that ended in the last three days, for the record: stopped, tripped by themselves, or run out)
+      const rows = q('SELECT * FROM vault_links WHERE (revoked = 0 AND until > ?) OR (until > ? AND created_at > ?) ORDER BY created_at DESC LIMIT 300').all(now, now - 3 * 86400000, now - 6 * 86400000);
+      const links = rows.flatMap((l) => {
         const f = l.file_id === ALL ? null : fileRow(l.file_id);
         if (l.file_id !== ALL && (!f || f.space || f.implemented_at)) return [];
+        const live = !l.revoked && l.until > now;
         let token = '';
-        try { if (l.sealed_token) token = openText(LINK_KEY, l.sealed_token); } catch (e) { /* old host key: reissue instead */ }
-        if (!TOKEN_RE.test(token) || sha(token) !== l.token_hash) token = '';
-        return [{ file: l.file_id, name: f ? f.name : '保管庫全体', until: l.until, createdAt: l.created_at, ai: !!l.ai, uses: l.uses, caps: [...capsOf(l)], bytesUsed: l.bytes_used, maxBytes: l.max_bytes, path: token ? `/api/vault/pull?t=${token}` : null }];
+        if (live) {
+          try { if (l.sealed_token) token = openText(LINK_KEY, l.sealed_token); } catch (e) { /* old host key: reissue instead */ }
+          if (!TOKEN_RE.test(token) || sha(token) !== l.token_hash) token = '';
+        }
+        let places = [];
+        try { places = JSON.parse(l.places || '[]'); } catch { places = []; }
+        const last = q('SELECT MAX(last_at) AS at FROM vault_link_files WHERE link_hash = ?').get(l.token_hash);
+        return [{
+          id: l.token_hash.slice(0, 16), file: l.file_id, name: f ? f.name : '保管庫全体', until: l.until, createdAt: l.created_at, state: live ? 'live' : l.revoked ? 'stopped' : 'ended',
+          ai: !!l.ai, uses: l.uses, caps: [...capsOf(l)], bytesUsed: l.bytes_used, maxBytes: l.max_bytes, places: Array.isArray(places) ? places.length : 0, placesMax: linkPlaces,
+          lastAt: (last && last.at) || 0, path: token ? `/api/vault/pull?t=${token}` : null
+        }];
       });
-      return { links };
+      return { links, now };
     },
 
-    // every link of a file (or of the whole vault: id '*') stops working at once
+    // one link (`link`: its id), several (`links`), or every link of a file (or of the whole vault: id '*') stops working at once
     'POST /api/vault/link/stop': async (req, u) => {
       need(req, u, true);
       developerOnly(u, 'リンクの停止');
       const body = await req.json();
+      const ids = (Array.isArray(body.links) ? body.links : body.link !== undefined ? [body.link] : []).map(String).filter((x) => /^[0-9a-f]{16}$/.test(x)).slice(0, 200);
+      if (ids.length || body.link !== undefined || body.links !== undefined) {
+        let n = 0;
+        for (const id of ids) n += Number(q('UPDATE vault_links SET revoked = 1 WHERE substr(token_hash, 1, 16) = ? AND revoked = 0 AND until > ?').run(id, Date.now()).changes);
+        opsLog.add({ actor: u, action: 'vault_link_stop', req, summary: `保管庫のURLを${n}本停止`, detail: { stopped: n, links: ids.map((x) => x.slice(0, 12)) } });
+        return { ok: true, stopped: n };
+      }
       const all = body.id === ALL;
       const f = all ? null : theFile(u, body.id);
       if (f && f.space) throw new ApiError(400, 'not_here', '共有保管庫のファイルにはリンクがありません');
@@ -1453,6 +1484,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       linkGuarded(req);
       rate(limits.pull, req.ip || '-');
       const l = linkFor(req, tokenOf(req));
+      rate(limits.link, l.token_hash);
       const caps = capsOf(l);
       const all = l.file_id === ALL;
       const top = all ? null : fileRow(l.file_id);
@@ -1516,6 +1548,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
         }
       }
       const l = linkFor(req, tokenOf(req, body));
+      rate(limits.link, l.token_hash);
       if (!capsOf(l).has('note')) throw gone();
       usedFrom(req, l);
       const f = fileRow(body.f);

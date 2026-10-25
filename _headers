@@ -41,6 +41,13 @@
   Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' data: blob:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow
   Cross-Origin-Opener-Policy: same-origin
+# the page for whoever is given a link to the vault (look, take, comment): nothing but itself and this
+# server, never kept, never indexed
+/link/*
+  Cache-Control: no-store
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow, noarchive
+  Cross-Origin-Opener-Policy: same-origin
 # security HOME: the operators' final safety base, its own page and script only,
 # the strictest policy, never indexed (server/core/sec.js)
 /sec/*

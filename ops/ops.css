@@ -873,3 +873,12 @@ body.role-viewer [data-stop], body.role-viewer #srv-dev, body.role-viewer .repor
 .viewer-look .viewer-img { max-width: 100%; max-height: calc(100% - 64px); min-height: 0; border-radius: 10px; background: #1d2026; }
 .viewer-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 #view-vault .vault-thumb.has-thumbnail.is-card img { border-radius: 8px; }
+
+/* the URL tab of the vault */
+.links-all, .links-title { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.links-title b { overflow-wrap: anywhere; }
+.links-life { height: 6px; border-radius: 3px; background: #0001; overflow: hidden; margin: 4px 0 6px; width: 100%; }
+.links-life i { display: block; height: 100%; background: linear-gradient(90deg, #35d6a4, #087aff); }
+.links-ended { margin: 14px 0 0; }
+.links-ended summary { cursor: pointer; font-weight: 600; margin-bottom: 6px; }
+.field input[type="range"] { padding: 0; height: 28px; accent-color: #087aff; }

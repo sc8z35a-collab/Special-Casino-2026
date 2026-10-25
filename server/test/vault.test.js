@@ -434,7 +434,7 @@ test('the developer\'s backups: any file of any vault (or a folder\'s), a badge 
   }
 });
 
-test('an AI comments on a file through its link; the developer sees it as by AI', async () => {
+test('an AI comments on a file through its link (made for an AI: by AI); every link comments, lives 1 to 48 hours, stops one by one', async () => {
   const s = await startServer({ operators: ['taku'], limits: { ...LIMITS, vaultNote: [100000, 1000] } });
   try {
     const taku = await developer(s);
@@ -454,11 +454,30 @@ test('an AI comments on a file through its link; the developer sees it as by AI'
     assert.deepEqual(pulled.notes.map((n) => [n.by, n.trusted]), [['AI', false], ['developer', true]]);
     assert.ok(pulled.how.comment.includes('comment') && pulled.how.comment.includes('150'));
     assert.deepEqual(pulled.caps, ['view', 'get', 'note']);
-    // a plain link cannot comment
+    // every link is the same: a link made with no `ai` looks, takes and comments too (its comments are by "リンク")
     const plain = (await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1 })).token;
-    assert.equal((await s.call('POST', '/api/vault/ai', { body: { t: plain, f: f.id, comment: 'x' } })).status, 404);
-    assert.equal((await s.call('GET', `/api/vault/pull?t=${plain}`)).caps.includes('note'), false);
-    assert.equal('comment' in (await s.call('GET', `/api/vault/pull?t=${plain}`)).how, false);
+    const said = await s.call('POST', '/api/vault/ai', { body: { t: plain, f: f.id, comment: '人が書いたコメント' } });
+    assert.equal(said.status, 200);
+    assert.ok(said.notes.some((n) => n.text === '人が書いたコメント' && n.by === 'リンク'));
+    const seen = await s.call('GET', `/api/vault/pull?t=${plain}`);
+    assert.deepEqual(seen.caps, ['view', 'get', 'note']);
+    assert.ok('comment' in seen.how);
+    // 1 to 48 hours, as many as the slider says; nothing else
+    for (const hours of [0, 49, 1.5, 'x', -1]) assert.equal((await taku.call('POST', '/api/vault/link', { id: f.id, hours })).error.code, 'bad_hours', String(hours));
+    const long = await taku.call('POST', '/api/vault/link', { id: f.id, hours: 48 });
+    assert.ok(Math.abs(long.until - (Date.now() + 48 * 3600000)) < 5000);
+    // one link stops by itself, the others go on; a list says which are live and which ended
+    const one = await taku.call('POST', '/api/vault/link', { id: f.id, hours: 7 });
+    const two = await taku.call('POST', '/api/vault/link', { id: f.id, hours: 7 });
+    assert.equal((await taku.call('POST', '/api/vault/link/stop', { link: one.id })).stopped, 1);
+    assert.equal((await s.call('GET', one.path)).status, 404);
+    assert.equal((await s.call('GET', two.path)).status, 200);
+    const list = (await taku.call('GET', '/api/vault/links')).links;
+    assert.equal(list.find((x) => x.id === one.id).state, 'stopped');
+    assert.equal(list.find((x) => x.id === two.id).state, 'live');
+    assert.equal(list.find((x) => x.id === two.id).path, two.path);
+    assert.equal((await taku.call('POST', '/api/vault/link/stop', { links: [two.id, long.id] })).stopped, 2);
+    assert.equal((await taku.call('POST', '/api/vault/link/stop', { link: 'nope' })).stopped, 0);
   } finally {
     await s.stop();
   }
@@ -591,7 +610,7 @@ test('a link\'s reach is counted: what it takes out is limited, one used from to
     const over = await s.call('GET', `${small.path}&n=1`);
     assert.deepEqual([over.status, over.error.code], [429, 'link_quota']);
     const listed = (await taku.call('GET', '/api/vault/links')).links.find((x) => x.path === small.path);
-    assert.deepEqual([listed.bytesUsed, listed.maxBytes, listed.caps], [MB, MB, ['view', 'get']]);
+    assert.deepEqual([listed.bytesUsed, listed.maxBytes, listed.caps], [MB, MB, ['view', 'get', 'note']]);
 
     // looking again and again is one line in the log an hour (and the count of uses goes up)
     const link = await taku.call('POST', '/api/vault/link', { id: f.id, hours: 1 });
@@ -615,6 +634,10 @@ test('a link\'s reach is counted: what it takes out is limited, one used from to
     assert.deepEqual([tripped.status, tripped.error.code], [404, 'no_link']);
     assert.equal((await from('203.0.113.5')).error.code, 'no_link');
     assert.ok((await actions(taku)).some((e) => e.action === 'vault_link_trip'));
+    // each new place the link is used from is written down, with what is known of it (the stopping one is the trip's own line)
+    const placed = (await actions(taku)).filter((e) => e.action === 'vault_link_place');
+    assert.equal(placed.length, 4, 'the first place of the two links before, and the wide one\'s two');
+    assert.ok(placed.some((e) => /1\/3か所目/.test(e.summary)) && placed.some((e) => /2\/3か所目/.test(e.summary)));
   } finally {
     await s.stop();
   }

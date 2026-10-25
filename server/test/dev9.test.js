@@ -190,7 +190,7 @@ test('an AI\'s link looks, takes and comments, nothing more; the developer, sign
     const plain = await vault('POST', '/api/vault/link', { id: '*', hours: 1 });
     const ai = await vault('POST', '/api/vault/link', { id: '*', hours: 6, ai: true });
     assert.deepEqual([plain.ai, ai.ai], [false, true]);
-    assert.deepEqual([plain.caps, ai.caps], [['view', 'get'], ['view', 'get', 'note']]);
+    assert.deepEqual([plain.caps, ai.caps], [['view', 'get', 'note'], ['view', 'get', 'note']], 'every link is the same now');
     const labels = async (id) => (await vault('GET', `/api/vault/file?id=${id}`)).file.labels;
 
     // taking is looked at but never written onto the file: no labels, for either link
@@ -206,7 +206,7 @@ test('an AI\'s link looks, takes and comments, nothing more; the developer, sign
     // a link cannot label or say "in the game"
     const say = (t, body) => s.call('POST', '/api/vault/ai', { body: { t, ...body } });
     const tokenOf = (l) => l.path.split('t=')[1];
-    assert.equal((await say(tokenOf(plain), { f: up.file.id, comment: '変換中' })).status, 404);
+    assert.equal((await say(tokenOf(plain), { f: up.file.id, comment: '変換中' })).ok, true, 'every link may comment now');
     assert.equal((await say(tokenOf(ai), { f: up.file.id, text: '車のモデルに変換中' })).error.code, 'not_allowed');
     assert.equal((await say(tokenOf(ai), { f: up.file.id, text: 'img/3d/cars/car.glb', implemented: true })).error.code, 'not_allowed');
     assert.equal((await say(tokenOf(ai), { f: up.file.id, comment: '車のモデルに変換中' })).ok, true);

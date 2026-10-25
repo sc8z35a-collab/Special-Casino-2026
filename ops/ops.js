@@ -1090,8 +1090,14 @@
       field.hidden = !o.input;
       if (o.input) {
         $('#dialog-label').textContent = o.input.label;
-        input.type = o.input.type || 'text';
+        input.type = o.input.range ? 'range' : o.input.type || 'text';
         input.value = o.input.value || '';
+        // a slider (`range`: [from, to]): its value shown in the label as it moves
+        if (o.input.range) {
+          input.min = o.input.range[0]; input.max = o.input.range[1]; input.step = 1; input.value = o.input.value || o.input.range[0];
+          input.oninput = function () { $('#dialog-label').textContent = o.input.label + '：' + input.value + (o.input.unit || ''); };
+          input.oninput();
+        } else { input.removeAttribute('min'); input.removeAttribute('max'); input.removeAttribute('step'); input.oninput = null; }
         if (o.shareURL) {
           var shareCopy = el('button', 'btn small vault-share-copy', 'URLをコピー'); shareCopy.type = 'button';
           shareCopy.addEventListener('click', function () { copyVaultURL(input.value); }); field.appendChild(shareCopy);
@@ -1105,19 +1111,31 @@
         select.textContent = '';
         o.select.options.forEach(function (x) { var op = el('option', '', x.label); op.value = x.value; select.appendChild(op); });
         select.value = o.select.value || '';
-      }
+        // (what the choice does to the field: the address shown for the one picked)
+        select.onchange = o.select.change ? function () { o.select.change(select.value, input); } : null;
+      } else select.onchange = null;
       // several lines: { label, value }
       var areaField = $('#dialog-area-field'), area = $('#dialog-area');
       areaField.hidden = !o.area;
+      var oldAreaCopy = areaField.querySelector('.vault-share-copy'); if (oldAreaCopy) oldAreaCopy.remove();
+      // (`shareArea`: several generated addresses, read-only, the only thing besides one address that can be copied from here)
+      area.readOnly = !!(o.area && o.shareArea);
+      if (o.area && o.shareArea) area.dataset.vaultShareUrl = '1'; else delete area.dataset.vaultShareUrl;
       if (o.area) {
         $('#dialog-area-label').textContent = o.area.label;
         area.value = o.area.value || '';
+        if (o.shareArea) {
+          var areaCopy = el('button', 'btn small vault-share-copy', 'まとめてコピー'); areaCopy.type = 'button';
+          areaCopy.addEventListener('click', function () { copyVaultURL(area.value); }); areaField.appendChild(areaCopy);
+        }
       }
       $('#dialog').hidden = false;
       setTimeout(function () { (o.input ? input : o.select ? select : o.area ? area : ok).focus(); }, 30);
       var done = function (v) {
         $('#dialog').hidden = true;
         delete input.dataset.vaultShareUrl; input.readOnly = false;
+        delete area.dataset.vaultShareUrl; area.readOnly = false;
+        input.oninput = null; select.onchange = null;
         $('#dialog-form').onsubmit = null;
         $('#dialog-cancel').onclick = null;
         resolve(v);
@@ -3352,7 +3370,7 @@
         if (!state.vault) return null;
         state.vault.ticket = r.ticket;
         state.vault.until = r.until;
-        state.vault.hours = r.hours;
+        state.vault.linkHours = r.linkHours;
         clearTimeout(vaultTimer);
         vaultTimer = setTimeout(function () { relock('30分たったので閲覧のみに戻りました'); }, Math.max(1000, r.until - Date.now() - 5000));
         toast('30分間 編集できます');
@@ -3369,7 +3387,7 @@
     openLook.busy = true;
     return request('GET', '/api/vault/spaces').then(function (sp) {
       if (state.vault) return null;
-      state.vault = { ticket: '', until: 0, chunk: sp.pool.chunk, maxBytes: sp.pool.maxBytes, fileBytes: sp.pool.fileBytes, used: sp.pool.used, store: sp.pool.store, me: sp.me, hours: sp.hours };
+      state.vault = { ticket: '', until: 0, chunk: sp.pool.chunk, maxBytes: sp.pool.maxBytes, fileBytes: sp.pool.fileBytes, used: sp.pool.used, store: sp.pool.store, me: sp.me, linkHours: sp.linkHours };
       state.vaultSpaces = sp;
       state.vaultSpeed = sp.speed || null;
       state.vaultSpace = state.developer ? '' : sp.personal ? sp.personal.id : sp.spaces.length ? sp.spaces[0].id : '';
@@ -4105,7 +4123,7 @@
     $('#vault-pick-files').hidden = !add;
     $('#vault-link').hidden = !own || !info;
     var links = state.vault.all || { live: 0 };
-    $('#vault-link').textContent = links.live ? 'リンク（有効 ' + links.live + '）' : 'リンク';
+    $('#vault-link').textContent = links.live ? 'URL（有効 ' + links.live + '）' : 'URL';
     renderMemo();
     $('#vault-filter').hidden = !own || !info;
     $('#vault-path').hidden = !info || state.vaultSpace === 'backup';
@@ -4373,7 +4391,7 @@
     if (!full && f.noteCount && commentsFor) loadFull(f).then(function () { if (commentsFor === f.id) renderComments(); }, function () {});
     f = full || f;
     $('#vcomments-name').textContent = f.name;
-    $('#vcomments-note').textContent = !f.space ? 'AI用リンクにも、期限まで表示されます' : f.space === 'backup' ? '' : 'この保管庫を使う人と開発者に見えます';
+    $('#vcomments-note').textContent = !f.space ? 'URLを知っている人にも、期限まで表示されます' : f.space === 'backup' ? '' : 'この保管庫を使う人と開発者に見えます';
     $('#vcomments-form').hidden = !canWrite() || state.vaultSpace === 'backup';
     var list = $('#vcomments-list');
     list.textContent = '';
@@ -4458,46 +4476,110 @@
       else if (a === 'memo') memoUpload();
     });
   }
-  // the developer's own vault: a link to all of it, or stopping those
-  function linkMenu() {
-    var links = state.vault.all || { live: 0 }, items = [['発行済みリンク・再コピー', 'issued'], ['保管庫全体のリンクを作る', 'make']];
-    if (links.live) items.push(['全体リンクを停止（有効 ' + links.live + '本・' + stamp(links.until) + 'まで・取得 ' + fmt(links.uses) + '回）', 'stop', 'danger']);
-    menuAt($('#vault-link'), items, function (a) {
-      if (a === 'issued') openVaultLinks();
-      else if (a === 'make') makeLink(null);
-      else if (a === 'stop') {
-        ask({ title: '全体リンクを停止しますか？', text: '保管庫全体のリンクがすべて、すぐに使えなくなります。', ok: '停止する', danger: true }).then(function (ok) {
-          if (!ok) return null;
-          return vreq('POST', '/api/vault/link/stop', { id: '*' }).then(function (r) { toast('リンクを停止しました（' + r.stopped + '本）'); return loadVault(); });
-        }).catch(fail);
-      }
+  // How an address is shown to be shared: the page for people (the secret after the #, which no browser sends anywhere) and the one
+  // for an AI or a program (JSON; the same secret). Each is a way to reach the same link, which can look, take and comment, nothing else.
+  function linkURLs(path) {
+    var t = (/[?&]t=([\w-]+)/.exec(path) || [])[1] || '';
+    return { page: location.origin + '/link/#' + t, api: location.origin + path };
+  }
+  // an address just issued, or one issued before: the page's, or the AI's, to copy
+  function showIssuedVaultLink(link, title) {
+    var u = linkURLs(link.path);
+    ask({
+      title: title || (link.file === '*' ? '保管庫全体' : 'ファイル：' + link.name) + 'のURL',
+      text: '有効期限：' + stamp(link.until) + '。このURLを知っている人は、人でも AI でも、見る・ダウンロードする・コメントを書く（150文字まで）ことだけができます。用が済んだらURL確認から停止してください。AI には「このURLを開いて how の説明どおりに使い、作業したらコメントで知らせて」と伝えてください（AI が使うのは下の「AI・プログラム用」です）。',
+      input: { label: '共有URL（ここだけコピーできます）', value: u.page }, shareURL: true,
+      select: { label: 'どちらを共有しますか', options: [{ value: 'page', label: '人が開くページ' }, { value: 'api', label: 'AI・プログラム用（JSON）' }], value: 'page', change: function (v, input) { input.value = v === 'api' ? u.api : u.page; } },
+      ok: '閉じる'
     });
   }
-
-  function showIssuedVaultLink(link) {
-    ask({ title: (link.file === '*' ? '保管庫全体' : 'ファイル：' + link.name) + 'の共有URL',
-      text: '有効期限：' + stamp(link.until) + '・' + (link.ai ? 'AI用' : '読み取り専用'),
-      input: { label: '共有URL（コピーできます）', value: location.origin + link.path }, shareURL: true, ok: '閉じる' });
-  }
+  // The URL tab: every address that works (and what ended in the last days), with what each has done, to look at, copy and stop
+  // one by one or all together.
   function openVaultLinks() {
-    if (!canWrite()) { toast('リンクを見るには「編集する」から開発者コードを入力してください'); return; }
-    vaultWorkspace().open('links', '発行済みリンク', { show: function (pane) {
-      pane.replaceChildren(el('p', 'muted', 'リンクを読み込み中…'));
-      vreq('GET', '/api/vault/links').then(function (r) {
-        if (!pane.isConnected || !state.developer) return;
-        pane.replaceChildren(el('h3', '', '発行済みリンク（有効なもの）'));
-        if (!r.links.length) pane.appendChild(el('p', 'muted', '有効なリンクはありません'));
-        r.links.forEach(function (link) {
-          var row = el('article', 'card vault-issued-link');
-          row.appendChild(el('b', '', link.file === '*' ? '保管庫全体' : 'ファイル：' + link.name));
-          row.appendChild(el('small', 'muted', (link.ai ? 'AI用' : '読み取り専用') + (link.caps && link.caps.indexOf('note') >= 0 ? '・コメント可' : '') + '・' + stamp(link.until) + 'まで・取得 ' + fmt(link.uses) + '回' + (link.maxBytes ? '・' + mb(link.bytesUsed || 0) + ' / ' + mb(link.maxBytes) : '')));
-          var b = el('button', 'btn small primary', link.path ? 'URLを表示・コピー' : 'URLを再発行'); b.type = 'button';
-          b.addEventListener('click', function () { if (link.path) { showIssuedVaultLink(link); return; } var file = link.file === '*' ? null : fileOf(link.file); if (link.file !== '*' && !file) { toast('ファイルが見つかりません。一覧を更新してください'); return; } makeLink(file); }); row.appendChild(b);
-          if (!link.path) row.appendChild(el('p', 'muted', '以前の方式で発行したURLは復元できません。再発行後のURLはこの一覧から再コピーできます。'));
-          pane.appendChild(row);
+    if (!canWrite()) { toast('URLを見るには「編集する」から開発者コードを入力してください'); return; }
+    vaultWorkspace().open('links', 'URL確認', { show: drawLinks });
+  }
+  function leftText(ms) {
+    var m = Math.max(0, Math.floor(ms / 60000));
+    return m >= 60 ? Math.floor(m / 60) + '時間' + (m % 60 ? (m % 60) + '分' : '') : m + '分';
+  }
+  function drawLinks(pane) {
+    pane.replaceChildren(el('p', 'muted', 'URLを読み込み中…'));
+    vreq('GET', '/api/vault/links').then(function (r) {
+      if (!pane.isConnected || !state.developer) return;
+      var now = r.now || Date.now(), live = r.links.filter(function (l) { return l.state === 'live'; }), ended = r.links.filter(function (l) { return l.state !== 'live'; });
+      pane.replaceChildren();
+      pane.appendChild(el('h3', '', 'URL確認（有効 ' + live.length + ' 本）'));
+      pane.appendChild(el('p', 'hint muted', '発行したURLを知っている人は、人でも AI でも、見る・ダウンロードする・コメントを書くことだけができます（ファイルは変えられません）。有効時間は 1〜48 時間。あまりに多くの場所から使われたURLは自動で止まります。'));
+      var bar = el('div', 'vault-tab-actions');
+      function btn(text, cls, fn) { var b = el('button', 'btn small' + (cls ? ' ' + cls : ''), text); b.type = 'button'; b.addEventListener('click', fn); bar.appendChild(b); return b; }
+      btn('保管庫全体のURLを発行', 'primary', function () { makeLink(null); });
+      btn('更新', '', function () { drawLinks(pane); });
+      var showSel = btn('選んだURLを表示・コピー', '', function () { shareMany(chosen()); });
+      var stopSel = btn('選んだURLを停止', 'danger', function () { stopLinks(chosen(), pane); });
+      btn('有効なURLをすべて停止', 'danger', function () { stopLinks(live, pane); });
+      pane.appendChild(bar);
+      var rows = [];
+      function chosen() { return rows.filter(function (x) { return x.pick.checked; }).map(function (x) { return x.link; }); }
+      function sync() { var n = chosen().length; showSel.disabled = stopSel.disabled = !n; all.checked = !!n && n === rows.length; all.indeterminate = n > 0 && n < rows.length; }
+      var allLabel = el('label', 'links-all'), all = el('input');
+      all.type = 'checkbox'; allLabel.appendChild(all); allLabel.appendChild(el('span', '', 'すべて選ぶ'));
+      all.addEventListener('change', function () { rows.forEach(function (x) { x.pick.checked = all.checked; }); sync(); });
+      if (live.length) pane.appendChild(allLabel); else pane.appendChild(el('p', 'muted', '有効なURLはありません（ファイルの「⋯」→「URLを発行」で作れます）'));
+      live.forEach(function (l) {
+        var row = el('article', 'card vault-issued-link'), head = el('label', 'links-title'), pick = el('input');
+        pick.type = 'checkbox'; pick.addEventListener('change', sync);
+        head.appendChild(pick); head.appendChild(el('b', '', l.file === '*' ? '保管庫全体' : l.name));
+        head.appendChild(el('small', 'muted', l.file === '*' ? 'すべてのファイル' : 'このファイルだけ'));
+        row.appendChild(head);
+        var total = Math.max(1, l.until - l.createdAt), life = el('div', 'links-life'), fill = el('i');
+        fill.style.width = Math.max(2, Math.min(100, (l.until - now) / total * 100)).toFixed(1) + '%';
+        life.appendChild(fill); row.appendChild(life);
+        row.appendChild(el('small', 'muted', 'あと ' + leftText(l.until - now) + '（' + stamp(l.until).slice(5, 16) + ' まで）・取得 ' + fmt(l.uses) + '回・取り出し ' + mb(l.bytesUsed || 0) + ' / ' + mb(l.maxBytes || 0)
+          + '・使われた場所 ' + l.places + ' / ' + (l.placesMax + 1) + '・' + (l.lastAt ? '最後に使われたのは ' + ago(l.lastAt) : 'まだ使われていません')));
+        var acts = el('div', 'vault-tab-actions');
+        var view = el('button', 'btn small primary', l.path ? 'URLを表示・コピー' : 'URLを作り直す'); view.type = 'button';
+        view.addEventListener('click', function () {
+          if (l.path) { showIssuedVaultLink(l); return; }
+          var file = l.file === '*' ? null : fileOf(l.file);
+          if (l.file !== '*' && !file) { toast('ファイルが見つかりません。一覧を更新してください'); return; }
+          makeLink(file);
         });
-      }).catch(function (err) { if (pane.isConnected) pane.replaceChildren(el('p', 'error', err.message || 'リンクを読み込めませんでした')); });
-    } });
+        var stop = el('button', 'btn small danger', '停止'); stop.type = 'button';
+        stop.addEventListener('click', function () { stopLinks([l], pane); });
+        acts.appendChild(view); acts.appendChild(stop); row.appendChild(acts);
+        if (!l.path) row.appendChild(el('p', 'muted', '以前の方式で発行したURLは復元できません。作り直すと、この一覧から再コピーできます。'));
+        rows.push({ link: l, pick: pick });
+        pane.appendChild(row);
+      });
+      sync();
+      if (ended.length) {
+        var d = el('details', 'links-ended');
+        d.appendChild(el('summary', '', '最近終わったURL（' + ended.length + ' 本・3日分）'));
+        ended.forEach(function (l) {
+          d.appendChild(el('p', 'muted', (l.file === '*' ? '保管庫全体' : l.name) + '・' + (l.state === 'stopped' ? '停止（または使われすぎて自動停止）' : '期限切れ') + '・' + stamp(l.until).slice(5, 16) + '・取得 ' + fmt(l.uses) + '回・場所 ' + l.places));
+        });
+        pane.appendChild(d);
+      }
+    }).catch(function (err) { if (pane.isConnected) pane.replaceChildren(el('p', 'error', (err && err.message) || 'URLを読み込めませんでした')); });
+  }
+  // several addresses at once, to copy (the page's and the AI's of each)
+  function shareMany(list) {
+    if (!list.length) return;
+    var lines = [];
+    list.forEach(function (l) {
+      if (!l.path) return;
+      var u = linkURLs(l.path);
+      lines.push('【' + (l.file === '*' ? '保管庫全体' : l.name) + '】' + stamp(l.until).slice(5, 16) + ' まで', '人が開くページ: ' + u.page, 'AI・プログラム用: ' + u.api, '');
+    });
+    ask({ title: list.length + '本のURL', text: '選んだURLです。このURLを知っている人は、見る・ダウンロードする・コメントを書くことだけができます。', area: { label: '共有URL（ここだけコピーできます）', value: lines.join('\n').trim() }, shareArea: true, ok: '閉じる' });
+  }
+  function stopLinks(list, pane) {
+    if (!list.length) { toast('停止するURLがありません'); return; }
+    ask({ title: list.length + '本のURLを停止しますか？', text: '停止したURLは、すぐに使えなくなります（元に戻せません。必要なら新しく発行してください）。', ok: '停止する', danger: true }).then(function (ok) {
+      if (!ok) return null;
+      return vreq('POST', '/api/vault/link/stop', { links: list.map(function (l) { return l.id; }) }).then(function (r) { toast('URLを停止しました（' + r.stopped + '本）'); loadVault(); drawLinks(pane); });
+    }).catch(fail);
   }
 
   // what an AI did with a file, newest first
@@ -5254,35 +5336,27 @@
       j.finish('ダウンロードしました（ハッシュ一致を確認済み）');
     }).catch(function (err) { j.fail((err && err.message) || 'ダウンロードできませんでした'); });
   }
-  // `f`: a file, or null for the whole vault
+  // `f`: a file, or null for the whole vault. Every address is the same: whoever has it (a person or an AI) may look, take and
+  // comment; the developer only says for how many hours (1 to 48, on a slider).
   function makeLink(f) {
-    var hours = state.vault.hours || [1, 6, 24, 72];
+    var range = (state.vault && state.vault.linkHours) || { min: 1, max: 48 };
     ask({
-      title: f ? '「' + f.name + '」のリンクを作る' : '保管庫全体のリンクを作る',
-      text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき・実装済みは除く）') + 'をログインなしで取り出せるリンクです。リンクでできるのは、見ること・取り出すこと・コメントを書くこと（AI用だけ・150文字まで）だけです。ファイルは変えられません。取り出せる量は5GBまで、あまりに多くの場所から使われると自動で止まります。発行後も「リンク」の発行済み一覧から再コピーできます。',
-      ok: '作る',
-      input: { label: '有効時間（' + hours.join('・') + ' 時間）', type: 'text', value: '24' },
-      select: { label: 'リンクの種類', options: [{ value: 'plain', label: '読み取り専用（見る・取り出す）' }, { value: 'ai', label: 'AI用（見る・取り出す・150文字までのコメント）' }], value: 'plain' },
-      check: function (v) { return hours.indexOf(Number(v)) >= 0 ? '' : hours.join('・') + ' のどれかを入れてください'; }
+      title: f ? '「' + f.name + '」のURLを発行' : '保管庫全体のURLを発行',
+      text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき・実装済みは除く）') + 'を、このURLを知っている人なら誰でも（人でも AI でも）、ログインなしで、見る・ダウンロードする・コメントを書く（150文字まで）ことだけができるURLです。ファイルは変えられません。取り出せる量は5GBまで、あまりに多くの場所から使われると自動で止まります。「URL」の確認画面でいつでも停止・再コピーできます。',
+      ok: '発行する',
+      input: { label: '有効時間', range: [range.min, range.max], unit: ' 時間', value: '24' },
+      check: function (v) { var n = Number(v); return Number.isInteger(n) && n >= range.min && n <= range.max ? '' : range.min + '〜' + range.max + ' 時間で決めてください'; }
     }).then(function (v) {
       if (v === null) return null;
-      var ai = v.pick === 'ai';
-      return vreq('POST', '/api/vault/link', { id: f ? f.id : '*', hours: Number(v.value), ai: ai }).then(function (r) {
-        var url = location.origin + r.path;
+      return vreq('POST', '/api/vault/link', { id: f ? f.id : '*', hours: Number(v) }).then(function (r) {
         loadVault(); if (vaultWork) vaultWork.render('links');
-        return ask({
-          title: (ai ? 'AI用' : '読み取り専用') + 'リンクを作りました（' + v.value + '時間有効）',
-          text: url + '\n\n' + (f ? '期限まで、このファイルだけを取り出せます。' : '期限まで、保管庫のすべてのファイルを取り出せます。') + '用が済んだら停止してください。'
-            + (ai ? '\n\nAI には「このURLを開いて how の説明どおりに使い、作業したらコメントで知らせて」と伝えてください。ゲームに入れたと知らせるコメントを見たら、ファイルのメニューから「実装済みにする」を押します。' : ''),
-          input: { label: '共有URL（ここだけコピーできます）', value: url }, shareURL: true,
-          ok: '閉じる'
-        });
+        showIssuedVaultLink({ file: f ? f.id : '*', name: f ? f.name : '', until: r.until, path: r.path }, 'URLを発行しました（' + v + '時間有効）');
       });
     }).catch(fail);
   }
   function copyVaultURL(url) {
-    var input = $('#dialog-input');
-    if ($('#dialog').hidden || !input.readOnly || input.dataset.vaultShareUrl !== '1' || input.value !== url) return;
+    var input = [$('#dialog-input'), $('#dialog-area')].filter(function (x) { return x.readOnly && x.dataset.vaultShareUrl === '1' && x.value === url; })[0];
+    if ($('#dialog').hidden || !input) return;
     function fallback() { input.focus(); input.select(); try { if (!document.execCommand('copy')) throw new Error(); toast('共有URLをコピーしました'); } catch (e) { toast('URLを選択してコピーしてください'); } }
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function () { toast('共有URLをコピーしました'); }, fallback);
     else fallback();
@@ -5349,8 +5423,8 @@
     if (write && !inBackups) items.push(['名前を変更', 'rename'], ['移動', 'move']);
     if (own && f.done && write) {
       if (f.implementedAt) items.push(['実装済みから戻す', 'restore']);
-      else items.push(['実装済みにする', 'implement'], ['リンクを作る', 'link']);
-      if (f.links.live) items.push(['リンクを停止', 'stop']);
+      else items.push(['実装済みにする', 'implement'], ['URLを発行', 'link']);
+      if (f.links.live) items.push(['このファイルのURLをすべて停止', 'stop']);
     }
     if (dev && f.done) {
       if (f.backup && f.backup.removed) items.push(['元の場所に戻す', 'unremove']);
@@ -5969,7 +6043,7 @@
       });
     });
     $('#vault-plus').addEventListener('click', plusMenu);
-    $('#vault-link').addEventListener('click', linkMenu);
+    $('#vault-link').addEventListener('click', openVaultLinks);
     $('#vault-work-panes').addEventListener('click', function (e) {
       var action = e.target.closest('[data-vact]'), pane = e.target.closest('[data-vault-file]');
       if (action && pane) { var f = fileOf(pane.dataset.vaultFile); if (f) fileAct(f, action.dataset.vact); }
