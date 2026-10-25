@@ -156,7 +156,7 @@ const LINE_SECRET = process.env.CHECK_LINE_SECRET || '', LINE_STAFF = process.en
   // the patrol: the server looks over itself (JSON functions, the log's triggers and its pages, on the object's own SQL)
   const look = await signed('POST', '/api/ops/patrol/run', {});
   assert.equal(look.status, 200, 'patrol: ' + JSON.stringify(look).slice(0, 300));
-  assert.deepEqual(look.patrol.checks.map((c) => c.id), ['log', 'rights', 'accounts', 'settings']);
+  assert.deepEqual(look.patrol.checks.map((c) => c.id), ['log', 'rights', 'accounts', 'settings', 'parts']);
   assert.deepEqual(look.patrol.findings, [], 'nothing wrong: ' + JSON.stringify(look.patrol.findings));
   console.log('patrol: the server looked over itself on the Worker, nothing wrong');
   console.log('WORKER OK');

@@ -13,7 +13,7 @@ import { loadConfig, ROOT } from './config.js';
 import { openDb } from './sqlite.js';
 import { Live } from './live.js';
 import { createStatic } from './static.js';
-import { SECURITY_HEADERS, sendJson, clientIp, coreRequest, bufferedRequest, readBytes } from './http.js';
+import { SECURITY_HEADERS, sendJson, sendRaw, clientIp, coreRequest, bufferedRequest, readBytes } from './http.js';
 import { createApi } from '../core/api.js';
 import { CHAT_ROUTES, screenChat, BLOCKED } from '../core/attach.js';
 import { metaValue } from '../core/db.js';
@@ -46,12 +46,12 @@ function machine(dataDir, live, trail) {
 }
 
 // `blobs`: a bucket for the developer's vault (the tests' stand-in for R2; none here)
-export function createApp({ blobs = null, questRewardRoll, questTicketRoll, ...overrides } = {}) {
+export function createApp({ blobs = null, questRewardRoll, questTicketRoll, extensions, ...overrides } = {}) {
   const config = loadConfig(overrides);
   const db = openDb(config.dataDir);
   const live = new Live();
   const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
-  const api = createApi({ db, live, config, secret, blobs, questRewardRoll, questTicketRoll, host: machine(config.dataDir, live, config.logRequests) });
+  const api = createApi({ db, live, config, secret, blobs, questRewardRoll, questTicketRoll, extensions, host: machine(config.dataDir, live, config.logRequests) });
   live.onPresence = (userId, online) => api.presence(userId, online);
   live.onOpsGone = (userId) => api.opsGone(userId);
   // The page is online with WebSocket live updates (Cloudflare); here they come as SSE.
@@ -108,7 +108,7 @@ export function createApp({ blobs = null, questRewardRoll, questTicketRoll, ...o
         core = bufferedRequest(req, url, ip, bytes);
       }
       const out = await api.handle(core);
-      api.sent(sendJson(res, out.status, out.body), url.pathname);
+      api.sent(out.raw ? sendRaw(res, out.status, out.raw) : sendJson(res, out.status, out.body), url.pathname);
       return;
     }
     if (serveStatic(req, res, url.pathname)) return;

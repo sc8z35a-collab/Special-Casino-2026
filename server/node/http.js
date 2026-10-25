@@ -37,6 +37,14 @@ export function sendJson(res, status, body, headers) {
   return data.length;
 }
 
+// An answer that is not JSON (server/core/raw.js): sent as it is, the page's security headers on it.
+export function sendRaw(res, status, raw) {
+  const data = typeof raw.body === 'string' ? Buffer.from(raw.body) : Buffer.from(raw.body || '');
+  res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': raw.type, 'Content-Length': data.length, 'Cache-Control': 'no-store', ...raw.headers });
+  res.end(data);
+  return data.length;
+}
+
 // Reads a JSON body (at most `limit` bytes).
 export function readJson(req, limit = 16 * 1024) {
   return new Promise((resolve, reject) => {

@@ -30,6 +30,9 @@ import {
 import { createAdmin } from './admin.js';
 import { createStaffPins } from './staffpin.js';
 import { createPatrol } from './patrol.js';
+import { createExtensions } from './ext.js';
+import { Raw } from './raw.js';
+import extensions from '../ext/index.js';
 import { createPeter, reservedName } from './peter.js';
 import { createJohnson } from './johnson.js';
 import { createOfficial } from './official.js';
@@ -101,7 +104,7 @@ function randomInt(lo, hi) {
   return lo + (r[0] % (hi - lo + 1));
 }
 
-export function createApi({ db, live: hostLive, config, secret, hostAdmin = null, defer = null, blobs = null, host = null, questRewardRoll, questTicketRoll }) {
+export function createApi({ db, live: hostLive, config, secret, hostAdmin = null, defer = null, blobs = null, host = null, questRewardRoll, questTicketRoll, extensions: extraParts = extensions }) {
   const q = statements(db);
   const tx = (fn) => db.tx(fn);
   const quota = createQuota(db, { requests: config.dailyRequestLimit, megabytes: config.dailyMbLimit });
@@ -3731,8 +3734,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   routes['GET /api/ops/players'] = (req, u) => ({ ...opsPlayers(req, u), favorites: watch.favoriteIds(u.id) });
   const opsMfa = createOpsMfa({ q, tx, secret, ops, opsLog, isDeveloper, requireDevMfa: config.requireDevMfa, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now });
   Object.assign(routes, opsMfa.routes);
+  // parts this deployment adds, if it has any (server/core/ext.js; the list is server/ext/index.js)
+  const ext = createExtensions({
+    list: extraParts, secret, clock: config.clock || Date.now,
+    ctx: { q, tx, exec: (sql) => db.exec(sql), config, opsLog, getUser, isDeveloper, ops, secret, clock: config.clock || Date.now, notice, ApiError, keyFrom, nameKey, sha256 }
+  });
+  Object.assign(routes, ext.routes);
   Object.assign(routes, createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed,
-    commentRate: (u) => rate(limit.dm, u.id), opsLog }).routes);
+    commentRate: (u) => rate(limit.dm, u.id), opsLog, gate: ext.gate }).routes);
   Object.assign(routes, createDevUnit({ q, ops, live, getUser, isDeveloper }).routes);
   // the operator site's ログインログ (the day's ログイン button; the developer's alone to read)
   const opsEntry = createOpsEntry({ q, getUser, see: ops.see, isOperator: ops.isOperator, isDeveloper });
@@ -3791,7 +3800,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     list: (...a) => { stats.r2('a'); return blobs.list(...a); },
     del: (...a) => blobs.del(...a)
   };
-  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, blobs: bucket, onDb: (n) => emergency.vaultDb(n), epoch: pk.epoch });
+  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, gate: ext.gate, blobs: bucket, onDb: (n) => emergency.vaultDb(n), epoch: pk.epoch });
   vaultRef = vault;
   Object.assign(routes, vault.routes);
   // the developer's backups of everything but the vault
@@ -3810,7 +3819,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   });
   const patrol = createPatrol({
     q, opsLog, config, settings: settingsNow, clock: config.clock || Date.now,
-    isStaff: (u) => isDeveloper(u) || ops.isOperator(u) || ops.isViewer(u)
+    isStaff: (u) => isDeveloper(u) || ops.isOperator(u) || ops.isViewer(u), extMissing: () => ext.missing()
   });
   const patrolDto = () => { const r = patrol.last(); return r && { at: r.at, ms: r.ms, by: r.by, checks: r.checks, findings: r.findings }; };
   routes['GET /api/ops/patrol'] = (req, u) => { ops.see(u); return { patrol: patrolDto(), now: Date.now() }; };
@@ -3885,7 +3894,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const sec = createSec({ q, getUser, ops, emergency, shield, opsLog, health, secret, isDeveloper, live, seen: opsSeen });
   Object.assign(routes, sec.routes);
 
-  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', ...pay.public, ...vault.public, ...bot.public, ...lineBot.public]);
+  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', ...pay.public, ...vault.public, ...bot.public, ...lineBot.public, ...ext.publicKeys]);
 
   /* ---------------------------------------------------------------- live connection hooks */
 
@@ -4105,7 +4114,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // operator or a viewer on its own).
   const VIEW_ONLY = new Set([
     'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/ops/alive', 'GET /api/ops/counts', 'GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback',
-    'GET /api/ops/log', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security', 'GET /api/ops/patrol',
+    'GET /api/ops/log', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security', 'GET /api/ops/patrol', 'GET /api/ops/ext',
     'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify', 'POST /api/logout',
     'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close'
   ]);
@@ -4170,7 +4179,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         // (a vault's pieces: their own limit, in server/core/vault.js)
         if (!VAULT_BULK.has(key)) rate(limit.general, user.id);
       }
-      return { status: 200, body: await route(req, user) };
+      const result = await route(req, user);
+      // (a script or a file, not JSON: the host sends it as it is)
+      return result instanceof Raw ? { status: result.status, raw: result } : { status: 200, body: result };
     } catch (e) {
       if (e instanceof ApiError) return { status: e.status, body: { error: { code: e.code, message: e.message, ...(e.extra || {}) } } };
       // the host's daily quota ran out (e.g. database writes on the free plan)

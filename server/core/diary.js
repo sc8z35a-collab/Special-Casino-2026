@@ -7,7 +7,7 @@ import { screen } from './filter.js';
 
 export const DIARY_REWARDS = Array.from({ length: 25 }, (_, i) => (i + 1) * 10000);
 export const DIARY_TTL = 30 * 86400000;
-export function createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed, commentRate, opsLog }) {
+export function createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed, commentRate, opsLog, gate = null }) {
   const developer = (u) => {
     ops.need(u);
     if (!isDeveloper(u)) throw new ApiError(403, 'developer_only', '開発者日記の管理・コメント閲覧は開発者だけが利用できます');
@@ -102,6 +102,8 @@ export function createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, bala
       if (typeof b.title !== 'string' || typeof b.text !== 'string') throw new ApiError(400, 'bad_text', 'タイトルと本文を入力してください');
       const title = cleanText(b.title, 100), text = cleanText(b.text, 20000), img = image(b.image), reward = b.reward ?? 0;
       if (reward !== 0 && !DIARY_REWARDS.includes(reward)) throw new ApiError(400, 'bad_reward', '報酬は10k〜250kから選択してください');
+      // (a picture comes in whole: an extension may refuse it, server/core/ext.js)
+      if (gate) gate.inline({ user: u, req, kind: 'diary', name: 'diary-image', bytes: img ? Buffer.from(img.slice(img.indexOf(',') + 1), 'base64') : null });
       const at = Date.now(), id = tx(() => {
         const r = q('INSERT INTO diary_posts (title, body, image, reward, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)').run(title, text, img, reward, at, at + DIARY_TTL);
         const id = Number(r.lastInsertRowid);

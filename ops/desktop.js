@@ -95,6 +95,16 @@
   var accountHead = node('div', 'mac-account-head'); accountHead.appendChild(picture('operators'));
   accountHead.appendChild(node('span', '', '運営アカウント')); account.appendChild(accountHead);
   account.appendChild(controls); app.appendChild(account);
+  // items other parts of the page add to the account menu (ops/ext.js)
+  var extras = node('div', 'mac-account-extras'); account.appendChild(extras);
+  window.OpsDesktop = {
+    addItem: function (label, fn) {
+      var b = button('btn small mac-account-item', label);
+      b.addEventListener('click', function () { account.hidden = true; fn(); });
+      extras.appendChild(b);
+    },
+    clearItems: function () { extras.replaceChildren(); }
+  };
   menuHost = node('div', 'mac-dropdown'); menuHost.id = 'mac-menu'; menuHost.hidden = true;
   menuHost.setAttribute('role', 'menu'); app.appendChild(menuHost);
 

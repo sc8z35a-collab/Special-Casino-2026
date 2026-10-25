@@ -361,8 +361,9 @@
   function signedOut(message) {
     setToken(null);
     OpsPk.close();
-    // a viewer: nothing they saw stays in the page (it starts over, the reason kept for the login)
-    if (state.viewer) {
+    // a viewer: nothing they saw stays in the page (it starts over, the reason kept for the login); so does
+    // a page that has parts of a deployment's in it (ops/ext.js)
+    if (state.viewer || OpsExt.active()) {
       try { sessionStorage.setItem('ops-out', message || ''); } catch (e) { /* the login says nothing then */ }
       location.reload();
       return;
@@ -431,6 +432,11 @@
     setToken(null);
     OpsPk.close();
     if (t) fetch('/api/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: '{}' }).catch(function () {});
+    if (OpsExt.active()) {
+      try { sessionStorage.setItem('ops-out', 'ログアウトしました'); } catch (e) { /* the login says nothing then */ }
+      location.reload();
+      return;
+    }
     showLogin('ログアウトしました');
   }
 
@@ -550,6 +556,8 @@
     state.name = me.name;
     state.developer = !!me.developer;
     state.viewer = !!me.viewer;
+    // (parts this deployment adds, if any: ops/ext.js; files held for their check go on from where they were)
+    OpsExt.load(request).then(resumeHeld);
     $('#tab-diary').hidden = !state.developer;
     $('#tab-profile').hidden = state.viewer;
     if (diaryProfile) diaryProfile.start(me);
@@ -4584,7 +4592,7 @@
      this browser with its upload's own pass, and is shown here while it goes:
      a stopped one (the connection, the server busy, the room) goes on by
      itself, and 「再開」 sends every stopped one again at once. */
-  var up = { mode: '', reg: null, engine: null, jobs: {}, cards: {}, mem: {}, ready: null };
+  var up = { mode: '', reg: null, engine: null, jobs: {}, cards: {}, mem: {}, checking: {}, ready: null };
   var UP_WHY = {
     net: '通信が切れたか、サーバーが混み合っています。自動で何度でも続きから送ります',
     locked: 'アップロードの許可（1週間）が切れました。「編集する」で開発者コードを入れると、自動で続きを送ります',
@@ -4776,6 +4784,8 @@
       who: state.name, id: o.id || '', name: file.name, size: file.size, type: file.type || '',
       note: o.note || '', space: o.parent ? '' : o.space || '', folder: o.folder || '', inside: o.parent ? '' : o.inside || '', parent: o.parent || '',
       model: !o.parent && is3d(file.name) && file.size > 0, pass: o.pass || '', piece: 0, chunks: 0, sent: 0,
+      // (held for the checks a deployment puts in front of the sending: ops/ext.js)
+      hold: OpsExt.has('beforeSend') || OpsExt.expected(),
       state: 'wait', why: '', message: '', tries: 0, next: 0, at: Date.now(), mem: false
     };
     if (!file.size) { toast('「' + file.name + '」は中身が空（0バイト）か、端末から読み込めませんでした。中身のあるファイルを選んでください'); return Promise.resolve(null); }
@@ -4791,6 +4801,42 @@
       return j.id ? passFor(j) : place(j);
     }).then(function () { kick(); return j; });
   }
+  // A file waits for the checks the deployment has put in front of its sending (ops/ext.js), if it
+  // has any: it is stored held (the sending engine passes it by) and goes on when the check answers.
+  // Refused: it ends there, for good, with the words the check gave. Not waited for by the callers:
+  // the next file is placed meanwhile, and the check decides how many run at once.
+  function check(j) {
+    if (!j.hold || !j.id || j.state === 'fail' || up.checking[j.key]) return Promise.resolve();
+    if (!OpsExt.has('beforeSend')) return endJob(j, '追加部品を読み込めませんでした。ページを読み込み直して、もう一度ファイルを選んでください');
+    up.checking[j.key] = true;
+    return (up.mem[j.key] ? Promise.resolve(up.mem[j.key]) : VaultUploads.fileOf(j.key)).then(function (file) {
+      if (!file) return null;
+      return OpsExt.run('beforeSend', null, j, file, { request: request, toast: toast });
+    }).then(function () {
+      delete up.checking[j.key];
+      j.hold = false;
+      return VaultUploads.save(j).then(function () { onJob(j); kick(); });
+    }, function (err) {
+      delete up.checking[j.key];
+      return endJob(j, (err && err.message) || 'できませんでした');
+    }).catch(function () { /* the browser's storage failed: the file shows as it was */ });
+  }
+  function endJob(j, message) {
+    j.hold = false;
+    j.state = 'fail';
+    j.why = 'gone';
+    j.message = message;
+    j.next = 0;
+    return VaultUploads.save(j).then(function () { onJob(j); return j; });
+  }
+  // after a reload: the files that were held for their check are checked again
+  function resumeHeld() {
+    if (!window.indexedDB || !token) return Promise.resolve();
+    var me = state.name;
+    return VaultUploads.all().then(function (list) {
+      list.filter(function (j) { return j.who === me && j.hold && j.state !== 'done'; }).forEach(function (j) { check(j); });
+    }, function () {});
+  }
   // its place on the server (and its pass); the room not there: it waits
   function place(j) {
     var extra = j.parent && j.pass ? { 'X-Vault-Upload': j.pass } : null;
@@ -4804,7 +4850,7 @@
       j.state = 'wait';
       j.why = '';
       j.message = '';
-      return VaultUploads.save(j).then(function () { onJob(j); });
+      return VaultUploads.save(j).then(function () { onJob(j); check(j); });
     }, function (err) { return stopJob(j, err); });
   }
   // an unfinished one on the server, gone on with: a new pass for it
@@ -4818,7 +4864,7 @@
       j.pass = r.upload;
       j.state = 'wait';
       j.why = '';
-      return VaultUploads.save(j).then(function () { onJob(j); });
+      return VaultUploads.save(j).then(function () { onJob(j); check(j); });
     }, function (err) { return stopJob(j, err); });
   }
   function stopJob(j, err) {

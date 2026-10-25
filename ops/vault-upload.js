@@ -235,7 +235,8 @@ var VaultUploads = (function () {
     function slot() {
       return all().then(function (list) {
         var now = Date.now();
-        var mine = list.filter(function (j) { return j.id && j.pass && host.mine(j) && !active[j.key]; });
+        // (a file held for a check before it goes — ops/ext.js — waits)
+        var mine = list.filter(function (j) { return j.id && j.pass && !j.hold && host.mine(j) && !active[j.key]; });
         var due = mine.filter(function (j) {
           return j.state === 'wait' || j.state === 'run' || (again(j) && j.next <= now);
         }).sort(function (a, b) { return a.at - b.at; })[0];

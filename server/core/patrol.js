@@ -25,7 +25,7 @@ const DAY_MS = 86400000;
 const WATCHED = new Set(['adminToken', 'developer', 'operators']);
 const NAMES = { gateKey: 'パスキーの鍵', discordBot: 'Discordボット', discord: 'Discord通知', line: 'LINE通知', adminToken: '管理用トークン', stripe: '決済の鍵', requireDevMfa: '開発者の追加認証の必須', developer: '開発者の名前', operators: '運営の名前の一覧' };
 
-export function createPatrol({ q, opsLog, config, isStaff, settings, clock = Date.now }) {
+export function createPatrol({ q, opsLog, config, isStaff, settings, extMissing = () => [], clock = Date.now }) {
   const load = () => {
     try { const r = q('SELECT value FROM meta WHERE key = ?').get(KEY); return r ? JSON.parse(r.value) : {}; } catch { return {}; }
   };
@@ -129,6 +129,11 @@ export function createPatrol({ q, opsLog, config, isStaff, settings, clock = Dat
     }
     s.settings = cur;
     return out;
+  });
+
+  check('parts', '追加部品', () => {
+    const gone = extMissing();
+    return gone.length ? [{ id: `parts:${gone.join(',')}`, level: 'high', text: 'サーバーに付けていた追加部品が外れています（その間、アップロードは止めています）。意図したものでなければ、デプロイを確かめてください' }] : [];
   });
 
   const lastResult = () => load().last || null;

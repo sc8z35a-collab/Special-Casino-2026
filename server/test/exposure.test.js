@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
 
-const STAFF = /^\/api\/(?:ops|sec|vault|backup|emergency|admin|discord|line|pk)\b/;
+const STAFF = /^\/api\/(?:ops|sec|vault|backup|emergency|admin|discord|line|pk|ext)\b/;
 // the staff routes that are open on purpose, with what a stranger / a plain player is told
 const OPEN = new Map([
   ['POST /api/ops/login', [401, 429]],          // the login itself (two wrong tries wait)
@@ -16,6 +16,7 @@ const OPEN = new Map([
   ['GET /api/vault/pull', [404]],               // a link's own secret
   ['POST /api/vault/ai', [404]],
   ['POST /api/vault/piece', [401, 404, 415]],   // an upload's own pass
+  ['GET /api/ext/asset', [404]],                // a ticket of its own (server/core/ext.js)
   ['POST /api/pk/open', [401, 409]],            // (the passkey: asked after the login, off until GATE_KEY)
   ['POST /api/pk/breakglass', [401, 409]],
   ['POST /api/pk/close', [200, 401]]            // closing one's own gate

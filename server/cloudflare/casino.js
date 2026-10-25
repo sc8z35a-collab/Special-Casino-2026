@@ -249,6 +249,12 @@ export class Casino extends DurableObject {
       return json(200, { ok: true });
     }
     const out = await this.api.handle(coreRequest(request, url));
+    // (a script or a file, not JSON: server/core/raw.js)
+    if (out.raw) {
+      const body = typeof out.raw.body === 'string' ? new TextEncoder().encode(out.raw.body) : out.raw.body;
+      this.api.sent(body.byteLength, url.pathname);
+      return new Response(body, { status: out.status, headers: { ...JSON_HEADERS, 'Content-Type': out.raw.type, ...out.raw.headers } });
+    }
     const bytes = new TextEncoder().encode(JSON.stringify(out.body));
     this.api.sent(bytes.byteLength, url.pathname);
     return new Response(bytes, { status: out.status, headers: JSON_HEADERS });

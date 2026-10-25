@@ -865,3 +865,5 @@ body.role-viewer [data-stop], body.role-viewer #srv-dev, body.role-viewer .repor
 #vault-work-panes .vcomments { width:100%; max-width:none; height:auto; max-height:none; box-shadow:none; }
 #vault-work-panes .vcomments-list { max-height:50dvh; overflow:auto; }
 .vault-issued-link { display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:14px; margin:10px 0; overflow-wrap:anywhere; }
+
+.mac-account-extras{display:flex;flex-direction:column;gap:6px;padding:8px 12px 12px}.mac-account-extras:empty{display:none}

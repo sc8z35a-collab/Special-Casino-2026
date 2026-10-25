@@ -6,6 +6,8 @@
     var epoch = 0, rows = [], more = false, busy = false, imageData = '', selected = 0, commentBefore = 0, mode = 0;
     function button(label, run, danger) { var b = el('button', 'btn small' + (danger ? ' danger' : ''), label); b.type = 'button'; b.addEventListener('click', run); return b; }
     function status(text) { $('#diary-error').textContent = text || ''; }
+    // the bytes of a data: address
+    function bytesOf(url) { var raw = atob(String(url).slice(String(url).indexOf(',') + 1)), out = new Uint8Array(raw.length); for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i); return out; }
     // the ! on the profile tab: no extra login set up (for staff), or a password too easy
     var weak = '';
     function badge() { $('#count-profile').hidden = !(weak || (!mode && !state.viewer)); $('#count-profile').textContent = '!'; }
@@ -110,7 +112,11 @@
     });
     $('#ops-diary-form').addEventListener('submit', function (e) {
       e.preventDefault(); var gen = epoch, submit = $('#diary-publish'); submit.disabled = true; status('');
-      request('POST', '/api/ops/diary', { title: $('#diary-title').value, text: $('#diary-text').value, image: imageData, reward: Number($('#diary-reward').value) }).then(function () {
+      // (a picture is looked at first by what the deployment has put in front of it, if anything: ops/ext.js)
+      var item = imageData ? { kind: 'diary', name: 'diary-image', bytes: bytesOf(imageData) } : null;
+      (item ? OpsExt.run('beforeInline', null, item, { request: request, toast: status }) : Promise.resolve()).then(function () {
+        return request('POST', '/api/ops/diary', { title: $('#diary-title').value, text: $('#diary-text').value, image: imageData, reward: Number($('#diary-reward').value) });
+      }).then(function () {
         if (gen !== epoch) return; $('#ops-diary-form').reset(); imageData = ''; $('#diary-preview').hidden = true; $('#diary-preview').removeAttribute('src'); status('投稿を公開しました'); loadDiary(false);
       }, function (e) { if (gen === epoch) status(e.message); }).then(function () { submit.disabled = false; });
     });

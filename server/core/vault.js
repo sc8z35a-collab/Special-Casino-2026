@@ -194,7 +194,7 @@ const idsOf = (raw) => [...new Set(Array.isArray(raw) ? raw.map(String) : [])].s
 // { bytes, sha256 } | null, list(prefix) -> [{ key, sha256 }], del(keys);
 // ops: the operator site (who the operators are); onDb(bytes): pieces
 // written into the database (the emergency stop does not count them)
-export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, blobs = null, onDb = () => {}, epoch = () => 0 }) {
+export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, gate = null, blobs = null, onDb = () => {}, epoch = () => 0 }) {
   const KEY = crypto.createHash('sha256').update(`${secret}:vault-ticket`).digest();
   const LINK_KEY = keyFrom(secret, 'vault-link-storage');
   const size = SIZES[blobs ? 'bucket' : config.plan === 'paid' ? 'paid' : 'db'];
@@ -599,22 +599,33 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     }
     const data = Buffer.from(bytes).toString('base64');
     onDb(data.length);
-    const out = tx(() => {
-      q('INSERT INTO vault_chunks (file_id, n, sha256, data) VALUES (?, ?, ?, ?) ON CONFLICT(file_id, n) DO UPDATE SET sha256 = excluded.sha256, data = excluded.data')
-        .run(f.id, n, want, data);
-      const received = q('SELECT COUNT(*) AS n FROM vault_chunks WHERE file_id = ?').get(f.id).n;
-      if (received < f.chunks) {
-        q('UPDATE vault_files SET received = ? WHERE id = ?').run(received, f.id);
-        return { received, sum: '' };
-      }
-      return { received, sum: finish(f, q('SELECT sha256 FROM vault_chunks WHERE file_id = ? ORDER BY n').all(f.id).map((r) => r.sha256), req, u) };
-    });
+    let out;
+    try {
+      out = tx(() => {
+        q('INSERT INTO vault_chunks (file_id, n, sha256, data) VALUES (?, ?, ?, ?) ON CONFLICT(file_id, n) DO UPDATE SET sha256 = excluded.sha256, data = excluded.data')
+          .run(f.id, n, want, data);
+        const received = q('SELECT COUNT(*) AS n FROM vault_chunks WHERE file_id = ?').get(f.id).n;
+        if (received < f.chunks) {
+          q('UPDATE vault_files SET received = ? WHERE id = ?').run(received, f.id);
+          return { received, sum: '' };
+        }
+        return { received, sum: finish(f, q('SELECT sha256 FROM vault_chunks WHERE file_id = ? ORDER BY n').all(f.id).map((r) => r.sha256), req, u) };
+      });
+    } catch (e) {
+      // a file an extension refused is taken out again (the pieces stored earlier too)
+      if (e.refusedFile) { await erase([e.refusedFile]); bump(); }
+      throw e;
+    }
     bump();
     return { n, received: out.received, chunks: f.chunks, done: !!out.sum, sha256: out.sum };
   }
   // every piece in: the file's fingerprint, and it is whole
   function finish(f, digests, req, u) {
     const sum = sha(Buffer.concat(digests.map((d) => Buffer.from(d, 'hex'))));
+    // (an extension may refuse the whole file: it is taken out again, by whoever called this, once that is safe)
+    if (gate) {
+      try { gate.finish({ file: f, fingerprint: sum, digests, user: u, req }); } catch (e) { e.refusedFile = f; throw e; }
+    }
     const done = Number(q('UPDATE vault_files SET received = ?, sha256 = ?, done_at = ? WHERE id = ? AND done_at = 0').run(f.chunks, sum, Date.now(), f.id).changes);
     if (done) opsLog.add({ actor: u, action: 'vault_upload', req, summary: `${whereName(f.space)}に${what(f)}を保存`, detail: { ...fileNote(f), chunks: f.chunks, sha256: sum } });
     return sum;
@@ -977,6 +988,8 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const folder = parent ? parent.folder : into ? into.folder : placeIn(space, body.folder);
       const id = crypto.randomBytes(16).toString('hex');
       const pieceBytes = pieceNow();
+      // (an extension may refuse a file before it is made: server/core/ext.js)
+      if (gate) gate.create({ user: u, req, name, size, type, light: !!parent, inside: !!into });
       tx(() => {
         const all = used();
         if (all + size > maxBytes) throw new ApiError(413, 'vault_full', `保管庫がいっぱいです（${mb(all)} / ${mb(maxBytes)}）。いらないファイルを削除してください`);
@@ -1049,7 +1062,13 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
         if (have.size !== f.received) q('UPDATE vault_files SET received = ? WHERE id = ?').run(have.size, f.id);
         return { file: fileDto(fileRow(f.id)), done: false, sha256: '', missing: gaps(f, have) };
       }
-      const sum = finish(f, Array.from({ length: f.chunks }, (_, n) => have.get(n)), req, u);
+      let sum;
+      try {
+        sum = finish(f, Array.from({ length: f.chunks }, (_, n) => have.get(n)), req, u);
+      } catch (e) {
+        if (e.refusedFile) { await erase([e.refusedFile]); bump(); }
+        throw e;
+      }
       return { file: fileDto(fileRow(f.id)), done: true, sha256: sum, missing: [] };
     },
 

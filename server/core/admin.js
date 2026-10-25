@@ -6,6 +6,7 @@ import { createOpsLog } from './opslog.js';
 import { cleanName, nameKey, newRecoveryCode, normalizeRecoveryCode, sha256, cleanPassword, hashPassword } from './auth.js';
 import { utcDay } from './rules.js';
 import { createStaffPins } from './staffpin.js';
+import { forgetExtension } from './ext.js';
 
 const CURRENCIES = ['tokens', 'dollars', 'coins'];
 const REDACTED = '（このメッセージは削除されました）';
@@ -141,6 +142,13 @@ export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = (
       return { name: u ? u.name : s, removed: pins.forget(name) };
     },
 
+    // an added part that guarded the uploads is gone on purpose: the uploads open again
+    extForget(id) {
+      const name = String(id ?? '').trim();
+      if (!name) throw new AdminError('部品の名前を指定してください');
+      return { id: name, removed: forgetExtension(q, name) };
+    },
+
     messages({ limit = 30, ref = null } = {}) {
       if (ref) {
         const u = find(ref);
@@ -226,6 +234,7 @@ export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = (
     password: (r) => `${r.name}さんのパスワードを再設定`,
     logout: (r) => `${r.name}さんのログインを ${r.sessions}件解除`,
     'staff-pin': (r) => `運営の名前「${r.name}」の権限を、このアカウントに固定`,
+    'ext-forget': (r) => `追加部品「${r.id}」が外れていても構わないことにした（${r.removed ? '記録を消した' : 'もともと記録なし'}）`,
     'staff-unpin': (r) => `運営の名前「${r.name}」の固定を解除（${r.removed ? '解除した' : 'もともと固定なし'}）`,
     redact: (r) => `メッセージ #${r.id} を削除済みにした`,
     export: () => '全データのバックアップを書き出した',
@@ -268,6 +277,7 @@ export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = (
       case 'logout': return admin.logout(args[0]);
       case 'staff-pin': return admin.staffPin(args[0]);
       case 'staff-unpin': return admin.staffUnpin(args[0]);
+      case 'ext-forget': return admin.extForget(args[0]);
       case 'messages': return admin.messages({ ref: args[0] || null });
       case 'redact': return admin.redact(args[0]);
       case 'export': return admin.export();
