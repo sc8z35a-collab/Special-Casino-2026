@@ -3833,7 +3833,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     q, opsLog, config, settings: settingsNow, clock: config.clock || Date.now,
     isStaff: (u) => isDeveloper(u) || ops.isOperator(u) || ops.isViewer(u), extMissing: () => ext.missing(),
     // (the log's copies are carved, looked over and, if rows are missing, put back; what is wrong is what the patrol says)
-    more: [{ id: 'stele', label: '運営ログの石碑（外の控え）', fn: async () => { await stele.tick(); return stele.findings(); } }]
+    more: [{ id: 'stele', label: '運営ログの石碑（外の控え）', fn: async () => { await stele.tick(); return stele.findings(); } }, ...ext.checks()]
   });
   const patrolDto = () => { const r = patrol.last(); return r && { at: r.at, ms: r.ms, by: r.by, checks: r.checks, findings: r.findings }; };
   routes['GET /api/ops/patrol'] = (req, u) => { ops.see(u); return { patrol: patrolDto(), now: Date.now() }; };

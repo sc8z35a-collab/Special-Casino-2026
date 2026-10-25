@@ -16,7 +16,7 @@ const LIMITS = { general: [100000, 1000], login: [100000, 1000], vaultWork: [100
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 
 // a sample part: a table, two routes, a rule for the vault and the diary, two files for the operator site
-const sample = (log = []) => ({
+const sample = (log = [], mood = { bad: false }) => ({
   id: 'sample', version: '1.2', guards: ['upload'],
   migrations: [['CREATE TABLE x_sample (id INTEGER PRIMARY KEY, note TEXT NOT NULL)'], ['ALTER TABLE x_sample ADD COLUMN at INTEGER NOT NULL DEFAULT 0']],
   routes: (ctx) => ({
@@ -32,6 +32,8 @@ const sample = (log = []) => ({
       return { ok: true };
     }
   }),
+  // the patrol looks at what a part says of itself
+  checks: () => [{ id: 'self', label: 'sample part', fn: async () => (mood.bad ? [{ id: 'sample-bad', level: 'high', text: 'the sample part is not well' }] : []) }],
   hooks: {
     create(info, ctx) { log.push(['create', info.name, info.size, info.user.name]); if (info.name.endsWith('.nope')) throw new ctx.ApiError(403, 'refused', 'refused at the door'); },
     finish(info, ctx) { log.push(['finish', info.file.name, info.fingerprint.length, info.digests.length]); if (info.file.name.startsWith('bad-')) throw new ctx.ApiError(403, 'refused', 'refused at the end'); },
@@ -195,4 +197,21 @@ test('a file sent again from its beginning (by itself, five times at most): what
   // the speed above 最速
   const top = await dev.call('POST', '/api/vault/speed', { speed: 'limit' });
   assert.deepEqual([top.speed.id, top.speed.name, top.speed.files], ['limit', '上限速', 5]);
+});
+
+test('a part\'s own check is looked at by the patrol, and what it finds is told once', async (t) => {
+  const mood = { bad: false };
+  const s = await startServer({ operators: ['taku'], limits: LIMITS, extensions: [sample([], mood)] });
+  t.after(() => s.stop());
+  const dev = await developer(s);
+  const run = async () => (await dev.call('POST', '/api/ops/patrol/run', {})).patrol;
+  const calm = await run();
+  assert.equal(calm.findings.length, 0);
+  assert.ok(calm.checks.some((c) => c.id === 'sample:self'), JSON.stringify(calm.checks));
+  mood.bad = true;
+  const bad = await run();
+  assert.deepEqual(bad.findings.map((f) => [f.level, f.text]), [['high', 'the sample part is not well']]);
+  assert.equal(s.app.db.prepare("SELECT COUNT(*) AS n FROM ops_log WHERE action = 'patrol_alert'").get().n, 1);
+  await run();
+  assert.equal(s.app.db.prepare("SELECT COUNT(*) AS n FROM ops_log WHERE action = 'patrol_alert'").get().n, 1, 'once, not at every look');
 });

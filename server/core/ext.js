@@ -15,6 +15,8 @@
 //                              (restart: before a file is sent again from its beginning.
 //                              refused(info, ctx): told once a file refused at its end has been
 //                              taken out, outside the transaction that refusal rolled back)
+//   checks(ctx) → [{ id, label, fn }]  looked at by the patrol with its own (every six hours): fn(state, now) answers the
+//                              findings [{ id, level: 'high' | 'low', text }] (none when all is well)
 //   assets: { name: { type, body, kind: 'script' | 'worker', headers } } and
 //   boot(user, ctx) → [names]  the files the operator site gets for this person: each
 //                              comes by a ticket good for two minutes, from /api/ext/asset
@@ -138,6 +140,8 @@ export function createExtensions({ list = [], ctx, secret, clock = Date.now }) {
     // open to anyone who holds a ticket
     publicKeys: ['GET /api/ext/asset'],
     missing: () => missing.slice(),
+    // the checks the parts bring for the patrol (server/core/patrol.js): { id, label, fn(state, now) → findings }, named by their part
+    checks: () => active.flatMap((e) => (typeof e.checks === 'function' ? e.checks(ctx) : []).map((c) => ({ ...c, id: `${e.id}:${c.id}` }))),
     // the version of each, for the server tab
     versions: () => active.map((e) => ({ id: e.id, version: String(e.version || '') }))
   };
