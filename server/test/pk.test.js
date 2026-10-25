@@ -321,13 +321,19 @@ test('during a lockdown the staff still reach the passkey, the bot and the secur
     const taku = await staff(s, 'taku'), mod = await staff(s, 'mod');
     await openGate(s, taku);
     assert.equal((await sc(s, taku, 'POST', '/api/sec/lockdown', { reason: 'test' })).locked, true);
-    // the passkey, then the security base — and the operator site stays shut
-    assert.equal((await s.call('GET', '/api/pk/state', { token: mod.token })).status, 200);
-    assert.equal((await openGate(s, mod)).status, 200);
-    assert.equal((await sc(s, mod, 'GET', '/api/sec/me')).status, 200);
-    assert.equal((await sc(s, mod, 'GET', '/api/ops/me')).status, 503);
-    assert.equal((await interaction(s, command([ROLE]))).data.content.includes(today(NOW0)), true, 'the bot answers: it reads and writes nothing');
-    assert.equal((await sc(s, mod, 'POST', '/api/sec/release', {})).locked, false);
+    // a breach: nothing old is trusted — the open page's gate has ended and the day's passkey is another
+    assert.equal((await sc(s, taku, 'GET', '/api/sec/me')).error.code, 'pk_required');
+    assert.equal((await openGate(s, mod, today(s.box.now))).error.code, 'pk_wrong', 'the old passkey no longer opens');
+    // the new passkey, then the security base — and the operator site stays shut
+    s.box.now += 3600000 + 1; // (the wrong try above kept that account out for an hour: the clock moves on)
+    assert.equal((await s.call('GET', '/api/pk/state', { token: taku.token })).status, 200);
+    assert.equal((await openGate(s, taku, today(s.box.now, 1))).status, 200);
+    assert.equal((await sc(s, taku, 'GET', '/api/sec/me')).status, 200);
+    assert.equal((await sc(s, taku, 'GET', '/api/ops/me')).status, 503);
+    assert.equal((await interaction(s, command([ROLE]))).data.content.includes(today(s.box.now, 1)), true, 'the bot answers with the new one: it reads and writes nothing');
+    assert.equal((await sc(s, taku, 'POST', '/api/sec/release', {})).locked, false);
+    // lifting it ends the staff\'s logins: they log in again
+    assert.equal((await s.call('GET', '/api/pk/state', { token: mod.token })).error.code, 'ended');
   } finally { await s.stop(); }
 });
 

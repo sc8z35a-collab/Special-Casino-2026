@@ -17,8 +17,8 @@
    It uses an account named taku (the developer) and leaves its data in the local
    state of wrangler (.wrangler/). It checks what only a real Worker can tell:
    P-256 keys and signatures, Ed25519 signatures (the Discord bot), a vault
-   piece sent with its own pass straight into R2, and a link's comment read no
-   further than 2 KB. */
+   piece sent with its own pass straight into R2, a link's comment read no
+   further than 2 KB, and the patrol's look over the object's own SQL. */
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -153,5 +153,11 @@ const LINE_SECRET = process.env.CHECK_LINE_SECRET || '', LINE_STAFF = process.en
   const big = await call('POST', '/api/vault/ai', { raw: JSON.stringify({ t: link.token, f: made.file.id, comment: 'x', pad: 'y'.repeat(3000) }), headers: { 'Content-Type': 'application/json' } });
   assert.deepEqual([big.status, big.error && big.error.code], [413, 'too_large']);
   console.log('link comment: 150 characters in, 3 KB refused before the object');
+  // the patrol: the server looks over itself (JSON functions, the log's triggers and its pages, on the object's own SQL)
+  const look = await signed('POST', '/api/ops/patrol/run', {});
+  assert.equal(look.status, 200, 'patrol: ' + JSON.stringify(look).slice(0, 300));
+  assert.deepEqual(look.patrol.checks.map((c) => c.id), ['log', 'rights', 'accounts', 'settings']);
+  assert.deepEqual(look.patrol.findings, [], 'nothing wrong: ' + JSON.stringify(look.patrol.findings));
+  console.log('patrol: the server looked over itself on the Worker, nothing wrong');
   console.log('WORKER OK');
 })().catch((e) => { console.error(e); process.exit(1); });

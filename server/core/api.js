@@ -29,6 +29,7 @@ import {
 } from './rules.js';
 import { createAdmin } from './admin.js';
 import { createStaffPins } from './staffpin.js';
+import { createPatrol } from './patrol.js';
 import { createPeter, reservedName } from './peter.js';
 import { createJohnson } from './johnson.js';
 import { createOfficial } from './official.js';
@@ -3682,6 +3683,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const emergency = createEmergency({
     q, config, opsLog, devCode, isDeveloper, getUser, clock: config.clock || Date.now,
     shield, verifyLog: () => opsLog.verify(), protect: () => (backupRef ? backupRef.lockdownBackup() : null), defer: defer || ((p) => p),
+    // a lockdown: every open page's gate ends and the day's passkey changes; when it is lifted the staff's
+    // logins end too, so what an intruder may have kept does not come back with the site
+    onLockdown: () => pk.bump(),
+    onRelease: () => endStaffLogins('ロックダウンが解除されたため、運営サイトにもう一度ログインしてください'),
     // (every operator screen view ends first — the operator and the player are told —
     // then the live connections close: server/core/opswatch.js)
     host: { dbBytes: host && host.dbBytes ? host.dbBytes : null, stop: () => {
@@ -3798,10 +3803,36 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   Object.assign(routes, backup.routes);
   backupRef = backup;
   const operatorsOnlineNow = () => { const now = Date.now(); return ops.operatorList().filter((o) => o.operator && o.id && now - (opsSeen.get(o.id) || 0) < 40000).length; };
+  // the server looks over itself (server/core/patrol.js): with the housekeeping, and when the developer asks
+  const settingsNow = () => ({
+    gateKey: !!config.gateKey, discordBot: !!config.discordAppKey, discord: !!discord.on, line: !!line.on, adminToken: !!config.adminToken, stripe: !!config.stripeSecretKey,
+    requireDevMfa: !!config.requireDevMfa, developer: nameKey(config.developer || ''), operators: sha256(config.operators.map(nameKey).sort().join(',')).slice(0, 12)
+  });
+  const patrol = createPatrol({
+    q, opsLog, config, settings: settingsNow, clock: config.clock || Date.now,
+    isStaff: (u) => isDeveloper(u) || ops.isOperator(u) || ops.isViewer(u)
+  });
+  const patrolDto = () => { const r = patrol.last(); return r && { at: r.at, ms: r.ms, by: r.by, checks: r.checks, findings: r.findings }; };
+  routes['GET /api/ops/patrol'] = (req, u) => { ops.see(u); return { patrol: patrolDto(), now: Date.now() }; };
+  routes['POST /api/ops/patrol/run'] = async (req, u) => {
+    ops.need(u);
+    if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
+    await req.json();
+    await patrol.run({ by: u });
+    return { patrol: patrolDto(), now: Date.now() };
+  };
+  // the logins of everyone who is staff end (they log in again; the message says why)
+  function endStaffLogins(why) {
+    let n = 0;
+    for (const id of new Set([...ops.operatorList().map((o) => o.id), ...ops.viewerList().map((v) => v.id)])) {
+      if (id) n += Number(q("UPDATE sessions SET ended = ? WHERE user_id = ? AND ended = ''").run(why, id).changes);
+    }
+    return n;
+  }
   // the operator site's サーバー tab (every operator)
   routes['GET /api/ops/server'] = (req, u) => {
     ops.see(u);
-    return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on }, line: line.status() };
+    return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on }, line: line.status(), patrol: patrolDto() };
   };
   // the tab bar's poll also carries the month's usage colour (cheap), so the
   // サーバー button is green / blue / purple / red from every tab
@@ -3960,7 +3991,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       pay.sweep().catch((e) => console.error('pay sweep failed', e)),
       backup.due().catch((e) => console.error('backup failed', e)),
       // (the LINE notices that have waited long enough go out together)
-      Promise.resolve(line.tick()).catch((e) => console.error('line notices failed', e))
+      Promise.resolve(line.tick()).catch((e) => console.error('line notices failed', e)),
+      // the server looks over itself
+      patrol.run().catch((e) => console.error('patrol failed', e))
     ]);
   }
   // when the host should run the housekeeping next: in 6 hours, or sooner for a backup
@@ -4072,7 +4105,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // operator or a viewer on its own).
   const VIEW_ONLY = new Set([
     'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/ops/alive', 'GET /api/ops/counts', 'GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback',
-    'GET /api/ops/log', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security',
+    'GET /api/ops/log', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security', 'GET /api/ops/patrol',
     'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify', 'POST /api/logout',
     'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close'
   ]);

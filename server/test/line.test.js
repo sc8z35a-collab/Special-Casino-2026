@@ -356,7 +356,10 @@ test('LINE on a real server: the server tab shows the allowance, the test button
     const before = b.replies().length;
     assert.equal((await b.post(b.event('パスキー'))).status, 200);
     const r = await until(() => b.replies()[before]);
-    assert.ok(r && r.body.messages[0].text.includes(right), 'the bot answers during the lockdown');
+    // (a lockdown changes the day's passkey: the one the bot gives now is the new one)
+    const fresh = b.s.app.api.pk.today().code;
+    assert.notEqual(fresh, right);
+    assert.ok(r && r.body.messages[0].text.includes(fresh), 'the bot answers during the lockdown');
     // …and the operator site itself is shut
     assert.equal((await b.s.call('GET', '/api/ops/me', { token, headers: { 'X-Gate': await header(p1, 'GET', '/api/ops/me') } })).status, 503);
   } finally { await b.stop(); }

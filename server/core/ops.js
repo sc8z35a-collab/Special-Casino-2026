@@ -806,5 +806,5 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     }
   }
 
-  return { routes, isOperator, isViewer, need, see, operatorList, mini, speedNow, purgeDue };
+  return { routes, isOperator, isViewer, need, see, operatorList, viewerList, mini, speedNow, purgeDue };
 }

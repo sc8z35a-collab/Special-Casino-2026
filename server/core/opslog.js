@@ -20,7 +20,7 @@ const GENESIS = 'TWO STATE ops log';
 
 export const LOG_KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
 const PLAYER = ['pay_order', 'pay_paid', 'pay_slip', 'pay_unpaid', 'pay_refund'];
-const SECURITY = ['staff_name_reused', 'dev_code_fail', 'dev_code_set', 'dev_code_change', 'ops_grant', 'ops_revoke', 'ops_restore', 'viewer_grant', 'viewer_revoke', 'pay_bad_signature', 'pay_unknown',
+const SECURITY = ['patrol_alert', 'patrol_notice', 'patrol_clear', 'staff_name_reused', 'dev_code_fail', 'dev_code_set', 'dev_code_change', 'ops_grant', 'ops_revoke', 'ops_restore', 'viewer_grant', 'viewer_revoke', 'pay_bad_signature', 'pay_unknown',
   'pay_review', 'log_kept', 'account_delete', 'account_purge'];
 export function kindOf(action) {
   const a = String(action || '');
@@ -165,23 +165,41 @@ export function createOpsLog({ q, anchor = null, onAdd = null }) {
   }
 
   // every row against the one before it and its own hash, and the newest
-  // row against the copy kept outside the table
-  async function verify() {
+  // row against the copy kept outside the table. `from`: { id, hash } of a row
+  // looked over before (the patrol's checkpoint): only the rows after it are read,
+  // in pages (the log may be long), after the row itself is seen to be unchanged.
+  // The result carries `last` ({ id, hash }) to start the next look from.
+  async function verify(from = null) {
     let prev = sha256(GENESIS), n = 0, expectId = 1;
     const kept = anchor ? await anchor.get().catch(() => null) : null;
-    let anchored = null;
-    for (const r of q('SELECT * FROM ops_log ORDER BY id').all()) {
-      if (r.id !== expectId) return { ok: false, count: n, brokenAt: r.id, reason: `${expectId}番の記録がありません` };
-      if (r.prev_hash !== prev) return { ok: false, count: n, brokenAt: r.id, reason: 'ひとつ前の記録とつながっていません' };
-      if (sha256(fields(r)) !== r.hash) return { ok: false, count: n, brokenAt: r.id, reason: '記録の内容が書き換えられています' };
-      if (kept && r.id === kept.id) anchored = r.hash === kept.hash;
-      prev = r.hash;
-      n++;
-      expectId++;
+    if (from && from.id > 0) {
+      const row = q('SELECT hash FROM ops_log WHERE id = ?').get(from.id);
+      if (!row || row.hash !== from.hash) return { ok: false, count: 0, brokenAt: from.id, reason: '前に確かめた記録が、書き換えられたか、なくなっています' };
+      prev = from.hash;
+      n = from.id;
+      expectId = from.id + 1;
     }
-    if (kept && anchored === null) return { ok: false, count: n, brokenAt: kept.id, reason: `${kept.id}番までの記録があったはずが、${n}番までしかありません（後ろが消されています）` };
-    if (kept && !anchored) return { ok: false, count: n, brokenAt: kept.id, reason: '記録が最初から作り直されています（外に控えたハッシュと違います）' };
-    return { ok: true, count: n, anchor: kept ? { id: kept.id, at: kept.at } : null };
+    let last = from && from.id > 0 ? { id: from.id, hash: from.hash } : null;
+    for (let after = expectId - 1; ;) {
+      const page = q('SELECT * FROM ops_log WHERE id > ? ORDER BY id LIMIT 1000').all(after);
+      if (!page.length) break;
+      for (const r of page) {
+        if (r.id !== expectId) return { ok: false, count: n, brokenAt: r.id, reason: `${expectId}番の記録がありません` };
+        if (r.prev_hash !== prev) return { ok: false, count: n, brokenAt: r.id, reason: 'ひとつ前の記録とつながっていません' };
+        if (sha256(fields(r)) !== r.hash) return { ok: false, count: n, brokenAt: r.id, reason: '記録の内容が書き換えられています' };
+        prev = r.hash;
+        n++;
+        expectId++;
+        last = { id: r.id, hash: r.hash };
+      }
+      after = page[page.length - 1].id;
+    }
+    if (kept) {
+      const row = q('SELECT hash FROM ops_log WHERE id = ?').get(kept.id);
+      if (!row) return { ok: false, count: n, brokenAt: kept.id, reason: `${kept.id}番までの記録があったはずが、${n}番までしかありません（後ろが消されています）` };
+      if (row.hash !== kept.hash) return { ok: false, count: n, brokenAt: kept.id, reason: '記録が最初から作り直されています（外に控えたハッシュと違います）' };
+    }
+    return { ok: true, count: n, last, anchor: kept ? { id: kept.id, at: kept.at } : null };
   }
 
   return { add, list, counts, verify, dto, keep, all };

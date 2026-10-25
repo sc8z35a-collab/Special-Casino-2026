@@ -141,14 +141,16 @@ test('a breach triggers the lockdown: everyone is shut out but the security base
     assert.equal(rel.status, 200);
     assert.equal(rel.locked, false);
 
-    // the game is back
+    // the game is back; the staff's logins are over (they log in again), a player's is not
     assert.equal((await s.call('GET', '/api/me', { token: player.token })).status, 200);
-    const back = await s.call('GET', '/api/sec/status', { token: taku.token });
+    assert.equal((await s.call('GET', '/api/sec/status', { token: taku.token })).error.code, 'ended');
+    const again = await s.call('POST', '/api/login', { body: { name: 'taku', password: 'pass1234' } });
+    const back = await s.call('GET', '/api/sec/status', { token: again.token });
     assert.equal(back.emergency.level, '');
     assert.equal(back.health.outbound, true);
 
     // both the lockdown and its release are in the 緊急 log
-    const elog2 = (await s.call('GET', '/api/ops/log?kind=emergency', { token: taku.token })).entries.map((e) => e.action);
+    const elog2 = (await s.call('GET', '/api/ops/log?kind=emergency', { token: again.token })).entries.map((e) => e.action);
     assert.ok(elog2.includes('lockdown') && elog2.includes('lockdown_release'));
   } finally {
     await s.stop();
@@ -176,7 +178,9 @@ test('an operator can raise the lockdown by hand from the security base, and it 
       assert.equal((await s2.call('GET', '/api/sec/status', { token: login.token })).emergency.level, 'lockdown', 'held through the restart');
       // lifted
       assert.equal((await s2.call('POST', '/api/sec/release', { token: login.token })).locked, false);
-      assert.equal((await s2.call('GET', '/api/me', { token: login.token })).status, 200);
+      assert.equal((await s2.call('GET', '/api/me', { token: login.token })).error.code, 'ended', 'the staff log in again after a lockdown');
+      const again = await s2.call('POST', '/api/login', { body: { name: 'TAKU', password: 'pass1234' } });
+      assert.equal((await s2.call('GET', '/api/me', { token: again.token })).status, 200);
     } finally {
       await s2.stop();
     }

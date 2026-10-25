@@ -80,7 +80,7 @@
     vault_bucket: '保管庫をR2へ移動', vault_ai_label: 'AIのラベル（保管庫）', vault_ai_done: 'AIが実装（保管庫）', vault_restore: '保管庫で実装済みから戻す',
     vault_quota_request: '保管庫の容量の申請', vault_quota_cancel: '容量の申請の取り下げ', vault_quota_approve: '容量の申請を承認', vault_quota_decline: '容量の申請を見送り',
     vault_quota_set: '保管庫の上限を変更', vault_rename: '保管庫で名前を変更', vault_backup: '保管庫のバックアップ', vault_backup_off: 'バックアップから外す',
-    vault_backup_restore: 'バックアップから戻す', vault_ai_comment: 'AIのコメント（保管庫）', vault_implemented: '保管庫で実装済みにする', staff_name_reused: '運営の名前を別のアカウントが使用', pk_fail: 'パスキーの入力ミス', pk_issue: 'パスキーを取得（Discord）', pk_breakglass: '非常口でパスキー認証を開いた', vault_link_trip: '保管庫のリンクを自動停止', milestone: '登録者数の記念', voice_notice: '通話品質アップのお知らせ'
+    vault_backup_restore: 'バックアップから戻す', vault_ai_comment: 'AIのコメント（保管庫）', vault_implemented: '保管庫で実装済みにする', staff_name_reused: '運営の名前を別のアカウントが使用', patrol_alert: '自動点検：異常', patrol_notice: '自動点検：お知らせ', patrol_clear: '自動点検：解消', pk_fail: 'パスキーの入力ミス', pk_issue: 'パスキーを取得（Discord）', pk_breakglass: '非常口でパスキー認証を開いた', vault_link_trip: '保管庫のリンクを自動停止', milestone: '登録者数の記念', voice_notice: '通話品質アップのお知らせ'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
   var KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
@@ -2773,6 +2773,7 @@
     srvCloudflare(r);
     srvDiscord(r);
     srvLine(r);
+    srvPatrol(r);
     srvMachine(r);
   }
   // how full the month's allowances are: the サーバー tab (and its button in the
@@ -2822,6 +2823,29 @@
     srvCard(card, 'LINE 通知', rows, l.on
       ? 'Discord と同じ内容を LINE に送ります。LINE は1か月の送信数に上限があるため（無料プランは200通）、危険な知らせはすぐに、ふつうの通知は数分まとめて1通にして、枠の6割までに送ります。「パスキー」と送ると、運営の方に今日のパスキーを返信します（返信は枠に数えません）。'
       : 'LINE のチャネルアクセストークン（LINE_CHANNEL_ACCESS_TOKEN）と送信先（LINE_STAFF_USER_IDS）を入れるとオンになります（README「LINE に通知する」）。');
+  }
+  // the server's look over itself (server/core/patrol.js): when, and what it found
+  function srvPatrol(r) {
+    var p = r.patrol, card = $('#srv-patrol');
+    if (!card) return;
+    var rows = [['最後の点検', p ? stamp(p.at) + '（' + p.ms + 'ミリ秒）' : 'まだありません（6時間ごとに自動で行います）']];
+    if (p) {
+      rows.push(['結果', p.findings.length ? '気になる点が' + p.findings.length + '件' : '異常なし']);
+      p.findings.slice(0, 6).forEach(function (f) { rows.push([f.level === 'high' ? '！ 異常' : 'お知らせ', f.text]); });
+    }
+    srvCard(card, '自動点検', rows, '運営ログの鎖・運営権や閲覧者の付与の記録との突き合わせ・サーバーの設定の変化などを、サーバー自身が見張ります。異常は運営ログとDiscord／LINEに出ます。');
+    if (!state.developer) return;
+    var b = el('button', 'btn small', '今すぐ点検');
+    b.type = 'button';
+    b.addEventListener('click', function () {
+      b.disabled = true;
+      request('POST', '/api/ops/patrol/run', {}).then(function (t) {
+        r.patrol = t.patrol;
+        srvPatrol(r);
+        toast(t.patrol && t.patrol.findings.length ? '気になる点があります' : '異常なし');
+      }, fail).then(function () { b.disabled = false; });
+    });
+    card.appendChild(b);
   }
   // the developer's Discord notices: on or not, and (the developer) a test
   function srvDiscord(r) {
