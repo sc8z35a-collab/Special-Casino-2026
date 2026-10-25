@@ -867,3 +867,9 @@ body.role-viewer [data-stop], body.role-viewer #srv-dev, body.role-viewer .repor
 .vault-issued-link { display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:14px; margin:10px 0; overflow-wrap:anywhere; }
 
 .mac-account-extras{display:flex;flex-direction:column;gap:6px;padding:8px 12px 12px}.mac-account-extras:empty{display:none}
+
+/* the enlarged view of a file: its small picture, and under it what can be done with the original */
+.viewer-look { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 100%; max-height: 100%; padding: 14px; }
+.viewer-look .viewer-img { max-width: 100%; max-height: calc(100% - 64px); min-height: 0; border-radius: 10px; background: #1d2026; }
+.viewer-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+#view-vault .vault-thumb.has-thumbnail.is-card img { border-radius: 8px; }

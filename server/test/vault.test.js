@@ -964,7 +964,11 @@ test('small vault thumbnails retain model metadata, stay out of lists and enforc
     assert.equal((await b.call('GET', '/api/vault/thumbnail?id=' + f.id)).status, 404);
     assert.equal((await b.call('POST', '/api/vault/meta', { id: f.id, thumbnail: pic })).status, 404);
     assert.equal((await a.call('POST', '/api/vault/meta', { id: f.id, thumbnail: 'data:image/svg+xml;base64,AAAA' })).status, 400);
-    assert.equal((await a.call('POST', '/api/vault/meta', { id: f.id, thumbnail: 'data:image/png;base64,' + 'A'.repeat(24 * 1024) })).status, 400);
+    assert.equal((await a.call('POST', '/api/vault/meta', { id: f.id, thumbnail: 'data:image/png;base64,' + 'A'.repeat(17 * 1024) })).status, 400);
+    assert.equal((await a.call('POST', '/api/vault/meta', { id: f.id, preview: 'data:image/png;base64,' + 'A'.repeat(161 * 1024) })).status, 400, 'the enlarged picture is small too');
+    // several small pictures in one request; what is not there or not theirs is left out
+    assert.deepEqual((await a.call('GET', `/api/vault/thumbnails?ids=${f.id},nope`)).thumbnails, { [f.id]: pic });
+    assert.deepEqual((await b.call('GET', `/api/vault/thumbnails?ids=${f.id}`)).thumbnails, {});
     // A rejected write must not erase the last valid picture or model info.
     assert.equal((await a.call('GET', '/api/vault/thumbnail?id=' + f.id)).thumbnail, pic);
     assert.equal((await dev.call('GET', '/api/vault/thumbnail?id=' + f.id)).status, 200);

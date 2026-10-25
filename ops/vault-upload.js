@@ -25,7 +25,7 @@
    pass, piece, chunks, sent, rate (bytes a second, while it goes),
    state: 'wait' | 'run' | 'stop' | 'done' | 'fail', why: 'net' | 'locked' |
    'login' | 'full' | 'room' | 'error' | 'gone' | '', message, tries, next, at,
-   sha256, mem } */
+   sha256, mem, pics (the small pictures the page made while the file was in hand: { thumbnail, preview }), pictured } */
 var VaultUploads = (function () {
   'use strict';
 
@@ -73,7 +73,26 @@ var VaultUploads = (function () {
   }
   function all() { return tx([JOBS], 'readonly', function (s) { return s[JOBS].getAll(); }).then(function (l) { return l || []; }); }
   function get(key) { return tx([JOBS], 'readonly', function (s) { return s[JOBS].get(key); }); }
-  function save(j) { return tx([JOBS], 'readwrite', function (s) { s[JOBS].put(j); }); }
+  // (what the page adds to a record while the worker holds its own copy of the job, the small pictures, is kept)
+  function save(j) {
+    return tx([JOBS], 'readwrite', function (s) {
+      var r = s[JOBS].get(j.key);
+      r.onsuccess = function () {
+        var copy = Object.assign({}, j);
+        if (r.result && r.result.pics && !copy.pics) copy.pics = r.result.pics;
+        s[JOBS].put(copy);
+      };
+      return r;
+    });
+  }
+  // fields into a job's record as it is now (another context may have changed other fields meanwhile)
+  function patch(key, fields) {
+    return tx([JOBS], 'readwrite', function (s) {
+      var r = s[JOBS].get(key);
+      r.onsuccess = function () { if (r.result) s[JOBS].put(Object.assign(r.result, fields)); };
+      return r;
+    });
+  }
   // a new job with its file (`file` null: the page keeps it, `mem`)
   function add(j, file) {
     return tx([JOBS, FILES], 'readwrite', function (s) {
@@ -160,6 +179,23 @@ var VaultUploads = (function () {
     }
     function retry(err) { return !!err && (AGAIN[err.code] || err.status === 0 || err.status === 429 || err.status >= 500); }
 
+    // The small pictures the page made from the file while it was in hand (kept with the job), saved with up to five tries;
+    // when they were not ready yet, the page saves them itself when they are.
+    function pictured(j) {
+      if (j.parent || j.model) return Promise.resolve();
+      return get(j.key).then(function (rec) {
+        if (!rec || !rec.pics || !rec.pics.thumbnail) return null;
+        var n = 0;
+        function go() {
+          return call(j, 'POST', '/api/vault/meta', { id: j.id, thumbnail: rec.pics.thumbnail, preview: rec.pics.preview }).then(function () { j.pictured = true; }, function (err) {
+            if (++n < 5 && retry(err)) return later(800 * n).then(go);
+            return null;
+          });
+        }
+        return go();
+      }).catch(function () { /* the page does it */ });
+    }
+
     // a whole file: what the server still needs, those pieces, then the end
     function send(j) {
       j.state = 'run';
@@ -192,8 +228,8 @@ var VaultUploads = (function () {
         j.tries = 0;
         j.rate = 0;
         j.doneAt = Date.now();
-        // (a model's file stays until the page has made its picture)
-        return (j.model ? save(j) : save(j).then(function () { return forgetFile(j.key); })).then(function () { tell(j); });
+        // (the small pictures the page made while the file was in hand go up with its end; a model's file stays until the page has made its picture)
+        return pictured(j).then(function () { return (j.model ? save(j) : save(j).then(function () { return forgetFile(j.key); })); }).then(function () { tell(j); });
       }).catch(function (err) { return stopped(j, err); });
     }
     function stopped(j, err) {
@@ -284,6 +320,6 @@ var VaultUploads = (function () {
     };
   }
 
-  return { all: all, get: get, save: save, add: add, fileOf: fileOf, forget: forget, forgetFile: forgetFile, engine: engine };
+  return { all: all, get: get, save: save, patch: patch, add: add, fileOf: fileOf, forget: forget, forgetFile: forgetFile, engine: engine };
 })();
 if (typeof self !== 'undefined') self.VaultUploads = VaultUploads;

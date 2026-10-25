@@ -103,7 +103,9 @@ const SPACE_RE = /^p:(\d{1,15}):(\d{1,15})$/;
 const OWN_RE = /^u:(\d{1,15})$/;
 const BACKUP = 'backup';
 // a model's picture (a WebP or JPEG data URL) and what is in it (JSON)
-const PREVIEW_MAX = 600 * 1024;
+// (the pictures are made small on the operator site: a list's at a few KB, the enlarged view's at tens of KB)
+const PREVIEW_MAX = 160 * 1024;
+const THUMBNAIL_MAX = 16 * 1024;
 const PREVIEW_RE = /^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/]+={0,2}$/;
 const INFO_MAX = 8 * 1024;
 // a link to every file (of the developer's vault)
@@ -322,7 +324,8 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     return !!p && p.userId === u.id && p.fileId === String(id);
   }
   // the routes a pass sends alone
-  const PASS_ROUTES = new Set(['GET /api/vault/missing', 'POST /api/vault/piece', 'POST /api/vault/chunk', 'POST /api/vault/permit', 'POST /api/vault/stored', 'POST /api/vault/finish']);
+  // (`meta`: the small pictures made on the page while the file was in hand go up with the end of the file, even with the page gone)
+  const PASS_ROUTES = new Set(['GET /api/vault/missing', 'POST /api/vault/piece', 'POST /api/vault/chunk', 'POST /api/vault/permit', 'POST /api/vault/stored', 'POST /api/vault/finish', 'POST /api/vault/meta']);
   const passFor = (key, req) => (PASS_ROUTES.has(key) ? passParse(req.header('x-vault-upload')) : null);
   const locked = () => new ApiError(403, 'vault_locked', '閲覧のみです。変更するには開発者コードを入力してください');
   // a file being sent (its pieces, what is missing, the end, a model's
@@ -938,14 +941,14 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // a 3D model's picture and what is in it (made on the operator site)
     'POST /api/vault/meta': async (req, u) => {
-      const body = await req.json(PREVIEW_MAX + INFO_MAX + 24 * 1024 + 4096);
+      const body = await req.json(PREVIEW_MAX + INFO_MAX + THUMBNAIL_MAX + 4096);
       const f = sending(req, u, body.id);
       const preview = String(body.preview || '');
       if (preview && (preview.length > PREVIEW_MAX || !PREVIEW_RE.test(preview))) throw new ApiError(400, 'bad_preview', 'プレビュー画像の形式が正しくありません');
       const info = body.info && typeof body.info === 'object' && !Array.isArray(body.info) ? JSON.stringify(body.info) : '';
       if (info.length > INFO_MAX) throw new ApiError(400, 'bad_info', 'モデルの情報が大きすぎます');
       const thumbnail = body.thumbnail === undefined ? null : String(body.thumbnail || '');
-      if (thumbnail && (thumbnail.length > 24 * 1024 || !PREVIEW_RE.test(thumbnail))) throw new ApiError(400, 'bad_thumbnail', '小さなプレビュー画像の形式が正しくありません');
+      if (thumbnail && (thumbnail.length > THUMBNAIL_MAX || !PREVIEW_RE.test(thumbnail))) throw new ApiError(400, 'bad_thumbnail', '小さなプレビュー画像の形式が正しくありません');
       if (body.preview !== undefined) q('UPDATE vault_files SET preview = ? WHERE id = ?').run(preview, f.id);
       if (body.info !== undefined) q('UPDATE vault_files SET info = ? WHERE id = ?').run(info, f.id);
       if (thumbnail !== null) q('UPDATE vault_files SET thumbnail = ? WHERE id = ?').run(thumbnail, f.id);
@@ -963,6 +966,21 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       need(req, u);
       const f = theFile(u, req.query.get('id'), '', req);
       return { id: f.id, thumbnail: (q('SELECT thumbnail FROM vault_files WHERE id = ?').get(f.id) || {}).thumbnail || null };
+    },
+
+    // the small pictures of several files at once (at most 16): the list asks for the ones on the screen in one
+    // request. A file that is not there, or not theirs, is left out (not an error for the others)
+    'GET /api/vault/thumbnails': (req, u) => {
+      need(req, u);
+      const ids = [...new Set(String(req.query.get('ids') || '').split(',').map((s) => s.trim()).filter(Boolean))].slice(0, 16);
+      const thumbnails = {};
+      for (const id of ids) {
+        let f;
+        try { f = theFile(u, id, '', req); } catch { continue; }
+        const t = (q('SELECT thumbnail FROM vault_files WHERE id = ?').get(f.id) || {}).thumbnail;
+        if (t) thumbnails[f.id] = t;
+      }
+      return { thumbnails };
     },
 
     // a new file: its name, size, type, vault and folder; the pieces follow

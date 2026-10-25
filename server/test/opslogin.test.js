@@ -79,3 +79,25 @@ test('a flood of wrong tries takes only so much of a log that cannot be cleaned:
     await s.stop();
   }
 });
+
+test('the log list comes as lines only (no detail, no hashes), and the detail of a line is fetched when it is opened', async () => {
+  const s = await startServer({ operators: ['taku'] });
+  try {
+    const taku = await s.register('TAKU');
+    await login(s, 'ghost', 'x', 'list-browser-0000001');
+    const call = (url) => s.call('GET', url, { token: taku.token });
+    const full = await call('/api/ops/log?kind=security');
+    const slim = await call('/api/ops/log?kind=security&slim=1');
+    assert.ok(full.entries[0].detail && full.entries[0].raw && full.entries[0].hash, 'as before, without slim');
+    assert.deepEqual(Object.keys(slim.entries[0]).sort(), ['action', 'actor', 'at', 'id', 'jst', 'kind', 'summary', 'target']);
+    assert.equal(slim.entries[0].id, full.entries[0].id);
+    // a line, in full, when it is asked for (a number that is not there, or not a number, is skipped)
+    const one = await call(`/api/ops/log/entries?ids=${slim.entries[0].id},999999,abc`);
+    assert.equal(one.entries.length, 1);
+    assert.equal(one.entries[0].detail.login.reason, 'no_account');
+    assert.equal(one.entries[0].hash, full.entries[0].hash);
+    assert.equal((await s.call('GET', `/api/ops/log/entries?ids=${slim.entries[0].id}`)).status, 401, 'not for a stranger');
+  } finally {
+    await s.stop();
+  }
+});

@@ -464,6 +464,7 @@
   }
   function logout() {
     var t = token;
+    VaultThumbnails.cache.clear();
     if (state.name) dropLogin(state.name);
     setToken(null);
     OpsPk.close();
@@ -2359,7 +2360,7 @@
   function loadPick() {
     var mode = pick.mode, q = $('#team-pick-q').value.trim(), seq = ++pick.seq;
     if (!mode) return;
-    var url = mode === 'log' ? '/api/ops/log?q=' + encodeURIComponent(q) : '/api/ops/players?q=' + encodeURIComponent(q);
+    var url = mode === 'log' ? '/api/ops/log?slim=1&q=' + encodeURIComponent(q) : '/api/ops/players?q=' + encodeURIComponent(q);
     request('GET', url).then(function (r) {
       if (seq !== pick.seq || pick.mode !== mode) return;
       renderPick(mode === 'log' ? (r.entries || []).slice(0, 30) : (r.players || []).slice(0, 30), mode);
@@ -4192,11 +4193,19 @@
     var p = el('div', 'vault-pic');
     p.dataset.vact = 'pic';
     if (pics[f.id]) { p.style.backgroundImage = 'url("' + pics[f.id] + '")'; return p; }
-    vreq('GET', '/api/vault/preview?id=' + f.id).then(function (r) {
-      if (!r.preview) return;
-      pics[f.id] = r.preview;
-      p.style.backgroundImage = 'url("' + r.preview + '")';
-    }).catch(function () {});
+    // (the medium picture: tens of KB; up to five tries, then the card)
+    VaultThumbnails.attempt(function () { return vreq('GET', '/api/vault/preview?id=' + f.id); }, 5, 1000).then(function (r) {
+      pics[f.id] = r.preview || cardFor(f, true);
+      p.style.backgroundImage = 'url("' + pics[f.id] + '")';
+    }).catch(function () { p.style.backgroundImage = 'url("' + cardFor(f, true) + '")'; });
+    return p;
+  }
+  // a file's card, big (nothing is downloaded to show what it is)
+  function cardEl(f) {
+    var p = el('div', 'vault-pic');
+    p.dataset.vact = 'pic';
+    pics[f.id] = pics[f.id] || cardFor(f, true);
+    p.style.backgroundImage = 'url("' + pics[f.id] + '")';
     return p;
   }
   function modelFacts(facts, i, light) {
@@ -4227,38 +4236,87 @@
     var ext = (/\.([A-Za-z0-9]{1,6})$/.exec(f.name || '') || [])[1] || '';
     var b = kind[1] === 'kapk' ? iconEl('apk', f.name) : iconEl('file', f.name, ext.toUpperCase());
     b.classList.add('vault-thumb');
-    if (f.done && (f.thumbnail || f.preview || (kind[1] === 'kimg' && f.size <= 256 * 1024))) b.dataset.thumbnail = f.id;
+    // (every finished file: its small picture, or the card drawn here: no file is left without one)
+    if (f.done) b.dataset.thumbnail = f.id;
     return b;
   }
-  var thumbnails = {}, thumbnailObserver = null, thumbnailQueue = [], thumbnailEpoch = 0, thumbnailLoading = 0;
+  // The picture of each finished file in the list: its card (drawn here, no traffic) at once; then the small
+  // picture the server holds for it, fetched with the others on the screen in one request and kept in this
+  // browser for next time (up to five tries; the card stays if it cannot come). A file with no small
+  // picture at all (an old one) keeps its card; an editor's page makes a small image's own, once.
+  var thumbnails = {}, cards = {}, thumbnailObserver = null, thumbnailEpoch = 0, thumbnailFetching = 0, thumbnailWaiting = [], thumbnailTimer = 0, backfillBusy = false, backfillQueue = [];
   function stopThumbnails() {
-    thumbnailEpoch++; thumbnailQueue = []; thumbnailLoading = 0;
+    thumbnailEpoch++; thumbnailWaiting = []; thumbnailFetching = 0; backfillQueue = []; backfillBusy = false; clearTimeout(thumbnailTimer);
     if (thumbnailObserver) thumbnailObserver.disconnect(); thumbnailObserver = null;
+  }
+  function sigOf(f) { return f.size + ':' + (f.doneAt || 0); }
+  function cardFor(f, big) {
+    var k = (big ? 'b' : 's') + f.id;
+    return cards[k] || (cards[k] = VaultThumbnails.card({ name: f.name, size: f.size, kind: fileKind(f)[1] }, !!big));
+  }
+  function putPicture(b, src, real) {
+    var img = el('img'); img.src = src; img.alt = ''; img.draggable = false; img.decoding = 'async';
+    b.replaceChildren(img); b.classList.add('has-thumbnail'); b.classList.toggle('is-card', !real);
+  }
+  // the small pictures of some files, from this browser's keeping or the server (one request): { id: picture }
+  function fetchPictures(files) {
+    var got = {}, need = [];
+    return VaultThumbnails.cache.use(state.name || '').then(function () {
+      return Promise.all(files.map(function (f) { return VaultThumbnails.cache.get(f.id, sigOf(f)).then(function (src) { if (src) got[f.id] = src; else need.push(f); }); }));
+    }).then(function () {
+      if (!need.length) return got;
+      return VaultThumbnails.attempt(function () {
+        return vreq('GET', '/api/vault/thumbnails?ids=' + need.map(function (f) { return f.id; }).join(',')).then(function (r) {
+          need.forEach(function (f) { var src = r.thumbnails && r.thumbnails[f.id]; if (src) { got[f.id] = src; VaultThumbnails.cache.put(f.id, sigOf(f), src); } });
+        });
+      }, 5, 1000).then(function () { return got; }, function () { return got; });
+    });
   }
   function watchThumbnails() {
     var epoch = thumbnailEpoch;
-    function schedule(b) { if (b.dataset.thumbQueued) return; b.dataset.thumbQueued = '1'; thumbnailQueue.push(b); pump(); }
-    function pump() {
-      if (epoch !== thumbnailEpoch || thumbnailLoading >= 2 || !thumbnailQueue.length) return;
-      var b = thumbnailQueue.shift(), f = fileOf(b.dataset.thumbnail); if (!f) return pump();
-      thumbnailLoading++;
-      var cached = thumbnails[f.id], source = cached ? Promise.resolve(cached) : f.thumbnail
-        ? vreq('GET', '/api/vault/thumbnail?id=' + f.id).then(function (r) { return r.thumbnail; })
-        : f.preview ? vreq('GET', '/api/vault/preview?id=' + f.id).then(function (r) { return r.preview ? VaultThumbnails.make(r.preview) : null; })
-          : fetchFile(f, null).then(function (blob) { return VaultThumbnails.make(blob); });
-      source.then(function (src) {
-        if (!src || epoch !== thumbnailEpoch || !b.isConnected) return;
-        thumbnails[f.id] = src;
-        var img = el('img'); img.src = src; img.alt = ''; img.draggable = false; img.decoding = 'async';
-        b.replaceChildren(img); b.classList.add('has-thumbnail');
-        if (!f.thumbnail && canWrite()) vreq('POST', '/api/vault/meta', { id: f.id, thumbnail: src }).then(function () { f.thumbnail = true; }).catch(function () {});
-      }).catch(function () {}).then(function () { if (epoch !== thumbnailEpoch) return; thumbnailLoading--; pump(); });
-      pump();
+    function see(b) {
+      var f = fileOf(b.dataset.thumbnail);
+      if (!f || epoch !== thumbnailEpoch) return;
+      if (thumbnails[f.id]) { putPicture(b, thumbnails[f.id], true); return; }
+      putPicture(b, cardFor(f), false);
+      if (f.thumbnail) { thumbnailWaiting.push(b); clearTimeout(thumbnailTimer); thumbnailTimer = setTimeout(flush, 30); }
+      else if (canWrite() && fileKind(f)[1] === 'kimg' && f.size <= 256 * 1024) backfill(b, f);
+    }
+    function flush() {
+      if (epoch !== thumbnailEpoch || thumbnailFetching >= 2 || !thumbnailWaiting.length) return;
+      var batch = thumbnailWaiting.splice(0, 12).filter(function (b) { return b.isConnected; });
+      var files = batch.map(function (b) { return fileOf(b.dataset.thumbnail); }).filter(Boolean);
+      if (!files.length) { flush(); return; }
+      thumbnailFetching++;
+      fetchPictures(files).then(function (got) {
+        if (epoch !== thumbnailEpoch) return;
+        batch.forEach(function (b) {
+          var f = fileOf(b.dataset.thumbnail);
+          if (f && got[f.id]) { thumbnails[f.id] = got[f.id]; if (b.isConnected) putPicture(b, got[f.id], true); }
+        });
+      }).catch(function () {}).then(function () { if (epoch !== thumbnailEpoch) return; thumbnailFetching--; flush(); });
+      flush();
+    }
+    // an old small image with no small picture yet: made here from the file (small enough to be cheap), kept on the server
+    function backfill(b, f) {
+      backfillQueue.push([b, f]);
+      if (backfillBusy) return;
+      backfillBusy = true;
+      (function next() {
+        var item = backfillQueue.shift();
+        if (!item || epoch !== thumbnailEpoch) { backfillBusy = false; return; }
+        fetchFile(item[1], null).then(function (blob) { return VaultThumbnails.fromFile(new File([blob], item[1].name, { type: item[1].type || '' }), 'kimg'); }).then(function (p) {
+          if (!p.thumbnail || p.card) return null;
+          thumbnails[item[1].id] = p.thumbnail;
+          if (item[0].isConnected) putPicture(item[0], p.thumbnail, true);
+          return vreq('POST', '/api/vault/meta', { id: item[1].id, thumbnail: p.thumbnail, preview: p.preview }).then(function () { item[1].thumbnail = true; item[1].preview = true; });
+        }).catch(function () {}).then(next);
+      })();
     }
     if (window.IntersectionObserver) thumbnailObserver = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) { if (entry.isIntersecting) { thumbnailObserver.unobserve(entry.target); schedule(entry.target); } });
+      entries.forEach(function (entry) { if (entry.isIntersecting) { thumbnailObserver.unobserve(entry.target); see(entry.target); } });
     }, { root: $('#view-vault'), rootMargin: '100px' });
-    document.querySelectorAll('#vault-list [data-thumbnail]').forEach(function (b) { if (thumbnailObserver) thumbnailObserver.observe(b); else schedule(b); });
+    document.querySelectorAll('#vault-list [data-thumbnail]').forEach(function (b) { if (thumbnailObserver) thumbnailObserver.observe(b); else see(b); });
   }
   // the beginning of a text or a program (its first piece), fetched once
   var texts = {};
@@ -4547,8 +4605,8 @@
     var box = el('div', 'vitem-detail'), light = lightOf(f);
     var body = el('div', 'vault-body');
     if (f.preview) body.appendChild(picEl(f));
-    else if (f.done && is3d(f.name)) body.appendChild(el('div', 'vault-pic none', 'プレビューなし'));
-    else if (f.done && kind[1] === 'kimg' && f.size <= 8 * 1048576) body.appendChild(imageEl(f));
+    else if (f.done && kind[1] === 'kimg' && f.size <= 256 * 1024) body.appendChild(imageEl(f));
+    else if (f.done) body.appendChild(cardEl(f));
     var facts = el('div', 'facts');
     fact(facts, '送信日時', stamp(f.createdAt));
     fact(facts, '保存完了', f.done ? stamp(f.doneAt) : '送信中');
@@ -4769,7 +4827,9 @@
     c.card.classList.toggle('bad', j.state === 'fail');
     c.x.hidden = j.state === 'done';
   }
-  // a file in: the list again; a model's picture made here (its file kept for it till then)
+  // a file in: the list again; a model's picture made here (its file kept for it till then). The other files' small
+  // pictures were made while each was in hand and went up with its end (ops/vault-upload.js); here, only when they
+  // were not ready then.
   function jobDone(j) {
     if (state.vault) loadVault();
     var go = Promise.resolve();
@@ -4778,18 +4838,29 @@
         if (blob) return preview({ id: j.id, name: j.name }, blob, j);
         return null;
       });
-    } else if (/\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(j.name) && !j.parent) {
-      go = Promise.resolve(j.mem ? up.mem[j.key] : VaultUploads.fileOf(j.key)).then(function (blob) {
-        if (!blob) return;
-        return VaultThumbnails.make(blob).then(function (thumbnail) {
-          var h = j.pass ? { 'X-Vault-Upload': j.pass } : {};
-          return request('POST', '/api/vault/meta', { id: j.id, thumbnail: thumbnail }, h);
-        });
+    } else if (!j.parent && !j.pictured && picWait[j.key]) {
+      go = picWait[j.key].then(function (pics) {
+        if (!pics) return null;
+        var h = j.pass ? { 'X-Vault-Upload': j.pass } : {};
+        return VaultThumbnails.attempt(function () { return request('POST', '/api/vault/meta', { id: j.id, thumbnail: pics.thumbnail, preview: pics.preview }, h); }, 5, 1500);
       }).catch(function () {});
     }
     go.then(function () {
       setTimeout(function () { dropJob(j.key, true); }, 20000);
     });
+  }
+  // The small pictures of a file, made from it while it is in hand (before it goes up), one file at a time: an image shrunk,
+  // a video's frame, a sound's wave, a text's first lines, a document's or an APK's own picture, or at least a card. They are
+  // kept with the job, and whoever finishes the upload saves them with it. Nothing is downloaded.
+  var picQueue = Promise.resolve(), picWait = {};
+  function startPictures(j, file) {
+    if (j.parent || j.model || !window.VaultThumbnails) return;
+    var kind = fileKind({ name: j.name, type: j.type })[1];
+    picWait[j.key] = picQueue = picQueue.then(function () { return VaultThumbnails.fromFile(file, kind); }).then(function (p) {
+      if (!p.thumbnail) return null;
+      var pics = { thumbnail: p.thumbnail, preview: p.preview };
+      return VaultUploads.patch(j.key, { pics: pics }).then(function () { return pics; });
+    }).catch(function () { return null; });
   }
   function dropJob(key, quiet) {
     var c = up.cards[key];
@@ -4797,6 +4868,7 @@
     delete up.cards[key];
     delete up.jobs[key];
     delete up.mem[key];
+    delete picWait[key];
     renderResume();
     return VaultUploads.forget(key).catch(function () {}).then(function () { if (!quiet) kick(); });
   }
@@ -4833,6 +4905,7 @@
       return VaultUploads.add(j, null);
     }).then(function () {
       if (j.mem) up.mem[j.key] = file;
+      startPictures(j, file);
       onJob(j);
       return j.id ? passFor(j) : place(j);
     }).then(function () { kick(); return j; });
@@ -4996,9 +5069,10 @@
       return V.analyze(file, f.name);
     }).then(function (r) {
       j.set(1, 3);
-      return VaultThumbnails.make(r.preview).then(function (thumbnail) { return (pass ? Promise.resolve(pass) : passOf(f.id)).then(function (h) {
-        return request('POST', '/api/vault/meta', { id: f.id, preview: r.preview, info: r.info, thumbnail: thumbnail }, Object.assign({}, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, h)).then(function () {
-          pics[f.id] = r.preview;
+      // (the 3D engine's picture is large: what is kept is a medium one and a tiny one, a few tens of KB in all)
+      return Promise.all([VaultThumbnails.make(r.preview), VaultThumbnails.medium(r.preview)]).then(function (two) { var thumbnail = two[0], medium = two[1]; return (pass ? Promise.resolve(pass) : passOf(f.id)).then(function (h) {
+        return request('POST', '/api/vault/meta', { id: f.id, preview: medium, info: r.info, thumbnail: thumbnail }, Object.assign({}, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, h)).then(function () {
+          pics[f.id] = medium;
           j.set(2, 3);
           if (!r.light) return null;
           var base = f.name.replace(/\.[^.]+$/, '');
@@ -5007,6 +5081,11 @@
       }); });
     }).then(function () { j.finish('プレビューを作りました'); if (state.vault) return loadVault(); return null; }, function (err) {
       j.fail('プレビューを作れませんでした：' + ((err && err.message) || ''));
+      // (the 3D engine could not: the item still gets a card, so it is not left without a picture)
+      return VaultThumbnails.fromFile(file, 'k3d').then(function (p) {
+        if (!p.thumbnail) return null;
+        return (pass ? Promise.resolve(pass) : passOf(f.id)).then(function (h) { return request('POST', '/api/vault/meta', { id: f.id, thumbnail: p.thumbnail, preview: p.preview }, Object.assign({}, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, h)); });
+      }).catch(function () {});
     });
   }
   // a file's upload pass, from the server (the vault open, or no code needed)
@@ -5112,12 +5191,36 @@
       goOn(f);
       return;
     }
+    if (fileKind(f)[1] === 'k3d') view3d(f);
+    else showLook(f);
+  }
+  // A file's enlarged view is its medium picture (tens of KB at most), not the file: the original comes only
+  // when it is asked for (the buttons under the picture), and what cannot be shown here is saved.
+  function showLook(f) {
     var k = fileKind(f)[1];
-    if (k === 'k3d') view3d(f);
-    else if (k === 'kimg' && f.size <= SHOW_PIC) showImage(f);
-    else if (isTextual(k) && f.size <= SHOW_TEXT) showText(f);
-    else if ((k === 'kvid' || k === 'kaud') && f.size <= SHOW_MEDIA) showMedia(f, k === 'kvid');
-    else download(f);
+    closeViewer();
+    $('#viewer-name').textContent = f.name;
+    $('#viewer-note').textContent = '読み込み中…';
+    $('#viewer').hidden = false;
+    var box = $('#viewer-box'), wrap = el('div', 'viewer-look'), img = el('img', 'viewer-img'), acts = el('div', 'viewer-acts');
+    box.classList.add('fit');
+    img.alt = f.name;
+    function button(text, fn, cls) { var b = el('button', 'btn small' + (cls ? ' ' + cls : ''), text); b.type = 'button'; b.addEventListener('click', fn); acts.appendChild(b); }
+    if (k === 'kimg' && f.size <= SHOW_PIC) button('元の画像を表示（' + mb(f.size) + '）', function () { showImage(f); });
+    if (isTextual(k) && f.size <= SHOW_TEXT) button('全文を読み込む（' + mb(f.size) + '）', function () { showText(f); });
+    if ((k === 'kvid' || k === 'kaud') && f.size <= SHOW_MEDIA) button('再生する（' + mb(f.size) + ' を読み込みます）', function () { showMedia(f, k === 'kvid'); });
+    button('ダウンロード（' + mb(f.size) + '）', function () { download(f); }, 'primary');
+    wrap.appendChild(img); wrap.appendChild(acts); box.appendChild(wrap);
+    function show(src, real) {
+      if ($('#viewer').hidden || !wrap.isConnected) return;
+      img.src = src;
+      $('#viewer-note').textContent = real ? 'プレビュー（低解像度）・元のファイルは ' + mb(f.size) : '種類を表す絵です（元のファイルは ' + mb(f.size) + '）';
+    }
+    if (pics[f.id] && f.preview) { show(pics[f.id], true); return; }
+    if (!f.preview) { show(cardFor(f, true), false); return; }
+    VaultThumbnails.attempt(function () { return vreq('GET', '/api/vault/preview?id=' + f.id); }, 5, 1000).then(function (r) {
+      if (r.preview) { pics[f.id] = r.preview; show(r.preview, true); } else show(cardFor(f, true), false);
+    }).catch(function () { show(cardFor(f, true), false); });
   }
   // the picture, big
   function showPic(f) {
@@ -5234,7 +5337,7 @@
     var dev = state.developer && state.vault && state.vault.ticket, items = [];
     if (f.done) {
       items.push(['開く', 'open'], ['ダウンロード', 'get']);
-      if (kind[1] === 'kimg' && !f.thumbnail && write) items.push(['一覧用の画像を作る', 'thumbnail']);
+      if (f.done && !f.thumbnail && write && f.size <= 100 * 1048576 && kind[1] !== 'k3d') items.push(['プレビューを作る（ダウンロードして作成）', 'thumbnail']);
       if (lightOf(f)) items.push(['軽量版をダウンロード', 'getlight']);
       if (!f.info && kind[1] === 'k3d' && write && !inBackups && (own || state.vaultInfo.add)) items.push(['3Dプレビューを作る', 'make']);
     } else if (write) items.push(['続きから送る（同じファイルを選ぶ）', 'resume']);
@@ -5266,10 +5369,11 @@
     else if (act === 'pic') showPic(f);
     else if (act === 'make') makePreview(f);
     else if (act === 'thumbnail') {
-      var task = job(f.name + '（一覧用の画像）');
-      fetchFile(f, task).then(function (blob) { return VaultThumbnails.make(blob); }).then(function (thumbnail) {
-        return vreq('POST', '/api/vault/meta', { id: f.id, thumbnail: thumbnail });
-      }).then(function () { task.finish('一覧用の画像を保存しました'); return loadVault(); }).catch(function (err) { task.fail(err.message || '画像を作れませんでした'); });
+      var task = job(f.name + '（プレビュー）');
+      fetchFile(f, task).then(function (blob) { return VaultThumbnails.fromFile(new File([blob], f.name, { type: f.type || '' }), fileKind(f)[1]); }).then(function (p) {
+        delete thumbnails[f.id]; delete pics[f.id]; delete cards['s' + f.id]; delete cards['b' + f.id];
+        return vreq('POST', '/api/vault/meta', { id: f.id, thumbnail: p.thumbnail, preview: p.preview });
+      }).then(function () { task.finish('プレビューを保存しました'); return loadVault(); }).catch(function (err) { task.fail(err.message || 'プレビューを作れませんでした'); });
     }
     else if (act === 'link') makeLink(f);
     else if (act === 'rename') renameFile(f);
@@ -5441,7 +5545,8 @@
     var list = $('#log-list');
     if (reset) { state.log = []; state.logDone = false; list.textContent = ''; list.appendChild(el('p', 'empty muted', '読み込み中…')); }
     var before = !reset && state.log.length ? state.log[state.log.length - 1].id : 0;
-    request('GET', '/api/ops/log?q=' + encodeURIComponent(state.logQ) + '&kind=' + state.logKind + (before ? '&before=' + before : '')).then(function (r) {
+    // (lines only: the detail of a line, most of the bytes, is fetched when that line is opened)
+    request('GET', '/api/ops/log?slim=1&q=' + encodeURIComponent(state.logQ) + '&kind=' + state.logKind + (before ? '&before=' + before : '')).then(function (r) {
       if (reset) list.textContent = '';
       if (r.counts) {
         Array.prototype.forEach.call(document.querySelectorAll('#log-kinds [data-kind]'), function (c) {
@@ -5514,6 +5619,21 @@
         : '⚠ 改ざんチェック: ' + r.brokenAt + '番の記録で異常があります（' + r.reason + '）';
     }, function () {});
   }
+  // The lines of a list come without their detail (it is most of the bytes). The detail of the lines
+  // asked for comes in one request (at most 100 at a time), once, and stays on the line.
+  function fullLog(list) {
+    var need = list.filter(function (x) { return !x.full; }), jobs = [];
+    for (var i = 0; i < need.length; i += 100) {
+      (function (part) {
+        jobs.push(request('GET', '/api/ops/log/entries?ids=' + part.map(function (x) { return x.id; }).join(',')).then(function (r) {
+          var by = {};
+          (r.entries || []).forEach(function (e) { by[e.id] = e; });
+          part.forEach(function (x) { var e = by[x.id]; if (e) { x.detail = e.detail; x.prevHash = e.prevHash; x.hash = e.hash; x.full = true; } });
+        }));
+      })(need.slice(i, i + 100));
+    }
+    return Promise.all(jobs);
+  }
   // One line of the log. A tap goes to the place it is about (a player, a
   // report, the vault …; not for a 閲覧者, who only reads); 詳細 shows all of it.
   function logEntry(x) {
@@ -5531,7 +5651,13 @@
       var d = row.querySelector('.entry-detail');
       if (!open) { if (d) d.hidden = true; return; }
       if (d) { d.hidden = false; return; }
-      row.appendChild(logDetail(x));
+      // (the line came without its detail: it is fetched now, once, and stays on the line)
+      var wait = el('div', 'entry-detail loading', '詳細を読み込み中…');
+      row.appendChild(wait);
+      fullLog([x]).then(function () {
+        wait.replaceWith(logDetail(x));
+        if (!row.classList.contains('open')) row.querySelector('.entry-detail').hidden = true;
+      }, function (err) { wait.textContent = '詳細を読み込めませんでした：' + ((err && err.message) || ''); setTimeout(function () { wait.remove(); row.classList.remove('open'); more.classList.remove('on'); }, 2500); });
     }
     line.addEventListener('click', function () { if (go) go.open(); else details(); });
     var more = el('button', 'entry-more', '詳細');
@@ -5545,7 +5671,7 @@
   }
   // where a log line takes one: { label, open } (null: nowhere in particular)
   function placeOf(x) {
-    var a = String(x.action || ''), d = x.detail || {}, t = x.target && x.target.id ? x.target : null;
+    var a = String(x.action || ''), d = x.detail || x.place || {}, t = x.target && x.target.id ? x.target : null;
     // (what a player did: the player)
     if (!t && /^player_/.test(a) && x.actor && x.actor.id) t = x.actor;
     function to(label, open) { return { label: label, open: open }; }
@@ -5601,6 +5727,8 @@
   }
   function aiReport(entries, what) {
     if (!entries.length) { toast('ログがありません'); return; }
+    // (the lines of a list have no detail yet: it comes now, for these lines only)
+    if (entries.some(function (x) { return !x.full && x.detail === undefined; })) { fullLog(entries).then(function () { aiReport(entries, what); }, fail); return; }
     var first = entries[entries.length - 1], last = entries[0];
     var text = 'TWO STATE（オンラインのカジノゲーム）の運営ログです。内容を確認して、問題や気になる点があれば、原因の見立てと対処を教えてください。\n'
       + '範囲: ' + what + '・' + entries.length + '件（' + String(first.jst || '').slice(0, 16) + ' 〜 ' + String(last.jst || '').slice(0, 16) + ' 日本時間・新しい順）\n'
