@@ -624,11 +624,20 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       });
     } catch (e) {
       // a file an extension refused is taken out again (the pieces stored earlier too)
-      if (e.refusedFile) { await erase([e.refusedFile]); bump(); e.extra = { ...(e.extra || {}), final: true }; }
+      await dropRefused(e, u, req);
       throw e;
     }
     bump();
     return { n, received: out.received, chunks: f.chunks, done: !!out.sum, sha256: out.sum };
+  }
+  // a file an extension refused at its end is taken out again (the pieces too), and then the extension is told, outside the
+  // transaction the refusal rolled back (it may write what it has to keep of it)
+  async function dropRefused(e, u, req) {
+    if (!e.refusedFile) return;
+    await erase([e.refusedFile]);
+    bump();
+    e.extra = { ...(e.extra || {}), final: true };
+    if (gate && gate.refused) gate.refused({ file: e.refusedFile, user: u, req, error: e });
   }
   // every piece in: the file's fingerprint, and it is whole
   function finish(f, digests, req, u) {
@@ -1121,7 +1130,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       try {
         sum = finish(f, Array.from({ length: f.chunks }, (_, n) => have.get(n)), req, u);
       } catch (e) {
-        if (e.refusedFile) { await erase([e.refusedFile]); bump(); e.extra = { ...(e.extra || {}), final: true }; }
+        await dropRefused(e, u, req);
         throw e;
       }
       return { file: fileDto(fileRow(f.id)), done: true, sha256: sum, missing: [] };

@@ -12,6 +12,9 @@
 //                              asked before a vault file is made, before it is
 //                              whole, and for a small file that comes in one piece (the
 //                              diary's picture); they throw an ApiError to refuse
+//                              (restart: before a file is sent again from its beginning.
+//                              refused(info, ctx): told once a file refused at its end has been
+//                              taken out, outside the transaction that refusal rolled back)
 //   assets: { name: { type, body, kind: 'script' | 'worker', headers } } and
 //   boot(user, ctx) → [names]  the files the operator site gets for this person: each
 //                              comes by a ticket good for two minutes, from /api/ext/asset
@@ -73,12 +76,19 @@ export function createExtensions({ list = [], ctx, secret, clock = Date.now }) {
   const shut = () => new ApiError(503, 'unavailable', 'サーバーの構成が変わっているため、いまはアップロードできません。開発者に連絡してください');
 
   const guarding = (name) => active.filter((e) => e.hooks && typeof e.hooks[name] === 'function');
+  // (told, not asked: what the extension does about it is its own, and a fault in it changes nothing)
+  const told = (name) => (info) => {
+    for (const e of guarding(name)) {
+      try { e.hooks[name](info, ctx); } catch (err) { console.error(`extension ${e.id}: ${name} failed`, err); }
+    }
+  };
   const ask = (name) => (info) => {
     if (missing.length) throw shut();
     for (const e of guarding(name)) e.hooks[name](info, ctx);
   };
   // what the vault and the diary ask before taking a file in
-  const gate = { create: ask('create'), finish: ask('finish'), inline: ask('inline'), restart: ask('restart') };
+  const gate = { create: ask('create'), finish: ask('finish'), inline: ask('inline'), restart: ask('restart'), refused: told('refused') };
+
 
   const routes = {};
   for (const e of active) {

@@ -35,6 +35,7 @@ const sample = (log = []) => ({
   hooks: {
     create(info, ctx) { log.push(['create', info.name, info.size, info.user.name]); if (info.name.endsWith('.nope')) throw new ctx.ApiError(403, 'refused', 'refused at the door'); },
     finish(info, ctx) { log.push(['finish', info.file.name, info.fingerprint.length, info.digests.length]); if (info.file.name.startsWith('bad-')) throw new ctx.ApiError(403, 'refused', 'refused at the end'); },
+    refused(info) { log.push(['refused', info.file.name, info.user.name]); },
     restart(info, ctx) { log.push(['restart', info.file.name, info.restarts]); if (info.file.name.startsWith('no-again-')) throw new ctx.ApiError(403, 'refused', 'not again'); },
     inline(info, ctx) { log.push(['inline', info.kind, info.bytes ? info.bytes.length : 0]); if (info.kind === 'diary' && info.refuse) throw new ctx.ApiError(403, 'refused', 'refused'); }
   },
@@ -124,6 +125,7 @@ test('a part brings tables, routes under the gate, files by ticket, and a say in
   assert.deepEqual([door.status, door.error.code], [403, 'refused']);
   const end = await putFile(dev, 'bad-one.bin', Buffer.from('badbadbad'));
   assert.deepEqual([end.status, end.error.code], [403, 'refused']);
+  assert.deepEqual(log.filter((x) => x[0] === 'refused'), [['refused', 'bad-one.bin', 'taku']], 'and the part is told once it is taken out');
   const left = (await dev.vcall('GET', '/api/vault/files')).files.map((f) => f.name);
   assert.deepEqual(left, ['fine.bin'], 'the refused file is not kept');
   assert.equal(s.app.db.prepare('SELECT COUNT(*) AS n FROM vault_chunks').get().n, 1, 'nor its pieces');
