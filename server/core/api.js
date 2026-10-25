@@ -4230,10 +4230,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // a body that was touched) is turned away before the route knows of it; and what is answered is sealed
       let sealed = null;
       if (comm.covers(key)) {
-        // (a person who is not staff gets the refusal the route would give, and not a word about channels; a person who is not the
-        // developer gets what a route that does not exist gets, for the developer's panels)
-        ops.see(user);
+        // (a person who is not the developer gets what a route that does not exist gets, for the developer's panels, whoever they are;
+        // a person who is not staff gets the refusal the route would give, and not a word about channels)
         if (DEV_ONLY.has(key) && !isDeveloper(user)) throw new ApiError(404, 'not_found', 'APIが見つかりません');
+        ops.see(user);
         sealed = await comm.enter(req, user);
         if (sealed.body) req.json = async () => sealed.body;
       }

@@ -156,7 +156,7 @@ test('the identity is kept in the database (its private half sealed) and is the 
 });
 
 test('who sees which panel is the server\'s: each person is told only theirs, and a route that is not theirs says what a missing one says', async (t) => {
-  const { s, D, M, V, P } = await people(t);
+  const { s, plain, D, M, V, P } = await people(t);
   const dev = await D.call('GET', '/api/sec/me'), op = await M.call('GET', '/api/sec/me'), vw = await V.call('GET', '/api/sec/me');
   assert.deepEqual(ids(dev), PANELS.map((p) => p.id));
   assert.deepEqual(ids(op), PANELS.filter((p) => p.role !== 'developer').map((p) => p.id));
@@ -178,6 +178,9 @@ test('who sees which panel is the server\'s: each person is told only theirs, an
       assert.equal(r.error.code, 'not_found');
       assert.equal(r.error.message, missing.error.message, 'the very words a route that is not there gives');
     }
+    // a player (who cannot open a channel at all) is told the same no
+    const pl2 = await s.call(method, path, { token: plain.token, body: method === 'POST' ? {} : undefined });
+    assert.deepEqual([pl2.status, pl2.error.code, pl2.error.message], [404, 'not_found', missing.error.message], `${key} as a player`);
     // not even a word of the channel to a person who is not the developer: without one, the same no
     const bare = await s.call(method, path, { token: M.token, body: method === 'POST' ? {} : undefined });
     assert.equal(bare.status, 404, `${key} without a channel`);
