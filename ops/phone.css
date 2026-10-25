@@ -1,0 +1,142 @@
+/* The phone (body.mac-phone, set by ops/desktop.js: a narrow screen, or a short one held by a hand).
+   What a phone has instead of windows: a HOME screen of the apps (the bar's own app buttons, laid out as a grid),
+   an app that fills the screen with a way back, and five buttons at the bottom: ホーム・切替・通知・アカウント・メニュー.
+   Nothing is moved by hand and nothing is resized: the desktop's windows are simply as big as the screen. */
+.mac-home, .mac-nav-btn, .mac-nav-label, .mac-switcher { display: none; }
+.mac-phone { --phone-nav: calc(68px + env(safe-area-inset-bottom, 0px)); --phone-top: env(safe-area-inset-top, 0px); }
+
+/* the home screen */
+.mac-phone .mac-desktop { inset: 0; }
+.mac-phone .mac-home {
+  position: absolute; z-index: 1; inset: 0 0 var(--phone-nav) 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain;
+  padding: calc(var(--phone-top) + 16px) 16px 24px; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.mac-phone .mac-home::-webkit-scrollbar { display: none; }
+.mac-phone .mac-home[inert] { visibility: hidden; }
+.mac-home-head { text-align: center; color: #fff; text-shadow: 0 1px 10px #17385acc; margin: 8px 0 18px; }
+.mac-home-clock { display: block; font-size: 52px; font-weight: 250; letter-spacing: -1.5px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.mac-home-date { font-size: 14px; font-weight: 500; opacity: .92; }
+/* 背景 and 軽量化: a row of their own above the apps */
+.mac-phone .mac-home .mac-desktop-icons { position: static; display: flex; justify-content: center; gap: 22px; margin: 0 0 20px; grid-template-rows: none; }
+.mac-phone .mac-home .mac-desktop-app { width: 84px; height: auto; gap: 6px; padding: 0; }
+.mac-phone .mac-home .mac-desktop-app[data-desk="site"] { display: none; }
+.mac-phone .mac-home .mac-desktop-tile { width: 58px; height: 58px; border-radius: 17px; }
+.mac-phone .mac-home .mac-desktop-app img { width: 38px; height: 38px; }
+/* the apps */
+.mac-phone .mac-home-grid { display: block; }
+.mac-phone .mac-home #tabs.tabs {
+  display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px 6px; flex: none; margin: 0 !important; padding: 0 !important;
+  overflow: visible !important; scroll-behavior: auto; min-width: 0; align-items: start;
+}
+.mac-phone .mac-home .tab {
+  position: relative; display: flex !important; flex-direction: column; align-items: center; gap: 7px; flex: none; width: auto; min-width: 0; height: auto;
+  margin: 0; padding: 2px 0; border: 0; background: none; box-shadow: none; color: #fff; -webkit-tap-highlight-color: transparent;
+}
+.mac-phone .mac-home .tab[hidden] { display: none !important; }
+.mac-phone .mac-home .tab > img { display: block; width: 62px; height: 62px; object-fit: contain; transform: none; filter: drop-shadow(0 4px 6px #10304c55); transition: transform .12s; }
+.mac-phone .mac-home .tab:active > img { transform: scale(.9); }
+.mac-phone .mac-home .tab .mac-dock-label {
+  display: block !important; position: static; opacity: 1; visibility: visible; transform: none; padding: 0 2px; background: none; box-shadow: none; border-radius: 0;
+  color: #fff; font-size: 11.5px; font-weight: 600; line-height: 1.3; text-align: center; white-space: normal; text-shadow: 0 1px 6px #17385acc; pointer-events: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+.mac-phone .mac-home .tab .mac-dock-label::after { display: none; }
+.mac-phone .mac-home .tab .count { position: absolute; top: -3px; right: calc(50% - 40px); min-width: 20px; height: 20px; line-height: 20px; padding: 0 6px; border-radius: 10px; background: #ff454e; color: #fff; font-size: 11px; font-weight: 700; box-shadow: 0 1px 4px #0004; }
+.mac-phone .mac-home .tab::after { display: none !important; }
+.mac-phone .mac-home .tab.mac-visible, .mac-phone .mac-home .tab.mac-focused { background: none; box-shadow: none; }
+/* (the app that was open and put away: a small light under it) */
+.mac-phone .mac-home .tab.mac-running > img { filter: drop-shadow(0 0 8px #ffffffd0) drop-shadow(0 4px 6px #10304c55); }
+
+/* the five buttons at the bottom */
+.mac-phone .mac-dock {
+  --dock-icon: 28px; left: 0; right: 0; bottom: 0; width: auto; max-width: none; transform: none !important; animation: none !important; height: var(--phone-nav);
+  padding: 6px 6px env(safe-area-inset-bottom, 0px); gap: 0; border-radius: 22px 22px 0 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: stretch;
+}
+.mac-phone .mac-dock .top, .mac-phone .mac-dock .top .brand, .mac-phone .mac-dock .mac-status { display: contents; }
+.mac-phone .mac-dock .mac-clock, .mac-phone .mac-dock-hint, .mac-phone .mac-taskbar-edge, .mac-phone .mac-dock .mac-dock-divider, .mac-phone .mac-dock .mac-notification-badge-dummy { display: none !important; }
+.mac-phone .mac-dock .mac-nav-btn, .mac-phone .mac-dock .mac-system-menu, .mac-phone .mac-dock .mac-status-button {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: auto; height: auto; min-width: 0; padding: 4px 0;
+  border: 0; border-radius: 16px; background: none; box-shadow: none; color: var(--lg-ink, #1d2a44); -webkit-tap-highlight-color: transparent;
+}
+.mac-phone .mac-dock .mac-nav-btn:active, .mac-phone .mac-dock .mac-system-menu:active, .mac-phone .mac-dock .mac-status-button:active { background: #ffffff66; }
+.mac-phone .mac-dock .mac-nav-label { display: block; font-size: 10.5px; font-weight: 700; line-height: 1; letter-spacing: 0; }
+.mac-phone .mac-dock .mac-nav-btn > img, .mac-phone .mac-dock .mac-system-menu > img, .mac-phone .mac-dock .mac-status-button > img { width: 28px; height: 28px; }
+.mac-phone .mac-dock .mac-nav-home { order: 1; } .mac-phone .mac-dock .mac-nav-switch { order: 2; }
+.mac-phone .mac-dock .mac-notification-toggle { order: 3; } .mac-phone .mac-dock .mac-profile { order: 4; } .mac-phone .mac-dock .mac-system-menu { order: 5; }
+.mac-phone .mac-dock .mac-notification-badge { top: 2px; right: calc(50% - 22px); }
+/* (the two buttons a phone adds: a house, and two sheets one over the other) */
+.mac-nav-glyph { display: block; position: relative; width: 28px; height: 28px; }
+.mac-nav-home .mac-nav-glyph::before { content: ''; position: absolute; left: 4px; right: 4px; bottom: 3px; height: 12px; border-radius: 3px 3px 5px 5px; background: currentColor; opacity: .85; }
+.mac-nav-home .mac-nav-glyph::after { content: ''; position: absolute; left: 1px; top: 2px; width: 26px; height: 14px; background: currentColor; opacity: .85; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.mac-nav-switch .mac-nav-glyph::before { content: ''; position: absolute; left: 6px; top: 2px; width: 18px; height: 18px; border: 2.5px solid currentColor; border-radius: 5px; opacity: .5; }
+.mac-nav-switch .mac-nav-glyph::after { content: ''; position: absolute; left: 3px; top: 8px; width: 18px; height: 18px; border: 2.5px solid currentColor; border-radius: 5px; background: #ffffff55; }
+
+/* an app fills the screen */
+.mac-phone .mac-windows { inset: 0 0 var(--phone-nav) 0; }
+.mac-phone .mac-window { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0; }
+.mac-phone .mac-window-shade, .mac-phone .mac-resize, .mac-phone .mac-window-tabs { display: none !important; }
+.mac-phone .mac-titlebar, .mac-phone .mac-window:not(.is-active) .mac-titlebar { height: calc(54px + var(--phone-top)); min-height: calc(54px + var(--phone-top)); padding: var(--phone-top) 8px 0; gap: 4px; border-radius: 0; }
+.mac-phone .mac-window-controls { display: contents; }
+.mac-phone .mac-window-control.mac-zoom { display: none; }
+.mac-phone .mac-window-control { width: 44px; height: 44px; min-width: 44px; border-radius: 14px; }
+.mac-phone .mac-window-control.mac-minimize { order: 0; font-size: 0; }
+.mac-phone .mac-window-control.mac-minimize::before { content: '‹'; font-size: 34px; line-height: 1; margin-top: -4px; }
+.mac-phone .mac-window-control.mac-close { order: 2; }
+.mac-phone .mac-window-title { order: 1; flex: 1; max-width: none; margin: 0; justify-content: center; font-size: 15px; }
+.mac-phone .mac-window > .view, .mac-phone .mac-window.is-open > .view[hidden], .mac-phone .mac-window.is-closing > .view[hidden] { padding: 14px 14px 28px; -webkit-overflow-scrolling: touch; }
+/* the security home: no bar of its own to push it down (it is the whole page) */
+.mac-phone #view-securityhome > .bar { padding: 6px 12px; }
+/* the menu and the notices sit just above the five buttons */
+.mac-phone .mac-dropdown, .mac-phone .mac-popover, .mac-phone .mac-account { top: auto; bottom: calc(var(--phone-nav) + 8px); left: 10px !important; right: 10px; width: auto; max-width: none; max-height: calc(100% - var(--phone-nav) - 24px - var(--phone-top)); border-radius: 22px; }
+.mac-phone .mac-notifications { top: calc(var(--phone-top) + 10px); right: 10px; left: 10px; bottom: calc(var(--phone-nav) + 10px); width: auto; }
+.mac-phone .toast, .mac-phone .call-pill, .mac-ui.mac-phone .toast { bottom: calc(var(--phone-nav) + 14px); }
+.mac-phone .mac-overlay { inset: 0 0 var(--phone-nav) 0; padding: calc(var(--phone-top) + 24px) 14px 14px; align-items: flex-start; }
+.mac-phone .drawer { top: 0; bottom: var(--phone-nav); left: 0; right: 0; width: auto; border-radius: 0; }
+.mac-phone .chat-back, .mac-ui.mac-phone .chat-back { padding: 0 0 var(--phone-nav); }
+.mac-phone .chat { border-radius: 0; }
+
+/* the switcher */
+.mac-switch-panel { text-align: left; }
+.mac-switch-panel h2 { text-align: center; margin: 0 0 12px; }
+.mac-switch-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.mac-switch-go { flex: 1; display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 12px; border: 0; border-radius: 16px; background: #ffffff99; color: inherit; font: inherit; font-weight: 600; text-align: left; }
+.mac-switch-go img { width: 34px; height: 34px; }
+.mac-switch-x { width: 44px; height: 44px; border: 0; border-radius: 14px; background: #ffffff77; font-size: 22px; color: #55657c; }
+
+/* what is inside the apps: easier for a thumb */
+.mac-phone .btn { min-height: 44px; }
+.mac-phone .btn.small, .mac-phone .btn.tiny { min-height: 38px; }
+.mac-phone .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -14px; padding: 2px 14px 6px; }
+.mac-phone .chips::-webkit-scrollbar { display: none; }
+.mac-phone .chip { flex: none; min-height: 38px; }
+.mac-phone .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mac-phone .toolbar { flex-direction: column; align-items: stretch; }
+.mac-phone .vault-pane, .mac-phone .vault-work-pane { padding: 10px; }
+/* a short screen held sideways: the five buttons are a slim row, the apps a wider grid */
+@media (max-height: 520px) and (min-width: 701px) {
+  .mac-phone { --phone-nav: calc(52px + env(safe-area-inset-bottom, 0px)); }
+  .mac-phone .mac-home-head { display: none; }
+  .mac-phone .mac-home #tabs.tabs { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 14px 6px; }
+  .mac-phone .mac-home .tab > img { width: 50px; height: 50px; }
+  .mac-phone .mac-dock .mac-nav-label { display: none; }
+  .mac-phone .mac-titlebar, .mac-phone .mac-window:not(.is-active) .mac-titlebar { height: 46px; min-height: 46px; }
+}
+/* without the glass (軽量化): plain, light panels, and no light under the home screen's icons */
+.mac-flat.mac-phone .mac-dock { background: #e4eefb; }
+
+/* The login, enter and passkey screens on a short screen (a phone held sideways): the card and the three small buttons under it
+   are one column that scrolls, so the buttons no longer sit on top of the button to press. */
+@media (max-height: 600px) {
+  .mac-ui .login, .mac-ui .frame.turned .login { flex-direction: column; align-items: center; justify-content: flex-start; flex-wrap: nowrap; padding: 40px 12px 16px; overflow-y: auto; }
+  .mac-ui .login-card { margin: 0 auto; flex: none; }
+  .mac-ui .login .mac-login-actions { position: static; flex: none; margin: 8px 0 0; gap: 26px; }
+}
+
+@media (max-height: 460px) {
+  .mac-ui .login-card p.muted, .mac-ui .login-card h1 { display: none; }
+  .mac-ui .mac-login-avatar { width: 52px; height: 52px; margin-bottom: 4px; }
+  .mac-ui .login-card .brand { font-size: 15px; }
+  .mac-ui .login { padding-top: 34px; }
+  .mac-ui .login-card .field input { height: 34px; }
+  .mac-ui .login-card .error { min-height: 12px; margin-top: 2px; }
+}

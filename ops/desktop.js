@@ -135,6 +135,55 @@
   var liteButton = deskIcon('lite', '軽量化', '軽量化（リキッドグラスとアニメーションをオフ）', function () { setLite(!isLite()); });
   dock.appendChild(tabs); dock.appendChild(top); app.appendChild(dock);
   desktop.appendChild(deskIcons);
+
+  /* ---- the phone: a home screen of the apps, an app fills the screen with a way back, five buttons at the bottom ----
+     (ops/phone.css). The bar's own app buttons are the grid of the home screen (they move there on a phone and back on a
+     computer), so their badges, glow and permissions are the same ones; what a phone has instead of windows is the
+     switcher (開いているアプリ). */
+  var phoneMedia = window.matchMedia('(max-width: 700px), (max-height: 520px) and (pointer: coarse)');
+  var homeLayer = node('div', 'mac-home'), homeHead = node('header', 'mac-home-head'), homeClock = node('time', 'mac-home-clock'), homeDate = node('div', 'mac-home-date'), homeGrid = node('nav', 'mac-home-grid');
+  homeGrid.setAttribute('aria-label', 'アプリ');
+  homeHead.appendChild(homeClock); homeHead.appendChild(homeDate);
+  homeLayer.appendChild(homeHead); homeLayer.appendChild(homeGrid); desktop.appendChild(homeLayer);
+  function navLabel(b, text) { b.appendChild(node('span', 'mac-nav-label', text)); }
+  function navButton(cls, label) { var b = button('mac-nav-btn ' + cls, '', label); b.appendChild(node('span', 'mac-nav-glyph')); navLabel(b, label); return b; }
+  var navHome = navButton('mac-nav-home', 'ホーム'), navSwitch = navButton('mac-nav-switch', '切替');
+  navHome.addEventListener('click', function () { if (isBlocked()) return; closeOverlay(false); closeMenu(); if (openWindows().some(function (w) { return !w.minimized; })) showDesktop(); });
+  navSwitch.addEventListener('click', function () { if (!isBlocked()) showSwitcher(); });
+  // (the labels under the system menu's, the bell's and the account's buttons: seen on a phone only)
+  navLabel(home, 'メニュー'); navLabel(notificationToggle, '通知'); navLabel(profile, 'アカウント');
+  var switcher = node('div', 'mac-help mac-overlay mac-switcher'); switcher.hidden = true; switcher.setAttribute('role', 'dialog'); switcher.setAttribute('aria-modal', 'true'); switcher.setAttribute('aria-label', '開いているアプリ');
+  app.appendChild(switcher);
+  switcher.addEventListener('click', function (e) { if (e.target === switcher) closeOverlay(); });
+  function showSwitcher() {
+    var panel = node('div', 'mac-help-panel mac-switch-panel'), list = openWindows().sort(function (a, b) { return b.rank - a.rank; });
+    panel.appendChild(node('h2', '', '開いているアプリ'));
+    if (!list.length) panel.appendChild(node('p', '', '開いているアプリはありません。ホームのアプリを押して開いてください。'));
+    list.forEach(function (w) {
+      var row = node('div', 'mac-switch-row'), go = button('mac-switch-go', '', w.name + 'を表示'), x = button('mac-switch-x', '×', w.name + 'を閉じる');
+      go.appendChild(picture(w.image)); go.appendChild(node('span', '', w.name + (w.id === active && !w.minimized ? '（表示中）' : w.minimized ? '（しまってあります）' : '')));
+      go.addEventListener('click', function () { closeOverlay(false); activate(w.id); });
+      x.addEventListener('click', function () { closeWindow(w.id); showSwitcher(); });
+      row.appendChild(go); row.appendChild(x); panel.appendChild(row);
+    });
+    var shut = button('btn primary', '閉じる'); shut.addEventListener('click', function () { closeOverlay(); }); panel.appendChild(shut);
+    switcher.replaceChildren(panel); showOverlay(switcher);
+  }
+  // a phone, or not (the screen turned, a window made small): the app buttons and the 背景 / 軽量化 icons go where they belong
+  function setPhone(on) {
+    if (on === document.body.classList.contains('mac-phone')) return;
+    document.body.classList.toggle('mac-phone', on);
+    if (on) {
+      grouped = false; document.body.classList.remove('mac-grouped');
+      homeGrid.appendChild(tabs); homeLayer.insertBefore(deskIcons, homeGrid);
+      dock.insertBefore(navHome, dock.firstChild); dock.insertBefore(navSwitch, navHome.nextSibling);
+    } else {
+      dock.insertBefore(tabs, top); desktop.appendChild(deskIcons); navHome.remove(); navSwitch.remove();
+      closeOverlay(false);
+    }
+    render();
+  }
+  phoneMedia.addEventListener('change', function () { setPhone(phoneMedia.matches); });
   // Windows may cover the taskbar. Its bottom edge and keyboard shortcut
   // keep every application reachable without constraining window movement.
   var taskbarEdge = button('mac-taskbar-edge', '', 'アプリバーを表示');
@@ -350,6 +399,8 @@
   function updateClock() {
     var date = new Date(), text = date.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
     [clock, loginClock].forEach(function (n) { n.textContent = text; n.dateTime = date.toISOString(); });
+    homeClock.textContent = date.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hour12: false }); homeClock.dateTime = date.toISOString();
+    homeDate.textContent = date.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'long', day: 'numeric', weekday: 'long' });
     [loginConnection].forEach(function (n) { n.classList.toggle('is-offline', !navigator.onLine); n.setAttribute('aria-label', navigator.onLine ? 'ネットワーク接続あり' : 'オフライン'); n.title = n.getAttribute('aria-label'); });
   }
   updateClock(); setInterval(updateClock, 30000); window.addEventListener('online', updateClock); window.addEventListener('offline', updateClock);
@@ -405,6 +456,10 @@
       w.node.querySelector('.mac-zoom').setAttribute('aria-pressed', w.zoomed ? 'true' : 'false');
     });
     buildStrips(); layout();
+    // (a phone with no app in view shows its home screen)
+    var inView = openWindows().some(function (w) { return !w.minimized; }), phone = document.body.classList.contains('mac-phone');
+    document.body.classList.toggle('mac-phone-home', phone && !inView);
+    homeLayer.inert = phone && inView;
     var cur = active && windows[active] && windows[active].tab;
     if (cur && tabs.scrollWidth > tabs.clientWidth) {
       var l = cur.getBoundingClientRect().left - tabs.getBoundingClientRect().left + tabs.scrollLeft, pad = 40;
@@ -625,14 +680,20 @@
     var key = trigger.dataset.menu;
     if (key === 'account') { account.hidden = false; var first = account.querySelector('select:not(:disabled), button'); if (first) first.focus(); return; }
     menuHost.replaceChildren();
-    menuItem('デスクトップを表示', showDesktop);
-    menuItem('ウインドウを一覧表示', function () { setOverview(true); }, '', !openWindows().length);
-    menuItem('ウインドウをタブにまとめる', function () { grouped = !grouped; prefs('tabs', grouped ? 'yes' : 'no'); if (!active) nextWindow(); render(); }, '', false, grouped);
+    var onPhone = document.body.classList.contains('mac-phone');
+    if (onPhone) {
+      menuItem('ホームへ戻る', function () { if (openWindows().some(function (w) { return !w.minimized; })) showDesktop(); });
+      menuItem('開いているアプリ', showSwitcher);
+    } else {
+      menuItem('デスクトップを表示', showDesktop);
+      menuItem('ウインドウを一覧表示', function () { setOverview(true); }, '', !openWindows().length);
+      menuItem('ウインドウをタブにまとめる', function () { grouped = !grouped; prefs('tabs', grouped ? 'yes' : 'no'); if (!active) nextWindow(); render(); }, '', false, grouped);
+    }
     divider();
     // lighter on a slow phone or computer: no blur behind the glass, no gliding
     menuItem('リキッドグラス（ぼかし）', function () { var flat = document.body.classList.toggle('mac-flat'); prefs('glass', flat ? 'off' : 'on'); }, '', false, !document.body.classList.contains('mac-flat'));
     menuItem('滑らかなアニメーション', function () { var off = document.body.classList.toggle('mac-reduce-motion'); prefs('motion', off ? 'reduce' : 'full'); }, '', false, !document.body.classList.contains('mac-reduce-motion'));
-    if (hoverPointer.matches) menuItem('アプリ一覧を自動で隠す', function () { autoHide = !autoHide; prefs('autohide', autoHide ? 'yes' : 'no'); if (autoHide) scheduleHide(300); else showDock(true); }, '', false, autoHide);
+    if (hoverPointer.matches && !onPhone) menuItem('アプリ一覧を自動で隠す', function () { autoHide = !autoHide; prefs('autohide', autoHide ? 'yes' : 'no'); if (autoHide) scheduleHide(300); else showDock(true); }, '', false, autoHide);
     menuItem('背景を変える', showWallpapers);
     menuItem('デスクトップの使い方', showHelp);
     menuHost.hidden = false;
@@ -890,5 +951,5 @@
   document.body.classList.toggle('mac-reduce-motion', prefs('motion') === 'reduce');
   document.body.classList.toggle('mac-flat', prefs('glass') === 'off');
   grouped = prefs('tabs') === 'yes';
-  document.body.classList.add('mac-ui'); syncSession(); syncDialog(); syncPermissions(); render(); syncLite();
+  document.body.classList.add('mac-ui'); syncSession(); syncDialog(); syncPermissions(); setPhone(phoneMedia.matches); render(); syncLite();
 })();
