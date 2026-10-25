@@ -3737,10 +3737,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const opsMfa = createOpsMfa({ q, tx, secret, ops, opsLog, isDeveloper, requireDevMfa: config.requireDevMfa, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now });
   Object.assign(routes, opsMfa.routes);
   // parts this deployment adds, if it has any (server/core/ext.js; the list is server/ext/index.js)
-  const ext = createExtensions({
-    list: extraParts, secret, clock: config.clock || Date.now,
-    ctx: { q, tx, exec: (sql) => db.exec(sql), config, opsLog, getUser, isDeveloper, ops, secret, clock: config.clock || Date.now, notice, ApiError, keyFrom, nameKey, sha256 }
-  });
+  const extCtx = { q, tx, exec: (sql) => db.exec(sql), config, opsLog, getUser, isDeveloper, ops, secret, clock: config.clock || Date.now, notice, ApiError, keyFrom, nameKey, sha256, holdsTicket: () => false };
+  const ext = createExtensions({ list: extraParts, secret, clock: config.clock || Date.now, ctx: extCtx });
   Object.assign(routes, ext.routes);
   Object.assign(routes, createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed,
     commentRate: (u) => rate(limit.dm, u.id), opsLog, gate: ext.gate }).routes);
@@ -3805,6 +3803,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     del: (...a) => blobs.del(...a)
   };
   const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, gate: ext.gate, blobs: bucket, onDb: (n) => emergency.vaultDb(n), epoch: pk.epoch });
+  // (what an extension's route may ask: does this request hold the developer's code ticket, the 30 minutes after the code was put in)
+  extCtx.holdsTicket = (req, u) => vault.unlocked(req, u);
   vaultRef = vault;
   Object.assign(routes, vault.routes);
   // the developer's backups of everything but the vault

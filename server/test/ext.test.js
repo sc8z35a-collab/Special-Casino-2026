@@ -19,15 +19,16 @@ const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 const sample = (log = []) => ({
   id: 'sample', version: '1.2', guards: ['upload'],
   migrations: [['CREATE TABLE x_sample (id INTEGER PRIMARY KEY, note TEXT NOT NULL)'], ['ALTER TABLE x_sample ADD COLUMN at INTEGER NOT NULL DEFAULT 0']],
-  routes: ({ q, isDeveloper, ApiError }) => ({
+  routes: (ctx) => ({
+    'GET /api/ops/x/ticket': (req, u) => ({ held: ctx.holdsTicket(req, u) }),
     'GET /api/ops/x/sample': (req, u) => {
-      if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'no');
-      return { rows: q('SELECT * FROM x_sample ORDER BY id').all() };
+      if (!ctx.isDeveloper(u)) throw new ctx.ApiError(403, 'not_developer', 'no');
+      return { rows: ctx.q('SELECT * FROM x_sample ORDER BY id').all() };
     },
     'POST /api/ops/x/sample': async (req, u) => {
-      if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'no');
+      if (!ctx.isDeveloper(u)) throw new ctx.ApiError(403, 'not_developer', 'no');
       const b = await req.json();
-      q('INSERT INTO x_sample (note) VALUES (?)').run(String(b.note));
+      ctx.q('INSERT INTO x_sample (note) VALUES (?)').run(String(b.note));
       return { ok: true };
     }
   }),
@@ -87,6 +88,10 @@ test('a part brings tables, routes under the gate, files by ticket, and a say in
   assert.equal((await s.call('GET', '/api/ops/x/sample', { token: mod.token })).error.code, 'not_developer');
   assert.equal((await s.call('GET', '/api/ops/x/sample', { token: player.token })).error.code, 'not_operator', 'a plain player never reaches it');
   assert.equal((await s.call('GET', '/api/ops/x/sample')).status, 401);
+  // a route may ask whether the request holds the developer's code ticket
+  assert.equal((await dev.call('GET', '/api/ops/x/ticket')).held, false);
+  assert.equal((await dev.vcall('GET', '/api/ops/x/ticket')).held, true);
+  assert.equal((await s.call('GET', '/api/ops/x/ticket', { token: mod.token })).held, true, 'for anyone else the question has no ticket to ask for');
 
   // files for the site: by person, each with a ticket that is good for two minutes
   const boot = await dev.call('GET', '/api/ops/ext');

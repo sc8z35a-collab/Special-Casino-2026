@@ -16,7 +16,8 @@
 //   boot(user, ctx) → [names]  the files the operator site gets for this person: each
 //                              comes by a ticket good for two minutes, from /api/ext/asset
 // `ctx` is what the extension may use of the server: q, tx, exec, config, opsLog,
-// getUser, isDeveloper, ops, secret, clock, notice, ApiError, keyFrom.
+// getUser, isDeveloper, ops, secret, clock, notice, ApiError, keyFrom, nameKey, sha256,
+// holdsTicket(req, u) (the request holds the developer's code ticket: true for any other person).
 // An extension that guards uploads and was there before but is not now (a deploy
 // that left it out) shuts the uploads rather than let them through unchecked; the
 // developer says it is meant with `ext-forget <id>` (server/core/admin.js).

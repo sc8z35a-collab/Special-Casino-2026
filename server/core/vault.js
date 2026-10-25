@@ -1703,5 +1703,5 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     routes[key] = async (req, u) => { try { return await fn(req, u); } finally { bump(); } };
   }
 
-  return { routes, summary, speedNow, passFor, public: ['GET /api/vault/pull', 'POST /api/vault/ai'] };
+  return { routes, summary, speedNow, passFor, unlocked, public: ['GET /api/vault/pull', 'POST /api/vault/ai'] };
 }
