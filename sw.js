@@ -1,7 +1,7 @@
 /* Service worker: makes the game installable as an app ("ホーム画面に追加",
    Chrome's install) and lets it open without a connection. Always the
    network first, the cache only as a fallback; the API is never cached. */
-const BUILD = '3391a31f9ba6';          // written by tools/stamp.mjs
+const BUILD = 'f879db221b08';          // written by tools/stamp.mjs
 const CACHE = 'two-state-' + BUILD;
 
 self.addEventListener('install', (e) => {
@@ -21,7 +21,10 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/download/') || url.pathname === '/version.json') return;
-  e.respondWith(fetch(req).then((res) => {
+  // Code keeps stable URLs across releases. Revalidate it even when the
+  // WebView's HTTP cache still considers the previous response fresh.
+  const code = req.mode === 'navigate' || req.destination === 'script' || req.destination === 'style';
+  e.respondWith(fetch(req, code ? { cache: 'no-cache' } : undefined).then((res) => {
     if (res.ok && res.type === 'basic') {
       const copy = res.clone();
       caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});

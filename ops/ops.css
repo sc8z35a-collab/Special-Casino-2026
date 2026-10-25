@@ -642,7 +642,8 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .vault-plus { width: 44px; padding: 0; font-size: 22px; font-weight: 600; line-height: 1; }
 .vault-memo { font-size: 12.5px; cursor: pointer; }
 .vault-memo:hover { color: var(--bad); text-decoration: line-through; }
-.vault-items { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
+.vault-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); align-items: start; gap: 8px; margin: 0 0 12px; }
+.vault-items { display: contents; }
 .vault-items:empty { display: none; }
 .vitem { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
 .vitem:hover { border-color: #bfd4f6; }
@@ -833,3 +834,24 @@ body.role-viewer [data-stop], body.role-viewer #srv-dev, body.role-viewer .repor
 .log-group[open] > summary::before { content: '▾'; }
 .log-group > .entry { margin: 0 8px; }
 .log-group[open] { padding-bottom: 6px; }
+
+/* Compact static-image vault gallery. No model downloads in the item list. */
+#vault-list .vitem, #vault-folders .vitem { position: relative; grid-template-columns: minmax(0, 1fr); gap: 5px; padding: 8px; min-width: 0; border-radius: 12px; }
+#view-vault .vitem > .vault-check { position: absolute; top: 11px; left: 11px; z-index: 2; background: #ffffffb0; border-radius: 8px; }
+#view-vault .vitem > .vicon { width: 100%; height: auto; aspect-ratio: 1; border: 1px solid #cbd4e1; border-radius: 7px; background: #e9edf3; overflow: hidden; }
+#view-vault .vault-thumb.has-thumbnail img { width: 100%; height: 100%; object-fit: contain; }
+#view-vault .vitem-main .vault-name { font-size: 12px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 32px; }
+#view-vault .vitem-sub { font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+#view-vault .vitem-acts { grid-column: 1; gap: 3px; justify-content: flex-end; }
+#view-vault .vitem-acts .vbtn { min-height: 28px; height: 28px; padding: 0 6px; font-size: 11px; }
+#view-vault .vitem-detail { max-height: 300px; overflow: auto; }
+#view-vault .vitem-detail .vault-body { flex-direction: column; }
+#view-vault .vitem-detail .vault-pic { width: 100%; height: auto; aspect-ratio: 1; background-size: contain; }
+#view-vault .vitem-tags { gap: 2px; }
+#view-vault .vitem-tags .kind { font-size: 9px; padding: 1px 4px; }
+#view-vault .vitem.picked { border-color: #087aff; box-shadow: inset 0 0 0 1px #087aff; background: #e4efff; }
+#view-vault .vault-select { padding: 6px 8px; gap: 5px 8px; margin-bottom: 8px; }
+#view-vault .vault-select-acts { gap: 4px; }
+#dialog-input[data-vault-share-url] { user-select: text; -webkit-user-select: text; }
+.vault-share-copy { margin-top: 8px; }
+@media(max-width: 380px) { #view-vault .vault-gallery { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); } }

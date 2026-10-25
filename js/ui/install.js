@@ -79,11 +79,17 @@
     state.updating = true;
     try { sessionStorage.setItem(RELOADED, String(Date.now())); } catch (e) { /* fine */ }
     if (!quiet) K.toast('最新版を読み込んでいます…');
+    if (platform.app && window.TwoStateApp.clearWebCache) {
+      try { window.TwoStateApp.clearWebCache(); } catch (e) { /* older apps use the web fallback */ }
+    }
     var clear = window.caches ? caches.keys().then(function (keys) {
       return Promise.all(keys.filter(function (k) { return k.indexOf('two-state-') === 0; }).map(function (k) { return caches.delete(k); }));
     }) : Promise.resolve();
     var sw = navigator.serviceWorker && navigator.serviceWorker.getRegistrations ? navigator.serviceWorker.getRegistrations().then(function (rs) {
-      return Promise.all(rs.map(function (r) { return r.update().catch(function () {}); }));
+      return Promise.all(rs.filter(function (r) {
+        var worker = r.active || r.waiting || r.installing;
+        return worker && new URL(worker.scriptURL).pathname === new URL('sw.js', location.href).pathname;
+      }).map(function (r) { return r.unregister().catch(function () {}); }));
     }) : Promise.resolve();
     // The network requests and the fallback timer may finish together. Only
     // the first one may navigate: two reloads would play the studio logo twice.
@@ -317,7 +323,7 @@
       K.toast('インストールしました！ホーム画面のアイコンから遊べます', 3600);
     });
     if (api.online && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-      navigator.serviceWorker.register('sw.js').catch(function () { /* the game works without it */ });
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(function () { /* the game works without it */ });
     }
     if (api.online && !platform.app) {
       getJson('download/app.json').then(function (info) { if (info && info.apk) state.apk = info; }, function () {});

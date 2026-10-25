@@ -879,6 +879,8 @@ export const MIGRATIONS = [
   ]
 ];
 
+MIGRATIONS.push(["ALTER TABLE vault_files ADD COLUMN thumbnail TEXT NOT NULL DEFAULT ''"]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)

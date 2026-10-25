@@ -419,8 +419,10 @@
           <button class="btn small ghost" id="vault-picked-clear" type="button">選択を解除</button>
         </span>
       </div>
-      <div class="vault-items" id="vault-folders"></div>
-      <div class="vault-items" id="vault-list"></div>
+      <div class="vault-gallery">
+        <div class="vault-items" id="vault-folders"></div>
+        <div class="vault-items" id="vault-list"></div>
+      </div>
       <div class="vault-pager" id="vault-pager"></div>
     </div>
   </section>
@@ -575,6 +577,7 @@
 </div>
 
 <script src="vault-upload.js"></script>
+<script src="vault-thumbnails.js"></script>
 <script src="../js/net/watchcrypto.js"></script>
 <script src="watch.js"></script>
 <!-- Presentation only: the existing operator handlers and API calls stay in ops.js. -->

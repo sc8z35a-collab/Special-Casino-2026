@@ -5,11 +5,15 @@
   function editable(target) {
     return target && target.closest && target.closest('input, textarea, [contenteditable="true"]');
   }
+  function shareURL(target) {
+    var input = target && target.closest && target.closest('#dialog:not([hidden]) input[data-vault-share-url="1"]');
+    return input && input.readOnly;
+  }
   document.addEventListener('selectstart', function (e) {
     if (!editable(e.target)) e.preventDefault();
   });
   ['copy', 'cut'].forEach(function (type) {
-    document.addEventListener(type, function (e) { e.preventDefault(); e.stopImmediatePropagation(); }, true);
+    document.addEventListener(type, function (e) { if (type === 'copy' && shareURL(e.target)) return; e.preventDefault(); e.stopImmediatePropagation(); }, true);
   });
   document.addEventListener('keydown', function (e) {
     if (window.parent !== window && e.altKey && e.code === 'Space') {
@@ -18,6 +22,7 @@
       return;
     }
     var key = e.key.toLowerCase();
+    if (shareURL(e.target) && (((e.ctrlKey || e.metaKey) && (key === 'c' || key === 'a')) || (e.ctrlKey && e.key === 'Insert'))) return;
     if (((e.ctrlKey || e.metaKey) && (key === 'c' || key === 'x' || (key === 'a' && !editable(e.target)))) || (e.ctrlKey && e.key === 'Insert') || (e.shiftKey && e.key === 'Delete')) {
       e.preventDefault(); e.stopImmediatePropagation();
     }
