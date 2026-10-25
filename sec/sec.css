@@ -94,17 +94,16 @@ body {
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 13px; padding: 15px 16px; }
 .card h3 { margin: 0 0 10px; font-size: 14px; letter-spacing: .02em; color: var(--muted); font-weight: 700; display: flex; align-items: center; gap: 8px; }
 
-/* threat level */
-.level-card { display: flex; align-items: center; gap: 18px; background: linear-gradient(180deg, var(--panel2), var(--panel)); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
-.level-ring { width: 118px; height: 118px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: none; background: radial-gradient(circle at 50% 42%, rgba(53, 214, 164, .14), transparent 68%); border: 3px solid var(--line); transition: border-color .3s; }
-.level-ring b { font-size: 26px; font-weight: 900; letter-spacing: .02em; }
-.level-ring span { font-size: 11px; color: var(--muted); }
+/* threat level: one slim line (a coloured bar, the word and its name), the facts under it */
+.level-card { display: flex; flex-direction: column; align-items: stretch; gap: 14px; background: linear-gradient(180deg, var(--panel2), var(--panel)); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+.level-ring { display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: baseline; gap: 10px; padding: 2px 0 2px 12px; border: solid var(--line); border-width: 0 0 0 4px; transition: border-color .3s; }
+.level-ring b { font-size: 24px; font-weight: 900; letter-spacing: .02em; }
+.level-ring span { font-size: 12px; color: var(--muted); }
 .level-ring.lv-safe { border-color: var(--ok); } .level-ring.lv-safe b { color: var(--ok); }
 .level-ring.lv-watch { border-color: var(--accent2); } .level-ring.lv-watch b { color: var(--accent2); }
 .level-ring.lv-elevated { border-color: var(--warn); } .level-ring.lv-elevated b { color: var(--warn); }
 .level-ring.lv-high { border-color: #ff7a3c; } .level-ring.lv-high b { color: #ff7a3c; }
 .level-ring.lv-breach, .level-ring.lv-lockdown { border-color: var(--danger); animation: pulse 1.4s infinite; } .level-ring.lv-breach b, .level-ring.lv-lockdown b { color: var(--danger); }
-.level-ring.lv-lockdown b { font-size: 16px; }
 .level-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; flex: 1; min-width: 0; }
 .level-facts div { display: flex; flex-direction: column; }
 .level-facts span { font-size: 11px; color: var(--muted); }
@@ -189,8 +188,6 @@ body {
 @media (max-width: 900px) {
   .columns { grid-template-columns: 1fr; }
   .side-col { position: static; }
-  .level-ring { width: 96px; height: 96px; }
-  .level-ring.lv-lockdown b { font-size: 14px; }
 }
 
 /* a 閲覧者 (viewer): looking only — no channel, no lockdown */
@@ -227,7 +224,6 @@ input, textarea { -webkit-user-select: text; user-select: text; }
   .speed select { max-width: 100px; }
   .field input, .field textarea, .search, select, #chat-text { font-size: 16px; }
   .level-card, .card { padding: 14px; }
-  .level-ring { width: 94px; height: 94px; }
   .app { padding-bottom: 140px; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {

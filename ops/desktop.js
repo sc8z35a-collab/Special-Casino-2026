@@ -120,19 +120,21 @@
   });
 
   dock = node('div', 'mac-dock'); dock.setAttribute('aria-label', 'Dock');
-  var dockHome = button('mac-dock-home', '', 'デスクトップを表示');
-  dockHome.appendChild(picture('site')); dockHome.appendChild(node('span', 'mac-dock-label', 'デスクトップ'));
-  dockHome.addEventListener('click', showDesktop); dock.appendChild(dockHome);
+  // 背景・軽量化・デスクトップ are not apps of the bar: they sit on the desktop itself, in a column of their own
+  var deskIcons = node('div', 'mac-desktop-icons'); deskIcons.setAttribute('role', 'group'); deskIcons.setAttribute('aria-label', 'デスクトップのアイコン');
+  function deskIcon(image, label, hint, action) {
+    var b = button('mac-desktop-app', '', hint); b.dataset.desk = image;
+    var tile = node('span', 'mac-desktop-tile'); tile.appendChild(picture(image));
+    b.appendChild(tile); b.appendChild(node('span', 'mac-desktop-label', label));
+    b.addEventListener('click', action); deskIcons.appendChild(b);
+    return b;
+  }
+  deskIcon('site', 'デスクトップ', 'ウインドウをすべてしまって、デスクトップを表示', function () { showDesktop(); });
+  var wallButton = deskIcon('wallpaper-app', '背景', '背景を変える', function () { showWallpapers(); });
   // 軽量化: one tap turns the liquid glass and the gliding animations off together (and back on)
-  var liteButton = button('mac-dock-tool', '', '軽量化（リキッドグラスとアニメーションをオフ）');
-  liteButton.appendChild(picture('lite')); liteButton.appendChild(node('span', 'mac-dock-label', '軽量化'));
-  liteButton.addEventListener('click', function () { setLite(!isLite()); });
-  // 背景: the pictures to put behind the windows
-  var wallButton = button('mac-dock-tool', '', '背景を変える');
-  wallButton.appendChild(picture('wallpaper-app')); wallButton.appendChild(node('span', 'mac-dock-label', '背景'));
-  wallButton.addEventListener('click', function () { showWallpapers(); });
-  dock.appendChild(liteButton); dock.appendChild(wallButton);
-  dock.appendChild(node('span', 'mac-dock-divider')); dock.appendChild(tabs); dock.appendChild(top); app.appendChild(dock);
+  var liteButton = deskIcon('lite', '軽量化', '軽量化（リキッドグラスとアニメーションをオフ）', function () { setLite(!isLite()); });
+  dock.appendChild(tabs); dock.appendChild(top); app.appendChild(dock);
+  desktop.appendChild(deskIcons);
   // Windows may cover the taskbar. Its bottom edge and keyboard shortcut
   // keep every application reachable without constraining window movement.
   var taskbarEdge = button('mac-taskbar-edge', '', 'アプリバーを表示');
@@ -354,9 +356,11 @@
 
   function defaultBounds(w) {
     var compact = area.clientWidth <= 700, i = compact ? 0 : openWindows().length % 4;
-    var width = Math.min(1320, area.clientWidth - (compact ? 16 : 48));
-    var height = Math.min(860, area.clientHeight - (compact ? 108 : 148));
-    w.bounds = { x: compact ? 8 : (area.clientWidth - width) / 2 + i * 12 - 18, y: (compact ? 8 : 16) + i * 12, width: width, height: height };
+    // the security home is a whole page of its own: it opens as large as the screen allows (the bar stays in view)
+    var big = w.id === 'securityhome' && !compact;
+    var width = big ? area.clientWidth - 24 : Math.min(1320, area.clientWidth - (compact ? 16 : 48));
+    var height = big ? area.clientHeight - 112 : Math.min(860, area.clientHeight - (compact ? 108 : 148));
+    w.bounds = { x: compact ? 8 : big ? 12 : (area.clientWidth - width) / 2 + i * 12 - 18, y: compact ? 8 : big ? 10 : 16 + i * 12, width: width, height: height };
     clamp(w);
   }
   function clamp(w) {
@@ -758,6 +762,7 @@
 
   function showOverlay(n) {
     closeMenu(); closeOverlay(false); returnFocus = document.activeElement; overlay = n; n.hidden = false;
+    if (window.OpsGlass) OpsGlass.scan();
     var input = n.querySelector('input, button'); if (input) input.focus();
   }
   function closeOverlay(restore) {

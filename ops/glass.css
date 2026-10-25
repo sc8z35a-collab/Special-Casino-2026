@@ -1,0 +1,218 @@
+/* Liquid glass for the whole operator desktop.
+
+   What makes it glass, and not a pale panel:
+     - what is behind it is bent (the lens: ops/glass.js, only where the browser can do it),
+       blurred a little and given more colour, so it stays recognisable and moves with the window
+     - a bright rim that runs round the edge, brighter where the light falls (top left) and
+       a faint cool/warm fringe on the opposite sides, as light splits at the edge of real glass
+     - a soft highlight across the face and a spot of light that follows the pointer
+     - thickness: light inside the top edge, shade inside the bottom edge, and a shadow
+       in layers (close and sharp, far and wide) so each pane floats at its own height
+   Everything is drawn by the user's own device and costs the server nothing. The switch
+   in the system menu (リキッドグラス) and 軽量化 turn it all off at once (body.mac-flat).
+   No inline style or script is needed: the page's policy allows only this file. */
+
+.mac-ui {
+  --lg-blur: 20px;
+  --lg-sat: 185%;
+  --lg-bright: 1.07;
+  --lg-ink: #1d2a44;
+  --lg-edge: rgba(255, 255, 255, .95);
+  --lg-edge-soft: rgba(255, 255, 255, .14);
+  --lg-cool: rgba(110, 205, 255, .55);
+  --lg-warm: rgba(255, 150, 205, .45);
+  --lg-shade: rgba(30, 60, 110, .30);
+}
+
+.mac-glass-defs { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+
+/* the shared recipe for a pane of glass ------------------------------------------------ */
+.mac-ui:not(.mac-flat) :is(.mac-dock, .mac-window, .mac-notifications, .mac-dropdown, .mac-popover, .mac-help-panel, .dialog, .drawer, .toast, .mac-desktop-app .mac-desktop-tile) {
+  isolation: isolate;
+  -webkit-backdrop-filter: var(--lg-lens,) blur(var(--lg-blur)) saturate(var(--lg-sat)) brightness(var(--lg-bright));
+  backdrop-filter: var(--lg-lens,) blur(var(--lg-blur)) saturate(var(--lg-sat)) brightness(var(--lg-bright));
+}
+.mac-ui:not(.mac-flat) :is(.mac-dock, .mac-window, .mac-notifications, .mac-dropdown, .mac-popover, .mac-help-panel, .dialog, .drawer, .toast)::before,
+.mac-ui:not(.mac-flat) :is(.mac-dock, .mac-window, .mac-notifications, .mac-dropdown, .mac-popover, .mac-help-panel, .dialog, .drawer, .toast)::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+}
+/* the face: a broad reflection, a second thin one, and the spot that follows the pointer */
+.mac-ui:not(.mac-flat) :is(.mac-dock, .mac-window, .mac-notifications, .mac-dropdown, .mac-popover, .mac-help-panel, .dialog, .drawer, .toast)::before {
+  z-index: 1;
+  background:
+    radial-gradient(60% 46% at var(--lx, 16%) var(--ly, -6%), rgba(255, 255, 255, .62), rgba(255, 255, 255, 0) 70%),
+    linear-gradient(112deg, rgba(255, 255, 255, .26) 0%, rgba(255, 255, 255, .05) 22%, rgba(255, 255, 255, 0) 38%, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, .10) 76%, rgba(255, 255, 255, .02) 84%, rgba(255, 255, 255, .20) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, .20), rgba(255, 255, 255, 0) 14%);
+  mix-blend-mode: soft-light;
+  opacity: .95;
+}
+/* the rim: a ring that is brightest where the light falls and goes dark and cool on the far side */
+.mac-ui:not(.mac-flat) :is(.mac-dock, .mac-window, .mac-notifications, .mac-dropdown, .mac-popover, .mac-help-panel, .dialog, .drawer, .toast)::after {
+  z-index: 6; padding: 1.5px;
+  background:
+    linear-gradient(135deg, var(--lg-edge) 0%, rgba(255, 255, 255, .55) 14%, var(--lg-edge-soft) 34%, rgba(255, 255, 255, .05) 56%, rgba(255, 255, 255, .34) 82%, rgba(255, 255, 255, .85) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+
+.mac-ui:not(.mac-flat) :is(.dialog, .mac-help-panel, .mac-desktop-app .mac-desktop-tile) { position: relative; }
+
+/* windows ------------------------------------------------------------------------------- */
+.mac-ui:not(.mac-flat) .mac-window {
+  border: 0; outline: 0;
+  --lg-blur: 18px;
+  background: linear-gradient(158deg, rgba(255, 255, 255, .50) 0%, rgba(236, 245, 255, .34) 42%, rgba(222, 236, 255, .40) 100%);
+  box-shadow:
+    inset 0 1.5px 1px rgba(255, 255, 255, .95),
+    inset 0 18px 28px -18px rgba(255, 255, 255, .75),
+    inset 0 -22px 34px -22px var(--lg-shade),
+    inset 1.5px 0 1px -1px var(--lg-cool),
+    inset -1.5px 0 1px -1px var(--lg-warm),
+    0 1px 2px rgba(15, 35, 70, .20),
+    0 12px 26px -8px rgba(15, 35, 70, .26),
+    0 38px 80px -18px rgba(15, 35, 70, .38);
+}
+.mac-ui:not(.mac-flat) .mac-window:not(.is-active) {
+  --lg-blur: 26px;
+  background: linear-gradient(158deg, rgba(246, 250, 255, .56) 0%, rgba(232, 242, 255, .44) 100%);
+  box-shadow:
+    inset 0 1.5px 1px rgba(255, 255, 255, .8),
+    inset 0 -18px 30px -22px var(--lg-shade),
+    0 1px 2px rgba(15, 35, 70, .16),
+    0 8px 20px -8px rgba(15, 35, 70, .22),
+    0 22px 48px -16px rgba(15, 35, 70, .26);
+}
+.mac-ui:not(.mac-flat) .mac-window.is-active {
+  box-shadow:
+    inset 0 1.5px 1px #fff,
+    inset 0 20px 30px -18px rgba(255, 255, 255, .85),
+    inset 0 -24px 36px -22px var(--lg-shade),
+    inset 1.5px 0 1px -1px var(--lg-cool),
+    inset -1.5px 0 1px -1px var(--lg-warm),
+    0 2px 3px rgba(15, 35, 70, .22),
+    0 18px 34px -8px rgba(15, 35, 70, .30),
+    0 54px 110px -20px rgba(15, 35, 70, .46);
+}
+.mac-ui:not(.mac-flat) .mac-window.is-dragging { box-shadow: inset 0 1.5px 1px #fff, inset 0 -24px 36px -22px var(--lg-shade), 0 3px 5px rgba(15, 35, 70, .22), 0 30px 50px -10px rgba(15, 35, 70, .36), 0 70px 130px -24px rgba(15, 35, 70, .5); }
+.mac-ui:not(.mac-flat) .mac-titlebar,
+.mac-ui:not(.mac-flat) .mac-window:not(.is-active) .mac-titlebar {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .62), rgba(255, 255, 255, .20));
+  border-bottom: 1px solid rgba(255, 255, 255, .62);
+  box-shadow: 0 1px 0 rgba(70, 110, 170, .10), 0 8px 14px -12px rgba(30, 60, 110, .25);
+}
+.mac-ui:not(.mac-flat) .mac-window > .view,
+.mac-ui:not(.mac-flat) .mac-window.is-open > .view[hidden],
+.mac-ui:not(.mac-flat) .mac-window.is-closing > .view[hidden] {
+  --muted: #3f4f69;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .42), rgba(250, 253, 255, .28));
+  color: var(--lg-ink);
+}
+.mac-ui:not(.mac-flat) .mac-window .hint, .mac-ui:not(.mac-flat) .mac-window .muted { color: #3f4f69; }
+.mac-ui:not(.mac-flat) .mac-window-shade { background: transparent; }
+.mac-ui:not(.mac-flat) .mac-window-tabs { background: rgba(255, 255, 255, .26); border-bottom-color: rgba(255, 255, 255, .5); }
+.mac-ui:not(.mac-flat) .mac-app-tab.is-selected { background: rgba(255, 255, 255, .62); box-shadow: inset 0 1px 0 #fff, 0 -1px 4px rgba(30, 60, 110, .08); }
+
+/* the three round window buttons and every other small glass control -------------------- */
+.mac-ui:not(.mac-flat) .mac-window-control,
+.mac-ui:not(.mac-flat) .mac-window:not(.is-active) .mac-window-control {
+  border: 0; position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .86), rgba(255, 255, 255, .34));
+  box-shadow: inset 0 1.5px 1px #fff, inset 0 -2px 3px rgba(70, 110, 170, .16), inset 1px 0 1px rgba(110, 205, 255, .25), inset -1px 0 1px rgba(255, 150, 205, .22), 0 1px 2px rgba(20, 50, 100, .18), 0 6px 12px -5px rgba(20, 50, 100, .26);
+}
+.mac-ui:not(.mac-flat) .mac-window-control:hover { background: linear-gradient(180deg, #fff, rgba(255, 255, 255, .6)); }
+.mac-ui:not(.mac-flat) .mac-window-control.mac-close:hover { background: linear-gradient(180deg, #ff7686, #e04458); box-shadow: inset 0 1.5px 1px rgba(255, 255, 255, .7), 0 6px 14px -4px rgba(224, 68, 88, .6); }
+.mac-ui:not(.mac-flat) .btn:not(.primary):not(.danger):not(.warn):not(.ok):not(.solid):not(.ghost),
+.mac-ui:not(.mac-flat) .chip {
+  border: 0; color: var(--lg-ink);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .80), rgba(255, 255, 255, .36));
+  box-shadow: inset 0 1.5px 1px #fff, inset 0 -2px 3px rgba(70, 110, 170, .14), 0 1px 2px rgba(20, 50, 100, .16), 0 5px 11px -5px rgba(20, 50, 100, .22);
+}
+.mac-ui:not(.mac-flat) .chip.on { background: linear-gradient(180deg, #fff, rgba(255, 255, 255, .7)); box-shadow: inset 0 1.5px 1px #fff, inset 0 -2px 3px rgba(70, 110, 170, .18), 0 0 0 1.5px rgba(8, 122, 255, .55), 0 6px 14px -5px rgba(8, 122, 255, .4); }
+.mac-ui:not(.mac-flat) .btn.primary { border: 0; background: linear-gradient(180deg, rgba(70, 160, 255, .98), rgba(8, 104, 232, .92)); box-shadow: inset 0 1.5px 1px rgba(255, 255, 255, .75), inset 0 -2px 3px rgba(0, 40, 120, .30), 0 1px 2px rgba(8, 60, 160, .35), 0 8px 16px -6px rgba(8, 110, 240, .55); }
+.mac-ui:not(.mac-flat) :is(.btn.danger, .btn.warn, .btn.ok, .btn.solid) { box-shadow: inset 0 1.5px 1px rgba(255, 255, 255, .6), inset 0 -2px 3px rgba(0, 0, 0, .16), 0 6px 14px -6px rgba(20, 40, 80, .4); }
+.mac-ui:not(.mac-flat) .btn:active { transform: translateY(1px) scale(.985); }
+.mac-ui:not(.mac-flat) :is(.field input, .search, select, .field textarea) {
+  border: 0; background: rgba(255, 255, 255, .58);
+  box-shadow: inset 0 2px 4px rgba(40, 80, 140, .16), inset 0 -1px 0 rgba(255, 255, 255, .9), 0 0 0 1px rgba(255, 255, 255, .55);
+}
+.mac-ui:not(.mac-flat) :is(.field input, .search, select, .field textarea):focus-visible { outline: 0; box-shadow: inset 0 2px 4px rgba(40, 80, 140, .14), 0 0 0 2px rgba(8, 122, 255, .7), 0 0 0 5px rgba(8, 122, 255, .18); }
+
+/* cards, tables and counters inside a window: thinner glass on glass --------------------- */
+.mac-ui:not(.mac-flat) .mac-window :is(.stat, .card, .entry, .srv-card, .table-wrap, .vault-space, .devunit-document, .devunit-discussion) {
+  border: 0; background: linear-gradient(160deg, rgba(255, 255, 255, .70), rgba(255, 255, 255, .42));
+  box-shadow: inset 0 1.5px 1px rgba(255, 255, 255, .95), inset 0 -2px 4px rgba(70, 110, 170, .10), 0 1px 2px rgba(20, 50, 100, .10), 0 8px 18px -10px rgba(20, 50, 100, .22);
+}
+.mac-ui:not(.mac-flat) .mac-window .players thead th { background: rgba(255, 255, 255, .5); }
+.mac-ui:not(.mac-flat) .mac-window .players tbody tr:nth-child(even) { background: rgba(255, 255, 255, .26); }
+.mac-ui:not(.mac-flat) .mac-window .players tbody tr:hover { background: rgba(190, 222, 255, .55); }
+
+/* the bar at the bottom ----------------------------------------------------------------- */
+.mac-ui:not(.mac-flat) .mac-dock {
+  --lg-blur: 10px; --lg-sat: 200%;
+  border: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .40), rgba(226, 238, 255, .20) 55%, rgba(255, 255, 255, .30));
+  box-shadow:
+    inset 0 2px 1px rgba(255, 255, 255, .95),
+    inset 0 14px 22px -14px rgba(255, 255, 255, .8),
+    inset 0 -14px 22px -14px var(--lg-shade),
+    inset 2px 0 1px -1px var(--lg-cool),
+    inset -2px 0 1px -1px var(--lg-warm),
+    0 1px 2px rgba(15, 35, 70, .22),
+    0 14px 28px -8px rgba(15, 35, 70, .34),
+    0 30px 60px -20px rgba(15, 35, 70, .40);
+}
+.mac-ui:not(.mac-flat) .mac-dock .tab > img,
+.mac-ui:not(.mac-flat) .mac-dock-home > img,
+.mac-ui:not(.mac-flat) .mac-dock-tool > img { filter: drop-shadow(0 3px 3px rgba(20, 50, 100, .30)) drop-shadow(0 1px 0 rgba(255, 255, 255, .45)); }
+.mac-ui:not(.mac-flat) .mac-dock .tab.mac-focused { background: linear-gradient(180deg, rgba(255, 255, 255, .66), rgba(190, 222, 255, .36)); box-shadow: inset 0 1.5px 1px #fff, inset 0 -3px 5px rgba(8, 122, 255, .16), 0 0 0 1.5px rgba(8, 122, 255, .5), 0 8px 16px -6px rgba(8, 122, 255, .5); }
+.mac-ui:not(.mac-flat) .mac-dock .top { border-left-color: rgba(255, 255, 255, .6); }
+.mac-ui:not(.mac-flat) .mac-dock-label { background: rgba(255, 255, 255, .72); -webkit-backdrop-filter: blur(14px) saturate(180%); backdrop-filter: blur(14px) saturate(180%); box-shadow: inset 0 1px 1px #fff, 0 6px 14px -6px rgba(20, 50, 100, .4); }
+
+/* the notification centre, the menus and the dialogs -------------------------------------- */
+.mac-ui:not(.mac-flat) .mac-notifications {
+  --lg-blur: 16px; border: 0;
+  background: linear-gradient(158deg, rgba(255, 255, 255, .46), rgba(226, 238, 255, .26));
+  box-shadow: inset 0 1.5px 1px #fff, inset 0 16px 26px -16px rgba(255, 255, 255, .8), inset 0 -20px 30px -20px var(--lg-shade), 0 1px 2px rgba(15, 35, 70, .2), 0 14px 28px -8px rgba(15, 35, 70, .28), 0 36px 70px -20px rgba(15, 35, 70, .36);
+}
+.mac-ui:not(.mac-flat) .mac-notice-card { border: 0; background: linear-gradient(160deg, rgba(255, 255, 255, .72), rgba(255, 255, 255, .44)); box-shadow: inset 0 1.5px 1px #fff, 0 1px 2px rgba(20, 50, 100, .12), 0 8px 16px -10px rgba(20, 50, 100, .3); }
+.mac-ui:not(.mac-flat) :is(.mac-dropdown, .mac-popover, .mac-help-panel, .dialog, .drawer, .toast) {
+  --lg-blur: 18px; border: 0; color: var(--lg-ink);
+  background: linear-gradient(158deg, rgba(255, 255, 255, .62), rgba(234, 244, 255, .42));
+  box-shadow: inset 0 1.5px 1px #fff, inset 0 16px 26px -16px rgba(255, 255, 255, .85), inset 0 -20px 30px -20px var(--lg-shade), inset 1.5px 0 1px -1px var(--lg-cool), inset -1.5px 0 1px -1px var(--lg-warm), 0 1px 2px rgba(15, 35, 70, .22), 0 16px 32px -8px rgba(15, 35, 70, .32), 0 44px 90px -22px rgba(15, 35, 70, .44);
+}
+.mac-ui:not(.mac-flat) .mac-menu-item:not(:disabled):hover,
+.mac-ui:not(.mac-flat) .mac-menu-item:focus-visible { background: linear-gradient(180deg, rgba(70, 160, 255, .95), rgba(8, 110, 235, .9)); box-shadow: inset 0 1px 1px rgba(255, 255, 255, .6), 0 6px 12px -5px rgba(8, 110, 235, .6); }
+.mac-ui:not(.mac-flat) .dialog-back, .mac-ui:not(.mac-flat) .drawer-back, .mac-ui:not(.mac-flat) .viewer-back { background: rgba(14, 32, 64, .22); }
+
+/* the desktop icons: a small piece of glass under the picture ---------------------------- */
+.mac-desktop-icons { position: absolute; z-index: 1; }
+.mac-ui:not(.mac-flat) .mac-desktop-app .mac-desktop-tile {
+  --lg-blur: 8px; --lg-sat: 170%;
+  background: linear-gradient(160deg, rgba(255, 255, 255, .52), rgba(255, 255, 255, .16));
+  box-shadow: inset 0 1.5px 1px rgba(255, 255, 255, .95), inset 0 -8px 12px -8px var(--lg-shade), inset 1px 0 1px -1px var(--lg-cool), inset -1px 0 1px -1px var(--lg-warm), 0 1px 2px rgba(15, 35, 70, .2), 0 10px 20px -8px rgba(15, 35, 70, .34);
+}
+.mac-ui:not(.mac-flat) .mac-desktop-app:hover .mac-desktop-tile { background: linear-gradient(160deg, rgba(255, 255, 255, .7), rgba(255, 255, 255, .28)); }
+.mac-ui:not(.mac-flat) .mac-desktop-app.is-on .mac-desktop-tile { box-shadow: inset 0 1.5px 1px #fff, 0 0 0 2px rgba(8, 122, 255, .7), 0 10px 22px -8px rgba(8, 122, 255, .6); }
+
+/* the login: fields and buttons are glass too --------------------------------------------- */
+.mac-ui:not(.mac-flat) .login-card .field input,
+.mac-ui:not(.mac-flat) .mac-auth-dialog .field input {
+  border: 0; background: rgba(255, 255, 255, .20);
+  box-shadow: inset 0 2px 1px rgba(255, 255, 255, .6), inset 0 -2px 4px rgba(0, 40, 90, .14), 0 0 0 1px rgba(255, 255, 255, .34), 0 8px 18px -8px rgba(10, 40, 80, .4);
+}
+.mac-ui:not(.mac-flat) .login-card .btn.primary,
+.mac-ui:not(.mac-flat) #dialog.mac-auth-dialog .dialog-acts .btn {
+  border: 0; background: linear-gradient(180deg, rgba(255, 255, 255, .42), rgba(255, 255, 255, .14));
+  box-shadow: inset 0 1.5px 1px rgba(255, 255, 255, .85), inset 0 -2px 4px rgba(0, 40, 90, .16), 0 0 0 1px rgba(255, 255, 255, .3), 0 10px 20px -8px rgba(10, 40, 80, .45);
+}
+
+/* without the glass (軽量化 or the switch off): plain, light panels --------------------- */
+.mac-flat :is(.mac-window, .mac-dock, .mac-notifications) { border: 1px solid #ffffffb3; }
+@media (forced-colors: active) {
+  .mac-ui :is(.mac-window, .mac-dock, .mac-notifications, .mac-dropdown, .mac-popover, .dialog, .drawer)::before,
+  .mac-ui :is(.mac-window, .mac-dock, .mac-notifications, .mac-dropdown, .mac-popover, .dialog, .drawer)::after { display: none; }
+}
+/* a phone: the glass stays, the heavy part (the lens on big panes) is left to the dock and the sheets */
+@media (max-width: 700px) {
+  .mac-ui:not(.mac-flat) .mac-window { --lg-blur: 14px; }
+}
