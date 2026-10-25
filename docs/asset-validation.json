@@ -1,0 +1,259 @@
+{
+  "models": [
+    {
+      "name": "img/3d/auction/lectern.glb",
+      "boundsDelta": 0.00015519936479235782,
+      "meanPixelDelta": 0.003470626531862745,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/auction/seed.glb",
+      "boundsDelta": 0.0007961530677686962,
+      "meanPixelDelta": 0.0016333486519607844,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/big.glb",
+      "boundsDelta": 0.00041439672899923596,
+      "meanPixelDelta": 0.0028522787876724765,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/cars/blue-lightning.glb",
+      "boundsDelta": 0.0016024106704083563,
+      "meanPixelDelta": 0.005290812795025418,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/cars/ferrari-325.glb",
+      "boundsDelta": 0.0007447304381100886,
+      "meanPixelDelta": 0.0034144582312091503,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/cars/lamborghini-aventador.glb",
+      "boundsDelta": 0.0003934072656773136,
+      "meanPixelDelta": 0.004046493452705156,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/cars/lamborghini-kuia-spyder.glb",
+      "boundsDelta": 0.0002665636237501513,
+      "meanPixelDelta": 0.0032474426402505445,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/cars/lamborghini-revuelto.glb",
+      "boundsDelta": 0.0006390813023924377,
+      "meanPixelDelta": 0.0036738820238743646,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/cars/lamborghini-urus.glb",
+      "boundsDelta": 0.00020944764996542813,
+      "meanPixelDelta": 0.004331058233478576,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/cars/mercedes-amg-one-white.glb",
+      "boundsDelta": 0.00010696275862960787,
+      "meanPixelDelta": 0.004101136982570806,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/cars/mercedes-benz-one.glb",
+      "boundsDelta": 0.0007354185236118142,
+      "meanPixelDelta": 0.004525803376906318,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/cars/nissan-gt-r.glb",
+      "boundsDelta": 0.0003799339184890502,
+      "meanPixelDelta": 0.0032767324232933913,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/cars/onvoro.glb",
+      "boundsDelta": 0.0006203741260240075,
+      "meanPixelDelta": 0.004625480834694989,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/effects-lite/big.glb",
+      "boundsDelta": 0.00041439672899923596,
+      "meanPixelDelta": 0.0020404624523420478,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/effects-lite/level-up.glb",
+      "boundsDelta": 0.0005377404441869233,
+      "meanPixelDelta": 0.000728627677923021,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/effects-lite/super.glb",
+      "boundsDelta": 0.00010790916523060242,
+      "meanPixelDelta": 0.003358325390341322,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/effects-lite/ultra.glb",
+      "boundsDelta": 0.0002687045715582721,
+      "meanPixelDelta": 0.0033892108637436458,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/effects-lite/vip-extend.glb",
+      "boundsDelta": 0.0004119532238533535,
+      "meanPixelDelta": 0.0024462997004357297,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/effects-lite/win.glb",
+      "boundsDelta": 0.0002285692744327688,
+      "meanPixelDelta": 0.0029261769812091503,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/garage/garage.glb",
+      "boundsDelta": 0.00014438926030211065,
+      "meanPixelDelta": 0.005470062012073348,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/level-up.glb",
+      "boundsDelta": 0.0007410100447608113,
+      "meanPixelDelta": 0.0021235092706063906,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/studio/base.glb",
+      "boundsDelta": 0.00035194071425307706,
+      "meanPixelDelta": 0.0017633442265795208,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/studio/bookshelf.glb",
+      "boundsDelta": 0.00036684997129589716,
+      "meanPixelDelta": 0.00596284665486565,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/studio/moving-head.glb",
+      "boundsDelta": 0.0005170475258258337,
+      "meanPixelDelta": 0.003351410732116921,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/studio/spotlight.glb",
+      "boundsDelta": 0.0010653997948146356,
+      "meanPixelDelta": 0.001245773193536674,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/super.glb",
+      "boundsDelta": 0.0003237071247653728,
+      "meanPixelDelta": 0.006685552548565722,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/tree/fertilizer.glb",
+      "boundsDelta": 1.7584676545433885e-05,
+      "meanPixelDelta": 0.00010184050472040668,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/tree/preview.glb",
+      "boundsDelta": 0.0005941330010784989,
+      "meanPixelDelta": 0.0020627666575889613,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/tree/seed.glb",
+      "boundsDelta": 0.0002997110322361454,
+      "meanPixelDelta": 0.0017945133782679738,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/tree/stage-1.glb",
+      "boundsDelta": 0.0004718395889216282,
+      "meanPixelDelta": 0.0003732851647603486,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/tree/stage-2.glb",
+      "boundsDelta": 0.00021651128260839094,
+      "meanPixelDelta": 0.0004146312749636892,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/ultra.glb",
+      "boundsDelta": 0.0003171135448186601,
+      "meanPixelDelta": 0.005371873865286855,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/vip-extend.glb",
+      "boundsDelta": 0.0005884570964335892,
+      "meanPixelDelta": 0.0026058332765976763,
+      "clips": 0
+    },
+    {
+      "name": "img/3d/win.glb",
+      "boundsDelta": 0.0002285692744327688,
+      "meanPixelDelta": 0.003621578839869281,
+      "clips": 0
+    },
+    {
+      "name": "auction/dennis",
+      "boundsDelta": 0.00030121669177823337,
+      "meanPixelDelta": 0.0009250039714960058,
+      "clips": 4
+    },
+    {
+      "name": "auction/johnson",
+      "boundsDelta": 0.0004539973319192212,
+      "meanPixelDelta": 0.0015050906068445897,
+      "clips": 4
+    },
+    {
+      "name": "auction/joumon",
+      "boundsDelta": 0.00042226397506526874,
+      "meanPixelDelta": 0.0014311924133079159,
+      "clips": 4
+    },
+    {
+      "name": "auction/kamiya",
+      "boundsDelta": 0.00034539636660889644,
+      "meanPixelDelta": 0.0010689707017066087,
+      "clips": 4
+    },
+    {
+      "name": "auction/natasha",
+      "boundsDelta": 0.0005171820999385218,
+      "meanPixelDelta": 0.0011299260734386348,
+      "clips": 4
+    },
+    {
+      "name": "auction/room",
+      "boundsDelta": 0.00031626754061338106,
+      "meanPixelDelta": 0.0042970522989288305,
+      "clips": 0
+    },
+    {
+      "name": "auction/tree",
+      "boundsDelta": 0.0003819525183768815,
+      "meanPixelDelta": 0.0028758595452069717,
+      "clips": 0
+    },
+    {
+      "name": "auction/wild",
+      "boundsDelta": 0.0002883301083058464,
+      "meanPixelDelta": 0.0011484006218228033,
+      "clips": 4
+    }
+  ],
+  "updateClick": true,
+  "tiers": 9,
+  "modelErrors": 0
+}

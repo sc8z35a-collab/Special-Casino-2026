@@ -1,0 +1,2647 @@
+{
+  "files": 203,
+  "before": 5621841,
+  "after": 2286383,
+  "images": [
+    {
+      "path": "app/android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "before": 8326,
+      "after": 4291,
+      "beforeSize": [
+        72,
+        72
+      ],
+      "afterSize": [
+        72,
+        72
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-hdpi/ic_launcher_background.png",
+      "before": 325,
+      "after": 98,
+      "beforeSize": [
+        162,
+        162
+      ],
+      "afterSize": [
+        162,
+        162
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png",
+      "before": 10870,
+      "after": 4416,
+      "beforeSize": [
+        162,
+        162
+      ],
+      "afterSize": [
+        162,
+        162
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-hdpi/ic_launcher_monochrome.png",
+      "before": 2947,
+      "after": 1322,
+      "beforeSize": [
+        162,
+        162
+      ],
+      "afterSize": [
+        162,
+        162
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "before": 4420,
+      "after": 2695,
+      "beforeSize": [
+        48,
+        48
+      ],
+      "afterSize": [
+        48,
+        48
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-mdpi/ic_launcher_background.png",
+      "before": 218,
+      "after": 93,
+      "beforeSize": [
+        108,
+        108
+      ],
+      "afterSize": [
+        108,
+        108
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png",
+      "before": 5736,
+      "after": 2839,
+      "beforeSize": [
+        108,
+        108
+      ],
+      "afterSize": [
+        108,
+        108
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-mdpi/ic_launcher_monochrome.png",
+      "before": 1828,
+      "after": 950,
+      "beforeSize": [
+        108,
+        108
+      ],
+      "afterSize": [
+        108,
+        108
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "before": 13031,
+      "after": 6196,
+      "beforeSize": [
+        96,
+        96
+      ],
+      "afterSize": [
+        96,
+        96
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xhdpi/ic_launcher_background.png",
+      "before": 469,
+      "after": 101,
+      "beforeSize": [
+        216,
+        216
+      ],
+      "afterSize": [
+        216,
+        216
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png",
+      "before": 16816,
+      "after": 5981,
+      "beforeSize": [
+        216,
+        216
+      ],
+      "afterSize": [
+        216,
+        216
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xhdpi/ic_launcher_monochrome.png",
+      "before": 4133,
+      "after": 1596,
+      "beforeSize": [
+        216,
+        216
+      ],
+      "afterSize": [
+        216,
+        216
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "before": 24541,
+      "after": 10574,
+      "beforeSize": [
+        144,
+        144
+      ],
+      "afterSize": [
+        144,
+        144
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_background.png",
+      "before": 762,
+      "after": 108,
+      "beforeSize": [
+        324,
+        324
+      ],
+      "afterSize": [
+        324,
+        324
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "before": 31027,
+      "after": 10132,
+      "beforeSize": [
+        324,
+        324
+      ],
+      "afterSize": [
+        324,
+        324
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_monochrome.png",
+      "before": 6494,
+      "after": 2073,
+      "beforeSize": [
+        324,
+        324
+      ],
+      "afterSize": [
+        324,
+        324
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "before": 38806,
+      "after": 15920,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_background.png",
+      "before": 1174,
+      "after": 118,
+      "beforeSize": [
+        432,
+        432
+      ],
+      "afterSize": [
+        432,
+        432
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+      "before": 48777,
+      "after": 15041,
+      "beforeSize": [
+        432,
+        432
+      ],
+      "afterSize": [
+        432,
+        432
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_monochrome.png",
+      "before": 9351,
+      "after": 2686,
+      "beforeSize": [
+        432,
+        432
+      ],
+      "afterSize": [
+        432,
+        432
+      ]
+    },
+    {
+      "path": "icons/icon-180.png",
+      "before": 34977,
+      "after": 14419,
+      "beforeSize": [
+        180,
+        180
+      ],
+      "afterSize": [
+        180,
+        180
+      ]
+    },
+    {
+      "path": "icons/icon-192.png",
+      "before": 38806,
+      "after": 15920,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "icons/icon-512.png",
+      "before": 195820,
+      "after": 62110,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "icons/icon-maskable-512.png",
+      "before": 102756,
+      "after": 36864,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "icons/ops-180.png",
+      "before": 25663,
+      "after": 9175,
+      "beforeSize": [
+        180,
+        180
+      ],
+      "afterSize": [
+        180,
+        180
+      ]
+    },
+    {
+      "path": "icons/ops-192.png",
+      "before": 28365,
+      "after": 10305,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "icons/ops-512.png",
+      "before": 148217,
+      "after": 37158,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "icons/ops-maskable-512.png",
+      "before": 164561,
+      "after": 41132,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "img/3d/auction/cash.webp",
+      "before": 12700,
+      "after": 7256,
+      "beforeSize": [
+        384,
+        384
+      ],
+      "afterSize": [
+        384,
+        384
+      ]
+    },
+    {
+      "path": "img/avatars/adam-secret.webp",
+      "before": 2348,
+      "after": 2192,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/adventurer-blue.webp",
+      "before": 2566,
+      "after": 2292,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/adventurer-gold.webp",
+      "before": 3032,
+      "after": 2868,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/dealer-purple.webp",
+      "before": 2112,
+      "after": 1984,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/explorer-cyan.webp",
+      "before": 2912,
+      "after": 2690,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/gambler-secret.webp",
+      "before": 3034,
+      "after": 2840,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/healer-cyan.webp",
+      "before": 3120,
+      "after": 2972,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/johnson.webp",
+      "before": 2184,
+      "after": 2056,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/karate-red.webp",
+      "before": 2510,
+      "after": 2310,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/knight-gold.webp",
+      "before": 2650,
+      "after": 2488,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/magician-purple.webp",
+      "before": 2814,
+      "after": 2602,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/official.webp",
+      "before": 2906,
+      "after": 2744,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/peter.webp",
+      "before": 2600,
+      "after": 2434,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/pilot-cyan.webp",
+      "before": 2550,
+      "after": 2310,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/rogue-red.webp",
+      "before": 2630,
+      "after": 2406,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/swordsman-red.webp",
+      "before": 2578,
+      "after": 2366,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/avatars/traveler-green.webp",
+      "before": 2640,
+      "after": 2468,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/cars/blue-lightning.webp",
+      "before": 21768,
+      "after": 11290,
+      "beforeSize": [
+        640,
+        301
+      ],
+      "afterSize": [
+        384,
+        181
+      ]
+    },
+    {
+      "path": "img/cars/ferrari-325.webp",
+      "before": 19142,
+      "after": 10162,
+      "beforeSize": [
+        640,
+        301
+      ],
+      "afterSize": [
+        384,
+        181
+      ]
+    },
+    {
+      "path": "img/cars/lamborghini-aventador.webp",
+      "before": 18250,
+      "after": 9608,
+      "beforeSize": [
+        640,
+        301
+      ],
+      "afterSize": [
+        384,
+        181
+      ]
+    },
+    {
+      "path": "img/cars/lamborghini-kuia-spyder.webp",
+      "before": 20728,
+      "after": 10962,
+      "beforeSize": [
+        640,
+        301
+      ],
+      "afterSize": [
+        384,
+        181
+      ]
+    },
+    {
+      "path": "img/cars/lamborghini-revuelto.webp",
+      "before": 17516,
+      "after": 9434,
+      "beforeSize": [
+        640,
+        301
+      ],
+      "afterSize": [
+        384,
+        181
+      ]
+    },
+    {
+      "path": "img/cars/lamborghini-urus.webp",
+      "before": 20584,
+      "after": 10958,
+      "beforeSize": [
+        640,
+        301
+      ],
+      "afterSize": [
+        384,
+        181
+      ]
+    },
+    {
+      "path": "img/cars/mercedes-amg-one-white.webp",
+      "before": 16332,
+      "after": 9004,
+      "beforeSize": [
+        640,
+        301
+      ],
+      "afterSize": [
+        384,
+        181
+      ]
+    },
+    {
+      "path": "img/cars/mercedes-benz-one.webp",
+      "before": 18658,
+      "after": 10378,
+      "beforeSize": [
+        640,
+        301
+      ],
+      "afterSize": [
+        384,
+        181
+      ]
+    },
+    {
+      "path": "img/cars/nissan-gt-r.webp",
+      "before": 15988,
+      "after": 8810,
+      "beforeSize": [
+        640,
+        301
+      ],
+      "afterSize": [
+        384,
+        181
+      ]
+    },
+    {
+      "path": "img/cars/onvoro.webp",
+      "before": 24764,
+      "after": 12876,
+      "beforeSize": [
+        640,
+        301
+      ],
+      "afterSize": [
+        384,
+        181
+      ]
+    },
+    {
+      "path": "img/cars/two-state-sedan.webp",
+      "before": 28408,
+      "after": 13716,
+      "beforeSize": [
+        640,
+        301
+      ],
+      "afterSize": [
+        384,
+        181
+      ]
+    },
+    {
+      "path": "img/fruits/melon.webp",
+      "before": 8008,
+      "after": 4582,
+      "beforeSize": [
+        200,
+        144
+      ],
+      "afterSize": [
+        200,
+        144
+      ]
+    },
+    {
+      "path": "img/fruits/strawberry.webp",
+      "before": 7090,
+      "after": 4292,
+      "beforeSize": [
+        155,
+        200
+      ],
+      "afterSize": [
+        155,
+        200
+      ]
+    },
+    {
+      "path": "img/fruits/watermelon.webp",
+      "before": 7104,
+      "after": 4182,
+      "beforeSize": [
+        200,
+        149
+      ],
+      "afterSize": [
+        200,
+        149
+      ]
+    },
+    {
+      "path": "img/gifts/bear.webp",
+      "before": 20566,
+      "after": 10698,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/gifts/cookie.webp",
+      "before": 8130,
+      "after": 4392,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/gifts/diamond.webp",
+      "before": 16380,
+      "after": 9352,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/gifts/pumpkin.webp",
+      "before": 16680,
+      "after": 8756,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/gifts/snowman.webp",
+      "before": 12918,
+      "after": 7396,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/car-oil-medium.webp",
+      "before": 5434,
+      "after": 5196,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/engine-v1.webp",
+      "before": 6400,
+      "after": 6246,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/engine-v2.webp",
+      "before": 6242,
+      "after": 6096,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/engine-v3.webp",
+      "before": 6730,
+      "after": 6422,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/gasoline-full.webp",
+      "before": 5218,
+      "after": 4872,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/omamori.webp",
+      "before": 8244,
+      "after": 7554,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/repair-kit.webp",
+      "before": 6848,
+      "after": 6496,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/items/omamori.webp",
+      "before": 40858,
+      "after": 18186,
+      "beforeSize": [
+        267,
+        480
+      ],
+      "afterSize": [
+        214,
+        384
+      ]
+    },
+    {
+      "path": "img/jobs/garage.webp",
+      "before": 46132,
+      "after": 8082,
+      "beforeSize": [
+        1200,
+        554
+      ],
+      "afterSize": [
+        384,
+        177
+      ]
+    },
+    {
+      "path": "img/symbols/bar.webp",
+      "before": 30758,
+      "after": 13246,
+      "beforeSize": [
+        480,
+        455
+      ],
+      "afterSize": [
+        384,
+        364
+      ]
+    },
+    {
+      "path": "img/symbols/diamond.webp",
+      "before": 14602,
+      "after": 7276,
+      "beforeSize": [
+        480,
+        455
+      ],
+      "afterSize": [
+        384,
+        364
+      ]
+    },
+    {
+      "path": "img/symbols/gold.webp",
+      "before": 10584,
+      "after": 5884,
+      "beforeSize": [
+        480,
+        455
+      ],
+      "afterSize": [
+        384,
+        364
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/bar.webp",
+      "before": 5772,
+      "after": 5772,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        288,
+        273
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/bar.webp",
+      "before": 5772,
+      "after": 5244,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        288,
+        273
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/diamond.webp",
+      "before": 8192,
+      "after": 8192,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        288,
+        273
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/gold.webp",
+      "before": 4626,
+      "after": 4626,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        288,
+        273
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/gold.webp",
+      "before": 4626,
+      "after": 3630,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        288,
+        273
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/revolver.webp",
+      "before": 5294,
+      "after": 5294,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        288,
+        273
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/revolver.webp",
+      "before": 5294,
+      "after": 4176,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        288,
+        273
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/seven.webp",
+      "before": 6230,
+      "after": 5984,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        288,
+        273
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/star.webp",
+      "before": 6756,
+      "after": 6568,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        288,
+        273
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/statue.webp",
+      "before": 7292,
+      "after": 7122,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        288,
+        273
+      ]
+    },
+    {
+      "path": "img/symbols/revolver.webp",
+      "before": 17246,
+      "after": 9090,
+      "beforeSize": [
+        480,
+        455
+      ],
+      "afterSize": [
+        384,
+        364
+      ]
+    },
+    {
+      "path": "img/symbols/seven.webp",
+      "before": 24992,
+      "after": 12270,
+      "beforeSize": [
+        480,
+        455
+      ],
+      "afterSize": [
+        384,
+        364
+      ]
+    },
+    {
+      "path": "img/symbols/star.webp",
+      "before": 26896,
+      "after": 12298,
+      "beforeSize": [
+        480,
+        455
+      ],
+      "afterSize": [
+        384,
+        364
+      ]
+    },
+    {
+      "path": "img/symbols/statue.webp",
+      "before": 38698,
+      "after": 15962,
+      "beforeSize": [
+        480,
+        455
+      ],
+      "afterSize": [
+        384,
+        364
+      ]
+    },
+    {
+      "path": "img/symbols/turn/bar.webp",
+      "before": 185336,
+      "after": 19094,
+      "beforeSize": [
+        2016,
+        1272
+      ],
+      "afterSize": [
+        384,
+        242
+      ]
+    },
+    {
+      "path": "img/symbols/turn/diamond.webp",
+      "before": 113098,
+      "after": 13510,
+      "beforeSize": [
+        2016,
+        1272
+      ],
+      "afterSize": [
+        384,
+        242
+      ]
+    },
+    {
+      "path": "img/symbols/turn/gold.webp",
+      "before": 95012,
+      "after": 13910,
+      "beforeSize": [
+        2016,
+        1272
+      ],
+      "afterSize": [
+        384,
+        242
+      ]
+    },
+    {
+      "path": "img/symbols/turn/revolver.webp",
+      "before": 118124,
+      "after": 14246,
+      "beforeSize": [
+        2016,
+        1272
+      ],
+      "afterSize": [
+        384,
+        242
+      ]
+    },
+    {
+      "path": "img/symbols/turn/seven.webp",
+      "before": 170332,
+      "after": 20510,
+      "beforeSize": [
+        2016,
+        1272
+      ],
+      "afterSize": [
+        384,
+        242
+      ]
+    },
+    {
+      "path": "img/symbols/turn/star.webp",
+      "before": 161136,
+      "after": 17266,
+      "beforeSize": [
+        2016,
+        1272
+      ],
+      "afterSize": [
+        384,
+        242
+      ]
+    },
+    {
+      "path": "img/symbols/turn/statue.webp",
+      "before": 202782,
+      "after": 20428,
+      "beforeSize": [
+        2016,
+        1272
+      ],
+      "afterSize": [
+        384,
+        242
+      ]
+    },
+    {
+      "path": "img/tree/preview.webp",
+      "before": 28078,
+      "after": 24566,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        384,
+        384
+      ]
+    },
+    {
+      "path": "img/tree/seed.webp",
+      "before": 10592,
+      "after": 7106,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        384,
+        384
+      ]
+    },
+    {
+      "path": "img/tree/stage-1.webp",
+      "before": 5956,
+      "after": 5956,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "img/tree/stage-2.webp",
+      "before": 8532,
+      "after": 8532,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "img/tree/stage-3.webp",
+      "before": 22816,
+      "after": 13742,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        384,
+        384
+      ]
+    },
+    {
+      "path": "img/tree/stage-4.webp",
+      "before": 27240,
+      "after": 16808,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        384,
+        384
+      ]
+    },
+    {
+      "path": "img/tree/stage-5.webp",
+      "before": 31270,
+      "after": 18758,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        384,
+        384
+      ]
+    },
+    {
+      "path": "img/tree/stage-6.webp",
+      "before": 36516,
+      "after": 22586,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        384,
+        384
+      ]
+    },
+    {
+      "path": "img/tree/stage-7.webp",
+      "before": 46226,
+      "after": 28504,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        384,
+        384
+      ]
+    },
+    {
+      "path": "img/tree/stage-8.webp",
+      "before": 51146,
+      "after": 30806,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        384,
+        384
+      ]
+    },
+    {
+      "path": "img/tree/stage-9.webp",
+      "before": 54850,
+      "after": 33026,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        384,
+        384
+      ]
+    },
+    {
+      "path": "img/ui/bg.webp",
+      "before": 66620,
+      "after": 18082,
+      "beforeSize": [
+        1846,
+        852
+      ],
+      "afterSize": [
+        1280,
+        591
+      ]
+    },
+    {
+      "path": "img/ui/chip-pile.webp",
+      "before": 23704,
+      "after": 17492,
+      "beforeSize": [
+        480,
+        262
+      ],
+      "afterSize": [
+        384,
+        210
+      ]
+    },
+    {
+      "path": "img/ui/chip.webp",
+      "before": 4628,
+      "after": 4406,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/coin.webp",
+      "before": 5072,
+      "after": 4768,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/combo-rainbow.webp",
+      "before": 41630,
+      "after": 26364,
+      "beforeSize": [
+        716,
+        150
+      ],
+      "afterSize": [
+        716,
+        150
+      ]
+    },
+    {
+      "path": "img/ui/combo.webp",
+      "before": 44422,
+      "after": 27514,
+      "beforeSize": [
+        748,
+        150
+      ],
+      "afterSize": [
+        748,
+        150
+      ]
+    },
+    {
+      "path": "img/ui/dollar.webp",
+      "before": 4226,
+      "after": 4108,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/fever-banner.webp",
+      "before": 68888,
+      "after": 31722,
+      "beforeSize": [
+        999,
+        240
+      ],
+      "afterSize": [
+        768,
+        185
+      ]
+    },
+    {
+      "path": "img/ui/fever.webp",
+      "before": 60734,
+      "after": 38320,
+      "beforeSize": [
+        826,
+        220
+      ],
+      "afterSize": [
+        768,
+        205
+      ]
+    },
+    {
+      "path": "img/ui/fire.webp",
+      "before": 493300,
+      "after": 242854,
+      "beforeSize": [
+        1920,
+        1032
+      ],
+      "afterSize": [
+        960,
+        516
+      ]
+    },
+    {
+      "path": "img/ui/frame.webp",
+      "before": 3112,
+      "after": 2904,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/garage.webp",
+      "before": 5118,
+      "after": 4934,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/lobby.webp",
+      "before": 7942,
+      "after": 4572,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/ui/login-bonus.webp",
+      "before": 35280,
+      "after": 9842,
+      "beforeSize": [
+        960,
+        317
+      ],
+      "afterSize": [
+        384,
+        127
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/bg.webp",
+      "before": 15834,
+      "after": 9780,
+      "beforeSize": [
+        960,
+        540
+      ],
+      "afterSize": [
+        960,
+        540
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/exit.webp",
+      "before": 5514,
+      "after": 5388,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/friends.webp",
+      "before": 8740,
+      "after": 8424,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/jobs.webp",
+      "before": 9434,
+      "after": 9184,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/menu.webp",
+      "before": 5792,
+      "after": 5562,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/messages.webp",
+      "before": 6726,
+      "after": 6496,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/money-tree.webp",
+      "before": 8486,
+      "after": 8094,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/quest-pro.webp",
+      "before": 2564,
+      "after": 2488,
+      "beforeSize": [
+        96,
+        32
+      ],
+      "afterSize": [
+        96,
+        32
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/quest-ultra.webp",
+      "before": 3526,
+      "after": 3414,
+      "beforeSize": [
+        128,
+        32
+      ],
+      "afterSize": [
+        128,
+        32
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/quest.webp",
+      "before": 9638,
+      "after": 9114,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/shop.webp",
+      "before": 8316,
+      "after": 7980,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/spin.webp",
+      "before": 13238,
+      "after": 12450,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/title.webp",
+      "before": 112566,
+      "after": 31780,
+      "beforeSize": [
+        1440,
+        810
+      ],
+      "afterSize": [
+        1280,
+        720
+      ]
+    },
+    {
+      "path": "img/ui/menu.webp",
+      "before": 9808,
+      "after": 6398,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/ui/money-tree.webp",
+      "before": 8030,
+      "after": 5892,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/ui/pill-get.webp",
+      "before": 18742,
+      "after": 10730,
+      "beforeSize": [
+        372,
+        200
+      ],
+      "afterSize": [
+        372,
+        200
+      ]
+    },
+    {
+      "path": "img/ui/pill-max.webp",
+      "before": 18464,
+      "after": 10588,
+      "beforeSize": [
+        385,
+        200
+      ],
+      "afterSize": [
+        384,
+        199
+      ]
+    },
+    {
+      "path": "img/ui/pill.webp",
+      "before": 15192,
+      "after": 8944,
+      "beforeSize": [
+        385,
+        200
+      ],
+      "afterSize": [
+        384,
+        199
+      ]
+    },
+    {
+      "path": "img/ui/quest-tiers/aqua-purple.webp",
+      "before": 38960,
+      "after": 2792,
+      "beforeSize": [
+        640,
+        209
+      ],
+      "afterSize": [
+        640,
+        209
+      ]
+    },
+    {
+      "path": "img/ui/quest-tiers/blue.webp",
+      "before": 4254,
+      "after": 2214,
+      "beforeSize": [
+        640,
+        211
+      ],
+      "afterSize": [
+        640,
+        211
+      ]
+    },
+    {
+      "path": "img/ui/quest-tiers/dark.webp",
+      "before": 4182,
+      "after": 1838,
+      "beforeSize": [
+        640,
+        209
+      ],
+      "afterSize": [
+        640,
+        209
+      ]
+    },
+    {
+      "path": "img/ui/quest-tiers/gold.webp",
+      "before": 6602,
+      "after": 3230,
+      "beforeSize": [
+        640,
+        195
+      ],
+      "afterSize": [
+        640,
+        195
+      ]
+    },
+    {
+      "path": "img/ui/quest-tiers/green.webp",
+      "before": 6784,
+      "after": 3404,
+      "beforeSize": [
+        640,
+        203
+      ],
+      "afterSize": [
+        640,
+        203
+      ]
+    },
+    {
+      "path": "img/ui/quest-tiers/orange.webp",
+      "before": 8840,
+      "after": 3892,
+      "beforeSize": [
+        640,
+        209
+      ],
+      "afterSize": [
+        640,
+        209
+      ]
+    },
+    {
+      "path": "img/ui/quest-tiers/purple.webp",
+      "before": 5626,
+      "after": 2736,
+      "beforeSize": [
+        640,
+        211
+      ],
+      "afterSize": [
+        640,
+        211
+      ]
+    },
+    {
+      "path": "img/ui/quest-tiers/red-gold.webp",
+      "before": 33694,
+      "after": 5228,
+      "beforeSize": [
+        640,
+        209
+      ],
+      "afterSize": [
+        640,
+        209
+      ]
+    },
+    {
+      "path": "img/ui/quest-tiers/red.webp",
+      "before": 7014,
+      "after": 3064,
+      "beforeSize": [
+        640,
+        211
+      ],
+      "afterSize": [
+        640,
+        211
+      ]
+    },
+    {
+      "path": "img/ui/quest.webp",
+      "before": 15112,
+      "after": 8952,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "img/ui/reel-back.webp",
+      "before": 48368,
+      "after": 1686,
+      "beforeSize": [
+        2012,
+        1108
+      ],
+      "afterSize": [
+        384,
+        211
+      ]
+    },
+    {
+      "path": "img/ui/reel-frame.webp",
+      "before": 74716,
+      "after": 18706,
+      "beforeSize": [
+        2088,
+        1172
+      ],
+      "afterSize": [
+        1164,
+        653
+      ]
+    },
+    {
+      "path": "img/ui/refresh/background.webp",
+      "before": 8780,
+      "after": 7968,
+      "beforeSize": [
+        960,
+        540
+      ],
+      "afterSize": [
+        960,
+        540
+      ]
+    },
+    {
+      "path": "img/ui/refresh/car.webp",
+      "before": 4404,
+      "after": 4288,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/ui/refresh/charm.webp",
+      "before": 5188,
+      "after": 4742,
+      "beforeSize": [
+        128,
+        160
+      ],
+      "afterSize": [
+        128,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/refresh/dev.webp",
+      "before": 3864,
+      "after": 3628,
+      "beforeSize": [
+        144,
+        72
+      ],
+      "afterSize": [
+        144,
+        72
+      ]
+    },
+    {
+      "path": "img/ui/refresh/diary.webp",
+      "before": 6670,
+      "after": 6294,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/ui/refresh/feedback.webp",
+      "before": 6058,
+      "after": 5756,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/ui/refresh/guide.webp",
+      "before": 6250,
+      "after": 5776,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/ui/refresh/home.webp",
+      "before": 8310,
+      "after": 7500,
+      "beforeSize": [
+        960,
+        540
+      ],
+      "afterSize": [
+        960,
+        540
+      ]
+    },
+    {
+      "path": "img/ui/refresh/info.webp",
+      "before": 6204,
+      "after": 5772,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/ui/refresh/investment.webp",
+      "before": 7100,
+      "after": 6646,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/ui/refresh/maintenance.webp",
+      "before": 20614,
+      "after": 17460,
+      "beforeSize": [
+        960,
+        540
+      ],
+      "afterSize": [
+        960,
+        540
+      ]
+    },
+    {
+      "path": "img/ui/refresh/minus.webp",
+      "before": 1130,
+      "after": 1076,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/refresh/plus.webp",
+      "before": 2506,
+      "after": 2392,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/refresh/reel-back.webp",
+      "before": 12708,
+      "after": 4208,
+      "beforeSize": [
+        1006,
+        554
+      ],
+      "afterSize": [
+        384,
+        211
+      ]
+    },
+    {
+      "path": "img/ui/refresh/reel-frame.webp",
+      "before": 96784,
+      "after": 89002,
+      "beforeSize": [
+        1164,
+        700
+      ],
+      "afterSize": [
+        1164,
+        700
+      ]
+    },
+    {
+      "path": "img/ui/refresh/token.webp",
+      "before": 6880,
+      "after": 6438,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "img/ui/refresh/update.webp",
+      "before": 0,
+      "after": 5678,
+      "beforeSize": [
+        480,
+        147
+      ],
+      "afterSize": [
+        480,
+        147
+      ]
+    },
+    {
+      "path": "img/ui/refresh/vip.webp",
+      "before": 15828,
+      "after": 8190,
+      "beforeSize": [
+        512,
+        288
+      ],
+      "afterSize": [
+        384,
+        216
+      ]
+    },
+    {
+      "path": "img/ui/sale.webp",
+      "before": 36498,
+      "after": 18520,
+      "beforeSize": [
+        560,
+        303
+      ],
+      "afterSize": [
+        384,
+        208
+      ]
+    },
+    {
+      "path": "img/ui/spin-arrows.webp",
+      "before": 14686,
+      "after": 10496,
+      "beforeSize": [
+        420,
+        420
+      ],
+      "afterSize": [
+        384,
+        384
+      ]
+    },
+    {
+      "path": "img/ui/spin.webp",
+      "before": 29012,
+      "after": 15204,
+      "beforeSize": [
+        420,
+        420
+      ],
+      "afterSize": [
+        384,
+        384
+      ]
+    },
+    {
+      "path": "img/vip/vip-0.webp",
+      "before": 9830,
+      "after": 9358,
+      "beforeSize": [
+        384,
+        150
+      ],
+      "afterSize": [
+        384,
+        150
+      ]
+    },
+    {
+      "path": "img/vip/vip-1.webp",
+      "before": 7886,
+      "after": 7408,
+      "beforeSize": [
+        384,
+        150
+      ],
+      "afterSize": [
+        384,
+        150
+      ]
+    },
+    {
+      "path": "img/vip/vip-2.webp",
+      "before": 10030,
+      "after": 9492,
+      "beforeSize": [
+        384,
+        150
+      ],
+      "afterSize": [
+        384,
+        150
+      ]
+    },
+    {
+      "path": "img/vip/vip-3.1.webp",
+      "before": 10602,
+      "after": 9996,
+      "beforeSize": [
+        384,
+        150
+      ],
+      "afterSize": [
+        384,
+        150
+      ]
+    },
+    {
+      "path": "img/vip/vip-3.webp",
+      "before": 9884,
+      "after": 9370,
+      "beforeSize": [
+        384,
+        150
+      ],
+      "afterSize": [
+        384,
+        150
+      ]
+    },
+    {
+      "path": "img/vip/vip-4.webp",
+      "before": 9482,
+      "after": 9032,
+      "beforeSize": [
+        384,
+        150
+      ],
+      "afterSize": [
+        384,
+        150
+      ]
+    },
+    {
+      "path": "ops/assets/archive.webp",
+      "before": 11414,
+      "after": 5628,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "ops/assets/detections.webp",
+      "before": 14608,
+      "after": 7176,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "ops/assets/devunit.webp",
+      "before": 5408,
+      "after": 3166,
+      "beforeSize": [
+        208,
+        208
+      ],
+      "afterSize": [
+        208,
+        208
+      ]
+    },
+    {
+      "path": "ops/assets/diary.webp",
+      "before": 4906,
+      "after": 3472,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/feedback.webp",
+      "before": 9062,
+      "after": 5364,
+      "beforeSize": [
+        208,
+        208
+      ],
+      "afterSize": [
+        208,
+        208
+      ]
+    },
+    {
+      "path": "ops/assets/log.webp",
+      "before": 11802,
+      "after": 6042,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "ops/assets/operators.webp",
+      "before": 13528,
+      "after": 6512,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "ops/assets/pay.webp",
+      "before": 13380,
+      "after": 6184,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "ops/assets/players.webp",
+      "before": 13614,
+      "after": 6310,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "ops/assets/reports.webp",
+      "before": 12164,
+      "after": 6156,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "ops/assets/security.webp",
+      "before": 13676,
+      "after": 6842,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "ops/assets/securityhome.webp",
+      "before": 7468,
+      "after": 4414,
+      "beforeSize": [
+        208,
+        208
+      ],
+      "afterSize": [
+        208,
+        208
+      ]
+    },
+    {
+      "path": "ops/assets/server.webp",
+      "before": 18998,
+      "after": 9042,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "ops/assets/site-180.png",
+      "before": 39896,
+      "after": 15193,
+      "beforeSize": [
+        180,
+        180
+      ],
+      "afterSize": [
+        180,
+        180
+      ]
+    },
+    {
+      "path": "ops/assets/site-192.png",
+      "before": 44016,
+      "after": 16253,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "ops/assets/site-512.png",
+      "before": 219595,
+      "after": 71902,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "ops/assets/site-maskable-512.png",
+      "before": 128630,
+      "after": 35716,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "ops/assets/site.webp",
+      "before": 14306,
+      "after": 7364,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "ops/assets/team.webp",
+      "before": 13810,
+      "after": 6658,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "ops/assets/vault.webp",
+      "before": 12120,
+      "after": 5938,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "ops/assets/wallpaper-desktop.webp",
+      "before": 55544,
+      "after": 11250,
+      "beforeSize": [
+        1920,
+        1080
+      ],
+      "afterSize": [
+        1280,
+        720
+      ]
+    },
+    {
+      "path": "ops/assets/wallpaper-login.webp",
+      "before": 39328,
+      "after": 7334,
+      "beforeSize": [
+        1920,
+        1080
+      ],
+      "afterSize": [
+        1280,
+        720
+      ]
+    },
+    {
+      "path": "ops/assets/wallpaper-reserve.webp",
+      "before": 77048,
+      "after": 16870,
+      "beforeSize": [
+        1920,
+        1080
+      ],
+      "afterSize": [
+        1280,
+        720
+      ]
+    }
+  ],
+  "note": "Merged concurrent main changes: keep the newly trimmed diary icon, the FX icon and additional lowpoly image compression. Earlier decode/render validation predates this merge."
+}

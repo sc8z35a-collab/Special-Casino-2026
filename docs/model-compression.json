@@ -1,0 +1,725 @@
+{
+  "tool": "@gltf-transform/cli 4.1.1",
+  "textureMax": 512,
+  "simplifyRatio": 0.45,
+  "simplifyError": 0.0006,
+  "quantization": {
+    "position": 12,
+    "normal": 8,
+    "texcoord": 10
+  },
+  "models": [
+    {
+      "name": "img/3d/auction/lectern.glb",
+      "files": [
+        "img/3d/auction/lectern.glb"
+      ],
+      "before": 257088,
+      "after": 134680,
+      "beforeTriangles": 20478,
+      "afterTriangles": 9214,
+      "animations": [],
+      "joints": [],
+      "sha256": "10ff19cb49bbc765bf12b6eeb8776828647a21a657637ec5ff1a655d20da7a0d"
+    },
+    {
+      "name": "img/3d/auction/seed.glb",
+      "files": [
+        "img/3d/auction/seed.glb"
+      ],
+      "before": 287472,
+      "after": 146440,
+      "beforeTriangles": 24208,
+      "afterTriangles": 10892,
+      "animations": [],
+      "joints": [],
+      "sha256": "6bbb53ef0bdcd94a4cb1013e64b44ec6fa39df007a6eb6ac8560ca7bf823f3d9"
+    },
+    {
+      "name": "img/3d/big.glb",
+      "files": [
+        "img/3d/big.glb"
+      ],
+      "before": 762420,
+      "after": 358100,
+      "beforeTriangles": 45760,
+      "afterTriangles": 20591,
+      "animations": [],
+      "joints": [],
+      "sha256": "589aff6617fded5d7f8c4d18381ed97e46e0796b47f08392fe937499e5aa38ea"
+    },
+    {
+      "name": "img/3d/cars/blue-lightning.glb",
+      "files": [
+        "img/3d/cars/blue-lightning.glb"
+      ],
+      "before": 780656,
+      "after": 487148,
+      "beforeTriangles": 71357,
+      "afterTriangles": 42471,
+      "animations": [],
+      "joints": [],
+      "sha256": "77b4ac28cbbc78010e2f94e59e912bd82b2b406848b8c14c3dc064c16cec468c"
+    },
+    {
+      "name": "img/3d/cars/ferrari-325.glb",
+      "files": [
+        "img/3d/cars/ferrari-325.glb"
+      ],
+      "before": 450816,
+      "after": 280932,
+      "beforeTriangles": 36691,
+      "afterTriangles": 20419,
+      "animations": [],
+      "joints": [],
+      "sha256": "2ac5cc34228c4b53cf0688f8a64a736054fd03931eb8301eaba818695dea0288"
+    },
+    {
+      "name": "img/3d/cars/lamborghini-aventador.glb",
+      "files": [
+        "img/3d/cars/lamborghini-aventador.glb"
+      ],
+      "before": 500240,
+      "after": 282352,
+      "beforeTriangles": 41675,
+      "afterTriangles": 19722,
+      "animations": [],
+      "joints": [],
+      "sha256": "419f68ba5a4ae71291322a72399f81e01db19441730f6c5bbec1541aa6af24bc"
+    },
+    {
+      "name": "img/3d/cars/lamborghini-kuia-spyder.glb",
+      "files": [
+        "img/3d/cars/lamborghini-kuia-spyder.glb"
+      ],
+      "before": 906184,
+      "after": 778008,
+      "beforeTriangles": 71491,
+      "afterTriangles": 67650,
+      "animations": [],
+      "joints": [],
+      "sha256": "dc0b381cc50cabd0b3f28a6208672d7b0f072601537515fdf5c2c7b45442ebb2"
+    },
+    {
+      "name": "img/3d/cars/lamborghini-revuelto.glb",
+      "files": [
+        "img/3d/cars/lamborghini-revuelto.glb"
+      ],
+      "before": 643088,
+      "after": 351980,
+      "beforeTriangles": 59832,
+      "afterTriangles": 26924,
+      "animations": [],
+      "joints": [],
+      "sha256": "45e9e409d9a226bbf9f059949f633169fd4ccd4d1ba3464618abc8bf1e13d3e1"
+    },
+    {
+      "name": "img/3d/cars/lamborghini-urus.glb",
+      "files": [
+        "img/3d/cars/lamborghini-urus.glb"
+      ],
+      "before": 438500,
+      "after": 277496,
+      "beforeTriangles": 33391,
+      "afterTriangles": 19149,
+      "animations": [],
+      "joints": [],
+      "sha256": "c42d375c37a38d2f908bda2f4292d48dccb7837e9fe1006d044bc732e26b4680"
+    },
+    {
+      "name": "img/3d/cars/mercedes-amg-one-white.glb",
+      "files": [
+        "img/3d/cars/mercedes-amg-one-white.glb"
+      ],
+      "before": 557544,
+      "after": 306628,
+      "beforeTriangles": 52464,
+      "afterTriangles": 23883,
+      "animations": [],
+      "joints": [],
+      "sha256": "e338c63e61541bc64c926d287e755ea5dfc2a8b7db6b4bc4888510c0bbd08efe"
+    },
+    {
+      "name": "img/3d/cars/mercedes-benz-one.glb",
+      "files": [
+        "img/3d/cars/mercedes-benz-one.glb"
+      ],
+      "before": 591444,
+      "after": 329924,
+      "beforeTriangles": 51029,
+      "afterTriangles": 24030,
+      "animations": [],
+      "joints": [],
+      "sha256": "b509973e9494d7363987bef9cbd1373c96c8fed353aa959b0282f977c425a1d8"
+    },
+    {
+      "name": "img/3d/cars/nissan-gt-r.glb",
+      "files": [
+        "img/3d/cars/nissan-gt-r.glb"
+      ],
+      "before": 635708,
+      "after": 400544,
+      "beforeTriangles": 53219,
+      "afterTriangles": 31233,
+      "animations": [],
+      "joints": [],
+      "sha256": "b14c8304f59f7245c5edc2ee2dbf0fcec1e453c22dd28f5733f890ada067e94e"
+    },
+    {
+      "name": "img/3d/cars/onvoro.glb",
+      "files": [
+        "img/3d/cars/onvoro.glb"
+      ],
+      "before": 722716,
+      "after": 472516,
+      "beforeTriangles": 68282,
+      "afterTriangles": 40950,
+      "animations": [],
+      "joints": [],
+      "sha256": "76a753ada5c74590dea2b3e46d058c4e4f0179b9ef8e94ab5a86575d65471516"
+    },
+    {
+      "name": "img/3d/effects-lite/big.glb",
+      "files": [
+        "img/3d/effects-lite/big.glb"
+      ],
+      "before": 262672,
+      "after": 244140,
+      "beforeTriangles": 15099,
+      "afterTriangles": 13451,
+      "animations": [],
+      "joints": [],
+      "sha256": "dc9f46bd4e6f62dd99baa82b5dcce356bc5945bf68f26f2275c8fe19e61702b4"
+    },
+    {
+      "name": "img/3d/effects-lite/level-up.glb",
+      "files": [
+        "img/3d/effects-lite/level-up.glb"
+      ],
+      "before": 149824,
+      "after": 143388,
+      "beforeTriangles": 8154,
+      "afterTriangles": 7820,
+      "animations": [],
+      "joints": [],
+      "sha256": "3388f5d223c2b74704340e2d94ca7b45aca970b0e440a7ce17aff6f53e6602f5"
+    },
+    {
+      "name": "img/3d/effects-lite/super.glb",
+      "files": [
+        "img/3d/effects-lite/super.glb"
+      ],
+      "before": 300380,
+      "after": 290228,
+      "beforeTriangles": 19902,
+      "afterTriangles": 19452,
+      "animations": [],
+      "joints": [],
+      "sha256": "897eaf028b02f982002cc7c70b30ac02caad5a5eea94b5dfa6607ca4871bb452"
+    },
+    {
+      "name": "img/3d/effects-lite/ultra.glb",
+      "files": [
+        "img/3d/effects-lite/ultra.glb"
+      ],
+      "before": 372896,
+      "after": 355232,
+      "beforeTriangles": 27102,
+      "afterTriangles": 25753,
+      "animations": [],
+      "joints": [],
+      "sha256": "39afc1346447acfd00e261cc28239ee41a9b505d4e9cfa891445f0d14cd7654a"
+    },
+    {
+      "name": "img/3d/effects-lite/vip-extend.glb",
+      "files": [
+        "img/3d/effects-lite/vip-extend.glb"
+      ],
+      "before": 348360,
+      "after": 277868,
+      "beforeTriangles": 32826,
+      "afterTriangles": 23410,
+      "animations": [],
+      "joints": [],
+      "sha256": "1d24051340c83bbfaaeaa991be7e64d41cd89f4bbed149fe840cd923e972612c"
+    },
+    {
+      "name": "img/3d/effects-lite/win.glb",
+      "files": [
+        "img/3d/effects-lite/win.glb"
+      ],
+      "before": 222504,
+      "after": 203660,
+      "beforeTriangles": 12536,
+      "afterTriangles": 10858,
+      "animations": [],
+      "joints": [],
+      "sha256": "e78775ffde4e3ecf41dfc1148d3a094f06898394bee4d1cae5e9d12a23ff12d3"
+    },
+    {
+      "name": "img/3d/garage/garage.glb",
+      "files": [
+        "img/3d/garage/garage.glb"
+      ],
+      "before": 3636680,
+      "after": 1749796,
+      "beforeTriangles": 364394,
+      "afterTriangles": 229243,
+      "animations": [],
+      "joints": [],
+      "sha256": "e22aea66c9e47867293c9b204c1a1a8bd8454c41ec40563105adf7794a2ec942"
+    },
+    {
+      "name": "img/3d/level-up.glb",
+      "files": [
+        "img/3d/level-up.glb"
+      ],
+      "before": 482220,
+      "after": 206956,
+      "beforeTriangles": 24714,
+      "afterTriangles": 11120,
+      "animations": [],
+      "joints": [],
+      "sha256": "d8e2ced9e69cd5b954c09afe4db80f0960d62ab47bb46ef507e0bdbe341a4970"
+    },
+    {
+      "name": "img/3d/studio/base.glb",
+      "files": [
+        "img/3d/studio/base.glb"
+      ],
+      "before": 291784,
+      "after": 165724,
+      "beforeTriangles": 31712,
+      "afterTriangles": 16472,
+      "animations": [],
+      "joints": [],
+      "sha256": "1ca554166186538d085d5ce15f49399ee573be55dc8f5186b7769b4dc1c8fa9a"
+    },
+    {
+      "name": "img/3d/studio/bookshelf.glb",
+      "files": [
+        "img/3d/studio/bookshelf.glb"
+      ],
+      "before": 1027452,
+      "after": 692472,
+      "beforeTriangles": 74802,
+      "afterTriangles": 56856,
+      "animations": [],
+      "joints": [],
+      "sha256": "d0e43dbf51e96c5e4c01314c678f38a673cf478bde13389d7571e4c7475e8a08"
+    },
+    {
+      "name": "img/3d/studio/moving-head.glb",
+      "files": [
+        "img/3d/studio/moving-head.glb"
+      ],
+      "before": 494224,
+      "after": 311736,
+      "beforeTriangles": 49096,
+      "afterTriangles": 28731,
+      "animations": [],
+      "joints": [],
+      "sha256": "19a7883de487786efa8d4475ff70e86953239cf784de2c2c01f448267a6e1612"
+    },
+    {
+      "name": "img/3d/studio/spotlight.glb",
+      "files": [
+        "img/3d/studio/spotlight.glb"
+      ],
+      "before": 531060,
+      "after": 251416,
+      "beforeTriangles": 31969,
+      "afterTriangles": 16436,
+      "animations": [],
+      "joints": [],
+      "sha256": "0eb09926fd6d9f6bc85c8ce90da4db79132893b26a95c0825a3d133bc60fced7"
+    },
+    {
+      "name": "img/3d/super.glb",
+      "files": [
+        "img/3d/super.glb"
+      ],
+      "before": 816712,
+      "after": 399112,
+      "beforeTriangles": 57600,
+      "afterTriangles": 26562,
+      "animations": [],
+      "joints": [],
+      "sha256": "e85373b563ab593bc50d643af386cdd63dbe3b415b915f9a04371028ed387ee5"
+    },
+    {
+      "name": "img/3d/tree/fertilizer.glb",
+      "files": [
+        "img/3d/tree/fertilizer.glb"
+      ],
+      "before": 20936,
+      "after": 9736,
+      "beforeTriangles": 388,
+      "afterTriangles": 388,
+      "animations": [],
+      "joints": [],
+      "sha256": "1483058c4c912bc47143a8a19b78d9068d9bef41689780f15cdaa319c82d8772"
+    },
+    {
+      "name": "img/3d/tree/preview.glb",
+      "files": [
+        "img/3d/tree/preview.glb"
+      ],
+      "before": 1483556,
+      "after": 745856,
+      "beforeTriangles": 205440,
+      "afterTriangles": 92447,
+      "animations": [],
+      "joints": [],
+      "sha256": "936929b05aad09b5a5548187ce1a845294a0fe5fdb0e211c4d3a939d99ff0e8d"
+    },
+    {
+      "name": "img/3d/tree/seed.glb",
+      "files": [
+        "img/3d/tree/seed.glb"
+      ],
+      "before": 476376,
+      "after": 253008,
+      "beforeTriangles": 66024,
+      "afterTriangles": 29710,
+      "animations": [],
+      "joints": [],
+      "sha256": "8fda3dff4c4bdd256a0024d1efec0a2a447fda5d65c22b85b76bc9920710efbe"
+    },
+    {
+      "name": "img/3d/tree/stage-1.glb",
+      "files": [
+        "img/3d/tree/stage-1.glb"
+      ],
+      "before": 591708,
+      "after": 290620,
+      "beforeTriangles": 72630,
+      "afterTriangles": 32682,
+      "animations": [],
+      "joints": [],
+      "sha256": "3d28bfcac3062a6cb3a3b15ed807382df384aafc26b529ea97fa449f4a8edf4e"
+    },
+    {
+      "name": "img/3d/tree/stage-2.glb",
+      "files": [
+        "img/3d/tree/stage-2.glb"
+      ],
+      "before": 686840,
+      "after": 330212,
+      "beforeTriangles": 79754,
+      "afterTriangles": 35888,
+      "animations": [],
+      "joints": [],
+      "sha256": "611700a1bc6a196a07d611d535d92b971b513528e31843f5e55a7665e69eafcc"
+    },
+    {
+      "name": "img/3d/ultra.glb",
+      "files": [
+        "img/3d/ultra.glb"
+      ],
+      "before": 1032304,
+      "after": 498676,
+      "beforeTriangles": 82128,
+      "afterTriangles": 36956,
+      "animations": [],
+      "joints": [],
+      "sha256": "6163affcf0f855642958bb5c3acd4408bd9dee3fa0a0acc4a4f5b5bb7c942606"
+    },
+    {
+      "name": "img/3d/vip-extend.glb",
+      "files": [
+        "img/3d/vip-extend.glb"
+      ],
+      "before": 919288,
+      "after": 451744,
+      "beforeTriangles": 99476,
+      "afterTriangles": 44754,
+      "animations": [],
+      "joints": [],
+      "sha256": "83e69def7bb6278061a0e525bc7354f11e6b5c064eded3d3305b76142ac606c3"
+    },
+    {
+      "name": "img/3d/win.glb",
+      "files": [
+        "img/3d/win.glb"
+      ],
+      "before": 622300,
+      "after": 298124,
+      "beforeTriangles": 37988,
+      "afterTriangles": 17094,
+      "animations": [],
+      "joints": [],
+      "sha256": "4668e25dac2a205fd35dcd13c74df389bce3e576be7ebe39c886520372db3dec"
+    },
+    {
+      "name": "auction/dennis",
+      "files": [
+        "img/3d/auction/dennis.0.bin",
+        "img/3d/auction/dennis.1.bin",
+        "img/3d/auction/dennis.2.bin",
+        "img/3d/auction/dennis.3.bin",
+        "img/3d/auction/dennis.4.bin"
+      ],
+      "before": 1030640,
+      "after": 778484,
+      "beforeTriangles": 35719,
+      "afterTriangles": 32186,
+      "animations": [
+        {
+          "name": "bid",
+          "channels": 72,
+          "duration": 4.466667175292969
+        },
+        {
+          "name": "lose",
+          "channels": 72,
+          "duration": 5.966667175292969
+        },
+        {
+          "name": "win",
+          "channels": 72,
+          "duration": 5.466667175292969
+        },
+        {
+          "name": "idle",
+          "channels": 72,
+          "duration": 9.966666221618652
+        }
+      ],
+      "joints": [
+        36
+      ],
+      "sha256": "9c5f078d9be64c8f1db406f24cea607e3938417859b29fe32d23a9da5ccee477"
+    },
+    {
+      "name": "auction/johnson",
+      "files": [
+        "img/3d/auction/johnson.0.bin",
+        "img/3d/auction/johnson.1.bin",
+        "img/3d/auction/johnson.2.bin",
+        "img/3d/auction/johnson.3.bin"
+      ],
+      "before": 961116,
+      "after": 564264,
+      "beforeTriangles": 87002,
+      "afterTriangles": 39144,
+      "animations": [
+        {
+          "name": "bid",
+          "channels": 72,
+          "duration": 4.466667175292969
+        },
+        {
+          "name": "lose",
+          "channels": 72,
+          "duration": 5.966667175292969
+        },
+        {
+          "name": "win",
+          "channels": 72,
+          "duration": 5.466667175292969
+        },
+        {
+          "name": "idle",
+          "channels": 72,
+          "duration": 9.966666221618652
+        }
+      ],
+      "joints": [
+        36
+      ],
+      "sha256": "c9b2f90f6b50fe588066eb092b6786ef616f8218a593832b7c9192710e42a421"
+    },
+    {
+      "name": "auction/joumon",
+      "files": [
+        "img/3d/auction/joumon.0.bin",
+        "img/3d/auction/joumon.1.bin",
+        "img/3d/auction/joumon.2.bin",
+        "img/3d/auction/joumon.3.bin"
+      ],
+      "before": 919432,
+      "after": 541364,
+      "beforeTriangles": 80088,
+      "afterTriangles": 36036,
+      "animations": [
+        {
+          "name": "bid",
+          "channels": 64,
+          "duration": 4.466667175292969
+        },
+        {
+          "name": "lose",
+          "channels": 64,
+          "duration": 5.966667175292969
+        },
+        {
+          "name": "win",
+          "channels": 64,
+          "duration": 5.466667175292969
+        },
+        {
+          "name": "idle",
+          "channels": 64,
+          "duration": 9.966666221618652
+        }
+      ],
+      "joints": [
+        32
+      ],
+      "sha256": "406df674f66a296be5a300cb8ea3729b8d6329baa86baa9cb176549569cb7d15"
+    },
+    {
+      "name": "auction/kamiya",
+      "files": [
+        "img/3d/auction/kamiya.0.bin",
+        "img/3d/auction/kamiya.1.bin",
+        "img/3d/auction/kamiya.2.bin",
+        "img/3d/auction/kamiya.3.bin",
+        "img/3d/auction/kamiya.4.bin",
+        "img/3d/auction/kamiya.5.bin"
+      ],
+      "before": 1446496,
+      "after": 1128852,
+      "beforeTriangles": 48830,
+      "afterTriangles": 45007,
+      "animations": [
+        {
+          "name": "bid",
+          "channels": 132,
+          "duration": 4.466667175292969
+        },
+        {
+          "name": "lose",
+          "channels": 132,
+          "duration": 5.966667175292969
+        },
+        {
+          "name": "win",
+          "channels": 132,
+          "duration": 5.466667175292969
+        },
+        {
+          "name": "idle",
+          "channels": 132,
+          "duration": 9.966666221618652
+        }
+      ],
+      "joints": [
+        66
+      ],
+      "sha256": "e4406b94e9856eee8911d9542c16f01fbb54ed76e92079ea620046950e3672ad"
+    },
+    {
+      "name": "auction/natasha",
+      "files": [
+        "img/3d/auction/natasha.0.bin",
+        "img/3d/auction/natasha.1.bin",
+        "img/3d/auction/natasha.2.bin",
+        "img/3d/auction/natasha.3.bin"
+      ],
+      "before": 876476,
+      "after": 534236,
+      "beforeTriangles": 68018,
+      "afterTriangles": 30606,
+      "animations": [
+        {
+          "name": "bid",
+          "channels": 132,
+          "duration": 4.466667175292969
+        },
+        {
+          "name": "lose",
+          "channels": 132,
+          "duration": 5.966667175292969
+        },
+        {
+          "name": "win",
+          "channels": 132,
+          "duration": 5.466667175292969
+        },
+        {
+          "name": "idle",
+          "channels": 132,
+          "duration": 9.966666221618652
+        }
+      ],
+      "joints": [
+        66
+      ],
+      "sha256": "da892d7d96abecdb292aa4e6734988020a33b2b00f12fa5e6b48adf49e0805d2"
+    },
+    {
+      "name": "auction/room",
+      "files": [
+        "img/3d/auction/room.0.bin",
+        "img/3d/auction/room.1.bin",
+        "img/3d/auction/room.2.bin"
+      ],
+      "before": 601624,
+      "after": 392252,
+      "beforeTriangles": 41922,
+      "afterTriangles": 30481,
+      "animations": [],
+      "joints": [],
+      "sha256": "5387c78f8071e984a6492429d17daef2ac746687d5dabdf56faec860a53e4220"
+    },
+    {
+      "name": "auction/tree",
+      "files": [
+        "img/3d/auction/tree.0.bin",
+        "img/3d/auction/tree.1.bin",
+        "img/3d/auction/tree.2.bin"
+      ],
+      "before": 605800,
+      "after": 337952,
+      "beforeTriangles": 51355,
+      "afterTriangles": 27157,
+      "animations": [],
+      "joints": [],
+      "sha256": "6b3da613cb350eabf96c48798f472cc3a4c25787e7220942615d803c05ffdf68"
+    },
+    {
+      "name": "auction/wild",
+      "files": [
+        "img/3d/auction/wild.0.bin",
+        "img/3d/auction/wild.1.bin",
+        "img/3d/auction/wild.2.bin",
+        "img/3d/auction/wild.3.bin",
+        "img/3d/auction/wild.4.bin"
+      ],
+      "before": 1111460,
+      "after": 651616,
+      "beforeTriangles": 102744,
+      "afterTriangles": 46234,
+      "animations": [
+        {
+          "name": "bid",
+          "channels": 132,
+          "duration": 4.466667175292969
+        },
+        {
+          "name": "lose",
+          "channels": 132,
+          "duration": 5.966667175292969
+        },
+        {
+          "name": "win",
+          "channels": 132,
+          "duration": 5.466667175292969
+        },
+        {
+          "name": "idle",
+          "channels": 132,
+          "duration": 9.966666221618652
+        }
+      ],
+      "joints": [
+        66
+      ],
+      "sha256": "a96a91dd9beebe81d619cf626dc5c59e82cd61f765dd30cb93e086a26462c797"
+    }
+  ],
+  "before": 29856996,
+  "after": 17705472
+}

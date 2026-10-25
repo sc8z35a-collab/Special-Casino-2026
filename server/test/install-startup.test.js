@@ -7,7 +7,7 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('../../js/ui/install.js', import.meta.url), 'utf8');
 
-function start({ assets, online = true } = {}) {
+function start({ assets, uiAssets, online = true } = {}) {
   const elements = new Map(), styles = [], modals = [], listeners = [];
   function element(selector) {
     if (!elements.has(selector)) elements.set(selector, {
@@ -25,6 +25,7 @@ function start({ assets, online = true } = {}) {
     screens: { current() { return 'slot'; } }
   };
   if (assets !== undefined) BR.LAUNCH_ASSETS = assets;
+  if (uiAssets !== undefined) BR.UI_IMG = uiAssets;
   const context = vm.createContext({
     window: { BR, addEventListener(event) { listeners.push(event); } },
     document: {
@@ -70,4 +71,15 @@ test('offline startup also works without an artwork manifest', () => {
   assert.equal(s.elements.get('#start-app').hidden, true);
   assert.equal(typeof s.elements.get('#start-app').click, 'function');
   assert.deepEqual(s.styles, []);
+});
+
+test('the shipped UI image manifest provides the larger update artwork', () => {
+  const s = start({ uiAssets: { updateButton: 'img/ui/refresh/update.webp' } });
+  assert.equal(s.styles.length, 1);
+  assert.match(s.styles[0], /img\/ui\/refresh\/update.webp/);
+  assert.match(s.styles[0], /width:320px;height:100px/);
+  assert.equal(typeof s.elements.get('#start-app').click, 'function');
+  s.BR.install.outdated();
+  assert.equal(s.elements.get('#start-app').hidden, false);
+  assert.equal(s.elements.get('#start-app span').textContent, '今すぐアップデート');
 });
