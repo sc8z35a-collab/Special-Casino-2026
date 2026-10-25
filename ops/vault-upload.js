@@ -4,8 +4,11 @@
    where they were the next time the site is opened); a browser without one
    runs them in the page (the same code).
    Each file waits in this browser's IndexedDB with what it needs: the file
-   itself, its id on the server, the upload's own pass for it (a week: no
-   developer code needed meanwhile) and the site's login. Nothing is lost when
+   itself, its id on the server and the upload's own pass for it (a week: no
+   developer code needed meanwhile). The pass is all it sends: no login is kept
+   here (a stolen one would be worth nothing without the page's key, but there
+   is none to steal), and the server takes the pass alone for the pieces and
+   the end of that one file (server/core/vault.js: passFor). Nothing is lost when
    the page or the worker stops: the next start asks the server which pieces
    it has and sends the rest, each as it is (no base64) with its SHA-256 (POST
    /api/vault/piece; on Cloudflare straight into R2).
@@ -19,7 +22,7 @@
    lost login or pass, every 10 minutes (and at once when the site has a new
    one). Only a file deleted from the vault stops for good.
    A job: { key, who, id, name, size, type, space, folder, parent, model,
-   token, pass, piece, chunks, sent, rate (bytes a second, while it goes),
+   pass, piece, chunks, sent, rate (bytes a second, while it goes),
    state: 'wait' | 'run' | 'stop' | 'done' | 'fail', why: 'net' | 'locked' |
    'login' | 'full' | 'room' | 'error' | 'gone' | '', message, tries, next, at,
    sha256, mem } */
@@ -90,8 +93,8 @@ var VaultUploads = (function () {
     function tell(j) { try { host.tell(Object.assign({}, j)); } catch (e) { /* a page gone */ } }
 
     function call(j, method, path, body) {
-      var h = { Authorization: 'Bearer ' + j.token };
-      if (j.pass) h['X-Vault-Upload'] = j.pass;
+      if (!j.pass) return Promise.reject({ status: 401, code: 'auth', message: 'ログインが必要です' });
+      var h = { 'X-Vault-Upload': j.pass };
       if (body !== undefined) h['Content-Type'] = 'application/json';
       return fetch(path, { method: method, headers: h, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', credentials: 'same-origin' })
         .then(answer, offline);
@@ -114,7 +117,7 @@ var VaultUploads = (function () {
         return crypto.subtle.digest('SHA-256', buf).then(function (h) {
           return fetch('/api/vault/piece?id=' + j.id + '&n=' + n, {
             method: 'POST', body: buf, cache: 'no-store', credentials: 'same-origin',
-            headers: { Authorization: 'Bearer ' + j.token, 'X-Vault-Upload': j.pass, 'Content-Type': 'application/octet-stream', 'X-Piece-SHA256': hex(h) }
+            headers: { 'X-Vault-Upload': j.pass, 'Content-Type': 'application/octet-stream', 'X-Piece-SHA256': hex(h) }
           }).then(answer, offline);
         });
       });
@@ -232,7 +235,7 @@ var VaultUploads = (function () {
     function slot() {
       return all().then(function (list) {
         var now = Date.now();
-        var mine = list.filter(function (j) { return j.id && j.token && host.mine(j) && !active[j.key]; });
+        var mine = list.filter(function (j) { return j.id && j.pass && host.mine(j) && !active[j.key]; });
         var due = mine.filter(function (j) {
           return j.state === 'wait' || j.state === 'run' || (again(j) && j.next <= now);
         }).sort(function (a, b) { return a.at - b.at; })[0];

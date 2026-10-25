@@ -92,7 +92,7 @@ export function createOpsLogin({ q, findByName, isOperator, isViewer = () => fal
         seenOn(u.id, req);
         if (body.enter === true) entered(u, req, 'password');
         const viewer = !isOperator(u);
-        return { token: createSession(u.id, viewer ? 'view' : '', mfaVersion), name: u.name, viewer };
+        return { token: createSession(u.id, viewer ? 'view' : '', mfaVersion, true), name: u.name, viewer };
       }
     },
     // old waits go (from the housekeeping)

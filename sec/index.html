@@ -33,6 +33,21 @@
   </form>
 </main>
 
+<!-- every time this page is opened (and after an hour on it): today's passkey, from Discord's /passkey (server/core/pk.js) -->
+<main class="login" id="pk" hidden>
+  <form class="login-card" id="pk-form" autocomplete="off" novalidate>
+    <div class="brand"><span class="brand-mark">◆</span><span>security HOME</span></div>
+    <h1 class="pk-title">今日のパスキー</h1>
+    <p class="muted" id="pk-day"></p>
+    <p class="pk-who"><span id="pk-role"></span> <b id="pk-name"></b></p>
+    <label class="field"><span>パスキー（6桁）</span><input id="pk-code" class="pk-code" placeholder="000000" aria-label="パスキー（6桁）" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" spellcheck="false"></label>
+    <p class="muted pk-help">Discord で <b>/passkey</b> と送ると、あなただけに見える形で表示されます。ページを開き直すたび、また1時間たつたびに入力が必要です。<b>間違えると、1時間は入力できなくなります。</b>よく見て入力してください。</p>
+    <p class="error" id="pk-error" role="alert"></p>
+    <button class="btn primary wide" type="submit" id="pk-go">入る</button>
+    <button class="btn wide" type="button" id="pk-other">別のアカウントでログイン</button>
+  </form>
+</main>
+
 <div class="app" id="app" hidden>
   <header class="top">
     <div class="brand"><span class="brand-mark">◆</span><span>security HOME</span><small>最終安全基地</small></div>
@@ -152,6 +167,7 @@
 </div>
 
 <script src="/ops/ui-guard.js"></script>
+<script src="pk.js"></script>
 <script src="sec.js"></script>
 </body>
 </html>

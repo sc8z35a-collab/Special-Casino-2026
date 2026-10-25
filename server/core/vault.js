@@ -194,7 +194,7 @@ const idsOf = (raw) => [...new Set(Array.isArray(raw) ? raw.map(String) : [])].s
 // { bytes, sha256 } | null, list(prefix) -> [{ key, sha256 }], del(keys);
 // ops: the operator site (who the operators are); onDb(bytes): pieces
 // written into the database (the emergency stop does not count them)
-export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, blobs = null, onDb = () => {} }) {
+export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, blobs = null, onDb = () => {}, epoch = () => 0 }) {
   const KEY = crypto.createHash('sha256').update(`${secret}:vault-ticket`).digest();
   const LINK_KEY = keyFrom(secret, 'vault-link-storage');
   const size = SIZES[blobs ? 'bucket' : config.plan === 'paid' ? 'paid' : 'db'];
@@ -301,17 +301,29 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   }
   // whether `u` may change things now (the developer: with the ticket)
   const unlocked = (req, u) => !isDeveloper(u) || ticketOk(req, u);
-  // an upload's own pass: its sender, that one file, a week
+  // an upload's own pass: its sender, that one file, a week. It is good alone
+  // (no login, no ticket) for the six routes that send it, so the operator
+  // site's background worker holds no login at all; the incident mode's new
+  // epoch ends every pass at once.
+  const passSign = (body) => sign(`up:${body}${epoch() ? `:${epoch()}` : ''}`);
   function uploadFor(u, f) {
     const body = `${u.id}.${f.id}.${Date.now() + UPLOAD_MS}`;
-    return `${body}.${sign(`up:${body}`).toString('base64url')}`;
+    return `${body}.${passSign(body).toString('base64url')}`;
+  }
+  // a good pass: whom it is for and which file (else null)
+  function passParse(raw) {
+    const m = UPLOAD_RE.exec(String(raw || ''));
+    if (!m || Number(m[3]) <= Date.now()) return null;
+    const got = Buffer.from(m[4], 'base64url'), want = passSign(`${m[1]}.${m[2]}.${m[3]}`);
+    return got.length === want.length && crypto.timingSafeEqual(got, want) ? { userId: Number(m[1]), fileId: m[2] } : null;
   }
   function uploadOk(req, u, id) {
-    const m = UPLOAD_RE.exec(String(req.header('x-vault-upload') || ''));
-    if (!m || Number(m[1]) !== u.id || m[2] !== String(id) || Number(m[3]) <= Date.now()) return false;
-    const got = Buffer.from(m[4], 'base64url'), want = sign(`up:${m[1]}.${m[2]}.${m[3]}`);
-    return got.length === want.length && crypto.timingSafeEqual(got, want);
+    const p = passParse(req.header('x-vault-upload'));
+    return !!p && p.userId === u.id && p.fileId === String(id);
   }
+  // the routes a pass sends alone
+  const PASS_ROUTES = new Set(['GET /api/vault/missing', 'POST /api/vault/piece', 'POST /api/vault/chunk', 'POST /api/vault/permit', 'POST /api/vault/stored', 'POST /api/vault/finish']);
+  const passFor = (key, req) => (PASS_ROUTES.has(key) ? passParse(req.header('x-vault-upload')) : null);
   const locked = () => new ApiError(403, 'vault_locked', '閲覧のみです。変更するには開発者コードを入力してください');
   // a file being sent (its pieces, what is missing, the end, a model's
   // picture): one who may change it; the developer with the ticket, or with
@@ -321,7 +333,9 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     ops.need(u);
     guarded(u);
     const f = theFile(u, id, 'change', req);
-    if (isDeveloper(u) && !ticketOk(req, u) && !uploadOk(req, u, f.id)) throw locked();
+    // (a pass alone — no login — is for the one file it was made for)
+    if (req.passFile !== undefined) { if (req.passFile !== f.id) throw locked(); }
+    else if (isDeveloper(u) && !ticketOk(req, u) && !uploadOk(req, u, f.id)) throw locked();
     rate(bulk ? pieceLimits[speedNow()] : limits.work, u.id);
     return f;
   }
@@ -1592,5 +1606,5 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     routes[key] = async (req, u) => { try { return await fn(req, u); } finally { bump(); } };
   }
 
-  return { routes, summary, speedNow, public: ['GET /api/vault/pull', 'POST /api/vault/ai'] };
+  return { routes, summary, speedNow, passFor, public: ['GET /api/vault/pull', 'POST /api/vault/ai'] };
 }

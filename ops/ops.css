@@ -79,6 +79,8 @@ button { cursor: pointer; }
 .enter-card .btn.ghost { margin-top: 8px; }
 .enter-who { display: flex; align-items: center; gap: 10px; margin-top: 18px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); font-size: 16px; }
 .enter-who b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk-code { text-align: center; font-size: 26px; letter-spacing: .5em; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.pk-help { margin-top: 10px; line-height: 1.6; }
 /* the developer's ログインログ */
 .inlog { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
 .inlog > p { margin: 0; padding: 14px; }

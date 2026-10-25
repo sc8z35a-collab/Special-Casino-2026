@@ -38,6 +38,8 @@ import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
 import { readQuests, stepQuests, claimQuests, questsReady, questView, questTickets, grantLevelTickets, resetQuestPeriod, questBonuses } from './quests.js';
 import { createOps, DELETED, ARCHIVE_DAYS } from './ops.js';
 import { createOpsLogin } from './opslogin.js';
+import { createPk, GATED } from './pk.js';
+import { createDiscordBot } from './discordbot.js';
 import { createOpsEntry } from './opsentry.js';
 import { createEmergency } from './emergency.js';
 import { createShield } from './shield.js';
@@ -70,6 +72,9 @@ const GROUP_NAME_MAX = 20;
 const GUIDE_MS = 30 * 60000;
 // two requests further apart than this are two sessions (the gap is not play time)
 const SESSION_GAP = 5 * 60000;
+// an operator-site login lasts a day at most and 8 hours without a request (OPS_SESSION_HOURS, OPS_IDLE_HOURS); the game's logins last as ever
+const OPS_SESSION_MS = 24 * 3600000;
+const OPS_IDLE_MS = 8 * 3600000;
 // feedback: ratings 0-5 (0 = not rated) of these, and a comment of any length
 const FEEDBACK_KEYS = ['slot', 'features', 'clarity', 'controls', 'looks', 'polish'];
 const FEEDBACK_MAX = 100000;
@@ -1449,8 +1454,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // Also used by the live connection.
   function userForToken(token) {
     const h = sha256(token);
-    const s = q('SELECT user_id, last_used, ended, scope, ops_mfa_version FROM sessions WHERE token_hash = ?').get(h);
+    const s = q('SELECT user_id, created_at, last_used, ended, scope, ops, ops_mfa_version FROM sessions WHERE token_hash = ?').get(h);
     if (!s) throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
+    // the operator site's login: a day at most, 8 hours without a request (then the name and password again)
+    if (s.ops) {
+      const t = Date.now();
+      if (t - s.created_at > (config.opsSessionHours ? config.opsSessionHours * 3600000 : OPS_SESSION_MS) || t - s.last_used > (config.opsIdleHours ? config.opsIdleHours * 3600000 : OPS_IDLE_MS)) {
+        q('DELETE FROM sessions WHERE token_hash = ?').run(h);
+        throw new ApiError(401, 'auth', 'ログインの有効期限が切れました。もう一度ログインしてください');
+      }
+    }
     // ended by the server (an operator's rights taken away): why, once, then it is gone
     if (s.ended) {
       q('DELETE FROM sessions WHERE token_hash = ?').run(h);
@@ -1479,11 +1492,24 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return u;
   }
 
-  function createSession(userId, scope = '', mfaVersion = 0) {
+  function createSession(userId, scope = '', mfaVersion = 0, ops = false) {
     const token = newToken();
     const now = Date.now();
-    q('INSERT INTO sessions (token_hash, user_id, created_at, last_used, scope, ops_mfa_version) VALUES (?, ?, ?, ?, ?, ?)').run(sha256(token), userId, now, now, scope, mfaVersion);
+    q('INSERT INTO sessions (token_hash, user_id, created_at, last_used, scope, ops, ops_mfa_version) VALUES (?, ?, ?, ?, ?, ?, ?)').run(sha256(token), userId, now, now, scope, ops ? 1 : 0, mfaVersion);
     return token;
+  }
+
+  // An upload's own pass alone (no login): its sender, as a login would give
+  // them — a banned or blocked account gets nothing from it either
+  function userForPass(userId) {
+    let u = getUser(userId);
+    if (!u) throw new ApiError(401, 'auth', 'アカウントが見つかりません');
+    if (!isDeveloper(u) && shield.accountBlocked(u.id)) throw new ApiError(403, 'blocked', 'このアカウントは一時的に制限されています。しばらく待ってからお試しください');
+    u = allowed(u);
+    u.scope = '';
+    u.opsMfaVersion = 0;
+    u.tokenHash = '';
+    return u;
   }
 
   function nameProblem(raw) {
@@ -3621,12 +3647,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // lockdown (server/core/emergency.js). The shield can call for the lockdown,
   // which needs the shield's forensics and a protective backup, so the three
   // know one another through late-bound references.
-  let emergencyRef = null, backupRef = null, watchRef = null;
+  let emergencyRef = null, backupRef = null, watchRef = null, vaultRef = null;
   const shield = createShield({
     q, config, opsLog, clock: config.clock || Date.now,
     onBreach: (info) => { if (emergencyRef) emergencyRef.breach(info); },
     // a vault's pieces: many a second at full speed, under their own limit (each operator, signed in)
-    bulk: (req) => VAULT_BULK.has(`${req.method} ${req.path}`) && /^Bearer /.test(String(req.header('authorization') || ''))
+    bulk: (req) => VAULT_BULK.has(`${req.method} ${req.path}`) && (/^Bearer /.test(String(req.header('authorization') || '')) || !!(vaultRef && vaultRef.passFor(`${req.method} ${req.path}`, req)))
   });
   const emergency = createEmergency({
     q, config, opsLog, devCode, isDeveloper, getUser, clock: config.clock || Date.now,
@@ -3692,6 +3718,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     allow: (u) => emergency.locked() || !emergency.stopped() || isDeveloper(u), stoppedBody: () => emergency.body()
   });
   Object.assign(routes, opsLogin.routes);
+  // the passkey, asked every time a page of the operator site or the security base is opened (off until GATE_KEY is set)
+  const pk = createPk({
+    q, tx, config, opsLog, ops, isDeveloper, mfa: opsMfa, entered: opsEntry.record, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now
+  });
+  Object.assign(routes, pk.routes);
+  // the Discord bot that gives it to the staff role: Discord calls this address
+  const bot = createDiscordBot({ config, pk, opsLog, clock: config.clock || Date.now });
+  Object.assign(routes, bot.routes);
   // 運営チャット
   // @開発者 in the 運営チャット: the developer hears of it at once — on the
   // operator site (its live connection), on their phone (unless the game is
@@ -3724,7 +3758,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     list: (...a) => { stats.r2('a'); return blobs.list(...a); },
     del: (...a) => blobs.del(...a)
   };
-  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, blobs: bucket, onDb: (n) => emergency.vaultDb(n) });
+  const vault = createVault({ q, tx, config, secret, opsLog, isDeveloper, devCode, ops, getUser, blobs: bucket, onDb: (n) => emergency.vaultDb(n), epoch: pk.epoch });
+  vaultRef = vault;
   Object.assign(routes, vault.routes);
   // the developer's backups of everything but the vault
   const backup = createBackup({
@@ -3789,7 +3824,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const sec = createSec({ q, getUser, ops, emergency, shield, opsLog, health, secret, isDeveloper, live, seen: opsSeen });
   Object.assign(routes, sec.routes);
 
-  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', ...pay.public, ...vault.public]);
+  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', ...pay.public, ...vault.public, ...bot.public]);
 
   /* ---------------------------------------------------------------- live connection hooks */
 
@@ -3980,6 +4015,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     noteHost(req);
     // (a minute over: the emergency stop looks at it before this answer)
     emergency.tick();
+    pk.sweep();
     const out = await answer(req);
     // (after a new version starts: its announcements, once)
     if (!announced && !emergency.locked()) {
@@ -4003,12 +4039,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const VIEW_ONLY = new Set([
     'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/ops/alive', 'GET /api/ops/counts', 'GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback',
     'GET /api/ops/log', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security',
-    'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify', 'POST /api/logout'
+    'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify', 'POST /api/logout',
+    'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close'
   ]);
 
   // what still comes in while the server is stopped for an emergency: the
   // developer's way back in
-  const WHILE_STOPPED = new Set(['POST /api/ops/login', 'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/emergency', 'POST /api/emergency/release']);
+  const WHILE_STOPPED = new Set(['POST /api/ops/login', 'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/emergency', 'POST /api/emergency/release',
+    'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close', 'POST /api/pk/breakglass', 'POST /api/discord/interactions']);
   // what still comes in during a lockdown: the security base (/sec/) for the
   // operators, the operator login they reach it with (and the logout that
   // ends it, so 出る really signs out), and the developer's emergency page.
@@ -4017,7 +4055,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const WHILE_LOCKED = new Set([
     'POST /api/ops/login', 'POST /api/logout', 'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify',
     'GET /api/sec/messages', 'POST /api/sec/messages', 'POST /api/sec/lockdown', 'POST /api/sec/release',
-    'GET /api/emergency', 'POST /api/emergency/release'
+    'GET /api/emergency', 'POST /api/emergency/release',
+    'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close', 'POST /api/pk/breakglass', 'POST /api/discord/interactions'
   ]);
 
   async function answer(req) {
@@ -4036,9 +4075,21 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!route) throw new ApiError(404, 'not_found', 'APIが見つかりません');
       let user = null;
       if (!PUBLIC.has(key)) {
-        user = authUser(req);
-        req.userId = user.id;
-        if (/^\/api\/(?:ops\/|sec\/|vault\/|backup(?:\/|$)|emergency(?:\/|$))/.test(req.path)) opsMfa.guard(user);
+        // an upload's own pass sends its pieces alone (the background worker holds no login);
+        // a request that does carry a login is that login's, the pass only helping it
+        const pass = req.header('authorization') ? null : vault.passFor(key, req);
+        if (pass) {
+          user = userForPass(pass.userId);
+          req.passFile = pass.fileId;
+          req.userId = user.id;
+        } else {
+          user = authUser(req);
+          req.userId = user.id;
+          if (GATED.test(req.path)) {
+            opsMfa.guard(user);
+            await pk.guard(req, user);
+          }
+        }
         if (req.method === 'POST' && req.path.startsWith('/api/ops/profile/')) rate(limit.login, 'mfa:' + user.id);
         // a viewer's look-only session: the allowlist, and only while they still are one
         if (user.scope === 'view') {
@@ -4087,6 +4138,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   return {
     handle,
+    pk,
     filtered,
     hello,
     presence,

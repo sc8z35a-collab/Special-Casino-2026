@@ -65,6 +65,22 @@
   <div class="mac-login-actions"><button type="button" data-mac-reload><span aria-hidden="true">↻</span>再読み込み</button><button type="button" id="enter-other"><span aria-hidden="true">⇄</span>別のアカウントでログイン</button><a href="/"><span aria-hidden="true">⌂</span>ゲームへ戻る</a></div>
 </main>
 
+<!-- every time this page is opened (and after an hour on it): today's passkey, from Discord's /passkey (server/core/pk.js) -->
+<main class="login" id="pk" hidden>
+  <form class="login-card" id="pk-form" autocomplete="off" novalidate>
+    <img class="mac-login-avatar" src="assets/operators.webp" alt="" width="96" height="96">
+    <div class="brand"><span>TWO STATE</span></div>
+    <h1>今日のパスキー</h1>
+    <p class="muted" id="pk-day"></p>
+    <div class="enter-who"><span class="kind" id="pk-role"></span><b id="pk-name"></b></div>
+    <label class="field"><span>パスキー（6桁）</span><input id="pk-code" class="pk-code" placeholder="000000" aria-label="パスキー（6桁）" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" spellcheck="false"></label>
+    <p class="muted pk-help">Discord で <b>/passkey</b> と送ると、あなただけに見える形で表示されます。ページを開き直すたび、また1時間たつたびに入力が必要です。<b>間違えると、1時間は入力できなくなります。</b>よく見て入力してください。</p>
+    <p class="error" id="pk-error" role="alert"></p>
+    <button class="btn primary wide" type="submit" id="pk-go">入る</button>
+  </form>
+  <div class="mac-login-actions"><button type="button" data-mac-reload><span aria-hidden="true">↻</span>再読み込み</button><button type="button" id="pk-other"><span aria-hidden="true">⇄</span>別のアカウントでログイン</button><a href="/"><span aria-hidden="true">⌂</span>ゲームへ戻る</a></div>
+</main>
+
 <div class="app" id="app" hidden>
   <header class="top">
     <div class="brand"><span class="brand-mark">TS</span><span>TWO STATE</span><small>サーバー運営</small></div>
@@ -587,6 +603,7 @@
 <script src="desktop.js"></script>
 <script src="diary-profile.js"></script>
 <script src="ui-guard.js"></script>
+<script src="pk.js"></script>
 <script src="ops.js"></script>
 </body>
 </html>

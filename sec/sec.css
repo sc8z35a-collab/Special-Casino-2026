@@ -60,6 +60,10 @@ body {
 }
 .field textarea, #chat-text { resize: vertical; font-family: var(--sans); }
 .error { color: var(--danger); min-height: 18px; font-size: 13px; margin: 6px 0 0; }
+.pk-title { margin: 14px 0 6px; font-size: 20px; }
+.pk-who { margin: 12px 0 0; font-size: 15px; }
+.pk-code { text-align: center; font-size: 26px; letter-spacing: .5em; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.pk-help { margin-top: 10px; line-height: 1.6; font-size: 13px; }
 
 /* header */
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--line); background: rgba(10, 16, 30, .7); position: sticky; top: 0; z-index: 20; backdrop-filter: blur(8px); flex-wrap: wrap; }

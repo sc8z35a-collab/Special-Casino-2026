@@ -905,6 +905,34 @@ MIGRATIONS.push([
   'CREATE INDEX vault_link_files_file ON vault_link_files(file_id)'
 ]);
 
+// パスキー認証 (server/core/pk.js): a wrong passkey keeps that account out for an
+// hour (pk_locks); each page that is open has a gate, its own public key and an
+// hour at most (pk_gates); a session made by the operator site's login says so
+// (sessions.ops: it gets a shorter life)
+MIGRATIONS.push([
+  'ALTER TABLE sessions ADD COLUMN ops INTEGER NOT NULL DEFAULT 0',
+  `CREATE TABLE pk_locks (
+     user_id INTEGER PRIMARY KEY,
+     until   INTEGER NOT NULL,
+     at      INTEGER NOT NULL,
+     ip_hash TEXT    NOT NULL DEFAULT '',
+     wrong   INTEGER NOT NULL DEFAULT 1
+   )`,
+  `CREATE TABLE pk_gates (
+     gid        TEXT    PRIMARY KEY,
+     token_hash TEXT    NOT NULL,
+     user_id    INTEGER NOT NULL,
+     pub        TEXT    NOT NULL,
+     opened_at  INTEGER NOT NULL,
+     until      INTEGER NOT NULL,
+     epoch      INTEGER NOT NULL DEFAULT 0,
+     ip_hash    TEXT    NOT NULL DEFAULT '',
+     agent      TEXT    NOT NULL DEFAULT ''
+   )`,
+  'CREATE INDEX pk_gates_token ON pk_gates(token_hash)',
+  'CREATE INDEX pk_gates_user ON pk_gates(user_id)'
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)

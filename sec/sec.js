@@ -58,13 +58,19 @@
     if (token) h.Authorization = 'Bearer ' + token;
     if (headers) Object.keys(headers).forEach(function (k) { h[k] = headers[k]; });
     var s = session;
-    return fetch(path, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' })
+    // (signed with this page's key once today's passkey is in: pk.js)
+    return OpsPk.header(method, path).catch(function () { return null; }).then(function (gate) {
+      if (gate) h['X-Gate'] = gate;
+      return fetch(path, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' });
+    })
       .catch(function () { throw { status: 0, message: '通信できませんでした' }; })
       .then(function (res) {
         return res.json().catch(function () { return {}; }).then(function (j) {
           if (res.ok) return j;
           var e = j.error || {};
           var err = { status: res.status, code: e.code || '', message: e.message || ('エラー（' + res.status + '）'), until: e.until || 0 };
+          // the passkey is asked for (this page is new, or its hour is up)
+          if ((e.code === 'pk_required' || e.code === 'pk_expired') && token && s === session) showPasskey(e.code === 'pk_required' && err.message === PK_DEFAULT ? '' : err.message);
           // signed out on the server: only while signed in, and in this same
           // session (not a wrong password, nor a late answer to the last one)
           if ((res.status === 401 || e.code === 'not_operator' || e.code === 'mfa_required') && path !== '/api/ops/login' && token && s === session) signedOut(err.message);
@@ -95,7 +101,76 @@
   function fail(e) { toast(e && e.message ? e.message : 'エラーが発生しました'); }
 
   /* ------------------------------------------------------------ login --- */
+  // The passkey (server/core/pk.js), asked each time this page opens and after
+  // an hour on it: today's six digits from Discord's /passkey. A wrong one
+  // keeps the account out for an hour. The page's key lives in its memory only
+  // (pk.js); the page starts over when the hour is up.
+  var PK_DEFAULT = '今日のパスキーを入力してください', pkTimer = 0, pkWarn = 0, pkLockTimer = 0, pkLockEnd = 0;
+  // what this operator saw goes (the next one, or this one after the passkey, starts clean)
+  function wipe() {
+    if (closeDialog) closeDialog(null);
+    log = []; logGen++; $('#log-list').textContent = '';
+    lastChatId = 0; unread = 0; chatLoaded = false; $('#chat-list').textContent = ''; markChatDot();
+    $('#verify-line').className = 'verify'; $('#verify-line').textContent = '';
+    clearInterval(timer); clearInterval(aliveTimer);
+  }
+  function showPasskey(message) {
+    if (!token) return;
+    if (!$('#pk').hidden) { if (message) $('#pk-error').textContent = message; return; }
+    clearTimeout(pkTimer); clearTimeout(pkWarn);
+    OpsPk.close();
+    session++; wipe();
+    $('#app').hidden = true; $('#login').hidden = true; $('#pk').hidden = false;
+    document.body.classList.remove('role-viewer');
+    $('#pk-code').value = ''; $('#pk-error').textContent = message || ''; $('#pk-go').disabled = false;
+    pkLockEnd = 0; clearInterval(pkLockTimer);
+    request('GET', '/api/pk/state').then(function (st) {
+      $('#pk-day').textContent = '今日（' + st.day.replace(/-/g, '/') + '）のパスキーを入力してください。';
+      $('#pk-role').textContent = { developer: '開発者', operator: '運営者', viewer: '閲覧者' }[st.role] || '運営者';
+      $('#pk-name').textContent = st.name;
+      if (st.locked > Date.now()) pkWait(st.locked);
+    }, function () {});
+    setTimeout(function () { $('#pk-code').focus(); }, 50);
+  }
+  function pkWait(until) {
+    pkLockEnd = until; clearInterval(pkLockTimer);
+    var go = $('#pk-go');
+    function tick() {
+      var left = pkLockEnd - Date.now();
+      if (left <= 0) { clearInterval(pkLockTimer); go.disabled = false; $('#pk-error').textContent = 'もう一度入力できます'; return; }
+      go.disabled = true;
+      $('#pk-error').textContent = 'パスキーを間違えたため入力できません。あと ' + Math.floor(left / 60000) + '分' + pad(Math.floor(left / 1000) % 60) + '秒で入力できます';
+    }
+    tick(); pkLockTimer = setInterval(tick, 1000);
+  }
+  // the hour: a warning five minutes before, and the page starts over when it is up
+  function pkSchedule(until) {
+    clearTimeout(pkTimer); clearTimeout(pkWarn);
+    var left = until - Date.now();
+    pkWarn = setTimeout(function () { toast('あと5分で、パスキーをもう一度入力することになります'); }, Math.max(0, left - 5 * 60000));
+    pkTimer = setTimeout(function () { location.reload(); }, Math.max(0, left));
+  }
+  function onPasskey(e) {
+    e.preventDefault();
+    if (Date.now() < pkLockEnd) return;
+    var code = $('#pk-code').value.replace(/\s/g, '');
+    if (!/^\d{6}$/.test(code)) { $('#pk-error').textContent = '6桁の数字を入力してください'; return; }
+    var go = $('#pk-go'); go.disabled = true; $('#pk-error').textContent = '';
+    OpsPk.publicKey().then(function (pub) {
+      return request('POST', '/api/pk/open', { passkey: code, pub: pub });
+    }).then(function (r) {
+      OpsPk.open(r.gid, r.until);
+      pkSchedule(r.until);
+      $('#pk').hidden = true; $('#pk-code').value = '';
+      return request('GET', '/api/sec/me').then(start);
+    }).catch(function (err) {
+      if (err.code === 'pk_wrong' || err.code === 'pk_locked') { $('#pk-error').textContent = err.message; if (err.until) pkWait(err.until); return; }
+      go.disabled = false;
+      if (err.status !== 401 && err.code !== 'not_operator' && err.code !== 'pk_required') $('#pk-error').textContent = err.message || 'エラーが発生しました';
+    });
+  }
   function showLogin(message) {
+    $('#pk').hidden = true;
     $('#app').hidden = true; $('#login').hidden = false;
     $('#login-error').textContent = message || '';
     clearInterval(timer);
@@ -106,10 +181,8 @@
   // signed out: what this operator saw goes with them, so the next one starts clean
   function signedOut(message) {
     setToken(null); me = null; meId = 0; session++;
-    if (closeDialog) closeDialog(null);
-    log = []; logGen++; $('#log-list').textContent = '';
-    lastChatId = 0; unread = 0; chatLoaded = false; $('#chat-list').textContent = ''; markChatDot();
-    $('#verify-line').className = 'verify'; $('#verify-line').textContent = '';
+    OpsPk.close();
+    wipe();
     showLogin(message);
   }
   // the server forgets a token (best effort)
@@ -137,6 +210,8 @@
     request('POST', '/api/ops/login', { name: name, password: pass, otp: $('#login-otp').value.trim(), phrase: $('#login-phrase').value, recovery: $('#login-backup').value.trim() }, { 'X-Ops-Device': device() }).then(function (r) {
       setToken(r.token);
       return request('GET', '/api/sec/me').then(function (m) { $('#login-pass').value = ''; $('#login-otp').value = ''; $('#login-phrase').value = ''; $('#login-backup').value = ''; $('#login-extra').open = false; start(m); }, function (err) {
+        // the passkey is asked for next (its page is up already): the login stays
+        if (err.code === 'pk_required' || err.code === 'pk_expired') { $('#login-pass').value = ''; $('#login-otp').value = ''; $('#login-phrase').value = ''; $('#login-backup').value = ''; return; }
         revoke(r.token);
         setToken(null); throw err;
       });
@@ -158,7 +233,7 @@
   function start(m) {
     me = m; meId = m.id || 0; session++;
     seenChat = readSeen(); statusErr = '';
-    $('#login').hidden = true; $('#app').hidden = false;
+    $('#login').hidden = true; $('#pk').hidden = true; $('#app').hidden = false;
     $('#op-name').textContent = (m.developer ? '開発者: ' : m.viewer ? '閲覧者: ' : '運営者: ') + m.name;
     document.body.classList.toggle('role-viewer', !!m.viewer);
     $('#speed').disabled = !m.developer;
@@ -534,6 +609,8 @@
   }
   function init() {
     $('#login-form').addEventListener('submit', onLogin);
+    $('#pk-form').addEventListener('submit', onPasskey);
+    $('#pk-other').addEventListener('click', logout);
     $('#logout').addEventListener('click', logout);
     // the developer only (the server says no to anyone else)
     $('#speed').addEventListener('change', function () {
@@ -560,7 +637,7 @@
 
     if (token) {
       // (signed out on the server: request() has shown why; anything else is told here)
-      request('GET', '/api/sec/me').then(start, function (err) { if (!me && err.status !== 401 && err.code !== 'not_operator') showLogin(err.message); });
+      request('GET', '/api/sec/me').then(start, function (err) { if (!me && err.status !== 401 && err.code !== 'not_operator' && err.code !== 'pk_required' && err.code !== 'pk_expired') showLogin(err.message); });
     } else {
       showLogin('');
     }

@@ -80,7 +80,7 @@
     vault_bucket: '保管庫をR2へ移動', vault_ai_label: 'AIのラベル（保管庫）', vault_ai_done: 'AIが実装（保管庫）', vault_restore: '保管庫で実装済みから戻す',
     vault_quota_request: '保管庫の容量の申請', vault_quota_cancel: '容量の申請の取り下げ', vault_quota_approve: '容量の申請を承認', vault_quota_decline: '容量の申請を見送り',
     vault_quota_set: '保管庫の上限を変更', vault_rename: '保管庫で名前を変更', vault_backup: '保管庫のバックアップ', vault_backup_off: 'バックアップから外す',
-    vault_backup_restore: 'バックアップから戻す', vault_ai_comment: 'AIのコメント（保管庫）', vault_implemented: '保管庫で実装済みにする', vault_link_trip: '保管庫のリンクを自動停止', milestone: '登録者数の記念', voice_notice: '通話品質アップのお知らせ'
+    vault_backup_restore: 'バックアップから戻す', vault_ai_comment: 'AIのコメント（保管庫）', vault_implemented: '保管庫で実装済みにする', pk_fail: 'パスキーの入力ミス', pk_issue: 'パスキーを取得（Discord）', pk_breakglass: '非常口でパスキー認証を開いた', vault_link_trip: '保管庫のリンクを自動停止', milestone: '登録者数の記念', voice_notice: '通話品質アップのお知らせ'
   };
   function actionName(a) { return ACTIONS[a] || (a.indexOf('admin:') === 0 ? '管理コマンド: ' + a.slice(6) : a); }
   var KINDS = { player: 'プレイヤー', operator: '運営', security: 'セキュリティ', vault: '保管庫', emergency: '緊急' };
@@ -112,7 +112,11 @@
     var h = { 'Content-Type': 'application/json' };
     if (token) h.Authorization = 'Bearer ' + token;
     if (headers) Object.keys(headers).forEach(function (k) { h[k] = headers[k]; });
-    return fetch(path, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' })
+    // (signed with this page's key once today's passkey is in: ops/pk.js)
+    return OpsPk.header(method, path).catch(function () { return null; }).then(function (gate) {
+      if (gate) h['X-Gate'] = gate;
+      return fetch(path, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' });
+    })
       .catch(function () { throw { status: 0, message: '通信できませんでした' }; })
       .then(function (res) {
         return res.json().catch(function () { return {}; }).then(function (j) {
@@ -121,6 +125,7 @@
           var err = { status: res.status, code: e.code || '', message: e.message || 'エラーが発生しました（' + res.status + '）', until: e.until || 0, mode: e.mode || 0 };
           // the server stopped itself (a plain emergency stop, or a lockdown)
           if (res.status === 503 && e.emergency) showEmergency(e);
+          else if (e.code === 'pk_required' || e.code === 'pk_expired') showPasskey(e.code === 'pk_required' && err.message === PK_DEFAULT ? '' : err.message);
           else if (res.status === 401 || e.code === 'not_operator' || e.code === 'banned') signedOut(err.message);
           else if (e.code === 'mfa_required' && path !== '/api/ops/login') showLogin(err.message);
           throw err;
@@ -216,8 +221,9 @@
   function fail(err) { toast(err && err.message ? err.message : 'エラーが発生しました'); }
 
   /* ------------------------------------------------------------ logging in --- */
-  // the site put away (for the login, or the day's ログイン button)
+  // the site put away (for the login, the passkey, or the day's ログイン button)
   function leaveApp() {
+    $('#pk').hidden = true;
     resetDevUnit();
     stopInline3d();
     if (call.on) callLeave();
@@ -238,6 +244,82 @@
     $('#login-error').textContent = message || '';
     setTimeout(function () { $('#login-name').focus(); }, 50);
   }
+  // The passkey (server/core/pk.js), asked each time this page opens and after
+  // an hour on it: today's six digits from Discord's /passkey. A wrong one
+  // keeps the account out for an hour. The page's key lives in its memory only
+  // (ops/pk.js): a page that is reloaded or left asks again, and the page
+  // starts over when the hour is up.
+  var PK_DEFAULT = '今日のパスキーを入力してください', pkTimer = 0, pkWarn = 0, pkLockTimer = 0, pkLockEnd = 0;
+  function showPasskey(message) {
+    if (!token) return;
+    // (many requests fail at once when it is asked for: the screen is put up once)
+    if (!$('#pk').hidden) { if (message) $('#pk-error').textContent = message; return; }
+    leaveApp();
+    clearTimeout(pkTimer); clearTimeout(pkWarn);
+    OpsPk.close();
+    $('#login').hidden = true;
+    $('#enter').hidden = true;
+    $('#pk').hidden = false;
+    $('#pk-code').value = '';
+    $('#pk-error').textContent = message || '';
+    $('#pk-go').disabled = false;
+    pkLockEnd = 0;
+    clearInterval(pkLockTimer);
+    request('GET', '/api/pk/state').then(function (st) {
+      $('#pk-day').textContent = '今日（' + st.day.replace(/-/g, '/') + '）のパスキーを入力してください。';
+      var r = ROLE[st.role] || ROLE.operator;
+      $('#pk-role').className = 'kind ' + r[0];
+      $('#pk-role').textContent = r[1];
+      $('#pk-name').textContent = st.name;
+      if (st.locked > Date.now()) pkWait(st.locked);
+    }, function () {});
+    setTimeout(function () { $('#pk-code').focus(); }, 50);
+  }
+  // the hour's wait after a wrong passkey, counted down
+  function pkWait(until) {
+    pkLockEnd = until;
+    clearInterval(pkLockTimer);
+    var go = $('#pk-go');
+    function tick() {
+      var left = pkLockEnd - Date.now();
+      if (left <= 0) { clearInterval(pkLockTimer); go.disabled = false; $('#pk-error').textContent = 'もう一度入力できます'; return; }
+      go.disabled = true;
+      $('#pk-error').textContent = 'パスキーを間違えたため入力できません。あと ' + Math.floor(left / 60000) + '分' + pad(Math.floor(left / 1000) % 60) + '秒で入力できます';
+    }
+    tick();
+    pkLockTimer = setInterval(tick, 1000);
+  }
+  // the hour: a warning five minutes before, and the page starts over (nothing of it stays) when it is up
+  function pkSchedule(until) {
+    clearTimeout(pkTimer); clearTimeout(pkWarn);
+    var left = until - Date.now();
+    pkWarn = setTimeout(function () { toast('あと5分で、パスキーをもう一度入力することになります'); }, Math.max(0, left - 5 * 60000));
+    pkTimer = setTimeout(function () { location.reload(); }, Math.max(0, left));
+  }
+  function onPasskey(e) {
+    e.preventDefault();
+    if (Date.now() < pkLockEnd) return;
+    var code = $('#pk-code').value.replace(/\s/g, '');
+    // (a slip of the fingers is not a try: only six digits are sent)
+    if (!/^\d{6}$/.test(code)) { $('#pk-error').textContent = '6桁の数字を入力してください'; return; }
+    var go = $('#pk-go');
+    go.disabled = true;
+    $('#pk-error').textContent = '';
+    OpsPk.publicKey().then(function (pub) {
+      return request('POST', '/api/pk/open', { passkey: code, pub: pub });
+    }).then(function (r) {
+      OpsPk.open(r.gid, r.until);
+      pkSchedule(r.until);
+      $('#pk').hidden = true;
+      $('#pk-code').value = '';
+      return request('GET', '/api/ops/me').then(arrive);
+    }).catch(function (err) {
+      if (err.code === 'pk_wrong' || err.code === 'pk_locked') { $('#pk-error').textContent = err.message; if (err.until) pkWait(err.until); return; }
+      go.disabled = false;
+      if (err.status !== 401 && err.code !== 'not_operator' && err.code !== 'pk_required') $('#pk-error').textContent = err.message || 'エラーが発生しました';
+    });
+  }
+
   // the first look of the day: ログイン to come in (the developer's ログインログ keeps it)
   var ROLE = { developer: ['dev', '開発者'], operator: ['op', '運営者'], viewer: ['k-viewer', '閲覧者'] };
   function roleOf(me) { return me.developer ? 'developer' : me.viewer ? 'viewer' : 'operator'; }
@@ -278,6 +360,7 @@
   }
   function signedOut(message) {
     setToken(null);
+    OpsPk.close();
     // a viewer: nothing they saw stays in the page (it starts over, the reason kept for the login)
     if (state.viewer) {
       try { sessionStorage.setItem('ops-out', message || ''); } catch (e) { /* the login says nothing then */ }
@@ -329,6 +412,8 @@
         $('#login-otp').value = ''; $('#login-phrase').value = ''; $('#login-backup').value = ''; $('#login-extra').open = false;
         start(me);
       }, function (err) {
+        // the passkey is asked for next (its page is up already): the login stays
+        if (err.code === 'pk_required' || err.code === 'pk_expired') { $('#login-pass').value = ''; $('#login-otp').value = ''; $('#login-phrase').value = ''; $('#login-backup').value = ''; return; }
         // not an operator: the session just made goes again
         fetch('/api/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + r.token, 'Content-Type': 'application/json' }, body: '{}' }).catch(function () {});
         setToken(null);
@@ -344,6 +429,7 @@
     var t = token;
     if (state.name) dropLogin(state.name);
     setToken(null);
+    OpsPk.close();
     if (t) fetch('/api/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: '{}' }).catch(function () {});
     showLogin('ログアウトしました');
   }
@@ -4563,24 +4649,26 @@
     } else up.ready = Promise.resolve(window.indexedDB ? page() : 'none');
     up.ready.then(function () { refreshJobs().then(adoptJobs); kick(); });
   }
-  // this account's files waiting here take the site's login as it is now (a
-  // new one after logging in again: the ones stopped for it go at once)
+  // This account's files waiting here with no pass (logging out took it, or it
+  // ran out, or the file never got its place) get one now that they are in
+  // again; the ones stopped for the login go at once. A file sends only its own
+  // pass (ops/vault-upload.js): no login is kept with it.
   function adoptJobs() {
     if (!window.indexedDB || !token) return Promise.resolve();
-    var me = state.name, now = token;
+    var me = state.name;
     return VaultUploads.all().then(function (list) {
-      return Promise.all(list.filter(function (j) { return j.who === me && j.state !== 'done' && j.token !== now; }).map(function (j) {
-        j.token = now;
-        if (j.state === 'stop' && j.why === 'login') { j.next = 0; j.tries = 0; }
-        return VaultUploads.save(j).then(function () { onJob(j); });
+      return Promise.all(list.filter(function (j) { return j.who === me && j.state !== 'done' && !j.mem && (!j.pass || (j.state === 'stop' && j.why === 'login')); }).map(function (j) {
+        j.tries = 0;
+        j.next = 0;
+        return j.id ? passFor(j) : place(j);
       }));
     }).then(wakeJobs, wakeJobs);
   }
-  // logging out: the login kept with this account's files here goes too (they wait for the next login)
+  // logging out: the pass kept with this account's files here goes too (they wait for the next login)
   function dropLogin(me) {
     if (!window.indexedDB) return Promise.resolve();
     return VaultUploads.all().then(function (list) {
-      return Promise.all(list.filter(function (j) { return j.who === me && j.token; }).map(function (j) { j.token = ''; return VaultUploads.save(j); }));
+      return Promise.all(list.filter(function (j) { return j.who === me && j.pass; }).map(function (j) { j.pass = ''; return VaultUploads.save(j); }));
     }).catch(function () {});
   }
   // now, not later: every stopped file that goes again by itself
@@ -4720,7 +4808,7 @@
       key: Date.now().toString(36) + '-' + (++upSeq) + '-' + Math.random().toString(36).slice(2, 8),
       who: state.name, id: o.id || '', name: file.name, size: file.size, type: file.type || '',
       note: o.note || '', space: o.parent ? '' : o.space || '', folder: o.folder || '', inside: o.parent ? '' : o.inside || '', parent: o.parent || '',
-      model: !o.parent && is3d(file.name) && file.size > 0, token: token, pass: o.pass || '', piece: 0, chunks: 0, sent: 0,
+      model: !o.parent && is3d(file.name) && file.size > 0, pass: o.pass || '', piece: 0, chunks: 0, sent: 0,
       state: 'wait', why: '', message: '', tries: 0, next: 0, at: Date.now(), mem: false
     };
     if (!file.size) { toast('「' + file.name + '」は中身が空（0バイト）か、端末から読み込めませんでした。中身のあるファイルを選んでください'); return Promise.resolve(null); }
@@ -4780,7 +4868,6 @@
   function resumeAll() {
     var list = Object.keys(up.jobs).map(function (k) { return up.jobs[k]; }).filter(function (j) { return j.state !== 'done'; });
     var tasks = list.map(function (j) {
-      j.token = token;
       j.tries = 0;
       j.next = 0;
       if (!j.id) return place(j);
@@ -5544,6 +5631,8 @@
     $('#logout').addEventListener('click', logout);
     $('#enter-go').addEventListener('click', enter);
     $('#enter-other').addEventListener('click', logout);
+    $('#pk-form').addEventListener('submit', onPasskey);
+    $('#pk-other').addEventListener('click', logout);
     $('#op-inlog-more').addEventListener('click', function () { loadInlog(true); });
     $('#tabs').addEventListener('click', function (e) {
       var t = e.target.closest('[data-view]');
@@ -5858,7 +5947,7 @@
     var out = '';
     try { out = sessionStorage.getItem('ops-out') || ''; sessionStorage.removeItem('ops-out'); } catch (e) { /* none */ }
     if (!token) { showLogin(out); return; }
-    request('GET', '/api/ops/me').then(arrive, function (err) { if (err.status !== 401 && err.code !== 'not_operator') showLogin(err.message); });
+    request('GET', '/api/ops/me').then(arrive, function (err) { if (err.status !== 401 && err.code !== 'not_operator' && err.code !== 'pk_required' && err.code !== 'pk_expired') showLogin(err.message); });
     // (back in sight: a viewer asks at once whether they still may; a new day, ログイン again)
     document.addEventListener('visibilitychange', alive);
     document.addEventListener('visibilitychange', dayCheck);

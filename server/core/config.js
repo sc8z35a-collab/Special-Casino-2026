@@ -117,10 +117,25 @@ export function configFrom(env = {}, overrides = {}) {
     // notices for the developer in a Discord channel (server/core/discord.js):
     // the channel's webhook address (a secret)
     discordWebhook: str(env, 'DISCORD_WEBHOOK_URL'),
+    // パスキー認証 (server/core/pk.js): each time the operator site or the security
+    // base is opened, today's six digits (from Discord's /passkey) are asked for.
+    // Off until GATE_KEY (a secret of 32 characters or more) is set; the Discord
+    // app's public key, the server (guild) and the roles that may ask for it
+    gateKey: str(env, 'GATE_KEY'),
+    discordAppKey: str(env, 'DISCORD_APP_PUBLIC_KEY').toLowerCase(),
+    discordGuild: str(env, 'DISCORD_GUILD_ID'),
+    discordStaffRoles: str(env, 'DISCORD_STAFF_ROLE_IDS').split(',').map((s) => s.trim()).filter(Boolean),
+    // how long an operator-site login lasts (hours): at most, and without a request (unset: 24 and 8)
+    opsSessionHours: int(env, 'OPS_SESSION_HOURS', undefined),
+    opsIdleHours: int(env, 'OPS_IDLE_HOURS', undefined),
     limits: {},
     ...overrides
   };
   if (!['open', 'closed'].includes(cfg.registration)) throw new Error('REGISTRATION must be "open" or "closed"');
   if (cfg.adminToken && cfg.adminToken.length < 24) throw new Error('ADMIN_TOKEN must be at least 24 characters');
+  if (cfg.gateKey && cfg.gateKey.length < 32) throw new Error('GATE_KEY must be at least 32 characters');
+  if (cfg.discordAppKey && !/^[0-9a-f]{64}$/.test(cfg.discordAppKey)) throw new Error('DISCORD_APP_PUBLIC_KEY must be 64 hexadecimal characters');
+  if (cfg.discordGuild && !/^\d{5,25}$/.test(cfg.discordGuild)) throw new Error('DISCORD_GUILD_ID must be a number');
+  if (cfg.discordStaffRoles.some((r) => !/^\d{5,25}$/.test(r))) throw new Error('DISCORD_STAFF_ROLE_IDS must be role ids (numbers), comma separated');
   return cfg;
 }
