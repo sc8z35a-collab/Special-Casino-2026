@@ -2772,6 +2772,7 @@
     srvVault(r);
     srvCloudflare(r);
     srvDiscord(r);
+    srvLine(r);
     srvMachine(r);
   }
   // how full the month's allowances are: the サーバー tab (and its button in the
@@ -2812,18 +2813,30 @@
       ['今日（UTC）', '映像 ' + bytes(t.video) + '・処理 ' + bytes(t.game) + '・音声 ' + bytes(t.voice)]
     ], '通話の音声そのものは端末どうしで直接つながるため、サーバーを通るのは合図だけです。');
   }
+  // the developer's LINE notices: on or not, how much of the month's allowance is used
+  function srvLine(r) {
+    var l = r.line || {}, card = $('#srv-line');
+    var rows = [['状態', l.on ? 'オン' : l.bot ? '返信のみ（通知先が未設定）' : '未設定']];
+    if (l.bot) rows.push(['今月の送信数', fmt(l.used) + ' / ' + fmt(l.limit) + '通（' + (l.month || '') + '）' + (l.exhausted ? '・使い切り' : ''), l.limit ? Math.min(1, l.used / l.limit) : null]);
+    if (l.dropped) rows.push(['送信枠のため送らなかった通知', fmt(l.dropped) + '件']);
+    srvCard(card, 'LINE 通知', rows, l.on
+      ? 'Discord と同じ内容を LINE に送ります。LINE は1か月の送信数に上限があるため（無料プランは200通）、危険な知らせはすぐに、ふつうの通知は数分まとめて1通にして、枠の6割までに送ります。「パスキー」と送ると、運営の方に今日のパスキーを返信します（返信は枠に数えません）。'
+      : 'LINE のチャネルアクセストークン（LINE_CHANNEL_ACCESS_TOKEN）と送信先（LINE_STAFF_USER_IDS）を入れるとオンになります（README「LINE に通知する」）。');
+  }
   // the developer's Discord notices: on or not, and (the developer) a test
   function srvDiscord(r) {
     var d = r.discord || {}, card = $('#srv-discord');
     srvCard(card, 'Discord 通知', [['状態', d.on ? 'オン' : '未設定']], d.on
       ? '緊急停止・ロックダウン・攻撃元の自動ブロック・チャット停止・通報・報告／意見案・課金・開発者コードの間違い・運営権・バックアップの失敗・新しい版の反映を、Discord のチャンネルに送ります。ゲーム・運営サイト・サーバーが危険な状況（緊急停止・ロックダウン・攻撃元の自動ブロック・画面を見る機能の強制終了）のときは【危険】として状況をできるだけ詳しく送り、運営サイトとセキュリティHOMEの URL を添えます。'
       : 'Discord のチャンネルの Webhook の URL を、シークレット DISCORD_WEBHOOK_URL として入れるとオンになります（README「Discord に通知する」）。');
-    if (!d.on || !state.developer) return;
-    var b = el('button', 'btn small', 'テスト送信');
+    if (!(d.on || (r.line && r.line.on)) || !state.developer) return;
+    var b = el('button', 'btn small', 'テスト送信（Discord・LINE）');
     b.type = 'button';
     b.addEventListener('click', function () {
       b.disabled = true;
-      request('POST', '/api/ops/discord/test', {}).then(function () { toast('Discord に送りました'); }, fail).then(function () { b.disabled = false; });
+      request('POST', '/api/ops/discord/test', {}).then(function (t) {
+        toast('送りました：' + [t.discord !== null && t.discord !== undefined ? 'Discord' : '', t.line !== null && t.line !== undefined ? 'LINE' : ''].filter(Boolean).join('・'));
+      }, fail).then(function () { b.disabled = false; });
     });
     card.appendChild(b);
   }

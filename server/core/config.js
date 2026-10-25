@@ -128,12 +128,26 @@ export function configFrom(env = {}, overrides = {}) {
     // how long an operator-site login lasts (hours): at most, and without a request (unset: 24 and 8)
     opsSessionHours: int(env, 'OPS_SESSION_HOURS', undefined),
     opsIdleHours: int(env, 'OPS_IDLE_HOURS', undefined),
+    // LINE (server/core/line.js): the same notices as Discord's, and the passkey for the staff. The
+    // channel's secret and its long-lived access token, who the notices go to (the first of the
+    // staff if not said), who may ask for the passkey (user IDs), and the month's allowance
+    // (200 on the free plan). LINE_API: tests only, a stand-in for LINE on this machine
+    lineChannelSecret: str(env, 'LINE_CHANNEL_SECRET'),
+    lineAccessToken: str(env, 'LINE_CHANNEL_ACCESS_TOKEN'),
+    lineNotifyTo: str(env, 'LINE_NOTIFY_TO').split(',').map((s) => s.trim()).filter(Boolean),
+    lineStaffUserIds: str(env, 'LINE_STAFF_USER_IDS').split(',').map((s) => s.trim()).filter(Boolean),
+    lineMonthlyLimit: int(env, 'LINE_MONTHLY_LIMIT', 200),
+    lineApi: str(env, 'LINE_API', 'https://api.line.me').replace(/\/+$/, ''),
     limits: {},
     ...overrides
   };
   if (!['open', 'closed'].includes(cfg.registration)) throw new Error('REGISTRATION must be "open" or "closed"');
   if (cfg.adminToken && cfg.adminToken.length < 24) throw new Error('ADMIN_TOKEN must be at least 24 characters');
   if (cfg.gateKey && cfg.gateKey.length < 32) throw new Error('GATE_KEY must be at least 32 characters');
+  if (cfg.lineChannelSecret && !/^[0-9a-f]{32}$/i.test(cfg.lineChannelSecret)) throw new Error('LINE_CHANNEL_SECRET must be 32 hexadecimal characters');
+  if (cfg.lineAccessToken && cfg.lineAccessToken.length < 20) throw new Error('LINE_CHANNEL_ACCESS_TOKEN looks too short');
+  if ([...cfg.lineNotifyTo, ...cfg.lineStaffUserIds].some((id) => !/^[UCR][0-9a-f]{32}$/.test(id))) throw new Error('LINE_NOTIFY_TO and LINE_STAFF_USER_IDS must be LINE IDs (U… for a person, C… for a group, R… for a room)');
+  if (cfg.lineStaffUserIds.some((id) => !id.startsWith('U'))) throw new Error('LINE_STAFF_USER_IDS must be people (U…)');
   if (cfg.discordAppKey && !/^[0-9a-f]{64}$/.test(cfg.discordAppKey)) throw new Error('DISCORD_APP_PUBLIC_KEY must be 64 hexadecimal characters');
   if (cfg.discordGuild && !/^\d{5,25}$/.test(cfg.discordGuild)) throw new Error('DISCORD_GUILD_ID must be a number');
   if (cfg.discordStaffRoles.some((r) => !/^\d{5,25}$/.test(r))) throw new Error('DISCORD_STAFF_ROLE_IDS must be role ids (numbers), comma separated');

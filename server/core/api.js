@@ -53,6 +53,8 @@ import { createStats } from './stats.js';
 import { createVault, VAULT_BULK } from './vault.js';
 import { REASONS as FILTERED } from './attach.js';
 import { createDiscord } from './discord.js';
+import { createLine, createLineBot } from './line.js';
+import { createNotifier } from './notify.js';
 import { createOpsWatch } from './opswatch.js';
 import { createUsageAlert } from './usagealert.js';
 
@@ -408,15 +410,31 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const official = createOfficial({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel,
     onDelivered: (userId, dto) => phone(userId, dmNote(dto)) });
   official.id();
-  // notices for the developer in a Discord channel (server/core/discord.js), from the log's entries
+  // notices for the developer, from the log's entries: in a Discord channel
+  // (server/core/discord.js) and in LINE (server/core/line.js), the same in
+  // both (server/core/notify.js)
   const discord = createDiscord({ url: config.discordWebhook, defer, jst, publicUrl: config.publicUrl });
+  const kv = {
+    get(key) {
+      const r = q('SELECT value FROM meta WHERE key = ?').get(key);
+      try { return r ? JSON.parse(r.value) : null; } catch { return null; }
+    },
+    set: (key, value) => q('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value))
+  };
+  const line = createLine({
+    token: config.lineAccessToken, to: config.lineNotifyTo.length ? config.lineNotifyTo : config.lineStaffUserIds.slice(0, 1), limit: config.lineMonthlyLimit,
+    kv, defer, jst, publicUrl: config.publicUrl, api: config.lineApi, clock: config.clock || Date.now,
+    // (the allowance used up is told on the other place)
+    onTrouble: (text) => discord.say('⚠️', text)
+  });
+  const notice = createNotifier([discord, line]);
   // the address players use, for the link in the notices: only where the host
   // vouches for it (Cloudflare routes by it; elsewhere PUBLIC_URL)
-  const noteHost = (req) => { if (host && host.name === 'cloudflare') discord.host(req.header('host')); };
+  const noteHost = (req) => { if (host && host.name === 'cloudflare') notice.host(req.header('host')); };
   // (the host keeps the newest entry's hash where SQL cannot reach: server/core/opslog.js)
-  const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => discord.log(row) });
-  // the month's usage in the red (over 70%) or nearly all used (over 90%): told to Discord, once for each
-  const usageAlert = createUsageAlert({ q, report: () => stats.report(0), discord, clock: config.clock || Date.now });
+  const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => notice.log(row) });
+  // the month's usage in the red (over 70%) or nearly all used (over 90%): told to the notices' places, once for each
+  const usageAlert = createUsageAlert({ q, report: () => stats.report(0), discord: notice, clock: config.clock || Date.now });
   // a new DEV going live is the first entry of its own
   {
     const seen = q("SELECT value FROM meta WHERE key = 'ops_log_release'").get();
@@ -431,7 +449,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const was = q("SELECT value FROM meta WHERE key = 'live_version'").get();
     if (!was || was.value !== host.version.id) {
       q("INSERT INTO meta (key, value) VALUES ('live_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(host.version.id);
-      if (was) discord.say('🚀', `本番に新しい版を反映しました（DEV${RELEASE}・バージョン ${host.version.id.slice(0, 8)}）`);
+      if (was) notice.say('🚀', `本番に新しい版を反映しました（DEV${RELEASE}・バージョン ${host.version.id.slice(0, 8)}）`);
     }
   }
 
@@ -3690,7 +3708,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   Object.assign(routes, ops.routes);
   // the operators' screen view (見る): state only, sealed, one way, 30 minutes at most, logged
   const watch = createOpsWatch({
-    q, live, ops, opsLog, official, emergency, shield, discord, getUser, isDeveloper, clock: config.clock || Date.now,
+    q, live, ops, opsLog, official, emergency, shield, discord: notice, getUser, isDeveloper, clock: config.clock || Date.now,
     count: (bytes) => stats.pushed(bytes, 'video'),
     usage: () => stats.usage(0).percent
   });
@@ -3726,6 +3744,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the Discord bot that gives it to the staff role: Discord calls this address
   const bot = createDiscordBot({ config, pk, opsLog, clock: config.clock || Date.now });
   Object.assign(routes, bot.routes);
+  // …and LINE's: the same passkey for the staff in a talk of their own
+  const lineBot = createLineBot({ config, line, pk, opsLog, defer, clock: config.clock || Date.now });
+  Object.assign(routes, lineBot.routes);
   // 運営チャット
   // @開発者 in the 運営チャット: the developer hears of it at once — on the
   // operator site (its live connection), on their phone (unless the game is
@@ -3736,7 +3757,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const text = String(m.text).replace(/@\[(p|log):\d+\]/g, '…').replace(/@\[dev\]/g, '@開発者').slice(0, 140);
     live.sendOps(dev.id, 'opsping', { from: mini(u), to, text, id: m.id });
     phone(dev.id, { kind: 'ops', title: `${u.name}さんが運営チャットで開発者を呼んでいます`, body: text, tag: `opsping:${u.id}`, open: 'ops' }, 30000);
-    discord.say('📣', `${u.name}が運営チャット（${to ? '個人チャット' : '全体チャット'}）で開発者を呼んでいます：${text}`);
+    notice.say('📣', `${u.name}が運営チャット（${to ? '個人チャット' : '全体チャット'}）で開発者を呼んでいます：${text}`);
   }
   const team = createTeam({ q, getUser, live, ops, seen: opsSeen, isDeveloper, callDeveloper, ice: () => iceServers() });
   Object.assign(routes, team.routes);
@@ -3773,7 +3794,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the operator site's サーバー tab (every operator)
   routes['GET /api/ops/server'] = (req, u) => {
     ops.see(u);
-    return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on } };
+    return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on }, line: line.status() };
   };
   // the tab bar's poll also carries the month's usage colour (cheap), so the
   // サーバー button is green / blue / purple / red from every tab
@@ -3783,18 +3804,20 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const v = vault.summary();
     return { ...out, usage: stats.usage(v && v.store === 'bucket' ? v.used : 0) };
   };
-  // the developer tries the Discord notices: one goes out at once
+  // the developer tries the notices (Discord, LINE): one goes out at once to each
   routes['POST /api/ops/discord/test'] = async (req, u) => {
     ops.need(u);
     if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
     await req.json();
-    if (!discord.on) throw new ApiError(409, 'not_set', 'Discord の Webhook（DISCORD_WEBHOOK_URL）が設定されていないか、形が正しくありません');
+    if (!notice.on) throw new ApiError(409, 'not_set', '通知先が設定されていません（Discord の Webhook：DISCORD_WEBHOOK_URL、または LINE：LINE_CHANNEL_ACCESS_TOKEN と LINE_STAFF_USER_IDS）');
     noteHost(req);
-    discord.say('🔔', `テスト通知です（運営サイトから ${u.name} が送信）`);
-    const ok = await discord.flush();
-    opsLog.add({ actor: u, action: 'discord_test', req, summary: `${u.name}が Discord 通知をテスト送信（${ok ? '届いた' : '送れなかった'}）` });
-    if (!ok) throw new ApiError(502, 'discord_failed', 'Discord に送れませんでした。Webhook の URL が正しいか、Discord 側で消されていないか確かめてください');
-    return { ok: true };
+    notice.say('🔔', `テスト通知です（運営サイトから ${u.name} が送信）`);
+    const sent = await notice.flushEach();
+    const told = [sent.discord !== null && `Discord ${sent.discord ? '届いた' : '送れなかった'}`, sent.line !== null && `LINE ${sent.line ? '届いた' : '送れなかった'}`].filter(Boolean).join('・');
+    opsLog.add({ actor: u, action: 'discord_test', req, summary: `${u.name}が通知をテスト送信（${told}）` });
+    if (sent.discord === false) throw new ApiError(502, 'discord_failed', 'Discord に送れませんでした。Webhook の URL が正しいか、Discord 側で消されていないか確かめてください');
+    if (sent.line === false) throw new ApiError(502, 'line_failed', 'LINE に送れませんでした。チャネルアクセストークンと送信先のID、今月の送信枠（無料は200通）を確かめてください');
+    return { ok: true, discord: sent.discord, line: sent.line };
   };
   // the operator site's セキュリティ tab (every operator): the shield and the
   // emergency/lockdown state; and the operators' actions on attacks that did
@@ -3824,7 +3847,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const sec = createSec({ q, getUser, ops, emergency, shield, opsLog, health, secret, isDeveloper, live, seen: opsSeen });
   Object.assign(routes, sec.routes);
 
-  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', ...pay.public, ...vault.public, ...bot.public]);
+  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', ...pay.public, ...vault.public, ...bot.public, ...lineBot.public]);
 
   /* ---------------------------------------------------------------- live connection hooks */
 
@@ -3926,7 +3949,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // the developer's automatic backup when it is time
     return Promise.all([
       pay.sweep().catch((e) => console.error('pay sweep failed', e)),
-      backup.due().catch((e) => console.error('backup failed', e))
+      backup.due().catch((e) => console.error('backup failed', e)),
+      // (the LINE notices that have waited long enough go out together)
+      Promise.resolve(line.tick()).catch((e) => console.error('line notices failed', e))
     ]);
   }
   // when the host should run the housekeeping next: in 6 hours, or sooner for a backup
@@ -4046,7 +4071,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // what still comes in while the server is stopped for an emergency: the
   // developer's way back in
   const WHILE_STOPPED = new Set(['POST /api/ops/login', 'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/emergency', 'POST /api/emergency/release',
-    'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close', 'POST /api/pk/breakglass', 'POST /api/discord/interactions']);
+    'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close', 'POST /api/pk/breakglass', 'POST /api/discord/interactions', 'POST /api/line/webhook']);
   // what still comes in during a lockdown: the security base (/sec/) for the
   // operators, the operator login they reach it with (and the logout that
   // ends it, so 出る really signs out), and the developer's emergency page.
@@ -4056,7 +4081,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     'POST /api/ops/login', 'POST /api/logout', 'GET /api/sec/me', 'GET /api/sec/status', 'GET /api/sec/log', 'GET /api/sec/verify',
     'GET /api/sec/messages', 'POST /api/sec/messages', 'POST /api/sec/lockdown', 'POST /api/sec/release',
     'GET /api/emergency', 'POST /api/emergency/release',
-    'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close', 'POST /api/pk/breakglass', 'POST /api/discord/interactions'
+    'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close', 'POST /api/pk/breakglass', 'POST /api/discord/interactions', 'POST /api/line/webhook'
   ]);
 
   async function answer(req) {
@@ -4139,6 +4164,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   return {
     handle,
     pk,
+    line,
     filtered,
     hello,
     presence,
