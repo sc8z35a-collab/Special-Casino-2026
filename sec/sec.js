@@ -26,7 +26,7 @@
     dev_code_set: '開発者コードを登録', dev_code_change: '開発者コードを変更', ops_grant: '運営権の付与', ops_revoke: '運営権の剥奪',
     account_delete: 'アカウント削除', account_purge: 'データの削除（会話は保存）', backup_run: 'バックアップ', backup_failed: 'バックアップの失敗',
     'ban:suspend': 'アクセス禁止', 'ban:ban': 'BAN', 'ban:perma': '永久BAN', 'ban:none': '処分の解除',
-    player_register: '登録', player_login: 'ログイン', bot_message: '公式のメッセージ', money: '送金',
+    player_register: '登録', player_login: 'ログイン', player_oauth_link: 'Google / Discord を連携', player_oauth_unlink: 'Google / Discord の連携を解除', bot_message: '公式のメッセージ', money: '送金',
     sec_channel_denied: 'セキュア通信の不正な要求', sec_channel_closed: 'セキュア通信の接続を終了', sec_cdw_denied: '許可のない窓の操作',
     login_fail: 'ログインの失敗', login_lock: 'ログインの制限', login_burst: 'ログインの連続失敗', pk_fail: 'パスキーの入力ミス', patrol_alert: '自動点検の警告'
   };

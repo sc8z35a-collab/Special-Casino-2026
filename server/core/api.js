@@ -62,6 +62,7 @@ import { createVault, VAULT_BULK } from './vault.js';
 import { REASONS as FILTERED } from './attach.js';
 import { createDiscord } from './discord.js';
 import { createLine, createLineBot } from './line.js';
+import { createOauth } from './oauth.js';
 import { createNotifier } from './notify.js';
 import { createOpsWatch } from './opswatch.js';
 import { createUsageAlert } from './usagealert.js';
@@ -155,6 +156,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // (the operator site asking how long a name must still wait: when the page opens and as a name is typed)
     loginWait: [60, 20],
     nameCheck: [60, 20],
+    // ログイン with Google / Discord: beginning and ending one (per address), and the page asking how it went (about every 2 seconds)
+    oauth: [20, 10],
+    oauthPoll: [90, 30],
     // at most one spin per second (no banking: burst 1, one token refilled a second)
     spin: [60, 1],
     shop: [60, 10],
@@ -1590,6 +1594,54 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   /* ---------------------------------------------------------------- routes */
 
+  // A new account, whichever way it is made (a name and a password; or a Google / Discord sign-in, server/core/oauth.js): the checks they share —
+  // the address's limit, the name, the icon, the device (a device makes `accountsPerDevice` accounts at most, none while one of its is banned) —
+  // then the account with its first session. `inside(id)` runs in the same transaction (a sign-in's identity belongs to the account from the
+  // first moment, or the account is not made); `password` is '' for an account that has none (it has its 引き継ぎコード).
+  async function signUp(req, { name, key, avatar: wanted, password = '', inside = null, how = '' }) {
+    const avatar = String(wanted || RULES.defaultAvatar);
+    const choice = AVATARS.get(avatar);
+    if (!choice) throw new ApiError(400, 'bad_avatar', 'アイコンを選んでください');
+    if (choice.price > 0) throw new ApiError(403, 'locked', 'このアイコンは登録後に購入できます');
+    if (config.registrationsPerIp > 0) {
+      const n = q('SELECT COUNT(*) AS n FROM users WHERE created_ip = ? AND created_at > ?').get(req.ip, Date.now() - 86400000).n;
+      if (n >= config.registrationsPerIp) throw new ApiError(429, 'too_many_accounts', 'この接続からはこれ以上アカウントを作成できません');
+    }
+    if (reservedName(key) || pins.taken(key)) throw new ApiError(409, 'name_taken', 'この名前は使えません');
+    if (q('SELECT 1 AS x FROM users WHERE name_key = ?').get(key)) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
+    // two accounts a device at most (then: log in to one of them), none on a device with a BAN
+    const dev = deviceOf(req);
+    if (!dev.id) throw new ApiError(400, 'update', 'アプリを最新にしてからもう一度お試しください');
+    const room = deviceRoom(req);
+    if (room === 'banned') throw new ApiError(403, 'device_banned', DEVICE_BANNED_NEW);
+    if (room === 'full') throw new ApiError(403, 'device_limit', deviceFull());
+    const passwordHash = password ? await hashPassword(password) : '';
+    const code = newRecoveryCode();
+    let token, user;
+    try {
+      ({ token, user } = tx(() => {
+        const now = Date.now();
+        // a new player starts on the newest release: nothing to be thanked for yet
+        const r = q(`INSERT INTO users (name, name_key, recovery_hash, recovery_enc, password_hash, avatar, tokens, dollars, coins, created_ip, created_device, created_fp,
+                       created_at, last_seen, release_seen)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .run(name, key, sha256(normalizeRecoveryCode(code)), sealText(CODE_KEY, code), passwordHash, avatar, start.tokens, start.dollars, start.coins,
+            req.ip, dev.id, dev.fp, now, now, RELEASE);
+        const id = Number(r.lastInsertRowid);
+        if (inside) inside(id);
+        seenOn(id, req);
+        return { token: createSession(id), user: getUser(id) };
+      }));
+    } catch (e) {
+      if (/UNIQUE/i.test(String(e && e.message)) && /users\.name_key|name_key/i.test(String(e.message))) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
+      throw e;
+    }
+    opsLog.add({ actor: user, action: 'player_register', req, summary: `${user.name}さんが登録${how ? `（${how}）` : ''}`, detail: { avatar, ...(how ? { how } : {}) } });
+    // (the 10th, 20th or 50th: everyone's 登録者数の記念, the newcomer too)
+    milestones();
+    return { token, recoveryCode: code, me: meDto(user) };
+  }
+
   const routes = {
     'GET /api/health': () => ({ ok: true, online: live.onlineCount() }),
 
@@ -1606,46 +1658,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const body = await req.json();
       const { name, key } = cleanName(body.name);
       const password = cleanPassword(body.password);
-      const avatar = String(body.avatar || RULES.defaultAvatar);
-      const choice = AVATARS.get(avatar);
-      if (!choice) throw new ApiError(400, 'bad_avatar', 'アイコンを選んでください');
-      if (choice.price > 0) throw new ApiError(403, 'locked', 'このアイコンは登録後に購入できます');
-      if (config.registrationsPerIp > 0) {
-        const n = q('SELECT COUNT(*) AS n FROM users WHERE created_ip = ? AND created_at > ?').get(req.ip, Date.now() - 86400000).n;
-        if (n >= config.registrationsPerIp) throw new ApiError(429, 'too_many_accounts', 'この接続からはこれ以上アカウントを作成できません');
-      }
-      if (reservedName(key) || pins.taken(key)) throw new ApiError(409, 'name_taken', 'この名前は使えません');
-      if (q('SELECT 1 AS x FROM users WHERE name_key = ?').get(key)) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
-      // two accounts a device at most (then: log in to one of them), none on a device with a BAN
-      const dev = deviceOf(req);
-      if (!dev.id) throw new ApiError(400, 'update', 'アプリを最新にしてからもう一度お試しください');
-      const room = deviceRoom(req);
-      if (room === 'banned') throw new ApiError(403, 'device_banned', DEVICE_BANNED_NEW);
-      if (room === 'full') throw new ApiError(403, 'device_limit', deviceFull());
-      const passwordHash = await hashPassword(password);
-      const code = newRecoveryCode();
-      let token, user;
-      try {
-        ({ token, user } = tx(() => {
-          const now = Date.now();
-          // a new player starts on the newest release: nothing to be thanked for yet
-          const r = q(`INSERT INTO users (name, name_key, recovery_hash, recovery_enc, password_hash, avatar, tokens, dollars, coins, created_ip, created_device, created_fp,
-                         created_at, last_seen, release_seen)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-            .run(name, key, sha256(normalizeRecoveryCode(code)), sealText(CODE_KEY, code), passwordHash, avatar, start.tokens, start.dollars, start.coins,
-              req.ip, dev.id, dev.fp, now, now, RELEASE);
-          const id = Number(r.lastInsertRowid);
-          seenOn(id, req);
-          return { token: createSession(id), user: getUser(id) };
-        }));
-      } catch (e) {
-        if (/UNIQUE/i.test(String(e && e.message))) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
-        throw e;
-      }
-      opsLog.add({ actor: user, action: 'player_register', req, summary: `${user.name}さんが登録`, detail: { avatar } });
-      // (the 10th, 20th or 50th: everyone's 登録者数の記念, the newcomer too)
-      milestones();
-      return { token, recoveryCode: code, me: meDto(user) };
+      return signUp(req, { name, key, avatar: body.avatar, password });
     },
 
     // name + password, or the recovery code
@@ -3807,6 +3820,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // 開発者支援 (real money for ロイヤルコイン), the developer's vault and the ones operators share
   const pay = createPay({ q, tx, live, config, getUser, balanceChanged, official, opsLog, isDeveloper });
   Object.assign(routes, pay.routes);
+  // ログイン with Google / Discord (server/core/oauth.js)
+  const oauth = createOauth({
+    q, tx, config, getUser, createSession, meDto, opsLog, rate, limit, deviceOf, seenOn, liftExpired, banState, signUp, deleted: DELETED, clock: config.clock || Date.now
+  });
+  Object.assign(routes, oauth.routes);
   // (the bucket's operations counted: R2 bills writes and lists, and reads)
   const bucket = blobs && {
     put: (...a) => { stats.r2('a'); return blobs.put(...a); },
@@ -3941,7 +3959,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   Object.assign(routes, sec.routes);
   const DEV_ONLY = new Set(SEC_KEYS.developer);
 
-  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', 'POST /api/ops/login-wait', ...pay.public, ...vault.public, ...bot.public, ...lineBot.public, ...ext.publicKeys]);
+  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', 'POST /api/ops/login-wait', ...pay.public, ...oauth.public, ...vault.public, ...bot.public, ...lineBot.public, ...ext.publicKeys]);
 
   /* ---------------------------------------------------------------- live connection hooks */
 

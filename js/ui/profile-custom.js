@@ -215,6 +215,8 @@
     options.appendChild(tile('コードを再発行', '', 'recovery', 'recovery'));
     options.appendChild(tile(me && me.hasPassword ? 'パスワード変更' : 'パスワード設定', '', 'password', 'password'));
     secondary.appendChild(options);
+    // Google / Discord: the ones the server offers (js/ui/oauth.js)
+    if (BR.oauth) BR.oauth.profileTiles(options, function (label, provider, act) { return tile(label, '', provider, act); });
   }
   function enhanceProfile() {
     profileQueued = false;

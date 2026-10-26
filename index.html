@@ -23,7 +23,7 @@
 <link rel="preload" href="fonts/NotoJP-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/fonts.css?v=ca742ed98c">
 <link rel="stylesheet" href="css/style.css?v=1633f69c21">
-<link rel="stylesheet" href="css/social.css?v=7fcabf0351">
+<link rel="stylesheet" href="css/social.css?v=31ad1f37ac">
 <link rel="stylesheet" href="css/online.css?v=1f036b2218">
 <link rel="stylesheet" href="css/play.css?v=e94d714298">
 <link rel="stylesheet" href="css/feedback.css?v=23e6088151">
@@ -799,6 +799,11 @@
       </div>
       <p class="ov-error" id="ov-register-error" role="alert"></p>
       <button class="ov-btn gold" type="submit">次へ：アイコンを選ぶ</button>
+      <div class="ov-social" hidden>
+        <p class="ov-or"><span>または</span></p>
+        <button class="ov-btn ov-sns google" type="button" data-sns="google" hidden><i class="ov-sns-logo"></i><span>Googleで続ける</span></button>
+        <button class="ov-btn ov-sns discord" type="button" data-sns="discord" hidden><i class="ov-sns-logo"></i><span>Discordで続ける</span></button>
+      </div>
       <button class="ov-link" type="button" data-go="login">アカウントをお持ちの方はログイン</button>
       <button class="ov-link" type="button" data-go="code-login">引き継ぎコードをお持ちの方はこちら</button>
     </form>
@@ -809,7 +814,7 @@
       <div class="av-grid ov-grid" id="ov-av-grid"></div>
       <p class="ov-error" id="ov-avatar-error" role="alert"></p>
       <div class="ov-row">
-        <button class="ov-btn" type="button" data-go="register">戻る</button>
+        <button class="ov-btn" type="button" data-go="register" id="ov-avatar-back">戻る</button>
         <button class="ov-btn gold" type="button" id="ov-create">このアイコンではじめる</button>
       </div>
     </div>
@@ -827,6 +832,11 @@
       </div>
       <p class="ov-error" id="ov-login-error" role="alert"></p>
       <button class="ov-btn gold" type="submit">ログイン</button>
+      <div class="ov-social" hidden>
+        <p class="ov-or"><span>または</span></p>
+        <button class="ov-btn ov-sns google" type="button" data-sns="google" hidden><i class="ov-sns-logo"></i><span>Googleで続ける</span></button>
+        <button class="ov-btn ov-sns discord" type="button" data-sns="discord" hidden><i class="ov-sns-logo"></i><span>Discordで続ける</span></button>
+      </div>
       <button class="ov-link" type="button" data-go="code-login">パスワードを忘れた方（引き継ぎコードでログイン）</button>
       <button class="ov-link" type="button" data-go="register">はじめての方は新しく登録</button>
     </form>
@@ -841,6 +851,31 @@
       <button class="ov-btn gold" type="submit">ログイン</button>
       <button class="ov-link" type="button" data-go="login">ユーザー名とパスワードでログイン</button>
       <button class="ov-link" type="button" data-go="register">はじめての方は新しく登録</button>
+    </form>
+
+    <div class="ov-card" id="ov-oauth-wait" hidden>
+      <div class="ov-brand">Two state Casino RP</div>
+      <h2 class="ov-title" id="ov-wait-title"></h2>
+      <p class="ov-text" id="ov-wait-text"></p>
+      <i class="ov-spin" id="ov-wait-spin" aria-hidden="true"></i>
+      <p class="ov-error" id="ov-oauth-wait-error" role="alert"></p>
+      <button class="ov-btn" type="button" id="ov-wait-again" hidden>もう一度ブラウザを開く</button>
+      <button class="ov-btn" type="button" id="ov-wait-stop">やめる</button>
+    </div>
+
+    <form class="ov-card" id="ov-social-name" autocomplete="off" novalidate hidden>
+      <button class="ov-close" type="button" data-ov-close aria-label="閉じる"></button>
+      <div class="ov-brand">Two state Casino RP</div>
+      <h2 class="ov-title"><span id="ov-social-who"></span>でログインしました</h2>
+      <p class="ov-text">はじめまして！<b>ユーザー名</b>を決めてください。<b>ユーザー名はほかの人と同じものは使えません。</b></p>
+      <p class="ov-rule">サブアカウント（2つ目以降のアカウント）の作成・使用は禁止です。</p>
+      <div class="ov-field">
+        <input id="ov-sname" class="ov-input" type="text" name="nickname" maxlength="24" placeholder="ユーザー名（2〜12文字）" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+        <p class="ov-hint" id="ov-sname-hint"></p>
+      </div>
+      <p class="ov-error" id="ov-social-name-error" role="alert"></p>
+      <button class="ov-btn gold" type="submit">次へ：アイコンを選ぶ</button>
+      <button class="ov-link" type="button" data-ov-close>やめる</button>
     </form>
 
     <div class="ov-card" id="ov-codecard" hidden>
@@ -905,7 +940,7 @@
 <script src="js/art/ui-images.js?v=28a66c27e7"></script>
 <script src="js/art/social-images.js?v=aea0834ac5"></script>
 <script src="js/art/ui-svg.js?v=00d5767a31"></script>
-<script src="js/version.js?v=fb7d07638a"></script>
+<script src="js/version.js?v=2e60aad79b"></script>
 <script src="js/core/util.js?v=dfef47eb2b"></script>
 <script src="js/core/effects.js?v=a0eaf73869"></script>
 <script src="js/game/config.js?v=8d7372248d"></script>
@@ -918,7 +953,7 @@
 <script src="js/core/store.js?v=228cf7b6d7"></script>
 <script src="js/game/engine.js?v=27aa88959e"></script>
 <script src="js/net/device.js?v=ff52665f6b"></script>
-<script src="js/net/api.js?v=55140d995a"></script>
+<script src="js/net/api.js?v=91bbbe6694"></script>
 <script src="js/net/live.js?v=8e207ba7dc"></script>
 <script src="js/net/watchcrypto.js?v=ab0b679978"></script>
 <script src="js/net/watchfeed.js?v=886afa86a0"></script>
@@ -938,9 +973,10 @@
 <script src="js/render/slotfx.js?v=8fa282016a"></script>
 <script src="js/ui/screens.js?v=d32b536e99"></script>
 <script src="js/ui/kit.js?v=fe867070e2"></script>
-<script src="js/ui/account.js?v=75e179b235"></script>
+<script src="js/ui/account.js?v=2a17466637"></script>
+<script src="js/ui/oauth.js?v=410437f5ef"></script>
 <script src="js/ui/avatars.js?v=509556e799"></script>
-<script src="js/ui/social.js?v=eaa6dd02e1"></script>
+<script src="js/ui/social.js?v=a097c96adf"></script>
 <script src="js/ui/cars.js?v=3f55d11629"></script>
 <script src="js/ui/shop.js?v=4c309be8a3"></script>
 <script src="js/ui/peter.js?v=8490e6920a"></script>
@@ -974,6 +1010,6 @@
 <script src="js/ui/start.js?v=9182b0ef0a"></script>
 <script src="js/ui/banlock.js?v=623437cb62"></script>
 <script src="js/ui/install.js?v=caea06df81"></script>
-<script src="js/main.js?v=b9f7cfb9e0"></script>
+<script src="js/main.js?v=b6181e394c"></script>
 </body>
 </html>

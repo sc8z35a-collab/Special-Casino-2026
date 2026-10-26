@@ -136,6 +136,25 @@
 .pf-art-password { background-image: var(--profile-password); }
 .pf-art-notification { background-image: var(--profile-notification); }
 .pf-art-logout { background-image: var(--profile-logout); }
+/* Google / Discord: their own logos on a tile of their colour; a green tick when it is linked */
+.pf-icon-tile .pf-art-google { background-color: #fff; background-image: url(../img/ui/auth/google.svg); background-size: 62%; border-radius: 16px; filter: none; }
+.pf-icon-tile .pf-art-discord { background-color: #5865f2; background-image: url(../img/ui/auth/discord.svg); background-size: 66%; border-radius: 16px; filter: none; }
+.pf-icon-tile.linked::after {
+  content: '\2713';
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #2fb66a;
+  box-shadow: 0 0 0 2px rgba(20, 4, 22, .8);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 26px;
+  text-align: center;
+}
 .pf-own-actions .pf-icon-tile[data-act="logout"] {
   box-shadow: inset 0 0 0 1.8px rgba(255, 178, 155, .5), 0 5px 14px rgba(0, 0, 0, .25);
 }

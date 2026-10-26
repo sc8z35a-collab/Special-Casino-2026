@@ -4,7 +4,9 @@
 
    Sign-up: name (checked live: names are unique) + password -> icon (paid
    icons are chained) -> the recovery code. Log-in: name + password, or the
-   recovery code. */
+   recovery code. Google / Discord (js/ui/oauth.js): a new player there picks
+   a name and an icon (no password: the account has its recovery code), and
+   the sign-in's waiting card is here too. */
 (function (BR) {
   'use strict';
 
@@ -12,10 +14,10 @@
   var $ = U.$, $$ = U.$$;
   var nfkc = K.nfkc;
 
-  var CARDS = ['register', 'avatar', 'login', 'code-login', 'codecard', 'password'];
+  var CARDS = ['register', 'avatar', 'login', 'code-login', 'codecard', 'password', 'oauth-wait', 'social-name'];
   var busy = false;
   var after = null;          // what to do once signed in (start the game, open friends, ...)
-  var draft = { name: '', password: '', avatar: BR.CONFIG.defaultAvatar };
+  var draft = { name: '', password: '', avatar: BR.CONFIG.defaultAvatar, oauth: null };
   var codeFirst = false;
 
   var NAME_RE = /^[A-Za-z0-9_\-ぁ-ゖァ-ヺー・々〆一-鿿㐀-䶿]+$/;
@@ -41,6 +43,8 @@
   function show(card) {
     CARDS.forEach(function (c) { $('#ov-' + c).hidden = c !== card; });
     overlay().hidden = false;
+    // (the Google / Discord buttons are those the server offers)
+    if ((card === 'register' || card === 'login') && BR.oauth) BR.oauth.paint();
     K.fitOverlay(overlay());
     var sc = $('#welcome .ov-scroll');
     if (sc) sc.scrollTop = 0;
@@ -65,8 +69,8 @@
 
   /* ------------------------------------------------------------ name check --- */
   var check = { seq: 0, timer: 0, name: '', available: null, device: '' };
-  function hint(text, kind) {
-    var h = $('#ov-name-hint');
+  function hint(text, kind, id) {
+    var h = $('#' + (id || 'ov-name-hint'));
     h.textContent = text || '';
     h.className = 'ov-hint' + (kind ? ' ' + kind : '');
   }
@@ -82,18 +86,18 @@
     hint('確認中…', '');
     check.timer = setTimeout(function () { lookup(name); }, 350);
   }
-  function lookup(name) {
+  function lookup(name, hintId) {
     var seq = ++check.seq;
     return api.nameCheck(name).then(function (r) {
       if (seq !== check.seq) return null;
       check.name = name;
       check.available = r.available;
       check.device = r.device || '';
-      if (r.available) hint('このユーザー名は使えます', 'ok');
-      else hint(r.problem || 'このユーザー名は使えません', 'bad');
+      if (r.available) hint('このユーザー名は使えます', 'ok', hintId);
+      else hint(r.problem || 'このユーザー名は使えません', 'bad', hintId);
       return r;
     }, function (err) {
-      if (seq === check.seq) hint(err.message, 'bad');
+      if (seq === check.seq) hint(err.message, 'bad', hintId);
       return null;
     });
   }
@@ -117,6 +121,7 @@
       if (!r.available) { setError('register', 'このユーザー名はすでに使われています'); K.sfx('deny'); return; }
       draft.name = name;
       draft.password = pw;
+      draft.oauth = null;
       K.sfx('click');
       openAvatarStep();
     });
@@ -142,6 +147,7 @@
 
   function openAvatarStep() {
     $('#ov-avatar-who').textContent = draft.name;
+    $('#ov-avatar-back').dataset.go = draft.oauth ? 'social-name' : 'register';
     setError('avatar', '');
     BR.avatars.signupGrid($('#ov-av-grid'), draft.avatar, function (id) {
       draft.avatar = id;
@@ -156,10 +162,13 @@
     if (busy) return;
     setBusy(true);
     setError('avatar', '');
-    api.register(draft.name, draft.password, draft.avatar).then(function (r) {
+    var oauth = draft.oauth;
+    (oauth ? api.oauthRegister(oauth.flow, draft.name, draft.avatar) : api.register(draft.name, draft.password, draft.avatar)).then(function (r) {
       api.rememberName(r.me.name);
       draft.password = '';
+      draft.oauth = null;
       $('#ov-pass').value = '';
+      if (oauth && BR.oauth) BR.oauth.clear();
       BR.social.signIn(r.token, r.me);
       K.sfx('purchase');
       showCode(r.recoveryCode, true);
@@ -168,15 +177,87 @@
         deviceStop(err.code === 'device_limit' ? 'full' : 'banned', err.message);
         return;
       }
+      if (oauth && (err.code === 'oauth_gone' || err.code === 'oauth_state' || err.code === 'oauth_device' || err.code === 'oauth_taken')) {
+        // this sign-in cannot go on: start over
+        draft.oauth = null;
+        if (BR.oauth) BR.oauth.clear();
+        open('register', err.message);
+        K.sfx('deny');
+        return;
+      }
       if (err.code === 'name_taken' || /^name_/.test(err.code)) {
-        show('register');
-        setError('register', err.message);
-        hint(err.message, 'bad');
+        if (oauth) {
+          show('social-name');
+          setError('social-name', err.message);
+          hint(err.message, 'bad', 'ov-sname-hint');
+        } else {
+          show('register');
+          setError('register', err.message);
+          hint(err.message, 'bad');
+        }
       } else {
         setError('avatar', err.message);
       }
       K.sfx('deny');
     }).then(function () { setBusy(false); });
+  }
+
+  /* ------------------------------------------------------------ Google / Discord --- */
+  var PROVIDER = { google: 'Google', discord: 'Discord' };
+  // the waiting card: the browser (or the provider's page) has the player; this page asks how it went (js/ui/oauth.js)
+  function oauthWait(o) {
+    var name = PROVIDER[o.provider] || '';
+    $('#ov-wait-title').textContent = name + 'でログイン';
+    $('#ov-wait-text').textContent = o.error ? '' : o.external
+      ? 'ブラウザで' + name + 'のログインを進めてください。終わったら、このアプリに戻ってきてください。'
+      : name + 'のログインを確かめています…';
+    setError('oauth-wait', o.error || '');
+    $('#ov-wait-spin').hidden = !!o.error;
+    $('#ov-wait-again').hidden = !o.external || !!o.error;
+    $('#ov-wait-stop').textContent = o.error ? '閉じる' : 'やめる';
+    show('oauth-wait');
+  }
+  // a new player came back from Google / Discord: a name, then an icon, then the recovery code
+  function oauthSignup(info) {
+    draft.oauth = info;
+    draft.name = '';
+    draft.password = '';
+    $('#ov-sname').value = '';
+    $('#ov-social-who').textContent = PROVIDER[info.provider] || '';
+    hint('', '', 'ov-sname-hint');
+    setError('social-name', '');
+    show('social-name');
+  }
+  function onSocialName(e) {
+    e.preventDefault();
+    if (busy || !draft.oauth) return;
+    var raw = $('#ov-sname').value;
+    var problem = nameProblem(raw);
+    if (problem !== null) { setError('social-name', problem || 'ユーザー名を入力してください'); K.sfx('deny'); return; }
+    var name = nfkc(raw).trim();
+    setBusy(true);
+    var known = check.name === name && check.available !== null ? Promise.resolve({ available: check.available, device: check.device }) : lookup(name, 'ov-sname-hint');
+    known.then(function (r) {
+      setBusy(false);
+      if (!r) { setError('social-name', 'サーバーに接続できません。少し待ってからもう一度お試しください'); return; }
+      if (deviceStop(r.device)) return;
+      if (!r.available) { setError('social-name', 'このユーザー名はすでに使われています'); K.sfx('deny'); return; }
+      draft.name = name;
+      K.sfx('click');
+      openAvatarStep();
+    });
+  }
+  function onSocialNameInput() {
+    var raw = $('#ov-sname').value;
+    var problem = nameProblem(raw);
+    clearTimeout(check.timer);
+    check.available = null;
+    setError('social-name', '');
+    if (problem === '') { hint('', '', 'ov-sname-hint'); return; }
+    if (problem) { hint(problem, 'bad', 'ov-sname-hint'); return; }
+    var name = nfkc(raw).trim();
+    hint('確認中…', '', 'ov-sname-hint');
+    check.timer = setTimeout(function () { lookup(name, 'ov-sname-hint'); }, 350);
   }
 
   /* ------------------------------------------------------------ log-in --- */
@@ -320,6 +401,8 @@
     $('#ov-login').addEventListener('submit', onLogin);
     $('#ov-code-login').addEventListener('submit', onCodeLogin);
     $('#ov-password').addEventListener('submit', onPassword);
+    $('#ov-social-name').addEventListener('submit', onSocialName);
+    $('#ov-sname').addEventListener('input', onSocialNameInput);
     $('#ov-create').addEventListener('click', create);
     $('#ov-name').addEventListener('input', onNameInput);
     $('#ov-code').addEventListener('input', formatCode);
@@ -336,6 +419,8 @@
       b.addEventListener('click', function () {
         K.sfx('click');
         after = null;
+        draft.oauth = null;
+        if (BR.oauth) BR.oauth.clear();
         close();
       });
     });
@@ -365,6 +450,9 @@
 
   BR.account = {
     init: init,
+    signedIn: welcomeBack,
+    oauthWait: oauthWait,
+    oauthSignup: oauthSignup,
     require: require,
     open: open,
     close: close,

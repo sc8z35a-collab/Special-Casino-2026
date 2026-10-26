@@ -71,7 +71,7 @@
     shield_unblock: 'ブロックの解除', sec_message: 'セキュリティ基地の連絡',
     backup_key: 'バックアップの鍵', backup_run: 'バックアップ', backup_get: 'バックアップのダウンロード', backup_delete: 'バックアップの削除',
     backup_settings: 'バックアップの設定', backup_failed: 'バックアップの失敗', vault_note: '保管庫のコメント', vault_note_delete: '保管庫のコメント削除',
-    player_register: '登録', player_login: 'ログイン', player_password: 'パスワード変更', player_recovery: '引き継ぎコード再発行',
+    player_register: '登録', player_login: 'ログイン', player_oauth_link: 'Google / Discord を連携', player_oauth_unlink: 'Google / Discord の連携を解除', player_password: 'パスワード変更', player_recovery: '引き継ぎコード再発行',
     player_transfer: '送金', player_report: '通報', player_feedback: '報告・意見案',
     pay_order: '支払いページ', pay_paid: '購入（入金を確認）', pay_slip: 'コンビニ払いの番号', pay_unpaid: 'コンビニ未払い', pay_refund: '返金',
     pay_review: '決済の不一致（保留）', pay_reply: '開発者の返信', pay_error: '決済ページのエラー', pay_unknown: '不明な決済通知', pay_bad_signature: '不正な決済通知を拒否',
