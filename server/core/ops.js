@@ -148,23 +148,31 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     }
     return c;
   }
-  // What the players' list of each operator site (by its login) showed last, as a short hash of every row: the next request with `since` is
-  // answered with the rows whose hash is not the same, and the ids that are no more. A few at a time (the operators are a few).
+  // What the players' list of each operator page showed last, as a short hash of every row: the next request with `since` is answered with the
+  // rows whose hash is not the same, and the ids that are no more. Each page has a list of its own (its token is `<page>.<n>`: two tabs of one
+  // login do not take the other's answers from each other), and a login's pages are the only ones that may use theirs. The newest at the end.
   const listsSent = new Map();
-  const LISTS_MAX = 16;
+  const LISTS_MAX = 64;
   function playersSince(u, find, since, list) {
     const key = u.tokenHash || `u${u.id}`;
     const now = new Map(list.map((p) => [p.id, hashOf(JSON.stringify(p))]));
-    const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    const had = listsSent.get(key);
-    listsSent.delete(key);
-    listsSent.set(key, { token, find, hashes: now });
+    const [given, count] = String(since || '').split('.');
+    const had = listsSent.get(given);
+    // a page of this login that is known here, and the answer it holds the last one given to it (for this search)
+    const mine = !!had && had.key === key;
+    const sid = mine ? given : `${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+    const n = mine ? had.n + 1 : 1;
+    const token = `${sid}.${n}`;
+    const current = mine && had.find === find && String(had.n) === count;
+    const before = current ? had.hashes : null;
+    listsSent.delete(sid);
+    listsSent.set(sid, { key, n, find, hashes: now });
     while (listsSent.size > LISTS_MAX) listsSent.delete(listsSent.keys().next().value);
-    if (!had || !since || had.token !== since || had.find !== find) return { full: true, token, players: list };
+    if (!before) return { full: true, token, players: list };
     return {
       delta: true, token,
-      players: list.filter((p) => had.hashes.get(p.id) !== now.get(p.id)),
-      gone: [...had.hashes.keys()].filter((id) => !now.has(id))
+      players: list.filter((p) => before.get(p.id) !== now.get(p.id)),
+      gone: [...before.keys()].filter((id) => !now.has(id))
     };
   }
   // what a whole list needs for every row, looked up once and not once a player

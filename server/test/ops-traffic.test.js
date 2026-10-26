@@ -38,7 +38,7 @@ test('the players\' list with `since`: the whole of it the first time, then only
     const first = await players(s, taku, 'since=');
     assert.equal(first.full, true);
     assert.deepEqual(names(first), ['Alice', 'Bob', 'Mod1', 'TAKU']);
-    assert.match(first.token, /^[0-9a-z]+$/);
+    assert.match(first.token, /^[0-9a-z]+\.\d+$/);
 
     // nothing changed: an empty delta (and a token for the next)
     const quiet = await players(s, taku, 'since=' + first.token);
@@ -486,6 +486,35 @@ test('the poll: a part that fails for a reason of its own is left out and the re
     assert.ok(said.some((m) => m.includes('devunit left out')), 'and the server says so: ' + said.join(' | '));
   } finally {
     console.error = log;
+    await s.stop();
+  }
+});
+
+test('the players\' list: two pages of one login each keep their own list, and each gets only what changed for it', async () => {
+  const { s, taku } = await site();
+  try {
+    const alice = await s.register('Alice');
+    const a1 = await players(s, taku, 'since=');
+    const b1 = await players(s, taku, 'since=');
+    assert.equal(a1.full && b1.full, true);
+    assert.notEqual(a1.token.split('.')[0], b1.token.split('.')[0], 'each page has its own');
+    s.app.db.prepare('UPDATE users SET coins = coins + 3 WHERE id = ?').run(alice.me.id);
+    // taken alternately, every answer is a delta (they were whole every time when the login had one list)
+    const a2 = await players(s, taku, 'since=' + a1.token);
+    const b2 = await players(s, taku, 'since=' + b1.token);
+    assert.deepEqual([a2.delta, names(a2)], [true, ['Alice']]);
+    assert.deepEqual([b2.delta, names(b2)], [true, ['Alice']]);
+    const a3 = await players(s, taku, 'since=' + a2.token);
+    const b3 = await players(s, taku, 'since=' + b2.token);
+    assert.deepEqual([a3.delta, a3.players, b3.delta, b3.players], [true, [], true, []]);
+    // a page's token is good once (a repeat is whole), and does not break the other page's
+    const again = await players(s, taku, 'since=' + a2.token);
+    assert.equal(again.full, true);
+    assert.equal((await players(s, taku, 'since=' + b3.token)).delta, true);
+    // many pages: the oldest are forgotten (answered whole), and the list does not grow without end
+    for (let i = 0; i < 70; i++) await players(s, taku, 'since=');
+    assert.equal((await players(s, taku, 'since=' + a3.token)).full, true, 'a page forgotten gets the whole list');
+  } finally {
     await s.stop();
   }
 });
