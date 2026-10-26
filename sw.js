@@ -1,8 +1,12 @@
 /* Service worker: makes the game installable as an app ("ホーム画面に追加",
-   Chrome's install) and lets it open without a connection. Always the
-   network first, the cache only as a fallback; the API is never cached. */
-const BUILD = '794ee549006a';          // written by tools/stamp.mjs
+   Chrome's install) and lets it open without a connection. The pages and the
+   code (scripts, styles) go to the network first, the cache only as a
+   fallback; the pictures, fonts, sounds and videos are answered from the
+   cache once it has them (see below); the API is never cached. */
+const BUILD = '367fd547fc81';          // written by tools/stamp.mjs
 const CACHE = 'two-state-' + BUILD;
+// what is part of the build and so cannot change inside it
+const ASSET = /^\/(img|fonts|sounds|video|icons)\//;
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
@@ -24,6 +28,17 @@ self.addEventListener('fetch', (e) => {
   // Code keeps stable URLs across releases. Revalidate it even when the
   // WebView's HTTP cache still considers the previous response fresh.
   const code = req.mode === 'navigate' || req.destination === 'script' || req.destination === 'style';
+  // The pictures, fonts, sounds and videos are part of the build (tools/stamp.mjs hashes them) and this cache is named by the build: what
+  // is in it is exactly what this release has at that address, and a new release starts with an empty one. So once it has a file, the file
+  // is answered from here, without asking the server whether it changed (the server answers "max-age=0, must-revalidate" for them, and a
+  // phone paid a round trip for each of ~70 of them on every start).
+  if (!code && ASSET.test(url.pathname)) {
+    e.respondWith(caches.open(CACHE).then((c) => c.match(req, { ignoreVary: true }).then((hit) => hit || fetch(req).then((res) => {
+      if (res.ok && res.type === 'basic') c.put(req, res.clone()).catch(() => {});
+      return res;
+    }))));
+    return;
+  }
   e.respondWith(fetch(req, code ? { cache: 'no-cache' } : undefined).then((res) => {
     if (res.ok && res.type === 'basic') {
       const copy = res.clone();
@@ -33,6 +48,27 @@ self.addEventListener('fetch', (e) => {
   }).catch(() => caches.match(req).then((hit) => hit || (req.mode === 'navigate'
     ? caches.match('./')
     : Response.error()))));
+});
+
+// The first visit is loaded before this worker takes the page over, so its pictures never passed through here. The page tells the worker
+// which files it loaded (and which build it is: a page of an older build must not fill the cache of this one), and the worker keeps the
+// ones it does not have yet, copied from the browser's own cache (never asked of the server: a start that has just finished should not
+// have the network taken by this; a file the browser no longer has is kept the next time it is used).
+self.addEventListener('message', (e) => {
+  const d = e.data;
+  if (!d || d.type !== 'keep' || d.build !== BUILD || !Array.isArray(d.urls)) return;
+  e.waitUntil(caches.open(CACHE).then(async (c) => {
+    for (const u of d.urls.slice(0, 400)) {
+      let url;
+      try { url = new URL(u, self.location.href); } catch (x) { continue; }
+      if (url.origin !== self.location.origin || !ASSET.test(url.pathname)) continue;
+      try {
+        if (await c.match(url.href, { ignoreVary: true })) continue;
+        const res = await fetch(url.href, { cache: 'only-if-cached', mode: 'same-origin' });
+        if (res.ok && res.type === 'basic' && res.status === 200) await c.put(url.href, res);
+      } catch (x) { /* kept next time */ }
+    }
+  }));
 });
 
 // Phone notifications (server/core/push.js): a message, a call or an
