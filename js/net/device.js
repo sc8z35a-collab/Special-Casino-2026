@@ -153,12 +153,35 @@
     return digest(parts.join('#'));
   }
 
+  // The graphics chip and the way text is drawn do not change while the phone and its browser are the same, and asking for them
+  // (a WebGL context, a canvas read back) is the slowest part of starting the game: they are worked out once and kept for a week
+  // (a different browser, screen, language or time zone works them out again; wiping the storage works them out again, to the same).
+  var FP_KEY = 'blockbuster-reels/device-fp', FP_DAYS = 7;
+  function fingerprintKey() {
+    var n = navigator, s = window.screen || {};
+    // (the time zone as its two offsets, winter and summer: asking Intl for its name is the slowest thing here the first time)
+    var tz = new Date(2026, 0, 1).getTimezoneOffset() + '/' + new Date(2026, 6, 1).getTimezoneOffset();
+    return [n.userAgent || '', n.platform || '', (n.languages || [n.language]).join(','), n.hardwareConcurrency || 0, n.deviceMemory || 0, n.maxTouchPoints || 0,
+      Math.min(s.width || 0, s.height || 0) + 'x' + Math.max(s.width || 0, s.height || 0), s.colorDepth || 0, Math.round((window.devicePixelRatio || 1) * 100), tz].join('#');
+  }
+  function fingerprintKept() {
+    var key = '';
+    try {
+      key = fingerprintKey();
+      var kept = JSON.parse(localStorage.getItem(FP_KEY) || 'null');
+      if (kept && kept.k === key && typeof kept.v === 'string' && kept.v && Date.now() - kept.t < FP_DAYS * 86400000 && kept.t <= Date.now()) return kept.v;
+    } catch (e) { /* none kept */ }
+    var v = fingerprint();
+    try { if (v && key) localStorage.setItem(FP_KEY, JSON.stringify({ k: key, v: v, t: Date.now() })); } catch (e) { /* blocked */ }
+    return v;
+  }
+
   /* ------------------------------------------------------------ start --- */
   var id = readLocal() || readCookie();
   var fresh = !id;
   if (!id) id = newId();
   var fp = '';
-  try { fp = fingerprint(); } catch (e) { fp = ''; }
+  try { fp = fingerprintKept(); } catch (e) { fp = ''; }
 
   // A stored id from IndexedDB or the Cache Storage wins over one just made
   // (both survive some clean-ups that the others do not).

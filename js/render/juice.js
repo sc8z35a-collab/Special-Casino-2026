@@ -126,10 +126,12 @@
     document.addEventListener('pointerdown', onPress, true);
   }
 
+  var lastRes = 1;
   function resize(w, h, res) {
     W = w; H = h;
-    // glows and sparks stay soft anyway: fewer pixels to fill on every frame
-    pres = Math.min(res || 1, 0.8);
+    lastRes = res || 1;
+    // glows and sparks stay soft anyway: fewer pixels to fill on every frame; a device that cannot keep up (jc-low) gets fewer still
+    pres = Math.min(lastRes, low ? 0.55 : 0.8);
     if (!cv) return;
     cv.width = Math.round(W * pres);
     cv.height = Math.round(H * pres);
@@ -204,6 +206,7 @@
       low = true;
       MAX = 360;
       document.documentElement.classList.add('jc-low');
+      if (cv) resize(W, H, lastRes);
     }
   }
 
@@ -450,6 +453,24 @@
         drag: 1.2, g: o.g || 0, vr: rr(-2, 2), grow: true, tw: rr(10, 18), delay: (o.delay || 0) + rr(0, o.stagger || 0.25)
       });
     }
+  }
+  // One star as a small element of its own (css/juice.css: jcGlint), for the glints while nothing happens: a star that lives for
+  // under a second no longer wakes the whole-stage canvas, which was cleared and sent to the screen on every frame for it.
+  var starURL = '';
+  function glint(x, y, size, life) {
+    if (!stage || !fxOn('particles')) return;
+    if (!starURL) { try { starURL = img.star.toDataURL('image/png'); } catch (e) { starURL = ''; } }
+    if (!starURL) { stars(x, y, { n: 1, r: 1, speed: 1, size: size, life: life, stagger: 0 }); return; }
+    var e = document.createElement('i');
+    e.className = 'jc-glint';
+    e.style.left = Math.round(x - size / 2) + 'px';
+    e.style.top = Math.round(y - size / 2) + 'px';
+    e.style.width = e.style.height = Math.round(size) + 'px';
+    e.style.backgroundImage = 'url("' + starURL + '")';
+    e.style.setProperty('--d', life.toFixed(2) + 's');
+    e.style.setProperty('--r', rr(-1.2, 1.2).toFixed(2) + 'rad');
+    e.addEventListener('animationend', function () { if (e.parentNode) e.parentNode.removeChild(e); });
+    stage.appendChild(e);
   }
   // chips / coins: o = { n, pic: 'chip'|'dollar'|'coin', speed, size, life, up, g, dir, spread }
   function coins(x, y, o) {
@@ -806,7 +827,7 @@
 
   BR.juice = {
     init: init, resize: resize, at: at, size: sizeOf, visible: visible, toStage: toStage,
-    sparks: sparks, stars: stars, coins: coins, confetti: confetti, shards: shards, smoke: smoke,
+    sparks: sparks, stars: stars, glint: glint, coins: coins, confetti: confetti, shards: shards, smoke: smoke,
     ring: ring, bloom: bloom, bolt: bolt, flash: flash, shake: shake, bump: bump,
     text: text, banner: banner, fly: fly, rain: rain,
     celebrate: celebrate, gain: gain, source: source, payout: payout, reward: reward, hold: hold,

@@ -518,8 +518,12 @@
       this.spritePromise = null;
       var self = this;
       clearTimeout(this.prebuild);
-      // build sprites in the background so the first win does not hitch
-      this.prebuild = setTimeout(function () { if (!self.active) self.ensureSprites(); }, 900);
+      // build sprites in the background so the first win does not hitch (when the page has a moment to spare: not while it is still starting up)
+      var build = function () { if (!self.active) self.ensureSprites(); };
+      this.prebuild = setTimeout(function () {
+        if (window.requestIdleCallback) window.requestIdleCallback(build, { timeout: 4000 });
+        else build();
+      }, 900);
     }
   };
 
@@ -530,31 +534,42 @@
     var fontLoad = document.fonts && document.fonts.load
       ? Promise.all([document.fonts.load('900 100px MontserratX'), document.fonts.load('800 80px Exo2')]).catch(function () {})
       : Promise.resolve();
+    // Each picture is made in a task of its own (all of them together were one task of a fifth of a second on a phone, while the
+    // studio logos play): the page keeps moving, and the pictures are the same ones.
+    function later() { return new Promise(function (resolve) { setTimeout(resolve, 0); }); }
+    function title(text, style, em, maxW) {
+      return function () {
+        var t = titleSprite(text, Object.assign({ em: em, maxW: maxW }, style), res);
+        // low-res mask for the CSS light sweep
+        var m = canvas(t.w * 0.5, t.h * 0.5);
+        m.getContext('2d').drawImage(t.mask, 0, 0, m.width, m.height);
+        t.maskURL = m.toDataURL('image/png');
+        return t;
+      };
+    }
+    var steps = [
+      ['glow', function () { return glowSprite(48); }],
+      ['flare', function () { return flareSprite(Math.round(200 * self.pres)); }],
+      ['rays', function () { return raySprite(1024, 30, 7); }],
+      ['rays2', function () { return raySprite(1024, 18, 99); }],
+      ['raysR', function () { return raySprite(1024, 24, 31, true); }],
+      ['sun', function () { return sunSprite(512, 18); }],
+      ['beam', function () { return beamSprite(128, 360); }],
+      ['bigWin', title('BIG WIN', STYLE_RED, 232, 870)],
+      ['win', title('WIN', STYLE_RED, 200, 700)],
+      ['superT', title('SUPER', STYLE_GOLD, 150, 700)],
+      ['ultraT', title('ULTRA', STYLE_ULTRA, 150, 700)],
+      ['panel', function () { return panelSprite(766, 156, res); }],
+      ['panelS', function () { return panelSprite(560, 124, res); }]
+    ];
     this.spritePromise = fontLoad.then(function () {
       return BR.assets.rasterize(BR.chipSVG('fxc'), Math.round(130 * Math.max(1, self.pres)), Math.round(130 * Math.max(1, self.pres)));
     }).then(function (chipFace) {
-      var sp = {
-        chip: chipFace,
-        glow: glowSprite(48),
-        flare: flareSprite(Math.round(200 * self.pres)),
-        rays: raySprite(1024, 30, 7),
-        rays2: raySprite(1024, 18, 99),
-        raysR: raySprite(1024, 24, 31, true),
-        sun: sunSprite(512, 18),
-        beam: beamSprite(128, 360),
-        bigWin: titleSprite('BIG WIN', Object.assign({ em: 232, maxW: 870 }, STYLE_RED), res),
-        win: titleSprite('WIN', Object.assign({ em: 200, maxW: 700 }, STYLE_RED), res),
-        superT: titleSprite('SUPER', Object.assign({ em: 150, maxW: 700 }, STYLE_GOLD), res),
-        ultraT: titleSprite('ULTRA', Object.assign({ em: 150, maxW: 700 }, STYLE_ULTRA), res),
-        panel: panelSprite(766, 156, res),
-        panelS: panelSprite(560, 124, res)
-      };
-      // low-res masks for the CSS light sweep
-      ['bigWin', 'win', 'superT', 'ultraT'].forEach(function (k) {
-        var t = sp[k], m = canvas(t.w * 0.5, t.h * 0.5);
-        m.getContext('2d').drawImage(t.mask, 0, 0, m.width, m.height);
-        t.maskURL = m.toDataURL('image/png');
-      });
+      var sp = { chip: chipFace };
+      return steps.reduce(function (p, st) {
+        return p.then(later).then(function () { sp[st[0]] = st[1](); });
+      }, Promise.resolve()).then(function () { return sp; });
+    }).then(function (sp) {
       self.installSprites(sp);
       self.sprites = sp;
       self.spritePromise = null;
