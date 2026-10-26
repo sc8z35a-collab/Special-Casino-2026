@@ -20,12 +20,7 @@ const BONUS = QUESTS.bonuses;
 const drawBonus = () => randomInt(BONUS.rolls);
 const drawTicket = () => randomInt(100);
 
-function rewardFor(q, bonus) {
-  const mode = bonus === 'pro' || bonus === 'ultra' ? bonus : 'normal';
-  const rule = BONUS[mode];
-  return { id: q.id, mode, multiplier: rule ? rule.multiplier : 1,
-    dollars: q.reward * (rule ? rule.multiplier : 1), coins: rule ? rule.coins : 0 };
-}
+const rewardFor = QUESTS.reward;
 // period -> metric -> its quests
 const BY = {};
 for (const p of PERIODS) BY[p.id] = {};
@@ -94,11 +89,7 @@ function slot(state, period, now) {
   return p;
 }
 // the period as it is now, without changing anything
-function current(state, period, now) {
-  const { k } = QUESTS.range(period, now);
-  const p = state[period.id];
-  return p && p.k === k ? { m: p.m || {}, c: p.c || [], d: p.d || [], b: p.b || {}, v: p.v || 0 } : { m: {}, c: [], d: [], b: {}, v: 0 };
-}
+const current = QUESTS.slot;
 
 // Adds events ([[metric, amount], ...]) to every period and finishes what they
 // reach (to be received by the player). Each finished quest counts once more as
@@ -176,35 +167,18 @@ export function questsReady(state, now = Date.now()) {
   return PERIODS.reduce((n, period) => n + current(state, period, now).c.length, 0);
 }
 
-// Only unclaimed STEP bonuses in the current cycle light the icon and tabs.
+// Only unclaimed STEP bonuses in the current cycle light the icon and tabs: { <period>: { pro, ultra } }, with what is none left out (the
+// game counts what is not there as 0: it is sent with every quest that finishes).
 export function questBonuses(state, now = Date.now()) {
   const out = {};
   for (const period of PERIODS) {
-    const p = current(state, period, now), counts = { pro: 0, ultra: 0 };
-    for (const id of p.c) if (p.b[id] === 'pro' || p.b[id] === 'ultra') counts[p.b[id]]++;
-    out[period.id] = counts;
+    const p = current(state, period, now);
+    for (const id of p.c) if (p.b[id] === 'pro' || p.b[id] === 'ultra') (out[period.id] = out[period.id] || {})[p.b[id]] = (out[period.id]?.[p.b[id]] || 0) + 1;
   }
   return out;
 }
 
-// What the quest screen shows: per period its reset time (end 0: never) and,
-// per quest that is on, the progress and its state: open, ready (受け取る)
-// or received.
-export function questView(state, now = Date.now()) {
-  return PERIODS.map((period) => {
-    const r = QUESTS.range(period, now);
-    const p = current(state, period, now);
-    return {
-      id: period.id,
-      start: r.start,
-      end: r.end,
-      resetVersion: p.v,
-      quests: QUESTS.list.filter((q) => q.period === period.id && QUESTS.active(q, r.k)).map((q) => {
-        const st = p.d.includes(q.id) ? 'received' : p.c.includes(q.id) ? 'ready' : 'open';
-        // (a boosted count can be part way to the next one)
-        return { id: q.id, state: st, progress: st === 'open' ? Math.min(q.goal, Math.floor((p.m[q.metric] || 0) + 1e-9)) : q.goal,
-          ...(st !== 'open' && p.b[q.id] ? { reward: rewardFor(q, p.b[q.id]) } : {}) };
-      })
-    };
-  });
-}
+// What the quest screen shows: per period its reset time (end 0: never) and, per quest that is on, the progress and its state: open, ready
+// (受け取る) or received (js/game/quests.js: the game makes the same view itself from the periods that are on, questSlots()).
+export const questView = (state, now = Date.now()) => QUESTS.view(state, now);
+export const questSlots = (state, now = Date.now()) => QUESTS.slots(state, now);

@@ -34,7 +34,7 @@ export class Live {
     const first = !set;
     if (!set) { set = new Set(); this.clients.set(userId, set); }
     set.add(res);
-    this.write(res, 'hello', { ...hello(), online: this.onlineCount() });
+    this.write(res, 'hello', hello());
     if (first && this.onPresence) this.onPresence(userId, true);
     const done = () => {
       const s = this.clients.get(userId);

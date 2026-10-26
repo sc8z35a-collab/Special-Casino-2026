@@ -20,7 +20,7 @@ const xpOf = async (p) => (await call('GET', '/api/me', { token: p.token })).me.
 const mult = (n) => (n > 1 ? Math.round(Math.pow(HUB.comboStep, n - 1) * 10000) / 10000 : 1);
 // what a spin in a hub pays: the line's pay, 777 x1.5, then x1.1 for every win before it in the combo
 function pays(res, combo) {
-  const base = evaluate(res.line, res.bet);
+  const base = evaluate(globalThis.BR.engine.whole(res).line, res.bet);
   let total = base.total;
   const sevens = base.wins.find((w) => w.symbol === 'seven' && w.count >= 3);
   if (sevens) total += Math.floor(sevens.amount * (HUB.sevens - 1));
@@ -135,7 +135,7 @@ test('友達と稼ぐ: spins share one combo (x1.1 a win, three misses end it), 
   const [a, b] = await friends('SpinA', 'SpinB');
   const solo = await register('SpinSolo');
   setUser(solo.me.id, { tokens: 100000 });
-  assert.equal((await call('POST', '/api/spin', { token: solo.token, body: { bet: 100 } })).result.hub, null, 'on one\'s own: no hub');
+  assert.equal((await call('POST', '/api/spin', { token: solo.token, body: { bet: 100 } })).result.hub ?? null, null, 'on one\'s own: no hub');
   const la = await listen(a), lb = await listen(b);
   try {
     const hub = await hubOf(a, b);
@@ -160,7 +160,7 @@ test('友達と稼ぐ: spins share one combo (x1.1 a win, three misses end it), 
           assert.deepEqual([res.hub.combo, res.hub.misses], [before.combo, before.misses + 1], 'a miss alone does not end it');
         }
       }
-      if (res.hub.diamonds) assert.deepEqual(res.line, ['diamond', 'diamond', 'diamond', 'diamond', 'diamond']);
+      if (res.hub.diamonds) assert.deepEqual(globalThis.BR.engine.whole(res).line, ['diamond', 'diamond', 'diamond', 'diamond', 'diamond']);
       const after = hubRow(hub.id);
       assert.deepEqual([after.combo, after.misses], [res.hub.combo, res.hub.misses]);
     }
@@ -232,11 +232,11 @@ test('友達と稼ぐ: the benefits are on while two or more are active (4 minut
     h = (await call('GET', '/api/hub', { token: a.token })).hub;
     assert.deepEqual([h.active, h.on], [1, false]);
     r = await call('POST', '/api/spin', { token: a.token, body: { bet: 100, idle: 0 } });
-    assert.equal(r.result.hub, null, 'no hub odds, combo or boosts');
+    assert.equal(r.result.hub ?? null, null, 'no hub odds, combo or boosts');
     assert.equal(await spins5h(a), 3, 'no booster');
     // AUTO spins of a player who does nothing are not activity
     r = await call('POST', '/api/spin', { token: b.token, body: { bet: 100, idle: 5 * 60000 } });
-    assert.equal(r.result.hub, null);
+    assert.equal(r.result.hub ?? null, null);
     // b taps again (the beat says so): back on, and a hears it
     await call('POST', '/api/beat', { token: b.token, body: { idle: 1000 } });
     assert.equal((await la.waitFor('hub', (e) => e.type === 'activity' && e.user === b.me.id)).idle < 60000, true);

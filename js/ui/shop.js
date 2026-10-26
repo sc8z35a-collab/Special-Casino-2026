@@ -26,8 +26,9 @@
     var it = info(id), s = BR.sale.shop(it, Date.now() + skew);
     return { id: id, price: it.price, salePrice: s.price, pct: s.pct, on: s.on, end: s.end, next: s.next, max: it.max };
   }
-  function setSale(shop) {
-    if (shop && shop.now) skew = shop.now - Date.now();
+  // (anything the server sends with its time: the sale hours are its; prices and hours are the game's own, js/game/sale.js)
+  function setSale(answer) {
+    if (answer && answer.now) skew = answer.now - Date.now();
     refreshSale();
   }
   function refreshSale() {
@@ -365,10 +366,11 @@
   }
 
   // my spin: the server says whether the お守り加護 is still on
+  // (online, a spin says whether the お守り加護 is still on: `charm` only while it is)
   function afterSpin(r) {
     var m = me();
-    if (!m || typeof r.charm !== 'boolean') return;
-    if (m.charm !== r.charm) { m.charm = r.charm; renderCharm(); }
+    if (!m || !BR.bank.online) return;
+    if (m.charm !== !!r.charm) { m.charm = !!r.charm; renderCharm(); }
   }
 
   // the friend I watch switched theirs on (or it was used up)
@@ -379,7 +381,7 @@
     refreshSale();
     setInterval(refreshSale, 1000);
     if (!api.online) return;
-    BR.live.on('hello', function (h) { if (h.itemShop) setSale(h.itemShop); setTimeout(renderCharm, 0); });
+    BR.live.on('hello', function (h) { setSale(h); setTimeout(renderCharm, 0); });
     BR.live.on('items', function (e) {
       var m = me();
       if (m) m.items = e.items;

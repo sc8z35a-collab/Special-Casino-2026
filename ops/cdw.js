@@ -14,12 +14,12 @@ var OpsCDW = (function () {
 
   var CELL = 24, MARGIN = { left: 140, top: 74, right: 20, bottom: 104 };
   var S = { role: '', catalog: [], grid: { maxCols: 160, maxRows: 90, maxItems: 12 }, items: [], loaded: false, loading: null, on: false, cols: 0, rows: 0, x0: 0, y0: 0, hidden: {} };
-  var layer = null, bar = null, palette = null, note = null, saveTimer = 0, pollTimer = 0, fadeTimer = 0, live = {};
+  var layer = null, bar = null, palette = null, note = null, saveTimer = 0, fadeTimer = 0, resizeTimer = 0, live = {}, keeps = {};
   var motion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   function h(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
   function btn(cls, text, label) { var b = h('button', cls, text); b.type = 'button'; if (label) b.setAttribute('aria-label', label); return b; }
-  function io() { return window.OpsExt ? OpsExt.io() : { request: null, toast: function () {} }; }
+  function io() { return window.OpsExt ? OpsExt.io() : { request: null, toast: function () {}, live: function () { return false; } }; }
   function req(method, path, body) { var r = io().request; return r ? r(method, path, body) : Promise.reject({ status: 0 }); }
   function toast(t) { try { io().toast(t); } catch (e) { /* the page's own toast is a convenience */ } }
   function reduced() { return motion.matches || document.body.classList.contains('mac-reduce-motion'); }
@@ -98,7 +98,8 @@ var OpsCDW = (function () {
   }
 
   /* ------------------------------------------------------------ the windows' contents --- */
-  // each: how to draw the inside once, and the route that feeds it (the same the app uses) and how often
+  // each: how to draw the inside once, and what it asks for (`ask(keep)`: a route the app uses, with what it has: ops/beat.js asks for every
+  // window in one request at the site's pace, `live` ones at the live views' pace)
   var W = {};
   function statBox(label, value, sub) {
     var b = h('div', 'cdw-stat'); b.appendChild(h('span', 'cdw-stat-l', label)); b.appendChild(h('b', 'cdw-stat-v', value)); if (sub) b.appendChild(h('small', '', sub));
@@ -116,9 +117,9 @@ var OpsCDW = (function () {
   }
 
   W.server = {
-    every: 3000, path: '/api/ops/server?lean=1',
+    live: true,
     // (the history this window holds is not sent again: only the seconds after it)
-    query: function (keep) { return keep.hist && keep.hist.length ? '&hs=' + (keep.hist[keep.hist.length - 1][0] - 1) : ''; },
+    ask: function (keep) { return { p: '/api/ops/server?lean=1' + (keep.hist && keep.hist.length ? '&hs=' + (keep.hist[keep.hist.length - 1][0] - 1) : '') }; },
     mount: function (body, api) {
       var top = h('div', 'cdw-stats'), box = h('div', 'cdw-graph'), foot = h('div', 'cdw-legend');
       var chart = svg('svg', { viewBox: '0 0 300 90', preserveAspectRatio: 'none', 'class': 'cdw-chart', 'aria-hidden': 'true' });
@@ -153,8 +154,10 @@ var OpsCDW = (function () {
       };
     }
   };
+  // a list: asked with the rev it was given ("the same" while it has not changed)
+  function listOf(p) { return function (keep) { return { p: p, rev: keep.rev || '' }; }; }
   W.reports = {
-    every: 15000, path: '/api/ops/reports',
+    ask: listOf('/api/ops/reports'),
     mount: function (body, api) {
       var head = h('div', 'cdw-count'), list = h('div'); body.appendChild(head); body.appendChild(list); body.appendChild(more(api, 'reports'));
       return function (r) {
@@ -165,7 +168,7 @@ var OpsCDW = (function () {
     }
   };
   W.detections = {
-    every: 15000, path: '/api/ops/detections',
+    ask: listOf('/api/ops/detections'),
     mount: function (body, api) {
       var head = h('div', 'cdw-count'), list = h('div'); body.appendChild(head); body.appendChild(list); body.appendChild(more(api, 'detections'));
       return function (r) {
@@ -176,7 +179,7 @@ var OpsCDW = (function () {
     }
   };
   W.feedback = {
-    every: 30000, path: '/api/ops/feedback',
+    ask: listOf('/api/ops/feedback'),
     mount: function (body, api) {
       var head = h('div', 'cdw-count'), list = h('div'); body.appendChild(head); body.appendChild(list); body.appendChild(more(api, 'feedback'));
       var KIND = { bug: '報告', idea: '意見案', rating: '評価' };
@@ -188,7 +191,8 @@ var OpsCDW = (function () {
     }
   };
   W.log = {
-    every: 10000, path: '/api/ops/log?slim=1',
+    // (the six lines it shows, not the log's first page)
+    ask: listOf('/api/ops/log?slim=1&limit=6'),
     mount: function (body, api) {
       var list = h('div'); body.appendChild(list); body.appendChild(more(api, 'log', 'ログをすべて見る'));
       return function (r) {
@@ -198,21 +202,28 @@ var OpsCDW = (function () {
     }
   };
   W.security = {
-    every: 8000, path: '/api/ops/security',
+    // (what it shows: the level, the last five minutes, the blocks)
+    live: true, ask: listOf('/api/ops/security?lean=1'),
     mount: function (body, api) {
       var level = h('div', 'cdw-level'), stats = h('div', 'cdw-stats'), list = h('div'); body.appendChild(level); body.appendChild(stats); body.appendChild(list); body.appendChild(more(api, 'security'));
       var WORD = { calm: '平常', watch: '警戒', attack: '攻撃を検知', breach: '突破の疑い', lockdown: 'ロックダウン中' };
       return function (r) {
-        var s = r.shield || {}, p = s.pressure || {}, e = r.emergency || {}, five = s.last5m || {};
-        var lv = e.locked ? 'lockdown' : e.stopped ? 'attack' : p.level || (five.attacks > 0 ? 'attack' : five.floods > 0 ? 'watch' : 'calm');
+        var s = r.shield || {}, e = r.emergency || {}, five = s.last5m || {};
+        var lv = e.level === 'lockdown' ? 'lockdown' : e.stopped ? 'attack' : five.attacks > 0 ? 'attack' : five.floods > 0 ? 'watch' : 'calm';
         level.className = 'cdw-level lv-' + lv; level.textContent = WORD[lv] || String(lv);
-        stats.replaceChildren(statBox('直近5分の攻撃', fmt(five.attacks)), statBox('フラッド', fmt(five.floods)), statBox('ブロック中', fmt((s.blocks || []).length)), statBox('認証の失敗', fmt(five.authFails)));
+        stats.replaceChildren(statBox('直近5分の攻撃', fmt(five.attacks)), statBox('フラッド', fmt(five.floods)), statBox('ブロック中', fmt(s.blockCount)), statBox('認証の失敗', fmt(five.authFails)));
         list.replaceChildren((s.blocks || []).length ? lines((s.blocks || []).map(function (b) { return [b.until ? '〜' + new Date(b.until).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '', b.scope + ':' + clip(b.target, 24), clip(b.reason, 30)]; }), 3) : empty('いまブロックしているものはありません'));
       };
     }
   };
   W.team = {
-    every: 6000, path: '/api/ops/team/messages?with=0',
+    // (the live connection tells when the conversation changes: OpsCDW.nudge; this is for what it misses, and while it is down)
+    live: true,
+    ask: function (keep) {
+      if (keep.at && !keep.nudged && io().live() && Date.now() - keep.at < 30000) return null;
+      keep.nudged = false;
+      return { p: '/api/ops/team/messages?with=0&limit=6', rev: keep.rev || '' };
+    },
     mount: function (body, api) {
       var list = h('div', 'cdw-chat'), form = h('form', 'cdw-compose'), input = h('input'); input.type = 'text'; input.maxLength = 400; input.placeholder = '全体チャットに送る'; input.setAttribute('aria-label', '全体チャットに送る');
       var send = btn('cdw-send', '送信'); send.type = 'submit'; form.appendChild(input); form.appendChild(send);
@@ -240,7 +251,7 @@ var OpsCDW = (function () {
     }
   };
   W.vault = {
-    every: 20000, path: '/api/vault/spaces',
+    ask: listOf('/api/vault/spaces'),
     mount: function (body, api) {
       var bar2 = h('div', 'cdw-meter'), fill = h('i'); bar2.appendChild(fill);
       var top = h('div', 'cdw-stats'), list = h('div'); body.appendChild(top); body.appendChild(bar2); body.appendChild(list); body.appendChild(more(api, 'vault', '保管庫を開く'));
@@ -257,24 +268,31 @@ var OpsCDW = (function () {
     }
   };
   W.profile = {
-    every: 0, path: '',
     mount: function (body, api) {
       var card = h('div', 'cdw-card'), face = h('div', 'cdw-card-face'), name = h('b', 'cdw-card-name'), role = h('span', 'cdw-card-role'), lines2 = h('div', 'cdw-card-lines');
       var mark = h('span', 'cdw-card-brand', 'TWO STATE');
       card.appendChild(mark); card.appendChild(face); card.appendChild(name); card.appendChild(role); card.appendChild(lines2); body.appendChild(card); body.appendChild(more(api, 'profile', 'プロフィールを開く'));
-      Promise.all([req('GET', '/api/ops/me'), req('GET', '/api/ops/operators').catch(function () { return {}; })]).then(function (rs) {
-        var me = rs[0], ops = (rs[1].operators || []).filter(function (o) { return o.name === me.name; })[0];
+      function draw(me, ops) {
         name.textContent = me.name; role.textContent = me.developer ? '開発者' : me.viewer ? '閲覧者' : '運営者';
         card.classList.toggle('dev', !!me.developer);
         if (ops && ops.avatar) face.style.backgroundImage = avatarOf(ops.avatar); else face.textContent = String(me.name || '?').slice(0, 1);
         lines2.appendChild(h('span', '', '運営サイト ' + (me.developer ? '管理者' : '運営')));
         lines2.appendChild(h('span', '', (location.protocol === 'https:' ? '安全な接続' : '接続') + '・' + new Date().toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'long', day: 'numeric' })));
-      }, function () { name.textContent = '読み込めません'; });
+      }
+      // (asked once: the window put again, or the desktop drawn again, uses what it has)
+      var k = api.keep;
+      if (k.me) draw(k.me, k.ops);
+      else {
+        Promise.all([req('GET', '/api/ops/me'), req('GET', '/api/ops/operators').catch(function () { return {}; })]).then(function (rs) {
+          k.me = rs[0]; k.ops = (rs[1].operators || []).filter(function (o) { return o.name === k.me.name; })[0];
+          draw(k.me, k.ops);
+        }, function () { name.textContent = '読み込めません'; });
+      }
       return function () {};
     }
   };
   W.diary = {
-    every: 60000, path: '/api/ops/diary',
+    ask: listOf('/api/ops/diary?limit=3'),
     mount: function (body, api) {
       var form = h('form', 'cdw-diary'), title = h('input'), text = h('textarea'), go = btn('cdw-send', '公開');
       title.type = 'text'; title.maxLength = 100; title.placeholder = 'タイトル'; title.setAttribute('aria-label', 'タイトル');
@@ -310,11 +328,11 @@ var OpsCDW = (function () {
     var x = btn('cdw-x', '×', c.name + 'を外す'); head.appendChild(x);
     var bodyEl = h('div', 'cdw-body'); root.appendChild(head); root.appendChild(bodyEl); root.appendChild(h('i', 'cdw-sheen'));
     ['e', 's', 'se'].forEach(function (d) { var g = h('i', 'cdw-grip ' + d); g.dataset.edge = d; root.appendChild(g); });
-    // (`keep`: what a window holds between its drawings, and the route is asked with: see `query`)
-    var inst = { item: it, root: root, body: bodyEl, update: null, at: 0, busy: false, failed: 0, keep: {} };
+    // (`keep`: what a window holds — its last answer, the rev it is asked with — kept while the desktop is drawn again)
+    var inst = { item: it, root: root, body: bodyEl, update: null, keep: keeps[it.id] || (keeps[it.id] = {}) };
     var api = {
       open: function (id) { if (window.OpsDesktop && OpsDesktop.open) { off(); OpsDesktop.open(id); } },
-      refresh: function () { poll(inst, true); },
+      refresh: function () { OpsBeat.soon('cdw:' + it.id); },
       keep: inst.keep
     };
     try { inst.update = impl.mount(bodyEl, api) || function () {}; } catch (e) { bodyEl.appendChild(empty('表示できません')); inst.update = function () {}; }
@@ -322,26 +340,48 @@ var OpsCDW = (function () {
     drag(inst, head, 'move');
     Array.prototype.forEach.call(root.querySelectorAll('.cdw-grip'), function (g) { drag(inst, g, g.dataset.edge); });
     pos(it, root);
+    // what it had is drawn at once; what it asks for is asked with the rest (ops/beat.js)
+    if (inst.keep.last) inst.update(inst.keep.last);
+    watch(inst);
     return inst;
   }
+  function watch(inst) {
+    var id = inst.item.id, impl = W[id], keep = inst.keep;
+    if (!impl.ask) return;
+    OpsBeat.want('cdw:' + id, {
+      live: impl.live, at: keep.at || 0,
+      ask: function () { return S.on && live[id] === inst ? impl.ask(keep) : null; },
+      got: function (r) {
+        keep.at = Date.now();
+        inst.root.classList.remove('cdw-stale');
+        // (the same: drawn again from what it has, so that "3分前" moves on)
+        if (!r.same) { keep.rev = r.rev; keep.last = r; }
+        if (keep.last) inst.update(keep.last);
+      },
+      failed: function (err) {
+        inst.root.classList.add('cdw-stale');
+        // the server says it is not theirs (their rights were taken away): it goes
+        if (err && (err.status === 403 || err.status === 404)) { S.loaded = false; load().then(function () { if (S.on) { measure(); fitAll(); renderAll(); } }); }
+      }
+    });
+  }
+  function unmount(id) { if (live[id]) { live[id].root.remove(); delete live[id]; } OpsBeat.drop('cdw:' + id); }
   function renderAll() {
-    Object.keys(live).forEach(function (id) { live[id].root.remove(); });
-    live = {};
+    Object.keys(live).forEach(unmount);
     var n = 0;
     S.items.forEach(function (it) {
       if (S.hidden[it.id]) return;
       var inst = mountOf(it);
       if (inst) { inst.root.style.setProperty('--i', String(n++)); live[it.id] = inst; stage.appendChild(inst.root); }
     });
-    var n = Object.keys(S.hidden).length;
-    note.hidden = !n; note.textContent = n ? 'この画面の大きさに入らない窓が ' + n + ' 個あります（画面を広げると戻ります）' : '';
+    var out = Object.keys(S.hidden).length;
+    note.hidden = !out; note.textContent = out ? 'この画面の大きさに入らない窓が ' + out + ' 個あります（画面を広げると戻ります）' : '';
     if (window.OpsGlass) OpsGlass.scan();
-    Object.keys(live).forEach(function (id) { poll(live[id], true); });
   }
   var stage = null;
   function remove(id) {
     S.items = S.items.filter(function (i) { return i.id !== id; });
-    if (live[id]) { live[id].root.remove(); delete live[id]; }
+    unmount(id);
     delete S.hidden[id];
     save(); drawPalette();
   }
@@ -352,7 +392,7 @@ var OpsCDW = (function () {
     if (!p) { toast('空きがありません。ほかの窓を小さくするか外してください'); return; }
     S.items.push(p);
     var inst = mountOf(p);
-    if (inst) { live[id] = inst; stage.appendChild(inst.root); if (!reduced()) inst.root.classList.add('cdw-in'); poll(inst, true); }
+    if (inst) { live[id] = inst; stage.appendChild(inst.root); if (!reduced()) inst.root.classList.add('cdw-in'); }
     if (window.OpsGlass) OpsGlass.scan();
     save(); drawPalette();
   }
@@ -403,21 +443,6 @@ var OpsCDW = (function () {
     });
   }
 
-  /* ------------------------------------------------------------ what each window shows, kept fresh while it is on --- */
-  function poll(inst, force) {
-    var impl = W[inst.item.id];
-    if (!impl || !impl.path || inst.busy || !S.on || document.hidden) return;
-    if (!force && Date.now() - inst.at < impl.every) return;
-    inst.busy = true;
-    req('GET', impl.path + (impl.query ? impl.query(inst.keep) : '')).then(function (r) { inst.failed = 0; inst.root.classList.remove('cdw-stale'); inst.update(r); }, function (err) {
-      inst.failed++;
-      inst.root.classList.add('cdw-stale');
-      // the server says it is not theirs (their rights were taken away): it goes
-      if (err && (err.status === 403 || err.status === 404)) { S.loaded = false; load().then(function () { if (S.on) { measure(); fitAll(); renderAll(); } }); }
-    }).then(function () { inst.busy = false; inst.at = Date.now(); });
-  }
-  function tick() { Object.keys(live).forEach(function (id) { poll(live[id], false); }); }
-
   /* ------------------------------------------------------------ the bar on top, and the list of what can be added --- */
   function buildChrome() {
     layer = h('div', 'cdw-layer'); layer.hidden = true; layer.setAttribute('aria-label', 'デスクトップの窓（CDW 1.0）');
@@ -436,7 +461,8 @@ var OpsCDW = (function () {
     app.appendChild(layer);
     document.addEventListener('keydown', function (e) { if (S.on && e.key === 'Escape' && !document.querySelector('.mac-overlay:not([hidden])')) { if (!palette.hidden) { palette.hidden = true; } else off(); } });
     document.addEventListener('pointerdown', function (e) { if (S.on && !palette.hidden && !e.target.closest('.cdw-palette, .cdw-bar')) palette.hidden = true; }, true);
-    window.addEventListener('resize', function () { if (S.on) { measure(); fitAll(); renderAll(); } });
+    // (drawn again once the window has its new size, not for every step of the drag)
+    window.addEventListener('resize', function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(function () { if (S.on) { measure(); fitAll(); renderAll(); } }, 150); });
   }
   function drawPalette() {
     if (!palette) return;
@@ -461,10 +487,11 @@ var OpsCDW = (function () {
     function go() {
       if (!S.loaded) { toast('窓の設定を読み込めませんでした。しばらくしてからもう一度お試しください'); return; }
       S.on = true;
+      // (back on the desktop: every window asks at once)
+      Object.keys(keeps).forEach(function (id) { keeps[id].at = 0; });
       document.body.classList.add('mac-cdw'); area.inert = true;
       layer.hidden = false; measure(); fitAll(); renderAll(); drawPalette();
       if (!reduced()) { layer.classList.remove('cdw-fade'); void layer.offsetWidth; layer.classList.add('cdw-fade'); clearTimeout(fadeTimer); fadeTimer = setTimeout(function () { layer.classList.remove('cdw-fade'); }, 2200); }
-      clearInterval(pollTimer); pollTimer = setInterval(tick, 1000);
       if (window.OpsDesktop && OpsDesktop.cdwChanged) OpsDesktop.cdwChanged(true);
     }
     if (S.loaded) go(); else load().then(go);
@@ -474,18 +501,20 @@ var OpsCDW = (function () {
     S.on = false;
     document.body.classList.remove('mac-cdw'); area.inert = false;
     if (layer) { layer.hidden = true; palette.hidden = true; }
-    clearInterval(pollTimer); pollTimer = 0;
+    Object.keys(live).forEach(function (id) { OpsBeat.drop('cdw:' + id); });
     if (window.OpsDesktop && OpsDesktop.cdwChanged) OpsDesktop.cdwChanged(false);
   }
   return {
     toggle: function () { if (S.on) off(); else on(); },
     on: function () { return S.on; },
     off: off,
+    // the live connection told of a change to what a window shows (ops/ops.js: the 全体チャット)
+    nudge: function (id) { if (keeps[id]) keeps[id].nudged = true; OpsBeat.soon('cdw:' + id); },
     // signed in or out: the next person starts from nothing
     session: function (signedIn) {
       off();
-      Object.keys(live).forEach(function (id) { live[id].root.remove(); });
-      live = {}; S.role = ''; S.catalog = []; S.items = []; S.loaded = false; S.loading = null; S.hidden = {};
+      Object.keys(live).forEach(unmount);
+      keeps = {}; S.role = ''; S.catalog = []; S.items = []; S.loaded = false; S.loading = null; S.hidden = {};
       if (signedIn) load();
     }
   };

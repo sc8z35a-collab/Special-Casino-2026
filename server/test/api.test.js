@@ -152,11 +152,17 @@ test('spins are settled on the server and add up', async () => {
   let tokens = 1000000, won = 0, biggest = 0, rev = 0;
   for (let i = 0; i < 150; i++) {
     const bet = RULES.bets[i % 4];
-    const r = await call('POST', '/api/spin', { token: u.token, body: { bet } });
+    const r = await call('POST', '/api/spin', { token: u.token, body: { bet }, raw: true });
     assert.equal(r.status, 200, JSON.stringify(r));
-    const res = r.result;
+    // (as it is sent: the grid as 15 digits, no line — the grid's middle row — and nothing that is none; the game makes it whole)
+    assert.match(r.result.grid, /^[0-6]{15}$/);
+    assert.equal(r.result.line, undefined);
+    for (const k of ['total', 'tier', 'mult', 'combo']) assert.notEqual(r.result[k], 0, k + ' 0 is not sent');
+    assert.notDeepEqual(r.result.wins, []);
+    assert.equal(r.stats, undefined);
+    const res = globalThis.BR.engine.whole(r.result);
     assert.equal(res.grid.length, 5);
-    res.grid.forEach((col, k) => { assert.equal(col.length, 3); assert.equal(col[1], res.line[k]); });
+    res.grid.forEach((col) => { assert.equal(col.length, 3); col.forEach((s) => assert.ok(RULES.symbols.includes(s))); });
     const check = evaluate(res.line, bet);
     // (from the fifth win in a row, double)
     const twice = res.combo >= RULES.comboDouble;
@@ -526,7 +532,8 @@ test('watching a friend\'s screen: friends only, spins and balance pushed live',
   assert.deepEqual((await call('GET', '/api/watchers', { token: a.token })).watchers.map((w) => w.id), [b.me.id]);
   const spin = await call('POST', '/api/spin', { token: a.token, body: { bet: 200 } });
   const seen = await bLive.waitFor('watch', (d) => d.type === 'spin');
-  assert.deepEqual(seen.result.grid, spin.result.grid);
+  // (as the watcher's game makes it whole)
+  assert.deepEqual(globalThis.BR.engine.whole(seen.result).grid, spin.result.grid);
   assert.equal(seen.balance.tokens, spin.balance.tokens);
   await call('POST', '/api/daily', { token: a.token });
   assert.equal((await bLive.waitFor('watch', (d) => d.type === 'balance')).balance.tokens, spin.balance.tokens + RULES.dailyFree);

@@ -43,16 +43,32 @@
 
   // grid[reel][row] with row 0 = top, 1 = centre (pay line), 2 = bottom;
   // `weights`: other odds than C.weights (a hub's)
+  function lineOf(grid) { return grid.map(function (col) { return col[1]; }); }
   function spin(bet, weights) {
     var grid = [];
     for (var r = 0; r < 5; r++) grid.push([drawSymbol(weights), drawSymbol(weights), drawSymbol(weights)]);
-    var line = grid.map(function (col) { return col[1]; });
+    var line = lineOf(grid);
     var res = evaluate(line, bet);
     res.grid = grid;
     res.line = line;
     res.bet = bet;
     return res;
   }
+  // A result as the server sends it (server/core/api.js): the grid as 15 digits — reel by reel, top to bottom, each cell's place in
+  // C.symbols — with no line (the grid's middle row) and no win, total, tier, multiplier or combo that is none; whole() makes it whole again.
+  function pack(grid) { return grid.map(function (col) { return col.map(function (s) { return C.symbols.indexOf(s); }).join(''); }).join(''); }
+  function whole(res) {
+    if (!res || res.line) return res;
+    if (typeof res.grid === 'string') {
+      var g = res.grid, grid = [];
+      for (var r = 0; r < 15; r += 3) grid.push([C.symbols[g[r]], C.symbols[g[r + 1]], C.symbols[g[r + 2]]]);
+      res.grid = grid;
+    }
+    res.line = lineOf(res.grid);
+    res.wins = res.wins || [];
+    ['total', 'tier', 'mult', 'combo'].forEach(function (k) { res[k] = res[k] || 0; });
+    return res;
+  }
 
-  BR.engine = { spin: spin, evaluate: evaluate, drawSymbol: drawSymbol };
+  BR.engine = { spin: spin, evaluate: evaluate, drawSymbol: drawSymbol, pack: pack, whole: whole };
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

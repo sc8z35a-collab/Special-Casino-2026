@@ -11,6 +11,7 @@ import { migrate, metaValue } from '../core/db.js';
 import { ApiError } from '../core/errors.js';
 import { newToken } from '../core/auth.js';
 import { nextAlarm, monthOf } from './awake.js';
+import { answerOnSocket, connectionOf } from '../core/socketapi.js';
 
 const HOUSEKEEPING_EVERY = 6 * 3600000;
 const JSON_HEADERS = {
@@ -322,7 +323,7 @@ export class Casino extends DurableObject {
       if (!opsId) return json(401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } });
       const [c, sv] = Object.values(new WebSocketPair());
       this.ctx.acceptWebSocket(sv, [`o:${opsId}`]);
-      sv.serializeAttachment({ u: opsId, ops: true });
+      sv.serializeAttachment({ u: opsId, ops: true, c: connectionOf(request, url) });
       sv.send(JSON.stringify({ event: 'hello', data: { ops: true } }));
       return new Response(null, { status: 101, webSocket: c });
     }
@@ -331,34 +332,41 @@ export class Casino extends DurableObject {
     const first = !this.live.isOnline(userId);
     const [client, server] = Object.values(new WebSocketPair());
     this.ctx.acceptWebSocket(server, [`u:${userId}`]);
-    server.serializeAttachment({ u: userId });
-    server.send(JSON.stringify({ event: 'hello', data: { ...this.api.hello(userId), online: this.live.onlineCount() } }));
+    // (what it was opened from: the address and the browser of the API's requests on it, server/core/socketapi.js)
+    server.serializeAttachment({ u: userId, c: connectionOf(request, url) });
+    // (`held`: what the page already has of it: server/core/api.js hello)
+    server.send(JSON.stringify({ event: 'hello', data: this.api.hello(userId, url.searchParams.get('held')) }));
     if (first) this.api.presence(userId, true);
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  // Players mostly listen: what they do goes through the HTTP API, except
-  // voice chat signalling ({ op: "call", ... }), 入力中 ({ op: "typing" }),
-  // the activity beat of the time quests ({ op: "beat" }) and, only while an
-  // operator watches, the sealed frames of the game's state ({ op: "view" }),
-  // which are chatty.
+  // On a connection: the API's requests (server/core/socketapi.js: answered as over HTTP, from both the game and the operator site) and,
+  // from the game, voice chat signalling ({ op: "call", ... }), 入力中 ({ op: "typing" }), the activity beat of the time quests
+  // ({ op: "beat" }) and, only while an operator watches, the sealed frames of the game's state ({ op: "view" }).
   async webSocketMessage(ws, message) {
     if (message === 'ping') { this.live.write(ws, 'pong'); return; }
     if (typeof message !== 'string' || message.length > 32 * 1024) return;
     const a = ws.deserializeAttachment();
     if (!a) return;
-    // (the operator site's connection only listens)
-    if (a.ops) return;
     let body;
     try { body = JSON.parse(message); } catch { return; }
+    if (!body || typeof body !== 'object') return;
+    if (body.op === 'api') {
+      this.touch();
+      const text = await answerOnSocket(this.api, a.c || {}, body);
+      if (text) this.live.write(ws, text);
+      return;
+    }
+    // (the operator site's connection asks nothing else)
+    if (a.ops) return;
     // (a beat from a game nobody touched for a minute is not someone playing; nor is a
     // frame of the operators' screen view)
-    if (body && body.op !== 'sight' && body.op !== 'view' && !(body.op === 'beat' && Number(body.idle) > 60000)) this.touch();
-    if (body && body.op === 'call') this.api.socketCall(a.u, body);
-    else if (body && body.op === 'typing') this.api.socketTyping(a.u, body);
-    else if (body && body.op === 'beat') this.api.socketBeat(a.u, body);
-    else if (body && body.op === 'sight') this.api.socketSight(a.u, body);
-    else if (body && body.op === 'view') this.api.socketView(a.u, body);
+    if (body.op !== 'sight' && body.op !== 'view' && !(body.op === 'beat' && Number(body.idle) > 60000)) this.touch();
+    if (body.op === 'call') this.api.socketCall(a.u, body);
+    else if (body.op === 'typing') this.api.socketTyping(a.u, body);
+    else if (body.op === 'beat') this.api.socketBeat(a.u, body);
+    else if (body.op === 'sight') this.api.socketSight(a.u, body);
+    else if (body.op === 'view') this.api.socketView(a.u, body);
   }
 
   async webSocketClose(ws, code) {

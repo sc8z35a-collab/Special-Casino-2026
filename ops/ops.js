@@ -102,9 +102,9 @@
     // the players this operator marked ★
     favorites: []
   };
-  var timer = 0, liveTimer = 0, searchTimer = 0, logTimer = 0, chatTimer = 0;
+  var searchTimer = 0, logTimer = 0;
   // the poll (poll()): what this page has of each part the server sends (`rev`), and whether one is on its way
-  var revs = { c: '', d: '', p: '', t: '' }, pollBusy = false, pollAgain = false, pollGen = 0;
+  var revs = { c: '', d: '', p: '', t: '' };
   var speed = 'normal';
 
   try { token = localStorage.getItem(KEY); } catch (e) { token = null; }
@@ -118,22 +118,32 @@
     // (signed with this page's key once today's passkey is in: ops/pk.js)
     return OpsPk.header(method, path).catch(function () { return null; }).then(function (gate) {
       if (gate) h['X-Gate'] = gate;
-      return fetch(path, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' });
+      var http = function () {
+        return fetch(path, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' }).then(function (res) {
+          if (as === 'bytes' && res.ok) return res.arrayBuffer().then(function (bytes) { return { bytes: bytes, headers: res.headers }; });
+          return res.json().catch(function () { return {}; }).then(function (j) { return { status: res.status, j: j }; });
+        });
+      };
+      // on the live connection when it is up (js/net/wire.js: no request of its own); a file always over HTTP
+      var live = as !== 'bytes' && opsLive && opsLive.call ? opsLive.call(method, path, h, body) : null;
+      return !live ? http() : live.then(function (r) { return r ? { status: r.status, j: r.body } : http(); }, function () {
+        if (method === 'GET') return http();
+        throw { network: true };
+      });
     })
       .catch(function () { throw { status: 0, message: '通信できませんでした' }; })
       .then(function (res) {
-        if (as === 'bytes' && res.ok) return res.arrayBuffer().then(function (bytes) { return { bytes: bytes, headers: res.headers }; }, function () { throw { status: 0, message: '通信できませんでした' }; });
-        return res.json().catch(function () { return {}; }).then(function (j) {
-          if (res.ok) return j;
-          var e = j.error || {};
-          var err = { status: res.status, code: e.code || '', message: e.message || 'エラーが発生しました（' + res.status + '）', until: e.until || 0, left: e.left || 0, scope: e.scope || '', mode: e.mode || 0 };
-          // the server stopped itself (a plain emergency stop, or a lockdown)
-          if (res.status === 503 && e.emergency) showEmergency(e);
-          else if (e.code === 'pk_required' || e.code === 'pk_expired') showPasskey(e.code === 'pk_required' && err.message === PK_DEFAULT ? '' : err.message);
-          else if (res.status === 401 || e.code === 'not_operator' || e.code === 'banned') signedOut(err.message);
-          else if (e.code === 'mfa_required' && path !== '/api/ops/login') showLogin(err.message);
-          throw err;
-        });
+        if (res.bytes) return res;
+        var j = res.j || {};
+        if (res.status >= 200 && res.status < 300) return j;
+        var e = j.error || {};
+        var err = { status: res.status, code: e.code || '', message: e.message || 'エラーが発生しました（' + res.status + '）', until: e.until || 0, left: e.left || 0, scope: e.scope || '', mode: e.mode || 0 };
+        // the server stopped itself (a plain emergency stop, or a lockdown)
+        if (res.status === 503 && e.emergency) showEmergency(e);
+        else if (e.code === 'pk_required' || e.code === 'pk_expired') showPasskey(e.code === 'pk_required' && err.message === PK_DEFAULT ? '' : err.message);
+        else if (res.status === 401 || e.code === 'not_operator' || e.code === 'banned') signedOut(err.message);
+        else if (e.code === 'mfa_required' && path !== '/api/ops/login') showLogin(err.message);
+        throw err;
       });
   }
   function setToken(t) {
@@ -239,16 +249,15 @@
     $('#enter').hidden = true;
     closeDetail();
     closeChat();
-    clearInterval(timer);
-    clearInterval(liveTimer);
+    OpsBeat.stop();
     clearInterval(aliveTimer);
     // (the next login starts from nothing: no rev, no list of the last one's)
     revs = { c: '', d: '', p: '', t: '' };
-    pollBusy = pollAgain = false;
-    pollGen++;
     state.sync = '';
     state.players = [];
     srvHist = [];
+    srvParts = { parts: {}, revs: {} };
+    secParts = { parts: {}, revs: {} };
     listRevs = {};
   }
   function showLogin(message) {
@@ -614,7 +623,7 @@
     state.developer = !!me.developer;
     state.viewer = !!me.viewer;
     // (parts this deployment adds, if any: ops/ext.js; files held for their check go on from where they were)
-    OpsExt.load(request, { vault: vreq, toast: toast, progress: function (j, f) { j.prep = Math.max(0, Math.min(100, Math.round(f * 100))); onJob(j); } }).then(resumeHeld);
+    OpsExt.load(request, { vault: vreq, toast: toast, progress: function (j, f) { j.prep = Math.max(0, Math.min(100, Math.round(f * 100))); onJob(j); }, live: function () { return opsLiveUp; } }).then(resumeHeld);
     $('#tab-diary').hidden = !state.developer;
     $('#tab-profile').hidden = state.viewer;
     if (diaryProfile) diaryProfile.start(me);
@@ -633,7 +642,6 @@
       // every 2 seconds the question whether they still may (taken away: out)
       $('#tab-pay').hidden = true;
       $('#tab-vault').hidden = true;
-      loadCounts();
       setView('reports');
       startTimers();
       return;
@@ -652,7 +660,6 @@
     if (window.OpsWatch) OpsWatch.sync();
     // /ops/#vault: straight to the vault
     if (location.hash === '#vault') setView('vault');
-    poll();
     startTimers();
   }
   // the tabs' numbers (a viewer's poll is this alone; an operator's comes with the rest in one request: poll())
@@ -667,111 +674,102 @@
     // the サーバー button's colour for the month's usage, from every tab
     if (r.usage) paintUsageTab(r.usage.tier || '');
   }
-  function loadCounts() {
-    return request('GET', '/api/ops/counts').then(applyCounts, function () {});
-  }
   // a viewer: still one? (asked every 2 seconds while the page is seen; the answer 401 logs out)
   var aliveTimer = 0;
   function alive() {
     if (!state.viewer || !token || document.hidden) return;
     request('GET', '/api/ops/alive').catch(function () {});
   }
-  /* The poll, in one request (it was five, every few seconds, for as long as the site stays open): the tabs' numbers, DEV UNIT's, the payments'
-     (the developer's), the team's and, while the players' list is in front, the list. The page says what it has of each part (`revs`) and a part
-     that is the same comes back as `{ same: true }`; the list comes as what changed (GET /api/ops/tick, server/core/api.js). */
-  function poll() {
-    if (!token || state.viewer || $('#app').hidden) return Promise.resolve();
-    // (one at a time: the answer to the last is what the next one is asked against)
-    if (pollBusy) { pollAgain = true; return Promise.resolve(); }
-    pollBusy = true;
-    var gen = pollGen, devGen = devUnit.generation, listing = state.view === 'players', seq = listing ? ++listSeq : 0;
+  /* The poll: the tabs' numbers, DEV UNIT's, the payments' (the developer's), the team's and, while the players' list is in front, the list
+     (GET /api/ops/tick, server/core/api.js), asked for at the lists' pace with the rest of what the site keeps asking for in one request
+     (ops/beat.js). The page says what it has of each part (`revs`) and a part that is the same comes back as `{ same: true }`; the list
+     comes as what changed. poll(): at once. */
+  function poll() { OpsBeat.soon('tick'); }
+  // (nothing of the lists is asked for again while a dialog or the money form is open)
+  function quietOk() { return $('#dialog').hidden && $('#money').hidden; }
+  function cdwOn() { return !!(window.OpsCDW && OpsCDW.on()); }
+  function tickAsk() {
+    if (!token || $('#app').hidden || !quietOk()) return null;
+    if (state.viewer) return { p: '/api/ops/counts' };
+    var listing = state.view === 'players' && !cdwOn();
     var query = 'c=' + revs.c + '&d=' + revs.d
       // (the team's tab asks for its own; the payments are asked for whole only while their tab is in front)
       + '&t=' + (state.view === 'team' ? '-' : revs.t)
       + (state.developer ? '&p=' + (state.view === 'pay' ? revs.p : '-') : '')
       + (listing ? '&pl=' + encodeURIComponent(state.sync || '') + (state.q ? '&q=' + encodeURIComponent(state.q) : '') : '');
-    return request('GET', '/api/ops/tick?' + query).then(function (r) {
-      if (gen === pollGen) applyTick(r, devGen, seq);
-    }, function () { /* the next one asks again */ }).catch(function (e) { if (window.console) console.error(e); }).then(function () {
-      if (gen !== pollGen) return;
-      pollBusy = false;
-      if (pollAgain) { pollAgain = false; poll(); }
-    });
+    return { p: '/api/ops/tick?' + query, devGen: devUnit.generation, seq: listing ? ++listSeq : 0 };
   }
-  function applyTick(r, devGen, seq) {
-    if (r.counts) {
-      if (!r.counts.same) applyCounts(r.counts);
-      revs.c = r.counts.rev;
-    }
-    if (r.devunit && devGen === devUnit.generation) {
-      if (!r.devunit.same) applyDevUnit(r.devunit);
-      revs.d = r.devunit.rev;
-    }
+  function tickGot(r, q) {
+    if (state.viewer) { applyCounts(r); return; }
+    // (a part that is "the same" keeps the rev this page sent)
+    if (r.counts && !r.counts.same) { applyCounts(r.counts); revs.c = r.counts.rev; }
+    if (r.devunit && !r.devunit.same && q.devGen === devUnit.generation) { applyDevUnit(r.devunit); revs.d = r.devunit.rev; }
     var pay = r.pay;
     if (pay) {
       setCount('pay', pay.count || 0);
-      if (pay.rev !== undefined) {
-        // (not while a reply is being written: the tab would be drawn again under the hand; it is asked for again)
-        var typing = state.view === 'pay' && document.activeElement && document.activeElement.tagName === 'TEXTAREA';
-        if (pay.same) revs.p = pay.rev;
-        else if (!typing) { state.pay = pay; revs.p = pay.rev; if (state.view === 'pay') renderPay(); }
-      }
+      // (a list that changed; not while a reply is being written: the tab would be drawn again under the hand; it is asked for again)
+      var typing = state.view === 'pay' && document.activeElement && document.activeElement.tagName === 'TEXTAREA';
+      if (pay.rev !== undefined && !typing) { state.pay = pay; revs.p = pay.rev; if (state.view === 'pay') renderPay(); }
     }
-    if (r.team) {
-      if (!r.team.same) applyTeam(r.team);
-      revs.t = r.team.rev;
-    }
+    if (r.team && !r.team.same) { applyTeam(r.team); revs.t = r.team.rev; }
     // (an answer that comes after a newer one is of no use)
-    if (r.players && seq >= listApplied) {
-      listApplied = seq;
+    if (r.players && q.seq >= listApplied) {
+      listApplied = q.seq;
       applyPlayers(r.players);
     }
-    if (state.open) refreshDetail();
   }
 
-  // the lists at one speed, the live views at a faster one (while the page is seen)
+  /* The tab in front, asked for again at its pace while it is open (and not while the desktop's windows are on: ops/cdw.js asks for its own):
+     the lists at the lists' pace with the rev they were given, the live views (サーバー, セキュリティ, the team's when the live connection does
+     not tell) at the faster one; the vault and the diary ask for themselves. */
+  function listAsker(path, draw) {
+    return {
+      ask: function () { var p = path(); return quietOk() ? { p: p, rev: listRevs[p] || '' } : null; },
+      got: function (r, q) { if (r.same) return; listRevs[q.p] = r.rev || ''; draw(r); }
+    };
+  }
+  var VIEW_ASK = {
+    reports: listAsker(function () { return '/api/ops/reports?status=' + state.reportStatus; }, drawReports),
+    detections: listAsker(function () { return '/api/ops/detections' + (state.detAll ? '?all=1' : ''); }, drawDetections),
+    feedback: listAsker(function () { return '/api/ops/feedback'; }, function (r) { state.feedback = r.feedback || []; renderFeedback(); }),
+    // (asked at once when the tab opens, and from then on with the parts it holds)
+    server: { live: true, now: true, ask: serverAsk, got: serverGot },
+    security: { live: true, now: true, ask: function () { return { p: heldPath('/api/ops/security?tab=1', secParts) }; }, got: function (x) { gotSecurity(fromHeld(x, secParts)); } },
+    // (with the live connection up the conversation tells when it changes; this is for what that misses, and for a talk between two others, which it does not tell)
+    team: { live: true, ask: function () { return !opsLiveUp || isPair(team.peer) || Date.now() - team.at > TEAM_SAFETY ? { p: '/api/ops/team' } : null; }, got: function (r) { revs.t = ''; applyTeam(r); } },
+    // the vault open: what the other one of a shared vault did (the vaults one sees until one is open)
+    vault: { ask: function () { if (!state.vault && quietOk()) openLook(true); return vaultAsk(); }, got: vaultGot, failed: function (err, q) { vaultFailed(q[0].plan, err); } },
+    diary: { run: function () { if (quietOk() && diaryProfile) diaryProfile.refresh(); } }
+  };
+  function viewAsker() {
+    var a = VIEW_ASK[state.view];
+    if (!a || (state.viewer && !/^(reports|detections|feedback)$/.test(state.view))) { OpsBeat.drop('view'); return; }
+    var first = !!a.now;
+    OpsBeat.want('view', {
+      live: a.live, at: a.now ? 0 : undefined,
+      ask: a.ask && function () { return cdwOn() ? null : a.ask(); },
+      run: a.run && function () { if (!cdwOn()) a.run(); },
+      got: function (r, q) { first = false; a.got(r, q); },
+      failed: function (err, q) { if (a.failed) a.failed(err, q); else if (first) fail(err); first = false; }
+    });
+  }
+
+  // what the site keeps asking for (ops/beat.js); a viewer: still one? (every 2 seconds while the page is seen)
   function startTimers() {
-    clearInterval(timer);
     clearInterval(aliveTimer);
     if (state.viewer) aliveTimer = setInterval(alive, 2000);
-    timer = setInterval(function () {
-      if (document.hidden || !$('#dialog').hidden || !$('#money').hidden) return;
-      if (state.viewer) {
-        loadCounts();
-        if (state.view === 'reports') loadReports(true);
-        else if (state.view === 'detections') loadDetections(true);
-        else if (state.view === 'feedback') loadFeedback(true);
-        return;
-      }
-      poll();
-      if (diaryProfile) diaryProfile.refresh();
-      if (state.view === 'reports') loadReports(true);
-      else if (state.view === 'detections') loadDetections(true);
-      else if (state.view === 'feedback') loadFeedback(true);
-      // the vault open: what the other one of a shared vault did (not while files go up or down)
-      if (state.view === 'vault') {
-        if (!state.vault) openLook(true);
-        else if (!moving && $('#viewer').hidden && $('#vmenu').hidden) loadVault(true);
-      }
-    }, SPEEDS[speed][0]);
-    clearInterval(liveTimer);
-    liveTimer = setInterval(function () {
-      if (document.hidden) return;
-      if (state.view === 'server') loadServer(true);
-      else if (state.view === 'team') {
-        // (with the live connection up the conversation tells when it changes; this is for what that misses, and for a talk between two others, which it does not tell)
-        if (!opsLiveUp || isPair(team.peer) || Date.now() - team.at > TEAM_SAFETY) loadTeam(true);
-      } else if (state.view === 'security') loadSecurity(true);
-    }, SPEEDS[speed][1]);
-    if (state.chat) chatEvery();
+    OpsBeat.pace(SPEEDS[speed]);
+    OpsBeat.start(request);
+    // (asked at once: the tabs' numbers come with the login)
+    OpsBeat.want('tick', { at: 0, ask: tickAsk, got: tickGot });
+    viewAsker();
   }
-  // the speed from the server (`restart`: the timers already run)
-  function useSpeed(v, restart) {
+  // the speed from the server
+  function useSpeed(v) {
     if (!SPEEDS[v]) v = 'normal';
     $('#speed').value = v;
-    if (v === speed) return;
     speed = v;
-    if (restart && !$('#app').hidden) startTimers();
+    OpsBeat.pace(SPEEDS[v]);
   }
   // the developer picks one: every operator's site follows
   function setSpeed(v) {
@@ -791,6 +789,7 @@
     }
     var again = state.view === v;
     state.view = v;
+    viewAsker();
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
     ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile', 'calendar', 'devapp'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
     if (diaryProfile) diaryProfile.view(v);
@@ -806,8 +805,7 @@
     else if (v === 'devapp') { if (window.OpsDevApp) OpsDevApp.show($('#view-devapp'), request, toast); }
     else if (v === 'log') { loadLog(true); verifyLog(); }
     else if (v === 'team') openTeamView();
-    else if (v === 'security') loadSecurity();
-    else if (v === 'server') { loadServer(); renderDevCards(); }
+    else if (v === 'server') renderDevCards();
     else if (v === 'pay') loadPay();
     else if (v === 'vault') {
       // (the 保管庫 tab again while in it: its top)
@@ -1025,9 +1023,16 @@
     $('#detail').appendChild(el('p', 'muted', '読み込み中…'));
     $('#drawer').scrollTop = 0;
     refreshDetail();
+    // (asked again at the lists' pace while it is open, drawn again only when it changed)
+    var rev = '';
+    OpsBeat.want('detail', {
+      ask: function () { return state.open === id ? { p: '/api/ops/player?id=' + id, rev: rev } : null; },
+      got: function (r) { if (r.same || state.open !== id) return; rev = r.rev; renderDetail(r.player); }
+    });
   }
   function closeDetail() {
     state.open = 0;
+    OpsBeat.drop('detail');
     $('#drawer').hidden = true;
     $('#drawer-back').hidden = true;
   }
@@ -1397,9 +1402,7 @@
   function showEmergency(info) {
     if (emergencyOn) return;
     emergencyOn = true;
-    clearInterval(timer);
-    clearInterval(liveTimer);
-    clearInterval(chatTimer);
+    OpsBeat.stop();
     $('#emergency').hidden = false;
     $('#em-list').textContent = '';
     $('#em-release').hidden = true;
@@ -1511,31 +1514,33 @@
     $('#c-subject').value = '';
     $('#c-body').value = '';
     loadChat(true);
-    chatEvery();
-  }
-  function chatEvery() {
-    clearInterval(chatTimer);
-    chatTimer = setInterval(function () { if (!document.hidden && state.chat) loadChat(false); }, SPEEDS[speed][1]);
+    // (asked again at the live views' pace while it is open; the same conversation comes back as "the same")
+    OpsBeat.want('chat', {
+      live: true,
+      ask: function () { var c = state.chat; return c ? { p: '/api/ops/chat?id=' + c.id, rev: c.rev || '', c: c } : null; },
+      got: function (r, q) { if (!r.same) gotChat(q.c, r, false); }
+    });
   }
   function closeChat() {
-    clearInterval(chatTimer);
+    OpsBeat.drop('chat');
     state.chat = null;
     $('#chat').hidden = true;
   }
   function loadChat(scroll) {
     var c = state.chat;
-    if (!c) return;
-    request('GET', '/api/ops/chat?id=' + c.id).then(function (r) {
-      if (state.chat !== c) return;
-      var newer = !c.data || r.messages.length !== c.data.messages.length || (r.messages.length && r.messages[r.messages.length - 1].id !== c.data.messages[c.data.messages.length - 1].id);
-      var readChanged = c.data && c.data.playerReadUpTo !== r.playerReadUpTo;
-      c.data = r;
-      renderChatHead(r.player);
-      if (newer || readChanged || scroll) renderChat(newer || scroll);
-      // reading it took the 返信待ち mark away: the list follows
-      var i = state.players.findIndex(function (p) { return p.id === r.player.id; });
-      if (i >= 0) { state.players[i] = r.player; render(); }
-    }, fail);
+    if (c) request('GET', '/api/ops/chat?id=' + c.id).then(function (r) { gotChat(c, r, scroll); }, fail);
+  }
+  function gotChat(c, r, scroll) {
+    if (state.chat !== c) return;
+    c.rev = r.rev || '';
+    var newer = !c.data || r.messages.length !== c.data.messages.length || (r.messages.length && r.messages[r.messages.length - 1].id !== c.data.messages[c.data.messages.length - 1].id);
+    var readChanged = c.data && c.data.playerReadUpTo !== r.playerReadUpTo;
+    c.data = r;
+    renderChatHead(r.player);
+    if (newer || readChanged || scroll) renderChat(newer || scroll);
+    // reading it took the 返信待ち mark away: the list follows
+    var i = state.players.findIndex(function (p) { return p.id === r.player.id; });
+    if (i >= 0) { state.players[i] = r.player; render(); }
   }
   function renderChatHead(p) {
     var w = $('#chat-who');
@@ -1656,12 +1661,13 @@
   function loadReports(quiet) {
     var list = $('#report-list');
     if (!quiet) { list.textContent = ''; list.appendChild(el('p', 'muted', '読み込み中…')); }
-    askList('/api/ops/reports?status=' + state.reportStatus, quiet).then(function (r) {
-      if (!r) return;
-      list.textContent = '';
-      if (!r.reports.length) list.appendChild(el('p', 'empty muted', state.reportStatus === 'open' ? '未処理の通報はありません' : '処理済みの通報はありません'));
-      r.reports.forEach(function (x) { list.appendChild(reportCard(x)); });
-    }, function (err) { if (!quiet) fail(err); });
+    askList('/api/ops/reports?status=' + state.reportStatus, quiet).then(function (r) { if (r) drawReports(r); }, function (err) { if (!quiet) fail(err); });
+  }
+  function drawReports(r) {
+    var list = $('#report-list');
+    list.textContent = '';
+    if (!r.reports.length) list.appendChild(el('p', 'empty muted', state.reportStatus === 'open' ? '未処理の通報はありません' : '処理済みの通報はありません'));
+    r.reports.forEach(function (x) { list.appendChild(reportCard(x)); });
   }
   function fact(box, label, value) {
     var d = el('div');
@@ -1782,12 +1788,13 @@
   function loadDetections(quiet) {
     var list = $('#det-list');
     if (!quiet) { list.textContent = ''; list.appendChild(el('p', 'muted', '読み込み中…')); }
-    askList('/api/ops/detections' + (state.detAll ? '?all=1' : ''), quiet).then(function (r) {
-      if (!r) return;
-      list.textContent = '';
-      if (!r.detections.length) list.appendChild(el('p', 'empty muted', state.detAll ? '検知はありません' : '未確認の検知はありません'));
-      r.detections.forEach(function (d) { list.appendChild(detectionCard(d, false)); });
-    }, function (err) { if (!quiet) fail(err); });
+    askList('/api/ops/detections' + (state.detAll ? '?all=1' : ''), quiet).then(function (r) { if (r) drawDetections(r); }, function (err) { if (!quiet) fail(err); });
+  }
+  function drawDetections(r) {
+    var list = $('#det-list');
+    list.textContent = '';
+    if (!r.detections.length) list.appendChild(el('p', 'empty muted', state.detAll ? '検知はありません' : '未確認の検知はありません'));
+    r.detections.forEach(function (d) { list.appendChild(detectionCard(d, false)); });
   }
   // the original, with the parts the filter took out marked (masked: those parts as ***):
   // original = part0 + hit + part1 + hit + … + partN
@@ -2619,17 +2626,25 @@
         });
         es.onerror = function () { es.close(); opsLiveLost(up); };
       } else {
-        var ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + path);
-        var ping = setInterval(function () { try { ws.send('ping'); } catch (x) { /* closing */ } }, 30000);
-        opsLive = { close: function () { clearInterval(ping); ws.onclose = null; try { ws.close(); } catch (x) { /* closed */ } } };
+        var ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + path), quiet = Date.now();
+        var send = function (text) { if (ws.readyState !== 1) return false; try { ws.send(text); quiet = Date.now(); return true; } catch (x) { return false; } };
+        // the site's requests on this connection (js/net/wire.js); a ping only when it has been quiet (answered by Cloudflare itself)
+        var wire = BR.wire(send);
+        var ping = setInterval(function () { if (Date.now() - quiet >= 25000) send('ping'); }, 30000);
+        opsLive = {
+          call: function (m, p, h, b) { return up ? wire.call(m, p, h, b) : null; },
+          close: function () { clearInterval(ping); wire.drop(); ws.onclose = null; try { ws.close(); } catch (x) { /* closed */ } }
+        };
         ws.onmessage = function (e) {
+          quiet = Date.now();
           if (e.data === 'pong') return;
           var m = null;
           try { m = JSON.parse(e.data); } catch (x) { return; }
+          if (wire.reply(m)) return;
           up = true;
           onOpsLive(m.event, m.data);
         };
-        ws.onclose = function () { clearInterval(ping); opsLiveLost(up); };
+        ws.onclose = function () { clearInterval(ping); wire.drop(); opsLiveLost(up); };
       }
     }, function () { opsLiveLost(false); });
   }
@@ -2669,6 +2684,7 @@
     nudgeTimer = setTimeout(function () {
       // (a page that is not seen asks when it is seen again)
       if (document.hidden || !token || $('#app').hidden) return;
+      if (window.OpsCDW && OpsCDW.on()) OpsCDW.nudge('team');
       if (state.view === 'team') loadTeam(true); else poll();
     }, 120);
   }
@@ -2858,7 +2874,7 @@
   }
 
   /* ------------------------------------------------------------ サーバー --- */
-  var GB = 1073741824, srvBusy = false;
+  var GB = 1073741824;
   var TABLE_NAMES = {
     users: 'プレイヤー', friends: 'フレンド', cars: '車', items: 'アイテム', trees: '金の生る木', chat_groups: 'グループチャット', reports: '通報',
     feedback: '報告・意見案', push_subs: 'スマホ通知の登録', pay_orders: '課金の注文', vault_files: '保管庫のファイル', vault_folders: '保管庫のフォルダ',
@@ -2882,14 +2898,14 @@
   function usd(n) { return '$' + Number(n || 0).toFixed(2); }
 
   /* ------------------------------------------------------------ セキュリティ --- */
-  function loadSecurity(quiet) {
-    return request('GET', '/api/ops/security').then(function (r) {
-      state.security = r;
-      if (state.view === 'security') renderSecurity(r);
-      // the tab badge: blocks in force
-      var n = (r.shield && r.shield.blocks ? r.shield.blocks.length : 0);
-      setCount('security', n);
-    }, function (err) { if (!quiet) fail(err); });
+  // (the tab's parts this page holds, with their revs: asked again, the same ones are not sent)
+  var secParts = { parts: {}, revs: {} };
+  function gotSecurity(t) {
+    var r = { shield: { last5m: t.last5m, pressure: t.pressure, blocks: t.blocks || [], topAttackers: t.topAttackers || [] }, emergency: t.emergency };
+    state.security = r;
+    if (state.view === 'security') renderSecurity(r);
+    // the tab badge: blocks in force
+    setCount('security', r.shield.blocks.length);
   }
   function secStat(box, label, value, cls) {
     var s = el('div', 'stat' + (cls ? ' ' + cls : ''));
@@ -2952,10 +2968,10 @@
     });
   }
   function secBlock(scope, target, reason) {
-    return request('POST', '/api/ops/security/block', { scope: scope, target: target, reason: reason }).then(function () { toast('ブロックしました'); loadSecurity(); }, fail);
+    return request('POST', '/api/ops/security/block', { scope: scope, target: target, reason: reason }).then(function () { toast('ブロックしました'); OpsBeat.soon('view'); }, fail);
   }
   function secUnblock(key) {
-    return request('POST', '/api/ops/security/unblock', { key: key }).then(function () { toast('解除しました'); loadSecurity(); }, fail);
+    return request('POST', '/api/ops/security/unblock', { key: key }).then(function () { toast('解除しました'); OpsBeat.soon('view'); }, fail);
   }
   function secLockdown() {
     ask({ title: 'ロックダウンを発動しますか？', text: '全ユーザー（プレイヤー・運営者・開発者）が締め出され、外部通信を遮断、ログ以外を停止します。重要データを保護し、攻撃情報を緊急ログに記録します。最長1か月で自動解除、運営者はいつでも手動で解除できます。', input: { label: '理由（任意）' }, ok: '発動する', danger: true }).then(function (reason) {
@@ -2966,26 +2982,26 @@
   function secRelease() {
     ask({ title: 'ロックダウンを解除しますか？', text: '原因を確認してから解除してください。サーバーが通常に戻ります。', ok: '解除する', danger: true }).then(function (ok) {
       if (ok === null) return;
-      request('POST', '/api/sec/release', {}).then(function () { toast('解除しました'); loadSecurity(); }, fail);
+      request('POST', '/api/sec/release', {}).then(function () { toast('解除しました'); OpsBeat.soon('view'); }, fail);
     }).catch(fail);
   }
 
-  // the five-minute history as this page has it: the server sends what came after (`hs`: the second before the newest this page holds)
-  var srvHist = [];
-  function loadServer(quiet) {
-    if (srvBusy) return;
-    srvBusy = true;
-    var last = srvHist.length ? srvHist[srvHist.length - 1][0] : 0;
-    request('GET', '/api/ops/server' + (last ? '?hs=' + (last - 1) : '')).then(function (r) {
-      if (r.rate.delta) {
-        var from = r.rate.history.length ? r.rate.history[0][0] : Infinity;
-        r.rate.history = srvHist.filter(function (x) { return x[0] < from; }).concat(r.rate.history).slice(-300);
-      }
-      srvHist = r.rate.history;
-      if (state.view === 'server') renderServer(r);
-    }, function (err) { if (!quiet) fail(err); })
-      .then(function () { srvBusy = false; });
+  /* The サーバー tab: the five-minute history as this page has it (the server sends what came after: `hs`, the second before the newest this
+     page holds), and the tab's parts it has with their revs (asked again, a part that is the same comes back as 0: server/core/hash.js). */
+  var srvHist = [], srvParts = { parts: {}, revs: {} };
+  function serverAsk() { var last = srvHist.length ? srvHist[srvHist.length - 1][0] : 0; return { p: heldPath('/api/ops/server' + (last ? '?hs=' + (last - 1) : ''), srvParts) }; }
+  function serverGot(x) { gotServer(fromHeld(x, srvParts)); }
+  function gotServer(r) {
+    if (r.rate.delta) {
+      var from = r.rate.history.length ? r.rate.history[0][0] : Infinity;
+      r.rate.history = srvHist.filter(function (x) { return x[0] < from; }).concat(r.rate.history).slice(-300);
+    }
+    srvHist = r.rate.history;
+    if (state.view === 'server') renderServer(r);
   }
+  // (an answer of parts asked with held=: js/net/wire.js BR.held)
+  function fromHeld(x, keep) { return BR.held.merge(x, keep); }
+  function heldPath(path, keep) { return path + (path.indexOf('?') < 0 ? '?' : '&') + 'held=' + BR.held.param(keep); }
   function srvStat(box, label, value, sub) {
     var s = el('div', 'stat');
     s.appendChild(el('span', '', label));
@@ -3223,7 +3239,8 @@
   }
   function srvBill(r) {
     var e = r.estimate;
-    srvCard($('#srv-bill'), '今月の料金（目安）：' + usd(e.total) + ' ≈ ' + fmt(e.yen) + '円', e.lines.map(function (l) {
+    srvCard($('#srv-bill'), '今月の料金（目安）：' + usd(e.total) + ' ≈ ' + fmt(e.yen) + '円', e.lines.map(function (x, i) {
+      var l = Object.assign({}, r.bill[i], x);
       if (l.included === undefined) return [l.label, usd(l.cost)];
       var used = l.unit === 'GB' ? l.used.toFixed(2) + 'GB / ' + l.included + 'GB' : count(l.used) + l.unit + ' / ' + count(l.included) + l.unit;
       return [l.label, used + '（' + usd(l.cost) + '）', l.included ? l.used / l.included : null];
@@ -3655,57 +3672,69 @@
   // (`known`: the vaults' answer that was just had, so it is not asked for again)
   function loadVault(quiet, known) {
     if (!state.vault) return Promise.resolve();
+    var plan = vaultPlan(quiet);
+    return Promise.all([known || vreq('GET', plan.paths[0]), plan.paths[1] ? vreq('GET', plan.paths[1]) : null]).then(function (rs) { gotVault(plan, rs); }, function (err) { return vaultFailed(plan, err); });
+  }
+  // what to ask for: the vaults one sees, and the open one's files (from the timer, with the revs it was given: "the same" while nothing changed)
+  function vaultPlan(quiet) {
     var space = state.vaultSpace, none = !space && !state.developer, rv = state.vaultRev;
     var cheap = quiet && Date.now() - rv.full < 300000 && rv.space === space;
     var q = function (path, rev) { return path + (path.indexOf('?') < 0 ? '?' : '&') + 'rev=' + encodeURIComponent(rev); };
     var filesPath = '/api/vault/files' + (space ? '?space=' + encodeURIComponent(space) : '');
-    return Promise.all([
-      known || vreq('GET', cheap && rv.spaces ? q('/api/vault/spaces', rv.spaces) : '/api/vault/spaces'),
-      none ? null : vreq('GET', cheap && rv.files ? q(filesPath, rv.files) : filesPath)
-    ]).then(function (rs) {
-      var sp = rs[0], r = rs[1];
-      if (!state.vault || state.vaultSpace !== space) return;
-      // (nothing changed: as it is)
-      if (sp.same && (!r || r.same)) return;
-      if (sp.same) sp = state.vaultSpaces;
-      if (r && r.same) r = { space: state.vaultInfo, files: state.vaultFiles, folders: state.vaultFolders, all: state.vault.all, store: state.vault.store, rev: rv.files };
-      rv.spaces = sp.rev || '';
-      rv.files = r ? r.rev || '' : '';
-      rv.space = space;
-      if (!cheap) rv.full = Date.now();
-      if (sp.speed) state.vaultSpeed = sp.speed;
-      state.vaultSpaces = sp;
-      if (sp.requests) setCount('vault', sp.requests.length);
-      state.vault.used = sp.pool.used;
-      state.vault.maxBytes = sp.pool.maxBytes;
-      state.vault.me = sp.me;
-      if (sp.inDb !== undefined) state.vault.inDb = sp.inDb;
-      state.vaultInfo = r ? r.space : null;
-      state.vaultFiles = r ? r.files || [] : [];
-      state.vaultFolders = r ? r.folders || [] : [];
-      if (r) { state.vault.all = r.all; state.vault.store = r.store; }
-      // (the code's ticket no longer good: looking only)
-      if (r && r.locked && state.vault.ticket) { state.vault.ticket = ''; clearTimeout(vaultTimer); }
-      // (a folder that went: back to the top; checks on what went)
-      if (state.vaultFolder && !folderOf(state.vaultFolder)) state.vaultFolder = '';
-      Object.keys(state.vaultPicked).forEach(function (id) { if (!fileOf(id) && !folderOf(id)) delete state.vaultPicked[id]; });
-      // as it was: nothing redrawn (what is open on the page stays as it is)
-      var sig = JSON.stringify([space, sp, state.vaultFiles, state.vaultFolders]);
-      if (!quiet || sig !== vaultSig) { vaultSig = sig; renderVault(); }
-      if (commentsFor) renderComments();
-      toBucket();
-      renderResume();
-      roomCame();
-    }, function (err) {
-      // (a shared vault no longer there: back to the first one)
-      var first = state.vaultSpaces && state.vaultSpaces.spaces[0], back = state.developer ? '' : first ? first.id : '';
-      if (err && err.code === 'no_space' && state.vault && state.vaultSpace === space && back !== space) {
-        state.vaultSpace = back;
-        return loadVault();
-      }
-      if (!quiet) fail(err);
-      return null;
-    });
+    return { space: space, quiet: quiet, cheap: cheap, paths: [cheap && rv.spaces ? q('/api/vault/spaces', rv.spaces) : '/api/vault/spaces', none ? null : cheap && rv.files ? q(filesPath, rv.files) : filesPath] };
+  }
+  // asked again at the lists' pace while the vault is open (not while files go up or down), with the rest of the beat (ops/beat.js)
+  function vaultAsk() {
+    if (!quietOk() || !state.vault || moving || !$('#viewer').hidden || !$('#vmenu').hidden) return null;
+    var plan = vaultPlan(true), h = state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : null;
+    return plan.paths.filter(Boolean).map(function (p) { return { p: p, h: h, plan: plan }; });
+  }
+  function vaultGot(xs, q) { var plan = q[0].plan; gotVault(plan, [xs[0], plan.paths[1] ? xs[1] : null]); }
+  function gotVault(plan, rs) {
+    var sp = rs[0], r = rs[1], space = plan.space, rv = state.vaultRev;
+    if (!state.vault || state.vaultSpace !== space) return;
+    // (nothing changed: as it is)
+    if (sp.same && (!r || r.same)) return;
+    if (sp.same) sp = state.vaultSpaces;
+    if (r && r.same) r = { space: state.vaultInfo, files: state.vaultFiles, folders: state.vaultFolders, all: state.vault.all, store: state.vault.store, rev: rv.files };
+    rv.spaces = sp.rev || '';
+    rv.files = r ? r.rev || '' : '';
+    rv.space = space;
+    if (!plan.cheap) rv.full = Date.now();
+    if (sp.speed) state.vaultSpeed = sp.speed;
+    state.vaultSpaces = sp;
+    if (sp.requests) setCount('vault', sp.requests.length);
+    state.vault.used = sp.pool.used;
+    state.vault.maxBytes = sp.pool.maxBytes;
+    state.vault.me = sp.me;
+    if (sp.inDb !== undefined) state.vault.inDb = sp.inDb;
+    state.vaultInfo = r ? r.space : null;
+    state.vaultFiles = r ? r.files || [] : [];
+    state.vaultFolders = r ? r.folders || [] : [];
+    if (r) { state.vault.all = r.all; state.vault.store = r.store; }
+    // (the code's ticket no longer good: looking only)
+    if (r && r.locked && state.vault.ticket) { state.vault.ticket = ''; clearTimeout(vaultTimer); }
+    // (a folder that went: back to the top; checks on what went)
+    if (state.vaultFolder && !folderOf(state.vaultFolder)) state.vaultFolder = '';
+    Object.keys(state.vaultPicked).forEach(function (id) { if (!fileOf(id) && !folderOf(id)) delete state.vaultPicked[id]; });
+    // as it was: nothing redrawn (what is open on the page stays as it is)
+    var sig = JSON.stringify([space, sp, state.vaultFiles, state.vaultFolders]);
+    if (!plan.quiet || sig !== vaultSig) { vaultSig = sig; renderVault(); }
+    if (commentsFor) renderComments();
+    toBucket();
+    renderResume();
+    roomCame();
+  }
+  function vaultFailed(plan, err) {
+    if (err && err.code === 'vault_locked' && state.vault && state.vault.ticket) relock('閲覧のみに戻りました。変更するには「編集する」から開発者コードを入力してください');
+    // (a shared vault no longer there: back to the first one)
+    var first = state.vaultSpaces && state.vaultSpaces.spaces[0], back = state.developer ? '' : first ? first.id : '';
+    if (err && err.code === 'no_space' && state.vault && state.vaultSpace === plan.space && back !== plan.space) {
+      state.vaultSpace = back;
+      return loadVault();
+    }
+    if (!plan.quiet) fail(err);
+    return null;
   }
   function fileOf(id) { return state.vaultFiles.filter(function (f) { return f.id === id; })[0] || null; }
   // another vault: from its top, nothing checked

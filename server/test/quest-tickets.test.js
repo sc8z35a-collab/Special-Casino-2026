@@ -81,10 +81,11 @@ test('spin XP grants tickets at the actual level boundary, with no retroactive o
   let r = await s.call('POST', '/api/spin', { token: a.token, body: { bet: 100, xp: 9999999 } });
   assert.equal(r.status, 200, JSON.stringify(r));
   assert.equal(r.xp, LEVEL.at(2));
-  assert.deepEqual(r.questTickets, { '5h': 1, day: 0 });
+  assert.equal(r.questTickets, undefined, 'a spin does not repeat the tickets (the quest event and the quests tell them)');
+  assert.deepEqual((await get()).tickets, { '5h': 1, day: 0 });
   s.setUser(a.me.id, { xp: LEVEL.at(5) - 1 });
   r = await s.call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
-  assert.deepEqual(r.questTickets, { '5h': 2, day: 1 });
+  assert.equal(r.status, 200);
   for (let i = 0; i < 3; i++) assert.deepEqual((await get()).tickets, { '5h': 2, day: 1 });
   const legacy = await s.register('LegacyLevel');
   s.setUser(legacy.me.id, { xp: LEVEL.at(25) });
@@ -216,7 +217,6 @@ test('a daily-only draw persists on spin XP even with quest progress disabled', 
   s.setUser(p.me.id, { xp: LEVEL.at(5) - 1, tokens: 10000 });
   const spin = await s.call('POST', '/api/spin', { token: p.token, body: { bet: 100 } });
   assert.equal(spin.status, 200);
-  assert.deepEqual(spin.questTickets, { '5h': 0, day: 1 });
   assert.deepEqual((await s.call('GET', '/api/me', { token: p.token })).me.questTickets, { '5h': 0, day: 1 });
   assert.equal(draws.length, 0);
 });

@@ -23,10 +23,10 @@ import {
   cleanPassword, hashPassword, verifyPassword, signTicket, verifyTicket, sealText, openText, keyFrom
 } from './auth.js';
 import { Limiter } from './ratelimit.js';
-import { hashOf } from './hash.js';
+import { revOf, partOf, heldOf, heldFrom } from './hash.js';
 import {
   RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, VIP, RECEIPTS,
-  spin as spinReels, evaluate as evaluateLine, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
+  spin as spinReels, evaluate as evaluateLine, packGrid, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
 import { createStaffPins } from './staffpin.js';
@@ -43,7 +43,7 @@ import { createOpsLog, jst } from './opslog.js';
 import { createPush } from './push.js';
 import { screen as filterText } from './filter.js';
 import { createQuota, isQuotaError, maintenanceBody } from './quota.js';
-import { readQuests, stepQuests, claimQuests, questsReady, questView, questTickets, grantLevelTickets, resetQuestPeriod, questBonuses } from './quests.js';
+import { readQuests, stepQuests, claimQuests, questsReady, questSlots, questTickets, grantLevelTickets, resetQuestPeriod, questBonuses } from './quests.js';
 import { createOps, DELETED, ARCHIVE_DAYS } from './ops.js';
 import { createOpsLogin } from './opslogin.js';
 import { createPk, GATED } from './pk.js';
@@ -108,6 +108,8 @@ function randomInt(lo, hi) {
   globalThis.crypto.getRandomValues(r);
   return lo + (r[0] % (hi - lo + 1));
 }
+// what of `o` is something (not 0, false, nothing or an empty list): for an answer that leaves out what the page takes as none
+const someOf = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v && !(Array.isArray(v) && !v.length)));
 
 export function createApi({ db, live: hostLive, config, secret, hostAdmin = null, defer = null, blobs = null, host = null, questRewardRoll, questTicketRoll, extensions: extraParts = extensions }) {
   const q = statements(db);
@@ -572,7 +574,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // with VIP on, each one is VIP EXP.
   function questNotice(userId, r) {
     if (!r || (!r.done.length && !r.ticketGain['5h'] && !r.ticketGain.day)) return;
-    live.send(userId, 'quest', { done: r.done.map((x) => x.id), ready: r.ready, tickets: r.tickets, bonuses: r.bonuses, xp: getUser(userId).xp });
+    // (the tickets when some were won, the bonuses when a quest was finished: they change with nothing else here)
+    live.send(userId, 'quest', { done: r.done.map((x) => x.id), ready: r.ready, ...(r.ticketGain['5h'] || r.ticketGain.day ? { tickets: r.tickets } : {}),
+      ...(r.done.length ? { bonuses: r.bonuses } : {}), xp: getUser(userId).xp });
     if (r.done.length && vipOn(getUser(userId))) tx(() => addVipExp(getUser(userId), r.done.length * VIP_RULES.exp.quest));
   }
   // Progress from one of the player's actions, saved in a transaction of its own.
@@ -1736,8 +1740,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         me: meDto(getUser(u.id)),
         unread: unreadTotal(u.id),
         friendRequests: pendingRequests(u.id),
+        // (the Shop's prices and sale hours are the game's own: js/game/config.js, js/game/sale.js; `now` sets its clock)
         iconShop: iconShop(),
-        itemShop: itemShop(),
         peter: peter.me(),
         johnson: johnson.me(),
         official: official.me(),
@@ -1756,7 +1760,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const bet = Number(body.bet);
       if (!RULES.bets.includes(bet)) throw new ApiError(400, 'bad_bet', 'ベット額が正しくありません');
       rate(limit.spin, u.id, 'スピンが速すぎます');
-      const today = utcDay();
+      const today = utcDay(), vipBefore = JSON.stringify(vipDto(u));
       // 友達と稼ぐ: the hub's benefits, on while two or more of its players are
       // active. The game says how long ago its player last did something
       // (AUTO spins by itself, so a spin alone is not that).
@@ -1864,32 +1868,28 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       questNotice(u.id, quests);
       syncMilestones(u.id);
       const after = getUser(u.id);
-      const out = { grid: result.grid, line: result.line, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet, charm: result.charm || null, hub: boost,
-        combo: result.combo, double: !!result.double, vip: !!result.vip };
+      // (as it is sent: what the game makes whole for itself is not, js/game/engine.js whole() — the grid as digits, no line, nothing that
+      // is none)
+      const out = { grid: packGrid(result.grid), bet, ...someOf({ wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, combo: result.combo,
+        charm: result.charm, hub: boost, double: result.double, vip: result.vip }) };
       notifyWatchers(u.id, { type: 'spin', user: u.id, result: out, balance: balance(after) });
       if (boost && on) {
         // the others in the hub: the combo they share, and what everyone won
         // together (週間協力 counts it for the ones who are active)
-        hubSend(on.hub.id, { type: 'spin', user: mini(u), win: out.total, tier: out.tier, combo: boost.combo, misses: boost.misses, next: boost.next,
+        hubSend(on.hub.id, { type: 'spin', user: mini(u), win: result.total, tier: result.tier, combo: boost.combo, misses: boost.misses, next: boost.next,
           seq: boost.seq, sevens: boost.sevens, diamonds: boost.diamonds }, u.id);
         if (earned > 0) for (const id of on.active) if (id !== u.id) track(id, [['coopEarn', earned]]);
       }
       // a SUPER BIG WIN: every friend who is online hears it
-      if (result.tier >= 3) superWin(u, out);
+      if (result.tier >= 3) superWin(u, result);
       settleBets(u.id, result.tier);
       if (fight) battleStep(fight);
-      if (coop) coopAfterSpin(coop, u, out);
+      if (coop) coopAfterSpin(coop, u, result);
       afterSpend(u.id);
-      return {
-        result: out,
-        balance: balance(after),
-        charm: after.charm > 0,
-        xp: after.xp,
-        questTickets: questTickets(readQuests(after.quests)),
-        questBonuses: questBonuses(readQuests(after.quests)),
-        vip: vipDto(after),
-        stats: { totalWon: after.total_won, biggestWin: after.biggest_win, spins: after.spins }
-      };
+      // (the お守り加護 only while it is on; VIP's state only when the spin changed it; the quests' tickets and bonuses come as a 'quest'
+      // event when they change)
+      const vip = vipDto(after);
+      return { result: out, balance: balance(after), xp: after.xp, ...someOf({ charm: after.charm > 0 }), ...(JSON.stringify(vip) !== vipBefore ? { vip } : {}) };
     },
 
     'POST /api/buy': async (req, u) => {
@@ -2917,13 +2917,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // still playing when the day turns (6:00 Japan time): that day counts too
     'POST /api/login-bonus': (req, u) => ({ loginBonus: loginBonus(u.id), next: nextLoginReset(), me: meDto(getUser(u.id)) }),
 
-    /* ----- quests and XP ----- */
+    /* ----- quests and XP -----
+       (the quests as the periods that are on hold them: the game shows them with the quests it has, js/game/quests.js view) */
 
     'GET /api/quests': (req, u) => {
       syncMilestones(u.id);
       const cur = getUser(u.id);
       const state = readQuests(cur.quests);
-      return { periods: questView(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: cur.xp, now: Date.now() };
+      return { quests: questSlots(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: cur.xp, now: Date.now() };
     },
 
     // 受け取る: the finished quests in `ids`, or all of them (一括受け取り)
@@ -2951,7 +2952,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (r.claimed.length) live.send(u.id, 'quest', { changed: true, ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp });
       return {
         claimed: r.claimed.map((x) => x.id), dollars: r.dollars, coins: r.coins, rewards: r.rewards, tokens: 0,
-        periods: questView(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp, balance: balance(after)
+        quests: questSlots(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp, balance: balance(after), now: Date.now()
       };
     },
 
@@ -2967,7 +2968,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       const after = getUser(u.id);
       live.send(u.id, 'quest', { changed: true, ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp });
-      return { periods: questView(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp, now: Date.now(), balance: balance(after) };
+      return { quests: questSlots(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp, now: Date.now(), balance: balance(after) };
     },
 
     // the beginner guide is finished
@@ -3126,15 +3127,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           .run(theirs, build, Date.now(), String(req.header('user-agent') || '').slice(0, 300), u.id);
       }
       if (theirs < RELEASE) return { release: RELEASE, outdated: true, bonus: 0, updates: 0, released: releasedAt() };
-      tx(() => {
+      const seen = tx(() => {
         const cur = getUser(u.id);
         const n = RELEASE - cur.release_seen;
         if (n > 0) q('UPDATE users SET release_seen = ?, release_bonus = release_bonus + ? WHERE id = ?').run(RELEASE, n * RULES.updateBonus, cur.id);
+        return n > 0;
       });
-      // (still there after a reload, until it is tapped)
+      // (still there after a reload, until it is tapped; the player's own state only when this changed it — the game has it otherwise)
       const me = getUser(u.id);
       const bonus = me.release_bonus;
-      return { release: RELEASE, outdated: false, bonus, updates: Math.round(bonus / RULES.updateBonus), me: meDto(me), released: releasedAt() };
+      return { release: RELEASE, outdated: false, bonus, updates: Math.round(bonus / RULES.updateBonus), ...(seen ? { me: meDto(me) } : {}), released: releasedAt() };
     },
 
     // the tap on the thanks: the update money arrives
@@ -3892,8 +3894,18 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     ops.see(u);
     // lean=1: what a small window on the desktop draws (the figures and the five-minute history), not the whole tab
     if (req.query.get('lean') === '1') return sinceHistory(req, leanServer());
-    return sinceHistory(req, { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on }, line: line.status(), patrol: patrolDto(), stele: stele.status() });
+    const snap = stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() });
+    return sinceHistory(req, { ...snap, ...billOf(snap.estimate), discord: { on: discord.on }, line: line.status(), patrol: patrolDto(), stele: stele.status() });
   };
+  // The month's bill as the tab draws it: the lines' names, allowances and units (the same all month, so a page asking again holds them:
+  // POST /api/ops/batch `held`) apart from what each comes to, which changes with every request.
+  const billOf = (e) => ({
+    bill: e.lines.map(({ key, label, included, unit }) => ({ key, label, included, unit })),
+    estimate: {
+      total: e.total, yen: e.yen, usagePercent: e.usagePercent, usageTier: e.usageTier,
+      usagePeak: e.usagePeak && { label: e.usagePeak.label, percent: e.usagePeak.percent }, lines: e.lines.map(({ used, cost }) => ({ used, cost }))
+    }
+  });
   // the 石碑: how it stands (every operator), carved and looked over now (the developer), and the log's rows to keep a copy of (the developer)
   routes['GET /api/ops/stele'] = (req, u) => { ops.see(u); return { stele: stele.status(), now: Date.now() }; };
   routes['POST /api/ops/stele/run'] = async (req, u) => {
@@ -3924,9 +3936,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   //  - `team`: the same way (`t`); `t=-`: left out (the team's tab does its own asking);
   //  - `players`: only when the page shows it (`pl`: what it was given last, empty the first time; `q`: what it looks for), as what changed.
   // What changes with every look (the time, the month's share in a figure, when someone who is on the site was last seen) is not part of
-  // a rev.
-  const revOf = (part, skip = ['now']) => hashOf(JSON.stringify(part, (k, v) => (skip.includes(k) ? undefined : v)));
-  const partOf = (part, have, rev = revOf(part)) => (have === rev ? { same: true, rev } : { ...part, rev });
+  // a rev (server/core/hash.js).
   const teamRevOf = (t) => revOf({ ...t, operators: t.operators.map((o) => (o.site || o.game ? { ...o, seenAt: 0 } : o)) });
   routes['GET /api/ops/tick'] = async (req, u) => {
     ops.need(u);
@@ -3967,6 +3977,35 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     }
     return out;
   };
+  // Many looks in one request: what the operator site keeps asking for (ops/beat.js: the tick above, the tab in front, the desktop's windows)
+  // at its pace, instead of a request each. `asks`: [{ p: '/api/ops/…?…' or '/api/vault/…', rev }], each answered by its own route with that
+  // route's own checks (the viewer's allowlist too); a refusal is that ask's alone ({ error }). `rev`: the whole answer the page has (the
+  // same → { same: true }); `held=` in the address: the parts it has, as for any look (answer() below). Not the security base's sealed
+  // channel, nor a file.
+  const BATCH_MAX = 16;
+  const batchable = (key) => /^GET \/api\/(?:ops|vault)\//.test(key) && !/^GET \/api\/ops\/(?:ext\/|batch$)/.test(key) && !VAULT_BULK.has(key) && !!routes[key];
+  routes['POST /api/ops/batch'] = async (req, u) => {
+    ops.see(u);
+    const { asks } = await req.json(8 * 1024);
+    if (!Array.isArray(asks) || asks.length > BATCH_MAX) throw new ApiError(400, 'bad_batch', `一度に見られるのは ${BATCH_MAX} 件までです`);
+    const answers = [];
+    for (const a of asks) {
+      let url;
+      try { url = new URL(String((a && a.p) || ''), 'http://batch'); } catch { url = null; }
+      const key = url && url.origin === 'http://batch' ? `GET ${url.pathname}` : '';
+      if (!batchable(key) || (u.scope === 'view' && !VIEW_ONLY.has(key))) { answers.push({ error: { status: 403, code: 'not_batched', message: 'この取得はまとめられません' } }); continue; }
+      try {
+        const out = await routes[key](Object.create(req, { method: { value: 'GET' }, path: { value: url.pathname }, query: { value: url.searchParams } }), u);
+        const held = url.searchParams.get('held');
+        // (a route that gives its own rev — the lists — is answered by it, so the page's rev is the same either way)
+        answers.push(held !== null ? heldOf(out, heldFrom(held)) : typeof a.rev === 'string' ? partOf(out, a.rev, out.rev || revOf(out)) : out);
+      } catch (e) {
+        if (!(e instanceof ApiError)) { console.error(`batch: ${key}`, e && e.message); e = new ApiError(500, 'internal', 'サーバーでエラーが発生しました'); }
+        answers.push({ error: { status: e.status, code: e.code, message: e.message } });
+      }
+    }
+    return { now: Date.now(), answers };
+  };
   // The lists a tab asks for again and again while it is open (the reports, the detections, the feedback): `rev`, what the page was given last, is
   // answered `{ same: true }` while the list has not changed, and the page does not draw it again.
   for (const key of ['GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback']) {
@@ -3974,7 +4013,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     routes[key] = async (req, u) => {
       const out = await inner(req, u);
       const rev = revOf(out);
-      return req.query.get('rev') === rev ? { same: true, rev } : { ...out, rev };
+      return req.query.get('rev') === rev ? { same: true } : { ...out, rev };
     };
   }
   // the developer tries the notices (Discord, LINE): one goes out at once to each
@@ -3998,7 +4037,22 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // lifting one (manual blocks are logged)
   routes['GET /api/ops/security'] = (req, u) => {
     ops.see(u);
-    return { shield: shield.snapshot(), emergency: emergency.info(), now: Date.now() };
+    const sh = shield.snapshot(), em = emergency.info();
+    // lean=1: what a small window on the desktop shows (ops/cdw.js) — the last five minutes' attacks, the blocks, a stop — and none of the
+    // counts of requests, which change with every look (this one too), so that the same comes back as "the same"
+    if (req.query.get('lean') === '1') {
+      const { attacks, floods, authFails } = sh.last5m;
+      return {
+        shield: { last5m: { attacks, floods, authFails }, blockCount: sh.blocks.length, blocks: sh.blocks.slice(0, 3).map((b) => ({ scope: b.scope, target: b.target, reason: b.reason, until: b.until })) },
+        emergency: { stopped: em.stopped, level: em.level }, now: Date.now()
+      };
+    }
+    // tab=1: what the operator site's セキュリティ tab draws, part by part (asked again with the parts it holds: POST /api/ops/batch `held`)
+    if (req.query.get('tab') === '1') {
+      const { requests, attacks, floods, authFails } = sh.last5m;
+      return { last5m: { requests, attacks, floods, authFails }, pressure: { attackers: sh.pressure.attackers, breachAt: sh.pressure.breachAt }, blocks: sh.blocks, topAttackers: sh.topAttackers.filter((x) => x.score > 0).slice(0, 15), emergency: em, now: Date.now() };
+    }
+    return { shield: sh, emergency: em, now: Date.now() };
   };
   routes['POST /api/ops/security/block'] = async (req, u) => {
     ops.need(u);
@@ -4032,21 +4086,29 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   /* ---------------------------------------------------------------- live connection hooks */
 
-  // First payload of a live connection.
-  function hello(userId) {
+  // First payload of a live connection (`held`: what the page has of it, as a look's held=: those parts come back as 0) — with what the
+  // game asked for by itself on every (re)connection: who watches the player, a battle going on, the money trees.
+  function hello(userId, held = null) {
     const bonus = loginBonus(userId);
     try { accessDayGifts(userId); } catch (e) { console.error('access days', e); }
     syncMilestones(userId);
     const u = getUser(userId);
-    return {
+    const out = {
       loginBonus: bonus,
       loginReset: nextLoginReset(),
-      me: meDto(u), unread: unreadTotal(userId), friendRequests: pendingRequests(userId), iconShop: iconShop(), itemShop: itemShop(),
+      me: meDto(u), unread: unreadTotal(userId), friendRequests: pendingRequests(userId), iconShop: iconShop(),
       peter: peter.me(), johnson: johnson.me(), official: official.me(), online: live.onlineCount(),
       hub: myHub(userId), hubInvites: hubInvites(userId),
       // a screen view under way when the game (re)connects: it starts sending again (nothing is shown)
       view: watchRef ? watchRef.viewFor(userId) : null
     };
+    const b = currentBattle(userId);
+    out.battle = b ? battleDto(b, userId) : null;
+    out.watchers = { watchers: homeMembers(userId), chat: homeChatOf(userId) };
+    out.tree = routes['GET /api/tree']({ query: new URLSearchParams() }, u);
+    // (the time now, for what the page counts down: a part it holds keeps the time it came with)
+    out.now = Date.now();
+    return held ? heldOf(out, heldFrom(held)) : out;
   }
 
   function presence(userId, online) {
@@ -4248,7 +4310,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // site, is refused before its route runs (and each of these checks for an
   // operator or a viewer on its own).
   const VIEW_ONLY = new Set([
-    'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/ops/alive', 'GET /api/ops/counts', 'GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback',
+    'GET /api/ops/me', 'POST /api/ops/enter', 'GET /api/ops/alive', 'GET /api/ops/counts', 'POST /api/ops/batch', 'GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback',
     'GET /api/ops/log', 'GET /api/ops/log/entries', 'GET /api/ops/log/verify', 'GET /api/ops/operators', 'GET /api/ops/server', 'GET /api/ops/security', 'GET /api/ops/patrol', 'GET /api/ops/ext',
     SEC_KEYS.open, ...SEC_KEYS.viewer, 'POST /api/logout',
     'GET /api/pk/state', 'POST /api/pk/open', 'POST /api/pk/close'
@@ -4327,7 +4389,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const result = await route(req, user);
       if (sealed) return { status: 200, body: await comm.seal(sealed, result) };
       // (a script or a file, not JSON: the host sends it as it is)
-      return result instanceof Raw ? { status: result.status, raw: result } : { status: 200, body: result };
+      if (result instanceof Raw) return { status: result.status, raw: result };
+      // `held=part.rev,…` on a look: the parts the page already has, as they are, come back as 0 (server/core/hash.js)
+      const held = req.method === 'GET' ? req.query.get('held') : null;
+      return { status: 200, body: held !== null && result && typeof result === 'object' && !Array.isArray(result) ? heldOf(result, heldFrom(held)) : result };
     } catch (e) {
       if (e instanceof ApiError) return { status: e.status, body: { error: { code: e.code, message: e.message, ...(e.extra || {}) } } };
       // the host's daily quota ran out (e.g. database writes on the free plan)

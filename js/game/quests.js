@@ -245,16 +245,55 @@
     return 'green';
   }
 
+  // One exclusive draw per completed STEP (out of 1000), saved until reset.
+  var BONUSES = {
+    rolls: 1000,
+    ultra: { rolls: 1, multiplier: 6, coins: 8 },
+    pro: { rolls: 50, multiplier: 3, coins: 0 }
+  };
+  // what a quest pays, with the bonus its STEP drew ('pro', 'ultra'; anything else: none)
+  function reward(q, bonus) {
+    var mode = bonus === 'pro' || bonus === 'ultra' ? bonus : 'normal', rule = BONUSES[mode];
+    return { id: q.id, mode: mode, multiplier: rule ? rule.multiplier : 1, dollars: q.reward * (rule ? rule.multiplier : 1), coins: rule ? rule.coins : 0 };
+  }
+  /* A player's quests as the server keeps them ({ <period>: { k: its index, m: { metric: n }, c: [finished], d: [received], b: { id: bonus },
+     v: resets } }, server/core/quests.js): a period whose index is not this one's has started over. slots(): only the periods that are on
+     (what the server sends); view(): every quest on in each period with where it is — open (how far), ready (to be received) or received —
+     as the screen shows them. The same on the server and in the game, which makes the view itself from what it is sent. */
+  function slot(state, period, now) {
+    var p = state && state[period.id];
+    return p && p.k === range(period, now).k ? { m: p.m || {}, c: p.c || [], d: p.d || [], b: p.b || {}, v: p.v || 0 } : { m: {}, c: [], d: [], b: {}, v: 0 };
+  }
+  function slots(state, now) {
+    var out = {};
+    PERIODS.forEach(function (period) { var p = state && state[period.id]; if (p && p.k === range(period, now).k) out[period.id] = p; });
+    return out;
+  }
+  function view(state, now) {
+    return PERIODS.map(function (period) {
+      var r = range(period, now), p = slot(state, period, now);
+      return {
+        id: period.id, start: r.start, end: r.end, resetVersion: p.v,
+        quests: LIST.filter(function (q) { return q.period === period.id && active(q, r.k); }).map(function (q) {
+          var st = p.d.indexOf(q.id) >= 0 ? 'received' : p.c.indexOf(q.id) >= 0 ? 'ready' : 'open';
+          // (a boosted count can be part way to the next one)
+          var row = { id: q.id, state: st, progress: st === 'open' ? Math.min(q.goal, Math.floor((p.m[q.metric] || 0) + 1e-9)) : q.goal };
+          if (st !== 'open' && p.b[q.id]) row.reward = reward(q, p.b[q.id]);
+          return row;
+        })
+      };
+    });
+  }
+
   BR.QUESTS = {
     epoch: EPOCH,
     periods: PERIODS,
     list: LIST,
-    // One exclusive draw per completed STEP (out of 1000), saved until reset.
-    bonuses: {
-      rolls: 1000,
-      ultra: { rolls: 1, multiplier: 6, coins: 8 },
-      pro: { rolls: 50, multiplier: 3, coins: 0 }
-    },
+    bonuses: BONUSES,
+    reward: reward,
+    slot: slot,
+    slots: slots,
+    view: view,
     // metrics that keep the biggest value instead of adding up
     maxMetrics: MAX_METRICS,
     // "無一文" means less than this in $ (spin tokens counted at their price)

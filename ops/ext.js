@@ -11,12 +11,12 @@
    OpsExt.menu(label, function () {…})                       an item in the account menu
    OpsExt.url(name)                                          a promise: a fresh address for a file of
                                                               the server's that is not a script (a worker)
-   io: { request, vault, toast, progress } as the page has them (vault: a request that carries the developer's code ticket,
-   when there is one; progress(job, 0..1): how far a held file's check has come). OpsExt.io() gives the same to a part that was not handed them. */
+   io: { request, vault, toast, progress, live } as the page has them (vault: a request that carries the developer's code ticket,
+   when there is one; progress(job, 0..1): how far a held file's check has come; live(): whether the site's live connection is up). OpsExt.io() gives the same to a part that was not handed them. */
 var OpsExt = (function () {
   'use strict';
   var hooks = {}, urls = {}, request = null, started = null, loaded = {};
-  var tools = { request: null, vault: null, toast: function () {}, progress: function () {} };
+  var tools = { request: null, vault: null, toast: function () {}, progress: function () {}, live: function () { return false; } };
   var info = { expected: false, missing: false, failed: false, active: false };
 
   function add(a) {
@@ -35,7 +35,7 @@ var OpsExt = (function () {
   // the files for this person: scripts and styles go into the page (once); asked again after each login
   function load(req, extra) {
     request = req;
-    tools = { request: req, vault: (extra && extra.vault) || req, toast: (extra && extra.toast) || function () {}, progress: (extra && extra.progress) || function () {} };
+    tools = { request: req, vault: (extra && extra.vault) || req, toast: (extra && extra.toast) || function () {}, progress: (extra && extra.progress) || function () {}, live: (extra && extra.live) || function () { return false; } };
     if (started) return started;
     started = req('GET', '/api/ops/ext').then(function (r) {
       info.expected = r.assets.length > 0 || !!r.missing;

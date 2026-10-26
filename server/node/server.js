@@ -94,7 +94,7 @@ export function createApp({ blobs = null, questRewardRoll, questTicketRoll, exte
         }
         const userId = api.consumeTicket(url.searchParams.get('ticket'));
         if (!userId) { sendJson(res, 401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } }); return; }
-        live.attach(req, res, userId, () => api.hello(userId));
+        live.attach(req, res, userId, () => api.hello(userId, url.searchParams.get('held')));
         return;
       }
       const ip = clientIp(req, config.trustProxy, config.clientIpHeader);

@@ -110,7 +110,7 @@ test('wins in a row: from the fifth, every win pays double', async () => {
     setUser(p.me.id, { tokens: 1000000, streak: 4 });
     const r = (await call('POST', '/api/spin', { token: p.token, body: { bet: 100 } })).result;
     if (r.total > 0) {
-      assert.deepEqual([r.combo, r.double, r.total], [5, true, evaluate(r.line, 100).total * 2]);
+      assert.deepEqual([r.combo, r.double, r.total], [5, true, evaluate(globalThis.BR.engine.whole(r).line, 100).total * 2]);
       checked = true;
     } else assert.equal(r.combo, 0);
   }
@@ -119,7 +119,7 @@ test('wins in a row: from the fifth, every win pays double', async () => {
   for (let i = 0; i < 400; i++) {
     setUser(p.me.id, { streak: 3 });
     const r = (await call('POST', '/api/spin', { token: p.token, body: { bet: 100 } })).result;
-    if (r.total > 0) { assert.deepEqual([r.combo, !!r.double, r.total], [4, false, evaluate(r.line, 100).total]); break; }
+    if (r.total > 0) { assert.deepEqual([r.combo, !!r.double, r.total], [4, false, evaluate(globalThis.BR.engine.whole(r).line, 100).total]); break; }
   }
 });
 
