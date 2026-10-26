@@ -704,6 +704,7 @@
     BR.screens.init();
     BR.kit.init();
     BR.account.init();
+    if (BR.oauth) BR.oauth.init();
     BR.avatars.init();
     BR.social.init();
     // banned: back to the title screen, locked (before anything else shows)

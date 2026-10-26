@@ -61,7 +61,7 @@
     if (threeJs) return threeJs;
     threeJs = new Promise(function (resolve, reject) {
       var s = document.createElement('script');
-      s.src = SRC;
+      s.src = BR.util.codeUrl(SRC);
       s.async = true;
       s.onload = function () { if (window.BR3D) resolve(window.BR3D); else reject(new Error('3D: three.js')); };
       s.onerror = function () { threeJs = null; reject(new Error('3D: ' + SRC)); };

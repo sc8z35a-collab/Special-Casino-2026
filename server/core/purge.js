@@ -38,7 +38,8 @@ export const PLAYER_ROWS = [
   ['trees', ['user_id']],
   ['tree_auctions', ['user_id']],
   ['npc_friends', ['user_id']],
-  ['push_subs', ['user_id']]
+  ['push_subs', ['user_id']],
+  ['oauth_identities', ['user_id']]
 ];
 // what stays for good: what was said, and who said it
 export const KEPT_ROWS = ['messages', 'conversations', 'live_chats', 'transfers', 'feedback', 'reports', 'detections', 'bot_threads'];

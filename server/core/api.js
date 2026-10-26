@@ -23,6 +23,7 @@ import {
   cleanPassword, hashPassword, verifyPassword, signTicket, verifyTicket, sealText, openText, keyFrom
 } from './auth.js';
 import { Limiter } from './ratelimit.js';
+import { hashOf } from './hash.js';
 import {
   RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, VIP, RECEIPTS,
   spin as spinReels, evaluate as evaluateLine, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
@@ -62,6 +63,7 @@ import { createVault, VAULT_BULK } from './vault.js';
 import { REASONS as FILTERED } from './attach.js';
 import { createDiscord } from './discord.js';
 import { createLine, createLineBot } from './line.js';
+import { createOauth } from './oauth.js';
 import { createNotifier } from './notify.js';
 import { createOpsWatch } from './opswatch.js';
 import { createUsageAlert } from './usagealert.js';
@@ -155,6 +157,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // (the operator site asking how long a name must still wait: when the page opens and as a name is typed)
     loginWait: [60, 20],
     nameCheck: [60, 20],
+    // ログイン with Google / Discord: beginning and ending one (per address), and the page asking how it went (about every 2 seconds)
+    oauth: [20, 10],
+    oauthPoll: [90, 30],
     // at most one spin per second (no banking: burst 1, one token refilled a second)
     spin: [60, 1],
     shop: [60, 10],
@@ -1590,6 +1595,54 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   /* ---------------------------------------------------------------- routes */
 
+  // A new account, whichever way it is made (a name and a password; or a Google / Discord sign-in, server/core/oauth.js): the checks they share —
+  // the address's limit, the name, the icon, the device (a device makes `accountsPerDevice` accounts at most, none while one of its is banned) —
+  // then the account with its first session. `inside(id)` runs in the same transaction (a sign-in's identity belongs to the account from the
+  // first moment, or the account is not made); `password` is '' for an account that has none (it has its 引き継ぎコード).
+  async function signUp(req, { name, key, avatar: wanted, password = '', inside = null, how = '' }) {
+    const avatar = String(wanted || RULES.defaultAvatar);
+    const choice = AVATARS.get(avatar);
+    if (!choice) throw new ApiError(400, 'bad_avatar', 'アイコンを選んでください');
+    if (choice.price > 0) throw new ApiError(403, 'locked', 'このアイコンは登録後に購入できます');
+    if (config.registrationsPerIp > 0) {
+      const n = q('SELECT COUNT(*) AS n FROM users WHERE created_ip = ? AND created_at > ?').get(req.ip, Date.now() - 86400000).n;
+      if (n >= config.registrationsPerIp) throw new ApiError(429, 'too_many_accounts', 'この接続からはこれ以上アカウントを作成できません');
+    }
+    if (reservedName(key) || pins.taken(key)) throw new ApiError(409, 'name_taken', 'この名前は使えません');
+    if (q('SELECT 1 AS x FROM users WHERE name_key = ?').get(key)) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
+    // two accounts a device at most (then: log in to one of them), none on a device with a BAN
+    const dev = deviceOf(req);
+    if (!dev.id) throw new ApiError(400, 'update', 'アプリを最新にしてからもう一度お試しください');
+    const room = deviceRoom(req);
+    if (room === 'banned') throw new ApiError(403, 'device_banned', DEVICE_BANNED_NEW);
+    if (room === 'full') throw new ApiError(403, 'device_limit', deviceFull());
+    const passwordHash = password ? await hashPassword(password) : '';
+    const code = newRecoveryCode();
+    let token, user;
+    try {
+      ({ token, user } = tx(() => {
+        const now = Date.now();
+        // a new player starts on the newest release: nothing to be thanked for yet
+        const r = q(`INSERT INTO users (name, name_key, recovery_hash, recovery_enc, password_hash, avatar, tokens, dollars, coins, created_ip, created_device, created_fp,
+                       created_at, last_seen, release_seen)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .run(name, key, sha256(normalizeRecoveryCode(code)), sealText(CODE_KEY, code), passwordHash, avatar, start.tokens, start.dollars, start.coins,
+            req.ip, dev.id, dev.fp, now, now, RELEASE);
+        const id = Number(r.lastInsertRowid);
+        if (inside) inside(id);
+        seenOn(id, req);
+        return { token: createSession(id), user: getUser(id) };
+      }));
+    } catch (e) {
+      if (/UNIQUE/i.test(String(e && e.message)) && /users\.name_key|name_key/i.test(String(e.message))) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
+      throw e;
+    }
+    opsLog.add({ actor: user, action: 'player_register', req, summary: `${user.name}さんが登録${how ? `（${how}）` : ''}`, detail: { avatar, ...(how ? { how } : {}) } });
+    // (the 10th, 20th or 50th: everyone's 登録者数の記念, the newcomer too)
+    milestones();
+    return { token, recoveryCode: code, me: meDto(user) };
+  }
+
   const routes = {
     'GET /api/health': () => ({ ok: true, online: live.onlineCount() }),
 
@@ -1606,46 +1659,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const body = await req.json();
       const { name, key } = cleanName(body.name);
       const password = cleanPassword(body.password);
-      const avatar = String(body.avatar || RULES.defaultAvatar);
-      const choice = AVATARS.get(avatar);
-      if (!choice) throw new ApiError(400, 'bad_avatar', 'アイコンを選んでください');
-      if (choice.price > 0) throw new ApiError(403, 'locked', 'このアイコンは登録後に購入できます');
-      if (config.registrationsPerIp > 0) {
-        const n = q('SELECT COUNT(*) AS n FROM users WHERE created_ip = ? AND created_at > ?').get(req.ip, Date.now() - 86400000).n;
-        if (n >= config.registrationsPerIp) throw new ApiError(429, 'too_many_accounts', 'この接続からはこれ以上アカウントを作成できません');
-      }
-      if (reservedName(key) || pins.taken(key)) throw new ApiError(409, 'name_taken', 'この名前は使えません');
-      if (q('SELECT 1 AS x FROM users WHERE name_key = ?').get(key)) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
-      // two accounts a device at most (then: log in to one of them), none on a device with a BAN
-      const dev = deviceOf(req);
-      if (!dev.id) throw new ApiError(400, 'update', 'アプリを最新にしてからもう一度お試しください');
-      const room = deviceRoom(req);
-      if (room === 'banned') throw new ApiError(403, 'device_banned', DEVICE_BANNED_NEW);
-      if (room === 'full') throw new ApiError(403, 'device_limit', deviceFull());
-      const passwordHash = await hashPassword(password);
-      const code = newRecoveryCode();
-      let token, user;
-      try {
-        ({ token, user } = tx(() => {
-          const now = Date.now();
-          // a new player starts on the newest release: nothing to be thanked for yet
-          const r = q(`INSERT INTO users (name, name_key, recovery_hash, recovery_enc, password_hash, avatar, tokens, dollars, coins, created_ip, created_device, created_fp,
-                         created_at, last_seen, release_seen)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-            .run(name, key, sha256(normalizeRecoveryCode(code)), sealText(CODE_KEY, code), passwordHash, avatar, start.tokens, start.dollars, start.coins,
-              req.ip, dev.id, dev.fp, now, now, RELEASE);
-          const id = Number(r.lastInsertRowid);
-          seenOn(id, req);
-          return { token: createSession(id), user: getUser(id) };
-        }));
-      } catch (e) {
-        if (/UNIQUE/i.test(String(e && e.message))) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
-        throw e;
-      }
-      opsLog.add({ actor: user, action: 'player_register', req, summary: `${user.name}さんが登録`, detail: { avatar } });
-      // (the 10th, 20th or 50th: everyone's 登録者数の記念, the newcomer too)
-      milestones();
-      return { token, recoveryCode: code, me: meDto(user) };
+      return signUp(req, { name, key, avatar: body.avatar, password });
     },
 
     // name + password, or the recovery code
@@ -3807,6 +3821,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // 開発者支援 (real money for ロイヤルコイン), the developer's vault and the ones operators share
   const pay = createPay({ q, tx, live, config, getUser, balanceChanged, official, opsLog, isDeveloper });
   Object.assign(routes, pay.routes);
+  // ログイン with Google / Discord (server/core/oauth.js)
+  const oauth = createOauth({
+    q, tx, config, getUser, createSession, meDto, opsLog, rate, limit, deviceOf, seenOn, liftExpired, banState, signUp, deleted: DELETED, clock: config.clock || Date.now
+  });
+  Object.assign(routes, oauth.routes);
   // (the bucket's operations counted: R2 bills writes and lists, and reads)
   const bucket = blobs && {
     put: (...a) => { stats.r2('a'); return blobs.put(...a); },
@@ -3861,12 +3880,19 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const snap = stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() });
     return { now: snap.now, host: snap.host, live: snap.live, rate: snap.rate, today: { requests: snap.today.requests, bytes: snap.today.bytes }, usage: { percent: snap.estimate.usagePercent, tier: snap.estimate.usageTier, yen: snap.estimate.yen } };
   }
+  // The five-minute history is most of the answer (a second each, three hundred of them) and the page has all but the last seconds of it: `hs` is
+  // the second it holds the newest of, less one, and only what came after is sent (`rate.delta`, to be put after what it has).
+  const sinceHistory = (req, out) => {
+    const raw = req.query.get('hs');
+    const hs = raw === null || raw === '' ? NaN : Number(raw);
+    return Number.isFinite(hs) ? { ...out, rate: { ...out.rate, history: out.rate.history.filter((x) => x[0] > hs), delta: true } } : out;
+  };
   // the operator site's サーバー tab (every operator)
   routes['GET /api/ops/server'] = (req, u) => {
     ops.see(u);
     // lean=1: what a small window on the desktop draws (the figures and the five-minute history), not the whole tab
-    if (req.query.get('lean') === '1') return leanServer();
-    return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on }, line: line.status(), patrol: patrolDto(), stele: stele.status() };
+    if (req.query.get('lean') === '1') return sinceHistory(req, leanServer());
+    return sinceHistory(req, { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on }, line: line.status(), patrol: patrolDto(), stele: stele.status() });
   };
   // the 石碑: how it stands (every operator), carved and looked over now (the developer), and the log's rows to keep a copy of (the developer)
   routes['GET /api/ops/stele'] = (req, u) => { ops.see(u); return { stele: stele.status(), now: Date.now() }; };
@@ -3890,6 +3916,67 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const v = vault.summary();
     return { ...out, usage: stats.usage(v && v.store === 'bucket' ? v.used : 0) };
   };
+  // The operator site's poll in one request (it was five, every few seconds, for as long as the site stays open). Each part is its own route's
+  // answer, with that route's own checks:
+  //  - `counts` (the tabs' numbers, the speed, the month's colour), `devunit` and `pay` (the developer's): the page says what it has of each
+  //    (`c`, `d`, `p`: the `rev` it was given) and a part that is the same comes back as `{ same: true }`; `p=-`: the payments' tab is not
+  //    on the screen, only the number of those waiting;
+  //  - `team`: the same way (`t`); `t=-`: left out (the team's tab does its own asking);
+  //  - `players`: only when the page shows it (`pl`: what it was given last, empty the first time; `q`: what it looks for), as what changed.
+  // What changes with every look (the time, the month's share in a figure, when someone who is on the site was last seen) is not part of
+  // a rev.
+  const revOf = (part, skip = ['now']) => hashOf(JSON.stringify(part, (k, v) => (skip.includes(k) ? undefined : v)));
+  const partOf = (part, have, rev = revOf(part)) => (have === rev ? { same: true, rev } : { ...part, rev });
+  const teamRevOf = (t) => revOf({ ...t, operators: t.operators.map((o) => (o.site || o.game ? { ...o, seenAt: 0 } : o)) });
+  routes['GET /api/ops/tick'] = async (req, u) => {
+    ops.need(u);
+    const have = (k) => req.query.get(k);
+    const developer = isDeveloper(u);
+    const out = { now: Date.now() };
+    // (a part that fails for a reason of its own is left out and the rest still comes; a refusal — a login that ended — is the whole request's)
+    const add = async (name, make) => {
+      try { out[name] = await make(); } catch (e) {
+        if (e instanceof ApiError) throw e;
+        console.error(`tick: ${name} left out:`, e && e.message);
+      }
+    };
+    await add('counts', async () => {
+      const counts = { ...(await routes['GET /api/ops/counts'](req, u)), archived: ops.archivedCount(), vaultRequests: developer ? ops.vaultRequestsOpen() : 0 };
+      return partOf(counts, have('c'), revOf(counts, ['now', 'percent']));
+    });
+    await add('devunit', async () => partOf(await routes['GET /api/ops/devunit/counts'](req, u), have('d')));
+    if (developer) {
+      await add('pay', async () => {
+        if (have('p') === '-') return { count: pay.waitingCount() };
+        const all = await routes['GET /api/ops/pay'](req, u);
+        return { ...partOf(all, have('p')), count: all.waiting.length };
+      });
+    }
+    if (have('t') !== '-') {
+      await add('team', async () => {
+        const team = await routes['GET /api/ops/team'](req, u);
+        return partOf(team, have('t'), teamRevOf(team));
+      });
+    }
+    if (have('pl') !== null) {
+      await add('players', async () => {
+        const find = have('q');
+        const query = new URLSearchParams({ since: have('pl'), lean: '1', ...(find ? { q: find } : {}) });
+        return routes['GET /api/ops/players'](Object.create(req, { query: { value: query } }), u);
+      });
+    }
+    return out;
+  };
+  // The lists a tab asks for again and again while it is open (the reports, the detections, the feedback): `rev`, what the page was given last, is
+  // answered `{ same: true }` while the list has not changed, and the page does not draw it again.
+  for (const key of ['GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback']) {
+    const inner = routes[key];
+    routes[key] = async (req, u) => {
+      const out = await inner(req, u);
+      const rev = revOf(out);
+      return req.query.get('rev') === rev ? { same: true, rev } : { ...out, rev };
+    };
+  }
   // the developer tries the notices (Discord, LINE): one goes out at once to each
   routes['POST /api/ops/discord/test'] = async (req, u) => {
     ops.need(u);
@@ -3941,7 +4028,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   Object.assign(routes, sec.routes);
   const DEV_ONLY = new Set(SEC_KEYS.developer);
 
-  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', 'POST /api/ops/login-wait', ...pay.public, ...vault.public, ...bot.public, ...lineBot.public, ...ext.publicKeys]);
+  const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', 'POST /api/ops/login-wait', ...pay.public, ...oauth.public, ...vault.public, ...bot.public, ...lineBot.public, ...ext.publicKeys]);
 
   /* ---------------------------------------------------------------- live connection hooks */
 

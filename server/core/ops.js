@@ -37,6 +37,7 @@ import { LEVEL, RULES, VIP, RELEASE } from './rules.js';
 import { jst } from './opslog.js';
 import { createDevCode } from './devcode.js';
 import { purgePlayer, KEPT_ROWS } from './purge.js';
+import { hashOf } from './hash.js';
 
 export const ARCHIVE_DAYS = 90;
 export const DELETED = 'このアカウントは削除されました';
@@ -62,6 +63,10 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     const r = q("SELECT value FROM meta WHERE key = 'ops_speed'").get();
     return r && SPEEDS.includes(r.value) ? r.value : 'normal';
   }
+  // the tabs' numbers the players' list does not carry on its own: the archive's, and (the developer's) the operators asking for more room in
+  // the shared vaults
+  const archivedCount = () => q("SELECT COUNT(*) AS n FROM users WHERE npc = '' AND archived_at > 0 AND purged_at = 0").get().n;
+  const vaultRequestsOpen = () => q("SELECT COUNT(*) AS n FROM vault_requests WHERE status = 'open'").get().n;
   // an operator: the developer always; otherwise as given or taken away on
   // the site, or as named in config.operators
   // (`access`: ops_access by name_key, looked up once for a whole list)
@@ -142,6 +147,33 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       codes.set(sealed, c);
     }
     return c;
+  }
+  // What the players' list of each operator page showed last, as a short hash of every row: the next request with `since` is answered with the
+  // rows whose hash is not the same, and the ids that are no more. Each page has a list of its own (its token is `<page>.<n>`: two tabs of one
+  // login do not take the other's answers from each other), and a login's pages are the only ones that may use theirs. The newest at the end.
+  const listsSent = new Map();
+  const LISTS_MAX = 64;
+  function playersSince(u, find, since, list) {
+    const key = u.tokenHash || `u${u.id}`;
+    const now = new Map(list.map((p) => [p.id, hashOf(JSON.stringify(p))]));
+    const [given, count] = String(since || '').split('.');
+    const had = listsSent.get(given);
+    // a page of this login that is known here, and the answer it holds the last one given to it (for this search)
+    const mine = !!had && had.key === key;
+    const sid = mine ? given : `${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+    const n = mine ? had.n + 1 : 1;
+    const token = `${sid}.${n}`;
+    const current = mine && had.find === find && String(had.n) === count;
+    const before = current ? had.hashes : null;
+    listsSent.delete(sid);
+    listsSent.set(sid, { key, n, find, hashes: now });
+    while (listsSent.size > LISTS_MAX) listsSent.delete(listsSent.keys().next().value);
+    if (!before) return { full: true, token, players: list };
+    return {
+      delta: true, token,
+      players: list.filter((p) => before.get(p.id) !== now.get(p.id)),
+      gone: [...before.keys()].filter((id) => !now.has(id))
+    };
   }
   // what a whole list needs for every row, looked up once and not once a player
   const listFacts = () => ({
@@ -292,7 +324,12 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       };
     },
 
-    // everyone but the archive (a name to look for: part of it), the newest players first
+    // everyone but the archive (a name to look for: part of it), the newest players first.
+    // `since`: the page says what it was given the last time (empty the first time) and is answered with what changed since —
+    // `{ delta: true, token, players: [the new and the changed], gone: [ids] }` — instead of the whole list again (a list of hundreds,
+    // every few seconds, for as long as the site stays open); a token this server does not hold (it was restarted, another search,
+    // another page) gets the whole list and a new token (`full: true`). Without `since` it answers as it always did.
+    // `lean=1`: only the list and its own figures (the tabs' numbers come with the page's poll: GET /api/ops/tick).
     'GET /api/ops/players': (req, u) => {
       need(u);
       const find = nameKey(req.query.get('q') || '');
@@ -300,20 +337,27 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         .all(...(find ? [find] : []));
       const waiting = official.waitingIds(), dets = flagged(), facts = listFacts();
       const list = rows.map((p) => row(p, waiting, dets, facts));
-      return {
-        players: list,
-        total: q("SELECT COUNT(*) AS n FROM users WHERE npc = '' AND archived_at = 0").get().n,
-        archived: q("SELECT COUNT(*) AS n FROM users WHERE npc = '' AND archived_at > 0 AND purged_at = 0").get().n,
+      const since = req.query.get('since');
+      const sync = since === null ? null : playersSince(u, find, since, list);
+      const out = {
+        ...(sync || { players: list }),
+        // (everyone, whatever was looked for: the list is all of them when it is short and nothing was looked for)
+        total: !find && rows.length < 1000 ? rows.length : q("SELECT COUNT(*) AS n FROM users WHERE npc = '' AND archived_at = 0").get().n,
         online: list.filter((p) => p.online).length,
         waiting: waiting.size,
+        now: Date.now()
+      };
+      if (req.query.get('lean') === '1') return out;
+      return {
+        ...out,
+        archived: archivedCount(),
         reports: q("SELECT COUNT(*) AS n FROM reports WHERE status = 'open'").get().n,
         detections: q('SELECT COUNT(*) AS n FROM detections WHERE reviewed_at = 0').get().n,
         feedback: q("SELECT COUNT(*) AS n FROM feedback WHERE handled_at = 0 AND kind != ''").get().n,
         // (the developer: operators asking for more room in their shared vaults)
-        vaultRequests: isDeveloper(u) ? q("SELECT COUNT(*) AS n FROM vault_requests WHERE status = 'open'").get().n : 0,
+        vaultRequests: isDeveloper(u) ? vaultRequestsOpen() : 0,
         // (the developer's choice reaches every operator's site)
-        speed: speedNow(),
-        now: Date.now()
+        speed: speedNow()
       };
     },
 
@@ -815,5 +859,5 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     }
   }
 
-  return { routes, isOperator, isViewer, need, see, operatorList, viewerList, mini, speedNow, purgeDue };
+  return { routes, isOperator, isViewer, need, see, operatorList, viewerList, mini, speedNow, purgeDue, archivedCount, vaultRequestsOpen };
 }

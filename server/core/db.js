@@ -987,6 +987,46 @@ MIGRATIONS.push([`CREATE TABLE sec_identity (
 // so the look reads only those rows and not the whole log
 MIGRATIONS.push(['CREATE INDEX ops_log_action_at ON ops_log(action, at)']);
 
+// ログイン with Google / Discord (server/core/oauth.js): which account an identity at the provider (its own stable id, never an e-mail address) belongs
+// to, and the sign-ins under way (a flow lives 15 minutes: the page that began it holds a secret, only its hash is kept)
+MIGRATIONS.push([
+  `CREATE TABLE oauth_identities (
+    provider  TEXT    NOT NULL,
+    subject   TEXT    NOT NULL,
+    user_id   INTEGER NOT NULL,
+    label     TEXT    NOT NULL DEFAULT '',
+    linked_at INTEGER NOT NULL,
+    PRIMARY KEY (provider, subject)
+  )`,
+  'CREATE UNIQUE INDEX oauth_identities_user ON oauth_identities(user_id, provider)',
+  `CREATE TABLE oauth_flows (
+    id         TEXT    PRIMARY KEY,
+    state_hash TEXT    NOT NULL UNIQUE,
+    provider   TEXT    NOT NULL,
+    purpose    TEXT    NOT NULL,
+    user_id    INTEGER NOT NULL DEFAULT 0,
+    verifier   TEXT    NOT NULL,
+    nonce      TEXT    NOT NULL DEFAULT '',
+    device     TEXT    NOT NULL,
+    ip         TEXT    NOT NULL DEFAULT '',
+    mode       TEXT    NOT NULL DEFAULT 'same',
+    status     TEXT    NOT NULL DEFAULT 'wait',
+    subject    TEXT    NOT NULL DEFAULT '',
+    label      TEXT    NOT NULL DEFAULT '',
+    error      TEXT    NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  )`,
+  'CREATE INDEX oauth_flows_expires ON oauth_flows(expires_at)'
+]);
+
+// the tabs' numbers (the operator site's poll asks for them every few seconds, from every operator's page): the detections nobody looked at and the
+// feedback not yet handled, each counted from an index of only those, not by reading the whole table every time
+MIGRATIONS.push([
+  'CREATE INDEX detections_unreviewed ON detections(sender_id) WHERE reviewed_at = 0',
+  "CREATE INDEX feedback_open ON feedback(id) WHERE handled_at = 0 AND kind != ''"
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
@@ -995,7 +1035,7 @@ export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transf
   'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers', 'ops_entries',
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'devunit_comments', 'devunit_reads',
   'diary_posts', 'diary_reads', 'diary_reactions', 'diary_comments', 'diary_claims', 'ops_mfa',
-  'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'sec_identity', 'meta'];
+  'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'sec_identity', 'oauth_identities', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

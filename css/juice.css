@@ -15,6 +15,13 @@
 /* ------------------------------------------------------------ the effects layer --- */
 .jc-canvas { position: absolute; left: 0; top: 0; z-index: 95; pointer-events: none; }
 .jc-flash { position: absolute; inset: -20px; z-index: 94; pointer-events: none; opacity: 0; background: #fff6dc; }
+/* the star of a glint while nothing happens: one small element, moved by the compositor (js/render/juice.js glint) */
+.jc-glint { position: absolute; z-index: 95; pointer-events: none; opacity: 0; background: center / contain no-repeat; animation: jcGlint var(--d, .8s) ease-out forwards; }
+@keyframes jcGlint {
+  0% { opacity: 0; transform: scale(.1) rotate(0); }
+  30% { opacity: 1; transform: scale(1) rotate(calc(var(--r, 0rad) * .5)); }
+  100% { opacity: 0; transform: scale(.15) rotate(var(--r, 0rad)); }
+}
 
 /* words floating up */
 .jc-text {

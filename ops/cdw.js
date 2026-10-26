@@ -117,6 +117,8 @@ var OpsCDW = (function () {
 
   W.server = {
     every: 3000, path: '/api/ops/server?lean=1',
+    // (the history this window holds is not sent again: only the seconds after it)
+    query: function (keep) { return keep.hist && keep.hist.length ? '&hs=' + (keep.hist[keep.hist.length - 1][0] - 1) : ''; },
     mount: function (body, api) {
       var top = h('div', 'cdw-stats'), box = h('div', 'cdw-graph'), foot = h('div', 'cdw-legend');
       var chart = svg('svg', { viewBox: '0 0 300 90', preserveAspectRatio: 'none', 'class': 'cdw-chart', 'aria-hidden': 'true' });
@@ -131,7 +133,13 @@ var OpsCDW = (function () {
         top.appendChild(statBox('リクエスト', (l10.requests / sec).toFixed(1) + '/秒'));
         top.appendChild(statBox('送信', bytes(l10.bytes / sec) + '/秒'));
         top.appendChild(statBox('今月の使用量', (r.usage ? r.usage.percent : 0).toFixed(1) + '%', r.usage ? '約' + fmt(r.usage.yen) + '円' : ''));
-        var hist = (r.rate.history || []).slice(-120);
+        var got = r.rate.history || [];
+        if (r.rate.delta) {
+          var from = got.length ? got[0][0] : Infinity;
+          got = (api.keep.hist || []).filter(function (x) { return x[0] < from; }).concat(got).slice(-300);
+        }
+        api.keep.hist = got;
+        var hist = got.slice(-120);
         chart.replaceChildren();
         [22, 45, 68].forEach(function (y) { chart.appendChild(svg('line', { x1: 0, x2: 300, y1: y, y2: y, 'class': 'cdw-grid' })); });
         if (hist.length > 1) {
@@ -302,10 +310,12 @@ var OpsCDW = (function () {
     var x = btn('cdw-x', '×', c.name + 'を外す'); head.appendChild(x);
     var bodyEl = h('div', 'cdw-body'); root.appendChild(head); root.appendChild(bodyEl); root.appendChild(h('i', 'cdw-sheen'));
     ['e', 's', 'se'].forEach(function (d) { var g = h('i', 'cdw-grip ' + d); g.dataset.edge = d; root.appendChild(g); });
-    var inst = { item: it, root: root, body: bodyEl, update: null, at: 0, busy: false, failed: 0 };
+    // (`keep`: what a window holds between its drawings, and the route is asked with: see `query`)
+    var inst = { item: it, root: root, body: bodyEl, update: null, at: 0, busy: false, failed: 0, keep: {} };
     var api = {
       open: function (id) { if (window.OpsDesktop && OpsDesktop.open) { off(); OpsDesktop.open(id); } },
-      refresh: function () { poll(inst, true); }
+      refresh: function () { poll(inst, true); },
+      keep: inst.keep
     };
     try { inst.update = impl.mount(bodyEl, api) || function () {}; } catch (e) { bodyEl.appendChild(empty('表示できません')); inst.update = function () {}; }
     x.addEventListener('click', function () { remove(it.id); });
@@ -399,7 +409,7 @@ var OpsCDW = (function () {
     if (!impl || !impl.path || inst.busy || !S.on || document.hidden) return;
     if (!force && Date.now() - inst.at < impl.every) return;
     inst.busy = true;
-    req('GET', impl.path).then(function (r) { inst.failed = 0; inst.root.classList.remove('cdw-stale'); inst.update(r); }, function (err) {
+    req('GET', impl.path + (impl.query ? impl.query(inst.keep) : '')).then(function (r) { inst.failed = 0; inst.root.classList.remove('cdw-stale'); inst.update(r); }, function (err) {
       inst.failed++;
       inst.root.classList.add('cdw-stale');
       // the server says it is not theirs (their rights were taken away): it goes

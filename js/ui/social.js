@@ -1565,6 +1565,7 @@
     var r = prof.data;
     if (!r) return;
     var u = r.user;
+    if (act.indexOf('oauth:') === 0) { sfx('click'); BR.oauth.tapTile(act.slice(6)); return; }
     switch (act) {
       case 'avatar': sfx('click'); K.closeModal('profile'); BR.avatars.openPicker(); break;
       case 'password': sfx('click'); K.closeModal('profile'); BR.account.openPassword(); break;

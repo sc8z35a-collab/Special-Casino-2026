@@ -13,7 +13,7 @@
   function physics() {
     if (!physicsLoading) physicsLoading = new Promise(function (resolve, reject) {
       var s = document.createElement('script');
-      s.src = 'js/vendor/tree-physics.js';
+      s.src = BR.util.codeUrl('js/vendor/tree-physics.js');
       s.onload = function () { C = window.BRTreePhysics; if (C) resolve(C); else reject(new Error('physics')); };
       s.onerror = function () { physicsLoading = null; reject(new Error('physics')); };
       document.head.appendChild(s);

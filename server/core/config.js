@@ -82,6 +82,17 @@ export function configFrom(env = {}, overrides = {}) {
     // (tests only: a stand-in for Stripe's API on this machine)
     stripeApi: str(env, 'STRIPE_API'),
     publicUrl: str(env, 'PUBLIC_URL').replace(/\/+$/, ''),
+    // ログイン with Google / Discord (server/core/oauth.js): each is offered only when its client id and secret are both set (the secrets live in
+    // the host's settings only, never in the repository). The addresses are Google's and Discord's own; tests point them at a stand-in on this machine.
+    googleClientId: str(env, 'GOOGLE_CLIENT_ID'),
+    googleClientSecret: str(env, 'GOOGLE_CLIENT_SECRET'),
+    discordClientId: str(env, 'DISCORD_CLIENT_ID'),
+    discordClientSecret: str(env, 'DISCORD_CLIENT_SECRET'),
+    googleAuthUrl: str(env, 'GOOGLE_AUTH_URL', 'https://accounts.google.com/o/oauth2/v2/auth'),
+    googleTokenUrl: str(env, 'GOOGLE_TOKEN_URL', 'https://oauth2.googleapis.com/token'),
+    discordAuthUrl: str(env, 'DISCORD_AUTH_URL', 'https://discord.com/oauth2/authorize'),
+    discordTokenUrl: str(env, 'DISCORD_TOKEN_URL', 'https://discord.com/api/oauth2/token'),
+    discordUserUrl: str(env, 'DISCORD_USER_URL', 'https://discord.com/api/users/@me'),
     // the ways to pay offered (paypay, konbini), and what one player may pay in a day (yen)
     payMethods: str(env, 'PAY_METHODS', 'paypay,konbini').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
     payDailyLimit: int(env, 'PAY_DAILY_LIMIT', undefined),

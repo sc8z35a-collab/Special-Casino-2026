@@ -18,22 +18,25 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png?v=coin-refresh-20261025" type="image/png">
 <link rel="apple-touch-icon" href="icons/icon-180.png?v=coin-refresh-20261025">
-<link rel="stylesheet" href="css/fonts.css">
-<link rel="stylesheet" href="css/style.css">
-<link rel="stylesheet" href="css/social.css">
-<link rel="stylesheet" href="css/online.css">
-<link rel="stylesheet" href="css/play.css">
-<link rel="stylesheet" href="css/feedback.css">
-<link rel="stylesheet" href="css/guide.css">
-<link rel="stylesheet" href="css/combo.css">
-<link rel="stylesheet" href="css/hub.css">
-<link rel="stylesheet" href="css/tree.css">
-<link rel="stylesheet" href="css/safety.css">
-<link rel="stylesheet" href="css/juice.css">
-<link rel="stylesheet" href="css/support.css">
-<link rel="stylesheet" href="css/vip.css">
-<link rel="stylesheet" href="css/refresh.css">
-<link rel="stylesheet" href="css/diary.css">
+<!-- the two fonts every screen's text needs: fetched at once, not after the stylesheets have been read and a first line has been laid out -->
+<link rel="preload" href="fonts/NotoJP-500.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/NotoJP-700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/fonts.css?v=ca742ed98c">
+<link rel="stylesheet" href="css/style.css?v=1633f69c21">
+<link rel="stylesheet" href="css/social.css?v=31ad1f37ac">
+<link rel="stylesheet" href="css/online.css?v=1f036b2218">
+<link rel="stylesheet" href="css/play.css?v=e94d714298">
+<link rel="stylesheet" href="css/feedback.css?v=23e6088151">
+<link rel="stylesheet" href="css/guide.css?v=659f56e68d">
+<link rel="stylesheet" href="css/combo.css?v=de7963d2ee">
+<link rel="stylesheet" href="css/hub.css?v=b1fceb27dd">
+<link rel="stylesheet" href="css/tree.css?v=b007f7bd8b">
+<link rel="stylesheet" href="css/safety.css?v=cbb23e0975">
+<link rel="stylesheet" href="css/juice.css?v=2b6e45535e">
+<link rel="stylesheet" href="css/support.css?v=bf4a20b5f3">
+<link rel="stylesheet" href="css/vip.css?v=2abd669339">
+<link rel="stylesheet" href="css/refresh.css?v=38f4bb6f61">
+<link rel="stylesheet" href="css/diary.css?v=762288e4ed">
 </head>
 <body>
 <div id="viewport">
@@ -796,6 +799,11 @@
       </div>
       <p class="ov-error" id="ov-register-error" role="alert"></p>
       <button class="ov-btn gold" type="submit">次へ：アイコンを選ぶ</button>
+      <div class="ov-social" hidden>
+        <p class="ov-or"><span>または</span></p>
+        <button class="ov-btn ov-sns google" type="button" data-sns="google" hidden><i class="ov-sns-logo"></i><span>Googleで続ける</span></button>
+        <button class="ov-btn ov-sns discord" type="button" data-sns="discord" hidden><i class="ov-sns-logo"></i><span>Discordで続ける</span></button>
+      </div>
       <button class="ov-link" type="button" data-go="login">アカウントをお持ちの方はログイン</button>
       <button class="ov-link" type="button" data-go="code-login">引き継ぎコードをお持ちの方はこちら</button>
     </form>
@@ -806,7 +814,7 @@
       <div class="av-grid ov-grid" id="ov-av-grid"></div>
       <p class="ov-error" id="ov-avatar-error" role="alert"></p>
       <div class="ov-row">
-        <button class="ov-btn" type="button" data-go="register">戻る</button>
+        <button class="ov-btn" type="button" data-go="register" id="ov-avatar-back">戻る</button>
         <button class="ov-btn gold" type="button" id="ov-create">このアイコンではじめる</button>
       </div>
     </div>
@@ -824,6 +832,11 @@
       </div>
       <p class="ov-error" id="ov-login-error" role="alert"></p>
       <button class="ov-btn gold" type="submit">ログイン</button>
+      <div class="ov-social" hidden>
+        <p class="ov-or"><span>または</span></p>
+        <button class="ov-btn ov-sns google" type="button" data-sns="google" hidden><i class="ov-sns-logo"></i><span>Googleで続ける</span></button>
+        <button class="ov-btn ov-sns discord" type="button" data-sns="discord" hidden><i class="ov-sns-logo"></i><span>Discordで続ける</span></button>
+      </div>
       <button class="ov-link" type="button" data-go="code-login">パスワードを忘れた方（引き継ぎコードでログイン）</button>
       <button class="ov-link" type="button" data-go="register">はじめての方は新しく登録</button>
     </form>
@@ -838,6 +851,31 @@
       <button class="ov-btn gold" type="submit">ログイン</button>
       <button class="ov-link" type="button" data-go="login">ユーザー名とパスワードでログイン</button>
       <button class="ov-link" type="button" data-go="register">はじめての方は新しく登録</button>
+    </form>
+
+    <div class="ov-card" id="ov-oauth-wait" hidden>
+      <div class="ov-brand">Two state Casino RP</div>
+      <h2 class="ov-title" id="ov-wait-title"></h2>
+      <p class="ov-text" id="ov-wait-text"></p>
+      <i class="ov-spin" id="ov-wait-spin" aria-hidden="true"></i>
+      <p class="ov-error" id="ov-oauth-wait-error" role="alert"></p>
+      <button class="ov-btn" type="button" id="ov-wait-again" hidden>もう一度ブラウザを開く</button>
+      <button class="ov-btn" type="button" id="ov-wait-stop">やめる</button>
+    </div>
+
+    <form class="ov-card" id="ov-social-name" autocomplete="off" novalidate hidden>
+      <button class="ov-close" type="button" data-ov-close aria-label="閉じる"></button>
+      <div class="ov-brand">Two state Casino RP</div>
+      <h2 class="ov-title"><span id="ov-social-who"></span>でログインしました</h2>
+      <p class="ov-text">はじめまして！<b>ユーザー名</b>を決めてください。<b>ユーザー名はほかの人と同じものは使えません。</b></p>
+      <p class="ov-rule">サブアカウント（2つ目以降のアカウント）の作成・使用は禁止です。</p>
+      <div class="ov-field">
+        <input id="ov-sname" class="ov-input" type="text" name="nickname" maxlength="24" placeholder="ユーザー名（2〜12文字）" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+        <p class="ov-hint" id="ov-sname-hint"></p>
+      </div>
+      <p class="ov-error" id="ov-social-name-error" role="alert"></p>
+      <button class="ov-btn gold" type="submit">次へ：アイコンを選ぶ</button>
+      <button class="ov-link" type="button" data-ov-close>やめる</button>
     </form>
 
     <div class="ov-card" id="ov-codecard" hidden>
@@ -897,80 +935,81 @@
   </form>
 </div>
 
-<script src="js/art/icons.js"></script>
-<script src="js/art/symbol-images.js"></script>
-<script src="js/art/ui-images.js"></script>
-<script src="js/art/social-images.js"></script>
-<script src="js/art/ui-svg.js"></script>
-<script src="js/version.js"></script>
-<script src="js/core/util.js"></script>
-<script src="js/core/effects.js"></script>
-<script src="js/game/config.js"></script>
-<script src="js/game/sale.js"></script>
-<script src="js/game/quests.js"></script>
-<script src="js/game/tree.js"></script>
-<script src="js/game/vip.js"></script>
-<script src="js/game/receipts.js"></script>
-<script src="js/game/news.js"></script>
-<script src="js/core/store.js"></script>
-<script src="js/game/engine.js"></script>
-<script src="js/net/device.js"></script>
-<script src="js/net/api.js"></script>
-<script src="js/net/live.js"></script>
-<script src="js/net/watchcrypto.js"></script>
-<script src="js/net/watchfeed.js"></script>
-<script src="js/game/bank.js"></script>
-<script src="js/audio/sfx.js"></script>
-<script src="js/render/assets.js"></script>
-<script src="js/render/fire3d.js"></script>
-<script src="js/render/reels.js"></script>
-<script src="js/render/fx.js"></script>
-<script src="js/render/win3d.js"></script>
-<script src="js/render/reward3d.js"></script>
-<script src="js/art/tree-models.js"></script>
-<script src="js/render/tree3d.js"></script>
-<script src="js/render/garage3d.js"></script>
-<script src="js/render/auction3d.js"></script>
-<script src="js/render/juice.js"></script>
-<script src="js/render/slotfx.js"></script>
-<script src="js/ui/screens.js"></script>
-<script src="js/ui/kit.js"></script>
-<script src="js/ui/account.js"></script>
-<script src="js/ui/avatars.js"></script>
-<script src="js/ui/social.js"></script>
-<script src="js/ui/cars.js"></script>
-<script src="js/ui/shop.js"></script>
-<script src="js/ui/peter.js"></script>
-<script src="js/ui/johnson.js"></script>
-<script src="js/ui/official.js"></script>
-<script src="js/ui/presents.js"></script>
-<script src="js/ui/carsale.js"></script>
-<script src="js/ui/vip.js"></script>
-<script src="js/ui/safety.js"></script>
-<script src="js/net/push.js"></script>
-<script src="js/ui/bonus.js"></script>
-<script src="js/ui/quests.js"></script>
-<script src="js/ui/jobs.js"></script>
-<script src="js/ui/tree.js"></script>
-<script src="js/ui/effects.js"></script>
-<script src="js/ui/news.js"></script>
-<script src="js/ui/diary.js"></script>
-<script src="js/net/call.js"></script>
-<script src="js/ui/watchquality.js"></script>
-<script src="js/ui/watch.js"></script>
-<script src="js/render/combo.js"></script>
-<script src="js/ui/play.js"></script>
-<script src="js/ui/activity.js"></script>
-<script src="js/ui/hub.js"></script>
-<script src="js/ui/bigwin.js"></script>
-<script src="js/ui/feedback.js"></script>
-<script src="js/ui/guide.js"></script>
-<script src="js/ui/law.js"></script>
-<script src="js/ui/support.js"></script>
-<script src="js/ui/launch.js"></script>
-<script src="js/ui/start.js"></script>
-<script src="js/ui/banlock.js"></script>
-<script src="js/ui/install.js"></script>
-<script src="js/main.js"></script>
+<script src="js/art/icons.js?v=445ac9cc92"></script>
+<script src="js/art/symbol-images.js?v=00bb06f7c7"></script>
+<script src="js/art/ui-images.js?v=28a66c27e7"></script>
+<script src="js/art/social-images.js?v=aea0834ac5"></script>
+<script src="js/art/ui-svg.js?v=00d5767a31"></script>
+<script src="js/version.js?v=234bea22e1"></script>
+<script src="js/core/util.js?v=dfef47eb2b"></script>
+<script src="js/core/effects.js?v=a0eaf73869"></script>
+<script src="js/game/config.js?v=8d7372248d"></script>
+<script src="js/game/sale.js?v=a7bb027684"></script>
+<script src="js/game/quests.js?v=807126b3e5"></script>
+<script src="js/game/tree.js?v=b3c3b37aa1"></script>
+<script src="js/game/vip.js?v=8f36f52367"></script>
+<script src="js/game/receipts.js?v=1f91e4ab4d"></script>
+<script src="js/game/news.js?v=4fae7b99bc"></script>
+<script src="js/core/store.js?v=228cf7b6d7"></script>
+<script src="js/game/engine.js?v=27aa88959e"></script>
+<script src="js/net/device.js?v=ff52665f6b"></script>
+<script src="js/net/api.js?v=91bbbe6694"></script>
+<script src="js/net/live.js?v=8e207ba7dc"></script>
+<script src="js/net/watchcrypto.js?v=ab0b679978"></script>
+<script src="js/net/watchfeed.js?v=886afa86a0"></script>
+<script src="js/game/bank.js?v=f423a67a6b"></script>
+<script src="js/audio/sfx.js?v=dabfb69dce"></script>
+<script src="js/render/assets.js?v=c7d1a386af"></script>
+<script src="js/render/fire3d.js?v=8af7bce7d2"></script>
+<script src="js/render/reels.js?v=8e87cfa10f"></script>
+<script src="js/render/fx.js?v=e981bdc6c4"></script>
+<script src="js/render/win3d.js?v=c1dc123566"></script>
+<script src="js/render/reward3d.js?v=b955215629"></script>
+<script src="js/art/tree-models.js?v=af5558603c"></script>
+<script src="js/render/tree3d.js?v=ee269d42ab"></script>
+<script src="js/render/garage3d.js?v=77c248257c"></script>
+<script src="js/render/auction3d.js?v=4f51bfd4ab"></script>
+<script src="js/render/juice.js?v=cb7843b349"></script>
+<script src="js/render/slotfx.js?v=8fa282016a"></script>
+<script src="js/ui/screens.js?v=d32b536e99"></script>
+<script src="js/ui/kit.js?v=fe867070e2"></script>
+<script src="js/ui/account.js?v=2a17466637"></script>
+<script src="js/ui/oauth.js?v=410437f5ef"></script>
+<script src="js/ui/avatars.js?v=509556e799"></script>
+<script src="js/ui/social.js?v=a097c96adf"></script>
+<script src="js/ui/cars.js?v=3f55d11629"></script>
+<script src="js/ui/shop.js?v=4c309be8a3"></script>
+<script src="js/ui/peter.js?v=8490e6920a"></script>
+<script src="js/ui/johnson.js?v=41cf8554b4"></script>
+<script src="js/ui/official.js?v=81f46eacbf"></script>
+<script src="js/ui/presents.js?v=9a9ea9ab5a"></script>
+<script src="js/ui/carsale.js?v=ce00baad2e"></script>
+<script src="js/ui/vip.js?v=170f1a4a4f"></script>
+<script src="js/ui/safety.js?v=bf50802648"></script>
+<script src="js/net/push.js?v=fc2c79f5c0"></script>
+<script src="js/ui/bonus.js?v=0fe28a2287"></script>
+<script src="js/ui/quests.js?v=75100395b2"></script>
+<script src="js/ui/jobs.js?v=26322c2688"></script>
+<script src="js/ui/tree.js?v=dac0b3a4ab"></script>
+<script src="js/ui/effects.js?v=296ca65a8e"></script>
+<script src="js/ui/news.js?v=eaa648c884"></script>
+<script src="js/ui/diary.js?v=ccd87ed5af"></script>
+<script src="js/net/call.js?v=4182d5b967"></script>
+<script src="js/ui/watchquality.js?v=b2c39c18c1"></script>
+<script src="js/ui/watch.js?v=f4f39f4614"></script>
+<script src="js/render/combo.js?v=5495ef4b77"></script>
+<script src="js/ui/play.js?v=201f114b8a"></script>
+<script src="js/ui/activity.js?v=71309ed960"></script>
+<script src="js/ui/hub.js?v=4d873297fb"></script>
+<script src="js/ui/bigwin.js?v=3f148ef51b"></script>
+<script src="js/ui/feedback.js?v=bee305238f"></script>
+<script src="js/ui/guide.js?v=ae9ffcb378"></script>
+<script src="js/ui/law.js?v=51375e7d0d"></script>
+<script src="js/ui/support.js?v=8b98cac0bf"></script>
+<script src="js/ui/launch.js?v=c1e9b627a7"></script>
+<script src="js/ui/start.js?v=9182b0ef0a"></script>
+<script src="js/ui/banlock.js?v=623437cb62"></script>
+<script src="js/ui/install.js?v=caea06df81"></script>
+<script src="js/main.js?v=b6181e394c"></script>
 </body>
 </html>

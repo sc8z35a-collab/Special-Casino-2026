@@ -669,6 +669,24 @@
 .ov-btn.gold { background: linear-gradient(180deg, #f6e04c, #e0bb22); color: #3a2c00; box-shadow: 0 3px 8px rgba(0, 0, 0, .35); }
 .ov-btn:active { transform: scale(.97); }
 .ov-btn:disabled, .ov-link:disabled { opacity: .55; }
+/* Google / Discord: the real logos (img/ui/auth/), in the colours the two ask for */
+.ov-social { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ov-or { grid-column: 1 / -1; }
+.ov-social:has(.ov-sns[hidden]) .ov-sns:not([hidden]) { grid-column: 1 / -1; }
+@media (max-width: 400px) { .ov-social { grid-template-columns: 1fr; } }
+.ov-social[hidden], .ov-sns[hidden] { display: none; }
+.ov-or { display: flex; align-items: center; gap: 10px; margin: 2px 0 0; font-size: 12px; font-weight: 700; color: rgba(255, 255, 255, .55); }
+.ov-or::before, .ov-or::after { content: ''; flex: 1; height: 1px; background: rgba(255, 255, 255, .22); }
+.ov-sns { display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; font-size: 14.5px; white-space: nowrap; }
+.ov-sns-logo { flex: none; width: 22px; height: 22px; background: center / contain no-repeat; }
+.ov-btn.ov-sns.google { background: #fff; color: #1f1f1f; box-shadow: 0 2px 6px rgba(0, 0, 0, .35); }
+.ov-sns.google .ov-sns-logo { background-image: url(../img/ui/auth/google.svg); }
+.ov-btn.ov-sns.discord { background: #5865f2; color: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .35); }
+.ov-sns.discord .ov-sns-logo { background-image: url(../img/ui/auth/discord.svg); width: 26px; }
+.ov-spin { display: block; width: 34px; height: 34px; margin: 6px auto; border-radius: 50%; border: 4px solid rgba(255, 255, 255, .22); border-top-color: #f4dc45; animation: ovSpin 1s linear infinite; }
+.ov-spin[hidden] { display: none; }
+@keyframes ovSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ov-spin { animation-duration: 3s; } }
 .ov-link { padding: 6px; font-size: 13px; font-weight: 700; color: var(--gold-label); text-decoration: underline; text-underline-offset: 3px; touch-action: manipulation; }
 .ov-code {
   padding: 14px 8px;

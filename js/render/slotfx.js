@@ -66,7 +66,7 @@
     var grid = reels.getGrid(), spots = [];
     for (var c = 0; c < 5; c++) for (var r = 0; r < 3; r++) for (var k = 0; k < (SHINE[grid[c][r]] || 1); k++) spots.push([c, r]);
     var at = spots[Math.floor(Math.random() * spots.length)], p = cell(at[0], at[1]);
-    J.stars(p.x + U.rand(-46, 46), p.y + U.rand(-56, 30), { n: 1, r: 1, speed: 1, size: U.rand(70, 105), life: 0.9, stagger: 0 });
+    J.glint(p.x + U.rand(-46, 46), p.y + U.rand(-56, 30), U.rand(52, 105), U.rand(0.45, 0.9));
   }
 
   // light sweeps the reels, sparks fly off the frame's corners

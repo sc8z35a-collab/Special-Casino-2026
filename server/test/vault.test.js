@@ -997,3 +997,37 @@ test('small vault thumbnails retain model metadata, stay out of lists and enforc
     assert.equal((await dev.call('GET', '/api/vault/thumbnail?id=' + f.id)).status, 200);
   } finally { await s.stop(); }
 });
+
+test('a piece comes as bytes too: the whole of it with its hash in a header, or only its first bytes; from the database and from the bucket, and the JSON way still works', async () => {
+  for (const blobs of [undefined, memoryBucket()]) {
+    const s = await startServer({ operators: ['taku'], limits: LIMITS, ...(blobs ? { blobs } : {}) });
+    try {
+      const taku = await developer(s);
+      const data = crypto.randomBytes(5000);
+      const f = await put(taku, { space: '', name: 'ばいな.bin', data });
+      const get = (query, headers = { Authorization: `Bearer ${taku.token}`, 'X-Vault-Ticket': taku.ticket }) => fetch(`${s.base}/api/vault/chunk?id=${f.id}&n=0${query}`, { headers });
+      const whole = await get('&raw=1');
+      assert.equal(whole.status, 200);
+      assert.match(whole.headers.get('content-type'), /^application\/octet-stream/);
+      assert.equal(whole.headers.get('x-piece-sha256'), hash(data));
+      assert.equal(whole.headers.get('x-piece-partial'), '0');
+      assert.ok(Buffer.from(await whole.arrayBuffer()).equals(data));
+      // only the first bytes (a text's first lines): the rest is not sent
+      const head = await get('&raw=1&head=100');
+      assert.equal(head.headers.get('x-piece-partial'), '1');
+      assert.ok(Buffer.from(await head.arrayBuffer()).equals(data.subarray(0, 100)));
+      const odd = await get('&raw=1&head=101');   // (not a multiple of three: the database keeps the piece as base64)
+      assert.ok(Buffer.from(await odd.arrayBuffer()).equals(data.subarray(0, 101)));
+      const more = await get('&raw=1&head=100000');
+      assert.equal(more.headers.get('x-piece-partial'), '0', 'asking for more than there is gives it all');
+      assert.equal((await more.arrayBuffer()).byteLength, 5000);
+      // not without the login; not a piece that is not there
+      assert.equal((await get('&raw=1', {})).status, 401);
+      assert.equal((await fetch(`${s.base}/api/vault/chunk?id=${f.id}&n=9&raw=1`, { headers: { Authorization: `Bearer ${taku.token}`, 'X-Vault-Ticket': taku.ticket } })).status, 400);
+      // the way it was: JSON with the piece in base64
+      const old = await (await get('')).json();
+      assert.equal(old.sha256, hash(data));
+      assert.equal(Buffer.from(old.data, 'base64').equals(data), true);
+    } finally { await s.stop(); }
+  }
+});

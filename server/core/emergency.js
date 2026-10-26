@@ -189,10 +189,13 @@ export function createEmergency({ q, config, opsLog, host = {}, devCode, isDevel
   }
 
   const routes = {
-    // the state, and (the developer) the 緊急 entries
+    // the state, and (the developer) the 緊急 entries (`lean=1`: not the entries, for the page that draws the thresholds alone)
     'GET /api/emergency': (req, u) => {
       needDeveloper(u);
-      return { stopped: !!state.stopped, level: state.level || '', at: state.at || 0, reason: state.reason || '', releaseAt: state.releaseAt || 0, entries: opsLog.list({ kind: 'emergency', limit: 50 }), floors, factor: FACTOR, usual: { ...base }, now: Date.now() };
+      return {
+        stopped: !!state.stopped, level: state.level || '', at: state.at || 0, reason: state.reason || '', releaseAt: state.releaseAt || 0,
+        ...(req.query.get('lean') === '1' ? {} : { entries: opsLog.list({ kind: 'emergency', limit: 50 }) }), floors, factor: FACTOR, usual: { ...base }, now: Date.now()
+      };
     },
     'POST /api/emergency/release': async (req, u) => {
       needDeveloper(u);

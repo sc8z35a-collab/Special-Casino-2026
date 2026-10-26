@@ -431,7 +431,9 @@
   }
 
   // after (re)connecting: an invitation or a battle still going on
+  var restoreTimer = 0;
   function restoreBattle() {
+    clearTimeout(restoreTimer);
     api.battle().then(function (r) {
       var b = r.battle;
       if (!b) {
@@ -812,6 +814,7 @@
     betHost = null;
     host = null;
     clearTimeout(betTimer);
+    clearTimeout(restoreTimer);
     closeInviteBox();
     closeResult();
     if (ui.battle) { renderBattle(); renderCoop(); renderBetChip(); }
@@ -827,7 +830,9 @@
     if (id !== meId) {
       if (meId) reset();
       meId = id;
-      restoreBattle();
+      // (the live connection's hello, a moment after, asks as well: this one waits for it, and asks on its own only when none comes)
+      clearTimeout(restoreTimer);
+      restoreTimer = setTimeout(restoreBattle, 2000);
     }
     loadCoop(me.coop || 0);
   }
