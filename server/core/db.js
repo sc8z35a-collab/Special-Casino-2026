@@ -1020,6 +1020,13 @@ MIGRATIONS.push([
   'CREATE INDEX oauth_flows_expires ON oauth_flows(expires_at)'
 ]);
 
+// the tabs' numbers (the operator site's poll asks for them every few seconds, from every operator's page): the detections nobody looked at and the
+// feedback not yet handled, each counted from an index of only those, not by reading the whole table every time
+MIGRATIONS.push([
+  'CREATE INDEX detections_unreviewed ON detections(sender_id) WHERE reviewed_at = 0',
+  "CREATE INDEX feedback_open ON feedback(id) WHERE handled_at = 0 AND kind != ''"
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)

@@ -2,9 +2,59 @@
    (ops/vault-upload.js) run here, so they go on with the vault closed and
    with the site's page closed, as long as the browser lets this run (Chrome
    and Edge come back to them by themselves with Background Sync); what is
-   left goes on the next time the site is opened. It caches nothing and
-   takes no part in the site's requests. */
+   left goes on the next time the site is opened.
+
+   It also keeps the scripts and styles the page names by the hash of their
+   file (ops/index.html, tools/stamp.mjs: ops.js?v=0123456789), as the
+   game's worker does (sw.js): that address is that file for ever, so a
+   visit after the first asks the server nothing about the ~23 files that
+   did not change. Nothing else is answered here: the page itself, the API,
+   the pictures and everything without such a hash go to the server as ever. */
 importScripts('vault-upload.js');
+
+// The code cache is the game's (the files are kept by the hash of their body, so what is shared is the same file whoever put it there), and
+// the game's worker clears every other cache of its prefix, so it must keep this name.
+const CODE_CACHE = 'two-state-code';
+const CODE_MAX = 500;
+const CODE_FILE = /^\/(ops|js)\/[A-Za-z0-9._/-]+\.(js|css)$/;
+const HASH = /^[0-9a-f]{10}$/;
+
+// the hash of the file an address names, if it is one of those addresses
+function codeHash(url) {
+  const v = url.searchParams.get('v');
+  return CODE_FILE.test(url.pathname) && HASH.test(v || '') ? v : '';
+}
+
+// A body is kept only if it is the file its address names (the first 10 hex digits of its SHA-256, as tools/stamp.mjs writes them): a release
+// being deployed, a proxy or a half-sent file can never end up kept under an address that promises another one.
+async function genuine(res, hash) {
+  try {
+    const sum = new Uint8Array(await crypto.subtle.digest('SHA-256', await res.clone().arrayBuffer()));
+    return Array.from(sum.subarray(0, 5), (b) => b.toString(16).padStart(2, '0')).join('') === hash;
+  } catch (x) { return false; }
+}
+
+async function keepCode(res, req, hash) {
+  if (!res.ok || res.type !== 'basic' || res.status !== 200 || !(await genuine(res, hash))) return;
+  const c = await caches.open(CODE_CACHE);
+  await c.put(req, res.clone());
+  const keys = await c.keys();
+  for (const k of keys.slice(0, Math.max(0, keys.length - CODE_MAX))) await c.delete(k);
+}
+
+self.addEventListener('fetch', (e) => {
+  const req = e.request;
+  if (req.method !== 'GET' || req.headers.has('range')) return;
+  if (req.destination !== 'script' && req.destination !== 'style') return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  const hash = codeHash(url);
+  if (!hash) return;
+  e.respondWith(caches.open(CODE_CACHE).then((c) => c.match(req, { ignoreVary: true })).then((hit) => hit || fetch(req, { cache: 'no-cache' }).then((res) => {
+    e.waitUntil(keepCode(res.clone(), req, hash).catch(() => {}));
+    return res;
+  })));
+});
 
 const engine = VaultUploads.engine({
   // every open page of the site hears how each file is doing

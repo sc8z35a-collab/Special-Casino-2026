@@ -91,7 +91,7 @@
   var token = null;
   var diaryProfile = null;
   var state = {
-    view: 'players', players: [], total: 0, counts: {}, now: Date.now(), filter: 'all', sort: 'new', q: '', open: 0, busy: false,
+    view: 'players', players: [], sync: '', total: 0, counts: {}, now: Date.now(), filter: 'all', sort: 'new', q: '', open: 0, busy: false,
     reportStatus: 'open', detAll: false, fb: 'open', feedback: [], log: [], logQ: '', logDone: false, chat: null,
     developer: false, operators: [], pay: null, payView: 'waiting', vault: null, vaultFiles: [], vaultFolders: [], vaultFolder: '', vaultPicked: {},
     vaultShow: 'all', vaultPage: 0, logKind: '', vaultIn: '',
@@ -103,6 +103,8 @@
     favorites: []
   };
   var timer = 0, liveTimer = 0, searchTimer = 0, logTimer = 0, chatTimer = 0;
+  // the poll (poll()): what this page has of each part the server sends (`rev`), and whether one is on its way
+  var revs = { c: '', d: '', p: '', t: '' }, pollBusy = false, pollAgain = false, pollGen = 0;
   var speed = 'normal';
 
   try { token = localStorage.getItem(KEY); } catch (e) { token = null; }
@@ -146,7 +148,9 @@
     if (text !== undefined && text !== null) n.textContent = text;
     return n;
   }
-  function fmt(n) { return Number(n || 0).toLocaleString('ja-JP'); }
+  // (one formatter for every number: toLocaleString made a new one for each, which was most of what drawing a list of players cost)
+  var numberFormat = window.Intl && Intl.NumberFormat ? new Intl.NumberFormat('ja-JP') : null;
+  function fmt(n) { return numberFormat ? numberFormat.format(Number(n || 0)) : Number(n || 0).toLocaleString('ja-JP'); }
   function pad(n) { return n < 10 ? '0' + n : String(n); }
   function date(ts, time) {
     if (!ts) return '-';
@@ -238,6 +242,14 @@
     clearInterval(timer);
     clearInterval(liveTimer);
     clearInterval(aliveTimer);
+    // (the next login starts from nothing: no rev, no list of the last one's)
+    revs = { c: '', d: '', p: '', t: '' };
+    pollBusy = pollAgain = false;
+    pollGen++;
+    state.sync = '';
+    state.players = [];
+    srvHist = [];
+    listRevs = {};
   }
   function showLogin(message) {
     if (diaryProfile) diaryProfile.reset();
@@ -546,19 +558,25 @@
       renderDevComments(); readDevComments(); $('#devunit-error').textContent = '';
     }, function (e) { if (gen !== devUnit.generation) return; devUnit.busy = false; $('#devunit-error').textContent = e.message; });
   }
+  // what the counts of DEV UNIT say (from the poll, or asked for alone when the live connection tells of a new comment)
+  function applyDevUnit(r) {
+    if (devUnit.unread !== null && r.unread > devUnit.unread) {
+      document.dispatchEvent(new CustomEvent('ops:notice', { detail: { app: 'devunit', text: '新しいコメントが届きました' } }));
+      if (window.Notification && Notification.permission === 'granted') {
+        try { var n = new Notification('DEV UNIT', { body: '新しいコメントが届きました', tag: 'devunit', icon: 'assets/devunit.webp' }); n.onclick = function () { window.focus(); setView('devunit'); n.close(); }; } catch (e) { /* The unread badge remains available. */ }
+      }
+    }
+    devUnit.unread = r.unread; setCount('devunit', r.unread);
+    if (devUnitVisible()) loadDevComments(false);
+  }
   function devUnitCounts() {
     if (!token || state.viewer || $('#app').hidden) return;
     var gen = devUnit.generation;
     request('GET', '/api/ops/devunit/counts').then(function (r) {
       if (gen !== devUnit.generation) return;
-      if (devUnit.unread !== null && r.unread > devUnit.unread) {
-        document.dispatchEvent(new CustomEvent('ops:notice', { detail: { app: 'devunit', text: '新しいコメントが届きました' } }));
-        if (window.Notification && Notification.permission === 'granted') {
-          try { var n = new Notification('DEV UNIT', { body: '新しいコメントが届きました', tag: 'devunit', icon: 'assets/devunit.webp' }); n.onclick = function () { window.focus(); setView('devunit'); n.close(); }; } catch (e) { /* The unread badge remains available. */ }
-        }
-      }
-      devUnit.unread = r.unread; setCount('devunit', r.unread);
-      if (devUnitVisible()) loadDevComments(false);
+      // (the poll's copy is older than this one now)
+      revs.d = '';
+      applyDevUnit(r);
     }, function () {});
   }
   function initDevUnit() {
@@ -579,7 +597,7 @@
         devUnit.comments = devUnit.comments.filter(function (c) { return c.id !== r.comment.id; }).concat([r.comment]).sort(function (a, b) { return a.id - b.id; }); devUnit.latest = devUnit.comments[devUnit.comments.length - 1].id; renderDevComments(); readDevComments(); $('#devunit-error').textContent = '';
       }, function (err) { if (gen === devUnit.generation) $('#devunit-error').textContent = err.message; }).then(function () { submit.disabled = false; });
     });
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) devUnitCounts(); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { poll(); if (state.view === 'team' && !state.viewer && token) loadTeam(true); } });
   }
 
   /* ------------------------------------------------------------ views --- */
@@ -632,25 +650,25 @@
     refreshJobs().then(adoptJobs).then(kick);
     opsLiveOpen();
     if (window.OpsWatch) OpsWatch.sync();
-    devUnitCounts();
-    if (state.developer) loadPay(true);
-    load();
-    loadCounts();
     // /ops/#vault: straight to the vault
     if (location.hash === '#vault') setView('vault');
-    loadTeam(true);
+    poll();
     startTimers();
   }
-  // a viewer's tabs: what waits in each (they have no players' list to bring them)
+  // the tabs' numbers (a viewer's poll is this alone; an operator's comes with the rest in one request: poll())
+  function applyCounts(r) {
+    setCount('reports', r.reports || 0);
+    setCount('detections', r.detections || 0);
+    setCount('feedback', r.feedback || 0);
+    // (the archive's and the vault's: an operator's poll brings them, the players' list is not asked for from every tab)
+    if (r.archived !== undefined) setCount('archive', r.archived || 0);
+    if (r.vaultRequests !== undefined) setCount('vault', state.developer ? r.vaultRequests || 0 : 0);
+    if (r.speed) useSpeed(r.speed, true);
+    // the サーバー button's colour for the month's usage, from every tab
+    if (r.usage) paintUsageTab(r.usage.tier || '');
+  }
   function loadCounts() {
-    return request('GET', '/api/ops/counts').then(function (r) {
-      setCount('reports', r.reports || 0);
-      setCount('detections', r.detections || 0);
-      setCount('feedback', r.feedback || 0);
-      if (r.speed) useSpeed(r.speed, true);
-      // the サーバー button's colour for the month's usage, from every tab
-      if (r.usage) paintUsageTab(r.usage.tier || '');
-    }, function () {});
+    return request('GET', '/api/ops/counts').then(applyCounts, function () {});
   }
   // a viewer: still one? (asked every 2 seconds while the page is seen; the answer 401 logs out)
   var aliveTimer = 0;
@@ -658,6 +676,59 @@
     if (!state.viewer || !token || document.hidden) return;
     request('GET', '/api/ops/alive').catch(function () {});
   }
+  /* The poll, in one request (it was five, every few seconds, for as long as the site stays open): the tabs' numbers, DEV UNIT's, the payments'
+     (the developer's), the team's and, while the players' list is in front, the list. The page says what it has of each part (`revs`) and a part
+     that is the same comes back as `{ same: true }`; the list comes as what changed (GET /api/ops/tick, server/core/api.js). */
+  function poll() {
+    if (!token || state.viewer || $('#app').hidden) return Promise.resolve();
+    // (one at a time: the answer to the last is what the next one is asked against)
+    if (pollBusy) { pollAgain = true; return Promise.resolve(); }
+    pollBusy = true;
+    var gen = pollGen, devGen = devUnit.generation, listing = state.view === 'players', seq = listing ? ++listSeq : 0;
+    var query = 'c=' + revs.c + '&d=' + revs.d
+      // (the team's tab asks for its own; the payments are asked for whole only while their tab is in front)
+      + '&t=' + (state.view === 'team' ? '-' : revs.t)
+      + (state.developer ? '&p=' + (state.view === 'pay' ? revs.p : '-') : '')
+      + (listing ? '&pl=' + encodeURIComponent(state.sync || '') + (state.q ? '&q=' + encodeURIComponent(state.q) : '') : '');
+    return request('GET', '/api/ops/tick?' + query).then(function (r) {
+      if (gen === pollGen) applyTick(r, devGen, seq);
+    }, function () { /* the next one asks again */ }).catch(function (e) { if (window.console) console.error(e); }).then(function () {
+      if (gen !== pollGen) return;
+      pollBusy = false;
+      if (pollAgain) { pollAgain = false; poll(); }
+    });
+  }
+  function applyTick(r, devGen, seq) {
+    if (r.counts) {
+      if (!r.counts.same) applyCounts(r.counts);
+      revs.c = r.counts.rev;
+    }
+    if (r.devunit && devGen === devUnit.generation) {
+      if (!r.devunit.same) applyDevUnit(r.devunit);
+      revs.d = r.devunit.rev;
+    }
+    var pay = r.pay;
+    if (pay) {
+      setCount('pay', pay.count || 0);
+      if (pay.rev !== undefined) {
+        // (not while a reply is being written: the tab would be drawn again under the hand; it is asked for again)
+        var typing = state.view === 'pay' && document.activeElement && document.activeElement.tagName === 'TEXTAREA';
+        if (pay.same) revs.p = pay.rev;
+        else if (!typing) { state.pay = pay; revs.p = pay.rev; if (state.view === 'pay') renderPay(); }
+      }
+    }
+    if (r.team) {
+      if (!r.team.same) applyTeam(r.team);
+      revs.t = r.team.rev;
+    }
+    // (an answer that comes after a newer one is of no use)
+    if (r.players && seq >= listApplied) {
+      listApplied = seq;
+      applyPlayers(r.players);
+    }
+    if (state.open) refreshDetail();
+  }
+
   // the lists at one speed, the live views at a faster one (while the page is seen)
   function startTimers() {
     clearInterval(timer);
@@ -672,15 +743,11 @@
         else if (state.view === 'feedback') loadFeedback(true);
         return;
       }
-      load(true);
-      loadCounts();
-      devUnitCounts();
+      poll();
       if (diaryProfile) diaryProfile.refresh();
       if (state.view === 'reports') loadReports(true);
       else if (state.view === 'detections') loadDetections(true);
       else if (state.view === 'feedback') loadFeedback(true);
-      if (state.view !== 'team') loadTeam(true);
-      if (state.developer && !(state.view === 'pay' && document.activeElement && document.activeElement.tagName === 'TEXTAREA')) loadPay(true);
       // the vault open: what the other one of a shared vault did (not while files go up or down)
       if (state.view === 'vault') {
         if (!state.vault) openLook(true);
@@ -691,8 +758,10 @@
     liveTimer = setInterval(function () {
       if (document.hidden) return;
       if (state.view === 'server') loadServer(true);
-      else if (state.view === 'team') loadTeam(true);
-      else if (state.view === 'security') loadSecurity(true);
+      else if (state.view === 'team') {
+        // (with the live connection up the conversation tells when it changes; this is for what that misses, and for a talk between two others, which it does not tell)
+        if (!opsLiveUp || isPair(team.peer) || Date.now() - team.at > TEAM_SAFETY) loadTeam(true);
+      } else if (state.view === 'security') loadSecurity(true);
     }, SPEEDS[speed][1]);
     if (state.chat) chatEvery();
   }
@@ -715,6 +784,11 @@
   }
   function setView(v) {
     if (v !== 'vault') stopThumbnails();
+    // (the security base in its frame asks for nothing while its window is put away)
+    var secFrame = $('#securityhome-frame');
+    if (secFrame && secFrame.getAttribute('src') && secFrame.contentWindow) {
+      try { secFrame.contentWindow.postMessage({ type: 'ops-view', visible: v === 'securityhome' }, location.origin); } catch (e) { /* not loaded yet: it starts in sight */ }
+    }
     var again = state.view === v;
     state.view = v;
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
@@ -758,21 +832,35 @@
   }
 
   /* ------------------------------------------------------------ the players --- */
+  // The list is asked for with what this page was given last (`since`): the server answers with what changed, not the whole list again.
+  var listSeq = 0, listApplied = 0;
+  function mergePlayers(r) {
+    if (r.delta) {
+      var by = new Map(state.players.map(function (p) { return [p.id, p]; }));
+      (r.players || []).forEach(function (p) { by.set(p.id, p); });
+      (r.gone || []).forEach(function (id) { by.delete(id); });
+      // (the newest first, as the server sends the whole list)
+      state.players = Array.from(by.values()).sort(function (a, b) { return b.id - a.id; });
+    } else state.players = r.players || [];
+    state.sync = r.token || '';
+  }
+  function applyPlayers(r) {
+    mergePlayers(r);
+    state.total = r.total || 0;
+    if (r.favorites) state.favorites = r.favorites;
+    state.now = r.now || Date.now();
+    state.counts = { waiting: r.waiting || 0 };
+    render();
+  }
   function load(quiet) {
-    return request('GET', '/api/ops/players' + (state.q ? '?q=' + encodeURIComponent(state.q) : '')).then(function (r) {
-      state.players = r.players || [];
-      state.total = r.total || 0;
-      state.favorites = r.favorites || [];
-      if (r.speed) useSpeed(r.speed, true);
-      state.now = r.now || Date.now();
-      state.counts = { waiting: r.waiting || 0, reports: r.reports || 0, detections: r.detections || 0, feedback: r.feedback || 0 };
-      setCount('reports', state.counts.reports);
-      setCount('detections', state.counts.detections);
-      setCount('feedback', state.counts.feedback);
-      setCount('archive', r.archived || 0);
-      // (the developer: operators asking for more room in the shared vaults)
-      setCount('vault', state.developer ? r.vaultRequests || 0 : 0);
-      render();
+    var seq = ++listSeq;
+    return request('GET', '/api/ops/players?since=' + encodeURIComponent(state.sync || '') + (state.q ? '&q=' + encodeURIComponent(state.q) : '')).then(function (r) {
+      // (an answer that comes after a newer one is of no use)
+      if (seq < listApplied) return;
+      listApplied = seq;
+      applyPlayers(r);
+      // (this answer carries the tabs' numbers as well: the archive's and the vault's are the players' list's own to say here)
+      applyCounts(r);
       if (state.open && quiet) refreshDetail();
     }, function (err) { if (!quiet) fail(err); });
   }
@@ -801,10 +889,54 @@
     $('#sum-banned').textContent = fmt(state.players.filter(function (p) { return p.ban || p.deviceBlocked; }).length);
     $('#sum-at').textContent = date(Date.now(), true).slice(11);
     var body = $('#rows');
-    body.textContent = '';
     var list = visible();
     $('#empty').hidden = list.length > 0;
-    list.forEach(function (p) { body.appendChild(rowEl(p)); });
+    // Only what changed is drawn again: a row whose data is the same stays as it is (a list of hundreds drawn from nothing every few
+    // seconds was most of this page's work), in the order of the list; the "最終 …" of one who is away is kept right on its own.
+    var want = new Set(list.map(function (p) { return p.id; }));
+    // (the rows that are not in the list any more go first, so that what follows walks only rows that stay)
+    drawn.forEach(function (rec, id) {
+      if (want.has(id)) return;
+      if (rec.tr.parentNode === body) body.removeChild(rec.tr);
+      drawn.delete(id);
+    });
+    var cursor = body.firstChild;
+    list.forEach(function (p) {
+      var sig = rowSig(p), rec = drawn.get(p.id);
+      if (!rec || rec.sig !== sig) {
+        var tr = rowEl(p);
+        if (rec && rec.tr.parentNode === body) {
+          // (the cursor is never left on a row that goes)
+          if (rec.tr === cursor) cursor = cursor.nextSibling;
+          body.removeChild(rec.tr);
+        }
+        rec = { tr: tr, sig: sig };
+        drawn.set(p.id, rec);
+      } else if (rec.tr.ago) {
+        var text = '最終 ' + ago(p.lastSeen);
+        if (rec.tr.ago.nodeValue !== text) rec.tr.ago.nodeValue = text;
+      }
+      if (rec.tr === cursor) cursor = cursor.nextSibling;
+      else body.insertBefore(rec.tr, cursor);
+    });
+    // (anything left after the last row is not a row of this list)
+    while (cursor) { var next = cursor.nextSibling; body.removeChild(cursor); cursor = next; }
+  }
+  // the rows on the page, by player: { tr, sig }
+  var drawn = new Map();
+  // what a row shows, but for when the player was last seen (its text is kept right on its own) and the play time (not shown here); of a player
+  // as the list holds it (a row that did not change is the same object as the last time), so it is worked out once
+  var baseSigs = new WeakMap();
+  function rowSig(p) {
+    var base = baseSigs.get(p);
+    if (base === undefined) {
+      var c = Object.assign({}, p);
+      delete c.lastSeen;
+      delete c.playMs;
+      base = JSON.stringify(c);
+      baseSigs.set(p, base);
+    }
+    return base + (state.favorites.indexOf(p.id) >= 0 ? '\u2605' : '') + (state.developer ? 'd' : '');
   }
   function td(label, child, cls) {
     var c = el('td', cls || '');
@@ -830,7 +962,9 @@
     tr.appendChild(td('プレイヤー', w));
     var s = el('span', 'status' + (p.online ? ' on' : ''));
     s.appendChild(el('i', 'dot'));
-    s.appendChild(document.createTextNode(p.online ? 'オンライン' : '最終 ' + ago(p.lastSeen)));
+    var seen = document.createTextNode(p.online ? 'オンライン' : '最終 ' + ago(p.lastSeen));
+    s.appendChild(seen);
+    if (!p.online) tr.ago = seen;
     tr.appendChild(td('オンライン状況', s));
     var m = el('div', 'money');
     m.appendChild(el('b', '', '$' + fmt(p.worth)));
@@ -1508,10 +1642,22 @@
   }
 
   /* ------------------------------------------------------------ 通報 --- */
+  // A list that is asked for again and again while its tab is open comes with the rev the page was given: the server answers `same` while it has
+  // not changed, and the page does not draw it again (what is open on a card stays open). Asked for on purpose, it is always in full.
+  var listRevs = {};
+  function askList(path, quiet) {
+    var have = quiet ? listRevs[path] : '';
+    return request('GET', path + (have ? (path.indexOf('?') < 0 ? '?' : '&') + 'rev=' + have : '')).then(function (r) {
+      if (r.same) return null;
+      listRevs[path] = r.rev || '';
+      return r;
+    });
+  }
   function loadReports(quiet) {
     var list = $('#report-list');
     if (!quiet) { list.textContent = ''; list.appendChild(el('p', 'muted', '読み込み中…')); }
-    request('GET', '/api/ops/reports?status=' + state.reportStatus).then(function (r) {
+    askList('/api/ops/reports?status=' + state.reportStatus, quiet).then(function (r) {
+      if (!r) return;
       list.textContent = '';
       if (!r.reports.length) list.appendChild(el('p', 'empty muted', state.reportStatus === 'open' ? '未処理の通報はありません' : '処理済みの通報はありません'));
       r.reports.forEach(function (x) { list.appendChild(reportCard(x)); });
@@ -1636,7 +1782,8 @@
   function loadDetections(quiet) {
     var list = $('#det-list');
     if (!quiet) { list.textContent = ''; list.appendChild(el('p', 'muted', '読み込み中…')); }
-    request('GET', '/api/ops/detections' + (state.detAll ? '?all=1' : '')).then(function (r) {
+    askList('/api/ops/detections' + (state.detAll ? '?all=1' : ''), quiet).then(function (r) {
+      if (!r) return;
       list.textContent = '';
       if (!r.detections.length) list.appendChild(el('p', 'empty muted', state.detAll ? '検知はありません' : '未確認の検知はありません'));
       r.detections.forEach(function (d) { list.appendChild(detectionCard(d, false)); });
@@ -1713,7 +1860,8 @@
   function loadFeedback(quiet) {
     var list = $('#fb-list');
     if (!quiet) { list.textContent = ''; list.appendChild(el('p', 'muted', '読み込み中…')); }
-    request('GET', '/api/ops/feedback').then(function (r) {
+    askList('/api/ops/feedback', quiet).then(function (r) {
+      if (!r) return;
       state.feedback = r.feedback || [];
       renderFeedback();
     }, function (err) { if (!quiet) fail(err); });
@@ -1983,12 +2131,17 @@
   /* ------------------------------------------------------------ 課金 (開発者支援, the developer's own) --- */
   var drafts = {};   // replies being written, by player (kept while the list refreshes)
   function yen(n) { return fmt(n) + '円'; }
+  function applyPay(r) {
+    state.pay = r;
+    setCount('pay', r.waiting.length);
+    if (state.view === 'pay') renderPay();
+  }
   function loadPay(quiet) {
     if (!state.developer) return Promise.resolve();
     return request('GET', '/api/ops/pay').then(function (r) {
-      state.pay = r;
-      setCount('pay', r.waiting.length);
-      if (state.view === 'pay') renderPay();
+      // (the poll's copy is older than this one now)
+      revs.p = '';
+      applyPay(r);
     }, function (err) { if (!quiet) fail(err); });
   }
   function payStat(box, label, value, cls) {
@@ -2106,7 +2259,9 @@
   /* ------------------------------------------------------------ 運営チャット --- */
   // the operators (who is on) and the conversation open: an operator's id, 0 for everyone, null none
   // (the developer: also 'pair:<a>:<b>', a one-to-one talk between two others, read only)
-  var team = { list: null, peer: null, messages: [], theirRead: 0, seq: 0, busy: 0, again: false, sending: false, pairs: [] };
+  var team = { list: null, peer: null, messages: [], theirRead: 0, seq: 0, busy: 0, again: false, sending: false, pairs: [], at: 0 };
+  // how long the team's tab goes without asking while the live connection is up
+  var TEAM_SAFETY = 30000;
   var isPair = function (peer) { return typeof peer === 'string'; };
   function teamUnread(r) { return r.all.unread + r.operators.reduce(function (n, o) { return n + o.unread; }, 0); }
   function peerRow(peer) {
@@ -2114,19 +2269,26 @@
     if (!r || isPair(peer)) return null;
     return peer === 0 ? r.all : r.operators.filter(function (o) { return o.id === peer; })[0] || null;
   }
+  // the team's list as the server says it (from the poll, or asked for alone); in the team's tab: and what is in the conversation open
+  function applyTeam(r) {
+    team.list = r;
+    team.at = Date.now();
+    if (!call.on) call.members = r.call || [];
+    // the conversation on the screen is read
+    var open = state.view === 'team' && !document.hidden && team.peer !== null ? peerRow(team.peer) : null, mustRead = !!(open && open.unread);
+    if (open) open.unread = 0;
+    setCount('team', teamUnread(r));
+    if (state.view !== 'team') return null;
+    if (state.developer) request('GET', '/api/ops/team/pairs').then(function (p) { team.pairs = p.pairs; renderTeamList(); }, function () {});
+    renderTeamList();
+    renderTeamHead();
+    return loadTeamMsgs(false, mustRead);
+  }
   function loadTeam(quiet) {
     return request('GET', '/api/ops/team').then(function (r) {
-      team.list = r;
-      if (!call.on) call.members = r.call || [];
-      // the conversation on the screen is read
-      var open = state.view === 'team' && !document.hidden && team.peer !== null ? peerRow(team.peer) : null, mustRead = !!(open && open.unread);
-      if (open) open.unread = 0;
-      setCount('team', teamUnread(r));
-      if (state.view !== 'team') return null;
-      if (state.developer) request('GET', '/api/ops/team/pairs').then(function (p) { team.pairs = p.pairs; renderTeamList(); }, function () {});
-      renderTeamList();
-      renderTeamHead();
-      return loadTeamMsgs(false, mustRead);
+      // (the poll's copy is older than this one now)
+      revs.t = '';
+      return applyTeam(r);
     }, function (err) { if (!quiet) fail(err); });
   }
   function openTeamView() {
@@ -2440,6 +2602,8 @@
      call and the developer called. WebSocket on Cloudflare, Server-Sent
      Events on the Node server (the page says which). */
   var opsLive = null, opsLiveWant = false, opsLiveTimer = 0;
+  // the connection is up (it has spoken): what it tells of is not asked for on a timer; and whether it has been up before (this page's, again)
+  var opsLiveUp = false, opsLiveSeen = false;
   function liveSse() { var m = document.querySelector('meta[name="br-mode"]'); return !!m && m.getAttribute('data-live') === 'sse'; }
   function opsLiveOpen() {
     if (state.viewer || !token || opsLive) return;
@@ -2450,7 +2614,7 @@
       if (liveSse()) {
         var es = new EventSource(path);
         opsLive = { close: function () { es.close(); } };
-        ['hello', 'opscall', 'opsping', 'devunit', 'watchhello', 'watchframe', 'watchstat', 'watchend'].forEach(function (ev) {
+        ['hello', 'opscall', 'opsping', 'opschat', 'devunit', 'watchhello', 'watchframe', 'watchstat', 'watchend'].forEach(function (ev) {
           es.addEventListener(ev, function (e) { up = true; var d = null; try { d = JSON.parse(e.data); } catch (x) { return; } onOpsLive(ev, d); });
         });
         es.onerror = function () { es.close(); opsLiveLost(up); };
@@ -2471,6 +2635,7 @@
   }
   function opsLiveLost(was) {
     opsLive = null;
+    opsLiveUp = false;
     // (the call goes with the connection: the server has let us out)
     if (call.on) { callEnd(); toast('接続が切れたため、通話から抜けました'); }
     if (!opsLiveWant) return;
@@ -2479,14 +2644,33 @@
   }
   function opsLiveClose() {
     opsLiveWant = false;
+    opsLiveUp = opsLiveSeen = false;
     clearTimeout(opsLiveTimer);
+    clearTimeout(nudgeTimer);
     if (opsLive) { opsLive.close(); opsLive = null; }
   }
   function onOpsLive(ev, d) {
+    opsLiveUp = true;
     if (ev.indexOf('watch') === 0) { if (window.OpsWatch) OpsWatch.onLive(ev, d); return; }
-    if (ev === 'devunit') devUnitCounts();
+    if (ev === 'hello') {
+      // (back after the connection was lost: what was told meanwhile is asked for)
+      if (opsLiveSeen) chatNudge();
+      opsLiveSeen = true;
+    } else if (ev === 'devunit') devUnitCounts();
     else if (ev === 'opscall') onCall(d);
     else if (ev === 'opsping') devCalled(d);
+    else if (ev === 'opschat') chatNudge();
+  }
+  // A conversation changed (a message, or one read): the team's tab asks for it now, any other tab for the number (the poll), instead of the
+  // tab asking every few seconds for as long as it is open. Several in a moment are one.
+  var nudgeTimer = 0;
+  function chatNudge() {
+    clearTimeout(nudgeTimer);
+    nudgeTimer = setTimeout(function () {
+      // (a page that is not seen asks when it is seen again)
+      if (document.hidden || !token || $('#app').hidden) return;
+      if (state.view === 'team') loadTeam(true); else poll();
+    }, 120);
   }
   // @開発者: the developer hears of it at once
   function devCalled(d) {
@@ -2786,10 +2970,20 @@
     }).catch(fail);
   }
 
+  // the five-minute history as this page has it: the server sends what came after (`hs`: the second before the newest this page holds)
+  var srvHist = [];
   function loadServer(quiet) {
     if (srvBusy) return;
     srvBusy = true;
-    request('GET', '/api/ops/server').then(function (r) { if (state.view === 'server') renderServer(r); }, function (err) { if (!quiet) fail(err); })
+    var last = srvHist.length ? srvHist[srvHist.length - 1][0] : 0;
+    request('GET', '/api/ops/server' + (last ? '?hs=' + (last - 1) : '')).then(function (r) {
+      if (r.rate.delta) {
+        var from = r.rate.history.length ? r.rate.history[0][0] : Infinity;
+        r.rate.history = srvHist.filter(function (x) { return x[0] < from; }).concat(r.rate.history).slice(-300);
+      }
+      srvHist = r.rate.history;
+      if (state.view === 'server') renderServer(r);
+    }, function (err) { if (!quiet) fail(err); })
       .then(function () { srvBusy = false; });
   }
   function srvStat(box, label, value, sub) {
@@ -3301,7 +3495,7 @@
     c.appendChild(el('p', 'muted', '保管庫を除く使用量（リクエスト・送信量・ライブ通信・データベースの増え方、運営サイトの分も）が、ふだんの10倍以上かつ下限以上の状態で2分続くと、緊急ログに記録してサーバーを自動で止めます。解除は開発者コードで。手動でも止められます。'));
     var t = el('table', 'srv-table');
     c.appendChild(t);
-    request('GET', '/api/emergency').then(function (r) {
+    request('GET', '/api/emergency?lean=1').then(function (r) {
       var NAMES = { requests: 'リクエスト', bytes: '送信量', wsIn: 'ライブ通信（受信）', dbGrowth: 'データベースの増加', opsRequests: '運営サイトのリクエスト', opsBytes: '運営サイトの送信量' };
       Object.keys(r.floors).forEach(function (k) {
         var big = /bytes|Bytes|dbGrowth/.test(k);
@@ -3450,21 +3644,23 @@
       state.vaultSpeed = sp.speed || null;
       state.vaultSpace = state.developer ? '' : sp.personal ? sp.personal.id : sp.spaces.length ? sp.spaces[0].id : '';
       renderVault();
-      return loadVault();
+      // (the vaults were just asked for: the files only)
+      return loadVault(false, sp);
     }, function (err) { if (!quiet) fail(err); }).then(function () { openLook.busy = false; });
   }
   // the vaults one sees and one's room, and the open one's files and folders
   // (`quiet`: from the timer, redrawn only when something changed). The
   // lists are light; from the timer the server only says "the same" while
   // nothing has changed (in full once in five minutes all the same).
-  function loadVault(quiet) {
+  // (`known`: the vaults' answer that was just had, so it is not asked for again)
+  function loadVault(quiet, known) {
     if (!state.vault) return Promise.resolve();
     var space = state.vaultSpace, none = !space && !state.developer, rv = state.vaultRev;
     var cheap = quiet && Date.now() - rv.full < 300000 && rv.space === space;
     var q = function (path, rev) { return path + (path.indexOf('?') < 0 ? '?' : '&') + 'rev=' + encodeURIComponent(rev); };
     var filesPath = '/api/vault/files' + (space ? '?space=' + encodeURIComponent(space) : '');
     return Promise.all([
-      vreq('GET', cheap && rv.spaces ? q('/api/vault/spaces', rv.spaces) : '/api/vault/spaces'),
+      known || vreq('GET', cheap && rv.spaces ? q('/api/vault/spaces', rv.spaces) : '/api/vault/spaces'),
       none ? null : vreq('GET', cheap && rv.files ? q(filesPath, rv.files) : filesPath)
     ]).then(function (rs) {
       var sp = rs[0], r = rs[1];
@@ -5957,6 +6153,12 @@
     if (window.OpsDevice) OpsDevice.watch($('#login-form'));
     initDevUnit();
     diaryProfile = window.OpsDiaryProfile({ request: request, el: el, state: state, face: face, setView: setView, openDetail: openDetail, toast: toast, fail: fail });
+    // the security base in its frame asks whether its window is in front (it was put away before the page was up)
+    window.addEventListener('message', function (e) {
+      var f = $('#securityhome-frame');
+      if (e.origin !== location.origin || !e.data || e.data.type !== 'ops-view-ask' || !f || e.source !== f.contentWindow) return;
+      try { f.contentWindow.postMessage({ type: 'ops-view', visible: state.view === 'securityhome' }, location.origin); } catch (x) { /* gone */ }
+    });
     $('#logout').addEventListener('click', logout);
     $('#enter-go').addEventListener('click', enter);
     $('#enter-other').addEventListener('click', logout);

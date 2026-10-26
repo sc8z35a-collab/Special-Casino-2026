@@ -156,8 +156,21 @@ const LINE_SECRET = process.env.CHECK_LINE_SECRET || '', LINE_STAFF = process.en
   // the patrol: the server looks over itself (JSON functions, the log's triggers and its pages, on the object's own SQL)
   const look = await signed('POST', '/api/ops/patrol/run', {});
   assert.equal(look.status, 200, 'patrol: ' + JSON.stringify(look).slice(0, 300));
-  assert.deepEqual(look.patrol.checks.map((c) => c.id), ['log', 'rights', 'accounts', 'settings', 'parts']);
+  assert.deepEqual(look.patrol.checks.map((c) => c.id), ['log', 'rights', 'accounts', 'settings', 'parts', 'stele']);
   assert.deepEqual(look.patrol.findings, [], 'nothing wrong: ' + JSON.stringify(look.patrol.findings));
   console.log('patrol: the server looked over itself on the Worker, nothing wrong');
+  // the operator site's poll in one request, the players' list as what changed, the history from where the page has it
+  const t1 = await signed('GET', '/api/ops/tick?pl=&p=-');
+  assert.equal(t1.status, 200, 'tick: ' + JSON.stringify(t1).slice(0, 300));
+  assert.ok(t1.counts.rev && t1.devunit.rev && t1.team.rev && t1.players.full && t1.players.token, 'the parts and the list');
+  const t2 = await signed('GET', `/api/ops/tick?c=${t1.counts.rev}&d=${t1.devunit.rev}&t=${t1.team.rev}&p=-&pl=${t1.players.token}`);
+  assert.equal(t2.counts.same && t2.devunit.same && t2.team.same, true, 'parts the page has: ' + JSON.stringify(t2).slice(0, 300));
+  assert.equal(t2.players.delta, true);
+  const srv = await signed('GET', '/api/ops/server');
+  assert.equal(srv.rate.history.length, 300);
+  const last = srv.rate.history[srv.rate.history.length - 1][0];
+  const part = await signed('GET', `/api/ops/server?hs=${last - 1}`);
+  assert.ok(part.rate.delta && part.rate.history.length >= 1 && part.rate.history.length <= 5, 'history from where the page has it');
+  console.log('poll: one request for the tabs, the list as what changed, the history from where the page has it');
   console.log('WORKER OK');
 })().catch((e) => { console.error(e); process.exit(1); });

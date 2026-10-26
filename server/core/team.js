@@ -10,7 +10,9 @@
 // The 全体チャット has a voice call for every operator, as many as come and
 // for as long as they like (ops_call: who is in it), its signalling over the
 // operator site's own live connection (server/cloudflare/casino.js,
-// server/node/live.js: sendOps).
+// server/node/live.js: sendOps). A message, or one read further, is told to the
+// others over that connection too (opschat): the site asks for the conversation
+// then, and its tab does not ask every few seconds.
 import { ApiError, posInt } from './errors.js';
 import { kindOf } from './opslog.js';
 
@@ -80,13 +82,20 @@ export function createTeam({ q, getUser, live, ops, seen, isDeveloper, callDevel
   const dto = (m) => ({ id: m.id, from: who(m.from_id), to: m.to_id, text: m.body, at: m.created_at, refs: refsOf(m.body) });
 
   /* the 全体チャット's call: who is in it now (with the site's live connection still there) */
-  function inCall() {
+  function inCall(list = members()) {
     const rows = q('SELECT * FROM ops_call ORDER BY at').all();
-    const ids = new Set(members().map((o) => o.id));
+    const ids = new Set(list.map((o) => o.id));
     return rows.filter((r) => ids.has(r.user_id) && live.opsOnline(r.user_id)).map((r) => ({ ...who(r.user_id), since: r.at }));
   }
   function tellCall(except, data) {
     for (const r of q('SELECT user_id FROM ops_call').all()) if (r.user_id !== except) live.sendOps(r.user_id, 'opscall', data);
+  }
+  // A conversation changed (a message came, or was read): the operators in it are told over the site's live connection, and their site asks for it
+  // at once instead of on a timer. `with` is the conversation as the one told knows it: 0 for everyone, or the other person.
+  function nudge(from, to) {
+    if (to === 0) {
+      for (const o of members()) if (o.id !== from) live.sendOps(o.id, 'opschat', { with: 0 });
+    } else live.sendOps(to, 'opschat', { with: from });
   }
   // one's site connection gone: out of the call (the others are told)
   function gone(userId) {
@@ -100,9 +109,10 @@ export function createTeam({ q, getUser, live, ops, seen, isDeveloper, callDevel
       needMember(u);
       const now = Date.now();
       const last = q('SELECT * FROM ops_messages WHERE to_id = 0 ORDER BY id DESC LIMIT 1').get();
+      const list = members();
       return {
         me: u.id, now,
-        operators: members().map((o) => {
+        operators: list.map((o) => {
           const p = getUser(o.id);
           const at = seen.get(o.id) || 0;
           return {
@@ -112,7 +122,7 @@ export function createTeam({ q, getUser, live, ops, seen, isDeveloper, callDevel
           };
         }),
         all: { unread: unread(u, 0), last: last ? dto(last) : null },
-        call: inCall()
+        call: inCall(list)
       };
     },
 
@@ -162,6 +172,7 @@ export function createTeam({ q, getUser, live, ops, seen, isDeveloper, callDevel
       const message = dto(q('SELECT * FROM ops_messages WHERE id = ?').get(id));
       // @開発者: the developer hears of it at once (not when they wrote it themselves)
       if (message.refs && message.refs.dev && !isDeveloper(u)) callDeveloper(u, message, to);
+      nudge(u.id, to);
       return { message };
     },
 
@@ -205,7 +216,10 @@ export function createTeam({ q, getUser, live, ops, seen, isDeveloper, callDevel
       const peer = peerOf(u, body.with);
       const upTo = Number(body.upTo);
       if (!Number.isSafeInteger(upTo) || upTo < 0) throw new ApiError(400, 'bad_read', '既読の位置が正しくありません');
+      const before = readOf(u.id, peer);
       q('INSERT INTO ops_reads (user_id, peer_id, read_id) VALUES (?, ?, ?) ON CONFLICT(user_id, peer_id) DO UPDATE SET read_id = MAX(read_id, excluded.read_id)').run(u.id, peer, upTo);
+      // (a one to one talk read further: the other one's 既読 moves)
+      if (peer !== 0 && upTo > before) nudge(u.id, peer);
       return { ok: true };
     }
   };

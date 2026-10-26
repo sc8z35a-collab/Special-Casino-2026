@@ -23,6 +23,7 @@ import {
   cleanPassword, hashPassword, verifyPassword, signTicket, verifyTicket, sealText, openText, keyFrom
 } from './auth.js';
 import { Limiter } from './ratelimit.js';
+import { hashOf } from './hash.js';
 import {
   RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, VIP, RECEIPTS,
   spin as spinReels, evaluate as evaluateLine, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
@@ -3879,12 +3880,19 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const snap = stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() });
     return { now: snap.now, host: snap.host, live: snap.live, rate: snap.rate, today: { requests: snap.today.requests, bytes: snap.today.bytes }, usage: { percent: snap.estimate.usagePercent, tier: snap.estimate.usageTier, yen: snap.estimate.yen } };
   }
+  // The five-minute history is most of the answer (a second each, three hundred of them) and the page has all but the last seconds of it: `hs` is
+  // the second it holds the newest of, less one, and only what came after is sent (`rate.delta`, to be put after what it has).
+  const sinceHistory = (req, out) => {
+    const raw = req.query.get('hs');
+    const hs = raw === null || raw === '' ? NaN : Number(raw);
+    return Number.isFinite(hs) ? { ...out, rate: { ...out.rate, history: out.rate.history.filter((x) => x[0] > hs), delta: true } } : out;
+  };
   // the operator site's サーバー tab (every operator)
   routes['GET /api/ops/server'] = (req, u) => {
     ops.see(u);
     // lean=1: what a small window on the desktop draws (the figures and the five-minute history), not the whole tab
-    if (req.query.get('lean') === '1') return leanServer();
-    return { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on }, line: line.status(), patrol: patrolDto(), stele: stele.status() };
+    if (req.query.get('lean') === '1') return sinceHistory(req, leanServer());
+    return sinceHistory(req, { ...stats.snapshot({ online: live.onlineCount(), operatorsOnline: operatorsOnlineNow(), vault: vault.summary() }), discord: { on: discord.on }, line: line.status(), patrol: patrolDto(), stele: stele.status() });
   };
   // the 石碑: how it stands (every operator), carved and looked over now (the developer), and the log's rows to keep a copy of (the developer)
   routes['GET /api/ops/stele'] = (req, u) => { ops.see(u); return { stele: stele.status(), now: Date.now() }; };
@@ -3908,6 +3916,67 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const v = vault.summary();
     return { ...out, usage: stats.usage(v && v.store === 'bucket' ? v.used : 0) };
   };
+  // The operator site's poll in one request (it was five, every few seconds, for as long as the site stays open). Each part is its own route's
+  // answer, with that route's own checks:
+  //  - `counts` (the tabs' numbers, the speed, the month's colour), `devunit` and `pay` (the developer's): the page says what it has of each
+  //    (`c`, `d`, `p`: the `rev` it was given) and a part that is the same comes back as `{ same: true }`; `p=-`: the payments' tab is not
+  //    on the screen, only the number of those waiting;
+  //  - `team`: the same way (`t`); `t=-`: left out (the team's tab does its own asking);
+  //  - `players`: only when the page shows it (`pl`: what it was given last, empty the first time; `q`: what it looks for), as what changed.
+  // What changes with every look (the time, the month's share in a figure, when someone who is on the site was last seen) is not part of
+  // a rev.
+  const revOf = (part, skip = ['now']) => hashOf(JSON.stringify(part, (k, v) => (skip.includes(k) ? undefined : v)));
+  const partOf = (part, have, rev = revOf(part)) => (have === rev ? { same: true, rev } : { ...part, rev });
+  const teamRevOf = (t) => revOf({ ...t, operators: t.operators.map((o) => (o.site || o.game ? { ...o, seenAt: 0 } : o)) });
+  routes['GET /api/ops/tick'] = async (req, u) => {
+    ops.need(u);
+    const have = (k) => req.query.get(k);
+    const developer = isDeveloper(u);
+    const out = { now: Date.now() };
+    // (a part that fails for a reason of its own is left out and the rest still comes; a refusal — a login that ended — is the whole request's)
+    const add = async (name, make) => {
+      try { out[name] = await make(); } catch (e) {
+        if (e instanceof ApiError) throw e;
+        console.error(`tick: ${name} left out:`, e && e.message);
+      }
+    };
+    await add('counts', async () => {
+      const counts = { ...(await routes['GET /api/ops/counts'](req, u)), archived: ops.archivedCount(), vaultRequests: developer ? ops.vaultRequestsOpen() : 0 };
+      return partOf(counts, have('c'), revOf(counts, ['now', 'percent']));
+    });
+    await add('devunit', async () => partOf(await routes['GET /api/ops/devunit/counts'](req, u), have('d')));
+    if (developer) {
+      await add('pay', async () => {
+        if (have('p') === '-') return { count: pay.waitingCount() };
+        const all = await routes['GET /api/ops/pay'](req, u);
+        return { ...partOf(all, have('p')), count: all.waiting.length };
+      });
+    }
+    if (have('t') !== '-') {
+      await add('team', async () => {
+        const team = await routes['GET /api/ops/team'](req, u);
+        return partOf(team, have('t'), teamRevOf(team));
+      });
+    }
+    if (have('pl') !== null) {
+      await add('players', async () => {
+        const find = have('q');
+        const query = new URLSearchParams({ since: have('pl'), lean: '1', ...(find ? { q: find } : {}) });
+        return routes['GET /api/ops/players'](Object.create(req, { query: { value: query } }), u);
+      });
+    }
+    return out;
+  };
+  // The lists a tab asks for again and again while it is open (the reports, the detections, the feedback): `rev`, what the page was given last, is
+  // answered `{ same: true }` while the list has not changed, and the page does not draw it again.
+  for (const key of ['GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback']) {
+    const inner = routes[key];
+    routes[key] = async (req, u) => {
+      const out = await inner(req, u);
+      const rev = revOf(out);
+      return req.query.get('rev') === rev ? { same: true, rev } : { ...out, rev };
+    };
+  }
   // the developer tries the notices (Discord, LINE): one goes out at once to each
   routes['POST /api/ops/discord/test'] = async (req, u) => {
     ops.need(u);

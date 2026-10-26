@@ -435,9 +435,13 @@
   function startTimer() {
     clearInterval(timer);
     clearInterval(aliveTimer);
-    timer = setInterval(function () { if (!document.hidden) tick(false); }, SPEEDS[speed]);
-    if (me && me.viewer) aliveTimer = setInterval(function () { if (!document.hidden && me) api('GET', '/api/sec/me').catch(function () {}); }, 2000);
+    timer = setInterval(function () { if (seen()) tick(false); }, SPEEDS[speed]);
+    if (me && me.viewer) aliveTimer = setInterval(function () { if (seen() && me) api('GET', '/api/sec/me').catch(function () {}); }, 2000);
   }
+  // In sight: the page is shown (not a tab in the background) and, inside the operator site, its window is not put away (the page cannot tell it
+  // by itself: its document still says it is visible; the site tells it: ops/ops.js setView). Nothing is asked for what nobody looks at.
+  var framed = true;
+  function seen() { return framed && !document.hidden; }
 
   /* ------------------------------------------------------------ data --- */
   var loadStatus = single(function () {
@@ -898,7 +902,7 @@
     });
   });
   // the unread count is kept up to date even while another panel is shown
-  setInterval(function () { if (me && !me.viewer && panels.chat && panels.chat.built && view !== 'chat' && !document.hidden) loadChat(); }, 8000);
+  setInterval(function () { if (me && !me.viewer && panels.chat && panels.chat.built && view !== 'chat' && seen()) loadChat(); }, 8000);
 
   /* ------------------------------------------------------------ ロックダウン --- */
   var K = {};
@@ -984,7 +988,16 @@
     document.addEventListener('click', function (e) { if (!e.target.closest('#chan, #chan-pop')) { $('#chan-pop').hidden = true; $('#chan').setAttribute('aria-expanded', 'false'); } });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { $('#chan-pop').hidden = true; $('#chan').setAttribute('aria-expanded', 'false'); } });
     // back in sight: up to date at once, not at the next tick
-    document.addEventListener('visibilitychange', function () { if (!document.hidden && me) tick(false); });
+    document.addEventListener('visibilitychange', function () { if (seen() && me) tick(false); });
+    // (inside the operator site: its window put away, or brought back)
+    window.addEventListener('message', function (e) {
+      if (e.origin !== location.origin || e.source !== window.parent || !e.data || e.data.type !== 'ops-view') return;
+      var back = !!e.data.visible && !framed;
+      framed = !!e.data.visible;
+      if (back && me) tick(false);
+    });
+    // (opened and put away again before this page was up: it asks where it stands)
+    if (window.parent !== window) { try { window.parent.postMessage({ type: 'ops-view-ask' }, location.origin); } catch (e) { /* on its own */ } }
     window.addEventListener('pagehide', function () { if (chan && me) { try { chan.close(); } catch (e) { /* the server forgets it by itself */ } } });
 
     if (!window.BR || !BR.secChannel || !BR.secChannel.available) { showLogin('このブラウザではセキュア通信を使えません。新しいブラウザで開いてください'); return; }

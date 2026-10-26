@@ -8,6 +8,9 @@
   "main": "server/cloudflare/worker.js",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
+  // the code is sent minified (a third smaller to load each time the object wakes), with its source maps beside it so that a log still names the real line
+  "minify": true,
+  "upload_source_maps": true,
   "assets": {
     // only the files listed in .assetsignore are published
     "directory": ".",

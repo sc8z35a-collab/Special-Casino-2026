@@ -582,5 +582,8 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
     }
   }
 
-  return { routes, public: ['POST /api/pay/webhook', 'GET /api/pay/seller'], sweep, meters, on, mode };
+  // how many players wait for the developer's words (the tab's number; the operator site's poll asks for no more than this unless the tab is open)
+  const waitingCount = () => q("SELECT COUNT(DISTINCT user_id) AS n FROM pay_orders WHERE status = 'paid' AND replied_at = 0").get().n;
+
+  return { routes, public: ['POST /api/pay/webhook', 'GET /api/pay/seller'], sweep, meters, on, mode, waitingCount };
 }
