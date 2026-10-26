@@ -617,7 +617,7 @@
 .confirm-actions { display: flex; gap: 18px; }
 
 /* ------------------------------------------------------------ overlays (CSS px) --- */
-.ov, .entry { position: fixed; left: 0; top: 0; width: 100%; height: 100%; }
+.ov { position: fixed; left: 0; top: 0; width: 100%; height: 100%; }
 .ov input, .entry input { -webkit-user-select: text; user-select: text; touch-action: manipulation; }
 
 .ov { z-index: 1000; display: flex; background: radial-gradient(ellipse at 50% 40%, rgba(70, 6, 14, .9), rgba(12, 1, 3, .97)); }
@@ -688,44 +688,55 @@
   .ov-title { font-size: 19px; }
 }
 
-/* text entry: one bar at the top (back, who, the field, send), the conversation below */
-.entry { z-index: 1100; display: flex; flex-direction: column; background: linear-gradient(180deg, #3a0610, #1c0205); }
+/* text entry: a bar on the bottom edge of what the keyboard leaves (js/ui/social.js lifts the game just enough to keep the end of the
+   conversation above it, so the screen is the one the player was on). --entry-s: the scale of the game on this device, which gives the bar the
+   size of the chat's own bar */
+.entry { position: fixed; left: 0; top: 0; width: 100%; height: 100%; z-index: 1100; display: flex; flex-direction: column; justify-content: flex-end; pointer-events: none; }
+.entry > * { pointer-events: auto; }
 .entry-close { flex: none; width: 40px; height: 42px; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
 .entry-close .ic { width: 22px; height: 21px; }
-.entry-title { flex: 0 1 auto; max-width: 26%; font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.entry-title { flex: 0 1 auto; max-width: 22%; font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 520px) { .entry-title { display: none; } }
+/* a conversation with no place on the game's screen: glass above the bar, the text as large as on the screen */
 .entry-feed {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
+  background: rgba(16, 30, 54, .62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   touch-action: pan-y;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
-.entry-error { flex: none; margin: 0; padding: 4px 16px; font-size: 13px; font-weight: 700; color: #ff9a8f; }
+.entry-error { flex: none; margin: 0; padding: 4px 16px; background: rgba(16, 30, 54, .86); font-size: 13px; font-weight: 700; color: #ff9a8f; }
 .entry-bar {
   flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 6px max(4px, env(safe-area-inset-left));
-  background: rgba(0, 0, 0, .4);
-  box-shadow: inset 0 -1px 0 rgba(214, 169, 74, .55);
+  min-height: max(54px, calc(104px * var(--entry-s, .45)));
+  padding: 0 max(10px, env(safe-area-inset-right)) env(safe-area-inset-bottom, 0px) max(4px, env(safe-area-inset-left));
+  background: rgba(16, 30, 54, .84);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 1.6px 0 rgba(225, 205, 210, .25);
 }
 .entry-bar input {
   flex: 1 1 140px;
   min-width: 120px;   /* the field never shrinks away between the name and 送信 */
-  height: 42px;
-  padding: 0 16px;
-  border-radius: 21px;
-  border: 1.5px solid rgba(255, 255, 255, .25);
-  background: rgba(255, 255, 255, .1);
+  height: max(42px, calc(68px * var(--entry-s, .45)));
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(148, 148, 172, .24);
+  box-shadow: inset 0 0 0 1.6px rgba(225, 222, 235, .28);
   color: #fff;
   font-family: var(--f-user);
-  font-size: 17px;
+  font-size: 17px;   /* (16px and over: iPhone does not zoom in) */
   outline: none;
 }
-.entry-bar input:focus { border-color: #d6a94a; }
-.entry-bar button[type="submit"] { flex: none; height: 42px; padding: 0 20px; border-radius: 8px; background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; font-size: 15px; font-weight: 700; touch-action: manipulation; }
+.entry-bar input:focus { box-shadow: inset 0 0 0 2px #d6a94a; }
+.entry-bar button[type="submit"] { flex: none; min-width: 84px; width: calc(160px * var(--entry-s, .45)); height: max(42px, calc(68px * var(--entry-s, .45))); padding: 0 12px; border-radius: 6px; background: linear-gradient(180deg, #f4dc45, #e8c72a); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .3), 0 3px 6px rgba(0, 0, 0, .35); color: #3a3410; font-size: 15px; font-weight: 700; touch-action: manipulation; }
 .entry-bar button[type="submit"]:disabled { opacity: .6; }

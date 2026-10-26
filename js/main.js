@@ -94,6 +94,10 @@
     var a = document.activeElement;
     return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
   }
+  // the stage's own transform (its scale, turned when upright) and how far it is lifted above the keyboard
+  var stageBase = '', lifted = 0;
+  function paintStage() { stage.style.transform = (lifted ? 'translateY(' + (-lifted) + 'px) ' : '') + stageBase; }
+  function lift(px) { lifted = Math.max(0, Math.round(px) || 0); paintStage(); }
   function layout() {
     if ((typing() || (BR.entry && BR.entry.isOpen())) && view.ready) return;
     var vw = window.innerWidth, vh = window.innerHeight;
@@ -106,9 +110,10 @@
     var W = Math.round(w / s), H = Math.round(h / s);
     stage.style.width = W + 'px';
     stage.style.height = H + 'px';
-    stage.style.transform = portrait
+    stageBase = portrait
       ? 'translate(' + vw + 'px,0) rotate(90deg) scale(' + s + ')'
       : 'scale(' + s + ')';
+    paintStage();
     var dpr = Math.min(window.devicePixelRatio || 1, 3);
     var res = s * dpr;
     // watching a friend: no more than the chosen quality (720P / 460P) is drawn (js/ui/watchquality.js)
@@ -673,7 +678,8 @@
       renderWallet: renderWallet, toast: toast, renderBet: renderBet, view: view,
       reels: reels, fx: fx, spin: spin, serverBalance: serverBalance, setBet: setBet, bet: bet,
       watchEnter: watchEnter, watchExit: watchExit, watchSpin: watchSpin, watchBalance: watchBalance,
-      relayout: function () { requestAnimationFrame(layout); }
+      relayout: function () { requestAnimationFrame(layout); },
+      lift: lift
     };
     reels.on('land', function (i) {
       BR.sfx.play('reelStop', i);
