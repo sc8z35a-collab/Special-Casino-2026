@@ -50,7 +50,8 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin) return;
   const hash = codeHash(url);
   if (!hash) return;
-  e.respondWith(caches.open(CODE_CACHE).then((c) => c.match(req, { ignoreVary: true })).then((hit) => hit || fetch(req, { cache: 'no-cache' }).then((res) => {
+  // (a cache that cannot be opened — storage turned off, a private window — is no reason for the page not to load: it goes to the server)
+  e.respondWith(caches.open(CODE_CACHE).then((c) => c.match(req, { ignoreVary: true })).catch(() => null).then((hit) => hit || fetch(req, { cache: 'no-cache' }).then((res) => {
     e.waitUntil(keepCode(res.clone(), req, hash).catch(() => {}));
     return res;
   })));

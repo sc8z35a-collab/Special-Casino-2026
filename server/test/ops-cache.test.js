@@ -46,7 +46,7 @@ test('the stamp tool leaves everything else in ops/index.html as it is', () => {
 // ---- the worker ----
 function worker() {
   const listeners = {}, calls = [], kept = new Map();
-  let body = new Uint8Array(0), offline = false;
+  let body = new Uint8Array(0), offline = false, broken = false;
   const cache = {
     match: async (req) => kept.get(typeof req === 'string' ? req : req.url),
     put: async (req, res) => { kept.set(typeof req === 'string' ? req : req.url, res); },
@@ -59,7 +59,7 @@ function worker() {
     URL, crypto: crypto.webcrypto, Uint8Array,
     importScripts() {}, VaultUploads: { engine: () => ({ wake: async () => {}, cancel() {}, run: async () => {}, pending: async () => 0 }) },
     fetch: async (req, options) => { calls.push({ url: typeof req === 'string' ? req : req.url, options }); if (offline) throw new Error('offline'); return respond(); },
-    caches: { open: async () => cache }
+    caches: { open: async () => { if (broken) throw new Error('storage is off'); return cache; } }
   });
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'ops/ops-sw.js'), 'utf8'), context);
   async function request(url, { destination = 'script', method = 'GET', range = false } = {}) {
@@ -72,7 +72,7 @@ function worker() {
     await Promise.all(waits);
     return answered;
   }
-  return { request, calls, kept, setBody: (b) => { body = b; }, offline: (v) => { offline = v; } };
+  return { request, calls, kept, setBody: (b) => { body = b; }, offline: (v) => { offline = v; }, broken: (v) => { broken = v; } };
 }
 
 test('a script named by the hash of its file is asked of the server once, checked against that hash, and then answered from the cache', async () => {
@@ -120,4 +120,15 @@ test('a body that is not the file its address names is shown but never kept; add
     ['https://ops.test/ops/assets/wallpaper.webp?v=' + sha(file), { destination: 'image' }]
   ]) assert.equal(await w.request(u, o), null, u + ' ' + JSON.stringify(o));
   assert.equal(w.calls.length, before, 'and the worker asked the server for none of them');
+});
+
+test('a cache that cannot be opened does not keep the page from loading: the script comes from the server', async () => {
+  const w = worker();
+  const file = fs.readFileSync(path.join(ROOT, 'ops/ops.js'));
+  w.setBody(new Uint8Array(file));
+  w.broken(true);
+  const url = 'https://ops.test/ops/ops.js?v=' + sha(file);
+  assert.ok(await w.request(url), 'answered');
+  assert.equal(w.calls.length, 1, 'from the server');
+  assert.equal(w.kept.size, 0);
 });
