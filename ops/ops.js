@@ -108,7 +108,8 @@
   try { token = localStorage.getItem(KEY); } catch (e) { token = null; }
 
   /* ------------------------------------------------------------ the server --- */
-  function request(method, path, body, headers) {
+  // `as`: 'bytes' answers the bytes (and the answer's headers) instead of JSON, for what the server sends as a file
+  function request(method, path, body, headers, as) {
     var h = { 'Content-Type': 'application/json' };
     if (token) h.Authorization = 'Bearer ' + token;
     if (headers) Object.keys(headers).forEach(function (k) { h[k] = headers[k]; });
@@ -119,6 +120,7 @@
     })
       .catch(function () { throw { status: 0, message: '通信できませんでした' }; })
       .then(function (res) {
+        if (as === 'bytes' && res.ok) return res.arrayBuffer().then(function (bytes) { return { bytes: bytes, headers: res.headers }; }, function () { throw { status: 0, message: '通信できませんでした' }; });
         return res.json().catch(function () { return {}; }).then(function (j) {
           if (res.ok) return j;
           var e = j.error || {};
@@ -3372,8 +3374,8 @@
   var KINDS_3D = /\.(glb|gltf|obj|fbx|stl|ply)$/i;
   function is3d(name) { return KINDS_3D.test(String(name || '')); }
   // (the developer's ticket goes with every call while they may change things; an operator has none)
-  function vreq(method, path, body) {
-    return request(method, path, body, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}).catch(function (err) {
+  function vreq(method, path, body, as) {
+    return request(method, path, body, state.vault && state.vault.ticket ? { 'X-Vault-Ticket': state.vault.ticket } : {}, as).catch(function (err) {
       if (err.code === 'vault_locked' && state.vault && state.vault.ticket) relock('閲覧のみに戻りました。変更するには「編集する」から開発者コードを入力してください');
       throw err;
     });
@@ -3454,11 +3456,11 @@
   // the vaults one sees and one's room, and the open one's files and folders
   // (`quiet`: from the timer, redrawn only when something changed). The
   // lists are light; from the timer the server only says "the same" while
-  // nothing has changed (in full once a minute all the same).
+  // nothing has changed (in full once in five minutes all the same).
   function loadVault(quiet) {
     if (!state.vault) return Promise.resolve();
     var space = state.vaultSpace, none = !space && !state.developer, rv = state.vaultRev;
-    var cheap = quiet && Date.now() - rv.full < 60000 && rv.space === space;
+    var cheap = quiet && Date.now() - rv.full < 300000 && rv.space === space;
     var q = function (path, rev) { return path + (path.indexOf('?') < 0 ? '?' : '&') + 'rev=' + encodeURIComponent(rev); };
     var filesPath = '/api/vault/files' + (space ? '?space=' + encodeURIComponent(space) : '');
     return Promise.all([
@@ -4352,9 +4354,11 @@
       var f = fileOf(b.dataset.thumbnail);
       if (!f || epoch !== thumbnailEpoch) return;
       if (thumbnails[f.id]) { putPicture(b, thumbnails[f.id], true); return; }
+      // (a file the server has a picture of: nothing is drawn while it comes, the card is only for a picture that cannot come; drawing a card
+      // for each one first — a canvas, a text and a webp, thrown away a moment later — was most of what opening the list cost)
+      if (f.thumbnail) { b.classList.add('is-wait'); thumbnailWaiting.push(b); clearTimeout(thumbnailTimer); thumbnailTimer = setTimeout(flush, 30); return; }
       putPicture(b, cardFor(f), false);
-      if (f.thumbnail) { thumbnailWaiting.push(b); clearTimeout(thumbnailTimer); thumbnailTimer = setTimeout(flush, 30); }
-      else if (canWrite() && fileKind(f)[1] === 'kimg' && f.size <= 256 * 1024) backfill(b, f);
+      if (canWrite() && fileKind(f)[1] === 'kimg' && f.size <= 256 * 1024) backfill(b, f);
     }
     function flush() {
       if (epoch !== thumbnailEpoch || thumbnailFetching >= 2 || !thumbnailWaiting.length) return;
@@ -4366,7 +4370,10 @@
         if (epoch !== thumbnailEpoch) return;
         batch.forEach(function (b) {
           var f = fileOf(b.dataset.thumbnail);
-          if (f && got[f.id]) { thumbnails[f.id] = got[f.id]; if (b.isConnected) putPicture(b, got[f.id], true); }
+          if (!f || !b.isConnected) return;
+          b.classList.remove('is-wait');
+          if (got[f.id]) { thumbnails[f.id] = got[f.id]; putPicture(b, got[f.id], true); }
+          else putPicture(b, cardFor(f), false);
         });
       }).catch(function () {}).then(function () { if (epoch !== thumbnailEpoch) return; thumbnailFetching--; flush(); });
       flush();
@@ -4397,8 +4404,9 @@
   function textEl(f) {
     var p = el('pre', 'vault-text', '読み込み中…');
     if (texts[f.id] !== undefined) { p.textContent = texts[f.id]; return p; }
-    vreq('GET', '/api/vault/chunk?id=' + f.id + '&n=0').then(function (r) {
-      var s = new TextDecoder().decode(bytesOf(r.data));
+    // (the first 8KB only: a whole piece, up to 16MB, was fetched for twelve hundred characters)
+    vreq('GET', '/api/vault/chunk?id=' + f.id + '&n=0&raw=1&head=8192', undefined, 'bytes').then(function (r) {
+      var s = new TextDecoder().decode(r.bytes);
       texts[f.id] = Array.from(s).length > 1200 ? Array.from(s).slice(0, 1200).join('') + '\n…（続きはアイコンをタップ）' : s;
       p.textContent = texts[f.id];
     }).catch(function () { p.textContent = '（読み込めませんでした）'; });
@@ -5246,11 +5254,11 @@
     var parts = [], digests = [], done = 0, todo = [];
     for (var n = 0; n < f.chunks; n++) todo.push(n);
     return pieces(todo, function (n) {
-      return vreq('GET', '/api/vault/chunk?id=' + f.id + '&n=' + n).then(function (r) {
-        var bin = atob(r.data), bytes = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      // (the bytes themselves: a third less to fetch, and nothing to decode here)
+      return vreq('GET', '/api/vault/chunk?id=' + f.id + '&n=' + n + '&raw=1', undefined, 'bytes').then(function (r) {
+        var bytes = new Uint8Array(r.bytes);
         return sha(bytes).then(function (h) {
-          if (hex(h) !== r.sha256) throw { message: '部分 ' + n + ' が壊れています（ハッシュが一致しません）' };
+          if (hex(h) !== r.headers.get('X-Piece-Sha256')) throw { message: '部分 ' + n + ' が壊れています（ハッシュが一致しません）' };
           parts[n] = bytes;
           digests[n] = new Uint8Array(h);
           done++;

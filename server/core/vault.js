@@ -81,6 +81,7 @@
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { ApiError } from './errors.js';
+import { Raw } from './raw.js';
 import { Limiter } from './ratelimit.js';
 import { keyFrom, sealText, openText } from './auth.js';
 import { agentOf } from './opsentry.js';
@@ -113,6 +114,8 @@ const THUMBNAIL_MAX = 16 * 1024;
 const RESTARTS_MAX = 5;
 const PREVIEW_RE = /^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/]+={0,2}$/;
 const INFO_MAX = 8 * 1024;
+// the most of a piece a `head` asks for (the first lines of a text)
+const HEAD_MAX = 64 * 1024;
 // a link to every file (of the developer's vault)
 const ALL = '*';
 // folders: how deep, how many in one vault; files and folders moved or
@@ -587,6 +590,24 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     const b = blobs ? await blobs.get(pieceKey(f.id, n)) : null;
     if (!b) throw new ApiError(404, 'no_piece', 'この部分はまだありません');
     return { n, sha256: b.sha256, data: Buffer.from(b.bytes).toString('base64') };
+  }
+  // the same piece as bytes (the operator site asks for them this way: a third less to send, nothing to decode on its page, and on
+  // the server no base64 of a piece of 8 to 16 MB); `head`: only the first bytes (a text's first lines need not take a whole piece)
+  async function pieceRaw(f, n, head) {
+    const c = q('SELECT n, sha256, data FROM vault_chunks WHERE file_id = ? AND n = ?').get(f.id, n);
+    let sha256, bytes;
+    if (c) {
+      sha256 = c.sha256;
+      bytes = Buffer.from(head ? c.data.slice(0, Math.ceil(head / 3) * 4) : c.data, 'base64');
+    } else {
+      const b = blobs ? await blobs.get(pieceKey(f.id, n)) : null;
+      if (!b) throw new ApiError(404, 'no_piece', 'この部分はまだありません');
+      sha256 = b.sha256;
+      bytes = b.bytes;
+    }
+    const partial = !!head && bytes.length > head;
+    if (partial) bytes = bytes.subarray(0, head);
+    return new Raw(bytes, { type: 'application/octet-stream', headers: { 'X-Piece-Sha256': sha256, 'X-Piece-N': String(n), 'X-Piece-Partial': partial ? '1' : '0' } });
   }
   function pieceNo(f, raw) {
     const n = Number(raw);
@@ -1144,6 +1165,8 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const f = theFile(u, req.query.get('id'), '', req);
       const n = pieceNo(f, req.query.get('n'));
       if (n === 0) tookOut(req, u, f);
+      // `raw=1`: the bytes themselves (and with `head=<bytes>` only the first of them, at most 64KB)
+      if (req.query.get('raw') === '1') return pieceRaw(f, n, Math.min(HEAD_MAX, Math.max(0, Math.floor(Number(req.query.get('head')) || 0))));
       return piece(f, n);
     },
 

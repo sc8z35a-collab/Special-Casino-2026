@@ -22,10 +22,13 @@ import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { MeshoptSimplifier } from 'meshoptimizer/meshopt_simplifier.module.js';
 
 const KINDS = ['glb', 'gltf', 'obj', 'fbx', 'stl', 'ply'];
-const SIDE = 320;             // one view of the picture (px); the picture is 2 x 2 of them
-const LIGHT_TRIS = 60000;
-const LIGHT_TEX = 512;
+const SIDE = 256;             // one view of the picture (px); the picture is 2 x 2 of them (512, the size of the medium picture the site keeps)
+const LIGHT_TRIS = 40000;
+const LIGHT_TEX = 384;
 const LIGHT_FROM = 4 * 1048576;   // smaller models are their own light copy
+// the models turning on the page: the largest picture (px) and how many a second (it was 640 and 24: a model turns as well in a smaller picture)
+const VIEW_MAX = 512;
+const VIEW_FPS = 20;
 
 export function kindOf(name) {
   const m = /\.([a-z0-9]+)$/i.exec(String(name || ''));
@@ -278,7 +281,7 @@ export async function view(host, buf, name) {
 export function gallery() {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(1);
-  renderer.setSize(640, 640, false);
+  renderer.setSize(VIEW_MAX, VIEW_MAX, false);
   renderer.setClearColor(0x2c3038, 1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -304,15 +307,15 @@ export function gallery() {
   function frame(at) {
     if (!alive) return;
     raf = requestAnimationFrame(frame);
-    if (document.hidden || at - last < 1000 / 24) return;
+    if (document.hidden || at - last < 1000 / VIEW_FPS) return;
     const dt = Math.min(0.1, (at - last) / 1000);
     last = at;
     for (const e of entries) {
       const rect = e.host.getBoundingClientRect();
       if (!e.host.isConnected || !rect.width || !rect.height || rect.bottom < 0 || rect.top > innerHeight) continue;
-      const ratio = Math.min(devicePixelRatio || 1, 1.5);
-      const w = Math.max(1, Math.min(640, Math.round(rect.width * ratio)));
-      const h = Math.max(1, Math.min(640, Math.round(rect.height * ratio)));
+      const ratio = Math.min(devicePixelRatio || 1, 1.25);
+      const w = Math.max(1, Math.min(VIEW_MAX, Math.round(rect.width * ratio)));
+      const h = Math.max(1, Math.min(VIEW_MAX, Math.round(rect.height * ratio)));
       if (e.canvas.width !== w || e.canvas.height !== h) { e.canvas.width = w; e.canvas.height = h; }
       e.camera.aspect = w / h;
       e.camera.updateProjectionMatrix();
@@ -321,7 +324,7 @@ export function gallery() {
       renderer.setScissor(0, 0, w, h);
       renderer.clear();
       renderer.render(e.scene, e.camera);
-      e.ctx.drawImage(renderer.domElement, 0, 640 - h, w, h, 0, 0, w, h);
+      e.ctx.drawImage(renderer.domElement, 0, VIEW_MAX - h, w, h, 0, 0, w, h);
     }
   }
   raf = requestAnimationFrame(frame);

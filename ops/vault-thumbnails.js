@@ -1,7 +1,8 @@
 /* Small pictures of everything in the vault: made here, from the file in hand, so that nobody has to
    download a file to see what it is, and every item has one.
      tiny    (the lists):         at most about 120 px, a few KB
-     medium  (the enlarged view): at most 640 px, tens of KB, far less than the original
+     medium  (the enlarged view): at most 512 px, tens of KB, far less than the original (the webp encoding of it was most of what
+                                  a picture cost to make: a size of 640 px, 72KB, took two tries)
    An image is shrunk; a video gives a frame; a sound its waveform; a text or a program its first lines;
    a document, an APK or an EPUB its own cover or icon when the file carries one; a 3D model's picture is
    made by the 3D engine (ops/ops.js) and shrunk here. What can show nothing of itself gets a CARD (its kind,
@@ -11,7 +12,7 @@
 (function () {
   'use strict';
   var TINY = { sides: [120, 96, 72, 56], max: 8 * 1024 };
-  var MID = { sides: [640, 520, 420, 320, 240], max: 64 * 1024 };
+  var MID = { sides: [512, 416, 336, 256, 192], max: 56 * 1024 };
   var LABEL = { kimg: '画像', kvid: '動画', kaud: '音声', ktext: 'テキスト', kcode: 'プログラム', kzip: '圧縮', kapk: 'APK', k3d: '3Dモデル', koth: 'ファイル', kdoc: '文書' };
 
   function pause(ms) { return new Promise(function (ok) { setTimeout(ok, ms); }); }
@@ -185,7 +186,7 @@
       v.onloadedmetadata = function () { try { v.currentTime = Math.min(1, (isFinite(v.duration) ? v.duration : 2) * .1); } catch (e) { end(e); } };
       v.onseeked = function () {
         try {
-          var c = document.createElement('canvas'), k = Math.min(1, 640 / Math.max(v.videoWidth, v.videoHeight, 1));
+          var c = document.createElement('canvas'), k = Math.min(1, 512 / Math.max(v.videoWidth, v.videoHeight, 1));
           c.width = Math.max(1, Math.round(v.videoWidth * k)); c.height = Math.max(1, Math.round(v.videoHeight * k));
           c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
           // a small play mark in the corner: this is a video
@@ -237,7 +238,7 @@
     }
     function fromSound() {
       return waveOf(file).then(function (bars) {
-        return { thumbnail: shrink(waveCanvas(bars, name, 240, 240), TINY, true), preview: shrink(waveCanvas(bars, name, 640, 360), MID, false) };
+        return { thumbnail: shrink(waveCanvas(bars, name, 240, 240), TINY, true), preview: shrink(waveCanvas(bars, name, 512, 288), MID, false) };
       });
     }
     function fromText() { return textLines(file).then(function (lines) { meta.lines = lines; return cards(); }); }
