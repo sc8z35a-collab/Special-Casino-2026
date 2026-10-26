@@ -25,7 +25,7 @@ def b64(rel):
 
 
 def inline_css(match):
-    href = match.group(1)
+    href = match.group(1).split('?')[0]
     css = read(href)
     base = os.path.dirname(href)
 
@@ -50,7 +50,7 @@ def embed(m):
 
 
 def inline_js(match):
-    js = read(match.group(1)).replace('</script', '<\\/script')
+    js = read(match.group(1).split('?')[0]).replace('</script', '<\\/script')
     # image, sound and video references inside scripts become data: URIs
     js = re.sub(r"'((?:img|sounds|video)/[A-Za-z0-9_/.-]+\.(webp|png|wav|mp3|mp4))'", embed, js)
     return '<script>\n' + js + '</script>'

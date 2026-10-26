@@ -4,8 +4,10 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import vm from 'node:vm';
 import { startServer } from './helpers.js';
-import { computeBuild, stampedBuild } from '../../tools/stamp.mjs';
+import { computeBuild, stampedBuild, plainHtml } from '../../tools/stamp.mjs';
 import { ROOT } from '../node/config.js';
 
 let s;
@@ -28,6 +30,40 @@ test('the build stamp matches the game files (run node tools/stamp.mjs after cha
   assert.equal(stampedBuild(), build);
   assert.match(fs.readFileSync(path.join(ROOT, 'js/version.js'), 'utf8'), new RegExp(`BR.BUILD = '${build}'`));
   assert.match(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8'), new RegExp(`const BUILD = '${build}'`));
+});
+
+test('index.html names every script and style by the hash of its file, and the server serves exactly that file at that address', async () => {
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const refs = [...html.matchAll(/(?:src|href)="((?:js|css)\/[^"?]+)(\?v=[0-9a-f]+)?"/g)];
+  assert.ok(refs.length > 80, 'the page has its scripts and styles');
+  const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex').slice(0, 10);
+  for (const [, file, v] of refs) assert.equal(v, '?v=' + sha(fs.readFileSync(path.join(ROOT, file))), file + ' is named by the hash of its file');
+  // the same address from the server: the file, to the byte (what the service worker checks before it keeps it)
+  for (const [, file, v] of [refs[0], refs.at(-1), refs.find((r) => r[1].startsWith('css/'))]) {
+    const res = await fetch(s.base + '/' + file + v);
+    assert.equal(res.status, 200, file);
+    assert.equal('?v=' + sha(Buffer.from(await res.arrayBuffer())), v, file);
+  }
+  // the scripts loaded later (js/vendor) are named in js/version.js, and the code that loads them asks for those addresses
+  const win = {};
+  vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'js/version.js'), 'utf8'), { window: win });
+  assert.deepEqual(Object.keys(win.BR.CODE).sort(), ['js/vendor/three-bundle.js', 'js/vendor/tree-physics.js']);
+  for (const [file, h] of Object.entries(win.BR.CODE)) assert.equal(h, sha(fs.readFileSync(path.join(ROOT, file))), file);
+  const ctx = vm.createContext({ BR: { CODE: win.BR.CODE } });
+  ctx.globalThis = ctx;
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/core/util.js'), 'utf8'), ctx);
+  const { codeUrl } = ctx.BR.util;
+  assert.equal(codeUrl('js/vendor/three-bundle.js'), 'js/vendor/three-bundle.js?v=' + win.BR.CODE['js/vendor/three-bundle.js']);
+  assert.equal(codeUrl('js/other.js'), 'js/other.js', 'a file without a hash keeps its plain address');
+  for (const file of ['js/render/win3d.js', 'js/render/tree3d.js']) assert.match(fs.readFileSync(path.join(ROOT, file), 'utf8'), /BR\.util\.codeUrl\(/, file);
+});
+
+test('the build id does not depend on the hashes written into index.html', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const other = html.replace(/\?v=[0-9a-f]{10}"/g, '?v=0000000000"');
+  assert.notEqual(other, html);
+  assert.equal(plainHtml(other), plainHtml(html));
+  assert.ok(!/\?v=/.test(plainHtml(html).replace(/icons\/[^"]*\?v=[^"]*"/g, '')), 'only the hashes go (the icons keep their own ?v=)');
 });
 
 test('service worker, version file and the Android app are served', async () => {

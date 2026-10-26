@@ -296,8 +296,8 @@
     notifyState: function (state) { if (BR.push) BR.push.appState(state); }
   };
 
-  // The pictures, fonts and sounds this page loaded are kept by the service worker (sw.js: the first visit was loaded before it took the page
-  // over), so the next start does not have to ask the server about each of them.
+  // The pictures, fonts and sounds this page loaded, and its scripts and styles (named by the hash of their file), are kept by the service
+  // worker (sw.js: the first visit was loaded before it took the page over), so the next start does not have to ask the server about each of them.
   function keepFiles() {
     if (!navigator.serviceWorker.ready || !window.performance || !performance.getEntriesByType || !BR.BUILD || BR.BUILD === 'dev') return;
     navigator.serviceWorker.ready.then(function (reg) {
@@ -305,7 +305,9 @@
         var worker = reg.active;
         if (!worker) return;
         var urls = performance.getEntriesByType('resource').map(function (r) { return r.name; }).filter(function (u) {
-          return u.indexOf(location.origin + '/') === 0 && /^\/(img|fonts|sounds|video|icons)\//.test(u.slice(location.origin.length));
+          if (u.indexOf(location.origin + '/') !== 0) return false;
+          var path = u.slice(location.origin.length);
+          return /^\/(img|fonts|sounds|video|icons)\//.test(path) || /^\/(js|css)\/[^?]+\?v=[0-9a-f]{10}$/.test(path);
         });
         if (urls.length) worker.postMessage({ type: 'keep', build: BR.BUILD, urls: urls });
       }, 6000);

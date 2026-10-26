@@ -82,5 +82,12 @@
 
   util.wait = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
 
+  // A script loaded later (not in index.html) by the address of its file: js/vendor/x.js?v=<hash of the file>, the hash from js/version.js
+  // (tools/stamp.mjs). The service worker keeps such an address for ever and does not ask the server about it again (sw.js).
+  util.codeUrl = function (path) {
+    var h = BR.CODE && BR.CODE[path];
+    return h ? path + '?v=' + h : path;
+  };
+
   BR.util = util;
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis
