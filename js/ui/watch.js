@@ -452,10 +452,10 @@
     BR.live.on('homechat', onHomeChat);
     BR.live.on('balance', function () { renderMine(); });
     // the server forgets watchers whose connection dropped: carry on after a reconnect
-    BR.live.on('hello', function () {
+    BR.live.on('hello', function (h) {
       watchers = {};
       renderWatchers();
-      api.watchers().then(function (r) {
+      (h.watchers ? Promise.resolve(h.watchers) : api.watchers()).then(function (r) {
         r.watchers.forEach(function (w) { watchers[w.id] = w; });
         var my = me();
         if (!state && my && r.watchers.length) setChat(my.id, r.chat || []);

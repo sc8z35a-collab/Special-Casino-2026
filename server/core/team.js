@@ -150,11 +150,13 @@ export function createTeam({ q, getUser, live, ops, seen, isDeveloper, callDevel
       needMember(u);
       const peer = peerOf(u, req.query.get('with'));
       const after = Number(req.query.get('after') || 0);
+      // limit=N: the newest N alone (a small window on the desktop, ops/cdw.js)
+      const page = Math.min(PAGE, Number(req.query.get('limit')) || PAGE);
       const where = peer === 0 ? 'to_id = 0' : '((from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?))';
       const args = peer === 0 ? [] : [u.id, peer, peer, u.id];
       const rows = after > 0
-        ? q(`SELECT * FROM ops_messages WHERE ${where} AND id > ? ORDER BY id LIMIT ?`).all(...args, after, PAGE)
-        : q(`SELECT * FROM ops_messages WHERE ${where} ORDER BY id DESC LIMIT ?`).all(...args, PAGE).reverse();
+        ? q(`SELECT * FROM ops_messages WHERE ${where} AND id > ? ORDER BY id LIMIT ?`).all(...args, after, page)
+        : q(`SELECT * FROM ops_messages WHERE ${where} ORDER BY id DESC LIMIT ?`).all(...args, page).reverse();
       // how far the other one has read (one to one: 既読)
       return { with: peer, messages: rows.map(dto), theirRead: peer === 0 ? 0 : readOf(peer, u.id) };
     },

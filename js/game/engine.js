@@ -43,16 +43,19 @@
 
   // grid[reel][row] with row 0 = top, 1 = centre (pay line), 2 = bottom;
   // `weights`: other odds than C.weights (a hub's)
+  function lineOf(grid) { return grid.map(function (col) { return col[1]; }); }
   function spin(bet, weights) {
     var grid = [];
     for (var r = 0; r < 5; r++) grid.push([drawSymbol(weights), drawSymbol(weights), drawSymbol(weights)]);
-    var line = grid.map(function (col) { return col[1]; });
+    var line = lineOf(grid);
     var res = evaluate(line, bet);
     res.grid = grid;
     res.line = line;
     res.bet = bet;
     return res;
   }
+  // a result as the server sends it (no line: it is the grid's middle row), whole again
+  function withLine(res) { if (res && !res.line) res.line = lineOf(res.grid); return res; }
 
-  BR.engine = { spin: spin, evaluate: evaluate, drawSymbol: drawSymbol };
+  BR.engine = { spin: spin, evaluate: evaluate, drawSymbol: drawSymbol, withLine: withLine };
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

@@ -33,13 +33,15 @@ export function createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, bala
         bookmarks: q('SELECT COUNT(*) AS n FROM diary_reactions WHERE post_id = ? AND bookmarked = 1').get(p.id).n,
         claims: q('SELECT COUNT(*) AS n FROM diary_claims WHERE post_id = ?').get(p.id).n } : {}) };
   };
+  // ten a page (limit=N: fewer, the newest of a small window on the desktop, ops/cdw.js)
   const list = (req, u, admin) => {
     const cursor = before(req.query.get('before')), saved = !admin && req.query.get('bookmarks') === '1';
+    const page = Math.min(10, Number(req.query.get('limit')) || 10);
     const rows = q(`SELECT p.id, p.title, p.body, p.reward, p.created_at, p.expires_at, p.hidden, (p.image != '') AS has_image
       FROM diary_posts p WHERE p.id < ? ${admin ? '' : 'AND p.hidden = 0'}
       ${saved ? 'AND EXISTS (SELECT 1 FROM diary_reactions r WHERE r.post_id = p.id AND r.user_id = ? AND r.bookmarked = 1)' : ''}
-      ORDER BY p.id DESC LIMIT 11`).all(cursor, ...(saved ? [u.id] : []));
-    return { posts: rows.slice(0, 10).map(p => dto(p, u, admin)), more: rows.length > 10, rewards: admin ? DIARY_REWARDS : undefined };
+      ORDER BY p.id DESC LIMIT ?`).all(cursor, ...(saved ? [u.id] : []), page + 1);
+    return { posts: rows.slice(0, page).map(p => dto(p, u, admin)), more: rows.length > page, rewards: admin ? DIARY_REWARDS : undefined };
   };
   function image(raw) {
     if (raw === undefined || raw === '') return '';

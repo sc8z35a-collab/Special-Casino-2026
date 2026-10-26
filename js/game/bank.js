@@ -95,6 +95,7 @@
   var remote = {
     spin: function (bet) {
       return api.spin(bet).then(function (r) {
+        BR.engine.withLine(r.result);
         applyBalance(r.balance);
         S.stats = { spins: r.stats.spins, won: r.stats.totalWon, biggest: r.stats.biggestWin };
         return r;

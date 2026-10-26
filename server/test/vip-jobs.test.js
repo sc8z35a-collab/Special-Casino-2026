@@ -81,9 +81,11 @@ test('VIP casino wins give one EXP; misses give none and ULTRA keeps its separat
     return { ...evaluate(line, bet), line, grid: line.map(s => [s, s, s]), bet };
   });
   assert.equal(RULES.vip.exp.win, 1);
-  for (const exp of [1, 1, 252]) {
+  // (a spin sends VIP's state only when it changed it: the miss does not)
+  for (const [exp, sent] of [[1, true], [1, false], [252, true]]) {
     const r = await s.call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
-    assert.equal(r.vip.exp, exp);
+    assert.equal(!!r.vip, sent);
+    assert.equal((await s.call('GET', '/api/me', { token: a.token })).me.vip.exp, exp);
   }
 });
 

@@ -783,7 +783,7 @@
     BR.screens.register('tree', { open: onShow, close: onHide });
     if (!api.online) return;
     // signed in: how many trees can be harvested shows on the round button
-    BR.live.on('hello', function () { load().catch(function () {}); });
+    BR.live.on('hello', function (h) { if (h.tree) set(Object.assign({}, h.tree, { now: h.now })); else load().catch(function () {}); });
   }
 
   BR.tree = {

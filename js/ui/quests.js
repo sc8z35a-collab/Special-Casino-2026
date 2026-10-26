@@ -265,12 +265,14 @@
     });
   }
 
+  // what the server sends is where each period stands; the quests themselves are the game's (js/game/quests.js)
+  function withView(r) { r.periods = Q.view(r.quests, r.now || now()); return r; }
   function load() {
     if (loading) return loading;
     loading = api.quests().then(function (r) {
       loading = null;
       offset = r.now - Date.now();
-      data = r;
+      data = withView(r);
       setBonuses(r.bonuses);
       setXp(r.xp, true);
       setReady(r.ready);
@@ -407,8 +409,8 @@
       if (!ok) { resetting = false; if (visible()) render(); return; }
       api.resetQuests(period, target.start, target.resetVersion).then(function (r) {
         resetting = false;
-        data = r;
         offset = r.now - Date.now();
+        data = withView(r);
         setBonuses(r.bonuses);
         setReady(r.ready);
         setXp(r.xp, true);
@@ -547,7 +549,7 @@
     $$('#q-list .q-take').forEach(function (b) { b.disabled = true; });
     api.claimQuests(ids).then(function (r) {
       claiming = false;
-      if (data) data.periods = r.periods;
+      if (data) data.periods = withView(r).periods;
       if (data && r.tickets) data.tickets = r.tickets;
       setBonuses(r.bonuses);
       setReady(r.ready);

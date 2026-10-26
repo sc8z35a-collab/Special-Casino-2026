@@ -63,12 +63,35 @@
 
   function emit(ev, arg) { (handlers[ev] || []).forEach(function (f) { f(arg); }); }
 
-  function request(method, path, body) {
-    var headers = {};
-    if (token) headers.Authorization = 'Bearer ' + token;
-    // the device (js/net/device.js): two accounts a device, BANs
-    if (BR.device) headers['X-Device'] = BR.device.header();
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
+  /* What the server sends whole on every start and every connection (GET /api/me, the live connection's hello: the player, the shops'
+     list of icons, the NPCs', the rules…) is kept, and asked for again with held=part.rev,…: a part that is the same is not sent again
+     but named in `kept`, and is taken from here (server/core/hash.js). The icons' list and the rules, the same for everyone, are kept from
+     one visit to the next. */
+  var HELD_KEY = 'blockbuster-reels/held', KEEP = { iconShop: 1, rules: 1 };
+  var held = { parts: {}, revs: {} };
+  try { var kept = JSON.parse(localStorage.getItem(HELD_KEY) || 'null'); if (kept && kept.parts && kept.revs) held = kept; } catch (e) { /* none */ }
+  function heldParam() { return Object.keys(held.revs).map(function (k) { return k + '.' + held.revs[k]; }).join(','); }
+  function fromHeld(x) {
+    if (!x || !x.revs) return x;
+    var out = {}, keep = false;
+    Object.keys(x).forEach(function (k) {
+      if (k === 'revs' || k === 'kept') return;
+      out[k] = x[k];
+      if (x.revs[k] !== undefined) { held.parts[k] = x[k]; held.revs[k] = x.revs[k]; keep = keep || !!KEEP[k]; }
+    });
+    (x.kept || []).forEach(function (k) { out[k] = held.parts[k]; });
+    if (keep) {
+      var save = { parts: {}, revs: {} };
+      Object.keys(KEEP).forEach(function (k) { if (k in held.parts) { save.parts[k] = held.parts[k]; save.revs[k] = held.revs[k]; } });
+      try { localStorage.setItem(HELD_KEY, JSON.stringify(save)); } catch (e) { /* this visit only */ }
+    }
+    return out;
+  }
+  // (another login: what was the last one's is not this one's)
+  function forgetHeld() { Object.keys(held.parts).forEach(function (k) { if (!KEEP[k]) { delete held.parts[k]; delete held.revs[k]; } }); }
+
+  var NETWORK = '通信できませんでした。電波の良い所でもう一度お試しください';
+  function viaHttp(method, path, headers, body) {
     return fetch(path, {
       method: method,
       headers: headers,
@@ -76,24 +99,43 @@
       cache: 'no-store',
       credentials: 'same-origin'
     }).catch(function () {
-      throw new ApiError(0, 'network', '通信できませんでした。電波の良い所でもう一度お試しください');
+      throw new ApiError(0, 'network', NETWORK);
     }).then(function (res) {
-      return res.json().catch(function () { return {}; }).then(function (json) {
-        if (res.ok) return json;
-        var e = json.error || {};
-        // the server's daily quota is used up: ours says so, the host's own
-        // limit answers 429 (or an error page) without our JSON
-        if (e.code === 'maintenance' || (!json.error && (res.status === 429 || res.status === 503))) {
-          // a lockdown carries lockdown: true — the game shows 緊急メンテナンス
-          e = { code: 'maintenance', message: e.message || 'サーバーのメンテナンス中です', until: e.until, lockdown: !!e.lockdown, emergency: !!e.emergency };
-          emit('maintenance', e);
-        }
-        var err = new ApiError(res.status, e.code || 'error', e.message || ('エラーが発生しました（' + res.status + '）'), e);
-        if (res.status === 401 && token && path !== '/api/login' && path !== '/api/register') emit('auth-lost', err);
-        // banned (or another account on this device is): the title screen, locked (js/ui/banlock.js)
-        if (res.status === 403 && (e.code === 'banned' || e.code === 'device_banned') && path !== '/api/login' && path !== '/api/register') emit('banned', err);
-        throw err;
-      });
+      return res.json().catch(function () { return {}; }).then(function (json) { return { status: res.status, json: json }; });
+    });
+  }
+
+  // On the live connection when it is up (js/net/wire.js: no request of its own), else over HTTP; the answer is read the same way.
+  function request(method, path, body) {
+    var headers = {};
+    if (token) headers.Authorization = 'Bearer ' + token;
+    // the device (js/net/device.js): two accounts a device, BANs
+    if (BR.device) headers['X-Device'] = BR.device.header();
+    var live = BR.live && BR.live.call(method, path, headers, body);
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    var got = !live ? viaHttp(method, path, headers, body) : live.then(function (r) {
+      return r ? { status: r.status, json: r.body } : viaHttp(method, path, headers, body);
+    }, function () {
+      // (the connection went before the answer: a look is asked again; what may have been done is not done twice)
+      if (method === 'GET') return viaHttp(method, path, headers, body);
+      throw new ApiError(0, 'network', NETWORK);
+    });
+    return got.then(function (r) {
+      var json = r.json || {};
+      if (r.status >= 200 && r.status < 300) return json;
+      var e = json.error || {};
+      // the server's daily quota is used up: ours says so, the host's own
+      // limit answers 429 (or an error page) without our JSON
+      if (e.code === 'maintenance' || (!json.error && (r.status === 429 || r.status === 503))) {
+        // a lockdown carries lockdown: true — the game shows 緊急メンテナンス
+        e = { code: 'maintenance', message: e.message || 'サーバーのメンテナンス中です', until: e.until, lockdown: !!e.lockdown, emergency: !!e.emergency };
+        emit('maintenance', e);
+      }
+      var err = new ApiError(r.status, e.code || 'error', e.message || ('エラーが発生しました（' + r.status + '）'), e);
+      if (r.status === 401 && token && path !== '/api/login' && path !== '/api/register') emit('auth-lost', err);
+      // banned (or another account on this device is): the title screen, locked (js/ui/banlock.js)
+      if (r.status === 403 && (e.code === 'banned' || e.code === 'device_banned') && path !== '/api/login' && path !== '/api/register') emit('banned', err);
+      throw err;
     });
   }
 
@@ -139,9 +181,13 @@
     restored: restored,
     hasToken: function () { return !!token; },
     setToken: function (t) {
+      if ((t || null) !== token) forgetHeld();
       token = t || null;
       persist(token);
     },
+    // the live connection's address carries what is held of its hello (js/net/live.js), and its hello is made whole with it
+    heldParam: heldParam,
+    fromHeld: fromHeld,
     lastName: function () { try { return localStorage.getItem(NAME_KEY) || ''; } catch (e) { return ''; } },
     rememberName: function (n) { try { localStorage.setItem(NAME_KEY, n); } catch (e) { /* ignore */ } },
     on: function (ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); },
@@ -163,7 +209,8 @@
     oauthUnlink: function (provider) { return post('/api/oauth/unlink', { provider: provider }); },
     oauthLinks: function () { return get('/api/oauth/links'); },
     password: function (current, password) { return post('/api/password', { current: current, password: password }); },
-    me: function () { return get('/api/me'); },
+    // (held= even when nothing is held: the answer then names its parts' revs)
+    me: function () { return get('/api/me?held=' + heldParam()).then(fromHeld); },
     banState: function () { return get('/api/ban'); },
 
     /* the game */

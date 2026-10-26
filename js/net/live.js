@@ -25,9 +25,11 @@
     backoff = Math.min(backoff * 2, 30000);
   }
 
+  // what the page holds of the hello (js/net/api.js): those parts come as 0 and are made whole before anyone hears it
+  function held() { return '&held=' + BR.api.heldParam(); }
   function deliver(name, data) {
     if (EVENTS.indexOf(name) < 0) return;
-    if (name === 'hello') { backoff = 1000; setConnected(true); }
+    if (name === 'hello') { backoff = 1000; setConnected(true); data = BR.api.fromHeld(data); }
     emit(name, data);
   }
 
@@ -40,7 +42,7 @@
   }
 
   function openSse(ticket) {
-    var es = new EventSource('/api/stream?ticket=' + encodeURIComponent(ticket));
+    var es = new EventSource('/api/stream?ticket=' + encodeURIComponent(ticket) + held());
     EVENTS.forEach(function (name) {
       es.addEventListener(name, function (e) {
         var data;
@@ -54,29 +56,36 @@
 
   function openWs(ticket) {
     var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    var ws = new WebSocket(proto + location.host + '/api/live?ticket=' + encodeURIComponent(ticket));
-    var closed = false;
+    var ws = new WebSocket(proto + location.host + '/api/live?ticket=' + encodeURIComponent(ticket) + held());
+    var closed = false, quiet = Date.now();
+    function send(text) {
+      if (ws.readyState !== 1) return false;
+      try { ws.send(text); quiet = Date.now(); return true; } catch (e) { return false; }
+    }
+    // the API's requests on this connection (js/net/wire.js)
+    var wire = BR.wire(send);
     ws.onmessage = function (e) {
+      quiet = Date.now();
       if (e.data === 'pong') return;
       var m;
       try { m = JSON.parse(e.data); } catch (x) { return; }
+      if (wire.reply(m)) return;
       if (m && m.event) deliver(m.event, m.data);
     };
-    ws.onclose = function () { if (!closed) dropped(); };
+    ws.onclose = function () { wire.drop(); if (!closed) dropped(); };
     ws.onerror = function () { /* onclose follows */ };
-    // keeps mobile networks and proxies from dropping a quiet connection;
-    // answered by Cloudflare without waking the server
+    // keeps mobile networks and proxies from dropping a connection that has been quiet for a while (anything sent or received does that
+    // too); answered by Cloudflare without waking the server
     clearInterval(pinger);
-    pinger = setInterval(function () { if (ws.readyState === 1) ws.send('ping'); }, 30000);
+    pinger = setInterval(function () { if (Date.now() - quiet >= 25000) send('ping'); }, 30000);
     return {
       // a message to the server (only on the WebSocket)
-      send: function (text) {
-        if (ws.readyState !== 1) return false;
-        try { ws.send(text); return true; } catch (e) { return false; }
-      },
+      send: send,
+      call: wire.call,
       close: function () {
         closed = true;
         clearInterval(pinger);
+        wire.drop();
         try { ws.close(1000); } catch (e) { /* already closed */ }
       }
     };
@@ -124,6 +133,8 @@
     on: function (ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); },
     isConnected: function () { return connected; },
     // sends `obj` over the WebSocket; false when there is none (SSE, offline)
-    send: function (obj) { return !!(conn && connected && conn.send && conn.send(JSON.stringify(obj))); }
+    send: function (obj) { return !!(conn && connected && conn.send && conn.send(JSON.stringify(obj))); },
+    // an API request on the WebSocket (js/net/wire.js); null when there is none
+    call: function (method, path, headers, body) { return conn && connected && conn.call ? conn.call(method, path, headers, body) : null; }
   };
 })(window.BR = window.BR || {});

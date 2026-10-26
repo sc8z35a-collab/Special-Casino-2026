@@ -34,7 +34,9 @@ test('Shop: お守り加護 at the price of the moment (on sale 5 hours a day), 
   assert.equal(hours.length, 5);
   assert.equal(hours[4] - hours[0], 4);
   const me = await call('GET', '/api/me', { token: a.token });
-  assert.deepEqual(me.itemShop.items.filter(i => i.id === 'omamori').map((i) => [i.id, i.salePrice, i.max]), [['omamori', p, 10]]);
+  assert.equal(me.itemShop, undefined, 'the game has the Shop itself (js/game/sale.js)');
+  const items = await call('GET', '/api/items', { token: a.token });
+  assert.deepEqual(items.shop.items.filter(i => i.id === 'omamori').map((i) => [i.id, i.salePrice, i.max]), [['omamori', p, 10]]);
   assert.deepEqual(me.me.items, {});
   assert.equal(me.me.charm, false);
 
@@ -107,7 +109,7 @@ test('お守り加護: switched on before a spin, softens the next lost spin, th
     const sp = await call('POST', '/api/spin', { token: a.token, body: { bet } });
     assert.equal(sp.status, 200);
     if (sp.result.total >= bet) {
-      assert.equal(sp.result.charm, null);
+      assert.equal(sp.result.charm ?? null, null);
       assert.equal(sp.charm, true, 'still on after a winning spin');
       continue;
     }
@@ -120,7 +122,7 @@ test('お守り加護: switched on before a spin, softens the next lost spin, th
   }
   assert.ok(used);
   const sp = await call('POST', '/api/spin', { token: a.token, body: { bet } });
-  assert.equal(sp.result.charm, null, 'only one spin');
+  assert.equal(sp.result.charm ?? null, null, 'only one spin');
   assert.equal((await call('GET', '/api/me', { token: a.token })).me.items.omamori, 1);
 });
 

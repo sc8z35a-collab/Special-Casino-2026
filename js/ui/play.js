@@ -432,9 +432,10 @@
 
   // after (re)connecting: an invitation or a battle still going on
   var restoreTimer = 0;
-  function restoreBattle() {
+  // (`known`: the answer the connection's hello brought)
+  function restoreBattle(known) {
     clearTimeout(restoreTimer);
-    api.battle().then(function (r) {
+    (known || api.battle()).then(function (r) {
       var b = r.battle;
       if (!b) {
         if (battle) setBattle(null);
@@ -866,9 +867,9 @@
     BR.live.on('battle', onBattle);
     BR.live.on('coop', onCoop);
     BR.live.on('watch', onWatch);
-    BR.live.on('hello', function () {
+    BR.live.on('hello', function (h) {
       if (!myId()) return;
-      restoreBattle();
+      restoreBattle(h.battle !== undefined ? Promise.resolve({ battle: h.battle }) : null);
       var me = BR.social.me();
       // the table may have changed while the connection was down
       if (coop) { var g = coop.group; coop = null; loadCoop(g); } else if (me) loadCoop(me.coop || 0);

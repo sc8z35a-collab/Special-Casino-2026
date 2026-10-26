@@ -826,11 +826,12 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       see(u);
       const before = Number(req.query.get('before')) || 0;
       // slim=1: the lines only (a list); each one's detail comes when it is opened (/api/ops/log/entries)
-      const slim = req.query.get('slim') === '1';
-      const entries = opsLog.list({ before, find: req.query.get('q') || '', kind: req.query.get('kind') || '', slim });
+      // limit=N: the newest N lines alone, without the log's counts (a small window on the desktop, ops/cdw.js)
+      const slim = req.query.get('slim') === '1', limit = Math.min(200, Number(req.query.get('limit')) || 0);
+      const entries = opsLog.list({ before, find: req.query.get('q') || '', kind: req.query.get('kind') || '', slim, ...(limit > 0 ? { limit } : {}) });
       return {
         entries: isOperator(u) || slim ? entries : entries.map(viewerEntry), viewer: !isOperator(u),
-        counts: before ? null : opsLog.counts(), now: Date.now()
+        counts: before || limit > 0 ? null : opsLog.counts(), now: Date.now()
       };
     },
 

@@ -79,7 +79,7 @@
       setRequests(r.friendRequests);
       setOnline(r.online);
       BR.avatars.setShop(r.iconShop);
-      BR.shop.setSale(r.itemShop);
+      BR.shop.setSale(r);
       BR.peter.set(r.peter);
       BR.johnson.set(r.johnson);
       BR.official.set(r.official);
@@ -1856,7 +1856,7 @@
     setRequests(h.friendRequests);
     setOnline(h.online);
     BR.avatars.setShop(h.iconShop);
-    BR.shop.setSale(h.itemShop);
+    BR.shop.setSale(h);
     BR.peter.set(h.peter);
     BR.johnson.set(h.johnson);
     BR.official.set(h.official);

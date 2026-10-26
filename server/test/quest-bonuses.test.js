@@ -107,7 +107,7 @@ for (const bulk of [false, true]) {
     }
     const duplicate = await claim(null);
     assert.deepEqual([duplicate.dollars, duplicate.coins], [0, 0]);
-    assert.deepEqual(duplicate.bonuses['5h'], { pro: 0, ultra: 0 });
+    assert.equal(duplicate.bonuses['5h'], undefined);
     assert.equal(draws, 2, 'GET, claim and retries do not draw again');
     const me = (await s.call('GET', '/api/me', { token: a.token })).me;
     assert.deepEqual([me.dollars, me.coins, me.xp], [1105000, a.me.coins + 8, 2 * LEVEL.spinXp + 2 * LEVEL.questXp]);
@@ -133,15 +133,15 @@ test('quest bonus badge counts include only waiting STEPs in each current period
   stepQuests(state, [['spin', 1]], NOW, null, () => 1);
   stepQuests(state, [['sent', 100000]], NOW, null, () => 0);
   let summary = questBonuses(state, NOW);
-  assert.deepEqual(summary['5h'], { pro: 1, ultra: 0 });
+  assert.deepEqual(summary['5h'], { pro: 1 });
   assert.ok(summary.day.ultra > 0);
   const day = summary.day.ultra;
   claimQuests(state, ['5h-spin1'], NOW);
   summary = questBonuses(state, NOW);
-  assert.deepEqual(summary['5h'], { pro: 0, ultra: 0 });
+  assert.equal(summary['5h'], undefined, 'none: left out');
   assert.equal(summary.day.ultra, day);
   const later = NOW + 32 * 86400000;
-  assert.deepEqual(questBonuses(state, later).day, { pro: 0, ultra: 0 });
+  assert.equal(questBonuses(state, later).day, undefined);
   claimQuests(state, null, NOW);
-  assert.ok(Object.values(questBonuses(state, NOW)).every(c => c.pro === 0 && c.ultra === 0));
+  assert.deepEqual(questBonuses(state, NOW), {});
 });

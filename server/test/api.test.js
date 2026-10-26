@@ -154,10 +154,12 @@ test('spins are settled on the server and add up', async () => {
     const bet = RULES.bets[i % 4];
     const r = await call('POST', '/api/spin', { token: u.token, body: { bet } });
     assert.equal(r.status, 200, JSON.stringify(r));
+    // (the line is not sent: it is the grid's middle row, which the game reads for itself)
     const res = r.result;
+    assert.equal(res.line, undefined);
     assert.equal(res.grid.length, 5);
-    res.grid.forEach((col, k) => { assert.equal(col.length, 3); assert.equal(col[1], res.line[k]); });
-    const check = evaluate(res.line, bet);
+    res.grid.forEach((col) => assert.equal(col.length, 3));
+    const check = evaluate(globalThis.BR.engine.withLine(res).line, bet);
     // (from the fifth win in a row, double)
     const twice = res.combo >= RULES.comboDouble;
     assert.equal(res.total, check.total * (twice ? 2 : 1));

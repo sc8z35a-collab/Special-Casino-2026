@@ -38,6 +38,8 @@ export async function startServer(overrides = {}, { warm = true } = {}) {  // (o
     if (body !== undefined) h['Content-Type'] = 'application/json';
     const res = await fetch(base + url, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
     const json = await res.json();
+    // (the quests come as the periods that are on, and the game makes what its screen shows from them: js/game/quests.js view — read so here too)
+    if (url.startsWith('/api/quests') && json.quests) json.periods = globalThis.BR.QUESTS.view(json.quests, json.now || Date.now());
     return { ...json, status: res.status };
   }
 

@@ -1,11 +1,15 @@
-/* Optional real-browser check of what the operator site asks the server for (ops/ops.js, ops/ops-sw.js, sec/sec.js) against the real Node server:
+/* Optional real-browser check of what the operator site asks the server for (ops/ops.js, ops/beat.js, ops/cdw.js, ops/ops-sw.js, sec/sec.js)
+   against the real Node server:
      node tools/check_ops_traffic.cjs
    Requires Playwright and a Chromium install (OPS_BROWSER_EXECUTABLE can select a browser). Disposable data. It checks that
-     - the poll is one request (GET /api/ops/tick); a changed player, a new one, an archived one, a search, and the tabs' numbers (reports, DEV UNIT,
-       the team's, the payments', the archive) all follow, and no page error comes of the list being drawn again only where it changed,
+     - the poll is one request (POST /api/ops/batch carrying GET /api/ops/tick); a changed player, a new one, an archived one, a search, and the
+       tabs' numbers (reports, DEV UNIT, the team's, the payments', the archive) all follow, and no page error comes of the list being drawn
+       again only where it changed,
      - the team's tab is told over the live connection (a message reaches the other operator in a moment) and does not ask on a timer,
      - the reports list is not drawn again while it is the same (what is open on a card stays open),
      - the security base in its frame asks for nothing while its window is put away, and at once when it is brought back,
+     - the desktop's windows (CDW) are asked for with the rest in one request at the site's pace, each drawn, and a window drawn again (the
+       browser's window resized) asks nothing more,
      - a visit to the operator site after the second asks the server for none of its ~23 scripts and styles. */
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -28,7 +32,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     page.on('pageerror', (e) => errors.push(name + ': ' + e.message));
     page.on('console', (m) => { if (m.type() === 'error' && !/status of 4\d\d|Failed to load resource/.test(m.text())) errors.push(name + ' console: ' + m.text()); });
     const calls = [];
-    page.on('request', (r) => { const u = r.url().replace(s.base, ''); if (u.startsWith('/api/')) calls.push(u.replace('/api/', '')); });
+    // (a batch is noted with what it carried: ops/batch[ops/tick?…|ops/reports?…])
+    page.on('request', (r) => {
+      const u = r.url().replace(s.base, '');
+      if (!u.startsWith('/api/')) return;
+      let asks = '';
+      if (u === '/api/ops/batch') { try { asks = '[' + JSON.parse(r.postData()).asks.map((a) => a.p.replace('/api/', '') + (a.rev !== undefined ? '#rev' : '')).join('|') + ']'; } catch (e) { /* none */ } }
+      calls.push(u.replace('/api/', '') + asks);
+    });
     await page.goto(s.base + '/ops/');
     await page.locator('#login-name').fill(name);
     await page.locator('#login-pass').fill('pass1234');
@@ -58,7 +69,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       calls.length = 0;
       await poll();
       assert.match(await rowText('03'), /777,?777/, 'a changed row follows');
-      assert.deepEqual(calls.filter((c) => c.startsWith('ops/')).map((c) => c.split('?')[0]), ['ops/tick'], 'one request for the whole poll');
+      assert.deepEqual(calls.filter((c) => c.startsWith('ops/')).map((c) => c.split('[')[0]), ['ops/batch'], 'one request for the whole poll: ' + calls.join(' '));
+      assert.match(calls.find((c) => c.startsWith('ops/batch')), /\[ops\/tick\?/, 'carrying the tick');
       await s.register('latecomer');
       s.app.db.prepare("UPDATE users SET archived_at = 1, archive_reason = 'perma' WHERE id = ?").run(ps[5].me.id);
       await poll();
@@ -88,7 +100,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       assert.equal(await count('team'), '', 'the team\'s number is read in its tab');
       calls.length = 0;
       await poll();
-      assert.ok(calls.filter((c) => c.startsWith('ops/tick')).every((c) => /[?&]t=-/.test(c)), 'in the team\'s tab the poll leaves the team out');
+      const ticks = calls.filter((c) => c.startsWith('ops/batch'));
+      assert.ok(ticks.length && ticks.every((c) => /ops\/tick\?[^|\]]*[?&]t=-/.test(c)), 'in the team\'s tab the poll leaves the team out: ' + ticks.join(' '));
       console.log('ok  the poll');
     } finally { await s.stop(); }
   }
@@ -115,7 +128,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       await sleep(500);
       a.calls.length = 0;
       await sleep(12000);
-      assert.deepEqual(a.calls.filter((c) => /^ops\/team/.test(c)), [], 'no timer asking in 12 seconds');
+      assert.deepEqual(a.calls.filter((c) => /ops\/team/.test(c)), [], 'no timer asking in 12 seconds: ' + a.calls.join(' '));
       console.log('ok  the team\'s tab is told over the live connection');
     } finally { await s.stop(); }
   }
@@ -140,9 +153,46 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       calls.length = 0;
       await page.waitForTimeout(8000);
       assert.equal(await page.locator('#report-list article.card[data-mark="kept"]').count(), 1, 'not drawn again while the list is the same');
-      const asked = calls.filter((c) => c.startsWith('ops/reports'));
-      assert.ok(asked.length >= 2 && asked.every((c) => /[?&]rev=/.test(c)), 'asked with the rev it was given: ' + asked.join(' | '));
+      const asked = calls.filter((c) => /ops\/reports/.test(c));
+      assert.ok(asked.length >= 2 && asked.every((c) => /ops\/reports[^|\]]*#rev/.test(c)), 'asked with the rev it was given: ' + asked.join(' | '));
       console.log('ok  the lists answer "the same"');
+    } finally { await s.stop(); }
+  }
+
+  // ---- the desktop's windows
+  {
+    const s = await server();
+    try {
+      await s.register('taku');
+      const mod = await s.register('mod');
+      const layout = [
+        { id: 'server', x: 0, y: 0, w: 20, h: 13 }, { id: 'reports', x: 20, y: 0, w: 16, h: 12 }, { id: 'detections', x: 36, y: 0, w: 16, h: 12 }, { id: 'feedback', x: 52, y: 0, w: 16, h: 12 },
+        { id: 'log', x: 0, y: 14, w: 22, h: 11 }, { id: 'security', x: 22, y: 14, w: 16, h: 12 }, { id: 'team', x: 38, y: 14, w: 18, h: 15 }, { id: 'vault', x: 56, y: 14, w: 14, h: 13 },
+        { id: 'profile', x: 0, y: 26, w: 14, h: 9 }
+      ];
+      assert.equal((await s.call('POST', '/api/ops/cdw', { token: mod.token, body: { layout: { v: 1, items: layout } } })).status, 200);
+      const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, reducedMotion: 'reduce' });
+      const { page, calls } = await open(s, 'mod', { context: ctx });
+      calls.length = 0;
+      await page.evaluate(() => OpsCDW.toggle());
+      await page.waitForSelector('.cdw-widget');
+      await page.waitForTimeout(2000);
+      const first = calls.filter((c) => c.startsWith('ops/'));
+      assert.equal(first.filter((c) => c.startsWith('ops/batch')).length, 1, 'the windows are asked for in one request: ' + first.join(' '));
+      const drawn = await page.evaluate(() => [...document.querySelectorAll('.cdw-widget')].filter((w) => w.querySelector('.cdw-body').textContent.trim()).length);
+      assert.equal(drawn, 9, 'every window drawn');
+      assert.equal(await page.locator('.cdw-widget[data-id="log"] .cdw-lines li').count() <= 6, true);
+      calls.length = 0;
+      await page.waitForTimeout(12000);
+      const steady = calls.filter((c) => c.startsWith('ops/'));
+      assert.ok(steady.every((c) => c.startsWith('ops/batch')) && steady.length <= 4, 'at the live pace, one request at a time (12 s): ' + steady.join(' '));
+      // the browser's window resized step by step: drawn again from what each window has, nothing asked for that
+      calls.length = 0;
+      for (let w = 1900; w >= 1700; w -= 20) await page.setViewportSize({ width: w, height: 1080 });
+      await page.waitForTimeout(600);
+      assert.ok(calls.filter((c) => c.startsWith('ops/')).length <= 1, 'a resize asks nothing more: ' + calls.join(' '));
+      assert.equal(await page.locator('.cdw-widget').count() >= 6, true);
+      console.log('ok  the desktop\'s windows are asked for in one request at the site\'s pace');
     } finally { await s.stop(); }
   }
 
