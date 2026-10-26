@@ -18,7 +18,11 @@
    sounds while the call lasts). A call that has gone on for 2 hours ends (it
    can be started again). Its sound quality is the one of the best VIP in it
    (js/game/vip.js), for everyone in it, and never below the quality everyone
-   has for now (vip.voiceAll: above VIP3's). */
+   has for now (vip.voiceAll: above VIP3's).
+   TURBO VOICE: a pair one of whom is the developer's account (taku) talks at the best Opus has — 510 kbps, stereo, 48 kHz, a constant
+   bitrate, 10 ms packets, no noise suppression or gain control (they change the voice), the smallest buffer the browser keeps. Which
+   pair it is, the server says (the `turbo` on what it passes along, `turbo` on the developer's own me); for any other pair it cuts
+   what a page asks of the other one's sound to a VIP's best (server/core/api.js plainVoice). */
 (function (BR) {
   'use strict';
 
@@ -32,6 +36,7 @@
   var home = null;
   var ice = null;         // { servers, until }
   var LIMIT = 2 * 3600000;
+  var TURBO_BPS = 510000;   // Opus's most
   var pausedHub = 0;      // a hub whose voice ended at the limit (until it is asked back)
   var lastHub = null;     // [hub id, people]
 
@@ -106,13 +111,18 @@
     }, function () { return [{ urls: ['stun:stun.l.google.com:19302'] }]; });
   }
 
-  function getMic() {
+  function meTurbo() { var m = BR.social.me(); return !!(m && m.turbo); }
+  function turboWith(h, id) { return meTurbo() || !!h.turbo[id]; }
+  // the microphone as it is for TURBO VOICE: as it is heard, in stereo at 48 kHz (only the echo is taken out)
+  var TURBO_MIC = { echoCancellation: true, noiseSuppression: false, autoGainControl: false, channelCount: 2, sampleRate: 48000, sampleSize: 24, latency: 0 };
+
+  function getMic(turbo) {
     if (!supported()) {
       return Promise.reject(new Error(window.isSecureContext === false
         ? 'この接続ではマイクが使えません（https で開いてください）'
         : 'このブラウザでは音声通話が使えません'));
     }
-    return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false })
+    return navigator.mediaDevices.getUserMedia({ audio: turbo ? TURBO_MIC : { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false })
       .catch(function (e) {
         throw new Error(e && e.name === 'NotAllowedError'
           ? 'マイクの使用が許可されていません。ブラウザの設定でマイクを許可してください'
@@ -194,7 +204,9 @@
     faces(people);
     $('#call-name').textContent = home.kind === 'hub' ? '友達と稼ぐ・通話' : home.room === myId() ? 'ホーム通話' : home.host.name + 'さんのホーム通話';
     bar.classList.toggle('hub', home.kind === 'hub');
-    $('#call-state').textContent = (live ? (live + 1) + '人で通話中' : '接続中…') + (home.mic ? '' : '・マイク オフ');
+    var turbo = Object.keys(home.peers).some(function (k) { return home.peers[k].live && turboWith(home, Number(k)); });
+    $('#call-state').textContent = (live ? (live + 1) + '人で通話中' : '接続中…') + (turbo ? '・TURBO VOICE 510kbps' : '') + (home.mic ? '' : '・マイク オフ');
+    bar.classList.toggle('turbo', turbo);
     bar.classList.toggle('live', live > 0);
     m.classList.toggle('off', !home.mic);
     m.querySelector('.ic').className = 'ic ' + (home.mic ? 'ic-mic-on' : 'ic-mic-off');
@@ -224,7 +236,7 @@
     }
     h.micBusy = true;
     renderBar();
-    return getMic().then(function (stream) {
+    return getMic(meTurbo() || Object.keys(h.turbo).length > 0).then(function (stream) {
       h.micBusy = false;
       if (home !== h) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
       h.stream = stream;
@@ -277,28 +289,30 @@
     return t;
   }
   // the bitrate the other side may send me at (Opus in the description I send)
-  function withBitrate(sdp, tier) {
-    if (!tier) return sdp;
+  // (TURBO VOICE: Opus's most, in stereo, at a constant bitrate, never paused in a silence, in 10 ms packets)
+  function withBitrate(sdp, tier, turbo) {
+    if (!tier && !turbo) return sdp;
     var m = /a=rtpmap:(\d+) opus\/48000[^\r\n]*/i.exec(sdp);
     if (!m) return sdp;
-    var pt = m[1], bps = BR.VIP.kbps(tier) * 1000;
+    var pt = m[1], bps = turbo ? TURBO_BPS : BR.VIP.kbps(tier) * 1000;
+    var mine = ['maxaveragebitrate=' + bps].concat(turbo || tier >= 4 ? ['maxplaybackrate=48000'] : [], turbo ? ['stereo=1', 'sprop-stereo=1', 'cbr=1', 'usedtx=0'] : []);
     var re = new RegExp('a=fmtp:' + pt + ' ([^\\r\\n]*)');
     if (re.test(sdp)) {
-      return sdp.replace(re, function (all, params) {
-        var p = params.split(';').filter(function (x) { return x && !/^\s*(maxaveragebitrate|maxplaybackrate)=/.test(x); });
-        p.push('maxaveragebitrate=' + bps);
-        if (tier >= 4) p.push('maxplaybackrate=48000');
-        return 'a=fmtp:' + pt + ' ' + p.join(';');
+      sdp = sdp.replace(re, function (all, params) {
+        var p = params.split(';').filter(function (x) { return x && !/^\s*(maxaveragebitrate|maxplaybackrate|stereo|sprop-stereo|cbr|usedtx)=/.test(x); });
+        return 'a=fmtp:' + pt + ' ' + p.concat(mine).join(';');
       });
-    }
-    return sdp.replace(m[0], m[0] + '\r\na=fmtp:' + pt + ' minptime=10;useinbandfec=1;maxaveragebitrate=' + bps + (tier >= 4 ? ';maxplaybackrate=48000' : ''));
+    } else sdp = sdp.replace(m[0], m[0] + '\r\na=fmtp:' + pt + ' minptime=10;useinbandfec=1;' + mine.join(';'));
+    return turbo ? sdp.replace(/\r\na=(?:max)?ptime:\d+/g, '').replace(m[0], m[0] + '\r\na=ptime:10\r\na=maxptime:10') : sdp;
   }
-  function capSender(p, tier) {
+  function capSender(p, tier, turbo) {
     if (!p.sender || !p.sender.getParameters) return;
     try {
       var prm = p.sender.getParameters();
       if (!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
-      prm.encodings[0].maxBitrate = BR.VIP.kbps(tier) * 1000;
+      prm.encodings[0].maxBitrate = turbo ? TURBO_BPS : BR.VIP.kbps(tier) * 1000;
+      // (TURBO VOICE: first in the phone's queue and on the network)
+      if (turbo) { prm.encodings[0].priority = 'high'; prm.encodings[0].networkPriority = 'high'; }
       p.sender.setParameters(prm).catch(function () {});
     } catch (e) { /* not on this browser */ }
   }
@@ -337,6 +351,7 @@
     var p = peerOf(h, id);
     p.ready = iceServers().then(function (servers) {
       if (home !== h || h.peers[id] !== p) return null;
+      var turbo = turboWith(h, id);
       var pc = new RTCPeerConnection({ iceServers: servers });
       p.pc = pc;
       if (offer) {
@@ -345,7 +360,11 @@
         if (micTrack(h)) p.sender.replaceTrack(micTrack(h)).catch(function () {});
       }
       pc.onicecandidate = function (e) { if (e.candidate) queue(h, p, { candidate: e.candidate.toJSON() }); };
-      pc.ontrack = function (e) { audioFor(id, e.streams[0] || new MediaStream([e.track])); };
+      pc.ontrack = function (e) {
+        // (TURBO VOICE: played as soon as it comes, with the smallest buffer the browser keeps)
+        if (turbo && e.receiver) { try { e.receiver.jitterBufferTarget = 0; } catch (x) { /* not here */ } try { e.receiver.playoutDelayHint = 0; } catch (x) { /* not here */ } }
+        audioFor(id, e.streams[0] || new MediaStream([e.track]));
+      };
       pc.onconnectionstatechange = function () {
         if (home !== h || h.peers[id] !== p) return;
         var s = pc.connectionState;
@@ -353,7 +372,7 @@
           if (!p.live) sfx('callStart');
           p.live = true;
           clearTimeout(p.timer);
-          capSender(p, h.tier || 0);
+          capSender(p, h.tier || 0, turbo);
         } else if (s === 'failed' || s === 'closed') p.live = false;
         else if (s === 'disconnected') {
           clearTimeout(p.timer);
@@ -366,7 +385,7 @@
         renderBar();
       };
       if (!offer) return pc;
-      pc.createOffer().then(function (o) { return pc.setLocalDescription({ type: o.type, sdp: withBitrate(o.sdp, h.tier || 0) }); }).then(function () {
+      pc.createOffer().then(function (o) { return pc.setLocalDescription({ type: o.type, sdp: withBitrate(o.sdp, h.tier || 0, turbo) }); }).then(function () {
         queue(h, p, { description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
       }).catch(function () { /* tried again on the next hello */ });
       return pc;
@@ -408,7 +427,7 @@
             peer.sender = tr.sender;
             if (micTrack(h)) tr.sender.replaceTrack(micTrack(h)).catch(function () {});
           }
-          return pc.createAnswer().then(function (a) { return pc.setLocalDescription({ type: a.type, sdp: withBitrate(a.sdp, h.tier || 0) }); }).then(function () {
+          return pc.createAnswer().then(function (a) { return pc.setLocalDescription({ type: a.type, sdp: withBitrate(a.sdp, h.tier || 0, turboWith(h, id)) }); }).then(function () {
             queue(h, peer, { description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
           });
         });
@@ -428,6 +447,13 @@
     var id = from.id;
     // only the people the voice is for (the server checks it too)
     if (!h.members[id]) return;
+    // TURBO VOICE with this one, as the server says: the microphone as it is heard, and (the offering side) the connection again at it
+    if (ev.turbo && !h.turbo[id]) {
+      h.turbo[id] = true;
+      var t = micTrack(h);
+      if (t && t.applyConstraints) t.applyConstraints(TURBO_MIC).catch(function () {});
+      if (data.op !== 'hello' && h.peers[id] && h.peers[id].pc && myId() < id) connect(h, id, true);
+    }
     if (data.op === 'hello') {
       if (myId() < id) {
         // the offering side: (re)connect unless a reply finds a working (or just started) connection
@@ -493,12 +519,12 @@
   function join(kind, room, host, want) {
     if (home && (home.kind !== kind || home.room !== room)) leave();
     if (!home) {
-      home = { kind: kind, room: room, host: host, members: {}, peers: {}, stream: null, mic: false, micBusy: false, cid: (kind === 'hub' ? 'hub-room-' : 'home-') + room, since: Date.now() };
+      home = { kind: kind, room: room, host: host, members: {}, peers: {}, turbo: {}, stream: null, mic: false, micBusy: false, cid: (kind === 'hub' ? 'hub-room-' : 'home-') + room, since: Date.now() };
       iceServers();
     }
     var h = home;
     Object.keys(h.members).forEach(function (k) {
-      if (!want[k]) { signal(Number(k), { op: 'bye' }); delete h.members[k]; closePeer(h, Number(k)); }
+      if (!want[k]) { signal(Number(k), { op: 'bye' }); delete h.members[k]; delete h.turbo[k]; closePeer(h, Number(k)); }
     });
     var fresh = [];
     Object.keys(want).forEach(function (k) {

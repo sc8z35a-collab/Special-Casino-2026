@@ -752,6 +752,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       avatar: u.avatar,
       avatars: AVATARS.size ? [...AVATARS.values()].filter((a) => a.price === 0 || ownedAvatars(u).includes(a.id)).map((a) => a.id) : [],
       ...balance(u),
+      ...(isDeveloper(u) ? { turbo: true } : {}),
       totalWon: u.total_won,
       totalBet: u.total_bet,
       biggestWin: u.biggest_win,
@@ -3600,6 +3601,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // with (type "home"; everyone in that voice can reach everyone else), and of
   // a hub (type "hub": everyone in it). Used by POST /api/call and by the
   // WebSocket.
+  // a call's connection details as they may go to someone not in a TURBO VOICE pair: the sound it asks for no better than a VIP's best
+  // (no stereo, no constant bitrate, no more than VOICE_MAX)
+  const VOICE_MAX = Math.max(...RULES.vip.voice) * 1000;
+  function plainVoice(data) {
+    const sdp = data && data.description && data.description.sdp;
+    if (typeof sdp !== 'string') return data ?? null;
+    const fmtp = (all, head, params) => head + params.split(';').map((x) => x.trim())
+      .filter((x) => x && !/^(?:stereo|sprop-stereo|cbr)=/.test(x))
+      .map((x) => x.replace(/^maxaveragebitrate=(\d+)$/, (m, n) => `maxaveragebitrate=${Math.min(Number(n), VOICE_MAX)}`)).join(';');
+    return { ...data, description: { ...data.description, sdp: sdp.replace(/^(a=fmtp:\d+ )([^\r\n]*)/gm, fmtp) } };
+  }
   function relayCall(u, body) {
     const type = String(body.type || '');
     if (!CALL_TYPES.has(type)) throw new ApiError(400, 'bad_type', '通話の操作が正しくありません');
@@ -3618,7 +3630,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     } else if (!room || !inVoice(u.id, room) || !inVoice(to, room)) {
       throw new ApiError(409, 'not_home', 'ホームで話せる相手ではありません');
     }
-    live.send(to, 'call', { type, callId, from: mini(u), data: body.data ?? null });
+    // TURBO VOICE (the developer's own: 510 kbps stereo Opus, js/net/call.js): only a pair one of whom is the developer's account. The mark
+    // is the server's, never the page's; for everyone else what a page asks of the other one's sound is cut to the VIP's best here
+    const turbo = isDeveloper(u) || isDeveloper(getUser(to));
+    live.send(to, 'call', { type, callId, from: mini(u), data: turbo ? body.data ?? null : plainVoice(body.data), ...(turbo ? { turbo: true } : {}) });
     // someone calling a player whose game is out of sight: their phone rings (once in two minutes)
     if (body.data && body.data.op === 'hello' && !body.data.reply) {
       phone(to, { kind: 'call', title: `${u.name}さんから通話`, body: type === 'hub' ? '「一緒に稼ぐ」の通話であなたを呼んでいます' : 'ホームの通話であなたを呼んでいます', tag: `call:${u.id}`, open: 'slot' }, 120000);
