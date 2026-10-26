@@ -30,7 +30,6 @@
     srv.me = me;
     srv.dailyReady = me.dailyReady;
     srv.boughtToday = me.boughtToday;
-    S.stats = { spins: me.spins, won: me.totalWon, biggest: me.biggestWin };
   }
 
   function boughtToday() {
@@ -60,9 +59,6 @@
           res.tier = m >= C.tiers.superBig ? 3 : m >= C.tiers.big ? 2 : 1;
         }
         S.tokens = S.tokens - bet + res.total;
-        S.stats.spins++;
-        S.stats.won += res.total;
-        S.stats.biggest = Math.max(S.stats.biggest, res.total);
         BR.store.save();
         return { result: res, balance: { tokens: S.tokens, dollars: S.dollars, coins: S.coins } };
       });
@@ -95,9 +91,8 @@
   var remote = {
     spin: function (bet) {
       return api.spin(bet).then(function (r) {
-        BR.engine.withLine(r.result);
+        BR.engine.whole(r.result);
         applyBalance(r.balance);
-        S.stats = { spins: r.stats.spins, won: r.stats.totalWon, biggest: r.stats.biggestWin };
         return r;
       });
     },

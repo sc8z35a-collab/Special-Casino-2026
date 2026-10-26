@@ -366,10 +366,11 @@
   }
 
   // my spin: the server says whether the お守り加護 is still on
+  // (online, a spin says whether the お守り加護 is still on: `charm` only while it is)
   function afterSpin(r) {
     var m = me();
-    if (!m || typeof r.charm !== 'boolean') return;
-    if (m.charm !== r.charm) { m.charm = r.charm; renderCharm(); }
+    if (!m || !BR.bank.online) return;
+    if (m.charm !== !!r.charm) { m.charm = !!r.charm; renderCharm(); }
   }
 
   // the friend I watch switched theirs on (or it was used up)

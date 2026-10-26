@@ -54,8 +54,21 @@
     res.bet = bet;
     return res;
   }
-  // a result as the server sends it (no line: it is the grid's middle row), whole again
-  function withLine(res) { if (res && !res.line) res.line = lineOf(res.grid); return res; }
+  // A result as the server sends it (server/core/api.js): the grid as 15 digits — reel by reel, top to bottom, each cell's place in
+  // C.symbols — with no line (the grid's middle row) and no win, total, tier, multiplier or combo that is none; whole() makes it whole again.
+  function pack(grid) { return grid.map(function (col) { return col.map(function (s) { return C.symbols.indexOf(s); }).join(''); }).join(''); }
+  function whole(res) {
+    if (!res || res.line) return res;
+    if (typeof res.grid === 'string') {
+      var g = res.grid, grid = [];
+      for (var r = 0; r < 15; r += 3) grid.push([C.symbols[g[r]], C.symbols[g[r + 1]], C.symbols[g[r + 2]]]);
+      res.grid = grid;
+    }
+    res.line = lineOf(res.grid);
+    res.wins = res.wins || [];
+    ['total', 'tier', 'mult', 'combo'].forEach(function (k) { res[k] = res[k] || 0; });
+    return res;
+  }
 
-  BR.engine = { spin: spin, evaluate: evaluate, drawSymbol: drawSymbol, withLine: withLine };
+  BR.engine = { spin: spin, evaluate: evaluate, drawSymbol: drawSymbol, pack: pack, whole: whole };
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

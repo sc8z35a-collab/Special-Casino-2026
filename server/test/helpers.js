@@ -31,7 +31,7 @@ export async function startServer(overrides = {}, { warm = true } = {}) {  // (o
   let seq = 0;
 
   // { status, ...json body } (the HTTP status wins over a body field of that name)
-  async function call(method, url, { token, body, headers = {} } = {}) {
+  async function call(method, url, { token, body, headers = {}, raw = false } = {}) {
     const h = { ...headers };
     if (token) h.Authorization = `Bearer ${token}`;
     if (url === '/api/register' && !('X-Device' in h)) h['X-Device'] = newDevice();
@@ -40,6 +40,8 @@ export async function startServer(overrides = {}, { warm = true } = {}) {  // (o
     const json = await res.json();
     // (the quests come as the periods that are on, and the game makes what its screen shows from them: js/game/quests.js view — read so here too)
     if (url.startsWith('/api/quests') && json.quests) json.periods = globalThis.BR.QUESTS.view(json.quests, json.now || Date.now());
+    // (a spin's result comes as it is sent, and the game makes it whole: js/game/engine.js whole() — so here too; `raw`: as it was sent)
+    if (url === '/api/spin' && json.result && !raw) globalThis.BR.engine.whole(json.result);
     return { ...json, status: res.status };
   }
 

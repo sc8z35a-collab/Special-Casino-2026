@@ -1,11 +1,11 @@
 /* The operator site's beat (ops/ops.js, ops/cdw.js): what the site keeps asking for — the tabs' numbers, the tab in front, the desktop's
    windows — in one request at a time (POST /api/ops/batch, server/core/api.js), at the pace the developer chose (更新頻度: the lists'
    and the live views'); over the site's live connection when it is up (ops/ops.js request(), js/net/wire.js).
-     OpsBeat.want(id, { live, every, ask, got, failed, run })
+     OpsBeat.want(id, { live, at, ask, got, failed, run })
         ask(): { p, rev, h } — what to ask now, or a list of them (null: nothing this time); h: headers the request carries (the vault's
                code ticket); got(answer, ask) / failed(error, ask): its answer (a list for a list)
         run(): instead of ask, something that asks for itself (it is only given the beat's time)
-        live: at the live views' pace, else the lists'; every: a pace of its own (ms)
+        live: at the live views' pace, else the lists'; at: when it was last asked (0: ask at once; by default, now)
      OpsBeat.drop(id)   OpsBeat.soon(id): asked in a moment (a push said it changed)   OpsBeat.pace([lists, live])
      OpsBeat.start(request)   OpsBeat.stop(): nothing more, and an answer still on its way is dropped
    A beat is when the first of them is due; whatever is due within half the fastest pace comes along on it (a slower one rides on a faster
@@ -14,7 +14,7 @@ var OpsBeat = (function () {
   'use strict';
   var askers = {}, pace = [15000, 5000], request = null, timer = 0, busy = false, gen = 0;
 
-  function every(a) { return a.every || (a.live ? pace[1] : pace[0]); }
+  function every(a) { return a.live ? pace[1] : pace[0]; }
   // half the fastest pace: what is due within that of a request comes along on it
   function slack() { var m = Infinity; Object.keys(askers).forEach(function (id) { m = Math.min(m, every(askers[id])); }); return m === Infinity ? 0 : m / 2; }
   // the next beat: when the first of them is due
@@ -39,7 +39,8 @@ var OpsBeat = (function () {
       var list = Array.isArray(q) ? q : [q];
       who.push([a, q, asks.length]);
       list.forEach(function (x) {
-        asks.push({ p: x.p, rev: x.rev || undefined });
+        // (a rev, even '' the first time, asks for one: the answer says its rev, or "the same")
+        asks.push({ p: x.p, rev: typeof x.rev === 'string' ? x.rev : undefined });
         Object.keys(x.h || {}).forEach(function (k) { headers[k] = x.h[k]; });
       });
     });

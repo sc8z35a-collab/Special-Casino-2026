@@ -23,8 +23,7 @@
       coach: false,
       boughtDay: '',
       boughtToday: 0,
-      freeDay: '',
-      stats: { spins: 0, won: 0, biggest: 0 }
+      freeDay: ''
     };
   }
 

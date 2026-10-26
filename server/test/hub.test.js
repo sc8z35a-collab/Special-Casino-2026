@@ -20,7 +20,7 @@ const xpOf = async (p) => (await call('GET', '/api/me', { token: p.token })).me.
 const mult = (n) => (n > 1 ? Math.round(Math.pow(HUB.comboStep, n - 1) * 10000) / 10000 : 1);
 // what a spin in a hub pays: the line's pay, 777 x1.5, then x1.1 for every win before it in the combo
 function pays(res, combo) {
-  const base = evaluate(globalThis.BR.engine.withLine(res).line, res.bet);
+  const base = evaluate(globalThis.BR.engine.whole(res).line, res.bet);
   let total = base.total;
   const sevens = base.wins.find((w) => w.symbol === 'seven' && w.count >= 3);
   if (sevens) total += Math.floor(sevens.amount * (HUB.sevens - 1));
@@ -160,7 +160,7 @@ test('友達と稼ぐ: spins share one combo (x1.1 a win, three misses end it), 
           assert.deepEqual([res.hub.combo, res.hub.misses], [before.combo, before.misses + 1], 'a miss alone does not end it');
         }
       }
-      if (res.hub.diamonds) assert.deepEqual(globalThis.BR.engine.withLine(res).line, ['diamond', 'diamond', 'diamond', 'diamond', 'diamond']);
+      if (res.hub.diamonds) assert.deepEqual(globalThis.BR.engine.whole(res).line, ['diamond', 'diamond', 'diamond', 'diamond', 'diamond']);
       const after = hubRow(hub.id);
       assert.deepEqual([after.combo, after.misses], [res.hub.combo, res.hub.misses]);
     }

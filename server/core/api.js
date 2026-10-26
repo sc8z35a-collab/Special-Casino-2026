@@ -26,7 +26,7 @@ import { Limiter } from './ratelimit.js';
 import { revOf, partOf, heldOf, heldFrom } from './hash.js';
 import {
   RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, VIP, RECEIPTS,
-  spin as spinReels, evaluate as evaluateLine, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
+  spin as spinReels, evaluate as evaluateLine, packGrid, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
 import { createStaffPins } from './staffpin.js';
@@ -108,6 +108,8 @@ function randomInt(lo, hi) {
   globalThis.crypto.getRandomValues(r);
   return lo + (r[0] % (hi - lo + 1));
 }
+// what of `o` is something (not 0, false, nothing or an empty list): for an answer that leaves out what the page takes as none
+const someOf = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v && !(Array.isArray(v) && !v.length)));
 
 export function createApi({ db, live: hostLive, config, secret, hostAdmin = null, defer = null, blobs = null, host = null, questRewardRoll, questTicketRoll, extensions: extraParts = extensions }) {
   const q = statements(db);
@@ -572,7 +574,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // with VIP on, each one is VIP EXP.
   function questNotice(userId, r) {
     if (!r || (!r.done.length && !r.ticketGain['5h'] && !r.ticketGain.day)) return;
-    live.send(userId, 'quest', { done: r.done.map((x) => x.id), ready: r.ready, tickets: r.tickets, bonuses: r.bonuses, xp: getUser(userId).xp });
+    // (the tickets when some were won, the bonuses when a quest was finished: they change with nothing else here)
+    live.send(userId, 'quest', { done: r.done.map((x) => x.id), ready: r.ready, ...(r.ticketGain['5h'] || r.ticketGain.day ? { tickets: r.tickets } : {}),
+      ...(r.done.length ? { bonuses: r.bonuses } : {}), xp: getUser(userId).xp });
     if (r.done.length && vipOn(getUser(userId))) tx(() => addVipExp(getUser(userId), r.done.length * VIP_RULES.exp.quest));
   }
   // Progress from one of the player's actions, saved in a transaction of its own.
@@ -1864,34 +1868,28 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       questNotice(u.id, quests);
       syncMilestones(u.id);
       const after = getUser(u.id);
-      // (what the game reads for itself is not sent: the line is the grid's middle row, js/game/engine.js withLine; no charm, hub, double or
-      // VIP x is none)
-      const out = { grid: result.grid, wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, bet, combo: result.combo,
-        ...(result.charm ? { charm: result.charm } : {}), ...(boost ? { hub: boost } : {}), ...(result.double ? { double: true } : {}), ...(result.vip ? { vip: true } : {}) };
+      // (as it is sent: what the game makes whole for itself is not, js/game/engine.js whole() — the grid as digits, no line, nothing that
+      // is none)
+      const out = { grid: packGrid(result.grid), bet, ...someOf({ wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, combo: result.combo,
+        charm: result.charm, hub: boost, double: result.double, vip: result.vip }) };
       notifyWatchers(u.id, { type: 'spin', user: u.id, result: out, balance: balance(after) });
       if (boost && on) {
         // the others in the hub: the combo they share, and what everyone won
         // together (週間協力 counts it for the ones who are active)
-        hubSend(on.hub.id, { type: 'spin', user: mini(u), win: out.total, tier: out.tier, combo: boost.combo, misses: boost.misses, next: boost.next,
+        hubSend(on.hub.id, { type: 'spin', user: mini(u), win: result.total, tier: result.tier, combo: boost.combo, misses: boost.misses, next: boost.next,
           seq: boost.seq, sevens: boost.sevens, diamonds: boost.diamonds }, u.id);
         if (earned > 0) for (const id of on.active) if (id !== u.id) track(id, [['coopEarn', earned]]);
       }
       // a SUPER BIG WIN: every friend who is online hears it
-      if (result.tier >= 3) superWin(u, out);
+      if (result.tier >= 3) superWin(u, result);
       settleBets(u.id, result.tier);
       if (fight) battleStep(fight);
-      if (coop) coopAfterSpin(coop, u, out);
+      if (coop) coopAfterSpin(coop, u, result);
       afterSpend(u.id);
-      // (VIP's state only when the spin changed it; the quests' tickets and bonuses come as a 'quest' event when they change)
+      // (the お守り加護 only while it is on; VIP's state only when the spin changed it; the quests' tickets and bonuses come as a 'quest'
+      // event when they change)
       const vip = vipDto(after);
-      return {
-        result: out,
-        balance: balance(after),
-        charm: after.charm > 0,
-        xp: after.xp,
-        ...(JSON.stringify(vip) !== vipBefore ? { vip } : {}),
-        stats: { totalWon: after.total_won, biggestWin: after.biggest_win, spins: after.spins }
-      };
+      return { result: out, balance: balance(after), xp: after.xp, ...someOf({ charm: after.charm > 0 }), ...(JSON.stringify(vip) !== vipBefore ? { vip } : {}) };
     },
 
     'POST /api/buy': async (req, u) => {
@@ -4015,7 +4013,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     routes[key] = async (req, u) => {
       const out = await inner(req, u);
       const rev = revOf(out);
-      return req.query.get('rev') === rev ? { same: true, rev } : { ...out, rev };
+      return req.query.get('rev') === rev ? { same: true } : { ...out, rev };
     };
   }
   // the developer tries the notices (Discord, LINE): one goes out at once to each

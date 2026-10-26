@@ -483,7 +483,7 @@
   function watchSpin(result, balance) {
     var w = game.watch;
     if (!w) return;
-    w.queue.push({ result: BR.engine.withLine(result), balance: balance });
+    w.queue.push({ result: BR.engine.whole(result), balance: balance });
     // a friend spinning fast: keep up by skipping to the latest spins
     var spins = w.queue.filter(function (q) { return q.result; });
     if (spins.length > 2) w.queue.splice(0, w.queue.indexOf(spins[spins.length - 2]));

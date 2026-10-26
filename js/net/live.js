@@ -56,7 +56,8 @@
 
   function openWs(ticket) {
     var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    var ws = new WebSocket(proto + location.host + '/api/live?ticket=' + encodeURIComponent(ticket) + held());
+    // (the device rides with the connection, not with each request on it: server/core/socketapi.js)
+    var ws = new WebSocket(proto + location.host + '/api/live?ticket=' + encodeURIComponent(ticket) + held() + (BR.device ? '&device=' + encodeURIComponent(BR.device.header()) : ''));
     var closed = false, quiet = Date.now();
     function send(text) {
       if (ws.readyState !== 1) return false;

@@ -23,10 +23,12 @@ export function overSocket(method, path) {
   return path.startsWith('/api/') && !HTTP_ONLY.test(path);
 }
 
-// What the connection was opened from, kept with it (a few hundred bytes: Cloudflare keeps 2 KB with a socket).
+// What the connection was opened from, kept with it (a few hundred bytes: Cloudflare keeps 2 KB with a socket): the address, the browser,
+// and the game's device (?device=, js/net/live.js), which its requests on the connection then need not carry each.
 export function connectionOf(request, url) {
   const h = (k, n) => String(request.headers.get(k) || '').slice(0, n);
-  return { ip: h('cf-connecting-ip', 64), host: url.host, scheme: url.protocol, ua: h('user-agent', 300), origin: h('origin', 160), lang: h('accept-language', 80) };
+  return { ip: h('cf-connecting-ip', 64), host: url.host, scheme: url.protocol, ua: h('user-agent', 300), origin: h('origin', 160), lang: h('accept-language', 80),
+    device: String(url.searchParams.get('device') || '').slice(0, 120) };
 }
 
 // the answer to one message, as the text to send back; null for a message that is not a request
@@ -44,6 +46,7 @@ export async function answerOnSocket(api, conn, m) {
     meta: { scheme: conn.scheme || 'https:', live: true },
     header(name) {
       const k = String(name).toLowerCase();
+      if (k === 'x-device' && typeof sent[k] !== 'string') return conn.device || null;
       if (FROM_PAGE.has(k)) return typeof sent[k] === 'string' ? sent[k] : null;
       if (k === 'content-type') return method === 'POST' ? 'application/json' : null;
       return own[k] || null;

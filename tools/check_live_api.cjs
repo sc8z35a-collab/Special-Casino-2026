@@ -82,10 +82,13 @@ const freePort = () => new Promise((resolve) => { const s = net.createServer(); 
       assert.ok(spins.every((m) => m.h.authorization === 'Bearer ' + player.token), 'each with the login, as a request carries it');
       const replies = down.filter((m) => m.re !== undefined && spins.some((s) => s.id === m.re));
       assert.equal(replies.length, 4);
-      assert.ok(replies.every((m) => m.s === 200 && m.b.result && m.b.result.grid && !m.b.result.line), 'answered, without the line the game makes itself');
+      assert.ok(replies.every((m) => m.s === 200 && m.b.result && /^[0-6]{15}$/.test(m.b.result.grid) && !m.b.result.line), 'answered as it is sent: the grid as digits, no line');
       assert.deepEqual(http.filter((x) => !/^POST \/api\/(stream-ticket|release)$/.test(x)), [], 'no request of their own');
+      const last = replies.find((m) => m.re === spins[spins.length - 1].id).b.result;
+      assert.deepEqual(await page.evaluate(() => BR.app.reels.getGrid()), await page.evaluate((r) => BR.engine.whole(r).grid, last), 'the reels stop on the grid sent');
       const after = await page.evaluate(() => BR.store.state.tokens);
-      const sum = replies.reduce((n, m) => n - m.b.result.bet + m.b.result.total + (m.b.result.charm ? m.b.result.charm.back : 0), 0);
+      // (what is none is not sent)
+      const sum = replies.reduce((n, m) => n - m.b.result.bet + (m.b.result.total || 0) + (m.b.result.charm ? m.b.result.charm.back : 0), 0);
       assert.equal(after, before + sum, 'the balance follows the spins');
       const me = await call('GET', '/api/me', { token: player.token });
       assert.equal(me.me.tokens, after, 'and the server has the same');

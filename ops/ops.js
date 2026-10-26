@@ -642,7 +642,6 @@
       // every 2 seconds the question whether they still may (taken away: out)
       $('#tab-pay').hidden = true;
       $('#tab-vault').hidden = true;
-      loadCounts();
       setView('reports');
       startTimers();
       return;
@@ -661,7 +660,6 @@
     if (window.OpsWatch) OpsWatch.sync();
     // /ops/#vault: straight to the vault
     if (location.hash === '#vault') setView('vault');
-    poll();
     startTimers();
   }
   // the tabs' numbers (a viewer's poll is this alone; an operator's comes with the rest in one request: poll())
@@ -675,9 +673,6 @@
     if (r.speed) useSpeed(r.speed, true);
     // the サーバー button's colour for the month's usage, from every tab
     if (r.usage) paintUsageTab(r.usage.tier || '');
-  }
-  function loadCounts() {
-    return request('GET', '/api/ops/counts').then(applyCounts, function () {});
   }
   // a viewer: still one? (asked every 2 seconds while the page is seen; the answer 401 logs out)
   var aliveTimer = 0;
@@ -706,28 +701,17 @@
   }
   function tickGot(r, q) {
     if (state.viewer) { applyCounts(r); return; }
-    if (r.counts) {
-      if (!r.counts.same) applyCounts(r.counts);
-      revs.c = r.counts.rev;
-    }
-    if (r.devunit && q.devGen === devUnit.generation) {
-      if (!r.devunit.same) applyDevUnit(r.devunit);
-      revs.d = r.devunit.rev;
-    }
+    // (a part that is "the same" keeps the rev this page sent)
+    if (r.counts && !r.counts.same) { applyCounts(r.counts); revs.c = r.counts.rev; }
+    if (r.devunit && !r.devunit.same && q.devGen === devUnit.generation) { applyDevUnit(r.devunit); revs.d = r.devunit.rev; }
     var pay = r.pay;
     if (pay) {
       setCount('pay', pay.count || 0);
-      if (pay.rev !== undefined) {
-        // (not while a reply is being written: the tab would be drawn again under the hand; it is asked for again)
-        var typing = state.view === 'pay' && document.activeElement && document.activeElement.tagName === 'TEXTAREA';
-        if (pay.same) revs.p = pay.rev;
-        else if (!typing) { state.pay = pay; revs.p = pay.rev; if (state.view === 'pay') renderPay(); }
-      }
+      // (a list that changed; not while a reply is being written: the tab would be drawn again under the hand; it is asked for again)
+      var typing = state.view === 'pay' && document.activeElement && document.activeElement.tagName === 'TEXTAREA';
+      if (pay.rev !== undefined && !typing) { state.pay = pay; revs.p = pay.rev; if (state.view === 'pay') renderPay(); }
     }
-    if (r.team) {
-      if (!r.team.same) applyTeam(r.team);
-      revs.t = r.team.rev;
-    }
+    if (r.team && !r.team.same) { applyTeam(r.team); revs.t = r.team.rev; }
     // (an answer that comes after a newer one is of no use)
     if (r.players && q.seq >= listApplied) {
       listApplied = q.seq;
@@ -776,7 +760,8 @@
     if (state.viewer) aliveTimer = setInterval(alive, 2000);
     OpsBeat.pace(SPEEDS[speed]);
     OpsBeat.start(request);
-    OpsBeat.want('tick', { ask: tickAsk, got: tickGot });
+    // (asked at once: the tabs' numbers come with the login)
+    OpsBeat.want('tick', { at: 0, ask: tickAsk, got: tickGot });
     viewAsker();
   }
   // the speed from the server
@@ -3014,18 +2999,9 @@
     srvHist = r.rate.history;
     if (state.view === 'server') renderServer(r);
   }
-  // an answer of parts asked with held= (server/core/hash.js): what is named in `kept` is what this page holds
-  function fromHeld(x, keep) {
-    var out = {};
-    Object.keys(x).forEach(function (k) {
-      if (k === 'revs' || k === 'kept') return;
-      out[k] = x[k];
-      if (x.revs && x.revs[k] !== undefined) { keep.parts[k] = x[k]; keep.revs[k] = x.revs[k]; }
-    });
-    (x.kept || []).forEach(function (k) { out[k] = keep.parts[k]; });
-    return out;
-  }
-  function heldPath(path, keep) { var h = Object.keys(keep.revs).map(function (k) { return k + '.' + keep.revs[k]; }).join(','); return path + (path.indexOf('?') < 0 ? '?' : '&') + 'held=' + h; }
+  // (an answer of parts asked with held=: js/net/wire.js BR.held)
+  function fromHeld(x, keep) { return BR.held.merge(x, keep); }
+  function heldPath(path, keep) { return path + (path.indexOf('?') < 0 ? '?' : '&') + 'held=' + BR.held.param(keep); }
   function srvStat(box, label, value, sub) {
     var s = el('div', 'stat');
     s.appendChild(el('span', '', label));

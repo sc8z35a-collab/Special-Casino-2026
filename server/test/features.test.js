@@ -118,7 +118,7 @@ test('お守り加護: switched on before a spin, softens the next lost spin, th
     assert.ok(used.pct === 100 || (used.pct >= 5 && used.pct <= 20), `pct ${used.pct}`);
     assert.equal(used.back, Math.floor((bet - sp.result.total) * used.pct / 100));
     assert.equal(sp.balance.tokens, before - bet + sp.result.total + used.back);
-    assert.equal(sp.charm, false);
+    assert.equal(sp.charm, undefined, 'used up: no longer on');
   }
   assert.ok(used);
   const sp = await call('POST', '/api/spin', { token: a.token, body: { bet } });

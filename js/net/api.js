@@ -70,17 +70,11 @@
   var HELD_KEY = 'blockbuster-reels/held', KEEP = { iconShop: 1, rules: 1 };
   var held = { parts: {}, revs: {} };
   try { var kept = JSON.parse(localStorage.getItem(HELD_KEY) || 'null'); if (kept && kept.parts && kept.revs) held = kept; } catch (e) { /* none */ }
-  function heldParam() { return Object.keys(held.revs).map(function (k) { return k + '.' + held.revs[k]; }).join(','); }
+  function heldParam() { return BR.held.param(held); }
   function fromHeld(x) {
     if (!x || !x.revs) return x;
-    var out = {}, keep = false;
-    Object.keys(x).forEach(function (k) {
-      if (k === 'revs' || k === 'kept') return;
-      out[k] = x[k];
-      if (x.revs[k] !== undefined) { held.parts[k] = x[k]; held.revs[k] = x.revs[k]; keep = keep || !!KEEP[k]; }
-    });
-    (x.kept || []).forEach(function (k) { out[k] = held.parts[k]; });
-    if (keep) {
+    var out = BR.held.merge(x, held);
+    if (Object.keys(x.revs).some(function (k) { return KEEP[k]; })) {
       var save = { parts: {}, revs: {} };
       Object.keys(KEEP).forEach(function (k) { if (k in held.parts) { save.parts[k] = held.parts[k]; save.revs[k] = held.revs[k]; } });
       try { localStorage.setItem(HELD_KEY, JSON.stringify(save)); } catch (e) { /* this visit only */ }
@@ -109,9 +103,10 @@
   function request(method, path, body) {
     var headers = {};
     if (token) headers.Authorization = 'Bearer ' + token;
+    // (on the connection the login rides with each request; the device with the connection itself)
+    var live = BR.live && BR.live.call(method, path, { Authorization: headers.Authorization }, body);
     // the device (js/net/device.js): two accounts a device, BANs
     if (BR.device) headers['X-Device'] = BR.device.header();
-    var live = BR.live && BR.live.call(method, path, headers, body);
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     var got = !live ? viaHttp(method, path, headers, body) : live.then(function (r) {
       return r ? { status: r.status, json: r.body } : viaHttp(method, path, headers, body);

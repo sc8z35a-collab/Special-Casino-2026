@@ -14,8 +14,8 @@ export function hashOf(text) {
 
 // What an answer is, as a rev: what changes with every look (`skip`: the time by default) is not part of it.
 export const revOf = (part, skip = ['now']) => hashOf(JSON.stringify(part, (k, v) => (skip.includes(k) ? undefined : v)));
-// An answer the page asks for again and again: `{ same: true, rev }` when it has the `have` it was given.
-export const partOf = (part, have, rev = revOf(part)) => (have === rev ? { same: true, rev } : { ...part, rev });
+// An answer the page asks for again and again: `{ same: true }` when it has the `have` it was given (it keeps that rev).
+export const partOf = (part, have, rev = revOf(part)) => (have === rev ? { same: true } : { ...part, rev });
 // …and one of several parts, of which the page holds some (`held`: { part: rev }): a part it holds as it is is left out and named in `kept`;
 // `revs` names the rev of each part that came and is worth holding again (a small one is just sent, every time).
 const HOLD_MIN = 48;

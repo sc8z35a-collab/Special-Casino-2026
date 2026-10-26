@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
 import { answerOnSocket, overSocket } from '../core/socketapi.js';
 
-const CONN = { ip: '203.0.113.7', host: 'casino.test', scheme: 'https:', ua: 'Mozilla/5.0 (Linux; Android 14) Chrome/130', origin: 'https://casino.test', lang: 'ja' };
+const CONN = { ip: '203.0.113.7', host: 'casino.test', scheme: 'https:', ua: 'Mozilla/5.0 (Linux; Android 14) Chrome/130', origin: 'https://casino.test', lang: 'ja', device: 'a'.repeat(32) };
 let seq = 0;
 // one message on the connection, its answer read back as the page reads it
 async function ask(s, m, conn = CONN) {
@@ -29,7 +29,9 @@ test('a spin on the connection is a spin: the same answer as over HTTP, the same
     const http = await s.call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
     assert.deepEqual(Object.keys(r.b).sort(), Object.keys(http).filter((k) => k !== 'status').sort(), 'the same answer');
     const after = (await s.call('GET', '/api/me', { token: a.token })).me;
-    assert.equal(after.tokens, before.tokens - 200 + r.b.result.total + http.result.total + (r.b.result.charm ? r.b.result.charm.back : 0) + (http.result.charm ? http.result.charm.back : 0));
+    // (as the game makes it whole: what is none is not sent)
+    const mine = globalThis.BR.engine.whole(r.b.result);
+    assert.equal(after.tokens, before.tokens - 200 + mine.total + http.result.total + (mine.charm ? mine.charm.back : 0) + (http.result.charm ? http.result.charm.back : 0));
     // a look, with its query
     const u = await ask(s, { m: 'GET', p: '/api/user?id=' + a.me.id, h: bearer(a) });
     assert.deepEqual([u.s, u.b.user.name], [200, 'Alice']);
@@ -111,4 +113,15 @@ test('an operator\'s request on the connection is answered as over HTTP (and cou
     const after = (await s.call('GET', '/api/ops/server?lean=1', { token: mod.token })).today.requests;
     assert.ok(after - before >= 3, 'the request on the connection is a request in the figures');
   } finally { await s.stop(); }
+});
+
+test('what a request on the connection does not carry is the connection\'s: the address, the browser, the device; the page\'s own headers are its', async () => {
+  let seen = null;
+  const api = { handle: async (req) => { seen = req; return { status: 200, body: { ok: true } }; }, sent() {} };
+  const r = JSON.parse(await answerOnSocket(api, CONN, { op: 'api', id: 1, m: 'GET', p: '/api/me?x=1', h: { authorization: 'Bearer t', cookie: 'no' } }));
+  assert.deepEqual([r.s, r.b], [200, { ok: true }]);
+  assert.deepEqual([seen.ip, seen.header('user-agent'), seen.header('x-device'), seen.header('authorization'), seen.query.get('x')], [CONN.ip, CONN.ua, CONN.device, 'Bearer t', '1']);
+  assert.equal(seen.header('cookie'), null, 'nothing else the page put in');
+  await answerOnSocket(api, CONN, { op: 'api', id: 2, m: 'GET', p: '/api/me', h: { 'x-device': 'b'.repeat(32) } });
+  assert.equal(seen.header('x-device'), 'b'.repeat(32), 'one the page sends is its');
 });

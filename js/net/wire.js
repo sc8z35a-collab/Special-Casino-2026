@@ -5,7 +5,10 @@
      w.call(method, path, headers, body) → null (ask over HTTP) or a promise of { status, body } / null (the server said: over HTTP)
                                            rejected with { network: true } when the connection went before the answer came
      w.reply(message)             an answer that came on the connection ({ re, s, b }): true when it was one
-     w.drop()                     the connection went: what waits is rejected (a GET is asked again over HTTP by the caller) */
+     w.drop()                     the connection went: what waits is rejected (a GET is asked again over HTTP by the caller)
+   And what a page holds of an answer of parts (server/core/hash.js heldOf), for any look, on the connection or not:
+     BR.held.param(keep)          'part.rev,…' for held= (keep: { parts, revs })
+     BR.held.merge(answer, keep)  the answer whole: what came is kept with its rev, what is named in `kept` is taken from keep */
 (function (BR) {
   'use strict';
 
@@ -14,6 +17,20 @@
   var POST_HTTP = /^\/api\/(?:diary\/comments|messages|home\/chat|hub\/say|official\/feedback|report|report\/message|vault\/.*)$/;
   var BODY_MAX = 16 * 1024, WAIT_MS = 20000;
   var LOWER = { Authorization: 'authorization', 'X-Device': 'x-device', 'X-Ops-Device': 'x-ops-device', 'X-Gate': 'x-gate', 'X-Vault-Ticket': 'x-vault-ticket' };
+
+  BR.held = {
+    param: function (keep) { return Object.keys(keep.revs).map(function (k) { return k + '.' + keep.revs[k]; }).join(','); },
+    merge: function (x, keep) {
+      var out = {};
+      Object.keys(x).forEach(function (k) {
+        if (k === 'revs' || k === 'kept') return;
+        out[k] = x[k];
+        if (x.revs && x.revs[k] !== undefined) { keep.parts[k] = x[k]; keep.revs[k] = x.revs[k]; }
+      });
+      (x.kept || []).forEach(function (k) { out[k] = keep.parts[k]; });
+      return out;
+    }
+  };
 
   BR.wire = function (send) {
     var seq = 0, waiting = {};

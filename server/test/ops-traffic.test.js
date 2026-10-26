@@ -174,10 +174,10 @@ test('the poll: a part the page already has is answered `same`, and a part that 
     const first = await tick(s, taku);
     const have = `c=${first.counts.rev}&d=${first.devunit.rev}&p=${first.pay.rev}&t=${first.team.rev}`;
     const next = await tick(s, taku, have);
-    assert.deepEqual(next.counts, { same: true, rev: first.counts.rev });
-    assert.deepEqual(next.devunit, { same: true, rev: first.devunit.rev });
-    assert.deepEqual(next.pay, { same: true, rev: first.pay.rev, count: 0 });
-    assert.deepEqual(next.team, { same: true, rev: first.team.rev });
+    assert.deepEqual(next.counts, { same: true });
+    assert.deepEqual(next.devunit, { same: true });
+    assert.deepEqual(next.pay, { same: true, count: 0 });
+    assert.deepEqual(next.team, { same: true });
     // (a reply that was not the rev of the part is not "the same")
     const wrong = await tick(s, taku, `c=${first.devunit.rev}&d=&p=x&t=`);
     for (const k of ['counts', 'devunit', 'pay', 'team']) assert.equal('same' in wrong[k], false, k);
@@ -219,7 +219,7 @@ test('the poll: what changes with every look is not part of a rev (the time, who
     const b = await tick(s, taku, `t=${a.team.rev}&c=${a.counts.rev}`);
     const modRow = (r) => r.operators.find((o) => o.name === 'Mod1');
     assert.equal(modRow(a.team).site, true);
-    assert.deepEqual(b.team, { same: true, rev: a.team.rev }, 'mod\'s "last seen" moved, and the page is told nothing');
+    assert.deepEqual(b.team, { same: true }, 'mod\'s "last seen" moved, and the page is told nothing');
     assert.equal(b.counts.same, true);
   } finally {
     await s.stop();
@@ -443,7 +443,7 @@ test('the lists a tab asks for again and again (reports, detections, feedback) a
       assert.equal(first.status, 200, path);
       assert.ok(Array.isArray(first[list]), path);
       assert.match(first.rev, /^[0-9a-z]+$/, path);
-      assert.deepEqual(await get(path, first.rev).then((r) => [r.same, r.rev, list in r]), [true, first.rev, false], path);
+      assert.deepEqual(await get(path, first.rev).then((r) => [r.same, r.rev, list in r]), [true, undefined, false], path);
       // (a rev of something else is not "the same")
       assert.equal((await get(path, 'nonsense'))[list].length, first[list].length, path);
     }
