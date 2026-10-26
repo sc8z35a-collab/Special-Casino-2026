@@ -160,7 +160,7 @@
   }
   var cdwButton = deskIcon('site', 'デスクトップ', 'デスクトップの窓（CDW 1.0）を表示 / 戻す', toggleCdw);
   cdwButton.setAttribute('aria-pressed', 'false');
-  var wallButton = deskIcon('wallpaper-app', '背景', '背景を変える', function () { showWallpapers(); });
+  deskIcon('wallpaper-app', '背景', '背景を変える', function () { showWallpapers(); });
   // 軽量化: one tap turns the liquid glass and the gliding animations off together (and back on)
   var liteButton = deskIcon('lite', '軽量化', '軽量化（リキッドグラスとアニメーションをオフ）', function () { setLite(!isLite()); });
   // 退出 is the log-out (the page's own button does it; this only asks first)
@@ -995,7 +995,7 @@
 
   var tooltip = node('div', 'mac-tooltip'); tooltip.hidden = true; app.appendChild(tooltip);
   function showTooltip(e) {
-    var tab = e.target.closest('#tabs .tab'); if (!tab) return;
+    var tab = e.target.closest('#tabs .tab'); if (!tab || document.body.classList.contains('mac-phone')) return;
     var r = tab.getBoundingClientRect(), p = app.getBoundingClientRect();
     tooltip.textContent = tab.getAttribute('aria-label'); tooltip.hidden = false;
     tooltip.style.bottom = p.bottom - r.top + 12 + 'px';

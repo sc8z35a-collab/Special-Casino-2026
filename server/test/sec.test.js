@@ -242,6 +242,19 @@ test('the threats the log shows, the posture the server states, and the log thro
   const st = await D.call('GET', '/api/sec/status');
   assert.ok(st.server && st.server.live && st.level && st.site);
   assert.equal((await D.call('GET', '/api/sec/verify')).ok, true);
+  // lists are lines only (a line's detail comes when it is opened), and what is new is asked for by number
+  const slim = await D.call('GET', '/api/sec/log?slim=1');
+  assert.ok(slim.entries.length > 3 && slim.entries.every((e) => e.detail === undefined && e.raw === undefined && e.hash === undefined), 'a slim list has the lines only');
+  assert.ok(st.security.length && st.security.every((e) => e.detail === undefined && e.raw === undefined), 'the status carries lines only');
+  const top = slim.entries[0].id;
+  assert.deepEqual((await D.call('GET', `/api/sec/log?slim=1&since=${top}`)).entries, [], 'nothing is newer than the newest');
+  await s.call('POST', '/api/ops/login', { body: { name: 'mod', password: 'wrong-again' } });
+  assert.deepEqual((await D.call('GET', `/api/sec/log?slim=1&since=${top}`)).entries.map((e) => e.id), [top + 1], 'only the new line comes');
+  const whole = await D.call('GET', `/api/sec/log/entries?ids=${top}`);
+  assert.ok(whole.entries[0].detail && whole.entries[0].hash && whole.entries[0].detail.request, 'an operator opens a line to its whole');
+  const whole2 = await V.call('GET', `/api/sec/log/entries?ids=${top}`);
+  assert.equal(whole2.entries[0].id, top);
+  assert.ok(whole2.entries[0].detail === undefined && whole2.entries[0].raw === undefined, "a viewer's whole line has no request and no detail");
   // the operators' channel: sealed in the database, plain only through the channel
   assert.equal((await D.call('POST', '/api/sec/messages', { text: '点検します' })).status, 200);
   assert.equal((await D.call('GET', '/api/sec/messages')).messages.at(-1).text, '点検します');

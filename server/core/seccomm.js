@@ -194,7 +194,7 @@ export function createSecComm({ q, secret, opsLog, roleOf, clock = Date.now }) {
     list: () => { sweep(); return [...channels.values()].sort((a, b) => b.last - a.last).map((c) => brief(c)); },
     close(shortId) {
       let n = 0;
-      for (const [id, c] of channels) if (id.slice(0, 8) === String(shortId)) { channels.delete(id); n++; }
+      for (const id of [...channels.keys()]) if (id.slice(0, 8) === String(shortId)) { channels.delete(id); n++; }
       return n;
     },
     closeFor(userId) { let n = 0; for (const [id, c] of channels) if (c.uid === userId) { channels.delete(id); n++; } return n; },

@@ -1,6 +1,8 @@
 /* Supplied low-poly artwork: use complete pictures as the controls. */
+/* The slot screen's left side is one column on the axis of the exit door (x 178), in even steps of 150px
+   (the 演出 button, the charm, the chips), with the bet row on the same axis below it. */
 .pill-get, .pill-rules { width: 118px; height: 118px; background-size: contain; border-radius: 0; box-shadow: none; }
-.pill-get { left: 201px; }
+.pill-get { left: 119px; top: calc(50% - 11px); }
 .pill-rules { right: 198px; }
 .reel-frame { inset: -57px -60px; }
 .sq-btn, .sq-btn:disabled { background-color: transparent; background-size: contain; background-position: center; background-repeat: no-repeat; box-shadow: none; }
@@ -11,7 +13,9 @@
 .w-plus { background: none; box-shadow: none; }
 #screen-slot > .back-btn { width: 100px; height: 100px; top: 12px; left: 128px; }
 #screen-slot > .back-btn .ic { width: 88px; height: 88px; }
-.charm-btn, .charm-btn.on { width: 88px; height: 104px; left: 216px; top: calc(50% - 190px); background: none; box-shadow: none; padding: 0; border-radius: 0; }
+#screen-slot > .fx-btn { left: 140px; top: calc(50% - 290px); width: 76px; height: 76px; }
+#screen-slot > .bet-group { left: 145px; }
+.charm-btn, .charm-btn.on { width: 88px; height: 104px; left: 134px; top: calc(50% - 154px); background: none; box-shadow: none; padding: 0; border-radius: 0; }
 .charm-btn .charm-pic { inset: 0; width: 100%; height: 100%; transform: none; }
 .charm-count, .charm-label { display: none; }
 .charm-btn.on .charm-pic { filter: drop-shadow(0 0 9px #ffe27a); }

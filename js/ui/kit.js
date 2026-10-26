@@ -5,7 +5,7 @@
   'use strict';
 
   var U = BR.util;
-  var $ = U.$, $$ = U.$$;
+  var $ = U.$;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);

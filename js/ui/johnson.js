@@ -8,7 +8,7 @@
 
   var U = BR.util, K = BR.kit, api = BR.api;
   var $ = U.$;
-  var el = K.el, sfx = K.sfx;
+  var sfx = K.sfx;
 
   var who = null;      // { id, name, avatar, npc }
   var info = null;     // { next, gifts, given, rescued, offset }

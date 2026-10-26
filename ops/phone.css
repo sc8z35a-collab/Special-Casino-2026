@@ -115,10 +115,111 @@ button.mac-home-date:active { background: #ffffff40; }
 .mac-phone .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .mac-phone .toolbar { flex-direction: column; align-items: stretch; }
 .mac-phone .vault-pane, .mac-phone .vault-work-pane { padding: 10px; }
+/* ---- the second pass: one row of buttons whatever the bar holds, and lists where there were tiles ---- */
+/* (the clock of the bar is the home screen's own clock; the lock of a verified channel takes a place in the same row, first) */
+.mac-phone .mac-dock { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.mac-phone .mac-dock .mac-clock-button { display: none !important; }
+.mac-phone .mac-dock .mac-secure-toggle { order: 0; }
+.mac-phone .mac-dock .mac-secure-toggle::after { content: 'セキュア'; display: block; font-size: 10.5px; font-weight: 700; line-height: 1; }
+/* a finger has no hover: no tooltips (one stayed on the home screen after an app was put away) */
+.mac-phone .mac-tooltip, .mac-phone .mac-dock .mac-dock-label { display: none !important; }
+.mac-phone .mac-home { padding-bottom: 36px; }
+
+/* the title bar says which app it is: the app's own heading above its content only repeats it */
+.mac-phone .mac-window .view-head > h2, .mac-phone .mac-window .view > .bar > h2 { display: none; }
+.mac-phone .mac-window .view-head { margin: 0 0 8px; gap: 8px; }
+.mac-phone .mac-window .view > .bar { margin: 0 0 8px; }
+.mac-phone .mac-window .view-head .muted { flex: 1 1 100%; font-size: 12px; }
+
+/* the figures: one list, the name on the left and the number on the right (a tile each wasted half the screen) */
+.mac-phone .mac-window .summary, .mac-phone .mac-window .summary.srv-live {
+  grid-template-columns: minmax(0, 1fr); gap: 0; margin: 4px 0 12px; overflow: hidden; border-radius: 18px;
+  background: #ffffff70; box-shadow: inset 0 1px 1px #ffffff9c, 0 3px 12px #5679a014;
+}
+.mac-phone .mac-window .summary .stat {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1px 14px; padding: 8px 16px; line-height: 1.3;
+  border: 0; border-radius: 0; background: none; box-shadow: none;
+}
+.mac-phone .mac-window .summary .stat + .stat { border-top: 1px solid #5679a01f; }
+.mac-phone .mac-window .summary .stat span { grid-column: 1; font-size: 13.5px; color: var(--muted, #6b7587); }
+.mac-phone .mac-window .summary .stat small { grid-column: 1; font-size: 11.5px; color: var(--muted, #6b7587); }
+.mac-phone .mac-window .summary .stat b { grid-column: 2; grid-row: 1 / span 3; align-self: center; font-size: 20px; text-align: right; }
+.mac-phone .mac-window .summary .stat:last-child { display: grid; padding: 10px 16px; }
+.mac-phone .mac-window .summary .stat:last-child b { font-size: 16px; }
+
+/* the players' four figures side by side (and the time of the last update small, under them) */
+.mac-phone .mac-window #view-players .summary { grid-template-columns: repeat(4, minmax(0, 1fr)); background: none; box-shadow: none; overflow: visible; gap: 6px; border-radius: 0; }
+.mac-phone .mac-window #view-players .summary .stat { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 0; padding: 8px 4px; border-radius: 16px; background: #ffffff70; box-shadow: inset 0 1px 1px #ffffff9c, 0 3px 12px #5679a014; text-align: center; }
+.mac-phone .mac-window #view-players .summary .stat + .stat { border-top: 0; }
+.mac-phone .mac-window #view-players .summary .stat span { grid-row: 2; font-size: 11px; white-space: nowrap; }
+.mac-phone .mac-window #view-players .summary .stat b { grid-column: 1; grid-row: 1; font-size: 22px; text-align: center; }
+.mac-phone .mac-window #view-players .summary .stat:last-child { grid-column: 1 / -1; display: flex; justify-content: center; gap: 8px; padding: 2px 0 0; background: none; box-shadow: none; }
+.mac-phone .mac-window #view-players .summary .stat:last-child b { font-size: 11px; font-weight: 500; }
+.mac-phone .mac-window #view-players .summary .stat:last-child span { font-size: 11px; }
+
+/* searching and filtering: a field a thumb can hit, the filters all in sight */
+.mac-phone .mac-window .toolbar { gap: 8px; margin: 0 0 8px; }
+.mac-phone .mac-window .toolbar .search, .mac-phone .mac-window input[type="search"] { flex: none; width: 100%; min-height: 44px; height: 44px; padding: 0 14px; border-radius: 14px; font-size: 16px; }
+.mac-phone .mac-window .chips { flex-wrap: wrap; overflow: visible; margin: 0; padding: 0; gap: 6px; }
+.mac-phone .mac-window .chip { min-height: 36px; padding: 0 12px; border-radius: 12px; font-size: 13px; }
+.mac-phone .mac-window .sort { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.mac-phone .mac-window .sort select { flex: 1; min-height: 40px; }
+
+/* the players: one row each (who and when, what they own, what was done, the buttons), not a card of eight lines */
+.mac-phone .mac-window .players, .mac-phone .mac-window .players tbody { display: block; width: 100%; min-width: 0; }
+.mac-phone .mac-window .table-wrap { overflow: visible; border: 0; background: none; box-shadow: none; }
+.mac-phone .mac-window .players tr {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 3px 8px; align-items: center; width: 100%; padding: 10px 6px;
+  border-bottom: 1px solid #5679a01f;
+}
+.mac-phone .mac-window .players tr:active { background: #ffffff55; }
+.mac-phone .mac-window .players td { display: block; width: auto; min-width: 0; padding: 0; font-size: 13px; }
+.mac-phone .mac-window .players td::before { min-width: 0; margin-right: 6px; font-size: 10.5px; }
+.mac-phone .mac-window .players td:nth-child(-n+3)::before, .mac-phone .mac-window .players td:nth-child(8)::before { display: none; }
+.mac-phone .mac-window .players td:nth-child(1) { grid-area: 1 / 1 / 2 / 5; }
+.mac-phone .mac-window .players td:nth-child(2) { grid-area: 1 / 5 / 2 / 7; text-align: right; font-size: 12px; }
+.mac-phone .mac-window .players td:nth-child(3) { grid-area: 2 / 1 / 3 / 5; }
+.mac-phone .mac-window .players td:nth-child(8) { grid-area: 2 / 5 / 3 / 7; justify-self: end; }
+.mac-phone .mac-window .players td:nth-child(7) { grid-area: 3 / 1 / 4 / 7; }
+.mac-phone .mac-window .players td:nth-child(7), .mac-phone .mac-window .players td:nth-child(7)::before { color: var(--muted, #6b7587); font-size: 11.5px; }
+/* (the 18歳以上, the code and the password: in the player's own page, one tap on the row, as in the portrait view of the desktop) */
+.mac-phone .mac-window .players td:nth-child(n+4):nth-child(-n+6) { display: none; }
+.mac-phone .mac-window .players .who { gap: 10px; }
+.mac-phone .mac-window .players .money b { font-size: 16px; }
+.mac-phone .mac-window .players .watch-cell { display: flex; gap: 6px; align-items: center; }
+
+/* the vault: the vaults to choose from are a list, the room's lines wrap, the empty note is as wide as the page */
+.mac-phone .mac-window .vault-spaces { flex-direction: column; flex-wrap: nowrap; gap: 6px; }
+.mac-phone .mac-window .vault-spaces .vspace { width: 100%; min-height: 52px; padding: 8px 14px 8px 8px; border-radius: 16px; }
+.mac-phone .mac-window .vault-spaces .vspace .face { width: 36px; height: 36px; }
+.mac-phone .mac-window .vault-spaces .vspace-who b { font-size: 14.5px; }
+.mac-phone .mac-window .vault-spaces .vspace-label { margin: 8px 4px 0; }
+.mac-phone .mac-window .vault-room { padding: 12px 14px; }
+.mac-phone .mac-window .vault-room :is(p, span, small, b, div) { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.mac-phone .mac-window .tag { white-space: nowrap; }
+.mac-phone .mac-window .vroom-line { gap: 6px 10px; }
+.mac-phone .mac-window .vroom-line .meter { flex: 1 1 100%; }
+.mac-phone .mac-window .vroom-people, .mac-phone .mac-window .vroom-people tbody, .mac-phone .mac-window .vroom-people tr { display: block; width: 100%; min-width: 0; }
+.mac-phone .mac-window .vroom-people tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; padding: 8px 0; border-top: 1px solid #5679a01f; }
+.mac-phone .mac-window .vroom-people th, .mac-phone .mac-window .vroom-people td { display: block; width: auto; padding: 0; border: 0; }
+.mac-phone .mac-window .vroom-people td .meter { max-width: none; }
+.mac-phone .mac-window .vault-head { gap: 10px; }
+.mac-phone .mac-window .vault-head .muted { overflow-wrap: anywhere; }
+.mac-phone .mac-window .vault-pane .empty, .mac-phone .mac-window #view-vault .empty, .mac-phone .mac-window #view-vault .muted.empty { width: 100%; text-align: center; padding: 24px 8px; }
+.mac-phone .mac-window .vault-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mac-phone .mac-window .vault-up .btn { flex: 1 1 auto; justify-content: center; text-align: center; }
+.mac-phone .mac-window .vault-up .vault-plus { flex: none; }
+
 /* a short screen held sideways: the five buttons are a slim row, the apps a wider grid */
 @media (max-height: 520px) and (min-width: 701px) {
   .mac-phone { --phone-nav: calc(52px + env(safe-area-inset-bottom, 0px)); }
   .mac-phone .mac-home-head { display: none; }
+  /* (the lists start higher: the search and the order side by side, the long hint left out) */
+  .mac-phone .mac-window .hint { display: none; }
+  .mac-phone .mac-window .toolbar { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .mac-phone .mac-window .toolbar .search { flex: 1 1 260px; width: auto; }
+  .mac-phone .mac-window .toolbar .sort { flex: 0 1 300px; }
+  .mac-phone .mac-window .toolbar .chips { flex: 1 1 100%; }
   .mac-phone .mac-home #tabs.tabs { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 14px 6px; }
   .mac-phone .mac-home .tab > img { width: 50px; height: 50px; }
   .mac-phone .mac-dock .mac-nav-label { display: none; }

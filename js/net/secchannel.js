@@ -142,7 +142,7 @@
     }
 
     function sealed(c, method, path, body, n) {
-      var pq = canonical(path), text = '', payload;
+      var pq = canonical(path), text = '';
       var done = function (cipher) {
         return subtle.sign('HMAC', c.mac, enc.encode(method + '\n' + pq + '\n' + n + '\n' + cipher)).then(function (tag) { return { payload: cipher ? { c: cipher } : undefined, tag: b64(tag) }; });
       };

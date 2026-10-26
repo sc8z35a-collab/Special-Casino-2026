@@ -202,28 +202,60 @@
   }
 
   /* ------------------------------------------------------------ text entry --- */
-  // A real input outside the scaled stage: 17px text keeps iOS from zooming
-  // in, and the conversation being answered moves in above it while typing.
+  // A real input outside the scaled stage (17px text keeps iOS from zooming in): a bar on the bottom edge of what the
+  // keyboard leaves. The screen stays the screen the player was on: the game is lifted just enough (BR.app.lift) to
+  // keep the end of the conversation (`anchor`, the scroller that holds `feed`) above the bar. A conversation with no
+  // place on the screen (the hub's, the home's) is shown above the bar as glass, as large as on the screen.
   var entry = (function () {
-    var root, input, send, opts = null, sending = false, home = null, homeNext = null;
+    var root, input, send, bar, opts = null, sending = false, home = null, homeNext = null, inStage = false, lifted = 0;
 
     function setError(t) {
       var e = $('#entry-error');
       e.textContent = t || '';
       e.hidden = !t;
+      relift();
     }
     function init() {
       root = $('#entry');
       input = $('#entry-input');
       send = $('#entry-send');
+      bar = $('#entry-form');
       $('#entry-form').addEventListener('submit', function (e) { e.preventDefault(); submit(); });
       // tapping "send" must not take the focus (and the keyboard) away
       ['pointerdown', 'mousedown'].forEach(function (ev) {
-        send.addEventListener(ev, function (e) { if (e.pointerType !== 'mouse') e.preventDefault(); });
+        send.addEventListener(ev, function (e) { e.preventDefault(); });
       });
       input.addEventListener('input', function () { if (opts && opts.onDraft) opts.onDraft(input.value); });
+      // the keyboard put away by a tap elsewhere: the bar goes with it (the game is where it was)
+      input.addEventListener('blur', function () {
+        setTimeout(function () {
+          if (opts && !sending && document.activeElement !== input && !root.contains(document.activeElement)) close();
+        }, 220);
+      });
       $('#entry-close').addEventListener('click', close);
       root.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+      // the keyboard comes, goes, or changes its height: the lift follows
+      if (window.visualViewport) ['resize', 'scroll'].forEach(function (ev) { window.visualViewport.addEventListener(ev, relift); });
+      window.addEventListener('resize', relift);
+    }
+    // the end of the conversation stays above the bar: the game goes up by what the bar and the keyboard take
+    function relift() {
+      if (!opts || root.hidden) return;
+      if (!inStage) {   // (the glass above the bar: its end stays in sight as the keyboard changes its height)
+        var glass = $('#entry-feed');
+        if (!glass.hidden) glass.scrollTop = glass.scrollHeight;
+        return;
+      }
+      var vv = window.visualViewport;
+      var bottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+      var errors = $('#entry-error');
+      var barTop = bottom - bar.offsetHeight - (errors.hidden ? 0 : errors.offsetHeight);
+      var want = Math.max(0, Math.round(opts.anchor.getBoundingClientRect().bottom + lifted - barTop));
+      if (want !== lifted) {
+        lifted = want;
+        if (BR.app && BR.app.lift) BR.app.lift(want);
+      }
+      opts.anchor.scrollTop = opts.anchor.scrollHeight;
     }
     function open(o) {
       if (opts) close();
@@ -234,23 +266,32 @@
       input.placeholder = o.placeholder || 'メッセージを入力';
       input.enterKeyHint = o.enterKeyHint || 'send';
       send.textContent = o.button || '送信';
-      setError('');
+      var view = (BR.app && BR.app.view) || {};
+      var s = view.s;
+      root.style.setProperty('--entry-s', (s || 0.45).toFixed(4));
       var feed = $('#entry-feed');
-      // the same size as on the (scaled) screen: typing must not make it bigger
-      var s = BR.app.view && BR.app.view.s;
-      if (s) feed.style.setProperty('--entry-u', s.toFixed(4) + 'px');
-      if (o.feed) {
+      // on the game's own screen (upright, not turned): it stays there; else it is shown above the bar
+      inStage = !!(o.feed && o.anchor && !view.portrait && $('#stage').contains(o.anchor));
+      lifted = 0;
+      setError('');
+      if (o.feed && !inStage) {
+        // the same size as on the (scaled) screen: typing must not make it bigger
+        if (s) feed.style.setProperty('--entry-u', s.toFixed(4) + 'px');
         home = o.feed.parentNode;
         homeNext = o.feed.nextSibling;
         feed.appendChild(o.feed);
       }
-      feed.hidden = !o.feed;
-      root.classList.toggle('no-feed', !o.feed);
+      feed.hidden = !(o.feed && !inStage);
+      root.classList.toggle('no-feed', !o.feed || inStage);
+      root.classList.toggle('in-stage', inStage);
       $('#entry-rule').hidden = !o.rule;
       root.hidden = false;
       K.fitOverlay(root);
       input.focus();
       feed.scrollTop = feed.scrollHeight;
+      // (the keyboard takes a moment to come)
+      relift();
+      [120, 350, 800].forEach(function (ms) { setTimeout(relift, ms); });
     }
     function close() {
       if (!opts) return;
@@ -258,6 +299,10 @@
       opts = null;
       input.blur();
       root.hidden = true;
+      root.classList.remove('in-stage');
+      if (inStage && BR.app && BR.app.lift) BR.app.lift(0);
+      inStage = false;
+      lifted = 0;
       if (o.feed && home) home.insertBefore(o.feed, homeNext);
       home = homeNext = null;
       if (o.onClose) o.onClose();
@@ -281,10 +326,17 @@
       }).then(function () {
         sending = false;
         send.disabled = false;
+        // still writing: the keyboard stays up, the next line goes in the same place
+        if (opts === o && !root.hidden) input.focus();
       });
     }
-    // the feed being shown above the field scrolls with new lines
-    function scrollFeed() { if (opts && opts.feed) { var f = $('#entry-feed'); f.scrollTop = f.scrollHeight; } }
+    // the conversation being shown scrolls with new lines
+    function scrollFeed() {
+      if (!opts || !opts.feed) return;
+      if (inStage) { relift(); return; }
+      var f = $('#entry-feed');
+      f.scrollTop = f.scrollHeight;
+    }
     return { init: init, open: open, close: close, isOpen: function () { return !!opts; }, scrollFeed: scrollFeed };
   })();
 
@@ -1158,9 +1210,6 @@
     clearTimeout(typingTimer);
     typingTimer = setTimeout(function () { Object.keys(typers).forEach(typingChanged); }, 4600);
   }
-  function clearTyping(key, userId) {
-    if (typers[key] && typers[key][userId]) { delete typers[key][userId]; typingChanged(key); }
-  }
   function typingChanged(key) {
     if (!visible()) return;
     if (chatKey() === key) renderTyping();
@@ -1195,6 +1244,7 @@
       value: drafts[key] || '',
       placeholder: 'メッセージを入力',
       feed: chatList(),
+      anchor: scroller(),
       rule: true,
       onDraft: function (t) { drafts[key] = t; if (t) sendTyping(key); },
       onSubmit: function (text) {

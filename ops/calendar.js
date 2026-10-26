@@ -80,7 +80,7 @@ var OpsCalendar = (function () {
   function setNote(k, t) { try { if (t) localStorage.setItem(noteKey(k), t); else localStorage.removeItem(noteKey(k)); } catch (e) { /* notes are a convenience */ } }
 
   function draw() {
-    var t = today(), y = shown.y, m = shown.m, hol = holidays(y);
+    var t = today(), y = shown.y, m = shown.m;
     root.replaceChildren();
     var bar = el('div', 'bar cal-bar');
     var prev = el('button', 'btn small cal-nav', '‹'), next = el('button', 'btn small cal-nav', '›'), now = el('button', 'btn small', '今日');

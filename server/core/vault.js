@@ -1441,7 +1441,6 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       // Every link is the same: whoever has it (an AI, or a person) may look, take and comment, nothing else. (`ai` only names the
       // comments "AI" instead of "link", for the ones who still ask for it; it changes nothing a link may do.)
       const ai = body.ai === true;
-      const note = true;
       const caps = 'view,get,note';
       // (how much it may send out: 5GB unless the developer says another, in MB)
       let maxBytes = LINK_BYTES;

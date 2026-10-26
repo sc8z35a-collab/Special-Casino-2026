@@ -739,7 +739,8 @@
     show: function () { if (!L.log.length) loadLog(); else refreshLog(); },
     tick: function () { if (!L.q) refreshLog(); }
   });
-  function logUrl(before) { return '/api/sec/log?q=' + encodeURIComponent(L.q) + '&kind=' + encodeURIComponent(L.kind) + (before ? '&before=' + before : ''); }
+  // (lines only; a line's detail is fetched when it is opened; what is new is asked for by number, so it is a few lines and not the page again)
+  function logUrl(before, since) { return '/api/sec/log?slim=1&q=' + encodeURIComponent(L.q) + '&kind=' + encodeURIComponent(L.kind) + (before ? '&before=' + before : '') + (since ? '&since=' + since : ''); }
   // the list from the start (signing in, a search, a kind)
   function loadLog() {
     var gen = ++L.gen, s = session, list = L.list;
@@ -762,10 +763,9 @@
   }
   // the newer entries on top, quietly: what is open, read further down and scrolled to stays as it is
   var refreshLog = single(function () {
-    var gen = L.gen, s = session;
-    return api('GET', logUrl(0)).then(function (r) {
+    var gen = L.gen, s = session, top = L.log.length ? L.log[0].id : 0;
+    return api('GET', logUrl(0, top)).then(function (r) {
       if (gen !== L.gen || s !== session) return;
-      var top = L.log.length ? L.log[0].id : 0;
       var fresh = r.entries.filter(function (x) { return x.id > top; });
       if (!fresh.length) return;
       // a whole page came in since the last look: start over rather than leave a gap
@@ -804,7 +804,13 @@
       var d = row.querySelector('.entry-detail');
       if (!open) { if (d) d.hidden = true; return; }
       if (d) { d.hidden = false; return; }
-      row.appendChild(logDetail(x));
+      // the whole line is fetched now (the list has only the line)
+      var box = el('div', 'entry-detail'); box.appendChild(empty('読み込み中…')); row.appendChild(box);
+      api('GET', '/api/sec/log/entries?ids=' + x.id).then(function (r) {
+        var full = (r.entries || [])[0];
+        if (!full) { box.textContent = ''; box.appendChild(empty('読み込めませんでした')); return; }
+        row.replaceChild(logDetail(full), box);
+      }, function (err) { box.textContent = ''; box.appendChild(empty('読み込めませんでした')); if (err.status) fail(err); });
     });
     row.appendChild(line);
     return row;

@@ -33,7 +33,6 @@
       'lamborghini-aventador': 'img/cars/lamborghini-aventador.webp',
       'lamborghini-kuia-spyder': 'img/cars/lamborghini-kuia-spyder.webp',
       'nissan-gt-r': 'img/cars/nissan-gt-r.webp',
-      'lamborghini-aventador': 'img/cars/lamborghini-aventador.webp',
       'lamborghini-revuelto': 'img/cars/lamborghini-revuelto.webp',
       'mercedes-amg-one-white': 'img/cars/mercedes-amg-one-white.webp'
     },

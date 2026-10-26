@@ -882,17 +882,19 @@
 </div>
 
 <!-- online: text entry for chat -->
-<!-- the field sits at the top: the keyboard never has to push the screen up to show it -->
+<!-- the field is a bar on the bottom edge of what the keyboard leaves: the screen stays the screen it was (the game is lifted
+     just enough to keep the end of the conversation above the bar). Only a conversation that has no place on the screen
+     (the hub's, the home's) is shown above the bar, as glass. -->
 <div id="entry" class="entry" hidden>
+  <div class="entry-feed" id="entry-feed"></div>
+  <p class="entry-rule" id="entry-rule" hidden>不適切な言動は禁止です。罰則の対象になります。</p>
+  <p class="entry-error" id="entry-error" role="alert" hidden></p>
   <form class="entry-bar" id="entry-form" autocomplete="off">
     <button type="button" class="entry-close" id="entry-close" aria-label="閉じる"><i class="ic ic-back"></i></button>
     <div class="entry-title uname" id="entry-title"></div>
     <input id="entry-input" type="text" autocomplete="off" autocorrect="off" enterkeyhint="send" placeholder="メッセージを入力">
     <button type="submit" id="entry-send">送信</button>
   </form>
-  <p class="entry-error" id="entry-error" role="alert" hidden></p>
-  <p class="entry-rule" id="entry-rule" hidden>不適切な言動は禁止です。罰則の対象になります。</p>
-  <div class="entry-feed" id="entry-feed"></div>
 </div>
 
 <script src="js/art/icons.js"></script>
