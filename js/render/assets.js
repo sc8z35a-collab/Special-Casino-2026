@@ -63,9 +63,18 @@
       var out = { sharp: {}, blur1: {}, blur2: {}, w: w, h: h, unit: pxPerUnit };
       pairs.forEach(function (p) {
         out.sharp[p[0]] = p[1];
-        out.blur1[p[0]] = motionBlur(p[1], 26 * pxPerUnit);
-        out.blur2[p[0]] = motionBlur(p[1], 70 * pxPerUnit);
+
       });
+      var pending = Object.keys(out.sharp);
+      out.prepareBlur = function () {
+        function one() {
+          var id = pending.shift(); if (!id) return;
+          out.blur1[id] = motionBlur(out.sharp[id], 26 * pxPerUnit);
+          out.blur2[id] = motionBlur(out.sharp[id], 70 * pxPerUnit);
+          if (pending.length) setTimeout(one, 0);
+        }
+        out.prepareBlur = function () {}; setTimeout(one, 0);
+      };
       return out;
     });
     return cache[key];

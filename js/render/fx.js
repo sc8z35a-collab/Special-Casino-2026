@@ -15,6 +15,8 @@
 
   var U = BR.util, E = U.ease;
   var TAU = Math.PI * 2;
+  function lite() { return !!(BR.fx && BR.fx.lite()); }
+  function budget(n) { return lite() ? Math.max(1, Math.ceil(n / 4)) : n; }
 
   /* ------------------------------------------------------------ sprites --- */
 
@@ -501,9 +503,13 @@
     this._loop = function () { self.frame(); };
     hit.addEventListener('pointerdown', function (e) { e.preventDefault(); e.stopPropagation(); self.skip(); });
     root.style.display = 'none';
+    var wasLite = lite();
+    if (BR.fx) BR.fx.onChange(function () { if (wasLite !== lite()) { wasLite = lite(); self.resize(self.W, self.H, self.requestedRes || 1); } });
   }
 
   FX.prototype.resize = function (W, H, res) {
+    this.requestedRes = res;
+    if (lite()) res = Math.min(res, 0.75);
     var changed = Math.abs(Math.min(res, 1.3) - this.res) > 0.01;
     if (BR.win3d) BR.win3d.resize(res);
     this.W = W; this.H = H;
@@ -514,6 +520,7 @@
       c.height = Math.round(H * this.pres);
     }, this);
     if (changed || !this.sprites) {
+      this.spriteGeneration = (this.spriteGeneration || 0) + 1;
       this.sprites = null;
       this.spritePromise = null;
       var self = this;
@@ -530,7 +537,7 @@
   FX.prototype.ensureSprites = function () {
     if (this.sprites) return Promise.resolve(this.sprites);
     if (this.spritePromise) return this.spritePromise;
-    var self = this, res = this.res;
+    var self = this, res = this.res, generation = this.spriteGeneration || 0;
     var fontLoad = document.fonts && document.fonts.load
       ? Promise.all([document.fonts.load('900 100px MontserratX'), document.fonts.load('800 80px Exo2')]).catch(function () {})
       : Promise.resolve();
@@ -570,6 +577,7 @@
         return p.then(later).then(function () { sp[st[0]] = st[1](); });
       }, Promise.resolve()).then(function () { return sp; });
     }).then(function (sp) {
+      if (generation !== (self.spriteGeneration || 0)) return self.ensureSprites();
       self.installSprites(sp);
       self.sprites = sp;
       self.spritePromise = null;
@@ -663,7 +671,7 @@
           // hit-stop: seconds the clock stands still; a camera kick; the title's heartbeat
           freeze: 0, kick: 0, kickT: -1, landed: false, beat: 1.05, beatT: -1, nextBolt: 0, tickPop: -1,
           // the 3D title (null: the drawn ones), and what it becomes at the top: SUPER, or ULTRA for 77777
-          three: BR.win3d ? BR.win3d.begin(self.root, self.titles, tier === 1 ? 'win' : 'big') : null,
+          three: BR.win3d && !lite() ? BR.win3d.begin(self.root, self.titles, tier === 1 ? 'win' : 'big') : null,
           top: tier >= 3 ? (o.ultra ? 'ultra' : 'super') : null
         };
         self.mountTitle(self.titleM, tier === 1 ? sp.win : sp.bigWin);
@@ -709,7 +717,7 @@
   // The title hits the screen: everything stands still for a moment, then
   // the shock goes out (rings, sparks, a flash, the camera kicks back).
   FX.prototype.slam = function () {
-    var a = this.active, L = this.layout(), J = BR.juice;
+    var a = this.active, L = this.layout(), J = lite() ? null : BR.juice;
     a.landed = a.t;
     a.freeze = a.tier >= 2 ? 0.09 : 0.04;
     a.kickT = a.t;
@@ -730,7 +738,7 @@
 
   // the title's heartbeat: a pulse, a ring and a spray of light
   FX.prototype.beat = function () {
-    var a = this.active, L = this.layout(), J = BR.juice;
+    var a = this.active, L = this.layout(), J = lite() ? null : BR.juice;
     a.beatT = a.t;
     var sup = a.tier >= 3 && a.upgraded;
     a.ringFx.push({ t: 0, dur: 0.7, r0: 200, r1: sup ? 1300 : 1000 });
@@ -741,6 +749,7 @@
   FX.prototype.explodeChips = function (x, y, n, delay, scale) {
     var a = this.active;
     scale = scale || 1;
+    n = budget(n);
     for (var i = 0; i < n; i++) {
       var ang = U.rand(-Math.PI * 0.95, -Math.PI * 0.05) + (U.random() < 0.25 ? Math.PI * U.rand(0.8, 1.2) : 0);
       var sp = U.rand(700, 1500) * scale;
@@ -755,6 +764,7 @@
 
   FX.prototype.burstSparks = function (x, y, n, speed, delay) {
     var a = this.active;
+    n = budget(n);
     for (var i = 0; i < n; i++) {
       var ang = U.rand(0, TAU);
       var sp = U.rand(0.25, 1) * speed;
@@ -770,7 +780,7 @@
   FX.prototype.firework = function () {
     var a = this.active;
     var x = U.rand(this.W * 0.18, this.W * 0.82), y = U.rand(this.H * 0.12, this.H * 0.45);
-    var n = 40, col = U.randInt(0, 2);
+    var n = budget(40), col = U.randInt(0, 2);
     for (var i = 0; i < n; i++) {
       var ang = i / n * TAU + U.rand(-0.05, 0.05);
       var sp = U.rand(300, 430);
@@ -823,7 +833,7 @@
 
   // ... and hits: the screen breaks like glass
   FX.prototype.superSlam = function () {
-    var a = this.active, J = BR.juice;
+    var a = this.active, J = lite() ? null : BR.juice;
     a.superLanded = a.t;
     var L = this.layout();
     a.ringFx.push({ t: 0, dur: 0.9, r0: 80, r1: 1300 });
@@ -870,7 +880,7 @@
     if (a.freeze > 0) { a.freeze -= dt; dt = 0; }
     a.t += dt;
     var t = a.t;
-    var J = BR.juice;
+    var J = lite() ? null : BR.juice;
     var ct = t - a.countStart;
     var amount = a.o.amount;
 
@@ -934,13 +944,13 @@
           a.chips.push(new Chip({ x: U.rand(0, this.W), y: -80, vx: U.rand(-80, 80), vy: U.rand(150, 380), r: U.rand(22, 40), g: 600, drag: 0.4, life: 3.5, front: U.random() < 0.5 }));
           this.burstSparks(Lf.burst.x + U.rand(-400, 400), Lf.burst.y + U.rand(-120, 60), 4, 420, 0);
         }
-        a.nextFountain = t + (big ? 0.09 : 0.18);
+        a.nextFountain = t + (big ? 0.09 : 0.18) * (lite() ? 4 : 1);
       }
       if (a.tier >= 3 && a.upgraded && t >= a.nextFirework) { this.firework(); a.nextFirework = t + U.rand(0.5, 0.95); }
     }
     // orange ember streaks shooting out of the burst
     if (a.tier >= 2 && a.outT < 0) {
-      var Le = this.layout(), rate = a.tier >= 3 && a.upgraded ? 70 : 42;
+      var Le = this.layout(), rate = budget(a.tier >= 3 && a.upgraded ? 70 : 42);
       a.emberAcc = (a.emberAcc || 0) + rate * dt;
       while (a.emberAcc >= 1) {
         a.emberAcc -= 1;
@@ -959,8 +969,8 @@
 
     a.chips = a.chips.filter(function (c) { return c.update(dt); });
     a.sparks = a.sparks.filter(function (s) { return s.update(dt); });
-    if (a.sparks.length > 360) a.sparks.splice(0, a.sparks.length - 360);
-    if (a.chips.length > 90) a.chips.splice(0, a.chips.length - 90);
+    if (a.sparks.length > budget(360)) a.sparks.splice(0, a.sparks.length - budget(360));
+    if (a.chips.length > budget(90)) a.chips.splice(0, a.chips.length - budget(90));
     a.glints = a.glints.filter(function (gl) { gl.t += dt; return gl.t < gl.dur; });
     a.ringFx = a.ringFx.filter(function (r) { r.t += dt; return r.t < r.dur; });
     if (a.shake > 0) a.shake = Math.max(0, a.shake - dt);
@@ -969,7 +979,10 @@
     if (a.sweep >= 0) { a.sweep += dt / 0.8; if (a.sweep > 1) a.sweep = -1; }
 
     requestAnimationFrame(this._loop);
-    this.render(out);
+    if (!lite() || a.renderAt === undefined || t - a.renderAt >= 1 / 30) {
+      a.renderAt = t;
+      this.render(out);
+    }
   };
 
   function setStyle(node, key, val) {

@@ -84,6 +84,7 @@
   // (another login: what was the last one's is not this one's)
   function forgetHeld() { Object.keys(held.parts).forEach(function (k) { if (!KEEP[k]) { delete held.parts[k]; delete held.revs[k]; } }); }
 
+  var pendingSpin = null, clockOffset = 0, rotatingToken = null;
   var NETWORK = '通信できませんでした。電波の良い所でもう一度お試しください';
   function viaHttp(method, path, headers, body) {
     return fetch(path, {
@@ -101,6 +102,7 @@
 
   // On the live connection when it is up (js/net/wire.js: no request of its own), else over HTTP; the answer is read the same way.
   function request(method, path, body) {
+    var sentToken = token;
     var headers = {};
     if (token) headers.Authorization = 'Bearer ' + token;
     // (on the connection the login rides with each request; the device with the connection itself)
@@ -112,12 +114,15 @@
       return r ? { status: r.status, json: r.body } : viaHttp(method, path, headers, body);
     }, function () {
       // (the connection went before the answer: a look is asked again; what may have been done is not done twice)
-      if (method === 'GET') return viaHttp(method, path, headers, body);
+      if (method === 'GET' || (path === '/api/spin' && body && body.key)) return viaHttp(method, path, headers, body);
       throw new ApiError(0, 'network', NETWORK);
     });
     return got.then(function (r) {
       var json = r.json || {};
-      if (r.status >= 200 && r.status < 300) return json;
+      if (r.status >= 200 && r.status < 300) {
+        if (Number.isFinite(json.now)) clockOffset = json.now - Date.now();
+        return json;
+      }
       var e = json.error || {};
       // the server's daily quota is used up: ours says so, the host's own
       // limit answers 429 (or an error page) without our JSON
@@ -127,7 +132,7 @@
         emit('maintenance', e);
       }
       var err = new ApiError(r.status, e.code || 'error', e.message || ('エラーが発生しました（' + r.status + '）'), e);
-      if (r.status === 401 && token && path !== '/api/login' && path !== '/api/register') emit('auth-lost', err);
+      if (r.status === 401 && token && token === sentToken && token !== rotatingToken && path !== '/api/login' && path !== '/api/register') emit('auth-lost', err);
       // banned (or another account on this device is): the title screen, locked (js/ui/banlock.js)
       if (r.status === 403 && (e.code === 'banned' || e.code === 'device_banned') && path !== '/api/login' && path !== '/api/register') emit('banned', err);
       throw err;
@@ -203,12 +208,31 @@
     oauthLink: function (flow) { return post('/api/oauth/link', { flow: flow }); },
     oauthUnlink: function (provider) { return post('/api/oauth/unlink', { provider: provider }); },
     oauthLinks: function () { return get('/api/oauth/links'); },
-    password: function (current, password) { return post('/api/password', { current: current, password: password }); },
+    password: function (current, password) {
+      var oldToken = token;
+      rotatingToken = oldToken;
+      BR.live.close();
+      return post('/api/password', { current: current, password: password }).then(function (r) {
+      BR.api.setToken(r.token);
+      rotatingToken = null;
+      BR.live.connect();
+      return r;
+    }, function (err) {
+      rotatingToken = null;
+      if (err.status === 401 && token === oldToken) emit('auth-lost', err);
+      else BR.live.connect();
+      throw err;
+    }); },
     // (held= even when nothing is held: the answer then names its parts' revs)
     me: function () { return get('/api/me?held=' + heldParam()).then(fromHeld); },
     banState: function () { return get('/api/ban'); },
 
     /* the game */
+    gacha: function () { return get('/api/gacha'); },
+    gachaSpin: function (kind, count, price) { return post('/api/gacha/spin', { kind: kind, count: count, price: price }); },
+    gachaUse: function (item) { return post('/api/gacha/use', { item: item }); },
+    lineReward: function (token) { return post('/api/line/reward', { token: token }); },
+    lineRewardClaim: function (token) { return post('/api/line/reward/claim', { token: token }); },
     diary: function (saved, before) { return get('/api/diary?bookmarks=' + (saved ? '1' : '0') + (before ? '&before=' + q(before) : '')); },
     diaryRead: function (id) { return post('/api/diary/read', { post: id }); },
     diaryImage: function (id) { return get('/api/diary/image?post=' + q(id)); },
@@ -217,7 +241,25 @@
     diaryComment: function (id, text) { return words('/api/diary/comments', { post: id, text: text }); },
     diaryClaim: function (id) { return post('/api/diary/claim', { post: id }); },
     // (idle: how long ago the player last did something, for the hub: js/ui/activity.js)
-    spin: function (bet) { return post('/api/spin', { bet: bet, idle: BR.activity ? Math.round(BR.activity.idle()) : 0 }); },
+    spin: function (bet) {
+      if (!pendingSpin || pendingSpin.token !== token) {
+        var bytes = new Uint8Array(16); crypto.getRandomValues(bytes);
+        var key = Math.round(Date.now() + clockOffset) + '-' + Array.prototype.map.call(bytes, function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+        pendingSpin = { token: token, body: { key: key, bet: bet, idle: BR.activity ? Math.round(BR.activity.idle()) : 0 } };
+      }
+      var job = pendingSpin;
+      if (job.promise) return job.promise;
+      // A lost answer keeps the same immutable request for the next attempt.
+      job.promise = post('/api/spin', job.body).then(function (r) {
+        if (pendingSpin === job) pendingSpin = null;
+        return r;
+      }, function (err) {
+        job.promise = null;
+        if (err.status && err.status < 500 && pendingSpin === job) pendingSpin = null;
+        throw err;
+      });
+      return job.promise;
+    },
     buy: function (n) { return post('/api/buy', { amount: n }); },
     sell: function (n) { return post('/api/sell', { amount: n }); },
     daily: function () { return post('/api/daily'); },

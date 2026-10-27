@@ -165,6 +165,7 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
     else {
       if (s.id !== o.session_id) wrong.push('session');
       if (s.client_reference_id !== o.id || !s.metadata || s.metadata.order !== o.id) wrong.push('order');
+      if (!s.metadata || String(s.metadata.user) !== String(o.user_id)) wrong.push('user');
       if (s.mode !== 'payment') wrong.push('mode');
       if (String(s.currency || '').toLowerCase() !== 'jpy') wrong.push('currency');
       if (Number(s.amount_total) !== o.amount) wrong.push('amount');

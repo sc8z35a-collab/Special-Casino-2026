@@ -1,0 +1,148 @@
+{
+  "baselineCommit": "9bc269d",
+  "before": {
+    "navigation": {
+      "strips": {
+        "switches": 20,
+        "addedElements": 180,
+        "retained": false
+      },
+      "vault": {
+        "switches": 20,
+        "addedElements": 80,
+        "retained": false,
+        "focusRetainedOnRefresh": false
+      },
+      "pointer": {
+        "events": 100,
+        "buttons": 18,
+        "positionReads": 1800,
+        "peakScale": 1.5
+      },
+      "resizing": {
+        "events": 20,
+        "openWindows": 3,
+        "widthReads": 80
+      }
+    },
+    "wallpapers": {
+      "quietBeforeDeadline": {
+        "reads": 78,
+        "images": 39
+      },
+      "hiddenTwentyMinutes": {
+        "reads": 160,
+        "images": 40,
+        "bagUnchanged": false
+      },
+      "cycleUnique": true,
+      "staleImageIgnored": false
+    }
+  },
+  "after": {
+    "navigation": {
+      "strips": {
+        "switches": 20,
+        "addedElements": 0,
+        "retained": true
+      },
+      "vault": {
+        "switches": 20,
+        "addedElements": 0,
+        "retained": true,
+        "focusRetainedOnRefresh": true
+      },
+      "pointer": {
+        "events": 100,
+        "buttons": 18,
+        "positionReads": 18,
+        "peakScale": 1.5
+      },
+      "resizing": {
+        "events": 20,
+        "openWindows": 3,
+        "widthReads": 4
+      }
+    },
+    "wallpapers": {
+      "quietBeforeDeadline": {
+        "reads": 0,
+        "images": 0
+      },
+      "hiddenTwentyMinutes": {
+        "reads": 0,
+        "images": 0,
+        "bagUnchanged": true
+      },
+      "cycleUnique": true,
+      "staleImageIgnored": true
+    }
+  },
+  "verification": {
+    "suiteTests": 447,
+    "suiteFailures": 0,
+    "suiteSkipped": 0,
+    "suiteConcurrency": 4,
+    "domSinkChecks": 8,
+    "domGuardSelfChecks": 7,
+    "build": "631ca69e02bc",
+    "environment": "Local Chromium and disposable Node API server; no production writes",
+    "desktopRoles": [
+      18,
+      15,
+      9
+    ],
+    "legacyDesktopCheck": "Not counted as passing: assumes 16 apps, predating calendar and DEV APP. Current UI checked by check_ops_workspaces.cjs.",
+    "priorWidgetOptimization": {
+      "updates": 20,
+      "addedElements": 0,
+      "reportRowReused": true,
+      "graphPathReused": true,
+      "graphPaths": [
+        "M0.0 60.0L150.0 34.0L300.0 8.0L300 90L0 90Z",
+        "M0.0 60.0L150.0 34.0L300.0 8.0",
+        "M0.0 60.0L150.0 34.0L300.0 8.0"
+      ],
+      "ageAdvances": true,
+      "liveValueUpdates": true,
+      "draftRetainedAfterResize": true,
+      "windowReusedAfterResize": true,
+      "serverStatus": {
+        "updates": 20,
+        "addedElements": 0,
+        "sameHeadings": true,
+        "changedStatusFollows": true,
+        "notificationControlFollows": true
+      }
+    }
+  },
+  "surfaces": {
+    "roles": [
+      {
+        "role": "taku",
+        "authorizedApps": 18,
+        "unauthorizedAppsBlocked": 0,
+        "uniqueIds": true,
+        "logoutClearsWindows": true
+      },
+      {
+        "role": "OperatorQA",
+        "authorizedApps": 15,
+        "unauthorizedAppsBlocked": 3,
+        "uniqueIds": true,
+        "logoutClearsWindows": true
+      },
+      {
+        "role": "ViewerQA",
+        "authorizedApps": 9,
+        "unauthorizedAppsBlocked": 9,
+        "uniqueIds": true,
+        "logoutClearsWindows": true
+      }
+    ],
+    "desktopPhoneRoundTrip": true,
+    "draftRetained": true,
+    "minimizeRestore": true,
+    "maximizeRestore": true
+  }
+}

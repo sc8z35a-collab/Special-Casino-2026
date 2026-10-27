@@ -3,21 +3,88 @@ name: Tests
 on:
   push:
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 4 * * *'
 
 permissions:
   contents: read
 
 jobs:
-  server-tests:
+  static-checks:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Check reviewed DOM sinks
-        run: node tools/check_inner_html.cjs --self-test
-      - run: npm test
+      - name: Check registered fast guards
+        run: node tools/run_check.cjs --node
+      - run: node tools/stamp.mjs --check
+      - run: node tools/sync_devunit_readme.cjs --check
+
+  server-test-shards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1/4', '2/4', '3/4', '4/4']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node --disable-warning=ExperimentalWarning --test --test-concurrency=2 --test-shard=${{ matrix.shard }} server/test/*.test.js
+
+  server-tests:
+    needs: [static-checks, server-test-shards]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.static-checks.result }}" = success && test "${{ needs.server-test-shards.result }}" = success
+
+  check-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      checks: ${{ steps.matrix.outputs.checks }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - id: matrix
+        env:
+          FULL: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        run: |
+          if [ "$FULL" = true ]; then
+            echo "checks=$(node tools/check_ci_registry.cjs --matrix --all)" >> "$GITHUB_OUTPUT"
+          else
+            echo "checks=$(node tools/check_ci_registry.cjs --matrix)" >> "$GITHUB_OUTPUT"
+          fi
+
+  browser-and-worker-checks:
+    needs: check-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        check: ${{ fromJSON(needs.check-matrix.outputs.checks) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - id: requirements
+        run: echo "browser=$(node tools/check_ci_registry.cjs --browser '${{ matrix.check }}')" >> "$GITHUB_OUTPUT"
+      - if: steps.requirements.outputs.browser == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Run disposable local check
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: node tools/run_check.cjs '${{ matrix.check }}'

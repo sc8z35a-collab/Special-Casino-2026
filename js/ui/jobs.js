@@ -75,9 +75,9 @@
   function show() {
     render();
     load().catch(function (err) { if (!state) renderNote(err.message); });
-    clearInterval(ticker);
-    ticker = setInterval(function () {
-      if (!shown()) { clearInterval(ticker); return; }
+    BR.clock.drop(ticker);
+    ticker = BR.clock.every(function () {
+      if (!shown()) { BR.clock.drop(ticker); return; }
       tick();
     }, 1000);
   }

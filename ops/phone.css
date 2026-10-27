@@ -2,7 +2,6 @@
    What a phone has instead of windows: a HOME screen of the apps (the bar's own app buttons, laid out as a grid),
    an app that fills the screen with a way back, and five buttons at the bottom: ホーム・切替・通知・アカウント・メニュー.
    Nothing is moved by hand and nothing is resized: the desktop's windows are simply as big as the screen. */
-.mac-home, .mac-nav-btn, .mac-nav-label, .mac-switcher { display: none; }
 .mac-phone { --phone-nav: calc(68px + env(safe-area-inset-bottom, 0px)); --phone-top: env(safe-area-inset-top, 0px); }
 
 /* the home screen */
@@ -99,6 +98,7 @@ button.mac-home-date:active { background: #ffffff40; }
 .mac-phone .chat { border-radius: 0; }
 
 /* the switcher */
+.mac-phone .mac-switcher:not([hidden]) { display: flex; }
 .mac-switch-panel { text-align: left; }
 .mac-switch-panel h2 { text-align: center; margin: 0 0 12px; }
 .mac-switch-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }

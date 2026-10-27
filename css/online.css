@@ -2,19 +2,6 @@
    voice chat and watching a friend. Design px inside #stage, CSS px in the
    overlays (.ov). */
 
-/* ------------------------------------------------------------ start screen --- */
-#screen-start { z-index: 4; background: #000; overflow: hidden; }
-/* Keep the whole supplied title visible; fill wider screens with its backdrop. */
-.start-backdrop { position: absolute; inset: -60px; background: center / cover no-repeat; filter: blur(36px) brightness(.65); }
-#stage[data-screen="start"] #bg,
-#stage[data-screen="start"] #frame,
-#stage[data-screen="start"] .wallet { visibility: hidden; }
-.start-art { position: absolute; inset: 0; pointer-events: none; }
-#start-image { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
-/* One real button covers the complete title, including the backdrop. */
-.start-hit { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; }
-.start-hit:focus-visible { outline-offset: -6px; }
-
 /* ------------------------------------------------------------ shared bits --- */
 .toast { white-space: normal; text-align: center; }
 .avatar.pic { background: #1d1d22 center / cover no-repeat; font-size: 0; }
@@ -455,32 +442,6 @@
 #screen-slot.watching .watched-by { display: none; }
 
 /* ------------------------------------------------------------ app install / update --- */
-.start-app {
-  position: absolute;
-  right: 40px;
-  top: 28px;
-  z-index: 6;
-  height: 72px;
-  padding: 0 30px 0 22px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  border-radius: 36px;
-  background: rgba(20, 2, 4, .72);
-  box-shadow: inset 0 0 0 2px #d6a94a, 0 6px 18px rgba(0, 0, 0, .5);
-  font-size: 26px;
-  font-weight: 700;
-  color: #ffe27a;
-}
-.start-app .ic { width: 38px; height: 38px; }
-.start-app:active { transform: scale(.95); }
-.start-app.update {
-  background: linear-gradient(180deg, #45c95f, #2a9a44);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, .25), 0 0 26px rgba(80, 255, 110, .55);
-  color: #fff;
-  animation: updatePulse 1.6s ease-in-out infinite;
-}
-@keyframes updatePulse { 50% { transform: scale(1.06); } }
 
 .install-card { width: 1320px; padding: 36px 44px 30px; }
 .in-head { display: flex; align-items: center; gap: 28px; padding-right: 80px; }
@@ -1323,8 +1284,6 @@ button.watched-by:active { transform: scale(.96); }
 .more-soon-label { padding: 10px 30px; border-radius: 24px; background: #dab75a22; color: #ffe27a; font-size: 28px; }
 .more-soon-card p { margin: 0; font-size: 25px; line-height: 1.8; color: #eadfc0; }
 .more-soon-card > .act-btn { min-width: 280px; height: 64px; font-size: 24px; }
-.start-terms-notice { position: absolute; z-index: 6; left: 180px; right: 180px; bottom: 54px; margin: 0; padding: 8px 16px; border-radius: 10px; text-align: center; background: #16070cbd; color: #e5d8c7; font-size: 18px; pointer-events: none; }
-.start-terms-notice button { color: #ffe27a; text-decoration: underline; font: inherit; pointer-events: auto; }
 .q-bonus-chip { padding: 3px 6px; border-radius: 6px; font: 900 12px/1 var(--f-num); letter-spacing: .5px; white-space: nowrap; box-shadow: inset 0 0 0 1px #ffffff55, 0 1px 5px #160719; }
 .q-bonus-chip.pro { background: #793db5; color: #f1deff; }
 .q-bonus-chip.ultra { background: linear-gradient(110deg, #90f0ed, #ffe58d); color: #39200a; }

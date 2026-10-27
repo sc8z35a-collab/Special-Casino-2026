@@ -3,7 +3,7 @@
 // theirs: the logins and devices, money and cars, friends, items and the
 // rest, and what could find the person again (the password, the 引き継ぎコード,
 // the address and device the account was made from). What was said stays,
-// for good: the conversations (with friends, in groups, with Ice Smoker公式
+// under the retention policy: the conversations (with friends, in groups, with Ice Smoker公式
 // and the NPCs), the reports, the filter's catches and 意見, with the account
 // left as a name only ("〇〇（削除済み）") that nobody can log in to or bring
 // back; its name is free for a new player. Also kept: the payment records of
@@ -18,11 +18,13 @@ import { RECEIPTS } from './rules.js';
 // [table, the columns that hold the player's id]: rows matching any go
 export const PLAYER_ROWS = [
   ['sessions', ['user_id']],
+  ['chat_filter_strikes', ['user_id']],
   ['ops_mfa', ['user_id']],
   ['diary_reads', ['user_id']],
   ['diary_reactions', ['user_id']],
   ['blocks', ['user_id', 'blocked_id']],
   ['spins', ['user_id']],
+  ['spin_requests', ['user_id']],
   ['friends', ['user_id', 'friend_id']],
   ['friend_requests', ['from_id', 'to_id']],
   ['cars', ['owner_id']],
@@ -41,8 +43,8 @@ export const PLAYER_ROWS = [
   ['push_subs', ['user_id']],
   ['oauth_identities', ['user_id']]
 ];
-// what stays for good: what was said, and who said it
-export const KEPT_ROWS = ['messages', 'conversations', 'live_chats', 'transfers', 'feedback', 'reports', 'detections', 'bot_threads'];
+// Kept during account purge; retention.js applies their separate age limits.
+export const KEPT_ROWS = ['messages', 'message_archive', 'transfer_archive', 'conversations', 'live_chats', 'transfers', 'feedback', 'reports', 'detections', 'bot_threads'];
 
 const CURRENCIES = ['tokens', 'dollars'];
 
@@ -51,7 +53,7 @@ const CURRENCIES = ['tokens', 'dollars'];
 // an NPC). What they sent stays, for the friend to tap.
 function settlePending(q, id, now) {
   let back = 0;
-  for (const m of q('SELECT * FROM messages WHERE recipient_id = ? AND pending = 1 AND claimed_at = 0').all(id)) {
+  for (const m of q('SELECT * FROM message_history WHERE recipient_id = ? AND pending = 1 AND claimed_at = 0').all(id)) {
     if (RECEIPTS.expired(m, now)) {
       // Deleting the recipient cannot turn an expired gift into a refund.
       if (m.kind === 'gift') q('DELETE FROM cars WHERE id = ? AND owner_id = 0').run(m.amount);

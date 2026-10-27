@@ -1,0 +1,291 @@
+{
+  "tools": "ffmpeg libopus VBR / libvpx-vp9; originals retained, browser codec/decode fallback",
+  "files": [
+    {
+      "source": "sounds/bgm-title.mp3",
+      "alternative": "sounds/bgm-title.opus",
+      "before": 1137162,
+      "after": 964921,
+      "sourceMetadata": {
+        "codec_name": "mp3",
+        "channels": 2,
+        "sample_rate": "44100",
+        "duration": 81.188571
+      },
+      "metadata": {
+        "codec_name": "opus",
+        "channels": 2,
+        "sample_rate": "48000",
+        "duration": 81.168958
+      },
+      "sha256": "c471f4c56d88661aae8aa3fd2b27e27f8c6294da51c187f33e2108f9e00f74bd",
+      "distributed": true
+    },
+    {
+      "source": "sounds/click.wav",
+      "alternative": "sounds/click.opus",
+      "before": 22474,
+      "after": 3124,
+      "sourceMetadata": {
+        "codec_name": "pcm_s16le",
+        "channels": 1,
+        "sample_rate": "44100",
+        "duration": 0.254308
+      },
+      "metadata": {
+        "codec_name": "opus",
+        "channels": 1,
+        "sample_rate": "48000",
+        "duration": 0.260813
+      },
+      "sha256": "1b795df621f65ebfa82219780604434ec5b12f94dbfeea48a1d2031b3a12f79b",
+      "distributed": true
+    },
+    {
+      "source": "sounds/coins.mp3",
+      "alternative": "sounds/coins.opus",
+      "before": 14254,
+      "after": 6877,
+      "sourceMetadata": {
+        "codec_name": "mp3",
+        "channels": 2,
+        "sample_rate": "44100",
+        "duration": 0.862041
+      },
+      "metadata": {
+        "codec_name": "opus",
+        "channels": 2,
+        "sample_rate": "48000",
+        "duration": 0.822313
+      },
+      "sha256": "ee2559ad2fb95fe50b8cb566bf8bb712e78e1de508d396e1915ec24fa0647dc7",
+      "distributed": true
+    },
+    {
+      "source": "sounds/money.mp3",
+      "alternative": "sounds/money.opus",
+      "before": 28465,
+      "after": 16277,
+      "sourceMetadata": {
+        "codec_name": "mp3",
+        "channels": 2,
+        "sample_rate": "44100",
+        "duration": 1.750204
+      },
+      "metadata": {
+        "codec_name": "opus",
+        "channels": 2,
+        "sample_rate": "48000",
+        "duration": 1.725
+      },
+      "sha256": "7d1e422e34a37170de7cdfc90a8736ee26bfe9caa23aea26a801c0482a71db14",
+      "distributed": true
+    },
+    {
+      "source": "sounds/peter-1.mp3",
+      "alternative": "sounds/peter-1.opus",
+      "before": 42102,
+      "after": 35098,
+      "sourceMetadata": {
+        "codec_name": "mp3",
+        "channels": 1,
+        "sample_rate": "44100",
+        "duration": 4.179592
+      },
+      "metadata": {
+        "codec_name": "opus",
+        "channels": 1,
+        "sample_rate": "48000",
+        "duration": 4.149875
+      },
+      "sha256": "9381e391b67ee69eacaf32da815604876119439e9b9f804f85a852e4baaba7c2",
+      "distributed": true
+    },
+    {
+      "source": "sounds/peter-2.mp3",
+      "alternative": "sounds/peter-2.opus",
+      "before": 70576,
+      "after": 56896,
+      "sourceMetadata": {
+        "codec_name": "mp3",
+        "channels": 1,
+        "sample_rate": "44100",
+        "duration": 7.026939
+      },
+      "metadata": {
+        "codec_name": "opus",
+        "channels": 1,
+        "sample_rate": "48000",
+        "duration": 6.989458
+      },
+      "sha256": "b9fd59a07cb7b65fbaf4a38b4769b819301cc252c1d9a584780619c24c89f225",
+      "distributed": true
+    },
+    {
+      "source": "sounds/reels.wav",
+      "alternative": "sounds/reels.opus",
+      "before": 77762,
+      "after": 10642,
+      "sourceMetadata": {
+        "codec_name": "pcm_s16le",
+        "channels": 1,
+        "sample_rate": "44100",
+        "duration": 0.881156
+      },
+      "metadata": {
+        "codec_name": "opus",
+        "channels": 1,
+        "sample_rate": "48000",
+        "duration": 0.887667
+      },
+      "sha256": "4def2f3370795812d41037536a6fe8bcfde1ca00d979c7cb305a3738494864a4",
+      "distributed": true
+    },
+    {
+      "source": "sounds/register-high.mp3",
+      "alternative": "sounds/register-high.opus",
+      "before": 21152,
+      "after": 18887,
+      "sourceMetadata": {
+        "codec_name": "mp3",
+        "channels": 2,
+        "sample_rate": "44100",
+        "duration": 1.724082
+      },
+      "metadata": {
+        "codec_name": "opus",
+        "channels": 2,
+        "sample_rate": "48000",
+        "duration": 1.684729
+      },
+      "sha256": "abbfac11c9353e8dc56777056d1f8cace0abc22d0b1f2f872ad420271fdb30e8",
+      "distributed": true
+    },
+    {
+      "source": "sounds/register.mp3",
+      "alternative": "sounds/register.opus",
+      "before": 27734,
+      "after": 25464,
+      "sourceMetadata": {
+        "codec_name": "mp3",
+        "channels": 2,
+        "sample_rate": "44100",
+        "duration": 2.272653
+      },
+      "metadata": {
+        "codec_name": "opus",
+        "channels": 2,
+        "sample_rate": "48000",
+        "duration": 2.251042
+      },
+      "sha256": "1ba83badda500412a32a7579a8936bfab28b31d8b7964869655fcf56c1bb9ed7",
+      "distributed": true
+    },
+    {
+      "source": "sounds/spin-button.wav",
+      "alternative": "sounds/spin-button.opus",
+      "before": 36340,
+      "after": 4443,
+      "sourceMetadata": {
+        "codec_name": "pcm_s16le",
+        "channels": 1,
+        "sample_rate": "44100",
+        "duration": 0.411519
+      },
+      "metadata": {
+        "codec_name": "opus",
+        "channels": 1,
+        "sample_rate": "48000",
+        "duration": 0.418021
+      },
+      "sha256": "9cc41a22de919e57e37ed62c04b8940127da8d23b2f23583bd9ae94340829934",
+      "distributed": true
+    },
+    {
+      "source": "sounds/win.mp3",
+      "alternative": "sounds/win.opus",
+      "before": 46490,
+      "after": 24997,
+      "sourceMetadata": {
+        "codec_name": "mp3",
+        "channels": 1,
+        "sample_rate": "44100",
+        "duration": 3.291429
+      },
+      "metadata": {
+        "codec_name": "opus",
+        "channels": 1,
+        "sample_rate": "48000",
+        "duration": 3.24675
+      },
+      "sha256": "27eb9a1d24b7c7d5fcc14ad67c5c1b9c62fc5aad626371d41f2f0b342951faf7",
+      "distributed": true
+    },
+    {
+      "source": "video/title.mp4",
+      "alternative": "video/title.webm",
+      "before": 4197627,
+      "after": 2044301,
+      "sourceMetadata": {
+        "codec_name": "h264",
+        "width": 2000,
+        "height": 924,
+        "duration": 20.833333
+      },
+      "metadata": {
+        "codec_name": "vp9",
+        "width": 2000,
+        "height": 924,
+        "duration": 20.834
+      },
+      "sha256": "1cc094edf2452d1390d43c39d4835741d92f6bacde24c5431595a198294e012e",
+      "distributed": false,
+      "ssim": 0.976334
+    },
+    {
+      "source": "video/title-lite.mp4",
+      "alternative": "video/title-lite.webm",
+      "before": 1168307,
+      "after": 903019,
+      "sourceMetadata": {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 592,
+        "duration": 20.833333
+      },
+      "metadata": {
+        "codec_name": "vp9",
+        "width": 1280,
+        "height": 592,
+        "duration": 20.834
+      },
+      "sha256": "8c8d697dc9f2546438e5fb8954a29664e4f42931d8db9d3aea643eb3d9ed36c5",
+      "distributed": false,
+      "ssim": 0.961791
+    },
+    {
+      "source": "video/studio-low.mp4",
+      "alternative": "video/studio-low.webm",
+      "before": 51720,
+      "after": 39335,
+      "sourceMetadata": {
+        "codec_name": "h264",
+        "width": 426,
+        "height": 240,
+        "duration": 4.4
+      },
+      "metadata": {
+        "codec_name": "vp9",
+        "width": 426,
+        "height": 240,
+        "duration": 4.4
+      },
+      "sha256": "ad121effaa18c856c7df479bb621ef60a82fe9729336726bb395341fba282d09",
+      "distributed": true,
+      "ssim": 0.986437
+    }
+  ],
+  "before": 6942165,
+  "after": 4154281,
+  "distributedAlternativeBytes": 1206961
+}

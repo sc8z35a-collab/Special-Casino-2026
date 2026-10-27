@@ -803,7 +803,7 @@
   }
   function startTicker() {
     if (ticker) return;
-    ticker = setInterval(tickNow, 1000);
+    ticker = BR.clock.every(tickNow, 1000);
   }
 
   function reset() {

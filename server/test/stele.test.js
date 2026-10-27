@@ -31,7 +31,7 @@ function fakeStore() {
   return store;
 }
 
-function world(t, { store = fakeStore(), dbBytes = null, dbLimit = undefined } = {}) {
+function world(t, { store = fakeStore(), dbBytes = null, dbLimit = undefined, sampleIndex } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stele-'));
   const db = openDb(dir);
   const q = statements(db);
@@ -41,7 +41,7 @@ function world(t, { store = fakeStore(), dbBytes = null, dbLimit = undefined } =
   const notice = { say: (mark, text) => said.push([mark, text]) };
   let stele = null;
   const opsLog = createOpsLog({ q, onAdd: () => { if (stele) stele.touch(); } });
-  stele = createStele({ q, opsLog, store, secret: 'a-secret-for-the-test', clock, notice, dbBytes, dbLimit });
+  stele = createStele({ q, opsLog, store, secret: 'a-secret-for-the-test', clock, notice, dbBytes, dbLimit, sampleIndex });
   t.after(() => { db.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   const add = (n, text = 'x') => { for (let i = 0; i < n; i++) opsLog.add({ actorName: 'テスト', action: 'test', summary: `${text} ${i}`, detail: { i } }); };
   const unlock = () => { db.exec('DROP TRIGGER IF EXISTS ops_log_no_update'); db.exec('DROP TRIGGER IF EXISTS ops_log_no_delete'); };
@@ -304,4 +304,29 @@ test('the command line: how it stands, a full look, a restore, and the whole log
   w.unlock();
   w.db.prepare("UPDATE ops_log SET summary = 'rewritten' WHERE id = 2").run();
   await assert.rejects(adminRun(['log-save', path.join(dir, 'other.jsonl')], call, say), /つながっていません/);
+});
+
+
+test('scheduled checks resume their verified anchor and sample bounded older files instead of daily full reads', async t => {
+  const w = world(t, { sampleIndex: () => 0 });
+  for (let i = 0; i < 55; i++) { w.add(1); await w.stele.seal(); }
+  let reads = 0;
+  const get = w.store.get;
+  w.store.get = async key => { reads++; return get(key); };
+  for (let i = 0; i < 3; i++) assert.equal((await w.stele.check()).ok, true);
+  const state = JSON.parse(w.q("SELECT value FROM meta WHERE key = 'stele'").get().value);
+  assert.equal(state.verified.last, 55);
+  w.advance(86400000 * 2); reads = 0;
+  await w.stele.tick();
+  assert.ok(reads <= 7, `old files read: ${reads}`);
+  w.add(1); await w.stele.seal(); reads = 0;
+  assert.equal((await w.stele.check()).ok, true);
+  assert.ok(reads <= 8, `anchor + new + samples: ${reads}`);
+  // A recreated instance uses the persisted checkpoint; a damaged historical sample is still found.
+  const restarted = createStele({ q: w.q, opsLog: w.opsLog, store: w.store, secret: 'a-secret-for-the-test', clock: w.clock, sampleIndex: () => 0 });
+  w.store.files.set(keyOf(1, 1), new TextEncoder().encode('broken'));
+  assert.ok((await restarted.check()).problems.some(p => p.id === 'bad:1'));
+  // Metadata listing retains deletion detection even outside the random sample.
+  w.store.files.delete(keyOf(25, 25));
+  assert.ok((await restarted.check()).problems.some(p => p.id === 'gap:25'));
 });

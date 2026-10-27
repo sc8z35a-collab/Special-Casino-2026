@@ -366,12 +366,17 @@
         "img/3d/tree/preview.glb"
       ],
       "before": 1483556,
-      "after": 745856,
+      "after": 174944,
       "beforeTriangles": 205440,
       "afterTriangles": 92447,
       "animations": [],
       "joints": [],
-      "sha256": "936929b05aad09b5a5548187ce1a845294a0fe5fdb0e211c4d3a939d99ff0e8d"
+      "sha256": "390ffdc57c832db921de89b867125c784fd37fc6a131647ac0e152e6a4f440ca",
+      "losslessMeshopt": {
+        "before": 253216,
+        "after": 174944,
+        "decodedArraysUnchanged": true
+      }
     },
     {
       "name": "img/3d/tree/seed.glb",
@@ -379,12 +384,17 @@
         "img/3d/tree/seed.glb"
       ],
       "before": 476376,
-      "after": 253008,
+      "after": 128480,
       "beforeTriangles": 66024,
       "afterTriangles": 29710,
       "animations": [],
       "joints": [],
-      "sha256": "8fda3dff4c4bdd256a0024d1efec0a2a447fda5d65c22b85b76bc9920710efbe"
+      "sha256": "4d83cced3348b400111c77dfd1964477b2bb9696e4969bf3ed04a1642e18ea9a",
+      "losslessMeshopt": {
+        "before": 204784,
+        "after": 128480,
+        "decodedArraysUnchanged": true
+      }
     },
     {
       "name": "img/3d/tree/stage-1.glb",
@@ -721,5 +731,5 @@
     }
   ],
   "before": 29856996,
-  "after": 17705472
+  "after": 17010032
 }

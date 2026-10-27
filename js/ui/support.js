@@ -385,6 +385,7 @@
     BR.live.on('hello', function () { setTimeout(check, 1500); });
     document.addEventListener('visibilitychange', function () { if (!document.hidden) setTimeout(check, 600); });
     BR.social.onMe(function (m) { if (m) arrived(); });
+    if (BR.social.me()) arrived();
   }
 
   BR.support = { init: init, open: open };

@@ -6,8 +6,8 @@
    security base, the vault, the backups and the emergency routes is signed
    with the private half. So a login token taken from this browser is good for
    nothing, and a page that is closed, reloaded or left has lost its key: the
-   passkey is asked again. The same file is ops/pk.js and sec/pk.js (the
-   security base keeps to itself); a test keeps the two equal. */
+   passkey is asked again. Both sites load this one script. Each document owns its own key and gate;
+   no keys or gates are shared through storage or another document. */
 var OpsPk = (function () {
   'use strict';
   var pair = null, made = null, gid = '', until = 0;

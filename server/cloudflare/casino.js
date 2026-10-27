@@ -61,6 +61,10 @@ function sqlAdapter(ctx) {
 function bucketBlobs(bucket) {
   return {
     put: (key, bytes, sha256) => bucket.put(key, bytes, { customMetadata: { sha256 } }),
+    async head(key) {
+      const o = await bucket.head(key);
+      return o ? { size: o.size, sha256: (o.customMetadata || {}).sha256 || '' } : null;
+    },
     async get(key) {
       const o = await bucket.get(key);
       return o ? { bytes: new Uint8Array(await o.arrayBuffer()), sha256: (o.customMetadata || {}).sha256 || '' } : null;
@@ -128,6 +132,13 @@ class SocketHub {
 
   dropOps(userId) {
     for (const ws of this.ctx.getWebSockets(`o:${userId}`)) {
+      try { ws.close(1000, 'Authentication settings changed'); } catch { /* already closed */ }
+    }
+  }
+
+  dropUser(userId) {
+    this.dropOps(userId);
+    for (const ws of this.sockets(userId)) {
       try { ws.close(1000, 'Authentication settings changed'); } catch { /* already closed */ }
     }
   }
@@ -263,7 +274,7 @@ export class Casino extends DurableObject {
       // the housekeeping's time (the alarm also rings in between to stay awake;
       // an alarm from before that was for the housekeeping)
       const alarm = await ctx.storage.getAlarm();
-      this.housekeepAt = (await ctx.storage.get('housekeep_at')) || alarm || Date.now() + HOUSEKEEPING_EVERY;
+      this.housekeepAt = Math.min((await ctx.storage.get('housekeep_at')) || alarm || Date.now() + HOUSEKEEPING_EVERY, this.api.lineFeed.nextDue());
       await ctx.storage.put('housekeep_at', this.housekeepAt);
       this.awake.ticks = (await ctx.storage.get(`awake:${this.awake.month}`)) || 0;
       this.alarmAt = alarm;
@@ -296,8 +307,8 @@ export class Casino extends DurableObject {
     if (url.pathname === '/internal/filter') {
       let note = {};
       try { note = await request.json(); } catch { /* left empty */ }
-      this.api.filtered(coreRequest(request, url), note || {});
-      return json(200, { ok: true });
+      const decision = this.api.filtered(coreRequest(request, url), note || {});
+      return json(200, decision || {});
     }
     const out = await this.api.handle(coreRequest(request, url));
     // (a script or a file, not JSON: server/core/raw.js)

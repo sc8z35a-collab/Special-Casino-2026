@@ -14,12 +14,16 @@ const TYPES = {
   '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
   '.glb': 'model/gltf-binary',
   '.woff2': 'font/woff2',
   '.wav': 'audio/wav',
   '.mp3': 'audio/mpeg',
   '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.opus': 'audio/ogg',
   '.txt': 'text/plain; charset=utf-8',
   '.apk': 'application/vnd.android.package-archive'
 };
@@ -50,7 +54,8 @@ export function createStatic(root, { transformHtml } = {}) {
       gz: TEXT.has(ext) && body.length > 512 ? zlib.gzipSync(body, { level: 9 }) : null,
       etag: '"' + crypto.createHash('sha1').update(body).digest('base64url').slice(0, 20) + '"',
       // art is fresh for an hour (then refreshed in the background); code is revalidated on every load
-      cacheControl: /^\/(fonts|icons|img|sounds|video)\//.test(rel) ? 'public, max-age=3600, stale-while-revalidate=86400' : 'no-cache'
+      cacheControl: rel.startsWith('/ops/assets/line-wallpapers/') ? 'public, max-age=31536000, immutable'
+        : /^\/(fonts|icons|img|sounds|video)\//.test(rel) ? 'public, max-age=3600, stale-while-revalidate=86400' : 'no-cache'
     };
     cache.set(rel, entry);
     return entry;
@@ -64,16 +69,19 @@ export function createStatic(root, { transformHtml } = {}) {
       : pathname === '/link' || pathname === '/link/' ? '/link/index.html'
       : pathname === '/law' ? '/law.html' : pathname;
     try { rel = decodeURIComponent(rel); } catch { return false; }
-    if (!ALLOWED.test(rel) || rel.includes('..')) return false;
+    if ((!ALLOWED.test(rel) && !/^\/immutable\/[a-f0-9]{10}\/(?:css|js|ops|sec|link)\/[A-Za-z0-9._\/-]+\.(?:js|css)$/.test(rel)) || rel.includes('..')) return false;
     const entry = load(rel);
     if (!entry) return false;
+    const requested = new URL(req.url, 'http://local'), claimed = /^\/immutable\/([a-f0-9]{10})\//.exec(rel)?.[1] || requested.searchParams.get('v');
+    const immutable = /\.(?:js|css)$/.test(rel) && /^[a-f0-9]{10}$/.test(claimed || '') && crypto.createHash('sha256').update(entry.body).digest('hex').startsWith(claimed);
     const headers = {
       ...SECURITY_HEADERS,
       'Content-Type': entry.type,
-      'Cache-Control': entry.cacheControl,
+      'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : entry.cacheControl,
       'ETag': entry.etag,
       'Vary': 'Accept-Encoding'
     };
+    if (rel.startsWith('/ops/assets/line-wallpapers/')) headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
     // The page for whoever is given a link (/link/): nothing but itself and this server, never kept, never indexed.
     if (rel.startsWith('/link/')) {
       headers['Content-Security-Policy'] = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";

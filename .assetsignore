@@ -29,3 +29,10 @@
 !sec/**
 !link/
 !link/**
+
+# Unreferenced legacy title/studio videos remain in source history only.
+video/title.mp4
+video/title-lite.mp4
+video/studio.mp4
+video/title.webm
+video/title-lite.webm

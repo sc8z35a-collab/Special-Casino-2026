@@ -15,6 +15,17 @@ export function newRecoveryCode() {
   for (let i = 0; i < 16; i++) s += CROCKFORD[bytes[i] & 31];
   return s.match(/.{4}/g).join('-');
 }
+// Call inside the caller's transaction, after asynchronous password hashing.
+// Rotating the recovery secret also invalidates previously issued live tickets.
+export function replaceCredentials(q, userId, passwordHash, seal = () => '') {
+  const code = newRecoveryCode();
+  q('UPDATE users SET password_hash = ?, recovery_hash = ?, recovery_enc = ? WHERE id = ?')
+    .run(passwordHash, sha256(normalizeRecoveryCode(code)), seal(code), userId);
+  q('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  q('DELETE FROM game_login_locks WHERE name_key = (SELECT name_key FROM users WHERE id = ?)').run(userId);
+  return code;
+}
+
 // Accepts lower case, spaces, missing dashes and the usual look-alikes.
 export function normalizeRecoveryCode(code) {
   return String(code || '').normalize('NFKC').toUpperCase()

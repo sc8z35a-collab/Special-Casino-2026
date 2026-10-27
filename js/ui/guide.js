@@ -191,7 +191,7 @@
     run = { replay: !!replay, uid: me.id, i: -1, step: null, act: null, phase: '', timers: [], dom: build() };
     // notices stay readable above the dimmed screen
     $('#stage').classList.add('guide-on');
-    run.poll = setInterval(tick, 250);
+    run.poll = BR.clock.every(tick, 250);
     document.addEventListener('keydown', onKey, true);
     document.addEventListener('click', onClick, true);
     window.addEventListener('resize', onResize);
@@ -457,7 +457,7 @@
     if (!R) return;
     run = null;
     clearTimers(R);
-    clearInterval(R.poll);
+    BR.clock.drop(R.poll);
     document.removeEventListener('keydown', onKey, true);
     document.removeEventListener('click', onClick, true);
     window.removeEventListener('resize', onResize);
@@ -543,6 +543,7 @@
 
   function init() {
     K = BR.kit;
+    if (BR.social && BR.social.me()) onMe(BR.social.me());
     if (!api.online) return;
     if (BR.social && BR.social.onMe) BR.social.onMe(onMe);
     BR.screens.onChange(function (name) { if (run) screenChanged(name); });

@@ -117,6 +117,7 @@ function fileAt(url) {
   console.log('PASS supplied larger update button performs a real update navigation in app mode');
   await ui.unroute('**/*_update=*'); await ui.goto(game.base+'/');
   const tierResults=await ui.evaluate(async()=>{
+   await BR.resources.load('board');
    await new Promise(resolve=>{if(window.BR&&BR.UI_IMG)return resolve();const t=setInterval(()=>{if(window.BR&&BR.UI_IMG){clearInterval(t);resolve();}},20);});
    const host=document.createElement('div');host.style.cssText='position:fixed;inset:0;z-index:999999;background:#34223e;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:24px;color:white';
    for(const tier of Object.keys(BR.UI_IMG.questTiers)) {const row=document.createElement('div');row.className='q-row t-'+tier;const label=document.createElement('b');label.textContent=tier;row.append(label);host.append(row);}
@@ -128,6 +129,6 @@ function fileAt(url) {
   });assert.equal(tierResults.length,9);tierResults.forEach(r=>{assert.equal(r.alpha,'.84'.replace(/^\./,'0.'));assert.equal(r.label,'1');assert.match(r.art,/quest-tiers/);assert.ok(!r.art.includes('/css/img/'));});assert.deepEqual(errors,[]);
   if(shots)await ui.screenshot({path:path.join(shots,'quest-tiers.png')});
   console.log('PASS nine translucent rarity images, fully opaque labels, and app icon decoding');
-  fs.writeFileSync(process.env.ASSET_VALIDATION_OUTPUT || path.join(ROOT,'docs/asset-validation.json'),JSON.stringify({models:results,updateClick:true,tiers:9,modelErrors:0},null,2)+'\n');
+  if (process.env.ASSET_VALIDATION_OUTPUT || rows.length === allRows.length) fs.writeFileSync(process.env.ASSET_VALIDATION_OUTPUT || path.join(ROOT,'docs/asset-validation.json'),JSON.stringify({models:results,updateClick:true,tiers:9,modelErrors:0},null,2)+'\n');
  } finally {if(browser)await browser.close();if(server)await new Promise(r=>server.close(r));if(game)await game.stop();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

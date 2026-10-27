@@ -16,7 +16,6 @@
   var $ = U.$;
   var el = K.el, sfx = K.sfx, toast = K.toast, fail = K.fail;
   var AMOUNT = 'blockbuster-reels/tree-amount';
-  var POLL = 500;          // a running auction is looked at this often
   var TAPS = 5;            // one-tap gifts waiting their turn at most
 
   var trees = null;        // from the server; each with `at`: the server time it is for
@@ -112,11 +111,11 @@
     render();
     load().catch(function (err) { if (!trees) renderNote(err.message); });
     api.auction().then(function (r) { setAuction(r.auction, true); if (shown()) render(); }, function () {});
-    clearInterval(ticker);
-    ticker = setInterval(tick, 250);
+    BR.clock.drop(ticker);
+    ticker = BR.clock.every(function () { tick(); if (!poller) startPolling(); }, 1000);
   }
   function onHide() {
-    clearInterval(ticker);
+    BR.clock.drop(ticker);
     $('#stage').classList.remove('auction-running');
     BR.tree3d.pause();
     stopArena();
@@ -473,7 +472,7 @@
     if (auction.status === 'live') {
       watched = auction.id;
       if (!quiet && was && was.id === auction.id && was.leader === 'me' && auction.leader !== 'me') sfx('notify');
-      if (shown()) startPolling();
+      if (shown()) { stopPolling(); startPolling(); }
     } else if (auction.id === watched) {
       // it ended while it was watched here: show how, once
       watched = 0;
@@ -489,9 +488,16 @@
   }
   function startPolling() {
     if (poller) return;
-    poller = setInterval(function () {
+    function schedule() {
+      clearTimeout(poller); poller = 0;
+      if (!shown() || document.hidden || !auction || auction.status !== 'live') { poller = 0; return; }
+      var delay = auction.nextChangeAt ? Math.max(200, auction.nextChangeAt - now() + 80) : 1500;
+      poller = setTimeout(poll, Math.min(30000, delay));
+    }
+    function poll() {
+      poller = 0;
       if (!shown()) { stopPolling(); return; }
-      if (bidding || polling) return;
+      if (bidding || polling) { schedule(); return; }
       polling = true;
       api.auction().then(function (r) {
         polling = false;
@@ -501,10 +507,12 @@
         if (!shown()) return;
         if ((auction ? auction.status : '') !== was) renderTabs();
         if (tab === 'auction') renderAuction();
-      }, function () { polling = false; });
-    }, POLL);
+        schedule();
+      }, function () { polling = false; schedule(); });
+    }
+    schedule();
   }
-  function stopPolling() { clearInterval(poller); poller = 0; }
+  function stopPolling() { clearTimeout(poller); poller = 0; }
 
   function stopArena() {
     arenaEpoch++;
@@ -694,8 +702,7 @@
     renderAuction();
     var note = el('p', 'au-preparing', '3Dモデルを読み込み中…');
     $('#auction-pane').appendChild(note);
-    var ready = BR.auction3d ? BR.auction3d.preload(function (p) { note.textContent = '3Dモデルを読み込み中… ' + Math.round(p * 100) + '%'; }) : Promise.resolve();
-    ready.then(function () { return api.auctionStart(market); }).then(function (r) {
+    api.auctionStart(market).then(function (r) {
       busy = false;
       note.remove();
       setAuction(r.auction, true);

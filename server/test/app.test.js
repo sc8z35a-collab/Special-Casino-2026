@@ -25,6 +25,14 @@ after(async () => {
   await s.stop();
 });
 
+test('only static code with its actual content hash receives immutable caching', async () => {
+  const file = '/js/core/util.js', body = fs.readFileSync(path.join(ROOT, file));
+  const hash = crypto.createHash('sha256').update(body).digest('hex').slice(0, 10);
+  assert.match((await fetch(s.base + file + '?v=' + hash)).headers.get('cache-control'), /max-age=31536000, immutable/);
+  assert.doesNotMatch((await fetch(s.base + file + '?v=0000000000')).headers.get('cache-control'), /immutable/);
+  for (const url of ['/', '/index.html', '/version.json', '/ops/']) assert.doesNotMatch((await fetch(s.base + url)).headers.get('cache-control'), /immutable/);
+});
+
 test('the build stamp matches the game files (run node tools/stamp.mjs after changing them)', () => {
   const build = computeBuild();
   assert.equal(stampedBuild(), build);
@@ -35,7 +43,7 @@ test('the build stamp matches the game files (run node tools/stamp.mjs after cha
 test('index.html names every script and style by the hash of its file, and the server serves exactly that file at that address', async () => {
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const refs = [...html.matchAll(/(?:src|href)="((?:js|css)\/[^"?]+)(\?v=[0-9a-f]+)?"/g)];
-  assert.ok(refs.length > 80, 'the page has its scripts and styles');
+  assert.ok(refs.length > 50 && refs.length < 80, 'boot retains core scripts while optional screens are deferred');
   const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex').slice(0, 10);
   for (const [, file, v] of refs) assert.equal(v, '?v=' + sha(fs.readFileSync(path.join(ROOT, file))), file + ' is named by the hash of its file');
   // the same address from the server: the file, to the byte (what the service worker checks before it keeps it)
@@ -47,7 +55,11 @@ test('index.html names every script and style by the hash of its file, and the s
   // the scripts loaded later (js/vendor) are named in js/version.js, and the code that loads them asks for those addresses
   const win = {};
   vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'js/version.js'), 'utf8'), { window: win });
-  assert.deepEqual(Object.keys(win.BR.CODE).sort(), ['js/vendor/three-bundle.js', 'js/vendor/tree-physics.js']);
+  const lazy = JSON.parse(fs.readFileSync(path.join(ROOT, 'js/lazy-screens.json'), 'utf8'));
+  assert.deepEqual(JSON.parse(JSON.stringify(win.BR.LAZY)), lazy);
+  const resources = JSON.parse(fs.readFileSync(path.join(ROOT, 'js/resources.json'), 'utf8'));
+  assert.deepEqual(JSON.parse(JSON.stringify(win.BR.RESOURCES)), resources);
+  assert.deepEqual(Object.keys(win.BR.CODE).sort(), [...new Set(['js/vendor/three-bundle.js', 'js/vendor/tree-physics.js', ...Object.values(lazy).flat(), ...Object.values(resources).flat()])].sort());
   for (const [file, h] of Object.entries(win.BR.CODE)) assert.equal(h, sha(fs.readFileSync(path.join(ROOT, file))), file);
   const ctx = vm.createContext({ BR: { CODE: win.BR.CODE } });
   ctx.globalThis = ctx;

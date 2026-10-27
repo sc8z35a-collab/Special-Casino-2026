@@ -86,11 +86,12 @@
     if (active) relayout();
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
+  function wire() {
     var b = document.getElementById('watch-quality-btn');
     if (b) b.addEventListener('click', function () { if (BR.sfx) BR.sfx.play('click'); toggle(); });
     paint();
-  });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
 
   BR.watchQuality = {
     enter: enter, exit: exit, toggle: toggle,

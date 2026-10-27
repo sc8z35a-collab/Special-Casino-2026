@@ -246,6 +246,8 @@ export function createOpsLogin({
             throw e;
           }
         }
+        const fresh = findByName(typed);
+        if (!fresh || fresh.id !== u.id || fresh.password_hash !== u.password_hash || !(isOperator(fresh) || isViewer(fresh))) wrong('bad_password');
         // (this browser and this account start over; the address's count does not, nor does it go up)
         for (const k of keys) if (k.scope !== 'address') q('DELETE FROM ops_locks WHERE key = ?').run(k.key);
         if (!allow(u)) {

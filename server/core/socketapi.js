@@ -5,23 +5,19 @@
 //   page ← { re: id, s: 200, b: { … } }        s: 0 — not over this connection: the page asks over HTTP (nothing was done)
 // It is answered by the same api.handle() as HTTP: the login (the message carries the page's own Authorization, checked as every request is),
 // the passkey's signature (X-Gate), the viewer's allowlist, the rate limits, the shield and the emergency stop are those of HTTP. The address
-// and the browser are those the connection was opened from. What only the HTTP host does stays on HTTP: the chat routes (the automatic filter
-// reads their bodies before the server does: server/core/attach.js), the logins and what sets them up, the vault's files and its writes, the
+// and the browser are those the connection was opened from. Chat bodies pass the same automatic filter before reaching the handlers.
+// What only the HTTP host does stays on HTTP: the logins and what sets them up, the vault's files and its writes, the
 // extensions' scripts, the security base's sealed channel and what other servers call; a body over BODY_MAX goes over HTTP too (js/net/wire.js).
+import '../../js/net/transport-policy.js';
 import { Buffer } from 'node:buffer';
 import { ApiError } from './errors.js';
-import { CHAT_ROUTES } from './attach.js';
+import { CHAT_ROUTES, screenChat, blockedBody } from './attach.js';
 
 // the headers the page itself sends with a request (the rest are the connection's: the browser, where it came from)
 const FROM_PAGE = new Set(['authorization', 'x-device', 'x-ops-device', 'x-gate', 'x-vault-ticket']);
-const HTTP_ONLY = /^\/api\/(?:login|register|logout|recovery|password|ban$|oauth\/|pk\/|ops\/login|ops\/profile\/|ops\/ext\/|sec\/|pay\/|discord\/|line\/|admin$|internal\/|stream|ops\/live-ticket|vault\/(?:piece|chunk))/;
 export const BODY_MAX = 16 * 1024;
 
-export function overSocket(method, path) {
-  if (method !== 'GET' && method !== 'POST') return false;
-  if (method === 'POST' && (CHAT_ROUTES[`POST ${path}`] || path.startsWith('/api/vault/'))) return false;
-  return path.startsWith('/api/') && !HTTP_ONLY.test(path);
-}
+export const overSocket = globalThis.BR.overSocket;
 
 // What the connection was opened from, kept with it (a few hundred bytes: Cloudflare keeps 2 KB with a socket): the address, the browser,
 // and the game's device (?device=, js/net/live.js), which its requests on the connection then need not carry each.
@@ -54,14 +50,24 @@ export async function answerOnSocket(api, conn, m) {
     async json(limit = BODY_MAX) {
       const body = m.b === undefined ? {} : m.b;
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw new ApiError(400, 'bad_json', 'リクエストの形式が正しくありません');
-      if (JSON.stringify(body).length > limit) throw new ApiError(413, 'too_large', '送信できません。大きすぎます。');
+      if (Buffer.byteLength(JSON.stringify(body)) > limit) throw new ApiError(413, 'too_large', '送信できません。大きすぎます。');
       return body;
     },
     async bytes() { throw new ApiError(415, 'content_type', 'この送信は接続の上ではできません'); }
   };
   const failed = '{"error":{"code":"internal","message":"サーバーでエラーが発生しました。少し待ってからもう一度お試しください"}}';
   let out;
-  try { out = await api.handle(req); } catch (e) { console.error('socket api', e); return back(500, failed); }
+  try {
+    const route = method + ' ' + url.pathname;
+    if (CHAT_ROUTES[route]) {
+      const bytes = Buffer.from(JSON.stringify(m.b === undefined ? {} : m.b));
+      // Oversized chat goes to the HTTP path, which can accept its larger text-only body.
+      if (bytes.length > BODY_MAX) return back(0);
+      const note = await screenChat(route, 'application/json', bytes);
+      if (note) { const decision = api.filtered(req, note); out = { status: 400, body: blockedBody(decision) }; }
+    }
+    if (!out) out = await api.handle(req);
+  } catch (e) { console.error('socket api', e); return back(500, failed); }
   // (a script or a file is not sent on the connection: asked again over HTTP)
   if (out.raw) return method === 'GET' ? back(0) : back(500, failed);
   const text = JSON.stringify(out.body);

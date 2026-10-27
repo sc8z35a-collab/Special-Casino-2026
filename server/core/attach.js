@@ -99,3 +99,10 @@ export const BLOCKED = {
   code: 'filtered',
   message: 'テキスト以外のものは送れません。自動フィルタリングシステムが送信を止め、運営に知らせました。運営が確認するまでチャットは使えません。'
 };
+
+// Control-only DMs get two recoverable warnings. Other attachment violations retain the original refusal.
+export function blockedBody(decision) {
+  return { error: decision && decision.warning ? { code: BLOCKED.code,
+    message: '制御文字を含むため送信できません。入力内容を確認してください（警告' + decision.stage + '/3）',
+    warning: true, stage: decision.stage } : BLOCKED };
+}

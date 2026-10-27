@@ -621,10 +621,10 @@
         tabs.set(tab);
         render();
         load().catch(function () {});
-        clearInterval(ticker);
-        ticker = setInterval(onTick, 1000);
+        BR.clock.drop(ticker);
+        ticker = BR.clock.every(onTick, 1000);
       },
-      close: function () { clearInterval(ticker); }
+      close: function () { BR.clock.drop(ticker); }
     });
     // back on the slot screen: a notice that waited shows now
     BR.screens.onChange(function (name) {
@@ -633,7 +633,7 @@
     });
     renderBonuses();
     if (!api.online) return;
-    setInterval(function () {
+    BR.clock.every(function () {
       var changed = false;
       Q.periods.forEach(function (p) {
         if (bonusCycles[p.id] !== undefined && bonusCycles[p.id] !== Q.range(p, now()).k) {

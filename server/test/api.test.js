@@ -91,13 +91,18 @@ test('login: name + password, recovery code, new code, password change, logout',
   assert.equal((await call('POST', '/api/login', { body: { code: rc.recoveryCode } })).status, 200);
   // password change needs the current one
   assert.equal((await call('POST', '/api/password', { token: u.token, body: { current: 'nope', password: 'newpass99' } })).status, 403);
-  assert.equal((await call('POST', '/api/password', { token: u.token, body: { current: PASSWORD, password: 'newpass99' } })).status, 200);
+  const changed = await call('POST', '/api/password', { token: u.token, body: { current: PASSWORD, password: 'newpass99' } });
+  assert.equal(changed.status, 200);
+  assert.equal((await call('GET', '/api/me', { token: login.token })).status, 401);
+  login = { token: changed.token };
   assert.equal((await call('POST', '/api/login', { body: { name: 'LoginUser', password: PASSWORD } })).status, 401);
-  assert.equal((await call('POST', '/api/login', { body: { name: 'LoginUser', password: 'newpass99' } })).status, 200);
+  const otherFresh = await call('POST', '/api/login', { body: { name: 'LoginUser', password: 'newpass99' } });
+  assert.equal(otherFresh.status, 200);
   // logout ends only that session
   assert.equal((await call('POST', '/api/logout', { token: login.token })).status, 200);
   assert.equal((await call('GET', '/api/me', { token: login.token })).status, 401);
-  assert.equal((await call('GET', '/api/me', { token: u.token })).status, 200);
+  assert.equal((await call('GET', '/api/me', { token: u.token })).status, 401);
+  assert.equal((await call('GET', '/api/me', { token: otherFresh.token })).status, 200);
 });
 
 test('accounts made before passwords existed log in with their code and can add one', async () => {

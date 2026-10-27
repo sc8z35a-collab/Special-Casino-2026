@@ -138,9 +138,16 @@
       }
     });
   }
-  function showModal(id) { $('#' + id).hidden = false; }
+  var modalEpoch = {};
+  function showModal(id) {
+    var epoch = modalEpoch[id] = (modalEpoch[id] || 0) + 1;
+    var style = /^feedback/.test(id) ? 'feedback' : /^safety|^sf-|^report|^block/.test(id) ? 'safety' : /^hub/.test(id) ? 'hub' : 'online';
+    if (!BR.resources.ready('online') || !BR.resources.ready(style)) return Promise.all([BR.resources.load('online'), BR.resources.load(style)]).then(function () { if (modalEpoch[id] === epoch) showModal(id); }, fail);
+    $('#' + id).hidden = false;
+  }
   function isOpen(id) { return !$('#' + id).hidden; }
   function closeModal(id) {
+    modalEpoch[id] = (modalEpoch[id] || 0) + 1;
     var m = $('#' + id);
     if (m.hidden) return;
     m.hidden = true;

@@ -7,7 +7,6 @@
   --f-user: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Noto Sans CJK JP', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
 }
 
-[hidden] { display: none !important; }
 
 .uname {
   font-family: var(--f-user);
@@ -172,20 +171,6 @@
   background: rgba(0, 0, 0, .2);
 }
 .board-pane.active { display: block; }
-
-/* ranking */
-.rank-head {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 96px;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  padding: 0 28px;
-  box-shadow: inset 0 -1.6px 0 rgba(225, 205, 210, .18);
-}
 .seg {
   display: flex;
   height: 58px;
@@ -196,51 +181,6 @@
 }
 .seg-btn { height: 100%; padding: 0 28px; font-size: 21px; font-weight: 700; color: #ddd2d5; white-space: nowrap; }
 .seg-btn.active { background: linear-gradient(180deg, #f4dc45, #e8c72a); color: #3a3410; }
-.rank-meta { margin-left: auto; font-size: 19px; font-weight: 500; color: #b3a7aa; white-space: nowrap; }
-.rank-scroll { position: absolute; left: 0; right: 0; top: 96px; bottom: 96px; }
-.rank-list { list-style: none; margin: 0; padding: 6px 0; }
-.rank-row {
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr) auto;
-  align-items: center;
-  width: 100%;
-  height: 76px;
-  padding: 0 40px 0 22px;
-  box-shadow: inset 0 -1.6px 0 rgba(225, 205, 210, .1);
-  font-size: 27px;
-  text-align: left;
-  cursor: pointer;
-}
-.rank-row:active { background: rgba(255, 255, 255, .07); }
-.rank-row.self { background: rgba(248, 207, 44, .08); }
-.rank-no {
-  justify-self: center;
-  min-width: 56px;
-  height: 56px;
-  padding: 0 6px;
-  border-radius: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font: 800 28px var(--f-num);
-  color: #e9e0e3;
-}
-.top1 .rank-no { background: radial-gradient(circle at 35% 30%, #fff3b0, #f2c94c 45%, #b8860b); color: #4a3300; box-shadow: 0 2px 6px rgba(0, 0, 0, .5), inset 0 0 0 2px rgba(255, 255, 255, .4); }
-.top2 .rank-no { background: radial-gradient(circle at 35% 30%, #fff, #c9ced6 45%, #7d8591); color: #2c3038; box-shadow: 0 2px 6px rgba(0, 0, 0, .5), inset 0 0 0 2px rgba(255, 255, 255, .4); }
-.top3 .rank-no { background: radial-gradient(circle at 35% 30%, #ffe0c2, #d08a4f 45%, #8a4b1c); color: #3a1c06; box-shadow: 0 2px 6px rgba(0, 0, 0, .5), inset 0 0 0 2px rgba(255, 255, 255, .35); }
-.rank-name { display: flex; align-items: center; gap: 18px; min-width: 0; font-weight: 700; }
-.rank-val { justify-self: end; gap: 12px; padding-left: 20px; font: 700 28px var(--f-num); }
-.rank-val .ic { width: 32px; height: 32px; }
-.rank-me {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 96px;
-  background: rgba(96, 86, 12, .36);
-  box-shadow: inset 0 0 0 2.4px #d8b53a, inset 0 0 0 3.2px rgba(120, 90, 10, .6);
-}
-.me-tag { flex: none; padding: 5px 12px; border-radius: 6px; background: var(--gold-label); color: #3a3410; font-size: 18px; font-family: var(--f-jp); }
 
 /* conversations */
 .conv-scroll { position: absolute; inset: 0; }
@@ -506,10 +446,6 @@
 .pf-top .pf-since { margin-top: 10px; text-align: left; }
 .profile-card .modal-x { top: 26px; right: 26px; }
 .profile-card .pf-stats, .profile-card .pf-actions, .profile-card .pf-blocks { margin-left: 44px; margin-right: 44px; }
-.pf-rank { flex: none; text-align: right; font-family: var(--f-num); font-weight: 800; color: #ffe27a; line-height: 1; }
-.pf-rank small { display: block; margin-bottom: 8px; font-family: var(--f-jp); font-size: 18px; font-weight: 700; color: #c3b8bb; }
-.pf-rank span { font-size: 30px; margin-right: 2px; }
-.pf-rank b { font-size: 50px; }
 .pf-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 24px; }
 .pf-stat {
   height: 92px;

@@ -1027,15 +1027,66 @@ MIGRATIONS.push([
   "CREATE INDEX feedback_open ON feedback(id) WHERE handled_at = 0 AND kind != ''"
 ]);
 
+MIGRATIONS.push([
+  `CREATE TABLE line_feed_targets (id TEXT PRIMARY KEY, active INTEGER NOT NULL, changed_at INTEGER NOT NULL)`,
+  `CREATE TABLE line_feed_jobs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, slot TEXT NOT NULL, messages TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL)`,
+  `CREATE TABLE line_feed_deliveries (job_id TEXT NOT NULL, target_id TEXT NOT NULL, retry_key TEXT NOT NULL UNIQUE,
+    state TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL,
+    first_at INTEGER NOT NULL DEFAULT 0, status INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (job_id, target_id))`,
+  `CREATE INDEX line_feed_pending ON line_feed_deliveries(next_at) WHERE state = 'pending'`,
+  `CREATE TABLE line_feed_rewards (token_hash TEXT PRIMARY KEY, week INTEGER NOT NULL, kind TEXT NOT NULL,
+    amount INTEGER NOT NULL, expires_at INTEGER NOT NULL, UNIQUE (week, kind))`,
+  `CREATE TABLE line_feed_claims (user_id INTEGER NOT NULL, week INTEGER NOT NULL, kind TEXT NOT NULL,
+    amount INTEGER NOT NULL, claimed_at INTEGER NOT NULL, PRIMARY KEY (user_id, week, kind))`
+]);
+
+// Bounded hot tables, readable cold history, and IDs that survive archival/deletion.
+MIGRATIONS.push([
+  'CREATE TABLE message_archive AS SELECT * FROM messages WHERE 0',
+  'CREATE UNIQUE INDEX message_archive_id ON message_archive(id)',
+  'CREATE INDEX message_archive_channel ON message_archive(channel, id)',
+  'CREATE INDEX message_archive_sender ON message_archive(sender_id, created_at)',
+  'CREATE INDEX message_archive_time ON message_archive(created_at)',
+  'CREATE TABLE transfer_archive AS SELECT * FROM transfers WHERE 0',
+  'CREATE UNIQUE INDEX transfer_archive_id ON transfer_archive(id)',
+  'CREATE INDEX transfer_archive_from ON transfer_archive(from_id, created_at)',
+  'CREATE INDEX transfer_archive_time ON transfer_archive(created_at)',
+  'CREATE VIEW message_history AS SELECT * FROM messages UNION ALL SELECT * FROM message_archive',
+  'CREATE VIEW transfer_history AS SELECT * FROM transfers UNION ALL SELECT * FROM transfer_archive',
+  'CREATE INDEX messages_time ON messages(created_at)',
+  'CREATE INDEX conversations_last ON conversations(last_id)',
+  'CREATE INDEX chat_groups_last ON chat_groups(last_id)',
+  'CREATE INDEX reports_message ON reports(message_id)',
+  'CREATE INDEX detections_message ON detections(message_id)',
+  'CREATE TABLE record_ids (name TEXT PRIMARY KEY, last_id INTEGER NOT NULL)',
+  "INSERT INTO record_ids VALUES ('messages', (SELECT COALESCE(MAX(id), 0) FROM messages)), ('transfers', (SELECT COALESCE(MAX(id), 0) FROM transfers))"
+]);
+
+MIGRATIONS.push([
+  'CREATE TABLE spin_requests (user_id INTEGER NOT NULL, key TEXT NOT NULL, fingerprint TEXT NOT NULL, response TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (user_id, key))',
+  'CREATE INDEX spin_requests_time ON spin_requests(created_at)'
+]);
+
+MIGRATIONS.push([
+  'CREATE TABLE game_login_locks (name_key TEXT PRIMARY KEY, failures INTEGER NOT NULL, started INTEGER NOT NULL, until INTEGER NOT NULL)',
+  'CREATE INDEX game_login_locks_time ON game_login_locks(started)'
+]);
+
+MIGRATIONS.push([
+  'CREATE TABLE chat_filter_strikes (user_id INTEGER PRIMARY KEY, count INTEGER NOT NULL, window_at INTEGER NOT NULL)',
+  'CREATE INDEX chat_filter_strikes_time ON chat_filter_strikes(window_at)'
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
-export const TABLES = ['users', 'sessions', 'messages', 'conversations', 'transfers', 'player_transfer_days', 'blocks', 'spins',
+export const TABLES = ['users', 'sessions', 'game_login_locks', 'chat_filter_strikes', 'message_archive', 'transfer_archive', 'record_ids', 'messages', 'conversations', 'transfers', 'player_transfer_days', 'blocks', 'spins', 'spin_requests',
   'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
   'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers', 'ops_entries',
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'devunit_comments', 'devunit_reads',
   'diary_posts', 'diary_reads', 'diary_reactions', 'diary_comments', 'diary_claims', 'ops_mfa',
-  'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'sec_identity', 'oauth_identities', 'meta'];
+  'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'sec_identity', 'oauth_identities',
+  'line_feed_targets', 'line_feed_jobs', 'line_feed_deliveries', 'line_feed_rewards', 'line_feed_claims', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
@@ -1075,4 +1126,10 @@ export function statements(db) {
     }
     return st;
   };
+}
+
+// Only these two fixed table names are accepted. The counter is exported with backups.
+export function nextRecordId(q, table) {
+  if (table !== 'messages' && table !== 'transfers') throw new Error('unknown record sequence');
+  return q(`UPDATE record_ids SET last_id = MAX(last_id, (SELECT COALESCE(MAX(id), 0) FROM ${table})) + 1 WHERE name = ? RETURNING last_id`).get(table).last_id;
 }

@@ -10,7 +10,7 @@
   var FALLBACK = ['joumon', 'natasha', 'johnson', 'kamiya', 'wild'];
 
   function lib() {
-    if (!library) library = BR.win3d.three().then(function (t) { T = t; return t; }).catch(function (e) { library = null; throw e; });
+    if (!library) library = BR.three().then(function (t) { T = t; return t; }).catch(function (e) { library = null; throw e; });
     return library;
   }
   function load(id) {
@@ -36,10 +36,12 @@
     }).catch(function (e) { delete assets[id]; throw e; });
     return assets[id];
   }
-  function preload(progress) {
-    var count = 0;
-    return Promise.all(FILES.map(function (id) {
-      return load(id).then(function () { if (progress) progress(++count / FILES.length); });
+  function needed(a) { return Array.from(new Set(['room', 'lectern', a && a.market === 'seed' ? 'seed' : 'tree'].concat(roster(a).map(function (p) { return p.model; })))); }
+  function preload(progress, auction) {
+    if (!auction) return lib();
+    var count = 0, files = needed(auction);
+    return Promise.all(files.map(function (id) {
+      return load(id).then(function () { if (progress) progress(++count / files.length); });
     }));
   }
   function roster(a) {
@@ -62,10 +64,10 @@
     return anchor;
   }
   // The cached roots are reused only after the previous arena has stopped.
-  function prepare(models) {
-    if (prepared) return prepared;
-    prepared = {};
-    FILES.forEach(function (id, i) {
+  function prepare(models, files) {
+    prepared = prepared || {};
+    files.forEach(function (id, i) {
+      if (prepared[id]) return;
       var g = models[i];
       if (FALLBACK.indexOf(id) >= 0 || id === 'dennis') {
         var mixer = new T.AnimationMixer(g.scene);
@@ -86,8 +88,9 @@
     return prepared;
   }
   function mount(host, initial) {
-    return Promise.all(FILES.map(load)).then(function (models) {
-      return new Arena(host, initial, prepare(models));
+    var files = needed(initial);
+    return Promise.all(files.map(load)).then(function (models) {
+      return new Arena(host, initial, prepare(models, files));
     });
   }
 

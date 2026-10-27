@@ -725,6 +725,8 @@
     BR.effects.init();
     BR.news.init();
     BR.diary.init();
+    BR.gacha.init();
+    BR.lineReward.init();
     BR.call.init();
     BR.watch.init();
     if (BR.activity) BR.activity.init();
@@ -734,7 +736,7 @@
     if (BR.play && BR.play.init) BR.play.init();
     if (BR.feedback && BR.feedback.init) BR.feedback.init();
     if (BR.guide && BR.guide.init) BR.guide.init();
-    if (BR.support) BR.support.init();
+    if (BR.support) { BR.support.init(); if (/[?&]pay=/.test(location.search)) BR.lazy.load('support').then(function () { BR.support.open(); }, function () {}); }
     if (BR.vip) BR.vip.init();
     BR.start.init();
     BR.install.init();
@@ -746,7 +748,9 @@
     // the 3D win titles load in the background once the game is up (js/render/win3d.js)
     (function later() {
       if (!BR.launch.done()) { setTimeout(later, 1500); return; }
-      setTimeout(function () { if (BR.win3d) BR.win3d.preload(); if (BR.reward3d) BR.reward3d.preload(); }, 2500);
+      setTimeout(function () {
+        Promise.all([BR.resources.load('win3d'), BR.resources.load('reward3d')]).then(function () { if (BR.win3d) BR.win3d.preload(); if (BR.reward3d) BR.reward3d.preload(); }, function () {});
+      }, 2500);
     })();
     if (BR.fx && BR.fx.onChange) BR.fx.onChange(function () { if (BR.launch.done()) { if (BR.win3d) BR.win3d.preload(); if (BR.reward3d) BR.reward3d.preload(); } });
     var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();

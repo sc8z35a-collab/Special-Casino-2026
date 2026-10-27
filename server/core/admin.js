@@ -3,7 +3,7 @@
 // or lowered by hand but never below zero, and nothing here wipes accounts.
 import { statements, TABLES, SCHEMA_VERSION } from './db.js';
 import { createOpsLog } from './opslog.js';
-import { cleanName, nameKey, newRecoveryCode, normalizeRecoveryCode, sha256, cleanPassword, hashPassword } from './auth.js';
+import { cleanName, nameKey, newRecoveryCode, normalizeRecoveryCode, sha256, cleanPassword, hashPassword, replaceCredentials } from './auth.js';
 import { utcDay } from './rules.js';
 import { createStaffPins } from './staffpin.js';
 import { forgetExtension } from './ext.js';
@@ -23,7 +23,7 @@ export class AdminError extends Error {
 // official bot tells them (lifting it too: then it is what lifts it);
 // `isDeveloper(user)`: the developer's account, which no ban reaches
 // `unlockLogins(name)`: the operator site's login waits cleared (one name's, or all), by the server that holds them
-export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = () => false, unlockLogins = () => 0 } = {}) {
+export function createAdmin(db, { seal = () => '', onBan = null, onCredentials = null, isDeveloper = () => false, unlockLogins = () => 0 } = {}) {
   const q = statements(db);
   const tx = (fn) => db.tx(fn);
   // what the commands change goes to the operators' log (server/core/opslog.js)
@@ -62,8 +62,8 @@ export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = (
         sessions: one('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?'),
         friends: one('SELECT COUNT(*) AS n FROM friends WHERE user_id = ?'),
         cars: one('SELECT COUNT(*) AS n FROM cars WHERE owner_id = ?'),
-        transfersSent: one('SELECT COUNT(*) AS n FROM transfers WHERE from_id = ?'),
-        transfersReceived: one('SELECT COUNT(*) AS n FROM transfers WHERE to_id = ?')
+        transfersSent: one('SELECT COUNT(*) AS n FROM transfer_history WHERE from_id = ?'),
+        transfersReceived: one('SELECT COUNT(*) AS n FROM transfer_history WHERE to_id = ?')
       };
     },
 
@@ -84,7 +84,9 @@ export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = (
     async password(ref, pw) {
       const u = find(ref);
       const clean = cleanPassword(pw);
-      q('UPDATE users SET password_hash = ? WHERE id = ?').run(await hashPassword(clean), u.id);
+      const hash = await hashPassword(clean);
+      tx(() => replaceCredentials(q, u.id, hash, seal));
+      onCredentials?.(u.id);
       return { id: u.id, name: u.name, password: clean };
     },
 
@@ -160,18 +162,21 @@ export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = (
       if (ref) {
         const u = find(ref);
         return q(`SELECT m.id, m.channel, m.kind, m.body, m.amount, m.currency, m.created_at, s.name AS sender
-                  FROM messages m LEFT JOIN users s ON s.id = m.sender_id WHERE m.sender_id = ? ORDER BY m.id DESC LIMIT ?`).all(u.id, limit);
+                  FROM message_history m LEFT JOIN users s ON s.id = m.sender_id WHERE m.sender_id = ? ORDER BY m.id DESC LIMIT ?`).all(u.id, limit);
       }
       return q(`SELECT m.id, m.channel, m.kind, m.body, m.amount, m.currency, m.created_at, s.name AS sender
-                FROM messages m LEFT JOIN users s ON s.id = m.sender_id ORDER BY m.id DESC LIMIT ?`).all(limit);
+                FROM message_history m LEFT JOIN users s ON s.id = m.sender_id ORDER BY m.id DESC LIMIT ?`).all(limit);
     },
 
     // Blanks a chat message (direct or in a group); transfer and gift records stay as they are.
     redact(id) {
-      const m = q('SELECT id, kind FROM messages WHERE id = ?').get(Number(id));
+      const m = q('SELECT id, kind FROM message_history WHERE id = ?').get(Number(id));
       if (!m) throw new AdminError(`メッセージが見つかりません: ${id}`);
       if (m.kind === 'transfer' || m.kind === 'gift') throw new AdminError('送金・プレゼントの記録は消せません');
-      q('UPDATE messages SET body = ? WHERE id = ?').run(REDACTED, m.id);
+      tx(() => {
+        q('UPDATE messages SET body = ? WHERE id = ?').run(REDACTED, m.id);
+        q('UPDATE message_archive SET body = ? WHERE id = ?').run(REDACTED, m.id);
+      });
       return { id: m.id };
     },
 
@@ -188,8 +193,8 @@ export function createAdmin(db, { seal = () => '', onBan = null, isDeveloper = (
         wonToday: one('SELECT COALESCE(SUM(day_won), 0) AS n FROM users WHERE won_day = ?', today),
         friendships: one('SELECT COUNT(*) AS n FROM friends') / 2,
         cars: one('SELECT COUNT(*) AS n FROM cars'),
-        messages: one('SELECT COUNT(*) AS n FROM messages'),
-        transfers: one('SELECT COUNT(*) AS n FROM transfers')
+        messages: one('SELECT COUNT(*) AS n FROM message_history'),
+        transfers: one('SELECT COUNT(*) AS n FROM transfer_history')
       };
     },
 

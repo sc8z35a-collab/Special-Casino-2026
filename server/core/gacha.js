@@ -6,11 +6,19 @@ import { readQuests, questTickets } from './quests.js';
 
 const SEED = 'gacha-seed';
 const VIP_WEEK = 'gacha-vip-week';
+const PRICES = Object.fromEntries(GACHA.kinds.map((kind) => [kind.id, {
+  single: GACHA.price(kind.id, 1), three: GACHA.price(kind.id, 3), ten: GACHA.price(kind.id, 10)
+}]));
+// Independent cryptographic samples, filled in one call instead of one allocation/native call per reward.
+const randomWords = new Uint32Array(128);
+let randomAt = randomWords.length;
 
 function secureRandom() {
-  const r = new Uint32Array(1);
-  globalThis.crypto.getRandomValues(r);
-  return r[0] / 4294967296;
+  if (randomAt === randomWords.length) {
+    globalThis.crypto.getRandomValues(randomWords);
+    randomAt = 0;
+  }
+  return randomWords[randomAt++] / 4294967296;
 }
 
 export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend, now = Date.now, rand = secureRandom }) {
@@ -22,34 +30,35 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
   function state(u) {
     const at = now();
     const events = GACHA.events(at);
+    const me = meDto(u);
+    const items = me.items || itemsOf(u.id);
     return {
+      me,
       now: at,
       events,
-      prices: {
-        normal: GACHA.price(1, events.sale.on),
-        ten: GACHA.price(10, events.sale.on)
-      },
-      items: { seed: itemCount(u.id, SEED), vipWeek: itemCount(u.id, VIP_WEEK) },
+      prices: PRICES,
+      items: { seed: items[SEED] || 0, vipWeek: items[VIP_WEEK] || 0 },
       maxTrees: RULES.tree.max
     };
   }
 
   function spin(body, u) {
-    const kind = String(body.kind || 'normal');
+    const kind = String(body.kind || 'rare');
     const count = Number(body.count);
-    if (kind !== 'normal' && kind !== 'rare') throw new ApiError(400, 'bad_gacha', 'ガチャの種類を選んでください');
-    if (count !== 1 && count !== 10) throw new ApiError(400, 'bad_count', '回数は1回または10回です');
+    if (!GACHA.kinds.some((k) => k.id === kind)) throw new ApiError(400, 'bad_gacha', 'ガチャの種類を選んでください');
+    if (count !== 1 && count !== 3 && count !== 10) throw new ApiError(400, 'bad_count', '回数は1回・3回・10回です');
 
     const result = tx(() => {
       const cur = getUser(u.id);
       const at = now();
       const events = GACHA.events(at);
-      const paid = GACHA.price(count, events.sale.on);
+      const paid = GACHA.price(kind, count);
+      if (body.price !== undefined && Number(body.price) !== paid) throw new ApiError(409, 'price_changed', '価格が更新されました。新しい価格を確認してください');
       if (cur.dollars < paid) throw new ApiError(409, 'insufficient', '$が足りません');
       const pulls = GACHA.draw(kind, count, events.boost.on, events.sale.on, rand);
       const rewards = pulls.flatMap((p) => p.rewards);
       const cars = rewards.filter((r) => r.type === 'car');
-      const garageCoins = rewards.filter((r) => r.type === 'garage').length;
+      const garageCoins = rewards.filter((r) => r.type === 'garage').reduce((n, r) => n + r.amount, 0);
       const grownTrees = rewards.filter((r) => r.type === 'grown-tree').length;
       if (carCount(cur.id) + cars.length > garageSize(cur) + garageCoins) {
         throw new ApiError(409, 'garage_full', 'ガレージの空きが足りません。車を整理してから回してください');
@@ -68,7 +77,7 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
         } else if (r.type === 'lot') tokens += r.amount;
         else if (r.type === 'royal') coins += r.amount;
         else if (r.type === 'garage') { /* counted below */ }
-        else if (r.type === 'reset') resets++;
+        else if (r.type === 'reset') resets += r.amount;
         else if (r.type === 'seed') addItems(cur.id, SEED, 1);
         else if (r.type === 'vip-week') addItems(cur.id, VIP_WEEK, 1);
         else if (r.type === 'grown-tree') {
@@ -86,9 +95,9 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       return { pulls, paid, kind, count };
     });
 
-    const after = balanceChanged(u.id);
+    const after = balanceChanged(u.id, true);
     afterSpend(u.id);
-    return { ...result, me: meDto(after), ...state(after) };
+    return { ...result, ...state(after) };
   }
 
   function use(item, u) {
@@ -110,12 +119,12 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       }
     });
     const after = item === 'vip-week' ? balanceChanged(u.id) : getUser(u.id);
-    return { ok: true, item, me: meDto(after), ...state(after) };
+    return { ok: true, item, ...state(after) };
   }
 
   return {
     routes: {
-      'GET /api/gacha': (req, u) => ({ ...state(u), me: meDto(getUser(u.id)) }),
+      'GET /api/gacha': (req, u) => state(getUser(u.id)),
       'POST /api/gacha/spin': async (req, u) => spin(await req.json(), u),
       'POST /api/gacha/use': async (req, u) => {
         const body = await req.json();

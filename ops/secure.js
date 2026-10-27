@@ -10,22 +10,24 @@
    at least one of these, and then there is no lock. It looks again every few minutes and when the page comes back into view. */
 var OpsSecure = (function () {
   'use strict';
-  var chan = null, timer = 0, stamp = 0, token = 0, busy = false;
+  var chan = null, timer = 0, initial = 0, stamp = 0, token = 0, busy = false, enabled = false;
   var EVERY = 4 * 60000;
 
   function show(text) { if (window.OpsDesktop && OpsDesktop.secure) OpsDesktop.secure(text); }
   function io() { return window.OpsExt ? OpsExt.io() : null; }
 
   function look() {
-    if (busy) return;
+    if (!enabled || document.hidden || busy) return;
     var tools = io(), mine = token;
     if (!tools || !tools.request || !window.BR || !BR.secChannel || !BR.secChannel.available) { show(''); return; }
     busy = true;
     if (!chan) chan = BR.secChannel.create({ request: tools.request });
-    chan.open().then(function (info) {
+    var channel = chan;
+    channel.open().then(function (info) {
+      if (mine !== token) return;
       // (the lock is shown on a channel that checked out in every way; the server then says, sealed, what it saw)
       if (!info.secure) throw new Error('not secure: ' + info.problems.join(','));
-      return chan.call('GET', '/api/sec/posture').then(function (p) {
+      return channel.call('GET', '/api/sec/posture').then(function (p) {
         if (mine !== token) return;
         if (!p || !p.transport || !p.transport.tls || !p.identity || p.identity.fp !== info.fp) throw new Error('the server does not say the same');
         stamp = Date.now();
@@ -33,24 +35,25 @@ var OpsSecure = (function () {
       });
     }).catch(function () {
       // (any doubt: no lock; and the next look opens a new channel rather than trusting this one)
-      if (chan) chan.drop();
-      if (mine === token) show('');
-    }).then(function () { busy = false; });
+      if (mine !== token) return;
+      channel.drop(); show('');
+    }).then(function () { if (mine === token) busy = false; });
   }
   function schedule() { clearInterval(timer); timer = setInterval(function () { if (!document.hidden) look(); }, EVERY); }
 
-  document.addEventListener('visibilitychange', function () { if (!document.hidden && token && Date.now() - stamp > 60000) look(); });
-  window.addEventListener('online', function () { if (token) look(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && enabled && Date.now() - stamp > 60000) look(); });
+  window.addEventListener('online', function () { if (enabled) look(); });
   window.addEventListener('offline', function () { show(''); });
 
   return {
     // signed in (true) or out (false)
     session: function (signedIn) {
       token++;
-      clearInterval(timer); show('');
+      enabled = signedIn;
+      clearInterval(timer); clearTimeout(initial); initial = 0; show('');
       if (chan) { chan.drop(); chan = null; }
       busy = false; stamp = 0;
-      if (signedIn) { setTimeout(look, 600); schedule(); }
+      if (signedIn) { initial = setTimeout(function () { initial = 0; look(); }, 600); schedule(); }
     },
     look: look
   };

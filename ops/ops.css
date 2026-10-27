@@ -1,3 +1,4 @@
+@import url("../css/box-model.css");
 /* TWO STATE サーバー運営サイト: white, calm and clean. On a phone held
    upright the whole site is turned to landscape (.frame.turned, ops.js). */
 :root {
@@ -17,7 +18,7 @@
   --radius: 12px;
   color-scheme: light;
 }
-* { box-sizing: border-box; }
+
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 body {
   font: 15px/1.6 system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;

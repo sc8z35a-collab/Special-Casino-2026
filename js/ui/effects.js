@@ -12,6 +12,7 @@
   function render() {
     var F = BR.fx;
     $('#fx-simple').checked = F.simple();
+    $('#fx-lite').checked = F.lite();
     var box = $('#fx-groups');
     box.textContent = '';
     F.groups.forEach(function (g) {
@@ -46,6 +47,11 @@
     $('#fx-simple').addEventListener('change', function (e) {
       sfx('click');
       BR.fx.setSimple(e.target.checked);
+      render();
+    });
+    $('#fx-lite').addEventListener('change', function (e) {
+      sfx('click');
+      BR.fx.setLite(e.target.checked);
       render();
     });
     $('#fx-groups').addEventListener('change', function (e) {

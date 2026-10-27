@@ -62,7 +62,7 @@ async function makeFiles() {
   try {
     await s.register('taku');
     browser = await chromium.launch({ executablePath: process.env.OPS_BROWSER_EXECUTABLE || undefined, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', '--autoplay-policy=no-user-gesture-required'] });
-    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce', acceptDownloads: true });
+    const ctx = await browser.newContext({ viewport: { width: 1024, height: 1000 }, reducedMotion: 'reduce', acceptDownloads: true });
     const page = await ctx.newPage();
     page.setDefaultTimeout(30000);
     page.on('pageerror', (e) => errors.push(e.message));
@@ -72,6 +72,8 @@ async function makeFiles() {
     await page.goto(s.base + '/ops/');
     await page.locator('#login-name').waitFor({ state: 'visible' });
 
+    assert.equal(await page.evaluate(() => !!window.VaultThumbnails), false, 'thumbnail generator is deferred on login');
+    await page.evaluate(() => OpsLoad.load('vault-thumbnails.js'));
     // 1. every kind of file: pictures in a few KB, never a failure
     const made = await page.evaluate(async (src) => {
       const files = await (new Function('return (' + src + ')')())();

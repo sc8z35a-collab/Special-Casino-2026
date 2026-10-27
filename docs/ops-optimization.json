@@ -1,0 +1,47 @@
+{
+  "baselineCommit": "9322c2d",
+  "before": {
+    "updates": 20,
+    "addedElements": 260,
+    "reportRowReused": false,
+    "graphPathReused": false,
+    "graphPaths": [
+      "M0.0 60.0L150.0 34.0L300.0 8.0L300 90L0 90Z",
+      "M0.0 60.0L150.0 34.0L300.0 8.0",
+      "M0.0 60.0L150.0 34.0L300.0 8.0"
+    ],
+    "ageAdvances": true,
+    "liveValueUpdates": true,
+    "draftRetainedAfterResize": false,
+    "windowReusedAfterResize": false,
+    "serverStatus": {
+      "updates": 20,
+      "addedElements": 280,
+      "sameHeadings": false,
+      "changedStatusFollows": true,
+      "notificationControlFollows": true
+    }
+  },
+  "after": {
+    "updates": 20,
+    "addedElements": 0,
+    "reportRowReused": true,
+    "graphPathReused": true,
+    "graphPaths": [
+      "M0.0 60.0L150.0 34.0L300.0 8.0L300 90L0 90Z",
+      "M0.0 60.0L150.0 34.0L300.0 8.0",
+      "M0.0 60.0L150.0 34.0L300.0 8.0"
+    ],
+    "ageAdvances": true,
+    "liveValueUpdates": true,
+    "draftRetainedAfterResize": true,
+    "windowReusedAfterResize": true,
+    "serverStatus": {
+      "updates": 20,
+      "addedElements": 0,
+      "sameHeadings": true,
+      "changedStatusFollows": true,
+      "notificationControlFollows": true
+    }
+  }
+}

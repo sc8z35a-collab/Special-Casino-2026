@@ -204,6 +204,7 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged }) {
       minEndsAt: s.minEnd || 0,
       deadlineAt: s.deadline || s.close,
       closesAt: s.close,
+      nextChangeAt: done ? 0 : Math.min(s.close, s.next && willing(s).length ? s.next : Infinity, now < s.starts ? s.starts : Infinity),
       bidSeq: s.seq || s.bids.length,
       winner: won ? 'me' : s.winner || null,
       tree: t ? dto(t, now) : null,

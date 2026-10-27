@@ -95,6 +95,7 @@
       BR.app.renderBet();
       meChanged();
       BR.live.connect();
+      if (BR.lineReward) BR.lineReward.check();
     }, function (err) {
       if (err.status === 401 || err.status === 403) return; // auth-lost takes over
       if (err.code === 'maintenance') return;                // the notice is up until the quota resets
@@ -127,6 +128,9 @@
     BR.quests.reset();
     BR.jobs.reset();
     if (BR.tree) BR.tree.reset();
+    if (BR.lineReward) BR.lineReward.reset();
+    if (BR.gacha) BR.gacha.reset();
+    if (BR.lazy) BR.lazy.cancelPending();
     BR.entry.close();
     closeGroupForm();
     K.closeModals();
@@ -471,7 +475,8 @@
     nm.appendChild(el('span', 'fr-name uname', u.name));
     K.addVip(nm, K.vipLevel(u));
     id.appendChild(nm);
-    id.appendChild(el('span', 'fr-status' + (u.online ? ' on' : ''), seenText(u)));
+    var status = el('span', 'fr-status' + (u.online ? ' on' : ''), seenText(u)); status.dataset.seenUser = u.id;
+    id.appendChild(status);
     who.appendChild(id);
     row.appendChild(who);
     var acts = el('div', 'fr-acts');
@@ -1446,6 +1451,10 @@
   /* ------------------------------------------------------------ profile --- */
   var prof = { data: null, seq: 0 };
   function openProfile(user) {
+    if (!BR.resources.ready('profile')) {
+      var owner = me && me.id, request = ++prof.seq;
+      return Promise.all([BR.resources.load('online'), BR.resources.load('profile')]).then(function () { if (me && me.id === owner && request === prof.seq) openProfile(user); }, K.fail);
+    }
     if (!user || !me) return;
     if (BR.peter.is(user) || BR.johnson.is(user) || BR.official.is(user)) { openDm(user); return; }
     var seq = ++prof.seq;
@@ -1877,9 +1886,12 @@
   }
 
   // the "last online" times count up while the lists are open
-  setInterval(function () {
+  BR.clock.every(function () {
     if (!visible() || document.hidden) return;
-    if (view === 'friends' && friends) renderFriends();
+    if (view === 'friends' && friends) Array.prototype.forEach.call(document.querySelectorAll('[data-seen-user]'), function (node) {
+      var user = [].concat(friends.friends || [], friends.incoming || [], friends.outgoing || []).find(function (u) { return String(u.id) === node.dataset.seenUser; });
+      if (user && !user.online) node.textContent = seenText(user);
+    });
     else if (view === 'dm' && peer && !peer.online) renderChatHead();
   }, 60000);
 
@@ -1936,6 +1948,7 @@
       if (b.dataset.act === 'support' && BR.support) BR.support.open();
       if (b.dataset.act === 'vip' && BR.vip) BR.vip.open();
       if (b.dataset.act === 'dev-diary' && BR.diary) BR.diary.open();
+      if (b.dataset.act === 'gacha' && BR.gacha) BR.gacha.open();
       var soon = { 'studio-credits': 'スタジオクレジット', terms: '規約' };
       if (soon[b.dataset.act]) showSoon(soon[b.dataset.act]);
     });
@@ -2029,7 +2042,7 @@
     bindGroupForm();
     bindModals();
     if (!online) return;
-    setInterval(function () {
+    BR.clock.every(function () {
       var key = chatKey(), c = key && chans[key];
       if (!visible() || !c) return;
       c.list.forEach(function (m) {

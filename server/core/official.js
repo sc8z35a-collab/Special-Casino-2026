@@ -128,7 +128,7 @@ export function createOfficial(ctx) {
   // a message taken back still shows what it said: `original`)
   function conversation(userId, limit = 300) {
     const bid = id();
-    const rows = q(`SELECT m.*, s.name AS sender_name, s.avatar AS sender_avatar FROM messages m LEFT JOIN users s ON s.id = m.sender_id
+    const rows = q(`SELECT m.*, s.name AS sender_name, s.avatar AS sender_avatar FROM message_history m LEFT JOIN users s ON s.id = m.sender_id
                     WHERE m.channel = ? ORDER BY m.id DESC LIMIT ?`).all(ctx.dmChannel(userId, bid), limit).reverse();
     const read = q('SELECT read_id FROM conversations WHERE user_id = ? AND other_id = ?').get(userId, bid);
     return { messages: rows.map((r) => (r.retracted_at ? { ...ctx.msgDto(r), original: r.body } : ctx.msgDto(r))), playerReadUpTo: read ? read.read_id : 0, thread: thread(userId) };

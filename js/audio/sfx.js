@@ -121,11 +121,12 @@
       return r.arrayBuffer();
     });
   }
-  // fetched right away, decoded once the audio context exists
-  Object.keys(RECORDINGS).forEach(function (k) {
-    raw[k] = bytes(RECORDINGS[k]);
-    raw[k].catch(function () { /* the synthesised sound is used instead */ });
-  });
+  var fetched = false;
+  function fetchRecordings() {
+    if (fetched) return;
+    fetched = true;
+    Object.keys(RECORDINGS).forEach(function (k) { raw[k] = BR.media.audioSource(RECORDINGS[k], bytes); });
+  }
 
   function decode(ab) {
     return new Promise(function (resolve, reject) {
@@ -135,8 +136,9 @@
   }
 
   function decodeRecordings() {
+    fetchRecordings();
     Object.keys(raw).forEach(function (k) {
-      raw[k].then(decode).then(function (b) { buffers[k] = b; }, function () { /* keep the synthesised sound */ });
+      raw[k].decode(decode).then(function (b) { buffers[k] = b; }, function () { /* keep the synthesised sound */ });
     });
     if (music.bytes && !music.loading) musicLoad();
   }
@@ -149,7 +151,7 @@
   var music = { url: null, bytes: null, loading: null, buf: null, src: null, gain: null, want: false, offset: 0, started: 0 };
 
   function musicLoad() {
-    music.loading = music.bytes.then(decode).then(function (b) {
+    music.loading = music.bytes.decode(decode).then(function (b) {
       music.buf = b;
       musicStart();
     }, function () { /* no music */ });
@@ -187,7 +189,7 @@
   var voiceNow = null;
   function voiceBuffer(url) {
     if (!voices[url]) {
-      voices[url] = bytes(url).then(decode);
+      voices[url] = BR.media.audioSource(url, bytes).decode(decode);
       voices[url].catch(function () { delete voices[url]; });
     }
     return voices[url];
@@ -726,8 +728,7 @@
         music.want = true;
         if (music.url !== url) {
           music.url = url;
-          music.bytes = bytes(url);
-          music.bytes.catch(function () { /* no music */ });
+          music.bytes = BR.media.audioSource(url, bytes);
           music.buf = null;
           music.offset = 0;
           if (ctx) musicLoad();

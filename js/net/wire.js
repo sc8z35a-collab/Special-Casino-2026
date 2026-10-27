@@ -12,9 +12,6 @@
 (function (BR) {
   'use strict';
 
-  var HTTP_ONLY = /^\/api\/(?:login|register|logout|recovery|password|ban$|oauth\/|pk\/|ops\/login|ops\/profile\/|ops\/ext\/|sec\/|pay\/|discord\/|line\/|admin$|internal\/|stream|ops\/live-ticket|vault\/(?:piece|chunk))/;
-  // the chat routes, read by the host's automatic filter before the server (server/core/attach.js), and the vault's writes
-  var POST_HTTP = /^\/api\/(?:diary\/comments|messages|home\/chat|hub\/say|official\/feedback|report|report\/message|vault\/.*)$/;
   var BODY_MAX = 16 * 1024, WAIT_MS = 20000;
   var LOWER = { Authorization: 'authorization', 'X-Device': 'x-device', 'X-Ops-Device': 'x-ops-device', 'X-Gate': 'x-gate', 'X-Vault-Ticket': 'x-vault-ticket' };
 
@@ -38,7 +35,7 @@
     return {
       call: function (method, path, headers, body) {
         var route = String(path).split('?')[0];
-        if ((method !== 'GET' && method !== 'POST') || HTTP_ONLY.test(route) || (method === 'POST' && POST_HTTP.test(route))) return null;
+        if (!BR.overSocket(method, route)) return null;
         var h = {};
         Object.keys(headers || {}).forEach(function (k) { var n = LOWER[k] || k.toLowerCase(); if (n !== 'content-type') h[n] = headers[k]; });
         var text = JSON.stringify({ op: 'api', id: ++seq, m: method, p: path, h: h, b: method === 'POST' ? body || {} : undefined });

@@ -86,7 +86,7 @@
   // (tools/stamp.mjs). The service worker keeps such an address for ever and does not ask the server about it again (sw.js).
   util.codeUrl = function (path) {
     var h = BR.CODE && BR.CODE[path];
-    return h ? path + '?v=' + h : path;
+    return h ? BR.IMMUTABLE ? '/immutable/' + h + '/' + path : path + '?v=' + h : path;
   };
 
   BR.util = util;

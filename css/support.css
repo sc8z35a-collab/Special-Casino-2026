@@ -3,12 +3,8 @@
    after it, and 特定商取引法に基づく表記. Design px like the rest. */
 
 /* 特定商取引法に基づく表記, small at the foot of the title screen */
-.start-law { position: absolute; left: 34px; bottom: 20px; z-index: 6; padding: 8px 14px; border-radius: 8px; background: rgba(0, 0, 0, .38); font-size: 18px; font-weight: 600; color: rgba(255, 255, 255, .72); text-decoration: none; }
-.start-law:active { color: #fff; }
 
 /* the coins in the wallet open it */
-.wallet .w-coins.tappable { cursor: pointer; border-radius: 8px; transition: transform .08s; }
-.wallet .w-coins.tappable:active { transform: scale(.94); }
 #screen-support.active ~ .wallet .w-coins span { color: #ffe27a; }
 
 .sp-head {
