@@ -6,7 +6,7 @@
 // headers are in _headers.
 import { Casino } from './casino.js';
 import { maintenanceBody, isQuotaError } from '../core/quota.js';
-import { screenChat, BLOCKED } from '../core/attach.js';
+import { screenChat, blockedBody } from '../core/attach.js';
 import { LINK_BODY_MAX } from '../core/vault.js';
 
 export { Casino };
@@ -117,8 +117,9 @@ export default {
       if (note) {
         const headers = new Headers({ 'content-type': 'application/json' });
         for (const k of PASS) if (request.headers.has(k)) headers.set(k, request.headers.get(k));
-        await casino.fetch(new Request(new URL('/internal/filter', url), { method: 'POST', headers, body: JSON.stringify(note) }));
-        return Response.json({ error: BLOCKED }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
+        const result = await casino.fetch(new Request(new URL('/internal/filter', url), { method: 'POST', headers, body: JSON.stringify(note) }));
+        const decision = await result.json();
+        return Response.json(blockedBody(decision), { status: 400, headers: { 'Cache-Control': 'no-store' } });
       }
       return await casino.fetch(new Request(request, { body: bytes }));
     } catch (e) {

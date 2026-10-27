@@ -315,6 +315,17 @@
     titlebar.appendChild(title);
     win.appendChild(titlebar);
     var strip = node('div', 'mac-window-tabs'); strip.setAttribute('role', 'tablist'); strip.setAttribute('aria-label', '開いているアプリケーション');
+    strip.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-app]'); if (!b) return;
+      if (b.classList.contains('mac-tab-close')) closeWindow(b.dataset.app); else focusStrip(b.dataset.app);
+    });
+    strip.addEventListener('keydown', function (e) {
+      var b = e.target.closest('.mac-tab-switch');
+      if (!b || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+      e.preventDefault(); var list = openWindows(), i = list.findIndex(function (w) { return w.id === b.dataset.app; });
+      var n = e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + list.length) % list.length;
+      if (list[n]) focusStrip(list[n].id);
+    });
     win.appendChild(strip); win.appendChild(view);
     var shade = button('mac-window-shade', '', w.name + 'を前面に表示');
     shade.addEventListener('click', function () { if (overview) setOverview(false); activate(id); }); win.appendChild(shade);
@@ -327,7 +338,7 @@
       if (e.key === 'ArrowDown') b.height += step; if (e.key === 'ArrowUp') b.height -= step;
       clamp(w); layout();
     }); win.appendChild(resize);
-    w.node = win; w.strip = strip; w.titlebar = titlebar;
+    w.node = win; w.strip = strip; w.stripTabs = Object.create(null); w.titlebar = titlebar;
     area.appendChild(win); installDrag(w, win, false); installDrag(w, resize, true);
     win.addEventListener('dblclick', function (e) {
       if (movableTarget(e.target) && (!w.lastTouchFullscreen || Date.now() - w.lastTouchFullscreen > 500)) { e.preventDefault(); realFullscreen(id); }
@@ -547,22 +558,31 @@
   }
   function buildStrips() {
     if (!grouped) return;
-    var list = openWindows();
+    var list = openWindows(), ids = new Set(list.map(function (w) { return w.id; }));
     list.forEach(function (host) {
-      host.strip.replaceChildren();
-      list.forEach(function (w) {
-        var cell = node('div', 'mac-app-tab' + (active === w.id ? ' is-selected' : ''));
-        var b = button('mac-tab-switch', '', w.name); b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', active === w.id ? 'true' : 'false'); b.setAttribute('aria-controls', w.node.id); b.tabIndex = active === w.id ? 0 : -1;
-        b.appendChild(picture(w.image)); b.appendChild(node('span', '', w.name));
-        b.addEventListener('click', function () { activate(w.id); windows[w.id].strip.querySelector('[aria-selected="true"]').focus(); });
-        b.addEventListener('keydown', function (e) {
-          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-          e.preventDefault(); var i = list.indexOf(w), n = e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + list.length) % list.length;
-          activate(list[n].id); windows[list[n].id].strip.querySelector('[aria-selected="true"]').focus();
-        });
-        cell.appendChild(b); var x = button('mac-tab-close', '×', w.name + 'のタブを閉じる'); x.addEventListener('click', function () { closeWindow(w.id); }); cell.appendChild(x); host.strip.appendChild(cell);
+      var entries = host.stripTabs;
+      Object.keys(entries).forEach(function (id) { if (!ids.has(id)) { entries[id].cell.remove(); delete entries[id]; } });
+      list.forEach(function (w, i) {
+        var entry = entries[w.id];
+        if (!entry) {
+          var cell = node('div', 'mac-app-tab'), b = button('mac-tab-switch', '', w.name);
+          b.dataset.app = w.id; b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', w.node.id);
+          b.appendChild(picture(w.image)); b.appendChild(node('span', '', w.name)); cell.appendChild(b);
+          var x = button('mac-tab-close', '×', w.name + 'のタブを閉じる'); x.dataset.app = w.id; cell.appendChild(x);
+          entry = entries[w.id] = { cell: cell, button: b, selected: null };
+        }
+        if (host.strip.children[i] !== entry.cell) host.strip.insertBefore(entry.cell, host.strip.children[i] || null);
+        var selected = active === w.id;
+        if (entry.selected !== selected) {
+          entry.selected = selected; entry.cell.classList.toggle('is-selected', selected);
+          entry.button.setAttribute('aria-selected', selected ? 'true' : 'false'); entry.button.tabIndex = selected ? 0 : -1;
+        }
       });
     });
+  }
+  function focusStrip(id) {
+    activate(id);
+    var selected = windows[id].strip.querySelector('[aria-selected="true"]'); if (selected) selected.focus();
   }
   function stopAnimation(w) {
     if (w.animation) { w.animation.cancel(); w.animation = null; }
@@ -821,11 +841,15 @@
   // picture once; when the bag is empty (every picture has been shown once: one cycle) it is
   // shuffled again, and the first of the next cycle is never the last of the one before.
   var WALLS = [{ id: 'desktop', name: '標準', url: 'assets/wallpaper-desktop.webp' }, { id: 'reserve', name: '予備', url: 'assets/wallpaper-reserve.webp' }];
-  var WALL_EVERY = 10 * 60000, wallsLoaded = null, wallOverlay = null, wallTimer = 0;
+  var WALL_EVERY = 10 * 60000, wallsLoaded = null, wallsReady = false, wallOverlay = null, wallTimer = 0;
+  var wallWanted = '', wallRequest = 0;
   function wall(id) { return WALLS.filter(function (x) { return x.id === id; })[0] || WALLS[0]; }
   function applyWallpaper(id) {
     var w = wall(id), custom = w.id !== 'desktop' && w.id !== 'reserve';
+    if (wallWanted === w.id) return;
+    wallWanted = w.id; var request = ++wallRequest;
     function set() {
+      if (request !== wallRequest) return;
       document.body.classList.toggle('mac-reserve-wallpaper', w.id === 'reserve');
       document.body.classList.toggle('mac-custom-wallpaper', custom);
       if (custom) document.body.style.setProperty('--mac-wall', "url('" + w.url + "')"); else document.body.style.removeProperty('--mac-wall');
@@ -844,21 +868,27 @@
   function wallMode() { return prefs('wallmode') === 'random' ? 'random' : 'manual'; }
   // the bag: { bag: [ids still to show], last: id, at: when the picture changed, cycle: how many cycles are done }
   function stepWallpaper(force) {
-    if (wallMode() !== 'random' || !wallsLoaded) return;
+    if (wallMode() !== 'random' || !wallsReady) return;
     var ids = WALLS.map(function (x) { return x.id; }), st = readJson('wallbag') || { bag: [], last: '', at: 0, cycle: 0 };
-    st.bag = (st.bag || []).filter(function (id) { return ids.indexOf(id) >= 0; });
-    var now = Date.now(), due = force || !st.at || now - st.at >= WALL_EVERY || st.at > now;
-    if (!due) { applyWallpaper(st.last); return; }
+    st.bag = (Array.isArray(st.bag) ? st.bag : []).filter(function (id) { return ids.indexOf(id) >= 0; });
+    var now = Date.now(), at = Number(st.at), due = force || !Number.isFinite(at) || !at || now - at >= WALL_EVERY || at > now;
+    if (!due) { applyWallpaper(st.last); return at + WALL_EVERY; }
     if (!st.bag.length) { st.bag = shuffled(ids, st.last); if (st.last) st.cycle = (st.cycle || 0) + 1; }
     st.last = st.bag.shift(); st.at = now;
     prefs('wallbag', JSON.stringify(st)); prefs('wallpaper', st.last); applyWallpaper(st.last);
+    return now + WALL_EVERY;
   }
   function wallTick() {
-    clearInterval(wallTimer); wallTimer = 0;
-    if (wallMode() !== 'random') return;
-    wallTimer = setInterval(function () { stepWallpaper(false); }, 15000);
+    clearTimeout(wallTimer); wallTimer = 0;
+    if (document.hidden || !wallsReady) return;
+    if (wallMode() !== 'random') { applyWallpaper(prefs('wallpaper') || 'desktop'); return; }
+    var next = stepWallpaper(false);
+    wallTimer = setTimeout(wallTick, Math.max(1, next - Date.now()));
   }
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) stepWallpaper(false); });
+  document.addEventListener('visibilitychange', wallTick);
+  window.addEventListener('storage', function (e) {
+    if (e.key === null || /^two-state-ops\/ui\/(wallmode|wallpaper|wallbag)$/.test(e.key)) wallTick();
+  });
   function setWallMode(m) {
     prefs('wallmode', m);
     if (m === 'random') {
@@ -876,8 +906,7 @@
         if (!WALLS.some(function (w) { return w.id === x.id; })) WALLS.push({ id: x.id, name: String(x.name || x.id).slice(0, 20), url: 'assets/wallpapers/' + x.file });
       });
     }).catch(function () { /* only the two that came with the site */ }).then(function () {
-      if (wallMode() === 'random') stepWallpaper(false); else applyWallpaper(prefs('wallpaper') || 'desktop');
-      wallTick();
+      wallsReady = true; wallTick();
     });
     return wallsLoaded;
   }
@@ -1006,16 +1035,32 @@
   tabs.addEventListener('focusout', function () { tooltip.hidden = true; });
   tabs.addEventListener('pointerleave', function () { tooltip.hidden = true; });
   tabs.addEventListener('click', function () { tooltip.hidden = true; }, true);
+  var dockFrame = 0, dockPointer = null, layoutFrame = 0;
   dock.addEventListener('pointermove', function (e) {
     if (e.pointerType === 'touch' || reduced()) return;
-    Array.prototype.forEach.call(dock.querySelectorAll('.tab:not([hidden]), .mac-dock-home, .mac-dock-tool'), function (b) {
-      var r = b.getBoundingClientRect(), dist = frame.classList.contains('turned') ? Math.abs(e.clientY - r.top - r.height / 2) : Math.abs(e.clientX - r.left - r.width / 2);
-      b.style.setProperty('--dock-scale', 1 + .5 * Math.pow(Math.max(0, 1 - dist / 110), 2));
+    dockPointer = { x: e.clientX, y: e.clientY };
+    if (dockFrame) return;
+    dockFrame = requestAnimationFrame(function () {
+      dockFrame = 0; if (!dockPointer || reduced()) return;
+      var turned = frame.classList.contains('turned');
+      var buttons = Array.from(dock.querySelectorAll('.tab:not([hidden]), .mac-dock-home, .mac-dock-tool'));
+      // Read every position before changing scales, so a pointer burst needs one layout per frame.
+      var scales = buttons.map(function (b) {
+        var r = b.getBoundingClientRect(), dist = turned ? Math.abs(dockPointer.y - r.top - r.height / 2) : Math.abs(dockPointer.x - r.left - r.width / 2);
+        return 1 + .5 * Math.pow(Math.max(0, 1 - dist / 110), 2);
+      });
+      buttons.forEach(function (b, i) { b.style.setProperty('--dock-scale', scales[i]); });
     });
   });
-  dock.addEventListener('pointerleave', function () { dock.querySelectorAll('button').forEach(function (b) { b.style.removeProperty('--dock-scale'); }); });
-  window.addEventListener('resize', function () { requestAnimationFrame(layout); });
-  if (window.ResizeObserver) new ResizeObserver(layout).observe(area);
+  dock.addEventListener('pointerleave', function () {
+    cancelAnimationFrame(dockFrame); dockFrame = 0; dockPointer = null;
+    dock.querySelectorAll('button').forEach(function (b) { b.style.removeProperty('--dock-scale'); });
+  });
+  function scheduleLayout() {
+    if (!layoutFrame) layoutFrame = requestAnimationFrame(function () { layoutFrame = 0; layout(); });
+  }
+  window.addEventListener('resize', scheduleLayout);
+  if (window.ResizeObserver) new ResizeObserver(scheduleLayout).observe(area);
 
   document.addEventListener('keydown', function (e) {
     if (app.hidden) return;

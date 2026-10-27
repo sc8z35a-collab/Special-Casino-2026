@@ -9,6 +9,7 @@ page. It plays offline: the online features (friends, chat, icons, cars) need th
 import base64
 import os
 import re
+import json
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'dist', 'blockbuster-reels.html')
@@ -28,6 +29,7 @@ def inline_css(match):
     href = match.group(1).split('?')[0]
     css = read(href)
     base = os.path.dirname(href)
+    css = re.sub(r'@import url\([\"\']?([^\)\"\']+)[\"\']?\);', lambda m: read(os.path.normpath(os.path.join(base, m.group(1)))), css)
 
     def font(m):
         path = os.path.normpath(os.path.join(base, m.group(1)))
@@ -58,6 +60,16 @@ def inline_js(match):
 
 def main():
     html = read('index.html')
+    # Optional screens stay self-contained offline. Their globals exist before the lazy loader,
+    # so it leaves initialization to main.js and never requests an external script.
+    lazy = json.loads(read('js/lazy-screens.json'))
+    resources = json.loads(read('js/resources.json'))
+    optional = list(dict.fromkeys(file for files in [*lazy.values(), *resources.values()] for file in files))
+    scripts = ''.join('<script src="%s"></script>\n' % file for file in optional if file.endswith('.js'))
+    style_order = json.loads(read('js/style-order.json'))
+    styles = ''.join('<link rel="stylesheet" href="%s">\n' % file for file in sorted((file for file in optional if file.endswith('.css')), key=lambda file: style_order.index(file) if file in style_order else len(style_order)))
+    html = html.replace('</head>', styles + '</head>')
+    html = html.replace('<script src="js/main.js', scripts + '<script src="js/main.js')
     # plays offline: no server behind it
     html = html.replace('<meta name="br-mode" content="online" data-live="ws">', '<meta name="br-mode" content="local">')
     html = re.sub(r'<link rel="stylesheet" href="([^"]+)">', inline_css, html)

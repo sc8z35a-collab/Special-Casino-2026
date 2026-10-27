@@ -48,7 +48,7 @@
     canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); stopDrawing(); });
   }
   function lib() {
-    if (!library) library = BR.win3d.three().then(function (t) {
+    if (!library) library = BR.three().then(function (t) {
       T = t; if (!g) build();
     }).catch(function (e) { library = null; throw e; });
     return library;

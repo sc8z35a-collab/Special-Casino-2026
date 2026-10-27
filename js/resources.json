@@ -1,0 +1,93 @@
+{
+  "online": [
+    "css/social.css",
+    "css/online.css"
+  ],
+  "board": [
+    "css/social.css",
+    "css/online.css",
+    "css/play.css",
+    "css/refresh.css"
+  ],
+  "slot": [
+    "css/social.css",
+    "css/online.css",
+    "css/play.css",
+    "css/combo.css",
+    "css/hub.css",
+    "css/juice.css",
+    "css/refresh.css",
+    "js/render/juice.js",
+    "js/render/slotfx.js"
+  ],
+  "tokens": [
+    "css/refresh.css"
+  ],
+  "rules": [
+    "css/refresh.css"
+  ],
+  "feedback": [
+    "css/feedback.css"
+  ],
+  "hub": [
+    "css/hub.css"
+  ],
+  "tree": [
+    "css/tree.css"
+  ],
+  "safety": [
+    "css/safety.css"
+  ],
+  "support": [
+    "css/support.css"
+  ],
+  "vip": [
+    "css/vip.css"
+  ],
+  "diary": [
+    "css/diary.css"
+  ],
+  "gacha": [
+    "css/gacha.css"
+  ],
+  "watch": [
+    "js/ui/watchquality.js",
+    "js/ui/watch.js"
+  ],
+  "cars": [
+    "js/render/garage3d.js",
+    "js/ui/cars.js",
+    "js/ui/carsale.js"
+  ],
+  "guide": [
+    "css/guide.css",
+    "js/ui/guide.js"
+  ],
+  "news": [
+    "js/game/news.js"
+  ],
+  "win3d": [
+    "js/render/win3d.js"
+  ],
+  "reward3d": [
+    "js/render/reward3d.js"
+  ],
+  "profile": [
+    "css/profile-custom.css",
+    "js/art/profile-images.js",
+    "js/art/profile-images-2.js",
+    "js/art/profile-images-2-password.js",
+    "js/art/profile-images-2-notification.js",
+    "js/art/profile-images-3.js",
+    "js/art/profile-images-4.js",
+    "js/art/profile-images-5.js",
+    "js/art/profile-images-6.js",
+    "js/ui/profile-custom.js"
+  ],
+  "play": [
+    "css/play.css"
+  ],
+  "carsaleDialog": [
+    "js/ui/carsale.js"
+  ]
+}

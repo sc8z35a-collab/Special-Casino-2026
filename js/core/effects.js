@@ -44,7 +44,7 @@
   GROUPS.forEach(function (g) { g.items.forEach(function (it) { IDS.push(it[0]); }); });
 
   var calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var state = { simple: calm, off: {} };
+  var state = { simple: calm, lite: false, off: {} };
   var listeners = [];
 
   function load() {
@@ -52,12 +52,13 @@
     try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { /* nothing saved, or no storage */ }
     if (!saved || typeof saved !== 'object') return;
     state.simple = !!saved.simple;
+    state.lite = !!saved.lite;
     (Array.isArray(saved.off) ? saved.off : []).forEach(function (id) {
       if (IDS.indexOf(id) >= 0) state.off[id] = true;
     });
   }
   function save() {
-    var data = { simple: state.simple, off: IDS.filter(function (id) { return state.off[id]; }) };
+    var data = { simple: state.simple, lite: state.lite, off: IDS.filter(function (id) { return state.off[id]; }) };
     try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* only for this visit */ }
   }
 
@@ -67,6 +68,7 @@
   function apply() {
     var cl = document.documentElement.classList;
     cl.toggle('fx-simple', state.simple);
+    cl.toggle('fx-lite', state.lite);
     IDS.forEach(function (id) { cl.toggle('fx-off-' + id, !on(id)); });
   }
   function changed() {
@@ -98,6 +100,7 @@
   }
   function reset() {
     state.simple = false;
+    state.lite = false;
     state.off = {};
     changed();
   }
@@ -112,6 +115,8 @@
     simple: function () { return state.simple; },
     set: set,
     setSimple: setSimple,
+    lite: function () { return state.lite; },
+    setLite: function (value) { state.lite = !!value; changed(); },
     reset: reset,
     // told after every change (the switches, effects that are under way)
     onChange: function (fn) { listeners.push(fn); }

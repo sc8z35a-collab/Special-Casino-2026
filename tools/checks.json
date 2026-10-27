@@ -1,0 +1,122 @@
+{
+  "check_inner_html.cjs": {
+    "runner": "node",
+    "tier": "pr",
+    "args": [
+      "--self-test"
+    ]
+  },
+  "check_ci_registry.cjs": {
+    "runner": "node",
+    "tier": "pr"
+  },
+  "check_runtime_drift.cjs": {
+    "runner": "worker",
+    "tier": "pr"
+  },
+  "check_pk.cjs": {
+    "runner": "browser",
+    "tier": "pr"
+  },
+  "check_ops_desktop.cjs": {
+    "runner": "browser",
+    "tier": "pr"
+  },
+  "check_ops_workspaces.cjs": {
+    "runner": "browser",
+    "tier": "pr"
+  },
+  "check_ops_optimization.cjs": {
+    "runner": "browser",
+    "tier": "pr"
+  },
+  "check_gacha_optimization.cjs": {
+    "runner": "browser",
+    "tier": "pr"
+  },
+  "check_login_wait.cjs": {
+    "runner": "browser",
+    "tier": "pr"
+  },
+  "check_vault_gallery.cjs": {
+    "runner": "browser",
+    "tier": "pr"
+  },
+  "check_friend_watch_quality.cjs": {
+    "runner": "browser",
+    "tier": "nightly"
+  },
+  "check_compressed_assets.cjs": {
+    "runner": "browser",
+    "tier": "nightly"
+  },
+  "check_vault_previews.cjs": {
+    "runner": "browser",
+    "tier": "nightly"
+  },
+  "check_ext.cjs": {
+    "runner": "browser",
+    "tier": "nightly"
+  },
+  "check_ops_traffic.cjs": {
+    "runner": "browser",
+    "tier": "nightly"
+  },
+  "check_ops_watch.cjs": {
+    "runner": "browser",
+    "tier": "nightly"
+  },
+  "check_live_api.cjs": {
+    "runner": "worker",
+    "tier": "nightly",
+    "browser": true
+  },
+  "check_sec_worker.cjs": {
+    "runner": "worker",
+    "tier": "nightly"
+  },
+  "check_stele_worker.cjs": {
+    "runner": "worker",
+    "tier": "nightly"
+  },
+  "check_worker.cjs": {
+    "runner": "fixture",
+    "tier": "nightly"
+  },
+  "check_maintenance.cjs": {
+    "runner": "browser",
+    "tier": "pr"
+  },
+  "check_distribution.cjs": {
+    "runner": "node",
+    "tier": "pr"
+  },
+  "check_workflows.cjs": {
+    "runner": "node",
+    "tier": "pr"
+  },
+  "check_vault_snapshot_worker.cjs": {
+    "runner": "worker",
+    "tier": "pr"
+  },
+  "check_media.cjs": {
+    "runner": "browser",
+    "tier": "pr"
+  },
+  "check_lazy_loading.cjs": {
+    "runner": "browser",
+    "tier": "pr"
+  },
+  "check_distribution_browser.cjs": {
+    "runner": "browser",
+    "tier": "pr"
+  },
+  "check_distribution_worker.cjs": {
+    "runner": "worker",
+    "tier": "pr"
+  },
+  "check_vault_3d.cjs": {
+    "runner": "browser",
+    "tier": "pr"
+  }
+}

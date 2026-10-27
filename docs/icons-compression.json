@@ -1,0 +1,1829 @@
+{
+  "baselineCommit": "9322c2d",
+  "files": 140,
+  "beforeBytes": 1145577,
+  "afterBytes": 436631,
+  "reductionPercent": 61.89,
+  "images": [
+    {
+      "path": "app/android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "beforeBytes": 4291,
+      "afterBytes": 1958,
+      "beforeSize": [
+        72,
+        72
+      ],
+      "afterSize": [
+        72,
+        72
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-hdpi/ic_launcher_background.png",
+      "beforeBytes": 98,
+      "afterBytes": 98,
+      "beforeSize": [
+        162,
+        162
+      ],
+      "afterSize": [
+        162,
+        162
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png",
+      "beforeBytes": 4416,
+      "afterBytes": 2370,
+      "beforeSize": [
+        162,
+        162
+      ],
+      "afterSize": [
+        162,
+        162
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-hdpi/ic_launcher_monochrome.png",
+      "beforeBytes": 1322,
+      "afterBytes": 1041,
+      "beforeSize": [
+        162,
+        162
+      ],
+      "afterSize": [
+        162,
+        162
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "beforeBytes": 2695,
+      "afterBytes": 1261,
+      "beforeSize": [
+        48,
+        48
+      ],
+      "afterSize": [
+        48,
+        48
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-mdpi/ic_launcher_background.png",
+      "beforeBytes": 93,
+      "afterBytes": 93,
+      "beforeSize": [
+        108,
+        108
+      ],
+      "afterSize": [
+        108,
+        108
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png",
+      "beforeBytes": 2839,
+      "afterBytes": 1463,
+      "beforeSize": [
+        108,
+        108
+      ],
+      "afterSize": [
+        108,
+        108
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-mdpi/ic_launcher_monochrome.png",
+      "beforeBytes": 950,
+      "afterBytes": 783,
+      "beforeSize": [
+        108,
+        108
+      ],
+      "afterSize": [
+        108,
+        108
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "beforeBytes": 6196,
+      "afterBytes": 2709,
+      "beforeSize": [
+        96,
+        96
+      ],
+      "afterSize": [
+        96,
+        96
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xhdpi/ic_launcher_background.png",
+      "beforeBytes": 101,
+      "afterBytes": 101,
+      "beforeSize": [
+        216,
+        216
+      ],
+      "afterSize": [
+        216,
+        216
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png",
+      "beforeBytes": 5981,
+      "afterBytes": 3370,
+      "beforeSize": [
+        216,
+        216
+      ],
+      "afterSize": [
+        216,
+        216
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xhdpi/ic_launcher_monochrome.png",
+      "beforeBytes": 1596,
+      "afterBytes": 1323,
+      "beforeSize": [
+        216,
+        216
+      ],
+      "afterSize": [
+        216,
+        216
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "beforeBytes": 10574,
+      "afterBytes": 4354,
+      "beforeSize": [
+        144,
+        144
+      ],
+      "afterSize": [
+        144,
+        144
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_background.png",
+      "beforeBytes": 108,
+      "afterBytes": 108,
+      "beforeSize": [
+        324,
+        324
+      ],
+      "afterSize": [
+        324,
+        324
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "beforeBytes": 10132,
+      "afterBytes": 5517,
+      "beforeSize": [
+        324,
+        324
+      ],
+      "afterSize": [
+        324,
+        324
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_monochrome.png",
+      "beforeBytes": 2073,
+      "afterBytes": 1778,
+      "beforeSize": [
+        324,
+        324
+      ],
+      "afterSize": [
+        324,
+        324
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "beforeBytes": 15920,
+      "afterBytes": 6231,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_background.png",
+      "beforeBytes": 118,
+      "afterBytes": 118,
+      "beforeSize": [
+        432,
+        432
+      ],
+      "afterSize": [
+        432,
+        432
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+      "beforeBytes": 15041,
+      "afterBytes": 7905,
+      "beforeSize": [
+        432,
+        432
+      ],
+      "afterSize": [
+        432,
+        432
+      ]
+    },
+    {
+      "path": "app/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_monochrome.png",
+      "beforeBytes": 2686,
+      "afterBytes": 2291,
+      "beforeSize": [
+        432,
+        432
+      ],
+      "afterSize": [
+        432,
+        432
+      ]
+    },
+    {
+      "path": "icons/icon-180.png",
+      "beforeBytes": 14419,
+      "afterBytes": 5636,
+      "beforeSize": [
+        180,
+        180
+      ],
+      "afterSize": [
+        180,
+        180
+      ]
+    },
+    {
+      "path": "icons/icon-192.png",
+      "beforeBytes": 15920,
+      "afterBytes": 6231,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "icons/icon-512.png",
+      "beforeBytes": 62110,
+      "afterBytes": 23519,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "icons/icon-maskable-512.png",
+      "beforeBytes": 36864,
+      "afterBytes": 16959,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "icons/ops-180.png",
+      "beforeBytes": 9175,
+      "afterBytes": 3935,
+      "beforeSize": [
+        180,
+        180
+      ],
+      "afterSize": [
+        180,
+        180
+      ]
+    },
+    {
+      "path": "icons/ops-192.png",
+      "beforeBytes": 10305,
+      "afterBytes": 4399,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "icons/ops-512.png",
+      "beforeBytes": 37158,
+      "afterBytes": 15590,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "icons/ops-maskable-512.png",
+      "beforeBytes": 41132,
+      "afterBytes": 16239,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "img/avatars/adam-secret.webp",
+      "beforeBytes": 2192,
+      "afterBytes": 1216,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/adventurer-blue.webp",
+      "beforeBytes": 2292,
+      "afterBytes": 1296,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/adventurer-gold.webp",
+      "beforeBytes": 2868,
+      "afterBytes": 1548,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/dealer-purple.webp",
+      "beforeBytes": 1984,
+      "afterBytes": 1106,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/explorer-cyan.webp",
+      "beforeBytes": 2690,
+      "afterBytes": 1520,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/gambler-secret.webp",
+      "beforeBytes": 2840,
+      "afterBytes": 1562,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/healer-cyan.webp",
+      "beforeBytes": 2972,
+      "afterBytes": 1494,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/johnson.webp",
+      "beforeBytes": 2056,
+      "afterBytes": 1062,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/karate-red.webp",
+      "beforeBytes": 2310,
+      "afterBytes": 1238,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/knight-gold.webp",
+      "beforeBytes": 2488,
+      "afterBytes": 1368,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/magician-purple.webp",
+      "beforeBytes": 2602,
+      "afterBytes": 1388,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/official.webp",
+      "beforeBytes": 2744,
+      "afterBytes": 1532,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/peter.webp",
+      "beforeBytes": 2434,
+      "afterBytes": 1268,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/pilot-cyan.webp",
+      "beforeBytes": 2310,
+      "afterBytes": 1296,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/rogue-red.webp",
+      "beforeBytes": 2406,
+      "afterBytes": 1312,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/swordsman-red.webp",
+      "beforeBytes": 2366,
+      "afterBytes": 1282,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/avatars/traveler-green.webp",
+      "beforeBytes": 2468,
+      "afterBytes": 1362,
+      "beforeSize": [
+        160,
+        160
+      ],
+      "afterSize": [
+        112,
+        112
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/car-oil-medium.webp",
+      "beforeBytes": 5196,
+      "afterBytes": 2150,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/engine-v1.webp",
+      "beforeBytes": 6246,
+      "afterBytes": 2672,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/engine-v2.webp",
+      "beforeBytes": 6096,
+      "afterBytes": 2544,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/engine-v3.webp",
+      "beforeBytes": 6422,
+      "afterBytes": 2608,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/gasoline-full.webp",
+      "beforeBytes": 4872,
+      "afterBytes": 1842,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/omamori.webp",
+      "beforeBytes": 7554,
+      "afterBytes": 3162,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/items/lowpoly/repair-kit.webp",
+      "beforeBytes": 6496,
+      "afterBytes": 2814,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/items/omamori.webp",
+      "beforeBytes": 18186,
+      "afterBytes": 3360,
+      "beforeSize": [
+        214,
+        384
+      ],
+      "afterSize": [
+        89,
+        160
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/bar.webp",
+      "beforeBytes": 5244,
+      "afterBytes": 2430,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        192,
+        182
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/diamond.webp",
+      "beforeBytes": 8192,
+      "afterBytes": 3352,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        192,
+        182
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/gold.webp",
+      "beforeBytes": 3630,
+      "afterBytes": 1744,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        192,
+        182
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/revolver.webp",
+      "beforeBytes": 4176,
+      "afterBytes": 2038,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        192,
+        182
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/seven.webp",
+      "beforeBytes": 5984,
+      "afterBytes": 2514,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        192,
+        182
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/star.webp",
+      "beforeBytes": 6568,
+      "afterBytes": 2742,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        192,
+        182
+      ]
+    },
+    {
+      "path": "img/symbols/lowpoly/statue.webp",
+      "beforeBytes": 7122,
+      "afterBytes": 3024,
+      "beforeSize": [
+        288,
+        273
+      ],
+      "afterSize": [
+        192,
+        182
+      ]
+    },
+    {
+      "path": "img/tree/seed.webp",
+      "beforeBytes": 7106,
+      "afterBytes": 1776,
+      "beforeSize": [
+        384,
+        384
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/chip-pile.webp",
+      "beforeBytes": 17492,
+      "afterBytes": 4172,
+      "beforeSize": [
+        384,
+        210
+      ],
+      "afterSize": [
+        160,
+        88
+      ]
+    },
+    {
+      "path": "img/ui/chip.webp",
+      "beforeBytes": 4406,
+      "afterBytes": 2200,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        96,
+        96
+      ]
+    },
+    {
+      "path": "img/ui/coin.webp",
+      "beforeBytes": 4768,
+      "afterBytes": 2266,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        96,
+        96
+      ]
+    },
+    {
+      "path": "img/ui/dollar.webp",
+      "beforeBytes": 4108,
+      "afterBytes": 1692,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        96,
+        96
+      ]
+    },
+    {
+      "path": "img/ui/fx-icon.webp",
+      "beforeBytes": 3496,
+      "afterBytes": 1328,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        96,
+        96
+      ]
+    },
+    {
+      "path": "img/ui/garage.webp",
+      "beforeBytes": 4934,
+      "afterBytes": 2330,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        96,
+        96
+      ]
+    },
+    {
+      "path": "img/ui/lobby.webp",
+      "beforeBytes": 4572,
+      "afterBytes": 2034,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/login-bonus.webp",
+      "beforeBytes": 9842,
+      "afterBytes": 2310,
+      "beforeSize": [
+        384,
+        127
+      ],
+      "afterSize": [
+        160,
+        53
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/exit.webp",
+      "beforeBytes": 5388,
+      "afterBytes": 2080,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/friends.webp",
+      "beforeBytes": 8424,
+      "afterBytes": 3058,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/jobs.webp",
+      "beforeBytes": 9184,
+      "afterBytes": 3392,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/menu.webp",
+      "beforeBytes": 5562,
+      "afterBytes": 1970,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/messages.webp",
+      "beforeBytes": 6496,
+      "afterBytes": 2754,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/money-tree.webp",
+      "beforeBytes": 8094,
+      "afterBytes": 2962,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/quest-pro.webp",
+      "beforeBytes": 2488,
+      "afterBytes": 1382,
+      "beforeSize": [
+        96,
+        32
+      ],
+      "afterSize": [
+        96,
+        32
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/quest-ultra.webp",
+      "beforeBytes": 3414,
+      "afterBytes": 2042,
+      "beforeSize": [
+        128,
+        32
+      ],
+      "afterSize": [
+        128,
+        32
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/quest.webp",
+      "beforeBytes": 9114,
+      "afterBytes": 3396,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/shop.webp",
+      "beforeBytes": 7980,
+      "afterBytes": 3358,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/lowpoly/spin.webp",
+      "beforeBytes": 12450,
+      "afterBytes": 4950,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/menu.webp",
+      "beforeBytes": 6398,
+      "afterBytes": 2548,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/money-tree.webp",
+      "beforeBytes": 5892,
+      "afterBytes": 2448,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/pill-get.webp",
+      "beforeBytes": 10730,
+      "afterBytes": 2902,
+      "beforeSize": [
+        372,
+        200
+      ],
+      "afterSize": [
+        160,
+        86
+      ]
+    },
+    {
+      "path": "img/ui/pill-max.webp",
+      "beforeBytes": 10588,
+      "afterBytes": 2662,
+      "beforeSize": [
+        384,
+        199
+      ],
+      "afterSize": [
+        160,
+        83
+      ]
+    },
+    {
+      "path": "img/ui/pill.webp",
+      "beforeBytes": 8944,
+      "afterBytes": 2122,
+      "beforeSize": [
+        384,
+        199
+      ],
+      "afterSize": [
+        160,
+        83
+      ]
+    },
+    {
+      "path": "img/ui/quest.webp",
+      "beforeBytes": 8952,
+      "afterBytes": 4186,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/refresh/car.webp",
+      "beforeBytes": 4288,
+      "afterBytes": 1862,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/refresh/charm.webp",
+      "beforeBytes": 4742,
+      "afterBytes": 2510,
+      "beforeSize": [
+        128,
+        160
+      ],
+      "afterSize": [
+        102,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/refresh/dev.webp",
+      "beforeBytes": 3628,
+      "afterBytes": 2180,
+      "beforeSize": [
+        144,
+        72
+      ],
+      "afterSize": [
+        128,
+        64
+      ]
+    },
+    {
+      "path": "img/ui/refresh/diary.webp",
+      "beforeBytes": 6294,
+      "afterBytes": 2648,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/refresh/feedback.webp",
+      "beforeBytes": 5756,
+      "afterBytes": 2592,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/refresh/guide.webp",
+      "beforeBytes": 5776,
+      "afterBytes": 2668,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/refresh/info.webp",
+      "beforeBytes": 5772,
+      "afterBytes": 2432,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/refresh/investment.webp",
+      "beforeBytes": 6646,
+      "afterBytes": 2668,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/refresh/minus.webp",
+      "beforeBytes": 1076,
+      "afterBytes": 616,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        96,
+        96
+      ]
+    },
+    {
+      "path": "img/ui/refresh/plus.webp",
+      "beforeBytes": 2392,
+      "afterBytes": 1224,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        96,
+        96
+      ]
+    },
+    {
+      "path": "img/ui/refresh/token.webp",
+      "beforeBytes": 6438,
+      "afterBytes": 2702,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "img/ui/refresh/update.webp",
+      "beforeBytes": 5678,
+      "afterBytes": 934,
+      "beforeSize": [
+        480,
+        147
+      ],
+      "afterSize": [
+        160,
+        49
+      ]
+    },
+    {
+      "path": "img/ui/refresh/vip.webp",
+      "beforeBytes": 8190,
+      "afterBytes": 2122,
+      "beforeSize": [
+        384,
+        216
+      ],
+      "afterSize": [
+        160,
+        90
+      ]
+    },
+    {
+      "path": "img/ui/sale.webp",
+      "beforeBytes": 18520,
+      "afterBytes": 4610,
+      "beforeSize": [
+        384,
+        208
+      ],
+      "afterSize": [
+        160,
+        87
+      ]
+    },
+    {
+      "path": "img/ui/spin-arrows.webp",
+      "beforeBytes": 10496,
+      "afterBytes": 2258,
+      "beforeSize": [
+        384,
+        384
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/ui/spin.webp",
+      "beforeBytes": 15204,
+      "afterBytes": 3866,
+      "beforeSize": [
+        384,
+        384
+      ],
+      "afterSize": [
+        160,
+        160
+      ]
+    },
+    {
+      "path": "img/vip/vip-0.webp",
+      "beforeBytes": 9358,
+      "afterBytes": 4012,
+      "beforeSize": [
+        384,
+        150
+      ],
+      "afterSize": [
+        256,
+        100
+      ]
+    },
+    {
+      "path": "img/vip/vip-1.webp",
+      "beforeBytes": 7408,
+      "afterBytes": 3428,
+      "beforeSize": [
+        384,
+        150
+      ],
+      "afterSize": [
+        256,
+        100
+      ]
+    },
+    {
+      "path": "img/vip/vip-2.webp",
+      "beforeBytes": 9492,
+      "afterBytes": 4012,
+      "beforeSize": [
+        384,
+        150
+      ],
+      "afterSize": [
+        256,
+        100
+      ]
+    },
+    {
+      "path": "img/vip/vip-3.1.webp",
+      "beforeBytes": 9996,
+      "afterBytes": 4162,
+      "beforeSize": [
+        384,
+        150
+      ],
+      "afterSize": [
+        256,
+        100
+      ]
+    },
+    {
+      "path": "img/vip/vip-3.webp",
+      "beforeBytes": 9370,
+      "afterBytes": 3874,
+      "beforeSize": [
+        384,
+        150
+      ],
+      "afterSize": [
+        256,
+        100
+      ]
+    },
+    {
+      "path": "img/vip/vip-4.webp",
+      "beforeBytes": 9032,
+      "afterBytes": 3650,
+      "beforeSize": [
+        384,
+        150
+      ],
+      "afterSize": [
+        256,
+        100
+      ]
+    },
+    {
+      "path": "ops/assets/archive.webp",
+      "beforeBytes": 5628,
+      "afterBytes": 1876,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/bell.webp",
+      "beforeBytes": 4196,
+      "afterBytes": 1816,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/calendar.webp",
+      "beforeBytes": 6742,
+      "afterBytes": 1806,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/detections.webp",
+      "beforeBytes": 7176,
+      "afterBytes": 2170,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/devapp-adam.webp",
+      "beforeBytes": 9074,
+      "afterBytes": 2358,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/devapp-memo.webp",
+      "beforeBytes": 6320,
+      "afterBytes": 1600,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/devapp-security.webp",
+      "beforeBytes": 8784,
+      "afterBytes": 1478,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/devapp-study.webp",
+      "beforeBytes": 8604,
+      "afterBytes": 1896,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/devapp.webp",
+      "beforeBytes": 9754,
+      "afterBytes": 2412,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/devunit.webp",
+      "beforeBytes": 3166,
+      "afterBytes": 1508,
+      "beforeSize": [
+        208,
+        208
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/diary.webp",
+      "beforeBytes": 3472,
+      "afterBytes": 1560,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/exit.webp",
+      "beforeBytes": 7628,
+      "afterBytes": 1748,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/feedback.webp",
+      "beforeBytes": 5364,
+      "afterBytes": 2328,
+      "beforeSize": [
+        208,
+        208
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/lite.webp",
+      "beforeBytes": 9630,
+      "afterBytes": 2110,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/lockdown.webp",
+      "beforeBytes": 9826,
+      "afterBytes": 2358,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/log.webp",
+      "beforeBytes": 6042,
+      "afterBytes": 1836,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/menu-bars.webp",
+      "beforeBytes": 2280,
+      "afterBytes": 1058,
+      "beforeSize": [
+        128,
+        128
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/operators.webp",
+      "beforeBytes": 6512,
+      "afterBytes": 2160,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/pay.webp",
+      "beforeBytes": 6184,
+      "afterBytes": 2084,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/players.webp",
+      "beforeBytes": 6310,
+      "afterBytes": 2118,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/reports.webp",
+      "beforeBytes": 6156,
+      "afterBytes": 1916,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/secure.webp",
+      "beforeBytes": 8732,
+      "afterBytes": 2252,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/security.webp",
+      "beforeBytes": 6842,
+      "afterBytes": 2036,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/securityhome.webp",
+      "beforeBytes": 8396,
+      "afterBytes": 1910,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/server.webp",
+      "beforeBytes": 9042,
+      "afterBytes": 2442,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/site-180.png",
+      "beforeBytes": 15193,
+      "afterBytes": 5626,
+      "beforeSize": [
+        180,
+        180
+      ],
+      "afterSize": [
+        180,
+        180
+      ]
+    },
+    {
+      "path": "ops/assets/site-192.png",
+      "beforeBytes": 16253,
+      "afterBytes": 6211,
+      "beforeSize": [
+        192,
+        192
+      ],
+      "afterSize": [
+        192,
+        192
+      ]
+    },
+    {
+      "path": "ops/assets/site-512.png",
+      "beforeBytes": 71902,
+      "afterBytes": 24569,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "ops/assets/site-maskable-512.png",
+      "beforeBytes": 35716,
+      "afterBytes": 16781,
+      "beforeSize": [
+        512,
+        512
+      ],
+      "afterSize": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "ops/assets/site.webp",
+      "beforeBytes": 7364,
+      "afterBytes": 2194,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/team.webp",
+      "beforeBytes": 6658,
+      "afterBytes": 2054,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "ops/assets/vault.webp",
+      "beforeBytes": 5938,
+      "afterBytes": 1784,
+      "beforeSize": [
+        256,
+        256
+      ],
+      "afterSize": [
+        128,
+        128
+      ]
+    }
+  ]
+}

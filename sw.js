@@ -4,7 +4,7 @@
    fallback; the pictures, fonts, sounds and videos, and the scripts and
    styles the page names by the hash of their file, are answered from the
    cache once it has them (see below); the API is never cached. */
-const BUILD = 'bf680d0519b4';          // written by tools/stamp.mjs
+const BUILD = '1890c767cbc1';         // written by tools/stamp.mjs
 const CACHE = 'two-state-' + BUILD;
 // what is part of the build and so cannot change inside it
 const ASSET = /^\/(img|fonts|sounds|video|icons)\//;
@@ -29,6 +29,8 @@ self.addEventListener('activate', (e) => {
 
 // the hash of the file an address names, if it is one of those addresses
 function codeHash(url) {
+  const immutable = /^\/immutable\/([a-f0-9]{10})\/(?:js|css|ops|sec|link)\/[A-Za-z0-9._\/-]+\.(?:js|css)$/.exec(url.pathname);
+  if (immutable) return immutable[1];
   const v = url.searchParams.get('v');
   return CODE_FILE.test(url.pathname) && HASH.test(v || '') ? v : '';
 }

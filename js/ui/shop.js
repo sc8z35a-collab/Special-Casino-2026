@@ -379,7 +379,7 @@
   function init() {
     $('#btn-charm').addEventListener('click', useCharm);
     refreshSale();
-    setInterval(refreshSale, 1000);
+    BR.clock.every(refreshSale, 1000);
     if (!api.online) return;
     BR.live.on('hello', function (h) { setSale(h); setTimeout(renderCharm, 0); });
     BR.live.on('items', function (e) {

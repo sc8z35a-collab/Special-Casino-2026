@@ -14,6 +14,7 @@ var OpsCDW = (function () {
 
   var CELL = 24, MARGIN = { left: 140, top: 74, right: 20, bottom: 104 };
   var S = { role: '', catalog: [], grid: { maxCols: 160, maxRows: 90, maxItems: 12 }, items: [], loaded: false, loading: null, on: false, cols: 0, rows: 0, x0: 0, y0: 0, hidden: {} };
+  var sessionEpoch = 0, openEpoch = 0, opening = false;
   var layer = null, bar = null, palette = null, note = null, saveTimer = 0, fadeTimer = 0, resizeTimer = 0, live = {}, keeps = {};
   var motion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -91,9 +92,11 @@ var OpsCDW = (function () {
   }
   function load() {
     if (S.loading) return S.loading;
+    var epoch = sessionEpoch;
     S.loading = req('GET', '/api/ops/cdw').then(function (r) {
+      if (epoch !== sessionEpoch) return;
       S.role = r.role; S.catalog = r.catalog || []; S.grid = r.grid || S.grid; S.items = (r.layout && r.layout.items) || []; S.loaded = true;
-    }, function () { S.loaded = false; }).then(function () { S.loading = null; });
+    }, function () { if (epoch === sessionEpoch) S.loaded = false; }).then(function () { if (epoch === sessionEpoch) S.loading = null; });
     return S.loading;
   }
 
@@ -111,9 +114,17 @@ var OpsCDW = (function () {
   function lines(list, max) {
     var ul = h('ul', 'cdw-lines');
     list.slice(0, max).forEach(function (x) {
-      var li = h('li'); li.appendChild(h('span', 'cdw-line-t', x[0])); var b = h('span', 'cdw-line-x'); b.appendChild(h('b', '', x[1])); if (x[2]) b.appendChild(h('span', '', x[2])); li.appendChild(b); ul.appendChild(li);
+      var li = h('li'), time = h('span', 'cdw-line-t', typeof x[0] === 'number' ? ago(x[0]) : x[0]);
+      if (typeof x[0] === 'number') time.dataset.at = x[0];
+      li.appendChild(time); var b = h('span', 'cdw-line-x'); b.appendChild(h('b', '', x[1])); if (x[2]) b.appendChild(h('span', '', x[2])); li.appendChild(b); ul.appendChild(li);
     });
     return ul;
+  }
+  function updateTimes(root) {
+    root.querySelectorAll('.cdw-line-t[data-at]').forEach(function (node) {
+      var value = ago(Number(node.dataset.at));
+      if (node.textContent !== value) node.textContent = value;
+    });
   }
 
   W.server = {
@@ -127,13 +138,25 @@ var OpsCDW = (function () {
       foot.appendChild(h('span', 'lg-req', 'リクエスト')); foot.appendChild(h('span', 'lg-bytes', '送信量'));
       var note2 = h('small', 'cdw-note'); foot.appendChild(note2);
       body.appendChild(top); body.appendChild(box); body.appendChild(foot); body.appendChild(more(api, 'server', 'サーバーの詳細'));
+      var labels = ['接続中', 'リクエスト', '送信', '今月の使用量'];
+      var metrics = labels.map(function (label, i) {
+        var stat = statBox(label, '', i === 0 || i === 3 ? ' ' : ''); top.appendChild(stat);
+        return { value: stat.querySelector('.cdw-stat-v'), sub: stat.querySelector('small') };
+      });
+      [22, 45, 68].forEach(function (y) { chart.appendChild(svg('line', { x1: 0, x2: 300, y1: y, y2: y, 'class': 'cdw-grid' })); });
+      var paths = ['cdw-area', 'cdw-line-r', 'cdw-line-b'].map(function (cls) {
+        var path = svg('path', { 'class': cls }); chart.appendChild(path); return path;
+      });
+      function metric(i, value, sub) {
+        if (metrics[i].value.textContent !== value) metrics[i].value.textContent = value;
+        if (metrics[i].sub) { metrics[i].sub.hidden = !sub; if (metrics[i].sub.textContent !== (sub || '')) metrics[i].sub.textContent = sub || ''; }
+      }
       return function (r) {
-        top.replaceChildren();
         var l10 = r.rate.last10, sec = Math.max(1, l10.seconds || 10);
-        top.appendChild(statBox('接続中', fmt(r.live.online) + '人', '運営 ' + fmt(r.live.operatorsOnline) + '人'));
-        top.appendChild(statBox('リクエスト', (l10.requests / sec).toFixed(1) + '/秒'));
-        top.appendChild(statBox('送信', bytes(l10.bytes / sec) + '/秒'));
-        top.appendChild(statBox('今月の使用量', (r.usage ? r.usage.percent : 0).toFixed(1) + '%', r.usage ? '約' + fmt(r.usage.yen) + '円' : ''));
+        metric(0, fmt(r.live.online) + '人', '運営 ' + fmt(r.live.operatorsOnline) + '人');
+        metric(1, (l10.requests / sec).toFixed(1) + '/秒');
+        metric(2, bytes(l10.bytes / sec) + '/秒');
+        metric(3, (r.usage ? r.usage.percent : 0).toFixed(1) + '%', r.usage ? '約' + fmt(r.usage.yen) + '円' : '');
         var got = r.rate.history || [];
         if (r.rate.delta) {
           var from = got.length ? got[0][0] : Infinity;
@@ -141,14 +164,12 @@ var OpsCDW = (function () {
         }
         api.keep.hist = got;
         var hist = got.slice(-120);
-        chart.replaceChildren();
-        [22, 45, 68].forEach(function (y) { chart.appendChild(svg('line', { x1: 0, x2: 300, y1: y, y2: y, 'class': 'cdw-grid' })); });
+        paths.forEach(function (path) { path.style.display = hist.length > 1 ? '' : 'none'; });
         if (hist.length > 1) {
           var maxR = hist.reduce(function (m, x) { return Math.max(m, x[1]); }, 1), maxB = hist.reduce(function (m, x) { return Math.max(m, x[2]); }, 1);
           var line = function (i, max) { return hist.map(function (x, k) { return (k ? 'L' : 'M') + (k / (hist.length - 1) * 300).toFixed(1) + ' ' + (86 - x[i] / max * 78).toFixed(1); }).join(''); };
-          chart.appendChild(svg('path', { d: line(1, maxR) + 'L300 90L0 90Z', 'class': 'cdw-area' }));
-          chart.appendChild(svg('path', { d: line(1, maxR), 'class': 'cdw-line-r' }));
-          chart.appendChild(svg('path', { d: line(2, maxB), 'class': 'cdw-line-b' }));
+          var requestLine = line(1, maxR), byteLine = line(2, maxB);
+          [requestLine + 'L300 90L0 90Z', requestLine, byteLine].forEach(function (d, i) { if (paths[i].getAttribute('d') !== d) paths[i].setAttribute('d', d); });
           note2.textContent = '直近' + hist.length + '秒・最大 ' + fmt(maxR) + '回/秒・' + bytes(maxB) + '/秒';
         }
       };
@@ -163,7 +184,7 @@ var OpsCDW = (function () {
       return function (r) {
         var rows = r.reports || [];
         head.replaceChildren(h('b', '', fmt(rows.length)), h('span', '', '件の未対応'));
-        list.replaceChildren(rows.length ? lines(rows.map(function (x) { return [ago(x.at), (x.kindName || '通報') + '：' + (x.target ? x.target.name : '—'), clip(x.text, 40)]; }), 5) : empty('未対応の通報はありません'));
+        list.replaceChildren(rows.length ? lines(rows.map(function (x) { return [x.at, (x.kindName || '通報') + '：' + (x.target ? x.target.name : '—'), clip(x.text, 40)]; }), 5) : empty('未対応の通報はありません'));
       };
     }
   };
@@ -174,7 +195,7 @@ var OpsCDW = (function () {
       return function (r) {
         var rows = r.detections || [];
         head.replaceChildren(h('b', '', fmt(rows.length)), h('span', '', '件の未確認'));
-        list.replaceChildren(rows.length ? lines(rows.map(function (x) { return [ago(x.at), x.sender ? x.sender.name : '—', clip((x.words || []).join('・') || x.masked, 40)]; }), 5) : empty('未確認の検知はありません'));
+        list.replaceChildren(rows.length ? lines(rows.map(function (x) { return [x.at, x.sender ? x.sender.name : '—', clip((x.words || []).join('・') || x.masked, 40)]; }), 5) : empty('未確認の検知はありません'));
       };
     }
   };
@@ -186,7 +207,7 @@ var OpsCDW = (function () {
       return function (r) {
         var rows = (r.feedback || []).filter(function (x) { return !x.handledAt; });
         head.replaceChildren(h('b', '', fmt(rows.length)), h('span', '', '件の未対応'));
-        list.replaceChildren(rows.length ? lines(rows.map(function (x) { return [ago(x.at), (KIND[x.kind] || '報告') + '：' + (x.user && x.user.name || '—'), clip(x.text, 44)]; }), 5) : empty('未対応の報告・意見案はありません'));
+        list.replaceChildren(rows.length ? lines(rows.map(function (x) { return [x.at, (KIND[x.kind] || '報告') + '：' + (x.user && x.user.name || '—'), clip(x.text, 44)]; }), 5) : empty('未対応の報告・意見案はありません'));
       };
     }
   };
@@ -197,7 +218,7 @@ var OpsCDW = (function () {
       var list = h('div'); body.appendChild(list); body.appendChild(more(api, 'log', 'ログをすべて見る'));
       return function (r) {
         var rows = (r.entries || []).slice(0, 6);
-        list.replaceChildren(rows.length ? lines(rows.map(function (x) { return [ago(x.at), x.actor && x.actor.name || 'システム', clip(x.summary, 70)]; }), 6) : empty('ログはまだありません'));
+        list.replaceChildren(rows.length ? lines(rows.map(function (x) { return [x.at, x.actor && x.actor.name || 'システム', clip(x.summary, 70)]; }), 6) : empty('ログはまだありません'));
       };
     }
   };
@@ -262,7 +283,7 @@ var OpsCDW = (function () {
         top.replaceChildren(statBox('全体', bytes(pool.used) + ' / ' + bytes(pool.maxBytes)), statBox('ファイル', fmt(files) + '件'), statBox('保管先', pool.store === 'bucket' ? 'R2' : 'データベース'));
         fill.style.width = Math.min(100, pool.maxBytes ? pool.used / pool.maxBytes * 100 : 0).toFixed(1) + '%';
         var recent = spaces.filter(function (s) { return s.last; }).sort(function (a, b) { return b.last - a.last; });
-        list.replaceChildren(recent.length ? lines(recent.map(function (s) { return [ago(s.last), (s.with && s.with.name) || (s.owner && s.owner.name) || '保管庫', fmt(s.files) + '件・' + bytes(s.bytes)]; }), 4) : empty('ファイルはまだありません'));
+        list.replaceChildren(recent.length ? lines(recent.map(function (s) { return [s.last, (s.with && s.with.name) || (s.owner && s.owner.name) || '保管庫', fmt(s.files) + '件・' + bytes(s.bytes)]; }), 4) : empty('ファイルはまだありません'));
         if (me && me.limit) top.appendChild(statBox('自分の枠', bytes(me.used) + ' / ' + bytes(me.limit)));
       };
     }
@@ -307,7 +328,7 @@ var OpsCDW = (function () {
       });
       return function (r) {
         var rows = (r.posts || r.diary || []).slice(0, 3);
-        list.replaceChildren(rows.length ? lines(rows.map(function (p) { return [ago(p.createdAt || p.at || p.created_at || Date.now()), clip(p.title, 24), clip(p.text || p.body, 40)]; }), 3) : empty('最近の日記はありません'));
+        list.replaceChildren(rows.length ? lines(rows.map(function (p) { return [(p.createdAt || p.at || p.created_at || Date.now()), clip(p.title, 24), clip(p.text || p.body, 40)]; }), 3) : empty('最近の日記はありません'));
       };
     }
   };
@@ -354,9 +375,10 @@ var OpsCDW = (function () {
       got: function (r) {
         keep.at = Date.now();
         inst.root.classList.remove('cdw-stale');
-        // (the same: drawn again from what it has, so that "3分前" moves on)
-        if (!r.same) { keep.rev = r.rev; keep.last = r; }
-        if (keep.last) inst.update(keep.last);
+        // Unchanged data only needs its relative timestamps advanced, not new cards or SVG nodes.
+        if (r.same) { updateTimes(inst.body); return; }
+        keep.rev = r.rev; keep.last = r;
+        inst.update(r);
       },
       failed: function (err) {
         inst.root.classList.add('cdw-stale');
@@ -365,14 +387,29 @@ var OpsCDW = (function () {
       }
     });
   }
-  function unmount(id) { if (live[id]) { live[id].root.remove(); delete live[id]; } OpsBeat.drop('cdw:' + id); }
+  function unmount(id) {
+    if (live[id]) {
+      live[id].root.remove();
+      if (window.OpsGlass && OpsGlass.release) OpsGlass.release(live[id].root);
+      delete live[id];
+    }
+    OpsBeat.drop('cdw:' + id);
+  }
   function renderAll() {
-    Object.keys(live).forEach(unmount);
+    Object.keys(live).forEach(function (id) {
+      if (S.hidden[id] || !entry(id) || !S.items.some(function (it) { return it.id === id; })) unmount(id);
+    });
     var n = 0;
     S.items.forEach(function (it) {
       if (S.hidden[it.id]) return;
-      var inst = mountOf(it);
-      if (inst) { inst.root.style.setProperty('--i', String(n++)); live[it.id] = inst; stage.appendChild(inst.root); }
+      var inst = live[it.id];
+      if (inst) { inst.item = it; pos(it, inst.root); watch(inst); updateTimes(inst.body); }
+      else inst = mountOf(it);
+      if (inst) {
+        inst.root.style.setProperty('--i', String(n)); live[it.id] = inst;
+        if (stage.children[n] !== inst.root) stage.insertBefore(inst.root, stage.children[n] || null);
+        n++;
+      }
     });
     var out = Object.keys(S.hidden).length;
     note.hidden = !out; note.textContent = out ? 'この画面の大きさに入らない窓が ' + out + ' 個あります（画面を広げると戻ります）' : '';
@@ -483,20 +520,26 @@ var OpsCDW = (function () {
   function on() {
     if (S.on) return;
     if (phone()) { toast('デスクトップの窓は、スマホでは使えません'); return; }
+    var epoch = ++openEpoch; opening = true;
     if (!layer) buildChrome();
     function go() {
+      if (epoch !== openEpoch || app.hidden) return;
+      opening = false;
       if (!S.loaded) { toast('窓の設定を読み込めませんでした。しばらくしてからもう一度お試しください'); return; }
       S.on = true;
       // (back on the desktop: every window asks at once)
       Object.keys(keeps).forEach(function (id) { keeps[id].at = 0; });
       document.body.classList.add('mac-cdw'); area.inert = true;
       layer.hidden = false; measure(); fitAll(); renderAll(); drawPalette();
+      // A new account has no saved windows: expose the add-window control.
+      if (!S.items.length) { palette.hidden = false; bar.querySelector('[aria-haspopup]').setAttribute('aria-expanded', 'true'); }
       if (!reduced()) { layer.classList.remove('cdw-fade'); void layer.offsetWidth; layer.classList.add('cdw-fade'); clearTimeout(fadeTimer); fadeTimer = setTimeout(function () { layer.classList.remove('cdw-fade'); }, 2200); }
       if (window.OpsDesktop && OpsDesktop.cdwChanged) OpsDesktop.cdwChanged(true);
     }
     if (S.loaded) go(); else load().then(go);
   }
   function off() {
+    openEpoch++; opening = false;
     if (!S.on) return;
     S.on = false;
     document.body.classList.remove('mac-cdw'); area.inert = false;
@@ -505,13 +548,14 @@ var OpsCDW = (function () {
     if (window.OpsDesktop && OpsDesktop.cdwChanged) OpsDesktop.cdwChanged(false);
   }
   return {
-    toggle: function () { if (S.on) off(); else on(); },
+    toggle: function () { if (S.on || opening) off(); else on(); },
     on: function () { return S.on; },
     off: off,
     // the live connection told of a change to what a window shows (ops/ops.js: the 全体チャット)
     nudge: function (id) { if (keeps[id]) keeps[id].nudged = true; OpsBeat.soon('cdw:' + id); },
     // signed in or out: the next person starts from nothing
     session: function (signedIn) {
+      sessionEpoch++;
       off();
       Object.keys(live).forEach(unmount);
       keeps = {}; S.role = ''; S.catalog = []; S.items = []; S.loaded = false; S.loading = null; S.hidden = {};

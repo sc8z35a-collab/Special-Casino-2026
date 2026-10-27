@@ -10,6 +10,6 @@
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning node/server.js",
     "admin": "node --disable-warning=ExperimentalWarning node/admin-cli.js",
-    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=4 test/*.test.js"
   }
 }

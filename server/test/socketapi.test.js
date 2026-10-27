@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
 import { answerOnSocket, overSocket } from '../core/socketapi.js';
+import crypto from 'node:crypto';
 
 const CONN = { ip: '203.0.113.7', host: 'casino.test', scheme: 'https:', ua: 'Mozilla/5.0 (Linux; Android 14) Chrome/130', origin: 'https://casino.test', lang: 'ja', device: 'a'.repeat(32) };
 let seq = 0;
@@ -17,6 +18,55 @@ async function ask(s, m, conn = CONN) {
   return r;
 }
 const bearer = (u) => ({ authorization: 'Bearer ' + u.token });
+
+test('gacha uses the optimized connection: 3/9/30 slots settle once at the quoted price, with the same HTTP balance', async () => {
+  const s = await startServer();
+  try {
+    const a = await s.register('GachaSocket');
+    s.setUser(a.me.id, { dollars: 2000000000, garage_extra: 100 });
+    assert.equal((await ask(s, { m: 'POST', p: '/api/gacha/spin', b: { kind: 'rare', count: 1 } })).s, 401);
+    const state = await ask(s, { m: 'GET', p: '/api/gacha', h: bearer(a) });
+    assert.equal(state.s, 200);
+    const http = await s.call('GET', '/api/gacha', { token: a.token });
+    assert.deepEqual(state.b.prices, http.prices);
+    let money = 2000000000;
+    for (const [kind, count, priceKey] of [['rare', 1, 'single'], ['legendary', 3, 'three'], ['secret', 10, 'ten']]) {
+      const price = state.b.prices[kind][priceKey];
+      const wrong = await ask(s, { m: 'POST', p: '/api/gacha/spin', h: bearer(a), b: { kind, count, price: price - 1 } });
+      assert.equal(wrong.s, 409); assert.equal(wrong.b.error.code, 'price_changed');
+      assert.equal(s.app.db.prepare('SELECT dollars FROM users WHERE id = ?').get(a.me.id).dollars, money);
+      const r = await ask(s, { m: 'POST', p: '/api/gacha/spin', h: bearer(a), b: { kind, count, price } });
+      assert.equal(r.s, 200, JSON.stringify(r.b));
+      assert.equal(r.b.pulls.flatMap((p) => p.rewards).length, count * 3);
+      money -= price;
+      assert.equal(r.b.me.dollars, money);
+      assert.equal((await s.call('GET', '/api/me', { token: a.token })).me.dollars, money);
+    }
+  } finally { await s.stop(); }
+});
+
+test('LINE gifts stay on HTTP: a socket fallback cannot claim; repeated HTTP claims pay once per account', async () => {
+  const s = await startServer();
+  try {
+    const a = await s.register('LineGift');
+    const token = crypto.randomBytes(24).toString('base64url');
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    s.app.db.prepare('INSERT INTO line_feed_rewards (token_hash, week, kind, amount, expires_at) VALUES (?, ?, ?, ?, ?)')
+      .run(hash, Date.now(), 'casino', 20000, Date.now() + 86400000);
+    for (const p of ['/api/line/reward', '/api/line/reward/claim']) {
+      const r = await ask(s, { m: 'POST', p, h: bearer(a), b: { token } });
+      assert.equal(r.s, 0);
+    }
+    assert.equal(s.app.db.prepare('SELECT COUNT(*) AS n FROM line_feed_claims').get().n, 0);
+    assert.equal((await s.call('POST', '/api/line/reward', { body: { token } })).status, 401);
+    const preview = await s.call('POST', '/api/line/reward', { token: a.token, body: { token } });
+    assert.equal(preview.claimed, false);
+    const first = await s.call('POST', '/api/line/reward/claim', { token: a.token, body: { token } });
+    const again = await s.call('POST', '/api/line/reward/claim', { token: a.token, body: { token } });
+    assert.equal(first.received, true); assert.equal(again.received, false);
+    assert.equal(first.me.tokens, a.me.tokens + 20000); assert.equal(again.me.tokens, first.me.tokens);
+  } finally { await s.stop(); }
+});
 
 test('a spin on the connection is a spin: the same answer as over HTTP, the same balance after', async () => {
   const s = await startServer();
@@ -51,7 +101,7 @@ test('the login is checked on every message as on every request: none, a wrong o
   } finally { await s.stop(); }
 });
 
-test('what is kept for HTTP is answered "over HTTP" and not done: the chat routes (the filter reads them first), the logins, the vault\'s writes', async () => {
+test('chat is delivered on the connection while logins and vault writes still return an HTTP fallback without side effects', async () => {
   const s = await startServer();
   try {
     const a = await s.register('Alice');
@@ -60,13 +110,13 @@ test('what is kept for HTTP is answered "over HTTP" and not done: the chat route
     const n = () => s.app.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE sender_id = ? AND recipient_id = ?').get(a.me.id, b.me.id).n;
     const had = n();
     const r = await ask(s, { m: 'POST', p: '/api/messages', h: bearer(a), b: { to: b.me.id, text: 'やあ' } });
-    assert.deepEqual([r.s, n()], [0, had], 'a chat message is not sent on the connection');
-    for (const [m, p] of [['POST', '/api/login'], ['POST', '/api/register'], ['POST', '/api/logout'], ['POST', '/api/ops/login'], ['POST', '/api/vault/upload'], ['GET', '/api/vault/piece'], ['GET', '/api/ops/ext/x.js'], ['POST', '/api/stream-ticket'], ['POST', '/api/report'], ['PUT', '/api/me'], ['DELETE', '/api/me'], ['GET', '/elsewhere'], ['GET', 'https://evil.test/api/me']]) {
+    assert.deepEqual([r.s, n(), r.b.message.text], [200, had + 1, 'やあ'], 'one message is delivered on the connection');
+    for (const [m, p] of [['POST', '/api/login'], ['POST', '/api/register'], ['POST', '/api/logout'], ['POST', '/api/ops/login'], ['POST', '/api/vault/upload'], ['GET', '/api/vault/piece'], ['GET', '/api/ops/ext/x.js'], ['POST', '/api/stream-ticket'], ['PUT', '/api/me'], ['DELETE', '/api/me'], ['GET', '/elsewhere'], ['GET', 'https://evil.test/api/me']]) {
       assert.equal((await ask(s, { m, p, h: bearer(a), b: {} })).s, 0, `${m} ${p}`);
       assert.equal(overSocket(m, p.split('?')[0]), false, `${m} ${p}`);
     }
     assert.equal((await s.call('POST', '/api/logout', { token: a.token, body: {} })).status, 200, 'the logout above was not done');
-    for (const [m, p] of [['POST', '/api/spin'], ['POST', '/api/read'], ['GET', '/api/quests'], ['GET', '/api/ops/tick'], ['GET', '/api/vault/spaces'], ['POST', '/api/ops/cdw']]) assert.equal(overSocket(m, p), true, `${m} ${p}`);
+    for (const [m, p] of [['POST', '/api/spin'], ['POST', '/api/read'], ['POST', '/api/report'], ['GET', '/api/quests'], ['GET', '/api/ops/tick'], ['GET', '/api/vault/spaces'], ['POST', '/api/ops/cdw']]) assert.equal(overSocket(m, p), true, `${m} ${p}`);
   } finally { await s.stop(); }
 });
 
@@ -124,4 +174,71 @@ test('what a request on the connection does not carry is the connection\'s: the 
   assert.equal(seen.header('cookie'), null, 'nothing else the page put in');
   await answerOnSocket(api, CONN, { op: 'api', id: 2, m: 'GET', p: '/api/me', h: { 'x-device': 'b'.repeat(32) } });
   assert.equal(seen.header('x-device'), 'b'.repeat(32), 'one the page sends is its');
+});
+
+test('chat on the connection rejects the same non-text payloads as HTTP, records only metadata and stops further chat', async () => {
+  const s = await startServer();
+  try {
+    const b = await s.register('Recipient');
+    const bad = [
+      { text: 'words', file: 'not allowed' },
+      { text: 'data:application/octet-stream;base64,' + 'AbCd0123456789'.repeat(20) },
+      { text: '\u0000private-file' },
+      { text: { attachment: true } }
+    ];
+    for (let i = 0; i < bad.length; i++) {
+      const socket = await s.register('Socket' + i), http = await s.register('Http' + i);
+      await s.befriend(socket, b); await s.befriend(http, b);
+      const body = { to: b.me.id, ...bad[i] };
+      const r = await ask(s, { m: 'POST', p: '/api/messages', h: bearer(socket), b: body });
+      const h = await s.call('POST', '/api/messages', { token: http.token, body });
+      assert.equal(r.s, 400); assert.equal(h.status, 400); assert.deepEqual(r.b.error, h.error);
+      if (r.b.error.warning) {
+        assert.equal(r.b.error.stage, 1);
+        assert.equal(s.app.db.prepare('SELECT chat_ban FROM users WHERE id = ?').get(socket.me.id).chat_ban, 0);
+        for (const stage of [2, 3]) {
+          const again = await ask(s, { m: 'POST', p: '/api/messages', h: bearer(socket), b: body });
+          const againHttp = await s.call('POST', '/api/messages', { token: http.token, body });
+          assert.deepEqual(again.b.error, againHttp.error);
+          if (stage === 2) assert.equal(again.b.error.stage, 2);
+        }
+      }
+      assert.ok(s.app.db.prepare('SELECT chat_ban FROM users WHERE id = ?').get(socket.me.id).chat_ban > 0);
+      assert.equal(s.app.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE sender_id = ? AND recipient_id = ?').get(socket.me.id, b.me.id).n, 0);
+      const stopped = await ask(s, { m: 'POST', p: '/api/messages', h: bearer(socket), b: { to: b.me.id, text: 'ordinary text' } });
+      assert.equal(stopped.s, 403); assert.equal(stopped.b.error.code, 'chat_banned');
+      const log = s.app.db.prepare("SELECT detail FROM ops_log WHERE action = 'filter_block' AND actor_id = ? ORDER BY id DESC LIMIT 1").get(socket.me.id);
+      assert.ok(log); assert.ok(!log.detail.includes('private-file')); assert.ok(!log.detail.includes('AbCd0123456789'));
+    }
+  } finally { await s.stop(); }
+});
+
+test('chat keeps authentication and friendship checks, and oversized UTF-8 messages fall back without sending or banning', async () => {
+  const s = await startServer();
+  try {
+    const a = await s.register('Sender'), b = await s.register('Receiver');
+    assert.equal((await ask(s, { m: 'POST', p: '/api/messages', b: { to: b.me.id, text: 'hello' } })).s, 401);
+    const stranger = await ask(s, { m: 'POST', p: '/api/messages', h: bearer(a), b: { to: b.me.id, text: 'hello' } });
+    assert.equal(stranger.s, 403);
+    await s.befriend(a, b);
+    const large = await ask(s, { m: 'POST', p: '/api/messages', h: bearer(a), b: { to: b.me.id, text: 'あ'.repeat(6000) } });
+    assert.equal(large.s, 0);
+    assert.equal(s.app.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE sender_id = ? AND recipient_id = ?').get(a.me.id, b.me.id).n, 0);
+    assert.equal(s.app.db.prepare('SELECT chat_ban FROM users WHERE id = ?').get(a.me.id).chat_ban, 0);
+    assert.equal((await ask(s, { m: 'POST', p: '/api/messages', h: bearer(a), b: { to: b.me.id, text: '正しいメッセージ' } })).s, 200);
+  } finally { await s.stop(); }
+});
+
+test('the browser wire permits every filtered chat route and keeps vault writes and authentication on HTTP', async () => {
+  const vm = await import('node:vm'), fs = await import('node:fs');
+  const { CHAT_ROUTES } = await import('../core/attach.js');
+  const context = { window: {}, setTimeout, clearTimeout };
+  for (const file of ['transport-policy.js', 'wire.js']) vm.runInNewContext(fs.readFileSync(new URL('../../js/net/' + file, import.meta.url), 'utf8'), context);
+  const sent = [], wire = context.window.BR.wire((text) => { sent.push(JSON.parse(text)); return true; });
+  for (const route of Object.keys(CHAT_ROUTES)) {
+    const [method, path] = route.split(' '), pending = wire.call(method, path, {}, { text: 'words' });
+    assert.ok(pending && typeof pending.then === 'function', route);
+    wire.reply({ re: sent.at(-1).id, s: 200, b: { ok: true } }); assert.equal((await pending).status, 200);
+  }
+  for (const path of ['/api/login', '/api/line/claim', '/api/vault/upload']) assert.equal(wire.call('POST', path, {}, {}), null);
 });

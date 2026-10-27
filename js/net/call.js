@@ -33,7 +33,7 @@
   // home: { kind: 'home' | 'hub', room: host id (or hub id), host: user (a
   // home's), members: { id: user } (the others in the voice), peers: { id:
   // peer }, stream, mic, micBusy, cid }
-  var home = null;
+  var home = null, limitTimer = 0;
   var ice = null;         // { servers, until }
   var LIMIT = 2 * 3600000;
   var TURBO_BPS = 510000;   // Opus's most
@@ -291,30 +291,13 @@
   // the bitrate the other side may send me at (Opus in the description I send)
   // (TURBO VOICE: Opus's most, in stereo, at a constant bitrate, never paused in a silence, in 10 ms packets)
   function withBitrate(sdp, tier, turbo) {
-    if (!tier && !turbo) return sdp;
-    var m = /a=rtpmap:(\d+) opus\/48000[^\r\n]*/i.exec(sdp);
-    if (!m) return sdp;
-    var pt = m[1], bps = turbo ? TURBO_BPS : BR.VIP.kbps(tier) * 1000;
-    var mine = ['maxaveragebitrate=' + bps].concat(turbo || tier >= 4 ? ['maxplaybackrate=48000'] : [], turbo ? ['stereo=1', 'sprop-stereo=1', 'cbr=1', 'usedtx=0'] : []);
-    var re = new RegExp('a=fmtp:' + pt + ' ([^\\r\\n]*)');
-    if (re.test(sdp)) {
-      sdp = sdp.replace(re, function (all, params) {
-        var p = params.split(';').filter(function (x) { return x && !/^\s*(maxaveragebitrate|maxplaybackrate|stereo|sprop-stereo|cbr|usedtx)=/.test(x); });
-        return 'a=fmtp:' + pt + ' ' + p.concat(mine).join(';');
-      });
-    } else sdp = sdp.replace(m[0], m[0] + '\r\na=fmtp:' + pt + ' minptime=10;useinbandfec=1;' + mine.join(';'));
-    return turbo ? sdp.replace(/\r\na=(?:max)?ptime:\d+/g, '').replace(m[0], m[0] + '\r\na=ptime:10\r\na=maxptime:10') : sdp;
+    return BR.voiceSdp(sdp, turbo ? TURBO_BPS : BR.VIP.kbps(tier) * 1000, turbo, tier >= 4);
   }
   function capSender(p, tier, turbo) {
-    if (!p.sender || !p.sender.getParameters) return;
-    try {
-      var prm = p.sender.getParameters();
-      if (!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
-      prm.encodings[0].maxBitrate = turbo ? TURBO_BPS : BR.VIP.kbps(tier) * 1000;
-      // (TURBO VOICE: first in the phone's queue and on the network)
-      if (turbo) { prm.encodings[0].priority = 'high'; prm.encodings[0].networkPriority = 'high'; }
-      p.sender.setParameters(prm).catch(function () {});
-    } catch (e) { /* not on this browser */ }
+    if (!p.sender) return;
+    var cap = turbo ? TURBO_BPS : BR.VIP.kbps(tier) * 1000;
+    if (p.quality) p.quality.setCap(cap);
+    else p.quality = BR.adaptVoice(p.pc, p.sender, cap, turbo);
   }
   // the tier changed (a VIP came or went): the connections start over at it
   function quality(h) {
@@ -339,6 +322,7 @@
     delete h.peers[id];
     clearTimeout(p.flush);
     clearTimeout(p.timer);
+    if (p.quality) p.quality.stop();
     if (p.pc) try { p.pc.close(); } catch (e) { /* closed */ }
     dropAudio(id);
   }
@@ -520,6 +504,7 @@
     if (home && (home.kind !== kind || home.room !== room)) leave();
     if (!home) {
       home = { kind: kind, room: room, host: host, members: {}, peers: {}, turbo: {}, stream: null, mic: false, micBusy: false, cid: (kind === 'hub' ? 'hub-room-' : 'home-') + room, since: Date.now() };
+      clearTimeout(limitTimer); limitTimer = setTimeout(overTime, LIMIT);
       iceServers();
     }
     var h = home;
@@ -557,7 +542,7 @@
   function leave() {
     var h = home;
     if (!h) return;
-    home = null;
+    home = null; clearTimeout(limitTimer); limitTimer = 0;
     Object.keys(h.members).forEach(function (k) {
       var data = { op: 'bye', room: h.room };
       if (!BR.live.send({ op: 'call', to: Number(k), type: h.kind, callId: h.cid, data: data })) api.call(Number(k), h.kind, h.cid, data).catch(function () {});
@@ -566,7 +551,8 @@
       var p = h.peers[k];
       clearTimeout(p.flush);
       clearTimeout(p.timer);
-      if (p.pc) try { p.pc.close(); } catch (e) { /* closed */ }
+      if (p.quality) p.quality.stop();
+    if (p.pc) try { p.pc.close(); } catch (e) { /* closed */ }
       dropAudio(Number(k));
     });
     if (h.stream) h.stream.getTracks().forEach(function (t) { t.stop(); });
@@ -626,7 +612,7 @@
       if (outCtx && outCtx.state === 'suspended') outCtx.resume().catch(function () {});
     }, true);
     window.addEventListener('pagehide', function () { if (home) leave(); });
-    setInterval(overTime, 15000);
+
     if (api.online) BR.live.on('call', onCall);
   }
 

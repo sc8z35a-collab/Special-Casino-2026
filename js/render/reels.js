@@ -5,6 +5,7 @@
   'use strict';
 
   var U = BR.util;
+  function lite() { return !!(BR.fx && BR.fx.lite()); }
   var VIEW_W = 1006, VIEW_H = 554;
   // column centres / separators measured from the reference screen
   var COL_W = 192, COL_PITCH = 202.67, COL_C0 = 98, CELL_VIS = 183;
@@ -156,6 +157,11 @@
     this.dim = 0;
     var self = this;
     this._loop = function (t) { self.frame(t); };
+    var wasLite = lite();
+    if (BR.fx) BR.fx.onChange(function () {
+      if (wasLite !== lite()) { wasLite = lite(); self.resize(self.requestedRes || 1); }
+      else self.invalidate();
+    });
   }
 
   Reels.prototype.on = function (ev, fn) { (this.handlers[ev] = this.handlers[ev] || []).push(fn); };
@@ -177,6 +183,8 @@
 
   Reels.prototype.resize = function (res) {
     var self = this;
+    this.requestedRes = res;
+    if (lite()) res = Math.min(res, 0.8);
     this.res = res;
     this.canvas.width = Math.round(VIEW_W * res);
     this.canvas.height = Math.round(VIEW_H * res);
@@ -433,6 +441,7 @@
 
   /* Start all reels.  Stops are scheduled by the caller via stopAll(). */
   Reels.prototype.spin = function () {
+    if (this.sprites && this.sprites.prepareBlur) this.sprites.prepareBlur();
     this.clearHighlight();
     this.reels.forEach(function (r, i) { r.start(i * 0.045); });
     this.kick();
@@ -527,7 +536,8 @@
     var more = moving || lit || this.hl || this.pre || this.antic.length;
     if (more) requestAnimationFrame(this._loop);
     else this.running = false;
-    if (more || this.dirty) {
+    if ((more || this.dirty) && (!lite() || !more || this.dirty || now - (this.drawAt || 0) >= 1000 / 30)) {
+      this.drawAt = now;
       this.dirty = false;
       try { this.draw(now); } catch (e) { if (window.console) console.warn(e); }
     }
@@ -610,13 +620,13 @@
           var gs = 270 * res;
           g.drawImage(this.glow, cx - gs / 2, cy - gs / 2, gs, gs);
           g.restore();
-          if (this.flare) this.winFx(g, sym, cx, cy, ht, res, i, true);
+          if (this.flare && !lite()) this.winFx(g, sym, cx, cy, ht, res, i, true);
           // the symbol punches in, then keeps beating
           var pin = Math.min(1, ht / 0.32);
           var punch = pin < 1 ? 1.25 - 0.25 * U.ease.outBack(pin, 2.4) : 1;
           var sc = punch * (1 + 0.1 * pulse * pin);
           // the 3D model turns right round as it wins, and again now and then
-          var tn = BR.assets.turn(sym), deg = turnAngle(ht, i);
+          var tn = !lite() && BR.assets.turn(sym), deg = turnAngle(ht, i);
           var wob = (Math.sin(ht * 7.5 + i) * 0.035 + (tn && deg ? 0 : winTurn(sym, ht, i))) * pin;
           g.save();
           g.translate(cx, cy);
@@ -634,7 +644,7 @@
             g.drawImage(this.glow, -fs / 2, -fs / 2, fs, fs);
           }
           g.restore();
-          if (this.flare) this.winFx(g, sym, cx, cy, ht, res, i, false);
+          if (this.flare && !lite()) this.winFx(g, sym, cx, cy, ht, res, i, false);
           continue;
         }
         if (set === sp.sharp && r.flash > 0.02 && landOn) {

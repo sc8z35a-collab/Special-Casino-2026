@@ -15,7 +15,7 @@
 // (server/core/opslog.js), with the request it came from.
 // プレイヤーアーカイブ: a player under a 永久BAN, or whose account the
 // developer deleted, leaves the list for the archive, and 90 days later their
-// data goes, but not what was said: conversations and logs are kept for good
+// data goes; conversations follow retention.js, operator logs are kept for good
 // (server/core/purge.js). A 永久BAN can be lifted (the player
 // comes back to the list); a deleted account never comes back, not even by
 // the developer. Only the developer sees the button that deletes one, and it
@@ -516,7 +516,14 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const body = await req.json();
       const p = alive(body.id);
       const pw = cleanPassword(body.password);
-      q('UPDATE users SET password_hash = ? WHERE id = ?').run(await hashPassword(pw), p.id);
+      const hash = await hashPassword(pw);
+      tx(() => {
+        q('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, p.id);
+        setRecovery(p.id);
+        q('DELETE FROM game_login_locks WHERE name_key = ?').run(p.name_key);
+        q('DELETE FROM sessions WHERE user_id = ?').run(p.id);
+      });
+      live.dropUser?.(p.id);
       opsLog.add({ actor: u, action: 'password', target: p, req, summary: `${p.name}さんのパスワードを再設定`, detail: { hadPassword: !!p.password_hash, length: pw.length } });
       return { player: row(getUser(p.id)) };
     },
@@ -555,7 +562,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     'POST /api/ops/chat/retract': async (req, u) => {
       need(u);
       const body = await req.json();
-      const m = q('SELECT * FROM messages WHERE id = ?').get(posInt(body.message, 'メッセージ'));
+      const m = q('SELECT * FROM message_history WHERE id = ?').get(posInt(body.message, 'メッセージ'));
       if (!m || m.sender_id !== official.id()) throw new ApiError(404, 'not_found', 'このメッセージは取り消せません');
       if (m.kind !== 'text') throw new ApiError(409, 'not_text', '送金は取り消せません');
       if (m.retracted_at) throw new ApiError(409, 'retracted', 'このメッセージはもう取り消しています');
@@ -593,6 +600,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const p = alive(body.id);
       if (!p.chat_ban) return { player: row(p) };
       q("UPDATE users SET chat_ban = 0, chat_ban_why = '' WHERE id = ?").run(p.id);
+      q('DELETE FROM chat_filter_strikes WHERE user_id = ?').run(p.id);
       live.send(p.id, 'chatban', { on: false });
       opsLog.add({
         actor: u, action: 'chat_unban', target: p, req, summary: `${p.name}さんのチャット停止を解除（自動フィルタリングシステム：${p.chat_ban_why || '理由不明'}）`,

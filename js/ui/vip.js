@@ -353,17 +353,17 @@
     });
     K.dragScroll($('#vp-right'));
     K.dragScroll($('#vp-left'));
-    BR.screens.register('vip', { open: function () { render(); } });
+    BR.screens.register('vip', { open: function () { render(); BR.clock.drop(timer); timer = BR.clock.every(renderClock, 1000); }, close: function () { BR.clock.drop(timer); timer = 0; } });
     BR.social.onMe(function (m) {
+      updateVip(); scheduleBoundary();
       if (!m) { lastLevel = null; cart = {}; mode = 'normal'; return; }
       if (m.vip) { seen(m.vip); trialOver(m.vip); }
       if (BR.screens.current() === 'vip') render();
     });
     // the badge goes when the days are over (and turns to one's own level when
     // the trial is); on this screen the time left counts down every second
-    clearInterval(timer);
-    var phase = '';
-    timer = setInterval(function () {
+    var phase = '', boundaryTimer = 0;
+    function updateVip() {
       var v = vip();
       if (v) v.on = V.now(v) !== null;
       // (on, off, or in the trial: a change shows everywhere at once)
@@ -373,7 +373,15 @@
       if (changed) { BR.social.renderMe(); if (BR.call && BR.call.quality) BR.call.quality(); }
       if (v) trialOver(v);
       if (BR.screens.current() === 'vip') { if (changed) render(); else renderClock(); }
-    }, 1000);
+    }
+    function scheduleBoundary() {
+      clearTimeout(boundaryTimer);
+      var v = vip(), now = Date.now(), ends = v ? [v.until, v.trialUntil].concat((v.modes || []).flatMap(function (m) { return [m.start, m.end]; })) : [];
+      var next = Math.min.apply(Math, ends.filter(function (t) { return t > now; }));
+      if (next < Infinity) boundaryTimer = setTimeout(function () { updateVip(); scheduleBoundary(); }, Math.min(2147483000, next - now + 30));
+    }
+    updateVip(); scheduleBoundary();
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { updateVip(); scheduleBoundary(); } });
   }
 
   BR.vip = { init: init, open: open, set: set };

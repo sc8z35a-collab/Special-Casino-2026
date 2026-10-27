@@ -39,9 +39,12 @@
     ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(function (ev) {
       document.addEventListener(ev, poke, { capture: true, passive: true });
     });
-    setInterval(beat, EVERY);
+    var clock = 0;
+    function schedule() { clearInterval(clock); clock = document.hidden ? 0 : setInterval(beat, EVERY); }
+    schedule();
     // back in sight: the clock starts again (the time away counts nothing)
     document.addEventListener('visibilitychange', function () {
+      schedule();
       if (document.hidden) return;
       poke();
       setTimeout(beat, 1500);

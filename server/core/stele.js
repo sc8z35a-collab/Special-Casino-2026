@@ -8,7 +8,7 @@
 //     never again (the host's `stele` store: files here that can only be created; an R2 bucket on Cloudflare, which a bucket
 //     lock can make impossible to delete). Each segment names the one before it (so none can be taken out of the middle),
 //     is signed with a key of the server's, and is read back and compared before the log counts it as carved.
-//   - Looking: now and then (and in full once a day, a few segments at a time) every segment is read and its hashes, its signature,
+//   - Looking: now and then (incrementally beyond the verified anchor, plus a few random older segments) every segment is read and its hashes, its signature,
 //     its place in the line and its rows against the database's are checked. A row that differs, a segment that is gone or
 //     changed, a line that was cut at the end: all are found, written to the operators' log (so to Discord / LINE) and shown.
 //   - Getting back: if the database has fewer rows than were carved (it was reset, restored to an earlier time, damaged), the
@@ -27,6 +27,7 @@ const META = 'stele';
 const SEG_GENESIS = sha256('TWO STATE ops log stele');
 const MIN = 60000, HOUR = 3600000, DAY = 86400000;
 const DB_LIMIT = 10 * 1024 ** 3;   // a Durable Object's SQLite database
+const SAMPLE_BUDGET = 3;
 const DEEP_BUDGET = 20;            // segments read in full in one look
 const COLS = ['id', 'at', 'actor_id', 'actor_name', 'action', 'target_id', 'target_name', 'summary', 'detail', 'prev_hash', 'hash'];
 
@@ -37,7 +38,7 @@ const toRow = (a) => Object.fromEntries(COLS.map((c, i) => [c, a[i]]));
 const dayOf = (ms) => new Date(ms + 9 * HOUR).toISOString().slice(0, 10);
 const same = (a, b) => a.length === b.length && Buffer.compare(Buffer.from(a), Buffer.from(b)) === 0;
 
-export function createStele({ q, opsLog, store = null, secret, clock = Date.now, notice = null, reschedule = null, dbBytes = null, dbLimit = DB_LIMIT }) {
+export function createStele({ q, opsLog, store = null, secret, clock = Date.now, notice = null, reschedule = null, dbBytes = null, dbLimit = DB_LIMIT, sampleIndex = n => crypto.randomInt(n) }) {
   const key = keyFrom(secret, 'stele');
   const load = () => { try { const r = q('SELECT value FROM meta WHERE key = ?').get(META); return r ? JSON.parse(r.value) : {}; } catch { return {}; } };
   const save = (s) => q('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(META, JSON.stringify(s));
@@ -149,11 +150,30 @@ export function createStele({ q, opsLog, store = null, secret, clock = Date.now,
       }
       const remoteLast = segs.length ? segs[segs.length - 1].last : 0;
       if ((s.sealed || 0) > remoteLast) problems.push({ id: 'cut', text: `#${s.sealed} まで刻んだはずが、石碑には #${remoteLast} までしかありません（後ろが消されています）` });
-      // which segments to read: the newest few each time; in full, a few at a time (from where the last look stopped)
-      let from = Math.max(0, segs.length - 3), to = segs.length;
-      if (deep) { from = Math.min(s.deepFrom || 0, Math.max(0, segs.length - 1)); to = Math.min(segs.length, from + DEEP_BUDGET); }
-      const window = segs.slice(Math.max(0, from - 1), to);   // (one before, to see the join)
-      let before = null;
+      // The explicit deep check remains available for incident investigation. Scheduled
+      // checks resume from a persisted verified anchor and sample old immutable files.
+      let from, to, selected;
+      const anchor = s.verified;
+      if (deep) {
+        from = Math.min(s.deepFrom || 0, Math.max(0, segs.length - 1));
+        to = Math.min(segs.length, from + DEEP_BUDGET);
+        selected = new Set(Array.from({ length: to - Math.max(0, from - 1) }, (_, i) => i + Math.max(0, from - 1)));
+      } else {
+        const ai = anchor ? segs.findIndex(g => g.last === anchor.last && g.key === anchor.key) : -1;
+        if (anchor && ai < 0) problems.push({ id: 'anchor', text: '検証済みの石碑アンカーがありません' });
+        from = ai + 1; to = Math.min(segs.length, from + DEEP_BUDGET);
+        selected = new Set(Array.from({ length: to - Math.max(0, ai) }, (_, i) => i + Math.max(0, ai)));
+        // Partial Fisher-Yates by sparse remapping: fixed cost even with millions of files.
+        const swaps = new Map();
+        for (let n = Math.max(0, ai), k = 0; n > 0 && k < SAMPLE_BUDGET; n--, k++) {
+          const pick = sampleIndex(n), index = swaps.get(pick) ?? pick;
+          swaps.set(pick, swaps.get(n - 1) ?? n - 1);
+          selected.add(index);
+          if (index > 0) selected.add(index - 1); // verify the sampled join too
+        }
+      }
+      const window = [...selected].sort((a, b) => a - b).map(i => segs[i]);
+      let before = null, checkpoint = null;
       const dbMax = (q('SELECT MAX(id) AS m FROM ops_log').get() || {}).m || 0;
       for (const g of window) {
         let bytes;
@@ -163,8 +183,11 @@ export function createStele({ q, opsLog, store = null, secret, clock = Date.now,
         if (!p.ok) { problems.push({ id: `bad:${g.first}`, text: `控え #${g.first}〜#${g.last} が壊れています（${p.reason}）` }); before = null; continue; }
         if (p.seg.first !== g.first || p.seg.last !== g.last) problems.push({ id: `name:${g.first}`, text: `控えの名前と中身の範囲が違います（#${g.first}）` });
         if (!p.sigOk) problems.push({ id: `sig:${g.first}`, text: `控え #${g.first}〜#${g.last} の署名が合いません（作り直されたか、鍵が替わっています）` });
-        if (before && p.seg.prev !== before.hash) problems.push({ id: `join:${g.first}`, text: `控え #${g.first} が、ひとつ前の控えとつながっていません` });
+        if (before && g.first === before.last + 1 && p.seg.prev !== before.hash) problems.push({ id: `join:${g.first}`, text: `控え #${g.first} が、ひとつ前の控えとつながっていません` });
         if (!before && g.first === 1 && p.seg.prev !== SEG_GENESIS) problems.push({ id: 'join:1', text: '最初の控えの始まりが正しくありません' });
+        if (!deep && anchor && g.key === anchor.key && p.seg.hash !== anchor.hash)
+          problems.push({ id: 'anchor-hash', text: '検証済みアンカーの内容が変わっています' });
+        if (!deep && to > from && g.key === segs[to - 1].key) checkpoint = { key: g.key, last: g.last, hash: p.seg.hash };
         // against the database
         // (every field of every row, not only its hash: a row whose text was changed under its old hash is a different row)
         const mine = new Map(q('SELECT * FROM ops_log WHERE id BETWEEN ? AND ?').all(p.seg.first, Math.min(p.seg.last, dbMax || 0)).map((r) => [r.id, JSON.stringify(toArr(r))]));
@@ -178,10 +201,12 @@ export function createStele({ q, opsLog, store = null, secret, clock = Date.now,
       if (deep) {
         if (to >= segs.length) { s.deepFrom = 0; s.deepDone = clock(); } else s.deepFrom = to;
       }
+      if (!deep && !problems.length && checkpoint) s.verified = checkpoint;
       return finish(s, problems, segs.length, remoteLast);
     });
     function finish(s, problems, segs, remoteLast) {
       const t = load();
+      if (!deep && s.verified) t.verified = s.verified;
       if (deep) { t.deepFrom = s.deepFrom || 0; if (s.deepDone) t.deepDone = s.deepDone; }
       t.check = { at: clock(), ok: problems.length === 0, problems: problems.slice(0, 20), segs, remoteLast };
       save(t);
@@ -268,7 +293,7 @@ export function createStele({ q, opsLog, store = null, secret, clock = Date.now,
     if (rec.restored || rec.blocked) out.recover = rec;
     if (rec.restored) await seal();
     const s = load();
-    const due = deep === null ? clock() - (s.deepDone || 0) > DAY || (s.deepFrom || 0) > 0 : deep;
+    const due = deep === true;
     out.check = await check({ deep: due });
     const t = load();
     if (t.sealed > 0 && t.witnessDay !== dayOf(clock())) {

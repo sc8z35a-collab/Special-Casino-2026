@@ -1,0 +1,146 @@
+[
+  {
+    "file": "01.md",
+    "title": "Two state Casino RP — BLOCKBUSTER REELS"
+  },
+  {
+    "file": "02.md",
+    "title": "遊び方"
+  },
+  {
+    "file": "03.md",
+    "title": "オンライン機能"
+  },
+  {
+    "file": "04.md",
+    "title": "5時間クエストの追加段階"
+  },
+  {
+    "file": "05.md",
+    "title": "デイリー送金クエストの追加段階"
+  },
+  {
+    "file": "06.md",
+    "title": "レベルアップとリセットチケット"
+  },
+  {
+    "file": "07.md",
+    "title": "VIPのカート購入とチケット"
+  },
+  {
+    "file": "08.md",
+    "title": "クエストのPRO・ULTRA"
+  },
+  {
+    "file": "09.md",
+    "title": "DEV13：受け取り期限・VIP拡張"
+  },
+  {
+    "file": "10.md",
+    "title": "無料サーバーで公開する（Cloudflare）"
+  },
+  {
+    "file": "11.md",
+    "title": "契約中のプラン：Workers Paid（月 5 ドル ≒ 750 円、2026/10/20 から）"
+  },
+  {
+    "file": "12.md",
+    "title": "無料プランの目安"
+  },
+  {
+    "file": "13.md",
+    "title": "保管庫を R2 につなぐ（50GB）"
+  },
+  {
+    "file": "14.md",
+    "title": "設定（任意）"
+  },
+  {
+    "file": "15.md",
+    "title": "Discord に通知する"
+  },
+  {
+    "file": "16.md",
+    "title": "LINE に通知する（LINE ボット）"
+  },
+  {
+    "file": "17.md",
+    "title": "パスキー認証を始める（Discord ボット）"
+  },
+  {
+    "file": "18.md",
+    "title": "Google / Discord ログインを始める"
+  },
+  {
+    "file": "19.md",
+    "title": "運営の権限を守る仕組み（自動で働くもの）"
+  },
+  {
+    "file": "20.md",
+    "title": "開発者支援（課金）を始める"
+  },
+  {
+    "file": "21.md",
+    "title": "サーバー運営サイト"
+  },
+  {
+    "file": "22.md",
+    "title": "運営の画面を見る機能（状態転送方式）"
+  },
+  {
+    "file": "23.md",
+    "title": "管理コマンド"
+  },
+  {
+    "file": "24.md",
+    "title": "アプリとして配布する（無料）"
+  },
+  {
+    "file": "25.md",
+    "title": "Android アプリ（APK）を作る（最初に 1 回だけ）"
+  },
+  {
+    "file": "26.md",
+    "title": "アップデートの仕組み"
+  },
+  {
+    "file": "27.md",
+    "title": "自分のサーバー（VPS / Docker）で公開する場合"
+  },
+  {
+    "file": "28.md",
+    "title": "ルール（ゲーム内「ルール」タブと同じ）"
+  },
+  {
+    "file": "29.md",
+    "title": "配当表（ベットに対する倍率）"
+  },
+  {
+    "file": "30.md",
+    "title": "当たり演出"
+  },
+  {
+    "file": "31.md",
+    "title": "そのほかの演出（js/render/juice.js・slotfx.js・css/juice.css）"
+  },
+  {
+    "file": "32.md",
+    "title": "構成"
+  },
+  {
+    "file": "33.md",
+    "title": "テスト"
+  },
+  {
+    "file": "34.md",
+    "title": "再生成"
+  },
+  {
+    "file": "35.md",
+    "title": "DEV13：追加クエストと収益の回収待ち"
+  },
+  {
+    "file": "36.md",
+    "title": "金の生る木の3D対応（指定素材の一部は未取り込み）"
+  }
+]

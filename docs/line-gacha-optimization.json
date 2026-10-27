@@ -1,0 +1,2001 @@
+{
+  "additionalIcons": {
+    "baselineCommit": "9322c2d",
+    "files": 140,
+    "beforeBytes": 1145577,
+    "afterBytes": 436631,
+    "reductionPercent": 61.89
+  },
+  "gachaBrowser": {
+    "ok": true,
+    "initialGachaImageRequests": 0,
+    "controls": {
+      "switches": 60,
+      "addedElements": 0,
+      "sameButton": true
+    },
+    "oddsExtraRequests": 0,
+    "campaignBoundary": true,
+    "prices": 9,
+    "rewardSlots": [
+      3,
+      9,
+      30
+    ],
+    "doubleCharge": false,
+    "phoneConfirmation": true
+  },
+  "baselineCommit": "9322c2d",
+  "gachaImages": {
+    "files": 12,
+    "beforeBytes": 876618,
+    "afterBytes": 75918,
+    "reductionPercent": 91.34,
+    "maxMeanPixelDifferencePercent": 1.3094,
+    "images": [
+      {
+        "path": "img/gacha/background.webp",
+        "beforeBytes": 10088,
+        "afterBytes": 7220,
+        "beforeDimensions": [
+          960,
+          540
+        ],
+        "dimensions": [
+          960,
+          540
+        ],
+        "transparent": false,
+        "meanPixelDifferencePercent": 0.2899,
+        "psnrDb": 45.783
+      },
+      {
+        "path": "img/gacha/confirm.webp",
+        "beforeBytes": 291666,
+        "afterBytes": 10988,
+        "beforeDimensions": [
+          960,
+          540
+        ],
+        "dimensions": [
+          960,
+          540
+        ],
+        "transparent": true,
+        "meanPixelDifferencePercent": 0.449,
+        "psnrDb": 44.17
+      },
+      {
+        "path": "img/gacha/icon.webp",
+        "beforeBytes": 57716,
+        "afterBytes": 4986,
+        "beforeDimensions": [
+          384,
+          384
+        ],
+        "dimensions": [
+          224,
+          224
+        ],
+        "transparent": true,
+        "meanPixelDifferencePercent": 0.7549,
+        "psnrDb": 34.121
+      },
+      {
+        "path": "img/gacha/legendary.webp",
+        "beforeBytes": 74176,
+        "afterBytes": 8322,
+        "beforeDimensions": [
+          960,
+          540
+        ],
+        "dimensions": [
+          640,
+          360
+        ],
+        "transparent": true,
+        "meanPixelDifferencePercent": 0.6333,
+        "psnrDb": 36.13
+      },
+      {
+        "path": "img/gacha/odds.webp",
+        "beforeBytes": 18704,
+        "afterBytes": 2164,
+        "beforeDimensions": [
+          360,
+          203
+        ],
+        "dimensions": [
+          224,
+          126
+        ],
+        "transparent": true,
+        "meanPixelDifferencePercent": 0.5515,
+        "psnrDb": 33.982
+      },
+      {
+        "path": "img/gacha/off-10.webp",
+        "beforeBytes": 32020,
+        "afterBytes": 4206,
+        "beforeDimensions": [
+          360,
+          203
+        ],
+        "dimensions": [
+          216,
+          122
+        ],
+        "transparent": true,
+        "meanPixelDifferencePercent": 0.6163,
+        "psnrDb": 35.574
+      },
+      {
+        "path": "img/gacha/off-25.webp",
+        "beforeBytes": 35764,
+        "afterBytes": 4416,
+        "beforeDimensions": [
+          360,
+          203
+        ],
+        "dimensions": [
+          216,
+          122
+        ],
+        "transparent": true,
+        "meanPixelDifferencePercent": 0.7099,
+        "psnrDb": 34.678
+      },
+      {
+        "path": "img/gacha/pull-1.webp",
+        "beforeBytes": 53092,
+        "afterBytes": 4262,
+        "beforeDimensions": [
+          480,
+          270
+        ],
+        "dimensions": [
+          320,
+          180
+        ],
+        "transparent": true,
+        "meanPixelDifferencePercent": 0.6988,
+        "psnrDb": 34.354
+      },
+      {
+        "path": "img/gacha/pull-10.webp",
+        "beforeBytes": 94298,
+        "afterBytes": 7192,
+        "beforeDimensions": [
+          480,
+          270
+        ],
+        "dimensions": [
+          320,
+          180
+        ],
+        "transparent": true,
+        "meanPixelDifferencePercent": 1.3094,
+        "psnrDb": 31.566
+      },
+      {
+        "path": "img/gacha/pull-3.webp",
+        "beforeBytes": 73212,
+        "afterBytes": 5614,
+        "beforeDimensions": [
+          480,
+          270
+        ],
+        "dimensions": [
+          320,
+          180
+        ],
+        "transparent": true,
+        "meanPixelDifferencePercent": 0.9425,
+        "psnrDb": 33.056
+      },
+      {
+        "path": "img/gacha/rare.webp",
+        "beforeBytes": 78708,
+        "afterBytes": 8970,
+        "beforeDimensions": [
+          960,
+          540
+        ],
+        "dimensions": [
+          640,
+          360
+        ],
+        "transparent": true,
+        "meanPixelDifferencePercent": 0.7068,
+        "psnrDb": 35.133
+      },
+      {
+        "path": "img/gacha/secret.webp",
+        "beforeBytes": 57174,
+        "afterBytes": 7578,
+        "beforeDimensions": [
+          960,
+          540
+        ],
+        "dimensions": [
+          640,
+          360
+        ],
+        "transparent": true,
+        "meanPixelDifferencePercent": 0.5362,
+        "psnrDb": 37.432
+      }
+    ]
+  },
+  "lineImages": {
+    "files": 134,
+    "beforeBytes": 6934143,
+    "afterBytes": 3843258,
+    "reductionPercent": 44.57,
+    "maxMeanPixelDifferencePercent": 1.997,
+    "uniquePhotos": 67,
+    "dimensionsPreserved": true,
+    "cycleIdentitiesPreserved": true,
+    "images": [
+      {
+        "path": "ops/assets/line-wallpapers/ca82e0d3bae95913a3b82aae.jpg",
+        "source": "wallpaper-desktop.webp",
+        "role": "original",
+        "beforeBytes": 70287,
+        "afterBytes": 33601,
+        "dimensions": [
+          1280,
+          720
+        ],
+        "meanPixelDifferencePercent": 0.2619,
+        "psnrDb": 46.136
+      },
+      {
+        "path": "ops/assets/line-wallpapers/a84539516a804d8cea89f12b-preview.jpg",
+        "source": "wallpaper-desktop.webp",
+        "role": "preview",
+        "beforeBytes": 5546,
+        "afterBytes": 4917,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 0.7419,
+        "psnrDb": 39.216
+      },
+      {
+        "path": "ops/assets/line-wallpapers/29526686b101dbdd02839d72.jpg",
+        "source": "wallpaper-reserve.webp",
+        "role": "original",
+        "beforeBytes": 90176,
+        "afterBytes": 46530,
+        "dimensions": [
+          1280,
+          720
+        ],
+        "meanPixelDifferencePercent": 0.3434,
+        "psnrDb": 43.429
+      },
+      {
+        "path": "ops/assets/line-wallpapers/08fbd11aa46d5072f6cd4b4c-preview.jpg",
+        "source": "wallpaper-reserve.webp",
+        "role": "preview",
+        "beforeBytes": 7359,
+        "afterBytes": 6557,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 0.9683,
+        "psnrDb": 36.391
+      },
+      {
+        "path": "ops/assets/line-wallpapers/5240ded7b8aa37bf851c204a.jpg",
+        "source": "wallpapers/w01.webp",
+        "role": "original",
+        "beforeBytes": 86555,
+        "afterBytes": 45574,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5945,
+        "psnrDb": 39.482
+      },
+      {
+        "path": "ops/assets/line-wallpapers/9f03e885a4ccdb9a30230a4c-preview.jpg",
+        "source": "wallpapers/w01.webp",
+        "role": "preview",
+        "beforeBytes": 9576,
+        "afterBytes": 8567,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.2369,
+        "psnrDb": 34.714
+      },
+      {
+        "path": "ops/assets/line-wallpapers/a8b2937068dd8e141366d3d7.jpg",
+        "source": "wallpapers/w02.webp",
+        "role": "original",
+        "beforeBytes": 93151,
+        "afterBytes": 46797,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5268,
+        "psnrDb": 41.436
+      },
+      {
+        "path": "ops/assets/line-wallpapers/fcf790924977cb4f2c359c00-preview.jpg",
+        "source": "wallpapers/w02.webp",
+        "role": "preview",
+        "beforeBytes": 8271,
+        "afterBytes": 7331,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 0.9476,
+        "psnrDb": 37.2
+      },
+      {
+        "path": "ops/assets/line-wallpapers/71029ed9255e97c01b51e542.jpg",
+        "source": "wallpapers/w03.webp",
+        "role": "original",
+        "beforeBytes": 95913,
+        "afterBytes": 51015,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.6082,
+        "psnrDb": 40.105
+      },
+      {
+        "path": "ops/assets/line-wallpapers/f42eec71c1ec0eadf5de232e-preview.jpg",
+        "source": "wallpapers/w03.webp",
+        "role": "preview",
+        "beforeBytes": 10515,
+        "afterBytes": 9469,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.2114,
+        "psnrDb": 35.225
+      },
+      {
+        "path": "ops/assets/line-wallpapers/b76975406e046fe34e5d0857.jpg",
+        "source": "wallpapers/w04.webp",
+        "role": "original",
+        "beforeBytes": 88341,
+        "afterBytes": 44745,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5618,
+        "psnrDb": 40.955
+      },
+      {
+        "path": "ops/assets/line-wallpapers/57204d8bad9497503d161b50-preview.jpg",
+        "source": "wallpapers/w04.webp",
+        "role": "preview",
+        "beforeBytes": 8527,
+        "afterBytes": 7632,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.0014,
+        "psnrDb": 36.675
+      },
+      {
+        "path": "ops/assets/line-wallpapers/665b35308b206a61523509c0.jpg",
+        "source": "wallpapers/w05.webp",
+        "role": "original",
+        "beforeBytes": 78091,
+        "afterBytes": 38266,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5023,
+        "psnrDb": 41.799
+      },
+      {
+        "path": "ops/assets/line-wallpapers/4c20103e2b641f9cd0cbcd09-preview.jpg",
+        "source": "wallpapers/w05.webp",
+        "role": "preview",
+        "beforeBytes": 7249,
+        "afterBytes": 6490,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 0.8685,
+        "psnrDb": 37.944
+      },
+      {
+        "path": "ops/assets/line-wallpapers/a877bfbae68b431d71c1cbb2.jpg",
+        "source": "wallpapers/w06.webp",
+        "role": "original",
+        "beforeBytes": 110458,
+        "afterBytes": 58976,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.7416,
+        "psnrDb": 38.178
+      },
+      {
+        "path": "ops/assets/line-wallpapers/fcbfb8fd3478296292cb4ca8-preview.jpg",
+        "source": "wallpapers/w06.webp",
+        "role": "preview",
+        "beforeBytes": 11263,
+        "afterBytes": 10094,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.4479,
+        "psnrDb": 33.409
+      },
+      {
+        "path": "ops/assets/line-wallpapers/c330fed1c95f7846301e03a3.jpg",
+        "source": "wallpapers/w07.webp",
+        "role": "original",
+        "beforeBytes": 76832,
+        "afterBytes": 41209,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5322,
+        "psnrDb": 40.232
+      },
+      {
+        "path": "ops/assets/line-wallpapers/c1614f664e3fb9cdce32b70d-preview.jpg",
+        "source": "wallpapers/w07.webp",
+        "role": "preview",
+        "beforeBytes": 8681,
+        "afterBytes": 7805,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.1741,
+        "psnrDb": 34.879
+      },
+      {
+        "path": "ops/assets/line-wallpapers/0379e3f7c79ebdebf06de94b.jpg",
+        "source": "wallpapers/w08.webp",
+        "role": "original",
+        "beforeBytes": 113472,
+        "afterBytes": 57833,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.7865,
+        "psnrDb": 37.549
+      },
+      {
+        "path": "ops/assets/line-wallpapers/63c23140ad192239338b505b-preview.jpg",
+        "source": "wallpapers/w08.webp",
+        "role": "preview",
+        "beforeBytes": 10089,
+        "afterBytes": 9017,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.3128,
+        "psnrDb": 33.88
+      },
+      {
+        "path": "ops/assets/line-wallpapers/15633861bbd102f3af229881.jpg",
+        "source": "wallpapers/w09.webp",
+        "role": "original",
+        "beforeBytes": 81958,
+        "afterBytes": 42426,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5509,
+        "psnrDb": 40.375
+      },
+      {
+        "path": "ops/assets/line-wallpapers/e0cd3ad8e6b90f25eb8e5549-preview.jpg",
+        "source": "wallpapers/w09.webp",
+        "role": "preview",
+        "beforeBytes": 8417,
+        "afterBytes": 7525,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.0718,
+        "psnrDb": 35.936
+      },
+      {
+        "path": "ops/assets/line-wallpapers/b8ee6230e56816b18a8506a2.jpg",
+        "source": "wallpapers/w10.webp",
+        "role": "original",
+        "beforeBytes": 64985,
+        "afterBytes": 33039,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.4666,
+        "psnrDb": 40.881
+      },
+      {
+        "path": "ops/assets/line-wallpapers/6e2b12dd5a4a6d3f9d328361-preview.jpg",
+        "source": "wallpapers/w10.webp",
+        "role": "preview",
+        "beforeBytes": 7395,
+        "afterBytes": 6619,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.0481,
+        "psnrDb": 35.708
+      },
+      {
+        "path": "ops/assets/line-wallpapers/68ec1a23ac1d1a218dd43d3e.jpg",
+        "source": "wallpapers/w11.webp",
+        "role": "original",
+        "beforeBytes": 129784,
+        "afterBytes": 69988,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.8493,
+        "psnrDb": 37.238
+      },
+      {
+        "path": "ops/assets/line-wallpapers/c02d1cb5ce213b5d1b529c31-preview.jpg",
+        "source": "wallpapers/w11.webp",
+        "role": "preview",
+        "beforeBytes": 12564,
+        "afterBytes": 11301,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.5752,
+        "psnrDb": 32.692
+      },
+      {
+        "path": "ops/assets/line-wallpapers/8bf180f57b73d72f9ff80db2.jpg",
+        "source": "wallpapers/w12.webp",
+        "role": "original",
+        "beforeBytes": 100069,
+        "afterBytes": 52501,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.6354,
+        "psnrDb": 39.154
+      },
+      {
+        "path": "ops/assets/line-wallpapers/81499b1a1279020c8e2ea9aa-preview.jpg",
+        "source": "wallpapers/w12.webp",
+        "role": "preview",
+        "beforeBytes": 9666,
+        "afterBytes": 8645,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.1693,
+        "psnrDb": 35.107
+      },
+      {
+        "path": "ops/assets/line-wallpapers/45797092477dc3fe8c4f0eba.jpg",
+        "source": "wallpapers/w13.webp",
+        "role": "original",
+        "beforeBytes": 77491,
+        "afterBytes": 39923,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5207,
+        "psnrDb": 41.183
+      },
+      {
+        "path": "ops/assets/line-wallpapers/3fc49e07230ce95c6474237d-preview.jpg",
+        "source": "wallpapers/w13.webp",
+        "role": "preview",
+        "beforeBytes": 8177,
+        "afterBytes": 7328,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.0252,
+        "psnrDb": 36.455
+      },
+      {
+        "path": "ops/assets/line-wallpapers/d3f8f2381b8733eb581c704a.jpg",
+        "source": "wallpapers/w14.webp",
+        "role": "original",
+        "beforeBytes": 74746,
+        "afterBytes": 35799,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5066,
+        "psnrDb": 41.11
+      },
+      {
+        "path": "ops/assets/line-wallpapers/09acfbf9eed45989aaa8351c-preview.jpg",
+        "source": "wallpapers/w14.webp",
+        "role": "preview",
+        "beforeBytes": 7218,
+        "afterBytes": 6478,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 0.9379,
+        "psnrDb": 36.547
+      },
+      {
+        "path": "ops/assets/line-wallpapers/1c9f8a8ee70d830f929aa55e.jpg",
+        "source": "wallpapers/w15.webp",
+        "role": "original",
+        "beforeBytes": 93331,
+        "afterBytes": 48547,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.6701,
+        "psnrDb": 38.918
+      },
+      {
+        "path": "ops/assets/line-wallpapers/774d65b8bf3ebcb29d72c6d5-preview.jpg",
+        "source": "wallpapers/w15.webp",
+        "role": "preview",
+        "beforeBytes": 9670,
+        "afterBytes": 8639,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.2912,
+        "psnrDb": 34.358
+      },
+      {
+        "path": "ops/assets/line-wallpapers/32e7ff13b7552add515630e8.jpg",
+        "source": "wallpapers/w16.webp",
+        "role": "original",
+        "beforeBytes": 95805,
+        "afterBytes": 52011,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.6041,
+        "psnrDb": 39.82
+      },
+      {
+        "path": "ops/assets/line-wallpapers/f6832affc34a1a50f6733446-preview.jpg",
+        "source": "wallpapers/w16.webp",
+        "role": "preview",
+        "beforeBytes": 10283,
+        "afterBytes": 9240,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.2147,
+        "psnrDb": 35.051
+      },
+      {
+        "path": "ops/assets/line-wallpapers/979f334e96e07654d6d47b81.jpg",
+        "source": "wallpapers/w17.webp",
+        "role": "original",
+        "beforeBytes": 100829,
+        "afterBytes": 50954,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.7004,
+        "psnrDb": 38.538
+      },
+      {
+        "path": "ops/assets/line-wallpapers/8f254f502194b9d282b332b2-preview.jpg",
+        "source": "wallpapers/w17.webp",
+        "role": "preview",
+        "beforeBytes": 9135,
+        "afterBytes": 8138,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.1979,
+        "psnrDb": 34.659
+      },
+      {
+        "path": "ops/assets/line-wallpapers/2720ebcc970faf2646a184fa.jpg",
+        "source": "wallpapers/w18.webp",
+        "role": "original",
+        "beforeBytes": 108626,
+        "afterBytes": 57121,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.7576,
+        "psnrDb": 38.335
+      },
+      {
+        "path": "ops/assets/line-wallpapers/c76dc47792304fbfe51c6462-preview.jpg",
+        "source": "wallpapers/w18.webp",
+        "role": "preview",
+        "beforeBytes": 10995,
+        "afterBytes": 9789,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.474,
+        "psnrDb": 33.355
+      },
+      {
+        "path": "ops/assets/line-wallpapers/2c20745cd426eea71c8ed291.jpg",
+        "source": "wallpapers/w19.webp",
+        "role": "original",
+        "beforeBytes": 66469,
+        "afterBytes": 32393,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.4915,
+        "psnrDb": 41.865
+      },
+      {
+        "path": "ops/assets/line-wallpapers/fc695dcc4732025fd2f75779-preview.jpg",
+        "source": "wallpapers/w19.webp",
+        "role": "preview",
+        "beforeBytes": 6828,
+        "afterBytes": 6063,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 0.9336,
+        "psnrDb": 37.368
+      },
+      {
+        "path": "ops/assets/line-wallpapers/04d34e170297d358b88d036a.jpg",
+        "source": "wallpapers/w20.webp",
+        "role": "original",
+        "beforeBytes": 93748,
+        "afterBytes": 49110,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.6246,
+        "psnrDb": 39.811
+      },
+      {
+        "path": "ops/assets/line-wallpapers/950882e5d3054e137debe844-preview.jpg",
+        "source": "wallpapers/w20.webp",
+        "role": "preview",
+        "beforeBytes": 9007,
+        "afterBytes": 8044,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.1357,
+        "psnrDb": 35.762
+      },
+      {
+        "path": "ops/assets/line-wallpapers/2c811a5205efa30874de1607.jpg",
+        "source": "wallpapers/w21.webp",
+        "role": "original",
+        "beforeBytes": 103753,
+        "afterBytes": 54054,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.681,
+        "psnrDb": 39.19
+      },
+      {
+        "path": "ops/assets/line-wallpapers/bc995f0b70905a20cfb7eaf6-preview.jpg",
+        "source": "wallpapers/w21.webp",
+        "role": "preview",
+        "beforeBytes": 9102,
+        "afterBytes": 8122,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.1781,
+        "psnrDb": 35.054
+      },
+      {
+        "path": "ops/assets/line-wallpapers/9ca2fd61f34d465d6022c2e1.jpg",
+        "source": "wallpapers/w22.webp",
+        "role": "original",
+        "beforeBytes": 69041,
+        "afterBytes": 36209,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.4157,
+        "psnrDb": 41.796
+      },
+      {
+        "path": "ops/assets/line-wallpapers/19ea40f7ddd312b281c7fac9-preview.jpg",
+        "source": "wallpapers/w22.webp",
+        "role": "preview",
+        "beforeBytes": 7167,
+        "afterBytes": 6403,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 0.865,
+        "psnrDb": 37.024
+      },
+      {
+        "path": "ops/assets/line-wallpapers/04b03b878607cc1bb13008b5.jpg",
+        "source": "wallpapers/w23.webp",
+        "role": "original",
+        "beforeBytes": 95283,
+        "afterBytes": 49190,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.6947,
+        "psnrDb": 38.659
+      },
+      {
+        "path": "ops/assets/line-wallpapers/50de66e929eae8c09012e42d-preview.jpg",
+        "source": "wallpapers/w23.webp",
+        "role": "preview",
+        "beforeBytes": 9599,
+        "afterBytes": 8556,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.3419,
+        "psnrDb": 34.054
+      },
+      {
+        "path": "ops/assets/line-wallpapers/967032fa4883c00e60afd64f.jpg",
+        "source": "wallpapers/w24.webp",
+        "role": "original",
+        "beforeBytes": 122145,
+        "afterBytes": 64786,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.7747,
+        "psnrDb": 38.347
+      },
+      {
+        "path": "ops/assets/line-wallpapers/21a9164b07e6861c90157153-preview.jpg",
+        "source": "wallpapers/w24.webp",
+        "role": "preview",
+        "beforeBytes": 11571,
+        "afterBytes": 10326,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.3389,
+        "psnrDb": 34.252
+      },
+      {
+        "path": "ops/assets/line-wallpapers/29e8beb3cb1b09963953279a.jpg",
+        "source": "wallpapers/w25.webp",
+        "role": "original",
+        "beforeBytes": 63718,
+        "afterBytes": 33622,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.449,
+        "psnrDb": 41.267
+      },
+      {
+        "path": "ops/assets/line-wallpapers/940a193641b2296579ccc1b9-preview.jpg",
+        "source": "wallpapers/w25.webp",
+        "role": "preview",
+        "beforeBytes": 7807,
+        "afterBytes": 6974,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.0415,
+        "psnrDb": 36.04
+      },
+      {
+        "path": "ops/assets/line-wallpapers/850a39c4d9aeba2b1ee9cbed.jpg",
+        "source": "wallpapers/w26.webp",
+        "role": "original",
+        "beforeBytes": 113151,
+        "afterBytes": 58185,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.7763,
+        "psnrDb": 37.777
+      },
+      {
+        "path": "ops/assets/line-wallpapers/636952eb2e20043b34b9c933-preview.jpg",
+        "source": "wallpapers/w26.webp",
+        "role": "preview",
+        "beforeBytes": 10118,
+        "afterBytes": 9028,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.3261,
+        "psnrDb": 33.781
+      },
+      {
+        "path": "ops/assets/line-wallpapers/6a1294b97f03eef4c217e4e6.jpg",
+        "source": "wallpapers/w27.webp",
+        "role": "original",
+        "beforeBytes": 56915,
+        "afterBytes": 28985,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.4026,
+        "psnrDb": 41.909
+      },
+      {
+        "path": "ops/assets/line-wallpapers/da757de1f01a3e09dac9e533-preview.jpg",
+        "source": "wallpapers/w27.webp",
+        "role": "preview",
+        "beforeBytes": 5779,
+        "afterBytes": 5170,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 0.829,
+        "psnrDb": 37.376
+      },
+      {
+        "path": "ops/assets/line-wallpapers/57a43471bdf84ad094442b75.jpg",
+        "source": "wallpapers/w28.webp",
+        "role": "original",
+        "beforeBytes": 46668,
+        "afterBytes": 24653,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.2693,
+        "psnrDb": 44.596
+      },
+      {
+        "path": "ops/assets/line-wallpapers/88fbf448272e96d073e9d79b-preview.jpg",
+        "source": "wallpapers/w28.webp",
+        "role": "preview",
+        "beforeBytes": 5359,
+        "afterBytes": 4766,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 0.6774,
+        "psnrDb": 39.223
+      },
+      {
+        "path": "ops/assets/line-wallpapers/e492dc8dc498233fadcfc80b.jpg",
+        "source": "wallpapers/w29.webp",
+        "role": "original",
+        "beforeBytes": 77271,
+        "afterBytes": 41253,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.4996,
+        "psnrDb": 40.774
+      },
+      {
+        "path": "ops/assets/line-wallpapers/c6f0e7b3c7fb44a0f599a4ac-preview.jpg",
+        "source": "wallpapers/w29.webp",
+        "role": "preview",
+        "beforeBytes": 8696,
+        "afterBytes": 7802,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.0629,
+        "psnrDb": 35.873
+      },
+      {
+        "path": "ops/assets/line-wallpapers/2df095187c0d6a3df2e4190b.jpg",
+        "source": "wallpapers/w30.webp",
+        "role": "original",
+        "beforeBytes": 81211,
+        "afterBytes": 41264,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5872,
+        "psnrDb": 40.031
+      },
+      {
+        "path": "ops/assets/line-wallpapers/0fed49aea9d31057eef04460-preview.jpg",
+        "source": "wallpapers/w30.webp",
+        "role": "preview",
+        "beforeBytes": 8565,
+        "afterBytes": 7662,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.1533,
+        "psnrDb": 35.329
+      },
+      {
+        "path": "ops/assets/line-wallpapers/b51d2e6765285bccdef7a6a3.jpg",
+        "source": "wallpapers/w31.webp",
+        "role": "original",
+        "beforeBytes": 89237,
+        "afterBytes": 46206,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5999,
+        "psnrDb": 39.78
+      },
+      {
+        "path": "ops/assets/line-wallpapers/325855410926c907fdc86136-preview.jpg",
+        "source": "wallpapers/w31.webp",
+        "role": "preview",
+        "beforeBytes": 8803,
+        "afterBytes": 7846,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.124,
+        "psnrDb": 35.527
+      },
+      {
+        "path": "ops/assets/line-wallpapers/5be88b3009718b5685fe5f70.jpg",
+        "source": "wallpapers/w32.webp",
+        "role": "original",
+        "beforeBytes": 132267,
+        "afterBytes": 72088,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.8867,
+        "psnrDb": 36.986
+      },
+      {
+        "path": "ops/assets/line-wallpapers/12c6a1ae8f8d985a5648d2d8-preview.jpg",
+        "source": "wallpapers/w32.webp",
+        "role": "preview",
+        "beforeBytes": 12939,
+        "afterBytes": 11618,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.6821,
+        "psnrDb": 32.036
+      },
+      {
+        "path": "ops/assets/line-wallpapers/8cd724ac1d32729b06a8c3e5.jpg",
+        "source": "wallpapers/w33.webp",
+        "role": "original",
+        "beforeBytes": 90028,
+        "afterBytes": 46352,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.7182,
+        "psnrDb": 37.29
+      },
+      {
+        "path": "ops/assets/line-wallpapers/c920efd5278c9edcb4e7432f-preview.jpg",
+        "source": "wallpapers/w33.webp",
+        "role": "preview",
+        "beforeBytes": 9161,
+        "afterBytes": 8148,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.5123,
+        "psnrDb": 32.027
+      },
+      {
+        "path": "ops/assets/line-wallpapers/e3a8c90a06eb69095a238021.jpg",
+        "source": "wallpapers/w34.webp",
+        "role": "original",
+        "beforeBytes": 136859,
+        "afterBytes": 71963,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.9749,
+        "psnrDb": 35.896
+      },
+      {
+        "path": "ops/assets/line-wallpapers/9878544a363ff326c5221381-preview.jpg",
+        "source": "wallpapers/w34.webp",
+        "role": "preview",
+        "beforeBytes": 12058,
+        "afterBytes": 10740,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.651,
+        "psnrDb": 31.965
+      },
+      {
+        "path": "ops/assets/line-wallpapers/e0b2484e849889cd5e504cbb.jpg",
+        "source": "wallpapers/w35.webp",
+        "role": "original",
+        "beforeBytes": 110048,
+        "afterBytes": 56233,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.8133,
+        "psnrDb": 37.428
+      },
+      {
+        "path": "ops/assets/line-wallpapers/49eade25018d8bb57ce39113-preview.jpg",
+        "source": "wallpapers/w35.webp",
+        "role": "preview",
+        "beforeBytes": 10702,
+        "afterBytes": 9517,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.5354,
+        "psnrDb": 32.761
+      },
+      {
+        "path": "ops/assets/line-wallpapers/445a066c6995692cf2d55273.jpg",
+        "source": "wallpapers/w36.webp",
+        "role": "original",
+        "beforeBytes": 78178,
+        "afterBytes": 41896,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5415,
+        "psnrDb": 40.443
+      },
+      {
+        "path": "ops/assets/line-wallpapers/d109c69479bb0006d2289614-preview.jpg",
+        "source": "wallpapers/w36.webp",
+        "role": "preview",
+        "beforeBytes": 8990,
+        "afterBytes": 8093,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.1828,
+        "psnrDb": 35.25
+      },
+      {
+        "path": "ops/assets/line-wallpapers/ce31f5275c4df879071b1a64.jpg",
+        "source": "wallpapers/w37.webp",
+        "role": "original",
+        "beforeBytes": 111004,
+        "afterBytes": 59045,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.7424,
+        "psnrDb": 38.184
+      },
+      {
+        "path": "ops/assets/line-wallpapers/b6e11730e38d6661315e1e43-preview.jpg",
+        "source": "wallpapers/w37.webp",
+        "role": "preview",
+        "beforeBytes": 10787,
+        "afterBytes": 9701,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.3651,
+        "psnrDb": 33.916
+      },
+      {
+        "path": "ops/assets/line-wallpapers/cc15065dc8fe36e3fb8436df.jpg",
+        "source": "wallpapers/w38.webp",
+        "role": "original",
+        "beforeBytes": 80662,
+        "afterBytes": 43037,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5178,
+        "psnrDb": 40.655
+      },
+      {
+        "path": "ops/assets/line-wallpapers/0c3c54825337fe7bc5b5ebf3-preview.jpg",
+        "source": "wallpapers/w38.webp",
+        "role": "preview",
+        "beforeBytes": 8393,
+        "afterBytes": 7562,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.0454,
+        "psnrDb": 36.063
+      },
+      {
+        "path": "ops/assets/line-wallpapers/e5a1c787a06c0503e9273fae.jpg",
+        "source": "wallpapers/w39.webp",
+        "role": "original",
+        "beforeBytes": 139589,
+        "afterBytes": 73733,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.9323,
+        "psnrDb": 37.189
+      },
+      {
+        "path": "ops/assets/line-wallpapers/090cfbef3982d029b2636766-preview.jpg",
+        "source": "wallpapers/w39.webp",
+        "role": "preview",
+        "beforeBytes": 13102,
+        "afterBytes": 11794,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.6079,
+        "psnrDb": 33.088
+      },
+      {
+        "path": "ops/assets/line-wallpapers/aecc20e4bcf3ba9c99fbd774.jpg",
+        "source": "wallpapers/w40.webp",
+        "role": "original",
+        "beforeBytes": 83442,
+        "afterBytes": 42671,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5861,
+        "psnrDb": 39.816
+      },
+      {
+        "path": "ops/assets/line-wallpapers/af133aeb8318a8b7d2b2ca28-preview.jpg",
+        "source": "wallpapers/w40.webp",
+        "role": "preview",
+        "beforeBytes": 7691,
+        "afterBytes": 6835,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.0828,
+        "psnrDb": 35.457
+      },
+      {
+        "path": "ops/assets/line-wallpapers/cfd7ae916d961853de16e070.jpg",
+        "source": "wallpapers/w41.webp",
+        "role": "original",
+        "beforeBytes": 81195,
+        "afterBytes": 41978,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5725,
+        "psnrDb": 40.131
+      },
+      {
+        "path": "ops/assets/line-wallpapers/f0b241f12d6be4b718ea5ee8-preview.jpg",
+        "source": "wallpapers/w41.webp",
+        "role": "preview",
+        "beforeBytes": 8698,
+        "afterBytes": 7751,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.1287,
+        "psnrDb": 35.345
+      },
+      {
+        "path": "ops/assets/line-wallpapers/89ac17201d9c8f0fb96350a9.jpg",
+        "source": "wallpapers/w42.webp",
+        "role": "original",
+        "beforeBytes": 106799,
+        "afterBytes": 54665,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.7493,
+        "psnrDb": 38.295
+      },
+      {
+        "path": "ops/assets/line-wallpapers/b353ea9b96d7e33e3449db10-preview.jpg",
+        "source": "wallpapers/w42.webp",
+        "role": "preview",
+        "beforeBytes": 10083,
+        "afterBytes": 8984,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.3069,
+        "psnrDb": 34.33
+      },
+      {
+        "path": "ops/assets/line-wallpapers/6d3cdf75b2f0d1eb43b6e22d.jpg",
+        "source": "wallpapers/w43.webp",
+        "role": "original",
+        "beforeBytes": 91402,
+        "afterBytes": 46242,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.6588,
+        "psnrDb": 39.087
+      },
+      {
+        "path": "ops/assets/line-wallpapers/f1a8586113c444a3083668ef-preview.jpg",
+        "source": "wallpapers/w43.webp",
+        "role": "preview",
+        "beforeBytes": 8532,
+        "afterBytes": 7610,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.1521,
+        "psnrDb": 35.156
+      },
+      {
+        "path": "ops/assets/line-wallpapers/838b9d7aa8abddc6e7340eb8.jpg",
+        "source": "wallpapers/w44.webp",
+        "role": "original",
+        "beforeBytes": 152444,
+        "afterBytes": 80116,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 1.0983,
+        "psnrDb": 35.304
+      },
+      {
+        "path": "ops/assets/line-wallpapers/2124c3f18d58bb339804572c-preview.jpg",
+        "source": "wallpapers/w44.webp",
+        "role": "preview",
+        "beforeBytes": 14408,
+        "afterBytes": 12806,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.997,
+        "psnrDb": 30.996
+      },
+      {
+        "path": "ops/assets/line-wallpapers/90e61436d7e9c97d22e62a04.jpg",
+        "source": "wallpapers/w45.webp",
+        "role": "original",
+        "beforeBytes": 93521,
+        "afterBytes": 49624,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.6553,
+        "psnrDb": 39.241
+      },
+      {
+        "path": "ops/assets/line-wallpapers/465af206a633e56f58c278a4-preview.jpg",
+        "source": "wallpapers/w45.webp",
+        "role": "preview",
+        "beforeBytes": 10012,
+        "afterBytes": 8982,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.2884,
+        "psnrDb": 34.319
+      },
+      {
+        "path": "ops/assets/line-wallpapers/b82ef5c2fb2731768b898eca.jpg",
+        "source": "wallpapers/w46.webp",
+        "role": "original",
+        "beforeBytes": 37790,
+        "afterBytes": 19949,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.246,
+        "psnrDb": 44.773
+      },
+      {
+        "path": "ops/assets/line-wallpapers/60033b8ec8cfcb94835f55e9-preview.jpg",
+        "source": "wallpapers/w46.webp",
+        "role": "preview",
+        "beforeBytes": 4303,
+        "afterBytes": 3842,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 0.6509,
+        "psnrDb": 39.48
+      },
+      {
+        "path": "ops/assets/line-wallpapers/3109319f7d370e393de14a5c.jpg",
+        "source": "wallpapers/w47.webp",
+        "role": "original",
+        "beforeBytes": 130528,
+        "afterBytes": 67163,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.9018,
+        "psnrDb": 36.803
+      },
+      {
+        "path": "ops/assets/line-wallpapers/55b2727f0a5467394ea02de2-preview.jpg",
+        "source": "wallpapers/w47.webp",
+        "role": "preview",
+        "beforeBytes": 11095,
+        "afterBytes": 9904,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.4226,
+        "psnrDb": 33.396
+      },
+      {
+        "path": "ops/assets/line-wallpapers/da34e15b51156058cc7b5000.jpg",
+        "source": "wallpapers/w48.webp",
+        "role": "original",
+        "beforeBytes": 137172,
+        "afterBytes": 70830,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.9601,
+        "psnrDb": 36.328
+      },
+      {
+        "path": "ops/assets/line-wallpapers/9f4034231b6d6d1b7b0af89d-preview.jpg",
+        "source": "wallpapers/w48.webp",
+        "role": "preview",
+        "beforeBytes": 11367,
+        "afterBytes": 10091,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.5211,
+        "psnrDb": 32.908
+      },
+      {
+        "path": "ops/assets/line-wallpapers/2dc9acbc7dc9a5533b445bf2.jpg",
+        "source": "wallpapers/w49.webp",
+        "role": "original",
+        "beforeBytes": 105604,
+        "afterBytes": 54103,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.6901,
+        "psnrDb": 38.899
+      },
+      {
+        "path": "ops/assets/line-wallpapers/d5a5b2f4b6a58de5cdb022a6-preview.jpg",
+        "source": "wallpapers/w49.webp",
+        "role": "preview",
+        "beforeBytes": 9641,
+        "afterBytes": 8638,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.1824,
+        "psnrDb": 35.107
+      },
+      {
+        "path": "ops/assets/line-wallpapers/33b0bd0cdfa12dc2735d2332.jpg",
+        "source": "wallpapers/w50.webp",
+        "role": "original",
+        "beforeBytes": 81033,
+        "afterBytes": 41673,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5669,
+        "psnrDb": 40.323
+      },
+      {
+        "path": "ops/assets/line-wallpapers/8de52c2efbe71f6ed6e2e581-preview.jpg",
+        "source": "wallpapers/w50.webp",
+        "role": "preview",
+        "beforeBytes": 8477,
+        "afterBytes": 7616,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.0397,
+        "psnrDb": 36.098
+      },
+      {
+        "path": "ops/assets/line-wallpapers/9b81abde53f862ba797dca3c.jpg",
+        "source": "wallpapers/w51.webp",
+        "role": "original",
+        "beforeBytes": 114561,
+        "afterBytes": 58889,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.7774,
+        "psnrDb": 37.985
+      },
+      {
+        "path": "ops/assets/line-wallpapers/06e3625f4fa040e66e592fb2-preview.jpg",
+        "source": "wallpapers/w51.webp",
+        "role": "preview",
+        "beforeBytes": 10236,
+        "afterBytes": 9157,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.3062,
+        "psnrDb": 34.095
+      },
+      {
+        "path": "ops/assets/line-wallpapers/6b8870005cbc1c32f74f32a6.jpg",
+        "source": "wallpapers/w52.webp",
+        "role": "original",
+        "beforeBytes": 83038,
+        "afterBytes": 42448,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5858,
+        "psnrDb": 40.02
+      },
+      {
+        "path": "ops/assets/line-wallpapers/eb3247f084fdedfc2949d5be-preview.jpg",
+        "source": "wallpapers/w52.webp",
+        "role": "preview",
+        "beforeBytes": 8438,
+        "afterBytes": 7505,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.1329,
+        "psnrDb": 35.386
+      },
+      {
+        "path": "ops/assets/line-wallpapers/3e5ffcdebba2edd6258acea2.jpg",
+        "source": "wallpapers/w53.webp",
+        "role": "original",
+        "beforeBytes": 70493,
+        "afterBytes": 36383,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.4966,
+        "psnrDb": 41.108
+      },
+      {
+        "path": "ops/assets/line-wallpapers/cc49cbcb7526aacc7482f5ce-preview.jpg",
+        "source": "wallpapers/w53.webp",
+        "role": "preview",
+        "beforeBytes": 7983,
+        "afterBytes": 7123,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.0499,
+        "psnrDb": 36.236
+      },
+      {
+        "path": "ops/assets/line-wallpapers/f2e5eab82cec70dfbe4f7052.jpg",
+        "source": "wallpapers/w54.webp",
+        "role": "original",
+        "beforeBytes": 110006,
+        "afterBytes": 59731,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.6999,
+        "psnrDb": 38.115
+      },
+      {
+        "path": "ops/assets/line-wallpapers/aefb965ba6d4da01838e37b5-preview.jpg",
+        "source": "wallpapers/w54.webp",
+        "role": "preview",
+        "beforeBytes": 11438,
+        "afterBytes": 10309,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.377,
+        "psnrDb": 33.544
+      },
+      {
+        "path": "ops/assets/line-wallpapers/6c8d11075f42de110089fb19.jpg",
+        "source": "wallpapers/w55.webp",
+        "role": "original",
+        "beforeBytes": 47645,
+        "afterBytes": 24774,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.3295,
+        "psnrDb": 42.599
+      },
+      {
+        "path": "ops/assets/line-wallpapers/0bfafcdf70281647d4f95066-preview.jpg",
+        "source": "wallpapers/w55.webp",
+        "role": "preview",
+        "beforeBytes": 5787,
+        "afterBytes": 5131,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 0.7533,
+        "psnrDb": 37.724
+      },
+      {
+        "path": "ops/assets/line-wallpapers/315bac3b8e538065447681b2.jpg",
+        "source": "wallpapers/w56.webp",
+        "role": "original",
+        "beforeBytes": 106903,
+        "afterBytes": 54559,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.7633,
+        "psnrDb": 38.166
+      },
+      {
+        "path": "ops/assets/line-wallpapers/27b759d39c58904968d7dee3-preview.jpg",
+        "source": "wallpapers/w56.webp",
+        "role": "preview",
+        "beforeBytes": 10671,
+        "afterBytes": 9528,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.409,
+        "psnrDb": 33.66
+      },
+      {
+        "path": "ops/assets/line-wallpapers/fee335ce6dcf824c8817433e.jpg",
+        "source": "wallpapers/w57.webp",
+        "role": "original",
+        "beforeBytes": 132050,
+        "afterBytes": 68517,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.8691,
+        "psnrDb": 37.462
+      },
+      {
+        "path": "ops/assets/line-wallpapers/c4eb64e6e1f1e62af6a6a49f-preview.jpg",
+        "source": "wallpapers/w57.webp",
+        "role": "preview",
+        "beforeBytes": 11532,
+        "afterBytes": 10293,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.4291,
+        "psnrDb": 33.893
+      },
+      {
+        "path": "ops/assets/line-wallpapers/94417e1e6ec214c8e95f5fe3.jpg",
+        "source": "wallpapers/w58.webp",
+        "role": "original",
+        "beforeBytes": 91413,
+        "afterBytes": 46468,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.6317,
+        "psnrDb": 39.652
+      },
+      {
+        "path": "ops/assets/line-wallpapers/33fb514722bda462efaa95c7-preview.jpg",
+        "source": "wallpapers/w58.webp",
+        "role": "preview",
+        "beforeBytes": 9082,
+        "afterBytes": 8095,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.1274,
+        "psnrDb": 35.625
+      },
+      {
+        "path": "ops/assets/line-wallpapers/b90b5a8b6fc322728b1f5976.jpg",
+        "source": "wallpapers/w59.webp",
+        "role": "original",
+        "beforeBytes": 73859,
+        "afterBytes": 38319,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.5542,
+        "psnrDb": 40.148
+      },
+      {
+        "path": "ops/assets/line-wallpapers/0b9be245efc1481be0d607ca-preview.jpg",
+        "source": "wallpapers/w59.webp",
+        "role": "preview",
+        "beforeBytes": 7983,
+        "afterBytes": 7134,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.1261,
+        "psnrDb": 35.467
+      },
+      {
+        "path": "ops/assets/line-wallpapers/56faba2d9cf85cc662af7146.jpg",
+        "source": "wallpapers/w60.webp",
+        "role": "original",
+        "beforeBytes": 71137,
+        "afterBytes": 36684,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.504,
+        "psnrDb": 40.675
+      },
+      {
+        "path": "ops/assets/line-wallpapers/3a8729e3f74ff97c930d3047-preview.jpg",
+        "source": "wallpapers/w60.webp",
+        "role": "preview",
+        "beforeBytes": 7970,
+        "afterBytes": 7110,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.0771,
+        "psnrDb": 35.751
+      },
+      {
+        "path": "ops/assets/line-wallpapers/1dfbaa1aa7933713c1c06242.jpg",
+        "source": "wallpapers/w61.webp",
+        "role": "original",
+        "beforeBytes": 29925,
+        "afterBytes": 15395,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.2057,
+        "psnrDb": 46.343
+      },
+      {
+        "path": "ops/assets/line-wallpapers/bf2331e529b9a3ebacd25efe-preview.jpg",
+        "source": "wallpapers/w61.webp",
+        "role": "preview",
+        "beforeBytes": 3886,
+        "afterBytes": 3490,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 0.5763,
+        "psnrDb": 41.09
+      },
+      {
+        "path": "ops/assets/line-wallpapers/d39350ec4e61b58ee2a3ea9a.jpg",
+        "source": "wallpapers/w62.webp",
+        "role": "original",
+        "beforeBytes": 158423,
+        "afterBytes": 85129,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.9478,
+        "psnrDb": 37.011
+      },
+      {
+        "path": "ops/assets/line-wallpapers/fdb6f97e7088ee476c5a8fc4-preview.jpg",
+        "source": "wallpapers/w62.webp",
+        "role": "preview",
+        "beforeBytes": 12405,
+        "afterBytes": 11067,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.4852,
+        "psnrDb": 33.41
+      },
+      {
+        "path": "ops/assets/line-wallpapers/fff0f3c0730be4b6faf24a87.jpg",
+        "source": "wallpapers/w63.webp",
+        "role": "original",
+        "beforeBytes": 147039,
+        "afterBytes": 79178,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.9671,
+        "psnrDb": 36.367
+      },
+      {
+        "path": "ops/assets/line-wallpapers/992a63dac2a0d3ec60c04214-preview.jpg",
+        "source": "wallpapers/w63.webp",
+        "role": "preview",
+        "beforeBytes": 13227,
+        "afterBytes": 11808,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.6649,
+        "psnrDb": 32.556
+      },
+      {
+        "path": "ops/assets/line-wallpapers/781c4e123a9d743b4bc64ae3.jpg",
+        "source": "wallpapers/w64.webp",
+        "role": "original",
+        "beforeBytes": 111461,
+        "afterBytes": 61058,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.7536,
+        "psnrDb": 37.799
+      },
+      {
+        "path": "ops/assets/line-wallpapers/44c25aa7c21e2e81c1964d13-preview.jpg",
+        "source": "wallpapers/w64.webp",
+        "role": "preview",
+        "beforeBytes": 10189,
+        "afterBytes": 9168,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 1.2671,
+        "psnrDb": 34.34
+      },
+      {
+        "path": "ops/assets/line-wallpapers/8648b444fa94238fdd6637b7.jpg",
+        "source": "wallpapers/w65.webp",
+        "role": "original",
+        "beforeBytes": 78649,
+        "afterBytes": 42797,
+        "dimensions": [
+          960,
+          540
+        ],
+        "meanPixelDifferencePercent": 0.4779,
+        "psnrDb": 40.256
+      },
+      {
+        "path": "ops/assets/line-wallpapers/b3c661631f2dd0da43d82036-preview.jpg",
+        "source": "wallpapers/w65.webp",
+        "role": "preview",
+        "beforeBytes": 8203,
+        "afterBytes": 7310,
+        "dimensions": [
+          320,
+          180
+        ],
+        "meanPixelDifferencePercent": 0.9769,
+        "psnrDb": 35.943
+      }
+    ]
+  },
+  "drawBenchmark": {
+    "equivalentSeededScenarios": 900,
+    "bundlesPerSample": 10000,
+    "slotsPerBundle": 30,
+    "samples": 7,
+    "beforeMs": 1222.163004,
+    "afterMs": 189.79631100000006,
+    "fasterPercent": 84.47045849213089
+  },
+  "operatorComparisonFile": "docs/ops-optimization.json",
+  "verification": {
+    "serverTests": 444,
+    "failedTests": 0,
+    "domSinkCheck": "pass",
+    "gachaBrowser": "pass",
+    "operatorBrowser": "pass"
+  }
+}

@@ -109,7 +109,9 @@ test('diary publishes live events, validates images and pages posts and develope
     const source = fs.readFileSync(new URL('../../README_DEV_NEWS.md', import.meta.url), 'utf8');
     assert.equal(await (await fetch(s.base + '/ops/assets/readme-dev-news.txt')).text(), source);
     // (the developer's copy of the README, in the operator site: node tools/sync_devunit_readme.cjs)
-    const readme = fs.readFileSync(new URL('../../README.md', import.meta.url), 'utf8');
-    assert.equal(await (await fetch(s.base + '/ops/assets/readme-dev.txt')).text(), readme, 'readme-dev.txt is out of step with README.md');
+    const handbook = new URL('../../docs/handbook/', import.meta.url);
+    const chapters = JSON.parse(fs.readFileSync(new URL('manifest.json', handbook), 'utf8'));
+    const readme = chapters.map(({ file }) => fs.readFileSync(new URL(file, handbook), 'utf8')).join('');
+    assert.equal(await (await fetch(s.base + '/ops/assets/readme-dev.txt')).text(), readme, 'readme-dev.txt is out of step with the canonical handbook');
   } finally { if (live) live.close(); await s.stop(); }
 });

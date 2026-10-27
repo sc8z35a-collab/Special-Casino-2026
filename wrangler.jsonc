@@ -5,7 +5,11 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "blockbuster-reels",
-  "main": "server/cloudflare/worker.js",
+  "main": "dist/release/server/cloudflare/worker.js",
+  "build": {
+    "command": "npm run build:dist",
+    "watch_dir": ["server", "js", "css", "ops", "sec", "link", "img", "sounds", "video", "fonts", "icons", "index.html", "version.json", "tools/build-dist.mjs", "tools/stamp.mjs"]
+  },
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   // the code is sent minified (a third smaller to load each time the object wakes), with its source maps beside it so that a log still names the real line
@@ -13,7 +17,7 @@
   "upload_source_maps": true,
   "assets": {
     // only the files listed in .assetsignore are published
-    "directory": ".",
+    "directory": "dist/release",
     "binding": "ASSETS",
     // only the API runs the Worker: the page and the game files are served
     // free even after the free plan's daily requests are used up
@@ -32,7 +36,7 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Casino"] }],
   // the plan the game runs on: Workers Paid ($5 a month, since 2026-10-20);
   // the variables set in the dashboard stay through every deploy
-  "vars": { "CF_PLAN": "paid" },
+  "vars": { "CF_PLAN": "paid", "LINE_FEED_ENABLED": "true" },
   "keep_vars": true,
   "observability": { "enabled": true },
   // which version is live: a new one is told to the developer's Discord

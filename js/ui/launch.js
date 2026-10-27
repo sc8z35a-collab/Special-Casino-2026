@@ -72,18 +72,23 @@
     });
     function videoFinished() { if (!splash.skipping) finishSplash(); }
     v.addEventListener('ended', videoFinished);
-    v.addEventListener('error', videoFinished);
-    blobUrl(M.studio).then(function (url) {
-      if (done || splash.skipping) return;
+    var candidates = BR.media.candidates(M.studio, 'video'), next = 0, attempt = 0, fetching = false;
+    function videoError() { if (done || splash.skipping || fetching) return; if (next < candidates.length) loadVideo(); else videoFinished(); }
+    v.addEventListener('error', function () { if (v.error) videoError(); });
+    function loadVideo() { var epoch = ++attempt; fetching = true; blobUrl(candidates[next++]).then(function (url) {
+      if (done || splash.skipping || epoch !== attempt) return;
+      fetching = false;
       v.src = url;
       var p = v.play();
-      if (p && p.catch) p.catch(function () {
-        if (done || splash.skipping) return;
+      if (p && p.catch) p.catch(function (error) {
+        if (done || splash.skipping || epoch !== attempt) return;
+        if (error && error.name === 'NotSupportedError') { videoError(); return; }
         v.muted = true;
         var retry = v.play();
-        if (retry && retry.catch) retry.catch(videoFinished);
+        if (retry && retry.catch) retry.catch(function () { if (epoch === attempt) videoError(); });
       });
-    });
+    }); }
+    loadVideo();
     splash.timer = setTimeout(finishSplash, 15000);
   }
 

@@ -226,7 +226,7 @@ export function createLine({ token = '', to = [], limit = 200, kv = null, defer 
 // the staff list names, writing "パスキー" in their own talk with the bot,
 // is told today's passkey (a reply, which is free); "ID" tells anyone their
 // own user ID, which is how the lists are filled in. Nothing else is done.
-export function createLineBot({ config, line, pk, opsLog, defer = null, clock = Date.now }) {
+export function createLineBot({ config, line, pk, opsLog, feed = null, defer = null, clock = Date.now }) {
   const secret = String(config.lineChannelSecret || '');
   const staff = new Set(config.lineStaffUserIds || []);
   const asked = new Limiter(6, 6);
@@ -280,6 +280,7 @@ export function createLineBot({ config, line, pk, opsLog, defer = null, clock = 
 
   async function onEvent(e) {
     if (!e || typeof e !== 'object') return;
+    if (feed && feed.enabled) { feed.event(e); return; }
     const id = String(e.webhookEventId || '');
     if (id) {
       // (LINE may send an event again: it is answered once)

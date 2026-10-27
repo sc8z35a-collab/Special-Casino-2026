@@ -5,7 +5,8 @@ import path from 'node:path';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
-import { createApp } from '../node/server.js';
+import { pathToFileURL } from 'node:url';
+const { createApp } = await import(process.env.CASINO_TEST_APP ? pathToFileURL(process.env.CASINO_TEST_APP).href : '../node/server.js');
 
 export const PASSWORD = 'pass1234';
 // a device of its own (js/net/device.js): the game sends one, and a device makes two accounts at most

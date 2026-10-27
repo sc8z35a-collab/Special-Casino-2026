@@ -10,6 +10,7 @@
 (function (BR) {
   'use strict';
 
+  var versionTimer = 0;
   var ua = navigator.userAgent || '';
   var mm = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
   var platform = {
@@ -124,11 +125,11 @@
   }
 
   function checkWeb() {
-    if (!BR.BUILD || BR.BUILD === 'dev') return;
+    if (document.hidden || state.web || !BR.BUILD || BR.BUILD === 'dev') return;
     getJson('version.json').then(function (v) {
       if (!v || !v.build || v.build === BR.BUILD) return;
       var first = !state.web;
-      state.web = true;
+      state.web = true; clearTimeout(versionTimer);
       if (first) renderButton();
       newer();
     }, function () { /* offline: try again later */ });
@@ -140,7 +141,7 @@
       var mine = Number(window.TwoStateApp.versionCode());
       if (!info || !(Number(info.versionCode) > mine)) return;
       if (state.app && state.app.versionCode === info.versionCode) return;
-      state.app = info;
+      state.app = info; clearTimeout(versionTimer);
       renderButton();
       tell('アプリの新しいバージョン（' + info.versionName + '）があります（「今すぐアップデート」で更新）');
     }, function () { /* no app published, or offline */ });
@@ -153,6 +154,7 @@
   }
 
   function check() {
+    if (document.hidden || state.web || state.app) return;
     checkWeb();
     checkApp();
   }
@@ -307,7 +309,7 @@
         var urls = performance.getEntriesByType('resource').map(function (r) { return r.name; }).filter(function (u) {
           if (u.indexOf(location.origin + '/') !== 0) return false;
           var path = u.slice(location.origin.length);
-          return /^\/(img|fonts|sounds|video|icons)\//.test(path) || /^\/(js|css)\/[^?]+\?v=[0-9a-f]{10}$/.test(path);
+          return /^\/immutable\/[a-f0-9]{10}\//.test(path) || /^\/(img|fonts|sounds|video|icons)\//.test(path) || /^\/(js|css)\/[^?]+\?v=[0-9a-f]{10}$/.test(path);
         });
         if (urls.length) worker.postMessage({ type: 'keep', build: BR.BUILD, urls: urls });
       }, 6000);
@@ -359,13 +361,14 @@
     renderButton();
     if (api.online) {
       setTimeout(check, 4000);
-      setInterval(check, CHECK_EVERY);
+      function scheduleCheck() { clearTimeout(versionTimer); if (!document.hidden && !state.web && !state.app) versionTimer = setTimeout(function () { check(); scheduleCheck(); }, CHECK_EVERY); }
+      scheduleCheck();
       var hiddenAt = 0;
       document.addEventListener('visibilitychange', function () {
-        if (document.hidden) { hiddenAt = Date.now(); return; }
+        if (document.hidden) { hiddenAt = Date.now(); scheduleCheck(); return; }
         // back after a while: a newer game may load by itself
         if (hiddenAt && Date.now() - hiddenAt > AWAY) state.back = Date.now();
-        check();
+        check(); scheduleCheck();
       });
     }
     if (/[?&]install\b/.test(location.search) && api.online && !platform.installed) BR.launch.whenDone(function () { setTimeout(openSheet, 600); });
@@ -379,7 +382,7 @@
     // the server runs a newer release than this game (js/ui/news.js)
     outdated: function () {
       if (state.web) return;
-      state.web = true;
+      state.web = true; clearTimeout(versionTimer);
       renderButton();
       newer();
     }

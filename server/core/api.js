@@ -1,3 +1,9 @@
+import { createAccountRoutes } from './account-routes.js';
+import { createChatRoutes } from './chat-routes.js';
+import { createRouteRegistry } from './route-registry.js';
+import { createGameLogin } from './game-login.js';
+import { createSpinRequests } from './spin-requests.js';
+import { createRetention } from './retention.js';
 // The game's JSON API, independent of the host. Every balance change happens
 // inside one SQLite transaction and bumps the player's `rev`, so clients can
 // drop stale balance updates. Nothing here ever resets a balance.
@@ -17,10 +23,10 @@ import { createDevUnit } from './devunit.js';
 import { createDiary } from './diary.js';
 import { createOpsMfa } from './opsmfa.js';
 import { ApiError, posInt } from './errors.js';
-import { statements } from './db.js';
+import { statements, nextRecordId } from './db.js';
 import {
   newToken, sha256, newRecoveryCode, normalizeRecoveryCode, nameKey, cleanName, cleanText,
-  cleanPassword, hashPassword, verifyPassword, signTicket, verifyTicket, sealText, openText, keyFrom
+  cleanPassword, hashPassword, signTicket, verifyTicket, sealText, openText, keyFrom
 } from './auth.js';
 import { Limiter } from './ratelimit.js';
 import { revOf, partOf, heldOf, heldFrom } from './hash.js';
@@ -53,6 +59,7 @@ import { createEmergency } from './emergency.js';
 import { createShield } from './shield.js';
 import { createSec, SEC_KEYS } from './sec.js';
 import { createSecComm } from './seccomm.js';
+import { createVaultSnapshots } from './vault-snapshots.js';
 import { createBackup } from './backup.js';
 import { createTrees } from './tree.js';
 import { createDevCode } from './devcode.js';
@@ -63,6 +70,9 @@ import { createVault, VAULT_BULK } from './vault.js';
 import { REASONS as FILTERED } from './attach.js';
 import { createDiscord } from './discord.js';
 import { createLine, createLineBot } from './line.js';
+import { createLineFeed } from './line-feed.js';
+import { createGacha } from './gacha.js';
+import buildInfo from '../../version.json' with { type: 'json' };
 import { createOauth } from './oauth.js';
 import { createNotifier } from './notify.js';
 import { createOpsWatch } from './opswatch.js';
@@ -145,6 +155,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return hostLive.sendOps ? hostLive.sendOps(userId, event, data) : undefined;
     },
     opsOnline: (id) => !!(hostLive.opsOnline && hostLive.opsOnline(id)),
+    dropUser: (id) => hostLive.dropUser?.(id),
     dropOps: (id) => { if (hostLive.dropOps) hostLive.dropOps(id); }
   };
   const start = {
@@ -450,10 +461,18 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const notice = createNotifier([discord, line]);
   // the address players use, for the link in the notices: only where the host
   // vouches for it (Cloudflare routes by it; elsewhere PUBLIC_URL)
-  const noteHost = (req) => { if (host && host.name === 'cloudflare') notice.host(req.header('host')); };
+  const noteHost = (req) => {
+    if (host && host.name === 'cloudflare') {
+      const name = req.host || req.header('host');
+      if (name) { notice.host(name); lineFeed.host('https://' + name); }
+    }
+  };
   // (the host keeps the newest entry's hash where SQL cannot reach: server/core/opslog.js)
   let steleRef = null;
-  const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => { notice.log(row); if (steleRef) steleRef.touch(); } });
+  const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => {
+    if (config.lineFeedEnabled && row.action === 'release') discord.log(row); else notice.log(row);
+    if (steleRef) steleRef.touch();
+  } });
   // …and copies of every row in a place of their own, written once and checked now and then (server/core/stele.js)
   const stele = createStele({
     q, opsLog, store: host && host.stele ? host.stele : null, secret, notice, clock: config.clock || Date.now,
@@ -478,7 +497,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const was = q("SELECT value FROM meta WHERE key = 'live_version'").get();
     if (!was || was.value !== host.version.id) {
       q("INSERT INTO meta (key, value) VALUES ('live_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(host.version.id);
-      if (was) notice.say('🚀', `本番に新しい版を反映しました（DEV${RELEASE}・バージョン ${host.version.id.slice(0, 8)}）`);
+      if (was) (config.lineFeedEnabled ? discord : notice).say('🚀', `本番に新しい版を反映しました（DEV${RELEASE}・バージョン ${host.version.id.slice(0, 8)}）`);
     }
   }
 
@@ -954,8 +973,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // `pending`: money, a car or an item waiting for the recipient's tap (POST /api/messages/claim).
   function insertMessage({ channel, sender, recipient = null, kind, body = '', amount = null, currency = null, held = false, pending = false, at = Date.now() }) {
     const now = at;
-    const r = q('INSERT INTO messages (channel, sender_id, recipient_id, kind, body, amount, currency, held, pending, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(channel, sender ? sender.id : 0, recipient, kind, body, amount, currency, held ? 1 : 0, pending ? 1 : 0, now);
+    const r = q('INSERT INTO messages (id, channel, sender_id, recipient_id, kind, body, amount, currency, held, pending, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(nextRecordId(q, 'messages'), channel, sender ? sender.id : 0, recipient, kind, body, amount, currency, held ? 1 : 0, pending ? 1 : 0, now);
     return {
       id: Number(r.lastInsertRowid), channel, sender_id: sender ? sender.id : 0, sender_name: sender ? sender.name : null,
       sender_avatar: sender ? sender.avatar : null, recipient_id: recipient, kind, body, amount, currency, claimed_at: 0, held: held ? 1 : 0,
@@ -985,7 +1004,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // Unblocking: what was kept back arrives now, as it would have (money too).
   function releaseHeld(userId, otherId) {
     const channel = dmChannel(userId, otherId);
-    const rows = q('SELECT * FROM messages WHERE channel = ? AND held = 1 AND recipient_id = ? ORDER BY id').all(channel, userId);
+    const rows = q('SELECT * FROM message_history WHERE channel = ? AND held = 1 AND recipient_id = ? ORDER BY id').all(channel, userId);
     if (!rows.length) return 0;
     tx(() => {
       q('UPDATE messages SET held = 0 WHERE channel = ? AND held = 1 AND recipient_id = ?').run(channel, userId);
@@ -993,7 +1012,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         // (money sent since DEV9 waits for the tap: only what left before that is paid here)
         if (m.kind !== 'transfer' || m.pending || !CURRENCIES.includes(m.currency) || !(m.amount > 0)) continue;
         q(`UPDATE users SET ${m.currency} = ${m.currency} + ?, rev = rev + 1 WHERE id = ?`).run(m.amount, userId);
-        q('INSERT INTO transfers (from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?)').run(otherId, userId, m.currency, m.amount, Date.now());
+        q('INSERT INTO transfers (id, from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(nextRecordId(q, 'transfers'), otherId, userId, m.currency, m.amount, Date.now());
       }
       const last = rows[rows.length - 1].id;
       q(`INSERT INTO conversations (user_id, other_id, last_id, unread, updated_at) VALUES (?, ?, ?, ?, ?)
@@ -1024,7 +1043,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const members = q(`SELECT o.id, o.name, o.avatar FROM chat_members m JOIN users o ON o.id = m.user_id
                        WHERE m.group_id = ? ORDER BY m.joined_at, o.id`).all(g.id);
     const mine = q('SELECT unread FROM chat_members WHERE group_id = ? AND user_id = ?').get(g.id, viewerId);
-    const last = g.last_id ? q(`SELECT m.kind, m.body, m.sender_id, m.retracted_at, s.name AS sender_name FROM messages m LEFT JOIN users s ON s.id = m.sender_id
+    const last = g.last_id ? q(`SELECT m.kind, m.body, m.sender_id, m.retracted_at, s.name AS sender_name FROM message_history m LEFT JOIN users s ON s.id = m.sender_id
                                 WHERE m.id = ?`).get(g.last_id) : null;
     return {
       id: g.id,
@@ -1648,92 +1667,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return { token, recoveryCode: code, me: meDto(user) };
   }
 
-  const routes = {
-    'GET /api/health': () => ({ ok: true, online: live.onlineCount() }),
+  const gameLogin = createGameLogin({ q, tx, clock: config.clock || Date.now });
+  const spinRequests = createSpinRequests({ q, tx, clock: config.clock || Date.now });
 
-    // (device: whether this device may make an account, before the name and icon are picked)
-    'GET /api/name-check': (req) => {
-      rate(limit.nameCheck, req.ip);
-      const problem = nameProblem(req.query.get('name'));
-      return { available: !problem, problem, device: deviceRoom(req) };
-    },
+  const registry = createRouteRegistry();
+  const routes = registry.add('core', [
+    ['GET /api/health', () => ({ ok: true, online: live.onlineCount() })],
 
-    'POST /api/register': async (req) => {
-      if (config.registration !== 'open') throw new ApiError(403, 'closed', '現在、新規登録は受け付けていません');
-      rate(limit.register, req.ip, '登録の試行が多すぎます。しばらく待ってからお試しください');
-      const body = await req.json();
-      const { name, key } = cleanName(body.name);
-      const password = cleanPassword(body.password);
-      return signUp(req, { name, key, avatar: body.avatar, password });
-    },
-
-    // name + password, or the recovery code
-    'POST /api/login': async (req) => {
-      rate(limit.login, req.ip, '試行回数が多すぎます。しばらく待ってからお試しください');
-      const body = await req.json();
-      let u;
-      if (body.code !== undefined) {
-        const code = normalizeRecoveryCode(body.code);
-        if (code.length !== 16) throw new ApiError(400, 'bad_code', '引き継ぎコードは16文字です');
-        u = q('SELECT * FROM users WHERE recovery_hash = ?').get(sha256(code));
-        if (!u) throw new ApiError(404, 'bad_code', '引き継ぎコードが正しくありません');
-      } else {
-        u = findByName(body.name);
-        const ok = u && u.password_hash && await verifyPassword(body.password, u.password_hash);
-        if (!ok) {
-          if (u && !u.password_hash) throw new ApiError(401, 'no_password', 'このアカウントはパスワードが未設定です。引き継ぎコードでログインしてください');
-          throw new ApiError(401, 'bad_login', 'ユーザー名かパスワードが違います');
-        }
-      }
-      // a deleted account never comes back
-      if (u.ban_kind === 'deleted') throw new ApiError(403, 'deleted', DELETED);
-      // banned (or another account on this device is): logged in all the same,
-      // for the title screen that stays locked until the ban ends (GET /api/ban);
-      // nothing else accepts the login meanwhile
-      u = liftExpired(u);
-      const ban = banState(u);
-      opsLog.add({ actor: u, action: 'player_login', req, summary: `${u.name}さんがログイン（${body.code !== undefined ? '引き継ぎコード' : 'パスワード'}${ban ? '・処分中' : ''}）`, detail: { by: body.code !== undefined ? 'code' : 'password', banned: !!ban } });
-      if (ban) return { token: createSession(u.id), ban };
-      seenOn(u.id, req);
-      return { token: createSession(u.id), me: meDto(u) };
-    },
-
-    // Still banned? The question of a banned player's title screen: their
-    // login answers it (and nothing else) while the ban lasts.
-    'GET /api/ban': (req) => {
-      const m = /^Bearer ([A-Za-z0-9_-]{20,100})$/.exec(String(req.header('authorization') || ''));
-      const s = m ? q('SELECT user_id, ended FROM sessions WHERE token_hash = ?').get(sha256(m[1])) : null;
-      if (!s || s.ended) throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
-      rate(limit.general, s.user_id);
-      const u = getUser(s.user_id);
-      if (!u) throw new ApiError(401, 'auth', 'アカウントが見つかりません');
-      return { ban: banState(liftExpired(u)) };
-    },
-
-    'POST /api/logout': (req, u) => {
-      q('DELETE FROM sessions WHERE token_hash = ?').run(u.tokenHash);
-      return { ok: true };
-    },
-
-    'POST /api/recovery': (req, u) => {
-      const code = setRecovery(u.id);
-      opsLog.add({ actor: u, action: 'player_recovery', req, summary: `${u.name}さんが引き継ぎコードを再発行` });
-      return { recoveryCode: code };
-    },
-
-    'POST /api/password': async (req, u) => {
-      rate(limit.login, req.ip, '試行回数が多すぎます。しばらく待ってからお試しください');
-      const body = await req.json();
-      const password = cleanPassword(body.password);
-      if (u.password_hash && !(await verifyPassword(body.current, u.password_hash))) {
-        throw new ApiError(403, 'bad_password', '今のパスワードが違います');
-      }
-      q('UPDATE users SET password_hash = ? WHERE id = ?').run(await hashPassword(password), u.id);
-      opsLog.add({ actor: u, action: 'player_password', req, summary: `${u.name}さんがパスワードを${u.password_hash ? '変更' : '設定'}` });
-      return { me: meDto(getUser(u.id)) };
-    },
-
-    'GET /api/me': (req, u) => {
+    ['GET /api/me', (req, u) => {
       syncMilestones(u.id);
       return {
         loginBonus: loginBonus(u.id),
@@ -1754,10 +1695,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           maxTransfer: { tokens: config.maxTransferTokens, dollars: config.maxTransferDollars }
         }
       };
-    },
+    }],
 
-    'POST /api/spin': async (req, u) => {
+    ['POST /api/spin', async (req, u) => {
       const body = await req.json();
+      return spinRequests.run(u.id, body, () => {
       const bet = Number(body.bet);
       if (!RULES.bets.includes(bet)) throw new ApiError(400, 'bad_bet', 'ベット額が正しくありません');
       rate(limit.spin, u.id, 'スピンが速すぎます');
@@ -1891,9 +1833,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // event when they change)
       const vip = vipDto(after);
       return { result: out, balance: balance(after), xp: after.xp, ...someOf({ charm: after.charm > 0 }), ...(JSON.stringify(vip) !== vipBefore ? { vip } : {}) };
-    },
+      });
+    }],
 
-    'POST /api/buy': async (req, u) => {
+    ['POST /api/buy', async (req, u) => {
       const body = await req.json();
       const amount = posInt(body.amount, '購入数');
       rate(limit.shop, u.id);
@@ -1909,9 +1852,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           .run(amount * RULES.tokenPrice, amount, today, bought + amount, cur.id);
       });
       return { me: meDto(balanceChanged(u.id)) };
-    },
+    }],
 
-    'POST /api/sell': async (req, u) => {
+    ['POST /api/sell', async (req, u) => {
       const body = await req.json();
       const amount = posInt(body.amount, '交換数');
       rate(limit.shop, u.id);
@@ -1921,9 +1864,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         q('UPDATE users SET tokens = tokens - ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(amount, amount * RULES.tokenPrice, cur.id);
       });
       return { me: meDto(balanceChanged(u.id)) };
-    },
+    }],
 
-    'POST /api/daily': (req, u) => {
+    ['POST /api/daily', (req, u) => {
       rate(limit.shop, u.id);
       const today = utcDay();
       tx(() => {
@@ -1932,10 +1875,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         q('UPDATE users SET tokens = tokens + ?, free_day = ?, rev = rev + 1 WHERE id = ?').run(RULES.dailyFree, today, cur.id);
       });
       return { me: meDto(balanceChanged(u.id)), amount: RULES.dailyFree, nextReset: nextUtcMidnight() };
-    },
+    }],
 
     // by id, or by exact name (names are unique)
-    'GET /api/user': (req, u) => {
+    ['GET /api/user', (req, u) => {
       let t;
       if (req.query.get('name') !== null) {
         t = findByName(req.query.get('name'));
@@ -1944,11 +1887,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         t = liveTarget(posInt(req.query.get('id'), 'ユーザーID'));
       }
       return { user: publicDto(t, u.id), blocked: isBlocked(u.id, t.id), self: t.id === u.id };
-    },
+    }],
 
     /* ----- friends ----- */
 
-    'GET /api/friends': (req, u) => {
+    ['GET /api/friends', (req, u) => {
       const friends = q(`SELECT o.id, o.name, o.avatar, o.npc, o.vip_until, o.vip_exp, o.vip_trial_until, o.last_seen AS lastSeen, f.created_at AS since FROM friends f JOIN users o ON o.id = f.friend_id
                          WHERE f.user_id = ? AND o.banned = 0 ORDER BY o.name_key`).all(u.id)
         .map(({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial, ...r }) => ({ ...r, vip: vipLevel({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial }), vipBadge: vipBadgeLevel({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial }) }));
@@ -1958,9 +1901,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
                           WHERE r.from_id = ? AND o.banned = 0 ORDER BY r.created_at DESC`).all(u.id);
       const on = (r) => ({ ...r, online: live.isOnline(r.id) });
       return { friends: friends.map(on), incoming: incoming.map(on), outgoing: outgoing.map(on) };
-    },
+    }],
 
-    'POST /api/friends/request': async (req, u) => {
+    ['POST /api/friends/request', async (req, u) => {
       const body = await req.json();
       rate(limit.friend, u.id);
       const t = body.user !== undefined ? liveTarget(posInt(body.user, 'ユーザーID')) : findByName(body.name);
@@ -1979,9 +1922,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('INSERT INTO friend_requests (from_id, to_id, created_at) VALUES (?, ?, ?)').run(u.id, t.id, Date.now());
       live.send(t.id, 'friend', { type: 'request', user: mini(u), pending: pendingRequests(t.id) });
       return { friendship: 'outgoing', user: mini(t) };
-    },
+    }],
 
-    'POST /api/friends/respond': async (req, u) => {
+    ['POST /api/friends/respond', async (req, u) => {
       const body = await req.json();
       rate(limit.friend, u.id);
       const t = liveTarget(posInt(body.user, 'ユーザーID'));
@@ -1990,176 +1933,30 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('DELETE FROM friend_requests WHERE from_id = ? AND to_id = ?').run(t.id, u.id);
       live.send(t.id, 'friend', { type: 'declined', user: mini(u) });
       return { friendship: 'none', user: mini(t), pending: pendingRequests(u.id) };
-    },
+    }],
 
-    'POST /api/friends/cancel': async (req, u) => {
+    ['POST /api/friends/cancel', async (req, u) => {
       const body = await req.json();
       const id = posInt(body.user, 'ユーザーID');
       q('DELETE FROM friend_requests WHERE from_id = ? AND to_id = ?').run(u.id, id);
       live.send(id, 'friend', { type: 'cancelled', user: mini(u), pending: pendingRequests(id) });
       return { friendship: 'none' };
-    },
+    }],
 
-    'POST /api/friends/remove': async (req, u) => {
+    ['POST /api/friends/remove', async (req, u) => {
       const body = await req.json();
       const id = posInt(body.user, 'ユーザーID');
       unfriend(u.id, id);
       live.send(id, 'friend', { type: 'removed', user: mini(u) });
       return { friendship: 'none' };
-    },
+    }],
 
-    /* ----- chat ----- */
 
-    'GET /api/conversations': (req, u) => {
-      const rows = q(`SELECT c.other_id AS id, c.unread, c.updated_at, o.name, o.avatar, o.banned, o.npc, o.last_seen, o.vip_until, o.vip_exp, o.vip_trial_until, m.kind, m.body, m.amount, m.currency, m.sender_id, m.retracted_at
-                      FROM conversations c JOIN users o ON o.id = c.other_id JOIN messages m ON m.id = c.last_id
-                      WHERE c.user_id = ? ORDER BY c.updated_at DESC LIMIT 100`).all(u.id);
-      const groups = q(`SELECT g.* FROM chat_members m JOIN chat_groups g ON g.id = m.group_id
-                        WHERE m.user_id = ? ORDER BY g.updated_at DESC LIMIT 50`).all(u.id);
-      return {
-        conversations: rows.filter((r) => !r.banned).map((r) => ({
-          user: { id: r.id, name: r.name, avatar: r.avatar, online: isOnline(r), npc: r.npc || null, lastSeen: r.npc ? null : r.last_seen, vip: vipLevel(r), vipBadge: vipBadgeLevel(r) },
-          friend: areFriends(u.id, r.id),
-          unread: r.unread,
-          at: r.updated_at,
-          last: { kind: r.kind, text: r.retracted_at ? '' : r.body, retracted: !!r.retracted_at, amount: r.amount, currency: r.currency, mine: r.sender_id === u.id }
-        })),
-        groups: groups.map((g) => groupDto(g, u.id)),
-        unread: unreadTotal(u.id)
-      };
-    },
-
-    // a conversation (with=<player>) or a group (group=<id>), newest page
-    // first; `before` pages back. Also how far the others have read (既読).
-    'GET /api/messages': (req, u) => {
-      const withId = req.query.get('with'), groupId = req.query.get('group');
-      let channel, extra;
-      if (groupId) {
-        const g = myGroup(u.id, posInt(groupId, 'グループ'));
-        channel = groupChannel(g.id);
-        const reads = q('SELECT user_id AS id, read_id AS upto FROM chat_members WHERE group_id = ? AND user_id != ?').all(g.id, u.id);
-        extra = { group: groupDto(g, u.id), reads };
-      } else if (withId) {
-        const other = posInt(withId, 'ユーザーID');
-        channel = dmChannel(u.id, other);
-        const c = q('SELECT read_id FROM conversations WHERE user_id = ? AND other_id = ?').get(other, u.id);
-        extra = { readUpTo: c ? c.read_id : 0 };
-      } else {
-        throw new ApiError(400, 'bad_chat', '相手かグループを指定してください');
-      }
-      const beforeRaw = Number(req.query.get('before'));
-      const before = Number.isSafeInteger(beforeRaw) && beforeRaw > 0 ? beforeRaw : Number.MAX_SAFE_INTEGER;
-      const rows = q(`SELECT m.*, s.name AS sender_name, s.avatar AS sender_avatar FROM messages m LEFT JOIN users s ON s.id = m.sender_id
-                      WHERE m.channel = ? AND m.id < ? AND NOT (m.held = 1 AND m.recipient_id = ?) ORDER BY m.id DESC LIMIT ?`).all(channel, before, u.id, PAGE);
-      return { channel, messages: rows.reverse().map(msgDto), hasMore: rows.length === PAGE, ...extra };
-    },
-
-    'POST /api/messages': async (req, u) => {
-      const body = await req.json(SEND_BYTES);
-      const text = sendText(body.text);
-      if (body.group !== undefined) {
-        const g = myGroup(u.id, posInt(body.group, 'グループ'));
-        chatAllowed(u);
-        rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
-        const f = filterText(text);
-        const message = postToGroup(g, u, 'text', f.masked);
-        detected(u, f, { group: g.id, place: 'group:' + g.name, original: text, messageId: message.id });
-        track(u.id, [['chat', 1]]);
-        return { message };
-      }
-      const to = posInt(body.to, '宛先');
-      if (to === u.id) throw new ApiError(400, 'self', '自分にはメッセージを送れません');
-      // to the operators (any length: a 報告 or an 意見案 can be long)
-      if (official.is(to)) {
-        rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
-        return { message: official.fromPlayer(u, text) };
-      }
-      if (peter.is(to)) {
-        rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
-        return peter.chat(u, text);
-      }
-      if (johnson.is(to)) {
-        rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
-        return johnson.chat(u, text);
-      }
-      liveTarget(to);
-      requireFriend(u, to, 'メッセージを送れるように');
-      chatAllowed(u);
-      rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
-      // the filter: the other player gets *** for what it found
-      const f = filterText(text);
-      // blocked by them: sent as far as the sender can tell, kept back from them
-      const held = isBlocked(to, u.id);
-      const m = tx(() => {
-        const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'text', body: f.masked, held });
-        if (held) touchOwn(u.id, to, row.id);
-        else touchConversations(u.id, to, row.id);
-        return row;
-      });
-      detected(u, f, { to, place: 'dm', original: text, messageId: m.id });
-      const message = held ? sendOwn(m, u.id) : deliverDm(m, u.id, to);
-      track(u.id, [['chat', 1]]);
-      return { message };
-    },
-
-    // 送信の取り消し (the ⋯ under one's own message): words only, within the
-    // hour, as often as one likes; money, cars, items and presents never come
-    // back. The operators still see what it said, and the log keeps it.
-    'POST /api/messages/retract': async (req, u) => {
-      const body = await req.json();
-      const id = posInt(body.message, 'メッセージ');
-      rate(limit.read, u.id);
-      const m = q('SELECT * FROM messages WHERE id = ?').get(id);
-      if (!m || m.sender_id !== u.id) throw new ApiError(404, 'not_found', 'このメッセージは取り消せません');
-      if (m.kind !== 'text') throw new ApiError(409, 'not_text', 'お金・車・アイテム・プレゼントの送信は取り消せません');
-      if (m.retracted_at) throw new ApiError(409, 'retracted', 'このメッセージはもう取り消しています');
-      const now = Date.now();
-      if (now - m.created_at > RETRACT_MS) throw new ApiError(409, 'too_late', '送ってから1時間を過ぎたメッセージは取り消せません');
-      q('UPDATE messages SET retracted_at = ? WHERE id = ? AND retracted_at = 0').run(now, m.id);
-      const group = m.channel.startsWith('group:') ? Number(m.channel.slice(6)) : 0;
-      // everyone in the conversation sees it go (not one who blocked the sender: they never had it)
-      const ids = group ? memberIds(group) : [u.id, m.held ? 0 : m.recipient_id];
-      for (const x of ids) if (x) live.send(x, 'retract', { id: m.id, channel: m.channel, group: group || undefined, at: now });
-      const t = group ? null : getUser(m.recipient_id);
-      const g = group ? q('SELECT name FROM chat_groups WHERE id = ?').get(group) : null;
-      opsLog.add({
-        actor: u, action: 'player_retract', target: t, req,
-        summary: `${u.name}さんが${group ? `グループ「${g ? g.name : '?'}」の` : `${t ? t.name : '?'}さんへの`}メッセージを取り消した`,
-        detail: { messageId: m.id, channel: m.channel, group, text: m.body, sentAt: m.created_at }
-      });
-      return { id: m.id, retracted: now };
-    },
-
-    // Read up to the newest message: the other side (everyone in a group) sees 既読.
-    'POST /api/read': async (req, u) => {
-      const body = await req.json();
-      rate(limit.read, u.id);
-      if (body.group !== undefined) {
-        const g = myGroup(u.id, posInt(body.group, 'グループ'));
-        const before = q('SELECT read_id FROM chat_members WHERE group_id = ? AND user_id = ?').get(g.id, u.id).read_id;
-        q('UPDATE chat_members SET unread = 0, read_id = ? WHERE group_id = ? AND user_id = ?').run(g.last_id, g.id, u.id);
-        if (g.last_id > before) {
-          for (const id of memberIds(g.id)) if (id !== u.id) live.send(id, 'read', { group: g.id, by: u.id, upto: g.last_id });
-        }
-        return { unread: unreadTotal(u.id) };
-      }
-      const other = posInt(body.with, 'ユーザーID');
-      const c = q('SELECT last_id, read_id FROM conversations WHERE user_id = ? AND other_id = ?').get(u.id, other);
-      q('UPDATE conversations SET unread = 0, read_id = last_id WHERE user_id = ? AND other_id = ?').run(u.id, other);
-      if (c && c.last_id > c.read_id) live.send(other, 'read', { dm: u.id, upto: c.last_id });
-      return { unread: unreadTotal(u.id) };
-    },
-
-    // 入力中: the others in the conversation see it for a few seconds
-    'POST /api/typing': async (req, u) => {
-      relayTyping(u, await req.json());
-      return { ok: true };
-    },
 
     /* ----- group chats ----- */
 
     // A group of friends: the one who makes it picks them.
-    'POST /api/groups': async (req, u) => {
+    ['POST /api/groups', async (req, u) => {
       const body = await req.json();
       const name = cleanText(body.name);
       if (Array.from(name).length > GROUP_NAME_MAX) throw new ApiError(400, 'bad_name', `グループ名は${GROUP_NAME_MAX}文字までです`);
@@ -2178,9 +1975,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       postToGroup(g, null, 'system', `${u.name}さんがグループ「${name}」を作りました`);
       return { group: groupDto(q('SELECT * FROM chat_groups WHERE id = ?').get(g.id), u.id) };
-    },
+    }],
 
-    'POST /api/groups/leave': async (req, u) => {
+    ['POST /api/groups/leave', async (req, u) => {
       const body = await req.json();
       const g = myGroup(u.id, posInt(body.group, 'グループ'));
       q('DELETE FROM chat_members WHERE group_id = ? AND user_id = ?').run(g.id, u.id);
@@ -2188,11 +1985,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // (the last one out: the group and what was said in it stay, kept for good)
       if (memberIds(g.id).length) postToGroup(g, null, 'system', `${u.name}さんがグループを抜けました`);
       return { left: g.id, unread: unreadTotal(u.id) };
-    },
+    }],
 
     /* ----- money and gifts between friends ----- */
 
-    'POST /api/transfer': async (req, u) => {
+    ['POST /api/transfer', async (req, u) => {
       const body = await req.json();
       const to = posInt(body.to, '宛先');
       const currency = String(body.currency || '');
@@ -2222,7 +2019,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         // Seed existing accounts from today's messages when the counter is first used.
         q(`INSERT OR IGNORE INTO player_transfer_days (user_id, day, dollars)
            SELECT ?, ?, COALESCE(SUM(CASE WHEN currency = 'tokens' THEN amount * ? ELSE amount END), 0)
-           FROM messages WHERE sender_id = ? AND kind = 'transfer' AND created_at >= ? AND created_at < ?`)
+           FROM message_history WHERE sender_id = ? AND kind = 'transfer' AND created_at >= ? AND created_at < ?`)
           .run(u.id, day, RULES.tokenPrice, u.id, start, start + 86400000);
         const used = q('SELECT dollars FROM player_transfer_days WHERE user_id = ? AND day = ?').get(u.id, day).dollars;
         if (used + dollars > PLAYER_TRANSFER_DAILY_DOLLARS) throw new ApiError(409, 'transfer_daily_limit', '本日はこれ以上送金できません');
@@ -2246,24 +2043,24 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         detail: { currency, amount, held, pending: true, messageId: m.id }
       });
       return { balance: balance(getUser(u.id)), message: dto };
-    },
+    }],
 
     // 受け取る: money, a car or an item sent in a chat (by a friend, Ice
     // Smoker公式 or an NPC) arrives with the tap, and only then
-    'POST /api/messages/claim': async (req, u) => {
+    ['POST /api/messages/claim', async (req, u) => {
       const body = await req.json();
       const id = posInt(body.message, 'メッセージ');
       rate(limit.read, u.id);
       const now = Date.now();
       const m = tx(() => {
-        const row = q('SELECT * FROM messages WHERE id = ?').get(id);
+        const row = q('SELECT * FROM message_history WHERE id = ?').get(id);
         if (!row || !row.pending || row.recipient_id !== u.id || row.held) throw new ApiError(404, 'not_found', 'これは受け取れません');
         if (row.claimed_at) throw new ApiError(409, 'claimed', 'もう受け取りました');
         if (RECEIPTS.expired(row, now)) throw new ApiError(410, 'expired', '受け取り期限が過ぎています');
         if (row.kind === 'transfer' && CURRENCIES.includes(row.currency)) {
           q(`UPDATE users SET ${row.currency} = ${row.currency} + ?, rev = rev + 1 WHERE id = ?`).run(row.amount, u.id);
           const from = getUser(row.sender_id);
-          if (from && !from.npc) q('INSERT INTO transfers (from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?)').run(row.sender_id, u.id, row.currency, row.amount, now);
+          if (from && !from.npc) q('INSERT INTO transfers (id, from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(nextRecordId(q, 'transfers'), row.sender_id, u.id, row.currency, row.amount, now);
         } else if (row.kind === 'gift') {
           const car = q('SELECT * FROM cars WHERE id = ? AND owner_id = 0').get(row.amount);
           if (!car) throw new ApiError(409, 'gone', 'この車はもうありません');
@@ -2292,21 +2089,21 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       if (m.kind === 'item') live.send(u.id, 'items', { items: itemsOf(u.id) });
       return { id: m.id, kind: m.kind, amount: m.amount, currency: m.currency, me: meDto(m.kind === 'transfer' ? balanceChanged(u.id) : getUser(u.id)) };
-    },
+    }],
 
     /* ----- icons ----- */
 
-    'POST /api/avatar': async (req, u) => {
+    ['POST /api/avatar', async (req, u) => {
       const body = await req.json();
       const a = AVATARS.get(String(body.id || ''));
       if (!a) throw new ApiError(400, 'bad_avatar', 'アイコンが見つかりません');
       if (a.price > 0 && !ownedAvatars(u).includes(a.id)) throw new ApiError(403, 'locked', 'このアイコンはまだ持っていません');
       q('UPDATE users SET avatar = ? WHERE id = ?').run(a.id, u.id);
       return { me: meDto(getUser(u.id)) };
-    },
+    }],
 
     // Prices do not depend on the date; unowned icons require a purchase.
-    'POST /api/avatar/buy': async (req, u) => {
+    ['POST /api/avatar/buy', async (req, u) => {
       const body = await req.json();
       rate(limit.shop, u.id);
       const a = AVATARS.get(String(body.id || ''));
@@ -2325,13 +2122,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const me = meDto(balanceChanged(u.id));
       afterSpend(u.id);
       return { me, paid: a.price };
-    },
+    }],
 
     /* ----- cars ----- */
 
     // the cars one owns (and how their renting goes), the garage's size, the
     // Car Owner sale and the 大廃棄セール on now (if any), the buy-back prices
-    'GET /api/cars': (req, u) => {
+    ['GET /api/cars', (req, u) => {
       settleRentals(u.id);
       const rows = q(`SELECT c.*, f.name AS from_name FROM cars c LEFT JOIN users f ON f.id = c.from_id
                       WHERE c.owner_id = ? ORDER BY c.acquired_at DESC, c.id DESC`).all(u.id);
@@ -2348,11 +2145,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         rental: { hours: RENT.hours },
         now
       };
-    },
+    }],
 
     // the buy-back: the car goes, its price now arrives (`price`: the one shown;
     // a rented car cannot go; what its renting earned comes along)
-    'POST /api/cars/sell': async (req, u) => {
+    ['POST /api/cars/sell', async (req, u) => {
       const body = await req.json();
       rate(limit.shop, u.id);
       const id = posInt(body.car, '車');
@@ -2373,10 +2170,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         return { paid: b.price, earned: c.rent_earned, pct: b.pct, disposal: b.disposal };
       });
       return { ...r, me: meDto(balanceChanged(u.id)) };
-    },
+    }],
 
     // Atomic inventory/car exchange; a repeated equip cannot duplicate or consume an engine.
-    'POST /api/cars/engine': async (req, u) => {
+    ['POST /api/cars/engine', async (req, u) => {
       const body = await req.json();
       rate(limit.shop, u.id);
       const id = posInt(body.car, '車');
@@ -2398,10 +2195,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         q('UPDATE users SET rev = rev + 1 WHERE id = ?').run(u.id);
       });
       return { car: carDto(q('SELECT * FROM cars WHERE id = ?').get(id)), me: meDto(balanceChanged(u.id)) };
-    },
+    }],
 
     // renting a car out ('start'), or asking it back ('stop': at the end of its block)
-    'POST /api/cars/rent': async (req, u) => {
+    ['POST /api/cars/rent', async (req, u) => {
       const body = await req.json();
       const id = posInt(body.car, '車');
       settleRentals(u.id);
@@ -2427,10 +2224,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       const row = q('SELECT c.*, f.name AS from_name FROM cars c LEFT JOIN users f ON f.id = c.from_id WHERE c.id = ?').get(id);
       return { car: carDto(row) };
-    },
+    }],
 
     // what the customers paid, all of it
-    'POST /api/cars/collect': async (req, u) => {
+    ['POST /api/cars/collect', async (req, u) => {
       await req.json();
       settleRentals(u.id);
       const paid = tx(() => {
@@ -2446,10 +2243,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       if (!paid) throw new ApiError(409, 'nothing', 'まだ受け取れる売上はありません');
       return { paid, me: meDto(balanceChanged(u.id)) };
-    },
+    }],
 
     // at the price of the moment (`price`: the one shown; a sale may have begun or ended)
-    'POST /api/cars/buy': async (req, u) => {
+    ['POST /api/cars/buy', async (req, u) => {
       const body = await req.json();
       rate(limit.shop, u.id);
       const car = CARS.get(String(body.model || ''));
@@ -2474,10 +2271,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const me = meDto(balanceChanged(u.id));
       afterSpend(u.id);
       return { me, paid: cost, car: { id, model: car.id, acquiredAt: Date.now(), from: null, paid: cost, used: false, offer: 0 } };
-    },
+    }],
 
     // one more place in the garage, for good ($1,000,000, VIP's off; any number of times)
-    'POST /api/garage/expand': async (req, u) => {
+    ['POST /api/garage/expand', async (req, u) => {
       const body = await req.json();
       rate(limit.shop, u.id);
       const price = slotPrice(u);
@@ -2490,9 +2287,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const after = balanceChanged(u.id);
       afterSpend(u.id);
       return { me: meDto(after), capacity: garageSize(after) };
-    },
+    }],
 
-    'POST /api/cars/gift': async (req, u) => {
+    ['POST /api/cars/gift', async (req, u) => {
       const body = await req.json();
       const to = posInt(body.to, '宛先');
       const carId = posInt(body.car, '車');
@@ -2519,12 +2316,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         return row;
       });
       return { message: deliverDm(m, u.id, to) };
-    },
+    }],
 
     // 車を売る: an offer in the chat with a friend (not Ice Smoker公式 or the
     // NPCs), at RULES.carResale % of what the seller paid for the car. The car
     // stays the seller's until the friend buys it (or the seller takes it back).
-    'POST /api/cars/offer': async (req, u) => {
+    ['POST /api/cars/offer', async (req, u) => {
       const body = await req.json();
       const to = posInt(body.to, '宛先');
       const carId = posInt(body.car, '車');
@@ -2550,14 +2347,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         return row;
       });
       return { message: deliverDm(m, u.id, to) };
-    },
+    }],
 
     // the seller takes the car back off sale
-    'POST /api/cars/offer/cancel': async (req, u) => {
+    ['POST /api/cars/offer/cancel', async (req, u) => {
       const body = await req.json();
       const id = posInt(body.id, '販売');
       const m = tx(() => {
-        const row = q("SELECT * FROM messages WHERE id = ? AND kind = 'car_offer' AND sender_id = ?").get(id, u.id);
+        const row = q("SELECT * FROM message_history WHERE id = ? AND kind = 'car_offer' AND sender_id = ?").get(id, u.id);
         if (!row) throw new ApiError(404, 'not_found', 'この販売は見つかりません');
         if (row.state) throw new ApiError(409, 'done', row.state === 'sold' ? 'この車はもう売れました' : 'この販売はもう取り消しました');
         q("UPDATE messages SET state = 'canceled' WHERE id = ? AND state = ''").run(id);
@@ -2566,16 +2363,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       cardChanged(m, { state: 'canceled' });
       return { ok: true, state: 'canceled' };
-    },
+    }],
 
     // the friend buys it: the car moves to them (a 中古車 now, bought at this
     // price), the seller gets a card in the chat to take the money from
-    'POST /api/cars/offer/buy': async (req, u) => {
+    ['POST /api/cars/offer/buy', async (req, u) => {
       const body = await req.json();
       const id = posInt(body.id, '販売');
       rate(limit.transfer, u.id, '少し待ってからお試しください');
       const r = tx(() => {
-        const row = q("SELECT * FROM messages WHERE id = ? AND kind = 'car_offer' AND recipient_id = ?").get(id, u.id);
+        const row = q("SELECT * FROM message_history WHERE id = ? AND kind = 'car_offer' AND recipient_id = ?").get(id, u.id);
         if (!row) throw new ApiError(404, 'not_found', 'この販売は見つかりません');
         if (row.state) throw new ApiError(409, 'done', row.state === 'sold' ? 'この車はもう売れました' : 'この販売は取り消されました');
         const car = q('SELECT * FROM cars WHERE offer_id = ? AND owner_id = ?').get(id, row.sender_id);
@@ -2603,34 +2400,34 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const me = meDto(balanceChanged(u.id));
       afterSpend(u.id);
       return { state: 'sold', car: r.carId, me };
-    },
+    }],
 
     // the seller taps the 売れました card: the money arrives
-    'POST /api/cars/sold/claim': async (req, u) => {
+    ['POST /api/cars/sold/claim', async (req, u) => {
       const body = await req.json();
       const id = posInt(body.id, 'メッセージ');
       const m = tx(() => {
-        const row = q("SELECT * FROM messages WHERE id = ? AND kind = 'car_sold' AND recipient_id = ?").get(id, u.id);
+        const row = q("SELECT * FROM message_history WHERE id = ? AND kind = 'car_sold' AND recipient_id = ?").get(id, u.id);
         if (!row) throw new ApiError(404, 'not_found', 'この売上は見つかりません');
         if (RECEIPTS.expired(row)) throw new ApiError(410, 'expired', '売上金の受け取り期限が過ぎています');
         if (!Number(q('UPDATE messages SET claimed_at = ? WHERE id = ? AND claimed_at = 0').run(Date.now(), id).changes)) {
           throw new ApiError(409, 'claimed', 'この売上はもう受け取りました');
         }
         q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(row.amount, u.id);
-        q('INSERT INTO transfers (from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?)').run(row.sender_id, u.id, 'dollars', row.amount, Date.now());
+        q('INSERT INTO transfers (id, from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(nextRecordId(q, 'transfers'), row.sender_id, u.id, 'dollars', row.amount, Date.now());
         return row;
       });
       cardChanged(m, { claimed: true });
       return { paid: m.amount, balance: balance(balanceChanged(u.id)) };
-    },
+    }],
 
     /* ----- blocking ----- */
 
-    'GET /api/blocks': (req, u) => ({
+    ['GET /api/blocks', (req, u) => ({
       blocks: q('SELECT b.blocked_id AS id, o.name, o.avatar FROM blocks b JOIN users o ON o.id = b.blocked_id WHERE b.user_id = ? ORDER BY b.created_at DESC').all(u.id)
-    }),
+    })],
 
-    'POST /api/block': async (req, u) => {
+    ['POST /api/block', async (req, u) => {
       const body = await req.json();
       const id = posInt(body.user, 'ユーザーID');
       if (id === u.id) throw new ApiError(400, 'self', '自分はブロックできません');
@@ -2651,21 +2448,21 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         released = releaseHeld(u.id, id);
       }
       return { blocked: !!body.blocked, released, unread: unreadTotal(u.id) };
-    },
+    }],
 
     /* ----- voice chat signalling (the home call) ----- */
 
-    'GET /api/call/ice': async () => ({ iceServers: await iceServers() }),
+    ['GET /api/call/ice', async () => ({ iceServers: await iceServers() })],
 
-    'POST /api/call': async (req, u) => {
+    ['POST /api/call', async (req, u) => {
       relayCall(u, await req.json(32 * 1024));
       return { ok: true };
-    },
+    }],
 
     /* ----- watching a friend's screen ----- */
 
     // 稼ぎに参加: watching a friend's screen puts one in their home (and its voice call)
-    'POST /api/watch': async (req, u) => {
+    ['POST /api/watch', async (req, u) => {
       const body = await req.json();
       const id = posInt(body.user, 'ユーザーID');
       if (!body.on) {
@@ -2706,13 +2503,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         chat: homeChatOf(id),
         bet: betDto(openBet(u.id))
       };
-    },
+    }],
 
     // who is watching me (shown as a small eye on my screen), whether I talk with them, the home chat
-    'GET /api/watchers': (req, u) => ({ watchers: homeMembers(u.id), chat: homeChatOf(u.id) }),
+    ['GET /api/watchers', (req, u) => ({ watchers: homeMembers(u.id), chat: homeChatOf(u.id) })],
 
     // The watched player picks who they talk with; a watcher can only stop talking.
-    'POST /api/watch/voice': async (req, u) => {
+    ['POST /api/watch/voice', async (req, u) => {
       const body = await req.json();
       const id = posInt(body.user, 'ユーザーID');
       const on = !!body.on;
@@ -2723,10 +2520,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('UPDATE watchers SET voice = ? WHERE watcher_id = ?').run(on ? 1 : 0, id);
       voiceChanged(host, id === u.id ? u : getUser(id), on);
       return { voice: voiceIds(host) };
-    },
+    }],
 
     // the chat of a home: the watched player and everyone watching them
-    'POST /api/home/chat': async (req, u) => {
+    ['POST /api/home/chat', async (req, u) => {
       const body = await req.json();
       const room = posInt(body.room, 'ホーム');
       if (room !== u.id && watching(u.id) !== room) throw new ApiError(409, 'not_home', 'ホームにいません');
@@ -2744,10 +2541,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       for (const id of watcherIds(room)) live.send(id, 'homechat', message);
       track(u.id, [['chat', 1]]);
       return { message };
-    },
+    }],
 
     // 観戦ベット: will the player I watch get a BIG WIN within their next spins?
-    'POST /api/watch/bet': async (req, u) => {
+    ['POST /api/watch/bet', async (req, u) => {
       const body = await req.json();
       const side = body.side === 'hit' || body.side === 'miss' ? body.side : null;
       if (!side) throw new ApiError(400, 'bad_side', '「出る」か「出ない」を選んでください');
@@ -2770,14 +2567,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       live.send(hostId, 'watch', { type: 'betOn', by: mini(u), bet: dto });
       track(u.id, [['wbet', 1]]);
       return { bet: dto, balance: balance(me) };
-    },
+    }],
 
     /* ----- Shop, 所有 (what one owns) and the お守り加護 ----- */
 
-    'GET /api/items': (req, u) => ({ items: itemsOf(u.id), charm: u.charm > 0, shop: itemShop() }),
+    ['GET /api/items', (req, u) => ({ items: itemsOf(u.id), charm: u.charm > 0, shop: itemShop() })],
 
     // Charged at the price of the moment (`price` per piece, as shown).
-    'POST /api/shop/buy': async (req, u) => {
+    ['POST /api/shop/buy', async (req, u) => {
       const body = await req.json();
       rate(limit.shop, u.id);
       const item = SHOP.get(String(body.id || ''));
@@ -2801,10 +2598,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const me = meDto(balanceChanged(u.id));
       afterSpend(u.id);
       return { me, paid: sale.price * count, pct: sale.pct };
-    },
+    }],
 
     // Everything from the Shop can be given to a friend.
-    'POST /api/items/give': async (req, u) => {
+    ['POST /api/items/give', async (req, u) => {
       const body = await req.json();
       const to = posInt(body.to, '宛先');
       const item = SHOP.get(String(body.id || ''));
@@ -2820,7 +2617,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const have = itemCount(u.id, item.id);
         if (have < count) throw new ApiError(409, 'insufficient', `${item.name}が足りません（${have}個）`);
         // (what already waits for their tap counts too)
-        const theirs = itemCount(to, item.id) + q(`SELECT COALESCE(SUM(amount), 0) AS n FROM messages
+        const theirs = itemCount(to, item.id) + q(`SELECT COALESCE(SUM(amount), 0) AS n FROM message_history
           WHERE recipient_id = ? AND pending = 1 AND claimed_at = 0 AND kind = 'item' AND body = ? AND created_at > ?`).get(to, item.id, Date.now() - RULES.receiveDays.item * 86400000).n;
         if (theirs + count > item.max) {
           throw new ApiError(409, 'their_max', theirs >= item.max
@@ -2833,10 +2630,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         return row;
       });
       return { me: meDto(getUser(u.id)), message: deliverDm(m, u.id, to) };
-    },
+    }],
 
     // One tap on the slot screen, before spinning: the お守り加護 is on until a spin is lost.
-    'POST /api/charm': (req, u) => {
+    ['POST /api/charm', (req, u) => {
       rate(limit.shop, u.id);
       tx(() => {
         const cur = getUser(u.id);
@@ -2847,11 +2644,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       notifyWatchers(u.id, { type: 'charm', user: u.id, on: true });
       return { me: meDto(getUser(u.id)) };
-    },
+    }],
 
     /* ----- fruits for the friend one is watching ----- */
 
-    'POST /api/tip': async (req, u) => {
+    ['POST /api/tip', async (req, u) => {
       const body = await req.json();
       const to = posInt(body.to, '宛先');
       if (watching(u.id) !== to) throw new ApiError(409, 'not_watching', '観戦中の友達にだけ送れます');
@@ -2877,7 +2674,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (cur.tokens < amount) throw new ApiError(409, 'insufficient', 'スピントークンが足りません');
         q('UPDATE users SET tokens = tokens - ?, rev = rev + 1 WHERE id = ?').run(amount, u.id);
         q('UPDATE users SET tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(amount, to);
-        q('INSERT INTO transfers (from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?)').run(u.id, to, 'tokens', amount, Date.now());
+        q('INSERT INTO transfers (id, from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(nextRecordId(q, 'transfers'), u.id, to, 'tokens', amount, Date.now());
       });
       const tip = { from: mini(u), fruits, amount };
       live.send(to, 'tip', tip);
@@ -2888,48 +2685,48 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       balanceChanged(u.id);
       afterSpend(u.id);
       return { balance: balance(getUser(u.id)), amount, to: t.id };
-    },
+    }],
 
     /* ----- マイクソン (the lender) and ジョンソン (a friend) ----- */
 
-    'GET /api/peter': (req, u) => peter.state(u.id),
+    ['GET /api/peter', (req, u) => peter.state(u.id)],
 
     // his chat was opened: a gift that is due comes now
-    'GET /api/johnson': (req, u) => {
+    ['GET /api/johnson', (req, u) => {
       johnson.check(u.id);
       return johnson.state(u.id);
-    },
+    }],
 
-    'POST /api/peter/borrow': async (req, u) => {
+    ['POST /api/peter/borrow', async (req, u) => {
       const body = await req.json();
       const n = Number(body.offer);
       if (!(n === 1 || n === 2)) throw new ApiError(400, 'bad_offer', '話が見つかりません');
       rate(limit.transfer, u.id, '少し待ってからお試しください');
       return { ...peter.takeOffer(u, n), me: meDto(getUser(u.id)) };
-    },
+    }],
 
-    'POST /api/peter/repay': async (req, u) => {
+    ['POST /api/peter/repay', async (req, u) => {
       const body = await req.json();
       const amount = posInt(body.amount, '返済額');
       rate(limit.transfer, u.id, '少し待ってからお試しください');
       return { ...peter.repay(u, amount), me: meDto(getUser(u.id)) };
-    },
+    }],
 
     // still playing when the day turns (6:00 Japan time): that day counts too
-    'POST /api/login-bonus': (req, u) => ({ loginBonus: loginBonus(u.id), next: nextLoginReset(), me: meDto(getUser(u.id)) }),
+    ['POST /api/login-bonus', (req, u) => ({ loginBonus: loginBonus(u.id), next: nextLoginReset(), me: meDto(getUser(u.id)) })],
 
     /* ----- quests and XP -----
        (the quests as the periods that are on hold them: the game shows them with the quests it has, js/game/quests.js view) */
 
-    'GET /api/quests': (req, u) => {
+    ['GET /api/quests', (req, u) => {
       syncMilestones(u.id);
       const cur = getUser(u.id);
       const state = readQuests(cur.quests);
       return { quests: questSlots(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: cur.xp, now: Date.now() };
-    },
+    }],
 
     // 受け取る: the finished quests in `ids`, or all of them (一括受け取り)
-    'POST /api/quests/claim': async (req, u) => {
+    ['POST /api/quests/claim', async (req, u) => {
       const body = await req.json();
       const ids = Array.isArray(body.ids) ? body.ids.map(String).slice(0, 100) : null;
       rate(limit.shop, u.id);
@@ -2955,9 +2752,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         claimed: r.claimed.map((x) => x.id), dollars: r.dollars, coins: r.coins, rewards: r.rewards, tokens: 0,
         quests: questSlots(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp, balance: balance(after), now: Date.now()
       };
-    },
+    }],
 
-    'POST /api/quests/reset': async (req, u) => {
+    ['POST /api/quests/reset', async (req, u) => {
       const body = await req.json();
       rate(limit.shop, u.id);
       const state = tx(() => {
@@ -2970,30 +2767,30 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const after = getUser(u.id);
       live.send(u.id, 'quest', { changed: true, ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp });
       return { quests: questSlots(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp, now: Date.now(), balance: balance(after) };
-    },
+    }],
 
     // the beginner guide is finished
-    'POST /api/guide': (req, u) => {
+    ['POST /api/guide', (req, u) => {
       q('UPDATE users SET guide_done = 1 WHERE id = ?').run(u.id);
       return { me: meDto(getUser(u.id)) };
-    },
+    }],
 
     // 友達のチャットを覗く: the player opened a friend's chat
-    'POST /api/quests/peek': async (req, u) => {
+    ['POST /api/quests/peek', async (req, u) => {
       const body = await req.json();
       const other = posInt(body.with, 'ユーザーID');
       rate(limit.read, u.id);
       if (!areFriends(u.id, other)) return { ok: false };
       track(u.id, [['peek', 1]]);
       return { ok: true };
-    },
+    }],
 
     /* ----- バイト ----- */
 
-    'GET /api/jobs': (req, u) => jobsDto(getUser(u.id)),
+    ['GET /api/jobs', (req, u) => jobsDto(getUser(u.id))],
 
     // With every slot taken, a new job takes the place of the oldest (paid up).
-    'POST /api/jobs/start': async (req, u) => {
+    ['POST /api/jobs/start', async (req, u) => {
       const body = await req.json();
       const job = JOBS.get(String(body.id || ''));
       if (!job) throw new ApiError(400, 'bad_job', 'このバイトはありません');
@@ -3012,9 +2809,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       jobsPaid(u.id, paid);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
-    },
+    }],
 
-    'POST /api/jobs/stop': async (req, u) => {
+    ['POST /api/jobs/stop', async (req, u) => {
       const body = await req.json();
       const id = String(body.id || '');
       rate(limit.shop, u.id);
@@ -3028,10 +2825,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       jobsPaid(u.id, paid);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
-    },
+    }],
 
     // the wages so far, the work goes on
-    'POST /api/jobs/collect': (req, u) => {
+    ['POST /api/jobs/collect', (req, u) => {
       rate(limit.shop, u.id);
       const paid = tx(() => {
         const cur = getUser(u.id);
@@ -3042,7 +2839,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       jobsPaid(u.id, paid);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
-    },
+    }],
 
     /* ----- VIP ----- */
 
@@ -3050,7 +2847,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // once), each 24 hours from the end of those already bought (or from now);
     // or a まとめ買い pack (`pack`: its days, paid for, and its free days on
     // top). The バイト are paid up first, so VIP's wage counts from now.
-    'POST /api/vip/extend': async (req, u) => {
+    ['POST /api/vip/extend', async (req, u) => {
       const body = await req.json();
       const mode = body.mode === undefined ? 'normal' : body.mode;
       if (typeof mode !== 'string' || !VIP.mode(mode)) throw new ApiError(400, 'vip_mode', '通常・PRO・ULTRAから選んでください');
@@ -3088,12 +2885,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const me = meDto(balanceChanged(u.id));
       if (resetTickets) live.send(u.id, 'quest', { changed: true, ready: me.questsReady, tickets: me.questTickets, bonuses: me.questBonuses, xp: me.xp });
       return { days, bonus, coins: r.coins, back: r.back, resetTickets, packs: cart ? cart.packs : [], paid: r.paid, mode, startsAt: r.start, endsAt: r.until, me };
-    },
+    }],
 
     // VIP's free trial: VIP${trial level} for its days, once in a life, for
     // one who never had VIP. Days bought during it come after it, at the
     // player's own level (VIP0 at first); none bought, VIP simply ends.
-    'POST /api/vip/trial': async (req, u) => {
+    ['POST /api/vip/trial', async (req, u) => {
       rate(limit.shop, u.id);
       const now = Date.now();
       const r = tx(() => {
@@ -3108,7 +2905,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (r.paid) track(u.id, [['jobpay', r.paid]]);
       syncMilestones(u.id);
       return { until: r.until, paid: r.paid, me: meDto(balanceChanged(u.id)) };
-    },
+    }],
 
     /* ----- updates ----- */
 
@@ -3118,7 +2915,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // one they were thanked for: two updates at once pay twice (`updates`).
     // It arrives with the tap on the thanks (POST /api/release/claim). New
     // players start on the newest release.
-    'POST /api/release': async (req, u) => {
+    ['POST /api/release', async (req, u) => {
       const body = await req.json();
       const theirs = Number(body.release) || 0;
       // (what the player's game runs, for the operator site)
@@ -3138,10 +2935,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const me = getUser(u.id);
       const bonus = me.release_bonus;
       return { release: RELEASE, outdated: false, bonus, updates: Math.round(bonus / RULES.updateBonus), ...(seen ? { me: meDto(me) } : {}), released: releasedAt() };
-    },
+    }],
 
     // the tap on the thanks: the update money arrives
-    'POST /api/release/claim': async (req, u) => {
+    ['POST /api/release/claim', async (req, u) => {
       await req.json();
       const paid = tx(() => {
         const cur = getUser(u.id);
@@ -3150,17 +2947,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         return cur.release_bonus;
       });
       return { paid, me: meDto(paid ? balanceChanged(u.id) : getUser(u.id)) };
-    },
+    }],
 
     /* ----- フレンド対決 ----- */
 
-    'GET /api/battle': (req, u) => {
+    ['GET /api/battle', (req, u) => {
       const b = currentBattle(u.id);
       return { battle: b ? battleDto(b, u.id) : null };
-    },
+    }],
 
     // to a friend who is online: the same number of spins at one bet
-    'POST /api/battle': async (req, u) => {
+    ['POST /api/battle', async (req, u) => {
       const body = await req.json();
       const to = posInt(body.to, '相手');
       const spins = Number(body.spins), bet = Number(body.bet);
@@ -3178,9 +2975,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const b = battleById(id);
       live.send(to, 'battle', { type: 'invite', battle: battleDto(b, to) });
       return { battle: battleDto(b, u.id) };
-    },
+    }],
 
-    'POST /api/battle/respond': async (req, u) => {
+    ['POST /api/battle/respond', async (req, u) => {
       const body = await req.json();
       const b = battleById(posInt(body.id, '対決'));
       if (!b || b.b_id !== u.id || b.state !== 'invite' || battleOver(b)) throw new ApiError(404, 'no_battle', 'この対決の申し込みはもうありません');
@@ -3196,10 +2993,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const started = battleById(b.id);
       live.send(b.a_id, 'battle', { type: 'start', battle: battleDto(started, b.a_id) });
       return { battle: battleDto(started, u.id) };
-    },
+    }],
 
     // taking an invitation back, saying no, or giving up (the friend wins)
-    'POST /api/battle/quit': async (req, u) => {
+    ['POST /api/battle/quit', async (req, u) => {
       const body = await req.json();
       const b = battleById(posInt(body.id, '対決'));
       if (!b || (b.a_id !== u.id && b.b_id !== u.id)) throw new ApiError(404, 'no_battle', '対決が見つかりません');
@@ -3212,17 +3009,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         finishBattle(b, u.id);
       }
       return { battle: null };
-    },
+    }],
 
     /* ----- 協力スロット ----- */
 
-    'GET /api/coop': (req, u) => {
+    ['GET /api/coop', (req, u) => {
       const g = myGroup(u.id, posInt(req.query.get('group'), 'グループ'));
       return { coop: coopDto(g), seated: u.coop_group === g.id };
-    },
+    }],
 
     // sitting down at a group's table (one at a time), or getting up
-    'POST /api/coop': async (req, u) => {
+    ['POST /api/coop', async (req, u) => {
       const body = await req.json();
       const was = u.coop_group;
       if (!body.on) {
@@ -3237,15 +3034,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         for (const p of coopPlayers(g.id)) if (p.id !== u.id) live.send(p.id, 'coop', { type: 'seat', group: g.id, user: mini(u), on: true });
       }
       return { coop: coopDto(g) };
-    },
+    }],
 
     /* ----- 友達と稼ぐ (hubs) ----- */
 
     // my hub (null: none) and the invitations waiting for me
-    'GET /api/hub': (req, u) => ({ hub: myHub(u.id), invites: hubInvites(u.id) }),
+    ['GET /api/hub', (req, u) => ({ hub: myHub(u.id), invites: hubInvites(u.id) })],
 
     // to a friend who is online: they can join from the notice or the friend list
-    'POST /api/hub/invite': async (req, u) => {
+    ['POST /api/hub/invite', async (req, u) => {
       const body = await req.json();
       const to = posInt(body.to, '相手');
       const t = liveTarget(to);
@@ -3267,11 +3064,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       live.send(to, 'hub', { type: 'invite', from: mini(u), size: h ? hubMemberRows(h.id).length : 1, until: now + HUB.inviteMs });
       phone(to, { kind: 'invite', title: '「一緒に稼ぐ」の招待', body: `${u.name}さんから「一緒に稼ぐ」の招待が届きました。10分以内に参加しよう！`, tag: `invite:${u.id}`, open: 'friends' });
       return { ok: true, until: now + HUB.inviteMs };
-    },
+    }],
 
     // accepting `from`'s invitation: into their hub, or a new one for the two
     // (one transaction: crossing invitations and players joining at once end up together)
-    'POST /api/hub/join': async (req, u) => {
+    ['POST /api/hub/join', async (req, u) => {
       const body = await req.json();
       const fromId = posInt(body.from, '招待');
       rate(limit.friend, u.id);
@@ -3311,26 +3108,26 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (r.formed) track(fromId, [['hub', 1]]);
       }
       return { hub: { ...dto, noVoice: noVoiceIn(r.hubId, u.id) } };
-    },
+    }],
 
     // saying no to an invitation (its sender hears it)
-    'POST /api/hub/decline': async (req, u) => {
+    ['POST /api/hub/decline', async (req, u) => {
       const body = await req.json();
       const fromId = posInt(body.from, '招待');
       const r = q('DELETE FROM hub_invites WHERE from_id = ? AND to_id = ?').run(fromId, u.id);
       if (Number(r.changes) > 0) live.send(fromId, 'hub', { type: 'declined', by: mini(u) });
       return { invites: hubInvites(u.id) };
-    },
+    }],
 
     // leaving (the small 抜ける button): the others play on (a hub with one player left closes)
-    'POST /api/hub/leave': (req, u) => {
+    ['POST /api/hub/leave', (req, u) => {
       dropFromHub(u.id);
       return { hub: null };
-    },
+    }],
 
     // 即席チャット: a line to someone in my hub (from their icon); the game
     // keeps it only on the screen, the server's record keeps it for good
-    'POST /api/hub/say': async (req, u) => {
+    ['POST /api/hub/say', async (req, u) => {
       const body = await req.json();
       const to = posInt(body.to, '宛先');
       const text = cleanText(body.text, 200);
@@ -3346,15 +3143,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!isBlocked(to, u.id) && !isBlocked(u.id, to)) live.send(to, 'hub', { type: 'say', ...line });
       track(u.id, [['chat', 1]]);
       return { line };
-    },
+    }],
 
     // the activity beat (time quests), when there is no WebSocket to send it on
-    'POST /api/beat': async (req, u) => beat(u, await req.json()),
+    ['POST /api/beat', async (req, u) => beat(u, await req.json())],
 
     /* ----- 運営へのフィードバック ----- */
 
     // stars (any of them may be left out) and a comment of any length
-    'POST /api/feedback': async (req, u) => {
+    ['POST /api/feedback', async (req, u) => {
       const body = await req.json(1024 * 1024);
       const raw = body.ratings && typeof body.ratings === 'object' ? body.ratings : {};
       const ratings = {};
@@ -3372,10 +3169,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       });
       // (read on the operator site now, not by an account in the game)
       return { me: meDto(getUser(u.id)) };
-    },
+    }],
 
     // the answers (the operator site shows them now: GET /api/ops/feedback)
-    'GET /api/feedback': (req, u) => {
+    ['GET /api/feedback', (req, u) => {
       if (!ops.isOperator(u)) throw new ApiError(403, 'forbidden', 'このページは見られません');
       const rows = q(`SELECT f.id, f.ratings, f.comment, f.created_at, o.id AS uid, o.name, o.avatar FROM feedback f
                       LEFT JOIN users o ON o.id = f.user_id ORDER BY f.id DESC LIMIT 500`).all();
@@ -3386,20 +3183,20 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         average[k] = v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10 : null;
       }
       return { feedback: list, count: feedbackCount(), average };
-    },
+    }],
 
     /* ----- the age check, presents, 通報, 報告 / 意見案 ----- */
 
     // 18歳以上？ answered once (nothing is limited by it for now)
-    'POST /api/age': async (req, u) => {
+    ['POST /api/age', async (req, u) => {
       const body = await req.json();
       if (typeof body.adult !== 'boolean') throw new ApiError(400, 'bad_answer', '「はい」か「いいえ」を選んでください');
       q('UPDATE users SET age_ok = ?, age_at = ? WHERE id = ? AND age_ok IS NULL').run(body.adult ? 1 : 0, Date.now(), u.id);
       return { me: meDto(getUser(u.id)) };
-    },
+    }],
 
     // a present in the chat: paid now, worth its price to the friend who taps it
-    'POST /api/present': async (req, u) => {
+    ['POST /api/present', async (req, u) => {
       const body = await req.json();
       const to = posInt(body.to, '宛先');
       const p = RULES.presents.find((x) => x.id === String(body.id || ''));
@@ -3424,21 +3221,21 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const message = held ? sendOwn(m, u.id) : deliverDm(m, u.id, to);
       afterSpend(u.id);
       return { balance: balance(getUser(u.id)), message };
-    },
+    }],
 
     // the friend taps the present: once, its price comes in
-    'POST /api/present/claim': async (req, u) => {
+    ['POST /api/present/claim', async (req, u) => {
       const body = await req.json();
       const id = posInt(body.message, 'プレゼント');
       const r = tx(() => {
-        const m = q('SELECT * FROM messages WHERE id = ?').get(id);
+        const m = q('SELECT * FROM message_history WHERE id = ?').get(id);
         if (!m || m.kind !== 'present' || m.recipient_id !== u.id || m.held) throw new ApiError(404, 'no_present', 'このプレゼントは受け取れません');
         if (m.claimed_at) throw new ApiError(409, 'claimed', 'このプレゼントはもう受け取りました');
         if (RECEIPTS.expired(m)) throw new ApiError(410, 'expired', 'プレゼントの受け取り期限が過ぎています');
         q('UPDATE messages SET claimed_at = ? WHERE id = ? AND claimed_at = 0').run(Date.now(), m.id);
         q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(m.amount, u.id);
-        q('INSERT INTO transfers (from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?)').run(m.sender_id, u.id, 'dollars', m.amount, Date.now());
-        return q('SELECT m.*, s.name AS sender_name, s.avatar AS sender_avatar FROM messages m LEFT JOIN users s ON s.id = m.sender_id WHERE m.id = ?').get(m.id);
+        q('INSERT INTO transfers (id, from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(nextRecordId(q, 'transfers'), m.sender_id, u.id, 'dollars', m.amount, Date.now());
+        return q('SELECT m.*, s.name AS sender_name, s.avatar AS sender_avatar FROM message_history m LEFT JOIN users s ON s.id = m.sender_id WHERE m.id = ?').get(m.id);
       });
       balanceChanged(u.id);
       const dto = msgDto(r);
@@ -3446,11 +3243,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       live.send(r.sender_id, 'present', { id: r.id, claimed: true, by: u.id });
       live.send(u.id, 'present', { id: r.id, claimed: true, by: u.id });
       return { paid: r.amount, balance: balance(getUser(u.id)), message: dto };
-    },
+    }],
 
     // 通報: friends or not (from a profile, a hub, the search); everything
     // the operators need goes with it
-    'POST /api/report': async (req, u) => {
+    ['POST /api/report', async (req, u) => {
       const body = await req.json(SEND_BYTES);
       const id = posInt(body.user, 'プレイヤー');
       if (id === u.id) throw new ApiError(400, 'self', '自分は通報できません');
@@ -3468,7 +3265,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       }
       const place = ['profile', 'hub', 'search', 'chat'].includes(body.place) ? body.place : 'profile';
       const ma = memberRow(u.id), mb = memberRow(t.id);
-      const recent = q(`SELECT m.*, s.name AS sender_name FROM messages m LEFT JOIN users s ON s.id = m.sender_id WHERE m.channel = ?
+      const recent = q(`SELECT m.*, s.name AS sender_name FROM message_history m LEFT JOIN users s ON s.id = m.sender_id WHERE m.channel = ?
                         ORDER BY m.id DESC LIMIT 30`).all(dmChannel(u.id, t.id)).reverse()
         .map((m) => ({ id: m.id, from: m.sender_name, kind: m.kind, text: m.body, amount: m.amount, at: m.created_at }));
       const context = {
@@ -3488,15 +3285,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       official.pay(u.id, R.reward);
       opsLog.add({ actor: u, action: 'player_report', target: t, req, summary: `${u.name}さんが${t.name}さんを通報（${kind.name}）`, detail: { kind: kind.id, place, text } });
       return { ok: true, reward: R.reward, message: '今後このようなトラブルがないよう気を付けます。' };
-    },
+    }],
 
     // 通報 of one message (the ⋯ under someone else's message): what it said
     // and the conversation around it go to the operators (MESSAGE_REPORT: so
     // many a day from 6:00 Japan time, so many characters). Paid by the
     // operators if they accept it (POST /api/ops/report), not at once.
-    'POST /api/report/message': async (req, u) => {
+    ['POST /api/report/message', async (req, u) => {
       const body = await req.json(SEND_BYTES);
-      const m = q('SELECT * FROM messages WHERE id = ?').get(posInt(body.message, 'メッセージ'));
+      const m = q('SELECT * FROM message_history WHERE id = ?').get(posInt(body.message, 'メッセージ'));
       const group = m && m.channel.startsWith('group:') ? Number(m.channel.slice(6)) : 0;
       // one sent to this player (or to a group they are in), not their own
       const theirs = m && m.sender_id && m.sender_id !== u.id && (group
@@ -3514,7 +3311,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const today = q('SELECT COUNT(*) AS n FROM reports WHERE reporter_id = ? AND message_id > 0 AND created_at >= ?').get(u.id, nextLoginReset() - 86400000).n;
       if (today >= MESSAGE_REPORT.perDay) throw new ApiError(429, 'report_limit', `メッセージの通報は1日${MESSAGE_REPORT.perDay}件までです（毎朝6:00にリセット）`);
       // the conversation around it, 10 before and 10 after (what was taken back too, with what it said)
-      const sel = 'SELECT m.*, s.name AS sender_name FROM messages m LEFT JOIN users s ON s.id = m.sender_id WHERE m.channel = ?';
+      const sel = 'SELECT m.*, s.name AS sender_name FROM message_history m LEFT JOIN users s ON s.id = m.sender_id WHERE m.channel = ?';
       const around = [
         ...q(`${sel} AND m.id < ? ORDER BY m.id DESC LIMIT 10`).all(m.channel, m.id).reverse(),
         { ...m, sender_name: t.name },
@@ -3543,11 +3340,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         detail: { kind: kind.id, place: 'message', messageId: m.id, message: m.body, text }
       });
       return { ok: true, left: MESSAGE_REPORT.perDay - today - 1, message: '通報を受け付けました。運営が前後の会話も含めて確認します。' };
-    },
+    }],
 
     // 報告 (a bug, an error, something odd) and 意見案 (an idea): to the
     // operators, of any length, shown in the chat with the official bot too
-    'POST /api/official/feedback': async (req, u) => {
+    ['POST /api/official/feedback', async (req, u) => {
       const body = await req.json(SEND_BYTES);
       const kind = body.kind === 'idea' ? 'idea' : body.kind === 'bug' ? 'bug' : '';
       if (!kind) throw new ApiError(400, 'bad_kind', '報告か意見案を選んでください');
@@ -3561,13 +3358,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q("INSERT INTO feedback (user_id, ratings, comment, kind, created_at) VALUES (?, '{}', ?, ?, ?)").run(u.id, text, kind, Date.now());
       opsLog.add({ actor: u, action: 'player_feedback', req, summary: `${u.name}さんから${kind === 'bug' ? '報告' : '意見案'}`, detail: { kind, text } });
       return { message: official.fromPlayer(u, `【${kind === 'bug' ? '報告' : '意見案'}】\n${text}`) };
-    },
+    }],
 
     /* ----- phone notifications ----- */
 
-    'GET /api/push/key': async (req, u) => ({ key: await push.publicKey(), on: push.has(u.id) }),
+    ['GET /api/push/key', async (req, u) => ({ key: await push.publicKey(), on: push.has(u.id) })],
     // a browser's subscription (PushSubscription.toJSON()); only the push services' own addresses
-    'POST /api/push/subscribe': async (req, u) => {
+    ['POST /api/push/subscribe', async (req, u) => {
       const body = await req.json(8192);
       const endpoint = String(body.endpoint || '');
       const keys = body.keys && typeof body.keys === 'object' ? body.keys : {};
@@ -3581,21 +3378,23 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const extra = q('SELECT endpoint FROM push_subs WHERE user_id = ? ORDER BY created_at DESC LIMIT -1 OFFSET 8').all(u.id);
       for (const r of extra) q('DELETE FROM push_subs WHERE endpoint = ?').run(r.endpoint);
       return { ok: true };
-    },
-    'POST /api/push/unsubscribe': async (req, u) => {
+    }],
+    ['POST /api/push/unsubscribe', async (req, u) => {
       const body = await req.json(8192);
       push.unsubscribe(u.id, String(body.endpoint || ''));
       return { ok: true, on: push.has(u.id) };
-    },
+    }],
     // the game went out of sight (or came back)
-    'POST /api/sight': async (req, u) => seeing(u, await req.json()),
+    ['POST /api/sight', async (req, u) => seeing(u, await req.json())],
 
     // (each connection also notes the device the account is used on)
-    'POST /api/stream-ticket': (req, u) => {
+    ['POST /api/stream-ticket', (req, u) => {
       seenOn(u.id, req);
-      return { ticket: signTicket(secret, u.id) };
-    }
-  };
+      return { ticket: signTicket(`${secret}:${u.recovery_hash}`, u.id) };
+    }]
+  ]);
+  registry.add('accounts', createAccountRoutes({ q, tx, config, limit, rate, nameProblem, deviceRoom, signUp, gameLogin, getUser, liftExpired, banState, opsLog, seenOn, createSession, live, CODE_KEY, meDto, setRecovery, DELETED }));
+  registry.add('chat', createChatRoutes({ q, tx, live, limit, getUser, dmChannel, isBlocked, areFriends, peter, johnson, official, opsLog, sendText, detected, track, vipLevel, vipBadgeLevel, isOnline, msgDto, insertMessage, touchConversations, touchOwn, sendOwn, unreadTotal, groupChannel, memberIds, myGroup, groupDto, postToGroup, deliverDm, rate, chatAllowed, requireFriend, liveTarget, relayTyping, PAGE, SEND_BYTES, RETRACT_MS }));
 
   // Voice signalling of the home call: a player and the watchers they talk
   // with (type "home"; everyone in that voice can reach everyone else), and of
@@ -3741,7 +3540,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     } }
   });
   emergencyRef = emergency;
-  Object.assign(routes, emergency.routes);
+  registry.add('emergency', emergency.routes);
   // when each operator last used the site (who is on it now, and 最終オンライン:
   // kept in the database at most once a minute)
   const seenAt = new Map();
@@ -3763,7 +3562,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, deviceBans, dropFromHub,
     official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen, pins
   });
-  Object.assign(routes, ops.routes);
+  registry.add('ops', ops.routes);
   // the operators' screen view (見る): state only, sealed, one way, 30 minutes at most, logged
   const watch = createOpsWatch({
     q, live, ops, opsLog, official, emergency, shield, discord: notice, getUser, isDeveloper, clock: config.clock || Date.now,
@@ -3771,26 +3570,26 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     usage: () => stats.usage(0).percent
   });
   watchRef = watch;
-  Object.assign(routes, watch.routes);
+  registry.add('watch', watch.routes);
   // the players' list also says which ones this operator marked ★
   const opsPlayers = routes['GET /api/ops/players'];
-  routes['GET /api/ops/players'] = (req, u) => ({ ...opsPlayers(req, u), favorites: watch.favoriteIds(u.id) });
+  registry.replace('watch favorites', 'GET /api/ops/players', (req, u) => ({ ...opsPlayers(req, u), favorites: watch.favoriteIds(u.id) }));
   const opsMfa = createOpsMfa({ q, tx, secret, ops, opsLog, isDeveloper, requireDevMfa: config.requireDevMfa, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now });
-  Object.assign(routes, opsMfa.routes);
+  registry.add('opsMfa', opsMfa.routes);
   // the small windows on the operator site's desktop, and the DEV APP: who may have what is kept here (server/core/cdw.js)
-  Object.assign(routes, createCdw({ q, ops, isDeveloper, opsLog, clock: config.clock || Date.now }).routes);
+  registry.add('cdw', createCdw({ q, ops, isDeveloper, opsLog, clock: config.clock || Date.now }).routes);
   // parts this deployment adds, if it has any (server/core/ext.js; the list is server/ext/index.js)
   const extCtx = { q, tx, exec: (sql) => db.exec(sql), config, opsLog, getUser, isDeveloper, ops, secret, clock: config.clock || Date.now, notice, ApiError, keyFrom, nameKey, sha256, holdsTicket: () => false };
   const ext = createExtensions({ list: extraParts, secret, clock: config.clock || Date.now, ctx: extCtx });
-  Object.assign(routes, ext.routes);
-  Object.assign(routes, createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed,
+  registry.add('ext', ext.routes);
+  registry.add('diary', createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed,
     commentRate: (u) => rate(limit.dm, u.id), opsLog, gate: ext.gate }).routes);
-  Object.assign(routes, createDevUnit({ q, ops, live, getUser, isDeveloper }).routes);
+  registry.add('devunit', createDevUnit({ q, ops, live, getUser, isDeveloper }).routes);
   // the operator site's ログインログ (the day's ログイン button; the developer's alone to read)
   const opsEntry = createOpsEntry({ q, getUser, see: ops.see, isOperator: ops.isOperator, isDeveloper });
-  Object.assign(routes, opsEntry.routes);
+  registry.add('opsEntry', opsEntry.routes);
   const opsMe = routes['GET /api/ops/me'];
-  routes['GET /api/ops/me'] = (req, u) => ({ ...opsMe(req, u), ...opsEntry.state(u), mfa: ops.isOperator(u) ? opsMfa.status(u) : undefined });
+  registry.replace('entry and mfa', 'GET /api/ops/me', (req, u) => ({ ...opsMe(req, u), ...opsEntry.state(u), mfa: ops.isOperator(u) ? opsMfa.status(u) : undefined }));
   // the operator site's own login (two wrong tries: a wait that doubles); while stopped, the developer's only
   const opsLogin = createOpsLogin({
     q, findByName, isOperator: ops.isOperator, isViewer: ops.isViewer, isDeveloper, createSession, seenOn, entered: opsEntry.record, verifyMfa: opsMfa.verify,
@@ -3801,18 +3600,22 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // during a plain emergency stop, only the developer
     allow: (u) => emergency.locked() || !emergency.stopped() || isDeveloper(u), stoppedBody: () => emergency.body()
   });
-  Object.assign(routes, opsLogin.routes);
+  registry.add('opsLogin', opsLogin.routes);
   // the passkey, asked every time a page of the operator site or the security base is opened (off until GATE_KEY is set)
   const pk = createPk({
     q, tx, config, opsLog, ops, isDeveloper, mfa: opsMfa, entered: opsEntry.record, revokeStreams: (id) => live.dropOps(id), clock: config.clock || Date.now
   });
-  Object.assign(routes, pk.routes);
+  registry.add('pk', pk.routes);
   // the Discord bot that gives it to the staff role: Discord calls this address
   const bot = createDiscordBot({ config, pk, opsLog, clock: config.clock || Date.now });
-  Object.assign(routes, bot.routes);
+  registry.add('bot', bot.routes);
   // …and LINE's: the same passkey for the staff in a talk of their own
-  const lineBot = createLineBot({ config, line, pk, opsLog, defer, clock: config.clock || Date.now });
-  Object.assign(routes, lineBot.routes);
+  const lineFeed = createLineFeed({ q, tx, kv, config, getUser, meDto, balanceChanged,
+    version: host?.version?.id || buildInfo.build, clock: config.clock || Date.now,
+    reschedule: host?.reschedule || (() => {}) });
+  registry.add('lineFeed', lineFeed.routes);
+  const lineBot = createLineBot({ config, line, pk, opsLog, feed: lineFeed, defer, clock: config.clock || Date.now });
+  registry.add('lineBot', lineBot.routes);
   // 運営チャット
   // @開発者 in the 運営チャット: the developer hears of it at once — on the
   // operator site (its live connection), on their phone (unless the game is
@@ -3826,25 +3629,27 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     notice.say('📣', `${u.name}が運営チャット（${to ? '個人チャット' : '全体チャット'}）で開発者を呼んでいます：${text}`);
   }
   const team = createTeam({ q, getUser, live, ops, seen: opsSeen, isDeveloper, callDeveloper, ice: () => iceServers() });
-  Object.assign(routes, team.routes);
+  registry.add('team', team.routes);
   // the operator site's live connection: a ticket of its own (an operator's)
   routes['POST /api/ops/live-ticket'] = (req, u) => {
     ops.need(u);
-    return { ticket: signTicket(`${opsSecret}:${opsMfa.version(u.id)}`, u.id) };
+    return { ticket: signTicket(`${opsSecret}:${opsMfa.version(u.id)}:${u.recovery_hash}`, u.id) };
   };
   // 金の生る木
   const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
-  Object.assign(routes, trees.routes);
+  registry.add('trees', trees.routes);
+  registry.add('gacha', createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend }).routes);
   // 開発者支援 (real money for ロイヤルコイン), the developer's vault and the ones operators share
   const pay = createPay({ q, tx, live, config, getUser, balanceChanged, official, opsLog, isDeveloper });
-  Object.assign(routes, pay.routes);
+  registry.add('pay', pay.routes);
   // ログイン with Google / Discord (server/core/oauth.js)
   const oauth = createOauth({
     q, tx, config, getUser, createSession, meDto, opsLog, rate, limit, deviceOf, seenOn, liftExpired, banState, signUp, deleted: DELETED, clock: config.clock || Date.now
   });
-  Object.assign(routes, oauth.routes);
+  registry.add('oauth', oauth.routes);
   // (the bucket's operations counted: R2 bills writes and lists, and reads)
   const bucket = blobs && {
+    ...(blobs.head ? { head: (...a) => { stats.r2('b'); return blobs.head(...a); } } : {}),
     put: (...a) => { stats.r2('a'); return blobs.put(...a); },
     get: (...a) => { stats.r2('b'); return blobs.get(...a); },
     list: (...a) => { stats.r2('a'); return blobs.list(...a); },
@@ -3854,15 +3659,27 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // (what an extension's route may ask: does this request hold the developer's code ticket, the 30 minutes after the code was put in)
   extCtx.holdsTicket = (req, u) => vault.unlocked(req, u);
   vaultRef = vault;
-  Object.assign(routes, vault.routes);
+  registry.add('vault', vault.routes);
   // the developer's backups of everything but the vault
   const backup = createBackup({
     q, tx, opsLog, devCode, isDeveloper, exportAll: () => admin.export(), blobs: bucket, secret,
     // (a new schedule: the host's housekeeping comes sooner if need be)
     onChange: () => { if (host && host.reschedule) host.reschedule(nextHousekeeping()); }
   });
-  Object.assign(routes, backup.routes);
+  registry.add('backup', backup.routes);
   backupRef = backup;
+  const vaultSnapshots = createVaultSnapshots({
+    q, tx, blobs: bucket, enabled: config.vaultSnapshots !== false,
+    every: Math.max(1, config.vaultSnapshotHours ?? 24) * 3600000,
+    keep: Math.max(1, Math.min(30, config.vaultSnapshotKeep ?? 7)),
+    authorize(req, u) {
+      if (!isDeveloper(u)) throw new ApiError(404, 'not_found', 'APIが見つかりません');
+      if (!vault.unlocked(req, u)) throw new ApiError(403, 'vault_locked', '開発者コードを入力して保管庫を開いてください');
+    },
+    onChange: () => { if (host && host.reschedule) host.reschedule(nextHousekeeping()); },
+    log: detail => opsLog.add({ action: 'vault_snapshot', summary: detail.mode === 'verify' ? '保管庫スナップショットの復旧検証が完了' : '保管庫のスナップショットを保存', detail })
+  });
+  registry.add('vault snapshots', vaultSnapshots.routes);
   const operatorsOnlineNow = () => { const now = Date.now(); return ops.operatorList().filter((o) => o.operator && o.id && now - (opsSeen.get(o.id) || 0) < 40000).length; };
   // the server looks over itself (server/core/patrol.js): with the housekeeping, and when the developer asks
   const settingsNow = () => ({
@@ -3938,11 +3755,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the tab bar's poll also carries the month's usage colour (cheap), so the
   // サーバー button is green / blue / purple / red from every tab
   const opsCounts = routes['GET /api/ops/counts'];
-  routes['GET /api/ops/counts'] = (req, u) => {
+  registry.replace('usage counts', 'GET /api/ops/counts', (req, u) => {
     const out = opsCounts(req, u);
     const v = vault.summary();
     return { ...out, usage: stats.usage(v && v.store === 'bucket' ? v.used : 0) };
-  };
+  });
   // The operator site's poll in one request (it was five, every few seconds, for as long as the site stays open). Each part is its own route's
   // answer, with that route's own checks:
   //  - `counts` (the tabs' numbers, the speed, the month's colour), `devunit` and `pay` (the developer's): the page says what it has of each
@@ -4025,11 +3842,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // answered `{ same: true }` while the list has not changed, and the page does not draw it again.
   for (const key of ['GET /api/ops/reports', 'GET /api/ops/detections', 'GET /api/ops/feedback']) {
     const inner = routes[key];
-    routes[key] = async (req, u) => {
+    registry.replace('poll revisions', key, async (req, u) => {
       const out = await inner(req, u);
       const rev = revOf(out);
       return req.query.get('rev') === rev ? { same: true } : { ...out, rev };
-    };
+    });
   }
   // the developer tries the notices (Discord, LINE): one goes out at once to each
   routes['POST /api/ops/discord/test'] = async (req, u) => {
@@ -4094,7 +3911,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   });
   // (only staff open a channel; and the developer's panels are not there for anyone else, channel or not)
   routes[SEC_KEYS.open] = (req, u) => { ops.see(u); return comm.routes[SEC_KEYS.open](req, u); };
-  Object.assign(routes, sec.routes);
+  registry.add('sec', sec.routes);
+  registry.assertUnique();
   const DEV_ONLY = new Set(SEC_KEYS.developer);
 
   const PUBLIC = new Set(['GET /api/health', 'GET /api/name-check', 'POST /api/register', 'POST /api/login', 'GET /api/ban', 'POST /api/ops/login', 'POST /api/ops/login-wait', ...pay.public, ...oauth.public, ...vault.public, ...bot.public, ...lineBot.public, ...ext.publicKeys]);
@@ -4159,6 +3977,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     homeChats.delete(userId);
   }
 
+  const retention = createRetention({ q, tx, clock: config.clock || Date.now });
+
   // Periodic clean-up: old spin records, stale sessions and watchers.
   function housekeeping() {
     // the lockdown lifts itself after a month; during one the server does no
@@ -4169,6 +3989,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // (the month's usage: told to Discord when it reaches the red; also checked here for quiet hours)
       try { usageAlert.check(); } catch (e) { console.error('usage alert failed', e); }
       q('DELETE FROM spins WHERE created_at < ?').run(Date.now() - 30 * 86400000);
+      retention.sweep();
+      spinRequests.prune();
+      gameLogin.prune();
+      q('DELETE FROM chat_filter_strikes WHERE window_at < ?').run((config.clock || Date.now)() - 600000);
       shield.prune();
       q('DELETE FROM sessions WHERE last_used < ?').run(Date.now() - 365 * 86400000);
       q('DELETE FROM watchers WHERE since < ?').run(Date.now() - 12 * 3600000);
@@ -4210,8 +4034,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return Promise.all([
       pay.sweep().catch((e) => console.error('pay sweep failed', e)),
       backup.due().catch((e) => console.error('backup failed', e)),
+      vaultSnapshots.tick().catch((e) => console.error('vault snapshot failed', e)),
       // (the LINE notices that have waited long enough go out together)
       Promise.resolve(line.tick()).catch((e) => console.error('line notices failed', e)),
+      lineFeed.tick().catch((e) => console.error('line feed failed', e)),
       // the server looks over itself
       patrol.run().catch((e) => console.error('patrol failed', e))
     ]);
@@ -4219,7 +4045,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // when the host should run the housekeeping next: in 6 hours, or sooner for a backup
   function nextHousekeeping(now = Date.now()) {
     const b = backup.nextDue();
-    return b ? Math.max(now + 60000, Math.min(now + 6 * 3600000, b)) : now + 6 * 3600000;
+    const feed = emergency.locked() ? now + 6 * 3600000 : lineFeed.nextDue(now);
+    return Math.max(now + 60000, Math.min(now + 6 * 3600000, b || Infinity, feed, vaultSnapshots.nextDue() || Infinity));
   }
 
   // Stream tickets are signed and expire within a minute; each opens one connection.
@@ -4229,7 +4056,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function consumeOpsTicket(ticket) {
     const id = Number(String(ticket).split('.')[0]);
     if (!Number.isSafeInteger(id) || id <= 0) return null;
-    const userId = verifyTicket(`${opsSecret}:${opsMfa.version(id)}`, ticket);
+    const userId = verifyTicket(`${opsSecret}:${opsMfa.version(id)}:${getUser(id)?.recovery_hash}`, ticket);
     if (!userId) return null;
     const now = Date.now();
     for (const [t, until] of usedTickets) if (until < now) usedTickets.delete(t);
@@ -4239,7 +4066,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return u && ops.isOperator(u) ? userId : null;
   }
   function consumeTicket(ticket) {
-    const userId = verifyTicket(secret, ticket);
+    const id = Number(String(ticket).split('.')[0]);
+    if (!Number.isSafeInteger(id) || id <= 0) return null;
+    const userId = verifyTicket(`${secret}:${getUser(id)?.recovery_hash}`, ticket);
     if (!userId) return null;
     const now = Date.now();
     for (const [t, until] of usedTickets) if (until < now) usedTickets.delete(t);
@@ -4254,6 +4083,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // (a ban or its lifting by command reaches the player like one from the operator site)
   const admin = createAdmin(db, {
     seal: (code) => sealText(CODE_KEY, code),
+    onCredentials: id => live.dropUser?.(id),
     isDeveloper,
     unlockLogins: (name) => opsLogin.unlock(name),
     onBan: (u, on) => {
@@ -4281,20 +4111,30 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (emergency.stopped() && !isDeveloper(u)) return false;
     const route = String(note.route || '').slice(0, 60);
     emergency.request({ path: route.split(' ')[1] || '', ip: req.ip, userId: u.id, status: 400 });
-    if (!filterNotes.take(String(u.id))) return false;
     const why = FILTERED[note.reason] || '不明';
-    const stop = !isDeveloper(u), already = !!u.chat_ban;
+    const already = !!u.chat_ban;
+    const gradual = note.reason === 'control' && route === 'POST /api/messages' && Array.isArray(note.keys) && note.keys.includes('to') && !note.keys.includes('group');
+    let stage = 0;
+    if (gradual && !already && !isDeveloper(u)) {
+      const now = (config.clock || Date.now)();
+      stage = q(`INSERT INTO chat_filter_strikes(user_id, count, window_at) VALUES (?, 1, ?)
+        ON CONFLICT(user_id) DO UPDATE SET count = CASE WHEN window_at <= ? THEN 1 ELSE count + 1 END,
+          window_at = CASE WHEN window_at <= ? THEN excluded.window_at ELSE window_at END RETURNING count`)
+        .get(u.id, now, now - 600000, now - 600000).count;
+    }
+    const warning = gradual && stage > 0 && stage < 3;
+    const stop = !isDeveloper(u) && !warning;
     if (stop && !already) q('UPDATE users SET chat_ban = ?, chat_ban_why = ? WHERE id = ?').run(Date.now(), why, u.id);
-    opsLog.add({
+    if (filterNotes.take(String(u.id))) opsLog.add({
       actor: u, action: 'filter_block', target: u, req,
-      summary: `自動フィルタリングシステムが${u.name}さんの送信をブロック（${why}）${!stop ? '・開発者のためチャットは止めない' : already ? '・チャット停止中' : '・チャットを停止'}`,
+      summary: `自動フィルタリングシステムが${u.name}さんの送信をブロック（${why}）${isDeveloper(u) ? '・開発者のためチャットは止めない' : warning ? '・警告' + stage + '/3' : already ? '・チャット停止中' : '・チャットを停止'}`,
       detail: {
         route, reason: String(note.reason || '').slice(0, 40), why, keys: Array.isArray(note.keys) ? note.keys.slice(0, 30).map((k) => String(k).slice(0, 60)) : [],
-        size: Number(note.size) || 0, contentType: String(note.contentType || '').slice(0, 100), sha256: String(note.sha256 || '').slice(0, 64), chatBan: stop, alreadyStopped: already
+        size: Number(note.size) || 0, contentType: String(note.contentType || '').slice(0, 100), sha256: String(note.sha256 || '').slice(0, 64), chatBan: stop, alreadyStopped: already, stage
       }
     });
     if (stop && !already) live.send(u.id, 'chatban', { on: true, message: CHAT_BANNED, me: meDto(getUser(u.id)) });
-    return true;
+    return { warning, stage };
   }
 
   let announced = false;
@@ -4451,13 +4291,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     handle,
     // (the tests: every route the server answers)
     routeKeys: () => Object.keys(routes),
+    routeReport: () => registry.report(),
     pk,
     line,
+    lineFeed,
     filtered,
     hello,
     presence,
     housekeeping,
     userForToken,
+    liveVersion: id => getUser(id)?.recovery_hash || '',
     consumeTicket,
     consumeOpsTicket,
     // the operator site's live connection gone: out of the 全体チャット's call
@@ -4474,7 +4317,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     stopped: () => emergency.stopped(),
     stoppedBody: () => emergency.body(),
     nextHousekeeping,
-    backupDue: () => backup.due().catch((e) => console.error('backup failed', e)),
+    backupDue: () => Promise.all([backup.due().catch((e) => console.error('backup failed', e)), vaultSnapshots.tick().catch((e) => console.error('vault snapshot failed', e))]),
+    vaultSnapshots,
     close: () => { quota.flush(); stats.flush(); }
   };
 }

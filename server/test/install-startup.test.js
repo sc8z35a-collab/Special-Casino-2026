@@ -36,7 +36,7 @@ function start({ assets, uiAssets, online = true } = {}) {
     navigator: { userAgent: 'browser' },
     location: { protocol: 'https:', hostname: 'example.test', search: '' },
     fetch: async () => ({ ok: false, status: 404 }),
-    setTimeout() {}, setInterval() {}
+    setTimeout() {}, clearTimeout() {}, setInterval() {}
   });
   vm.runInContext(source, context, { filename: 'js/ui/install.js' });
   BR.install.init();
@@ -118,7 +118,7 @@ function appContext({ update }) {
       ? { ok: true, json: async () => ({ versionCode: 113, versionName: '1.0.13', apk: 'download/two-state-casino.apk', size: 114161, sha256: 'abc' }) }
       : { ok: false, status: 404 },
     Date, Number, String, URL, Math,
-    setTimeout() {}, setInterval() {}
+    setTimeout() {}, clearTimeout() {}, setInterval() {}
   });
   vm.runInContext(source, context, { filename: 'js/ui/install.js' });
   BR.install.init();

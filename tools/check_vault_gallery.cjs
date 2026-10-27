@@ -38,6 +38,8 @@ const { chromium } = require('playwright');
     await page.goto(s.base + '/ops/');
     await page.locator('#login-name').fill('taku'); await page.locator('#login-pass').fill('pass1234'); await page.locator('#login-go').click();
     await page.locator('#app').waitFor({ state: 'visible' });
+    // Isolate the gallery from the hot-corner notification pane, as closing it from its own button does.
+    await page.evaluate(() => document.querySelector('.mac-notice-close').click());
     await page.locator('#tabs [data-view="vault"]').click(); await page.locator('#mac-window-vault').waitFor();
     await page.locator('#mac-window-vault .mac-zoom').click();
     await page.locator('#vault-unlock').click(); await page.locator('#dialog-input').fill(code); await page.locator('#dialog-ok').click();
@@ -68,17 +70,20 @@ const { chromium } = require('playwright');
     });
     await check('folder details include nested files and light versions exactly once', async () => {
       await page.locator('#vault-folders [data-vact="details"]').click();
-      assert.match(await page.locator('#dialog-text').textContent(), /50バイト/);
-      assert.match(await page.locator('#dialog-text').textContent(), /ファイル：3件/);
-      assert.match(await page.locator('#dialog-text').textContent(), /サブフォルダ：1件/);
-      await page.locator('#dialog-ok').click();
+      const details = page.locator('#vault-work-panes .vault-work-pane:not([hidden])');
+      await details.waitFor({ state: 'visible' });
+      assert.match(await details.textContent(), /50バイト/);
+      const facts = await details.locator('.facts > div').evaluateAll((nodes) => Object.fromEntries(nodes.map((node) => [node.querySelector('span').textContent, node.querySelector('b').textContent])));
+      assert.equal(facts['ファイル'], '3件');
+      assert.equal(facts['サブフォルダ'], '1件');
+      await page.locator('#vault-work-tabs [role="tab"]').first().click();
     });
     await check('only the generated sharing URL can be copied, including the fallback clipboard path', async () => {
       const card = page.locator('#vault-list .vitem').first();
       await card.locator('.vmore').click(); await page.locator('#vmenu [data-mact="link"]').click();
       await page.locator('#dialog-ok').click();
       await page.locator('#dialog-input[data-vault-share-url]').waitFor();
-      const url = await page.locator('#dialog-input').inputValue(); assert.ok(url.startsWith(s.base + '/api/vault/'));
+      const url = await page.locator('#dialog-input').inputValue(); const shared = new URL(url); assert.equal(shared.origin, s.base); assert.equal(shared.pathname, '/link/'); assert.equal(shared.search, ''); assert.ok(shared.hash.length > 20);
       await page.evaluate(() => {
         window.copiedURL = '';
         Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedURL = text; } } });

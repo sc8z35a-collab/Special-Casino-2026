@@ -78,6 +78,6 @@
     BR.live.on('diary', function () { if (active()) load(false); });
     BR.live.on('status', function (on) { if (on && active()) load(false); });
     // Reconcile missed events on foreground/reconnect. Do not replace text while typing.
-    setInterval(function () { if (active() && !document.hidden && !root.contains(document.activeElement)) load(false); }, 20000);
+    setInterval(function () { if (active() && !document.hidden && !BR.live.isConnected() && !root.contains(document.activeElement)) load(false); }, 20000);
   } };
 })(window.BR = window.BR || {});

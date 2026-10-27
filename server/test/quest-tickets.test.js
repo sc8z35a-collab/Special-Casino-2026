@@ -163,7 +163,11 @@ test('ticket use rejects pending rewards, resets only its period, and cannot spe
   assert.deepEqual([replayed.dollars, replayed.coins], [7000, 0], 'the replayed STEP draws anew without inheriting ULTRA');
   const daily = replayed.periods.find(p => p.id === 'day');
   assert.equal((await reset({ period: 'day', start: daily.start, version: daily.resetVersion })).error.code, 'quests_pending');
-  await s.call('POST', '/api/quests/claim', { token: a.token, body: { ids: ['day-send1k'] } });
+  // A random spin may also complete a daily symbol quest. Receive every
+  // pending daily reward before testing reset; never depend on a losing spin.
+  const dailyReady = daily.quests.filter(q => q.state === 'ready').map(q => q.id);
+  assert.ok(dailyReady.includes('day-send1k'));
+  assert.equal((await s.call('POST', '/api/quests/claim', { token: a.token, body: { ids: dailyReady } })).status, 200);
   const dayReset = await reset({ period: 'day', start: daily.start, version: daily.resetVersion });
   assert.equal(dayReset.status, 200);
   assert.deepEqual(dayReset.tickets, { '5h': 2, day: 1 });

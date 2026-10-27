@@ -424,9 +424,32 @@ test('the registration script sends /passkey to the right server with the bot\'s
   await assert.rejects(register({ appId: '12345678', guildId: '87654321', token: 'tok', fetcher: async () => ({ ok: false, status: 401, text: async () => 'no' }) }), /401/);
 });
 
-test('the page script is one file in /ops/ and /sec/, and guards the routes the server guards', () => {
-  const a = fs.readFileSync(new URL('../../ops/pk.js', import.meta.url), 'utf8');
-  const b = fs.readFileSync(new URL('../../sec/pk.js', import.meta.url), 'utf8');
-  assert.equal(a, b);
+test('both sites load one shared signing client, guarding exactly the server routes', () => {
+  const a = fs.readFileSync(new URL('../../js/net/gate.js', import.meta.url), 'utf8');
+  const scripts = ['ops', 'sec'].map((site) => {
+    const html = fs.readFileSync(new URL('../../' + site + '/index.html', import.meta.url), 'utf8');
+    const src = /src="([^"]*gate\.js[^\"]*)"/.exec(html)[1];
+    return new URL(src, 'https://casino.test/' + site + '/').pathname;
+  });
+  assert.deepEqual(scripts, ['/js/net/gate.js', '/js/net/gate.js']);
   assert.equal(/var GATED = \/(.+)\/;/.exec(a)[1], GATED.source);
+});
+
+test('the shared signing client keeps each document key and gate isolated in memory', async () => {
+  const vm = await import('node:vm');
+  function page() {
+    const events = {}, context = { crypto: crypto.webcrypto, TextEncoder, Uint8Array, btoa: (text) => Buffer.from(text, 'binary').toString('base64'),
+      addEventListener: (name, fn) => { events[name] = fn; } };
+    context.window = context;
+    vm.runInNewContext(fs.readFileSync(new URL('../../js/net/gate.js', import.meta.url), 'utf8'), context);
+    return { api: context.OpsPk, events };
+  }
+  const a = page(), b = page();
+  const [ka, kb] = await Promise.all([a.api.publicKey(), b.api.publicKey()]);
+  assert.notEqual(ka.x, kb.x);
+  a.api.open('gate-a', Date.now() + 60000); b.api.open('gate-b', Date.now() + 60000);
+  a.events.pagehide();
+  assert.equal(a.api.active(), false); assert.equal(b.api.active(), true);
+  assert.equal(await a.api.header('GET', '/api/ops/me'), null);
+  assert.match(await b.api.header('GET', '/api/sec/state'), /^gate-b\./);
 });

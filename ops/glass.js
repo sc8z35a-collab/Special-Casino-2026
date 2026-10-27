@@ -39,7 +39,7 @@
   ];
   var PANES = KINDS.map(function (k) { return k[0]; }).join(', ');
 
-  var host = null, items = new Map(), watched = new WeakSet(), counter = 0, ro = null, maps = new Map();
+  var host = null, items = new Map(), watched = new Set(), counter = 0, ro = null, maps = new Map();
 
   function flat() { return body.classList.contains('mac-flat'); }
   function off() { return !canLens || flat(); }
@@ -150,12 +150,30 @@
     if (!ro) ro = new ResizeObserver(function (list) { list.forEach(function (e) { build(e.target); }); });
     ro.observe(el);
   }
+  function release(el) {
+    if (ro && watched.has(el)) ro.unobserve(el);
+    watched.delete(el);
+    var rec = items.get(el);
+    if (rec) { clearTimeout(rec.timer); rec.filter.remove(); items.delete(el); el.style.removeProperty('--lg-lens'); }
+    if (lit === el) lit = null;
+  }
   function scan() {
-    // (a pane that has left the page takes its filter with it)
-    items.forEach(function (rec, el) { if (!el.isConnected) { clearTimeout(rec.timer); if (ro) ro.unobserve(el); rec.filter.remove(); items.delete(el); } });
+    if (!canLens) return;
+    // A removed pane may never have been visible, so it can be observed without having a filter yet.
+    watched.forEach(function (el) {
+      if (el.isConnected) return;
+      release(el);
+    });
     Array.prototype.forEach.call(document.querySelectorAll(PANES), watch);
   }
-  function sync() { scan(); items.forEach(function (rec, el) { if (off()) unlens(el); else build(el); }); }
+  var lastOff = off(), lastPhone = phone.matches;
+  function sync() {
+    var disabled = off(), small = phone.matches;
+    // Dock/notification/focus classes do not change the glass. Avoid measuring every pane for them.
+    if (disabled === lastOff && small === lastPhone) return;
+    lastOff = disabled; lastPhone = small;
+    scan(); items.forEach(function (rec, el) { if (disabled) unlens(el); else build(el); });
+  }
 
   // the spot of light that follows the pointer over the pane it is on
   var lit = null, pending = null, frame = 0;
@@ -180,6 +198,6 @@
 
   new MutationObserver(sync).observe(body, { attributes: true, attributeFilter: ['class'] });
   phone.addEventListener('change', sync);
-  window.OpsGlass = { scan: scan, lens: function () { return !off(); } };
+  window.OpsGlass = { scan: scan, release: release, lens: function () { return !off(); } };
   if (canLens) scan();
 })();

@@ -40,7 +40,10 @@
 
   function overlay() { return $('#welcome'); }
   function isOpen() { return !overlay().hidden; }
+  var showGeneration = 0;
   function show(card) {
+    var epoch = ++showGeneration;
+    if (!BR.resources.ready('online')) return BR.resources.load('online').then(function () { if (epoch === showGeneration) show(card); }, K.fail);
     CARDS.forEach(function (c) { $('#ov-' + c).hidden = c !== card; });
     overlay().hidden = false;
     // (the Google / Discord buttons are those the server offers)
@@ -55,6 +58,7 @@
     $$('#welcome button, #welcome input').forEach(function (b) { b.disabled = on; });
   }
   function close() {
+    showGeneration++;
     var a = document.activeElement;
     if (a && a.blur && overlay().contains(a)) a.blur();
     overlay().hidden = true;
@@ -357,6 +361,7 @@
       K.sfx('purchase');
       close();
       K.toast('パスワードを保存しました');
+      showCode(r.recoveryCode, false);
     }, function (err) {
       setError('password', err.message);
       K.sfx('deny');

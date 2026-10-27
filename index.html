@@ -21,22 +21,8 @@
 <!-- the two fonts every screen's text needs: fetched at once, not after the stylesheets have been read and a first line has been laid out -->
 <link rel="preload" href="fonts/NotoJP-500.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/NotoJP-700.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="css/fonts.css?v=ca742ed98c">
-<link rel="stylesheet" href="css/style.css?v=1633f69c21">
-<link rel="stylesheet" href="css/social.css?v=31ad1f37ac">
-<link rel="stylesheet" href="css/online.css?v=d367b03d03">
-<link rel="stylesheet" href="css/play.css?v=e94d714298">
-<link rel="stylesheet" href="css/feedback.css?v=23e6088151">
-<link rel="stylesheet" href="css/guide.css?v=659f56e68d">
-<link rel="stylesheet" href="css/combo.css?v=de7963d2ee">
-<link rel="stylesheet" href="css/hub.css?v=b1fceb27dd">
-<link rel="stylesheet" href="css/tree.css?v=b007f7bd8b">
-<link rel="stylesheet" href="css/safety.css?v=cbb23e0975">
-<link rel="stylesheet" href="css/juice.css?v=2b6e45535e">
-<link rel="stylesheet" href="css/support.css?v=bf4a20b5f3">
-<link rel="stylesheet" href="css/vip.css?v=2abd669339">
-<link rel="stylesheet" href="css/refresh.css?v=38f4bb6f61">
-<link rel="stylesheet" href="css/diary.css?v=762288e4ed">
+<link rel="stylesheet" href="css/fonts.css?v=d48bff2880">
+<link rel="stylesheet" href="css/style.css?v=8355a2c186">
 </head>
 <body>
 <div id="viewport">
@@ -294,6 +280,7 @@
             <button class="more-card support" data-act="support" hidden><b>有料ショップ</b><span>ロイヤルコインを購入する</span></button>
             <div class="more-card soon investment"><i class="ic more-art ic-investment"></i><b>投資<small>COMING SOON</small></b><span>近日公開予定</span></div>
             <button class="more-card" data-act="dev-diary" aria-label="開発者日記"><i class="ic more-art ic-diary"></i><b>開発者日記</b></button>
+            <button class="more-card" data-act="gacha" aria-label="ガチャ"><img class="gacha-mark" src="img/gacha/icon.webp" alt="" loading="lazy" draggable="false"><b>ガチャ</b></button>
             <button class="more-card soon" data-act="studio-credits"><b>スタジオクレジット<small>近日公開</small></b></button>
             <button class="more-card soon" data-act="terms"><b>規約<small>近日公開</small></b></button>
           </div>
@@ -620,6 +607,32 @@
       </div>
     </div>
 
+    <div id="gacha-modal" class="modal gacha-scene" hidden>
+      <div class="modal-card gacha-card gacha-shop" role="dialog" aria-modal="true" aria-label="ガチャ">
+        <button class="back-btn back-jp" type="button" data-close="gacha-modal" aria-label="戻る"><i class="ic ic-back"></i><span>戻る</span></button>
+        <div class="gc-toolbar"><h2>ガチャ</h2><span id="gacha-event" hidden>車の確率1.5倍</span><span id="gacha-wallet"></span><button id="gacha-odds-open" class="gc-art-button gc-odds-button" type="button" aria-label="確率表"><img src="img/gacha/odds.webp" alt="" loading="lazy" draggable="false"></button></div>
+        <div id="gacha-controls"></div><div id="gacha-items" hidden></div><p id="gacha-status" role="status"></p>
+      </div>
+      <div id="gacha-reveal" class="gc-reveal" hidden role="dialog" aria-modal="true" aria-label="ガチャ結果">
+        <div class="gc-opening"><img src="img/gacha/icon.webp" alt="" loading="lazy" draggable="false"><div class="gc-capsules" aria-hidden="true"><i></i><i></i><i></i></div></div>
+        <button id="gacha-skip" class="mini-btn" type="button">スキップ</button>
+        <div class="gc-result-head"><button id="gacha-result-close" class="back-btn back-jp" type="button"><i class="ic ic-back"></i><span>戻る</span></button><h2 id="gacha-result-name"></h2><span id="gacha-bonus"></span></div>
+        <div id="gacha-results" aria-live="polite"></div>
+      </div>
+    </div>
+    <div id="gacha-odds-modal" class="modal" hidden>
+      <div class="modal-card gc-odds-card" role="dialog" aria-modal="true" aria-label="ガチャ確率表">
+        <button class="back-btn back-jp" type="button" data-close="gacha-odds-modal" aria-label="戻る"><i class="ic ic-back"></i><span>戻る</span></button>
+        <table class="gacha-odds"><thead><tr><th scope="col">アイテム</th><th scope="col">確率</th></tr></thead><tbody id="gacha-odds-rows"></tbody></table>
+      </div>
+    </div>
+    <div id="line-reward-modal" class="modal" hidden>
+      <div class="modal-card gacha-card" role="dialog" aria-modal="true" aria-labelledby="line-reward-title">
+        <button class="modal-x" type="button" data-close="line-reward-modal" aria-label="閉じる">×</button>
+        <h2 id="line-reward-title">LINE配布</h2><p id="line-reward-status" role="status"></p>
+        <button class="mini-btn" type="button" id="line-reward-claim">受け取る</button>
+      </div>
+    </div>
     <div id="developer-diary" class="modal" hidden>
       <div class="modal-card diary-card" role="dialog" aria-modal="true" aria-label="開発者日記">
         <button class="modal-x" type="button" data-close aria-label="閉じる"></button>
@@ -682,6 +695,7 @@
       <div class="modal-card fx-card" role="dialog" aria-label="演出設定">
         <h2 class="modal-title"><span>演出設定</span></h2>
         <label class="fx-simple"><span class="fx-name">シンプル演出<small>豪華な演出をまとめてオフ（結果や支払いは変わりません）</small></span><input type="checkbox" id="fx-simple"><i class="fx-switch"></i></label>
+        <label class="fx-simple"><span class="fx-name">軽量演出<small>描画を30fpsに抑え、光の粒と描画解像度を減らす</small></span><input type="checkbox" id="fx-lite"><i class="fx-switch"></i></label>
         <div class="fx-groups scroller" id="fx-groups"></div>
       </div>
     </div>
@@ -938,79 +952,76 @@
 <script src="js/art/icons.js?v=445ac9cc92"></script>
 <script src="js/art/symbol-images.js?v=00bb06f7c7"></script>
 <script src="js/art/ui-images.js?v=28a66c27e7"></script>
-<script src="js/art/social-images.js?v=aea0834ac5"></script>
+<script src="js/art/social-images.js?v=7bc2be9196"></script>
 <script src="js/art/ui-svg.js?v=00d5767a31"></script>
-<script src="js/version.js?v=968f453b1d"></script>
-<script src="js/core/util.js?v=dfef47eb2b"></script>
-<script src="js/core/effects.js?v=a0eaf73869"></script>
+<script src="js/version.js?v=ea617c7843"></script>
+<script src="js/core/util.js?v=1b72818e38"></script>
+<script src="js/core/clock.js?v=2ba2dad169"></script>
+<script src="js/core/effects.js?v=ae47f50aa7"></script>
 <script src="js/game/config.js?v=8d7372248d"></script>
 <script src="js/game/sale.js?v=a7bb027684"></script>
 <script src="js/game/quests.js?v=2cd261dad4"></script>
 <script src="js/game/tree.js?v=b3c3b37aa1"></script>
 <script src="js/game/vip.js?v=8f36f52367"></script>
 <script src="js/game/receipts.js?v=1f91e4ab4d"></script>
-<script src="js/game/news.js?v=4fae7b99bc"></script>
 <script src="js/core/store.js?v=f0d92dc1dd"></script>
 <script src="js/game/engine.js?v=75f36e1496"></script>
 <script src="js/net/device.js?v=ff52665f6b"></script>
-<script src="js/net/api.js?v=1330247a36"></script>
-<script src="js/net/wire.js?v=0bc2812abd"></script>
-<script src="js/net/live.js?v=2774c6f7b3"></script>
+<script src="js/net/api.js?v=107c38e101"></script>
+<script src="js/net/transport-policy.js?v=3ee219f81a"></script>
+<script src="js/net/keepalive.js?v=18dee0ca8c"></script>
+<script src="js/net/wire.js?v=52e85a64bb"></script>
+<script src="js/net/live.js?v=746a3e41e7"></script>
 <script src="js/net/watchcrypto.js?v=ab0b679978"></script>
 <script src="js/net/watchfeed.js?v=886afa86a0"></script>
 <script src="js/game/bank.js?v=bb9f3e5786"></script>
-<script src="js/audio/sfx.js?v=dabfb69dce"></script>
-<script src="js/render/assets.js?v=c7d1a386af"></script>
+<script src="js/core/media.js?v=2e198c1914"></script>
+<script src="js/audio/sfx.js?v=5ca9bd336a"></script>
+<script src="js/render/assets.js?v=e933ef38db"></script>
 <script src="js/render/fire3d.js?v=8af7bce7d2"></script>
-<script src="js/render/reels.js?v=8e87cfa10f"></script>
-<script src="js/render/fx.js?v=e981bdc6c4"></script>
-<script src="js/render/win3d.js?v=c1dc123566"></script>
-<script src="js/render/reward3d.js?v=b955215629"></script>
+<script src="js/render/reels.js?v=95654ea96b"></script>
+<script src="js/render/fx.js?v=49a20cd3df"></script>
 <script src="js/art/tree-models.js?v=af5558603c"></script>
-<script src="js/render/tree3d.js?v=ee269d42ab"></script>
-<script src="js/render/garage3d.js?v=77c248257c"></script>
-<script src="js/render/auction3d.js?v=4f51bfd4ab"></script>
-<script src="js/render/juice.js?v=cb7843b349"></script>
-<script src="js/render/slotfx.js?v=8fa282016a"></script>
-<script src="js/ui/screens.js?v=d32b536e99"></script>
-<script src="js/ui/kit.js?v=fe867070e2"></script>
-<script src="js/ui/account.js?v=2a17466637"></script>
-<script src="js/ui/oauth.js?v=410437f5ef"></script>
+<script src="js/render/tree3d.js?v=e943cbf125"></script>
+<script src="js/render/auction3d.js?v=98da92c4b9"></script>
+<script src="js/ui/screens.js?v=3ad9212cae"></script>
+<script src="js/ui/kit.js?v=09ac206778"></script>
+<script src="js/core/resources.js?v=75fe12239e"></script>
+<script src="js/core/three.js?v=8b05356469"></script>
+<script src="js/core/lazy.js?v=a2eac80cc4"></script>
+<script src="js/ui/account.js?v=752307117e"></script>
+<script src="js/ui/oauth.js?v=c6af7858de"></script>
 <script src="js/ui/avatars.js?v=509556e799"></script>
-<script src="js/ui/social.js?v=876bfcffdb"></script>
-<script src="js/ui/cars.js?v=3f55d11629"></script>
-<script src="js/ui/shop.js?v=80b8251ac2"></script>
+<script src="js/ui/social.js?v=be6b03e874"></script>
+<script src="js/ui/shop.js?v=942e40a50f"></script>
 <script src="js/ui/peter.js?v=8490e6920a"></script>
 <script src="js/ui/johnson.js?v=41cf8554b4"></script>
 <script src="js/ui/official.js?v=81f46eacbf"></script>
 <script src="js/ui/presents.js?v=9a9ea9ab5a"></script>
-<script src="js/ui/carsale.js?v=ce00baad2e"></script>
-<script src="js/ui/vip.js?v=170f1a4a4f"></script>
+<script src="js/ui/car-cards.js?v=e0041af63f"></script>
+<script src="js/ui/vip.js?v=fa02033268"></script>
 <script src="js/ui/safety.js?v=bf50802648"></script>
 <script src="js/net/push.js?v=fc2c79f5c0"></script>
 <script src="js/ui/bonus.js?v=0fe28a2287"></script>
-<script src="js/ui/quests.js?v=d83e863a1a"></script>
-<script src="js/ui/jobs.js?v=26322c2688"></script>
-<script src="js/ui/tree.js?v=1db0fbf3d6"></script>
-<script src="js/ui/effects.js?v=296ca65a8e"></script>
-<script src="js/ui/news.js?v=eaa648c884"></script>
-<script src="js/ui/diary.js?v=ccd87ed5af"></script>
-<script src="js/net/call.js?v=e74fe14712"></script>
-<script src="js/ui/watchquality.js?v=b2c39c18c1"></script>
-<script src="js/ui/watch.js?v=9c1d0254d9"></script>
+<script src="js/ui/quests.js?v=987e25f9f5"></script>
+<script src="js/ui/jobs.js?v=288b25859e"></script>
+<script src="js/ui/tree.js?v=6b9c35eb73"></script>
+<script src="js/ui/effects.js?v=fc69d1bdc6"></script>
+<script src="js/ui/news.js?v=8753c55b23"></script>
+<script src="js/ui/line-reward.js?v=ce6671da17"></script>
+<script src="js/net/voice-quality.js?v=aaded19d75"></script>
+<script src="js/net/voice-sdp.js?v=8510b814c1"></script>
+<script src="js/net/call.js?v=6873871cc3"></script>
 <script src="js/render/combo.js?v=5495ef4b77"></script>
-<script src="js/ui/play.js?v=93446e66b3"></script>
-<script src="js/ui/activity.js?v=71309ed960"></script>
-<script src="js/ui/hub.js?v=4d873297fb"></script>
+<script src="js/ui/play.js?v=85f8556b55"></script>
+<script src="js/ui/activity.js?v=14de95df65"></script>
+<script src="js/ui/hub.js?v=fedaa92093"></script>
 <script src="js/ui/bigwin.js?v=3f148ef51b"></script>
 <script src="js/ui/feedback.js?v=bee305238f"></script>
-<script src="js/ui/guide.js?v=ae9ffcb378"></script>
-<script src="js/ui/law.js?v=51375e7d0d"></script>
-<script src="js/ui/support.js?v=8b98cac0bf"></script>
-<script src="js/ui/launch.js?v=c1e9b627a7"></script>
+<script src="js/ui/launch.js?v=ad9bf2cd89"></script>
 <script src="js/ui/start.js?v=9182b0ef0a"></script>
 <script src="js/ui/banlock.js?v=623437cb62"></script>
-<script src="js/ui/install.js?v=caea06df81"></script>
-<script src="js/main.js?v=5972e6ea93"></script>
+<script src="js/ui/install.js?v=a7f3466890"></script>
+<script src="js/main.js?v=de1ee8e2b5"></script>
 </body>
 </html>

@@ -15,7 +15,7 @@
   var LIFE = 15 * 60 * 1000;
   var NAMES = { google: 'Google', discord: 'Discord' };
 
-  var timer = 0, asking = false, starting = false, providers = null, shown = '';
+  var attempts = 0, timer = 0, asking = false, starting = false, providers = null, shown = '';
 
   /* ------------------------------------------------------------ the flow under way --- */
   // (kept in localStorage so it survives the trip to the provider; in this page's memory as well, for a browser that keeps nothing)
@@ -35,7 +35,7 @@
     try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
     stop();
   }
-  function stop() { clearInterval(timer); timer = 0; }
+  function stop() { clearTimeout(timer); timer = 0; }
 
   // in the app (and an installed web app) the provider's page is the phone's browser
   function external() { var p = BR.platform || {}; return !!(p.app || p.standalone); }
@@ -94,8 +94,14 @@
   /* ------------------------------------------------------------ asking how it went --- */
   function watch() {
     stop();
-    timer = setInterval(ask, 2000);
-    ask();
+    attempts = 0;
+    function poll() {
+      timer = 0;
+      if (!current()) { var expired = memory; clear(); if (expired) end(expired, 'ログインの有効期限が切れました。もう一度お試しください。'); return; }
+      ask();
+      timer = setTimeout(poll, Math.min(30000, 2000 * Math.pow(1.5, attempts++)));
+    }
+    poll();
   }
   function ask() {
     var s = current();

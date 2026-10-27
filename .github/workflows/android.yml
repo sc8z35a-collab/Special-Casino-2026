@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Game address
         id: url
@@ -101,7 +101,7 @@ jobs:
             -PversionCode=$((100 + GITHUB_RUN_NUMBER)) \
             -PversionName="1.0.$GITHUB_RUN_NUMBER"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: two-state-casino-apk
           path: app/android/app/build/outputs/apk/release/app-release.apk
@@ -118,11 +118,11 @@ jobs:
           import datetime, hashlib, json, os
           apk = 'download/two-state-casino.apk'
           data = open(apk, 'rb').read()
-          run = int(os.environ['GITHUB_RUN_NUMBER'])
+          built = json.load(open('app/android/app/build/outputs/apk/release/output-metadata.json'))['elements'][0]
           info = {
               'name': 'Two state Casino',
-              'versionCode': 100 + run,
-              'versionName': '1.0.%d' % run,
+              'versionCode': built['versionCode'],
+              'versionName': built['versionName'],
               'apk': apk,
               'size': len(data),
               'sha256': hashlib.sha256(data).hexdigest(),
@@ -138,13 +138,14 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add download/two-state-casino.apk download/app.json app/app-url.txt
-          git commit -m "Android app 1.0.$GITHUB_RUN_NUMBER"
+          APP_RELEASE=$(python3 -c "import json; print(json.load(open('download/app.json'))['versionName'])")
+          git commit -m "Android app $APP_RELEASE"
           for i in 1 2 3 4; do
             if git pull --rebase --quiet origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME"; then break; fi
             sleep $((i * 5))
           done
           {
-            echo "## Android アプリ 1.0.$GITHUB_RUN_NUMBER を公開しました"
+            echo "## Android アプリ $APP_RELEASE を公開しました"
             echo ""
             echo "- ダウンロード: ${APP_URL}download/two-state-casino.apk （Cloudflare の再デプロイ後、1〜2 分で使えます）"
             echo "- 入れたアプリは、新しい版が出るとアプリの中の「アップデート」ボタンで更新できます"

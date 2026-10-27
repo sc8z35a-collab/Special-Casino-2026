@@ -22,7 +22,7 @@
   }
   function setup() {
     if (loading) return loading;
-    loading = BR.win3d.three().then(function (lib) {
+    loading = BR.three().then(function (lib) {
       T = lib;
       renderer = new T.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'low-power' });
       renderer.setPixelRatio(1);

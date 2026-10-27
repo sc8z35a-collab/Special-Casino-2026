@@ -50,6 +50,7 @@
   }
 
   function show() {
+    if (!BR.NEWS) return BR.resources.load('news').then(show, K.fail);
     var list = $('#news-list');
     list.textContent = '';
     // which one this game is (and that a newer one is out)
@@ -112,6 +113,7 @@
   // many times over, and the box (which scrolls, it never grows) shows what
   // each of them brought.
   function thank(amount, updates) {
+    if (!BR.NEWS) return BR.resources.load('news').then(function () { thank(amount, updates); }, K.fail);
     // after the studio logos, the story and the login bonus, not on top of them
     var L = BR.launch;
     if (!L.done() || L.maintenance() || BR.account.isOpen() || BR.bonus.busy()) {

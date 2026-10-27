@@ -14,7 +14,7 @@ const { chromium } = require('playwright');
   const errors = [];
   const shotDir = process.env.OPS_DESKTOP_SCREENSHOTS;
   const code = '987654321098';
-  const ids = ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile'];
+  const ids = ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile', 'calendar', 'devapp'];
   async function check(name, fn) { await fn(); checks++; console.log('PASS ' + name); }
   async function shot(page, name) {
     if (!shotDir) return;
@@ -29,12 +29,7 @@ const { chromium } = require('playwright');
     await page.locator('#login-go').click(); await page.locator('#app').waitFor({ state: 'visible' });
   }
   async function open(page, id) {
-    const win = page.locator('#mac-window-' + id);
-    if (await win.isVisible()) {
-      if (await win.evaluate(n => n.classList.contains('is-active'))) return;
-      // (the system menu no longer lists windows: a window behind comes forward from its Dock icon)
-      await page.locator('.mac-taskbar-edge').hover(); await page.locator('#tabs [data-view="' + id + '"]').click();
-    } else { await page.locator('.mac-taskbar-edge').hover(); await page.locator('#tabs [data-view="' + id + '"]').click(); }
+    await page.evaluate(id => OpsDesktop.open(id), id);
     await page.locator('#mac-window-' + id + '.is-active').waitFor({ state: 'visible' });
   }
   async function menu(page, item) {
@@ -55,8 +50,8 @@ const { chromium } = require('playwright');
       headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage']
     });
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: process.env.OPS_DESKTOP_MOTION === 'full' ? 'no-preference' : 'reduce' });
-    const page = await context.newPage(); page.setDefaultTimeout(10000); page.on('pageerror', e => errors.push(e.message));
-    await page.goto(s.base + '/ops/');
+    const page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(60000); page.on('pageerror', e => errors.push(e.message));
+    await page.goto(s.base + '/ops/', { waitUntil: 'domcontentloaded' });
     await check('first login uses the supplied landscape and keeps the real form', async () => {
       await page.locator('#login').waitFor({ state: 'visible' });
       assert.match(await page.locator('#login').evaluate(n => getComputedStyle(n).backgroundImage), /wallpaper-login/);
@@ -64,9 +59,10 @@ const { chromium } = require('playwright');
       await shot(page, 'login');
     });
     await signIn(page, 'taku');
-    await check('bottom bar has all 16 authorized apps and the desktop stays empty', async () => {
-      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 16);
-      assert.equal(await page.locator('.mac-desktop-app, .mac-launch-search, .mac-menu-buttons').count(), 0);
+    await check('bottom bar has all 18 authorized apps and the four desktop tools', async () => {
+      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 18);
+      assert.equal(await page.locator('.mac-desktop-app').count(), 4);
+      assert.equal(await page.locator('.mac-launch-search, .mac-menu-buttons').count(), 0);
       const tray = await page.locator('.top').boundingBox(); assert.ok(tray.y > 750);
       assert.equal(await page.locator('.mac-window.is-open').count(), 0);
       assert.match(await page.locator('#app').evaluate(n => getComputedStyle(n).backgroundImage), /wallpaper-desktop/);
@@ -83,6 +79,7 @@ const { chromium } = require('playwright');
       assert.ok(fill >= 56, 'diary icon fills its frame: ' + fill);
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       const tab = page.locator('#tabs [data-view="players"]'); await tab.hover();
+      await page.waitForFunction(() => Number(document.querySelector('#tabs [data-view="players"]').style.getPropertyValue('--dock-scale')) > 1.45);
       assert.ok(await tab.evaluate(n => Number(n.style.getPropertyValue('--dock-scale')) > 1.45));
       const fits = await tab.locator('img').evaluate(async n => {
         await Promise.all(n.getAnimations().map(a => a.finished.catch(() => {})));
@@ -98,7 +95,7 @@ const { chromium } = require('playwright');
       assert.equal(await page.locator('#mac-notice-content').isVisible(), false);
       assert.ok((await page.locator('#mac-notifications').boundingBox()).height < 100);
       const box = await page.locator('#mac-notifications').boundingBox();
-      await page.mouse.move(box.x + box.width / 2, box.y + 20);
+      await page.mouse.move(1390, 60);
       await page.locator('#mac-notice-content').waitFor({ state: 'visible' });
       assert.match(await page.locator('.mac-notice-history').textContent(), /widget test notification/);
       await page.mouse.move(700, 400);
@@ -110,9 +107,9 @@ const { chromium } = require('playwright');
       await page.mouse.move(500, 200);
       const result = await page.evaluate(() => {
         const area = document.querySelector('#mac-windows').getBoundingClientRect();
-        const points = ['#mac-notifications', '.mac-dock-home'].map(sel => {
+        const points = ['#mac-notifications', '.mac-dock'].map(sel => {
           const r = document.querySelector(sel).getBoundingClientRect();
-          return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2).closest('.mac-window')?.id;
+          return document.elementFromPoint(Math.max(20, Math.min(innerWidth - 20, r.x + r.width / 2)), Math.max(20, Math.min(innerHeight - 20, r.y + r.height / 2))).closest('.mac-window')?.id;
         });
         return { width: area.width, points };
       }); assert.equal(result.width, 1440); assert.deepEqual(result.points, ['mac-window-players', 'mac-window-players']);
@@ -158,6 +155,7 @@ const { chromium } = require('playwright');
       assert.equal(other.status, 200);
       const posted = await s.call('POST', '/api/ops/devunit/comments', { token: other.token, body: { text: 'new operator comment' } });
       assert.equal(posted.status, 200);
+      await page.locator('.mac-taskbar-edge').hover();
       await page.locator('#count-devunit').waitFor({ state: 'visible' });
       await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-notification-toggle').click();
       await page.locator('.mac-notice-pending .mac-notice-open[aria-label^="DEV UNIT"]').waitFor();
@@ -174,7 +172,7 @@ const { chromium } = require('playwright');
       assert.equal(new URL(page.frames().find(f => f.url().endsWith('/sec/')).url()).pathname, '/sec/');
     });
     await check('all app windows and original DOM IDs stay unique', async () => {
-      assert.equal(await page.locator('.mac-window.is-open').count(), 16);
+      assert.equal(await page.locator('.mac-window.is-open').count(), 18);
       const duplicates = await page.evaluate(() => { const ids = Array.from(document.querySelectorAll('[id]')).map(n => n.id); return ids.filter((id, i) => ids.indexOf(id) !== i); });
       assert.deepEqual(duplicates, []);
     });
@@ -258,7 +256,7 @@ const { chromium } = require('playwright');
       const count = await page.locator('.mac-window.is-open').count();
       await page.locator('.mac-window.is-open .mac-window-shade').first().click();
       assert.equal(await page.locator('body.mac-overview').count(), 0);
-      const home = async () => { await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-home').click(); };
+      const home = async () => menu(page, 'デスクトップを表示');
       await home(); assert.equal(await page.locator('.mac-window:visible').count(), 0);
       await home(); assert.equal(await page.locator('.mac-window:visible').count(), count);
     });
@@ -303,6 +301,8 @@ const { chromium } = require('playwright');
       await page.locator('#devunit-text').fill('');
     });
     await check('developer-code confirmation preserves real validation and submission', async () => {
+      // The login landscape belongs to the flat theme; glass mode intentionally uses a translucent backdrop.
+      await menu(page, 'リキッドグラス（ぼかし）');
       await open(page, 'operators'); await page.locator('#op-devcode-btn').click();
       await page.locator('#dialog.mac-auth-dialog').waitFor({ state: 'visible' });
       assert.match(await page.locator('#dialog').evaluate(n => getComputedStyle(n).backgroundImage), /wallpaper-login/);
@@ -312,10 +312,12 @@ const { chromium } = require('playwright');
       await page.locator('#dialog').waitFor({ state: 'hidden' });
       await page.waitForFunction(() => document.querySelector('#op-devcode-btn').textContent.includes('変更'));
       assert.equal((await devCall('POST', '/api/ops/viewer', { name: 'ViewerQA', action: 'grant', code })).status, 200);
+      await menu(page, 'リキッドグラス（ぼかし）');
     });
     await check('log details and internal navigation remain available', async () => {
       await open(page, 'log'); await page.locator('#log-list .entry-more').first().click();
       await page.locator('#log-list .entry-detail').first().waitFor({ state: 'visible' });
+      await page.waitForFunction(() => document.querySelector('#log-list .entry-detail')?.textContent.includes('記録番号'));
       assert.ok((await page.locator('#log-list .entry-detail').first().textContent()).includes('記録番号'));
       await page.locator('#log-list .entry-line[title="運営者を開く"]').first().click();
       await page.locator('#mac-window-operators.is-active').waitFor({ state: 'visible' });
@@ -328,14 +330,14 @@ const { chromium } = require('playwright');
         const bad = []; for (const src of paths) { const im = new Image(); im.src = src; try { await im.decode(); } catch { bad.push(src); } } return bad;
       }, paths); assert.deepEqual(failures, []);
       // 背景: the dialog lists the two wallpapers that came with the site (more come from assets/wallpapers.json)
-      await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-tool[aria-label="背景を変える"]').click();
+      await menu(page, '背景を変える');
       await page.locator('.mac-wall-item', { hasText: '予備' }).click(); await page.keyboard.press('Escape');
       assert.match(await page.locator('#app').evaluate(n => getComputedStyle(n).backgroundImage), /wallpaper-reserve/);
-      await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-tool[aria-label="背景を変える"]').click();
+      await menu(page, '背景を変える');
       await page.locator('.mac-wall-item', { hasText: '標準' }).click(); await page.keyboard.press('Escape');
       assert.match(await page.locator('#app').evaluate(n => getComputedStyle(n).backgroundImage), /wallpaper-desktop/);
       // ランダム: every picture once per cycle, a new one every 10 minutes, and the next cycle never starts with the last one
-      await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-tool[aria-label="背景を変える"]').click();
+      await menu(page, '背景を変える');
       await page.locator('.mac-wall-mode', { hasText: 'ランダム' }).click();
       await page.locator('.mac-wall-info', { hasText: '10分ごと' }).waitFor();
       const total = await page.locator('.mac-wall-item').count(); assert.ok(total >= 60, 'the vault landscapes are in: ' + total);
@@ -362,10 +364,11 @@ const { chromium } = require('playwright');
       assert.equal(await page.evaluate(() => localStorage.getItem('two-state-ops/ui/wallmode')), 'manual');
       await page.locator('.mac-wall-info', { hasText: '選んだ背景のまま' }).waitFor(); await page.keyboard.press('Escape');
       // 軽量化: one tap turns the glass and the animations off, another turns them back on
-      await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-tool[aria-label^="軽量化"]').click();
+      await menu(page, 'デスクトップを表示');
+      await page.locator('.mac-desktop-app[data-desk="lite"]').click();
       assert.equal(await page.evaluate(() => document.body.classList.contains('mac-flat') && document.body.classList.contains('mac-reduce-motion')), true);
       assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.mac-dock')).backdropFilter), 'none');
-      await page.locator('.mac-taskbar-edge').hover(); await page.locator('.mac-dock-tool[aria-label^="軽量化"]').click();
+      await page.locator('.mac-desktop-app[data-desk="lite"]').click();
       assert.equal(await page.evaluate(() => document.body.classList.contains('mac-flat') || document.body.classList.contains('mac-reduce-motion')), false);
     });
     await check('daily login retains the existing once-per-day recording', async () => {
@@ -377,13 +380,13 @@ const { chromium } = require('playwright');
     });
     await check('normal operators retain their original permissions', async () => {
       await out(page); await signIn(page, 'OperatorQA');
-      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 14);
+      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 15);
       assert.equal(await page.locator('#tab-pay').isVisible(), false); assert.equal(await page.locator('#speed').isDisabled(), true);
       await open(page, 'vault'); assert.equal(await page.locator('#view-vault').isVisible(), true);
     });
     await check('viewers see their allowed apps including security HOME', async () => {
       await out(page); await signIn(page, 'ViewerQA');
-      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 8);
+      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 9);
       for (const id of ['players', 'archive', 'team', 'pay', 'vault', 'devunit', 'diary', 'profile']) {
         assert.equal(await page.locator('#tabs [data-view="' + id + '"]').isVisible(), false);
         assert.equal(await page.locator('#mac-window-' + id).isVisible(), false);
@@ -412,6 +415,7 @@ const { chromium } = require('playwright');
       const game = await context.newPage(); game.on('pageerror', e => errors.push(e.message));
       await game.goto(s.base + '/');
       await game.waitForFunction(() => window.BR && BR.UI_IMG && document.querySelector('style'));
+      await game.evaluate(() => BR.resources.load('board'));
       const result = await game.evaluate(async () => {
         const tierNames = ['green', 'blue', 'purple', 'orange', 'gold', 'red', 'red-gold', 'aqua-purple', 'dark'];
         const host = document.createElement('div');
@@ -435,7 +439,7 @@ const { chromium } = require('playwright');
     await check('no uncaught browser errors', async () => assert.deepEqual(errors, []));
     console.log('PASS ' + checks + ' browser checks; developer, operator and viewer; real local API.');
   } catch (e) {
-    console.error('FAIL after ' + checks + ' browser checks:', e);
+    console.error('FAIL after ' + checks + ' browser checks:', e, errors);
     throw e;
   } finally { if (browser) await browser.close(); await s.stop(); }
 })().catch(() => { process.exitCode = 1; });

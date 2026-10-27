@@ -1,0 +1,14 @@
+{
+  "gacha": [
+    "js/game/gacha.js",
+    "js/art/gacha-images.js",
+    "js/ui/gacha.js"
+  ],
+  "diary": [
+    "js/ui/diary.js"
+  ],
+  "support": [
+    "js/ui/law.js",
+    "js/ui/support.js"
+  ]
+}

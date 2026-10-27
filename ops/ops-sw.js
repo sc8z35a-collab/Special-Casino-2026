@@ -21,6 +21,8 @@ const HASH = /^[0-9a-f]{10}$/;
 
 // the hash of the file an address names, if it is one of those addresses
 function codeHash(url) {
+  const immutable = /^\/immutable\/([a-f0-9]{10})\/(?:js|css|ops|sec|link)\/[A-Za-z0-9._\/-]+\.(?:js|css)$/.exec(url.pathname);
+  if (immutable) return immutable[1];
   const v = url.searchParams.get('v');
   return CODE_FILE.test(url.pathname) && HASH.test(v || '') ? v : '';
 }

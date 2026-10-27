@@ -835,7 +835,7 @@
     stage.insertBefore(m, confirm && confirm.parentNode === stage ? confirm : null);
     K.registerModal(m.id);
     ui.modal = { id: m.id, title: title, body: body };
-    setInterval(function () { tick(); watchActive(); }, 1000);
+    BR.clock.every(function () { tick(); watchActive(); }, 1000);
     if (BR.call && BR.call.onChange) BR.call.onChange(function () { if (mc) fillMember(); });
     if (BR.activity && BR.activity.onBack) BR.activity.onBack(function () { setTimeout(watchActive, 0); });
     if (!api.online) return;

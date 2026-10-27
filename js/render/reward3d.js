@@ -52,7 +52,7 @@
   function preload() {
     if (loading) return loading;
     if (off || !wanted() || !BR.api.online || !window.WebGLRenderingContext) return Promise.resolve(false);
-    loading = BR.win3d.three().then(function (lib) {
+    loading = BR.three().then(function (lib) {
       T = lib;
       setup();
       return Promise.all(Object.keys(FILES).map(load));

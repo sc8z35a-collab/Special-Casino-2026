@@ -80,11 +80,11 @@
     }
     renderShop();
     load().then(function () { if (onBoard('cars')) renderShop(); }, function () {});
-    clearInterval(tick);
-    tick = setInterval(function () {
-      if (onBoard('cars')) renderSale();
-      else if (onBoard('garage')) renderBar();
-      else clearInterval(tick);
+    BR.clock.drop(tick);
+    tick = BR.clock.every(function () {
+      if (onBoard('cars')) saleClock();
+      else if (onBoard('garage')) renderTimes();
+      else BR.clock.drop(tick);
     }, 1000);
   }
   function renderShop() {
@@ -136,8 +136,15 @@
     stage(car);
   }
   // the Car Owner sale and how long it has to go
+  var saleKey = '';
+  function saleClock() {
+    var s = sale(), key = s ? s.name + '/' + s.end + '/' + sel : '';
+    if (key !== saleKey) { renderShop(); return; }
+    var clock = $('#car-sale small'); if (s && clock) clock.textContent = '残り ' + left(s.end - now());
+  }
   function renderSale() {
     var box = $('#car-sale'), s = sale();
+    saleKey = s ? s.name + '/' + s.end + '/' + sel : '';
     box.hidden = !s;
     if (!s) return;
     var mine = s.pct[sel];
@@ -177,7 +184,7 @@
     });
   }
   function leave() {
-    clearInterval(tick);
+    BR.clock.drop(tick);
     if (BR.garage3d && !$('#g3d').classList.contains('on')) BR.garage3d.stop();
   }
 
@@ -242,9 +249,9 @@
     load().then(function () { if (onBoard('garage')) renderGarage(); }, function (err) {
       if (!garage) garageNote(err.message);
     });
-    clearInterval(tick);
-    tick = setInterval(function () {
-      if (onBoard('garage')) { renderBar(); renderTimes(); } else if (onBoard('cars')) renderSale(); else clearInterval(tick);
+    BR.clock.drop(tick);
+    tick = BR.clock.every(function () {
+      if (onBoard('garage')) renderTimes(); else if (onBoard('cars')) saleClock(); else BR.clock.drop(tick);
     }, 1000);
   }
   function garageNote(text) {

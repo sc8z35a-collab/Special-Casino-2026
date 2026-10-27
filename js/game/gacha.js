@@ -21,16 +21,44 @@
     { id: 'porsche-kuia-spyder', name: 'ポルシェクイヤスパイダー' }
   ];
   var RARE = [
-    { id: 'lot', name: 'ロットコイン', chance: 30 },
-    { id: 'royal', name: 'ロイヤルコイン', chance: 20 },
+    { id: 'lot', name: 'ロットコイン', chance: 30, min: 10000, max: 25000, step: 1000 },
+    { id: 'royal', name: 'ロイヤルコイン', chance: 20, min: 8, max: 12, step: 1 },
     { id: 'seed', name: '金の生る木の種', chance: 0.01 },
     { id: 'grown-tree', name: '金の生る木（成長済みノーマル個体）', chance: 0.005 },
     { id: 'garage', name: 'ガレージコイン', chance: 10 },
     { id: 'reset', name: 'リセットチケット', chance: 15 },
     { id: 'vip-week', name: 'VIP1週間券', chance: 14 },
-    { id: 'onvoro', name: 'オンヴォーロ', chance: 5, car: true, carId: 'onvoro' },
+    { id: 'onvoro', name: 'オンヴォーロ', chance: 7, car: true, carId: 'onvoro' },
     { id: 'porsche', name: 'ポルシェクイヤスパイダー', chance: 2, car: true, carId: 'porsche-kuia-spyder' },
-    { id: 'random-car', name: 'ランダムな車', chance: 3.985, car: true }
+    { id: 'random-car', name: 'ランダムな車', chance: 1.985, car: true }
+  ];
+  var LEGENDARY = [
+    { id: 'lot', name: 'ロットコイン', chance: 10, min: 10000, max: 40000, step: 1000 },
+    { id: 'royal', name: 'ロイヤルコイン', chance: 10, min: 20, max: 32, step: 1 },
+    { id: 'garage', name: 'ガレージコイン', chance: 20, amount: 1 },
+    { id: 'reset', name: 'リセットチケット', chance: 15, amount: 2 },
+    { id: 'vip-week', name: 'VIP1週間券', chance: 24 },
+    { id: 'onvoro', name: 'オンヴォーロ', chance: 5, car: true, carId: 'onvoro' },
+    { id: 'porsche', name: 'ポルシェクイヤスパイダー', chance: 4, car: true, carId: 'porsche-kuia-spyder' },
+    { id: 'random-car', name: 'ランダムな車', chance: 10.995, car: true },
+    { id: 'seed', name: '金の生る木の種', chance: 1 },
+    { id: 'grown-tree', name: '金の生る木（成長済みノーマル個体）', chance: 0.005 }
+  ];
+  var SECRET = [
+    { id: 'lot', name: 'ロットコイン', chance: 10, min: 100000, max: 300000, step: 1000 },
+    { id: 'royal-high', type: 'royal', name: 'ロイヤルコイン', chance: 19, min: 90, max: 120, step: 1 },
+    { id: 'royal', name: 'ロイヤルコイン', chance: 8, min: 30, max: 60, step: 1 },
+    { id: 'garage', name: 'ガレージコイン', chance: 8, amount: 4 },
+    { id: 'reset', name: 'リセットチケット', chance: 10, amount: 3 },
+    { id: 'vip-week', name: 'VIP1週間券', chance: 24 },
+    { id: 'random-car', name: 'ランダムな車', chance: 20, car: true },
+    { id: 'seed', name: '金の生る木の種', chance: 1 }
+  ];
+  var TABLES = { rare: RARE, legendary: LEGENDARY, secret: SECRET };
+  var KINDS = [
+    { id: 'rare', name: 'レアガチャ', price: 10000000 },
+    { id: 'legendary', name: 'レジェンダリーガチャ', price: 30000000 },
+    { id: 'secret', name: 'シークレットガチャ', price: 50000000 }
   ];
 
   function hash(text) {
@@ -61,20 +89,22 @@
   function events(now) {
     return { boost: campaign('probability-up', now), sale: campaign('big-sale', now) };
   }
-  function price(count, saleOn) {
-    var normal = count === 10 ? 45000000 : 5000000;
-    return saleOn ? Math.round(normal * (count === 10 ? 0.85 : 0.9)) : normal;
+  function price(kind, count) {
+    var tier = KINDS.filter(function (k) { return k.id === kind; })[0];
+    if (!tier || (count !== 1 && count !== 3 && count !== 10)) throw new RangeError('Unknown gacha bundle');
+    return Math.round(tier.price * count * (count === 3 ? 0.9 : count === 10 ? 0.75 : 1));
   }
   function odds(kind, boostOn) {
-    var base = kind === 'rare' ? RARE : [{ id: 'random-car', name: 'ランダムな車', chance: 100, car: true }];
+    if (!Object.prototype.hasOwnProperty.call(TABLES, kind)) throw new RangeError('Unknown gacha kind');
+    var base = TABLES[kind];
     if (!boostOn) return base.map(function (x) { return Object.assign({}, x); });
     var carTotal = base.reduce(function (n, x) { return n + (x.car ? x.chance : 0); }, 0);
-    var boostedTotal = Math.min(100, carTotal * 2.5);
+    var boostedTotal = Math.min(100, carTotal * 1.5);
     if (!carTotal || boostedTotal >= 100) return base.map(function (x) { return Object.assign({}, x); });
     var otherScale = (100 - boostedTotal) / (100 - carTotal);
     return base.map(function (x) {
       var out = Object.assign({}, x);
-      out.chance = x.car ? x.chance * 2.5 : x.chance * otherScale;
+      out.chance = x.car ? x.chance * 1.5 : x.chance * otherScale;
       return out;
     });
   }
@@ -90,16 +120,17 @@
     for (var i = 0; i < CARS.length; i++) if (CARS[i].id === id) return CARS[i];
     return null;
   }
-  function drawOne(kind, boostOn, rand) {
-    var hit = pick(odds(kind, boostOn), rand), out = { type: hit.id, name: hit.name, car: !!hit.car };
-    if (hit.id === 'lot') {
-      out.amount = (10 + Math.floor(rand() * 16)) * 1000;
+  function drawOne(table, rand) {
+    var hit = pick(table, rand), out = { type: hit.type || hit.id, name: hit.name, car: !!hit.car };
+    if (out.type === 'lot') {
+      out.amount = hit.min + Math.floor(rand() * ((hit.max - hit.min) / hit.step + 1)) * hit.step;
       out.name = 'ロットコイン' + out.amount.toLocaleString('en-US') + '個';
-    } else if (hit.id === 'royal') {
-      out.amount = 8 + Math.floor(rand() * 5);
+    } else if (out.type === 'royal') {
+      out.amount = hit.min + Math.floor(rand() * ((hit.max - hit.min) / hit.step + 1)) * hit.step;
       out.name = 'ロイヤルコイン' + out.amount + '個';
     } else if (hit.id === 'garage' || hit.id === 'reset' || hit.id === 'vip-week' || hit.id === 'seed') {
-      out.amount = 1;
+      out.amount = hit.amount || 1;
+      if (hit.id === 'garage' || hit.id === 'reset') out.name += out.amount + '枚';
     } else if (hit.car) {
       var c = hit.carId ? car(hit.carId) : CARS[Math.floor(rand() * CARS.length)];
       out.type = 'car'; out.carId = c.id; out.name = c.name;
@@ -107,10 +138,11 @@
     return out;
   }
   function draw(kind, count, boostOn, saleOn, rand) {
-    var pulls = [];
+    // Every slot in a purchase has the same table; build it once, including a 30-slot bundle.
+    var table = odds(kind, boostOn), pulls = [];
     for (var i = 0; i < count; i++) {
-      var rewards = [], n = kind === 'rare' ? 3 : 1;
-      for (var j = 0; j < n; j++) rewards.push(drawOne(kind, boostOn, rand));
+      var rewards = [], n = 3;
+      for (var j = 0; j < n; j++) rewards.push(drawOne(table, rand));
       var bonus = null;
       if (saleOn && rand() < 0.8) {
         var tier = rand();
@@ -125,9 +157,15 @@
     if (n >= 0.1) return String(Math.round(n * 100000) / 100000);
     return String(Math.round(n * 10000000) / 10000000);
   }
+  function label(reward) {
+    var type = reward.type || reward.id;
+    if (type === 'lot' || type === 'royal') return reward.name + ' ' + reward.min.toLocaleString('en-US') + '〜' + reward.max.toLocaleString('en-US') + (type === 'lot' ? '個' : '枚');
+    if (type === 'garage' || type === 'reset') return reward.name + ' ' + (reward.amount || 1) + '枚';
+    return reward.name;
+  }
 
   BR.GACHA = {
-    cars: CARS, rare: RARE, events: events, price: price, odds: odds, draw: draw,
-    pct: pct, car: car, day: DAY, grownGiven: 1500000
+    cars: CARS, rare: RARE, legendary: LEGENDARY, secret: SECRET, kinds: KINDS, events: events, price: price, odds: odds, draw: draw,
+    pct: pct, label: label, car: car, day: DAY, grownGiven: 1500000
   };
 })(globalThis.BR = globalThis.BR || {});

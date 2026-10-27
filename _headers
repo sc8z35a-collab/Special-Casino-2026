@@ -41,6 +41,11 @@
   Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' data: blob:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow
   Cross-Origin-Opener-Policy: same-origin
+/ops/assets/line-wallpapers/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+  ! Cross-Origin-Resource-Policy
+  Cross-Origin-Resource-Policy: cross-origin
 # the page for whoever is given a link to the vault (look, take, comment): nothing but itself and this
 # server, never kept, never indexed
 /link/*

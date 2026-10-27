@@ -1,3 +1,4 @@
+@import url("../css/box-model.css");
 /* security HOME: the operators' final safety base (sec/index.html, sec.js, dev.js).
    The same liquid glass as the operator desktop (ops/glass.css), over the same wallpaper: panes of glass with a bright rim, light inside
    the top edge and shade inside the bottom, and a soft shadow in layers. Everything is drawn by the device (no inline style, no image
@@ -20,7 +21,7 @@
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Noto Sans JP", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
 }
-* { box-sizing: border-box; }
+
 /* hidden wins over the display rules below (else the empty dialog, the banner and the login stay on screen) */
 [hidden] { display: none !important; }
 html, body { margin: 0; padding: 0; }

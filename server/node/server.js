@@ -15,7 +15,7 @@ import { Live } from './live.js';
 import { createStatic } from './static.js';
 import { SECURITY_HEADERS, sendJson, sendRaw, clientIp, coreRequest, bufferedRequest, readBytes } from './http.js';
 import { createApi } from '../core/api.js';
-import { CHAT_ROUTES, screenChat, BLOCKED } from '../core/attach.js';
+import { CHAT_ROUTES, screenChat, blockedBody } from '../core/attach.js';
 import { metaValue } from '../core/db.js';
 import { fileStele, logMirror } from './stele-files.js';
 
@@ -58,14 +58,22 @@ export function createApp({ blobs = null, questRewardRoll, questTicketRoll, exte
   const live = new Live();
   const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
   const api = createApi({ db, live, config, secret, blobs, questRewardRoll, questTicketRoll, extensions, host: { ...machine(config.dataDir, live, config.logRequests), stele: stele || fileStele(path.join(config.dataDir, 'stele')) } });
+  live.authVersion = api.liveVersion;
   live.onPresence = (userId, online) => api.presence(userId, online);
   live.onOpsGone = (userId) => api.opsGone(userId);
   // The page is online with WebSocket live updates (Cloudflare); here they come as SSE.
   const serveStatic = createStatic(ROOT, {
     transformHtml: (html) => html.replace('<meta name="br-mode" content="online" data-live="ws">', '<meta name="br-mode" content="online" data-live="sse">')
   });
-  const hk = setInterval(() => api.housekeeping(), 3600000);
-  hk.unref();
+  let hk, closing = false;
+  function scheduleHousekeeping() {
+    if (closing) return;
+    hk = setTimeout(async () => {
+      try { await api.housekeeping(); } finally { scheduleHousekeeping(); }
+    }, Math.max(1000, Math.min(3600000, api.nextHousekeeping() - Date.now())));
+    hk.unref();
+  }
+  scheduleHousekeeping();
   // (the developer's automatic backup, when it is due)
   const bk = setInterval(() => api.backupDue(), 5 * 60000);
   bk.unref();
@@ -107,8 +115,8 @@ export function createApp({ blobs = null, questRewardRoll, questTicketRoll, exte
         try { bytes = await readBytes(req, 9 * 1024 * 1024); } catch (e) { sendJson(res, e.status || 400, { error: { code: e.code || 'bad_request', message: e.message } }); return; }
         const note = await screenChat(route, req.headers['content-type'], bytes);
         if (note) {
-          api.filtered(core, note);
-          sendJson(res, 400, { error: BLOCKED });
+          const decision = api.filtered(core, note);
+          sendJson(res, 400, blockedBody(decision));
           return;
         }
         core = bufferedRequest(req, url, ip, bytes);
@@ -126,7 +134,8 @@ export function createApp({ blobs = null, questRewardRoll, questTicketRoll, exte
 
   function close() {
     return new Promise((resolve) => {
-      clearInterval(hk);
+      closing = true;
+      clearTimeout(hk);
       clearInterval(bk);
       live.close();
       api.close();

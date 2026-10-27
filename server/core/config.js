@@ -56,6 +56,10 @@ export function configFrom(env = {}, overrides = {}) {
     npcGifts: flag(env, 'NPC_GIFTS', true),
     // 登録者数の記念 (js/game/config.js: milestones); off only for tests that count messages exactly.
     milestones: flag(env, 'MILESTONES', true),
+    // Private daily R2 vault snapshots, seven retained; a full recovery drill weekly.
+    vaultSnapshots: flag(env, 'VAULT_SNAPSHOTS', true),
+    vaultSnapshotHours: int(env, 'VAULT_SNAPSHOT_HOURS', 24),
+    vaultSnapshotKeep: int(env, 'VAULT_SNAPSHOT_KEEP', 7),
     // The accounts (user names, comma separated) that may open the operator site (/ops/),
     // where the players' feedback, 通報 and the official bot's messages are read.
     operators: str(env, 'OPERATORS', 'taku').split(',').map((s) => s.trim()).filter(Boolean),
@@ -151,6 +155,11 @@ export function configFrom(env = {}, overrides = {}) {
     lineStaffUserIds: str(env, 'LINE_STAFF_USER_IDS').split(',').map((s) => s.trim()).filter(Boolean),
     lineMonthlyLimit: int(env, 'LINE_MONTHLY_LIMIT', 200),
     lineApi: str(env, 'LINE_API', 'https://api.line.me').replace(/\/+$/, ''),
+    // Public send-only feed on the existing channel. In this mode the LINE
+    // webhook silently records follow/join/leave, and never answers commands.
+    lineFeedEnabled: flag(env, 'LINE_FEED_ENABLED', false),
+    lineFeedHour: int(env, 'LINE_FEED_HOUR_JST', 9),
+    lineFeedTo: str(env, 'LINE_FEED_TO').split(',').map((s) => s.trim()).filter(Boolean),
     // settings of the parts a deployment adds (server/core/ext.js): every variable that begins with EXT_, as it is
     ext: Object.fromEntries(Object.entries(env || {}).filter(([k, v]) => k.startsWith('EXT_') && typeof v === 'string')),
     limits: {},
@@ -163,6 +172,8 @@ export function configFrom(env = {}, overrides = {}) {
   if (cfg.lineAccessToken && cfg.lineAccessToken.length < 20) throw new Error('LINE_CHANNEL_ACCESS_TOKEN looks too short');
   if ([...cfg.lineNotifyTo, ...cfg.lineStaffUserIds].some((id) => !/^[UCR][0-9a-f]{32}$/.test(id))) throw new Error('LINE_NOTIFY_TO and LINE_STAFF_USER_IDS must be LINE IDs (U… for a person, C… for a group, R… for a room)');
   if (cfg.lineStaffUserIds.some((id) => !id.startsWith('U'))) throw new Error('LINE_STAFF_USER_IDS must be people (U…)');
+  if (cfg.lineFeedHour > 23) throw new Error('LINE_FEED_HOUR_JST must be 0 through 23');
+  if (cfg.lineFeedTo.some((id) => !/^[UCR][0-9a-f]{32}$/.test(id))) throw new Error('LINE_FEED_TO must contain LINE user, group or room IDs');
   if (cfg.discordAppKey && !/^[0-9a-f]{64}$/.test(cfg.discordAppKey)) throw new Error('DISCORD_APP_PUBLIC_KEY must be 64 hexadecimal characters');
   if (cfg.discordGuild && !/^\d{5,25}$/.test(cfg.discordGuild)) throw new Error('DISCORD_GUILD_ID must be a number');
   if (cfg.discordStaffRoles.some((r) => !/^\d{5,25}$/.test(r))) throw new Error('DISCORD_STAFF_ROLE_IDS must be role ids (numbers), comma separated');

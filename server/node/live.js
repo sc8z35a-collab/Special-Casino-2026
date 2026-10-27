@@ -33,6 +33,7 @@ export class Live {
     let set = this.clients.get(userId);
     const first = !set;
     if (!set) { set = new Set(); this.clients.set(userId, set); }
+    res.authVersion = this.authVersion ? this.authVersion(userId) : '';
     set.add(res);
     this.write(res, 'hello', hello());
     if (first && this.onPresence) this.onPresence(userId, true);
@@ -62,6 +63,7 @@ export class Live {
     res.write('retry: 3000\n\n');
     let set = this.opsClients.get(userId);
     if (!set) { set = new Set(); this.opsClients.set(userId, set); }
+    res.authVersion = this.authVersion ? this.authVersion(userId) : '';
     set.add(res);
     this.write(res, 'hello', { ops: true });
     const done = () => {
@@ -88,7 +90,13 @@ export class Live {
     if (set) for (const res of [...set]) res.end();
   }
 
+  dropUser(userId) {
+    this.dropOps(userId);
+    for (const res of [...(this.clients.get(userId) || [])]) res.end();
+  }
+
   write(res, event, data) {
+    res.lastSentAt = Date.now();
     if (res.writableLength > MAX_BUFFERED) { res.destroy(); return; }
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   }
@@ -109,8 +117,15 @@ export class Live {
   onlineCount() { return this.clients.size; }
 
   heartbeat() {
-    for (const set of this.clients.values()) for (const res of set) res.write(': ping\n\n');
-    for (const set of this.opsClients.values()) for (const res of set) res.write(': ping\n\n');
+    // Also notices credential changes made by the separate Node admin CLI.
+    const versions = new Map();
+    for (const clients of [this.clients, this.opsClients]) for (const [id, set] of clients) {
+      if (!versions.has(id)) versions.set(id, this.authVersion ? this.authVersion(id) : '');
+      for (const res of [...set]) {
+        if (res.authVersion !== versions.get(id)) res.end();
+        else if (!res.writableEnded && Date.now() - (res.lastSentAt || 0) >= HEARTBEAT) { res.write(': ping\n\n'); res.lastSentAt = Date.now(); }
+      }
+    }
   }
 
   close() {
