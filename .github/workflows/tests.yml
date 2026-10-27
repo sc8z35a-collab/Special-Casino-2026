@@ -21,6 +21,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Check production release provenance
+        run: python3 -m unittest discover -s tools -p 'test_check_production.py'
       - name: Check registered fast guards
         run: node tools/run_check.cjs --node
       - run: node tools/stamp.mjs --check

@@ -5,6 +5,8 @@ No credentials or player mutations are used.
 """
 import argparse
 import json
+import os
+import re
 import subprocess
 import time
 import urllib.error
@@ -12,6 +14,35 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+APP_OUTPUTS = {b'download/app.json', b'download/two-state-casino.apk'}
+
+
+def generated_app_followup(expected, deployed, root=None, fetch=False):
+    """Accept a descendant only when its entire diff contains generated APK outputs.
+
+    Android publication can follow the release while this check is waiting for
+    Cloudflare. Source/API changes still require their own matching commit.
+    """
+    if not all(isinstance(value, str) and re.fullmatch(r'[0-9a-f]{40}', value)
+               for value in (expected, deployed)):
+        return False
+    if expected == deployed:
+        return True
+    root = root or ROOT
+
+    def git(*args):
+        return subprocess.run(['git', *args], cwd=root, capture_output=True, timeout=30)
+
+    try:
+        if git('cat-file', '-e', deployed + '^{commit}').returncode:
+            if not fetch or git('fetch', '--quiet', '--depth=64', 'origin', 'main').returncode:
+                return False
+        if git('merge-base', '--is-ancestor', expected, deployed).returncode:
+            return False
+        diff = git('diff', '--name-only', '-z', expected, deployed, '--')
+        return diff.returncode == 0 and set(diff.stdout.split(b'\0')) - {b''} <= APP_OUTPUTS
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def read(base, path, build, limit=100000, byte_range=None):
@@ -28,7 +59,8 @@ def check(base, expected, expected_commit=None):
     version = json.loads(body) if content_type == 'application/json' else {}
     if version.get('sourceBuild', version.get('build')) != expected:
         raise ValueError('live build has not reached source ' + expected)
-    if expected_commit and version.get('sourceCommit') and version['sourceCommit'] != expected_commit:
+    if expected_commit and not generated_app_followup(
+            expected_commit, version.get('sourceCommit'), fetch=os.environ.get('GITHUB_ACTIONS') == 'true'):
         raise ValueError('live source commit has not reached ' + expected_commit)
     status, content_type, body = read(base, 'api/health', expected)
     if status != 200 or content_type != 'application/json' or not json.loads(body).get('ok'):
