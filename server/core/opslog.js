@@ -15,6 +15,7 @@
 // operators did), セキュリティ, 保管庫 and 緊急. It follows from the action,
 // so the hash covers it too.
 import { sha256 } from './auth.js';
+import { pageLimit } from './errors.js';
 
 const GENESIS = 'TWO STATE ops log';
 
@@ -169,6 +170,7 @@ export function createOpsLog({ q, anchor = null, onAdd = null }) {
   // newest first; `find`: words in the summary, names or action; `kind`: one of LOG_KINDS; `slim`: lines for a list
   // `since`: only the lines after that number (what a page that has the older ones asks for), from the account
   function list({ before = 0, since = 0, find = '', kind = '', limit = 200, slim = false } = {}) {
+    limit = pageLimit(limit, 200, 500);
     const shape = slim ? lean : dto;
     // "#123": that line (a log line quoted in the 運営チャット)
     const one = /^#(\d{1,15})$/.exec(String(find || '').trim());

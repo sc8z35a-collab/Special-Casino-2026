@@ -22,7 +22,7 @@
 <link rel="preload" href="fonts/NotoJP-500.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/NotoJP-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/fonts.css?v=d48bff2880">
-<link rel="stylesheet" href="css/style.css?v=8355a2c186">
+<link rel="stylesheet" href="css/style.css?v=d9a3b6f455">
 </head>
 <body>
 <div id="viewport">
@@ -96,11 +96,13 @@
       <button id="btn-radio" class="hud-circle hud-radio pic" aria-label="メニュー（フレンド・メッセージ・Car Owner・Shop・バイト）"><i class="ic ic-menu"></i><b class="hud-badge" id="radio-badge" hidden></b></button>
       <button id="btn-quest" class="hud-circle hud-quest pic" aria-label="クエスト"><i class="ic ic-quest"></i><b class="hud-badge" id="quest-badge" hidden></b><span class="quest-bonus-badges" id="quest-bonus-badges" hidden></span></button>
       <button id="btn-tree" class="hud-circle hud-tree pic" aria-label="金の生る木"><i class="ic ic-tree"></i><b class="hud-badge" id="tree-badge" hidden></b></button>
+      <button id="btn-gacha" class="hud-circle hud-gacha pic" aria-label="ガチャ"><i class="ic ic-gacha"></i></button>
       <!-- the top middle: the update reminder, then フレンド対決 / 協力スロット (js/ui/play.js) -->
       <div class="mode-stack" id="mode-stack">
         <div class="home-note" id="update-note" hidden><span id="update-note-text">新しいバージョンがあります</span><button class="mini-btn gold" id="update-note-go"><span>今すぐアップデート</span></button></div>
       </div>
       <div class="quest-note" id="quest-note" hidden aria-live="polite"></div>
+      <div id="resource-status" role="status" hidden>読み込み中…</div>
 
       <button id="btn-rules" class="pill pill-rules" aria-label="インフォメーション・ルール" data-sfx="click"></button>
       <button id="btn-spin" class="spin-btn" aria-label="SPIN">
@@ -149,7 +151,6 @@
         <p class="tp-note" id="tp-note">スピントークン上限は毎日00:00 UTCに更新されます</p>
       </div>
       <div class="daily-bar">
-        <i class="chip-pile"></i>
         <span class="daily-text">毎日無料でスピントークンを入手！</span>
         <button class="daily-btn" id="daily-btn"><i class="ic ic-stopwatch"></i><span id="daily-label">受け取る</span></button>
       </div>
@@ -954,7 +955,7 @@
 <script src="js/art/ui-images.js?v=28a66c27e7"></script>
 <script src="js/art/social-images.js?v=7bc2be9196"></script>
 <script src="js/art/ui-svg.js?v=00d5767a31"></script>
-<script src="js/version.js?v=7b607c797d"></script>
+<script src="js/version.js?v=522aeb7cee"></script>
 <script src="js/core/util.js?v=1b72818e38"></script>
 <script src="js/core/clock.js?v=2ba2dad169"></script>
 <script src="js/core/effects.js?v=ae47f50aa7"></script>
@@ -967,11 +968,11 @@
 <script src="js/core/store.js?v=f0d92dc1dd"></script>
 <script src="js/game/engine.js?v=75f36e1496"></script>
 <script src="js/net/device.js?v=ff52665f6b"></script>
-<script src="js/net/api.js?v=be94956346"></script>
+<script src="js/net/api.js?v=57ff11bffe"></script>
 <script src="js/net/transport-policy.js?v=3ee219f81a"></script>
 <script src="js/net/keepalive.js?v=18dee0ca8c"></script>
 <script src="js/net/wire.js?v=52e85a64bb"></script>
-<script src="js/net/live.js?v=746a3e41e7"></script>
+<script src="js/net/live.js?v=8fbd13ae9e"></script>
 <script src="js/net/watchcrypto.js?v=ab0b679978"></script>
 <script src="js/net/watchfeed.js?v=886afa86a0"></script>
 <script src="js/game/bank.js?v=bb9f3e5786"></script>
@@ -979,20 +980,20 @@
 <script src="js/audio/sfx.js?v=5ca9bd336a"></script>
 <script src="js/render/assets.js?v=e933ef38db"></script>
 <script src="js/render/fire3d.js?v=8af7bce7d2"></script>
-<script src="js/render/reels.js?v=95654ea96b"></script>
+<script src="js/render/reels.js?v=65c5c1ab82"></script>
 <script src="js/render/fx.js?v=49a20cd3df"></script>
 <script src="js/art/tree-models.js?v=af5558603c"></script>
 <script src="js/render/tree3d.js?v=e943cbf125"></script>
 <script src="js/render/auction3d.js?v=98da92c4b9"></script>
-<script src="js/ui/screens.js?v=3ad9212cae"></script>
-<script src="js/ui/kit.js?v=09ac206778"></script>
-<script src="js/core/resources.js?v=daa7caca05"></script>
+<script src="js/ui/screens.js?v=39e6281ee9"></script>
+<script src="js/ui/kit.js?v=c34803ab99"></script>
+<script src="js/core/resources.js?v=32dd4523ed"></script>
 <script src="js/core/three.js?v=8b05356469"></script>
-<script src="js/core/lazy.js?v=a2eac80cc4"></script>
-<script src="js/ui/account.js?v=752307117e"></script>
+<script src="js/core/lazy.js?v=f370de80e2"></script>
+<script src="js/ui/account.js?v=e250df818b"></script>
 <script src="js/ui/oauth.js?v=32b3664f63"></script>
 <script src="js/ui/avatars.js?v=509556e799"></script>
-<script src="js/ui/social.js?v=be6b03e874"></script>
+<script src="js/ui/social.js?v=0bf75a5647"></script>
 <script src="js/ui/shop.js?v=942e40a50f"></script>
 <script src="js/ui/peter.js?v=8490e6920a"></script>
 <script src="js/ui/johnson.js?v=41cf8554b4"></script>
@@ -1001,11 +1002,11 @@
 <script src="js/ui/car-cards.js?v=e0041af63f"></script>
 <script src="js/ui/vip.js?v=fa02033268"></script>
 <script src="js/ui/safety.js?v=bf50802648"></script>
-<script src="js/net/push.js?v=fc2c79f5c0"></script>
+<script src="js/net/push.js?v=855e90828c"></script>
 <script src="js/ui/bonus.js?v=0fe28a2287"></script>
 <script src="js/ui/quests.js?v=987e25f9f5"></script>
 <script src="js/ui/jobs.js?v=288b25859e"></script>
-<script src="js/ui/tree.js?v=6b9c35eb73"></script>
+<script src="js/ui/tree.js?v=57ccb3bcf2"></script>
 <script src="js/ui/effects.js?v=fc69d1bdc6"></script>
 <script src="js/ui/news.js?v=8753c55b23"></script>
 <script src="js/ui/line-reward.js?v=ce6671da17"></script>
@@ -1022,6 +1023,6 @@
 <script src="js/ui/start.js?v=9182b0ef0a"></script>
 <script src="js/ui/banlock.js?v=623437cb62"></script>
 <script src="js/ui/install.js?v=a7f3466890"></script>
-<script src="js/main.js?v=ee5141733b"></script>
+<script src="js/main.js?v=c86a2753e4"></script>
 </body>
 </html>

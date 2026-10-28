@@ -31,7 +31,7 @@
 // VIEW_ONLY), and what they read leaves out the requests' addresses and the
 // log's details. Taken away, their site sessions end at once (the site
 // checks every 2 seconds and logs out).
-import { ApiError, posInt } from './errors.js';
+import { ApiError, posInt, pageLimit } from './errors.js';
 import { nameKey, cleanPassword, cleanText, hashPassword } from './auth.js';
 import { LEVEL, RULES, VIP, RELEASE } from './rules.js';
 import { jst } from './opslog.js';
@@ -517,6 +517,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const p = alive(body.id);
       const pw = cleanPassword(body.password);
       const hash = await hashPassword(pw);
+      req.revalidate?.(); need(u); alive(body.id);
       tx(() => {
         q('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, p.id);
         setRecovery(p.id);
@@ -835,7 +836,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const before = Number(req.query.get('before')) || 0;
       // slim=1: the lines only (a list); each one's detail comes when it is opened (/api/ops/log/entries)
       // limit=N: the newest N lines alone, without the log's counts (a small window on the desktop, ops/cdw.js)
-      const slim = req.query.get('slim') === '1', limit = Math.min(200, Number(req.query.get('limit')) || 0);
+      const slim = req.query.get('slim') === '1', limit = req.query.get('limit') ? pageLimit(req.query.get('limit'), 200) : 0;
       const entries = opsLog.list({ before, find: req.query.get('q') || '', kind: req.query.get('kind') || '', slim, ...(limit > 0 ? { limit } : {}) });
       return {
         entries: isOperator(u) || slim ? entries : entries.map(viewerEntry), viewer: !isOperator(u),

@@ -19,3 +19,11 @@ export function posInt(v, what) {
   if (!Number.isSafeInteger(n) || n <= 0) throw new ApiError(400, 'bad_amount', `${what}は1以上の整数で指定してください`);
   return n;
 }
+
+// SQL LIMIT accepts negative integers as "all rows" and rejects fractions.
+export function pageLimit(value, fallback, max = fallback) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const n = Number(value);
+  if (!Number.isSafeInteger(n) || n <= 0) throw new ApiError(400, 'bad_limit', '表示件数は1以上の整数で指定してください');
+  return Math.min(max, n);
+}

@@ -13,7 +13,7 @@
 // server/node/live.js: sendOps). A message, or one read further, is told to the
 // others over that connection too (opschat): the site asks for the conversation
 // then, and its tab does not ask every few seconds.
-import { ApiError, posInt } from './errors.js';
+import { ApiError, posInt, pageLimit } from './errors.js';
 import { kindOf } from './opslog.js';
 
 const ON_SITE_MS = 40000;
@@ -151,7 +151,7 @@ export function createTeam({ q, getUser, live, ops, seen, isDeveloper, callDevel
       const peer = peerOf(u, req.query.get('with'));
       const after = Number(req.query.get('after') || 0);
       // limit=N: the newest N alone (a small window on the desktop, ops/cdw.js)
-      const page = Math.min(PAGE, Number(req.query.get('limit')) || PAGE);
+      const page = pageLimit(req.query.get('limit'), PAGE);
       const where = peer === 0 ? 'to_id = 0' : '((from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?))';
       const args = peer === 0 ? [] : [u.id, peer, peer, u.id];
       const rows = after > 0

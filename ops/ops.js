@@ -137,6 +137,7 @@
     })
       .catch(function () { throw { status: 0, message: '通信できませんでした' }; })
       .then(function (res) {
+        if (sentToken && token !== sentToken && (res.bytes || (res.status >= 200 && res.status < 300))) throw { status: 0, code: 'session_changed', message: 'ログイン状態が変わりました' };
         if (res.bytes) return res;
         var j = res.j || {};
         if (res.status >= 200 && res.status < 300) return j;

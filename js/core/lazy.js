@@ -30,7 +30,8 @@
       init: function () {},
       open: function () {
         var args = arguments, generation = ++state.generation;
-        return load().then(function (api) { if (generation === state.generation) return api.open.apply(api, args); }, function () {
+        var job = load();
+        return (BR.resources.wait ? BR.resources.wait(job) : job).then(function (api) { if (generation === state.generation) return api.open.apply(api, args); }, function () {
           if (generation === state.generation) BR.kit.fail({ message: '画面を読み込めませんでした。もう一度お試しください。' });
         });
       },

@@ -225,7 +225,7 @@
   function appNotify(title, body, tag, call) {
     if (!app || !document.hidden || permission() !== 'granted') return;
     // a tap leads to the chat (or the friends, for an invitation)
-    var open = /^(dm|group):\d+$/.test(tag) ? tag : tag.indexOf('invite:') === 0 ? 'friends' : '';
+    var open = /^(dm|group):\d+$/.test(tag) ? tag : tag.indexOf('invite:') === 0 ? 'friends' : tag.indexOf('tree:') === 0 ? 'tree' : '';
     try { app.notice(String(title), String(body), String(tag), call ? 1 : 0, open); } catch (e) { /* an older app */ }
   }
   function onMsg(m) {
@@ -256,6 +256,8 @@
       BR.social.openGroup(Number(m[2]));
     } else if (open === 'friends') {
       BR.social.open('friends');
+    } else if (open === 'tree') {
+      BR.tree.open();
     }
   }
   var pending = (function () {
@@ -291,6 +293,7 @@
       BR.live.on('msg', onMsg);
       BR.live.on('hub', onHub);
       BR.live.on('call', onCall);
+      BR.live.on('tree', function (event) { if (event.type === 'ready') appNotify('金の生る木', event.name + 'が収穫できます', 'tree:' + event.id + ':' + event.cycleAt, false); });
     }
   }
 

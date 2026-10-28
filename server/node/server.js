@@ -57,7 +57,8 @@ export function createApp({ blobs = null, questRewardRoll, questTicketRoll, exte
   const db = openDb(config.dataDir);
   const live = new Live();
   const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
-  const api = createApi({ db, live, config, secret, blobs, questRewardRoll, questTicketRoll, extensions, host: { ...machine(config.dataDir, live, config.logRequests), stele: stele || fileStele(path.join(config.dataDir, 'stele')) } });
+  let hk, closing = false, api;
+  api = createApi({ db, live, config, secret, blobs, questRewardRoll, questTicketRoll, extensions, host: { ...machine(config.dataDir, live, config.logRequests), stele: stele || fileStele(path.join(config.dataDir, 'stele')), reschedule: () => scheduleHousekeeping() } });
   live.authVersion = api.liveVersion;
   live.valid = api.liveValid;
   live.onPresence = (userId, online) => api.presence(userId, online);
@@ -66,9 +67,9 @@ export function createApp({ blobs = null, questRewardRoll, questTicketRoll, exte
   const serveStatic = createStatic(ROOT, {
     transformHtml: (html) => html.replace('<meta name="br-mode" content="online" data-live="ws">', '<meta name="br-mode" content="online" data-live="sse">')
   });
-  let hk, closing = false;
   function scheduleHousekeeping() {
-    if (closing) return;
+    if (closing || !api) return;
+    clearTimeout(hk);
     hk = setTimeout(async () => {
       try { await api.housekeeping(); } finally { scheduleHousekeeping(); }
     }, Math.max(1000, Math.min(3600000, api.nextHousekeeping() - Date.now())));

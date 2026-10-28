@@ -6,8 +6,8 @@
   'use strict';
 
   var EVENTS = ['hello', 'msg', 'read', 'typing', 'balance', 'presence', 'friend', 'call', 'watch', 'homechat', 'tip', 'items', 'quest',
-    'battle', 'coop', 'present', 'hub', 'bigwin', 'kick', 'pay', 'support', 'card', 'retract', 'chatban', 'viewer', 'diary', 'view'];
-  var conn = null, want = false, connected = false, timer = 0, backoff = 1000, opening = false, pinger = null;
+    'battle', 'coop', 'present', 'hub', 'bigwin', 'kick', 'pay', 'support', 'card', 'retract', 'chatban', 'viewer', 'diary', 'view', 'tree'];
+  var conn = null, want = false, connected = false, timer = 0, backoff = 1000, opening = null, pinger = null, generation = 0;
   var handlers = {};
 
   function emit(ev, arg) { (handlers[ev] || []).forEach(function (f) { try { f(arg); } catch (e) { if (window.console) console.warn(e); } }); }
@@ -33,7 +33,8 @@
     emit(name, data);
   }
 
-  function dropped() {
+  function dropped(epoch) {
+    if (epoch !== generation || !want) return;
     if (conn) conn.close();
     conn = null;
     if (pinger) pinger.stop();
@@ -41,31 +42,34 @@
     schedule();
   }
 
-  function openSse(ticket) {
+  function openSse(ticket, epoch) {
     var es = new EventSource('/api/stream?ticket=' + encodeURIComponent(ticket) + held());
+    var closed = false;
     EVENTS.forEach(function (name) {
       es.addEventListener(name, function (e) {
+        if (closed || epoch !== generation || !want) return;
         var data;
         try { data = JSON.parse(e.data); } catch (x) { return; }
         deliver(name, data);
       });
     });
-    es.onerror = dropped;
-    return { close: function () { es.onerror = null; es.close(); } };
+    es.onerror = function () { if (!closed) dropped(epoch); };
+    return { close: function () { closed = true; es.onerror = null; es.close(); } };
   }
 
-  function openWs(ticket) {
+  function openWs(ticket, epoch) {
     var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
     // (the device rides with the connection, not with each request on it: server/core/socketapi.js)
     var ws = new WebSocket(proto + location.host + '/api/live?ticket=' + encodeURIComponent(ticket) + held() + (BR.device ? '&device=' + encodeURIComponent(BR.device.header()) : ''));
     var closed = false, heartbeat = null;
     function send(text) {
-      if (ws.readyState !== 1) return false;
+      if (closed || epoch !== generation || !want || ws.readyState !== 1) return false;
       try { ws.send(text); if (heartbeat) heartbeat.sent(); return true; } catch (e) { return false; }
     }
     // the API's requests on this connection (js/net/wire.js)
     var wire = BR.wire(send);
     ws.onmessage = function (e) {
+      if (closed || epoch !== generation || !want) return;
       if (heartbeat) heartbeat.received(e.data);
       if (e.data === 'pong') return;
       var m;
@@ -73,16 +77,16 @@
       if (wire.reply(m)) return;
       if (m && m.event) deliver(m.event, m.data);
     };
-    ws.onclose = function () { wire.drop(); if (!closed) { if (heartbeat) heartbeat.failed(); dropped(); } };
+    ws.onclose = function () { wire.drop(); if (!closed && epoch === generation) { if (heartbeat) heartbeat.failed(); dropped(epoch); } };
     ws.onerror = function () { /* onclose follows */ };
     // keeps mobile networks and proxies from dropping a connection that has been quiet for a while (anything sent or received does that
     // too); answered by Cloudflare without waking the server
     if (pinger) pinger.stop();
     heartbeat = pinger = BR.keepAlive(send, function () {
-      if (closed) return;
+      if (closed || epoch !== generation || !want) return;
       closed = true; wire.drop();
       try { ws.close(4000, 'Keepalive timed out'); } catch (e) {}
-      dropped();
+      dropped(epoch);
     });
     return {
       // a message to the server (only on the WebSocket)
@@ -98,18 +102,20 @@
   }
 
   function open() {
-    if (!want || opening || !BR.api.hasToken()) return;
+    if (!want || opening || (conn && connected) || !BR.api.hasToken()) return;
     var ws = BR.api.liveMode === 'ws';
     if (ws ? !window.WebSocket : !window.EventSource) return;
-    opening = true;
+    var epoch = ++generation, job = {};
+    opening = job;
     clearTimeout(timer);
     BR.api.ticket().then(function (r) {
-      opening = false;
-      if (!want) return;
+      if (!want || generation !== epoch || opening !== job) return;
+      opening = null;
       if (conn) conn.close();
-      conn = ws ? openWs(r.ticket) : openSse(r.ticket);
+      conn = ws ? openWs(r.ticket, epoch) : openSse(r.ticket, epoch);
     }).catch(function (err) {
-      opening = false;
+      if (!want || generation !== epoch || opening !== job) return;
+      opening = null;
       setConnected(false);
       if (err && (err.status === 401 || err.status === 403)) return;
       schedule();
@@ -130,6 +136,8 @@
   BR.live = {
     connect: function () { want = true; backoff = 1000; open(); },
     close: function () {
+      generation++;
+      opening = null;
       want = false;
       clearTimeout(timer);
       if (conn) conn.close();

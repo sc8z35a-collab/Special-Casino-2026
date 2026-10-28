@@ -71,6 +71,7 @@ export function createOpsMfa({ q, tx, secret, ops, opsLog, isDeveloper = () => f
     'GET /api/ops/profile': (req, u) => { ops.need(u); return { id: u.id, name: u.name, avatar: u.avatar, mfa: status(u) }; },
     'POST /api/ops/profile/mfa/begin': async (req, u) => {
       ops.need(u); const b = await req.json(4096); await credentials(u, b);
+      req.revalidate?.(); ops.need(u);
       const seed = base32(crypto.randomBytes(20)), until = clock() + 10 * 60000;
       q(`INSERT INTO ops_mfa (user_id, pending_secret, pending_until) VALUES (?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET pending_secret = excluded.pending_secret, pending_until = excluded.pending_until`).run(u.id, sealText(key, seed), until);
@@ -84,6 +85,7 @@ export function createOpsMfa({ q, tx, secret, ops, opsLog, isDeveloper = () => f
       if (step < 0) throw bad();
       if (b.mode === 3 && (typeof b.newPhrase !== 'string' || Array.from(b.newPhrase).length < 12 || Array.from(b.newPhrase).length > 64 || b.newPhrase === b.password)) throw new ApiError(400, 'bad_phrase', 'パスワードと異なる12〜64文字の専用確認フレーズを入力してください');
       const phraseHash = b.mode === 3 ? await hashPassword(b.newPhrase) : '';
+      req.revalidate?.(); ops.need(u);
       const recovery = Array.from({ length: 10 }, () => crypto.randomBytes(10).toString('hex').toUpperCase());
       const version = r.version + 1;
       tx(() => {
@@ -98,6 +100,7 @@ export function createOpsMfa({ q, tx, secret, ops, opsLog, isDeveloper = () => f
     },
     'POST /api/ops/profile/mfa/disable': async (req, u) => {
       ops.need(u); const b = await req.json(4096); await credentials(u, b);
+      req.revalidate?.(); ops.need(u);
       tx(() => {
         q("UPDATE ops_mfa SET mode = 0, secret = '', phrase_hash = '', recovery = '[]', pending_secret = '', pending_until = 0, version = version + 1 WHERE user_id = ?").run(u.id);
         opsLog.add({ actor: u, action: 'ops_mfa_disable', req, summary: `${u.name}が追加認証を解除` });

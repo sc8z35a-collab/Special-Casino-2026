@@ -18,6 +18,7 @@
 // Without a store (a host that has none) the rest still runs where it can and the patrol says there is no copy.
 import { sha256, keyFrom } from './auth.js';
 import { rowHash, GENESIS_HASH } from './opslog.js';
+import { pageLimit } from './errors.js';
 import crypto from 'node:crypto';
 
 export const PREFIX = 'oplog/';
@@ -336,7 +337,7 @@ export function createStele({ q, opsLog, store = null, secret, clock = Date.now,
 
   // the log's rows, after `after`, as they are (for the developer's copy: server/node/admin-cli.js, the operator site's 「書き出す」)
   function archive({ after = 0, limit = 1000 } = {}) {
-    const rows = q('SELECT * FROM ops_log WHERE id > ? ORDER BY id LIMIT ?').all(Math.max(0, Number(after) || 0), Math.min(2000, Math.max(1, Number(limit) || 1000)));
+    const rows = q('SELECT * FROM ops_log WHERE id > ? ORDER BY id LIMIT ?').all(Math.max(0, Number(after) || 0), pageLimit(limit, 1000, 2000));
     const head = q('SELECT id, hash FROM ops_log ORDER BY id DESC LIMIT 1').get() || { id: 0, hash: GENESIS_HASH };
     return { rows: rows.map(toArr), cols: COLS, last: rows.length ? rows[rows.length - 1].id : after, head, more: rows.length > 0 && rows[rows.length - 1].id < head.id };
   }
