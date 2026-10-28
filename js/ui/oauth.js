@@ -15,7 +15,7 @@
   var LIFE = 15 * 60 * 1000;
   var NAMES = { google: 'Google', discord: 'Discord' };
 
-  var attempts = 0, timer = 0, asking = false, starting = false, providers = null, shown = '';
+  var attempts = 0, timer = 0, asking = false, starting = false, providers = null, shown = '', generation = 0;
 
   /* ------------------------------------------------------------ the flow under way --- */
   // (kept in localStorage so it survives the trip to the provider; in this page's memory as well, for a browser that keeps nothing)
@@ -31,11 +31,13 @@
   function save(s) { memory = s; try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* in this page only */ } }
   function current() { return saved() || (memory && Date.now() - memory.at < LIFE ? memory : null); }
   function clear() {
+    generation++; asking = false; starting = false;
     memory = null;
     try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
     stop();
   }
   function stop() { clearTimeout(timer); timer = 0; }
+  function active(s, gen) { var live = current(); return gen === generation && live && live.flow === s.flow; }
 
   // in the app (and an installed web app) the provider's page is the phone's browser
   function external() { var p = BR.platform || {}; return !!(p.app || p.standalone); }
@@ -77,16 +79,19 @@
 
   function begin(provider, purpose) {
     if (starting || !NAMES[provider]) return;
+    clear();
     starting = true;
+    var gen = generation;
     var ext = external();
     (purpose === 'link' ? api.oauthLinkStart(provider, ext) : api.oauthStart(provider, ext)).then(function (r) {
+      if (gen !== generation) return;
       starting = false;
       save({ flow: r.flow, provider: provider, purpose: purpose, external: ext, url: r.url, at: Date.now() });
       if (purpose === 'login') { shown = 'wait'; BR.account.oauthWait({ provider: provider, external: ext }); }
       else K.toast(NAMES[provider] + 'のログイン画面を開きます', 2600);
       go(r.url);
       watch();
-    }, failed);
+    }, function (err) { if (gen === generation) failed(err); });
   }
   // (the app hands an address that is not the game's to the phone's browser; in a browser this tab goes there and comes back)
   function go(url) { BR.oauth.go(url); }
@@ -107,8 +112,9 @@
     var s = current();
     if (!s) { stop(); return; }
     if (asking || document.hidden) return;
+    var gen = generation;
     asking = true;
-    api.oauthPoll(s.flow).then(function (r) { asking = false; answer(s, r); }, function (err) { asking = false; trouble(s, err); });
+    api.oauthPoll(s.flow).then(function (r) { if (!active(s, gen)) return; asking = false; answer(s, r); }, function (err) { if (!active(s, gen)) return; asking = false; trouble(s, err); });
   }
   function answer(s, r) {
     if (r.step === 'wait') {
@@ -140,12 +146,14 @@
 
   /* ------------------------------------------------------------ linking (the profile) --- */
   function link(s) {
+    var gen = generation;
     api.oauthLink(s.flow).then(function (r) {
+      if (!active(s, gen)) return;
       clear();
       K.sfx('purchase');
       K.toast((NAMES[r.provider] || '') + 'を連携しました。次からこれでもログインできます', 4200);
       refreshTiles();
-    }, function (err) { end(s, err.message); });
+    }, function (err) { if (active(s, gen)) end(s, err.message); });
   }
 
   // the tiles of the player's own profile (js/ui/profile-custom.js makes them): one for each provider the server offers
@@ -196,7 +204,9 @@
     }
     if (!s) return;
     memory = s;
+    var gen = generation;
     BR.launch.whenDone(function () {
+      if (!active(s, gen)) return;
       if (s.purpose === 'login') { shown = 'wait'; BR.account.oauthWait({ provider: s.provider, external: s.external }); }
       watch();
     });

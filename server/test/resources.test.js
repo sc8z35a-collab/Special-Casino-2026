@@ -23,3 +23,13 @@ test('logout during a deferred controller download cancels its pending user acti
   const s = scene(), job = s.BR.cars.showShop(); await flush(); s.BR.resources.cancelPending(); await s.finish(); await job;
   assert.deepEqual(s.calls, ['sale:init', 'cars:init']);
 });
+
+test('a failure after the controller was installed retries the missing dependency without losing or reinitializing the controller', async () => {
+  const s = scene(); s.BR.RESOURCES.cars = ['cars.js', 'sale.js'];
+  const cars = { init: () => s.calls.push('init'), showShop: () => s.calls.push('open') };
+  const first = s.BR.cars.showShop(); await flush(); s.BR.cars = cars; s.tags[0].onload(); await flush(); s.tags[1].onerror(); await first;
+  assert.deepEqual(s.calls, ['failed']);
+  const retry = s.BR.cars.showShop(); await flush(); assert.equal(s.tags.length, 3);
+  s.tags[2].onload(); await retry; s.BR.cars.showShop();
+  assert.deepEqual(s.calls, ['failed', 'init', 'open', 'open']);
+});

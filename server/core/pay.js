@@ -105,7 +105,8 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
     const m = SUPPORT.methods.find((x) => x.id === o.method);
     return {
       id: o.id, plan: o.plan, name: p.name, qty: o.qty, coins: o.coins, bonus: o.bonus, amount: o.amount,
-      method: o.method, methodName: m ? m.name : o.method, status: o.status, statusName: STATUS_NAMES[o.status] || o.status,
+      method: o.method, methodName: m ? m.name : o.method, status: o.status, statusName: o.status === 'paid' && o.refunded_amount ? '一部返金済み' : STATUS_NAMES[o.status] || o.status,
+      refundedAmount: o.refunded_amount, coinsRevoked: o.coins_revoked,
       createdAt: o.created_at, paidAt: o.paid_at, refundedAt: o.refunded_at,
       voucher: o.status === 'pending' && o.voucher_url ? { url: o.voucher_url, until: o.voucher_until } : null
     };
@@ -125,7 +126,7 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
   function meters(now = Date.now()) {
     const G = SUPPORT.goals, m = monthOf(now);
     let run = 0, month = 0;
-    for (const r of q("SELECT amount, paid_at FROM pay_orders WHERE status = 'paid' ORDER BY paid_at, id").all()) {
+    for (const r of q("SELECT amount - refunded_amount AS amount, paid_at FROM pay_orders WHERE status = 'paid' ORDER BY paid_at, id").all()) {
       const over = Math.max(0, run - G.recover);
       run += r.amount;
       if (r.paid_at >= m.from && r.paid_at < m.until) month += Math.max(0, run - G.recover) - over;
@@ -137,9 +138,9 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
   }
   function totals(now = Date.now()) {
     const m = monthOf(now);
-    const all = q("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS yen, COALESCE(SUM(coins), 0) AS coins, COUNT(DISTINCT user_id) AS payers FROM pay_orders WHERE status = 'paid'").get();
-    const month = q("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS yen FROM pay_orders WHERE status = 'paid' AND paid_at >= ? AND paid_at < ?").get(m.from, m.until);
-    const back = q("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS yen FROM pay_orders WHERE status = 'refunded'").get();
+    const all = q("SELECT COUNT(*) AS n, COALESCE(SUM(amount - refunded_amount), 0) AS yen, COALESCE(SUM(coins - coins_revoked), 0) AS coins, COUNT(DISTINCT user_id) AS payers FROM pay_orders WHERE status = 'paid'").get();
+    const month = q("SELECT COUNT(*) AS n, COALESCE(SUM(amount - refunded_amount), 0) AS yen FROM pay_orders WHERE status = 'paid' AND paid_at >= ? AND paid_at < ?").get(m.from, m.until);
+    const back = q('SELECT COUNT(*) AS n, COALESCE(SUM(refunded_amount), 0) AS yen FROM pay_orders WHERE refunded_amount > 0').get();
     const slips = q("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS yen FROM pay_orders WHERE status = 'pending'").get();
     const review = q("SELECT COUNT(*) AS n FROM pay_orders WHERE status = 'review'").get().n;
     return { orders: all.n, yen: all.yen, coins: all.coins, payers: all.payers, monthOrders: month.n, monthYen: month.yen, refunds: back.n, refundYen: back.yen, slips: slips.n, slipYen: slips.yen, review };
@@ -155,6 +156,7 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
   async function sync(o, hint = '', req = null) {
     q('UPDATE pay_orders SET checked_at = ? WHERE id = ?').run(Date.now(), o.id);
     const s = await stripe.session(o.session_id);
+    if (s?.payment_status === 'paid' && typeof s.payment_intent === 'string') s.payment_intent = await stripe.intent(s.payment_intent);
     return apply(getOrder(o.id), s, hint, req);
   }
 
@@ -173,7 +175,18 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
       if (pi && (Number(pi.amount) !== o.amount || String(pi.currency || '').toLowerCase() !== 'jpy')) wrong.push('payment');
     }
     if (wrong.length) return review(o, wrong, s, req);
-    if (s.payment_status === 'paid') return fulfill(o, s, pi, req);
+    if (s.payment_status === 'paid') {
+      const ch = pi?.latest_charge;
+      if (!pi || pi.object !== 'payment_intent' || pi.status !== 'succeeded' || pi.metadata?.order !== o.id || String(pi.metadata?.user) !== String(o.user_id) || !!pi.livemode !== stripe.live)
+        return review(o, ['payment_identity'], s, req);
+      if (!ch || typeof ch !== 'object') throw new Error('paid charge not expanded');
+      if (ch.object !== 'charge' || ch.payment_intent !== pi.id || Number(ch.amount) !== o.amount || String(ch.currency || '').toLowerCase() !== 'jpy' || !!ch.livemode !== stripe.live || !Number.isSafeInteger(ch.amount_refunded) || ch.amount_refunded < 0 || ch.amount_refunded > o.amount)
+        return review(o, ['charge'], s, req);
+      // Both the payment and its cumulative refunds are settled together. A
+      // refund notice may precede a paid notice; neither can overwrite the other.
+      const paid = fulfill(o, s, pi, req, ch.amount_refunded);
+      return refunded(paid, ch.amount_refunded, req);
+    }
     if (s.status === 'expired') return settle(o, 'expired', req);
     if (s.status === 'complete') {
       // konbini: the payment slip is out; the cash has not come (or never will)
@@ -185,14 +198,15 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
   }
 
   // Paid: the coins, once (the UPDATE lets only an unpaid order through).
-  function fulfill(o, s, pi, req) {
+  function fulfill(o, s, pi, req, refundedAmount = 0) {
     const now = Date.now();
     const intent = pi ? pi.id : typeof s.payment_intent === 'string' ? s.payment_intent : '';
+    const revoked = Math.floor(o.coins * refundedAmount / o.amount), granted = o.coins - revoked;
     const done = tx(() => {
-      const r = q(`UPDATE pay_orders SET status = 'paid', paid_at = ?, intent_id = ?, voucher_url = '', updated_at = ? WHERE id = ? AND status IN ${UNPAID}`)
-        .run(now, String(intent).slice(0, 255), now, o.id);
+      const r = q(`UPDATE pay_orders SET status = ?, paid_at = ?, intent_id = ?, voucher_url = '', updated_at = ?, refunded_amount = ?, coins_revoked = ?, refunded_at = ? WHERE id = ? AND status IN ${UNPAID}`)
+        .run(refundedAmount === o.amount ? 'refunded' : 'paid', now, String(intent).slice(0, 255), now, refundedAmount, revoked, refundedAmount ? now : 0, o.id);
       if (!Number(r.changes)) return false;
-      q('UPDATE users SET coins = coins + ?, rev = rev + 1 WHERE id = ?').run(o.coins, o.user_id);
+      q('UPDATE users SET coins = coins + ?, rev = rev + 1 WHERE id = ?').run(granted, o.user_id);
       return true;
     });
     const after = getOrder(o.id);
@@ -201,16 +215,16 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
     balanceChanged(o.user_id);
     tell(after);
     live.broadcast('support', { meters: meters() });
-    if (p) {
+    if (p && granted) {
       const plan = planOf(o.plan);
       official.say(p.id, `【ご支援ありがとうございます】\n\n${p.name}様\n\nこのたびは「${plan.name}」を${o.qty}口（${yen(o.amount)}）ご購入いただき、誠にありがとうございます！\n` +
-        `ロイヤルコイン ${o.coins}枚${o.bonus ? `（感謝料 ${o.bonus}枚を含む）` : ''}をお届けしました。\n\n` +
+        `ロイヤルコイン ${granted}枚${refundedAmount ? `（${yen(refundedAmount)}返金分を除く）` : o.bonus ? `（感謝料 ${o.bonus}枚を含む）` : ''}をお届けしました。\n\n` +
         'いただいたお金は Two state の開発費にのみ使います。\n開発者からのメッセージをお待ちください。\n\nIce Smoker公式より');
     }
     opsLog.add({
       actorName: 'Stripe', action: 'pay_paid', target: p, req,
-      summary: `${p ? p.name : '?'}さんが${planOf(o.plan).name}を${o.qty}口購入（${yen(o.amount)}・${dto(o).methodName}）：ロイヤルコイン${o.coins}枚を付与`,
-      detail: { order: o.id, plan: o.plan, qty: o.qty, amount: o.amount, coins: o.coins, bonus: o.bonus, method: o.method, session: s.id, intent, livemode: !!s.livemode, coinsAfter: p ? p.coins : null }
+      summary: `${p ? p.name : '?'}さんが${planOf(o.plan).name}を${o.qty}口購入（${yen(o.amount)}・${dto(o).methodName}）：ロイヤルコイン${granted}枚を付与${refundedAmount ? `（返金${yen(refundedAmount)}）` : ''}`,
+      detail: { order: o.id, plan: o.plan, qty: o.qty, amount: o.amount, coins: granted, refunded: refundedAmount, coinsWithheld: revoked, bonus: o.bonus, method: o.method, session: s.id, intent, livemode: !!s.livemode, coinsAfter: p ? p.coins : null }
     });
     return after;
   }
@@ -263,17 +277,19 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
     return getOrder(o.id);
   }
 
-  // A refund (all or part of a payment): the order's coins go back, as many as are left.
-  async function refunded(o, req) {
-    const pi = await stripe.intent(o.intent_id);
-    const ch = pi && pi.latest_charge && typeof pi.latest_charge === 'object' ? pi.latest_charge : null;
-    if (!pi || pi.id !== o.intent_id || !pi.metadata || pi.metadata.order !== o.id || !ch || !(Number(ch.amount_refunded) > 0)) return o;
+  // Cumulative proportional entitlement, rounded down once over the total.
+  // Separate it from coins actually recovered so retries never collect twice.
+  function refunded(o, amount, req) {
     const now = Date.now();
     let back = 0;
     const done = tx(() => {
       const u = getUser(o.user_id);
-      back = Math.min(o.coins, u ? u.coins : 0);
-      const r = q("UPDATE pay_orders SET status = 'refunded', refunded_at = ?, coins_back = ?, updated_at = ? WHERE id = ? AND status = 'paid'").run(now, back, now, o.id);
+      const cur = getOrder(o.id);
+      if (!['paid', 'refunded'].includes(cur.status) || amount <= cur.refunded_amount) return false;
+      const revoked = Math.floor(cur.coins * amount / cur.amount);
+      back = Math.min(Math.max(0, revoked - cur.coins_revoked), u ? u.coins : 0);
+      const r = q("UPDATE pay_orders SET status = ?, refunded_at = ?, refunded_amount = ?, coins_revoked = ?, coins_back = coins_back + ?, updated_at = ? WHERE id = ? AND status IN ('paid', 'refunded') AND refunded_amount < ?")
+        .run(amount === cur.amount ? 'refunded' : 'paid', now, amount, revoked, back, now, o.id, amount);
       if (!Number(r.changes)) return false;
       if (back > 0) q('UPDATE users SET coins = coins - ?, rev = rev + 1 WHERE id = ?').run(back, o.user_id);
       return true;
@@ -286,8 +302,8 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
     live.broadcast('support', { meters: meters() });
     opsLog.add({
       actorName: 'Stripe', action: 'pay_refund', target: p, req,
-      summary: `${p ? p.name : '?'}さんの${planOf(o.plan).name}×${o.qty}（${yen(o.amount)}）が返金された：ロイヤルコイン${back}枚を回収`,
-      detail: { order: o.id, refunded: Number(ch.amount_refunded), amount: o.amount, coins: o.coins, coinsBack: back }
+      summary: `${p ? p.name : '?'}さんの${planOf(o.plan).name}×${o.qty}の返金は累計${yen(amount)}：ロイヤルコイン${back}枚を回収`,
+      detail: { order: o.id, refunded: amount, amount: o.amount, coins: o.coins, coinsBack: back }
     });
     return after;
   }
@@ -319,8 +335,13 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
     }
     if (ev.type === 'charge.refunded' && obj.object === 'charge') {
       const intent = typeof obj.payment_intent === 'string' ? obj.payment_intent : obj.payment_intent && obj.payment_intent.id;
-      const o = intent ? q('SELECT * FROM pay_orders WHERE intent_id = ?').get(String(intent)) : null;
-      if (o && o.status === 'paid') await refunded(o, req);
+      if (!intent) return '';
+      const pi = await stripe.intent(intent);
+      const o = q('SELECT * FROM pay_orders WHERE intent_id = ?').get(String(intent)) || (ID_RE.test(String(pi?.metadata?.order || '')) ? getOrder(pi.metadata.order) : null);
+      if (o) {
+        if (!o.session_id) throw new Error('checkout session not yet recorded');
+        await sync(o, ev.type, req);
+      }
       return o ? o.id : '';
     }
     return '';
@@ -521,10 +542,10 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
         }
         const it = w.items[o.plan] || (w.items[o.plan] = { plan: o.plan, name: planOf(o.plan).name, qty: 0, amount: 0, coins: 0 });
         it.qty += o.qty;
-        it.amount += o.amount;
-        it.coins += o.coins;
-        w.coins += o.coins;
-        w.amount += o.amount;
+        it.amount += o.amount - o.refunded_amount;
+        it.coins += o.coins - o.coins_revoked;
+        w.coins += o.coins - o.coins_revoked;
+        w.amount += o.amount - o.refunded_amount;
         w.orders++;
         w.last = Math.max(w.last, o.paid_at);
       }
@@ -557,7 +578,7 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
       const message = official.say(p.id, full);
       const now = Date.now();
       q("UPDATE pay_orders SET replied_at = ?, replied_by = ?, reply = ? WHERE user_id = ? AND status = 'paid' AND replied_at = 0 AND paid_at <= ?").run(now, u.id, text, p.id, upto);
-      const amount = rows.reduce((s, o) => s + o.amount, 0);
+      const amount = rows.reduce((s, o) => s + o.amount - o.refunded_amount, 0);
       opsLog.add({
         actor: u, action: 'pay_reply', target: p, req,
         summary: `${p.name}さんの開発者支援（${rows.length}件・${yen(amount)}）に開発者が返信`,

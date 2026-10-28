@@ -17,6 +17,18 @@ import { sha256, normalizeRecoveryCode } from '../core/auth.js';
 const ADMIN_TOKEN = 'test-admin-token-0123456789abcdef';
 let s, call, register, admin;
 
+test('administrative grants reject unsafe resulting balances before touching the account', async t => {
+  const world = await startServer(); t.after(() => world.stop()); const p = await world.register('GrantBound');
+  const commands = createAdmin(world.app.db), before = commands.find(p.me.id).coins;
+  assert.throws(() => commands.grant(p.me.id, 'coins', Number.MAX_SAFE_INTEGER), /上限/);
+  assert.equal(commands.find(p.me.id).coins, before);
+  commands.grant(p.me.id, 'coins', Number.MAX_SAFE_INTEGER - before);
+  assert.throws(() => commands.grant(p.me.id, 'coins', 1), /上限/);
+  assert.equal(commands.find(p.me.id).coins, Number.MAX_SAFE_INTEGER);
+  commands.grant(p.me.id, 'coins', -Number.MAX_SAFE_INTEGER);
+  assert.equal(commands.find(p.me.id).coins, 0);
+});
+
 before(async () => {
   s = await startServer({ adminToken: ADMIN_TOKEN });
   ({ call, register } = s);

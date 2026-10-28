@@ -1077,11 +1077,19 @@ MIGRATIONS.push([
   'CREATE INDEX chat_filter_strikes_time ON chat_filter_strikes(window_at)'
 ]);
 
+MIGRATIONS.push([
+  'ALTER TABLE pay_orders ADD COLUMN refunded_amount INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE pay_orders ADD COLUMN coins_revoked INTEGER NOT NULL DEFAULT 0',
+  "UPDATE pay_orders SET refunded_amount = amount, coins_revoked = coins WHERE status = 'refunded'",
+  'CREATE TABLE gacha_requests (user_id INTEGER NOT NULL, key TEXT NOT NULL, fingerprint TEXT NOT NULL, response TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (user_id, key))',
+  'CREATE INDEX gacha_requests_time ON gacha_requests(created_at)'
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
 export const TABLES = ['users', 'sessions', 'game_login_locks', 'chat_filter_strikes', 'message_archive', 'transfer_archive', 'record_ids', 'messages', 'conversations', 'transfers', 'player_transfer_days', 'blocks', 'spins', 'spin_requests',
-  'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
+  'gacha_requests', 'friends', 'friend_requests', 'cars', 'watchers', 'items', 'debts', 'chat_groups', 'chat_members', 'feedback',
   'battles', 'watch_bets', 'hubs', 'hub_members', 'hub_invites', 'devices', 'trees', 'tree_auctions', 'npc_friends', 'reports', 'detections', 'bot_threads', 'ops_log', 'push_subs', 'ops_access', 'live_chats', 'ops_viewers', 'ops_entries',
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'devunit_comments', 'devunit_reads',
   'diary_posts', 'diary_reads', 'diary_reactions', 'diary_comments', 'diary_claims', 'ops_mfa',

@@ -47,7 +47,7 @@ function fakeStripe() {
       }
       if (req.method === 'GET' && (m = /^\/v1\/checkout\/sessions\/(cs_\w+)$/.exec(url.pathname))) {
         const s = sessions.get(m[1]);
-        return s ? send(200, view(s, url.searchParams.get('expand[0]') === 'payment_intent')) : send(404, { error: { message: 'No such checkout.session' } });
+        return s ? send(200, view(s, /^payment_intent(?:\.latest_charge)?$/.test(url.searchParams.get('expand[0]') || ''))) : send(404, { error: { message: 'No such checkout.session' } });
       }
       if (req.method === 'POST' && (m = /^\/v1\/checkout\/sessions\/(cs_\w+)\/expire$/.exec(url.pathname))) {
         const s = sessions.get(m[1]);
@@ -64,7 +64,8 @@ function fakeStripe() {
   });
   function intent(s, status, extra = {}) {
     const id = `pi_test_${s.id.slice(8)}`;
-    intents.set(id, { id, object: 'payment_intent', amount: s.amount_total, currency: 'jpy', status, metadata: { order: s.client_reference_id }, latest_charge: { id: `ch_test_${s.id.slice(8)}`, object: 'charge', amount_refunded: 0 }, ...extra });
+    intents.set(id, { id, object: 'payment_intent', amount: s.amount_total, currency: 'jpy', livemode: false, status, metadata: { order: s.client_reference_id, user: s.metadata.user },
+      latest_charge: { id: `ch_test_${s.id.slice(8)}`, object: 'charge', payment_intent: id, amount: s.amount_total, currency: 'jpy', livemode: false, amount_refunded: 0 }, ...extra });
     s.payment_intent = id;
     return intents.get(id);
   }
@@ -304,4 +305,63 @@ test('webhook authentication binds the exact bytes and rejects future timestamps
   assert.equal((await hook(ev, { t: t + 600 })).status, 400);
   assert.equal((await hook(ev, { body: '{broken json' })).status, 400);
   assert.equal(s.app.db.prepare('SELECT 1 FROM pay_events WHERE id = ?').get(ev.id), undefined);
+});
+
+test('a full refund delivered before the paid event never grants coins, including duplicate and concurrent notices', async () => {
+  const p = await buyer('RefundFirst'), start = coins(p.me.id);
+  const r = await checkout(p, { plan: 'support3', qty: 2, method: 'paypay' });
+  const session = [...stripe.sessions.values()].find(x => x.client_reference_id === r.order.id);
+  stripe.pay(session.id); stripe.refund(session.id);
+  const refund = event('charge.refunded', { object: 'charge', payment_intent: session.payment_intent });
+  assert.equal((await hook(refund)).status, 200);
+  assert.equal(coins(p.me.id), start);
+  const paid = event('checkout.session.completed', session);
+  await Promise.all([hook(paid), hook(refund), hook(event('charge.refunded', refund.data.object))]);
+  assert.equal(coins(p.me.id), start);
+  const row = s.app.db.prepare('SELECT * FROM pay_orders WHERE id = ?').get(r.order.id);
+  assert.equal(row.status, 'refunded'); assert.equal(row.refunded_amount, row.amount); assert.equal(row.coins_revoked, row.coins);
+  assert.equal(row.coins_back, 0, 'coins were withheld rather than recovered from another purchase');
+  assert.equal((await fromBot(p)).some(t => t.includes('ご支援ありがとうございます')), false);
+});
+
+test('partial refunds revoke only cumulative proportional coins and account for the actual yen once', async () => {
+  const p = await buyer('PartialBack'), start = coins(p.me.id);
+  const r = await checkout(p, { plan: 'support3', qty: 2, method: 'paypay' });
+  const session = [...stripe.sessions.values()].find(x => x.client_reference_id === r.order.id);
+  stripe.pay(session.id); await hook(event('checkout.session.completed', session));
+  const pi = stripe.intents.get(session.payment_intent), charge = pi.latest_charge;
+  const totalsBefore = (await call('GET', '/api/ops/pay', { token: taku.token })).totals;
+  assert.equal(r.order.amount, 60); assert.equal(r.order.coins, 68);
+  charge.amount_refunded = 1;
+  const refund = event('charge.refunded', { object: 'charge', payment_intent: pi.id });
+  await Promise.all([hook(refund), hook(refund), hook(event('charge.refunded', refund.data.object))]);
+  assert.equal(coins(p.me.id), start + 67);
+  let order = (await call('GET', `/api/pay/order?id=${r.order.id}`, { token: p.token })).order;
+  assert.equal(order.status, 'paid'); assert.equal(order.statusName, '一部返金済み'); assert.equal(order.refundedAmount, 1);
+  const totalsAfter = (await call('GET', '/api/ops/pay', { token: taku.token })).totals;
+  assert.equal(totalsAfter.yen, totalsBefore.yen - 1); assert.equal(totalsAfter.refundYen, totalsBefore.refundYen + 1);
+  charge.amount_refunded = 30; await hook(event('charge.refunded', refund.data.object));
+  assert.equal(coins(p.me.id), start + 34);
+  charge.amount_refunded = 1; await hook(event('charge.refunded', refund.data.object));
+  assert.equal(coins(p.me.id), start + 34, 'a stale provider response cannot reduce cumulative refunds or refund coins twice');
+  charge.amount_refunded = 60; await hook(event('charge.refunded', refund.data.object));
+  assert.equal(coins(p.me.id), start);
+  order = (await call('GET', `/api/pay/order?id=${r.order.id}`, { token: p.token })).order;
+  assert.equal(order.status, 'refunded'); assert.equal(order.refundedAmount, 60);
+});
+
+test('a partially refunded payment first grants only its remaining entitlement and later refunds remain bounded', async () => {
+  const p = await buyer('PartialFirst'), start = coins(p.me.id);
+  const r = await checkout(p, { plan: 'support3', qty: 2, method: 'paypay' });
+  const session = [...stripe.sessions.values()].find(x => x.client_reference_id === r.order.id);
+  stripe.pay(session.id); const pi = stripe.intents.get(session.payment_intent); pi.latest_charge.amount_refunded = 30;
+  await hook(event('charge.refunded', { object: 'charge', payment_intent: pi.id }));
+  assert.equal(coins(p.me.id), start + 34);
+  s.app.db.prepare('UPDATE users SET coins = 5 WHERE id = ?').run(p.me.id);
+  pi.latest_charge.amount_refunded = 60;
+  await hook(event('charge.refunded', { object: 'charge', payment_intent: pi.id }));
+  assert.equal(coins(p.me.id), 0);
+  s.app.db.prepare('UPDATE users SET coins = 100 WHERE id = ?').run(p.me.id);
+  await hook(event('charge.refunded', { object: 'charge', payment_intent: pi.id }));
+  assert.equal(coins(p.me.id), 100, 'an identical cumulative refund never collects from future income');
 });

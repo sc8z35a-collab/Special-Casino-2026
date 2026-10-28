@@ -66,6 +66,7 @@ export function createAccountRoutes({ q, tx, config, limit, rate, nameProblem, d
 
     ['POST /api/logout', (req, u) => {
       q('DELETE FROM sessions WHERE token_hash = ?').run(u.tokenHash);
+      live.dropSession?.(u.id, u.tokenHash);
       return { ok: true };
     }],
 

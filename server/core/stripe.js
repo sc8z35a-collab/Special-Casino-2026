@@ -99,7 +99,7 @@ export function createStripe({ secretKey, webhookSecrets, api = '', apiVersion =
     // the hosted payment page for an order (Stripe makes it once per order id)
     createSession: (params, orderId) => call('POST', '/v1/checkout/sessions', params, `two-state-order-${orderId}`),
     // a payment page as Stripe knows it now, with its payment
-    session: (sessionId) => call('GET', `/v1/checkout/sessions/${id(sessionId)}`, { expand: ['payment_intent'] }),
+    session: (sessionId) => call('GET', `/v1/checkout/sessions/${id(sessionId)}`, { expand: ['payment_intent.latest_charge'] }),
     // closes a payment page nobody paid on (it can no longer be paid)
     expireSession: (sessionId) => call('POST', `/v1/checkout/sessions/${id(sessionId)}/expire`),
     // a payment as Stripe knows it now, with its charge (refunds)

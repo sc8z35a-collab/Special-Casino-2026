@@ -59,6 +59,7 @@ export function createApp({ blobs = null, questRewardRoll, questTicketRoll, exte
   const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
   const api = createApi({ db, live, config, secret, blobs, questRewardRoll, questTicketRoll, extensions, host: { ...machine(config.dataDir, live, config.logRequests), stele: stele || fileStele(path.join(config.dataDir, 'stele')) } });
   live.authVersion = api.liveVersion;
+  live.valid = api.liveValid;
   live.onPresence = (userId, online) => api.presence(userId, online);
   live.onOpsGone = (userId) => api.opsGone(userId);
   // The page is online with WebSocket live updates (Cloudflare); here they come as SSE.
@@ -95,14 +96,14 @@ export function createApp({ blobs = null, questRewardRoll, questTicketRoll, exte
         if (api.stopped()) { sendJson(res, 503, api.stoppedBody()); return; }
         // the operator site's own connection
         if (url.searchParams.has('ops')) {
-          const opsId = api.consumeOpsTicket(url.searchParams.get('ops'));
-          if (!opsId) { sendJson(res, 401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } }); return; }
-          live.attachOps(req, res, opsId);
+          const auth = api.consumeOpsTicket(url.searchParams.get('ops'), true);
+          if (!auth) { sendJson(res, 401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } }); return; }
+          live.attachOps(req, res, auth.u, auth);
           return;
         }
-        const userId = api.consumeTicket(url.searchParams.get('ticket'));
-        if (!userId) { sendJson(res, 401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } }); return; }
-        live.attach(req, res, userId, () => api.hello(userId, url.searchParams.get('held')));
+        const auth = api.consumeTicket(url.searchParams.get('ticket'), true);
+        if (!auth) { sendJson(res, 401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } }); return; }
+        live.attach(req, res, auth.u, () => api.hello(auth.u, url.searchParams.get('held')), auth);
         return;
       }
       const ip = clientIp(req, config.trustProxy, config.clientIpHeader);

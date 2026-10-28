@@ -12,6 +12,7 @@ import { ApiError } from '../core/errors.js';
 import { newToken } from '../core/auth.js';
 import { nextAlarm, monthOf } from './awake.js';
 import { answerOnSocket, connectionOf } from '../core/socketapi.js';
+import { terminalEvent } from '../core/live-terminal.js';
 
 const HOUSEKEEPING_EVERY = 6 * 3600000;
 const JSON_HEADERS = {
@@ -121,14 +122,23 @@ class SocketHub {
 
   static isOpen(ws) { return ws.readyState === 1; }
 
-  sockets(userId) { return this.ctx.getWebSockets(`u:${userId}`).filter(SocketHub.isOpen); }
+  valid(ws) {
+    if (!SocketHub.isOpen(ws)) return false;
+    if (this.authorize && !this.authorize(ws.deserializeAttachment())) {
+      try { ws.close(1000, 'Authentication settings changed'); } catch { /* closing */ }
+      return false;
+    }
+    return true;
+  }
+
+  sockets(userId) { return this.ctx.getWebSockets(`u:${userId}`).filter(ws => this.valid(ws)); }
 
   sendOps(userId, event, data) {
     const text = JSON.stringify({ event, data });
-    for (const ws of this.ctx.getWebSockets(`o:${userId}`)) if (SocketHub.isOpen(ws)) this.write(ws, text);
+    for (const ws of this.ctx.getWebSockets(`o:${userId}`)) this.write(ws, text, terminalEvent(event, data));
   }
 
-  opsOnline(userId) { return this.ctx.getWebSockets(`o:${userId}`).some(SocketHub.isOpen); }
+  opsOnline(userId) { return this.ctx.getWebSockets(`o:${userId}`).some(ws => this.valid(ws)); }
 
   dropOps(userId) {
     for (const ws of this.ctx.getWebSockets(`o:${userId}`)) {
@@ -143,19 +153,34 @@ class SocketHub {
     }
   }
 
-  write(ws, text) {
+  dropSession(userId, hash) {
+    for (const ws of this.ctx.getWebSockets()) {
+      const a = ws.deserializeAttachment();
+      if (a?.u === userId && (!a.s || a.s === hash)) {
+        try { ws.close(1000, 'Logged out'); } catch { /* closing */ }
+      }
+    }
+  }
+
+  write(ws, text, terminal = false) {
+    if (!SocketHub.isOpen(ws)) return;
+    if (terminal && this.authorize && !this.authorize(ws.deserializeAttachment())) {
+      try { ws.send(text); ws.close(1000, 'Authentication settings changed'); } catch { /* closing */ }
+      return;
+    }
+    if (!this.valid(ws)) return;
     try { ws.send(text); } catch { /* closing */ }
   }
 
   send(userId, event, data) {
     const text = JSON.stringify({ event, data });
-    for (const ws of this.sockets(userId)) this.write(ws, text);
+    for (const ws of this.ctx.getWebSockets(`u:${userId}`)) this.write(ws, text, terminalEvent(event, data));
   }
 
   broadcast(event, data, filter) {
     const text = JSON.stringify({ event, data });
     for (const ws of this.ctx.getWebSockets()) {
-      if (!SocketHub.isOpen(ws)) continue;
+      if (!this.valid(ws)) continue;
       const a = ws.deserializeAttachment();
       if (!a || a.ops || (filter && !filter(a.u))) continue;
       this.write(ws, text);
@@ -167,7 +192,7 @@ class SocketHub {
   onlineCount() {
     const users = new Set();
     for (const ws of this.ctx.getWebSockets()) {
-      if (!SocketHub.isOpen(ws)) continue;
+      if (!this.valid(ws)) continue;
       const a = ws.deserializeAttachment();
       if (a && !a.ops) users.add(a.u);
     }
@@ -271,6 +296,7 @@ export class Casino extends DurableObject {
           reschedule: (at) => this.housekeepSoon(at)
         }
       });
+      this.live.authorize = a => this.api.liveValid(a);
       // the housekeeping's time (the alarm also rings in between to stay awake;
       // an alarm from before that was for the housekeeping)
       const alarm = await ctx.storage.getAlarm();
@@ -330,21 +356,22 @@ export class Casino extends DurableObject {
     if (this.api.stopped()) return json(503, this.api.stoppedBody());
     // the operator site's own connection (an operator's ticket of its own)
     if (url.searchParams.has('ops')) {
-      const opsId = this.api.consumeOpsTicket(url.searchParams.get('ops'));
-      if (!opsId) return json(401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } });
+      const auth = this.api.consumeOpsTicket(url.searchParams.get('ops'), true);
+      if (!auth) return json(401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } });
       const [c, sv] = Object.values(new WebSocketPair());
-      this.ctx.acceptWebSocket(sv, [`o:${opsId}`]);
-      sv.serializeAttachment({ u: opsId, ops: true, c: connectionOf(request, url) });
+      this.ctx.acceptWebSocket(sv, [`o:${auth.u}`]);
+      sv.serializeAttachment({ ...auth, c: connectionOf(request, url) });
       sv.send(JSON.stringify({ event: 'hello', data: { ops: true } }));
       return new Response(null, { status: 101, webSocket: c });
     }
-    const userId = this.api.consumeTicket(url.searchParams.get('ticket'));
-    if (!userId) return json(401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } });
+    const auth = this.api.consumeTicket(url.searchParams.get('ticket'), true);
+    if (!auth) return json(401, { error: { code: 'ticket', message: '接続の有効期限が切れました' } });
+    const userId = auth.u;
     const first = !this.live.isOnline(userId);
     const [client, server] = Object.values(new WebSocketPair());
     this.ctx.acceptWebSocket(server, [`u:${userId}`]);
     // (what it was opened from: the address and the browser of the API's requests on it, server/core/socketapi.js)
-    server.serializeAttachment({ u: userId, c: connectionOf(request, url) });
+    server.serializeAttachment({ ...auth, c: connectionOf(request, url) });
     // (`held`: what the page already has of it: server/core/api.js hello)
     server.send(JSON.stringify({ event: 'hello', data: this.api.hello(userId, url.searchParams.get('held')) }));
     if (first) this.api.presence(userId, true);
@@ -355,6 +382,7 @@ export class Casino extends DurableObject {
   // from the game, voice chat signalling ({ op: "call", ... }), 入力中 ({ op: "typing" }), the activity beat of the time quests
   // ({ op: "beat" }) and, only while an operator watches, the sealed frames of the game's state ({ op: "view" }).
   async webSocketMessage(ws, message) {
+    if (!this.live.valid(ws)) return;
     if (message === 'ping') { this.live.write(ws, 'pong'); return; }
     if (typeof message !== 'string' || message.length > 32 * 1024) return;
     const a = ws.deserializeAttachment();

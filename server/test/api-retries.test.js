@@ -4,10 +4,11 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import crypto from 'node:crypto';
 const reply = (status, json) => ({ status, json: async () => json });
-function setup() {
+function setup(session = new Map()) {
   let fetcher = async () => reply(200, {}); const calls = [], storage = new Map([['blockbuster-reels/auth', 'old-session-token']]);
   const ctx = { crypto: crypto.webcrypto, location: { protocol: 'https:' }, document: { querySelector: () => ({ getAttribute: key => key === 'content' ? 'online' : 'ws' }) },
     localStorage: { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
+    sessionStorage: { getItem: k => session.get(k), setItem: (k, v) => session.set(k, v), removeItem: k => session.delete(k) },
     fetch: (path, options) => { const call = { path, options, body: options.body && JSON.parse(options.body) }; calls.push(call); return fetcher(call); } };
   ctx.window = ctx; ctx.BR = { live: { call: () => null, close() {}, connect() {} }, held: { param: () => '', merge: x => x } };
   vm.runInNewContext(fs.readFileSync(new URL('../../js/net/api.js', import.meta.url), 'utf8'), ctx);
@@ -19,12 +20,44 @@ test('the browser reuses one immutable spin key for in-flight/lost responses and
   const one = s.BR.api.spin(100), two = s.BR.api.spin(100);
   assert.equal(one, two); await assert.rejects(one, e => e.status === 0);
   const original = s.calls[0].body;
+  assert.equal(s.BR.api.pendingSpinBet(), 100);
   s.respond(async () => reply(200, { result: {} }));
   await s.BR.api.spin(200);
+  assert.equal(s.BR.api.pendingSpinBet(), null);
   assert.deepEqual(s.calls[1].body, original, 'an uncertain spin is recovered before starting a different bet');
   await s.BR.api.spin(200);
   assert.notEqual(s.calls[2].body.key, original.key); assert.equal(s.calls[2].body.bet, 200);
   assert.match(original.key, /^\d{13}-[a-f0-9]{32}$/);
+});
+
+test('invalid successful JSON is uncertain and preserves the spin receipt; non-JSON maintenance errors still surface', async () => {
+  const s = setup();
+  s.respond(async () => ({ status: 200, json: async () => { throw SyntaxError('truncated'); } }));
+  await assert.rejects(s.BR.api.me(), e => e.code === 'network');
+  await assert.rejects(s.BR.api.spin(100), e => e.status === 0);
+  const original = s.calls.at(-1).body;
+  s.respond(async () => reply(200, { result: {} })); await s.BR.api.spin(100);
+  assert.deepEqual(s.calls.at(-1).body, original);
+  for (const value of [null, [], 'bad JSON envelope']) {
+    s.respond(async () => reply(200, value)); await assert.rejects(s.BR.api.me(), e => e.code === 'network');
+  }
+  s.respond(async () => ({ status: 503, json: async () => { throw SyntaxError('html'); } }));
+  await assert.rejects(s.BR.api.me(), e => e.code === 'maintenance');
+});
+
+test('a lost gacha answer retries the same receipt and quote; a reload preserves uncertain game draws', async () => {
+  const storage = new Map(), a = setup(storage);
+  a.respond(async () => { throw Error('lost'); });
+  const first = a.BR.api.gachaSpin('rare', 3, 27000000);
+  assert.equal(first, a.BR.api.gachaSpin('rare', 3, 27000000)); await assert.rejects(first);
+  await assert.rejects(a.BR.api.gachaSpin('secret', 1, 50000000), e => e.code === 'gacha_pending');
+  const b = setup(storage);
+  assert.equal(b.BR.api.pendingGacha().kind, 'rare');
+  await b.BR.api.gachaSpin('rare', 3, 27000000);
+  assert.deepEqual(b.calls[0].body, a.calls[0].body); assert.equal(b.BR.api.pendingGacha(), null);
+  await assert.rejects(a.BR.api.spin(100));
+  const c = setup(storage); assert.equal(c.BR.api.pendingSpinBet(), 100); await c.BR.api.spin(100);
+  assert.deepEqual(c.calls[0].body, a.calls.at(-1).body); assert.equal(c.BR.api.pendingSpinBet(), null);
 });
 
 test('a lost live spin answer falls back to HTTP with the same key, while unrelated POSTs stay non-retryable', async () => {
@@ -58,4 +91,18 @@ test('an old request failing during password rotation cannot tear down the activ
   assert.equal(lost, 0);
   finishChange(reply(200, { token: 'rotated-session' })); await change;
   assert.equal(s.storage.get('blockbuster-reels/auth'), 'rotated-session');
+});
+
+test('a delayed password result cannot replace another account or reconnect over its password change', async () => {
+  for (const successful of [true, false]) {
+    const s = setup(); let finish, connects = 0;
+    s.BR.live.connect = () => connects++;
+    s.respond(call => call.path === '/api/password' ? new Promise(resolve => { finish = resolve; }) : Promise.resolve(reply(200, { ok: true })));
+    const change = s.BR.api.password('old', 'new-password');
+    s.BR.api.setToken('another-account-token');
+    finish(reply(successful ? 200 : 401, successful ? { token: 'unused-rotated-token' } : { error: { code: 'auth' } }));
+    await assert.rejects(change);
+    assert.equal(s.storage.get('blockbuster-reels/auth'), 'another-account-token'); assert.equal(connects, 0);
+    if (successful) assert.equal(s.calls.at(-1).options.headers.Authorization, 'Bearer unused-rotated-token');
+  }
 });

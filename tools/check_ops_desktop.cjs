@@ -88,14 +88,16 @@ const { chromium } = require('playwright');
       }); assert.equal(fits, true, 'magnified artwork must not be clipped by the Dock scroller');
       await page.mouse.move(5, 5); await page.emulateMedia({ reducedMotion: 'reduce' });
     });
-    await check('notification centre is a small tab until the pointer comes, opens on hover and folds when it leaves', async () => {
+    await check('notification centre opens from the empty corner without capturing application buttons and folds when it leaves', async () => {
       await page.evaluate(() => document.dispatchEvent(new CustomEvent('ops:notice', { detail: { app: 'players', text: 'widget test notification' } })));
       assert.equal(await page.locator('.mac-notice-minimize').count(), 0, 'no minimize button any more');
-      await page.mouse.move(700, 400); await page.waitForTimeout(700);
-      assert.equal(await page.locator('#mac-notice-content').isVisible(), false);
+      await page.mouse.move(700, 400);
+      await page.locator('#mac-notice-content').waitFor({ state: 'hidden' });
       assert.ok((await page.locator('#mac-notifications').boundingBox()).height < 100);
-      const box = await page.locator('#mac-notifications').boundingBox();
       await page.mouse.move(1390, 60);
+      assert.equal(await page.locator('#mac-notice-content').isVisible(), false, 'application hot corner must remain clickable');
+      const corner = await page.locator('#app').boundingBox();
+      await page.mouse.move(corner.x + corner.width - 8, corner.y + 8);
       await page.locator('#mac-notice-content').waitFor({ state: 'visible' });
       assert.match(await page.locator('.mac-notice-history').textContent(), /widget test notification/);
       await page.mouse.move(700, 400);

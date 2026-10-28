@@ -27,12 +27,15 @@
   function initialize(api) { if (!initialized.has(api)) { if (api.init) api.init(); initialized.add(api); } }
   function module(name, methods, group, empty) {
     if (BR[name]) return;
-    var proxy, job;
+    var proxy, job, installed;
     function ensure() {
       if (!job) job = load(group || name).then(function () {
+        // A later dependency may have failed after this controller was installed.
+        // Its successful script stays cached, so retain the API behind the proxy.
+        if (BR[name] === proxy && installed) BR[name] = installed;
         if (!BR[name] || BR[name] === proxy) throw new Error('module_missing');
         var api = BR[name]; initialize(api); return api;
-      }).catch(function (e) { job = null; BR[name] = proxy; throw e; });
+      }).catch(function (e) { job = null; if (BR[name] && BR[name] !== proxy) installed = BR[name]; BR[name] = proxy; throw e; });
       return job;
     }
     proxy = { init: function () {}, active: function () { return false; }, stop: function () {}, leave: function () {}, changed: function () {}, target: function () { return null; } };

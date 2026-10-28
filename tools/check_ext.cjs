@@ -52,7 +52,7 @@ const sample = {
   try {
     await s.register('taku');
     browser = await chromium.launch({ executablePath: process.env.OPS_BROWSER_EXECUTABLE || undefined, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
-    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     const page = await ctx.newPage();
     page.setDefaultTimeout(15000);
     page.on('pageerror', (e) => errors.push(e.message));
@@ -95,11 +95,19 @@ const sample = {
     console.log('PASS a file the hook refuses ends there with its words');
 
     // released: it goes on and is whole
+    let attemptedPieces = 0, restarted = 0;
+    await page.route('**/api/vault/piece?*', route => {
+      if (++attemptedPieces === 1) return route.fulfill({ status: 200, contentType: 'application/json', body: '{"truncated":' });
+      return route.continue();
+    });
+    page.on('request', r => { if (new URL(r.url()).pathname === '/api/vault/restart') restarted++; });
     await page.evaluate(() => window.__releases.forEach((f) => f()));
     await page.waitForFunction((n) => true, null);
     for (let i = 0; i < 100 && !(row('fine.bin') && row('fine.bin').done_at); i++) await new Promise((r) => setTimeout(r, 200));
     assert.ok(row('fine.bin').done_at, 'released: whole');
     assert.ok(!row('blocked.bin') || !row('blocked.bin').done_at, 'the refused one was never finished');
+    assert.equal(attemptedPieces, 2, 'an uncertain piece is retried instead of being acknowledged');
+    assert.equal(restarted, 0, 'a malformed success must not force a complete upload restart');
     console.log('PASS released, the file is sent and finished (the server found it cleared)');
 
     // the part\'s item in the account menu

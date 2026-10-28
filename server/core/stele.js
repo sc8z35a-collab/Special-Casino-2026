@@ -73,7 +73,7 @@ export function createStele({ q, opsLog, store = null, secret, clock = Date.now,
     if (seg.head !== before) return { ok: false, reason: '先頭のハッシュが最後の行と違います' };
     if (sha256(JSON.stringify([1, seg.first, seg.last, seg.prev, seg.head, seg.rows])) !== seg.hash) return { ok: false, reason: '控え全体のハッシュが合いません' };
     const want = crypto.createHmac('sha256', key).update(seg.hash).digest('hex');
-    const sigOk = typeof seg.sig === 'string' && seg.sig.length === want.length && crypto.timingSafeEqual(Buffer.from(seg.sig), Buffer.from(want));
+    const sigOk = typeof seg.sig === 'string' && /^[a-f0-9]{64}$/.test(seg.sig) && crypto.timingSafeEqual(Buffer.from(seg.sig), Buffer.from(want));
     return { ok: true, seg, sigOk };
   }
 
@@ -199,15 +199,24 @@ export function createStele({ q, opsLog, store = null, secret, clock = Date.now,
       }
       if (dbMax < remoteLast) problems.push({ id: 'behind', text: `運営ログが #${dbMax} までしかありません（石碑には #${remoteLast} まであります）` });
       if (deep) {
-        if (to >= segs.length) { s.deepFrom = 0; s.deepDone = clock(); } else s.deepFrom = to;
+        s.deepProblems = mergeProblems(from > 0 ? s.deepProblems : [], problems);
+        if (to >= segs.length) { s.deepFrom = 0; if (!s.deepProblems.length) s.deepDone = clock(); } else s.deepFrom = to;
       }
       if (!deep && !problems.length && checkpoint) s.verified = checkpoint;
-      return finish(s, problems, segs.length, remoteLast);
+      return finish(s, problems, segs.length, remoteLast, deep && to >= segs.length);
     });
-    function finish(s, problems, segs, remoteLast) {
+    function mergeProblems(a = [], b = []) { return [...new Map([...a, ...b].map(p => [p.id, p])).values()].slice(0, 20); }
+    function finish(s, problems, segs, remoteLast, complete = false) {
       const t = load();
       if (!deep && s.verified) t.verified = s.verified;
-      if (deep) { t.deepFrom = s.deepFrom || 0; if (s.deepDone) t.deepDone = s.deepDone; }
+      if (deep) {
+        t.deepFrom = s.deepFrom || 0; t.deepProblems = s.deepProblems || problems;
+        if (s.deepDone) t.deepDone = s.deepDone;
+        problems = mergeProblems(t.deepProblems, problems);
+      }
+      // A clean sample/batch cannot clear damage found outside that window.
+      // Only a complete clean deep cycle can dismiss previously raised findings.
+      if (!(deep && complete && !problems.length)) problems = mergeProblems(t.check?.problems, problems);
       t.check = { at: clock(), ok: problems.length === 0, problems: problems.slice(0, 20), segs, remoteLast };
       save(t);
       return { ok: problems.length === 0, problems, segs, remoteLast };

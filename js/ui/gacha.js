@@ -34,7 +34,7 @@
         var card = el('div', 'gc-reward' + (reward.type === 'car' ? ' gc-car-reward' : ''));
         card.style.setProperty('--gc-delay', Math.min(i * 60 + j * 100, 500) + 'ms');
         card.appendChild(picture(rewardArt(reward), 'gc-reward-art', true));
-        card.appendChild(el('strong', '', reward.name)); row.appendChild(card);
+        card.appendChild(el('strong', '', reward.name)); if (reward.pending) card.appendChild(el('small', '', 'アイテム欄で受け取り')); row.appendChild(card);
       }); fragment.appendChild(row);
     });
     list.replaceChildren(fragment);
@@ -64,7 +64,8 @@
   }
   function spin(count) {
     if (busy || !state) return;
-    var quoted = price(count), chosen = kind, gen = generation;
+    var retry = api.pendingGacha(), quoted = retry ? retry.price : price(count), chosen = retry ? retry.kind : kind, gen = generation;
+    if (retry) { count = retry.count; kind = retry.kind; }
     busy = true; render();
     document.getElementById('confirm').classList.add('gc-confirm');
     K.confirmBox(function (box) {
@@ -111,29 +112,35 @@
     if (!state || !root) return;
     if (!controls) buildControls();
     ui.controls.hidden = false;
+    var retry = api.pendingGacha();
+    if (retry) kind = retry.kind;
     controls.tiers.forEach(function (b) {
-      b.disabled = busy;
+      b.disabled = busy || !!retry;
       var pressed = String(kind === b.dataset.kind);
       if (b.getAttribute('aria-pressed') !== pressed) b.setAttribute('aria-pressed', pressed);
     });
     controls.bundles.forEach(function (v) {
-      var cost = price(v.count), insufficient = state.me && state.me.dollars < cost;
+      var recovering = retry && retry.count === v.count;
+      var cost = recovering ? retry.price : price(v.count), insufficient = !recovering && state.me && state.me.dollars < cost;
       var text = money(cost);
       if (v.price.textContent !== text) {
         v.price.textContent = text;
         v.button.setAttribute('aria-label', v.count + '連 ' + text + ' ' + v.count * 3 + '枠');
       }
-      v.button.disabled = busy || insufficient; v.button.title = insufficient ? '$が足りません' : '';
+      v.button.disabled = busy || insufficient || (!!retry && !recovering); v.button.title = recovering ? '前の抽選結果を確認' : insufficient ? '$が足りません' : '';
     });
     ui.event.hidden = !boostOn();
     var wallet = state.me ? money(state.me.dollars) : '';
     if (ui.wallet.textContent !== wallet) ui.wallet.textContent = wallet;
     ui.odds.disabled = busy;
-    var items = ui.items, itemKey = state.items.seed + ':' + state.items.vipWeek;
+    var items = ui.items, itemKey = JSON.stringify(state.items);
     if (controls.itemKey !== itemKey) {
       items.replaceChildren(); controls.itemKey = itemKey;
       if (state.items.seed) { var seed = button('種 ×' + state.items.seed, function () { use('seed'); }); seed.prepend(picture(A.rewards.seed)); items.appendChild(seed); }
       if (state.items.vipWeek) { var vip = button('VIP1週間券 ×' + state.items.vipWeek, function () { use('vip-week'); }); vip.prepend(picture(A.rewards['vip-week'])); items.appendChild(vip); }
+      (state.items.waiting || []).forEach(function (r) {
+        var claim = button(r.name + ' ×' + r.count + ' 受け取る', function () { use(r.key); }); claim.prepend(picture(rewardArt(r))); items.appendChild(claim);
+      });
     }
     Array.prototype.forEach.call(items.children, function (b) { b.disabled = busy; });
     items.hidden = !items.childElementCount;

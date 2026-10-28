@@ -123,7 +123,8 @@ var VaultUploads = (function () {
         .then(answer, offline);
     }
     function answer(res) {
-      return res.json().catch(function () { return {}; }).then(function (b) {
+      return res.json().catch(function () { if (res.ok) return offline(); return {}; }).then(function (b) {
+        if (res.ok && (!b || typeof b !== 'object' || Array.isArray(b))) return offline();
         if (res.ok) return b;
         var e = b.error || {};
         throw { status: res.status, code: e.code || '', message: e.message || '', final: !!e.final };

@@ -4,6 +4,8 @@ import { startServer } from './helpers.js';
 import { GACHA } from '../core/rules.js';
 import { createGacha } from '../core/gacha.js';
 import { readQuests, questTickets } from '../core/quests.js';
+import crypto from 'node:crypto';
+import { answerOnSocket } from '../core/socketapi.js';
 
 const EXPECTED = {
   rare: [['lot', 30], ['royal', 20], ['seed', 0.01], ['grown-tree', 0.005], ['garage', 10], ['reset', 15], ['vip-week', 14], ['onvoro', 7], ['porsche', 2], ['random-car', 1.985]],
@@ -120,7 +122,7 @@ test('all tiers settle the exact 3-pull price and nine rewards; a mismatched tie
   } finally { await s.stop(); }
 });
 
-test('all tier rewards settle their full quantities; tickets are consumed once and failed pulls roll back', async () => {
+test('all tier rewards settle their full quantities; tickets are consumed once and full garages preserve prizes', async () => {
   const s = await startServer();
   try {
     const p = await s.register('ガチャ報酬'), db = s.app.db, q = (sql) => db.prepare(sql);
@@ -156,7 +158,52 @@ test('all tier rewards settle their full quantities; tickets are consumed once a
     const before = getUser(p.me.id).dollars;
     s.setUser(p.me.id, { garage_extra: 0 });
     roll = 0.94; // Onvoro's rare category, all three slots.
-    await assert.rejects(g.routes['POST /api/gacha/spin']({ json: async () => ({ kind: 'rare', count: 1 }) }, p.me), (e) => e.code === 'garage_full');
-    assert.equal(getUser(p.me.id).dollars, before);
+    const full = await g.routes['POST /api/gacha/spin']({ json: async () => ({ kind: 'rare', count: 1 }) }, p.me);
+    assert.equal(getUser(p.me.id).dollars, before - PRICES.rare.single);
+    assert.ok(full.pulls[0].rewards.every(r => r.type === 'car' && r.pending));
+    assert.equal(itemsOf(p.me.id)['gacha-car:onvoro'], 3);
+    await assert.rejects(g.routes['POST /api/gacha/use']({ json: async () => ({ item: 'gacha-car:onvoro' }) }, p.me), e => e.code === 'garage_full');
+    s.setUser(p.me.id, { garage_extra: 100 });
+    const n = q('SELECT COUNT(*) AS n FROM cars WHERE owner_id = ?').get(p.me.id).n;
+    await g.routes['POST /api/gacha/use']({ json: async () => ({ item: 'gacha-car:onvoro' }) }, p.me);
+    assert.equal(itemsOf(p.me.id)['gacha-car:onvoro'], 2);
+    assert.equal(q('SELECT COUNT(*) AS n FROM cars WHERE owner_id = ?').get(p.me.id).n, n + 1);
   } finally { await s.stop(); }
+});
+
+test('gacha retries across HTTP/live and recreated services debit once and preserve all 30 rewards', async t => {
+  const s = await startServer(); t.after(() => s.stop()); const p = await s.register('GachaReceipt');
+  s.setUser(p.me.id, { dollars: 1000000000, garage_extra: 100 });
+  const body = { key: Date.now() + '-' + crypto.randomBytes(16).toString('hex'), kind: 'secret', count: 10, price: PRICES.secret.ten };
+  const replies = await Promise.all(Array.from({ length: 4 }, () => s.call('POST', '/api/gacha/spin', { token: p.token, body })));
+  assert.ok(replies.every(r => r.status === 200)); for (const r of replies) { assert.deepEqual(r.pulls, replies[0].pulls); assert.equal(r.paid, replies[0].paid); }
+  const live = JSON.parse(await answerOnSocket(s.app.api, { ip: '127.0.0.1' }, { id: 1, m: 'POST', p: '/api/gacha/spin', h: { authorization: 'Bearer ' + p.token }, b: body }));
+  assert.equal(live.s, 200); assert.deepEqual(live.b.pulls, replies[0].pulls);
+  assert.equal(s.app.db.prepare('SELECT dollars FROM users WHERE id = ?').get(p.me.id).dollars, 1000000000 - PRICES.secret.ten);
+  assert.equal(replies[0].pulls.flatMap(r => r.rewards).length, 30);
+  const conflict = await s.call('POST', '/api/gacha/spin', { token: p.token, body: { ...body, count: 1 } }); assert.equal(conflict.error.code, 'gacha_conflict');
+  const q = sql => s.app.db.prepare(sql);
+  q('UPDATE users SET dollars = dollars - 1, rev = rev + 1 WHERE id = ?').run(p.me.id);
+  const restarted = createGacha({ q, tx: fn => s.app.db.tx(fn), getUser: id => q('SELECT id, dollars, tokens, coins, rev FROM users WHERE id = ?').get(id), meDto: u => u,
+    itemsOf: id => Object.fromEntries(q('SELECT item, count FROM items WHERE user_id = ?').all(id).map(r => [r.item, r.count])) });
+  const again = await restarted.routes['POST /api/gacha/spin']({ json: async () => body }, p.me);
+  assert.deepEqual(again.pulls, replies[0].pulls);
+  assert.equal(again.me.dollars, 1000000000 - PRICES.secret.ten - 1, 'replayed rewards never roll back newer wallet or inventory state');
+});
+
+test('full trees preserve every mature-tree reward in inventory without resampling or exceeding the active limit', async t => {
+  const s = await startServer(); t.after(() => s.stop()); const p = await s.register('TreePrizes'), q = sql => s.app.db.prepare(sql);
+  s.setUser(p.me.id, { dollars: 1000000000 });
+  for (let i = 0; i < 8; i++) q("INSERT INTO trees (user_id, name, super, given, price, created_at) VALUES (?, '木', 0, 0, 0, ?)").run(p.me.id, Date.now());
+  const getUser = id => q('SELECT * FROM users WHERE id = ?').get(id), itemsOf = id => Object.fromEntries(q('SELECT item, count FROM items WHERE user_id = ?').all(id).map(r => [r.item, r.count]));
+  const addItems = (id, item, n) => q('INSERT INTO items (user_id, item, count) VALUES (?, ?, ?) ON CONFLICT(user_id, item) DO UPDATE SET count = count + excluded.count').run(id, item, n);
+  const g = createGacha({ q, tx: fn => s.app.db.tx(fn), getUser, meDto: u => u, addItems, itemsOf, balanceChanged: getUser, afterSpend() {}, now: () => Date.parse('2026-10-26T00:00:00Z'), rand: () => 0.500125 });
+  const result = await g.routes['POST /api/gacha/spin']({ json: async () => ({ kind: 'rare', count: 10 }) }, p.me);
+  assert.ok(result.pulls.flatMap(p => p.rewards).every(r => r.type === 'grown-tree' && r.pending));
+  assert.equal(itemsOf(p.me.id)['gacha-grown-tree'], 30); assert.equal(q('SELECT COUNT(*) AS n FROM trees WHERE user_id = ?').get(p.me.id).n, 8);
+  assert.equal(result.me.dollars, 1000000000 - PRICES.rare.ten);
+  const id = q('SELECT id FROM trees WHERE user_id = ? LIMIT 1').get(p.me.id).id; q('DELETE FROM trees WHERE id = ?').run(id);
+  await g.routes['POST /api/gacha/use']({ json: async () => ({ item: 'gacha-grown-tree' }) }, p.me);
+  assert.equal(itemsOf(p.me.id)['gacha-grown-tree'], 29);
+  assert.equal(q('SELECT MAX(given) AS n FROM trees WHERE user_id = ?').get(p.me.id).n, GACHA.grownGiven);
 });

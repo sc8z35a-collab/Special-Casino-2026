@@ -156,6 +156,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     },
     opsOnline: (id) => !!(hostLive.opsOnline && hostLive.opsOnline(id)),
     dropUser: (id) => hostLive.dropUser?.(id),
+    dropSession: (id, hash) => hostLive.dropSession?.(id, hash),
     dropOps: (id) => { if (hostLive.dropOps) hostLive.dropOps(id); }
   };
   const start = {
@@ -3390,7 +3391,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // (each connection also notes the device the account is used on)
     ['POST /api/stream-ticket', (req, u) => {
       seenOn(u.id, req);
-      return { ticket: signTicket(`${secret}:${u.recovery_hash}`, u.id) };
+      return { ticket: `${signTicket(`${secret}:${liveVersion(u.id)}:${u.tokenHash}`, u.id)}.${u.tokenHash}` };
     }]
   ]);
   registry.add('accounts', createAccountRoutes({ q, tx, config, limit, rate, nameProblem, deviceRoom, signUp, gameLogin, getUser, liftExpired, banState, opsLog, seenOn, createSession, live, CODE_KEY, meDto, setRecovery, DELETED }));
@@ -3633,12 +3634,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the operator site's live connection: a ticket of its own (an operator's)
   routes['POST /api/ops/live-ticket'] = (req, u) => {
     ops.need(u);
-    return { ticket: signTicket(`${opsSecret}:${opsMfa.version(u.id)}:${u.recovery_hash}`, u.id) };
+    return { ticket: `${signTicket(`${opsSecret}:${liveVersion(u.id, true)}:${u.tokenHash}`, u.id)}.${u.tokenHash}` };
   };
   // 金の生る木
   const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
   registry.add('trees', trees.routes);
-  registry.add('gacha', createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend }).routes);
+  const gacha = createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend });
+  registry.add('gacha', gacha.routes);
   // 開発者支援 (real money for ロイヤルコイン), the developer's vault and the ones operators share
   const pay = createPay({ q, tx, live, config, getUser, balanceChanged, official, opsLog, isDeveloper });
   registry.add('pay', pay.routes);
@@ -3991,6 +3993,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('DELETE FROM spins WHERE created_at < ?').run(Date.now() - 30 * 86400000);
       retention.sweep();
       spinRequests.prune();
+      gacha.prune();
       gameLogin.prune();
       q('DELETE FROM chat_filter_strikes WHERE window_at < ?').run((config.clock || Date.now)() - 600000);
       shield.prune();
@@ -4046,39 +4049,42 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function nextHousekeeping(now = Date.now()) {
     const b = backup.nextDue();
     const feed = emergency.locked() ? now + 6 * 3600000 : lineFeed.nextDue(now);
-    return Math.max(now + 60000, Math.min(now + 6 * 3600000, b || Infinity, feed, vaultSnapshots.nextDue() || Infinity));
+    return Math.max(now + 60000, Math.min(now + 6 * 3600000, b || Infinity, feed, vaultSnapshots.nextDue() || Infinity, retention.nextDue() || Infinity));
   }
 
   // Stream tickets are signed and expire within a minute; each opens one connection.
   const usedTickets = new Map();
   // the operator site's live connection (an operator's ticket, signed apart)
   const opsSecret = `${secret}:ops-live`;
-  function consumeOpsTicket(ticket) {
-    const id = Number(String(ticket).split('.')[0]);
+  function liveVersion(id, operator = false) {
+    return `${getUser(id)?.recovery_hash || ''}${operator ? ':' + opsMfa.version(id) : ''}`;
+  }
+  function liveValid(a) {
+    if (!a || !a.s || a.v !== liveVersion(a.u, !!a.ops)) return false;
+    const s = q('SELECT * FROM sessions WHERE token_hash = ? AND user_id = ?').get(a.s, a.u);
+    if (!s || s.ended) return false;
+    const now = Date.now();
+    if (s.ops && (now - s.created_at > (config.opsSessionHours ? config.opsSessionHours * 3600000 : OPS_SESSION_MS) || now - s.last_used > (config.opsIdleHours ? config.opsIdleHours * 3600000 : OPS_IDLE_MS))) return false;
+    const u = getUser(a.u);
+    if (!u || (a.ops && !ops.isOperator(u)) || (!isDeveloper(u) && shield.accountBlocked(u.id))) return false;
+    try { allowed(u); } catch { return false; }
+    return true;
+  }
+  function consumeLiveTicket(ticket, operator, details) {
+    const m = /^(\d+\.\d+\.[\w-]+)\.([a-f0-9]{64})$/.exec(String(ticket || ''));
+    if (!m) return null;
+    const id = Number(m[1].split('.')[0]);
     if (!Number.isSafeInteger(id) || id <= 0) return null;
-    const userId = verifyTicket(`${opsSecret}:${opsMfa.version(id)}:${getUser(id)?.recovery_hash}`, ticket);
-    if (!userId) return null;
+    const a = { u: id, s: m[2], v: liveVersion(id, operator), ...(operator ? { ops: true } : {}) };
+    if (!verifyTicket(`${operator ? opsSecret : secret}:${a.v}:${a.s}`, m[1]) || !liveValid(a)) return null;
     const now = Date.now();
     for (const [t, until] of usedTickets) if (until < now) usedTickets.delete(t);
     if (usedTickets.has(ticket)) return null;
     usedTickets.set(ticket, now + 70000);
-    const u = getUser(userId);
-    return u && ops.isOperator(u) ? userId : null;
+    return details ? a : id;
   }
-  function consumeTicket(ticket) {
-    const id = Number(String(ticket).split('.')[0]);
-    if (!Number.isSafeInteger(id) || id <= 0) return null;
-    const userId = verifyTicket(`${secret}:${getUser(id)?.recovery_hash}`, ticket);
-    if (!userId) return null;
-    const now = Date.now();
-    for (const [t, until] of usedTickets) if (until < now) usedTickets.delete(t);
-    if (usedTickets.has(ticket)) return null;
-    usedTickets.set(ticket, now + 70000);
-    const u = getUser(userId);
-    if (!u) return null;
-    try { allowed(u); } catch { return null; }
-    return userId;
-  }
+  function consumeOpsTicket(ticket, details = false) { return consumeLiveTicket(ticket, true, details); }
+  function consumeTicket(ticket, details = false) { return consumeLiveTicket(ticket, false, details); }
 
   // (a ban or its lifting by command reaches the player like one from the operator site)
   const admin = createAdmin(db, {
@@ -4300,7 +4306,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     presence,
     housekeeping,
     userForToken,
-    liveVersion: id => getUser(id)?.recovery_hash || '',
+    liveVersion,
+    liveValid,
     consumeTicket,
     consumeOpsTicket,
     // the operator site's live connection gone: out of the 全体チャット's call
@@ -4319,6 +4326,6 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     nextHousekeeping,
     backupDue: () => Promise.all([backup.due().catch((e) => console.error('backup failed', e)), vaultSnapshots.tick().catch((e) => console.error('vault snapshot failed', e))]),
     vaultSnapshots,
-    close: () => { quota.flush(); stats.flush(); }
+    close: () => { watch.close(); quota.flush(); stats.flush(); }
   };
 }

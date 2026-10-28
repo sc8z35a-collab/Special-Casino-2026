@@ -390,7 +390,10 @@
   // the corner the pointer must come to (and, once it is out, the pane itself)
   function nearNotices(e) {
     var p = app.getBoundingClientRect();
-    if (noticesMinimized) return e.clientX > p.right - 300 && e.clientY < p.top + 150;
+    // Keep the hover gesture at the empty outer corner. Never open over an
+    // application control or the bell, whose click has its own toggle action.
+    if (noticesMinimized) return e.clientX > p.right - 28 && e.clientY >= p.top && e.clientY < p.top + 24 &&
+      !e.target.closest('button, a, input, textarea, select, label, [role="button"]');
     // (the box it has in the layout, not the one the animation is drawing: while it swells out of its drop it is tiny for a moment)
     var l = p.left + notifications.offsetLeft, t = p.top + notifications.offsetTop;
     return e.clientX > l - 36 && e.clientX < l + notifications.offsetWidth + 36 && e.clientY > t - 36 && e.clientY < t + notifications.offsetHeight + 36;

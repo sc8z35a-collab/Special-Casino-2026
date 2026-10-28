@@ -59,7 +59,9 @@ const shot = (page, name) => (OUT ? page.screenshot({ path: path.join(OUT, name 
     await ops.waitForFunction(() => { const b = document.querySelector('#rows tr [data-watch]'); return b && !b.disabled; }, null, { timeout: 20000 }).catch(() => {});
     console.log('見る button enabled:', await eye.isEnabled());
     await shot(ops, 'ops-list');
-    const visibleSet = () => game.evaluate(() => Array.from(document.querySelectorAll('body *')).filter((n) => { const r = n.getBoundingClientRect(); const cs = getComputedStyle(n); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && cs.opacity !== '0'; }).map((n) => n.tagName + '#' + n.id + '.' + String(n.className && n.className.baseVal !== undefined ? n.className.baseVal : n.className)).sort());
+    // Idle decorative glints appear independently of watching. Compare actual
+    // UI elements while retaining all buttons, banners and watch indicators.
+    const visibleSet = () => game.evaluate(() => Array.from(document.querySelectorAll('body *')).filter((n) => { if (n.classList.contains('jc-glint')) return false; const r = n.getBoundingClientRect(); const cs = getComputedStyle(n); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && cs.opacity !== '0'; }).map((n) => n.tagName + '#' + n.id + '.' + String(n.className && n.className.baseVal !== undefined ? n.className.baseVal : n.className)).sort());
     // (the red curtain of the slot screen's opening is the game's own: wait for it to finish)
     await game.waitForFunction(() => !document.querySelector('.curtain'), null, { timeout: 15000 });
     // (and the studio's opening movie)

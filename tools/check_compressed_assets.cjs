@@ -88,7 +88,7 @@ function fileAt(url) {
     fs.writeFileSync(path.join(shots,stem+'-before.png'),Buffer.from(value.reference.split(',')[1],'base64'));
     fs.writeFileSync(path.join(shots,stem+'-after.png'),Buffer.from(value.current.split(',')[1],'base64'));
    }
-   results.push({name:model.name,boundsDelta:value.boundsDelta,meanPixelDelta:delta,clips:value.clips.length});console.log('PASS render '+model.name+' ('+(delta*100).toFixed(2)+'% mean pixel delta)');
+   results.push({name:model.name,boundsDelta:BEFORE?value.boundsDelta:null,meanPixelDelta:BEFORE?delta:null,clips:value.clips.length});console.log('PASS render '+model.name+(BEFORE?' ('+(delta*100).toFixed(2)+'% mean pixel delta)':' (render-only; no baseline)'));
   }
   await page.close();
   if (process.env.ASSET_MODELS_ONLY) {
@@ -129,6 +129,12 @@ function fileAt(url) {
   });assert.equal(tierResults.length,9);tierResults.forEach(r=>{assert.equal(r.alpha,'.84'.replace(/^\./,'0.'));assert.equal(r.label,'1');assert.match(r.art,/quest-tiers/);assert.ok(!r.art.includes('/css/img/'));});assert.deepEqual(errors,[]);
   if(shots)await ui.screenshot({path:path.join(shots,'quest-tiers.png')});
   console.log('PASS nine translucent rarity images, fully opaque labels, and app icon decoding');
-  if (process.env.ASSET_VALIDATION_OUTPUT || rows.length === allRows.length) fs.writeFileSync(process.env.ASSET_VALIDATION_OUTPUT || path.join(ROOT,'docs/asset-validation.json'),JSON.stringify({models:results,updateClick:true,tiers:9,modelErrors:0},null,2)+'\n');
+  if (process.env.ASSET_VALIDATION_OUTPUT || rows.length === allRows.length) {
+   // A normal CI render check has no uncompressed baseline. Preserve the
+   // reviewed historical evidence instead of replacing its deltas with zero.
+   const output=process.env.ASSET_VALIDATION_OUTPUT || path.join(ROOT,'dist/asset-validation.json');
+   fs.mkdirSync(path.dirname(output),{recursive:true});
+   fs.writeFileSync(output,JSON.stringify({comparison:BEFORE?'before-after':'render-only',models:results,updateClick:true,tiers:9,modelErrors:0},null,2)+'\n');
+  }
  } finally {if(browser)await browser.close();if(server)await new Promise(r=>server.close(r));if(game)await game.stop();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -13,7 +13,7 @@ import { stampedOps, opsRef, stampedBuild } from '../../tools/stamp.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex').slice(0, 10);
 const html = fs.readFileSync(path.join(ROOT, 'ops/index.html'), 'utf8');
-const REFS = [...html.matchAll(/(?:src|href)="((?:\.\.\/js\/net\/)?[A-Za-z0-9._-]+\.(?:js|css))(\?v=[0-9a-f]+)?"/g)];
+const REFS = [...html.matchAll(/(?:src|href)="((?:\.\.\/(?:js\/net|css)\/)?[A-Za-z0-9._-]+\.(?:js|css))(\?v=[0-9a-f]+)?"/g)];
 
 let s;
 before(async () => { s = await startServer({ operators: ['taku'] }); });
@@ -25,6 +25,7 @@ test('ops/index.html names every script and style by the hash of its file, and t
   for (const [, ref, v] of REFS) assert.equal(v, '?v=' + sha(fs.readFileSync(path.join(ROOT, opsRef(ref)))), ref + ' is named by the hash of its file');
   // (the shared files of the game are named by the hash of the same file the game names)
   assert.ok(REFS.some((r) => r[1].startsWith('../js/net/')));
+  assert.ok(REFS.some((r) => r[1] === '../css/box-model.css'));
   for (const [, ref, v] of [REFS[0], REFS.find((r) => r[1].endsWith('.css')), REFS.find((r) => r[1].startsWith('../js/net/')), REFS.at(-1)]) {
     const res = await fetch(new URL(ref + v, s.base + '/ops/').href);
     assert.equal(res.status, 200, ref);
@@ -95,6 +96,12 @@ test('a script named by the hash of its file is asked of the server once, checke
   const shared = 'https://ops.test/js/net/secchannel.js?v=' + sha(net);
   assert.ok(await w.request(shared));
   assert.ok(w.kept.has(shared));
+  const css = fs.readFileSync(path.join(ROOT, 'css/box-model.css'));
+  w.setBody(new Uint8Array(css));
+  const style = 'https://ops.test/css/box-model.css?v=' + sha(css);
+  assert.ok(await w.request(style, { destination: 'style' }));
+  w.offline(true); const asked = w.calls.length;
+  assert.ok(await w.request(style, { destination: 'style' })); assert.equal(w.calls.length, asked);
   assert.match(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8'), /const CODE_CACHE = 'two-state-code';/);
   assert.match(fs.readFileSync(path.join(ROOT, 'ops/ops-sw.js'), 'utf8'), /const CODE_CACHE = 'two-state-code';/, 'the game\'s worker clears every other cache of its prefix');
 });

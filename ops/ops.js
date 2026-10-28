@@ -112,6 +112,7 @@
   /* ------------------------------------------------------------ the server --- */
   // `as`: 'bytes' answers the bytes (and the answer's headers) instead of JSON, for what the server sends as a file
   function request(method, path, body, headers, as) {
+    var sentToken = token;
     var h = { 'Content-Type': 'application/json' };
     if (token) h.Authorization = 'Bearer ' + token;
     if (headers) Object.keys(headers).forEach(function (k) { h[k] = headers[k]; });
@@ -121,7 +122,10 @@
       var http = function () {
         return fetch(path, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' }).then(function (res) {
           if (as === 'bytes' && res.ok) return res.arrayBuffer().then(function (bytes) { return { bytes: bytes, headers: res.headers }; });
-          return res.json().catch(function () { return {}; }).then(function (j) { return { status: res.status, j: j }; });
+          return res.json().catch(function (err) { if (res.ok) throw err; return {}; }).then(function (j) {
+            if (res.ok && (!j || typeof j !== 'object' || Array.isArray(j))) throw new Error('invalid JSON response');
+            return { status: res.status, j: j };
+          });
         });
       };
       // on the live connection when it is up (js/net/wire.js: no request of its own); a file always over HTTP
@@ -139,6 +143,7 @@
         var e = j.error || {};
         var err = { status: res.status, code: e.code || '', message: e.message || 'エラーが発生しました（' + res.status + '）', until: e.until || 0, left: e.left || 0, scope: e.scope || '', mode: e.mode || 0 };
         // the server stopped itself (a plain emergency stop, or a lockdown)
+        if (token !== sentToken) throw err;
         if (res.status === 503 && e.emergency) showEmergency(e);
         else if (e.code === 'pk_required' || e.code === 'pk_expired') showPasskey(e.code === 'pk_required' && err.message === PK_DEFAULT ? '' : err.message);
         else if (res.status === 401 || e.code === 'not_operator' || e.code === 'banned') signedOut(err.message);
@@ -2239,6 +2244,7 @@
     var f = el('div', 'facts');
     fact(f, '内容', o.name + ' × ' + fmt(o.qty) + '口');
     fact(f, '金額', yen(o.amount));
+    if (o.refundedAmount) fact(f, '返金', yen(o.refundedAmount));
     fact(f, 'ロイヤルコイン', fmt(o.coins) + '枚' + (o.coinsBack ? '（返金で ' + fmt(o.coinsBack) + '枚回収）' : ''));
     fact(f, '支払い方法', o.methodName);
     fact(f, '入金', o.paidAt ? stamp(o.paidAt) : '-');

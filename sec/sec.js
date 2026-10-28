@@ -109,7 +109,8 @@
     })
       .catch(function () { throw { status: 0, message: '通信できませんでした' }; })
       .then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (j) {
+        return res.json().catch(function () { if (res.ok) throw { status: 0, message: '通信できませんでした' }; return {}; }).then(function (j) {
+          if (res.ok && (!j || typeof j !== 'object' || Array.isArray(j))) throw { status: 0, message: '通信できませんでした' };
           if (res.ok) return j;
           var e = j.error || {};
           var err = { status: res.status, code: e.code || '', message: e.message || ('エラー（' + res.status + '）'), until: e.until || 0, left: e.left || 0, scope: e.scope || '' };
