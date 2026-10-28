@@ -43,7 +43,12 @@ const KEY = 'check-pk-key-0123456789abcdef0123456789';
       await page.locator(loginGo).click();
 
       // the passkey, and nothing of the site behind it
-      await page.locator('#pk').waitFor({ state: 'visible' });
+      await page.locator('#pk').waitFor({ state: 'visible' }).catch(async error => {
+        console.error('gate entry state', await page.evaluate(() => ({ loginError: document.getElementById('login-error').textContent,
+          login: !document.getElementById('login').hidden, gate: !document.getElementById('pk').hidden, app: !document.getElementById('app').hidden })), errors,
+          calls.map(c => ({ url: c.url, signed: !!c.gate })));
+        throw error;
+      });
       assert.equal(await page.locator(appId).isHidden(), true, site + ': the site stays away until the passkey is in');
       assert.match(await page.locator('#pk-day').textContent(), /今日（\d{4}\/\d{2}\/\d{2}）のパスキー/);
       assert.ok((await page.locator('#pk-name').textContent()).toLowerCase().includes('taku'));

@@ -92,3 +92,17 @@ test('an old request failing during password rotation cannot tear down the activ
   finishChange(reply(200, { token: 'rotated-session' })); await change;
   assert.equal(s.storage.get('blockbuster-reels/auth'), 'rotated-session');
 });
+
+test('a delayed password result cannot replace another account or reconnect over its password change', async () => {
+  for (const successful of [true, false]) {
+    const s = setup(); let finish, connects = 0;
+    s.BR.live.connect = () => connects++;
+    s.respond(call => call.path === '/api/password' ? new Promise(resolve => { finish = resolve; }) : Promise.resolve(reply(200, { ok: true })));
+    const change = s.BR.api.password('old', 'new-password');
+    s.BR.api.setToken('another-account-token');
+    finish(reply(successful ? 200 : 401, successful ? { token: 'unused-rotated-token' } : { error: { code: 'auth' } }));
+    await assert.rejects(change);
+    assert.equal(s.storage.get('blockbuster-reels/auth'), 'another-account-token'); assert.equal(connects, 0);
+    if (successful) assert.equal(s.calls.at(-1).options.headers.Authorization, 'Bearer unused-rotated-token');
+  }
+});

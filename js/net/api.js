@@ -240,13 +240,21 @@
       rotatingToken = oldToken;
       BR.live.close();
       return post('/api/password', { current: current, password: password }).then(function (r) {
+      if (token !== oldToken) {
+        if (rotatingToken === oldToken) rotatingToken = null;
+        // A logout or another account won while the password was being hashed.
+        // Discard the new unused session without changing that account's login.
+        viaHttp('POST', '/api/logout', { Authorization: 'Bearer ' + r.token, 'Content-Type': 'application/json' }, {}).catch(function () {});
+        throw new ApiError(0, 'session_changed', 'ログイン状態が変わりました');
+      }
       BR.api.setToken(r.token);
-      rotatingToken = null;
+      if (rotatingToken === oldToken) rotatingToken = null;
       BR.live.connect();
       return r;
     }, function (err) {
-      rotatingToken = null;
-      if (err.status === 401 && token === oldToken) emit('auth-lost', err);
+      if (rotatingToken === oldToken) rotatingToken = null;
+      if (token !== oldToken) throw err;
+      if (err.status === 401) emit('auth-lost', err);
       else BR.live.connect();
       throw err;
     }); },
