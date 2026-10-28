@@ -13,7 +13,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 EXCLUDE = {'bg', 'home', 'background', 'maintenance', 'title', 'reel-frame', 'reel-back',
-           'frame', 'fire', 'fever', 'fever-banner', 'combo', 'combo-rainbow'}
+           'frame', 'fire', 'fever', 'fever-banner', 'combo', 'combo-rainbow', 'login-bonus'}
 
 def paths():
     files = set()

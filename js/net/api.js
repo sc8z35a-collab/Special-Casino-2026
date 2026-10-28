@@ -10,7 +10,7 @@
   var liveMode = (meta && meta.getAttribute('data-live')) || 'sse';
   var KEY = 'blockbuster-reels/auth';
   var NAME_KEY = 'blockbuster-reels/last-name';
-  var token = null;
+  var token = null, tokenGeneration = 0, persistence = Promise.resolve();
   var handlers = {};
   try { token = localStorage.getItem(KEY); } catch (e) { /* storage blocked */ }
 
@@ -29,29 +29,32 @@
       return idb.open().then(function (db) {
         return new Promise(function (resolve) {
           var r = db.transaction('kv').objectStore('kv').get(k);
-          r.onsuccess = function () { resolve(r.result || null); };
-          r.onerror = function () { resolve(null); };
+          r.onsuccess = function () { db.close(); resolve(r.result || null); };
+          r.onerror = function () { db.close(); resolve(null); };
         });
       }).catch(function () { return null; });
     },
     set: function (k, v) {
       return idb.open().then(function (db) {
-        var st = db.transaction('kv', 'readwrite').objectStore('kv');
-        if (v === null) st.delete(k); else st.put(v, k);
+        return new Promise(function (resolve) {
+          var tx = db.transaction('kv', 'readwrite'), st = tx.objectStore('kv');
+          tx.oncomplete = tx.onerror = tx.onabort = function () { db.close(); resolve(); };
+          if (v === null) st.delete(k); else st.put(v, k);
+        });
       }).catch(function () { /* unavailable */ });
     }
   };
 
   function persist(t) {
     try { if (t) localStorage.setItem(KEY, t); else localStorage.removeItem(KEY); } catch (e) { /* in-memory only */ }
-    idb.set(KEY, t);
+    persistence = persistence.then(function () { return idb.set(KEY, t); });
   }
 
   // Resolves once the token is known (it may have to come back from IndexedDB).
   var restored = !online ? Promise.resolve() : (token ? Promise.resolve() : idb.get(KEY).then(function (t) {
-    if (t && !token) { token = t; persist(t); }
+    if (t && !token && tokenGeneration === 0) { token = t; persist(t); }
   }));
-  if (online && token) idb.get(KEY).then(function (t) { if (t !== token && token) idb.set(KEY, token); });
+  if (online && token) idb.get(KEY).then(function (t) { if (t !== token && token) persist(token); });
 
   function ApiError(status, code, message, extra) {
     this.status = status;
@@ -129,7 +132,7 @@
 
   // On the live connection when it is up (js/net/wire.js: no request of its own), else over HTTP; the answer is read the same way.
   function request(method, path, body) {
-    var sentToken = token;
+    var sentToken = token, sentGeneration = tokenGeneration;
     var headers = {};
     if (token) headers.Authorization = 'Bearer ' + token;
     // (on the connection the login rides with each request; the device with the connection itself)
@@ -145,6 +148,7 @@
       throw new ApiError(0, 'network', NETWORK);
     });
     return got.then(function (r) {
+      if (sentToken && sentGeneration !== tokenGeneration && path !== '/api/password') throw new ApiError(0, 'session_changed', 'ログイン状態が変わりました');
       var json = r.json || {};
       if (r.status >= 200 && r.status < 300) {
         if (Number.isFinite(json.now)) clockOffset = json.now - Date.now();
@@ -161,7 +165,7 @@
       var err = new ApiError(r.status, e.code || 'error', e.message || ('エラーが発生しました（' + r.status + '）'), e);
       if (r.status === 401 && token && token === sentToken && token !== rotatingToken && path !== '/api/login' && path !== '/api/register') emit('auth-lost', err);
       // banned (or another account on this device is): the title screen, locked (js/ui/banlock.js)
-      if (r.status === 403 && (e.code === 'banned' || e.code === 'device_banned') && path !== '/api/login' && path !== '/api/register') emit('banned', err);
+      if (r.status === 403 && sentGeneration === tokenGeneration && (e.code === 'banned' || e.code === 'device_banned') && path !== '/api/login' && path !== '/api/register') emit('banned', err);
       throw err;
     });
   }
@@ -208,6 +212,7 @@
     restored: restored,
     hasToken: function () { return !!token; },
     setToken: function (t) {
+      tokenGeneration++;
       if ((t || null) !== token) forgetHeld();
       token = t || null;
       persist(token);

@@ -70,8 +70,9 @@
   function start() {
     clearTimeout(retryTimer);
     if (!api.hasToken()) return;
-    starting = BR.bank.refresh();
-    starting.then(function (r) {
+    var job = starting = BR.bank.refresh();
+    job.then(function (r) {
+      if (starting !== job) return;
       retry = 1000;
       warned = false;
       me = r.me;
@@ -97,6 +98,7 @@
       BR.live.connect();
       if (BR.lineReward) BR.lineReward.check();
     }, function (err) {
+      if (starting !== job || err.code === 'session_changed') return;
       if (err.status === 401 || err.status === 403) return; // auth-lost takes over
       if (err.code === 'maintenance') return;                // the notice is up until the quota resets
       if (!warned) {
@@ -117,6 +119,8 @@
   function lockDown() { signedOut(true); }
 
   function signedOut(keepLogin) {
+    starting = null;
+    clearTimeout(retryTimer);
     BR.live.close();
     if (!keepLogin) api.setToken(null);
     BR.bank.reset();

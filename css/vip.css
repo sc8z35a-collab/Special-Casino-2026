@@ -266,9 +266,6 @@
 .vp-table .vp-k { min-width: 165px; }
 .receipt-deadline { margin-top: calc(var(--u) * 8); font-size: calc(var(--u) * 17); color: #dac798; }
 .receipt-deadline.expired { color: #e2a1a1; font-weight: 800; }
-.reward3d { position: absolute; inset: 0; z-index: 150; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; background: radial-gradient(ellipse 38% 28% at center, #1b071987, transparent); }
-.reward3d canvas { width: 1100px; height: 400px; filter: drop-shadow(0 10px 24px #000b); }
-.reward3d-sub { margin-top: -32px; padding: 10px 28px; border-radius: 30px; color: #fff0ad; background: #180611da; box-shadow: inset 0 0 0 1.5px #dab75a; font: 900 30px var(--f-num); text-shadow: 0 2px 4px #000; }
 /* Display the supplied transparent canvases at a consistent badge size. */
 .vip-badge.image { width: 3.5em; padding: 0; overflow: hidden; background: none; box-shadow: none; }
 .vip-badge.image img { display: block; height: 100%; width: 100%; object-fit: contain; }

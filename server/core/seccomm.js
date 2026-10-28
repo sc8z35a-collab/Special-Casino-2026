@@ -48,10 +48,14 @@ export function createSecComm({ q, secret, opsLog, roleOf, clock = Date.now }) {
   const KEY = keyFrom(secret, 'sec-identity');
   const channels = new Map();
   const denied = new Map();
-  let ident = null;
+  let ident = null, identityJob = null;
 
   // the server's identity: made the first time, then read back (its private half sealed with the server's own secret)
-  async function identity() {
+  function identity() {
+    if (!identityJob) identityJob = loadIdentity().catch(error => { identityJob = null; throw error; });
+    return identityJob;
+  }
+  async function loadIdentity() {
     if (ident) return ident;
     const row = q('SELECT pub, priv FROM sec_identity WHERE id = 1').get();
     if (row) {
@@ -66,8 +70,15 @@ export function createSecComm({ q, secret, opsLog, roleOf, clock = Date.now }) {
     const spki = b64u(await subtle().exportKey('spki', pair.publicKey));
     const pkcs8 = b64u(await subtle().exportKey('pkcs8', pair.privateKey));
     const now = clock();
-    q('INSERT INTO sec_identity (id, pub, priv, created_at) VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET pub = excluded.pub, priv = excluded.priv, created_at = excluded.created_at').run(spki, sealText(KEY, pkcs8), now);
-    ident = { spki, priv: await subtle().importKey('pkcs8', unb64u(pkcs8), ECDSA, false, ['sign']), fp: fingerprint(unb64u(spki)), at: now };
+    const sealed = sealText(KEY, pkcs8);
+    if (row) q('UPDATE sec_identity SET pub=?,priv=?,created_at=? WHERE id=1 AND pub=? AND priv=?').run(spki, sealed, now, row.pub, row.priv);
+    else q('INSERT OR IGNORE INTO sec_identity (id,pub,priv,created_at) VALUES (1,?,?,?)').run(spki, sealed, now);
+    // Another instance may have installed its identity while crypto yielded.
+    // Always return the identity that won, so TOFU never pins a discarded key.
+    const kept = q('SELECT pub,priv,created_at FROM sec_identity WHERE id=1').get();
+    const raw = openText(KEY, kept.priv);
+    if (!raw) throw new Error('secure-channel identity changed during initialization');
+    ident = { spki: kept.pub, priv: await subtle().importKey('pkcs8', unb64u(raw), ECDSA, false, ['sign']), fp: fingerprint(unb64u(kept.pub)), at: kept.created_at };
     return ident;
   }
 

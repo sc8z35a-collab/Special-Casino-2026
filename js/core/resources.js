@@ -23,7 +23,20 @@
     return groups[name];
   }
   function fail() { if (BR.kit) BR.kit.fail({ message: '画面を読み込めませんでした。もう一度お試しください。' }); }
-  BR.resources = { load: load, ready: ready, file: file, cancelPending: function () { generation++; } };
+  var waiting = 0, waitTimer = 0;
+  function wait(job) {
+    waiting++;
+    if (!waitTimer) waitTimer = setTimeout(function () {
+      var node = document.getElementById('resource-status'); if (node && waiting) node.hidden = false;
+    }, 120);
+    function done() {
+      if (--waiting > 0) return;
+      clearTimeout(waitTimer); waitTimer = 0;
+      var node = document.getElementById('resource-status'); if (node) node.hidden = true;
+    }
+    return job.then(function (value) { done(); return value; }, function (error) { done(); throw error; });
+  }
+  BR.resources = { load: load, ready: ready, file: file, wait: wait, cancelPending: function () { generation++; } };
   function initialize(api) { if (!initialized.has(api)) { if (api.init) api.init(); initialized.add(api); } }
   function module(name, methods, group, empty) {
     if (BR[name]) return;
@@ -39,7 +52,7 @@
       return job;
     }
     proxy = { init: function () {}, active: function () { return false; }, stop: function () {}, leave: function () {}, changed: function () {}, target: function () { return null; } };
-    methods.forEach(function (method) { proxy[method] = function () { var args = arguments, epoch = generation; return ensure().then(function (api) { if (epoch === generation) return api[method].apply(api, args); }, fail); }; });
+    methods.forEach(function (method) { proxy[method] = function () { var args = arguments, epoch = generation; return wait(ensure()).then(function (api) { if (epoch === generation) return api[method].apply(api, args); }, fail); }; });
     BR[name] = proxy; modules.push({ name: name, proxy: proxy });
     if (empty) empty(proxy, ensure);
   }

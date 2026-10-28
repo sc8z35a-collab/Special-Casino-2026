@@ -142,7 +142,7 @@
   function showModal(id) {
     var epoch = modalEpoch[id] = (modalEpoch[id] || 0) + 1;
     var style = /^feedback/.test(id) ? 'feedback' : /^safety|^sf-|^report|^block/.test(id) ? 'safety' : /^hub/.test(id) ? 'hub' : 'online';
-    if (!BR.resources.ready('online') || !BR.resources.ready(style)) return Promise.all([BR.resources.load('online'), BR.resources.load(style)]).then(function () { if (modalEpoch[id] === epoch) showModal(id); }, fail);
+    if (!BR.resources.ready('online') || !BR.resources.ready(style)) return BR.resources.wait(Promise.all([BR.resources.load('online'), BR.resources.load(style)])).then(function () { if (modalEpoch[id] === epoch) showModal(id); }, fail);
     $('#' + id).hidden = false;
   }
   function isOpen(id) { return !$('#' + id).hidden; }
@@ -185,9 +185,18 @@
   function fitAll() {
     var vv = window.visualViewport;
     fitted.forEach(function (n) {
-      if (n.hidden || !vv) return;
-      n.style.height = vv.height + 'px';
-      n.style.transform = 'translateY(' + vv.offsetTop + 'px)';
+      if (n.hidden) return;
+      var w = vv ? vv.width : window.innerWidth, h = vv ? vv.height : window.innerHeight;
+      var x = vv ? vv.offsetLeft : 0, y = vv ? vv.offsetTop : 0;
+      // The game has a landscape fallback when the phone cannot lock its
+      // physical orientation. Account/settings forms follow that same view;
+      // opening the keyboard must not switch them back to portrait.
+      var rot = n.classList.contains('ov') && BR.app && BR.app.view.portrait;
+      n.style.transformOrigin = '0 0';
+      n.style.width = (rot ? h : w) + 'px';
+      n.style.height = (rot ? w : h) + 'px';
+      n.style.transform = rot ? 'translate(' + (x + w) + 'px,' + y + 'px) rotate(90deg)' : 'translate(' + x + 'px,' + y + 'px)';
+      n.classList.toggle('ov-rot', !!rot);
     });
   }
   function fitOverlay(node) {
@@ -198,6 +207,7 @@
     window.visualViewport.addEventListener('resize', fitAll);
     window.visualViewport.addEventListener('scroll', fitAll);
   }
+  window.addEventListener('resize', fitAll);
 
   function copyText(text) {
     if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
@@ -284,6 +294,6 @@
     presence: presence, nameSpan: nameSpan, vipBadge: vipBadge, addVip: addVip, vipLevel: vipLevel,
     receiptExpired: receiptExpired, receiptHint: receiptHint, toast: toast, sfx: sfx, fail: fail, badge: badge,
     registerModal: registerModal, showModal: showModal, closeModal: closeModal, closeModals: closeModals, isOpen: isOpen,
-    confirmBox: confirmBox, escape: escape, fitOverlay: fitOverlay, copyText: copyText, dragScroll: dragScroll
+    confirmBox: confirmBox, escape: escape, fitOverlay: fitOverlay, refitOverlays: fitAll, copyText: copyText, dragScroll: dragScroll
   };
 })(window.BR = window.BR || {});

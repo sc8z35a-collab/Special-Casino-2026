@@ -59,6 +59,13 @@ const { chromium } = require('playwright');
     assert.equal(await ops.evaluate(() => window.auditStale), 401);
     assert.equal(await ops.evaluate(() => localStorage.getItem('two-state-ops/token')), newToken);
     assert.equal(await ops.locator('#app').isVisible(), true);
+    let oldSuccess;
+    await ops.route('**/api/audit-old-data', route => { oldSuccess = route; });
+    await ops.evaluate(() => { window.auditOldData = OpsExt.io().request('GET', '/api/audit-old-data').then(() => 'accepted', e => e.code); });
+    await ops.waitForTimeout(100); assert.ok(oldSuccess);
+    await ops.evaluate(() => document.getElementById('logout').click()); await login();
+    await oldSuccess.fulfill({ status: 200, contentType: 'application/json', body: '{"private":"previous login"}' });
+    assert.equal(await ops.evaluate(() => window.auditOldData), 'session_changed');
     console.log('PASS invalid operator JSON fails and a delayed old-session 401 preserves the new login');
 
     const sec = await ctx.newPage(); sec.setDefaultTimeout(30000); sec.on('pageerror', e => errors.push(e.message));

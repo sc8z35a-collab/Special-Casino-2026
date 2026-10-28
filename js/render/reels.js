@@ -522,10 +522,10 @@
     this.invalidate();
   };
 
-  Reels.prototype.frame = function () {
-    // performance.now() rather than the rAF timestamp: the latter can be
-    // older than times recorded by event handlers in the same frame.
-    var now = U.now();
+  Reels.prototype.frame = function (timestamp) {
+    // Use the display clock for evenly paced motion, without going backwards
+    // past a start recorded by an event handler during the same frame.
+    var now = typeof timestamp === 'number' ? Math.max(timestamp, this.last) : U.now();
     var dt = U.clamp((now - this.last) / 1000, 0, 0.05);
     this.last = now;
     var moving = false, lit = false;
@@ -536,8 +536,9 @@
     var more = moving || lit || this.hl || this.pre || this.antic.length;
     if (more) requestAnimationFrame(this._loop);
     else this.running = false;
-    if ((more || this.dirty) && (!lite() || !more || this.dirty || now - (this.drawAt || 0) >= 1000 / 30)) {
-      this.drawAt = now;
+    var interval = 1000 / 30, elapsed = now - (this.drawAt || 0);
+    if ((more || this.dirty) && (!lite() || !more || this.dirty || elapsed >= interval - 0.5)) {
+      this.drawAt = lite() && more && !this.dirty ? now - Math.max(0, elapsed - interval) % interval : now;
       this.dirty = false;
       try { this.draw(now); } catch (e) { if (window.console) console.warn(e); }
     }
@@ -590,6 +591,9 @@
         var yy = ((k - 1) * ROW_PITCH + r.off);
         if (yy > VIEW_H || yy + CELL_H < 0) continue;
         var sym = r.buf[k];
+        // Blur canvases are prepared incrementally during acceleration.
+        // A slow phone can reach full speed before its symbol is ready.
+        var symbolSet = set[sym] ? set : sp.sharp;
         var row = k - 1;
         var win = hl && r.phase === 'idle' && row === 1 && hl.cols.indexOf(i) >= 0;
         if (win && !symOn) {
@@ -647,16 +651,16 @@
           if (this.flare && !lite()) this.winFx(g, sym, cx, cy, ht, res, i, false);
           continue;
         }
-        if (set === sp.sharp && r.flash > 0.02 && landOn) {
+        if (symbolSet === sp.sharp && r.flash > 0.02 && landOn) {
           // the symbols squash as the reel hits home, then spring back
           var since = 1 - r.flash, give = Math.exp(-5 * since) * Math.cos(since * 13);
           var sqx = 1 + 0.05 * give, sqy = 1 - 0.08 * give;
           var qx = x + COL_W * res / 2, qy = (yy + CELL_H / 2) * res;
           g.drawImage(sp.sharp[sym], qx - COL_W * res * sqx / 2, qy - CELL_H * res * sqy / 2, COL_W * res * sqx, CELL_H * res * sqy);
-        } else if (set === sp.sharp) {
+        } else if (symbolSet === sp.sharp) {
           g.drawImage(sp.sharp[sym], Math.round(x), Math.round(yy * res));
         } else {
-          var bimg = set[sym];
+          var bimg = symbolSet[sym];
           if (blurA < 1) {
             g.globalAlpha = 1 - blurA;
             g.drawImage(sp.sharp[sym], x, yy * res);

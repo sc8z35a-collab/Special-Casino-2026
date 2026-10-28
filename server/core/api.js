@@ -1448,24 +1448,23 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     sight.set(u.id, now);
     const idle = Math.max(0, Number(body && body.idle) || 0);
     touchActive(u.id, now - idle, true);
-    const dt = now - (u.beat_at || 0);
-    const ms = dt > 0 && dt <= BEAT_GAP ? Math.min(dt, Math.max(0, QUESTS.idleMs - idle + dt)) : 0;
-    const sec = Math.floor(ms / 1000);
-    const events = [];
-    let boost = null;
-    if (sec > 0) {
-      events.push(['online', sec]);
-      const m = memberRow(u.id);
-      const on = m ? hubOn(u.id) : null;
-      if (on) {
-        events.push(['hubSec', sec]);
-        boost = { '5h': on.booster };
-      }
-      const friends = !!m && hubPeople(m.hub_id).some((p) => p.id !== u.id && p.online);
-      if (body && body.voice && (friends || talkingAtHome(u.id))) events.push(['talkSec', sec]);
-    }
+    let sec = 0;
     const st = tx(() => {
       const cur = getUser(u.id);
+      // Several bodies may finish together after authenticating the same beat_at.
+      // Count and advance the clock from the row locked by this transaction.
+      const dt = now - (cur.beat_at || 0);
+      const ms = dt > 0 && dt <= BEAT_GAP ? Math.min(dt, Math.max(0, QUESTS.idleMs - idle + dt)) : 0;
+      sec = Math.floor(ms / 1000);
+      const events = [];
+      let boost = null;
+      if (sec > 0) {
+        events.push(['online', sec]);
+        const m = memberRow(u.id), on = m ? hubOn(u.id) : null;
+        if (on) { events.push(['hubSec', sec]); boost = { '5h': on.booster }; }
+        const friends = !!m && hubPeople(m.hub_id).some(p => p.id !== u.id && p.online);
+        if (body && body.voice && (friends || talkingAtHome(u.id))) events.push(['talkSec', sec]);
+      }
       const r = events.length ? questStep(cur, events, boost) : null;
       // the part of a second not counted waits for the next beat
       const at = sec > 0 ? now - (ms - sec * 1000) : now;
@@ -3637,7 +3636,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return { ticket: `${signTicket(`${opsSecret}:${liveVersion(u.id, true)}:${u.tokenHash}`, u.id)}.${u.tokenHash}` };
   };
   // 金の生る木
-  const trees = createTrees({ q, tx, getUser, balance, balanceChanged });
+  const trees = createTrees({ q, tx, getUser, balance, balanceChanged, clock: config.clock || Date.now,
+    onChange: () => host?.reschedule?.(nextHousekeeping()),
+    onReady: tree => {
+      live.send(tree.userId, 'tree', { type: 'ready', ...tree });
+      phone(tree.userId, { kind: 'tree', title: '金の生る木', body: tree.name + 'が収穫できます', tag: `tree:${tree.id}:${tree.cycleAt}`, open: 'tree' });
+    }
+  });
   registry.add('trees', trees.routes);
   const gacha = createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend });
   registry.add('gacha', gacha.routes);
@@ -3992,6 +3997,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       try { usageAlert.check(); } catch (e) { console.error('usage alert failed', e); }
       q('DELETE FROM spins WHERE created_at < ?').run(Date.now() - 30 * 86400000);
       retention.sweep();
+      trees.notifyDue();
       spinRequests.prune();
       gacha.prune();
       gameLogin.prune();
@@ -4049,7 +4055,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function nextHousekeeping(now = Date.now()) {
     const b = backup.nextDue();
     const feed = emergency.locked() ? now + 6 * 3600000 : lineFeed.nextDue(now);
-    return Math.max(now + 60000, Math.min(now + 6 * 3600000, b || Infinity, feed, vaultSnapshots.nextDue() || Infinity, retention.nextDue() || Infinity));
+    return Math.max(now + 60000, Math.min(now + 6 * 3600000, b || Infinity, feed, vaultSnapshots.nextDue() || Infinity, retention.nextDue() || Infinity, trees.nextDue() || Infinity));
   }
 
   // Stream tickets are signed and expire within a minute; each opens one connection.
@@ -4218,9 +4224,33 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         } else {
           user = authUser(req);
           req.userId = user.id;
+        }
+        // Authentication before reading a slow body is not authorization to
+        // act after logout, a ban, MFA rotation or a rights change. Keep the
+        // same object so routes also see current chat/VIP/account state.
+        req.revalidate = () => {
+          if (pass) {
+            const current = vault.passFor(key, req);
+            if (!current || current.userId !== pass.userId || current.fileId !== pass.fileId)
+              throw new ApiError(401, 'auth', 'アップロードの有効期限が切れました');
+          }
+          Object.assign(user, pass ? userForPass(pass.userId) : authUser(req));
+          if (user.scope === 'view' && (!ops.isViewer(user) || !VIEW_ONLY.has(key)))
+            throw new ApiError(403, 'viewer', '閲覧者はこの操作を行えません');
+          if (!pass && GATED.test(req.path)) opsMfa.guard(user, req);
+          if ((emergency.locked() && !WHILE_LOCKED.has(key)) ||
+              (emergency.stopped() && !emergency.locked() && (!WHILE_STOPPED.has(key) || !isDeveloper(user))))
+            throw new ApiError(503, 'maintenance', 'サーバーのメンテナンス中です', emergency.body().error);
+        };
+        for (const name of ['json', 'bytes', 'text']) if (typeof req[name] === 'function') {
+          const read = req[name].bind(req);
+          req[name] = async (...args) => { const body = await read(...args); req.revalidate(); return body; };
+        }
+        if (!pass) {
           if (GATED.test(req.path)) {
             opsMfa.guard(user, req);
             await pk.guard(req, user);
+            req.revalidate();
           }
         }
         if (req.method === 'POST' && req.path.startsWith('/api/ops/profile/')) rate(limit.login, 'mfa:' + user.id);
@@ -4245,7 +4275,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (DEV_ONLY.has(key) && !isDeveloper(user)) throw new ApiError(404, 'not_found', 'APIが見つかりません');
         ops.see(user);
         sealed = await comm.enter(req, user);
-        if (sealed.body) req.json = async () => sealed.body;
+        req.revalidate();
+        if (sealed.body) req.json = async () => { req.revalidate(); return sealed.body; };
       }
       const result = await route(req, user);
       if (sealed) return { status: 200, body: await comm.seal(sealed, result) };
@@ -4256,6 +4287,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { status: 200, body: held !== null && result && typeof result === 'object' && !Array.isArray(result) ? heldOf(result, heldFrom(held)) : result };
     } catch (e) {
       if (e instanceof ApiError) return { status: e.status, body: { error: { code: e.code, message: e.message, ...(e.extra || {}) } } };
+      if (String(e?.message).includes('unsafe_balance')) return { status: 409, body: { error: { code: 'balance_limit', message: '残高の上限を超えるため、この操作はできません' } } };
       // the host's daily quota ran out (e.g. database writes on the free plan)
       if (isQuotaError(e)) return { status: 503, body: maintenanceBody() };
       console.error(e);

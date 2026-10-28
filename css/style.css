@@ -148,13 +148,16 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
   inset: 0;
   visibility: hidden;
   opacity: 0;
+  pointer-events: none;
   transition: opacity .22s ease, visibility 0s linear .22s;
 }
 .screen.active {
   visibility: visible;
   opacity: 1;
+  pointer-events: auto;
   transition: opacity .22s ease, visibility 0s;
 }
+#resource-status { position: absolute; z-index: 1200; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 22px 38px; border-radius: 20px; background: #24050dec; box-shadow: 0 8px 30px #0008; color: #ffe5a0; font-size: 28px; pointer-events: none; }
 
 .back-btn {
   position: absolute;
@@ -295,9 +298,17 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 /* menu, lobby, quests: the supplied pictures are the whole button */
 .hud-radio { right: 204px; top: 138px; }
 .hud-quest { right: 204px; top: 260px; }
+.hud-tree { right: 204px; top: 382px; }
+.hud-gacha { left: 204px; top: calc(50% + 122px); }
+.screen.active .ic-gacha { background-image: url('../img/gacha/icon.webp'); }
 .hud-circle.pic { background: none; box-shadow: none; }
 .hud-circle.pic .ic { filter: drop-shadow(0 4px 7px rgba(0, 0, 0, .55)); }
 .hud-circle.pic:active { background: none; }
+
+/* Shared rewards must be positioned before the VIP screen has ever opened. */
+.reward3d { position: absolute; inset: 0; z-index: 150; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; background: radial-gradient(ellipse 38% 28% at center, #1b071987, transparent); }
+.reward3d canvas { width: 1100px; height: 400px; filter: drop-shadow(0 10px 24px #000b); }
+.reward3d-sub { margin-top: -32px; padding: 10px 28px; border-radius: 30px; color: #fff0ad; background: #180611da; box-shadow: inset 0 0 0 1.5px #dab75a; font: 900 30px var(--f-num); text-shadow: 0 2px 4px #000; }
 
 /* SPIN */
 .spin-btn {

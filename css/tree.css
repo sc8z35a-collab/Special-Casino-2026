@@ -2,7 +2,6 @@
    screen — a tab for each tree, the tree in its garden light on the left,
    giving money and the harvest on the right, and the auctions. Design px. */
 
-.hud-tree { right: 204px; top: 382px; }
 .hud-tree .ic { animation-delay: -.9s; }
 
 #screen-tree {

@@ -55,7 +55,21 @@ function shuffle(a) {
   return a;
 }
 
-export function createTrees({ q, tx, getUser, balance, balanceChanged }) {
+export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady = () => {}, onChange = () => {}, clock = Date.now }) {
+  const noticeWhere = "t.cycle != '' AND t.notified_cycle != t.cycle_at AND u.banned = 0 AND u.npc = ''";
+  function nextDue() {
+    return q(`SELECT MIN(t.cycle_end) AS at FROM trees t JOIN users u ON u.id=t.user_id WHERE ${noticeWhere}`).get()?.at || 0;
+  }
+  function notifyDue() {
+    const due = tx(() => {
+      const rows = q(`SELECT t.id,t.user_id,t.name,t.cycle_at,t.cycle_end FROM trees t JOIN users u ON u.id=t.user_id
+        WHERE ${noticeWhere} AND t.cycle_end <= ? ORDER BY t.cycle_end,t.id LIMIT 100`).all(clock());
+      return rows.filter(t => q("UPDATE trees SET notified_cycle=? WHERE id=? AND cycle_at=? AND notified_cycle != cycle_at")
+        .run(t.cycle_at, t.id, t.cycle_at).changes);
+    });
+    for (const t of due) onReady({ id: t.id, userId: t.user_id, name: t.name, cycleAt: t.cycle_at, endsAt: t.cycle_end });
+    return due.length;
+  }
   const treeRows = (userId) => q('SELECT * FROM trees WHERE user_id = ? ORDER BY id').all(userId);
   // everyone has one tree to start with
   function treesOf(userId) {
@@ -281,13 +295,15 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged }) {
     'POST /api/tree/start': async (req, u) => {
       const body = await req.json();
       const now = Date.now();
-      return tx(() => {
+      const result = tx(() => {
         const t = treeOf(u.id, body.tree);
         if (t.cycle) throw new ApiError(409, 'growing', 'この木は育成中です。収穫の時期まで待ってください');
         if (t.given <= 0) throw new ApiError(409, 'no_money', '先にお金をあげて育ててください');
         startCycle(t, String(body.cycle || ''), now);
         return { tree: dto(q('SELECT * FROM trees WHERE id = ?').get(t.id), now) };
       });
+      onChange();
+      return result;
     },
 
     // the cycle is over: the money comes in and the next cycle starts (`next`, else the same)
@@ -306,6 +322,7 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged }) {
         return { paid, tree: dto(q('SELECT * FROM trees WHERE id = ?').get(t.id), now), balance: balance(getUser(u.id)) };
       });
       balanceChanged(u.id, true);
+      onChange();
       return r;
     },
 
@@ -360,5 +377,5 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged }) {
     }
   };
 
-  return { routes, treesOf, dto };
+  return { routes, treesOf, dto, nextDue, notifyDue };
 }

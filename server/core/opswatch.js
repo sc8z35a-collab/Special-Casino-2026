@@ -28,7 +28,7 @@
 //    operator's rights taken away, the player punished or gone — ends every
 //    watch at once, and a forced end is reported to Discord with the details.
 import { randomBytes } from 'node:crypto';
-import { ApiError, posInt } from './errors.js';
+import { ApiError, posInt, pageLimit } from './errors.js';
 import { cleanText } from './auth.js';
 import { Limiter } from './ratelimit.js';
 
@@ -393,7 +393,7 @@ export function createOpsWatch({ q, live, ops, opsLog, official, emergency, shie
   // who watched whom, how long and how much (every operator may read it)
   function history(req) {
     const player = Number(req.query.get('player')) || 0;
-    const limit = Math.min(200, Math.max(1, Number(req.query.get('limit')) || 50));
+    const limit = pageLimit(req.query.get('limit'), 50, 200);
     const rows = player
       ? q('SELECT * FROM ops_watch_log WHERE player_id = ? ORDER BY id DESC LIMIT ?').all(player, limit)
       : q('SELECT * FROM ops_watch_log ORDER BY id DESC LIMIT ?').all(limit);

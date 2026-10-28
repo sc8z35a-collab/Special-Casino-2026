@@ -43,7 +43,7 @@
   var showGeneration = 0;
   function show(card) {
     var epoch = ++showGeneration;
-    if (!BR.resources.ready('online')) return BR.resources.load('online').then(function () { if (epoch === showGeneration) show(card); }, K.fail);
+    if (!BR.resources.ready('online')) return BR.resources.wait(BR.resources.load('online')).then(function () { if (epoch === showGeneration) show(card); }, K.fail);
     CARDS.forEach(function (c) { $('#ov-' + c).hidden = c !== card; });
     overlay().hidden = false;
     // (the Google / Discord buttons are those the server offers)

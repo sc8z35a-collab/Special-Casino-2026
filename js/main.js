@@ -45,7 +45,6 @@
     css += '.spin-disc{background-image:' + url(art.spin) + '}\n';
     css += '.pill{background-image:' + url(art.pill) + '}\n';
     css += '.pill-get{background-image:' + url(art.pillGet) + '}\n';
-    css += '.chip-pile{background-image:' + url(art.chipPile) + '}\n';
     css += '#bg{background-image:' + url(art.bg) + '}\n';
     css += '#stage[data-screen="slot"] #bg{background-image:' + url(art.homeBg) + '}\n';
     css += '.pill-rules{background-image:' + url(art.info) + '}\n';
@@ -124,6 +123,7 @@
     if (W * H * res * res > maxPx) res = Math.sqrt(maxPx / (W * H));
     var changed = W !== view.W || H !== view.H || Math.abs(res - view.res) > 1e-3 || !view.ready;
     view.W = W; view.H = H; view.s = s; view.res = res; view.portrait = portrait;
+    if (BR.kit && BR.kit.refitOverlays) BR.kit.refitOverlays();
     if (!changed) return;
     view.ready = true;
     reels.resize(Math.min(Math.max(1, Math.min(s * dpr, 3)), cap));
@@ -591,6 +591,11 @@
       if (game.busy()) { BR.sfx.play('deny'); return; }
       BR.sfx.play('click');
       BR.tree.open();
+    });
+    press($('#btn-gacha'), function () {
+      if (game.busy()) { BR.sfx.play('deny'); return; }
+      BR.sfx.play('click');
+      BR.gacha.open();
     });
     // the plus: ロイヤルコイン (the token shop while offline)
     press($('#w-plus'), function () {

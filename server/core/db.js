@@ -1085,6 +1085,18 @@ MIGRATIONS.push([
   'CREATE INDEX gacha_requests_time ON gacha_requests(created_at)'
 ]);
 
+// Keep every currency readable as an exact JS integer on both SQLite hosts.
+// Checking the stored NEW values also covers arithmetic done entirely in SQL.
+MIGRATIONS.push(['INSERT', 'UPDATE OF tokens, dollars, coins'].map(event =>
+  `CREATE TRIGGER users_balance_${event === 'INSERT' ? 'insert' : 'update'} BEFORE ${event} ON users
+   WHEN ${['tokens', 'dollars', 'coins'].map(column => `(typeof(NEW.${column}) != 'integer' OR NEW.${column} NOT BETWEEN -9007199254740991 AND 9007199254740991)`).join(' OR ')}
+   BEGIN SELECT RAISE(ABORT, 'unsafe_balance'); END`));
+
+MIGRATIONS.push([
+  'ALTER TABLE trees ADD COLUMN notified_cycle INTEGER NOT NULL DEFAULT 0',
+  "CREATE INDEX trees_notice_due ON trees(cycle_end, user_id) WHERE cycle != '' AND notified_cycle != cycle_at"
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)

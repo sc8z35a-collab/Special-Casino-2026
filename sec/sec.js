@@ -98,6 +98,7 @@
   }
   // the ordinary request (what the sealed channel itself rides on, and the login, the passkey and the few routes outside the base)
   function raw(method, path, body, headers) {
+    var sentToken = token;
     var h = { 'Content-Type': 'application/json' };
     if (token) h.Authorization = 'Bearer ' + token;
     if (headers) Object.keys(headers).forEach(function (k) { h[k] = headers[k]; });
@@ -110,6 +111,7 @@
       .catch(function () { throw { status: 0, message: '通信できませんでした' }; })
       .then(function (res) {
         return res.json().catch(function () { if (res.ok) throw { status: 0, message: '通信できませんでした' }; return {}; }).then(function (j) {
+          if (res.ok && sentToken && (s !== session || token !== sentToken)) throw { status: 0, code: 'session_changed', message: 'ログイン状態が変わりました' };
           if (res.ok && (!j || typeof j !== 'object' || Array.isArray(j))) throw { status: 0, message: '通信できませんでした' };
           if (res.ok) return j;
           var e = j.error || {};

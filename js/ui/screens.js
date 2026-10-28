@@ -18,7 +18,7 @@
     var epoch = ++requestGeneration;
     if (!BR.resources.ready(name)) {
       var job = name === 'slot' ? BR.resources.effects() : BR.resources.load(name);
-      return job.then(function () { if (epoch === requestGeneration) show(name); }, BR.kit.fail);
+      return BR.resources.wait(job).then(function () { if (epoch === requestGeneration) show(name); }, BR.kit.fail);
     }
     if (name === current) return;
     // banned: the title screen only (js/ui/banlock.js)

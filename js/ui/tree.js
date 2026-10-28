@@ -31,6 +31,14 @@
   var liveId = 0;          // the auction the live view on screen was built for
   var arena = null, arenaWanted = null, arenaLoading = false, arenaEpoch = 0;
   var polling = false;
+  var notified = {};
+  function notifyReady(t) {
+    var cycleAt = t.cycle ? t.cycle.at : t.cycleAt;
+    var key = t.id + ':' + cycleAt;
+    if (!cycleAt || notified[key]) return;
+    notified[key] = true;
+    if (!document.hidden) { sfx('notify'); toast('金の生る木が収穫できます', 4500, open); }
+  }
 
   try {
     var saved = Number(localStorage.getItem(AMOUNT));
@@ -92,7 +100,7 @@
     if (!trees) { K.badge($('#tree-badge'), 0); return; }
     var at = now(), n = 0, next = Infinity;
     trees.forEach(function (t) {
-      if (ready(t, at)) n++;
+      if (ready(t, at)) { n++; notifyReady(t); }
       else if (t.cycle) next = Math.min(next, t.cycle.end);
     });
     K.badge($('#tree-badge'), n);
@@ -747,6 +755,7 @@
   function init() {
     document.addEventListener('visibilitychange', function () {
       if (document.hidden && BR.sfx.auctionCrowd) BR.sfx.auctionCrowd(false);
+      if (!document.hidden) renderBadge();
     });
     $('#tree-tabs').addEventListener('click', function (e) {
       var b = e.target.closest('.tab');
@@ -791,12 +800,13 @@
     if (!api.online) return;
     // signed in: how many trees can be harvested shows on the round button
     BR.live.on('hello', function (h) { if (h.tree) set(Object.assign({}, h.tree, { now: h.now })); else load().catch(function () {}); });
+    BR.live.on('tree', function (event) { if (event.type === 'ready') { notifyReady(event); renderBadge(); } });
   }
 
   BR.tree = {
     init: init,
     open: open,
     // signed out: nothing to show until the next player
-    reset: function () { trees = null; auction = null; ended = null; watched = 0; tab = null; $('#stage').classList.remove('auction-running'); BR.tree3d.pause(); stopPolling(); stopArena(); renderBadge(); }
+    reset: function () { notified = {}; trees = null; auction = null; ended = null; watched = 0; tab = null; $('#stage').classList.remove('auction-running'); BR.tree3d.pause(); stopPolling(); stopArena(); renderBadge(); }
   };
 })(window.BR = window.BR || {});

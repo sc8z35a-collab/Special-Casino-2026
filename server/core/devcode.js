@@ -24,18 +24,26 @@ export function createDevCode({ q, opsLog }) {
     return now - f.since > HOUR ? { since: now, n: 0 } : f;
   }
   const clean = (code) => String(code ?? '').replace(/[\s-]/g, '');
+  function attempts(req) {
+    const now = Date.now(), ip = req?.ip || '';
+    const mine = (byIp.get(ip) || []).filter(t => now - t < HOUR), all = failsInAll(now);
+    if (mine.length >= PER_IP || all.n >= IN_ALL) throw new ApiError(429, 'dev_code_locked', '開発者コードの入力が多すぎます。1時間ほど待ってからお試しください');
+    return { now, ip, mine, all };
+  }
 
   // Throws unless `code` is the developer code (`who`: the account trying, for the log).
   async function check(code, req, who = null) {
-    const now = Date.now();
-    const ip = (req && req.ip) || '';
-    const mine = (byIp.get(ip) || []).filter((t) => now - t < HOUR);
-    const all = failsInAll(now);
-    if (mine.length >= PER_IP || all.n >= IN_ALL) throw new ApiError(429, 'dev_code_locked', '開発者コードの入力が多すぎます。1時間ほど待ってからお試しください');
+    attempts(req);
     const h = stored();
     if (!h) throw new ApiError(409, 'dev_code_unset', '開発者コードがまだ登録されていません。開発者のアカウントで運営サイトから登録してください');
     const c = clean(code);
-    if (/^\d{4,32}$/.test(c) && await verifyPassword(c, h)) return true;
+    const valid = /^\d{4,32}$/.test(c) && await verifyPassword(c, h);
+    req?.revalidate?.();
+    if (stored() !== h) throw new ApiError(409, 'dev_code_changed', '開発者コードが変更されました。もう一度入力してください');
+    // Hashing yields. Read counters again so concurrent guesses cannot replace
+    // each other's strikes with the same pre-hash count.
+    const { now, ip, mine, all } = attempts(req);
+    if (valid) return true;
     mine.push(now);
     byIp.set(ip, mine);
     // (addresses that have not tried for an hour are forgotten)
@@ -49,9 +57,12 @@ export function createDevCode({ q, opsLog }) {
   async function register(code, old, req, who) {
     const c = clean(code);
     if (!/^\d{8,32}$/.test(c)) throw new ApiError(400, 'bad_code', '開発者コードは8〜32桁の数字にしてください');
-    const had = !!stored();
+    const previous = stored(), had = !!previous;
     if (had) await check(old, req, who);
-    setMeta(KEY, await hashPassword(c));
+    const hash = await hashPassword(c);
+    req?.revalidate?.();
+    if (stored() !== previous) throw new ApiError(409, 'dev_code_changed', '開発者コードが変更されました。もう一度入力してください');
+    setMeta(KEY, hash);
     opsLog.add({ actor: who, action: had ? 'dev_code_change' : 'dev_code_set', summary: had ? '開発者コードを変更' : '開発者コードを登録', req, detail: { digits: c.length } });
   }
 
