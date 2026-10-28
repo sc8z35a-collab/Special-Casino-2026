@@ -28,8 +28,17 @@ const { chromium } = require('playwright');
     await page.evaluate(() => BR.account.openPassword()); await page.locator('#ov-password').waitFor({ state: 'visible' });
     const turned = () => page.evaluate(() => ({ portrait: BR.app.view.portrait, rotation: new DOMMatrix(getComputedStyle(document.getElementById('welcome')).transform).b }));
     assert.deepEqual(await turned(), { portrait: true, rotation: 1 });
-    await page.locator('#ov-pw-current').fill(PASSWORD); await page.setViewportSize({ width: 393, height: 500 });
-    assert.deepEqual(await turned(), { portrait: true, rotation: 1 }, 'keyboard resizing must preserve the landscape form');
+    await page.evaluate(() => document.activeElement.blur());
+    for (const [width, height, portrait, rotation] of [[851, 393, false, 0], [393, 851, true, 1]]) {
+      await page.setViewportSize({ width, height });
+      await page.waitForFunction(expected => BR.app.view.portrait === expected, portrait);
+      assert.deepEqual(await turned(), { portrait, rotation }, 'forms must follow the current view in both orientations');
+    }
+    await page.locator('#ov-pw-current').fill(PASSWORD);
+    for (const height of [500, 300]) {
+      await page.setViewportSize({ width: 393, height });
+      assert.deepEqual(await turned(), { portrait: true, rotation: 1 }, 'keyboard resizing must preserve the landscape form even below the viewport width');
+    }
     await page.locator('#ov-pw-new').fill('mobile-fixed-123'); await page.locator('#ov-password button[type=submit]').click();
     await page.locator('#ov-codecard').waitFor({ state: 'visible' }); await page.locator('#ov-done').click();
     await page.setViewportSize({ width: 393, height: 851 });

@@ -294,6 +294,6 @@
     presence: presence, nameSpan: nameSpan, vipBadge: vipBadge, addVip: addVip, vipLevel: vipLevel,
     receiptExpired: receiptExpired, receiptHint: receiptHint, toast: toast, sfx: sfx, fail: fail, badge: badge,
     registerModal: registerModal, showModal: showModal, closeModal: closeModal, closeModals: closeModals, isOpen: isOpen,
-    confirmBox: confirmBox, escape: escape, fitOverlay: fitOverlay, copyText: copyText, dragScroll: dragScroll
+    confirmBox: confirmBox, escape: escape, fitOverlay: fitOverlay, refitOverlays: fitAll, copyText: copyText, dragScroll: dragScroll
   };
 })(window.BR = window.BR || {});

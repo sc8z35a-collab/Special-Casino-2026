@@ -123,6 +123,7 @@
     if (W * H * res * res > maxPx) res = Math.sqrt(maxPx / (W * H));
     var changed = W !== view.W || H !== view.H || Math.abs(res - view.res) > 1e-3 || !view.ready;
     view.W = W; view.H = H; view.s = s; view.res = res; view.portrait = portrait;
+    if (BR.kit && BR.kit.refitOverlays) BR.kit.refitOverlays();
     if (!changed) return;
     view.ready = true;
     reels.resize(Math.min(Math.max(1, Math.min(s * dpr, 3)), cap));
