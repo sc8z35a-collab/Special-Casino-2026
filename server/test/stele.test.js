@@ -330,3 +330,32 @@ test('scheduled checks resume their verified anchor and sample bounded older fil
   w.store.files.delete(keyOf(25, 25));
   assert.ok((await restarted.check()).problems.some(p => p.id === 'gap:25'));
 });
+
+test('a bad early batch remains an alert across later batches, restarts and clean samples until a full clean cycle', async t => {
+  const w = world(t, { sampleIndex: n => n - 1 });
+  for (let i = 0; i < 41; i++) { w.add(1); await w.stele.seal(); }
+  const key = keyOf(1, 1), original = w.store.files.get(key);
+  w.store.files.set(key, new TextEncoder().encode('broken'));
+  assert.equal((await w.stele.check({ deep: true })).ok, false);
+  const restart = () => createStele({ q: w.q, opsLog: w.opsLog, store: w.store, secret: 'a-secret-for-the-test', clock: w.clock, sampleIndex: n => n - 1 });
+  let st = restart();
+  assert.equal((await st.check({ deep: true })).ok, false);
+  assert.equal((await st.check({ deep: true })).ok, false);
+  assert.equal(st.status().deepDone, 0); assert.ok(st.findings().some(f => f.level === 'high'));
+  assert.equal((await st.check()).ok, false);
+  w.store.files.set(key, original);
+  st = restart();
+  assert.equal((await st.check({ deep: true })).ok, false, 'a single clean batch is insufficient');
+  assert.equal((await st.check({ deep: true })).ok, false);
+  assert.equal((await st.check({ deep: true })).ok, true);
+  assert.ok(st.status().deepDone); assert.equal(st.findings().some(f => f.level === 'high'), false);
+});
+
+test('a malformed multibyte segment signature is reported as damage instead of aborting inspection', async t => {
+  const w = world(t); w.add(1); await w.stele.seal();
+  const key = keyOf(1, 1), seg = JSON.parse(new TextDecoder().decode(w.store.files.get(key)));
+  seg.sig = 'あ'.repeat(64); const bytes = new TextEncoder().encode(JSON.stringify(seg)); w.store.files.set(key, bytes);
+  assert.equal(w.stele.parse(bytes).sigOk, false);
+  const checked = await w.stele.check({ deep: true });
+  assert.equal(checked.ok, false); assert.ok(checked.problems.some(p => p.id === 'sig:1'));
+});

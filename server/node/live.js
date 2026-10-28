@@ -2,6 +2,7 @@
 // trades its token for a short signed ticket and opens /api/stream?ticket=...,
 // which keeps tokens out of URLs and access logs.
 import { SECURITY_HEADERS } from './http.js';
+import { terminalEvent } from '../core/live-terminal.js';
 
 const HEARTBEAT = 25 * 1000;
 const MAX_BUFFERED = 512 * 1024;
@@ -18,7 +19,7 @@ export class Live {
     this.timer.unref();
   }
 
-  attach(req, res, userId, hello) {
+  attach(req, res, userId, hello, auth) {
     req.socket.setTimeout(0);
     req.socket.setNoDelay(true);
     req.socket.setKeepAlive(true, HEARTBEAT);
@@ -33,7 +34,7 @@ export class Live {
     let set = this.clients.get(userId);
     const first = !set;
     if (!set) { set = new Set(); this.clients.set(userId, set); }
-    res.authVersion = this.authVersion ? this.authVersion(userId) : '';
+    res.auth = auth;
     set.add(res);
     this.write(res, 'hello', hello());
     if (first && this.onPresence) this.onPresence(userId, true);
@@ -49,7 +50,7 @@ export class Live {
     res.on('error', done);
   }
 
-  attachOps(req, res, userId) {
+  attachOps(req, res, userId, auth) {
     req.socket.setTimeout(0);
     req.socket.setNoDelay(true);
     req.socket.setKeepAlive(true, HEARTBEAT);
@@ -63,7 +64,7 @@ export class Live {
     res.write('retry: 3000\n\n');
     let set = this.opsClients.get(userId);
     if (!set) { set = new Set(); this.opsClients.set(userId, set); }
-    res.authVersion = this.authVersion ? this.authVersion(userId) : '';
+    res.auth = auth;
     set.add(res);
     this.write(res, 'hello', { ops: true });
     const done = () => {
@@ -95,10 +96,20 @@ export class Live {
     for (const res of [...(this.clients.get(userId) || [])]) res.end();
   }
 
+  dropSession(userId, hash) {
+    for (const clients of [this.clients, this.opsClients]) for (const res of [...(clients.get(userId) || [])]) {
+      if (!res.auth?.s || res.auth.s === hash) res.end();
+    }
+  }
+
   write(res, event, data) {
+    if (res.writableEnded || res.destroyed) return;
+    const revoked = this.valid && !this.valid(res.auth);
+    if (revoked && !terminalEvent(event, data)) { res.end(); return; }
     res.lastSentAt = Date.now();
     if (res.writableLength > MAX_BUFFERED) { res.destroy(); return; }
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    if (revoked) res.end();
   }
 
   send(userId, event, data) {
@@ -118,11 +129,9 @@ export class Live {
 
   heartbeat() {
     // Also notices credential changes made by the separate Node admin CLI.
-    const versions = new Map();
-    for (const clients of [this.clients, this.opsClients]) for (const [id, set] of clients) {
-      if (!versions.has(id)) versions.set(id, this.authVersion ? this.authVersion(id) : '');
+    for (const clients of [this.clients, this.opsClients]) for (const set of clients.values()) {
       for (const res of [...set]) {
-        if (res.authVersion !== versions.get(id)) res.end();
+        if (this.valid && !this.valid(res.auth)) res.end();
         else if (!res.writableEnded && Date.now() - (res.lastSentAt || 0) >= HEARTBEAT) { res.write(': ping\n\n'); res.lastSentAt = Date.now(); }
       }
     }

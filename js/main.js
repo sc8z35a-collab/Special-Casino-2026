@@ -213,10 +213,10 @@
     });
   }
 
-  function bet() { return C.bets[S.betIndex]; }
+  function bet() { var pending = BR.api.pendingSpinBet(); return pending === null ? C.bets[S.betIndex] : pending; }
   function renderBet() {
     setText('bet-value', U.fmt(bet()));
-    var lock = game.busy();
+    var lock = game.busy() || BR.api.pendingSpinBet() !== null;
     $('#bet-minus').disabled = lock || S.betIndex <= 0;
     $('#bet-plus').disabled = lock || S.betIndex >= C.bets.length - 1;
   }
@@ -326,7 +326,7 @@
       return;
     }
     var stake = bet();
-    if (S.tokens < stake) {
+    if (S.tokens < stake && BR.api.pendingSpinBet() === null) {
       BR.sfx.play('deny');
       toast('スピントークンが不足しています');
       setTimeout(function () { BR.screens.show('tokens'); }, 650);
@@ -517,6 +517,9 @@
 
   // フレンド対決: the battle's bet stays until it is over (js/ui/play.js)
   function betLocked() {
+    if (BR.api.pendingSpinBet() !== null) {
+      BR.sfx.play('deny'); toast('前のスピンを確認するまでベットは変更できません'); return true;
+    }
     if (!BR.play || !BR.play.betLocked || !BR.play.betLocked()) return false;
     BR.sfx.play('deny');
     toast('フレンド対決中はベットを変えられません');
@@ -524,7 +527,7 @@
   }
   function setBet(value) {
     var i = C.bets.indexOf(value);
-    if (i < 0 || game.busy()) return false;
+    if (i < 0 || game.busy() || betLocked()) return false;
     S.betIndex = i;
     BR.store.save();
     renderBet();

@@ -380,7 +380,7 @@ test('a watch also ends when the player is punished, the operator loses the righ
     const p = await s.register('処分される人');
     const p2 = await s.register('権限が消える側');
     const pl = await s.listen(p), pl2 = await s.listen(p2);
-    const ol = await openOps(s, taku), ol1 = await openOps(s, mod1);
+    const ol = await openOps(s, taku); let ol1 = await openOps(s, mod1);
     const a = await begin(s, taku, ol, p, pl);
     // a ban ends it at the next look (within a couple of seconds)
     assert.equal((await s.call('POST', '/api/ops/ban', { token: taku.token, body: { id: p.me.id, kind: 'suspend' } })).status, 200);
@@ -391,6 +391,8 @@ test('a watch also ends when the player is punished, the operator loses the righ
     s.app.db.prepare("INSERT INTO ops_access (name_key, granted, by_id, at) VALUES ('mod1', 0, 1, 1) ON CONFLICT(name_key) DO UPDATE SET granted = 0").run();
     assert.equal((await ol1.waitFor('watchend', (d) => d.sid === b.sid, 6000)).reason, 'rights');
     s.app.db.prepare("UPDATE ops_access SET granted = 1 WHERE name_key = 'mod1'").run();
+    // Revocation ends the old stream after its terminal watchend notification.
+    ol1.close(); ol1 = await openOps(s, mod1);
     const forced = (await s.call('GET', '/api/ops/log?kind=security', { token: taku.token })).entries.filter((e) => e.action === 'watch_force_end');
     assert.equal(forced.length, 1, 'losing the rights is a forced end');
     assert.equal(forced[0].detail.reason, 'rights');

@@ -56,6 +56,27 @@ test('the Node heartbeat disconnects a live connection after credentials change 
   assert.equal((await s.call('GET', '/api/me', { token: p.token })).status, 401);
 });
 
+test('logout revokes this session and its game/operator streams and unused tickets, preserving another device', async t => {
+  const s = await setup(t), p = await s.register('StaffRotate');
+  const other = await s.call('POST', '/api/login', { body: { name: p.me.name, password: PASSWORD } });
+  const events = [], { ticket } = await s.call('POST', '/api/stream-ticket', { token: p.token });
+  const stream = await s.openStream(ticket, (event, data) => events.push({ event, data })); t.after(() => stream.destroy());
+  const unused = await s.call('POST', '/api/stream-ticket', { token: p.token });
+  const unusedOps = await s.call('POST', '/api/ops/live-ticket', { token: p.token });
+  const otherTicket = await s.call('POST', '/api/stream-ticket', { token: other.token });
+  const auth = s.app.api.consumeTicket(otherTicket.ticket, true);
+  assert.ok(s.app.api.liveValid(auth));
+  assert.equal((await s.call('POST', '/api/logout', { token: p.token })).status, 200);
+  s.app.live.send(p.me.id, 'private-after-logout', { text: 'must not arrive' });
+  assert.equal(s.app.api.consumeTicket(unused.ticket), null);
+  assert.equal(s.app.api.consumeOpsTicket(unusedOps.ticket), null);
+  assert.equal((await s.call('GET', '/api/me', { token: p.token })).status, 401);
+  assert.equal((await s.call('GET', '/api/me', { token: other.token })).status, 200);
+  assert.ok(s.app.api.liveValid(auth));
+  assert.equal(s.app.live.isOnline(p.me.id), false);
+  assert.equal(events.some(e => e.event === 'private-after-logout'), false);
+});
+
 test('a password verified before an operator reset cannot issue a session after an asynchronous MFA check', async t => {
   const { createOpsLogin } = await import('../core/opslogin.js');
   const { statements } = await import('../core/db.js');

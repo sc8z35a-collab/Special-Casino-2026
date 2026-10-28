@@ -16,7 +16,7 @@ importScripts('vault-upload.js');
 // the game's worker clears every other cache of its prefix, so it must keep this name.
 const CODE_CACHE = 'two-state-code';
 const CODE_MAX = 500;
-const CODE_FILE = /^\/(ops|js)\/[A-Za-z0-9._/-]+\.(js|css)$/;
+const CODE_FILE = /^\/(ops|js|css)\/[A-Za-z0-9._/-]+\.(js|css)$/;
 const HASH = /^[0-9a-f]{10}$/;
 
 // the hash of the file an address names, if it is one of those addresses

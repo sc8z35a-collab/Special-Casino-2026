@@ -50,6 +50,8 @@ async function object(ctx) {
   const { Casino } = await import('../cloudflare/casino.js');
   const o = new Casino(ctx, {});
   await ctx.ready;
+  // These synthetic sockets test alarm scheduling, not session credentials.
+  o.live.authorize = () => true;
   let ran = 0;
   const housekeeping = o.api.housekeeping;
   o.api.housekeeping = () => { ran++; return housekeeping(); };
@@ -99,15 +101,15 @@ test('the Durable Object: stays awake while played, keeps its housekeeping, and 
   await o.webSocketMessage(socket(), JSON.stringify({ op: 'beat', idle: 0 }));
   assert.ok(ctx.alarm <= Date.now() + AWAKE.every, 'playing again');
 
-  // the housekeeping's time: it runs, and the next one is 6 hours away (or sooner for a backup)
+  // The hourly retention sweep is included in the host's housekeeping schedule.
   o.housekeepAt = Date.now() - 1;
   ctx.sockets.length = 0;
   await o.alarm();
   assert.equal(runs(), 1);
-  assert.ok(Math.abs(ctx.kv.get('housekeep_at') - (Date.now() + 6 * 3600000)) < 60000);
+  assert.ok(Math.abs(ctx.kv.get('housekeep_at') - (Date.now() + 3600000)) < 60000);
   assert.equal(ctx.alarm, ctx.kv.get('housekeep_at'));
   // a backup due sooner moves both
-  const soon = Date.now() + 3600000;
+  const soon = Date.now() + 15 * 60000;
   await o.housekeepSoon(soon);
   assert.deepEqual([ctx.kv.get('housekeep_at'), ctx.alarm], [soon, soon]);
 

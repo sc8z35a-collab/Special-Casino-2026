@@ -71,5 +71,38 @@ const { configFrom } = require('../server/core/config.js');
     const expected = await contract(node.base), actual = await contract(worker.base);
     assert.deepEqual(actual, expected, 'Node and Workers must preserve the same contract');
     console.log('PASS runtime parity: ' + expected.length + ' contracts; balances, auth, permissions, Unicode chat, filtering, backup schema and session revocation');
+    // Real hibernating WebSockets must be bound to one session, including
+    // unused tickets. A second device of the same account remains connected.
+    async function call(path, body, token) {
+      const res = await fetch(worker.base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Device': crypto.randomBytes(16).toString('hex'), ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: JSON.stringify(body) });
+      const r = await res.json(); assert.equal(res.status, 200, path + ': ' + JSON.stringify(r)); return r;
+    }
+    function open(ticket, operator = false) {
+      return new Promise((resolve, reject) => {
+        const ws = new WebSocket(worker.base.replace(/^http/, 'ws') + '/api/live?' + (operator ? 'ops=' : 'ticket=') + encodeURIComponent(ticket));
+        ws.addEventListener('message', () => {});
+        ws.addEventListener('open', () => resolve(ws), { once: true });
+        ws.addEventListener('error', reject, { once: true });
+      });
+    }
+    for (const [name, operator] of [['RevokeWS', false], ['taku', true]]) {
+      const p = await call('/api/register', { name, password: 'pass1234', avatar: 'traveler-green' });
+      const second = await call('/api/login', { name, password: 'pass1234' });
+      const path = operator ? '/api/ops/live-ticket' : '/api/stream-ticket';
+      const a = await open((await call(path, {}, p.token)).ticket, operator);
+      const b = await open((await call(path, {}, second.token)).ticket, operator);
+      try {
+        const unused = (await call(path, {}, p.token)).ticket;
+        await call('/api/logout', {}, p.token);
+        // Miniflare/undici can keep the closing handshake pending. The close
+        // frame must already have made the connection unusable for messages.
+        const until = Date.now() + 5000;
+        while (a.readyState === WebSocket.OPEN && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 25));
+        assert.notEqual(a.readyState, WebSocket.OPEN, 'revoked WebSocket must stop accepting messages');
+        assert.equal(b.readyState, WebSocket.OPEN, 'another session stays live');
+        await assert.rejects(open(unused, operator), 'a logged-out session cannot spend an unused ticket');
+      } finally { a.close(); b.close(); }
+    }
+    console.log('PASS real workerd WebSocket logout: player/operator streams and unused tickets revoked, other devices preserved');
   } finally { if (worker) await worker.stop(); await node.stop(); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

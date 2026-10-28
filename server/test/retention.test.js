@@ -59,3 +59,13 @@ test('unread, conversation previews and moderation references stay writable; a f
   assert.ok(q('SELECT id FROM messages WHERE id = ?').get(id));
   assert.equal(q('SELECT id FROM message_archive WHERE id = ?').get(id), undefined);
 });
+
+test('the host scheduler drains a retention backlog in bounded one-minute batches', async t => {
+  const s = await startServer(); t.after(() => s.stop()); const p = await s.register('RetainQueue');
+  const now = Date.now(), put = s.app.db.prepare('INSERT INTO messages (id, channel, sender_id, kind, body, created_at) VALUES (?, ?, ?, ?, ?, ?)');
+  for (let i = 1; i <= 501; i++) put.run(i, 'old', p.me.id, 'text', 'read', now - 100 * DAY);
+  await s.app.api.housekeeping();
+  assert.equal(s.app.db.prepare("SELECT COUNT(*) AS n FROM messages WHERE channel = 'old'").get().n, 1);
+  const next = s.app.api.nextHousekeeping();
+  assert.ok(next >= now + 60000 && next < now + 90000, `backlog next sweep: ${next - now}ms`);
+});

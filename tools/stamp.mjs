@@ -46,7 +46,7 @@ function normalRefs(html, base = '') {
 const OPS_PAGE = 'ops/index.html';
 const SEC_PAGE = 'sec/index.html';
 const SEC_SHARED = /((?:src|href)="(\/js\/net\/[A-Za-z0-9._-]+\.js))(?:\?v=[0-9a-f]+)?"/g;
-const OPS_REF = /((?:src|href)="((?:\.\.\/js\/(?:net|core)\/)?[A-Za-z0-9._-]+\.(?:js|css)))(?:\?v=[0-9a-f]+)?"/g;
+const OPS_REF = /((?:src|href)="((?:\.\.\/(?:js\/(?:net|core)|css)\/)?[A-Za-z0-9._-]+\.(?:js|css)))(?:\?v=[0-9a-f]+)?"/g;
 
 export const fileHash = (rel) => crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, rel))).digest('hex').slice(0, HASH_LEN);
 

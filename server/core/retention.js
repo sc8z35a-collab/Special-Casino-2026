@@ -17,7 +17,7 @@ const SAFE = `m.held = 0 AND (m.pending = 0 OR m.claimed_at > 0)
 
 export function createRetention({ q, tx, clock = Date.now }) {
   let next = 0;
-  return { sweep({ force = false } = {}) {
+  return { nextDue: () => next, sweep({ force = false } = {}) {
     const now = clock();
     if (!force && now < next) return { skipped: true };
     const result = tx(() => {

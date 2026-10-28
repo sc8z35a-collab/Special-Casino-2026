@@ -424,6 +424,8 @@ export function createOpsWatch({ q, live, ops, opsLog, official, emergency, shie
   };
 
   return {
+    // Keep unfinished rows for startup recovery, but release in-process timers.
+    close() { clearInterval(timer); timer = null; sessions.clear(); },
     routes, tick, terminateAll, frame, favoriteIds, viewFor,
     active: () => [...sessions.values()].map((s) => ({ sid: s.id, op: s.opId, player: s.playerId, quality: s.quality, fps: s.fps, bytes: s.bytes, frames: s.frames }))
   };

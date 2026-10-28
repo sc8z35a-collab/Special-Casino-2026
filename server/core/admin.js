@@ -98,6 +98,7 @@ export function createAdmin(db, { seal = () => '', onBan = null, onCredentials =
       return tx(() => {
         const u = find(ref);
         if (u[currency] + n < 0) throw new AdminError(`残高が足りません（現在 ${u[currency]}）`);
+        if (!Number.isSafeInteger(u[currency] + n)) throw new AdminError('残高が扱える整数の上限を超えています');
         // `currency` is one of CURRENCIES, so it is safe as a column name
         q(`UPDATE users SET ${currency} = ${currency} + ?, rev = rev + 1 WHERE id = ?`).run(n, u.id);
         return { id: u.id, name: u.name, currency, before: u[currency], after: u[currency] + n };

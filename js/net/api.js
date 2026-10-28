@@ -84,8 +84,28 @@
   // (another login: what was the last one's is not this one's)
   function forgetHeld() { Object.keys(held.parts).forEach(function (k) { if (!KEEP[k]) { delete held.parts[k]; delete held.revs[k]; } }); }
 
-  var pendingSpin = null, clockOffset = 0, rotatingToken = null;
+  var pendingSpin = null, pendingGacha = null, clockOffset = 0, rotatingToken = null;
   var NETWORK = '通信できませんでした。電波の良い所でもう一度お試しください';
+  function drawKey() {
+    var bytes = new Uint8Array(16); crypto.getRandomValues(bytes);
+    return Math.round(Date.now() + clockOffset) + '-' + Array.prototype.map.call(bytes, function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+  }
+  // Survive a reload in this tab after the server committed but the answer was
+  // lost. The owner marker cannot be used as a login credential.
+  function readDraw(type) {
+    try { var r = JSON.parse(sessionStorage.getItem('blockbuster-reels/pending-' + type) || 'null');
+      return token && r && r.owner === token.slice(-16) && r.body && r.body.key ? { token: token, body: r.body } : null;
+    } catch (e) { return null; }
+  }
+  function saveDraw(type, job) {
+    try {
+      var key = 'blockbuster-reels/pending-' + type;
+      if (job) sessionStorage.setItem(key, JSON.stringify({ owner: job.token.slice(-16), body: job.body }));
+      else sessionStorage.removeItem(key);
+    } catch (e) { /* in-memory retry remains available */ }
+  }
+  function spinPending() { if (!pendingSpin || pendingSpin.token !== token) pendingSpin = readDraw('spin'); return pendingSpin; }
+  function gachaPending() { if (!pendingGacha || pendingGacha.token !== token) pendingGacha = readDraw('gacha'); return pendingGacha; }
   function viaHttp(method, path, headers, body) {
     return fetch(path, {
       method: method,
@@ -96,7 +116,14 @@
     }).catch(function () {
       throw new ApiError(0, 'network', NETWORK);
     }).then(function (res) {
-      return res.json().catch(function () { return {}; }).then(function (json) { return { status: res.status, json: json }; });
+      return res.json().catch(function () {
+        // A committed write with a truncated answer is uncertain, never a success.
+        if (res.status >= 200 && res.status < 300) throw new ApiError(0, 'network', NETWORK);
+        return {};
+      }).then(function (json) {
+        if (res.status >= 200 && res.status < 300 && (!json || typeof json !== 'object' || Array.isArray(json))) throw new ApiError(0, 'network', NETWORK);
+        return { status: res.status, json: json };
+      });
     });
   }
 
@@ -114,7 +141,7 @@
       return r ? { status: r.status, json: r.body } : viaHttp(method, path, headers, body);
     }, function () {
       // (the connection went before the answer: a look is asked again; what may have been done is not done twice)
-      if (method === 'GET' || (path === '/api/spin' && body && body.key)) return viaHttp(method, path, headers, body);
+      if (method === 'GET' || ((path === '/api/spin' || path === '/api/gacha/spin') && body && body.key)) return viaHttp(method, path, headers, body);
       throw new ApiError(0, 'network', NETWORK);
     });
     return got.then(function (r) {
@@ -228,8 +255,23 @@
     banState: function () { return get('/api/ban'); },
 
     /* the game */
+    pendingSpinBet: function () { var job = spinPending(); return job ? job.body.bet : null; },
+    pendingGacha: function () { var job = gachaPending(); return job ? { kind: job.body.kind, count: job.body.count, price: job.body.price } : null; },
     gacha: function () { return get('/api/gacha'); },
-    gachaSpin: function (kind, count, price) { return post('/api/gacha/spin', { kind: kind, count: count, price: price }); },
+    gachaSpin: function (kind, count, price) {
+      var job = gachaPending();
+      if (job && (job.body.kind !== kind || job.body.count !== count || job.body.price !== price)) return Promise.reject(new ApiError(409, 'gacha_pending', '前の抽選結果を確認してください'));
+      if (!job) { job = pendingGacha = { token: token, body: { key: drawKey(), kind: kind, count: count, price: price } }; saveDraw('gacha', job); }
+      if (!job.promise) job.promise = post('/api/gacha/spin', job.body).then(function (r) {
+        if (pendingGacha === job) { pendingGacha = null; saveDraw('gacha', null); }
+        return r;
+      }, function (err) {
+        job.promise = null;
+        if (err.status && err.status < 500 && pendingGacha === job) { pendingGacha = null; saveDraw('gacha', null); }
+        throw err;
+      });
+      return job.promise;
+    },
     gachaUse: function (item) { return post('/api/gacha/use', { item: item }); },
     lineReward: function (token) { return post('/api/line/reward', { token: token }); },
     lineRewardClaim: function (token) { return post('/api/line/reward/claim', { token: token }); },
@@ -242,20 +284,19 @@
     diaryClaim: function (id) { return post('/api/diary/claim', { post: id }); },
     // (idle: how long ago the player last did something, for the hub: js/ui/activity.js)
     spin: function (bet) {
-      if (!pendingSpin || pendingSpin.token !== token) {
-        var bytes = new Uint8Array(16); crypto.getRandomValues(bytes);
-        var key = Math.round(Date.now() + clockOffset) + '-' + Array.prototype.map.call(bytes, function (b) { return b.toString(16).padStart(2, '0'); }).join('');
-        pendingSpin = { token: token, body: { key: key, bet: bet, idle: BR.activity ? Math.round(BR.activity.idle()) : 0 } };
+      if (!spinPending()) {
+        pendingSpin = { token: token, body: { key: drawKey(), bet: bet, idle: BR.activity ? Math.round(BR.activity.idle()) : 0 } };
+        saveDraw('spin', pendingSpin);
       }
       var job = pendingSpin;
       if (job.promise) return job.promise;
       // A lost answer keeps the same immutable request for the next attempt.
       job.promise = post('/api/spin', job.body).then(function (r) {
-        if (pendingSpin === job) pendingSpin = null;
+        if (pendingSpin === job) { pendingSpin = null; saveDraw('spin', null); }
         return r;
       }, function (err) {
         job.promise = null;
-        if (err.status && err.status < 500 && pendingSpin === job) pendingSpin = null;
+        if (err.status && err.status < 500 && pendingSpin === job) { pendingSpin = null; saveDraw('spin', null); }
         throw err;
       });
       return job.promise;

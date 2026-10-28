@@ -36,3 +36,16 @@ test('spin deduplication persists across instances; failures roll back; expired 
   now += SPIN_RETRY_MS + 1; make().prune();
   assert.throws(() => make().run(p.me.id, body, settle), e => e.code === 'spin_expired'); assert.equal(settles, 1);
 });
+
+test('a future-dated key stays deduplicated for its entire acceptance window, including pruning', async t => {
+  const s = await startServer(); t.after(() => s.stop()); const p = await s.register('FutureKey');
+  const q = statements(s.app.db); let now = Date.now(), settled = 0;
+  const r = createSpinRequests({ q, tx: fn => s.app.db.tx(fn), clock: () => now });
+  const body = { key: (now + 9 * 60000) + '-' + 'b'.repeat(32), bet: 100 };
+  const settle = () => ({ settled: ++settled });
+  const first = r.run(p.me.id, body, settle);
+  now += SPIN_RETRY_MS + 60000; r.prune();
+  assert.deepEqual(r.run(p.me.id, body, settle), first); assert.equal(settled, 1);
+  now += 10 * 60000; r.prune();
+  assert.throws(() => r.run(p.me.id, body, settle), e => e.code === 'spin_expired'); assert.equal(settled, 1);
+});
