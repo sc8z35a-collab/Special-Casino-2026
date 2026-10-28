@@ -40,11 +40,14 @@ const { chromium } = require('playwright');
     // while it is showing cannot move the level-up presentation.
     await page.evaluate(async () => { await BR.resources.load('reward3d'); await BR.reward3d.preload(); });
     await page.evaluate(() => { BR.quests.setXp(0, true); BR.quests.setXp(BR.LEVEL.info(0).need + 1); });
-    await page.waitForFunction(() => !!document.querySelector('.reward3d, .jc-banner.level'));
-    await page.evaluate(() => {
-      // Keep a layout probe after the real 2.7s animation ends on slow CI GPUs.
-      const probe = document.querySelector('.reward3d, .jc-banner.level').cloneNode(false);
+    await page.waitForFunction(() => {
+      // Capture the real presentation atomically: it may end between browser calls.
+      // Keep its layout probe after the 2.7s animation ends on slow CI GPUs.
+      const node = document.querySelector('.reward3d, .jc-banner.level');
+      if (!node) return false;
+      const probe = node.cloneNode(false);
       probe.id = 'audit-reward-anchor'; document.getElementById('stage').appendChild(probe);
+      return true;
     });
     const rewardCenter = () => page.evaluate(() => {
       const node = document.getElementById('audit-reward-anchor'), a = node.getBoundingClientRect(), b = document.getElementById('stage').getBoundingClientRect();
