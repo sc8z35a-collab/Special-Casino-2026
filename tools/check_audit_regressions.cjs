@@ -91,6 +91,46 @@ async function holdBriefTimers(page) {
       console.log('PASS unfriending ends the real watch and voice room, restores own reels and enables spinning');
     } finally { hostLive.close(); }
 
+    const nextPlayer = await s.register('SwitchUI');
+    const accountContext = await browser.newContext({ serviceWorkers: 'block', reducedMotion: 'reduce', viewport: { width: 1440, height: 1000 } });
+    const accountPage = await accountContext.newPage(); accountPage.setDefaultTimeout(30000); accountPage.on('pageerror', e => errors.push(e.message));
+    await accountPage.addInitScript(() => { Element.prototype.requestFullscreen = () => Promise.resolve(); });
+    await accountPage.goto(s.base);
+    let heldLogin, enterLogin; const loginEntered = new Promise(resolve => { enterLogin = resolve; }); let loginCount = 0;
+    await accountPage.route('**/api/login', route => { if (++loginCount !== 1) return route.continue(); heldLogin = route; enterLogin(); });
+    await accountPage.evaluate(() => BR.account.open('login'));
+    await accountPage.locator('#ov-login-name').fill(player.me.name); await accountPage.locator('#ov-login-pass').fill('pass1234');
+    await accountPage.locator('#ov-login button[type="submit"]').click(); await loginEntered;
+    const oldLogin = await heldLogin.fetch(), unusedSession = (await oldLogin.json()).token; assert.ok(unusedSession);
+    await accountPage.evaluate(() => { BR.account.close(); BR.account.open('login'); });
+    const retired = accountPage.waitForResponse(r => r.url().endsWith('/api/logout') && r.request().headers().authorization === 'Bearer ' + unusedSession);
+    await heldLogin.fulfill({ response: oldLogin }); await retired;
+    assert.equal(await accountPage.evaluate(() => BR.api.hasToken()), false); assert.equal(await accountPage.locator('#ov-login').isVisible(), true);
+    assert.equal((await s.call('GET', '/api/me', { token: unusedSession })).status, 401);
+    await accountPage.locator('#ov-login-name').fill(nextPlayer.me.name); await accountPage.locator('#ov-login-pass').fill('pass1234');
+    await accountPage.locator('#ov-login button[type="submit"]').click(); await accountPage.waitForFunction(id => BR.bank.ready() && BR.social.me()?.id === id, nextPlayer.me.id);
+    await accountPage.evaluate(() => { BR.kit.closeModals(); BR.quests.setXp(1000000, true); BR.account.open('code-login'); });
+    await accountPage.locator('#ov-code').fill(player.recoveryCode); await accountPage.locator('#ov-code-login button[type="submit"]').click();
+    await accountPage.waitForFunction(id => BR.bank.ready() && BR.social.me()?.id === id, player.me.id);
+    assert.equal(await accountPage.evaluate(() => BR.quests.xp()), s.app.db.prepare('SELECT xp FROM users WHERE id=?').get(player.me.id).xp);
+    const orderedProfile = await accountPage.evaluate(async () => {
+      const before = structuredClone(BR.social.me()), purchased = await BR.api.buy(1);
+      BR.social.setMe(purchased.me); BR.app.serverBalance(purchased.me); BR.social.setMe(before); BR.app.serverBalance(before);
+      return { expected: purchased.me.rev, profile: BR.social.me().rev, bank: BR.bank.me().rev, bought: BR.bank.me().boughtToday, expectedBought: purchased.me.boughtToday };
+    });
+    assert.equal(orderedProfile.profile, orderedProfile.expected); assert.equal(orderedProfile.bank, orderedProfile.expected); assert.equal(orderedProfile.bought, orderedProfile.expectedBought);
+    await accountPage.evaluate(() => { BR.kit.closeModals(); BR.social.openProfile(BR.social.me()); });
+    await accountPage.locator('#profile [data-act="logout"]').waitFor();
+    await accountPage.evaluate(() => { BR.push.forget = () => new Promise(resolve => { window.auditFinishLogout = resolve; }); });
+    await accountPage.locator('#profile [data-act="logout"]').click(); await accountPage.locator('#confirm-yes').click();
+    await accountPage.waitForFunction(() => typeof window.auditFinishLogout === 'function');
+    let wrongLogouts = 0; accountPage.on('request', r => { if (r.url().endsWith('/api/logout')) wrongLogouts++; });
+    await accountPage.evaluate(p => { BR.social.signIn(p.token, p.me); window.auditFinishLogout(); }, nextPlayer);
+    await accountPage.waitForTimeout(200); await accountPage.waitForFunction(id => BR.bank.ready() && BR.social.me()?.id === id, nextPlayer.me.id);
+    assert.equal(wrongLogouts, 0); assert.equal((await s.call('GET', '/api/me', { token: nextPlayer.token })).status, 200);
+    await accountContext.close();
+    console.log('PASS real account forms retire canceled sessions, reset switched-account XP, reject stale profiles and preserve a replacement login during delayed logout');
+
     const ops = await ctx.newPage(); ops.setDefaultTimeout(30000); ops.on('pageerror', e => errors.push(e.message));
     async function login(releaseTimers, name = 'taku') {
       await ops.locator('#login-name').fill(name); await ops.locator('#login-pass').fill('pass1234');

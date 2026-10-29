@@ -3446,11 +3446,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!PUSH_HOSTS.test(host) || endpoint.length > 2000 || !/^[\w-]{40,200}$/.test(String(keys.p256dh || '')) || !/^[\w-]{10,64}$/.test(String(keys.auth || ''))) {
         throw new ApiError(400, 'bad_subscription', 'この端末では通知を登録できませんでした');
       }
-      push.subscribe(u.id, { endpoint, p256dh: String(keys.p256dh), auth: String(keys.auth) }, String(req.header('origin') || ''));
-      // a few devices a player: the oldest go
-      const extra = q('SELECT endpoint FROM push_subs WHERE user_id = ? ORDER BY created_at DESC LIMIT -1 OFFSET 8').all(u.id);
-      for (const r of extra) q('DELETE FROM push_subs WHERE endpoint = ?').run(r.endpoint);
-      return { ok: true };
+      return tx(() => {
+        push.subscribe(u.id, { endpoint, p256dh: String(keys.p256dh), auth: String(keys.auth) }, String(req.header('origin') || ''));
+        // a few devices a player: the least recently registered go
+        const extra = q('SELECT endpoint FROM push_subs WHERE user_id = ? ORDER BY created_at DESC LIMIT -1 OFFSET 8').all(u.id);
+        for (const r of extra) q('DELETE FROM push_subs WHERE endpoint = ?').run(r.endpoint);
+        return { ok: true };
+      });
     }],
     ['POST /api/push/unsubscribe', async (req, u) => {
       const body = await req.json(8192);

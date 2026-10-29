@@ -139,6 +139,11 @@
     });
   }
 
+  function discardSession(t) {
+    if (!t || t === token) return Promise.resolve();
+    return viaHttp('POST', '/api/logout', { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, {}).catch(function () {});
+  }
+
   // On the live connection when it is up (js/net/wire.js: no request of its own), else over HTTP; the answer is read the same way.
   function request(method, path, body) {
     var sentToken = token, sentGeneration = tokenGeneration;
@@ -157,7 +162,11 @@
       throw new ApiError(0, 'network', NETWORK);
     });
     return got.then(function (r) {
-      if (sentToken && sentGeneration !== tokenGeneration && path !== '/api/password') throw new ApiError(0, 'session_changed', 'ログイン状態が変わりました');
+      var authenticates = /^\/api\/(?:login|register|oauth\/(?:poll|register))$/.test(path);
+      if ((sentToken || authenticates) && sentGeneration !== tokenGeneration && path !== '/api/password') {
+        if (authenticates && r.status >= 200 && r.status < 300) discardSession(r.json && r.json.token);
+        throw new ApiError(0, 'session_changed', 'ログイン状態が変わりました');
+      }
       var json = r.json || {};
       if (r.status >= 200 && r.status < 300) {
         if (Number.isFinite(json.now)) clockOffset = json.now - Date.now();
@@ -220,6 +229,7 @@
     ApiError: ApiError,
     restored: restored,
     hasToken: function () { return !!token; },
+    discardSession: discardSession,
     setToken: function (t) {
       tokenGeneration++;
       if ((t || null) !== token) forgetHeld();
@@ -238,7 +248,7 @@
     register: function (name, password, avatar) { return post('/api/register', { name: name, password: password, avatar: avatar }); },
     login: function (name, password) { return post('/api/login', { name: name, password: password }); },
     loginCode: function (code) { return post('/api/login', { code: code }); },
-    logout: function () { return post('/api/logout'); },
+    logout: function (endpoint) { return post('/api/logout', { endpoint: endpoint }); },
     recovery: function () { return post('/api/recovery'); },
     // Google / Discord (js/ui/oauth.js)
     oauthProviders: function () { return get('/api/oauth/providers'); },
@@ -250,15 +260,15 @@
     oauthUnlink: function (provider) { return post('/api/oauth/unlink', { provider: provider }); },
     oauthLinks: function () { return get('/api/oauth/links'); },
     password: function (current, password) {
-      var oldToken = token;
+      var oldToken = token, oldGeneration = tokenGeneration;
       rotatingToken = oldToken;
       BR.live.close();
       return post('/api/password', { current: current, password: password }).then(function (r) {
-      if (token !== oldToken) {
+      if (token !== oldToken || tokenGeneration !== oldGeneration) {
         if (rotatingToken === oldToken) rotatingToken = null;
         // A logout or another account won while the password was being hashed.
         // Discard the new unused session without changing that account's login.
-        viaHttp('POST', '/api/logout', { Authorization: 'Bearer ' + r.token, 'Content-Type': 'application/json' }, {}).catch(function () {});
+        discardSession(r.token);
         throw new ApiError(0, 'session_changed', 'ログイン状態が変わりました');
       }
       rotateDraws(r.token);
@@ -268,7 +278,7 @@
       return r;
     }, function (err) {
       if (rotatingToken === oldToken) rotatingToken = null;
-      if (token !== oldToken) throw err;
+      if (token !== oldToken || tokenGeneration !== oldGeneration) throw err;
       if (err.status === 401) emit('auth-lost', err);
       else BR.live.connect();
       throw err;

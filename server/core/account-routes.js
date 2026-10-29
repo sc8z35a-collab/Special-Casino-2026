@@ -64,10 +64,14 @@ export function createAccountRoutes({ q, tx, config, limit, rate, nameProblem, d
       return { ban: banState(liftExpired(u)) };
     }],
 
-    ['POST /api/logout', (req, u) => {
-      q('DELETE FROM sessions WHERE token_hash = ?').run(u.tokenHash);
-      live.dropSession?.(u.id, u.tokenHash);
-      return { ok: true };
+    ['POST /api/logout', async (req, u) => {
+      const body = !req.header || /^application\/json\b/i.test(req.header('content-type') || '') ? await req.json() : {};
+      return tx(() => {
+        if (typeof body.endpoint === 'string') q('DELETE FROM push_subs WHERE endpoint = ? AND user_id = ?').run(body.endpoint, u.id);
+        q('DELETE FROM sessions WHERE token_hash = ?').run(u.tokenHash);
+        live.dropSession?.(u.id, u.tokenHash);
+        return { ok: true };
+      });
     }],
 
     ['POST /api/recovery', (req, u) => {

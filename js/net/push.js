@@ -20,7 +20,13 @@
   var AGAIN_MS = 3 * 86400000, MAX_ASKS = 3;
 
   var me = null, root = null, promptTimer = 0, busy = false;
+  var epoch = 0;
   var app = window.TwoStateApp && typeof window.TwoStateApp.notice === 'function' ? window.TwoStateApp : null;
+  function current(gen, layer) { return gen === epoch && !!me && api.hasToken() && (!layer || root === layer); }
+  function guard(gen, layer) {
+    if (current(gen, layer)) return;
+    var error = new Error('ログイン状態が変わりました'); error.code = 'session_changed'; throw error;
+  }
 
   function mode() {
     if (!api.online) return 'none';
@@ -57,21 +63,27 @@
     }).then(function () { return navigator.serviceWorker.ready; });
   }
   // this browser's subscription, made if needed and given to the server (for the account signed in now)
-  function subscribe() {
+  function subscribe(check) {
+    check();
     return Promise.all([registration(), api.pushKey()]).then(function (r) {
+      check();
       var reg = r[0], key = r[1].key;
       return reg.pushManager.getSubscription().then(function (sub) {
+        check();
         if (sub) return sub;
         return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
       }).catch(function () {
+        check();
         // made with another key (the server's changed): made again
         return reg.pushManager.getSubscription().then(function (old) {
+          check();
           return (old ? old.unsubscribe() : Promise.resolve()).then(function () {
+            check();
             return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
           });
         });
       });
-    }).then(function (sub) { return api.pushSubscribe(sub.toJSON()); });
+    }).then(function (sub) { check(); return api.pushSubscribe(sub.toJSON()); });
   }
   function endpoint() {
     if (mode() !== 'web') return Promise.resolve(null);
@@ -82,7 +94,8 @@
 
   /* ------------------------------------------------------------ on / off --- */
   // (from a tap: the browser asks for the permission right away)
-  function enable() {
+  function enable(check) {
+    check();
     var m = mode();
     if (m === 'app') {
       try { app.askNotify(); } catch (e) { /* an older app */ }
@@ -95,33 +108,40 @@
         if (r && r.then) r.then(resolve);
       });
     return ask.then(function (p) {
+      check();
       if (p !== 'granted') return p;
-      return subscribe().then(function () { return 'granted'; });
+      return subscribe(check).then(function () { return 'granted'; });
     });
   }
-  function disable() {
+  function disable(check) {
+    check();
     var m = mode();
     if (m === 'app') { try { app.notifyOff(); } catch (e) { /* an older app */ } return Promise.resolve(); }
     return navigator.serviceWorker.getRegistration().then(function (reg) {
+      check();
       return reg ? reg.pushManager.getSubscription() : null;
     }).then(function (sub) {
+      check();
       if (!sub) return null;
-      return api.pushUnsubscribe(sub.endpoint).catch(function () {}).then(function () { return sub.unsubscribe(); });
-    }).catch(function () {});
+      return api.pushUnsubscribe(sub.endpoint).catch(function () {}).then(function () { check(); return sub.unsubscribe(); });
+    }).catch(function (e) { if (e && e.code === 'session_changed') throw e; });
   }
   // signing out: this phone stops getting the account's notifications
   function forget() {
-    return endpoint().then(function (ep) { return ep ? api.pushUnsubscribe(ep).catch(function () {}) : null; });
+    var gen = ++epoch;
+    return endpoint().then(function (ep) { return current(gen) && ep ? api.pushUnsubscribe(ep).catch(function () {}).then(function () { return ep; }) : null; });
   }
   // signed in: an allowed browser is (still) subscribed for this account
   function sync() {
-    if (mode() === 'web' && Notification.permission === 'granted') subscribe().catch(function () {});
+    var gen = epoch;
+    if (mode() === 'web' && Notification.permission === 'granted') subscribe(function () { guard(gen); }).catch(function () {});
   }
 
   /* ------------------------------------------------------------ the question --- */
-  function close() { if (root) { root.parentNode.removeChild(root); root = null; } }
+  function close() { busy = false; if (root) { root.parentNode.removeChild(root); root = null; } }
   // state: what to show (the question, or the settings from the profile)
   function show(fromProfile) {
+    if (!me || !api.hasToken()) return;
     close();
     var m = mode(), p = permission();
     root = el('div', 'ov push-ov');
@@ -156,21 +176,28 @@
       on.classList.remove('gold');
       on.addEventListener('click', function () {
         if (busy) return;
+        var gen = ++epoch, layer = root;
         busy = true;
-        disable().then(function () { busy = false; close(); K.toast('通知をオフにしました'); });
+        disable(function () { guard(gen, layer); }).then(function () {
+          if (!current(gen, layer)) return;
+          close(); K.toast('通知をオフにしました');
+        }, function (e) { if (current(gen, layer)) { busy = false; err.textContent = e.message; } });
       });
     }
     if (!(fromProfile && p === 'granted')) {
       on.addEventListener('click', function () {
         if (busy) return;
+        var gen = ++epoch, layer = root;
         busy = true;
         err.textContent = '';
-        enable().then(function (r) {
+        enable(function () { guard(gen, layer); }).then(function (r) {
+          if (!current(gen, layer)) return;
           busy = false;
           if (r === 'granted') { close(); K.sfx('notify'); K.toast('通知をオンにしました'); }
           else if (r === 'denied') { err.textContent = '通知が許可されませんでした。あとでプロフィールの「通知」からオンにできます'; }
           else if (m === 'app') { close(); }
         }, function (e) {
+          if (!current(gen, layer)) return;
           busy = false;
           err.textContent = (e && e.message) || '通知をオンにできませんでした。もう一度お試しください';
         });
@@ -223,7 +250,7 @@
   /* ------------------------------------------------------------ the app's own notifications --- */
   var rang = {};
   function appNotify(title, body, tag, call) {
-    if (!app || !document.hidden || permission() !== 'granted') return;
+    if (!me || !app || !document.hidden || permission() !== 'granted') return;
     // a tap leads to the chat (or the friends, for an invitation)
     var open = /^(dm|group):\d+$/.test(tag) ? tag : tag.indexOf('invite:') === 0 ? 'friends' : tag.indexOf('tree:') === 0 ? 'tree' : '';
     try { app.notice(String(title), String(body), String(tag), call ? 1 : 0, open); } catch (e) { /* an older app */ }
@@ -249,9 +276,10 @@
   /* ------------------------------------------------------------ where a tap leads --- */
   function openTarget(open) {
     if (!open || !me) return;
+    var gen = epoch;
     var m = /^(dm|group):(\d+)$/.exec(open);
     if (m && m[1] === 'dm') {
-      api.user(Number(m[2])).then(function (r) { BR.social.openDm(r.user); }, function () { BR.social.open('messages'); });
+      api.user(Number(m[2])).then(function (r) { if (current(gen)) BR.social.openDm(r.user); }, function () { if (current(gen)) BR.social.open('messages'); });
     } else if (m) {
       BR.social.openGroup(Number(m[2]));
     } else if (open === 'friends') {
@@ -270,11 +298,12 @@
 
   function onMe(m) {
     var was = me;
+    if (!m || !was || was.id !== m.id) { epoch++; clearTimeout(promptTimer); close(); rang = {}; }
     me = m;
     if (!m) { clearTimeout(promptTimer); close(); return; }
     if (!was || was.id !== m.id) {
       sync();
-      if (pending) { var p = pending; pending = ''; setTimeout(function () { openTarget(p); }, 600); }
+      if (pending) { var p = pending, gen = epoch; pending = ''; setTimeout(function () { if (current(gen)) openTarget(p); }, 600); }
     }
     maybeAsk();
   }

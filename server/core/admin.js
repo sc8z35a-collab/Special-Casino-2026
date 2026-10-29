@@ -227,7 +227,8 @@ export function createAdmin(db, { seal = () => '', onBan = null, onCredentials =
           const rows = data.tables[t] || [];
           for (const row of rows) {
             const cols = Object.keys(row);
-            if (!cols.every((c) => /^[a-z_]+$/.test(c))) throw new AdminError(`列名が正しくありません: ${t}`);
+            // Valid SQLite identifiers include numbered fields such as p256dh.
+            if (!cols.every((c) => /^[a-z_][a-z0-9_]*$/.test(c))) throw new AdminError(`列名が正しくありません: ${t}`);
             q(`INSERT INTO ${t} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((c) => row[c]));
           }
           counts[t] = rows.length;
