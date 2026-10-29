@@ -29,7 +29,10 @@ function memoryBucket() {
   const objects = new Map();
   return {
     objects,
-    async put(key, bytes, sha256) { objects.set(key, { bytes: Buffer.from(bytes), sha256 }); },
+    async put(key, bytes, sha256, options = {}) {
+      if (options.onlyIfAbsent && objects.has(key)) return false;
+      objects.set(key, { bytes: Buffer.from(bytes), sha256 }); return true;
+    },
     async get(key) { const o = objects.get(key); return o ? { bytes: new Uint8Array(o.bytes), sha256: o.sha256 } : null; },
     async list(prefix) { return [...objects].filter(([k]) => k.startsWith(prefix)).map(([key, o]) => ({ key, sha256: o.sha256 })); },
     async del(keys) { for (const k of keys) objects.delete(k); }
@@ -723,8 +726,11 @@ test('Cloudflare: a vault piece goes from the Worker straight into R2 (the objec
       async put(key, stream, opts) {
         const bytes = Buffer.from(await new Response(stream).arrayBuffer());
         if (hash(bytes) !== opts.sha256) throw new Error('put: The SHA-256 checksum you specified did not match what we received.');
+        if (opts.onlyIf?.etagDoesNotMatch === '*' && bucket.objects.has(key)) return null;
         await bucket.put(key, bytes, opts.customMetadata.sha256);
+        return { key };
       },
+      async head(key) { const o = bucket.objects.get(key); return o ? { size: o.bytes.length, customMetadata: { sha256: o.sha256 } } : null; },
       async delete(key) { await bucket.del([key]); }
     };
     const env = { VAULT, ASSETS: { fetch: () => new Response('') }, CASINO: { idFromName: () => 'main', get: () => casino } };

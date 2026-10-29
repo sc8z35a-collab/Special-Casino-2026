@@ -86,6 +86,7 @@ import { Limiter } from './ratelimit.js';
 import { keyFrom, sealText, openText } from './auth.js';
 import { agentOf } from './opsentry.js';
 import { requestProfile } from './reqinfo.js';
+import { piecePrefix, pieceKey } from './vault-pieces.js';
 
 export const CHUNK = 1024 * 1024;
 const TICKET_MS = 30 * 60000;
@@ -170,7 +171,7 @@ export const VAULT_SPEEDS = {
 export const VAULT_BULK = new Set(['POST /api/vault/piece', 'POST /api/vault/chunk', 'POST /api/vault/permit', 'POST /api/vault/stored', 'GET /api/vault/chunk']);
 // a file's row as read for everything but its picture (up to 600KB, read
 // only when it is shown): `preview` is 1 when it has one
-const COLS = `id, name, type, note, size, chunks, piece, received, sha256, created_by, created_at, done_at, parent, folder, inside, space, labels, implemented_at, info, restarts,
+const COLS = `id, name, type, note, size, chunks, piece, received, sha256, created_by, created_at, done_at, parent, folder, inside, space, labels, implemented_at, info, restarts, storage_generation,
   backup_at, backup_by, removed_at, removed_by, from_space, from_folder, (preview != '') AS preview, (thumbnail != '') AS thumbnail`;
 // the guard: what is not one's own asked for this often in 10 minutes keeps
 // one out of the vault for 15; wrong links from one address this often, out
@@ -343,14 +344,14 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   // picture): one who may change it; the developer with the ticket, or with
   // the upload's own pass (so it goes on with the vault closed)
   // (`bulk`: a piece, under the pieces' own limit)
-  function sending(req, u, id, bulk = false) {
+  function sending(req, u, id, bulk = false, charge = true) {
     ops.need(u);
     guarded(u);
     const f = theFile(u, id, 'change', req);
     // (a pass alone — no login — is for the one file it was made for)
     if (req.passFile !== undefined) { if (req.passFile !== f.id) throw locked(); }
     else if (isDeveloper(u) && !ticketOk(req, u) && !uploadOk(req, u, f.id)) throw locked();
-    rate(bulk ? pieceLimits[speedNow()] : limits.work, u.id);
+    if (charge) rate(bulk ? pieceLimits[speedNow()] : limits.work, u.id);
     return f;
   }
   const developerOnly = (u, what) => {
@@ -562,13 +563,15 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   }
 
   /* -------------------------------------------------------------- pieces --- */
-  const pieceKey = (fileId, n) => `vault/${fileId}/${n}`;
   // every piece of a file that is in: n -> its SHA-256 (the database's, then the bucket's)
   async function piecesOf(f) {
     const have = new Map(q('SELECT n, sha256 FROM vault_chunks WHERE file_id = ?').all(f.id).map((r) => [r.n, r.sha256]));
     if (blobs) {
-      for (const o of await blobs.list(`vault/${f.id}/`)) {
-        const n = Number(o.key.slice(o.key.lastIndexOf('/') + 1));
+      const prefix = piecePrefix(f);
+      for (const o of await blobs.list(prefix)) {
+        const suffix = o.key.slice(prefix.length);
+        if (!/^\d+$/.test(suffix)) continue;
+        const n = Number(suffix);
         if (Number.isInteger(n) && n >= 0 && n < f.chunks && HEX64.test(o.sha256 || '') && !have.has(n)) have.set(n, o.sha256);
       }
     }
@@ -587,7 +590,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   async function piece(f, n) {
     const c = q('SELECT n, sha256, data FROM vault_chunks WHERE file_id = ? AND n = ?').get(f.id, n);
     if (c) return { n: c.n, sha256: c.sha256, data: c.data };
-    const b = blobs ? await blobs.get(pieceKey(f.id, n)) : null;
+    const b = blobs ? await blobs.get(pieceKey(f, n)) : null;
     if (!b) throw new ApiError(404, 'no_piece', 'この部分はまだありません');
     return { n, sha256: b.sha256, data: Buffer.from(b.bytes).toString('base64') };
   }
@@ -600,7 +603,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       sha256 = c.sha256;
       bytes = Buffer.from(head ? c.data.slice(0, Math.ceil(head / 3) * 4) : c.data, 'base64');
     } else {
-      const b = blobs ? await blobs.get(pieceKey(f.id, n)) : null;
+      const b = blobs ? await blobs.get(pieceKey(f, n)) : null;
       if (!b) throw new ApiError(404, 'no_piece', 'この部分はまだありません');
       sha256 = b.sha256;
       bytes = b.bytes;
@@ -619,14 +622,39 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   const pieceSize = () => new ApiError(400, 'piece_size', '送った部分の大きさが合いませんでした（通信が途中で切れたようです）。自動でもう一度送ります');
   const badHash = () => new ApiError(400, 'bad_hash', '送った部分が途中で壊れていました（ハッシュが一致しません）。自動でもう一度送ります');
   const isDone = () => new ApiError(409, 'done', 'このファイルはもう全部届いています');
+  const restarted = () => new ApiError(409, 'upload_restarted', 'このアップロードは最初からやり直されました。「再開」で現在の状態を確認してください', { discard: true });
+  const pieceConflict = () => new ApiError(409, 'piece_conflict', 'この部分には別のデータが届いています。「最初からやり直す」で送り直してください');
+  // Every asynchronous storage read/write must still belong to the same upload.
+  // Authorization alone does not prevent a deleted/restarted/completed file from changing.
+  function currentUpload(f, req, u, writable = false) {
+    req.revalidate?.();
+    const cur = sending(req, u, f.id, true, false);
+    if (cur.storage_generation !== f.storage_generation) throw restarted();
+    if (writable && cur.done_at) throw isDone();
+    return cur;
+  }
+  async function putPiece(key, bytes, want) {
+    const written = await blobs.put(key, bytes, want, { onlyIfAbsent: true });
+    if (written === false) {
+      const existing = blobs.head ? await blobs.head(key) : await blobs.get(key);
+      if (existing?.sha256 !== want || (existing.size ?? existing.bytes?.length) !== bytes.length) throw pieceConflict();
+    }
+  }
   // one piece in (checked): into the bucket, or the database
   async function storePiece(f, n, bytes, want, req, u) {
     if (bytes.length !== pieceLen(f, n)) throw pieceSize();
     if (sha(bytes) !== want) throw badHash();
+    f = currentUpload(f, req, u, true);
     if (blobs) {
       // (nothing written to the database: POST /api/vault/finish once all are sent)
-      await blobs.put(pieceKey(f.id, n), bytes, want);
-      if (!fileRow(f.id)) { await blobs.del([pieceKey(f.id, n)]); throw noFile(); }
+      const key = pieceKey(f, n);
+      await putPiece(key, bytes, want);
+      const cur = fileRow(f.id);
+      if (!cur || cur.storage_generation !== f.storage_generation) {
+        await blobs.del([key]);
+        throw cur ? restarted() : noFile();
+      }
+      currentUpload(f, req, u);
       return { n, stored: true, chunks: f.chunks };
     }
     const data = Buffer.from(bytes).toString('base64');
@@ -702,7 +730,11 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       }
     });
     // (in the bucket: every piece it could have)
-    if (blobs) await blobs.del(all.flatMap((x) => Array.from({ length: x.chunks }, (_, n) => pieceKey(x.id, n))));
+    if (blobs) for (const x of all) {
+      const keys = new Set(Array.from({ length: x.chunks }, (_, n) => pieceKey(x, n)));
+      for (const object of await blobs.list(`vault/${x.id}/`)) keys.add(object.key);
+      await blobs.del([...keys]);
+    }
   }
   // the vaults in figures (the operator site's サーバー tab: every operator, so no names)
   function summary() {
@@ -1067,8 +1099,9 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
 
     // what an unfinished upload still needs (and a new pass for it)
     'GET /api/vault/missing': async (req, u) => {
-      const f = sending(req, u, req.query.get('id'));
+      let f = sending(req, u, req.query.get('id'));
       const have = await piecesOf(f);
+      f = currentUpload(f, req, u);
       if (!f.done_at && have.size !== f.received) { q('UPDATE vault_files SET received = ? WHERE id = ?').run(have.size, f.id); bump(); }
       return { file: fileDto(fileRow(f.id)), missing: gaps(f, have), upload: uploadFor(u, f), speed: speedDto() };
     },
@@ -1107,11 +1140,14 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const n = pieceNo(f, req.query.get('n'));
       if (!HEX64.test(String(body.sha256 || ''))) throw new ApiError(400, 'bad_piece', '送った部分の確認用の値（SHA-256）がありません。ページを読み込み直してください');
       if (Number(body.size) !== pieceLen(f, n)) throw pieceSize();
-      return { n, key: blobs ? pieceKey(f.id, n) : '' };
+      return { n, key: blobs ? pieceKey(f, n) : '', generation: f.storage_generation };
     },
     // …and after it went in: is the file still there (deleted meanwhile: the Worker takes the piece out again)
-    'POST /api/vault/stored': (req, u) => {
+    'POST /api/vault/stored': async (req, u) => {
+      const body = await req.json();
+      if (!fileRow(req.query.get('id'))) throw new ApiError(404, 'no_file', 'ファイルが見つかりません', { discard: true });
       const f = sending(req, u, req.query.get('id'), true);
+      if (Number(body.generation ?? 0) !== f.storage_generation) throw restarted();
       return { ok: true, chunks: f.chunks };
     },
 
@@ -1131,18 +1167,20 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       }
       tx(() => {
         q('DELETE FROM vault_chunks WHERE file_id = ?').run(f.id);
-        q('UPDATE vault_files SET received = 0, restarts = restarts + 1 WHERE id = ?').run(f.id);
+        q('UPDATE vault_files SET received = 0, restarts = restarts + 1, storage_generation = storage_generation + 1 WHERE id = ?').run(f.id);
       });
-      if (blobs) await blobs.del(Array.from({ length: f.chunks }, (_, n) => pieceKey(f.id, n)));
+      if (blobs) await blobs.del(Array.from({ length: f.chunks }, (_, n) => pieceKey(f, n)));
       bump();
       return { ok: true, restarts: f.restarts + 1, chunks: f.chunks };
     },
 
     'POST /api/vault/finish': async (req, u) => {
       const body = await req.json();
-      const f = sending(req, u, body.id);
+      let f = sending(req, u, body.id);
       if (f.done_at) return { file: fileDto(f), done: true, sha256: f.sha256, missing: [] };
       const have = await piecesOf(f);
+      f = currentUpload(f, req, u);
+      if (f.done_at) return { file: fileDto(f), done: true, sha256: f.sha256, missing: [] };
       if (have.size < f.chunks) {
         if (have.size !== f.received) q('UPDATE vault_files SET received = ? WHERE id = ?').run(have.size, f.id);
         return { file: fileDto(fileRow(f.id)), done: false, sha256: '', missing: gaps(f, have) };
@@ -1327,8 +1365,14 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       if (!blobs) return { moved: 0, left: 0 };
       const rows = q('SELECT file_id, n, sha256, data FROM vault_chunks LIMIT ?').all(TO_BUCKET);
       for (const r of rows) {
-        await blobs.put(pieceKey(r.file_id, r.n), Buffer.from(r.data, 'base64'), r.sha256);
-        q('DELETE FROM vault_chunks WHERE file_id = ? AND n = ?').run(r.file_id, r.n);
+        const f = fileRow(r.file_id);
+        if (!f) continue;
+        const key = pieceKey(f, r.n);
+        await putPiece(key, Buffer.from(r.data, 'base64'), r.sha256);
+        const cur = fileRow(f.id);
+        if (!cur || cur.storage_generation !== f.storage_generation) { await blobs.del([key]); continue; }
+        req.revalidate?.(); need(req, u, true);
+        q('DELETE FROM vault_chunks WHERE file_id = ? AND n = ? AND sha256 = ? AND data = ?').run(r.file_id, r.n, r.sha256, r.data);
       }
       const left = inDb();
       if (rows.length && !left) opsLog.add({ actor: u, action: 'vault_bucket', req, summary: '保管庫のファイルをすべてR2に移した', detail: {} });

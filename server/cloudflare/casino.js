@@ -61,7 +61,9 @@ function sqlAdapter(ctx) {
 // (server/core/vault.js).
 function bucketBlobs(bucket) {
   return {
-    put: (key, bytes, sha256) => bucket.put(key, bytes, { customMetadata: { sha256 } }),
+    put: async (key, bytes, sha256, options = {}) => (await bucket.put(key, bytes, {
+      customMetadata: { sha256 }, ...(options.onlyIfAbsent ? { onlyIf: { etagDoesNotMatch: '*' } } : {})
+    })) !== null,
     async head(key) {
       const o = await bucket.head(key);
       return o ? { size: o.size, sha256: (o.customMetadata || {}).sha256 || '' } : null;

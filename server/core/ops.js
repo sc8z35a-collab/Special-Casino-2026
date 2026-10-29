@@ -180,7 +180,13 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     access: new Map(q('SELECT * FROM ops_access').all().map((r) => [r.name_key, r])), devBans: deviceBans(),
     viewers: new Set(q('SELECT user_id FROM ops_viewers WHERE granted = 1').all().map((r) => r.user_id))
   });
-  function row(u, waiting = null, detections = null, facts = null) {
+  // Staff credentials must never let one operator become another (especially
+  // the developer). Ordinary player support and managing one's own login stay available.
+  const canCredentials = (actor, target, operator = isOperator(target)) =>
+    isDeveloper(actor) || actor.id === target.id || !operator;
+  function row(u, actor, waiting = null, detections = null, facts = null) {
+    const operator = isOperator(u, facts && facts.access);
+    const credentialsEditable = canCredentials(actor, u, operator);
     return {
       id: u.id,
       name: u.name,
@@ -190,14 +196,15 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       dollars: u.dollars,
       coins: u.coins,
       worth: worth(u),
-      code: codeOf(u.recovery_enc),
+      code: credentialsEditable ? codeOf(u.recovery_enc) : '',
+      credentialsEditable,
       hasPassword: !!u.password_hash,
       ban: banOf(u),
       deviceBlocked: !u.banned && (facts ? !isDeveloper(u) && (facts.devBans.get(u.id) || 0) > u.device_ok_at : !!deviceBanOf(u)),
       lastSeen: u.last_seen,
       createdAt: u.created_at,
       playMs: u.play_ms,
-      operator: isOperator(u, facts && facts.access),
+      operator,
       viewer: facts ? !!facts.viewers.has(u.id) : isViewer(u),
       developer: isDeveloper(u),
       npc: !!u.npc,
@@ -244,6 +251,16 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     const u = target(id);
     if (u.ban_kind === 'deleted') throw new ApiError(409, 'deleted', `${u.name}さんのアカウントは削除されています（取り消せません）`);
     return u;
+  }
+  function credentialTarget(actor, id) {
+    const p = alive(id);
+    if (!canCredentials(actor, p)) throw new ApiError(403, 'staff_credentials', 'ほかの運営者のログイン情報は開発者だけが変更できます');
+    return p;
+  }
+  function deletable(id) {
+    const p = alive(id);
+    if (isDeveloper(p) || isOperator(p)) throw new ApiError(400, 'operator', '運営者のアカウントは削除できません（先に運営権を剥奪してください）');
+    return p;
   }
   // the accounts sharing a device (its id) with a player: they go with it
   // (never the developer's, an operator's, or one already deleted)
@@ -336,7 +353,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const rows = q(`SELECT * FROM users WHERE npc = '' AND archived_at = 0 ${find ? 'AND instr(name_key, ?) > 0' : ''} ORDER BY id DESC LIMIT 1000`)
         .all(...(find ? [find] : []));
       const waiting = official.waitingIds(), dets = flagged(), facts = listFacts();
-      const list = rows.map((p) => row(p, waiting, dets, facts));
+      const list = rows.map((p) => row(p, u, waiting, dets, facts));
       const since = req.query.get('since');
       const sync = since === null ? null : playersSince(u, find, since, list);
       const out = {
@@ -367,7 +384,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const m = q('SELECT hub_id FROM hub_members WHERE user_id = ?').get(p.id);
       return {
         player: {
-          ...row(p),
+          ...row(p, u),
           level: LEVEL.of(p.xp),
           xp: p.xp,
           spins: p.spins,
@@ -437,7 +454,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
           archive: after.archived_at ? { at: after.archived_at, purgeAt: after.purge_at, purgeJst: jst(after.purge_at) } : null
         }
       });
-      return { player: row(after) };
+      return { player: row(after, u) };
     },
 
     /* ----- プレイヤーアーカイブ ----- */
@@ -445,7 +462,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     'GET /api/ops/archive': (req, u) => {
       need(u);
       const rows = q("SELECT * FROM users WHERE npc = '' AND archived_at > 0 AND purged_at = 0 ORDER BY archived_at DESC LIMIT 1000").all();
-      return { players: rows.map((p) => ({ ...row(p), withName: p.archive_with ? (getUser(p.archive_with) || { name: '?' }).name : '' })), days: ARCHIVE_DAYS, now: Date.now() };
+      return { players: rows.map((p) => ({ ...row(p, u), withName: p.archive_with ? (getUser(p.archive_with) || { name: '?' }).name : '' })), days: ARCHIVE_DAYS, now: Date.now() };
     },
 
     // the developer only: who would go (the player and the accounts on the same device)
@@ -453,7 +470,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       need(u);
       if (!isDeveloper(u)) throw new ApiError(404, 'not_found', 'APIが見つかりません');
       const p = alive(req.query.get('id'));
-      return { player: row(p), sameDevice: sameDevice(p).map((o) => row(o)), days: ARCHIVE_DAYS };
+      return { player: row(p, u), sameDevice: sameDevice(p).map((o) => row(o, u)), days: ARCHIVE_DAYS };
     },
 
     // The developer deletes an account, with the developer code: it can never
@@ -463,9 +480,9 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       need(u);
       if (!isDeveloper(u)) throw new ApiError(404, 'not_found', 'APIが見つかりません');
       const body = await req.json();
-      const p = alive(body.id);
-      if (isDeveloper(p) || isOperator(p)) throw new ApiError(400, 'operator', '運営者のアカウントは削除できません（先に運営権を剥奪してください）');
+      deletable(body.id);
       await devCode.check(body.code, req, u);
+      const p = deletable(body.id);
       const subs = sameDevice(p);
       const now = Date.now();
       const all = [p, ...subs];
@@ -485,7 +502,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         summary: `${p.name}さんのアカウントを削除（開発者コードで・取り消し不可${subs.length ? `・同じ端末の ${subs.map((x) => x.name).join('、')} さんも` : ''}・${ARCHIVE_DAYS}日後にデータを削除・会話とログは保存）`,
         detail: { player: { id: p.id, name: p.name }, sameDevice: subs.map((x) => ({ id: x.id, name: x.name })), purgeAt: { ms: now + ARCHIVE_DAYS * 86400000, jst: jst(now + ARCHIVE_DAYS * 86400000) } }
       });
-      return { deleted: all.map((x) => ({ id: x.id, name: x.name })), player: row(getUser(p.id)) };
+      return { deleted: all.map((x) => ({ id: x.id, name: x.name })), player: row(getUser(p.id), u) };
     },
 
     // lets the player play past the bans of other accounts on their devices
@@ -496,28 +513,29 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const p = alive(body.id);
       q('UPDATE users SET device_ok_at = ? WHERE id = ?').run(Date.now(), p.id);
       opsLog.add({ actor: u, action: 'device_ok', target: p, req, summary: `${p.name}さんの端末の利用を許可`, detail: { devices: devicesOf(p) } });
-      return { player: row(getUser(p.id)) };
+      return { player: row(getUser(p.id), u) };
     },
 
     // a new 引き継ぎコード (the old one stops working)
     'POST /api/ops/recovery': async (req, u) => {
       need(u);
       const body = await req.json();
-      const p = alive(body.id);
+      const p = credentialTarget(u, body.id);
       const old = openCode(p.recovery_enc);
       const code = setRecovery(p.id);
       opsLog.add({ actor: u, action: 'recovery', target: p, req, summary: `${p.name}さんの引き継ぎコードを再発行`, detail: { oldCodeStart: old ? old.slice(0, 4) + '…' : '', newCodeStart: code.slice(0, 4) + '…' } });
-      return { code, player: row(getUser(p.id)) };
+      return { code, player: row(getUser(p.id), u) };
     },
 
     // a new password for a player who forgot theirs (check who is asking first)
     'POST /api/ops/password': async (req, u) => {
       need(u);
       const body = await req.json();
-      const p = alive(body.id);
+      credentialTarget(u, body.id);
       const pw = cleanPassword(body.password);
       const hash = await hashPassword(pw);
-      req.revalidate?.(); need(u); alive(body.id);
+      req.revalidate?.(); need(u);
+      const p = credentialTarget(u, body.id);
       tx(() => {
         q('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, p.id);
         setRecovery(p.id);
@@ -526,7 +544,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       });
       live.dropUser?.(p.id);
       opsLog.add({ actor: u, action: 'password', target: p, req, summary: `${p.name}さんのパスワードを再設定`, detail: { hadPassword: !!p.password_hash, length: pw.length } });
-      return { player: row(getUser(p.id)) };
+      return { player: row(getUser(p.id), u) };
     },
 
     /* ----- the official bot's conversations ----- */
@@ -541,7 +559,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       if (upto && c.messages.some((m) => m.from && m.from.id === p.id)) {
         opsLog.add({ actor: u, action: 'bot_read', target: p, req, summary: `${p.name}さんとの公式チャットを開いた（既読をつけた）`, detail: { readUpTo: upto, waiting: waitingBefore } });
       }
-      return { player: row(getUser(p.id)), bot: official.me(), ...c, now: Date.now() };
+      return { player: row(getUser(p.id), u), bot: official.me(), ...c, now: Date.now() };
     },
 
     // a message from the operators (件名, 〇〇様, the matter, Ice Smoker公式より)
@@ -555,7 +573,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const message = official.say(p.id, full);
       official.answered(p.id);
       opsLog.add({ actor: u, action: 'bot_message', target: p, req, summary: `${p.name}さんへ公式からメッセージ「${subject}」`, detail: { subject, body: text, sent: full, messageId: message.id } });
-      return { message, player: row(getUser(p.id)) };
+      return { message, player: row(getUser(p.id), u) };
     },
 
     // 送信の取り消し of the bot's words, within the hour (money never comes back);
@@ -591,7 +609,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         actor: u, action: 'money', target: p, req, summary: `${p.name}さんへ公式から $${fmt(amount)} を送金（タップで受け取り）`,
         detail: { amount, note, dollars: getUser(p.id).dollars, pending: amount > 0, messageId: message ? message.id : 0 }
       });
-      return { message, note: noteMsg, balance: balance(getUser(p.id)), player: row(getUser(p.id)) };
+      return { message, note: noteMsg, balance: balance(getUser(p.id)), player: row(getUser(p.id), u) };
     },
 
     // the chat the automatic filter stopped: an operator lets it go again
@@ -599,7 +617,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       need(u);
       const body = await req.json();
       const p = alive(body.id);
-      if (!p.chat_ban) return { player: row(p) };
+      if (!p.chat_ban) return { player: row(p, u) };
       q("UPDATE users SET chat_ban = 0, chat_ban_why = '' WHERE id = ?").run(p.id);
       q('DELETE FROM chat_filter_strikes WHERE user_id = ?').run(p.id);
       live.send(p.id, 'chatban', { on: false });
@@ -607,7 +625,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         actor: u, action: 'chat_unban', target: p, req, summary: `${p.name}さんのチャット停止を解除（自動フィルタリングシステム：${p.chat_ban_why || '理由不明'}）`,
         detail: { since: p.chat_ban, why: p.chat_ban_why }
       });
-      return { player: row(getUser(p.id)) };
+      return { player: row(getUser(p.id), u) };
     },
 
     /* ----- 通報 ----- */

@@ -9,7 +9,10 @@ const sha = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 function bucket() {
   const data = new Map(), writes = [], deletes = [];
   return { data, writes, deletes,
-    async put(key, bytes, sha256) { data.set(key, { bytes: Buffer.from(bytes), sha256 }); writes.push(key); },
+    async put(key, bytes, sha256, options = {}) {
+      if (options.onlyIfAbsent && data.has(key)) return false;
+      data.set(key, { bytes: Buffer.from(bytes), sha256 }); writes.push(key); return true;
+    },
     async get(key) { const row = data.get(key); return row ? { bytes: new Uint8Array(row.bytes), sha256: row.sha256 } : null; },
     async list(prefix) { return [...data].filter(([key]) => key.startsWith(prefix)).map(([key, row]) => ({ key, sha256: row.sha256 })); },
     async del(keys) { for (const key of keys) { data.delete(key); deletes.push(key); } }
@@ -100,4 +103,21 @@ test('snapshot APIs require the developer and the current vault-code ticket, and
   assert.equal((await f.call('POST', '/api/vault/snapshots/run', {})).status, 503);
   const none = createVaultSnapshots({ q: f.q, tx: (fn) => f.server.app.db.tx(fn), blobs: null, authorize() {} });
   assert.equal(none.nextDue(), 0); assert.equal((await none.tick({ force: true })).enabled, false);
+});
+
+test('snapshots preserve restarted bucket generations and legacy completed files with nonzero restart counts', async t => {
+  const f = await fixture(t), bytes = Buffer.from('generation-aware recovery');
+  const legacy = await f.put('legacy.txt', Buffer.from('legacy object'));
+  f.q('UPDATE vault_files SET restarts=3 WHERE id=?').run(legacy.id);
+  const created = await f.call('POST', '/api/vault/files', { name: 'restarted.txt', size: bytes.length });
+  assert.equal((await f.call('POST', '/api/vault/restart', { id: created.file.id })).status, 200);
+  assert.equal((await f.call('POST', '/api/vault/chunk', { id: created.file.id, n: 0, sha256: sha(bytes), data: bytes.toString('base64') })).status, 200);
+  assert.equal((await f.call('POST', '/api/vault/finish', { id: created.file.id })).done, true);
+  assert.ok(f.blobs.data.has(`vault/${created.file.id}/g1/0`));
+  const api = f.make(), saved = await drain(api, { force: true });
+  assert.equal(saved.error, ''); assert.equal(saved.snapshots[0].files, 2);
+  for (const id of [legacy.id, created.file.id]) assert.equal((await f.call('POST', '/api/vault/delete', { id })).status, 200);
+  assert.equal([...f.blobs.data.keys()].some(key => key.startsWith('vault/')), false);
+  const proof = await drain(api, { verify: saved.snapshots[0].id });
+  assert.equal(proof.error, ''); assert.equal(proof.snapshots[0].check, 'full'); assert.equal(proof.snapshots[0].files, 2);
 });

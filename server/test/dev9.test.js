@@ -20,7 +20,10 @@ function memoryBucket() {
   const objects = new Map();
   return {
     objects,
-    async put(key, bytes, sha256) { objects.set(key, { bytes: Buffer.from(bytes), sha256 }); },
+    async put(key, bytes, sha256, options = {}) {
+      if (options.onlyIfAbsent && objects.has(key)) return false;
+      objects.set(key, { bytes: Buffer.from(bytes), sha256 }); return true;
+    },
     async get(key) { const o = objects.get(key); return o ? { bytes: new Uint8Array(o.bytes), sha256: o.sha256 } : null; },
     async list(prefix) { return [...objects].filter(([k]) => k.startsWith(prefix)).map(([key, o]) => ({ key, sha256: o.sha256 })); },
     async del(keys) { for (const k of keys) objects.delete(k); }

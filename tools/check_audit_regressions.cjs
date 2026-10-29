@@ -20,9 +20,9 @@ async function holdBriefTimers(page) {
 }
 (async () => {
   const { startServer } = await import(path.resolve(__dirname, '../server/test/helpers.js'));
-  const s = await startServer({ operators: ['taku'] }); let browser;
+  const s = await startServer({ operators: ['taku', 'AuditMod'] }); let browser;
   try {
-    await s.register('taku'); const player = await s.register('AuditUI');
+    const developer = await s.register('taku'); await s.register('AuditMod'); const player = await s.register('AuditUI');
     s.setUser(player.me.id, { tokens: 100000, dollars: 1000000000, garage_extra: 100, guide_done: 1, age_ok: 1 });
     browser = await chromium.launch({ executablePath: process.env.OPS_BROWSER_EXECUTABLE, headless: true, args: ['--no-sandbox'] });
     const ctx = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
@@ -61,8 +61,8 @@ async function holdBriefTimers(page) {
     console.log('PASS lost spin/gacha responses preserve BET, quote, one settlement and every reward');
 
     const ops = await ctx.newPage(); ops.setDefaultTimeout(30000); ops.on('pageerror', e => errors.push(e.message));
-    async function login(releaseTimers) {
-      await ops.locator('#login-name').fill('taku'); await ops.locator('#login-pass').fill('pass1234');
+    async function login(releaseTimers, name = 'taku') {
+      await ops.locator('#login-name').fill(name); await ops.locator('#login-pass').fill('pass1234');
       if (releaseTimers) {
         const focus = await ops.evaluate(() => window.auditReleaseTimers());
         assert.ok(focus.count > 0); assert.equal(focus.active, 'login-pass', 'late startup cannot steal the operator password field');
@@ -90,6 +90,22 @@ async function holdBriefTimers(page) {
     await oldSuccess.fulfill({ status: 200, contentType: 'application/json', body: '{"private":"previous login"}' });
     assert.equal(await ops.evaluate(() => window.auditOldData), 'session_changed');
     console.log('PASS invalid operator JSON fails and a delayed old-session 401 preserves the new login');
+
+    await ops.evaluate(() => document.getElementById('logout').click()); await login(false, 'AuditMod');
+    await ops.evaluate(() => OpsDesktop.open('players'));
+    await ops.locator('#mac-window-players').waitFor({ state: 'visible' });
+    await ops.locator(`tr[data-id="${developer.me.id}"]`).click();
+    await ops.locator('#detail .code').first().waitFor();
+    assert.equal(await ops.locator('#detail [data-act="password"]').count(), 0);
+    assert.equal(await ops.locator('#detail [data-act="recovery"]').count(), 0);
+    assert.ok((await ops.locator('#detail .code').textContent()).includes('非公開'));
+    assert.ok(!(await ops.locator('#detail').textContent()).includes(developer.recoveryCode));
+    await ops.locator('#drawer-close').click();
+    await ops.locator(`tr[data-id="${player.me.id}"]`).click();
+    await ops.locator('#detail [data-act="password"]').waitFor();
+    assert.equal(await ops.locator('#detail [data-act="recovery"]').count(), 1);
+    assert.ok((await ops.locator('#detail .code').textContent()).includes(player.recoveryCode));
+    console.log('PASS operator UI hides other staff credentials/actions and retains ordinary player recovery support');
 
     const sec = await ctx.newPage(); sec.setDefaultTimeout(30000); sec.on('pageerror', e => errors.push(e.message));
     await sec.route('**/api/ops/login', route => route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
