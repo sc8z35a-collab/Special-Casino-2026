@@ -29,10 +29,11 @@
     proxy = {
       init: function () {},
       open: function () {
-        var args = arguments, generation = ++state.generation;
+        var args = arguments, generation = ++state.generation, nav = BR.screens && BR.screens.request ? BR.screens.request() : null;
+        function current() { return generation === state.generation && (nav === null || BR.screens.isLatest(nav)); }
         var job = load();
-        return (BR.resources.wait ? BR.resources.wait(job) : job).then(function (api) { if (generation === state.generation) return api.open.apply(api, args); }, function () {
-          if (generation === state.generation) BR.kit.fail({ message: '画面を読み込めませんでした。もう一度お試しください。' });
+        return (BR.resources.wait ? BR.resources.wait(job) : job).then(function (api) { if (current()) return api.open.apply(api, args); }, function () {
+          if (current()) BR.kit.fail({ message: '画面を読み込めませんでした。もう一度お試しください。' });
         });
       },
       reset: function () { state.generation++; }

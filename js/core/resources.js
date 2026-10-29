@@ -3,11 +3,15 @@
 (function (BR) {
   'use strict';
   var files = {}, groups = {}, done = {}, generation = 0, modules = [], initialized = new WeakSet();
+  var LOAD_MESSAGE = '画面を読み込めませんでした。もう一度お試しください。';
   function file(path) {
     if (!files[path]) files[path] = new Promise(function (resolve, reject) {
       var css = /\.css$/.test(path), tag = document.createElement(css ? 'link' : 'script');
       if (css) { tag.rel = 'stylesheet'; tag.href = BR.util.codeUrl(path); } else tag.src = BR.util.codeUrl(path);
-      tag.onload = resolve; tag.onerror = function () { delete files[path]; tag.remove(); reject(new Error('resource_load')); };
+      tag.onload = resolve; tag.onerror = function () {
+        delete files[path]; tag.remove();
+        var error = new Error(LOAD_MESSAGE); error.code = 'resource_load'; reject(error);
+      };
       if (css) {
         tag.dataset.brStyle = path;
         var order = BR.STYLES || [], rank = order.indexOf(path), before = Array.from(document.head.querySelectorAll('link[data-br-style]')).find(function (node) { return order.indexOf(node.dataset.brStyle) > rank; });
@@ -22,7 +26,7 @@
     if (!groups[name]) groups[name] = BR.RESOURCES[name].reduce(function (p, path) { return p.then(function () { return file(path); }); }, Promise.resolve()).then(function () { done[name] = true; modules.forEach(function (m) { var api = BR[m.name]; if (api && api !== m.proxy) initialize(api); }); if (name === 'slot') initEffects(); }).catch(function (e) { delete groups[name]; throw e; });
     return groups[name];
   }
-  function fail() { if (BR.kit) BR.kit.fail({ message: '画面を読み込めませんでした。もう一度お試しください。' }); }
+  function fail() { if (BR.kit) BR.kit.fail({ message: LOAD_MESSAGE }); }
   var waiting = 0, waitTimer = 0;
   function wait(job) {
     waiting++;
@@ -52,7 +56,11 @@
       return job;
     }
     proxy = { init: function () {}, active: function () { return false; }, stop: function () {}, leave: function () {}, changed: function () {}, target: function () { return null; } };
-    methods.forEach(function (method) { proxy[method] = function () { var args = arguments, epoch = generation; return wait(ensure()).then(function (api) { if (epoch === generation) return api[method].apply(api, args); }, fail); }; });
+    methods.forEach(function (method) { proxy[method] = function () {
+      var args = arguments, epoch = generation, nav = BR.screens && BR.screens.request ? BR.screens.request() : null;
+      function current() { return epoch === generation && (nav === null || BR.screens.isLatest(nav)); }
+      return wait(ensure()).then(function (api) { if (current()) return api[method].apply(api, args); }, function () { if (current()) fail(); });
+    }; });
     BR[name] = proxy; modules.push({ name: name, proxy: proxy });
     if (empty) empty(proxy, ensure);
   }

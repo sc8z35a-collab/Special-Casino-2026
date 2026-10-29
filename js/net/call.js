@@ -247,6 +247,7 @@
       renderBar();
     }, function (err) {
       h.micBusy = false;
+      if (home !== h) return;
       renderBar();
       sfx('deny');
       toast(err.message + '（聞くことはできます）', 3600);
@@ -266,14 +267,18 @@
       an.fftSize = 512;
       ctx.createMediaStreamSource(stream).connect(an);
       buf = new Uint8Array(an.fftSize);
-    } catch (e) { return; }
+    } catch (e) { closeContext(ctx); return; }
     timer = setInterval(function () {
-      if (home !== h || h.stream !== stream) { clearInterval(timer); try { ctx.close(); } catch (e) { /* closed */ } return; }
+      if (home !== h || h.stream !== stream) { clearInterval(timer); closeContext(ctx); return; }
       an.getByteTimeDomainData(buf);
       var sum = 0;
       for (var i = 0; i < buf.length; i++) { var v = (buf[i] - 128) / 128; sum += v * v; }
       if (Math.sqrt(sum / buf.length) > 0.04) BR.activity.poke();
     }, 500);
+  }
+  function closeContext(ctx) {
+    if (!ctx) return;
+    try { var closing = ctx.close(); if (closing && closing.catch) closing.catch(function () {}); } catch (e) { /* already gone */ }
   }
 
   /* ------------------------------------------------------------ the sound quality --- */
@@ -311,6 +316,7 @@
 
   /* ------------------------------------------------------------ connections --- */
   function eachPeer(h, fn) { Object.keys(h.peers).forEach(function (k) { fn(h.peers[k]); }); }
+  function currentPeer(h, p) { return home === h && h.peers[p.id] === p && p.pc && p.pc.connectionState !== 'closed'; }
 
   function peerOf(h, id) {
     return h.peers[id] || (h.peers[id] = { id: id, pc: null, sender: null, ready: Promise.resolve(null), outbox: [], flush: 0, remote: false, pending: [], live: false, timer: 0, at: Date.now() });
@@ -323,7 +329,10 @@
     clearTimeout(p.flush);
     clearTimeout(p.timer);
     if (p.quality) p.quality.stop();
-    if (p.pc) try { p.pc.close(); } catch (e) { /* closed */ }
+    if (p.pc) {
+      p.pc.ontrack = p.pc.onicecandidate = p.pc.onconnectionstatechange = null;
+      try { p.pc.close(); } catch (e) { /* closed */ }
+    }
     dropAudio(id);
   }
 
@@ -343,8 +352,9 @@
         p.sender = tr.sender;
         if (micTrack(h)) p.sender.replaceTrack(micTrack(h)).catch(function () {});
       }
-      pc.onicecandidate = function (e) { if (e.candidate) queue(h, p, { candidate: e.candidate.toJSON() }); };
+      pc.onicecandidate = function (e) { if (currentPeer(h, p) && e.candidate) queue(h, p, { candidate: e.candidate.toJSON() }); };
       pc.ontrack = function (e) {
+        if (!currentPeer(h, p)) return;
         // (TURBO VOICE: played as soon as it comes, with the smallest buffer the browser keeps)
         if (turbo && e.receiver) { try { e.receiver.jitterBufferTarget = 0; } catch (x) { /* not here */ } try { e.receiver.playoutDelayHint = 0; } catch (x) { /* not here */ } }
         audioFor(id, e.streams[0] || new MediaStream([e.track]));
@@ -369,7 +379,8 @@
         renderBar();
       };
       if (!offer) return pc;
-      pc.createOffer().then(function (o) { return pc.setLocalDescription({ type: o.type, sdp: withBitrate(o.sdp, h.tier || 0, turbo) }); }).then(function () {
+      pc.createOffer().then(function (o) { if (currentPeer(h, p)) return pc.setLocalDescription({ type: o.type, sdp: withBitrate(o.sdp, h.tier || 0, turbo) }); }).then(function () {
+        if (!currentPeer(h, p) || !pc.localDescription) return;
         queue(h, p, { description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
       }).catch(function () { /* tried again on the next hello */ });
       return pc;
@@ -379,11 +390,12 @@
 
   // Connection details are batched: a few messages per connection, not dozens.
   function queue(h, p, item) {
+    if (!currentPeer(h, p)) return;
     p.outbox.push(item);
     if (p.flush) return;
     p.flush = setTimeout(function () {
       p.flush = 0;
-      if (home !== h || !p.outbox.length) return;
+      if (!currentPeer(h, p) || !p.outbox.length) return;
       var batch = p.outbox.splice(0, p.outbox.length);
       var msg = { op: 'signal', candidates: [] };
       batch.forEach(function (b) { if (b.description) msg.description = b.description; else if (b.candidate) msg.candidates.push(b.candidate); });
@@ -397,10 +409,12 @@
     ready.then(function (pc) {
       if (!pc || home !== h) return;
       var peer = h.peers[id];
-      if (!peer) return;
+      function current() { return peer && peer.pc === pc && currentPeer(h, peer); }
+      if (!current()) return;
       var next = Promise.resolve();
       if (desc) {
         next = pc.setRemoteDescription(desc).then(function () {
+          if (!current()) return;
           peer.remote = true;
           peer.pending.splice(0).forEach(function (x) { pc.addIceCandidate(x).catch(function () {}); });
           if (desc.type !== 'offer') return null;
@@ -411,12 +425,14 @@
             peer.sender = tr.sender;
             if (micTrack(h)) tr.sender.replaceTrack(micTrack(h)).catch(function () {});
           }
-          return pc.createAnswer().then(function (a) { return pc.setLocalDescription({ type: a.type, sdp: withBitrate(a.sdp, h.tier || 0, turboWith(h, id)) }); }).then(function () {
+          return pc.createAnswer().then(function (a) { if (current()) return pc.setLocalDescription({ type: a.type, sdp: withBitrate(a.sdp, h.tier || 0, turboWith(h, id)) }); }).then(function () {
+            if (!current() || !pc.localDescription) return;
             queue(h, peer, { description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
           });
         });
       }
       next.then(function () {
+        if (!current()) return;
         (data.candidates || []).forEach(function (x) {
           if (peer.remote) pc.addIceCandidate(x).catch(function () {});
           else peer.pending.push(x);
@@ -503,8 +519,9 @@
   function join(kind, room, host, want) {
     if (home && (home.kind !== kind || home.room !== room)) leave();
     if (!home) {
-      home = { kind: kind, room: room, host: host, members: {}, peers: {}, turbo: {}, stream: null, mic: false, micBusy: false, cid: (kind === 'hub' ? 'hub-room-' : 'home-') + room, since: Date.now() };
-      clearTimeout(limitTimer); limitTimer = setTimeout(overTime, LIMIT);
+      home = { kind: kind, room: room, host: host, members: {}, peers: {}, turbo: {}, stream: null, mic: false, micBusy: false, cid: (kind === 'hub' ? 'hub-room-' : 'home-') + room };
+      var started = home;
+      clearTimeout(limitTimer); limitTimer = setTimeout(function () { if (home === started) overTime(); }, LIMIT);
       iceServers();
     }
     var h = home;
@@ -523,7 +540,7 @@
   // 2 hours in one call: it ends (a hub's comes back when asked)
   function overTime() {
     var h = home;
-    if (!h || Date.now() - h.since < LIMIT) return;
+    if (!h) return;
     if (h.kind === 'hub') {
       pausedHub = h.room;
       leave();
@@ -547,14 +564,7 @@
       var data = { op: 'bye', room: h.room };
       if (!BR.live.send({ op: 'call', to: Number(k), type: h.kind, callId: h.cid, data: data })) api.call(Number(k), h.kind, h.cid, data).catch(function () {});
     });
-    Object.keys(h.peers).forEach(function (k) {
-      var p = h.peers[k];
-      clearTimeout(p.flush);
-      clearTimeout(p.timer);
-      if (p.quality) p.quality.stop();
-    if (p.pc) try { p.pc.close(); } catch (e) { /* closed */ }
-      dropAudio(Number(k));
-    });
+    Object.keys(h.peers).forEach(function (k) { closePeer(h, Number(k)); });
     if (h.stream) h.stream.getTracks().forEach(function (t) { t.stop(); });
     sfx('callEnd');
     renderBar();

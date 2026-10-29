@@ -142,20 +142,23 @@
   function showModal(id) {
     var epoch = modalEpoch[id] = (modalEpoch[id] || 0) + 1;
     var style = /^feedback/.test(id) ? 'feedback' : /^safety|^sf-|^report|^block/.test(id) ? 'safety' : /^hub/.test(id) ? 'hub' : 'online';
-    if (!BR.resources.ready('online') || !BR.resources.ready(style)) return BR.resources.wait(Promise.all([BR.resources.load('online'), BR.resources.load(style)])).then(function () { if (modalEpoch[id] === epoch) showModal(id); }, fail);
+    if (!BR.resources.ready('online') || !BR.resources.ready(style)) return BR.resources.wait(Promise.all([BR.resources.load('online'), BR.resources.load(style)])).then(function () { if (modalEpoch[id] === epoch) showModal(id); }, function (err) {
+      if (modalEpoch[id] !== epoch) return;
+      closeModal(id); fail(err);
+    });
     $('#' + id).hidden = false;
   }
   function isOpen(id) { return !$('#' + id).hidden; }
   function closeModal(id) {
     modalEpoch[id] = (modalEpoch[id] || 0) + 1;
     var m = $('#' + id);
-    if (m.hidden) return;
-    m.hidden = true;
     if (id === 'confirm' && confirmDone) {
       var f = confirmDone;
       confirmDone = null;
       f(false);
     }
+    if (m.hidden) return;
+    m.hidden = true;
     m.dispatchEvent(new Event('closed'));
   }
   function closeModals() {
@@ -174,7 +177,7 @@
     return new Promise(function (resolve) { confirmDone = resolve; });
   }
   function escape() {
-    for (var i = 0; i < MODALS.length; i++) if (isOpen(MODALS[i])) { closeModal(MODALS[i]); return true; }
+    for (var i = 0; i < MODALS.length; i++) if (isOpen(MODALS[i]) || (MODALS[i] === 'confirm' && confirmDone)) { closeModal(MODALS[i]); return true; }
     return false;
   }
 
