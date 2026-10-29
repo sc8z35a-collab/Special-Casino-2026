@@ -2,6 +2,11 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
+const audioFlows = page => page.waitForFunction(async () => {
+  const stats = [...(await auditPeers.at(-1).getStats()).values()];
+  return ['inbound-rtp', 'outbound-rtp'].every(type => stats.some(s => s.type === type &&
+    (s.kind || s.mediaType) === 'audio' && (type === 'inbound-rtp' ? s.packetsReceived : s.packetsSent) > 0));
+});
 (async () => {
   const { startServer } = await import(root + '/server/test/helpers.js');
   const s = await startServer(); let browser, pages = [], verified = false;
@@ -54,12 +59,16 @@ const root = path.resolve(__dirname, '..');
       await page.waitForFunction(async () => [...(await auditPeers.at(-1).getStats()).values()].some(s => s.type === 'outbound-rtp' && (s.kind || s.mediaType) === 'audio' && s.packetsSent > 0));
       assert.match(await page.evaluate(() => auditPeers.at(-1).localDescription.sdp), /maxaveragebitrate=128000/);
     }
+    for (const page of pages) await audioFlows(page);
     const [a, b] = pages;
     await a.evaluate(peer => {
       const pc = auditPeers.at(-1); window.auditRetired = { track: pc.ontrack, ice: pc.onicecandidate, stream: document.querySelector('#call-audios audio').srcObject };
       auditVoiceDeliver({ from: peer, type: 'hub', data: { room: 77, op: 'hello' } });
     }, right.me);
-    for (const page of pages) await page.waitForFunction(() => auditPeers.length > 1 && BR.call.live());
+    for (const page of pages) {
+      await page.waitForFunction(() => auditPeers.length > 1 && BR.call.live());
+      await audioFlows(page);
+    }
     const guarded = await a.evaluate(async () => {
       const current = document.querySelector('#call-audios audio').srcObject;
       auditRetired.track({ streams: [auditRetired.stream] });
