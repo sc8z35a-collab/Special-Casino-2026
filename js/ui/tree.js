@@ -454,6 +454,7 @@
     // A slow poll must not overwrite a newer bid, result or newly joined lot.
     if (a && was && (a.id < was.id || (a.id === was.id &&
       (a.now < was.now || (was.status !== 'live' && a.status === 'live'))))) return;
+    if (a && (!was || a.id !== was.id)) bidding = false;
     auction = a || null;
     if (!auction) return;
     auction.seen = Date.now();
@@ -726,13 +727,16 @@
   function bid(steps) {
     if (bidding || !auction || auction.status !== 'live' || now() < auction.startsAt) return;
     bidding = true;
+    var id = auction.id;
     updateLive(auction);
-    api.auctionBid(steps).then(function (r) {
+    api.auctionBid(steps, id).then(function (r) {
+      if (!auction || auction.id !== id) return;
       bidding = false;
       if (r.balance) BR.app.serverBalance(r.balance);
       setAuction(r.auction, true);
       if (shown() && tab === 'auction') { renderTabs(); renderAuction(); }
     }, function (err) {
+      if (!auction || auction.id !== id) return;
       bidding = false;
       if (auction && shown() && tab === 'auction') renderAuction();
       fail(err);
@@ -740,12 +744,14 @@
   }
   function leave() {
     if (!auction || auction.status !== 'live') return;
+    var id = auction.id;
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode('競りから離脱しますか？'));
       p.appendChild(el('small', 'confirm-sub', '支払いはありません。この競りには戻れません。'));
     }, '離脱する').then(function (ok) {
-      if (!ok) return;
-      api.auctionLeave().then(function (r) {
+      if (!ok || !auction || auction.id !== id || auction.status !== 'live') return;
+      api.auctionLeave(id).then(function (r) {
+        if (!auction || auction.id !== id) return;
         setAuction(r.auction, true);
         if (shown()) { renderTabs(); renderAuction(); }
       }, fail);

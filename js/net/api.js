@@ -444,8 +444,8 @@
     treeHarvest: function (tree, next) { return post('/api/tree/harvest', { tree: tree, next: next }); },
     auction: function () { return get('/api/tree/auction'); },
     auctionStart: function (market) { return post('/api/tree/auction/start', { market: market }); },
-    auctionBid: function (steps) { return post('/api/tree/auction/bid', { steps: steps }); },
-    auctionLeave: function () { return post('/api/tree/auction/leave'); },
+    auctionBid: function (steps, id) { return post('/api/tree/auction/bid', { steps: steps, id: id }); },
+    auctionLeave: function (id) { return post('/api/tree/auction/leave', { id: id }); },
 
     /* 開発者支援 (js/ui/support.js): the price is the server's, the plan and how many are ours */
     payInfo: function () { return get('/api/pay/info'); },

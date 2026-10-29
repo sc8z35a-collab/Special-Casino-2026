@@ -15,6 +15,12 @@ function setup(session = new Map()) {
   return { BR: ctx.BR, calls, storage, respond: fn => { fetcher = fn; } };
 }
 
+test('auction actions carry the auction identity while legacy calls remain compatible', async () => {
+  const s = setup(); await s.BR.api.auctionBid(3, 42); await s.BR.api.auctionLeave(42);
+  assert.deepEqual(s.calls[0].body, { steps: 3, id: 42 }); assert.deepEqual(s.calls[1].body, { id: 42 });
+  await s.BR.api.auctionBid(1); assert.deepEqual(s.calls[2].body, { steps: 1 });
+});
+
 test('the browser reuses one immutable spin key for in-flight/lost responses and issues a fresh one after success', async () => {
   const s = setup(); s.respond(async () => { throw Error('lost response'); });
   const one = s.BR.api.spin(100), two = s.BR.api.spin(100);

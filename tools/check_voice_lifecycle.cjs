@@ -45,7 +45,7 @@ const audioFlows = page => page.waitForFunction(async () => {
           social: { me: () => me }, sfx: { duck() {}, callLevel: () => 100 },
           VIP: { boost: () => 0, tier: () => 0, now: () => 0, kbps: () => 128 },
           api: { online: true, iceServers: async () => ({ iceServers: [] }) },
-          live: { on(name, fn) { if (name === 'call') window.auditVoiceDeliver = fn; },
+          live: { on(name, fn) { if (name === 'call') window.auditVoiceDeliver = fn; if (name === 'block') window.auditBlockDeliver = fn; },
             send(message) { auditSignals.push(message); window.auditVoiceSend(message).catch(() => {}); return true; } } };
       }, { html: fs.readFileSync(root + '/index.html', 'utf8'), me });
       for (const file of ['voice-sdp.js', 'voice-quality.js', 'call.js']) await page.addScriptTag({ url: s.base + '/js/net/' + file });
@@ -85,6 +85,17 @@ const audioFlows = page => page.waitForFunction(async () => {
       assert.equal(await page.locator('#call-audios audio').count(), 0);
       assert.equal(await page.evaluate(() => auditStreams.every(s => s.getTracks().every(t => t.readyState === 'ended')) && auditPeers.every(p => p.connectionState === 'closed')), true);
     }
+    for (const page of pages) await page.evaluate(members => BR.call.syncHub(88, members), members);
+    for (const page of pages) { await page.waitForFunction(() => BR.call.live()); await page.locator('#call-mute').click(); await page.waitForFunction(() => BR.call.mic()); }
+    for (const page of pages) await audioFlows(page);
+    await a.evaluate(id => auditBlockDeliver({ user: id, blocked: true, rev: 5 }), right.me.id);
+    await a.waitForFunction(() => !BR.call.active() && auditPeers.every(p => p.connectionState === 'closed'));
+    assert.equal(await a.evaluate(() => auditStreams.every(s => s.getTracks().every(t => t.readyState === 'ended'))), true);
+    assert.equal(await a.locator('#call-audios audio').count(), 0);
+    await a.evaluate(members => BR.call.syncHub(88, members), members);
+    assert.equal(await a.evaluate(() => BR.call.active()), false, 'a stale roster cannot rejoin a blocked peer');
+    await b.evaluate(() => BR.call.hangupAll());
+    console.log('PASS native block: established RTP peer closes, microphone tracks end and stale roster stays disconnected');
     assert.deepEqual(errors, []);
     verified = true;
     console.log('PASS native voice: bidirectional audio, Opus ceiling, reconnect, retired callbacks, microphone stop and complete peer/audio cleanup');

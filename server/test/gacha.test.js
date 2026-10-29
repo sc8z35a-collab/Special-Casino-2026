@@ -149,7 +149,9 @@ test('all tier rewards settle their full quantities; tickets are consumed once a
     assert.equal(questTickets(readQuests(getUser(p.me.id).quests))['5h'], 18, '3 + 6 + 9 tickets across tiers');
     assert.equal(itemsOf(p.me.id)['gacha-seed'], 9);
     assert.equal(itemsOf(p.me.id)['gacha-vip-week'], 9);
-    assert.equal(q('SELECT COUNT(*) AS n FROM trees WHERE user_id = ?').get(p.me.id).n, 6);
+    assert.equal(q('SELECT COUNT(*) AS n FROM trees WHERE user_id = ?').get(p.me.id).n, 7);
+    assert.equal(q('SELECT COUNT(*) AS n FROM trees WHERE user_id = ? AND given = ?').get(p.me.id, GACHA.grownGiven).n, 6);
+    assert.equal(q('SELECT COUNT(*) AS n FROM trees WHERE user_id = ? AND given = 0').get(p.me.id).n, 1);
     await g.routes['POST /api/gacha/use']({ json: async () => ({ item: 'seed' }) }, p.me);
     assert.equal(itemsOf(p.me.id)['gacha-seed'], 8);
     for (let i = 0; i < 9; i++) await g.routes['POST /api/gacha/use']({ json: async () => ({ item: 'vip-week' }) }, p.me);

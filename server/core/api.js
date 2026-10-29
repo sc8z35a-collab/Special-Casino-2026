@@ -203,6 +203,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const findByName = (raw) => q('SELECT * FROM users WHERE name_key = ?').get(nameKey(raw));
   const dmChannel = (a, b) => `dm:${Math.min(a, b)}:${Math.max(a, b)}`;
   const isBlocked = (userId, otherId) => !!q('SELECT 1 AS x FROM blocks WHERE user_id = ? AND blocked_id = ?').get(userId, otherId);
+  const blockedIds = userId => q('SELECT blocked_id AS id FROM blocks WHERE user_id = ? ORDER BY blocked_id').all(userId).map(r => r.id);
   const areFriends = (a, b) => !!q('SELECT 1 AS x FROM friends WHERE user_id = ? AND friend_id = ?').get(a, b);
   const hasRequest = (from, to) => !!q('SELECT 1 AS x FROM friend_requests WHERE from_id = ? AND to_id = ?').get(from, to);
   const ownedAvatars = (u) => (u.avatars ? u.avatars.split(',') : []);
@@ -1712,6 +1713,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         loginBonus: loginBonus(u.id),
         loginReset: nextLoginReset(),
         me: meDto(getUser(u.id)),
+        blocked: blockedIds(u.id),
         unread: unreadTotal(u.id),
         friendRequests: pendingRequests(u.id),
         // (the Shop's prices and sale hours are the game's own: js/game/config.js, js/game/sale.js; `now` sets its clock)
@@ -2345,7 +2347,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (car.rent_start || car.rent_paused) throw new ApiError(409, 'rented', '貸し出し中の車はあげられません');
         if (car.offer_id) throw new ApiError(409, 'on_offer', '販売中の車です');
         // what its renting earned stays with the giver
-        if (car.rent_earned) q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(car.rent_earned, u.id);
+        if (car.rent_earned) {
+          q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(car.rent_earned, u.id);
+          balanceChanged(u.id, true);
+        }
         const them = getUser(to);
         if (carCount(to) >= garageSize(them)) throw new ApiError(409, 'their_garage_full', `${them.name}さんのガレージがいっぱいです`);
         // nobody's until they tap it (POST /api/messages/claim)
@@ -2478,16 +2483,22 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // (messages, money, presents, calls, invitations all seem to go out),
       // but nothing reaches the one who blocked; what was sent meanwhile
       // arrives when they unblock.
-      let released = 0;
-      if (body.blocked) {
-        q('INSERT OR IGNORE INTO blocks (user_id, blocked_id, created_at) VALUES (?, ?, ?)').run(u.id, id, Date.now());
-        q('DELETE FROM friend_requests WHERE from_id = ? AND to_id = ?').run(id, u.id);
-        q('DELETE FROM hub_invites WHERE from_id = ? AND to_id = ?').run(id, u.id);
-      } else {
-        q('DELETE FROM blocks WHERE user_id = ? AND blocked_id = ?').run(u.id, id);
-        released = releaseHeld(u.id, id);
-      }
-      return { blocked: !!body.blocked, released, unread: unreadTotal(u.id) };
+      return tx(() => {
+        const wasBlocked = isBlocked(u.id, id);
+        let released = 0;
+        if (body.blocked) {
+          q('INSERT OR IGNORE INTO blocks (user_id, blocked_id, created_at) VALUES (?, ?, ?)').run(u.id, id, Date.now());
+          q('DELETE FROM friend_requests WHERE from_id = ? AND to_id = ?').run(id, u.id);
+          q('DELETE FROM hub_invites WHERE from_id = ? AND to_id = ?').run(id, u.id);
+        } else {
+          q('DELETE FROM blocks WHERE user_id = ? AND blocked_id = ?').run(u.id, id);
+          released = releaseHeld(u.id, id);
+        }
+        if (wasBlocked !== !!body.blocked) q('UPDATE users SET rev = rev + 1 WHERE id = ?').run(u.id);
+        const result = { blocked: !!body.blocked, released, unread: unreadTotal(u.id), rev: getUser(u.id).rev };
+        live.send(u.id, 'block', { user: id, ...result });
+        return result;
+      });
     }],
 
     /* ----- voice chat signalling (the home call) ----- */
@@ -3476,10 +3487,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!room || !a || !b || a.hub_id !== room || b.hub_id !== room) throw new ApiError(409, 'not_hub', 'ハブで話せる相手ではありません');
       // a block cuts the voice both ways (they stay in the hub), without a word
       // to the one who was blocked: their call just never connects
-      if (isBlocked(to, u.id) || isBlocked(u.id, to)) return;
     } else if (!room || !inVoice(u.id, room) || !inVoice(to, room)) {
       throw new ApiError(409, 'not_home', 'ホームで話せる相手ではありません');
     }
+    if (isBlocked(to, u.id) || isBlocked(u.id, to)) return;
     // TURBO VOICE (the developer's own: 510 kbps stereo Opus, js/net/call.js): only a pair one of whom is the developer's account. The mark
     // is the server's, never the page's; for everyone else what a page asks of the other one's sound is cut to the VIP's best here
     const turbo = isDeveloper(u) || isDeveloper(getUser(to));
@@ -3500,6 +3511,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   // 入力中 (typing): to the friend of a conversation, or everyone else in a group.
   function relayTyping(u, body) {
+    chatAllowed(u);
     rate(limit.typing, u.id);
     if (body.group !== undefined && body.group !== null) {
       const g = myGroup(u.id, posInt(body.group, 'グループ'));
@@ -3507,7 +3519,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return;
     }
     const to = posInt(body.to, '宛先');
-    if (areFriends(u.id, to)) live.send(to, 'typing', { from: mini(u) });
+    if (areFriends(u.id, to) && !isBlocked(to, u.id) && !isBlocked(u.id, to)) live.send(to, 'typing', { from: mini(u) });
   }
 
   // Signalling and typing over the WebSocket (no HTTP request per message): errors are dropped.
@@ -3997,6 +4009,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       loginBonus: bonus,
       loginReset: nextLoginReset(),
       me: meDto(u), unread: unreadTotal(userId), friendRequests: pendingRequests(userId), iconShop: iconShop(),
+      blocked: blockedIds(userId),
       peter: peter.me(), johnson: johnson.me(), official: official.me(), online: live.onlineCount(),
       hub: myHub(userId), hubInvites: hubInvites(userId),
       // a screen view under way when the game (re)connects: it starts sending again (nothing is shown)

@@ -484,8 +484,9 @@
     var inVoice = !!room && (room === me ? voice.length > 0 : voice.indexOf(me) >= 0);
     if (!inVoice) { leave(); return; }
     var want = {};
-    if (room !== me) want[room] = host;
-    voice.forEach(function (id) { if (id !== me) want[id] = people[id] || { id: id, name: '', avatar: null }; });
+    if (room !== me && !blocked[room]) want[room] = host;
+    voice.forEach(function (id) { if (id !== me && !blocked[id]) want[id] = people[id] || { id: id, name: '', avatar: null }; });
+    if (!Object.keys(want).length) { leave(); return; }
     join('home', room, host, want);
     if (opts && opts.mic) setMic(true);
     renderBar();
@@ -493,11 +494,11 @@
 
   // The voice of my hub: `people` (everyone in it, me too); 0 / []: none.
   // A home call I was in comes back when it ends.
-  var hubVoice = null, lastHome = null;
+  var hubVoice = null, lastHome = null, blocked = {}, blockRev = -1;
   function syncHub(hubId, people) {
     var me = myId();
     var want = {};
-    (people || []).forEach(function (p) { if (p.id !== me) want[p.id] = p; });
+    (people || []).forEach(function (p) { if (p.id !== me && !blocked[p.id]) want[p.id] = p; });
     lastHub = [hubId, people];
     if (pausedHub && pausedHub !== hubId) pausedHub = 0;
     // ended at the limit: it waits to be asked back
@@ -512,6 +513,35 @@
     hubVoice = hubId;
     join('hub', hubId, null, want);
     renderBar();
+  }
+
+  function refreshBlocks() {
+    if (lastHub && lastHub[0]) syncHub(lastHub[0], lastHub[1]);
+    if (!hubVoice && lastHome) sync.apply(null, lastHome);
+  }
+  function newerBlock(rev) {
+    if (typeof rev !== 'number') return true; // compatibility with older servers
+    if (rev < blockRev) return false;
+    blockRev = rev;
+    return true;
+  }
+  function setBlocked(ids, rev) {
+    if (!Array.isArray(ids) || !newerBlock(rev)) return;
+    blocked = {};
+    ids.forEach(function (id) { if (id > 0) blocked[id] = true; });
+    refreshBlocks();
+  }
+  function blockChanged(id, on, rev) {
+    if (!newerBlock(rev)) return;
+    if (on) blocked[id] = true; else delete blocked[id];
+    refreshBlocks();
+  }
+  function reset() {
+    leave();
+    hubVoice = lastHome = lastHub = null;
+    pausedHub = 0;
+    blocked = {};
+    blockRev = -1;
   }
 
   // into the voice `kind` / `room` with the people in `want` ({ id: user }):
@@ -623,7 +653,14 @@
     }, true);
     window.addEventListener('pagehide', function () { if (home) leave(); });
 
-    if (api.online) BR.live.on('call', onCall);
+    if (api.online) {
+      BR.live.on('call', onCall);
+      BR.live.on('hello', function (h) { setBlocked(h.blocked, h.me && h.me.rev); });
+      BR.live.on('block', function (ev) {
+        blockChanged(ev.user, ev.blocked, ev.rev);
+        if (BR.hub && BR.hub.blockChanged) BR.hub.blockChanged(ev.user, ev.blocked);
+      });
+    }
   }
 
   function setDeaf(on) {
@@ -672,6 +709,8 @@
     quality: function () { if (home) quality(home); },
     // the home whose voice I am in (0: none, or a hub's)
     room: function () { return home && home.kind === 'home' ? home.room : 0; },
-    hangupAll: leave
+    setBlocked: setBlocked,
+    blockChanged: blockChanged,
+    hangupAll: reset
   };
 })(window.BR = window.BR || {});

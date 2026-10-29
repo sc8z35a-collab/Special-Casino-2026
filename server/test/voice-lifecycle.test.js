@@ -43,6 +43,7 @@ function scene(AudioContext) {
   const join = (room = 10) => BR.call.syncHub(room, [{ id: 1 }, { id: 2, name: 'peer' }]);
   async function connect() { join(); events.call({ type: 'hub', from: { id: 2 }, data: { room: 10, op: 'hello' } }); await flush(); return peers.at(-1); }
   return { call: BR.call, node, peers, signals, notices, timers, join, connect,
+    event(name, data) { if (events[name]) events[name](data); },
     hello() { events.call({ type: 'hub', from: { id: 2 }, data: { room: 10, op: 'hello' } }); },
     time: value => { clock = value; }, resolveMic: value => resolveMic(value), rejectMic: error => rejectMic(error) };
 }
@@ -94,4 +95,71 @@ test('optional voice-meter setup failure closes its audio context without ending
   const s = scene(Meter); s.join(); const pending = s.call.setMic(true);
   s.resolveMic({ getTracks: () => [], getAudioTracks: () => [{}] }); await pending;
   assert.equal(s.call.mic(), true); assert.equal(closed, 1);
+});
+
+test('a private block update closes an established peer and stops an otherwise unused microphone', async () => {
+  const s = scene(), peer = await s.connect(), lateTrack = peer.ontrack; let stopped = 0;
+  const mic = s.call.setMic(true); s.resolveMic({ getTracks: () => [{ stop() { stopped++; } }], getAudioTracks: () => [{}] }); await mic;
+  s.event('block', { user: 2, blocked: true });
+  assert.equal(peer.connectionState, 'closed'); assert.equal(s.call.active(), false); assert.equal(stopped, 1);
+  lateTrack({ streams: [{}] }); assert.equal(s.node('#call-audios').children.length, 0);
+});
+
+test('blocking one participant preserves the other participant and the active microphone', async () => {
+  const s = scene(); s.call.syncHub(10, [{ id: 1 }, { id: 2 }, { id: 3 }]);
+  for (const id of [2, 3]) s.event('call', { type: 'hub', from: { id }, data: { room: 10, op: 'hello' } });
+  await flush(); const [blocked, other] = s.peers; let stopped = 0;
+  const mic = s.call.setMic(true); s.resolveMic({ getTracks: () => [{ stop() { stopped++; } }], getAudioTracks: () => [{}] }); await mic;
+  s.event('block', { user: 2, blocked: true });
+  assert.equal(blocked.connectionState, 'closed'); assert.notEqual(other.connectionState, 'closed');
+  assert.equal(s.call.active(), true); assert.equal(s.call.mic(), true); assert.equal(stopped, 0);
+});
+
+test('the reconnect block snapshot filters new calls and roster refreshes', async () => {
+  const s = scene(); s.event('hello', { blocked: [2] }); s.join(); s.hello(); await flush();
+  assert.equal(s.call.active(), false); assert.equal(s.peers.length, 0);
+  s.join(); s.hello(); await flush(); assert.equal(s.peers.length, 0);
+  s.event('block', { user: 2, blocked: false }); s.hello(); await flush();
+  assert.equal(s.call.active(), true); assert.equal(s.peers.length, 1);
+});
+
+test('a home block filters the host while preserving another permitted watcher', async () => {
+  const s = scene(); s.call.sync(10, { id: 10 }, [1, 2], { 2: { id: 2 } });
+  s.event('call', { type: 'home', from: { id: 10 }, data: { room: 10, op: 'hello' } });
+  s.event('call', { type: 'home', from: { id: 2 }, data: { room: 10, op: 'hello' } });
+  await flush(); const [host, watcher] = s.peers;
+  s.event('block', { user: 10, blocked: true });
+  assert.equal(host.connectionState, 'closed'); assert.notEqual(watcher.connectionState, 'closed');
+  assert.equal(s.call.room(), 10);
+});
+
+test('account hangup clears cached rooms so ending the next hub cannot restore an old account home', () => {
+  const s = scene(); s.call.sync(10, { id: 10 }, [1], {}); s.join(20);
+  s.call.hangupAll(); s.call.syncHub(0, []);
+  assert.equal(s.call.active(), false); assert.equal(s.call.room(), 0);
+});
+
+test('account hangup clears the previous account block filter', async () => {
+  const s = scene(); s.event('hello', { blocked: [2] }); s.call.hangupAll();
+  await s.connect(); assert.equal(s.call.active(), true); assert.equal(s.peers.length, 1);
+});
+
+test('a delayed reconnect snapshot cannot undo a newer private block update', async () => {
+  const s = scene(), peer = await s.connect();
+  s.event('block', { user: 2, blocked: true, rev: 5 });
+  s.event('hello', { blocked: [], me: { rev: 4 } }); s.join(); s.hello(); await flush();
+  assert.equal(peer.connectionState, 'closed'); assert.equal(s.call.active(), false); assert.equal(s.peers.length, 1);
+});
+
+test('an older unblock response cannot undo a later block from another device', async () => {
+  const s = scene(); s.event('block', { user: 2, blocked: true, rev: 5 });
+  if (s.call.blockChanged) s.call.blockChanged(2, false, 4);
+  s.join(); s.hello(); await flush(); assert.equal(s.call.active(), false);
+  s.event('block', { user: 2, blocked: false, rev: 6 }); s.hello(); await flush();
+  assert.equal(s.call.active(), true); assert.equal(s.peers.length, 1);
+});
+
+test('a new account can load a smaller block revision after full hangup', () => {
+  const s = scene(); s.event('block', { user: 2, blocked: true, rev: 50 }); s.call.hangupAll();
+  s.event('hello', { blocked: [], me: { rev: 1 } }); s.join(); assert.equal(s.call.active(), true);
 });

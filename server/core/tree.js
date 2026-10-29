@@ -37,6 +37,18 @@ const BIDDERS = [
   { name: '野生を生きる男', model: 'wild' }
 ];
 
+// A prize received before the first tree-screen visit must not replace the
+// free starter. Call inside the same transaction as the incoming prize.
+export function ensureStarterTree(q, userId, now = Date.now()) {
+  const read = () => q('SELECT * FROM trees WHERE user_id = ? ORDER BY id').all(userId);
+  let rows = read();
+  if (!rows.length) {
+    q("INSERT INTO trees (user_id, name, created_at) VALUES (?, '金の生る木', ?)").run(userId, now);
+    rows = read();
+  }
+  return rows;
+}
+
 // (getRandomValues: the same on Node and Cloudflare Workers)
 function rand() {
   const r = new Uint32Array(1);
@@ -72,14 +84,7 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady =
   }
   const treeRows = (userId) => q('SELECT * FROM trees WHERE user_id = ? ORDER BY id').all(userId);
   // everyone has one tree to start with
-  function treesOf(userId) {
-    let rows = treeRows(userId);
-    if (!rows.length) {
-      q("INSERT INTO trees (user_id, name, created_at) VALUES (?, '金の生る木', ?)").run(userId, Date.now());
-      rows = treeRows(userId);
-    }
-    return rows;
-  }
+  const treesOf = userId => ensureStarterTree(q, userId);
   function treeOf(userId, id) {
     const t = q('SELECT * FROM trees WHERE id = ? AND user_id = ?').get(posInt(id, '木'), userId);
     if (!t) throw new ApiError(404, 'no_tree', 'この木は見つかりません');
@@ -133,6 +138,11 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady =
   /* ------------------------------------------------------------ auctions --- */
   const liveRow = (userId) => q("SELECT * FROM tree_auctions WHERE user_id = ? AND status = 'live' ORDER BY id DESC LIMIT 1").get(userId);
   const lastRow = (userId) => q('SELECT * FROM tree_auctions WHERE user_id = ? ORDER BY id DESC LIMIT 1').get(userId);
+  function sameAuction(userId, body) {
+    if (body.id === undefined) return; // installed clients without auction identities
+    const id = posInt(body.id, '競り'), row = liveRow(userId) || lastRow(userId);
+    if (!row || row.id !== id) throw new ApiError(409, 'auction_changed', '参加中の競りが変わりました。もう一度確認してください');
+  }
   const willing = (s) => s.npcs.map((n, i) => (i + 1 !== s.leader && n.limit >= s.price + s.step ? i : -1)).filter((i) => i >= 0);
   const delay = () => DELAY[0] + Math.floor(rand() * (DELAY[1] - DELAY[0]));
   function bid(s, who, price, at) {
@@ -350,6 +360,7 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady =
       const steps = Math.min(10, Math.max(1, Math.floor(Number(body.steps) || 1)));
       const now = Date.now();
       const row = tx(() => {
+        sameAuction(u.id, body);
         const a = current(u.id, now);
         if (!a || a.status !== 'live') throw new ApiError(409, 'over', 'この競りは終わりました');
         const s = JSON.parse(a.state);
@@ -365,9 +376,12 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady =
     },
 
     // dropping out (nothing is paid)
-    'POST /api/tree/auction/leave': (req, u) => {
+    'POST /api/tree/auction/leave': async (req, u) => {
+      // Older clients send no JSON body or Content-Type for this action.
+      const body = !req.header || /^application\/json\b/i.test(req.header('content-type') || '') ? await req.json() : {};
       const now = Date.now();
       const row = tx(() => {
+        sameAuction(u.id, body);
         const a = current(u.id, now);
         if (!a || a.status !== 'live') return lastRow(u.id);
         q("UPDATE tree_auctions SET status = 'left', ended_at = ? WHERE id = ?").run(now, a.id);
