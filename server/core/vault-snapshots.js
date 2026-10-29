@@ -2,6 +2,7 @@
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { ApiError } from './errors.js';
+import { pieceKey, piecePrefix } from './vault-pieces.js';
 
 const DAY = 86400000, MINUTE = 60000, PREFIX = 'vault-snapshots/', MAX_MANIFEST = 16 * 1024 * 1024;
 const TABLES = { vault_files: 'id', vault_folders: 'id', vault_notes: 'id', vault_quotas: 'user_id', vault_requests: 'id' };
@@ -113,14 +114,14 @@ export function createVaultSnapshots({ q, tx, blobs, authorize, clock = Date.now
     for (const entry of root.tables.vault_files) {
       const file = entry.row, dbParts = new Map(q('SELECT n,sha256 FROM vault_chunks WHERE file_id=?').all(file.id).map((part) => [part.n, part.sha256]));
       // A file may have finished just after the bucket listing.
-      if (Array.from({ length: file.chunks }, (_, n) => n).some((n) => !dbParts.has(n) && !bucket.has(`vault/${file.id}/${n}`))) {
-        for (const object of await blobs.list(`vault/${file.id}/`)) bucket.set(object.key, object.sha256);
+      if (Array.from({ length: file.chunks }, (_, n) => n).some((n) => !dbParts.has(n) && !bucket.has(pieceKey(file, n)))) {
+        for (const object of await blobs.list(piecePrefix(file))) bucket.set(object.key, object.sha256);
       }
       for (let n = 0; n < file.chunks; n++) {
-        const sha = dbParts.get(n) || bucket.get(`vault/${file.id}/${n}`), size = Math.min(file.piece, file.size - n * file.piece);
+        const sha = dbParts.get(n) || bucket.get(pieceKey(file, n)), size = Math.min(file.piece, file.size - n * file.piece);
         if (!validHash(sha)) throw new Error('snapshot source piece is missing');
         root.pieces.push({ file: file.id, n, sha, size });
-        root.objects.push({ sha, size, source: { kind: dbParts.has(n) ? 'db' : 'bucket', file: file.id, n } });
+        root.objects.push({ sha, size, source: { kind: dbParts.has(n) ? 'db' : 'bucket', file: file.id, generation: file.storage_generation || 0, n } });
       }
     }
     structure(root);
@@ -137,7 +138,7 @@ export function createVaultSnapshots({ q, tx, blobs, authorize, clock = Date.now
   }
   async function sourceBytes(ref) {
     const source = ref.source;
-    if (source.kind === 'bucket') return (await blobs.get(`vault/${source.file}/${source.n}`))?.bytes;
+    if (source.kind === 'bucket') return (await blobs.get(pieceKey({ id: source.file, storage_generation: source.generation }, source.n)))?.bytes;
     if (source.kind === 'db') { const row = q('SELECT data FROM vault_chunks WHERE file_id=? AND n=?').get(source.file, source.n); return row ? Buffer.from(row.data, 'base64') : null; }
     if (source.kind === 'field' && Object.hasOwn(TABLES, source.table) && TABLES[source.table] === source.key && /^[a-z_]{1,40}$/.test(source.field)) {
       const row = q(`SELECT ${source.field} AS value FROM ${source.table} WHERE ${source.key}=?`).get(source.id);

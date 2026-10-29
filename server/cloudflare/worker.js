@@ -49,7 +49,12 @@ async function vaultPiece(request, env, casino, url) {
   // (no bucket: the object takes it itself)
   if (!p.key) return casino.fetch(new Request(request));
   try {
-    await env.VAULT.put(p.key, request.body, { sha256: sha, customMetadata: { sha256: sha } });
+    const written = await env.VAULT.put(p.key, request.body, { sha256: sha, customMetadata: { sha256: sha }, onlyIf: { etagDoesNotMatch: '*' } });
+    if (written === null) {
+      const existing = await env.VAULT.head(p.key);
+      if (existing?.customMetadata?.sha256 !== sha || existing.size !== size)
+        return answer(409, { code: 'piece_conflict', message: 'この部分には別のデータが届いています。「最初からやり直す」で送り直してください' });
+    }
   } catch (e) {
     const broken = /digest|checksum|sha-?256|integrity|length/i.test(String(e && e.message));
     return broken
@@ -57,8 +62,14 @@ async function vaultPiece(request, env, casino, url) {
       : answer(503, { code: 'unavailable', message: '保存先（R2）が混み合っています。自動でもう一度送ります' });
   }
   // still there? (deleted meanwhile: the piece goes again)
-  const still = await ask('/api/vault/stored', {});
-  if (still.status === 404) { await env.VAULT.delete(p.key); return still; }
+  const still = await ask('/api/vault/stored', { generation: p.generation });
+  if (!still.ok) {
+    // A permission change or a transient error must not delete a piece that a
+    // completed file may reference. Only the object can prove it is obsolete.
+    const error = await still.clone().json().catch(() => null);
+    if (error?.error?.discard) await env.VAULT.delete(p.key);
+    return still;
+  }
   return Response.json({ n: p.n, stored: true }, { headers: NO_STORE });
 }
 
@@ -110,10 +121,11 @@ export default {
       if (Number(request.headers.get('content-length') || 0) > most) {
         return Response.json({ error: { code: 'too_large', message: '送信できません。大きすぎます。' } }, { status: 413 });
       }
-      const bytes = await request.arrayBuffer();
+      const bytes = await readAtMost(request, most);
+      if (!bytes) return answer(413, { code: 'too_large', message: '送信できません。大きすぎます。' });
       // the automatic filter: a chat message that is not just text never
       // reaches the object, only a note of it (server/core/attach.js)
-      const note = await screenChat(`${request.method} ${url.pathname}`, request.headers.get('content-type'), new Uint8Array(bytes));
+      const note = await screenChat(`${request.method} ${url.pathname}`, request.headers.get('content-type'), bytes);
       if (note) {
         const headers = new Headers({ 'content-type': 'application/json' });
         for (const k of PASS) if (request.headers.has(k)) headers.set(k, request.headers.get(k));

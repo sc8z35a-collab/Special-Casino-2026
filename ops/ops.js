@@ -1015,7 +1015,7 @@
   function codeEl(p) {
     var c = el('span', 'code');
     if (!p.code) {
-      c.appendChild(el('span', 'muted', '未取得（再発行で表示）'));
+      c.appendChild(el('span', 'muted', p.credentialsEditable === false ? '非公開' : '未取得（再発行で表示）'));
       return c;
     }
     c.appendChild(el('span', 'mono', p.code));
@@ -1156,7 +1156,7 @@
     acc.appendChild(el('p', 'note', 'パスワードはハッシュでのみ保存しているため表示できません。忘れた人には再設定してください。'));
     a = el('div', 'acts');
     a.style.marginTop = '10px';
-    if (!p.deleted) {
+    if (!p.deleted && p.credentialsEditable !== false) {
       a.appendChild(act('引き継ぎコードを再発行', 'recovery'));
       a.appendChild(act('パスワードを再設定', 'password'));
     }

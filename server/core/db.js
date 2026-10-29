@@ -1097,6 +1097,10 @@ MIGRATIONS.push([
   "CREATE INDEX trees_notice_due ON trees(cycle_end, user_id) WHERE cycle != '' AND notified_cycle != cycle_at"
 ]);
 
+// Keep legacy bucket keys, including completed uploads that restarted before
+// this migration. Only subsequent restarts switch storage generations.
+MIGRATIONS.push(['ALTER TABLE vault_files ADD COLUMN storage_generation INTEGER NOT NULL DEFAULT 0']);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
