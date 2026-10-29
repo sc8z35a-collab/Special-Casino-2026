@@ -92,6 +92,8 @@ async function holdBriefTimers(page) {
     } finally { hostLive.close(); }
 
     const nextPlayer = await s.register('SwitchUI');
+    s.setUser(nextPlayer.me.id, { guide_done: 1, age_ok: 1 });
+    nextPlayer.me = (await s.call('GET', '/api/me', { token: nextPlayer.token })).me;
     const accountContext = await browser.newContext({ serviceWorkers: 'block', reducedMotion: 'reduce', viewport: { width: 1440, height: 1000 } });
     const accountPage = await accountContext.newPage(); accountPage.setDefaultTimeout(30000); accountPage.on('pageerror', e => errors.push(e.message));
     await accountPage.addInitScript(() => { Element.prototype.requestFullscreen = () => Promise.resolve(); });
