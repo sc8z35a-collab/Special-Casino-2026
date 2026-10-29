@@ -311,7 +311,7 @@ export function createOpsWatch({ q, live, ops, opsLog, official, emergency, shie
     const preset = body.preset ? String(body.preset) : '';
     let text;
     if (preset) {
-      if (!PRESETS[preset]) throw new ApiError(400, 'bad_preset', '定型文が正しくありません');
+      if (!Object.hasOwn(PRESETS, preset)) throw new ApiError(400, 'bad_preset', '定型文が正しくありません');
       text = PRESETS[preset];
     } else {
       text = cleanText(body.text, CUSTOM_MAX);

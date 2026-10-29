@@ -216,7 +216,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   // how fast (the developer's choice; 最速 until then)
   function speedNow() {
     const r = q("SELECT value FROM meta WHERE key = 'vault_speed'").get();
-    return r && VAULT_SPEEDS[r.value] ? r.value : 'max';
+    return r && Object.hasOwn(VAULT_SPEEDS, r.value) ? r.value : 'max';
   }
   const speedDto = () => { const v = speedNow(), x = VAULT_SPEEDS[v]; return { id: v, name: x.name, budgetMb: x.budgetMb, files: x.files }; };
   // a new file's pieces: VAULT_PIECE_MB when set; else with a bucket as the
@@ -1006,7 +1006,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       developerOnly(u, '保管庫の速さの変更');
       const body = await req.json();
       const v = String(body.speed || '');
-      if (!VAULT_SPEEDS[v]) throw new ApiError(400, 'bad_speed', '速さを選んでください（標準・高速・最速・上限速）');
+      if (!Object.hasOwn(VAULT_SPEEDS, v)) throw new ApiError(400, 'bad_speed', '速さを選んでください（標準・高速・最速・上限速）');
       const was = speedNow();
       if (v !== was) {
         q("INSERT INTO meta (key, value) VALUES ('vault_speed', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(v);
