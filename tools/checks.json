@@ -1,5 +1,6 @@
 {
   "check_mobile_game.cjs": { "runner": "browser", "tier": "pr" },
+  "check_voice_lifecycle.cjs": { "runner": "browser", "tier": "pr" },
   "check_audit_regressions.cjs": { "runner": "browser", "tier": "pr" },
   "check_inner_html.cjs": {
     "runner": "node",

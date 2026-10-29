@@ -14,11 +14,12 @@
 
   /* ------------------------------------------------------------ navigation --- */
   var requestGeneration = 0;
+  function request() { return ++requestGeneration; }
   function show(name) {
-    var epoch = ++requestGeneration;
+    var epoch = request();
     if (!BR.resources.ready(name)) {
       var job = name === 'slot' ? BR.resources.effects() : BR.resources.load(name);
-      return BR.resources.wait(job).then(function () { if (epoch === requestGeneration) show(name); }, BR.kit.fail);
+      return BR.resources.wait(job).then(function () { if (epoch === requestGeneration) show(name); }, function (err) { if (epoch === requestGeneration) BR.kit.fail(err); });
     }
     if (name === current) return;
     // banned: the title screen only (js/ui/banlock.js)
@@ -362,6 +363,9 @@
   BR.screens = {
     init: function () { shop.init(); rules.init(); initNumpad(); },
     show: show,
+    // Optional controllers reserve their selection before their download starts.
+    request: request,
+    isLatest: function (epoch) { return epoch === requestGeneration; },
     back: back,
     current: function () { return current; },
     register: function (name, h) { hooks[name] = h; },

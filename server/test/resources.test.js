@@ -34,6 +34,11 @@ test('logout during a deferred controller download cancels its pending user acti
   assert.deepEqual(s.calls, ['sale:init', 'cars:init']);
 });
 
+test('resource failures provide readable retry guidance while retaining a diagnostic code', async () => {
+  const s = scene(), pending = s.BR.resources.file('optional.js'); s.tags[0].onerror();
+  await assert.rejects(pending, e => e.code === 'resource_load' && e.message.includes('もう一度お試しください'));
+});
+
 test('a failure after the controller was installed retries the missing dependency without losing or reinitializing the controller', async () => {
   const s = scene(); s.BR.RESOURCES.cars = ['cars.js', 'sale.js'];
   const cars = { init: () => s.calls.push('init'), showShop: () => s.calls.push('open') };
