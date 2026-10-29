@@ -65,7 +65,7 @@ export const GENESIS_HASH = sha256(GENESIS);
 
 // anchor: { put(row), get() -> Promise({ id, hash, at } | null) } from the host (or none);
 // onAdd(row): told of each new entry once it is written (the Discord notices)
-export function createOpsLog({ q, anchor = null, onAdd = null }) {
+export function createOpsLog({ q, anchor = null, onAdd = null, afterCommit = fn => fn() }) {
   // who did it from where: the request as far as it is known
   function requestInfo(req) {
     if (!req) return {};
@@ -92,7 +92,7 @@ export function createOpsLog({ q, anchor = null, onAdd = null }) {
     row.hash = sha256(fields(row));
     insert(row);
     if (onAdd) {
-      try { onAdd(row); } catch (e) { console.error('ops log notice failed', e); }
+      afterCommit(() => { try { onAdd(row); } catch (e) { console.error('ops log notice failed', e); } });
     }
     return row;
   }
@@ -110,11 +110,11 @@ export function createOpsLog({ q, anchor = null, onAdd = null }) {
       throw e;
     }
     // copies outside the table
-    if (anchor) {
+    if (anchor) afterCommit(() => {
       try { anchor.put({ id: r.id, hash: r.hash, at: r.at }); } catch (e) { console.error('ops log anchor failed', e); }
       // (a host that keeps every row whole where the database cannot reach: server/node/stele-files.js)
       if (anchor.mirror) { try { anchor.mirror(r); } catch (e) { console.error('ops log mirror failed', e); } }
-    }
+    });
   }
 
   // Rows from elsewhere (a backup, or this log as it was before the database

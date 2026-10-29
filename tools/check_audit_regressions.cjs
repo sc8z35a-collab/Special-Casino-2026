@@ -148,6 +148,24 @@ async function holdBriefTimers(page) {
     assert.equal(await (await invalidLogin).text(), 'null', 'the malformed login response must actually be received');
     await sec.waitForFunction(() => document.getElementById('login-error').textContent.includes('通信できませんでした'));
     assert.equal(await sec.locator('#login-go').isDisabled(), false);
+    const bonus = await game.evaluate(async () => {
+      const done = BR.launch.done, request = BR.api.loginBonus, me = BR.social.me();
+      let reply, calls = 0;
+      try {
+        BR.kit.closeModals(); BR.launch.done = () => false;
+        BR.bonus.show({ day: 1, amount: 100, days: [100, 200, 300, 400] });
+        BR.api.loginBonus = () => { calls++; return new Promise(resolve => { reply = resolve; }); };
+        BR.bonus.schedule(Date.now() - 1);
+        document.dispatchEvent(new Event('visibilitychange'));
+        document.dispatchEvent(new Event('visibilitychange'));
+        BR.social.lockDown(); BR.launch.done = done;
+        reply({ me, loginBonus: { day: 2, amount: 200 }, next: Date.now() + 86400000 });
+        await new Promise(resolve => setTimeout(resolve, 900));
+        return { calls, me: BR.social.me(), hidden: document.getElementById('bonus').hidden, busy: BR.bonus.busy() };
+      } finally { BR.launch.done = done; BR.api.loginBonus = request; }
+    });
+    assert.deepEqual(bonus, { calls: 1, me: null, hidden: true, busy: false });
+    console.log('PASS real logout clears queued login bonus and rejects its delayed account response');
     assert.deepEqual(errors, []);
     console.log('PASS deferred login focus preserves active password fields; invalid security HOME JSON remains a recoverable network failure');
   } finally { if (browser) await browser.close(); await s.stop(); }

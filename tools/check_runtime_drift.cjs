@@ -80,13 +80,34 @@ const { configFrom } = require('../server/core/config.js');
       const exported = await call('POST', '/api/admin', null, { cmd: 'export', args: [] }, { 'X-Admin-Token': admin });
       assert.equal(exported.status, 200);
       record('schema and backup tables', exported, { schema: exported.result.schema, tables: Object.keys(exported.result.tables).sort() });
+      // Disposable fixtures only: restore an exact wage boundary and use the
+      // real balance guard to force a failure inside each host's transaction.
+      const snapshot = exported.result, row = snapshot.tables.users.find(u => u.id === c.me.id);
+      row.dollars = Number.MAX_SAFE_INTEGER; row.vip_exp = 1200; row.vip_until = row.vip_trial_until = 0;
+      row.jobs = JSON.stringify([{ id: 'garage', since: Date.now() - 3600000 }]);
+      snapshot.tables.items.push({ user_id: c.me.id, item: 'gacha-vip-week', count: 1 });
+      const restored = await call('POST', '/api/admin', null, { cmd: 'import', args: [snapshot, true] }, { 'X-Admin-Token': admin });
+      assert.equal(restored.status, 200, JSON.stringify(restored));
+      const refused = await call('POST', '/api/gacha/use', c, { item: 'vip-week' });
+      assert.equal(refused.status, 409); assert.equal(refused.error.code, 'balance_limit'); record('VIP overflow refuses ticket', refused);
+      const afterFailure = await call('POST', '/api/admin', null, { cmd: 'export', args: [] }, { 'X-Admin-Token': admin });
+      const untouched = afterFailure.result.tables.users.find(u => u.id === c.me.id);
+      assert.equal(untouched.jobs, row.jobs); assert.equal(untouched.vip_until, 0); assert.equal(untouched.dollars, Number.MAX_SAFE_INTEGER);
+      assert.equal(afterFailure.result.tables.items.find(i => i.user_id === c.me.id && i.item === 'gacha-vip-week').count, 1);
+      record('VIP rollback retains wages and ticket', afterFailure, true);
+      assert.equal((await call('POST', '/api/admin', null, { cmd: 'grant', args: [c.me.id, 'dollars', 1000000 - Number.MAX_SAFE_INTEGER] }, { 'X-Admin-Token': admin })).status, 200);
+      const used = await call('POST', '/api/gacha/use', c, { item: 'vip-week' });
+      assert.equal(used.status, 200); assert.ok(used.me.dollars >= 1020000); assert.equal(used.items.vipWeek, 0);
+      record('VIP ticket settles old wages', used, true);
+      const usedAgain = await call('POST', '/api/gacha/use', c, { item: 'vip-week' });
+      assert.equal(usedAgain.status, 409); assert.equal(usedAgain.error.code, 'no_item'); record('VIP ticket consumed once', usedAgain);
       const logout = await call('POST', '/api/logout', b, {}); assert.equal(logout.status, 200); record('logout', logout);
       const revoked = await call('GET', '/api/me', b); assert.equal(revoked.status, 401); record('revoked session', revoked);
       return trace;
     }
     const expected = await contract(node.base), actual = await contract(worker.base);
     assert.deepEqual(actual, expected, 'Node and Workers must preserve the same contract');
-    console.log('PASS runtime parity: ' + expected.length + ' contracts; balances, auth, permissions, watch membership/voice revocation, Unicode chat, filtering, backup schema and session revocation');
+    console.log('PASS runtime parity: ' + expected.length + ' contracts; balances, auth, permissions, watch/voice, VIP wage rollback, Unicode chat, filtering, backup schema and session revocation');
     // Real hibernating WebSockets must be bound to one session, including
     // unused tickets. A second device of the same account remains connected.
     async function call(path, body, token) {
