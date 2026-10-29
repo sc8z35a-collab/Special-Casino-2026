@@ -75,6 +75,10 @@ async function holdBriefTimers(page) {
       assert.equal((await s.call('POST', '/api/friends/remove', { token: friend.token, body: { user: player.me.id } })).status, 200);
       await game.waitForFunction(() => !BR.watch.active() && !BR.watchQuality.active() && !BR.call.active());
       await game.waitForFunction(() => !document.getElementById('btn-spin').disabled);
+      // watchQuality.exit queues layout on rAF, after the state/button changes above.
+      await game.waitForFunction(([width, height]) => {
+        const c = document.getElementById('reel-canvas'); return c.width === width && c.height === height;
+      }, ownCanvas);
       assert.deepEqual(await canvas(), ownCanvas);
       assert.equal(await game.locator('#watch-bar').isVisible(), false);
       assert.equal(await game.evaluate(() => BR.call.room()), 0);
