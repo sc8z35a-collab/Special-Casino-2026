@@ -418,7 +418,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const body = await req.json();
       const p = alive(body.id);
       const kind = String(body.kind || '');
-      if (kind !== 'none' && !(kind in BAN_DAYS)) throw new ApiError(400, 'bad_kind', '処分の種類が正しくありません');
+      if (kind !== 'none' && !Object.hasOwn(BAN_DAYS, kind)) throw new ApiError(400, 'bad_kind', '処分の種類が正しくありません');
       if (isDeveloper(p)) throw new ApiError(400, 'operator', '開発者のアカウントは処分できません');
       if (p.id === u.id || isOperator(p)) throw new ApiError(400, 'operator', '運営者のアカウントには使えません');
       const now = Date.now();

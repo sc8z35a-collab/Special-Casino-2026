@@ -226,8 +226,8 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady =
     };
   }
   function open(userId, market) {
+    if (!Object.hasOwn(T.markets, market)) throw new ApiError(400, 'bad_market', '市場を選んでください');
     const m = T.markets[market];
-    if (!m) throw new ApiError(400, 'bad_market', '市場を選んでください');
     const owned = treesOf(userId).length;
     if (owned >= T.max) throw new ApiError(409, 'full', `金の生る木は${T.max}本までです`);
     const avg = TREE.averagePrice(market, owned);

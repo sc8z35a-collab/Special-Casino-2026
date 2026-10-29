@@ -254,7 +254,7 @@ export function createOauth({
       rate(limit.oauth, u.id, '操作が多すぎます。少し待ってからお試しください');
       const body = await req.json();
       const p = String(body.provider || '');
-      if (!PROVIDERS[p]) throw new ApiError(400, 'bad_provider', '連携を解除する先を選んでください');
+      if (!Object.hasOwn(PROVIDERS, p)) throw new ApiError(400, 'bad_provider', '連携を解除する先を選んでください');
       const r = q('DELETE FROM oauth_identities WHERE provider = ? AND user_id = ?').run(p, u.id);
       if (Number(r.changes)) opsLog.add({ actor: u, action: 'player_oauth_unlink', req, summary: `${u.name}さんが${NAMES[p]}の連携を解除`, detail: { provider: p } });
       return { ok: true };
@@ -272,7 +272,7 @@ export function createOauth({
     rate(limit.oauth, req.ip, '操作が多すぎます。少し待ってからお試しください');
     return req.json().then((body) => {
       const provider = String(body.provider || '');
-      if (!PROVIDERS[provider] || !on(provider)) throw new ApiError(400, 'oauth_off', 'この方法でのログインは、いまは使えません');
+      if (!Object.hasOwn(PROVIDERS, provider) || !on(provider)) throw new ApiError(400, 'oauth_off', 'この方法でのログインは、いまは使えません');
       const dev = deviceOf(req);
       if (!dev.id) throw new ApiError(400, 'update', 'アプリを最新にしてからもう一度お試しください');
       if (u && q('SELECT 1 AS x FROM oauth_identities WHERE user_id = ? AND provider = ?').get(u.id, provider)) {

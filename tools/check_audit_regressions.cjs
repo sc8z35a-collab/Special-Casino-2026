@@ -60,6 +60,33 @@ async function holdBriefTimers(page) {
     assert.equal(money(), before - 10000000); assert.equal(await game.evaluate(() => BR.api.pendingGacha()), null);
     console.log('PASS lost spin/gacha responses preserve BET, quote, one settlement and every reward');
 
+    const friend = await s.register('AuditHost'); await s.befriend(player, friend);
+    const hostLive = await s.listen(friend);
+    try {
+      await game.evaluate(() => { BR.kit.closeModals(); BR.screens.show('slot'); });
+      const canvas = () => game.evaluate(() => { const c = document.getElementById('reel-canvas'); return [c.width, c.height]; });
+      const ownCanvas = await canvas();
+      await game.evaluate(id => BR.watch.start({ id, name: 'AuditHost', online: true, avatar: 'traveler-green' }), friend.me.id);
+      await game.waitForFunction(() => BR.watch.active() && BR.watchQuality.active());
+      assert.equal((await s.call('POST', '/api/watch/voice', { token: friend.token, body: { user: player.me.id, on: true } })).status, 200);
+      await game.waitForFunction(() => BR.call.active());
+      await game.evaluate(id => { BR.call.syncHub(999, [{ id, name: 'AuditHost' }]); BR.call.syncHub(0, []); }, friend.me.id);
+      assert.equal(await game.evaluate(() => BR.call.room()), friend.me.id, 'a valid home still resumes after a hub call');
+      assert.equal((await s.call('POST', '/api/friends/remove', { token: friend.token, body: { user: player.me.id } })).status, 200);
+      await game.waitForFunction(() => !BR.watch.active() && !BR.watchQuality.active() && !BR.call.active());
+      await game.waitForFunction(() => !document.getElementById('btn-spin').disabled);
+      assert.deepEqual(await canvas(), ownCanvas);
+      assert.equal(await game.locator('#watch-bar').isVisible(), false);
+      assert.equal(await game.evaluate(() => BR.call.room()), 0);
+      // A later hub call must not restore cached voice consent from the ended watch.
+      await game.evaluate(id => {
+        BR.call.syncHub(999, [{ id, name: 'AuditHost' }]);
+        BR.call.syncHub(0, []);
+      }, friend.me.id);
+      assert.equal(await game.evaluate(() => BR.call.active()), false, 'ending a hub call cannot revive the removed home');
+      console.log('PASS unfriending ends the real watch and voice room, restores own reels and enables spinning');
+    } finally { hostLive.close(); }
+
     const ops = await ctx.newPage(); ops.setDefaultTimeout(30000); ops.on('pageerror', e => errors.push(e.message));
     async function login(releaseTimers, name = 'taku') {
       await ops.locator('#login-name').fill(name); await ops.locator('#login-pass').fill('pass1234');

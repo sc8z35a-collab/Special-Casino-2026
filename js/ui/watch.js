@@ -100,7 +100,8 @@
     var id = state.user.id;
     flushTips();
     state = null;
-    if (BR.call.room() === id) BR.call.leave();
+    // Clear the cached home as well: a later hub call must not restore ended consent.
+    BR.call.sync(0, null, [], {});
     if (!quiet) api.watch(id, false).catch(function () {});
     BR.app.watchExit();
     BR.shop.watchedCharm(false);
@@ -133,7 +134,7 @@
     var my = me();
     if (state || !my) return;
     if (!watcherList().length) {
-      if (BR.call.room() === my.id) BR.call.leave();
+      BR.call.sync(0, null, [], {});
       if (chat.room === my.id) setChat(0, []);
       return;
     }
@@ -417,7 +418,8 @@
         toast(state.user.name + 'さんとの通話が終わりました', 3000);
       }
       syncVoice();
-    } else if (ev.type === 'offline') stop(true, state.user.name + 'さんがオフラインになったので観戦を終えました');
+    } else if (ev.type === 'removed') stop(true, 'フレンドとの観戦を終了しました');
+    else if (ev.type === 'offline') stop(true, state.user.name + 'さんがオフラインになったので観戦を終えました');
   }
 
   function init() {

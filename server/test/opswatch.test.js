@@ -422,6 +422,23 @@ test('a watch also ends when the player is punished, the operator loses the righ
   }
 });
 
+test('inherited preset names cannot send junk official messages to a watched player', async t => {
+  const s = await startServer({ operators: ['taku'], limits: LIMITS }); t.after(() => s.stop());
+  const op = await s.register('taku'), p = await s.register('PresetTarget');
+  const pl = await s.listen(p), ol = await openOps(s, op);
+  const w = await begin(s, op, ol, p, pl);
+  const count = () => s.app.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE recipient_id=?').get(p.me.id).n;
+  const before = count();
+  for (const preset of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf']) {
+    const r = await s.call('POST', '/api/ops/watch/message', { token: op.token, body: { sid: w.sid, preset } });
+    assert.equal(r.status, 400, preset); assert.equal(r.error.code, 'bad_preset');
+    assert.equal(count(), before);
+  }
+  const valid = await s.call('POST', '/api/ops/watch/message', { token: op.token, body: { sid: w.sid, preset: 'thanks' } });
+  assert.equal(valid.sent, true); assert.equal(count(), before + 1);
+  pl.close(); ol.close();
+});
+
 test('while watching: a short message from Ice Smoker公式, and ★ favourites', async () => {
   const s = await startServer({ operators: ['taku', 'mod1'], limits: LIMITS });
   try {

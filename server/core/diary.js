@@ -76,8 +76,9 @@ export function createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, bala
       return { comments: rows.slice(0, 50), more: rows.length > 50 };
     },
     'POST /api/diary/comments': async (req, u) => {
-      chatAllowed(u); commentRate(u);
+      commentRate(u);
       const b = await req.json(16 * 1024), p = post(b.post);
+      chatAllowed(u);
       if (typeof b.text !== 'string') throw new ApiError(400, 'bad_text', 'コメントを入力してください');
       const text = cleanText(b.text, 2000), f = screen(text), at = Date.now();
       const r = q('INSERT INTO diary_comments (post_id, user_id, body, original, words, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(p.id, u.id, f.masked, text, JSON.stringify(f.words), at);

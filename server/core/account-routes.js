@@ -80,14 +80,16 @@ export function createAccountRoutes({ q, tx, config, limit, rate, nameProblem, d
       rate(limit.login, req.ip, '試行回数が多すぎます。しばらく待ってからお試しください');
       const body = await req.json();
       const password = cleanPassword(body.password);
-      if (u.password_hash && !(await verifyPassword(body.current, u.password_hash))) {
+      const previousHash = u.password_hash;
+      if (previousHash && !(await verifyPassword(body.current, previousHash))) {
         throw new ApiError(403, 'bad_password', '今のパスワードが違います');
       }
       const hash = await hashPassword(password);
+      req.revalidate?.();
       const credentials = tx(() => {
         // Verification/hashing yield: another change may have revoked this request meanwhile.
         const cur = getUser(u.id);
-        if (cur.password_hash !== u.password_hash || !q('SELECT 1 FROM sessions WHERE token_hash = ?').get(u.tokenHash))
+        if (!cur || cur.password_hash !== previousHash || !q("SELECT 1 FROM sessions WHERE token_hash = ? AND ended = ''").get(u.tokenHash))
           throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
         const recoveryCode = replaceCredentials(q, u.id, hash, code => sealText(CODE_KEY, code));
         return { token: createSession(u.id), recoveryCode };

@@ -2375,6 +2375,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const row = q("SELECT * FROM message_history WHERE id = ? AND kind = 'car_offer' AND recipient_id = ?").get(id, u.id);
         if (!row) throw new ApiError(404, 'not_found', 'この販売は見つかりません');
         if (row.state) throw new ApiError(409, 'done', row.state === 'sold' ? 'この車はもう売れました' : 'この販売は取り消されました');
+        liveTarget(row.sender_id);
         const car = q('SELECT * FROM cars WHERE offer_id = ? AND owner_id = ?').get(id, row.sender_id);
         if (!car) throw new ApiError(409, 'gone', 'この車はもう販売されていません');
         requireFriend(u, row.sender_id, '購入');
@@ -2986,6 +2987,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         live.send(b.a_id, 'battle', { type: 'declined', battle: battleDto(battleById(b.id), b.a_id) });
         return { battle: null };
       }
+      liveTarget(b.a_id);
+      requireFriend(u, b.a_id, 'フレンド対決');
       tx(() => {
         q("UPDATE battles SET state = 'live', started_at = ? WHERE id = ?").run(Date.now(), b.id);
         q('UPDATE users SET battle_id = ? WHERE id IN (?, ?)').run(b.id, b.a_id, b.b_id);
@@ -3503,12 +3506,20 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   // Returns true when there was a friendship to end.
   function unfriend(a, b) {
-    return tx(() => {
+    const result = tx(() => {
+      const watchers = q('SELECT watcher_id, target_id FROM watchers WHERE (watcher_id = ? AND target_id = ?) OR (watcher_id = ? AND target_id = ?)').all(a, b, b, a);
       const r = q('DELETE FROM friends WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)').run(a, b, b, a);
       q('DELETE FROM friend_requests WHERE (from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?)').run(a, b, b, a);
       q('DELETE FROM watchers WHERE (watcher_id = ? AND target_id = ?) OR (watcher_id = ? AND target_id = ?)').run(a, b, b, a);
-      return Number(r.changes) > 0;
+      return { changed: Number(r.changes) > 0, watchers };
     });
+    voiceKept.delete(`${a}:${b}`); voiceKept.delete(`${b}:${a}`);
+    for (const row of result.watchers) {
+      const who = getUser(row.watcher_id);
+      if (who) homeChanged(row.target_id, mini(who), false);
+      live.send(row.watcher_id, 'watch', { type: 'removed', user: row.target_id });
+    }
+    return result.changed;
   }
 
   // the operator site (/ops/); the developer code is checked in one place

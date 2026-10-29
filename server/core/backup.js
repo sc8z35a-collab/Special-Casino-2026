@@ -49,10 +49,17 @@ function publicKey(raw) {
 function lockedKey(raw) {
   const w = raw && typeof raw === 'object' ? raw : {};
   const b64 = /^[A-Za-z0-9+/]+={0,2}$/;
-  if (!b64.test(String(w.salt)) || !b64.test(String(w.iv)) || !b64.test(String(w.data)) || String(w.data).length > 4096 || Number(w.rounds) < 600000) {
+  const valid = (value, min, max) => {
+    if (typeof value !== 'string' || value.length > max * 2 || !b64.test(value)) return false;
+    const bytes = Buffer.from(value, 'base64');
+    return bytes.length >= min && bytes.length <= max && bytes.toString('base64') === value;
+  };
+  const rounds = Number(w.rounds);
+  if (!valid(w.salt, 16, 64) || !valid(w.iv, 12, 12) || !valid(w.data, 16, 3072) ||
+      !Number.isSafeInteger(rounds) || rounds < 600000 || rounds > 0xffffffff) {
     throw new ApiError(400, 'bad_key', '鍵の形式が正しくありません');
   }
-  return { salt: w.salt, iv: w.iv, data: w.data, rounds: Number(w.rounds) };
+  return { salt: w.salt, iv: w.iv, data: w.data, rounds };
 }
 
 // exportAll() -> { tables, … }; blobs: the vault's bucket (or null); onChange(): the schedule changed
@@ -60,8 +67,12 @@ export function createBackup({ q, tx, opsLog, devCode, isDeveloper, exportAll, b
   const KEY = crypto.createHash('sha256').update(`${secret}:backup-ticket`).digest();
   const meta = (k, fallback) => { try { const r = q('SELECT value FROM meta WHERE key = ?').get(k); return r ? JSON.parse(r.value) : fallback; } catch { return fallback; } };
   const setMeta = (k, v) => q('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(k, JSON.stringify(v));
-  const settings = () => ({ every: 'off', keep: 30, ...meta('backup_settings', {}) });
+  function settings() {
+    const s = meta('backup_settings', null);
+    return { every: Object.hasOwn(EVERY, s?.every) ? s.every : 'off', keep: KEEP.includes(s?.keep) ? s.keep : 30 };
+  }
   const keyOf = () => meta('backup_key', null);
+  let running = 0, automatic = null;
 
   const sign = (body) => crypto.createHmac('sha256', KEY).update(body).digest('base64url');
   function ticketFor(u) {
@@ -119,6 +130,15 @@ export function createBackup({ q, tx, opsLog, devCode, isDeveloper, exportAll, b
 
   // one backup now ('auto' or 'manual')
   async function run(kind, by = null, req = null) {
+    running++;
+    try { return await makeBackup(kind, by, req); }
+    finally { running--; }
+  }
+  function runAutomatic() {
+    if (!automatic) automatic = run('auto').finally(() => { automatic = null; });
+    return automatic;
+  }
+  async function makeBackup(kind, by, req) {
     const key = keyOf();
     if (!key) throw new ApiError(409, 'no_key', '先にバックアップの鍵を作ってください');
     const started = Date.now();
@@ -127,10 +147,20 @@ export function createBackup({ q, tx, opsLog, devCode, isDeveloper, exportAll, b
     const plain = await gzip(JSON.stringify(data));
     const s = await seal(key.public, plain);
     const id = crypto.randomBytes(16).toString('hex');
-    const where = await put(id, s.data);
     const envelope = { format: 'two-state-backup', v: 1, id, at: started, epk: s.epk, iv: s.iv, schema: data.schema };
-    q(`INSERT INTO backups (id, at, kind, size, sealed, sha256, store, parts, envelope, counts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(id, started, kind, plain.length, s.data.length, sha(s.data), where.store, where.parts, JSON.stringify(envelope), JSON.stringify(counts));
+    let where;
+    try {
+      where = await put(id, s.data);
+      q(`INSERT INTO backups (id, at, kind, size, sealed, sha256, store, parts, envelope, counts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(id, started, kind, plain.length, s.data.length, sha(s.data), where.store, where.parts, JSON.stringify(envelope), JSON.stringify(counts));
+    } catch (error) {
+      // Never leave unreachable parts consuming the space needed for the next attempt.
+      try {
+        q('DELETE FROM backup_parts WHERE backup_id = ?').run(id);
+        if (blobs) await blobs.del([`backups/${id}`]);
+      } catch (cleanup) { console.error('backup cleanup failed', cleanup?.message); }
+      throw error;
+    }
     // the oldest automatic ones beyond the number kept
     const removed = [];
     const keep = settings().keep;
@@ -166,8 +196,15 @@ export function createBackup({ q, tx, opsLog, devCode, isDeveloper, exportAll, b
     'POST /api/backup/key': async (req, u) => {
       const body = await req.json(16 * 1024);
       await needCode(req, u, body);
-      const had = !!keyOf();
-      setMeta('backup_key', { public: publicKey(body.public), locked: lockedKey(body.locked), at: Date.now() });
+      const pub = publicKey(body.public), locked = lockedKey(body.locked);
+      try { await subtle.importKey('jwk', pub, { name: 'ECDH', namedCurve: 'P-256' }, false, []); }
+      catch { throw new ApiError(400, 'bad_key', '鍵の形式が正しくありません'); }
+      req.revalidate?.(); needTicket(req, u);
+      const previous = keyOf(), had = !!previous;
+      const replacing = had && JSON.stringify(previous.public) !== JSON.stringify(pub);
+      if (replacing && running) throw new ApiError(409, 'backup_busy', 'バックアップの作成中は鍵を変更できません');
+      if (replacing && q('SELECT 1 FROM backups LIMIT 1').get()) throw new ApiError(409, 'backup_key_in_use', '保存済みバックアップに必要な鍵です。鍵の再作成はできません');
+      setMeta('backup_key', { public: pub, locked, at: Date.now() });
       onChange();
       opsLog.add({ actor: u, action: 'backup_key', req, summary: had ? 'バックアップの鍵を作り直した（これからのバックアップは新しい鍵で暗号化）' : 'バックアップの鍵を作成', detail: { replaced: had, rewrapped: !!body.rewrap } });
       return { ok: true };
@@ -185,7 +222,7 @@ export function createBackup({ q, tx, opsLog, devCode, isDeveloper, exportAll, b
       await needCode(req, u, body);
       const every = String(body.every || '');
       const keep = Number(body.keep);
-      if (!(every in EVERY)) throw new ApiError(400, 'bad_every', '頻度を選んでください');
+      if (!Object.hasOwn(EVERY, every)) throw new ApiError(400, 'bad_every', '頻度を選んでください');
       if (!KEEP.includes(keep)) throw new ApiError(400, 'bad_keep', '残す数を選んでください');
       const before = settings();
       setMeta('backup_settings', { every, keep });
@@ -230,7 +267,7 @@ export function createBackup({ q, tx, opsLog, devCode, isDeveloper, exportAll, b
     // and kept in the bucket or the database). Best-effort.
     async lockdownBackup() {
       if (!keyOf()) return null;
-      try { return await run('auto'); } catch (e) {
+      try { return await runAutomatic(); } catch (e) {
         opsLog.add({ actorName: 'システム', action: 'backup_failed', summary: `ロックダウン時のバックアップに失敗：${String((e && e.message) || e).slice(0, 200)}`, detail: { error: String((e && e.stack) || e).slice(0, 2000) } });
         return null;
       }
@@ -239,7 +276,7 @@ export function createBackup({ q, tx, opsLog, devCode, isDeveloper, exportAll, b
     async due() {
       const at = nextDue();
       if (!at || at > Date.now()) return null;
-      try { return await run('auto'); } catch (e) {
+      try { return await runAutomatic(); } catch (e) {
         failedAt = Date.now();
         opsLog.add({ actorName: 'システム', action: 'backup_failed', summary: `自動バックアップに失敗しました：${String((e && e.message) || e).slice(0, 200)}`, detail: { error: String((e && e.stack) || e).slice(0, 2000) } });
         return null;
