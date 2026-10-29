@@ -150,7 +150,9 @@ const { configFrom } = require('../server/core/config.js');
       const refunded = await hook(refund); assert.equal(refunded.status, 200); assert.equal((await hook(refund)).status, 200);
       assert.equal((await call('GET', '/api/me', c)).me.coins, beforeCoins);
       assert.equal((await call('GET', '/api/pay/order?id=' + checkout.order.id, c)).order.status, 'refunded'); record('refund revokes only once', refunded, true);
-      const d = await register('ParityDraw', 'd'); assert.equal(d.status, 200);
+      // Reuse the completed sender fixture so these extra cases do not spend
+      // the registration burst needed by the existing WebSocket checks below.
+      const d = a;
       const drawBody = { key: Date.now() + '-' + crypto.randomBytes(16).toString('hex'), bet: 100, idle: 0 };
       const drawn = await call('POST', '/api/spin', d, drawBody); assert.equal(drawn.status, 200);
       const shop = await call('GET', '/api/items', d), omamori = shop.shop.items.find(i => i.id === 'omamori');
