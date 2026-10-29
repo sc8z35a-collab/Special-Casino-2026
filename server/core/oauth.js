@@ -189,11 +189,13 @@ export function createOauth({
       if (u.ban_kind === 'deleted') { drop(f); throw new ApiError(403, 'deleted', deleted); }
       u = liftExpired(u);
       const ban = banState(u);
-      drop(f);
-      opsLog.add({ actor: u, action: 'player_login', req, summary: `${u.name}さんがログイン（${NAMES[f.provider]}${ban ? '・処分中' : ''}）`, detail: { by: f.provider, ban: ban ? ban.code : '' } });
-      if (ban) return { step: 'login', token: createSession(u.id), ban };
-      seenOn(u.id, req);
-      return { step: 'login', token: createSession(u.id), me: meDto(u) };
+      return tx(() => {
+        drop(f);
+        opsLog.add({ actor: u, action: 'player_login', req, summary: `${u.name}さんがログイン（${NAMES[f.provider]}${ban ? '・処分中' : ''}）`, detail: { by: f.provider, ban: ban ? ban.code : '' } });
+        if (ban) return { step: 'login', token: createSession(u.id), ban };
+        seenOn(u.id, req);
+        return { step: 'login', token: createSession(u.id), me: meDto(u) };
+      });
     },
 
     // a new player: the same checks as any sign-up (a device makes `accountsPerDevice` accounts at most), the identity theirs from the first moment
@@ -240,12 +242,12 @@ export function createOauth({
           tx(() => {
             q('INSERT INTO oauth_identities (provider, subject, user_id, label, linked_at) VALUES (?, ?, ?, ?, ?)').run(f.provider, f.subject, u.id, f.label, clock());
             drop(f);
+            opsLog.add({ actor: u, action: 'player_oauth_link', req, summary: `${u.name}さんが${NAMES[f.provider]}を連携`, detail: { provider: f.provider } });
           });
         } catch (e) {
           if (/UNIQUE|PRIMARY/i.test(String(e && e.message))) throw new ApiError(409, 'oauth_have', `このアカウントには、すでに別の${NAMES[f.provider]}アカウントが連携されています。先に連携を解除してください`);
           throw e;
         }
-        opsLog.add({ actor: u, action: 'player_oauth_link', req, summary: `${u.name}さんが${NAMES[f.provider]}を連携`, detail: { provider: f.provider } });
       } else drop(f);
       return { provider: f.provider, label: f.label };
     },
@@ -255,8 +257,10 @@ export function createOauth({
       const body = await req.json();
       const p = String(body.provider || '');
       if (!Object.hasOwn(PROVIDERS, p)) throw new ApiError(400, 'bad_provider', '連携を解除する先を選んでください');
-      const r = q('DELETE FROM oauth_identities WHERE provider = ? AND user_id = ?').run(p, u.id);
-      if (Number(r.changes)) opsLog.add({ actor: u, action: 'player_oauth_unlink', req, summary: `${u.name}さんが${NAMES[p]}の連携を解除`, detail: { provider: p } });
+      tx(() => {
+        const r = q('DELETE FROM oauth_identities WHERE provider = ? AND user_id = ?').run(p, u.id);
+        if (Number(r.changes)) opsLog.add({ actor: u, action: 'player_oauth_unlink', req, summary: `${u.name}さんが${NAMES[p]}の連携を解除`, detail: { provider: p } });
+      });
       return { ok: true };
     },
 

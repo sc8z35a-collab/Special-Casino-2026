@@ -58,10 +58,12 @@ export function createChatRoutes({ q, tx, live, limit, getUser, dmChannel, isBlo
         chatAllowed(u);
         rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
         const f = filterText(text);
-        const message = postToGroup(g, u, 'text', f.masked);
-        detected(u, f, { group: g.id, place: 'group:' + g.name, original: text, messageId: message.id });
-        track(u.id, [['chat', 1]]);
-        return { message };
+        return tx(() => {
+          const message = postToGroup(g, u, 'text', f.masked);
+          detected(u, f, { group: g.id, place: 'group:' + g.name, original: text, messageId: message.id });
+          track(u.id, [['chat', 1]]);
+          return { message };
+        });
       }
       const to = posInt(body.to, '宛先');
       if (to === u.id) throw new ApiError(400, 'self', '自分にはメッセージを送れません');
@@ -90,11 +92,11 @@ export function createChatRoutes({ q, tx, live, limit, getUser, dmChannel, isBlo
         const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'text', body: f.masked, held });
         if (held) touchOwn(u.id, to, row.id);
         else touchConversations(u.id, to, row.id);
+        detected(u, f, { to, place: 'dm', original: text, messageId: row.id });
+        track(u.id, [['chat', 1]]);
         return row;
       });
-      detected(u, f, { to, place: 'dm', original: text, messageId: m.id });
       const message = held ? sendOwn(m, u.id) : deliverDm(m, u.id, to);
-      track(u.id, [['chat', 1]]);
       return { message };
     },
 
@@ -111,17 +113,19 @@ export function createChatRoutes({ q, tx, live, limit, getUser, dmChannel, isBlo
       if (m.retracted_at) throw new ApiError(409, 'retracted', 'このメッセージはもう取り消しています');
       const now = Date.now();
       if (now - m.created_at > RETRACT_MS) throw new ApiError(409, 'too_late', '送ってから1時間を過ぎたメッセージは取り消せません');
-      q('UPDATE messages SET retracted_at = ? WHERE id = ? AND retracted_at = 0').run(now, m.id);
       const group = m.channel.startsWith('group:') ? Number(m.channel.slice(6)) : 0;
-      // everyone in the conversation sees it go (not one who blocked the sender: they never had it)
-      const ids = group ? memberIds(group) : [u.id, m.held ? 0 : m.recipient_id];
-      for (const x of ids) if (x) live.send(x, 'retract', { id: m.id, channel: m.channel, group: group || undefined, at: now });
       const t = group ? null : getUser(m.recipient_id);
       const g = group ? q('SELECT name FROM chat_groups WHERE id = ?').get(group) : null;
-      opsLog.add({
-        actor: u, action: 'player_retract', target: t, req,
-        summary: `${u.name}さんが${group ? `グループ「${g ? g.name : '?'}」の` : `${t ? t.name : '?'}さんへの`}メッセージを取り消した`,
-        detail: { messageId: m.id, channel: m.channel, group, text: m.body, sentAt: m.created_at }
+      tx(() => {
+        q('UPDATE messages SET retracted_at = ? WHERE id = ? AND retracted_at = 0').run(now, m.id);
+        opsLog.add({
+          actor: u, action: 'player_retract', target: t, req,
+          summary: `${u.name}さんが${group ? `グループ「${g ? g.name : '?'}」の` : `${t ? t.name : '?'}さんへの`}メッセージを取り消した`,
+          detail: { messageId: m.id, channel: m.channel, group, text: m.body, sentAt: m.created_at }
+        });
+        // everyone in the conversation sees it go (not one who blocked the sender: they never had it)
+        const ids = group ? memberIds(group) : [u.id, m.held ? 0 : m.recipient_id];
+        for (const x of ids) if (x) live.send(x, 'retract', { id: m.id, channel: m.channel, group: group || undefined, at: now });
       });
       return { id: m.id, retracted: now };
     },

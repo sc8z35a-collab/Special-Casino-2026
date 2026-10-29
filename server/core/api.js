@@ -1701,7 +1701,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
 
   const gameLogin = createGameLogin({ q, tx, clock: config.clock || Date.now });
-  const spinRequests = createSpinRequests({ q, tx, clock: config.clock || Date.now });
+  const spinRequests = createSpinRequests({ q, tx, clock: config.clock || Date.now, replay: (id, result) => {
+    const cur = getUser(id), out = { ...result, balance: balance(cur), xp: cur.xp };
+    if (cur.charm > 0) out.charm = true; else delete out.charm;
+    // The draw stays immutable; account state may have advanced on another
+    // device or during a lost answer. Keep ordinary no-change replays compact.
+    if (result.vip || cur.rev !== result.balance?.rev || cur.vip_exp || cur.vip_until || cur.vip_trial_until) out.vip = vipDto(cur);
+    return out;
+  } });
 
   const registry = createRouteRegistry();
   const routes = registry.add('core', [
@@ -2002,24 +2009,26 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (!areFriends(u.id, id)) throw new ApiError(403, 'not_friends', 'フレンドだけをグループに入れられます');
       }
       rate(limit.friend, u.id);
-      const g = tx(() => {
+      return tx(() => {
         const now = Date.now();
         const id = Number(q('INSERT INTO chat_groups (name, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?)').run(name, u.id, now, now).lastInsertRowid);
         for (const m of [u.id, ...ids]) q('INSERT INTO chat_members (group_id, user_id, joined_at) VALUES (?, ?, ?)').run(id, m, now);
-        return q('SELECT * FROM chat_groups WHERE id = ?').get(id);
+        const g = q('SELECT * FROM chat_groups WHERE id = ?').get(id);
+        postToGroup(g, null, 'system', `${u.name}さんがグループ「${name}」を作りました`);
+        return { group: groupDto(q('SELECT * FROM chat_groups WHERE id = ?').get(g.id), u.id) };
       });
-      postToGroup(g, null, 'system', `${u.name}さんがグループ「${name}」を作りました`);
-      return { group: groupDto(q('SELECT * FROM chat_groups WHERE id = ?').get(g.id), u.id) };
     }],
 
     ['POST /api/groups/leave', async (req, u) => {
       const body = await req.json();
       const g = myGroup(u.id, posInt(body.group, 'グループ'));
-      q('DELETE FROM chat_members WHERE group_id = ? AND user_id = ?').run(g.id, u.id);
-      q('UPDATE users SET coop_group = 0 WHERE id = ? AND coop_group = ?').run(u.id, g.id);
-      // (the last one out: the group and what was said in it stay, kept for good)
-      if (memberIds(g.id).length) postToGroup(g, null, 'system', `${u.name}さんがグループを抜けました`);
-      return { left: g.id, unread: unreadTotal(u.id) };
+      return tx(() => {
+        q('DELETE FROM chat_members WHERE group_id = ? AND user_id = ?').run(g.id, u.id);
+        q('UPDATE users SET coop_group = 0 WHERE id = ? AND coop_group = ?').run(u.id, g.id);
+        // (the last one out: the group and what was said in it stay, kept for good)
+        if (memberIds(g.id).length) postToGroup(g, null, 'system', `${u.name}さんがグループを抜けました`);
+        return { left: g.id, unread: unreadTotal(u.id) };
+      });
     }],
 
     /* ----- money and gifts between friends ----- */
@@ -3395,11 +3404,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         detections: q('SELECT original, place, created_at FROM detections WHERE sender_id = ? ORDER BY id DESC LIMIT 10').all(t.id),
         request: { ip: req.ip || '', userAgent: String(req.header('user-agent') || '').slice(0, 300) }
       };
-      q('INSERT INTO reports (reporter_id, target_id, kind, body, place, context, created_at, message_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(u.id, t.id, kind.id, text, 'message', JSON.stringify(context), Date.now(), m.id);
-      opsLog.add({
-        actor: u, action: 'player_report', target: t, req, summary: `${u.name}さんが${t.name}さんのメッセージを通報（${kind.name}）`,
-        detail: { kind: kind.id, place: 'message', messageId: m.id, message: m.body, text }
+      tx(() => {
+        q('INSERT INTO reports (reporter_id, target_id, kind, body, place, context, created_at, message_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(u.id, t.id, kind.id, text, 'message', JSON.stringify(context), Date.now(), m.id);
+        opsLog.add({
+          actor: u, action: 'player_report', target: t, req, summary: `${u.name}さんが${t.name}さんのメッセージを通報（${kind.name}）`,
+          detail: { kind: kind.id, place: 'message', messageId: m.id, message: m.body, text }
+        });
       });
       return { ok: true, left: MESSAGE_REPORT.perDay - today - 1, message: '通報を受け付けました。運営が前後の会話も含めて確認します。' };
     }],

@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import crypto from 'node:crypto';
 const reply = (status, json) => ({ status, json: async () => json });
-function setup(session = new Map()) {
-  let fetcher = async () => reply(200, {}); const calls = [], storage = new Map([['blockbuster-reels/auth', 'old-session-token']]);
+function setup(session = new Map(), auth = 'old-session-token') {
+  let fetcher = async () => reply(200, {}); const calls = [], storage = new Map([['blockbuster-reels/auth', auth]]);
   const ctx = { crypto: crypto.webcrypto, location: { protocol: 'https:' }, document: { querySelector: () => ({ getAttribute: key => key === 'content' ? 'online' : 'ws' }) },
     localStorage: { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
     sessionStorage: { getItem: k => session.get(k), setItem: (k, v) => session.set(k, v), removeItem: k => session.delete(k) },
@@ -14,6 +14,33 @@ function setup(session = new Map()) {
   vm.runInNewContext(fs.readFileSync(new URL('../../js/net/api.js', import.meta.url), 'utf8'), ctx);
   return { BR: ctx.BR, calls, storage, respond: fn => { fetcher = fn; } };
 }
+
+for (const type of ['spin', 'gacha']) test(`password rotation preserves the uncertain ${type} receipt and its saved reload recovery`, async () => {
+  const session = new Map(), s = setup(session), api = s.BR.api;
+  const draw = () => type === 'spin' ? api.spin(100) : api.gachaSpin('rare', 1, 10000000);
+  s.respond(async () => { throw Error('lost committed answer'); }); await assert.rejects(draw());
+  const original = s.calls[0].body;
+  s.respond(async call => reply(200, call.path === '/api/password' ? { token: 'rotated-session-token' } : { result: {} }));
+  await api.password('old', 'new-password');
+  assert.equal(type === 'spin' ? api.pendingSpinBet() : api.pendingGacha()?.count, type === 'spin' ? 100 : 1);
+  const saved = JSON.parse(session.get('blockbuster-reels/pending-' + type));
+  assert.equal(saved.owner, 'rotated-session-token'.slice(-16)); assert.deepEqual(saved.body, original);
+  const restored = setup(session, 'rotated-session-token');
+  assert.equal(type === 'spin' ? restored.BR.api.pendingSpinBet() : restored.BR.api.pendingGacha()?.count, type === 'spin' ? 100 : 1);
+  if (type === 'spin') await restored.BR.api.spin(100); else await restored.BR.api.gachaSpin('rare', 1, 10000000);
+  assert.deepEqual(restored.calls.at(-1).body, original); assert.equal(session.has('blockbuster-reels/pending-' + type), false);
+});
+
+for (const type of ['spin', 'gacha']) test(`a late old-session ${type} answer cannot erase the receipt migrated during password rotation`, async () => {
+  const session = new Map(), s = setup(session), api = s.BR.api; let finish;
+  const draw = () => type === 'spin' ? api.spin(100) : api.gachaSpin('rare', 1, 10000000);
+  s.respond(call => call.path === '/api/password' ? Promise.resolve(reply(200, { token: 'rotated-session-token' })) : new Promise(resolve => { finish = resolve; }));
+  const pending = draw(), original = s.calls[0].body;
+  await api.password('old', 'new-password'); finish(reply(200, { result: {} }));
+  await assert.rejects(pending, e => e.code === 'session_changed');
+  s.respond(async () => reply(200, { result: {} })); await draw();
+  assert.deepEqual(s.calls.at(-1).body, original);
+});
 
 test('auction actions carry the auction identity while legacy calls remain compatible', async () => {
   const s = setup(); await s.BR.api.auctionBid(3, 42); await s.BR.api.auctionLeave(42);

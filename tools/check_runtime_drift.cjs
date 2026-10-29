@@ -150,13 +150,39 @@ const { configFrom } = require('../server/core/config.js');
       const refunded = await hook(refund); assert.equal(refunded.status, 200); assert.equal((await hook(refund)).status, 200);
       assert.equal((await call('GET', '/api/me', c)).me.coins, beforeCoins);
       assert.equal((await call('GET', '/api/pay/order?id=' + checkout.order.id, c)).order.status, 'refunded'); record('refund revokes only once', refunded, true);
+      // Reuse the completed sender fixture so these extra cases do not spend
+      // the registration burst needed by the existing WebSocket checks below.
+      const d = a;
+      const drawBody = { key: Date.now() + '-' + crypto.randomBytes(16).toString('hex'), bet: 100, idle: 0 };
+      const drawn = await call('POST', '/api/spin', d, drawBody); assert.equal(drawn.status, 200);
+      const shop = await call('GET', '/api/items', d), omamori = shop.shop.items.find(i => i.id === 'omamori');
+      assert.equal((await call('POST', '/api/shop/buy', d, { id: 'omamori', price: omamori.salePrice, count: 1 })).status, 200);
+      assert.equal((await call('POST', '/api/charm', d, {})).status, 200);
+      assert.equal((await call('POST', '/api/vip/trial', d, {})).status, 200);
+      const rotated = await call('POST', '/api/password', d, { current: 'pass1234', password: 'new-parity-password' }); assert.equal(rotated.status, 200);
+      const oldSession = await call('GET', '/api/me', d); assert.equal(oldSession.status, 401); record('rotation revokes original draw session', oldSession);
+      const current = { token: rotated.token }, me = (await call('GET', '/api/me', current)).me;
+      const replayed = await call('POST', '/api/spin', current, drawBody); assert.equal(replayed.status, 200);
+      assert.deepEqual(replayed.result, drawn.result); record('rotation replay preserves exact draw', replayed, true);
+      assert.deepEqual(replayed.balance, { tokens: me.tokens, dollars: me.dollars, coins: me.coins, rev: me.rev });
+      assert.equal(replayed.xp, me.xp); assert.equal(replayed.charm, true); assert.deepEqual(replayed.vip, me.vip);
+      record('rotation replay returns current account state', replayed, true);
+      assert.equal((await call('GET', '/api/me', current)).me.spins, 1); record('rotation replay cannot bet twice', replayed, true);
+      const lender = await call('GET', '/api/peter', current), beforeChat = await call('GET', '/api/messages?with=' + lender.peter.id, current);
+      assert.equal((await call('POST', '/api/admin', null, { cmd: 'grant', args: [d.me.id, 'dollars', Number.MAX_SAFE_INTEGER - me.dollars] }, { 'X-Admin-Token': admin })).status, 200);
+      const loan = await call('POST', '/api/messages', current, { to: lender.peter.id, text: '100万貸して' });
+      assert.equal(loan.status, 409); assert.equal(loan.error.code, 'balance_limit'); record('NPC loan overflow refuses whole exchange', loan);
+      const afterChat = await call('GET', '/api/messages?with=' + lender.peter.id, current);
+      assert.deepEqual(afterChat.messages, beforeChat.messages);
+      assert.equal((await call('GET', '/api/peter', current)).debt.lent, 0); assert.equal((await call('GET', '/api/me', current)).me.dollars, Number.MAX_SAFE_INTEGER);
+      record('failed NPC loan leaves no message or debt', afterChat, true);
       const logout = await call('POST', '/api/logout', b, {}); assert.equal(logout.status, 200); record('logout', logout);
       const revoked = await call('GET', '/api/me', b); assert.equal(revoked.status, 401); record('revoked session', revoked);
       return trace;
     }
     const expected = await contract(node.base), actual = await contract(worker.base);
     assert.deepEqual(actual, expected, 'Node and Workers must preserve the same contract');
-    console.log('PASS runtime parity: ' + expected.length + ' contracts; balances, auth, permissions, watch/voice, VIP wage rollback, payment rollback/retry/refund, Unicode chat, filtering, backup schema and session revocation');
+    console.log('PASS runtime parity: ' + expected.length + ' contracts; balances, auth, permissions, watch/voice, VIP wage rollback, payment rollback/retry/refund, password-rotation spin replay, NPC chat rollback, Unicode chat, filtering, backup schema and session revocation');
     // Real hibernating WebSockets must be bound to one session, including
     // unused tickets. A second device of the same account remains connected.
     async function call(path, body, token) {

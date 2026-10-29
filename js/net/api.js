@@ -109,6 +109,15 @@
   }
   function spinPending() { if (!pendingSpin || pendingSpin.token !== token) pendingSpin = readDraw('spin'); return pendingSpin; }
   function gachaPending() { if (!pendingGacha || pendingGacha.token !== token) pendingGacha = readDraw('gacha'); return pendingGacha; }
+  // Only a successful password change proves that the new session belongs to
+  // this account. Keep uncertain draws, but retire old in-flight callbacks.
+  function rotateDraws(nextToken) {
+    var spin = spinPending(), gacha = gachaPending();
+    pendingSpin = spin ? { token: nextToken, body: spin.body } : null;
+    pendingGacha = gacha ? { token: nextToken, body: gacha.body } : null;
+    if (pendingSpin) saveDraw('spin', pendingSpin);
+    if (pendingGacha) saveDraw('gacha', pendingGacha);
+  }
   function viaHttp(method, path, headers, body) {
     return fetch(path, {
       method: method,
@@ -252,6 +261,7 @@
         viaHttp('POST', '/api/logout', { Authorization: 'Bearer ' + r.token, 'Content-Type': 'application/json' }, {}).catch(function () {});
         throw new ApiError(0, 'session_changed', 'ログイン状態が変わりました');
       }
+      rotateDraws(r.token);
       BR.api.setToken(r.token);
       if (rotatingToken === oldToken) rotatingToken = null;
       BR.live.connect();

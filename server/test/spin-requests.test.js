@@ -7,6 +7,22 @@ import { statements } from '../core/db.js';
 import { answerOnSocket } from '../core/socketapi.js';
 const key = () => Date.now() + '-' + crypto.randomBytes(16).toString('hex');
 
+test('replaying a settled spin preserves its exact draw while returning current wallet, charm, XP and VIP state', async t => {
+  const s = await startServer({ startTokens: 10000 }); t.after(() => s.stop()); const p = await s.register('ReplayState');
+  const body = { key: key(), bet: 100, idle: 0 }, first = await s.call('POST', '/api/spin', { token: p.token, body, raw: true });
+  assert.equal(first.status, 200);
+  s.setUser(p.me.id, { dollars: 12345678, tokens: 7654321, coins: 234, xp: 1200, charm: 1, vip_exp: 1200, vip_until: Date.now() + 86400000, rev: first.balance.rev + 10 });
+  const current = (await s.call('GET', '/api/me', { token: p.token })).me;
+  const replay = await s.call('POST', '/api/spin', { token: p.token, body, raw: true });
+  assert.deepEqual(replay.result, first.result);
+  assert.deepEqual(replay.balance, { dollars: current.dollars, tokens: current.tokens, coins: current.coins, rev: current.rev });
+  assert.equal(replay.xp, current.xp); assert.equal(replay.charm, true); assert.deepEqual(replay.vip, current.vip);
+  s.setUser(p.me.id, { charm: 0, rev: current.rev + 1 });
+  const again = await s.call('POST', '/api/spin', { token: p.token, body, raw: true }); assert.equal(again.charm, undefined);
+  assert.equal(s.app.db.prepare('SELECT spins FROM users WHERE id=?').get(p.me.id).spins, 1);
+  assert.equal(s.app.db.prepare('SELECT COUNT(*) AS n FROM spins WHERE user_id=?').get(p.me.id).n, 1);
+});
+
 test('simultaneous spin retries on HTTP/live settle, log, advance quests and publish only once', async t => {
   const s = await startServer({ startTokens: 10000, quests: true, limits: { spin: [1, 1], general: [100000, 10000] } }); t.after(() => s.stop());
   const p = await s.register('SpinRetry');
