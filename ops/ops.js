@@ -278,7 +278,10 @@
     if (last && !$('#login-name').value) $('#login-name').value = last;
     askWait();
     setTimeout(askWait, 900);
-    setTimeout(function () { $('#login-name').focus(); }, 50);
+    setTimeout(function () {
+      var box = $('#login');
+      if (!box.hidden && !box.contains(document.activeElement)) $('#login-name').focus();
+    }, 50);
   }
   // The passkey (server/core/pk.js), asked each time this page opens and after
   // an hour on it: today's six digits from Discord's /passkey. A wrong one

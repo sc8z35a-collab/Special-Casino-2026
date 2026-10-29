@@ -273,7 +273,10 @@
     clearInterval(timer);
     clearInterval(aliveTimer);
     document.body.classList.remove('role-viewer');
-    setTimeout(function () { $('#login-name').focus(); }, 50);
+    setTimeout(function () {
+      var box = $('#login');
+      if (!box.hidden && !box.contains(document.activeElement)) $('#login-name').focus();
+    }, 50);
   }
   // signed out: what this operator saw goes with them, so the next one starts clean
   function signedOut(message) {
