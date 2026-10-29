@@ -65,7 +65,22 @@
     if (empty) empty(proxy, ensure);
   }
   if (!BR.watchQuality) BR.watchQuality = { active: function () { return false; }, resCap: function () { return Infinity; } };
-  module('watch', ['start', 'openChat'], 'watch');
+  module('watch', ['start', 'openChat'], 'watch', function (proxy, ensure) {
+    var listening = false, waking = null;
+    function wake() {
+      if (BR.watch !== proxy || waking) return;
+      var epoch = generation;
+      waking = ensure().then(function (api) { if (epoch === generation) return api.refresh(); }, function () {
+        if (epoch === generation) fail();
+      }).then(function () { waking = null; }, function () { waking = null; });
+    }
+    proxy.init = function () {
+      if (listening || !BR.api.online) return;
+      listening = true;
+      BR.live.on('watch', function (ev) { if (ev.type === 'watched' && ev.on) wake(); });
+      BR.live.on('hello', function (h) { if (h.watchers && h.watchers.watchers.length) wake(); });
+    };
+  });
   module('carsaleDialog', ['open'], 'carsaleDialog');
   module('cars', ['showShop', 'showGarage', 'giftTo', 'pickDialog'], 'cars');
   module('guide', ['start'], 'guide', function (proxy, ensure) {

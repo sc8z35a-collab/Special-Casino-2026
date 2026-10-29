@@ -246,6 +246,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         stopped ? 0 : c.rent_start, stopped ? 0 : c.rent_until, full && !c.rent_until ? 1 : 0, c.id, c.rent_start, c.rent_blocks).changes) > 0;
   }
   function settleRentals(userId) {
+    // Old canceled offers may still hold a surviving player's car after a purge.
+    q(`UPDATE cars SET offer_id = 0 WHERE owner_id = ? AND offer_id != 0 AND NOT EXISTS
+      (SELECT 1 FROM message_history m WHERE m.id = cars.offer_id AND m.kind = 'car_offer' AND m.state = '' AND m.sender_id = cars.owner_id)`).run(userId);
     for (const c of q('SELECT * FROM cars WHERE owner_id = ? AND rent_start > 0').all(userId)) tx(() => settleRental(c));
   }
   function carDto(r) {
@@ -1129,6 +1132,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const inVoice = (id, room) => id === room || !!q('SELECT 1 AS x FROM watchers WHERE watcher_id = ? AND target_id = ? AND voice = 1').get(id, room);
   // a watcher whose connection dropped keeps their voice for a while (memory only)
   const voiceKept = new Map();
+  let watchStamp = q('SELECT COALESCE(MAX(since), 0) AS n FROM watchers').get().n;
   function voiceChanged(hostId, who, on) {
     const data = { type: 'voice', user: hostId, by: mini(who), on, voice: voiceIds(hostId) };
     live.send(hostId, 'watch', data);
@@ -1136,8 +1140,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   // the people watching a player, and whether they may talk
   function homeMembers(hostId) {
-    return q('SELECT o.id, o.name, o.avatar, o.vip_until, o.vip_exp, o.vip_trial_until, w.voice FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(hostId)
-      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, vip: vipLevel(r), vipBadge: vipBadgeLevel(r), voice: !!r.voice }));
+    return q('SELECT o.id, o.name, o.avatar, o.vip_until, o.vip_exp, o.vip_trial_until, w.voice, w.since FROM watchers w JOIN users o ON o.id = w.watcher_id WHERE w.target_id = ?').all(hostId)
+      .map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, vip: vipLevel(r), vipBadge: vipBadgeLevel(r), voice: !!r.voice, since: r.since }));
   }
   // The chat of a home (the watched player and their watchers) is live only;
   // its last lines are kept in memory for people who come in.
@@ -2468,8 +2472,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const id = posInt(body.user, 'ユーザーID');
       if (!body.on) {
         const host = watching(u.id);
-        q('DELETE FROM watchers WHERE watcher_id = ?').run(u.id);
-        if (host) homeChanged(host, mini(u), false);
+        const changed = q('DELETE FROM watchers WHERE watcher_id = ? AND target_id = ?').run(u.id, id);
+        voiceKept.delete(`${id}:${u.id}`);
+        if (Number(changed.changes) && host) homeChanged(host, mini(u), false);
         return { on: false };
       }
       const t = liveTarget(id);
@@ -2486,11 +2491,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const kept = voiceKept.get(`${id}:${u.id}`);
       const voice = kept && kept > Date.now() ? 1 : 0;
       voiceKept.delete(`${id}:${u.id}`);
+      watchStamp = Math.max(Date.now(), watchStamp + 1);
       q(`INSERT INTO watchers (watcher_id, target_id, since, voice) VALUES (?, ?, ?, ?)
-         ON CONFLICT(watcher_id) DO UPDATE SET target_id = excluded.target_id, since = excluded.since,
-         voice = CASE WHEN watchers.target_id = excluded.target_id THEN MAX(watchers.voice, excluded.voice) ELSE excluded.voice END`).run(u.id, id, Date.now(), voice);
+         ON CONFLICT(watcher_id) DO UPDATE SET target_id = excluded.target_id,
+         since = CASE WHEN watchers.target_id = excluded.target_id THEN watchers.since ELSE excluded.since END,
+         voice = CASE WHEN watchers.target_id = excluded.target_id THEN MAX(watchers.voice, excluded.voice) ELSE excluded.voice END`).run(u.id, id, watchStamp, voice);
       if (prev !== id) {
-        homeChanged(id, mini(u), true);
+        homeChanged(id, { ...mini(u), since: watchStamp }, true);
         track(u.id, [['watch', 1]]);
         if (voice) voiceChanged(id, u, true);
       }
@@ -2499,6 +2506,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const all = homeMembers(id);
       return {
         on: true, user: { ...mini(t), online: live.isOnline(id) }, balance: balance(t), last, charm: t.charm > 0,
+        since: all.find(m => m.id === u.id).since,
         members: all.filter((m) => m.id !== u.id),
         voice: all.some((m) => m.id === u.id && m.voice),
         chat: homeChatOf(id),
@@ -2515,7 +2523,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const id = posInt(body.user, 'ユーザーID');
       const on = !!body.on;
       const host = id === u.id ? watching(u.id) : u.id;
-      if (!host || watching(id) !== host) throw new ApiError(404, 'not_watching', 'このプレイヤーは観戦していません');
+      const member = q('SELECT target_id, since FROM watchers WHERE watcher_id = ?').get(id);
+      if (!host || !member || member.target_id !== host) throw new ApiError(404, 'not_watching', 'このプレイヤーは観戦していません');
+      if (body.since !== undefined && (!Number.isSafeInteger(body.since) || body.since <= 0)) throw new ApiError(400, 'bad_watch', '観戦の情報が正しくありません');
+      if (body.since !== undefined && body.since !== member.since) throw new ApiError(409, 'watch_changed', '観戦の参加状態が変わりました');
       if (id === u.id && on) throw new ApiError(403, 'host_only', '話す相手は観戦されている人が選びます');
       rate(limit.friend, u.id);
       q('UPDATE watchers SET voice = ? WHERE watcher_id = ?').run(on ? 1 : 0, id);

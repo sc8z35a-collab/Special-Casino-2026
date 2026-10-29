@@ -42,6 +42,22 @@ const { configFrom } = require('../server/core/config.js');
       record('operator permissions', await call('GET', '/api/ops/me', a));
       const request = await call('POST', '/api/friends/request', a, { user: b.me.id }); assert.equal(request.status, 200); record('friend request', request, request.friendship);
       const accept = await call('POST', '/api/friends/respond', b, { user: a.me.id, accept: true }); assert.equal(accept.status, 200); record('friend acceptance', accept, accept.friendship);
+      const watch = (id, on) => call('POST', '/api/watch', b, { user: id, on });
+      const firstWatch = await watch(a.me.id, true); assert.equal(firstWatch.status, 200); assert.ok(Number.isSafeInteger(firstWatch.since));
+      const repeated = await watch(a.me.id, true); assert.equal(repeated.since, firstWatch.since); record('stable watch membership', repeated, true);
+      const grant = since => call('POST', '/api/watch/voice', a, { user: b.me.id, on: true, since });
+      const consent = await grant(firstWatch.since); assert.equal(consent.status, 200); assert.ok(consent.voice.includes(b.me.id)); record('current voice consent', consent, true);
+      await watch(a.me.id, false);
+      const replacement = await watch(a.me.id, true); assert.notEqual(replacement.since, firstWatch.since);
+      const stale = await grant(firstWatch.since); assert.equal(stale.status, 409); assert.equal(stale.error.code, 'watch_changed'); record('old membership voice refused', stale);
+      const home = await call('GET', '/api/watchers', a); assert.equal(home.watchers.find(w => w.id === b.me.id).voice, false); record('replacement remains muted', home, true);
+      const c = await register('ParityC', 'c'); assert.equal(c.status, 200);
+      assert.equal((await call('POST', '/api/friends/request', b, { user: c.me.id })).status, 200);
+      assert.equal((await call('POST', '/api/friends/respond', c, { user: b.me.id, accept: true })).status, 200);
+      await watch(c.me.id, true); await watch(a.me.id, false);
+      const latestHome = await call('GET', '/api/watchers', c);
+      assert.ok(latestHome.watchers.some(w => w.id === b.me.id)); record('old host exit preserves latest watch', latestHome, true);
+      await watch(c.me.id, false);
       const text = 'こんにちは 世界', sent = await call('POST', '/api/messages', a, { to: b.me.id, text });
       assert.equal(sent.status, 200); assert.equal(sent.message.text, text); record('Unicode message', sent, { text: sent.message.text, kind: sent.message.kind });
       const received = await call('GET', '/api/messages?with=' + a.me.id, b);
@@ -70,7 +86,7 @@ const { configFrom } = require('../server/core/config.js');
     }
     const expected = await contract(node.base), actual = await contract(worker.base);
     assert.deepEqual(actual, expected, 'Node and Workers must preserve the same contract');
-    console.log('PASS runtime parity: ' + expected.length + ' contracts; balances, auth, permissions, Unicode chat, filtering, backup schema and session revocation');
+    console.log('PASS runtime parity: ' + expected.length + ' contracts; balances, auth, permissions, watch membership/voice revocation, Unicode chat, filtering, backup schema and session revocation');
     // Real hibernating WebSockets must be bound to one session, including
     // unused tickets. A second device of the same account remains connected.
     async function call(path, body, token) {
