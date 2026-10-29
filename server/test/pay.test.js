@@ -1,9 +1,9 @@
 // Dedicated pay.js integration tests. Stripe is a disposable local stand-in.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import http from 'node:http';
 import crypto from 'node:crypto';
 import { startServer } from './helpers.js';
+import { fakeStripe } from './fake-stripe.js';
 
 const KEY = 'sk_test_' + 'x'.repeat(24);
 const WHSEC = 'whsec_' + crypto.randomBytes(16).toString('hex');
@@ -12,81 +12,10 @@ const LIMITS = {
   payCheckout: [100000, 1000], payCheckoutIp: [100000, 1000], payLook: [100000, 1000]
 };
 
-// Stripe's API as far as the game uses it: payment pages, payments, expiry
-function fakeStripe() {
-  const sessions = new Map(), intents = new Map(), keys = new Map(), seen = [];
-  let n = 0;
-  function view(s, expand) {
-    const out = { ...s };
-    if (s.payment_intent && expand) out.payment_intent = intents.get(s.payment_intent);
-    return out;
-  }
-  const server = http.createServer((req, res) => {
-    let body = '';
-    req.on('data', (c) => { body += c; });
-    req.on('end', () => {
-      const url = new URL(req.url, 'http://x');
-      const send = (status, obj) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
-      if (req.headers.authorization !== `Bearer ${KEY}`) return send(401, { error: { message: 'Invalid API Key provided' } });
-      const f = new URLSearchParams(body);
-      seen.push({ method: req.method, path: url.pathname, form: f, version: req.headers['stripe-version'], idem: req.headers['idempotency-key'] });
-      let m;
-      if (req.method === 'POST' && url.pathname === '/v1/checkout/sessions') {
-        const key = req.headers['idempotency-key'];
-        if (key && keys.has(key)) return send(200, view(sessions.get(keys.get(key))));
-        const id = `cs_test_${++n}${crypto.randomBytes(8).toString('hex')}`;
-        const s = {
-          id, object: 'checkout.session', url: `https://checkout.stripe.com/c/pay/${id}`, client_reference_id: f.get('client_reference_id'),
-          metadata: { order: f.get('metadata[order]'), user: f.get('metadata[user]') }, mode: f.get('mode'), currency: f.get('line_items[0][price_data][currency]'),
-          amount_total: Number(f.get('line_items[0][price_data][unit_amount]')) * Number(f.get('line_items[0][quantity]')),
-          livemode: false, status: 'open', payment_status: 'unpaid', payment_intent: null
-        };
-        sessions.set(id, s);
-        if (key) keys.set(key, id);
-        return send(200, view(s));
-      }
-      if (req.method === 'GET' && (m = /^\/v1\/checkout\/sessions\/(cs_\w+)$/.exec(url.pathname))) {
-        const s = sessions.get(m[1]);
-        return s ? send(200, view(s, /^payment_intent(?:\.latest_charge)?$/.test(url.searchParams.get('expand[0]') || ''))) : send(404, { error: { message: 'No such checkout.session' } });
-      }
-      if (req.method === 'POST' && (m = /^\/v1\/checkout\/sessions\/(cs_\w+)\/expire$/.exec(url.pathname))) {
-        const s = sessions.get(m[1]);
-        if (!s || s.status !== 'open') return send(400, { error: { message: 'not open' } });
-        s.status = 'expired';
-        return send(200, view(s));
-      }
-      if (req.method === 'GET' && (m = /^\/v1\/payment_intents\/(pi_\w+)$/.exec(url.pathname))) {
-        const pi = intents.get(m[1]);
-        return pi ? send(200, pi) : send(404, { error: { message: 'No such payment_intent' } });
-      }
-      send(404, { error: { message: 'Unrecognized request URL' } });
-    });
-  });
-  function intent(s, status, extra = {}) {
-    const id = `pi_test_${s.id.slice(8)}`;
-    intents.set(id, { id, object: 'payment_intent', amount: s.amount_total, currency: 'jpy', livemode: false, status, metadata: { order: s.client_reference_id, user: s.metadata.user },
-      latest_charge: { id: `ch_test_${s.id.slice(8)}`, object: 'charge', payment_intent: id, amount: s.amount_total, currency: 'jpy', livemode: false, amount_refunded: 0 }, ...extra });
-    s.payment_intent = id;
-    return intents.get(id);
-  }
-  return {
-    server, sessions, intents, seen,
-    pay(id) { const s = sessions.get(id); s.status = 'complete'; s.payment_status = 'paid'; intent(s, 'succeeded'); return s; },
-    slip(id) {
-      const s = sessions.get(id);
-      s.status = 'complete';
-      intent(s, 'requires_action', { next_action: { type: 'konbini_display_details', konbini_display_details: { hosted_voucher_url: 'https://payments.stripe.com/konbini/voucher/test_abc123', expires_at: Math.floor(Date.now() / 1000) + 3 * 86400 } } });
-      return s;
-    },
-    cash(id) { const s = sessions.get(id); s.payment_status = 'paid'; intents.get(s.payment_intent).status = 'succeeded'; return s; },
-    refund(id) { const s = sessions.get(id); intents.get(s.payment_intent).latest_charge.amount_refunded = s.amount_total; return s; }
-  };
-}
-
 let s, call, register, stripe, taku, sub;
 
 before(async () => {
-  stripe = fakeStripe();
+  stripe = fakeStripe(KEY);
   await new Promise((r) => stripe.server.listen(0, '127.0.0.1', r));
   s = await startServer({
     operators: ['taku', 'sub'], limits: LIMITS,
@@ -364,4 +293,131 @@ test('a partially refunded payment first grants only its remaining entitlement a
   s.app.db.prepare('UPDATE users SET coins = 100 WHERE id = ?').run(p.me.id);
   await hook(event('charge.refunded', { object: 'charge', payment_intent: pi.id }));
   assert.equal(coins(p.me.id), 100, 'an identical cumulative refund never collects from future income');
+});
+
+function failAudit(t, action) {
+  t.mock.method(console, 'error', () => {});
+  s.app.db.exec(`CREATE TRIGGER fail_payment_audit BEFORE INSERT ON ops_log WHEN NEW.action='${action}' BEGIN SELECT RAISE(ABORT,'simulated audit failure'); END`);
+  let active = true;
+  const repair = () => { if (active) { active = false; s.app.db.exec('DROP TRIGGER fail_payment_audit'); } };
+  t.after(repair); return repair;
+}
+function pauseProvider(t, predicate) {
+  const original = globalThis.fetch, prefix = `http://127.0.0.1:${stripe.server.address().port}`;
+  let entered, release, paused = false;
+  const ready = new Promise(resolve => { entered = resolve; }), gate = new Promise(resolve => { release = resolve; });
+  t.mock.method(globalThis, 'fetch', async function (input, options) {
+    const response = await original(input, options), url = String(input);
+    if (!paused && url.startsWith(prefix) && predicate(new URL(url), options)) { paused = true; entered(); await gate; }
+    return response;
+  });
+  t.after(() => release()); return { ready, release };
+}
+const paymentRow = id => s.app.db.prepare('SELECT * FROM pay_orders WHERE id=?').get(id);
+const paymentLog = (id, action) => s.app.db.prepare('SELECT COUNT(*) AS n FROM ops_log WHERE action=? AND detail LIKE ?').get(action, '%' + id + '%').n;
+
+for (const failThanks of [false, true]) test(`a paid notice rolls back coins and status when ${failThanks ? 'thanks' : 'audit'} storage fails`, async t => {
+  const p = await buyer(failThanks ? 'ThanksFail' : 'PayLogFail'), start = coins(p.me.id);
+  const r = await checkout(p, { plan: 'support3', qty: 2, method: 'paypay' });
+  const session = [...stripe.sessions.values()].find(x => x.client_reference_id === r.order.id); stripe.pay(session.id);
+  let repair;
+  if (failThanks) {
+    t.mock.method(console, 'error', () => {});
+    s.app.db.exec("CREATE TRIGGER fail_payment_thanks BEFORE INSERT ON messages WHEN NEW.kind='text' BEGIN SELECT RAISE(ABORT,'simulated thanks failure'); END");
+    repair = () => s.app.db.exec('DROP TRIGGER fail_payment_thanks');
+    t.after(() => s.app.db.exec('DROP TRIGGER IF EXISTS fail_payment_thanks'));
+  } else repair = failAudit(t, 'pay_paid');
+  const events = [], send = s.app.live.send;
+  t.mock.method(s.app.live, 'send', function (...args) { events.push(args); return send.apply(this, args); });
+  const ev = event('checkout.session.completed', session);
+  assert.equal((await hook(ev)).status, 503);
+  assert.equal(coins(p.me.id), start); assert.equal(paymentRow(r.order.id).status, 'open');
+  assert.equal(events.some(([id, name]) => id === p.me.id && ['pay', 'balance', 'msg'].includes(name)), false);
+  repair(); assert.equal((await hook(ev)).status, 200); assert.equal((await hook(ev)).status, 200);
+  assert.equal(coins(p.me.id), start + 68); assert.equal(paymentLog(r.order.id, 'pay_paid'), 1);
+  assert.equal((await fromBot(p)).filter(text => text.includes('【ご支援ありがとうございます】')).length, 1);
+});
+
+test('refunds remain retryable and never remove coins without their audit record', async t => {
+  const p = await buyer('RefundLog'), start = coins(p.me.id), r = await checkout(p, { plan: 'support3', qty: 2, method: 'paypay' });
+  const session = [...stripe.sessions.values()].find(x => x.client_reference_id === r.order.id); stripe.pay(session.id);
+  await hook(event('checkout.session.completed', session)); stripe.refund(session.id);
+  const before = paymentRow(r.order.id), repair = failAudit(t, 'pay_refund');
+  const ev = event('charge.refunded', { object: 'charge', payment_intent: session.payment_intent });
+  assert.equal((await hook(ev)).status, 503); assert.equal(coins(p.me.id), start + 68);
+  const after = paymentRow(r.order.id); for (const key of ['status', 'refunded_amount', 'coins_revoked', 'coins_back']) assert.equal(after[key], before[key]);
+  repair(); assert.equal((await hook(ev)).status, 200); assert.equal((await hook(ev)).status, 200);
+  assert.equal(coins(p.me.id), start); assert.equal(paymentLog(r.order.id, 'pay_refund'), 1);
+});
+
+test('a konbini slip audit failure does not permanently mark the order pending', async t => {
+  const p = await buyer('SlipLogFail'), r = await checkout(p, { plan: 'support2', qty: 6, method: 'konbini' });
+  const session = [...stripe.sessions.values()].find(x => x.client_reference_id === r.order.id); stripe.slip(session.id);
+  const repair = failAudit(t, 'pay_slip'), ev = event('checkout.session.completed', session);
+  assert.equal((await hook(ev)).status, 503); assert.equal(paymentRow(r.order.id).status, 'open');
+  repair(); assert.equal((await hook(ev)).status, 200); assert.equal(paymentRow(r.order.id).status, 'pending');
+  assert.equal(paymentLog(r.order.id, 'pay_slip'), 1);
+});
+
+test('a developer payment reply is not marked or delivered if its audit cannot be saved', async t => {
+  const p = await buyer('ReplyLogFail'), r = await checkout(p, { plan: 'support3', qty: 2, method: 'paypay' });
+  const session = [...stripe.sessions.values()].find(x => x.client_reference_id === r.order.id); stripe.pay(session.id); await hook(event('checkout.session.completed', session));
+  const repair = failAudit(t, 'pay_reply'), body = { id: p.me.id, text: 'reply audit retry' };
+  assert.equal((await call('POST', '/api/ops/pay/reply', { token: taku.token, body })).status, 500);
+  assert.equal(paymentRow(r.order.id).replied_at, 0);
+  assert.equal((await fromBot(p)).filter(text => text.includes('reply audit retry')).length, 0);
+  repair(); assert.equal((await call('POST', '/api/ops/pay/reply', { token: taku.token, body })).status, 200);
+  assert.equal((await call('POST', '/api/ops/pay/reply', { token: taku.token, body })).status, 409);
+  assert.equal((await fromBot(p)).filter(text => text.includes('reply audit retry')).length, 1);
+});
+
+test('checkout rechecks age after a delayed body rather than using the original adult flag', async () => {
+  const p = await buyer('AgeBodyRace'); let entered, release;
+  const ready = new Promise(resolve => { entered = resolve; });
+  const result = s.app.api.handle({ method: 'POST', path: '/api/pay/checkout', query: new URLSearchParams(), ip: '127.0.0.1',
+    header: name => name.toLowerCase() === 'authorization' ? 'Bearer ' + p.token : '',
+    json: () => { entered(); return new Promise(resolve => { release = () => resolve({ plan: 'support3', qty: 2, method: 'paypay' }); }); } });
+  await ready; s.setUser(p.me.id, { age_ok: 0 }); release();
+  assert.equal((await result).status, 403);
+  assert.equal(s.app.db.prepare('SELECT COUNT(*) AS n FROM pay_orders WHERE user_id=?').get(p.me.id).n, 0);
+});
+
+for (const changed of ['logout', 'ban', 'age']) test(`a checkout delayed at the provider cannot return a usable page after ${changed}`, async t => {
+  const p = await buyer('PR' + changed), gate = pauseProvider(t, (url, opts) => url.pathname === '/v1/checkout/sessions' && opts.method === 'POST');
+  const pending = checkout(p, { plan: 'support3', qty: 2, method: 'paypay' }); await gate.ready;
+  if (changed === 'logout') await call('POST', '/api/logout', { token: p.token });
+  else if (changed === 'ban') s.setUser(p.me.id, { banned: 1, ban_kind: 'perma' });
+  else s.setUser(p.me.id, { age_ok: 0 });
+  gate.release(); const result = await pending; assert.equal(result.status, changed === 'logout' ? 401 : 403); assert.equal(result.url, undefined);
+  const session = [...stripe.sessions.values()].find(x => x.metadata.user === String(p.me.id)); assert.equal(session.status, 'expired');
+  assert.equal(paymentRow(session.client_reference_id).status, 'error');
+});
+
+for (const cancel of [false, true]) test(`a delayed payment ${cancel ? 'cancel' : 'look'} cannot return private order data to a revoked session`, async t => {
+  const p = await buyer(cancel ? 'CancelLogout' : 'LookLogout'), r = await checkout(p, { plan: 'support3', qty: 2, method: 'paypay' });
+  const gate = pauseProvider(t, (url, opts) => cancel ? url.pathname.endsWith('/expire') : url.pathname.includes('/checkout/sessions/') && opts.method === 'GET');
+  const pending = cancel ? call('POST', '/api/pay/cancel', { token: p.token, body: { order: r.order.id } }) : call('GET', '/api/pay/order?id=' + r.order.id, { token: p.token });
+  await gate.ready; await call('POST', '/api/logout', { token: p.token }); gate.release();
+  const result = await pending; assert.equal(result.status, 401); assert.equal(result.order, undefined);
+});
+
+test('a checkout audit failure closes its provider page and releases the unused daily allowance', async t => {
+  const p = await buyer('OpenLogFail'), repair = failAudit(t, 'pay_order');
+  assert.equal((await checkout(p, { plan: 'support3', qty: 2, method: 'paypay' })).status, 500);
+  const session = [...stripe.sessions.values()].find(x => x.metadata.user === String(p.me.id));
+  assert.equal(session.status, 'expired'); assert.equal(paymentRow(session.client_reference_id).status, 'error');
+  assert.equal(paymentRow(session.client_reference_id).session_id, session.id);
+  repair(); assert.equal((await checkout(p, { plan: 'support3', qty: 2, method: 'paypay' })).status, 200);
+});
+
+test('checkout cleanup preserves a payment completed before the session was revoked', async t => {
+  const p = await buyer('PaidCleanup'), before = coins(p.me.id);
+  const gate = pauseProvider(t, (url, opts) => url.pathname === '/v1/checkout/sessions' && opts.method === 'POST');
+  const pending = checkout(p, { plan: 'support3', qty: 2, method: 'paypay' }); await gate.ready;
+  const session = [...stripe.sessions.values()].find(x => x.metadata.user === String(p.me.id)); stripe.pay(session.id);
+  const ev = event('checkout.session.completed', session); assert.equal((await hook(ev)).status, 200);
+  await call('POST', '/api/logout', { token: p.token }); gate.release();
+  assert.equal((await pending).status, 401);
+  assert.equal(paymentRow(session.client_reference_id).status, 'paid'); assert.equal(coins(p.me.id), before + 68);
+  assert.equal((await hook(ev)).status, 200); assert.equal(coins(p.me.id), before + 68);
 });

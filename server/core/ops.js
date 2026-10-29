@@ -528,8 +528,11 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const body = await req.json();
       const p = credentialTarget(u, body.id);
       const old = openCode(p.recovery_enc);
-      const code = setRecovery(p.id);
-      opsLog.add({ actor: u, action: 'recovery', target: p, req, summary: `${p.name}さんの引き継ぎコードを再発行`, detail: { oldCodeStart: old ? old.slice(0, 4) + '…' : '', newCodeStart: code.slice(0, 4) + '…' } });
+      const code = tx(() => {
+        const code = setRecovery(p.id);
+        opsLog.add({ actor: u, action: 'recovery', target: p, req, summary: `${p.name}さんの引き継ぎコードを再発行`, detail: { oldCodeStart: old ? old.slice(0, 4) + '…' : '', newCodeStart: code.slice(0, 4) + '…' } });
+        return code;
+      });
       return { code, player: row(getUser(p.id), u) };
     },
 
@@ -547,9 +550,9 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
         setRecovery(p.id);
         q('DELETE FROM game_login_locks WHERE name_key = ?').run(p.name_key);
         q('DELETE FROM sessions WHERE user_id = ?').run(p.id);
+        opsLog.add({ actor: u, action: 'password', target: p, req, summary: `${p.name}さんのパスワードを再設定`, detail: { hadPassword: !!p.password_hash, length: pw.length } });
       });
       live.dropUser?.(p.id);
-      opsLog.add({ actor: u, action: 'password', target: p, req, summary: `${p.name}さんのパスワードを再設定`, detail: { hadPassword: !!p.password_hash, length: pw.length } });
       return { player: row(getUser(p.id), u) };
     },
 

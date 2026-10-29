@@ -6,9 +6,14 @@ const { configFrom } = require('../server/core/config.js');
 
 (async () => {
   const { startServer } = await import('../server/test/helpers.js');
+  const { fakeStripe } = await import('../server/test/fake-stripe.js');
+  const paymentKey = 'sk_test_' + 'p'.repeat(24), webhookSecret = 'whsec_' + crypto.randomBytes(16).toString('hex');
+  const stripe = fakeStripe(paymentKey);
+  await new Promise(resolve => stripe.server.listen(0, '127.0.0.1', resolve));
   const admin = crypto.randomBytes(24).toString('hex');
   const vars = { START_TOKENS: 10000, START_DOLLARS: 1000000, START_COINS: 100, LOGIN_BONUS: false, QUESTS: false, NPC_GIFTS: false, MILESTONES: false,
-    REGISTRATIONS_PER_IP: 0, ACCOUNTS_PER_DEVICE: 0, ADMIN_TOKEN: admin };
+    REGISTRATIONS_PER_IP: 0, ACCOUNTS_PER_DEVICE: 0, ADMIN_TOKEN: admin,
+    STRIPE_SECRET_KEY: paymentKey, STRIPE_WEBHOOK_SECRET: webhookSecret, STRIPE_API: `http://127.0.0.1:${stripe.server.address().port}`, PUBLIC_URL: 'https://casino.example' };
   const node = await startServer(configFrom(vars));
   let worker;
   try {
@@ -101,13 +106,39 @@ const { configFrom } = require('../server/core/config.js');
       record('VIP ticket settles old wages', used, true);
       const usedAgain = await call('POST', '/api/gacha/use', c, { item: 'vip-week' });
       assert.equal(usedAgain.status, 409); assert.equal(usedAgain.error.code, 'no_item'); record('VIP ticket consumed once', usedAgain);
+      assert.equal((await call('POST', '/api/age', c, { adult: true })).status, 200);
+      const checkout = await call('POST', '/api/pay/checkout', c, { plan: 'support3', qty: 2, method: 'paypay' });
+      assert.equal(checkout.status, 200, JSON.stringify(checkout)); record('payment checkout', checkout, [checkout.order.amount, checkout.order.coins, checkout.order.status]);
+      const session = [...stripe.sessions.values()].find(s => s.client_reference_id === checkout.order.id); assert.ok(session);
+      const beforeCoins = (await call('GET', '/api/me', c)).me.coins;
+      assert.equal((await call('POST', '/api/admin', null, { cmd: 'grant', args: [c.me.id, 'coins', Number.MAX_SAFE_INTEGER - beforeCoins] }, { 'X-Admin-Token': admin })).status, 200);
+      stripe.pay(session.id);
+      const ev = { id: 'evt_test_' + crypto.randomBytes(8).toString('hex'), object: 'event', type: 'checkout.session.completed', livemode: false, data: { object: session } };
+      const hook = event => {
+        const timestamp = Math.floor(Date.now() / 1000), raw = JSON.stringify(event);
+        const signature = crypto.createHmac('sha256', webhookSecret).update(timestamp + '.' + raw).digest('hex');
+        return call('POST', '/api/pay/webhook', null, event, { 'Stripe-Signature': `t=${timestamp},v1=${signature}` });
+      };
+      const overflow = await hook(ev); assert.equal(overflow.status, 503); record('payment balance overflow retries', overflow);
+      assert.equal((await call('GET', '/api/pay/order?id=' + checkout.order.id, c)).order.status, 'open');
+      assert.equal((await call('GET', '/api/me', c)).me.coins, Number.MAX_SAFE_INTEGER); record('payment overflow preserves order and wallet', overflow, true);
+      assert.equal((await call('POST', '/api/admin', null, { cmd: 'grant', args: [c.me.id, 'coins', beforeCoins - Number.MAX_SAFE_INTEGER] }, { 'X-Admin-Token': admin })).status, 200);
+      const retried = await hook(ev); assert.equal(retried.status, 200);
+      assert.equal((await call('GET', '/api/me', c)).me.coins, beforeCoins + checkout.order.coins); record('payment retry grants coins once', retried, true);
+      assert.equal((await hook(ev)).status, 200); assert.equal((await hook({ ...ev, id: 'evt_test_' + crypto.randomBytes(8).toString('hex') })).status, 200);
+      assert.equal((await call('GET', '/api/me', c)).me.coins, beforeCoins + checkout.order.coins); record('duplicate payment cannot credit twice', retried, true);
+      stripe.refund(session.id);
+      const refund = { ...ev, id: 'evt_test_' + crypto.randomBytes(8).toString('hex'), type: 'charge.refunded', data: { object: { object: 'charge', payment_intent: session.payment_intent } } };
+      const refunded = await hook(refund); assert.equal(refunded.status, 200); assert.equal((await hook(refund)).status, 200);
+      assert.equal((await call('GET', '/api/me', c)).me.coins, beforeCoins);
+      assert.equal((await call('GET', '/api/pay/order?id=' + checkout.order.id, c)).order.status, 'refunded'); record('refund revokes only once', refunded, true);
       const logout = await call('POST', '/api/logout', b, {}); assert.equal(logout.status, 200); record('logout', logout);
       const revoked = await call('GET', '/api/me', b); assert.equal(revoked.status, 401); record('revoked session', revoked);
       return trace;
     }
     const expected = await contract(node.base), actual = await contract(worker.base);
     assert.deepEqual(actual, expected, 'Node and Workers must preserve the same contract');
-    console.log('PASS runtime parity: ' + expected.length + ' contracts; balances, auth, permissions, watch/voice, VIP wage rollback, Unicode chat, filtering, backup schema and session revocation');
+    console.log('PASS runtime parity: ' + expected.length + ' contracts; balances, auth, permissions, watch/voice, VIP wage rollback, payment rollback/retry/refund, Unicode chat, filtering, backup schema and session revocation');
     // Real hibernating WebSockets must be bound to one session, including
     // unused tickets. A second device of the same account remains connected.
     async function call(path, body, token) {
@@ -141,5 +172,9 @@ const { configFrom } = require('../server/core/config.js');
       } finally { a.close(); b.close(); }
     }
     console.log('PASS real workerd WebSocket logout: player/operator streams and unused tickets revoked, other devices preserved');
-  } finally { if (worker) await worker.stop(); await node.stop(); }
+  } finally {
+    if (worker) await worker.stop();
+    await node.stop();
+    await new Promise(resolve => stripe.server.close(resolve));
+  }
 })().catch((error) => { console.error(error); process.exitCode = 1; });
