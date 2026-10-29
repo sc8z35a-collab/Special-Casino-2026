@@ -24,7 +24,8 @@ function secureRandom() {
   return randomWords[randomAt++] / 4294967296;
 }
 
-export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend, now = Date.now, rand = secureRandom }) {
+export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend,
+  settleVip = () => 0, vipChanged = balanceChanged, now = Date.now, rand = secureRandom }) {
   const requests = createSpinRequests({ q, tx, clock: now, table: 'gacha_requests', code: 'gacha', label: 'ガチャ',
     fingerprint: body => JSON.stringify([String(body.kind || 'rare'), Number(body.count), body.price ?? null]),
     replay: (id, result) => ({ ...result, ...state(getUser(id)) }) });
@@ -113,6 +114,7 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
     if (item !== 'seed' && item !== 'vip-week' && item !== GROWN && !car) throw new ApiError(400, 'bad_item', 'このアイテムは使えません');
     const key = item === 'seed' ? SEED : item === 'vip-week' ? VIP_WEEK : item;
     const at = now();
+    let vipPay = 0;
     tx(() => {
       const cur = getUser(u.id);
       if (itemCount(cur.id, key) < 1) throw new ApiError(409, 'no_item', 'アイテムを持っていません');
@@ -127,11 +129,12 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       } else {
         const until = Math.max(at, cur.vip_until) + 7 * VIP.day;
         if (until > at + RULES.vip.maxDays * VIP.day) throw new ApiError(409, 'too_long', `VIPは${RULES.vip.maxDays}日先までです`);
+        vipPay = settleVip(cur, at);
         addItems(cur.id, key, -1);
         q('UPDATE users SET vip_until = ?, rev = rev + 1 WHERE id = ?').run(until, cur.id);
       }
     });
-    const after = item === 'vip-week' ? balanceChanged(u.id) : getUser(u.id);
+    const after = item === 'vip-week' ? vipChanged(u.id, vipPay) : getUser(u.id);
     return { ok: true, item, ...state(after) };
   }
 

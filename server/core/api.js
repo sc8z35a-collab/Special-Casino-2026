@@ -3,6 +3,7 @@ import { createChatRoutes } from './chat-routes.js';
 import { createRouteRegistry } from './route-registry.js';
 import { createGameLogin } from './game-login.js';
 import { createSpinRequests } from './spin-requests.js';
+import { createTransactions } from './transactions.js';
 import { createRetention } from './retention.js';
 // The game's JSON API, independent of the host. Every balance change happens
 // inside one SQLite transaction and bumps the player's `rev`, so clients can
@@ -123,7 +124,7 @@ const someOf = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v &
 
 export function createApi({ db, live: hostLive, config, secret, hostAdmin = null, defer = null, blobs = null, host = null, questRewardRoll, questTicketRoll, extensions: extraParts = extensions }) {
   const q = statements(db);
-  const tx = (fn) => db.tx(fn);
+  const { run: tx, afterCommit } = createTransactions(db);
   const quota = createQuota(db, { requests: config.dailyRequestLimit, megabytes: config.dailyMbLimit });
   const stats = createStats({ db, q, config, host: host || {}, defer });
   // live pushes: counted for the サーバー tab, and towards the bytes sent when a cap is set. Their
@@ -134,30 +135,36 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const pushSize = (data) => String(JSON.stringify(data) || '').length + 32;
   const live = {
     send(userId, event, data) {
-      stats.wsOut();
-      const size = pushSize(data);
-      if (quota.on) quota.sent(size);
-      if (hostLive.isOnline(userId)) stats.pushed(size, PUSH_KIND[event]);
-      return hostLive.send(userId, event, data);
+      return afterCommit(() => {
+        stats.wsOut();
+        const size = pushSize(data);
+        if (quota.on) quota.sent(size);
+        if (hostLive.isOnline(userId)) stats.pushed(size, PUSH_KIND[event]);
+        return hostLive.send(userId, event, data);
+      });
     },
     broadcast(event, data, filter) {
-      stats.wsOut(hostLive.onlineCount());
-      const size = pushSize(data);
-      if (quota.on) quota.sent(size * hostLive.onlineCount());
-      stats.pushed(size * hostLive.onlineCount(), PUSH_KIND[event]);
-      return hostLive.broadcast(event, data, filter);
+      return afterCommit(() => {
+        stats.wsOut(hostLive.onlineCount());
+        const size = pushSize(data);
+        if (quota.on) quota.sent(size * hostLive.onlineCount());
+        stats.pushed(size * hostLive.onlineCount(), PUSH_KIND[event]);
+        return hostLive.broadcast(event, data, filter);
+      });
     },
     isOnline: (id) => hostLive.isOnline(id),
     onlineCount: () => hostLive.onlineCount(),
     // the operator site's own live connection (the 運営チャット's call, the developer called)
     sendOps(userId, event, data) {
-      stats.wsOut();
-      return hostLive.sendOps ? hostLive.sendOps(userId, event, data) : undefined;
+      return afterCommit(() => {
+        stats.wsOut();
+        return hostLive.sendOps ? hostLive.sendOps(userId, event, data) : undefined;
+      });
     },
     opsOnline: (id) => !!(hostLive.opsOnline && hostLive.opsOnline(id)),
-    dropUser: (id) => hostLive.dropUser?.(id),
-    dropSession: (id, hash) => hostLive.dropSession?.(id, hash),
-    dropOps: (id) => { if (hostLive.dropOps) hostLive.dropOps(id); }
+    dropUser: (id) => afterCommit(() => hostLive.dropUser?.(id)),
+    dropSession: (id, hash) => afterCommit(() => hostLive.dropSession?.(id, hash)),
+    dropOps: (id) => afterCommit(() => hostLive.dropOps?.(id))
   };
   const start = {
     tokens: config.startTokens ?? RULES.start.tokens,
@@ -473,7 +480,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   };
   // (the host keeps the newest entry's hash where SQL cannot reach: server/core/opslog.js)
   let steleRef = null;
-  const opsLog = createOpsLog({ q, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => {
+  const opsLog = createOpsLog({ q, afterCommit, anchor: host && host.anchor ? host.anchor : null, onAdd: (row) => {
     if (config.lineFeedEnabled && row.action === 'release') discord.log(row); else notice.log(row);
     if (steleRef) steleRef.touch();
   } });
@@ -542,15 +549,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // sight goes to their phone; `gap`: the same one at most that often
   const pushedAt = new Map();
   function phone(userId, n, gap = 0) {
-    if (!n || inSight(userId)) return;
-    // outbound calls (the push services) are cut during a lockdown
-    if (emergency.locked && emergency.locked()) return;
-    if (gap) {
-      const k = `${userId}:${n.tag}`;
-      if (Date.now() - (pushedAt.get(k) || 0) < gap) return;
-      pushedAt.set(k, Date.now());
-    }
-    push.notify(userId, n).catch(() => {});
+    afterCommit(() => {
+      if (!n || inSight(userId)) return;
+      // outbound calls (the push services) are cut during a lockdown
+      if (emergency.locked && emergency.locked()) return;
+      if (gap) {
+        const k = `${userId}:${n.tag}`;
+        if (Date.now() - (pushedAt.get(k) || 0) < gap) return;
+        pushedAt.set(k, Date.now());
+      }
+      push.notify(userId, n).catch(() => {});
+    });
   }
   // the text of a message, a 報告, an 意見案 or a 通報 (RULES.sendMax.chars at most)
   function sendText(raw) {
@@ -600,7 +609,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // (the tickets when some were won, the bonuses when a quest was finished: they change with nothing else here)
     live.send(userId, 'quest', { done: r.done.map((x) => x.id), ready: r.ready, ...(r.ticketGain['5h'] || r.ticketGain.day ? { tickets: r.tickets } : {}),
       ...(r.done.length ? { bonuses: r.bonuses } : {}), xp: getUser(userId).xp });
-    if (r.done.length && vipOn(getUser(userId))) tx(() => addVipExp(getUser(userId), r.done.length * VIP_RULES.exp.quest));
+    if (r.done.length && vipOn(getUser(userId))) {
+      const paid = tx(() => addVipExp(getUser(userId), r.done.length * VIP_RULES.exp.quest));
+      jobsPaid(userId, paid);
+    }
   }
   // Progress from one of the player's actions, saved in a transaction of its own.
   function track(userId, events, reconcile = true) {
@@ -716,6 +728,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function saveJobs(userId, jobs, pay) {
     q('UPDATE users SET jobs = ?, dollars = dollars + ?, rev = rev + ? WHERE id = ?').run(JSON.stringify(jobs), pay, pay > 0 ? 1 : 0, userId);
   }
+  // Checkpoint before changing the time span or rate used by VIP.earned.
+  function settleVipJobs(cur, now) {
+    const { jobs, pay } = settleJobs(cur, now);
+    if (jobs.length) saveJobs(cur.id, jobs, pay);
+    return pay;
+  }
   function jobsPaid(userId, pay) {
     if (!pay) return;
     balanceChanged(userId, true);
@@ -753,9 +771,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // VIP EXP, inside the caller's transaction (`cur`: the row as it is now).
   // Reaching VIP${VIP_RULES.refund.from} while days are paid ahead gives back their coins at once.
   function addVipExp(cur, gain, now = Date.now()) {
-    if (!cur || cur.npc || !(gain > 0)) return;
+    if (!cur || cur.npc || !(gain > 0)) return 0;
     const multiplier = cur.vip_until > now ? VIP.multiplier(cur.vip_modes, now) : 1;
     const exp = Math.round((cur.vip_exp + gain * multiplier) * 1000) / 1000;
+    const pay = VIP.wage(VIP.level(cur.vip_exp)) !== VIP.wage(VIP.level(exp)) ? settleVipJobs(cur, now) : 0;
     const from = VIP_RULES.refund.from;
     // (the days bought, not the free trial's)
     const back = VIP.level(cur.vip_exp) < from && VIP.level(exp) >= from && cur.vip_until > now
@@ -764,6 +783,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     q('UPDATE users SET vip_exp = ?, vip_permanent_at = ?, coins = coins + ?, rev = rev + ? WHERE id = ?').run(exp, permanentAt, back, back ? 1 : 0, cur.id);
     cur.vip_exp = exp;
     cur.vip_permanent_at = permanentAt;
+    return pay;
   }
 
   function meDto(u) {
@@ -842,10 +862,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (!cur || cur.npc || (cur.banned && cur.ban_kind === 'perma')) return;
     for (const d of A.at) {
       if (d > cur.login_days || d <= cur.days_paid) continue;
-      // (claimed first: two connections at once pay once)
-      if (!Number(q('UPDATE users SET days_paid = ? WHERE id = ? AND days_paid < ?').run(d, userId, d).changes)) continue;
-      official.say(userId, `【自動送信】\nおめでとうございます！アクセス日数${d}日を達成しました！！記念して250Kを送金します！今後ともTwo stateをよろしくお願いいたします！`);
-      official.pay(userId, A.amount);
+      tx(() => {
+        if (!Number(q('UPDATE users SET days_paid = ? WHERE id = ? AND days_paid < ?').run(d, userId, d).changes)) return;
+        official.say(userId, `【自動送信】\nおめでとうございます！アクセス日数${d}日を達成しました！！記念して250Kを送金します！今後ともTwo stateをよろしくお願いいたします！`);
+        official.pay(userId, A.amount);
+      });
     }
   }
 
@@ -860,16 +881,19 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (config.milestones === false) return;
     const n = q("SELECT COUNT(*) AS n FROM users WHERE npc = ''").get().n;
     for (const m of RULES.milestones) {
-      if (n < m.players || !onceOnly(`milestone_${m.players}`)) continue;
-      const all = everyone();
-      for (const p of all) {
-        official.say(p.id, `【自動送信】\nおめでとうございます！Two stateの登録者数が${m.players}人を突破しました！！記念して全員に${m.dollars / 1000}Kを送金します！今後ともTwo stateをよろしくお願いいたします！`);
-        official.pay(p.id, m.dollars);
-      }
-      opsLog.add({
-        actorName: 'システム', action: 'milestone',
-        summary: `登録者数${m.players}人突破の記念に全員（${all.length}人）へ $${m.dollars.toLocaleString('en-US')}`,
-        detail: { players: m.players, registered: n, dollars: m.dollars, to: all.length }
+      if (n < m.players) continue;
+      tx(() => {
+        if (!onceOnly(`milestone_${m.players}`)) return;
+        const all = everyone();
+        for (const p of all) {
+          official.say(p.id, `【自動送信】\nおめでとうございます！Two stateの登録者数が${m.players}人を突破しました！！記念して全員に${m.dollars / 1000}Kを送金します！今後ともTwo stateをよろしくお願いいたします！`);
+          official.pay(p.id, m.dollars);
+        }
+        opsLog.add({
+          actorName: 'システム', action: 'milestone',
+          summary: `登録者数${m.players}人突破の記念に全員（${all.length}人）へ $${m.dollars.toLocaleString('en-US')}`,
+          detail: { players: m.players, registered: n, dollars: m.dollars, to: all.length }
+      });
       });
     }
   }
@@ -877,14 +901,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // then is told once, by Ice Smoker公式
   function voiceNotice() {
     const tier = RULES.vip.voiceAll || 0;
-    if (!tier || !onceOnly(`voice_all_${tier}`)) return;
-    const kbps = RULES.vip.voice[Math.min(tier, RULES.vip.voice.length - 1)];
-    const all = everyone();
-    for (const p of all) {
-      official.say(p.id, letter(p, '通話品質アップのお知らせ',
-        `サーバーの有料枠に大きな余裕があるため、今だけ、全プレイヤーのボイス通話を VIP3 より高い音質（${kbps}kbps）にしました。\nVIPでなくても、フレンド・グループ・友達と稼ぐ・ホームのすべての通話が自動で高音質になります（最新版に更新すると有効になります）。\nあわせて、通話中の音量ボタンから「ボイス」と「効果音」の音量を別々に調整できるようになりました。`));
-    }
-    opsLog.add({ actorName: 'システム', action: 'voice_notice', summary: `全員（${all.length}人）に通話品質アップ（${kbps}kbps）のお知らせ`, detail: { tier, kbps, to: all.length } });
+    if (!tier) return;
+    tx(() => {
+      if (!onceOnly(`voice_all_${tier}`)) return;
+      const kbps = RULES.vip.voice[Math.min(tier, RULES.vip.voice.length - 1)];
+      const all = everyone();
+      for (const p of all) {
+        official.say(p.id, letter(p, '通話品質アップのお知らせ',
+          `サーバーの有料枠に大きな余裕があるため、今だけ、全プレイヤーのボイス通話を VIP3 より高い音質（${kbps}kbps）にしました。\nVIPでなくても、フレンド・グループ・友達と稼ぐ・ホームのすべての通話が自動で高音質になります（最新版に更新すると有効になります）。\nあわせて、通話中の音量ボタンから「ボイス」と「効果音」の音量を別々に調整できるようになりました。`));
+      }
+      opsLog.add({ actorName: 'システム', action: 'voice_notice', summary: `全員（${all.length}人）に通話品質アップ（${kbps}kbps）のお知らせ`, detail: { tier, kbps, to: all.length } });
+    });
   }
 
   // Login days in a row (6:00 to 6:00 Japan time) and the longest run (the operator site).
@@ -1659,15 +1686,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const id = Number(r.lastInsertRowid);
         if (inside) inside(id);
         seenOn(id, req);
-        return { token: createSession(id), user: getUser(id) };
+        const token = createSession(id), user = getUser(id);
+        opsLog.add({ actor: user, action: 'player_register', req, summary: `${user.name}さんが登録${how ? `（${how}）` : ''}`, detail: { avatar, ...(how ? { how } : {}) } });
+        return { token, user };
       }));
     } catch (e) {
       if (/UNIQUE/i.test(String(e && e.message)) && /users\.name_key|name_key/i.test(String(e.message))) throw new ApiError(409, 'name_taken', 'このユーザー名はすでに使われています');
       throw e;
     }
-    opsLog.add({ actor: user, action: 'player_register', req, summary: `${user.name}さんが登録${how ? `（${how}）` : ''}`, detail: { avatar, ...(how ? { how } : {}) } });
     // (the 10th, 20th or 50th: everyone's 登録者数の記念, the newcomer too)
-    milestones();
+    try { milestones(); } catch (e) { console.error('registration milestone failed', e); }
     return { token, recoveryCode: code, me: meDto(user) };
   }
 
@@ -1714,7 +1742,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const idle = Number(body.idle);
       touchActive(u.id, Date.now() - (Number.isFinite(idle) ? Math.min(86400000, Math.max(0, idle)) : 0), false);
       const on = hubOn(u.id);
-      let quests = null, fight = 0, coop = null, boost = null, earned = 0;
+      let quests = null, fight = 0, coop = null, boost = null, earned = 0, vipPay = 0;
       const result = tx(() => {
         const cur = getUser(u.id);
         if (cur.tokens < bet) throw new ApiError(409, 'insufficient', 'スピントークンが不足しています');
@@ -1809,10 +1837,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (config.logSpins) {
           q('INSERT INTO spins (user_id, bet, payout, line, created_at) VALUES (?, ?, ?, ?, ?)').run(cur.id, bet, r.total + back, r.line.join(','), Date.now());
         }
-        if (vip !== null) addVipExp(cur, (r.total > 0 ? VIP_RULES.exp.win : 0) + (ultra ? VIP_RULES.exp.ultra : 0));
+        if (vip !== null) vipPay = addVipExp(cur, (r.total > 0 ? VIP_RULES.exp.win : 0) + (ultra ? VIP_RULES.exp.ultra : 0));
         return r;
       });
       questNotice(u.id, quests);
+      jobsPaid(u.id, vipPay);
       syncMilestones(u.id);
       const after = getUser(u.id);
       // (as it is sent: what the game makes whole for itself is not, js/game/engine.js whole() — the grid as digits, no line, nothing that
@@ -2261,15 +2290,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (body.price !== undefined && Number(body.price) !== cost) {
         throw new ApiError(409, 'price_changed', `価格が変わりました（今は $${fmt(cost)}）`, { sale: carSale() });
       }
+      let vipPay = 0;
       const id = tx(() => {
         const cur = getUser(u.id);
         if (carCount(cur.id) >= garageSize(cur)) throw new ApiError(409, 'garage_full', `ガレージがいっぱいです（${garageSize(cur)}台）`);
         if (cur.dollars < cost) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(cost, cur.id);
-        addVipExp(cur, VIP_RULES.exp.car);
+        vipPay = addVipExp(cur, VIP_RULES.exp.car);
         const now = Date.now();
         return Number(q('INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid) VALUES (?, ?, 0, ?, ?, ?)').run(cur.id, car.id, now, now, cost).lastInsertRowid);
       });
+      jobsPaid(u.id, vipPay);
       track(u.id, [['carBuy', 1]]);
       syncMilestones(u.id);
       const me = meDto(balanceChanged(u.id));
@@ -3294,10 +3325,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         detections: q('SELECT original, place, created_at FROM detections WHERE sender_id = ? ORDER BY id DESC LIMIT 10').all(t.id),
         request: { ip: req.ip || '', userAgent: String(req.header('user-agent') || '').slice(0, 300) }
       };
-      q(`INSERT INTO reports (reporter_id, target_id, kind, body, place, context, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-        .run(u.id, t.id, kind.id, text, place, JSON.stringify(context), Date.now());
-      official.pay(u.id, R.reward);
-      opsLog.add({ actor: u, action: 'player_report', target: t, req, summary: `${u.name}さんが${t.name}さんを通報（${kind.name}）`, detail: { kind: kind.id, place, text } });
+      tx(() => {
+        q(`INSERT INTO reports (reporter_id, target_id, kind, body, place, context, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+          .run(u.id, t.id, kind.id, text, place, JSON.stringify(context), Date.now());
+        official.pay(u.id, R.reward);
+        opsLog.add({ actor: u, action: 'player_report', target: t, req, summary: `${u.name}さんが${t.name}さんを通報（${kind.name}）`, detail: { kind: kind.id, place, text } });
+      });
       return { ok: true, reward: R.reward, message: '今後このようなトラブルがないよう気を付けます。' };
     }],
 
@@ -3666,7 +3699,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     }
   });
   registry.add('trees', trees.routes);
-  const gacha = createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend });
+  const gacha = createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend, settleVip: settleVipJobs,
+    vipChanged: (id, pay) => { if (pay) jobsPaid(id, pay); else balanceChanged(id); return getUser(id); } });
   registry.add('gacha', gacha.routes);
   // 開発者支援 (real money for ロイヤルコイン), the developer's vault and the ones operators share
   const pay = createPay({ q, tx, live, config, getUser, balanceChanged, official, opsLog, isDeveloper });
@@ -4181,8 +4215,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const out = await answer(req);
     // (after a new version starts: its announcements, once)
     if (!announced && !emergency.locked()) {
-      announced = true;
-      try { voiceNotice(); milestones(); } catch (e) { console.error('announcements failed', e); }
+      try { voiceNotice(); milestones(); announced = true; } catch (e) { console.error('announcements failed', e); }
     }
     stats.request();
     try { usageAlert.check(); } catch (e) { console.error('usage alert failed', e); }

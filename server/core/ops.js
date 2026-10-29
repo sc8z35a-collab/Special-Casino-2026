@@ -246,6 +246,12 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
     if (!u || u.npc) throw new ApiError(404, 'not_found', 'プレイヤーが見つかりません');
     return u;
   }
+  function staffTarget(before) {
+    const p = getUser(before.id);
+    if (!p || p.npc || p.ban_kind === 'deleted') throw new ApiError(404, 'not_found', 'その名前のプレイヤーはいません');
+    if (p.name_key !== before.name_key) throw new ApiError(409, 'target_changed', '対象の名前が変わりました。選び直してください');
+    return p;
+  }
   // a player who can still be acted on (not a deleted account)
   function alive(id) {
     const u = target(id);
@@ -645,28 +651,30 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       if (r.status !== 'open') throw new ApiError(409, 'done', 'この通報はもう処理されています');
       const reporter = getUser(r.reporter_id), who = getUser(r.target_id);
       const now = Date.now();
-      if (body.action === 'accept') {
-        const reward = Number(body.reward);
-        if (!REWARDS.includes(reward)) throw new ApiError(400, 'bad_reward', '送る金額を選んでください');
-        q("UPDATE reports SET status = 'accepted', reward = ?, handled_by = ?, handled_at = ? WHERE id = ?").run(reward, u.id, now, r.id);
-        let thanks = '';
-        if (reporter && !reporter.npc) {
-          official.pay(reporter.id, reward);
-          const excerpt = Array.from(r.body).length > 60 ? Array.from(r.body).slice(0, 60).join('') + '…' : r.body;
-          thanks = `ありがとうございます！${shortTime(r.created_at)}にいただいた、${who ? who.name : '対象プレイヤー'}さんの件の通報（${KIND_NAMES[r.kind] || r.kind}：「${excerpt}」）は受理されました！運営一同、ご協力に心より感謝いたします！\nお礼として $${fmt(reward)} をお送りしました。`;
-          official.say(reporter.id, thanks);
+      tx(() => {
+        if (body.action === 'accept') {
+          const reward = Number(body.reward);
+          if (!REWARDS.includes(reward)) throw new ApiError(400, 'bad_reward', '送る金額を選んでください');
+          q("UPDATE reports SET status = 'accepted', reward = ?, handled_by = ?, handled_at = ? WHERE id = ?").run(reward, u.id, now, r.id);
+          let thanks = '';
+          if (reporter && !reporter.npc) {
+            official.pay(reporter.id, reward);
+            const excerpt = Array.from(r.body).length > 60 ? Array.from(r.body).slice(0, 60).join('') + '…' : r.body;
+            thanks = `ありがとうございます！${shortTime(r.created_at)}にいただいた、${who ? who.name : '対象プレイヤー'}さんの件の通報（${KIND_NAMES[r.kind] || r.kind}：「${excerpt}」）は受理されました！運営一同、ご協力に心より感謝いたします！\nお礼として $${fmt(reward)} をお送りしました。`;
+            official.say(reporter.id, thanks);
+          }
+          opsLog.add({
+            actor: u, action: 'report_accept', target: reporter, req,
+            summary: `通報 #${r.id}（${who ? who.name : '?'}さんについて・${KIND_NAMES[r.kind] || r.kind}）を受理し、${reporter ? reporter.name : '?'}さんへ $${fmt(reward)} と感謝のメッセージ`,
+            detail: { report: reportDto(q('SELECT * FROM reports WHERE id = ?').get(r.id)), reward, message: thanks }
+          });
+        } else if (body.action === 'reject') {
+          q("UPDATE reports SET status = 'rejected', handled_by = ?, handled_at = ? WHERE id = ?").run(u.id, now, r.id);
+          opsLog.add({ actor: u, action: 'report_reject', target: reporter, req, summary: `通報 #${r.id}（${who ? who.name : '?'}さんについて）を受理しなかった`, detail: { report: reportDto(q('SELECT * FROM reports WHERE id = ?').get(r.id)) } });
+        } else {
+          throw new ApiError(400, 'bad_action', '処理を選んでください');
         }
-        opsLog.add({
-          actor: u, action: 'report_accept', target: reporter, req,
-          summary: `通報 #${r.id}（${who ? who.name : '?'}さんについて・${KIND_NAMES[r.kind] || r.kind}）を受理し、${reporter ? reporter.name : '?'}さんへ $${fmt(reward)} と感謝のメッセージ`,
-          detail: { report: reportDto(q('SELECT * FROM reports WHERE id = ?').get(r.id)), reward, message: thanks }
-        });
-      } else if (body.action === 'reject') {
-        q("UPDATE reports SET status = 'rejected', handled_by = ?, handled_at = ? WHERE id = ?").run(u.id, now, r.id);
-        opsLog.add({ actor: u, action: 'report_reject', target: reporter, req, summary: `通報 #${r.id}（${who ? who.name : '?'}さんについて）を受理しなかった`, detail: { report: reportDto(q('SELECT * FROM reports WHERE id = ?').get(r.id)) } });
-      } else {
-        throw new ApiError(400, 'bad_action', '処理を選んでください');
-      }
+      });
       return { report: reportDto(q('SELECT * FROM reports WHERE id = ?').get(r.id)) };
     },
 
@@ -732,23 +740,25 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const f = q('SELECT * FROM feedback WHERE id = ?').get(posInt(body.id, '意見案'));
       if (!f || f.kind !== 'idea') throw new ApiError(404, 'not_found', 'この意見案は見つかりません');
       const now = Date.now();
-      // (two operators at once: one of them adopts it)
-      const r = q('UPDATE feedback SET adopted_at = ?, adopted_by = ?, handled_at = CASE WHEN handled_at = 0 THEN ? ELSE handled_at END WHERE id = ? AND adopted_at = 0')
-        .run(now, u.id, now, f.id);
-      if (!Number(r.changes)) throw new ApiError(409, 'done', 'この意見案はもう採用されています');
-      const p = getUser(f.user_id);
-      const before = p ? p.tokens : 0;
-      let thanks = '';
-      if (p && !p.npc) {
-        official.pay(p.id, IDEA_REWARD, 'tokens');
-        const excerpt = Array.from(f.comment).length > 60 ? Array.from(f.comment).slice(0, 60).join('') + '…' : f.comment;
-        thanks = `ありがとうございます！${shortTime(f.created_at)}にいただいた意見案（「${excerpt}」）を採用させていただきました！\n感謝の気持ちとして ${fmt(IDEA_REWARD)} スピントークンをお送りしました。`;
-        official.say(p.id, thanks);
-      }
-      opsLog.add({
-        actor: u, action: 'idea_adopt', target: p, req,
-        summary: `${p ? p.name : '?'}さんの意見案 #${f.id} を採用し、${fmt(IDEA_REWARD)} スピントークンと感謝のメッセージ`,
-        detail: { id: f.id, text: f.comment, reward: IDEA_REWARD, currency: 'tokens', message: thanks, tokensBefore: before, tokensAfter: p ? getUser(p.id).tokens : 0 }
+      tx(() => {
+        // (two operators at once: one of them adopts it)
+        const r = q('UPDATE feedback SET adopted_at = ?, adopted_by = ?, handled_at = CASE WHEN handled_at = 0 THEN ? ELSE handled_at END WHERE id = ? AND adopted_at = 0')
+          .run(now, u.id, now, f.id);
+        if (!Number(r.changes)) throw new ApiError(409, 'done', 'この意見案はもう採用されています');
+        const p = getUser(f.user_id);
+        const before = p ? p.tokens : 0;
+        let thanks = '';
+        if (p && !p.npc) {
+          official.pay(p.id, IDEA_REWARD, 'tokens');
+          const excerpt = Array.from(f.comment).length > 60 ? Array.from(f.comment).slice(0, 60).join('') + '…' : f.comment;
+          thanks = `ありがとうございます！${shortTime(f.created_at)}にいただいた意見案（「${excerpt}」）を採用させていただきました！\n感謝の気持ちとして ${fmt(IDEA_REWARD)} スピントークンをお送りしました。`;
+          official.say(p.id, thanks);
+        }
+        opsLog.add({
+          actor: u, action: 'idea_adopt', target: p, req,
+          summary: `${p ? p.name : '?'}さんの意見案 #${f.id} を採用し、${fmt(IDEA_REWARD)} スピントークンと感謝のメッセージ`,
+          detail: { id: f.id, text: f.comment, reward: IDEA_REWARD, currency: 'tokens', message: thanks, tokensBefore: before, tokensAfter: p ? getUser(p.id).tokens : 0 }
+      });
       });
       return { ok: true, reward: IDEA_REWARD };
     },
@@ -772,10 +782,11 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const action = body.action === 'grant' || body.action === 'revoke' ? body.action : '';
       if (!action) throw new ApiError(400, 'bad_action', '処理を選んでください');
       const key = nameKey(String(body.name ?? ''));
-      const p = key ? q('SELECT * FROM users WHERE name_key = ?').get(key) || null : null;
-      if (!p || p.npc) throw new ApiError(404, 'not_found', 'その名前のプレイヤーはいません');
+      let p = key ? q('SELECT * FROM users WHERE name_key = ?').get(key) || null : null;
+      if (!p || p.npc || p.ban_kind === 'deleted') throw new ApiError(404, 'not_found', 'その名前のプレイヤーはいません');
       if (isDeveloper(p)) throw new ApiError(400, 'developer', '開発者の運営権は変えられません');
       await devCode.check(body.code, req, u);
+      p = staffTarget(p);
       if (action === 'grant') {
         if (isOperator(p)) throw new ApiError(409, 'done', `${p.name}さんはもう運営者です`);
         tx(() => {
@@ -813,10 +824,12 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const action = body.action === 'grant' || body.action === 'revoke' ? body.action : '';
       if (!action) throw new ApiError(400, 'bad_action', '処理を選んでください');
       const key = nameKey(String(body.name ?? ''));
-      const p = key ? q('SELECT * FROM users WHERE name_key = ?').get(key) || null : null;
+      let p = key ? q('SELECT * FROM users WHERE name_key = ?').get(key) || null : null;
       if (!p || p.npc || p.ban_kind === 'deleted') throw new ApiError(404, 'not_found', 'その名前のプレイヤーはいません');
       if (isOperator(p)) throw new ApiError(400, 'operator', `${p.name}さんは運営者です（運営者はもともとすべて見られます）`);
       await devCode.check(body.code, req, u);
+      p = staffTarget(p);
+      if (isOperator(p)) throw new ApiError(400, 'operator', `${p.name}さんは運営者です（運営者はもともとすべて見られます）`);
       const now = Date.now();
       if (action === 'grant') {
         if (isViewer(p)) throw new ApiError(409, 'done', `${p.name}さんはもう閲覧者です`);

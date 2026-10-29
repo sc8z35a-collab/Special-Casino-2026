@@ -58,6 +58,7 @@
   function signIn(token, profile) {
     BR.live.close();
     BR.bank.reset();
+    if (BR.bonus) BR.bonus.reset();
     api.setToken(token);
     resetSocial();
     me = profile;
@@ -124,6 +125,7 @@
     BR.live.close();
     if (!keepLogin) api.setToken(null);
     BR.bank.reset();
+    if (BR.bonus) BR.bonus.reset();
     if (BR.call) BR.call.hangupAll();
     if (BR.watch) { if (BR.watch.reset) BR.watch.reset(); else BR.watch.stop(true); }
     me = null;
