@@ -385,7 +385,7 @@
     call: function (to, type, callId, data) { return post('/api/call', { to: to, type: type, callId: callId, data: data === undefined ? null : data }); },
     watch: function (id, on) { return post('/api/watch', { user: id, on: !!on }); },
     watchers: function () { return get('/api/watchers'); },
-    voice: function (userId, on) { return post('/api/watch/voice', { user: userId, on: !!on }); },
+    voice: function (userId, on, since) { return post('/api/watch/voice', { user: userId, on: !!on, since: since }); },
     homeChat: function (room, text) { return words('/api/home/chat', { room: room, text: text }); },
     watchBet: function (side, stake) { return post('/api/watch/bet', { side: side, stake: stake }); },
     tip: function (to, fruits) { return post('/api/tip', { to: to, fruits: fruits }); },

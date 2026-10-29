@@ -17,6 +17,22 @@
   var watchers = {};       // my own home: id -> { id, name, avatar, voice }
   var chat = { room: 0, list: [], ids: {} };   // the chat of the home I am in
   var CHAT_KEEP = 30;
+  var watchEpoch = 0, lifetime = 0, pendingWatch = null;
+  var controls = { watch: Promise.resolve(), voice: Promise.resolve() }, requestedVoice = {}, homeMuted = false;
+  var homeLoad = null, voiceEpoch = 0, voiceRequest = null;
+
+  // Keep server membership changes in order, even when HTTP/live replies are delayed.
+  function requestControl(kind, id, on, valid, since) {
+    var job = controls[kind].then(function () { if (!valid || valid()) return api[kind](id, on, since); });
+    controls[kind] = job.catch(function () {});
+    return job;
+  }
+  function releaseWatch(id, owner, life) {
+    requestControl('watch', id, false, function () {
+      return lifetime === life && me() && me().id === owner &&
+        (!state || state.user.id !== id) && (!pendingWatch || pendingWatch.id !== id);
+    }).catch(function () {});
+  }
 
   function me() { return BR.social.me(); }
   function fruitInfo(id) {
@@ -56,8 +72,17 @@
     if (state && state.user.id === user.id) { BR.screens.show('slot'); return; }
     if (!user.online) { sfx('deny'); toast(user.name + 'さんは今オフラインです'); return; }
     if (BR.game.busy()) { sfx('deny'); toast('スピンが終わってからお試しください'); return; }
+    if (pendingWatch && pendingWatch.id === user.id && BR.screens.isLatest(pendingWatch.nav)) return pendingWatch.job;
     if (state) stop(false);
-    api.watch(user.id, true).then(function (r) {
+    var my = me(), owner = my && my.id, life = lifetime, epoch = ++watchEpoch;
+    var nav = BR.screens.request(), pending = { id: user.id, nav: nav };
+    pendingWatch = pending;
+    function current() { return epoch === watchEpoch && lifetime === life && me() && me().id === owner && BR.screens.isLatest(nav); }
+    pending.job = requestControl('watch', user.id, true, current).then(function (r) {
+      var wanted = current();
+      if (pendingWatch === pending) pendingWatch = null;
+      if (!r) return;
+      if (!wanted || BR.game.busy()) { releaseWatch(user.id, owner, life); return; }
       K.closeModals();
       flushTips();
       // my own home's voice ends while I am somewhere else
@@ -70,12 +95,17 @@
       var n = Object.keys(state.members).length;
       toast(r.user.name + 'さんの観戦を始めました' + (n ? '（ほかに' + n + '人）' : ''), 3400);
       if (BR.play && BR.play.watchStart) BR.play.watchStart(r);
-    }, K.fail);
+    }, function (err) {
+      var wanted = current();
+      if (pendingWatch === pending) pendingWatch = null;
+      if (wanted) { releaseWatch(user.id, owner, life); K.fail(err); }
+    });
+    return pending.job;
   }
 
   // the watch response (also after a reconnect): who is here, who talks, the chat so far
   function enter(r) {
-    state = { user: r.user, members: {}, voice: [] };
+    state = { user: r.user, since: r.since, members: {}, voice: [] };
     (r.members || []).forEach(function (m) {
       state.members[m.id] = m;
       if (m.voice) state.voice.push(m.id);
@@ -96,13 +126,17 @@
 
   // `quiet`: the server already knows (signed out, friend left)
   function stop(quiet, message) {
+    watchEpoch++; voiceEpoch++; voiceRequest = null;
+    var pending = pendingWatch, owner = me() && me().id, life = lifetime;
+    pendingWatch = null;
+    if (pending && !quiet) requestControl('watch', pending.id, false, function () { return lifetime === life && me() && me().id === owner; }).catch(function () {});
     if (!state) return;
     var id = state.user.id;
     flushTips();
     state = null;
     // Clear the cached home as well: a later hub call must not restore ended consent.
     BR.call.sync(0, null, [], {});
-    if (!quiet) api.watch(id, false).catch(function () {});
+    if (!quiet) requestControl('watch', id, false, function () { return lifetime === life && me() && me().id === owner; }).catch(function () {});
     BR.app.watchExit();
     BR.shop.watchedCharm(false);
     if (BR.play && BR.play.watchStop) BR.play.watchStop();
@@ -114,9 +148,15 @@
     syncHome();
   }
 
+  function reset() {
+    lifetime++; controls = { watch: Promise.resolve(), voice: Promise.resolve() };
+    requestedVoice = {}; homeMuted = false; homeLoad = null; watchers = {};
+    stop(true); setChat(0, []); renderWatchers(); syncHome();
+  }
+
   /* ------------------------------------------------------------ my own home --- */
   function watcherList() { return Object.keys(watchers).map(function (k) { return watchers[k]; }); }
-  function voiceList() { return watcherList().filter(function (w) { return w.voice; }).map(function (w) { return w.id; }); }
+  function voiceList() { return watcherList().filter(function (w) { return w.voice && requestedVoice[w.id] !== false; }).map(function (w) { return w.id; }); }
 
   function renderWatchers() {
     var list = watcherList();
@@ -133,6 +173,7 @@
   function syncHome() {
     var my = me();
     if (state || !my) return;
+    if (homeMuted) { BR.call.sync(0, null, [], {}); return; }
     if (!watcherList().length) {
       BR.call.sync(0, null, [], {});
       if (chat.room === my.id) setChat(0, []);
@@ -171,27 +212,42 @@
   }
   // the watched player picks (or drops) someone to talk with; their own microphone goes on with it
   function setVoice(id, on) {
-    var my = me();
-    return api.voice(id, on).then(function (r) {
-      Object.keys(watchers).forEach(function (k) { watchers[k].voice = r.voice.indexOf(Number(k)) >= 0; });
+    var my = me(), member = watchers[id], epoch = ++voiceEpoch, life = lifetime;
+    if (!my || !member) return Promise.resolve();
+    requestedVoice[id] = on;
+    if (on) homeMuted = false;
+    voiceRequest = { id: id, on: on, granted: false };
+    return requestControl('voice', id, on, function () { return lifetime === life && me() && me().id === my.id && watchers[id] === member && requestedVoice[id] === on; }, member.since).then(function (r) {
+      if (!r || epoch !== voiceEpoch || !my || !me() || me().id !== my.id || watchers[id] !== member) return;
+      voiceRequest = null;
+      var voice = r.voice.filter(function (uid) { return !!watchers[uid] && requestedVoice[uid] !== false; });
+      Object.keys(watchers).forEach(function (k) { watchers[k].voice = voice.indexOf(Number(k)) >= 0; });
       renderWatchers();
       if (state || !my) return;
-      BR.call.sync(my.id, my, r.voice, people(watcherList()), { mic: on });
-    }, K.fail);
+      BR.call.sync(my.id, my, voice, people(watcherList()), { mic: on });
+    }, function (err) { if (epoch === voiceEpoch) { voiceRequest = null; K.fail(err); } });
   }
   // the hang-up button of the call bar
   function endVoice() {
-    var my = me();
+    voiceEpoch++; voiceRequest = null;
+    var my = me(), life = lifetime;
     if (!my) { BR.call.leave(); return; }
     if (state) {
-      api.voice(my.id, false).catch(function () {});
+      requestControl('voice', my.id, false, function () { return lifetime === life && me() && me().id === my.id; }, state.since).catch(function () {});
       state.voice = state.voice.filter(function (id) { return id !== my.id; });
-      BR.call.leave();
+      syncVoice();
       return;
     }
-    voiceList().forEach(function (id) { api.voice(id, false).catch(function () {}); watchers[id].voice = false; });
+    homeMuted = true;
+    var ids = voiceList();
+    Object.keys(requestedVoice).forEach(function (id) { if (requestedVoice[id] && ids.indexOf(Number(id)) < 0) ids.push(Number(id)); });
+    ids.forEach(function (id) {
+      requestedVoice[id] = false;
+      if (watchers[id]) watchers[id].voice = false;
+      requestControl('voice', id, false, function () { return lifetime === life && me() && me().id === my.id && requestedVoice[id] === false; }, watchers[id] && watchers[id].since).catch(function () {});
+    });
     renderWatchers();
-    BR.call.leave();
+    syncHome();
   }
 
   /* ------------------------------------------------------------ the home chat --- */
@@ -368,25 +424,33 @@
   /* ------------------------------------------------------------ live events --- */
   function onWatch(ev) {
     var my = me();
+    if (pendingWatch && ev.user === pendingWatch.id && (ev.type === 'removed' || ev.type === 'offline')) stop(true);
     // my own home: someone came or left, the voice changed
     if (ev.type === 'watched') {
       if (!ev.by) return;
+      if (homeLoad) homeLoad.changed[ev.by.id] = true;
       if (ev.on) {
         var isNew = !watchers[ev.by.id];
-        watchers[ev.by.id] = { id: ev.by.id, name: ev.by.name, avatar: ev.by.avatar, voice: !!(watchers[ev.by.id] && watchers[ev.by.id].voice) };
+        watchers[ev.by.id] = { id: ev.by.id, name: ev.by.name, avatar: ev.by.avatar, since: ev.by.since, voice: !!(watchers[ev.by.id] && watchers[ev.by.id].voice) };
         if (isNew) {
           sfx('notify');
           toast(ev.by.name + 'さんが観戦しています（👁 から話すか選べます）', 3600, openPanel);
         }
       } else {
         delete watchers[ev.by.id];
+        delete requestedVoice[ev.by.id];
       }
       renderWatchers();
       syncHome();
       return;
     }
     if (ev.type === 'voice' && my && ev.user === my.id) {
-      Object.keys(watchers).forEach(function (k) { watchers[k].voice = ev.voice.indexOf(Number(k)) >= 0; });
+      if (homeLoad) homeLoad.voice = ev.voice;
+      if (voiceRequest && voiceRequest.on) {
+        if (ev.voice.indexOf(voiceRequest.id) >= 0) voiceRequest.granted = true;
+        else if (voiceRequest.granted) { voiceEpoch++; voiceRequest = null; }
+      }
+      Object.keys(watchers).forEach(function (k) { watchers[k].voice = ev.voice.indexOf(Number(k)) >= 0 && requestedVoice[k] !== false; });
       renderWatchers();
       syncHome();
       return;
@@ -422,6 +486,36 @@
     else if (ev.type === 'offline') stop(true, state.user.name + 'さんがオフラインになったので観戦を終えました');
   }
 
+  // A fresh snapshot fills missing peers; newer live changes always win.
+  function reconnect(h) {
+    if (!me()) return;
+    var snapshot = { changed: Object.create(null), voice: null };
+    homeLoad = snapshot;
+    watchers = {};
+    renderWatchers();
+    var homeJob = (h.watchers ? Promise.resolve(h.watchers) : api.watchers()).then(function (r) {
+      if (homeLoad !== snapshot) return;
+      homeLoad = null;
+      r.watchers.forEach(function (w) { if (!snapshot.changed[w.id]) watchers[w.id] = w; });
+      if (snapshot.voice) Object.keys(watchers).forEach(function (k) { watchers[k].voice = snapshot.voice.indexOf(Number(k)) >= 0; });
+      Object.keys(watchers).forEach(function (k) { if (requestedVoice[k] === false) watchers[k].voice = false; });
+      var my = me();
+      if (!state && my && watcherList().length) setChat(my.id, r.chat || []);
+      renderWatchers();
+      syncHome();
+    }, function () {});
+    if (!state) return homeJob;
+    var id = state.user.id, epoch = watchEpoch, life = lifetime;
+    function current() { return lifetime === life && epoch === watchEpoch && state && state.user.id === id; }
+    var watchJob = requestControl('watch', id, true, current).then(function (r) {
+      if (!r || !current()) return;
+      BR.app.watchBalance(r.balance);
+      enter(r);
+      if (BR.play && BR.play.watchStart) BR.play.watchStart(r);
+    }, function () { if (current()) stop(true, '観戦を続けられませんでした'); });
+    return Promise.all([homeJob, watchJob]);
+  }
+
   function init() {
     $('#watch-stop').addEventListener('click', function () { sfx('click'); stop(false); });
     $$('#fruit-tray .fruit-btn').forEach(function (b) {
@@ -443,7 +537,7 @@
     $('#hp-chat').addEventListener('click', function () { sfx('click'); K.closeModal('home-panel'); openChat(); });
     BR.screens.register('slot', {
       back: function () {
-        if (!state) return false;
+        if (!state && !pendingWatch) return false;
         stop(false);
         return true;
       }
@@ -454,31 +548,15 @@
     BR.live.on('homechat', onHomeChat);
     BR.live.on('balance', function () { renderMine(); });
     // the server forgets watchers whose connection dropped: carry on after a reconnect
-    BR.live.on('hello', function (h) {
-      watchers = {};
-      renderWatchers();
-      (h.watchers ? Promise.resolve(h.watchers) : api.watchers()).then(function (r) {
-        r.watchers.forEach(function (w) { watchers[w.id] = w; });
-        var my = me();
-        if (!state && my && r.watchers.length) setChat(my.id, r.chat || []);
-        renderWatchers();
-        syncHome();
-      }, function () {});
-      if (!state) return;
-      var id = state.user.id;
-      api.watch(id, true).then(function (r) {
-        if (!state || state.user.id !== id) return;
-        BR.app.watchBalance(r.balance);
-        enter(r);
-        if (BR.play && BR.play.watchStart) BR.play.watchStart(r);
-      }, function () { stop(true, '観戦を続けられませんでした'); });
-    });
+    BR.live.on('hello', reconnect);
   }
 
   BR.watch = {
     init: init,
     start: start,
     stop: stop,
+    reset: reset,
+    refresh: function () { return reconnect({}); },
     endVoice: endVoice,
     openChat: openChat,
     active: function () { return !!state; },

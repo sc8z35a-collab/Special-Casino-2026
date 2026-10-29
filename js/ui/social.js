@@ -125,7 +125,7 @@
     if (!keepLogin) api.setToken(null);
     BR.bank.reset();
     if (BR.call) BR.call.hangupAll();
-    if (BR.watch) BR.watch.stop(true);
+    if (BR.watch) { if (BR.watch.reset) BR.watch.reset(); else BR.watch.stop(true); }
     me = null;
     resetSocial();
     meChanged();

@@ -92,6 +92,7 @@ export function purgePlayer(q, tx, id, now = Date.now()) {
     }
     // (what they gave stays with its owner; a car they offered is no longer for sale)
     q('UPDATE cars SET from_id = 0 WHERE from_id = ?').run(id);
+    q("UPDATE cars SET offer_id = 0 WHERE offer_id IN (SELECT id FROM messages WHERE kind = 'car_offer' AND (sender_id = ? OR recipient_id = ?))").run(id, id);
     q("UPDATE messages SET state = 'canceled' WHERE kind = 'car_offer' AND state = '' AND (sender_id = ? OR recipient_id = ?)").run(id, id);
     // the account: a name on what was said, and nothing else (no way in, never
     // back: a deleted account; ':' is in no player's name, so the keys are free)
