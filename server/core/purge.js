@@ -25,6 +25,7 @@ export const PLAYER_ROWS = [
   ['blocks', ['user_id', 'blocked_id']],
   ['spins', ['user_id']],
   ['spin_requests', ['user_id']],
+  ['gacha_requests', ['user_id']],
   ['friends', ['user_id', 'friend_id']],
   ['friend_requests', ['from_id', 'to_id']],
   ['cars', ['owner_id']],

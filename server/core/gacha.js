@@ -4,6 +4,7 @@ import { ApiError } from './errors.js';
 import { RULES, GACHA, VIP } from './rules.js';
 import { readQuests, questTickets } from './quests.js';
 import { createSpinRequests } from './spin-requests.js';
+import { ensureStarterTree } from './tree.js';
 
 const SEED = 'gacha-seed';
 const VIP_WEEK = 'gacha-vip-week';
@@ -68,6 +69,7 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       if (cur.dollars < paid) throw new ApiError(409, 'insufficient', '$が足りません');
       const pulls = GACHA.draw(kind, count, events.boost.on, events.sale.on, rand);
       const rewards = pulls.flatMap((p) => p.rewards);
+      if (rewards.some(r => r.type === 'grown-tree')) ensureStarterTree(q, cur.id, at);
       const garageCoins = rewards.filter((r) => r.type === 'garage').reduce((n, r) => n + r.amount, 0);
       let carRoom = Math.max(0, garageSize(cur) + garageCoins - carCount(cur.id));
       let treeRoom = Math.max(0, RULES.tree.max - treeCount(cur.id));
@@ -123,6 +125,7 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
         addItems(cur.id, key, -1);
         q("INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid, via) VALUES (?, ?, 0, ?, ?, 0, 'gacha')").run(cur.id, car.id, at, at);
       } else if (item === 'seed' || item === GROWN) {
+        ensureStarterTree(q, cur.id, at);
         if (treeCount(cur.id) >= RULES.tree.max) throw new ApiError(409, 'trees_full', `金の生る木は${RULES.tree.max}本までです`);
         addItems(cur.id, key, -1);
         q("INSERT INTO trees (user_id, name, super, given, price, created_at) VALUES (?, '金の生る木', 0, ?, 0, ?)").run(cur.id, item === GROWN ? GACHA.grownGiven : 0, at);

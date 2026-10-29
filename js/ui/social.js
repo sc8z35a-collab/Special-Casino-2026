@@ -57,6 +57,7 @@
   /* ------------------------------------------------------------ session --- */
   function signIn(token, profile) {
     BR.live.close();
+    if (BR.call) BR.call.hangupAll();
     BR.bank.reset();
     if (BR.bonus) BR.bonus.reset();
     api.setToken(token);
@@ -77,6 +78,7 @@
       retry = 1000;
       warned = false;
       me = r.me;
+      if (BR.call && BR.call.setBlocked) BR.call.setBlocked(r.blocked, r.me && r.me.rev);
       setUnread(r.unread);
       setRequests(r.friendRequests);
       setOnline(r.online);
@@ -1630,6 +1632,7 @@
   // silent: friends stay friends. Lifted, what they sent meanwhile arrives:
   // the conversation and the list load again.
   function blockChanged(id, res) {
+    if (BR.call && BR.call.blockChanged) BR.call.blockChanged(id, res.blocked, res.rev);
     if (res.blocked) { toast('ブロックしました'); return; }
     toast(res.released ? 'ブロックを解除しました（' + res.released + '件のメッセージが届きました）' : 'ブロックを解除しました', 3000);
     if (typeof res.unread === 'number') setUnread(res.unread);
