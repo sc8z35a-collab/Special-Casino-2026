@@ -2,6 +2,22 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { chromium } = require('playwright');
+async function holdBriefTimers(page) {
+  await page.addInitScript(() => {
+    const schedule = window.setTimeout, cancel = window.clearTimeout, held = new Map();
+    window.setTimeout = function (fn, delay, ...args) {
+      if (delay !== 50 || typeof fn !== 'function') return schedule(fn, delay, ...args);
+      const id = schedule(() => {}, 60000); held.set(id, () => fn(...args)); return id;
+    };
+    window.clearTimeout = function (id) { held.delete(id); return cancel(id); };
+    window.auditReleaseTimers = () => {
+      window.setTimeout = schedule; window.clearTimeout = cancel;
+      const jobs = Array.from(held); held.clear();
+      jobs.forEach(([id, fn]) => { cancel(id); fn(); });
+      return { count: jobs.length, active: document.activeElement.id };
+    };
+  });
+}
 (async () => {
   const { startServer } = await import(path.resolve(__dirname, '../server/test/helpers.js'));
   const s = await startServer({ operators: ['taku'] }); let browser;
@@ -45,8 +61,15 @@ const { chromium } = require('playwright');
     console.log('PASS lost spin/gacha responses preserve BET, quote, one settlement and every reward');
 
     const ops = await ctx.newPage(); ops.setDefaultTimeout(30000); ops.on('pageerror', e => errors.push(e.message));
-    async function login() { await ops.locator('#login-name').fill('taku'); await ops.locator('#login-pass').fill('pass1234'); await ops.locator('#login-go').click(); await ops.locator('#app').waitFor({ state: 'visible' }); }
-    await ops.goto(s.base + '/ops/'); await login(); await ops.waitForFunction(() => !!OpsExt.io().request);
+    async function login(releaseTimers) {
+      await ops.locator('#login-name').fill('taku'); await ops.locator('#login-pass').fill('pass1234');
+      if (releaseTimers) {
+        const focus = await ops.evaluate(() => window.auditReleaseTimers());
+        assert.ok(focus.count > 0); assert.equal(focus.active, 'login-pass', 'late startup cannot steal the operator password field');
+      }
+      await ops.locator('#login-go').click(); await ops.locator('#app').waitFor({ state: 'visible' });
+    }
+    await holdBriefTimers(ops); await ops.goto(s.base + '/ops/'); await login(true); await ops.waitForFunction(() => !!OpsExt.io().request);
     await ops.route('**/api/audit-json', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"bad":' }));
     assert.equal(await ops.evaluate(() => OpsExt.io().request('GET', '/api/audit-json').then(() => 'success', e => e.status)), 0);
     let delayed;
@@ -70,10 +93,15 @@ const { chromium } = require('playwright');
 
     const sec = await ctx.newPage(); sec.setDefaultTimeout(30000); sec.on('pageerror', e => errors.push(e.message));
     await sec.route('**/api/ops/login', route => route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }));
-    await sec.goto(s.base + '/sec/'); await sec.locator('#login-name').fill('taku'); await sec.locator('#login-pass').fill('pass1234'); await sec.locator('#login-go').click();
+    await holdBriefTimers(sec); await sec.goto(s.base + '/sec/'); await sec.locator('#login-name').fill('taku'); await sec.locator('#login-pass').fill('pass1234');
+    const secFocus = await sec.evaluate(() => window.auditReleaseTimers());
+    assert.ok(secFocus.count > 0); assert.equal(secFocus.active, 'login-pass', 'late startup cannot steal the security password field');
+    const invalidLogin = sec.waitForResponse(r => new URL(r.url()).pathname === '/api/ops/login' && r.request().method() === 'POST');
+    await sec.locator('#login-go').click();
+    assert.equal(await (await invalidLogin).text(), 'null', 'the malformed login response must actually be received');
     await sec.waitForFunction(() => document.getElementById('login-error').textContent.includes('通信できませんでした'));
     assert.equal(await sec.locator('#login-go').isDisabled(), false);
     assert.deepEqual(errors, []);
-    console.log('PASS invalid security HOME JSON remains a recoverable network failure');
+    console.log('PASS deferred login focus preserves active password fields; invalid security HOME JSON remains a recoverable network failure');
   } finally { if (browser) await browser.close(); await s.stop(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
