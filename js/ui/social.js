@@ -29,6 +29,7 @@
   var typers = {};           // chat key -> { userId: { name, until } } (入力中)
   var greeted = false;       // a live connection has been made before
   var cameFrom = 'slot';     // where the menu's back button returns to
+  var sessionGeneration = 0;
 
   // modules that follow my profile (the guide, feedback, フレンド対決 ...): fn(me or null)
   var meListeners = [];
@@ -38,8 +39,29 @@
     renderMeCard();
     meListeners.forEach(function (fn) { try { fn(me); } catch (e) { if (window.console) console.warn(e); } });
   }
+  function acceptMe(m) {
+    if (!m || !api.hasToken() || (me && (m.id !== me.id || (typeof m.rev === 'number' && typeof me.rev === 'number' && m.rev < me.rev)))) return false;
+    if (BR.bank.applyMe(m, true) === false) return false;
+    me = m;
+    return true;
+  }
+  function setMe(m) {
+    if (!acceptMe(m)) return false;
+    BR.quests.setXp(m.xp);
+    BR.quests.setReady(m.questsReady);
+    BR.quests.setBonuses(m.questBonuses);
+    BR.shop.renderCharm();
+    meChanged();
+    return true;
+  }
 
   function resetSocial() {
+    sessionGeneration++;
+    Object.keys(readTimers).forEach(function (key) { clearTimeout(readTimers[key]); });
+    readTimers = {}; typingSent = {}; clearTimeout(typingTimer); typingTimer = 0;
+    claiming = {};
+    if (menu) closeMenu();
+    prof.seq++; prof.data = null;
     chans = {};
     drafts = {};
     convs = null;
@@ -57,12 +79,10 @@
   /* ------------------------------------------------------------ session --- */
   function signIn(token, profile) {
     BR.live.close();
-    if (BR.call) BR.call.hangupAll();
-    BR.bank.reset();
-    if (BR.bonus) BR.bonus.reset();
+    clearAccountState();
     api.setToken(token);
-    resetSocial();
     me = profile;
+    BR.bank.applyMe(profile);
     BR.app.renderWallet(false);
     start();
   }
@@ -77,7 +97,7 @@
       if (starting !== job) return;
       retry = 1000;
       warned = false;
-      me = r.me;
+      if (!acceptMe(r.me) && !me) return;
       if (BR.call && BR.call.setBlocked) BR.call.setBlocked(r.blocked, r.me && r.me.rev);
       setUnread(r.unread);
       setRequests(r.friendRequests);
@@ -90,10 +110,10 @@
       BR.shop.renderCharm();
       BR.bonus.show(r.loginBonus);
       BR.bonus.schedule(r.loginReset);
-      BR.quests.setXp(r.me.xp, true);
-      BR.quests.setReady(r.me.questsReady);
-      BR.jobs.set(r.me);
-      BR.news.serverRelease(r.me.release);
+      BR.quests.setXp(me.xp, true);
+      BR.quests.setReady(me.questsReady);
+      BR.jobs.set(me);
+      BR.news.serverRelease(me.release);
       BR.news.checkRelease();
       BR.app.renderWallet(false);
       BR.app.renderBet();
@@ -122,10 +142,16 @@
   function lockDown() { signedOut(true); }
 
   function signedOut(keepLogin) {
-    starting = null;
-    clearTimeout(retryTimer);
     BR.live.close();
     if (!keepLogin) api.setToken(null);
+    clearAccountState();
+    if (BR.account && BR.account.close) BR.account.close();
+    BR.app.renderWallet(false);
+  }
+  function clearAccountState() {
+    starting = null;
+    clearTimeout(retryTimer);
+    if (BR.account && BR.account.invalidate) BR.account.invalidate();
     BR.bank.reset();
     if (BR.bonus) BR.bonus.reset();
     if (BR.call) BR.call.hangupAll();
@@ -142,7 +168,6 @@
     BR.entry.close();
     closeGroupForm();
     K.closeModals();
-    BR.app.renderWallet(false);
   }
 
   // The token stopped working (logged out elsewhere, or by the server: an
@@ -164,13 +189,17 @@
   }
 
   function logout() {
+    if (!me) return;
+    var gen = sessionGeneration, owner = me.id;
+    function current() { return gen === sessionGeneration && me && me.id === owner; }
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode('ログアウトしますか？'));
       p.appendChild(el('small', 'confirm-sub', '残高やフレンドは消えません。ユーザー名とパスワードでいつでも戻れます。'));
     }, 'ログアウト').then(function (ok) {
-      if (!ok) return;
+      if (!ok || !current()) return;
       // this phone stops getting the account's notifications first (while signed in)
-      (BR.push ? BR.push.forget() : Promise.resolve()).then(function () { return api.logout(); }).catch(function () {}).then(function () {
+      (BR.push ? BR.push.forget() : Promise.resolve()).then(function (endpoint) { if (current()) return api.logout(endpoint); }).catch(function () {}).then(function () {
+        if (!current()) return;
         signedOut();
         BR.screens.show('start');
         toast('ログアウトしました');
@@ -1183,6 +1212,7 @@
   // read up to the newest message (the others see 既読)
   var readTimers = {};
   function markRead(key) {
+    var gen = sessionGeneration;
     if (key.indexOf('group:') === 0) {
       var g = groupById(Number(key.slice(6)));
       if (g) g.unread = 0;
@@ -1192,7 +1222,9 @@
     }
     clearTimeout(readTimers[key]);
     readTimers[key] = setTimeout(function () {
-      api.read(chatOf(key)).then(function (r) { setUnread(r.unread); }, function () {});
+      if (gen !== sessionGeneration) return;
+      delete readTimers[key];
+      api.read(chatOf(key)).then(function (r) { if (gen === sessionGeneration) setUnread(r.unread); }, function () {});
     }, 200);
   }
 
@@ -1867,8 +1899,7 @@
   }
 
   function onHello(h) {
-    me = h.me;
-    BR.bank.applyMe(h.me, true);
+    if (!acceptMe(h.me)) { if (me && h.me && me.id === h.me.id) resync(); return; }
     BR.app.serverBalance(h.me);
     setUnread(h.unread);
     setRequests(h.friendRequests);
@@ -2098,15 +2129,7 @@
     lockDown: lockDown,
     me: function () { return me; },
     onMe: function (fn) { meListeners.push(fn); },
-    setMe: function (m) {
-      me = m;
-      BR.bank.applyMe(m, true);
-      BR.quests.setXp(m.xp);
-      BR.quests.setReady(m.questsReady);
-      BR.quests.setBonuses(m.questBonuses);
-      BR.shop.renderCharm();
-      meChanged();
-    },
+    setMe: setMe,
     friendsList: function () { return friends ? friends.friends : null; },
     peerIs: function (u) { return view === 'dm' && !!peer && !!u && peer.id === u.id; },
     viewingDm: function () { return visible() && view === 'dm' && !document.hidden; },

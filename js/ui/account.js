@@ -19,6 +19,7 @@
   var after = null;          // what to do once signed in (start the game, open friends, ...)
   var draft = { name: '', password: '', avatar: BR.CONFIG.defaultAvatar, oauth: null };
   var codeFirst = false;
+  var operation = 0;
 
   var NAME_RE = /^[A-Za-z0-9_\-ぁ-ゖァ-ヺー・々〆一-鿿㐀-䶿]+$/;
   // null = fine, '' = empty, otherwise the problem (the server has the last word)
@@ -57,7 +58,15 @@
     busy = on;
     $$('#welcome button, #welcome input').forEach(function (b) { b.disabled = on; });
   }
+  function invalidate() {
+    operation++;
+    setBusy(false);
+    clearTimeout(check.timer);
+    check.seq++; check.available = null; check.name = '';
+  }
   function close() {
+    invalidate();
+    after = null;
     showGeneration++;
     var a = document.activeElement;
     if (a && a.blur && overlay().contains(a)) a.blur();
@@ -65,9 +74,8 @@
     BR.app.relayout();
   }
   function finish() {
-    close();
     var f = after;
-    after = null;
+    close();
     if (f) f();
   }
 
@@ -79,6 +87,7 @@
     h.className = 'ov-hint' + (kind ? ' ' + kind : '');
   }
   function onNameInput() {
+    check.seq++;
     var raw = $('#ov-name').value;
     var problem = nameProblem(raw);
     clearTimeout(check.timer);
@@ -117,8 +126,10 @@
     if (pp) { setError('register', pp); K.sfx('deny'); return; }
     var name = nfkc(raw).trim();
     setBusy(true);
+    var gen = operation;
     var known = check.name === name && check.available !== null ? Promise.resolve({ available: check.available, device: check.device }) : lookup(name);
     known.then(function (r) {
+      if (gen !== operation) return;
       setBusy(false);
       if (!r) { setError('register', 'サーバーに接続できません。少し待ってからもう一度お試しください'); return; }
       if (deviceStop(r.device)) return;
@@ -167,7 +178,9 @@
     setBusy(true);
     setError('avatar', '');
     var oauth = draft.oauth;
+    var gen = operation;
     (oauth ? api.oauthRegister(oauth.flow, draft.name, draft.avatar) : api.register(draft.name, draft.password, draft.avatar)).then(function (r) {
+      if (gen !== operation) { api.discardSession(r.token); return; }
       api.rememberName(r.me.name);
       draft.password = '';
       draft.oauth = null;
@@ -177,6 +190,7 @@
       K.sfx('purchase');
       showCode(r.recoveryCode, true);
     }, function (err) {
+      if (gen !== operation) return;
       if (err.code === 'device_limit' || err.code === 'device_banned') {
         deviceStop(err.code === 'device_limit' ? 'full' : 'banned', err.message);
         return;
@@ -203,13 +217,14 @@
         setError('avatar', err.message);
       }
       K.sfx('deny');
-    }).then(function () { setBusy(false); });
+    }).then(function () { if (gen === operation) setBusy(false); });
   }
 
   /* ------------------------------------------------------------ Google / Discord --- */
   var PROVIDER = { google: 'Google', discord: 'Discord' };
   // the waiting card: the browser (or the provider's page) has the player; this page asks how it went (js/ui/oauth.js)
   function oauthWait(o) {
+    invalidate();
     var name = PROVIDER[o.provider] || '';
     $('#ov-wait-title').textContent = name + 'でログイン';
     $('#ov-wait-text').textContent = o.error ? '' : o.external
@@ -223,6 +238,7 @@
   }
   // a new player came back from Google / Discord: a name, then an icon, then the recovery code
   function oauthSignup(info) {
+    invalidate();
     draft.oauth = info;
     draft.name = '';
     draft.password = '';
@@ -240,8 +256,10 @@
     if (problem !== null) { setError('social-name', problem || 'ユーザー名を入力してください'); K.sfx('deny'); return; }
     var name = nfkc(raw).trim();
     setBusy(true);
+    var gen = operation;
     var known = check.name === name && check.available !== null ? Promise.resolve({ available: check.available, device: check.device }) : lookup(name, 'ov-sname-hint');
     known.then(function (r) {
+      if (gen !== operation) return;
       setBusy(false);
       if (!r) { setError('social-name', 'サーバーに接続できません。少し待ってからもう一度お試しください'); return; }
       if (deviceStop(r.device)) return;
@@ -252,6 +270,7 @@
     });
   }
   function onSocialNameInput() {
+    check.seq++;
     var raw = $('#ov-sname').value;
     var problem = nameProblem(raw);
     clearTimeout(check.timer);
@@ -273,13 +292,16 @@
     if (!pw) { setError('login', 'パスワードを入力してください'); return; }
     setBusy(true);
     setError('login', '');
+    var gen = operation;
     api.login(name, pw).then(function (r) {
+      if (gen !== operation) { api.discardSession(r.token); return; }
       $('#ov-login-pass').value = '';
       welcomeBack(r);
     }, function (err) {
+      if (gen !== operation) return;
       setError('login', err.message);
       K.sfx('deny');
-    }).then(function () { setBusy(false); });
+    }).then(function () { if (gen === operation) setBusy(false); });
   }
 
   function onCodeLogin(e) {
@@ -292,14 +314,17 @@
     }
     setBusy(true);
     setError('code-login', '');
+    var gen = operation;
     api.loginCode(code).then(function (r) {
+      if (gen !== operation) { api.discardSession(r.token); return; }
       $('#ov-code').value = '';
       welcomeBack(r);
       if (r.me && !r.me.hasPassword) setTimeout(function () { K.toast('プロフィールからパスワードを設定すると、名前とパスワードでログインできます', 4200); }, 2600);
     }, function (err) {
+      if (gen !== operation) return;
       setError('code-login', err.message);
       K.sfx('deny');
-    }).then(function () { setBusy(false); });
+    }).then(function () { if (gen === operation) setBusy(false); });
   }
 
   function welcomeBack(r) {
@@ -340,6 +365,7 @@
   function openPassword() {
     var m = BR.social.me();
     if (!m) return;
+    invalidate();
     var has = !!m.hasPassword;
     $('#ov-pw-title').textContent = has ? 'パスワードの変更' : 'パスワードの設定';
     $('#ov-pw-current-wrap').hidden = !has;
@@ -356,16 +382,19 @@
     var pw = $('#ov-pw-new').value, pp = passwordProblem(pw);
     if (pp) { setError('password', pp); return; }
     setBusy(true);
+    var gen = operation;
     api.password(m && m.hasPassword ? $('#ov-pw-current').value : undefined, pw).then(function (r) {
+      if (gen !== operation) return;
       BR.social.setMe(r.me);
       K.sfx('purchase');
       close();
       K.toast('パスワードを保存しました');
       showCode(r.recoveryCode, false);
     }, function (err) {
+      if (gen !== operation) return;
       setError('password', err.message);
       K.sfx('deny');
-    }).then(function () { setBusy(false); });
+    }).then(function () { if (gen === operation) setBusy(false); });
   }
 
   /* ------------------------------------------------------------ entry points --- */
@@ -377,6 +406,7 @@
     open(card || 'register');
   }
   function open(card, notice) {
+    invalidate();
     setError('register', '');
     setError('login', '');
     setError('code-login', '');
@@ -447,7 +477,6 @@
       if (!codeFirst) { close(); return; }
       // a new player: into the game (the guide shows the way)
       codeFirst = false;
-      close();
       finish();
       BR.social.firstRun();
     });
@@ -461,6 +490,7 @@
     require: require,
     open: open,
     close: close,
+    invalidate: invalidate,
     isOpen: isOpen,
     showCode: showCode,
     openPassword: openPassword

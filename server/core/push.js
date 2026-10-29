@@ -103,7 +103,8 @@ export function createPush({ q, meta, contact = '', send = (url, init) => fetch(
       body
     });
     // gone (unsubscribed, or the browser data cleared): forgotten
-    if (res.status === 404 || res.status === 410) q('DELETE FROM push_subs WHERE endpoint = ?').run(sub.endpoint);
+    if (res.status === 404 || res.status === 410) q('DELETE FROM push_subs WHERE endpoint = ? AND user_id = ? AND p256dh = ? AND auth = ? AND created_at = ?')
+      .run(sub.endpoint, sub.user_id, sub.p256dh, sub.auth, sub.created_at);
     return res.status;
   }
 
@@ -120,7 +121,8 @@ export function createPush({ q, meta, contact = '', send = (url, init) => fetch(
     publicKey: async () => (await vapid()).publicKey,
     subscribe(userId, sub, origin) {
       q(`INSERT INTO push_subs (endpoint, user_id, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`)
+         ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth,
+           created_at = MAX(push_subs.created_at + 1, excluded.created_at)`)
         .run(sub.endpoint, userId, sub.p256dh, sub.auth, Date.now());
       if (origin && /^https:\/\//.test(origin) && !meta.get('push_origin')) meta.set('push_origin', origin);
     },

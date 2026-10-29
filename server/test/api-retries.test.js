@@ -15,6 +15,26 @@ function setup(session = new Map(), auth = 'old-session-token') {
   return { BR: ctx.BR, calls, storage, respond: fn => { fetcher = fn; } };
 }
 
+for (const method of ['login', 'oauthPoll']) test(`a ${method} reply started while signed out cannot replace a newer login and retires its unused session`, async () => {
+  const s = setup(new Map(), null); let finish;
+  s.respond(call => call.path === '/api/logout' ? Promise.resolve(reply(200, { ok: true })) : new Promise(resolve => { finish = resolve; }));
+  const pending = method === 'login' ? s.BR.api.login('Former', 'pass1234') : s.BR.api.oauthPoll('former-flow');
+  s.BR.api.setToken('active-new-account'); finish(reply(200, { token: 'unused-old-result', me: { id: 1 } }));
+  await assert.rejects(pending, e => e.code === 'session_changed');
+  assert.equal(s.storage.get('blockbuster-reels/auth'), 'active-new-account');
+  assert.equal(s.calls.at(-1).path, '/api/logout'); assert.equal(s.calls.at(-1).options.headers.Authorization, 'Bearer unused-old-result');
+});
+
+test('explicit session invalidation retires a pending password result even if the token value is unchanged', async () => {
+  const s = setup(); let finish;
+  s.respond(call => call.path === '/api/password' ? new Promise(resolve => { finish = resolve; }) : Promise.resolve(reply(200, { ok: true })));
+  const pending = s.BR.api.password('old', 'new-password'); s.BR.api.setToken('old-session-token');
+  finish(reply(200, { token: 'retired-password-session' }));
+  await assert.rejects(pending, e => e.code === 'session_changed');
+  assert.equal(s.storage.get('blockbuster-reels/auth'), 'old-session-token');
+  assert.equal(s.calls.at(-1).options.headers.Authorization, 'Bearer retired-password-session');
+});
+
 for (const type of ['spin', 'gacha']) test(`password rotation preserves the uncertain ${type} receipt and its saved reload recovery`, async () => {
   const session = new Map(), s = setup(session), api = s.BR.api;
   const draw = () => type === 'spin' ? api.spin(100) : api.gachaSpin('rare', 1, 10000000);

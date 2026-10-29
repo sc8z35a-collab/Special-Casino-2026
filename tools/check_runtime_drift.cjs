@@ -176,7 +176,21 @@ const { configFrom } = require('../server/core/config.js');
       assert.deepEqual(afterChat.messages, beforeChat.messages);
       assert.equal((await call('GET', '/api/peter', current)).debt.lent, 0); assert.equal((await call('GET', '/api/me', current)).me.dollars, Number.MAX_SAFE_INTEGER);
       record('failed NPC loan leaves no message or debt', afterChat, true);
-      const logout = await call('POST', '/api/logout', b, {}); assert.equal(logout.status, 200); record('logout', logout);
+      const pushBackup = await call('POST', '/api/admin', null, { cmd: 'export', args: [] }, { 'X-Admin-Token': admin });
+      const browserKey = crypto.createECDH('prime256v1').generateKeys().toString('base64url'), browserAuth = crypto.randomBytes(16).toString('base64url');
+      const endpoint = n => 'https://fcm.googleapis.com/fcm/send/parity-phone-' + n;
+      for (let n=0; n<9; n++) pushBackup.result.tables.push_subs.push({ endpoint: endpoint(n), user_id: n ? b.me.id : a.me.id,
+        p256dh: browserKey, auth: browserAuth, created_at: n + 1 });
+      const pushRestored = await call('POST', '/api/admin', null, { cmd: 'import', args: [pushBackup.result, true] }, { 'X-Admin-Token': admin });
+      assert.equal(pushRestored.status, 200, JSON.stringify(pushRestored));
+      const registered = await call('POST', '/api/push/subscribe', b, { endpoint: endpoint(0), keys: { p256dh: browserKey, auth: browserAuth } }); assert.equal(registered.status, 200);
+      const registeredRows = (await call('POST', '/api/admin', null, { cmd: 'export', args: [] }, { 'X-Admin-Token': admin })).result.tables.push_subs;
+      assert.equal(registeredRows.find(r => r.endpoint === endpoint(0))?.user_id, b.me.id);
+      assert.equal(registeredRows.filter(r => r.user_id === b.me.id).length, 8); record('active notification phone survives device cap', registered, true);
+      const logout = await call('POST', '/api/logout', b, { endpoint: endpoint(0) }); assert.equal(logout.status, 200); record('logout', logout);
+      const logoutRows = (await call('POST', '/api/admin', null, { cmd: 'export', args: [] }, { 'X-Admin-Token': admin })).result.tables.push_subs;
+      assert.equal(logoutRows.some(r => r.endpoint === endpoint(0)), false); assert.equal(logoutRows.filter(r => r.user_id === b.me.id).length, 7);
+      record('logout detaches only its notification phone', logout, true);
       const revoked = await call('GET', '/api/me', b); assert.equal(revoked.status, 401); record('revoked session', revoked);
       return trace;
     }
