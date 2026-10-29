@@ -79,8 +79,8 @@
   /* ------------------------------------------------------------ session --- */
   function signIn(token, profile) {
     BR.live.close();
-    api.setToken(token);
     clearAccountState();
+    api.setToken(token);
     me = profile;
     BR.bank.applyMe(profile);
     BR.app.renderWallet(false);

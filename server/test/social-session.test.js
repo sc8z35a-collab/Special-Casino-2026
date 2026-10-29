@@ -26,7 +26,7 @@ function scene() {
   vm.runInNewContext(source.replace('  BR.social = {','  BR.social = { auditLogout: logout, auditRead: markRead,'),ui.context);BR.social.init();
   const profile=(id=1,rev=10)=>({id,rev,name:'Owner'+id,xp:1000,coins:3,dollars:10000,tokens:1000,dailyReady:false,boughtToday:50,items:{},vip:{level:2}});
   BR.social.setMe(profile());
-  return {...ui,BR,resets,confirms,cleanups,reads,events,badges,effects,profile};
+  return {...ui,BR,resets,confirms,cleanups,reads,events,badges,effects,profile,readToken:()=>token};
 }
 
 test('older full profiles and hello snapshots cannot restore the previous VIP, avatar or inventory',()=>{
@@ -41,7 +41,10 @@ test('a valid same-account profile update with unchanged balance revision remain
   const s=scene(), update={...s.profile(),avatar:'changed-without-spending'};s.BR.social.setMe(update);assert.equal(s.BR.social.me(),update);
 });
 test('direct account switching resets quest levels and every cached account-specific screen before loading the new account',()=>{
-  const s=scene();s.resets.length=0;const next={...s.profile(2,1),xp:0};s.BR.social.signIn('next-token',next);
+  const s=scene(),callOwners=[];s.resets.length=0;const hangup=s.BR.call.hangupAll;
+  s.BR.call.hangupAll=()=>{callOwners.push(s.readToken());hangup();};
+  const next={...s.profile(2,1),xp:0};s.BR.social.signIn('next-token',next);
+  assert.deepEqual(callOwners,['owner-token'],'end the previous call under its original account before replacing the token');
   for(const name of ['quests','jobs','tree','gacha','lineReward','watch','account'])assert.ok(s.resets.includes(name),name+' must not retain the old account');
   assert.equal(s.BR.social.me(),next);assert.equal(s.BR.bank.me(),next);assert.equal(s.BR.store.state.rev,1);
 });
