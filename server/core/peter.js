@@ -232,6 +232,9 @@ export function createPeter(ctx) {
 
   // The player wrote to him: the message is kept like any chat, he answers.
   function chat(u, text) {
+    return tx(() => exchange(u, text));
+  }
+  function exchange(u, text) {
     const pid = id();
     const mine = tx(() => {
       const row = ctx.insertMessage({ channel: ctx.dmChannel(u.id, pid), sender: u, recipient: pid, kind: 'text', body: text });

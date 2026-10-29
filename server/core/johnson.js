@@ -125,6 +125,9 @@ export function createJohnson(ctx) {
 
   // The player wrote to him: kept like any chat, and he answers.
   function chat(u, text) {
+    return tx(() => exchange(u, text));
+  }
+  function exchange(u, text) {
     const jid = id();
     const mine = tx(() => {
       const row = ctx.insertMessage({ channel: ctx.dmChannel(u.id, jid), sender: u, recipient: jid, kind: 'text', body: text });
