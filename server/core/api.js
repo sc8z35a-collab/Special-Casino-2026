@@ -2038,44 +2038,46 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // the money leaves now and arrives when they tap it (POST /api/messages/claim);
       // blocked by them: they see it once they unblock
       const held = isBlocked(to, u.id);
-      const m = tx(() => {
-        const cur = getUser(u.id);
-        if (cur[currency] < amount) {
-          throw new ApiError(409, 'insufficient', currency === 'tokens' ? 'スピントークンが足りません' : '$が足りません');
-        }
-        // Per sender, across all recipients and both currencies; midnight in Japan.
-        // The counter records sending, including pending/held/expired receipts.
-        const now = Date.now();
-        const day = Math.floor((now + 9 * 3600000) / 86400000);
-        const start = day * 86400000 - 9 * 3600000;
-        const dollars = currency === 'tokens' ? amount * RULES.tokenPrice : amount;
-        // Seed existing accounts from today's messages when the counter is first used.
-        q(`INSERT OR IGNORE INTO player_transfer_days (user_id, day, dollars)
-           SELECT ?, ?, COALESCE(SUM(CASE WHEN currency = 'tokens' THEN amount * ? ELSE amount END), 0)
-           FROM message_history WHERE sender_id = ? AND kind = 'transfer' AND created_at >= ? AND created_at < ?`)
-          .run(u.id, day, RULES.tokenPrice, u.id, start, start + 86400000);
-        const used = q('SELECT dollars FROM player_transfer_days WHERE user_id = ? AND day = ?').get(u.id, day).dollars;
-        if (used + dollars > PLAYER_TRANSFER_DAILY_DOLLARS) throw new ApiError(409, 'transfer_daily_limit', '本日はこれ以上送金できません');
-        q('UPDATE player_transfer_days SET dollars = dollars + ? WHERE user_id = ? AND day = ?').run(dollars, u.id, day);
-        // `currency` is one of CURRENCIES, so it is safe as a column name
-        q(`UPDATE users SET ${currency} = ${currency} - ?, rev = rev + 1 WHERE id = ?`).run(amount, u.id);
-        const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'transfer', amount, currency, held, pending: true, at: now });
-        if (held) touchOwn(u.id, to, row.id);
-        else touchConversations(u.id, to, row.id);
-        return row;
+      return tx(() => {
+        const m = tx(() => {
+          const cur = getUser(u.id);
+          if (cur[currency] < amount) {
+            throw new ApiError(409, 'insufficient', currency === 'tokens' ? 'スピントークンが足りません' : '$が足りません');
+          }
+          // Per sender, across all recipients and both currencies; midnight in Japan.
+          // The counter records sending, including pending/held/expired receipts.
+          const now = Date.now();
+          const day = Math.floor((now + 9 * 3600000) / 86400000);
+          const start = day * 86400000 - 9 * 3600000;
+          const dollars = currency === 'tokens' ? amount * RULES.tokenPrice : amount;
+          // Seed existing accounts from today's messages when the counter is first used.
+          q(`INSERT OR IGNORE INTO player_transfer_days (user_id, day, dollars)
+             SELECT ?, ?, COALESCE(SUM(CASE WHEN currency = 'tokens' THEN amount * ? ELSE amount END), 0)
+             FROM message_history WHERE sender_id = ? AND kind = 'transfer' AND created_at >= ? AND created_at < ?`)
+            .run(u.id, day, RULES.tokenPrice, u.id, start, start + 86400000);
+          const used = q('SELECT dollars FROM player_transfer_days WHERE user_id = ? AND day = ?').get(u.id, day).dollars;
+          if (used + dollars > PLAYER_TRANSFER_DAILY_DOLLARS) throw new ApiError(409, 'transfer_daily_limit', '本日はこれ以上送金できません');
+          q('UPDATE player_transfer_days SET dollars = dollars + ? WHERE user_id = ? AND day = ?').run(dollars, u.id, day);
+          // `currency` is one of CURRENCIES, so it is safe as a column name
+          q(`UPDATE users SET ${currency} = ${currency} - ?, rev = rev + 1 WHERE id = ?`).run(amount, u.id);
+          const row = insertMessage({ channel: dmChannel(u.id, to), sender: u, recipient: to, kind: 'transfer', amount, currency, held, pending: true, at: now });
+          if (held) touchOwn(u.id, to, row.id);
+          else touchConversations(u.id, to, row.id);
+          return row;
+        });
+        // 送金 quests count it in $ (spin tokens at their price)
+        track(u.id, [['sent', currency === 'tokens' ? amount * RULES.tokenPrice : amount]]);
+        balanceChanged(u.id);
+        const dto = held ? sendOwn(m, u.id) : deliverDm(m, u.id, to);
+        afterSpend(u.id);
+        const t = getUser(to);
+        opsLog.add({
+          actor: u, action: 'player_transfer', target: t, req,
+          summary: `${u.name}さんが${t ? t.name : '?'}さんへ ${currency === 'tokens' ? fmt(amount) + ' トークン' : '$' + fmt(amount)} を送金${held ? '（ブロック中のため保留）' : ''}`,
+          detail: { currency, amount, held, pending: true, messageId: m.id }
+        });
+        return { balance: balance(getUser(u.id)), message: dto };
       });
-      // 送金 quests count it in $ (spin tokens at their price)
-      track(u.id, [['sent', currency === 'tokens' ? amount * RULES.tokenPrice : amount]]);
-      balanceChanged(u.id);
-      const dto = held ? sendOwn(m, u.id) : deliverDm(m, u.id, to);
-      afterSpend(u.id);
-      const t = getUser(to);
-      opsLog.add({
-        actor: u, action: 'player_transfer', target: t, req,
-        summary: `${u.name}さんが${t ? t.name : '?'}さんへ ${currency === 'tokens' ? fmt(amount) + ' トークン' : '$' + fmt(amount)} を送金${held ? '（ブロック中のため保留）' : ''}`,
-        detail: { currency, amount, held, pending: true, messageId: m.id }
-      });
-      return { balance: balance(getUser(u.id)), message: dto };
     }],
 
     // 受け取る: money, a car or an item sent in a chat (by a friend, Ice
@@ -2085,43 +2087,45 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const id = posInt(body.message, 'メッセージ');
       rate(limit.read, u.id);
       const now = Date.now();
-      const m = tx(() => {
-        const row = q('SELECT * FROM message_history WHERE id = ?').get(id);
-        if (!row || !row.pending || row.recipient_id !== u.id || row.held) throw new ApiError(404, 'not_found', 'これは受け取れません');
-        if (row.claimed_at) throw new ApiError(409, 'claimed', 'もう受け取りました');
-        if (RECEIPTS.expired(row, now)) throw new ApiError(410, 'expired', '受け取り期限が過ぎています');
-        if (row.kind === 'transfer' && CURRENCIES.includes(row.currency)) {
-          q(`UPDATE users SET ${row.currency} = ${row.currency} + ?, rev = rev + 1 WHERE id = ?`).run(row.amount, u.id);
-          const from = getUser(row.sender_id);
-          if (from && !from.npc) q('INSERT INTO transfers (id, from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(nextRecordId(q, 'transfers'), row.sender_id, u.id, row.currency, row.amount, now);
-        } else if (row.kind === 'gift') {
-          const car = q('SELECT * FROM cars WHERE id = ? AND owner_id = 0').get(row.amount);
-          if (!car) throw new ApiError(409, 'gone', 'この車はもうありません');
-          const cur = getUser(u.id);
-          if (carCount(u.id) >= garageSize(cur)) throw new ApiError(409, 'garage_full', `ガレージがいっぱいです（${garageSize(cur)}台）。空きを作ってから受け取ってください`);
-          q('UPDATE cars SET owner_id = ?, acquired_at = ? WHERE id = ?').run(u.id, now, car.id);
-        } else if (row.kind === 'item' && SHOP.has(row.body)) {
-          const item = SHOP.get(row.body);
-          const have = itemCount(u.id, item.id);
-          if (have + row.amount > item.max) throw new ApiError(409, 'item_max', `${item.name}は${item.max}個までしか持てません（今${have}個）。使ってから受け取ってください`);
-          addItems(u.id, item.id, row.amount);
-        } else {
-          throw new ApiError(400, 'bad_kind', 'これは受け取れません');
-        }
-        q('UPDATE messages SET claimed_at = ? WHERE id = ?').run(now, row.id);
-        return row;
+      return tx(() => {
+        const m = tx(() => {
+          const row = q('SELECT * FROM message_history WHERE id = ?').get(id);
+          if (!row || !row.pending || row.recipient_id !== u.id || row.held) throw new ApiError(404, 'not_found', 'これは受け取れません');
+          if (row.claimed_at) throw new ApiError(409, 'claimed', 'もう受け取りました');
+          if (RECEIPTS.expired(row, now)) throw new ApiError(410, 'expired', '受け取り期限が過ぎています');
+          if (row.kind === 'transfer' && CURRENCIES.includes(row.currency)) {
+            q(`UPDATE users SET ${row.currency} = ${row.currency} + ?, rev = rev + 1 WHERE id = ?`).run(row.amount, u.id);
+            const from = getUser(row.sender_id);
+            if (from && !from.npc) q('INSERT INTO transfers (id, from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(nextRecordId(q, 'transfers'), row.sender_id, u.id, row.currency, row.amount, now);
+          } else if (row.kind === 'gift') {
+            const car = q('SELECT * FROM cars WHERE id = ? AND owner_id = 0').get(row.amount);
+            if (!car) throw new ApiError(409, 'gone', 'この車はもうありません');
+            const cur = getUser(u.id);
+            if (carCount(u.id) >= garageSize(cur)) throw new ApiError(409, 'garage_full', `ガレージがいっぱいです（${garageSize(cur)}台）。空きを作ってから受け取ってください`);
+            q('UPDATE cars SET owner_id = ?, acquired_at = ? WHERE id = ?').run(u.id, now, car.id);
+          } else if (row.kind === 'item' && SHOP.has(row.body)) {
+            const item = SHOP.get(row.body);
+            const have = itemCount(u.id, item.id);
+            if (have + row.amount > item.max) throw new ApiError(409, 'item_max', `${item.name}は${item.max}個までしか持てません（今${have}個）。使ってから受け取ってください`);
+            addItems(u.id, item.id, row.amount);
+          } else {
+            throw new ApiError(400, 'bad_kind', 'これは受け取れません');
+          }
+          q('UPDATE messages SET claimed_at = ? WHERE id = ?').run(now, row.id);
+          return row;
+        });
+        // both ends see it was received (on every device)
+        cardChanged(m, { claimed: true });
+        const from = getUser(m.sender_id);
+        const what = m.kind === 'transfer' ? (m.currency === 'tokens' ? `${fmt(m.amount)} トークン` : `$${fmt(m.amount)}`)
+          : m.kind === 'gift' ? `車（${CARS.get(m.body) ? CARS.get(m.body).name : m.body}）` : `${SHOP.get(m.body).name} ×${m.amount}`;
+        opsLog.add({
+          actor: u, action: 'player_claim', target: from, req, summary: `${u.name}さんが${from ? from.name : '?'}さんからの${what}を受け取った`,
+          detail: { messageId: m.id, kind: m.kind, amount: m.amount, currency: m.currency, what: m.body, sentAt: m.created_at }
+        });
+        if (m.kind === 'item') live.send(u.id, 'items', { items: itemsOf(u.id) });
+        return { id: m.id, kind: m.kind, amount: m.amount, currency: m.currency, me: meDto(m.kind === 'transfer' ? balanceChanged(u.id) : getUser(u.id)) };
       });
-      // both ends see it was received (on every device)
-      cardChanged(m, { claimed: true });
-      const from = getUser(m.sender_id);
-      const what = m.kind === 'transfer' ? (m.currency === 'tokens' ? `${fmt(m.amount)} トークン` : `$${fmt(m.amount)}`)
-        : m.kind === 'gift' ? `車（${CARS.get(m.body) ? CARS.get(m.body).name : m.body}）` : `${SHOP.get(m.body).name} ×${m.amount}`;
-      opsLog.add({
-        actor: u, action: 'player_claim', target: from, req, summary: `${u.name}さんが${from ? from.name : '?'}さんからの${what}を受け取った`,
-        detail: { messageId: m.id, kind: m.kind, amount: m.amount, currency: m.currency, what: m.body, sentAt: m.created_at }
-      });
-      if (m.kind === 'item') live.send(u.id, 'items', { items: itemsOf(u.id) });
-      return { id: m.id, kind: m.kind, amount: m.amount, currency: m.currency, me: meDto(m.kind === 'transfer' ? balanceChanged(u.id) : getUser(u.id)) };
     }],
 
     /* ----- icons ----- */

@@ -157,7 +157,7 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
     q('UPDATE pay_orders SET checked_at = ? WHERE id = ?').run(Date.now(), o.id);
     const s = await stripe.session(o.session_id);
     if (s?.payment_status === 'paid' && typeof s.payment_intent === 'string') s.payment_intent = await stripe.intent(s.payment_intent);
-    return apply(getOrder(o.id), s, hint, req);
+    return tx(() => apply(getOrder(o.id), s, hint, req));
   }
 
   function apply(o, s, hint, req) {
@@ -420,8 +420,8 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
       rate(limits.checkoutIp, req.ip || '-');
       if (!on) throw new ApiError(503, 'pay_off', '開発者支援はただいま準備中です');
       if (u.npc) throw new ApiError(403, 'forbidden', 'このアカウントでは購入できません');
-      if (u.age_ok !== 1) throw new ApiError(403, 'age', '購入は18歳以上の方に限ります');
       const body = await req.json();
+      if (u.age_ok !== 1) throw new ApiError(403, 'age', '購入は18歳以上の方に限ります');
       const plan = PLANS.get(String(body.plan || ''));
       if (!plan) throw new ApiError(400, 'bad_plan', 'プランを選んでください');
       const qty = Number(body.qty);
@@ -458,12 +458,26 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
         opsLog.add({ actor: u, action: 'pay_error', target: u, req, summary: `${u.name}さんの支払いページを用意できなかった（Stripe）`, detail: { order: id, error: String((e && e.message) || '').slice(0, 300), code: (e && e.code) || '' } });
         throw new ApiError(502, 'pay_provider', '決済ページを用意できませんでした。少し待ってからもう一度お試しください');
       }
-      q("UPDATE pay_orders SET status = 'open', session_id = ?, updated_at = ? WHERE id = ? AND status = 'new'").run(s.id, Date.now(), id);
-      opsLog.add({
-        actor: u, action: 'pay_order', target: u, req,
-        summary: `${u.name}さんが${plan.name}×${qty}（${yen(amount)}・${method.name}）の支払いページを開いた`,
-        detail: { order: id, plan: plan.id, qty, amount, method: method.id, session: s.id, livemode: stripe.live }
-      });
+      try {
+        req.revalidate?.();
+        if (getUser(u.id)?.age_ok !== 1) throw new ApiError(403, 'age', '購入は18歳以上の方に限ります');
+        tx(() => {
+          mine(u, id);
+          q("UPDATE pay_orders SET status = 'open', session_id = ?, updated_at = ? WHERE id = ? AND status = 'new'").run(s.id, Date.now(), id);
+          opsLog.add({
+            actor: u, action: 'pay_order', target: u, req,
+            summary: `${u.name}さんが${plan.name}×${qty}（${yen(amount)}・${method.name}）の支払いページを開いた`,
+            detail: { order: id, plan: plan.id, qty, amount, method: method.id, session: s.id, livemode: stripe.live }
+          });
+        });
+      } catch (e) {
+        // Never hand out an unrecorded page or one authorized by an ended
+        // session. Keep its identity so a payment already made is honoured.
+        try { await stripe.expireSession(s.id); } catch { /* may already be paid */ }
+        q("UPDATE pay_orders SET session_id = CASE WHEN session_id = '' THEN ? ELSE session_id END, status = CASE WHEN status = 'new' THEN 'error' ELSE status END, updated_at = ? WHERE id = ?")
+          .run(s.id, Date.now(), id);
+        throw e;
+      }
       return { order: dto(getOrder(id)), url: s.url };
     },
 
@@ -474,7 +488,8 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
       if (on && o.session_id && ['new', 'open', 'pending', 'error'].includes(o.status) && Date.now() - o.checked_at > RECHECK_MS) {
         try { await sync(o, '', req); } catch (e) { console.error('pay: check failed', o.id, e && e.message); }
       }
-      return { order: dto(getOrder(o.id)), meters: meters() };
+      req.revalidate?.();
+      return { order: dto(mine(u, o.id)), meters: meters() };
     },
 
     // back from the payment page without paying: the page is closed at Stripe
@@ -487,7 +502,8 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
         try { await sync(o, '', req); } catch (e) { console.error('pay: check failed', o.id, e && e.message); }
         q("UPDATE pay_orders SET status = 'canceled', updated_at = ? WHERE id = ? AND status IN ('open', 'expired')").run(Date.now(), o.id);
       }
-      return { order: dto(getOrder(o.id)) };
+      req.revalidate?.();
+      return { order: dto(mine(u, o.id)) };
     },
 
     // Stripe's notices (no login: the signature proves who sent it)
@@ -574,17 +590,19 @@ export function createPay({ q, tx, live, config, getUser, balanceChanged, offici
       const upto = Number.isSafeInteger(Number(body.upto)) && Number(body.upto) > 0 ? Number(body.upto) : Date.now();
       const rows = q("SELECT * FROM pay_orders WHERE user_id = ? AND status = 'paid' AND replied_at = 0 AND paid_at <= ?").all(p.id, upto);
       if (!rows.length) throw new ApiError(409, 'done', `${p.name}さんへの返信はもう済んでいます`);
-      const full = `【開発者からのメッセージ】\n\n${p.name}様\n\n${text}\n\nTwo state 開発者 ${u.name}`;
-      const message = official.say(p.id, full);
-      const now = Date.now();
-      q("UPDATE pay_orders SET replied_at = ?, replied_by = ?, reply = ? WHERE user_id = ? AND status = 'paid' AND replied_at = 0 AND paid_at <= ?").run(now, u.id, text, p.id, upto);
-      const amount = rows.reduce((s, o) => s + o.amount - o.refunded_amount, 0);
-      opsLog.add({
-        actor: u, action: 'pay_reply', target: p, req,
-        summary: `${p.name}さんの開発者支援（${rows.length}件・${yen(amount)}）に開発者が返信`,
-        detail: { orders: rows.map((o) => o.id), amount, text, sent: full, messageId: message.id }
+      return tx(() => {
+        const full = `【開発者からのメッセージ】\n\n${p.name}様\n\n${text}\n\nTwo state 開発者 ${u.name}`;
+        const message = official.say(p.id, full);
+        const now = Date.now();
+        q("UPDATE pay_orders SET replied_at = ?, replied_by = ?, reply = ? WHERE user_id = ? AND status = 'paid' AND replied_at = 0 AND paid_at <= ?").run(now, u.id, text, p.id, upto);
+        const amount = rows.reduce((s, o) => s + o.amount - o.refunded_amount, 0);
+        opsLog.add({
+          actor: u, action: 'pay_reply', target: p, req,
+          summary: `${p.name}さんの開発者支援（${rows.length}件・${yen(amount)}）に開発者が返信`,
+          detail: { orders: rows.map((o) => o.id), amount, text, sent: full, messageId: message.id }
+        });
+        return { ok: true, replied: rows.length };
       });
-      return { ok: true, replied: rows.length };
     }
   };
 

@@ -71,9 +71,11 @@ export function createAccountRoutes({ q, tx, config, limit, rate, nameProblem, d
     }],
 
     ['POST /api/recovery', (req, u) => {
-      const code = setRecovery(u.id);
-      opsLog.add({ actor: u, action: 'player_recovery', req, summary: `${u.name}さんが引き継ぎコードを再発行` });
-      return { recoveryCode: code };
+      return tx(() => {
+        const code = setRecovery(u.id);
+        opsLog.add({ actor: u, action: 'player_recovery', req, summary: `${u.name}さんが引き継ぎコードを再発行` });
+        return { recoveryCode: code };
+      });
     }],
 
     ['POST /api/password', async (req, u) => {
@@ -92,10 +94,10 @@ export function createAccountRoutes({ q, tx, config, limit, rate, nameProblem, d
         if (!cur || cur.password_hash !== previousHash || !q("SELECT 1 FROM sessions WHERE token_hash = ? AND ended = ''").get(u.tokenHash))
           throw new ApiError(401, 'auth', 'ログインの有効期限が切れました');
         const recoveryCode = replaceCredentials(q, u.id, hash, code => sealText(CODE_KEY, code));
+        opsLog.add({ actor: u, action: 'player_password', req, summary: `${u.name}さんがパスワードを${u.password_hash ? '変更' : '設定'}` });
         return { token: createSession(u.id), recoveryCode };
       });
       live.dropUser?.(u.id);
-      opsLog.add({ actor: u, action: 'player_password', req, summary: `${u.name}さんがパスワードを${u.password_hash ? '変更' : '設定'}` });
       return { ...credentials, me: meDto(getUser(u.id)) };
     }],
 
