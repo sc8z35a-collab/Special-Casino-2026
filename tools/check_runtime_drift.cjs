@@ -249,6 +249,10 @@ const { configFrom } = require('../server/core/config.js');
     const vaultExpected = await vaultAccessContract(marketNode.base), vaultActual = await vaultAccessContract(marketWorker.base);
     assert.deepEqual(vaultActual, vaultExpected, 'vault accounting must agree across both hosts');
     console.log('PASS runtime vault access parity: ' + vaultExpected.length + ' contracts; exact allowance, quota limits, revocation and private notes');
+    const { cooperativeContract } = require('./cooperative-contract.cjs');
+    const coopExpected = await cooperativeContract(marketNode.base, admin), coopActual = await cooperativeContract(marketWorker.base, admin);
+    assert.deepEqual(coopActual, coopExpected, 'cooperative bet settlement must agree across both hosts');
+    console.log('PASS runtime cooperative parity: ' + coopExpected.length + ' contracts; VIP wage overflow, retained stake and slot, retry and duplicate protection');
   } finally {
     if (marketWorker) await marketWorker.stop();
     await marketNode.stop();

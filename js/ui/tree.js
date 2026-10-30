@@ -25,7 +25,8 @@
   var watched = 0;         // the auction seen running here (its end is shown once)
   var ended = null;        // that end, until it is put away
   var amount = R.amounts[1];
-  var pending = 0, giving = false, busy = false;
+  var pending = [], giving = null, busy = false;
+  var generation = 0, treeRevision = 0, treeAt = 0, auctionRevision = 0;
   var ticker = 0, poller = 0, badgeTimer = 0, loading = null, bidding = false;
   var harvestNext = null;  // the time picked for after the harvest
   var liveId = 0;          // the auction the live view on screen was built for
@@ -75,22 +76,33 @@
   }
 
   /* ------------------------------------------------------------ state --- */
-  function set(r) {
+  function set(r, auctionVersion) {
+    if (r.now < treeAt) return;
+    treeAt = r.now; treeRevision++;
     offset = r.now - Date.now();
     trees = r.trees;
-    if ('auction' in r) setAuction(r.auction);
+    if ('auction' in r && (auctionVersion === undefined || auctionVersion === auctionRevision)) setAuction(r.auction);
     if (tab !== 'auction' && !treeOf(tab)) tab = trees.length ? trees[0].id : 'auction';
     renderBadge();
     if (shown()) render();
   }
   function load() {
     if (loading) return loading;
-    loading = api.trees().then(function (r) { loading = null; set(r); return r; },
-      function (err) { loading = null; throw err; });
+    var gen = generation, revision = treeRevision, auctionVersion = auctionRevision, job;
+    job = api.trees().then(function (r) {
+      if (gen !== generation) return r;
+      if (loading === job) loading = null;
+      if (revision === treeRevision || r.now > treeAt) set(r, auctionVersion);
+      return r;
+    }, function (err) { if (gen === generation && loading === job) loading = null; throw err; });
+    loading = job;
     return loading;
   }
   function replace(t) {
-    for (var i = 0; trees && i < trees.length; i++) if (trees[i].id === t.id) trees[i] = t;
+    for (var i = 0; trees && i < trees.length; i++) if (trees[i].id === t.id) {
+      if (t.at < trees[i].at) return;
+      trees[i] = t; treeRevision++; treeAt = Math.max(treeAt, t.at);
+    }
     renderBadge();
   }
 
@@ -116,9 +128,10 @@
     });
   }
   function onShow() {
+    var gen = generation;
     render();
-    load().catch(function (err) { if (!trees) renderNote(err.message); });
-    api.auction().then(function (r) { setAuction(r.auction, true); if (shown()) render(); }, function () {});
+    load().catch(function (err) { if (gen === generation && shown() && !trees) renderNote(err.message); });
+    readAuction(true).then(function (current) { if (current && shown()) render(); }, function () {});
     BR.clock.drop(ticker);
     ticker = BR.clock.every(function () { tick(); if (!poller) startPolling(); }, 1000);
   }
@@ -146,7 +159,7 @@
     harvestNext = null;
     render();
     BR.screens.enter($(tab === 'auction' ? '#auction-pane' : '#tree-pane'));
-    if (tab === 'auction') api.auction().then(function (r) { setAuction(r.auction, true); if (tab === 'auction') renderAuction(); }, function () {});
+    if (tab === 'auction') readAuction(true).then(function (current) { if (current && shown() && tab === 'auction') renderAuction(); }, function () {});
   }
 
   function render() {
@@ -237,8 +250,8 @@
     }
     b.querySelector('.tr-give-text').textContent = U.fmt(amount) + ' をあげる';
     var q = b.querySelector('.tr-queue');
-    q.textContent = '+' + pending;
-    q.hidden = !pending;
+    q.textContent = '+' + pending.length;
+    q.hidden = !pending.length;
     b.classList.toggle('short', S.dollars < amount);
   }
 
@@ -246,18 +259,20 @@
   function give() {
     var t = treeOf(tab);
     if (!t) return;
-    if (S.dollars < amount * (pending + (giving ? 2 : 1))) { sfx('deny'); toast('$が足りません'); return; }
-    if (pending >= TAPS) return;
-    pending++;
+    var reserved = pending.reduce(function (sum, gift) { return sum + gift.amount; }, giving ? giving.amount : 0);
+    if (S.dollars < amount + reserved) { sfx('deny'); toast('$が足りません'); return; }
+    if (pending.length >= TAPS) return;
+    pending.push({ id: t.id, amount: amount });
     renderGive();
-    if (!giving) giveNext(t.id);
+    if (!giving) giveNext();
   }
-  function giveNext(id) {
-    if (!pending) { giving = false; return; }
-    giving = true;
-    pending--;
-    var before = treeOf(id), was = before ? before.stage : 0, a = amount;
-    api.treeGive(id, a).then(function (r) {
+  function giveNext() {
+    if (!pending.length) { giving = null; return; }
+    giving = pending.shift();
+    if (shown() && treeOf(tab)) renderGive();
+    var gen = generation, id = giving.id, before = treeOf(id), was = before ? before.stage : 0;
+    api.treeGive(id, giving.amount).then(function (r) {
+      if (gen !== generation) return;
       BR.app.serverBalance(r.balance);
       replace(r.tree);
       sfx('register');
@@ -267,10 +282,11 @@
         BR.tree3d.toss(id);
       }
       if (r.tree.stage > was) grewUp(r.tree);
-      giveNext(id);
+      giving = null; giveNext();
     }, function (err) {
-      pending = 0;
-      giving = false;
+      if (gen !== generation) return;
+      pending = [];
+      giving = null;
       if (shown() && tab === id) renderGive();
       fail(err);
     });
@@ -278,6 +294,7 @@
   function grewUp(t) {
     sfx('levelUp');
     toast('木が育ちました！（見た目 ' + t.stage + ' / ' + TR.stages + '）', 3200);
+    if (!shown() || tab !== t.id) return;
     var art = $('#tr-art');
     art.classList.remove('grow');
     void art.offsetWidth;
@@ -402,20 +419,23 @@
   function start(id) {
     var t = treeOf(tab), c = TR.cycleOf(id);
     if (!t || !c || busy) return;
+    var gen = generation;
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode('「' + c.name + '」で育てますか？'));
       p.appendChild(el('small', 'confirm-sub', c.name + '後に ' + multText(c.mult) + ' で収穫（見込み $' + U.fmt(estimate(t, c)) + '）。その時期まで変更も収穫もできません。'));
     }, '育てる').then(function (ok) {
-      if (!ok) return;
+      if (!ok || gen !== generation || !shown() || tab !== t.id || busy) return;
       busy = true;
       renderHarvest(t);
       api.treeStart(t.id, c.id).then(function (r) {
+        if (gen !== generation) return;
         busy = false;
         replace(r.tree);
         sfx('purchase');
         if (shown() && tab === t.id) { renderTree(); renderTabs(); }
         toast('「' + c.name + '」で育て始めました', 2600);
       }, function (err) {
+        if (gen !== generation) return;
         busy = false;
         if (shown() && tab === t.id) renderHarvest(t);
         fail(err);
@@ -427,19 +447,21 @@
   function harvest() {
     var t = treeOf(tab);
     if (!t || busy) return;
-    var next = harvestNext || t.cycle.id;
+    var gen = generation, next = harvestNext || t.cycle.id;
     busy = true;
     renderHarvest(t);
     api.treeHarvest(t.id, next).then(function (r) {
+      if (gen !== generation) return;
       busy = false;
-      harvestNext = null;
+      if (tab === t.id) harvestNext = null;
       BR.app.serverBalance(r.balance);
       replace(r.tree);
       sfx('money');
-      if (BR.juice) BR.juice.reward('#tr-harvest .tr-harvest-btn', 3);
+      if (BR.juice && shown() && tab === t.id) BR.juice.reward('#tr-harvest .tr-harvest-btn', 3);
       toast('$' + U.fmt(r.paid) + ' を収穫しました！（次は「' + cycleName(next) + '」）', 3600);
       if (shown() && tab === t.id) { renderTree(); renderTabs(); }
     }, function (err) {
+      if (gen !== generation) return;
       busy = false;
       if (shown() && tab === t.id) renderHarvest(t);
       fail(err);
@@ -448,6 +470,14 @@
   }
 
   /* ------------------------------------------------------------ the auctions --- */
+  function readAuction(quiet) {
+    var gen = generation, revision = auctionRevision;
+    return api.auction().then(function (r) {
+      if (gen !== generation || revision !== auctionRevision) return false;
+      if (r.balance) BR.app.serverBalance(r.balance);
+      setAuction(r.auction, quiet); return true;
+    });
+  }
   // a new look at the auction; `quiet`: no sounds (just opened)
   function setAuction(a, quiet) {
     var was = auction;
@@ -455,7 +485,7 @@
     if (a && was && (a.id < was.id || (a.id === was.id &&
       (a.now < was.now || (was.status !== 'live' && a.status === 'live'))))) return;
     if (a && (!was || a.id !== was.id)) bidding = false;
-    auction = a || null;
+    auctionRevision++; auction = a || null;
     if (!auction) return;
     auction.seen = Date.now();
     offset = auction.now - auction.seen;
@@ -497,9 +527,10 @@
   }
   function startPolling() {
     if (poller) return;
+    var gen = generation;
     function schedule() {
       clearTimeout(poller); poller = 0;
-      if (!shown() || document.hidden || !auction || auction.status !== 'live') { poller = 0; return; }
+      if (gen !== generation || !shown() || document.hidden || !auction || auction.status !== 'live') { poller = 0; return; }
       var delay = auction.nextChangeAt ? Math.max(200, auction.nextChangeAt - now() + 80) : 1500;
       poller = setTimeout(poll, Math.min(30000, delay));
     }
@@ -508,16 +539,15 @@
       if (!shown()) { stopPolling(); return; }
       if (bidding || polling) { schedule(); return; }
       polling = true;
-      api.auction().then(function (r) {
+      var was = auction ? auction.status : '';
+      readAuction().then(function () {
+        if (gen !== generation) return;
         polling = false;
-        var was = auction ? auction.status : '';
-        if (r.balance) BR.app.serverBalance(r.balance);
-        setAuction(r.auction);
         if (!shown()) return;
         if ((auction ? auction.status : '') !== was) renderTabs();
         if (tab === 'auction') renderAuction();
         schedule();
-      }, function () { polling = false; schedule(); });
+      }, function () { if (gen === generation) { polling = false; schedule(); } });
     }
     schedule();
   }
@@ -705,6 +735,7 @@
 
   function join(market) {
     if (busy) return;
+    var gen = generation; auctionRevision++;
     busy = true;
     ended = null;
     stopArena();
@@ -712,31 +743,33 @@
     var note = el('p', 'au-preparing', '3Dモデルを読み込み中…');
     $('#auction-pane').appendChild(note);
     api.auctionStart(market).then(function (r) {
+      if (gen !== generation) return;
       busy = false;
       note.remove();
       setAuction(r.auction, true);
       sfx('chance');
       if (shown()) { renderTabs(); renderAuction(); }
     }, function (err) {
+      if (gen !== generation) return;
       busy = false;
       note.remove();
       fail(err);
-      api.auction().then(function (r) { setAuction(r.auction, true); if (shown()) render(); }, function () {});
+      readAuction(true).then(function (current) { if (current && shown()) render(); }, function () {});
     });
   }
   function bid(steps) {
     if (bidding || !auction || auction.status !== 'live' || now() < auction.startsAt) return;
     bidding = true;
-    var id = auction.id;
+    var id = auction.id, gen = generation; auctionRevision++;
     updateLive(auction);
     api.auctionBid(steps, id).then(function (r) {
-      if (!auction || auction.id !== id) return;
+      if (gen !== generation || !auction || auction.id !== id) return;
       bidding = false;
       if (r.balance) BR.app.serverBalance(r.balance);
       setAuction(r.auction, true);
       if (shown() && tab === 'auction') { renderTabs(); renderAuction(); }
     }, function (err) {
-      if (!auction || auction.id !== id) return;
+      if (gen !== generation || !auction || auction.id !== id) return;
       bidding = false;
       if (auction && shown() && tab === 'auction') renderAuction();
       fail(err);
@@ -744,17 +777,18 @@
   }
   function leave() {
     if (!auction || auction.status !== 'live') return;
-    var id = auction.id;
+    var id = auction.id, gen = generation;
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode('競りから離脱しますか？'));
       p.appendChild(el('small', 'confirm-sub', '支払いはありません。この競りには戻れません。'));
     }, '離脱する').then(function (ok) {
-      if (!ok || !auction || auction.id !== id || auction.status !== 'live') return;
+      if (!ok || gen !== generation || !auction || auction.id !== id || auction.status !== 'live') return;
+      auctionRevision++;
       api.auctionLeave(id).then(function (r) {
-        if (!auction || auction.id !== id) return;
+        if (gen !== generation || !auction || auction.id !== id) return;
         setAuction(r.auction, true);
         if (shown()) { renderTabs(); renderAuction(); }
-      }, fail);
+      }, function (err) { if (gen === generation && auction && auction.id === id) fail(err); });
     });
   }
   /* ------------------------------------------------------------ init --- */
@@ -796,9 +830,9 @@
       if (b.classList.contains('au-leave')) { sfx('click'); leave(); return; }
       if (b.classList.contains('au-ok')) {
         sfx('click');
-        var id = Number(b.dataset.tree);
+        var id = Number(b.dataset.tree), gen = generation;
         ended = null;
-        if (id) load().then(function () { select(id); }, function () { renderAuction(); });
+        if (id) load().then(function () { if (gen === generation && shown()) select(id); }, function () { if (gen === generation && shown()) renderAuction(); });
         else renderAuction();
       }
     });
@@ -813,6 +847,12 @@
     init: init,
     open: open,
     // signed out: nothing to show until the next player
-    reset: function () { notified = {}; trees = null; auction = null; ended = null; watched = 0; tab = null; $('#stage').classList.remove('auction-running'); BR.tree3d.pause(); stopPolling(); stopArena(); renderBadge(); }
+    reset: function () {
+      generation++; treeRevision++; auctionRevision++; treeAt = 0;
+      pending = []; giving = null; busy = false; bidding = false; polling = false; loading = null; harvestNext = null; liveId = 0;
+      BR.clock.drop(ticker); ticker = 0;
+      notified = {}; trees = null; auction = null; ended = null; watched = 0; tab = null;
+      $('#stage').classList.remove('auction-running'); BR.tree3d.pause(); stopPolling(); stopArena(); renderBadge();
+    }
   };
 })(window.BR = window.BR || {});
