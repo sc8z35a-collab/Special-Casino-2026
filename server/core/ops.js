@@ -800,8 +800,8 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
           // (an operator sees everything: no longer a viewer; their look-only sessions end)
           q('UPDATE ops_viewers SET granted = 0, at = ?, by_id = ? WHERE user_id = ? AND granted = 1').run(Date.now(), u.id, p.id);
           q("UPDATE sessions SET ended = ? WHERE user_id = ? AND scope = 'view'").run('運営者になったため、運営サイトにもう一度ログインしてください', p.id);
+          opsLog.add({ actor: u, action: 'ops_grant', target: p, req, summary: `${p.name}さんに運営権を付与（開発者コードで）`, detail: { name: key } });
         });
-        opsLog.add({ actor: u, action: 'ops_grant', target: p, req, summary: `${p.name}さんに運営権を付与（開発者コードで）`, detail: { name: key } });
       } else {
         if (!isOperator(p)) throw new ApiError(409, 'done', `${p.name}さんは運営者ではありません`);
         const why = '運営権が剥奪されたため、ログアウトされました（ゲームには再ログインで入れます）';
@@ -810,9 +810,9 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
           q('INSERT INTO ops_access (name_key, granted, at, by_id) VALUES (?, 0, ?, ?) ON CONFLICT(name_key) DO UPDATE SET granted = 0, at = excluded.at, by_id = excluded.by_id')
             .run(key, Date.now(), u.id);
           ended = Number(q('UPDATE sessions SET ended = ? WHERE user_id = ?').run(why, p.id).changes);
+          opsLog.add({ actor: u, action: 'ops_revoke', target: p, req, summary: `${p.name}さんの運営権を剥奪（開発者コードで・すべての端末からログアウト）`, detail: { name: key, sessionsEnded: ended } });
         });
         live.send(p.id, 'kick', { code: 'ended', message: why });
-        opsLog.add({ actor: u, action: 'ops_revoke', target: p, req, summary: `${p.name}さんの運営権を剥奪（開発者コードで・すべての端末からログアウト）`, detail: { name: key, sessionsEnded: ended } });
       }
       return { operators: operatorList() };
     },
@@ -836,17 +836,19 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
       const now = Date.now();
       if (action === 'grant') {
         if (isViewer(p)) throw new ApiError(409, 'done', `${p.name}さんはもう閲覧者です`);
-        q('INSERT INTO ops_viewers (user_id, granted, at, by_id) VALUES (?, 1, ?, ?) ON CONFLICT(user_id) DO UPDATE SET granted = 1, at = excluded.at, by_id = excluded.by_id').run(p.id, now, u.id);
-        opsLog.add({ actor: u, action: 'viewer_grant', target: p, req, summary: `${p.name}さんに閲覧者の権限を付与（開発者コードで）`, detail: { user: p.id } });
+        tx(() => {
+          q('INSERT INTO ops_viewers (user_id, granted, at, by_id) VALUES (?, 1, ?, ?) ON CONFLICT(user_id) DO UPDATE SET granted = 1, at = excluded.at, by_id = excluded.by_id').run(p.id, now, u.id);
+          opsLog.add({ actor: u, action: 'viewer_grant', target: p, req, summary: `${p.name}さんに閲覧者の権限を付与（開発者コードで）`, detail: { user: p.id } });
+        });
       } else {
         if (!isViewer(p)) throw new ApiError(409, 'done', `${p.name}さんは閲覧者ではありません`);
         let ended = 0;
         tx(() => {
           q('UPDATE ops_viewers SET granted = 0, at = ?, by_id = ? WHERE user_id = ?').run(now, u.id, p.id);
           ended = Number(q("UPDATE sessions SET ended = ? WHERE user_id = ? AND scope = 'view'").run('閲覧者の権限がなくなったため、ログアウトされました', p.id).changes);
+          opsLog.add({ actor: u, action: 'viewer_revoke', target: p, req, summary: `${p.name}さんの閲覧者の権限を剥奪（開発者コードで・運営サイトとsecurity HOMEからすぐにログアウト）`, detail: { user: p.id, sessionsEnded: ended } });
         });
         live.send(p.id, 'viewer', { on: false });
-        opsLog.add({ actor: u, action: 'viewer_revoke', target: p, req, summary: `${p.name}さんの閲覧者の権限を剥奪（開発者コードで・運営サイトとsecurity HOMEからすぐにログアウト）`, detail: { user: p.id, sessionsEnded: ended } });
       }
       if (action === 'grant') live.send(p.id, 'viewer', { on: true });
       return { operators: operatorList(), viewers: viewerList() };

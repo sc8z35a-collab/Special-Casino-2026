@@ -2,17 +2,19 @@
   'use strict';
   var K = BR.kit, api = BR.api, el = K.el, root, saved = false, busy = false, reload = false, generation = 0;
   var posts = [], more = false, drafts = {}, opened = {}, images = {};
+  var commentLoads = new WeakMap();
   function active() { return root && !root.hidden && api.hasToken(); }
   function button(text, run) { var b = el('button', 'mini-btn', text); b.type = 'button'; b.addEventListener('click', run); return b; }
   function error(e) { K.fail(e); }
   function myComments(id, box, before) {
-    var gen = generation;
+    var gen = generation, seq = (commentLoads.get(box) || 0) + 1;
+    commentLoads.set(box, seq);
     api.diaryComments(id, before).then(function (r) {
-      if (gen !== generation || !box.isConnected) return;
+      if (gen !== generation || seq !== commentLoads.get(box) || !box.isConnected) return;
       if (!before) box.replaceChildren();
       r.comments.forEach(function (c) { var row = el('p', 'diary-own-comment'); row.appendChild(el('small', '', new Date(c.at).toLocaleString('ja-JP'))); row.appendChild(el('span', '', c.text)); box.appendChild(row); });
       if (r.more) { var older = button('以前の自分のコメント', function () { older.remove(); myComments(id, box, r.comments[r.comments.length - 1].id); }); box.appendChild(older); }
-    }, error);
+    }, function (e) { if (gen === generation && seq === commentLoads.get(box) && box.isConnected) error(e); });
   }
   function render() {
     var list = document.getElementById('diary-list'); list.replaceChildren();
@@ -37,17 +39,23 @@
       }
       card.appendChild(el('p', 'diary-privacy', 'コメントは自分と開発者だけが確認できます。他のプレイヤーや運営者には公開されません。'));
       var form = el('form', 'diary-comment-form'), input = el('textarea'); input.rows = 3; input.maxLength = 2000; input.required = true; input.placeholder = '開発者へのコメント（2000文字以内）'; input.setAttribute('aria-label', '開発者へのコメント'); input.value = drafts[p.id] || '';
-      input.addEventListener('input', function () { drafts[p.id] = input.value; }); form.appendChild(input);
+      var draftVersion = 0;
+      input.addEventListener('input', function () { draftVersion++; drafts[p.id] = input.value; }); form.appendChild(input);
       var submit = el('button', 'mini-btn', 'コメントを送る'); submit.type = 'submit'; form.appendChild(submit);
       var status = el('p', 'diary-status'); status.setAttribute('role', 'status'); form.appendChild(status);
       var comments = el('div', 'diary-own-comments');
       form.addEventListener('submit', function (e) {
-        e.preventDefault(); if (!input.value.trim()) return; submit.disabled = true; var gen = generation;
-        api.diaryComment(p.id, input.value).then(function () { if (gen !== generation) return; input.value = ''; drafts[p.id] = ''; status.textContent = '開発者へ送信しました'; myComments(p.id, comments); }, error).then(function () { submit.disabled = false; });
+        e.preventDefault(); if (submit.disabled || !input.value.trim()) return;
+        submit.disabled = true; var gen = generation, sent = input.value, version = draftVersion;
+        api.diaryComment(p.id, sent).then(function () {
+          if (gen !== generation || !form.isConnected) return;
+          if (version === draftVersion && input.value === sent) { input.value = ''; drafts[p.id] = ''; }
+          status.textContent = '開発者へ送信しました'; myComments(p.id, comments);
+        }, function (e) { if (gen === generation && form.isConnected) error(e); }).then(function () { if (gen === generation && form.isConnected) submit.disabled = false; });
       }); card.appendChild(form); card.appendChild(comments);
       function read() {
         if (!card.open) return; api.diaryRead(p.id).catch(function () {}); myComments(p.id, comments);
-        if (p.hasImage && !images[p.id]) { var gen = generation; api.diaryImage(p.id).then(function (r) { if (gen !== generation || !image.isConnected) return; images[p.id] = r.image; image.src = r.image; }, error); }
+        if (p.hasImage && !images[p.id]) { var gen = generation; api.diaryImage(p.id).then(function (r) { if (gen !== generation || !image.isConnected) return; images[p.id] = r.image; image.src = r.image; }, function (e) { if (gen === generation && image.isConnected) error(e); }); }
       }
       card.addEventListener('toggle', function () { opened[p.id] = card.open; read(); }); list.appendChild(card);
       // Open details dispatch toggle after being attached; closed posts fetch no image.
@@ -72,6 +80,7 @@
   }
   BR.diary = { open: open, init: function () {
     root = document.getElementById('developer-diary'); K.registerModal('developer-diary');
+    root.addEventListener('closed', function () { generation++; busy = false; reload = false; });
     document.getElementById('diary-saved').addEventListener('click', function () { saved = !saved; this.setAttribute('aria-pressed', saved); load(false); });
     document.getElementById('diary-refresh').addEventListener('click', function () { load(false); });
     document.getElementById('diary-more').addEventListener('click', function () { load(true); });

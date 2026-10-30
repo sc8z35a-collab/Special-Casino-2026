@@ -245,6 +245,10 @@ const { configFrom } = require('../server/core/config.js');
     const expected = await marketContract(marketNode.base, admin), actual = await marketContract(marketWorker.base, admin);
     assert.deepEqual(actual, expected, 'quest market rollback must agree across both hosts');
     console.log('PASS runtime quest market parity: ' + expected.length + ' contracts; rollback, retained offer, retry and duplicate protection');
+    const { vaultAccessContract } = require('./vault-access-contract.cjs');
+    const vaultExpected = await vaultAccessContract(marketNode.base), vaultActual = await vaultAccessContract(marketWorker.base);
+    assert.deepEqual(vaultActual, vaultExpected, 'vault accounting must agree across both hosts');
+    console.log('PASS runtime vault access parity: ' + vaultExpected.length + ' contracts; exact allowance, quota limits, revocation and private notes');
   } finally {
     if (marketWorker) await marketWorker.stop();
     await marketNode.stop();
