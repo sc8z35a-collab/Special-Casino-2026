@@ -72,10 +72,10 @@
     });
   }
 
-  function card(f, caps) {
+  function card(f, caps, where) {
     var c = el('article', 'card');
     c.appendChild(el('h2', '', f.name));
-    c.appendChild(el('p', 'meta', mb(f.size) + (f.type ? '・' + f.type : '')));
+    c.appendChild(el('p', 'meta', (where ? where + '・' : '') + mb(f.size) + (f.type ? '・' + f.type : '')));
     if (f.preview) {
       var img = el('img', 'pic'); img.alt = ''; img.hidden = true; c.appendChild(img);
       api('/api/vault/pull?f=' + encodeURIComponent(f.id) + '&preview=1').then(function (r) { if (r.preview) { img.src = r.preview; img.hidden = false; } }).catch(function () {});
@@ -112,9 +112,18 @@
     $('until').textContent = '有効期限 ' + when(r.until) + ' まで（あと ' + left(r.until - Date.now()) + '）・見る・ダウンロード' + (caps.indexOf('note') >= 0 ? '・コメント' : '') + 'だけできます';
     box.replaceChildren();
     var files = r.vault ? r.files || [] : [r];
+    // (a folder's link: the folder's name at the top, and where in it each file is)
+    if (r.folder) { document.querySelector('.top h1').textContent = '共有されたフォルダ：' + r.folder.name; document.title = r.folder.name; }
+    var dirs = {};
+    (r.folders || []).forEach(function (d) { dirs[d.id] = d; });
+    function where(id) {
+      var names = [];
+      for (var d = dirs[id], i = 0; d && i < 32; d = dirs[d.parent], i++) names.unshift(d.name);
+      return names.join(' / ');
+    }
     if (!files.length) { say('いま共有されているファイルはありません'); return; }
     say('');
-    files.forEach(function (f) { box.appendChild(card(f, caps)); });
+    files.forEach(function (f) { box.appendChild(card(f, caps, r.vault ? where(f.folder || '') : '')); });
   }
 
   if (!/^[\w-]{43}$/.test(TOKEN)) { say('このアドレスにはリンクの鍵がありません。共有された URL をそのまま開いてください。', true); return; }

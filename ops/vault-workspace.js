@@ -370,6 +370,8 @@ window.createOpsVault = function(ctx) {
   function folderMenu(d) {
     var items = [['開く', 'open'], ['詳細', 'details']], write = canWrite();
     if (write) items.push(['名前を変更', 'rename'], ['移動', 'move']);
+    // (a folder's URL: only in the developer's own vault, like a file's)
+    if (write && !d.space && state.vaultSpace !== 'backup') items.push(['このフォルダのURLを発行', 'link'], ['このフォルダのURLをすべて停止', 'stop']);
     if (state.developer && state.vault && state.vault.ticket) items.push(['中のファイルをすべてバックアップ', 'backup']);
     if (write) items.push(['削除', 'delete', 'danger']);
     return items;
@@ -380,7 +382,12 @@ window.createOpsVault = function(ctx) {
     else if (act === 'rename') renameFolder(d);
     else if (act === 'move') moveFolder(d);
     else if (act === 'backup') backupItems([], [d], true);
+    else if (act === 'link') makeLink(null, d);
+    else if (act === 'stop') stopFolderLinks(d);
     else if (act === 'delete') deleteFolder(d);
+  }
+  function stopFolderLinks(d) {
+    vreq('POST', '/api/vault/link/stop', { folder: d.id }).then(function (r) { toast('リンクを停止しました（' + r.stopped + '本）'); if (vaultWork) vaultWork.render('links'); }).catch(fail);
   }
   function folderStats(d) {
     var ids = {}; ids[d.id] = true;
@@ -394,6 +401,10 @@ window.createOpsVault = function(ctx) {
     vaultWorkspace().open('folder:' + d.id, '詳細：' + d.name, { show: function (pane) {
       pane.replaceChildren(); var current = folderOf(d.id); if (!current) { pane.appendChild(el('p', 'muted', 'このフォルダは移動または削除されました')); return; }
       var st = folderStats(current), facts = el('div', 'facts'); pane.appendChild(el('h3', '', current.name));
+      if (!current.space && state.vaultSpace !== 'backup' && canWrite()) {
+        var actions = el('div', 'vault-tab-actions'), link = el('button', 'btn primary', 'このフォルダのURLを発行');
+        link.type = 'button'; link.addEventListener('click', function () { makeLink(null, current); }); actions.appendChild(link); pane.appendChild(actions);
+      }
       fact(facts, '場所', pathName(current.id)); fact(facts, '作成日時', stamp(current.createdAt)); fact(facts, '容量', mb(st.bytes) + '（' + fmt(st.bytes) + 'バイト）'); fact(facts, 'ファイル', fmt(st.files) + '件'); fact(facts, 'サブフォルダ', fmt(st.folders) + '件'); fact(facts, 'アップロード途中', fmt(st.unfinished) + '件'); pane.appendChild(facts);
     } });
   }
@@ -1243,7 +1254,7 @@ window.createOpsVault = function(ctx) {
   function showIssuedVaultLink(link, title) {
     var u = linkURLs(link.path);
     ask({
-      title: title || (link.file === '*' ? '保管庫全体' : 'ファイル：' + link.name) + 'のURL',
+      title: title || (link.file === '*' ? '保管庫全体' : link.folder ? 'フォルダ：' + link.name : 'ファイル：' + link.name) + 'のURL',
       text: '有効期限：' + stamp(link.until) + '。このURLを知っている人は、人でも AI でも、見る・ダウンロードする・コメントを書く（150文字まで）ことだけができます。用が済んだらURL確認から停止してください。AI には「このURLを開いて how の説明どおりに使い、作業したらコメントで知らせて」と伝えてください（AI が使うのは下の「AI・プログラム用」です）。',
       input: { label: '共有URL（ここだけコピーできます）', value: u.page }, shareURL: true,
       select: { label: 'どちらを共有しますか', options: [{ value: 'page', label: '人が開くページ' }, { value: 'api', label: 'AI・プログラム用（JSON）' }], value: 'page', change: function (v, input) { input.value = v === 'api' ? u.api : u.page; } },
@@ -1286,7 +1297,7 @@ window.createOpsVault = function(ctx) {
       live.forEach(function (l) {
         var row = el('article', 'card vault-issued-link'), head = el('label', 'links-title'), pick = el('input');
         pick.type = 'checkbox'; pick.addEventListener('change', sync);
-        head.appendChild(pick); head.appendChild(el('b', '', l.file === '*' ? '保管庫全体' : l.name));
+        head.appendChild(pick); head.appendChild(el('b', '', l.file === '*' ? '保管庫全体' : l.folder ? 'フォルダ：' + l.name : l.name));
         head.appendChild(el('small', 'muted', l.file === '*' ? 'すべてのファイル' : 'このファイルだけ'));
         row.appendChild(head);
         var total = Math.max(1, l.until - l.createdAt), life = el('div', 'links-life'), fill = el('i');
@@ -2104,21 +2115,23 @@ window.createOpsVault = function(ctx) {
       j.finish('ダウンロードしました（ハッシュ一致を確認済み）');
     }).catch(function (err) { j.fail((err && err.message) || 'ダウンロードできませんでした'); });
   }
-  // `f`: a file, or null for the whole vault. Every address is the same: whoever has it (a person or an AI) may look, take and
-  // comment; the developer only says for how many hours (1 to 48, on a slider).
-  function makeLink(f) {
+  // `f`: a file, or null for the whole vault (or `d`, a folder: it and every folder below it, as they are when the URL is used).
+  // Every address is the same: whoever has it (a person or an AI) may look, take and comment; the developer only says for how
+  // many hours (1 to 48, on a slider).
+  function makeLink(f, d) {
     var range = (state.vault && state.vault.linkHours) || { min: 1, max: 48 };
     ask({
-      title: f ? '「' + f.name + '」のURLを発行' : '保管庫全体のURLを発行',
-      text: (f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき・実装済みは除く）') + 'を、このURLを知っている人なら誰でも（人でも AI でも）、ログインなしで、見る・ダウンロードする・コメントを書く（150文字まで）ことだけができるURLです。ファイルは変えられません。取り出せる量は5GBまで、あまりに多くの場所から使われると自動で止まります。「URL」の確認画面でいつでも停止・再コピーできます。',
+      title: d ? 'フォルダ「' + d.name + '」のURLを発行' : f ? '「' + f.name + '」のURLを発行' : '保管庫全体のURLを発行',
+      text: (d ? 'フォルダ「' + pathName(d.id) + '」とその中のフォルダのすべてのファイル（画像・情報・軽量版つき・実装済みは除く。あとから入れたファイルも含み、外へ移したファイルは含みません）'
+        : f ? '「' + f.name + '」（画像・情報・軽量版つき）' : '保管庫のすべてのファイル（画像・情報・軽量版つき・実装済みは除く）') + 'を、このURLを知っている人なら誰でも（人でも AI でも）、ログインなしで、見る・ダウンロードする・コメントを書く（150文字まで）ことだけができるURLです。ファイルは変えられません。取り出せる量は5GBまで、あまりに多くの場所から使われると自動で止まります。「URL」の確認画面でいつでも停止・再コピーできます。',
       ok: '発行する',
       input: { label: '有効時間', range: [range.min, range.max], unit: ' 時間', value: '24' },
       check: function (v) { var n = Number(v); return Number.isInteger(n) && n >= range.min && n <= range.max ? '' : range.min + '〜' + range.max + ' 時間で決めてください'; }
     }).then(function (v) {
       if (v === null) return null;
-      return vreq('POST', '/api/vault/link', { id: f ? f.id : '*', hours: Number(v) }).then(function (r) {
+      return vreq('POST', '/api/vault/link', d ? { folder: d.id, hours: Number(v) } : { id: f ? f.id : '*', hours: Number(v) }).then(function (r) {
         loadVault(); if (vaultWork) vaultWork.render('links');
-        showIssuedVaultLink({ file: f ? f.id : '*', name: f ? f.name : '', until: r.until, path: r.path }, 'URLを発行しました（' + v + '時間有効）');
+        showIssuedVaultLink({ file: d ? 'folder:' + d.id : f ? f.id : '*', folder: d ? d.id : '', name: d ? pathName(d.id) : f ? f.name : '', until: r.until, path: r.path }, 'URLを発行しました（' + v + '時間有効）');
       });
     }).catch(fail);
   }
