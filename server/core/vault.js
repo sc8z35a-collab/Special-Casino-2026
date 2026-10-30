@@ -119,6 +119,8 @@ const INFO_MAX = 8 * 1024;
 const HEAD_MAX = 64 * 1024;
 // a link to every file (of the developer's vault)
 const ALL = '*';
+// a folder's link: its file_id is this and the folder's id (the folder and every folder below it)
+const FOLDER_LINK = 'folder:';
 // folders: how deep, how many in one vault; files and folders moved or
 // deleted at once; pieces moved into the bucket at once
 const FOLDER_DEPTH = 8;
@@ -831,7 +833,8 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     if (looks.get(key) > now - 3600000) return;
     looks.set(key, now);
     if (looks.size > 5000) for (const [k, t] of looks) if (t <= now - 3600000) looks.delete(k);
-    opsLog.add({ actorName: 'リンク', action: 'vault_pull', req, summary: f ? `保管庫の「${f.name}」がリンクから取得された` : '保管庫全体の一覧がリンクから取得された', detail: { file: f ? f.id : ALL, name: f ? f.name : '', uses: l.uses + 1, until: l.until, link: l.token_hash.slice(0, 12) } });
+    const dir = !f && linkFolder(l);
+    opsLog.add({ actorName: 'リンク', action: 'vault_pull', req, summary: f ? `保管庫の「${f.name}」がリンクから取得された` : dir ? `保管庫のフォルダ「${pathOf(dir)}」の一覧がリンクから取得された` : '保管庫全体の一覧がリンクから取得された', detail: { file: f ? f.id : dir ? l.file_id : ALL, name: f ? f.name : dir ? pathOf(dir) : '', uses: l.uses + 1, until: l.until, link: l.token_hash.slice(0, 12) } });
   }
 
   /* ------------------------------------------------------------- folders --- */
@@ -850,6 +853,22 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     return d.id;
   }
   const folderDto = (d) => ({ id: d.id, name: d.name, parent: d.parent, createdAt: d.created_at, space: d.space });
+  // A folder's link reaches the folder and every folder below it, as they are
+  // when it is used (a file moved out is out of it; the folder gone, the link is).
+  const linkFolder = (l) => (String(l.file_id).startsWith(FOLDER_LINK) ? l.file_id.slice(FOLDER_LINK.length) : '');
+  function subtree(id) {
+    const out = [id];
+    for (let i = 0; i < out.length && out.length <= FOLDERS_MAX; i++) for (const d of q('SELECT id FROM vault_folders WHERE parent = ?').all(out[i])) out.push(d.id);
+    return new Set(out);
+  }
+  // the link's folder (and what is below it), or null: not a folder's link; a folder that is gone or not the developer's own: no link
+  function scopeOf(l) {
+    const id = linkFolder(l);
+    if (!id) return null;
+    const d = folderRow(id);
+    if (!d || d.space) return null;
+    return { folder: d, ids: subtree(d.id) };
+  }
   // "車/新車" (for the log)
   function pathOf(id) {
     const names = [];
@@ -1519,8 +1538,11 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       need(req, u, true);
       developerOnly(u, 'リンクを作るの');
       const body = await req.json();
-      const all = body.id === ALL;
-      const f = all ? null : theFile(u, body.id);
+      // (`folder`: a folder's link, the folder and everything below it)
+      const dir = body.folder !== undefined ? theFolder(u, body.folder) : null;
+      if (dir && dir.space) throw new ApiError(400, 'not_here', '共有保管庫のフォルダにはリンクを作れません（共有保管庫は非公開です）');
+      const all = !dir && body.id === ALL;
+      const f = all || dir ? null : theFile(u, body.id);
       if (f && f.space) throw new ApiError(400, 'not_here', '共有保管庫のファイルにはリンクを作れません（共有保管庫は非公開です）');
       if (f && !f.done_at) throw new ApiError(409, 'not_done', 'アップロードが終わってからリンクを作れます');
       const hours = Number(body.hours);
@@ -1538,11 +1560,12 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       }
       const token = crypto.randomBytes(32).toString('base64url');
       const until = Date.now() + hours * 3600000;
+      const target = dir ? FOLDER_LINK + dir.id : all ? ALL : f.id;
       q('INSERT INTO vault_links (token_hash, file_id, until, created_by, created_at, ai, sealed_token, caps, max_bytes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(sha(token), all ? ALL : f.id, until, u.id, Date.now(), ai ? 1 : 0, sealText(LINK_KEY, token), caps, maxBytes);
-      const where = all ? '保管庫全体' : `保管庫の「${f.name}」`;
-      opsLog.add({ actor: u, action: 'vault_link', req, summary: `${where}のURLを発行（${hours}時間有効・見る・取り出す・コメント）`, detail: { file: all ? ALL : f.id, name: all ? '' : f.name, hours, until, ai, caps, maxBytes, link: sha(token).slice(0, 12) } });
-      return { id: sha(token).slice(0, 16), token, until, ai, caps: caps.split(','), maxBytes, path: `/api/vault/pull?t=${token}` };
+        .run(sha(token), target, until, u.id, Date.now(), ai ? 1 : 0, sealText(LINK_KEY, token), caps, maxBytes);
+      const where = dir ? `保管庫のフォルダ「${pathOf(dir.id)}」` : all ? '保管庫全体' : `保管庫の「${f.name}」`;
+      opsLog.add({ actor: u, action: 'vault_link', req, summary: `${where}のURLを発行（${hours}時間有効・見る・取り出す・コメント）`, detail: { file: target, name: dir ? pathOf(dir.id) : all ? '' : f.name, hours, until, ai, caps, maxBytes, link: sha(token).slice(0, 12) } });
+      return { id: sha(token).slice(0, 16), token, until, ai, caps: caps.split(','), maxBytes, path: `/api/vault/pull?t=${token}`, ...(dir ? { folder: dir.id } : {}) };
     },
 
     // Only the same authenticated, unlocked developer who can issue links
@@ -1554,8 +1577,10 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       // (the live ones, and those that ended in the last three days, for the record: stopped, tripped by themselves, or run out)
       const rows = q('SELECT * FROM vault_links WHERE (revoked = 0 AND until > ?) OR (until > ? AND created_at > ?) ORDER BY created_at DESC LIMIT 300').all(now, now - 3 * 86400000, now - 6 * 86400000);
       const links = rows.flatMap((l) => {
-        const f = l.file_id === ALL ? null : fileRow(l.file_id);
-        if (l.file_id !== ALL && (!f || f.space || f.implemented_at)) return [];
+        const dir = linkFolder(l), scope = dir ? scopeOf(l) : null;
+        if (dir && !scope) return [];
+        const f = l.file_id === ALL || dir ? null : fileRow(l.file_id);
+        if (l.file_id !== ALL && !dir && (!f || f.space || f.implemented_at)) return [];
         const live = !l.revoked && l.until > now;
         let token = '';
         if (live) {
@@ -1566,7 +1591,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
         try { places = JSON.parse(l.places || '[]'); } catch { places = []; }
         const last = q('SELECT MAX(last_at) AS at FROM vault_link_files WHERE link_hash = ?').get(l.token_hash);
         return [{
-          id: l.token_hash.slice(0, 16), file: l.file_id, name: f ? f.name : '保管庫全体', until: l.until, createdAt: l.created_at, state: live ? 'live' : l.revoked ? 'stopped' : 'ended',
+          id: l.token_hash.slice(0, 16), file: l.file_id, ...(dir ? { folder: dir } : {}), name: dir ? pathOf(dir) : f ? f.name : '保管庫全体', until: l.until, createdAt: l.created_at, state: live ? 'live' : l.revoked ? 'stopped' : 'ended',
           ai: !!l.ai, uses: l.uses, caps: [...capsOf(l)], bytesUsed: l.bytes_used, maxBytes: l.max_bytes, places: Array.isArray(places) ? places.length : 0, placesMax: linkPlaces,
           lastAt: (last && last.at) || 0, path: token ? `/api/vault/pull?t=${token}` : null
         }];
@@ -1586,11 +1611,13 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
         opsLog.add({ actor: u, action: 'vault_link_stop', req, summary: `保管庫のURLを${n}本停止`, detail: { stopped: n, links: ids.map((x) => x.slice(0, 12)) } });
         return { ok: true, stopped: n };
       }
-      const all = body.id === ALL;
-      const f = all ? null : theFile(u, body.id);
-      if (f && f.space) throw new ApiError(400, 'not_here', '共有保管庫のファイルにはリンクがありません');
-      const n = Number(q('UPDATE vault_links SET revoked = 1 WHERE file_id = ? AND revoked = 0 AND until > ?').run(all ? ALL : f.id, Date.now()).changes);
-      opsLog.add({ actor: u, action: 'vault_link_stop', req, summary: `${all ? '保管庫全体' : `保管庫の「${f.name}」`}のリンクを停止（${n}件）`, detail: { file: all ? ALL : f.id, stopped: n } });
+      const dir = body.folder !== undefined ? theFolder(u, body.folder) : null;
+      const all = !dir && body.id === ALL;
+      const f = all || dir ? null : theFile(u, body.id);
+      if ((f && f.space) || (dir && dir.space)) throw new ApiError(400, 'not_here', '共有保管庫にはリンクがありません');
+      const target = dir ? FOLDER_LINK + dir.id : all ? ALL : f.id;
+      const n = Number(q('UPDATE vault_links SET revoked = 1 WHERE file_id = ? AND revoked = 0 AND until > ?').run(target, Date.now()).changes);
+      opsLog.add({ actor: u, action: 'vault_link_stop', req, summary: `${dir ? `保管庫のフォルダ「${pathOf(dir.id)}」` : all ? '保管庫全体' : `保管庫の「${f.name}」`}のリンクを停止（${n}件）`, detail: { file: target, stopped: n } });
       return { ok: true, stopped: n };
     },
 
@@ -1608,9 +1635,12 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const l = linkFor(req, tokenOf(req));
       rate(limits.link, l.token_hash);
       const caps = capsOf(l);
-      const all = l.file_id === ALL;
-      const top = all ? null : fileRow(l.file_id);
-      if (!all && (!top || top.space || !top.done_at || top.implemented_at)) throw gone();
+      const all = l.file_id === ALL, scope = scopeOf(l);
+      if (linkFolder(l) && !scope) throw gone();
+      const top = all || scope ? null : fileRow(l.file_id);
+      if (!all && !scope && (!top || top.space || !top.done_at || top.implemented_at)) throw gone();
+      // (a file the link reaches: any, the link's own and its light copy, or one in the folder or below it)
+      const reaches = (x) => all || (scope ? scope.ids.has(x.folder) : x.id === top.id || x.parent === top.id);
       const n = req.query.get('n');
       const taking = n !== null && n !== '';
       if (!caps.has(taking ? 'get' : 'view')) throw gone();
@@ -1620,7 +1650,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       let f = top;
       if (want) {
         const x = fileRow(want);
-        f = x && !x.space && x.done_at && !x.implemented_at && (all || x.id === top.id || x.parent === top.id) ? x : null;
+        f = x && !x.space && x.done_at && !x.implemented_at && reaches(x) ? x : null;
         if (!f) throw noFile();
       }
       if (f && taking) {
@@ -1631,11 +1661,13 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
         try {
           const result = await piece(f, no);
           if (epoch() !== readEpoch) throw gone();
-          const currentLink = linkOf(tokenOf(req)), current = fileRow(f.id), currentTop = all ? null : fileRow(l.file_id);
-          if (!all && (!currentTop || currentTop.space || !currentTop.done_at || currentTop.implemented_at)) throw gone();
+          const currentLink = linkOf(tokenOf(req)), current = fileRow(f.id), currentScope = scopeOf(currentLink);
+          const currentTop = all || scope ? null : fileRow(l.file_id);
+          if (scope && !currentScope) throw gone();
+          if (!all && !scope && (!currentTop || currentTop.space || !currentTop.done_at || currentTop.implemented_at)) throw gone();
           if (!current || current.space || !current.done_at || current.implemented_at ||
               (current.storage_generation || 0) !== (f.storage_generation || 0) ||
-              (!all && current.id !== currentLink.file_id && current.parent !== currentLink.file_id)) throw noFile();
+              (scope ? !currentScope.ids.has(current.folder) : !all && current.id !== currentLink.file_id && current.parent !== currentLink.file_id)) throw noFile();
           if (no === 0) saw(currentLink, current.parent ? fileRow(current.parent) || current : current);
           return result;
         } catch (error) {
@@ -1661,6 +1693,17 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
         } : {})
       };
       if (f) return { ...pullDto(f), until: l.until, ai: !!l.ai, caps: [...caps], how };
+      // a folder's link: what is in it, the folder itself as the top (its folders and files under '')
+      if (scope) {
+        const root = scope.folder.id, top = (id) => (id === root ? '' : id);
+        return {
+          vault: true, folder: { id: root, name: scope.folder.name }, until: l.until, ai: !!l.ai, caps: [...caps],
+          folders: [...scope.ids].filter((id) => id !== root).map(folderRow).filter(Boolean).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+            .map((d) => { const { space, ...x } = folderDto(d); return { ...x, parent: top(d.parent) }; }),
+          files: q(`SELECT ${COLS} FROM vault_files WHERE space = '' AND done_at > 0 AND parent = '' AND implemented_at = 0 AND folder IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC`)
+            .all(JSON.stringify([...scope.ids])).map((x) => ({ ...pullDto(x), folder: top(x.folder) })), how
+        };
+      }
       return {
         vault: true, until: l.until, ai: !!l.ai, caps: [...caps],
         folders: q("SELECT * FROM vault_folders WHERE space = '' ORDER BY name").all().map(folderDto).map(({ space, ...d }) => d),
@@ -1689,7 +1732,9 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       if (!capsOf(l).has('note')) throw gone();
       usedFrom(req, l);
       const f = fileRow(body.f);
-      if (!f || f.space || !f.done_at || f.implemented_at || f.parent || !(l.file_id === ALL || l.file_id === f.id)) throw noFile();
+      const scope = scopeOf(l);
+      if (linkFolder(l) && !scope) throw gone();
+      if (!f || f.space || !f.done_at || f.implemented_at || f.parent || !(l.file_id === ALL || l.file_id === f.id || (scope && scope.ids.has(f.folder)))) throw noFile();
       const said = typeof body.comment === 'string' ? body.comment.normalize('NFC').replace(CONTROL, ' ').replace(/ {2,}/g, ' ').trim() : '';
       if (!said) throw new ApiError(400, 'empty', 'コメントを書いてください');
       if (Array.from(said).length > LINK_NOTE_MAX) throw new ApiError(400, 'too_long', `コメントは${LINK_NOTE_MAX}文字までです`);

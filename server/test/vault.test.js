@@ -1037,3 +1037,61 @@ test('a piece comes as bytes too: the whole of it with its hash in a header, or 
     } finally { await s.stop(); }
   }
 });
+
+test('a folder\'s URL: the folder and every folder below it, as they are when it is used; nothing outside it; stopped with the folder', async () => {
+  const s = await startServer({ operators: ['taku'], limits: { ...LIMITS, vaultNote: [100000, 1000] } });
+  try {
+    const taku = await developer(s);
+    const cars = (await taku.call('POST', '/api/vault/folders', { name: '車', parent: '' })).folder;
+    const fresh = (await taku.call('POST', '/api/vault/folders', { name: '新車', parent: cars.id })).folder;
+    const other = (await taku.call('POST', '/api/vault/folders', { name: '音', parent: '' })).folder;
+    const sedan = await put(taku, { name: 'sedan.glb', data: crypto.randomBytes(300), folder: cars.id });
+    const coupe = await put(taku, { name: 'coupe.glb', data: crypto.randomBytes(300), folder: fresh.id });
+    const song = await put(taku, { name: 'song.mp3', data: crypto.randomBytes(300), folder: other.id });
+    const top = await put(taku, { name: 'top.txt', data: crypto.randomBytes(300) });
+    const made = await taku.call('POST', '/api/vault/link', { folder: cars.id, hours: 1 });
+    assert.equal(made.status, 200, JSON.stringify(made));
+    assert.equal(made.folder, cars.id);
+    const pull = (q = '') => s.call('GET', `/api/vault/pull?t=${made.token}${q}`);
+    const list = await pull();
+    assert.equal(list.vault, true);
+    assert.deepEqual(list.folder, { id: cars.id, name: '車' });
+    assert.deepEqual(list.files.map((f) => f.name).sort(), ['coupe.glb', 'sedan.glb']);
+    // (the folder is the top: its files under '', its folders' under it)
+    assert.deepEqual(list.folders.map((d) => [d.name, d.parent]), [['新車', '']]);
+    assert.equal(list.files.find((f) => f.id === sedan.id).folder, '');
+    assert.equal(list.files.find((f) => f.id === coupe.id).folder, fresh.id);
+    // a file in it is taken and commented on; one outside it is not there
+    assert.equal((await pull(`&f=${coupe.id}`)).name, 'coupe.glb');
+    assert.ok((await pull(`&f=${coupe.id}&n=0`)).data);
+    for (const f of [song, top]) {
+      assert.equal((await pull(`&f=${f.id}`)).status, 404, f.name);
+      assert.equal((await pull(`&f=${f.id}&n=0`)).status, 404, f.name);
+      assert.equal((await s.call('POST', '/api/vault/ai', { body: { t: made.token, f: f.id, comment: 'x' } })).status, 404, f.name);
+    }
+    assert.equal((await s.call('POST', '/api/vault/ai', { body: { t: made.token, f: sedan.id, comment: '見ました' } })).status, 200);
+    // as it is now: a file moved in is in it, one moved out is not
+    assert.equal((await taku.call('POST', '/api/vault/move', { ids: [song.id], folder: fresh.id })).status, 200);
+    assert.equal((await taku.call('POST', '/api/vault/move', { ids: [sedan.id], folder: '' })).status, 200);
+    assert.deepEqual((await pull()).files.map((f) => f.name).sort(), ['coupe.glb', 'song.mp3']);
+    assert.equal((await pull(`&f=${sedan.id}`)).status, 404);
+    // the URL tab names it; the folder's own stop ends it
+    const links = (await taku.call('GET', '/api/vault/links')).links;
+    const mine = links.find((l) => l.id === made.id);
+    assert.equal(mine.folder, cars.id);
+    assert.equal(mine.name, '車');
+    assert.ok(mine.path.includes(made.token));
+    assert.match((await actions(taku)).map((e) => e.summary).join('\n'), /保管庫のフォルダ「車」のURLを発行/);
+    assert.equal((await taku.call('POST', '/api/vault/link/stop', { folder: cars.id })).stopped, 1);
+    assert.equal((await pull()).status, 404);
+    // a folder's URL ends with the folder
+    const again = await taku.call('POST', '/api/vault/link', { folder: fresh.id, hours: 1 });
+    assert.equal((await s.call('GET', `/api/vault/pull?t=${again.token}`)).status, 200);
+    assert.equal((await taku.call('POST', '/api/vault/folders/delete', { id: fresh.id })).status, 200);
+    assert.equal((await s.call('GET', `/api/vault/pull?t=${again.token}`)).status, 404);
+    // only the developer, and never a shared vault's folder
+    const a = await person(s, 'Helper');
+    assert.equal((await a.call('POST', '/api/vault/link', { folder: other.id, hours: 1 })).status >= 400, true);
+    assert.equal((await taku.call('POST', '/api/vault/link', { folder: 'nope', hours: 1 })).status, 404);
+  } finally { await s.stop(); }
+});
