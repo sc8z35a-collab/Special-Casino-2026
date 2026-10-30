@@ -2166,9 +2166,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (cur.dollars < a.price) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, avatars = ?, avatar = ?, rev = rev + 1 WHERE id = ?')
           .run(a.price, [...owned, a.id].join(','), a.id, cur.id);
+        afterSpend(u.id);
       });
       const me = meDto(balanceChanged(u.id));
-      afterSpend(u.id);
       return { me, paid: a.price };
     }],
 
@@ -2305,21 +2305,21 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (body.price !== undefined && Number(body.price) !== cost) {
         throw new ApiError(409, 'price_changed', `価格が変わりました（今は $${fmt(cost)}）`, { sale: carSale() });
       }
-      let vipPay = 0;
       const id = tx(() => {
         const cur = getUser(u.id);
         if (carCount(cur.id) >= garageSize(cur)) throw new ApiError(409, 'garage_full', `ガレージがいっぱいです（${garageSize(cur)}台）`);
         if (cur.dollars < cost) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(cost, cur.id);
-        vipPay = addVipExp(cur, VIP_RULES.exp.car);
+        const vipPay = addVipExp(cur, VIP_RULES.exp.car);
         const now = Date.now();
-        return Number(q('INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid) VALUES (?, ?, 0, ?, ?, ?)').run(cur.id, car.id, now, now, cost).lastInsertRowid);
+        const id = Number(q('INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid) VALUES (?, ?, 0, ?, ?, ?)').run(cur.id, car.id, now, now, cost).lastInsertRowid);
+        jobsPaid(u.id, vipPay);
+        track(u.id, [['carBuy', 1]]);
+        syncMilestones(u.id);
+        afterSpend(u.id);
+        return id;
       });
-      jobsPaid(u.id, vipPay);
-      track(u.id, [['carBuy', 1]]);
-      syncMilestones(u.id);
       const me = meDto(balanceChanged(u.id));
-      afterSpend(u.id);
       return { me, paid: cost, car: { id, model: car.id, acquiredAt: Date.now(), from: null, paid: cost, used: false, offer: 0 } };
     }],
 
@@ -2333,9 +2333,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const cur = getUser(u.id);
         if (cur.dollars < price) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, garage_extra = garage_extra + 1, rev = rev + 1 WHERE id = ?').run(price, cur.id);
+        afterSpend(u.id);
       });
       const after = balanceChanged(u.id);
-      afterSpend(u.id);
       return { me: meDto(after), capacity: garageSize(after) };
     }],
 
@@ -2444,15 +2444,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const sold = insertMessage({ channel: row.channel, sender: cur, recipient: row.sender_id, kind: 'car_sold', amount: row.amount, currency: 'dollars',
           body: JSON.stringify({ car: car.id, model: car.model, offer: id }) });
         touchConversations(cur.id, row.sender_id, sold.id, row.sender_id);
+        track(u.id, [['carBuy', 1]]);
+        syncMilestones(u.id);
+        afterSpend(u.id);
         return { row, sold, carId: car.id, earned: car.rent_earned };
       });
       cardChanged(r.row, { state: 'sold' });
       deliverDm(r.sold, u.id, r.row.sender_id);
       if (r.earned) balanceChanged(r.row.sender_id);
-      track(u.id, [['carBuy', 1]]);
-      syncMilestones(u.id);
       const me = meDto(balanceChanged(u.id));
-      afterSpend(u.id);
       return { state: 'sold', car: r.carId, me };
     }],
 
@@ -2661,9 +2661,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (cur.dollars < cost) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(cost, cur.id);
         addItems(cur.id, item.id, count);
+        afterSpend(u.id);
       });
       const me = meDto(balanceChanged(u.id));
-      afterSpend(u.id);
       return { me, paid: sale.price * count, pct: sale.pct };
     }],
 
@@ -2742,15 +2742,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         q('UPDATE users SET tokens = tokens - ?, rev = rev + 1 WHERE id = ?').run(amount, u.id);
         q('UPDATE users SET tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(amount, to);
         q('INSERT INTO transfers (id, from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(nextRecordId(q, 'transfers'), u.id, to, 'tokens', amount, Date.now());
+        track(u.id, Object.entries(fruits));
+        afterSpend(u.id);
       });
       const tip = { from: mini(u), fruits, amount };
       live.send(to, 'tip', tip);
       // everyone in the home sees the fruit fly
       notifyWatchers(to, { type: 'tip', user: to, ...tip });
       balanceChanged(to);
-      track(u.id, Object.entries(fruits));
       balanceChanged(u.id);
-      afterSpend(u.id);
       return { balance: balance(getUser(u.id)), amount, to: t.id };
     }],
 
@@ -2871,9 +2871,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         while (s.jobs.length >= LEVEL.jobSlots(LEVEL.of(cur.xp))) s.jobs.shift();
         s.jobs.push({ id: job.id, since: now });
         saveJobs(cur.id, s.jobs, s.pay);
+        jobsPaid(u.id, s.pay);
         return s.pay;
       });
-      jobsPaid(u.id, paid);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
     }],
@@ -2887,9 +2887,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const s = settleJobs(cur, Date.now());
         if (!s.jobs.some((j) => j.id === id)) throw new ApiError(409, 'not_working', 'このバイトはしていません');
         saveJobs(cur.id, s.jobs.filter((j) => j.id !== id), s.pay);
+        jobsPaid(u.id, s.pay);
         return s.pay;
       });
-      jobsPaid(u.id, paid);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
     }],
@@ -2901,9 +2901,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const cur = getUser(u.id);
         const s = settleJobs(cur, Date.now());
         if (s.pay > 0) saveJobs(cur.id, s.jobs, s.pay);
+        jobsPaid(u.id, s.pay);
         return s.pay;
       });
-      jobsPaid(u.id, paid);
       const after = getUser(u.id);
       return { paid, balance: balance(after), ...jobsDto(after) };
     }],
@@ -2945,10 +2945,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const modes = VIP.intervals(cur.vip_modes).filter(p => p.end > now);
         if (mode !== 'normal') modes.push({ start, end: until, mode });
         q('UPDATE users SET coins = coins - ? + ?, vip_until = ?, vip_modes = ?, quests = ?, rev = rev + 1 WHERE id = ?').run(c.coins, c.back, until, JSON.stringify(modes), quests, cur.id);
+        if (s.pay) track(u.id, [['jobpay', s.pay]]);
+        syncMilestones(u.id);
         return { ...c, paid: s.pay, start, until };
       });
-      if (r.paid) track(u.id, [['jobpay', r.paid]]);
-      syncMilestones(u.id);
       const me = meDto(balanceChanged(u.id));
       if (resetTickets) live.send(u.id, 'quest', { changed: true, ready: me.questsReady, tickets: me.questTickets, bonuses: me.questBonuses, xp: me.xp });
       return { days, bonus, coins: r.coins, back: r.back, resetTickets, packs: cart ? cart.packs : [], paid: r.paid, mode, startsAt: r.start, endsAt: r.until, me };
@@ -2967,10 +2967,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const s = settleJobs(cur, now);
         saveJobs(cur.id, s.jobs, s.pay);
         q('UPDATE users SET vip_until = ?, vip_trial_until = ?, rev = rev + 1 WHERE id = ?').run(until, until, cur.id);
+        if (s.pay) track(u.id, [['jobpay', s.pay]]);
+        syncMilestones(u.id);
         return { until, paid: s.pay };
       });
-      if (r.paid) track(u.id, [['jobpay', r.paid]]);
-      syncMilestones(u.id);
       return { until: r.until, paid: r.paid, me: meDto(balanceChanged(u.id)) };
     }],
 

@@ -14,6 +14,9 @@
   var pick = '';        // the chosen present
   var busy = false;
   var claiming = {};    // message id -> true while it is being received
+  var generation = 0, session = 0;
+  function reset() { generation++; to = null; pick = ''; busy = false; }
+  function current(gen, view) { return gen === generation && api.hasToken() && !!BR.social.me() && view === K.modalVersion('present'); }
 
   function list() { return BR.CONFIG.presents; }
   function info(id) {
@@ -32,7 +35,8 @@
 
   /* ------------------------------------------------------------ choosing one --- */
   function open(user) {
-    if (!user) return;
+    if (!user || !api.hasToken() || !BR.social.me()) return;
+    reset();
     to = { id: user.id, name: user.name };
     pick = '';
     busy = false;
@@ -63,16 +67,19 @@
   function send() {
     var p = info(pick);
     if (!p || busy || !to) return;
+    var recipient = to, gen = generation, view = K.modalVersion('present');
     busy = true;
     render();
-    api.present(to.id, p.id).then(function (r) {
+    api.present(recipient.id, p.id).then(function (r) {
+      if (!current(gen, view)) return;
       busy = false;
       if (r.balance) BR.app.serverBalance(r.balance);
       K.closeModal('present');
       sfx('send');
       BR.social.onMsg(r.message);
-      toast(to.name + 'さんに' + p.name + 'を贈りました');
+      toast(recipient.name + 'さんに' + p.name + 'を贈りました');
     }, function (err) {
+      if (!current(gen, view)) return;
       busy = false;
       render();
       K.fail(err);
@@ -102,9 +109,11 @@
   }
   function claim(m) {
     if (m.claimed || K.receiptExpired(m) || claiming[m.id]) return;
+    var gen = session;
     claiming[m.id] = true;
     BR.social.refreshMsg(m.id);
     api.presentClaim(m.id).then(function (r) {
+      if (gen !== session) return;
       delete claiming[m.id];
       m.claimed = true;
       if (r.balance) BR.app.serverBalance(r.balance);
@@ -113,6 +122,7 @@
       if (BR.juice && BR.juice.reward) BR.juice.reward('#toast', 2);
       BR.social.refreshMsg(m.id);
     }, function (err) {
+      if (gen !== session) return;
       delete claiming[m.id];
       if (err && err.code === 'claimed') m.claimed = true;
       if (err && err.code === 'expired') m.expired = true;
@@ -127,6 +137,13 @@
 
   function init() {
     K.registerModal('present');
+    $('#present').addEventListener('closed', reset);
+    var owner = BR.social.me(), ownerId = owner && owner.id;
+    BR.social.onMe(function (m) {
+      var id = m && m.id;
+      if (!id || id !== ownerId) { session++; claiming = {}; reset(); K.closeModal('present'); }
+      ownerId = id;
+    });
     $('#pr-grid').addEventListener('click', function (e) {
       var b = e.target.closest('.pr-tile');
       if (!b || b.disabled) return;

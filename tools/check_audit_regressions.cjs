@@ -18,6 +18,52 @@ async function holdBriefTimers(page) {
     };
   });
 }
+async function checkMarketDialogs(page, s, player, first, second) {
+  await s.befriend(player, first); await s.befriend(player, second);
+  const at = Date.now();
+  for (let i=0; i<2; i++) s.app.db.prepare('INSERT INTO cars(owner_id,model,paid,created_at,acquired_at) VALUES(?,?,?,?,?)')
+    .run(player.me.id, 'two-state-sedan', 26500000, at, at);
+  await page.evaluate(async () => {
+    BR.kit.closeModals(); BR.live.close(); await BR.resources.load('online'); await BR.resources.load('carsaleDialog');
+    window.auditMarket = {};
+    for (const method of ['cars', 'carOffer', 'present']) {
+      const original = BR.api[method]; window.auditMarket[method] = original;
+      BR.api[method] = function (...args) { window.auditMarket[method + 'Done'] = false; return original(...args).then(r => { window.auditMarket[method + 'Done'] = true; return r; }); };
+    }
+  });
+  let enterCars, heldCars; const carsEntered = new Promise(resolve => { enterCars = resolve; });
+  await page.route('**/api/cars', route => { heldCars = route; enterCars(); });
+  await page.evaluate(u => BR.carsaleDialog.open(u), first.me); await carsEntered;
+  const carsReply = await heldCars.fetch(); await page.evaluate(() => BR.kit.closeModals()); await heldCars.fulfill({ response: carsReply });
+  await page.waitForFunction(() => window.auditMarket.carsDone); assert.equal(await page.locator('#carsale').isVisible(), false);
+  await page.unroute('**/api/cars');
+
+  await page.evaluate(u => BR.carsaleDialog.open(u), first.me); await page.locator('#cs-go').waitFor({ state: 'visible' });
+  let enterOffer, heldOffer; const offerEntered = new Promise(resolve => { enterOffer = resolve; });
+  await page.route('**/api/cars/offer', route => { heldOffer = route; enterOffer(); });
+  await page.locator('#cs-go').click(); await offerEntered;
+  const offerReply = await heldOffer.fetch(); assert.equal(offerReply.status(), 200);
+  await page.locator('#carsale [data-close]').click(); await page.evaluate(u => BR.carsaleDialog.open(u), second.me);
+  await page.locator('#cs-go').waitFor({ state: 'visible' }); assert.equal(await page.locator('#cs-name').textContent(), second.me.name);
+  await heldOffer.fulfill({ response: offerReply }); await page.waitForFunction(() => window.auditMarket.carOfferDone);
+  assert.equal(await page.locator('#carsale').isVisible(), true); assert.equal(await page.locator('#cs-name').textContent(), second.me.name);
+  await page.unroute('**/api/cars/offer');
+  await page.locator('#cs-go').click(); await page.waitForFunction(() => document.getElementById('carsale').hidden);
+  assert.equal(s.app.db.prepare("SELECT COUNT(*) AS n FROM messages WHERE sender_id=? AND kind='car_offer'").get(player.me.id).n, 2);
+
+  let enterPresent, heldPresent; const presentEntered = new Promise(resolve => { enterPresent = resolve; });
+  await page.route('**/api/present', route => { heldPresent = route; enterPresent(); });
+  await page.evaluate(u => BR.presents.open(u), first.me); await page.locator('#pr-grid .pr-tile').first().click(); await page.locator('#pr-go').click(); await presentEntered;
+  const presentReply = await heldPresent.fetch(); assert.equal(presentReply.status(), 200);
+  await page.locator('#present [data-close]').click(); await page.evaluate(u => BR.presents.open(u), second.me);
+  await heldPresent.fulfill({ response: presentReply }); await page.waitForFunction(() => window.auditMarket.presentDone);
+  assert.equal(await page.locator('#present').isVisible(), true); assert.equal(await page.locator('#pr-name').textContent(), second.me.name);
+  await page.unroute('**/api/present'); await page.locator('#pr-grid .pr-tile').first().click(); await page.locator('#pr-go').click();
+  await page.waitForFunction(() => document.getElementById('present').hidden);
+  assert.equal(s.app.db.prepare("SELECT COUNT(*) AS n FROM messages WHERE sender_id=? AND kind='present'").get(player.me.id).n, 2);
+  await page.evaluate(() => { for (const method of ['cars', 'carOffer', 'present']) BR.api[method] = window.auditMarket[method]; delete window.auditMarket; BR.live.connect(); });
+  console.log('PASS real sale and present dialogs retire canceled loads and delayed settlements, preserve replacement recipients and still submit current actions once');
+}
 (async () => {
   const { startServer } = await import(path.resolve(__dirname, '../server/test/helpers.js'));
   const s = await startServer({ operators: ['taku', 'AuditMod'] }); let browser;
@@ -121,6 +167,7 @@ async function holdBriefTimers(page) {
       return { expected: purchased.me.rev, profile: BR.social.me().rev, bank: BR.bank.me().rev, bought: BR.bank.me().boughtToday, expectedBought: purchased.me.boughtToday };
     });
     assert.equal(orderedProfile.profile, orderedProfile.expected); assert.equal(orderedProfile.bank, orderedProfile.expected); assert.equal(orderedProfile.bought, orderedProfile.expectedBought);
+    await checkMarketDialogs(accountPage, s, player, nextPlayer, developer);
     await accountPage.evaluate(() => { BR.kit.closeModals(); BR.social.openProfile(BR.social.me()); });
     await accountPage.locator('#profile [data-act="logout"]').waitFor();
     await accountPage.evaluate(() => { BR.push.forget = () => new Promise(resolve => { window.auditFinishLogout = resolve; }); });

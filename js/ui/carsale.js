@@ -12,7 +12,9 @@
   var el = K.el, sfx = K.sfx, toast = K.toast, fail = K.fail;
 
   var st = { user: null, cars: [], car: null, value: 0, busy: false };
-  var working = {};   // message id -> its action is running
+  var generation = 0;
+  function reset() { generation++; st.user = st.car = null; st.cars = []; st.value = 0; st.busy = false; }
+  function current(gen, view) { return gen === generation && api.hasToken() && !!BR.social.me() && view === K.modalVersion('carsale'); }
 
   function model(id) {
     var list = BR.CONFIG.cars;
@@ -45,8 +47,10 @@
 
   /* ------------------------------------------------------------ 車を売る --- */
   function open(user, carId) {
-    if (!user || st.busy) return;
+    if (!user || st.busy || !api.hasToken() || !BR.social.me()) return;
+    var gen = ++generation, view = K.modalVersion('carsale');
     api.cars().then(function (r) {
+      if (!current(gen, view)) return;
       var cars = r.cars.filter(function (c) { return !c.rent && !c.offer; });
       if (!cars.length) {
         sfx('deny');
@@ -58,7 +62,7 @@
       pick(cars.filter(function (c) { return c.id === carId; })[0] || cars[0]);
       $('#cs-name').textContent = user.name;
       K.showModal('carsale');
-    }).catch(fail);
+    }).catch(function (err) { if (current(gen, view)) fail(err); });
   }
   function pick(c) {
     st.car = c;
@@ -66,6 +70,7 @@
     render();
   }
   function setValue(v) {
+    if (!st.car) return;
     var r = range(st.car);
     st.value = Math.max(r.min, Math.min(r.max, Math.round(v)));
     render();
@@ -97,10 +102,11 @@
   }
   function go() {
     if (st.busy || !st.car || !st.user) return;
-    var u = st.user, c = st.car, price = st.value;
+    var u = st.user, c = st.car, price = st.value, gen = generation, view = K.modalVersion('carsale');
     st.busy = true;
     render();
     api.carOffer(u.id, c.id, price).then(function (r) {
+      if (!current(gen, view)) return;
       st.busy = false;
       K.closeModal('carsale');
       sfx('send');
@@ -108,6 +114,7 @@
       toast(u.name + 'さんに ' + carName(c.model) + ' を ' + money(price) + ' で出品しました', 3200);
       BR.cars.changed();
     }, function (err) {
+      if (!current(gen, view)) return;
       st.busy = false;
       render();
       fail(err);
@@ -116,14 +123,22 @@
 
   function init() {
     K.registerModal('carsale');
+    $('#carsale').addEventListener('closed', reset);
+    var owner = BR.social.me(), ownerId = owner && owner.id;
+    BR.social.onMe(function (m) {
+      var id = m && m.id;
+      if (!id || id !== ownerId) { reset(); K.closeModal('carsale'); }
+      ownerId = id;
+    });
     $('#cs-go').addEventListener('click', function () { sfx('click'); go(); });
     $('#cs-range').addEventListener('input', function () { setValue(Number($('#cs-range').value)); });
-    $('#cs-down').addEventListener('click', function () { sfx('click'); setValue(st.value - Math.max(1, Math.round(range(st.car).base / 100))); });
-    $('#cs-up').addEventListener('click', function () { sfx('click'); setValue(st.value + Math.max(1, Math.round(range(st.car).base / 100))); });
+    $('#cs-down').addEventListener('click', function () { if (!st.car) return; sfx('click'); setValue(st.value - Math.max(1, Math.round(range(st.car).base / 100))); });
+    $('#cs-up').addEventListener('click', function () { if (!st.car) return; sfx('click'); setValue(st.value + Math.max(1, Math.round(range(st.car).base / 100))); });
     $('#cs-amount').addEventListener('click', function () {
+      if (!st.car) return;
       sfx('click');
-      var r = range(st.car);
-      BR.screens.numpad({ icon: 'dollar', value: st.value, max: r.max, onOk: function (n) { setValue(n); } });
+      var r = range(st.car), gen = generation, view = K.modalVersion('carsale');
+      BR.screens.numpad({ icon: 'dollar', value: st.value, max: r.max, onOk: function (n) { if (current(gen, view)) setValue(n); } });
     });
     K.dragScroll($('#cs-cars'));
   }
