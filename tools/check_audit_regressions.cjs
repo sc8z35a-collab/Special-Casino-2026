@@ -105,6 +105,34 @@ async function checkDiaryComments(page, s, developer, player, other) {
   await page.evaluate(() => { BR.api.diaryComments = window.auditDiary.original; delete window.auditDiary; BR.kit.closeModals(); BR.live.connect(); });
   console.log('PASS real diary comments preserve new drafts, reject older reads and keep replies private');
 }
+async function checkTreeQueue(page, s, player) {
+  const at=Date.now(),second=Number(s.app.db.prepare('INSERT INTO trees(user_id,name,created_at) VALUES(?,?,?)').run(player.me.id,'Audit second tree',at).lastInsertRowid);
+  const first=s.app.db.prepare('SELECT id,given FROM trees WHERE user_id=? ORDER BY id LIMIT 1').get(player.me.id);
+  const dollars=s.app.db.prepare('SELECT dollars FROM users WHERE id=?').get(player.me.id).dollars;
+  await page.evaluate(async () => {
+    BR.kit.closeModals(); BR.live.close(); await BR.resources.load('tree');
+    const original=BR.api.treeGive; window.auditTree={original,completed:0};
+    BR.api.treeGive=function(...args){return original(...args).then(r=>{window.auditTree.completed++;return r;});};
+    BR.tree.open();
+  });
+  await page.locator('#tree-tabs button[data-tab="'+second+'"]').waitFor();
+  await page.locator('#tree-tabs button[data-tab="'+first.id+'"]').click();
+  const [amount,changed]=await page.evaluate(()=>BR.TREE.rules.amounts.slice(0,2));
+  await page.locator('#tr-amounts button[data-amount="'+amount+'"]').click();
+  let held,entered;const ready=new Promise(resolve=>{entered=resolve;});let calls=0;
+  await page.route('**/api/tree/give',route=>{if(++calls!==1)return route.continue();held=route;entered();});
+  await page.locator('#tr-give').click();await ready;const firstReply=await held.fetch();assert.equal(firstReply.status(),200);
+  await page.locator('#tree-tabs button[data-tab="'+second+'"]').click();await page.locator('#tr-give').click();
+  await page.locator('#tr-amounts button[data-amount="'+changed+'"]').click();
+  await held.fulfill({response:firstReply});await page.waitForFunction(()=>window.auditTree.completed===2);
+  const given=id=>s.app.db.prepare('SELECT given FROM trees WHERE id=?').get(id).given;
+  assert.equal(given(first.id),first.given+amount);assert.equal(given(second),amount);
+  await page.locator('#tr-give').click();await page.waitForFunction(()=>window.auditTree.completed===3);
+  assert.equal(given(second),amount+changed);assert.equal(s.app.db.prepare('SELECT dollars FROM users WHERE id=?').get(player.me.id).dollars,dollars-2*amount-changed);
+  await page.unroute('**/api/tree/give');
+  await page.evaluate(()=>{BR.api.treeGive=window.auditTree.original;delete window.auditTree;BR.screens.show('slot');BR.live.connect();});
+  console.log('PASS real tree gift queue preserves each tapped tree and amount across selection changes and charges exactly once per tap');
+}
 (async () => {
   const { startServer } = await import(path.resolve(__dirname, '../server/test/helpers.js'));
   const s = await startServer({ operators: ['taku', 'AuditMod'] }); let browser;
@@ -210,6 +238,7 @@ async function checkDiaryComments(page, s, developer, player, other) {
     assert.equal(orderedProfile.profile, orderedProfile.expected); assert.equal(orderedProfile.bank, orderedProfile.expected); assert.equal(orderedProfile.bought, orderedProfile.expectedBought);
     await checkMarketDialogs(accountPage, s, player, nextPlayer, developer);
     await checkDiaryComments(accountPage, s, developer, player, nextPlayer);
+    await checkTreeQueue(accountPage, s, player);
     await accountPage.evaluate(() => { BR.kit.closeModals(); BR.social.openProfile(BR.social.me()); });
     await accountPage.locator('#profile [data-act="logout"]').waitFor();
     await accountPage.evaluate(() => { BR.push.forget = () => new Promise(resolve => { window.auditFinishLogout = resolve; }); });

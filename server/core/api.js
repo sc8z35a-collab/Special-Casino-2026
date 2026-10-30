@@ -2627,12 +2627,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         q('UPDATE users SET tokens = tokens - ?, rev = rev + 1 WHERE id = ?').run(stake, u.id);
         const id = Number(q('INSERT INTO watch_bets (watcher_id, host_id, side, stake, left_n, created_at) VALUES (?, ?, ?, ?, ?, ?)')
           .run(u.id, hostId, side, stake, WB.spins, Date.now()).lastInsertRowid);
+        track(u.id, [['wbet', 1]]);
         return q('SELECT * FROM watch_bets WHERE id = ?').get(id);
       });
       const me = balanceChanged(u.id);
       const dto = betDto(bet);
       live.send(hostId, 'watch', { type: 'betOn', by: mini(u), bet: dto });
-      track(u.id, [['wbet', 1]]);
       return { bet: dto, balance: balance(me) };
     }],
 
@@ -3164,6 +3164,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const prev = mine ? mine.hub_id : 0;
         if (prev) q('DELETE FROM hub_members WHERE user_id = ?').run(u.id);
         q('INSERT INTO hub_members (user_id, hub_id, joined_at) VALUES (?, ?, ?)').run(u.id, hubId, now + 1);
+        track(u.id, [['hub', 1]]);
+        if (formed) track(fromId, [['hub', 1]]);
         return { hubId, prev, formed, same: false };
       });
       if (r.prev) {
@@ -3173,8 +3175,6 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const dto = hubDto(hubRow(r.hubId));
       if (!r.same) {
         hubSend(r.hubId, { type: 'join', user: mini(u), hub: dto }, u.id);
-        track(u.id, [['hub', 1]]);
-        if (r.formed) track(fromId, [['hub', 1]]);
       }
       return { hub: { ...dto, noVoice: noVoiceIn(r.hubId, u.id) } };
     }],
