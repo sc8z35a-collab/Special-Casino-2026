@@ -164,6 +164,8 @@
     if (BR.tree) BR.tree.reset();
     if (BR.lineReward) BR.lineReward.reset();
     if (BR.gacha) BR.gacha.reset();
+    if (BR.feats) BR.feats.set(0);
+    if (BR.medals && BR.medals.reset) BR.medals.reset();
     if (BR.lazy) BR.lazy.cancelPending();
     BR.entry.close();
     closeGroupForm();

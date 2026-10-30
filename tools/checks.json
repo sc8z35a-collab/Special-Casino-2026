@@ -126,5 +126,9 @@
   "check_stocks.cjs": {
     "runner": "browser",
     "tier": "pr"
+  },
+  "check_medals.cjs": {
+    "runner": "browser",
+    "tier": "pr"
   }
 }

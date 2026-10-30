@@ -67,7 +67,7 @@ function shuffle(a) {
   return a;
 }
 
-export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady = () => {}, onChange = () => {}, clock = Date.now }) {
+export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady = () => {}, onChange = () => {}, onHarvest = () => {}, clock = Date.now }) {
   const noticeWhere = "t.cycle != '' AND t.notified_cycle != t.cycle_at AND u.banned = 0 AND u.npc = ''";
   function nextDue() {
     return q(`SELECT MIN(t.cycle_end) AS at FROM trees t JOIN users u ON u.id=t.user_id WHERE ${noticeWhere}`).get()?.at || 0;
@@ -326,13 +326,15 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady =
         if (!c) throw new ApiError(409, 'not_growing', 'まだ育てはじめていません');
         if (now < t.cycle_end) throw new ApiError(409, 'not_ready', 'まだ収穫できません');
         const paid = Math.floor(grownNow(t, now) * c.mult * boostOf(t));
-        q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(paid, u.id);
+        // (harvests: counted for the 功績, server/core/medals.js)
+        q('UPDATE users SET dollars = dollars + ?, harvests = harvests + 1, rev = rev + 1 WHERE id = ?').run(paid, u.id);
         q('UPDATE trees SET harvested = harvested + ? WHERE id = ?').run(paid, t.id);
         startCycle(t, TREE.cycleOf(String(body.next || '')) ? String(body.next) : c.id, now);
         return { paid, tree: dto(q('SELECT * FROM trees WHERE id = ?').get(t.id), now), balance: balance(getUser(u.id)) };
       });
       balanceChanged(u.id, true);
       onChange();
+      onHarvest(u.id);
       return r;
     },
 

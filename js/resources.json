@@ -92,5 +92,8 @@
   ],
   "stocks": [
     "css/stocks.css"
+  ],
+  "medals": [
+    "css/medals.css"
   ]
 }

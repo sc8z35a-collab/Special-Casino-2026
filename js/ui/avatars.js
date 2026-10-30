@@ -7,7 +7,8 @@
   var shop = null;
   var busy = false;
 
-  function list() { return BR.CONFIG.avatars; }
+  // (シークレットアイコン are only given, never sold: only the ones the player has are shown)
+  function list() { return BR.CONFIG.avatars.filter(function (a) { return !a.given || usable(a.id); }); }
   function priceOf(a) {
     if (shop) for (var i = 0; i < shop.items.length; i++) if (shop.items[i].id === a.id) return shop.items[i].price;
     return a.price;
@@ -23,7 +24,7 @@
     t.dataset.rarity = a.rarity;
     t.setAttribute('aria-pressed', String(!!opts.selected));
     t.setAttribute('aria-label', a.name + '・' + BR.CONFIG.avatarRarities[a.rarity] + '・' +
-      (opts.current ? '使用中' : opts.owned ? '所持' : a.price > 0 ? money(priceOf(a)) : '無料'));
+      (opts.current ? '使用中' : opts.owned && (a.price > 0 || a.given) ? '所持' : a.price > 0 ? money(priceOf(a)) : '無料'));
     var pic = el('span', 'av-pic');
     pic.style.backgroundImage = 'url("' + K.avatarSrc(a.id) + '")';
     t.appendChild(pic);
@@ -34,7 +35,7 @@
     if (a.price > 0 && !opts.owned) {
       t.appendChild(el('span', 'av-price', money(priceOf(a))));
     } else {
-      t.appendChild(el('span', 'av-owned', opts.current ? '使用中' : a.price > 0 ? '所持' : '無料'));
+      t.appendChild(el('span', 'av-owned', opts.current ? '使用中' : a.price > 0 || a.given ? '所持' : '無料'));
     }
     return t;
   }
@@ -56,7 +57,7 @@
     });
   }
 
-  function me() { return BR.social.me(); }
+  function me() { return BR.social && BR.social.me(); }
   function usable(id) { var m = me(); return !!m && m.avatars.indexOf(id) >= 0; }
 
   function renderPicker() {

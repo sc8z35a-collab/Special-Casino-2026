@@ -301,6 +301,9 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 .hud-tree { right: 204px; top: 382px; }
 .hud-gacha { left: 204px; top: calc(50% + 122px); }
 .screen.active .ic-gacha { background-image: url('../img/gacha/icon.webp'); }
+/* 功績: beside the gacha */
+.hud-feat { left: 330px; top: calc(50% + 122px); }
+.screen.active .ic-feat { background-image: url('../img/medals/feat.webp'); }
 .hud-circle.pic { background: none; box-shadow: none; }
 .hud-circle.pic .ic { filter: drop-shadow(0 4px 7px rgba(0, 0, 0, .55)); }
 .hud-circle.pic:active { background: none; }

@@ -36,7 +36,8 @@ test('registration validates names, passwords and icons', async () => {
     assert.equal(r.status, 403, a.id);
     assert.equal(r.error.code, 'locked', a.id);
   }
-  assert.deepEqual([...AVATARS.values()].filter(a => a.price === 0).map(a => a.id), ['traveler-green']);
+  // (the シークレットアイコン are not free either: they are only given, by 功績's 最強トレーダー)
+  assert.deepEqual([...AVATARS.values()].filter(a => a.price === 0 && !a.given).map(a => a.id), ['traveler-green']);
   for (const avatar of ['bald', 'beard', 'curly', 'blond', 'witch', 'cap', 'catcap', 'pumpkin', 'red', 'vampire']) {
     assert.equal((await call('POST', '/api/register', { body: { name: 'Retired', password: PASSWORD, avatar } })).error.code, 'bad_avatar');
   }

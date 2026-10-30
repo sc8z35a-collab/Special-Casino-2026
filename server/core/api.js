@@ -74,6 +74,7 @@ import { createDiscord } from './discord.js';
 import { createLine, createLineBot } from './line.js';
 import { createLineFeed } from './line-feed.js';
 import { createGacha } from './gacha.js';
+import { createMedals, carGot, questClears } from './medals.js';
 import buildInfo from '../../version.json' with { type: 'json' };
 import { createOauth } from './oauth.js';
 import { createNotifier } from './notify.js';
@@ -298,6 +299,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     for (const r of q('SELECT item, count FROM items WHERE user_id = ?').all(userId)) out[r.item] = r.count;
     return out;
   }
+  // what a player gave another (money they received, spin tokens at their price), in $: the 功績's ベーシックインカム
+  const gave = (userId, currency, amount) => q('UPDATE users SET given = given + ? WHERE id = ?').run(currency === 'tokens' ? amount * RULES.tokenPrice : amount, userId);
   // the watchers of `hostId` (everyone in their home)
   const watcherIds = (hostId) => q('SELECT watcher_id FROM watchers WHERE target_id = ?').all(hostId).map((r) => r.watcher_id);
   const watching = (userId) => { const r = q('SELECT target_id FROM watchers WHERE watcher_id = ?').get(userId); return r ? r.target_id : 0; };
@@ -359,6 +362,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   let staffReused = () => {};
   const pins = createStaffPins({ q, clock: config.clock || Date.now, onMismatch: (u, pin) => staffReused(u, pin) });
   const isDeveloper = (u) => !!u && !!devKey && !u.npc && u.name_key === devKey && pins.holds(u);
+  // 功績 (server/core/medals.js): what the players did, as medals
+  const medals = createMedals({ q, tx, getUser, live, secret, addItems, itemsOf, balanceChanged, meDto, isDeveloper,
+    isOperator: (u) => ops.isOperator(u), clock: config.clock || Date.now, enabled: config.medals !== false });
+  // the medals looked at once what the player did is saved (a fault there never undoes it: it is only logged)
+  const medalCheck = (id) => afterCommit(() => medals.sync(id));
   const DEVICE_BANNED = 'この端末のほかのアカウントがBANされているため、このアカウントも利用できません';
   const when = (ms) => jst(ms).slice(0, 16);   // 2026/10/20 12:34 (Japan time)
   // a letter from the official bot: 【件名】, 〇〇様, the matter, Ice Smoker公式より
@@ -601,15 +609,19 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // it is now); the caller saves `json`. Finished quests wait to be received.
   function questStep(cur, events, boost = null, xpGain = 0) {
     const state = readQuests(cur.quests);
+    const cleared = questClears(state);
     const r = config.quests ? stepQuests(state, events, Date.now(), boost, questRewardRoll) : { changed: false, done: [] };
+    // every quest cleared, in all (the 功績's quest medals: server/core/medals.js)
+    if (r.done.length) state.cleared = cleared + r.done.length;
     const ticketGain = grantLevelTickets(state, cur.xp, cur.xp + xpGain, questTicketRoll);
     return { ...r, changed: r.changed || ticketGain['5h'] > 0 || ticketGain.day > 0, json: JSON.stringify(state), ready: questsReady(state),
-      tickets: questTickets(state), bonuses: questBonuses(state), ticketGain };
+      tickets: questTickets(state), bonuses: questBonuses(state), ticketGain, cleared: [cleared, cleared + r.done.length] };
   }
   // Tells the player what was finished (and how many wait to be received);
   // with VIP on, each one is VIP EXP.
   function questNotice(userId, r) {
     if (!r || (!r.done.length && !r.ticketGain['5h'] && !r.ticketGain.day)) return;
+    if (r.done.length) afterCommit(() => medals.passed(userId, 'clears', r.cleared[0], r.cleared[1]));
     // (the tickets when some were won, the bonuses when a quest was finished: they change with nothing else here)
     live.send(userId, 'quest', { done: r.done.map((x) => x.id), ready: r.ready, ...(r.ticketGain['5h'] || r.ticketGain.day ? { tickets: r.tickets } : {}),
       ...(r.done.length ? { bonuses: r.bonuses } : {}), xp: getUser(userId).xp });
@@ -746,9 +758,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   function balance(u) { return { tokens: u.tokens, dollars: u.dollars, coins: u.coins, rev: u.rev }; }
   // `vip`: the VIP level of someone whose VIP is on (the badge others see)
+  // `aura`: the シークレットオーラ around their icon (功績's 最強トレーダー, server/core/medals.js)
   function mini(u) {
-    const v = vipLevel(u);
-    return v === null ? { id: u.id, name: u.name, avatar: u.avatar } : { id: u.id, name: u.name, avatar: u.avatar, vip: v, vipBadge: vipBadgeLevel(u) };
+    const v = vipLevel(u), aura = u.aura ? { aura: 1 } : {};
+    return v === null ? { id: u.id, name: u.name, avatar: u.avatar, ...aura } : { id: u.id, name: u.name, avatar: u.avatar, ...aura, vip: v, vipBadge: vipBadgeLevel(u) };
   }
 
   /* ----- VIP (js/game/vip.js) ----- */
@@ -797,7 +810,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       id: u.id,
       name: u.name,
       avatar: u.avatar,
-      avatars: AVATARS.size ? [...AVATARS.values()].filter((a) => a.price === 0 || ownedAvatars(u).includes(a.id)).map((a) => a.id) : [],
+      ...(u.aura ? { aura: 1 } : {}),
+      avatars: AVATARS.size ? [...AVATARS.values()].filter((a) => (a.price === 0 && !a.given) || ownedAvatars(u).includes(a.id)).map((a) => a.id) : [],
       ...balance(u),
       ...(isDeveloper(u) ? { turbo: true } : {}),
       totalWon: u.total_won,
@@ -818,6 +832,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       questsReady: questsReady(quests),
       questTickets: questTickets(quests),
       questBonuses: questBonuses(quests),
+      // medals waiting for their tap (the 功績 icon's number)
+      medals: medals.ready(u.id),
       // the newest release: a browser running an older game asks the player to update
       release: RELEASE,
       // the beginner guide: everyone under 30 minutes of play until they finish it
@@ -850,8 +866,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!cur || cur.npc || cur.login_day === day) return null;
       const n = cur.login_days + 1;
       const step = (n - 1) % days.length;
-      q('UPDATE users SET login_day = ?, login_days = ?, tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(day, n, days[step], cur.id);
-      return { day: step + 1, amount: days[step], days, loginDays: n, next: nextLoginReset() };
+      // (a medal's extra, in %: server/core/medals.js)
+      const boost = medals.loginBoost(cur.id);
+      const amount = Math.round(days[step] * (100 + boost) / 100);
+      q('UPDATE users SET login_day = ?, login_days = ?, tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(day, n, amount, cur.id);
+      return { day: step + 1, amount, days, loginDays: n, next: nextLoginReset(), ...(boost ? { boost } : {}) };
     });
     if (paid) balanceChanged(userId);
     return paid;
@@ -961,6 +980,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       id: u.id,
       name: u.name,
       avatar: u.avatar,
+      ...(u.aura ? { aura: 1 } : {}),
       npc: u.npc || null,
       totalWon: u.total_won,
       biggestWin: u.biggest_win,
@@ -1048,6 +1068,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (m.kind !== 'transfer' || m.pending || !CURRENCIES.includes(m.currency) || !(m.amount > 0)) continue;
         q(`UPDATE users SET ${m.currency} = ${m.currency} + ?, rev = rev + 1 WHERE id = ?`).run(m.amount, userId);
         q('INSERT INTO transfers (id, from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(nextRecordId(q, 'transfers'), otherId, userId, m.currency, m.amount, Date.now());
+        gave(otherId, m.currency, m.amount);
       }
       const last = rows[rows.length - 1].id;
       q(`INSERT INTO conversations (user_id, other_id, last_id, unread, updated_at) VALUES (?, ?, ?, ?, ?)
@@ -1662,7 +1683,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const avatar = String(wanted || RULES.defaultAvatar);
     const choice = AVATARS.get(avatar);
     if (!choice) throw new ApiError(400, 'bad_avatar', 'アイコンを選んでください');
-    if (choice.price > 0) throw new ApiError(403, 'locked', 'このアイコンは登録後に購入できます');
+    if (choice.price > 0 || choice.given) throw new ApiError(403, 'locked', 'このアイコンは登録後に購入できます');
     if (config.registrationsPerIp > 0) {
       const n = q('SELECT COUNT(*) AS n FROM users WHERE created_ip = ? AND created_at > ?').get(req.ip, Date.now() - 86400000).n;
       if (n >= config.registrationsPerIp) throw new ApiError(429, 'too_many_accounts', 'この接続からはこれ以上アカウントを作成できません');
@@ -1719,8 +1740,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
     ['GET /api/me', (req, u) => {
       syncMilestones(u.id);
+      const bonus = loginBonus(u.id);
+      medalCheck(u.id);
       return {
-        loginBonus: loginBonus(u.id),
+        loginBonus: bonus,
         loginReset: nextLoginReset(),
         me: meDto(getUser(u.id)),
         blocked: blockedIds(u.id),
@@ -1754,7 +1777,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const idle = Number(body.idle);
       touchActive(u.id, Date.now() - (Number.isFinite(idle) ? Math.min(86400000, Math.max(0, idle)) : 0), false);
       const on = hubOn(u.id);
-      let quests = null, fight = 0, coop = null, boost = null, earned = 0, vipPay = 0;
+      let quests = null, fight = 0, coop = null, boost = null, earned = 0, vipPay = 0, counted = null;
       const result = tx(() => {
         const cur = getUser(u.id);
         if (cur.tokens < bet) throw new ApiError(409, 'insufficient', 'スピントークンが不足しています');
@@ -1841,11 +1864,16 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           ['revolver5', r.wins.some((w) => w.symbol === 'revolver' && w.count === 5) ? 1 : 0],
           ['coopEarn', hub ? earned : 0]], hub ? { '5h': on.booster } : null, xp);
         if (boost) boost.booster = on.booster;
+        // the 功績's counts (server/core/medals.js): a win, an ULTRA BIG WIN, the best combo, the $ the spin lost
+        const lost = Math.max(0, bet - r.total - back) * RULES.tokenPrice;
         q(`UPDATE users SET tokens = tokens - ? + ?, total_bet = total_bet + ?, total_won = total_won + ?,
            biggest_win = MAX(biggest_win, ?), spins = spins + 1, won_day = ?, day_won = ?, last_spin = ?, charm = ?,
-           quests = ?, xp = xp + ?, streak = ?, rev = rev + 1 WHERE id = ?`)
+           quests = ?, xp = xp + ?, streak = ?, wins = wins + ?, ultra_wins = ultra_wins + ?, best_combo = MAX(best_combo, ?),
+           casino_lost = casino_lost + ?, rev = rev + 1 WHERE id = ?`)
           .run(bet, r.total + back, bet, r.total, r.total, today, dayWon, last, r.charm ? 0 : cur.charm,
-            quests.json, xp, streak, cur.id);
+            quests.json, xp, streak, r.total > 0 ? 1 : 0, ultra ? 1 : 0, combo, lost, cur.id);
+        counted = [medals.spinCounts(cur), medals.spinCounts({ ...cur, total_won: cur.total_won + r.total, wins: cur.wins + (r.total > 0 ? 1 : 0),
+          ultra_wins: cur.ultra_wins + (ultra ? 1 : 0), best_combo: Math.max(cur.best_combo, combo), casino_lost: cur.casino_lost + lost })];
         if (config.logSpins) {
           q('INSERT INTO spins (user_id, bet, payout, line, created_at) VALUES (?, ?, ?, ?, ?)').run(cur.id, bet, r.total + back, r.line.join(','), Date.now());
         }
@@ -1855,6 +1883,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       questNotice(u.id, quests);
       jobsPaid(u.id, vipPay);
       syncMilestones(u.id);
+      afterCommit(() => medals.spun(u.id, ...counted));
       const after = getUser(u.id);
       // (as it is sent: what the game makes whole for itself is not, js/game/engine.js whole() — the grid as digits, no line, nothing that
       // is none)
@@ -1937,9 +1966,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     /* ----- friends ----- */
 
     ['GET /api/friends', (req, u) => {
-      const friends = q(`SELECT o.id, o.name, o.avatar, o.npc, o.vip_until, o.vip_exp, o.vip_trial_until, o.last_seen AS lastSeen, f.created_at AS since FROM friends f JOIN users o ON o.id = f.friend_id
+      const friends = q(`SELECT o.id, o.name, o.avatar, o.aura, o.npc, o.vip_until, o.vip_exp, o.vip_trial_until, o.last_seen AS lastSeen, f.created_at AS since FROM friends f JOIN users o ON o.id = f.friend_id
                          WHERE f.user_id = ? AND o.banned = 0 ORDER BY o.name_key`).all(u.id)
-        .map(({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial, ...r }) => ({ ...r, vip: vipLevel({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial }), vipBadge: vipBadgeLevel({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial }) }));
+        .map(({ npc, aura, vip_until: until, vip_exp: exp, vip_trial_until: trial, ...r }) => ({ ...r, ...(aura ? { aura: 1 } : {}), vip: vipLevel({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial }), vipBadge: vipBadgeLevel({ npc, vip_until: until, vip_exp: exp, vip_trial_until: trial }) }));
       const incoming = q(`SELECT o.id, o.name, o.avatar, r.created_at AS at FROM friend_requests r JOIN users o ON o.id = r.from_id
                           WHERE r.to_id = ? AND o.banned = 0 ORDER BY r.created_at DESC`).all(u.id);
       const outgoing = q(`SELECT o.id, o.name, o.avatar, r.created_at AS at FROM friend_requests r JOIN users o ON o.id = r.to_id
@@ -2110,13 +2139,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           if (row.kind === 'transfer' && CURRENCIES.includes(row.currency)) {
             q(`UPDATE users SET ${row.currency} = ${row.currency} + ?, rev = rev + 1 WHERE id = ?`).run(row.amount, u.id);
             const from = getUser(row.sender_id);
-            if (from && !from.npc) q('INSERT INTO transfers (id, from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(nextRecordId(q, 'transfers'), row.sender_id, u.id, row.currency, row.amount, now);
+            if (from && !from.npc) {
+              q('INSERT INTO transfers (id, from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(nextRecordId(q, 'transfers'), row.sender_id, u.id, row.currency, row.amount, now);
+              gave(row.sender_id, row.currency, row.amount);
+            }
           } else if (row.kind === 'gift') {
             const car = q('SELECT * FROM cars WHERE id = ? AND owner_id = 0').get(row.amount);
             if (!car) throw new ApiError(409, 'gone', 'この車はもうありません');
             const cur = getUser(u.id);
             if (carCount(u.id) >= garageSize(cur)) throw new ApiError(409, 'garage_full', `ガレージがいっぱいです（${garageSize(cur)}台）。空きを作ってから受け取ってください`);
             q('UPDATE cars SET owner_id = ?, acquired_at = ? WHERE id = ?').run(u.id, now, car.id);
+            carGot(q, u.id, car.id);
           } else if (row.kind === 'item' && SHOP.has(row.body)) {
             const item = SHOP.get(row.body);
             const have = itemCount(u.id, item.id);
@@ -2138,6 +2171,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           detail: { messageId: m.id, kind: m.kind, amount: m.amount, currency: m.currency, what: m.body, sentAt: m.created_at }
         });
         if (m.kind === 'item') live.send(u.id, 'items', { items: itemsOf(u.id) });
+        // (a car for this player; money the sender gave a player)
+        if (m.kind === 'gift') medalCheck(u.id);
+        if (m.kind === 'transfer') medalCheck(m.sender_id);
         return { id: m.id, kind: m.kind, amount: m.amount, currency: m.currency, me: meDto(m.kind === 'transfer' ? balanceChanged(u.id) : getUser(u.id)) };
       });
     }],
@@ -2148,7 +2184,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const body = await req.json();
       const a = AVATARS.get(String(body.id || ''));
       if (!a) throw new ApiError(400, 'bad_avatar', 'アイコンが見つかりません');
-      if (a.price > 0 && !ownedAvatars(u).includes(a.id)) throw new ApiError(403, 'locked', 'このアイコンはまだ持っていません');
+      if ((a.price > 0 || a.given) && !ownedAvatars(u).includes(a.id)) throw new ApiError(403, 'locked', 'このアイコンはまだ持っていません');
       q('UPDATE users SET avatar = ? WHERE id = ?').run(a.id, u.id);
       return { me: meDto(getUser(u.id)) };
     }],
@@ -2316,12 +2352,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const vipPay = addVipExp(cur, VIP_RULES.exp.car);
         const now = Date.now();
         const id = Number(q('INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid) VALUES (?, ?, 0, ?, ?, ?)').run(cur.id, car.id, now, now, cost).lastInsertRowid);
+        carGot(q, cur.id, id);
         jobsPaid(u.id, vipPay);
         track(u.id, [['carBuy', 1]]);
         syncMilestones(u.id);
         afterSpend(u.id);
         return id;
       });
+      medalCheck(u.id);
       const me = meDto(balanceChanged(u.id));
       return { me, paid: cost, car: { id, model: car.id, acquiredAt: Date.now(), from: null, paid: cost, used: false, offer: 0 } };
     }],
@@ -2443,6 +2481,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (car.rent_earned) q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(car.rent_earned, row.sender_id);
         q(`UPDATE cars SET owner_id = ?, from_id = ?, acquired_at = ?, paid = ?, used = 1, via = 'friend', offer_id = 0, rent_earned = 0, rent_last = '' WHERE id = ?`)
           .run(cur.id, row.sender_id, Date.now(), row.amount, car.id);
+        carGot(q, cur.id, car.id);
         q("UPDATE messages SET state = 'sold' WHERE id = ?").run(id);
         const sold = insertMessage({ channel: row.channel, sender: cur, recipient: row.sender_id, kind: 'car_sold', amount: row.amount, currency: 'dollars',
           body: JSON.stringify({ car: car.id, model: car.model, offer: id }) });
@@ -2455,6 +2494,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       cardChanged(r.row, { state: 'sold' });
       deliverDm(r.sold, u.id, r.row.sender_id);
       if (r.earned) balanceChanged(r.row.sender_id);
+      medalCheck(u.id);
       const me = meDto(balanceChanged(u.id));
       return { state: 'sold', car: r.carId, me };
     }],
@@ -2745,9 +2785,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         q('UPDATE users SET tokens = tokens - ?, rev = rev + 1 WHERE id = ?').run(amount, u.id);
         q('UPDATE users SET tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(amount, to);
         q('INSERT INTO transfers (id, from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(nextRecordId(q, 'transfers'), u.id, to, 'tokens', amount, Date.now());
+        gave(u.id, 'tokens', amount);
         track(u.id, Object.entries(fruits));
         afterSpend(u.id);
       });
+      medalCheck(u.id);
       const tip = { from: mini(u), fruits, amount };
       live.send(to, 'tip', tip);
       // everyone in the home sees the fruit fly
@@ -2947,11 +2989,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         }
         const modes = VIP.intervals(cur.vip_modes).filter(p => p.end > now);
         if (mode !== 'normal') modes.push({ start, end: until, mode });
-        q('UPDATE users SET coins = coins - ? + ?, vip_until = ?, vip_modes = ?, quests = ?, rev = rev + 1 WHERE id = ?').run(c.coins, c.back, until, JSON.stringify(modes), quests, cur.id);
+        // (the coins spent: the 功績's 消費者, server/core/medals.js)
+        q('UPDATE users SET coins = coins - ? + ?, coins_spent = coins_spent + ?, vip_until = ?, vip_modes = ?, quests = ?, rev = rev + 1 WHERE id = ?')
+          .run(c.coins, c.back, c.coins, until, JSON.stringify(modes), quests, cur.id);
         if (s.pay) track(u.id, [['jobpay', s.pay]]);
         syncMilestones(u.id);
         return { ...c, paid: s.pay, start, until };
       });
+      medalCheck(u.id);
       const me = meDto(balanceChanged(u.id));
       if (resetTickets) live.send(u.id, 'quest', { changed: true, ready: me.questsReady, tickets: me.questTickets, bonuses: me.questBonuses, xp: me.xp });
       return { days, bonus, coins: r.coins, back: r.back, resetTickets, packs: cart ? cart.packs : [], paid: r.paid, mode, startsAt: r.start, endsAt: r.until, me };
@@ -3573,6 +3618,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     });
     live.send(requester.id, 'friend', { type: 'accepted', user: mini(accepter) });
     live.send(accepter.id, 'friend', { type: 'added', user: mini(requester), pending: pendingRequests(accepter.id) });
+    medalCheck(requester.id);
+    medalCheck(accepter.id);
     const dto = msgDto(m);
     live.send(requester.id, 'msg', { ...dto, to: requester.id, peer: accepter.id, unread: unreadTotal(requester.id) });
     live.send(accepter.id, 'msg', { ...dto, to: accepter.id, peer: requester.id });
@@ -3727,6 +3774,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // 金の生る木
   const trees = createTrees({ q, tx, getUser, balance, balanceChanged, clock: config.clock || Date.now,
     onChange: () => host?.reschedule?.(nextHousekeeping()),
+    onHarvest: medalCheck,
     onReady: tree => {
       live.send(tree.userId, 'tree', { type: 'ready', ...tree });
       phone(tree.userId, { kind: 'tree', title: '金の生る木', body: tree.name + 'が収穫できます', tag: `tree:${tree.id}:${tree.cycleAt}`, open: 'tree' });
@@ -3742,11 +3790,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     },
     // (an order waiting: the host looks again within minutes, server/cloudflare/casino.js)
     onDue: (at) => host?.stocksSoon?.(at),
+    onTrade: medalCheck,
     paused: () => emergency.locked() || emergency.stopped() });
   registry.add('stocks', stocks.routes);
-  const gacha = createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend, settleVip: settleVipJobs,
+  const gacha = createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend, settleVip: settleVipJobs, onSpin: medalCheck,
     vipChanged: (id, pay) => { if (pay) jobsPaid(id, pay); else balanceChanged(id); return getUser(id); } });
   registry.add('gacha', gacha.routes);
+  registry.add('medals', medals.routes);
   // 開発者支援 (real money for ロイヤルコイン), the developer's vault and the ones operators share
   const pay = createPay({ q, tx, live, config, getUser, balanceChanged, official, opsLog, isDeveloper });
   registry.add('pay', pay.routes);
@@ -4033,6 +4083,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const bonus = loginBonus(userId);
     try { accessDayGifts(userId); } catch (e) { console.error('access days', e); }
     syncMilestones(userId);
+    medalCheck(userId);
     const u = getUser(userId);
     const out = {
       loginBonus: bonus,

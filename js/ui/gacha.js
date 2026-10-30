@@ -12,6 +12,8 @@
   function button(text, run, cls) { var b = el('button', cls || 'mini-btn', text); b.type = 'button'; b.disabled = busy; b.addEventListener('click', run); return b; }
   function money(n) { return '$' + BR.util.fmt(n); }
   function price(count) { return state.prices[kind][count === 1 ? 'single' : count === 3 ? 'three' : 'ten']; }
+  // the free tickets (功績's rewards) for a kind: one a pull
+  function tickets(k) { return state && state.items && state.items.tickets ? state.items.tickets[k || kind] || 0 : 0; }
   function boostOn() { return G.events(state.now + performance.now() - receivedAt).boost.on; }
   function apply(r) { state = r; receivedAt = performance.now(); if (r.me) { BR.social.setMe(r.me); BR.app.serverBalance(r.me, true); } }
   function rewardArt(r) {
@@ -24,7 +26,7 @@
     clearTimer(); pending = null; lastDraw = r; busy = false;
     if (!shown()) { reveal.hidden = true; return; }
     var list = ui.results, fragment = document.createDocumentFragment();
-    document.getElementById('gacha-result-name').textContent = G.kinds.filter(function (k) { return k.id === r.kind; })[0].name + ' ' + r.count + '連';
+    document.getElementById('gacha-result-name').textContent = G.kinds.filter(function (k) { return k.id === r.kind; })[0].name + ' ' + r.count + '連' + (r.free ? '（無料券）' : '');
     var bonus = r.pulls.reduce(function (n, p) { return n + (p.bonus || 0); }, 0);
     var bonusBox = document.getElementById('gacha-bonus'); bonusBox.replaceChildren();
     if (bonus) { bonusBox.appendChild(picture(A.rewards.royal)); bonusBox.appendChild(el('span', '', '+' + bonus)); }
@@ -47,13 +49,13 @@
     if (skipped || reduced() || document.hidden || !shown()) { showResults(r); return; }
     timer = setTimeout(function () { showResults(r); }, Math.max(0, 900 - (Date.now() - started)));
   }
-  function begin(count, quoted, chosen, gen) {
+  function begin(count, quoted, chosen, gen, free) {
     if (gen !== generation || !shown()) { busy = false; render(); return; }
     pending = null; lastDraw = null; skipped = false; started = Date.now(); clearTimer();
     reveal.classList.remove('gc-revealed'); reveal.classList.toggle('gc-no-motion', reduced()); reveal.hidden = false;
     document.getElementById('gacha-results').replaceChildren(); document.getElementById('gacha-status').textContent = '';
     K.sfx('spin');
-    api.gachaSpin(chosen, count, quoted).then(function (r) {
+    api.gachaSpin(chosen, count, quoted, free).then(function (r) {
       if (gen !== generation) return;
       apply(r); pending = r; lastDraw = r; settleVisual();
     }, function (e) {
@@ -62,20 +64,27 @@
       if (e.code === 'price_changed') api.gacha().then(function (r) { if (gen === generation) { apply(r); render(); } }, K.fail);
     });
   }
-  function spin(count) {
+  // `free`: with the free tickets, one a pull
+  function spin(count, free) {
     if (busy || !state) return;
-    var retry = api.pendingGacha(), quoted = retry ? retry.price : price(count), chosen = retry ? retry.kind : kind, gen = generation;
-    if (retry) { count = retry.count; kind = retry.kind; }
+    var retry = api.pendingGacha();
+    if (retry) { count = retry.count; kind = retry.kind; free = retry.ticket; }
+    var quoted = retry ? retry.price : free ? 0 : price(count), chosen = kind, gen = generation;
     busy = true; render();
     document.getElementById('confirm').classList.add('gc-confirm');
     K.confirmBox(function (box) {
       box.appendChild(el('strong', 'gc-confirm-title', '本当に引きますか？'));
       box.appendChild(el('span', 'gc-confirm-choice', tier().name + ' ' + count + '連 · ' + count * 3 + '枠'));
-      box.appendChild(el('span', 'gc-confirm-price', money(quoted)));
+      if (free) {
+        var t = el('span', 'gc-confirm-price gc-confirm-ticket');
+        t.appendChild(picture(A.tickets[chosen]));
+        t.appendChild(el('span', '', '無料券 ×' + count));
+        box.appendChild(t);
+      } else box.appendChild(el('span', 'gc-confirm-price', money(quoted)));
     }, 'YES', 'NO').then(function (ok) {
       document.getElementById('confirm').classList.remove('gc-confirm');
       if (gen !== generation) return;
-      if (ok) begin(count, quoted, chosen, gen); else { busy = false; render(); }
+      if (ok) begin(count, quoted, chosen, gen, free); else { busy = false; render(); }
     });
   }
   function use(item) {
@@ -91,7 +100,9 @@
       var b = button('', function () { kind = v.id; render(); }, 'gc-tier');
       b.dataset.kind = v.id; b.setAttribute('aria-label', v.name);
       var art = el('span', 'gc-tier-art'); art.appendChild(picture(A.tiers[v.id])); b.appendChild(art);
-      b.appendChild(el('strong', '', v.name.replace('ガチャ', ''))); tiers.appendChild(b); controls.tiers.push(b);
+      b.appendChild(el('strong', '', v.name.replace('ガチャ', '')));
+      var ticket = el('span', 'gc-tier-ticket'); ticket.hidden = true; ticket.appendChild(picture(A.tickets[v.id])); ticket.appendChild(el('b'));
+      b.appendChild(ticket); tiers.appendChild(b); controls.tiers.push(b);
     }); fragment.appendChild(tiers);
     var hero = el('div', 'gc-hero'); hero.appendChild(picture(A.icon, 'gc-hero-machine')); fragment.appendChild(hero);
     var purchases = el('div', 'gc-purchases');
@@ -105,7 +116,15 @@
       box.appendChild(b); box.appendChild(cost); box.appendChild(el('small', 'gc-slots', count * 3 + '枠'));
       controls.bundles.push({ button: b, price: cost, count: count });
       purchases.appendChild(box);
-    }); fragment.appendChild(purchases);
+    });
+    // 無料で引く: one free ticket, one pull (shown while the chosen gacha has tickets)
+    var free = el('div', 'gc-bundle gc-free'), fb = button('', function () { spin(1, true); }, 'gc-art-button gc-free-button');
+    var fimg = picture(A.tickets[kind]); fb.appendChild(fimg); fb.appendChild(el('span', 'gc-free-label', '無料で引く'));
+    var fcount = el('strong', 'gc-free-count');
+    free.appendChild(fb); free.appendChild(fcount); free.appendChild(el('small', 'gc-free-slots', '3枠'));
+    controls.free = { box: free, button: fb, img: fimg, count: fcount };
+    purchases.appendChild(free);
+    fragment.appendChild(purchases);
     ui.controls.replaceChildren(fragment);
   }
   function render() {
@@ -118,9 +137,18 @@
       b.disabled = busy || !!retry;
       var pressed = String(kind === b.dataset.kind);
       if (b.getAttribute('aria-pressed') !== pressed) b.setAttribute('aria-pressed', pressed);
+      var n = tickets(b.dataset.kind), tag = b.querySelector('.gc-tier-ticket');
+      tag.hidden = !n;
+      tag.lastChild.textContent = '×' + n;
     });
+    var have = tickets(), free = controls.free, freeRetry = !!retry && retry.ticket;
+    free.box.hidden = !have && !freeRetry;
+    if (free.img.getAttribute('src') !== A.tickets[kind]) free.img.src = A.tickets[kind];
+    free.count.textContent = '無料券 ×' + have;
+    free.button.disabled = busy || (!!retry && !freeRetry) || (!have && !freeRetry);
+    free.button.setAttribute('aria-label', '無料で引く 無料券' + have + '枚');
     controls.bundles.forEach(function (v) {
-      var recovering = retry && retry.count === v.count;
+      var recovering = retry && !retry.ticket && retry.count === v.count;
       var cost = recovering ? retry.price : price(v.count), insufficient = !recovering && state.me && state.me.dollars < cost;
       var text = money(cost);
       if (v.price.textContent !== text) {
