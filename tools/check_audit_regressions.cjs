@@ -64,6 +64,47 @@ async function checkMarketDialogs(page, s, player, first, second) {
   await page.evaluate(() => { for (const method of ['cars', 'carOffer', 'present']) BR.api[method] = window.auditMarket[method]; delete window.auditMarket; BR.live.connect(); });
   console.log('PASS real sale and present dialogs retire canceled loads and delayed settlements, preserve replacement recipients and still submit current actions once');
 }
+async function checkDiaryComments(page, s, developer, player, other) {
+  const published = await s.call('POST', '/api/ops/diary', { token: developer.token,
+    body: { title: 'Audit private comments', text: 'Diary delivery race coverage', reward: 0 } });
+  assert.equal(published.status, 200);
+  await page.evaluate(async () => {
+    BR.kit.closeModals(); BR.live.close(); await BR.resources.load('diary'); await BR.lazy.load('diary');
+    const original = BR.api.diaryComments; window.auditDiary = { original, next: 0, completed: [] };
+    BR.api.diaryComments = function (...args) { const id = ++window.auditDiary.next; return original(...args).then(r => { window.auditDiary.completed.push(id); return r; }); };
+  });
+  let heldRead, heldSend, enterRead, enterSend, reads = 0, sends = 0;
+  const readEntered = new Promise(resolve => { enterRead = resolve; }), sendEntered = new Promise(resolve => { enterSend = resolve; });
+  const routePattern = '**/api/diary/comments*';
+  await page.route(routePattern, route => {
+    if (route.request().method() === 'GET' && ++reads === 1) { heldRead = route; enterRead(); }
+    else if (route.request().method() === 'POST' && ++sends === 1) { heldSend = route; enterSend(); }
+    else return route.continue();
+  });
+  await page.evaluate(() => BR.diary.open());
+  const card = page.locator('#diary-list details').filter({ hasText: 'Audit private comments' });
+  await card.locator('summary').click(); await readEntered;
+  const oldReply = await heldRead.fetch(); assert.deepEqual((await oldReply.json()).comments, []);
+  const input = card.locator('textarea'), submit = card.locator('button[type="submit"]');
+  await input.fill('first saved comment'); await submit.click(); await sendEntered;
+  const sentReply = await heldSend.fetch(); assert.equal(sentReply.status(), 200);
+  await input.fill('new unsent draft'); await heldSend.fulfill({ response: sentReply });
+  await card.locator('.diary-own-comment').filter({ hasText: 'first saved comment' }).waitFor();
+  assert.equal(await input.inputValue(), 'new unsent draft');
+  await heldRead.fulfill({ response: oldReply }); await page.waitForFunction(() => window.auditDiary.completed.includes(1));
+  assert.equal(await card.locator('.diary-own-comment').count(), 1);
+  assert.ok((await card.locator('.diary-own-comments').textContent()).includes('first saved comment'));
+  await submit.click(); await page.waitForFunction(() => document.querySelector('#diary-list textarea').value === '');
+  await page.waitForFunction(() => document.querySelectorAll('#diary-list .diary-own-comment').length === 2);
+  assert.equal(s.app.db.prepare('SELECT COUNT(*) AS n FROM diary_comments WHERE post_id=? AND user_id=?').get(published.id, player.me.id).n, 2);
+  const privateReply = await s.call('GET', '/api/diary/comments?post=' + published.id, { token: other.token });
+  assert.equal(privateReply.status, 200); assert.deepEqual(privateReply.comments, []);
+  const developerReply = await s.call('GET', '/api/ops/diary/comments?post=' + published.id, { token: developer.token });
+  assert.equal(developerReply.status, 200); assert.equal(developerReply.comments.length, 2);
+  await page.unroute(routePattern);
+  await page.evaluate(() => { BR.api.diaryComments = window.auditDiary.original; delete window.auditDiary; BR.kit.closeModals(); BR.live.connect(); });
+  console.log('PASS real diary comments preserve new drafts, reject older reads and keep replies private');
+}
 (async () => {
   const { startServer } = await import(path.resolve(__dirname, '../server/test/helpers.js'));
   const s = await startServer({ operators: ['taku', 'AuditMod'] }); let browser;
@@ -168,6 +209,7 @@ async function checkMarketDialogs(page, s, player, first, second) {
     });
     assert.equal(orderedProfile.profile, orderedProfile.expected); assert.equal(orderedProfile.bank, orderedProfile.expected); assert.equal(orderedProfile.bought, orderedProfile.expectedBought);
     await checkMarketDialogs(accountPage, s, player, nextPlayer, developer);
+    await checkDiaryComments(accountPage, s, developer, player, nextPlayer);
     await accountPage.evaluate(() => { BR.kit.closeModals(); BR.social.openProfile(BR.social.me()); });
     await accountPage.locator('#profile [data-act="logout"]').waitFor();
     await accountPage.evaluate(() => { BR.push.forget = () => new Promise(resolve => { window.auditFinishLogout = resolve; }); });

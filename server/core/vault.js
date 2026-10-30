@@ -307,11 +307,24 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   // an operator; the developer looks with their login alone and changes
   // anything (`write`) with their ticket (403, not 401: the site stays
   // logged in, only the changes wait for the code)
-  function need(req, u, write = false) {
+  const accessChecks = new WeakMap();
+  function checkAccess(req, u, write) {
     ops.need(u);
     guarded(u);
     if (write && isDeveloper(u) && !ticketOk(req, u)) throw locked();
+  }
+  function need(req, u, write = false) {
+    checkAccess(req, u, write);
     rate(limits.work, u.id);
+    // The API revalidates after reading a slow body. Preserve the vault's
+    // additional ticket/access checks at that same boundary, without charging
+    // the request limiter a second time or growing a chain of callbacks.
+    let state = accessChecks.get(req);
+    if (!state && typeof req.revalidate === 'function') {
+      state = { user: u, write, previous: req.revalidate.bind(req) };
+      accessChecks.set(req, state);
+      req.revalidate = () => { state.previous(); checkAccess(req, state.user, state.write); };
+    } else if (state && write) state.write = true;
   }
   // whether `u` may change things now (the developer: with the ticket)
   const unlocked = (req, u) => !isDeveloper(u) || ticketOk(req, u);
@@ -1204,8 +1217,15 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const n = pieceNo(f, req.query.get('n'));
       if (n === 0) tookOut(req, u, f);
       // `raw=1`: the bytes themselves (and with `head=<bytes>` only the first of them, at most 64KB)
-      if (req.query.get('raw') === '1') return pieceRaw(f, n, Math.min(HEAD_MAX, Math.max(0, Math.floor(Number(req.query.get('head')) || 0))));
-      return piece(f, n);
+      const readEpoch = epoch();
+      const result = req.query.get('raw') === '1'
+        ? await pieceRaw(f, n, Math.min(HEAD_MAX, Math.max(0, Math.floor(Number(req.query.get('head')) || 0))))
+        : await piece(f, n);
+      req.revalidate?.();
+      ops.need(u); guarded(u);
+      const current = theFile(u, f.id, '', req);
+      if (epoch() !== readEpoch || (current.storage_generation || 0) !== (f.storage_generation || 0)) throw restarted();
+      return result;
     },
 
     // files (each with its light copy) out of the vault for good: `id`, or
@@ -1606,9 +1626,24 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       if (f && taking) {
         // (counted before it is read: past the link's limit nothing is fetched from the bucket)
         const no = pieceNo(f, n);
-        took(l, pieceLen(f, no));
-        if (no === 0) saw(l, f.parent ? fileRow(f.parent) || f : f);
-        return piece(f, no);
+        const bytes = pieceLen(f, no), readEpoch = epoch();
+        took(l, bytes);
+        try {
+          const result = await piece(f, no);
+          if (epoch() !== readEpoch) throw gone();
+          const currentLink = linkOf(tokenOf(req)), current = fileRow(f.id), currentTop = all ? null : fileRow(l.file_id);
+          if (!all && (!currentTop || currentTop.space || !currentTop.done_at || currentTop.implemented_at)) throw gone();
+          if (!current || current.space || !current.done_at || current.implemented_at ||
+              (current.storage_generation || 0) !== (f.storage_generation || 0) ||
+              (!all && current.id !== currentLink.file_id && current.parent !== currentLink.file_id)) throw noFile();
+          if (no === 0) saw(currentLink, current.parent ? fileRow(current.parent) || current : current);
+          return result;
+        } catch (error) {
+          // Reserve before fetching so concurrent readers cannot exceed the
+          // quota; failed/refused reads have delivered no bytes to the caller.
+          if (epoch() === readEpoch) q('UPDATE vault_links SET bytes_used = MAX(0, bytes_used - ?) WHERE token_hash = ?').run(bytes, l.token_hash);
+          throw error;
+        }
       }
       if (f && req.query.get('preview')) {
         const picture = pictureOf(f);
