@@ -1176,6 +1176,31 @@ MIGRATIONS.push([
   "CREATE INDEX stock_orders_done ON stock_orders(done_at) WHERE status != 'open'"
 ]);
 
+// 功績 (server/core/medals.js): the medals each player has (claimed_at: the
+// reward received, 0 until the tap) and the counts they come from that nothing
+// kept before: wins, ULTRA BIG WINs, the best combo, $ lost at the casino,
+// cars owned in all (cars.owners: who has had each car, ",3,8,", so one handed
+// back and forth counts once), harvests, gacha pulls, ロイヤルコイン spent, $
+// given to players, and each holding's gains (its profits, the losses left
+// out); medal_init: what a player did before the medals is counted once;
+// aura: the シークレットオーラ around the player's icon (最強トレーダー's).
+MIGRATIONS.push([
+  `CREATE TABLE medals (
+     user_id    INTEGER NOT NULL,
+     medal      TEXT    NOT NULL,
+     earned_at  INTEGER NOT NULL,
+     claimed_at INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (user_id, medal)
+   ) WITHOUT ROWID`,
+  ...['wins', 'ultra_wins', 'best_combo', 'casino_lost', 'cars_got', 'harvests', 'gacha_pulls', 'coins_spent', 'given', 'medal_init', 'aura']
+    .map((column) => `ALTER TABLE users ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0`),
+  "ALTER TABLE cars ADD COLUMN owners TEXT NOT NULL DEFAULT ''",
+  "UPDATE cars SET owners = ',' || CASE WHEN owner_id > 0 THEN owner_id || ',' ELSE '' END || CASE WHEN from_id > 0 AND from_id != owner_id THEN from_id || ',' ELSE '' END",
+  'ALTER TABLE stock_holdings ADD COLUMN gains INTEGER NOT NULL DEFAULT 0',
+  `UPDATE stock_holdings SET gains = MAX(realized, COALESCE((SELECT SUM(o.profit) FROM stock_orders o
+     WHERE o.user_id = stock_holdings.user_id AND o.company = stock_holdings.company AND o.status = 'filled' AND o.profit > 0), 0))`
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
@@ -1186,7 +1211,7 @@ export const TABLES = ['users', 'sessions', 'game_login_locks', 'chat_filter_str
   'diary_posts', 'diary_reads', 'diary_reactions', 'diary_comments', 'diary_claims', 'ops_mfa',
   'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'sec_identity', 'oauth_identities',
   'line_feed_targets', 'line_feed_jobs', 'line_feed_deliveries', 'line_feed_rewards', 'line_feed_claims',
-  'stock_state', 'stock_candles', 'stock_holdings', 'stock_accounts', 'stock_orders', 'meta'];
+  'stock_state', 'stock_candles', 'stock_holdings', 'stock_accounts', 'stock_orders', 'medals', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

@@ -48,10 +48,12 @@ npm test        # server/testの検証
 - [DEV13：追加クエストと収益の回収待ち](docs/handbook/35.md)
 - [金の生る木の3D対応（指定素材の一部は未取り込み）](docs/handbook/36.md)
 - [投資（RIRU STUDIO・Ice Smoker）](docs/handbook/37.md)
+- [功績（メダル）](docs/handbook/38.md)
 
 - [開発のお知らせ](README_DEV_NEWS.md)
 - [LINE配信・ガチャ](README_LINE_FEED.md)
 - [改善項目の実装記録](docs/implementation-progress.md)
+- [功績：非公開の資料（配信されない）](docs/medals-hidden.md)
 
 説明の原稿は `docs/handbook/` と `README_DEV_NEWS.md` で管理します。運営サイトのDEV UNIT用ファイルは `node tools/sync_devunit_readme.cjs` で生成します。`--check` は生成物との不一致を検出します。
 

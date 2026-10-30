@@ -47,7 +47,7 @@ const SIDES = new Set(['buy', 'sell']);
 const TYPES = new Set(['market', 'limit', 'stop']);
 const ORDER_KEY = /^[A-Za-z0-9_-]{8,64}$/;
 const RATE = new Map(COMPANIES.map((c) => [c.id, c.dividend]));
-const ZERO = { shares: 0, cost: 0, realized: 0, dividends: 0, frac: 0, acc_day: 0, acc_at: 0, acc: 0 };
+const ZERO = { shares: 0, cost: 0, realized: 0, gains: 0, dividends: 0, frac: 0, acc_day: 0, acc_at: 0, acc: 0 };
 // an order that trades on the way down (a limit buy, a stop sell); the others on the way up
 const falls = (o) => (o.side === 'buy') === (o.type === 'limit');
 
@@ -59,7 +59,8 @@ export function orderDto(o) {
   };
 }
 
-export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChanged, live, secret, rate = () => {}, clock = Date.now, onFill = () => {}, onDue = () => {}, paused = () => false }) {
+export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChanged, live, secret, rate = () => {}, clock = Date.now, onFill = () => {}, onDue = () => {},
+  onTrade = () => {}, paused = () => false }) {
   const key = keyFrom(secret, 'stocks');
   const paths = new Map(COMPANIES.map((c) => [c.id, pathOf(key, c)]));
   // each company's path as far as it was worked out, with the checkpoint it came from (set once a transaction commits)
@@ -223,6 +224,8 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
       h.shares -= o.shares;
       profit = amount - out;
       h.realized += profit;
+      // (the profits alone, for the 功績's investing medals: server/core/medals.js)
+      if (profit > 0) h.gains += profit;
       q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(amount, o.user_id);
     }
     save(h);
@@ -243,7 +246,7 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
       } catch (e) { console.error('stock notice failed', e); }
     }
     for (const id of users) {
-      try { if (getUser(id)) balanceChanged(id, true); } catch (e) { console.error('stock notice failed', e); }
+      try { if (getUser(id)) { balanceChanged(id, true); onTrade(id); } } catch (e) { console.error('stock notice failed', e); }
     }
   }
 
@@ -251,10 +254,10 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
 
   const holdingOf = (userId, company) => q('SELECT * FROM stock_holdings WHERE user_id = ? AND company = ?').get(userId, company) || { user_id: userId, company, ...ZERO };
   function save(h) {
-    q(`INSERT INTO stock_holdings (user_id, company, shares, cost, realized, dividends, frac, acc_day, acc_at, acc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(user_id, company) DO UPDATE SET shares = excluded.shares, cost = excluded.cost, realized = excluded.realized, dividends = excluded.dividends,
+    q(`INSERT INTO stock_holdings (user_id, company, shares, cost, realized, gains, dividends, frac, acc_day, acc_at, acc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, company) DO UPDATE SET shares = excluded.shares, cost = excluded.cost, realized = excluded.realized, gains = excluded.gains, dividends = excluded.dividends,
          frac = excluded.frac, acc_day = excluded.acc_day, acc_at = excluded.acc_at, acc = excluded.acc`)
-      .run(h.user_id, h.company, h.shares, h.cost, h.realized, h.dividends, h.frac, h.acc_day, h.acc_at, h.acc);
+      .run(h.user_id, h.company, h.shares, h.cost, h.realized, h.gains, h.dividends, h.frac, h.acc_day, h.acc_at, h.acc);
   }
   // The holding's dividends up to second `t`: the share-seconds of the day so
   // far are counted, and each day that ended is paid. (`ctx`: the second being
@@ -537,6 +540,7 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
       });
       if (out.order.type !== 'market' && out.order.status === 'open') onDue(now + LOOK_MS);
       balanceChanged(u.id, true);
+      if (out.order.status === 'filled') onTrade(u.id);
       return { ...out, me: meDto(getUser(u.id)) };
     },
 
@@ -577,6 +581,7 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
         return { paid, ...view(u.id, st, now, holdings) };
       });
       if (out.paid) balanceChanged(u.id);
+      onTrade(u.id);
       return { ...out, me: meDto(getUser(u.id)) };
     },
 

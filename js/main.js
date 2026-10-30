@@ -597,6 +597,12 @@
       BR.sfx.play('click');
       BR.gacha.open();
     });
+    // 功績 (online): the medals
+    press($('#btn-medals'), function () {
+      if (game.busy()) { BR.sfx.play('deny'); return; }
+      BR.sfx.play('click');
+      BR.medals.open();
+    });
     // the plus: ロイヤルコイン (the token shop while offline)
     press($('#w-plus'), function () {
       if (BR.api.online && BR.support) { if (game.busy()) { BR.sfx.play('deny'); return; } BR.sfx.play('click'); BR.support.open(); return; }
@@ -734,6 +740,7 @@
     BR.news.init();
     BR.diary.init();
     BR.gacha.init();
+    BR.feats.init();
     BR.lineReward.init();
     BR.call.init();
     BR.watch.init();

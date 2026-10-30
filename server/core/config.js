@@ -56,6 +56,8 @@ export function configFrom(env = {}, overrides = {}) {
     npcGifts: flag(env, 'NPC_GIFTS', true),
     // 登録者数の記念 (js/game/config.js: milestones); off only for tests that count messages exactly.
     milestones: flag(env, 'MILESTONES', true),
+    // 功績 (server/core/medals.js); off only for tests that count money or live events exactly.
+    medals: flag(env, 'MEDALS', true),
     // Private daily R2 vault snapshots, seven retained; a full recovery drill weekly.
     vaultSnapshots: flag(env, 'VAULT_SNAPSHOTS', true),
     vaultSnapshotHours: int(env, 'VAULT_SNAPSHOT_HOURS', 24),

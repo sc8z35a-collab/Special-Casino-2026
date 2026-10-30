@@ -6,6 +6,11 @@
 .toast { white-space: normal; text-align: center; }
 .avatar.pic { background: #1d1d22 center / cover no-repeat; font-size: 0; }
 .avatar.rare { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .25), 0 0 0 3px #e5262b, 0 0 16px rgba(255, 60, 60, .6); }
+/* シークレットオーラ (a 功績 reward): a ring of light around the icon, wherever it is shown */
+.avatar.aura::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 2px #f3cf6b, 0 0 12px 4px rgba(176, 102, 255, .85), 0 0 26px 8px rgba(255, 214, 120, .35); animation: av-aura 2.6s ease-in-out infinite; }
+@keyframes av-aura { 50% { box-shadow: 0 0 0 2px #fff0bd, 0 0 18px 7px rgba(200, 132, 255, 1), 0 0 36px 12px rgba(255, 224, 150, .5); } }
+@media (prefers-reduced-motion: reduce) { .avatar.aura::after { animation: none; } }
 .avatar.sm { width: 56px; height: 56px; font-size: 26px; }
 .avatar.sm .dot { width: 18px; height: 18px; right: -3px; bottom: -3px; box-shadow: 0 0 0 3px #2a0408; }
 .avatar.xs { width: 34px; height: 34px; font-size: 17px; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .25); }

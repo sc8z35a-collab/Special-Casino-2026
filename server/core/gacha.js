@@ -5,6 +5,7 @@ import { RULES, GACHA, VIP } from './rules.js';
 import { readQuests, questTickets } from './quests.js';
 import { createSpinRequests } from './spin-requests.js';
 import { ensureStarterTree } from './tree.js';
+import { carGot, TICKET } from './medals.js';
 
 const SEED = 'gacha-seed';
 const VIP_WEEK = 'gacha-vip-week';
@@ -26,9 +27,9 @@ function secureRandom() {
 }
 
 export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend,
-  settleVip = () => 0, vipChanged = balanceChanged, now = Date.now, rand = secureRandom }) {
+  settleVip = () => 0, vipChanged = balanceChanged, onSpin = () => {}, now = Date.now, rand = secureRandom }) {
   const requests = createSpinRequests({ q, tx, clock: now, table: 'gacha_requests', code: 'gacha', label: 'ガチャ',
-    fingerprint: body => JSON.stringify([String(body.kind || 'rare'), Number(body.count), body.price ?? null]),
+    fingerprint: body => JSON.stringify([String(body.kind || 'rare'), Number(body.count), body.price ?? null, !!body.ticket]),
     replay: (id, result) => ({ ...result, ...state(getUser(id)) }) });
   const carCount = (id) => q('SELECT COUNT(*) AS n FROM cars WHERE owner_id = ?').get(id).n;
   const treeCount = (id) => q('SELECT COUNT(*) AS n FROM trees WHERE user_id = ?').get(id).n;
@@ -46,6 +47,8 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       events,
       prices: PRICES,
       items: { seed: items[SEED] || 0, vipWeek: items[VIP_WEEK] || 0,
+        // the free tickets (功績's rewards, server/core/medals.js): one pull each
+        tickets: Object.fromEntries(GACHA.kinds.map((k) => [k.id, items[TICKET + k.id] || 0])),
         waiting: [
           ...(items[GROWN] ? [{ key: GROWN, type: 'grown-tree', name: '成長済みの金の生る木', count: items[GROWN] }] : []),
           ...GACHA.cars.filter(c => items[CAR + c.id]).map(c => ({ key: CAR + c.id, type: 'car', carId: c.id, name: c.name, count: items[CAR + c.id] }))
@@ -57,6 +60,8 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
   function spin(body, u) {
     const kind = String(body.kind || 'rare');
     const count = Number(body.count);
+    // free: one ticket of this kind for each pull, instead of $
+    const free = !!body.ticket;
     if (!GACHA.kinds.some((k) => k.id === kind)) throw new ApiError(400, 'bad_gacha', 'ガチャの種類を選んでください');
     if (count !== 1 && count !== 3 && count !== 10) throw new ApiError(400, 'bad_count', '回数は1回・3回・10回です');
 
@@ -64,9 +69,14 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       const cur = getUser(u.id);
       const at = now();
       const events = GACHA.events(at);
-      const paid = GACHA.price(kind, count);
-      if (body.price !== undefined && Number(body.price) !== paid) throw new ApiError(409, 'price_changed', '価格が更新されました。新しい価格を確認してください');
-      if (cur.dollars < paid) throw new ApiError(409, 'insufficient', '$が足りません');
+      const paid = free ? 0 : GACHA.price(kind, count);
+      if (free) {
+        if (itemCount(cur.id, TICKET + kind) < count) throw new ApiError(409, 'no_ticket', '無料券が足りません');
+        addItems(cur.id, TICKET + kind, -count);
+      } else {
+        if (body.price !== undefined && Number(body.price) !== paid) throw new ApiError(409, 'price_changed', '価格が更新されました。新しい価格を確認してください');
+        if (cur.dollars < paid) throw new ApiError(409, 'insufficient', '$が足りません');
+      }
       const pulls = GACHA.draw(kind, count, events.boost.on, events.sale.on, rand);
       const rewards = pulls.flatMap((p) => p.rewards);
       if (rewards.some(r => r.type === 'grown-tree')) ensureStarterTree(q, cur.id, at);
@@ -81,8 +91,8 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
         if (r.type === 'car') {
           if (carRoom <= 0) { addItems(cur.id, CAR + r.carId, 1); r.pending = true; continue; }
           carRoom--;
-          q("INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid, via) VALUES (?, ?, 0, ?, ?, 0, 'gacha')")
-            .run(cur.id, r.carId, at, at);
+          carGot(q, cur.id, Number(q("INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid, via) VALUES (?, ?, 0, ?, ?, 0, 'gacha')")
+            .run(cur.id, r.carId, at, at).lastInsertRowid));
         } else if (r.type === 'lot') tokens += r.amount;
         else if (r.type === 'royal') coins += r.amount;
         else if (r.type === 'garage') { /* counted below */ }
@@ -100,14 +110,16 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
         const tickets = questTickets(quests);
         quests.tickets = { '5h': tickets['5h'] + resets, day: tickets.day };
       }
+      // (the pulls, free ones too: counted for the 功績, server/core/medals.js)
       q(`UPDATE users SET dollars = dollars - ?, tokens = tokens + ?, coins = coins + ?,
-           garage_extra = garage_extra + ?, quests = ?, rev = rev + 1 WHERE id = ?`)
-        .run(paid, tokens, coins, garageCoins, JSON.stringify(quests), cur.id);
-      return { pulls, paid, kind, count };
+           garage_extra = garage_extra + ?, quests = ?, gacha_pulls = gacha_pulls + ?, rev = rev + 1 WHERE id = ?`)
+        .run(paid, tokens, coins, garageCoins, JSON.stringify(quests), count, cur.id);
+      return { pulls, paid, kind, count, ...(free ? { free: true } : {}) };
     });
 
     balanceChanged(u.id, true);
     afterSpend(u.id);
+    onSpin(u.id);
     return { ...result, ...state(getUser(u.id)) };
   }
 
@@ -123,7 +135,7 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       if (car) {
         if (carCount(cur.id) >= garageSize(cur)) throw new ApiError(409, 'garage_full', 'ガレージの空きを作ってから受け取ってください');
         addItems(cur.id, key, -1);
-        q("INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid, via) VALUES (?, ?, 0, ?, ?, 0, 'gacha')").run(cur.id, car.id, at, at);
+        carGot(q, cur.id, Number(q("INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid, via) VALUES (?, ?, 0, ?, ?, 0, 'gacha')").run(cur.id, car.id, at, at).lastInsertRowid));
       } else if (item === 'seed' || item === GROWN) {
         ensureStarterTree(q, cur.id, at);
         if (treeCount(cur.id) >= RULES.tree.max) throw new ApiError(409, 'trees_full', `金の生る木は${RULES.tree.max}本までです`);
@@ -138,6 +150,7 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       }
     });
     const after = item === 'vip-week' ? vipChanged(u.id, vipPay) : getUser(u.id);
+    if (car) onSpin(u.id);
     return { ok: true, item, ...state(after) };
   }
 

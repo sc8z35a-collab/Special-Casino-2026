@@ -22,7 +22,7 @@
 <link rel="preload" href="fonts/NotoJP-500.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/NotoJP-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/fonts.css?v=d48bff2880">
-<link rel="stylesheet" href="css/style.css?v=d9a3b6f455">
+<link rel="stylesheet" href="css/style.css?v=400ce236ad">
 </head>
 <body>
 <div id="viewport">
@@ -97,6 +97,7 @@
       <button id="btn-quest" class="hud-circle hud-quest pic" aria-label="クエスト"><i class="ic ic-quest"></i><b class="hud-badge" id="quest-badge" hidden></b><span class="quest-bonus-badges" id="quest-bonus-badges" hidden></span></button>
       <button id="btn-tree" class="hud-circle hud-tree pic" aria-label="金の生る木"><i class="ic ic-tree"></i><b class="hud-badge" id="tree-badge" hidden></b></button>
       <button id="btn-gacha" class="hud-circle hud-gacha pic" aria-label="ガチャ"><i class="ic ic-gacha"></i></button>
+      <button id="btn-medals" class="hud-circle hud-feat pic" aria-label="功績"><i class="ic ic-feat"></i><b class="hud-badge" id="medal-badge" hidden></b></button>
       <!-- the top middle: the update reminder, then フレンド対決 / 協力スロット (js/ui/play.js) -->
       <div class="mode-stack" id="mode-stack">
         <div class="home-note" id="update-note" hidden><span id="update-note-text">新しいバージョンがあります</span><button class="mini-btn gold" id="update-note-go"><span>今すぐアップデート</span></button></div>
@@ -642,6 +643,24 @@
         <div id="diary-list" aria-live="polite"></div><button class="mini-btn" type="button" id="diary-more" hidden>以前の投稿</button>
       </div>
     </div>
+    <!-- 功績 (js/ui/medals.js: everything inside is made there) -->
+    <div id="medals-modal" class="modal medals-scene" hidden>
+      <div class="modal-card medals-card" role="dialog" aria-modal="true" aria-label="功績">
+        <header class="md-top">
+          <button class="back-btn back-jp" type="button" data-close aria-label="戻る"><i class="ic ic-back"></i><span>戻る</span></button>
+          <h2 class="md-head"><img src="img/medals/feat.webp" alt="" loading="lazy" draggable="false">功績</h2>
+          <div class="md-tabs" id="md-tabs" role="tablist"></div>
+          <p class="md-status" id="md-status" role="status"></p>
+        </header>
+        <div class="md-main">
+          <section class="md-shelf">
+            <div class="md-view" id="md-view"><div class="md-track" id="md-track"></div><p class="md-empty" id="md-empty" hidden>まだメダルがありません</p></div>
+            <div class="md-nav"><button class="md-arrow" id="md-prev" type="button" aria-label="前のページ">‹</button><div class="md-dots" id="md-dots"></div><button class="md-arrow" id="md-next" type="button" aria-label="次のページ">›</button></div>
+          </section>
+          <aside class="md-detail" id="md-detail" aria-live="polite"></aside>
+        </div>
+      </div>
+    </div>
     <!-- 投資 (js/ui/stocks.js: everything inside is made there) -->
     <div id="stocks-modal" class="modal stocks-scene" hidden>
       <div class="modal-card stocks-card" role="dialog" aria-modal="true" aria-label="投資">
@@ -979,13 +998,13 @@
 <script src="js/art/icons.js?v=445ac9cc92"></script>
 <script src="js/art/symbol-images.js?v=00bb06f7c7"></script>
 <script src="js/art/ui-images.js?v=28a66c27e7"></script>
-<script src="js/art/social-images.js?v=7bc2be9196"></script>
+<script src="js/art/social-images.js?v=cf9db3becb"></script>
 <script src="js/art/ui-svg.js?v=00d5767a31"></script>
-<script src="js/version.js?v=bc3f6419bd"></script>
+<script src="js/version.js?v=6dc4be25d4"></script>
 <script src="js/core/util.js?v=1b72818e38"></script>
 <script src="js/core/clock.js?v=2ba2dad169"></script>
 <script src="js/core/effects.js?v=ae47f50aa7"></script>
-<script src="js/game/config.js?v=8d7372248d"></script>
+<script src="js/game/config.js?v=70ddb8699b"></script>
 <script src="js/game/sale.js?v=a7bb027684"></script>
 <script src="js/game/quests.js?v=2cd261dad4"></script>
 <script src="js/game/tree.js?v=b3c3b37aa1"></script>
@@ -994,11 +1013,11 @@
 <script src="js/core/store.js?v=f0d92dc1dd"></script>
 <script src="js/game/engine.js?v=75f36e1496"></script>
 <script src="js/net/device.js?v=ff52665f6b"></script>
-<script src="js/net/api.js?v=654954e651"></script>
+<script src="js/net/api.js?v=354ed78593"></script>
 <script src="js/net/transport-policy.js?v=3ee219f81a"></script>
 <script src="js/net/keepalive.js?v=18dee0ca8c"></script>
 <script src="js/net/wire.js?v=52e85a64bb"></script>
-<script src="js/net/live.js?v=441e97256a"></script>
+<script src="js/net/live.js?v=a38d9cb69c"></script>
 <script src="js/net/watchcrypto.js?v=ab0b679978"></script>
 <script src="js/net/watchfeed.js?v=886afa86a0"></script>
 <script src="js/game/bank.js?v=05b0a7dec8"></script>
@@ -1012,14 +1031,14 @@
 <script src="js/render/tree3d.js?v=e943cbf125"></script>
 <script src="js/render/auction3d.js?v=98da92c4b9"></script>
 <script src="js/ui/screens.js?v=9faeb2826f"></script>
-<script src="js/ui/kit.js?v=543ff76a3c"></script>
+<script src="js/ui/kit.js?v=c0d7d4fce8"></script>
 <script src="js/core/resources.js?v=64a66a9d03"></script>
 <script src="js/core/three.js?v=8b05356469"></script>
 <script src="js/core/lazy.js?v=09183a2aa1"></script>
 <script src="js/ui/account.js?v=aec05ccdd5"></script>
 <script src="js/ui/oauth.js?v=32b3664f63"></script>
-<script src="js/ui/avatars.js?v=509556e799"></script>
-<script src="js/ui/social.js?v=024d17dff7"></script>
+<script src="js/ui/avatars.js?v=a413df4068"></script>
+<script src="js/ui/social.js?v=9b37798cdb"></script>
 <script src="js/ui/shop.js?v=942e40a50f"></script>
 <script src="js/ui/peter.js?v=8490e6920a"></script>
 <script src="js/ui/johnson.js?v=41cf8554b4"></script>
@@ -1033,6 +1052,7 @@
 <script src="js/ui/quests.js?v=987e25f9f5"></script>
 <script src="js/ui/jobs.js?v=288b25859e"></script>
 <script src="js/ui/tree.js?v=3ca5107c42"></script>
+<script src="js/ui/feats.js?v=22fa5522ed"></script>
 <script src="js/ui/effects.js?v=fc69d1bdc6"></script>
 <script src="js/ui/news.js?v=8753c55b23"></script>
 <script src="js/ui/line-reward.js?v=ce6671da17"></script>
@@ -1049,6 +1069,6 @@
 <script src="js/ui/start.js?v=9182b0ef0a"></script>
 <script src="js/ui/banlock.js?v=623437cb62"></script>
 <script src="js/ui/install.js?v=a7f3466890"></script>
-<script src="js/main.js?v=ff5257a9c9"></script>
+<script src="js/main.js?v=40131f23dd"></script>
 </body>
 </html>

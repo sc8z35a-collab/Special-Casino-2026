@@ -289,12 +289,17 @@
 
     /* the game */
     pendingSpinBet: function () { var job = spinPending(); return job ? job.body.bet : null; },
-    pendingGacha: function () { var job = gachaPending(); return job ? { kind: job.body.kind, count: job.body.count, price: job.body.price } : null; },
+    pendingGacha: function () { var job = gachaPending(); return job ? { kind: job.body.kind, count: job.body.count, price: job.body.price, ticket: !!job.body.ticket } : null; },
     gacha: function () { return get('/api/gacha'); },
-    gachaSpin: function (kind, count, price) {
+    // `ticket`: pulled with the free tickets (功績's rewards), one a pull, instead of $
+    gachaSpin: function (kind, count, price, ticket) {
       var job = gachaPending();
-      if (job && (job.body.kind !== kind || job.body.count !== count || job.body.price !== price)) return Promise.reject(new ApiError(409, 'gacha_pending', '前の抽選結果を確認してください'));
-      if (!job) { job = pendingGacha = { token: token, body: { key: drawKey(), kind: kind, count: count, price: price } }; saveDraw('gacha', job); }
+      if (job && (job.body.kind !== kind || job.body.count !== count || job.body.price !== price || !!job.body.ticket !== !!ticket)) return Promise.reject(new ApiError(409, 'gacha_pending', '前の抽選結果を確認してください'));
+      if (!job) {
+        job = pendingGacha = { token: token, body: { key: drawKey(), kind: kind, count: count, price: price } };
+        if (ticket) job.body.ticket = true;
+        saveDraw('gacha', job);
+      }
       if (!job.promise) job.promise = post('/api/gacha/spin', job.body).then(function (r) {
         if (pendingGacha === job) { pendingGacha = null; saveDraw('gacha', null); }
         return r;
@@ -466,6 +471,10 @@
     auctionStart: function (market) { return post('/api/tree/auction/start', { market: market }); },
     auctionBid: function (steps, id) { return post('/api/tree/auction/bid', { steps: steps, id: id }); },
     auctionLeave: function (id) { return post('/api/tree/auction/leave', { id: id }); },
+
+    /* 功績 (js/ui/medals.js): the medals I may know of, and receiving one's reward */
+    medals: function () { return get('/api/medals'); },
+    medalClaim: function (id) { return post('/api/medals/claim', { medal: id }); },
 
     /* 投資 (js/ui/stocks.js): an order carries a key of its own, so a retry after a lost answer is the same order */
     stocks: function () { return get('/api/stocks'); },

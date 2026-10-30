@@ -65,6 +65,8 @@
       a.style.backgroundImage = 'url("' + src + '")';
       var info = avatarInfo(id);
       if (info && info.rare) a.classList.add('rare');
+      // the シークレットオーラ (a 功績 reward): a ring of light around the icon
+      if (user.aura) a.classList.add('aura');
     } else {
       a.textContent = (Array.from(String((user && user.name) || '?'))[0] || '?').toUpperCase();
       a.style.background = LETTER_BG[Math.abs((user && user.id) | 0) % LETTER_BG.length];

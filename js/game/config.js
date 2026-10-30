@@ -138,7 +138,18 @@
       { id: 'explorer-cyan', name: '探検家', rarity: 'cyan', price: 1200000 },
       { id: 'healer-cyan', name: 'ヒーラー', rarity: 'cyan', price: 1200000 },
       { id: 'gambler-secret', name: '勝負師', rarity: 'secret', price: 2100000, rare: true },
-      { id: 'adam-secret', name: 'アダム', rarity: 'secret', price: 2100000, rare: true }
+      { id: 'adam-secret', name: 'アダム', rarity: 'secret', price: 2100000, rare: true },
+      // シークレットアイコン: never sold and never free, only given (a 功績 reward: server/core/medals.js); `given`
+      { id: 'philosopher-secret', name: '哲学者', rarity: 'secret', price: 0, rare: true, given: true },
+      { id: 'warrior-secret', name: '女戦士', rarity: 'secret', price: 0, rare: true, given: true },
+      { id: 'assassin-secret', name: 'アサシン', rarity: 'secret', price: 0, rare: true, given: true },
+      { id: 'waitress-secret', name: '看板娘', rarity: 'secret', price: 0, rare: true, given: true },
+      { id: 'chef-secret', name: 'シェフ', rarity: 'secret', price: 0, rare: true, given: true },
+      { id: 'wanderer-secret', name: '旅の少女', rarity: 'secret', price: 0, rare: true, given: true },
+      { id: 'fennec-secret', name: 'フェネック', rarity: 'secret', price: 0, rare: true, given: true },
+      { id: 'professor-secret', name: '博士', rarity: 'secret', price: 0, rare: true, given: true },
+      { id: 'chemist-secret', name: '研究員', rarity: 'secret', price: 0, rare: true, given: true },
+      { id: 'sage-secret', name: '大賢者', rarity: 'secret', price: 0, rare: true, given: true }
     ],
     // Car Owner shop (price in $); `model`: a 3D model to look at
     // (img/3d/cars/<id>.glb, js/render/garage3d.js). A null price means the

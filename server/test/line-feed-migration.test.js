@@ -24,7 +24,9 @@ test('upgrading the existing casino to the LINE feed preserves accounts, balance
     migrate(db);
     raw.prepare("INSERT INTO line_feed_targets VALUES ('C' || ?, 1, 100)").run('a'.repeat(32));
     migrate(db);
-    assert.deepEqual(raw.prepare('SELECT * FROM users WHERE id = 123').get(), user);
+    // (later migrations may add columns, with their defaults: every value the account had stays as it was)
+    const after = raw.prepare('SELECT * FROM users WHERE id = 123').get();
+    assert.deepEqual(Object.fromEntries(Object.keys(user).map((k) => [k, after[k]])), { ...user });
     assert.deepEqual(raw.prepare("SELECT * FROM sessions WHERE token_hash = 'session'").get(), session);
     assert.equal(raw.prepare("SELECT value FROM meta WHERE key = 'ticket_secret'").get().value, 'existing-login-secret');
     assert.equal(Number(raw.prepare("SELECT value FROM meta WHERE key = 'schema'").get().value), SCHEMA_VERSION);
