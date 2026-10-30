@@ -47,6 +47,7 @@ npm test        # server/testの検証
 - [再生成](docs/handbook/34.md)
 - [DEV13：追加クエストと収益の回収待ち](docs/handbook/35.md)
 - [金の生る木の3D対応（指定素材の一部は未取り込み）](docs/handbook/36.md)
+- [投資（RIRU STUDIO・Ice Smoker）](docs/handbook/37.md)
 
 - [開発のお知らせ](README_DEV_NEWS.md)
 - [LINE配信・ガチャ](README_LINE_FEED.md)

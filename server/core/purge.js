@@ -42,7 +42,10 @@ export const PLAYER_ROWS = [
   ['tree_auctions', ['user_id']],
   ['npc_friends', ['user_id']],
   ['push_subs', ['user_id']],
-  ['oauth_identities', ['user_id']]
+  ['oauth_identities', ['user_id']],
+  ['stock_holdings', ['user_id']],
+  ['stock_accounts', ['user_id']],
+  ['stock_orders', ['user_id']]
 ];
 // Kept during account purge; retention.js applies their separate age limits.
 export const KEPT_ROWS = ['messages', 'message_archive', 'transfer_archive', 'conversations', 'live_chats', 'transfers', 'feedback', 'reports', 'detections', 'bot_threads'];

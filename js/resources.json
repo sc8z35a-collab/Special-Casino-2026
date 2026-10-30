@@ -89,5 +89,8 @@
   ],
   "carsaleDialog": [
     "js/ui/carsale.js"
+  ],
+  "stocks": [
+    "css/stocks.css"
   ]
 }

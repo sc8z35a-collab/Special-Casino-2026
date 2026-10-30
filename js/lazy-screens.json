@@ -10,5 +10,9 @@
   "support": [
     "js/ui/law.js",
     "js/ui/support.js"
+  ],
+  "stocks": [
+    "js/game/stocks.js",
+    "js/ui/stocks.js"
   ]
 }

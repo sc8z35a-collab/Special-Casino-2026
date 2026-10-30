@@ -692,6 +692,7 @@ law.html, css/law.css      特定商取引法に基づく表記（/law、ログ�
 ops/                       サーバー運営サイト（/ops/、index.html・ops.css・ops.js・横向き全画面の manifest.webmanifest・保管庫の 3D プレビュー vault3d.js〔tools/3d/build-vault.sh で作成〕・保管庫のアップロード vault-upload.js と、それをバックグラウンドで動かす ops-sw.js）。運営チャットは server/core/team.js、サーバータブは server/core/stats.js、セキュリティタブは server/core/shield.js
 sec/                       security HOME（/sec/、index.html・sec.css・sec.js・dev.js〔開発者のパネル〕・manifest.webmanifest）。運営の最終安全基地。TWO STATE とは独立した HTML 環境で、サーバーは server/core/sec.js
 js/main.js                 起動・横画面全画面スケーリング・ゲーム進行・観戦表示
+js/game/stocks.js          投資：2社・手数料・上限・チャートの期間（サーバーも同じファイルを使用）
 js/game/config.js          シンボル確率・配当表・ベット・アイコン・車・Shop・フルーツ・ログインボーナス・バイト・金の生る木・プレゼント・通報の種類・ジョンソン（サーバーも同じファイルを使用）
 js/game/quests.js          クエストの一覧・リセット周期・色・プレイヤーレベル（サーバーと共通）
 js/game/news.js            Dev News（先頭の番号 = 版の番号。アップデートのお知らせと感謝料に使用）
@@ -699,14 +700,14 @@ js/game/sale.js            アイコンと Shop の日替わりセール（サ�
 js/game/vip.js             VIP のレベル・費用・時給・通話品質・限定車（サーバーと共通）
 js/game/engine.js, bank.js 抽選と精算（オフラインはブラウザ、オンラインはサーバー）
 js/net/                    API・リアルタイム通知（WebSocket / SSE）・音声通話（WebRTC、人ごとの音量とミュート）・端末の ID（device.js）・スマホ通知（push.js）
-js/ui/                     起動（ロゴ・BGM・メンテナンス）・登録・メニュー・フレンド・アイコン・車・Shop・マイクソン（peter.js）・ジョンソン（johnson.js）・公式（official.js）・プレゼント（presents.js）・年齢確認 / 通報 / 報告・意見案（safety.js）・観戦・ログインボーナス・クエスト・バイト・金の生る木（tree.js）・演出設定（effects.js）・Dev News・初心者ガイド（guide.js）・フィードバック（feedback.js）・フレンド対決 / 協力スロット / 観戦ベット（play.js）・友達と稼ぐ（hub.js）・時間クエストの操作の記録（activity.js）・フレンドの SUPER BIG WIN のお知らせ（bigwin.js）・処分中のタイトル画面（banlock.js）・開発者支援（support.js）・特定商取引法の表記（law.js）・VIP（vip.js）・友達に車を売る（carsale.js）
+js/ui/                     起動（ロゴ・BGM・メンテナンス）・登録・メニュー・フレンド・アイコン・車・Shop・マイクソン（peter.js）・ジョンソン（johnson.js）・公式（official.js）・プレゼント（presents.js）・年齢確認 / 通報 / 報告・意見案（safety.js）・観戦・ログインボーナス・クエスト・バイト・金の生る木（tree.js）・演出設定（effects.js）・Dev News・初心者ガイド（guide.js）・フィードバック（feedback.js）・フレンド対決 / 協力スロット / 観戦ベット（play.js）・友達と稼ぐ（hub.js）・時間クエストの操作の記録（activity.js）・フレンドの SUPER BIG WIN のお知らせ（bigwin.js）・処分中のタイトル画面（banlock.js）・開発者支援（support.js）・特定商取引法の表記（law.js）・VIP（vip.js）・友達に車を売る（carsale.js）・投資（stocks.js、css/stocks.css）
 js/render/, js/audio/      リール描画・当たり演出（小当たり・コンボ）・3D の当たり文字（win3d.js）・車の 3D スタジオと 3D のガレージ（garage3d.js）・3D の炎（fire3d.js）・演出エンジン（juice.js：粒子・衝撃波・コインが財布へ飛ぶ）・スロットの演出（slotfx.js：電飾・リーチ）・効果音
 js/vendor/three-bundle.js  three.js（r170、MIT License）：3D の当たり文字と車の 3D に使う部分（tools/3d/build.sh で作成）
 img/3d/                    3D モデル（軽くしたもの）：当たり文字（WIN・BIG WIN・SUPER BIG WIN・ULTRA BIG WIN）、cars/（車）、studio/（丸い台・ムービングヘッド・スポットライト・書棚）、garage/（ガレージ3D）
 server/core/opswatch.js    運営の画面を見る機能（状態転送・封をした中継・30 分・300kbps・ログ・強制終了。下の「運営の画面を見る機能」）
 js/net/watchcrypto.js, js/net/watchfeed.js, ops/watch.js   その暗号・プレイヤーのゲーム側・運営サイトの窓
 js/ui/watchquality.js      友達の観戦の画質（720P / 460P）と 24fps
-server/core/               サーバー本体（API・データベース・認証・管理コマンド・マイクソン・ジョンソン・公式・金の生る木・チャットの言葉の検知（filter.js）・自動フィルタリングシステム（attach.js）・スマホ通知（push.js）・運営サイト（ops.js）・運営ログ（opslog.js）・開発者コード（devcode.js）・開発者支援の決済（pay.js・stripe.js）・保管庫（開発者専用保管庫と運営者どうしの共有保管庫・1 人の上限と承認、vault.js）・セキュリティシールド（shield.js）・緊急停止とロックダウン（emergency.js）・security HOME（sec.js）・クエスト・1 日の上限）。どちらのサーバーでも共通
+server/core/               サーバー本体（API・データベース・認証・管理コマンド・マイクソン・ジョンソン・公式・金の生る木・チャットの言葉の検知（filter.js）・自動フィルタリングシステム（attach.js）・スマホ通知（push.js）・運営サイト（ops.js）・運営ログ（opslog.js）・開発者コード（devcode.js）・開発者支援の決済（pay.js・stripe.js）・保管庫（開発者専用保管庫と運営者どうしの共有保管庫・1 人の上限と承認、vault.js）・セキュリティシールド（shield.js）・緊急停止とロックダウン（emergency.js）・security HOME（sec.js）・クエスト・1 日の上限・投資（stocks.js、株価の経路は stock-model.js））。どちらのサーバーでも共通
 server/cloudflare/         無料版サーバー（Cloudflare Worker + Durable Object）
 server/node/               自前サーバー版（Node.js）
 wrangler.jsonc, .assetsignore, _headers   Cloudflare の設定（公開するファイルはゲーム画面の分だけ）
@@ -773,3 +774,48 @@ Android アプリを手元で作る場合は Android SDK と JDK 17 以上を用
 - 9段階の基本生産量は毎秒$5〜$14。周期とSUPERの収穫倍率は従来どおり。期限後は画面を「生産停止中」・毎秒0に切り替え、APIの `activeRate` も0になります。
 - 保管庫は完成済み3Dファイルの一覧にプレビューを自動表示します。軽量版を優先し、見えているモデルだけ読み込み、複数のプレビューでWebGLレンダラーを共用します。スクロールアウト・タブ移動・ログアウト時に描画リソースを解放します。
 - 肥料の原本生成は `tools/3d/make-fertilizer.mjs`、物理エンジンの入口は `tools/3d/tree-physics-entry.js`。cannon-esのMITライセンスは `js/vendor/cannon-es.LICENSE.txt` に同梱しています。
+### 投資（RIRU STUDIO・Ice Smoker）
+
+詳細メニューの「投資」から、RIRU STUDIO株式会社とIce Smoker株式会社の2社の株を$で売買できます。株価は1秒ごとに動き、画面を開いている間はリアルタイムでチャートに出ます。会社の買収はありません。画面には説明文を置かず、ラベルと数字だけを表示します。
+
+#### ルール
+
+| 項目 | RIRU STUDIO | Ice Smoker |
+| --- | --- | --- |
+| 基準株価 | $12,000 | $30,000 |
+| 1日の値動き（標準偏差） | 7% | 2.5% |
+| 自由に動く範囲（基準の） | 約0.45〜2.2倍 | 約0.74〜1.35倍 |
+| 配当（1日あたり） | 0.2% | 0.4% |
+
+- 手数料は売買とも片道0.6%（切り上げ）。買いは「株価×株数＋手数料」を払い、売りは「株価×株数−手数料」を受け取ります。手数料はゲームから消えます。
+- 投資の上限は2社合計$8,000,000。買う時点の保有株の評価額（その時の株価）と、指値・逆指値の買い注文で確保中の$を合わせて判定します。値上がりで上限を超えるのは構いません。
+- 売買は1日30回まで（日本時間9:00に切り替え、2社合計）。成行は約定した時点で、指値・逆指値は注文した時点で1回と数え、取消・失効・不成立になった注文は回数を戻します。
+- 注文は成行・指値・逆指値の3種類。指値は「この値段以下で買う／以上で売る」、逆指値は「この値段以上で買う／以下で売る（損切り）」。指値・逆指値は現在値の±30%以内で、その日の9:00（日本時間）まで有効です。待機は同時に10件まで。買い注文は$を、売り注文は株を確保します。
+- 指値・逆指値は、注文した次の1秒以降で初めて条件に届いた1秒の株価で約定します（指値より有利な値段になることはあっても、不利にはなりません）。サーバーが休んでいた間に届いた場合も、起きたときにその時刻・その株価で約定します。
+- 配当は毎日9:00（日本時間）に確定。「その日の平均保有株数（1秒単位の時間平均）× その日の終値 × 配当率」で、確定直前に買ってすぐ売っても、持っていた時間の分しか付きません。1ドル未満は会社ごとに翌日へ繰り越します。配当は投資画面の「受取」で$に入ります（期限なし）。
+- 誤操作を防ぐため、売買ボタンは長押し（約0.45秒）で注文します。指値・逆指値が約定したときはスマホ通知でも知らせます。
+
+#### 株価の作り方
+
+- 株価はサーバーだけが持つ鍵（`ticket_secret` から `keyFrom(secret, 'stocks')` で導出）から、1秒ごとの値動きをHMAC-SHA256で決めて計算します。鍵がなければ次の1秒は予測できず、同じ1秒は何度計算しても同じ値です。株価の秒ごとの値は保存しません。
+- 値動きは対数株価のランダムウォーク（`server/core/stock-model.js`）。荒れ具合は1分ごとに変わり（対数がオルンシュタイン＝ウーレンベック過程、半減期2時間）、平均すると上の「1日の値動き」になります。範囲内では過去のチャートから先の向きは読めません。範囲の外では半減期5日で範囲内へ引き戻します。
+- サーバーは株価を「見られたとき」に必要な所まで計算します（画面を開いている人への毎秒の配信、注文・照会、注文待ちがある間の5分ごとの見回り、6時間ごとの定期処理）。休んでいた間の分も1秒ずつ同じ計算をするので、起きていても寝ていても株価は1ドルも変わりません。
+- 保存するのは「今いる1分の始まりの状態」と足（1分足3日分・1時間足400日分・日足はずっと）だけです。最初に開かれたときに、上場前の30日分の値動きを1回だけ作り、チャートが空にならないようにします（最後は基準株価につながります）。
+
+#### 通信と料金
+
+- 画面を開いている間、サーバーは毎秒の株価（約60バイト）をWebSocket（Node版はSSE）で、開いている人にだけ送ります。サーバーから送るWebSocketメッセージは課金対象外です。画面は20秒ごとに「開いています」と送ります（20通で1リクエスト扱い）。
+- 毎秒の処理はアラームではなくオブジェクト内のタイマーで回すため、リクエストとして数えられません。Durable Objectは1つなので、1か月ずっと起きていても込みの使用時間（40万GB秒）に収まります。
+- 注文待ちがない限り、投資のためにサーバーを起こすことはありません。待ちがある間だけ5分ごとに見回ります（月最大8,640回）。
+- チャートは期間ごとに小さな整数の列で送り（1日分で約3〜4KB）、2回目以降は最後の足からの差分だけを受け取ります。描画はライブラリを使わずcanvasで行います。
+
+#### 実装の場所
+
+- `js/game/stocks.js`：2社・手数料・上限・期間などのルール（サーバーと共通）
+- `server/core/stock-model.js`：株価の経路（HMACの乱数・1秒の値動き・上場前の30日）
+- `server/core/stocks.js`：計算の進め方・足・注文・約定・失効・配当・API・毎秒の配信
+- `js/ui/stocks.js`、`css/stocks.css`：投資画面（開いたときに読み込む）
+- API：`GET /api/stocks`・`GET /api/stocks/chart`・`GET /api/stocks/history`・`POST /api/stocks/order`・`POST /api/stocks/cancel`・`POST /api/stocks/claim`・`POST /api/stocks/watch`（WebSocketでは `{ op: 'stocks', on }`）
+- 表：`stock_state`・`stock_candles`・`stock_holdings`・`stock_accounts`・`stock_orders`（バックアップに含み、アカウント削除で本人の行を削除）
+- 検証：`server/test/stocks.test.js`・`server/test/stocks-host.test.js`・`tools/check_stocks.cjs`
+

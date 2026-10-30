@@ -271,7 +271,7 @@
         <div class="scroller jobs-scroll" id="jobs-scroll"><div class="jobs-list" id="jobs-list"></div></div>
       </div>
 
-      <!-- 詳細: the guide again, feedback, 投資 (coming soon) and Dev News -->
+      <!-- 詳細: the guide again, feedback, 投資 and Dev News -->
       <div class="board-pane" id="pane-more">
         <div class="scroller more-scroll" id="more-scroll">
           <div class="more-cards">
@@ -279,7 +279,7 @@
             <button class="more-card" data-act="feedback" aria-label="フィードバック"><i class="ic more-art ic-feedback"></i><b>フィードバック</b></button>
             <button class="more-card vip" data-act="vip" aria-label="VIP"><i class="ic more-art ic-vip"></i><b>VIP</b></button>
             <button class="more-card support" data-act="support" hidden><b>有料ショップ</b><span>ロイヤルコインを購入する</span></button>
-            <div class="more-card soon investment"><i class="ic more-art ic-investment"></i><b>投資<small>COMING SOON</small></b><span>近日公開予定</span></div>
+            <button class="more-card investment" data-act="stocks" aria-label="投資"><i class="ic more-art ic-investment"></i><b>投資</b></button>
             <button class="more-card" data-act="dev-diary" aria-label="開発者日記"><i class="ic more-art ic-diary"></i><b>開発者日記</b></button>
             <button class="more-card" data-act="gacha" aria-label="ガチャ"><img class="gacha-mark" src="img/gacha/icon.webp" alt="" loading="lazy" draggable="false"><b>ガチャ</b></button>
             <button class="more-card soon" data-act="studio-credits"><b>スタジオクレジット<small>近日公開</small></b></button>
@@ -642,6 +642,32 @@
         <div id="diary-list" aria-live="polite"></div><button class="mini-btn" type="button" id="diary-more" hidden>以前の投稿</button>
       </div>
     </div>
+    <!-- 投資 (js/ui/stocks.js: everything inside is made there) -->
+    <div id="stocks-modal" class="modal stocks-scene" hidden>
+      <div class="modal-card stocks-card" role="dialog" aria-modal="true" aria-label="投資">
+        <header class="sk-top">
+          <button class="back-btn back-jp" type="button" data-close aria-label="戻る"><i class="ic ic-back"></i><span>戻る</span></button>
+          <div class="sk-tabs" id="sk-tabs" role="tablist"></div>
+          <div class="sk-cash" id="sk-cash"></div>
+        </header>
+        <div class="sk-main">
+          <section class="sk-chart-pane">
+            <div class="sk-head" id="sk-head" aria-live="off"></div>
+            <div class="sk-canvas"><canvas id="sk-chart" aria-label="チャート"></canvas></div>
+            <div class="sk-tools"><div class="sk-seg" id="sk-periods"></div><div class="sk-seg" id="sk-modes"></div></div>
+          </section>
+          <aside class="sk-side">
+            <div class="sk-hold" id="sk-hold"></div>
+            <div class="sk-order" id="sk-order"></div>
+          </aside>
+        </div>
+        <footer class="sk-foot">
+          <div class="sk-seg" id="sk-list-tabs"></div>
+          <div class="sk-list" id="sk-list"></div>
+          <div class="sk-meter" id="sk-meter"></div>
+        </footer>
+      </div>
+    </div>
     <div id="more-soon" class="modal" hidden>
       <div class="modal-card more-soon-card" role="dialog" aria-modal="true" aria-labelledby="more-soon-title">
         <button class="modal-close" type="button" data-close aria-label="閉じる"></button>
@@ -955,7 +981,7 @@
 <script src="js/art/ui-images.js?v=28a66c27e7"></script>
 <script src="js/art/social-images.js?v=7bc2be9196"></script>
 <script src="js/art/ui-svg.js?v=00d5767a31"></script>
-<script src="js/version.js?v=ab386b340f"></script>
+<script src="js/version.js?v=bc3f6419bd"></script>
 <script src="js/core/util.js?v=1b72818e38"></script>
 <script src="js/core/clock.js?v=2ba2dad169"></script>
 <script src="js/core/effects.js?v=ae47f50aa7"></script>
@@ -968,11 +994,11 @@
 <script src="js/core/store.js?v=f0d92dc1dd"></script>
 <script src="js/game/engine.js?v=75f36e1496"></script>
 <script src="js/net/device.js?v=ff52665f6b"></script>
-<script src="js/net/api.js?v=6c77085440"></script>
+<script src="js/net/api.js?v=654954e651"></script>
 <script src="js/net/transport-policy.js?v=3ee219f81a"></script>
 <script src="js/net/keepalive.js?v=18dee0ca8c"></script>
 <script src="js/net/wire.js?v=52e85a64bb"></script>
-<script src="js/net/live.js?v=8fbd13ae9e"></script>
+<script src="js/net/live.js?v=441e97256a"></script>
 <script src="js/net/watchcrypto.js?v=ab0b679978"></script>
 <script src="js/net/watchfeed.js?v=886afa86a0"></script>
 <script src="js/game/bank.js?v=05b0a7dec8"></script>
@@ -993,7 +1019,7 @@
 <script src="js/ui/account.js?v=aec05ccdd5"></script>
 <script src="js/ui/oauth.js?v=32b3664f63"></script>
 <script src="js/ui/avatars.js?v=509556e799"></script>
-<script src="js/ui/social.js?v=1cd4856c7b"></script>
+<script src="js/ui/social.js?v=024d17dff7"></script>
 <script src="js/ui/shop.js?v=942e40a50f"></script>
 <script src="js/ui/peter.js?v=8490e6920a"></script>
 <script src="js/ui/johnson.js?v=41cf8554b4"></script>
@@ -1002,7 +1028,7 @@
 <script src="js/ui/car-cards.js?v=e0041af63f"></script>
 <script src="js/ui/vip.js?v=fa02033268"></script>
 <script src="js/ui/safety.js?v=bf50802648"></script>
-<script src="js/net/push.js?v=869d431472"></script>
+<script src="js/net/push.js?v=db481ec07e"></script>
 <script src="js/ui/bonus.js?v=e5c44aaa3f"></script>
 <script src="js/ui/quests.js?v=987e25f9f5"></script>
 <script src="js/ui/jobs.js?v=288b25859e"></script>
