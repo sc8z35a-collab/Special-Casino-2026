@@ -32,7 +32,7 @@ import {
 import { Limiter } from './ratelimit.js';
 import { revOf, partOf, heldOf, heldFrom } from './hash.js';
 import {
-  RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, VIP, RECEIPTS,
+  RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, VIP, RECEIPTS, STOCKS,
   spin as spinReels, evaluate as evaluateLine, packGrid, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
@@ -63,6 +63,7 @@ import { createSecComm } from './seccomm.js';
 import { createVaultSnapshots } from './vault-snapshots.js';
 import { createBackup } from './backup.js';
 import { createTrees } from './tree.js';
+import { createStocks } from './stocks.js';
 import { createDevCode } from './devcode.js';
 import { createPay } from './pay.js';
 import { createTeam } from './team.js';
@@ -191,6 +192,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     call: [600, 120],
     tip: [240, 40],
     read: [240, 30],
+    // 投資: orders, cancellations and claims (the day's 30 trades are the real limit)
+    stock: [60, 10],
     general: [600, 60],
     ...config.limits
   };
@@ -3552,6 +3555,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const socketTyping = fromSocket(relayTyping);
   const socketBeat = fromSocket(beat);
   const socketSight = fromSocket(seeing);
+  // 投資's screen open or closed ({ op: 'stocks', on }): the second's ticks (server/core/stocks.js)
+  const socketStocks = fromSocket((u, body) => stocks.watch(u.id, !!(body && body.on)));
   // a sealed frame of the game's state for an operator's screen view (server/core/opswatch.js)
   const socketView = fromSocket((u, body) => { if (watchRef) watchRef.frame(u, body); });
 
@@ -3728,6 +3733,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     }
   });
   registry.add('trees', trees.routes);
+  // 投資: the two companies' shares, orders and dividends (a filled limit or stop order is told to the phone)
+  const stocks = createStocks({ q, tx, afterCommit, getUser, meDto, balanceChanged, live, secret, clock: config.clock || Date.now,
+    rate: (u) => rate(limit.stock, u.id),
+    onFill: (userId, o) => {
+      const c = STOCKS.company(o.company);
+      phone(userId, { kind: 'stock', title: '投資', body: `${c ? c.name : o.company} ${fmt(o.shares)}株 ${o.side === 'buy' ? '買い' : '売り'} 約定 $${fmt(o.fill)}`, tag: `stock:${o.id}`, open: 'stocks' });
+    },
+    // (an order waiting: the host looks again within minutes, server/cloudflare/casino.js)
+    onDue: (at) => host?.stocksSoon?.(at),
+    paused: () => emergency.locked() || emergency.stopped() });
+  registry.add('stocks', stocks.routes);
   const gacha = createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend, settleVip: settleVipJobs,
     vipChanged: (id, pay) => { if (pay) jobsPaid(id, pay); else balanceChanged(id); return getUser(id); } });
   registry.add('gacha', gacha.routes);
@@ -4084,6 +4100,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       q('DELETE FROM spins WHERE created_at < ?').run(Date.now() - 30 * 86400000);
       retention.sweep();
       trees.notifyDue();
+      // 投資: the price path brought up to now, the old candles and orders out
+      try { stocks.housekeep(); } catch (e) { console.error('stocks housekeeping failed', e); }
       spinRequests.prune();
       gacha.prune();
       gameLogin.prune();
@@ -4434,6 +4452,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     socketBeat,
     socketSight,
     socketView,
+    socketStocks,
+    // 投資's orders waiting: when the market wants to look by itself, and the look (none during a lockdown)
+    stocksDue: () => (emergency.locked() ? Infinity : stocks.due()),
+    stocksWake: () => { if (!emergency.locked()) stocks.wake(); },
+    stocks,
     quota,
     // the bytes of an answer, as the host sent it (and the path it answered)
     sent: (bytes, path = '') => { stats.sent(bytes); emergency.sent(bytes, path); },
@@ -4443,6 +4466,6 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     nextHousekeeping,
     backupDue: () => Promise.all([backup.due().catch((e) => console.error('backup failed', e)), vaultSnapshots.tick().catch((e) => console.error('vault snapshot failed', e))]),
     vaultSnapshots,
-    close: () => { watch.close(); quota.flush(); stats.flush(); }
+    close: () => { watch.close(); stocks.close(); quota.flush(); stats.flush(); }
   };
 }

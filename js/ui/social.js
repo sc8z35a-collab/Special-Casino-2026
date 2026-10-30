@@ -1989,6 +1989,7 @@
       if (b.dataset.act === 'vip' && BR.vip) BR.vip.open();
       if (b.dataset.act === 'dev-diary' && BR.diary) BR.diary.open();
       if (b.dataset.act === 'gacha' && BR.gacha) BR.gacha.open();
+      if (b.dataset.act === 'stocks' && BR.stocks) BR.stocks.open();
       var soon = { 'studio-credits': 'スタジオクレジット', terms: '規約' };
       if (soon[b.dataset.act]) showSoon(soon[b.dataset.act]);
     });

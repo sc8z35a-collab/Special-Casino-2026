@@ -295,7 +295,9 @@ export class Casino extends DurableObject {
           // the emergency stop: every live connection closes
           stop: () => { for (const ws of ctx.getWebSockets()) { try { ws.close(1012, 'emergency'); } catch { /* closing */ } } },
           // the housekeeping sooner (a backup due)
-          reschedule: (at) => this.housekeepSoon(at)
+          reschedule: (at) => this.housekeepSoon(at),
+          // 投資: an order waits, the market looks by itself by then (server/core/stocks.js)
+          stocksSoon: (at) => { if (this.alarmAt === null || at < this.alarmAt - 1000) this.setAlarm(at); }
         }
       });
       this.live.authorize = a => this.api.liveValid(a);
@@ -401,13 +403,15 @@ export class Casino extends DurableObject {
     // (the operator site's connection asks nothing else)
     if (a.ops) return;
     // (a beat from a game nobody touched for a minute is not someone playing; nor is a
-    // frame of the operators' screen view)
-    if (body.op !== 'sight' && body.op !== 'view' && !(body.op === 'beat' && Number(body.idle) > 60000)) this.touch();
+    // frame of the operators' screen view, nor the 投資 screen saying it is open: its
+    // second's ticks hold the object up by themselves, without the alarm)
+    if (body.op !== 'sight' && body.op !== 'view' && body.op !== 'stocks' && !(body.op === 'beat' && Number(body.idle) > 60000)) this.touch();
     if (body.op === 'call') this.api.socketCall(a.u, body);
     else if (body.op === 'typing') this.api.socketTyping(a.u, body);
     else if (body.op === 'beat') this.api.socketBeat(a.u, body);
     else if (body.op === 'sight') this.api.socketSight(a.u, body);
     else if (body.op === 'view') this.api.socketView(a.u, body);
+    else if (body.op === 'stocks') this.api.socketStocks(a.u, body);
   }
 
   async webSocketClose(ws, code) {
@@ -439,11 +443,13 @@ export class Casino extends DurableObject {
       this.housekeepAt = this.api.nextHousekeeping();
       await this.ctx.storage.put('housekeep_at', this.housekeepAt);
     }
+    // 投資: orders waiting, the market looks (they trade in the seconds that reached them, whenever that is)
+    try { this.api.stocksWake(); } catch (e) { console.error('stocks wake failed', e); }
     const month = monthOf(now);
     if (this.awake.month !== month) this.awake = { month, ticks: 0 };
     const at = nextAlarm({ now, housekeepAt: this.housekeepAt, sockets: this.ctx.getWebSockets().length, activeAt: this.activeAt, ticks: this.awake.ticks });
     if (at < this.housekeepAt && ++this.awake.ticks % 50 === 0) await this.ctx.storage.put(`awake:${month}`, this.awake.ticks);
-    await this.setAlarm(at);
+    await this.setAlarm(Math.min(at, this.api.stocksDue()));
   }
 
   // Operator commands that only exist here (see README): point-in-time recovery.

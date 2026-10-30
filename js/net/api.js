@@ -158,7 +158,7 @@
       return r ? { status: r.status, json: r.body } : viaHttp(method, path, headers, body);
     }, function () {
       // (the connection went before the answer: a look is asked again; what may have been done is not done twice)
-      if (method === 'GET' || ((path === '/api/spin' || path === '/api/gacha/spin') && body && body.key)) return viaHttp(method, path, headers, body);
+      if (method === 'GET' || ((path === '/api/spin' || path === '/api/gacha/spin' || path === '/api/stocks/order') && body && body.key)) return viaHttp(method, path, headers, body);
       throw new ApiError(0, 'network', NETWORK);
     });
     return got.then(function (r) {
@@ -466,6 +466,16 @@
     auctionStart: function (market) { return post('/api/tree/auction/start', { market: market }); },
     auctionBid: function (steps, id) { return post('/api/tree/auction/bid', { steps: steps, id: id }); },
     auctionLeave: function (id) { return post('/api/tree/auction/leave', { id: id }); },
+
+    /* 投資 (js/ui/stocks.js): an order carries a key of its own, so a retry after a lost answer is the same order */
+    stocks: function () { return get('/api/stocks'); },
+    stocksChart: function (company, period, since) { return get('/api/stocks/chart?c=' + q(company) + '&p=' + q(period) + (since != null ? '&since=' + q(since) : '')); },
+    stocksHistory: function (before) { return get('/api/stocks/history' + (before ? '?before=' + q(before) : '')); },
+    stocksOrder: function (order) { return post('/api/stocks/order', order); },
+    stocksCancel: function (id) { return post('/api/stocks/cancel', { id: id }); },
+    stocksClaim: function () { return post('/api/stocks/claim'); },
+    stocksWatch: function (on) { return post('/api/stocks/watch', { on: on ? 1 : 0 }); },
+    orderKey: function () { return drawKey(); },
 
     /* 開発者支援 (js/ui/support.js): the price is the server's, the plan and how many are ours */
     payInfo: function () { return get('/api/pay/info'); },

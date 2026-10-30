@@ -79,6 +79,9 @@ export function createApp({ blobs = null, questRewardRoll, questTicketRoll, exte
   // (the developer's automatic backup, when it is due)
   const bk = setInterval(() => api.backupDue(), 5 * 60000);
   bk.unref();
+  // 投資: orders waiting, the market looks by itself every minute (server/core/stocks.js)
+  const sk = setInterval(() => { try { api.stocksWake(); } catch (e) { console.error('stocks wake failed', e); } }, 60000);
+  sk.unref();
 
   const server = http.createServer(async (req, res) => {
     const started = Date.now();
@@ -139,6 +142,7 @@ export function createApp({ blobs = null, questRewardRoll, questTicketRoll, exte
       closing = true;
       clearTimeout(hk);
       clearInterval(bk);
+      clearInterval(sk);
       live.close();
       api.close();
       server.close(() => {

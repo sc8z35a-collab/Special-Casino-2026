@@ -122,5 +122,9 @@
   "check_vault_3d.cjs": {
     "runner": "browser",
     "tier": "pr"
+  },
+  "check_stocks.cjs": {
+    "runner": "browser",
+    "tier": "pr"
   }
 }

@@ -10,9 +10,10 @@ import '../../js/game/tree.js';
 import '../../js/game/vip.js';
 import '../../js/game/receipts.js';
 import '../../js/game/gacha.js';
+import '../../js/game/stocks.js';
 
 const BR = globalThis.BR;
-if (!BR || !BR.CONFIG || !BR.engine || !BR.sale || !BR.QUESTS || !BR.LEVEL || !BR.RELEASE || !BR.TREE || !BR.VIP || !BR.GACHA) throw new Error('could not load the game rules from js/');
+if (!BR || !BR.CONFIG || !BR.engine || !BR.sale || !BR.QUESTS || !BR.LEVEL || !BR.RELEASE || !BR.TREE || !BR.VIP || !BR.GACHA || !BR.STOCKS) throw new Error('could not load the game rules from js/');
 
 export const RULES = BR.CONFIG;
 export const QUESTS = BR.QUESTS;
@@ -21,6 +22,7 @@ export const TREE = BR.TREE;
 export const VIP = BR.VIP;
 export const RECEIPTS = BR.receipts;
 export const GACHA = BR.GACHA;
+export const STOCKS = BR.STOCKS;
 // the newest Dev News entry: players on an older game are asked to update
 export const RELEASE = BR.RELEASE;
 export const JOBS = new Map(RULES.jobs.map((j) => [j.id, j]));

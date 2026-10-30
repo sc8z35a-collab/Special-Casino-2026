@@ -1101,6 +1101,81 @@ MIGRATIONS.push([
 // this migration. Only subsequent restarts switch storage generations.
 MIGRATIONS.push(['ALTER TABLE vault_files ADD COLUMN storage_generation INTEGER NOT NULL DEFAULT 0']);
 
+// 投資 (server/core/stocks.js): each company's price path as its state at the
+// start of the minute the market is in (the seconds after it are worked out
+// again from the server's key, never stored); the candles by the minute, the
+// hour and the day (span, seconds; at, the start; v, the shares players
+// traded); each player's holdings (their cost, profit taken, dividends, and
+// the day's share-seconds for its dividend), the dividends waiting to be
+// claimed, and every order (key: the page's own, so a retry is the same order;
+// day: the trading day it counts towards; tick: the first second it may trade in)
+MIGRATIONS.push([
+  `CREATE TABLE stock_state (
+     company TEXT    PRIMARY KEY,
+     tick    INTEGER NOT NULL,
+     x       REAL    NOT NULL,
+     v       REAL    NOT NULL,
+     opened  INTEGER NOT NULL
+   )`,
+  `CREATE TABLE stock_candles (
+     company TEXT    NOT NULL,
+     span    INTEGER NOT NULL,
+     at      INTEGER NOT NULL,
+     o       INTEGER NOT NULL,
+     h       INTEGER NOT NULL,
+     l       INTEGER NOT NULL,
+     c       INTEGER NOT NULL,
+     v       INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (company, span, at)
+   ) WITHOUT ROWID`,
+  `CREATE TABLE stock_holdings (
+     user_id   INTEGER NOT NULL,
+     company   TEXT    NOT NULL,
+     shares    INTEGER NOT NULL DEFAULT 0,
+     cost      INTEGER NOT NULL DEFAULT 0,
+     realized  INTEGER NOT NULL DEFAULT 0,
+     dividends INTEGER NOT NULL DEFAULT 0,
+     frac      REAL    NOT NULL DEFAULT 0,
+     acc_day   INTEGER NOT NULL DEFAULT 0,
+     acc_at    INTEGER NOT NULL DEFAULT 0,
+     acc       INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (user_id, company)
+   ) WITHOUT ROWID`,
+  `CREATE TABLE stock_accounts (
+     user_id INTEGER PRIMARY KEY,
+     pending INTEGER NOT NULL DEFAULT 0,
+     claimed INTEGER NOT NULL DEFAULT 0
+   )`,
+  `CREATE TABLE stock_orders (
+     id         INTEGER PRIMARY KEY,
+     user_id    INTEGER NOT NULL,
+     key        TEXT    NOT NULL,
+     company    TEXT    NOT NULL,
+     side       TEXT    NOT NULL,
+     type       TEXT    NOT NULL,
+     shares     INTEGER NOT NULL,
+     price      INTEGER NOT NULL DEFAULT 0,
+     reserved   INTEGER NOT NULL DEFAULT 0,
+     status     TEXT    NOT NULL,
+     day        INTEGER NOT NULL,
+     tick       INTEGER NOT NULL,
+     created_at INTEGER NOT NULL,
+     expires_at INTEGER NOT NULL DEFAULT 0,
+     done_at    INTEGER NOT NULL DEFAULT 0,
+     fill_price INTEGER NOT NULL DEFAULT 0,
+     amount     INTEGER NOT NULL DEFAULT 0,
+     fee        INTEGER NOT NULL DEFAULT 0,
+     profit     INTEGER NOT NULL DEFAULT 0,
+     reason     TEXT    NOT NULL DEFAULT '',
+     UNIQUE (user_id, key)
+   )`,
+  "CREATE INDEX stock_orders_open ON stock_orders(company, id) WHERE status = 'open'",
+  'CREATE INDEX stock_orders_user ON stock_orders(user_id, id)',
+  'CREATE INDEX stock_orders_day ON stock_orders(user_id, day)',
+  "CREATE INDEX stock_orders_fills ON stock_orders(company, done_at) WHERE status = 'filled'",
+  "CREATE INDEX stock_orders_done ON stock_orders(done_at) WHERE status != 'open'"
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
@@ -1110,7 +1185,8 @@ export const TABLES = ['users', 'sessions', 'game_login_locks', 'chat_filter_str
   'pay_orders', 'pay_events', 'ops_messages', 'ops_reads', 'security_blocks', 'sec_messages', 'devunit_comments', 'devunit_reads',
   'diary_posts', 'diary_reads', 'diary_reactions', 'diary_comments', 'diary_claims', 'ops_mfa',
   'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'sec_identity', 'oauth_identities',
-  'line_feed_targets', 'line_feed_jobs', 'line_feed_deliveries', 'line_feed_rewards', 'line_feed_claims', 'meta'];
+  'line_feed_targets', 'line_feed_jobs', 'line_feed_deliveries', 'line_feed_rewards', 'line_feed_claims',
+  'stock_state', 'stock_candles', 'stock_holdings', 'stock_accounts', 'stock_orders', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

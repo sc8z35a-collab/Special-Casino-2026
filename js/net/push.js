@@ -252,7 +252,7 @@
   function appNotify(title, body, tag, call) {
     if (!me || !app || !document.hidden || permission() !== 'granted') return;
     // a tap leads to the chat (or the friends, for an invitation)
-    var open = /^(dm|group):\d+$/.test(tag) ? tag : tag.indexOf('invite:') === 0 ? 'friends' : tag.indexOf('tree:') === 0 ? 'tree' : '';
+    var open = /^(dm|group):\d+$/.test(tag) ? tag : tag.indexOf('invite:') === 0 ? 'friends' : tag.indexOf('tree:') === 0 ? 'tree' : tag.indexOf('stock:') === 0 ? 'stocks' : '';
     try { app.notice(String(title), String(body), String(tag), call ? 1 : 0, open); } catch (e) { /* an older app */ }
   }
   function onMsg(m) {
@@ -286,6 +286,8 @@
       BR.social.open('friends');
     } else if (open === 'tree') {
       BR.tree.open();
+    } else if (open === 'stocks' && BR.stocks) {
+      BR.stocks.open();
     }
   }
   var pending = (function () {
@@ -323,6 +325,13 @@
       BR.live.on('hub', onHub);
       BR.live.on('call', onCall);
       BR.live.on('tree', function (event) { if (event.type === 'ready') appNotify('金の生る木', event.name + 'が収穫できます', 'tree:' + event.id + ':' + event.cycleAt, false); });
+      // a limit or stop order that traded (js/game/stocks.js has the names)
+      BR.live.on('stock', function (event) {
+        var o = event && event.order;
+        if (!o || o.status !== 'filled' || o.type === 'market') return;
+        var c = BR.STOCKS && BR.STOCKS.company(o.company);
+        appNotify('投資', (c ? c.name : o.company) + ' ' + BR.util.fmt(o.shares) + '株 ' + (o.side === 'buy' ? '買い' : '売り') + ' 約定 $' + BR.util.fmt(o.fill), 'stock:' + o.id, false);
+      });
     }
   }
 
