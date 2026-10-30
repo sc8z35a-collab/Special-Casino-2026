@@ -235,4 +235,18 @@ const { configFrom } = require('../server/core/config.js');
     await node.stop();
     await new Promise(resolve => stripe.server.close(resolve));
   }
+  // Quest completion can itself settle VIP wages. Keep this boundary in a
+  // fresh pair of hosts so existing registration bursts and actors stay intact.
+  const { marketContract } = require('./market-contract.cjs');
+  const marketVars = { ...vars, QUESTS: true, STRIPE_SECRET_KEY: '', STRIPE_WEBHOOK_SECRET: '' };
+  const marketNode = await startServer(configFrom(marketVars)); let marketWorker;
+  try {
+    marketWorker = await startWorker({ vars: marketVars });
+    const expected = await marketContract(marketNode.base, admin), actual = await marketContract(marketWorker.base, admin);
+    assert.deepEqual(actual, expected, 'quest market rollback must agree across both hosts');
+    console.log('PASS runtime quest market parity: ' + expected.length + ' contracts; rollback, retained offer, retry and duplicate protection');
+  } finally {
+    if (marketWorker) await marketWorker.stop();
+    await marketNode.stop();
+  }
 })().catch((error) => { console.error(error); process.exitCode = 1; });
