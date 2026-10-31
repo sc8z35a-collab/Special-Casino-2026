@@ -90,7 +90,8 @@ test('協力スロット: bets at a group table fill one gauge; a full one pays 
   const sb = await call('POST', '/api/spin', { token: b.token, body: { bet: 50000 } });
   // full: 5 % of what each one bet in the round, and a line in the group's chat
   assert.equal(await tokensOf(a), before + 2500);
-  assert.equal(sb.balance.tokens, 1000000 - 50000 + sb.result.total + (sb.result.charm ? sb.result.charm.back : 0) + 2500);
+  // (a win on a bet this big pays Dtrade its fee: RULES.casino)
+  assert.equal(sb.balance.tokens, 1000000 - 50000 + (sb.result.total || 0) - (sb.result.fee || 0) + (sb.result.charm ? sb.result.charm.back : 0) + 2500);
   assert.equal((await call('GET', `/api/coop?group=${g.id}`, { token: a.token })).coop.gauge, 0);
   const chat = await call('GET', `/api/messages?group=${g.id}`, { token: a.token });
   assert.match(chat.messages.at(-1).text, /^協力スロットのゲージが満タン！/);
