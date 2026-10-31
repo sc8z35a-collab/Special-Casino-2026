@@ -208,7 +208,7 @@ export function startCirculation(w, d, scale = 1) {
   if (w.circ) return;
   w.circ = { from: d, games: {} };
   // (a country smaller than the full 50,000 — the tests' — has its companies' plans for people by its size)
-  for (const s of Object.values(w.co)) s.target = Math.max(1, Math.round((s.target || s.n) * scale));
+  for (const s of Object.values(w.co)) { s.target = Math.max(1, Math.round((s.target || s.n) * scale)); s.payAll = true; }
   const bank = w.co.tenesice;
   if (bank && bank.ext) {
     const lent = Math.min(bank.ext.lent, bank.bal.lent || 0), deps = Math.min(bank.ext.deposits, bank.bal.deposits || 0), bonds = bank.bal.bonds || 0;
@@ -343,8 +343,10 @@ function studioDaily(s, p, d) {
 // company pays besides (社会保険 and the rest). Where it goes: the game makers' to their games (kept as an asset
 // until the game sells), to the contract work or to the live games; a factory's to its cost of sales; the rest to 販管費.
 function payroll(s, p, d, makersTo) {
-  const salary = take(s, 'salary', s.n * s.pay * 12 / 16 / YEAR);
-  const bonus = take(s, 'bonus', s.n * s.pay * 4 / 16 / YEAR);
+  // (once the country lives, the year's pay comes a twelfth each month and a bonus only for a year that beat its
+  // plan: no bonus put by)
+  const salary = take(s, 'salary', s.n * s.pay * (s.payAll ? 1 : 12 / 16) / YEAR);
+  const bonus = s.payAll ? 0 : take(s, 'bonus', s.n * s.pay * 4 / 16 / YEAR);
   const welfare = take(s, 'welfare', s.n * (s.unit - s.pay) / YEAR);
   const total = salary + bonus + welfare;
   // (what of what is accrued is pay and what the company's own costs of its people: for the people's side)
@@ -1004,6 +1006,20 @@ function month(w, s, p, d, ch, out) {
     post(s, [['bonus', put], ['sBonus', diff], ['cash', -paid]], 'payroll');
     if (w.ext && paid > 0) w.ext.pay.push({ company: s.id, n: paid, kind: 'bonus' });
     s.morale = Math.max(0.2, Math.min(0.95, s.morale + 0.08 * (mult - 1)));
+  }
+  // 特別賞与 (once the country lives): at June's end, for a year that beat its guidance, up to three months' pay
+  if (w.ext && s.payAll && CORP.isMonthEnd(d) && m === 6) {
+    const last = s.hist.filter((h) => h.kind === 'y').slice(-1)[0];
+    if (last && last.guideNet > 0 && last.net > last.guideNet) {
+      const share = Math.min(0.25, (last.net / last.guideNet - 1) * 0.5);
+      const n = Math.round(s.n * s.pay * share);
+      if (n > 0) {
+        post(s, [['sBonus', n], ['cash', -n]], 'payroll');
+        w.ext.pay.push({ company: s.id, n, kind: 'bonus' });
+        s.morale = Math.min(0.95, s.morale + 0.05);
+        news(out, s, p, d + 1, 3 * 3600, 'bonus', `前年度の業績が予想を上回ったため、社員に特別賞与（${CORP.fmt.money(n)}）を支給`, { n }, 0, false);
+      }
+    }
   }
 }
 const bonusMult = (s) => {

@@ -486,6 +486,10 @@
     stocksCancel: function (id) { return post('/api/stocks/cancel', { id: id }); },
     stocksClaim: function () { return post('/api/stocks/claim'); },
     stocksWatch: function (on) { return post('/api/stocks/watch', { on: on ? 1 : 0 }); },
+    /* 街ライブ (js/ui/town.js): the country of people, only to look at */
+    town: function () { return get('/api/town'); },
+    townPerson: function (i) { return get('/api/town/person?i=' + q(i)); },
+    townWatch: function (on) { return post('/api/town/watch', { on: on ? 1 : 0 }); },
     orderKey: function () { return drawKey(); },
 
     /* 開発者支援 (js/ui/support.js): the price is the server's, the plan and how many are ours */

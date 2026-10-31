@@ -30,13 +30,15 @@ function sqlAdapter(ctx) {
   const sql = ctx.storage.sql;
   let depth = 0;
   const first = (cursor) => { for (const row of cursor) return row; return undefined; };
+  // (a blob is bound as an ArrayBuffer here: NPCの国's people, server/core/npc.js)
+  const bind = (args) => args.map((a) => (ArrayBuffer.isView(a) ? a.buffer.slice(a.byteOffset, a.byteOffset + a.byteLength) : a));
   return {
     prepare(query) {
       return {
-        get: (...args) => first(sql.exec(query, ...args)),
-        all: (...args) => sql.exec(query, ...args).toArray(),
+        get: (...args) => first(sql.exec(query, ...bind(args))),
+        all: (...args) => sql.exec(query, ...bind(args)).toArray(),
         run: (...args) => {
-          sql.exec(query, ...args).toArray();
+          sql.exec(query, ...bind(args)).toArray();
           const r = sql.exec('SELECT changes() AS changes, last_insert_rowid() AS id').one();
           return { changes: r.changes, lastInsertRowid: r.id };
         }

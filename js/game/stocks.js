@@ -71,7 +71,7 @@
     company: company,
     periods: PERIODS,
     period: period,
-    feeBp: FEE_BP,
+    feeBp: (BR.policy && BR.policy.feeBp) || FEE_BP,
     fee: fee,
     buyAmount: buyAmount,
     sellAmount: sellAmount,

@@ -1,0 +1,30 @@
+/* 街 (ops/town.js): the country of people, its people and its companies' people */
+.town { padding-bottom: 24px; }
+.town-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.town-panel { margin: 12px 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
+.town-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; margin-bottom: 10px; }
+.town-head h3 { margin: 0; font-size: 16px; }
+.town-head span { font-size: 12px; }
+.town-panel h4 { margin: 12px 0 6px; font-size: 14px; }
+.town-panel p { margin: 4px 0; font-size: 13px; line-height: 1.5; }
+.town-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px 14px; }
+.town-kv { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px solid rgba(0, 0, 0, .06); font-size: 13px; }
+.town-kv span { color: var(--muted, #667); }
+.town-table-wrap { overflow-x: auto; }
+.town-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.town-table th, .town-table td { padding: 5px 8px; border-bottom: 1px solid rgba(0, 0, 0, .07); text-align: left; vertical-align: top; }
+.town-table th { font-size: 12px; color: var(--muted, #667); font-weight: 700; }
+.town-link { cursor: pointer; }
+.town-link:hover { background: rgba(60, 120, 220, .07); }
+.town-name { padding: 0; border: 0; background: none; color: #2a64c4; font: inherit; font-weight: 700; cursor: pointer; }
+.town-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.town-search { display: flex; flex-wrap: wrap; gap: 6px; }
+.town-search input, .town-search select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+.town-voice { color: #8a5a00; font-weight: 700; }
+.town-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 10px; }
+.town-bar { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; font-size: 12px; }
+.town-bar i { display: block; height: 7px; border-radius: 4px; background: linear-gradient(90deg, #4c8de0, #9b7cf2); }
+.town-meet { margin: 6px 0; padding: 6px 10px; border-radius: 10px; background: rgba(0, 0, 0, .03); }
+.town-meet summary { cursor: pointer; font-size: 13px; font-weight: 700; }
+.town-line { padding-left: 10px; border-left: 3px solid rgba(60, 120, 220, .25); }
+.town-veto { color: #b3261e; font-weight: 700; }

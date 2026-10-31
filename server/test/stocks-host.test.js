@@ -22,7 +22,7 @@ function fakeCtx() {
     storage: {
       sql: {
         exec(query, ...args) {
-          const rows = db.prepare(query).all(...args);
+          const rows = db.prepare(query).all(...args.map((a) => (a instanceof ArrayBuffer ? new Uint8Array(a) : a)));
           return { [Symbol.iterator]: () => rows[Symbol.iterator](), toArray: () => rows, one: () => rows[0] };
         },
         get databaseSize() { return 0; }
@@ -47,7 +47,8 @@ function fakeCtx() {
 test('the Durable Object: 投資 — the screen open ticks without the awake alarm, and a waiting order brings a look within 5 minutes', async (t) => {
   const ctx = fakeCtx();
   const { Casino } = await import('../cloudflare/casino.js');
-  const o = new Casino(ctx, {});
+  // (the country of people wakes the object each minute its people are about: its own test below)
+  const o = new Casino(ctx, { NPC_ENABLED: 'false' });
   await ctx.ready;
   o.live.authorize = () => true;
   t.after(() => o.api.stocks.close());
@@ -90,4 +91,23 @@ test('the Durable Object: 投資 — the screen open ticks without the awake ala
   o.activeAt = 0;
   await o.alarm();
   assert.equal(ctx.alarm, o.housekeepAt);
+});
+
+test('the Durable Object: NPCの国 — begun with the companies, it wakes the object each minute its people are about', async (t) => {
+  const ctx = fakeCtx();
+  const { Casino } = await import('../cloudflare/casino.js');
+  const o = new Casino(ctx, { NPC_POPULATION: '1000' });
+  await ctx.ready;
+  t.after(() => o.api.stocks.close());
+  // nothing begun: nothing to wake for
+  assert.equal(o.api.npcDue(), Infinity);
+  const me = await (await o.fetch(new Request('https://x/api/register', { method: 'POST', headers: { 'content-type': 'application/json', 'x-device': crypto.randomBytes(16).toString('hex') }, body: JSON.stringify({ name: 'Townsfolk', password: 'pass1234', avatar: 'traveler-green' }) }))).json();
+  await o.fetch(new Request('https://x/api/stocks', { headers: { authorization: 'Bearer ' + me.token } }));
+  // the companies began: the country begins at the next wake, and from then on a minute at a time while its people are about
+  assert.ok(o.api.npcDue() <= Date.now() + 1500);
+  o.activeAt = 0;
+  await o.alarm();
+  assert.ok(o.api.npc.world(), 'the country began');
+  assert.equal(o.api.npc.world().P.n, 1000);
+  assert.ok(ctx.alarm <= Date.now() + 61000 + 15000, 'the next minute (its first day: all day long)');
 });

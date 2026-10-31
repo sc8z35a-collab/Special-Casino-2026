@@ -18,5 +18,9 @@
   ],
   "medals": [
     "js/ui/medals.js"
+  ],
+  "town": [
+    "js/game/npc.js",
+    "js/ui/town.js"
   ]
 }

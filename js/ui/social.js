@@ -2045,6 +2045,7 @@
       if (b.dataset.act === 'dev-diary' && BR.diary) BR.diary.open();
       if (b.dataset.act === 'gacha' && BR.gacha) BR.gacha.open();
       if (b.dataset.act === 'stocks' && BR.stocks) BR.stocks.open();
+      if (b.dataset.act === 'town' && BR.town) BR.town.open();
       if (b.dataset.act === 'dev-news') { K.showModal('news-modal'); BR.news.show(); }
       var soon = { 'studio-credits': 'スタジオクレジット', terms: '規約' };
       if (soon[b.dataset.act]) showSoon(soon[b.dataset.act], b.dataset.act);

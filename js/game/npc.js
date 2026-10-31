@@ -31,8 +31,8 @@
 
   // what a person is doing (a dot's colour on the 街ライブ), and where it is done
   var ACTS = [
-    { id: 'sleep', name: '睡眠', place: 'home', color: '#2b3350' },
-    { id: 'home', name: '家', place: 'home', color: '#4b5b8a' },
+    { id: 'sleep', name: '睡眠', place: 'home', color: '#56649a' },
+    { id: 'home', name: '家', place: 'home', color: '#7d8fc4' },
     { id: 'move', name: '移動', place: 'street', color: '#9aa4b5' },
     { id: 'work', name: '仕事', place: 'work', color: '#3d8bfd' },
     { id: 'lunch', name: '食事', place: 'store', color: '#f6a04d' },

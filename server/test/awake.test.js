@@ -24,7 +24,7 @@ function fakeCtx() {
     storage: {
       sql: {
         exec(query, ...args) {
-          const rows = db.prepare(query).all(...args);
+          const rows = db.prepare(query).all(...args.map((a) => (a instanceof ArrayBuffer ? new Uint8Array(a) : a)));
           return { [Symbol.iterator]: () => rows[Symbol.iterator](), toArray: () => rows, one: () => rows[0] };
         },
         get databaseSize() { return 0; }
@@ -48,7 +48,8 @@ function fakeCtx() {
 
 async function object(ctx) {
   const { Casino } = await import('../cloudflare/casino.js');
-  const o = new Casino(ctx, {});
+  // (the country of people has its own test: server/test/npc.test.js)
+  const o = new Casino(ctx, { NPC_ENABLED: 'false' });
   await ctx.ready;
   // These synthetic sockets test alarm scheduling, not session credentials.
   o.live.authorize = () => true;

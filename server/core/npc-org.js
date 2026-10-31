@@ -232,6 +232,13 @@ function proposals(W, o, s, day, r, ctx) {
   if (id === 'dtrade' && trend < 0) out.push({ kind: 'event', title: 'カジノの週末イベント（来場の呼び込み）', effect: [{ kind: 'appeal', key: 'casino', add: 0.06, days: 14 }, { kind: 'budget', key: 'ads', mult: 1.05 }], cost: s.budget.ads * 0.05, risk: 0.2, gain: 0.05, by: by('casino') });
   if ((id === 'riru' || id === 'ice') && s.projects && s.projects.some((p) => p.due - day < 45 && p.due > day)) out.push({ kind: 'promo', title: '発売前の宣伝強化', effect: [{ kind: 'appeal', key: 'games', add: 0.08, days: 60 }, { kind: 'budget', key: 'ads', mult: 1.1 }], cost: s.budget.ads * 0.1, risk: 0.15, gain: 0.06, by: by('publish') });
   if ((id === 'citywork' || id === 'speedeed') && r.u() < 0.25) out.push({ kind: 'tech', title: 'マッチングの改善（求人の取り扱いを伸ばす）', effect: [{ kind: 'share', delta: id === 'citywork' ? 0.01 : -0.01 }, { kind: 'budget', key: 'rd', mult: 1.04 }], cost: s.budget.rd * 0.04, risk: 0.2, gain: 0.04, by: by('tech') });
+  // カーオーナーのビジネスアドバイザー (the customers' experience) and 計画立案者 (the year's plan for the shops)
+  if (id === 'carowner' && dept('advisor') && r.u() < 0.25) out.push({ kind: 'advice', title: '店員の接客研修と試乗会（来店客の購入率を上げる）', effect: [{ kind: 'appeal', key: 'cars', add: 0.04, days: 90 }, { kind: 'budget', key: 'other', mult: 1.02 }], cost: s.budget.other * 0.02, risk: 0.15, gain: 0.05, by: dept('advisor').named.advisor });
+  if (id === 'carowner' && dept('plan') && behind < 1 && r.u() < 0.3) out.push({ kind: 'plan', title: '下期の販売計画の見直し（在庫を絞り、整備と中古車に重点）', effect: [{ kind: 'budget', key: 'place', mult: 0.97 }, { kind: 'price', key: 'service', mult: 1.03 }], cost: 0, risk: 0.2, gain: 0.04, by: dept('plan').named.planner });
+  // MAGITAの法人営業部: the country's and the companies' orders (公用車, 設備)
+  if (id === 'magita' && dept('sales') && r.u() < 0.3) out.push({ kind: 'sales', title: '官公庁・法人への提案営業の強化', effect: [{ kind: 'appeal', key: 'public', add: 0.1, days: 120 }, { kind: 'budget', key: 'ads', mult: 1.05 }], cost: s.budget.ads * 0.05, risk: 0.15, gain: 0.05, by: by('sales') });
+  // テネシスのシステム技術部 (技術者): the systems renewed, the running costs down after
+  if (id === 'tenesice' && dept('tech') && r.u() < 0.2) out.push({ kind: 'tech', title: '勘定系システムの刷新（運用費の削減）', effect: [{ kind: 'budget', key: 'rd', mult: 1.05 }, { kind: 'budget', key: 'other', mult: 0.96 }], cost: s.budget.rd * 0.05, risk: 0.3, gain: 0.05, by: dept('tech').named.cto });
   if (id === 'jinx' && r.u() < 0.15) out.push({ kind: 'partner', title: 'スタジオとの連携：店頭でのゲーム販売の強化', effect: [{ kind: 'appeal', key: 'games', add: 0.03, days: 90 }], cost: 0, risk: 0.1, gain: 0.03, by: dept('partner').named.liaison });
   return out.filter((p) => p.by !== undefined && p.by >= 0);
 }

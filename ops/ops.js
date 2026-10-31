@@ -803,7 +803,7 @@
     state.view = v;
     viewAsker();
     Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (t) { t.classList.toggle('on', t.dataset.view === v); });
-    ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile', 'calendar', 'devapp', 'corp'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
+    ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile', 'calendar', 'devapp', 'corp', 'town'].forEach(function (x) { $('#view-' + x).hidden = x !== v; });
     if (diaryProfile) diaryProfile.view(v);
     if (v === 'players') load();
     else if (v === 'archive') loadArchive();
@@ -816,6 +816,7 @@
     else if (v === 'calendar') { if (window.OpsCalendar) OpsCalendar.show($('#view-calendar')); }
     else if (v === 'devapp') { if (window.OpsDevApp) OpsDevApp.show($('#view-devapp'), request, toast); }
     else if (v === 'corp') { if (window.OpsCorp) OpsCorp.show($('#view-corp'), request, toast); }
+    else if (v === 'town') { if (window.OpsTown) OpsTown.show($('#view-town'), request, toast); }
     else if (v === 'log') { loadLog(true); verifyLog(); }
     else if (v === 'team') openTeamView();
     else if (v === 'server') renderDevCards();
@@ -2635,7 +2636,7 @@
       if (liveSse()) {
         var es = new EventSource(path);
         opsLive = { close: function () { es.close(); } };
-        ['hello', 'opscall', 'opsping', 'opschat', 'devunit', 'corp', 'watchhello', 'watchframe', 'watchstat', 'watchend'].forEach(function (ev) {
+        ['hello', 'opscall', 'opsping', 'opschat', 'devunit', 'corp', 'npc', 'watchhello', 'watchframe', 'watchstat', 'watchend'].forEach(function (ev) {
           es.addEventListener(ev, function (e) { up = true; var d = null; try { d = JSON.parse(e.data); } catch (x) { return; } onOpsLive(ev, d); });
         });
         es.onerror = function () { es.close(); opsLiveLost(up); };
@@ -2695,6 +2696,7 @@
     else if (ev === 'opschat') chatNudge();
     // (a company day closed: the 企業 app asks again if it is open)
     else if (ev === 'corp') { if (window.OpsCorp) OpsCorp.live(d); }
+    else if (ev === 'npc') { if (window.OpsTown) OpsTown.live(d); }
   }
   // A conversation changed (a message, or one read): the team's tab asks for it now, any other tab for the number (the poll), instead of the
   // tab asking every few seconds for as long as it is open. Several in a moment are one.

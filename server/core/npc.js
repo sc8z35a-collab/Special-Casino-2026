@@ -190,7 +190,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   function due(now = clock()) {
     if (!on) return Infinity;
     const w = get();
-    if (!w) return now + 5 * MIN;
+    // (not begun: as soon as the companies are, never before)
+    if (!w) return corp.booted() ? now + 1000 : Infinity;
     return Math.max(now + 1000, NPC.nextActive(now + 1000, w.first) + 2000);
   }
   // the depth the people think at: shallower when the server is busy (its month's usage high, the minutes slow)
@@ -318,7 +319,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       },
       labor: { unions: Object.fromEntries(Object.entries(w.lab.unions).map(([id, u]) => [id, { members: u.members, state: u.state, demand: u.demand, offer: u.offer, raise: u.raise, days: u.days, rep: person(u.rep) }])) },
       companies: NPC.companies.map((id) => { const o = w.orgs[id]; return { id, name: CORP.company(id).name, ceo: person(o ? o.ceo : -1), president: person(o ? o.president : -1), staff: w.staffOf(id).length, ventures: o ? o.ventures.filter((v) => v.stage !== 'closed').map((v) => ({ name: v.name, customers: v.customers, stage: v.stage })) : [] }; }),
-      news, talk: (w.talkFeed || []).slice(-20).reverse(), frame: b64(frame(w)), n: P.n
+      news, talk: (w.talkFeed || []).slice(-20).reverse(), live: liveStats(w), frame: b64(frame(w)), n: P.n
     };
   }
   // a person's card (the famous with their posts and a part of their life's book)

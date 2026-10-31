@@ -398,7 +398,7 @@ function publicWorks(W, day, r) {
   const budget = W.cal.publicWorks * (1 + (W.nation.knobs.publicWorks || 0) / 100) / YEAR;
   if (W.nation.cash > 0) {
     for (const [co, s] of WORKS) {
-      const n = Math.round(budget * s * (0.6 + 0.8 * r.u()));
+      const n = Math.round(budget * s * (0.6 + 0.8 * r.u()) * (1 + (W.appeal[co + ':public'] || 0)));
       econ.nationOut(W, 'works', n);
       econ.toStream(W, day, co, 'public', n);
     }

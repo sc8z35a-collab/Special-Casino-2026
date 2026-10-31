@@ -77,7 +77,7 @@ function blank(key, n, scale, first, day, minute) {
     coShare: {}, coSharePrev: {}, coTrend: {}, coWeek: {}, segment: {}, titles: [], liveGames: [], stock: { cars: stockCars, orders: [] },
     outlook: { jobLoss: 0.004, market: 1 }, depth: 'standard', work: {}, workHours: {}, capacity: {}, crunch: {}, overtime: {},
     news: [], meetings: [], reports: [], events: [], reasons: [], convos: [], ai: [], corpOps: [], talks: 0,
-    reasonLog: 0.02, talkLog: 0.0005, demoToday: {}, richest: 0, frameAt: 0
+    reasonLog: 0.02, talkLog: 0.002, demoToday: {}, richest: 0, frameAt: 0
   };
 }
 // what holds the world's functions (not kept): the people's helpers and the parts made of its plain data
