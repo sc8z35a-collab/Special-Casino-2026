@@ -58,6 +58,12 @@ export function configFrom(env = {}, overrides = {}) {
     milestones: flag(env, 'MILESTONES', true),
     // 功績 (server/core/medals.js); off only for tests that count money or live events exactly.
     medals: flag(env, 'MEDALS', true),
+    // NPCの国 (server/core/npc.js): its 50,000 people (fewer for a small test), the generative AI's model and the
+    // Neurons a day its share (90%) is of; off for the tests that count the companies' money exactly.
+    npc: flag(env, 'NPC_ENABLED', true),
+    npcPopulation: int(env, 'NPC_POPULATION', 50000),
+    npcAiModel: str(env, 'NPC_AI_MODEL', ''),
+    npcAiNeurons: int(env, 'NPC_AI_NEURONS', 10000),
     // Private daily R2 vault snapshots, seven retained; a full recovery drill weekly.
     vaultSnapshots: flag(env, 'VAULT_SNAPSHOTS', true),
     vaultSnapshotHours: int(env, 'VAULT_SNAPSHOT_HOURS', 24),

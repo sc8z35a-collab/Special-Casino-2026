@@ -33,6 +33,8 @@ export function assign(W, ages, r) {
     const able = staff.filter((i) => !(P.flags[i] & FL.rehired) && ages[i] >= 45).map((i) => [i, sk(P, i, S.manage) * 2 + tr(P, i, T.ambition) + ages[i] / 60 + r.u() * 0.4]).sort((a, b) => b[1] - a[1]);
     const nOff = Math.max(2, Math.min(8, Math.round(staff.length / 2500) + 2));
     const execs = able.slice(0, 2 + nOff).map((x) => x[0]);
+    // (a small company with few of the older: the ablest of the rest)
+    for (const i of staff.slice().sort((a, b) => P.sk[b * 8 + S.manage] - P.sk[a * 8 + S.manage])) { if (execs.length >= 2) break; if (!execs.includes(i)) execs.push(i); }
     if (execs.length) { o.ceo = execs[0]; P.rank[o.ceo] = 6; }
     if (execs.length > 1) { o.president = execs[1]; P.rank[o.president] = 5; }
     o.officers = execs.slice(2);
@@ -49,9 +51,15 @@ export function assign(W, ages, r) {
     const execDept = o.depts.findIndex((d) => d.kind === 'exec');
     for (const i of execs) P.dept[i] = execDept;
     o.depts[execDept].size = execs.length;
+    // (each department's people by its share, at least one in each when there are enough: the remainders to the largest)
+    const sizes = deps.map((d) => Math.max(order.length >= deps.length ? 1 : 0, Math.floor(order.length * d.share / total)));
+    let extra = order.length - sizes.reduce((a, b) => a + b, 0);
+    const byRest = deps.map((d, k) => [k, order.length * d.share / total - Math.floor(order.length * d.share / total)]).sort((a, b) => b[1] - a[1]);
+    for (let x = 0; extra > 0; x = (x + 1) % deps.length) { sizes[byRest[x][0]]++; extra--; }
+    while (extra < 0) { const k = sizes.indexOf(Math.max(...sizes)); sizes[k]--; extra++; }
     deps.forEach((d, k) => {
       const di = o.depts.findIndex((x) => x.key === d.key);
-      const n = k === deps.length - 1 ? order.length - at : Math.round(order.length * d.share / total);
+      const n = sizes[k];
       const mem = order.slice(at, at + n);
       at += n;
       for (const i of mem) P.dept[i] = di;
@@ -480,7 +488,7 @@ function pickVenture(W, o, r) {
   out.launch = Math.round(out.staff * 12 * 6000000 * 0.25 + 50000000);
   return out;
 }
-function startVenture(W, o, type, day, r) {
+export function startVenture(W, o, type, day, r) {
   const P = W.P, spec = (NPC.ventures[o.id] || []).find((v) => v.id === type);
   if (!spec) return;
   const slot = freeSlot(W);
@@ -522,7 +530,8 @@ function ventureMonth(W, day, r, ctx) {
     const potential = W.segment[v.fit] || 0;
     const share = potential ? v.customers / potential : 0;
     const price = W.priceIdx[o.id + ':v:' + v.type] || 1;
-    const newOnes = Math.round((0.0015 + 0.04 * share) * Math.max(0, potential - v.customers) * v.quality * (v.stage === 'grow' ? 1.6 : v.stage === 'shrink' ? 0.4 : 1) / Math.pow(price, 1.5));
+    const want = (0.0015 + 0.04 * share) * Math.max(0, potential - v.customers) * v.quality * (v.stage === 'grow' ? 1.6 : v.stage === 'shrink' ? 0.4 : 1) / Math.pow(price, 1.5);
+    const newOnes = Math.floor(want) + (r.u() < want % 1 ? 1 : 0);
     for (let s = 0, got = 0; s < newOnes * 6 && got < newOnes; s++) {
       const i = r.int(P.n);
       if (P.subs[i] & bit || !fits(W, i, v.fit, day)) continue;
@@ -531,7 +540,8 @@ function ventureMonth(W, day, r, ctx) {
       got++;
     }
     // churn: a little each day, more when it serves them badly
-    const leave = Math.round(v.customers * (0.004 + 0.01 * (1 - v.quality)));
+    const lw = v.customers * (0.004 + 0.01 * (1 - v.quality));
+    const leave = Math.floor(lw) + (r.u() < lw % 1 ? 1 : 0);
     for (let s = 0, gone = 0; s < leave * 8 && gone < leave; s++) {
       const i = r.int(P.n);
       if (!(P.subs[i] & bit)) continue;
@@ -603,7 +613,7 @@ export function segments(W, day) {
 // The month's review of each business (on the 2nd): its numbers, its customers' trend, its people's say; grown when it
 // earns and grows, cut back when it loses, closed when it loses for long (its people back to the company), and a
 // report of it all.
-function ventureReview(W, o, s, day, r, ctx) {
+export function ventureReview(W, o, s, day, r, ctx) {
   const P = W.P;
   for (const v of o.ventures) {
     if (v.stage === 'closed') continue;

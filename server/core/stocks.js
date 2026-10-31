@@ -147,6 +147,10 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
         const at = Math.floor(o.done_at / MS);
         moves.set(at, (moves.get(at) || 0) + o.impact);
       }
+      // (and the people's trades of the country: server/core/npc.js, their imbalance a minute at a time)
+      for (const o of q('SELECT at, impact FROM stock_npc WHERE company = ? AND impact != 0 AND at >= ? AND at < ?').all(c.id, s.tick, target)) {
+        moves.set(o.at, (moves.get(o.at) || 0) + o.impact);
+      }
       running.set(c.id, moves);
       let jumps = null, jumpDay = -1;
       for (let n = s.tick + 1; n <= target; n++) {
@@ -181,7 +185,7 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
   function closeMinute(c, s) {
     const k = s.candle, n = s.tick;
     const v = q("SELECT COALESCE(SUM(shares), 0) AS n FROM stock_orders WHERE company = ? AND status = 'filled' AND done_at > ? AND done_at <= ?")
-      .get(c.id, k.at * MS, n * MS).n;
+      .get(c.id, k.at * MS, n * MS).n + q('SELECT COALESCE(SUM(shares), 0) AS n FROM stock_npc WHERE company = ? AND at >= ? AND at < ?').get(c.id, k.at, n).n;
     const added = q('INSERT OR IGNORE INTO stock_candles (company, span, at, o, h, l, c, v) VALUES (?, 60, ?, ?, ?, ?, ?, ?)')
       .run(c.id, k.at, k.o, k.h, k.l, k.c, v).changes;
     if (added) {

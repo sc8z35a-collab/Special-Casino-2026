@@ -24,6 +24,8 @@ const PUBLIC_NEWS = 4;
 const FLUSH_MS = 5 * 60000;     // the casino's money kept in memory at most this long
 
 export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, history = 2, opsIds = () => [], live = null, onDay = () => {} }) {
+  // the country of people (server/core/npc.js), once it is there: its money of each day, and what the day paid out to it
+  let npc = null;
   const key = keyFrom(secret, 'corp'), ch = model.chance(key);
   const listed = CORP.listed().map((c) => c.id);
   const base = new Map(STOCKS.companies.map((c) => [c.id, c.base]));
@@ -103,12 +105,19 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   function close() {
     let d = 0;
     flush();
+    const day = get().day + 1;
+    // (the people's last minutes of the day first, and their money of it)
+    const c0 = get().circ;
+    const people = npc && c0 && day >= c0.from ? npc.beforeClose(day) : null;
     const out = change((w) => {
       d = w.day + 1;
       const row = q('SELECT data FROM corp_flows WHERE day = ?').get(d);
-      return model.closeDay(w, d, row ? JSON.parse(row.data) : {}, ch);
+      const flows = row ? JSON.parse(row.data) : {};
+      if (people) flows.npc = people;
+      return model.closeDay(w, d, flows, ch);
     });
     write(out);
+    if (npc && out.ext) npc.afterClose(d, out);
     afterCommit(() => {
       try {
         for (const id of opsIds()) if (live) live.sendOps(id, 'corp', { day: d });
@@ -191,10 +200,17 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   const surcharge = (id) => surcharges()[id] || 0;
   // a listed company's shares traded by a player at second `sec` (new shares or its own bought back), and the
   // fee, Dtrade's
+  // (with the country there, the people's waiting orders on the other side take it first: what they leave is the
+  // company's — new shares, or its own bought back)
   function traded(id, side, shares, price, fee, sec) {
     if (!booted() || !listed.includes(id)) return;
-    change((w) => model.trade(w, id, side, shares, price, sec), [id]);
+    const people = npc ? npc.cross(id, side, shares, price) : 0;
+    if (shares - people > 0) change((w) => model.trade(w, id, side, shares - people, price, sec), [id]);
     flow('dtrade', 'trade', fee);
+  }
+  // the day the companies begin to live on the country's money (the next they close)
+  function startCirculation(day, scale) {
+    change((w) => model.startCirculation(w, Math.max(day, w.day + 1), scale));
   }
 
   /* -------------------------------------------------------------- what is shown --- */
@@ -368,5 +384,5 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     q('DELETE FROM corp_flows WHERE day < ?').run(day - KEEP_FLOWS);
   }
 
-  return { ensure, booted, closesAt, close, anchor, dps, flow, tally, flush, sold, traded, surcharge, surcharges, view, routes, housekeep, world: get, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8 };
+  return { ensure, booted, closesAt, close, anchor, dps, flow, tally, flush, sold, traded, surcharge, surcharges, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8 };
 }

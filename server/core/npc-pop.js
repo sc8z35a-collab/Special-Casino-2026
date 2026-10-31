@@ -159,7 +159,7 @@ export function makePeople(n, day, corp, r) {
     let x = r.u() * sumQ, g = quota[0];
     for (const q of quota) { x -= q[2]; if (x < 0) { g = q; break; } }
     const age = g[0] + r.int(g[1] - g[0] + 1);
-    P.birth[i] = day - Math.floor(age * 365.25) - r.int(365);
+    P.birth[i] = day - Math.ceil(age * 365.25) - r.int(365);
     P.sex[i] = r.u() < (age >= 75 ? 0.58 : 0.5) ? 1 : 0;
     P.fam[i] = r.int(NPC.names.family.length);
     P.given[i] = r.int(P.sex[i] ? NPC.names.female.length : NPC.names.male.length);

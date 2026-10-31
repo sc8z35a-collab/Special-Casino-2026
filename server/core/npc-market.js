@@ -54,34 +54,23 @@ export function createMarket(W) {
         const id = LISTED_IDS[k], b = m.book[id], price = ctx.stockPrice ? ctx.stockPrice(id) : 0;
         if (!price) { b.buy = []; b.sell = []; continue; }
         for (const o of b.buy) o[1] = Math.min(o[1], Math.floor(Math.max(0, P.cash[o[0]]) / (price * 1.02)));
-        const buys = b.buy.filter((o) => o[2] >= price && o[1] > 0), sells = b.sell.filter((o) => o[2] <= price && P.sh[o[0] * LISTED + k] >= o[1]);
+        for (const o of b.sell) o[1] = Math.min(o[1], P.sh[o[0] * LISTED + k]);
+        const buys = b.buy.filter((o) => o[2] >= price && o[1] > 0), sells = b.sell.filter((o) => o[2] <= price && o[1] > 0);
         let want = 0, have = 0;
         for (const o of buys) want += o[1];
         for (const o of sells) have += o[1];
         const done = Math.min(want, have);
         if (done > 0) {
-          const fb = done / want, fs = done / have;
-          let left = done;
-          for (const o of buys) {
-            const n = Math.min(left, Math.floor(o[1] * fb + 0.5));
-            if (n > 0) { settle(W, k, o[0], n, price, 'buy'); left -= n; }
-          }
-          // (what rounding left goes to the first who wanted more)
-          for (const o of buys) { if (left <= 0) break; settle(W, k, o[0], 1, price, 'buy'); left--; }
-          let out = done;
-          for (const o of sells) {
-            const n = Math.min(out, Math.floor(o[1] * fs + 0.5), P.sh[o[0] * LISTED + k]);
-            if (n > 0) { settle(W, k, o[0], n, price, 'sell'); out -= n; }
-          }
-          for (const o of sells) { if (out <= 0) break; const n = Math.min(out, P.sh[o[0] * LISTED + k]); if (n > 0) { settle(W, k, o[0], n, price, 'sell'); out -= n; } }
-          // (shares rounding could not place: none bought or sold beyond the other side, so nothing is made or lost)
-          if (out > 0 || left > 0) W.sum.marketSlip += out - left;
+          // each side's share of what traded, by what it asked for (the remainders to the largest), never beyond it
+          const fb = alloc(buys, done), fs = alloc(sells, done);
+          buys.forEach((o, x) => { if (fb[x] > 0) { settle(W, k, o[0], fb[x], price, 'buy'); o[1] -= fb[x]; } });
+          sells.forEach((o, x) => { if (fs[x] > 0) { settle(W, k, o[0], fs[x], price, 'sell'); o[1] -= fs[x]; } });
         }
         // what was left of each side waits through the minute for the players; its imbalance moves the price
         const net = (want - done) - (have - done);
         if (done || net) m.nudges.push({ company: id, at: minute, shares: done, value: net * price });
-        b.buy = b.buy.filter((o) => o[2] >= price * 0.995).map((o) => [o[0], Math.max(0, o[1] - 0), o[2]]).slice(-200);
-        b.sell = b.sell.filter((o) => o[2] <= price * 1.005).slice(-200);
+        b.buy = b.buy.filter((o) => o[1] > 0 && o[2] >= price * 0.995).slice(-200);
+        b.sell = b.sell.filter((o) => o[1] > 0 && o[2] <= price * 1.005).slice(-200);
         b.at = minute;
         m.volume[id] = (m.volume[id] || 0) + done;
         // (the price as the people last saw it, for the move of late: every half hour of it)
@@ -114,6 +103,15 @@ export function createMarket(W) {
     }
   };
 
+  // `n` shared out over orders by what each asked (whole shares: the remainders to the largest), never beyond an order
+  function alloc(list, n) {
+    const total = list.reduce((a, o) => a + o[1], 0);
+    const out = list.map((o) => Math.floor(o[1] * n / total));
+    let left = n - out.reduce((a, b) => a + b, 0);
+    const order = list.map((o, x) => [x, o[1] * n / total - out[x]]).sort((a, b) => b[1] - a[1]);
+    for (const [x] of order) { if (left <= 0) break; if (out[x] < list[x][1]) { out[x]++; left--; } }
+    return out;
+  }
   // one investor's side of a trade: the shares and the money, the fee to Dtrade (`player`: the other side a player's,
   // whose money comes from the players' side of the game)
   function settle(W, k, i, n, price, side, player = false) {

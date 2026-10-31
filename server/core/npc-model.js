@@ -206,7 +206,7 @@ function calibrate(W, corp, day) {
   c.hourly = 1300;
   c.minBet = RULES.bets[0] * RULES.tokenPrice * 10;
   c.carUrge = 0.004;
-  c.gameBuy = 0.12;
+  c.gameBuy = 0.2;
   c.catalog = 0.04;
   // the shares of a month's budget: worked out from the people's own budgets and weights at these scales
   c.casino = 1; c.games = 1; c.leisureShare = 0.22; c.invest = 1;
@@ -223,7 +223,7 @@ function calibrate(W, corp, day) {
   c.casino = Math.min(4, betsYear / 12 / Math.max(1, bud.casino) * 0.36);
   const studios = (2800000000 + 26000000000) * sc;
   c.games = Math.min(8, studios / 12 / Math.max(1, bud.games) * 4);
-  c.livePlay = Math.round(studios * 0.25 / 12 / Math.max(1, P.n * 0.06) * 3);
+  c.livePlay = Math.round(studios * 0.25 / 12 / Math.max(1, P.n * 0.06));
   // the market: a twelfth of a year's trading (what Dtrade's 受入手数料 says it was) each month, as buys
   const tradeYear = dtrade * 0.3 / (STOCKS.feeBp / 10000) / 2;
   c.invest = Math.min(0.5, tradeYear / 12 / Math.max(1, bud.invest) * 0.45);

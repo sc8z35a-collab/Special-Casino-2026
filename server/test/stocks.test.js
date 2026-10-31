@@ -127,8 +127,8 @@ test('投資: the market opens with a month behind it, and every second comes ou
   // (the companies began with it: their book price is the market's, and so their first day's centre)
   for (const c of S.companies) assert.deepEqual(Object.values(m.db.prepare('SELECT e0, e1 FROM corp_anchor WHERE company = ? AND day = ?').get(c.id, Math.floor(START / 86400000))), [Math.log(c.base), Math.log(c.base)]);
   assert.equal(r.corp.riru.name, 'RIRU STUDIO');
-  assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM stock_candles WHERE span = 60').get().n, 2 * 3 * 1440);
-  assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM stock_candles WHERE span = ?').get(DAY).n, 2 * 31);
+  assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM stock_candles WHERE span = 60').get().n, S.companies.length * 3 * 1440);
+  assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM stock_candles WHERE span = ?').get(DAY).n, S.companies.length * 31);
   // woken now and then (seconds apart, minutes, an hour), then after five hours asleep
   for (const step of [1, 1, 37, 60, 61, 3, 599, 1200, 3601, 5 * 3600]) {
     m.set(m.at() + step * 1000);
@@ -281,9 +281,9 @@ test('投資: limit and stop orders wait and trade in the first second that reac
   await m.order(p, { company: 'ice', side: 'buy', shares: 100 });
   m.set(m.at() + 61 * 1000);
   const placed = m.sec(), horizon = placed + 3 * 3600;
-  // prices that the next three hours reach, worked out ahead
+  // prices that the next three hours reach, worked out ahead (the two companies held here)
   const plan = [];
-  for (const c of S.companies) {
+  for (const c of S.companies.filter((x) => x.id === 'riru' || x.id === 'ice')) {
     const prices = m.sim(c.id, horizon), now = prices.get(placed);
     let lo = Infinity, hi = -Infinity;
     for (let n = placed + 1; n <= horizon; n++) { lo = Math.min(lo, prices.get(n)); hi = Math.max(hi, prices.get(n)); }

@@ -537,7 +537,7 @@ export function reborn(W, i, day, r, heirs) {
   const P = W.P;
   P.gen[i] = (P.gen[i] + 1) & 0xffff;
   P.sex[i] = r.u() < 0.5 ? 1 : 0;
-  P.birth[i] = day - Math.floor(18 * 365.25) - r.int(300);
+  P.birth[i] = day - Math.ceil(18 * 365.25) - r.int(300);
   // the parents: a couple of 40–60 somewhere (their district, their name)
   let parent = -1;
   for (let k = 0; k < 40; k++) {
