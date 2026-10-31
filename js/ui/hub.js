@@ -87,7 +87,7 @@
       { badge: 'EXP', title: 'レベルブースト', text: '経験値が' + times(HUB.xp) + '（抜けるまで自動）' },
       { badge: '5H', title: '5時間クエスト ブースター', text: '5時間クエストのカウントが2人で' + times(HUB.booster) + '、1人増えるごとにさらに' + times(HUB.boosterStep) + '（3人 ×2.2・4人 ×2.42…）' },
       { badge: 'JOB', title: 'バイトの時給アップ', text: '勤務中でいちばん高いバイトの時給が' + times(HUB.wage) },
-      { badge: '守', title: 'お守り加護パワーアップ', text: '負けたスピンの軽減が最大' + BR.CONFIG.charm.hub.max + '%に（通常' + BR.CONFIG.charm.min + '〜' + BR.CONFIG.charm.max + '%）。100%軽減（大吉）の確率も2倍' },
+      { badge: '守', title: 'セーフティースロット パワーアップ', text: '負けたスピンの軽減が最大' + BR.CONFIG.charm.hub.max + '%に（通常' + BR.CONFIG.charm.min + '〜' + BR.CONFIG.charm.max + '%）。100%軽減（大吉）の確率も2倍' },
       { badge: 'QUEST', title: 'クエストはすべて有効', text: '週間協力クエストも進みます' }
     ];
   }

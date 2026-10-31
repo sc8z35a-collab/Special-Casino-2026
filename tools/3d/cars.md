@@ -11,15 +11,19 @@ evicted geometry, materials and textures are disposed to bound phone memory.
 
 | Source filename | Car ID | Display name | Base game price |
 | --- | --- | --- | ---: |
-| オンヴォーロ.glb | onvoro | オンヴォーロ | 4,500,000 |
-| フェラーリ325.glb | ferrari-325 | フェラーリ325 | 55,000,000 |
-| メルセデスベンツ one.glb | mercedes-benz-one | メルセデスベンツ one | 135,000,000 |
-| ランボルギーニアベンタドール.glb | lamborghini-aventador | ランボルギーニアベンタドール | 142,000,000 |
-| ランボルギーニウルス.glb | lamborghini-urus | ランボルギーニウルス | 56,500,000 |
-| ランボルギーニクイヤスパイダー.glb | lamborghini-kuia-spyder | ランボルギーニクイヤスパイダー | 34,000,000 |
-| 日産　gt-r.glb | nissan-gt-r | 日産 GT-R | 45,000,000 |
-| オレンジスポーツカー.glb | lamborghini-revuelto | ランボルギーニ レヴエルト | 未定 |
-| ホワイトスポーツカー.glb | mercedes-amg-one-white | メルセデスAMG ONE（ホワイト） | 未定 |
+| オンヴォーロ.glb | onvoro | MAGITA オンヴォーロ | 4,200,000 |
+| フェラーリ325.glb | ferrari-325 | MAGITA 325 | 27,000,000 |
+| メルセデスベンツ one.glb | mercedes-benz-one | MAGITA ONE | 55,000,000 |
+| ランボルギーニアベンタドール.glb | lamborghini-aventador | MAGITA アベンタドール | 80,000,000 |
+| ランボルギーニウルス.glb | lamborghini-urus | MAGITA ウルス | 30,000,000 |
+| ランボルギーニクイヤスパイダー.glb | lamborghini-kuia-spyder | MAGITA クイヤスパイダー | 20,000,000 |
+| 日産　gt-r.glb | nissan-gt-r | MAGITA GT-R | 34,000,000 |
+| オレンジスポーツカー.glb | lamborghini-revuelto | MAGITA レヴエルト | 65,000,000 |
+| ホワイトスポーツカー.glb | mercedes-amg-one-white | MAGITA ONE（ホワイト） | 300,000,000 |
+
+The display names carry no real maker's name: every car is a MAGITA (the game's only maker, docs/handbook/39.md);
+the IDs stay as they were, since owned cars are stored by them. The names and prices in `js/game/config.js` are
+the ones that count.
 
 The numeric amounts use the game's existing dollar currency, with no real-world
 exchange-rate conversion. Named sources retain supplied spellings including
@@ -35,8 +39,9 @@ the actual supplied models. These are visual inferences for stylized models:
   [Manufacturer reference](https://www.mercedes-amg.com/en/amg-one).
   Its own ID distinguishes it from the separately supplied priced ONE.
 
-A pending price is `null`, never zero. Both cars remain selectable for 3D
-preview with a 「価格未定」 label. The UI blocks buying. The server's `CARS`
+Both now have prices (2026-10-31). A pending price, should a car ever have one
+again, is `null`, never zero: the car stays selectable for 3D preview with a
+「価格未定」 label and the UI blocks buying. The server's `CARS`
 map contains priced models only, so its existing purchase guard rejects pending
 models as `bad_model`; no purchase API changes are required. Sales and VIP
 pricing exclude them, and the buyback response is `null`. Set a positive price

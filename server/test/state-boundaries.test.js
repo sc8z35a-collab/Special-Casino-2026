@@ -53,7 +53,7 @@ test('a delayed diary comment respects a newly applied chat ban', async t => {
 
 for (const kind of ['suspend', 'deleted']) test(`an existing car offer cannot sell assets of a ${kind} seller`, async t => {
   const { s, a, b } = await fixture(t); s.setUser(a.me.id, { dollars: 100000000 }); s.setUser(b.me.id, { dollars: 100000000 });
-  const bought = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'two-state-sedan' } }); assert.equal(bought.status, 200);
+  const bought = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'ferrari-325' } }); assert.equal(bought.status, 200);
   const price = bought.car.paid;
   const offer = await s.call('POST', '/api/cars/offer', { token: a.token, body: { car: bought.car.id, to: b.me.id, price } }); assert.equal(offer.status, 200);
   s.setUser(a.me.id, { banned: 1, ban_kind: kind, ban_at: Date.now() });

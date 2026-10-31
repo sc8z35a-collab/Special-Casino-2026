@@ -1,10 +1,12 @@
 // 投資: the price path, the orders, the limits, the dividends and the live ticks: npm test
 // Each server's path is worked out again here, second by second, from its own key with the model
-// (server/core/stock-model.js), so what the server stored and traded is checked to the dollar.
+// (server/core/stock-model.js) about the companies' centres as their days set them (corp_anchor: the
+// companies' own model is server/test/corp.test.js's), with the market's mood and the orders' moves,
+// so what the server stored and traded is checked to the dollar.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
-import { STOCKS as S } from '../core/rules.js';
+import { STOCKS as S, CORP } from '../core/rules.js';
 import { keyFrom } from '../core/auth.js';
 import { pathOf, history, normals, VOL_MEAN, DAY } from '../core/stock-model.js';
 import { TABLES } from '../core/db.js';
@@ -14,27 +16,54 @@ import { statements } from '../core/db.js';
 // 20:00 UTC (5:00 in Japan): the trading day ends in 4 hours
 const START = Date.UTC(2026, 10, 2, 20, 0, 0) + 123;
 const fee = (v) => Math.ceil(v * 60 / 10000);
+const KEEP_IMPACT = Math.pow(0.5, 1 / (6 * 3600)), KEEP_MOOD = Math.pow(0.5, 1 / (60 * DAY));
+// an order's move on the price, and the price it fills at for `p` (half its move on top; a limit never worse)
+const moveOf = (id, side, shares, p) => (side === 'buy' ? 1 : -1) * 0.01 * p * shares / CORP.company(id).depth;
+function slipped(id, o, p) {
+  const at = Math.max(1, Math.round(p * Math.exp(moveOf(id, o.side, o.shares, p) / 2)));
+  if (o.type === 'limit') return o.side === 'buy' ? Math.min(o.price, at) : Math.max(o.price, at);
+  return at;
+}
 
 async function market(t, overrides = {}) {
   let now = START;
-  const s = await startServer({ clock: () => now, limits: { stock: [100000, 1000], general: [100000, 1000], login: [100000, 1000] }, ...overrides });
+  const s = await startServer({ clock: () => now, corpHistory: 0, limits: { stock: [100000, 1000], general: [100000, 1000], login: [100000, 1000] }, ...overrides });
   t.after(() => s.stop());
   const db = s.app.db;
   const key = () => keyFrom(db.prepare("SELECT value FROM meta WHERE key = 'ticket_secret'").get().value, 'stocks');
   const cache = new Map();
-  // the model's price at each second from the opening to `to` (seconds)
+  // the model's price at each second from the opening to `to` (seconds): the noise from the key, about the
+  // company's centre for the day (its log moving from e0 to e1), its mood (the day's jumps, fading) and the
+  // orders' moves (from the second after each fill, fading)
   function sim(id, to) {
     const opened = db.prepare('SELECT opened FROM stock_state WHERE company = ?').get(id).opened;
+    const base = S.company(id).base;
     let c = cache.get(id);
-    if (!c) { c = { path: pathOf(key(), S.company(id)), s: { x: 0, v: VOL_MEAN }, n: opened, prices: new Map([[opened, S.company(id).base]]) }; cache.set(id, c); }
-    while (c.n < to) { c.n++; c.path.step(c.s, c.n); c.prices.set(c.n, c.path.price(c.s.x)); }
+    if (!c) { c = { path: pathOf(key(), S.company(id)), s: { x: 0, v: VOL_MEAN, i: 0, m: 0 }, n: opened, prices: new Map([[opened, base]]) }; cache.set(id, c); }
+    const moves = new Map();
+    for (const o of db.prepare("SELECT done_at, impact FROM stock_orders WHERE company = ? AND status = 'filled'").all(id)) {
+      const at = Math.floor(o.done_at / 1000);
+      moves.set(at, (moves.get(at) || 0) + o.impact);
+    }
+    const anchors = new Map(db.prepare('SELECT day, e0, e1, ev FROM corp_anchor WHERE company = ?').all(id).map((a) => [a.day, { ...a, ev: new Map(JSON.parse(a.ev)) }]));
+    while (c.n < to) {
+      const n = ++c.n;
+      c.path.step(c.s, n);
+      c.s.i = c.s.i * KEEP_IMPACT + (moves.get(n - 1) || 0);
+      c.s.m *= KEEP_MOOD;
+      const day = Math.floor((n - 1) / DAY), a = anchors.get(day);
+      if (a && a.ev.has(n)) c.s.m += a.ev.get(n);
+      const centre = a ? a.e0 + (a.e1 - a.e0) * (n - day * DAY) / DAY - Math.log(base) : 0;
+      c.prices.set(n, Math.max(1, Math.round(base * Math.exp(centre + c.s.x + c.s.m + c.s.i))));
+    }
     return c.prices;
   }
   const call = (method, url, token, body) => s.call(method, url, { token, body });
   let keys = 0;
   const order = (p, o) => call('POST', '/api/stocks/order', p.token, { key: `test-key-${++keys}`, type: 'market', ...o });
   const dollars = (p) => db.prepare('SELECT dollars FROM users WHERE id = ?').get(p.me.id).dollars;
-  return { s, db, call, order, dollars, sim, key, set: (ms) => { now = ms; }, at: () => now, sec: () => Math.floor(now / 1000) };
+  // (`fresh`: the path worked out again from the opening, with every fill the server has made since)
+  return { s, db, call, order, dollars, sim, key, fresh: () => cache.clear(), set: (ms) => { now = ms; }, at: () => now, sec: () => Math.floor(now / 1000) };
 }
 async function investor(m, name, money = 50000000) {
   const p = await m.s.register(name);
@@ -95,6 +124,9 @@ test('投資: the market opens with a month behind it, and every second comes ou
   const opened = Math.floor(START / 60000) * 60;
   for (const c of S.companies) assert.equal(m.db.prepare('SELECT opened FROM stock_state WHERE company = ?').get(c.id).opened, opened);
   assert.deepEqual(r.market.map((q) => q.price), S.companies.map((c) => c.base));
+  // (the companies began with it: their book price is the market's, and so their first day's centre)
+  for (const c of S.companies) assert.deepEqual(Object.values(m.db.prepare('SELECT e0, e1 FROM corp_anchor WHERE company = ? AND day = ?').get(c.id, Math.floor(START / 86400000))), [Math.log(c.base), Math.log(c.base)]);
+  assert.equal(r.corp.riru.name, 'RIRU STUDIO');
   assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM stock_candles WHERE span = 60').get().n, 2 * 3 * 1440);
   assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM stock_candles WHERE span = ?').get(DAY).n, 2 * 31);
   // woken now and then (seconds apart, minutes, an hour), then after five hours asleep
@@ -133,15 +165,17 @@ test('投資: market orders trade at this second\'s price, with the 0.6% fee rou
   const before = m.dollars(p);
   let r = await m.order(p, { key: 'order-buy-0001', company: 'riru', side: 'buy', shares: 100 });
   assert.equal(r.status, 200, JSON.stringify(r));
-  const price = m.sim('riru', m.sec()).get(m.sec());
+  const price = slipped('riru', { side: 'buy', type: 'market', shares: 100 }, m.sim('riru', m.sec()).get(m.sec()));
   assert.equal(r.order.fill, price);
+  assert.ok(price > m.sim('riru', m.sec()).get(m.sec()));
   assert.equal(r.order.status, 'filled');
   assert.equal(r.order.fee, fee(price * 100));
   assert.equal(r.order.amount, price * 100 + fee(price * 100));
   assert.equal(m.dollars(p), before - r.order.amount);
   assert.equal(r.me.dollars, before - r.order.amount);
   const h = r.mine.holdings.find((x) => x.id === 'riru');
-  assert.deepEqual([h.shares, h.free, h.cost, h.value], [100, 100, r.order.amount, 100 * price]);
+  // (held at the market's price of the second, not at what the order paid)
+  assert.deepEqual([h.shares, h.free, h.cost, h.value], [100, 100, r.order.amount, 100 * m.sim('riru', m.sec()).get(m.sec())]);
   assert.equal(r.mine.trades, 1);
   // the same order again (its answer lost): the same order, nothing paid twice; the same key for another order: refused
   const again = await m.order(p, { key: 'order-buy-0001', company: 'riru', side: 'buy', shares: 100 });
@@ -151,7 +185,7 @@ test('投資: market orders trade at this second\'s price, with the 0.6% fee rou
   assert.equal((await m.order(p, { key: 'order-buy-0001', company: 'riru', side: 'buy', shares: 5 })).error.code, 'key_reused');
   // a sale: the fee taken from what it brings, its share of the cost out, the profit (or loss) taken
   m.set(m.at() + 777 * 1000);
-  const cost = r.order.amount, sold = m.sim('riru', m.sec()).get(m.sec()), mid = m.dollars(p);
+  const cost = r.order.amount, sold = slipped('riru', { side: 'sell', type: 'market', shares: 40 }, m.sim('riru', m.sec()).get(m.sec())), mid = m.dollars(p);
   r = await m.order(p, { company: 'riru', side: 'sell', shares: 40 });
   const brings = sold * 40 - fee(sold * 40), out = Math.round(cost * 40 / 100);
   assert.deepEqual([r.order.fill, r.order.amount, r.order.profit], [sold, brings, brings - out]);
@@ -272,12 +306,18 @@ test('投資: limit and stop orders wait and trade in the first second that reac
   m.set((horizon + 1) * 1000);
   const r = await m.call('GET', '/api/stocks', p.token);
   assert.equal(r.mine.orders.length, 0);
+  // (each fill moved the price for the seconds after it, so the seconds the others reached are found again on
+  // the path as it went, fills and all)
+  m.fresh();
+  for (const o of placedOrders) o.at = firstHit(m, o.company, placed + 1, horizon, o.falls ? (x) => x <= o.price : (x) => x >= o.price);
   let money = before - held;
   for (const o of placedOrders) {
-    const row = m.db.prepare('SELECT * FROM stock_orders WHERE id = ?').get(o.id), price = m.sim(o.company, horizon).get(o.at);
+    const row = m.db.prepare('SELECT * FROM stock_orders WHERE id = ?').get(o.id), second = m.sim(o.company, horizon).get(o.at);
+    const price = slipped(o.company, { side: o.side, type: o.type, shares: 10, price: o.price }, second);
     assert.ok(o.at > placed);
     assert.deepEqual([row.status, row.done_at, row.fill_price], ['filled', o.at * 1000, price], JSON.stringify(o));
-    assert.ok(o.falls ? price <= o.price : price >= o.price);
+    assert.ok(o.falls ? second <= o.price : second >= o.price);
+    if (o.type === 'limit') assert.ok(o.side === 'buy' ? price <= o.price : price >= o.price);
     if (o.side === 'buy') {
       assert.equal(row.amount, price * 10 + fee(price * 10));
       money += o.reserved - row.amount;
@@ -317,7 +357,7 @@ test('投資: what has not traded by 9:00 Japan time expires, its money back; a 
   assert.deepEqual(hist.orders.map((o) => o.status), ['expired', 'expired', 'filled']);
 });
 
-test('投資: dividends — each day the day\'s average holding by the second × its close × the rate (RIRU 0.2%, Ice 0.4%), claimed into $', async (t) => {
+test('投資: dividends — each day the day\'s average holding by the second × the company\'s dividend a share for the day (業績連動), claimed into $', async (t) => {
   const m = await market(t);
   const p = await investor(m, 'Holder', 20000000);
   await m.call('GET', '/api/stocks', p.token);
@@ -329,15 +369,20 @@ test('投資: dividends — each day the day\'s average holding by the second ×
   // a whole day more, and a minute
   m.set((end + DAY + 60) * 1000);
   let r = await m.call('GET', '/api/stocks', p.token);
-  const close = (id, at) => m.sim(id, at).get(at);
-  const due = 200 * 7200 / DAY * close('riru', end) * 0.002 + 200 * close('riru', end + DAY) * 0.002;
-  const dueIce = 100 * 7200 / DAY * close('ice', end) * 0.004 + 100 * close('ice', end + DAY) * 0.004;
+  // (the dividend a share of each second of a day, as the company set it for that day)
+  const dps = (id, endSec) => m.db.prepare('SELECT dps FROM corp_anchor WHERE company = ? AND day = ?').get(id, endSec / DAY - 1).dps;
+  const due = 200 * 7200 / DAY * dps('riru', end) + 200 * dps('riru', end + DAY);
+  const dueIce = 100 * 7200 / DAY * dps('ice', end) + 100 * dps('ice', end + DAY);
+  // (RIRU STUDIO may expect no profit and pay none: 無配; Ice Smoker pays)
+  assert.ok(dps('ice', end) > 0);
   const riru = r.mine.holdings.find((h) => h.id === 'riru'), ice = r.mine.holdings.find((h) => h.id === 'ice');
   // (each company keeps its own cents: a day pays its whole dollars, the rest waits for the next)
   assert.equal(riru.dividends, Math.floor(due));
   assert.equal(ice.dividends, Math.floor(dueIce));
   assert.equal(r.mine.dividend.pending, Math.floor(due) + Math.floor(dueIce));
-  assert.ok(riru.today > 0 && ice.today > 0);
+  // (today's so far: the minute into the new day, at its own dividend a share)
+  assert.equal(ice.today, Math.floor(100 * 60 / DAY * dps('ice', end + 2 * DAY)));
+  assert.equal(riru.today, Math.floor(200 * 60 / DAY * dps('riru', end + 2 * DAY)));
   // looking again changes nothing; claiming pays it into $
   r = await m.call('GET', '/api/stocks', p.token);
   assert.equal(r.mine.dividend.pending, Math.floor(due) + Math.floor(dueIce));
@@ -355,8 +400,8 @@ test('投資: dividends — each day the day\'s average holding by the second ×
   m.set((next + 60) * 1000 + 10);
   await m.order(q, { company: 'ice', side: 'sell', shares: 200 });
   r = await m.call('GET', '/api/stocks', q.token);
-  assert.equal(r.mine.dividend.pending, Math.floor(200 * 60 / DAY * close('ice', next) * 0.004));
-  assert.ok(r.mine.dividend.pending < 200 * close('ice', next) * 0.004 / 1000);
+  assert.equal(r.mine.dividend.pending, Math.floor(200 * 60 / DAY * dps('ice', next)));
+  assert.ok(r.mine.dividend.pending < 200 * dps('ice', next) / 1000 + 1);
 });
 
 test('投資: the charts — every period from its stored candles, the minute forming now on top, as small columns the game decodes', async (t) => {

@@ -1,6 +1,7 @@
 /* 投資 in real Chromium on a disposable Node/SSE server: the screen loads only when opened (from the 詳細 card), fits the
    stage, says nothing beyond its labels and numbers, draws its chart and moves with each second's tick; an order needs the
-   button held (a tap trades nothing), a market buy and a limit order go through, and the limit order is cancelled.
+   button held (a tap trades nothing), a market buy and a limit order go through, and the limit order is cancelled; the
+   企業 tab shows the company behind the share.
    Requires Playwright and a browser; OPS_BROWSER_EXECUTABLE selects a browser. No production data is used. */
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -93,6 +94,12 @@ const ROOT = path.resolve(__dirname, '..');
     await page.locator('#sk-list-tabs .sk-chip[data-v="history"]').click();
     await page.waitForFunction(() => document.querySelectorAll('#sk-list .sk-line').length >= 2);
     assert.ok(await inked() > 1000);
+    // the company behind the share: its last quarter, its guidance and dividend, the per-share figures, its news
+    await page.locator('#sk-list-tabs .sk-chip[data-v="corp"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#sk-list .sk-corp').length >= 3);
+    const corp = await page.locator('#sk-list').textContent();
+    for (const label of ['ICE SMOKER株式会社', '次の決算発表', '営業利益', '純利益', '配当', 'PER', 'PBR']) assert.ok(corp.includes(label), label);
+    if (process.env.STOCKS_SCREENSHOT) await page.screenshot({ path: process.env.STOCKS_SCREENSHOT });
     await page.locator('#stocks-modal [data-close]').first().click();
     await page.locator('#stocks-modal').waitFor({ state: 'hidden' });
     assert.deepEqual(errors, []);

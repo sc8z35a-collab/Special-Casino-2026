@@ -151,7 +151,7 @@ test('the garage: two cars, one more place for $1,000,000 each (for good); a ful
   setUser(a.me.id, { dollars: 100000000 });
   let g = await call('GET', '/api/cars', { token: a.token });
   assert.deepEqual([g.capacity, g.slotPrice], [2, 1000000]);
-  const buy = async (who) => call('POST', '/api/cars/buy', { token: who.token, body: { model: 'two-state-sedan' } });
+  const buy = async (who) => call('POST', '/api/cars/buy', { token: who.token, body: { model: 'ferrari-325' } });
   assert.equal((await buy(a)).status, 200);
   assert.equal((await buy(a)).status, 200);
   assert.equal((await buy(a)).error.code, 'garage_full');
@@ -161,7 +161,7 @@ test('the garage: two cars, one more place for $1,000,000 each (for good); a ful
   assert.equal((await buy(a)).status, 200);
   // the price of the moment (a sale may be on)
   g = await call('GET', '/api/cars', { token: a.token });
-  const sedan = RULES.cars.find((c) => c.id === 'two-state-sedan');
+  const sedan = RULES.cars.find((c) => c.id === 'ferrari-325');
   const pct = g.sale && g.sale.pct[sedan.id] || 0;
   assert.equal((await call('POST', '/api/cars/buy', { token: a.token, body: { model: sedan.id, price: 1 } })).error.code, 'price_changed');
   assert.ok(pct >= 0 && pct <= 45);

@@ -153,19 +153,22 @@
     ],
     // Car Owner shop (price in $); `model`: a 3D model to look at
     // (img/3d/cars/<id>.glb, js/render/garage3d.js). A null price means the
-    // car can be previewed but cannot be bought or included in a sale.
+    // car can be previewed but cannot be bought or included in a sale; an
+    // `ended` one is no longer sold (the ones the players have can still be
+    // sold back). Every car is made by MAGITA (what it costs to make and how its
+    // price is shared between MAGITA and Car Owner: js/game/corp.js products).
     cars: [
-      { id: 'two-state-sedan', name: 'Two state セダン', price: 26500000 },
-      { id: 'blue-lightning', name: 'ブルーライトニング', price: 65000000, model: true },
-      { id: 'onvoro', name: 'オンヴォーロ', price: 4500000, model: true },
-      { id: 'ferrari-325', name: 'フェラーリ325', price: 55000000, model: true },
-      { id: 'mercedes-benz-one', name: 'メルセデスベンツ one', price: 135000000, model: true },
-      { id: 'lamborghini-aventador', name: 'ランボルギーニアベンタドール', price: 142000000, model: true },
-      { id: 'lamborghini-urus', name: 'ランボルギーニウルス', price: 56500000, model: true },
-      { id: 'lamborghini-kuia-spyder', name: 'ランボルギーニクイヤスパイダー', price: 34000000, model: true },
-      { id: 'nissan-gt-r', name: '日産 GT-R', price: 45000000, model: true },
-      { id: 'lamborghini-revuelto', name: 'ランボルギーニ レヴエルト', price: null, model: true },
-      { id: 'mercedes-amg-one-white', name: 'メルセデスAMG ONE（ホワイト）', price: null, model: true }
+      { id: 'two-state-sedan', name: 'MAGITA Two state セダン', price: 26500000, ended: true },
+      { id: 'blue-lightning', name: 'MAGITA シロン', price: 35000000, model: true },
+      { id: 'onvoro', name: 'MAGITA オンヴォーロ', price: 4200000, model: true },
+      { id: 'ferrari-325', name: 'MAGITA 325', price: 27000000, model: true },
+      { id: 'mercedes-benz-one', name: 'MAGITA ONE', price: 55000000, model: true },
+      { id: 'lamborghini-aventador', name: 'MAGITA アベンタドール', price: 80000000, model: true },
+      { id: 'lamborghini-urus', name: 'MAGITA ウルス', price: 30000000, model: true },
+      { id: 'lamborghini-kuia-spyder', name: 'MAGITA クイヤスパイダー', price: 20000000, model: true },
+      { id: 'nissan-gt-r', name: 'MAGITA GT-R', price: 34000000, model: true },
+      { id: 'lamborghini-revuelto', name: 'MAGITA レヴエルト', price: 65000000, model: true },
+      { id: 'mercedes-amg-one-white', name: 'MAGITA ONE（ホワイト）', price: 300000000, model: true }
     ],
     // the garage holds this many cars; one more place costs `slotPrice` $ (for good, any number)
     garage: { slots: 2, slotPrice: 1000000 },
@@ -190,15 +193,15 @@
     // Shop (price in $, 10-40 % off for 5 hours a day: js/game/sale.js);
     // anything bought here can be given to friends, up to `max` per player
     shop: [
-      { id: 'omamori', name: 'お守り加護', price: 90000, max: 10 },
-      { id: 'repair-kit', name: '車修理キット', price: 250000, max: 999, category: 'car', fixedPrice: true },
-      { id: 'car-oil-medium', name: '車オイル中型', price: 100000, max: 999, category: 'car', fixedPrice: true },
-      { id: 'gasoline-full', name: 'ガソリン満杯', price: 10000, max: 999, category: 'car', fixedPrice: true },
-      { id: 'engine-v1', name: '高機動エンジンVI', price: 1100000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
-      { id: 'engine-v2', name: '高機動エンジンV2', price: 2500000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
-      { id: 'engine-v3', name: '高機動エンジンV3', price: 3000000, max: 999, category: 'car', kind: 'engine', fixedPrice: true }
+      { id: 'omamori', name: 'セーフティースロット', price: 80000, max: 10 },
+      { id: 'repair-kit', name: '車修理キット', price: 450000, max: 999, category: 'car', fixedPrice: true },
+      { id: 'car-oil-medium', name: '車オイル中型', price: 550000, max: 999, category: 'car', fixedPrice: true },
+      { id: 'gasoline-full', name: 'ガソリン満杯', price: 25000, max: 999, category: 'car', fixedPrice: true },
+      { id: 'engine-v1', name: '高機動エンジンVI', price: 2500000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
+      { id: 'engine-v2', name: '高機動エンジンV2', price: 4800000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
+      { id: 'engine-v3', name: '高機動エンジンV3', price: 8200000, max: 999, category: 'car', kind: 'engine', fixedPrice: true }
     ],
-    // お守り加護, switched on before a spin: the next losing spin gives back
+    // セーフティースロット (once お守り加護), switched on before a spin: the next losing spin gives back
     // min-max % of the lost tokens (all of them `fullChance` of the time);
     // with 友達と稼ぐ's benefits on, up to `hub.max` % and `hub.fullChance`
     charm: { item: 'omamori', min: 5, max: 20, fullChance: 0.02, hub: { max: 70, fullChance: 0.04 } },

@@ -13,6 +13,7 @@
   ],
   "stocks": [
     "js/game/stocks.js",
+    "js/game/corp.js",
     "js/ui/stocks.js"
   ],
   "medals": [

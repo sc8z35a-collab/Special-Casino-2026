@@ -17,7 +17,9 @@
     ['devunit', 'DEV UNIT', 'devunit'], ['securityhome', 'セキュリティーホーム', 'securityhome'],
     ['diary', '開発者日記', 'diary'], ['profile', '自分のプロフィール', 'operators'],
     // (the calendar is opened from the clock, so its tab stays off the bar; DEV APP is the developer's alone, the server says so)
-    ['calendar', 'カレンダー', 'calendar'], ['devapp', 'DEV APP', 'devapp']
+    ['calendar', 'カレンダー', 'calendar'], ['devapp', 'DEV APP', 'devapp'],
+    // 企業: a folder of the ten companies' apps (ops/corp.js)
+    ['corp', '企業', 'corp']
   ];
   var windows = {}, active = null, order = 0, signedIn = false, grouped = false;
   var overview = false, desktopSaved = null, silentRouting = false, suppressedRoute = '';

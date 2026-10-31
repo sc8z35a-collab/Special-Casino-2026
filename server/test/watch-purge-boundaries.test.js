@@ -56,7 +56,7 @@ test('purging the recipient of a car offer releases the surviving seller car', a
   const s = await startServer(); t.after(() => s.stop());
   const seller = await s.register('PurgeSeller'), recipient = await s.register('PurgeBuyer'), other = await s.register('OtherBuyer');
   await s.befriend(seller, recipient); await s.befriend(seller, other); s.setUser(seller.me.id, { dollars: 100000000 });
-  const bought = await s.call('POST', '/api/cars/buy', { token: seller.token, body: { model: 'two-state-sedan' } }); assert.equal(bought.status, 200);
+  const bought = await s.call('POST', '/api/cars/buy', { token: seller.token, body: { model: 'ferrari-325' } }); assert.equal(bought.status, 200);
   const offer = to => s.call('POST', '/api/cars/offer', { token: seller.token, body: { car: bought.car.id, to, price: bought.car.paid } });
   const listed = await offer(recipient.me.id); assert.equal(listed.status, 200);
   const q = sql => s.app.db.prepare(sql); purgePlayer(q, fn => s.app.db.tx(fn), recipient.me.id);
@@ -72,7 +72,7 @@ test('opening the garage repairs a previously canceled offer lock without releas
   await s.befriend(seller, a); await s.befriend(seller, b); s.setUser(seller.me.id, { dollars: 100000000 });
   const cars = [];
   for (const target of [a, b]) {
-    const bought = await s.call('POST', '/api/cars/buy', { token: seller.token, body: { model: 'two-state-sedan' } });
+    const bought = await s.call('POST', '/api/cars/buy', { token: seller.token, body: { model: 'ferrari-325' } });
     assert.equal(bought.status, 200);
     const listed = await s.call('POST', '/api/cars/offer', { token: seller.token, body: { car: bought.car.id, to: target.me.id, price: bought.car.paid } });
     assert.equal(listed.status, 200); cars.push({ ...bought.car, offer: listed.message.id });

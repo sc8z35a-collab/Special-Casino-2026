@@ -62,7 +62,8 @@ async function hold(page, pattern) {
     await page.addInitScript(() => { localStorage.setItem('two-state-ops/ui/glass', 'off'); localStorage.setItem('two-state-ops/ui/tabs', 'yes'); localStorage.setItem('two-state-ops/ui/autohide', 'no'); });
     await page.goto(s.base + '/ops/'); await page.locator('#login-name').fill('taku'); await page.locator('#login-pass').fill(PASSWORD); await page.locator('#login-form button[type="submit"]').click();
     await page.waitForFunction(() => !document.getElementById('app').hidden);
-    for (const file of ['cdw.js', 'cdw.css', 'calendar.js', 'watch.js', 'glass.js', 'glass.css', 'phone.css', 'vault-thumbnails.js', 'vault3d.js', 'diary-profile.js']) assert.ok(!opsRequests.includes('/ops/' + file), file + ' is deferred');
+    for (const file of ['cdw.js', 'cdw.css', 'calendar.js', 'watch.js', 'glass.js', 'glass.css', 'phone.css', 'vault-thumbnails.js', 'vault3d.js', 'diary-profile.js', 'corp.js', 'corp.css']) assert.ok(!opsRequests.includes('/ops/' + file), file + ' is deferred');
+    assert.ok(!opsRequests.includes('/js/game/corp.js'), 'the company rules are deferred');
     await page.locator('[data-desk="site"]').click({ force: true });
     await page.waitForFunction(() => OpsCDW.on());
     await page.locator('.cdw-palette').waitFor({ state: 'visible' });
@@ -71,8 +72,11 @@ async function hold(page, pattern) {
     await page.evaluate(() => OpsDesktop.open('calendar')); await page.waitForFunction(() => !!document.querySelector('#view-calendar .cal-grid'));
     await page.evaluate(() => OpsDesktop.open('profile')); await page.waitForFunction(() => !!window.OpsDiaryProfile && document.getElementById('view-profile').textContent.trim().length > 0);
     assert.ok(opsRequests.includes('/ops/calendar.js')); assert.ok(opsRequests.includes('/ops/diary-profile.js'));
+    // 企業: its styles, the shared company rules and the app, when the folder is opened
+    await page.evaluate(() => OpsDesktop.open('corp')); await page.waitForFunction(() => document.querySelectorAll('#view-corp .corp-app').length === 10);
+    for (const file of ['/ops/corp.js', '/ops/corp.css', '/js/game/corp.js']) assert.equal(opsRequests.filter(p => p === file).length, 1, file + ' loads once');
     await page.setViewportSize({ width: 390, height: 844 }); await page.waitForFunction(() => !!document.querySelector('link[media*="max-width: 700px"]'));
     assert.deepEqual(opsErrors, []);
-    console.log('PASS operator lazy entry points: CDW icon/empty layout/add/done, calendar, profile, saved glass-off and responsive phone CSS');
+    console.log('PASS operator lazy entry points: CDW icon/empty layout/add/done, calendar, profile, 企業, saved glass-off and responsive phone CSS');
   } finally { if (browser) await browser.close(); await s.stop(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

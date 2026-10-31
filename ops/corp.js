@@ -1,0 +1,589 @@
+/* 企業: a folder of apps, one for each of the world's ten companies (server/core/corp.js). The folder shows them as
+   icons, with every company at a glance and the ビジネス友好度 between them; an icon opens that company's official
+   site: its status now, its 決算 (損益計算書・貸借対照表・キャッシュ・フロー計算書, by the quarter, the year and the
+   month), its products (price, 原価, 仕入れ価格, 専売特別費用, what the seller and the maker keep), its business (the
+   studios' projects and titles, the bank's book, each business's sales), its people and budgets, its shares,
+   dividends, loans and taxes, its ties and its news.
+   What is shown is asked for when the app is opened and again only when the server says a day has closed (the
+   'corp' event on the live connection, free); asking again with the last answer's rev is answered { same: true }.
+   Labels and numbers come from the shared rules (js/game/corp.js, BR.CORP). Text only ever goes in by textContent. */
+var OpsCorp = (function () {
+  'use strict';
+  var SVG = 'http://www.w3.org/2000/svg';
+  var C = function () { return window.BR && window.BR.CORP; };
+  // each company's colours (its site's band and its icon: ops/assets/corp-<id>.webp)
+  var THEME = {
+    tenesice: ['#0f1c3f', '#2d4a8a'], magita: ['#5c0a10', '#c62832'], carowner: ['#0b2f63', '#2378dd'], jinx: ['#8a2c00', '#e47a12'],
+    daizin: ['#140a24', '#53308a'], citywork: ['#11471c', '#2f9a44'], speedeed: ['#00505c', '#0aa6b8'], dtrade: ['#0d2b2a', '#1a8a7e'],
+    riru: ['#5b1173', '#d8336f'], ice: ['#063d73', '#2f9fd8']
+  };
+  var TABS = [['top', 'トップ'], ['fin', '決算'], ['products', '商品'], ['biz', '事業'], ['people', '人と予算'], ['stock', '株式・財務'], ['ties', '友好度'], ['news', 'ニュース']];
+  var NEWS = { results: '決算', guidance: '業績予想', revise: '予想修正', dividend: '配当', release: '発売', hit: 'ヒット', flop: '不振', start: '開発開始',
+    delay: '発売延期', cancel: '開発中止', update: '大型更新', week: '週間', hire: '採用', loan: '借入', support: '開発援助', rebate: '販売奨励金', tie: '友好度' };
+  var st = { view: null, request: null, toast: null, at: '', tab: 'top', mode: 'q', sheet: 'pl', metric: 'sales', all: null, sites: {}, gen: 0 };
+
+  /* ------------------------------------------------------------------ small things --- */
+  function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined && text !== null) n.textContent = text; return n; }
+  function svg(tag, attrs) { var n = document.createElementNS(SVG, tag); Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); }); return n; }
+  function btn(cls, text, fn, label) { var b = el('button', cls, text); b.type = 'button'; if (label) b.setAttribute('aria-label', label); if (fn) b.addEventListener('click', fn); return b; }
+  function money(n) { return C().fmt.money(Math.round(n || 0)); }
+  function mil(n) { return C().fmt.mil(n || 0); }
+  function group(n) { return (n < 0 ? '−' : '') + C().fmt.group(n || 0); }
+  function pct(x, d) { return C().fmt.pct(x, d); }
+  function ratio(a, b) { return b ? a / Math.abs(b) - 1 : null; }
+  function dayLabel(d) { return C().dateLabel(d); }
+  function when(sec) {
+    var t = new Date(sec * 1000), p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return t.getFullYear() + '/' + (t.getMonth() + 1) + '/' + t.getDate() + ' ' + p(t.getHours()) + ':' + p(t.getMinutes());
+  }
+  function company(id) { return C().company(id) || { id: id, name: id }; }
+  function nameOf(id) { return company(id).name; }
+  function icon(id, size) {
+    var img = el('img', 'corp-icon'); img.src = 'assets/corp-' + String(id).replace(/[^\w-]/g, '') + '.webp';
+    img.alt = ''; img.width = size; img.height = size; img.draggable = false; return img;
+  }
+  function stat(label, value, sub, cls) {
+    var b = el('div', 'stat corp-stat' + (cls ? ' ' + cls : ''));
+    b.appendChild(el('span', '', label)); b.appendChild(el('b', '', value));
+    if (sub) b.appendChild(el('small', 'muted', sub));
+    return b;
+  }
+  function panel(title, note) {
+    var p = el('section', 'corp-panel');
+    var h = el('div', 'corp-panel-head'); h.appendChild(el('h3', '', title)); if (note) h.appendChild(el('span', 'muted', note));
+    p.appendChild(h); return p;
+  }
+  // a table: head [label, num?] and rows of cells (a cell: text, or { t, cls, title })
+  function table(head, rows, cls) {
+    var wrap = el('div', 'corp-table-wrap'), t = el('table', 'corp-table' + (cls ? ' ' + cls : '')), th = el('thead'), tr = el('tr');
+    head.forEach(function (h) { var c = el('th', h[1] ? 'num' : '', h[0]); c.scope = 'col'; tr.appendChild(c); });
+    th.appendChild(tr); t.appendChild(th);
+    var tb = el('tbody');
+    rows.forEach(function (r) {
+      var row = el('tr', r.cls || '');
+      if (r.onclick) { row.tabIndex = 0; row.classList.add('corp-link'); row.addEventListener('click', r.onclick); row.addEventListener('keydown', function (e) { if (e.key === 'Enter') r.onclick(); }); }
+      (r.cells || r).forEach(function (c, i) {
+        var o = c && typeof c === 'object' && !(c instanceof Node) ? c : { t: c };
+        var td = el(i === 0 && !r.plain ? 'th' : 'td', (head[i] && head[i][1] ? 'num' : '') + (o.cls ? ' ' + o.cls : ''));
+        if (i === 0 && !r.plain) td.scope = 'row';
+        if (o.t instanceof Node) td.appendChild(o.t); else td.textContent = o.t === undefined || o.t === null ? '—' : o.t;
+        if (o.title) td.title = o.title;
+        row.appendChild(td);
+      });
+      tb.appendChild(row);
+    });
+    t.appendChild(tb); wrap.appendChild(t); return wrap;
+  }
+  function chips(list, on, fn, label) {
+    var box = el('div', 'chips corp-chips'); box.setAttribute('role', 'tablist'); if (label) box.setAttribute('aria-label', label);
+    list.forEach(function (x) {
+      var b = btn('chip' + (x[0] === on ? ' on' : ''), x[1], function () { fn(x[0]); });
+      b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', x[0] === on ? 'true' : 'false');
+      box.appendChild(b);
+    });
+    return box;
+  }
+  // a 0–100 business tie: its number, a word for it and a bar (never the colour alone)
+  function tieWord(v) { v = Math.round(v); return v >= 80 ? '非常に良好' : v >= 60 ? '良好' : v >= 40 ? '普通' : v >= 20 ? '冷え込み' : '険悪'; }
+  function meter(v, start) {
+    var box = el('div', 'corp-meter'); box.setAttribute('role', 'meter'); box.setAttribute('aria-valuemin', '0'); box.setAttribute('aria-valuemax', '100');
+    box.setAttribute('aria-valuenow', String(Math.round(v))); box.setAttribute('aria-label', 'ビジネス友好度 ' + Math.round(v) + '（' + tieWord(v) + '）');
+    var bar = el('i'); bar.style.width = Math.max(0, Math.min(100, v)) + '%'; box.appendChild(bar);
+    if (start !== undefined) { var m = el('b'); m.style.left = Math.max(0, Math.min(100, start)) + '%'; m.title = 'はじめ ' + start; box.appendChild(m); }
+    return box;
+  }
+
+  /* ------------------------------------------------------------------------ the chart --- */
+  // One measure over time (the points named by `names`), with a crosshair and its value under the pointer (one series:
+  // its title names it). Drawn to the width of the app's window, so its text stays the size of the page's.
+  function chart(names, values, fmt, label) {
+    var W = Math.max(300, Math.min(1400, ((st.view && st.view.clientWidth) || 700) - 70)), H = Math.round(Math.min(260, Math.max(170, W * 0.3))), L = 72, R = 14, T = 12, B = 26;
+    var box = el('div', 'corp-chart'), tip = el('div', 'corp-tip'); tip.hidden = true;
+    var n = values.length;
+    if (n < 2) { box.appendChild(el('p', 'muted', 'まだ記録がありません')); return box; }
+    var lo = Math.min.apply(null, values), hi = Math.max.apply(null, values);
+    if (lo > 0 && lo < hi * 0.4) lo = 0;
+    if (hi < 0 && hi > lo * 0.4) hi = 0;
+    if (hi === lo) { hi += Math.abs(hi) * 0.05 || 1; lo -= Math.abs(lo) * 0.05 || 1; }
+    var pad = (hi - lo) * 0.08; hi += pad; if (lo !== 0) lo -= pad;
+    var x = function (i) { return L + (W - L - R) * i / (n - 1); }, y = function (v) { return T + (H - T - B) * (hi - v) / (hi - lo); };
+    var s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, class: 'corp-svg', role: 'img', 'aria-label': label + '（' + names[0] + '〜' + names[n - 1] + '、最新 ' + fmt(values[n - 1]) + '）' });
+    [0, 0.5, 1].forEach(function (f) {
+      var v = hi - (hi - lo) * f, yy = y(v);
+      s.appendChild(svg('line', { x1: L, x2: W - R, y1: yy, y2: yy, class: 'corp-gl' }));
+      var t = svg('text', { x: L - 8, y: yy + 4, class: 'corp-axis', 'text-anchor': 'end' }); t.textContent = fmt(v); s.appendChild(t);
+    });
+    if (lo < 0 && hi > 0) s.appendChild(svg('line', { x1: L, x2: W - R, y1: y(0), y2: y(0), class: 'corp-zero' }));
+    [0, n - 1].forEach(function (i) {
+      var t = svg('text', { x: x(i), y: H - 6, class: 'corp-axis', 'text-anchor': i ? 'end' : 'start' }); t.textContent = names[i]; s.appendChild(t);
+    });
+    var d = '';
+    values.forEach(function (v, i) { d += (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); });
+    s.appendChild(svg('path', { d: d, class: 'corp-line' }));
+    var cross = svg('line', { y1: T, y2: H - B, class: 'corp-cross', visibility: 'hidden' }), dot = svg('circle', { r: 4.5, class: 'corp-dot', visibility: 'hidden' });
+    s.appendChild(cross); s.appendChild(dot);
+    var end = svg('circle', { cx: x(n - 1), cy: y(values[n - 1]), r: 4, class: 'corp-dot' }); s.appendChild(end);
+    var hit = svg('rect', { x: L, y: 0, width: W - L - R, height: H, fill: 'transparent' }); s.appendChild(hit);
+    function at(e) {
+      var r = s.getBoundingClientRect(), px = (e.clientX - r.left) * W / r.width;
+      var i = Math.max(0, Math.min(n - 1, Math.round((px - L) / (W - L - R) * (n - 1))));
+      cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.setAttribute('visibility', 'visible');
+      dot.setAttribute('cx', x(i)); dot.setAttribute('cy', y(values[i])); dot.setAttribute('visibility', 'visible');
+      tip.hidden = false; tip.replaceChildren(el('span', 'muted', names[i]), el('b', '', fmt(values[i])));
+      var left = x(i) / W * r.width; tip.style.left = Math.max(0, Math.min(r.width - 150, left - 75)) + 'px';
+    }
+    s.addEventListener('pointermove', at); s.addEventListener('pointerdown', at);
+    s.addEventListener('pointerleave', function () { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); });
+    box.appendChild(s); box.appendChild(tip);
+    return box;
+  }
+  // the days as the chart names them
+  function dayNames(days) { return days.map(function (d) { var t = C().ymd(d); return t.y + '/' + t.m + '/' + t.d; }); }
+  // a flow measure as the sum of the last 30 days, day by day
+  function rolling(list, k) {
+    var out = [], sum = 0;
+    list.forEach(function (v, i) { sum += v; if (i >= k) sum -= list[i - k]; out.push(sum); });
+    return out;
+  }
+
+  /* --------------------------------------------------------------------- asking --- */
+  function ask() {
+    if (!st.request) return;
+    var gen = ++st.gen, id = st.at;
+    var have = id ? st.sites[id] : st.all;
+    var path = id ? '/api/ops/corp/company?c=' + encodeURIComponent(id) : '/api/ops/corp';
+    if (have && have.rev) path += (id ? '&' : '?') + 'rev=' + encodeURIComponent(have.rev);
+    st.request('GET', path).then(function (r) {
+      if (gen !== st.gen) return;
+      if (r.same) { if (have) have.now = r.now; return; }
+      if (id) st.sites[id] = r; else st.all = r;
+      render();
+    }, function (e) {
+      if (gen !== st.gen) return;
+      if (!have) { st.view.replaceChildren(el('p', 'muted corp-empty', '表示できません：' + (e && e.message || '通信できませんでした'))); }
+      else if (st.toast) st.toast(e && e.message || '更新できませんでした');
+    });
+  }
+  function open(id) { st.at = id || ''; st.tab = 'top'; render(); ask(); if (st.view) st.view.scrollTop = 0; }
+
+  function render() {
+    var view = st.view;
+    if (!view || !C()) return;
+    var box = el('div', 'corp');
+    if (st.at) site(box, st.at); else folder(box);
+    view.replaceChildren(box);
+  }
+
+  /* ---------------------------------------------------------------- the folder --- */
+  function folder(box) {
+    var head = el('div', 'bar corp-bar'); head.appendChild(el('h2', '', '企業'));
+    var a = st.all;
+    if (a && a.started) head.appendChild(el('span', 'muted', '10社・' + dayLabel(a.day) + '終了時点・景気指数 ' + a.econ.toFixed(3)));
+    box.appendChild(head);
+    // the apps: an icon each
+    var grid = el('div', 'corp-grid'); grid.setAttribute('role', 'list');
+    C().companies.forEach(function (p) {
+      var b = btn('corp-app', '', function () { open(p.id); }, p.full + 'の公式サイトを開く');
+      b.setAttribute('role', 'listitem');
+      b.appendChild(icon(p.id, 72));
+      b.appendChild(el('span', 'corp-app-name', p.name));
+      b.appendChild(el('small', 'muted', 'ランク' + p.rank + (p.listed ? '・上場' : '')));
+      grid.appendChild(b);
+    });
+    box.appendChild(grid);
+    if (!a) { box.appendChild(el('p', 'muted corp-empty', '読み込み中…')); return; }
+    if (!a.started) { box.appendChild(el('p', 'muted corp-empty', 'まだ始まっていません。')); return; }
+    // every company at a glance
+    var p1 = panel('各社の概況', '直近4四半期・百万ドル');
+    p1.appendChild(table([['会社'], ['社員', 1], ['売上高', 1], ['営業利益', 1], ['純利益', 1], ['現金', 1], ['借入金', 1], ['純資産', 1], ['プレイヤー(30日)', 1]],
+      a.companies.map(function (c) {
+        var who = el('span', 'corp-who'); who.appendChild(icon(c.id, 24)); who.appendChild(el('span', '', c.name));
+        return { onclick: function () { open(c.id); }, cells: [{ t: who }, group(c.staff), mil(c.ttm.sales), { t: mil(c.ttm.op), cls: c.ttm.op < 0 ? 'neg' : '' },
+          { t: mil(c.ttm.net), cls: c.ttm.net < 0 ? 'neg' : '' }, mil(c.cash), c.debt ? mil(c.debt) : '—', mil(c.equity), c.players ? money(c.players) : '—'] };
+      })));
+    box.appendChild(p1);
+    // the ties
+    var p2 = panel('ビジネス友好度', '0〜100・▼ははじめの値');
+    p2.appendChild(tieList(a.ties, ''));
+    box.appendChild(p2);
+  }
+  function tieList(list, me) {
+    var ul = el('ul', 'corp-ties');
+    list.slice().sort(function (x, y) { return y.now - x.now; }).forEach(function (t) {
+      var li = el('li'), who = el('div', 'corp-tie-who');
+      var other = me ? (t.a === me ? t.b : t.a) : '';
+      if (me) { who.appendChild(icon(other, 28)); who.appendChild(el('b', '', nameOf(other))); }
+      else { who.appendChild(icon(t.a, 24)); who.appendChild(el('b', '', nameOf(t.a))); who.appendChild(el('span', 'muted', '×')); who.appendChild(icon(t.b, 24)); who.appendChild(el('b', '', nameOf(t.b))); }
+      li.appendChild(who);
+      var right = el('div', 'corp-tie-val');
+      right.appendChild(meter(t.now, t.start));
+      var d = Math.round((t.now - t.start) * 10) / 10;
+      right.appendChild(el('span', 'corp-tie-num', Math.round(t.now) + '（' + tieWord(t.now) + '）' + (d ? ' ' + (d > 0 ? '+' : '−') + Math.abs(d) : '')));
+      li.appendChild(right);
+      if (t.why) li.appendChild(el('small', 'muted corp-tie-why', t.why));
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+
+  /* ------------------------------------------------------------------ a site --- */
+  function site(box, id) {
+    var p = company(id), r = st.sites[id], th = THEME[id] || ['#223', '#456'];
+    var top = el('div', 'corp-nav');
+    top.appendChild(btn('btn small corp-back', '‹ 企業', function () { open(''); }, '企業フォルダーに戻る'));
+    top.appendChild(el('span', 'muted', '企業 / ' + p.name));
+    box.appendChild(top);
+    var s = el('div', 'corp-site'); s.style.setProperty('--c1', th[0]); s.style.setProperty('--c2', th[1]);
+    var hero = el('header', 'corp-hero'), names = el('div', 'corp-hero-text');
+    hero.appendChild(icon(id, 84));
+    names.appendChild(el('small', 'corp-en', p.en));
+    names.appendChild(el('h2', '', p.full));
+    names.appendChild(el('p', '', p.kind));
+    var badges = el('div', 'corp-badges');
+    badges.appendChild(el('span', 'corp-badge', 'ランク' + p.rank));
+    badges.appendChild(el('span', 'corp-badge', p.listed ? '上場（投資で売買できます）' : '非上場'));
+    badges.appendChild(el('span', 'corp-badge', '3月決算'));
+    if (r && r.summary) badges.appendChild(el('span', 'corp-badge', '社員 ' + group(r.summary.staff) + '名'));
+    names.appendChild(badges);
+    hero.appendChild(names);
+    s.appendChild(hero);
+    if (!r) { s.appendChild(el('p', 'muted corp-empty', '読み込み中…')); box.appendChild(s); return; }
+    if (r.started === false) { s.appendChild(el('p', 'muted corp-empty', 'まだ始まっていません。')); box.appendChild(s); return; }
+    var tabs = TABS.filter(function (t) { return t[0] !== 'products' || r.products.length; });
+    if (!tabs.some(function (t) { return t[0] === st.tab; })) st.tab = 'top';
+    s.appendChild(chips(tabs, st.tab, function (k) { st.tab = k; render(); }, p.name + 'のページ'));
+    var body = el('div', 'corp-body');
+    ({ top: pageTop, fin: pageFin, products: pageProducts, biz: pageBiz, people: pagePeople, stock: pageStock, ties: pageTies, news: pageNews })[st.tab](body, r, p);
+    s.appendChild(body);
+    box.appendChild(s);
+  }
+
+  // トップ: where it stands now, the year's plan, its days in a chart, what players spent there and its latest news
+  function pageTop(body, r, p) {
+    var m = r.summary, sv = r.state;
+    var tiles = el('div', 'corp-tiles');
+    tiles.appendChild(stat(p.salesName || '売上高', money(m.ttm.sales), '直近4四半期'));
+    tiles.appendChild(stat('営業利益', money(m.ttm.op), '直近4四半期', m.ttm.op < 0 ? 'neg' : ''));
+    tiles.appendChild(stat('当期純利益', money(m.ttm.net), '直近4四半期', m.ttm.net < 0 ? 'neg' : ''));
+    tiles.appendChild(stat('現金及び預金', money(m.cash), m.bonds ? '投資有価証券 ' + money(m.bonds) : ''));
+    tiles.appendChild(stat('借入金', m.debt ? money(m.debt) : 'なし', sv.loans.length ? sv.loans.length + '件（テネシス）' : ''));
+    tiles.appendChild(stat('純資産', money(m.equity), '資本金 ' + money(m.capital)));
+    tiles.appendChild(stat('利益剰余金', money((sv.bal.retained || 0) + (sv.bal.legal || 0)), ''));
+    tiles.appendChild(stat('従業員', group(m.staff) + '名', '年収 ' + money(sv.pay)));
+    if (p.listed) tiles.appendChild(stat('適正株価（理論値）', '$' + group(m.fair), '1株配当 年$' + group(m.dps)));
+    body.appendChild(tiles);
+    // the year's plan
+    var g = sv.guide;
+    if (g) {
+      var pg = panel(g.fy + '年度の業績予想', '期初 ' + (g.pub ? dayLabel(g.pub) : '') + ' 公表');
+      var ytd = (r.quarters || []).filter(function (q) { return q.key.indexOf('FY' + g.fy) === 0; });
+      var done = ytd.reduce(function (a, q) { a.sales += q.pl.sales; a.op += q.pl.op; a.net += q.pl.net; return a; }, { sales: 0, op: 0, net: 0 });
+      pg.appendChild(table([['', 0], ['予想', 1], ['ここまで（' + ytd.length + '四半期）', 1], ['進捗', 1]], [
+        [p.salesName || '売上高', money(g.sales), money(done.sales), g.sales > 0 ? Math.round(done.sales / g.sales * 100) + '%' : '—'],
+        ['営業利益', money(g.op), money(done.op), g.op > 0 ? Math.round(done.op / g.op * 100) + '%' : '—'],
+        ['経常利益', money(g.ord), '', ''],
+        ['当期純利益', money(g.net), money(done.net), g.net > 0 ? Math.round(done.net / g.net * 100) + '%' : '—'],
+        ['1株当たり純利益', '$' + group(g.eps), '', ''],
+        ['1株配当（年・業績連動）', '$' + group(g.dps), '', '']
+      ]));
+      body.appendChild(pg);
+    }
+    // its days
+    var METRICS = [['sales', p.salesName || '売上高'], ['op', '営業利益'], ['net', '純利益'], ['cash', '現金'], ['equity', '純資産'], ['debt', '借入金'], ['staff', '社員数'], ['players', 'プレイヤー']];
+    if (p.listed) METRICS.push(['fair', '適正株価']);
+    if (!METRICS.some(function (x) { return x[0] === st.metric; })) st.metric = 'sales';
+    // (sales and profits by the month, as the books close them; the players' money by the last 30 days; the rest at each day's end)
+    var monthly = ['sales', 'op', 'net'].indexOf(st.metric) >= 0, d = r.days, names, vals;
+    var pc = panel('推移', monthly ? '月ごと（締めた月）' : st.metric === 'players' ? '各日までの30日間の合計' : '各日の終わり');
+    pc.appendChild(chips(METRICS, st.metric, function (k) { st.metric = k; render(); }, '推移の項目'));
+    if (monthly) { names = r.months.map(function (m) { return m.label; }); vals = r.months.map(function (m) { return m.pl[st.metric]; }); }
+    else if (st.metric === 'players') { vals = rolling(d.players, 30).slice(29); names = dayNames(d.day.slice(29)); }
+    else { vals = d[st.metric] || []; names = dayNames(d.day); }
+    var label = (METRICS.filter(function (x) { return x[0] === st.metric; })[0] || [])[1];
+    pc.appendChild(chart(names, vals, st.metric === 'staff' ? function (v) { return group(v) + '名'; } : st.metric === 'fair' ? function (v) { return '$' + group(v); } : money, label));
+    body.appendChild(pc);
+    // the players' money
+    var pp = panel('プレイヤーが使ったお金', '直近30日');
+    var total = (r.flows || []).reduce(function (a, f) { return a + f.spent; }, 0);
+    pp.appendChild(el('p', 'corp-big', money(total)));
+    pp.appendChild(el('p', 'muted', playersNote(p)));
+    body.appendChild(pp);
+    // the latest news
+    var pn = panel('最新のお知らせ');
+    pn.appendChild(newsList(r.news.slice(0, 6)));
+    body.appendChild(pn);
+  }
+  function playersNote(p) {
+    var by = { carowner: '車の購入・中古車の買い取り・ガレージ', jinx: 'SHOPでの購入', daizin: 'VIPのコイン購入', citywork: 'バイトの給料に対する掲載料（シェア分）',
+      speedeed: 'バイトの給料に対する掲載料（シェア分）', dtrade: '投資の売買手数料', riru: '投資での新株の購入', ice: '投資での新株の購入', magita: 'カーオーナー・ジンクス経由（車・車用品の仕入れ）', tenesice: '—（プレイヤーとの直接の取引はありません）' };
+    return 'プレイヤーのお金が届く先：' + (by[p.id] || '—');
+  }
+  function newsList(list) {
+    var ul = el('ul', 'corp-news');
+    if (!list.length) { ul.appendChild(el('li', 'muted', 'お知らせはまだありません')); return ul; }
+    list.forEach(function (n) {
+      var li = el('li'), h = el('div', 'corp-news-head');
+      h.appendChild(el('time', 'muted', when(n.at)));
+      h.appendChild(el('span', 'tag corp-tag', NEWS[n.kind] || n.kind));
+      if (n.public === 0) h.appendChild(el('span', 'tag corp-tag inside', '社内'));
+      li.appendChild(h);
+      li.appendChild(el('p', '', n.text));
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+
+  // 決算: the statements by the quarter, the year or the month
+  function pageFin(body, r, p) {
+    var rows = st.mode === 'y' ? r.years : st.mode === 'm' ? r.months : r.quarters;
+    var bar = el('div', 'corp-toolbar');
+    bar.appendChild(chips([['q', '四半期'], ['y', '年度'], ['m', '月次']], st.mode, function (k) { st.mode = k; render(); }, '期間'));
+    bar.appendChild(chips([['pl', '損益計算書'], ['bs', '貸借対照表'], ['cf', 'キャッシュ・フロー計算書']], st.sheet, function (k) { st.sheet = k; render(); }, '決算書'));
+    body.appendChild(bar);
+    var list = rows.slice().reverse().slice(0, st.mode === 'm' ? 12 : st.mode === 'y' ? 5 : 8);
+    if (!list.length) { body.appendChild(el('p', 'muted corp-empty', 'まだ締めた期間がありません')); return; }
+    var now = (r.now || Date.now()) / 1000;
+    var head = [['（百万ドル）']].concat(list.map(function (x) {
+      var t = x.label.replace(/^(\d+)年度 第(\d)四半期$/, '$1年度 Q$2');
+      if (x.announce && x.announce > now) t += '（発表前）';
+      return [t, 1];
+    }));
+    var out = st.sheet === 'bs' ? bsRows(list, p) : st.sheet === 'cf' ? cfRows(list) : plRows(list, p);
+    body.appendChild(table(head, out, 'corp-sheet'));
+    var notes = el('p', 'muted corp-note');
+    notes.textContent = st.sheet === 'pl' ? '売上高・粗利・当期純利益は、日々の取引（プレイヤーが実際に使ったお金を含む）を複式簿記で積み上げたものです。四半期は期末から14日後の15:00（日本時間）に発表されます（発表前の数字は運営だけが見られます）。'
+      : st.sheet === 'bs' ? '各期末の残高です。資産合計＝負債合計＋純資産合計。'
+      : '直接法。期首の現金に各活動の増減を足すと期末の現金になります。';
+    body.appendChild(notes);
+    if (st.mode === 'y' && st.sheet === 'pl' && list[0].tax) body.appendChild(taxPanel(list[0]));
+  }
+  // the P/L's lines, each line's accounts under it, the per-share figures under them
+  function plRows(list, p) {
+    var out = [];
+    C().pl.forEach(function (line) {
+      var name = line.id === 'sales' && p.salesName ? p.salesName : line.name;
+      out.push({ cls: line.total ? 'corp-total' + (line.id === 'net' ? ' corp-net' : '') : 'corp-line', cells: [name].concat(list.map(function (x) { return { t: mil(x.pl[line.id]), cls: x.pl[line.id] < 0 ? 'neg' : '' }; })) });
+      if (line.kinds) {
+        var codes = {};
+        list.forEach(function (x) { Object.keys(x.accounts || {}).forEach(function (k) { if (line.kinds.indexOf(C().account(k, p)[1]) >= 0) codes[k] = (codes[k] || 0) + Math.abs(x.accounts[k]); }); });
+        Object.keys(codes).sort(function (a, b) { return codes[b] - codes[a]; }).forEach(function (k) {
+          out.push({ cls: 'corp-sub', cells: [C().account(k, p)[0]].concat(list.map(function (x) { var v = (x.accounts || {})[k]; return v ? mil(v) : '—'; })) });
+        });
+      }
+      if (line.id === 'sales') out.push({ cls: 'corp-sub', cells: ['前年同期比'].concat(list.map(function (x) { var g = x.prev ? ratio(x.pl.sales, x.prev.sales) : null; return g === null ? '—' : pct(g); })) });
+    });
+    out.push({ cls: 'corp-total', cells: ['1株当たり当期純利益（ドル）'].concat(list.map(function (x) { return group(x.eps); })) });
+    out.push({ cls: 'corp-line', cells: ['1株配当（ドル・期中支払い）'].concat(list.map(function (x) { return group(x.dps); })) });
+    out.push({ cls: 'corp-line', cells: ['期末従業員数'].concat(list.map(function (x) { return group(x.staff) + '名'; })) });
+    return out;
+  }
+  // the B/S's groups, their accounts and totals (a tax paid ahead is an asset: 未収還付法人税等)
+  function bsRows(list, p) {
+    var out = [], sideTotal = { a: [], l: [], e: [] };
+    list.forEach(function () { sideTotal.a.push(0); sideTotal.l.push(0); sideTotal.e.push(0); });
+    var val = function (x, k) { var v = x.bs[k] || 0; return k === 'taxdue' && v < 0 ? 0 : v; };
+    var refund = function (x) { return x.bs.taxdue < 0 ? -x.bs.taxdue : 0; };
+    var SIDES = { a: '資産の部', l: '負債の部', e: '純資産の部' };
+    var lastSide = '';
+    C().bs.forEach(function (g) {
+      if (g.side !== lastSide) {
+        if (lastSide) out.push({ cls: 'corp-total', cells: [SIDES[lastSide].replace('の部', '合計')].concat(sideTotal[lastSide].map(mil)) });
+        out.push({ cls: 'corp-head', cells: [SIDES[g.side]].concat(list.map(function () { return ''; })) });
+        lastSide = g.side;
+      }
+      var accounts = g.accounts.filter(function (k) { return list.some(function (x) { return val(x, k); }); });
+      var extra = g.id === 'current' && list.some(refund);
+      var tot = list.map(function (x) { return accounts.reduce(function (n, k) { return n + val(x, k); }, 0) + (g.id === 'current' ? refund(x) : 0); });
+      tot.forEach(function (v, i) { sideTotal[g.side][i] += v; });
+      out.push({ cls: 'corp-line', cells: [g.name].concat(tot.map(mil)) });
+      accounts.forEach(function (k) { out.push({ cls: 'corp-sub', cells: [C().account(k, p)[0]].concat(list.map(function (x) { var v = val(x, k); return v ? mil(v) : '—'; })) }); });
+      if (extra) out.push({ cls: 'corp-sub', cells: ['未収還付法人税等'].concat(list.map(function (x) { return refund(x) ? mil(refund(x)) : '—'; })) });
+    });
+    out.push({ cls: 'corp-total', cells: ['純資産合計'].concat(sideTotal.e.map(mil)) });
+    out.push({ cls: 'corp-total corp-net', cells: ['負債純資産合計'].concat(sideTotal.l.map(function (v, i) { return mil(v + sideTotal.e[i]); })) });
+    return out;
+  }
+  // the C/F: its three parts and their lines, the change in cash, cash at the start and the end
+  function cfRows(list) {
+    var out = [];
+    C().cf.forEach(function (part) {
+      out.push({ cls: 'corp-head', cells: [part.name].concat(list.map(function () { return ''; })) });
+      part.lines.forEach(function (ln) {
+        if (!list.some(function (x) { return x.cf[ln[0]]; })) return;
+        out.push({ cls: 'corp-sub', cells: [ln[1]].concat(list.map(function (x) { var v = x.cf[ln[0]] || 0; return { t: v ? mil(v) : '—', cls: v < 0 ? 'neg' : '' }; })) });
+      });
+      out.push({ cls: 'corp-total', cells: [part.name.replace('による', '').replace('キャッシュ・フロー', 'CF') + ' 計'].concat(list.map(function (x) {
+        var v = part.lines.reduce(function (n, ln) { return n + (x.cf[ln[0]] || 0); }, 0); return { t: mil(v), cls: v < 0 ? 'neg' : '' };
+      })) });
+    });
+    out.push({ cls: 'corp-line', cells: ['現金及び現金同等物の増減額'].concat(list.map(function (x) { return mil(x.cash - x.cash0); })) });
+    out.push({ cls: 'corp-line', cells: ['期首残高'].concat(list.map(function (x) { return mil(x.cash0); })) });
+    out.push({ cls: 'corp-total corp-net', cells: ['期末残高'].concat(list.map(function (x) { return mil(x.cash); })) });
+    return out;
+  }
+  function taxPanel(y) {
+    var t = y.tax, pt = panel('税金の内訳（' + y.label + '）', t.small ? '中小法人（資本金1億ドル以下）' : '大法人（外形標準課税あり）');
+    pt.appendChild(table([['', 0], ['金額', 1]], [
+      ['課税所得', money(t.taxable)], ['繰越欠損金の使用', t.used ? money(t.used) : '—'], ['法人税', money(t.corporate)], ['地方法人税', money(t.local)],
+      ['住民税（法人税割＋均等割 ' + money(t.flat || 0) + '）', money(t.inhabitant)], ['事業税（所得割）', money(t.business)],
+      ['特別法人事業税', money(t.special || 0)], ['外形標準課税（付加価値割・資本割）', t.small ? '—' : money(t.sizeTax || 0)], { cls: 'corp-total', cells: ['合計', money(t.total)] }
+    ]));
+    return pt;
+  }
+
+  // 商品: each product's economics, and what sold of it
+  function pageProducts(body, r, p) {
+    var maker = p.id === 'magita';
+    var pn = panel(maker ? 'MAGITAが作って卸している商品' : '取り扱い商品', '販売費は価格に上乗せせず販売店の販管費（販売費）で計上');
+    pn.appendChild(table([['商品'], ['販売価格', 1], ['原価（材料のみ）', 1], ['仕入れ価格', 1], ['専売特別費用', 1], ['販売店の純利益', 1], ['販売費/個', 1], ['MAGITAの取り分', 1], ['先月 販売数', 1], ['うちプレイヤー', 1], ['12か月 販売数', 1]],
+      r.products.map(function (x) {
+        var name = el('span', '', x.name);
+        if (x.ended) { var w = el('span', 'tag corp-tag inside', '販売終了'); name = el('span'); name.appendChild(el('span', '', x.name + ' ')); name.appendChild(w); }
+        var mo = x.month || { npc: 0, players: 0 }, yr = x.year || { npc: 0, players: 0 };
+        var known = x.cost !== undefined;
+        return [{ t: name }, money(x.price), known ? money(x.cost) : '—', !known ? '—' : x.buy === null ? '（自社）' : money(x.buy),
+          x.excl === null || x.excl === undefined ? '—' : money(x.excl), x.sellerNet === undefined ? '—' : { t: money(x.sellerNet), cls: x.sellerNet < 0 ? 'neg' : '' },
+          x.selling ? money(x.selling) : '—', x.makerNet === null || x.makerNet === undefined ? '—' : money(x.makerNet),
+          group(mo.npc + mo.players), group(mo.players), group(yr.npc + yr.players)];
+      })));
+    pn.appendChild(el('p', 'muted corp-note', '販売店の純利益＝販売価格−仕入れ価格−専売特別費用（販売費を引く前）。MAGITAの取り分＝仕入れ価格＋専売特別費用−材料の原価。メーカーがMAGITAだけなので販売店の利幅は小さく、MAGITAのコスト削減で原価は低く抑えられています。販売数にはプレイヤー以外のお客（NPC）への販売も含まれます。'));
+    body.appendChild(pn);
+  }
+
+  // 事業: each business's sales and costs; the studios' games; the bank's book
+  function pageBiz(body, r, p) {
+    var last = r.quarters[r.quarters.length - 1], year = r.years[r.years.length - 1];
+    if (p.streams && (last || year)) {
+      var ps = panel('事業ごとの売上と原価', '百万ドル');
+      var head = [['事業']], cols = [];
+      if (last) { head.push([last.label.replace(/^(\d+)年度 第(\d)四半期$/, '$1年度Q$2') + ' 売上', 1], ['原価', 1]); cols.push(last); }
+      if (year) { head.push([year.label + ' 売上', 1], ['原価', 1]); cols.push(year); }
+      ps.appendChild(table(head, p.streams.map(function (x) {
+        var row = [x.name];
+        cols.forEach(function (c) { row.push(mil((c.accounts || {})['r:' + x.id] || 0), (c.accounts || {})['c:' + x.id] ? mil(c.accounts['c:' + x.id]) : '—'); });
+        return row;
+      })));
+      body.appendChild(ps);
+    }
+    if (p.model === 'studio') studioPages(body, r, p);
+    if (p.model === 'bank') {
+      var b = r.state.bal, pb = panel('銀行の勘定', '貸出・預金・有価証券');
+      var tiles = el('div', 'corp-tiles');
+      tiles.appendChild(stat('貸出金', money(b.lent || 0), '')); tiles.appendChild(stat('預金', money(b.deposits || 0), ''));
+      tiles.appendChild(stat('有価証券', money(b.bonds || 0), '')); tiles.appendChild(stat('預貸率', b.deposits ? Math.round((b.lent || 0) / b.deposits * 100) + '%' : '—', '貸出金÷預金'));
+      pb.appendChild(tiles);
+      pb.appendChild(el('p', 'muted corp-note', 'ランクAの会社には年0.8%〜1.2%の超低金利で貸し出しています（各社の「株式・財務」に借入の明細）。'));
+      body.appendChild(pb);
+    }
+    var pg = panel('年間予算');
+    var bud = r.state.budget;
+    pg.appendChild(table([['費目'], ['年額', 1]], [
+      [p.place ? p.place.name : '施設費', money(bud.place)], [p.rd ? p.rd.name : '研究開発費', money(bud.rd)], ['広告宣伝費', bud.ads ? money(bud.ads) : '—'],
+      ['その他の経費', money(bud.other)], ['設備投資', bud.capex ? money(bud.capex) : '—']
+    ]));
+    body.appendChild(pg);
+  }
+  function studioPages(body, r, p) {
+    var lineName = function (id) { var l = (p.lines || []).filter(function (x) { return x.id === id; })[0]; return l ? l.name + (l.scale ? '（' + l.scale + '）' : '') : id; };
+    var pj = panel('開発中のプロジェクト', r.projects.length + '本');
+    pj.appendChild(table([['タイトル（仮）'], ['ジャンル'], ['ライン'], ['開始'], ['発売予定'], ['進み具合', 1], ['開発費（ここまで）', 1], ['延期', 1]],
+      r.projects.slice().sort(function (a, b) { return a.due - b.due; }).map(function (x) {
+        // (one that is done waits for its day: 完成)
+        var done = Math.min(100, Math.round(x.prog * 100)), prog = el('span', 'corp-prog'), bar = el('i');
+        bar.style.setProperty('--w', done + '%'); prog.appendChild(bar); prog.appendChild(el('b', '', x.prog >= 1 ? '完成・発売待ち' : done + '%'));
+        return [x.name + (x.sequel ? '（続編）' : ''), x.genre, lineName(x.line), dayLabel(x.start), dayLabel(x.due), { t: prog }, money(x.spent), x.delays ? x.delays + '回' : '—'];
+      })));
+    body.appendChild(pj);
+    var tt = panel('発売中のタイトル', '品質は0〜100');
+    tt.appendChild(table([['タイトル'], ['ジャンル'], ['発売日'], ['品質', 1], ['開発費', 1], ['累計売上', 1], ['販売本数', 1], ['見込み', 1], ['']],
+      r.titles.slice().sort(function (a, b) { return b.day - a.day; }).map(function (x) {
+        return [x.name, x.genre, dayLabel(x.day), String(x.q), money(x.cost), money(x.sold), group(x.units), money(x.est), x.hit ? 'ヒット' : ''];
+      })));
+    body.appendChild(tt);
+    if (r.live.length) {
+      var lv = panel('運営型タイトル', '年間の売上ペース');
+      lv.appendChild(table([['タイトル'], ['ジャンル'], ['売上ペース（年）', 1], ['次の大型アップデート']], r.live.map(function (x) { return [x.name, x.genre, money(x.rate), dayLabel(x.next)]; })));
+      body.appendChild(lv);
+    }
+    var pc = panel('旧作（カタログ）', '');
+    pc.appendChild(el('p', '', '旧作の売上ペース：年' + money(r.catalog)));
+    var bk = r.state.backing;
+    if (p.partner && p.partner.role === 'backer' && bk) pc.appendChild(el('p', '', nameOf(p.partner.with) + 'への開発援助・業務委託：' + bk.fy + '年度 予算' + money(bk.budget) + '、支払い済み' + money(bk.paid)));
+    if (p.partner && p.partner.role === 'studio') pc.appendChild(el('p', '', nameOf(p.partner.with) + 'から毎月、業務委託料と開発援助金を受け取って共同開発しています（' + nameOf(p.partner.with) + 'が株式の約20%を保有）。'));
+    body.appendChild(pc);
+    if (r.archive.length) {
+      var ar = panel('販売を終えたタイトル', '最近の' + r.archive.length + '本');
+      ar.appendChild(table([['タイトル'], ['ジャンル'], ['発売日'], ['品質', 1], ['累計売上', 1], ['販売本数', 1]], r.archive.map(function (x) { return [x.name, x.genre, dayLabel(x.day), String(x.q), money(x.sold), group(x.units)]; })));
+      body.appendChild(ar);
+    }
+  }
+
+  // 人と予算: the people, their pay and morale
+  function pagePeople(body, r, p) {
+    var s = r.state, tiles = el('div', 'corp-tiles');
+    tiles.appendChild(stat('従業員数', group(s.staff) + '名', s.target !== s.staff ? '目標 ' + group(s.target) + '名' : ''));
+    tiles.appendChild(stat('平均年収', money(s.pay), 'はじめ ' + money(p.salary)));
+    tiles.appendChild(stat('会社負担（1人・年）', money(s.unit), '給与＋賞与＋法定福利費など'));
+    tiles.appendChild(stat('人件費（年）', money(s.staff * s.unit), ''));
+    tiles.appendChild(stat('士気', Math.round(s.morale * 100) + '%', s.morale >= 0.7 ? '高い' : s.morale >= 0.45 ? 'ふつう' : '低い'));
+    body.appendChild(tiles);
+    var pc = panel('社員数の推移');
+    pc.appendChild(chart(dayNames(r.days.day), r.days.staff, function (v) { return group(v) + '名'; }, '社員数'));
+    body.appendChild(pc);
+    body.appendChild(el('p', 'muted corp-note', '昇給は毎年4月、前年度の業績しだい。新卒は4月入社、中途採用は毎月1日。賞与は6月と12月に業績連動で支給されます。'));
+  }
+
+  // 株式・財務: the shares and who holds them, the dividends, the loans and the taxes carried
+  function pageStock(body, r, p) {
+    var s = r.state, sh = s.shares, tiles = el('div', 'corp-tiles');
+    tiles.appendChild(stat('発行済株式数', group(sh.issued) + '株', sh.treasury ? '自己株式 ' + group(sh.treasury) + '株' : ''));
+    tiles.appendChild(stat('創業家などの保有', Math.round(sh.founders / Math.max(1, sh.issued) * 100) + '%', ''));
+    tiles.appendChild(stat('1株配当（年）', '$' + group(s.dividend.dps), '配当総額 ' + money(s.dividend.total)));
+    tiles.appendChild(stat('配当性向（目標）', Math.round((p.payout || 0) * 100) + '%', '業績連動'));
+    tiles.appendChild(stat('1株当たり純資産', '$' + group(r.summary.equity / Math.max(1, sh.out)), ''));
+    if (p.listed) tiles.appendChild(stat('適正株価（理論値）', '$' + group(r.summary.fair), 'PER ' + p.per + '倍・PBR ' + p.pbr + '倍が目安'));
+    body.appendChild(tiles);
+    var ph = panel('持ち合い');
+    var hold = [];
+    Object.keys(s.holders.by || {}).forEach(function (k) { hold.push([nameOf(k) + 'が保有', group(s.holders.by[k]) + '株', Math.round(s.holders.by[k] / Math.max(1, sh.issued) * 1000) / 10 + '%']); });
+    Object.keys(s.holders.own || {}).forEach(function (k) { hold.push([nameOf(k) + 'の株を保有', group(s.holders.own[k]) + '株', '持分法']); });
+    if (hold.length) ph.appendChild(table([['相手'], ['株数', 1], ['', 1]], hold)); else ph.appendChild(el('p', 'muted', 'ありません'));
+    body.appendChild(ph);
+    var pl = panel('借入金', 'テネシスから（ランク' + p.rank + '）');
+    if (s.loans.length) pl.appendChild(table([['借入'], ['残高', 1], ['金利（年）', 1], ['借入日'], ['返済期限']], s.loans.map(function (l) { return [l.id, money(l.amt), (l.rate * 100).toFixed(2) + '%', dayLabel(l.from), dayLabel(l.until)]; })));
+    else pl.appendChild(el('p', 'muted', p.id === 'tenesice' ? '（貸す側です）' : '借入はありません'));
+    body.appendChild(pl);
+    var pt = panel('税金');
+    var tax = s.tax, rows = [];
+    if (tax.last) rows.push([(tax.last.fy || '') + '年度の税金（確定）', money(tax.last.total)], ['うち事業税', money(tax.last.business)], ['今年度の中間納付', tax.last.interim ? money(tax.last.interim) : '—']);
+    rows.push(['今年度の税金（ここまでの見積もり）', money(tax.booked || 0)]);
+    (tax.carry || []).forEach(function (c) { rows.push([c[0] + '年度の繰越欠損金（10年）', money(c[1])]); });
+    pt.appendChild(table([['', 0], ['', 1]], rows));
+    body.appendChild(pt);
+  }
+
+  function pageTies(body, r, p) {
+    var pn = panel('ビジネス友好度', '0〜100・▼ははじめの値');
+    pn.appendChild(tieList(r.ties, p.id));
+    pn.appendChild(el('p', 'muted corp-note', '友好度は毎月、取引の多さ・支払い・援助・ヒット作などで動きます。MAGITAとの友好度が70以上だと四半期末に販売奨励金が出て、60日の支払猶予がもらえます（30未満だと30日）。テネシスとの友好度は借入の金利にも効きます。'));
+    body.appendChild(pn);
+  }
+  function pageNews(body, r) {
+    var pn = panel('ニュース', '「社内」は投資の画面に出ないお知らせ');
+    pn.appendChild(newsList(r.news));
+    body.appendChild(pn);
+  }
+
+  return {
+    // the app opened (or its icon pressed again): what is shown asked for, { same: true } when nothing changed
+    show: function (view, request, toast) {
+      st.request = request; st.toast = toast;
+      st.view = view;
+      render(); ask();
+    },
+    // a day closed on the server: asked again while the app is in sight (else when it is opened next: show asks)
+    live: function () {
+      if (st.view && !st.view.hidden && st.view.isConnected) ask();
+    }
+  };
+})();

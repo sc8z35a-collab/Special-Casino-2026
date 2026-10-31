@@ -30,10 +30,24 @@
 // the second) × the day's close × its daily rate: shares bought just before
 // the close earn only that part of the day. Worked out when the holding
 // changes or is looked at, and kept for the player to claim.
+//
+// The companies (企業: server/core/corp.js). Once their books run, each day's
+// price moves about a centre that is the company's worth by its books (its
+// profit, its money, its games under way), moving towards it a little each day,
+// with the market's mood besides (sentiment: the jumps of its 決算発表, its games'
+// news; fading over months), and with what the players' own orders do to it
+// (impact: a buy lifts it, a sale lowers it, fading in hours; a big order pays
+// part of its own move: the fill price slips by half of it). A buy is new shares
+// the company issues (its money), a sale shares it buys back; the fee is
+// Dtrade's. The dividend is the company's own a share, set with its results
+// (業績連動: a share of the profit it expects), paid by the second held as before.
 import { ApiError, posInt } from './errors.js';
 import { STOCKS, fmt } from './rules.js';
 import { keyFrom } from './auth.js';
 import { pathOf, history, VOL_MEAN, DAY } from './stock-model.js';
+
+const KEEP_IMPACT = Math.pow(0.5, 1 / (6 * 3600));     // an order's move on the price: half gone in 6 hours
+const KEEP_MOOD = Math.pow(0.5, 1 / (60 * DAY));       // the market's mood: half gone in 60 days
 
 const S = STOCKS;
 const COMPANIES = S.companies;
@@ -60,11 +74,13 @@ export function orderDto(o) {
 }
 
 export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChanged, live, secret, rate = () => {}, clock = Date.now, onFill = () => {}, onDue = () => {},
-  onTrade = () => {}, paused = () => false }) {
+  onTrade = () => {}, paused = () => false, corp = null }) {
   const key = keyFrom(secret, 'stocks');
   const paths = new Map(COMPANIES.map((c) => [c.id, pathOf(key, c)]));
   // each company's path as far as it was worked out, with the checkpoint it came from (set once a transaction commits)
   const mem = new Map();
+  // the seconds being worked out now: each company's orders' moves still to come (a fill adds its own)
+  const running = new Map();
 
   function companyOf(id) {
     const c = S.company(String(id || ''));
@@ -91,14 +107,29 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
     q('INSERT INTO stock_state (company, tick, x, v, opened) VALUES (?, ?, 0, ?, ?)').run(c.id, t0, VOL_MEAN, t0);
   }
   function checkpoint(c, target) {
-    const read = () => q('SELECT tick, x, v FROM stock_state WHERE company = ?').get(c.id);
+    const read = () => q('SELECT tick, x, v, i, s FROM stock_state WHERE company = ?').get(c.id);
     let row = read();
     if (!row) { open(c, target); row = read(); }
     return row;
   }
   function fresh(c, row) {
-    const p = paths.get(c.id).price(row.x);
-    return { tick: row.tick, x: row.x, v: row.v, price: p, from: row, candle: { at: row.tick, o: p, h: p, l: p, c: p } };
+    const p = priceAt(c, row, row.tick);
+    return { tick: row.tick, x: row.x, v: row.v, i: row.i || 0, s: row.s || 0, price: p, from: row, candle: { at: row.tick, o: p, h: p, l: p, c: p } };
+  }
+  // The price at second `n` for the path's state: the company's centre that second (its base before the companies
+  // began), times its noise, its mood and the orders' move.
+  const LN = new Map(COMPANIES.map((c) => [c.id, Math.log(c.base)]));
+  function centre(c, n) {
+    const a = corp && corp.anchor(c.id, Math.floor((n - 1) / DAY));
+    if (!a) return 0;
+    const day = Math.floor((n - 1) / DAY) * DAY;
+    return a.e0 + (a.e1 - a.e0) * (n - day) / DAY - LN.get(c.id);
+  }
+  const priceAt = (c, st, n) => Math.max(1, Math.round(c.base * Math.exp(centre(c, n) + st.x + (st.s || 0) + (st.i || 0))));
+  // what a day's news does to the mood, by the second
+  function jumpsOf(c, n) {
+    const a = corp && corp.anchor(c.id, Math.floor((n - 1) / DAY));
+    return a && a.ev.length ? new Map(a.ev.map(([at, j]) => [at, j])) : null;
   }
 
   // One company's path up to second `target`: the orders it reaches trade, the
@@ -106,13 +137,30 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
   function run(c, target, told) {
     const row = checkpoint(c, target);
     const had = mem.get(c.id);
-    const s = had && had.from.tick === row.tick && had.from.x === row.x && had.from.v === row.v
+    const s = had && had.from.tick === row.tick && had.from.x === row.x && had.from.v === row.v && had.from.i === (row.i || 0) && had.from.s === (row.s || 0)
       ? { ...had, candle: { ...had.candle } } : fresh(c, row);
     if (s.tick < target) {
       const path = paths.get(c.id), book = bookOf(c.id);
+      // the orders filled in these seconds and how far each moved the price (from the second after it)
+      const moves = new Map();
+      for (const o of q("SELECT done_at, impact FROM stock_orders WHERE company = ? AND status = 'filled' AND impact != 0 AND done_at >= ? AND done_at < ?").all(c.id, s.tick * MS, target * MS)) {
+        const at = Math.floor(o.done_at / MS);
+        moves.set(at, (moves.get(at) || 0) + o.impact);
+      }
+      running.set(c.id, moves);
+      let jumps = null, jumpDay = -1;
       for (let n = s.tick + 1; n <= target; n++) {
         path.step(s, n);
-        const p = path.price(s.x), k = s.candle;
+        if (corp) {
+          s.i *= KEEP_IMPACT;
+          s.s *= KEEP_MOOD;
+          const m = moves.get(n - 1);
+          if (m) s.i += m;
+          const dn = Math.floor((n - 1) / DAY);
+          if (dn !== jumpDay) { jumps = jumpsOf(c, n); jumpDay = dn; }
+          if (jumps && jumps.has(n)) s.s += jumps.get(n);
+        }
+        const p = priceAt(c, s, n), k = s.candle;
         s.tick = n;
         s.price = p;
         if (p > k.h) k.h = p;
@@ -123,6 +171,7 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
         if (n % DAY === 0 && book.list.length) expire(book, n, told);
       }
     }
+    running.delete(c.id);
     // (kept only once this is committed: a transaction that fails takes its seconds back with it)
     afterCommit(() => mem.set(c.id, s));
     return s;
@@ -142,8 +191,8 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
           .run(c.id, span, Math.floor(k.at / span) * span, k.o, k.h, k.l, k.c, v);
       }
     }
-    q('UPDATE stock_state SET tick = ?, x = ?, v = ? WHERE company = ?').run(n, s.x, s.v, c.id);
-    s.from = { tick: n, x: s.x, v: s.v };
+    q('UPDATE stock_state SET tick = ?, x = ?, v = ?, i = ?, s = ? WHERE company = ?').run(n, s.x, s.v, s.i || 0, s.s || 0, c.id);
+    s.from = { tick: n, x: s.x, v: s.v, i: s.i || 0, s: s.s || 0 };
     s.candle = { at: n, o: k.c, h: k.c, l: k.c, c: k.c };
   }
 
@@ -152,6 +201,14 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
   function advance(now = clock()) {
     const target = Math.floor(now / MS), told = [], st = new Map();
     tx(() => {
+      // (the companies' days close as the prices pass each day's end: the next day's centre comes from it)
+      if (corp) {
+        corp.ensure(target);
+        for (let end = corp.closesAt(); end <= target; end = corp.closesAt()) {
+          for (const c of COMPANIES) run(c, end, told);
+          corp.close();
+        }
+      }
       for (const c of COMPANIES) st.set(c.id, run(c, target, told));
       if (told.length) tell(told);
     });
@@ -202,10 +259,22 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
     if (done && o.side === 'buy' && o.reserved > 0) q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(o.reserved, o.user_id);
   }
 
+  // An order's move on the price (log: up for a buy, down for a sale; 1% for each `depth` $ of it) and the price it
+  // fills at for `p` this second: half its move on top (a limit order never worse than its limit).
+  function moveOf(c, side, shares, p) {
+    if (!corp) return 0;
+    return (side === 'buy' ? 1 : -1) * 0.01 * p * shares / corp.depth(c.id);
+  }
+  function slipped(c, o, p) {
+    const m = moveOf(c, o.side, o.shares, p), at = Math.max(1, Math.round(p * Math.exp(m / 2)));
+    if (o.type === 'limit') return o.side === 'buy' ? Math.min(o.price, at) : Math.max(o.price, at);
+    return at;
+  }
   // An order trades: `p` the price, `at` the moment (ms), `n` its second.
-  function fill(c, o, p, at, n) {
+  function fill(c, o, p0, at, n) {
     const h = holdingOf(o.user_id, c.id);
-    accrue(h, n, { company: c.id, tick: n, price: p });
+    const p = slipped(c, o, p0), move = moveOf(c, o.side, o.shares, p0);
+    accrue(h, n, { company: c.id, tick: n, price: p0 });
     const value = p * o.shares, fee = S.fee(value);
     let amount, profit = 0;
     if (o.side === 'buy') {
@@ -229,8 +298,12 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
       q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(amount, o.user_id);
     }
     save(h);
-    q("UPDATE stock_orders SET status = 'filled', done_at = ?, fill_price = ?, amount = ?, fee = ?, profit = ? WHERE id = ?")
-      .run(at, p, amount, fee, profit, o.id);
+    q("UPDATE stock_orders SET status = 'filled', done_at = ?, fill_price = ?, amount = ?, fee = ?, profit = ?, impact = ? WHERE id = ?")
+      .run(at, p, amount, fee, profit, move, o.id);
+    // (in the seconds being worked out now, the move starts with the next one)
+    const moves = running.get(c.id);
+    if (moves) moves.set(n, (moves.get(n) || 0) + move);
+    if (corp) corp.traded(c.id, o.side, o.shares, p, fee, n);
   }
 
   // after the orders the path reached: each player hears of theirs (their other devices, the phone);
@@ -277,11 +350,20 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
   }
   // a day's dividend: the average holding × the day's close × the rate (the cents carried to the next day)
   function pay(h, d, avg, ctx) {
+    // (the companies' days: the dividend a share each company set for that day)
+    const per = corp ? corp.dps(h.company, d) : null;
+    if (per !== null && per !== undefined) {
+      h.frac += avg * per;
+      return paid(h);
+    }
     const end = (d + 1) * DAY;
     const close = ctx && ctx.company === h.company && ctx.tick === end ? ctx.price
       : q('SELECT c FROM stock_candles WHERE company = ? AND span = ? AND at = ?').get(h.company, DAY, d * DAY)?.c;
     if (!close) return;
     h.frac += avg * close * RATE.get(h.company);
+    paid(h);
+  }
+  function paid(h) {
     const whole = Math.floor(h.frac);
     if (whole <= 0) return;
     h.frac -= whole;
@@ -334,8 +416,9 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
       const held = open.reduce((n, o) => n + (o.company === c.id && o.side === 'sell' ? o.shares : 0), 0);
       const value = h.shares * s.price;
       invested += value;
-      // today's dividend so far, at the price now (paid at the close)
-      const today = h.shares || h.acc ? Math.floor((h.acc + h.shares * Math.max(0, s.tick - h.acc_at)) / DAY * s.price * RATE.get(c.id)) : 0;
+      // today's dividend so far (paid at the close): the company's own a share, or (before the companies) the price × its rate
+      const per = corp ? corp.dps(c.id, Math.floor((s.tick - 1) / DAY)) : null;
+      const today = h.shares || h.acc ? Math.floor((h.acc + h.shares * Math.max(0, s.tick - h.acc_at)) / DAY * (per !== null && per !== undefined ? per : s.price * RATE.get(c.id))) : 0;
       return { id: c.id, shares: h.shares, free: h.shares - held, cost: h.cost, value, realized: h.realized, dividends: h.dividends, today };
     });
     return {
@@ -346,7 +429,7 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
   }
   const tickOf = (st) => st.get(COMPANIES[0].id).tick;
   function view(userId, st, now, holdings = settle(userId, st)) {
-    return { now, t: tickOf(st), market: COMPANIES.map((c) => quote(c, st.get(c.id))), mine: mine(userId, st, holdings, now) };
+    return { now, t: tickOf(st), market: COMPANIES.map((c) => quote(c, st.get(c.id))), mine: mine(userId, st, holdings, now), corp: corp ? corp.view(now) : null };
   }
 
   // A chart: `per`'s candles, the newest the one forming now; from `since` (a
@@ -475,7 +558,7 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
     }
     let reserved = 0;
     if (side === 'buy') {
-      const unit = type === 'market' ? p : type === 'limit' ? price : Math.ceil(price * (1 + S.stopMargin));
+      const unit = type === 'market' ? slipped(c, { side, type, shares, price }, p) : type === 'limit' ? price : Math.ceil(price * (1 + S.stopMargin));
       const value = unit * shares, invested = investedOf(u.id, st, open);
       if (invested + value > S.cap) throw new ApiError(409, 'cap', `投資の上限は$${fmt(S.cap)}です`, { room: Math.max(0, S.cap - invested) });
       const need = value + S.fee(value);
@@ -593,8 +676,15 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
     }
   };
 
+  // the companies closed a day: whoever has the screen open hears what they now show
+  function corpNotice() {
+    if (!corp || !watchers.size) return;
+    const view = corp.view(clock());
+    for (const id of watchers.keys()) live.send(id, 'stock', { corp: view });
+  }
+
   return {
-    routes, advance, watch, wake, due, housekeep,
+    routes, advance, watch, wake, due, housekeep, corpNotice,
     // (the tests: the path's state, and a player's view)
     view: (userId, now = clock()) => tx(() => view(userId, advance(now), now)),
     watching: () => watchers.size,

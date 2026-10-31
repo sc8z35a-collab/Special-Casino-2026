@@ -41,7 +41,7 @@ for (const [from, to] of [[0, 1], [2, 3]]) test(`VIP level ${from} to ${to} does
 test('car EXP that increases the VIP wage also settles past work at the old rate', async t => {
   const { s, p } = await fixture(t, now => ({ vip_exp: RULES.vip.levels[1] - RULES.vip.exp.car, vip_until: now + DAY,
     jobs: JSON.stringify([{ id: 'garage', since: now - HOUR }]) }));
-  const bought = await s.call('POST', '/api/cars/buy', { token: p.token, body: { model: 'two-state-sedan' } });
+  const bought = await s.call('POST', '/api/cars/buy', { token: p.token, body: { model: 'ferrari-325' } });
   assert.equal(bought.status, 200); assert.equal(bought.me.vip.level, 1);
   assert.equal(bought.me.dollars, 100000000 - bought.paid + WAGE);
   assert.equal((await s.call('POST', '/api/jobs/collect', { token: p.token })).paid, 0);

@@ -4,12 +4,15 @@ SHOP now has SHOP / CAR SHOP / 所有 tabs. CAR SHOP uses fixed unit prices:
 
 | Item | Price ($) | Image |
 | --- | ---: | --- |
-| 車修理キット | 250,000 | repair-kit.webp |
-| 車オイル中型 | 100,000 | car-oil-medium.webp |
-| ガソリン満杯 | 10,000 | gasoline-full.webp |
-| 高機動エンジンVI | 1,100,000 | engine-v1.webp (small black) |
-| 高機動エンジンV2 | 2,500,000 | engine-v2.webp (larger black) |
-| 高機動エンジンV3 | 3,000,000 | engine-v3.webp (red) |
+| 車修理キット | 450,000 | repair-kit.webp |
+| 車オイル中型 | 550,000 | car-oil-medium.webp |
+| ガソリン満杯 | 25,000 | gasoline-full.webp |
+| 高機動エンジンVI | 2,500,000 | engine-v1.webp (small black) |
+| 高機動エンジンV2 | 4,800,000 | engine-v2.webp (larger black) |
+| 高機動エンジンV3 | 8,200,000 | engine-v3.webp (red) |
+
+All six are made by MAGITA and sold by ジンクス; their costs, purchase prices and
+exclusive-sale charges are in [handbook/39.md](handbook/39.md).
 
 All purchases appear in 所有. Engines can be installed on an owned, available car,
 exchanged, or detached there. An exchange returns the previous engine to inventory.

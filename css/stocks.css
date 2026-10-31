@@ -92,3 +92,11 @@
 .sk-meter .sk-row b { margin-left: auto; }
 .sk-bar { flex: 1; height: 14px; border-radius: 7px; background: rgba(255, 255, 255, .08); overflow: hidden; }
 .sk-bar i { display: block; height: 100%; border-radius: 7px; background: linear-gradient(90deg, #f4c95d, #f59e42); transition: width .3s; }
+/* the 企業 tab: the company behind the share, a line of labelled figures at a time, then its news */
+.sk-line.sk-corp { grid-template-columns: 1.3fr repeat(4, minmax(0, 1fr)); gap: 16px; }
+.sk-cell { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.sk-cell b { overflow: hidden; text-overflow: ellipsis; }
+.sk-line.sk-news { grid-template-columns: 150px 70px minmax(0, 1fr); }
+.sk-line.sk-news span { overflow: hidden; text-overflow: ellipsis; font-size: 20px; }
+.sk-foot > .sk-seg { gap: 6px; }
+.sk-foot > .sk-seg .sk-chip { height: 44px; font-size: 21px; }

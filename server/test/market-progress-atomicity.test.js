@@ -48,7 +48,7 @@ for (const kind of ['avatar', 'item', 'garage']) test(`${kind} purchase rolls ba
 
 test('buying a new car keeps payment, ownership, VIP EXP and car quests atomic', async t => {
   const f = await fixture(t), { s, a } = f;
-  const model = CARS.get('two-state-sedan'), price = carPrice(model, carSale()).price;
+  const model = CARS.get('ferrari-325'), price = carPrice(model, carSale()).price;
   await checkRollback(f, '/api/cars/buy', { model: model.id, price }, r => {
     assert.equal(r.me.dollars, 1000000000 - price);
     assert.equal(s.app.db.prepare('SELECT COUNT(*) AS n FROM cars WHERE owner_id=?').get(a.me.id).n, 1);

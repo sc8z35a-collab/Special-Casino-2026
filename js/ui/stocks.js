@@ -3,7 +3,10 @@
    by the rules in js/game/stocks.js; this screen shows it and sends orders.
    While it is open and in sight the server sends each second's prices on the
    live connection (told every 20 seconds that the screen is still open), and
-   the chart is drawn here on a canvas, no library. No words beyond labels. */
+   the chart is drawn here on a canvas, no library. No words beyond labels.
+   The 企業 tab shows the company behind the share (server/core/corp.js): its
+   last published quarter, the year's guidance and its dividend, the per-share
+   figures, the next 決算発表 and its news (told again when a day closes). */
 (function (BR) {
   'use strict';
   var K = BR.kit, api = BR.api, S = BR.STOCKS, el = K.el, fmt = BR.util.fmt;
@@ -11,6 +14,7 @@
   var UP = '#28c76f', DOWN = '#f0506e', GRID = 'rgba(160,178,205,.16)', TEXT = '#9fb0c8', MA = ['#f5b941', '#9b8cff'];
   var TYPE = { market: '成行', limit: '指値', stop: '逆指値' };
   var STATUS = { filled: '約定', canceled: '取消', expired: '失効', failed: '不成立' };
+  var NEWS = { results: '決算', guidance: '予想', revise: '修正', dividend: '配当', release: '発売', hit: 'ヒット', flop: '不振', start: '開発', delay: '延期', cancel: '中止', update: '更新', week: '販売', hire: '採用', support: '援助' };
   var LABEL = { '1h': '1H', '1d': '1D', '1w': '1W', '1m': '1M', '1y': '1Y', all: 'ALL' };
   var root, canvas, ui = {}, st = null, generation = 0, renewTimer = 0, refreshTimer = 0, raf = 0;
 
@@ -45,7 +49,7 @@
     st = {
       company: was.company || 'riru', period: was.period || '1d', mode: was.mode || 'line', ma: !!was.ma, list: 'orders',
       side: 'buy', type: 'market', shares: 1, price: 0, priceFor: '',
-      market: {}, mine: null, t: 0,
+      market: {}, mine: null, t: 0, corp: null,
       candles: [], chartKey: '', minute: null,
       history: [], more: false,
       busy: false, pending: null, seen: {}, lastFrame: 0, lastRenew: 0, lastSync: 0, lastFull: 0, hover: -1,
@@ -63,6 +67,7 @@
       st.market[m.id] = m;
     });
     st.mine = r.mine;
+    if (r.corp) st.corp = r.corp;
     st.t = Math.max(st.t, r.t);
     if (r.me) { BR.social.setMe(r.me); BR.app.serverBalance(r.me, true); }
     renderAll();
@@ -145,6 +150,8 @@
   function onStock(e) {
     if (!shown() || !e) return;
     if (e.q) onFrame(e);
+    // (a company's day closed: its figures and news)
+    else if (e.corp) { st.corp = e.corp; if (st.list === 'corp') renderList(); }
     // (an order this screen just sent comes back too: its answer already said it)
     else if (e.order) refreshSoon(e.order.id + ':' + e.order.status);
   }
@@ -427,7 +434,9 @@
     R.profit.className = h.shares ? tone(profit) : '';
     R.realized.textContent = signed(h.realized);
     R.realized.className = tone(h.realized);
-    R.dividend.textContent = (c.dividend * 100).toFixed(1) + '%/日 · ' + money(h.dividends) + (h.today ? ' · 本日 +' + money(h.today) : '');
+    // (業績連動: the company's dividend a share for the year, paid out day by day; before the companies, the old daily rate)
+    var cc = st.corp && st.corp[st.company];
+    R.dividend.textContent = (cc ? '年' + money(cc.dps) : (c.dividend * 100).toFixed(1) + '%/日') + ' · ' + money(h.dividends) + (h.today ? ' · 本日 +' + money(h.today) : '');
     var pend = st.mine ? st.mine.dividend.pending : 0;
     ui.pending.textContent = money(pend);
     ui.claim.disabled = !pend || st.busy;
@@ -610,6 +619,7 @@
     mark(ui.listTabs, st.list);
     ui.listTabs.firstChild.textContent = '注文' + (m && m.orders.length ? ' ' + m.orders.length : '');
     box.replaceChildren();
+    if (st.list === 'corp') { renderCorp(box); return; }
     if (st.list === 'orders') {
       (m ? m.orders : []).forEach(function (o) {
         var r = el('div', 'sk-line sk-open');
@@ -640,6 +650,38 @@
       box.appendChild(r);
     });
     if (st.more) box.appendChild(button('sk-btn sk-more', '…', function () { loadHistory(true); }));
+  }
+  // the company behind the share: labels and numbers
+  function renderCorp(box) {
+    var c = st.corp && st.corp[st.company], C = BR.CORP;
+    if (!c || !C) return;
+    var cm = C.fmt.money, q0 = quote(), price = q0 ? q0.price : 0;
+    var line = function (cells) {
+      var r = el('div', 'sk-line sk-corp');
+      cells.forEach(function (x) { var cell = el('span', 'sk-cell'); cell.appendChild(el('small', '', x[0])); cell.appendChild(el('b', x[2] || '', x[1])); r.appendChild(cell); });
+      box.appendChild(r);
+    };
+    var yoy = function (a, b) { return b ? C.fmt.pct(a / Math.abs(b) - 1) : '—'; };
+    var next = c.next ? new Date(c.next * 1000) : null;
+    line([['会社', c.full], ['社員', fmt(c.staff) + '名'], ['ランク', c.rank], ['次の決算発表', next ? (next.getMonth() + 1) + '/' + next.getDate() : '—']]);
+    if (c.last) {
+      var l = c.last, p = l.prev;
+      line([['決算', l.label.replace(/^(\d+)年度 第(\d)四半期$/, '$1 Q$2')], ['売上高', cm(l.sales)], ['前年比', p ? yoy(l.sales, p.sales) : '—', p ? tone(l.sales - p.sales) : ''], ['営業利益', cm(l.op), tone(l.op)], ['純利益', cm(l.net), tone(l.net)]]);
+    }
+    if (c.guide) {
+      var g = c.guide;
+      line([['予想', g.fy + '年度'], ['売上高', cm(g.sales)], ['営業利益', cm(g.op), tone(g.op)], ['純利益', cm(g.net), tone(g.net)], ['配当', '年' + money(g.dps)]]);
+    }
+    line([['EPS', money(c.eps)], ['BPS', money(c.bps)], ['PER', c.eps > 0 && price ? (price / c.eps).toFixed(1) + '倍' : '—'], ['PBR', c.bps > 0 && price ? (price / c.bps).toFixed(2) + '倍' : '—'],
+      ['利回り', price ? (c.dps / price * 100).toFixed(2) + '%' : '—']]);
+    // (its latest news: the headlines, without the company's name before them)
+    (c.news || []).forEach(function (n) {
+      var r = el('div', 'sk-line sk-news');
+      r.appendChild(el('small', '', K.fmtTime(n.at * 1000)));
+      r.appendChild(el('b', '', NEWS[n.kind] || ''));
+      r.appendChild(el('span', '', String(n.text).replace(/^[^：]*：/, '')));
+      box.appendChild(r);
+    });
   }
   function loadHistory(more) {
     var gen = generation, before = more && st.history.length ? st.history[st.history.length - 1].id : 0;
@@ -703,7 +745,7 @@
     var ma = button('sk-chip', 'MA', function () { st.ma = !st.ma; renderAll(); });
     ma.dataset.v = 'ma';
     ui.modes.appendChild(ma);
-    seg(ui.listTabs, [{ id: 'orders', label: '注文' }, { id: 'history', label: '履歴' }], function (v) { st.list = v; renderList(); if (v === 'history') loadHistory(false); });
+    seg(ui.listTabs, [{ id: 'orders', label: '注文' }, { id: 'history', label: '履歴' }, { id: 'corp', label: '企業' }], function (v) { st.list = v; renderList(); if (v === 'history') loadHistory(false); });
     buildHold();
     buildOrder();
     K.dragScroll(ui.list);

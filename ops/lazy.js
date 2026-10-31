@@ -21,6 +21,8 @@
   var cdw = { toggle: function () { var epoch = generation; return load('cdw.css').then(function () { return load('cdw.js'); }).then(function () { if (epoch === generation) return window.OpsCDW.toggle(); }).catch(failure); }, on: function () { return false; }, off: function () {}, session: function () {}, nudge: function () {} };
   window.OpsCDW = cdw;
   window.OpsCalendar = { show: function (root) { return load('calendar.js').then(function () { window.OpsCalendar.show(root); }).catch(failure); } };
+  // 企業: its styles, the shared company rules (../js/game/corp.js: BR.CORP) and the app (a day closed before it is loaded is nothing to it)
+  window.OpsCorp = { live: function () {}, show: function (root, request, toast) { return Promise.all([load('corp.css'), load('../js/game/corp.js')]).then(function () { return load('corp.js'); }).then(function () { window.OpsCorp.show(root, request, toast); }).catch(failure); } };
   var watchApi;
   window.OpsWatch = {
     init: function (api) { watchApi = api; }, active: function () { return false; }, onLive: function () {},

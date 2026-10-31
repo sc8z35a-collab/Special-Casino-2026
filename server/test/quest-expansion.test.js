@@ -142,11 +142,11 @@ test('successful car purchases accumulate through five STEPs; errors and gifts n
   const a = await s.register('CarQuests'), b = await s.register('CarReceiver');
   await s.befriend(a, b);
   s.setUser(a.me.id, { dollars: 1000e6, garage_extra: 5 });
-  const bad = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'two-state-sedan', price: 1 } });
+  const bad = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'ferrari-325', price: 1 } });
   assert.equal(bad.error.code, 'price_changed');
   const cars = [];
   for (let i = 0; i < 5; i++) {
-    const bought = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'two-state-sedan' } });
+    const bought = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'ferrari-325' } });
     assert.equal(bought.status, 200, JSON.stringify(bought)); cars.push(bought.car.id);
   }
   const view = await getQuests(s, a);

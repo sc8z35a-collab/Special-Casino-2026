@@ -32,7 +32,7 @@ import {
 import { Limiter } from './ratelimit.js';
 import { revOf, partOf, heldOf, heldFrom } from './hash.js';
 import {
-  RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, VIP, RECEIPTS, STOCKS,
+  RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, VIP, RECEIPTS, STOCKS, CORP,
   spin as spinReels, evaluate as evaluateLine, packGrid, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
@@ -64,6 +64,7 @@ import { createVaultSnapshots } from './vault-snapshots.js';
 import { createBackup } from './backup.js';
 import { createTrees } from './tree.js';
 import { createStocks } from './stocks.js';
+import { createCorp } from './corp.js';
 import { createDevCode } from './devcode.js';
 import { createPay } from './pay.js';
 import { createTeam } from './team.js';
@@ -743,6 +744,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   function saveJobs(userId, jobs, pay) {
     q('UPDATE users SET jobs = ?, dollars = dollars + ?, rev = rev + ? WHERE id = ?').run(JSON.stringify(jobs), pay, pay > 0 ? 1 : 0, userId);
+    // (the employers pay the job sites their fee on it: server/core/corp.js)
+    if (pay > 0) corp.flow('*', 'job', pay);
   }
   // Checkpoint before changing the time span or rate used by VIP.earned.
   function settleVipJobs(cur, now) {
@@ -2254,6 +2257,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         }
         q('DELETE FROM cars WHERE id = ?').run(c.id);
         q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(b.price + c.rent_earned, u.id);
+        // (Car Owner buys it back: a used car it sells on)
+        corp.flow('carowner', 'buyback', b.price);
         return { paid: b.price, earned: c.rent_earned, pct: b.pct, disposal: b.disposal };
       });
       return { ...r, me: meDto(balanceChanged(u.id)) };
@@ -2337,7 +2342,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const body = await req.json();
       rate(limit.shop, u.id);
       const car = CARS.get(String(body.model || ''));
-      if (!car) throw new ApiError(400, 'bad_model', 'この車は販売していません');
+      if (!car || car.ended) throw new ApiError(400, 'bad_model', car ? 'この車は販売終了しました' : 'この車は販売していません');
       const vip = vipLevel(u);
       if (!VIP.carOpen(car, vip)) throw new ApiError(403, 'vip_only', `VIP${VIP.label(car.vip)}限定車です`);
       const cost = carPrice(car, carSale(), VIP.carDiscount(vip)).price;
@@ -2352,6 +2357,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const vipPay = addVipExp(cur, VIP_RULES.exp.car);
         const now = Date.now();
         const id = Number(q('INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid) VALUES (?, ?, 0, ?, ?, ?)').run(cur.id, car.id, now, now, cost).lastInsertRowid);
+        // (Car Owner's sale, at what was paid: server/core/corp.js)
+        corp.sold('carowner', 'car', car.id, 1, cost);
         carGot(q, cur.id, id);
         jobsPaid(u.id, vipPay);
         track(u.id, [['carBuy', 1]]);
@@ -2374,6 +2381,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const cur = getUser(u.id);
         if (cur.dollars < price) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, garage_extra = garage_extra + 1, rev = rev + 1 WHERE id = ?').run(price, cur.id);
+        corp.flow('carowner', 'garage', price);
         afterSpend(u.id);
       });
       const after = balanceChanged(u.id);
@@ -2704,6 +2712,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (cur.dollars < cost) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(cost, cur.id);
         addItems(cur.id, item.id, count);
+        // (the Shop is ジンクス's)
+        corp.sold('jinx', 'shop', item.id, count, cost);
         afterSpend(u.id);
       });
       const me = meDto(balanceChanged(u.id));
@@ -2992,6 +3002,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         // (the coins spent: the 功績's 消費者, server/core/medals.js)
         q('UPDATE users SET coins = coins - ? + ?, coins_spent = coins_spent + ?, vip_until = ?, vip_modes = ?, quests = ?, rev = rev + 1 WHERE id = ?')
           .run(c.coins, c.back, c.coins, until, JSON.stringify(modes), quests, cur.id);
+        // (VIP is DAIZIN's: the coins kept, at their worth in $)
+        corp.flow('daizin', 'vip', Math.max(0, c.coins - c.back) * CORP.players.coin);
         if (s.pay) track(u.id, [['jobpay', s.pay]]);
         syncMilestones(u.id);
         return { ...c, paid: s.pay, start, until };
@@ -3781,8 +3793,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     }
   });
   registry.add('trees', trees.routes);
+  // 企業: the world's companies (server/core/corp.js), their days closed as the share prices pass each day's end;
+  // the operators online hear of each day (their 株式 app looks again), the 投資 screen's watchers see it
+  const corp = createCorp({ q, tx, afterCommit, secret, clock: config.clock || Date.now, history: config.corpHistory ?? 2, live,
+    opsIds: () => ops.operatorList().filter((o) => o.id && live.opsOnline(o.id)).map((o) => o.id), onDay: () => stocks.corpNotice() });
   // 投資: the two companies' shares, orders and dividends (a filled limit or stop order is told to the phone)
-  const stocks = createStocks({ q, tx, afterCommit, getUser, meDto, balanceChanged, live, secret, clock: config.clock || Date.now,
+  const stocks = createStocks({ q, tx, afterCommit, getUser, meDto, balanceChanged, live, secret, clock: config.clock || Date.now, corp,
     rate: (u) => rate(limit.stock, u.id),
     onFill: (userId, o) => {
       const c = STOCKS.company(o.company);
@@ -3852,6 +3868,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   });
   const patrolDto = () => { const r = patrol.last(); return r && { at: r.at, ms: r.ms, by: r.by, checks: r.checks, findings: r.findings }; };
   routes['GET /api/ops/patrol'] = (req, u) => { ops.see(u); return { patrol: patrolDto(), now: Date.now() }; };
+  // the 企業 folder's apps: every company at a glance, and each one's own site (server/core/corp.js); a look brings
+  // the companies up to now (their days close as the share prices pass them), as a look at the market would
+  Object.assign(routes, corp.routes((u) => { ops.see(u); stocks.advance(); }));
   routes['POST /api/ops/patrol/run'] = async (req, u) => {
     ops.need(u);
     if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
@@ -4153,6 +4172,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       trees.notifyDue();
       // 投資: the price path brought up to now, the old candles and orders out
       try { stocks.housekeep(); } catch (e) { console.error('stocks housekeeping failed', e); }
+      try { corp.housekeep(); } catch (e) { console.error('corp housekeeping failed', e); }
       spinRequests.prune();
       gacha.prune();
       gameLogin.prune();
