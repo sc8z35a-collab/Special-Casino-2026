@@ -826,48 +826,45 @@
 .qn-text .qn-jobs { flex: 0 0 100%; color: #b8f5cd; white-space: normal; }
 
 /* ------------------------------------------------------------ quests --- */
-.q-pane { display: block; }
-.q-head {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 96px;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  padding: 0 30px;
-  background: linear-gradient(90deg, rgba(255, 210, 90, .1), rgba(255, 210, 90, 0) 55%);
-  box-shadow: inset 0 -2px 0 rgba(233, 196, 106, .35);
+/* The period tabs are the supplied pictures in a column on the left (5時間,
+   デイリー, 週間, 月極, 特別, 週間協力), the two reset tickets small under
+   them; the list takes the rest, eight quests to a screen, and the time to
+   the reset sits small at its bottom right. */
+.q-side { position: absolute; left: 24px; top: 92px; bottom: 26px; width: 164px; display: flex; flex-direction: column; gap: 8px; z-index: 3; }
+.q-tabs { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
+.q-tabs .tab {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border-radius: 14px;
+  background: center / contain no-repeat;
+  filter: brightness(.62) saturate(.7) drop-shadow(0 3px 5px rgba(0, 0, 0, .5));
+  transition: filter .2s ease, transform .2s ease;
 }
-.q-icon { flex: none; width: 76px; height: 76px; background: center / contain no-repeat; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .5)) drop-shadow(0 0 14px rgba(255, 200, 80, .35)); }
-.q-title { flex: 1; min-width: 0; }
-.q-title h2 {
-  margin: 0;
-  font-size: 44px;
-  line-height: 1.15;
-  letter-spacing: 1px;
-  background: linear-gradient(180deg, #fffbe6, #ffe27a 55%, #e0a228);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 2px 0 rgba(80, 30, 0, .8));
-}
-.q-reset { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-.q-reset small { font-size: 18px; color: #b3a7aa; }
-.q-reset b { font: 800 40px var(--f-num); color: #ffe27a; text-shadow: 0 0 12px rgba(255, 200, 80, .5); }
-.q-ticket-bar { position: absolute; left: 0; right: 0; top: 96px; height: 72px; display: flex; align-items: center; gap: 16px; padding: 0 30px; background: rgba(14, 5, 10, .55); box-shadow: inset 0 -1px 0 rgba(233, 196, 106, .22); }
-.q-ticket-help { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.q-ticket-help b { font-size: 24px; color: #ffe27a; }
-.q-ticket-use { flex: none; min-width: 240px; height: 56px; display: flex; justify-content: center; padding: 5px 18px; border-radius: 12px; }
-.q-ticket-use b { font-size: 24px; }
-.q-scroll { position: absolute; left: 0; right: 0; top: 168px; bottom: 0; }
-.q-list { display: flex; flex-direction: column; gap: 14px; padding: 18px 26px 26px; }
-.q-lv { gap: 12px; }
-.q-lv-num { font: 800 24px var(--f-num); color: #ffe27a; }
-.q-lv .lv-bar { width: 150px; }
-.q-lv-xp { display: flex; flex-direction: column; gap: 3px; font-size: 17px; color: #c3b8bb; white-space: nowrap; }
-.q-lv-next { font-size: 15px; color: #ffe27a; }
+.q-tabs .tab.active { background: center / contain no-repeat; filter: drop-shadow(0 0 12px rgba(255, 220, 120, .75)) drop-shadow(0 3px 5px rgba(0, 0, 0, .5)); transform: scale(1.06); }
+.q-tabs .tab.active::after { content: none; }
+.q-tabs .tab span { position: absolute; right: 8px; top: 8px; }
+.q-tabs .tab[data-tab="5h"] { background-image: url('../img/quest/5h.webp'); }
+.q-tabs .tab[data-tab="day"] { background-image: url('../img/quest/day.webp'); }
+.q-tabs .tab[data-tab="week"] { background-image: url('../img/quest/week.webp'); }
+.q-tabs .tab[data-tab="month"] { background-image: url('../img/quest/month.webp'); }
+.q-tabs .tab[data-tab="special"] { background-image: url('../img/quest/special.webp'); }
+.q-tabs .tab[data-tab="coop"] { background-image: url('../img/quest/coop.webp'); }
+.q-ticket-bar { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.q-ticket-use { position: relative; width: 132px; height: 64px; background: center / contain no-repeat; filter: drop-shadow(0 3px 5px rgba(0, 0, 0, .5)); }
+.q-ticket-use[data-reset-period="5h"] { background-image: url('../img/quest/ticket-5h.webp'); }
+.q-ticket-use[data-reset-period="day"] { background-image: url('../img/quest/ticket-day.webp'); }
+.q-ticket-use:disabled { opacity: .5; filter: grayscale(.6); }
+.q-ticket-use:not(:disabled):active { transform: scale(.92); }
+.q-ticket-use b { position: absolute; right: -6px; bottom: -4px; min-width: 34px; height: 30px; padding: 0 7px; border-radius: 15px; background: rgba(14, 5, 10, .85); box-shadow: inset 0 0 0 1.5px rgba(255, 226, 122, .7); font: 800 19px/30px var(--f-num); color: #ffe27a; }
+.board-pane.q-pane { display: block; left: 206px; right: 30px; top: 92px; bottom: 24px; border-radius: 12px; }
+.q-scroll { position: absolute; left: 0; right: 0; top: 0; bottom: 26px; }
+.q-list { display: flex; flex-direction: column; gap: 6px; padding: 4px 6px; }
+.q-reset { position: absolute; right: 14px; bottom: 0; height: 26px; font: 800 19px/26px var(--f-num); color: #ffe27a; text-shadow: 0 0 8px rgba(255, 200, 80, .5); }
+.q-claim-all { position: absolute; left: 380px; top: 20px; z-index: 4; height: 62px; padding: 0 24px; gap: 10px; font-size: 23px; }
+.q-claim-all b { min-width: 34px; height: 34px; padding: 0 8px; border-radius: 17px; background: #e5262b; color: #fff; font: 800 20px/34px var(--f-num); }
 
 /* A quest (one step of a chain): the badge in its colour, the step on now
    with its bar, the chain under it, the reward and 受け取る. Nine supplied
@@ -878,10 +875,11 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 22px;
-  min-height: 108px;
-  padding: 14px 22px 14px 16px;
-  border-radius: 16px;
+  flex: none;
+  gap: 18px;
+  height: 90px;
+  padding: 0 18px 0 12px;
+  border-radius: 14px;
   isolation: isolate;
   background-color: rgba(18, 7, 17, .2);
   box-shadow: inset 0 0 0 1.6px color-mix(in srgb, var(--tc) 55%, transparent), inset 0 1px 0 rgba(255, 255, 255, .12), 0 4px 14px rgba(0, 0, 0, .35);
@@ -914,8 +912,8 @@
 .q-gem {
   position: relative;
   flex: none;
-  width: 84px;
-  height: 84px;
+  width: 70px;
+  height: 70px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -930,25 +928,25 @@
   clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
   background: linear-gradient(180deg, rgba(20, 6, 10, .55), rgba(20, 6, 10, .85));
 }
-.q-gem b { position: relative; z-index: 1; font: 800 16px/1 var(--f-num); letter-spacing: .5px; color: var(--tc); text-shadow: 0 0 8px color-mix(in srgb, var(--tc) 70%, transparent); }
+.q-gem b { position: relative; z-index: 1; font: 800 14px/1 var(--f-num); letter-spacing: .5px; color: var(--tc); text-shadow: 0 0 8px color-mix(in srgb, var(--tc) 70%, transparent); }
 .q-row.t-red-gold .q-gem { background: linear-gradient(160deg, #ffe084, #d94a26); }
 .q-row.t-aqua-purple .q-gem { background: linear-gradient(160deg, #8be7fa, #b18ade); }
 
-.q-main { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9px; }
+.q-main { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
 .q-headline { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.q-text { min-width: 0; font-size: 27px; font-weight: 700; line-height: 1.25; color: #f6eef0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-text { min-width: 0; font-size: 24px; font-weight: 700; line-height: 1.2; color: #f6eef0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .q-step { flex: none; padding: 3px 10px; border-radius: 8px; font: 800 15px var(--f-num); letter-spacing: 1px; color: var(--tc); box-shadow: inset 0 0 0 1.4px color-mix(in srgb, var(--tc) 70%, transparent); background: color-mix(in srgb, var(--tc) 12%, transparent); }
 .q-bonus { flex: none; padding: 5px 9px; border-radius: 7px; font: 800 17px/1 var(--f-num); letter-spacing: .5px; }
 .q-bonus.pro { color: #f1deff; background: #793db5; box-shadow: 0 0 12px rgba(185, 125, 255, .45); }
 .q-bonus.ultra { color: #39200a; background: linear-gradient(110deg, #90f0ed, #ffe58d); box-shadow: 0 0 14px rgba(255, 222, 105, .6); }
-.q-note { margin-top: -4px; font-size: 17px; color: #eee5e9; }
+.q-note { min-width: 0; font-size: 16px; line-height: 1.25; color: #eee5e9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .q-prog { display: flex; align-items: center; gap: 16px; }
 .q-bar {
   position: relative;
   display: block;
   flex: 1;
-  max-width: 580px;
-  height: 12px;
+  max-width: 760px;
+  height: 11px;
   border-radius: 6px;
   overflow: hidden;
   background: rgba(255, 255, 255, .08);
@@ -966,10 +964,10 @@
   box-shadow: 0 0 10px color-mix(in srgb, var(--tc) 60%, transparent);
   transition: width .6s cubic-bezier(.16, .84, .3, 1);
 }
-.q-count { flex: none; min-width: 120px; font: 700 20px var(--f-num); color: #e9dfe1; }
+.q-count { flex: none; min-width: 120px; font: 700 18px/1.1 var(--f-num); color: #e9dfe1; }
 
 /* a chain: its steps, where it ends and what all of it pays */
-.q-chain { display: flex; align-items: center; gap: 14px; min-width: 0; font-size: 17px; color: #c9bdc0; white-space: nowrap; }
+.q-chain { display: flex; align-items: center; gap: 14px; min-width: 0; font-size: 16px; line-height: 1.25; color: #c9bdc0; white-space: nowrap; }
 .q-pips { flex: none; display: flex; gap: 5px; }
 .q-pips i { width: 11px; height: 11px; transform: rotate(45deg); border-radius: 2px; background: rgba(255, 255, 255, .14); }
 .q-pips i.got { background: color-mix(in srgb, var(--tc) 70%, #000); }
@@ -979,27 +977,27 @@
 .q-pips i.bonus-ultra { background: linear-gradient(135deg, #8fe0e8, #ffe27a); box-shadow: 0 0 8px #ffe27a; }
 .q-final { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .q-sum { flex: none; }
-.q-sum b { font: 800 19px var(--f-num); color: #ffe27a; }
+.q-sum b { font: 800 17px var(--f-num); color: #ffe27a; }
 
 .q-reward { flex: none; display: flex; align-items: center; gap: 14px; }
 .q-reward .amt {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  height: 54px;
-  padding: 0 18px;
-  border-radius: 27px;
+  gap: 8px;
+  height: 48px;
+  padding: 0 16px;
+  border-radius: 24px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--tc) 20%, transparent), color-mix(in srgb, var(--tc) 8%, transparent));
   box-shadow: inset 0 0 0 1.6px color-mix(in srgb, var(--tc) 60%, transparent), inset 0 1px 0 rgba(255, 255, 255, .15);
-  font: 800 28px var(--f-num);
+  font: 800 25px var(--f-num);
   color: var(--tc);
 }
-.q-reward .ic { width: 30px; height: 30px; }
-.q-reward-bonus { display: grid; grid-template-columns: auto auto; gap: 6px 14px; }
+.q-reward .ic { width: 26px; height: 26px; }
+.q-reward-bonus { display: grid; grid-template-columns: auto auto; gap: 2px 14px; }
 .q-reward-bonus .q-take { grid-column: 2; grid-row: 1 / 3; }
-.q-royal { grid-column: 1; display: flex; align-items: center; gap: 5px; font-size: 17px; color: #ffe27a; }
+.q-royal { grid-column: 1; display: flex; align-items: center; gap: 5px; font-size: 15px; color: #ffe27a; }
 .q-royal .ic { width: 22px; height: 22px; }
-.q-take { height: 58px; padding: 0 28px; border-radius: 29px; font-size: 23px; }
+.q-take { height: 54px; padding: 0 26px; border-radius: 27px; font-size: 22px; }
 
 /* finished, waiting to be received: a gold glow that breathes (only its
    opacity moves) */
@@ -1027,16 +1025,13 @@
 @keyframes qFlag { 50% { background: linear-gradient(180deg, #ffb347, #e0400c); } }
 
 /* 週間協力: what makes it move */
-.q-hub { display: flex; align-items: center; gap: 22px; padding: 18px 22px; border-radius: 16px; background: linear-gradient(180deg, rgba(70, 10, 56, .9), rgba(32, 4, 26, .9)); box-shadow: inset 0 0 0 1.8px rgba(255, 140, 220, .6); }
+.q-hub { flex: none; display: flex; align-items: center; gap: 22px; height: 90px; padding: 0 22px; border-radius: 14px; background: linear-gradient(180deg, rgba(70, 10, 56, .9), rgba(32, 4, 26, .9)); box-shadow: inset 0 0 0 1.8px rgba(255, 140, 220, .6); }
 .q-hub.on { box-shadow: inset 0 0 0 2.4px #ff8ad8, 0 0 22px rgba(255, 110, 210, .35); }
-.q-hub-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.q-hub-text b { font-size: 24px; color: #ffd0f0; }
-.q-hub-text span { font-size: 17px; line-height: 1.45; color: #e6c9dc; }
-.q-hub-go { flex: none; height: 62px; padding: 0 26px; font-size: 22px; }
+.q-hub-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.q-hub-text b { font-size: 23px; color: #ffd0f0; }
+.q-hub-text span { font-size: 16px; line-height: 1.3; color: #e6c9dc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-hub-go { flex: none; height: 58px; padding: 0 26px; font-size: 21px; }
 
-.q-claim-all { flex: none; height: 66px; padding: 0 26px; gap: 10px; font-size: 24px; }
-.q-claim-all b { min-width: 34px; height: 34px; padding: 0 8px; border-radius: 17px; background: #e5262b; color: #fff; font: 800 20px/34px var(--f-num); }
-#q-tabs .tab { min-width: 100px; }
 
 @media (prefers-reduced-motion: reduce) {
   .q-row.ready::after, .q-flag { animation: none; }
@@ -1191,8 +1186,13 @@
 .more-card small { padding: 2px 10px; border-radius: 6px; background: rgba(244, 220, 69, .18); color: #ffe27a; font-size: 14px; font-weight: 800; }
 button.more-card:active { transform: scale(.98); }
 .more-card.soon { opacity: .7; box-shadow: inset 0 0 0 1.4px rgba(255, 255, 255, .14); }
-.more-title { margin: 22px 34px 0; font-size: 26px; color: #ffe27a; }
-.more-scroll .news-list { padding-top: 14px; }
+/* the DEV card and the 近日公開 ones with their pictures; Dev News in its own window */
+.more-card .dev-mark { width: 170px; height: 80px; object-fit: contain; align-self: center; }
+.more-card .soon-mark { width: 80px; height: 80px; object-fit: contain; align-self: center; }
+.more-card.dev { position: relative; }
+.more-card.dev .tab-dot { position: absolute; top: 10px; right: 12px; }
+.news-card { width: 1280px; height: calc(100% - 60px); display: flex; flex-direction: column; background: #10131f url('../img/bg/dev-news.webp') center / cover no-repeat; }
+.news-scroll { flex: 1; min-height: 0; }
 
 /* friends: the time a player was last here */
 .fr-status { white-space: nowrap; }
@@ -1279,13 +1279,15 @@ button.watched-by:active { transform: scale(.96); }
 .hp-acts .act-btn { flex: none; height: 70px; padding: 0 36px; font-size: 24px; }
 
 /* quests: a dot on a period with something to receive */
-#q-tabs .tab.has-ready > span:first-child::after { content: ''; display: inline-block; width: 12px; height: 12px; margin-left: 8px; border-radius: 50%; background: #f4dc45; vertical-align: 3px; }
+#q-tabs .tab.has-ready > span:first-child::after { content: ''; display: block; width: 18px; height: 18px; border-radius: 50%; background: #f4dc45; box-shadow: 0 0 8px rgba(244, 220, 69, .9), 0 0 0 2px rgba(20, 6, 10, .8); }
 
 /* Detail previews and the terms notice are reachable before play. */
 .more-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .more-card.soon[data-act] { opacity: 1; background: linear-gradient(145deg, #2a1722, #19080e); box-shadow: inset 0 0 0 1.5px #ac824c; }
 .more-card.soon[data-act] b { flex-wrap: wrap; }
 .more-soon-card { width: 920px; display: flex; flex-direction: column; align-items: center; gap: 26px; padding: 48px; }
+#more-soon[data-act="studio-credits"] .more-soon-card { background: #1b1630 url('../img/bg/studio.webp') center / cover no-repeat; }
+#more-soon[data-act="terms"] .more-soon-card { background: #1b1630 url('../img/bg/terms.webp') center / cover no-repeat; }
 .more-soon-label { padding: 10px 30px; border-radius: 24px; background: #dab75a22; color: #ffe27a; font-size: 28px; }
 .more-soon-card p { margin: 0; font-size: 25px; line-height: 1.8; color: #eadfc0; }
 .more-soon-card > .act-btn { min-width: 280px; height: 64px; font-size: 24px; }
@@ -1295,8 +1297,7 @@ button.watched-by:active { transform: scale(.96); }
 .quest-bonus-badges { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; gap: 3px; pointer-events: none; }
 .quest-bonus-badges .q-bonus-chip { font-size: 14px; padding: 4px 6px; }
 #q-tabs .tab { position: relative; }
-#q-tabs .tab.has-bonus { min-width: 125px; }
-#q-tabs .q-tab-bonuses { position: absolute; top: 3px; right: 4px; display: flex; gap: 3px; pointer-events: none; }
+#q-tabs .q-tab-bonuses { position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%); display: flex; gap: 3px; pointer-events: none; }
 
 /* Supplied small quest labels retain numeric reward/count information. */
 .q-bonus.image, .q-bonus-chip.image { display: inline-flex; align-items: center; gap: 5px; padding: 0; background: none; box-shadow: none; color: #ffe27a; }
@@ -1307,3 +1308,19 @@ button.watched-by:active { transform: scale(.96); }
 .garage-engine { color: #a9e8ff; font-size: 19px; font-weight: 700; padding: 4px 8px; }
 .equipped-engine { box-shadow: inset 0 0 0 2px #78cbea55; }
 .item-equip { flex: none; padding: 0 20px; }
+
+/* フレンド・メッセージ: each player large; the icon opens their card, ⋯ the other actions */
+.fr-row { min-height: 136px; padding: 12px 30px; gap: 24px; }
+.fr-who { gap: 26px; }
+.fr-row .avatar.fr-face { width: 108px; height: 108px; font-size: 48px; cursor: pointer; }
+.fr-row .avatar.fr-face .dot { width: 26px; height: 26px; }
+.fr-row .avatar.fr-face:active { transform: scale(.94); }
+.fr-name { font-size: 36px; }
+.fr-status { font-size: 21px; }
+.fr-btn.fr-more { width: 76px; padding: 0; justify-content: center; font-size: 34px; letter-spacing: 1px; }
+.fr-menu .msg-menu-item:disabled { opacity: .4; }
+.conv-row { height: 140px; gap: 28px; }
+.conv-row > .avatar { width: 104px; height: 104px; font-size: 46px; cursor: pointer; }
+.conv-row > .avatar:active { transform: scale(.94); }
+.conv-name { font-size: 34px; }
+.conv-last { font-size: 23px; }

@@ -352,6 +352,9 @@ test('each operator\'s own vault: only theirs (the developer looks), files of an
     assert.equal((await a.call('POST', '/api/vault/folders', { space: mine, name: 'アプリ' })).folder.space, mine);
     const renamed = await a.call('POST', '/api/vault/rename', { id: apk.id, name: 'two-state-1.3.apk' });
     assert.equal(renamed.file.name, 'two-state-1.3.apk');
+    // (only the part before the extension changes)
+    assert.equal((await a.call('POST', '/api/vault/rename', { id: apk.id, name: 'two-state-1.3.zip' })).error.code, 'ext_fixed');
+    assert.equal((await a.call('POST', '/api/vault/rename', { id: apk.id, name: 'two-state-1.3' })).error.code, 'ext_fixed');
     // nobody else's: another operator never sees it, the developer looks without changing
     assert.equal((await b.call('GET', `/api/vault/files?space=${mine}`)).error.code, 'no_space');
     assert.equal((await b.call('POST', '/api/vault/rename', { id: apk.id, name: 'x.apk' })).status, 404);
@@ -1038,7 +1041,7 @@ test('a piece comes as bytes too: the whole of it with its hash in a header, or 
   }
 });
 
-test('a folder\'s URL: the folder and every folder below it, as they are when it is used; nothing outside it; stopped with the folder', async () => {
+test('a folder\'s URL: the folder and every folder below it, and what was moved out of it while shared; nothing else; stopped with the folder', async () => {
   const s = await startServer({ operators: ['taku'], limits: { ...LIMITS, vaultNote: [100000, 1000] } });
   try {
     const taku = await developer(s);
@@ -1070,11 +1073,25 @@ test('a folder\'s URL: the folder and every folder below it, as they are when it
       assert.equal((await s.call('POST', '/api/vault/ai', { body: { t: made.token, f: f.id, comment: 'x' } })).status, 404, f.name);
     }
     assert.equal((await s.call('POST', '/api/vault/ai', { body: { t: made.token, f: sedan.id, comment: '見ました' } })).status, 200);
-    // as it is now: a file moved in is in it, one moved out is not
+    // a file moved in is in it; one moved out goes on working through the URL that was shared (at its top)
     assert.equal((await taku.call('POST', '/api/vault/move', { ids: [song.id], folder: fresh.id })).status, 200);
     assert.equal((await taku.call('POST', '/api/vault/move', { ids: [sedan.id], folder: '' })).status, 200);
-    assert.deepEqual((await pull()).files.map((f) => f.name).sort(), ['coupe.glb', 'song.mp3']);
-    assert.equal((await pull(`&f=${sedan.id}`)).status, 404);
+    const moved = await pull();
+    assert.deepEqual(moved.files.map((f) => f.name).sort(), ['coupe.glb', 'sedan.glb', 'song.mp3']);
+    assert.equal(moved.files.find((f) => f.id === sedan.id).folder, '');
+    assert.equal((await pull(`&f=${sedan.id}`)).name, 'sedan.glb');
+    assert.ok((await pull(`&f=${sedan.id}&n=0`)).data);
+    // so does a folder moved out, with what is in it; what never was in it still is not
+    assert.equal((await taku.call('POST', '/api/vault/folders/update', { id: fresh.id, parent: other.id })).status, 200);
+    const out = await pull();
+    assert.deepEqual(out.folders.map((d) => [d.name, d.parent]), [['新車', '']]);
+    assert.deepEqual(out.files.map((f) => f.name).sort(), ['coupe.glb', 'sedan.glb', 'song.mp3']);
+    assert.ok((await pull(`&f=${coupe.id}&n=0`)).data);
+    assert.equal((await pull(`&f=${top.id}`)).status, 404);
+    // (a file's own URL: wherever the file goes)
+    const one = await taku.call('POST', '/api/vault/link', { id: top.id, hours: 1 });
+    assert.equal((await taku.call('POST', '/api/vault/move', { ids: [top.id], folder: other.id })).status, 200);
+    assert.equal((await s.call('GET', `/api/vault/pull?t=${one.token}`)).name, 'top.txt');
     // the URL tab names it; the folder's own stop ends it
     const links = (await taku.call('GET', '/api/vault/links')).links;
     const mine = links.find((l) => l.id === made.id);

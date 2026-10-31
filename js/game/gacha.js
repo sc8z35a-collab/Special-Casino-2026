@@ -55,11 +55,15 @@
     { id: 'seed', name: '金の生る木の種', chance: 1 }
   ];
   var TABLES = { rare: RARE, legendary: LEGENDARY, secret: SECRET };
+  // `price`: one pull (一連: 3 slots)
   var KINDS = [
-    { id: 'rare', name: 'レアガチャ', price: 10000000 },
-    { id: 'legendary', name: 'レジェンダリーガチャ', price: 30000000 },
-    { id: 'secret', name: 'シークレットガチャ', price: 50000000 }
+    { id: 'rare', name: 'レアガチャ', price: 3500000 },
+    { id: 'legendary', name: 'レジェンダリーガチャ', price: 15000000 },
+    { id: 'secret', name: 'シークレットガチャ', price: 30000000 }
   ];
+  // リリース記念セール: the secret gacha at this a pull for `hours` from when the server first ran with it
+  // (server/core/gacha.js keeps that moment and tells the game when the sale ends)
+  var RELEASE_SALE = { kind: 'secret', price: 10000000, hours: 100 };
 
   function hash(text) {
     var h = 2166136261;
@@ -89,10 +93,12 @@
   function events(now) {
     return { boost: campaign('probability-up', now), sale: campaign('big-sale', now) };
   }
-  function price(kind, count) {
+  // `sale`: the リリース記念セール is on (its kind costs its sale price a pull; 3 and 10 pulls keep their discount)
+  function price(kind, count, sale) {
     var tier = KINDS.filter(function (k) { return k.id === kind; })[0];
     if (!tier || (count !== 1 && count !== 3 && count !== 10)) throw new RangeError('Unknown gacha bundle');
-    return Math.round(tier.price * count * (count === 3 ? 0.9 : count === 10 ? 0.75 : 1));
+    var one = sale && kind === RELEASE_SALE.kind ? RELEASE_SALE.price : tier.price;
+    return Math.round(one * count * (count === 3 ? 0.9 : count === 10 ? 0.75 : 1));
   }
   function odds(kind, boostOn) {
     if (!Object.prototype.hasOwnProperty.call(TABLES, kind)) throw new RangeError('Unknown gacha kind');
@@ -165,7 +171,7 @@
   }
 
   BR.GACHA = {
-    cars: CARS, rare: RARE, legendary: LEGENDARY, secret: SECRET, kinds: KINDS, events: events, price: price, odds: odds, draw: draw,
+    cars: CARS, rare: RARE, legendary: LEGENDARY, secret: SECRET, kinds: KINDS, releaseSale: RELEASE_SALE, events: events, price: price, odds: odds, draw: draw,
     pct: pct, label: label, car: car, day: DAY, grownGiven: 1500000
   };
 })(globalThis.BR = globalThis.BR || {});

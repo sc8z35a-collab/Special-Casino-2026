@@ -61,7 +61,7 @@
     var soc = BR.SOCIAL_IMG;
     // the round buttons on the slot screen: menu, quests
     css += '.ic-menu{background-image:' + url(soc.buttons.menu) + '}\n';
-    css += '.ic-quest,.q-icon,.qn-icon{background-image:' + url(soc.buttons.quest) + '}\n';
+    css += '.ic-quest,.qn-icon{background-image:' + url(soc.buttons.quest) + '}\n';
     css += '.ic-tree{background-image:' + url(soc.buttons.tree) + '}\n';
     css += '.ic-more{background-image:' + url(soc.tabs.messages) + '}\n';
 
@@ -717,6 +717,8 @@
     if (BR.slotfx) BR.slotfx.init();
     BR.screens.init();
     BR.kit.init();
+    // the column of round buttons scrolls (and on a phone held upright, with the stage turned)
+    BR.kit.dragScroll($('#hud-col'));
     BR.account.init();
     if (BR.oauth) BR.oauth.init();
     BR.avatars.init();

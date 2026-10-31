@@ -5,7 +5,7 @@
 .gacha-card .modal-x{background:#dce5f0;color:#30465e}.gacha-card .modal-x::before,.gacha-card .modal-x::after{background:#30465e}
 .gacha-mark{width:100px;height:100px;object-fit:contain}
 .gacha-scene{background:#c9def4 url('../img/gacha/background.webp') center/cover no-repeat}
-.gacha-shop{z-index:1;width:min(1660px,96%);max-height:calc(100% - 44px);padding:24px 44px 22px;background:rgba(255,255,255,.3);border-radius:32px;box-shadow:inset 0 0 0 2px #ffffffc0,0 18px 50px #3b528733}
+.gacha-shop{z-index:1;width:min(1660px,96%);max-height:calc(100% - 44px);padding:24px 44px 22px;background:linear-gradient(180deg,#f7faff,#e2eaf8);border-radius:32px;box-shadow:inset 0 0 0 2px #ffffffc0,0 18px 50px #3b528733}
 .gacha-shop>.back-btn{left:30px;top:36px;color:#293d5b}
 .gc-toolbar{display:flex;align-items:center;gap:28px;min-height:78px;padding-left:214px}
 .gc-toolbar h2{font-size:34px;margin:0;flex:1}.gc-toolbar #gacha-event{font-size:22px;font-weight:800;background:#edddfc;color:#7037a2;padding:8px 18px;border-radius:30px}
@@ -58,3 +58,11 @@
 .gc-art-button.gc-free-button>img{width:224px;height:98px;filter:drop-shadow(0 5px 6px #0003)}.gc-free-label{font-size:25px;font-weight:900;color:#263c5d}
 .gc-free-count,.gc-free-slots{display:block}.gc-free-count{font-size:26px;font-weight:850;color:#263c5d}
 .gc-confirm-ticket{display:flex;align-items:center;justify-content:center;gap:14px}.gc-confirm-ticket img{width:150px;height:72px;object-fit:contain}
+
+/* each gacha its own background (the one chosen: js/ui/gacha.js sets data-kind) */
+.gacha-scene[data-kind="rare"]{background-image:url('../img/bg/gacha-rare.webp')}.gacha-scene[data-kind="legendary"]{background-image:url('../img/bg/gacha-legendary.webp')}.gacha-scene[data-kind="secret"]{background-image:url('../img/bg/gacha-secret.webp')}
+/* リリース記念セール */
+.gc-tier-sale{position:absolute;left:10px;top:-14px;width:150px;height:auto;filter:drop-shadow(0 3px 4px #0008);pointer-events:none}
+.gc-hero{position:relative}.gc-sale-bar{position:absolute;right:30px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 22px;border-radius:20px;background:#3a1240d9;box-shadow:inset 0 0 0 2px #f5d06a}
+.gc-sale-bar img{width:280px;height:auto}.gc-sale-clock{color:#fff2c4;font:900 30px var(--f-num);font-variant-numeric:tabular-nums}
+.gc-was{display:block;color:#7b879a;font-size:20px;font-weight:700;text-decoration:line-through}

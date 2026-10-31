@@ -1,5 +1,5 @@
 /* 金の生る木: the player's trees, a tab each. Money is given with one tap (the
-   amount picked from RULES.tree.amounts): every bit raises the $ a second the
+   amount set on a slider over RULES.tree.amounts): every bit raises the $ a second the
    tree earns, and at set totals it grows into its next look (3D models
    in img/3d/tree where available). A harvest time is picked once (30分 x1.0 … 1週間
    x1.6); the money grows until then, cannot be harvested before, and the same
@@ -64,7 +64,6 @@
     return t.grown + Math.max(0, Math.min(at, t.cycle.end) - t.at) / 1000 * t.rate;
   }
   function value(t, at) { return Math.floor(grown(t, at) * (t.cycle ? t.cycle.mult : 1) * boost(t)); }
-  function expected(t) { return t.cycle ? value(t, t.cycle.end) : 0; }
   function ready(t, at) { return !!t.cycle && at >= t.cycle.end; }
   // what one cycle pays at today's rate
   function estimate(t, c) { return Math.floor(t.rate * c.ms / 1000 * c.mult * boost(t)); }
@@ -181,21 +180,21 @@
       var b = el('button', 'tab tr-tab' + (tab === t.id ? ' active' : '') + (t.super ? ' super' : ''));
       b.type = 'button';
       b.dataset.tab = String(t.id);
+      b.setAttribute('aria-label', t.name + (ready(t, at) ? '・収穫できます' : ''));
       var pic = el('i', 'tr-tab-pic');
       pic.style.backgroundImage = 'url("' + IMG.stages[t.stage - 1] + '")';
       b.appendChild(pic);
       BR.tree3d.icon(pic, 'stage', t.stage);
-      b.appendChild(el('span', 'uname', t.name));
       if (ready(t, at)) b.appendChild(el('b', 'tab-dot'));
       box.appendChild(b);
     });
     var more = el('button', 'tab tr-tab tr-more' + (tab === 'auction' ? ' active' : ''));
     more.type = 'button';
     more.dataset.tab = 'auction';
-    more.appendChild(el('span', '', '＋ 木を増やす'));
+    more.setAttribute('aria-label', '木を増やす（' + (trees ? trees.length : 0) + ' / ' + R.max + '本）');
+    more.appendChild(el('span', '', '＋'));
     if (auction && auction.status === 'live') more.appendChild(el('b', 'tr-live', 'LIVE'));
     box.appendChild(more);
-    box.appendChild(el('div', 'tabs-info tr-count', (trees ? trees.length : 0) + ' / ' + R.max + '本'));
   }
 
   /* ------------------------------------------------------------ one tree --- */
@@ -206,7 +205,6 @@
     if (fallback.getAttribute('src') !== src) fallback.setAttribute('src', src);
     fallback.alt = t.name;
     BR.tree3d.show(art, t);
-    $('#tr-name').textContent = t.name.replace(/^SUPER /, '');
     $('#tr-super').hidden = !t.super;
     $('#tr-super').textContent = 'SUPER ' + multText(R.superMult);
     // the look and the next one
@@ -227,19 +225,27 @@
     renderHarvest(t);
   }
 
+  // the amount: a slider whose stops are RULES.tree.amounts (the server takes only those)
+  function setAmount(a) {
+    if (R.amounts.indexOf(a) < 0 || a === amount) return;
+    amount = a;
+    try { localStorage.setItem(AMOUNT, String(amount)); } catch (err) { /* only for now */ }
+    if (treeOf(tab)) renderTree();
+  }
   function renderAmounts() {
-    var box = $('#tr-amounts');
-    if (!box.firstChild) {
-      R.amounts.forEach(function (a) {
-        var b = el('button', 'tr-amount');
-        b.type = 'button';
-        b.dataset.amount = String(a);
-        b.appendChild(K.icon('dollar'));
-        b.appendChild(el('span', '', U.fmt(a)));
-        box.appendChild(b);
-      });
-    }
-    Array.prototype.forEach.call(box.children, function (b) { b.classList.toggle('on', Number(b.dataset.amount) === amount); });
+    var p = R.amounts.indexOf(amount) / Math.max(1, R.amounts.length - 1) * 100 + '%';
+    $('#tr-fill').style.width = p;
+    $('#tr-thumb').style.left = p;
+    var track = $('#tr-track');
+    track.setAttribute('aria-valuemin', String(R.amounts[0]));
+    track.setAttribute('aria-valuemax', String(R.amounts[R.amounts.length - 1]));
+    track.setAttribute('aria-valuenow', String(amount));
+    track.setAttribute('aria-valuetext', money(amount));
+  }
+  function slide(at) {
+    var r = $('#tr-track').getBoundingClientRect();
+    var p = BR.app.view.portrait ? (at.y - r.top) / r.height : (at.x - r.left) / r.width;
+    setAmount(R.amounts[Math.round(U.clamp(p, 0, 1) * (R.amounts.length - 1))]);
   }
   function renderGive() {
     var b = $('#tr-give');
@@ -322,8 +328,8 @@
     var at = now();
     box.dataset.state = !t.cycle ? 'pick' : ready(t, at) ? 'ready' : 'growing';
     var head = el('div', 'tr-card-head');
-    box.appendChild(head);
     if (!t.cycle) {
+      box.appendChild(head);
       head.appendChild(el('h3', '', '収穫の時期を選ぶ'));
       box.appendChild(el('p', 'tr-note', t.given > 0
         ? '長く待つほど収穫が増えます。設定時刻で生産は停止し、収穫するまで再開しません。その時期まで変更も収穫もできません。'
@@ -339,27 +345,21 @@
     }
     var c = TR.cycleOf(t.cycle.id);
     if (!ready(t, at)) {
-      head.appendChild(el('h3', '', '育成中'));
-      head.appendChild(el('span', 'tr-chip', c.name + ' ' + multText(c.mult) + (t.super ? ' ・ SUPER ' + multText(R.superMult) : '')));
+      // growing: only the time left, small, with the money so far
       var time = el('div', 'tr-time');
-      time.appendChild(el('small', '', '収穫'));
+      time.setAttribute('role', 'timer');
+      time.setAttribute('aria-label', '収穫まで（' + c.name + ' ' + multText(c.mult) + (t.super ? '・SUPER ' + multText(R.superMult) : '') + '・' + K.fmtTime(t.cycle.end - offset) + 'から）');
       time.appendChild(el('b', '', clock(t.cycle.end - at)));
+      time.appendChild(rowOf('', 'now'));
       box.appendChild(time);
       var bar = el('div', 'tr-bar big');
       bar.appendChild(el('i'));
       box.appendChild(bar);
-      var rows = el('div', 'tr-rows');
-      rows.appendChild(rowOf('', 'now'));
-      rows.appendChild(rowOf('収穫時の見込み', 'end'));
-      box.appendChild(rows);
-      var wait = el('button', 'act-btn tr-harvest-btn', '収穫は ' + K.fmtTime(t.cycle.end - offset) + ' から');
-      wait.type = 'button';
-      wait.disabled = true;
-      box.appendChild(wait);
       tickHarvest(t, at);
       return;
     }
     // ready: the money and the next time (the same one unless another is picked)
+    box.appendChild(head);
     head.appendChild(el('h3', 'tr-ready', '収穫できます！'));
     head.appendChild(el('span', 'tr-chip', c.name + ' ' + multText(c.mult) + (t.super ? ' ・ SUPER ' + multText(R.superMult) : '')));
     var got = el('div', 'tr-got');
@@ -393,8 +393,6 @@
     if (bar) bar.style.width = U.clamp((at - t.cycle.at) / (t.cycle.end - t.cycle.at), 0, 1) * 100 + '%';
     var n = box.querySelector('[data-v="now"] span');
     if (n) n.textContent = U.fmt(value(t, at));
-    var e = box.querySelector('[data-v="end"] span');
-    if (e) e.textContent = U.fmt(expected(t));
   }
 
   function tick() {
@@ -803,13 +801,19 @@
       sfx('click');
       select(b.dataset.tab === 'auction' ? 'auction' : Number(b.dataset.tab));
     });
-    $('#tr-amounts').addEventListener('click', function (e) {
-      var b = e.target.closest('.tr-amount');
-      if (!b) return;
-      sfx('click');
-      amount = Number(b.dataset.amount);
-      try { localStorage.setItem(AMOUNT, String(amount)); } catch (err) { /* only for now */ }
-      if (treeOf(tab)) renderTree();
+    var track = $('#tr-track'), sliding = false;
+    track.addEventListener('pointerdown', function (e) {
+      sliding = true;
+      track.setPointerCapture(e.pointerId);
+      slide({ x: e.clientX, y: e.clientY });
+    });
+    track.addEventListener('pointermove', function (e) { if (sliding) slide({ x: e.clientX, y: e.clientY }); });
+    ['pointerup', 'pointercancel'].forEach(function (ev) { track.addEventListener(ev, function () { sliding = false; }); });
+    track.addEventListener('keydown', function (e) {
+      var step = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      setAmount(R.amounts[U.clamp(R.amounts.indexOf(amount) + step, 0, R.amounts.length - 1)]);
     });
     $('#tr-give').addEventListener('click', give);
     ['in', 'out'].forEach(function (direction) {
@@ -846,6 +850,7 @@
   BR.tree = {
     init: init,
     open: open,
+    setAmount: setAmount,
     // signed out: nothing to show until the next player
     reset: function () {
       generation++; treeRevision++; auctionRevision++; treeAt = 0;

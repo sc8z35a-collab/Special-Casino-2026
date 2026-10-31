@@ -76,7 +76,11 @@ const { chromium } = require('playwright');
       const facts = await details.locator('.facts > div').evaluateAll((nodes) => Object.fromEntries(nodes.map((node) => [node.querySelector('span').textContent, node.querySelector('b').textContent])));
       assert.equal(facts['ファイル'], '3件');
       assert.equal(facts['サブフォルダ'], '1件');
-      await page.locator('#vault-work-tabs [role="tab"]').first().click();
+      // a tap anywhere that is not a control puts the details away (back to the list)
+      await details.locator('h3').click();
+      await details.waitFor({ state: 'detached' });
+      assert.equal(await page.locator('#vault-main').isVisible(), true);
+      assert.equal(await page.locator('#vault-work-tabs [role="tab"]').count(), 1);
     });
     await check('only the generated sharing URL can be copied, including the fallback clipboard path', async () => {
       const card = page.locator('#vault-list .vitem').first();

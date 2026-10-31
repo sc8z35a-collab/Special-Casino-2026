@@ -118,12 +118,12 @@ async function checkTreeQueue(page, s, player) {
   await page.locator('#tree-tabs button[data-tab="'+second+'"]').waitFor();
   await page.locator('#tree-tabs button[data-tab="'+first.id+'"]').click();
   const [amount,changed]=await page.evaluate(()=>BR.TREE.rules.amounts.slice(0,2));
-  await page.locator('#tr-amounts button[data-amount="'+amount+'"]').click();
+  await page.evaluate(a=>BR.tree.setAmount(a),amount);
   let held,entered;const ready=new Promise(resolve=>{entered=resolve;});let calls=0;
   await page.route('**/api/tree/give',route=>{if(++calls!==1)return route.continue();held=route;entered();});
   await page.locator('#tr-give').click();await ready;const firstReply=await held.fetch();assert.equal(firstReply.status(),200);
   await page.locator('#tree-tabs button[data-tab="'+second+'"]').click();await page.locator('#tr-give').click();
-  await page.locator('#tr-amounts button[data-amount="'+changed+'"]').click();
+  await page.evaluate(a=>BR.tree.setAmount(a),changed);
   await held.fulfill({response:firstReply});await page.waitForFunction(()=>window.auditTree.completed===2);
   const given=id=>s.app.db.prepare('SELECT given FROM trees WHERE id=?').get(id).given;
   assert.equal(given(first.id),first.given+amount);assert.equal(given(second),amount);
@@ -172,7 +172,7 @@ async function checkTreeQueue(page, s, player) {
     await pull(); await game.waitForFunction(() => BR.api.pendingGacha() && document.getElementById('gacha-reveal').hidden);
     assert.equal(await game.locator('.gc-tier[data-kind="secret"]').isDisabled(), true);
     await pull(); await game.waitForFunction(() => document.querySelectorAll('.gc-reward').length === 3);
-    assert.equal(money(), before - 10000000); assert.equal(await game.evaluate(() => BR.api.pendingGacha()), null);
+    assert.equal(money(), before - 3500000); assert.equal(await game.evaluate(() => BR.api.pendingGacha()), null);
     console.log('PASS lost spin/gacha responses preserve BET, quote, one settlement and every reward');
 
     const friend = await s.register('AuditHost'); await s.befriend(player, friend);

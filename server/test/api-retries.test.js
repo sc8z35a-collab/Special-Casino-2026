@@ -37,7 +37,7 @@ test('explicit session invalidation retires a pending password result even if th
 
 for (const type of ['spin', 'gacha']) test(`password rotation preserves the uncertain ${type} receipt and its saved reload recovery`, async () => {
   const session = new Map(), s = setup(session), api = s.BR.api;
-  const draw = () => type === 'spin' ? api.spin(100) : api.gachaSpin('rare', 1, 10000000);
+  const draw = () => type === 'spin' ? api.spin(100) : api.gachaSpin('rare', 1, 3500000);
   s.respond(async () => { throw Error('lost committed answer'); }); await assert.rejects(draw());
   const original = s.calls[0].body;
   s.respond(async call => reply(200, call.path === '/api/password' ? { token: 'rotated-session-token' } : { result: {} }));
@@ -47,13 +47,13 @@ for (const type of ['spin', 'gacha']) test(`password rotation preserves the unce
   assert.equal(saved.owner, 'rotated-session-token'.slice(-16)); assert.deepEqual(saved.body, original);
   const restored = setup(session, 'rotated-session-token');
   assert.equal(type === 'spin' ? restored.BR.api.pendingSpinBet() : restored.BR.api.pendingGacha()?.count, type === 'spin' ? 100 : 1);
-  if (type === 'spin') await restored.BR.api.spin(100); else await restored.BR.api.gachaSpin('rare', 1, 10000000);
+  if (type === 'spin') await restored.BR.api.spin(100); else await restored.BR.api.gachaSpin('rare', 1, 3500000);
   assert.deepEqual(restored.calls.at(-1).body, original); assert.equal(session.has('blockbuster-reels/pending-' + type), false);
 });
 
 for (const type of ['spin', 'gacha']) test(`a late old-session ${type} answer cannot erase the receipt migrated during password rotation`, async () => {
   const session = new Map(), s = setup(session), api = s.BR.api; let finish;
-  const draw = () => type === 'spin' ? api.spin(100) : api.gachaSpin('rare', 1, 10000000);
+  const draw = () => type === 'spin' ? api.spin(100) : api.gachaSpin('rare', 1, 3500000);
   s.respond(call => call.path === '/api/password' ? Promise.resolve(reply(200, { token: 'rotated-session-token' })) : new Promise(resolve => { finish = resolve; }));
   const pending = draw(), original = s.calls[0].body;
   await api.password('old', 'new-password'); finish(reply(200, { result: {} }));
@@ -103,7 +103,7 @@ test('a lost gacha answer retries the same receipt and quote; a reload preserves
   a.respond(async () => { throw Error('lost'); });
   const first = a.BR.api.gachaSpin('rare', 3, 27000000);
   assert.equal(first, a.BR.api.gachaSpin('rare', 3, 27000000)); await assert.rejects(first);
-  await assert.rejects(a.BR.api.gachaSpin('secret', 1, 50000000), e => e.code === 'gacha_pending');
+  await assert.rejects(a.BR.api.gachaSpin('secret', 1, 10000000), e => e.code === 'gacha_pending');
   const b = setup(storage);
   assert.equal(b.BR.api.pendingGacha().kind, 'rare');
   await b.BR.api.gachaSpin('rare', 3, 27000000);

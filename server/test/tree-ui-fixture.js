@@ -44,7 +44,7 @@ export function treeScene() {
   function tree(id,changes={}){return {id,name:'Tree '+id,given:100000,rate:BR.TREE.rateOf(100000),stage:1,next:150000,cycle:null,grown:0,harvested:0,at,...changes};}
   function seed(rows=[tree(11),tree(12)]){events.hello({tree:{trees:rows,auction:null,now:at},now:at});}
   function choose(id){const b=el('button','tab');b.dataset.tab=String(id);ui.node('#tree-tabs').fire('click',{target:b});}
-  function amount(value){const b=el('button','tr-amount');b.dataset.amount=String(value);ui.node('#tr-amounts').fire('click',{target:b});}
+  function amount(value){BR.tree.setAmount(value);}
   function harvest(){const b=el('button');b.dataset.act='harvest';ui.node('#tr-harvest').fire('click',{target:b});}
   function start(){const b=el('button','start');b.dataset.cycle='30m';ui.node('#tr-harvest').fire('click',{target:b});}
   function auction(id,changes={}){return {id,status:'live',lot:{name:'Auction tree',stage:1},step:10000,price:100000,bids:[],bidders:[],participants:[],leader:null,

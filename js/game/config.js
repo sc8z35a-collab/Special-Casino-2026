@@ -274,7 +274,7 @@
     jobMaxPay: 6000000,
     // $ for every player who updates the game to a new release (js/game/news.js)
     updateBonus: 250000,
-    // 金の生る木 (js/game/tree.js): money given to a tree (one tap: `amounts`)
+    // 金の生る木 (js/game/tree.js): money given to a tree (one tap: one of `amounts`, the stops of the slider)
     // makes it earn $ every second: `rate` [given so far, $ a second], a
     // straight line in between (no jumps), flat after the last. A harvest
     // `cycle` is picked when it starts and the money waits until it is over:
@@ -283,7 +283,7 @@
     // the auctions (`markets`: the average winning price for the 2nd tree and
     // for every one after it), at most `max`.
     tree: {
-      amounts: [5000, 10000, 20000, 50000, 100000],
+      amounts: [5000, 10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000],
       rate: [[0, 5], [150000, 7], [200000, 8], [500000, 9], [1500000, 10], [3000000, 11], [6000000, 12], [10000000, 13], [20000000, 14]],
       cycles: [
         { id: '30m', name: '30分', ms: 1800000, mult: 1 },

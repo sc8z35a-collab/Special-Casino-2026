@@ -126,9 +126,9 @@ function fileAt(url) {
    for(const src of Object.values(BR.UI_IMG.questTiers).concat(manifest.icons.map(i=>i.src))){const im=new Image();im.src='/'+src;await im.decode();}
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    return Array.from(host.children).map(n=>({alpha:getComputedStyle(n,'::before').opacity,label:getComputedStyle(n.firstChild).opacity,art:getComputedStyle(n,'::before').backgroundImage}));
-  });assert.equal(tierResults.length,9);tierResults.forEach(r=>{assert.equal(r.alpha,'.84'.replace(/^\./,'0.'));assert.equal(r.label,'1');assert.match(r.art,/quest-tiers/);assert.ok(!r.art.includes('/css/img/'));});assert.deepEqual(errors,[]);
+  });assert.equal(tierResults.length,9);tierResults.forEach(r=>{assert.equal(r.alpha,'1');assert.equal(r.label,'1');assert.match(r.art,/quest-tiers/);assert.ok(!r.art.includes('/css/img/'));});assert.deepEqual(errors,[]);
   if(shots)await ui.screenshot({path:path.join(shots,'quest-tiers.png')});
-  console.log('PASS nine translucent rarity images, fully opaque labels, and app icon decoding');
+  console.log('PASS nine opaque (darkened, nothing shows through) rarity images, fully opaque labels, and app icon decoding');
   if (process.env.ASSET_VALIDATION_OUTPUT || rows.length === allRows.length) {
    // A normal CI render check has no uncompressed baseline. Preserve the
    // reviewed historical evidence instead of replacing its deltas with zero.

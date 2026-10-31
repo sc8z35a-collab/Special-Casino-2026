@@ -600,13 +600,14 @@
 }
 .fx-btn img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
 .fx-btn:active { transform: scale(.92); }
-.fx-card { width: 1180px; height: calc(100% - 60px); display: flex; flex-direction: column; }
+.fx-card { width: 760px; display: flex; flex-direction: column; gap: 16px; background: #2a0d12 url('../img/bg/fx.webp') center / cover no-repeat; }
 .fx-card .modal-title { margin-bottom: 16px; }
-.fx-simple, .fx-row { position: relative; display: flex; align-items: center; gap: 20px; cursor: pointer; }
-.fx-simple { padding: 16px 22px; border-radius: 10px; background: rgba(255, 226, 122, .1); box-shadow: inset 0 0 0 1.6px rgba(255, 226, 122, .45); }
+/* (the switches are .fx-toggle: <html> itself carries .fx-simple while 軽量 is on, so that name styles nothing here) */
+.fx-toggle, .fx-row { position: relative; display: flex; align-items: center; gap: 20px; cursor: pointer; }
+.fx-toggle { padding: 16px 22px; border-radius: 10px; background: rgba(255, 226, 122, .1); box-shadow: inset 0 0 0 1.6px rgba(255, 226, 122, .45); }
 .fx-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 25px; font-weight: 700; color: #fff; }
 .fx-name small { font-size: 17px; font-weight: 400; line-height: 1.4; color: #c3b8bb; }
-.fx-simple input, .fx-row input { position: absolute; opacity: 0; pointer-events: none; }
+.fx-toggle input, .fx-row input { position: absolute; opacity: 0; pointer-events: none; }
 .fx-switch { flex: none; position: relative; width: 78px; height: 42px; border-radius: 21px; background: rgba(255, 255, 255, .16); box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .25); transition: background .15s; }
 .fx-switch::after { content: ''; position: absolute; left: 4px; top: 4px; width: 34px; height: 34px; border-radius: 50%; background: #e9e3e5; transition: transform .15s; }
 input:checked + .fx-switch { background: linear-gradient(180deg, #f4dc45, #d9b51e); }

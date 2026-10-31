@@ -34,7 +34,7 @@
     guide: 'img/ui/refresh/guide.webp',
     feedback: 'img/ui/refresh/feedback.webp',
     vip: 'img/ui/refresh/vip.webp',
-    investment: 'img/ui/refresh/investment.webp',
+    investment: 'img/ui/stocks-card.webp',
     diary: 'img/ui/refresh/diary.webp',
     dev: 'img/ui/refresh/dev.webp',
     maintenance: 'img/ui/refresh/maintenance.webp',

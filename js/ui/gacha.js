@@ -4,7 +4,7 @@
   var K = BR.kit, api = BR.api, G = BR.GACHA, A = BR.GACHA_ART, el = K.el;
   var state = null, kind = 'rare', busy = false, generation = 0, root, reveal;
   var timer = 0, pending = null, lastDraw = null, skipped = false, started = 0, loading = false, receivedAt = 0;
-  var ui = {}, controls = null, oddsKey = '', motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var saleAsked = 0, ui = {}, controls = null, oddsKey = '', motion = window.matchMedia('(prefers-reduced-motion: reduce)');
   function shown() { return root && !root.hidden; }
   function reduced() { return document.body.classList.contains('fx-off-screens') || motion.matches; }
   function tier() { return G.kinds.filter(function (k) { return k.id === kind; })[0]; }
@@ -15,6 +15,10 @@
   // the free tickets (功績's rewards) for a kind: one a pull
   function tickets(k) { return state && state.items && state.items.tickets ? state.items.tickets[k || kind] || 0 : 0; }
   function boostOn() { return G.events(state.now + performance.now() - receivedAt).boost.on; }
+  // リリース記念セール (the server says which gacha and until when): on while its end is ahead
+  function saleLeft() { var s = state && state.releaseSale; return s ? Math.max(0, s.end - (state.now + performance.now() - receivedAt)) : 0; }
+  function onSale(k) { return saleLeft() > 0 && state.releaseSale.kind === k; }
+  function clockText(ms) { var t = Math.ceil(ms / 1000), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, x = t % 60; return h + ':' + (m < 10 ? '0' : '') + m + ':' + (x < 10 ? '0' : '') + x; }
   function apply(r) { state = r; receivedAt = performance.now(); if (r.me) { BR.social.setMe(r.me); BR.app.serverBalance(r.me, true); } }
   function rewardArt(r) {
     if (r.type === 'car') return A.cars[r.carId] || BR.SOCIAL_IMG.cars[r.carId] || A.carFallback;
@@ -102,9 +106,13 @@
       var art = el('span', 'gc-tier-art'); art.appendChild(picture(A.tiers[v.id])); b.appendChild(art);
       b.appendChild(el('strong', '', v.name.replace('ガチャ', '')));
       var ticket = el('span', 'gc-tier-ticket'); ticket.hidden = true; ticket.appendChild(picture(A.tickets[v.id])); ticket.appendChild(el('b'));
-      b.appendChild(ticket); tiers.appendChild(b); controls.tiers.push(b);
+      var sale = picture(A.releaseSale, 'gc-tier-sale'); sale.hidden = true;
+      b.appendChild(ticket); b.appendChild(sale); tiers.appendChild(b); controls.tiers.push(b);
     }); fragment.appendChild(tiers);
-    var hero = el('div', 'gc-hero'); hero.appendChild(picture(A.icon, 'gc-hero-machine')); fragment.appendChild(hero);
+    var hero = el('div', 'gc-hero'); hero.appendChild(picture(A.icon, 'gc-hero-machine'));
+    var saleBar = el('div', 'gc-sale-bar'); saleBar.hidden = true; saleBar.appendChild(picture(A.releaseSale)); var saleClock = el('b', 'gc-sale-clock'); saleBar.appendChild(saleClock);
+    hero.appendChild(saleBar); controls.sale = { bar: saleBar, clock: saleClock };
+    fragment.appendChild(hero);
     var purchases = el('div', 'gc-purchases');
     [1, 3, 10].forEach(function (count) {
       var box = el('div', 'gc-bundle');
@@ -112,9 +120,9 @@
       b.dataset.count = count;
       b.appendChild(picture(A.pulls[count]));
       if (A.discounts[count]) b.appendChild(picture(A.discounts[count], 'gc-discount'));
-      var cost = el('strong', 'gc-price');
-      box.appendChild(b); box.appendChild(cost); box.appendChild(el('small', 'gc-slots', count * 3 + '枠'));
-      controls.bundles.push({ button: b, price: cost, count: count });
+      var cost = el('strong', 'gc-price'), was = el('s', 'gc-was'); was.hidden = true;
+      box.appendChild(b); box.appendChild(was); box.appendChild(cost); box.appendChild(el('small', 'gc-slots', count * 3 + '枠'));
+      controls.bundles.push({ button: b, price: cost, was: was, count: count });
       purchases.appendChild(box);
     });
     // 無料で引く: one free ticket, one pull (shown while the chosen gacha has tickets)
@@ -140,7 +148,12 @@
       var n = tickets(b.dataset.kind), tag = b.querySelector('.gc-tier-ticket');
       tag.hidden = !n;
       tag.lastChild.textContent = '×' + n;
+      b.querySelector('.gc-tier-sale').hidden = !onSale(b.dataset.kind);
     });
+    // the gacha chosen: its own background
+    root.dataset.kind = kind;
+    controls.sale.bar.hidden = !onSale(kind);
+    tick();
     var have = tickets(), free = controls.free, freeRetry = !!retry && retry.ticket;
     free.box.hidden = !have && !freeRetry;
     if (free.img.getAttribute('src') !== A.tickets[kind]) free.img.src = A.tickets[kind];
@@ -150,7 +163,8 @@
     controls.bundles.forEach(function (v) {
       var recovering = retry && !retry.ticket && retry.count === v.count;
       var cost = recovering ? retry.price : price(v.count), insufficient = !recovering && state.me && state.me.dollars < cost;
-      var text = money(cost);
+      var text = money(cost), was = onSale(kind) && !recovering ? money(G.price(kind, v.count, false)) : '';
+      v.was.hidden = !was; v.was.textContent = was;
       if (v.price.textContent !== text) {
         v.price.textContent = text;
         v.button.setAttribute('aria-label', v.count + '連 ' + text + ' ' + v.count * 3 + '枠');
@@ -172,6 +186,17 @@
     }
     Array.prototype.forEach.call(items.children, function (b) { b.disabled = busy; });
     items.hidden = !items.childElementCount;
+  }
+  // the sale's time left, each second while the screen is open (the prices go back when it ends: the server says so)
+  function tick() {
+    if (!controls || !state) return;
+    var left = saleLeft();
+    if (controls.sale.bar.hidden) return;
+    controls.sale.clock.textContent = '残り ' + clockText(left);
+    if (left <= 0 && !busy && Date.now() - saleAsked > 10000) {
+      saleAsked = Date.now();
+      api.gacha().then(function (r) { if (shown() && !busy) { apply(r); render(); } }, function () {});
+    }
   }
   function showOdds() {
     if (!state || busy) return;
@@ -215,6 +240,7 @@
       K.registerModal('gacha-odds-modal'); K.registerModal('gacha-modal');
       document.getElementById('gacha-odds-open').addEventListener('click', showOdds);
       document.getElementById('gacha-result-close').addEventListener('click', closeResults);
+      setInterval(function () { if (shown()) tick(); }, 1000);
       document.getElementById('gacha-skip').addEventListener('click', function () { skipped = true; if (pending) showResults(pending); });
       root.addEventListener('closed', function () {
         clearTimer(); K.closeModal('gacha-odds-modal'); reveal.hidden = true;

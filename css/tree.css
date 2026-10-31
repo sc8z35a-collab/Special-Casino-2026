@@ -1,6 +1,6 @@
 /* 金の生る木 (js/ui/tree.js): the round button on the slot screen, then the
-   screen — a tab for each tree, the tree in its garden light on the left,
-   giving money and the harvest on the right, and the auctions. Design px. */
+   screen — a tab for each tree, the tree big in the middle, giving money at
+   the bottom left, the harvest at the bottom right, and the auctions. Design px. */
 
 .hud-tree .ic { animation-delay: -.9s; }
 
@@ -11,16 +11,16 @@
 }
 
 /* ------------------------------------------------------------ tabs --- */
-.tree-tabs .tab { flex: 0 1 auto; min-width: 0; max-width: 260px; display: inline-flex; align-items: center; gap: 8px; padding: 0 18px; }
-.tree-tabs .tab span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.tree-tabs .tab.super span { color: #ffe27a; }
-.tree-tabs .tab .tab-dot { flex: none; margin-left: 2px; vertical-align: 0; }
-.tr-tab-pic { flex: none; width: 46px; height: 46px; background: center / contain no-repeat; }
-.tree-tabs .tr-more { flex: none; color: #ffe27a; }
-.tr-live { padding: 1px 8px; border-radius: 8px; background: #e5262b; font-size: 14px; letter-spacing: 1px; color: #fff; }
-.tree-tabs .tabs-info { flex: none; margin-left: auto; padding: 0 20px; font: 700 20px var(--f-num); color: #c9e8c4; }
+/* a tree is its picture, the last tab only ＋ (the names are in aria-label) */
+.tree-tabs .tab { flex: none; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 96px; padding: 0; }
+.tree-tabs .tab .tab-dot { position: absolute; right: 8px; top: 8px; margin: 0; }
+.tree-tabs .tab.super .tr-tab-pic { filter: drop-shadow(0 0 6px #ffe27a); }
+.tr-tab-pic { flex: none; width: 56px; height: 56px; background: center / contain no-repeat; }
+.tree-tabs .tr-more { width: 84px; font: 800 44px/1 var(--f-num); color: #ffe27a; }
+.tr-live { position: absolute; right: 2px; bottom: 4px; padding: 1px 6px; border-radius: 8px; background: #e5262b; font-size: 13px; letter-spacing: 1px; color: #fff; }
 
 .tree-pane, .auction-pane { background: none; }
+.board-pane.tree-pane { left: 40px; right: 40px; bottom: 24px; }
 
 /* The extra space is used only while an auction is actually on screen. */
 #stage.auction-running[data-screen="tree"] #tree-tabs,
@@ -30,18 +30,19 @@
 #stage.auction-running[data-screen="tree"] .auction-pane { left: 80px; right: 80px; top: 88px; }
 
 /* ------------------------------------------------------------ the tree --- */
-.tr-scene { position: absolute; left: 0; top: 0; bottom: 0; width: 760px; }
+/* the tree in the middle, as big as the screen allows; giving money at the bottom left, the harvest at the bottom right */
+.tr-scene { position: absolute; inset: 0; }
 .tr-glow {
   position: absolute;
-  left: 70px;
-  top: 10px;
-  width: 620px;
-  height: 560px;
+  left: calc(50% - 470px);
+  top: 0;
+  width: 940px;
+  height: 700px;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 232, 150, .3), rgba(255, 210, 90, .08) 48%, transparent 70%);
 }
-.tr-art { position: absolute; left: 10px; top: 0; width: 740px; height: 510px; transform-origin: 50% 88%; filter: drop-shadow(0 16px 20px rgba(0, 0, 0, .45)); user-select: none; }
-.tr-art-fallback { position: absolute; left: 100px; top: -6px; width: 540px; height: 540px; object-fit: contain; -webkit-user-drag: none; }
+.tr-art { position: absolute; left: calc(50% - 500px); top: -20px; width: 1000px; height: 690px; transform-origin: 50% 88%; filter: drop-shadow(0 16px 20px rgba(0, 0, 0, .45)); user-select: none; }
+.tr-art-fallback { position: absolute; left: 160px; top: 0; width: 680px; height: 680px; object-fit: contain; -webkit-user-drag: none; }
 .tr-art.has-3d .tr-art-fallback { display: none; }
 .tr3d-canvas { display: block; width: 100%; height: 100%; }
 .tr-art .tr3d-canvas { position: absolute; inset: 0; cursor: grab; touch-action: none; }
@@ -49,11 +50,11 @@
 .tr-art .tr3d-canvas:focus-visible { outline: 3px solid #ffe27a; border-radius: 12px; }
 .tr-tab-pic.has-3d, .au-art.has-3d { background-image: none !important; }
 .tr-tab-pic .tr3d-canvas, .au-art .tr3d-canvas { pointer-events: none; }
-.tr-view-tools { position: absolute; left: 60px; right: 60px; top: 496px; display: none; align-items: center; justify-content: center; gap: 10px; font-size: 17px; color: #c9e8c4; }
+.tr-view-tools { position: absolute; left: calc(50% + 470px); top: 10px; display: none; flex-direction: column; gap: 10px; }
 .tr-art.has-3d + .tr-view-tools { display: flex; }
-.tr-view-tools button { width: 38px; height: 34px; border-radius: 8px; color: #fff6d8; background: rgba(0, 0, 0, .5); border: 1px solid #c9e8c4; font-size: 24px; }
+.tr-view-tools button { width: 52px; height: 52px; border-radius: 12px; color: #fff6d8; background: var(--solid, #0c0609); border: 1px solid #c9e8c4; font-size: 30px; }
 .tr-fertilizer-timers { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.tr-fertilizer-timers span { position: absolute; transform: translate(-50%, -100%); padding: 2px 7px; border-radius: 9px; background: rgba(0, 0, 0, .65); color: #e6ffb5; font: 700 17px var(--f-num); }
+.tr-fertilizer-timers span { position: absolute; transform: translate(-50%, -100%); padding: 2px 7px; border-radius: 9px; background: #0c0609; color: #e6ffb5; font: 700 17px var(--f-num); }
 .tr-stopped { color: #ffe27a; }
 .production-stopped .tr-rate b { color: #b7bdb6; }
 .tr-art.grow { animation: trGrow 1s var(--jc-pop, ease-out); }
@@ -61,32 +62,33 @@
 /* coins drifting up while a harvest time runs */
 .tr-coins i {
   position: absolute;
-  bottom: 230px;
-  width: 34px;
-  height: 34px;
+  bottom: 300px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #fffbe0 0 12%, #ffd84a 36%, #c8901a 74%, #8a5a08 100%);
   box-shadow: inset 0 0 0 3px rgba(255, 240, 170, .5), 0 3px 8px rgba(0, 0, 0, .45);
   opacity: 0;
 }
 .tree-pane.growing .tr-coins i { animation: trCoin 6s ease-in infinite; }
-.tr-coins i:nth-child(1) { left: 170px; animation-delay: 0s; }
-.tr-coins i:nth-child(2) { left: 560px; animation-delay: 1s; }
-.tr-coins i:nth-child(3) { left: 250px; animation-delay: 2s; }
-.tr-coins i:nth-child(4) { left: 480px; animation-delay: 3s; }
-.tr-coins i:nth-child(5) { left: 130px; animation-delay: 4s; }
-.tr-coins i:nth-child(6) { left: 600px; animation-delay: 5s; }
+.tr-coins i:nth-child(1) { left: calc(50% - 260px); animation-delay: 0s; }
+.tr-coins i:nth-child(2) { left: calc(50% + 230px); animation-delay: 1s; }
+.tr-coins i:nth-child(3) { left: calc(50% - 160px); animation-delay: 2s; }
+.tr-coins i:nth-child(4) { left: calc(50% + 130px); animation-delay: 3s; }
+.tr-coins i:nth-child(5) { left: calc(50% - 310px); animation-delay: 4s; }
+.tr-coins i:nth-child(6) { left: calc(50% + 280px); animation-delay: 5s; }
 @keyframes trCoin {
   0% { opacity: 0; transform: translateY(0) scale(.6); }
   15% { opacity: .9; }
   85% { opacity: .7; }
-  100% { opacity: 0; transform: translateY(-300px) scale(1); }
+  100% { opacity: 0; transform: translateY(-360px) scale(1); }
 }
 
-.tr-name { position: absolute; left: 0; right: 0; top: 534px; display: flex; justify-content: center; align-items: center; gap: 12px; }
-.tr-name b { max-width: 600px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 36px; color: #fff6d8; text-shadow: 0 3px 8px rgba(0, 0, 0, .6); }
 .tr-super {
-  flex: none;
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  transform: translateX(-50%);
   padding: 4px 14px;
   border-radius: 8px;
   background: linear-gradient(180deg, #ffe680, #d99a14);
@@ -94,87 +96,77 @@
   letter-spacing: 2px;
   color: #3a2400;
 }
-.tr-look { position: absolute; left: 110px; right: 110px; top: 600px; }
-.tr-look-head { display: flex; align-items: baseline; gap: 10px; font-size: 20px; color: #c9e8c4; }
-.tr-look-head b { font: 800 30px var(--f-num); color: #fff; }
-.tr-look-head small { margin-left: auto; font-size: 24px; color: #e9f2e6; }
-.tr-bar { height: 14px; margin-top: 8px; border-radius: 7px; background: rgba(0, 0, 0, .4); box-shadow: inset 0 0 0 1.4px rgba(200, 235, 190, .25); overflow: hidden; }
-.tr-bar i { display: block; height: 100%; width: 0; border-radius: 7px; background: linear-gradient(90deg, #5fcf6a, #c7ee6e); transition: width .4s ease; }
-.tr-bar.big { height: 20px; border-radius: 10px; }
+/* the next look: its number and what is left, small under the tree */
+.tr-look { position: absolute; left: calc(50% - 240px); width: 480px; bottom: 0; padding: 8px 16px 10px; border-radius: 12px; background: var(--solid, #0c0609); }
+.tr-look-head { display: flex; align-items: baseline; gap: 10px; font-size: 18px; color: #c9e8c4; }
+.tr-look-head b { font: 800 24px var(--f-num); color: #fff; }
+.tr-look-head small { margin-left: auto; font: 700 20px var(--f-num); color: #e9f2e6; }
+.tr-bar { height: 12px; margin-top: 6px; border-radius: 6px; background: #222a20; box-shadow: inset 0 0 0 1.4px rgba(200, 235, 190, .25); overflow: hidden; }
+.tr-bar i { display: block; height: 100%; width: 0; border-radius: 6px; background: linear-gradient(90deg, #5fcf6a, #c7ee6e); transition: width .4s ease; }
 .tr-bar.big i { background: linear-gradient(90deg, #e8b722, #ffe27a); transition: width .25s linear; }
 
 /* ------------------------------------------------------------ giving money, the harvest --- */
-.tr-side { position: absolute; left: 790px; right: 0; top: 0; bottom: 0; display: flex; flex-direction: column; gap: 16px; }
-.tr-card { position: relative; padding: 20px 26px; border-radius: 10px; background: rgba(0, 0, 0, .3); box-shadow: inset 0 0 0 1.6px rgba(226, 214, 218, .2); }
+.tr-side { position: absolute; inset: 0; pointer-events: none; }
+.tr-card { position: absolute; bottom: 0; width: 470px; padding: 18px 22px; border-radius: 12px; background: var(--solid-2, #170c12); box-shadow: inset 0 0 0 1.6px rgba(226, 214, 218, .2); pointer-events: auto; }
+.tr-grow { left: 0; }
 .tr-card-head { display: flex; align-items: center; gap: 14px; }
-.tr-card-head h3 { margin: 0; font-size: 27px; color: #fff; }
+.tr-card-head h3 { margin: 0; font-size: 26px; color: #fff; }
 .tr-rate { margin-left: auto; display: flex; align-items: center; gap: 6px; }
-.tr-rate small { font-size: 20px; color: #c9e8c4; }
-.tr-rate .ic { width: 30px; height: 30px; }
-.tr-rate b { font: 800 48px var(--f-num); color: #ffe27a; }
-.tr-rate-next { font-size: 19px; color: #a8e39a; }
-.tr-amounts { display: flex; gap: 10px; margin-top: 14px; }
-.tr-amount {
-  flex: 1;
-  height: 64px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border-radius: 8px;
-  background: rgba(150, 146, 168, .26);
-  box-shadow: inset 0 0 0 1.6px rgba(225, 222, 235, .25);
-  font: 700 25px var(--f-num);
-  color: #fff;
-}
-.tr-amount .ic { width: 22px; height: 22px; }
-.tr-amount.on { background: rgba(244, 220, 69, .2); box-shadow: inset 0 0 0 3px #f0d040; color: #ffe27a; }
-.tr-amount:active { transform: scale(.96); }
-.act-btn.tr-give { width: 100%; height: 96px; margin-top: 14px; font-size: 32px; }
+.tr-rate small { font-size: 19px; color: #c9e8c4; }
+.tr-rate .ic { width: 28px; height: 28px; }
+.tr-rate b { font: 800 44px var(--f-num); color: #ffe27a; }
+.tr-rate-next { font-size: 17px; color: #a8e39a; }
+/* the amount slider (its stops: RULES.tree.amounts) */
+.tr-slider { position: relative; height: 56px; margin: 12px 14px 0; }
+.tr-track { position: absolute; left: 0; right: 0; top: 20px; height: 16px; border-radius: 8px; background: #3b3446; box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .22); touch-action: none; cursor: pointer; }
+.tr-track::before { content: ''; position: absolute; inset: -22px -16px; }
+.tr-track:focus-visible { outline: 3px solid #ffe27a; outline-offset: 6px; }
+.tr-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 8px; background: linear-gradient(90deg, #b98f2c, #f4dc45); }
+.tr-thumb { position: absolute; top: 50%; left: 0; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fffbe0 0 12%, #ffd84a 40%, #c8901a 100%); box-shadow: 0 0 0 3px #3a2400, 0 4px 10px rgba(0, 0, 0, .5); }
+.act-btn.tr-give { width: 100%; height: 86px; margin-top: 8px; font-size: 32px; }
 .act-btn.tr-give .ic { width: 34px; height: 34px; filter: brightness(.25); }
 .act-btn.tr-give.short { filter: grayscale(.45) brightness(.8); }
 .tr-queue { margin-left: 4px; padding: 0 10px; border-radius: 12px; background: rgba(58, 52, 16, .25); font: 800 20px var(--f-num); }
 
-.tr-harvest { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.tr-chip { padding: 3px 12px; border-radius: 14px; background: rgba(255, 226, 122, .14); box-shadow: inset 0 0 0 1.4px rgba(255, 226, 122, .45); font-size: 19px; font-weight: 700; color: #ffe27a; }
+.tr-harvest { right: 0; display: flex; flex-direction: column; max-height: 100%; }
+/* growing: only the time left, small, in the corner */
+.tr-harvest[data-state="growing"] { width: auto; min-width: 250px; padding: 10px 16px 12px; }
+.tr-chip { padding: 3px 12px; border-radius: 14px; background: rgba(255, 226, 122, .14); box-shadow: inset 0 0 0 1.4px rgba(255, 226, 122, .45); font-size: 18px; font-weight: 700; color: #ffe27a; }
 .tr-ready { color: #a8f08f !important; }
-.tr-note { margin: 10px 0 0; font-size: 19px; line-height: 1.5; color: #c3b8bb; }
-.tr-cycles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+.tr-note { margin: 8px 0 0; font-size: 17px; line-height: 1.45; color: #c3b8bb; }
+.tr-cycles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; }
 .tr-cycle {
-  height: 128px;
+  height: 104px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 2px;
   border-radius: 10px;
-  background: rgba(150, 146, 168, .22);
+  background: #2a2433;
   box-shadow: inset 0 0 0 1.6px rgba(225, 222, 235, .25);
   color: #fff;
 }
 .tr-cycle:disabled { opacity: .45; }
 .tr-cycle:not(:disabled):active { transform: scale(.96); }
-.tr-cycle-name { font-size: 28px; }
-.tr-cycle-mult { font: 800 26px var(--f-num); color: #ffe27a; }
-.tr-cycle-est { display: flex; align-items: center; gap: 4px; font-size: 16px; color: #c3b8bb; }
+.tr-cycle-name { font-size: 24px; }
+.tr-cycle-mult { font: 800 22px var(--f-num); color: #ffe27a; }
+.tr-cycle-est { display: flex; align-items: center; gap: 4px; font-size: 15px; color: #c3b8bb; }
 .tr-cycle-est .amt .ic { width: 16px; height: 16px; }
-.tr-cycles.small .tr-cycle { height: 92px; }
-.tr-cycles.small .tr-cycle-name { font-size: 22px; }
-.tr-cycles.small .tr-cycle-mult { font-size: 20px; }
-.tr-cycle.on { background: rgba(244, 220, 69, .18); box-shadow: inset 0 0 0 3px #f0d040; }
-.tr-time { display: flex; align-items: baseline; gap: 14px; margin-top: 16px; }
-.tr-time small { font-size: 21px; color: #c3b8bb; }
-.tr-time b { font: 800 72px var(--f-num); color: #fff; letter-spacing: 1px; }
-.tr-harvest .tr-bar { margin-top: 10px; }
-.tr-rows { display: flex; align-items: flex-end; gap: 30px; margin-top: 16px; }
-.tr-row { display: flex; flex-direction: column; gap: 2px; font-size: 19px; color: #c3b8bb; }
-.tr-row .amt { font: 800 42px var(--f-num); color: #fff; }
-.tr-row .amt .ic { width: 28px; height: 28px; }
-.tr-row + .tr-row .amt { color: #ffe27a; }
-.tr-got { margin-top: 8px; }
-.tr-got .amt { font: 900 64px var(--f-num); color: #ffe27a; }
-.tr-got .amt .ic { width: 50px; height: 50px; }
-.act-btn.tr-harvest-btn { flex: none; width: 100%; height: 82px; margin-top: auto; font-size: 28px; }
+.tr-cycles.small .tr-cycle { height: 76px; }
+.tr-cycles.small .tr-cycle-name { font-size: 20px; }
+.tr-cycles.small .tr-cycle-mult { font-size: 18px; }
+.tr-cycle.on { background: #3d3618; box-shadow: inset 0 0 0 3px #f0d040; }
+.tr-time { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.tr-time > b { font: 800 30px var(--f-num); color: #fff; letter-spacing: 1px; }
+.tr-harvest .tr-bar { margin-top: 6px; height: 8px; }
+.tr-row { display: flex; flex-direction: column; gap: 2px; font-size: 17px; color: #c3b8bb; }
+.tr-row .amt { font: 800 22px var(--f-num); color: #ffe27a; }
+.tr-row .amt .ic { width: 20px; height: 20px; }
+.tr-got { margin-top: 6px; }
+.tr-got .amt { font: 900 52px var(--f-num); color: #ffe27a; }
+.tr-got .amt .ic { width: 42px; height: 42px; }
+.act-btn.tr-harvest-btn { flex: none; width: 100%; height: 76px; margin-top: 12px; font-size: 28px; }
 
 /* ------------------------------------------------------------ the auctions --- */
 .au-art { background: center / contain no-repeat; filter: drop-shadow(0 12px 16px rgba(0, 0, 0, .5)); }
@@ -288,3 +280,6 @@
 .au-result .au-super { top: 65px; right: 40px; z-index: 2; font-size: 26px; }
 @keyframes auCash { 0% { opacity: 0; transform: translate(-50%, -100%) scale(.6); } 16% { opacity: 1; transform: translate(-50%, -155%) scale(1.08); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -200%) scale(.95); } }
 @media (prefers-reduced-motion: reduce) { .au3d-cash { animation: none; } }
+
+/* 木を増やす (the auctions) has a background of its own */
+#stage:has(#auction-pane.active) #bg { background-image: url('../img/bg/tree-auction.webp'); }
