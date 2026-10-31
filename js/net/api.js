@@ -368,6 +368,8 @@
     transfer: function (to, amount, currency) { return post('/api/transfer', { to: to, amount: amount, currency: currency }); },
     // money, a car or an item sent in a chat arrives with the tap
     claim: function (messageId) { return post('/api/messages/claim', { message: messageId }); },
+    // TWO STATE公式's monthly slot charge, paid from its card (server/core/slotbill.js)
+    payBill: function (messageId) { return post('/api/slot-bill/pay', { message: messageId }); },
     retract: function (messageId) { return post('/api/messages/retract', { message: messageId }); },
     blocks: function () { return get('/api/blocks'); },
     block: function (id, on) { return post('/api/block', { user: id, blocked: !!on }); },

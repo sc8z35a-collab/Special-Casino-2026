@@ -4,11 +4,12 @@ import { startServer } from './helpers.js';
 
 test('a token exchange cannot leave an unreadable currency balance or debit the other currency', async t => {
   const s = await startServer(); t.after(() => s.stop()); const p = await s.register('RangeSell');
-  s.setUser(p.me.id, { dollars: Number.MAX_SAFE_INTEGER, tokens: 100 });
-  const r = await s.call('POST', '/api/sell', { token: p.token, body: { amount: 1 } });
+  // (enough tokens to come to more than the exchange fee: the balance limit is what refuses it)
+  s.setUser(p.me.id, { dollars: Number.MAX_SAFE_INTEGER, tokens: 10000 });
+  const r = await s.call('POST', '/api/sell', { token: p.token, body: { amount: 5000 } });
   assert.equal(r.status, 409); assert.equal(r.error.code, 'balance_limit');
   const me = await s.call('GET', '/api/me', { token: p.token });
-  assert.equal(me.status, 200); assert.equal(me.me.dollars, Number.MAX_SAFE_INTEGER); assert.equal(me.me.tokens, 100);
+  assert.equal(me.status, 200); assert.equal(me.me.dollars, Number.MAX_SAFE_INTEGER); assert.equal(me.me.tokens, 10000);
 });
 
 test('an overflowing gift claim remains pending and can later be claimed exactly at the boundary', async t => {

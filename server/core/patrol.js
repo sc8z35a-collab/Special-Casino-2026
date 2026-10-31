@@ -17,7 +17,7 @@
 import { sha256 } from './auth.js';
 
 const KEY = 'patrol';
-const NPCS = ['peter', 'johnson', 'official'];
+const NPCS = ['peter', 'johnson', 'official', 'twostate'];
 const SESSIONS_MAX = 8;
 const OPEN_MAX = 40;
 const DAY_MS = 86400000;

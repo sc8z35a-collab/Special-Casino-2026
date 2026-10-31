@@ -180,14 +180,16 @@
       payout: 0.05, per: 45, pbr: 6.0, founders: 0.35, price: 22000
     },
     {
-      id: 'dtrade', name: 'Dtrade', full: '株式会社Dtrade', en: 'Dtrade', rank: 'A', model: 'service', kind: '証券（投資機能の運営）',
-      capital: 100000000, reserve: 100000000, retained: 45000000000,
-      staff: 350, salary: 5000000, cost: 7500000,
-      place: { name: 'データセンター・施設維持費', amount: 1200000000 }, rd: { name: '金融システム研究開発費', amount: 600000000 }, ads: 80000000,
-      sales: 8500000000, op: 4000000000,
+      // the casino (the slots it runs) and the 投資's trading: the players' lost bets and its fees come to it
+      id: 'dtrade', name: 'Dtrade', full: '株式会社Dtrade', en: 'Dtrade', rank: 'A', model: 'service', kind: '投資会社（カジノスロット・投資機能の運営）',
+      capital: 500000000, reserve: 500000000, retained: 90000000000,
+      staff: 400, salary: 5500000, cost: 8000000,
+      place: { name: 'データセンター・施設維持費', amount: 2500000000 }, rd: { name: '金融システム研究開発費', amount: 1200000000 }, ads: 100000000,
+      sales: 18000000000, op: 11000000000,
       streams: [
-        { id: 'commission', name: '受入手数料', share: 0.7, cost: 0, beta: 1.8, noise: 0.15, player: ['trade'] },
-        { id: 'finance', name: '金融収益', share: 0.3, cost: 0, beta: 0.5 }
+        { id: 'casino', name: 'カジノ収入（スロット）', share: 0.55, cost: 0, beta: 1.2, noise: 0.1, player: ['casino', 'winfee', 'slotfee', 'exchange'] },
+        { id: 'commission', name: '受入手数料（投資）', share: 0.3, cost: 0, beta: 1.8, noise: 0.15, player: ['trade'] },
+        { id: 'finance', name: '金融収益', share: 0.15, cost: 0, beta: 0.5 }
       ],
       ppe: 3000000000, growth: 0.06, beta: 1.8, season: 'markets', hire: 0.04, raise: 0.03, quit: 0.06,
       payout: 0.5, per: 16, pbr: 1.2, founders: 0.25, price: 40000
@@ -283,8 +285,25 @@
 
   // The players' money that comes to the companies (server/core/api.js: as it is spent): what kind, whose sale it
   // becomes. VIP is bought with ロイヤルコイン, each counted as `coin` $; the バイト's employers pay the job sites
-  // `jobFee` of what the players are paid; the 投資's 0.6% fee is Dtrade's.
-  var PLAYERS = { coin: 100000, jobFee: 0.15 };
+  // `jobFee` of what the players are paid; the 投資's 1.8% fee is Dtrade's, and so is the casino's money (the bets the
+  // players lose, the fee on a big bet's win, the monthly slot charge, the exchange fee: js/game/config.js casino).
+  var PLAYERS = { coin: 100000, jobFee: 0.25 };
+
+  // MAGITA's research, begun on the companies' first day: each takes `months` (fewer once RIMU TAG is done: `speed`
+  // off what is left of the others and of anything begun later), succeeds with `chance`, and cuts the materials of
+  // everything MAGITA makes by `cut` (each on what the others left). And while it is struggling (a quarter's
+  // operating profit below `on` of what its plan expected, or a loss) it adds `amount` to the 仕入れ価格 of every car
+  // but those `except` (Car Owner passes it on: the cars cost the players as much more), until a quarter is back at
+  // `off` of its plan.
+  var MAGITA = {
+    research: [
+      { id: 'A1', name: '部品コスト削減技術「A1」', months: 12, chance: 1, cut: 0.2 },
+      { id: 'T1', name: '製造・生産工程の効率化技術「T1」', months: 9, chance: 0.7, cut: 0.1 },
+      { id: 'MOL1', name: '部品の統合・モジュール化「MOL1」', months: 42, chance: 1, cut: 0.2 },
+      { id: 'RIMU', name: 'AIによる研究加速計画「RIMU TAG」', months: 24, chance: 1, speed: 0.35 }
+    ],
+    surcharge: { amount: 3000000, except: ['onvoro'], on: 0.5, off: 0.9 }
+  };
 
   var GENRES = ['RPG', 'アクション', 'アクションRPG', 'シューター', 'アドベンチャー', 'ストラテジー', 'レース', 'スポーツ', '格闘', 'パズル', 'シミュレーション', 'ホラー', 'オープンワールド'];
   // a new game's name: one of each (a sequel of a hit keeps its name and a number)
@@ -421,7 +440,7 @@
   BR.CORP = {
     DAY_MS: DAY_MS,
     companies: COMPANIES, company: company, listed: function () { return COMPANIES.filter(function (c) { return c.listed; }); },
-    players: PLAYERS, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
+    players: PLAYERS, magita: MAGITA, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
     ranks: RANKS, money: MONEY, tax: TAX,
     accounts: ACCOUNTS, account: account, pl: PL, bs: BS, cf: CF, plOf: plOf,
     // the 決算発表: this many days after a quarter's end, at 15:00 Japan time (6:00 UTC)

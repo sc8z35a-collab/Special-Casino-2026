@@ -195,7 +195,9 @@
       $('#tp-label-a').textContent = buy ? '獲得:' : '交換:';
       $('#tp-label-b').textContent = buy ? '交換:' : '獲得:';
       $('#tp-val-a').textContent = v > 0 ? U.fmt(v) : '-';
-      $('#tp-val-b').textContent = v > 0 ? U.fmt(v * C.tokenPrice) : '-';
+      // (changing back: Dtrade's exchange fee comes off what it brings)
+      var got = buy ? v * C.tokenPrice : v * C.tokenPrice - C.casino.exchangeFee;
+      $('#tp-val-b').textContent = v > 0 ? (got > 0 ? U.fmt(got) : '0') : '-';
       var p = this.toSlider(v);
       $('#tp-fill').style.width = (p * 100) + '%';
       $('#tp-thumb').style.left = 'calc((100% - 52px) * ' + p.toFixed(4) + ')';
@@ -203,10 +205,10 @@
       $('#tp-plus').disabled = v >= m;
       var act = $('#tp-action');
       act.textContent = buy ? '入手' : '交換';
-      act.disabled = v <= 0 || this.busy;
+      act.disabled = v <= 0 || this.busy || (!buy && got <= 0);
       $('#tp-note').textContent = buy
         ? 'スピントークン上限は毎日00:00 UTCに更新されます'
-        : '1スピントークン = ' + C.tokenPrice + '$ で交換されます';
+        : '1スピントークン = ' + C.tokenPrice + '$・交換手数料 $' + U.fmt(C.casino.exchangeFee) + '（Dtrade）';
       this.renderDaily();
     },
     commit: function () {

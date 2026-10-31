@@ -802,6 +802,7 @@
       return (last.mine ? '送金しました: ' : '届きました: ') + U.fmt(last.amount) + ' ' + (K.CUR[last.currency] || K.CUR.tokens).name;
     }
     if (last.kind === 'gift') return (last.mine ? 'プレゼントしました: ' : 'プレゼントが届きました: ') + carName(last.text);
+    if (last.kind === 'bill') return 'カジノスロット使用料のご請求: $' + U.fmt(last.amount);
     if (last.kind === 'present') return BR.presents.preview(last);
     if (last.kind === 'car_offer' || last.kind === 'car_sold') return BR.carsale.preview(last);
     if (last.kind === 'item') return (last.mine ? '譲りました: ' : '届きました: ') + itemName(last.text) + ' ×' + last.amount;
@@ -1034,6 +1035,23 @@
       fail(err);
     });
   }
+  // TWO STATE公式's monthly bill for the slots: paid with the card's tap (taken from the $ once its days are over)
+  function payBill(m) {
+    if (!m.pending || m.claimed || claiming[m.id]) return;
+    claiming[m.id] = true;
+    refreshMsg(m.id);
+    api.payBill(m.id).then(function (r) {
+      delete claiming[m.id];
+      if (r.me) { BR.social.setMe(r.me); BR.app.serverBalance(r.me); }
+      patchMsg(m.id, { claimed: true });
+      sfx('register');
+      toast('カジノスロット使用料 $' + U.fmt(m.amount) + ' を支払いました', 2800);
+    }, function (err) {
+      delete claiming[m.id];
+      refreshMsg(m.id);
+      fail(err);
+    });
+  }
   // the card of money, a car or an item (since DEV9 it waits for the tap: m.pending)
   function canClaim(m, mine) { return !!m.pending && !mine && !m.claimed && !K.receiptExpired(m); }
   function cardNode(m, mine, cls) {
@@ -1141,6 +1159,16 @@
       card.appendChild(el('div', 'xfer-label', mine ? '送金しました' : '送金が届きました'));
       card.appendChild(K.amountEl(m.amount, m.currency, 'xfer-amount'));
       claimState(card, m, mine, '');
+      node.appendChild(card);
+    } else if (m.kind === 'bill') {
+      node = cardNode(m, mine, 'bill');
+      var payable = canClaim(m, mine);
+      card = el(payable ? 'button' : 'div', 'xfer-card bill-card');
+      if (payable) { card.type = 'button'; card.addEventListener('click', function () { payBill(m); }); }
+      card.appendChild(el('div', 'xfer-label', 'カジノスロット使用料のご請求'));
+      card.appendChild(K.amountEl(m.amount, 'dollars', 'xfer-amount'));
+      card.appendChild(el('div', 'bill-text', m.text));
+      card.appendChild(el('div', 'pr-state', m.claimed ? '支払い済み' : claiming[m.id] ? '支払っています…' : 'タップして支払う'));
       node.appendChild(card);
     } else if (m.kind === 'item') {
       node = cardNode(m, mine, 'gift item');
@@ -1834,6 +1862,9 @@
       sfx('money');
       toast(name + 'さんから ' + U.fmt(m.amount) + ' ' + (K.CUR[m.currency] || K.CUR.tokens).name + ' が届きました！' + (m.pending ? 'タップして受け取ろう' : ''), 3400, open);
       if (BR.juice) BR.juice.reward('#toast', 2);
+    } else if (m.kind === 'bill') {
+      sfx('message');
+      toast(name + 'からカジノスロット使用料 $' + U.fmt(m.amount) + ' のご請求が届きました。タップして確認', 4200, open);
     } else if (m.kind === 'gift') {
       sfx('purchase');
       toast(name + 'さんから ' + carName(m.text) + ' のプレゼントが届きました！' + (m.pending ? 'タップして受け取ろう' : 'ガレージで見られます'), 4200, open);

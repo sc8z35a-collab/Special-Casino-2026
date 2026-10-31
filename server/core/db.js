@@ -1265,6 +1265,25 @@ MIGRATIONS.push([
   'ALTER TABLE stock_orders ADD COLUMN impact REAL NOT NULL DEFAULT 0'
 ]);
 
+// the casino's monthly charge (server/core/slotbill.js): the month a player last spun (Japan time, 'YYYY-MM': set
+// in the spin's own row write), and each month's bill from TWO STATE公式 (paid, or taken after its days)
+MIGRATIONS.push([
+  "ALTER TABLE users ADD COLUMN slot_month TEXT NOT NULL DEFAULT ''",
+  `CREATE TABLE slot_bills (
+     id         INTEGER PRIMARY KEY,
+     user_id    INTEGER NOT NULL,
+     month      TEXT    NOT NULL,
+     amount     INTEGER NOT NULL,
+     message_id INTEGER NOT NULL DEFAULT 0,
+     created_at INTEGER NOT NULL,
+     due_at     INTEGER NOT NULL,
+     paid_at    INTEGER NOT NULL DEFAULT 0,
+     forced     INTEGER NOT NULL DEFAULT 0,
+     UNIQUE (user_id, month)
+   )`,
+  'CREATE INDEX slot_bills_due ON slot_bills(paid_at, due_at)'
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
@@ -1276,7 +1295,7 @@ export const TABLES = ['users', 'sessions', 'game_login_locks', 'chat_filter_str
   'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'sec_identity', 'oauth_identities',
   'line_feed_targets', 'line_feed_jobs', 'line_feed_deliveries', 'line_feed_rewards', 'line_feed_claims',
   'stock_state', 'stock_candles', 'stock_holdings', 'stock_accounts', 'stock_orders', 'medals',
-  'corp_state', 'corp_days', 'corp_anchor', 'corp_periods', 'corp_titles', 'corp_news', 'corp_flows', 'meta'];
+  'corp_state', 'corp_days', 'corp_anchor', 'corp_periods', 'corp_titles', 'corp_news', 'corp_flows', 'slot_bills', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

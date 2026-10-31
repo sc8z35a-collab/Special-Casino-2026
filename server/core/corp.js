@@ -21,6 +21,7 @@ const KEEP_DAYS = 800;          // a company's days kept (its months, quarters a
 const KEEP_FLOWS = 60;          // the players' money by the day
 const KEEP_ANCHORS = 800;    // (the dividends a share: a holding not looked at for long is paid by them)
 const PUBLIC_NEWS = 4;
+const FLUSH_MS = 5 * 60000;     // the casino's money kept in memory at most this long
 
 export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, history = 2, opsIds = () => [], live = null, onDay = () => {} }) {
   const key = keyFrom(secret, 'corp'), ch = model.chance(key);
@@ -101,6 +102,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   const closesAt = () => (get() ? (get().day + 2) * DAY : Infinity);
   function close() {
     let d = 0;
+    flush();
     const out = change((w) => {
       d = w.day + 1;
       const row = q('SELECT data FROM corp_flows WHERE day = ?').get(d);
@@ -131,6 +133,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   /* ------------------------------------------------------ the players' money --- */
   // the day's row of what the players spent where ({ company: { kind: $ or { item: [count, $] } }, job: $ })
   function bump(fn) {
+    flush();
     const day = Math.floor(clock() / 86400000);
     const row = q('SELECT data FROM corp_flows WHERE day = ?').get(day);
     const data = row ? JSON.parse(row.data) : {};
@@ -146,6 +149,35 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       c[kind] = (c[kind] || 0) + amount;
     });
   }
+  // Money that comes with every spin (the casino's: Dtrade's), kept in memory once the spin is saved and written
+  // into its day's row with the next of the above, or every few minutes, and always before the day closes: a spin
+  // writes no row of its own. (What a restart loses is at most those minutes of it, never a player's money.)
+  const pending = new Map();   // day -> { company: { kind: $ } }
+  let pendingSince = 0;
+  function tally(company, kind, amount) {
+    if (!(amount > 0)) return;
+    const day = Math.floor(clock() / 86400000);
+    const data = pending.get(day) || (pending.set(day, {}), pending.get(day));
+    const c = data[company] || (data[company] = {});
+    c[kind] = (c[kind] || 0) + amount;
+    if (!pendingSince) pendingSince = clock();
+    else if (clock() - pendingSince >= FLUSH_MS) tx(flush);
+  }
+  function flush() {
+    if (!pending.size) return;
+    const days = [...pending.entries()];
+    pending.clear();
+    pendingSince = 0;
+    for (const [day, add] of days) {
+      const row = q('SELECT data FROM corp_flows WHERE day = ?').get(day);
+      const data = row ? JSON.parse(row.data) : {};
+      for (const [company, kinds] of Object.entries(add)) {
+        const c = data[company] || (data[company] = {});
+        for (const [k, v] of Object.entries(kinds)) c[k] = (c[k] || 0) + v;
+      }
+      q('INSERT INTO corp_flows (day, data) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET data = excluded.data').run(day, JSON.stringify(data));
+    }
+  }
   function sold(company, kind, id, count, paid) {
     if (!(count > 0)) return;
     bump((data) => {
@@ -154,6 +186,9 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       k[id] = [was[0] + count, was[1] + paid];
     });
   }
+  // MAGITA's surcharge on each car while it struggles (the Car Owner price: server/core/api.js), { carId: $ }
+  const surcharges = () => { const w = get(); return w ? model.surcharges(w) : {}; };
+  const surcharge = (id) => surcharges()[id] || 0;
   // a listed company's shares traded by a player at second `sec` (new shares or its own bought back), and the
   // fee, Dtrade's
   function traded(id, side, shares, price, fee, sec) {
@@ -238,6 +273,9 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       if (x) { t.year.npc += x.npc; t.year.players += x.players; t.year.sales += x.sales; if (i === 0) t.month = { ...x }; }
       return t;
     }, { month: null, year: { npc: 0, players: 0, sales: 0 } });
+    // (MAGITA's research cuts what its products cost it; its surcharge, while it struggles, is on the 仕入れ価格 and
+    // the price both)
+    const w = get(), lab = w && w.co.magita && w.co.magita.lab ? w.co.magita.lab.mult : 1, extra = surcharges();
     for (const kind of ['cars', 'items']) {
       const list = kind === 'cars' ? RULES.cars : RULES.shop;
       for (const item of list) {
@@ -248,11 +286,12 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
         }
         const seller = kind === 'cars' ? 'carowner' : 'jinx';
         if (id !== seller && id !== pr.maker) continue;
-        const own = pr.maker === seller;
+        const own = pr.maker === seller, add = extra[item.id] || 0;
+        const cost = pr.maker === 'magita' ? Math.round(pr.cost * lab) : pr.cost, buy = pr.buy + add;
         out.push({
-          kind, id: item.id, name: item.name, price: item.price, ended: !!item.ended, maker: pr.maker, seller, cost: pr.cost,
-          buy: own ? null : pr.buy, excl: own ? null : (pr.excl || 0), sellerNet: item.price - (own ? pr.cost : pr.buy + (pr.excl || 0)),
-          makerNet: own ? null : pr.buy + (pr.excl || 0) - pr.cost, selling: CORP.products.sell[kind], npc: pr.npc, ...tally(item.id)
+          kind, id: item.id, name: item.name, price: item.price + add, ended: !!item.ended, maker: pr.maker, seller, cost, baseCost: pr.cost, surcharge: add,
+          buy: own ? null : buy, excl: own ? null : (pr.excl || 0), sellerNet: item.price + add - (own ? cost : buy + (pr.excl || 0)),
+          makerNet: own ? null : buy + (pr.excl || 0) - cost, selling: CORP.products.sell[kind], npc: pr.npc, ...tally(item.id)
         });
       }
     }
@@ -292,6 +331,8 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       archive: studio ? rows('SELECT data FROM corp_titles WHERE company = ?', id).filter((t) => t.ended).sort((a, b) => b.day - a.day).slice(0, 40) : [],
       live: studio ? (s.live || []).map((l) => ({ name: l.name, genre: l.genre, rate: Math.round(l.rate), until: l.until, next: l.next })) : [],
       catalog: studio ? Math.round(s.catalog) : 0,
+      lab: s.lab ? { mult: s.lab.mult, speed: s.lab.speed, list: s.lab.list.map((r) => ({ ...r, ...CORP.magita.research.find((x) => x.id === r.id) })) } : null,
+      surcharge: id === 'magita' ? (s.surcharge || 0) : undefined,
       news: q('SELECT at, kind, text, public FROM corp_news WHERE company = ? AND at <= ? ORDER BY at DESC, id DESC LIMIT 100').all(id, Math.floor(now / 1000)),
       ties: tiesOf(w, id),
       flows: q('SELECT day, data FROM corp_flows WHERE day >= ? ORDER BY day').all(Math.floor(now / 86400000) - 30).map((r) => ({ day: r.day, spent: spentAt(JSON.parse(r.data), id) }))
@@ -321,10 +362,11 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   // the housekeeping: old days, anchors and the players' money by the day out
   function housekeep(now = clock()) {
     const day = Math.floor(now / 86400000);
+    flush();
     q('DELETE FROM corp_days WHERE day < ?').run(day - KEEP_DAYS);
     q('DELETE FROM corp_anchor WHERE day < ?').run(day - KEEP_ANCHORS);
     q('DELETE FROM corp_flows WHERE day < ?').run(day - KEEP_FLOWS);
   }
 
-  return { ensure, booted, closesAt, close, anchor, dps, flow, sold, traded, view, routes, housekeep, world: get, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8 };
+  return { ensure, booted, closesAt, close, anchor, dps, flow, tally, flush, sold, traded, surcharge, surcharges, view, routes, housekeep, world: get, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8 };
 }

@@ -9,6 +9,8 @@
     n = Math.floor(Math.max(0, n));
     return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   };
+  // the same with a minus below 0 (the $ after TWO STATE公式 took an unpaid slot charge, js/game/config.js casino)
+  util.fmtSigned = function (n) { return n < 0 ? '−' + util.fmt(-n) : util.fmt(n); };
   // multiplier text: 1.5 -> "1.5", 10 -> "10"
   util.fmtMult = function (m) {
     return (Math.round(m * 10) / 10).toString();

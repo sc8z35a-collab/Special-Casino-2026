@@ -19,7 +19,7 @@ var OpsCorp = (function () {
   };
   var TABS = [['top', 'トップ'], ['fin', '決算'], ['products', '商品'], ['biz', '事業'], ['people', '人と予算'], ['stock', '株式・財務'], ['ties', '友好度'], ['news', 'ニュース']];
   var NEWS = { results: '決算', guidance: '業績予想', revise: '予想修正', dividend: '配当', release: '発売', hit: 'ヒット', flop: '不振', start: '開発開始',
-    delay: '発売延期', cancel: '開発中止', update: '大型更新', week: '週間', hire: '採用', loan: '借入', support: '開発援助', rebate: '販売奨励金', tie: '友好度' };
+    delay: '発売延期', cancel: '開発中止', update: '大型更新', week: '週間', hire: '採用', loan: '借入', support: '開発援助', rebate: '販売奨励金', tie: '友好度', lab: '研究開発', surcharge: '値上げ' };
   var st = { view: null, request: null, toast: null, at: '', tab: 'top', mode: 'q', sheet: 'pl', metric: 'sales', all: null, sites: {}, gen: 0 };
 
   /* ------------------------------------------------------------------ small things --- */
@@ -466,6 +466,7 @@ var OpsCorp = (function () {
       body.appendChild(ps);
     }
     if (p.model === 'studio') studioPages(body, r, p);
+    if (r.lab) labPanel(body, r);
     if (p.model === 'bank') {
       var b = r.state.bal, pb = panel('銀行の勘定', '貸出・預金・有価証券');
       var tiles = el('div', 'corp-tiles');
@@ -482,6 +483,21 @@ var OpsCorp = (function () {
       ['その他の経費', money(bud.other)], ['設備投資', bud.capex ? money(bud.capex) : '—']
     ]));
     body.appendChild(pg);
+  }
+  // MAGITA's research (A1, T1, MOL1, RIMU TAG) and its surcharge while it struggles
+  function labPanel(body, r) {
+    var lab = r.lab, today = Math.floor((r.now || Date.now()) / 86400000);
+    var pl = panel('研究開発プロジェクト', '製造原価 ×' + lab.mult.toFixed(3) + (lab.speed < 1 ? '・研究期間 ×' + lab.speed.toFixed(2) : ''));
+    pl.appendChild(table([['研究'], ['開始'], ['完了（予定）'], ['状態'], ['効果']], lab.list.map(function (x) {
+      var state = x.done ? (x.ok ? '成功' : '失敗') : '研究中 ' + Math.max(0, Math.min(99, Math.round((today - x.start) / Math.max(1, x.due - x.start) * 100))) + '%';
+      var effect = x.cut ? '原価 −' + Math.round(x.cut * 100) + '%' : x.speed ? 'ほかの研究期間 −' + Math.round(x.speed * 100) + '%' : '';
+      if (x.chance < 1) effect += '（成功率' + Math.round(x.chance * 100) + '%）';
+      return [x.name, dayLabel(x.start), dayLabel(x.done || x.due), state, effect];
+    })));
+    pl.appendChild(el('p', 'muted corp-note', r.surcharge
+      ? '経営悪化のため、' + dayLabel(r.surcharge) + 'からオンヴォーロ以外の全車種の仕入れ価格に手数料$3,000,000を上乗せ中（カーオーナーの販売価格も同額上がります）。四半期の営業利益が計画の90%に戻ると終了します。'
+      : '四半期の営業利益が計画の50%を下回るか赤字になると、オンヴォーロ以外の全車種の仕入れ価格に手数料$3,000,000を上乗せします（カーオーナーの販売価格も同額上がります）。'));
+    body.appendChild(pl);
   }
   function studioPages(body, r, p) {
     var lineName = function (id) { var l = (p.lines || []).filter(function (x) { return x.id === id; })[0]; return l ? l.name + (l.scale ? '（' + l.scale + '）' : '') : id; };

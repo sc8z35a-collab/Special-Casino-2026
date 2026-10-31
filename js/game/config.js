@@ -32,6 +32,11 @@
     // Smoker公式 sends everyone then (not the プレイヤーアーカイブ) `dollars` $, once
     milestones: [{ players: 10, dollars: 100000 }, { players: 20, dollars: 200000 }, { players: 50, dollars: 500000 }],
     tokenPrice: 10,          // $ per spin token
+    // The slots are Dtrade's (js/game/corp.js): a spin that bets `bigBet` tokens or more and wins pays Dtrade
+    // `winFee` of its win (rounded down, in tokens); changing tokens back to $ costs `exchangeFee` $ each time;
+    // and every month a player who spun in it is charged `monthly.amount` $ for the slots by TWO STATE公式, to be
+    // paid within `monthly.days` days (after that it is taken, even if that leaves the $ below 0).
+    casino: { bigBet: 2000, winFee: 0.06, exchangeFee: 40000, monthly: { amount: 1000000, days: 5 } },
     dailyLimit: 10000000,    // spin tokens that can be bought per UTC day
     dailyFree: 1000,         // free tokens claimable once per UTC day
     start: { tokens: 0, dollars: 5008159, coins: 74 },

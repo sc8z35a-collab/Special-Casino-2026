@@ -72,6 +72,8 @@ export function createChatRoutes({ q, tx, live, limit, getUser, dmChannel, isBlo
         rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
         return { message: official.fromPlayer(u, text) };
       }
+      // TWO STATE公式 (the slots' bills) only sends
+      if (getUser(to)?.npc === 'twostate') throw new ApiError(400, 'send_only', 'TWO STATE公式は送信専用です（お問い合わせはIce Smoker公式へ）');
       if (peter.is(to)) {
         rate(limit.dm, u.id, '連続して送信できません。少し待ってください');
         return peter.chat(u, text);
