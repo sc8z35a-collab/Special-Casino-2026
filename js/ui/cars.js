@@ -285,12 +285,6 @@
     ex.addEventListener('click', function () { sfx('click'); expand(false); });
     places.appendChild(ex);
     bar.appendChild(places);
-    // the garage in 3D: the first car that can be seen in it parked inside (none: the empty garage)
-    var in3d = garage.cars.filter(function (c) { return !c.rent && (model(c.model) || {}).model; })[0];
-    var g3 = el('button', 'mini-btn gold garage-3d-btn', 'ガレージ3D');
-    g3.type = 'button';
-    g3.addEventListener('click', function () { sfx('click'); open3d(in3d || null); });
-    bar.appendChild(g3);
     var earned = garage.cars.reduce(function (n, c) { return n + (c.earned || 0); }, 0);
     var rented = garage.cars.filter(function (c) { return c.rent && !c.rent.paused; }).length;
     var rent = el('div', 'garage-rent');
@@ -333,7 +327,6 @@
       card.appendChild(el('div', 'garage-status'));
       var row = el('div', 'garage-acts');
       var held = !!c.rent || !!c.offer;
-      if (m.model) row.appendChild(button('', '3Dで見る', !!c.rent, function () { open3d(c); }));
       row.appendChild(c.rent
         ? button('', c.rent.until ? '停止予約済み' : '貸し出しを止める', !!c.rent.until, function () { stopRent(c); })
         : button('', '貸し出す', !!c.offer || c.waiting, function () { startRent(c); }));
@@ -410,7 +403,7 @@
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode(m.name + ' を貸し出しますか？'));
       p.appendChild(el('small', 'confirm-sub', R.hours + '時間ごとにお客さんが1〜5人来て、1人 ' + money(lo) + '〜' + money(lo + R.spread) + '（まれに ' + money(R.vip.pay) + '）払ってくれます。' +
-        '少なくとも' + R.hours + '時間は売る・あげる・3Dで見ることができません。'));
+        '少なくとも' + R.hours + '時間は売る・あげることができません。'));
     }, '貸し出す').then(function (ok) {
       if (!ok) return;
       busy = true;

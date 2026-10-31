@@ -311,7 +311,6 @@
     init: function () {
       tabs($('#screen-rules'), function (t) {
         $('#pane-combos').classList.toggle('active', t === 'combos');
-        $('#pane-rules').classList.toggle('active', t === 'rules');
       });
     },
     open: function () {
@@ -342,21 +341,6 @@
         grid.appendChild(card);
       });
       $('#pane-combos').appendChild(grid);
-      // what 友達と稼ぐ gives, at the end of the rules
-      if (BR.hub && BR.hub.effects) {
-        var li = document.createElement('li');
-        li.className = 'rule-hub';
-        var ic = document.createElement('i');
-        ic.className = 'ic ic-info';
-        var text = document.createElement('span');
-        var head = document.createElement('b');
-        head.textContent = '友達と稼ぐ（プレイ中2人以上）';
-        text.appendChild(head);
-        text.appendChild(document.createTextNode('：' + BR.hub.effects().map(function (e) { return e.title; }).join('・')));
-        li.appendChild(ic);
-        li.appendChild(text);
-        $('#pane-rules .rule-list').appendChild(li);
-      }
     }
   };
 

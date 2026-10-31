@@ -35,7 +35,6 @@
 
   function init() {
     $('#start-image').src = BR.START_ART;
-    $('#start-backdrop').style.backgroundImage = 'url("' + BR.START_ART + '")';
     var button = $('#start-go');
     button.addEventListener('pointerdown', function () { BR.sfx.unlock(); });
     button.addEventListener('click', function () {

@@ -2,7 +2,7 @@
    stage), the offer icon on the slot screen and the operator's tab (design px). */
 
 /* ------------------------------------------------------------ the form (CSS px) --- */
-.fb-card { gap: 10px; }
+.fb-card { gap: 10px; background: #1f1416 url('../img/bg/feedback.webp') center / cover no-repeat; }
 .fb-card .ov-title { padding: 0 34px; }
 .fb-lead { margin-top: -2px; }
 .fb-rates { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 4px; text-align: left; }

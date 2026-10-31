@@ -4,6 +4,7 @@
   'use strict';
   var T, g, library, host = null, mode = '', serial = 0, raf = 0;
   var cars = {}, used = 0, CACHE = 3;
+  var SHOW_DISTANCE = 4.8;   // Car Owner opens this close (the garage previews: about 7.6)
   function supported() {
     if (!(BR.api && BR.api.online)) return false;
     try {
@@ -40,7 +41,7 @@
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
     controls.autoRotate = false;
-    controls.minDistance = 3.8; controls.maxDistance = 9;
+    controls.minDistance = 3.2; controls.maxDistance = 9;
     controls.minPolarAngle = Math.PI * .12; controls.maxPolarAngle = Math.PI * .48;
     controls.minAzimuthAngle = -Infinity; controls.maxAzimuthAngle = Infinity;
     g = { canvas: canvas, renderer: renderer, camera: camera, controls: controls,
@@ -129,7 +130,14 @@
       // fixing the garage camera. Every car opens from the same angle.
       var c = g.controls;
       c.enabled = true; c.enableDamping = false; c.update();
-      c.target.set(0, .75, 0); g.camera.position.set(4.9, 2.5, 5.5);
+      if (mode === 'show') {
+        // Car Owner: close up, in front of the car (the models face -x before the holder's turn)
+        var turn = car ? car.rotation.y : 0;
+        c.target.set(0, .5, 0);
+        g.camera.position.set(-Math.cos(turn) * SHOW_DISTANCE, 1.25, Math.sin(turn) * SHOW_DISTANCE);
+      } else {
+        c.target.set(0, .75, 0); g.camera.position.set(4.9, 2.5, 5.5);
+      }
       c.update(); c.enableDamping = true;
       c.enabled = mode === 'show'; c.enableRotate = mode === 'show'; c.enableZoom = mode === 'show';
       if (g.canvas.parentNode !== el) el.appendChild(g.canvas);

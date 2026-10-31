@@ -413,7 +413,7 @@ const { chromium } = require('playwright');
       assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       await shot(p, 'phone-desktop'); await phone.close();
     });
-    await check('game rarity artwork is translucent without fading labels; all app icons decode', async () => {
+    await check('game rarity artwork is opaque (darkened, nothing shows through) without fading labels; all app icons decode', async () => {
       const game = await context.newPage(); game.on('pageerror', e => errors.push(e.message));
       await game.goto(s.base + '/');
       await game.waitForFunction(() => window.BR && BR.UI_IMG && document.querySelector('style'));
@@ -435,7 +435,7 @@ const { chromium } = require('playwright');
         return { failures, layers: Array.from(host.children).map(n => ({ art: getComputedStyle(n, '::before').backgroundImage, alpha: getComputedStyle(n, '::before').opacity, label: getComputedStyle(n.firstChild).opacity })) };
       });
       assert.deepEqual(result.failures, []); assert.equal(result.layers.length, 9);
-      result.layers.forEach(l => { assert.ok(l.art.includes('.webp')); assert.equal(l.alpha, '0.84'); assert.equal(l.label, '1'); });
+      result.layers.forEach(l => { assert.ok(l.art.includes('.webp')); assert.equal(l.alpha, '1'); assert.equal(l.label, '1'); });
       await shot(game, 'quest-rarities'); await game.close();
     });
     await check('no uncaught browser errors', async () => assert.deepEqual(errors, []));

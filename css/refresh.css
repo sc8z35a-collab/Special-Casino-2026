@@ -43,3 +43,76 @@
 .maint-actions { display: flex; gap: 22px; }
 .maint-actions .act-btn { width: 300px; height: 72px; margin: 0; }
 .maint-actions #maint-exit { background: #b83d43; color: white; }
+
+/* The slot screen's buttons: the exit and 演出 side by side at the top left, the profile and VIP on the top
+   line, the chips where they were, and every round button in one column on the right (close together; it
+   scrolls for the ones below). */
+#screen-slot > .back-btn { left: 120px; top: 10px; }
+#screen-slot > .fx-btn { left: 232px; top: 22px; }
+#screen-slot > .me-card { left: 324px; max-width: 470px; }
+#screen-slot .me-vip-button { left: 812px; top: 14px; }
+/* VIP next to my card (in the page from the start; it used to come with the profile files) */
+.me-vip-button {
+  position: absolute;
+  left: 581px;
+  top: 15px;
+  z-index: 6;
+  width: 140px;
+  height: 79px;     /* the picture's own 16:9 */
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .5));
+  transition: transform .08s ease, filter .15s ease;
+}
+.me-vip-button:active {
+  transform: scale(.92);
+}
+.me-vip-crown {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+#screen-slot.watching .me-vip-button {
+  display: none;
+}
+.hud-col { position: absolute; right: 186px; top: 104px; bottom: 262px; width: 128px; padding: 14px 8px 14px 12px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  overflow-x: hidden; overflow-y: auto; scrollbar-width: none; overscroll-behavior: contain; -webkit-mask: linear-gradient(transparent, #000 14px, #000 calc(100% - 22px), transparent); mask: linear-gradient(transparent, #000 14px, #000 calc(100% - 22px), transparent); }
+.hud-col::-webkit-scrollbar { display: none; }
+.hud-col > .hud-circle, .hud-col > .pill-rules { position: relative; left: auto; right: auto; top: auto; flex: none; width: 92px; height: 92px; }
+.hud-col .hud-badge { right: -4px; top: -4px; }
+
+/* Text over the per-screen pictures (img/bg): everything that carries text sits on an opaque, dark backing (no
+   see-through), so the pictures show around it and never behind the words. */
+:root { --solid: #0c0609; --solid-2: #170c12; --solid-line: rgba(233, 196, 106, .4); }
+.wallet { top: 22px; height: 58px; padding: 0 20px; border-radius: 29px; background: var(--solid); box-shadow: inset 0 0 0 1.5px var(--solid-line), 0 4px 12px rgba(0, 0, 0, .45); }
+.screen > .back-btn:not(.fx-btn) { top: 20px; height: 62px; padding: 0 26px 0 16px; border-radius: 31px; background: var(--solid); box-shadow: inset 0 0 0 1.5px var(--solid-line), 0 4px 12px rgba(0, 0, 0, .45); }
+.screen > .back-jp { left: 164px; }
+#screen-slot > .back-btn { padding: 0; background: none; box-shadow: none; }
+.tabs { background: var(--solid-2); box-shadow: inset 0 0 0 1.6px var(--solid-line); }
+.tabs .tab:not(.active) { background: var(--solid-2); }
+.board-pane, .rules-pane, .panel, .daily-bar, .sp-body, .vp-body { background: var(--solid); }
+.vp-head, .sp-head { background: linear-gradient(90deg, #3d2a06, var(--solid-2) 62%); }
+.board-pane.tree-pane, .board-pane.auction-pane { background: none; }
+.tree-tabs { right: auto; }
+.rules-pane.active, .sp-body, .vp-body { border-radius: 4px; }
+.sp-body, .vp-body { padding: 14px 18px; }
+.vp-trial { background: linear-gradient(120deg, #1d3448, #31245a 40%, #4a1c3c 75%, #4a3a18); }
+.pay-card, .job-card, .tr-card, .au-market, .au-lot, .au-mid, .au-side, .sp-notes, .sp-order { background: var(--solid-2); }
+.tp-input { background: #2a2433; }
+.tp-input:active { background: #3a3346; }
+.sub-seg { background: var(--solid); }
+/* the quests: the tier pictures stay, darkened and opaque */
+.q-row { background-color: var(--solid-2); }
+.q-row::before { opacity: 1; background-image: linear-gradient(90deg, rgba(8, 5, 12, .62), rgba(8, 5, 12, .74) 40%, rgba(8, 5, 12, .66)), var(--q-art, none); }
+.q-hub { background: linear-gradient(180deg, #46093a, #200419); }
+/* pictures that are a card's own background: the words get a dark plate */
+.news-scroll { margin: 0 6px 6px; border-radius: 12px; background: var(--solid); }
+.more-soon-card p { padding: 14px 22px; border-radius: 12px; background: var(--solid); }
+.fx-card .fx-toggle { padding: 12px 18px; border-radius: 12px; background: var(--solid); }
+.track { background: #3b3446; box-shadow: inset 0 0 0 1.6px rgba(255, 255, 255, .22); }
+.sp-meters { background: linear-gradient(rgba(12, 6, 9, .82), rgba(12, 6, 9, .82)), url('../img/bg/support-meter.webp') center / cover no-repeat; }
+.fx-card .modal-title { align-self: flex-start; padding: 8px 18px; border-radius: 12px; background: var(--solid); }

@@ -9,6 +9,8 @@
     pulls: { 1: 'img/gacha/pull-1.webp', 3: 'img/gacha/pull-3.webp', 10: 'img/gacha/pull-10.webp' },
     discounts: { 3: 'img/gacha/off-10.webp', 10: 'img/gacha/off-25.webp' },
     odds: 'img/gacha/odds.webp',
+    // リリース記念セール's mark
+    releaseSale: 'img/ui/release-sale.webp',
     // the free tickets (功績's rewards), by the gacha they are for
     tickets: { rare: 'img/gacha/ticket-rare.webp', legendary: 'img/gacha/ticket-legendary.webp', secret: 'img/gacha/ticket-secret.webp' },
     rewards: {

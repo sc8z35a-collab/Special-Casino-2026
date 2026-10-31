@@ -1,8 +1,8 @@
 /* 投資 (js/ui/stocks.js): the whole stage, a chart on the left, the order panel on the right, the orders and the limits below. */
-.stocks-scene { background: #070d17; }
+.stocks-scene { background: #070d17 url('../img/bg/stocks.webp') center / cover no-repeat; }
 .stocks-card { --sk-up: #28c76f; --sk-down: #f0506e; --sk-gold: #f4c95d; --sk-panel: #101a2a; --sk-line: rgba(130, 160, 200, .18); --sk-muted: #8fa1ba;
   position: absolute; inset: 0; width: auto; max-height: none; padding: 12px 26px 14px; border-radius: 0; display: grid; grid-template-rows: 80px minmax(0, 1fr) 168px; gap: 12px;
-  background: radial-gradient(120% 90% at 30% 0%, #15233a 0%, #0a1220 60%, #070d17 100%); box-shadow: none; color: #e8eef7; font-size: 22px; font-variant-numeric: tabular-nums; }
+  background: radial-gradient(120% 90% at 30% 0%, rgba(21, 35, 58, .86) 0%, rgba(10, 18, 32, .88) 60%, rgba(7, 13, 23, .92) 100%); box-shadow: none; color: #e8eef7; font-size: 22px; font-variant-numeric: tabular-nums; }
 .stocks-card button { font: inherit; color: inherit; }
 .stocks-card small { color: var(--sk-muted); font-size: 18px; font-weight: 600; }
 .stocks-card .sk-up { color: var(--sk-up); }

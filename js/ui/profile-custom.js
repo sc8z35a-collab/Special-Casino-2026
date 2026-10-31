@@ -266,29 +266,6 @@
     BR.avatars.openPicker();
   }
 
-  /* ------------------------------------------------------------ home VIP --- */
-  function installHomeVip() {
-    var card = $('me-card');
-    if (!card || $('me-vip-button')) return;
-    var button = node('button', 'me-vip-button');
-    button.id = 'me-vip-button';
-    button.type = 'button';
-    button.hidden = card.hidden;
-    button.setAttribute('aria-label', 'VIP');
-    button.title = 'VIP';
-    // the game's own VIP picture (the one of the VIP card in the menu: .ic-vip)
-    button.appendChild(node('i', 'ic ic-vip me-vip-crown'));
-    button.addEventListener('click', function () {
-      if (BR.game.busy()) { BR.sfx.play('deny'); return; }
-      BR.sfx.play('click');
-      if (BR.vip) BR.vip.open();
-    });
-    card.parentNode.insertBefore(button, card.nextSibling);
-    new MutationObserver(function () {
-      button.hidden = card.hidden;
-    }).observe(card, { attributes: true, attributeFilter: ['hidden'] });
-  }
-
   /* ------------------------------------------------------------ token exchange --- */
   function updateTokenAmount() {
     var combined = $('tp-combined');
@@ -347,7 +324,6 @@
       if (label) label.textContent = '累計獲得スピンコイン';
       stats.querySelectorAll('.pf-stat:not(:first-child)').forEach(function (stat) { stat.hidden = true; });
     }
-    installHomeVip();
     installTokenSlider();
 
     if (BR.push) {

@@ -22,7 +22,7 @@
 <link rel="preload" href="fonts/NotoJP-500.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/NotoJP-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/fonts.css?v=d48bff2880">
-<link rel="stylesheet" href="css/style.css?v=400ce236ad">
+<link rel="stylesheet" href="css/style.css?v=e188988501">
 </head>
 <body>
 <div id="viewport">
@@ -32,7 +32,6 @@
 
     <!-- ===================== START SCREEN ===================== -->
     <section id="screen-start" class="screen active" aria-label="Two state Casino RP">
-      <div class="start-backdrop" id="start-backdrop"></div>
       <div class="start-art">
         <img id="start-image" alt="" draggable="false">
       </div>
@@ -56,6 +55,7 @@
           <span class="me-xp" id="lv-xp"></span>
         </span>
       </button>
+      <button class="me-vip-button" id="me-vip-button" type="button" hidden aria-label="VIP" title="VIP"><i class="ic ic-vip me-vip-crown"></i></button>
       <div class="watch-bar" id="watch-bar" hidden>
         <span class="avatar sm" id="watch-avatar"></span>
         <span class="watch-text"><b class="uname" id="watch-name"></b><span>さんのホームで観戦中</span></span>
@@ -93,11 +93,15 @@
 
       <button id="btn-get" class="pill pill-left pill-get" data-sfx="click" aria-label="トークンを入手"></button>
 
-      <button id="btn-radio" class="hud-circle hud-radio pic" aria-label="メニュー（フレンド・メッセージ・Car Owner・Shop・バイト）"><i class="ic ic-menu"></i><b class="hud-badge" id="radio-badge" hidden></b></button>
-      <button id="btn-quest" class="hud-circle hud-quest pic" aria-label="クエスト"><i class="ic ic-quest"></i><b class="hud-badge" id="quest-badge" hidden></b><span class="quest-bonus-badges" id="quest-bonus-badges" hidden></span></button>
-      <button id="btn-tree" class="hud-circle hud-tree pic" aria-label="金の生る木"><i class="ic ic-tree"></i><b class="hud-badge" id="tree-badge" hidden></b></button>
-      <button id="btn-gacha" class="hud-circle hud-gacha pic" aria-label="ガチャ"><i class="ic ic-gacha"></i></button>
-      <button id="btn-medals" class="hud-circle hud-feat pic" aria-label="功績"><i class="ic ic-feat"></i><b class="hud-badge" id="medal-badge" hidden></b></button>
+      <!-- the round buttons, one column on the right that scrolls for more -->
+      <div class="hud-col scroller" id="hud-col">
+        <button id="btn-radio" class="hud-circle hud-radio pic" aria-label="メニュー（フレンド・メッセージ・Car Owner・Shop・バイト）"><i class="ic ic-menu"></i><b class="hud-badge" id="radio-badge" hidden></b></button>
+        <button id="btn-quest" class="hud-circle hud-quest pic" aria-label="クエスト"><i class="ic ic-quest"></i><b class="hud-badge" id="quest-badge" hidden></b><span class="quest-bonus-badges" id="quest-bonus-badges" hidden></span></button>
+        <button id="btn-tree" class="hud-circle hud-tree pic" aria-label="金の生る木"><i class="ic ic-tree"></i><b class="hud-badge" id="tree-badge" hidden></b></button>
+        <button id="btn-gacha" class="hud-circle hud-gacha pic" aria-label="ガチャ"><i class="ic ic-gacha"></i></button>
+        <button id="btn-medals" class="hud-circle hud-feat pic" aria-label="功績"><i class="ic ic-feat"></i><b class="hud-badge" id="medal-badge" hidden></b></button>
+        <button id="btn-rules" class="pill pill-rules" aria-label="インフォメーション" data-sfx="click"></button>
+      </div>
       <!-- the top middle: the update reminder, then フレンド対決 / 協力スロット (js/ui/play.js) -->
       <div class="mode-stack" id="mode-stack">
         <div class="home-note" id="update-note" hidden><span id="update-note-text">新しいバージョンがあります</span><button class="mini-btn gold" id="update-note-go"><span>今すぐアップデート</span></button></div>
@@ -105,7 +109,6 @@
       <div class="quest-note" id="quest-note" hidden aria-live="polite"></div>
       <div id="resource-status" role="status" hidden>読み込み中…</div>
 
-      <button id="btn-rules" class="pill pill-rules" aria-label="インフォメーション・ルール" data-sfx="click"></button>
       <button id="btn-spin" class="spin-btn" aria-label="SPIN">
         <span class="spin-glow"></span>
         <span class="spin-disc"></span>
@@ -162,22 +165,8 @@
       <button class="back-btn back-jp" data-action="back"><i class="ic ic-back"></i><span>戻る</span></button>
       <div class="tabs">
         <button class="tab active" data-tab="combos"><span>組み合わせ</span></button>
-        <button class="tab" data-tab="rules"><span>ルール</span></button>
       </div>
       <div class="rules-pane combos active" id="pane-combos"></div>
-      <div class="rules-pane rules" id="pane-rules">
-        <ul class="rule-list">
-          <li><i class="ic ic-info"></i><span>「SPIN」をタップして開始します。</span></li>
-          <li><i class="ic ic-info"></i><span>スピンごとにベットが引かれます。賞金はベットと、中央ラインにそろったシンボルの種類と数で決まります。</span></li>
-          <li><i class="ic ic-info"></i><span>当たりの組み合わせが複数あれば、報酬は加算されます。</span></li>
-          <li><i class="ic ic-info"></i><span>スピン中に終了すると、ベットは戻りません。</span></li>
-          <li><i class="ic ic-info"></i><span>組み合わせと倍率は「組み合わせ」タブで見られます。</span></li>
-          <li><i class="ic ic-info"></i><span>1日の上限: 10,000,000スピントークン。</span></li>
-          <li><i class="ic ic-info"></i><span>スピンは1秒に1回までです。</span></li>
-          <li><i class="ic ic-info"></i><span><b>プレイの確認</b>：不正やトラブルを防ぐため、運営がプレイ中のゲームの状態（画面の種類・残高・ベット・リールなど）を確認することがあります。映像・音声・カメラ・入力した文字・チャットの内容は取得しません。</span></li>
-          <li class="rule-ban"><i class="ic ic-info"></i><span><b>サブアカウントの禁止</b>：ひとりで2つ目以降のアカウントを作る・使うことは禁止です。違反はアクセス禁止・BANの対象です。</span></li>
-        </ul>
-      </div>
     </section>
 
     <!-- ===================== 金の生る木 (js/ui/tree.js) ===================== -->
@@ -190,10 +179,10 @@
           <div class="tr-glow"></div>
           <div class="tr-coins" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
           <div class="tr-art" id="tr-art"><img class="tr-art-fallback" alt="" draggable="false"></div>
-          <div class="tr-view-tools"><span>ドラッグで360°回転・2本指 / ホイールでズーム</span><button id="tr-zoom-in" type="button" aria-label="木を拡大">＋</button><button id="tr-zoom-out" type="button" aria-label="木を縮小">−</button></div>
-          <div class="tr-name"><span class="tr-super" id="tr-super" hidden>SUPER</span><b class="uname" id="tr-name"></b></div>
+          <div class="tr-view-tools"><button id="tr-zoom-in" type="button" aria-label="木を拡大">＋</button><button id="tr-zoom-out" type="button" aria-label="木を縮小">−</button></div>
+          <span class="tr-super" id="tr-super" hidden>SUPER</span>
           <div class="tr-look">
-            <div class="tr-look-head"><span>見た目</span><b id="tr-look"></b><small id="tr-look-next"></small></div>
+            <div class="tr-look-head"><b id="tr-look"></b><small id="tr-look-next"></small></div>
             <div class="tr-bar"><i id="tr-look-bar"></i></div>
           </div>
         </div>
@@ -203,7 +192,9 @@
               <small class="tr-rate-next" id="tr-rate-next"></small>
               <div class="tr-rate"><small>毎秒</small><i class="ic ic-dollar"></i><b id="tr-rate"></b></div>
             </div>
-            <div class="tr-amounts" id="tr-amounts"></div>
+            <div class="tr-slider">
+              <div class="tr-track" id="tr-track" role="slider" tabindex="0" aria-label="あげる金額"><i class="tr-fill" id="tr-fill"></i><i class="tr-thumb" id="tr-thumb"></i></div>
+            </div>
             <button class="act-btn gold tr-give" id="tr-give" type="button"></button>
           </div>
           <div class="tr-card tr-harvest" id="tr-harvest"></div>
@@ -272,7 +263,7 @@
         <div class="scroller jobs-scroll" id="jobs-scroll"><div class="jobs-list" id="jobs-list"></div></div>
       </div>
 
-      <!-- 詳細: the guide again, feedback, 投資 and Dev News -->
+      <!-- 詳細: the guide again, feedback, 投資, DEV (Dev News, in its own window) … -->
       <div class="board-pane" id="pane-more">
         <div class="scroller more-scroll" id="more-scroll">
           <div class="more-cards">
@@ -283,11 +274,10 @@
             <button class="more-card investment" data-act="stocks" aria-label="投資"><i class="ic more-art ic-investment"></i><b>投資</b></button>
             <button class="more-card" data-act="dev-diary" aria-label="開発者日記"><i class="ic more-art ic-diary"></i><b>開発者日記</b></button>
             <button class="more-card" data-act="gacha" aria-label="ガチャ"><img class="gacha-mark" src="img/gacha/icon.webp" alt="" loading="lazy" draggable="false"><b>ガチャ</b></button>
-            <button class="more-card soon" data-act="studio-credits"><b>スタジオクレジット<small>近日公開</small></b></button>
-            <button class="more-card soon" data-act="terms"><b>規約<small>近日公開</small></b></button>
+            <button class="more-card dev" data-act="dev-news" aria-label="DEV"><img class="dev-mark" src="img/ui/dev-card.webp" alt="" loading="lazy" draggable="false"><b>DEV</b><b class="tab-dot" id="news-card-dot" hidden></b></button>
+            <button class="more-card soon" data-act="studio-credits" aria-label="スタジオクレジット"><img class="soon-mark" src="img/ui/studio-card.webp" alt="" loading="lazy" draggable="false"><b>スタジオクレジット<small>近日公開</small></b></button>
+            <button class="more-card soon" data-act="terms" aria-label="規約"><img class="soon-mark" src="img/ui/terms-card.webp" alt="" loading="lazy" draggable="false"><b>規約<small>近日公開</small></b></button>
           </div>
-          <h3 class="more-title">Dev News</h3>
-          <div class="news-list" id="news-list"></div>
         </div>
       </div>
 
@@ -316,28 +306,24 @@
     <!-- ===================== QUESTS (online) ===================== -->
     <section id="screen-quests" class="screen" aria-label="クエスト">
       <button class="back-btn back-jp" data-action="back"><i class="ic ic-back"></i><span>戻る</span></button>
-      <div class="tabs" id="q-tabs">
-        <button class="tab active" data-tab="5h"><span>5時間</span></button>
-        <button class="tab" data-tab="day"><span>デイリー</span></button>
-        <button class="tab" data-tab="week"><span>週間</span></button>
-        <button class="tab" data-tab="coop"><span>週間協力</span></button>
-        <button class="tab" data-tab="month"><span>月極</span></button>
-        <button class="tab" data-tab="special"><span>特別</span></button>
-        <div class="tabs-info q-lv" id="q-lv"></div>
-      </div>
-      <div class="board-pane active q-pane">
-        <div class="q-head">
-          <i class="q-icon"></i>
-          <div class="q-title"><h2 id="q-title"></h2></div>
-          <button class="act-btn gold q-claim-all" id="q-claim-all" hidden><span>一括受け取り</span><b id="q-claim-n"></b></button>
-          <div class="q-reset"><small>リセットまで</small><b id="q-reset">-</b></div>
+      <div class="q-side">
+        <div class="q-tabs" id="q-tabs">
+          <button class="tab active" data-tab="5h" aria-label="5時間クエスト"><span></span></button>
+          <button class="tab" data-tab="day" aria-label="デイリークエスト"><span></span></button>
+          <button class="tab" data-tab="week" aria-label="週間クエスト"><span></span></button>
+          <button class="tab" data-tab="month" aria-label="月極クエスト"><span></span></button>
+          <button class="tab" data-tab="special" aria-label="特別クエスト"><span></span></button>
+          <button class="tab" data-tab="coop" aria-label="週間協力クエスト"><span></span></button>
         </div>
         <div class="q-ticket-bar" id="q-ticket-bar">
-          <div class="q-ticket-help"><b>リセットチケット</b></div>
-          <button class="act-btn q-ticket-use" type="button" data-reset-period="5h" id="q-ticket-5h" disabled></button>
-          <button class="act-btn q-ticket-use" type="button" data-reset-period="day" id="q-ticket-day" disabled></button>
+          <button class="q-ticket-use" type="button" data-reset-period="5h" id="q-ticket-5h" disabled></button>
+          <button class="q-ticket-use" type="button" data-reset-period="day" id="q-ticket-day" disabled></button>
         </div>
+      </div>
+      <button class="act-btn gold q-claim-all" id="q-claim-all" hidden><span>一括受け取り</span><b id="q-claim-n"></b></button>
+      <div class="board-pane active q-pane">
         <div class="scroller q-scroll" id="q-scroll"><div class="q-list" id="q-list"></div></div>
+        <b class="q-reset" id="q-reset" aria-label="リセットまで">-</b>
       </div>
     </section>
 
@@ -687,6 +673,14 @@
         </footer>
       </div>
     </div>
+    <!-- Dev News (the DEV card in 詳細: js/ui/news.js) -->
+    <div id="news-modal" class="modal" hidden>
+      <div class="modal-card news-card" role="dialog" aria-modal="true" aria-label="Dev News">
+        <button class="modal-x" type="button" data-close aria-label="閉じる"></button>
+        <h2 class="modal-title"><span>Dev News</span></h2>
+        <div class="scroller news-scroll" id="news-scroll"><div class="news-list" id="news-list"></div></div>
+      </div>
+    </div>
     <div id="more-soon" class="modal" hidden>
       <div class="modal-card more-soon-card" role="dialog" aria-modal="true" aria-labelledby="more-soon-title">
         <button class="modal-close" type="button" data-close aria-label="閉じる"></button>
@@ -740,9 +734,8 @@
     <div id="fx-settings" class="modal" hidden>
       <div class="modal-card fx-card" role="dialog" aria-label="演出設定">
         <h2 class="modal-title"><span>演出設定</span></h2>
-        <label class="fx-simple"><span class="fx-name">シンプル演出<small>豪華な演出をまとめてオフ（結果や支払いは変わりません）</small></span><input type="checkbox" id="fx-simple"><i class="fx-switch"></i></label>
-        <label class="fx-simple"><span class="fx-name">軽量演出<small>描画を30fpsに抑え、光の粒と描画解像度を減らす</small></span><input type="checkbox" id="fx-lite"><i class="fx-switch"></i></label>
-        <div class="fx-groups scroller" id="fx-groups"></div>
+        <label class="fx-toggle"><span class="fx-name">軽量</span><input type="checkbox" id="fx-simple"><i class="fx-switch"></i></label>
+        <label class="fx-toggle"><span class="fx-name">極軽量</span><input type="checkbox" id="fx-lite"><i class="fx-switch"></i></label>
       </div>
     </div>
 
@@ -997,14 +990,14 @@
 
 <script src="js/art/icons.js?v=445ac9cc92"></script>
 <script src="js/art/symbol-images.js?v=00bb06f7c7"></script>
-<script src="js/art/ui-images.js?v=28a66c27e7"></script>
+<script src="js/art/ui-images.js?v=0061319db7"></script>
 <script src="js/art/social-images.js?v=cf9db3becb"></script>
 <script src="js/art/ui-svg.js?v=00d5767a31"></script>
-<script src="js/version.js?v=6dc4be25d4"></script>
+<script src="js/version.js?v=f79b0325c3"></script>
 <script src="js/core/util.js?v=1b72818e38"></script>
 <script src="js/core/clock.js?v=2ba2dad169"></script>
 <script src="js/core/effects.js?v=ae47f50aa7"></script>
-<script src="js/game/config.js?v=70ddb8699b"></script>
+<script src="js/game/config.js?v=e12f4c0de3"></script>
 <script src="js/game/sale.js?v=a7bb027684"></script>
 <script src="js/game/quests.js?v=2cd261dad4"></script>
 <script src="js/game/tree.js?v=b3c3b37aa1"></script>
@@ -1030,7 +1023,7 @@
 <script src="js/art/tree-models.js?v=af5558603c"></script>
 <script src="js/render/tree3d.js?v=e943cbf125"></script>
 <script src="js/render/auction3d.js?v=98da92c4b9"></script>
-<script src="js/ui/screens.js?v=9faeb2826f"></script>
+<script src="js/ui/screens.js?v=4c126767c0"></script>
 <script src="js/ui/kit.js?v=c0d7d4fce8"></script>
 <script src="js/core/resources.js?v=64a66a9d03"></script>
 <script src="js/core/three.js?v=8b05356469"></script>
@@ -1038,7 +1031,7 @@
 <script src="js/ui/account.js?v=aec05ccdd5"></script>
 <script src="js/ui/oauth.js?v=32b3664f63"></script>
 <script src="js/ui/avatars.js?v=a413df4068"></script>
-<script src="js/ui/social.js?v=9b37798cdb"></script>
+<script src="js/ui/social.js?v=63850633e7"></script>
 <script src="js/ui/shop.js?v=942e40a50f"></script>
 <script src="js/ui/peter.js?v=8490e6920a"></script>
 <script src="js/ui/johnson.js?v=41cf8554b4"></script>
@@ -1049,12 +1042,12 @@
 <script src="js/ui/safety.js?v=bf50802648"></script>
 <script src="js/net/push.js?v=db481ec07e"></script>
 <script src="js/ui/bonus.js?v=e5c44aaa3f"></script>
-<script src="js/ui/quests.js?v=987e25f9f5"></script>
+<script src="js/ui/quests.js?v=d6d90ef34c"></script>
 <script src="js/ui/jobs.js?v=288b25859e"></script>
-<script src="js/ui/tree.js?v=3ca5107c42"></script>
+<script src="js/ui/tree.js?v=4ad38f1354"></script>
 <script src="js/ui/feats.js?v=22fa5522ed"></script>
-<script src="js/ui/effects.js?v=fc69d1bdc6"></script>
-<script src="js/ui/news.js?v=8753c55b23"></script>
+<script src="js/ui/effects.js?v=42ae651637"></script>
+<script src="js/ui/news.js?v=e57ae254b7"></script>
 <script src="js/ui/line-reward.js?v=ce6671da17"></script>
 <script src="js/net/voice-quality.js?v=aaded19d75"></script>
 <script src="js/net/voice-sdp.js?v=8510b814c1"></script>
@@ -1066,9 +1059,9 @@
 <script src="js/ui/bigwin.js?v=3f148ef51b"></script>
 <script src="js/ui/feedback.js?v=bee305238f"></script>
 <script src="js/ui/launch.js?v=ad9bf2cd89"></script>
-<script src="js/ui/start.js?v=9182b0ef0a"></script>
+<script src="js/ui/start.js?v=d15351aef8"></script>
 <script src="js/ui/banlock.js?v=623437cb62"></script>
 <script src="js/ui/install.js?v=a7f3466890"></script>
-<script src="js/main.js?v=40131f23dd"></script>
+<script src="js/main.js?v=3e42b246d1"></script>
 </body>
 </html>

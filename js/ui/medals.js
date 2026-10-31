@@ -89,7 +89,7 @@
   }
   // the pages side by side, each a little narrower than the shelf: the next one shows at the edge
   function metrics() {
-    var w = ui.view.clientWidth, gap = 28, pw = Math.round(w * PEEK);
+    var w = ui.view.clientWidth, gap = 12, pw = Math.round(w * PEEK);
     return { w: w, pw: pw, step: pw + gap, max: Math.max(0, pages * pw + (pages - 1) * gap - w) };
   }
   function place(animate, offset) {
