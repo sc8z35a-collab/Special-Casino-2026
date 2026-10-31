@@ -12,7 +12,10 @@
   // (RIRU about 0.45–2.2 times its base, Ice Smoker 0.74–1.35 times)
   var COMPANIES = [
     { id: 'riru', name: 'RIRU STUDIO', full: 'RIRU STUDIO株式会社', ticker: 'RIRU', base: 12000, vol: 0.07, dividend: 0.002, band: 0.8 },
-    { id: 'ice', name: 'Ice Smoker', full: 'Ice Smoker株式会社', ticker: 'ICE', base: 30000, vol: 0.025, dividend: 0.004, band: 0.3 }
+    { id: 'ice', name: 'Ice Smoker', full: 'Ice Smoker株式会社', ticker: 'ICE', base: 30000, vol: 0.025, dividend: 0.004, band: 0.3 },
+    // listed with the country of people (js/game/npc.js): the carmaker and the bank, at their books' prices
+    { id: 'magita', name: 'MAGITA', full: '株式会社MAGITA', ticker: 'MGT', base: 18000, vol: 0.03, dividend: 0.003, band: 0.35 },
+    { id: 'tenesice', name: 'テネシス', full: '株式会社テネシス', ticker: 'TNS', base: 60000, vol: 0.015, dividend: 0.003, band: 0.25 }
   ];
   // 1.8% each way (Dtrade's, three times the 0.6% it began at), in hundredths of a percent
   var FEE_BP = 180;
@@ -36,7 +39,8 @@
     return null;
   }
   // the fee on `value` $ of shares, rounded up (exact: value * FEE_BP is a whole number)
-  function fee(value) { return value > 0 ? Math.ceil(value * FEE_BP / 10000) : 0; }
+  // (the fee as it is now: the country's people may lower it, js/game/npc.js knobs, and the server says so)
+  function fee(value) { return value > 0 ? Math.ceil(value * BR.STOCKS.feeBp / 10000) : 0; }
   // what buying costs and selling brings, fee included
   function buyAmount(price, shares) { var v = price * shares; return v + fee(v); }
   function sellAmount(price, shares) { var v = price * shares; return v - fee(v); }
