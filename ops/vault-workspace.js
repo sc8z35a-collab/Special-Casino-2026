@@ -429,7 +429,7 @@ window.createOpsVault = function(ctx) {
     }).catch(fail);
   }
   function moveFolder(d) {
-    ask({ title: '「' + d.name + '」を移動', ok: '移動する', select: { label: '移動先', options: places([d.id]), value: d.parent } }).then(function (to) {
+    ask({ title: '「' + d.name + '」を移動', text: 'この保管庫のフォルダへ移します。', ok: '移動する', select: { label: '移動先のフォルダ', options: places([d.id]), value: d.parent } }).then(function (to) {
       if (to === null || to === d.parent) return null;
       return vreq('POST', '/api/vault/folders/update', { id: d.id, parent: to }).then(function () { toast('移動しました'); return loadVault(); });
     }).catch(fail);
@@ -508,32 +508,17 @@ window.createOpsVault = function(ctx) {
     $('#vault-picked-delete').hidden = !canWrite();
     $('#vault-picked-backup').hidden = !(state.developer && state.vault && state.vault.ticket) || backups;
   }
-  // a file's place as words: 保管庫 / 車 / model.glb
-  function fileWhere(f) { return pathName(f.folder || '') + ' / ' + fileTrail(f.id).map(function (x) { return x.name; }).join(' / '); }
-  // the files something can go into: any file of the vault (not a light copy,
-  // not one being moved nor one inside those), as 'f:<id>'
-  function fileTargets(files) {
-    var skip = {};
-    files.forEach(function (f) { skip[f.id] = true; inFileAll(f.id).forEach(function (x) { skip[x.id] = true; }); });
-    return state.vaultFiles.filter(function (f) { return !f.parent && !skip[f.id] && f.space !== 'backup' && fileTrail(f.id).length < 8; })
-      .map(function (f) { return { value: 'f:' + f.id, label: '📄 ' + fileWhere(f) + ' の中' }; })
-      .sort(function (a, b) { return a.label.localeCompare(b.label, 'ja'); });
-  }
-  // files and folders (the checked ones, or one file) into a folder; files
-  // only, into a file too
+  // files and folders (the checked ones, or one file) into a folder of their vault
   function moveItems(files, dirs) {
     var n = files.length + dirs.length;
     if (!n) return;
     var skip = dirs.map(function (d) { return d.id; });
-    var options = places(skip).concat(dirs.length ? [] : fileTargets(files));
-    ask({ title: fmt(n) + '件を移動', text: dirs.length ? '' : 'フォルダのほか、ほかのファイルの中（📄）にも移せます。', ok: '移動する', select: { label: '移動先', options: options, value: state.vaultIn ? 'f:' + state.vaultIn : state.vaultFolder } }).then(function (to) {
+    // (the folders of this vault only: a shared vault's into its own folders, the personal one's into its own)
+    ask({ title: fmt(n) + '件を移動', text: 'この保管庫のフォルダへ移します。', ok: '移動する', select: { label: '移動先のフォルダ', options: places(skip), value: state.vaultFolder } }).then(function (to) {
       if (to === null) return null;
-      var into = to.indexOf('f:') === 0 ? to.slice(2) : '';
-      var body = { ids: files.map(function (f) { return f.id; }), folders: skip };
-      if (into) body.into = into; else body.folder = to;
-      return vreq('POST', '/api/vault/move', body).then(function (r) {
+      return vreq('POST', '/api/vault/move', { ids: files.map(function (f) { return f.id; }), folders: skip, folder: to }).then(function (r) {
         clearPicks();
-        toast(fmt(r.moved) + '件を' + (into ? '「' + (fileOf(into) || { name: '' }).name + '」の中' : '「' + pathName(to) + '」') + 'へ移動しました');
+        toast(fmt(r.moved) + '件を「' + pathName(to) + '」へ移動しました');
         return loadVault();
       });
     }).catch(fail);
@@ -2253,10 +2238,17 @@ window.createOpsVault = function(ctx) {
       }).catch(fail);
     } else if (act === 'delete') deleteFile(f);
   }
+  // a file's extension ('.glb'; '' when it has none): renaming changes only the part before it
+  function extOf(name) { var m = /\.[^.\s]{1,16}$/.exec(name); return m ? m[0] : ''; }
   function renameFile(f) {
-    ask({ title: '名前を変更', ok: '変更する', input: { label: 'ファイルの名前', value: f.name }, check: named }).then(function (name) {
-      if (name === null || name.trim() === f.name) return null;
-      return vreq('POST', '/api/vault/rename', { id: f.id, name: name.trim() }).then(function () { toast('名前を変更しました'); return loadVault(); });
+    var ext = extOf(f.name), base = f.name.slice(0, f.name.length - ext.length);
+    ask({ title: '名前を変更', ok: '変更する', input: { label: ext ? 'ファイルの名前（拡張子 ' + ext + ' はそのまま）' : 'ファイルの名前', value: base }, check: named }).then(function (name) {
+      if (name === null) return null;
+      name = name.trim();
+      // (an extension typed again is not doubled)
+      if (ext && name.toLowerCase().slice(-ext.length) === ext.toLowerCase()) name = name.slice(0, -ext.length).trim();
+      if (!name || name + ext === f.name) return null;
+      return vreq('POST', '/api/vault/rename', { id: f.id, name: name + ext }).then(function () { toast('名前を変更しました'); return loadVault(); });
     }).catch(fail);
   }
   function deleteFile(f) {
@@ -2416,6 +2408,16 @@ window.createOpsVault = function(ctx) {
     $('#vault-work-panes').addEventListener('click', function (e) {
       var action = e.target.closest('[data-vact]'), pane = e.target.closest('[data-vault-file]');
       if (action && pane) { var f = fileOf(pane.dataset.vaultFile); if (f) fileAct(f, action.dataset.vact); }
+    });
+    // details shown (a file's or a folder's): a tap anywhere on the screen that is not a control puts them away
+    document.addEventListener('click', function (e) {
+      var key = vaultWork && vaultWork.current();
+      if (!key || !/^(details|folder):/.test(key) || !$('#vault-work-panes').offsetParent) return;
+      if (e.defaultPrevented || e.button) return;
+      if (e.target.closest('button, a, input, textarea, select, label, summary, canvas, video, audio, [contenteditable], [role="tab"], #dialog, #vmenu')) return;
+      var picked = window.getSelection ? String(window.getSelection()) : '';
+      if (picked) return;
+      vaultWork.close(key);
     });
 
     $('#vault-memo').addEventListener('click', function () { state.vaultMemo = ''; renderMemo(); });

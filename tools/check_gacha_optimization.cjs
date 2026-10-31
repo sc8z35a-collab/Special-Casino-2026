@@ -60,11 +60,15 @@ const ROOT = path.resolve(__dirname, '..');
 
     const money = () => s.app.db.prepare('SELECT dollars FROM users WHERE id = ?').get(player.me.id).dollars;
     let expected = money();
-    const prices = { rare: [10000000, 27000000, 75000000], legendary: [30000000, 81000000, 225000000], secret: [50000000, 135000000, 375000000] };
+    // (a fresh server is in its first 100 hours: the リリース記念セール puts the secret tier at $10M a pull, the old price struck through)
+    const prices = { rare: [3500000, 9450000, 26250000], legendary: [15000000, 40500000, 112500000], secret: [10000000, 27000000, 75000000] };
     for (const [kind, values] of Object.entries(prices)) {
       await page.locator(`.gc-tier[data-kind="${kind}"]`).click();
       assert.deepEqual((await page.locator('.gc-price').allTextContents()).map((x) => Number(x.replace(/\D/g, ''))), values);
+      assert.equal(await page.locator('.gc-was:not([hidden])').count(), kind === 'secret' ? 3 : 0);
     }
+    assert.deepEqual((await page.locator('.gc-was').allTextContents()).map((x) => Number(x.replace(/\D/g, ''))), [30000000, 81000000, 225000000]);
+    assert.equal(await page.locator('.gc-tier[data-kind="secret"] .gc-tier-sale').count(), 1);
     await page.locator('.gc-pull-button[data-count="3"]').click();
     await page.locator('#confirm').waitFor({ state: 'visible' });
     assert.match(await page.locator('#confirm-text').textContent(), /本当に引きますか？/);

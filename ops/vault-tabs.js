@@ -64,7 +64,8 @@
       open: open, close: close, refresh: function () { select(active); },
       render: function (key) { if (active === key && entries[key] && entries[key].show) entries[key].show(entries[key].pane); },
       reset: function () { select('list'); Object.keys(entries).forEach(remove); draw(); },
-      has: function (key) { return !!entries[key]; }
+      has: function (key) { return !!entries[key]; },
+      current: function () { return active; }
     };
   };
 })();

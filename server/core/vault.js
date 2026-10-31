@@ -188,6 +188,11 @@ const mb = (n) => (!n ? '0MB' : n >= 1073741824 ? `${(n / 1073741824).toFixed(n 
 const some = (names) => names.slice(0, 5).join('、') + (names.length > 5 ? `ほか${names.length - 5}件` : '');
 
 // a file name to show and to save as: no folders, no control characters
+// a file name's extension ('.glb'; '' when it has none): renaming keeps it
+function extOf(name) {
+  const m = /\.[^.\s]{1,16}$/.exec(String(name));
+  return m ? m[0] : '';
+}
 function cleanName(raw) {
   const s = Array.from(String(raw ?? '').split(/[/\\]/).pop().normalize('NFC')
     .replace(CONTROL, '')
@@ -854,8 +859,15 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
   }
   const folderDto = (d) => ({ id: d.id, name: d.name, parent: d.parent, createdAt: d.created_at, space: d.space });
   // A folder's link reaches the folder and every folder below it, as they are
-  // when it is used (a file moved out is out of it; the folder gone, the link is).
+  // when it is used (a file moved in is in it), and whatever was moved out of
+  // it while the link was live (`kept`: file ids, folders as 'd:<id>'), so a
+  // URL that was shared keeps working wherever the things go; the folder gone,
+  // the link is.
   const linkFolder = (l) => (String(l.file_id).startsWith(FOLDER_LINK) ? l.file_id.slice(FOLDER_LINK.length) : '');
+  const KEPT_MAX = 2000;
+  function keptOf(l) {
+    try { const k = JSON.parse(l.kept || '[]'); return Array.isArray(k) ? k.filter((x) => typeof x === 'string') : []; } catch { return []; }
+  }
   function subtree(id) {
     const out = [id];
     for (let i = 0; i < out.length && out.length <= FOLDERS_MAX; i++) for (const d of q('SELECT id FROM vault_folders WHERE parent = ?').all(out[i])) out.push(d.id);
@@ -867,7 +879,30 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
     if (!id) return null;
     const d = folderRow(id);
     if (!d || d.space) return null;
-    return { folder: d, ids: subtree(d.id) };
+    const ids = subtree(d.id), files = new Set();
+    for (const k of keptOf(l)) {
+      if (!k.startsWith('d:')) { files.add(k); continue; }
+      const x = folderRow(k.slice(2));
+      if (x && !x.space) for (const y of subtree(x.id)) ids.add(y);
+    }
+    // (a file it reaches: in one of its folders, or kept, or the light copy of a kept one)
+    const reaches = (f) => ids.has(f.folder) || files.has(f.id) || (!!f.parent && files.has(f.parent));
+    return { folder: d, ids, files, reaches };
+  }
+  // Files (`files`, with what is inside them) and folders (`dirs`) about to go to
+  // `to`: every live folder link that reaches them now and would not there keeps them.
+  function keepMoved(files, dirs, to) {
+    const links = q("SELECT token_hash, file_id, kept FROM vault_links WHERE revoked = 0 AND until > ? AND file_id LIKE 'folder:%'").all(Date.now());
+    for (const l of links) {
+      const scope = scopeOf(l);
+      if (!scope || scope.ids.has(to)) continue;
+      const add = [];
+      for (const f of files) if (scope.reaches(f)) add.push(f.id, ...within(f.id).map((x) => x.id));
+      for (const d of dirs) if (d.id !== scope.folder.id && scope.ids.has(d.id)) add.push('d:' + d.id);
+      if (!add.length) continue;
+      const kept = [...new Set([...keptOf(l), ...add])].slice(-KEPT_MAX);
+      q('UPDATE vault_links SET kept = ? WHERE token_hash = ?').run(JSON.stringify(kept), l.token_hash);
+    }
   }
   // "車/新車" (for the log)
   function pathOf(id) {
@@ -1332,6 +1367,8 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       if (f.parent) throw new ApiError(400, 'light', '軽量版の名前は変えられません（元のモデルの名前を変えてください）');
       const name = cleanName(body.name);
       if (name === f.name) return { file: fileDto(f) };
+      // (the extension stays: only the part before it changes)
+      if (extOf(name).toLowerCase() !== extOf(f.name).toLowerCase()) throw new ApiError(400, 'ext_fixed', `拡張子（${extOf(f.name) || 'なし'}）は変えられません`);
       q('UPDATE vault_files SET name = ? WHERE id = ?').run(name, f.id);
       opsLog.add(f.space && f.space !== BACKUP
         ? { actor: u, action: 'vault_rename', req, summary: `${whereName(f.space)}のファイル（${mb(f.size)}）の名前を変更`, detail: { file: f.id, space: f.space } }
@@ -1448,7 +1485,11 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       canGo(d, parent);
       if (nameTaken(d.space, parent, name, d.id)) throw new ApiError(409, 'exists', `「${name}」はもうあります`);
       const before = pathOf(d.id);
-      q('UPDATE vault_folders SET name = ?, parent = ? WHERE id = ?').run(name, parent, d.id);
+      tx(() => {
+        // (a shared URL keeps reaching it: the developer's vault only has them)
+        if (!d.space && parent !== d.parent) keepMoved([], [d], parent);
+        q('UPDATE vault_folders SET name = ?, parent = ? WHERE id = ?').run(name, parent, d.id);
+      });
       opsLog.add(d.space
         ? { actor: u, action: 'vault_folder', req, summary: `${whereName(d.space)}のフォルダを${parent === d.parent ? '名前変更' : '移動'}`, detail: { folder: d.id, parent, space: d.space } }
         : { actor: u, action: 'vault_folder', req, summary: `保管庫のフォルダ「${before}」を「${pathOf(d.id)}」に変更`, detail: { folder: d.id, name, parent } });
@@ -1515,6 +1556,8 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
         names.add(d.name);
       }
       tx(() => {
+        // (a shared URL keeps reaching what it reached: the developer's vault only has them)
+        if (!space) keepMoved(files, dirs, folder);
         for (const f of files) {
           q('UPDATE vault_files SET folder = ?, inside = ? WHERE id = ?').run(folder, into ? into.id : '', f.id);
           // (its light copy, and the files in it and their light copies, go with it)
@@ -1640,7 +1683,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const top = all || scope ? null : fileRow(l.file_id);
       if (!all && !scope && (!top || top.space || !top.done_at || top.implemented_at)) throw gone();
       // (a file the link reaches: any, the link's own and its light copy, or one in the folder or below it)
-      const reaches = (x) => all || (scope ? scope.ids.has(x.folder) : x.id === top.id || x.parent === top.id);
+      const reaches = (x) => all || (scope ? scope.reaches(x) : x.id === top.id || x.parent === top.id);
       const n = req.query.get('n');
       const taking = n !== null && n !== '';
       if (!caps.has(taking ? 'get' : 'view')) throw gone();
@@ -1667,7 +1710,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
           if (!all && !scope && (!currentTop || currentTop.space || !currentTop.done_at || currentTop.implemented_at)) throw gone();
           if (!current || current.space || !current.done_at || current.implemented_at ||
               (current.storage_generation || 0) !== (f.storage_generation || 0) ||
-              (scope ? !currentScope.ids.has(current.folder) : !all && current.id !== currentLink.file_id && current.parent !== currentLink.file_id)) throw noFile();
+              (scope ? !currentScope.reaches(current) : !all && current.id !== currentLink.file_id && current.parent !== currentLink.file_id)) throw noFile();
           if (no === 0) saw(currentLink, current.parent ? fileRow(current.parent) || current : current);
           return result;
         } catch (error) {
@@ -1695,13 +1738,14 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       if (f) return { ...pullDto(f), until: l.until, ai: !!l.ai, caps: [...caps], how };
       // a folder's link: what is in it, the folder itself as the top (its folders and files under '')
       if (scope) {
-        const root = scope.folder.id, top = (id) => (id === root ? '' : id);
+        // (what was moved out of it sits at its top)
+        const root = scope.folder.id, top = (id) => (id === root || !scope.ids.has(id) ? '' : id);
         return {
           vault: true, folder: { id: root, name: scope.folder.name }, until: l.until, ai: !!l.ai, caps: [...caps],
           folders: [...scope.ids].filter((id) => id !== root).map(folderRow).filter(Boolean).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
             .map((d) => { const { space, ...x } = folderDto(d); return { ...x, parent: top(d.parent) }; }),
-          files: q(`SELECT ${COLS} FROM vault_files WHERE space = '' AND done_at > 0 AND parent = '' AND implemented_at = 0 AND folder IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC`)
-            .all(JSON.stringify([...scope.ids])).map((x) => ({ ...pullDto(x), folder: top(x.folder) })), how
+          files: q(`SELECT ${COLS} FROM vault_files WHERE space = '' AND done_at > 0 AND parent = '' AND implemented_at = 0 AND (folder IN (SELECT value FROM json_each(?)) OR id IN (SELECT value FROM json_each(?))) ORDER BY created_at DESC`)
+            .all(JSON.stringify([...scope.ids]), JSON.stringify([...scope.files])).map((x) => ({ ...pullDto(x), folder: top(x.folder) })), how
         };
       }
       return {
@@ -1734,7 +1778,7 @@ export function createVault({ q, tx, config, secret, opsLog, isDeveloper, devCod
       const f = fileRow(body.f);
       const scope = scopeOf(l);
       if (linkFolder(l) && !scope) throw gone();
-      if (!f || f.space || !f.done_at || f.implemented_at || f.parent || !(l.file_id === ALL || l.file_id === f.id || (scope && scope.ids.has(f.folder)))) throw noFile();
+      if (!f || f.space || !f.done_at || f.implemented_at || f.parent || !(l.file_id === ALL || l.file_id === f.id || (scope && scope.reaches(f)))) throw noFile();
       const said = typeof body.comment === 'string' ? body.comment.normalize('NFC').replace(CONTROL, ' ').replace(/ {2,}/g, ' ').trim() : '';
       if (!said) throw new ApiError(400, 'empty', 'コメントを書いてください');
       if (Array.from(said).length > LINK_NOTE_MAX) throw new ApiError(400, 'too_long', `コメントは${LINK_NOTE_MAX}文字までです`);

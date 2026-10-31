@@ -663,13 +663,13 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 
 /* ------------------------------------------------------------ start screen --- */
 #screen-start { z-index: 4; background: #000; overflow: hidden; }
-/* Keep the whole supplied title visible; fill wider screens with its backdrop. */
-.start-backdrop { position: absolute; inset: -60px; background: center / cover no-repeat; filter: blur(36px) brightness(.65); }
 #stage[data-screen="start"] #bg,
 #stage[data-screen="start"] #frame,
 #stage[data-screen="start"] .wallet { visibility: hidden; }
 .start-art { position: absolute; inset: 0; pointer-events: none; }
-#start-image { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+/* The supplied title fills the whole screen (no blurred bands at the sides); a wide screen crops a
+   little off its top and bottom, the logo and START stay whole (the notice sits under START). */
+#start-image { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 /* One real button covers the complete title, including the backdrop. */
 .start-hit { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; }
 .start-hit:focus-visible { outline-offset: -6px; }
@@ -702,9 +702,33 @@ button:focus-visible { outline: 3px solid #ffd75e; outline-offset: 3px; }
 }
 @keyframes updatePulse { 50% { transform: scale(1.06); } }
 
-.start-terms-notice { position: absolute; z-index: 6; left: 180px; right: 180px; bottom: 54px; margin: 0; padding: 8px 16px; border-radius: 10px; text-align: center; background: #16070cbd; color: #e5d8c7; font-size: 18px; pointer-events: none; }
+.start-terms-notice { position: absolute; z-index: 6; left: 300px; right: 300px; bottom: 10px; margin: 0; padding: 8px 16px; border-radius: 10px; text-align: center; background: #16070cbd; color: #e5d8c7; font-size: 18px; pointer-events: none; }
 .start-terms-notice button { color: #ffe27a; text-decoration: underline; font: inherit; pointer-events: auto; }
 .start-law { position: absolute; left: 34px; bottom: 20px; z-index: 6; padding: 8px 14px; border-radius: 8px; background: rgba(0, 0, 0, .38); font-size: 18px; font-weight: 600; color: rgba(255, 255, 255, .72); text-decoration: none; }
 .start-law:active { color: #fff; }
 .wallet .w-coins.tappable { cursor: pointer; border-radius: 8px; transition: transform .08s; }
 .wallet .w-coins.tappable:active { transform: scale(.94); }
+
+/* each screen's own background (img/bg: the supplied pictures, about 1MB in all); a picture is fetched only when its screen shows */
+#stage[data-screen="tokens"] #bg { background-image: url('../img/bg/tokens.webp'); }
+#stage[data-screen="rules"] #bg { background-image: url('../img/bg/info.webp'); }
+#stage[data-screen="tree"] #bg { background-image: url('../img/bg/tree.webp'); }
+#stage[data-screen="vip"] #bg { background-image: url('../img/bg/vip.webp'); }
+#stage[data-screen="support"] #bg { background-image: url('../img/bg/support.webp'); }
+#stage[data-screen="board"][data-view="friends"] #bg { background-image: url('../img/bg/friends.webp'); }
+#stage[data-screen="board"][data-view="messages"] #bg { background-image: url('../img/bg/messages.webp'); }
+#stage[data-screen="board"][data-view="dm"] #bg { background-image: url('../img/bg/messages.webp'); }
+#stage[data-screen="board"][data-view="group"] #bg { background-image: url('../img/bg/messages.webp'); }
+#stage[data-screen="board"][data-view="cars"] #bg { background-image: url('../img/bg/car-owner.webp'); }
+#stage[data-screen="board"][data-view="garage"] #bg { background-image: url('../img/bg/garage.webp'); }
+#stage[data-screen="board"][data-view="shop"] #bg { background-image: url('../img/bg/shop.webp'); }
+#stage[data-screen="board"][data-view="items"] #bg { background-image: url('../img/bg/shop.webp'); }
+#stage[data-screen="board"][data-view="carshop"] #bg { background-image: url('../img/bg/car-shop.webp'); }
+#stage[data-screen="board"][data-view="jobs"] #bg { background-image: url('../img/bg/jobs.webp'); }
+#stage[data-screen="board"][data-view="more"] #bg { background-image: url('../img/bg/dev-news.webp'); }
+#stage:has(#screen-quests.active[data-period="5h"]) #bg { background-image: url('../img/bg/quest-5h.webp'); }
+#stage:has(#screen-quests.active[data-period="day"]) #bg { background-image: url('../img/bg/quest-day.webp'); }
+#stage:has(#screen-quests.active[data-period="week"]) #bg { background-image: url('../img/bg/quest-week.webp'); }
+#stage:has(#screen-quests.active[data-period="coop"]) #bg { background-image: url('../img/bg/quest-coop.webp'); }
+#stage:has(#screen-quests.active[data-period="month"]) #bg { background-image: url('../img/bg/quest-month.webp'); }
+#stage:has(#screen-quests.active[data-period="special"]) #bg { background-image: url('../img/bg/quest-special.webp'); }

@@ -15,7 +15,7 @@
   var released = {};      // DEV number -> when it went live (ms, from the server)
 
   function seen() { try { return Number(localStorage.getItem(SEEN)) || 0; } catch (e) { return 0; } }
-  function renderDot() { $('#news-dot').hidden = seen() >= BR.RELEASE; }
+  function renderDot() { $('#news-dot').hidden = $('#news-card-dot').hidden = seen() >= BR.RELEASE; }
 
   // the release number as the players know it: DEV5
   function devName(id) { return 'DEV' + id; }

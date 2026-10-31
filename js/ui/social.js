@@ -213,6 +213,7 @@
   function renderMeCard() {
     var card = $('#me-card');
     card.hidden = !me;
+    $('#me-vip-button').hidden = !me;
     $('#slot-title').hidden = !!me;
     if (!me) return;
     var old = $('#me-avatar');
@@ -440,6 +441,8 @@
     // the cars' 3D stops when Car Owner is left
     if (v !== 'cars' && BR.cars && BR.cars.leave) BR.cars.leave();
     view = v;
+    // (each view its own background: css/style.css)
+    $('#stage').dataset.view = v;
     var tab = TAB_OF[v];
     if (tab !== 'messages') lastTab = v;
     tabs.set(tab);
@@ -459,7 +462,6 @@
     else if (v === 'carshop') BR.shop.showShop('car');
     else if (v === 'items') BR.shop.showItems();
     else if (v === 'jobs') BR.jobs.show();
-    else if (v === 'more') BR.news.show();
   }
 
   function knownUser(id) {
@@ -501,13 +503,16 @@
     if (count !== undefined) h.appendChild(el('b', 'fr-count', count));
     box.appendChild(h);
   }
-  // other players' icons do nothing when tapped: the buttons do
+  // a player's icon, tapped: their card (名刺: the profile)
   function personRow(u, extraCls) {
     var row = el('div', 'fr-row' + (extraCls ? ' ' + extraCls : ''));
     row.dataset.uid = u.id;
     var who = el('div', 'fr-who');
-    var av = K.avatarEl(u);
+    var av = K.avatarEl(u, 'fr-face');
     av.appendChild(K.presence(u.online));
+    av.dataset.act = 'profile';
+    av.setAttribute('role', 'button');
+    av.setAttribute('aria-label', (u.name || '') + 'さんのプロフィール');
     who.appendChild(av);
     var id = el('span', 'fr-id');
     var nm = el('span', 'fr-name-row');
@@ -589,13 +594,9 @@
       return (b.online ? 1 : 0) - (a.online ? 1 : 0) || (b.lastSeen || 0) - (a.lastSeen || 0);
     }).forEach(function (u) {
       var p = personRow(u, 'friend' + (BR.hub && BR.hub.invitedBy(u.id) ? ' invited' : ''));
+      // 一緒に稼ぐ by itself; the rest under ⋯
       hubButton(p.acts, u);
-      var w = actBtn(p.acts, '観戦する', 'watch', '', 'eye');
-      w.disabled = !u.online;
-      var b = actBtn(p.acts, 'フレンド対決', 'battle');
-      b.disabled = !u.online;
-      actBtn(p.acts, 'メッセージ', 'dm');
-      actBtn(p.acts, 'プロフィール', 'profile', 'muted');
+      actBtn(p.acts, '⋯', 'more', 'fr-more').setAttribute('aria-label', 'そのほかの操作');
       box.appendChild(p.row);
     });
     if (friends.outgoing.length) {
@@ -628,9 +629,28 @@
     });
   }
 
+  // ⋯ on a friend: 観戦する, フレンド対決, メッセージ, プロフィール
+  function friendMenu(btn, u) {
+    closeMenu();
+    menu = el('div', 'msg-menu fr-menu');
+    menu.setAttribute('role', 'menu');
+    [['watch', '観戦する', !u.online], ['battle', 'フレンド対決', !u.online], ['dm', 'メッセージ'], ['profile', 'プロフィール']].forEach(function (a) {
+      var b = el('button', 'msg-menu-item', a[1]);
+      b.type = 'button';
+      b.disabled = !!a[2];
+      b.setAttribute('role', 'menuitem');
+      b.addEventListener('click', function (e) { e.stopPropagation(); closeMenu(); friendAction(a[0], u.id); });
+      menu.appendChild(b);
+    });
+    document.body.appendChild(menu);
+    var r = btn.getBoundingClientRect(), w = menu.offsetWidth, h = menu.offsetHeight;
+    menu.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + 'px';
+    menu.style.top = Math.max(8, r.bottom + 4 + h > window.innerHeight - 8 ? r.top - h - 4 : r.bottom + 4) + 'px';
+  }
   // a friend action on user `id` (from the friends pane or a profile)
-  function friendAction(act, id) {
+  function friendAction(act, id, btn) {
     var u = knownUser(id) || { id: id, name: '' };
+    if (act === 'more') { sfx('click'); friendMenu(btn, u); return; }
     if (act === 'profile') { sfx('click'); openProfile(u); return; }
     if (act === 'clear') { sfx('click'); found = null; renderFriends(); return; }
     if (act === 'dm') { sfx('click'); openDm(u); return; }
@@ -1959,9 +1979,11 @@
       var b = e.target.closest('[data-act]');
       var row = e.target.closest('[data-uid]');
       if (!b || !row || b.disabled) return;
-      friendAction(b.dataset.act, Number(row.dataset.uid));
+      friendAction(b.dataset.act, Number(row.dataset.uid), b);
     });
     $('#conv-list').addEventListener('click', function (e) {
+      var face = e.target.closest('.conv-row[data-uid] > .avatar');
+      if (face) { sfx('click'); openProfile(knownUser(Number(face.parentNode.dataset.uid))); return; }
       var g = e.target.closest('[data-gid]');
       if (g) { sfx('click'); openGroup(groupById(Number(g.dataset.gid))); return; }
       var row = e.target.closest('[data-uid]');
@@ -1992,8 +2014,9 @@
       if (b.dataset.act === 'dev-diary' && BR.diary) BR.diary.open();
       if (b.dataset.act === 'gacha' && BR.gacha) BR.gacha.open();
       if (b.dataset.act === 'stocks' && BR.stocks) BR.stocks.open();
+      if (b.dataset.act === 'dev-news') { K.showModal('news-modal'); BR.news.show(); }
       var soon = { 'studio-credits': 'スタジオクレジット', terms: '規約' };
-      if (soon[b.dataset.act]) showSoon(soon[b.dataset.act]);
+      if (soon[b.dataset.act]) showSoon(soon[b.dataset.act], b.dataset.act);
     });
     $$('#screen-board .scroller').forEach(K.dragScroll);
 
@@ -2069,9 +2092,16 @@
       if (e.target.closest('.vip-badge') && BR.vip) { BR.vip.open(); return; }
       openProfile(me);
     });
+    // VIP, next to my card
+    $('#me-vip-button').addEventListener('click', function () {
+      if (BR.game.busy()) { sfx('deny'); return; }
+      sfx('click');
+      if (BR.vip) BR.vip.open();
+    });
   }
 
-  function showSoon(title) {
+  function showSoon(title, act) {
+    $('#more-soon').dataset.act = act || '';
     $('#more-soon-title').textContent = title;
     $('#more-soon-consent').hidden = title !== '規約';
     K.showModal('more-soon');
@@ -2080,7 +2110,9 @@
   function init() {
     entry.init();
     K.registerModal('more-soon');
-    $('#start-terms').addEventListener('click', function () { sfx('click'); showSoon('規約'); });
+    K.registerModal('news-modal');
+    K.dragScroll($('#news-scroll'));
+    $('#start-terms').addEventListener('click', function () { sfx('click'); showSoon('規約', 'terms'); });
     bindBoard();
     bindGroupForm();
     bindModals();

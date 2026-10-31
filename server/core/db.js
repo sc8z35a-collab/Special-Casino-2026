@@ -1201,6 +1201,10 @@ MIGRATIONS.push([
      WHERE o.user_id = stock_holdings.user_id AND o.company = stock_holdings.company AND o.status = 'filled' AND o.profit > 0), 0))`
 ]);
 
+// kept: what a folder's URL still reaches after it was moved out of the folder
+// (file ids, folders as 'd:<id>'; server/core/vault.js keepMoved).
+MIGRATIONS.push(["ALTER TABLE vault_links ADD COLUMN kept TEXT NOT NULL DEFAULT '[]'"]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)

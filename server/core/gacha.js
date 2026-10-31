@@ -11,8 +11,8 @@ const SEED = 'gacha-seed';
 const VIP_WEEK = 'gacha-vip-week';
 const GROWN = 'gacha-grown-tree';
 const CAR = 'gacha-car:';
-const PRICES = Object.fromEntries(GACHA.kinds.map((kind) => [kind.id, {
-  single: GACHA.price(kind.id, 1), three: GACHA.price(kind.id, 3), ten: GACHA.price(kind.id, 10)
+const pricesOf = (sale) => Object.fromEntries(GACHA.kinds.map((kind) => [kind.id, {
+  single: GACHA.price(kind.id, 1, sale), three: GACHA.price(kind.id, 3, sale), ten: GACHA.price(kind.id, 10, sale)
 }]));
 // Independent cryptographic samples, filled in one call instead of one allocation/native call per reward.
 const randomWords = new Uint32Array(128);
@@ -35,6 +35,11 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
   const treeCount = (id) => q('SELECT COUNT(*) AS n FROM trees WHERE user_id = ?').get(id).n;
   const garageSize = (u) => RULES.garage.slots + (u.garage_extra || 0);
   const itemCount = (id, item) => (itemsOf(id)[item] || 0);
+  // リリース記念セール (GACHA.releaseSale): from the first time the server ran with it, for its hours
+  q("INSERT OR IGNORE INTO meta (key, value) VALUES ('gacha_release_sale', ?)").run(String(now()));
+  const saleStart = Number(q("SELECT value FROM meta WHERE key = 'gacha_release_sale'").get().value);
+  const saleEnd = saleStart + GACHA.releaseSale.hours * 3600000;
+  const saleOn = (at) => at >= saleStart && at < saleEnd;
 
   function state(u) {
     const at = now();
@@ -45,7 +50,8 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       me,
       now: at,
       events,
-      prices: PRICES,
+      prices: pricesOf(saleOn(at)),
+      ...(saleOn(at) ? { releaseSale: { kind: GACHA.releaseSale.kind, end: saleEnd } } : {}),
       items: { seed: items[SEED] || 0, vipWeek: items[VIP_WEEK] || 0,
         // the free tickets (功績's rewards, server/core/medals.js): one pull each
         tickets: Object.fromEntries(GACHA.kinds.map((k) => [k.id, items[TICKET + k.id] || 0])),
@@ -69,7 +75,7 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       const cur = getUser(u.id);
       const at = now();
       const events = GACHA.events(at);
-      const paid = free ? 0 : GACHA.price(kind, count);
+      const paid = free ? 0 : GACHA.price(kind, count, saleOn(at));
       if (free) {
         if (itemCount(cur.id, TICKET + kind) < count) throw new ApiError(409, 'no_ticket', '無料券が足りません');
         addItems(cur.id, TICKET + kind, -count);

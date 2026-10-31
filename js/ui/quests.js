@@ -54,22 +54,12 @@
       J.sparks(c.x + r.w / 2, c.y, { n: 5, speed: 160, life: 0.5, g: -80, size: 0.7 });
     }, 500);
   }
-  function levelBar(info) {
-    var bar = el('i', 'lv-bar');
-    var fill = el('i');
-    fill.style.width = Math.round(info.into / info.need * 100) + '%';
-    bar.appendChild(fill);
-    return bar;
-  }
-  // The level shows on my card (top left of the slot screen) and on the
-  // quest screen. A new level: the bar on the card fills up to the end and
+  // The level shows on my card (top left of the slot screen). A new level: the bar on the card fills up to the end and
   // stays full until the LEVEL UP shows (levelUp), then starts again from
   // nothing. The current level and remaining XP update immediately.
   var turn = null, turnTimer = 0;
   function pct(info) { return Math.round(info.into / info.need * 100) + '%'; }
   function renderLevel(levelled) {
-    var q = $('#q-lv');
-    q.textContent = '';
     if (xp === null) {
       clearTimeout(turnTimer); turn = null;
       $('#lv-num').textContent = '1';
@@ -91,11 +81,6 @@
     } else {
       $('#lv-fill').style.width = pct(info);
     }
-    q.appendChild(el('b', 'q-lv-num', 'Lv.' + info.level));
-    q.appendChild(levelBar(info));
-    var detail = el('span', 'q-lv-xp', U.fmt(info.into) + ' / ' + U.fmt(info.need) + ' XP');
-    detail.appendChild(el('small', 'q-lv-next', next));
-    q.appendChild(detail);
   }
 
   /* ------------------------------------------------------------ notices --- */
@@ -345,7 +330,6 @@
 
   function render() {
     var def = Q.period(tab), p = current();
-    $('#q-title').textContent = def.name + 'クエスト';
     $('#screen-quests').dataset.period = tab;
     renderClock();
     renderTickets();
@@ -389,9 +373,10 @@
     ['5h', 'day'].forEach(function (period) {
       var status = ticketStatus(period), btn = $('#q-ticket-' + period);
       btn.textContent = '';
-      var label = (period === '5h' ? '5時間券' : 'デイリー券') + '：' + status.count + '枚';
-      btn.appendChild(el('b', '', label));
+      var label = (period === '5h' ? '5時間' : 'デイリー') + 'リセットチケット：' + status.count + '枚';
+      btn.appendChild(el('b', '', '×' + status.count));
       btn.setAttribute('aria-label', label + '。' + status.reason);
+      btn.title = label + '（' + status.reason + '）';
       btn.disabled = !status.enabled;
     });
   }
@@ -474,7 +459,7 @@
     head.appendChild(el('span', 'q-text', def.text));
     if (n > 1) head.appendChild(el('span', 'q-step', 'STEP ' + (i + 1) + '/' + n));
     main.appendChild(head);
-    if (def.note) main.appendChild(el('div', 'q-note', def.note));
+    if (def.note) r.title = def.note;
     var prog = el('div', 'q-prog');
     var bar = el('i', 'q-bar');
     var fill = el('i');
@@ -484,7 +469,9 @@
     prog.appendChild(bar);
     prog.appendChild(el('span', 'q-count', amount(def, v) + ' / ' + amount(def, def.goal)));
     main.appendChild(prog);
+    // the third line: the chain, or the note of a single quest
     if (n > 1) main.appendChild(chainInfo(c));
+    else if (def.note) main.appendChild(el('div', 'q-note', def.note));
     r.appendChild(main);
     var rew = el('div', 'q-reward');
     if (state === 'received') {

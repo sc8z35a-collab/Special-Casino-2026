@@ -1,9 +1,9 @@
 /* 功績 (js/ui/medals.js): the whole stage, the medals on the left (four to a row, two rows to a page, the next page at the edge),
    the medal chosen on the right. Ranks, low to high: green, blue, purple, gold, red, secret; `.glow`: a special medal, shining. */
-.medals-scene { background: #0b0816; }
-.medals-card { --md-panel: rgba(255, 255, 255, .055); --md-line: rgba(220, 200, 255, .16); --md-gold: #f6cf6a; --md-muted: #b6a9cf;
+.medals-scene { background: #0b0816 url('../img/bg/medals.webp') center / cover no-repeat; }
+.medals-card { --md-panel: #1d1530; --md-line: rgba(220, 200, 255, .16); --md-gold: #f6cf6a; --md-muted: #b6a9cf;
   position: absolute; inset: 0; width: auto; max-height: none; padding: 14px 30px 18px; border-radius: 0; display: grid; grid-template-rows: 92px minmax(0, 1fr); gap: 12px;
-  background: radial-gradient(90% 80% at 20% 0%, #2a1748 0%, #140c26 55%, #0b0816 100%); box-shadow: none; color: #f3eefc; font-size: 22px; }
+  background: radial-gradient(90% 80% at 20% 0%, rgba(42, 23, 72, .9) 0%, rgba(20, 12, 38, .88) 55%, rgba(11, 8, 22, .92) 100%); box-shadow: none; color: #f3eefc; font-size: 22px; }
 .medals-card button { font: inherit; color: inherit; }
 [data-rank="green"] { --rk: #46c76a; --rk2: #1f7a3c; }
 [data-rank="blue"] { --rk: #4a98ff; --rk2: #1f4f9e; }
@@ -28,9 +28,9 @@
 .md-main { display: grid; grid-template-columns: minmax(0, 1fr) 520px; gap: 24px; min-height: 0; }
 .md-shelf { display: grid; grid-template-rows: minmax(0, 1fr) 56px; gap: 8px; min-width: 0; min-height: 0; }
 .md-view { position: relative; overflow: hidden; min-height: 0; touch-action: none; user-select: none; }
-.md-track { display: flex; gap: 28px; height: 100%; will-change: transform; }
+.md-track { display: flex; gap: 12px; height: 100%; will-change: transform; }
 .md-track.moving { transition: transform .34s cubic-bezier(.2, .85, .25, 1); }
-.md-page { flex: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 18px; padding: 8px 2px; }
+.md-page { flex: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 6px 2px; }
 .md-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; color: var(--md-muted); font-size: 28px; font-weight: 700; }
 
 .md-cell { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 0; padding: 12px 12px 14px;
