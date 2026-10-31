@@ -65,6 +65,7 @@ import { createBackup } from './backup.js';
 import { createTrees } from './tree.js';
 import { createStocks } from './stocks.js';
 import { createCorp } from './corp.js';
+import { createNpc } from './npc.js';
 import { createSlotBills } from './slotbill.js';
 import { createDevCode } from './devcode.js';
 import { createPay } from './pay.js';
@@ -2371,6 +2372,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const id = Number(q('INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid) VALUES (?, ?, 0, ?, ?, ?)').run(cur.id, car.id, now, now, cost).lastInsertRowid);
         // (Car Owner's sale, at what was paid: server/core/corp.js)
         corp.sold('carowner', 'car', car.id, 1, cost);
+        // (one fewer of it for the people: the players buy first, never refused for them)
+        npc.carBought(car.id);
         carGot(q, cur.id, id);
         jobsPaid(u.id, vipPay);
         track(u.id, [['carBuy', 1]]);
@@ -3626,6 +3629,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const socketSight = fromSocket(seeing);
   // 投資's screen open or closed ({ op: 'stocks', on }): the second's ticks (server/core/stocks.js)
   const socketStocks = fromSocket((u, body) => stocks.watch(u.id, !!(body && body.on)));
+  // the 街ライブ is open (on) or closed (off): the minutes' frames over the live connection
+  const socketTown = fromSocket((u, body) => npc.watch(u.id, !!(body && body.on)));
   // a sealed frame of the game's state for an operator's screen view (server/core/opswatch.js)
   const socketView = fromSocket((u, body) => { if (watchRef) watchRef.frame(u, body); });
 
@@ -3825,6 +3830,13 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     onTrade: medalCheck,
     paused: () => emergency.locked() || emergency.stopped() });
   registry.add('stocks', stocks.routes);
+  // NPCの国: the 50,000 people the companies live on (server/core/npc.js); the players' 街ライブ only looks at it
+  const npc = createNpc({ q, tx, afterCommit, clock: config.clock || Date.now, secret, config, corp, stocks: () => stocks, live, opsLog,
+    opsIds: () => ops.operatorList().filter((o) => o.id && live.opsOnline(o.id)).map((o) => o.id),
+    playersHeld: () => Object.fromEntries(q('SELECT company, SUM(shares) AS n FROM stock_holdings GROUP BY company').all().map((r) => [r.company, r.n || 0])),
+    ai: host && host.ai ? host.ai : null, usage: () => { try { return stats.report(0).percent; } catch { return 0; } } });
+  if (npc.on) corp.setNpc(npc);
+  registry.add('npc', npc.playerRoutes);
   const gacha = createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend, settleVip: settleVipJobs, onSpin: medalCheck,
     vipChanged: (id, pay) => { if (pay) jobsPaid(id, pay); else balanceChanged(id); return getUser(id); } });
   registry.add('gacha', gacha.routes);
@@ -3887,6 +3899,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the 企業 folder's apps: every company at a glance, and each one's own site (server/core/corp.js); a look brings
   // the companies up to now (their days close as the share prices pass them), as a look at the market would
   Object.assign(routes, corp.routes((u) => { ops.see(u); stocks.advance(); tx(() => corp.flush()); }));
+  // the 街 app: the country of people, its people, its companies' people (operators see; the developer may set its knobs)
+  Object.assign(routes, npc.routes((u) => { ops.see(u); stocks.advance(); }, (u) => ops.need(u), isDeveloper));
   routes['POST /api/ops/patrol/run'] = async (req, u) => {
     ops.need(u);
     if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
@@ -4134,6 +4148,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     out.battle = b ? battleDto(b, userId) : null;
     out.watchers = { watchers: homeMembers(userId), chat: homeChatOf(userId) };
     out.tree = routes['GET /api/tree']({ query: new URLSearchParams() }, u);
+    // (the fees and the surcharge as the country's people have set them: js/game/npc.js knobs)
+    out.policy = npc.policy();
     // (the time now, for what the page counts down: a part it holds keeps the time it came with)
     out.now = Date.now();
     return held ? heldOf(out, heldFrom(held)) : out;
@@ -4189,6 +4205,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // 投資: the price path brought up to now, the old candles and orders out
       try { stocks.housekeep(); } catch (e) { console.error('stocks housekeeping failed', e); }
       try { corp.housekeep(); } catch (e) { console.error('corp housekeeping failed', e); }
+      try { npc.housekeep(); } catch (e) { console.error('npc housekeeping failed', e); }
       try { slotBills.housekeep(); } catch (e) { console.error('slot bills failed', e); }
       spinRequests.prune();
       gacha.prune();
@@ -4541,9 +4558,18 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     socketSight,
     socketView,
     socketStocks,
+    socketTown,
     // 投資's orders waiting: when the market wants to look by itself, and the look (none during a lockdown)
     stocksDue: () => (emergency.locked() ? Infinity : stocks.due()),
     stocksWake: () => { if (!emergency.locked()) stocks.wake(); },
+    // NPCの国: when its people next want a minute worked out, and the minute (none during a lockdown); its AI after
+    npcDue: () => (emergency.locked() || emergency.stopped() ? Infinity : npc.due()),
+    npcWake: async () => {
+      if (emergency.locked() || emergency.stopped()) return;
+      try { npc.wake(); } catch (e) { console.error('npc wake failed', e); }
+      try { await npc.writeAi(); } catch (e) { console.error('npc ai failed', e); }
+    },
+    npc,
     stocks,
     corp,
     slotBills,

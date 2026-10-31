@@ -14,7 +14,7 @@ const { chromium } = require('playwright');
   const errors = [];
   const shotDir = process.env.OPS_DESKTOP_SCREENSHOTS;
   const code = '987654321098';
-  const ids = ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile', 'calendar', 'devapp', 'corp'];
+  const ids = ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile', 'calendar', 'devapp', 'corp', 'town'];
   async function check(name, fn) { await fn(); checks++; console.log('PASS ' + name); }
   async function shot(page, name) {
     if (!shotDir) return;

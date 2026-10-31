@@ -1,0 +1,41 @@
+/* 街ライブ (js/ui/town.js): the map of the five districts on the left, the country's panels on the right. */
+.town-scene { background: #070d17; }
+.town-card { --tw-panel: #101a2a; --tw-line: rgba(130, 160, 200, .18); --tw-muted: #8fa1ba; --tw-gold: #f4c95d;
+  position: absolute; inset: 0; width: auto; max-height: none; padding: 12px 22px 14px; border-radius: 0; display: grid; grid-template-rows: 76px minmax(0, 1fr); gap: 12px;
+  background: radial-gradient(120% 90% at 30% 0%, #15233a 0%, #0a1220 60%, #070d17 100%); box-shadow: none; color: #e8eef7; font-size: 22px; }
+.town-card button { font: inherit; color: inherit; }
+.tw-top { display: flex; align-items: center; gap: 20px; min-width: 0; }
+.tw-top > .back-btn { position: static; flex: none; color: #dfe7f5; }
+.tw-title { font-size: 30px; font-weight: 800; letter-spacing: .5px; white-space: nowrap; }
+.tw-title small { margin-left: 12px; color: var(--tw-muted); font-size: 20px; font-weight: 600; }
+.tw-status { margin-left: auto; display: flex; gap: 16px; align-items: center; white-space: nowrap; }
+.tw-on { color: #5ee08a; font-weight: 800; }
+.tw-off { color: var(--tw-muted); font-weight: 700; }
+.tw-pop { padding: 6px 16px; border-radius: 12px; background: #0c1524; box-shadow: inset 0 0 0 1.5px #f4c95d55; color: var(--tw-gold); font-weight: 800; }
+.tw-main { display: grid; grid-template-columns: minmax(0, 1fr) 640px; gap: 14px; min-height: 0; }
+.tw-mapbox { position: relative; display: grid; grid-template-rows: minmax(0, 1fr) 56px; gap: 8px; min-height: 0; padding: 10px; border-radius: 18px; background: var(--tw-panel); box-shadow: inset 0 0 0 1.5px var(--tw-line); }
+.tw-map { width: 100%; height: 100%; display: block; cursor: crosshair; }
+.tw-modes { display: flex; gap: 10px; align-items: center; }
+.tw-modes::before { content: '色：'; color: var(--tw-muted); font-weight: 700; }
+.tw-chip, .tw-tab { padding: 8px 18px; border-radius: 12px; background: #0c1524; box-shadow: inset 0 0 0 1.5px var(--tw-line); font-weight: 700; }
+.tw-chip[aria-pressed="true"], .tw-tab[aria-selected="true"] { background: #1a2943; box-shadow: inset 0 0 0 2px var(--tw-gold); }
+.tw-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; min-height: 0; padding: 12px; border-radius: 18px; background: var(--tw-panel); box-shadow: inset 0 0 0 1.5px var(--tw-line); }
+.tw-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.tw-side { overflow-y: auto; min-height: 0; padding-right: 6px; }
+.tw-sec { margin: 0 0 14px; }
+.tw-sec h3 { margin: 4px 0 8px; font-size: 22px; color: var(--tw-gold); }
+.tw-row { display: flex; justify-content: space-between; gap: 16px; padding: 5px 2px; border-bottom: 1px solid rgba(130, 160, 200, .1); font-size: 19px; }
+.tw-row span { color: var(--tw-muted); }
+.tw-row b { text-align: right; font-weight: 700; }
+.tw-act span::before { content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 8px; border-radius: 3px; background: var(--c); }
+.tw-look, .tw-empty { margin: 0 0 6px; color: var(--tw-muted); font-size: 18px; }
+.tw-talk, .tw-news { margin: 0 0 6px; font-size: 18px; line-height: 1.45; }
+.tw-news small { color: var(--tw-muted); }
+.tw-card { position: absolute; left: 22px; bottom: 76px; width: 520px; max-height: 70%; overflow-y: auto; padding: 14px 16px; border-radius: 16px; background: rgba(12, 21, 36, .97); box-shadow: 0 10px 40px rgba(0, 0, 0, .6), inset 0 0 0 1.5px var(--tw-gold); }
+.tw-card-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.tw-card-head b { font-size: 26px; }
+.tw-card-head small { color: var(--tw-muted); font-size: 18px; }
+.tw-x { margin-left: auto; width: 40px; height: 40px; border-radius: 10px; background: #1a2943; font-weight: 800; }
+.tw-voice { margin: 10px 0 6px; font-size: 19px; color: #ffe8a8; }
+.tw-life small { color: var(--tw-muted); }
+.tw-life p { margin: 2px 0; font-size: 18px; }

@@ -6,7 +6,7 @@
   'use strict';
 
   var EVENTS = ['hello', 'msg', 'read', 'typing', 'balance', 'presence', 'friend', 'call', 'watch', 'homechat', 'tip', 'items', 'quest',
-    'battle', 'coop', 'present', 'hub', 'bigwin', 'kick', 'pay', 'support', 'card', 'retract', 'chatban', 'viewer', 'diary', 'view', 'tree', 'stock', 'medal'];
+    'battle', 'coop', 'present', 'hub', 'bigwin', 'kick', 'pay', 'support', 'card', 'retract', 'chatban', 'viewer', 'diary', 'view', 'tree', 'stock', 'medal', 'town'];
   var conn = null, want = false, connected = false, timer = 0, backoff = 1000, opening = null, pinger = null, generation = 0;
   var handlers = {};
 
@@ -151,4 +151,14 @@
     // an API request on the WebSocket (js/net/wire.js); null when there is none
     call: function (method, path, headers, body) { return conn && connected && conn.call ? conn.call(method, path, headers, body) : null; }
   };
+  // the fees and MAGITA's surcharge as the country's people have set them (js/game/npc.js knobs): the server says so
+  // on connecting, and the game counts with them from then on
+  BR.live.on('hello', function (h) {
+    var p = h && h.policy;
+    if (!p) return;
+    BR.policy = p;
+    if (BR.CONFIG && BR.CONFIG.casino) { BR.CONFIG.casino.winFee = p.winFee; BR.CONFIG.casino.exchangeFee = p.exchangeFee; }
+    if (BR.STOCKS) BR.STOCKS.feeBp = p.feeBp;
+    if (BR.CORP) { BR.CORP.players.jobFee = p.jobFee; BR.CORP.magita.surcharge.amount = p.surcharge; }
+  });
 })(window.BR = window.BR || {});

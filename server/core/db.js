@@ -1284,6 +1284,66 @@ MIGRATIONS.push([
   'CREATE INDEX slot_bills_due ON slot_bills(paid_at, due_at)'
 ]);
 
+// NPCの国 (server/core/npc.js): the country as it stands (its plain data in rows by part, the people's columns as
+// blobs), what happened in it (the news, the companies' meetings and reports, a row a day of its numbers), the
+// people's trades on the market a minute at a time (their volume and their move on the price), and what the
+// generative AI wrote for it.
+MIGRATIONS.push([
+  `CREATE TABLE npc_state (
+     id   TEXT PRIMARY KEY,
+     data TEXT NOT NULL
+   ) WITHOUT ROWID`,
+  `CREATE TABLE npc_blob (
+     part TEXT PRIMARY KEY,
+     data BLOB NOT NULL
+   ) WITHOUT ROWID`,
+  `CREATE TABLE npc_news (
+     id       INTEGER PRIMARY KEY,
+     day      INTEGER NOT NULL,
+     at       INTEGER NOT NULL,
+     kind     TEXT    NOT NULL,
+     district INTEGER NOT NULL DEFAULT -1,
+     text     TEXT    NOT NULL,
+     data     TEXT    NOT NULL DEFAULT '{}'
+   )`,
+  'CREATE INDEX npc_news_at ON npc_news(at)',
+  `CREATE TABLE npc_meetings (
+     id      INTEGER PRIMARY KEY,
+     company TEXT    NOT NULL,
+     day     INTEGER NOT NULL,
+     data    TEXT    NOT NULL
+   )`,
+  'CREATE INDEX npc_meetings_company ON npc_meetings(company, id)',
+  `CREATE TABLE npc_reports (
+     id      INTEGER PRIMARY KEY,
+     company TEXT    NOT NULL,
+     kind    TEXT    NOT NULL,
+     day     INTEGER NOT NULL,
+     data    TEXT    NOT NULL
+   )`,
+  'CREATE INDEX npc_reports_company ON npc_reports(company, id)',
+  `CREATE TABLE npc_days (
+     day  INTEGER PRIMARY KEY,
+     data TEXT    NOT NULL
+   )`,
+  `CREATE TABLE npc_ai (
+     id      INTEGER PRIMARY KEY,
+     at      INTEGER NOT NULL,
+     kind    TEXT    NOT NULL,
+     ref     TEXT    NOT NULL DEFAULT '',
+     text    TEXT    NOT NULL,
+     neurons REAL    NOT NULL DEFAULT 0
+   )`,
+  'CREATE INDEX npc_ai_ref ON npc_ai(kind, ref)',
+  `CREATE TABLE stock_npc (
+     company TEXT    NOT NULL,
+     at      INTEGER NOT NULL,
+     shares  INTEGER NOT NULL DEFAULT 0,
+     impact  REAL    NOT NULL DEFAULT 0,
+     PRIMARY KEY (company, at)
+   ) WITHOUT ROWID`
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
@@ -1295,7 +1355,9 @@ export const TABLES = ['users', 'sessions', 'game_login_locks', 'chat_filter_str
   'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'sec_identity', 'oauth_identities',
   'line_feed_targets', 'line_feed_jobs', 'line_feed_deliveries', 'line_feed_rewards', 'line_feed_claims',
   'stock_state', 'stock_candles', 'stock_holdings', 'stock_accounts', 'stock_orders', 'medals',
-  'corp_state', 'corp_days', 'corp_anchor', 'corp_periods', 'corp_titles', 'corp_news', 'corp_flows', 'slot_bills', 'meta'];
+  'corp_state', 'corp_days', 'corp_anchor', 'corp_periods', 'corp_titles', 'corp_news', 'corp_flows', 'slot_bills',
+  // (the country's record; not the people themselves — some 20MB, kept by the host's own history of the database)
+  'npc_news', 'npc_meetings', 'npc_reports', 'npc_days', 'npc_ai', 'stock_npc', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

@@ -82,6 +82,15 @@ export function createApp({ blobs = null, questRewardRoll, questTicketRoll, exte
   // 投資: orders waiting, the market looks by itself every minute (server/core/stocks.js)
   const sk = setInterval(() => { try { api.stocksWake(); } catch (e) { console.error('stocks wake failed', e); } }, 60000);
   sk.unref();
+  // NPCの国: its people's minute, each minute they are about (server/core/npc.js)
+  let nk = null;
+  const npcTick = () => {
+    if (closing) return;
+    const wait = Math.max(1000, Math.min(15 * 60000, api.npcDue() - Date.now()));
+    nk = setTimeout(async () => { try { if (Date.now() >= api.npcDue() - 1500) await api.npcWake(); } finally { npcTick(); } }, wait);
+    nk.unref();
+  };
+  if (config.npc !== false) npcTick();
 
   const server = http.createServer(async (req, res) => {
     const started = Date.now();
@@ -143,6 +152,7 @@ export function createApp({ blobs = null, questRewardRoll, questTicketRoll, exte
       clearTimeout(hk);
       clearInterval(bk);
       clearInterval(sk);
+      clearTimeout(nk);
       live.close();
       api.close();
       server.close(() => {

@@ -30,13 +30,15 @@ function sqlAdapter(ctx) {
   const sql = ctx.storage.sql;
   let depth = 0;
   const first = (cursor) => { for (const row of cursor) return row; return undefined; };
+  // (a blob is bound as an ArrayBuffer here: NPCの国's people, server/core/npc.js)
+  const bind = (args) => args.map((a) => (ArrayBuffer.isView(a) ? a.buffer.slice(a.byteOffset, a.byteOffset + a.byteLength) : a));
   return {
     prepare(query) {
       return {
-        get: (...args) => first(sql.exec(query, ...args)),
-        all: (...args) => sql.exec(query, ...args).toArray(),
+        get: (...args) => first(sql.exec(query, ...bind(args))),
+        all: (...args) => sql.exec(query, ...bind(args)).toArray(),
         run: (...args) => {
-          sql.exec(query, ...args).toArray();
+          sql.exec(query, ...bind(args)).toArray();
           const r = sql.exec('SELECT changes() AS changes, last_insert_rowid() AS id').one();
           return { changes: r.changes, lastInsertRowid: r.id };
         }
@@ -297,7 +299,9 @@ export class Casino extends DurableObject {
           // the housekeeping sooner (a backup due)
           reschedule: (at) => this.housekeepSoon(at),
           // 投資: an order waits, the market looks by itself by then (server/core/stocks.js)
-          stocksSoon: (at) => { if (this.alarmAt === null || at < this.alarmAt - 1000) this.setAlarm(at); }
+          stocksSoon: (at) => { if (this.alarmAt === null || at < this.alarmAt - 1000) this.setAlarm(at); },
+          // NPCの国's few lines of generative AI (wrangler.jsonc: ai), within its share of the day's free Neurons
+          ai: env.AI || null
         }
       });
       this.live.authorize = a => this.api.liveValid(a);
@@ -405,13 +409,14 @@ export class Casino extends DurableObject {
     // (a beat from a game nobody touched for a minute is not someone playing; nor is a
     // frame of the operators' screen view, nor the 投資 screen saying it is open: its
     // second's ticks hold the object up by themselves, without the alarm)
-    if (body.op !== 'sight' && body.op !== 'view' && body.op !== 'stocks' && !(body.op === 'beat' && Number(body.idle) > 60000)) this.touch();
+    if (body.op !== 'sight' && body.op !== 'view' && body.op !== 'stocks' && body.op !== 'town' && !(body.op === 'beat' && Number(body.idle) > 60000)) this.touch();
     if (body.op === 'call') this.api.socketCall(a.u, body);
     else if (body.op === 'typing') this.api.socketTyping(a.u, body);
     else if (body.op === 'beat') this.api.socketBeat(a.u, body);
     else if (body.op === 'sight') this.api.socketSight(a.u, body);
     else if (body.op === 'view') this.api.socketView(a.u, body);
     else if (body.op === 'stocks') this.api.socketStocks(a.u, body);
+    else if (body.op === 'town') this.api.socketTown(a.u, body);
   }
 
   async webSocketClose(ws, code) {
@@ -445,11 +450,13 @@ export class Casino extends DurableObject {
     }
     // 投資: orders waiting, the market looks (they trade in the seconds that reached them, whenever that is)
     try { this.api.stocksWake(); } catch (e) { console.error('stocks wake failed', e); }
+    // NPCの国: its people's minute (every minute while they are about: server/core/npc.js)
+    if (now >= this.api.npcDue() - 1500) await this.api.npcWake();
     const month = monthOf(now);
     if (this.awake.month !== month) this.awake = { month, ticks: 0 };
     const at = nextAlarm({ now, housekeepAt: this.housekeepAt, sockets: this.ctx.getWebSockets().length, activeAt: this.activeAt, ticks: this.awake.ticks });
     if (at < this.housekeepAt && ++this.awake.ticks % 50 === 0) await this.ctx.storage.put(`awake:${month}`, this.awake.ticks);
-    await this.setAlarm(Math.min(at, this.api.stocksDue()));
+    await this.setAlarm(Math.min(at, this.api.stocksDue(), this.api.npcDue()));
   }
 
   // Operator commands that only exist here (see README): point-in-time recovery.

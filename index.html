@@ -272,6 +272,7 @@
             <button class="more-card vip" data-act="vip" aria-label="VIP"><i class="ic more-art ic-vip"></i><b>VIP</b></button>
             <button class="more-card support" data-act="support" hidden><b>有料ショップ</b><span>ロイヤルコインを購入する</span></button>
             <button class="more-card investment" data-act="stocks" aria-label="投資"><i class="ic more-art ic-investment"></i><b>投資</b></button>
+            <button class="more-card town" data-act="town" aria-label="街ライブ"><i class="ic more-art ic-guide"></i><b>街ライブ</b></button>
             <button class="more-card" data-act="dev-diary" aria-label="開発者日記"><i class="ic more-art ic-diary"></i><b>開発者日記</b></button>
             <button class="more-card" data-act="gacha" aria-label="ガチャ"><img class="gacha-mark" src="img/gacha/icon.webp" alt="" loading="lazy" draggable="false"><b>ガチャ</b></button>
             <button class="more-card dev" data-act="dev-news" aria-label="DEV"><img class="dev-mark" src="img/ui/dev-card.webp" alt="" loading="lazy" draggable="false"><b>DEV</b><b class="tab-dot" id="news-card-dot" hidden></b></button>
@@ -647,6 +648,27 @@
         </div>
       </div>
     </div>
+    <!-- 街ライブ (js/ui/town.js: the country of people, only to look at) -->
+    <div id="town-modal" class="modal town-scene" hidden>
+      <div class="modal-card town-card" role="dialog" aria-modal="true" aria-label="街ライブ">
+        <header class="tw-top">
+          <button class="back-btn back-jp" type="button" data-close aria-label="戻る"><i class="ic ic-back"></i><span>戻る</span></button>
+          <div class="tw-title">街ライブ<small>ヴェルノア共和国・5万人のいま（見るだけ）</small></div>
+          <div class="tw-status" id="tw-status"></div>
+        </header>
+        <div class="tw-main">
+          <section class="tw-mapbox">
+            <canvas class="tw-map" id="tw-map" aria-label="5つの区の地図"></canvas>
+            <div class="tw-modes" id="tw-modes"></div>
+            <div class="tw-card" id="tw-card" hidden></div>
+          </section>
+          <aside class="tw-panel">
+            <div class="tw-tabs" id="tw-tabs" role="tablist"></div>
+            <div class="tw-side" id="tw-side"></div>
+          </aside>
+        </div>
+      </div>
+    </div>
     <!-- 投資 (js/ui/stocks.js: everything inside is made there) -->
     <div id="stocks-modal" class="modal stocks-scene" hidden>
       <div class="modal-card stocks-card" role="dialog" aria-modal="true" aria-label="投資">
@@ -993,7 +1015,7 @@
 <script src="js/art/ui-images.js?v=0061319db7"></script>
 <script src="js/art/social-images.js?v=cf9db3becb"></script>
 <script src="js/art/ui-svg.js?v=00d5767a31"></script>
-<script src="js/version.js?v=7143ff62ce"></script>
+<script src="js/version.js?v=f2e345d56d"></script>
 <script src="js/core/util.js?v=0101c12ff0"></script>
 <script src="js/core/clock.js?v=2ba2dad169"></script>
 <script src="js/core/effects.js?v=ae47f50aa7"></script>
@@ -1006,11 +1028,11 @@
 <script src="js/core/store.js?v=f0d92dc1dd"></script>
 <script src="js/game/engine.js?v=75f36e1496"></script>
 <script src="js/net/device.js?v=ff52665f6b"></script>
-<script src="js/net/api.js?v=f0f632ccdb"></script>
+<script src="js/net/api.js?v=a50bf91a41"></script>
 <script src="js/net/transport-policy.js?v=3ee219f81a"></script>
 <script src="js/net/keepalive.js?v=18dee0ca8c"></script>
 <script src="js/net/wire.js?v=52e85a64bb"></script>
-<script src="js/net/live.js?v=a38d9cb69c"></script>
+<script src="js/net/live.js?v=91d2398905"></script>
 <script src="js/net/watchcrypto.js?v=ab0b679978"></script>
 <script src="js/net/watchfeed.js?v=886afa86a0"></script>
 <script src="js/game/bank.js?v=fd59ce4c64"></script>
@@ -1031,7 +1053,7 @@
 <script src="js/ui/account.js?v=aec05ccdd5"></script>
 <script src="js/ui/oauth.js?v=32b3664f63"></script>
 <script src="js/ui/avatars.js?v=a413df4068"></script>
-<script src="js/ui/social.js?v=7473e3db98"></script>
+<script src="js/ui/social.js?v=d6e3f00962"></script>
 <script src="js/ui/shop.js?v=bcb27dd433"></script>
 <script src="js/ui/peter.js?v=8490e6920a"></script>
 <script src="js/ui/johnson.js?v=41cf8554b4"></script>

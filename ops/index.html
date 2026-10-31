@@ -19,7 +19,10 @@
 <meta name="ops-lazy" data-ops-file="calendar.js" content="calendar.js?v=59f2b0be9d">
 <meta name="ops-lazy" data-ops-file="corp.js" content="corp.js?v=4e91b4f5de">
 <meta name="ops-lazy" data-ops-file="corp.css" content="corp.css?v=97b11e54a5">
-<meta name="ops-lazy" data-ops-file="../js/game/corp.js" content="../js/game/corp.js?v=ee35eaa981">
+<meta name="ops-lazy" data-ops-file="../js/game/corp.js" content="../js/game/corp.js?v=1bca5d69a4">
+<meta name="ops-lazy" data-ops-file="town.js" content="town.js?v=17f533e3df">
+<meta name="ops-lazy" data-ops-file="town.css" content="town.css?v=4e9a3c33fc">
+<meta name="ops-lazy" data-ops-file="../js/game/npc.js" content="../js/game/npc.js?v=cc5fa0d778">
 <meta name="ops-lazy" data-ops-file="diary-profile.js" content="diary-profile.js?v=511accd274">
 <meta name="ops-lazy" data-ops-file="vault-thumbnails.js" content="vault-thumbnails.js?v=1e826596f7">
 <meta name="ops-lazy" data-ops-file="watch.js" content="watch.js?v=b2321d350d">
@@ -119,6 +122,7 @@
       <button class="tab" data-view="devapp" id="tab-devapp" type="button" hidden>DEV APP</button>
       <button class="tab" data-view="calendar" id="tab-calendar" type="button">カレンダー</button>
       <button class="tab" data-view="corp" id="tab-corp" type="button">企業</button>
+      <button class="tab" data-view="town" id="tab-town" type="button">街</button>
     </nav>
     <div class="top-right">
       <label class="speed" title="運営サイトの更新頻度"><span>更新</span><select id="speed">
@@ -183,6 +187,8 @@
   <section class="view" id="view-devapp" hidden></section>
   <!-- 企業: a folder of the ten companies' apps, each its official site (ops/corp.js, loaded when opened) -->
   <section class="view" id="view-corp" hidden></section>
+  <!-- 街: the country of people behind the companies (ops/town.js, loaded when opened) -->
+  <section class="view" id="view-town" hidden></section>
 
   <section class="view" id="view-securityhome" hidden>
     <div class="bar"><h2>セキュリティーホーム</h2><a class="btn small" href="/sec/" target="_blank" rel="noopener">別ウィンドウで開く</a></div>
@@ -631,8 +637,8 @@
 <script src="../js/net/keepalive.js?v=18dee0ca8c"></script>
 <script src="../js/net/wire.js?v=52e85a64bb"></script>
 <!-- Presentation only: the existing operator handlers and API calls stay in ops.js. -->
-<script src="lazy.js?v=651a63e3a7"></script>
-<script src="desktop.js?v=530ae3bb1a"></script>
+<script src="lazy.js?v=2de98812d2"></script>
+<script src="desktop.js?v=dc7df5a4dc"></script>
 <script src="devapp.js?v=b5d89b3bee"></script>
 <script src="beat.js?v=3d345d3850"></script>
 <script src="secure.js?v=805079094d"></script>
@@ -642,6 +648,6 @@
 <script src="deviceinfo.js?v=cb207071b8"></script>
 <script src="vault-workspace.js?v=4f03dbed69"></script>
 <script src="../js/net/voice-sdp.js?v=8510b814c1"></script>
-<script src="ops.js?v=344b25e5a7"></script>
+<script src="ops.js?v=80e5e94a0e"></script>
 </body>
 </html>

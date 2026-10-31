@@ -68,7 +68,7 @@
   // A studio (model 'studio') makes games instead of streams: see `lines` below.
   var COMPANIES = [
     {
-      id: 'tenesice', name: 'テネシス', full: '株式会社テネシス', en: 'Tenesice', rank: 'S', model: 'bank', kind: '銀行（金融の絶対支配者）',
+      id: 'tenesice', name: 'テネシス', full: '株式会社テネシス', en: 'Tenesice', rank: 'S', model: 'bank', kind: '銀行（金融の絶対支配者）', listed: true,
       capital: 50000000000, reserve: 50000000000, retained: 3500000000000,
       staff: 12000, salary: 4800000, cost: 7000000,
       place: { name: '本店・支店網・巨大金庫維持費', amount: 15000000000 }, rd: { name: '金融セキュリティ・システム研究開発費', amount: 20000000000 },
@@ -83,10 +83,10 @@
       // its balance sheet: assets `assets` times its equity, of which loans, bonds and cash; deposits for the rest
       bank: { assets: 12, loans: 0.55, bonds: 0.3 },
       ppe: 200000000000, growth: 0.02, beta: 0.6, season: 'flat', hire: 0.015, raise: 0.02, quit: 0.04,
-      payout: 0.4, per: 11, pbr: 0.8, founders: 0.05, price: 60000
+      payout: 0.4, per: 11, pbr: 0.8, founders: 0.05, price: 60000, depth: 2000000000
     },
     {
-      id: 'magita', name: 'MAGITA', full: '株式会社MAGITA', en: 'MAGITA', rank: 'A', model: 'maker', kind: '総合重工メーカー（車・エンジン・オイル・修理キット）',
+      id: 'magita', name: 'MAGITA', full: '株式会社MAGITA', en: 'MAGITA', rank: 'A', model: 'maker', kind: '総合重工メーカー（車・エンジン・オイル・修理キット）', listed: true,
       capital: 2000000000, reserve: 2000000000, retained: 120000000000,
       staff: 6000, salary: 3200000, cost: 4800000,
       place: { name: '巨大工場・製造ライン維持費', amount: 8500000000 }, rd: { name: '車両・エンジン・化学研究開発費', amount: 6000000000 },
@@ -102,7 +102,7 @@
       ],
       materials: true, factory: 0.7, inventoryDays: 45,
       ppe: 60000000000, growth: 0.03, beta: 1.4, season: 'flat', hire: 0.02, raise: 0.025, quit: 0.05,
-      payout: 0.3, per: 13, pbr: 0.9, founders: 0.12, price: 18000
+      payout: 0.3, per: 13, pbr: 0.9, founders: 0.12, price: 18000, depth: 400000000
     },
     {
       id: 'carowner', name: 'カーオーナー', full: '株式会社カーオーナー', en: 'CAR OWNER', rank: 'A', model: 'dealer', kind: '自動車販売（MAGITAのディーラー）',
@@ -360,7 +360,12 @@
     nInterest: ['受取利息', 'ni'], nDividend: ['受取配当金', 'ni'], nSupport: ['受取援助金', 'ni'], nEquity: ['持分法による投資利益', 'ni'], nOther: ['雑収入', 'ni'],
     eInterest: ['支払利息', 'ne'], eEquity: ['持分法による投資損失', 'ne'], eOther: ['雑損失', 'ne'],
     xGain: ['固定資産売却益', 'xi'], xImpair: ['コンテンツ評価損', 'xl'], xCancel: ['開発中止損失', 'xl'],
-    tax: ['法人税、住民税及び事業税', 't']
+    tax: ['法人税、住民税及び事業税', 't'],
+    // once the country of people lives (js/game/npc.js): what it pays the companies, and what they pay for it
+    'r:public': ['官公庁・公共事業売上', 'r'], 'r:ventures': ['新規事業売上', 'r'], 'r:mobile': ['通信事業収入（テネシス・モバイル）', 'r'], 'r:facility': ['設備・施設サービス売上', 'r'],
+    'r:it': ['ITサービス・データセンター売上', 'r'], 'r:platform': ['ゲーム販売手数料', 'r'], 'r:placement': ['人材紹介手数料', 'r'], 'r:nii': ['資金利益', 'r'], 'r:fees': ['役務取引等利益', 'r'],
+    'c:funding': ['資金調達費用（預金利息）', 'c'], 'c:payout': ['払い出し（市民の勝ち越し分）', 'c'],
+    sRecruit: ['採用費', 's'], sSeverance: ['退職給付費用', 's'], sVenture: ['新規事業費用', 's']
   };
   // an account's name and kind for a company (its own sales and costs by its streams; its place and research by their names)
   function account(code, c) {
