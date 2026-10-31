@@ -7,18 +7,18 @@
   var DAY = 86400000;
   var JST = 9 * 3600000;
   var CARS = [
-    { id: 'two-state-sedan', name: 'Two state セダン' },
-    { id: 'blue-lightning', name: 'ブルーライトニング' },
-    { id: 'onvoro', name: 'オンヴォーロ' },
-    { id: 'ferrari-325', name: 'フェラーリ325' },
-    { id: 'mercedes-benz-one', name: 'メルセデスベンツ one' },
-    { id: 'lamborghini-aventador', name: 'ランボルギーニアベンタドール' },
-    { id: 'lamborghini-urus', name: 'ランボルギーニウルス' },
-    { id: 'lamborghini-kuia-spyder', name: 'ランボルギーニクイヤスパイダー' },
-    { id: 'nissan-gt-r', name: '日産 GT-R' },
-    { id: 'lamborghini-revuelto', name: 'ランボルギーニ レヴエルト' },
-    { id: 'mercedes-amg-one-white', name: 'メルセデスAMG ONE（ホワイト）' },
-    { id: 'porsche-kuia-spyder', name: 'ポルシェクイヤスパイダー' }
+    { id: 'two-state-sedan', name: 'MAGITA Two state セダン' },
+    { id: 'blue-lightning', name: 'MAGITA シロン' },
+    { id: 'onvoro', name: 'MAGITA オンヴォーロ' },
+    { id: 'ferrari-325', name: 'MAGITA 325' },
+    { id: 'mercedes-benz-one', name: 'MAGITA ONE' },
+    { id: 'lamborghini-aventador', name: 'MAGITA アベンタドール' },
+    { id: 'lamborghini-urus', name: 'MAGITA ウルス' },
+    { id: 'lamborghini-kuia-spyder', name: 'MAGITA クイヤスパイダー' },
+    { id: 'nissan-gt-r', name: 'MAGITA GT-R' },
+    { id: 'lamborghini-revuelto', name: 'MAGITA レヴエルト' },
+    { id: 'mercedes-amg-one-white', name: 'MAGITA ONE（ホワイト）' },
+    { id: 'porsche-kuia-spyder', name: 'MAGITA クイヤスパイダーGT' }
   ];
   var RARE = [
     { id: 'lot', name: 'ロットコイン', chance: 30, min: 10000, max: 25000, step: 1000 },
@@ -28,8 +28,8 @@
     { id: 'garage', name: 'ガレージコイン', chance: 10 },
     { id: 'reset', name: 'リセットチケット', chance: 15 },
     { id: 'vip-week', name: 'VIP1週間券', chance: 14 },
-    { id: 'onvoro', name: 'オンヴォーロ', chance: 7, car: true, carId: 'onvoro' },
-    { id: 'porsche', name: 'ポルシェクイヤスパイダー', chance: 2, car: true, carId: 'porsche-kuia-spyder' },
+    { id: 'onvoro', name: 'MAGITA オンヴォーロ', chance: 7, car: true, carId: 'onvoro' },
+    { id: 'porsche', name: 'MAGITA クイヤスパイダーGT', chance: 2, car: true, carId: 'porsche-kuia-spyder' },
     { id: 'random-car', name: 'ランダムな車', chance: 1.985, car: true }
   ];
   var LEGENDARY = [
@@ -38,8 +38,8 @@
     { id: 'garage', name: 'ガレージコイン', chance: 20, amount: 1 },
     { id: 'reset', name: 'リセットチケット', chance: 15, amount: 2 },
     { id: 'vip-week', name: 'VIP1週間券', chance: 24 },
-    { id: 'onvoro', name: 'オンヴォーロ', chance: 5, car: true, carId: 'onvoro' },
-    { id: 'porsche', name: 'ポルシェクイヤスパイダー', chance: 4, car: true, carId: 'porsche-kuia-spyder' },
+    { id: 'onvoro', name: 'MAGITA オンヴォーロ', chance: 5, car: true, carId: 'onvoro' },
+    { id: 'porsche', name: 'MAGITA クイヤスパイダーGT', chance: 4, car: true, carId: 'porsche-kuia-spyder' },
     { id: 'random-car', name: 'ランダムな車', chance: 10.995, car: true },
     { id: 'seed', name: '金の生る木の種', chance: 1 },
     { id: 'grown-tree', name: '金の生る木（成長済みノーマル個体）', chance: 0.005 }

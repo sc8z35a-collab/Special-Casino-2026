@@ -70,7 +70,7 @@ test('cars and items stay receivable after day 30, expire at day 90, and expired
   const s = await startServer(); t.after(() => s.stop());
   const a = await s.register('GiftFrom'), b = await s.register('GiftTo'); await s.befriend(a, b);
   s.setUser(a.me.id, { dollars: 100000000 });
-  const bought = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'two-state-sedan' } });
+  const bought = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'ferrari-325' } });
   assert.equal(bought.status, 200);
   const car = s.app.db.prepare('SELECT id FROM cars WHERE owner_id = ?').get(a.me.id);
   const sent = await s.call('POST', '/api/cars/gift', { token: a.token, body: { to: b.me.id, car: car.id } });

@@ -11,9 +11,10 @@ import '../../js/game/vip.js';
 import '../../js/game/receipts.js';
 import '../../js/game/gacha.js';
 import '../../js/game/stocks.js';
+import '../../js/game/corp.js';
 
 const BR = globalThis.BR;
-if (!BR || !BR.CONFIG || !BR.engine || !BR.sale || !BR.QUESTS || !BR.LEVEL || !BR.RELEASE || !BR.TREE || !BR.VIP || !BR.GACHA || !BR.STOCKS) throw new Error('could not load the game rules from js/');
+if (!BR || !BR.CONFIG || !BR.engine || !BR.sale || !BR.QUESTS || !BR.LEVEL || !BR.RELEASE || !BR.TREE || !BR.VIP || !BR.GACHA || !BR.STOCKS || !BR.CORP) throw new Error('could not load the game rules from js/');
 
 export const RULES = BR.CONFIG;
 export const QUESTS = BR.QUESTS;
@@ -23,6 +24,7 @@ export const VIP = BR.VIP;
 export const RECEIPTS = BR.receipts;
 export const GACHA = BR.GACHA;
 export const STOCKS = BR.STOCKS;
+export const CORP = BR.CORP;
 // the newest Dev News entry: players on an older game are asked to update
 export const RELEASE = BR.RELEASE;
 export const JOBS = new Map(RULES.jobs.map((j) => [j.id, j]));
@@ -44,6 +46,7 @@ export function carSale(now = Date.now()) { return BR.sale.cars(now, RULES.cars)
 // `off`: VIP's % off on top of the sale
 export function carPrice(car, sale, off = 0) { return BR.sale.carPrice(car, sale, off); }
 export function carPriced(car) { return BR.sale.carPriced(car); }
+export function carSold(car) { return BR.sale.carSold(car); }
 // what the buy-back pays for a car at `now` (and the 大廃棄セール on then)
 export function carBuyback(car, now = Date.now()) { return BR.sale.buyback(car, now, BR.sale.cars(now, RULES.cars)); }
 export function carDisposal(now = Date.now()) { return BR.sale.disposal(now); }

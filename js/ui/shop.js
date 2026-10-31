@@ -308,23 +308,23 @@
     $('#charm-count').textContent = n;
     btn.classList.toggle('on', !!m.charm);
     btn.classList.toggle('none', !n && !m.charm);
-    $('#charm-label').textContent = m.charm ? '発動中' : 'お守り加護';
-    $('#btn-charm').setAttribute('aria-label', 'お守り加護・所持' + n + '個' + (m.charm ? '・発動中' : ''));
+    $('#charm-label').textContent = m.charm ? '発動中' : 'セーフティースロット';
+    $('#btn-charm').setAttribute('aria-label', 'セーフティースロット・所持' + n + '個' + (m.charm ? '・発動中' : ''));
     $('#btn-charm').setAttribute('aria-pressed', String(!!m.charm));
   }
 
   function useCharm() {
     var m = me();
     if (!m) return;
-    if (m.charm) { sfx('click'); toast('お守り加護 発動中：次に負けたスピンで守ってくれます', 3000); return; }
+    if (m.charm) { sfx('click'); toast('セーフティースロット 発動中：次に負けたスピンで守ってくれます', 3000); return; }
     if (BR.game.busy()) {
       sfx('deny');
-      toast('お守り加護はスロットを回す前にだけ使えます', 3000);
+      toast('セーフティースロットはスロットを回す前にだけ使えます', 3000);
       return;
     }
     if (!owned(BR.CONFIG.charm.item)) {
       sfx('deny');
-      toast('お守り加護を持っていません。Shop で買えます', 3000);
+      toast('セーフティースロットを持っていません。Shop で買えます', 3000);
       setTimeout(function () { if (!BR.game.busy()) BR.social.open('shop'); }, 700);
       return;
     }
@@ -343,7 +343,7 @@
         BR.juice.stars(p.x, p.y, { n: 6, r: 110, size: 80 });
         BR.juice.sparks(p.x, p.y, { n: 16, speed: 420, life: 0.9, g: -120, color: 'gold' });
       }
-      toast('お守り加護を使いました！次に負けたスピンで守ってくれます', 3200);
+      toast('セーフティースロットを使いました！次に負けたスピンで守ってくれます', 3200);
     }, fail).then(function () { busy = false; });
   }
 
@@ -356,7 +356,7 @@
     var pop = el('div', 'charm-pop' + (full ? ' full' : ''));
     pop.appendChild(el('i', 'charm-pic'));
     var t = el('div', 'charm-pop-text');
-    t.appendChild(el('b', '', (full ? '大吉！お守り加護' : 'お守り加護') + (c.hub ? '（友達と稼ぐ）' : '')));
+    t.appendChild(el('b', '', (full ? '大吉！セーフティースロット' : 'セーフティースロット') + (c.hub ? '（友達と稼ぐ）' : '')));
     t.appendChild(el('span', '', (full ? '100%' : c.pct + '%') + ' 軽減　+' + U.fmt(c.back)));
     pop.appendChild(t);
     (where || layer).appendChild(pop);

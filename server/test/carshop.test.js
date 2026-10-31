@@ -10,8 +10,8 @@ const insertCar = (s,p,fields={}) => {
   return id;
 };
 test('CAR SHOP prices are fixed across sale hours, charged per unit, and stock survives login refresh',async t=>{
- const s=await startServer();t.after(()=>s.stop());const p=await s.register('PartsBuyer');s.setUser(p.me.id,{dollars:20000000});
- const expected={'repair-kit':250000,'car-oil-medium':100000,'gasoline-full':10000,'engine-v1':1100000,'engine-v2':2500000,'engine-v3':3000000};
+ const s=await startServer();t.after(()=>s.stop());const p=await s.register('PartsBuyer');s.setUser(p.me.id,{dollars:40000000});
+ const expected={'repair-kit':450000,'car-oil-medium':550000,'gasoline-full':25000,'engine-v1':2500000,'engine-v2':4800000,'engine-v3':8200000};
  let paid=0;
  for(const [id,price] of Object.entries(expected)){
   const item=RULES.shop.find(x=>x.id===id);
@@ -20,7 +20,7 @@ test('CAR SHOP prices are fixed across sale hours, charged per unit, and stock s
   const result=await buy(s,p,id,2,price);assert.equal(result.status,200,JSON.stringify(result));assert.equal(result.paid,price*2);paid+=price*2;
  }
  const me=(await s.call('GET','/api/me',{token:p.token})).me;
- assert.equal(me.dollars,20000000-paid);for(const id of Object.keys(expected))assert.equal(me.items[id],2);
+ assert.equal(me.dollars,40000000-paid);for(const id of Object.keys(expected))assert.equal(me.items[id],2);
 });
 test('install, retry, swap and detach conserve engines without changing cash',async t=>{
  const s=await startServer();t.after(()=>s.stop());const p=await s.register('Mechanic');s.setUser(p.me.id,{dollars:10000000});const car=insertCar(s,p);
@@ -41,7 +41,7 @@ test('engine installation enforces ownership, inventory and car locks without co
 test('buyback includes exactly 90 percent of the installed engine once and rejects forged quotes',async t=>{
  const s=await startServer();t.after(()=>s.stop());const p=await s.register('Seller');s.setUser(p.me.id,{dollars:10000000});
  const car=insertCar(s,p);await buy(s,p,'engine-v3');await equip(s,p,car,'engine-v3');
- const base=carBuyback(CARS.get('two-state-sedan')).price,quote=base+2700000;
+ const base=carBuyback(CARS.get('two-state-sedan')).price,quote=base+7380000;
  const garage=await s.call('GET','/api/cars',{token:p.token});assert.equal(garage.cars[0].buyback.price,quote);
  assert.equal((await s.call('POST','/api/cars/sell',{token:p.token,body:{car,price:base}})).error.code,'price_changed');
  const before=(await s.call('GET','/api/me',{token:p.token})).me.dollars;

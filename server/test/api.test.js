@@ -457,29 +457,31 @@ test('icons: one free portrait and every rarity at its fixed price, without sale
   assert.equal(changed.me.dollars, dollars, 'owned portraits can be selected again without charging');
 });
 
-test('cars: Car Owner sells for $26,500,000; garage; gifts go to friends only', async () => {
+test('cars: Car Owner sells the MAGITA 325 for $27,000,000 (the sedan no longer); garage; gifts go to friends only', async () => {
   const a = await register();
   const b = await register();
   const c = await register();
   await befriend(a, b);
-  setUser(a.me.id, { dollars: 26499999 });
-  assert.equal((await call('POST', '/api/cars/buy', { token: a.token, body: { model: 'two-state-sedan' } })).error.code, 'insufficient');
+  setUser(a.me.id, { dollars: 26999999 });
+  assert.equal((await call('POST', '/api/cars/buy', { token: a.token, body: { model: 'ferrari-325' } })).error.code, 'insufficient');
+  assert.equal((await call('POST', '/api/cars/buy', { token: a.token, body: { model: 'two-state-sedan' } })).error.code, 'bad_model');
   assert.equal((await call('POST', '/api/cars/buy', { token: a.token, body: { model: 'tank' } })).status, 400);
   setUser(a.me.id, { dollars: 30000000 });
-  let r = await call('POST', '/api/cars/buy', { token: a.token, body: { model: 'two-state-sedan' } });
+  let r = await call('POST', '/api/cars/buy', { token: a.token, body: { model: 'ferrari-325' } });
   assert.equal(r.status, 200);
-  assert.equal(r.me.dollars, 3500000);
+  assert.equal(r.me.dollars, 3000000);
   assert.equal(r.me.cars, 1);
   const car = r.car;
   let garage = await call('GET', '/api/cars', { token: a.token });
-  assert.equal(garage.catalog[0].price, 26500000);
+  assert.equal(garage.catalog.find((x) => x.id === 'ferrari-325').price, 27000000);
+  assert.equal(garage.catalog.find((x) => x.id === 'two-state-sedan').ended, true);
   assert.deepEqual(garage.cars.map((x) => x.id), [car.id]);
   assert.equal((await call('POST', '/api/cars/gift', { token: a.token, body: { to: c.me.id, car: car.id } })).error.code, 'not_friends');
   assert.equal((await call('POST', '/api/cars/gift', { token: b.token, body: { to: a.me.id, car: car.id } })).error.code, 'no_car');
   r = await call('POST', '/api/cars/gift', { token: a.token, body: { to: b.me.id, car: car.id } });
   assert.equal(r.status, 200);
   assert.equal(r.message.kind, 'gift');
-  assert.equal(r.message.text, 'two-state-sedan');
+  assert.equal(r.message.text, 'ferrari-325');
   assert.deepEqual((await call('GET', '/api/cars', { token: a.token })).cars, []);
   // nobody's until they tap it (DEV9)
   assert.deepEqual((await call('GET', '/api/cars', { token: b.token })).cars, []);

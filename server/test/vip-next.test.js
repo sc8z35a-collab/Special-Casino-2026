@@ -36,10 +36,10 @@ test('VIP3.1 applies a 15 percent discount server-side and exposes unconfigured 
   assert.deepEqual(before.vip.exclusive31, { unlocked: true, configured: false });
   assert.deepEqual(before.vip.specialLogin, { eligible: true, days: 60, configured: false });
   assert.equal(before.vip.earlyAccess, 2);
-  const price = carPrice(CARS.get('two-state-sedan'), carSale(now), 15).price;
-  const forged = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'two-state-sedan', price: 1 } });
+  const price = carPrice(CARS.get('ferrari-325'), carSale(now), 15).price;
+  const forged = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'ferrari-325', price: 1 } });
   assert.equal(forged.error.code, 'price_changed');
-  const r = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'two-state-sedan', price } });
+  const r = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'ferrari-325', price } });
   assert.equal(r.status, 200); assert.equal(r.me.dollars, 100000000 - price);
 });
 
@@ -60,8 +60,8 @@ test('VIP4 retains exactly VIP2 benefits after expiration, while the earned VIP4
   t.mock.method(globalThis.BR.engine, 'spin', win);
   const spun = await s.call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
   assert.equal(spun.vip.exp, 14801, 'permanent VIP2 continues win EXP');
-  const price = carPrice(CARS.get('two-state-sedan'), carSale(now), 3).price;
-  const r = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'two-state-sedan' } });
+  const price = carPrice(CARS.get('ferrari-325'), carSale(now), 3).price;
+  const r = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'ferrari-325' } });
   assert.equal(r.me.dollars, before.dollars + paid.paid - price, 'expired VIP4 has the VIP2 discount, not the paid 15%');
 });
 
@@ -87,7 +87,7 @@ test('PRO has one fixed 8-coin fee and multiplies wins and car EXP by 1.6, inclu
   t.mock.method(globalThis.BR.engine, 'spin', win);
   const spin = await s.call('POST', '/api/spin', { token: a.token, body: { bet: 100 } });
   assert.equal(spin.vip.exp, 1.6);
-  const car = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'two-state-sedan' } });
+  const car = await s.call('POST', '/api/cars/buy', { token: a.token, body: { model: 'ferrari-325' } });
   assert.equal(car.me.vip.exp, 49.6);
 });
 

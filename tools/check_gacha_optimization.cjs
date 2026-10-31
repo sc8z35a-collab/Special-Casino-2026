@@ -116,7 +116,7 @@ const ROOT = path.resolve(__dirname, '..');
     await page.locator('.gc-tier[data-kind="rare"]').click();
     const oddsCalls = requests.filter((p) => p === '/api/gacha').length;
     await page.locator('#gacha-odds-open').click();
-    const carChance = () => page.locator('#gacha-odds-rows tr').filter({ hasText: /^オンヴォーロ/ }).locator('td').last().textContent();
+    const carChance = () => page.locator('#gacha-odds-rows tr').filter({ hasText: /^MAGITA オンヴォーロ/ }).locator('td').last().textContent();
     assert.equal(await carChance(), '10.5%');
     await page.locator('[data-close="gacha-odds-modal"]').click();
     await page.evaluate(() => { gachaShift = 1200000; });

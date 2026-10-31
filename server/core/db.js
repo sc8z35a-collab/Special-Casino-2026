@@ -1205,6 +1205,66 @@ MIGRATIONS.push([
 // (file ids, folders as 'd:<id>'; server/core/vault.js keepMoved).
 MIGRATIONS.push(["ALTER TABLE vault_links ADD COLUMN kept TEXT NOT NULL DEFAULT '[]'"]);
 
+// 企業 (server/core/corp.js, server/core/corp-model.js): the world of companies as it stands (one row for the
+// world, one for each company: its books, people, games and plans), each company's day (its figures, and for a
+// listed one the next day's share-price centre, its moves and its dividend a share), the months, quarters and years
+// its books closed, its games, its news (at: when it is told; public: the 投資 screen shows it), and the players'
+// money of each day that the companies take in at its end. The share prices' path keeps its sentiment and the
+// orders' own move (impact) besides; an order filled keeps how much it moved its price.
+MIGRATIONS.push([
+  `CREATE TABLE corp_state (
+     id   TEXT PRIMARY KEY,
+     data TEXT NOT NULL
+   ) WITHOUT ROWID`,
+  `CREATE TABLE corp_days (
+     company TEXT    NOT NULL,
+     day     INTEGER NOT NULL,
+     data    TEXT    NOT NULL,
+     PRIMARY KEY (company, day)
+   ) WITHOUT ROWID`,
+  `CREATE TABLE corp_anchor (
+     company TEXT    NOT NULL,
+     day     INTEGER NOT NULL,
+     e0      REAL    NOT NULL,
+     e1      REAL    NOT NULL,
+     ev      TEXT    NOT NULL DEFAULT '[]',
+     dps     REAL    NOT NULL DEFAULT 0,
+     PRIMARY KEY (company, day)
+   ) WITHOUT ROWID`,
+  `CREATE TABLE corp_periods (
+     company TEXT    NOT NULL,
+     kind    TEXT    NOT NULL,
+     key     TEXT    NOT NULL,
+     day     INTEGER NOT NULL,
+     data    TEXT    NOT NULL,
+     PRIMARY KEY (company, kind, key)
+   ) WITHOUT ROWID`,
+  `CREATE TABLE corp_titles (
+     company TEXT NOT NULL,
+     id      TEXT NOT NULL,
+     data    TEXT NOT NULL,
+     PRIMARY KEY (company, id)
+   ) WITHOUT ROWID`,
+  `CREATE TABLE corp_news (
+     id      INTEGER PRIMARY KEY,
+     company TEXT    NOT NULL,
+     at      INTEGER NOT NULL,
+     kind    TEXT    NOT NULL,
+     text    TEXT    NOT NULL,
+     data    TEXT    NOT NULL DEFAULT '{}',
+     public  INTEGER NOT NULL DEFAULT 0
+   )`,
+  'CREATE INDEX corp_news_company ON corp_news(company, at)',
+  'CREATE INDEX corp_news_at ON corp_news(at)',
+  `CREATE TABLE corp_flows (
+     day  INTEGER PRIMARY KEY,
+     data TEXT    NOT NULL
+   )`,
+  'ALTER TABLE stock_state ADD COLUMN i REAL NOT NULL DEFAULT 0',
+  'ALTER TABLE stock_state ADD COLUMN s REAL NOT NULL DEFAULT 0',
+  'ALTER TABLE stock_orders ADD COLUMN impact REAL NOT NULL DEFAULT 0'
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
@@ -1215,7 +1275,8 @@ export const TABLES = ['users', 'sessions', 'game_login_locks', 'chat_filter_str
   'diary_posts', 'diary_reads', 'diary_reactions', 'diary_comments', 'diary_claims', 'ops_mfa',
   'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'sec_identity', 'oauth_identities',
   'line_feed_targets', 'line_feed_jobs', 'line_feed_deliveries', 'line_feed_rewards', 'line_feed_claims',
-  'stock_state', 'stock_candles', 'stock_holdings', 'stock_accounts', 'stock_orders', 'medals', 'meta'];
+  'stock_state', 'stock_candles', 'stock_holdings', 'stock_accounts', 'stock_orders', 'medals',
+  'corp_state', 'corp_days', 'corp_anchor', 'corp_periods', 'corp_titles', 'corp_news', 'corp_flows', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

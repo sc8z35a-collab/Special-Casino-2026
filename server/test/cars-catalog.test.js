@@ -1,21 +1,22 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { RULES, CARS, carPrice, carPriced, carSale, carBuyback } from '../core/rules.js';
+import { RULES, CARS, carPrice, carSold, carSale, carBuyback } from '../core/rules.js';
 import { startServer } from './helpers.js';
 
+// every car is MAGITA's now (no maker's name of its own); the Two state セダン is no longer sold (only bought back)
 const supplied = [
-  ['onvoro', 'オンヴォーロ', 4500000],
-  ['ferrari-325', 'フェラーリ325', 55000000],
-  ['mercedes-benz-one', 'メルセデスベンツ one', 135000000],
-  ['lamborghini-aventador', 'ランボルギーニアベンタドール', 142000000],
-  ['lamborghini-urus', 'ランボルギーニウルス', 56500000],
-  ['lamborghini-kuia-spyder', 'ランボルギーニクイヤスパイダー', 34000000],
-  ['nissan-gt-r', '日産 GT-R', 45000000],
-  ['lamborghini-revuelto', 'ランボルギーニ レヴエルト', null],
-  ['mercedes-amg-one-white', 'メルセデスAMG ONE（ホワイト）', null]
+  ['onvoro', 'MAGITA オンヴォーロ', 4200000],
+  ['ferrari-325', 'MAGITA 325', 27000000],
+  ['mercedes-benz-one', 'MAGITA ONE', 55000000],
+  ['lamborghini-aventador', 'MAGITA アベンタドール', 80000000],
+  ['lamborghini-urus', 'MAGITA ウルス', 30000000],
+  ['lamborghini-kuia-spyder', 'MAGITA クイヤスパイダー', 20000000],
+  ['nissan-gt-r', 'MAGITA GT-R', 34000000],
+  ['lamborghini-revuelto', 'MAGITA レヴエルト', 65000000],
+  ['mercedes-amg-one-white', 'MAGITA ONE（ホワイト）', 300000000]
 ];
-const pending = supplied.filter(c => c[2] === null).map(c => c[0]);
+const ended = RULES.cars.filter((c) => c.ended).map((c) => c.id);
 let s;
 before(async () => { s = await startServer(); });
 after(() => s.stop());
@@ -36,33 +37,35 @@ test('all nine supplied cars have their names, prices, real GLBs and fallback pi
     const picture = fs.readFileSync(new URL(`../../img/cars/${id}.webp`, import.meta.url));
     assert.equal(picture.toString('ascii', 8, 12), 'WEBP');
   }
+  // (no car carries a real carmaker's name)
+  for (const c of RULES.cars) assert.match(c.name, /^MAGITA /, c.id);
 });
 
-test('unpriced cars never gain a sale, VIP price or buyback value', () => {
+test('a car no longer sold never gains a sale, but is still bought back', () => {
+  assert.deepEqual(ended, ['two-state-sedan']);
   let annual;
   for (let day = 0; day < 365; day++) {
     const sale = carSale(Date.UTC(2026, 0, 1, 0) + day * 86400000);
     if (!sale) continue;
-    for (const id of pending) assert.equal(Object.hasOwn(sale.pct, id), false);
+    for (const id of ended) assert.equal(Object.hasOwn(sale.pct, id), false);
     if (sale.kind === 'year') annual = sale;
   }
   assert.ok(annual);
-  assert.equal(Object.keys(annual.pct).length, RULES.cars.filter(carPriced).length);
-  for (const id of pending) {
+  assert.equal(Object.keys(annual.pct).length, RULES.cars.filter(carSold).length);
+  for (const id of ended) {
     const car = RULES.cars.find(c => c.id === id);
-    assert.equal(CARS.has(id), false);
-    assert.deepEqual(carPrice(car, { pct: { [id]: 45 } }, 15), { price: null, pct: 0, vip: 0 });
-    assert.equal(carBuyback(car), null);
+    assert.equal(CARS.has(id), true);
+    assert.ok(carBuyback(car).price > 0);
   }
 });
 
-test('pending cars are listed but every direct purchase is rejected without changing money or ownership', async () => {
-  const p = await s.register('CarPending');
+test('a car no longer sold is listed, every direct purchase is rejected without changing money or ownership, and one owned sells back', async () => {
+  const p = await s.register('CarEnded');
   s.setUser(p.me.id, { dollars: 1000000000, vip_until: Date.now() + 86400000, vip_exp: 15000 });
   const g = await s.call('GET', '/api/cars', { token: p.token });
-  for (const id of pending) {
-    assert.equal(g.catalog.find(c => c.id === id).price, null);
-    assert.equal(g.buyback[id], null);
+  for (const id of ended) {
+    assert.equal(g.catalog.find(c => c.id === id).ended, true);
+    assert.ok(g.buyback[id].price > 0);
     for (const price of [undefined, 0, 1000000, null]) {
       const r = await s.call('POST', '/api/cars/buy', { token: p.token, body: { model: id, price } });
       assert.equal(r.status, 400);
@@ -72,9 +75,14 @@ test('pending cars are listed but every direct purchase is rejected without chan
   assert.equal(s.app.db.prepare('SELECT dollars FROM users WHERE id = ?').get(p.me.id).dollars, 1000000000);
   assert.equal(s.app.db.prepare('SELECT COUNT(*) AS n FROM cars WHERE owner_id = ?').get(p.me.id).n, 0);
   assert.equal(s.app.db.prepare('SELECT vip_exp FROM users WHERE id = ?').get(p.me.id).vip_exp, 15000);
+  // one bought before it ended: sold back at its price now less the day's rate
+  const id = Number(s.app.db.prepare("INSERT INTO cars (owner_id, model, created_at, acquired_at) VALUES (?, 'two-state-sedan', ?, ?)").run(p.me.id, Date.now(), Date.now()).lastInsertRowid);
+  const sold = await s.call('POST', '/api/cars/sell', { token: p.token, body: { car: id } });
+  assert.equal(sold.status, 200, JSON.stringify(sold));
+  assert.equal(sold.paid, g.buyback['two-state-sedan'].price);
 });
 
-test('all seven priced cars use existing sale/VIP rules and enter the garage with the amount actually paid', async () => {
+test('all nine supplied cars use existing sale/VIP rules and enter the garage with the amount actually paid', async () => {
   const p = await s.register('CarBuyer');
   s.setUser(p.me.id, { dollars: 1000000000, garage_extra: 8, vip_until: Date.now() + 86400000, vip_exp: 0 });
   let balance = 1000000000;
@@ -92,6 +100,6 @@ test('all seven priced cars use existing sale/VIP rules and enter the garage wit
     assert.equal(bought.me.dollars, balance);
   }
   const g = await s.call('GET', '/api/cars', { token: p.token });
-  assert.equal(g.cars.length, 7);
+  assert.equal(g.cars.length, 9);
   assert.ok(g.cars.every(c => g.buyback[c.model].price > 0));
 });

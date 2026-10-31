@@ -18,18 +18,18 @@ after(() => s.stop());
 const omamori = SHOP.get('omamori');
 const price = () => shopSale(omamori).price;
 
-test('Shop: お守り加護 at the price of the moment (on sale 5 hours a day), ten per player at most', async () => {
+test('Shop: セーフティースロット (once お守り加護) at the price of the moment (on sale 5 hours a day), ten per player at most', async () => {
   const a = await register('ShopA');
-  assert.equal(omamori.price, 90000);
+  assert.equal(omamori.price, 80000);
   const p = price();
   const now = shopSale(omamori);
-  assert.equal(p, now.on ? Math.round(90000 * (100 - now.pct) / 10000) * 100 : 90000);
+  assert.equal(p, now.on ? Math.round(80000 * (100 - now.pct) / 10000) * 100 : 80000);
   // the sale: 5 hours of each Japan day, 10-40 % off
   const day = Date.UTC(2026, 9, 21) - 9 * 3600000;
   const hours = [];
   for (let h = 0; h < 24; h++) {
     const s = shopSale(omamori, day + h * 3600000 + 1000);
-    if (s.on) { hours.push(h); assert.ok(s.price >= 90000 * 0.6 && s.price <= 90000 * 0.9, `on sale: ${s.price}`); } else assert.equal(s.price, 90000);
+    if (s.on) { hours.push(h); assert.ok(s.price >= 80000 * 0.6 && s.price <= 80000 * 0.9, `on sale: ${s.price}`); } else assert.equal(s.price, 80000);
   }
   assert.equal(hours.length, 5);
   assert.equal(hours[4] - hours[0], 4);

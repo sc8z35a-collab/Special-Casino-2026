@@ -106,6 +106,8 @@
   }
 
   function carPriced(car) { return !!car && typeof car.price === 'number' && isFinite(car.price) && car.price > 0; }
+  // a car Car Owner still sells (an `ended` one only bought back)
+  function carSold(car) { return carPriced(car) && !car.ended; }
 
   // The Car Owner sale on at `ms`, or null: { kind, name, start, end, pct: { carId: % off } }
   function carSale(ms, cars) {
@@ -120,7 +122,7 @@
     if (!on) return null;
     var c = S[on.kind];
     // which cars (a shuffle of its own), and how much off each
-    var order = (cars || BR.CONFIG.cars).filter(carPriced).map(function (x) { return x.id; }).sort()
+    var order = (cars || BR.CONFIG.cars).filter(carSold).map(function (x) { return x.id; }).sort()
       .map(function (id) { return { id: id, r: mix(hash(on.key + '/order/' + id)) }; })
       .sort(function (a, b) { return a.r - b.r; });
     var pct = {};
@@ -151,6 +153,7 @@
     // (`off`: VIP's % off on top of it)
     cars: carSale,
     carPriced: carPriced,
+    carSold: carSold,
     carPrice: function (car, sale, off) {
       if (!carPriced(car)) return { price: null, pct: 0, vip: 0 };
       var pct = sale && sale.pct[car.id] || 0, all = pct + (off || 0);
