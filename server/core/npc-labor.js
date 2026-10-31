@@ -132,6 +132,11 @@ function laborDay(W, day, r, ctx) {
       leave(W, i, day, 'quit');
     }
   }
+  // 最低賃金 (the country's knob): on the 1st, no one employed is paid a year below it
+  if (t.d === 1) {
+    const floor = W.nation.knobs.minWage || 0;
+    for (let i = 0; i < P.n; i++) if (P.job[i] >= 1 && P.job[i] <= 14 && P.salary[i] > 0 && P.salary[i] < floor) P.salary[i] = floor;
+  }
   // 大量退職: a company where the mood fell and others are hiring — the leaving catches
   if (t.d === 1) for (const id of NPC.companies) {
     const staff = W.staffOf(id);

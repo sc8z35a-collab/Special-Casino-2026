@@ -190,7 +190,7 @@ function calibrate(W, corp, day) {
     if (P.tr[i * NT + T.gamble] > 115) gamblers++;
   }
   // daily living: ジンクス's goods (80% of its 一般商品売上 at the start), the local shops' the rest
-  c.living = Math.round(flex('jinx', 'goods') * sc * 0.45 / 0.62 / 365 / Math.max(1, households));
+  c.living = Math.round(flex('jinx', 'goods') * sc * 0.3 / 0.62 / 365 / Math.max(1, households));
   c.service = Math.round(flex('carowner', 'service') * sc / 12 / Math.max(1, carOwners) / 1.3);
   // the Shop's items: what the customers outside bought a year, now by the car owners on their trips (some 40 a year)
   c.items = {};
@@ -220,10 +220,10 @@ function calibrate(W, corp, day) {
   }
   const dtrade = prof('dtrade').sales * sc;
   const betsYear = dtrade * 0.55 / (1 - econ.slotMean());
-  c.casino = Math.min(4, betsYear / 12 / Math.max(1, bud.casino) * 0.36);
+  c.casino = Math.min(6, betsYear / 12 / Math.max(1, bud.casino) * 0.5);
   const studios = (2800000000 + 26000000000) * sc;
   c.games = Math.min(8, studios / 12 / Math.max(1, bud.games) * 4);
-  c.livePlay = Math.round(studios * 0.25 / 12 / Math.max(1, P.n * 0.06));
+  c.livePlay = Math.round(studios * 0.18 / 12 / Math.max(1, P.n * 0.06));
   // the market: a twelfth of a year's trading (what Dtrade's 受入手数料 says it was) each month, as buys
   const tradeYear = dtrade * 0.3 / (STOCKS.feeBp / 10000) / 2;
   c.invest = Math.min(0.5, tradeYear / 12 / Math.max(1, bud.invest) * 0.45);
@@ -325,6 +325,12 @@ function refresh(W, day, ctx) {
       if (id === 'ice') W.liveGames = (s.live || []).map((l) => ({ company: id, id: l.id, name: l.name }));
     }
     W.surchargeOn = !!(corp.co.magita && corp.co.magita.surcharge);
+    // a studio's last weeks before a release: longer days (クランチ), unless the country's overtime limit is low
+    W.crunch = {};
+    for (const id of ['riru', 'ice']) {
+      const s = corp.co[id];
+      if (s && (W.nation.knobs.overtime || 45) >= 40 && (s.projects || []).some((p) => p.due > day && p.due - day <= 60)) W.crunch[NPC.companies.indexOf(id) + 1] = 1;
+    }
   }
   for (const [k, until] of Object.entries(W.priceUntil)) if (until <= day) { delete W.priceIdx[k]; delete W.priceUntil[k]; }
   for (const [k, until] of Object.entries(W.appealUntil)) if (until <= day) { delete W.appeal[k]; delete W.appealUntil[k]; }
