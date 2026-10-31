@@ -14,26 +14,28 @@ export const AUTO_TEXT = '（自動返信）ただいま大変混み合ってお
 const LONG = 20000;   // 報告 and 意見案: no limit a player would reach
 
 // ctx: { q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel, onDelivered }
+// (`npc`, `name`: another account of the same kind, TWO STATE公式: it only sends, server/core/slotbill.js)
 export function createOfficial(ctx) {
   const { q, tx, getUser, live } = ctx;
+  const npc = ctx.npc || 'official', name = ctx.name || NAME;
   let botId = 0;
 
   function id() {
     const cached = botId && q('SELECT npc FROM users WHERE id = ?').get(botId);
-    if (cached && cached.npc === 'official') return botId;
-    let row = q("SELECT id FROM users WHERE npc = 'official' LIMIT 1").get();
+    if (cached && cached.npc === npc) return botId;
+    let row = q('SELECT id FROM users WHERE npc = ? LIMIT 1').get(npc);
     if (!row) {
       const now = Date.now();
       q(`INSERT INTO users (name, name_key, recovery_hash, avatar, tokens, dollars, coins, npc, created_at, last_seen)
-         VALUES (?, ?, ?, 'official', 0, 0, 0, 'official', ?, ?)`)
-        .run(NAME, 'npc:official', sha256(newRecoveryCode() + ':official'), now, now);
-      row = q("SELECT id FROM users WHERE npc = 'official' LIMIT 1").get();
+         VALUES (?, ?, ?, 'official', 0, 0, 0, ?, ?, ?)`)
+        .run(name, 'npc:' + npc, sha256(newRecoveryCode() + ':' + npc), npc, now, now);
+      row = q('SELECT id FROM users WHERE npc = ? LIMIT 1').get(npc);
     }
-    q('UPDATE users SET name = ? WHERE id = ? AND name != ?').run(NAME, row.id, NAME);
+    q('UPDATE users SET name = ? WHERE id = ? AND name != ?').run(name, row.id, name);
     botId = row.id;
     return botId;
   }
-  function me() { const b = q('SELECT id, name, avatar FROM users WHERE id = ?').get(id()); return { id: b.id, name: b.name, avatar: b.avatar, npc: 'official' }; }
+  function me() { const b = q('SELECT id, name, avatar FROM users WHERE id = ?').get(id()); return { id: b.id, name: b.name, avatar: b.avatar, npc }; }
   const thread = (userId) => q('SELECT * FROM bot_threads WHERE user_id = ?').get(userId) || { user_id: userId, waiting_since: 0, ops_at: 0, auto_at: 0 };
   function saveThread(t) {
     q(`INSERT INTO bot_threads (user_id, waiting_since, ops_at, auto_at) VALUES (?, ?, ?, ?)
@@ -69,6 +71,17 @@ export function createOfficial(ctx) {
       return r;
     });
     return deliver(userId, row);
+  }
+
+  // A card of another kind from the bot (a bill: server/core/slotbill.js)
+  function post(userId, fields) {
+    const bid = id();
+    const row = tx(() => {
+      const r = ctx.insertMessage({ channel: ctx.dmChannel(userId, bid), sender: getUser(bid), recipient: userId, ...fields });
+      ctx.touchConversations(userId, bid, r.id, userId);
+      return r;
+    });
+    return { row, dto: deliver(userId, row) };
   }
 
   // A player wrote to the bot (a message, a 報告 or a 意見案): it waits for the operators.
@@ -134,5 +147,5 @@ export function createOfficial(ctx) {
     return { messages: rows.map((r) => (r.retracted_at ? { ...ctx.msgDto(r), original: r.body } : ctx.msgDto(r))), playerReadUpTo: read ? read.read_id : 0, thread: thread(userId) };
   }
 
-  return { id, me, is: (userId) => userId === id(), say, pay, fromPlayer, answered, markRead, waiting, waitingIds, autoReplies, conversation, LONG };
+  return { id, me, is: (userId) => userId === id(), say, pay, post, fromPlayer, answered, markRead, waiting, waitingIds, autoReplies, conversation, LONG };
 }

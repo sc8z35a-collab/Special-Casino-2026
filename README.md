@@ -56,6 +56,7 @@ npm test        # server/testの検証
 - [改善項目の実装記録](docs/implementation-progress.md)
 - [功績：非公開の資料（配信されない）](docs/medals-hidden.md)
 - [経済システムの計画（企業10社は実装済み・残りは計画）](docs/economy-plan.md)
+- [NPCの国の計画 第3版（5万人・国と年金・選挙・労働組合・市民が制度を変える・街ライブ、未実装）](docs/npc-plan.md)
 
 説明の原稿は `docs/handbook/` と `README_DEV_NEWS.md` で管理します。運営サイトのDEV UNIT用ファイルは `node tools/sync_devunit_readme.cjs` で生成します。`--check` は生成物との不一致を検出します。
 

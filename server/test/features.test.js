@@ -117,7 +117,8 @@ test('お守り加護: switched on before a spin, softens the next lost spin, th
     assert.ok(used, 'a lost spin uses it');
     assert.ok(used.pct === 100 || (used.pct >= 5 && used.pct <= 20), `pct ${used.pct}`);
     assert.equal(used.back, Math.floor((bet - sp.result.total) * used.pct / 100));
-    assert.equal(sp.balance.tokens, before - bet + sp.result.total + used.back);
+    // (a partial win on a bet this big still pays Dtrade its fee: RULES.casino)
+    assert.equal(sp.balance.tokens, before - bet + sp.result.total - (sp.result.fee || 0) + used.back);
     assert.equal(sp.charm, undefined, 'used up: no longer on');
   }
   assert.ok(used);

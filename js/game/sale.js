@@ -154,10 +154,11 @@
     cars: carSale,
     carPriced: carPriced,
     carSold: carSold,
-    carPrice: function (car, sale, off) {
-      if (!carPriced(car)) return { price: null, pct: 0, vip: 0 };
+    // (`extra`: MAGITA's surcharge on it, when the maker is struggling: added after the % off, server/core/corp.js)
+    carPrice: function (car, sale, off, extra) {
+      if (!carPriced(car)) return { price: null, pct: 0, vip: 0, extra: 0 };
       var pct = sale && sale.pct[car.id] || 0, all = pct + (off || 0);
-      return { price: all ? round100(car.price * (100 - all) / 100) : car.price, pct: pct, vip: off || 0 };
+      return { price: (all ? round100(car.price * (100 - all) / 100) : car.price) + (extra || 0), pct: pct, vip: off || 0, extra: extra || 0 };
     },
     // the 大廃棄セール on at `ms` (null: none)
     disposal: function (ms) {

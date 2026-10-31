@@ -40,8 +40,10 @@ const { configFrom } = require('../server/core/config.js');
       const login = await call('POST', '/api/login', null, { name: 'ParityA', password: 'pass1234' });
       assert.equal(login.status, 200); record('password login', login, wallet(login));
       for (const actor of [a, b]) assert.equal((await call('POST', '/api/age', actor, { adult: true })).status, 200);
-      const bought = await call('POST', '/api/buy', a, { amount: 3 }); assert.equal(bought.status, 200); record('buy', bought, wallet(bought));
-      const sold = await call('POST', '/api/sell', a, { amount: 2 }); assert.equal(sold.status, 200); record('sell', sold, wallet(sold));
+      const bought = await call('POST', '/api/buy', a, { amount: 5000 }); assert.equal(bought.status, 200); record('buy', bought, wallet(bought));
+      // (changing back costs Dtrade's $40K: below it is refused, alike on both)
+      record('sell below the fee', await call('POST', '/api/sell', a, { amount: 2 }));
+      const sold = await call('POST', '/api/sell', a, { amount: 4500 }); assert.equal(sold.status, 200); record('sell', sold, wallet(sold));
       record('negative amount', await call('POST', '/api/buy', a, { amount: -1 }));
       record('insufficient balance', await call('POST', '/api/buy', a, { amount: 100000000 }));
       record('operator permissions', await call('GET', '/api/ops/me', a));

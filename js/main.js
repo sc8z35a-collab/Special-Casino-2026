@@ -191,7 +191,7 @@
       var from = shown[k];
       if (!animate || from === to || from === null) {
         shown[k] = to;
-        setText('w-' + k, U.fmt(to));
+        setText('w-' + k, U.fmtSigned(to));
         return;
       }
       var el = document.getElementById('w-' + k);
@@ -201,7 +201,7 @@
         var dur = Math.min(1600, 380 + Math.log10(Math.abs(to - from) + 1) * 240);
         walletAnim[k] = U.tween(dur, function (t) {
           shown[k] = Math.round(from + (to - from) * U.ease.outCubic(t));
-          setText('w-' + k, U.fmt(shown[k]));
+          setText('w-' + k, U.fmtSigned(shown[k]));
         }, function () { walletAnim[k] = null; });
       };
       // the coins fly in for what is new (a count already under way had the rest)
@@ -370,7 +370,7 @@
     game.waiting = false;
     game.result = res;
     // tokens given back by the お守り加護 also wait for the reels
-    game.hold = res ? res.total + (res.charm ? res.charm.back : 0) : 0;
+    game.hold = res ? res.total - (res.fee || 0) + (res.charm ? res.charm.back : 0) : 0;
     if (game.queued) { BR.bank.applyBalance(game.queued); game.queued = null; }
     renderWallet(false);
     var late = (U.now() - game.t0) / 1000;
@@ -403,6 +403,8 @@
     if (res && BR.combo && BR.combo.spun) BR.combo.spun(res, !!game.watch);
     if (res && res.hub && !game.watch && BR.hub) BR.hub.afterSpin(res);
     if (res && res.charm) BR.shop.charmSaved(res);
+    // (a big bet's win: Dtrade's fee out of it, js/game/config.js casino)
+    if (res && res.fee > 0 && !game.watch) toast('Dtrade手数料 −' + U.fmt(res.fee) + '（' + Math.round(C.casino.winFee * 100) + '%）', 2200);
     if (!res || res.total <= 0) {
       renderWallet(!!(res && res.charm));
       renderBet();
@@ -421,7 +423,7 @@
     // BIG WIN switched off in 演出設定: shown like a plain WIN (the WIN box counts up)
     var overlay = res.tier >= 2 && (!BR.fx || BR.fx.on('bigwin'));
     setWinAmount(res.total, true, !overlay);
-    if (res.tier >= 2) game.hold = res.total;
+    if (res.tier >= 2) game.hold = res.total - (res.fee || 0);
     renderWallet(true, mid);
     renderBet();
     var done = function () {
@@ -499,7 +501,7 @@
     w.balance = item.balance;
     game.spinning = true;
     game.result = res;
-    game.hold = res.total + (res.charm ? res.charm.back : 0);
+    game.hold = res.total - (res.fee || 0) + (res.charm ? res.charm.back : 0);
     game.t0 = U.now();
     renderWallet(false);
     setWinGoodLuck();

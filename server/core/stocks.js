@@ -19,7 +19,7 @@
 // above, sell at or below) wait until the end of the trading day (9:00 Japan
 // time) and trade in the first second that reaches them, at that second's
 // price; a buy order holds its money and a sell order its shares while it
-// waits. The fee is 0.6% each way (rounded up); every order counts once
+// waits. The fee is 1.8% each way (rounded up; Dtrade's); every order counts once
 // towards the day's 30 (one cancelled or not traded gives its count back);
 // buying stops at $8,000,000 invested (both companies' holdings at the price
 // now, and the money buy orders hold). An order carries the page's own key:

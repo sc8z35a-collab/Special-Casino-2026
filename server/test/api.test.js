@@ -140,12 +140,15 @@ test('shop: buy, sell, limits and the daily gift', async () => {
   assert.equal((await call('POST', '/api/buy', { token: u.token, body: { amount: 1 } })).status, 409);
   const before = (await call('GET', '/api/me', { token: u.token })).me;
   assert.equal((await call('POST', '/api/sell', { token: u.token, body: { amount: before.tokens + 1 } })).status, 409);
-  r = await call('POST', '/api/sell', { token: u.token, body: { amount: 500 } });
-  assert.equal(r.me.tokens, before.tokens - 500);
-  assert.equal(r.me.dollars, before.dollars + 500 * price);
+  // (Dtrade's exchange fee comes off what changing back brings: what does not come to more than it is refused)
+  const fee = RULES.casino.exchangeFee;
+  assert.equal((await call('POST', '/api/sell', { token: u.token, body: { amount: fee / price } })).error.code, 'below_fee');
+  r = await call('POST', '/api/sell', { token: u.token, body: { amount: 5000 } });
+  assert.equal(r.me.tokens, before.tokens - 5000);
+  assert.equal(r.me.dollars, before.dollars + 5000 * price - fee);
   r = await call('POST', '/api/daily', { token: u.token });
   assert.equal(r.status, 200);
-  assert.equal(r.me.tokens, before.tokens - 500 + RULES.dailyFree);
+  assert.equal(r.me.tokens, before.tokens - 5000 + RULES.dailyFree);
   assert.equal(r.me.dailyReady, false);
   assert.equal((await call('POST', '/api/daily', { token: u.token })).status, 409);
 });

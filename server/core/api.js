@@ -65,6 +65,7 @@ import { createBackup } from './backup.js';
 import { createTrees } from './tree.js';
 import { createStocks } from './stocks.js';
 import { createCorp } from './corp.js';
+import { createSlotBills } from './slotbill.js';
 import { createDevCode } from './devcode.js';
 import { createPay } from './pay.js';
 import { createTeam } from './team.js';
@@ -1804,6 +1805,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           const m = r.total / bet;
           r.tier = m >= RULES.tiers.superBig ? 3 : m >= RULES.tiers.big ? 2 : 1;
         }
+        // a big bet's win pays Dtrade, the slots' company, its fee out of the win (RULES.casino)
+        r.fee = bet >= RULES.casino.bigBet && r.total > 0 ? Math.floor(r.total * RULES.casino.winFee) : 0;
         // an お守り加護 that is on softens the first losing spin, then it is used up
         // (友達と稼ぐ: up to CHARM.hub.max %, 大吉 twice as often)
         if (cur.charm > 0 && r.total < bet) {
@@ -1869,12 +1872,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (boost) boost.booster = on.booster;
         // the 功績's counts (server/core/medals.js): a win, an ULTRA BIG WIN, the best combo, the $ the spin lost
         const lost = Math.max(0, bet - r.total - back) * RULES.tokenPrice;
-        q(`UPDATE users SET tokens = tokens - ? + ?, total_bet = total_bet + ?, total_won = total_won + ?,
+        const slotMonth = slotBills.spun(cur);
+        q(`UPDATE users SET slot_month = ?, tokens = tokens - ? + ?, total_bet = total_bet + ?, total_won = total_won + ?,
            biggest_win = MAX(biggest_win, ?), spins = spins + 1, won_day = ?, day_won = ?, last_spin = ?, charm = ?,
            quests = ?, xp = xp + ?, streak = ?, wins = wins + ?, ultra_wins = ultra_wins + ?, best_combo = MAX(best_combo, ?),
            casino_lost = casino_lost + ?, rev = rev + 1 WHERE id = ?`)
-          .run(bet, r.total + back, bet, r.total, r.total, today, dayWon, last, r.charm ? 0 : cur.charm,
+          .run(slotMonth, bet, r.total + back - r.fee, bet, r.total, r.total, today, dayWon, last, r.charm ? 0 : cur.charm,
             quests.json, xp, streak, r.total > 0 ? 1 : 0, ultra ? 1 : 0, combo, lost, cur.id);
+        // (Dtrade's: the bet lost, the fee on the win; kept in memory and written with the others now and then)
+        afterCommit(() => { corp.tally('dtrade', 'casino', lost); corp.tally('dtrade', 'winfee', r.fee * RULES.tokenPrice); });
         counted = [medals.spinCounts(cur), medals.spinCounts({ ...cur, total_won: cur.total_won + r.total, wins: cur.wins + (r.total > 0 ? 1 : 0),
           ultra_wins: cur.ultra_wins + (ultra ? 1 : 0), best_combo: Math.max(cur.best_combo, combo), casino_lost: cur.casino_lost + lost })];
         if (config.logSpins) {
@@ -1891,7 +1897,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // (as it is sent: what the game makes whole for itself is not, js/game/engine.js whole() — the grid as digits, no line, nothing that
       // is none)
       const out = { grid: packGrid(result.grid), bet, ...someOf({ wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, combo: result.combo,
-        charm: result.charm, hub: boost, double: result.double, vip: result.vip }) };
+        charm: result.charm, hub: boost, double: result.double, vip: result.vip, fee: result.fee }) };
       notifyWatchers(u.id, { type: 'spin', user: u.id, result: out, balance: balance(after) });
       if (boost && on) {
         // the others in the hub: the combo they share, and what everyone won
@@ -1935,10 +1941,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const body = await req.json();
       const amount = posInt(body.amount, '交換数');
       rate(limit.shop, u.id);
+      // (Dtrade takes its exchange fee each time: an amount that does not come to more than it is refused)
+      const fee = RULES.casino.exchangeFee;
+      if (amount * RULES.tokenPrice <= fee) throw new ApiError(400, 'below_fee', `交換には手数料$${fmt(fee)}がかかるため、$${fmt(fee)}を超える分から交換できます`);
       tx(() => {
         const cur = getUser(u.id);
         if (amount > cur.tokens) throw new ApiError(409, 'insufficient', 'スピントークンが足りません');
-        q('UPDATE users SET tokens = tokens - ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(amount, amount * RULES.tokenPrice, cur.id);
+        q('UPDATE users SET tokens = tokens - ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(amount, amount * RULES.tokenPrice - fee, cur.id);
+        corp.flow('dtrade', 'exchange', fee);
       });
       return { me: meDto(balanceChanged(u.id)) };
     }],
@@ -2230,6 +2240,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         slotPrice: slotPrice(u),
         vip: vipLevel(u), vipBadge: vipBadgeLevel(u),
         sale: carSale(now),
+        // (MAGITA's surcharge on each car while it is on: server/core/corp.js)
+        surcharge: corp.surcharges(),
         disposal: carDisposal(now),
         buyback: Object.fromEntries(RULES.cars.map((c) => [c.id, carBuyback(c, now)])),
         rental: { hours: RENT.hours },
@@ -2345,7 +2357,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       if (!car || car.ended) throw new ApiError(400, 'bad_model', car ? 'この車は販売終了しました' : 'この車は販売していません');
       const vip = vipLevel(u);
       if (!VIP.carOpen(car, vip)) throw new ApiError(403, 'vip_only', `VIP${VIP.label(car.vip)}限定車です`);
-      const cost = carPrice(car, carSale(), VIP.carDiscount(vip)).price;
+      const cost = carPrice(car, carSale(), VIP.carDiscount(vip), corp.surcharge(car.id)).price;
       if (body.price !== undefined && Number(body.price) !== cost) {
         throw new ApiError(409, 'price_changed', `価格が変わりました（今は $${fmt(cost)}）`, { sale: carSale() });
       }
@@ -3797,6 +3809,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // the operators online hear of each day (their 株式 app looks again), the 投資 screen's watchers see it
   const corp = createCorp({ q, tx, afterCommit, secret, clock: config.clock || Date.now, history: config.corpHistory ?? 2, live,
     opsIds: () => ops.operatorList().filter((o) => o.id && live.opsOnline(o.id)).map((o) => o.id), onDay: () => stocks.corpNotice() });
+  // カジノスロット使用料: TWO STATE公式's monthly bill for the slots (Dtrade's), paid or taken after its days
+  const slotBills = createSlotBills({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel, corp, fmt, meDto, clock: config.clock || Date.now,
+    onDelivered: (userId, dto) => phone(userId, dmNote(dto)) });
+  registry.add('slotbill', slotBills.routes);
   // 投資: the two companies' shares, orders and dividends (a filled limit or stop order is told to the phone)
   const stocks = createStocks({ q, tx, afterCommit, getUser, meDto, balanceChanged, live, secret, clock: config.clock || Date.now, corp,
     rate: (u) => rate(limit.stock, u.id),
@@ -3870,7 +3886,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   routes['GET /api/ops/patrol'] = (req, u) => { ops.see(u); return { patrol: patrolDto(), now: Date.now() }; };
   // the 企業 folder's apps: every company at a glance, and each one's own site (server/core/corp.js); a look brings
   // the companies up to now (their days close as the share prices pass them), as a look at the market would
-  Object.assign(routes, corp.routes((u) => { ops.see(u); stocks.advance(); }));
+  Object.assign(routes, corp.routes((u) => { ops.see(u); stocks.advance(); tx(() => corp.flush()); }));
   routes['POST /api/ops/patrol/run'] = async (req, u) => {
     ops.need(u);
     if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
@@ -4173,6 +4189,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // 投資: the price path brought up to now, the old candles and orders out
       try { stocks.housekeep(); } catch (e) { console.error('stocks housekeeping failed', e); }
       try { corp.housekeep(); } catch (e) { console.error('corp housekeeping failed', e); }
+      try { slotBills.housekeep(); } catch (e) { console.error('slot bills failed', e); }
       spinRequests.prune();
       gacha.prune();
       gameLogin.prune();
@@ -4528,6 +4545,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     stocksDue: () => (emergency.locked() ? Infinity : stocks.due()),
     stocksWake: () => { if (!emergency.locked()) stocks.wake(); },
     stocks,
+    corp,
+    slotBills,
     quota,
     // the bytes of an answer, as the host sent it (and the path it answered)
     sent: (bytes, path = '') => { stats.sent(bytes); emergency.sent(bytes, path); },

@@ -72,7 +72,9 @@
           var m = res.total / bet;
           res.tier = m >= C.tiers.superBig ? 3 : m >= C.tiers.big ? 2 : 1;
         }
-        S.tokens = S.tokens - bet + res.total;
+        // (a big bet's win pays Dtrade its fee, as online)
+        res.fee = bet >= C.casino.bigBet && res.total > 0 ? Math.floor(res.total * C.casino.winFee) : 0;
+        S.tokens = S.tokens - bet + res.total - res.fee;
         BR.store.save();
         return { result: res, balance: { tokens: S.tokens, dollars: S.dollars, coins: S.coins } };
       });
@@ -87,8 +89,9 @@
     },
     sell: function (n) {
       if (n > S.tokens) return fail('insufficient', 'スピントークンが足りません');
+      if (n * C.tokenPrice <= C.casino.exchangeFee) return fail('below_fee', '交換には手数料$' + U.fmt(C.casino.exchangeFee) + 'がかかります');
       S.tokens -= n;
-      S.dollars += n * C.tokenPrice;
+      S.dollars += n * C.tokenPrice - C.casino.exchangeFee;
       BR.store.save();
       return Promise.resolve();
     },

@@ -351,10 +351,13 @@ function sellProducts(w, s, code, kind, id, n, paid, cash) {
     cost = n * pr.cost;
     s.owe['*'] = (s.owe['*'] || 0) + cost;
   } else {
-    const buy = n * pr.buy, excl = n * (pr.excl || 0);
+    // (MAGITA's surcharge while it struggles, on its 仕入れ価格: the dealer's customers outside pay it too)
+    const extra = n * surchargeOf(w, kind, id);
+    if (!cash && extra) { post(s, [['ar', extra], ['r:' + code, -extra]]); s.recv += extra; paid += extra; }
+    const buy = n * pr.buy + extra, excl = n * (pr.excl || 0);
     cost = buy + excl;
     s.owe[pr.maker] = (s.owe[pr.maker] || 0) + cost;
-    w.b2b.push({ from: pr.maker, to: s.id, kind, id, n, buy, excl, cost: n * pr.cost });
+    w.b2b.push({ from: pr.maker, to: s.id, kind, id, n, buy, excl, cost: Math.round(n * pr.cost * labMult(w, pr.maker)) });
   }
   const selling = n * CORP.products.sell[kind];
   post(s, [['c:' + code, cost], ['sSelling', selling], ['ap', -(cost + selling)]]);
@@ -466,7 +469,7 @@ function supply(w, s, p) {
   }
 }
 function materials(s, sold) {
-  const n = take(s, 'materials', sold * s.materials);
+  const n = take(s, 'materials', sold * s.materials * (s.lab ? s.lab.mult : 1));
   if (n <= 0) return;
   post(s, [['c:materials', n], ['ap', -n]]);
   s.owe['*'] = (s.owe['*'] || 0) + n;
@@ -1065,6 +1068,7 @@ function closePeriods(w, s, p, d, out, ch) {
   qs.prev = before ? { sales: before.sales, op: before.op, ord: before.ord, net: before.net } : null;
   qs.expected = s.guide && s.guide.fy === fy ? s.guide.expected.quarters[q - 1] : null;
   out.periods.push(qs);
+  surchargeCheck(s, p, d, qs, out);
   s.hist.push({ kind: 'q', key: qs.key, sales: qs.pl.sales, op: qs.pl.op, ord: qs.pl.ord, net: qs.pl.net, eps: qs.eps, d });
   resetPeriod(s, 'q');
   s.pend.push({ day: ann, kind: 'results', key: qs.key, q, fy, pl: qs.pl, prev: qs.prev, expected: qs.expected, eps: qs.eps });
@@ -1123,6 +1127,53 @@ function news(out, s, p, day, at, kind, text, data, jump = 0, market = false) {
   if (p.listed && jump && market) out.jumps.push({ company: s.id, day, at: day * DAY + at, jump });
 }
 
+/* ------------------------------------------------------- MAGITA's research --- */
+// what MAGITA's research has cut its materials to (1: nothing yet), and its surcharge on a car while it struggles
+const MG = CORP.magita;
+const labMult = (w, maker) => (maker === 'magita' && w.co.magita && w.co.magita.lab ? w.co.magita.lab.mult : 1);
+function surchargeOf(w, kind, id) {
+  const s = w.co.magita;
+  return kind === 'cars' && s && s.surcharge && !MG.surcharge.except.includes(id) ? MG.surcharge.amount : 0;
+}
+export const surcharges = (w) => Object.fromEntries(RULES.cars.filter((c) => surchargeOf(w, 'cars', c.id) && CORP.products.cars[c.id]).map((c) => [c.id, MG.surcharge.amount]));
+const MONTH = YEAR / 12;
+// the research begun (on the first live day; a world begun before it had research begins it then)
+function startLab(s, d) {
+  s.lab = { mult: 1, speed: 1, list: MG.research.map((r) => ({ id: r.id, start: d, due: d + Math.round(r.months * MONTH), done: 0, ok: null })) };
+}
+// the day's research: what is due is done (succeeding by its chance), its cut taken; RIMU TAG done, what is left of
+// the rest shortened
+function labDay(w, s, p, d, ch, out) {
+  if (!s.lab) startLab(s, d);
+  for (const r of s.lab.list) {
+    if (r.done || r.due > d) continue;
+    const spec = MG.research.find((x) => x.id === r.id);
+    r.done = d;
+    r.ok = spec.chance >= 1 || ch.u(`magita:lab:${r.id}`) < spec.chance;
+    if (!r.ok) { news(out, s, p, d + 1, 3 * 3600, 'lab', `${spec.name}の開発は目標に届かず終了しました`, { id: r.id, ok: false }, 0, true); continue; }
+    if (spec.cut) s.lab.mult *= 1 - spec.cut;
+    if (spec.speed) {
+      s.lab.speed *= 1 - spec.speed;
+      for (const o of s.lab.list) if (!o.done) o.due = d + Math.ceil((o.due - d) * (1 - spec.speed));
+    }
+    news(out, s, p, d + 1, 3 * 3600, 'lab', spec.cut ? `${spec.name}の開発に成功：製造原価を${Math.round(spec.cut * 100)}%削減` : `${spec.name}の開発に成功：ほかの研究期間を${Math.round(spec.speed * 100)}%短縮`,
+      { id: r.id, ok: true }, 0, true);
+  }
+}
+// at a quarter's end: struggling (below `on` of the plan, or a loss), the surcharge on; back at `off`, off
+function surchargeCheck(s, p, d, qs, out) {
+  if (s.id !== 'magita' || !s.launchDay || d < s.launchDay) return;
+  const op = qs.pl.op, plan = qs.expected;
+  const bad = op < 0 || (plan > 0 && op < plan * MG.surcharge.on), good = op >= 0 && (!(plan > 0) || op >= plan * MG.surcharge.off);
+  if (!s.surcharge && bad) {
+    s.surcharge = d + 1;
+    news(out, s, p, d + 1, 2 * 3600, 'surcharge', `経営悪化のため、オンヴォーロ以外の全車種の仕入れ価格に手数料${CORP.fmt.money(MG.surcharge.amount)}を上乗せします`, { on: true }, 0, true);
+  } else if (s.surcharge && good) {
+    s.surcharge = 0;
+    news(out, s, p, d + 1, 2 * 3600, 'surcharge', '業績が回復したため、車両の仕入れ価格への手数料の上乗せを終了します', { on: false }, 0, true);
+  }
+}
+
 /* ---------------------------------------------------------------- the day --- */
 // The world's day `d`, closed at its end: every company's operations in ORDER, then what passes between them,
 // then the bank's books following everyone's money, then the periods that end, and the next day's announcements,
@@ -1150,6 +1201,7 @@ export function closeDay(w, d, flows, ch) {
     if (p.model === 'studio') studioDay(w, s, p, d, ch, out);
     else if (p.model === 'bank') bankDay(w, s, p, d, ch);
     else {
+      if (p.materials && live) { s.launchDay = s.launchDay || w.launch; labDay(w, s, p, d, ch, out); }
       tradeDay(w, s, p, d, flows, ch);
       if (p.materials) supply(w, s, p);
     }

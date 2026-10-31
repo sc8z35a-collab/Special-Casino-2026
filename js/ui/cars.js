@@ -62,7 +62,8 @@
     var m = BR.social.me();
     return m && m.vip && m.vip.on ? BR.VIP.now(m.vip, now()) : null;
   }
-  function priceOf(car) { return BR.sale.carPrice(car, sale(), BR.VIP.carDiscount(vipLevel())); }
+  // (MAGITA's surcharge on the car while the maker is struggling, as the server said)
+  function priceOf(car) { return BR.sale.carPrice(car, sale(), BR.VIP.carDiscount(vipLevel()), garage && garage.surcharge ? garage.surcharge[car.id] || 0 : 0); }
   // one more garage place (the server's price once it has spoken)
   function slotPrice() {
     var p = BR.CONFIG.garage.slotPrice;
@@ -131,6 +132,7 @@
     else price.appendChild(K.amountEl(pr.price, 'dollars'));
     if (pr.pct) price.appendChild(el('em', 'car-off', '-' + pr.pct + '%'));
     if (pr.vip) price.appendChild(el('em', 'car-vip-note', 'VIP -' + pr.vip + '%'));
+    if (pr.extra) price.appendChild(el('em', 'car-vip-note', 'MAGITA手数料 +' + money(pr.extra)));
     renderSale();
     renderOwned();
     stage(car);

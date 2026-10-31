@@ -44,7 +44,7 @@ export function shopSale(item, now = Date.now()) { return BR.sale.shop(item, now
 // the Car Owner sale on at `now` (or null), and a car's price with it
 export function carSale(now = Date.now()) { return BR.sale.cars(now, RULES.cars); }
 // `off`: VIP's % off on top of the sale
-export function carPrice(car, sale, off = 0) { return BR.sale.carPrice(car, sale, off); }
+export function carPrice(car, sale, off = 0, extra = 0) { return BR.sale.carPrice(car, sale, off, extra); }
 export function carPriced(car) { return BR.sale.carPriced(car); }
 export function carSold(car) { return BR.sale.carSold(car); }
 // what the buy-back pays for a car at `now` (and the 大廃棄セール on then)

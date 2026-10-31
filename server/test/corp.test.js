@@ -12,7 +12,7 @@ import { createTransactions } from '../core/transactions.js';
 import { createCorp } from '../core/corp.js';
 import * as model from '../core/corp-model.js';
 import { yearTax, flatTax } from '../core/corp-tax.js';
-import { CORP, RULES } from '../core/rules.js';
+import { CORP, RULES, carPrice } from '../core/rules.js';
 
 const DAY = 86400;
 const START = Date.UTC(2026, 10, 2, 20, 0, 0);
@@ -222,4 +222,48 @@ test('the operator site: the 企業 folder\'s apps answer operators only, with e
   assert.ok(studio.projects.length >= 3 && studio.quarters.length >= 1);
   assert.equal((await s.call('GET', '/api/ops/corp/company?c=nope', { token: boss.token })).error.code, 'bad_company');
   assert.ok(RULES.cars.every((c) => !CORP.products.cars[c.id] || CORP.products.cars[c.id].buy + CORP.products.cars[c.id].excl <= c.price + 10000000));
+});
+
+test('MAGITA\'s research: A1 in a year, T1 in nine months (by its chance), RIMU TAG in two years shortening MOL1; each cut taken on what it makes', () => {
+  const key = Buffer.alloc(32, 2), ch = model.chance(key);
+  const { world: w } = model.boot(key, launch, { years: 0 });
+  const due = {};
+  let mult = 1;
+  for (let d = launch; d < launch + 4 * 365; d++) {
+    const out = model.closeDay(w, d, {}, ch);
+    for (const n of out.news) if (n.kind === 'lab') due[n.data.id] = { d, ok: n.data.ok };
+    if (d === launch) assert.equal(w.co.magita.lab.list.length, 4);
+  }
+  const months = (n) => Math.round(n * 365 / 12);
+  assert.equal(due.A1.d, launch + months(12));
+  assert.equal(due.T1.d, launch + months(9));
+  assert.equal(due.RIMU.d, launch + months(24));
+  // (MOL1's 42 months: what was left of it at RIMU TAG's end, 35% shorter)
+  assert.equal(due.MOL1.d, due.RIMU.d + Math.ceil((launch + months(42) - due.RIMU.d) * 0.65));
+  for (const r of CORP.magita.research) if (r.cut && due[r.id].ok) mult *= 1 - r.cut;
+  assert.ok(Math.abs(w.co.magita.lab.mult - mult) < 1e-12);
+  assert.ok(due.A1.ok && due.MOL1.ok && due.RIMU.ok);
+});
+
+test('MAGITA struggling: $3M more on every car but the オンヴォーロ, on its 仕入れ価格 and Car Owner\'s price to the players', async (t) => {
+  const s = await startServer({ operators: ['boss'], corpHistory: 0 });
+  t.after(() => s.stop());
+  const p = await s.register('buyer');
+  await s.call('GET', '/api/stocks', { token: p.token });
+  let cars = await s.call('GET', '/api/cars', { token: p.token });
+  assert.deepEqual(cars.surcharge, {});
+  s.app.api.corp.world().co.magita.surcharge = 1;
+  cars = await s.call('GET', '/api/cars', { token: p.token });
+  assert.equal(cars.surcharge['nissan-gt-r'], CORP.magita.surcharge.amount);
+  assert.equal(cars.surcharge.onvoro, undefined);
+  s.setUser(p.me.id, { dollars: 100000000 });
+  const gtr = RULES.cars.find((c) => c.id === 'nissan-gt-r');
+  const sale = cars.sale && cars.sale.pct && cars.sale.pct[gtr.id] ? cars.sale : null;
+  const price = carPrice(gtr, sale, 0, CORP.magita.surcharge.amount).price;
+  const r = await s.call('POST', '/api/cars/buy', { token: p.token, body: { model: 'nissan-gt-r' } });
+  assert.equal(r.paid, price);
+  const boss = await s.register('boss');
+  const site = await s.call('GET', '/api/ops/corp/company?c=carowner', { token: boss.token });
+  const row = site.products.find((x) => x.id === 'nissan-gt-r');
+  assert.deepEqual([row.surcharge, row.buy, row.price], [3000000, 33000000, 37000000]);
 });

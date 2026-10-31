@@ -1324,3 +1324,5 @@ button.watched-by:active { transform: scale(.96); }
 .conv-row > .avatar:active { transform: scale(.94); }
 .conv-name { font-size: 34px; }
 .conv-last { font-size: 23px; }
+/* TWO STATE公式's monthly slot charge (js/ui/social.js): the bill's text under its amount */
+.bill-card .bill-text { margin-top: calc(var(--u) * 6); max-width: calc(var(--u) * 520); white-space: pre-wrap; text-align: left; font-size: calc(var(--u) * 16); line-height: 1.5; color: #e9e1e3; }

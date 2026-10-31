@@ -14,7 +14,8 @@
     { id: 'riru', name: 'RIRU STUDIO', full: 'RIRU STUDIO株式会社', ticker: 'RIRU', base: 12000, vol: 0.07, dividend: 0.002, band: 0.8 },
     { id: 'ice', name: 'Ice Smoker', full: 'Ice Smoker株式会社', ticker: 'ICE', base: 30000, vol: 0.025, dividend: 0.004, band: 0.3 }
   ];
-  var FEE_BP = 60;  // 0.6% each way, in hundredths of a percent
+  // 1.8% each way (Dtrade's, three times the 0.6% it began at), in hundredths of a percent
+  var FEE_BP = 180;
 
   // span: seconds a candle; count: how many; from: the stored candles they are made of
   var PERIODS = [
