@@ -220,13 +220,13 @@ function calibrate(W, corp, day) {
   }
   const dtrade = prof('dtrade').sales * sc;
   const betsYear = dtrade * 0.55 / (1 - econ.slotMean());
-  c.casino = Math.min(6, betsYear / 12 / Math.max(1, bud.casino) * 0.5);
+  c.casino = Math.min(8, betsYear / 12 / Math.max(1, bud.casino) * 1.1);
   const studios = (2800000000 + 26000000000) * sc;
   c.games = Math.min(8, studios / 12 / Math.max(1, bud.games) * 4);
-  c.livePlay = Math.round(studios * 0.18 / 12 / Math.max(1, P.n * 0.06));
+  c.livePlay = Math.round(studios * 0.11 / 12 / Math.max(1, P.n * 0.06));
   // the market: a twelfth of a year's trading (what Dtrade's 受入手数料 says it was) each month, as buys
   const tradeYear = dtrade * 0.3 / (STOCKS.feeBp / 10000) / 2;
-  c.invest = Math.min(0.5, tradeYear / 12 / Math.max(1, bud.invest) * 0.45);
+  c.invest = Math.min(0.5, tradeYear / 12 / Math.max(1, bud.invest) * 2.5);
   c.leisure = Math.round(bud.leisure / Math.max(1, P.n));
   c.publicWorks = Math.round(12000000000 * sc);
   c.grants = [3e9, 3e9, 3.2e9, 2e9, 5e9].map((x) => Math.round(x * sc));

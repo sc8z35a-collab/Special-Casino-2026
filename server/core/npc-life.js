@@ -175,7 +175,7 @@ function free(W, i, m, t, j, day, r, ctx) {
   const lossMem = recall(P, i, M.bigLoss, day);
   const burnt = lossMem && lossMem.ago < 10 ? (tr(P, i, T.gamble) > 0.75 ? 1.3 : 0.4) : 1;
   // (the first spin of a month costs the month's slot charge, $1M: only those who mean to play a lot start)
-  const firstSpin = !P.spun[i] && fund(0) < NPC.life.casinoMonthly * 3;
+  const firstSpin = !P.spun[i] && fund(0) < NPC.life.casinoMonthly;
   scores[3] = !firstSpin && (fund(0) > W.cal.minBet || P.tokens[i] > W.cal.minBet) ? (0.05 + need(P, i, N.thrill) * 0.8 * tr(P, i, T.gamble)) * (0.6 + md) * (evening ? 1.4 : 0.8) * burnt * learnt(P, i, L.casino) * (W.boycott.dtrade ? 1 - 0.6 * P.disc[i * 8 + 6] / 255 : 1) : 0;
   scores[4] = (0.1 + need(P, i, N.fun) * 0.7 * tr(P, i, T.game)) * (evening ? 1.3 : 0.9) * learnt(P, i, L.game) * (age < 40 ? 1.2 : age > 65 ? 0.5 : 1);
   scores[5] = fund(3) > 100000 ? (0.03 + 0.4 * tr(P, i, T.risk) * tr(P, i, T.news)) * Math.min(1.5, wealth) * learnt(P, i, L.invest) * (t >= 540 && t < 600 || t >= 720 && t < 780 || t >= 1230 && t < 1290 ? 1.8 : 1) : 0;

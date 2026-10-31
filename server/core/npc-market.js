@@ -37,12 +37,12 @@ export function createMarket(W) {
       if (held > 0 && price > cost * 1.08) view -= 0.6;
       if (held > 0 && price < cost * 0.9) view += 0.3;
       const limit = Math.max(1, Math.round(price * (1 + (view > 0 ? 1 : -1) * (0.001 + 0.006 * r.u()))));
-      if (view > 0.35) {
+      if (view > 0.2) {
         const room = Math.max(0, NPC.life.daily35M - P.buyDay[i]);
         const money = Math.min(Math.max(0, P.fund[i * 4 + 3]) * (0.3 + 0.5 * r.u()), Math.max(0, P.cash[i]) * 0.5, room);
         const shares = Math.floor(money / (limit * 1.02));
         if (shares > 0) { m.book[id].buy.push([i, shares, limit]); P.buyDay[i] += shares * limit; P.fund[i * 4 + 3] -= shares * limit; }
-      } else if (view < -0.35 && held > 0) {
+      } else if (view < -0.2 && held > 0) {
         const shares = Math.max(1, Math.floor(held * (0.2 + 0.6 * r.u())));
         m.book[id].sell.push([i, Math.min(held, shares), limit]);
       }
