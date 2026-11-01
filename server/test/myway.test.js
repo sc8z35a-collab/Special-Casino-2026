@@ -300,7 +300,7 @@ test('倒産 in a living country: its people let go by the country the day after
       if (id === 'tenesice') m += (c.bal.cash || 0) + (c.bal.lent || 0) + (c.bal.bonds || 0) - (c.bal.deposits || 0);
       else m += (c.bal.cash || 0) - c.loans.reduce((a, l) => a + l.amt, 0);
     }
-    return m + npc.econ.pending(W) + W.sum.imports - (W.sum.exports || 0) + W.sum.toPlayers - W.sum.fromPlayers;
+    return m + npc.econ.pending(W) + W.abroad.cash - W.sum.endowed + W.sum.toPlayers - W.sum.fromPlayers;
   };
   // (its money and what it is owed gone, its equity with them: nothing Tenesice will lend)
   s.ip.heat = 0.05; s.ip.brand = 0.3;

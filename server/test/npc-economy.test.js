@@ -48,7 +48,7 @@ function country(n = 1000, seed = 7) {
         if (id === 'tenesice') x += (s.bal.cash || 0) + (s.bal.lent || 0) + (s.bal.bonds || 0) - (s.bal.deposits || 0);
         else x += (s.bal.cash || 0) - s.loans.reduce((a, l) => a + l.amt, 0);
       }
-      return x + npc.econ.pending(W) + W.sum.imports - (W.sum.exports || 0) + W.sum.toPlayers - W.sum.fromPlayers;
+      return x + npc.econ.pending(W) + W.abroad.cash - W.sum.endowed + W.sum.toPlayers - W.sum.fromPlayers;
     }
   };
 }

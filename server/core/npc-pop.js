@@ -154,6 +154,14 @@ const AGES = [[18, 29, 9700], [30, 39, 8100], [40, 49, 8000], [50, 59, 7800], [6
 // what everyone does at the start (plan §4.6), by the 50,000
 const WORK = { civil: 1500, other: 1800, self: 900, part: 1500, home: 1500, student: 2000, none: 800, rehire: 1750 };
 // what living in each district costs a month (rent), and how rich people there are against the country
+// The money a person has when their life in the country begins (at its start, by their age and pay; a life begun
+// since in the place of one that ended, at 18 with no pay yet): made from nothing, the only money there is besides the
+// players' own at their start — every other $ is one somebody paid somebody (`z`: their luck, a normal draw).
+const AGEW = (a) => (a < 30 ? 0.25 : a < 40 ? 0.6 : a < 50 ? 1 : a < 60 ? 1.4 : a < 70 ? 1.7 : a < 80 ? 1.6 : 1.4);
+export function startMoney(age, salary, dist, z) {
+  const inc = salary > 0 ? Math.pow(salary / 3900000, 0.6) : 0.8;
+  return Math.round(60000000 * AGEW(age) * inc * Math.pow(DIST[dist].rich, 0.7) * Math.exp(0.9 * z));
+}
 const DIST = [{ rent: 180000, rich: 1.1, young: 1.1 }, { rent: 105000, rich: 0.8, young: 1 }, { rent: 115000, rich: 0.8, young: 1.6 }, { rent: 260000, rich: 2.2, young: 0.8 }, { rent: 120000, rich: 0.9, young: 0.6 }];
 export const OTHER_PAY = { 11: 4000000, 12: 3000000, 13: 3500000, 14: 1300000 };
 // the skills each company hires for
@@ -366,12 +374,7 @@ export function makeMoney(P, ages, day, corp, r) {
     for (const i of list) P.tenure[i] = Math.min(65535, Math.max(1, Math.round((ages[i] - 22) * 12 * (0.3 + 0.7 * r.u()))));
   });
   // what they have: by age and pay, a long tail at the top (2% from $1B to $50B), the very rich mostly older
-  const AGEW = (a) => (a < 30 ? 0.25 : a < 40 ? 0.6 : a < 50 ? 1 : a < 60 ? 1.4 : a < 70 ? 1.7 : a < 80 ? 1.6 : 1.4);
-  for (let i = 0; i < n; i++) {
-    const inc = P.salary[i] > 0 ? Math.pow(P.salary[i] / 3900000, 0.6) : 0.8;
-    const d = DIST[P.dist[i]].rich;
-    P.cash[i] = Math.round(60000000 * AGEW(ages[i]) * inc * Math.pow(d, 0.7) * Math.exp(0.9 * r.z()));
-  }
+  for (let i = 0; i < n; i++) P.cash[i] = startMoney(ages[i], P.salary[i], P.dist[i], r.z());
   const top = shuffled(n, r).filter((i) => ages[i] >= 35).sort((a, b) => (P.cash[b] * (1 + r.u())) - (P.cash[a] * (1 + r.u())));
   const nTop = Math.round(n * 0.02);
   for (let k = 0; k < nTop && k < top.length; k++) {

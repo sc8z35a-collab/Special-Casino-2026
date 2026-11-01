@@ -117,8 +117,15 @@ var OpsTown = (function () {
     kv(g, '国の預金', money(nf.cash)); kv(g, '国債の残高', money(nf.debt)); kv(g, 'うちテネシスから', money(nf.bank)); kv(g, '年金の積立金（現金）', money(nf.fund.cash)); kv(g, '年金の積立金（国債）', money(nf.fund.bonds)); kv(g, '年金の支払い（累計）', money(nf.fund.paid));
     p.appendChild(g);
     var rows = [];
-    Object.keys(nf.day.in || {}).forEach(function (k) { rows.push(['収入', k, money(nf.day.in[k])]); });
-    Object.keys(nf.day.out || {}).forEach(function (k) { rows.push(['支出', k, money(nf.day.out[k])]); });
+    // (each kind's name; one not listed shows as it is)
+    var KIND = { consumption: '消費税', income: '所得税', social: '社会保険料', corporate: '法人税', inheritance: '相続税', escheat: '相続人のいない遺産', gains: '譲渡益税',
+      pensionIn: '年金の保険料', civil: '公務員の給与', pension: '年金', welfare: '生活保護', jobless: '失業手当', medical: '医療', works: '公共事業', grants: '交付金・給付',
+      guarantee: '未払賃金の立替払', bondInterest: '国債の利子', debtInterest: 'テネシスへの利子', casinoWins: '市民のスロットの勝ち分',
+      slotWins: 'プレイヤーのスロットの勝ち分', questRewards: 'クエストの報酬', gachaClaims: 'ガチャ代（YOSIDAへ）', loginBonus: 'ログインボーナス', dailyTokens: '毎日の無料トークン',
+      coopBonus: '協力プレイのボーナス', releaseBonus: 'アップデートのお礼', medalRewards: '功績の報酬', diaryRewards: '日記の報酬', treeHarvest: '金の生る木の収穫', npcGifts: 'ジョンソン・運営からの贈り物' };
+    var kindName = function (k) { return KIND[k] || k; };
+    Object.keys(nf.day.in || {}).forEach(function (k) { rows.push(['収入', kindName(k), money(nf.day.in[k])]); });
+    Object.keys(nf.day.out || {}).forEach(function (k) { rows.push(['支出', kindName(k), money(nf.day.out[k])]); });
     if (rows.length) p.appendChild(table(['', '項目（今日）', '金額'], rows));
     box.appendChild(p);
     p = panel('5つの区');

@@ -4,7 +4,7 @@
 // public works, bonds), the month's bills, lives ending and new ones beginning at 18, the money troubles, work
 // (hiring, leaving, 60 and 65), and the people's politics and unions (npc-politics.js).
 import { NPC, CORP } from './rules.js';
-import { T, S, N, E, FL, HOME, NN, NT, REL, MEM, OWN, LISTED, ageOf, remember, memberList, joinHousehold, leaveHousehold, addRelation, pensionMonthly, clampB, clearView } from './npc-pop.js';
+import { T, S, N, E, FL, HOME, NN, NT, REL, MEM, OWN, LISTED, ageOf, remember, memberList, joinHousehold, leaveHousehold, addRelation, pensionMonthly, clampB, clearView, startMoney } from './npc-pop.js';
 import * as econ from './npc-econ.js';
 import { M } from './npc-life.js';
 import { LISTED_IDS } from './npc-market.js';
@@ -100,8 +100,9 @@ export function fromCompanies(W, ext, day) {
     const by = W.sector.today || (W.sector.today = {});
     for (const [k, n] of Object.entries(ext.sectorBy || {})) by['co:' + k] = (by['co:' + k] || 0) + n;
   }
-  if (ext.imports) W.sum.imports += ext.imports;
-  if (ext.exports) W.sum.exports = (W.sum.exports || 0) + ext.exports;
+  // (abroad: paid for what came from it, it paid for what it bought of the country — only ever with what it was paid)
+  if (ext.imports) econ.toAbroad(W, ext.imports);
+  if (ext.exports) { W.sum.exports = (W.sum.exports || 0) + ext.exports; W.abroad.cash -= ext.exports; }
   // (the used cars the local trade bought from Car Owner)
   if (ext.fromSector) W.sector.cash -= ext.fromSector;
   // the companies' bonds are the country's: bought, the country has the money; sold back, it pays it; and their interest
@@ -123,14 +124,15 @@ export function fromCompanies(W, ext, day) {
   }
   // a severance or a car bought back from a person: the company's to them
   for (const s of ext.toPeople || []) { if (s.i >= 0 && s.i < P.n) P.cash[s.i] += s.n; else W.sector.cash += s.n; }
-  // (the players' part of the market's money: theirs)
+  // (the players' part of the market's money: theirs; and what the players paid the local businesses back)
   if (ext.toPlayers) W.sum.toPlayers += ext.toPlayers;
+  if (ext.fromPlayers) W.sum.fromPlayers += ext.fromPlayers;
   // what the treasury paid for the game (server/core/corp-model.js gameDay): the players' slot wins beyond their bets
   // and their quests' rewards (theirs, but YOSIDA's fee), YOSIDA's bill for the gacha (abroad)
   if (ext.state) {
     for (const [k, n] of Object.entries(ext.state.by || {})) econ.nationOut(W, k, n);
     W.sum.toPlayers += ext.state.players || 0;
-    W.sum.imports += ext.state.abroad || 0;
+    econ.toAbroad(W, ext.state.abroad || 0);
   }
 }
 
@@ -644,8 +646,8 @@ export function die(W, i, day, r, ctx) {
 }
 
 // A new life at 18 in the place of one that ended: most as the grown child of a household that wanted one (some of
-// its character from them), the rest young people come to live here; a little money of their own and the family's
-// help; a student or looking for work.
+// its character from them), the rest young people come to live here; the money a life begins with (as everyone's at
+// the country's start: made from nothing, W.sum.endowed) and the family's help; a student or looking for work.
 export function reborn(W, i, day, r, heirs) {
   const P = W.P;
   P.gen[i] = (P.gen[i] + 1) & 0xffff;
@@ -686,7 +688,10 @@ export function reborn(W, i, day, r, heirs) {
   P.penM[i] = 0; P.penPay[i] = 0; P.penHalf[i] = 0; P.penDefer[i] = 0; P.penAmt[i] = 0; P.jobless[i] = 0; P.joblessPay[i] = 0;
   P.aware[i] = 0; P.sign[i] = 0; P.vote[i] = 0; P.grief[i] = 0; P.lastBig[i] = day; P.why[i] = 0; P.budget[i] = 0; P.spent[i] = 0; P.inc[i] = 0;
   P.fund.fill(0, i * 4, i * 4 + 4);
-  P.cash[i] = 0;
+  // (the money a life begins with: as the country's first people had at 18, by where they live)
+  const own = startMoney(18, 0, P.dist[i], r.z());
+  P.cash[i] = own;
+  W.sum.endowed += own;
   P.tokens[i] = 0;
   P.home[i] = HOME.family;
   P.rent[i] = 0;
@@ -702,10 +707,6 @@ export function reborn(W, i, day, r, heirs) {
     joinHousehold(P, i, i);
     P.home[i] = HOME.rent;
     P.rent[i] = Math.round((80000 + r.int(40) * 1000) * (1 + NPC.knobOf(W, 'rentLevel') / 100));
-    // (come from elsewhere with what they saved: the country's start-up grant for the young)
-    const n = 1500000 + r.int(2000000);
-    econ.nationOut(W, 'youth', n);
-    P.cash[i] = n;
   }
   for (let k = 0; k < 4; k++) { const j = r.int(P.n); if (Math.abs(ageOf(P, j, day) - 18) < 6) addRelation(P, i, j, 80, 120); }
   P.upd[i] = W.minute;

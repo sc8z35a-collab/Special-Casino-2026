@@ -140,7 +140,7 @@ function rewardList(r) {
 }
 
 export function createMedals({ q, tx, getUser, live, secret, addItems, itemsOf, balanceChanged, meDto, isDeveloper = () => false, isOperator = () => false,
-  clock = Date.now, enabled = true }) {
+  clock = Date.now, enabled = true, onPaid = () => {} }) {
   const key = keyFrom(secret, 'medals');
   const LOGIN = MEDALS.filter((m) => m.reward.login);
 
@@ -278,6 +278,8 @@ export function createMedals({ q, tx, getUser, live, secret, addItems, itemsOf, 
       if (w.dollars || w.coins || w.garage) {
         q('UPDATE users SET dollars = dollars + ?, coins = coins + ?, garage_extra = garage_extra + ?, rev = rev + 1 WHERE id = ?')
           .run(w.dollars || 0, w.coins || 0, w.garage || 0, u.id);
+        // (the $ of it: the treasury's, server/core/corp-model.js gameDay)
+        if (w.dollars) onPaid(w.dollars);
       }
       for (const kind of TICKET_KINDS) if (w.tickets && w.tickets[kind]) addItems(u.id, TICKET + kind, w.tickets[kind]);
       // シークレットアイコン: drawn from those the player does not have yet

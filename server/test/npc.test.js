@@ -50,7 +50,7 @@ function country(n = 2000, start = START) {
         if (id === 'tenesice') x += (s.bal.cash || 0) + (s.bal.lent || 0) + (s.bal.bonds || 0) - (s.bal.deposits || 0);
         else x += (s.bal.cash || 0) - s.loans.reduce((a, l) => a + l.amt, 0);
       }
-      return x + npc.econ.pending(W) + W.sum.imports - (W.sum.exports || 0) + W.sum.toPlayers - W.sum.fromPlayers;
+      return x + npc.econ.pending(W) + W.abroad.cash - W.sum.endowed + W.sum.toPlayers - W.sum.fromPlayers;
     }
   };
 }
@@ -156,19 +156,26 @@ test('the players\' slot wins and quest rewards and YOSIDA\'s gacha bill come ou
   assert.ok(Math.abs(c.money() - before) < 2000, `${c.money() - before}`);
 });
 
-test('once the country lives the companies still sell abroad what it does not buy: the bank and the dealer stay in profit and keep their people', () => {
-  const c = country(2000), w = c.w;
-  const op = (s) => CORP.plOf(s.per.y).op, start = {}, target = {};
-  for (const id of ['tenesice', 'carowner', 'magita', 'citywork']) { start[id] = op(w.co[id]); target[id] = w.co[id].target; }
-  c.days(62);   // (past the first quarter's end and its staffing)
-  for (const id of Object.keys(start)) {
-    const s = w.co[id];
-    assert.ok(op(s) - start[id] > 0, `${id}: ${op(s) - start[id]}`);
-    assert.ok(s.target >= target[id], `${id} cut its people: ${s.target} < ${target[id]}`);
-    assert.ok(Object.values(s.po || {}).some((v) => v > 0), `${id} sold nothing abroad`);
+test('once the country lives nothing comes from outside: abroad buys only with what the country paid it, the bank earns only what the country pays it, and only new lives bring new money', () => {
+  const c = country(2000), { w, W } = c;
+  const before = c.money();
+  let exports = 0, imports = 0;
+  for (let k = 0; k < 62; k++) {
+    const [out] = c.days(1);
+    exports += out.ext.exports; imports += out.ext.imports;
+    // (the world outside never spends more than it holds)
+    assert.ok(W.abroad.cash >= 0, `abroad: ${W.abroad.cash}`);
   }
-  // (the bank's average of its interest is the day's, not half of it)
+  // abroad bought of the country (exports) no more than the country paid it, and some
+  assert.ok(exports > 0 && exports <= W.sum.imports, `exports ${exports} imports ${W.sum.imports}`);
+  assert.ok(imports > 0);
+  // (no company's sales made up to its plan by customers outside: the bank, the dealer, the shop, the services)
+  for (const id of ['tenesice', 'carowner', 'jinx', 'citywork', 'daizin', 'dtrade']) assert.ok(!Object.values(w.co[id].po || {}).some((v) => v > 1), `${id} sold outside`);
+  // the bank's money is the country's: its interest and fees, its people's money it paid them
   assert.ok(w.co.tenesice.pr.nii > 0);
+  // every $ went from someone to someone, new lives' money aside
+  assert.ok(W.sum.endowed >= 0);
+  assert.ok(Math.abs(c.money() - before) < 2000 * 100, `${c.money() - before}`);
 });
 
 test('no company plans for more than half again its size: hiring plans compounded without end took the others\' people', () => {
@@ -193,14 +200,38 @@ test('the job market moves: people leave work and look for it for weeks, some ar
   assert.ok(most > 0.001 && most < 0.1, `unemployment at most ${most}`);
 });
 
+test('nothing a player gets is made from nothing: the game\'s gifts are the treasury\'s, their バイト, their rentals and マイクソン the local businesses\'', () => {
+  const c = country(500), W = c.W, ch = corpModel.chance(Buffer.alloc(32, 3));
+  c.days(1);
+  const day = c.w.day + 1, before = c.money(), toPlayers = W.sum.toPlayers, fromPlayers = W.sum.fromPlayers, sector = W.sector.cash, nation = W.nation.cash;
+  const flows = { npc: npc.flowsFor(W, day), '@state': { login: 600000, daily: 1000000, medals: 2000000, tree: 5000000, gifts: 150000 },
+    '@sector': { job: 3000000, rent: 850000, lend: 1500000 }, '@sectorIn': { repay: 400000 }, magita: { rentfee: 150000 }, job: 3000000 };
+  const out = corpModel.closeDay(c.w, day, flows, ch);
+  assert.deepEqual(out.ext.state.by, { loginBonus: 600000, dailyTokens: 1000000, medalRewards: 2000000, treeHarvest: 5000000, npcGifts: 150000 });
+  assert.equal(out.ext.state.players, 8750000);
+  npc.nextDay(W, day, out.ext, c.ctx);
+  // (the treasury paid the gifts, the local businesses the pay, the rentals, the loan and the fees on them; the
+  // repayment came back to them)
+  assert.equal(W.sum.toPlayers - toPlayers, 8750000 + 3000000 + 850000 + 1500000);
+  assert.equal(W.sum.fromPlayers - fromPlayers, 400000);
+  assert.ok(W.nation.cash < nation);
+  assert.ok(W.sector.cash < sector);
+  assert.ok(Math.abs(c.money() - before) < 2000, `${c.money() - before}`);
+});
+
 test('a death leaves the slots\' tokens to the estate: they were struck off and the money with them', () => {
   const c = country(1000), W = c.W, P = W.P;
   const i = Array.from({ length: P.n }, (_, k) => k).find((k) => P.job[k] === NPC.job.retired);
   P.tokens[i] = 59500;
-  const before = c.money();
+  const before = c.money(), endowed = W.sum.endowed, nation = W.nation.cash;
   npcState.die(W, i, W.day, seeded(Buffer.alloc(32, 9), 'death'), c.ctx);
   assert.equal(P.tokens[i], 0);
   assert.equal(c.money(), before);
+  // the life begun in their place brings the money a life begins with (made from nothing, as everyone's at the start;
+  // not the treasury's any more), and the family's help on top
+  assert.ok(W.sum.endowed > endowed);
+  assert.ok(P.cash[i] >= W.sum.endowed - endowed);
+  assert.ok(W.nation.cash >= nation, 'no grant out of the treasury');
 });
 
 test('the 32 local companies: their people from the local jobs, their sales from the thirteen\'s costs and the people\'s spending, paid by them, money kept', () => {

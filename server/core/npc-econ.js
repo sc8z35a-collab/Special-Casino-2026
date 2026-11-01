@@ -95,6 +95,14 @@ export function toEstate(W, day, company, n) {
   f.estates[company] = (f.estates[company] || 0) + n;
   W.sum.toCo += n;
 }
+// 海外: what the country pays abroad (its imports) is all the money the world outside has, to buy what the country sells
+// abroad with (server/core/corp-model.js abroadBuys): nothing comes in from outside but what went out
+export function toAbroad(W, n) {
+  n = Math.round(n);
+  if (!(n > 0)) return;
+  W.sum.imports += n;
+  W.abroad.cash += n;
+}
 export function toBank(W, day, kind, n) {
   if (!(n > 0)) return;
   flowsOf(W, day).bank[kind] += n;

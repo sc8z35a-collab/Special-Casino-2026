@@ -159,6 +159,9 @@ function blank(key, n, scale, first, day, minute) {
 export function attach(W) {
   // (a knob added after the country began starts where the rules say)
   for (const k of NPC.knobs) if (W.nation.knobs[k.id] === undefined) W.nation.knobs[k.id] = k.start;
+  // (海外's account and the money lives began with since, for a country saved before them: from now on)
+  if (!W.abroad) W.abroad = { cash: 0 };
+  if (W.sum.endowed === undefined) W.sum.endowed = 0;
   W.knobChanged = (id, was, now) => state.knobChanged(W, id, was, now);
   W.market = createMarket(W);
   W.politics = createPolitics(W);
@@ -380,7 +383,9 @@ export function flowsFor(W, day) {
   // what was paid to failed companies' trustees: server/core/npc-local.js)
   const locals = local.summary(W), localFailed = W.locals && W.locals.failed ? W.locals.failed.splice(0) : [];
   return { co: f.co, bank: { ...f.bank, deposits: Math.max(0, deposits), loans, rate: W.bankRates.deposit }, charges: f.charges, staff, raises, terms: W.terms || {}, lend: W.lend || {}, ops,
-    locals, localFailed, estates: f.estates || {} };
+    locals, localFailed, estates: f.estates || {},
+    // (海外's money, and the local trade's, for what the companies sell them: server/core/corp-model.js abroadBuys, sectorBuys)
+    abroad: Math.max(0, W.abroad.cash), sectorCash: Math.max(0, W.sector.cash) };
 }
 // The companies' day `day` closed (`ext`: what it paid out, server/core/corp-model.js); the country's next day begins
 // (its money from the companies, its bills and benefits, lives, work, politics, the companies' people's minds).

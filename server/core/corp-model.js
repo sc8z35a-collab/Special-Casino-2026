@@ -186,6 +186,38 @@ const circOn = (w, d) => !!(w.circ && d >= w.circ.from);
 // people, suppliers, taxes, bank and holders are abroad, its sales abroad go on — and only what passes between it and
 // the country counts (what Car Owner and ジンクス pay it for its cars and engines: money going out)
 const abroad = (s) => !!(PROFILES.get(s.id) || {}).abroad;
+// 海外, once the country lives: the world outside has no money but what the country paid it (its imports — the
+// materials, the stores' and platforms' fees, what the people bought from abroad —: the country's 海外 account,
+// `flows.npc.abroad`, server/core/npc-econ.js), and spends what it holds over about `ABROAD_DAYS` days on what the
+// country sells abroad. Nothing comes in from anywhere else: no money is made outside the people's and the players'.
+// What an exporter would sell abroad today (`want`) is met as far as the world's money for today goes, every exporter
+// alike (by what they all wanted the day before); in cash, in steps of `unit` (a seed's price). Returns what it paid.
+const ABROAD_DAYS = 30;
+function abroadBuys(w, want, unit = 1) {
+  const x = w.ext;
+  if (!x || !(want > 0)) return 0;
+  x.abroadWant += want;
+  const n = Math.floor(Math.min(want * x.abroadRatio, x.abroadLeft) / unit) * unit;
+  if (n <= 0) return 0;
+  x.abroadLeft -= n;
+  x.exports += n;
+  return n;
+}
+// what the country's own trade (the local businesses) can pay today for something sold to it: as far as its money goes
+function sectorBuys(w, want) {
+  const x = w.ext;
+  if (!x || !(want > 0)) return 0;
+  const n = Math.max(0, Math.min(Math.round(want), Math.floor((x.sectorCash || 0) - x.fromSector)));
+  x.fromSector += n;
+  return n;
+}
+// what customers outside still owed when the companies began to live on the country (its made-up past's): theirs
+// at once, the last money the world outside ever pays but for what it is paid (once)
+function settleOutside(s) {
+  const n = Math.min(s.recv || 0, Math.max(0, s.bal.ar || 0));
+  if (n > 0) post(s, [['cash', n], ['ar', -n]], 'receipts');
+  s.recv = 0;
+}
 // what a company's development work (技術開発) has lifted its trade by (1: nothing yet)
 const edgeOf = (w, id) => (w.co[id] && w.co[id].rnd ? w.co[id].rnd.edge : 1);
 // how a product sells with the economy: a carmaker's by the maker (MAGITA's when people are rich, YOSHIDA's when they
@@ -233,8 +265,10 @@ export function startCirculation(w, d, scale = 1) {
   w.circ = { from: d, games: {}, scale };
   // (a country smaller than the full 50,000 — the tests' — has its companies' plans for people by its size)
   // (and its budgets: a smaller country's companies are that much smaller in all they spend, not only in people)
+  w.closedLoop = d;
   for (const s of Object.values(w.co)) {
     s.payAll = true;
+    settleOutside(s);
     if (abroad(s)) { goAbroad(s); continue; }
     s.target = Math.max(1, Math.round((s.target || s.n) * scale));
     if (scale !== 1) {
@@ -518,29 +552,33 @@ function tradeDay(w, s, p, d, flows, ch) {
     // (a company abroad, or a trade whose customers are abroad — YOSIDA's and WAZIMA's exports — still sells abroad
     // once the country lives: money coming into it)
     if (circ && !p.abroad && !x.abroad) {
-      // the people's own purchases of each product (no customers from outside any more)
+      // the people's own purchases of each product (no customers from outside any more: what the country does not buy
+      // is not sold)
       if (x.products && npc) for (const [id, got] of Object.entries((npc.p || {})[x.products] || {})) {
         if (!CORP.products[x.products][id]) continue;
         sellProducts(w, s, x.id, x.products, id, got[0], got[1], true, 'npc');
         s.pr[x.id] = (s.pr[x.id] || 0) + got[1] / 30;
       }
-      outside(w, s, p, x, g, f);
     } else if (x.products) {
-      // each model's or item's customers outside the game
+      // each model's or item's customers outside the game (once the country lives: as far as abroad's money goes)
       for (const [id, pr] of Object.entries(CORP.products[x.products])) {
         const price = listPrice(x.products, id);
         if (!pr.npc || !price) continue;
-        const n = take(s, 'u:' + id, pr.npc * g * productLift(w, pr, x.beta ?? p.beta) / YEAR);
-        sellProducts(w, s, x.id, x.products, id, n, n * price, false);
+        let n = take(s, 'u:' + id, pr.npc * g * productLift(w, pr, x.beta ?? p.beta) / YEAR);
+        if (circ) { n = abroadBuys(w, n * price, price) / price; sellProducts(w, s, x.id, x.products, id, n, n * price, true, 'npc'); }
+        else sellProducts(w, s, x.id, x.products, id, n, n * price, false);
       }
     } else {
       const share = s.share && s.share[x.id] !== undefined ? s.share[x.id] : (x.share || 0);
       if (share) {
-        const n = take(s, 'sale:' + x.id, p.sales * share * f * (s.scale && s.scale[x.id] || 1) / YEAR);
+        let n = take(s, 'sale:' + x.id, p.sales * share * f * (s.scale && s.scale[x.id] || 1) / YEAR);
         const cost = s.cost && s.cost[x.id] !== undefined ? s.cost[x.id] : (x.cost || 0);
-        sell(w, s, x.id, n, take(s, 'cost:' + x.id, n * cost));
-        // (what a day abroad brings, for the managers' expectations once the country lives)
-        if (circ && !p.abroad) s.pr[x.id] = (s.pr[x.id] || 0) + n / 30;
+        if (circ) {
+          // (once the country lives: abroad buys as far as the money it was paid goes, in cash)
+          n = abroadBuys(w, n);
+          sellCash(w, s, x.id, n, take(s, 'cost:' + x.id, n * cost));
+          if (!p.abroad) s.pr[x.id] = (s.pr[x.id] || 0) + n / 30;
+        } else sell(w, s, x.id, n, take(s, 'cost:' + x.id, n * cost));
       }
     }
     // the players' own money spent here today
@@ -583,43 +621,6 @@ function tradeDay(w, s, p, d, flows, ch) {
       s.recv += n;
     }
   }
-}
-// The world outside the country, once it lives: a company's trade is not only its 50,000 people's. What its plan
-// expects of a stream a day and the country (its people, the players, the other companies) has not paid it of late,
-// its customers abroad still buy (paid later: money coming in) — else every company lived on its cash, its plan out of
-// reach, and let its people go quarter after quarter (Tenesice's $450B a year was $60M a day). A studio's games, MY
-// WAY's licences, YOSIDA's seeds and what one company sells another are their own.
-function outside(w, s, p, x, g, f) {
-  if (p.model === 'studio' || p.abroad || x.abroad || x.license || x.seeds || x.to) return;
-  const had = (s.pr && s.pr[x.id]) || 0, po = s.po || (s.po = {});
-  if (x.products) {
-    let plan = 0;
-    const each = [];
-    for (const [id, pr] of Object.entries(CORP.products[x.products])) {
-      const price = listPrice(x.products, id);
-      if (!pr.npc || !price) continue;
-      const n = pr.npc * g * productLift(w, pr, x.beta ?? p.beta) / YEAR;
-      plan += n * price;
-      each.push([id, n, price]);
-    }
-    if (plan <= 0) return;
-    const k = Math.max(0, 1 - had / plan);
-    for (const [id, n, price] of each) {
-      const m = take(s, 'o:' + id, n * k);
-      if (m <= 0) continue;
-      sellProducts(w, s, x.id, x.products, id, m, m * price, false, 'outside');
-      po[x.id] = (po[x.id] || 0) + m * price / 30;
-    }
-    return;
-  }
-  const share = s.share && s.share[x.id] !== undefined ? s.share[x.id] : (x.share || 0);
-  if (!share) return;
-  const plan = p.sales * share * f * (s.scale && s.scale[x.id] || 1) / YEAR;
-  const n = take(s, 'out:' + x.id, Math.max(0, plan - had));
-  if (n <= 0) return;
-  const cost = s.cost && s.cost[x.id] !== undefined ? s.cost[x.id] : (x.cost || 0);
-  sell(w, s, x.id, n, take(s, 'ocost:' + x.id, n * cost));
-  po[x.id] = (po[x.id] || 0) + n / 30;
 }
 // The people's money of the day at a company (server/core/npc-econ.js flows: by stream, or the country's own
 // names — 官公庁・公共事業, 新規事業, 通信, the casino's wins and losses — and the cars traded in), each as a sale for
@@ -671,10 +672,14 @@ function seedsDay(w, s, x, d, ch) {
     s.seeds = { m: key, n, want, price, cap, sold: 0, last: s.seeds ? { m: s.seeds.m, n: s.seeds.sold, price: s.seeds.price } : null };
   }
   const days = CORP.monthEnd(d) - CORP.monthStart(d) + 1;
-  const k = Math.min(s.seeds.n - s.seeds.sold, take(s, 'seeds', s.seeds.n / days));
+  let k = Math.min(s.seeds.n - s.seeds.sold, take(s, 'seeds', s.seeds.n / days));
+  if (k <= 0) return;
+  // (once the country lives: the market abroad buys as many as the money it was paid goes to, in cash)
+  if (w.ext) k = abroadBuys(w, k * s.seeds.price, s.seeds.price) / s.seeds.price;
   if (k <= 0) return;
   s.seeds.sold += k;
-  sell(w, s, x.id, k * s.seeds.price, k * sd.cost);
+  if (w.ext) sellCash(w, s, x.id, k * s.seeds.price, k * sd.cost);
+  else sell(w, s, x.id, k * s.seeds.price, k * sd.cost);
   // (once the country lives, the managers expect a day of them as of late)
   if (w.ext) { s.pr[x.id] = (s.pr[x.id] || 0) + k * s.seeds.price / 30; (s.pc || (s.pc = {}))[x.id] = (s.pc[x.id] || 0) + k * sd.cost / 30; }
 }
@@ -765,21 +770,7 @@ function bankCountry(w, s, p, d, flows) {
   // the day began — decayed here too, it read half of what it was)
   s.pr.nii = (s.pr.nii || 0) + (b.nii || 0) / 30;
   s.pr.fees = (s.pr.fees || 0) + (b.fees || 0) / 30;
-  // its business abroad (outside): what its plan expects of each stream and the country has not paid it, paid in from
-  // outside, with the credit costs of that lending
-  const lift = trend(p, d, w.launch), po = s.po || (s.po = {});
-  let abroadSales = 0;
-  for (const x of p.streams) {
-    const plan = p.sales * x.share * lift * econOf(w, x.beta ?? p.beta) * (s.rnd ? s.rnd.edge : 1) / YEAR;
-    const n = take(s, 'out:' + x.id, Math.max(0, plan - ((s.pr && s.pr[x.id]) || 0)));
-    if (n <= 0) continue;
-    post(s, [['cash', n], ['r:' + x.id, -n]], 'receipts');
-    w.ext.exports += n;
-    po[x.id] = (po[x.id] || 0) + n / 30;
-    abroadSales += n;
-  }
-  const bad = take(s, 'ocredit', abroadSales * p.credit.share);
-  if (bad > 0) { post(s, [['sCredit', bad], ['cash', -bad]], 'expenses'); w.ext.imports += bad; }
+  // (no business abroad: what the country does not pay it, it does not earn — its plan was a bank of the world's)
 }
 
 /* ------------------------------------------------------------- a studio's day --- */
@@ -910,7 +901,8 @@ function studioCountry(w, s, p, d, ch, out, flows) {
   s.pr.game = (s.pr.game || 0) + game / 30;
   s.pr.live = (s.pr.live || 0) + live / 30;
   // the world outside: its games sell abroad as they always did (each title along its curve, the older ones), as much
-  // as the country has not bought of late — paid later, money coming in, the stores abroad taking their part
+  // as the country has not bought of late — as far as the money abroad was paid by the country goes, in cash, the
+  // stores abroad taking their part
   {
     const season = seasonOf(p, d), econ = econOf(w, p.beta), plan = [];
     let world = 0;
@@ -921,7 +913,8 @@ function studioCountry(w, s, p, d, ch, out, flows) {
     }
     const cat = s.catalog * season * Math.sqrt(econ) / YEAR;
     world += cat;
-    const k = world > 0 ? Math.max(0, 1 - (s.pr.game || 0) / world) : 0;
+    const k0 = world > 0 ? Math.max(0, 1 - (s.pr.game || 0) / world) : 0;
+    const paid = abroadBuys(w, world * k0), k = world > 0 ? k0 * paid / Math.max(1, world * k0) : 0;
     let abroadGame = 0;
     for (const [t, n] of plan) {
       const m = take(s, 'otitle:' + t.id, n * k);
@@ -931,9 +924,10 @@ function studioCountry(w, s, p, d, ch, out, flows) {
       abroadGame += m;
     }
     abroadGame += take(s, 'ocatalog', cat * k);
+    // (what abroad paid, the titles' rounding aside: the catalogue's)
+    abroadGame = paid;
     if (abroadGame > 0) {
-      post(s, [['ar', abroadGame], ['r:game', -abroadGame]]);
-      s.recv += abroadGame;
+      post(s, [['cash', abroadGame], ['r:game', -abroadGame]], 'receipts');
       const fee = take(s, 'oplatform', abroadGame * p.platform);
       if (fee > 0) { post(s, [['c:platform', fee], ['ap', -fee]]); s.owe['*'] = (s.owe['*'] || 0) + fee; }
       const po = s.po || (s.po = {});
@@ -1140,8 +1134,6 @@ function settle(w, s, p, d) {
     const n = Math.min(s.recv, Math.max(1, Math.trunc(s.recv / (p.model === 'studio' ? 40 : 15))));
     s.recv -= n;
     post(s, [['cash', n], ['ar', -n]], 'receipts');
-    // (what customers outside still owed from before the country: theirs, from abroad)
-    if (x) x.exports += n;
   }
   // the pay: at the month's end, or (once the country lives) on the 25th, to the people by their pay
   const payday = x ? CORP.ymd(d).d === 25 : isEnd;
@@ -1871,7 +1863,16 @@ function tech(w, s, p, d, ch, out) {
 // - '@prize': what YOSIDA's gacha gave away ({ lot: tokens, royal, garage, vip, tree: how many, cars: { id: how many } })
 // - yosida.trees: the trees won at the players' auctions ({ market: [how many, $] })
 // - '@coins': the ロイヤルコイン DAIZIN bought back ({ n, paid })
+// - '@state' beyond the slots, quests and gacha: whatever else the game gives the players (the login bonus and the day's
+//   free tokens at their price, the co-op bonus, the update's thanks, the medals', the diary's and the money trees'
+//   money, the gifts of the game's own NPC accounts): the treasury's too — nothing a player gets is made from nothing
+// - '@sector': what the local businesses pay the players ({ job: their バイト's pay, rent: what their cars rented out
+//   earned them, lend: マイクソン's loans }) and '@sectorIn' what the players pay them back ({ repay }); the local
+//   businesses pay the job sites' fee on the バイト and MAGITA Garage's cut of the rentals too
 const GOV_KEEP = 24;
+// the treasury's spending of each kind on the game (its name in the country's books, server/core/npc-state.js)
+const STATE_OUT = { slots: 'slotWins', quests: 'questRewards', gacha: 'gachaClaims', login: 'loginBonus', daily: 'dailyTokens', coop: 'coopBonus',
+  release: 'releaseBonus', medals: 'medalRewards', diary: 'diaryRewards', tree: 'treeHarvest', gifts: 'npcGifts' };
 function gameDay(w, d, flows, orig = flows) {
   for (const s of Object.values(w.co)) if (s.pc) for (const k of Object.keys(s.pc)) s.pc[k] *= 29 / 30;
   // (who runs each now — CORP.features: its company, or for a local company or a trustee a stand-in, settled after)
@@ -1886,9 +1887,10 @@ function gameDay(w, d, flows, orig = flows) {
   // (the players' money as it came: by its first owner's name)
   const st = flows['@state'] || {}, pz = flows['@prize'] || {}, coins = flows['@coins'] || null, mine = orig.yosida || {};
   // the treasury
-  const paid = { slots: Math.round(st.slots || 0), quests: Math.round(st.quests || 0), gacha: Math.round(st.gacha || 0) };
+  const paid = {};
+  for (const [k, n] of Object.entries(st)) { const v = Math.round(n || 0); if (v > 0) paid[k] = v; }
   const fee = Math.round(mine.questfee || 0);
-  if (paid.slots || paid.quests || paid.gacha) {
+  if (Object.keys(paid).length) {
     const g = w.gov || (w.gov = { all: {}, months: {} }), mk = CORP.monthKey(d), m = g.months[mk] || (g.months[mk] = {});
     for (const [k, n] of Object.entries(paid)) { g.all[k] = (g.all[k] || 0) + n; m[k] = (m[k] || 0) + n; }
     g.all.questfee = (g.all.questfee || 0) + fee;
@@ -1896,9 +1898,21 @@ function gameDay(w, d, flows, orig = flows) {
     const keys = Object.keys(g.months).sort();
     while (keys.length > GOV_KEEP) delete g.months[keys.shift()];
     if (w.ext) {
-      const away = ys && abroad(ys) ? fee + paid.gacha : 0;
-      w.ext.state = { by: { slotWins: paid.slots, questRewards: paid.quests, gachaClaims: paid.gacha }, players: paid.slots + paid.quests - fee, abroad: away };
+      const away = ys && abroad(ys) ? fee + (paid.gacha || 0) : 0, by = {};
+      let players = -fee;
+      for (const [k, n] of Object.entries(paid)) { by[STATE_OUT[k] || k] = n; if (k !== 'gacha') players += n; }
+      w.ext.state = { by, players, abroad: away };
     }
+  }
+  // the local businesses' money to the players and back (their バイト, their cars' rentals, マイクソン), and what they
+  // pay the job sites and MAGITA Garage on them
+  if (w.ext) {
+    const sec = flows['@sector'] || {}, back = flows['@sectorIn'] || {};
+    const out = Object.values(sec).reduce((a, n) => a + Math.round(n || 0), 0), inn = Object.values(back).reduce((a, n) => a + Math.round(n || 0), 0);
+    const fees = Math.round((orig.magita || {}).rentfee || 0) + (w.launch <= d ? Math.round((orig.job || 0) * CORP.players.jobFee) : 0);
+    if (out) { w.ext.fromSector += out; w.ext.toPlayers = (w.ext.toPlayers || 0) + out; }
+    if (inn) { w.ext.sector += inn; w.ext.fromPlayers = (w.ext.fromPlayers || 0) + inn; }
+    if (fees) w.ext.fromSector += fees;
   }
   if (ys && paid.gacha > 0) {
     cashSale(ys, 'claim', paid.gacha);
@@ -2677,11 +2691,13 @@ function liquidate(w, s, p, d, out) {
     received(s, n);
   }
   let gathered = 0;
+  // (who buys what it has: the world outside as far as the money it was paid goes, then the country's own trade as far
+  // as its goes; what nobody can pay for is worth nothing)
+  const buyers = (n) => (x ? (() => { const a = abroadBuys(w, n); return a + sectorBuys(w, n - a); })() : n);
   if (s.recv > 0) {
-    const n = Math.round(Math.min(s.recv, s.bal.ar || 0) * BK.sell.ar), rest = (s.bal.ar || 0) - n;
+    const n = buyers(Math.round(Math.min(s.recv, s.bal.ar || 0) * BK.sell.ar)), rest = (s.bal.ar || 0) - n;
     s.recv = 0;
     post(s, [['cash', n], ['xBankrupt', rest], ['ar', -(n + rest)]], 'receipts');
-    if (x) x.exports += n;
     gathered += n;
   }
   const bonds = s.bal.bonds || 0;
@@ -2691,9 +2707,8 @@ function liquidate(w, s, p, d, out) {
   s.hold.own = {};
   for (const [k, rate] of Object.entries(BK.sell)) {
     if (k === 'ar' || !s.bal[k]) continue;
-    const v = s.bal[k], n = Math.round(Math.max(0, v) * rate);
+    const v = s.bal[k], n = buyers(Math.round(Math.max(0, v) * rate));
     post(s, [['cash', n], ['xBankrupt', v - n], [k, -v]], 'divest');
-    if (n && x) x.exports += n;
     gathered += n;
   }
   // (its holders' stakes in it: lost)
@@ -2798,6 +2813,14 @@ export function closeDay(w, d, flows, ch) {
     for (const firm of npc.localFailed || []) for (const f of FT) { const o = opsOf(w)[f.id]; if (o.by === 'local:' + firm) { o.history.push({ by: o.by, until: d }); Object.assign(o, { by: null, estate: null, orphan: d + 14 }); } }
   }
   w.ext = circ ? { pay: [], welfare: [], taxes: [], dividends: [], sector: 0, imports: 0, exports: 0, fromSector: 0, bonds: [], bondInterest: 0, depositInterest: 0, toPeople: [] } : null;
+  if (w.ext) {
+    // 海外: what the world outside can spend today (its money over ABROAD_DAYS days), shared among the exporters by
+    // what they all wanted yesterday; the country's own trade's money for what is sold to it
+    const pool = Math.max(0, Math.floor((npc && npc.abroad) || 0)), budget = Math.floor(pool / ABROAD_DAYS);
+    Object.assign(w.ext, { abroadLeft: budget, abroadWant: 0, abroadRatio: w.abroadWant > 0 ? Math.min(1, budget / w.abroadWant) : 1, sectorCash: Math.max(0, (npc && npc.sectorCash) || 0) });
+    // (a world that began before the world outside was closed: what its customers outside still owed, settled once)
+    if (!w.closedLoop) { for (const s of Object.values(w.co)) if (!s.dead) settleOutside(s); w.closedLoop = d; }
+  }
   w.b2bCash = [];
   if (npc && npc.staff) for (const [id, st] of Object.entries(npc.staff)) {
     const s = w.co[id], p = PROFILES.get(id);
@@ -2972,7 +2995,8 @@ export function closeDay(w, d, flows, ch) {
   // the next day: announcements due, the guidance, the dividends, the market's view
   for (const id of ORDER) announce(w, w.co[id], PROFILES.get(id), d, out, ch);
   w.day = d;
-  if (w.ext) out.ext = w.ext;
+  // (what the exporters wanted of abroad today: tomorrow's share of its money by it)
+  if (w.ext) { w.abroadWant = Math.round((w.abroadWant || w.ext.abroadWant) * 0.5 + w.ext.abroadWant * 0.5); out.ext = w.ext; }
   delete w.ext;
   delete w.b2bCash;
   delete w.b2b;

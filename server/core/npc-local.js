@@ -154,7 +154,7 @@ function spend(W, f, c, n) {
   for (const [id, share] of f.costs.to || []) pay(id, Math.round(n * share));
   // (bought abroad: money leaving the country; the rest the small shops', still in the local trade)
   const out = Math.round(n * (f.costs.imports || 0));
-  if (out > 0) { W.sector.cash -= out; W.sum.imports += out; }
+  if (out > 0) { W.sector.cash -= out; econ.toAbroad(W, out); }
 }
 
 /* ---------------------------------------------------------------- the month --- */

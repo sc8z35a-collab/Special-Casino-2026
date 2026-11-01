@@ -287,13 +287,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const price = carBuyback(model, Date.now(), c.paid || 0), engine = SHOP.get(c.engine);
     return { ...price, price: price.price + (engine && engine.kind === 'engine' ? Math.floor(engine.price * 0.9) : 0) };
   }
-  // a car's rental takings paid to `userId`: MAGITA Garage keeps its cut (MAGITA's money), the rest is theirs. In the
-  // caller's transaction; what reached the player.
+  // a car's rental takings paid to `userId`: the country's people who rented it paid them (the local businesses' money:
+  // server/core/corp-model.js gameDay '@sector'), MAGITA Garage keeps its cut (MAGITA's money), the rest is theirs. In
+  // the caller's transaction; what reached the player.
   function rentPaid(userId, gross) {
     if (!(gross > 0)) return 0;
     const cut = Math.floor(gross * CORP.magita.garage.rentCut), net = gross - cut;
     q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(net, userId);
     corp.flow('magita', 'rentfee', cut);
+    corp.flow('@sector', 'rent', net);
     return net;
   }
   // what the owner paid for a car (cars from before this was kept: its list price)
@@ -378,7 +380,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const pins = createStaffPins({ q, clock: config.clock || Date.now, onMismatch: (u, pin) => staffReused(u, pin) });
   const isDeveloper = (u) => !!u && !!devKey && !u.npc && u.name_key === devKey && pins.holds(u);
   // 功績 (server/core/medals.js): what the players did, as medals
-  const medals = createMedals({ q, tx, getUser, live, secret, addItems, itemsOf, balanceChanged, meDto, isDeveloper,
+  const medals = createMedals({ q, tx, getUser, live, secret, addItems, itemsOf, balanceChanged, meDto, isDeveloper, onPaid: (n) => corp.flow('@state', 'medals', n),
     isOperator: (u) => ops.isOperator(u), clock: config.clock || Date.now, enabled: config.medals !== false });
   // the medals looked at once what the player did is saved (a fault there never undoes it: it is only logged)
   const medalCheck = (id) => afterCommit(() => medals.sync(id));
@@ -469,7 +471,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
 
   const peter = createPeter({
     q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel,
-    onBorrow: (userId) => track(userId, [['borrow', 1]])
+    onBorrow: (userId) => track(userId, [['borrow', 1]]),
+    money: { lent: (n) => corp.flow('@sector', 'lend', n), back: (n) => corp.flow('@sectorIn', 'repay', n) }
   });
   peter.id();
   // ジョンソン, a friend: money for the 金の生る木 every 2 days, one rescue
@@ -758,8 +761,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
   function saveJobs(userId, jobs, pay) {
     q('UPDATE users SET jobs = ?, dollars = dollars + ?, rev = rev + ? WHERE id = ?').run(JSON.stringify(jobs), pay, pay > 0 ? 1 : 0, userId);
-    // (the employers pay the job sites their fee on it: server/core/corp.js)
-    if (pay > 0) corp.flow('*', 'job', pay);
+    // (the employers — the country's local businesses — pay it, and the job sites their fee on it: server/core/corp.js)
+    if (pay > 0) { corp.flow('*', 'job', pay); corp.flow('@sector', 'job', pay); }
   }
   // Checkpoint before changing the time span or rate used by VIP.earned.
   function settleVipJobs(cur, now) {
@@ -926,6 +929,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const boost = medals.loginBoost(cur.id);
       const amount = Math.round(days[step] * (100 + boost) / 100);
       q('UPDATE users SET login_day = ?, login_days = ?, tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(day, n, amount, cur.id);
+      // (the tokens at their price: the treasury's, as everything the game gives — nothing is made from nothing)
+      corp.flow('@state', 'login', amount * RULES.tokenPrice);
       return { day: step + 1, amount, days, loginDays: n, next: nextLoginReset(), ...(boost ? { boost } : {}) };
     });
     if (paid) balanceChanged(userId);
@@ -1891,6 +1896,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
               for (const p of q('SELECT user_id, coop_bet FROM chat_members WHERE group_id = ? AND coop_bet > 0').all(g.id)) {
                 const amount = Math.max(1, Math.floor(p.coop_bet * CO.bonus));
                 q('UPDATE users SET tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(amount, p.user_id);
+                corp.flow('@state', 'coop', amount * RULES.tokenPrice);
                 coop.paid.push({ id: p.user_id, amount });
               }
               q('UPDATE chat_members SET coop_bet = 0 WHERE group_id = ?').run(g.id);
@@ -2016,6 +2022,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const cur = getUser(u.id);
         if (cur.free_day === today) throw new ApiError(409, 'claimed', '今日の無料トークンは受け取り済みです');
         q('UPDATE users SET tokens = tokens + ?, free_day = ?, rev = rev + 1 WHERE id = ?').run(RULES.dailyFree, today, cur.id);
+        corp.flow('@state', 'daily', RULES.dailyFree * RULES.tokenPrice);
       });
       return { me: meDto(balanceChanged(u.id)), amount: RULES.dailyFree, nextReset: nextUtcMidnight() };
     }],
@@ -2211,6 +2218,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
             if (from && !from.npc) {
               q('INSERT INTO transfers (id, from_id, to_id, currency, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(nextRecordId(q, 'transfers'), row.sender_id, u.id, row.currency, row.amount, now);
               gave(row.sender_id, row.currency, row.amount);
+            } else if (from && from.npc) {
+              // (the game's own accounts — ジョンソン's help, the operators' — give the treasury's money, at its price)
+              corp.flow('@state', 'gifts', row.currency === 'tokens' ? row.amount * RULES.tokenPrice : row.amount);
             }
           } else if (row.kind === 'gift') {
             const car = q('SELECT * FROM cars WHERE id = ? AND owner_id = 0').get(row.amount);
@@ -3185,6 +3195,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const cur = getUser(u.id);
         if (!(cur.release_bonus > 0)) return 0;
         q('UPDATE users SET dollars = dollars + ?, release_bonus = 0, rev = rev + 1 WHERE id = ?').run(cur.release_bonus, cur.id);
+        corp.flow('@state', 'release', cur.release_bonus);
         return cur.release_bonus;
       });
       return { paid, me: meDto(paid ? balanceChanged(u.id) : getUser(u.id)) };
@@ -3846,7 +3857,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const extCtx = { q, tx, exec: (sql) => db.exec(sql), config, opsLog, getUser, isDeveloper, ops, secret, clock: config.clock || Date.now, notice, ApiError, keyFrom, nameKey, sha256, holdsTicket: () => false };
   const ext = createExtensions({ list: extraParts, secret, clock: config.clock || Date.now, ctx: extCtx });
   registry.add('ext', ext.routes);
-  registry.add('diary', createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed,
+  registry.add('diary', createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed, onPaid: (n) => corp.flow('@state', 'diary', n),
     commentRate: (u) => rate(limit.dm, u.id), opsLog, gate: ext.gate }).routes);
   registry.add('devunit', createDevUnit({ q, ops, live, getUser, isDeveloper }).routes);
   // the operator site's ログインログ (the day's ログイン button; the developer's alone to read)
