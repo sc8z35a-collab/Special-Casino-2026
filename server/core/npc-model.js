@@ -82,6 +82,9 @@ function blank(key, n, scale, first, day, minute) {
 }
 // what holds the world's functions (not kept): the people's helpers and the parts made of its plain data
 export function attach(W) {
+  // (a knob added after the country began starts where the rules say)
+  for (const k of NPC.knobs) if (W.nation.knobs[k.id] === undefined) W.nation.knobs[k.id] = k.start;
+  W.knobChanged = (id, was, now) => state.knobChanged(W, id, was, now);
   W.market = createMarket(W);
   W.politics = createPolitics(W);
   W.labor = createLabor(W);
@@ -248,6 +251,7 @@ function calibrate(W, corp, day) {
   W.nation.debt = bonds + W.nation.fund.bonds;
   // the country's old debt, held by Tenesice (its bonds: what the bank's book abroad became), at its rate
   W.nation.bank = Math.round(3e12 * sc);
+  c.bank0 = W.nation.bank;
   W.nation.debt += W.nation.bank;
   W.nation.bankRate = 0.01;
   W.districts.forEach((d, k) => { d.cash = Math.round(c.grants[k] * 0.5); });
@@ -278,13 +282,17 @@ export function tick(W, m, ctx) {
 export function flowsFor(W, day) {
   const P = W.P, f = econ.takeFlows(W, day);
   W.flowsDone = f;
+  // (those out on strike are not paid for it: the company counts only those at work)
   const staff = {};
   for (const id of NPC.companies) {
     const st = W.staffOf(id);
-    let pay = 0;
-    for (const i of st) pay += P.salary[i];
-    staff[id] = { n: st.length, pay: st.length ? pay / st.length : 0 };
+    let pay = 0, n = 0, all = 0;
+    for (const i of st) { all += P.salary[i]; if (P.flags[i] & FL.striking) continue; pay += P.salary[i]; n++; }
+    staff[id] = { n, pay: n ? pay / n : st.length ? all / st.length : 0 };
   }
+  // (the raises the unions settled in this year's talks: the companies give them from April)
+  const raises = {}, year = CORP.ymd(day).y;
+  for (const [id, u] of Object.entries(W.lab.unions || {})) if (u.state === 'settled' && W.lab.talks && W.lab.talks.year === year) raises[id] = u.raise;
   let deposits = W.nation.cash + W.nation.fund.cash + W.districts.reduce((a, d) => a + d.cash, 0) + W.sector.cash, loans = W.nation.bank;
   for (let i = 0; i < P.n; i++) { deposits += P.cash[i] + P.tokens[i]; loans += P.debt[i]; }
   const ops = [];
@@ -293,7 +301,7 @@ export function flowsFor(W, day) {
     else if (o.kind === 'lend') { W.lend = W.lend || {}; W.lend[o.company] = { rate: o.rate, cap: o.cap }; }
     else ops.push(o);
   }
-  return { co: f.co, bank: { ...f.bank, deposits: Math.max(0, deposits), loans, rate: W.bankRates.deposit }, charges: f.charges, staff, raises: W.raises, terms: W.terms || {}, lend: W.lend || {}, ops };
+  return { co: f.co, bank: { ...f.bank, deposits: Math.max(0, deposits), loans, rate: W.bankRates.deposit }, charges: f.charges, staff, raises, terms: W.terms || {}, lend: W.lend || {}, ops };
 }
 // The companies' day `day` closed (`ext`: what it paid out, server/core/corp-model.js); the country's next day begins
 // (its money from the companies, its bills and benefits, lives, work, politics, the companies' people's minds).
@@ -324,7 +332,7 @@ function refresh(W, day, ctx) {
     for (const id of ['riru', 'ice']) {
       const s = corp.co[id];
       if (!s) continue;
-      for (const t of s.titles || []) W.titles.push({ key: (hash32(t.id.length + id.length * 7, t.day) & 0xffff) || 1, company: id, id: t.id, name: t.name, genre: t.genre, q: t.q, day: t.day, price: t.price, buzz: (W.appeal[id + ':games'] || 0) + (t.hit > 0 ? 0.4 : 0) });
+      for (const t of s.titles || []) W.titles.push({ key: (hash32(t.id.length + id.length * 7, t.day) & 0xffff) || 1, company: id, id: t.id, name: t.name, genre: t.genre, q: t.q, day: t.day, price: t.price, buzz: (W.appeal[id + ':games'] || 0) + (W.appeal[id + ':all'] || 0) + (W.appeal['jinx:games'] || 0) + (t.hit > 0 ? 0.4 : 0) });
       if (id === 'ice') W.liveGames = (s.live || []).map((l) => ({ company: id, id: l.id, name: l.name }));
     }
     W.surchargeOn = !!(corp.co.magita && corp.co.magita.surcharge);
@@ -339,7 +347,10 @@ function refresh(W, day, ctx) {
       if (s && (W.nation.knobs.overtime || 45) >= 40 && (s.projects || []).some((p) => p.due > day && p.due - day <= 60)) W.crunch[NPC.companies.indexOf(id) + 1] = 1;
     }
   }
-  for (const [k, until] of Object.entries(W.priceUntil)) if (until <= day) { delete W.priceIdx[k]; delete W.priceUntil[k]; }
+  // (campaigns' prices end on their day; a world from before kept them with the prices themselves)
+  W.priceTemp = W.priceTemp || {};
+  for (const [k, until] of Object.entries(W.priceUntil || {})) { W.priceTemp[k] = { mult: W.priceIdx[k] || 1, until }; delete W.priceIdx[k]; delete W.priceUntil[k]; }
+  for (const [k, t] of Object.entries(W.priceTemp)) if (t.until <= day) delete W.priceTemp[k];
   for (const [k, until] of Object.entries(W.appealUntil)) if (until <= day) { delete W.appeal[k]; delete W.appealUntil[k]; }
   for (const id of NPC.companies) {
     const staff = W.staffOf(id).length;
@@ -411,16 +422,24 @@ function stats(W, day) {
   s.mood = Math.round(mood / P.n);
   s.median = sample.length ? sample[sample.length >> 1] : 0;
   // prices: the consumption tax and the companies' own changes to them; inflation: against a year (or since the start)
-  s.prices = (1 + (W.nation.knobs.consumptionTax || 0) / 100) * (Object.values(W.priceIdx).reduce((a, v) => a * Math.pow(v, 0.1), 1)) * (W.surchargeOn ? 1.005 : 1);
+  const keys = new Set([...Object.keys(W.priceIdx), ...Object.keys(W.priceTemp || {})]);
+  s.prices = (1 + (W.nation.knobs.consumptionTax || 0) / 100) * [...keys].reduce((a, k) => a * Math.pow(econ.priceOf(W, k), 0.1), 1) * (W.surchargeOn ? 1.005 : 1)
+    * Math.pow(1 + NPC.knobOf(W, 'livingCost') / 100, 0.35) * Math.pow(1 + NPC.knobOf(W, 'rentLevel') / 100, 0.2);
   const past = W.nation.hist.length ? W.nation.hist[Math.max(0, W.nation.hist.length - 365)] : null;
   s.inflation = Math.round(((s.prices / ((past && past.prices) || W.stats.prices0 || s.prices)) - 1) * 1000) / 1000;
   s.prices0 = W.stats.prices0 || s.prices;
   // the economy: the people's spending against what it was at the start (their money moving)
   const spentToday = W.flowsDone ? Object.values(W.flowsDone.co).reduce((a, c) => a + Object.values(c.s).reduce((x, y) => x + y, 0) + Object.values(c.p).reduce((x, k) => x + Object.values(k).reduce((p, q) => p + q[1], 0), 0), 0) : 0;
   s.spent = spentToday;
-  W.stats.spent0 = W.stats.spent0 || spentToday;
-  s.spent0 = W.stats.spent0;
-  s.economy = W.stats.spent0 ? Math.max(0.5, Math.min(1.5, 0.9 * (W.stats.economy || 1) + 0.1 * spentToday / W.stats.spent0)) : 1;
+  // the economy: the people's spending of the last month or so against that of the last year or so (the first day,
+  // only part of a day, and the days before a whole one are not a measure of anything)
+  const seen = (W.stats.spentDays || 0) + (spentToday > 0 ? 1 : 0);
+  s.spentDays = seen;
+  // (its first two months only make the measure: the plain average of the whole days so far)
+  if (seen <= 1) { s.spentFast = 0; s.spentSlow = 0; }
+  else if (spentToday > 0 && seen <= 61) { s.spentFast = s.spentSlow = ((W.stats.spentSlow || 0) * (seen - 2) + spentToday) / (seen - 1); }
+  else if (spentToday > 0) { s.spentFast = W.stats.spentFast * 29 / 30 + spentToday / 30; s.spentSlow = W.stats.spentSlow * 364 / 365 + spentToday / 365; }
+  s.economy = s.spentSlow > 0 ? Math.max(0.2, Math.min(5, s.spentFast / s.spentSlow)) : 1;
   // each company's part of what the people spent, and its move this week
   if (W.flowsDone) {
     const tot = {};
@@ -439,6 +458,13 @@ function stats(W, day) {
       w.days++;
       if (w.days >= 7) { W.coTrend[id] = w.prev ? w.now / w.prev - 1 : 0; w.prev = w.now; w.now = 0; w.days = 0; }
       W.coShare[id] = all ? (tot[id] || 0) / all : 0;
+      // (and the longer view: its last month or so against its last half year, past the week's ups and downs)
+      const e = (W.coEma || (W.coEma = {}))[id] || (W.coEma[id] = { fast: 0, slow: 0, days: 0 });
+      const x = tot[id] || 0;
+      e.days++;
+      if (e.days <= 30) { e.fast = e.slow = (e.slow * (e.days - 1) + x) / e.days; }
+      else { e.fast = e.fast * 29 / 30 + x / 30; e.slow = e.slow * 179 / 180 + x / 180; }
+      (W.coTrendLong || (W.coTrendLong = {}))[id] = e.days > 45 && e.slow > 0 ? e.fast / e.slow - 1 : 0;
     }
   }
   s.mood = Math.round(mood / P.n);
@@ -460,7 +486,7 @@ export function card(W, i, day) {
 }
 
 // the plain data of a world (what is kept besides the people's columns)
-const SKIP = new Set(['P', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners']);
+const SKIP = new Set(['P', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners', 'knobChanged', 'carSold']);
 export function metaOf(W) {
   const out = {};
   for (const [k, v] of Object.entries(W)) if (!SKIP.has(k) && typeof v !== 'function') out[k] = v;

@@ -56,7 +56,8 @@ function politicsDay(W, day, r) {
     if (day === vote - NPC.votes.campaign) campaign(W, day, r);
     if (day === vote) for (let k = 0; k < 5; k++) election(W, k, day, r, false);
   }
-  for (const b of po.byElection || []) if (b.day === day) election(W, b.district, day, r, false);
+  // (a by-election in a district whose regular one is under way is that one)
+  for (const b of po.byElection || []) if (b.day === day && !(po.campaign && po.campaign.cands.some((c) => c.district === b.district) && NPC.votes.months.some((mm) => secondSunday(t.y, mm) >= day && secondSunday(t.y, mm) - day <= NPC.votes.campaign))) election(W, b.district, day, r, false, true);
   po.byElection = (po.byElection || []).filter((b) => b.day > day);
   // the council: on the 5th, the five mayors
   if (t.d === 5) council(W, day, r);
@@ -82,13 +83,13 @@ function moods(W, day, r) {
     const age = ageOf(P, i, day), b = i * 8, poor = P.cash[i] < 20000000 ? 1 : 0;
     const drift = (x, target) => { P.disc[b + x] = clampB(P.disc[b + x] + (target - P.disc[b + x]) * 0.06 + r.z() * 3); };
     drift(0, 50 + (k.consumptionTax || 0) * 6 + (k.incomeShift || 0) * 8 + (k.residentTax - 10) * 8);
-    drift(1, (age >= 55 ? 60 + (k.pensionLevel < 0 ? -k.pensionLevel * 8 : 0) + (W.nation.fund.cash + W.nation.fund.bonds < 0 ? 50 : 0) : 40) + (k.pensionRate - 18.3) * 10);
+    drift(1, (age >= 55 ? 60 + (k.pensionLevel < 0 ? -k.pensionLevel * 8 : 0) + (W.nation.fund.cash + W.nation.fund.bonds < 0 ? 50 : 0) : 40) + (k.pensionRate - 18.3) * 10 + (W.nation.broke ? 90 : 0));
     drift(2, 45 + (prices - 1) * 300 + (k.consumptionTax || 0) * 7);
     drift(3, P.job[i] >= 1 && P.job[i] <= 14 ? 40 + (200 - P.jsat[i]) * 0.5 : P.job[i] === NPC.job.none ? 140 : 40);
     drift(4, 40 + (gini - 0.55) * 300 + poor * 50 + tr(P, i, T.justice) * 30);
     drift(5, magita && P.tr[i * NT + T.car] > 120 ? 150 : 45);
     drift(6, P.spun[i] || P.sh[i * 4] + P.sh[i * 4 + 1] + P.sh[i * 4 + 2] + P.sh[i * 4 + 3] > 0 ? 70 + ((6 - (k.winFee || 6)) < 0 ? 0 : (k.winFee || 6) * 6) : 35);
-    drift(7, 160 - W.districts[P.dist[i]].approval * 1.4);
+    drift(7, 160 - W.districts[P.dist[i]].approval * 1.4 + (W.nation.broke ? 40 : 0));
     P.emo[i * 5 + E.anger] = clampB(P.emo[i * 5 + E.anger] + (Math.max(...P.disc.subarray(b, b + 8)) - 150) * 0.05);
   }
 }
@@ -141,9 +142,10 @@ function pickPlatform(W, i, worst, r) {
 }
 // The vote of a district: each person's own (whether to go: their interest, the weather of the day; for whom: what
 // the promises do for what they mind, their leaning, the candidate's name, the mayor's record, their friends' word)
-function election(W, k, day, r, first) {
+function election(W, k, day, r, first, by = false) {
   const P = W.P, po = W.pol, d = W.districts[k];
   if (first || !po.campaign) { if (!po.campaign) po.campaign = { from: day, to: day, cands: [] }; candidates(W, k, day, r); }
+  else if (by && !po.campaign.cands.some((c) => c.district === k)) candidates(W, k, day, r);
   const cands = po.campaign.cands.filter((c) => c.district === k);
   if (!cands.length) return;
   const votes = new Float64Array(cands.length);
@@ -259,7 +261,9 @@ function council(W, day, r) {
   const P = W.P, po = W.pol, kn = W.nation.knobs;
   const ms = W.districts.map((d, k) => ({ k, i: d.mayor })).filter((x) => x.i >= 0);
   if (ms.length < 3) return;
-  const deficit = W.nation.cash < W.cal.nationFloor * 2 || (W.nation.month.out && sumOf(W.nation.month.out) > sumOf(W.nation.month.in || {}) * 1.1);
+  // (short of money, or last month spent well beyond what came in)
+  const lm = W.nation.lastMonth || W.nation.month || {};
+  const deficit = W.nation.cash < W.cal.nationFloor * 2 || (lm.out && sumOf(lm.out) > sumOf(lm.in || {}) * 1.1);
   const motions = [];
   for (const m of ms) {
     const [worry, how] = districtWorries(W, m.k)[0], theme = NPC.themes[worry].id;
@@ -326,6 +330,7 @@ function applyPending(W, day) {
     if (W.nation.locks && W.nation.locks[p.id]) continue;
     const was = W.nation.knobs[p.id];
     W.nation.knobs[p.id] = clampKnob(W, p.id, p.to);
+    if (W.knobChanged && was !== W.nation.knobs[p.id]) W.knobChanged(p.id, was, W.nation.knobs[p.id]);
     W.nation.log.push({ day, id: p.id, from: was, to: W.nation.knobs[p.id], by: p.by });
     W.news.push(news(day, 'knob', -1, `今日から${NPC.knob[p.id].name}が${fmtKnob(p.id, was)}→${fmtKnob(p.id, W.nation.knobs[p.id])}に（${p.by === 'vote' ? '市民投票' : p.by === 'ops' ? '運営' : '街の議会'}）`, { id: p.id }));
   }
@@ -369,9 +374,9 @@ function petitions(W, day, r) {
     for (let s = 0; s < asks; s++) {
       const i = r.int(P.n);
       if (!(P.sign[i] & bit)) continue;
-      const j = P.rel[i * REL + r.int(REL)];
+      const slot = r.int(REL), j = P.rel[i * REL + slot];
       if (j < 0 || P.sign[j] & bit || (p.scope !== 'national' && P.dist[j] !== p.district)) continue;
-      const mind = P.disc[j * 8 + p.theme] / 255 + 0.3 * P.rtrust[i * REL] / 255 - 0.45;
+      const mind = P.disc[j * 8 + p.theme] / 255 + 0.3 * P.rtrust[i * REL + slot] / 255 - 0.45;
       if (r.u() < Math.max(0, mind)) { P.sign[j] |= bit; p.count++; P.flags[j] |= FL.moving; }
     }
     // a march on a day off when it is big enough (and a boycott of a company it is about)

@@ -35,6 +35,27 @@ export function socialOf(W, monthly, age) {
   return { pension: Math.round(pension), rest: Math.round(health + emp + care) };
 }
 
+/* ---------------------------------------------------------------- 運営's knobs --- */
+// A knob that rescales what people have now: a pay level (everyone's pay there at once, by the new level against the
+// old), the rents. (The rest are read where they apply.)
+const LOCAL = new Set([NPC.job.other, NPC.job.self, NPC.job.part]);
+export function knobChanged(W, id, was, now) {
+  const P = W.P, ratio = (1 + (now || 0) / 100) / Math.max(0.01, 1 + (was || 0) / 100);
+  if (id.startsWith('pay:')) {
+    const who = id.slice(4), ci = NPC.companies.indexOf(who);
+    for (let i = 0; i < P.n; i++) {
+      const j = P.job[i];
+      const mine = ci >= 0 ? j === ci + 1 : who === 'civil' ? j === NPC.job.civil : who === 'local' ? LOCAL.has(j) : false;
+      if (mine && P.salary[i] > 0) P.salary[i] = Math.round(P.salary[i] * ratio);
+    }
+  } else if (id === 'rentLevel') {
+    for (let i = 0; i < P.n; i++) if (P.rent[i] > 0) P.rent[i] = Math.round(P.rent[i] * ratio);
+  }
+}
+// how much of what it owes the country can pay (1: all of it). Beyond what Tenesice will lend it, short of money,
+// it pays its pensions, its servants, its works and its benefits only in part: 財政破綻.
+export const solvency = (W) => (W.nation.cash >= 0 ? 1 : Math.max(0.2, 1 + W.nation.cash / Math.max(1, W.cal.nationFloor * 5)));
+
 /* ----------------------------------------------- what the companies paid out --- */
 // The companies' day just closed (server/core/corp-model.js closeDay's `ext`): its pay to the people, its taxes, its
 // dividends and the rest, into the people's and the country's money.
@@ -93,7 +114,7 @@ export function fromCompanies(W, ext, day) {
 // a company's pay (`kind` 'salary': the month's, on the 25th; 'bonus' in June and December) to its people by their
 // pay, with the income tax, the resident tax and their part of the social insurance taken (源泉徴収)
 function payStaff(W, company, n, kind, day) {
-  const P = W.P, staff = W.staffOf(company);
+  const P = W.P, staff = W.staffOf(company).filter((i) => !(P.flags[i] & FL.striking));
   if (!staff.length) { W.sector.cash += n; return; }
   let total = 0;
   for (const i of staff) total += P.salary[i];
@@ -224,16 +245,16 @@ export function dayStart(W, day, r, ctx) {
     const wealth = Math.pow(Math.max(0.02, (P.cash[i] + 1) / 60000000), 0.22);
     const thrift = 1 - 0.35 * tr(P, i, T.thrift);
     const street = P.home[i] === HOME.street ? 0.15 : 1;
-    const n = W.cal.living * Math.pow(size, 0.75) * wealth * thrift * street * (W.capacity.jinx || 1);
-    econ.buy(W, i, day, 'jinx', 'goods', Math.round(n * 0.62), true);
+    const n = W.cal.living * Math.pow(size, 0.75) * wealth * thrift * street * (W.capacity.jinx || 1) * (1 + NPC.knobOf(W, 'livingCost') / 100);
+    econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.62), true);
     econ.toSector(W, i, Math.round(n * 0.38), true);
   }
   // the unemployment benefit (失業手当), a day of it
-  const jl = 1 + (W.nation.knobs.jobless || 0) / 100;
+  const jl = 1 + (W.nation.knobs.jobless || 0) / 100, paid = solvency(W);
   for (let i = 0; i < P.n; i++) {
     if (!P.jobless[i]) continue;
     P.jobless[i]--;
-    const n = Math.round(P.joblessPay[i] * jl / 30);
+    const n = Math.round(P.joblessPay[i] * jl / 30 * paid);
     econ.nationOut(W, 'jobless', n);
     P.cash[i] += n;
     P.inc[i] += n;
@@ -242,7 +263,7 @@ export function dayStart(W, day, r, ctx) {
   if (t.d === NPC.pension.payDay && NPC.pension.payMonths.includes(t.m)) pensions(W, day);
   // the civil servants' pay on the 25th, the country's
   if (t.d === 25) {
-    for (let i = 0; i < P.n; i++) if (P.job[i] === NPC.job.civil) { const g = Math.round(P.salary[i] / 12); econ.nationOut(W, 'civil', g); take(W, i, g, 'salary', day); }
+    for (let i = 0; i < P.n; i++) if (P.job[i] === NPC.job.civil) { const g = Math.round(P.salary[i] / 12 * paid); econ.nationOut(W, 'civil', g); take(W, i, g, 'salary', day); }
   }
   // the public works: the country's and the districts' orders to the companies, a day of their budgets
   publicWorks(W, day, r);
@@ -250,21 +271,32 @@ export function dayStart(W, day, r, ctx) {
   lives(W, day, r, ctx);
   troubles(W, day, r);
   W.nation.year.days++;
-  // (the country short of money: bonds, bought by Tenesice)
+  // (the country short of money: bonds, bought by Tenesice — as far as it will lend: beyond that the country cannot pay
+  // all it owes, 財政破綻, until its money comes back)
   if (W.nation.cash < W.cal.nationFloor) {
-    const n = Math.ceil((W.cal.nationFloor * 2 - W.nation.cash) / 1e9) * 1e9;
-    W.nation.cash += n;
-    W.nation.bank += n;
-    W.nation.debt += n;
-    W.events.push({ kind: 'bonds', n });
+    const cap = (W.cal.bank0 || Math.round(3e12 * W.scale)) * NPC.knobOf(W, 'debtCap') / 100;
+    const n = Math.min(Math.ceil((W.cal.nationFloor * 2 - W.nation.cash) / 1e9) * 1e9, Math.max(0, Math.floor((cap - W.nation.bank) / 1e9) * 1e9));
+    if (n > 0) {
+      W.nation.cash += n;
+      W.nation.bank += n;
+      W.nation.debt += n;
+      W.events.push({ kind: 'bonds', n });
+    }
   }
+  const broke = W.nation.cash < 0;
+  if (broke && !W.nation.broke) W.news.push({ day, kind: 'nation', district: -1, text: `国の財政が破綻：テネシスが国債の引き受けを止め、年金・公務員の給与・公共事業・手当が一部しか払われなくなりました（支払率${Math.round(solvency(W) * 100)}%）`, data: {} });
+  else if (!broke && W.nation.broke) W.news.push({ day, kind: 'nation', district: -1, text: '国の財政が持ち直し、年金・給与・手当の支払いが元に戻りました', data: {} });
+  W.nation.broke = broke;
 }
 
 // the month's start: the bills (the phone, the slots' monthly charge for those who played, rent, VIP, services, the
 // pension and health insurance of those not employed), loans' interest and repayments, the safety net, the budgets
 function month(W, day, r, ctx) {
-  const P = W.P, phone = NPC.life.phone, slot = NPC.life.casinoMonthly;
-  const welfare = NPC.safety.living * (1 + (W.nation.knobs.welfare || 0) / 100);
+  const P = W.P, phone = NPC.knobOf(W, 'phoneBill'), slot = NPC.life.casinoMonthly, quick = NPC.knobOf(W, 'quickRate') / 100;
+  // (the country's month: the one that ended kept for the council to look at)
+  W.nation.lastMonth = W.nation.month;
+  W.nation.month = { in: {}, out: {} };
+  const welfare = NPC.safety.living * (1 + (W.nation.knobs.welfare || 0) / 100) * solvency(W);
   const rate = W.bankRates;
   for (let i = 0; i < P.n; i++) {
     const age = ageOf(P, i, day);
@@ -281,8 +313,8 @@ function month(W, day, r, ctx) {
       if (P.flags[i] & FL.welfare) { econ.nationOut(W, 'welfare', P.rent[i]); W.sector.cash += P.rent[i]; W.sector.inNation += P.rent[i]; }
       else econ.toSector(W, i, P.rent[i], true);
     }
-    if (P.vip[i] > day) econ.buy(W, i, day, 'daizin', 'members', W.cal.vipFee, false) || (P.vip[i] = 0);
-    if (P.car[i]) econ.buy(W, i, day, 'carowner', 'service', Math.round(W.cal.service * (0.5 + r.u())), true);
+    if (P.vip[i] > day) econ.buy(W, i, day, 'daizin', 'members', Math.round(W.cal.vipFee * econ.priceOf(W, 'daizin:vipFee')), false) || (P.vip[i] = 0);
+    if (P.car[i]) econ.buy(W, i, day, 'carowner', 'service', econ.spendAt(W, 'carowner:service', W.cal.service * (0.5 + r.u())), true);
     // the 国民年金 and 国民健康保険 of those not employed (students wait; those with little are let off half)
     if (age >= 18 && age < 60 && !isEmployee(P.job[i]) && P.job[i] !== NPC.job.home) {
       if (P.job[i] === NPC.job.student) { /* 学生納付特例 */ }
@@ -293,7 +325,7 @@ function month(W, day, r, ctx) {
     }
     // a loan's month: its interest to Tenesice, and a part paid back
     if (P.debt[i] > 0) {
-      const lr = P.dkind[i] === 2 ? NPC.trouble.quickRate : rate.person;
+      const lr = P.dkind[i] === 2 ? quick : rate.person;
       const int = Math.round(P.debt[i] * lr / 12);
       const back = Math.round(Math.min(P.debt[i], P.debt[i] / (P.dkind[i] === 2 ? 24 : 240)));
       if (P.cash[i] >= int + back) {
@@ -324,14 +356,13 @@ function month(W, day, r, ctx) {
   owners(W);
   // the country's interest to Tenesice on what it owes the bank, and the bank's fee for keeping large deposits
   // (口座管理手数料: 0.1% a year of what is above $100M)
-  const owed = Math.round(W.nation.bank * (W.nation.bankRate || 0.01) / 12);
+  const owed = Math.round(W.nation.bank * (W.nation.bankRate || 0.01) / 12 * solvency(W));
   if (owed > 0) { econ.nationOut(W, 'debtInterest', owed); econ.toBank(W, day, 'nii', owed); }
   for (let i = 0; i < P.n; i++) {
     if (P.cash[i] <= 100000000) continue;
     const fee = Math.round((P.cash[i] - 100000000) * 0.001 / 12);
     if (econ.pay(W, i, fee, false)) econ.toBank(W, day, 'fees', fee);
   }
-  W.nation.month = { in: {}, out: {} };
   W.sum.month++;
 }
 
@@ -366,10 +397,12 @@ export function weightsOf(P, i, age) {
 function pensions(W, day) {
   const P = W.P, PEN = NPC.pension, f = W.nation.fund;
   const level = W.nation.knobs.pensionLevel || 0;
+  // (the fund empty and the country broke: only part of it)
+  const paidNow = f.cash + f.bonds > 0 ? 1 : solvency(W);
   let paid = 0;
   for (let i = 0; i < P.n; i++) {
     if (!P.penAmt[i]) continue;
-    let n = P.penAmt[i] * 2 * (1 + level / 100);
+    let n = P.penAmt[i] * 2 * (1 + level / 100) * paidNow;
     // (working on a big pay: a part of it held back, 在職老齢年金)
     if (P.salary[i] / 12 + P.penAmt[i] > PEN.workCap) n = Math.max(0, n - (P.salary[i] / 12 + P.penAmt[i] - PEN.workCap));
     n = Math.round(n);
@@ -395,7 +428,7 @@ function pensions(W, day) {
 // promises, a day of each budget
 const WORKS = [['magita', 0.3], ['carowner', 0.08], ['jinx', 0.14], ['dtrade', 0.1], ['tenesice', 0.08], ['citywork', 0.08], ['speedeed', 0.06], ['daizin', 0.04], ['ice', 0.08], ['riru', 0.04]];
 function publicWorks(W, day, r) {
-  const budget = W.cal.publicWorks * (1 + (W.nation.knobs.publicWorks || 0) / 100) / YEAR;
+  const budget = W.cal.publicWorks * (1 + (W.nation.knobs.publicWorks || 0) / 100) / YEAR * solvency(W);
   if (W.nation.cash > 0) {
     for (const [co, s] of WORKS) {
       const n = Math.round(budget * s * (0.6 + 0.8 * r.u()) * (1 + (W.appeal[co + ':public'] || 0)));
@@ -407,7 +440,7 @@ function publicWorks(W, day, r) {
   const t = CORP.ymd(day);
   W.districts.forEach((d, k) => {
     if (t.d === 1) {
-      const g = Math.round(W.cal.grants[k] * (1 + (W.nation.knobs.grants || 0) / 100) / 12);
+      const g = Math.round(W.cal.grants[k] * (1 + (W.nation.knobs.grants || 0) / 100) / 12 * solvency(W));
       econ.nationOut(W, 'grants', g);
       econ.districtIn(W, k, 'grants', g);
     }
@@ -465,8 +498,9 @@ export function die(W, i, day, r, ctx) {
     const c = P.close[i * REL + k];
     if (c > 120) { P.emo[j * 5 + E.mood] = clampB(P.emo[j * 5 + E.mood] - c / 4); P.grief[j] = Math.max(P.grief[j], c); remember(P, j, day, M.death, c); }
   }
-  // the funeral and what was owed
+  // the funeral and what was owed (money they were short of is owed too: the bank's loss if nothing is left)
   econ.toSector(W, i, NPC.safety.burial, true);
+  if (P.cash[i] < 0) { P.debt[i] += -P.cash[i]; W.sum.lent += -P.cash[i]; P.cash[i] = 0; }
   if (P.debt[i] > 0) {
     const back = Math.min(P.debt[i], Math.max(0, P.cash[i]));
     P.cash[i] -= back;
@@ -526,8 +560,12 @@ export function die(W, i, day, r, ctx) {
   W.politics.vacate(W, i, day);
   W.org.vacate(W, i, day);
   if (P.host[i] >= 0) P.host[i] = -1;
+  forget(W, i);
+  passHome(P, i);
   leaveHousehold(P, i);
   reborn(W, i, day, r, heirs);
+  // (the richest of all, through whom an estate with no heirs goes to the market, may have been them)
+  if (W.richest === i) W.richest = richestOf(P);
 }
 
 // A new life at 18 in the place of one that ended: most as the grown child of a household that wanted one (some of
@@ -601,6 +639,31 @@ export function reborn(W, i, day, r, heirs) {
   W.events.push({ kind: 'born', i, name: W.card(i, day).name, parent: parent >= 0 ? W.card(parent, day).name : '' });
 }
 
+// A life gone from slot `i`: nobody counts them a friend or a family member any more, nobody stays at their home,
+// their orders on the market are taken off (the slot is someone new now)
+function forget(W, i) {
+  const P = W.P;
+  for (let x = 0; x < P.n * REL; x++) if (P.rel[x] === i) P.rel[x] = -1;
+  for (let j = 0; j < P.n; j++) if (P.host[j] === i) P.host[j] = -1;
+  const m = W.marketState;
+  if (m) for (const b of Object.values(m.book)) { b.buy = b.buy.filter((o) => o[0] !== i); b.sell = b.sell.filter((o) => o[0] !== i); }
+  if (m) for (const c of Object.values(m.cost || {})) delete c[i];
+}
+// The head of a household leaving it (gone, or out of their home): the next of them takes on the home — the one they
+// own, or the rent to pay — instead of living on in it for nothing
+export function passHome(P, i) {
+  if (P.hh[i] !== i) return;
+  const next = P.hnext[i];
+  if (next < 0 || P.home[next] !== HOME.family) return;
+  if (P.home[i] === HOME.own) { P.home[next] = HOME.own; P.rent[next] = 0; }
+  else { P.home[next] = HOME.rent; P.rent[next] = P.rent[i] > 0 ? P.rent[i] : 90000 + (P.dist[next] === 3 ? 60000 : 0); }
+}
+export function richestOf(P) {
+  let top = 0;
+  for (let i = 1; i < P.n; i++) if (P.cash[i] > P.cash[top]) top = i;
+  return top;
+}
+
 /* ------------------------------------------------------------ money troubles --- */
 // Each day, those in trouble (owing more than they can borrow, nothing in hand): the renters who cannot pay go to
 // stay with someone close (居候, up to four months, with the host's say), and failing that or after it, on the street;
@@ -626,7 +689,19 @@ function troubles(W, day, r) {
       continue;
     }
     if (!broke || (h !== HOME.rent && h !== HOME.own)) continue;
-    if (h === HOME.own && P.cash[i] > -TR.quickMax) continue;
+    // (an owner keeps the home until what they owe is far beyond what anyone would lend them: then it is the bank's —
+    // sold, what it brings set against the debt — and they must go)
+    if (h === HOME.own) {
+      if (!(P.debt[i] > econ.quickCap(P, i) * 4 && P.cash[i] < 300000)) continue;
+      const sold = Math.min(P.debt[i], foreclosed(W, i));
+      P.debt[i] -= sold;
+      W.sum.repaid += sold;
+      if (P.debt[i] <= 0) { P.debt[i] = 0; P.dkind[i] = 0; }
+      // (the family that lived there rents from now on)
+      P.home[i] = HOME.rent;
+      P.rent[i] = 90000 + (P.dist[i] === 3 ? 60000 : 0);
+      W.events.push({ kind: 'foreclosed', i });
+    }
     // someone close with a home to stay with
     let host = -1;
     for (let k = 0; k < REL; k++) {
@@ -634,6 +709,7 @@ function troubles(W, day, r) {
       if (j >= 0 && P.close[i * REL + k] > 110 && (P.home[j] === HOME.own || P.home[j] === HOME.rent) && P.cash[j] > 5000000 && P.host[j] < 0) { host = j; break; }
     }
     if (host >= 0 && r.u() < 0.7) {
+      passHome(P, i);
       leaveHousehold(P, i);
       P.home[i] = HOME.stay; P.host[i] = host; P.stay[i] = 0; P.rent[i] = 0; P.ldist[i] = P.dist[host];
       W.sum.staying++;
@@ -641,9 +717,16 @@ function troubles(W, day, r) {
     } else goStreet(W, i, day);
   }
 }
+// what a home taken by the bank brings: the local businesses (the buyers) pay what they can of a modest home's worth
+function foreclosed(W, i) {
+  const n = Math.max(0, Math.min(Math.round(W.P.rent[i] > 0 ? W.P.rent[i] * 120 : 15000000), Math.round(W.sector.cash * 0.5)));
+  W.sector.cash -= n;
+  W.sector.outPeople += n;
+  return n;
+}
 function goStreet(W, i, day) {
   const P = W.P;
-  if (P.home[i] !== HOME.stay) leaveHousehold(P, i);
+  if (P.home[i] !== HOME.stay) { passHome(P, i); leaveHousehold(P, i); }
   P.home[i] = HOME.street; P.host[i] = -1; P.rent[i] = 0; P.stay[i] = 0;
   remember(P, i, day, M.street, 200);
   P.emo[i * 5 + E.mood] = clampB(P.emo[i * 5 + E.mood] - 60);

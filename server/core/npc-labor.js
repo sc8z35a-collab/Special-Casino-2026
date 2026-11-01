@@ -6,6 +6,7 @@
 import { NPC, CORP } from './rules.js';
 import { T, S, FL, E, NT, ageOf, remember, clampB } from './npc-pop.js';
 import { M, skillFor } from './npc-life.js';
+import * as econ from './npc-econ.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const RATES = { tenesice: 0.35, magita: 0.75, carowner: 0.4, jinx: 0.45, daizin: 0.2, citywork: 0.15, speedeed: 0.05, dtrade: 0.1, riru: 0.25, ice: 0.3 };
@@ -119,7 +120,7 @@ function retire(W, i, day, r) {
   const pay = P.salary[i], years = Math.min(38, P.tenure[i] / 12);
   const sev = Math.round(pay / 12 * NPC.retire.severance * years);
   if (id) W.charge(id, null, 'severance', sev, i);
-  else if (j === NPC.job.civil) { W.nation.cash -= sev; W.nation.day.out.civil = (W.nation.day.out.civil || 0) + sev; P.cash[i] += sev; }
+  else if (j === NPC.job.civil) { econ.nationOut(W, 'civil', sev); P.cash[i] += sev; }
   remember(P, i, day, M.retired, 180);
   if (id && r.u() < 0.55 + 0.3 * (1 - P.cash[i] / 200000000)) {
     // kept on: the same company, 60% of the pay, no longer in a post
@@ -135,6 +136,14 @@ function retire(W, i, day, r) {
 /* ---------------------------------------------------------------- a working day --- */
 function laborDay(W, day, r, ctx) {
   const P = W.P, t = CORP.ymd(day);
+  // April: the year's raise for everyone at each company (its union's, or what the company gave) and a step up for
+  // the years worked (定期昇給); a union still out on strike gets its raise when it settles
+  if (t.m === 4 && t.d === 1) for (const id of NPC.companies) {
+    const u = W.lab.unions[id], c = ctx.corp && ctx.corp.co[id];
+    if (u && u.state === 'strike') continue;
+    const raise = u && u.state === 'settled' && W.lab.talks && W.lab.talks.year === t.y ? u.raise : c && c.yearRaise && c.yearRaise.fy === CORP.fyOf(day) ? c.yearRaise.raise : 0;
+    payRaise(W, id, CORP.fyOf(day), raise);
+  }
   dismiss(W, day, ctx);
   openings(W, ctx);
   // the month in work: a month more of it, the mood at work (the pay against what others pay, the company's
@@ -188,6 +197,19 @@ function laborDay(W, day, r, ctx) {
   shunto(W, day, r, ctx);
 }
 
+// A company's raise for fiscal year `fy` on its people's pay (once a year), with the step for the years worked
+const STEP = 0.015;
+function payRaise(W, id, fy, raise) {
+  const P = W.P, lb = W.lab;
+  lb.raised = lb.raised || {};
+  if (lb.raised[id] === fy) return;
+  lb.raised[id] = fy;
+  for (const i of W.staffOf(id)) {
+    if (!(P.salary[i] > 0)) continue;
+    P.salary[i] = Math.round(P.salary[i] * (1 + Math.max(-0.1, raise) + (P.tenure[i] >= 12 && !(P.flags[i] & FL.rehired) ? STEP : 0)));
+  }
+}
+
 /* ---------------------------------------------------------------- the unions --- */
 function unionsAtStart(W) {
   const P = W.P, lb = W.lab;
@@ -216,6 +238,11 @@ function pickRep(W, id) {
 // 春闘: on 1 February the unions ask (prices, the company's profit, what the members mind, how hard their rep is);
 // each Monday of February and March the company (its 社長) answers and the two move towards each other, each by
 // its own patience; by 31 March it is settled (the raise from April: server/core/corp-model.js), or a strike begins.
+// the company's last fiscal year as its books closed it (its net profit and sales), for the wage talks
+function lastYear(c) {
+  const y = (c && c.hist || []).filter((h) => h.kind === 'y').slice(-1)[0];
+  return y ? { net: y.net, sales: y.sales } : { net: 0, sales: 0 };
+}
 function shunto(W, day, r, ctx) {
   const P = W.P, t = CORP.ymd(day), lb = W.lab;
   if (t.m === 2 && t.d === 1) {
@@ -225,7 +252,8 @@ function shunto(W, day, r, ctx) {
       if (!c || u.members < 3) { u.state = 'idle'; continue; }
       if (u.rep < 0 || !(P.flags[u.rep] & FL.union)) pickRep(W, id);
       const rep = u.rep >= 0 ? u.rep : 0;
-      const grow = c.lastNet > 0 ? Math.min(0.03, c.lastNet / Math.max(1, c.lastSales) * 0.3) : 0;
+      const ly = lastYear(c);
+      const grow = ly.net > 0 ? Math.min(0.03, ly.net / Math.max(1, ly.sales) * 0.3) : 0;
       u.demand = Math.round(Math.max(0.01, Math.min(0.09, (W.stats.inflation || 0.01) + 0.015 + grow + 0.02 * tr(P, rep, T.justice))) * 1000) / 1000;
       u.offer = 0;
       u.state = 'talks';
@@ -241,7 +269,8 @@ function shunto(W, day, r, ctx) {
       if (u.state !== 'talks' || !c) continue;
       const boss = W.org.boss(id);
       const tight = boss >= 0 ? tr(P, boss, T.thrift) : 0.5;
-      const room = c.lastNet > 0 ? Math.min(0.06, 0.01 + c.lastNet / Math.max(1, c.lastSales) * 0.25) : 0.005;
+      const ly = lastYear(c);
+      const room = ly.net > 0 ? Math.min(0.06, 0.01 + ly.net / Math.max(1, ly.sales) * 0.25) : 0.005;
       u.offer = Math.min(u.demand, Math.max(u.offer, room * (1.2 - tight * 0.6) * (0.6 + 0.1 * lb.talks.rows.filter((x) => x.id === id).length)));
       const give = 0.3 * (1 - tr(P, u.rep >= 0 ? u.rep : 0, T.patience));
       u.demand = Math.max(u.offer, u.demand - (u.demand - u.offer) * give);
@@ -281,5 +310,8 @@ function settle(W, id, day, raise) {
   u.raise = Math.round(raise * 10000) / 10000;
   W.raises[id] = u.raise;
   for (const i of W.staffOf(id)) P.flags[i] &= ~FL.striking;
+  // (settled after April began, the strike over: the raise from now on)
+  const t = CORP.ymd(day);
+  if (t.m >= 4 && W.lab.talks && W.lab.talks.year === t.y) payRaise(W, id, CORP.fyOf(day), u.raise);
   W.news.push({ day, kind: 'labor', district: -1, text: `${CORP.company(id).name}の春闘が妥結：賃上げ${(u.raise * 100).toFixed(2)}%（4月から）${was === 'strike' ? `、ストライキは${u.days}日で終了` : ''}`, data: { company: id, raise: u.raise } });
 }

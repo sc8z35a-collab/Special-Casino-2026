@@ -196,10 +196,34 @@
     { id: 'winFee', group: '企業', name: 'Dtradeの勝利金手数料', start: 6, min: 3, max: 6, step: 0.5, unit: '%', player: true },
     { id: 'exchangeFee', group: '企業', name: 'Dtradeの交換手数料', start: 40000, min: 20000, max: 40000, step: 5000, unit: '$', player: true },
     { id: 'tradeFee', group: '企業', name: 'Dtradeの株の手数料', start: 1.8, min: 0.9, max: 1.8, step: 0.1, unit: '%', player: true },
-    { id: 'jobFee', group: '企業', name: '求人サイトの掲載料', start: 25, min: 12.5, max: 25, step: 2.5, unit: '%', player: true }
+    { id: 'jobFee', group: '企業', name: '求人サイトの掲載料', start: 25, min: 12.5, max: 25, step: 2.5, unit: '%', player: true },
+    // (what only 運営 sets: the council and the people never move these) the pay at each company and elsewhere, against
+    // what it is (a change scales everyone's there at once, and the new hires' with it), the cost of living, the
+    // rents, the phone bill, the quick loans' rate, how far Tenesice lends to the country (beyond it the country
+    // cannot pay all it owes: 財政破綻), the people's own limit on the market a day
+    { id: 'pay:tenesice', group: '給与', name: 'テネシスの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
+    { id: 'pay:magita', group: '給与', name: 'MAGITAの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
+    { id: 'pay:carowner', group: '給与', name: 'カーオーナーの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
+    { id: 'pay:jinx', group: '給与', name: 'ジンクスの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
+    { id: 'pay:daizin', group: '給与', name: 'DAIZINの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
+    { id: 'pay:citywork', group: '給与', name: 'シティーワークの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
+    { id: 'pay:speedeed', group: '給与', name: 'スピーディードの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
+    { id: 'pay:dtrade', group: '給与', name: 'Dtradeの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
+    { id: 'pay:riru', group: '給与', name: 'RIRU STUDIOの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
+    { id: 'pay:ice', group: '給与', name: 'Ice Smokerの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
+    { id: 'pay:civil', group: '給与', name: '公務員の給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
+    { id: 'pay:local', group: '給与', name: '地元の店・自営業・パートの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
+    { id: 'livingCost', group: '暮らし', name: '日用品の物価', start: 0, min: -50, max: 300, step: 5, unit: '%', ops: true },
+    { id: 'rentLevel', group: '暮らし', name: '家賃の水準', start: 0, min: -50, max: 300, step: 5, unit: '%', ops: true },
+    { id: 'phoneBill', group: '暮らし', name: 'テネシス・モバイルの月額', start: 100000, min: 0, max: 1000000, step: 10000, unit: '$', ops: true },
+    { id: 'quickRate', group: '金融', name: 'クイックローンの金利', start: 17.8, min: 1, max: 40, step: 0.1, unit: '%', ops: true },
+    { id: 'debtCap', group: '金融', name: 'テネシスが国に貸す上限（最初の残高に対して）', start: 300, min: 100, max: 2000, step: 10, unit: '%', ops: true },
+    { id: 'investDaily', group: '金融', name: '市民の株の購入上限（1日）', start: 35000000, min: 0, max: 1000000000, step: 1000000, unit: '$', ops: true }
   ];
   var KNOB = {};
   KNOBS.forEach(function (k) { KNOB[k.id] = k; });
+  // a knob as it is now in a country (one added after the country began: where it starts)
+  function knobOf(W, id) { var v = W && W.nation && W.nation.knobs ? W.nation.knobs[id] : undefined; return v === undefined || v === null ? KNOB[id].start : v; }
   // a knob changes from the 1st of the next month, once a quarter at most; a citizens' vote needs these
   var CHANGE = { quarterOnce: true };
   var VOTES = {
@@ -378,7 +402,7 @@
     holidays: holidays, jst: jst, hoursOf: hoursOf, activeAt: activeAt, nextActive: nextActive,
     companies: COMPANY_IDS, job: JOB, jobNames: JOB_NAMES, schedules: SCHEDULES, companySchedule: COMPANY_SCHEDULE, sites: SITES,
     tax: TAX, social: SOCIAL, pension: PENSION, safety: SAFETY, retire: RETIRE, life: LIFE, trouble: TROUBLE,
-    knobs: KNOBS, knob: KNOB, change: CHANGE, votes: VOTES, platforms: PLATFORMS, themes: THEMES, demands: DEMANDS,
+    knobs: KNOBS, knob: KNOB, knobOf: knobOf, change: CHANGE, votes: VOTES, platforms: PLATFORMS, themes: THEMES, demands: DEMANDS,
     org: ORG, ranks: RANKS, labs: LABS, labThemes: LAB_THEMES, ventures: VENTURES,
     names: { family: FAMILY, male: MALE, female: FEMALE }, nameOf: nameOf, money: money, frame: FRAME, MIN: MIN
   };

@@ -42,7 +42,7 @@ export function recall(P, i, kind, day) {
 
 /* ---------------------------------------------------------------- the timetable --- */
 // what a person must be doing at minute `t` of a day (`off`: a day off): { kind, end } (end: the minute it ends)
-export function obliged(W, i, t, off, day) {
+export function obliged(W, i, t, off, day, jdow) {
   const P = W.P, job = P.job[i], h = hash32(i, 7);
   // sleep: most from about midnight to 6:30, the night owls later
   const owl = (h % 100) < 18, wake = 360 + (h % 90) + (owl ? 120 : 0) + (off ? 60 : 0), bed = owl ? 1500 : 1380 + (h % 60);
@@ -59,7 +59,8 @@ export function obliged(W, i, t, off, day) {
   else if (job === NPC.job.student) sched = NPC.schedules.student;
   if (!sched) return { kind: 'free', end: 1440 };
   // days off: a shop's people two weekdays of their own; everyone else the days off
-  const dow = (day + 4) % 7;
+  // (the weekday in Japan: its days begin at midnight there, not at 9:00)
+  const dow = jdow !== undefined ? jdow : (day + 4) % 7;
   if (sched.off) { if (sched.days && ((h >>> 8) + dow) % 7 < sched.days) return { kind: 'free', end: 1440 }; }
   else if (off && !(job === 2 && W.overtime && W.overtime.magita)) return { kind: 'free', end: 1440 };
   const blk = sched.shifts ? sched.shifts[shift % sched.shifts.length] : sched.blocks[0];
@@ -82,7 +83,7 @@ export function decide(W, i, m, t, j, r, ctx) {
   const dt = Math.min(240, Math.max(1, m - P.upd[i]));
   P.upd[i] = m;
   decay(P, i, dt);
-  const ob = obliged(W, i, t, j.off, day);
+  const ob = obliged(W, i, t, j.off, day, j.w);
   const home = P.home[i] === HOME.street ? PL.street : PL.home;
   if (ob.kind === 'sleep') { set(W, i, A.sleep, home, P.dist[i], m, Math.min(ob.end - t, 600)); fill(P, i, N.rest, dt * 0.6); return; }
   if (ob.kind === 'sick') { set(W, i, A.hospital, PL.hospital, P.dist[i], m, 120); hospital(W, i, day, r); return; }
@@ -148,9 +149,9 @@ function lunch(W, i, m, day, r) {
   const P = W.P;
   set(W, i, A.lunch, PL.store, P.wdist[i], m, 45 + r.int(20));
   // (a lunch out: the local restaurants; now and then a snack from ジンクス)
-  const n = Math.round(W.cal.lunch * (0.6 + 0.8 * r.u()) * (1 - 0.4 * tr(P, i, T.thrift)));
+  const n = Math.round(W.cal.lunch * (0.6 + 0.8 * r.u()) * (1 - 0.4 * tr(P, i, T.thrift)) * (1 + NPC.knobOf(W, 'livingCost') / 100));
   econ.toSector(W, i, n, false);
-  if (r.u() < 0.3) econ.buy(W, i, day, 'jinx', 'goods', Math.round(n * 0.4), false);
+  if (r.u() < 0.3) econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.4), false);
   fill(P, i, N.rest, 25);
   fill(P, i, N.fun, 8);
   if (r.u() < 0.6) talk(W, i, m, r, true);
@@ -170,16 +171,18 @@ function free(W, i, m, t, j, day, r, ctx) {
   const shops = t >= 600 && t < 1260, dealer = t >= 600 && t < 1200;
   const fund = (k) => P.fund[i * 4 + k];
   scores[0] = 0.25 + need(P, i, N.rest) * 0.9 + (late ? 0.5 : 0) + 0.2 * (1 - tr(P, i, T.extra)) + (street ? -0.2 : 0);
-  scores[1] = shops ? (0.15 + need(P, i, N.fun) * 0.35 + (off ? 0.2 : 0)) * Math.min(1.4, fund(2) / Math.max(1, W.cal.leisure) + 0.2) * learnt(P, i, L.shop) : 0;
+  scores[1] = shops ? (0.15 + need(P, i, N.fun) * 0.35 + (off ? 0.2 : 0)) * Math.min(1.4, fund(2) / Math.max(1, W.cal.leisure) + 0.2) * learnt(P, i, L.shop) * (1 + econ.appealOf(W, 'jinx', 'goods')) / Math.sqrt(econ.priceOf(W, 'jinx:goods')) : 0;
   scores[2] = dealer ? (0.01 + 0.25 * tr(P, i, T.car) * (need(P, i, N.status) + need(P, i, N.move)) / 2) * (P.car[i] ? Math.min(1.5, (day - P.carDay[i]) / 1800) : 1.2) * Math.min(1.5, wealth) * learnt(P, i, L.car) * (off ? 1.4 : 0.6) : 0;
   const lossMem = recall(P, i, M.bigLoss, day);
   const burnt = lossMem && lossMem.ago < 10 ? (tr(P, i, T.gamble) > 0.75 ? 1.3 : 0.4) : 1;
   // (the first spin of a month costs the month's slot charge, $1M: only those who mean to play a lot start)
   const firstSpin = !P.spun[i] && fund(0) < NPC.life.casinoMonthly;
-  scores[3] = !firstSpin && (fund(0) > W.cal.minBet || P.tokens[i] > W.cal.minBet) ? (0.05 + need(P, i, N.thrill) * 0.8 * tr(P, i, T.gamble)) * (0.6 + md) * (evening ? 1.4 : 0.8) * burnt * learnt(P, i, L.casino) * (W.boycott.dtrade ? 1 - 0.6 * P.disc[i * 8 + 6] / 255 : 1) : 0;
+  scores[3] = !firstSpin && (fund(0) > W.cal.minBet || P.tokens[i] > W.cal.minBet) ? (0.05 + need(P, i, N.thrill) * 0.8 * tr(P, i, T.gamble)) * (0.6 + md) * (evening ? 1.4 : 0.8) * burnt * learnt(P, i, L.casino) * (W.boycott.dtrade ? 1 - 0.6 * P.disc[i * 8 + 6] / 255 : 1) * (1 + econ.appealOf(W, 'dtrade', 'casino')) : 0;
   scores[4] = (0.1 + need(P, i, N.fun) * 0.7 * tr(P, i, T.game)) * (evening ? 1.3 : 0.9) * learnt(P, i, L.game) * (age < 40 ? 1.2 : age > 65 ? 0.5 : 1);
-  scores[5] = fund(3) > 100000 ? (0.03 + 0.4 * tr(P, i, T.risk) * tr(P, i, T.news)) * Math.min(1.5, wealth) * learnt(P, i, L.invest) * (t >= 540 && t < 600 || t >= 720 && t < 780 || t >= 1230 && t < 1290 ? 1.8 : 1) : 0;
-  scores[6] = P.vip[i] > day ? (0.15 + need(P, i, N.status) * 0.5 + need(P, i, N.social) * 0.3) * learnt(P, i, L.lounge) * (evening ? 1.3 : 1) : 0;
+  const stir = 1 + 15 * ((W.marketState && W.marketState.move) || 0);
+  const holds = P.sh[i * 4] + P.sh[i * 4 + 1] + P.sh[i * 4 + 2] + P.sh[i * 4 + 3] > 0;
+  scores[5] = fund(3) > 100000 || (holds && stir > 2) ? (0.03 + 0.4 * tr(P, i, T.risk) * tr(P, i, T.news)) * Math.min(1.5, wealth) * learnt(P, i, L.invest) * (t >= 540 && t < 600 || t >= 720 && t < 780 || t >= 1230 && t < 1290 ? 1.8 : 1) * stir : 0;
+  scores[6] = P.vip[i] > day ? (0.15 + need(P, i, N.status) * 0.5 + need(P, i, N.social) * 0.3) * learnt(P, i, L.lounge) * (evening ? 1.3 : 1) * (1 + econ.appealOf(W, 'daizin', 'lounge')) : 0;
   scores[7] = (0.15 + need(P, i, N.social) * 0.9 * (0.5 + tr(P, i, T.extra))) * (off ? 1.5 : 1) * learnt(P, i, L.friends);
   const seeking = P.job[i] === NPC.job.none || (P.job[i] >= 1 && P.job[i] <= 12 && P.jsat[i] < 70);
   scores[8] = seeking && age < 66 && t < 1140 ? (P.job[i] === NPC.job.none ? 0.9 : 0.15) * (0.5 + need(P, i, N.security)) : 0;
@@ -214,8 +217,8 @@ const ACTIONS = {
     const P = W.P;
     const d = nearest(W, P.dist[i], 'store');
     set(W, i, A.shop, PL.store, d, m, 40 + r.int(60));
-    const want = W.cal.leisure * (0.15 + 0.3 * r.u()) * (0.6 + 0.8 * tr(P, i, T.vanity)) * (1 - 0.5 * tr(P, i, T.thrift));
-    const n = Math.min(econ.allowance(W, i, 2, day) * 0.6, want);
+    const want = W.cal.leisure * (0.15 + 0.3 * r.u()) * (0.6 + 0.8 * tr(P, i, T.vanity)) * (1 - 0.5 * tr(P, i, T.thrift)) * Math.sqrt(econ.priceOf(W, 'jinx:goods'));
+    const n = Math.round(Math.min(econ.allowance(W, i, 2, day) * 0.6, want));
     if (n > 1000 && econ.buy(W, i, day, 'jinx', 'goods', n, false)) P.fund[i * 4 + 2] -= n;
     shopItems(W, i, day, r);
     fill(P, i, N.fun, 30);
@@ -230,7 +233,7 @@ const ACTIONS = {
     // a look at the cars: the big decision, thought a year ahead (npc-mind.js)
     const got = thinkCar(W, i, day, r, ctx);
     learn(P, i, L.car, got ? 0.9 : 0.35);
-    if (P.car[i]) econ.buy(W, i, day, 'carowner', 'service', Math.round(W.cal.service * (0.3 + 0.7 * r.u())), false);
+    if (P.car[i]) econ.buy(W, i, day, 'carowner', 'service', econ.spendAt(W, 'carowner:service', W.cal.service * (0.3 + 0.7 * r.u())), false);
   },
   casino(W, i, m, t, day, r) {
     const P = W.P, d = nearest(W, P.dist[i], 'casino');
@@ -334,7 +337,7 @@ const ACTIONS = {
     const n = Math.min(econ.allowance(W, i, 2, day) * 0.8, W.cal.leisure * (0.2 + 0.4 * r.u()));
     if (n > 0 && econ.toSector(W, i, n, false)) P.fund[i * 4 + 2] -= n;
     // (a little from the shops on the way)
-    if (r.u() < 0.5) econ.buy(W, i, day, 'jinx', 'goods', Math.round(n * 0.25), false);
+    if (r.u() < 0.5) econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.25), false);
     fill(P, i, N.fun, 70);
     fill(P, i, N.social, 30);
     feel(P, i, E.mood, 15);
@@ -412,7 +415,10 @@ function games(W, i, day, r, ctx) {
     if (tax) econ.nationIn(W, 'consumption', tax);
     econ.toTitle(W, day, t.company, t.id, 1, n);
     spent += n;
-    P.owned[i * OWN + (P.memAt[i] % OWN)] = t.key;
+    // (kept in a free slot, else in place of an older one)
+    let slot = -1;
+    for (let k = 0; k < OWN; k++) if (!P.owned[i * OWN + k]) { slot = k; break; }
+    P.owned[i * OWN + (slot >= 0 ? slot : (t.key + day) % OWN)] = t.key;
     if (t.q >= 85) remember(P, i, day, M.goodGame, t.q);
   }
   // the running games: a month's spending of a player of one, in pieces

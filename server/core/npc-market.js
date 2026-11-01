@@ -5,7 +5,7 @@
 // imbalance moves the price. The fee is Dtrade's, 1.8% each way as the players'.
 import { NPC, STOCKS } from './rules.js';
 import { T, NT, LISTED, remember } from './npc-pop.js';
-import { toStream } from './npc-econ.js';
+import { toStream, nationIn } from './npc-econ.js';
 
 export const LISTED_IDS = ['riru', 'ice', 'magita', 'tenesice'];
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
@@ -31,6 +31,9 @@ export function createMarket(W) {
       const follower = tr(P, i, T.impulse) > 0.5;
       const value = ctx.fair && ctx.fair[id] ? Math.log(ctx.fair[id] / price) : 0;
       let view = P.outlook[i * LISTED + k] / 127 + (follower ? 3 : -2) * trend + 0.8 * value * tr(P, i, T.news) + 0.3 * r.z();
+      // fear and greed: a move of late beyond 8% carries the nervous and the impulsive along with it (a panic, a mania)
+      const rush = Math.abs(trend) > 0.08 ? Math.sign(trend) * (Math.abs(trend) - 0.08) * 8 * (0.4 + tr(P, i, T.impulse) + 0.6 * tr(P, i, T.neuro)) : 0;
+      view += rush;
       const held = P.sh[i * LISTED + k];
       const cost = (m.cost[id] && m.cost[id][i]) || price;
       // (a winner sold early, a loser held: the gain taken, the loss not)
@@ -38,12 +41,14 @@ export function createMarket(W) {
       if (held > 0 && price < cost * 0.9) view += 0.3;
       const limit = Math.max(1, Math.round(price * (1 + (view > 0 ? 1 : -1) * (0.001 + 0.006 * r.u()))));
       if (view > 0.2) {
-        const room = Math.max(0, NPC.life.daily35M - P.buyDay[i]);
-        const money = Math.min(Math.max(0, P.fund[i * 4 + 3]) * (0.3 + 0.5 * r.u()), Math.max(0, P.cash[i]) * 0.5, room);
+        const room = Math.max(0, NPC.knobOf(W, 'investDaily') - P.buyDay[i]);
+        // (in a mania what was set aside for the market is not the limit: the greedy put in what they have)
+        const money = Math.min(Math.max(Math.max(0, P.fund[i * 4 + 3]) * (0.3 + 0.5 * r.u()), rush > 0 ? Math.max(0, P.cash[i]) * Math.min(0.5, rush * 0.2) : 0), Math.max(0, P.cash[i]) * 0.5, room);
         const shares = Math.floor(money / (limit * 1.02));
         if (shares > 0) { m.book[id].buy.push([i, shares, limit]); P.buyDay[i] += shares * limit; P.fund[i * 4 + 3] -= shares * limit; }
       } else if (view < -0.2 && held > 0) {
-        const shares = Math.max(1, Math.floor(held * (0.2 + 0.6 * r.u())));
+        // (in a panic, more of it, up to all)
+        const shares = Math.max(1, Math.floor(held * Math.min(1, 0.2 + 0.6 * r.u() + (rush < 0 ? -rush * 0.5 : 0))));
         m.book[id].sell.push([i, Math.min(held, shares), limit]);
       }
     },
@@ -75,6 +80,10 @@ export function createMarket(W) {
         m.volume[id] = (m.volume[id] || 0) + done;
         // (the price as the people last saw it, for the move of late: every half hour of it)
         if (minute % 30 === 0) { m.hist[id].push(price); if (m.hist[id].length > 16) m.hist[id].shift(); }
+        // (how far the market has moved of late: the people look at their shares more when it moves a lot)
+        const h0 = m.hist[id][0];
+        if (k === 0) m.move = 0;
+        if (h0) m.move = Math.max(m.move || 0, Math.abs(price / h0 - 1));
         m.last[id] = price;
       }
     },
@@ -125,19 +134,17 @@ export function createMarket(W) {
       c[i] = Math.round(((c[i] || price) * was + price * n) / Math.max(1, was + n));
       if (player) W.sum.fromPlayers -= v;
     } else {
+      // (what they paid a share, read before a holding sold out is forgotten)
+      const c = (m.cost[id] && m.cost[id][i]) || price;
       P.cash[i] += v - fee;
       P.sh[i * LISTED + k] -= n;
       if (P.sh[i * LISTED + k] <= 0 && m.cost[id]) delete m.cost[id][i];
       if (player) W.sum.fromPlayers += v;
-      const c = (m.cost[id] && m.cost[id][i]) || price;
       if (price > c * 1.2) remember(P, i, day, 13, 120);
       else if (price < c * 0.8) remember(P, i, day, 14, 120);
-    }
-    // the gains tax: 20% of what was made on a sale (the country's)
-    if (side === 'sell') {
-      const c = (m.cost[id] && m.cost[id][i]) || price;
+      // the gains tax: 20% of what was made on a sale (the country's)
       const gain = (price - c) * n;
-      if (gain > 0) { const tax = Math.round(gain * NPC.tax.gains); P.cash[i] -= tax; W.nation.cash += tax; W.nation.day.in.gains = (W.nation.day.in.gains || 0) + tax; }
+      if (gain > 0) { const tax = Math.round(gain * NPC.tax.gains); P.cash[i] -= tax; nationIn(W, 'gains', tax); }
     }
     toStream(W, day, 'dtrade', 'commission', fee);
     W.sum.traded += v;

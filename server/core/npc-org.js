@@ -239,6 +239,15 @@ function proposals(W, o, s, day, r, ctx) {
   if (id === 'magita' && dept('sales') && r.u() < 0.3) out.push({ kind: 'sales', title: '官公庁・法人への提案営業の強化', effect: [{ kind: 'appeal', key: 'public', add: 0.1, days: 120 }, { kind: 'budget', key: 'ads', mult: 1.05 }], cost: s.budget.ads * 0.05, risk: 0.15, gain: 0.05, by: by('sales') });
   // テネシスのシステム技術部 (技術者): the systems renewed, the running costs down after
   if (id === 'tenesice' && dept('tech') && r.u() < 0.2) out.push({ kind: 'tech', title: '勘定系システムの刷新（運用費の削減）', effect: [{ kind: 'budget', key: 'rd', mult: 1.05 }, { kind: 'budget', key: 'other', mult: 0.96 }], cost: s.budget.rd * 0.05, risk: 0.3, gain: 0.05, by: dept('tech').named.cto });
+  // pricing power: what the people cannot get elsewhere (ジンクス's shelves, Car Owner's service, DAIZIN's membership)
+  // is raised while they keep buying more of it, and cut when they buy much less (値上げ・値下げ: for good)
+  const PRICED = { jinx: 'goods', carowner: 'service', daizin: 'vipFee' };
+  if (PRICED[id]) {
+    const key = PRICED[id], now = W.priceIdx[id + ':' + key] || 1, greed = o.ceo >= 0 ? tr(P, o.ceo, T.ambition) : 0.5;
+    const long = (W.coTrendLong || {})[id] || 0;
+    if (long > 0.05 && r.u() < 0.2 + 0.3 * greed) { const up = Math.round((1.04 + 0.08 * greed * r.u()) * 100) / 100; out.push({ kind: 'price', title: `値上げ（${key === 'vipFee' ? 'VIP会費' : key === 'goods' ? '商品' : '整備料金'}を${Math.round((up - 1) * 100)}%）：需要が強いうちに`, effect: [{ kind: 'price', key, mult: up }], cost: 0, risk: 0.2 + 0.1 * Math.max(0, now - 1), gain: 0.06, by: by('plan') >= 0 ? by('plan') : by('acct'), why: { trend: long, price: now } }); }
+    else if (long < -0.1 && now > 0.5) out.push({ kind: 'price', title: `値下げ（${key === 'vipFee' ? 'VIP会費' : key === 'goods' ? '商品' : '整備料金'}を8%）：客離れを止める`, effect: [{ kind: 'price', key, mult: 0.92 }], cost: 0, risk: 0.15, gain: 0.05, by: by('plan') >= 0 ? by('plan') : by('acct'), why: { trend: long, price: now } });
+  }
   if (id === 'jinx' && r.u() < 0.15) out.push({ kind: 'partner', title: 'スタジオとの連携：店頭でのゲーム販売の強化', effect: [{ kind: 'appeal', key: 'games', add: 0.03, days: 90 }], cost: 0, risk: 0.1, gain: 0.03, by: dept('partner').named.liaison });
   return out.filter((p) => p.by !== undefined && p.by >= 0);
 }
@@ -315,7 +324,13 @@ function think(W, o, i, day, line) {
 // it, the job sites' shares, the new businesses)
 function apply(W, o, e, day, r, ctx) {
   if (e.kind === 'budget' || e.kind === 'target' || e.kind === 'morale' || e.kind === 'terms' || e.kind === 'lab' || e.kind === 'lend') { W.corpOps.push({ company: o.id, ...e }); return; }
-  if (e.kind === 'price') { W.priceIdx[o.id + ':' + e.key] = Math.max(0.6, Math.min(1.6, (W.priceIdx[o.id + ':' + e.key] || 1) * e.mult)); if (e.days) W.priceUntil[o.id + ':' + e.key] = day + e.days; return; }
+  // (a price: changed for good, or for a campaign's days on top of it — a campaign ends by itself, the price stays)
+  if (e.kind === 'price') {
+    const k = o.id + ':' + e.key;
+    if (e.days) { W.priceTemp = W.priceTemp || {}; W.priceTemp[k] = { mult: e.mult, until: day + e.days }; }
+    else W.priceIdx[k] = Math.max(0.3, Math.min(5, (W.priceIdx[k] || 1) * e.mult));
+    return;
+  }
   if (e.kind === 'appeal') { const k = o.id + ':' + e.key; W.appeal[k] = Math.min(0.5, (W.appeal[k] || 0) + e.add); W.appealUntil[k] = day + (e.days || 60); return; }
   if (e.kind === 'rate') { W.bankRates[e.key] = e.to; return; }
   if (e.kind === 'share') { W.siteShare = Math.max(0.3, Math.min(0.85, (W.siteShare || 0.65) + e.delta)); return; }
@@ -504,8 +519,9 @@ export function startVenture(W, o, type, day, r) {
   const vd = o.depts.find((d) => d.kind === 'venture');
   const di = o.depts.indexOf(vd);
   const want = Math.max(3, Math.round(spec.staff * 1.5 * W.scale * 10));
-  const staff = W.staffOf(o.id).filter((i) => P.rank[i] <= 1 && !(P.flags[i] & FL.exec)).sort((a, b) => skillFor(P, b, o.id) - skillFor(P, a, o.id)).slice(0, want);
-  for (const i of staff) P.dept[i] = di;
+  const staff = W.staffOf(o.id).filter((i) => P.rank[i] <= 1 && !(P.flags[i] & FL.exec) && P.dept[i] !== di).sort((a, b) => skillFor(P, b, o.id) - skillFor(P, a, o.id)).slice(0, want);
+  for (const i of staff) { if (o.depts[P.dept[i]]) o.depts[P.dept[i]].size = Math.max(0, o.depts[P.dept[i]].size - 1); P.dept[i] = di; }
+  if (vd) vd.size += staff.length;
   const lead = vd && vd.named.scout >= 0 ? vd.named.scout : staff[0];
   const v = { id: `${o.id}-${type}-${day}`, slot, company: o.id, type, name: spec.name, fee: spec.fee || 0, use: spec.use || 0, cost: spec.cost, fit: spec.fit, start: day, stage: 'trial',
     staff, lead, customers: 0, uses: 0, month: { rev: 0, cost: 0 }, total: { rev: 0, cost: 0 }, months: [], reports: [], quality: 0.5, launch: Math.round(spec.staff * 12 * 6000000 * 0.25 + 50000000), log: [] };
@@ -546,15 +562,13 @@ function ventureMonth(W, day, r, ctx) {
       v.customers++;
       got++;
     }
-    // churn: a little each day, more when it serves them badly
-    const lw = v.customers * (0.004 + 0.01 * (1 - v.quality));
-    const leave = Math.floor(lw) + (r.u() < lw % 1 ? 1 : 0);
-    for (let s = 0, gone = 0; s < leave * 8 && gone < leave; s++) {
-      const i = r.int(P.n);
-      if (!(P.subs[i] & bit)) continue;
+    // churn: a little each day, more when it serves them badly (each customer by that chance: found by looking through
+    // everyone, not by luck — a few customers among many would hardly ever be met)
+    const rate = 0.004 + 0.01 * (1 - v.quality);
+    if (v.customers > 0) for (let i = 0; i < P.n; i++) {
+      if (!(P.subs[i] & bit) || r.u() >= rate) continue;
       P.subs[i] &= ~bit;
       v.customers--;
-      gone++;
     }
     // the month's fee from each customer (on the 1st)
     if (t.d === 1 && v.fee) {
@@ -646,7 +660,8 @@ export function ventureReview(W, o, s, day, r, ctx) {
       v.stage = 'grow';
       const more = W.staffOf(o.id).filter((i) => P.rank[i] === 0 && !v.staff.includes(i)).slice(0, Math.max(1, Math.round(v.staff.length * 0.3)));
       const di = o.depts.findIndex((d) => d.kind === 'venture');
-      for (const i of more) { P.dept[i] = di; v.staff.push(i); }
+      for (const i of more) { if (o.depts[P.dept[i]]) o.depts[P.dept[i]].size = Math.max(0, o.depts[P.dept[i]].size - 1); P.dept[i] = di; v.staff.push(i); }
+      if (o.depts[di]) o.depts[di].size += more.length;
       W.charge(o.id, null, 'ventureCost', Math.round(v.launch * 0.3));
       v.total.cost += Math.round(v.launch * 0.3);
     } else if (action === 'shrink') {

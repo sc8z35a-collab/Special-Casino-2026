@@ -384,7 +384,8 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
 
   // how likely its development is to succeed now (as server/core/corp-model.js tech works it out)
   function techChance(s, p) {
-    const size = Math.max(0.2, Math.min(3, s.n / Math.max(1, p.staff))), spend = Math.max(0.2, Math.min(3, (s.budget.rd || 0) / Math.max(1, p.rd.amount)));
+    const sc = model.sizeScale(get(), p);
+    const size = Math.max(0.2, Math.min(3, s.n / Math.max(1, p.staff * sc))), spend = Math.max(0.2, Math.min(3, (s.budget.rd || 0) / Math.max(1, p.rd.amount * sc)));
     return Math.round(Math.max(0.05, Math.min(0.95, CORP.tech.chance * Math.pow(size, 0.8) * (0.6 + 0.7 * s.morale) * Math.pow(spend, 0.3))) * 1000) / 1000;
   }
   const routes = (see) => ({
