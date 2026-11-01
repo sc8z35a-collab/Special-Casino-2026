@@ -35,6 +35,8 @@ const SEASONS = Object.fromEntries(Object.entries(CORP.seasons).map(([k, v]) => 
 const ECON_KEEP = Math.pow(0.5, 1 / CORP.economy.half);
 // how far a month's change in everyone's money (the players' and the people's) moves the economy's log
 const WEALTH_PULL = 0.3;
+// (the usual growth of the money, against which a month's is a boom or a bust: about a year's memory)
+const WEALTH_TREND = Math.pow(0.5, 1 / 12);
 const M = CORP.money;
 // a game's sales: `fast` of them in the first weeks (half-life `h1` days), the rest over its life (half-life by its scale)
 const CURVE = { fast: 0.45, h1: 12, h2: { AAA: 240, '大型': 200, '中型': 150 }, years: 3 };
@@ -2481,8 +2483,14 @@ export function closeDay(w, d, flows, ch) {
     const e = w.econ;
     e.raw = (e.raw || 0) * ECON_KEEP + CORP.economy.sd * ch.z(`economy:${d}`);
     // (好景気 is everyone getting richer: once live, the players' and the people's money against a month before moves it)
+    // (by how much faster or slower than usual it grew: money that grows month after month as it always has is no boom —
+    // pulled by the growth itself, the economy climbed for good, 1.3 to 1.8 times its middle within a year)
     if (flows.wealth > 0 && d >= w.launch) {
-      if (e.w0 > 0) e.raw += WEALTH_PULL * Math.max(-0.15, Math.min(0.15, Math.log(flows.wealth / e.w0)));
+      if (e.w0 > 0) {
+        const g = Math.log(flows.wealth / e.w0);
+        e.g = e.g === undefined ? g : e.g * WEALTH_TREND + g * (1 - WEALTH_TREND);
+        e.raw += WEALTH_PULL * Math.max(-0.05, Math.min(0.05, g - e.g));
+      }
       e.w0 = flows.wealth;
     }
     e.fade = d < w.launch ? Math.min(1, (d - w.start) / Math.max(1, (e.last || d) - w.start)) : (e.fade || 0) * ECON_KEEP;

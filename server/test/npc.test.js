@@ -176,6 +176,20 @@ test('no company plans for more than half again its size: hiring plans compounde
   }
 });
 
+test('the job market moves: people leave work and look for it for weeks, some are out of work at any time', () => {
+  const c = country(2000), W = c.W, P = W.P;
+  let out = 0, back = 0, most = 0;
+  for (let d = 0; d < 120; d++) {
+    const before = Array.from(P.job);
+    c.days(1);
+    for (let i = 0; i < P.n; i++) { if (before[i] !== NPC.job.none && P.job[i] === NPC.job.none) out++; if (before[i] === NPC.job.none && P.job[i] !== NPC.job.none) back++; }
+    most = Math.max(most, W.stats.unemployment || 0);
+  }
+  assert.ok(out >= 10, `out of work: ${out}`);
+  assert.ok(back >= 3, `back in work: ${back}`);
+  assert.ok(most > 0.001 && most < 0.1, `unemployment at most ${most}`);
+});
+
 test('WAZIMA pays MAGITA its month and still never runs below nothing; no company keeps a tax it never booked', () => {
   const c = country(2000), w = c.w;
   for (const s of Object.values(w.co)) assert.equal(s.bal.taxdue || 0, corpModel.taxOwed(s, w.day), s.id);

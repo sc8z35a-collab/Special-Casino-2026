@@ -264,13 +264,17 @@ function council(W, day, r) {
   // (short of money, or last month spent well beyond what came in)
   const lm = W.nation.lastMonth || W.nation.month || {};
   const deficit = W.nation.cash < W.cal.nationFloor * 2 || (lm.out && sumOf(lm.out) > sumOf(lm.in || {}) * 1.1);
+  // (and the other way: money piling up — five times the floor and more coming in than going out — is given back, as
+  // more works and grants or a lower consumption tax: else the country hoarded its taxes, half a trillion in two years)
+  const surplus = !deficit && W.nation.cash > W.cal.nationFloor * 5 && lm.in && sumOf(lm.in) > sumOf(lm.out || {}) * 1.1;
   const motions = [];
   for (const m of ms) {
     const [worry, how] = districtWorries(W, m.k)[0], theme = NPC.themes[worry].id;
-    if (how < 115 && !deficit) continue;
+    if (how < 115 && !deficit && !surplus) continue;
     const big = P.lean[m.i * 2] > 0;
     let id = null, dir = 0;
     if (deficit && r.u() < 0.5) { id = big ? 'consumptionTax' : 'publicWorks'; dir = big ? 1 : -1; }
+    else if (surplus && r.u() < 0.5) { id = big ? (r.u() < 0.5 ? 'publicWorks' : 'grants') : 'consumptionTax'; dir = big ? 1 : -1; }
     else if (NPC.demands[theme]) { [id, dir] = NPC.demands[theme]; }
     else if (theme === 'mayor') { id = 'grants'; dir = 1; }
     if (!id) continue;
