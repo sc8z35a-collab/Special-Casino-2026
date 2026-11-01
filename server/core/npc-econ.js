@@ -288,10 +288,12 @@ export function casinoSession(W, i, day, budget, r) {
   if (change) { P.cash[i] += left - change; P.tokens[i] = 0; }
   else P.tokens[i] = left;
   const net = back - fee - staked;
-  // (what the bets lost, less what was won beyond them: Dtrade's day, either way)
-  const c = coFlow(W, day, 'dtrade');
-  c.cas = (c.cas || 0) + staked - back;
-  W.sum.toCo += staked - back;
+  // (what the bets lost is Dtrade's; what was won beyond them, the country's treasury pays: 国庫)
+  if (staked >= back) {
+    const c = coFlow(W, day, 'dtrade');
+    c.cas = (c.cas || 0) + staked - back;
+    W.sum.toCo += staked - back;
+  } else nationOut(W, 'casinoWins', back - staked);
   if (fee) toStream(W, day, 'dtrade', 'winfee', fee);
   if (change) toStream(W, day, 'dtrade', 'exchange', change);
   P.spun[i] = 1;

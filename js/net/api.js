@@ -394,6 +394,8 @@
     vipPack: function (days) { return post('/api/vip/extend', { pack: days }); },
     vipCart: function (packs, mode) { return post('/api/vip/extend', { packs: packs, mode: mode }); },
     vipTrial: function () { return post('/api/vip/trial'); },
+    // DAIZIN buys `amount` ロイヤルコイン back for $
+    sellCoins: function (amount) { return post('/api/coins/sell', { amount: amount }); },
 
     /* Shop, 所有 and the お守り加護 */
     items: function () { return get('/api/items'); },

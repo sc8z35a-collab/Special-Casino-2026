@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
-import { QUESTS, LEVEL } from '../core/rules.js';
+import { QUESTS, LEVEL, CORP } from '../core/rules.js';
 import { stepQuests, claimQuests, questView, questTickets, grantLevelTickets, resetQuestPeriod, readQuests } from '../core/quests.js';
 
 const NOW = Date.UTC(2026, 9, 22, 1);
@@ -68,7 +68,9 @@ test('daily transfer extensions use cumulative dollars, including converted toke
     assert.equal(daily.find(q => q.id === ids.at(-1)).progress, goals[i]);
   }
   const reward = await s.call('POST', '/api/quests/claim', { token: a.token, body: { ids } });
-  assert.equal(reward.dollars, 322000);
+  // (YOSIDA keeps its fee of each reward: CORP.yosida.quest)
+  assert.equal(reward.gross, 322000);
+  assert.equal(reward.dollars, 322000 - reward.rewards.reduce((n, x) => n + CORP.questFee(x.dollars), 0));
 });
 
 test('spin XP grants tickets at the actual level boundary, with no retroactive or login rewards', async t => {
@@ -160,7 +162,7 @@ test('ticket use rejects pending rewards, resets only its period, and cannot spe
   assert.equal((await s.call('POST', '/api/spin', { token: a.token, body: { bet: 100 } })).status, 200);
   assert.equal((await reset()).error.code, 'quests_changed', 'even new progress cannot make the old request spend another ticket');
   const replayed = await s.call('POST', '/api/quests/claim', { token: a.token, body: { ids: ['5h-spin1'] } });
-  assert.deepEqual([replayed.dollars, replayed.coins], [7000, 0], 'the replayed STEP draws anew without inheriting ULTRA');
+  assert.deepEqual([replayed.gross, replayed.coins], [7000, 0], 'the replayed STEP draws anew without inheriting ULTRA');
   const daily = replayed.periods.find(p => p.id === 'day');
   assert.equal((await reset({ period: 'day', start: daily.start, version: daily.resetVersion })).error.code, 'quests_pending');
   // A random spin may also complete a daily symbol quest. Receive every

@@ -180,14 +180,15 @@ test('the companies\' prices and campaigns reach the people: dearer goods are bo
   assert.ok(Math.abs(npc.econ.appealOf(W, 'dtrade', 'casino') - 0.15) < 1e-9);
 });
 
-test('MAGITA\'s negotiated terms are on MAGITA\'s goods only; a smaller country\'s companies spend less; a company abroad sells abroad in full', () => {
+test('MAGITA\'s negotiated terms are on MAGITA\'s goods only; a smaller country\'s companies spend less (YOSIDA, at home, too)', () => {
   const key = Buffer.alloc(32, 9), ch = corpModel.chance(key);
   const launch = Math.floor(START / 86400000);
   const { world: w } = corpModel.boot(key, launch, { years: 0 });
   const place = w.co.jinx.budget.place;
   corpModel.startCirculation(w, launch, 0.1);
   assert.equal(w.co.jinx.budget.place, Math.round(place * 0.1));
-  assert.equal(w.co.yosida.scale.export, 1);
+  // (YOSIDA is at home now: sized with the country like the others, its exports by its own trade)
+  assert.ok(w.co.yosida.budget.place > 0 && w.co.yosida.scale.export < 1);
   // a lot of YOSHIDA cars arriving at Car Owner: at its 仕入れ価格, whatever MAGITA and Car Owner agreed
   w.terms = { carowner: 1.2 };
   const d = launch;

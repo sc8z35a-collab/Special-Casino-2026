@@ -1,5 +1,5 @@
 // The people's part of the 投資 market (server/core/npc-model.js): each investor's own view of the four listed
-// companies (their news, their friends, the chart, what they paid), their orders (a buy at most $35M a day each, a
+// companies (their news, their friends, the chart, what they paid), their orders (a buy at most NPC.life.investDay a day each, a
 // sale only of what they hold), and every minute the orders matched among themselves at the minute's price (板寄せ);
 // what is left waits for the minute (a player's order trades against it first: server/core/corp.js), and the
 // imbalance moves the price. The fee is Dtrade's, 1.8% each way as the players'.

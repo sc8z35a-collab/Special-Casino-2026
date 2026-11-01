@@ -4,7 +4,8 @@
    (VIP0-VIP3), and what each level gives. The free trial (POST
    /api/vip/trial): VIP3 for 3 days, once, for one who never had VIP; days
    bought during it go on after it at their own level. The badge on one's
-   card (and for friends) shows while it is on. */
+   card (and for friends) shows while it is on. DAIZIN, VIP's company, buys
+   ロイヤルコイン back for $ (C.vip.buyback, POST /api/coins/sell). */
 (function (BR) {
   'use strict';
 
@@ -13,7 +14,7 @@
   var el = K.el, sfx = K.sfx, toast = K.toast, fail = K.fail;
   var DAY = V.day;
 
-  var days = 1, busy = false, lastLevel = null, timer = 0, trialSeen = 0;
+  var days = 1, busy = false, lastLevel = null, timer = 0, trialSeen = 0, sellN = 1, selling = false;
   var cart = {}, mode = 'normal';
   var TRIAL = C.vip.trial;
 
@@ -93,6 +94,7 @@
     lv.appendChild(K.vipBadge(V.badge(v) === null ? info.level : V.badge(v)));
     renderClock();
     renderPacks(info.level);
+    renderSell();
     // EXP to the next level
     $('#vp-exp').textContent = info.next ? expText(info.exp) + ' / ' + U.fmt(info.next) : expText(info.exp);
     var pct = info.next ? (info.exp - info.from) / (info.next - info.from) * 100 : 100;
@@ -286,6 +288,50 @@
     }
   }
 
+  // DAIZINの買い取り: how many of the coins, and what they bring
+  function renderSell() {
+    var B = C.vip.buyback, have = Math.max(0, S.coins || 0), top = Math.max(1, Math.min(have, B.max));
+    sellN = Math.max(1, Math.min(sellN, top));
+    $('#vp-sell-rate').textContent = '1枚 $' + U.fmt(B.each) + '・所持 ' + U.fmt(have) + '枚';
+    $('#vp-sell-n').textContent = U.fmt(sellN);
+    var range = $('#vp-sell-range');
+    range.max = String(top);
+    range.value = String(sellN);
+    range.disabled = selling || have < 2;
+    var go = $('#vp-sell-go');
+    go.textContent = have ? U.fmt(sellN) + '枚を $' + U.fmt(sellN * B.each) + ' で買い取ってもらう' : 'ロイヤルコインがありません';
+    go.disabled = selling || have < 1;
+    $('#vp-sell-minus').disabled = selling || sellN <= 1;
+    $('#vp-sell-plus').disabled = selling || sellN >= top;
+    $('#vp-sell-all').disabled = selling || have < 1;
+  }
+  function sell() {
+    var B = C.vip.buyback, n = sellN;
+    if (selling) return;
+    if ((S.coins || 0) < n) { sfx('deny'); toast('ロイヤルコインが足りません'); return; }
+    K.confirmBox(function (box) {
+      box.appendChild(el('b', '', 'ロイヤルコイン' + U.fmt(n) + '枚をDAIZINに買い取ってもらいますか？'));
+      box.appendChild(el('small', 'confirm-sub', '受け取り：$' + U.fmt(n * B.each) + '（1枚 $' + U.fmt(B.each) + '）・買い取ったコインは戻りません'));
+    }, '買い取ってもらう', 'やめる').then(function (ok) {
+      if (!ok) return;
+      selling = true;
+      renderSell();
+      api.sellCoins(n).then(function (r) {
+        selling = false;
+        BR.app.serverBalance(r.me);
+        BR.social.setMe(r.me);
+        sfx('money');
+        toast('DAIZINがロイヤルコイン' + U.fmt(r.sold) + '枚を $' + U.fmt(r.paid) + ' で買い取りました', 3600);
+        sellN = 1;
+        render();
+      }, function (err) {
+        selling = false;
+        renderSell();
+        fail(err);
+      });
+    });
+  }
+
   function go() {
     if (busy) return;
     var n = days, v = vip(), items = cartItems();
@@ -345,6 +391,11 @@
     $('#vp-plus').addEventListener('click', function () { sfx('click'); days = Math.min(Math.max(1, room()), days + 1); render(); });
     $('#vp-cart-clear').addEventListener('click', function () { if (busy) return; sfx('click'); cart = {}; render(); });
     $('#vp-trial-go').addEventListener('click', function () { sfx('click'); startTrial(); });
+    $('#vp-sell-minus').addEventListener('click', function () { sfx('click'); sellN = Math.max(1, sellN - 1); renderSell(); });
+    $('#vp-sell-plus').addEventListener('click', function () { sfx('click'); sellN += 1; renderSell(); });
+    $('#vp-sell-all').addEventListener('click', function () { sfx('click'); sellN = Math.max(1, Math.min(S.coins || 0, C.vip.buyback.max)); renderSell(); });
+    $('#vp-sell-range').addEventListener('input', function (e) { sellN = Number(e.target.value) || 1; renderSell(); });
+    $('#vp-sell-go').addEventListener('click', function () { sfx('click'); sell(); });
     $('#vp-packs-list').addEventListener('click', function (e) {
       var b = e.target.closest('[data-pack]');
       if (!b || b.disabled) return;

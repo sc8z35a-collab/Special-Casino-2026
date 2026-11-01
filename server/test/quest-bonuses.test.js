@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
-import { QUESTS, LEVEL, evaluate } from '../core/rules.js';
+import { QUESTS, LEVEL, CORP, evaluate } from '../core/rules.js';
 import { stepQuests, claimQuests, questView, readQuests, questBonuses } from '../core/quests.js';
 
 const NOW = Date.UTC(2026, 9, 22, 1);
@@ -75,6 +75,8 @@ test('bonuses cover every quest period, legacy completions stay normal, and expi
   assert.equal(view(expired, '5h-spin1', later).reward, undefined, 'period reset clears the old ULTRA');
 });
 
+// (a reward as the player receives it: YOSIDA keeps its fee of each, CORP.yosida.quest)
+const net = (n) => n - CORP.questFee(n);
 for (const bulk of [false, true]) {
   test(`API ${bulk ? 'bulk' : 'individual'} claims use saved bonuses and pay royal coins once`, async t => {
     let draws = 0;
@@ -96,24 +98,26 @@ for (const bulk of [false, true]) {
     const claim = ids => s.call('POST', '/api/quests/claim', { token: a.token, body: { ids, multiplier: 99, coins: 9999 } });
     if (bulk) {
       const replies = await Promise.all([claim(null), claim(null)]);
-      assert.deepEqual(replies.map(r => r.dollars).sort((a, b) => a - b), [0, 105000]);
+      assert.deepEqual(replies.map(r => r.dollars).sort((a, b) => a - b), [0, net(21000) + net(84000)]);
+      const paid = replies.find(r => r.claimed.length);
+      assert.deepEqual([paid.gross, paid.fee, paid.feeRate], [105000, CORP.questFee(21000) + CORP.questFee(84000), CORP.yosida.quest.base]);
       assert.deepEqual(replies.map(r => r.coins).sort((a, b) => a - b), [0, 8]);
       assert.deepEqual(replies.find(r => r.claimed.length).rewards.map(r => r.mode), ['pro', 'ultra']);
     } else {
       const pro = await claim(['5h-spin1']);
-      assert.deepEqual([pro.dollars, pro.coins], [21000, 0]);
+      assert.deepEqual([pro.dollars, pro.coins, pro.fee], [net(21000), 0, 2100]);
       const ultra = await claim(['5h-spin2']);
-      assert.deepEqual([ultra.dollars, ultra.coins], [84000, 8]);
+      assert.deepEqual([ultra.dollars, ultra.coins], [net(84000), 8]);
     }
     const duplicate = await claim(null);
     assert.deepEqual([duplicate.dollars, duplicate.coins], [0, 0]);
     assert.equal(duplicate.bonuses['5h'], undefined);
     assert.equal(draws, 2, 'GET, claim and retries do not draw again');
     const me = (await s.call('GET', '/api/me', { token: a.token })).me;
-    assert.deepEqual([me.dollars, me.coins, me.xp], [1105000, a.me.coins + 8, 2 * LEVEL.spinXp + 2 * LEVEL.questXp]);
+    assert.deepEqual([me.dollars, me.coins, me.xp], [1000000 + net(21000) + net(84000), a.me.coins + 8, 2 * LEVEL.spinXp + 2 * LEVEL.questXp]);
     await spin(); await spin(); await spin();
     const normal = await claim(['5h-spin5']);
-    assert.deepEqual([normal.dollars, normal.coins], [20000, 0]);
+    assert.deepEqual([normal.dollars, normal.coins], [net(20000), 0]);
     assert.equal(draws, 3, 'only the new STEP draws');
   });
 }

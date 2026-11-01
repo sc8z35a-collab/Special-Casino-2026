@@ -10,9 +10,9 @@
 import { NPC, CORP, RULES, STOCKS } from './rules.js';
 import { seeded, hash32 } from './npc-rand.js';
 import * as pop from './npc-pop.js';
-import { T, FL, HOME, NT, LISTED, ageOf } from './npc-pop.js';
+import { T, FL, HOME, NT, LISTED, ageOf, remember } from './npc-pop.js';
 import * as econ from './npc-econ.js';
-import { decide, skillFor, talk } from './npc-life.js';
+import { decide, skillFor, talk, M } from './npc-life.js';
 import * as mind from './npc-mind.js';
 import * as state from './npc-state.js';
 import { createPolitics } from './npc-politics.js';
@@ -45,7 +45,7 @@ export function boot(key, now, corp, { n = NPC.nation.population, held = {} } = 
   pop.makeRelations(P, ages, r);
   own(W, ages, day, corp, held, r);
   for (let i = 0; i < n; i++) {
-    for (let k = 0; k < 10; k++) P.view[i * 10 + k] = Math.round(r.z() * 25);
+    for (let k = 0; k < NPC.companies.length; k++) pop.setView(P, i, k, Math.round(r.z() * 25));
     P.jsat[i] = r.byte(160, 35);
     P.shift[i] = r.int(2);
     P.upd[i] = W.minute;
@@ -60,6 +60,55 @@ export function boot(key, now, corp, { n = NPC.nation.population, held = {} } = 
   stats(W, day);
   W.news.push({ day, kind: 'nation', district: -1, text: `${NPC.nation.name}が始まりました（人口${n.toLocaleString('en-US')}人・5つの区）`, data: {} });
   return W;
+}
+// A company that has come home (its head office moved into the country: YOSIDA, WAZIMA) to a country that was already
+// living: it puts out its openings (募集) and takes at once, by their skills, those of working age who are out of work
+// or in work of another kind (part time, another workplace, their own business), up to what it plans to have; its
+// posts are given, its pay set about its average, its union begun; the rest it hires through the job sites as they
+// come (server/core/npc-labor.js openings). Returns the companies that came, with how many they took.
+export function welcome(W, corp, day) {
+  const P = W.P, came = [];
+  const ids = NPC.companies.filter((id) => !W.orgs[id] && corp.co[id]);
+  if (!ids.length) return came;
+  const ages = new Int16Array(P.n);
+  for (let i = 0; i < P.n; i++) ages[i] = ageOf(P, i, day);
+  // those who may come: of working age, out of work or in work of another kind (never a civil servant, a student or a mayor)
+  const J = NPC.job, first = { [J.none]: 2, [J.part]: 1.5, [J.other]: 1, [J.self]: 0.5, [J.home]: 0.2 };
+  const pool = [];
+  for (let i = 0; i < P.n; i++) if (first[P.job[i]] !== undefined && ages[i] >= 20 && ages[i] < 60 && !(P.flags[i] & (FL.student | FL.mayor))) pool.push(i);
+  // (what each plans to have — already for the country's size once the companies live on it, never more than its size
+  // for the country by a third —, all the same share of it when there are not enough people)
+  const wants = ids.map((id) => { const c = corp.co[id], size = CORP.company(id).staff * W.scale; return Math.max(1, Math.round(Math.min(c.target || c.n || size, size * 1.3))); });
+  const total = wants.reduce((a, b) => a + b, 0), share = total > pool.length ? pool.length / total : 1;
+  const taken = new Uint8Array(P.n);
+  ids.forEach((id, k) => {
+    const c = corp.co[id], r = seeded(W.key, 'welcome:' + id), want = wants[k], f = pop.FIT[id] || [0, 1];
+    const cand = pool.filter((i) => !taken[i]).map((i) => [i, first[P.job[i]] + (P.sk[i * 8 + f[0]] + P.sk[i * 8 + f[1]]) / 255 + r.u()]);
+    cand.sort((a, b) => b[1] - a[1]);
+    const hired = cand.slice(0, Math.floor(want * share)).map((x) => x[0]), code = NPC.jobOf(id), site = NPC.sites[id] || [[0, 1]];
+    for (const i of hired) {
+      taken[i] = 1;
+      P.job[i] = code;
+      P.flags[i] &= ~(FL.student | FL.rehired);
+      P.rank[i] = 0;
+      P.tenure[i] = 0;
+      P.jsat[i] = 175;
+      P.jobless[i] = 0;
+      P.joblessPay[i] = 0;
+      P.wdist[i] = site[r.weighted(site.map((s) => s[1]))][0];
+      P.shift[i] = r.int(2);
+    }
+    W._staff = null;
+    org.assignOne(W, id, ages, r);
+    pop.payStaff(P, hired, c.pay || CORP.company(id).salary, ages, r);
+    W.labor.join(W, id, hired, r);
+    for (const i of hired) remember(P, i, day, M.hired, 150);
+    const hq = NPC.districts.find((d) => d.hq.includes(id));
+    W.news.push({ day, kind: 'labor', district: hq ? hq.id : -1, text: `${CORP.company(id).name}が本社を${hq ? hq.name : '国内'}に構え、社員${hired.length.toLocaleString('en-US')}人を採用しました${hired.length < want ? `（募集はあと${(want - hired.length).toLocaleString('en-US')}人）` : ''}`, data: { company: id } });
+    came.push({ id, hired: hired.length, want });
+  });
+  W._staff = null;
+  return came;
 }
 function blank(key, n, scale, first, day, minute) {
   const stockCars = {};
@@ -97,7 +146,7 @@ export function attach(W) {
       W._staff = {};
       for (const c of NPC.companies) W._staff[c] = [];
       const P = W.P;
-      for (let i = 0; i < P.n; i++) { const j = P.job[i]; if (j >= 1 && j <= 10) W._staff[NPC.companies[j - 1]].push(i); }
+      for (let i = 0; i < P.n; i++) { const c = NPC.companyOf(P.job[i]); if (c) W._staff[c].push(i); }
     }
     return W._staff[id] || [];
   };
@@ -344,7 +393,7 @@ function refresh(W, day, ctx) {
     W.crunch = {};
     for (const id of ['riru', 'ice']) {
       const s = corp.co[id];
-      if (s && (W.nation.knobs.overtime || 45) >= 40 && (s.projects || []).some((p) => p.due > day && p.due - day <= 60)) W.crunch[NPC.companies.indexOf(id) + 1] = 1;
+      if (s && (W.nation.knobs.overtime || 45) >= 40 && (s.projects || []).some((p) => p.due > day && p.due - day <= 60)) W.crunch[NPC.jobOf(id)] = 1;
     }
   }
   // (campaigns' prices end on their day; a world from before kept them with the prices themselves)
@@ -477,7 +526,7 @@ function stats(W, day) {
 export function card(W, i, day) {
   const P = W.P, nm = pop.nameOf(P, i), age = ageOf(P, i, day), j = P.job[i];
   const posts = org.posts(W, i);
-  const job = j >= 1 && j <= 10 ? `${NPC.jobNames[j]} ${NPC.org[NPC.companies[j - 1]][P.dept[i]] ? NPC.org[NPC.companies[j - 1]][P.dept[i]][1] : ''} ${NPC.ranks[P.rank[i]].name}`.trim() : NPC.jobNames[j] || '';
+  const co = NPC.companyOf(j), job = co ? `${NPC.jobNames[j]} ${NPC.org[co][P.dept[i]] ? NPC.org[co][P.dept[i]][1] : ''} ${NPC.ranks[P.rank[i]].name}`.trim() : NPC.jobNames[j] || '';
   return {
     id: pop.pid(P, i), i, name: nm.name, kana: nm.kana, sex: P.sex[i], age, district: P.dist[i], at: P.ldist[i], job, posts,
     act: NPC.acts[P.act[i]] ? NPC.acts[P.act[i]].name : '', place: NPC.placeNames[NPC.places[P.place[i]]] || '', mood: P.emo[i * 5],
