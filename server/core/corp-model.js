@@ -445,7 +445,7 @@ function sellProducts(w, s, code, kind, id, n, paid, cash, who) {
     cost = n * pr.cost;
     const to = w.ext ? '@sector' : '*';
     s.owe[to] = (s.owe[to] || 0) + cost;
-  } else if (w.ext && kind === 'cars') {
+  } else if (w.ext && kind === 'cars' && who !== 'outside') {
     // (once the country lives, Car Owner's cars come out of the stock it bought in lots and paid for: restockIn)
     const each = (s.lotCost && s.lotCost[id]) || Math.round(pr.buy * termsOf(w, s.id, pr.maker)) + (pr.excl || 0) + surchargeOf(w, kind, id);
     cost = n * each;
@@ -468,7 +468,7 @@ function sellProducts(w, s, code, kind, id, n, paid, cash, who) {
   s.expBy = s.expBy || {};
   s.expBy.selling = (s.expBy.selling || 0) + selling;
   const row = s.sold[id] || (s.sold[id] = { npc: 0, players: 0, sales: 0, margin: 0 });
-  row[(who || (cash ? 'players' : 'npc'))] += n;
+  row[who === 'outside' ? 'npc' : (who || (cash ? 'players' : 'npc'))] += n;
   row.sales += paid;
   row.margin += paid - cost;
   // (a car sold for less than it cost the dealer: a loss taken on the maker's terms)
@@ -518,6 +518,7 @@ function tradeDay(w, s, p, d, flows, ch) {
         sellProducts(w, s, x.id, x.products, id, got[0], got[1], true, 'npc');
         s.pr[x.id] = (s.pr[x.id] || 0) + got[1] / 30;
       }
+      outside(w, s, p, x, g, f);
     } else if (x.products) {
       // each model's or item's customers outside the game
       for (const [id, pr] of Object.entries(CORP.products[x.products])) {
@@ -576,6 +577,43 @@ function tradeDay(w, s, p, d, flows, ch) {
       s.recv += n;
     }
   }
+}
+// The world outside the country, once it lives: a company's trade is not only its 50,000 people's. What its plan
+// expects of a stream a day and the country (its people, the players, the other companies) has not paid it of late,
+// its customers abroad still buy (paid later: money coming in) — else every company lived on its cash, its plan out of
+// reach, and let its people go quarter after quarter (Tenesice's $450B a year was $60M a day). A studio's games, MY
+// WAY's licences, YOSIDA's seeds and what one company sells another are their own.
+function outside(w, s, p, x, g, f) {
+  if (p.model === 'studio' || p.abroad || x.abroad || x.license || x.seeds || x.to) return;
+  const had = (s.pr && s.pr[x.id]) || 0, po = s.po || (s.po = {});
+  if (x.products) {
+    let plan = 0;
+    const each = [];
+    for (const [id, pr] of Object.entries(CORP.products[x.products])) {
+      const price = listPrice(x.products, id);
+      if (!pr.npc || !price) continue;
+      const n = pr.npc * g * productLift(w, pr, x.beta ?? p.beta) / YEAR;
+      plan += n * price;
+      each.push([id, n, price]);
+    }
+    if (plan <= 0) return;
+    const k = Math.max(0, 1 - had / plan);
+    for (const [id, n, price] of each) {
+      const m = take(s, 'o:' + id, n * k);
+      if (m <= 0) continue;
+      sellProducts(w, s, x.id, x.products, id, m, m * price, false, 'outside');
+      po[x.id] = (po[x.id] || 0) + m * price / 30;
+    }
+    return;
+  }
+  const share = s.share && s.share[x.id] !== undefined ? s.share[x.id] : (x.share || 0);
+  if (!share) return;
+  const plan = p.sales * share * f * (s.scale && s.scale[x.id] || 1) / YEAR;
+  const n = take(s, 'out:' + x.id, Math.max(0, plan - had));
+  if (n <= 0) return;
+  const cost = s.cost && s.cost[x.id] !== undefined ? s.cost[x.id] : (x.cost || 0);
+  sell(w, s, x.id, n, take(s, 'ocost:' + x.id, n * cost));
+  po[x.id] = (po[x.id] || 0) + n / 30;
 }
 // The people's money of the day at a company (server/core/npc-econ.js flows: by stream, or the country's own
 // names — 官公庁・公共事業, 新規事業, 通信, the casino's wins and losses — and the cars traded in), each as a sale for
@@ -717,8 +755,25 @@ function bankCountry(w, s, p, d, flows) {
   const int = take(s, 'funding', deposits * (b.rate || 0.002) / YEAR);
   if (int > 0) { post(s, [['c:funding', int], ['cash', -int]], 'interestOut'); w.ext.depositInterest += int; }
   if (b.credit > 0) { const n = Math.round(b.credit); post(s, [['sCredit', n], ['lent', -n]]); }
-  // (the players' trading fee was Dtrade's; nothing of theirs here)
-  s.pr.nii = (s.pr.nii || 0) * 29 / 30 + (b.nii || 0) / 30;
+  // (the players' trading fee was Dtrade's; nothing of theirs here) (the day's average: decayed with the others as
+  // the day began — decayed here too, it read half of what it was)
+  s.pr.nii = (s.pr.nii || 0) + (b.nii || 0) / 30;
+  s.pr.fees = (s.pr.fees || 0) + (b.fees || 0) / 30;
+  // its business abroad (outside): what its plan expects of each stream and the country has not paid it, paid in from
+  // outside, with the credit costs of that lending
+  const lift = trend(p, d, w.launch), po = s.po || (s.po = {});
+  let abroadSales = 0;
+  for (const x of p.streams) {
+    const plan = p.sales * x.share * lift * econOf(w, x.beta ?? p.beta) * (s.rnd ? s.rnd.edge : 1) / YEAR;
+    const n = take(s, 'out:' + x.id, Math.max(0, plan - ((s.pr && s.pr[x.id]) || 0)));
+    if (n <= 0) continue;
+    post(s, [['cash', n], ['r:' + x.id, -n]], 'receipts');
+    w.ext.exports += n;
+    po[x.id] = (po[x.id] || 0) + n / 30;
+    abroadSales += n;
+  }
+  const bad = take(s, 'ocredit', abroadSales * p.credit.share);
+  if (bad > 0) { post(s, [['sCredit', bad], ['cash', -bad]], 'expenses'); w.ext.imports += bad; }
 }
 
 /* ------------------------------------------------------------- a studio's day --- */
@@ -1444,7 +1499,9 @@ function expectCountry(w, s, p, d) {
   const add = (k, v) => { e[k] = (e[k] || 0) + v; };
   ipExpect(w, s, p, d, add);
   const people = s.n * s.unit / YEAR;
-  for (const [k, v] of Object.entries(s.pr || {})) {
+  const all = { ...(s.pr || {}) };
+  for (const [k, v] of Object.entries(s.po || {})) all[k] = (all[k] || 0) + v;
+  for (const [k, v] of Object.entries(all)) {
     if (!v) continue;
     add('r:' + k, v);
     const x = (p.streams || []).find((y) => y.id === k);
@@ -2431,7 +2488,7 @@ export function closeDay(w, d, flows, ch) {
       continue;
     }
     // (what came in on an average day of late, by stream: the country's money is all of it now)
-    if (circ) { s.pr = s.pr || {}; for (const k of Object.keys(s.pr)) s.pr[k] *= 29 / 30; }
+    if (circ) { s.pr = s.pr || {}; for (const k of Object.keys(s.pr)) s.pr[k] *= 29 / 30; if (s.po) for (const k of Object.keys(s.po)) s.po[k] *= 29 / 30; }
     if (!live) { people(s, p, d, w.launch); budgets(s, p, d, w.launch); }
     if (s.ip) ipDay(w, s, p, d);
     if (p.model === 'studio') studioDay(w, s, p, d, ch, out, flows);

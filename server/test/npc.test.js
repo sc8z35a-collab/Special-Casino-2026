@@ -153,6 +153,21 @@ test('the players\' slot wins and quest rewards and YOSIDA\'s gacha bill come ou
   assert.ok(Math.abs(c.money() - before) < 2000, `${c.money() - before}`);
 });
 
+test('once the country lives the companies still sell abroad what it does not buy: the bank and the dealer stay in profit and keep their people', () => {
+  const c = country(2000), w = c.w;
+  const op = (s) => CORP.plOf(s.per.y).op, start = {}, target = {};
+  for (const id of ['tenesice', 'carowner', 'magita', 'citywork']) { start[id] = op(w.co[id]); target[id] = w.co[id].target; }
+  c.days(62);   // (past the first quarter's end and its staffing)
+  for (const id of Object.keys(start)) {
+    const s = w.co[id];
+    assert.ok(op(s) - start[id] > 0, `${id}: ${op(s) - start[id]}`);
+    assert.ok(s.target >= target[id], `${id} cut its people: ${s.target} < ${target[id]}`);
+    assert.ok(Object.values(s.po || {}).some((v) => v > 0), `${id} sold nothing abroad`);
+  }
+  // (the bank's average of its interest is the day's, not half of it)
+  assert.ok(w.co.tenesice.pr.nii > 0);
+});
+
 test('WAZIMA pays MAGITA its month and still never runs below nothing; no company keeps a tax it never booked', () => {
   const c = country(2000), w = c.w;
   for (const s of Object.values(w.co)) assert.equal(s.bal.taxdue || 0, corpModel.taxOwed(s, w.day), s.id);
