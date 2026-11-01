@@ -133,10 +133,13 @@ export function buyProduct(W, i, day, kind, id, count, unit, essential = false) 
   return true;
 }
 // to the local businesses (家賃・外食・病院・交通…): their takings, paid out again to their people (server/core/npc-state.js)
-export function toSector(W, i, n, essential = true) {
+// (`what` it was for — food, living, rent, leisure, medical, other —: the local companies' sales of it, js/game/local.js)
+export function toSector(W, i, n, essential = true, what = 'other') {
   if (!pay(W, i, n, essential)) return false;
   W.sector.cash += Math.round(n);
   W.sector.inPeople += Math.round(n);
+  const by = W.sector.today || (W.sector.today = {});
+  by['people:' + what] = (by['people:' + what] || 0) + Math.round(n);
   return true;
 }
 export function nationIn(W, kind, n) {

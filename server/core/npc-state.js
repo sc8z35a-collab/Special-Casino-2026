@@ -8,6 +8,7 @@ import { T, S, N, E, FL, HOME, NN, NT, REL, MEM, OWN, LISTED, ageOf, remember, m
 import * as econ from './npc-econ.js';
 import { M } from './npc-life.js';
 import { LISTED_IDS } from './npc-market.js';
+import * as local from './npc-local.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const YEAR = 365;
@@ -83,7 +84,12 @@ export function fromCompanies(W, ext, day) {
     econ.districtIn(W, hq >= 0 ? hq : 4, 'corporate', t.n - nation);
   }
   for (const d of ext.dividends || []) dividends(W, d.company, d.n, d.out);
-  if (ext.sector) { W.sector.cash += ext.sector; W.sector.inCompanies += ext.sector; }
+  if (ext.sector) {
+    W.sector.cash += ext.sector; W.sector.inCompanies += ext.sector;
+    // (who paid it and for what: the local companies' sales of it, server/core/npc-local.js)
+    const by = W.sector.today || (W.sector.today = {});
+    for (const [k, n] of Object.entries(ext.sectorBy || {})) by['co:' + k] = (by['co:' + k] || 0) + n;
+  }
   if (ext.imports) W.sum.imports += ext.imports;
   if (ext.exports) W.sum.exports = (W.sum.exports || 0) + ext.exports;
   // (the used cars the local trade bought from Car Owner)
@@ -192,22 +198,31 @@ function dividends(W, company, n, out) {
 // (rent and profit, by what they have), less a cushion of a month.
 export function sectorDay(W, day) {
   const P = W.P, s = W.sector, t = CORP.ymd(day);
+  // the 32 local companies' day (their part of what came in, their costs: server/core/npc-local.js), and their month
+  // on its first day
+  local.day(W, day);
+  if (t.d === 1) local.month(W, day - 1, (i, g) => take(W, i, g, 'salary', day));
   if (t.d === 25) {
     let pay = 0;
+    const shops = s.cash - local.held(W);
     for (let i = 0; i < P.n; i++) {
       const j = P.job[i];
       if (j !== NPC.job.other && j !== NPC.job.self && j !== NPC.job.part) continue;
-      const g = Math.round(P.salary[i] / 12 * (s.cash > 0 ? 1 : 0.6));
+      // (a local company's people by it, in full; the small shops' by what they have)
+      const no = local.firmOf(P, i), f = no ? local.firmByNo(no) : null;
+      const g = Math.round(P.salary[i] / 12 * (f || shops > 0 ? 1 : 0.6));
       take(W, i, g, j === NPC.job.self ? 'self' : 'salary', day);
+      if (f) { const c = W.locals.firms[f.id]; c.cash -= g; c.m.pay += g; }
       pay += g;
     }
     s.cash -= pay;
     s.outPeople += pay;
   }
   // the owners' part: what is beyond a cushion, a thirtieth a day, by what they have (capital), taxed 20% at source
-  const cushion = W.cal.sectorCushion;
-  if (s.cash > cushion) {
-    const out = Math.floor((s.cash - cushion) / 30);
+  // (of the small shops' alone: the local companies keep theirs)
+  const cushion = W.cal.sectorCushion, shops = s.cash - local.held(W);
+  if (shops > cushion) {
+    const out = Math.floor((shops - cushion) / 30);
     if (out > 0 && W.owners.total > 0) {
       let left = out;
       for (const [i, w] of W.owners.list) {
@@ -273,7 +288,7 @@ export function dayStart(W, day, r, ctx) {
     const street = P.home[i] === HOME.street ? 0.15 : 1;
     const n = W.cal.living * Math.pow(size, 0.75) * wealth * thrift * street * (W.capacity.jinx || 1) * (1 + NPC.knobOf(W, 'livingCost') / 100);
     econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.62), true);
-    econ.toSector(W, i, Math.round(n * 0.38), true);
+    econ.toSector(W, i, Math.round(n * 0.38), true, 'living');
     // MY WAY's fans (購入熱): its characters' goods and collaborations at its partners and its own showroom, as much as
     // the characters pull, the impulsive the more
     if (fans) {
@@ -332,6 +347,12 @@ function month(W, day, r, ctx) {
   const rate = W.bankRates;
   for (let i = 0; i < P.n; i++) {
     const age = ageOf(P, i, day);
+    // the household's electricity, gas and water (ナショナル・パワー電力・メトロ都市ガス・アクア・ライフ水道公社, js/game/local.js), by
+    // how many live in it: a household paid none before
+    if (P.hh[i] === i && P.home[i] !== HOME.street) {
+      const bill = Math.round((W.cal.utilities || NPC.life.utilities) * Math.sqrt(memberList(P, i).length) * (1 + NPC.knobOf(W, 'livingCost') / 100));
+      econ.toSector(W, i, bill, true, 'utilities');
+    }
     // the phone: everyone has one, at the same $100,000 a month (テネシス・モバイル); unpaid, it is cut off
     if (econ.pay(W, i, phone, P.cash[i] > -NPC.trouble.quickMax)) { econ.toStream(W, day, 'tenesice', 'mobile', phone); P.phone[i] = 0; }
     else P.phone[i] = 1;
@@ -343,7 +364,7 @@ function month(W, day, r, ctx) {
     }
     if (P.home[i] === HOME.rent && P.rent[i] > 0) {
       if (P.flags[i] & FL.welfare) { econ.nationOut(W, 'welfare', P.rent[i]); W.sector.cash += P.rent[i]; W.sector.inNation += P.rent[i]; }
-      else econ.toSector(W, i, P.rent[i], true);
+      else econ.toSector(W, i, P.rent[i], true, 'rent');
     }
     // VIP (DAIZIN): a member's year renewed while they can afford it and still care for it (the dearer, the fewer),
     // the month's fee paid; and the rich who are vain enough join
@@ -553,7 +574,9 @@ export function die(W, i, day, r, ctx) {
     P.debt[i] = 0;
     P.dkind[i] = 0;
   }
-  // the inheritance: the money and the shares, the tax on what is beyond the free part
+  // the inheritance: the money and the shares, the tax on what is beyond the free part (the slots' tokens they left
+  // changed back into it first: they were only struck off, and the money with them)
+  if (P.tokens[i] > 0) { P.cash[i] += P.tokens[i]; P.tokens[i] = 0; }
   const estate = Math.max(0, P.cash[i]);
   let tax = 0;
   if (heirs.length) {
@@ -586,7 +609,6 @@ export function die(W, i, day, r, ctx) {
     }
     for (const id of Object.keys(W.priv)) for (const h of W.priv[id]) if (h[0] === i) h[0] = W.richest;
   }
-  // (the slots' tokens they left: changed back for the estate, the fee kept)
   P.cash[i] = 0;
   P.tokens[i] = 0;
   for (let k = 0; k < LISTED; k++) P.sh[i * LISTED + k] = 0;

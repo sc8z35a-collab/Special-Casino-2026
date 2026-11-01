@@ -13,6 +13,7 @@ import '../../js/game/gacha.js';
 import '../../js/game/stocks.js';
 import '../../js/game/corp.js';
 import '../../js/game/npc.js';
+import '../../js/game/local.js';
 
 const BR = globalThis.BR;
 if (!BR || !BR.CONFIG || !BR.engine || !BR.sale || !BR.QUESTS || !BR.LEVEL || !BR.RELEASE || !BR.TREE || !BR.VIP || !BR.GACHA || !BR.STOCKS || !BR.CORP || !BR.NPC) throw new Error('could not load the game rules from js/');
@@ -27,6 +28,7 @@ export const GACHA = BR.GACHA;
 export const STOCKS = BR.STOCKS;
 export const CORP = BR.CORP;
 export const NPC = BR.NPC;
+export const LOCAL = BR.LOCAL;
 // the newest Dev News entry: players on an older game are asked to update
 export const RELEASE = BR.RELEASE;
 // its name as the players know it (DEV13, S2 DEV1: js/game/news.js)

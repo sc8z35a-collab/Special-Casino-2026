@@ -7,6 +7,9 @@ import { startServer } from './helpers.js';
 import * as corpModel from '../core/corp-model.js';
 import * as npc from '../core/npc-model.js';
 import * as pop from '../core/npc-pop.js';
+import * as localModel from '../core/npc-local.js';
+import * as npcState from '../core/npc-state.js';
+import { seeded } from '../core/npc-rand.js';
 import { NPC, CORP, RULES } from '../core/rules.js';
 
 const START = Date.UTC(2026, 10, 2, 2, 0, 0); // a Monday, 11:00 in Japan
@@ -190,6 +193,39 @@ test('the job market moves: people leave work and look for it for weeks, some ar
   assert.ok(most > 0.001 && most < 0.1, `unemployment at most ${most}`);
 });
 
+test('a death leaves the slots\' tokens to the estate: they were struck off and the money with them', () => {
+  const c = country(1000), W = c.W, P = W.P;
+  const i = Array.from({ length: P.n }, (_, k) => k).find((k) => P.job[k] === NPC.job.retired);
+  P.tokens[i] = 59500;
+  const before = c.money();
+  npcState.die(W, i, W.day, seeded(Buffer.alloc(32, 9), 'death'), c.ctx);
+  assert.equal(P.tokens[i], 0);
+  assert.equal(c.money(), before);
+});
+
+test('the 32 local companies: their people from the local jobs, their sales from the thirteen\'s costs and the people\'s spending, paid by them, money kept', () => {
+  const c = country(2000), W = c.W, P = W.P;
+  const before = c.money();
+  c.days(62);
+  assert.ok(Math.abs(c.money() - before) < 100, 'money kept');
+  const v = localModel.view(W);
+  assert.equal(v.firms.length, 32);
+  assert.ok(v.firms.filter((f) => f.staff > 0).length >= 28, 'most have their people');
+  // (who pays them: WAZIMA's research the 極東精機ラボ's, the households' bills the power company's, MAGITA's to its own)
+  const by = (id) => (W.locals.firms[id].last || {}).by || {};
+  assert.ok(by('kyokuto')['co:wazima:rd'] > 0);
+  assert.ok(by('power')['people:utilities'] > 0 && Object.keys(by('power')).some((k) => /^co:\w+:place$/.test(k)));
+  assert.ok(v.paidBy.magita.some((x) => x.firm === 'MAGITAマテリアル'));
+  // (their people paid by them, and shown working for them)
+  assert.ok(Object.values(W.locals.firms).every((f) => !f.staff || (f.last && f.last.pay > 0)));
+  const i = Array.from({ length: P.n }, (_, k) => k).find((k) => localModel.firmOf(P, k));
+  assert.match(W.card(i, W.day).job, /（社員|（パート/);
+  // a country kept before them: on its next day
+  delete W.locals; P.firm.fill(0);
+  c.days(1);
+  assert.ok(W.locals && Array.from(P.firm).some((x) => x > 0));
+});
+
 test('WAZIMA pays MAGITA its month and still never runs below nothing; no company keeps a tax it never booked', () => {
   const c = country(2000), w = c.w;
   for (const s of Object.values(w.co)) assert.equal(s.bal.taxdue || 0, corpModel.taxOwed(s, w.day), s.id);
@@ -261,9 +297,9 @@ test('companies that come home to a living country (YOSIDA, WAZIMA) hire at once
   // a country kept before the companies' second column of views (and the day's count of orders after it): it loads,
   // those at 0
   const rows = pop.pack(P), whole = Buffer.concat(rows.map((r) => Buffer.from(r)));
-  const old = whole.subarray(0, whole.length - P.view2.byteLength - P.trades.byteLength), Q = pop.alloc(P.n);
+  const old = whole.subarray(0, whole.length - P.view2.byteLength - P.trades.byteLength - P.firm.byteLength), Q = pop.alloc(P.n);
   pop.unpack(Q, [old]);
-  assert.deepEqual([Q.job[5], Q.cash[5], Q.view2.every((v) => v === 0), Q.trades.every((v) => v === 0)], [P.job[5], P.cash[5], true, true]);
+  assert.deepEqual([Q.job[5], Q.cash[5], Q.view2.every((v) => v === 0), Q.trades.every((v) => v === 0), Q.firm.every((v) => v === 0)], [P.job[5], P.cash[5], true, true, true]);
   assert.throws(() => pop.unpack(pop.alloc(P.n), [old.subarray(0, old.length - 4)]), /shorter/);
 });
 

@@ -15,6 +15,7 @@ import { keyFrom } from './auth.js';
 import { ApiError } from './errors.js';
 import { partOf } from './hash.js';
 import * as model from './npc-model.js';
+import { view as localView } from './npc-local.js';
 import * as pop from './npc-pop.js';
 import * as text from './npc-text.js';
 import { createAi } from './npc-ai.js';
@@ -357,6 +358,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       labor: { unions: Object.fromEntries(Object.entries(w.lab.unions).map(([id, u]) => [id, { members: u.members, state: u.state, demand: u.demand, offer: u.offer, raise: u.raise, days: u.days, rep: person(u.rep) }])) },
       // (and what the people spent at each in the last 30 days the companies closed: server/core/corp.js npcSpent)
       companies: NPC.companies.map((id) => { const o = w.orgs[id]; return { id, name: CORP.company(id).name, ceo: person(o ? o.ceo : -1), president: person(o ? o.president : -1), staff: w.staffOf(id).length, spent: spent[id] || 0, ventures: o ? o.ventures.filter((v) => v.stage !== 'closed').map((v) => ({ name: v.name, customers: v.customers, stage: v.stage })) : [] }; }),
+      // (the 32 local companies: server/core/npc-local.js)
+      locals: localView(w),
       news, talk: (w.talkFeed || []).slice(-20).reverse(), live: liveStats(w), frame: b64(frame(w)), n: P.n
     };
   }

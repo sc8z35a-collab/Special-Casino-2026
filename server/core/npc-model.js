@@ -19,6 +19,7 @@ import { createPolitics } from './npc-politics.js';
 import { createLabor } from './npc-labor.js';
 import * as org from './npc-org.js';
 import { createMarket, LISTED_IDS } from './npc-market.js';
+import * as local from './npc-local.js';
 import * as text from './npc-text.js';
 
 const MIN = 60000, DAY_MIN = 1440;
@@ -555,7 +556,7 @@ function stats(W, day) {
 export function card(W, i, day) {
   const P = W.P, nm = pop.nameOf(P, i), age = ageOf(P, i, day), j = P.job[i];
   const posts = org.posts(W, i);
-  const co = NPC.companyOf(j), job = co ? `${NPC.jobNames[j]} ${NPC.org[co][P.dept[i]] ? NPC.org[co][P.dept[i]][1] : ''} ${NPC.ranks[P.rank[i]].name}`.trim() : NPC.jobNames[j] || '';
+  const co = NPC.companyOf(j), job = co ? `${NPC.jobNames[j]} ${NPC.org[co][P.dept[i]] ? NPC.org[co][P.dept[i]][1] : ''} ${NPC.ranks[P.rank[i]].name}`.trim() : (local.firmOf(P, i) ? `${local.firmByNo(local.firmOf(P, i)).name}（${j === NPC.job.part ? 'パート' : '社員'}）` : NPC.jobNames[j] || '');
   return {
     id: pop.pid(P, i), i, name: nm.name, kana: nm.kana, sex: P.sex[i], age, district: P.dist[i], at: P.ldist[i], job, posts,
     act: NPC.acts[P.act[i]] ? NPC.acts[P.act[i]].name : '', place: NPC.placeNames[NPC.places[P.place[i]]] || '', mood: P.emo[i * 5],

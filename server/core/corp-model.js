@@ -212,8 +212,12 @@ function route(w, s, kind, n) {
   const ns = split(n, parts.map((x) => x[2]));
   parts.forEach(([to, stream], k) => {
     if (!ns[k]) return;
-    if (to === '@sector' || to === s.id || !w.co[to]) w.ext.sector += ns[k];
-    else w.b2bCash.push({ to, stream, n: ns[k], from: s.id });
+    if (to === '@sector' || to === s.id || !w.co[to]) {
+      w.ext.sector += ns[k];
+      // (who paid it and for what: the local companies' sales of it — 業務委託, 共同研究費, ラインの賃借: js/game/local.js)
+      const by = w.ext.sectorBy || (w.ext.sectorBy = {}), key = s.id + ':' + kind;
+      by[key] = (by[key] || 0) + ns[k];
+    } else w.b2bCash.push({ to, stream, n: ns[k], from: s.id });
   });
 }
 // a company's sale of `n` paid in cash on account `code` (its stream's, or the country's own names: js/game/corp.js)

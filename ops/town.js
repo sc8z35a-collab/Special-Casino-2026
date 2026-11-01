@@ -10,7 +10,7 @@
 var OpsTown = (function () {
   'use strict';
   var N = function () { return window.BR && window.BR.NPC; };
-  var TABS = [['nation', '国'], ['people', '住民'], ['orgs', '会社の人と会議'], ['news', 'ニュース']];
+  var TABS = [['nation', '国'], ['people', '住民'], ['orgs', '会社の人と会議'], ['locals', '地元の企業'], ['news', 'ニュース']];
   var STANCE = { for: '賛成', against: '反対', neutral: '保留', stop: '差し止め', overrule: '決裁' };
   var st = { view: null, request: null, toast: null, tab: 'nation', all: null, people: null, person: null, company: 'tenesice', orgs: {}, q: '', d: '', j: '', page: 0, gen: 0 };
 
@@ -76,10 +76,34 @@ var OpsTown = (function () {
     else if (st.tab === 'nation') nation(box, r);
     else if (st.tab === 'people') people(box, r);
     else if (st.tab === 'orgs') orgs(box);
+    else if (st.tab === 'locals') locals(box, r);
     else news(box, r);
     view.replaceChildren(box);
   }
 
+  // 地元の企業: the 32 local companies by their economies (server/core/npc-local.js view) — their people, last month
+  // against the plan for this country, who paid them for what — and what each of the thirteen paid them
+  function locals(box, r) {
+    var L = r.locals;
+    if (!L) { box.appendChild(el('p', 'muted', '地元の企業はまだ始まっていません（国の次の日から）。')); return; }
+    var co = window.BR && window.BR.CORP;
+    L.spheres.forEach(function (sp) {
+      var list = L.firms.filter(function (f) { return f.sphere === sp.id; });
+      var p = panel(sp.name, list.length + '社');
+      p.appendChild(table(['No.', '会社', '本社', '社員', '年収', '先月の売上（計画）', '営業利益（計画）', '決算賞与', '利益剰余金', '主な売上'], list.map(function (f) {
+        var m = f.month || {};
+        return { cells: [String(f.no), f.name, f.hq, f.staff + ' / ' + f.target, money(f.pay), money(m.sales) + '（' + money(f.plan.sales / 12) + '）', money(m.op) + '（' + money(f.plan.op / 12) + '）',
+          m.bonus ? money(m.bonus) : '—', money(f.retained), f.by.slice(0, 3).map(function (x) { return x.label + ' ' + money(x.n); }).join('・') || '—'] };
+      })));
+      p.appendChild(el('p', 'muted town-note', list.map(function (f) { return f.name + '：' + f.role; }).join(' ／ ')));
+      box.appendChild(p);
+    });
+    var q = panel('上位13社から地元の企業へ（先月）', '研究開発費・施設費・その他の経費・販売費のうち、地元の企業への業務委託・共同研究費・賃借・発注');
+    q.appendChild(table(['会社', '支払先（内容）'], Object.keys(L.paidBy).map(function (id) {
+      return { cells: [co && co.company(id) ? co.company(id).name : id, L.paidBy[id].slice(0, 6).map(function (x) { return x.firm + '（' + x.what + '）' + money(x.n); }).join('、')] };
+    })));
+    box.appendChild(q);
+  }
   function nation(box, r) {
     var s = r.stats, p = panel(r.nation.name, (r.active ? '活動中' : '休止中（再開 ' + at(r.next) + '）') + '・人口' + (s.population || 0).toLocaleString('ja-JP'));
     var g = el('div', 'town-grid');
