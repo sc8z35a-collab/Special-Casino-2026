@@ -35,6 +35,8 @@ const SEASONS = Object.fromEntries(Object.entries(CORP.seasons).map(([k, v]) => 
 const ECON_KEEP = Math.pow(0.5, 1 / CORP.economy.half);
 // how far a month's change in everyone's money (the players' and the people's) moves the economy's log
 const WEALTH_PULL = 0.3;
+// (the usual growth of the money, against which a month's is a boom or a bust: about a year's memory)
+const WEALTH_TREND = Math.pow(0.5, 1 / 12);
 const M = CORP.money;
 // a game's sales: `fast` of them in the first weeks (half-life `h1` days), the rest over its life (half-life by its scale)
 const CURVE = { fast: 0.45, h1: 12, h2: { AAA: 240, '大型': 200, '中型': 150 }, years: 3 };
@@ -445,7 +447,7 @@ function sellProducts(w, s, code, kind, id, n, paid, cash, who) {
     cost = n * pr.cost;
     const to = w.ext ? '@sector' : '*';
     s.owe[to] = (s.owe[to] || 0) + cost;
-  } else if (w.ext && kind === 'cars') {
+  } else if (w.ext && kind === 'cars' && who !== 'outside') {
     // (once the country lives, Car Owner's cars come out of the stock it bought in lots and paid for: restockIn)
     const each = (s.lotCost && s.lotCost[id]) || Math.round(pr.buy * termsOf(w, s.id, pr.maker)) + (pr.excl || 0) + surchargeOf(w, kind, id);
     cost = n * each;
@@ -468,7 +470,7 @@ function sellProducts(w, s, code, kind, id, n, paid, cash, who) {
   s.expBy = s.expBy || {};
   s.expBy.selling = (s.expBy.selling || 0) + selling;
   const row = s.sold[id] || (s.sold[id] = { npc: 0, players: 0, sales: 0, margin: 0 });
-  row[(who || (cash ? 'players' : 'npc'))] += n;
+  row[who === 'outside' ? 'npc' : (who || (cash ? 'players' : 'npc'))] += n;
   row.sales += paid;
   row.margin += paid - cost;
   // (a car sold for less than it cost the dealer: a loss taken on the maker's terms)
@@ -518,6 +520,7 @@ function tradeDay(w, s, p, d, flows, ch) {
         sellProducts(w, s, x.id, x.products, id, got[0], got[1], true, 'npc');
         s.pr[x.id] = (s.pr[x.id] || 0) + got[1] / 30;
       }
+      outside(w, s, p, x, g, f);
     } else if (x.products) {
       // each model's or item's customers outside the game
       for (const [id, pr] of Object.entries(CORP.products[x.products])) {
@@ -576,6 +579,43 @@ function tradeDay(w, s, p, d, flows, ch) {
       s.recv += n;
     }
   }
+}
+// The world outside the country, once it lives: a company's trade is not only its 50,000 people's. What its plan
+// expects of a stream a day and the country (its people, the players, the other companies) has not paid it of late,
+// its customers abroad still buy (paid later: money coming in) — else every company lived on its cash, its plan out of
+// reach, and let its people go quarter after quarter (Tenesice's $450B a year was $60M a day). A studio's games, MY
+// WAY's licences, YOSIDA's seeds and what one company sells another are their own.
+function outside(w, s, p, x, g, f) {
+  if (p.model === 'studio' || p.abroad || x.abroad || x.license || x.seeds || x.to) return;
+  const had = (s.pr && s.pr[x.id]) || 0, po = s.po || (s.po = {});
+  if (x.products) {
+    let plan = 0;
+    const each = [];
+    for (const [id, pr] of Object.entries(CORP.products[x.products])) {
+      const price = listPrice(x.products, id);
+      if (!pr.npc || !price) continue;
+      const n = pr.npc * g * productLift(w, pr, x.beta ?? p.beta) / YEAR;
+      plan += n * price;
+      each.push([id, n, price]);
+    }
+    if (plan <= 0) return;
+    const k = Math.max(0, 1 - had / plan);
+    for (const [id, n, price] of each) {
+      const m = take(s, 'o:' + id, n * k);
+      if (m <= 0) continue;
+      sellProducts(w, s, x.id, x.products, id, m, m * price, false, 'outside');
+      po[x.id] = (po[x.id] || 0) + m * price / 30;
+    }
+    return;
+  }
+  const share = s.share && s.share[x.id] !== undefined ? s.share[x.id] : (x.share || 0);
+  if (!share) return;
+  const plan = p.sales * share * f * (s.scale && s.scale[x.id] || 1) / YEAR;
+  const n = take(s, 'out:' + x.id, Math.max(0, plan - had));
+  if (n <= 0) return;
+  const cost = s.cost && s.cost[x.id] !== undefined ? s.cost[x.id] : (x.cost || 0);
+  sell(w, s, x.id, n, take(s, 'ocost:' + x.id, n * cost));
+  po[x.id] = (po[x.id] || 0) + n / 30;
 }
 // The people's money of the day at a company (server/core/npc-econ.js flows: by stream, or the country's own
 // names — 官公庁・公共事業, 新規事業, 通信, the casino's wins and losses — and the cars traded in), each as a sale for
@@ -717,8 +757,25 @@ function bankCountry(w, s, p, d, flows) {
   const int = take(s, 'funding', deposits * (b.rate || 0.002) / YEAR);
   if (int > 0) { post(s, [['c:funding', int], ['cash', -int]], 'interestOut'); w.ext.depositInterest += int; }
   if (b.credit > 0) { const n = Math.round(b.credit); post(s, [['sCredit', n], ['lent', -n]]); }
-  // (the players' trading fee was Dtrade's; nothing of theirs here)
-  s.pr.nii = (s.pr.nii || 0) * 29 / 30 + (b.nii || 0) / 30;
+  // (the players' trading fee was Dtrade's; nothing of theirs here) (the day's average: decayed with the others as
+  // the day began — decayed here too, it read half of what it was)
+  s.pr.nii = (s.pr.nii || 0) + (b.nii || 0) / 30;
+  s.pr.fees = (s.pr.fees || 0) + (b.fees || 0) / 30;
+  // its business abroad (outside): what its plan expects of each stream and the country has not paid it, paid in from
+  // outside, with the credit costs of that lending
+  const lift = trend(p, d, w.launch), po = s.po || (s.po = {});
+  let abroadSales = 0;
+  for (const x of p.streams) {
+    const plan = p.sales * x.share * lift * econOf(w, x.beta ?? p.beta) * (s.rnd ? s.rnd.edge : 1) / YEAR;
+    const n = take(s, 'out:' + x.id, Math.max(0, plan - ((s.pr && s.pr[x.id]) || 0)));
+    if (n <= 0) continue;
+    post(s, [['cash', n], ['r:' + x.id, -n]], 'receipts');
+    w.ext.exports += n;
+    po[x.id] = (po[x.id] || 0) + n / 30;
+    abroadSales += n;
+  }
+  const bad = take(s, 'ocredit', abroadSales * p.credit.share);
+  if (bad > 0) { post(s, [['sCredit', bad], ['cash', -bad]], 'expenses'); w.ext.imports += bad; }
 }
 
 /* ------------------------------------------------------------- a studio's day --- */
@@ -845,8 +902,40 @@ function studioCountry(w, s, p, d, ch, out, flows) {
   }
   cashSale(s, 'game', game);
   cashSale(s, 'live', live);
-  s.pr.game = (s.pr.game || 0) * 29 / 30 + game / 30;
-  s.pr.live = (s.pr.live || 0) * 29 / 30 + live / 30;
+  // (the day's averages: decayed with the others as the day began — decayed here too, they read half of what they were)
+  s.pr.game = (s.pr.game || 0) + game / 30;
+  s.pr.live = (s.pr.live || 0) + live / 30;
+  // the world outside: its games sell abroad as they always did (each title along its curve, the older ones), as much
+  // as the country has not bought of late — paid later, money coming in, the stores abroad taking their part
+  {
+    const season = seasonOf(p, d), econ = econOf(w, p.beta), plan = [];
+    let world = 0;
+    for (const t of s.titles) {
+      const line = lineOf(p, t.line), age = d - t.day, n = t.life * (soldShare(line, age) - soldShare(line, age - 1)) * season;
+      plan.push([t, n]);
+      world += n;
+    }
+    const cat = s.catalog * season * Math.sqrt(econ) / YEAR;
+    world += cat;
+    const k = world > 0 ? Math.max(0, 1 - (s.pr.game || 0) / world) : 0;
+    let abroadGame = 0;
+    for (const [t, n] of plan) {
+      const m = take(s, 'otitle:' + t.id, n * k);
+      if (m <= 0) continue;
+      t.sold += m;
+      t.units += Math.max(0, Math.round(t.sold / t.price) - t.units);
+      abroadGame += m;
+    }
+    abroadGame += take(s, 'ocatalog', cat * k);
+    if (abroadGame > 0) {
+      post(s, [['ar', abroadGame], ['r:game', -abroadGame]]);
+      s.recv += abroadGame;
+      const fee = take(s, 'oplatform', abroadGame * p.platform);
+      if (fee > 0) { post(s, [['c:platform', fee], ['ap', -fee]]); s.owe['*'] = (s.owe['*'] || 0) + fee; }
+      const po = s.po || (s.po = {});
+      po.game = (po.game || 0) + abroadGame / 30;
+    }
+  }
   for (const [key, n] of Object.entries(npc.s || {})) cashSale(s, key, Math.round(n));
   const stores = take(s, 'platform', (game + live) * p.platform);
   const servers = take(s, 'servers', live * (p.live ? p.live.server : 0));
@@ -1231,7 +1320,9 @@ function dividends(w, s, p, d) {
   let held = 0;
   for (const [holder, shares] of Object.entries(s.hold.by || {})) {
     const h = w.co[holder], part = Math.round(n * shares / Math.max(1e-9, out));
-    if (part > 0) post(h, [['cash', part], ['affil', -part]], 'interestIn');
+    // (a return of the investment as far as it goes; beyond it, 受取配当金)
+    const back = Math.min(part, Math.max(0, h.bal.affil || 0));
+    if (part > 0) post(h, [['cash', part], ['affil', -back], ['nDividend', -(part - back)]], 'interestIn');
     held += Math.max(0, part);
   }
   // the rest to the people holding it (and the players, whose part their side pays: server/core/stocks.js)
@@ -1268,6 +1359,47 @@ function taxes(w, s, p, d, final) {
   if (n) post(s, [['tax', n], ['taxdue', -n]]);
   s.tax.booked = due;
 }
+// what a company's 未払法人税等 should be on day `d` (closed): this year's booked less its advance, and last year's
+// rest while it is still to be paid (to the end of the year's second month)
+export function taxOwed(s, d) {
+  const fyMonth = ((CORP.ymd(d).m - 4 + 12) % 12) + 1;
+  const last = s.tax.last || {};
+  const owed = last.fy && (fyMonth < CORP.tax.finalMonths || (fyMonth === CORP.tax.finalMonths && !CORP.isMonthEnd(d)));
+  return (s.tax.booked || 0) - (s.tax.interim || 0) + (owed ? (last.total || 0) - (last.interim || 0) : 0);
+}
+// a holding's part of a company's net assets (what the 持分法 carries it at)
+function stakeValue(t, shares) { return Math.max(0, Math.round(equityOf(t) * shares / Math.max(1e-9, outstanding(t)))); }
+// Once, for a world kept before the backer's stake was carried: its investment set at its part of the studio's net
+// assets (the difference from what it carried, a 過年度 correction of the retained earnings; no cash moves)
+export function repairStakes(w) {
+  const fixed = [];
+  for (const s of Object.values(w.co)) {
+    for (const [held, shares] of Object.entries((s.hold && s.hold.own) || {})) {
+      const t = w.co[held];
+      if (!t) continue;
+      const gap = stakeValue(t, shares) - (s.bal.affil || 0);
+      if (!gap) continue;
+      post(s, [['affil', gap], ['retained', -gap]]);
+      fixed.push({ id: s.id, n: gap });
+    }
+  }
+  (w.fixes || (w.fixes = {})).affil = true;
+  return fixed;
+}
+// Once, for a world kept before the made-up year's tax was no longer paid: what it paid of a tax never booked put
+// right (the 未払法人税等 back to what is owed, the same off the retained earnings: a 過年度 correction, no cash moves)
+export function repairTaxes(w) {
+  const fixed = [];
+  for (const s of Object.values(w.co)) {
+    if (s.dead || !s.tax) continue;
+    const gap = taxOwed(s, w.day) - (s.bal.taxdue || 0);
+    if (gap <= 0) continue;
+    post(s, [['retained', gap], ['taxdue', -gap]]);
+    fixed.push({ id: s.id, n: gap });
+  }
+  (w.fixes || (w.fixes = {})).tax = true;
+  return fixed;
+}
 // what of a parent's income is its child's (consolidated, paid up or made good): the child pays its own taxes on it
 const childIncome = (sums) => (sums['r:wazima'] || 0) - (sums['c:wazima'] || 0) + (sums.nSubsidiary || 0) - (sums.eSubsidiary || 0);
 // paid: half of last year's in advance in the year's 8th month (中間納付), the rest in the 2nd month after it ended
@@ -1281,7 +1413,9 @@ function payTaxes(w, s, p, d) {
     s.tax.interim = n;
   }
   if (fyMonth === CORP.tax.finalMonths) {
-    const left = (s.tax.last.total || 0) - (s.tax.last.interim || 0);
+    // (a year the books never had — the one made up before the first, its `total` only for the first advance — owes
+    // nothing: paying it took cash for a tax never booked, a 未払法人税等 below nothing kept for good)
+    const left = s.tax.last.fy ? (s.tax.last.total || 0) - (s.tax.last.interim || 0) : 0;
     if (left) post(s, [['taxdue', left], ['cash', -left]], 'taxes');
     // (a refund, when the advance was more than the year's: the country pays it back)
     if (w.ext && left && !abroad(s)) w.ext.taxes.push({ company: s.id, n: left });
@@ -1399,7 +1533,9 @@ function expectCountry(w, s, p, d) {
   const add = (k, v) => { e[k] = (e[k] || 0) + v; };
   ipExpect(w, s, p, d, add);
   const people = s.n * s.unit / YEAR;
-  for (const [k, v] of Object.entries(s.pr || {})) {
+  const all = { ...(s.pr || {}) };
+  for (const [k, v] of Object.entries(s.po || {})) all[k] = (all[k] || 0) + v;
+  for (const [k, v] of Object.entries(all)) {
     if (!v) continue;
     add('r:' + k, v);
     const x = (p.streams || []).find((y) => y.id === k);
@@ -1407,7 +1543,7 @@ function expectCountry(w, s, p, d) {
     if (cost) add('c:' + k, v * cost);
   }
   if (p.model === 'studio') {
-    add('c:platform', ((s.pr.game || 0) + (s.pr.live || 0)) * p.platform);
+    add('c:platform', ((s.pr.game || 0) + (s.pr.live || 0) + ((s.po && s.po.game) || 0)) * p.platform);
     for (const t of s.titles) { const line = lineOf(p, t.line), age = d - t.day; if (age < CURVE.years * YEAR) add('c:amort', t.cost * (writtenShare(line, age) - writtenShare(line, age - 1))); }
     if (p.contract) { add('c:contract', people * p.makers * contractShare(s, p)); add('r:contract', PROFILES.get(p.partner.with).partner.fee * 12 / YEAR); }
     if (p.partner && p.partner.role === 'backer') add('sPartner', p.partner.budget / YEAR);
@@ -1671,9 +1807,15 @@ function staffing(w, s, p, d, out) {
   } else if (ratio !== null && ratio > ST.growAbove) {
     const share = ST.grow[0] + (ST.grow[1] - ST.grow[0]) * Math.min(1, (ratio - ST.growAbove) / ST.growAbove);
     const add = Math.max(1, Math.round(s.n * share));
-    s.target = Math.max(s.target || s.n, s.n) + add;
+    s.target = Math.min(targetCap(w, s), Math.max(s.target || s.n, s.n) + add);
     news(out, s, p, d + 1, 3 * 3600, 'staff', `好業績のため採用を拡大（採用計画 +${CORP.fmt.group(add)}人）`, { grow: add }, 0, true);
   }
+}
+// the most people a company plans to have: half again its size for the country it lives in (its meetings' +5% and its
+// good years' hiring compounded without end — MY WAY at 2.5 times its size in two years, the others' people gone to it)
+export function targetCap(w, s) {
+  const p = PROFILES.get(s.id);
+  return Math.max(s.n, Math.round(p.staff * sizeScale(w, p) * 1.5));
 }
 // 技術開発: one development at a time, begun on a month's first day and done after its months; it succeeds the likelier
 // the more people the company has (against its size at the start), the better their mood and the more it spends on
@@ -2341,8 +2483,14 @@ export function closeDay(w, d, flows, ch) {
     const e = w.econ;
     e.raw = (e.raw || 0) * ECON_KEEP + CORP.economy.sd * ch.z(`economy:${d}`);
     // (好景気 is everyone getting richer: once live, the players' and the people's money against a month before moves it)
+    // (by how much faster or slower than usual it grew: money that grows month after month as it always has is no boom —
+    // pulled by the growth itself, the economy climbed for good, 1.3 to 1.8 times its middle within a year)
     if (flows.wealth > 0 && d >= w.launch) {
-      if (e.w0 > 0) e.raw += WEALTH_PULL * Math.max(-0.15, Math.min(0.15, Math.log(flows.wealth / e.w0)));
+      if (e.w0 > 0) {
+        const g = Math.log(flows.wealth / e.w0);
+        e.g = e.g === undefined ? g : e.g * WEALTH_TREND + g * (1 - WEALTH_TREND);
+        e.raw += WEALTH_PULL * Math.max(-0.05, Math.min(0.05, g - e.g));
+      }
       e.w0 = flows.wealth;
     }
     e.fade = d < w.launch ? Math.min(1, (d - w.start) / Math.max(1, (e.last || d) - w.start)) : (e.fade || 0) * ECON_KEEP;
@@ -2366,10 +2514,10 @@ export function closeDay(w, d, flows, ch) {
   // what each company's people decided in their meetings (server/core/npc-org.js): their budgets, their hiring, their
   // mood, their research
   if (npc && npc.ops) for (const o of npc.ops) decided(w, o, d, out, ch);
+  // (every company's day begun before any posts to another's: a studio's dividends to its backer, a day's trade)
+  for (const id of ORDER) { w.co[id].today = 0; w.co[id].per.d = {}; }
   for (const id of ORDER) {
     const s = w.co[id], p = PROFILES.get(id);
-    s.today = 0;
-    s.per.d = {};
     // (a company that failed: its books are closed, nothing more happens to it — what the country still sent it, its
     // public works and the like, the local businesses take instead)
     if (s.dead) {
@@ -2386,7 +2534,7 @@ export function closeDay(w, d, flows, ch) {
       continue;
     }
     // (what came in on an average day of late, by stream: the country's money is all of it now)
-    if (circ) { s.pr = s.pr || {}; for (const k of Object.keys(s.pr)) s.pr[k] *= 29 / 30; }
+    if (circ) { s.pr = s.pr || {}; for (const k of Object.keys(s.pr)) s.pr[k] *= 29 / 30; if (s.po) for (const k of Object.keys(s.po)) s.po[k] *= 29 / 30; }
     if (!live) { people(s, p, d, w.launch); budgets(s, p, d, w.launch); }
     if (s.ip) ipDay(w, s, p, d);
     if (p.model === 'studio') studioDay(w, s, p, d, ch, out, flows);
@@ -2490,7 +2638,9 @@ export function closeDay(w, d, flows, ch) {
       // the backer's part of its studio's quarter (持分法)
       for (const [held, shares] of Object.entries(s.hold.own || {})) {
         const t = w.co[held];
-        const part = Math.round((t.qNet || 0) * shares / Math.max(1e-9, outstanding(t)));
+        let part = Math.round((t.qNet || 0) * shares / Math.max(1e-9, outstanding(t)));
+        // (a loss takes the investment to nothing at most: 持分法's losses stop there)
+        if (part < 0) part = -Math.min(-part, Math.max(0, s.bal.affil || 0));
         if (part > 0) post(s, [['affil', part], ['nEquity', -part]]);
         else if (part < 0) post(s, [['eEquity', -part], ['affil', part]]);
       }
@@ -2498,7 +2648,9 @@ export function closeDay(w, d, flows, ch) {
     }
     // (a child's day and month: its parent's — WAZIMA's, MAGITA's, which closes after it)
     if (p.parent) consolidate(w, s, p, d);
-    if (CORP.isMonthEnd(d) && p.parent) toParent(w, s, p, d);
+    // (and, its month's profit paid up after its cash was seen to, that seen to again: else it ran the month below
+    // nothing — WAZIMA paying MAGITA more than it kept)
+    if (CORP.isMonthEnd(d) && p.parent) { toParent(w, s, p, d); treasury(w, s, p, d, out); }
     s.bal.retained += s.today;
     for (const k of ['m', 'q', 'y']) s.sd[k] += outstanding(s);
     if (CORP.isQuarterEnd(d)) s.qNet = CORP.plOf(s.per.q).net;
@@ -2525,7 +2677,7 @@ function decided(w, o, d, out, ch) {
   if (o.kind === 'ip') { (w.ipOps || (w.ipOps = [])).push(o); return; }
   if (o.kind === 'license') return license(w, o.company, o.action, d, out, ch, o.why || '', o.fee || null);
   if (o.kind === 'budget' && s.budget[o.key] !== undefined) s.budget[o.key] = Math.max(0, Math.round(s.budget[o.key] * o.mult));
-  else if (o.kind === 'target') s.target = Math.max(1, Math.round((s.target || s.n) * o.mult));
+  else if (o.kind === 'target') s.target = Math.min(o.mult > 1 ? targetCap(w, s) : Infinity, Math.max(1, Math.round((s.target || s.n) * o.mult)));
   else if (o.kind === 'morale') s.morale = Math.max(0.2, Math.min(0.95, s.morale + o.add));
   else if (o.kind === 'lab' && s.lab) s.lab.mult *= 1 - o.cut;
 }
@@ -2701,7 +2853,7 @@ export function boot(key, launch, { years = 2, prices = {}, onDay = null } = {})
     s.today = 0;
   }
   // the shares: a listed company's book price is its market price (or else the profile's)
-  for (const p of CORP.companies) {
+  const count = (p) => {
     const s = w.co[p.id], v = fairValue(s, p, w), price = prices[p.id] || p.price || 10000;
     s.sh.issued = Math.max(1000, Math.round(v / price));
     s.sh.founders = Math.round(s.sh.issued * (p.founders || 0));
@@ -2711,7 +2863,8 @@ export function boot(key, launch, { years = 2, prices = {}, onDay = null } = {})
     s.sd = { m: s.sh.issued * (launch - CORP.monthStart(launch - 1)), q: s.sh.issued * (launch - CORP.quarterStart(fy, q)), y: s.sh.issued * (launch - CORP.fyStart(fy)) };
     s.mkt = { e: Math.log(price), fair: price };
     if (s.guide) { s.guide.eps = Math.round(s.guide.net / s.sh.issued); s.guide.dps = Math.max(0, Math.round(p.payout * Math.max(0, s.guide.expected.net * 0.95) / s.sh.issued)); setDividend(s, p, s.guide); }
-  }
+  };
+  for (const p of CORP.companies) count(p);
   // the backer's stake in its studio
   for (const p of CORP.companies) {
     const deal = p.partner;
@@ -2720,7 +2873,14 @@ export function boot(key, launch, { years = 2, prices = {}, onDay = null } = {})
     const shares = Math.round(st.sh.issued * deal.stake);
     s.hold.own = { [deal.with]: shares };
     st.hold.by = { [p.id]: shares };
+    // (bought: at its part of the studio's net assets, the 持分法's 投資有価証券 from the first day — else what the studio
+    // paid it and what it lost were taken off nothing, below nothing)
+    const v = stakeValue(st, shares);
+    if (v > 0) post(s, [['affil', v], ['cash', -v]], 'bondsBuy');
+    // (its own shares counted again with the stake in its books: its book price still the market's)
+    count(p);
   }
+  w.fixes = { tax: true, affil: true };
   // the per-share figures of the made-up periods, now that the shares are counted
   for (const r of hist.periods) {
     const s = w.co[r.company];

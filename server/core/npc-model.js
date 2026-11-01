@@ -80,9 +80,19 @@ export function failed(W, id, day) {
 // or in work of another kind (part time, another workplace, their own business), up to what it plans to have; its
 // posts are given, its pay set about its average, its union begun; the rest it hires through the job sites as they
 // come (server/core/npc-labor.js openings). Returns the companies that came, with how many they took.
+// which companies are still to make their welcome: in the companies' world and alive, and either without an
+// organisation in the country or with one made empty (the country began before the company had come home) and never
+// welcomed — else such a company never had its people (WAZIMA, MY WAY)
+export function toWelcome(W, corp) {
+  return NPC.companies.filter((id) => {
+    const c = corp && corp.co[id], o = W.orgs[id];
+    if (!c || c.dead) return false;
+    return !o || (!o.came && !W.staffOf(id).length);
+  });
+}
 export function welcome(W, corp, day) {
   const P = W.P, came = [];
-  const ids = NPC.companies.filter((id) => !W.orgs[id] && corp.co[id]);
+  const ids = toWelcome(W, corp);
   if (!ids.length) return came;
   const ages = new Int16Array(P.n);
   for (let i = 0; i < P.n; i++) ages[i] = ageOf(P, i, day);
@@ -114,6 +124,7 @@ export function welcome(W, corp, day) {
     }
     W._staff = null;
     org.assignOne(W, id, ages, r);
+    W.orgs[id].came = day;
     pop.payStaff(P, hired, c.pay || CORP.company(id).salary, ages, r, id);
     W.labor.join(W, id, hired, r);
     for (const i of hired) remember(P, i, day, M.hired, 150);
@@ -496,14 +507,16 @@ function stats(W, day) {
   // the economy: the people's spending against what it was at the start (their money moving)
   const spentToday = W.flowsDone ? Object.values(W.flowsDone.co).reduce((a, c) => a + Object.values(c.s).reduce((x, y) => x + y, 0) + Object.values(c.p).reduce((x, k) => x + Object.values(k).reduce((p, q) => p + q[1], 0), 0), 0) : 0;
   s.spent = spentToday;
-  // the economy: the people's spending of the last month or so against that of the last year or so (the first day,
+  // the economy: the people's spending of the last quarter or so against that of the last year or so (the first day,
   // only part of a day, and the days before a whole one are not a measure of anything)
   const seen = (W.stats.spentDays || 0) + (spentToday > 0 ? 1 : 0);
   s.spentDays = seen;
   // (its first two months only make the measure: the plain average of the whole days so far)
   if (seen <= 1) { s.spentFast = 0; s.spentSlow = 0; }
   else if (spentToday > 0 && seen <= 61) { s.spentFast = s.spentSlow = ((W.stats.spentSlow || 0) * (seen - 2) + spentToday) / (seen - 1); }
-  else if (spentToday > 0) { s.spentFast = W.stats.spentFast * 29 / 30 + spentToday / 30; s.spentSlow = W.stats.spentSlow * 364 / 365 + spentToday / 365; }
+  // (the last quarter, as an economy is measured: a month's swung with a few cars bought and the bonus months, 1.1 to
+  // 1.9 within a year, and the bank's rate and the mayors' standing with it)
+  else if (spentToday > 0) { s.spentFast = W.stats.spentFast * 89 / 90 + spentToday / 90; s.spentSlow = W.stats.spentSlow * 364 / 365 + spentToday / 365; }
   s.economy = s.spentSlow > 0 ? Math.max(0.2, Math.min(5, s.spentFast / s.spentSlow)) : 1;
   // each company's part of what the people spent, and its move this week
   if (W.flowsDone) {

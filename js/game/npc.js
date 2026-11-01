@@ -459,11 +459,17 @@
   // 2 rich, 4 homeless, 8 famous, 16 in a movement), base64 from the server
   var FRAME = { bytes: 5 };
 
+  // the job market: a day's asking an offer only this often (書類選考・面接 take weeks — about 2-3 months out of work on
+  // average, and a few in a hundred out of work at any time, as in Japan)
+  // `localEnd`: a local job (その他・パート) ending a month (the self-employed `selfShare` of it), as Japan's job
+  // separations are; `localShare`: the local trade's part of the offers to those out of work
+  var LABOR = { offerDaily: 0.005, localEnd: 0.015, selfShare: 0.35, localShare: 1 };
+
   BR.NPC = {
     nation: NATION, districts: DISTRICTS, places: PLACES, placeNames: PLACE_NAMES, acts: ACTS, act: ACT, hours: HOURS,
     holidays: holidays, jst: jst, hoursOf: hoursOf, activeAt: activeAt, nextActive: nextActive,
     companies: COMPANY_IDS, job: JOB, jobNames: JOB_NAMES, jobOf: jobOf, companyOf: companyOf, isCompanyJob: isCompanyJob, employed: employed, working: working, schedules: SCHEDULES, companySchedule: COMPANY_SCHEDULE, sites: SITES,
-    tax: TAX, social: SOCIAL, pension: PENSION, safety: SAFETY, retire: RETIRE, life: LIFE, trouble: TROUBLE,
+    tax: TAX, social: SOCIAL, pension: PENSION, safety: SAFETY, retire: RETIRE, labor: LABOR, life: LIFE, trouble: TROUBLE,
     knobs: KNOBS, knob: KNOB, knobOf: knobOf, change: CHANGE, votes: VOTES, platforms: PLATFORMS, themes: THEMES, demands: DEMANDS,
     org: ORG, officers: OFFICERS, ranks: RANKS, rankPay: rankPay, labs: LABS, labThemes: LAB_THEMES, ventures: VENTURES,
     names: { family: FAMILY, male: MALE, female: FEMALE }, nameOf: nameOf, money: money, frame: FRAME, MIN: MIN

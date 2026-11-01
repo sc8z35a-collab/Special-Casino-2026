@@ -445,13 +445,12 @@
   // MAGITA Garage's fee for each car put out to rent (the server's; js/game/corp.js MAGITA.garage.rentFee)
   function rentFee() { return (garage && garage.rental && garage.rental.fee) || (BR.CORP && BR.CORP.magita.garage.rentFee) || 70000; }
   function startRent(c) {
-    var m = model(c.model) || { name: c.model, price: 1000000 };
+    var m = model(c.model) || { name: c.model, price: BR.GACHA ? BR.GACHA.carPrice(c.model) : 1000000 };
     var R = BR.CONFIG.carRental;
-    var t = Math.max(0, Math.min(1, Math.log(m.price / 1e6) / Math.log(20)));
-    var lo = Math.round((R.min + (R.max - R.spread - R.min) * t) / 1000) * 1000;
+    var pay = BR.sale.rentPay(m.price);
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode(m.name + ' を貸し出しますか？'));
-      p.appendChild(el('small', 'confirm-sub', R.hours + '時間ごとにお客さんが1〜5人来て、1人 ' + money(lo) + '〜' + money(lo + R.spread) + '（まれに ' + money(R.vip.pay) + '）払ってくれます。' +
+      p.appendChild(el('small', 'confirm-sub', R.hours + '時間ごとにお客さんが1〜5人来て、1人 ' + money(pay.lo) + '〜' + money(pay.hi) + '（まれに ' + money(pay.vip) + '）払ってくれます。' +
         '少なくとも' + R.hours + '時間は売る・あげることができません。貸し出しはMAGITA Garageの運営で、1回の貸し出しに手数料 ' + money(rentFee()) + '（今払います）、売上を受け取るときに' + Math.round(((garage && garage.rental && garage.rental.cut) || 0.15) * 100) + '%の手数料がかかります。'));
     }, '貸し出す').then(function (ok) {
       if (!ok) return;

@@ -153,6 +153,83 @@ test('the players\' slot wins and quest rewards and YOSIDA\'s gacha bill come ou
   assert.ok(Math.abs(c.money() - before) < 2000, `${c.money() - before}`);
 });
 
+test('once the country lives the companies still sell abroad what it does not buy: the bank and the dealer stay in profit and keep their people', () => {
+  const c = country(2000), w = c.w;
+  const op = (s) => CORP.plOf(s.per.y).op, start = {}, target = {};
+  for (const id of ['tenesice', 'carowner', 'magita', 'citywork']) { start[id] = op(w.co[id]); target[id] = w.co[id].target; }
+  c.days(62);   // (past the first quarter's end and its staffing)
+  for (const id of Object.keys(start)) {
+    const s = w.co[id];
+    assert.ok(op(s) - start[id] > 0, `${id}: ${op(s) - start[id]}`);
+    assert.ok(s.target >= target[id], `${id} cut its people: ${s.target} < ${target[id]}`);
+    assert.ok(Object.values(s.po || {}).some((v) => v > 0), `${id} sold nothing abroad`);
+  }
+  // (the bank's average of its interest is the day's, not half of it)
+  assert.ok(w.co.tenesice.pr.nii > 0);
+});
+
+test('no company plans for more than half again its size: hiring plans compounded without end took the others\' people', () => {
+  const c = country(2000), w = c.w;
+  for (const id of ['myway', 'tenesice', 'jinx']) {
+    const s = w.co[id], cap = corpModel.targetCap(w, s), size = Math.round(CORP.company(id).staff * w.circ.scale);
+    assert.equal(cap, Math.max(s.n, Math.round(size * 1.5)));
+  }
+});
+
+test('the job market moves: people leave work and look for it for weeks, some are out of work at any time', () => {
+  const c = country(2000), W = c.W, P = W.P;
+  let out = 0, back = 0, most = 0;
+  for (let d = 0; d < 120; d++) {
+    const before = Array.from(P.job);
+    c.days(1);
+    for (let i = 0; i < P.n; i++) { if (before[i] !== NPC.job.none && P.job[i] === NPC.job.none) out++; if (before[i] === NPC.job.none && P.job[i] !== NPC.job.none) back++; }
+    most = Math.max(most, W.stats.unemployment || 0);
+  }
+  assert.ok(out >= 10, `out of work: ${out}`);
+  assert.ok(back >= 3, `back in work: ${back}`);
+  assert.ok(most > 0.001 && most < 0.1, `unemployment at most ${most}`);
+});
+
+test('WAZIMA pays MAGITA its month and still never runs below nothing; no company keeps a tax it never booked', () => {
+  const c = country(2000), w = c.w;
+  for (const s of Object.values(w.co)) assert.equal(s.bal.taxdue || 0, corpModel.taxOwed(s, w.day), s.id);
+  let low = Infinity;
+  for (let k = 0; k < 62; k++) {
+    c.days(1);
+    low = Math.min(low, w.co.wazima.bal.cash || 0);
+    for (const s of Object.values(w.co)) if (!s.dead) assert.equal(s.bal.taxdue || 0, corpModel.taxOwed(s, w.day), `${s.id} day ${w.day}`);
+  }
+  assert.ok(w.co.wazima.toParent && w.co.wazima.toParent.all > 0);
+  assert.ok(low >= 0, `WAZIMA's cash fell to ${low}`);
+});
+
+test('WAZIMA and MY WAY get their people even when the country was read before they were in the companies\' world, or kept an empty organisation of theirs', () => {
+  const c = country(2000), W = c.W, P = W.P, w = c.w;
+  // (as a country kept before they came: their people in other work, an organisation of theirs made empty or none)
+  for (const id of ['wazima', 'myway']) {
+    for (const i of W.staffOf(id)) { P.job[i] = NPC.job.other; P.rank[i] = 0; P.flags[i] &= ~(pop.FL.exec | pop.FL.union); }
+    W.lab.unions[id].members = 0;
+  }
+  W._staff = null;
+  delete W.orgs.wazima;
+  W.orgs.myway = { id: 'myway', ceo: -1, president: -1, officers: [], depts: [] };
+  // read before the companies' world has them: nobody to welcome yet …
+  const kept = { wazima: w.co.wazima, myway: w.co.myway };
+  delete w.co.wazima; delete w.co.myway;
+  assert.deepEqual(npc.toWelcome(W, w), []);
+  // … and once it has them, both (the empty organisation too), and only once
+  Object.assign(w.co, kept);
+  assert.deepEqual(npc.toWelcome(W, w), ['wazima', 'myway']);
+  const came = npc.welcome(W, w, W.day);
+  assert.deepEqual(came.map((x) => x.id), ['wazima', 'myway']);
+  for (const x of came) { assert.ok(x.hired > 0); assert.equal(W.staffOf(x.id).length, x.hired); assert.ok(W.orgs[x.id].ceo >= 0); }
+  assert.deepEqual(npc.toWelcome(W, w), []);
+  // (one that failed is welcomed no more)
+  for (const i of W.staffOf('myway')) P.job[i] = NPC.job.none;
+  W._staff = null; delete W.orgs.myway.came; w.co.myway.dead = true;
+  assert.deepEqual(npc.toWelcome(W, w), []);
+});
+
 test('companies that come home to a living country (YOSIDA, WAZIMA) hire at once from those out of work or in other work, with their posts, pay and union; a country kept before them loads', () => {
   const c = country(2000), W = c.W, P = W.P, day = W.day;
   // (as a country kept before they came: their people in other work, no organisation of theirs)

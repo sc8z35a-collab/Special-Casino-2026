@@ -148,7 +148,11 @@ export function thinkJob(W, i, day, r, ctx) {
     const move = ahead(W, i, { cost: 0, joy: 0.3 * (0.4 + 0.4 * r.u()) - 0.1 * tr(P, i, T.loyalty), pay: best.o.pay / 12 }, futures, r);
     if (move - stay < 0.2) return false;
   }
-  // the company's pick: most likely the fit and the skilled (and it may say no)
+  // the company's pick: most likely the fit and the skilled (and it may say no) — after its 書類選考 and 面接, which take
+  // weeks: a day's asking an offer seldom (about 2-3 months out of work on average, as in Japan; before, two days, and
+  // no one was ever out of work). One in work moving on looks for longer but is offered sooner when it comes.
+  const screen = now === NPC.job.none || now === NPC.job.part ? NPC.labor.offerDaily : NPC.labor.offerDaily * 2;
+  if (r.u() > screen) return false;
   if (r.u() > 0.25 + 0.6 * best.fit) { econ_feel(P, i, -6); return false; }
   W.hire(i, best.o, day, r);
   return true;

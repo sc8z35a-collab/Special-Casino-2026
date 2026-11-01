@@ -69,7 +69,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   // and the country is kept with them at once
   function homecoming(w) {
     const c = corp.world();
-    if (!c || NPC.companies.every((id) => w.orgs[id] || !c.co[id])) return;
+    if (!c || !model.toWelcome(w, c).length) return;
     tx(() => {
       const came = model.welcome(w, c, w.day);
       if (!came.length) return;
@@ -139,7 +139,10 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   /* ---------------------------------------------------------------- the beginning --- */
   // The country begins (once): its people made up, the companies set to live on its money from the day they close next.
   function ensure(now) {
-    if (!on || get()) return;
+    if (!on) return;
+    // (a country already there: any company come home since it was loaded hires now — the companies may only have
+    // been added to their world after the country was read)
+    if (get()) { homecoming(W); return; }
     const w = corp.world();
     if (!w) return;
     tx(() => {
@@ -226,6 +229,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   function beforeClose(d) {
     const w = get();
     if (!w || !w.P) return null;
+    homecoming(w);
     const end = (d + 1) * 1440 - 1;
     const left = Math.max(0, end - w.minute);
     runTo(end, Infinity, left > 600 ? 5 : 1);

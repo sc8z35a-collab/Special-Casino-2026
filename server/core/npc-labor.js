@@ -4,7 +4,7 @@
 // most kept on to 65 at 60% of their pay) and 65; the new graduates in April. And the unions: their members, their
 // rep, the spring wage talks (春闘) in February and March, and a strike when the talks fail.
 import { NPC, CORP } from './rules.js';
-import { T, S, FL, E, NT, ageOf, remember, clampB } from './npc-pop.js';
+import { T, S, FL, E, NT, ageOf, remember, clampB, OTHER_PAY } from './npc-pop.js';
 import { M, skillFor } from './npc-life.js';
 import * as econ from './npc-econ.js';
 
@@ -136,6 +136,37 @@ function retire(W, i, day, r) {
   leave(W, i, day, 'retire');
 }
 
+/* ------------------------------------------------------------- the local jobs --- */
+// The local businesses' jobs (the shops, restaurants, builders — その他・自営業・パート): they end now and then (a shop
+// closing, a contract over: NPC.labor.localEnd a month, the self-employed less, twice as often while the local trade is
+// short of money), and those out of work find them as they find the companies' (at NPC.labor.offerDaily a day, the
+// local trade wanting more people the more it has). Before, no local job ever ended and the out of work could only
+// be hired by the thirteen companies: no one was ever out of work.
+function localJobs(W, day, r) {
+  const P = W.P, L = NPC.labor, J = NPC.job, hard = W.sector.cash < 0 ? 2 : 1;
+  const want = Math.max(0.3, Math.min(1.2, 1 + W.sector.cash / Math.max(1, (W.cal.nationFloor || 1) * 2)));
+  for (let i = 0; i < P.n; i++) {
+    const j = P.job[i];
+    if (j === J.other || j === J.part || j === J.self) {
+      const end = (j === J.self ? L.localEnd * L.selfShare : L.localEnd) * hard / 30;
+      if (r.u() < end) leave(W, i, day, j === J.self ? 'quit' : 'fired');
+      continue;
+    }
+    if (j !== J.none || P.flags[i] & (FL.student | FL.mayor)) continue;
+    const age = ageOf(P, i, day);
+    if (age < 18 || age >= 65 || r.u() >= L.offerDaily * L.localShare * want) continue;
+    const kind = r.u() < 0.7 ? J.other : J.part;
+    P.job[i] = kind;
+    P.salary[i] = Math.round(OTHER_PAY[kind] * (0.8 + 0.4 * r.u()));
+    P.tenure[i] = 0;
+    P.jsat[i] = 160;
+    P.jobless[i] = 0;
+    P.joblessPay[i] = 0;
+    P.wdist[i] = P.dist[i];
+    remember(P, i, day, M.hired, 120);
+  }
+}
+
 /* ---------------------------------------------------------------- a working day --- */
 function laborDay(W, day, r, ctx) {
   const P = W.P, t = CORP.ymd(day);
@@ -149,6 +180,7 @@ function laborDay(W, day, r, ctx) {
   }
   dismiss(W, day, ctx);
   openings(W, ctx);
+  localJobs(W, day, r);
   // the month in work: a month more of it, the mood at work (the pay against what others pay, the company's
   // fortunes, the boss, the hours), and who leaves today
   for (let i = 0; i < P.n; i++) {
@@ -162,7 +194,9 @@ function laborDay(W, day, r, ctx) {
     const target = 120 + 60 * Math.min(1.3, fair) - 40 * Math.max(0, (W.stats.prices || 1) - 1) * 10 + (c.morale - 0.6) * 120 - (W.crunch && W.crunch[j] ? 25 : 0);
     P.jsat[i] = clampB(P.jsat[i] + (target - P.jsat[i]) * 0.02 + r.z() * 2);
     const p = CORP.company(id);
-    const quit = (p ? p.quit : 0.06) / 365 * Math.max(0.2, (1.6 - P.jsat[i] / 160)) * (W.lab.wave && W.lab.wave[id] ? 3 : 1);
+    // (the happier, the less — but never below 60% of the company's rate: people move on for their own reasons too, a
+    // family, a town, a better offer; at a fifth of it, one in eighty a year left and no one was out of work)
+    const quit = (p ? p.quit : 0.06) / 365 * Math.max(0.6, (1.8 - P.jsat[i] / 150)) * (W.lab.wave && W.lab.wave[id] ? 3 : 1);
     if (!(P.flags[i] & (FL.exec)) && r.u() < quit) {
       // (some only to another company, others out of work for a while)
       leave(W, i, day, 'quit');

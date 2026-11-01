@@ -468,7 +468,10 @@ function pensions(W, day) {
 // promises, a day of each budget
 const WORKS = [['magita', 0.3], ['carowner', 0.08], ['jinx', 0.14], ['dtrade', 0.1], ['tenesice', 0.08], ['citywork', 0.08], ['speedeed', 0.06], ['daizin', 0.04], ['ice', 0.08], ['riru', 0.04]];
 function publicWorks(W, day, r) {
-  const budget = W.cal.publicWorks * (1 + (W.nation.knobs.publicWorks || 0) / 100) / YEAR * solvency(W);
+  // (and a balanced budget's rule: what the country holds beyond five times its floor it spends over about a year on
+  // works — it took in the companies' taxes and kept them, half a trillion in two years, out of the people's trade)
+  const spare = Math.max(0, W.nation.cash - W.cal.nationFloor * 5);
+  const budget = W.cal.publicWorks * (1 + (W.nation.knobs.publicWorks || 0) / 100) / YEAR * solvency(W) + spare / YEAR;
   if (W.nation.cash > 0) {
     for (const [co, s] of WORKS) {
       const n = Math.round(budget * s * (0.6 + 0.8 * r.u()) * (1 + (W.appeal[co + ':public'] || 0)));

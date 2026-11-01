@@ -153,7 +153,7 @@ const AGES = [[18, 29, 9700], [30, 39, 8100], [40, 49, 8000], [50, 59, 7800], [6
 const WORK = { civil: 1500, other: 1800, self: 900, part: 1500, home: 1500, student: 2000, none: 800, rehire: 1750 };
 // what living in each district costs a month (rent), and how rich people there are against the country
 const DIST = [{ rent: 180000, rich: 1.1, young: 1.1 }, { rent: 105000, rich: 0.8, young: 1 }, { rent: 115000, rich: 0.8, young: 1.6 }, { rent: 260000, rich: 2.2, young: 0.8 }, { rent: 120000, rich: 0.9, young: 0.6 }];
-const OTHER_PAY = { 11: 4000000, 12: 3000000, 13: 3500000, 14: 1300000 };
+export const OTHER_PAY = { 11: 4000000, 12: 3000000, 13: 3500000, 14: 1300000 };
 // the skills each company hires for
 export const FIT = { tenesice: [S.manage, S.sales], magita: [S.tech, S.drive], carowner: [S.sales, S.service], jinx: [S.service, S.sales], daizin: [S.service, S.speech],
   citywork: [S.sales, S.speech], speedeed: [S.tech, S.create], dtrade: [S.tech, S.manage], riru: [S.create, S.tech], ice: [S.create, S.tech],
