@@ -418,7 +418,7 @@ export function budgetOf(W, i, age, r) {
   const b = Math.max(0, inc * keep + wealth * draw) * (0.85 + 0.3 * mood);
   P.budget[i] = Math.round(b);
   const w = weightsOf(P, i, age);
-  P.fund[i * 4] = Math.round(b * c.casino * w.casino);
+  P.fund[i * 4] = Math.round(b * c.casino * w.casino * NPC.life.casinoSpend);
   P.fund[i * 4 + 1] = Math.round(b * c.games * w.games);
   P.fund[i * 4 + 2] = Math.round(b * c.leisureShare * w.leisure);
   P.fund[i * 4 + 3] = Math.round(wealth * c.invest * w.invest);

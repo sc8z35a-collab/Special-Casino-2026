@@ -257,12 +257,11 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   const delisted = (id) => { const w = get(); return !!(w && w.co[id] && w.co[id].dead); };
   // a listed company's shares traded by a player at second `sec` (new shares or its own bought back), and the
   // fee, Dtrade's
-  // (with the country there, the people's waiting orders on the other side take it first: what they leave is the
-  // company's — new shares, or its own bought back)
+  // (all of it the company's: a buy is new shares, the money into its funds; a sale its own bought back, the money
+  // out of its funds — never the people's waiting orders)
   function traded(id, side, shares, price, fee, sec) {
     if (!booted() || !listed.includes(id) || delisted(id)) return;
-    const people = npc ? npc.cross(id, side, shares, price) : 0;
-    if (shares - people > 0) change((w) => model.trade(w, id, side, shares - people, price, sec), [id]);
+    change((w) => model.trade(w, id, side, shares, price, sec), [id]);
     flow('dtrade', 'trade', fee);
   }
   // the day the companies begin to live on the country's money (the next they close)

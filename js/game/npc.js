@@ -186,7 +186,9 @@
   var RETIRE = { at: 60, rehire: 65, severance: 2.2 }; // a year's pay for every... (severance: months of pay a year worked)
   // (`investDay`: what a person may buy of shares in a day, all together; `tradesDay`: the orders a person may make in a
   // day, buys and sales together — the players': js/game/stocks.js tradesPerDay)
-  var LIFE = { adult: 18, mean: 80, gompertz: 0.085, phone: 100000, casinoMonthly: 1000000, investDay: 50000000, tradesDay: 15 };
+  // (`casinoPull`: how much more a person wants to go and spin than at the start; `casinoSpend`: how much more of their
+  // month they set aside for it)
+  var LIFE = { adult: 18, mean: 80, gompertz: 0.085, phone: 100000, casinoMonthly: 1000000, investDay: 50000000, tradesDay: 15, casinoPull: 1.6, casinoSpend: 1.5 };
   // the money troubles: a loan from Tenesice at a high rate first (its クイックローン), then a friend's or family's
   // home (居候), then the street; the 生活保護 picks those it reaches
   var TROUBLE = { quickRate: 0.178, quickMax: 30000000, quickBase: 3000000, stayDays: 120, homelessFloor: -50000000 };

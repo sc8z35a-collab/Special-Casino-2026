@@ -206,12 +206,12 @@ test('投資: market orders trade at this second\'s price, with the 1.8% fee (Dt
   assert.equal((await m.call('GET', '/api/stocks', null)).status, 401);
 });
 
-test('投資: $800,000,000 bought a trading day across every company (the filled buys with their fee and the money buy orders hold), 200 trades a day, 10 orders waiting', async (t) => {
+test('投資: $2,000,000,000 bought a trading day across every company (the filled buys with their fee and the money buy orders hold), 200 trades a day, 10 orders waiting', async (t) => {
   const m = await market(t);
   const p = await investor(m, 'Capped', 2000000000);
   let r = await m.call('GET', '/api/stocks', p.token);
   const riru = r.market.find((q) => q.id === 'riru').price;
-  assert.equal(S.dayCap, 800000000);
+  assert.equal(S.dayCap, 2000000000);
   r = await m.order(p, { company: 'ice', side: 'buy', shares: 100 });
   assert.equal(r.status, 200);
   const first = r.order.amount, firstValue = r.order.fill * 100;
@@ -226,20 +226,22 @@ test('投資: $800,000,000 bought a trading day across every company (the filled
   // that brings the day's trades to $400,000,000 pays 10%)
   assert.equal(r.mine.traded, firstValue);
   const traded = r.mine.traded;
-  const room = S.dayCap - r.mine.bought, buys = (n) => n * slipped('riru', { side: 'buy', type: 'market', shares: n }, riru), need = (n) => buys(n) + feeAfter(buys(n), traded);
-  let most = Math.floor(room / riru);
+  // (at $2B a day, in Tenesice: RIRU's 100,000 shares an order would not come to it)
+  const tns = (await m.call('GET', '/api/stocks', p.token)).market.find((q) => q.id === 'tenesice').price;
+  const room = S.dayCap - r.mine.bought, buys = (n) => n * slipped('tenesice', { side: 'buy', type: 'market', shares: n }, tns), need = (n) => buys(n) + feeAfter(buys(n), traded);
+  let most = Math.floor(room / tns);
   while (need(most) > room) most--;
-  const over = await m.order(p, { company: 'riru', side: 'buy', shares: most + 1 });
+  const over = await m.order(p, { company: 'tenesice', side: 'buy', shares: most + 1 });
   assert.equal(over.error.code, 'cap');
   assert.equal(over.error.room, room);
-  r = await m.order(p, { company: 'riru', side: 'buy', shares: most });
+  r = await m.order(p, { company: 'tenesice', side: 'buy', shares: most });
   assert.equal(r.status, 200, JSON.stringify(r));
   assert.ok(r.order.amount <= room);
   assert.equal(r.order.fee, Math.ceil(r.order.fill * most * 0.1));
   assert.ok(r.mine.traded >= S.activeAt);
   // selling does not make room: the day's buys are counted, not what is held
   await m.order(p, { company: 'ice', side: 'sell', shares: 10 });
-  assert.equal((await m.order(p, { company: 'riru', side: 'buy', shares: Math.floor((S.dayCap - r.mine.bought) / riru) + 1 })).error.code, 'cap');
+  assert.equal((await m.order(p, { company: 'riru', side: 'buy', shares: Math.floor((S.dayCap - r.mine.bought) / riru) + 1 })).error.code, (S.dayCap - r.mine.bought) / riru + 1 > S.maxShares ? 'bad_shares' : 'cap');
   // the prices of limit and stop orders: the right side of the price now, within ±30%
   const q = (await m.call('GET', '/api/stocks', p.token)).market.find((x) => x.id === 'ice').price;
   for (const [o, code] of [[{ side: 'buy', type: 'limit', price: q }, 'price_side'], [{ side: 'buy', type: 'limit', price: Math.floor(q * 0.69) }, 'price_range'],
@@ -280,19 +282,19 @@ test('投資 MAX: a buy sent as one that fits is taken down to the most the mone
   // (more money than the day's room: the room decides)
   const p = await investor(m, 'MaxRoom', 5000000000);
   let r = await m.call('GET', '/api/stocks', p.token);
-  const riru = r.market.find((q) => q.id === 'riru').price;
-  const depth = CORP.company('riru').depth, room = S.dayCap - r.mine.bought;
+  const riru = r.market.find((q) => q.id === 'tenesice').price;  // (Tenesice: $2B a day of it fits one order)
+  const depth = CORP.company('tenesice').depth, room = S.dayCap - r.mine.bought;
   // (the day's first trade, but over $400,000,000: at an active player's 10%)
   const want = S.maxBuy(depth, 'market', 0, riru, room, S.maxShares, 0);
   assert.ok(want > 1000 && want < S.maxShares);
-  assert.equal((await m.order(p, { company: 'riru', side: 'buy', shares: want + 500 })).error.code, 'cap');
+  assert.equal((await m.order(p, { company: 'tenesice', side: 'buy', shares: want + 500 })).error.code, 'cap');
   const key = 'k' + 'm'.repeat(20);
-  r = await m.call('POST', '/api/stocks/order', p.token, { company: 'riru', side: 'buy', type: 'market', shares: want + 500, fit: true, key });
+  r = await m.call('POST', '/api/stocks/order', p.token, { company: 'tenesice', side: 'buy', type: 'market', shares: want + 500, fit: true, key });
   assert.equal(r.status, 200, JSON.stringify(r));
   assert.ok(r.order.shares <= want + 500 && r.order.shares >= want - 2, `${r.order.shares} of ${want}`);
   assert.ok(r.order.amount <= room + riru, `${r.order.amount} ${room}`);
   // (its answer lost: the same key again is the same order, not a second one)
-  const again = await m.call('POST', '/api/stocks/order', p.token, { company: 'riru', side: 'buy', type: 'market', shares: want + 500, fit: true, key });
+  const again = await m.call('POST', '/api/stocks/order', p.token, { company: 'tenesice', side: 'buy', type: 'market', shares: want + 500, fit: true, key });
   assert.equal(again.order.id, r.order.id);
   // (less money than the room: the money decides)
   const q = await investor(m, 'MaxCash', 30000000);
@@ -310,10 +312,10 @@ function firstHit(m, id, from, to, hit) {
   return 0;
 }
 
-test('投資: $800,000,000 sold a trading day too (the filled sales at their price, the sell orders waiting at theirs); from $400,000,000 traded in the day the fee is 10%', async (t) => {
+test('投資: $2,000,000,000 sold a trading day too (the filled sales at their price, the sell orders waiting at theirs); from $400,000,000 traded in the day the fee is 10%', async (t) => {
   const m = await market(t);
   const p = await investor(m, 'Seller', 1000000000);
-  assert.equal(S.sellCap, 800000000);
+  assert.equal(S.sellCap, 2000000000);
   assert.equal(S.activeAt, 400000000);
   // (shares worth more than the day's selling cap, held from before)
   m.db.prepare('INSERT INTO stock_holdings (user_id, company, shares, cost, realized, gains, dividends, frac, acc_day, acc_at, acc) VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0)')
@@ -359,6 +361,21 @@ test('投資: $800,000,000 sold a trading day too (the filled sales at their pri
   assert.equal(r.status, 200, JSON.stringify(r));
   assert.equal(r.order.fee, fee(r.order.fill * 100));
   assert.equal(r.mine.sold, r.order.fill * 100);
+});
+
+test('投資: what a player buys goes into the company\'s funds, what a player sells comes out of them, the whole of it', async (t) => {
+  const m = await market(t);
+  const p = await investor(m, 'Funder', 500000000);
+  await m.call('GET', '/api/stocks', p.token);
+  const cash = () => m.s.app.api.corp.world().co.magita.bal.cash;
+  let before = cash();
+  let r = await m.order(p, { company: 'magita', side: 'buy', shares: 1000 });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.equal(cash() - before, r.order.fill * 1000);
+  before = cash();
+  r = await m.order(p, { company: 'magita', side: 'sell', shares: 400 });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.equal(before - cash(), r.order.fill * 400);
 });
 
 test('投資: limit and stop orders wait and trade in the first second that reaches them, at its price, even while the server sleeps', async (t) => {
