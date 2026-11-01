@@ -59,8 +59,8 @@ const { chromium } = require('playwright');
       await shot(page, 'login');
     });
     await signIn(page, 'taku');
-    await check('bottom bar has all 19 authorized apps and the four desktop tools', async () => {
-      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 19);
+    await check('bottom bar has all 20 authorized apps and the four desktop tools', async () => {
+      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 20);
       assert.equal(await page.locator('.mac-desktop-app').count(), 4);
       assert.equal(await page.locator('.mac-launch-search, .mac-menu-buttons').count(), 0);
       const tray = await page.locator('.top').boundingBox(); assert.ok(tray.y > 750);
@@ -174,7 +174,7 @@ const { chromium } = require('playwright');
       assert.equal(new URL(page.frames().find(f => f.url().endsWith('/sec/')).url()).pathname, '/sec/');
     });
     await check('all app windows and original DOM IDs stay unique', async () => {
-      assert.equal(await page.locator('.mac-window.is-open').count(), 19);
+      assert.equal(await page.locator('.mac-window.is-open').count(), 20);
       const duplicates = await page.evaluate(() => { const ids = Array.from(document.querySelectorAll('[id]')).map(n => n.id); return ids.filter((id, i) => ids.indexOf(id) !== i); });
       assert.deepEqual(duplicates, []);
     });
@@ -382,13 +382,13 @@ const { chromium } = require('playwright');
     });
     await check('normal operators retain their original permissions', async () => {
       await out(page); await signIn(page, 'OperatorQA');
-      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 16);
+      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 17);
       assert.equal(await page.locator('#tab-pay').isVisible(), false); assert.equal(await page.locator('#speed').isDisabled(), true);
       await open(page, 'vault'); assert.equal(await page.locator('#view-vault').isVisible(), true);
     });
     await check('viewers see their allowed apps including security HOME', async () => {
       await out(page); await signIn(page, 'ViewerQA');
-      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 10);
+      assert.equal(await page.locator('#tabs .tab:not([hidden])').count(), 11);
       for (const id of ['players', 'archive', 'team', 'pay', 'vault', 'devunit', 'diary', 'profile']) {
         assert.equal(await page.locator('#tabs [data-view="' + id + '"]').isVisible(), false);
         assert.equal(await page.locator('#mac-window-' + id).isVisible(), false);
