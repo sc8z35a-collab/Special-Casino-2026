@@ -33,7 +33,7 @@ import { Limiter } from './ratelimit.js';
 import { revOf, partOf, heldOf, heldFrom } from './hash.js';
 import {
   RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, RELEASE_NAME, VIP, RECEIPTS, STOCKS, CORP,
-  spin as spinReels, evaluate as evaluateLine, packGrid, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
+  spin as spinReels, evaluate as evaluateLine, packGrid, shopSale, carSale, carPrice, carBuyback, carDisposal, rentPay, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
 import { createStaffPins } from './staffpin.js';
@@ -227,19 +227,20 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   // collected. Stopped, a car comes back at the end of its block (5 hours at
   // the least). Counted when someone looks (and by the housekeeping).
   const RENT = RULES.carRental, BLOCK = RENT.hours * 3600000;
+  // (each pays by the car's price: about 0.1% of it, so that any car pays itself back in about 90 days — before, a
+  // $3.6M car took 9 days and a $300M one 500)
   function customer(model) {
-    if (randomInt(1, 10000) <= RENT.vip.chance * 10000) return { pay: RENT.vip.pay, vip: true };
-    // $1M cars and less: 10k-30k; $20M and more: 40k-60k
-    const t = Math.max(0, Math.min(1, Math.log((model ? model.price : 1e6) / 1e6) / Math.log(20)));
-    const lo = RENT.min + (RENT.max - RENT.spread - RENT.min) * t;
-    return { pay: Math.round(lo / 1000) * 1000 + randomInt(0, RENT.spread / 1000) * 1000, vip: false };
+    // (a gacha-only car, not in Car Owner's list: its own price, js/game/gacha.js)
+    const p = rentPay(model && model.price ? model.price : model && model.id ? BR.GACHA.carPrice(model.id) : 1e6);
+    if (randomInt(1, 10000) <= RENT.vip.chance * 10000) return { pay: p.vip, vip: true };
+    return { pay: p.lo + randomInt(0, Math.round((p.hi - p.lo) / 1000)) * 1000, vip: false };
   }
   function settleRental(c, now = Date.now()) {
     if (!c.rent_start) return false;
     const back = c.rent_until > 0 && c.rent_until <= now;
     const blocks = Math.floor(((back ? c.rent_until : now) - c.rent_start) / BLOCK);
     if (blocks <= c.rent_blocks && !back && c.rent_earned < RENT.maxPay) return false;
-    const model = CARS.get(c.model);
+    const model = CARS.get(c.model) || { id: c.model };
     let earned = 0, last = null;
     for (let b = c.rent_blocks; b < blocks && c.rent_earned + earned < RENT.maxPay; b++) {
       let n = 0, sum = 0, vip = 0;
@@ -282,7 +283,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   function ownedCarBuyback(c) {
     const model = CARS.get(c.model);
     if (!model) return null;
-    const price = carBuyback(model), engine = SHOP.get(c.engine);
+    // (never on more than its owner paid for it: a car bought in a sale is not sold back at its full price)
+    const price = carBuyback(model, Date.now(), c.paid || 0), engine = SHOP.get(c.engine);
     return { ...price, price: price.price + (engine && engine.kind === 'engine' ? Math.floor(engine.price * 0.9) : 0) };
   }
   // a car's rental takings paid to `userId`: MAGITA Garage keeps its cut (MAGITA's money), the rest is theirs. In the

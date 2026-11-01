@@ -26,21 +26,21 @@
     { id: 'seed', name: '金の生る木の種', chance: 0.01 },
     { id: 'grown-tree', name: '金の生る木（成長済みノーマル個体）', chance: 0.005 },
     { id: 'garage', name: 'ガレージコイン', chance: 10 },
-    { id: 'reset', name: 'リセットチケット', chance: 15 },
+    { id: 'reset', name: 'リセットチケット', chance: 23.3 },
     { id: 'vip-week', name: 'VIP1週間券', chance: 14 },
-    { id: 'onvoro', name: 'MAGITA オンヴォーロ', chance: 7, car: true, carId: 'onvoro' },
-    { id: 'porsche', name: 'MAGITA クイヤスパイダーGT', chance: 2, car: true, carId: 'porsche-kuia-spyder' },
-    { id: 'random-car', name: 'ランダムな車', chance: 1.985, car: true }
+    { id: 'onvoro', name: 'MAGITA オンヴォーロ', chance: 1.7, car: true, carId: 'onvoro' },
+    { id: 'porsche', name: 'MAGITA クイヤスパイダーGT', chance: 0.5, car: true, carId: 'porsche-kuia-spyder' },
+    { id: 'random-car', name: 'ランダムな車', chance: 0.485, car: true }
   ];
   var LEGENDARY = [
     { id: 'lot', name: 'ロットコイン', chance: 10, min: 10000, max: 40000, step: 1000 },
     { id: 'royal', name: 'ロイヤルコイン', chance: 10, min: 20, max: 32, step: 1 },
     { id: 'garage', name: 'ガレージコイン', chance: 20, amount: 1 },
-    { id: 'reset', name: 'リセットチケット', chance: 15, amount: 2 },
+    { id: 'reset', name: 'リセットチケット', chance: 21.06, amount: 2 },
     { id: 'vip-week', name: 'VIP1週間券', chance: 24 },
-    { id: 'onvoro', name: 'MAGITA オンヴォーロ', chance: 5, car: true, carId: 'onvoro' },
-    { id: 'porsche', name: 'MAGITA クイヤスパイダーGT', chance: 4, car: true, carId: 'porsche-kuia-spyder' },
-    { id: 'random-car', name: 'ランダムな車', chance: 10.995, car: true },
+    { id: 'onvoro', name: 'MAGITA オンヴォーロ', chance: 3.5, car: true, carId: 'onvoro' },
+    { id: 'porsche', name: 'MAGITA クイヤスパイダーGT', chance: 2.8, car: true, carId: 'porsche-kuia-spyder' },
+    { id: 'random-car', name: 'ランダムな車', chance: 7.635, car: true },
     { id: 'seed', name: '金の生る木の種', chance: 1 },
     { id: 'grown-tree', name: '金の生る木（成長済みノーマル個体）', chance: 0.005 }
   ];
@@ -63,7 +63,7 @@
   ];
   // リリース記念セール: the secret gacha at this a pull for `hours` from when the server first ran with it
   // (server/core/gacha.js keeps that moment and tells the game when the sale ends)
-  var RELEASE_SALE = { kind: 'secret', price: 10000000, hours: 100 };
+  var RELEASE_SALE = { kind: 'secret', price: 28000000, hours: 100 };
 
   function hash(text) {
     var h = 2166136261;
@@ -126,6 +126,21 @@
     for (var i = 0; i < CARS.length; i++) if (CARS[i].id === id) return CARS[i];
     return null;
   }
+  // a car's list price (the gacha-only one: what its maker sells it at, js/game/corp.js)
+  var ONLY = { 'porsche-kuia-spyder': 24000000 };
+  function carPrice(id) {
+    var list = (BR.CONFIG && BR.CONFIG.cars) || [];
+    for (var i = 0; i < list.length; i++) if (list[i].id === id && list[i].price) return list[i].price;
+    return ONLY[id] || 20000000;
+  }
+  // ランダムな車: the cheaper the car, the likelier (by one over its price) — the dearest is a rare find, not one in twelve
+  function randomCar(rand) {
+    var total = 0, i;
+    for (i = 0; i < CARS.length; i++) total += 1 / carPrice(CARS[i].id);
+    var roll = rand() * total;
+    for (i = 0; i < CARS.length; i++) { roll -= 1 / carPrice(CARS[i].id); if (roll < 0) return CARS[i]; }
+    return CARS[CARS.length - 1];
+  }
   function drawOne(table, rand) {
     var hit = pick(table, rand), out = { type: hit.type || hit.id, name: hit.name, car: !!hit.car };
     if (out.type === 'lot') {
@@ -138,7 +153,7 @@
       out.amount = hit.amount || 1;
       if (hit.id === 'garage' || hit.id === 'reset') out.name += out.amount + '枚';
     } else if (hit.car) {
-      var c = hit.carId ? car(hit.carId) : CARS[Math.floor(rand() * CARS.length)];
+      var c = hit.carId ? car(hit.carId) : randomCar(rand);
       out.type = 'car'; out.carId = c.id; out.name = c.name;
     }
     return out;
@@ -171,7 +186,7 @@
   }
 
   BR.GACHA = {
-    cars: CARS, rare: RARE, legendary: LEGENDARY, secret: SECRET, kinds: KINDS, releaseSale: RELEASE_SALE, events: events, price: price, odds: odds, draw: draw,
+    cars: CARS, carPrice: carPrice, randomCar: randomCar, rare: RARE, legendary: LEGENDARY, secret: SECRET, kinds: KINDS, releaseSale: RELEASE_SALE, events: events, price: price, odds: odds, draw: draw,
     pct: pct, label: label, car: car, day: DAY, grownGiven: 1500000
   };
 })(globalThis.BR = globalThis.BR || {});

@@ -10,7 +10,7 @@
      A sale that would fall on a day a bigger one already has is called off
      (the yearly one comes first, then the monthly, the weekly, the daily);
    - the car buy-back (BR.sale.buyback): a car's price now (its sale price in
-     a sale) less 10-35 %, a new rate for each car every Japan day; in a
+     a sale; never more than its owner paid) less 10-35 %, a new rate for each car every Japan day; in a
      大廃棄セール (45 % of the fortnights, one day without a car sale) every
      car less only 2.5-10 %, the same for all. */
 (function (BR) {
@@ -160,6 +160,13 @@
       var pct = sale && sale.pct[car.id] || 0, all = pct + (off || 0);
       return { price: (all ? round100(car.price * (100 - all) / 100) : car.price) + (extra || 0), pct: pct, vip: off || 0, extra: extra || 0 };
     },
+    // what one renting customer pays for a car of list price `price` (BR.CONFIG.carRental): from `lo` to `hi` $,
+    // a VIP one `vip` $
+    rentPay: function (price) {
+      var R = BR.CONFIG.carRental, mid = Math.max(R.floor, (price || 1000000) * R.rate);
+      var lo = Math.max(R.floor, Math.round(mid * (1 - R.spread) / 1000) * 1000), hi = Math.max(lo, Math.round(mid * (1 + R.spread) / 1000) * 1000);
+      return { lo: lo, hi: hi, vip: Math.round(mid * R.vip.mult / 1000) * 1000 };
+    },
     // the 大廃棄セール on at `ms` (null: none)
     disposal: function (ms) {
       var d = disposal(ms);
@@ -167,11 +174,14 @@
     },
     // What the buy-back pays for `car` at `ms`: its price now (`sale`: the car
     // sale on now) less `pct` % (the day's rate, or the 大廃棄セール's).
-    buyback: function (car, ms, sale) {
+    // (`paid`: what its owner paid for it, when they bought it: never more than that is the base — else a car
+    // bought in a sale sold back on a day without one, or on a 大廃棄セール, made money)
+    buyback: function (car, ms, sale, paid) {
       if (!carPriced(car)) return null;
       var b = BR.CONFIG.carBuyback, d = BR.sale.disposal(ms);
       var pct = d ? d.pct : b.min + pick('car-buyback/' + dayKey(ms) + '/' + car.id, b.max - b.min + 1);
       var now = BR.sale.carPrice(car, sale).price;
+      if (paid > 0) now = Math.min(now, paid);
       return { price: round100(now * (100 - pct) / 100), pct: pct, disposal: !!d };
     }
   };

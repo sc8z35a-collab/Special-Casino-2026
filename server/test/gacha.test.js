@@ -8,8 +8,8 @@ import crypto from 'node:crypto';
 import { answerOnSocket } from '../core/socketapi.js';
 
 const EXPECTED = {
-  rare: [['lot', 30], ['royal', 20], ['seed', 0.01], ['grown-tree', 0.005], ['garage', 10], ['reset', 15], ['vip-week', 14], ['onvoro', 7], ['porsche', 2], ['random-car', 1.985]],
-  legendary: [['lot', 10], ['royal', 10], ['garage', 20], ['reset', 15], ['vip-week', 24], ['onvoro', 5], ['porsche', 4], ['random-car', 10.995], ['seed', 1], ['grown-tree', 0.005]],
+  rare: [['lot', 30], ['royal', 20], ['seed', 0.01], ['grown-tree', 0.005], ['garage', 10], ['reset', 23.3], ['vip-week', 14], ['onvoro', 1.7], ['porsche', 0.5], ['random-car', 0.485]],
+  legendary: [['lot', 10], ['royal', 10], ['garage', 20], ['reset', 21.06], ['vip-week', 24], ['onvoro', 3.5], ['porsche', 2.8], ['random-car', 7.635], ['seed', 1], ['grown-tree', 0.005]],
   secret: [['lot', 10], ['royal-high', 19], ['royal', 8], ['garage', 8], ['reset', 10], ['vip-week', 24], ['random-car', 20], ['seed', 1]]
 };
 
@@ -22,7 +22,7 @@ test('all three gacha tables match requested odds, total 100%, draw 3/9/30 slots
       const table = GACHA.odds(kind, boost);
       assert.ok(Math.abs(table.reduce((n, r) => n + r.chance, 0) - 100) < 1e-10);
       const car = table.filter((r) => r.car).reduce((n, r) => n + r.chance, 0);
-      const baseCar = { rare: 10.985, legendary: 19.995, secret: 20 }[kind];
+      const baseCar = { rare: 2.685, legendary: 13.935, secret: 20 }[kind];
       assert.ok(Math.abs(car - baseCar * (boost ? 1.5 : 1)) < 1e-10);
       for (const count of [1, 3, 10]) assert.equal(GACHA.draw(kind, count, boost, false, () => 0).flatMap((r) => r.rewards).length, count * 3);
     }
@@ -35,10 +35,10 @@ const BASE = {
   legendary: { single: 15000000, three: 40500000, ten: 112500000 },
   secret: { single: 30000000, three: 81000000, ten: 225000000 }
 };
-// what a server asks during its first 100 hours: the リリース記念セール, the secret tier at $10M a pull
+// what a server asks during its first 100 hours: the リリース記念セール, the secret tier at $28M a pull
 const PRICES = {
   ...BASE,
-  secret: { single: 10000000, three: 27000000, ten: 75000000 }
+  secret: { single: 28000000, three: 75600000, ten: 210000000 }
 };
 
 test('tier prices use a single 10% discount for 3 pulls and 25% for 10, without stacking the old sale discounts', () => {
@@ -53,17 +53,25 @@ test('tier prices use a single 10% discount for 3 pulls and 25% for 10, without 
   assert.throws(() => GACHA.price('normal', 1), RangeError);
 });
 
-test('the random car category in every tier draws equally from all 12 models', () => {
+test('the random car category in every tier draws all 12 models, the cheaper the likelier (by one over the price)', () => {
+  const w = GACHA.cars.map((c) => 1 / GACHA.carPrice(c.id)), total = w.reduce((a, b) => a + b, 0);
   for (const kind of GACHA.kinds.map((k) => k.id)) {
     const table = GACHA.odds(kind, false);
     const entry = table.findIndex((r) => r.id === 'random-car');
     const chance = (table.slice(0, entry).reduce((n, r) => n + r.chance, 0) + table[entry].chance / 2) / 100;
+    let at = 0;
     for (let i = 0; i < 12; i++) {
-      let at = 0;
-      const pulls = GACHA.draw(kind, 1, false, false, () => at++ % 2 === 0 ? chance : (i + 0.5) / 12);
-      assert.ok(pulls[0].rewards.every((r) => r.carId === GACHA.cars[i].id));
+      const mid = (w.slice(0, i).reduce((a, b) => a + b, 0) + w[i] / 2) / total;
+      let k = 0;
+      const pulls = GACHA.draw(kind, 1, false, false, () => k++ % 2 === 0 ? chance : mid);
+      assert.ok(pulls[0].rewards.every((r) => r.carId === GACHA.cars[i].id), `${kind} ${i}`);
+      at++;
     }
+    assert.equal(at, 12);
   }
+  // (the onvoro, the cheapest, comes about 70 times as often as the MAGITA ONE（ホワイト）)
+  const one = GACHA.cars.findIndex((c) => c.id === 'mercedes-amg-one-white'), onvoro = GACHA.cars.findIndex((c) => c.id === 'onvoro');
+  assert.ok(w[onvoro] / w[one] > 70);
 });
 
 test('coin ranges reach their exact endpoints, including both distinct secret royal categories', () => {
@@ -112,7 +120,7 @@ test('gacha API authenticates, removes normal, validates count/price and settles
   } finally { await s.stop(); }
 });
 
-test('the リリース記念セール: the secret tier at $10M a pull for the first 100 hours of the server, then its price again', async () => {
+test('the リリース記念セール: the secret tier at $28M a pull for the first 100 hours of the server, then its price again', async () => {
   const s = await startServer();
   try {
     const p = await s.register('セール確認'); s.setUser(p.me.id, { dollars: 1000000000, garage_extra: 40 });
@@ -123,7 +131,7 @@ test('the リリース記念セール: the secret tier at $10M a pull for the fi
     // (a quote of the old price is refused while the sale is on)
     assert.equal((await s.call('POST', '/api/gacha/spin', { token: p.token, body: { kind: 'secret', count: 1, price: BASE.secret.single } })).error.code, 'price_changed');
     const sale = await s.call('POST', '/api/gacha/spin', { token: p.token, body: { kind: 'secret', count: 1, price: PRICES.secret.single } });
-    assert.equal(sale.paid, 10000000);
+    assert.equal(sale.paid, 28000000);
     // over: a service started after the 100 hours (the start is kept in meta, never moved)
     const q = (sql) => s.app.db.prepare(sql);
     const getUser = (id) => q('SELECT * FROM users WHERE id = ?').get(id);
@@ -193,7 +201,7 @@ test('all tier rewards settle their full quantities; tickets are consumed once a
     assert.equal(getUser(p.me.id).vip_until, now + 63 * 86400000);
     const before = getUser(p.me.id).dollars;
     s.setUser(p.me.id, { garage_extra: 0 });
-    roll = 0.94; // Onvoro's rare category, all three slots.
+    roll = 0.98; // Onvoro's rare category (97.315-99.015), all three slots.
     const full = await g.routes['POST /api/gacha/spin']({ json: async () => ({ kind: 'rare', count: 1 }) }, p.me);
     assert.equal(getUser(p.me.id).dollars, before - PRICES.rare.single);
     assert.ok(full.pulls[0].rewards.every(r => r.type === 'car' && r.pending));

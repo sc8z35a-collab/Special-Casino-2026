@@ -208,11 +208,12 @@
     // fortnights, a day long): every car less the same `min`-`max` % (by `step`)
     carBuyback: { min: 10, max: 35, disposal: { name: '大廃棄セール', chance: 45, min: 2.5, max: 10, step: 0.5 } },
     // renting cars out (any number of one's cars): every `hours` hours customers
-    // come (each of these with its chance), paying `min`-`max` $ each (the
-    // dearer the car, the more), and `vip.chance` of them `vip.pay` $; a car
+    // come (each of these with its chance), paying `rate` of the car's price each, give or take `spread` (at least
+    // `floor` $; a car pays itself back in about 90 days, whatever it costs), and `vip.chance` of them `vip.mult`
+    // times that; a car
     // out is away for `hours` hours at least (stopping it waits for that); MAGITA Garage takes its cut of the
     // takings when they are collected (js/game/corp.js MAGITA.garage.rentCut)
-    carRental: { hours: 5, maxPay: 4500000, customers: [1, 0.9, 0.4, 0.3, 0.1], min: 10000, max: 60000, spread: 20000, vip: { chance: 0.03, pay: 150000 } },
+    carRental: { hours: 5, maxPay: 4500000, customers: [1, 0.9, 0.4, 0.3, 0.1], rate: 0.001, spread: 0.2, floor: 1000, vip: { chance: 0.03, mult: 3 } },
     // Shop (price in $, 10-40 % off for 5 hours a day: js/game/sale.js);
     // anything bought here can be given to friends, up to `max` per player
     shop: [
@@ -313,7 +314,8 @@
     // for every one after it), at most `max`.
     tree: {
       amounts: [5000, 10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000],
-      rate: [[0, 5], [150000, 7], [200000, 8], [500000, 9], [1500000, 10], [3000000, 11], [6000000, 12], [10000000, 13], [20000000, 14]],
+      // ($ a second by what was given: a tree from the market pays itself back in about 30-60 days, the fertilizer in about 30)
+      rate: [[0, 2.5], [150000, 3.5], [200000, 4], [500000, 4.5], [1500000, 5], [3000000, 5.5], [6000000, 6], [10000000, 6.5], [20000000, 7]],
       cycles: [
         { id: '30m', name: '30分', ms: 1800000, mult: 1 },
         { id: '2h', name: '2時間', ms: 7200000, mult: 1.1 },

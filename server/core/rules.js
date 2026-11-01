@@ -53,7 +53,9 @@ export function carPrice(car, sale, off = 0, extra = 0) { return BR.sale.carPric
 export function carPriced(car) { return BR.sale.carPriced(car); }
 export function carSold(car) { return BR.sale.carSold(car); }
 // what the buy-back pays for a car at `now` (and the 大廃棄セール on then)
-export function carBuyback(car, now = Date.now()) { return BR.sale.buyback(car, now, BR.sale.cars(now, RULES.cars)); }
+export function carBuyback(car, now = Date.now(), paid = 0) { return BR.sale.buyback(car, now, BR.sale.cars(now, RULES.cars), paid); }
+// what one renting customer pays for a car of list price `price` (js/game/sale.js rentPay)
+export function rentPay(price) { return BR.sale.rentPay(price); }
 export function carDisposal(now = Date.now()) { return BR.sale.disposal(now); }
 export function utcDay(date) {
   const d = date || new Date();

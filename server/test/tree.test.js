@@ -20,10 +20,10 @@ const setTree = (id, f) => {
 };
 
 test('金の生る木: the $ a second climbs smoothly through the given points, the look has 9 stages', () => {
-  assert.deepEqual([0, 150000, 200000, 500000, 1500000, 3000000, 6000000, 10000000, 20000000, 99000000].map((g) => TREE.rateOf(g)), [5, 7, 8, 9, 10, 11, 12, 13, 14, 14]);
+  assert.deepEqual([0, 150000, 200000, 500000, 1500000, 3000000, 6000000, 10000000, 20000000, 99000000].map((g) => TREE.rateOf(g)), [2.5, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7]);
   // no jumps: half way between two points, half way between their rates
-  assert.equal(TREE.rateOf(8000000), 12.5);
-  assert.equal(TREE.rateOf(75000), 6);
+  assert.equal(TREE.rateOf(8000000), 6.25);
+  assert.equal(TREE.rateOf(75000), 3);
   for (let g = 0; g < 12000000; g += 5000) assert.ok(TREE.rateOf(g + 5000) >= TREE.rateOf(g));
   assert.deepEqual([0, 149999, 150000, 9999999, 10000000, 20000000].map((g) => TREE.stageOf(g)), [1, 1, 2, 7, 8, 9]);
   assert.equal(TREE.stages, 9);
@@ -74,22 +74,22 @@ test('金の生る木: a SUPER tree pays x1.1 for good', async () => {
   const id = (await call('GET', '/api/tree', { token: p.token })).trees[0].id;
   setTree(id, { super: 1, given: 150000, cycle: '1d', cycle_at: Date.now() - 86400000 - 1000, cycle_end: Date.now() - 1000, grown: 0, grown_at: Date.now() - 86400000 - 1000 });
   const r = await call('POST', '/api/tree/harvest', { token: p.token, body: { tree: id } });
-  const want = Math.floor(7 * 86400 * 1.2 * 1.1);
+  const want = Math.floor(3.5 * 86400 * 1.2 * 1.1);
   assert.ok(Math.abs(r.paid - want) <= 1, `${r.paid} vs ${want}`);
 });
 
-test('金の生る木: overdue production stays stopped across reconnects and gifts; harvesting restarts it at $14/s', async () => {
+test('金の生る木: overdue production stays stopped across reconnects and gifts; harvesting restarts it at $7/s', async () => {
   const p = await register('LateHarvest');
   setUser(p.me.id, { dollars: 50000000 });
   const id = (await call('GET', '/api/tree', { token: p.token })).trees[0].id;
   for (const c of T.cycles) {
     const end = Date.now() - 7 * 86400000;
     setTree(id, { given: 20000000, cycle: c.id, cycle_at: end - c.ms, cycle_end: end, grown: 0, grown_at: end - c.ms });
-    const want = Math.floor(14 * c.ms / 1000 * c.mult);
+    const want = Math.floor(7 * c.ms / 1000 * c.mult);
     for (let reconnect = 0; reconnect < 2; reconnect++) {
       const t = (await call('GET', '/api/tree', { token: p.token })).trees[0];
       assert.equal(t.stage, 9);
-      assert.equal(t.rate, 14);
+      assert.equal(t.rate, 7);
       assert.equal(t.activeRate, 0);
       assert.equal(t.ready, true);
       assert.equal(t.value, want);
@@ -101,7 +101,7 @@ test('金の生る木: overdue production stays stopped across reconnects and gi
     const harvest = await call('POST', '/api/tree/harvest', { token: p.token, body: { tree: id, next: c.id } });
     assert.equal(harvest.paid, want);
     assert.equal(harvest.tree.grown, 0);
-    assert.equal(harvest.tree.activeRate, 14);
+    assert.equal(harvest.tree.activeRate, 7);
     assert.equal(harvest.tree.ready, false);
     assert.ok(harvest.tree.cycle.end > Date.now());
   }
