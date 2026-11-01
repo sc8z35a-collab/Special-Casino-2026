@@ -154,6 +154,8 @@
       srv.boughtToday = 0; srv.nextReset = 0; srv.offset = 0; srv.rules = null; S.rev = undefined;
     },
     me: function () { return srv.me; },
+    // the exchange fee this player pays now (online: the server's, dearer at the wealthy line: js/game/config.js wealthy)
+    exchangeFee: function () { var w = online && srv.me && srv.me.wealth; return w && w.exchangeFee !== undefined ? w.exchangeFee : C.casino.exchangeFee; },
     rules: function () { return srv.rules; },
     dailyReady: function () {
       if (online) return srv.dailyReady || rolledOver();

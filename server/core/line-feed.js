@@ -2,7 +2,7 @@
 // performs a game action. Each recipient/request has its own durable retry UUID.
 import crypto from 'node:crypto';
 import { ApiError } from './errors.js';
-import { RELEASE } from './rules.js';
+import { RELEASE_NAME } from './rules.js';
 import catalog from './line-wallpapers.json' with { type: 'json' };
 
 const DAY = 86400000, JST = 9 * 3600000, RETRY_LIFE = 23 * 3600000, SEND_CONCURRENCY = 4;
@@ -87,7 +87,7 @@ export function createLineFeed({ q, tx, kv, config, getUser, meDto, balanceChang
       const previous = kv.get('line_feed_version');
       if (version && previous !== version) {
         if (previous) job('release:' + version, 'release', version,
-          [{ type: 'text', text: `DEV${RELEASE}のバージョン${version}にアップデートされました。` }], at + DAY, at);
+          [{ type: 'text', text: `${RELEASE_NAME}のバージョン${version}にアップデートされました。` }], at + DAY, at);
         kv.set('line_feed_version', version);
       }
       const missing = q(`SELECT j.id AS job, t.id AS target FROM line_feed_jobs j CROSS JOIN line_feed_targets t

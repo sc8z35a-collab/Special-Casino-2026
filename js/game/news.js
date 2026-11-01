@@ -10,7 +10,35 @@
 (function (BR) {
   'use strict';
 
+  // The phases (シーズン): from release `from` on, the updates are counted afresh within the phase — the first of S2
+  // is「S2 DEV1」, the next「S2 DEV2」… (before S2 they were DEV1〜DEV13). The release number itself (`id`) keeps
+  // counting on underneath, for the update check and the thank-you money; only its name restarts.
+  var PHASES = [{ name: 'S2', from: 14 }];
+  function phaseOf(id) { for (var i = PHASES.length - 1; i >= 0; i--) if (id >= PHASES[i].from) return PHASES[i]; return null; }
+  // a release's name as the players know it ("S2 DEV1", "DEV13"), and its phase and number apart (the badge)
+  BR.releaseName = function (id) { var p = phaseOf(id); return p ? p.name + ' DEV' + (id - p.from + 1) : 'DEV' + id; };
+  BR.releasePart = function (id) { var p = phaseOf(id); return p ? { phase: p.name, n: id - p.from + 1 } : { phase: '', n: id }; };
+
   BR.NEWS = [
+    {
+      id: 14,
+      date: '2026-11-01',
+      time: '15:30',
+      title: 'S2 DEV1：新フェーズ開幕！MY WAY登場・投資の拡大・新しい手数料',
+      items: [
+        'バージョンS2（シーズン2）が始まりました。新しいフェーズに入ったため、DEVの番号はS2 DEV1から数え直します',
+        '世界最大級のキャラクターIP企業「MY WAY」が登場し、投資で売買できるようになりました（MYW）。高配当の人気銘柄で、ジンクス・MAGITA・カーオーナー・Ice Smoker・RIRU STUDIO・テネシス・Dtradeとコラボしています',
+        'MY WAYとコラボしている会社は、コラボの発表と同時に株価が急騰しやすく、コラボが続く間は株価が高めに評価されます。投資画面の「企業」タブにコラボ中かどうかを表示します',
+        'MY WAYはキャラクターの流行やブランドの信用が落ちると、コラボ先に契約を打ち切られ、ゲーム史上初めて倒産することがあります。倒産すると上場廃止になり、株は売買できず価値がなくなります（待っている注文は取り消され、お金は戻ります）',
+        '投資の売買は1日200回まで（これまでは30回）。買いは1日$800,000,000まで、売りも1日$800,000,000までです。MAXでその日に買える・売れる最大の株数を選べます',
+        '1日の売買額（買いと売りの合計）が$400,000,000に達した注文から、その日の手数料は10%になります（それより前の注文は1.8%のまま）。投資画面の下に、その日の買い・売り・売買額を表示します',
+        '車の貸し出しはMAGITA Garageの運営になりました。1回貸し出すたびに手数料$70,000、売上を受け取るときの手数料は15%です',
+        '総資産（$・トークン・株・車など）が$600,000,000以上の方は、スピン手数料18%・クエスト手数料35%・スピントークンの交換手数料$100,000になります',
+        'クエスト報酬は国の国庫から支払われ、クエスト事業を運営するYOSIDAが手数料（通常10%）を受け取ります',
+        'VIP画面の「DAIZIN ロイヤルコイン買い取り」で、ロイヤルコインを1枚$50,000で買い取ってもらえるようになりました',
+        'アップデートしてくれた方全員に感謝料 $250,000 をプレゼント'
+      ]
+    },
     {
       "id": 13,
       "date": "2026-10-23",

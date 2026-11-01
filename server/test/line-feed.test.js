@@ -178,7 +178,7 @@ test('LINE update: one exact sentence per deployment/version and recipient, incl
     f.restart({ version: 'version-2' }); await f.feed.tick();
     const update = f.sent.filter((r) => r.body.messages[0].text?.includes('アップデート'));
     assert.equal(update.length, 1);
-    assert.deepEqual(update[0].body.messages, [{ type: 'text', text: 'DEV13のバージョンversion-2にアップデートされました。' }]);
+    assert.deepEqual(update[0].body.messages, [{ type: 'text', text: 'S2 DEV1のバージョンversion-2にアップデートされました。' }]);
     f.restart({ version: 'version-2' }); await f.feed.tick();
     assert.equal(f.sent.filter((r) => r.body.messages[0].text?.includes('アップデート')).length, 1);
   } finally { await f.stop(); }

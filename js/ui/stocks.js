@@ -14,7 +14,8 @@
   var UP = '#28c76f', DOWN = '#f0506e', GRID = 'rgba(160,178,205,.16)', TEXT = '#9fb0c8', MA = ['#f5b941', '#9b8cff'];
   var TYPE = { market: '成行', limit: '指値', stop: '逆指値' };
   var STATUS = { filled: '約定', canceled: '取消', expired: '失効', failed: '不成立' };
-  var NEWS = { results: '決算', guidance: '予想', revise: '修正', dividend: '配当', release: '発売', hit: 'ヒット', flop: '不振', start: '開発', delay: '延期', cancel: '中止', update: '更新', week: '販売', hire: '採用', support: '援助' };
+  var NEWS = { results: '決算', guidance: '予想', revise: '修正', dividend: '配当', release: '発売', hit: 'ヒット', flop: '不振', start: '開発', delay: '延期', cancel: '中止', update: '更新', week: '販売', hire: '採用', support: '援助',
+    ip: 'ブランド', char: '新キャラ', license: 'IP契約', bankrupt: '倒産' };
   var LABEL = { '1h': '1H', '1d': '1D', '1w': '1W', '1m': '1M', '1y': '1Y', all: 'ALL' };
   var root, canvas, ui = {}, st = null, generation = 0, renewTimer = 0, refreshTimer = 0, raf = 0;
 
@@ -467,15 +468,20 @@
   }
   // bought today (from 9:00 Japan time): the filled buys with their fee and the money buy orders hold (the server's)
   function boughtToday() { return st.mine ? st.mine.bought || 0 : 0; }
+  // sold today: the filled sales at their price and the sell orders waiting at theirs; traded today: every filled
+  // order, buys and sales (from $400,000,000 of it the fee is 10%: js/game/stocks.js activeAt)
+  function soldToday() { return st.mine ? st.mine.sold || 0 : 0; }
+  function tradedToday() { return st.mine ? st.mine.traded || 0 : 0; }
+  function sellRoom() { return Math.max(0, ((st.mine && st.mine.sellCap) || S.sellCap) - soldToday()); }
   // MAX: a sale, every share free to sell; a buy, as many as the money in hand and the day's room both allow — at the
   // price the order will really pay (a big market order slips: js/game/stocks.js), the fee included
   function depth() { var c = BR.CORP && BR.CORP.company(st.company); return c && c.depth || 1e8; }
   function maxShares() {
     var m = st.mine, q = quote();
     if (!m || !q || !unitPrice()) return 0;
-    if (st.side === 'sell') return holding().free;
+    if (st.side === 'sell') return S.maxSell(depth(), st.type, st.price, q.price, sellRoom(), holding().free);
     var room = Math.max(0, (m.dayCap || S.dayCap) - boughtToday());
-    return S.maxBuy(depth(), st.type, st.price, q.price, Math.min(dollars(), room), S.maxShares);
+    return S.maxBuy(depth(), st.type, st.price, q.price, Math.min(dollars(), room), S.maxShares, tradedToday());
   }
   function digits(input) { var n = Number(String(input.value).replace(/[^\d]/g, '')); return Number.isSafeInteger(n) ? n : 0; }
   function buildOrder() {
@@ -538,17 +544,20 @@
     // (a market buy at the price it will slip to; a stop buy at its stop)
     if (st.side === 'buy' && st.type === 'market' && q) unit = S.slipped(depth(), { side: 'buy', type: 'market', shares: shares }, q.price);
     var value = st.type === 'stop' && st.side === 'buy' ? st.price * shares : unit * shares;
-    var ok = shares > 0 && (shares <= max || (st.fit && max > 0)) && priceOk() && !st.busy && !!st.mine;
+    // (a share struck off — its company failed — is no longer traded)
+    var gone = !!(st.corp && st.corp[st.company] && st.corp[st.company].delisted);
+    var ok = shares > 0 && (shares <= max || (st.fit && max > 0)) && priceOk() && !st.busy && !!st.mine && !gone;
     ui.priceRow.input.classList.toggle('sk-bad', st.type !== 'market' && !priceOk());
     ui.sharesRow.input.classList.toggle('sk-bad', shares > max);
     ui.total.replaceChildren();
-    var fee = S.fee(value), total = st.side === 'buy' ? value + fee : value - fee;
+    var fee = S.fee(value, tradedToday()), total = st.side === 'buy' ? value + fee : value - fee;
     ui.total.appendChild(row('合計', money(total)));
-    ui.total.appendChild(row('手数料', money(fee)));
-    ui.total.appendChild(row('最大', fmt(max) + '株' + (st.side === 'buy' && st.mine ? '（本日あと' + money(Math.max(0, (st.mine.dayCap || S.dayCap) - boughtToday())) + '）' : '')));
+    ui.total.appendChild(row('手数料', money(fee) + (S.feeBpOf(value, tradedToday()) === S.activeFeeBp ? '（10%・アクティブ）' : '')));
+    var left = st.side === 'buy' ? Math.max(0, (st.mine && st.mine.dayCap || S.dayCap) - boughtToday()) : sellRoom();
+    ui.total.appendChild(row('最大', fmt(max) + '株' + (st.mine ? '（本日あと' + money(left) + '）' : '')));
     ui.go.classList.toggle('sk-buy', st.side === 'buy');
     ui.go.classList.toggle('sk-sell', st.side === 'sell');
-    ui.goText.textContent = (st.side === 'buy' ? '買う' : '売る') + (st.type === 'market' ? '' : '（' + TYPE[st.type] + '）');
+    ui.goText.textContent = gone ? '上場廃止' : (st.side === 'buy' ? '買う' : '売る') + (st.type === 'market' ? '' : '（' + TYPE[st.type] + '）');
     ui.go.disabled = !ok;
   }
   // press and hold: no dialog to read, and no order from a slip of the finger
@@ -671,7 +680,12 @@
     };
     var yoy = function (a, b) { return b ? C.fmt.pct(a / Math.abs(b) - 1) : '—'; };
     var next = c.next ? new Date(c.next * 1000) : null;
+    // (a company that failed: struck off, no more trading)
+    if (c.delisted) line([['倒産', '上場廃止', 'sk-down'], ['日付', (function (d) { var t = C.ymd(d); return t.y + '/' + t.m + '/' + t.d; })(c.delisted.day)], ['売買', '不可', 'sk-down']]);
     line([['会社', c.full], ['社員', fmt(c.staff) + '名'], ['ランク', c.rank], ['次の決算発表', next ? (next.getMonth() + 1) + '/' + next.getDate() : '—']]);
+    // MY WAY: how its characters pull and its partners; a partner of it: its collaboration
+    if (c.ip) line([['流行', Math.round(c.ip.heat * 100) + '%', c.ip.heat < 0.85 ? 'sk-down' : ''], ['信用', Math.round(c.ip.brand * 100) + '%', c.ip.brand < 0.7 ? 'sk-down' : ''], ['IP契約', c.ip.partners + '社']]);
+    if (c.collab) line([['コラボ', 'MY WAY'], ['投資熱', '株価に上乗せ', 'sk-up']]);
     if (c.last) {
       var l = c.last, p = l.prev;
       line([['決算', l.label.replace(/^(\d+)年度 第(\d)四半期$/, '$1 Q$2')], ['売上高', cm(l.sales)], ['前年比', p ? yoy(l.sales, p.sales) : '—', p ? tone(l.sales - p.sales) : ''], ['営業利益', cm(l.op), tone(l.op)], ['純利益', cm(l.net), tone(l.net)]]);
@@ -713,11 +727,24 @@
     fill.style.width = Math.min(100, used / cap * 100).toFixed(1) + '%';
     bar.appendChild(fill);
     var a = el('div', 'sk-row');
-    a.appendChild(el('small', '', '本日の投資'));
+    a.appendChild(el('small', '', '本日の買い'));
     a.appendChild(bar);
     a.appendChild(el('b', '', money(used) + ' / ' + money(cap)));
     box.appendChild(a);
-    box.appendChild(row('残り', (m.tradesMax - m.trades) + '/' + m.tradesMax));
+    // the day's sales against their own cap
+    var scap = m.sellCap || S.sellCap, sold = soldToday(), sbar = el('div', 'sk-bar'), sfill = el('i');
+    sfill.style.width = Math.min(100, sold / scap * 100).toFixed(1) + '%';
+    sbar.appendChild(sfill);
+    var b = el('div', 'sk-row');
+    b.appendChild(el('small', '', '本日の売り'));
+    b.appendChild(sbar);
+    b.appendChild(el('b', '', money(sold) + ' / ' + money(scap)));
+    box.appendChild(b);
+    // the trades left, and an active player's fee (from $400,000,000 traded in the day, 10%)
+    var at = m.activeAt || S.activeAt, traded = tradedToday(), c = el('div', 'sk-row');
+    c.appendChild(el('small', '', '残り ' + (m.tradesMax - m.trades) + '/' + m.tradesMax));
+    c.appendChild(el('b', traded >= at ? 'sk-active' : '', '売買 ' + money(traded) + (traded >= at ? '・手数料10%' : ' / ' + money(at))));
+    box.appendChild(c);
   }
 
   // every second: what moves with the prices

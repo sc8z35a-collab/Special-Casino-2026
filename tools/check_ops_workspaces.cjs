@@ -252,12 +252,12 @@ const ROOT = path.resolve(__dirname, '..');
       const code = '987654321098';
       assert.equal((await server.call('POST', '/api/ops/dev-code', { token: dev.token, body: { code } })).status, 200);
       assert.equal((await server.call('POST', '/api/ops/viewer', { token: dev.token, body: { code, name: 'ViewerQA', action: 'grant' } })).status, 200);
-      const all = ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile', 'calendar', 'devapp', 'corp'];
+      const all = ['players', 'archive', 'reports', 'detections', 'feedback', 'log', 'operators', 'team', 'security', 'server', 'pay', 'vault', 'devunit', 'securityhome', 'diary', 'profile', 'calendar', 'devapp', 'corp', 'town'];
       const result = [];
       for (const [name, allowed] of [
         ['taku', all],
         ['OperatorQA', all.filter((id) => !['pay', 'diary', 'devapp'].includes(id))],
-        ['ViewerQA', ['reports', 'detections', 'feedback', 'log', 'operators', 'security', 'server', 'securityhome', 'calendar', 'corp']]
+        ['ViewerQA', ['reports', 'detections', 'feedback', 'log', 'operators', 'security', 'server', 'securityhome', 'calendar', 'corp', 'town']]
       ]) {
         const context = await contextFor(null), page = await context.newPage(), errors = [];
         page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(60000); page.on('pageerror', (error) => errors.push(error.message));

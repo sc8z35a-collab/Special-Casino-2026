@@ -19,10 +19,14 @@
 // above, sell at or below) wait until the end of the trading day (9:00 Japan
 // time) and trade in the first second that reaches them, at that second's
 // price; a buy order holds its money and a sell order its shares while it
-// waits. The fee is 1.8% each way (rounded up; Dtrade's); every order counts once
-// towards the day's 30 (one cancelled or not traded gives its count back);
-// buying stops at $80,000,000 a trading day (every company together: what the
-// day's filled buys cost, fee included, and the money its buy orders hold). An order carries the page's own key:
+// waits. The fee is 1.8% each way (rounded up; Dtrade's), 10% from the order that
+// brings the day's trades (buys and sales, before the fee) to $400,000,000 on (an
+// active player's: js/game/stocks.js activeAt); every order counts once
+// towards the day's 200 (one cancelled or not traded gives its count back);
+// buying stops at $800,000,000 a trading day (every company together: what the
+// day's filled buys cost, fee included, and the money its buy orders hold), and
+// selling at $800,000,000 (the day's filled sales at their price, and its sell
+// orders waiting at theirs). An order carries the page's own key:
 // the same key again (its answer lost on the way) is the same order, never a
 // second one.
 //
@@ -141,6 +145,12 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
       ? { ...had, candle: { ...had.candle } } : fresh(c, row);
     if (s.tick < target) {
       const path = paths.get(c.id), book = bookOf(c.id);
+      // (struck off: what waited of its orders goes, their money back)
+      if (book.list.length && corp && corp.delisted && corp.delisted(c.id)) {
+        for (const o of book.list) { finish(o, 'canceled', s.tick * MS, 'delisted'); told.push({ userId: o.user_id, id: o.id, waited: false }); }
+        book.list = [];
+        book.reset();
+      }
       // the orders filled in these seconds and how far each moved the price (from the second after it)
       const moves = new Map();
       for (const o of q("SELECT done_at, impact FROM stock_orders WHERE company = ? AND status = 'filled' AND impact != 0 AND done_at >= ? AND done_at < ?").all(c.id, s.tick * MS, target * MS)) {
@@ -280,7 +290,8 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
     const h = holdingOf(o.user_id, c.id);
     const p = slipped(c, o, p0), move = moveOf(c, o.side, o.shares, p0);
     accrue(h, n, { company: c.id, tick: n, price: p0 });
-    const value = p * o.shares, fee = S.fee(value);
+    // (the fee by what the player traded that day before this one: 10% once it comes to $400,000,000)
+    const value = p * o.shares, fee = S.fee(value, tradedOn(o.user_id, o.day));
     let amount, profit = 0;
     if (o.side === 'buy') {
       amount = value + fee;
@@ -392,6 +403,12 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
   // bought on trading day `day`: what its filled buys cost (fee included) and what its buy orders still hold
   const boughtOn = (userId, day) => q(`SELECT COALESCE(SUM(CASE WHEN status = 'filled' THEN amount WHEN status = 'open' THEN reserved ELSE 0 END), 0) AS n
     FROM stock_orders WHERE user_id = ? AND day = ? AND side = 'buy'`).get(userId, day).n;
+  // sold on trading day `day`: its filled sales at the price they sold at (before the fee), and its sell orders waiting at theirs
+  const soldOn = (userId, day) => q(`SELECT COALESCE(SUM(CASE WHEN status = 'filled' THEN fill_price * shares WHEN status = 'open' THEN price * shares ELSE 0 END), 0) AS n
+    FROM stock_orders WHERE user_id = ? AND day = ? AND side = 'sell'`).get(userId, day).n;
+  // traded on trading day `day`: every filled order's shares at its price, buys and sales together, before the fee
+  // (an active player's 10%: js/game/stocks.js activeAt)
+  const tradedOn = (userId, day) => q("SELECT COALESCE(SUM(fill_price * shares), 0) AS n FROM stock_orders WHERE user_id = ? AND day = ? AND status = 'filled'").get(userId, day).n;
 
   /* ------------------------------------------------------------ the views --- */
 
@@ -424,6 +441,7 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
     });
     return {
       holdings: list, orders: open.map(orderDto), reserved, invested: invested + reserved, dayCap: S.dayCap, bought: boughtOn(userId, S.dayOf(now)),
+      sellCap: S.sellCap, sold: soldOn(userId, S.dayOf(now)), traded: tradedOn(userId, S.dayOf(now)), activeAt: S.activeAt, activeFeeBp: S.activeFeeBp,
       trades: tradesOn(userId, S.dayOf(now)), tradesMax: S.tradesPerDay, dayEnds: S.dayEnd(now),
       dividend: { pending: a.pending, claimed: a.claimed }
     };
@@ -549,13 +567,15 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
 
   function place(u, r, now, st) {
     const { c, side, type, price } = r, s = st.get(c.id), p = s.price, t = s.tick;
-    const day = S.dayOf(now);
+    // (a company that failed is struck off: its shares are no longer traded — MY WAY's 倒産)
+    if (corp && corp.delisted && corp.delisted(c.id)) throw new ApiError(409, 'delisted', `${c.name}は倒産により上場廃止となりました（売買できません）`);
+    const day = S.dayOf(now), traded = tradedOn(u.id, day);
     let shares = r.shares;
     // MAX: trimmed to what fits now (the money in hand, the day's room), at least one share (else refused as any order)
     if (r.fit) {
       const budget = Math.min(getUser(u.id).dollars, S.dayCap - boughtOn(u.id, day));
       const depth = corp ? depthOf(c) : Infinity;
-      shares = Math.max(1, Math.min(shares, S.maxBuy(depth, type, price, p, budget, shares)));
+      shares = Math.max(1, Math.min(shares, S.maxBuy(depth, type, price, p, budget, shares, traded)));
     }
     if (tradesOn(u.id, day) >= S.tradesPerDay) throw new ApiError(409, 'trade_limit', `本日の売買は${S.tradesPerDay}回までです`);
     const open = openOf(u.id);
@@ -568,13 +588,16 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
     let reserved = 0;
     if (side === 'buy') {
       const unit = type === 'market' ? slipped(c, { side, type, shares, price }, p) : type === 'limit' ? price : Math.ceil(price * (1 + S.stopMargin));
-      const value = unit * shares, need = value + S.fee(value), bought = boughtOn(u.id, day);
+      const value = unit * shares, need = value + S.fee(value, traded), bought = boughtOn(u.id, day);
       if (bought + need > S.dayCap) throw new ApiError(409, 'cap', `投資は1日（日本時間9:00から）合計$${fmt(S.dayCap)}までです`, { room: Math.max(0, S.dayCap - bought) });
       if (getUser(u.id).dollars < need) throw new ApiError(409, 'insufficient', '$が足りません');
       if (type !== 'market') reserved = need;
     } else {
       const held = open.reduce((n, o) => n + (o.company === c.id && o.side === 'sell' ? o.shares : 0), 0);
       if (shares > holdingOf(u.id, c.id).shares - held) throw new ApiError(409, 'no_shares', '売れる株が足りません');
+      // (the day's selling cap: a market sale at the price it slips to, a limit or stop sale at its price)
+      const value = type === 'market' ? slipped(c, { side, type, shares, price }, p) * shares : price * shares, sold = soldOn(u.id, day);
+      if (sold + value > S.sellCap) throw new ApiError(409, 'sell_cap', `売却は1日（日本時間9:00から）合計$${fmt(S.sellCap)}までです`, { room: Math.max(0, S.sellCap - sold) });
     }
     const id = Number(q(`INSERT INTO stock_orders (user_id, key, company, side, type, shares, price, reserved, status, day, tick, created_at, expires_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`).run(u.id, r.key, c.id, side, type, shares, price, reserved, day, t + 1, now, type === 'market' ? 0 : S.dayEnd(now)).lastInsertRowid);

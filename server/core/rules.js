@@ -29,6 +29,9 @@ export const CORP = BR.CORP;
 export const NPC = BR.NPC;
 // the newest Dev News entry: players on an older game are asked to update
 export const RELEASE = BR.RELEASE;
+// its name as the players know it (DEV13, S2 DEV1: js/game/news.js)
+export const releaseName = (id) => (BR.releaseName ? BR.releaseName(id) : 'DEV' + id);
+export const RELEASE_NAME = releaseName(BR.RELEASE);
 export const JOBS = new Map(RULES.jobs.map((j) => [j.id, j]));
 export const AVATARS = new Map(RULES.avatars.map((a) => [a.id, a]));
 // Pending models stay in the display catalog; existing server actions only

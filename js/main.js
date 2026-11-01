@@ -404,7 +404,7 @@
     if (res && res.hub && !game.watch && BR.hub) BR.hub.afterSpin(res);
     if (res && res.charm) BR.shop.charmSaved(res);
     // (a big bet's win: Dtrade's fee out of it, js/game/config.js casino)
-    if (res && res.fee > 0 && !game.watch) toast('Dtrade手数料 −' + U.fmt(res.fee) + '（' + Math.round(C.casino.winFee * 100) + '%）', 2200);
+    if (res && res.fee > 0 && !game.watch) toast('Dtrade手数料 −' + U.fmt(res.fee) + '（' + Math.round((res.feeRate || C.casino.winFee) * 100) + '%）', 2200);
     if (!res || res.total <= 0) {
       renderWallet(!!(res && res.charm));
       renderBet();

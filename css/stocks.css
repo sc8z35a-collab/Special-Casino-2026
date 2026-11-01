@@ -88,7 +88,8 @@
 .sk-status { justify-self: end; }
 .sk-x { height: 38px; justify-self: end; color: #ffb3c1; }
 .sk-more { align-self: center; min-width: 120px; }
-.sk-meter { display: flex; flex-direction: column; justify-content: center; gap: 14px; }
+.sk-meter { display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.sk-meter .sk-active { color: #ffb3c1; }
 .sk-meter .sk-row { justify-content: flex-start; }
 .sk-meter .sk-row b { margin-left: auto; }
 .sk-bar { flex: 1; height: 14px; border-radius: 7px; background: rgba(255, 255, 255, .08); overflow: hidden; }

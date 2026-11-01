@@ -181,11 +181,12 @@ test('companies that come home to a living country (YOSIDA, WAZIMA) hire at once
   assert.equal(Array.from(P.job).filter((j) => j === NPC.job.civil).length, civil);
   assert.equal(c.money(), before);
   assert.deepEqual(npc.welcome(W, c.w, day), []);
-  // a country kept before the companies' second column of views: it loads, those views at 0
+  // a country kept before the companies' second column of views (and the day's count of orders after it): it loads,
+  // those at 0
   const rows = pop.pack(P), whole = Buffer.concat(rows.map((r) => Buffer.from(r)));
-  const old = whole.subarray(0, whole.length - P.view2.byteLength), Q = pop.alloc(P.n);
+  const old = whole.subarray(0, whole.length - P.view2.byteLength - P.trades.byteLength), Q = pop.alloc(P.n);
   pop.unpack(Q, [old]);
-  assert.deepEqual([Q.job[5], Q.cash[5], Q.view2.every((v) => v === 0)], [P.job[5], P.cash[5], true]);
+  assert.deepEqual([Q.job[5], Q.cash[5], Q.view2.every((v) => v === 0), Q.trades.every((v) => v === 0)], [P.job[5], P.cash[5], true, true]);
   assert.throws(() => pop.unpack(pop.alloc(P.n), [old.subarray(0, old.length - 4)]), /shorter/);
 });
 
@@ -233,7 +234,12 @@ test('the companies\' people decide: meetings with their minutes and the stopper
   const m = W.meetings.find((x) => !['lending', 'talks', 'lab'].includes(x.kind) && x.attendees.length > 2);
   assert.ok(m && m.attendees.some((a) => a.role === 'ストップ係'));
   assert.ok(W.lend && Object.keys(W.lend).length >= 9, 'Tenesice set every company\'s rate and line');
-  for (const x of Object.values(W.lend)) assert.ok(x.rate >= 0.008 && x.rate <= 0.06 && x.cap > 0);
+  // (each in its rank's band — A 0.8〜1.2%, B 3〜6%, C 10% —, MY WAY at its own 15% and no more than half its equity)
+  for (const [id, x] of Object.entries(W.lend)) {
+    if (id === 'myway') { assert.equal(x.rate, CORP.myway.loanRate); continue; }
+    const [lo, hi] = CORP.ranks[x.rank].rate;
+    assert.ok(x.rate >= lo && x.rate <= hi + 0.01 && x.cap > 0, JSON.stringify([id, x]));
+  }
 });
 
 test('a new business: started with its people, billing the people who take it, reviewed each month, closed when it loses for long', () => {
@@ -322,7 +328,7 @@ test('the server: the 街ライブ shows the country to players (and nothing to 
   assert.ok(r.status === 403 || r.status === 401 || r.status === 404);
   // MAGITA and Tenesice are on the market
   r = await s.call('GET', '/api/stocks', { token: p.token });
-  assert.deepEqual(r.market.map((x) => x.id), ['riru', 'ice', 'magita', 'tenesice', 'yosida', 'carowner']);
+  assert.deepEqual(r.market.map((x) => x.id), ['riru', 'ice', 'magita', 'tenesice', 'yosida', 'carowner', 'myway']);
   // the minutes go on: a weekday evening's hours
   now = START + 3 * 3600000;
   await s.app.api.npcWake();

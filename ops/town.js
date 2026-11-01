@@ -103,10 +103,10 @@ var OpsTown = (function () {
     })));
     box.appendChild(p);
     // the knobs: what the council and the people may move, how far (the developer sets it)
-    p = panel('国の決まり（つまみ）', '街の議会と市民投票が範囲の中で動かす。翌月1日から・同じつまみは四半期に1回');
+    p = panel('国の決まり（つまみ）', '税・年金などは街の議会と市民投票が範囲の中で動かす（翌月1日から・同じつまみは四半期に1回）。給与・暮らし・金融は運営だけが設定（今すぐか翌月1日から）');
     p.appendChild(table(['項目', '今', '範囲', '固定', '最後の変更', ''], r.knobs.map(function (k) {
       var edit = btn('btn small', '設定', function () { editKnob(k); });
-      return { cells: [k.name + (k.player ? '（プレイヤーにも）' : ''), knobText(k, k.value), knobText(k, k.range[0]) + '〜' + knobText(k, k.range[1]), k.locked ? '固定' : '', k.changed ? day(k.changed) : '', edit] };
+      return { cells: [(k.group ? '［' + k.group + '］' : '') + k.name + (k.player ? '（プレイヤーにも）' : '') + (k.ops ? '（運営のみ）' : ''), knobText(k, k.value), knobText(k, k.range[0]) + '〜' + knobText(k, k.range[1]), k.locked ? '固定' : '', k.changed ? day(k.changed) : '', edit] };
     })));
     box.appendChild(p);
     var po = r.politics;
@@ -141,9 +141,9 @@ var OpsTown = (function () {
     var hi = prompt(k.name + 'の範囲の上限（' + k.unit + '）', String(k.range[1]));
     if (hi === null) return;
     var lock = confirm(k.name + 'を固定しますか？（OK＝固定・キャンセル＝固定しない）');
-    var val = prompt('来月1日からの値（空欄なら変えない）', '');
+    var val = prompt('新しい値（' + k.unit + '・空欄なら変えない）', '');
     var body = { id: k.id, range: [Number(lo), Number(hi)], lock: lock };
-    if (val !== null && val !== '') body.value = Number(val);
+    if (val !== null && val !== '') { body.value = Number(val); body.now = confirm('今すぐ反映しますか？（OK＝今すぐ・キャンセル＝来月1日から）'); }
     st.request('POST', '/api/ops/npc/knob', body).then(function () { st.toast('設定しました'); st.all = null; ask(); }, function (e) { st.toast(e && e.message || '設定できませんでした'); });
   }
   function control(body) {

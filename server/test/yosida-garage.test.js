@@ -35,9 +35,9 @@ test('the rules: YOSIDA with its numbers, its six cars and two engines (no å°‚å£
   assert.deepEqual([CORP.makers.magita.lead, CORP.makers.yosida.lead], [1, 5]);
   assert.ok(CORP.makers.yosida.grow > CORP.makers.magita.grow && CORP.makers.yosida.maxGrow > CORP.makers.magita.maxGrow);
   assert.ok(CORP.makers.magita.beta > 0 && CORP.makers.yosida.beta < 0);
-  assert.deepEqual(STOCKS.companies.map((c) => c.id), ['riru', 'ice', 'magita', 'tenesice', 'yosida', 'carowner']);
+  assert.deepEqual(STOCKS.companies.map((c) => c.id), ['riru', 'ice', 'magita', 'tenesice', 'yosida', 'carowner', 'myway']);
   assert.equal(STOCKS.dayCap, 800000000);
-  assert.deepEqual([CORP.magita.garage.base, CORP.magita.garage.min, CORP.magita.garage.max, CORP.magita.garage.rentCut], [100000, 110000, 200000, 0.1]);
+  assert.deepEqual([CORP.magita.garage.base, CORP.magita.garage.min, CORP.magita.garage.max, CORP.magita.garage.rentCut, CORP.magita.garage.rentFee], [100000, 110000, 200000, 0.15, 70000]);
 });
 
 test('Car Owner orders a sold-out car again in a bigger lot: MAGITA\'s by the next day, YOSHIDA\'s five days later and far more of them', () => {
@@ -148,7 +148,7 @@ test('a world begun before YOSIDA: it is set in from its own made-up past, and t
   assert.equal(model.addCompanies(key, w), null);
 });
 
-test('the server: MAGITA Garage takes each garage place\'s fee once a month (even below $0) and tells the player; its 10% of rentals; MAGITA Robert buys cars back', async (t) => {
+test('the server: MAGITA Garage takes each garage place\'s fee once a month (even below $0) and tells the player; $70,000 a car put out to rent and 15% of the takings; MAGITA Robert buys cars back', async (t) => {
   let now = START;
   const s = await startServer({ clock: () => now });
   t.after(() => s.stop());
@@ -171,13 +171,24 @@ test('the server: MAGITA Garage takes each garage place\'s fee once a month (eve
   const bot = s.app.db.prepare("SELECT id FROM users WHERE npc = 'magita'").get();
   assert.ok(bot);
   assert.ok(s.app.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE sender_id = ? AND recipient_id = ?').get(bot.id, a.me.id).n >= 1);
-  // the rentals: 10% to MAGITA Garage
+  // the rentals: 15% of the takings to MAGITA Garage
   s.setUser(a.me.id, { dollars: 0 });
   const car = Number(s.app.db.prepare(`INSERT INTO cars (owner_id, model, created_at, acquired_at, rent_start, rent_earned) VALUES (?, 'yoshida-s5', ?, ?, ?, 1000000)`)
     .run(a.me.id, now, now, now - 3600000).lastInsertRowid);
   const got = await s.call('POST', '/api/cars/collect', { token: a.token, body: {} });
-  assert.deepEqual([got.gross, got.paid, got.fee], [1000000, 900000, 100000]);
+  assert.deepEqual([got.gross, got.paid, got.fee], [1000000, 850000, 150000]);
   void car;
+  // and $70,000 each time a car is put out to rent (not without it)
+  const idle = Number(s.app.db.prepare(`INSERT INTO cars (owner_id, model, created_at, acquired_at) VALUES (?, 'yoshida-s6', ?, ?)`).run(a.me.id, now, now).lastInsertRowid);
+  s.setUser(a.me.id, { dollars: 69999 });
+  assert.equal((await s.call('POST', '/api/cars/rent', { token: a.token, body: { car: idle, action: 'start' } })).error.code, 'insufficient');
+  s.setUser(a.me.id, { dollars: 100000 });
+  const out = await s.call('POST', '/api/cars/rent', { token: a.token, body: { car: idle, action: 'start' } });
+  assert.equal(out.status, 200, JSON.stringify(out));
+  assert.equal(out.fee, 70000);
+  assert.equal(me.get(a.me.id).dollars, 30000);
+  assert.equal(out.me.dollars, 30000);
+  s.app.db.prepare('UPDATE cars SET rent_start = 0 WHERE id = ?').run(idle);
   // the buy-back: MAGITA Robert's
   const old = Number(s.app.db.prepare(`INSERT INTO cars (owner_id, model, created_at, acquired_at) VALUES (?, 'yoshida-zx4', ?, ?)`).run(a.me.id, now, now).lastInsertRowid);
   g = await s.call('GET', '/api/cars', { token: a.token });
@@ -185,7 +196,7 @@ test('the server: MAGITA Garage takes each garage place\'s fee once a month (eve
   const sold = await s.call('POST', '/api/cars/sell', { token: a.token, body: { car: old, price } });
   assert.equal(sold.status, 200, JSON.stringify(sold));
   const f = flows(s);
-  assert.deepEqual([f.garagefee, f.rentfee, f.buyback], [300000, 100000, price]);
+  assert.deepEqual([f.garagefee, f.rentfee, f.buyback], [300000, 150000 + 70000, price]);
   // the next month: again, at the fee MAGITA set for it
   now = Date.UTC(2026, 11, 1, 1);
   await s.call('GET', '/api/cars', { token: a.token });

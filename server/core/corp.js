@@ -240,12 +240,27 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   // whether that month has closed into the world yet (a bill waits for it)
   const garageFee = () => model.garageFeeOf(get());
   const garageReady = (day) => { const w = get(); return !w || w.day >= day - 1; };
+  // MY WAY now (its characters, its contracts, whether it failed), for the screens; and whether a company was struck
+  // off (it failed: its shares are no longer traded)
+  function ipView(w) {
+    const s = w && w.co.myway;
+    if (!s || !s.ip) return null;
+    const ip = s.ip;
+    return {
+      heat: Math.round(ip.heat * 1000) / 1000, brand: Math.round(ip.brand * 1000) / 1000, fakes: Math.round(ip.fakes * 1000) / 1000,
+      pull: Math.round(ip.heat * ip.brand * 1000) / 1000, lastNew: ip.lastNew, chars: ip.chars.slice(-8), ideas: ip.ideas, events: ip.events.slice(-20),
+      contracts: Object.entries(ip.contracts).map(([id, c]) => ({ id, name: CORP.company(id).name, what: CORP.myway.partners[id].what, fee: c.fee, base: c.base, on: c.on, from: c.from, until: c.until || null,
+        last: c.last, breakeven: Math.round(CORP.breakeven(id, c.fee) * 1000) / 1000 })),
+      careCut: s.careCut || 0, dead: s.dead || null
+    };
+  }
+  const delisted = (id) => { const w = get(); return !!(w && w.co[id] && w.co[id].dead); };
   // a listed company's shares traded by a player at second `sec` (new shares or its own bought back), and the
   // fee, Dtrade's
   // (with the country there, the people's waiting orders on the other side take it first: what they leave is the
   // company's — new shares, or its own bought back)
   function traded(id, side, shares, price, fee, sec) {
-    if (!booted() || !listed.includes(id)) return;
+    if (!booted() || !listed.includes(id) || delisted(id)) return;
     const people = npc ? npc.cross(id, side, shares, price) : 0;
     if (shares - people > 0) change((w) => model.trade(w, id, side, shares - people, price, sec), [id]);
     flow('dtrade', 'trade', fee);
@@ -285,7 +300,11 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
         bps: Math.round(model.equityOf(s) / Math.max(1, shares)), dps: s.div.dps,
         last: last ? { key: last.key, label: last.label, sales: last.pl.sales, op: last.pl.op, ord: last.pl.ord, net: last.pl.net, eps: Math.round(last.eps), prev: last.prev } : null,
         guide: s.guide ? { fy: s.guide.fy, sales: s.guide.sales, op: s.guide.op, ord: s.guide.ord, net: s.guide.net, eps: s.guide.eps, dps: s.guide.dps } : null,
-        next, news: publicNews(id, now, PUBLIC_NEWS)
+        next, news: publicNews(id, now, PUBLIC_NEWS),
+        // (struck off: it failed; MY WAY's partner: its contract with it)
+        ...(s.dead ? { delisted: { day: s.dead.day, why: s.dead.why } } : {}),
+        ...(id === 'myway' && s.ip ? { ip: { heat: Math.round(s.ip.heat * 100) / 100, brand: Math.round(s.ip.brand * 100) / 100, partners: Object.values(s.ip.contracts).filter((c) => c.on).length } } : {}),
+        ...(w.co.myway && w.co.myway.ip && w.co.myway.ip.contracts[id] && w.co.myway.ip.contracts[id].on && !w.co.myway.dead ? { collab: true } : {})
       };
     }
     return out;
@@ -309,7 +328,10 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       staff: s.n, cash: s.bal.cash || 0, bonds: s.bal.bonds || 0, debt: s.loans.reduce((n, l) => n + l.amt, 0), equity: model.equityOf(s),
       retained: s.bal.retained, capital: s.bal.capital, ttm, year: years[0] ? { key: years[0].key, label: years[0].label, pl: years[0].pl } : null,
       fair: Math.round(fair), shares, dps: s.div.dps, guide: s.guide ? { fy: s.guide.fy, sales: s.guide.sales, op: s.guide.op, net: s.guide.net } : null,
-      players, people, parent: p.parent || null, abroad: !!p.abroad,
+      players, people, parent: p.parent || null, abroad: !!p.abroad, dead: s.dead || null,
+      // (Tenesice's rank for it as its lending desk last read its books)
+      creditRank: (w.lend && w.lend[id] && w.lend[id].rank) || p.rank, loanRate: w.lend && w.lend[id] ? w.lend[id].rate : null,
+      collab: !!(w.co.myway && w.co.myway.ip && w.co.myway.ip.contracts[id] && w.co.myway.ip.contracts[id].on && !w.co.myway.dead),
       // (the district of the country its head office is in)
       hq: ((NPC.districts.find((d) => d.hq.includes(id)) || {}).name) || '',
       news: q('SELECT at, kind, text FROM corp_news WHERE company = ? AND at <= ? ORDER BY at DESC, id DESC LIMIT 3').all(id, Math.floor(now / 1000))
@@ -421,6 +443,9 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       // its development work (技術開発): the one under way, the last done, and what they have won it
       tech: s.rnd ? { edge: Math.round(s.rnd.edge * 1000) / 1000, ok: s.rnd.ok, n: s.rnd.n, cur: s.rnd.cur, last: s.rnd.last || null, chance: techChance(s, p) } : { edge: 1, ok: 0, n: 0, cur: null, last: null, chance: techChance(s, p) },
       cut: s.cut || null, target: s.target, abroad: !!p.abroad,
+      // MY WAY's characters and licences (its own site), or this partner's contract with it
+      ip: id === 'myway' ? ipView(w) : null,
+      license: w.co.myway && w.co.myway.ip && w.co.myway.ip.contracts[id] ? { ...w.co.myway.ip.contracts[id], name: CORP.company('myway').name, what: CORP.myway.partners[id].what, breakeven: CORP.breakeven(id, w.co.myway.ip.contracts[id].fee), dead: !!w.co.myway.dead } : null,
       news: q('SELECT at, kind, text, public FROM corp_news WHERE company = ? AND at <= ? ORDER BY at DESC, id DESC LIMIT 100').all(id, Math.floor(now / 1000)),
       ties: tiesOf(w, id),
       flows: q('SELECT day, data FROM corp_flows WHERE day >= ? ORDER BY day').all(Math.floor(now / 86400000) - 30).map((r) => ({ day: r.day, spent: spentAt(JSON.parse(r.data), id) }))
@@ -445,7 +470,8 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   }
   // how likely its development is to succeed now (as server/core/corp-model.js tech works it out)
   function techChance(s, p) {
-    const size = Math.max(0.2, Math.min(3, s.n / Math.max(1, p.staff))), spend = Math.max(0.2, Math.min(3, (s.budget.rd || 0) / Math.max(1, p.rd.amount)));
+    const sc = model.sizeScale(get(), p);
+    const size = Math.max(0.2, Math.min(3, s.n / Math.max(1, p.staff * sc))), spend = Math.max(0.2, Math.min(3, (s.budget.rd || 0) / Math.max(1, p.rd.amount * sc)));
     return Math.round(Math.max(0.05, Math.min(0.95, CORP.tech.chance * Math.pow(size, 0.8) * (0.6 + 0.7 * s.morale) * Math.pow(spend, 0.3))) * 1000) / 1000;
   }
   const routes = (see) => ({
@@ -487,5 +513,6 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     q('DELETE FROM corp_flows WHERE day < ?').run(day - KEEP_FLOWS);
   }
 
-  return { ensure, booted, closesAt, close, anchor, dps, flow, tally, flush, sold, prize, coinsBought, questFee, npcSpent, today, traded, surcharge, surcharges, garageFee, garageReady, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8 };
+  return { ensure, booted, closesAt, close, anchor, dps, flow, tally, flush, sold, prize, coinsBought, questFee, npcSpent, today, traded, surcharge, surcharges, garageFee, garageReady, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8,
+    delisted, ip: () => ipView(get()) };
 }

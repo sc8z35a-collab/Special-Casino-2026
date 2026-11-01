@@ -42,8 +42,8 @@ test('each rental stops at 4.5M offline; collection restarts a fresh block witho
   assert.equal(premature.error.code, 'collect_first');
   const collected = await s.call('POST', '/api/cars/collect', { token: a.token, body: {} });
   assert.equal(collected.gross, 9000000, 'cap applies separately to each car');
-  // (MAGITA Garage keeps 10% of the takings)
-  assert.deepEqual([collected.paid, collected.fee], [8100000, 900000]);
+  // (MAGITA Garage keeps 15% of the takings)
+  assert.deepEqual([collected.paid, collected.fee], [7650000, 1350000]);
   for (const id of ids) {
     const c = readCar(s, id);
     assert.deepEqual([c.rent_start, c.rent_earned, c.rent_blocks, c.rent_paused], [now, 0, 0, 0]);
@@ -55,7 +55,7 @@ test('each rental stops at 4.5M offline; collection restarts a fresh block witho
   now++;
   const next = await s.call('POST', '/api/cars/collect', { token: a.token, body: {} });
   assert.ok(next.gross >= 20000 && next.gross <= 1500000, 'only the new block earns');
-  assert.equal(next.paid, next.gross - Math.floor(next.gross * 0.1));
+  assert.equal(next.paid, next.gross - Math.floor(next.gross * 0.15));
 });
 
 test('explicitly stopping a waiting car or scheduling its return prevents automatic resumption on collection', async t => {
@@ -72,7 +72,7 @@ test('explicitly stopping a waiting car or scheduling its return prevents automa
   assert.equal((await s.call('POST', '/api/cars/rent', { token: a.token, body: { car: paused, action: 'stop' } })).status, 200);
   const result = await s.call('POST', '/api/cars/collect', { token: a.token, body: {} });
   assert.equal(result.gross, 9000000);
-  assert.equal(result.paid, 8100000);
+  assert.equal(result.paid, 7650000);
   for (const id of [paused, scheduled]) assert.deepEqual([readCar(s, id).rent_start, readCar(s, id).rent_paused], [0, 0]);
 });
 

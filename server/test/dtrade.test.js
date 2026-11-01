@@ -51,6 +51,51 @@ test('changing tokens back to $ costs Dtrade\'s $40K each time', async (t) => {
   assert.equal(flows(s).at(-1).dtrade.exchange, C.exchangeFee);
 });
 
+test('a player of $600M or more in all (cars and shares counted) pays more: 18% of a big bet\'s win, $100K an exchange, 35% of a quest\'s reward', async (t) => {
+  const W = RULES.wealthy;
+  assert.deepEqual([W.at, W.winFee, W.exchangeFee, W.questFee], [600000000, 0.18, 100000, 0.35]);
+  const clock = { at: OCT };
+  const s = await startServer({ clock: () => clock.at, corpHistory: 0, quests: true });
+  t.after(() => s.stop());
+  const p = await s.register('tycoon');
+  // $590M in hand: under the line, the usual fees
+  s.setUser(p.me.id, { tokens: 0, dollars: 590000000 });
+  let me = (await s.call('GET', '/api/me', { token: p.token })).me;
+  assert.deepEqual([me.wealth.on, me.wealth.assets, me.wealth.exchangeFee, me.wealth.winFee], [false, 590000000, C.exchangeFee, C.winFee]);
+  // a car of $30M (its price, with its engine) takes it over
+  const now = Date.now();
+  s.app.db.prepare("INSERT INTO cars (owner_id, model, created_at, acquired_at, paid) VALUES (?, 'nissan-gt-r', ?, ?, 1)").run(p.me.id, now, now);
+  const gtr = RULES.cars.find((c) => c.id === 'nissan-gt-r').price;
+  me = (await s.call('GET', '/api/me', { token: p.token })).me;
+  assert.equal(me.wealth.assets, 590000000 + gtr);
+  assert.ok(me.wealth.on);
+  assert.deepEqual([me.wealth.exchangeFee, me.wealth.winFee, me.wealth.questFee], [W.exchangeFee, W.winFee, W.questFee]);
+  // the exchange: $100K
+  s.setUser(p.me.id, { tokens: 10000000 });
+  const before = (await s.call('GET', '/api/me', { token: p.token })).me.dollars;
+  let r = await s.call('POST', '/api/sell', { token: p.token, body: { amount: 20000 } });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.deepEqual([r.me.tokens, r.me.dollars], [10000000 - 20000, before + 20000 * P - W.exchangeFee]);
+  assert.equal((await s.call('POST', '/api/sell', { token: p.token, body: { amount: W.exchangeFee / P } })).error.code, 'below_fee');
+  // a big bet's win: 18%
+  let wins = 0;
+  for (let i = 0; i < 80 && wins < 2; i++) {
+    r = await s.call('POST', '/api/spin', { token: p.token, body: { bet: C.bigBet } });
+    assert.equal(r.status, 200, JSON.stringify(r));
+    const total = r.result.total || 0;
+    assert.equal(r.result.fee || 0, total > 0 ? Math.floor(total * W.winFee) : 0);
+    if (total > 0) { wins++; assert.equal(r.result.feeRate, W.winFee); }
+  }
+  assert.ok(wins > 0);
+  // a quest's reward: 35% to YOSIDA
+  const q = await s.call('GET', '/api/quests', { token: p.token });
+  assert.equal(q.feeRate, W.questFee);
+  const c = await s.call('POST', '/api/quests/claim', { token: p.token, body: {} });
+  assert.ok(c.claimed.length > 0, JSON.stringify(c));
+  assert.equal(c.feeRate, W.questFee);
+  assert.equal(c.fee, c.rewards.reduce((n, x) => n + Math.floor(x.dollars * W.questFee), 0));
+});
+
 test('TWO STATE公式 bills a month\'s slot use when it ends, the bill is paid from the card, and one left unpaid is taken after its days, below $0 if need be', async (t) => {
   const { s, clock } = await server(t, OCT);
   const payer = await s.register('payer'), late = await s.register('late'), idle = await s.register('idle');

@@ -19,6 +19,7 @@ import * as pop from './npc-pop.js';
 import * as text from './npc-text.js';
 import { createAi } from './npc-ai.js';
 import { LISTED_IDS } from './npc-market.js';
+import { fmtKnob } from './npc-politics.js';
 import { peopleSpent } from './corp-model.js';
 
 const MIN = 60000;
@@ -116,7 +117,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       const at = Math.floor(now / 1000);
       for (const [id, b] of Object.entries(by)) {
         const depth = corp.depth(id);
-        const impact = Math.max(-0.05, Math.min(0.05, 0.01 * b.value / depth));
+        // (a rush of the people's orders one way — a panic, a mania — can move a price a long way)
+        const impact = Math.max(-0.25, Math.min(0.25, 0.01 * b.value / depth));
         q('INSERT INTO stock_npc (company, at, shares, impact) VALUES (?, ?, ?, ?) ON CONFLICT(company, at) DO UPDATE SET shares = shares + excluded.shares, impact = impact + excluded.impact').run(id, at, b.shares, impact);
       }
     }
@@ -425,7 +427,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       const w = get(), now = clock();
       if (!w) return { started: false, on, now, population: N };
       const days = q('SELECT day, data FROM npc_days WHERE day >= ? ORDER BY day').all(w.day - 90).map((r) => ({ day: r.day, ...JSON.parse(r.data) }));
-      const all = { ...town(now), frame: undefined, days, knobs: NPC.knobs.map((k) => ({ ...k, value: w.nation.knobs[k.id], range: w.nation.ranges[k.id] || [k.min, k.max], locked: !!w.nation.locks[k.id], changed: w.nation.changed[k.id] || 0 })),
+      const all = { ...town(now), frame: undefined, days, knobs: NPC.knobs.map((k) => ({ ...k, value: NPC.knobOf(w, k.id), range: w.nation.ranges[k.id] || [k.min, k.max], locked: !!w.nation.locks[k.id], changed: w.nation.changed[k.id] || 0 })),
         nationFull: { cash: w.nation.cash, debt: w.nation.debt, bank: w.nation.bank, fund: w.nation.fund, day: w.nation.day, month: w.nation.month, hist: w.nation.hist.slice(-60) },
         sector: w.sector, sum: w.sum, cal: w.cal, rates: w.bankRates, stock: w.stock, depth: w.depth, paused: !!w.paused,
         usage: { ticks, tickMs: ticks ? Math.round(tickMs / ticks * 10) / 10 : 0, saves, ai: { ...ai.used(now), on: ai.on }, server: usage() } };
@@ -490,11 +492,25 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
           const v = Number(body.value);
           if (!Number.isFinite(v)) throw new ApiError(400, 'bad_value', '値が正しくありません');
           ww.nation.pending = ww.nation.pending.filter((p) => p.id !== k.id);
-          const t = CORP.ymd(ww.day);
-          ww.nation.pending.push({ id: k.id, to: v, from: t.m === 12 ? CORP.dayAt(t.y + 1, 1, 1) : CORP.dayAt(t.y, t.m + 1, 1), by: 'ops', day: ww.day });
+          if (body.now) {
+            // (at once: the knob as it is from now, what it rescales rescaled)
+            // (運営 may go past the range; a level no lower than −95%, money and rates not below 0, the players' fees not
+            // below half of where they began)
+            const floor = k.player ? k.start / 2 : k.unit === '%' && (k.id.startsWith('pay:') || k.id === 'livingCost' || k.id === 'rentLevel') ? -95 : k.unit === '$' || k.id === 'quickRate' ? 0 : -Infinity;
+            const was = NPC.knobOf(ww, k.id), to = Math.round(Math.max(floor, v) / k.step) * k.step;
+            ww.nation.knobs[k.id] = to;
+            if (ww.knobChanged && to !== was) ww.knobChanged(k.id, was, to);
+            ww.nation.changed[k.id] = ww.day;
+            ww.nation.log.push({ day: ww.day, id: k.id, from: was, to, by: 'ops' });
+            ww.news.push({ day: ww.day, kind: 'knob', district: -1, text: `今日から${k.name}が${fmtKnob(k.id, was)}→${fmtKnob(k.id, to)}に（運営）`, data: { id: k.id } });
+            policy(ww);
+          } else {
+            const t = CORP.ymd(ww.day);
+            ww.nation.pending.push({ id: k.id, to: v, from: t.m === 12 ? CORP.dayAt(t.y + 1, 1, 1) : CORP.dayAt(t.y, t.m + 1, 1), by: 'ops', day: ww.day });
+          }
         }
         save('hot');
-        if (opsLog) opsLog.add({ action: 'npc_knob', summary: `NPCの国：${k.name}の設定を変更`, detail: { id: k.id, range: body.range, lock: body.lock, value: body.value } });
+        if (opsLog) opsLog.add({ action: 'npc_knob', summary: `NPCの国：${k.name}の設定を変更${body.now && body.value !== undefined ? '（今すぐ）' : ''}`, detail: { id: k.id, range: body.range, lock: body.lock, value: body.value, now: !!body.now } });
       });
       void w;
       return { ok: true, now: clock() };

@@ -17,8 +17,8 @@
   function seen() { try { return Number(localStorage.getItem(SEEN)) || 0; } catch (e) { return 0; } }
   function renderDot() { $('#news-dot').hidden = $('#news-card-dot').hidden = seen() >= BR.RELEASE; }
 
-  // the release number as the players know it: DEV5
-  function devName(id) { return 'DEV' + id; }
+  // the release number as the players know it: DEV5, S2 DEV1 (js/game/news.js phases)
+  function devName(id) { return BR.releaseName ? BR.releaseName(id) : 'DEV' + id; }
   // when it came: "2026/10/20 10:25" (Japan time): the moment the server
   // started with it if known, else the date and time written in the news
   function when(n) {
@@ -30,10 +30,12 @@
     return n.date.replace(/-/g, '/') + (n.time ? ' ' + n.time : '');
   }
   function devBadge(id) {
-    var b = el('span', 'news-dev');
+    var b = el('span', 'news-dev'), part = BR.releasePart ? BR.releasePart(id) : { phase: '', n: id };
     b.setAttribute('aria-label', devName(id));
+    // (a phase's releases carry its name before the DEV mark: S2 [DEV] 1)
+    if (part.phase) b.appendChild(el('b', 'news-phase', part.phase));
     b.appendChild(el('i', 'ic ic-dev'));
-    b.appendChild(el('span', '', id));
+    b.appendChild(el('span', '', part.n));
     return b;
   }
   function entryEl(n) {

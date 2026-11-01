@@ -5,15 +5,15 @@ import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import { spawnSync } from 'node:child_process';
-import { RELEASE } from '../core/rules.js';
+import { RELEASE, RELEASE_NAME } from '../core/rules.js';
 import { releaseInfo, stampedBuild } from '../../tools/stamp.mjs';
 
 test('server, client and public version metadata share the canonical Dev News release and generated build', () => {
   const info = JSON.parse(fs.readFileSync(new URL('../../version.json', import.meta.url), 'utf8'));
   const ctx = { window: {} }; vm.runInNewContext(fs.readFileSync(new URL('../../js/version.js', import.meta.url), 'utf8'), ctx);
-  assert.equal(info.release, RELEASE); assert.equal(info.label, 'DEV' + RELEASE); assert.equal(info.build, stampedBuild());
+  assert.equal(info.release, RELEASE); assert.equal(info.label, RELEASE_NAME); assert.equal(info.build, stampedBuild());
   assert.deepEqual(JSON.parse(JSON.stringify(ctx.window.BR.VERSION)), info);
-  assert.deepEqual(releaseInfo(), { release: RELEASE, label: 'DEV' + RELEASE });
+  assert.deepEqual(releaseInfo(), { release: RELEASE, label: RELEASE_NAME });
   const ids = globalThis.BR.NEWS.map(n => n.id);
   assert.equal(new Set(ids).size, ids.length); assert.equal(Math.max(...ids), RELEASE);
 });

@@ -49,7 +49,7 @@ npm test        # server/testの検証
 - [金の生る木の3D対応（指定素材の一部は未取り込み）](docs/handbook/36.md)
 - [投資（RIRU STUDIO・Ice Smoker・MAGITA・テネシス・YOSIDA・カーオーナー）](docs/handbook/37.md)
 - [功績（メダル）](docs/handbook/38.md)
-- [企業（決算・商品・ビジネス友好度・MAGITA Garage・YOSIDA・WAZIMA・国庫）](docs/handbook/39.md)
+- [企業（決算・商品・ビジネス友好度・MAGITA Garage・YOSIDA・WAZIMA・MY WAY・国庫）](docs/handbook/39.md)
 - [NPCの国（ヴェルノア共和国・5万人）と街ライブ](docs/handbook/40.md)
 
 - [開発のお知らせ](README_DEV_NEWS.md)
