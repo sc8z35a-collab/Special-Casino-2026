@@ -58,7 +58,7 @@ export function thinkCar(W, i, day, r, ctx) {
   const P = W.P;
   const have = P.car[i], years = have ? (day - P.carDay[i]) / 365 : 9;
   // only now and then does a look become a decision (an old car, a keen one, a status to keep up)
-  const urge = W.cal.carUrge * (have ? Math.min(2.5, years / 6) : 1.6) * (1 + (W.appeal['magita:cars'] || 0) * 3) * (0.5 + tr(P, i, T.car)) * (0.6 + tr(P, i, T.vanity) * 0.8);
+  const urge = W.cal.carUrge * (have ? Math.min(2.5, years / 6) : 1.6) * (1 + ((W.appeal['magita:cars'] || 0) + econ.appealOf(W, 'carowner', 'cars') + (W.appeal['magita:all'] || 0) + (W.appeal['yosida:all'] || 0)) * 3) * (0.5 + tr(P, i, T.car)) * (0.6 + tr(P, i, T.vanity) * 0.8);
   if (r.u() > urge) return false;
   const cars = W.carList || (W.carList = carList(ctx));
   const cap = Math.max(0, P.cash[i]) + loanRoom(W, i);

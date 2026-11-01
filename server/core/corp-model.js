@@ -218,11 +218,23 @@ function cashSale(s, code, n) { if (n > 0) post(s, [['cash', n], ['r:' + code, -
 // The day the companies begin to live on the country (once): Tenesice's own loans and deposits outside wound up
 // (what it had lent and its bonds come back as money, the deposits outside paid out), so that its books hold the
 // country's money from then on (the people's deposits, its loans to them and to the companies).
+// A company abroad once the country lives: the dealers outside it are its own market now (the country's dealer is a
+// small part of the world's), so all of its sales but what the country buys are its sales abroad.
+function goAbroad(s) { s.scale = { ...(s.scale || {}), export: 1 }; }
 export function startCirculation(w, d, scale = 1) {
   if (w.circ) return;
-  w.circ = { from: d, games: {} };
+  w.circ = { from: d, games: {}, scale };
   // (a country smaller than the full 50,000 — the tests' — has its companies' plans for people by its size)
-  for (const s of Object.values(w.co)) { if (!abroad(s)) s.target = Math.max(1, Math.round((s.target || s.n) * scale)); s.payAll = true; }
+  // (and its budgets: a smaller country's companies are that much smaller in all they spend, not only in people)
+  for (const s of Object.values(w.co)) {
+    s.payAll = true;
+    if (abroad(s)) { goAbroad(s); continue; }
+    s.target = Math.max(1, Math.round((s.target || s.n) * scale));
+    if (scale !== 1) {
+      for (const k of ['place', 'rd', 'ads', 'other', 'capex']) if (s.budget[k]) s.budget[k] = Math.round(s.budget[k] * scale);
+      s.backingScale = (s.backingScale || 1) * scale;
+    }
+  }
   const bank = w.co.tenesice;
   if (bank && bank.ext) {
     const lent = Math.min(bank.ext.lent, bank.bal.lent || 0), deps = Math.min(bank.ext.deposits, bank.bal.deposits || 0), bonds = bank.bal.bonds || 0;
@@ -412,6 +424,8 @@ function sellCash(w, s, code, n, cost) {
     s.owe[to] = (s.owe[to] || 0) + cost;
   }
 }
+// the 仕入れ価格 as the buyer's and the maker's people last agreed it (server/core/npc-org.js talks: MAGITA's only)
+const termsOf = (w, buyer, maker) => (maker === 'magita' && w.terms && w.terms[buyer]) || 1;
 // a car's or a Shop item's price in the catalogue (null: not sold)
 const PRICES = { cars: new Map(RULES.cars.filter((c) => c.price > 0 && !c.ended).map((c) => [c.id, c.price])), items: new Map(RULES.shop.map((i) => [i.id, i.price])) };
 export const listPrice = (kind, id) => PRICES[kind].get(id) || 0;
@@ -430,7 +444,7 @@ function sellProducts(w, s, code, kind, id, n, paid, cash, who) {
     s.owe[to] = (s.owe[to] || 0) + cost;
   } else if (w.ext && kind === 'cars') {
     // (once the country lives, Car Owner's cars come out of the stock it bought in lots and paid for: restockIn)
-    const each = (s.lotCost && s.lotCost[id]) || Math.round(pr.buy * ((w.terms && w.terms[s.id]) || 1)) + (pr.excl || 0) + surchargeOf(w, kind, id);
+    const each = (s.lotCost && s.lotCost[id]) || Math.round(pr.buy * termsOf(w, s.id, pr.maker)) + (pr.excl || 0) + surchargeOf(w, kind, id);
     cost = n * each;
     fromStock = true;
   } else {
@@ -438,7 +452,7 @@ function sellProducts(w, s, code, kind, id, n, paid, cash, who) {
     const extra = n * surchargeOf(w, kind, id);
     if (!cash && extra) { post(s, [['ar', extra], ['r:' + code, -extra]]); s.recv += extra; paid += extra; }
     // (the 仕入れ価格 as the two companies' people last agreed it: server/core/npc-org.js talks)
-    const terms = (w.terms && w.terms[s.id]) || 1;
+    const terms = termsOf(w, s.id, pr.maker);
     const buy = Math.round(n * pr.buy * terms) + extra, excl = n * (pr.excl || 0);
     cost = buy + excl;
     s.owe[pr.maker] = (s.owe[pr.maker] || 0) + cost;
@@ -465,7 +479,7 @@ function restockIn(w, s, list) {
   for (const { id, n } of list || []) {
     const pr = CORP.products.cars[id];
     if (!pr || !(n > 0) || pr.maker === s.id) continue;
-    const terms = (w.terms && w.terms[s.id]) || 1;
+    const terms = termsOf(w, s.id, pr.maker);
     const buy = Math.round(n * pr.buy * terms) + n * surchargeOf(w, 'cars', id), excl = n * (pr.excl || 0), cost = buy + excl;
     post(s, [['stock', cost], ['ap', -cost]]);
     s.owe[pr.maker] = (s.owe[pr.maker] || 0) + cost;
@@ -1018,8 +1032,9 @@ function received(s, n) { post(s, [['cash', n], ['ar', -n]], 'receipts'); }
 function month(w, s, p, d, ch, out) {
   // (on the 1st: who leaves and who joins that day)
   const t = CORP.ymd(d);
-  // (once the country lives, its people come and go by themselves: server/core/npc-labor.js; s.n is theirs)
-  if (w.ext && t.d === 1) {
+  // (once the country lives, its people come and go by themselves: server/core/npc-labor.js; s.n is theirs — but a
+  // company abroad hires and loses its own people as before)
+  if (w.ext && !abroad(s) && t.d === 1) {
     s.morale += 0.05 * (0.62 - s.morale);
     if (s.brand) s.brand += (1 - s.brand) * (1 - Math.pow(0.5, 1 / 36));
   } else if (d >= w.launch && t.d === 1) {
@@ -1080,6 +1095,8 @@ function newYear(w, s, p, d) {
   // (the raise its union settled in the spring talks, once the country lives: server/core/npc-labor.js)
   const settled = w.raises && w.raises[s.id];
   const raise = settled !== undefined && settled !== null ? settled : p.raise * (1 + 0.6 * perf);
+  // (kept for the country's side: its people's pay rises by it from April, server/core/npc-labor.js)
+  s.yearRaise = { fy: CORP.fyOf(d), raise };
   s.pay = Math.round(s.pay * (1 + raise));
   s.unit = Math.round(s.unit * (1 + raise));
   // (a trade hires as fast as its sales are growing now, against how fast they grew at the start)
@@ -1112,14 +1129,14 @@ function backing(w, s, p, d, ch, out) {
   const fy = CORP.fyOf(d), monthsLeft = Math.max(1, Math.round((CORP.fyEnd(fy) - d) / MONTH_DAYS) + 1);
   if (!s.backing || s.backing.fy !== fy) s.backing = { fy, budget: Math.round(deal.budget * (s.backingScale || 1)), paid: 0 };
   const b = s.backing;
-  const fee = deal.fee;
+  const fee = Math.round(deal.fee * (s.backingScale || 1));
   const base = Math.max(0, (b.budget - b.paid) / monthsLeft - fee);
   const runway = (st.bal.cash || 0) / Math.max(1, monthlyCosts(st));
   const need = Math.max(-0.5, Math.min(1, (18 - runway) / 18));
   const soon = st.projects.some((pr) => pr.due - d < 60) ? 0.3 : 0;
   const mine = s.guide && s.guide.ytdOp ? Math.max(-0.4, Math.min(0.4, opOf(s.per.y) / Math.max(1, Math.abs(s.guide.ytdOp)) - 1)) : 0;
   const f = Math.max(0.4, Math.min(2.2, (1 + 0.6 * need + soon + 0.5 * mine + 0.15 * ch.z(`${p.id}:support:${d}`)) * (0.8 + 0.4 * tieOf(w, p.id, deal.with) / 100)));
-  const support = Math.round(Math.max(deal.support[0], Math.min(deal.support[1], base * f)) / 100000) * 100000;
+  const support = Math.round(Math.max(deal.support[0] * (s.backingScale || 1), Math.min(deal.support[1] * (s.backingScale || 1), base * f)) / 100000) * 100000;
   b.paid += fee + support;
   w.mon[`support:${p.id}`] = support / Math.max(1, base);
   post(s, [['sPartner', fee + support], ['cash', -(fee + support)]], 'expenses');
@@ -1436,7 +1453,7 @@ export function fairValue(s, p, w) {
   let v = cash + 0.5 * Math.max(0, ni) * p.per + 0.5 * book * p.pbr + 0.5 * Math.min(0, ni) * 4;
   // a studio: what its games under way and on sale are expected to earn beyond what they cost, after tax
   if (p.model === 'studio' && w) v += Math.max(-eq / 2, 0.67 * pipeline(w, s, p));
-  return Math.max(eq / 3, v);
+  return Math.max(eq / 8, v);
 }
 // what a studio's projects are expected to earn when done (as their budgets and the studio stand now, the nearer
 // done the surer) and its games on sale still to earn, beyond their costs
@@ -1572,6 +1589,8 @@ function staffing(w, s, p, d, out) {
 // research, and lifts its trade the more the bigger it is (`edge`: its sales a day; a studio's research instead, which
 // makes its games better). What it won fades a little month by month (the others catch up).
 const TC = CORP.tech;
+// how big a company is meant to be in this world: a country of fewer people than the full one has smaller companies
+export const sizeScale = (w, p) => (w && w.circ && !p.abroad ? w.circ.scale || 1 : 1);
 function tech(w, s, p, d, ch, out) {
   const r = s.rnd || (s.rnd = { n: 0, ok: 0, cur: null, edge: 1 });
   r.edge = 1 + (r.edge - 1) * 0.985;
@@ -1583,8 +1602,10 @@ function tech(w, s, p, d, ch, out) {
     return;
   }
   if (d < r.cur.due) return;
-  const size = Math.max(0.2, Math.min(3, s.n / Math.max(1, p.staff)));
-  const spend = Math.max(0.2, Math.min(3, (s.budget.rd || 0) / Math.max(1, p.rd.amount)));
+  // (against its size at the start, in a country of the size it is)
+  const sc = sizeScale(w, p);
+  const size = Math.max(0.2, Math.min(3, s.n / Math.max(1, p.staff * sc)));
+  const spend = Math.max(0.2, Math.min(3, (s.budget.rd || 0) / Math.max(1, p.rd.amount * sc)));
   const chance = Math.max(0.05, Math.min(0.95, TC.chance * Math.pow(size, 0.8) * (0.6 + 0.7 * s.morale) * Math.pow(spend, 0.3)));
   const cur = r.cur;
   r.cur = null;
@@ -1781,7 +1802,7 @@ function announce(w, s, p, d, out, ch) {
     const yoy = x.prev && x.prev.sales ? ` (前年同期比${CORP.fmt.pct(x.pl.sales / x.prev.sales - 1)})` : '';
     const surprise = x.expected !== null && x.expected !== undefined ? (x.pl.op - x.expected) / Math.max(1, Math.abs(s.guide ? s.guide.op : x.expected * 4) / 4) : 0;
     news(out, s, p, next, at, 'results', `${CORP.quarterLabel(CORP.quarterEnd(x.fy, x.q))}決算：売上高${CORP.fmt.money(x.pl.sales)}${yoy}、営業利益${CORP.fmt.money(x.pl.op)}、純利益${CORP.fmt.money(x.pl.net)}`,
-      { key: x.key, surprise }, 0.06 * Math.max(-1.5, Math.min(1.5, surprise)), true);
+      { key: x.key, surprise }, 0.06 * Math.max(-4, Math.min(4, surprise)), true);
     const fy = CORP.fyOf(next);
     if (x.q === 4) {
       // the new year's guidance (planned on its first day) and its dividends
@@ -1821,7 +1842,8 @@ function announce(w, s, p, d, out, ch) {
     let e1 = e0;
     if (next > w.launch) {
       const step = (Math.log(fair) - e0) * (1 - Math.pow(0.5, 1 / 30));
-      e1 = e0 + Math.max(-0.015, Math.min(0.015, step));
+      // (a company whose worth moved far moves the market fast: up to 8% a day, so crashes and booms can happen)
+      e1 = e0 + Math.max(-0.08, Math.min(0.08, step));
     }
     s.mkt.e = e1;
     out.anchors.push({ company: s.id, day: next, e0, e1, ev: out.jumps.filter((j) => j.company === s.id && j.day === next).map((j) => [j.at, j.jump]), dps: s.div.daily || 0 });
@@ -2070,7 +2092,7 @@ export function addCompanies(key, w, prices = {}) {
   const { world: f, history: h } = boot(key, w.day + 1, { years: 1, prices });
   for (const id of added) {
     const s = f.co[id];
-    if (w.circ) s.payAll = true;
+    if (w.circ) { s.payAll = true; if (abroad(s)) goAbroad(s); }
     w.co[id] = s;
   }
   for (const [id, s] of Object.entries(f.co)) {

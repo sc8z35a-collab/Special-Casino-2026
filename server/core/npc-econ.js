@@ -91,6 +91,15 @@ export function toBank(W, day, kind, n) {
   W.sum.toCo += n;
 }
 
+/* ------------------------------------------------------------ prices and pull --- */
+// what a company's own price decisions have done to a price (its sales and discounts, its fees raised: npc-org.js),
+// and how much more the people want what it sells for its campaigns and its advertising (its own and for all it does)
+export const priceOf = (W, key) => (W.priceIdx[key] || 1) * ((W.priceTemp && W.priceTemp[key] && W.priceTemp[key].mult) || 1);
+export const appealOf = (W, id, key) => (W.appeal[id + ':' + key] || 0) + (W.appeal[id + ':all'] || 0);
+// what is spent on something whose price moved: the people buy a little less of it when dearer (spending by the
+// square root of the price)
+export const spendAt = (W, key, n) => Math.round(n * Math.sqrt(priceOf(W, key)));
+
 /* ------------------------------------------------------------------- paying --- */
 // A person pays `n` for something of `company`'s (its stream): with the consumption tax on top (the country's), out
 // of their money; short of it, only what is needed to live goes on (a loan or the trouble ladder), the rest is not
@@ -134,15 +143,17 @@ export function nationIn(W, kind, n) {
   n = Math.round(n);
   if (!n) return;
   W.nation.cash += n;
-  const b = W.nation.day;
+  const b = W.nation.day, mo = W.nation.month || (W.nation.month = { in: {}, out: {} });
   b.in[kind] = (b.in[kind] || 0) + n;
+  mo.in[kind] = (mo.in[kind] || 0) + n;
 }
 export function nationOut(W, kind, n) {
   n = Math.round(n);
   if (!n) return;
   W.nation.cash -= n;
-  const b = W.nation.day;
+  const b = W.nation.day, mo = W.nation.month || (W.nation.month = { in: {}, out: {} });
   b.out[kind] = (b.out[kind] || 0) + n;
+  mo.out[kind] = (mo.out[kind] || 0) + n;
 }
 export function districtIn(W, d, kind, n) {
   n = Math.round(n);
@@ -174,6 +185,8 @@ export function give(W, from, to, n) {
 export function borrowFor(W, i, need) {
   const P = W.P, TR = NPC.trouble;
   need = Math.ceil(need);
+  // (what their money must come to for the payment: what they had and what they are short)
+  const goal = P.cash[i] + need;
   const room = Math.max(0, quickCap(P, i) - P.debt[i]);
   const take = Math.min(room, Math.max(need, Math.min(room, 1000000)));
   if (take > 0) {
@@ -182,9 +195,9 @@ export function borrowFor(W, i, need) {
     if (P.dkind[i] !== 2) { P.dkind[i] = 2; W.sum.quickLoans++; }
     W.sum.lent += take;
   }
-  if (P.cash[i] < need) {
+  if (P.cash[i] < goal) {
     // (beyond what anyone will lend: what is owed grows on its own, the bank's loss if it is never paid)
-    const rest = need - P.cash[i];
+    const rest = goal - P.cash[i];
     P.debt[i] += rest;
     P.cash[i] += rest;
     P.dkind[i] = 2;
@@ -194,7 +207,7 @@ export function borrowFor(W, i, need) {
 }
 export const quickCap = (P, i) => Math.round(Math.max(NPC.trouble.quickBase, Math.min(NPC.trouble.quickMax, (P.salary[i] || 0) * 0.5)) * (0.5 + P.credit[i] / 255));
 // the rate a person's loan pays a year: the usual (the bank's own rate for people) or the クイックローン
-export const loanRate = (W, P, i) => (P.dkind[i] === 2 ? NPC.trouble.quickRate : W.bankRates.person);
+export const loanRate = (W, P, i) => (P.dkind[i] === 2 ? NPC.knobOf(W, 'quickRate') / 100 : W.bankRates.person);
 
 /* ------------------------------------------------------------- the month's money --- */
 // what of a month's fund (0 the slots, 1 the games, 2 the pleasures, 3 the market) a person lets themselves use today:
