@@ -39,6 +39,28 @@ function openings(W, ctx) {
   }
   lb.openings = out;
 }
+// A company that decided to let people go (server/core/corp-model.js staffing: `cut` on its day): the least settled
+// of its people first (the newest, the least happy at work; never its executives), each paid its severance
+// (退職金) by the company, then out of work with the unemployment benefit.
+function dismiss(W, day, ctx) {
+  const lb = W.lab, P = W.P;
+  lb.cutDone = lb.cutDone || {};
+  for (const id of NPC.companies) {
+    const c = ctx.corp && ctx.corp.co[id];
+    if (!c || !c.cut || c.cut.day > day || lb.cutDone[id] === c.cut.day) continue;
+    lb.cutDone[id] = c.cut.day;
+    const staff = W.staffOf(id).filter((i) => !(P.flags[i] & FL.exec));
+    staff.sort((a, b) => (P.tenure[a] - P.tenure[b]) || (P.jsat[a] - P.jsat[b]) || (a - b));
+    const n = Math.min(c.cut.n, Math.max(0, staff.length - 1));
+    for (let k = 0; k < n; k++) {
+      const i = staff[k];
+      W.charge(id, null, 'severance', c.cut.each, i);
+      leave(W, i, day, 'fired');
+    }
+    W._staff = null;
+    if (n) W.news.push({ day, kind: 'labor', district: -1, text: `${CORP.company(id).name}が業績不振で社員${n}人を削減（退職金を支給）`, data: { company: id } });
+  }
+}
 // which of the two sites a company's opening goes through: by their shares of the market (シティーワークが1位、スピーディードが追う)
 function siteFor(W, id) { return (W.lab.siteTurn = (W.lab.siteTurn || 0) + 1) % 100 < 100 * (W.siteShare || 0.65) ? 'citywork' : 'speedeed'; }
 
@@ -113,6 +135,7 @@ function retire(W, i, day, r) {
 /* ---------------------------------------------------------------- a working day --- */
 function laborDay(W, day, r, ctx) {
   const P = W.P, t = CORP.ymd(day);
+  dismiss(W, day, ctx);
   openings(W, ctx);
   // the month in work: a month more of it, the mood at work (the pay against what others pay, the company's
   // fortunes, the boss, the hours), and who leaves today

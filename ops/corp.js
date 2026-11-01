@@ -15,11 +15,12 @@ var OpsCorp = (function () {
   var THEME = {
     tenesice: ['#0f1c3f', '#2d4a8a'], magita: ['#5c0a10', '#c62832'], carowner: ['#0b2f63', '#2378dd'], jinx: ['#8a2c00', '#e47a12'],
     daizin: ['#140a24', '#53308a'], citywork: ['#11471c', '#2f9a44'], speedeed: ['#00505c', '#0aa6b8'], dtrade: ['#0d2b2a', '#1a8a7e'],
-    riru: ['#5b1173', '#d8336f'], ice: ['#063d73', '#2f9fd8']
+    riru: ['#5b1173', '#d8336f'], ice: ['#063d73', '#2f9fd8'], yosida: ['#0e3b31', '#1f8a6e']
   };
   var TABS = [['top', 'トップ'], ['fin', '決算'], ['products', '商品'], ['biz', '事業'], ['people', '人と予算'], ['stock', '株式・財務'], ['ties', '友好度'], ['news', 'ニュース']];
   var NEWS = { results: '決算', guidance: '業績予想', revise: '予想修正', dividend: '配当', release: '発売', hit: 'ヒット', flop: '不振', start: '開発開始',
-    delay: '発売延期', cancel: '開発中止', update: '大型更新', week: '週間', hire: '採用', loan: '借入', support: '開発援助', rebate: '販売奨励金', tie: '友好度', lab: '研究開発', surcharge: '値上げ' };
+    delay: '発売延期', cancel: '開発中止', update: '大型更新', week: '週間', hire: '採用', loan: '借入', support: '開発援助', rebate: '販売奨励金', tie: '友好度', lab: '研究開発', surcharge: '値上げ',
+    garage: 'ガレージ契約料', staff: '人員', tech: '技術開発' };
   var st = { view: null, request: null, toast: null, at: '', tab: 'top', mode: 'q', sheet: 'pl', metric: 'sales', all: null, sites: {}, gen: 0 };
 
   /* ------------------------------------------------------------------ small things --- */
@@ -146,6 +147,34 @@ var OpsCorp = (function () {
     return out;
   }
 
+  /* ------------------------------------------------------------------ the clock --- */
+  // The companies live in real time: a day is a day, an hour an hour, a second a second, from the day they began (the
+  // server's clock, as its last answer said it, ticking here every second; each business day runs from 9:00 to 9:00
+  // Japan time and closes then).
+  var clockTimer = 0, skew = 0;
+  function liveClock(r) {
+    if (r && r.now) skew = r.now - Date.now();
+    var box = el('div', 'corp-clock'), t = el('b', 'corp-clock-time'), d = el('span', 'corp-clock-day'), bar = el('i', 'corp-clock-bar'), fill = el('span');
+    bar.appendChild(fill);
+    box.appendChild(el('span', 'corp-clock-live', 'LIVE'));
+    box.appendChild(t); box.appendChild(d); box.appendChild(bar);
+    var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+    function tick() {
+      var now = Date.now() + skew, j = new Date(now + 9 * 3600000);
+      t.textContent = j.getUTCFullYear() + '/' + (j.getUTCMonth() + 1) + '/' + j.getUTCDate() + ' ' + p2(j.getUTCHours()) + ':' + p2(j.getUTCMinutes()) + ':' + p2(j.getUTCSeconds()) + '（日本時間）';
+      var day = Math.floor(now / 86400000), into = now - day * 86400000, left = Math.floor((86400000 - into) / 1000);
+      d.textContent = '営業日 ' + dayLabel(day) + '・経過 ' + (into / 864000).toFixed(1) + '%・締めまで ' + Math.floor(left / 3600) + ':' + p2(Math.floor(left % 3600 / 60)) + ':' + p2(left % 60);
+      fill.style.width = (into / 864000).toFixed(2) + '%';
+    }
+    tick();
+    if (clockTimer) clearInterval(clockTimer);
+    clockTimer = setInterval(function () {
+      if (!box.isConnected) { clearInterval(clockTimer); clockTimer = 0; return; }
+      tick();
+    }, 1000);
+    return box;
+  }
+
   /* --------------------------------------------------------------------- asking --- */
   function ask() {
     if (!st.request) return;
@@ -178,8 +207,10 @@ var OpsCorp = (function () {
   function folder(box) {
     var head = el('div', 'bar corp-bar'); head.appendChild(el('h2', '', '企業'));
     var a = st.all;
-    if (a && a.started) head.appendChild(el('span', 'muted', '10社・' + dayLabel(a.day) + '終了時点・景気指数 ' + a.econ.toFixed(3)));
+    if (a && a.started) head.appendChild(el('span', 'muted', a.companies.length + '社・' + dayLabel(a.day) + 'の締め（9:00）まで反映・景気指数 ' + a.econ.toFixed(3) +
+      (a.econ >= 1.03 ? '（好景気）' : a.econ <= 0.97 ? '（不景気）' : '') + (a.garageFee ? '・MAGITA Garage 1台' + money(a.garageFee) + '/月' : '')));
     box.appendChild(head);
+    if (a && a.started) box.appendChild(liveClock(a));
     // the apps: an icon each
     var grid = el('div', 'corp-grid'); grid.setAttribute('role', 'list');
     C().companies.forEach(function (p) {
@@ -249,6 +280,7 @@ var OpsCorp = (function () {
     s.appendChild(hero);
     if (!r) { s.appendChild(el('p', 'muted corp-empty', '読み込み中…')); box.appendChild(s); return; }
     if (r.started === false) { s.appendChild(el('p', 'muted corp-empty', 'まだ始まっていません。')); box.appendChild(s); return; }
+    s.appendChild(liveClock(r));
     var tabs = TABS.filter(function (t) { return t[0] !== 'products' || r.products.length; });
     if (!tabs.some(function (t) { return t[0] === st.tab; })) st.tab = 'top';
     s.appendChild(chips(tabs, st.tab, function (k) { st.tab = k; render(); }, p.name + 'のページ'));
@@ -271,6 +303,12 @@ var OpsCorp = (function () {
     tiles.appendChild(stat('利益剰余金', money((sv.bal.retained || 0) + (sv.bal.legal || 0)), ''));
     tiles.appendChild(stat('従業員', group(m.staff) + '名', '年収 ' + money(sv.pay)));
     if (p.listed) tiles.appendChild(stat('適正株価（理論値）', '$' + group(m.fair), '1株配当 年$' + group(m.dps)));
+    // (today, still running: what the players have spent here so far)
+    var today = Math.floor(((r.now || Date.now())) / 86400000), now = (r.flows || []).filter(function (f) { return f.day === today; })[0];
+    tiles.appendChild(stat('本日のプレイヤー支出', money(now ? now.spent : 0), '集計中（' + dayLabel(today) + '・9:00に締め）'));
+    if (r.garageFee) tiles.appendChild(stat('MAGITA Garage 契約料', money(r.garageFee) + '/台・月', r.garageFee > 100000 ? '経営状況により値上げ中（通常 $100,000）' : '通常（不調なら$110,000〜$200,000）', r.garageFee > 100000 ? 'neg' : ''));
+    if (r.tech) tiles.appendChild(stat('技術開発', (r.tech.edge >= 1.0005 ? '売上 +' + ((r.tech.edge - 1) * 100).toFixed(1) + '%' : '効果なし'), '成功 ' + r.tech.ok + ' / ' + Math.max(0, r.tech.n - (r.tech.cur ? 1 : 0)) + '件・今の成功率 ' + Math.round(r.tech.chance * 100) + '%'));
+    if (p.abroad) tiles.appendChild(stat('本拠地', '国外', 'ヴェルノアには販売・納入のみ'));
     body.appendChild(tiles);
     // the year's plan
     var g = sv.guide;
@@ -314,8 +352,8 @@ var OpsCorp = (function () {
     body.appendChild(pn);
   }
   function playersNote(p) {
-    var by = { carowner: '車の購入・中古車の買い取り・ガレージ', jinx: 'SHOPでの購入', daizin: 'VIPのコイン購入', citywork: 'バイトの給料に対する掲載料（シェア分）',
-      speedeed: 'バイトの給料に対する掲載料（シェア分）', dtrade: '投資の売買手数料', riru: '投資での新株の購入', ice: '投資での新株の購入', magita: 'カーオーナー・ジンクス経由（車・車用品の仕入れ）', tenesice: '—（プレイヤーとの直接の取引はありません）' };
+    var by = { carowner: '車の購入（MAGITA・YOSHIDA）', jinx: 'SHOPでの購入', yosida: 'カーオーナー・ジンクス経由（YOSHIDA車・エンジンの仕入れ）', daizin: 'VIPのコイン購入', citywork: 'バイトの給料に対する掲載料（シェア分）',
+      speedeed: 'バイトの給料に対する掲載料（シェア分）', dtrade: '投資の売買手数料', riru: '投資での新株の購入', ice: '投資での新株の購入', magita: 'MAGITA Garage（契約料・増設・貸し出し手数料）・MAGITA Robert（中古車の買い取り）・カーオーナー・ジンクス経由の仕入れ', tenesice: '—（プレイヤーとの直接の取引はありません）' };
     return 'プレイヤーのお金が届く先：' + (by[p.id] || '—');
   }
   function newsList(list) {
@@ -546,7 +584,18 @@ var OpsCorp = (function () {
     var pc = panel('社員数の推移');
     pc.appendChild(chart(dayNames(r.days.day), r.days.staff, function (v) { return group(v) + '名'; }, '社員数'));
     body.appendChild(pc);
-    body.appendChild(el('p', 'muted corp-note', '昇給は毎年4月、前年度の業績しだい。新卒は4月入社、中途採用は毎月1日。賞与は6月と12月に業績連動で支給されます。'));
+    if (r.cut) body.appendChild(el('p', 'corp-note neg', dayLabel(r.cut.day) + '：業績不振のため社員' + group(r.cut.n) + '人の削減を決定（退職金 1人' + money(r.cut.each) + '）'));
+    // 技術開発: the one under way and the last done
+    if (r.tech) {
+      var t = r.tech, pt = panel('技術開発', '社員が多いほど・士気と研究費が高いほど成功しやすい');
+      var rows = [];
+      if (t.cur) rows.push([t.cur.name, dayLabel(t.cur.start), dayLabel(t.cur.due), '開発中', '成功率 ' + Math.round(t.chance * 100) + '%（今の社員・士気・研究費で）']);
+      if (t.last) rows.push([t.last.name, dayLabel(t.last.start), dayLabel(t.last.day), t.last.ok ? '成功' : '失敗', t.last.ok ? (p.model === 'studio' ? 'ゲームの品質 +' : '売上 +') + ((t.last.lift || 0) * (p.model === 'studio' ? 2 : 1) * 100).toFixed(1) + '%' : '成功率 ' + Math.round((t.last.chance || 0) * 100) + '%だった']);
+      pt.appendChild(rows.length ? table([['開発'], ['開始'], ['完了'], ['状態'], ['効果']], rows) : el('p', 'muted', 'まだありません（毎月1日に始まります）'));
+      pt.appendChild(el('p', 'muted corp-note', '1つずつ5〜11か月かけて開発します。成功すると売上（スタジオはゲームの品質）が上がり、効果は少しずつ薄れます（ほかの会社も追いつくため）。今の累計：売上 ×' + t.edge.toFixed(3) + '。'));
+      body.appendChild(pt);
+    }
+    body.appendChild(el('p', 'muted corp-note', '昇給は毎年4月、前年度の業績しだい。新卒は4月入社、中途採用は毎月1日。賞与は6月と12月に業績連動で支給されます。四半期末に今年度の営業利益が計画の50%を割る（または赤字）と社員の3〜10%を削減し（退職金は給与3か月分）、計画の125%を超えると採用計画を2〜5%増やします。'));
   }
 
   // 株式・財務: the shares and who holds them, the dividends, the loans and the taxes carried

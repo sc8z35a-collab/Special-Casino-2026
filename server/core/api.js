@@ -67,6 +67,7 @@ import { createStocks } from './stocks.js';
 import { createCorp } from './corp.js';
 import { createNpc } from './npc.js';
 import { createSlotBills } from './slotbill.js';
+import { createGarageBills } from './garagebill.js';
 import { createDevCode } from './devcode.js';
 import { createPay } from './pay.js';
 import { createTeam } from './team.js';
@@ -283,6 +284,15 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (!model) return null;
     const price = carBuyback(model), engine = SHOP.get(c.engine);
     return { ...price, price: price.price + (engine && engine.kind === 'engine' ? Math.floor(engine.price * 0.9) : 0) };
+  }
+  // a car's rental takings paid to `userId`: MAGITA Garage keeps its cut (MAGITA's money), the rest is theirs. In the
+  // caller's transaction; what reached the player.
+  function rentPaid(userId, gross) {
+    if (!(gross > 0)) return 0;
+    const cut = Math.floor(gross * CORP.magita.garage.rentCut), net = gross - cut;
+    q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(net, userId);
+    corp.flow('magita', 'rentfee', cut);
+    return net;
   }
   // what the owner paid for a car (cars from before this was kept: its list price)
   const carPaid = (c) => c.paid || (CARS.get(c.model) ? CARS.get(c.model).price : 0);
@@ -2231,6 +2241,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     // Car Owner sale and the 大廃棄セール on now (if any), the buy-back prices
     ['GET /api/cars', (req, u) => {
       settleRentals(u.id);
+      // (MAGITA Garage: this month's contract fee, if it is not taken yet)
+      try { garageBills.charge(u.id); } catch (e) { console.error('garage fee failed', e); }
       const rows = q(`SELECT c.*, f.name AS from_name FROM cars c LEFT JOIN users f ON f.id = c.from_id
                       WHERE c.owner_id = ? ORDER BY c.acquired_at DESC, c.id DESC`).all(u.id);
       const now = Date.now();
@@ -2245,7 +2257,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         surcharge: corp.surcharges(),
         disposal: carDisposal(now),
         buyback: Object.fromEntries(RULES.cars.map((c) => [c.id, carBuyback(c, now)])),
-        rental: { hours: RENT.hours },
+        rental: { hours: RENT.hours, cut: CORP.magita.garage.rentCut },
+        // MAGITA Garage: the fee a place this month and the last months taken; Car Owner's stock (null: no limit)
+        garageFee: garageBills.mine(u.id, now),
+        stock: npc.carStock(),
         now
       };
     }],
@@ -2269,10 +2284,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           throw new ApiError(409, 'price_changed', `買取価格が変わりました（今は $${fmt(b.price)}）`, { buyback: b });
         }
         q('DELETE FROM cars WHERE id = ?').run(c.id);
-        q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(b.price + c.rent_earned, u.id);
-        // (Car Owner buys it back: a used car it sells on)
-        corp.flow('carowner', 'buyback', b.price);
-        return { paid: b.price, earned: c.rent_earned, pct: b.pct, disposal: b.disposal };
+        q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(b.price, u.id);
+        const earned = rentPaid(u.id, c.rent_earned);
+        // (MAGITA Robert buys it back: a used car it sells on)
+        corp.flow('magita', 'buyback', b.price);
+        return { paid: b.price, earned, gross: c.rent_earned, pct: b.pct, disposal: b.disposal };
       });
       return { ...r, me: meDto(balanceChanged(u.id)) };
     }],
@@ -2337,17 +2353,17 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       settleRentals(u.id);
       const paid = tx(() => {
         const n = q('SELECT COALESCE(SUM(MIN(rent_earned, ?)), 0) AS n FROM cars WHERE owner_id = ?').get(RENT.maxPay, u.id).n;
-        if (!n) return 0;
+        if (!n) return null;
         q(`UPDATE cars SET rent_earned = 0,
           rent_start = CASE WHEN rent_paused = 1 THEN ? ELSE rent_start END,
           rent_until = CASE WHEN rent_paused = 1 THEN 0 ELSE rent_until END,
           rent_blocks = CASE WHEN rent_paused = 1 THEN 0 ELSE rent_blocks END,
           rent_paused = 0 WHERE owner_id = ?`).run(Date.now(), u.id);
-        q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(n, u.id);
-        return n;
+        // (MAGITA Garage's cut first)
+        return { gross: n, net: rentPaid(u.id, n) };
       });
       if (!paid) throw new ApiError(409, 'nothing', 'まだ受け取れる売上はありません');
-      return { paid, me: meDto(balanceChanged(u.id)) };
+      return { paid: paid.net, gross: paid.gross, fee: paid.gross - paid.net, me: meDto(balanceChanged(u.id)) };
     }],
 
     // at the price of the moment (`price`: the one shown; a sale may have begun or ended)
@@ -2361,6 +2377,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const cost = carPrice(car, carSale(), VIP.carDiscount(vip), corp.surcharge(car.id)).price;
       if (body.price !== undefined && Number(body.price) !== cost) {
         throw new ApiError(409, 'price_changed', `価格が変わりました（今は $${fmt(cost)}）`, { sale: carSale() });
+      }
+      // (Car Owner's stock: none left, none to sell until the next lot arrives)
+      const stock = npc.carStock();
+      if (stock && stock.cars[car.id] !== undefined && stock.cars[car.id] <= 0) {
+        const c = stock.coming[car.id];
+        throw new ApiError(409, 'sold_out', `${car.name}は売り切れです${c ? `（${new Date(c.at + 9 * 3600000).getUTCMonth() + 1}/${new Date(c.at + 9 * 3600000).getUTCDate()} 9:00に${c.n}台入荷予定）` : ''}`, { stock });
       }
       const id = tx(() => {
         const cur = getUser(u.id);
@@ -2396,7 +2418,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const cur = getUser(u.id);
         if (cur.dollars < price) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, garage_extra = garage_extra + 1, rev = rev + 1 WHERE id = ?').run(price, cur.id);
-        corp.flow('carowner', 'garage', price);
+        corp.flow('magita', 'garage', price);
         afterSpend(u.id);
       });
       const after = balanceChanged(u.id);
@@ -2421,7 +2443,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (car.offer_id) throw new ApiError(409, 'on_offer', '販売中の車です');
         // what its renting earned stays with the giver
         if (car.rent_earned) {
-          q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(car.rent_earned, u.id);
+          rentPaid(u.id, car.rent_earned);
           balanceChanged(u.id, true);
         }
         const them = getUser(to);
@@ -2501,7 +2523,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (cur.dollars < row.amount) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(row.amount, cur.id);
         // what its renting earned stays with the seller
-        if (car.rent_earned) q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(car.rent_earned, row.sender_id);
+        if (car.rent_earned) rentPaid(row.sender_id, car.rent_earned);
         q(`UPDATE cars SET owner_id = ?, from_id = ?, acquired_at = ?, paid = ?, used = 1, via = 'friend', offer_id = 0, rent_earned = 0, rent_last = '' WHERE id = ?`)
           .run(cur.id, row.sender_id, Date.now(), row.amount, car.id);
         carGot(q, cur.id, car.id);
@@ -3818,6 +3840,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const slotBills = createSlotBills({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel, corp, fmt, meDto, clock: config.clock || Date.now,
     onDelivered: (userId, dto) => phone(userId, dmNote(dto)) });
   registry.add('slotbill', slotBills.routes);
+  // MAGITA Garage: every garage's monthly contract fee, taken from the $ (MAGITA's)
+  const garageBills = createGarageBills({ q, tx, getUser, insertMessage, msgDto, touchConversations, unreadTotal, live, balanceChanged, dmChannel, corp, fmt, meDto, clock: config.clock || Date.now,
+    onDelivered: (userId, dto) => phone(userId, dmNote(dto)) });
   // 投資: the two companies' shares, orders and dividends (a filled limit or stop order is told to the phone)
   const stocks = createStocks({ q, tx, afterCommit, getUser, meDto, balanceChanged, live, secret, clock: config.clock || Date.now, corp,
     rate: (u) => rate(limit.stock, u.id),
@@ -4207,6 +4232,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       try { corp.housekeep(); } catch (e) { console.error('corp housekeeping failed', e); }
       try { npc.housekeep(); } catch (e) { console.error('npc housekeeping failed', e); }
       try { slotBills.housekeep(); } catch (e) { console.error('slot bills failed', e); }
+      try { garageBills.housekeep(); } catch (e) { console.error('garage fees failed', e); }
       spinRequests.prune();
       gacha.prune();
       gameLogin.prune();

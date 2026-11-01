@@ -245,7 +245,7 @@ test('the server: the 街ライブ shows the country to players (and nothing to 
   assert.ok(r.status === 403 || r.status === 401 || r.status === 404);
   // MAGITA and Tenesice are on the market
   r = await s.call('GET', '/api/stocks', { token: p.token });
-  assert.deepEqual(r.market.map((x) => x.id), ['riru', 'ice', 'magita', 'tenesice']);
+  assert.deepEqual(r.market.map((x) => x.id), ['riru', 'ice', 'magita', 'tenesice', 'yosida', 'carowner']);
   // the minutes go on: a weekday evening's hours
   now = START + 3 * 3600000;
   await s.app.api.npcWake();

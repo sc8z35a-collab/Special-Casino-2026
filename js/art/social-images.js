@@ -44,7 +44,14 @@
       'lamborghini-kuia-spyder': 'img/cars/lamborghini-kuia-spyder.webp',
       'nissan-gt-r': 'img/cars/nissan-gt-r.webp',
       'lamborghini-revuelto': 'img/cars/lamborghini-revuelto.webp',
-      'mercedes-amg-one-white': 'img/cars/mercedes-amg-one-white.webp'
+      'mercedes-amg-one-white': 'img/cars/mercedes-amg-one-white.webp',
+      // (YOSHIDA: placeholder pictures until the real ones are made)
+      'yoshida-zx4': 'img/cars/yoshida-zx4.webp',
+      'yoshida-p100w': 'img/cars/yoshida-p100w.webp',
+      'yoshida-h9c': 'img/cars/yoshida-h9c.webp',
+      'yoshida-s5': 'img/cars/yoshida-s5.webp',
+      'yoshida-s6': 'img/cars/yoshida-s6.webp',
+      'yoshida-k10e': 'img/cars/yoshida-k10e.webp'
     },
     items: {
       omamori: 'img/ui/refresh/charm.webp',
@@ -53,7 +60,9 @@
       'gasoline-full': 'img/items/lowpoly/gasoline-full.webp',
       'engine-v1': 'img/items/lowpoly/engine-v1.webp',
       'engine-v2': 'img/items/lowpoly/engine-v2.webp',
-      'engine-v3': 'img/items/lowpoly/engine-v3.webp'
+      'engine-v3': 'img/items/lowpoly/engine-v3.webp',
+      'yoshida-er10': 'img/items/yoshida-er10.webp',
+      'yoshida-er20': 'img/items/yoshida-er20.webp'
     },
     // presents in a chat (js/ui/presents.js)
     presents: {

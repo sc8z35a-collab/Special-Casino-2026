@@ -37,8 +37,8 @@ test('all nine supplied cars have their names, prices, real GLBs and fallback pi
     const picture = fs.readFileSync(new URL(`../../img/cars/${id}.webp`, import.meta.url));
     assert.equal(picture.toString('ascii', 8, 12), 'WEBP');
   }
-  // (no car carries a real carmaker's name)
-  for (const c of RULES.cars) assert.match(c.name, /^MAGITA /, c.id);
+  // (no car carries a real carmaker's name: MAGITA's, or its rival YOSIDA's YOSHIDA series)
+  for (const c of RULES.cars) assert.match(c.name, /^(MAGITA|YOSHIDA) /, c.id);
 });
 
 test('a car no longer sold never gains a sale, but is still bought back', () => {

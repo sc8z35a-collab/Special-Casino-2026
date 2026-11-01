@@ -204,34 +204,35 @@ test('投資: market orders trade at this second\'s price, with the 1.8% fee (Dt
   assert.equal((await m.call('GET', '/api/stocks', null)).status, 401);
 });
 
-test('投資: $8,000,000 invested across both companies (holdings at the price now and the money buy orders hold), 30 trades a day, 10 orders waiting', async (t) => {
+test('投資: $80,000,000 bought a trading day across every company (the filled buys with their fee and the money buy orders hold), 30 trades a day, 10 orders waiting', async (t) => {
   const m = await market(t);
-  const p = await investor(m, 'Capped', 100000000);
+  const p = await investor(m, 'Capped', 200000000);
   let r = await m.call('GET', '/api/stocks', p.token);
-  const ice = r.market.find((q) => q.id === 'ice').price, riru = r.market.find((q) => q.id === 'riru').price;
+  const riru = r.market.find((q) => q.id === 'riru').price;
+  assert.equal(S.dayCap, 80000000);
   r = await m.order(p, { company: 'ice', side: 'buy', shares: 100 });
   assert.equal(r.status, 200);
+  const first = r.order.amount;
   // a limit buy holds its money, and that counts too
   const lim = riru - 100;
   r = await m.order(p, { company: 'riru', side: 'buy', type: 'limit', shares: 50, price: lim });
   assert.equal(r.order.status, 'open');
   assert.equal(r.order.reserved, lim * 50 + fee(lim * 50));
-  assert.equal(r.mine.invested, 100 * ice + r.order.reserved);
-  // (a market buy is checked at the price it fills at: a big one slips a little above the price now)
-  const room = S.cap - r.mine.invested, buys = (n) => n * slipped('riru', { side: 'buy', type: 'market', shares: n }, riru);
+  assert.equal(r.mine.bought, first + r.order.reserved);
+  assert.equal(r.mine.dayCap, S.dayCap);
+  // (a market buy is checked at the price it fills at, fee and all: a big one slips a little above the price now)
+  const room = S.dayCap - r.mine.bought, buys = (n) => n * slipped('riru', { side: 'buy', type: 'market', shares: n }, riru), need = (n) => buys(n) + fee(buys(n));
   let most = Math.floor(room / riru);
-  while (buys(most) > room) most--;
+  while (need(most) > room) most--;
   const over = await m.order(p, { company: 'riru', side: 'buy', shares: most + 1 });
   assert.equal(over.error.code, 'cap');
   assert.equal(over.error.room, room);
   r = await m.order(p, { company: 'riru', side: 'buy', shares: most });
   assert.equal(r.status, 200, JSON.stringify(r));
-  // (it filled the room at its own price; the holdings, valued at the price its buying lifted, may be a little over)
-  assert.ok(r.order.fill * most <= room && r.order.fill * most > room - r.order.fill);
-  // selling makes room again
-  assert.equal((await m.order(p, { company: 'riru', side: 'buy', shares: Math.floor((S.cap - r.mine.invested) / riru) + 1 })).error.code, 'cap');
+  assert.ok(r.order.amount <= room);
+  // selling does not make room: the day's buys are counted, not what is held
   await m.order(p, { company: 'ice', side: 'sell', shares: 10 });
-  assert.equal((await m.order(p, { company: 'riru', side: 'buy', shares: 1 })).status, 200);
+  assert.equal((await m.order(p, { company: 'riru', side: 'buy', shares: Math.floor((S.dayCap - r.mine.bought) / riru) + 1 })).error.code, 'cap');
   // the prices of limit and stop orders: the right side of the price now, within ±30%
   const q = (await m.call('GET', '/api/stocks', p.token)).market.find((x) => x.id === 'ice').price;
   for (const [o, code] of [[{ side: 'buy', type: 'limit', price: q }, 'price_side'], [{ side: 'buy', type: 'limit', price: Math.floor(q * 0.69) }, 'price_range'],

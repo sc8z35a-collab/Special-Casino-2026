@@ -160,8 +160,8 @@
     // (img/3d/cars/<id>.glb, js/render/garage3d.js). A null price means the
     // car can be previewed but cannot be bought or included in a sale; an
     // `ended` one is no longer sold (the ones the players have can still be
-    // sold back). Every car is made by MAGITA (what it costs to make and how its
-    // price is shared between MAGITA and Car Owner: js/game/corp.js products).
+    // sold back). Every car is made by MAGITA or YOSIDA (`maker`; what it costs to
+    // make and how its price is shared with Car Owner: js/game/corp.js products).
     cars: [
       { id: 'two-state-sedan', name: 'MAGITA Two state セダン', price: 26500000, ended: true },
       { id: 'blue-lightning', name: 'MAGITA シロン', price: 35000000, model: true },
@@ -173,9 +173,17 @@
       { id: 'lamborghini-kuia-spyder', name: 'MAGITA クイヤスパイダー', price: 20000000, model: true },
       { id: 'nissan-gt-r', name: 'MAGITA GT-R', price: 34000000, model: true },
       { id: 'lamborghini-revuelto', name: 'MAGITA レヴエルト', price: 65000000, model: true },
-      { id: 'mercedes-amg-one-white', name: 'MAGITA ONE（ホワイト）', price: 300000000, model: true }
+      { id: 'mercedes-amg-one-white', name: 'MAGITA ONE（ホワイト）', price: 300000000, model: true },
+      // YOSIDA's cars (MAGITA's rival: js/game/corp.js), sold at Car Owner too; pictures are placeholders for now
+      { id: 'yoshida-zx4', name: 'YOSHIDA ZX4', price: 8500000, maker: 'yosida' },
+      { id: 'yoshida-p100w', name: 'YOSHIDA P100W', price: 6400000, maker: 'yosida' },
+      { id: 'yoshida-h9c', name: 'YOSHIDA H9C', price: 10500000, maker: 'yosida' },
+      { id: 'yoshida-s5', name: 'YOSHIDA S5', price: 4000000, maker: 'yosida' },
+      { id: 'yoshida-s6', name: 'YOSHIDA S6', price: 3600000, maker: 'yosida' },
+      { id: 'yoshida-k10e', name: 'YOSHIDA K10E', price: 6000000, maker: 'yosida' }
     ],
-    // the garage holds this many cars; one more place costs `slotPrice` $ (for good, any number)
+    // the garage holds this many cars; one more place costs `slotPrice` $ (for good, any number). The garages are
+    // MAGITA Garage's: every month each place costs its contract fee (js/game/corp.js MAGITA.garage), taken from the $
     garage: { slots: 2, slotPrice: 1000000 },
     // Car Owner sales (js/game/sale.js), never two at once: on `chance` % of
     // the days / weeks / months (the yearly one always), `hours` long, on
@@ -193,7 +201,8 @@
     // renting cars out (any number of one's cars): every `hours` hours customers
     // come (each of these with its chance), paying `min`-`max` $ each (the
     // dearer the car, the more), and `vip.chance` of them `vip.pay` $; a car
-    // out is away for `hours` hours at least (stopping it waits for that)
+    // out is away for `hours` hours at least (stopping it waits for that); MAGITA Garage takes its cut of the
+    // takings when they are collected (js/game/corp.js MAGITA.garage.rentCut)
     carRental: { hours: 5, maxPay: 4500000, customers: [1, 0.9, 0.4, 0.3, 0.1], min: 10000, max: 60000, spread: 20000, vip: { chance: 0.03, pay: 150000 } },
     // Shop (price in $, 10-40 % off for 5 hours a day: js/game/sale.js);
     // anything bought here can be given to friends, up to `max` per player
@@ -204,7 +213,10 @@
       { id: 'gasoline-full', name: 'ガソリン満杯', price: 25000, max: 999, category: 'car', fixedPrice: true },
       { id: 'engine-v1', name: '高機動エンジンVI', price: 2500000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
       { id: 'engine-v2', name: '高機動エンジンV2', price: 4800000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
-      { id: 'engine-v3', name: '高機動エンジンV3', price: 8200000, max: 999, category: 'car', kind: 'engine', fixedPrice: true }
+      { id: 'engine-v3', name: '高機動エンジンV3', price: 8200000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
+      // YOSIDA's 高効率エンジン series (placeholder pictures for now)
+      { id: 'yoshida-er10', name: 'YOSHIDA ER-10', price: 2000000, max: 999, category: 'car', kind: 'engine', fixedPrice: true, maker: 'yosida' },
+      { id: 'yoshida-er20', name: 'YOSHIDA ER-20', price: 6500000, max: 999, category: 'car', kind: 'engine', fixedPrice: true, maker: 'yosida' }
     ],
     // セーフティースロット (once お守り加護), switched on before a spin: the next losing spin gives back
     // min-max % of the lost tokens (all of them `fullChance` of the time);

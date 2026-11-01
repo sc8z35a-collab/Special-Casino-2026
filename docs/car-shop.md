@@ -11,7 +11,9 @@ SHOP now has SHOP / CAR SHOP / 所有 tabs. CAR SHOP uses fixed unit prices:
 | 高機動エンジンV2 | 4,800,000 | engine-v2.webp (larger black) |
 | 高機動エンジンV3 | 8,200,000 | engine-v3.webp (red) |
 
-All six are made by MAGITA and sold by ジンクス; their costs, purchase prices and
+YOSIDA's 高効率エンジン YOSHIDA ER-10 ($2,000,000) and ER-20 ($6,500,000) are engines too
+(placeholder pictures `img/items/yoshida-er10.webp` / `yoshida-er20.webp`). The first six are made by MAGITA, all
+of them sold by ジンクス; their costs, purchase prices and
 exclusive-sale charges are in [handbook/39.md](handbook/39.md).
 
 All purchases appear in 所有. Engines can be installed on an owned, available car,

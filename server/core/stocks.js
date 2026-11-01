@@ -21,8 +21,8 @@
 // price; a buy order holds its money and a sell order its shares while it
 // waits. The fee is 1.8% each way (rounded up; Dtrade's); every order counts once
 // towards the day's 30 (one cancelled or not traded gives its count back);
-// buying stops at $8,000,000 invested (both companies' holdings at the price
-// now, and the money buy orders hold). An order carries the page's own key:
+// buying stops at $80,000,000 a trading day (every company together: what the
+// day's filled buys cost, fee included, and the money its buy orders hold). An order carries the page's own key:
 // the same key again (its answer lost on the way) is the same order, never a
 // second one.
 //
@@ -388,13 +388,9 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
 
   const tradesOn = (userId, day) => q("SELECT COUNT(*) AS n FROM stock_orders WHERE user_id = ? AND day = ? AND status IN ('open', 'filled')").get(userId, day).n;
   const openOf = (userId) => q("SELECT * FROM stock_orders WHERE user_id = ? AND status = 'open' ORDER BY id").all(userId);
-  // invested: the holdings at the price now, and the money buy orders hold
-  function investedOf(userId, st, open) {
-    let n = 0;
-    for (const c of COMPANIES) n += holdingOf(userId, c.id).shares * st.get(c.id).price;
-    for (const o of open) if (o.side === 'buy') n += o.reserved;
-    return n;
-  }
+  // bought on trading day `day`: what its filled buys cost (fee included) and what its buy orders still hold
+  const boughtOn = (userId, day) => q(`SELECT COALESCE(SUM(CASE WHEN status = 'filled' THEN amount WHEN status = 'open' THEN reserved ELSE 0 END), 0) AS n
+    FROM stock_orders WHERE user_id = ? AND day = ? AND side = 'buy'`).get(userId, day).n;
 
   /* ------------------------------------------------------------ the views --- */
 
@@ -426,7 +422,7 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
       return { id: c.id, shares: h.shares, free: h.shares - held, cost: h.cost, value, realized: h.realized, dividends: h.dividends, today };
     });
     return {
-      holdings: list, orders: open.map(orderDto), reserved, invested: invested + reserved, cap: S.cap,
+      holdings: list, orders: open.map(orderDto), reserved, invested: invested + reserved, dayCap: S.dayCap, bought: boughtOn(userId, S.dayOf(now)),
       trades: tradesOn(userId, S.dayOf(now)), tradesMax: S.tradesPerDay, dayEnds: S.dayEnd(now),
       dividend: { pending: a.pending, claimed: a.claimed }
     };
@@ -563,9 +559,8 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
     let reserved = 0;
     if (side === 'buy') {
       const unit = type === 'market' ? slipped(c, { side, type, shares, price }, p) : type === 'limit' ? price : Math.ceil(price * (1 + S.stopMargin));
-      const value = unit * shares, invested = investedOf(u.id, st, open);
-      if (invested + value > S.cap) throw new ApiError(409, 'cap', `投資の上限は$${fmt(S.cap)}です`, { room: Math.max(0, S.cap - invested) });
-      const need = value + S.fee(value);
+      const value = unit * shares, need = value + S.fee(value), bought = boughtOn(u.id, day);
+      if (bought + need > S.dayCap) throw new ApiError(409, 'cap', `投資は1日（日本時間9:00から）合計$${fmt(S.dayCap)}までです`, { room: Math.max(0, S.dayCap - bought) });
       if (getUser(u.id).dollars < need) throw new ApiError(409, 'insufficient', '$が足りません');
       if (type !== 'market') reserved = need;
     } else {
