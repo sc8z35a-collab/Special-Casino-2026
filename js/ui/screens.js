@@ -207,7 +207,13 @@
       var act = $('#tp-action');
       act.textContent = buy ? '入手' : '交換';
       act.disabled = v <= 0 || this.busy || (!buy && got <= 0);
-      $('#tp-note').textContent = buy
+      // (nothing can be bought: say why — the day's limit reached, or not $10 in hand, e.g. below $0 after a fee taken)
+      var why = '';
+      if (buy && m <= 0) {
+        if (BR.bank.boughtToday && BR.bank.boughtToday() >= C.dailyLimit) why = '本日の購入上限（' + U.fmt(C.dailyLimit) + 'トークン）に達しました。毎日00:00 UTCに更新されます';
+        else if (S.dollars < C.tokenPrice) why = '$が足りないため入手できません（今の$：' + (S.dollars < 0 ? '−$' + U.fmt(-S.dollars) : '$' + U.fmt(S.dollars)) + '）';
+      }
+      $('#tp-note').textContent = why ? why : buy
         ? 'スピントークン上限は毎日00:00 UTCに更新されます'
         : '1スピントークン = ' + C.tokenPrice + '$・交換手数料 $' + U.fmt(xfee) + '（Dtrade' + (xfee > C.casino.exchangeFee ? '・総資産$' + U.fmt(C.wealthy.at) + '以上' : '') + '）';
       this.renderDaily();

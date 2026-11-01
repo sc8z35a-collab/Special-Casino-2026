@@ -147,6 +147,8 @@
     applyBalance: applyBalance,
     applyMe: applyMe,
     maxBuy: maxBuy,
+    // what was bought today (for the reason the till cannot sell any more: js/ui/screens.js)
+    boughtToday: boughtToday,
     ready: function () { return !online || srv.ready; },
     // signed out: balances are unknown until the next refresh
     reset: function () {
