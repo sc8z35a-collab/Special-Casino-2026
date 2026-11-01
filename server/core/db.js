@@ -1344,6 +1344,20 @@ MIGRATIONS.push([
    ) WITHOUT ROWID`
 ]);
 
+// MAGITA Garage (server/core/garagebill.js): each month's contract fee taken from a player (once a month)
+MIGRATIONS.push([
+  `CREATE TABLE garage_bills (
+     id         INTEGER PRIMARY KEY,
+     user_id    INTEGER NOT NULL,
+     month      TEXT    NOT NULL,
+     slots      INTEGER NOT NULL,
+     fee        INTEGER NOT NULL,
+     amount     INTEGER NOT NULL,
+     created_at INTEGER NOT NULL,
+     UNIQUE (user_id, month)
+   )`
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
@@ -1355,7 +1369,7 @@ export const TABLES = ['users', 'sessions', 'game_login_locks', 'chat_filter_str
   'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'sec_identity', 'oauth_identities',
   'line_feed_targets', 'line_feed_jobs', 'line_feed_deliveries', 'line_feed_rewards', 'line_feed_claims',
   'stock_state', 'stock_candles', 'stock_holdings', 'stock_accounts', 'stock_orders', 'medals',
-  'corp_state', 'corp_days', 'corp_anchor', 'corp_periods', 'corp_titles', 'corp_news', 'corp_flows', 'slot_bills',
+  'corp_state', 'corp_days', 'corp_anchor', 'corp_periods', 'corp_titles', 'corp_news', 'corp_flows', 'slot_bills', 'garage_bills',
   // (the country's record; not the people themselves — some 20MB, kept by the host's own history of the database)
   'npc_news', 'npc_meetings', 'npc_reports', 'npc_days', 'npc_ai', 'stock_npc', 'meta'];
 

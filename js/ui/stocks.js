@@ -465,20 +465,15 @@
     var down = (st.side === 'buy') === (st.type === 'limit');
     return Math.abs(st.price - m.price) <= m.price * S.priceRange && (down ? st.price < m.price : st.price > m.price);
   }
-  function investedNow() {
-    var m = st.mine;
-    if (!m) return 0;
-    var n = m.reserved;
-    S.companies.forEach(function (c) { var q0 = quote(c.id); n += holding(c.id).shares * (q0 ? q0.price : 0); });
-    return n;
-  }
+  // bought today (from 9:00 Japan time): the filled buys with their fee and the money buy orders hold (the server's)
+  function boughtToday() { return st.mine ? st.mine.bought || 0 : 0; }
   function maxShares() {
     var m = st.mine, unit = unitPrice();
     if (!m || !unit) return 0;
     if (st.side === 'sell') return holding().free;
-    var cash = dollars(), room = Math.max(0, m.cap - investedNow());
-    var n = Math.min(S.maxShares, Math.floor(room / unit), Math.floor(cash / (unit * (1 + S.feeBp / 10000))));
-    while (n > 0 && S.buyAmount(unit, n) > cash) n--;
+    var cash = dollars(), room = Math.max(0, (m.dayCap || S.dayCap) - boughtToday());
+    var n = Math.min(S.maxShares, Math.floor(Math.min(room, cash) / (unit * (1 + S.feeBp / 10000))));
+    while (n > 0 && S.buyAmount(unit, n) > Math.min(cash, room)) n--;
     return Math.max(0, n);
   }
   function digits(input) { var n = Number(String(input.value).replace(/[^\d]/g, '')); return Number.isSafeInteger(n) ? n : 0; }
@@ -701,13 +696,13 @@
     var m = st.mine, box = ui.meter;
     box.replaceChildren();
     if (!m) return;
-    var used = investedNow(), bar = el('div', 'sk-bar'), fill = el('i');
-    fill.style.width = Math.min(100, used / m.cap * 100).toFixed(1) + '%';
+    var cap = m.dayCap || S.dayCap, used = boughtToday(), bar = el('div', 'sk-bar'), fill = el('i');
+    fill.style.width = Math.min(100, used / cap * 100).toFixed(1) + '%';
     bar.appendChild(fill);
     var a = el('div', 'sk-row');
-    a.appendChild(el('small', '', '上限'));
+    a.appendChild(el('small', '', '本日の投資'));
     a.appendChild(bar);
-    a.appendChild(el('b', '', money(used) + ' / ' + money(m.cap)));
+    a.appendChild(el('b', '', money(used) + ' / ' + money(cap)));
     box.appendChild(a);
     box.appendChild(row('残り', (m.tradesMax - m.trades) + '/' + m.tradesMax));
   }

@@ -31,6 +31,8 @@ export function takeFlows(W, day) {
       o.cat += c.cat || 0;
       if (c.cas) o.cas = (o.cas || 0) + c.cas;
       if (c.buyback) o.buyback = (o.buyback || 0) + c.buyback;
+      // (Car Owner's lots of cars that arrived: npc-model.js restock)
+      if (c.restock) o.restock = (o.restock || []).concat(c.restock);
     }
   }
   return out;

@@ -251,8 +251,17 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   function carBought(id) {
     const w = get();
     if (!w || !w.stock.cars[id]) return;
-    w.stock.cars[id]--;
+    if (w.carSold) w.carSold(id); else w.stock.cars[id]--;
     save('hot');
+  }
+  // Car Owner's stock as the players see it: how many of each car are there now (null: no country yet, no limit), and
+  // the lots on their way (when they arrive, ms)
+  function carStock() {
+    const w = get();
+    if (!w || !w.stock) return null;
+    const coming = {};
+    for (const o of w.stock.orders) coming[o.id] = { n: (coming[o.id] ? coming[o.id].n : 0) + o.n, at: Math.min(coming[o.id] ? coming[o.id].at : Infinity, o.at * 86400000) };
+    return { cars: { ...w.stock.cars }, coming };
   }
 
   /* ---------------------------------------------------------------- the 街ライブ --- */
@@ -510,7 +519,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   }
 
   return {
-    on, booted, ensure, wake, due, beforeClose, afterClose, cross, carBought, watch, town, personCard, policy: policyDto, housekeep, writeAi,
+    on, booted, ensure, wake, due, beforeClose, afterClose, cross, carBought, carStock, watch, town, personCard, policy: policyDto, housekeep, writeAi,
     playerRoutes, routes, world: get,
     // (the tests: the minutes and the days worked out now, and what was kept)
     runTo: (m) => tx(() => { runTo(m, Infinity); save('hot'); })

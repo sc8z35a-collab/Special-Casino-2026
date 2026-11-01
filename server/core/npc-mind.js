@@ -65,7 +65,8 @@ export function thinkCar(W, i, day, r, ctx) {
   // the models within reach, by how much they are wanted (the popular ones, and the dear ones for the vain)
   const cand = cars.filter((c) => c.price * 1.1 < cap && (!have || c.k !== have || years > 8));
   if (!cand.length) return false;
-  const ws = cand.map((c) => c.npc * Math.pow(c.price / 30000000, 0.6 * tr(P, i, T.vanity) - 0.3) * (W.stock.cars[c.id] === 0 ? 0 : 1));
+  // (in good times the dear cars, in bad the cheap ones: each maker's way with the economy, and what its development won it)
+  const ws = cand.map((c) => c.npc * Math.pow(c.price / 30000000, 0.6 * tr(P, i, T.vanity) - 0.3) * (W.stock.cars[c.id] === 0 ? 0 : 1) * makerPull(W, c.id));
   const pick = cand[r.weighted(ws)];
   if (!pick || ws[cand.indexOf(pick)] <= 0) return false;
   const price = econ.withTax(W, pick.price);
@@ -102,7 +103,7 @@ export function thinkCar(W, i, day, r, ctx) {
     W.flowsBuyback(day, tradeIn);
   }
   if (!econ.buyProduct(W, i, day, 'cars', pick.id, 1, pick.price, true)) return false;
-  if (W.stock.cars[pick.id] > 0) W.stock.cars[pick.id]--;
+  if (W.carSold) W.carSold(pick.id); else if (W.stock.cars[pick.id] > 0) W.stock.cars[pick.id]--;
   P.car[i] = pick.k;
   P.carDay[i] = day;
   remember(P, i, day, 3, Math.min(255, Math.round(pick.price / 1000000)));
@@ -110,6 +111,11 @@ export function thinkCar(W, i, day, r, ctx) {
   W.events.push({ kind: 'car', i, car: pick.id, price: pick.price, loan });
   if (r.u() < W.reasonLog * 4) W.reasons.push({ i, day, kind: 'car', car: pick.id, price, gain, loan, futures: n, tradeIn });
   return true;
+}
+function makerPull(W, id) {
+  const pr = CORP.products.cars[id], m = pr && CORP.makers[pr.maker];
+  if (!m) return 1;
+  return Math.exp(m.beta * 3 * (W.econX || 0)) * ((W.makerEdge && W.makerEdge[pr.maker]) || 1);
 }
 function econ_feel(P, i, v) { const x = i * 5 + E.mood; P.emo[x] = clampB(P.emo[x] + v); }
 // what Tenesice would lend a person for a car now: by their pay and their credit, less what they owe

@@ -63,7 +63,7 @@ export function boot(key, now, corp, { n = NPC.nation.population, held = {} } = 
 }
 function blank(key, n, scale, first, day, minute) {
   const stockCars = {};
-  for (const c of RULES.cars) if (c.price > 0 && !c.ended) stockCars[c.id] = Math.max(1, Math.round(((CORP.products.cars[c.id] || { npc: 30 }).npc / 12) * scale));
+  for (const c of RULES.cars) if (c.price > 0 && !c.ended) stockCars[c.id] = CORP.firstLot(c.id, scale);
   return {
     v: 1, key, n, scale, first, start: day, minute, day,
     cal: {}, sum: { toCo: 0, imports: 0, fromPlayers: 0, toPlayers: 0, divRest: 0, lent: 0, repaid: 0, bets: 0, traded: 0, marketSlip: 0, quickLoans: 0, staying: 0, homeless: 0, deaths: 0, born: 0, hired: 0, month: 0, made: 0 },
@@ -74,7 +74,7 @@ function blank(key, n, scale, first, day, minute) {
     stats: {}, orgs: {}, priv: {}, fl: {}, flowsDone: null,
     bankRates: { person: 0.025, auto: 0.02, deposit: 0.002 },
     priceIdx: {}, priceUntil: {}, appeal: {}, appealUntil: {}, boycott: {}, siteShare: 0.65, raises: {},
-    coShare: {}, coSharePrev: {}, coTrend: {}, coWeek: {}, segment: {}, titles: [], liveGames: [], stock: { cars: stockCars, orders: [] },
+    coShare: {}, coSharePrev: {}, coTrend: {}, coWeek: {}, segment: {}, titles: [], liveGames: [], stock: { cars: stockCars, orders: [], lots: {} },
     outlook: { jobLoss: 0.004, market: 1 }, depth: 'standard', work: {}, workHours: {}, capacity: {}, crunch: {}, overtime: {},
     news: [], meetings: [], reports: [], events: [], reasons: [], convos: [], ai: [], corpOps: [], talks: 0,
     reasonLog: 0.02, talkLog: 0.002, demoToday: {}, richest: 0, frameAt: 0
@@ -99,14 +99,17 @@ export function attach(W) {
     return W._staff[id] || [];
   };
   W.card = (i, day) => card(W, i, day);
+  // one of a car sold (to a person or a player): one fewer at Car Owner, and the last one ordered again at once
+  W.carSold = (id) => { if (W.stock.cars[id] > 0) W.stock.cars[id]--; if (W.stock.cars[id] === 0) orderCar(W, id, W.day); };
   // a company's money to another company (a placement fee) or out to the local businesses or to a person: with the day's flows
   W.charge = (from, to, stream, n, person = -1) => {
     if (!(n > 0)) return;
     econ.flowsOf(W, W.day).charges.push({ from, to, stream, n: Math.round(n), person });
     W._staff = null;
   };
+  // a car traded in: MAGITA Robert buys it (the used-car trade is MAGITA's)
   W.flowsBuyback = (day, n) => {
-    const f = econ.flowsOf(W, W.day), c = f.co.carowner || (f.co.carowner = { s: {}, p: {}, t: {}, l: {}, cat: 0 });
+    const f = econ.flowsOf(W, W.day), c = f.co.magita || (f.co.magita = { s: {}, p: {}, t: {}, l: {}, cat: 0 });
     c.buyback = (c.buyback || 0) + n;
     W.sum.toCo -= n;
   };
@@ -304,7 +307,7 @@ export function nextDay(W, day, ext, ctx) {
   state.dayStart(W, next, r, ctx);
   W.politics.day(W, next, r);
   org.orgDay(W, next, r, ctx);
-  restock(W, next, r);
+  restock(W, next);
   W._staff = null;
   stats(W, next);
   W.nation.hist.push({ day: next, prices: W.stats.prices, cash: W.nation.cash, debt: W.nation.debt, fund: W.nation.fund.cash + W.nation.fund.bonds, in: W.nation.day.in, out: W.nation.day.out });
@@ -325,6 +328,10 @@ function refresh(W, day, ctx) {
       if (id === 'ice') W.liveGames = (s.live || []).map((l) => ({ company: id, id: l.id, name: l.name }));
     }
     W.surchargeOn = !!(corp.co.magita && corp.co.magita.surcharge);
+    // the economy (the people choose MAGITA's dear cars in good times, YOSHIDA's cheap ones in bad) and what each
+    // carmaker's development work has won it
+    W.econX = corp.econ ? corp.econ.x || 0 : 0;
+    W.makerEdge = Object.fromEntries(Object.keys(CORP.makers).map((id) => [id, corp.co[id] && corp.co[id].rnd ? corp.co[id].rnd.edge : 1]));
     // a studio's last weeks before a release: longer days (クランチ), unless the country's overtime limit is low
     W.crunch = {};
     for (const id of ['riru', 'ice']) {
@@ -345,18 +352,33 @@ function refresh(W, day, ctx) {
   W.workHours = {};
   org.segments(W, day);
 }
-// Car Owner's stock of each car for the people (the players buy first, whatever is left): each week what sold is
-// ordered from MAGITA, in two weeks it arrives
-function restock(W, day, r) {
+// Car Owner's stock of each car, for the people and the players alike (the players buy first): MAGITA's few, YOSHIDA's
+// many (CORP.firstLot). A car sold out is ordered again from its maker in a lot bigger than the last (MAGITA's a
+// little, YOSHIDA's far more: CORP.makers), arriving `lead` days later (MAGITA by its special contract the next day,
+// YOSHIDA in five) and paid for by Car Owner as it arrives (the lots go to the companies' day with the flows).
+function restock(W, day) {
   const s = W.stock;
-  for (const o of s.orders.filter((x) => x.at <= day)) s.cars[o.id] = (s.cars[o.id] || 0) + o.n;
+  s.lots = s.lots || {};
+  // (a car the stock does not know yet — one added later — starts with its first lot)
+  for (const c of RULES.cars) if (c.price > 0 && !c.ended && s.cars[c.id] === undefined) s.cars[c.id] = CORP.firstLot(c.id, W.scale);
+  const arrived = [];
+  for (const o of s.orders.filter((x) => x.at <= day)) { s.cars[o.id] = (s.cars[o.id] || 0) + o.n; arrived.push({ id: o.id, n: o.n }); }
   s.orders = s.orders.filter((x) => x.at > day);
-  if ((day + 4) % 7 !== 1) return;
-  for (const [id, have] of Object.entries(s.cars)) {
-    const want = Math.max(1, Math.round(((CORP.products.cars[id] || { npc: 30 }).npc / 12) * W.scale * (1 + (W.appeal['magita:cars'] || 0))));
-    const coming = s.orders.filter((x) => x.id === id).reduce((n, x) => n + x.n, 0);
-    if (have + coming < want) s.orders.push({ id, n: want - have - coming, at: day + 14 });
+  if (arrived.length) {
+    const f = econ.flowsOf(W, day), c = f.co.carowner || (f.co.carowner = { s: {}, p: {}, t: {}, l: {}, cat: 0 });
+    c.restock = (c.restock || []).concat(arrived);
   }
+  for (const [id, have] of Object.entries(s.cars)) if (have <= 0) orderCar(W, id, day);
+}
+// a car sold out: its next lot ordered (once: nothing more while one is on its way)
+export function orderCar(W, id, day) {
+  const s = W.stock, pr = CORP.products.cars[id], m = pr && CORP.makers[pr.maker];
+  if (!m || s.orders.some((x) => x.id === id)) return;
+  s.lots = s.lots || {};
+  const first = CORP.firstLot(id, W.scale), last = s.lots[id] || first;
+  const lot = Math.min(first * m.maxGrow, Math.max(last + 1, Math.ceil(last * m.grow)));
+  s.lots[id] = lot;
+  s.orders.push({ id, n: lot, at: day + m.lead, from: day });
 }
 
 /* ---------------------------------------------------------------- the numbers --- */

@@ -1,6 +1,6 @@
 /* 企業: the companies of the game's world (server/core/corp.js works them out day by day; the 投資 screen,
    js/ui/stocks.js, shows the listed ones, and the operator site's 株式 app, ops/corp.js, all of them). Who they
-   are, the fiscal calendar, the accounts their books keep and how the statements read, the taxes, the lending
+   are (eleven of them: YOSIDA, MAGITA's rival, the last to come), the fiscal calendar, the accounts their books keep and how the statements read, the taxes, the lending
    ranks, the economy they share and how each makes its money. Money is whole $ (the NPCs say 円); a day is a
    trading day, 9:00 to 9:00 Japan time (a UTC day), named by its date. Every number here is where a company
    starts: from then on it hires, raises pay, sells, borrows and grows by itself. */
@@ -86,7 +86,7 @@
       payout: 0.4, per: 11, pbr: 0.8, founders: 0.05, price: 60000, depth: 2000000000
     },
     {
-      id: 'magita', name: 'MAGITA', full: '株式会社MAGITA', en: 'MAGITA', rank: 'A', model: 'maker', kind: '総合重工メーカー（車・エンジン・オイル・修理キット）', listed: true,
+      id: 'magita', name: 'MAGITA', full: '株式会社MAGITA', en: 'MAGITA', rank: 'A', model: 'maker', kind: '総合重工メーカー（高級車・エンジン・オイル・修理キット・MAGITA Garage・MAGITA Robert）', listed: true,
       capital: 2000000000, reserve: 2000000000, retained: 120000000000,
       staff: 6000, salary: 3200000, cost: 4800000,
       place: { name: '巨大工場・製造ライン維持費', amount: 8500000000 }, rd: { name: '車両・エンジン・化学研究開発費', amount: 6000000000 },
@@ -98,39 +98,72 @@
         { id: 'dealer', name: '車両の卸売（カーオーナー向け）', to: 'carowner' },
         { id: 'retail', name: '車用品の卸売（ジンクス向け）', to: 'jinx' },
         { id: 'excl', name: '専売特別収入', to: '*' },
-        { id: 'export', name: '海外・法人向け販売', share: 1, beta: 1.4 }
+        { id: 'export', name: '海外・法人向け販売', share: 1, beta: 1.4 },
+        // the players' garages are all MAGITA's (MAGITA Garage: the monthly contract fee taken from every player, the
+        // places bought, its cut of what renting a car out earns), and so is buying their used cars back (MAGITA
+        // Robert: sold on within weeks; a car sold to a friend in the chat is outside it)
+        { id: 'garage', name: 'MAGITA Garage（ガレージ契約料・増設・貸し出し手数料）', cost: 0.08, player: ['garage', 'garagefee', 'rentfee'] },
+        { id: 'used', name: 'MAGITA Robert（中古車の買い取り・販売）', player: ['buyback'] }
       ],
       materials: true, factory: 0.7, inventoryDays: 45,
       ppe: 60000000000, growth: 0.03, beta: 1.4, season: 'flat', hire: 0.02, raise: 0.025, quit: 0.05,
       payout: 0.3, per: 13, pbr: 0.9, founders: 0.12, price: 18000, depth: 400000000
     },
     {
-      id: 'carowner', name: 'カーオーナー', full: '株式会社カーオーナー', en: 'CAR OWNER', rank: 'A', model: 'dealer', kind: '自動車販売（MAGITAのディーラー）',
+      id: 'carowner', name: 'カーオーナー', full: '株式会社カーオーナー', en: 'CAR OWNER', rank: 'A', model: 'dealer', kind: '自動車販売（MAGITA・YOSHIDAのディーラー）', listed: true,
       capital: 500000000, reserve: 500000000, retained: 25000000000,
       staff: 2500, salary: 2800000, cost: 4000000,
       place: { name: '大型ショールーム・店舗維持費', amount: 2200000000 }, rd: { name: '販売管理システム開発費', amount: 150000000 }, ads: 1200000000,
-      sales: 65000000000, op: 2500000000,
-      // the cars (each model's customers a year: products), the cars bought back from players, and the rest of its
-      // trade (its share of the sales and its cost found so that it makes its 営業利益: flex)
+      // (the profile's numbers are where it starts, found from what it sells: with YOSHIDA's cars — some 9,800 more a
+      // year, cheap and wanted, and far more of their price its own — its sales and profit grew well past the $65B and
+      // $2.5B it had with MAGITA's alone: what the cars leave it after their 仕入れ価格, less its people and its shops)
+      sales: 118000000000, op: 18700000000,
+      // the cars (each model's customers a year: products, each maker's swinging with the economy its own way: MAKERS),
+      // the used cars it still has from before MAGITA Robert, and the rest of its trade (its share of the sales and
+      // its cost found so that it makes its 営業利益: flex). It sells both makers' cars: in good times MAGITA's, in bad
+      // ones YOSHIDA's, so it earns either way.
       streams: [
-        { id: 'cars', name: '新車販売', products: 'cars', from: 'magita', beta: 1.5, player: ['car'] },
-        { id: 'used', name: '中古車販売', player: ['buyback'] },
-        { id: 'service', name: '整備・保険・ガレージ', flex: true, beta: 0.8, player: ['garage'] }
+        { id: 'cars', name: '新車販売', products: 'cars', from: ['magita', 'yosida'], beta: 0.4, player: ['car'] },
+        { id: 'used', name: '中古車販売（MAGITA Robert以前の在庫）' },
+        { id: 'service', name: '整備・保険', flex: true, beta: 0.5 }
       ],
       inventoryDays: 40,
-      ppe: 8000000000, growth: 0.03, beta: 1.5, season: 'cars', hire: 0.02, raise: 0.02, quit: 0.08,
-      payout: 0.3, per: 12, pbr: 0.8, founders: 0.2, price: 9000
+      ppe: 8000000000, growth: 0.03, beta: 0.4, season: 'cars', hire: 0.02, raise: 0.02, quit: 0.08,
+      payout: 0.3, per: 12, pbr: 0.8, founders: 0.2, price: 9000, depth: 200000000
+    },
+    {
+      // MAGITA's rival: cheap cars and efficient engines, made from end to end in its own plants. Its customers are
+      // those who save: when times are bad they come to it (its sales follow the economy the other way: a
+      // defensive stock), when good they go to MAGITA. No 専売特別費用: it is not big enough to ask for one. Its home
+      // is outside the country (`abroad`: its people and its suppliers are paid there, its sales abroad go on).
+      id: 'yosida', name: 'YOSIDA', full: '株式会社YOSIDA', en: 'YOSIDA', rank: 'A', model: 'maker', kind: '自動車メーカー（大衆車・高効率エンジン、MAGITAのライバル）', listed: true, abroad: true,
+      capital: 1200000000, reserve: 1200000000, retained: 35000000000,
+      staff: 4500, salary: 2400000, cost: 3800000,
+      place: { name: '自社一貫工場・製造ライン維持費', amount: 6500000000 }, rd: { name: '車両・エンジン実用開発費', amount: 1700000000 },
+      // (its sales and profit found from what it costs: 4,500 people at $3.8M, its plants and research are $25.3B a
+      // year, its cars and engines cost it about 62% of what it sells them for, so $95B of sales leave it about $6B)
+      sales: 95000000000, op: 6000000000,
+      streams: [
+        { id: 'dealer', name: '車両の卸売（カーオーナー向け）', to: 'carowner' },
+        { id: 'retail', name: 'エンジンの卸売（ジンクス向け）', to: 'jinx' },
+        { id: 'export', name: '海外・法人向け販売', share: 1, beta: -0.5 }
+      ],
+      materials: true, factory: 0.75, inventoryDays: 30,
+      ppe: 20000000000, growth: 0.03, beta: -0.5, season: 'cars', hire: 0.02, raise: 0.02, quit: 0.05,
+      payout: 0.35, per: 11, pbr: 0.9, founders: 0.15, price: 12000, depth: 300000000
     },
     {
       id: 'jinx', name: 'ジンクス', full: '株式会社ジンクス', en: 'JINX', rank: 'A', model: 'retail', kind: 'ショップ（SHOPの運営・管理）',
       capital: 300000000, reserve: 300000000, retained: 18000000000,
       staff: 3000, salary: 2200000, cost: 3200000,
       place: { name: '店舗網・巨大倉庫維持費', amount: 1800000000 }, rd: { name: '流通・PB商品開発費', amount: 200000000 }, ads: 900000000,
-      sales: 50000000000, op: 2000000000,
+      // (with YOSHIDA's engines on its shelves, some $9.6B more a year and $3.2B of it its own: past the $50B and $2B
+      // it began with)
+      sales: 59500000000, op: 5200000000,
       // the Shop's items (its own セーフティースロット, and MAGITA's car items bought from it: products), and the rest
       // of its trade (flex, as the dealer's)
       streams: [
-        { id: 'items', name: 'SHOP商品売上', products: 'items', beta: 0.9, player: ['shop'] },
+        { id: 'items', name: 'SHOP商品売上', products: 'items', from: ['magita', 'yosida'], beta: 0.9, player: ['shop'] },
         { id: 'goods', name: '一般商品売上', flex: true, beta: 0.5 }
       ],
       inventoryDays: 30,
@@ -253,7 +286,14 @@
       'ferrari-325': { maker: 'magita', cost: 3500000, buy: 30000000, excl: 2000000, npc: 90 },
       // (made from scrapped cars: MAGITA loses on each one, and lets the dealer earn well on it, on purpose)
       onvoro: { maker: 'magita', cost: 500000, buy: 200000, excl: 0, npc: 2800 },
-      'blue-lightning': { maker: 'magita', cost: 3000000, buy: 30000000, excl: 3000000, npc: 100 }
+      'blue-lightning': { maker: 'magita', cost: 3000000, buy: 30000000, excl: 3000000, npc: 100 },
+      // YOSIDA's: cheap, wanted by many, no 専売特別費用 (販売店側純利益 = price − 仕入れ価格)
+      'yoshida-zx4': { maker: 'yosida', cost: 2800000, buy: 4000000, excl: 0, npc: 900 },
+      'yoshida-p100w': { maker: 'yosida', cost: 2100000, buy: 4000000, excl: 0, npc: 1400 },
+      'yoshida-h9c': { maker: 'yosida', cost: 4300000, buy: 7500000, excl: 0, npc: 500 },
+      'yoshida-s5': { maker: 'yosida', cost: 1500000, buy: 2500000, excl: 0, npc: 2600 },
+      'yoshida-s6': { maker: 'yosida', cost: 1000000, buy: 1600000, excl: 0, npc: 3200 },
+      'yoshida-k10e': { maker: 'yosida', cost: 3000000, buy: 4500000, excl: 0, npc: 1200 }
     },
     items: {
       omamori: { maker: 'jinx', cost: 1000, npc: 50000 },
@@ -262,9 +302,28 @@
       'gasoline-full': { maker: 'magita', cost: 20000, buy: 24000, excl: 0, npc: 60000 },
       'engine-v1': { maker: 'magita', cost: 400000, buy: 2000000, excl: 400000, npc: 600 },
       'engine-v2': { maker: 'magita', cost: 600000, buy: 4500000, excl: 100000, npc: 300 },
-      'engine-v3': { maker: 'magita', cost: 800000, buy: 7500000, excl: 400000, npc: 150 }
+      'engine-v3': { maker: 'magita', cost: 800000, buy: 7500000, excl: 400000, npc: 150 },
+      // YOSIDA's 高効率エンジン series
+      'yoshida-er10': { maker: 'yosida', cost: 1100000, buy: 1400000, excl: 0, npc: 2500 },
+      'yoshida-er20': { maker: 'yosida', cost: 3200000, buy: 4000000, excl: 0, npc: 700 }
     }
   };
+
+  // The carmakers: how their cars sell with the economy (`beta`: MAGITA's dear cars when people are rich, YOSHIDA's
+  // cheap ones when they are not), and Car Owner's stock of each car (for the people and the players alike): a lot of
+  // `lotMonths` of a model's usual customers at the start (MAGITA few, YOSHIDA many); sold out, Car Owner orders a
+  // bigger lot (×`grow`, at most `maxGrow` times the first) and pays for it, and it arrives `lead` days later (MAGITA
+  // by its special contract the next day, YOSHIDA in five).
+  var MAKERS = {
+    magita: { name: 'MAGITA', beta: 1.4, lead: 1, lotMonths: 0.5, grow: 1.25, maxGrow: 4 },
+    yosida: { name: 'YOSHIDA', beta: -0.6, lead: 5, lotMonths: 1.5, grow: 2, maxGrow: 32 }
+  };
+  // a car's first lot at Car Owner (`scale`: the country's size against 50,000)
+  function firstLot(id, scale) {
+    var pr = PRODUCTS.cars[id], m = pr && MAKERS[pr.maker];
+    if (!pr || !m) return 1;
+    return Math.max(1, Math.round(pr.npc / 12 * m.lotMonths * (scale || 1)));
+  }
 
   /* --------------------------------------------------------------- the ties --- */
   // ビジネス友好度 (0〜100): how well two companies get on, where it starts and why. It moves with what passes between
@@ -274,6 +333,9 @@
   var TIES = [
     { a: 'magita', b: 'carowner', start: 35, why: 'MAGITAの独占供給・厳しい取引条件' },
     { a: 'magita', b: 'jinx', start: 50, why: 'CAR SHOPの車用品の供給' },
+    { a: 'magita', b: 'yosida', start: 15, why: '自動車市場のライバル（高級車と大衆車）' },
+    { a: 'yosida', b: 'carowner', start: 55, why: 'YOSHIDA車の供給（専売特別費用なし）' },
+    { a: 'yosida', b: 'jinx', start: 55, why: 'YOSHIDAエンジンの供給' },
     { a: 'ice', b: 'riru', start: 90, why: '共同開発・業務委託・資本提携' },
     { a: 'citywork', b: 'speedeed', start: 20, why: '求人市場で競合' },
     { a: 'daizin', b: 'carowner', start: 60, why: 'VIP顧客への高級車の販売' },
@@ -302,7 +364,24 @@
       { id: 'MOL1', name: '部品の統合・モジュール化「MOL1」', months: 42, chance: 1, cut: 0.2 },
       { id: 'RIMU', name: 'AIによる研究加速計画「RIMU TAG」', months: 24, chance: 1, speed: 0.35 }
     ],
-    surcharge: { amount: 3000000, except: ['onvoro'], on: 0.5, off: 0.9 }
+    surcharge: { amount: 3000000, except: ['onvoro'], on: 0.5, off: 0.9 },
+    // MAGITA Garage: every month each player pays `base` for each place of their garage (taken from the $ in hand,
+    // whatever is there). MAGITA sets the next month's fee at each month's end: while it does badly (its last
+    // quarter's operating profit short of its plan, or the month's a loss) it raises it to `min`〜`max` (the worse,
+    // the higher), back to `base` when it is well again. It also takes `rentCut` of what renting a car out earns.
+    garage: { base: 100000, min: 110000, max: 200000, rentCut: 0.1 }
+  };
+
+  // Every company's people and research (技術開発): at each quarter's results a company that did badly (its operating
+  // profit under `cutBelow` of what its plan expected, or a loss) lets `cut` of its people go (the worse, the more;
+  // `severance` months of pay each), one that did well (over `growAbove`) raises its hiring plan by `grow`. And each
+  // runs one development at a time (`months`); it succeeds the likelier, and lifts its trade the more, the more people
+  // it has (against its size at the start) and the better their mood: `chance` at the start's size, `edge` its lift.
+  var STAFFING = { cutBelow: 0.5, cut: [0.03, 0.1], severance: 3, growAbove: 1.25, grow: [0.02, 0.05] };
+  var TECH = {
+    months: [5, 11], chance: 0.45, edge: [0.01, 0.05], maxEdge: 1.35,
+    names: ['次世代', '新型', '高効率', 'AI活用', '省エネ', '統合', '自動化', '次期主力'],
+    kinds: { maker: '製品・製造技術', dealer: '販売システム', retail: '流通・PB商品', service: 'サービス基盤', bank: '金融システム', studio: 'ゲームエンジン' }
   };
 
   var GENRES = ['RPG', 'アクション', 'アクションRPG', 'シューター', 'アドベンチャー', 'ストラテジー', 'レース', 'スポーツ', '格闘', 'パズル', 'シミュレーション', 'ホラー', 'オープンワールド'];
@@ -364,6 +443,7 @@
     // once the country of people lives (js/game/npc.js): what it pays the companies, and what they pay for it
     'r:public': ['官公庁・公共事業売上', 'r'], 'r:ventures': ['新規事業売上', 'r'], 'r:mobile': ['通信事業収入（テネシス・モバイル）', 'r'], 'r:facility': ['設備・施設サービス売上', 'r'],
     'r:it': ['ITサービス・データセンター売上', 'r'], 'r:platform': ['ゲーム販売手数料', 'r'], 'r:placement': ['人材紹介手数料', 'r'], 'r:nii': ['資金利益', 'r'], 'r:fees': ['役務取引等利益', 'r'],
+    'r:garage': ['MAGITA Garage', 'r'], 'r:used': ['中古車販売', 'r'], 'c:used': ['中古車販売の原価', 'c'],
     'c:funding': ['資金調達費用（預金利息）', 'c'], 'c:payout': ['払い出し（市民の勝ち越し分）', 'c'],
     sRecruit: ['採用費', 's'], sSeverance: ['退職給付費用', 's'], sVenture: ['新規事業費用', 's']
   };
@@ -445,7 +525,7 @@
   BR.CORP = {
     DAY_MS: DAY_MS,
     companies: COMPANIES, company: company, listed: function () { return COMPANIES.filter(function (c) { return c.listed; }); },
-    players: PLAYERS, magita: MAGITA, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
+    players: PLAYERS, magita: MAGITA, makers: MAKERS, firstLot: firstLot, staffing: STAFFING, tech: TECH, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
     ranks: RANKS, money: MONEY, tax: TAX,
     accounts: ACCOUNTS, account: account, pl: PL, bs: BS, cf: CF, plOf: plOf,
     // the 決算発表: this many days after a quarter's end, at 15:00 Japan time (6:00 UTC)

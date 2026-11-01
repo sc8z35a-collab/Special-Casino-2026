@@ -12,7 +12,11 @@
      (its price now less the day's rate; 大廃棄セール: far less taken off) or
      given to a friend, or sold to one in the chat (js/ui/carsale.js: a car
      sold that way is a 中古車). VIP: every car a few % off on top of any sale,
-     a garage place 40 % off, and cars only a VIP level can buy. */
+     a garage place 40 % off, and cars only a VIP level can buy.
+   - MAGITA Garage owns the garages: every month each place's contract fee is taken
+     from the $ (shown in the garage's bar), and it keeps 10% of the rentals'
+     takings; MAGITA Robert buys cars back. Car Owner sells MAGITA's and YOSHIDA's
+     cars from its stock: a car sold out waits for its next lot. */
 (function (BR) {
   'use strict';
 
@@ -70,6 +74,14 @@
     return vipLevel() === null ? p : Math.round(p * (100 - BR.CONFIG.vip.garageOff) / 10000) * 100;
   }
   function owned() { return garage ? garage.cars.length : 0; }
+  // Car Owner's stock of a car (null: no limit), and its next lot ({ n, at }) when one is on its way
+  function stockOf(id) {
+    var st = garage && garage.stock;
+    if (!st || st.cars[id] === undefined) return null;
+    return { n: st.cars[id], coming: st.coming[id] || null };
+  }
+  function soldOut(id) { var x = stockOf(id); return !!x && x.n <= 0; }
+  function makerOf(car) { return car.maker === 'yosida' ? 'yosida' : 'magita'; }
   function capacity() { return garage ? garage.capacity : BR.CONFIG.garage.slots; }
 
   /* ------------------------------------------------------------ Car Owner --- */
@@ -107,6 +119,7 @@
       b.appendChild(el('span', 'car-thumb-name', c.name));
       if (s && s.pct[c.id]) b.appendChild(el('em', 'car-thumb-off', '-' + s.pct[c.id] + '%'));
       if (c.model) b.appendChild(el('i', 'car-thumb-3d', '3D'));
+      if (BR.sale.carSold(c) && soldOut(c.id)) b.appendChild(el('em', 'car-thumb-out', '売り切れ'));
       if (!BR.sale.carSold(c)) b.appendChild(el('em', 'car-thumb-pending', c.ended ? '販売終了' : '価格未定'));
       if (c.vip) { var vb = K.vipBadge(c.vip); vb.classList.add('car-thumb-vip'); b.appendChild(vb); }
       b.addEventListener('click', function () {
@@ -133,9 +146,27 @@
     if (pr.pct) price.appendChild(el('em', 'car-off', '-' + pr.pct + '%'));
     if (pr.vip) price.appendChild(el('em', 'car-vip-note', 'VIP -' + pr.vip + '%'));
     if (pr.extra) price.appendChild(el('em', 'car-vip-note', 'MAGITA手数料 +' + money(pr.extra)));
+    renderStock(car);
     renderSale();
     renderOwned();
     stage(car);
+  }
+  // its maker, and how many Car Owner has (sold out: when the next lot comes, and how many)
+  function renderStock(car) {
+    var box = $('#car-stock');
+    box.textContent = '';
+    var m = makerOf(car);
+    box.appendChild(el('span', 'car-maker ' + m, m === 'yosida' ? 'YOSHIDA' : 'MAGITA'));
+    var st = BR.sale.carSold(car) ? stockOf(car.id) : null;
+    box.classList.toggle('out', !!st && st.n <= 0);
+    if (st) {
+      if (st.n > 0) { box.appendChild(document.createTextNode('在庫')); box.appendChild(el('b', '', U.fmt(st.n) + '台')); }
+      else {
+        box.appendChild(el('b', '', '売り切れ'));
+        if (st.coming) box.appendChild(el('span', '', at(st.coming.at) + ' に ' + U.fmt(st.coming.n) + '台入荷予定（' + (m === 'yosida' ? 'YOSHIDAは5日' : 'MAGITAは特別契約で翌日') + '）'));
+      }
+    }
+    box.hidden = false;
   }
   // the Car Owner sale and how long it has to go
   var saleKey = '';
@@ -159,9 +190,9 @@
     var car = model(sel);
     var buy = $('#car-buy');
     var pending = !BR.sale.carSold(car);
-    var locked = !BR.VIP.carOpen(car, vipLevel());
-    buy.disabled = busy || locked || pending;
-    buy.textContent = pending ? (car.ended ? '販売終了' : '価格未定') : locked ? 'VIP' + BR.VIP.label(car.vip) + '限定車' : '購入する';
+    var locked = !BR.VIP.carOpen(car, vipLevel()), out = !pending && soldOut(car.id);
+    buy.disabled = busy || locked || pending || out;
+    buy.textContent = pending ? (car.ended ? '販売終了' : '価格未定') : locked ? 'VIP' + BR.VIP.label(car.vip) + '限定車' : out ? '売り切れ（入荷待ち）' : '購入する';
     buy.classList.toggle('short', !pending && S.dollars < priceOf(car).price);
   }
 
@@ -194,6 +225,7 @@
     var car = model(sel);
     if (busy) return;
     if (!BR.sale.carSold(car)) { sfx('deny'); toast(car.ended ? 'この車は販売終了しました（持っている車は売れます）' : 'この車は価格未定のため、まだ購入できません'); return; }
+    if (soldOut(car.id)) { sfx('deny'); toast(car.name + 'は売り切れです。次の入荷をお待ちください'); return; }
     var pr = priceOf(car);
     if (S.dollars < pr.price) {
       sfx('deny');
@@ -227,7 +259,7 @@
         return load();
       }).catch(function (err) {
         if (err.code === 'garage_full') { full(); return null; }
-        if (err.code === 'price_changed') load().then(function () { if (onBoard('cars')) renderShop(); }, function () {});
+        if (err.code === 'price_changed' || err.code === 'sold_out') load().then(function () { if (onBoard('cars')) renderShop(); }, function () {});
         fail(err);
       }).then(function () {
         busy = false;
@@ -273,6 +305,19 @@
       dz.appendChild(el('span', '', '全車両 買取 −' + d.pct + '% の高価買取'));
       dz.appendChild(el('small', '', '残り ' + left(d.end - now())));
       bar.appendChild(dz);
+    }
+    // MAGITA Garage: this month's fee a place, what the garage costs a month, and the last one taken
+    var gf = garage.garageFee;
+    if (gf) {
+      var fee = el('div', 'garage-fee');
+      fee.appendChild(el('b', '', 'MAGITA Garage 契約料'));
+      fee.appendChild(el('span', '', '1台あたり'));
+      fee.appendChild(el('em', gf.fee > gf.base ? 'up' : '', money(gf.fee) + (gf.fee > gf.base ? '（値上げ中）' : '')));
+      fee.appendChild(el('span', '', '× ' + capacity() + '台 = 毎月 ' + money(gf.fee * capacity())));
+      var last = gf.bills && gf.bills[0];
+      fee.appendChild(el('small', '', '毎月1日（日本時間9:00）に手元資金から自動で徴収されます（足りなくても徴収）。貸し出しの売上はMAGITA Garageが' + Math.round(gf.rentCut * 100) + '%を手数料として受け取ります。' +
+        (last ? '前回：' + last.month.replace('-', '年') + '月分 ' + money(last.amount) + '（' + last.slots + '台）' : '')));
+      bar.appendChild(fee);
     }
     var places = el('div', 'garage-places');
     places.appendChild(K.icon('garage'));
@@ -405,7 +450,7 @@
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode(m.name + ' を貸し出しますか？'));
       p.appendChild(el('small', 'confirm-sub', R.hours + '時間ごとにお客さんが1〜5人来て、1人 ' + money(lo) + '〜' + money(lo + R.spread) + '（まれに ' + money(R.vip.pay) + '）払ってくれます。' +
-        '少なくとも' + R.hours + '時間は売る・あげることができません。'));
+        '少なくとも' + R.hours + '時間は売る・あげることができません。売上の' + Math.round(((garage && garage.rental && garage.rental.cut) || 0.1) * 100) + '%はMAGITA Garageの手数料です。'));
     }, '貸し出す').then(function (ok) {
       if (!ok) return;
       busy = true;
@@ -437,7 +482,7 @@
       BR.social.setMe(r.me);
       sfx('money');
       if (BR.juice) BR.juice.payout('dollars', r.paid, btn);
-      toast('貸し出しの売上 ' + money(r.paid) + ' を受け取りました', 2800);
+      toast('貸し出しの売上 ' + money(r.paid) + ' を受け取りました' + (r.fee ? '（MAGITA Garage手数料 ' + money(r.fee) + ' を差し引き）' : ''), 3200);
       return load();
     }).catch(fail).then(function () { busy = false; if (onBoard('garage')) renderGarage(); });
   }
@@ -448,7 +493,7 @@
       p.appendChild(document.createTextNode(m.name + ' を'));
       p.appendChild(K.amountEl(b.price, 'dollars', 'confirm-amt'));
       p.appendChild(document.createTextNode('で売りますか？'));
-      p.appendChild(el('small', 'confirm-sub', (b.disposal ? '大廃棄セールの高価買取' : '今日の買取') + (c.engine ? '。' : '：今の販売価格の −' + b.pct + '%。') + '売った車は戻りません。' + (c.earned ? '貸し出しの売上も受け取ります。' : '')));
+      p.appendChild(el('small', 'confirm-sub', 'MAGITA Robertが買い取ります。' + (b.disposal ? '大廃棄セールの高価買取' : '今日の買取') + (c.engine ? '。' : '：今の販売価格の −' + b.pct + '%。') + '売った車は戻りません。' + (c.earned ? '貸し出しの売上も受け取ります（MAGITA Garage手数料を差し引き）。' : '')));
     }, '売る').then(function (ok) {
       if (!ok) return;
       busy = true;
@@ -456,7 +501,7 @@
         BR.app.serverBalance(r.me);
         BR.social.setMe(r.me);
         sfx('money');
-        toast(m.name + ' を ' + money(r.paid) + ' で売りました' + (r.earned ? '（貸し出しの売上 ' + money(r.earned) + ' も）' : ''), 3200);
+        toast(m.name + ' を MAGITA Robert に ' + money(r.paid) + ' で売りました' + (r.earned ? '（貸し出しの売上 ' + money(r.earned) + ' も）' : ''), 3200);
         return load();
       }).catch(function (err) {
         if (err.code === 'price_changed') load().then(function () { if (onBoard('garage')) renderGarage(); }, function () {});

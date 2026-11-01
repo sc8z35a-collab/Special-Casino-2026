@@ -4,7 +4,7 @@
    fallback; the pictures, fonts, sounds and videos, and the scripts and
    styles the page names by the hash of their file, are answered from the
    cache once it has them (see below); the API is never cached. */
-const BUILD = '5af92375823e';         // written by tools/stamp.mjs
+const BUILD = '403fa9d2acd2';         // written by tools/stamp.mjs
 const CACHE = 'two-state-' + BUILD;
 // what is part of the build and so cannot change inside it
 const ASSET = /^\/(img|fonts|sounds|video|icons)\//;

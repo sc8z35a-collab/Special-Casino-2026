@@ -1,4 +1,4 @@
-/* 投資: the two companies, the fee, the limits and the charts' periods (the
+/* 投資: the listed companies, the fee, the limits and the charts' periods (the
    server trades by these, server/core/stocks.js; the game shows them,
    js/ui/stocks.js). Prices are whole dollars, a trading day runs from 9:00
    to 9:00 Japan time (a UTC day), and the market never closes. */
@@ -15,7 +15,11 @@
     { id: 'ice', name: 'Ice Smoker', full: 'Ice Smoker株式会社', ticker: 'ICE', base: 30000, vol: 0.025, dividend: 0.004, band: 0.3 },
     // listed with the country of people (js/game/npc.js): the carmaker and the bank, at their books' prices
     { id: 'magita', name: 'MAGITA', full: '株式会社MAGITA', ticker: 'MGT', base: 18000, vol: 0.03, dividend: 0.003, band: 0.35 },
-    { id: 'tenesice', name: 'テネシス', full: '株式会社テネシス', ticker: 'TNS', base: 60000, vol: 0.015, dividend: 0.003, band: 0.25 }
+    { id: 'tenesice', name: 'テネシス', full: '株式会社テネシス', ticker: 'TNS', base: 60000, vol: 0.015, dividend: 0.003, band: 0.25 },
+    // the car trade, listed on Dtrade with YOSIDA's coming: MAGITA (dear cars) rises in good times, YOSIDA (cheap ones,
+    // a defensive stock) in bad, and Car Owner, selling both, earns either way (their books: js/game/corp.js)
+    { id: 'yosida', name: 'YOSIDA', full: '株式会社YOSIDA', ticker: 'YSD', base: 12000, vol: 0.02, dividend: 0.003, band: 0.3 },
+    { id: 'carowner', name: 'カーオーナー', full: '株式会社カーオーナー', ticker: 'CAR', base: 9000, vol: 0.018, dividend: 0.003, band: 0.28 }
   ];
   // 1.8% each way (Dtrade's, three times the 0.6% it began at), in hundredths of a percent
   var FEE_BP = 180;
@@ -75,8 +79,9 @@
     fee: fee,
     buyAmount: buyAmount,
     sellAmount: sellAmount,
-    // held investments (at the price now) and the money held for buy orders: both companies together
-    cap: 8000000,
+    // what may be bought in a trading day (9:00 to 9:00 Japan time), every company together: the buys filled that day
+    // (what they cost, fee included) and the money the day's buy orders still hold
+    dayCap: 80000000,
     // trades a trading day: every order counts once (an order that waits holds its count; cancelled, it gives it back)
     tradesPerDay: 30,
     // limit and stop orders waiting at once

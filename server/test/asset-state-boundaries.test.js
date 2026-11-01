@@ -41,8 +41,9 @@ for (const count of [1, 10]) test(`a ${count}-pull mature-tree draw reserves the
 });
 
 test('gifting a car with rental earnings publishes the new sender balance once', async t => {
-  const { s, a, b, q } = await fixture(t), earned = 12345;
-  const car = Number(q("INSERT INTO cars(owner_id,model,from_id,created_at,acquired_at,paid,rent_earned) VALUES(?,'two-state-sedan',0,?,?,1,?)").run(a.me.id, Date.now(), Date.now(), earned).lastInsertRowid);
+  // (what reaches the giver: the takings less MAGITA Garage's 10%)
+  const { s, a, b, q } = await fixture(t), earned = 12345 - Math.floor(12345 * 0.1);
+  const car = Number(q("INSERT INTO cars(owner_id,model,from_id,created_at,acquired_at,paid,rent_earned) VALUES(?,'two-state-sedan',0,?,?,1,?)").run(a.me.id, Date.now(), Date.now(), 12345).lastInsertRowid);
   const events = [], send = s.app.live.send;
   t.mock.method(s.app.live, 'send', function (...args) { events.push(args); return send.apply(this, args); });
   const body = { car, to: b.me.id }, r = await s.call('POST', '/api/cars/gift', { token: a.token, body }); assert.equal(r.status, 200);

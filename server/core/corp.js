@@ -65,7 +65,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   // games and news, its last days), a listed company's shares counted so that its book price is the market's
   // starting price (so the price goes on from where it is: server/core/stocks.js), and that day's dividend a share.
   function ensure(sec) {
-    if (booted()) return;
+    if (booted()) { migrate(); return; }
     const launch = Math.floor(sec / DAY);
     const { world: w, history: h } = model.boot(key, launch, { years: history, prices: Object.fromEntries(base) });
     world = w;
@@ -79,6 +79,22 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       q('INSERT OR REPLACE INTO corp_anchor (company, day, e0, e1, ev, dps) VALUES (?, ?, ?, ?, ?, ?)').run(id, launch, b, b, '[]', s.div.daily || 0);
     }
     afterCommit(() => { stale = false; });
+  }
+  // A company the rules have that the world kept does not (one added later: YOSIDA): set in from its own made-up
+  // past, the others' terms with it found again, its rows written, a listed one's price centre where its base is.
+  function migrate() {
+    const w0 = get();
+    if (CORP.companies.every((p) => w0.co[p.id])) return;
+    const r = change((w) => model.addCompanies(key, w, Object.fromEntries(base)));
+    if (!r) return;
+    write({ ...r.history, anchors: [] });
+    const w = get() || world;
+    for (const id of r.added) {
+      if (!listed.includes(id)) continue;
+      const b = Math.log(base.get(id) || 10000);
+      q('INSERT OR REPLACE INTO corp_anchor (company, day, e0, e1, ev, dps) VALUES (?, ?, ?, ?, ?, ?)').run(id, w.day + 1, b, b, '[]', w.co[id].div.daily || 0);
+    }
+    console.log('corp: added', r.added.join(', '));
   }
   function write(out) {
     const put = {
@@ -114,6 +130,8 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       const row = q('SELECT data FROM corp_flows WHERE day = ?').get(d);
       const flows = row ? JSON.parse(row.data) : {};
       if (people) flows.npc = people;
+      // (everyone's money as the day closes: the players' $ and the people's deposits; the economy follows it)
+      flows.wealth = (q("SELECT COALESCE(SUM(MAX(dollars, 0)), 0) AS n FROM users WHERE npc = ''").get().n || 0) + (people && people.bank ? Math.max(0, Math.round(people.bank.deposits || 0)) : 0);
       return model.closeDay(w, d, flows, ch);
     });
     write(out);
@@ -198,6 +216,10 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   // MAGITA's surcharge on each car while it struggles (the Car Owner price: server/core/api.js), { carId: $ }
   const surcharges = () => { const w = get(); return w ? model.surcharges(w) : {}; };
   const surcharge = (id) => surcharges()[id] || 0;
+  // MAGITA Garage's fee a garage place this month (MAGITA sets it at each month's end: server/core/corp-model.js), and
+  // whether that month has closed into the world yet (a bill waits for it)
+  const garageFee = () => model.garageFeeOf(get());
+  const garageReady = (day) => { const w = get(); return !w || w.day >= day - 1; };
   // a listed company's shares traded by a player at second `sec` (new shares or its own bought back), and the
   // fee, Dtrade's
   // (with the country there, the people's waiting orders on the other side take it first: what they leave is the
@@ -229,6 +251,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     if (!w) return null;
     const out = {};
     for (const id of listed) {
+      if (!w.co[id]) continue;
       const s = w.co[id], p = model.PROFILES.get(id), last = latestQuarter(id, now);
       const quarters = q("SELECT data FROM corp_periods WHERE company = ? AND kind = 'q' ORDER BY day DESC LIMIT 6").all(id).map((r) => JSON.parse(r.data)).filter((x) => !x.announce || x.announce * 1000 <= now).slice(0, 4);
       const shares = model.outstanding(s);
@@ -349,19 +372,29 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       catalog: studio ? Math.round(s.catalog) : 0,
       lab: s.lab ? { mult: s.lab.mult, speed: s.lab.speed, list: s.lab.list.map((r) => ({ ...r, ...CORP.magita.research.find((x) => x.id === r.id) })) } : null,
       surcharge: id === 'magita' ? (s.surcharge || 0) : undefined,
+      garageFee: id === 'magita' ? model.garageFeeOf(w) : undefined,
+      // its development work (技術開発): the one under way, the last done, and what they have won it
+      tech: s.rnd ? { edge: Math.round(s.rnd.edge * 1000) / 1000, ok: s.rnd.ok, n: s.rnd.n, cur: s.rnd.cur, last: s.rnd.last || null, chance: techChance(s, p) } : { edge: 1, ok: 0, n: 0, cur: null, last: null, chance: techChance(s, p) },
+      cut: s.cut || null, target: s.target, abroad: !!p.abroad,
       news: q('SELECT at, kind, text, public FROM corp_news WHERE company = ? AND at <= ? ORDER BY at DESC, id DESC LIMIT 100').all(id, Math.floor(now / 1000)),
       ties: tiesOf(w, id),
       flows: q('SELECT day, data FROM corp_flows WHERE day >= ? ORDER BY day').all(Math.floor(now / 86400000) - 30).map((r) => ({ day: r.day, spent: spentAt(JSON.parse(r.data), id) }))
     };
   }
 
+  // how likely its development is to succeed now (as server/core/corp-model.js tech works it out)
+  function techChance(s, p) {
+    const size = Math.max(0.2, Math.min(3, s.n / Math.max(1, p.staff))), spend = Math.max(0.2, Math.min(3, (s.budget.rd || 0) / Math.max(1, p.rd.amount)));
+    return Math.round(Math.max(0.05, Math.min(0.95, CORP.tech.chance * Math.pow(size, 0.8) * (0.6 + 0.7 * s.morale) * Math.pow(spend, 0.3))) * 1000) / 1000;
+  }
   const routes = (see) => ({
     // every company at a glance, and the ties between them
     'GET /api/ops/corp': (req, u) => {
       see(u);
       const now = clock(), w = get();
       if (!w) return { started: false, now };
-      const all = { started: true, day: w.day, launch: w.launch, econ: Math.round(Math.exp(w.econ.x) * 1000) / 1000, companies: CORP.companies.map((c) => summary(c.id, now)), ties: tiesOf(w) };
+      const all = { started: true, day: w.day, launch: w.launch, econ: Math.round(Math.exp(w.econ.x) * 1000) / 1000, garageFee: model.garageFeeOf(w),
+        companies: CORP.companies.filter((c) => w.co[c.id]).map((c) => summary(c.id, now)), ties: tiesOf(w).filter((t) => w.co[t.a] && w.co[t.b]) };
       return { ...partOf(all, req.query.get('rev')), now };
     },
     // one company's official site: everything about it
@@ -370,7 +403,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       const id = String(req.query.get('c') || '');
       if (!CORP.company(id)) throw new ApiError(400, 'bad_company', '会社を選んでください');
       const now = clock();
-      if (!get()) return { started: false, now };
+      if (!get() || !get().co[id]) return { started: false, now };
       return { ...partOf(detail(id, now), req.query.get('rev')), now };
     }
   });
@@ -384,5 +417,5 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     q('DELETE FROM corp_flows WHERE day < ?').run(day - KEEP_FLOWS);
   }
 
-  return { ensure, booted, closesAt, close, anchor, dps, flow, tally, flush, sold, traded, surcharge, surcharges, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8 };
+  return { ensure, booted, closesAt, close, anchor, dps, flow, tally, flush, sold, traded, surcharge, surcharges, garageFee, garageReady, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8 };
 }

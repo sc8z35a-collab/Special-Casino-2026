@@ -208,7 +208,7 @@ test('the operator site: the 企業 folder\'s apps answer operators only, with e
   // (an operator's look begins them, as a look at the market would)
   const all = await s.call('GET', '/api/ops/corp', { token: boss.token });
   assert.equal(all.started, true);
-  assert.equal(all.companies.length, 10);
+  assert.equal(all.companies.length, 11);
   assert.ok(all.ties.length >= 17);
   assert.deepEqual(all.companies.map((c) => c.id).sort(), CORP.companies.map((c) => c.id).sort());
   assert.equal((await s.call('GET', `/api/ops/corp?rev=${all.rev}`, { token: boss.token })).same, true);
