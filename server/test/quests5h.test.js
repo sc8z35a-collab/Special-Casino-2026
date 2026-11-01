@@ -2,7 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
-import { QUESTS, LEVEL, RULES, evaluate } from '../core/rules.js';
+import { QUESTS, LEVEL, RULES, CORP, evaluate } from '../core/rules.js';
+// (a reward as the player receives it: YOSIDA keeps its fee of each, CORP.yosida.quest)
+const net = (n) => n - CORP.questFee(n);
 import { stepQuests as advanceQuests, claimQuests, questView } from '../core/quests.js';
 
 const stepQuests = (state, events, now, boost) => advanceQuests(state, events, now, boost, () => 999);
@@ -125,8 +127,10 @@ test('spin API counts paying BAR once, five guns only, and extends spins through
   const reward = await s.call('POST', '/api/quests/claim', { token: a.token, body: { ids } });
   assert.equal(reward.status, 200);
   assert.deepEqual(reward.claimed.sort(), ids.sort());
-  assert.equal(reward.dollars, 705000);
-  assert.equal(reward.balance.dollars, 10705000);
+  assert.equal(reward.gross, 705000);
+  assert.equal(reward.fee, reward.rewards.reduce((n, x) => n + CORP.questFee(x.dollars), 0));
+  assert.equal(reward.dollars, 705000 - reward.fee);
+  assert.equal(reward.balance.dollars, 10000000 + reward.dollars);
   assert.equal(reward.xp, 100 * LEVEL.spinXp + 17 * LEVEL.questXp);
   assert.equal((await s.call('POST', '/api/quests/claim', { token: a.token, body: { ids } })).dollars, 0);
 });
@@ -163,8 +167,8 @@ test('snowman API counts only successful sends by the sender, with each specifie
     const reward = await s.call('POST', '/api/quests/claim', { token: a.token, body: { ids: [id] } });
     assert.equal(reward.status, 200, JSON.stringify(reward));
     assert.deepEqual(reward.claimed, [id]);
-    assert.equal(reward.dollars, chain.rewards[index]);
-    assert.equal(reward.balance.dollars, r.balance.dollars + chain.rewards[index]);
+    assert.equal(reward.dollars, net(chain.rewards[index]));
+    assert.equal(reward.balance.dollars, r.balance.dollars + net(chain.rewards[index]));
     assert.equal((await s.call('POST', '/api/quests/claim', { token: a.token, body: { ids: [id] } })).dollars, 0);
   }
   assert.equal((await snow(a)).state, 'received');
@@ -200,5 +204,7 @@ test('casino spending counts only successful bets, converted to dollars regardle
   assert.equal(spent, 3000000);
   const ids = CHAINS.at(-1).goals.map(goal => questId(CHAINS.at(-1), goal));
   const paid = await s.call('POST', '/api/quests/claim', { token: a.token, body: { ids } });
-  assert.equal(paid.dollars, 360000);
+  assert.equal(paid.gross, 360000);
+  assert.equal(paid.dollars, 360000 - paid.fee);
+  assert.equal(paid.fee, paid.rewards.reduce((n, x) => n + CORP.questFee(x.dollars), 0));
 });

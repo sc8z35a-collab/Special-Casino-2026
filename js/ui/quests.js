@@ -523,6 +523,8 @@
     sum.appendChild(el('b', '', '$' + U.fmt(total)));
     if (coins) sum.appendChild(document.createTextNode('＋ロイヤルコイン' + coins + '枚'));
     if (left && left < total) sum.appendChild(document.createTextNode('（のこり $' + U.fmt(left) + '）'));
+    // (paid by the country's treasury; YOSIDA keeps its fee of each reward as it is received)
+    if (data && data.feeRate) sum.appendChild(document.createTextNode('・受け取り時にYOSIDA手数料' + Math.round(data.feeRate * 100) + '%'));
     box.appendChild(sum);
     return box;
   }
@@ -537,6 +539,7 @@
     api.claimQuests(ids).then(function (r) {
       claiming = false;
       if (data) data.periods = withView(r).periods;
+      if (data && r.feeRate !== undefined) data.feeRate = r.feeRate;
       if (data && r.tickets) data.tickets = r.tickets;
       setBonuses(r.bonuses);
       setReady(r.ready);
@@ -550,8 +553,10 @@
           var count = (r.rewards || []).filter(function (reward) { return reward.mode === mode; }).length;
           if (count) bonuses.push(mode.toUpperCase() + ' ' + count + '件');
         });
+        // (the rewards come from the country's treasury; YOSIDA, whose quests they are, keeps its fee of each)
         toast((r.claimed.length > 1 ? r.claimed.length + '件の' : '') + '報酬を受け取りました' + (r.dollars ? '：$' + U.fmt(r.dollars) : '')
-          + (bonuses.length ? '（' + bonuses.join('・') + '）' : '') + (r.coins ? '＋ロイヤルコイン' + r.coins + '枚' : ''), bonuses.length ? 5000 : 3200);
+          + (bonuses.length ? '（' + bonuses.join('・') + '）' : '') + (r.coins ? '＋ロイヤルコイン' + r.coins + '枚' : '')
+          + (r.fee ? '・YOSIDA手数料 $' + U.fmt(r.fee) + '（' + Math.round((r.feeRate || 0) * 100) + '%）' : ''), bonuses.length || r.fee ? 5000 : 3200);
       }
       if (visible()) render();
     }, function (err) {

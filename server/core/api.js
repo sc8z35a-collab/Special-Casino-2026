@@ -1890,8 +1890,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
            casino_lost = casino_lost + ?, rev = rev + 1 WHERE id = ?`)
           .run(slotMonth, bet, r.total + back - r.fee, bet, r.total, r.total, today, dayWon, last, r.charm ? 0 : cur.charm,
             quests.json, xp, streak, r.total > 0 ? 1 : 0, ultra ? 1 : 0, combo, lost, cur.id);
-        // (Dtrade's: the bet lost, the fee on the win; kept in memory and written with the others now and then)
-        afterCommit(() => { corp.tally('dtrade', 'casino', lost); corp.tally('dtrade', 'winfee', r.fee * RULES.tokenPrice); });
+        // (Dtrade's: the bet lost, the fee on the win; what the win paid beyond the bet comes out of the country's
+        // treasury (国庫); kept in memory and written with the others now and then)
+        const won = Math.max(0, r.total + back - bet) * RULES.tokenPrice;
+        afterCommit(() => { corp.tally('dtrade', 'casino', lost); corp.tally('dtrade', 'winfee', r.fee * RULES.tokenPrice); corp.tally('@state', 'slots', won); });
         counted = [medals.spinCounts(cur), medals.spinCounts({ ...cur, total_won: cur.total_won + r.total, wins: cur.wins + (r.total > 0 ? 1 : 0),
           ultra_wins: cur.ultra_wins + (ultra ? 1 : 0), best_combo: Math.max(cur.best_combo, combo), casino_lost: cur.casino_lost + lost })];
         if (config.logSpins) {
@@ -2881,7 +2883,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       syncMilestones(u.id);
       const cur = getUser(u.id);
       const state = readQuests(cur.quests);
-      return { quests: questSlots(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: cur.xp, now: Date.now() };
+      return { quests: questSlots(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: cur.xp, now: Date.now(), feeRate: corp.questFee() };
     }],
 
     // 受け取る: the finished quests in `ids`, or all of them (一括受け取り)
@@ -2889,18 +2891,25 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const body = await req.json();
       const ids = Array.isArray(body.ids) ? body.ids.map(String).slice(0, 100) : null;
       rate(limit.shop, u.id);
+      // (the quests are YOSIDA's: every reward is paid out of the country's treasury, and YOSIDA keeps its fee of each,
+      // rounded down: CORP.yosida.quest)
+      const feeRate = corp.questFee();
       const r = tx(() => {
         const cur = getUser(u.id);
         const state = readQuests(cur.quests);
         const c = claimQuests(state, ids, Date.now());
-        if (!c.claimed.length) return { ...c, state };
+        if (!c.claimed.length) return { ...c, fee: 0, gross: 0, state };
+        let fee = 0;
+        for (const reward of c.rewards) { reward.fee = CORP.questFee(reward.dollars, feeRate); fee += reward.fee; }
         // XP, x1.2 in a hub with its benefits on (and VIP's x1.5 there)
         const boost = hubOn(cur.id) ? HUB.xp * (vipOn(cur) ? VIP_RULES.hubXp : 1) : 1;
         const xp = Math.floor(c.claimed.length * LEVEL.questXp * boost + 1e-9);
         grantLevelTickets(state, cur.xp, cur.xp + xp, questTicketRoll);
         q('UPDATE users SET quests = ?, dollars = dollars + ?, coins = coins + ?, xp = xp + ?, rev = rev + 1 WHERE id = ?')
-          .run(JSON.stringify(state), c.dollars, c.coins, xp, cur.id);
-        return { ...c, state };
+          .run(JSON.stringify(state), c.dollars - fee, c.coins, xp, cur.id);
+        corp.flow('@state', 'quests', c.dollars);
+        corp.flow('yosida', 'questfee', fee);
+        return { ...c, gross: c.dollars, dollars: c.dollars - fee, fee, state };
       });
       if (r.claimed.length) balanceChanged(u.id);
       syncMilestones(u.id);
@@ -2908,7 +2917,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const state = readQuests(after.quests);
       if (r.claimed.length) live.send(u.id, 'quest', { changed: true, ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp });
       return {
-        claimed: r.claimed.map((x) => x.id), dollars: r.dollars, coins: r.coins, rewards: r.rewards, tokens: 0,
+        claimed: r.claimed.map((x) => x.id), dollars: r.dollars, coins: r.coins, rewards: r.rewards, tokens: 0, fee: r.fee, gross: r.gross, feeRate,
         quests: questSlots(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: after.xp, balance: balance(after), now: Date.now()
       };
     }],
@@ -3049,6 +3058,23 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const me = meDto(balanceChanged(u.id));
       if (resetTickets) live.send(u.id, 'quest', { changed: true, ready: me.questsReady, tickets: me.questTickets, bonuses: me.questBonuses, xp: me.xp });
       return { days, bonus, coins: r.coins, back: r.back, resetTickets, packs: cart ? cart.packs : [], paid: r.paid, mode, startsAt: r.start, endsAt: r.until, me };
+    }],
+
+    // DAIZIN buys ロイヤルコイン back: RULES.vip.buyback.each $ each (at most its `max` at once), out of its own
+    // money (booked as the day closes: server/core/corp-model.js gameDay)
+    ['POST /api/coins/sell', async (req, u) => {
+      const body = await req.json();
+      const amount = posInt(body.amount, '枚数'), B = VIP_RULES.buyback;
+      if (amount > B.max) throw new ApiError(400, 'too_many', `一度に買い取れるのは${fmt(B.max)}枚までです`);
+      rate(limit.shop, u.id);
+      const paid = amount * B.each;
+      tx(() => {
+        const cur = getUser(u.id);
+        if (cur.coins < amount) throw new ApiError(409, 'insufficient', 'ロイヤルコインが足りません');
+        q('UPDATE users SET coins = coins - ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(amount, paid, cur.id);
+        corp.coinsBought(amount, paid);
+      });
+      return { sold: amount, paid, each: B.each, me: meDto(balanceChanged(u.id)) };
     }],
 
     // VIP's free trial: VIP${trial level} for its days, once in a life, for
@@ -3823,7 +3849,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     return { ticket: `${signTicket(`${opsSecret}:${liveVersion(u.id, true)}:${u.tokenHash}`, u.id)}.${u.tokenHash}` };
   };
   // 金の生る木
-  const trees = createTrees({ q, tx, getUser, balance, balanceChanged, clock: config.clock || Date.now,
+  // (the companies come after: YOSIDA's books are reached once they are there)
+  const trees = createTrees({ q, tx, getUser, balance, balanceChanged, clock: config.clock || Date.now, corp: { sold: (...a) => corp.sold(...a), flow: (...a) => corp.flow(...a) },
     onChange: () => host?.reschedule?.(nextHousekeeping()),
     onHarvest: medalCheck,
     onReady: tree => {
@@ -3862,7 +3889,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     ai: host && host.ai ? host.ai : null, usage: () => { try { return stats.report(0).percent; } catch { return 0; } } });
   if (npc.on) corp.setNpc(npc);
   registry.add('npc', npc.playerRoutes);
-  const gacha = createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend, settleVip: settleVipJobs, onSpin: medalCheck,
+  const gacha = createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend, settleVip: settleVipJobs, onSpin: medalCheck, corp,
     vipChanged: (id, pay) => { if (pay) jobsPaid(id, pay); else balanceChanged(id); return getUser(id); } });
   registry.add('gacha', gacha.routes);
   registry.add('medals', medals.routes);

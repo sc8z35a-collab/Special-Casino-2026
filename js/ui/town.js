@@ -195,11 +195,14 @@
         row(s, c.name, '組合員' + fmt(u.members) + '人・' + state);
       });
     } else if (st.tab === 'companies') {
+      // (what the people spent at each, the last 30 days the companies closed)
+      var spent = d.companies.reduce(function (n, c) { return n + (c.spent || 0); }, 0);
       d.companies.forEach(function (c) {
         s = section(box, c.name);
         row(s, 'CEO', who(c.ceo));
         row(s, '社長', who(c.president));
         row(s, '社員', fmt(c.staff) + '人');
+        if (c.spent !== undefined) row(s, '市民が使ったお金（30日）', money(c.spent) + (spent ? '（' + (Math.round(c.spent / spent * 1000) / 10) + '%）' : ''));
         c.ventures.forEach(function (v) { row(s, '新事業', v.name + '（顧客' + fmt(v.customers) + '人）'); });
       });
     } else {

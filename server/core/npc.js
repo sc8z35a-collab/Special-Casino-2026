@@ -316,6 +316,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const P = w.P, day = w.day;
     const person = (i) => (i >= 0 ? { i, name: w.card(i, day).name } : null);
     const news = q('SELECT day, at, kind, district, text FROM npc_news ORDER BY id DESC LIMIT 40').all();
+    const spent = corp && corp.npcSpent ? corp.npcSpent(now) : {};
     return {
       on, started: true, now, minute: w.minute, first: w.first, active: NPC.activeAt(now, w.first), next: NPC.nextActive(now, w.first),
       nation: { ...NPC.nation, cash: w.nation.cash, debt: w.nation.debt, fund: w.nation.fund.cash + w.nation.fund.bonds, knobs: w.nation.knobs, pending: w.nation.pending, log: w.nation.log.slice(-12), month: w.nation.month, budget: w.cal.publicWorks },
@@ -327,7 +328,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         votes: w.pol.votes.slice(-8).reverse(), council: w.pol.council.slice(-3).reverse(), marches: w.pol.marches.slice(-6)
       },
       labor: { unions: Object.fromEntries(Object.entries(w.lab.unions).map(([id, u]) => [id, { members: u.members, state: u.state, demand: u.demand, offer: u.offer, raise: u.raise, days: u.days, rep: person(u.rep) }])) },
-      companies: NPC.companies.map((id) => { const o = w.orgs[id]; return { id, name: CORP.company(id).name, ceo: person(o ? o.ceo : -1), president: person(o ? o.president : -1), staff: w.staffOf(id).length, ventures: o ? o.ventures.filter((v) => v.stage !== 'closed').map((v) => ({ name: v.name, customers: v.customers, stage: v.stage })) : [] }; }),
+      // (and what the people spent at each in the last 30 days the companies closed: server/core/corp.js npcSpent)
+      companies: NPC.companies.map((id) => { const o = w.orgs[id]; return { id, name: CORP.company(id).name, ceo: person(o ? o.ceo : -1), president: person(o ? o.president : -1), staff: w.staffOf(id).length, spent: spent[id] || 0, ventures: o ? o.ventures.filter((v) => v.stage !== 'closed').map((v) => ({ name: v.name, customers: v.customers, stage: v.stage })) : [] }; }),
       news, talk: (w.talkFeed || []).slice(-20).reverse(), live: liveStats(w), frame: b64(frame(w)), n: P.n
     };
   }

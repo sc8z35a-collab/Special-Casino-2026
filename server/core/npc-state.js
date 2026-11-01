@@ -88,6 +88,13 @@ export function fromCompanies(W, ext, day) {
   for (const s of ext.toPeople || []) { if (s.i >= 0 && s.i < P.n) P.cash[s.i] += s.n; else W.sector.cash += s.n; }
   // (the players' part of the market's money: theirs)
   if (ext.toPlayers) W.sum.toPlayers += ext.toPlayers;
+  // what the treasury paid for the game (server/core/corp-model.js gameDay): the players' slot wins beyond their bets
+  // and their quests' rewards (theirs, but YOSIDA's fee), YOSIDA's bill for the gacha (abroad)
+  if (ext.state) {
+    for (const [k, n] of Object.entries(ext.state.by || {})) econ.nationOut(W, k, n);
+    W.sum.toPlayers += ext.state.players || 0;
+    W.sum.imports += ext.state.abroad || 0;
+  }
 }
 
 // a company's pay (`kind` 'salary': the month's, on the 25th; 'bonus' in June and December) to its people by their

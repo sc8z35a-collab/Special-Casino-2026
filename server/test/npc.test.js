@@ -112,6 +112,41 @@ test('every $ goes from someone to someone: the country\'s money is the same aft
   assert.ok(!dec || dec.accounts['r:mobile'] > 0);
 });
 
+test('the people\'s slots: what a session loses is Dtrade\'s, what one wins beyond its bets the country\'s treasury pays (国庫)', () => {
+  const c = country(500), W = c.W, P = W.P, day = W.day;
+  const i = 7, coin = () => (npc.econ.flowsOf(W, day).co.dtrade || {}).cas || 0;
+  P.cash[i] = 2e9; P.tokens[i] = 0;
+  const before = c.money(), nation = W.nation.cash, cas = coin(), out = W.nation.day.out.casinoWins || 0;
+  // (every spin the slots' best: a session far ahead)
+  const win = npc.econ.casinoSession(W, i, day, 50e6, { u: () => 0.9999999 });
+  assert.ok(win && win.back > win.staked);
+  assert.equal(nation - W.nation.cash, win.back - win.staked);
+  assert.equal((W.nation.day.out.casinoWins || 0) - out, win.back - win.staked);
+  assert.equal(coin(), cas, 'Dtrade pays nothing of it');
+  // (every spin nothing: a session that loses)
+  const loss = npc.econ.casinoSession(W, i, day, 50e6, { u: () => 0 });
+  assert.ok(loss && loss.back === 0 && loss.staked > 0);
+  assert.equal(coin() - cas, loss.staked);
+  assert.equal(nation - W.nation.cash, win.back - win.staked, 'the treasury pays nothing of a loss');
+  // every $ still from someone to someone
+  assert.ok(Math.abs(c.money() - before) < 10);
+});
+
+test('the players\' slot wins and quest rewards and YOSIDA\'s gacha bill come out of the country\'s treasury once it lives', () => {
+  const c = country(500), W = c.W, ch = corpModel.chance(Buffer.alloc(32, 3));
+  c.days(1);
+  const day = c.w.day + 1, before = c.money(), toPlayers = W.sum.toPlayers, imports = W.sum.imports;
+  const out = corpModel.closeDay(c.w, day, { npc: npc.flowsFor(W, day), '@state': { slots: 3000000, quests: 1000000, gacha: 7500000 }, yosida: { questfee: 100000, gacha: 15000000 } }, ch);
+  assert.deepEqual(out.ext.state, { by: { slotWins: 3000000, questRewards: 1000000, gachaClaims: 7500000 }, players: 3900000, abroad: 7600000 });
+  const nation = W.nation.cash;
+  npc.nextDay(W, day, out.ext, c.ctx);
+  assert.equal(W.sum.toPlayers - toPlayers, 3900000);
+  assert.ok(W.sum.imports - imports >= 7600000);
+  assert.ok(W.nation.cash < nation);
+  // every $ still from someone to someone (the players' and YOSIDA's money out of it, counted)
+  assert.ok(Math.abs(c.money() - before) < 2000, `${c.money() - before}`);
+});
+
 test('lives: deaths and new 18-year-olds keep the people as many, pensions from 60, the country\'s books by the day', () => {
   const c = country(2000);
   c.days(20);

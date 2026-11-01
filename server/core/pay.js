@@ -1,7 +1,8 @@
 // 開発者支援: players support the developer with real money (yen) and get
 // ロイヤルコイン, the coins in the wallet (js/game/config.js `support`). The
-// coins only make days of VIP (js/game/vip.js): they are never bet, exchanged
-// for tokens or $, sent to anyone or paid out.
+// coins make days of VIP (js/game/vip.js), and DAIZIN buys them back for the
+// game's $ (js/game/config.js vip.buyback); they are never bet, exchanged for
+// tokens, sent to anyone or paid out as real money.
 //
 // How a payment goes, and what keeps it safe:
 // - the player picks a plan, how many (1-100) and PayPay or konbini; the

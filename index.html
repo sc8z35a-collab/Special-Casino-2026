@@ -425,6 +425,20 @@
             <button class="action-btn vp-go" id="vp-go" type="button"></button>
             <p class="vp-rule">1日 = 24時間（有効にした時刻から。延長は今の期限からさらに24時間ずつ）</p>
           </div>
+          <!-- DAIZINのロイヤルコイン買い取り (POST /api/coins/sell) -->
+          <div class="vp-sell" id="vp-sell">
+            <div class="vp-sell-head"><b>DAIZIN ロイヤルコイン買い取り</b><span id="vp-sell-rate"></span></div>
+            <div class="vp-days">
+              <span class="sp-label">枚数</span>
+              <button class="sq-btn minus" id="vp-sell-minus" type="button" aria-label="減らす"><i></i></button>
+              <span class="sp-qty-v vp-days-v"><b id="vp-sell-n">1</b><small>枚</small></span>
+              <button class="sq-btn plus" id="vp-sell-plus" type="button" aria-label="増やす"><i></i></button>
+              <button class="act-btn vp-sell-all" id="vp-sell-all" type="button">すべて</button>
+            </div>
+            <input type="range" class="vp-sell-range" id="vp-sell-range" min="1" max="1" value="1" aria-label="買い取ってもらう枚数">
+            <button class="action-btn vp-sell-go" id="vp-sell-go" type="button"></button>
+            <p class="vp-rule">DAIZINが自社の資金で買い取ります。買い取ったコインは戻りません。</p>
+          </div>
         </div>
         <div class="vp-right scroller" id="vp-right"><table class="vp-table" id="vp-table"></table></div>
       </div>
@@ -1016,11 +1030,11 @@
 <script src="js/art/ui-images.js?v=0061319db7"></script>
 <script src="js/art/social-images.js?v=0d26bbd2f1"></script>
 <script src="js/art/ui-svg.js?v=00d5767a31"></script>
-<script src="js/version.js?v=bb144bb49a"></script>
+<script src="js/version.js?v=cb457c14cf"></script>
 <script src="js/core/util.js?v=0101c12ff0"></script>
 <script src="js/core/clock.js?v=2ba2dad169"></script>
 <script src="js/core/effects.js?v=ae47f50aa7"></script>
-<script src="js/game/config.js?v=6458b8dae2"></script>
+<script src="js/game/config.js?v=2b3c5564b7"></script>
 <script src="js/game/sale.js?v=716a78ea22"></script>
 <script src="js/game/quests.js?v=2cd261dad4"></script>
 <script src="js/game/tree.js?v=b3c3b37aa1"></script>
@@ -1029,7 +1043,7 @@
 <script src="js/core/store.js?v=f0d92dc1dd"></script>
 <script src="js/game/engine.js?v=75f36e1496"></script>
 <script src="js/net/device.js?v=ff52665f6b"></script>
-<script src="js/net/api.js?v=a50bf91a41"></script>
+<script src="js/net/api.js?v=98f92351b2"></script>
 <script src="js/net/transport-policy.js?v=3ee219f81a"></script>
 <script src="js/net/keepalive.js?v=18dee0ca8c"></script>
 <script src="js/net/wire.js?v=52e85a64bb"></script>
@@ -1061,11 +1075,11 @@
 <script src="js/ui/official.js?v=81f46eacbf"></script>
 <script src="js/ui/presents.js?v=da275dc459"></script>
 <script src="js/ui/car-cards.js?v=e0041af63f"></script>
-<script src="js/ui/vip.js?v=fa02033268"></script>
+<script src="js/ui/vip.js?v=cef37bcb46"></script>
 <script src="js/ui/safety.js?v=bf50802648"></script>
 <script src="js/net/push.js?v=db481ec07e"></script>
 <script src="js/ui/bonus.js?v=e5c44aaa3f"></script>
-<script src="js/ui/quests.js?v=d6d90ef34c"></script>
+<script src="js/ui/quests.js?v=487fd340bc"></script>
 <script src="js/ui/jobs.js?v=288b25859e"></script>
 <script src="js/ui/tree.js?v=4ad38f1354"></script>
 <script src="js/ui/feats.js?v=22fa5522ed"></script>

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
-import { QUESTS, LEVEL, RULES, evaluate } from '../core/rules.js';
+import { QUESTS, LEVEL, RULES, CORP, evaluate } from '../core/rules.js';
 import { stepQuests, claimQuests, questView, readQuests } from '../core/quests.js';
 
 const HOUR = 3600000, DAY = 24 * HOUR;
@@ -117,7 +117,7 @@ test('first VIP use is achieved by trial but the borrowed trial rank never quali
   assert.equal(quest(view.periods, 'special-vip1').state, 'open');
   assert.equal(QUESTS.get('special-vip-first').text, 'VIPを初めて使う');
   const paid = await s.call('POST', '/api/quests/claim', { token: a.token, body: { ids: ['special-vip-first'] } });
-  assert.deepEqual([paid.dollars, paid.coins], [270000, 8]);
+  assert.deepEqual([paid.gross, paid.dollars, paid.coins], [270000, 270000 - CORP.questFee(270000), 8]);
   await s.call('GET', '/api/me', { token: a.token });
   assert.equal(quest((await getQuests(s, a)).periods, 'special-vip-first').state, 'received');
 });

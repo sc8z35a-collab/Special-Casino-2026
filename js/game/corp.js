@@ -1,6 +1,6 @@
 /* 企業: the companies of the game's world (server/core/corp.js works them out day by day; the 投資 screen,
    js/ui/stocks.js, shows the listed ones, and the operator site's 株式 app, ops/corp.js, all of them). Who they
-   are (eleven of them: YOSIDA, MAGITA's rival, the last to come), the fiscal calendar, the accounts their books keep and how the statements read, the taxes, the lending
+   are (twelve of them: YOSIDA, MAGITA's rival, and WAZIMA, MAGITA's own carmaker, the last to come), the fiscal calendar, the accounts their books keep and how the statements read, the taxes, the lending
    ranks, the economy they share and how each makes its money. Money is whole $ (the NPCs say 円); a day is a
    trading day, 9:00 to 9:00 Japan time (a UTC day), named by its date. Every number here is where a company
    starts: from then on it hires, raises pay, sells, borrows and grows by itself. */
@@ -102,9 +102,15 @@
         // the players' garages are all MAGITA's (MAGITA Garage: the monthly contract fee taken from every player, the
         // places bought, its cut of what renting a car out earns), and so is buying their used cars back (MAGITA
         // Robert: sold on within weeks; a car sold to a friend in the chat is outside it)
+        // (and the ガレージコイン YOSIDA buys of it for its gacha: YOSIDA below)
         { id: 'garage', name: 'MAGITA Garage（ガレージ契約料・増設・貸し出し手数料）', cost: 0.08, player: ['garage', 'garagefee', 'rentfee'] },
-        { id: 'used', name: 'MAGITA Robert（中古車の買い取り・販売）', player: ['buyback'] }
+        { id: 'used', name: 'MAGITA Robert（中古車の買い取り・販売）', player: ['buyback'] },
+        // the cars YOSIDA buys of it to give away in its gacha (at their 仕入れ価格 and 専売特別費用)
+        { id: 'gacha', name: '車両の販売（YOSIDAのガチャ景品向け）' }
       ],
+      // its own carmaker abroad, WAZIMA (WAZIMA below): what it pays it for the joint development (a share of its
+      // research), and what WAZIMA earns, each month its own (子会社からの受取配当金)
+      children: ['wazima'],
       materials: true, factory: 0.7, inventoryDays: 45,
       ppe: 60000000000, growth: 0.03, beta: 1.4, season: 'flat', hire: 0.02, raise: 0.025, quit: 0.05,
       payout: 0.3, per: 13, pbr: 0.9, founders: 0.12, price: 18000, depth: 400000000
@@ -136,21 +142,51 @@
       // those who save: when times are bad they come to it (its sales follow the economy the other way: a
       // defensive stock), when good they go to MAGITA. No 専売特別費用: it is not big enough to ask for one. Its home
       // is outside the country (`abroad`: its people and its suppliers are paid there, its sales abroad go on).
-      id: 'yosida', name: 'YOSIDA', full: '株式会社YOSIDA', en: 'YOSIDA', rank: 'A', model: 'maker', kind: '自動車メーカー（大衆車・高効率エンジン、MAGITAのライバル）', listed: true, abroad: true,
+      id: 'yosida', name: 'YOSIDA', full: '株式会社YOSIDA', en: 'YOSIDA', rank: 'A', model: 'maker', kind: '自動車メーカー（大衆車・高効率エンジン、MAGITAのライバル）・クエスト・ガチャ・金の生る木の事業を独占', listed: true, abroad: true,
       capital: 1200000000, reserve: 1200000000, retained: 35000000000,
       staff: 4500, salary: 2400000, cost: 3800000,
       place: { name: '自社一貫工場・製造ライン維持費', amount: 6500000000 }, rd: { name: '車両・エンジン実用開発費', amount: 1700000000 },
       // (its sales and profit found from what it costs: 4,500 people at $3.8M, its plants and research are $25.3B a
-      // year, its cars and engines cost it about 62% of what it sells them for, so $95B of sales leave it about $6B)
+      // year, its cars and engines cost it about 62% of what it sells them for, so $95B of sales leave it about $6B;
+      // its biotech and its businesses in the game come on top: YOSIDA below)
       sales: 95000000000, op: 6000000000,
       streams: [
         { id: 'dealer', name: '車両の卸売（カーオーナー向け）', to: 'carowner' },
         { id: 'retail', name: 'エンジンの卸売（ジンクス向け）', to: 'jinx' },
-        { id: 'export', name: '海外・法人向け販売', share: 1, beta: -0.5 }
+        { id: 'export', name: '海外・法人向け販売', share: 1, beta: -0.5 },
+        // the money tree seeds it ships to the market each month (YOSIDA.seeds)
+        { id: 'seeds', name: '金の生る木の種の出荷（バイオテクノロジー）', seeds: true },
+        // the game's quests, gacha and money trees, all its own: what the players pay, the fee on the quests' rewards,
+        // what it bills the country for the gacha (YOSIDA below), and its own cars given away in it (a sale of its cars)
+        { id: 'quest', name: 'クエスト事業（報酬の手数料）', player: ['questfee'] },
+        { id: 'gacha', name: 'ガチャ事業', player: ['gacha'] },
+        { id: 'claim', name: 'ガチャ代の国への請求（国庫）' },
+        { id: 'tree', name: '金の生る木事業（肥料・木の市場）', player: ['fertilizer'] },
+        { id: 'gachacar', name: '自社車の販売（ガチャ景品向け・社内）' }
       ],
       materials: true, factory: 0.75, inventoryDays: 30,
       ppe: 20000000000, growth: 0.03, beta: -0.5, season: 'cars', hire: 0.02, raise: 0.02, quit: 0.05,
       payout: 0.35, per: 11, pbr: 0.9, founders: 0.15, price: 12000, depth: 300000000
+    },
+    {
+      // Once the world's third carmaker (after YOSHIDA), now all MAGITA's (`parent`): it makes MAGITA's cars for the
+      // markets abroad (its sales: `export`), develops them with MAGITA (paid a share of MAGITA's research), and
+      // researches how to cut what MAGITA spends besides its materials (WAZIMA below). Its home is outside the country
+      // (`abroad`), and its profit is MAGITA's each month (no dividends of its own: `payout` 0).
+      id: 'wazima', name: 'WAZIMA', full: '株式会社WAZIMA', en: 'WAZIMA', rank: 'A', model: 'maker', kind: '自動車メーカー（MAGITAの完全子会社：MAGITA車の製造・共同開発・原料以外のコスト削減研究）', abroad: true, parent: 'magita',
+      capital: 800000000, reserve: 800000000, retained: 22000000000,
+      staff: 2250, salary: 2900000, cost: 4300000,
+      place: { name: '省人化工場・高効率ライン維持費', amount: 2400000000 }, rd: { name: '生産技術・コスト削減研究開発費', amount: 1800000000 },
+      // (2,250 people at $4.3M, its lines and research are $13.9B a year: its $24B of cars made for MAGITA leave it
+      // about $2.4B, the joint development's fee on top)
+      sales: 24000000000, op: 2400000000,
+      streams: [
+        { id: 'export', name: 'MAGITA車の受託製造（海外市場向け）', share: 1, beta: 1.2 },
+        { id: 'codev', name: '共同開発（MAGITA向け）' }
+      ],
+      materials: true, factory: 0.8, inventoryDays: 30,
+      ppe: 12000000000, growth: 0.03, beta: 1.2, season: 'cars', hire: 0.01, raise: 0.02, quit: 0.04,
+      payout: 0, per: 10, pbr: 0.8, founders: 0, price: 10000
     },
     {
       id: 'jinx', name: 'ジンクス', full: '株式会社ジンクス', en: 'JINX', rank: 'A', model: 'retail', kind: 'ショップ（SHOPの運営・管理）',
@@ -171,14 +207,16 @@
       payout: 0.35, per: 14, pbr: 1.0, founders: 0.15, price: 7000
     },
     {
-      id: 'daizin', name: 'DAIZIN', full: '株式会社DAIZIN', en: 'DAIZIN', rank: 'A', model: 'service', kind: 'VIPサービス（VIP機能の運営・管理）',
+      id: 'daizin', name: 'DAIZIN', full: '株式会社DAIZIN', en: 'DAIZIN', rank: 'A', model: 'service', kind: 'VIPサービス（VIP機能の運営・管理・ロイヤルコインの買い取り）',
       capital: 200000000, reserve: 200000000, retained: 15000000000,
       staff: 400, salary: 5500000, cost: 8000000,
       place: { name: '最高級VIPラウンジ・専用施設維持費', amount: 2500000000 }, rd: { name: '独自VIPサービス企画開発費', amount: 300000000 },
       sales: 12000000000, op: 3500000000,
       streams: [
         { id: 'members', name: 'VIP会員収入', share: 0.7, cost: 0.12, beta: 1.1, player: ['vip'] },
-        { id: 'lounge', name: 'ラウンジ・専用サービス収入', share: 0.3, cost: 0.3, beta: 1.4 }
+        { id: 'lounge', name: 'ラウンジ・専用サービス収入', share: 0.3, cost: 0.3, beta: 1.4 },
+        // the ロイヤルコイン and VIP1週間券 YOSIDA buys of it for its gacha (YOSIDA below)
+        { id: 'coins', name: 'ロイヤルコイン・VIP1週間券の販売（YOSIDA向け）' }
       ],
       ppe: 6000000000, growth: 0.05, beta: 1.2, season: 'luxury', hire: 0.03, raise: 0.03, quit: 0.05,
       payout: 0.4, per: 18, pbr: 2.0, founders: 0.3, price: 25000
@@ -336,6 +374,9 @@
     { a: 'magita', b: 'yosida', start: 15, why: '自動車市場のライバル（高級車と大衆車）' },
     { a: 'yosida', b: 'carowner', start: 55, why: 'YOSHIDA車の供給（専売特別費用なし）' },
     { a: 'yosida', b: 'jinx', start: 55, why: 'YOSHIDAエンジンの供給' },
+    { a: 'magita', b: 'wazima', start: 85, why: '完全子会社（MAGITA車の製造・共同開発・コスト削減研究）' },
+    { a: 'yosida', b: 'wazima', start: 25, why: 'かつての世界2位と3位の自動車メーカー' },
+    { a: 'yosida', b: 'daizin', start: 50, why: 'ガチャ景品のロイヤルコイン・VIP1週間券の買い付け（価格交渉）' },
     { a: 'ice', b: 'riru', start: 90, why: '共同開発・業務委託・資本提携' },
     { a: 'citywork', b: 'speedeed', start: 20, why: '求人市場で競合' },
     { a: 'daizin', b: 'carowner', start: 60, why: 'VIP顧客への高級車の販売' },
@@ -349,7 +390,55 @@
   // becomes. VIP is bought with ロイヤルコイン, each counted as `coin` $; the バイト's employers pay the job sites
   // `jobFee` of what the players are paid; the 投資's 1.8% fee is Dtrade's, and so is the casino's money (the bets the
   // players lose, the fee on a big bet's win, the monthly slot charge, the exchange fee: js/game/config.js casino).
+  // What a spin wins beyond its bet is paid by the country's treasury (国庫), as are the quests' rewards (YOSIDA below).
   var PLAYERS = { coin: 100000, jobFee: 0.25 };
+
+  // YOSIDA's monopolies in the game besides its cars (server/core/api.js, gacha.js and tree.js send their money;
+  // server/core/corp-model.js books it). To the players they are what they always were; behind them:
+  // - クエスト: every reward is paid out of the country's treasury (国庫支出金), and YOSIDA keeps `quest.base` of each
+  //   (rounded down) as its fee. It sets the fee each month: while it does badly (its quarter short of 90% of its
+  //   plan, or the month a loss) `quest.min`〜`quest.max`, the worse the higher; now and then (`quest.greed` of the
+  //   months it does well), wanting more, `quest.min`〜`quest.greedMax` for `quest.months` months; else `quest.base`.
+  // - ガチャ: what the players pay is its sale, and it bills the country `gacha.claim` of that. What they win costs it:
+  //   ロットコイン (spin tokens) at their $ straight out of its retained earnings (利益剰余金); ロイヤルコイン
+  //   `gacha.royal` each, bought of DAIZIN; ガレージコイン `gacha.garage` each, bought of MAGITA (MAGITA Garage);
+  //   VIP1週間券 bought of DAIZIN at the price the two agree each month (`gacha.vipWeek`: DAIZIN asks more while it
+  //   needs it and YOSIDA pays less while it does, the better they get on the less); a car its maker's sale (YOSHIDA's:
+  //   its own, made at its cost; MAGITA's: bought of it at its 仕入れ価格 and 専売特別費用, or, for a car it sells no
+  //   more, `gacha.carShare` of its price); a 金の生る木 (seed or grown) `tree`, made by itself; a リセットチケット
+  //   nothing (the quests are its own).
+  // - 金の生る木: its biotech, which no one else comes near — seeds made for `seeds.cost` each, `seeds.month` of them
+  //   shipped to the market abroad each month at `seeds.price` on average; a tree won at the players' auction is its
+  //   sale too (made for `tree`); and the fertilizer is its own: `fertilizer` of the money given to a tree.
+  var YOSIDA = {
+    quest: { base: 0.1, min: 0.11, max: 0.21, greed: 0.15, greedMax: 0.15, months: 3 },
+    gacha: { claim: 0.5, royal: 100000, garage: 1400000, vipWeek: [1200000, 3500000], carShare: 0.8,
+      // (a car only the gacha gives: what it is worth)
+      worth: { 'porsche-kuia-spyder': 24000000 } },
+    tree: 1000000,
+    seeds: { month: [5000, 10000], price: [10000000, 12000000], cost: 1000000 },
+    fertilizer: 0.4
+  };
+  // the fee YOSIDA keeps of a quest's reward of `dollars` at the rate `rate`
+  function questFee(dollars, rate) { return Math.max(0, Math.floor(dollars * (rate === undefined ? YOSIDA.quest.base : rate))); }
+
+  // WAZIMA's research for its parent: each cuts what MAGITA spends besides its materials — its factories' and lines'
+  // upkeep (place), its research (rd), its other costs (other) — by `cut` of what is left of it; the four of the
+  // list begin on the day WAZIMA joins, and after them one more at a time (`next`: `months`, `chance`, `cut`), none
+  // taking a cost below `floor` of what it was. `codev`: the share of MAGITA's research paid to WAZIMA for the joint
+  // development.
+  var WAZIMA = {
+    research: [
+      { id: 'W-LINE', name: '省人化ライン・自動化技術「W-LINE」', months: 10, chance: 0.85, of: ['place'], cut: 0.12 },
+      { id: 'W-DEV', name: '開発プロセス効率化「W-DEV」', months: 14, chance: 0.75, of: ['rd'], cut: 0.1 },
+      { id: 'W-CARE', name: '設備保全AI・設備の長寿命化「W-CARE」', months: 18, chance: 0.8, of: ['place'], cut: 0.08 },
+      { id: 'W-OPS', name: '間接業務・調達事務の削減「W-OPS」', months: 8, chance: 0.9, of: ['other'], cut: 0.1 }
+    ],
+    next: { months: [9, 15], chance: 0.6, cut: [0.02, 0.05], floor: 0.55,
+      names: ['生産ラインの再設計', '工場エネルギーの削減', '試作工程のデジタル化', '物流・搬送の自動化', '検査工程のAI化', '共通部品の設計手法', '保全計画の最適化', '事務処理の自動化'] },
+    of: { place: '製造経費（工場・ライン維持費）', rd: '研究開発費', other: 'その他の経費' },
+    codev: 0.25
+  };
 
   // MAGITA's research, begun on the companies' first day: each takes `months` (fewer once RIMU TAG is done: `speed`
   // off what is left of the others and of anything begun later), succeeds with `chance`, and cuts the materials of
@@ -445,7 +534,10 @@
     'r:it': ['ITサービス・データセンター売上', 'r'], 'r:platform': ['ゲーム販売手数料', 'r'], 'r:placement': ['人材紹介手数料', 'r'], 'r:nii': ['資金利益', 'r'], 'r:fees': ['役務取引等利益', 'r'],
     'r:garage': ['MAGITA Garage', 'r'], 'r:used': ['中古車販売', 'r'], 'c:used': ['中古車販売の原価', 'c'],
     'c:funding': ['資金調達費用（預金利息）', 'c'], 'c:payout': ['払い出し（市民の勝ち越し分）', 'c'],
-    sRecruit: ['採用費', 's'], sSeverance: ['退職給付費用', 's'], sVenture: ['新規事業費用', 's']
+    sRecruit: ['採用費', 's'], sSeverance: ['退職給付費用', 's'], sVenture: ['新規事業費用', 's'],
+    // DAIZIN's buying back of the players' coins; a parent's part of its child's month (WAZIMA's, MAGITA's)
+    'c:coinbuy': ['ロイヤルコインの買い取り', 'c'],
+    nSubsidiary: ['子会社からの受取配当金（WAZIMAの利益）', 'ni'], eSubsidiary: ['子会社の損失負担（WAZIMA）', 'ne']
   };
   // an account's name and kind for a company (its own sales and costs by its streams; its place and research by their names)
   function account(code, c) {
@@ -525,7 +617,7 @@
   BR.CORP = {
     DAY_MS: DAY_MS,
     companies: COMPANIES, company: company, listed: function () { return COMPANIES.filter(function (c) { return c.listed; }); },
-    players: PLAYERS, magita: MAGITA, makers: MAKERS, firstLot: firstLot, staffing: STAFFING, tech: TECH, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
+    players: PLAYERS, magita: MAGITA, yosida: YOSIDA, questFee: questFee, wazima: WAZIMA, makers: MAKERS, firstLot: firstLot, staffing: STAFFING, tech: TECH, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
     ranks: RANKS, money: MONEY, tax: TAX,
     accounts: ACCOUNTS, account: account, pl: PL, bs: BS, cf: CF, plOf: plOf,
     // the 決算発表: this many days after a quarter's end, at 15:00 Japan time (6:00 UTC)

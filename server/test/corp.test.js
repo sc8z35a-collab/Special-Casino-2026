@@ -66,7 +66,12 @@ test('the companies run on: every day balances, and their sales and profits stay
   }
   for (const r of years) {
     const p = model.PROFILES.get(r.company);
-    if (p.sales) assert.ok(r.pl.sales > p.sales * 0.6 && r.pl.sales < p.sales * 1.6, `${r.company} ${r.pl.sales}`);
+    // (YOSIDA's money tree seeds come on top of the carmaker its profile is, from the launch: 5,000〜10,000 a month at
+    // $10M〜$12M each, CORP.yosida.seeds)
+    const seeds = r.accounts['r:seeds'] || 0, months = Math.max(1, Math.round((r.to - Math.max(r.from, launch) + 1) / 30.44));
+    if (seeds) assert.ok(seeds > 5000 * 10e6 * (months - 1) && seeds < 10000 * 12e6 * (months + 1), `${r.company} seeds ${seeds} in ${months} months`);
+    else assert.ok(r.company !== 'yosida' || r.to < launch);
+    if (p.sales) assert.ok(r.pl.sales - seeds > p.sales * 0.6 && r.pl.sales - seeds < p.sales * 1.6, `${r.company} ${r.pl.sales}`);
     assert.ok(r.staff > 0);
   }
 });
@@ -208,7 +213,7 @@ test('the operator site: the 企業 folder\'s apps answer operators only, with e
   // (an operator's look begins them, as a look at the market would)
   const all = await s.call('GET', '/api/ops/corp', { token: boss.token });
   assert.equal(all.started, true);
-  assert.equal(all.companies.length, 11);
+  assert.equal(all.companies.length, 12);
   assert.ok(all.ties.length >= 17);
   assert.deepEqual(all.companies.map((c) => c.id).sort(), CORP.companies.map((c) => c.id).sort());
   assert.equal((await s.call('GET', `/api/ops/corp?rev=${all.rev}`, { token: boss.token })).same, true);
