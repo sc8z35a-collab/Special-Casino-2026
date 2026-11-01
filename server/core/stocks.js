@@ -265,14 +265,15 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
 
   // An order's move on the price (log: up for a buy, down for a sale; 1% for each `depth` $ of it) and the price it
   // fills at for `p` this second: half its move on top (a limit order never worse than its limit).
+  // (the formulas are the shared rules', js/game/stocks.js: the page says the same cost)
+  const depthOf = (c) => (corp ? corp.depth(c.id) : Infinity);
   function moveOf(c, side, shares, p) {
     if (!corp) return 0;
-    return (side === 'buy' ? 1 : -1) * 0.01 * p * shares / corp.depth(c.id);
+    return S.moveOf(depthOf(c), side, shares, p);
   }
   function slipped(c, o, p) {
-    const m = moveOf(c, o.side, o.shares, p), at = Math.max(1, Math.round(p * Math.exp(m / 2)));
-    if (o.type === 'limit') return o.side === 'buy' ? Math.min(o.price, at) : Math.max(o.price, at);
-    return at;
+    if (!corp) return o.type === 'limit' ? (o.side === 'buy' ? Math.min(o.price, p) : Math.max(o.price, p)) : p;
+    return S.slipped(depthOf(c), o, p);
   }
   // An order trades: `p` the price, `at` the moment (ms), `n` its second.
   function fill(c, o, p0, at, n) {
@@ -541,13 +542,21 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
     const price = type === 'market' ? 0 : posInt(body.price, '値段');
     const k = String(body.key || '');
     if (!ORDER_KEY.test(k)) throw new ApiError(400, 'bad_key', '注文をやり直してください');
-    return { c, side, type, shares, price, key: k };
+    // (MAX: a buy of at most `shares`, as many of them as the money in hand and the day's room allow at the price then)
+    return { c, side, type, shares, price, key: k, fit: side === 'buy' && body.fit === true };
   }
-  const sameOrder = (o, r) => o.company === r.c.id && o.side === r.side && o.type === r.type && o.shares === r.shares && o.price === r.price;
+  const sameOrder = (o, r) => o.company === r.c.id && o.side === r.side && o.type === r.type && (o.shares === r.shares || (r.fit && o.shares <= r.shares)) && o.price === r.price;
 
   function place(u, r, now, st) {
-    const { c, side, type, shares, price } = r, s = st.get(c.id), p = s.price, t = s.tick;
+    const { c, side, type, price } = r, s = st.get(c.id), p = s.price, t = s.tick;
     const day = S.dayOf(now);
+    let shares = r.shares;
+    // MAX: trimmed to what fits now (the money in hand, the day's room), at least one share (else refused as any order)
+    if (r.fit) {
+      const budget = Math.min(getUser(u.id).dollars, S.dayCap - boughtOn(u.id, day));
+      const depth = corp ? depthOf(c) : Infinity;
+      shares = Math.max(1, Math.min(shares, S.maxBuy(depth, type, price, p, budget, shares)));
+    }
     if (tradesOn(u.id, day) >= S.tradesPerDay) throw new ApiError(409, 'trade_limit', `本日の売買は${S.tradesPerDay}回までです`);
     const open = openOf(u.id);
     if (type !== 'market') {

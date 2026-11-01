@@ -204,12 +204,12 @@ test('投資: market orders trade at this second\'s price, with the 1.8% fee (Dt
   assert.equal((await m.call('GET', '/api/stocks', null)).status, 401);
 });
 
-test('投資: $80,000,000 bought a trading day across every company (the filled buys with their fee and the money buy orders hold), 30 trades a day, 10 orders waiting', async (t) => {
+test('投資: $800,000,000 bought a trading day across every company (the filled buys with their fee and the money buy orders hold), 30 trades a day, 10 orders waiting', async (t) => {
   const m = await market(t);
-  const p = await investor(m, 'Capped', 200000000);
+  const p = await investor(m, 'Capped', 2000000000);
   let r = await m.call('GET', '/api/stocks', p.token);
   const riru = r.market.find((q) => q.id === 'riru').price;
-  assert.equal(S.dayCap, 80000000);
+  assert.equal(S.dayCap, 800000000);
   r = await m.order(p, { company: 'ice', side: 'buy', shares: 100 });
   assert.equal(r.status, 200);
   const first = r.order.amount;
@@ -265,6 +265,33 @@ test('投資: $80,000,000 bought a trading day across every company (the filled 
   // somebody else's order is not mine to cancel
   const theirs = m.db.prepare("SELECT id FROM stock_orders WHERE user_id = ? AND status = 'open' LIMIT 1").get(p3.me.id).id;
   assert.equal((await m.call('POST', '/api/stocks/cancel', p2.token, { id: theirs })).error.code, 'no_order');
+});
+
+test('投資 MAX: a buy sent as one that fits is taken down to the most the money in hand and the day\'s room allow at the price then — never refused for them; the same again is the same order', async (t) => {
+  const m = await market(t);
+  // (more money than the day's room: the room decides)
+  const p = await investor(m, 'MaxRoom', 5000000000);
+  let r = await m.call('GET', '/api/stocks', p.token);
+  const riru = r.market.find((q) => q.id === 'riru').price;
+  const depth = CORP.company('riru').depth, room = S.dayCap - r.mine.bought;
+  const want = S.maxBuy(depth, 'market', 0, riru, room, S.maxShares);
+  assert.ok(want > 1000 && want < S.maxShares);
+  assert.equal((await m.order(p, { company: 'riru', side: 'buy', shares: want + 500 })).error.code, 'cap');
+  const key = 'k' + 'm'.repeat(20);
+  r = await m.call('POST', '/api/stocks/order', p.token, { company: 'riru', side: 'buy', type: 'market', shares: want + 500, fit: true, key });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.ok(r.order.shares <= want + 500 && r.order.shares >= want - 2, `${r.order.shares} of ${want}`);
+  assert.ok(r.order.amount <= room + riru, `${r.order.amount} ${room}`);
+  // (its answer lost: the same key again is the same order, not a second one)
+  const again = await m.call('POST', '/api/stocks/order', p.token, { company: 'riru', side: 'buy', type: 'market', shares: want + 500, fit: true, key });
+  assert.equal(again.order.id, r.order.id);
+  // (less money than the room: the money decides)
+  const q = await investor(m, 'MaxCash', 30000000);
+  r = await m.call('POST', '/api/stocks/order', q.token, { company: 'ice', side: 'buy', type: 'market', shares: S.maxShares, fit: true, key: 'k' + 'q'.repeat(20) });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.ok(r.order.amount <= 30000000 && r.order.amount > 29000000, String(r.order.amount));
+  // (a sale is never fitted)
+  assert.equal((await m.call('POST', '/api/stocks/order', q.token, { company: 'ice', side: 'sell', type: 'market', shares: r.order.shares + 5, fit: true, key: 'k' + 's'.repeat(20) })).error.code, 'no_shares');
 });
 
 // the first second after `from` whose price meets `hit`, by the model

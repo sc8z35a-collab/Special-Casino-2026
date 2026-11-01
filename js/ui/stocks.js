@@ -467,14 +467,15 @@
   }
   // bought today (from 9:00 Japan time): the filled buys with their fee and the money buy orders hold (the server's)
   function boughtToday() { return st.mine ? st.mine.bought || 0 : 0; }
+  // MAX: a sale, every share free to sell; a buy, as many as the money in hand and the day's room both allow — at the
+  // price the order will really pay (a big market order slips: js/game/stocks.js), the fee included
+  function depth() { var c = BR.CORP && BR.CORP.company(st.company); return c && c.depth || 1e8; }
   function maxShares() {
-    var m = st.mine, unit = unitPrice();
-    if (!m || !unit) return 0;
+    var m = st.mine, q = quote();
+    if (!m || !q || !unitPrice()) return 0;
     if (st.side === 'sell') return holding().free;
-    var cash = dollars(), room = Math.max(0, (m.dayCap || S.dayCap) - boughtToday());
-    var n = Math.min(S.maxShares, Math.floor(Math.min(room, cash) / (unit * (1 + S.feeBp / 10000))));
-    while (n > 0 && S.buyAmount(unit, n) > Math.min(cash, room)) n--;
-    return Math.max(0, n);
+    var room = Math.max(0, (m.dayCap || S.dayCap) - boughtToday());
+    return S.maxBuy(depth(), st.type, st.price, q.price, Math.min(dollars(), room), S.maxShares);
   }
   function digits(input) { var n = Number(String(input.value).replace(/[^\d]/g, '')); return Number.isSafeInteger(n) ? n : 0; }
   function buildOrder() {
@@ -493,10 +494,10 @@
       input.type = 'text';
       input.inputMode = 'numeric';
       input.setAttribute('aria-label', label);
-      input.addEventListener('input', function () { set(digits(input)); renderOrder(true); });
+      input.addEventListener('input', function () { set(digits(input)); st.fit = false; renderOrder(true); });
       r.appendChild(el('small', '', label));
-      var minus = button('sk-btn sk-step', '−', function () { set(Math.max(1, get() - steps())); renderOrder(); });
-      var plus = button('sk-btn sk-step', '+', function () { set(get() + steps()); renderOrder(); });
+      var minus = button('sk-btn sk-step', '−', function () { set(Math.max(1, get() - steps())); st.fit = false; renderOrder(); });
+      var plus = button('sk-btn sk-step', '+', function () { set(get() + steps()); st.fit = false; renderOrder(); });
       r.appendChild(minus);
       r.appendChild(input);
       r.appendChild(plus);
@@ -506,8 +507,10 @@
     ui.sharesRow = stepper('株数', function () { return st.shares; }, function (n) { st.shares = Math.min(S.maxShares, n); }, function () { return 1; });
     box.appendChild(ui.priceRow.row);
     ui.sharesRow.row.classList.add('sk-shares');
-    [10, 100].forEach(function (n) { ui.sharesRow.row.appendChild(button('sk-btn', '+' + n, function () { st.shares = Math.min(S.maxShares, st.shares + n); renderOrder(); })); });
-    ui.sharesRow.row.appendChild(button('sk-btn', 'MAX', function () { st.shares = Math.max(1, maxShares()); renderOrder(); }));
+    [10, 100].forEach(function (n) { ui.sharesRow.row.appendChild(button('sk-btn', '+' + n, function () { st.shares = Math.min(S.maxShares, st.shares + n); st.fit = false; renderOrder(); })); });
+    // (MAX: the order goes as one that fits — the server takes it down to what fits at its price then, never refused for
+    // the day's room or the money)
+    ui.sharesRow.row.appendChild(button('sk-btn', 'MAX', function () { st.shares = Math.max(1, maxShares()); st.fit = st.side === 'buy'; renderOrder(); }));
     box.appendChild(ui.sharesRow.row);
     ui.total = el('div', 'sk-total');
     box.appendChild(ui.total);
@@ -526,17 +529,23 @@
     mark(ui.type, st.type);
     ui.priceRow.row.hidden = st.type === 'market';
     var active = document.activeElement;
+    // (MAX stays MAX: as the price moves, the most that can be bought now)
+    var max = maxShares();
+    if (st.fit && st.side === 'buy' && !st.busy && max > 0) st.shares = max;
     if (!typing || active !== ui.priceRow.input) ui.priceRow.input.value = st.price ? fmt(st.price) : '';
     if (!typing || active !== ui.sharesRow.input) ui.sharesRow.input.value = String(st.shares || '');
-    var unit = unitPrice(), shares = st.shares, value = st.type === 'stop' && st.side === 'buy' ? st.price * shares : unit * shares;
-    var max = maxShares(), ok = shares > 0 && shares <= max && priceOk() && !st.busy && !!st.mine;
+    var unit = unitPrice(), shares = st.shares, q = quote();
+    // (a market buy at the price it will slip to; a stop buy at its stop)
+    if (st.side === 'buy' && st.type === 'market' && q) unit = S.slipped(depth(), { side: 'buy', type: 'market', shares: shares }, q.price);
+    var value = st.type === 'stop' && st.side === 'buy' ? st.price * shares : unit * shares;
+    var ok = shares > 0 && (shares <= max || (st.fit && max > 0)) && priceOk() && !st.busy && !!st.mine;
     ui.priceRow.input.classList.toggle('sk-bad', st.type !== 'market' && !priceOk());
     ui.sharesRow.input.classList.toggle('sk-bad', shares > max);
     ui.total.replaceChildren();
     var fee = S.fee(value), total = st.side === 'buy' ? value + fee : value - fee;
     ui.total.appendChild(row('合計', money(total)));
     ui.total.appendChild(row('手数料', money(fee)));
-    ui.total.appendChild(row('最大', fmt(max) + '株'));
+    ui.total.appendChild(row('最大', fmt(max) + '株' + (st.side === 'buy' && st.mine ? '（本日あと' + money(Math.max(0, (st.mine.dayCap || S.dayCap) - boughtToday())) + '）' : '')));
     ui.go.classList.toggle('sk-buy', st.side === 'buy');
     ui.go.classList.toggle('sk-sell', st.side === 'sell');
     ui.goText.textContent = (st.side === 'buy' ? '買う' : '売る') + (st.type === 'market' ? '' : '（' + TYPE[st.type] + '）');
@@ -562,6 +571,7 @@
     if (st.busy || ui.go.disabled) return;
     var o = { company: st.company, side: st.side, type: st.type, shares: st.shares };
     if (st.type !== 'market') o.price = st.price;
+    if (st.fit && st.side === 'buy') o.fit = true;
     // (an answer lost on the way: the same order again goes with the same key, and is not made twice)
     var p = st.pending, same = p && p.company === o.company && p.side === o.side && p.type === o.type && p.shares === o.shares && p.price === o.price;
     o.key = same ? p.key : api.orderKey();
@@ -573,6 +583,9 @@
       if (gen !== generation) return;
       st.pending = null;
       st.busy = false;
+      st.fit = false;
+      // (a MAX order the server took down to what fit: the shares it was for)
+      if (r.order && r.order.shares) st.shares = r.order.shares;
       K.sfx(o.side === 'buy' ? 'betUp' : 'betDown');
       saw(r.order);
       apply(r);
@@ -748,6 +761,7 @@
   function pickCompany(id) {
     if (st.company === id) return;
     st.company = id;
+    st.fit = false;
     st.candles = [];
     st.chartKey = '';
     st.hover = -1;
