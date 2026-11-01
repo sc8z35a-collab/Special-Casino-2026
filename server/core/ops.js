@@ -33,7 +33,7 @@
 // checks every 2 seconds and logs out).
 import { ApiError, posInt, pageLimit } from './errors.js';
 import { nameKey, cleanPassword, cleanText, hashPassword } from './auth.js';
-import { LEVEL, RULES, VIP, RELEASE } from './rules.js';
+import { LEVEL, RULES, VIP, RELEASE, RELEASE_NAME, releaseName } from './rules.js';
 import { jst } from './opslog.js';
 import { createDevCode } from './devcode.js';
 import { purgePlayer, KEPT_ROWS } from './purge.js';
@@ -408,7 +408,9 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
           reportsAgainst: q('SELECT COUNT(*) AS n FROM reports WHERE target_id = ?').get(p.id).n,
           reportsBy: q('SELECT COUNT(*) AS n FROM reports WHERE reporter_id = ?').get(p.id).n,
           // the release their game last said it runs (RELEASE: the newest), on what, and when
-          client: { release: p.client_release, build: p.client_build, agent: p.client_agent, at: p.client_at, newest: RELEASE }
+          client: { release: p.client_release, build: p.client_build, agent: p.client_agent, at: p.client_at, newest: RELEASE,
+            // (their names as the players know them: DEV13, S2 DEV1)
+            name: p.client_release ? releaseName(p.client_release) : '', newestName: RELEASE_NAME }
         },
         now: Date.now()
       };

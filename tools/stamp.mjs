@@ -99,7 +99,8 @@ export function releaseInfo() {
   vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'js/game/news.js'), 'utf8'), context);
   const release = context.BR.RELEASE;
   if (!Number.isSafeInteger(release) || release < 1) throw new Error('invalid release number');
-  return { release, label: 'DEV' + release };
+  // (its name: DEV13, or within a phase S2 DEV1 — js/game/news.js releaseName)
+  return { release, label: typeof context.BR.releaseName === 'function' ? context.BR.releaseName(release) : 'DEV' + release };
 }
 
 function versionJs(build) {

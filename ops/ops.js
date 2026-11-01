@@ -1387,8 +1387,9 @@
     var b = el('b', 'verline');
     if (!c || !c.release) { b.textContent = '未確認（まだ新しい版で起動していません）'; return b; }
     var newest = c.release >= c.newest;
-    b.appendChild(el('span', 'ver ' + (newest ? 'new' : 'old'), newest ? '最新' : 'DEV' + c.release));
-    b.appendChild(document.createTextNode(newest ? ' DEV' + c.release : ' 最新は DEV' + c.newest + '（更新されていません）'));
+    var name = c.name || 'DEV' + c.release, latest = c.newestName || 'DEV' + c.newest;
+    b.appendChild(el('span', 'ver ' + (newest ? 'new' : 'old'), newest ? '最新' : name));
+    b.appendChild(document.createTextNode(newest ? ' ' + name : ' 最新は ' + latest + '（更新されていません）'));
     b.appendChild(el('small', 'muted', [c.build ? 'build ' + c.build : '', platformOf(c.agent), c.at ? date(c.at, true) + ' に確認' : ''].filter(Boolean).join('・')));
     return b;
   }

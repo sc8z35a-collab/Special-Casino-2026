@@ -32,7 +32,7 @@ import {
 import { Limiter } from './ratelimit.js';
 import { revOf, partOf, heldOf, heldFrom } from './hash.js';
 import {
-  RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, VIP, RECEIPTS, STOCKS, CORP,
+  RULES, AVATARS, CARS, SHOP, FRUITS, JOBS, QUESTS, LEVEL, RELEASE, RELEASE_NAME, VIP, RECEIPTS, STOCKS, CORP,
   spin as spinReels, evaluate as evaluateLine, packGrid, shopSale, carSale, carPrice, carBuyback, carDisposal, utcDay, nextUtcMidnight, loginDay, nextLoginReset, fmt
 } from './rules.js';
 import { createAdmin } from './admin.js';
@@ -523,7 +523,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   {
     const seen = q("SELECT value FROM meta WHERE key = 'ops_log_release'").get();
     if (!seen || Number(seen.value) !== RELEASE) {
-      opsLog.add({ action: 'release', summary: `DEV${RELEASE} を本番に反映（サーバーが起動）`, detail: { release: RELEASE, previous: seen ? Number(seen.value) : null, host: config.host || '' } });
+      opsLog.add({ action: 'release', summary: `${RELEASE_NAME} を本番に反映（サーバーが起動）`, detail: { release: RELEASE, previous: seen ? Number(seen.value) : null, host: config.host || '' } });
       q("INSERT INTO meta (key, value) VALUES ('ops_log_release', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(RELEASE));
     }
   }
@@ -533,7 +533,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     const was = q("SELECT value FROM meta WHERE key = 'live_version'").get();
     if (!was || was.value !== host.version.id) {
       q("INSERT INTO meta (key, value) VALUES ('live_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(host.version.id);
-      if (was) (config.lineFeedEnabled ? discord : notice).say('🚀', `本番に新しい版を反映しました（DEV${RELEASE}・バージョン ${host.version.id.slice(0, 8)}）`);
+      if (was) (config.lineFeedEnabled ? discord : notice).say('🚀', `本番に新しい版を反映しました（${RELEASE_NAME}・バージョン ${host.version.id.slice(0, 8)}）`);
     }
   }
 

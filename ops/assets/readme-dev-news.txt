@@ -2,6 +2,13 @@
 
 プレイヤー向け DEVニュースより詳しい、保守・実装担当者のための更新記録です。運用手順と既存仕様全体は README.md を参照してください。このファイルが技術更新の正本です。
 
+## 2026-11-01 — S2 DEV1：新フェーズ（シーズン2）として配布、DEVの番号を数え直し
+
+- `js/game/news.js` に **S2 DEV1**（通し番号14）の Dev News（下の MY WAY・取引の上限・各種手数料、PR #77 の投資$800M・MAX、YOSIDAのクエスト手数料、DAIZINのロイヤルコイン買い取り）。感謝料 $250,000。
+- **版の名前をフェーズごとに数え直す**：`PHASES = [{ name: 'S2', from: 14 }]`、`BR.releaseName(id)`（「S2 DEV1」「DEV13」）・`BR.releasePart(id)`。中の通し番号（`id`・`BR.RELEASE`・`version.json` の `release`）は増え続け、更新の確認・感謝料・既存の端末との比較はそのまま。`version.json` の `label` は `S2 DEV1`（`tools/stamp.mjs`）。
+- 名前の出る所：Dev News のバッジ（「S2」＋DEVマーク＋番号）・アップデートのお知らせ・運営ログ（`RELEASE_NAME` を本番に反映）・Discord の配信通知・LINE 配信・運営サイトのプレイヤー詳細の版（`client.name`・`newestName`）。
+- 検証：`version-source.test.js`・`line-feed.test.js`。
+
 ## 2026-11-01 — MY WAY（キャラクターIP企業・倒産しうる初の会社）・取引200回と売り$800M・アクティブ手数料10%・ガレージ貸し出し手数料・総資産$600M以上の手数料・ランクC（10%）
 
 - **MY WAY**（13社目、`js/game/corp.js` の `myway` と `CORP.myway`、上場 MYW・基準$50,000）：社員1,250人・会社負担$16.3M・デザインスタジオ維持・ライセンス管理費$325M・新規キャラクター・特別仕様エンジン等開発費$900M・売上$45B・営業利益$23.4B・資本金$2B・利益剰余金$25.2B・配当性向56%。本社はオーロラ区（社員は市民）。給与はMY WAY専用の役職倍率 `NPC.rankPay`（社長$650M・CEO$450M・役員$35M〜$85M・一般$9.9M〜）、役員はCCO/CFO/COO/執行役員（`NPC.officers`）。部署と担当は `NPC.org.myway`（交渉係・著作権保護スペシャリスト・世界観プランナー・PRディレクター・アイデア審査委員・CPO ほか）。
