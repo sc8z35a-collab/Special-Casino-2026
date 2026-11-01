@@ -60,9 +60,21 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     if (stale) {
       W = load();
       stale = false;
-      if (W) policy(W);
+      if (W) { policy(W); homecoming(W); }
     }
     return W;
+  }
+  // the companies that came home since the country was kept (YOSIDA, WAZIMA): each hires its people once (model.welcome),
+  // and the country is kept with them at once
+  function homecoming(w) {
+    const c = corp.world();
+    if (!c || NPC.companies.every((id) => w.orgs[id] || !c.co[id])) return;
+    tx(() => {
+      const came = model.welcome(w, c, w.day);
+      if (!came.length) return;
+      console.log('npc: came home', came.map((x) => `${x.id} ${x.hired}/${x.want}`).join(', '));
+      save('all');
+    });
   }
   const booted = () => !!get();
   // what is kept: the plain data, and the people's money (`hot`) or all of them; what the country wrote since, into
@@ -282,7 +294,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       out[i * 5] = ((P.ldist[i] & 7) << 5) | (P.place[i] & 31);
       out[i * 5 + 1] = P.act[i];
       out[i * 5 + 2] = P.emo[i * 5];
-      out[i * 5 + 3] = (P.job[i] >= 1 && P.job[i] <= 14 ? 1 : 0) | (P.cash[i] > 1e9 ? 2 : 0) | (P.home[i] === 4 ? 4 : 0) | (f & (pop.FL.famous | pop.FL.mayor | pop.FL.exec) ? 8 : 0) | (f & pop.FL.moving ? 16 : 0) | (f & pop.FL.striking ? 32 : 0);
+      out[i * 5 + 3] = (NPC.working(P.job[i]) ? 1 : 0) | (P.cash[i] > 1e9 ? 2 : 0) | (P.home[i] === 4 ? 4 : 0) | (f & (pop.FL.famous | pop.FL.mayor | pop.FL.exec) ? 8 : 0) | (f & pop.FL.moving ? 16 : 0) | (f & pop.FL.striking ? 32 : 0);
       out[i * 5 + 4] = Math.min(255, Math.max(0, Math.floor((day - P.birth[i]) / 365.25)));
     }
     return out;

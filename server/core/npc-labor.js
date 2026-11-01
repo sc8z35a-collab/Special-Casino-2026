@@ -8,7 +8,8 @@ import { T, S, FL, E, NT, ageOf, remember, clampB } from './npc-pop.js';
 import { M, skillFor } from './npc-life.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
-const RATES = { tenesice: 0.35, magita: 0.75, carowner: 0.4, jinx: 0.45, daizin: 0.2, citywork: 0.15, speedeed: 0.05, dtrade: 0.1, riru: 0.25, ice: 0.3 };
+const RATES = { tenesice: 0.35, magita: 0.75, carowner: 0.4, jinx: 0.45, daizin: 0.2, citywork: 0.15, speedeed: 0.05, dtrade: 0.1, riru: 0.25, ice: 0.3, yosida: 0.6, wazima: 0.65 };
+export { RATES };
 
 export function createLabor(W) {
   const lb = W.lab || (W.lab = { openings: [], unions: {}, talks: null, hires: {}, quits: {}, log: [] });
@@ -20,6 +21,8 @@ export function createLabor(W) {
     hire(W, i, o, day, r) { hire(W, i, o, day, r); },
     leave(W, i, day, why) { leave(W, i, day, why); },
     retire(W, i, day, r) { retire(W, i, day, r); },
+    // the people a company took at once as it came to the country: in its union by its rate
+    join(W, id, list, r) { const u = lb.unions[id]; for (const i of list) if (RATES[id] && r.u() < RATES[id]) { W.P.flags[i] |= FL.union; u.members++; } },
     day(W, day, r, ctx) { laborDay(W, day, r, ctx); },
     first(W) { unionsAtStart(W); }
   };
@@ -65,9 +68,9 @@ function dismiss(W, day, ctx) {
 function siteFor(W, id) { return (W.lab.siteTurn = (W.lab.siteTurn || 0) + 1) % 100 < 100 * (W.siteShare || 0.65) ? 'citywork' : 'speedeed'; }
 
 function hire(W, i, o, day, r) {
-  const P = W.P, ci = NPC.companies.indexOf(o.company);
-  if (P.job[i] >= 1 && P.job[i] <= 10) leave(W, i, day, 'move');
-  P.job[i] = ci + 1;
+  const P = W.P;
+  if (NPC.isCompanyJob(P.job[i])) leave(W, i, day, 'move');
+  P.job[i] = NPC.jobOf(o.company);
   P.flags[i] &= ~FL.student;
   P.rank[i] = 0;
   P.dept[i] = W.org.deptFor(o.company, r);
@@ -90,8 +93,8 @@ function hire(W, i, o, day, r) {
 // those who lost it
 function leave(W, i, day, why) {
   const P = W.P, j = P.job[i];
-  if (!(j >= 1 && j <= 14)) return;
-  const id = j <= 10 ? NPC.companies[j - 1] : null;
+  if (!NPC.working(j)) return;
+  const id = NPC.companyOf(j);
   if (id) {
     if (P.flags[i] & FL.union) W.lab.unions[id].members = Math.max(0, W.lab.unions[id].members - 1);
     W.lab.quits[id] = (W.lab.quits[id] || 0) + 1;
@@ -115,7 +118,7 @@ function leave(W, i, day, why) {
 // 60: the severance (two months of pay for each year at most), then most are kept on at 60% to 65
 function retire(W, i, day, r) {
   const P = W.P, j = P.job[i];
-  const id = j >= 1 && j <= 10 ? NPC.companies[j - 1] : null;
+  const id = NPC.companyOf(j);
   const pay = P.salary[i], years = Math.min(38, P.tenure[i] / 12);
   const sev = Math.round(pay / 12 * NPC.retire.severance * years);
   if (id) W.charge(id, null, 'severance', sev, i);
@@ -141,8 +144,9 @@ function laborDay(W, day, r, ctx) {
   // fortunes, the boss, the hours), and who leaves today
   for (let i = 0; i < P.n; i++) {
     const j = P.job[i];
-    if (!(j >= 1 && j <= 10)) continue;
-    const id = NPC.companies[j - 1], c = ctx.corp && ctx.corp.co[id];
+    const id = NPC.companyOf(j);
+    if (!id) continue;
+    const c = ctx.corp && ctx.corp.co[id];
     if (t.d === 1) P.tenure[i] = Math.min(65535, P.tenure[i] + 1);
     if (!c) continue;
     const fair = P.salary[i] / Math.max(1, c.pay * (NPC.ranks[P.rank[i]] ? NPC.ranks[P.rank[i]].pay : 1));
@@ -194,8 +198,8 @@ function unionsAtStart(W) {
   for (const id of NPC.companies) lb.unions[id].members = 0;
   for (let i = 0; i < P.n; i++) {
     const j = P.job[i];
-    if (!(j >= 1 && j <= 10)) continue;
-    const id = NPC.companies[j - 1];
+    const id = NPC.companyOf(j);
+    if (!id) continue;
     if ((Math.imul(i + 1, 2654435761) >>> 0) / 4294967296 < RATES[id]) { P.flags[i] |= FL.union; lb.unions[id].members++; }
   }
   for (const id of NPC.companies) pickRep(W, id);

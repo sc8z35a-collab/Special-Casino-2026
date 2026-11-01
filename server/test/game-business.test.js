@@ -24,10 +24,12 @@ const world = (seed = 31) => {
 };
 const yearSum = (s, code) => s.per.y[code] || 0;
 
-test('the rules: WAZIMA as given, all MAGITA\'s and abroad; YOSIDA\'s fees, prizes and seeds; DAIZIN\'s price', () => {
-  const z = CORP.company('wazima');
-  assert.deepEqual([z.staff, z.salary, z.cost, z.place.amount, z.rd.amount, z.capital, z.retained, z.parent, z.abroad, z.payout, !!z.listed],
-    [2250, 2900000, 4300000, 2400000000, 1800000000, 800000000, 22000000000, 'magita', true, 0, false]);
+test('the rules: WAZIMA as given, all MAGITA\'s; WAZIMA and YOSIDA at home, selling abroad; YOSIDA\'s fees, prizes and seeds; DAIZIN\'s price', () => {
+  const z = CORP.company('wazima'), y = CORP.company('yosida');
+  assert.deepEqual([z.staff, z.salary, z.cost, z.place.amount, z.rd.amount, z.capital, z.retained, z.parent, !!z.abroad, z.payout, !!z.listed],
+    [2250, 2900000, 4300000, 2400000000, 1800000000, 800000000, 22000000000, 'magita', false, 0, false]);
+  assert.ok(!y.abroad && y.streams.find((x) => x.id === 'export').abroad && y.streams.find((x) => x.id === 'seeds').abroad && z.streams.find((x) => x.id === 'export').abroad);
+  assert.equal(CORP.yosida.seeds.cap, 21000000000);
   assert.deepEqual(CORP.company('magita').children, ['wazima']);
   const Y = CORP.yosida;
   assert.deepEqual([Y.quest.base, Y.quest.max, Y.gacha.claim, Y.gacha.royal, Y.gacha.garage, Y.gacha.vipWeek, Y.tree, Y.seeds.month, Y.seeds.price, Y.seeds.cost, Y.fertilizer],
@@ -84,8 +86,17 @@ test('YOSIDA ships 5,000〜10,000 seeds a month at $10M〜$12M, sets its quest f
   const monthEnd = CORP.monthEnd(d);
   for (; d <= monthEnd; d++) model.closeDay(w, d, {}, ch);
   const ys = w.co.yosida;
-  assert.ok(ys.seeds.n >= 5000 && ys.seeds.n <= 10000 && ys.seeds.price >= 10000000 && ys.seeds.price <= 12000000);
-  assert.ok(Math.abs(ys.seeds.sold - ys.seeds.n * (monthEnd - launch + 1) / 30) <= ys.seeds.n * 0.05, `${ys.seeds.sold} of ${ys.seeds.n}`);
+  // (it would ship 5,000〜10,000, but no more than $21B a year at its size and technology: some 150 a month)
+  assert.ok(ys.seeds.want >= 5000 && ys.seeds.want <= 10000 && ys.seeds.price >= 10000000 && ys.seeds.price <= 12000000);
+  assert.equal(ys.seeds.cap, model.seedsCap(ys));
+  assert.ok(ys.seeds.cap >= 21e9 * 0.9 && ys.seeds.n === Math.min(ys.seeds.want, Math.floor(ys.seeds.cap / 12 / ys.seeds.price)), JSON.stringify(ys.seeds));
+  assert.ok(Math.abs(ys.seeds.sold - ys.seeds.n * (monthEnd - launch + 1) / 30) <= Math.max(2, ys.seeds.n * 0.05), `${ys.seeds.sold} of ${ys.seeds.n}`);
+  // more people and better technology: more of them
+  const at = { n: ys.n, rnd: ys.rnd };
+  ys.n = model.PROFILES.get('yosida').staff * 2;
+  ys.rnd = { ...(ys.rnd || {}), edge: 1.2 };
+  assert.equal(model.seedsCap(ys), Math.round(21e9 * 2 * 1.2));
+  Object.assign(ys, at);
   const v = model.vipWeekOf(w);
   assert.ok(v >= 1200000 && v <= 3500000 && v % 10000 === 0);
   assert.ok(model.questFeeOf(w) >= 0.1 && model.questFeeOf(w) <= 0.21);
@@ -103,7 +114,7 @@ test('YOSIDA ships 5,000〜10,000 seeds a month at $10M〜$12M, sets its quest f
   assert.ok(fee === 0.1 || (fee >= 0.11 && fee <= 0.15), String(fee));
 });
 
-test('WAZIMA: MAGITA\'s share of research its sale, its own research cutting MAGITA\'s costs, and its profit MAGITA\'s each month', () => {
+test('WAZIMA: MAGITA\'s share of research its sale, its own research cutting MAGITA\'s costs, its sales on MAGITA\'s books and its profit MAGITA\'s each month', () => {
   const { world: w, ch } = world(33);
   const z = w.co.wazima, m = w.co.magita, start = z.bal.retained;
   let paid = 0, sub = 0, kept = null;
@@ -117,10 +128,14 @@ test('WAZIMA: MAGITA\'s share of research its sale, its own research cutting MAG
       else assert.equal(z.bal.retained, kept, `on ${d}`);
       paid += z.toParent ? z.toParent.net : 0;
     }
-    for (const r of out.periods) if (r.company === 'magita' && r.kind === 'm') sub += (r.accounts.nSubsidiary || 0) - (r.accounts.eSubsidiary || 0);
+    // (MAGITA's part of WAZIMA's month: its sales less its costs, day by day, and the rest of its profit at the end)
+    for (const r of out.periods) if (r.company === 'magita' && r.kind === 'm') sub += (r.accounts['r:wazima'] || 0) - (r.accounts['c:wazima'] || 0) + (r.accounts.nSubsidiary || 0) - (r.accounts.eSubsidiary || 0);
   }
   assert.ok(paid > 1e9, String(paid));
   assert.equal(sub, paid);
+  // WAZIMA's sales to others are MAGITA's (what MAGITA paid it for the joint development left out); nothing owed between
+  // them at a month's end
+  assert.ok(m.per.y['r:wazima'] > 0 && Math.abs(m.per.y['r:wazima'] - ((z.per.y['r:export'] || 0))) < 1e6, `${m.per.y['r:wazima']} ${z.per.y['r:export']}`);
   // the joint development: a share of MAGITA's research is WAZIMA's sale
   assert.ok((z.per.y['r:codev'] || 0) > 0);
   // its research done: MAGITA's costs besides materials lower, never below the floor

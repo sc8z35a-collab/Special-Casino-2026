@@ -20,11 +20,16 @@ const YEAR = 365;
 // years: a CEO and a 社長, a few 役員, a 部長 for each department, a 課長 for about 30 people, a 主任 for 10, and the
 // named posts (融資先選定担当, 交渉係, ストップ係 …).
 export function assign(W, ages, r) {
-  const P = W.P;
   W.orgs = {};
-  NPC.companies.forEach((id, ci) => {
+  for (const id of NPC.companies) assignOne(W, id, ages, r);
+}
+// one company's organisation from the people who work for it (also for one that comes to a living country)
+export function assignOne(W, id, ages, r) {
+  const P = W.P;
+  {
     const staff = [];
-    for (let i = 0; i < P.n; i++) if (P.job[i] === ci + 1) staff.push(i);
+    const code = NPC.jobOf(id);
+    for (let i = 0; i < P.n; i++) if (P.job[i] === code) staff.push(i);
     const spec = NPC.org[id].map(([key, name, kind, share, roles]) => ({ key, name, kind, share, roles: roles || [] }));
     const o = { id, name: CORP.company(id).name, ceo: -1, president: -1, officers: [], depts: [], seq: 0, ventures: [], labs: [], plan: {}, think: [], lastMeet: 0 };
     W.orgs[id] = o;
@@ -66,7 +71,7 @@ export function assign(W, ages, r) {
       setPosts(W, o, di, mem, ages, r);
     });
     if (id === 'magita') startLabs(W, o, r);
-  });
+  }
 }
 function setPosts(W, o, di, mem, ages, r) {
   const P = W.P, d = o.depts[di];
@@ -469,7 +474,8 @@ function lendingDesk(W, day, r, ctx) {
     const health = Math.max(0, Math.min(1, (eq / Math.max(1, eq + debt)) * 0.7 + Math.min(1, (s.bal.cash || 0) / monthly / 6) * 0.3 - (lossy ? 0.2 : 0)));
     const [lo, hi] = CORP.ranks.A.rate;
     const strict = pick >= 0 ? tr(P, pick, T.consc) : 0.5;
-    const rate = Math.round(Math.min(0.06, hi - (hi - lo) * health + (health < 0.3 ? 0.01 * (1 + strict) : 0) + (rateBy >= 0 ? (0.5 - tr(P, rateBy, T.agree)) * 0.002 : 0)) * 10000) / 10000;
+    // (never under the rank's floor, however kind the 金利決定担当)
+    const rate = Math.round(Math.max(lo, Math.min(0.06, hi - (hi - lo) * health + (health < 0.3 ? 0.01 * (1 + strict) : 0) + (rateBy >= 0 ? (0.5 - tr(P, rateBy, T.agree)) * 0.002 : 0))) * 10000) / 10000;
     const cap = Math.round(Math.max(monthly * 6, eq * (0.2 + 0.6 * health) * (amountBy >= 0 ? 0.8 + 0.4 * tr(P, amountBy, T.risk) : 1)) / 1e7) * 1e7;
     rows.push({ id, name: CORP.company(id).name, health: Math.round(health * 100), rate, cap, debt });
     W.corpOps.push({ company: id, kind: 'lend', rate, cap });
@@ -603,7 +609,7 @@ function fits(W, i, fit, day) {
     case 'ambitious': return P.tr[i * NT + T.ambition] > 170 && age < 50;
     case 'carless': return !P.car[i] && age >= 20 && age < 70;
     case 'car': return !!P.car[i];
-    case 'busy': return P.job[i] >= 1 && P.job[i] <= 12;
+    case 'busy': return NPC.isCompanyJob(P.job[i]) || P.job[i] === NPC.job.civil || P.job[i] === NPC.job.other;
     case 'social': return P.tr[i * NT + T.extra] > 140;
     case 'seeker': return P.job[i] === NPC.job.none || P.jsat[i] < 90;
     case 'gamer': return P.tr[i * NT + T.game] > 160;

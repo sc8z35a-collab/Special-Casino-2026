@@ -106,7 +106,9 @@
         { id: 'garage', name: 'MAGITA Garage（ガレージ契約料・増設・貸し出し手数料）', cost: 0.08, player: ['garage', 'garagefee', 'rentfee'] },
         { id: 'used', name: 'MAGITA Robert（中古車の買い取り・販売）', player: ['buyback'] },
         // the cars YOSIDA buys of it to give away in its gacha (at their 仕入れ価格 and 専売特別費用)
-        { id: 'gacha', name: '車両の販売（YOSIDAのガチャ景品向け）' }
+        { id: 'gacha', name: '車両の販売（YOSIDAのガチャ景品向け）' },
+        // WAZIMA's sales and costs, day by day, as the group's (連結: what it is paid by MAGITA itself left out)
+        { id: 'wazima', name: 'WAZIMA（子会社・連結）' }
       ],
       // its own carmaker abroad, WAZIMA (WAZIMA below): what it pays it for the joint development (a share of its
       // research), and what WAZIMA earns, each month its own (子会社からの受取配当金)
@@ -141,8 +143,9 @@
       // MAGITA's rival: cheap cars and efficient engines, made from end to end in its own plants. Its customers are
       // those who save: when times are bad they come to it (its sales follow the economy the other way: a
       // defensive stock), when good they go to MAGITA. No 専売特別費用: it is not big enough to ask for one. Its home
-      // is outside the country (`abroad`: its people and its suppliers are paid there, its sales abroad go on).
-      id: 'yosida', name: 'YOSIDA', full: '株式会社YOSIDA', en: 'YOSIDA', rank: 'A', model: 'maker', kind: '自動車メーカー（大衆車・高効率エンジン、MAGITAのライバル）・クエスト・ガチャ・金の生る木の事業を独占', listed: true, abroad: true,
+      // is in the country (リヴィエール区: its people are citizens), and what it sells abroad (`abroad` on a stream:
+      // its cars and engines abroad, its money tree seeds) goes on once the country lives, money coming into it.
+      id: 'yosida', name: 'YOSIDA', full: '株式会社YOSIDA', en: 'YOSIDA', rank: 'A', model: 'maker', kind: '自動車メーカー（大衆車・高効率エンジン、MAGITAのライバル）・クエスト・ガチャ・金の生る木の事業を独占', listed: true,
       capital: 1200000000, reserve: 1200000000, retained: 35000000000,
       staff: 4500, salary: 2400000, cost: 3800000,
       place: { name: '自社一貫工場・製造ライン維持費', amount: 6500000000 }, rd: { name: '車両・エンジン実用開発費', amount: 1700000000 },
@@ -153,9 +156,9 @@
       streams: [
         { id: 'dealer', name: '車両の卸売（カーオーナー向け）', to: 'carowner' },
         { id: 'retail', name: 'エンジンの卸売（ジンクス向け）', to: 'jinx' },
-        { id: 'export', name: '海外・法人向け販売', share: 1, beta: -0.5 },
-        // the money tree seeds it ships to the market each month (YOSIDA.seeds)
-        { id: 'seeds', name: '金の生る木の種の出荷（バイオテクノロジー）', seeds: true },
+        { id: 'export', name: '海外・法人向け販売', share: 1, beta: -0.5, abroad: true },
+        // the money tree seeds it ships to the market abroad each month (YOSIDA.seeds)
+        { id: 'seeds', name: '金の生る木の種の出荷（バイオテクノロジー）', seeds: true, abroad: true },
         // the game's quests, gacha and money trees, all its own: what the players pay, the fee on the quests' rewards,
         // what it bills the country for the gacha (YOSIDA below), and its own cars given away in it (a sale of its cars)
         { id: 'quest', name: 'クエスト事業（報酬の手数料）', player: ['questfee'] },
@@ -170,10 +173,11 @@
     },
     {
       // Once the world's third carmaker (after YOSHIDA), now all MAGITA's (`parent`): it makes MAGITA's cars for the
-      // markets abroad (its sales: `export`), develops them with MAGITA (paid a share of MAGITA's research), and
-      // researches how to cut what MAGITA spends besides its materials (WAZIMA below). Its home is outside the country
-      // (`abroad`), and its profit is MAGITA's each month (no dividends of its own: `payout` 0).
-      id: 'wazima', name: 'WAZIMA', full: '株式会社WAZIMA', en: 'WAZIMA', rank: 'A', model: 'maker', kind: '自動車メーカー（MAGITAの完全子会社：MAGITA車の製造・共同開発・原料以外のコスト削減研究）', abroad: true, parent: 'magita',
+      // markets abroad (its sales: `export`, going on once the country lives), develops them with MAGITA (paid a share
+      // of MAGITA's research), and researches how to cut what MAGITA spends besides its materials (WAZIMA below). Its
+      // home is in the country (アイゼン区, beside MAGITA: its people are citizens); its sales and its profit are on
+      // MAGITA's books (連結), its profit paid up each month (no dividends of its own: `payout` 0).
+      id: 'wazima', name: 'WAZIMA', full: '株式会社WAZIMA', en: 'WAZIMA', rank: 'A', model: 'maker', kind: '自動車メーカー（MAGITAの完全子会社：MAGITA車の製造・共同開発・原料以外のコスト削減研究）', parent: 'magita',
       capital: 800000000, reserve: 800000000, retained: 22000000000,
       staff: 2250, salary: 2900000, cost: 4300000,
       place: { name: '省人化工場・高効率ライン維持費', amount: 2400000000 }, rd: { name: '生産技術・コスト削減研究開発費', amount: 1800000000 },
@@ -181,7 +185,7 @@
       // about $2.4B, the joint development's fee on top)
       sales: 24000000000, op: 2400000000,
       streams: [
-        { id: 'export', name: 'MAGITA車の受託製造（海外市場向け）', share: 1, beta: 1.2 },
+        { id: 'export', name: 'MAGITA車の受託製造（海外市場向け）', share: 1, beta: 1.2, abroad: true },
         { id: 'codev', name: '共同開発（MAGITA向け）' }
       ],
       materials: true, factory: 0.8, inventoryDays: 30,
@@ -408,15 +412,18 @@
   //   more, `gacha.carShare` of its price); a 金の生る木 (seed or grown) `tree`, made by itself; a リセットチケット
   //   nothing (the quests are its own).
   // - 金の生る木: its biotech, which no one else comes near — seeds made for `seeds.cost` each, `seeds.month` of them
-  //   shipped to the market abroad each month at `seeds.price` on average; a tree won at the players' auction is its
-  //   sale too (made for `tree`); and the fertilizer is its own: `fertilizer` of the money given to a tree.
+  //   shipped to the market abroad each month at `seeds.price` on average, but no more than `seeds.cap` a year of
+  //   them (more as it grows and its technology improves); a tree won at the players' auction is its sale too (made
+  //   for `tree`); and the fertilizer is its own: `fertilizer` of the money given to a tree.
   var YOSIDA = {
     quest: { base: 0.1, min: 0.11, max: 0.21, greed: 0.15, greedMax: 0.15, months: 3 },
     gacha: { claim: 0.5, royal: 100000, garage: 1400000, vipWeek: [1200000, 3500000], carShare: 0.8,
       // (a car only the gacha gives: what it is worth)
       worth: { 'porsche-kuia-spyder': 24000000 } },
     tree: 1000000,
-    seeds: { month: [5000, 10000], price: [10000000, 12000000], cost: 1000000 },
+    // (at most `cap` of them a year in all, more as the company grows and its technology with it: × its people against
+    // its size at the start, × what its development work has won it)
+    seeds: { month: [5000, 10000], price: [10000000, 12000000], cost: 1000000, cap: 21000000000 },
     fertilizer: 0.4
   };
   // the fee YOSIDA keeps of a quest's reward of `dollars` at the rate `rate`

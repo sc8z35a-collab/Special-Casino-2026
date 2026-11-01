@@ -494,8 +494,9 @@ function tradeDay(w, s, p, d, flows, ch) {
     // before them —, once the country lives as before)
     if (x.seeds) { if (d >= w.launch) seedsDay(w, s, x, d, ch); continue; }
     const g = lift * season * Math.exp(s.noise[x.id] || 0) * edge, f = g * econOf(w, x.beta ?? p.beta);
-    // (a company abroad still sells abroad once the country lives)
-    if (circ && !p.abroad) {
+    // (a company abroad, or a trade whose customers are abroad — YOSIDA's and WAZIMA's exports — still sells abroad
+    // once the country lives: money coming into it)
+    if (circ && !p.abroad && !x.abroad) {
       // the people's own purchases of each product (no customers from outside any more)
       if (x.products && npc) for (const [id, got] of Object.entries((npc.p || {})[x.products] || {})) {
         if (!CORP.products[x.products][id]) continue;
@@ -516,6 +517,8 @@ function tradeDay(w, s, p, d, flows, ch) {
         const n = take(s, 'sale:' + x.id, p.sales * share * f * (s.scale && s.scale[x.id] || 1) / YEAR);
         const cost = s.cost && s.cost[x.id] !== undefined ? s.cost[x.id] : (x.cost || 0);
         sell(w, s, x.id, n, take(s, 'cost:' + x.id, n * cost));
+        // (what a day abroad brings, for the managers' expectations once the country lives)
+        if (circ && !p.abroad) s.pr[x.id] = (s.pr[x.id] || 0) + n / 30;
       }
     }
     // the players' own money spent here today
@@ -603,15 +606,24 @@ const YS = CORP.yosida;
 function seedsDay(w, s, x, d, ch) {
   const key = CORP.monthKey(d), sd = YS.seeds;
   if (!s.seeds || s.seeds.m !== key) {
-    const n = Math.round(sd.month[0] + (sd.month[1] - sd.month[0]) * ch.u(`seeds:n:${key}`));
+    const want = Math.round(sd.month[0] + (sd.month[1] - sd.month[0]) * ch.u(`seeds:n:${key}`));
     const price = Math.round((sd.price[0] + (sd.price[1] - sd.price[0]) * ch.u(`seeds:p:${key}`)) / 10000) * 10000;
-    s.seeds = { m: key, n, price, sold: 0, last: s.seeds ? { m: s.seeds.m, n: s.seeds.sold, price: s.seeds.price } : null };
+    const cap = seedsCap(s), n = Math.max(0, Math.min(want, Math.floor(cap / 12 / price)));
+    s.seeds = { m: key, n, want, price, cap, sold: 0, last: s.seeds ? { m: s.seeds.m, n: s.seeds.sold, price: s.seeds.price } : null };
   }
   const days = CORP.monthEnd(d) - CORP.monthStart(d) + 1;
   const k = Math.min(s.seeds.n - s.seeds.sold, take(s, 'seeds', s.seeds.n / days));
   if (k <= 0) return;
   s.seeds.sold += k;
   sell(w, s, x.id, k * s.seeds.price, k * sd.cost);
+  // (once the country lives, the managers expect a day of them as of late)
+  if (w.ext) { s.pr[x.id] = (s.pr[x.id] || 0) + k * s.seeds.price / 30; (s.pc || (s.pc = {}))[x.id] = (s.pc[x.id] || 0) + k * sd.cost / 30; }
+}
+// how many $ of seeds a year YOSIDA can ship: `cap`, more as it grows (its people against its size at the start) and
+// as its development work improves its technology
+export function seedsCap(s) {
+  const p = PROFILES.get(s.id), size = Math.max(0, (s.n || 0) / Math.max(1, p.staff)), tech = s.rnd ? s.rnd.edge : 1;
+  return Math.round(YS.seeds.cap * Math.min(3, size) * tech);
 }
 // the share of the game's バイト a job site has (its share drifting year by year, the two together always all)
 function jobShare(p, d, launch) {
@@ -1206,7 +1218,7 @@ function taxes(w, s, p, d, final) {
   const pretax = CORP.plOf(s.per.y).pretax;
   // (the profit of a company held by the equity method is not income yet; half the dividends from it are not taxed;
   // a wholly owned child's dividends are not taxed at all: 完全子法人株式等)
-  const income = pretax - (s.per.y.nEquity || 0) + (s.per.y.eEquity || 0) - (s.per.y.nSubsidiary || 0);
+  const income = pretax - (s.per.y.nEquity || 0) + (s.per.y.eEquity || 0) - childIncome(s.per.y);
   const args = { fy, paidBusiness: s.tax.bizPaid, carry: s.tax.carry, capital: s.bal.capital, capitalEtc: s.bal.capital + s.bal.reserve, staff: s.n,
     value: (s.per.y.sSalary || 0) + (s.per.y.sWelfare || 0) + (s.per.y.sPlace || 0) + Math.max(0, income) };
   let due;
@@ -1229,6 +1241,8 @@ function taxes(w, s, p, d, final) {
   if (n) post(s, [['tax', n], ['taxdue', -n]]);
   s.tax.booked = due;
 }
+// what of a parent's income is its child's (consolidated, paid up or made good): the child pays its own taxes on it
+const childIncome = (sums) => (sums['r:wazima'] || 0) - (sums['c:wazima'] || 0) + (sums.nSubsidiary || 0) - (sums.eSubsidiary || 0);
 // paid: half of last year's in advance in the year's 8th month (中間納付), the rest in the 2nd month after it ended
 function payTaxes(w, s, p, d) {
   if (!CORP.isMonthEnd(d)) return;
@@ -1299,7 +1313,8 @@ function expectDay(w, s, p, d) {
       // then: the made-up past's plans and dividends knew nothing of them)
       if (x.seeds) {
         if (d < w.launch || w.day + 1 < w.launch) continue;
-        const sd = YS.seeds, n = s.seeds ? s.seeds.n : (sd.month[0] + sd.month[1]) / 2, price = s.seeds ? s.seeds.price : (sd.price[0] + sd.price[1]) / 2;
+        const sd = YS.seeds, price = s.seeds ? s.seeds.price : (sd.price[0] + sd.price[1]) / 2;
+        const n = s.seeds ? s.seeds.n : Math.min((sd.month[0] + sd.month[1]) / 2, seedsCap(s) / 12 / price);
         add('r:' + x.id, n * price / MONTH_DAYS);
         add('c:' + x.id, n * sd.cost / MONTH_DAYS);
         continue;
@@ -1398,7 +1413,7 @@ function forecast(w, s, p, from) {
   }
   const quarters = qs.map((q) => CORP.plOf(q).op);
   const pl = CORP.plOf(sums);
-  const income = pl.pretax - (sums.nEquity || 0) - (sums.nSubsidiary || 0);
+  const income = pl.pretax - (sums.nEquity || 0) - childIncome(sums);
   const y = yearTax({ fy, income, paidBusiness: s.tax.bizPaid, carry: s.tax.carry, capital: s.bal.capital, capitalEtc: s.bal.capital + s.bal.reserve, staff: s.n,
     value: (sums.sSalary || 0) + (sums.sPlace || 0) + Math.max(0, income) });
   const net = pl.pretax - y.total;
@@ -1763,6 +1778,7 @@ function prizes(w, ys, d, pz) {
   if (lot > 0) {
     post(ys, [['retained', lot], ['cash', -lot]], 'expenses');
     bizCount(ys, d, 'lot', lot);
+    if (w.ext && !abroad(ys)) w.ext.toPlayers = (w.ext.toPlayers || 0) + lot;
   }
   if (pz.royal > 0) { buy('daizin', 'coins', pz.royal * G.royal); bizCount(ys, d, 'royal', pz.royal); }
   if (pz.vip > 0) {
@@ -1885,24 +1901,41 @@ function wazimaLab(w, s, p, d, ch, out) {
     s.wlab.list = s.wlab.list.slice(-12);
   }
 }
+// A child's day on its parent's books (連結): its sales to others (what its parent paid it, the joint development,
+// left out) as the parent's sales, its costs of them as the parent's costs, its operating profit owed to the parent
+// until the month is paid up (関係会社株式, as the equity method keeps it).
+function consolidate(w, s, p, d) {
+  const parent = w.co[p.parent];
+  if (!parent) return;
+  const pl = CORP.plOf(s.per.d), inside = s.per.d['r:codev'] || 0;
+  const sales = Math.round(pl.sales - inside), op = Math.round(pl.op - inside);
+  if (!sales && !op) return;
+  post(parent, [['affil', op], ['r:wazima', -sales], ['c:wazima', sales - op]]);
+  parent.pr = parent.pr || {};
+  parent.pr.wazima = (parent.pr.wazima || 0) + sales / 30;
+  (parent.pc || (parent.pc = {})).wazima = (parent.pc.wazima || 0) + (sales - op) / 30;
+  const mk = CORP.monthKey(d);
+  if (!s.mirror || s.mirror.m !== mk) s.mirror = { m: mk, op: 0, sales: 0 };
+  s.mirror.op += op;
+  s.mirror.sales += sales;
+}
 // At a month's end a child's month is its parent's: its profit paid up (子会社からの受取配当金), or its loss made good
-// (子会社の損失負担). Its own retained earnings stay where they are.
+// (子会社の損失負担); what its operating profit already brought the parent this month (consolidate) comes off the
+// part of it the parent was owed, the rest (its non-operating part and its taxes) on the parent's non-operating
+// lines. Its own retained earnings stay where they are.
 function toParent(w, s, p, d) {
   const parent = w.co[p.parent];
   if (!parent) return;
-  const net = Math.round(CORP.plOf(s.per.m).net);
-  if (!net) return;
-  if (net > 0) {
-    post(s, [['retained', net], ['cash', -net]], 'dividends');
-    post(parent, [['cash', net], ['nSubsidiary', -net]], 'interestIn');
-    if (w.ext && abroad(s) && !abroad(parent)) w.ext.exports += net;
-  } else {
-    post(parent, [['eSubsidiary', -net], ['cash', net]], 'expenses');
-    post(s, [['cash', -net], ['retained', net]], 'support');
-    if (w.ext && abroad(s) && !abroad(parent)) w.ext.imports += -net;
-  }
+  const net = Math.round(CORP.plOf(s.per.m).net), mk = CORP.monthKey(d);
+  const opM = s.mirror && s.mirror.m === mk ? s.mirror.op : 0;
+  if (!net && !opM) return;
+  const rest = opM - net;
+  post(parent, [['cash', net], ['affil', -opM], [rest < 0 ? 'nSubsidiary' : 'eSubsidiary', rest]], net >= 0 ? 'interestIn' : 'expenses');
+  if (net > 0) post(s, [['retained', net], ['cash', -net]], 'dividends');
+  else if (net < 0) post(s, [['cash', -net], ['retained', net]], 'support');
+  if (w.ext && abroad(s) !== abroad(parent)) { if (abroad(s)) w.ext.exports += net; else w.ext.imports += net; }
   const days = CORP.monthEnd(d) - CORP.monthStart(d) + 1;
-  parent.subAvg = Math.round((0.75 * (parent.subAvg || 0) + 0.25 * net / days) * 100) / 100;
+  parent.subAvg = Math.round((0.75 * (parent.subAvg || 0) + 0.25 * (net - opM) / days) * 100) / 100;
   s.toParent = { m: CORP.monthKey(d), net, all: ((s.toParent && s.toParent.all) || 0) + net };
 }
 
@@ -2047,7 +2080,8 @@ export function closeDay(w, d, flows, ch) {
       }
       taxes(w, s, p, d, CORP.isFyEnd(d));
     }
-    // (a child's month: its parent's — WAZIMA's, MAGITA's, which closes after it)
+    // (a child's day and month: its parent's — WAZIMA's, MAGITA's, which closes after it)
+    if (p.parent) consolidate(w, s, p, d);
     if (CORP.isMonthEnd(d) && p.parent) toParent(w, s, p, d);
     s.bal.retained += s.today;
     for (const k of ['m', 'q', 'y']) s.sd[k] += outstanding(s);

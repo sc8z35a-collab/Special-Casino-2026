@@ -293,7 +293,7 @@ var OpsCorp = (function () {
     if (ranked.length) {
       var all = ranked.reduce(function (n, c) { return n + c.people; }, 0), pn = panel('市民（NPC）が使ったお金', '直近30日・企業ごと');
       pn.appendChild(table([['会社'], ['金額', 1], ['割合', 1]], ranked.map(function (c) { return { onclick: function () { open(c.id); }, cells: [c.name, money(c.people), Math.round(c.people / all * 1000) / 10 + '%'] }; })));
-      pn.appendChild(el('p', 'muted corp-note', '市民が各社の商品・サービス・ゲーム・カジノ（負け分）に払ったお金と、テネシスへの利息・手数料。国外の会社（YOSIDA・WAZIMA）には市民から直接のお金は届きません。'));
+      pn.appendChild(el('p', 'muted corp-note', '市民が各社の商品・サービス・ゲーム・カジノ（負け分）に払ったお金と、テネシスへの利息・手数料。YOSIDAには市民がカーオーナー・ジンクスで買ったYOSHIDA車・エンジンの分が仕入れ代金として、WAZIMAにはMAGITAから届きます（市民からの直接の支払いではありません）。'));
       box.appendChild(pn);
     }
     if (a.gov) box.appendChild(govPanel(a.gov));
@@ -387,7 +387,9 @@ var OpsCorp = (function () {
     tiles.appendChild(stat('市民の支出', m.people ? money(m.people) : p.abroad ? '—' : '$0', p.abroad ? '国外の会社（市民から直接のお金はなし）' : '直近30日（締めた日）'));
     if (p.abroad) tiles.appendChild(stat('本拠地', '国外', p.parent ? nameOf(p.parent) + 'の完全子会社（100%）' : 'ヴェルノアには販売・納入のみ'));
     if (r.toParent) tiles.appendChild(stat('親会社への利益', money(r.toParent.net), r.toParent.m + '・累計 ' + money(r.toParent.all), r.toParent.net < 0 ? 'neg' : ''));
-    (r.children || []).forEach(function (c) { if (c.toParent) tiles.appendChild(stat(c.name + 'からの利益', money(c.toParent.net), c.toParent.m + '（子会社からの受取配当金）・累計 ' + money(c.toParent.all), c.toParent.net < 0 ? 'neg' : '')); });
+    (r.children || []).forEach(function (c) { if (c.toParent) tiles.appendChild(stat(c.name + 'からの利益', money(c.toParent.net), c.toParent.m + '（売上・利益は連結で計上）・累計 ' + money(c.toParent.all), c.toParent.net < 0 ? 'neg' : '')); });
+    var home = m.hq;
+    if (!p.abroad && home) tiles.appendChild(stat('本社', home, p.parent ? nameOf(p.parent) + 'の完全子会社（100%）' : '国内（社員は市民）'));
     if (r.save) tiles.appendChild(stat('WAZIMAのコスト削減', '−' + Math.round((1 - (r.save.place || 1)) * 100) + '%', '製造経費 ×' + (r.save.place || 1).toFixed(3) + '・研究開発費 ×' + (r.save.rd || 1).toFixed(3) + '・その他 ×' + (r.save.other || 1).toFixed(3)));
     if (r.questFee) tiles.appendChild(stat('クエスト報酬の手数料', Math.round(r.questFee * 100) + '%', r.questFee > 0.1 ? '引き上げ中（通常10%・最大21%）' : '通常（不調・増益狙いで最大21%）', r.questFee > 0.1 ? 'neg' : ''));
     if (r.vipWeek) tiles.appendChild(stat('VIP1週間券の買い取り', money(r.vipWeek) + '/枚', 'DAIZINとの交渉（$1.2M〜$3.5M）'));
@@ -637,7 +639,7 @@ var OpsCorp = (function () {
       var state = x.done ? (x.ok ? '成功' : '失敗') : '研究中 ' + Math.max(0, Math.min(99, Math.round((today - x.start) / Math.max(1, x.due - x.start) * 100))) + '%';
       return [x.name, dayLabel(x.start), dayLabel(x.done || x.due), state, 'MAGITAの' + x.of.map(function (k) { return names[k]; }).join('・') + ' −' + Math.round(x.cut * 100) + '%（成功率' + Math.round(x.chance * 100) + '%）'];
     })));
-    pl.appendChild(el('p', 'muted corp-note', '原料以外のコスト（製造経費・研究開発費・その他の経費）を下げる研究です。成功するとMAGITAのその費用が下がります（元の55%まで）。WAZIMAの利益は毎月の締めでMAGITAに「子会社からの受取配当金」として計上され、赤字の月はMAGITAが負担します。MAGITAの研究開発費の25%は共同開発の費用としてWAZIMAに支払われます。'));
+    pl.appendChild(el('p', 'muted corp-note', '原料以外のコスト（製造経費・研究開発費・その他の経費）を下げる研究です。成功するとMAGITAのその費用が下がります（元の55%まで）。WAZIMAの売上と費用は毎日MAGITAの決算に「WAZIMA（子会社・連結）」として計上され（MAGITAが払う共同開発費は除く）、利益は毎月の締めでMAGITAに払われます（営業外の分と税金の差は「子会社からの受取配当金」、赤字の月はMAGITAが負担）。MAGITAの研究開発費の25%は共同開発の費用としてWAZIMAに支払われます。'));
     body.appendChild(pl);
   }
   // the game's businesses by the month: YOSIDA's quests, gacha and trees; DAIZIN's buying back of the coins

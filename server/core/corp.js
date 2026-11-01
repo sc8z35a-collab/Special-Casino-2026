@@ -10,7 +10,7 @@
 //
 // The world in memory is the one in the database: a transaction that fails takes back what it changed (`stale`
 // until it commits: read again before the next use).
-import { CORP, STOCKS, RULES } from './rules.js';
+import { CORP, STOCKS, RULES, NPC } from './rules.js';
 import { keyFrom } from './auth.js';
 import { ApiError } from './errors.js';
 import { partOf } from './hash.js';
@@ -310,6 +310,8 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       retained: s.bal.retained, capital: s.bal.capital, ttm, year: years[0] ? { key: years[0].key, label: years[0].label, pl: years[0].pl } : null,
       fair: Math.round(fair), shares, dps: s.div.dps, guide: s.guide ? { fy: s.guide.fy, sales: s.guide.sales, op: s.guide.op, net: s.guide.net } : null,
       players, people, parent: p.parent || null, abroad: !!p.abroad,
+      // (the district of the country its head office is in)
+      hq: ((NPC.districts.find((d) => d.hq.includes(id)) || {}).name) || '',
       news: q('SELECT at, kind, text FROM corp_news WHERE company = ? AND at <= ? ORDER BY at DESC, id DESC LIMIT 3').all(id, Math.floor(now / 1000))
     };
   }

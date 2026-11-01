@@ -66,12 +66,12 @@ test('the companies run on: every day balances, and their sales and profits stay
   }
   for (const r of years) {
     const p = model.PROFILES.get(r.company);
-    // (YOSIDA's money tree seeds come on top of the carmaker its profile is, from the launch: 5,000〜10,000 a month at
-    // $10M〜$12M each, CORP.yosida.seeds)
-    const seeds = r.accounts['r:seeds'] || 0, months = Math.max(1, Math.round((r.to - Math.max(r.from, launch) + 1) / 30.44));
-    if (seeds) assert.ok(seeds > 5000 * 10e6 * (months - 1) && seeds < 10000 * 12e6 * (months + 1), `${r.company} seeds ${seeds} in ${months} months`);
+    // (YOSIDA's money tree seeds come on top of the carmaker its profile is, from the launch, up to $21B a year at its
+    // size and technology: CORP.yosida.seeds; MAGITA's books carry WAZIMA's sales too)
+    const seeds = r.accounts['r:seeds'] || 0, child = r.accounts['r:wazima'] || 0, months = Math.max(1, Math.round((r.to - Math.max(r.from, launch) + 1) / 30.44));
+    if (seeds) assert.ok(seeds > 0 && seeds < CORP.yosida.seeds.cap * 1.4 * (months + 1) / 12, `${r.company} seeds ${seeds} in ${months} months`);
     else assert.ok(r.company !== 'yosida' || r.to < launch);
-    if (p.sales) assert.ok(r.pl.sales - seeds > p.sales * 0.6 && r.pl.sales - seeds < p.sales * 1.6, `${r.company} ${r.pl.sales}`);
+    if (p.sales) assert.ok(r.pl.sales - seeds - child > p.sales * 0.6 && r.pl.sales - seeds - child < p.sales * 1.6, `${r.company} ${r.pl.sales}`);
     assert.ok(r.staff > 0);
   }
 });
