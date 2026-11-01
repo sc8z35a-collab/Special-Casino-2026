@@ -153,6 +153,33 @@ test('the players\' slot wins and quest rewards and YOSIDA\'s gacha bill come ou
   assert.ok(Math.abs(c.money() - before) < 2000, `${c.money() - before}`);
 });
 
+test('WAZIMA and MY WAY get their people even when the country was read before they were in the companies\' world, or kept an empty organisation of theirs', () => {
+  const c = country(2000), W = c.W, P = W.P, w = c.w;
+  // (as a country kept before they came: their people in other work, an organisation of theirs made empty or none)
+  for (const id of ['wazima', 'myway']) {
+    for (const i of W.staffOf(id)) { P.job[i] = NPC.job.other; P.rank[i] = 0; P.flags[i] &= ~(pop.FL.exec | pop.FL.union); }
+    W.lab.unions[id].members = 0;
+  }
+  W._staff = null;
+  delete W.orgs.wazima;
+  W.orgs.myway = { id: 'myway', ceo: -1, president: -1, officers: [], depts: [] };
+  // read before the companies' world has them: nobody to welcome yet …
+  const kept = { wazima: w.co.wazima, myway: w.co.myway };
+  delete w.co.wazima; delete w.co.myway;
+  assert.deepEqual(npc.toWelcome(W, w), []);
+  // … and once it has them, both (the empty organisation too), and only once
+  Object.assign(w.co, kept);
+  assert.deepEqual(npc.toWelcome(W, w), ['wazima', 'myway']);
+  const came = npc.welcome(W, w, W.day);
+  assert.deepEqual(came.map((x) => x.id), ['wazima', 'myway']);
+  for (const x of came) { assert.ok(x.hired > 0); assert.equal(W.staffOf(x.id).length, x.hired); assert.ok(W.orgs[x.id].ceo >= 0); }
+  assert.deepEqual(npc.toWelcome(W, w), []);
+  // (one that failed is welcomed no more)
+  for (const i of W.staffOf('myway')) P.job[i] = NPC.job.none;
+  W._staff = null; delete W.orgs.myway.came; w.co.myway.dead = true;
+  assert.deepEqual(npc.toWelcome(W, w), []);
+});
+
 test('companies that come home to a living country (YOSIDA, WAZIMA) hire at once from those out of work or in other work, with their posts, pay and union; a country kept before them loads', () => {
   const c = country(2000), W = c.W, P = W.P, day = W.day;
   // (as a country kept before they came: their people in other work, no organisation of theirs)

@@ -200,7 +200,7 @@ var OpsCorp = (function () {
       if (!t || !t.data) { note.textContent = '読み込み中…'; return; }
       var d = t.data, x = todayFigures(d, Date.now() + skew);
       // (to the dollar: they move every second)
-      var put = function (c, v, sub) { c.querySelector('b').textContent = (v < 0 ? '−$' : '$') + C().fmt.group(Math.abs(Math.round(v))); c.classList.toggle('neg', v < 0); var s = c.querySelector('small') || c.appendChild(el('small', 'muted')); s.textContent = sub; };
+      var put = function (c, v, sub) { c.querySelector('b').textContent = C().fmt.moneyFine(v, Math.abs(v) >= 1e9 ? 4 : 3); c.classList.toggle('neg', v < 0); var s = c.querySelector('small') || c.appendChild(el('small', 'muted')); s.textContent = sub; };
       put(cells[0], x.sales, '今日の見込み ' + money(d.plan.sales));
       put(cells[1], x.op, '今日の見込み ' + money(d.plan.op));
       put(cells[2], x.net, '今日の見込み ' + money(d.plan.net));
@@ -280,7 +280,7 @@ var OpsCorp = (function () {
     if (!a) { box.appendChild(el('p', 'muted corp-empty', '読み込み中…')); return; }
     if (!a.started) { box.appendChild(el('p', 'muted corp-empty', 'まだ始まっていません。')); return; }
     // every company at a glance
-    var p1 = panel('各社の概況', '直近4四半期・百万ドル（プレイヤー・市民は直近30日のドル）');
+    var p1 = panel('各社の概況', '直近4四半期（プレイヤー・市民は直近30日）・M=百万ドル、B=十億ドル');
     p1.appendChild(table([['会社'], ['社員', 1], ['売上高', 1], ['営業利益', 1], ['純利益', 1], ['現金', 1], ['借入金', 1], ['純資産', 1], ['プレイヤー(30日)', 1], ['市民(30日)', 1]],
       a.companies.map(function (c) {
         var who = el('span', 'corp-who'); who.appendChild(icon(c.id, 24)); who.appendChild(el('span', '', c.name + (c.parent ? '（' + nameOf(c.parent) + 'の子会社）' : '') + (c.dead ? '（倒産）' : '')));
@@ -489,7 +489,7 @@ var OpsCorp = (function () {
     var list = rows.slice().reverse().slice(0, st.mode === 'm' ? 12 : st.mode === 'y' ? 5 : 8);
     if (!list.length) { body.appendChild(el('p', 'muted corp-empty', 'まだ締めた期間がありません')); return; }
     var now = (r.now || Date.now()) / 1000;
-    var head = [['（百万ドル）']].concat(list.map(function (x) {
+    var head = [['（ドル・M=百万、B=十億）']].concat(list.map(function (x) {
       var t = x.label.replace(/^(\d+)年度 第(\d)四半期$/, '$1年度 Q$2');
       if (x.announce && x.announce > now) t += '（発表前）';
       return [t, 1];
@@ -600,7 +600,7 @@ var OpsCorp = (function () {
   function pageBiz(body, r, p) {
     var last = r.quarters[r.quarters.length - 1], year = r.years[r.years.length - 1];
     if (p.streams && (last || year)) {
-      var ps = panel('事業ごとの売上と原価', '百万ドル');
+      var ps = panel('事業ごとの売上と原価', 'ドル（M=百万、B=十億）');
       var head = [['事業']], cols = [];
       if (last) { head.push([last.label.replace(/^(\d+)年度 第(\d)四半期$/, '$1年度Q$2') + ' 売上', 1], ['原価', 1]); cols.push(last); }
       if (year) { head.push([year.label + ' 売上', 1], ['原価', 1]); cols.push(year); }

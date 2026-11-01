@@ -716,16 +716,18 @@
 
   /* ---------------------------------------------------------------- showing --- */
   function group(n) { return String(Math.round(Math.abs(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
-  // $ shortly: $1.23T, $28.04B, $235.0M, $12,345 (a loss with a minus)
-  function money(n) {
-    var a = Math.abs(n), s = n < 0 ? '−$' : '$';
-    if (a >= 1e12) return s + (a / 1e12).toFixed(2) + 'T';
-    if (a >= 1e9) return s + (a / 1e9).toFixed(a >= 1e11 ? 1 : 2) + 'B';
-    if (a >= 1e6) return s + (a / 1e6).toFixed(1) + 'M';
-    return s + group(a);
+  // $ in M or B only (millions, billions): $45.00B, $235.0M, $123.4B (from $100B one decimal), $3,500.0B, and below a
+  // million still in M ($0.04M); a loss with a minus. (moneyFine: with `digits` decimals, for the day's running figures)
+  function dec(x, k) { var t = x.toFixed(k).split('.'); return t[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (t[1] ? '.' + t[1] : ''); }
+  function money(n) { return moneyFine(n); }
+  function moneyFine(n, digits) {
+    var a = Math.abs(n || 0), s = n < 0 ? '−$' : '$';
+    if (a >= 1e9) { var b = a / 1e9; return s + dec(b, digits !== undefined ? digits : b >= 100 ? 1 : 2) + 'B'; }
+    var m = a / 1e6;
+    return s + dec(m, digits !== undefined ? digits : m >= 1 ? 1 : 2) + 'M';
   }
-  // a statement's figure in millions (百万ドル), a loss with △ as Japanese statements write it
-  function mil(n) { var m = Math.round(n / 1e6); return (m < 0 ? '△' : '') + group(m); }
+  // a statement's figure the same way, without the $ (a loss with △ as Japanese statements write it)
+  function mil(n) { var t = money(n).replace('−', '').replace('$', ''); return (n < 0 && t !== '0.00M' ? '△' : '') + t; }
   function pct(x, digits) { return (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x * 100).toFixed(digits === undefined ? 1 : digits) + '%'; }
 
   BR.CORP = {
@@ -740,6 +742,6 @@
     quarterStart: quarterStart, quarterEnd: quarterEnd, monthStart: monthStart, monthEnd: monthEnd,
     isMonthEnd: isMonthEnd, isQuarterEnd: isQuarterEnd, isFyEnd: isFyEnd,
     monthKey: monthKey, quarterKey: quarterKey, fyKey: fyKey, monthLabel: monthLabel, quarterLabel: quarterLabel, fyLabel: fyLabel, dateLabel: dateLabel,
-    fmt: { money: money, mil: mil, pct: pct, group: group }
+    fmt: { money: money, moneyFine: moneyFine, mil: mil, pct: pct, group: group }
   };
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

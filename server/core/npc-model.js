@@ -80,9 +80,19 @@ export function failed(W, id, day) {
 // or in work of another kind (part time, another workplace, their own business), up to what it plans to have; its
 // posts are given, its pay set about its average, its union begun; the rest it hires through the job sites as they
 // come (server/core/npc-labor.js openings). Returns the companies that came, with how many they took.
+// which companies are still to make their welcome: in the companies' world and alive, and either without an
+// organisation in the country or with one made empty (the country began before the company had come home) and never
+// welcomed — else such a company never had its people (WAZIMA, MY WAY)
+export function toWelcome(W, corp) {
+  return NPC.companies.filter((id) => {
+    const c = corp && corp.co[id], o = W.orgs[id];
+    if (!c || c.dead) return false;
+    return !o || (!o.came && !W.staffOf(id).length);
+  });
+}
 export function welcome(W, corp, day) {
   const P = W.P, came = [];
-  const ids = NPC.companies.filter((id) => !W.orgs[id] && corp.co[id]);
+  const ids = toWelcome(W, corp);
   if (!ids.length) return came;
   const ages = new Int16Array(P.n);
   for (let i = 0; i < P.n; i++) ages[i] = ageOf(P, i, day);
@@ -114,6 +124,7 @@ export function welcome(W, corp, day) {
     }
     W._staff = null;
     org.assignOne(W, id, ages, r);
+    W.orgs[id].came = day;
     pop.payStaff(P, hired, c.pay || CORP.company(id).salary, ages, r, id);
     W.labor.join(W, id, hired, r);
     for (const i of hired) remember(P, i, day, M.hired, 150);
