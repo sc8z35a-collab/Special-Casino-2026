@@ -772,6 +772,43 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   }
 
   function balance(u) { return { tokens: u.tokens, dollars: u.dollars, coins: u.coins, rev: u.rev }; }
+
+  // A player's total assets (総資産, RULES.wealthy): the $ in hand, the spin tokens at their price, the shares at the
+  // last minute's close, the dividends waiting, the cars at their price (one no longer sold: what was paid) with
+  // their engines, and what renting them earned that waits. From RULES.wealthy.at on, the dearer fees.
+  const WEALTH = RULES.wealthy;
+  let lastPrices = { at: 0, map: new Map() };
+  function sharePrices() {
+    const now = Date.now();
+    if (now - lastPrices.at < 30000) return lastPrices.map;
+    const map = new Map();
+    for (const c of STOCKS.companies) {
+      const row = q('SELECT c FROM stock_candles WHERE company = ? AND span = 60 ORDER BY at DESC LIMIT 1').get(c.id);
+      map.set(c.id, row ? row.c : c.base);
+    }
+    lastPrices = { at: now, map };
+    return map;
+  }
+  function assetsOf(u) {
+    let n = Math.max(0, u.dollars) + Math.max(0, u.tokens) * RULES.tokenPrice;
+    for (const c of q('SELECT model, engine, paid, rent_earned FROM cars WHERE owner_id = ?').all(u.id)) {
+      const m = CARS.get(c.model), e = c.engine ? SHOP.get(c.engine) : null;
+      n += (m && m.price > 0 && !m.ended ? m.price : c.paid || (m ? m.price : 0)) + (e && e.kind === 'engine' ? e.price : 0) + (c.rent_earned || 0);
+    }
+    const prices = sharePrices();
+    for (const h of q('SELECT company, shares FROM stock_holdings WHERE user_id = ? AND shares > 0').all(u.id)) n += h.shares * (prices.get(h.company) || 0);
+    const a = q('SELECT pending FROM stock_accounts WHERE user_id = ?').get(u.id);
+    return n + (a ? a.pending : 0);
+  }
+  const wealthy = (u) => assetsOf(u) >= WEALTH.at;
+  // the fees a player pays now: the usual (the country's, server/core/npc.js) or, at RULES.wealthy.at, the dearer
+  const winFeeOf = (u) => (wealthy(u) ? WEALTH.winFee : RULES.casino.winFee);
+  const exchangeFeeOf = (u) => (wealthy(u) ? WEALTH.exchangeFee : RULES.casino.exchangeFee);
+  const questFeeFor = (u) => (wealthy(u) ? WEALTH.questFee : corp.questFee());
+  function wealthDto(u) {
+    const assets = assetsOf(u), on = assets >= WEALTH.at;
+    return { assets, at: WEALTH.at, on, winFee: on ? WEALTH.winFee : RULES.casino.winFee, exchangeFee: on ? WEALTH.exchangeFee : RULES.casino.exchangeFee, questFee: on ? WEALTH.questFee : corp.questFee() };
+  }
   // `vip`: the VIP level of someone whose VIP is on (the badge others see)
   // `aura`: the シークレットオーラ around their icon (功績's 最強トレーダー, server/core/medals.js)
   function mini(u) {
@@ -849,6 +886,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       questBonuses: questBonuses(quests),
       // medals waiting for their tap (the 功績 icon's number)
       medals: medals.ready(u.id),
+      // total assets and the fees they bring (RULES.wealthy)
+      wealth: wealthDto(u),
       // the newest release: a browser running an older game asks the player to update
       release: RELEASE,
       // the beginner guide: everyone under 30 minutes of play until they finish it
@@ -1816,8 +1855,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           const m = r.total / bet;
           r.tier = m >= RULES.tiers.superBig ? 3 : m >= RULES.tiers.big ? 2 : 1;
         }
-        // a big bet's win pays Dtrade, the slots' company, its fee out of the win (RULES.casino)
-        r.fee = bet >= RULES.casino.bigBet && r.total > 0 ? Math.floor(r.total * RULES.casino.winFee) : 0;
+        // a big bet's win pays Dtrade, the slots' company, its fee out of the win (RULES.casino; a wealthy player's
+        // RULES.wealthy)
+        if (bet >= RULES.casino.bigBet && r.total > 0) { r.feeRate = winFeeOf(cur); r.fee = Math.floor(r.total * r.feeRate); } else r.fee = 0;
         // an お守り加護 that is on softens the first losing spin, then it is used up
         // (友達と稼ぐ: up to CHARM.hub.max %, 大吉 twice as often)
         if (cur.charm > 0 && r.total < bet) {
@@ -1910,7 +1950,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // (as it is sent: what the game makes whole for itself is not, js/game/engine.js whole() — the grid as digits, no line, nothing that
       // is none)
       const out = { grid: packGrid(result.grid), bet, ...someOf({ wins: result.wins, total: result.total, tier: result.tier, mult: result.mult, combo: result.combo,
-        charm: result.charm, hub: boost, double: result.double, vip: result.vip, fee: result.fee }) };
+        charm: result.charm, hub: boost, double: result.double, vip: result.vip, fee: result.fee, feeRate: result.fee ? result.feeRate : 0 }) };
       notifyWatchers(u.id, { type: 'spin', user: u.id, result: out, balance: balance(after) });
       if (boost && on) {
         // the others in the hub: the combo they share, and what everyone won
@@ -1954,8 +1994,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const body = await req.json();
       const amount = posInt(body.amount, '交換数');
       rate(limit.shop, u.id);
-      // (Dtrade takes its exchange fee each time: an amount that does not come to more than it is refused)
-      const fee = RULES.casino.exchangeFee;
+      // (Dtrade takes its exchange fee each time: an amount that does not come to more than it is refused; a wealthy
+      // player's is dearer, RULES.wealthy)
+      const fee = exchangeFeeOf(getUser(u.id));
       if (amount * RULES.tokenPrice <= fee) throw new ApiError(400, 'below_fee', `交換には手数料$${fmt(fee)}がかかるため、$${fmt(fee)}を超える分から交換できます`);
       tx(() => {
         const cur = getUser(u.id);
@@ -2259,7 +2300,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         surcharge: corp.surcharges(),
         disposal: carDisposal(now),
         buyback: Object.fromEntries(RULES.cars.map((c) => [c.id, carBuyback(c, now)])),
-        rental: { hours: RENT.hours, cut: CORP.magita.garage.rentCut },
+        rental: { hours: RENT.hours, cut: CORP.magita.garage.rentCut, fee: CORP.magita.garage.rentFee },
         // MAGITA Garage: the fee a place this month and the last months taken; Car Owner's stock (null: no limit)
         garageFee: garageBills.mine(u.id, now),
         stock: npc.carStock(),
@@ -2320,12 +2361,14 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       return { car: carDto(q('SELECT * FROM cars WHERE id = ?').get(id)), me: meDto(balanceChanged(u.id)) };
     }],
 
-    // renting a car out ('start'), or asking it back ('stop': at the end of its block)
+    // renting a car out ('start': MAGITA Garage's fee for it from the $ in hand), or asking it back ('stop': at the
+    // end of its block)
     ['POST /api/cars/rent', async (req, u) => {
       const body = await req.json();
       const id = posInt(body.car, '車');
       settleRentals(u.id);
       const now = Date.now();
+      let paid = 0;
       tx(() => {
         const c = q('SELECT * FROM cars WHERE id = ? AND owner_id = ?').get(id, u.id);
         if (!c) throw new ApiError(404, 'no_car', 'この車は持っていません');
@@ -2333,6 +2376,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           if (c.rent_paused || c.rent_earned >= RENT.maxPay) throw new ApiError(409, 'collect_first', '先に売上を受け取ってください');
           if (c.rent_start) throw new ApiError(409, 'rented', 'この車はもう貸し出し中です');
           if (c.offer_id) throw new ApiError(409, 'on_offer', '販売中の車です');
+          // (MAGITA Garage runs the renting: its fee each time a car goes out, MAGITA's money)
+          const fee = CORP.magita.garage.rentFee;
+          if (getUser(u.id).dollars < fee) throw new ApiError(409, 'insufficient', `貸し出しにはMAGITA Garageの手数料 $${fmt(fee)} が必要です`);
+          q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(fee, u.id);
+          corp.flow('magita', 'rentfee', fee);
+          paid = fee;
           q('UPDATE cars SET rent_start = ?, rent_until = 0, rent_blocks = 0 WHERE id = ?').run(now, c.id);
         } else if (body.action === 'stop') {
           if (c.rent_paused) {
@@ -2346,7 +2395,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         }
       });
       const row = q('SELECT c.*, f.name AS from_name FROM cars c LEFT JOIN users f ON f.id = c.from_id WHERE c.id = ?').get(id);
-      return { car: carDto(row) };
+      return paid ? { car: carDto(row), fee: paid, me: meDto(balanceChanged(u.id)) } : { car: carDto(row) };
     }],
 
     // what the customers paid, all of it
@@ -2883,7 +2932,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       syncMilestones(u.id);
       const cur = getUser(u.id);
       const state = readQuests(cur.quests);
-      return { quests: questSlots(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: cur.xp, now: Date.now(), feeRate: corp.questFee() };
+      return { quests: questSlots(state), ready: questsReady(state), tickets: questTickets(state), bonuses: questBonuses(state), xp: cur.xp, now: Date.now(), feeRate: questFeeFor(cur) };
     }],
 
     // 受け取る: the finished quests in `ids`, or all of them (一括受け取り)
@@ -2892,8 +2941,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const ids = Array.isArray(body.ids) ? body.ids.map(String).slice(0, 100) : null;
       rate(limit.shop, u.id);
       // (the quests are YOSIDA's: every reward is paid out of the country's treasury, and YOSIDA keeps its fee of each,
-      // rounded down: CORP.yosida.quest)
-      const feeRate = corp.questFee();
+      // rounded down: CORP.yosida.quest; a wealthy player's 35%, RULES.wealthy)
+      const feeRate = questFeeFor(getUser(u.id));
       const r = tx(() => {
         const cur = getUser(u.id);
         const state = readQuests(cur.quests);

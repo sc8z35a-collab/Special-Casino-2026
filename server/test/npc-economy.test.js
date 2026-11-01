@@ -119,6 +119,29 @@ test('the market: selling a whole holding at a gain pays its 20% gains tax', () 
   assert.equal(W.nation.cash - nation, 40000);
 });
 
+test('the market: a person makes at most 15 orders a day (buys and sales together), afresh the next day', () => {
+  const c = country(500);
+  const { W } = c;
+  const P = W.P, i = 21;
+  assert.equal(NPC.life.tradesDay, 15);
+  P.cash[i] = 1e9;
+  P.fund[i * 4 + 3] = 1e9;
+  // (gloomy about all four: a sale each time it looks)
+  for (let k = 0; k < pop.LISTED; k++) { P.sh[i * pop.LISTED + k] = 1000; P.outlook[i * pop.LISTED + k] = -127; }
+  const orders = () => Object.values(W.marketState.book).reduce((n, b) => n + b.buy.filter((o) => o[0] === i).length + b.sell.filter((o) => o[0] === i).length, 0);
+  for (const b of Object.values(W.marketState.book)) { b.buy = []; b.sell = []; }
+  const r = seeded(Buffer.alloc(32, 3), 'trades');
+  for (let n = 0; n < 400; n++) W.market.think(W, i, 0, r, c.ctx);
+  assert.equal(P.trades[i], 15);
+  assert.ok(orders() <= 15);
+  const was = orders();
+  W.market.think(W, i, 0, r, c.ctx);
+  assert.equal(orders(), was);
+  // (the day's count goes at the next day's start)
+  c.days(1);
+  assert.ok(P.trades[i] <= 15);
+});
+
 test('raises reach the people: April\'s raise and the step for the years worked on everyone\'s pay; the talks read last year\'s profit', () => {
   const c = country(1000);
   const { W, w } = c;

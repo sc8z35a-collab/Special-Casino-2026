@@ -315,7 +315,7 @@
       fee.appendChild(el('em', gf.fee > gf.base ? 'up' : '', money(gf.fee) + (gf.fee > gf.base ? '（値上げ中）' : '')));
       fee.appendChild(el('span', '', '× ' + capacity() + '台 = 毎月 ' + money(gf.fee * capacity())));
       var last = gf.bills && gf.bills[0];
-      fee.appendChild(el('small', '', '毎月1日（日本時間9:00）に手元資金から自動で徴収されます（足りなくても徴収）。貸し出しの売上はMAGITA Garageが' + Math.round(gf.rentCut * 100) + '%を手数料として受け取ります。' +
+      fee.appendChild(el('small', '', '毎月1日（日本時間9:00）に手元資金から自動で徴収されます（足りなくても徴収）。貸し出しはMAGITA Garageの運営で、1回の貸し出しに手数料 ' + money(rentFee()) + '、売上の受け取り時に' + Math.round(gf.rentCut * 100) + '%を手数料として受け取ります。' +
         (last ? '前回：' + last.month.replace('-', '年') + '月分 ' + money(last.amount) + '（' + last.slots + '台）' : '')));
       bar.appendChild(fee);
     }
@@ -442,6 +442,8 @@
     }, '広げる').then(function (ok) { if (ok) go(); });
   }
 
+  // MAGITA Garage's fee for each car put out to rent (the server's; js/game/corp.js MAGITA.garage.rentFee)
+  function rentFee() { return (garage && garage.rental && garage.rental.fee) || (BR.CORP && BR.CORP.magita.garage.rentFee) || 70000; }
   function startRent(c) {
     var m = model(c.model) || { name: c.model, price: 1000000 };
     var R = BR.CONFIG.carRental;
@@ -450,13 +452,14 @@
     K.confirmBox(function (p) {
       p.appendChild(document.createTextNode(m.name + ' を貸し出しますか？'));
       p.appendChild(el('small', 'confirm-sub', R.hours + '時間ごとにお客さんが1〜5人来て、1人 ' + money(lo) + '〜' + money(lo + R.spread) + '（まれに ' + money(R.vip.pay) + '）払ってくれます。' +
-        '少なくとも' + R.hours + '時間は売る・あげることができません。売上の' + Math.round(((garage && garage.rental && garage.rental.cut) || 0.1) * 100) + '%はMAGITA Garageの手数料です。'));
+        '少なくとも' + R.hours + '時間は売る・あげることができません。貸し出しはMAGITA Garageの運営で、1回の貸し出しに手数料 ' + money(rentFee()) + '（今払います）、売上を受け取るときに' + Math.round(((garage && garage.rental && garage.rental.cut) || 0.15) * 100) + '%の手数料がかかります。'));
     }, '貸し出す').then(function (ok) {
       if (!ok) return;
       busy = true;
-      api.rentCar(c.id, 'start').then(function () {
+      api.rentCar(c.id, 'start').then(function (r) {
+        if (r && r.me) { BR.app.serverBalance(r.me); BR.social.setMe(r.me); }
         sfx('register');
-        toast(m.name + ' を貸し出しました', 3200);
+        toast(m.name + ' を貸し出しました' + (r && r.fee ? '（MAGITA Garage手数料 ' + money(r.fee) + '）' : ''), 3200);
         return load();
       }).catch(fail).then(function () { busy = false; if (onBoard('garage')) renderGarage(); });
     });

@@ -243,7 +243,7 @@ export function dayStart(W, day, r, ctx) {
   const P = W.P, t = CORP.ymd(day), age = (i) => ageOf(P, i, day);
   W.nation.day = { in: {}, out: {} };
   for (const d of W.districts) d.day = { in: {}, out: {} };
-  for (let i = 0; i < P.n; i++) P.buyDay[i] = 0;
+  for (let i = 0; i < P.n; i++) { P.buyDay[i] = 0; P.trades[i] = 0; }
   if (t.d === 1) month(W, day, r, ctx);
   // living: the day's food and things of the household (ジンクス's goods, the local shops'), by its size and money
   for (let i = 0; i < P.n; i++) {

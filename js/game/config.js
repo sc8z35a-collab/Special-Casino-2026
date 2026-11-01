@@ -37,6 +37,11 @@
     // and every month a player who spun in it is charged `monthly.amount` $ for the slots by TWO STATE公式, to be
     // paid within `monthly.days` days (after that it is taken, even if that leaves the $ below 0).
     casino: { bigBet: 2000, winFee: 0.06, exchangeFee: 40000, monthly: { amount: 1000000, days: 5 } },
+    // A player whose total assets (資産：$ in hand, spin tokens at `tokenPrice`, shares at their price, the dividends
+    // waiting, cars at their price with their engines, the rentals' takings waiting) come to `at` $ or more pays more:
+    // `winFee` of a big bet's win to Dtrade (the スピン手数料), `questFee` of a quest's reward to YOSIDA, and
+    // `exchangeFee` $ each time spin tokens are changed back to $.
+    wealthy: { at: 600000000, winFee: 0.18, questFee: 0.35, exchangeFee: 100000 },
     dailyLimit: 10000000,    // spin tokens that can be bought per UTC day
     dailyFree: 1000,         // free tokens claimable once per UTC day
     start: { tokens: 0, dollars: 5008159, coins: 74 },

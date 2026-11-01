@@ -181,11 +181,12 @@ test('companies that come home to a living country (YOSIDA, WAZIMA) hire at once
   assert.equal(Array.from(P.job).filter((j) => j === NPC.job.civil).length, civil);
   assert.equal(c.money(), before);
   assert.deepEqual(npc.welcome(W, c.w, day), []);
-  // a country kept before the companies' second column of views: it loads, those views at 0
+  // a country kept before the companies' second column of views (and the day's count of orders after it): it loads,
+  // those at 0
   const rows = pop.pack(P), whole = Buffer.concat(rows.map((r) => Buffer.from(r)));
-  const old = whole.subarray(0, whole.length - P.view2.byteLength), Q = pop.alloc(P.n);
+  const old = whole.subarray(0, whole.length - P.view2.byteLength - P.trades.byteLength), Q = pop.alloc(P.n);
   pop.unpack(Q, [old]);
-  assert.deepEqual([Q.job[5], Q.cash[5], Q.view2.every((v) => v === 0)], [P.job[5], P.cash[5], true]);
+  assert.deepEqual([Q.job[5], Q.cash[5], Q.view2.every((v) => v === 0), Q.trades.every((v) => v === 0)], [P.job[5], P.cash[5], true, true]);
   assert.throws(() => pop.unpack(pop.alloc(P.n), [old.subarray(0, old.length - 4)]), /shorter/);
 });
 

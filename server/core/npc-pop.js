@@ -42,7 +42,9 @@ const COLS = [
   ['learn', Uint8Array, LEARN], ['view', Int8Array, 10], ['outlook', Int8Array, LISTED], ['aware', Uint32Array, 1], ['sign', Uint32Array, 1],
   ['vote', Uint8Array, 1], ['lastBig', Int32Array, 1], ['why', Uint16Array, 1], ['grief', Uint8Array, 1],
   // (columns added later, always last: a country kept before them has none, and they start at 0)
-  ['view2', Int8Array, VIEW2, false, true]
+  ['view2', Int8Array, VIEW2, false, true],
+  // (the orders a person made in the 投資 market today: at most NPC.life.tradesDay)
+  ['trades', Uint8Array, 1, true, true]
 ];
 export const COLUMNS = COLS.map(([name, kind, width, hot, late]) => ({ name, kind, width, hot: !!hot, late: !!late }));
 // what a person thinks of company `k` (NPC.companies' order: the first ten in `view`, the rest in `view2`)

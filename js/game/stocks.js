@@ -23,6 +23,10 @@
   ];
   // 1.8% each way (Dtrade's, three times the 0.6% it began at), in hundredths of a percent
   var FEE_BP = 180;
+  // an active player's (アクティブトレーダー): the order that brings what they traded in the trading day (buys and
+  // sales together, at the prices they filled at, before the fee) to `ACTIVE_AT` $ or more, and every one after it that
+  // day, pays `ACTIVE_FEE_BP` instead (Dtrade's; the orders before keep theirs)
+  var ACTIVE_AT = 400000000, ACTIVE_FEE_BP = 1000;
 
   // span: seconds a candle; count: how many; from: the stored candles they are made of
   var PERIODS = [
@@ -44,10 +48,13 @@
   }
   // the fee on `value` $ of shares, rounded up (exact: value * FEE_BP is a whole number)
   // (the fee as it is now: the country's people may lower it, js/game/npc.js knobs, and the server says so)
-  function fee(value) { return value > 0 ? Math.ceil(value * BR.STOCKS.feeBp / 10000) : 0; }
+  // `traded`: what the player already traded in the trading day (the fee goes up to 10% from the order that brings it to
+  // $400,000,000: ACTIVE_AT); left out, the usual fee
+  function feeBpOf(value, traded) { return traded !== undefined && traded !== null && traded + value >= BR.STOCKS.activeAt ? BR.STOCKS.activeFeeBp : BR.STOCKS.feeBp; }
+  function fee(value, traded) { return value > 0 ? Math.ceil(value * feeBpOf(value, traded) / 10000) : 0; }
   // what buying costs and selling brings, fee included
-  function buyAmount(price, shares) { var v = price * shares; return v + fee(v); }
-  function sellAmount(price, shares) { var v = price * shares; return v - fee(v); }
+  function buyAmount(price, shares, traded) { var v = price * shares; return v + fee(v, traded); }
+  function sellAmount(price, shares, traded) { var v = price * shares; return v - fee(v, traded); }
   // An order's move on the price (log: up for a buy, down for a sale; 1% for each `depth` $ of it, the company's
   // market depth: js/game/corp.js) and the price it fills at for `p` now: half its move on top (a limit order never
   // worse than its limit). The server fills by it; the page uses it to say what an order will cost.
@@ -59,16 +66,28 @@
   }
   // what a buy of `shares` will hold or cost at the price now `p`, fee included (a market order as it slips, a limit
   // order at its limit, a stop order at its stop and its margin)
-  function buyNeed(depth, type, shares, price, p) {
+  function buyNeed(depth, type, shares, price, p, traded) {
     var unit = type === 'market' ? slipped(depth, { side: 'buy', type: type, shares: shares, price: price }, p) : type === 'limit' ? price : Math.ceil(price * (1 + BR.STOCKS.stopMargin));
-    return buyAmount(unit, shares);
+    return buyAmount(unit, shares, traded);
   }
   // the most shares (up to `most`) a buy can be for `budget` $ at the price now (MAX: the money in hand and the day's
-  // room together)
-  function maxBuy(depth, type, price, p, budget, most) {
+  // room together; `traded`: the day's trades so far, for the fee)
+  function maxBuy(depth, type, price, p, budget, most, traded) {
     var lo = 0, hi = Math.max(0, most);
     if (!(budget > 0) || !(p > 0)) return 0;
-    while (lo < hi) { var mid = Math.ceil((lo + hi) / 2); if (buyNeed(depth, type, mid, price, p) <= budget) lo = mid; else hi = mid - 1; }
+    while (lo < hi) { var mid = Math.ceil((lo + hi) / 2); if (buyNeed(depth, type, mid, price, p, traded) <= budget) lo = mid; else hi = mid - 1; }
+    return lo;
+  }
+  // what a sale of `shares` counts towards the day's selling cap (sellCap): the shares at the price it sells at (a
+  // market order as it slips, a limit or stop order at its price), before the fee
+  function sellValue(depth, type, shares, price, p) {
+    return (type === 'market' ? slipped(depth, { side: 'sell', type: type, shares: shares, price: price }, p) : price) * shares;
+  }
+  // the most shares (up to `most`) a sale can be within `room` $ of the day's selling cap
+  function maxSell(depth, type, price, p, room, most) {
+    var lo = 0, hi = Math.max(0, most);
+    if (!(room > 0) || !(p > 0)) return 0;
+    while (lo < hi) { var mid = Math.ceil((lo + hi) / 2); if (sellValue(depth, type, mid, price, p) <= room) lo = mid; else hi = mid - 1; }
     return lo;
   }
   // the trading day of a moment (ms), and when it ends
@@ -99,15 +118,21 @@
     periods: PERIODS,
     period: period,
     feeBp: (BR.policy && BR.policy.feeBp) || FEE_BP,
+    activeAt: ACTIVE_AT,
+    activeFeeBp: ACTIVE_FEE_BP,
+    feeBpOf: feeBpOf,
     fee: fee,
     buyAmount: buyAmount,
     sellAmount: sellAmount,
-    moveOf: moveOf, slipped: slipped, buyNeed: buyNeed, maxBuy: maxBuy,
+    moveOf: moveOf, slipped: slipped, buyNeed: buyNeed, maxBuy: maxBuy, sellValue: sellValue, maxSell: maxSell,
     // what may be bought in a trading day (9:00 to 9:00 Japan time), every company together: the buys filled that day
     // (what they cost, fee included) and the money the day's buy orders still hold
     dayCap: 800000000,
+    // what may be sold in a trading day, every company together: the sales filled that day (the shares at the price
+    // they sold at, before the fee) and the day's sell orders still waiting (at their price)
+    sellCap: 800000000,
     // trades a trading day: every order counts once (an order that waits holds its count; cancelled, it gives it back)
-    tradesPerDay: 30,
+    tradesPerDay: 200,
     // limit and stop orders waiting at once
     openOrders: 10,
     // a limit / stop price is at most this far from the price now

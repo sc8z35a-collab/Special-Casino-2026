@@ -196,7 +196,8 @@
       $('#tp-label-b').textContent = buy ? '交換:' : '獲得:';
       $('#tp-val-a').textContent = v > 0 ? U.fmt(v) : '-';
       // (changing back: Dtrade's exchange fee comes off what it brings)
-      var got = buy ? v * C.tokenPrice : v * C.tokenPrice - C.casino.exchangeFee;
+      var xfee = BR.bank.exchangeFee ? BR.bank.exchangeFee() : C.casino.exchangeFee;
+      var got = buy ? v * C.tokenPrice : v * C.tokenPrice - xfee;
       $('#tp-val-b').textContent = v > 0 ? (got > 0 ? U.fmt(got) : '0') : '-';
       var p = this.toSlider(v);
       $('#tp-fill').style.width = (p * 100) + '%';
@@ -208,7 +209,7 @@
       act.disabled = v <= 0 || this.busy || (!buy && got <= 0);
       $('#tp-note').textContent = buy
         ? 'スピントークン上限は毎日00:00 UTCに更新されます'
-        : '1スピントークン = ' + C.tokenPrice + '$・交換手数料 $' + U.fmt(C.casino.exchangeFee) + '（Dtrade）';
+        : '1スピントークン = ' + C.tokenPrice + '$・交換手数料 $' + U.fmt(xfee) + '（Dtrade' + (xfee > C.casino.exchangeFee ? '・総資産$' + U.fmt(C.wealthy.at) + '以上' : '') + '）';
       this.renderDaily();
     },
     commit: function () {

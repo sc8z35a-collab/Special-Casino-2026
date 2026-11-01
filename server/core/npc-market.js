@@ -1,6 +1,6 @@
 // The people's part of the 投資 market (server/core/npc-model.js): each investor's own view of the four listed
 // companies (their news, their friends, the chart, what they paid), their orders (a buy at most NPC.life.investDay a day each, a
-// sale only of what they hold), and every minute the orders matched among themselves at the minute's price (板寄せ);
+// sale only of what they hold, at most NPC.life.tradesDay orders a day each), and every minute the orders matched among themselves at the minute's price (板寄せ);
 // what is left waits for the minute (a player's order trades against it first: server/core/corp.js), and the
 // imbalance moves the price. The fee is Dtrade's, 1.8% each way as the players'.
 import { NPC, STOCKS } from './rules.js';
@@ -21,6 +21,8 @@ export function createMarket(W) {
     // an investor at the screen: maybe an order
     think(W, i, day, r, ctx) {
       const P = W.P;
+      // (15 orders a day each, buys and sales together)
+      if (P.trades[i] >= NPC.life.tradesDay) return;
       const k = r.int(LISTED);
       const id = LISTED_IDS[k], price = ctx.stockPrice ? ctx.stockPrice(id) : 0;
       if (!price) return;
@@ -45,11 +47,12 @@ export function createMarket(W) {
         // (in a mania what was set aside for the market is not the limit: the greedy put in what they have)
         const money = Math.min(Math.max(Math.max(0, P.fund[i * 4 + 3]) * (0.3 + 0.5 * r.u()), rush > 0 ? Math.max(0, P.cash[i]) * Math.min(0.5, rush * 0.2) : 0), Math.max(0, P.cash[i]) * 0.5, room);
         const shares = Math.floor(money / (limit * 1.02));
-        if (shares > 0) { m.book[id].buy.push([i, shares, limit]); P.buyDay[i] += shares * limit; P.fund[i * 4 + 3] -= shares * limit; }
+        if (shares > 0) { m.book[id].buy.push([i, shares, limit]); P.buyDay[i] += shares * limit; P.fund[i * 4 + 3] -= shares * limit; P.trades[i]++; }
       } else if (view < -0.2 && held > 0) {
         // (in a panic, more of it, up to all)
         const shares = Math.max(1, Math.floor(held * Math.min(1, 0.2 + 0.6 * r.u() + (rush < 0 ? -rush * 0.5 : 0))));
         m.book[id].sell.push([i, Math.min(held, shares), limit]);
+        P.trades[i]++;
       }
     },
     // the minute's matching at the price: the buys at or above it with the sales at or below, pro rata on the larger side

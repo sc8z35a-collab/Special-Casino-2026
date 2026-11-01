@@ -464,8 +464,9 @@
     // MAGITA Garage: every month each player pays `base` for each place of their garage (taken from the $ in hand,
     // whatever is there). MAGITA sets the next month's fee at each month's end: while it does badly (its last
     // quarter's operating profit short of its plan, or the month's a loss) it raises it to `min`〜`max` (the worse,
-    // the higher), back to `base` when it is well again. It also takes `rentCut` of what renting a car out earns.
-    garage: { base: 100000, min: 110000, max: 200000, rentCut: 0.1 }
+    // the higher), back to `base` when it is well again. Renting a car out is its business too: `rentFee` each time a
+    // car is put out to rent (paid from the $ in hand), and `rentCut` of what the renting earned when it is collected.
+    garage: { base: 100000, min: 110000, max: 200000, rentCut: 0.15, rentFee: 70000 }
   };
 
   // Every company's people and research (技術開発): at each quarter's results a company that did badly (its operating
