@@ -15,7 +15,7 @@
 // above. The NPCs' moves are worked out when the auction is looked at (the
 // game asks twice a second while it is open), so nothing runs in between.
 import { ApiError, posInt } from './errors.js';
-import { RULES, TREE } from './rules.js';
+import { RULES, TREE, CORP } from './rules.js';
 
 const T = RULES.tree;
 const CLOSE_MS = 6000;              // no new bid for this long: sold (going, going, gone)
@@ -67,7 +67,10 @@ function shuffle(a) {
   return a;
 }
 
-export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady = () => {}, onChange = () => {}, onHarvest = () => {}, clock = Date.now }) {
+// The money trees are YOSIDA's (js/game/corp.js CORP.yosida): the fertilizer given to a tree is its own make (its
+// `fertilizer` share of the money its sale), and a tree won at an auction its sale too (`corp`: server/core/corp.js,
+// none in tests).
+export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady = () => {}, onChange = () => {}, onHarvest = () => {}, clock = Date.now, corp = null }) {
   const noticeWhere = "t.cycle != '' AND t.notified_cycle != t.cycle_at AND u.banned = 0 AND u.npc = ''";
   function nextDue() {
     return q(`SELECT MIN(t.cycle_end) AS at FROM trees t JOIN users u ON u.id=t.user_id WHERE ${noticeWhere}`).get()?.at || 0;
@@ -195,6 +198,7 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady =
       s.tree = id;
       s.paid = s.price;
       s.bought = true;
+      if (corp) corp.sold('yosida', 'trees', row.market === 'grown' ? 'grown' : 'seed', 1, s.price);
     }
     q('UPDATE tree_auctions SET state = ?, status = ?, price = ?, ended_at = ? WHERE id = ?').run(JSON.stringify(s), status, s.price, s.ended, row.id);
     return { ...row, state: JSON.stringify(s), status, price: s.price, settled: true };
@@ -295,6 +299,8 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady =
         saveGrowth(t, now);
         q('UPDATE trees SET given = given + ? WHERE id = ?').run(amount, t.id);
         q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(amount, cur.id);
+        // (YOSIDA's fertilizer: its share of what was given)
+        if (corp) corp.flow('yosida', 'fertilizer', Math.floor(amount * CORP.yosida.fertilizer));
         return { tree: dto(q('SELECT * FROM trees WHERE id = ?').get(t.id), now), balance: balance(getUser(u.id)) };
       });
       balanceChanged(u.id, true);

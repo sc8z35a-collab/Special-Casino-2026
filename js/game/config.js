@@ -41,8 +41,9 @@
     dailyFree: 1000,         // free tokens claimable once per UTC day
     start: { tokens: 0, dollars: 5008159, coins: 74 },
     // 開発者支援 (js/ui/support.js, server/core/pay.js): yen for ロイヤルコイン,
-    // the coins in the wallet. They only make days of VIP: never bet,
-    // exchanged for tokens or $, sent to anyone or paid out. Up to `maxQty` of one plan at
+    // the coins in the wallet. They make days of VIP, and DAIZIN buys them back
+    // for $ (vip.buyback); never bet, exchanged for tokens, sent to anyone or
+    // paid out. Up to `maxQty` of one plan at
     // once (`bonus`: 感謝料 coins on top, per unit), paid with PayPay or at a
     // konbini (each from `min` yen, the payment company's smallest payment;
     // a konbini payment waits `konbiniDays` days), at most `dailyMax` yen a
@@ -81,6 +82,9 @@
     vip: {
       coins: 4,
       maxDays: 365,
+      // DAIZIN (VIP's company, js/game/corp.js) buys ロイヤルコイン back: `each` $ a coin, out of its own money, at
+      // most `max` coins at once (POST /api/coins/sell)
+      buyback: { each: 50000, max: 100000 },
       packs: { sale: '今だけ特大セール', list: [{ days: 10, bonus: 2 }, { days: 20, bonus: 7 },
         { days: 30, bonus: 12, resetTickets: 1 }, { days: 40, bonus: 25, resetTickets: 1 }] },
       trial: { days: 3, level: 3 },

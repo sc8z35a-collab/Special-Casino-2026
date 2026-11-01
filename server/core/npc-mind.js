@@ -5,7 +5,7 @@
 // some 2.25 times a gain and the careful weighting the bad futures more; the family has its say; the impulsive stop
 // thinking early. What decided it is kept, in words (the reason, server/core/npc-text.js).
 import { NPC, RULES, CORP } from './rules.js';
-import { T, S, N, E, FL, HOME, NN, NT, REL, ageOf, remember, memberList, clampB } from './npc-pop.js';
+import { T, S, N, E, FL, HOME, NN, NT, REL, ageOf, remember, memberList, clampB, viewOf } from './npc-pop.js';
 import * as econ from './npc-econ.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
@@ -21,7 +21,7 @@ export function ahead(W, i, o, futures, r) {
   const spend = Math.max(80000, P.budget[i] || 200000);
   const safe = Math.max(500000, spend * 3);
   const careful = tr(P, i, T.consc), risk = tr(P, i, T.risk);
-  const lose = W.outlook.jobLoss * (P.job[i] >= 1 && P.job[i] <= 10 ? 1 : 0.5);
+  const lose = W.outlook.jobLoss * (NPC.isCompanyJob(P.job[i]) ? 1 : 0.5);
   const scores = new Float64Array(futures);
   let total = 0;
   for (let f = 0; f < futures; f++) {
@@ -135,9 +135,9 @@ export function thinkJob(W, i, day, r, ctx) {
   if (age >= 65) return false;
   const now = P.job[i];
   // the openings worth asking at, best first
-  const opts = jobs.filter((o) => o.left > 0 && o.company !== (now >= 1 && now <= 10 ? NPC.companies[now - 1] : '')).map((o) => {
+  const opts = jobs.filter((o) => o.left > 0 && o.company !== (NPC.companyOf(now) || '')).map((o) => {
     const fit = W.fitFor(P, i, o.company);
-    return { o, fit, worth: o.pay * (0.6 + 0.8 * fit) * (1 + (P.view[i * 10 + NPC.companies.indexOf(o.company)] || 0) / 400) };
+    return { o, fit, worth: o.pay * (0.6 + 0.8 * fit) * (1 + viewOf(P, i, NPC.companies.indexOf(o.company)) / 400) };
   }).sort((a, b) => b.worth - a.worth).slice(0, 3);
   if (!opts.length) return false;
   const best = opts[0];

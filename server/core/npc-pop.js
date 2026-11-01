@@ -18,6 +18,8 @@ export const E = { mood: 0, stress: 1, anger: 2, anxiety: 3, happy: 4 };
 // marks
 export const FL = { student: 1, famous: 2, candidate: 4, mayor: 8, unionRep: 16, leader: 32, striking: 64, moving: 128, founder: 256, rich: 512, exec: 1024, welfare: 4096, sick: 8192, defer: 16384, widow: 32768, rehired: 65536, union: 131072, newborn: 262144 };
 export const MEM = 16, REL = 12, OWN = 8, LEARN = 12, LISTED = 4;
+// room for the companies' views beyond the first ten (YOSIDA, WAZIMA and those to come)
+const VIEW2 = 6;
 // home: 0 rents, 1 owns, 2 lives with family, 3 stays with someone (居候), 4 on the street
 export const HOME = { rent: 0, own: 1, family: 2, stay: 3, street: 4 };
 
@@ -38,9 +40,15 @@ const COLS = [
   ['act', Uint8Array, 1], ['place', Uint8Array, 1], ['ldist', Uint8Array, 1], ['due', Int32Array, 1], ['upd', Int32Array, 1],
   ['mem', Uint32Array, MEM], ['memAt', Uint8Array, 1], ['rel', Int32Array, REL], ['close', Uint8Array, REL], ['rtrust', Uint8Array, REL],
   ['learn', Uint8Array, LEARN], ['view', Int8Array, 10], ['outlook', Int8Array, LISTED], ['aware', Uint32Array, 1], ['sign', Uint32Array, 1],
-  ['vote', Uint8Array, 1], ['lastBig', Int32Array, 1], ['why', Uint16Array, 1], ['grief', Uint8Array, 1]
+  ['vote', Uint8Array, 1], ['lastBig', Int32Array, 1], ['why', Uint16Array, 1], ['grief', Uint8Array, 1],
+  // (columns added later, always last: a country kept before them has none, and they start at 0)
+  ['view2', Int8Array, VIEW2, false, true]
 ];
-export const COLUMNS = COLS.map(([name, kind, width, hot]) => ({ name, kind, width, hot: !!hot }));
+export const COLUMNS = COLS.map(([name, kind, width, hot, late]) => ({ name, kind, width, hot: !!hot, late: !!late }));
+// what a person thinks of company `k` (NPC.companies' order: the first ten in `view`, the rest in `view2`)
+export const viewOf = (P, i, k) => (k < 10 ? P.view[i * 10 + k] : P.view2[i * VIEW2 + k - 10]) || 0;
+export function setView(P, i, k, v) { if (k < 10) P.view[i * 10 + k] = v; else if (k - 10 < VIEW2) P.view2[i * VIEW2 + k - 10] = v; }
+export function clearView(P, i) { P.view.fill(0, i * 10, i * 10 + 10); P.view2.fill(0, i * VIEW2, i * VIEW2 + VIEW2); }
 
 export function alloc(n) {
   const P = { n };
@@ -72,6 +80,8 @@ export function unpack(P, rows, hot = false) {
   at = 0;
   for (const c of cols) {
     const a = P[c.name], len = a.byteLength;
+    // (a column added later that a country kept before it does not have: it stays at 0)
+    if (c.late && at >= total) continue;
     if (at + len > total) throw new Error('npc: the blobs are shorter than the people');
     new Uint8Array(a.buffer, a.byteOffset, len).set(all.subarray(at, at + len));
     at += len;
@@ -142,6 +152,10 @@ const WORK = { civil: 1500, other: 1800, self: 900, part: 1500, home: 1500, stud
 // what living in each district costs a month (rent), and how rich people there are against the country
 const DIST = [{ rent: 180000, rich: 1.1, young: 1.1 }, { rent: 105000, rich: 0.8, young: 1 }, { rent: 115000, rich: 0.8, young: 1.6 }, { rent: 260000, rich: 2.2, young: 0.8 }, { rent: 120000, rich: 0.9, young: 0.6 }];
 const OTHER_PAY = { 11: 4000000, 12: 3000000, 13: 3500000, 14: 1300000 };
+// the skills each company hires for
+export const FIT = { tenesice: [S.manage, S.sales], magita: [S.tech, S.drive], carowner: [S.sales, S.service], jinx: [S.service, S.sales], daizin: [S.service, S.speech],
+  citywork: [S.sales, S.speech], speedeed: [S.tech, S.create], dtrade: [S.tech, S.manage], riru: [S.create, S.tech], ice: [S.create, S.tech],
+  yosida: [S.tech, S.drive], wazima: [S.tech, S.manage] };
 
 // The country's people on day `day` (a corp day), from the companies as they are (`corp`: { companies: { id: { staff,
 // pay } } }) and the draws of `r`. Returns the people and what the companies' organisation needs (who works where).
@@ -205,31 +219,51 @@ export function makePeople(n, day, corp, r) {
     if (a >= 65) { P.job[i] = NPC.job.retired; continue; }
     free.push(i);
   }
-  // the companies take theirs: the 60-64s first for their re-employed (いちど定年を迎えた再雇用), then by fit
+  // the companies take theirs: the 60-64s first for their re-employed (いちど定年を迎えた再雇用), then by fit — the first
+  // ten in full; the country's own civil servants next; then the companies that came home later (YOSIDA, WAZIMA), all
+  // of them the same share of what they want when there are not enough people for it (their other posts stay open)
   const rehireShare = want.rehire / Math.max(1, rehireAll);
   const old = free.filter((i) => ages[i] >= 60 && ages[i] <= 64);
   const young = free.filter((i) => ages[i] >= 20 && ages[i] < 60);
   const taken = new Uint8Array(n);
-  const fit = { tenesice: [S.manage, S.sales], magita: [S.tech, S.drive], carowner: [S.sales, S.service], jinx: [S.service, S.sales], daizin: [S.service, S.speech],
-    citywork: [S.sales, S.speech], speedeed: [S.tech, S.create], dtrade: [S.tech, S.manage], riru: [S.create, S.tech], ice: [S.create, S.tech] };
-  NPC.companies.forEach((id, ci) => {
-    const total = staff[id];
+  const fit = FIT;
+  const take = (id, total) => {
     if (!total) return;
     const nOld = Math.min(Math.round(total * rehireShare), total);
     const pick = (pool, k, rehired) => {
       const f = fit[id];
       const cand = pool.filter((i) => !taken[i]).map((i) => [i, skill(P, i, f[0]) + skill(P, i, f[1]) + 60 * r.u()]);
       cand.sort((a, b) => b[1] - a[1]);
+      let got = 0;
       for (let x = 0; x < k && x < cand.length; x++) {
         const i = cand[x][0];
         taken[i] = 1;
-        P.job[i] = ci + 1;
+        P.job[i] = NPC.jobOf(id);
         if (rehired) P.flags[i] |= FL.rehired;
+        got++;
       }
+      return got;
     };
-    pick(old, nOld, true);
-    pick(young, total - nOld, false);
-  });
+    const got = pick(old, nOld, true);
+    const more = total - got - pick(young, total - got, false);
+    // (the young run out: the 60-64s, kept on as the re-employed are)
+    if (more > 0) pick(old, more, true);
+  };
+  const first = NPC.companies.slice(0, 10), later = NPC.companies.slice(10);
+  for (const id of first) take(id, staff[id]);
+  // the country's own servants before the companies that came later
+  let civil = 0;
+  for (const i of young) {
+    if (civil >= want.civil) break;
+    if (taken[i] || ages[i] < 22) continue;
+    taken[i] = 1;
+    P.job[i] = NPC.job.civil;
+    civil++;
+  }
+  have.civil = civil;
+  const room = young.filter((i) => !taken[i]).length + old.filter((i) => !taken[i]).length;
+  const wantLater = later.reduce((a, id) => a + staff[id], 0), share = wantLater > room ? room / wantLater : 1;
+  for (const id of later) take(id, Math.floor(staff[id] * share));
   // the country's own and the rest
   const rest = free.filter((i) => !taken[i]);
   const put = (k, code, test) => {
@@ -293,6 +327,20 @@ export function makeHomes(P, ages, day, r) {
   return P;
 }
 
+// a company's people paid about its average `pay` by their post and years, exactly its average in all
+export function payStaff(P, list, pay, ages, r) {
+  if (!list.length) return;
+  const ws = list.map((i) => {
+    const rank = NPC.ranks[P.rank[i]] ? NPC.ranks[P.rank[i]].pay : 1;
+    const years = Math.max(0, Math.min(35, ages[i] - 22));
+    return rank * (0.8 + years * 0.012) * (0.92 + 0.16 * r.u()) * (P.flags[i] & FL.rehired ? 0.6 : 1);
+  });
+  const total = Math.round(pay * list.length), sum = ws.reduce((a, b) => a + b, 0);
+  let paid = 0;
+  list.forEach((i, k) => { P.salary[i] = Math.round(total * ws[k] / sum); paid += P.salary[i]; });
+  // (the cents of rounding on the first)
+  P.salary[list[0]] += total - paid;
+}
 export function makeMoney(P, ages, day, corp, r) {
   const n = P.n;
   // pay: each company's people about its average by their post and years, exactly its average in all
@@ -305,18 +353,10 @@ export function makeMoney(P, ages, day, corp, r) {
     const c = corp.companies[id];
     if (!c) return;
     const list = [];
-    for (let i = 0; i < n; i++) if (P.job[i] === ci + 1) list.push(i);
+    const code = NPC.jobOf(id);
+    for (let i = 0; i < n; i++) if (P.job[i] === code) list.push(i);
     if (!list.length) return;
-    const ws = list.map((i) => {
-      const rank = NPC.ranks[P.rank[i]] ? NPC.ranks[P.rank[i]].pay : 1;
-      const years = Math.max(0, Math.min(35, ages[i] - 22));
-      return rank * (0.8 + years * 0.012) * (0.92 + 0.16 * r.u()) * (P.flags[i] & FL.rehired ? 0.6 : 1);
-    });
-    const total = c.pay * list.length, sum = ws.reduce((a, b) => a + b, 0);
-    let paid = 0;
-    list.forEach((i, k) => { P.salary[i] = Math.round(total * ws[k] / sum); paid += P.salary[i]; });
-    // (the cents of rounding on the first)
-    P.salary[list[0]] += total - paid;
+    payStaff(P, list, c.pay, ages, r);
     for (const i of list) P.tenure[i] = Math.min(65535, Math.max(1, Math.round((ages[i] - 22) * 12 * (0.3 + 0.7 * r.u()))));
   });
   // what they have: by age and pay, a long tail at the top (2% from $1B to $50B), the very rich mostly older
@@ -374,7 +414,7 @@ export function pensionMonthly(P, i, up = 0, level = 0) {
   const months = P.penM[i] - P.penHalf[i] / 2;
   if (P.penM[i] < PEN.minMonths) return 0;
   const basic = PEN.basic * Math.min(1, months / PEN.fullMonths) / 12;
-  const worked = P.flags[i] & FL.rehired || (P.job[i] >= 1 && P.job[i] <= 11) || P.penPay[i] > 260000 ? P.penM[i] : P.penM[i] * 0.3;
+  const worked = P.flags[i] & FL.rehired || NPC.employed(P.job[i]) || P.penPay[i] > 260000 ? P.penM[i] : P.penM[i] * 0.3;
   const kosei = P.penPay[i] * PEN.rate * worked / 12;
   return Math.round((basic + kosei) * (1 + up) * (1 + level / 100));
 }
@@ -398,7 +438,7 @@ export function makeRelations(P, ages, r) {
   // colleagues: the same employer and department, by a list of each
   const groups = new Map();
   for (let i = 0; i < n; i++) {
-    if (P.job[i] === 0 || P.job[i] >= 15) continue;
+    if (!NPC.working(P.job[i])) continue;
     const k = P.job[i] * 256 + P.dept[i];
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(i);

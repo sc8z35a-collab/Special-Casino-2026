@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
-import { QUESTS, LEVEL, RELEASE, RULES } from '../core/rules.js';
+import { QUESTS, LEVEL, RELEASE, RULES, CORP } from '../core/rules.js';
 import { stepQuests as advanceQuests, claimQuests, questsReady } from '../core/quests.js';
 
 // Normal draws isolate progress/reward assertions from the bonus lottery.
@@ -98,7 +98,8 @@ test('server: quests finish on spins, 送金 and 無一文, and pay when receive
     assert.ok(q.ready >= 1);
     assert.equal((await m.call('GET', '/api/me', { token: a.token })).me.dollars, 1000000, 'nothing paid before 受け取る');
     let c = await m.call('POST', '/api/quests/claim', { token: a.token, body: { ids: ['5h-spin1'] } });
-    assert.deepEqual([c.claimed, c.dollars, c.xp, c.balance.dollars], [['5h-spin1'], 7000, LEVEL.spinXp + LEVEL.questXp, 1007000]);
+    // (paid out of the country's treasury, YOSIDA keeping its fee: CORP.yosida.quest)
+    assert.deepEqual([c.claimed, c.gross, c.fee, c.dollars, c.xp, c.balance.dollars], [['5h-spin1'], 7000, CORP.questFee(7000), 7000 - CORP.questFee(7000), LEVEL.spinXp + LEVEL.questXp, 1000000 + 7000 - CORP.questFee(7000)]);
     // 送金 in tokens counts at the token price
     await m.call('POST', '/api/transfer', { token: a.token, body: { to: b.me.id, amount: 100, currency: 'tokens' } });
     q = await m.call('GET', '/api/quests', { token: a.token });
@@ -109,7 +110,7 @@ test('server: quests finish on spins, 送金 and 無一文, and pay when receive
     c = await m.call('POST', '/api/quests/claim', { token: a.token, body: {} });
     assert.ok(c.claimed.includes('special-broke'), JSON.stringify(c.claimed));
     assert.deepEqual([c.balance.tokens, c.balance.dollars, c.tokens], [990, c.dollars, 0], 'every quest pays $');
-    assert.ok(c.dollars >= 1000000);
+    assert.ok(c.gross >= 1000000 && c.dollars === c.gross - c.fee);
     m.setUser(a.me.id, { dollars: 0, tokens: 1000 });
     await m.call('POST', '/api/transfer', { token: a.token, body: { to: b.me.id, amount: 10, currency: 'tokens' } });
     assert.ok(!(await m.call('POST', '/api/quests/claim', { token: a.token, body: {} })).claimed.includes('special-broke'));

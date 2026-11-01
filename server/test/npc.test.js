@@ -76,7 +76,12 @@ test('the people: 50,000 by default in five districts, 18 and over, the companie
   for (let i = 0; i < P.n; i++) { minAge = Math.min(minAge, pop.ageOf(P, i, day)); dist[P.dist[i]]++; assert.equal(P.phone[i], 0); }
   assert.ok(minAge >= 18);
   for (const k of dist) assert.ok(k > 600 && k < 1600, JSON.stringify(dist));
-  for (const id of NPC.companies) assert.equal(c.W.staffOf(id).length, Math.round(CORP.company(id).staff * 0.1), id);
+  // (the first ten companies in full; the country's civil servants next; the companies that came home later the same
+  // share each of what is left, their other posts open)
+  for (const id of NPC.companies.slice(0, 10)) assert.equal(c.W.staffOf(id).length, Math.round(CORP.company(id).staff * 0.1), id);
+  assert.equal(Array.from(P.job).filter((j) => j === NPC.job.civil).length, 150);
+  const shares = NPC.companies.slice(10).map((id) => c.W.staffOf(id).length / Math.round(CORP.company(id).staff * 0.1));
+  for (const x of shares) assert.ok(x >= 0.5 && x <= 1 && Math.abs(x - shares[0]) < 0.05, JSON.stringify(shares));
   // every company's people organised: a CEO and a 社長, a 部長 for each department, the stopper, Tenesice's three lending posts
   for (const id of NPC.companies) {
     const o = c.W.orgs[id];
@@ -110,6 +115,78 @@ test('every $ goes from someone to someone: the country\'s money is the same aft
   // the phone bills and the slots' monthly charge reached their companies on the 1st
   const dec = outs.flatMap((o) => o.periods).find((r) => r.company === 'tenesice' && r.kind === 'm' && r.key === '2026-12');
   assert.ok(!dec || dec.accounts['r:mobile'] > 0);
+});
+
+test('the people\'s slots: what a session loses is Dtrade\'s, what one wins beyond its bets the country\'s treasury pays (国庫)', () => {
+  const c = country(500), W = c.W, P = W.P, day = W.day;
+  const i = 7, coin = () => (npc.econ.flowsOf(W, day).co.dtrade || {}).cas || 0;
+  P.cash[i] = 2e9; P.tokens[i] = 0;
+  const before = c.money(), nation = W.nation.cash, cas = coin(), out = W.nation.day.out.casinoWins || 0;
+  // (every spin the slots' best: a session far ahead)
+  const win = npc.econ.casinoSession(W, i, day, 50e6, { u: () => 0.9999999 });
+  assert.ok(win && win.back > win.staked);
+  assert.equal(nation - W.nation.cash, win.back - win.staked);
+  assert.equal((W.nation.day.out.casinoWins || 0) - out, win.back - win.staked);
+  assert.equal(coin(), cas, 'Dtrade pays nothing of it');
+  // (every spin nothing: a session that loses)
+  const loss = npc.econ.casinoSession(W, i, day, 50e6, { u: () => 0 });
+  assert.ok(loss && loss.back === 0 && loss.staked > 0);
+  assert.equal(coin() - cas, loss.staked);
+  assert.equal(nation - W.nation.cash, win.back - win.staked, 'the treasury pays nothing of a loss');
+  // every $ still from someone to someone
+  assert.ok(Math.abs(c.money() - before) < 10);
+});
+
+test('the players\' slot wins and quest rewards and YOSIDA\'s gacha bill come out of the country\'s treasury once it lives', () => {
+  const c = country(500), W = c.W, ch = corpModel.chance(Buffer.alloc(32, 3));
+  c.days(1);
+  const day = c.w.day + 1, before = c.money(), toPlayers = W.sum.toPlayers, imports = W.sum.imports;
+  // (YOSIDA is at home: its fee and its claim stay in the country, in its money)
+  const out = corpModel.closeDay(c.w, day, { npc: npc.flowsFor(W, day), '@state': { slots: 3000000, quests: 1000000, gacha: 7500000 }, yosida: { questfee: 100000 } }, ch);
+  assert.deepEqual(out.ext.state, { by: { slotWins: 3000000, questRewards: 1000000, gachaClaims: 7500000 }, players: 3900000, abroad: 0 });
+  const nation = W.nation.cash;
+  npc.nextDay(W, day, out.ext, c.ctx);
+  assert.equal(W.sum.toPlayers - toPlayers, 3900000);
+  assert.ok(W.sum.imports - imports >= 0);
+  assert.ok(W.nation.cash < nation);
+  // every $ still from someone to someone (the players' and YOSIDA's money out of it, counted)
+  assert.ok(Math.abs(c.money() - before) < 2000, `${c.money() - before}`);
+});
+
+test('companies that come home to a living country (YOSIDA, WAZIMA) hire at once from those out of work or in other work, with their posts, pay and union; a country kept before them loads', () => {
+  const c = country(2000), W = c.W, P = W.P, day = W.day;
+  // (as a country kept before they came: their people in other work, no organisation of theirs)
+  for (const id of ['yosida', 'wazima']) {
+    for (const i of W.staffOf(id)) { P.job[i] = NPC.job.other; P.rank[i] = 0; P.salary[i] = 3000000; P.flags[i] &= ~(pop.FL.exec | pop.FL.union); }
+    delete W.orgs[id];
+    W.lab.unions[id].members = 0;
+  }
+  W._staff = null;
+  const before = c.money(), civil = Array.from(P.job).filter((j) => j === NPC.job.civil).length;
+  const came = npc.welcome(W, c.w, day);
+  assert.deepEqual(came.map((x) => x.id), ['yosida', 'wazima']);
+  for (const x of came) {
+    const staff = W.staffOf(x.id), o = W.orgs[x.id];
+    assert.equal(staff.length, x.hired);
+    assert.ok(x.hired > 0 && x.hired <= x.want);
+    assert.ok(o.ceo >= 0 && o.president >= 0 && o.depts.find((d) => d.kind === 'stop').named.stopper >= 0, x.id);
+    // paid about the company's average, all of them
+    const avg = staff.reduce((a, i) => a + P.salary[i], 0) / staff.length;
+    assert.ok(Math.abs(avg - c.w.co[x.id].pay) < 2, `${x.id} ${avg}`);
+    assert.ok(staff.every((i) => NPC.sites[x.id].some(([d]) => d === P.wdist[i])));
+    assert.ok(W.lab.unions[x.id].members > 0);
+    assert.ok(W.news.some((n) => n.data.company === x.id && /採用/.test(n.text)));
+  }
+  // nobody taken from the civil service, no money moved by it, and only once
+  assert.equal(Array.from(P.job).filter((j) => j === NPC.job.civil).length, civil);
+  assert.equal(c.money(), before);
+  assert.deepEqual(npc.welcome(W, c.w, day), []);
+  // a country kept before the companies' second column of views: it loads, those views at 0
+  const rows = pop.pack(P), whole = Buffer.concat(rows.map((r) => Buffer.from(r)));
+  const old = whole.subarray(0, whole.length - P.view2.byteLength), Q = pop.alloc(P.n);
+  pop.unpack(Q, [old]);
+  assert.deepEqual([Q.job[5], Q.cash[5], Q.view2.every((v) => v === 0)], [P.job[5], P.cash[5], true]);
+  assert.throws(() => pop.unpack(pop.alloc(P.n), [old.subarray(0, old.length - 4)]), /shorter/);
 });
 
 test('lives: deaths and new 18-year-olds keep the people as many, pensions from 60, the country\'s books by the day', () => {

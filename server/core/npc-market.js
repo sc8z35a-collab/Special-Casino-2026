@@ -1,5 +1,5 @@
 // The people's part of the 投資 market (server/core/npc-model.js): each investor's own view of the four listed
-// companies (their news, their friends, the chart, what they paid), their orders (a buy at most $35M a day each, a
+// companies (their news, their friends, the chart, what they paid), their orders (a buy at most NPC.life.investDay a day each, a
 // sale only of what they hold), and every minute the orders matched among themselves at the minute's price (板寄せ);
 // what is left waits for the minute (a player's order trades against it first: server/core/corp.js), and the
 // imbalance moves the price. The fee is Dtrade's, 1.8% each way as the players'.
@@ -38,7 +38,7 @@ export function createMarket(W) {
       if (held > 0 && price < cost * 0.9) view += 0.3;
       const limit = Math.max(1, Math.round(price * (1 + (view > 0 ? 1 : -1) * (0.001 + 0.006 * r.u()))));
       if (view > 0.2) {
-        const room = Math.max(0, NPC.life.daily35M - P.buyDay[i]);
+        const room = Math.max(0, NPC.life.investDay - P.buyDay[i]);
         const money = Math.min(Math.max(0, P.fund[i * 4 + 3]) * (0.3 + 0.5 * r.u()), Math.max(0, P.cash[i]) * 0.5, room);
         const shares = Math.floor(money / (limit * 1.02));
         if (shares > 0) { m.book[id].buy.push([i, shares, limit]); P.buyDay[i] += shares * limit; P.fund[i * 4 + 3] -= shares * limit; }

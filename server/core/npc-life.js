@@ -4,7 +4,7 @@
 // does for them, who asked them along, the time and the place), with the draw of an impulsive person looser. The big
 // things (a car, another job) are thought through a year ahead: npc-mind.js.
 import { NPC, RULES, CORP } from './rules.js';
-import { T, S, N, E, FL, HOME, NN, NT, REL, MEM, OWN, LEARN, ageOf, remember, addRelation, clampB } from './npc-pop.js';
+import { T, S, N, E, FL, HOME, NN, NT, REL, MEM, OWN, LEARN, ageOf, remember, addRelation, clampB, viewOf, setView, FIT } from './npc-pop.js';
 import { hash32 } from './npc-rand.js';
 import * as econ from './npc-econ.js';
 import { thinkCar, thinkJob } from './npc-mind.js';
@@ -12,7 +12,7 @@ import { thinkCar, thinkJob } from './npc-mind.js';
 const A = NPC.act;
 const PL = Object.fromEntries(NPC.places.map((p, k) => [p, k]));
 // what a company's people do at work, and where (the place on the map)
-const WORKPLACE = { tenesice: 'bank', magita: 'factory', carowner: 'dealer', jinx: 'store', daizin: 'lounge', citywork: 'office', speedeed: 'office', dtrade: 'office', riru: 'studio', ice: 'studio' };
+const WORKPLACE = { tenesice: 'bank', magita: 'factory', carowner: 'dealer', jinx: 'store', daizin: 'lounge', citywork: 'office', speedeed: 'office', dtrade: 'office', riru: 'studio', ice: 'studio', yosida: 'factory', wazima: 'factory' };
 // the learned worth of each kind of free time (P.learn)
 export const L = { casino: 0, game: 1, shop: 2, car: 3, lounge: 4, friends: 5, outing: 6, invest: 7, politics: 8, venture: 9, walk: 10, home: 11 };
 // memories (P.mem): kind codes
@@ -51,7 +51,7 @@ export function obliged(W, i, t, off, day) {
   if (P.flags[i] & FL.striking) return { kind: 'free', end: 1440 };
   if (P.health[i] < 60 && !(P.flags[i] & FL.student)) return { kind: 'sick', end: t + 120 };
   let sched = null, shift = P.shift[i];
-  if (job >= 1 && job <= 10) sched = NPC.schedules[NPC.companySchedule[NPC.companies[job - 1]]];
+  if (NPC.isCompanyJob(job)) sched = NPC.schedules[NPC.companySchedule[NPC.companyOf(job)]];
   else if (job === NPC.job.civil) sched = NPC.schedules.civil;
   else if (job === NPC.job.other) sched = NPC.schedules.other;
   else if (job === NPC.job.self) sched = NPC.schedules.self;
@@ -117,7 +117,7 @@ function set(W, i, act, place, dist, m, minutes) {
 function work(W, i, m, t, end, r, ctx) {
   const P = W.P, job = P.job[i];
   let place = PL.office, dist = P.wdist[i];
-  if (job >= 1 && job <= 10) place = PL[WORKPLACE[NPC.companies[job - 1]]];
+  if (NPC.isCompanyJob(job)) place = PL[WORKPLACE[NPC.companyOf(job)]];
   else if (job === NPC.job.civil) place = [PL.hall, PL.hospital, PL.school][hash32(i, 3) % 3];
   else if (job === NPC.job.other) place = hash32(i, 3) % 2 ? PL.office : PL.store;
   else if (job === NPC.job.self || job === NPC.job.part) place = PL.store;
@@ -127,8 +127,8 @@ function work(W, i, m, t, end, r, ctx) {
   set(W, i, meet ? A.meeting : A.work, place, dist, m, len);
   // what an hour's work gives: the company's output (its 働き指数) and the person's tiredness and pride
   const sat = P.jsat[i] / 255;
-  if (job >= 1 && job <= 10) {
-    const id = NPC.companies[job - 1];
+  if (NPC.isCompanyJob(job)) {
+    const id = NPC.companyOf(job);
     const k = (0.7 + 0.6 * skillFor(P, i, id)) * (0.75 + 0.5 * sat) * (0.85 + 0.3 * P.health[i] / 255) * (len / 60);
     W.work[id] = (W.work[id] || 0) + k;
     W.workHours[id] = (W.workHours[id] || 0) + len / 60;
@@ -140,9 +140,8 @@ function work(W, i, m, t, end, r, ctx) {
   // a word with a colleague now and then
   if (r.u() < 0.25) talk(W, i, m, r, true);
 }
-const SKILL_OF = { tenesice: [S.manage, S.sales], magita: [S.tech, S.drive], carowner: [S.sales, S.service], jinx: [S.service, S.sales], daizin: [S.service, S.speech],
-  citywork: [S.sales, S.speech], speedeed: [S.tech, S.create], dtrade: [S.tech, S.manage], riru: [S.create, S.tech], ice: [S.create, S.tech] };
-export function skillFor(P, i, id) { const s = SKILL_OF[id]; return (P.sk[i * 8 + s[0]] + P.sk[i * 8 + s[1]]) / 510; }
+// (the skills each company wants: server/core/npc-pop.js FIT)
+export function skillFor(P, i, id) { const s = FIT[id] || [S.manage, S.tech]; return (P.sk[i * 8 + s[0]] + P.sk[i * 8 + s[1]]) / 510; }
 
 function lunch(W, i, m, day, r) {
   const P = W.P;
@@ -468,9 +467,9 @@ export function talk(W, i, m, r, work) {
   P.disc[a] = clampB(P.disc[a] + da);
   P.disc[b] = clampB(P.disc[b] - da * 0.6);
   // a company spoken of
-  const c = r.int(10), va = i * 10 + c, vb = j * 10 + c;
-  const dv = (P.view[vb] - P.view[va]) * 0.1 * t;
-  P.view[va] = Math.max(-127, Math.min(127, Math.round(P.view[va] + dv)));
+  const c = r.int(NPC.companies.length), va = viewOf(P, i, c);
+  const dv = (viewOf(P, j, c) - va) * 0.1 * t;
+  setView(P, i, c, Math.max(-127, Math.min(127, Math.round(va + dv))));
   // news passes on (what one of them knows, the other may now)
   const know = P.aware[j] & ~P.aware[i];
   if (know && r.u() < 0.35 + 0.4 * tr(P, i, T.news)) P.aware[i] |= know & (r.u() < 0.5 ? know : (know & -know));

@@ -1,7 +1,7 @@
 // Capsule gacha: the shared rules draw the rewards, this module settles them.
 // Payment and every reward from a spin commit in the same SQLite transaction.
 import { ApiError } from './errors.js';
-import { RULES, GACHA, VIP } from './rules.js';
+import { RULES, GACHA, VIP, CORP } from './rules.js';
 import { readQuests, questTickets } from './quests.js';
 import { createSpinRequests } from './spin-requests.js';
 import { ensureStarterTree } from './tree.js';
@@ -26,8 +26,11 @@ function secureRandom() {
   return randomWords[randomAt++] / 4294967296;
 }
 
+// The gacha is YOSIDA's (js/game/corp.js CORP.yosida): what a pull costs is its sale, and it bills the country's
+// treasury its share of it; what the pulls give away it pays for (server/core/corp-model.js prizes). The player
+// sees none of that: the pulls and their prizes are what they were. (`corp`: server/core/corp.js, or none in tests.)
 export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend,
-  settleVip = () => 0, vipChanged = balanceChanged, onSpin = () => {}, now = Date.now, rand = secureRandom }) {
+  settleVip = () => 0, vipChanged = balanceChanged, onSpin = () => {}, now = Date.now, rand = secureRandom, corp = null }) {
   const requests = createSpinRequests({ q, tx, clock: now, table: 'gacha_requests', code: 'gacha', label: 'ガチャ',
     fingerprint: body => JSON.stringify([String(body.kind || 'rare'), Number(body.count), body.price ?? null, !!body.ticket]),
     replay: (id, result) => ({ ...result, ...state(getUser(id)) }) });
@@ -120,6 +123,15 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       q(`UPDATE users SET dollars = dollars - ?, tokens = tokens + ?, coins = coins + ?,
            garage_extra = garage_extra + ?, quests = ?, gacha_pulls = gacha_pulls + ?, rev = rev + 1 WHERE id = ?`)
         .run(paid, tokens, coins, garageCoins, JSON.stringify(quests), count, cur.id);
+      // YOSIDA's books: the pull's price its sale, its claim on the treasury, and what was given away
+      if (corp) {
+        corp.flow('yosida', 'gacha', paid);
+        corp.flow('@state', 'gacha', Math.floor(paid * CORP.yosida.gacha.claim));
+        const cars = {};
+        for (const r of rewards) if (r.type === 'car') cars[r.carId] = (cars[r.carId] || 0) + 1;
+        corp.prize({ lot: tokens, royal: coins, garage: garageCoins, vip: rewards.filter((r) => r.type === 'vip-week').length,
+          tree: rewards.filter((r) => r.type === 'seed' || r.type === 'grown-tree').length, cars });
+      }
       return { pulls, paid, kind, count, ...(free ? { free: true } : {}) };
     });
 

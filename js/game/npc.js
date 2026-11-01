@@ -16,14 +16,14 @@
   var DISTRICTS = [
     { id: 0, key: 'soleil', name: 'ソレイユ区', kana: 'それいゆく', look: 'オフィス街。共働きと単身が多い', hq: ['tenesice', 'dtrade', 'citywork', 'speedeed'], color: '#f2b84b',
       places: { home: [[18, 22, 12], [80, 76, 12], [22, 80, 10]], office: [[50, 40, 14]], bank: [[44, 58, 4]], store: [[66, 54, 5]], casino: [[60, 24, 6]], park: [[30, 52, 7]], station: [[50, 66, 4]], hall: [[74, 34, 4]], hospital: [[86, 54, 4]], square: [[40, 30, 5]], dealer: [[16, 56, 4]], lounge: [], studio: [], factory: [], school: [[84, 18, 4]] } },
-    { id: 1, key: 'eisen', name: 'アイゼン区', kana: 'あいぜんく', look: 'MAGITAの工場と社宅、港とカーオーナーの中古車置き場', hq: ['magita', 'carowner'], color: '#8fa3b8',
+    { id: 1, key: 'eisen', name: 'アイゼン区', kana: 'あいぜんく', look: 'MAGITAとWAZIMAの工場と社宅、港とカーオーナーの中古車置き場', hq: ['magita', 'carowner', 'wazima'], color: '#8fa3b8',
       places: { home: [[20, 70, 13], [76, 78, 11]], office: [[30, 26, 6]], factory: [[62, 30, 16]], dealer: [[22, 44, 7]], bank: [[48, 64, 4]], store: [[52, 80, 5]], park: [[86, 52, 6]], station: [[40, 54, 4]], hall: [[12, 30, 4]], hospital: [[70, 62, 4]], square: [[44, 42, 5]], casino: [], lounge: [], studio: [], school: [[88, 20, 4]] } },
     { id: 2, key: 'canaria', name: 'カナリア区', kana: 'かなりあく', look: '商店街・ジンクスの大型店・大学。若者と学生', hq: ['jinx'], color: '#ef7d9a',
       places: { home: [[18, 24, 11], [82, 30, 10], [70, 82, 11]], office: [[46, 30, 5]], store: [[50, 52, 12]], school: [[22, 72, 10]], casino: [[78, 56, 5]], bank: [[36, 42, 4]], park: [[34, 86, 6]], station: [[56, 36, 5]], hall: [[86, 70, 4]], hospital: [[14, 46, 4]], square: [[62, 66, 6]], dealer: [], lounge: [], studio: [], factory: [] } },
     { id: 3, key: 'aurora', name: 'オーロラ区', kana: 'おーろらく', look: 'RIRU・Ice Smokerのスタジオと丘の上の高級住宅地、DAIZINのVIPラウンジ', hq: ['riru', 'ice', 'daizin'], color: '#9a7cf2',
       places: { home: [[26, 20, 12], [78, 22, 12], [50, 84, 10]], studio: [[30, 54, 9], [70, 52, 9]], lounge: [[52, 32, 6]], office: [[50, 58, 4]], casino: [[86, 74, 4]], bank: [[16, 76, 4]], store: [[36, 72, 5]], park: [[62, 72, 7]], station: [[50, 46, 3]], hall: [[12, 40, 4]], hospital: [[88, 40, 4]], square: [[50, 64, 4]], dealer: [[84, 88, 4]], factory: [], school: [] } },
-    { id: 4, key: 'riviere', name: 'リヴィエール区', kana: 'りゔぃえーるく', look: '川沿いの住宅地と旧市街。家族とお年寄り', hq: [], color: '#5cc3a8',
-      places: { home: [[24, 26, 14], [76, 24, 13], [28, 76, 13], [74, 76, 12]], park: [[50, 50, 10]], store: [[50, 26, 5]], bank: [[50, 74, 4]], hospital: [[14, 50, 6]], hall: [[86, 50, 5]], station: [[50, 88, 3]], square: [[62, 50, 4]], office: [[38, 50, 3]], casino: [], dealer: [], lounge: [], studio: [], factory: [], school: [[50, 12, 4]] } }
+    { id: 4, key: 'riviere', name: 'リヴィエール区', kana: 'りゔぃえーるく', look: '川沿いの住宅地と旧市街、下流にYOSIDAの本社工場。家族とお年寄り', hq: ['yosida'], color: '#5cc3a8',
+      places: { home: [[24, 26, 14], [76, 24, 13], [28, 76, 13], [74, 76, 12]], park: [[50, 50, 10]], store: [[50, 26, 5]], bank: [[50, 74, 4]], hospital: [[14, 50, 6]], hall: [[86, 50, 5]], station: [[50, 88, 3]], square: [[62, 50, 4]], office: [[38, 50, 3]], casino: [], dealer: [], lounge: [], studio: [], factory: [[88, 86, 8]], school: [[50, 12, 4]] } }
   ];
   // the places on the map, by what is done there (a dot's place: 5 bits)
   var PLACES = ['home', 'office', 'factory', 'store', 'dealer', 'casino', 'lounge', 'studio', 'bank', 'park', 'station', 'hall', 'hospital', 'square', 'school', 'street'];
@@ -122,10 +122,21 @@
   }
 
   /* ------------------------------------------------------- what they do for a living --- */
-  // employers: 0 none, 1..10 the companies (CORP order below), then the country's own and the rest
-  var COMPANY_IDS = ['tenesice', 'magita', 'carowner', 'jinx', 'daizin', 'citywork', 'speedeed', 'dtrade', 'riru', 'ice'];
+  // employers: 0 none, 1..10 the first ten companies, then the country's own and the rest (11..17), then the companies
+  // that came home later (YOSIDA, WAZIMA: from 18 on, so that the people kept from before keep what they were)
+  var COMPANY_IDS = ['tenesice', 'magita', 'carowner', 'jinx', 'daizin', 'citywork', 'speedeed', 'dtrade', 'riru', 'ice', 'yosida', 'wazima'];
   var JOB = { none: 0, civil: 11, other: 12, self: 13, part: 14, student: 15, home: 16, retired: 17 };
-  var JOB_NAMES = ['無職', 'テネシス', 'MAGITA', 'カーオーナー', 'ジンクス', 'DAIZIN', 'シティーワーク', 'スピーディード', 'Dtrade', 'RIRU STUDIO', 'Ice Smoker', '公務員', 'その他の職場', '自営業', 'パート・バイト', '大学生', '家事中心', '年金生活'];
+  var LATER_JOBS = 18;
+  var JOB_NAMES = ['無職', 'テネシス', 'MAGITA', 'カーオーナー', 'ジンクス', 'DAIZIN', 'シティーワーク', 'スピーディード', 'Dtrade', 'RIRU STUDIO', 'Ice Smoker', '公務員', 'その他の職場', '自営業', 'パート・バイト', '大学生', '家事中心', '年金生活',
+    'YOSIDA', 'WAZIMA'];
+  // a company's job code, the company of a code (null: not a company's), and whether a code is a company's
+  function jobOf(id) { var k = COMPANY_IDS.indexOf(id); return k < 0 ? -1 : k < 10 ? k + 1 : LATER_JOBS + k - 10; }
+  function companyOf(j) { return j >= 1 && j <= 10 ? COMPANY_IDS[j - 1] : j >= LATER_JOBS ? COMPANY_IDS[10 + j - LATER_JOBS] || null : null; }
+  function isCompanyJob(j) { return !!companyOf(j); }
+  // a job with a payslip: a company's, the country's or another workplace's (not one's own business, not a part time job)
+  function employed(j) { return isCompanyJob(j) || j === JOB.civil; }
+  // anything that is work (a company, the country, another workplace, one's own, a part time job)
+  function working(j) { return isCompanyJob(j) || (j >= JOB.civil && j <= JOB.part); }
   // how each works ([start, end] in minutes of the day; shift: early and late; off: on days off too; days: days off a week)
   var SCHEDULES = {
     bank: { blocks: [[525, 1050]], off: false },
@@ -139,12 +150,13 @@
     part: { blocks: [[600, 840]], off: true, days: 3 },
     student: { blocks: [[540, 900]], off: false }
   };
-  var COMPANY_SCHEDULE = { tenesice: 'bank', magita: 'factory', carowner: 'retail', jinx: 'retail', daizin: 'office', citywork: 'office', speedeed: 'office', dtrade: 'office', riru: 'studio', ice: 'studio' };
+  var COMPANY_SCHEDULE = { tenesice: 'bank', magita: 'factory', carowner: 'retail', jinx: 'retail', daizin: 'office', citywork: 'office', speedeed: 'office', dtrade: 'office', riru: 'studio', ice: 'studio',
+    yosida: 'factory', wazima: 'factory' };
   // where each company's people work: its districts, and how many of them there
   var SITES = {
     tenesice: [[0, 0.5], [1, 0.12], [2, 0.14], [3, 0.12], [4, 0.12]], magita: [[1, 0.92], [0, 0.08]], carowner: [[1, 0.55], [0, 0.2], [3, 0.25]],
     jinx: [[2, 0.5], [0, 0.15], [1, 0.12], [3, 0.1], [4, 0.13]], daizin: [[3, 1]], citywork: [[0, 1]], speedeed: [[0, 1]], dtrade: [[0, 0.8], [2, 0.15], [3, 0.05]],
-    riru: [[3, 1]], ice: [[3, 1]]
+    riru: [[3, 1]], ice: [[3, 1]], yosida: [[4, 0.7], [1, 0.3]], wazima: [[1, 0.85], [4, 0.15]]
   };
 
   /* --------------------------------------------------------------- the country's books --- */
@@ -170,7 +182,8 @@
   };
   var SAFETY = { living: 110000, medical: 0.3, medicalOld: 0.2, oldFrom: 70, medicalCap: 680000, jobless: [0.5, 0.8], joblessDays: [90, 330], burial: 300000 };
   var RETIRE = { at: 60, rehire: 65, severance: 2.2 }; // a year's pay for every... (severance: months of pay a year worked)
-  var LIFE = { adult: 18, mean: 80, gompertz: 0.085, phone: 100000, casinoMonthly: 1000000, daily35M: 35000000 };
+  // (`investDay`: what a person may buy of shares in a day, all together)
+  var LIFE = { adult: 18, mean: 80, gompertz: 0.085, phone: 100000, casinoMonthly: 1000000, investDay: 50000000 };
   // the money troubles: a loan from Tenesice at a high rate first (its クイックローン), then a friend's or family's
   // home (居候), then the street; the 生活保護 picks those it reaches
   var TROUBLE = { quickRate: 0.178, quickMax: 30000000, quickBase: 3000000, stayDays: 120, homelessFloor: -50000000 };
@@ -275,6 +288,16 @@
     ice: [
       ['exec', '経営陣', 'exec', 0.005], ['dev', '開発本部', 'dev', 0.55, [['director', 'ディレクター'], ['producer', 'プロデューサー']]], ['live', '運営型タイトル部', 'live', 0.18],
       ['qa', '品質管理部', 'qa', 0.07], ['publish', 'パブリッシング部', 'publish', 0.06], ['acct', '経理部', 'acct', 0.04], ['admin', '総務部', 'admin', 0.06], ['stop', '監査室（ストップ係）', 'stop', 0.02, [['stopper', 'ストップ係']]]
+    ],
+    yosida: [
+      ['exec', '経営陣', 'exec', 0.003], ['factory', '自社一貫工場', 'factory', 0.6], ['analysis', '競合他社分析室', 'analysis', 0.01, [['analyst', '主任アナリスト']]],
+      ['nego', '営業・交渉部', 'nego', 0.01, [['negotiator', '交渉係']]], ['product', '車両・エンジン開発部', 'product', 0.06], ['bio', 'バイオテクノロジー本部（金の生る木）', 'rd', 0.08],
+      ['game', 'ゲーム事業部（クエスト・ガチャ）', 'plan', 0.05, [['planner', 'ゲーム事業企画担当']]], ['sales', '法人・海外営業部', 'sales', 0.08],
+      ['acct', '経理部', 'acct', 0.03], ['admin', '総務部', 'admin', 0.04], ['stop', '監査室（ストップ係）', 'stop', 0.01, [['stopper', 'ストップ係']]]
+    ],
+    wazima: [
+      ['exec', '経営陣', 'exec', 0.004], ['factory', '省人化工場', 'factory', 0.55], ['codev', 'MAGITA共同開発部', 'product', 0.12], ['cost', 'コスト削減研究所', 'rd', 0.12, [['cto', '研究所長']]],
+      ['plan', '経営企画部', 'plan', 0.03], ['acct', '経理部', 'acct', 0.04], ['admin', '総務部', 'admin', 0.06], ['stop', '監査室（ストップ係）', 'stop', 0.015, [['stopper', 'ストップ係']]]
     ]
   };
   // the ranks (a person's post): 0 staff, 1 主任, 2 課長, 3 部長, 4 役員, 5 社長, 6 CEO; pay against the company's average
@@ -376,7 +399,7 @@
   BR.NPC = {
     nation: NATION, districts: DISTRICTS, places: PLACES, placeNames: PLACE_NAMES, acts: ACTS, act: ACT, hours: HOURS,
     holidays: holidays, jst: jst, hoursOf: hoursOf, activeAt: activeAt, nextActive: nextActive,
-    companies: COMPANY_IDS, job: JOB, jobNames: JOB_NAMES, schedules: SCHEDULES, companySchedule: COMPANY_SCHEDULE, sites: SITES,
+    companies: COMPANY_IDS, job: JOB, jobNames: JOB_NAMES, jobOf: jobOf, companyOf: companyOf, isCompanyJob: isCompanyJob, employed: employed, working: working, schedules: SCHEDULES, companySchedule: COMPANY_SCHEDULE, sites: SITES,
     tax: TAX, social: SOCIAL, pension: PENSION, safety: SAFETY, retire: RETIRE, life: LIFE, trouble: TROUBLE,
     knobs: KNOBS, knob: KNOB, change: CHANGE, votes: VOTES, platforms: PLATFORMS, themes: THEMES, demands: DEMANDS,
     org: ORG, ranks: RANKS, labs: LABS, labThemes: LAB_THEMES, ventures: VENTURES,

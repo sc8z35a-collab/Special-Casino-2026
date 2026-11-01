@@ -4,14 +4,14 @@
 // public works, bonds), the month's bills, lives ending and new ones beginning at 18, the money troubles, work
 // (hiring, leaving, 60 and 65), and the people's politics and unions (npc-politics.js).
 import { NPC, CORP } from './rules.js';
-import { T, S, N, E, FL, HOME, NN, NT, REL, MEM, OWN, LISTED, ageOf, remember, memberList, joinHousehold, leaveHousehold, addRelation, pensionMonthly, clampB } from './npc-pop.js';
+import { T, S, N, E, FL, HOME, NN, NT, REL, MEM, OWN, LISTED, ageOf, remember, memberList, joinHousehold, leaveHousehold, addRelation, pensionMonthly, clampB, clearView } from './npc-pop.js';
 import * as econ from './npc-econ.js';
 import { M } from './npc-life.js';
 import { LISTED_IDS } from './npc-market.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const YEAR = 365;
-const isEmployee = (j) => j >= 1 && j <= 11;
+const isEmployee = (j) => NPC.employed(j);
 
 /* -------------------------------------------------------------- income tax --- */
 // a year's income tax on a year's pay (給与所得控除・基礎控除・社会保険料を引いて、段階の税率で)
@@ -88,6 +88,13 @@ export function fromCompanies(W, ext, day) {
   for (const s of ext.toPeople || []) { if (s.i >= 0 && s.i < P.n) P.cash[s.i] += s.n; else W.sector.cash += s.n; }
   // (the players' part of the market's money: theirs)
   if (ext.toPlayers) W.sum.toPlayers += ext.toPlayers;
+  // what the treasury paid for the game (server/core/corp-model.js gameDay): the players' slot wins beyond their bets
+  // and their quests' rewards (theirs, but YOSIDA's fee), YOSIDA's bill for the gacha (abroad)
+  if (ext.state) {
+    for (const [k, n] of Object.entries(ext.state.by || {})) econ.nationOut(W, k, n);
+    W.sum.toPlayers += ext.state.players || 0;
+    W.sum.imports += ext.state.abroad || 0;
+  }
 }
 
 // a company's pay (`kind` 'salary': the month's, on the 25th; 'bonus' in June and December) to its people by their
@@ -434,7 +441,7 @@ function lives(W, day, r, ctx) {
 }
 function birthday(W, i, age, day, r) {
   const P = W.P, PEN = NPC.pension, at = W.nation.knobs.pensionAge || PEN.age;
-  if (age === NPC.retire.at && P.job[i] >= 1 && P.job[i] <= 11) W.labor.retire(W, i, day, r);
+  if (age === NPC.retire.at && NPC.employed(P.job[i])) W.labor.retire(W, i, day, r);
   if (age === NPC.retire.rehire && P.flags[i] & FL.rehired) W.labor.leave(W, i, day, 'retire');
   // the pension from its age (or later, a month at a time: 0.7% more each, to 70)
   if (age >= at && !P.penAmt[i] && P.penM[i] >= PEN.minMonths) {
@@ -559,7 +566,7 @@ export function reborn(W, i, day, r, heirs) {
   P.lean[i * 2] = Math.round(r.z() * 40); P.lean[i * 2 + 1] = Math.round(r.z() * 40 + 15);
   P.trust.fill(150, i * 5, i * 5 + 5);
   P.learn.fill(128, i * 12, i * 12 + 12);
-  P.view.fill(0, i * 10, i * 10 + 10);
+  clearView(P, i);
   P.outlook.fill(0, i * LISTED, i * LISTED + LISTED);
   P.mem.fill(0, i * MEM, i * MEM + MEM);
   P.memAt[i] = 0;

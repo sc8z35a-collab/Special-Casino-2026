@@ -19,6 +19,7 @@ import * as pop from './npc-pop.js';
 import * as text from './npc-text.js';
 import { createAi } from './npc-ai.js';
 import { LISTED_IDS } from './npc-market.js';
+import { peopleSpent } from './corp-model.js';
 
 const MIN = 60000;
 const MAX_TICKS = 240;               // minutes worked out in one wake at most (the rest the next)
@@ -59,9 +60,21 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     if (stale) {
       W = load();
       stale = false;
-      if (W) policy(W);
+      if (W) { policy(W); homecoming(W); }
     }
     return W;
+  }
+  // the companies that came home since the country was kept (YOSIDA, WAZIMA): each hires its people once (model.welcome),
+  // and the country is kept with them at once
+  function homecoming(w) {
+    const c = corp.world();
+    if (!c || NPC.companies.every((id) => w.orgs[id] || !c.co[id])) return;
+    tx(() => {
+      const came = model.welcome(w, c, w.day);
+      if (!came.length) return;
+      console.log('npc: came home', came.map((x) => `${x.id} ${x.hired}/${x.want}`).join(', '));
+      save('all');
+    });
   }
   const booted = () => !!get();
   // what is kept: the plain data, and the people's money (`hot`) or all of them; what the country wrote since, into
@@ -247,6 +260,14 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     if (n > 0) save('hot');
     return n;
   }
+  // what the people have spent at a company so far on the companies' day `day` (their money waiting for its close)
+  function spentToday(day, id) {
+    const w = get();
+    if (!w || !w.fl) return 0;
+    let n = 0;
+    for (const [k, f] of Object.entries(w.fl)) if (Number(k) <= day) n += peopleSpent(f.co[id], id === 'tenesice' ? f.bank : null);
+    return n;
+  }
   // a player bought a car: one fewer for the people (the players buy first: never refused for it)
   function carBought(id) {
     const w = get();
@@ -273,7 +294,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       out[i * 5] = ((P.ldist[i] & 7) << 5) | (P.place[i] & 31);
       out[i * 5 + 1] = P.act[i];
       out[i * 5 + 2] = P.emo[i * 5];
-      out[i * 5 + 3] = (P.job[i] >= 1 && P.job[i] <= 14 ? 1 : 0) | (P.cash[i] > 1e9 ? 2 : 0) | (P.home[i] === 4 ? 4 : 0) | (f & (pop.FL.famous | pop.FL.mayor | pop.FL.exec) ? 8 : 0) | (f & pop.FL.moving ? 16 : 0) | (f & pop.FL.striking ? 32 : 0);
+      out[i * 5 + 3] = (NPC.working(P.job[i]) ? 1 : 0) | (P.cash[i] > 1e9 ? 2 : 0) | (P.home[i] === 4 ? 4 : 0) | (f & (pop.FL.famous | pop.FL.mayor | pop.FL.exec) ? 8 : 0) | (f & pop.FL.moving ? 16 : 0) | (f & pop.FL.striking ? 32 : 0);
       out[i * 5 + 4] = Math.min(255, Math.max(0, Math.floor((day - P.birth[i]) / 365.25)));
     }
     return out;
@@ -316,6 +337,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const P = w.P, day = w.day;
     const person = (i) => (i >= 0 ? { i, name: w.card(i, day).name } : null);
     const news = q('SELECT day, at, kind, district, text FROM npc_news ORDER BY id DESC LIMIT 40').all();
+    const spent = corp && corp.npcSpent ? corp.npcSpent(now) : {};
     return {
       on, started: true, now, minute: w.minute, first: w.first, active: NPC.activeAt(now, w.first), next: NPC.nextActive(now, w.first),
       nation: { ...NPC.nation, cash: w.nation.cash, debt: w.nation.debt, fund: w.nation.fund.cash + w.nation.fund.bonds, knobs: w.nation.knobs, pending: w.nation.pending, log: w.nation.log.slice(-12), month: w.nation.month, budget: w.cal.publicWorks },
@@ -327,7 +349,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         votes: w.pol.votes.slice(-8).reverse(), council: w.pol.council.slice(-3).reverse(), marches: w.pol.marches.slice(-6)
       },
       labor: { unions: Object.fromEntries(Object.entries(w.lab.unions).map(([id, u]) => [id, { members: u.members, state: u.state, demand: u.demand, offer: u.offer, raise: u.raise, days: u.days, rep: person(u.rep) }])) },
-      companies: NPC.companies.map((id) => { const o = w.orgs[id]; return { id, name: CORP.company(id).name, ceo: person(o ? o.ceo : -1), president: person(o ? o.president : -1), staff: w.staffOf(id).length, ventures: o ? o.ventures.filter((v) => v.stage !== 'closed').map((v) => ({ name: v.name, customers: v.customers, stage: v.stage })) : [] }; }),
+      // (and what the people spent at each in the last 30 days the companies closed: server/core/corp.js npcSpent)
+      companies: NPC.companies.map((id) => { const o = w.orgs[id]; return { id, name: CORP.company(id).name, ceo: person(o ? o.ceo : -1), president: person(o ? o.president : -1), staff: w.staffOf(id).length, spent: spent[id] || 0, ventures: o ? o.ventures.filter((v) => v.stage !== 'closed').map((v) => ({ name: v.name, customers: v.customers, stage: v.stage })) : [] }; }),
       news, talk: (w.talkFeed || []).slice(-20).reverse(), live: liveStats(w), frame: b64(frame(w)), n: P.n
     };
   }
@@ -519,7 +542,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   }
 
   return {
-    on, booted, ensure, wake, due, beforeClose, afterClose, cross, carBought, carStock, watch, town, personCard, policy: policyDto, housekeep, writeAi,
+    on, booted, ensure, wake, due, beforeClose, afterClose, cross, spentToday, carBought, carStock, watch, town, personCard, policy: policyDto, housekeep, writeAi,
     playerRoutes, routes, world: get,
     // (the tests: the minutes and the days worked out now, and what was kept)
     runTo: (m) => tx(() => { runTo(m, Infinity); save('hot'); })

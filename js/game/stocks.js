@@ -48,6 +48,29 @@
   // what buying costs and selling brings, fee included
   function buyAmount(price, shares) { var v = price * shares; return v + fee(v); }
   function sellAmount(price, shares) { var v = price * shares; return v - fee(v); }
+  // An order's move on the price (log: up for a buy, down for a sale; 1% for each `depth` $ of it, the company's
+  // market depth: js/game/corp.js) and the price it fills at for `p` now: half its move on top (a limit order never
+  // worse than its limit). The server fills by it; the page uses it to say what an order will cost.
+  function moveOf(depth, side, shares, p) { return (side === 'buy' ? 1 : -1) * 0.01 * p * shares / Math.max(1, depth || 1e8); }
+  function slipped(depth, o, p) {
+    var at = Math.max(1, Math.round(p * Math.exp(moveOf(depth, o.side, o.shares, p) / 2)));
+    if (o.type === 'limit') return o.side === 'buy' ? Math.min(o.price, at) : Math.max(o.price, at);
+    return at;
+  }
+  // what a buy of `shares` will hold or cost at the price now `p`, fee included (a market order as it slips, a limit
+  // order at its limit, a stop order at its stop and its margin)
+  function buyNeed(depth, type, shares, price, p) {
+    var unit = type === 'market' ? slipped(depth, { side: 'buy', type: type, shares: shares, price: price }, p) : type === 'limit' ? price : Math.ceil(price * (1 + BR.STOCKS.stopMargin));
+    return buyAmount(unit, shares);
+  }
+  // the most shares (up to `most`) a buy can be for `budget` $ at the price now (MAX: the money in hand and the day's
+  // room together)
+  function maxBuy(depth, type, price, p, budget, most) {
+    var lo = 0, hi = Math.max(0, most);
+    if (!(budget > 0) || !(p > 0)) return 0;
+    while (lo < hi) { var mid = Math.ceil((lo + hi) / 2); if (buyNeed(depth, type, mid, price, p) <= budget) lo = mid; else hi = mid - 1; }
+    return lo;
+  }
   // the trading day of a moment (ms), and when it ends
   function dayOf(ms) { return Math.floor(ms / 86400000); }
   function dayEnd(ms) { return (dayOf(ms) + 1) * 86400000; }
@@ -79,9 +102,10 @@
     fee: fee,
     buyAmount: buyAmount,
     sellAmount: sellAmount,
+    moveOf: moveOf, slipped: slipped, buyNeed: buyNeed, maxBuy: maxBuy,
     // what may be bought in a trading day (9:00 to 9:00 Japan time), every company together: the buys filled that day
     // (what they cost, fee included) and the money the day's buy orders still hold
-    dayCap: 80000000,
+    dayCap: 800000000,
     // trades a trading day: every order counts once (an order that waits holds its count; cancelled, it gives it back)
     tradesPerDay: 30,
     // limit and stop orders waiting at once
