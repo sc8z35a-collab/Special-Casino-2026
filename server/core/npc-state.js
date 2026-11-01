@@ -313,7 +313,15 @@ function month(W, day, r, ctx) {
       if (P.flags[i] & FL.welfare) { econ.nationOut(W, 'welfare', P.rent[i]); W.sector.cash += P.rent[i]; W.sector.inNation += P.rent[i]; }
       else econ.toSector(W, i, P.rent[i], true);
     }
-    if (P.vip[i] > day) econ.buy(W, i, day, 'daizin', 'members', Math.round(W.cal.vipFee * econ.priceOf(W, 'daizin:vipFee')), false) || (P.vip[i] = 0);
+    // VIP (DAIZIN): a member's year renewed while they can afford it and still care for it (the dearer, the fewer),
+    // the month's fee paid; and the rich who are vain enough join
+    const vipPrice = econ.priceOf(W, 'daizin:vipFee'), vipFee = Math.round(W.cal.vipFee * vipPrice);
+    if (P.vip[i] > 0) {
+      if (P.vip[i] <= day + 31 && P.cash[i] > vipFee * 24 && r.u() < 0.55 + 0.4 * tr(P, i, T.vanity) - 0.3 * Math.max(0, vipPrice - 1)) P.vip[i] += 365;
+      if (!(P.vip[i] > day) || !econ.buy(W, i, day, 'daizin', 'members', vipFee, false)) P.vip[i] = 0;
+    } else if (P.cash[i] > 300000000 && r.u() < 0.02 * (0.3 + tr(P, i, T.vanity)) / Math.max(0.3, vipPrice)) {
+      if (econ.buy(W, i, day, 'daizin', 'members', vipFee, false)) P.vip[i] = day + 365;
+    }
     if (P.car[i]) econ.buy(W, i, day, 'carowner', 'service', econ.spendAt(W, 'carowner:service', W.cal.service * (0.5 + r.u())), true);
     // the 国民年金 and 国民健康保険 of those not employed (students wait; those with little are let off half)
     if (age >= 18 && age < 60 && !isEmployee(P.job[i]) && P.job[i] !== NPC.job.home) {
@@ -561,7 +569,7 @@ export function die(W, i, day, r, ctx) {
   W.org.vacate(W, i, day);
   if (P.host[i] >= 0) P.host[i] = -1;
   forget(W, i);
-  passHome(P, i);
+  passHome(W, i);
   leaveHousehold(P, i);
   reborn(W, i, day, r, heirs);
   // (the richest of all, through whom an estate with no heirs goes to the market, may have been them)
@@ -626,7 +634,7 @@ export function reborn(W, i, day, r, heirs) {
   } else {
     joinHousehold(P, i, i);
     P.home[i] = HOME.rent;
-    P.rent[i] = 80000 + r.int(40) * 1000;
+    P.rent[i] = Math.round((80000 + r.int(40) * 1000) * (1 + NPC.knobOf(W, 'rentLevel') / 100));
     // (come from elsewhere with what they saved: the country's start-up grant for the young)
     const n = 1500000 + r.int(2000000);
     econ.nationOut(W, 'youth', n);
@@ -651,13 +659,16 @@ function forget(W, i) {
 }
 // The head of a household leaving it (gone, or out of their home): the next of them takes on the home — the one they
 // own, or the rent to pay — instead of living on in it for nothing
-export function passHome(P, i) {
+export function passHome(W, i) {
+  const P = W.P;
   if (P.hh[i] !== i) return;
   const next = P.hnext[i];
   if (next < 0 || P.home[next] !== HOME.family) return;
   if (P.home[i] === HOME.own) { P.home[next] = HOME.own; P.rent[next] = 0; }
-  else { P.home[next] = HOME.rent; P.rent[next] = P.rent[i] > 0 ? P.rent[i] : 90000 + (P.dist[next] === 3 ? 60000 : 0); }
+  else { P.home[next] = HOME.rent; P.rent[next] = P.rent[i] > 0 ? P.rent[i] : rentFor(W, P.dist[next]); }
 }
+// a modest home's rent a month in a district, at the rents' level now
+export const rentFor = (W, d) => Math.round((90000 + (d === 3 ? 60000 : 0)) * (1 + NPC.knobOf(W, 'rentLevel') / 100));
 export function richestOf(P) {
   let top = 0;
   for (let i = 1; i < P.n; i++) if (P.cash[i] > P.cash[top]) top = i;
@@ -693,13 +704,16 @@ function troubles(W, day, r) {
     // sold, what it brings set against the debt — and they must go)
     if (h === HOME.own) {
       if (!(P.debt[i] > econ.quickCap(P, i) * 4 && P.cash[i] < 300000)) continue;
-      const sold = Math.min(P.debt[i], foreclosed(W, i));
+      // (what it brought pays the debt; anything beyond it is theirs)
+      const got = foreclosed(W, i), sold = Math.min(P.debt[i], got);
       P.debt[i] -= sold;
+      P.cash[i] += got - sold;
       W.sum.repaid += sold;
       if (P.debt[i] <= 0) { P.debt[i] = 0; P.dkind[i] = 0; }
       // (the family that lived there rents from now on)
       P.home[i] = HOME.rent;
-      P.rent[i] = 90000 + (P.dist[i] === 3 ? 60000 : 0);
+      P.rent[i] = rentFor(W, P.dist[i]);
+      W.sum.foreclosed = (W.sum.foreclosed || 0) + 1;
       W.events.push({ kind: 'foreclosed', i });
     }
     // someone close with a home to stay with
@@ -709,7 +723,7 @@ function troubles(W, day, r) {
       if (j >= 0 && P.close[i * REL + k] > 110 && (P.home[j] === HOME.own || P.home[j] === HOME.rent) && P.cash[j] > 5000000 && P.host[j] < 0) { host = j; break; }
     }
     if (host >= 0 && r.u() < 0.7) {
-      passHome(P, i);
+      passHome(W, i);
       leaveHousehold(P, i);
       P.home[i] = HOME.stay; P.host[i] = host; P.stay[i] = 0; P.rent[i] = 0; P.ldist[i] = P.dist[host];
       W.sum.staying++;
@@ -726,7 +740,7 @@ function foreclosed(W, i) {
 }
 function goStreet(W, i, day) {
   const P = W.P;
-  if (P.home[i] !== HOME.stay) { passHome(P, i); leaveHousehold(P, i); }
+  if (P.home[i] !== HOME.stay) { passHome(W, i); leaveHousehold(P, i); }
   P.home[i] = HOME.street; P.host[i] = -1; P.rent[i] = 0; P.stay[i] = 0;
   remember(P, i, day, M.street, 200);
   P.emo[i * 5 + E.mood] = clampB(P.emo[i * 5 + E.mood] - 60);
@@ -736,6 +750,6 @@ function goStreet(W, i, day) {
 function setHome(W, i, h, day) {
   const P = W.P;
   P.home[i] = h; P.host[i] = -1; P.stay[i] = 0;
-  P.rent[i] = h === HOME.rent ? 90000 + (P.dist[i] === 3 ? 60000 : 0) : 0;
+  P.rent[i] = h === HOME.rent ? rentFor(W, P.dist[i]) : 0;
   if (P.hh[i] < 0) joinHousehold(P, i, i);
 }

@@ -458,13 +458,13 @@ function stats(W, day) {
       w.days++;
       if (w.days >= 7) { W.coTrend[id] = w.prev ? w.now / w.prev - 1 : 0; w.prev = w.now; w.now = 0; w.days = 0; }
       W.coShare[id] = all ? (tot[id] || 0) / all : 0;
-      // (and the longer view: its last month or so against its last half year, past the week's ups and downs)
-      const e = (W.coEma || (W.coEma = {}))[id] || (W.coEma[id] = { fast: 0, slow: 0, days: 0 });
-      const x = tot[id] || 0;
-      e.days++;
-      if (e.days <= 30) { e.fast = e.slow = (e.slow * (e.days - 1) + x) / e.days; }
-      else { e.fast = e.fast * 29 / 30 + x / 30; e.slow = e.slow * 179 / 180 + x / 180; }
-      (W.coTrendLong || (W.coTrendLong = {}))[id] = e.days > 45 && e.slow > 0 ? e.fast / e.slow - 1 : 0;
+      // (and the longer view: its last 30 days against the 30-day average of its last half year — sums, so that a
+      // company that bills once a month is not read as falling for the rest of it)
+      const h = (W.coDays || (W.coDays = {}))[id] || (W.coDays[id] = []);
+      h.push(Math.round(tot[id] || 0));
+      if (h.length > 180) h.shift();
+      const last30 = h.slice(-30).reduce((a, b) => a + b, 0), usual30 = h.reduce((a, b) => a + b, 0) / h.length * 30;
+      (W.coTrendLong || (W.coTrendLong = {}))[id] = h.length >= 90 && usual30 > 0 ? last30 / usual30 - 1 : 0;
     }
   }
   s.mood = Math.round(mood / P.n);

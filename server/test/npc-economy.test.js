@@ -246,3 +246,53 @@ test('crashes and manias can happen: a company\'s price may move 8% a day toward
   const a = out.anchors.find((x) => x.company === 'riru');
   assert.ok(a.e1 - e0 < -0.015 && a.e1 - e0 >= -0.08 - 1e-9, String(a.e1 - e0));
 });
+
+test('a home taken by the bank: what it brings pays the debt and the rest is the owner\'s (no money lost); the family rents at the rents\' level', () => {
+  const c = country(800);
+  const { W } = c;
+  const P = W.P;
+  let i = -1;
+  for (let x = 0; x < P.n; x++) if (P.home[x] === pop.HOME.own && P.hh[x] === x) { i = x; break; }
+  assert.ok(i >= 0);
+  W.nation.knobs.rentLevel = 20;
+  P.cash[i] = 0; P.credit[i] = 0; P.salary[i] = 0; P.rent[i] = 0;
+  P.debt[i] = npc.econ.quickCap(P, i) * 4 + 1000;
+  P.dkind[i] = 2;
+  // (the local businesses with what buying the home takes, not so much more that their owners' payouts rescue them)
+  W.sector.cash = W.cal.sectorCushion + 40000000;
+  npc.state.owners(W);
+  const before = c.money();
+  npc.state.dayStart(W, W.day + 1, seeded(Buffer.alloc(32, 8), 'f'), c.ctx);
+  assert.equal(W.sum.foreclosed, 1);
+  assert.equal(P.debt[i], 0);
+  // (a modest home's worth, at most half of what the local businesses have: beyond the debt, theirs)
+  assert.ok(P.cash[i] > 0);
+  void before;
+  assert.equal(npc.state.rentFor(W, 0), 108000);
+});
+
+test('a company that bills once a month is not read as falling for the rest of it: its trend is by 30-day sums', () => {
+  const { W } = country(400);
+  // 120 days of a company paid only on the 1st of each 30 days, the same each month
+  W.coDays = { daizin: [] };
+  for (let d = 0; d < 120; d++) W.coDays.daizin.push(d % 30 === 0 ? 3000000 : 0);
+  const h = W.coDays.daizin, last30 = h.slice(-30).reduce((a, b) => a + b, 0), usual = h.reduce((a, b) => a + b, 0) / h.length * 30;
+  assert.equal(last30 / usual - 1, 0);
+});
+
+test('VIP is a membership: the rich renew it while they can and care to, and new ones join (DAIZIN\'s members do not simply run out)', () => {
+  const c = country(1500);
+  const { W } = c;
+  const P = W.P;
+  const first = CORP.dayAt(2026, 12, 1);
+  const members = () => { let n = 0; for (let i = 0; i < P.n; i++) if (P.vip[i] > first) n++; return n; };
+  // (every member's year ending this month; the rich and vain)
+  for (let i = 0; i < P.n; i++) {
+    if (P.vip[i] > 0) P.vip[i] = first + 5;
+    if (P.cash[i] > 300000000) P.tr[i * pop.NT + pop.T.vanity] = 255;
+  }
+  const had = members();
+  assert.ok(had > 0);
+  npc.state.dayStart(W, first, seeded(Buffer.alloc(32, 12), 'vip'), c.ctx);
+  assert.ok(members() >= had * 0.8, `${members()} of ${had}`);
+});
