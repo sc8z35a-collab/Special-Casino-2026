@@ -1231,7 +1231,9 @@ function dividends(w, s, p, d) {
   let held = 0;
   for (const [holder, shares] of Object.entries(s.hold.by || {})) {
     const h = w.co[holder], part = Math.round(n * shares / Math.max(1e-9, out));
-    if (part > 0) post(h, [['cash', part], ['affil', -part]], 'interestIn');
+    // (a return of the investment as far as it goes; beyond it, 受取配当金)
+    const back = Math.min(part, Math.max(0, h.bal.affil || 0));
+    if (part > 0) post(h, [['cash', part], ['affil', -back], ['nDividend', -(part - back)]], 'interestIn');
     held += Math.max(0, part);
   }
   // the rest to the people holding it (and the players, whose part their side pays: server/core/stocks.js)
@@ -1268,6 +1270,47 @@ function taxes(w, s, p, d, final) {
   if (n) post(s, [['tax', n], ['taxdue', -n]]);
   s.tax.booked = due;
 }
+// what a company's 未払法人税等 should be on day `d` (closed): this year's booked less its advance, and last year's
+// rest while it is still to be paid (to the end of the year's second month)
+export function taxOwed(s, d) {
+  const fyMonth = ((CORP.ymd(d).m - 4 + 12) % 12) + 1;
+  const last = s.tax.last || {};
+  const owed = last.fy && (fyMonth < CORP.tax.finalMonths || (fyMonth === CORP.tax.finalMonths && !CORP.isMonthEnd(d)));
+  return (s.tax.booked || 0) - (s.tax.interim || 0) + (owed ? (last.total || 0) - (last.interim || 0) : 0);
+}
+// a holding's part of a company's net assets (what the 持分法 carries it at)
+function stakeValue(t, shares) { return Math.max(0, Math.round(equityOf(t) * shares / Math.max(1e-9, outstanding(t)))); }
+// Once, for a world kept before the backer's stake was carried: its investment set at its part of the studio's net
+// assets (the difference from what it carried, a 過年度 correction of the retained earnings; no cash moves)
+export function repairStakes(w) {
+  const fixed = [];
+  for (const s of Object.values(w.co)) {
+    for (const [held, shares] of Object.entries((s.hold && s.hold.own) || {})) {
+      const t = w.co[held];
+      if (!t) continue;
+      const gap = stakeValue(t, shares) - (s.bal.affil || 0);
+      if (!gap) continue;
+      post(s, [['affil', gap], ['retained', -gap]]);
+      fixed.push({ id: s.id, n: gap });
+    }
+  }
+  (w.fixes || (w.fixes = {})).affil = true;
+  return fixed;
+}
+// Once, for a world kept before the made-up year's tax was no longer paid: what it paid of a tax never booked put
+// right (the 未払法人税等 back to what is owed, the same off the retained earnings: a 過年度 correction, no cash moves)
+export function repairTaxes(w) {
+  const fixed = [];
+  for (const s of Object.values(w.co)) {
+    if (s.dead || !s.tax) continue;
+    const gap = taxOwed(s, w.day) - (s.bal.taxdue || 0);
+    if (gap <= 0) continue;
+    post(s, [['retained', gap], ['taxdue', -gap]]);
+    fixed.push({ id: s.id, n: gap });
+  }
+  (w.fixes || (w.fixes = {})).tax = true;
+  return fixed;
+}
 // what of a parent's income is its child's (consolidated, paid up or made good): the child pays its own taxes on it
 const childIncome = (sums) => (sums['r:wazima'] || 0) - (sums['c:wazima'] || 0) + (sums.nSubsidiary || 0) - (sums.eSubsidiary || 0);
 // paid: half of last year's in advance in the year's 8th month (中間納付), the rest in the 2nd month after it ended
@@ -1281,7 +1324,9 @@ function payTaxes(w, s, p, d) {
     s.tax.interim = n;
   }
   if (fyMonth === CORP.tax.finalMonths) {
-    const left = (s.tax.last.total || 0) - (s.tax.last.interim || 0);
+    // (a year the books never had — the one made up before the first, its `total` only for the first advance — owes
+    // nothing: paying it took cash for a tax never booked, a 未払法人税等 below nothing kept for good)
+    const left = s.tax.last.fy ? (s.tax.last.total || 0) - (s.tax.last.interim || 0) : 0;
     if (left) post(s, [['taxdue', left], ['cash', -left]], 'taxes');
     // (a refund, when the advance was more than the year's: the country pays it back)
     if (w.ext && left && !abroad(s)) w.ext.taxes.push({ company: s.id, n: left });
@@ -2366,10 +2411,10 @@ export function closeDay(w, d, flows, ch) {
   // what each company's people decided in their meetings (server/core/npc-org.js): their budgets, their hiring, their
   // mood, their research
   if (npc && npc.ops) for (const o of npc.ops) decided(w, o, d, out, ch);
+  // (every company's day begun before any posts to another's: a studio's dividends to its backer, a day's trade)
+  for (const id of ORDER) { w.co[id].today = 0; w.co[id].per.d = {}; }
   for (const id of ORDER) {
     const s = w.co[id], p = PROFILES.get(id);
-    s.today = 0;
-    s.per.d = {};
     // (a company that failed: its books are closed, nothing more happens to it — what the country still sent it, its
     // public works and the like, the local businesses take instead)
     if (s.dead) {
@@ -2490,7 +2535,9 @@ export function closeDay(w, d, flows, ch) {
       // the backer's part of its studio's quarter (持分法)
       for (const [held, shares] of Object.entries(s.hold.own || {})) {
         const t = w.co[held];
-        const part = Math.round((t.qNet || 0) * shares / Math.max(1e-9, outstanding(t)));
+        let part = Math.round((t.qNet || 0) * shares / Math.max(1e-9, outstanding(t)));
+        // (a loss takes the investment to nothing at most: 持分法's losses stop there)
+        if (part < 0) part = -Math.min(-part, Math.max(0, s.bal.affil || 0));
         if (part > 0) post(s, [['affil', part], ['nEquity', -part]]);
         else if (part < 0) post(s, [['eEquity', -part], ['affil', part]]);
       }
@@ -2498,7 +2545,9 @@ export function closeDay(w, d, flows, ch) {
     }
     // (a child's day and month: its parent's — WAZIMA's, MAGITA's, which closes after it)
     if (p.parent) consolidate(w, s, p, d);
-    if (CORP.isMonthEnd(d) && p.parent) toParent(w, s, p, d);
+    // (and, its month's profit paid up after its cash was seen to, that seen to again: else it ran the month below
+    // nothing — WAZIMA paying MAGITA more than it kept)
+    if (CORP.isMonthEnd(d) && p.parent) { toParent(w, s, p, d); treasury(w, s, p, d, out); }
     s.bal.retained += s.today;
     for (const k of ['m', 'q', 'y']) s.sd[k] += outstanding(s);
     if (CORP.isQuarterEnd(d)) s.qNet = CORP.plOf(s.per.q).net;
@@ -2701,7 +2750,7 @@ export function boot(key, launch, { years = 2, prices = {}, onDay = null } = {})
     s.today = 0;
   }
   // the shares: a listed company's book price is its market price (or else the profile's)
-  for (const p of CORP.companies) {
+  const count = (p) => {
     const s = w.co[p.id], v = fairValue(s, p, w), price = prices[p.id] || p.price || 10000;
     s.sh.issued = Math.max(1000, Math.round(v / price));
     s.sh.founders = Math.round(s.sh.issued * (p.founders || 0));
@@ -2711,7 +2760,8 @@ export function boot(key, launch, { years = 2, prices = {}, onDay = null } = {})
     s.sd = { m: s.sh.issued * (launch - CORP.monthStart(launch - 1)), q: s.sh.issued * (launch - CORP.quarterStart(fy, q)), y: s.sh.issued * (launch - CORP.fyStart(fy)) };
     s.mkt = { e: Math.log(price), fair: price };
     if (s.guide) { s.guide.eps = Math.round(s.guide.net / s.sh.issued); s.guide.dps = Math.max(0, Math.round(p.payout * Math.max(0, s.guide.expected.net * 0.95) / s.sh.issued)); setDividend(s, p, s.guide); }
-  }
+  };
+  for (const p of CORP.companies) count(p);
   // the backer's stake in its studio
   for (const p of CORP.companies) {
     const deal = p.partner;
@@ -2720,7 +2770,14 @@ export function boot(key, launch, { years = 2, prices = {}, onDay = null } = {})
     const shares = Math.round(st.sh.issued * deal.stake);
     s.hold.own = { [deal.with]: shares };
     st.hold.by = { [p.id]: shares };
+    // (bought: at its part of the studio's net assets, the 持分法's 投資有価証券 from the first day — else what the studio
+    // paid it and what it lost were taken off nothing, below nothing)
+    const v = stakeValue(st, shares);
+    if (v > 0) post(s, [['affil', v], ['cash', -v]], 'bondsBuy');
+    // (its own shares counted again with the stake in its books: its book price still the market's)
+    count(p);
   }
+  w.fixes = { tax: true, affil: true };
   // the per-share figures of the made-up periods, now that the shares are counted
   for (const r of hist.periods) {
     const s = w.co[r.company];

@@ -272,3 +272,42 @@ test('MAGITA struggling: $3M more on every car but the オンヴォーロ, on it
   const row = site.products.find((x) => x.id === 'nissan-gt-r');
   assert.deepEqual([row.surcharge, row.buy, row.price], [3000000, 33000000, 37000000]);
 });
+
+test('the year made up before the first is never paid as if booked; a world that paid it has it put right once, off its retained earnings', () => {
+  const key = Buffer.alloc(32, 7), launch = Math.floor(Date.UTC(2026, 10, 2) / 86400000);
+  const { world: w } = model.boot(key, launch, { years: 0, prices: {} });
+  // (its first May passed: what it owes is this year's booked tax, nothing of the made-up year's)
+  for (const s of Object.values(w.co)) assert.equal(s.bal.taxdue || 0, model.taxOwed(s, w.day), s.id);
+  // as a world kept before: the made-up year's tax paid in May, below nothing since
+  const s = w.co.magita, paid = s.tax.last.total, cash = s.bal.cash, retained = s.bal.retained;
+  s.bal.taxdue -= paid; s.bal.cash -= paid;
+  const fixed = model.repairTaxes(w);
+  assert.deepEqual(fixed, [{ id: 'magita', n: paid }]);
+  assert.equal(s.bal.taxdue, model.taxOwed(s, w.day));
+  assert.equal(s.bal.retained, retained - paid);
+  assert.equal(s.bal.cash, cash - paid);
+  assert.equal(model.assetsOf(s), model.liabilitiesOf(s) + model.equityOf(s));
+  assert.equal(w.fixes.tax, true);
+  assert.deepEqual(model.repairTaxes(w), []);
+});
+
+test('ICE carries its RIRU stake from the first day (持分法), never below nothing; a world kept before has it carried once', () => {
+  const key = Buffer.alloc(32, 7), launch = Math.floor(Date.UTC(2026, 10, 2) / 86400000), ch = model.chance(key);
+  const { world: w } = model.boot(key, launch, { years: 0, prices: {} });
+  const ice = w.co.ice, riru = w.co.riru, shares = ice.hold.own.riru;
+  const part = (t) => Math.round(model.equityOf(t) * shares / model.outstanding(t));
+  assert.ok(Math.abs(ice.bal.affil - part(riru)) <= 1);
+  assert.deepEqual(w.fixes, { tax: true, affil: true });
+  // carried at nothing: the studio's dividends are 受取配当金 then, the investment never below nothing
+  ice.bal.retained -= ice.bal.affil; ice.bal.affil = 0;
+  for (let d = launch; d < launch + 40; d++) { model.closeDay(w, d, {}, ch); assert.ok((ice.bal.affil || 0) >= 0, `day ${d}: ${ice.bal.affil}`); }
+  assert.ok((ice.per.y.nDividend || 0) > 0);
+  // as a world kept before: nothing carried
+  ice.bal.retained -= ice.bal.affil || 0; ice.bal.affil = 0; delete w.fixes.affil;
+  const before = ice.bal.retained, fixed = model.repairStakes(w);
+  assert.equal(fixed.length, 1);
+  assert.equal(ice.bal.affil, part(riru));
+  assert.equal(ice.bal.retained, before + part(riru));
+  assert.equal(model.assetsOf(ice), model.liabilitiesOf(ice) + model.equityOf(ice));
+  assert.deepEqual(model.repairStakes(w), []);
+});

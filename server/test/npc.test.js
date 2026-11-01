@@ -153,6 +153,19 @@ test('the players\' slot wins and quest rewards and YOSIDA\'s gacha bill come ou
   assert.ok(Math.abs(c.money() - before) < 2000, `${c.money() - before}`);
 });
 
+test('WAZIMA pays MAGITA its month and still never runs below nothing; no company keeps a tax it never booked', () => {
+  const c = country(2000), w = c.w;
+  for (const s of Object.values(w.co)) assert.equal(s.bal.taxdue || 0, corpModel.taxOwed(s, w.day), s.id);
+  let low = Infinity;
+  for (let k = 0; k < 62; k++) {
+    c.days(1);
+    low = Math.min(low, w.co.wazima.bal.cash || 0);
+    for (const s of Object.values(w.co)) if (!s.dead) assert.equal(s.bal.taxdue || 0, corpModel.taxOwed(s, w.day), `${s.id} day ${w.day}`);
+  }
+  assert.ok(w.co.wazima.toParent && w.co.wazima.toParent.all > 0);
+  assert.ok(low >= 0, `WAZIMA's cash fell to ${low}`);
+});
+
 test('WAZIMA and MY WAY get their people even when the country was read before they were in the companies\' world, or kept an empty organisation of theirs', () => {
   const c = country(2000), W = c.W, P = W.P, w = c.w;
   // (as a country kept before they came: their people in other work, an organisation of theirs made empty or none)

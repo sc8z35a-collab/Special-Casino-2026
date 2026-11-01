@@ -84,6 +84,14 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   // past, the others' terms with it found again, its rows written, a listed one's price centre where its base is.
   function migrate() {
     const w0 = get();
+    if (!w0.fixes || !w0.fixes.tax) {
+      const fixed = change((w) => model.repairTaxes(w));
+      if (fixed.length) console.log('corp: taxes put right', fixed.map((x) => `${x.id} ${x.n}`).join(', '));
+    }
+    if (!w0.fixes || !w0.fixes.affil) {
+      const fixed = change((w) => model.repairStakes(w));
+      if (fixed.length) console.log('corp: stakes carried', fixed.map((x) => `${x.id} ${x.n}`).join(', '));
+    }
     if (CORP.companies.every((p) => w0.co[p.id])) return;
     const r = change((w) => model.addCompanies(key, w, Object.fromEntries(base)));
     if (!r) return;
