@@ -900,8 +900,40 @@ function studioCountry(w, s, p, d, ch, out, flows) {
   }
   cashSale(s, 'game', game);
   cashSale(s, 'live', live);
-  s.pr.game = (s.pr.game || 0) * 29 / 30 + game / 30;
-  s.pr.live = (s.pr.live || 0) * 29 / 30 + live / 30;
+  // (the day's averages: decayed with the others as the day began — decayed here too, they read half of what they were)
+  s.pr.game = (s.pr.game || 0) + game / 30;
+  s.pr.live = (s.pr.live || 0) + live / 30;
+  // the world outside: its games sell abroad as they always did (each title along its curve, the older ones), as much
+  // as the country has not bought of late — paid later, money coming in, the stores abroad taking their part
+  {
+    const season = seasonOf(p, d), econ = econOf(w, p.beta), plan = [];
+    let world = 0;
+    for (const t of s.titles) {
+      const line = lineOf(p, t.line), age = d - t.day, n = t.life * (soldShare(line, age) - soldShare(line, age - 1)) * season;
+      plan.push([t, n]);
+      world += n;
+    }
+    const cat = s.catalog * season * Math.sqrt(econ) / YEAR;
+    world += cat;
+    const k = world > 0 ? Math.max(0, 1 - (s.pr.game || 0) / world) : 0;
+    let abroadGame = 0;
+    for (const [t, n] of plan) {
+      const m = take(s, 'otitle:' + t.id, n * k);
+      if (m <= 0) continue;
+      t.sold += m;
+      t.units += Math.max(0, Math.round(t.sold / t.price) - t.units);
+      abroadGame += m;
+    }
+    abroadGame += take(s, 'ocatalog', cat * k);
+    if (abroadGame > 0) {
+      post(s, [['ar', abroadGame], ['r:game', -abroadGame]]);
+      s.recv += abroadGame;
+      const fee = take(s, 'oplatform', abroadGame * p.platform);
+      if (fee > 0) { post(s, [['c:platform', fee], ['ap', -fee]]); s.owe['*'] = (s.owe['*'] || 0) + fee; }
+      const po = s.po || (s.po = {});
+      po.game = (po.game || 0) + abroadGame / 30;
+    }
+  }
   for (const [key, n] of Object.entries(npc.s || {})) cashSale(s, key, Math.round(n));
   const stores = take(s, 'platform', (game + live) * p.platform);
   const servers = take(s, 'servers', live * (p.live ? p.live.server : 0));
@@ -1509,7 +1541,7 @@ function expectCountry(w, s, p, d) {
     if (cost) add('c:' + k, v * cost);
   }
   if (p.model === 'studio') {
-    add('c:platform', ((s.pr.game || 0) + (s.pr.live || 0)) * p.platform);
+    add('c:platform', ((s.pr.game || 0) + (s.pr.live || 0) + ((s.po && s.po.game) || 0)) * p.platform);
     for (const t of s.titles) { const line = lineOf(p, t.line), age = d - t.day; if (age < CURVE.years * YEAR) add('c:amort', t.cost * (writtenShare(line, age) - writtenShare(line, age - 1))); }
     if (p.contract) { add('c:contract', people * p.makers * contractShare(s, p)); add('r:contract', PROFILES.get(p.partner.with).partner.fee * 12 / YEAR); }
     if (p.partner && p.partner.role === 'backer') add('sPartner', p.partner.budget / YEAR);
