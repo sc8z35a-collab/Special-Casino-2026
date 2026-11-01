@@ -203,3 +203,30 @@ test('the server: a spin\'s win beyond its bet is the treasury\'s, a reward pays
   const q = await s.call('GET', '/api/quests', { token: a.token });
   assert.equal(q.feeRate, 0.1);
 });
+
+test('the operator site: a company\'s day so far — the day\'s plan, and the players\' money of today as it comes, operators only', async (t) => {
+  let now = START;
+  const s = await startServer({ clock: () => now, operators: ['boss'], corpHistory: 0 });
+  t.after(() => s.stop());
+  const boss = await s.register('boss'), p = await s.register('Spender');
+  assert.equal((await s.call('GET', '/api/ops/corp/today?c=dtrade', { token: p.token })).status, 403);
+  assert.equal((await s.call('GET', '/api/ops/corp/today?c=nope', { token: boss.token })).error.code, 'bad_company');
+  await s.call('GET', '/api/ops/corp', { token: boss.token });
+  let r = await s.call('GET', '/api/ops/corp/today?c=dtrade', { token: boss.token });
+  assert.equal(r.today.day, Math.floor(START / 86400000));
+  assert.equal(r.today.start, r.today.day * 86400000);
+  assert.ok(r.today.plan.sales > 0 && r.today.plan.op > 0, JSON.stringify(r.today.plan));
+  assert.equal(r.today.players, 0);
+  // the players' money of today, as it comes: the exchange fee at once, the spins' lost bets from memory
+  s.setUser(p.me.id, { tokens: 1000000, dollars: 0 });
+  await s.call('POST', '/api/sell', { token: p.token, body: { amount: 10000 } });
+  let lost = 0;
+  for (let i = 0; i < 10; i++) {
+    const x = await s.call('POST', '/api/spin', { token: p.token, body: { bet: 1000 } });
+    lost += Math.max(0, 1000 - (x.result.total || 0) - (x.result.charm ? x.result.charm.back : 0)) * P;
+  }
+  now += 60000;
+  r = await s.call('GET', '/api/ops/corp/today?c=dtrade', { token: boss.token });
+  assert.ok(r.today.players >= RULES.casino.exchangeFee + lost, `${r.today.players}`);
+  assert.equal(r.now, now);
+});

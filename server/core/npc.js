@@ -19,6 +19,7 @@ import * as pop from './npc-pop.js';
 import * as text from './npc-text.js';
 import { createAi } from './npc-ai.js';
 import { LISTED_IDS } from './npc-market.js';
+import { peopleSpent } from './corp-model.js';
 
 const MIN = 60000;
 const MAX_TICKS = 240;               // minutes worked out in one wake at most (the rest the next)
@@ -245,6 +246,14 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     if (!w || !LISTED_IDS.includes(id)) return 0;
     const [n] = w.market.cross(w, id, side, shares, price);
     if (n > 0) save('hot');
+    return n;
+  }
+  // what the people have spent at a company so far on the companies' day `day` (their money waiting for its close)
+  function spentToday(day, id) {
+    const w = get();
+    if (!w || !w.fl) return 0;
+    let n = 0;
+    for (const [k, f] of Object.entries(w.fl)) if (Number(k) <= day) n += peopleSpent(f.co[id], id === 'tenesice' ? f.bank : null);
     return n;
   }
   // a player bought a car: one fewer for the people (the players buy first: never refused for it)
@@ -521,7 +530,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   }
 
   return {
-    on, booted, ensure, wake, due, beforeClose, afterClose, cross, carBought, carStock, watch, town, personCard, policy: policyDto, housekeep, writeAi,
+    on, booted, ensure, wake, due, beforeClose, afterClose, cross, spentToday, carBought, carStock, watch, town, personCard, policy: policyDto, housekeep, writeAi,
     playerRoutes, routes, world: get,
     // (the tests: the minutes and the days worked out now, and what was kept)
     runTo: (m) => tx(() => { runTo(m, Infinity); save('hot'); })

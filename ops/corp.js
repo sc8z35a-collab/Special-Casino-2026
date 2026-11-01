@@ -21,7 +21,7 @@ var OpsCorp = (function () {
   var NEWS = { results: '決算', guidance: '業績予想', revise: '予想修正', dividend: '配当', release: '発売', hit: 'ヒット', flop: '不振', start: '開発開始',
     delay: '発売延期', cancel: '開発中止', update: '大型更新', week: '週間', hire: '採用', loan: '借入', support: '開発援助', rebate: '販売奨励金', tie: '友好度', lab: '研究開発', surcharge: '値上げ',
     garage: 'ガレージ契約料', staff: '人員', tech: '技術開発', quest: 'クエスト手数料', deal: '価格交渉' };
-  var st = { view: null, request: null, toast: null, at: '', tab: 'top', mode: 'q', sheet: 'pl', metric: 'sales', all: null, sites: {}, gen: 0 };
+  var st = { view: null, request: null, toast: null, at: '', tab: 'top', mode: 'q', sheet: 'pl', metric: 'sales', all: null, sites: {}, gen: 0, today: {} };
 
   /* ------------------------------------------------------------------ small things --- */
   function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined && text !== null) n.textContent = text; return n; }
@@ -175,6 +175,59 @@ var OpsCorp = (function () {
     return box;
   }
 
+  /* ------------------------------------------------------------- today, live --- */
+  // The business day so far, run on second by second: the day's expected sales and profits (as the managers see them
+  // now) by the part of the day gone, with the players' and the people's money as it has actually come in place of
+  // what they usually spend by now (asked again every half minute while the site is open). The day's books are made
+  // at 9:00; these are its running figures.
+  var todayTimer = 0, TODAY_ASK = 30000;
+  function todayFigures(t, now) {
+    var f = Math.max(0, Math.min(1, (now - t.start) / 86400000)), live = t.players + t.people, extra = live - t.usual * f;
+    var rest = Math.max(0, t.plan.sales - t.usual), sales = rest * f + live;
+    var m = t.plan.sales > 0 ? Math.max(0, Math.min(1, t.plan.op / t.plan.sales)) : 0, n = t.plan.sales > 0 ? Math.max(0, Math.min(1, t.plan.net / t.plan.sales)) : 0;
+    return { f: f, sales: sales, op: t.plan.op * f + extra * m, net: t.plan.net * f + extra * n, live: live };
+  }
+  function todayPanel(id, p) {
+    var pt = panel('本日の稼ぎ（リアルタイム）', '営業日の9:00から・確定は9:00の締め');
+    var tiles = el('div', 'corp-tiles corp-today');
+    var cells = [stat(p.salesName || '売上高', '—', ''), stat('営業利益', '—', ''), stat('当期純利益', '—', ''), stat('プレイヤー・市民の支出（実績）', '—', '')];
+    cells.forEach(function (c) { tiles.appendChild(c); });
+    pt.appendChild(tiles);
+    var note = el('p', 'muted corp-note', '');
+    pt.appendChild(note);
+    function show() {
+      var t = st.today[id];
+      if (!t || !t.data) { note.textContent = '読み込み中…'; return; }
+      var d = t.data, x = todayFigures(d, Date.now() + skew);
+      // (to the dollar: they move every second)
+      var put = function (c, v, sub) { c.querySelector('b').textContent = (v < 0 ? '−$' : '$') + C().fmt.group(Math.abs(Math.round(v))); c.classList.toggle('neg', v < 0); var s = c.querySelector('small') || c.appendChild(el('small', 'muted')); s.textContent = sub; };
+      put(cells[0], x.sales, '今日の見込み ' + money(d.plan.sales));
+      put(cells[1], x.op, '今日の見込み ' + money(d.plan.op));
+      put(cells[2], x.net, '今日の見込み ' + money(d.plan.net));
+      put(cells[3], x.live, 'プレイヤー ' + money(d.players) + '・市民 ' + money(d.people) + '（いつもは1日 ' + money(d.usual) + '）');
+      note.textContent = '経過 ' + (x.f * 100).toFixed(1) + '%。今日の見込み（経営陣の予想）を経過時間で積み上げ、プレイヤーと市民のお金は実際に入った額で数えています（30秒ごとに更新）。締めの決算とは少し違うことがあります。';
+    }
+    function askToday() {
+      if (!st.request) return;
+      st.request('GET', '/api/ops/corp/today?c=' + encodeURIComponent(id)).then(function (r) {
+        if (r && r.now) skew = r.now - Date.now();
+        if (r && r.today) st.today[id] = { data: r.today, at: Date.now() };
+        show();
+      }, function () { /* (kept: the last figures run on) */ });
+    }
+    var have = st.today[id];
+    if (!have || Date.now() - have.at > TODAY_ASK) askToday();
+    show();
+    if (todayTimer) clearInterval(todayTimer);
+    var ticks = 0;
+    todayTimer = setInterval(function () {
+      if (!pt.isConnected) { clearInterval(todayTimer); todayTimer = 0; return; }
+      if (++ticks % (TODAY_ASK / 1000) === 0) askToday();
+      show();
+    }, 1000);
+    return pt;
+  }
+
   /* --------------------------------------------------------------------- asking --- */
   function ask() {
     if (!st.request) return;
@@ -315,6 +368,7 @@ var OpsCorp = (function () {
   // トップ: where it stands now, the year's plan, its days in a chart, what players spent there and its latest news
   function pageTop(body, r, p) {
     var m = r.summary, sv = r.state;
+    body.appendChild(todayPanel(p.id, p));
     var tiles = el('div', 'corp-tiles');
     tiles.appendChild(stat(p.salesName || '売上高', money(m.ttm.sales), '直近4四半期'));
     tiles.appendChild(stat('営業利益', money(m.ttm.op), '直近4四半期', m.ttm.op < 0 ? 'neg' : ''));

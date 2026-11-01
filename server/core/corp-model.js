@@ -585,7 +585,7 @@ function peopleMoney(w, s, p, d, npc) {
 // What the people spent at a company on a day (their flows of it, server/core/npc-econ.js: its streams, the products,
 // games and running games bought of it, its older games, what their bets lost at the casino; the bank's interest
 // and fees too), for the companies' books to show
-function peopleSpent(co, bank) {
+export function peopleSpent(co, bank) {
   let n = 0;
   if (co) {
     for (const v of Object.values(co.s || {})) n += v;

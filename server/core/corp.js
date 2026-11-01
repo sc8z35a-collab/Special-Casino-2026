@@ -425,6 +425,22 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     };
   }
 
+  // A company's business day so far (9:00 to 9:00 Japan time, closed at its end): what the whole day is expected to
+  // bring as its managers see it now (server/core/corp-model.js expectDay), what the players and the people usually
+  // spend there in a day (the last 30 closed), and what they have actually spent today — the day's row, what waits in
+  // memory, the people's money waiting for the close. The site works the running figures out from them every second.
+  function today(id, now = clock()) {
+    const w = get();
+    if (!w || !w.co[id]) return null;
+    const s = w.co[id], p = model.PROFILES.get(id), day = Math.floor(now / 86400000);
+    const pl = CORP.plOf(model.expectDay(w, s, p, day));
+    const recent = q('SELECT data FROM corp_days WHERE company = ? AND day >= ?').all(id, day - 30).map((r) => JSON.parse(r.data));
+    const usual = recent.length ? Math.round(recent.reduce((n, x) => n + (x.players || 0) + (x.npc || 0), 0) / recent.length) : 0;
+    const row = q('SELECT data FROM corp_flows WHERE day = ?').get(day), mem = pending.get(day);
+    const players = (row ? spentAt(JSON.parse(row.data), id) : 0) + (mem ? spentAt(mem, id) : 0);
+    const people = npc && npc.spentToday ? npc.spentToday(day, id) : 0;
+    return { day, start: day * 86400000, plan: { sales: Math.round(pl.sales), op: Math.round(pl.op), net: Math.round(pl.net) }, usual, players, people, closed: w.day };
+  }
   // how likely its development is to succeed now (as server/core/corp-model.js tech works it out)
   function techChance(s, p) {
     const size = Math.max(0.2, Math.min(3, s.n / Math.max(1, p.staff))), spend = Math.max(0.2, Math.min(3, (s.budget.rd || 0) / Math.max(1, p.rd.amount)));
@@ -440,6 +456,14 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
         questFee: model.questFeeOf(w), vipWeek: model.vipWeekOf(w), gov: w.gov || null,
         companies: CORP.companies.filter((c) => w.co[c.id]).map((c) => summary(c.id, now)), ties: tiesOf(w).filter((t) => w.co[t.a] && w.co[t.b]) };
       return { ...partOf(all, req.query.get('rev')), now };
+    },
+    // a company's day so far, asked again every half minute while its site is open (small: never in the site's `rev`)
+    'GET /api/ops/corp/today': (req, u) => {
+      see(u);
+      const id = String(req.query.get('c') || '');
+      if (!CORP.company(id)) throw new ApiError(400, 'bad_company', '会社を選んでください');
+      const now = clock();
+      return { today: get() ? today(id, now) : null, now };
     },
     // one company's official site: everything about it
     'GET /api/ops/corp/company': (req, u) => {
@@ -461,5 +485,5 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     q('DELETE FROM corp_flows WHERE day < ?').run(day - KEEP_FLOWS);
   }
 
-  return { ensure, booted, closesAt, close, anchor, dps, flow, tally, flush, sold, prize, coinsBought, questFee, npcSpent, traded, surcharge, surcharges, garageFee, garageReady, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8 };
+  return { ensure, booted, closesAt, close, anchor, dps, flow, tally, flush, sold, prize, coinsBought, questFee, npcSpent, today, traded, surcharge, surcharges, garageFee, garageReady, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8 };
 }
