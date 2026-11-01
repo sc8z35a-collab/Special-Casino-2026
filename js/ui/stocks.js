@@ -14,7 +14,8 @@
   var UP = '#28c76f', DOWN = '#f0506e', GRID = 'rgba(160,178,205,.16)', TEXT = '#9fb0c8', MA = ['#f5b941', '#9b8cff'];
   var TYPE = { market: '成行', limit: '指値', stop: '逆指値' };
   var STATUS = { filled: '約定', canceled: '取消', expired: '失効', failed: '不成立' };
-  var NEWS = { results: '決算', guidance: '予想', revise: '修正', dividend: '配当', release: '発売', hit: 'ヒット', flop: '不振', start: '開発', delay: '延期', cancel: '中止', update: '更新', week: '販売', hire: '採用', support: '援助' };
+  var NEWS = { results: '決算', guidance: '予想', revise: '修正', dividend: '配当', release: '発売', hit: 'ヒット', flop: '不振', start: '開発', delay: '延期', cancel: '中止', update: '更新', week: '販売', hire: '採用', support: '援助',
+    ip: 'ブランド', char: '新キャラ', license: 'IP契約', bankrupt: '倒産' };
   var LABEL = { '1h': '1H', '1d': '1D', '1w': '1W', '1m': '1M', '1y': '1Y', all: 'ALL' };
   var root, canvas, ui = {}, st = null, generation = 0, renewTimer = 0, refreshTimer = 0, raf = 0;
 
@@ -543,7 +544,9 @@
     // (a market buy at the price it will slip to; a stop buy at its stop)
     if (st.side === 'buy' && st.type === 'market' && q) unit = S.slipped(depth(), { side: 'buy', type: 'market', shares: shares }, q.price);
     var value = st.type === 'stop' && st.side === 'buy' ? st.price * shares : unit * shares;
-    var ok = shares > 0 && (shares <= max || (st.fit && max > 0)) && priceOk() && !st.busy && !!st.mine;
+    // (a share struck off — its company failed — is no longer traded)
+    var gone = !!(st.corp && st.corp[st.company] && st.corp[st.company].delisted);
+    var ok = shares > 0 && (shares <= max || (st.fit && max > 0)) && priceOk() && !st.busy && !!st.mine && !gone;
     ui.priceRow.input.classList.toggle('sk-bad', st.type !== 'market' && !priceOk());
     ui.sharesRow.input.classList.toggle('sk-bad', shares > max);
     ui.total.replaceChildren();
@@ -554,7 +557,7 @@
     ui.total.appendChild(row('最大', fmt(max) + '株' + (st.mine ? '（本日あと' + money(left) + '）' : '')));
     ui.go.classList.toggle('sk-buy', st.side === 'buy');
     ui.go.classList.toggle('sk-sell', st.side === 'sell');
-    ui.goText.textContent = (st.side === 'buy' ? '買う' : '売る') + (st.type === 'market' ? '' : '（' + TYPE[st.type] + '）');
+    ui.goText.textContent = gone ? '上場廃止' : (st.side === 'buy' ? '買う' : '売る') + (st.type === 'market' ? '' : '（' + TYPE[st.type] + '）');
     ui.go.disabled = !ok;
   }
   // press and hold: no dialog to read, and no order from a slip of the finger
@@ -677,7 +680,12 @@
     };
     var yoy = function (a, b) { return b ? C.fmt.pct(a / Math.abs(b) - 1) : '—'; };
     var next = c.next ? new Date(c.next * 1000) : null;
+    // (a company that failed: struck off, no more trading)
+    if (c.delisted) line([['倒産', '上場廃止', 'sk-down'], ['日付', (function (d) { var t = C.ymd(d); return t.y + '/' + t.m + '/' + t.d; })(c.delisted.day)], ['売買', '不可', 'sk-down']]);
     line([['会社', c.full], ['社員', fmt(c.staff) + '名'], ['ランク', c.rank], ['次の決算発表', next ? (next.getMonth() + 1) + '/' + next.getDate() : '—']]);
+    // MY WAY: how its characters pull and its partners; a partner of it: its collaboration
+    if (c.ip) line([['流行', Math.round(c.ip.heat * 100) + '%', c.ip.heat < 0.85 ? 'sk-down' : ''], ['信用', Math.round(c.ip.brand * 100) + '%', c.ip.brand < 0.7 ? 'sk-down' : ''], ['IP契約', c.ip.partners + '社']]);
+    if (c.collab) line([['コラボ', 'MY WAY'], ['投資熱', '株価に上乗せ', 'sk-up']]);
     if (c.last) {
       var l = c.last, p = l.prev;
       line([['決算', l.label.replace(/^(\d+)年度 第(\d)四半期$/, '$1 Q$2')], ['売上高', cm(l.sales)], ['前年比', p ? yoy(l.sales, p.sales) : '—', p ? tone(l.sales - p.sales) : ''], ['営業利益', cm(l.op), tone(l.op)], ['純利益', cm(l.net), tone(l.net)]]);

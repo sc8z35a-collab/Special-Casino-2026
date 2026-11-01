@@ -158,7 +158,7 @@ function laborDay(W, day, r, ctx) {
     const c = ctx.corp && ctx.corp.co[id];
     if (t.d === 1) P.tenure[i] = Math.min(65535, P.tenure[i] + 1);
     if (!c) continue;
-    const fair = P.salary[i] / Math.max(1, c.pay * (NPC.ranks[P.rank[i]] ? NPC.ranks[P.rank[i]].pay : 1));
+    const fair = P.salary[i] / Math.max(1, c.pay * NPC.rankPay(id, P.rank[i]));
     const target = 120 + 60 * Math.min(1.3, fair) - 40 * Math.max(0, (W.stats.prices || 1) - 1) * 10 + (c.morale - 0.6) * 120 - (W.crunch && W.crunch[j] ? 25 : 0);
     P.jsat[i] = clampB(P.jsat[i] + (target - P.jsat[i]) * 0.02 + r.z() * 2);
     const p = CORP.company(id);

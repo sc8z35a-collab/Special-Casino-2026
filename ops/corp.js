@@ -15,12 +15,12 @@ var OpsCorp = (function () {
   var THEME = {
     tenesice: ['#0f1c3f', '#2d4a8a'], magita: ['#5c0a10', '#c62832'], carowner: ['#0b2f63', '#2378dd'], jinx: ['#8a2c00', '#e47a12'],
     daizin: ['#140a24', '#53308a'], citywork: ['#11471c', '#2f9a44'], speedeed: ['#00505c', '#0aa6b8'], dtrade: ['#0d2b2a', '#1a8a7e'],
-    riru: ['#5b1173', '#d8336f'], ice: ['#063d73', '#2f9fd8'], yosida: ['#0e3b31', '#1f8a6e'], wazima: ['#262c36', '#6b7f99']
+    riru: ['#5b1173', '#d8336f'], ice: ['#063d73', '#2f9fd8'], yosida: ['#0e3b31', '#1f8a6e'], wazima: ['#262c36', '#6b7f99'], myway: ['#3d0b3f', '#e8508f']
   };
   var TABS = [['top', 'トップ'], ['fin', '決算'], ['products', '商品'], ['biz', '事業'], ['people', '人と予算'], ['stock', '株式・財務'], ['ties', '友好度'], ['news', 'ニュース']];
   var NEWS = { results: '決算', guidance: '業績予想', revise: '予想修正', dividend: '配当', release: '発売', hit: 'ヒット', flop: '不振', start: '開発開始',
     delay: '発売延期', cancel: '開発中止', update: '大型更新', week: '週間', hire: '採用', loan: '借入', support: '開発援助', rebate: '販売奨励金', tie: '友好度', lab: '研究開発', surcharge: '値上げ',
-    garage: 'ガレージ契約料', staff: '人員', tech: '技術開発', quest: 'クエスト手数料', deal: '価格交渉' };
+    garage: 'ガレージ契約料', staff: '人員', tech: '技術開発', quest: 'クエスト手数料', deal: '価格交渉', ip: 'ブランド', char: '新キャラクター', license: 'IP契約', bankrupt: '倒産' };
   var st = { view: null, request: null, toast: null, at: '', tab: 'top', mode: 'q', sheet: 'pl', metric: 'sales', all: null, sites: {}, gen: 0, today: {} };
 
   /* ------------------------------------------------------------------ small things --- */
@@ -272,7 +272,8 @@ var OpsCorp = (function () {
       b.setAttribute('role', 'listitem');
       b.appendChild(icon(p.id, 72));
       b.appendChild(el('span', 'corp-app-name', p.name));
-      b.appendChild(el('small', 'muted', 'ランク' + p.rank + (p.listed ? '・上場' : '')));
+      var sm = a && a.companies ? a.companies.filter(function (c) { return c.id === p.id; })[0] : null;
+      b.appendChild(el('small', 'muted', sm && sm.dead ? '倒産・上場廃止' : 'ランク' + ((sm && sm.creditRank) || p.rank) + (p.listed ? '・上場' : '')));
       grid.appendChild(b);
     });
     box.appendChild(grid);
@@ -282,7 +283,7 @@ var OpsCorp = (function () {
     var p1 = panel('各社の概況', '直近4四半期・百万ドル（プレイヤー・市民は直近30日のドル）');
     p1.appendChild(table([['会社'], ['社員', 1], ['売上高', 1], ['営業利益', 1], ['純利益', 1], ['現金', 1], ['借入金', 1], ['純資産', 1], ['プレイヤー(30日)', 1], ['市民(30日)', 1]],
       a.companies.map(function (c) {
-        var who = el('span', 'corp-who'); who.appendChild(icon(c.id, 24)); who.appendChild(el('span', '', c.name + (c.parent ? '（' + nameOf(c.parent) + 'の子会社）' : '')));
+        var who = el('span', 'corp-who'); who.appendChild(icon(c.id, 24)); who.appendChild(el('span', '', c.name + (c.parent ? '（' + nameOf(c.parent) + 'の子会社）' : '') + (c.dead ? '（倒産）' : '')));
         return { onclick: function () { open(c.id); }, cells: [{ t: who }, group(c.staff), mil(c.ttm.sales), { t: mil(c.ttm.op), cls: c.ttm.op < 0 ? 'neg' : '' },
           { t: mil(c.ttm.net), cls: c.ttm.net < 0 ? 'neg' : '' }, mil(c.cash), c.debt ? mil(c.debt) : '—', mil(c.equity), c.players ? money(c.players) : '—',
           c.people ? money(c.people) : (c.abroad ? '国外' : '—')] };
@@ -346,8 +347,10 @@ var OpsCorp = (function () {
     names.appendChild(el('h2', '', p.full));
     names.appendChild(el('p', '', p.kind));
     var badges = el('div', 'corp-badges');
-    badges.appendChild(el('span', 'corp-badge', 'ランク' + p.rank));
-    badges.appendChild(el('span', 'corp-badge', p.listed ? '上場（投資で売買できます）' : '非上場'));
+    var sm0 = r && r.summary;
+    badges.appendChild(el('span', 'corp-badge', 'ランク' + ((sm0 && sm0.creditRank) || p.rank) + (sm0 && sm0.loanRate ? '（テネシス 年' + (sm0.loanRate * 100).toFixed(2) + '%）' : '')));
+    badges.appendChild(el('span', 'corp-badge', sm0 && sm0.dead ? '倒産・上場廃止' : p.listed ? '上場（投資で売買できます）' : '非上場'));
+    if (sm0 && sm0.collab) badges.appendChild(el('span', 'corp-badge', 'MY WAYコラボ中'));
     badges.appendChild(el('span', 'corp-badge', '3月決算'));
     if (r && r.summary) badges.appendChild(el('span', 'corp-badge', '社員 ' + group(r.summary.staff) + '名'));
     names.appendChild(badges);
@@ -368,6 +371,12 @@ var OpsCorp = (function () {
   // トップ: where it stands now, the year's plan, its days in a chart, what players spent there and its latest news
   function pageTop(body, r, p) {
     var m = r.summary, sv = r.state;
+    if (m.dead) {
+      var pd = panel('倒産', dayLabel(m.dead.day));
+      pd.appendChild(el('p', 'corp-big neg', '倒産・上場廃止'));
+      pd.appendChild(el('p', 'muted', m.dead.why + '。負債 ' + money(m.dead.debt) + '（返済 ' + money(m.dead.repaid) + '・テネシスの損失 ' + money(m.dead.loss) + '）、社員' + group(m.dead.staff) + '名は解雇、全契約を終了、株式は上場廃止（価値はありません）。'));
+      body.appendChild(pd);
+    }
     body.appendChild(todayPanel(p.id, p));
     var tiles = el('div', 'corp-tiles');
     tiles.appendChild(stat(p.salesName || '売上高', money(m.ttm.sales), '直近4四半期'));
@@ -393,6 +402,14 @@ var OpsCorp = (function () {
     if (r.save) tiles.appendChild(stat('WAZIMAのコスト削減', '−' + Math.round((1 - (r.save.place || 1)) * 100) + '%', '製造経費 ×' + (r.save.place || 1).toFixed(3) + '・研究開発費 ×' + (r.save.rd || 1).toFixed(3) + '・その他 ×' + (r.save.other || 1).toFixed(3)));
     if (r.questFee) tiles.appendChild(stat('クエスト報酬の手数料', Math.round(r.questFee * 100) + '%', r.questFee > 0.1 ? '引き上げ中（通常10%・最大21%）' : '通常（不調・増益狙いで最大21%）', r.questFee > 0.1 ? 'neg' : ''));
     if (r.vipWeek) tiles.appendChild(stat('VIP1週間券の買い取り', money(r.vipWeek) + '/枚', 'DAIZINとの交渉（$1.2M〜$3.5M）'));
+    if (r.ip) {
+      var on = r.ip.contracts.filter(function (c) { return c.on; }).length;
+      tiles.appendChild(stat('流行（キャラクター人気）', Math.round(r.ip.heat * 100) + '%', r.ip.heat < 0.85 ? 'マンネリ化・冷え込み' : '好調（新キャラクターで上昇）', r.ip.heat < 0.85 ? 'neg' : ''));
+      tiles.appendChild(stat('ブランドの信用', Math.round(r.ip.brand * 100) + '%', 'コピー品 ' + Math.round(r.ip.fakes * 100) + '%', r.ip.brand < 0.7 ? 'neg' : ''));
+      tiles.appendChild(stat('IP契約', on + ' / ' + r.ip.contracts.length + '社', '契約料 年' + money(r.ip.contracts.reduce(function (n, c) { return n + (c.on ? c.fee : 0); }, 0)), on < r.ip.contracts.length ? 'neg' : ''));
+      tiles.appendChild(stat('成果報酬（企画採用）', group(r.ip.ideas.all || 0) + '件', '1件 $500K・累計 ' + money(r.ip.ideas.paid || 0)));
+    }
+    if (r.license) tiles.appendChild(stat('MY WAYとのIP契約', r.license.dead ? 'MY WAYが倒産' : r.license.on ? '契約中' : '打ち切り', '契約料 年' + money(r.license.fee) + (r.license.last ? '・先月の採算 ' + money(r.license.last.margin) : ''), !r.license.on || (r.license.last && r.license.last.margin < 0) ? 'neg' : ''));
     if (r.seeds) tiles.appendChild(stat('金の生る木の種', group(r.seeds.n) + '本/月', r.seeds.m + '・平均' + money(r.seeds.price) + '・原価$1.0M・出荷済み ' + group(r.seeds.sold) + '本'));
     body.appendChild(tiles);
     // the year's plan
@@ -443,7 +460,7 @@ var OpsCorp = (function () {
   }
   function playersNote(p) {
     var by = { carowner: '車の購入（MAGITA・YOSHIDA）', jinx: 'SHOPでの購入', yosida: 'ガチャ代・クエスト報酬の手数料・金の生る木の肥料（40%）と木の市場、カーオーナー・ジンクス経由（YOSHIDA車・エンジンの仕入れ）。ガチャ代の50%は国にも請求', daizin: 'VIPのコイン購入（ロイヤルコインの買い取りは支出）', citywork: 'バイトの給料に対する掲載料（シェア分）',
-      wazima: '—（MAGITA車の受託製造・共同開発。利益は毎月MAGITAへ）',
+      wazima: '—（MAGITA車の受託製造・共同開発。利益は毎月MAGITAへ）', myway: '投資での新株の購入（売上は連携企業のIP契約料と、市民の直営ショールームでの購入）',
       speedeed: 'バイトの給料に対する掲載料（シェア分）', dtrade: '投資の売買手数料', riru: '投資での新株の購入', ice: '投資での新株の購入', magita: 'MAGITA Garage（契約料・増設・貸し出し手数料）・MAGITA Robert（中古車の買い取り）・カーオーナー・ジンクス経由の仕入れ', tenesice: '—（プレイヤーとの直接の取引はありません）' };
     return 'プレイヤーのお金が届く先：' + (by[p.id] || '—');
   }
@@ -597,6 +614,8 @@ var OpsCorp = (function () {
     if (p.model === 'studio') studioPages(body, r, p);
     if (r.lab) labPanel(body, r);
     if (r.wlab) wazimaPanel(body, r);
+    if (r.ip) mywayPanel(body, r);
+    if (r.license) licensePanel(body, r, p);
     if (r.biz) bizPanel(body, r, p);
     if (r.gov) body.appendChild(govPanel(r.gov));
     if (p.model === 'bank') {
@@ -605,7 +624,7 @@ var OpsCorp = (function () {
       tiles.appendChild(stat('貸出金', money(b.lent || 0), '')); tiles.appendChild(stat('預金', money(b.deposits || 0), ''));
       tiles.appendChild(stat('有価証券', money(b.bonds || 0), '')); tiles.appendChild(stat('預貸率', b.deposits ? Math.round((b.lent || 0) / b.deposits * 100) + '%' : '—', '貸出金÷預金'));
       pb.appendChild(tiles);
-      pb.appendChild(el('p', 'muted corp-note', 'ランクAの会社には年0.8%〜1.2%の超低金利で貸し出しています（各社の「株式・財務」に借入の明細）。'));
+      pb.appendChild(el('p', 'muted corp-note', '融資本部が毎週各社の与信を審査し、ランクAの会社には年0.8%〜1.2%、ランクBには3%〜6%、ランクCには10%で貸し出しています。MY WAYだけは勢いを恐れて、ランクにかかわらず年15%（融資枠は純資産の半分まで）。各社の「株式・財務」に借入の明細。'));
       body.appendChild(pb);
     }
     var pg = panel('年間予算');
@@ -615,6 +634,36 @@ var OpsCorp = (function () {
       ['その他の経費', money(bud.other)], ['設備投資', bud.capex ? money(bud.capex) : '—']
     ]));
     body.appendChild(pg);
+  }
+  // MY WAY: its characters (流行・信用・コピー品), each partner's contract (its fee, last month's sales and margin, the
+  // breakeven), the new characters and what happened
+  function mywayPanel(body, r) {
+    var ip = r.ip, pc = panel('IP契約（連携企業）', '契約料は年額。採算＝コラボ売上 − 原価 − 契約料（先月）');
+    pc.appendChild(table([['企業'], ['内容'], ['契約料', 1], ['状態'], ['先月のコラボ売上', 1], ['先月の採算', 1], ['採算ライン', 1]], ip.contracts.map(function (c) {
+      return { onclick: function () { open(c.id); }, cells: [c.name, c.what, money(c.fee) + (c.fee !== c.base ? '（当初 ' + money(c.base) + '）' : ''), c.on ? '契約中' : '打ち切り' + (c.until ? '（' + dayLabel(c.until) + '）' : ''),
+        c.last ? money(c.last.sales) : '—', { t: c.last ? money(c.last.margin) : '—', cls: c.last && c.last.margin < 0 ? 'neg' : '' }, '流行×信用 ' + Math.round(c.breakeven * 100) + '%'] };
+    })));
+    pc.appendChild(el('p', 'muted corp-note', '連携企業は契約料を毎日の費用として払い（MY WAYの売上）、MY WAYのキャラクター商品を通常の2倍の価格で売ります（コラボ売上＝当初の契約料×倍率×流行×信用）。採算割れが続くと連携企業の交渉担当が契約の打ち切りを会議にかけ、人気が戻ると再契約を検討します。契約料はMY WAYの交渉係と各社の交渉担当が四半期ごとに交渉します（当初の50%〜160%）。今の流行×信用は ' + Math.round(ip.pull * 100) + '%。'));
+    body.appendChild(pc);
+    var pk = panel('キャラクター', '新キャラクター（研究開発・緊急投入）');
+    pk.appendChild(table([['日付'], ['キャラクター'], ['結果'], ['流行']], ip.chars.slice().reverse().map(function (x) { return [dayLabel(x.day), x.name, x.hit ? 'ヒット' : '不発', '+' + Math.round(x.by * 100) + '%']; })));
+    pk.appendChild(el('p', 'muted corp-note', '流行は毎年少しずつ下がり（新キャラクターが1年出ないとマンネリ化で速く下がる）、新キャラクターのヒットと社員のアイデア（1件$500Kの成果報酬）で上がります。信用はコピー品の氾濫やスキャンダルで下がり、法的措置やキャンペーンで回復します。基本給と月次ボーナスは減額できないため、売上が落ちると大赤字になります。資金が尽き、テネシス（年15%・純資産の半分まで）からも借りられなくなると倒産します。'));
+    body.appendChild(pk);
+    var pe = panel('最近の出来事');
+    pe.appendChild(table([['日付'], ['出来事']], ip.events.slice().reverse().map(function (e) { return [dayLabel(e.day), e.text]; })));
+    body.appendChild(pe);
+  }
+  // a partner's contract with MY WAY
+  function licensePanel(body, r, p) {
+    var c = r.license, pl = panel('MY WAYとのIP契約', c.what);
+    var tiles = el('div', 'corp-tiles');
+    tiles.appendChild(stat('状態', c.dead ? 'MY WAYが倒産' : c.on ? '契約中' : '打ち切り', c.on ? dayLabel(c.from) + 'から' : c.until ? dayLabel(c.until) + 'まで' : ''));
+    tiles.appendChild(stat('契約料（年）', money(c.fee), '当初 ' + money(c.base)));
+    if (c.last) { tiles.appendChild(stat('先月のコラボ売上', money(c.last.sales), '原価 ' + money(c.last.cost) + '・契約料 ' + money(c.last.fee))); tiles.appendChild(stat('先月の採算', money(c.last.margin), '', c.last.margin < 0 ? 'neg' : '')); }
+    tiles.appendChild(stat('採算ライン', '流行×信用 ' + Math.round(c.breakeven * 100) + '%', 'これを下回ると赤字'));
+    pl.appendChild(tiles);
+    pl.appendChild(el('p', 'muted corp-note', p.name + 'はMY WAYのキャラクターを使う代わりに契約料を払います（決算の「IP契約料（MY WAYへの支払ロイヤリティ）」）。コラボ商品は「MY WAYコラボ売上」。MY WAYとコラボしている間は投資熱で株価が高めに評価され、契約の発表日には株価が20〜35%急騰します。'));
+    body.appendChild(pl);
   }
   // MAGITA's research (A1, T1, MOL1, RIMU TAG) and its surcharge while it struggles
   function labPanel(body, r) {

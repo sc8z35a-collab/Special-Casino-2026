@@ -20,7 +20,7 @@
       places: { home: [[20, 70, 13], [76, 78, 11]], office: [[30, 26, 6]], factory: [[62, 30, 16]], dealer: [[22, 44, 7]], bank: [[48, 64, 4]], store: [[52, 80, 5]], park: [[86, 52, 6]], station: [[40, 54, 4]], hall: [[12, 30, 4]], hospital: [[70, 62, 4]], square: [[44, 42, 5]], casino: [], lounge: [], studio: [], school: [[88, 20, 4]] } },
     { id: 2, key: 'canaria', name: 'カナリア区', kana: 'かなりあく', look: '商店街・ジンクスの大型店・大学。若者と学生', hq: ['jinx'], color: '#ef7d9a',
       places: { home: [[18, 24, 11], [82, 30, 10], [70, 82, 11]], office: [[46, 30, 5]], store: [[50, 52, 12]], school: [[22, 72, 10]], casino: [[78, 56, 5]], bank: [[36, 42, 4]], park: [[34, 86, 6]], station: [[56, 36, 5]], hall: [[86, 70, 4]], hospital: [[14, 46, 4]], square: [[62, 66, 6]], dealer: [], lounge: [], studio: [], factory: [] } },
-    { id: 3, key: 'aurora', name: 'オーロラ区', kana: 'おーろらく', look: 'RIRU・Ice Smokerのスタジオと丘の上の高級住宅地、DAIZINのVIPラウンジ', hq: ['riru', 'ice', 'daizin'], color: '#9a7cf2',
+    { id: 3, key: 'aurora', name: 'オーロラ区', kana: 'おーろらく', look: 'RIRU・Ice Smoker・MY WAYのスタジオと丘の上の高級住宅地、DAIZINのVIPラウンジ', hq: ['riru', 'ice', 'daizin', 'myway'], color: '#9a7cf2',
       places: { home: [[26, 20, 12], [78, 22, 12], [50, 84, 10]], studio: [[30, 54, 9], [70, 52, 9]], lounge: [[52, 32, 6]], office: [[50, 58, 4]], casino: [[86, 74, 4]], bank: [[16, 76, 4]], store: [[36, 72, 5]], park: [[62, 72, 7]], station: [[50, 46, 3]], hall: [[12, 40, 4]], hospital: [[88, 40, 4]], square: [[50, 64, 4]], dealer: [[84, 88, 4]], factory: [], school: [] } },
     { id: 4, key: 'riviere', name: 'リヴィエール区', kana: 'りゔぃえーるく', look: '川沿いの住宅地と旧市街、下流にYOSIDAの本社工場。家族とお年寄り', hq: ['yosida'], color: '#5cc3a8',
       places: { home: [[24, 26, 14], [76, 24, 13], [28, 76, 13], [74, 76, 12]], park: [[50, 50, 10]], store: [[50, 26, 5]], bank: [[50, 74, 4]], hospital: [[14, 50, 6]], hall: [[86, 50, 5]], station: [[50, 88, 3]], square: [[62, 50, 4]], office: [[38, 50, 3]], casino: [], dealer: [], lounge: [], studio: [], factory: [[88, 86, 8]], school: [[50, 12, 4]] } }
@@ -123,12 +123,12 @@
 
   /* ------------------------------------------------------- what they do for a living --- */
   // employers: 0 none, 1..10 the first ten companies, then the country's own and the rest (11..17), then the companies
-  // that came home later (YOSIDA, WAZIMA: from 18 on, so that the people kept from before keep what they were)
-  var COMPANY_IDS = ['tenesice', 'magita', 'carowner', 'jinx', 'daizin', 'citywork', 'speedeed', 'dtrade', 'riru', 'ice', 'yosida', 'wazima'];
+  // that came home later (YOSIDA, WAZIMA, MY WAY: from 18 on, so that the people kept from before keep what they were)
+  var COMPANY_IDS = ['tenesice', 'magita', 'carowner', 'jinx', 'daizin', 'citywork', 'speedeed', 'dtrade', 'riru', 'ice', 'yosida', 'wazima', 'myway'];
   var JOB = { none: 0, civil: 11, other: 12, self: 13, part: 14, student: 15, home: 16, retired: 17 };
   var LATER_JOBS = 18;
   var JOB_NAMES = ['無職', 'テネシス', 'MAGITA', 'カーオーナー', 'ジンクス', 'DAIZIN', 'シティーワーク', 'スピーディード', 'Dtrade', 'RIRU STUDIO', 'Ice Smoker', '公務員', 'その他の職場', '自営業', 'パート・バイト', '大学生', '家事中心', '年金生活',
-    'YOSIDA', 'WAZIMA'];
+    'YOSIDA', 'WAZIMA', 'MY WAY'];
   // a company's job code, the company of a code (null: not a company's), and whether a code is a company's
   function jobOf(id) { var k = COMPANY_IDS.indexOf(id); return k < 0 ? -1 : k < 10 ? k + 1 : LATER_JOBS + k - 10; }
   function companyOf(j) { return j >= 1 && j <= 10 ? COMPANY_IDS[j - 1] : j >= LATER_JOBS ? COMPANY_IDS[10 + j - LATER_JOBS] || null : null; }
@@ -151,12 +151,14 @@
     student: { blocks: [[540, 900]], off: false }
   };
   var COMPANY_SCHEDULE = { tenesice: 'bank', magita: 'factory', carowner: 'retail', jinx: 'retail', daizin: 'office', citywork: 'office', speedeed: 'office', dtrade: 'office', riru: 'studio', ice: 'studio',
-    yosida: 'factory', wazima: 'factory' };
+    yosida: 'factory', wazima: 'factory', myway: 'studio' };
   // where each company's people work: its districts, and how many of them there
   var SITES = {
     tenesice: [[0, 0.5], [1, 0.12], [2, 0.14], [3, 0.12], [4, 0.12]], magita: [[1, 0.92], [0, 0.08]], carowner: [[1, 0.55], [0, 0.2], [3, 0.25]],
     jinx: [[2, 0.5], [0, 0.15], [1, 0.12], [3, 0.1], [4, 0.13]], daizin: [[3, 1]], citywork: [[0, 1]], speedeed: [[0, 1]], dtrade: [[0, 0.8], [2, 0.15], [3, 0.05]],
-    riru: [[3, 1]], ice: [[3, 1]], yosida: [[4, 0.7], [1, 0.3]], wazima: [[1, 0.85], [4, 0.15]]
+    riru: [[3, 1]], ice: [[3, 1]], yosida: [[4, 0.7], [1, 0.3]], wazima: [[1, 0.85], [4, 0.15]],
+    // (MY WAY: its design studio in オーロラ区, its flagship showroom in カナリア区)
+    myway: [[3, 0.85], [2, 0.15]]
   };
 
   /* --------------------------------------------------------------- the country's books --- */
@@ -323,10 +325,44 @@
     wazima: [
       ['exec', '経営陣', 'exec', 0.004], ['factory', '省人化工場', 'factory', 0.55], ['codev', 'MAGITA共同開発部', 'product', 0.12], ['cost', 'コスト削減研究所', 'rd', 0.12, [['cto', '研究所長']]],
       ['plan', '経営企画部', 'plan', 0.03], ['acct', '経理部', 'acct', 0.04], ['admin', '総務部', 'admin', 0.06], ['stop', '監査室（ストップ係）', 'stop', 0.015, [['stopper', 'ストップ係']]]
+    ],
+    // MY WAY's 1,250 (its 社長 and CEO, CCO, CFO, COO and 執行役員 are its executives: OFFICERS), each department as
+    // many as its posts in the company's own list; the named posts are what its measures come from
+    // (server/core/npc-org.js: 世界観プランナー and the design chiefs a new character, the IP lawyers the copies, the PR
+    // director the brand, the alliance managers the partners and their fees, the review committee the ideas, the
+    // CFO's 経営企画 the costs)
+    myway: [
+      ['exec', '経営陣', 'exec', 0.008],
+      ['design', 'キャラクターデザイン本部', 'design', 0.226, [['chief', 'キャラクターデザイン統括部長'], ['lead', 'リードキャラクターデザイナー']]],
+      ['codev', '特別仕様共同開発部（車・エンジン）', 'product', 0.03, [['codev', '特別仕様共同開発統括部長']]],
+      ['license', 'ライセンス・IP事業部', 'license', 0.108, [['licensor', 'ライセンス・IP事業部長'], ['account', 'ライセンス契約・アカウントプランナー']]],
+      ['alliance', '企業コラボ・アライアンス営業部', 'nego', 0.02, [['negotiator', '交渉係（企業コラボ・アライアンス営業マネージャー）']]],
+      ['legal', '知的財産権・国際法務部', 'legal', 0.032, [['ip', '知的財産権・著作権保護スペシャリスト']]],
+      ['world', '世界観・IP設定企画室', 'world', 0.032, [['planner', '世界観・IP設定プランナー']]],
+      ['review', 'アイデア審査・成果報酬査定委員会', 'review', 0.012, [['judge', 'アイデア審査・成果報酬査定委員']]],
+      ['pr', 'グローバルマーケティング・PR部', 'pr', 0.088, [['pr', 'グローバルマーケティング・PRディレクター']]],
+      ['goods', 'グッズ・プロダクトデザイン部', 'goods', 0.112, [['goods', 'グッズ・ぬいぐるみ企画ディレクター']]],
+      ['digital', '3D・デジタルスキン部（ゲーム・Dtradeスロット）', 'digital', 0.064],
+      ['industrial', 'インダストリアルデザイン部（車・エンジン外装）', 'industrial', 0.028],
+      ['qc', '品質管理・監修部', 'qa', 0.036],
+      ['store', '直営ショールーム・旗艦店', 'store', 0.076, [['shop', '直営ショールーム・旗艦店統括マネージャー']]],
+      ['people', 'ピープル・ウェルビーイング本部', 'people', 0.065, [['cpo', 'チーフ・ピープル・オフィサー']]],
+      ['plan', '経営企画・IR・財務経理部', 'plan', 0.028, [['finance', '経営企画・IRスタッフ']]],
+      ['acct', '財務経理課', 'acct', 0.008],
+      ['tech', '社内IT・セキュリティ・デザインシステム部', 'tech', 0.036],
+      ['admin', '総務・ファシリティ部（デザインスタジオ環境維持）', 'admin', 0.028],
+      ['stop', '監査室（ストップ係）', 'stop', 0.004, [['stopper', 'ストップ係']]]
     ]
   };
+  // the executives a company names beyond its CEO and 社長 (its 役員, in this order: the rest 執行役員)
+  var OFFICERS = { myway: ['CCO（最高クリエイティブ責任者）', 'CFO（最高財務責任者）', 'COO（最高運営責任者）', '執行役員・事業本部長', '執行役員・事業本部長', '執行役員・事業本部長', '執行役員・事業本部長', '執行役員・事業本部長'] };
   // the ranks (a person's post): 0 staff, 1 主任, 2 課長, 3 部長, 4 役員, 5 社長, 6 CEO; pay against the company's average
   var RANKS = [{ name: '社員', pay: 0.85 }, { name: '主任', pay: 1.05 }, { name: '課長', pay: 1.4 }, { name: '部長', pay: 1.9 }, { name: '役員', pay: 3.2 }, { name: '社長', pay: 6 }, { name: 'CEO', pay: 7.5 }];
+  // a company that pays by its own ladder (against its average of about $13M): MY WAY's general staff about $11.3M (a
+  // $7.5M〜$10.5M base and $200K a month), its leads and managers $15M〜$17M, its 統括部長 about $23M, its 役員 about $49M
+  // (CCO $85M, CFO and COO $65M, 執行役員 $35M), its 社長 $650M and its CEO $450M
+  var RANK_PAY = { myway: [0.87, 1.19, 1.26, 1.77, 3.75, 50, 34.6] };
+  function rankPay(company, rank) { var l = RANK_PAY[company]; return l && l[rank] !== undefined ? l[rank] : RANKS[rank] ? RANKS[rank].pay : 1; }
 
   // MAGITA's research departments (研究開発本部): the four it has, and the themes a new one may take up
   var LABS = [
@@ -427,7 +463,7 @@
     companies: COMPANY_IDS, job: JOB, jobNames: JOB_NAMES, jobOf: jobOf, companyOf: companyOf, isCompanyJob: isCompanyJob, employed: employed, working: working, schedules: SCHEDULES, companySchedule: COMPANY_SCHEDULE, sites: SITES,
     tax: TAX, social: SOCIAL, pension: PENSION, safety: SAFETY, retire: RETIRE, life: LIFE, trouble: TROUBLE,
     knobs: KNOBS, knob: KNOB, knobOf: knobOf, change: CHANGE, votes: VOTES, platforms: PLATFORMS, themes: THEMES, demands: DEMANDS,
-    org: ORG, ranks: RANKS, labs: LABS, labThemes: LAB_THEMES, ventures: VENTURES,
+    org: ORG, officers: OFFICERS, ranks: RANKS, rankPay: rankPay, labs: LABS, labThemes: LAB_THEMES, ventures: VENTURES,
     names: { family: FAMILY, male: MALE, female: FEMALE }, nameOf: nameOf, money: money, frame: FRAME, MIN: MIN
   };
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

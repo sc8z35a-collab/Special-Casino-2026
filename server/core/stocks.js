@@ -145,6 +145,12 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
       ? { ...had, candle: { ...had.candle } } : fresh(c, row);
     if (s.tick < target) {
       const path = paths.get(c.id), book = bookOf(c.id);
+      // (struck off: what waited of its orders goes, their money back)
+      if (book.list.length && corp && corp.delisted && corp.delisted(c.id)) {
+        for (const o of book.list) { finish(o, 'canceled', s.tick * MS, 'delisted'); told.push({ userId: o.user_id, id: o.id, waited: false }); }
+        book.list = [];
+        book.reset();
+      }
       // the orders filled in these seconds and how far each moved the price (from the second after it)
       const moves = new Map();
       for (const o of q("SELECT done_at, impact FROM stock_orders WHERE company = ? AND status = 'filled' AND impact != 0 AND done_at >= ? AND done_at < ?").all(c.id, s.tick * MS, target * MS)) {
@@ -561,6 +567,8 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
 
   function place(u, r, now, st) {
     const { c, side, type, price } = r, s = st.get(c.id), p = s.price, t = s.tick;
+    // (a company that failed is struck off: its shares are no longer traded — MY WAY's 倒産)
+    if (corp && corp.delisted && corp.delisted(c.id)) throw new ApiError(409, 'delisted', `${c.name}は倒産により上場廃止となりました（売買できません）`);
     const day = S.dayOf(now), traded = tradedOn(u.id, day);
     let shares = r.shares;
     // MAX: trimmed to what fits now (the money in hand, the day's room), at least one share (else refused as any order)

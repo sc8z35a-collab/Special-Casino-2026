@@ -157,7 +157,7 @@ const OTHER_PAY = { 11: 4000000, 12: 3000000, 13: 3500000, 14: 1300000 };
 // the skills each company hires for
 export const FIT = { tenesice: [S.manage, S.sales], magita: [S.tech, S.drive], carowner: [S.sales, S.service], jinx: [S.service, S.sales], daizin: [S.service, S.speech],
   citywork: [S.sales, S.speech], speedeed: [S.tech, S.create], dtrade: [S.tech, S.manage], riru: [S.create, S.tech], ice: [S.create, S.tech],
-  yosida: [S.tech, S.drive], wazima: [S.tech, S.manage] };
+  yosida: [S.tech, S.drive], wazima: [S.tech, S.manage], myway: [S.create, S.sales] };
 
 // The country's people on day `day` (a corp day), from the companies as they are (`corp`: { companies: { id: { staff,
 // pay } } }) and the draws of `r`. Returns the people and what the companies' organisation needs (who works where).
@@ -330,10 +330,12 @@ export function makeHomes(P, ages, day, r) {
 }
 
 // a company's people paid about its average `pay` by their post and years, exactly its average in all
-export function payStaff(P, list, pay, ages, r) {
+export function payStaff(P, list, pay, ages, r, company = '') {
   if (!list.length) return;
   const ws = list.map((i) => {
-    const rank = NPC.ranks[P.rank[i]] ? NPC.ranks[P.rank[i]].pay : 1;
+    // (by the company's own ladder when it has one: MY WAY's, NPC.rankPay — its executives at their posts' pay exactly)
+    const rank = NPC.rankPay(company, P.rank[i]);
+    if (P.rank[i] >= 4 && rank !== (NPC.ranks[P.rank[i]] || {}).pay) return rank;
     const years = Math.max(0, Math.min(35, ages[i] - 22));
     return rank * (0.8 + years * 0.012) * (0.92 + 0.16 * r.u()) * (P.flags[i] & FL.rehired ? 0.6 : 1);
   });
@@ -358,7 +360,7 @@ export function makeMoney(P, ages, day, corp, r) {
     const code = NPC.jobOf(id);
     for (let i = 0; i < n; i++) if (P.job[i] === code) list.push(i);
     if (!list.length) return;
-    payStaff(P, list, c.pay, ages, r);
+    payStaff(P, list, c.pay, ages, r, id);
     for (const i of list) P.tenure[i] = Math.min(65535, Math.max(1, Math.round((ages[i] - 22) * 12 * (0.3 + 0.7 * r.u()))));
   });
   // what they have: by age and pay, a long tail at the top (2% from $1B to $50B), the very rich mostly older

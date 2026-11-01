@@ -19,7 +19,10 @@
     // the car trade, listed on Dtrade with YOSIDA's coming: MAGITA (dear cars) rises in good times, YOSIDA (cheap ones,
     // a defensive stock) in bad, and Car Owner, selling both, earns either way (their books: js/game/corp.js)
     { id: 'yosida', name: 'YOSIDA', full: '株式会社YOSIDA', ticker: 'YSD', base: 12000, vol: 0.02, dividend: 0.003, band: 0.3 },
-    { id: 'carowner', name: 'カーオーナー', full: '株式会社カーオーナー', ticker: 'CAR', base: 9000, vol: 0.018, dividend: 0.003, band: 0.28 }
+    { id: 'carowner', name: 'カーオーナー', full: '株式会社カーオーナー', ticker: 'CAR', base: 9000, vol: 0.018, dividend: 0.003, band: 0.28 },
+    // the character IP company (its books: js/game/corp.js MY WAY): a popular, high-dividend share — and the first that
+    // can be struck off (倒産: from then on its orders are refused and it is worth nothing)
+    { id: 'myway', name: 'MY WAY', full: '株式会社MY WAY', ticker: 'MYW', base: 50000, vol: 0.03, dividend: 0.004, band: 0.35 }
   ];
   // 1.8% each way (Dtrade's, three times the 0.6% it began at), in hundredths of a percent
   var FEE_BP = 180;

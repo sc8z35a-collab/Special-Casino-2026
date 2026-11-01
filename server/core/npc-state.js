@@ -239,12 +239,31 @@ export function owners(W) {
 }
 
 /* ------------------------------------------------------------ the day --- */
+// What the people buy of MY WAY's characters today (CORP.myway): where (each partner with its contract on, its share
+// of what all of them sell of them; MY WAY's showroom), and how much they pull (heat × brand). Scaled once (cal.collab)
+// so that at full pull the people buy what the partners and the showroom sell of them in a year, by the households as
+// they spend (their size and money, as for their living); null: MY WAY not there, or gone.
+function collabOf(W, ctx) {
+  const mw = ctx && ctx.corp && ctx.corp.co && ctx.corp.co.myway;
+  if (!mw || mw.dead || !mw.ip) return null;
+  const M = CORP.myway, all = Object.values(M.partners).reduce((n, x) => n + x.fee * x.lift, 0) + M.direct;
+  const list = [['myway', 'direct', M.direct / all]];
+  for (const [id, c] of Object.entries(mw.ip.contracts)) if (c.on && M.partners[id]) list.push([id, 'myway', M.partners[id].fee * M.partners[id].lift / all]);
+  if (W.cal.collab === undefined) {
+    const P = W.P;
+    let households = 0;
+    for (let i = 0; i < P.n; i++) if (P.hh[i] === i) households += Math.pow(memberList(P, i).length, 0.75) * Math.pow(Math.max(0.02, (P.cash[i] + 1) / 60000000), 0.22) * (1 - 0.35 * tr(P, i, T.thrift));
+    W.cal.collab = Math.round(all * W.scale / YEAR / Math.max(1, households));
+  }
+  return { list, pull: Math.max(0, mw.ip.heat * mw.ip.brand) };
+}
 export function dayStart(W, day, r, ctx) {
   const P = W.P, t = CORP.ymd(day), age = (i) => ageOf(P, i, day);
   W.nation.day = { in: {}, out: {} };
   for (const d of W.districts) d.day = { in: {}, out: {} };
   for (let i = 0; i < P.n; i++) { P.buyDay[i] = 0; P.trades[i] = 0; }
   if (t.d === 1) month(W, day, r, ctx);
+  const fans = collabOf(W, ctx);
   // living: the day's food and things of the household (ジンクス's goods, the local shops'), by its size and money
   for (let i = 0; i < P.n; i++) {
     if (P.hh[i] !== i && P.home[i] !== HOME.stay && P.home[i] !== HOME.street) continue;
@@ -255,6 +274,12 @@ export function dayStart(W, day, r, ctx) {
     const n = W.cal.living * Math.pow(size, 0.75) * wealth * thrift * street * (W.capacity.jinx || 1) * (1 + NPC.knobOf(W, 'livingCost') / 100);
     econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.62), true);
     econ.toSector(W, i, Math.round(n * 0.38), true);
+    // MY WAY's fans (購入熱): its characters' goods and collaborations at its partners and its own showroom, as much as
+    // the characters pull, the impulsive the more
+    if (fans) {
+      const k = W.cal.collab * Math.pow(size, 0.75) * wealth * thrift * street * (0.4 + 1.2 * tr(P, i, T.impulse)) * fans.pull;
+      if (k >= 1) for (const [co, stream, part] of fans.list) econ.buy(W, i, day, co, stream, Math.round(k * part), false);
+    }
   }
   // the unemployment benefit (失業手当), a day of it
   const jl = 1 + (W.nation.knobs.jobless || 0) / 100, paid = solvency(W);

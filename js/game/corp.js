@@ -1,6 +1,7 @@
 /* 企業: the companies of the game's world (server/core/corp.js works them out day by day; the 投資 screen,
    js/ui/stocks.js, shows the listed ones, and the operator site's 株式 app, ops/corp.js, all of them). Who they
-   are (twelve of them: YOSIDA, MAGITA's rival, and WAZIMA, MAGITA's own carmaker, the last to come), the fiscal calendar, the accounts their books keep and how the statements read, the taxes, the lending
+   are (thirteen of them: YOSIDA, MAGITA's rival, WAZIMA, MAGITA's own carmaker, and MY WAY, the character IP company,
+   the last to come), the fiscal calendar, the accounts their books keep and how the statements read, the taxes, the lending
    ranks, the economy they share and how each makes its money. Money is whole $ (the NPCs say 円); a day is a
    trading day, 9:00 to 9:00 Japan time (a UTC day), named by its date. Every number here is where a company
    starts: from then on it hires, raises pay, sells, borrows and grows by itself. */
@@ -304,9 +305,102 @@
       // Ice Smoker backs RIRU STUDIO: the 業務委託 fee each month (RIRU's sales), the 開発援助金 changing month by
       // month (RIRU's 営業外収益), together `budget` a year; and it holds `stake` of RIRU's shares (持分法)
       partner: { with: 'riru', role: 'backer', budget: 900000000, fee: 45000000, support: [15000000, 60000000], stake: 0.2 }
+    },
+    {
+      // The world's biggest character IP company: no factory of its own — ジンクス makes and sells its plush toys, MAGITA
+      // its special cars and engines (sold at Car Owner), Ice Smoker and RIRU STUDIO make games of its characters,
+      // Tenesice has them as its face and Dtrade dresses its slots in them each winter — and every one of them pays it
+      // a yearly IP fee (`license` streams: MYWAY below), its 直営ショールーム selling the rest. Its people are its
+      // fortune: 1,250 of them on the best pay in the world (a general employee's $7.5M base and $200K a month on top,
+      // $500K for each idea taken up; its 社長 $650M, its CEO $450M — js/game/npc.js), $16.3M a head with the care
+      // it takes of them, which it cannot cut when times turn. It keeps little: 56% of its profit is paid out. Its home
+      // is in オーロラ区 (its studio), its showroom in カナリア区. It can fail, the first company that ever has (MYWAY).
+      // (its numbers at the start: 1,250 × $16.3M, its studio and licences $325M and its new characters $900M a year
+      // against $45B of sales leave $23.4B, 52%; after tax $16.38B, $9.17B of it paid out, $7.21B kept)
+      id: 'myway', name: 'MY WAY', full: '株式会社MY WAY', en: 'MY WAY', rank: 'A', model: 'service', kind: 'キャラクターIP企業（ぬいぐるみ・特別仕様車・ゲーム・看板キャラ・スロット外装のライセンス）', listed: true,
+      capital: 2000000000, reserve: 0, retained: 25200000000,
+      staff: 1250, salary: 13000000, cost: 16300000,
+      place: { name: 'デザインスタジオ維持・ライセンス管理費', amount: 325000000 }, rd: { name: '新規キャラクター・特別仕様エンジン等開発費', amount: 900000000 },
+      sales: 45000000000, op: 23400000000,
+      streams: [
+        { id: 'jinx', name: 'ジンクス（ぬいぐるみ・限定キャラグッズのライセンス）', license: true },
+        { id: 'magita', name: 'MAGITA（特別仕様車・特別仕様エンジンの共同開発）', license: true },
+        { id: 'carowner', name: 'カーオーナー（オリキャラデザイン車の販売ライセンス）', license: true },
+        { id: 'ice', name: 'ICE SMOKER（世界1位ゲームへのIP使用権許諾・コラボ）', license: true },
+        { id: 'tenesice', name: 'テネシス（公式看板キャラクターの独占契約）', license: true },
+        { id: 'dtrade', name: 'Dtrade（カジノスロットの冬仕様外装・季節限定スキン）', license: true },
+        { id: 'riru', name: 'RIRUスタジオ（新興ゲームへのIP使用権許諾・コラボ）', license: true },
+        { id: 'direct', name: '直営ショールーム・その他（旗艦店での直販・他社ライセンス）', share: 2500000000 / 45000000000, cost: 0, beta: 1.1 }
+      ],
+      ppe: 1500000000, growth: 0.03, beta: 1.1, season: 'luxury', hire: 0.02, raise: 0.02, quit: 0.02,
+      payout: 0.56, per: 24, pbr: 6, founders: 0.3, price: 50000, depth: 600000000
     }
   ];
   function company(id) { for (var i = 0; i < COMPANIES.length; i++) if (COMPANIES[i].id === id) return COMPANIES[i]; return null; }
+
+  /* ---------------------------------------------------------------- MY WAY --- */
+  // MY WAY's licences and the life of its characters (server/core/corp-model.js ip; its people's part:
+  // server/core/npc-org.js). Every number is where it starts.
+  // - `partners`: each pays `fee` a year (its IP契約料, paid day by day like any bill, a cost on its own books: ¥ more it
+  //   spends than before) for what it may make of MY WAY's characters (`what`), and sells `lift` times its fee of them
+  //   (its コラボ売上: at twice the usual price, sold out at once — to its customers outside, or once the country lives
+  //   to the people, who buy them as fans) at `cost` of their price. All of that × the characters' 流行 (heat) × their
+  //   信用 (brand): when they cool, what a partner sells of them falls and the fee stays, and it cancels the contract
+  //   (`breakeven`: below heat × brand of about fee ÷ (lift × (1 − cost)) it loses on it). MY WAY's 交渉係 and the
+  //   partners' talk the fees up or down each quarter (`talks`: at most `step` a time, never under `floor` or over `cap`
+  //   of the fee it began at).
+  // - `hype`: a listed partner's shares jump `hype` (log of 1.2〜1.35) the day a contract is signed (the 99% that fail
+  //   MY WAY's review: its approval is a seal on its technology and its books), and while its contract runs the market
+  //   prices it `per` more (投資熱).
+  // - `heat` (流行): 1 at the start, worn down `fatigue` a year (`stale` more when no new character came for a year:
+  //   マンネリ化), lifted by each new character (`chars`: `perYear` a year at its research budget, each `lift` if it
+  //   catches on, `flop` if not) and each idea taken up (`idea`: $500K to whoever had it, `ideaHeat` each); now and then
+  //   a cold spell (`chill`: a month's chance, heat × `chillBy`).
+  // - `brand` (信用): falls with the copies (`fakes`: `fakeGrow` more a month, a flood now and then: `flood`) and with a
+  //   scandal (`scandal`: a month's chance, `scandalBy` off); comes back by itself towards 1 − `fakeHurt` × fakes.
+  // - the people's measures (their departments' proposals in the 会議室, server/core/npc-org.js): a new character pushed
+  //   out (`newChar`: its cost, its lift), the copies fought in court (`legal`), a brand campaign or an apology
+  //   (`pr`), the fees offered lower to those who left (`win`), the costs of caring for the people cut (`care`: never
+  //   the pay, which it cannot cut), a voluntary retirement (`retire`: of the staff, with `severance` months each).
+  //   With no people to decide (before the country lives) the company does the obvious by itself (`auto`).
+  // - Tenesice lends to it at `loanRate` a year whatever its rank (MY WAY's pace frightens it), no more than `line` of its
+  //   equity. Out of money with nothing more to borrow it fails (倒産): its contracts end, its people are let go, its
+  //   shares are struck off Dtrade (上場廃止, worth nothing), what it has pays its people, its bills and the bank, and
+  //   the bank loses the rest of what it lent.
+  var MYWAY = {
+    partners: {
+      jinx: { fee: 15000000000, lift: 2.2, cost: 0.3, what: 'ぬいぐるみ・限定キャラグッズの製造販売' },
+      magita: { fee: 6000000000, lift: 1.8, cost: 0.35, what: 'オリキャラデザイン車・特別仕様エンジンの共同開発' },
+      carowner: { fee: 4000000000, lift: 1.8, cost: 0.3, what: 'オリキャラデザイン車の販売' },
+      ice: { fee: 6500000000, lift: 1.9, cost: 0.15, what: '世界1位ゲームへのIP使用権許諾・コラボ' },
+      tenesice: { fee: 6000000000, lift: 1.6, cost: 0.05, what: '公式看板キャラクターの独占契約' },
+      dtrade: { fee: 3500000000, lift: 1.8, cost: 0.1, what: 'カジノスロットの冬仕様外装・季節限定スキン' },
+      riru: { fee: 1500000000, lift: 2.2, cost: 0.15, what: '新興ゲームへのIP使用権許諾・コラボ' }
+    },
+    direct: 2500000000,
+    talks: { step: 0.08, floor: 0.5, cap: 1.6 },
+    hype: [0.2, 0.35], per: 0.15,
+    heat: { fatigue: 0.12, stale: 0.25, min: 0.05, max: 1.6, chill: 0.02, chillBy: [0.45, 0.7] },
+    chars: { perYear: 2, lift: [0.08, 0.22], flop: 0.3, names: ['ルミ', 'ポポ', 'ミント', 'クロ', 'ソラ', 'ハル', 'モカ', 'リン', 'ノア', 'ココ', 'ユズ', 'トト'] },
+    idea: 500000, ideaRate: 0.025, ideaHeat: 0.0005,
+    brand: { fakes: 0.05, fakeGrow: 0.01, flood: 0.03, floodBy: [0.2, 0.4], fakeHurt: 0.8, back: 0.04, scandal: 0.015, scandalBy: [0.25, 0.5] },
+    newChar: { cost: 300000000, lift: [0.1, 0.3], chance: 0.75 },
+    legal: { cost: 150000000, cut: 0.5, brand: 0.05 },
+    pr: { cost: 200000000, brand: [0.08, 0.18] },
+    win: { off: 0.2 },
+    care: { cut: 0.1, floor: 0.5 },
+    retire: { share: 0.1, severance: 6 },
+    // (when a partner gives up: its contract losing for `badMonths` months running; back when heat × brand is `again`
+    // times its breakeven for as long)
+    badMonths: 2, again: 1.25,
+    loanRate: 0.15, line: 0.5
+  };
+  // a partner's breakeven heat × brand at its contract's fee now
+  function breakeven(id, fee) {
+    var p = MYWAY.partners[id];
+    if (!p) return 1;
+    return (fee === undefined ? p.fee : fee) / (p.fee * p.lift * (1 - p.cost));
+  }
 
   /* ------------------------------------------------------------- the products --- */
   // What each car and Shop item is made of and how its price is shared (its price: js/game/config.js). `cost`: what
@@ -387,6 +481,12 @@
     { a: 'jinx', b: 'carowner', start: 55, why: '車用品と整備の連携' },
     { a: 'dtrade', b: 'riru', start: 65, why: '株式の売買・株主事務' },
     { a: 'dtrade', b: 'ice', start: 65, why: '株式の売買・株主事務' },
+    { a: 'myway', b: 'jinx', start: 75, why: 'MY WAYのぬいぐるみ・限定グッズの製造販売（IP契約）' },
+    { a: 'myway', b: 'magita', start: 60, why: 'MY WAYの特別仕様車・エンジンの共同開発（IP契約）' },
+    { a: 'myway', b: 'carowner', start: 60, why: 'MY WAYのオリキャラデザイン車の販売（IP契約）' },
+    { a: 'myway', b: 'ice', start: 70, why: 'MY WAYのIP使用権許諾・コラボ（世界1位のゲーム）' },
+    { a: 'myway', b: 'riru', start: 65, why: 'MY WAYのIP使用権許諾・コラボ（新興ゲーム）' },
+    { a: 'myway', b: 'dtrade', start: 65, why: 'カジノスロットの冬仕様外装・季節限定スキン（IP契約）' },
     { a: 'tenesice', b: '*', start: 60, why: '取引銀行（預金・融資）' }
   ];
 
@@ -491,11 +591,13 @@
   };
 
   /* ------------------------------------------------------------- the lending --- */
-  // Ranks: who lends at what. Tenesice is S (the bank itself); every company here is A, and borrows from it at
-  // 0.8〜1.2% a year (the healthier its books, the lower). Money kept at the bank earns `deposit` a year, bonds
-  // `bonds`. A company keeps `months` of its costs at hand: more goes into bonds, under `floor` months it sells
-  // bonds, then borrows (in `unit`s, for `years`).
-  var RANKS = { S: { name: 'S' }, A: { name: 'A', rate: [0.008, 0.012] } };
+  // Ranks: who lends at what. Tenesice is S (the bank itself); every company here starts at A, and borrows from it at
+  // 0.8〜1.2% a year (the healthier its books, the lower); one whose books weaken falls to B (3〜6%: `below` its
+  // health) and to C (10%), as Tenesice's lending desk reads them (server/core/npc-org.js). (MY WAY pays its own
+  // 15% whatever its rank: MYWAY.loanRate.) Money kept at the bank earns `deposit` a year, bonds `bonds`. A company
+  // keeps `months` of its costs at hand: more goes into bonds, under `floor` months it sells bonds, then borrows (in
+  // `unit`s, for `years`).
+  var RANKS = { S: { name: 'S' }, A: { name: 'A', rate: [0.008, 0.012] }, B: { name: 'B', rate: [0.03, 0.06], below: 0.45 }, C: { name: 'C', rate: [0.1, 0.1], below: 0.2 } };
   var MONEY = { deposit: 0.002, bonds: 0.005, months: 6, floor: 2, unit: 50000000, years: 3 };
 
   /* --------------------------------------------------------------- the taxes --- */
@@ -545,7 +647,11 @@
     sRecruit: ['採用費', 's'], sSeverance: ['退職給付費用', 's'], sVenture: ['新規事業費用', 's'],
     // DAIZIN's buying back of the players' coins; a parent's part of its child's month (WAZIMA's, MAGITA's)
     'c:coinbuy': ['ロイヤルコインの買い取り', 'c'],
-    nSubsidiary: ['子会社からの受取配当金（WAZIMAの利益）', 'ni'], eSubsidiary: ['子会社の損失負担（WAZIMA）', 'ne']
+    nSubsidiary: ['子会社からの受取配当金（WAZIMAの利益）', 'ni'], eSubsidiary: ['子会社の損失負担（WAZIMA）', 'ne'],
+    // MY WAY: a partner's fee and what it sells of the characters; MY WAY's measures, its ideas' rewards, its failure
+    sLicense: ['IP契約料（MY WAYへの支払ロイヤリティ）', 's'], 'r:myway': ['MY WAYコラボ売上', 'r'], 'c:myway': ['MY WAYコラボ商品の原価', 'c'],
+    sMeasure: ['ブランド・IP対策費（新キャラクター・法的措置・PR）', 's'], sIdea: ['成果報酬（企画採用1件$500K）', 's'],
+    xBankrupt: ['倒産に伴う資産の評価損', 'xl'], xRelief: ['債務免除益（倒産・清算）', 'xi']
   };
   // an account's name and kind for a company (its own sales and costs by its streams; its place and research by their names)
   function account(code, c) {
@@ -625,7 +731,7 @@
   BR.CORP = {
     DAY_MS: DAY_MS,
     companies: COMPANIES, company: company, listed: function () { return COMPANIES.filter(function (c) { return c.listed; }); },
-    players: PLAYERS, magita: MAGITA, yosida: YOSIDA, questFee: questFee, wazima: WAZIMA, makers: MAKERS, firstLot: firstLot, staffing: STAFFING, tech: TECH, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
+    players: PLAYERS, magita: MAGITA, yosida: YOSIDA, questFee: questFee, wazima: WAZIMA, myway: MYWAY, breakeven: breakeven, makers: MAKERS, firstLot: firstLot, staffing: STAFFING, tech: TECH, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
     ranks: RANKS, money: MONEY, tax: TAX,
     accounts: ACCOUNTS, account: account, pl: PL, bs: BS, cf: CF, plOf: plOf,
     // the 決算発表: this many days after a quarter's end, at 15:00 Japan time (6:00 UTC)

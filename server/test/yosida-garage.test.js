@@ -35,7 +35,7 @@ test('the rules: YOSIDA with its numbers, its six cars and two engines (no å°‚å£
   assert.deepEqual([CORP.makers.magita.lead, CORP.makers.yosida.lead], [1, 5]);
   assert.ok(CORP.makers.yosida.grow > CORP.makers.magita.grow && CORP.makers.yosida.maxGrow > CORP.makers.magita.maxGrow);
   assert.ok(CORP.makers.magita.beta > 0 && CORP.makers.yosida.beta < 0);
-  assert.deepEqual(STOCKS.companies.map((c) => c.id), ['riru', 'ice', 'magita', 'tenesice', 'yosida', 'carowner']);
+  assert.deepEqual(STOCKS.companies.map((c) => c.id), ['riru', 'ice', 'magita', 'tenesice', 'yosida', 'carowner', 'myway']);
   assert.equal(STOCKS.dayCap, 800000000);
   assert.deepEqual([CORP.magita.garage.base, CORP.magita.garage.min, CORP.magita.garage.max, CORP.magita.garage.rentCut, CORP.magita.garage.rentFee], [100000, 110000, 200000, 0.15, 70000]);
 });

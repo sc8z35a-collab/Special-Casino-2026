@@ -61,6 +61,20 @@ export function boot(key, now, corp, { n = NPC.nation.population, held = {} } = 
   W.news.push({ day, kind: 'nation', district: -1, text: `${NPC.nation.name}が始まりました（人口${n.toLocaleString('en-US')}人・5つの区）`, data: {} });
   return W;
 }
+// A company that failed (倒産: server/core/corp-model.js bankrupt): every one of its people out of work at once — with
+// the unemployment benefit, no severance (there is no money for it) —, its union gone, its organisation kept only as it
+// was (its meetings stop: server/core/npc-org.js), and the country hears of it
+export function failed(W, id, day) {
+  const P = W.P, staff = W.staffOf(id).slice();
+  for (const i of staff) W.labor.leave(W, i, day, 'fired');
+  W._staff = null;
+  if (W.lab.unions[id]) { W.lab.unions[id].members = 0; W.lab.unions[id].state = 'idle'; }
+  if (W.orgs[id]) W.orgs[id].dead = day;
+  const hq = NPC.districts.find((d) => d.hq.includes(id));
+  W.news.push({ day, kind: 'labor', district: hq ? hq.id : -1, text: `${CORP.company(id).name}が倒産し、社員${staff.length.toLocaleString('en-US')}人が職を失いました`, data: { company: id } });
+  void P;
+  return staff.length;
+}
 // A company that has come home (its head office moved into the country: YOSIDA, WAZIMA) to a country that was already
 // living: it puts out its openings (募集) and takes at once, by their skills, those of working age who are out of work
 // or in work of another kind (part time, another workplace, their own business), up to what it plans to have; its
@@ -100,7 +114,7 @@ export function welcome(W, corp, day) {
     }
     W._staff = null;
     org.assignOne(W, id, ages, r);
-    pop.payStaff(P, hired, c.pay || CORP.company(id).salary, ages, r);
+    pop.payStaff(P, hired, c.pay || CORP.company(id).salary, ages, r, id);
     W.labor.join(W, id, hired, r);
     for (const i of hired) remember(P, i, day, M.hired, 150);
     const hq = NPC.districts.find((d) => d.hq.includes(id));
@@ -347,7 +361,7 @@ export function flowsFor(W, day) {
   const ops = [];
   for (const o of W.corpOps.splice(0)) {
     if (o.kind === 'terms') { W.terms = W.terms || {}; W.terms[o.buyer] = Math.round((W.terms[o.buyer] || 1) * o.mult * 10000) / 10000; }
-    else if (o.kind === 'lend') { W.lend = W.lend || {}; W.lend[o.company] = { rate: o.rate, cap: o.cap }; }
+    else if (o.kind === 'lend') { W.lend = W.lend || {}; W.lend[o.company] = { rate: o.rate, cap: o.cap, rank: o.rank || 'A' }; }
     else ops.push(o);
   }
   return { co: f.co, bank: { ...f.bank, deposits: Math.max(0, deposits), loans, rate: W.bankRates.deposit }, charges: f.charges, staff, raises, terms: W.terms || {}, lend: W.lend || {}, ops };
@@ -358,6 +372,8 @@ export function nextDay(W, day, ext, ctx) {
   const r = seeded(W.key, 'd:' + (day + 1));
   W._staff = null;
   state.fromCompanies(W, ext, day);
+  // a company that failed (MY WAY): its people let go
+  for (const id of (ext && ext.bankrupt) || []) failed(W, id, day + 1);
   const next = day + 1;
   W.day = next;
   refresh(W, next, ctx);

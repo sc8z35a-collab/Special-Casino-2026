@@ -161,6 +161,7 @@ function newCompany(p, b, launch, retained, ch) {
   if (p.model === 'studio') startStudio(s, p, b, launch, ch);
   else if (p.model === 'bank') startBank(s, p, b, launch);
   else startTrade(s, p, b, launch);
+  if (p.id === 'myway') startIp(s, b);
   // the rest of the equity is cash (and, for the companies outside the bank, half of what is free in bonds)
   const free = equityOf(s) + liabilitiesOf(s) - assetsOf(s);
   if (p.model !== 'bank') {
@@ -963,6 +964,7 @@ function interest(w, s, p) {
 }
 // the rate a rank-A company borrows at: lower the more of its own money it runs on
 function rateFor(w, s) {
+  if (s.ip) return MW.loanRate;
   const [lo, hi] = CORP.ranks.A.rate, eq = equityOf(s) / Math.max(1, assetsOf(s));
   const health = hi - (hi - lo) * Math.max(0, Math.min(1, (eq - 0.2) / 0.6));
   // (and a little lower the better it gets on with the bank)
@@ -984,11 +986,19 @@ function treasury(w, s, p, d, out) {
       // never less than what keeps it paying: server/core/npc-org.js lendingDesk)
       const pol = w.lend && w.lend[s.id];
       let amt = Math.ceil((want - cash) / M.unit) * M.unit, rate = rateFor(w, s);
-      if (pol) {
+      if (s.ip) {
+        // (MY WAY: Tenesice's 15%, and no more than its line — half its equity, or what the lending desk set: what it
+        // will not lend, it does not; out of money then, it fails, at the end of this month: ipFail)
+        rate = MW.loanRate;
+        const line = pol ? Math.min(pol.cap, Math.max(0, equityOf(s)) * MW.line) : Math.max(0, equityOf(s)) * MW.line;
+        const room = Math.max(0, line - debtOf(s));
+        amt = Math.min(amt, Math.floor(room / M.unit) * M.unit);
+      } else if (pol) {
         rate = pol.rate;
         const room = Math.max(0, pol.cap - debtOf(s));
         amt = Math.max(Math.ceil((floor - cash) / M.unit) * M.unit, Math.min(amt, Math.floor(room / M.unit) * M.unit));
       }
+      if (amt <= 0) return;
       s.loans.push({ id: 'L' + (++s.seq), amt, rate, from: d, until: d + M.years * YEAR });
       post(s, [['cash', amt], ['loan', -amt]], 'borrow');
       w.mon[s.id + ':borrowed'] = (w.mon[s.id + ':borrowed'] || 0) + amt;
@@ -1288,6 +1298,7 @@ function expectDay(w, s, p, d) {
   if (w.circ && d >= w.circ.from && !p.abroad) return expectCountry(w, s, p, d);
   const e = {};
   const add = (k, v) => { e[k] = (e[k] || 0) + v; };
+  ipExpect(w, s, p, d, add);
   const people = s.n * s.unit / YEAR, season = seasonOf(p, d);
   if (p.model === 'studio') {
     let game = 0, live = 0;
@@ -1386,6 +1397,7 @@ function expectDay(w, s, p, d) {
 function expectCountry(w, s, p, d) {
   const e = {};
   const add = (k, v) => { e[k] = (e[k] || 0) + v; };
+  ipExpect(w, s, p, d, add);
   const people = s.n * s.unit / YEAR;
   for (const [k, v] of Object.entries(s.pr || {})) {
     if (!v) continue;
@@ -1527,7 +1539,9 @@ export function fairValue(s, p, w) {
   // its money (cash and bonds less loans) counts as itself; the rest by its profit and its book
   const cash = p.model === 'bank' ? 0 : Math.max(0, (s.bal.cash || 0) + (s.bal.bonds || 0) - debtOf(s));
   const book = Math.max(0, eq - cash);
-  let v = cash + 0.5 * Math.max(0, ni) * p.per + 0.5 * book * p.pbr + 0.5 * Math.min(0, ni) * 4;
+  // (投資熱: a partner of MY WAY's is priced the more while its contract runs, as much as the characters pull)
+  const mw = w ? contractOf(w, s.id) : null, per = p.per * (mw ? 1 + MW.per * Math.min(1.5, pullOf(w.co.myway.ip)) : 1);
+  let v = cash + 0.5 * Math.max(0, ni) * per + 0.5 * book * p.pbr + 0.5 * Math.min(0, ni) * 4;
   // a studio: what its games under way and on sale are expected to earn beyond what they cost, after tax
   if (p.model === 'studio' && w) v += Math.max(-eq / 2, 0.67 * pipeline(w, s, p));
   return Math.max(eq / 8, v);
@@ -1960,6 +1974,357 @@ function toParent(w, s, p, d) {
   s.toParent = { m: CORP.monthKey(d), net, all: ((s.toParent && s.toParent.all) || 0) + net };
 }
 
+/* ---------------------------------------------------------------- MY WAY --- */
+// MY WAY's characters and licences (CORP.myway): their 流行 (heat), their 信用 (brand), the copies about (fakes), each
+// partner's contract (its fee now, on or off, how its months went), the new characters, the ideas taken up; and the
+// day it fails. Its people's measures come as decisions (decided: 'ip'), the partners' as theirs ('license').
+const MW = CORP.myway;
+function startIp(s, d) {
+  s.ip = { heat: 1, brand: 1, fakes: MW.brand.fakes, lastNew: d, chars: [], ideas: { m: '', n: 0, all: 0, paid: 0 }, events: [], contracts: {}, seq: 0 };
+  for (const [id, x] of Object.entries(MW.partners)) s.ip.contracts[id] = { fee: x.fee, base: x.fee, on: true, from: d, bad: 0, good: 0, m: { sales: 0, cost: 0, fee: 0 }, last: null, avg: 0 };
+}
+// MY WAY's state (null: not in this world), and a partner's contract that is on (null: none, or MY WAY gone)
+export const ipOf = (w) => (w && w.co.myway && w.co.myway.ip) || null;
+function contractOf(w, id) {
+  const s = w.co.myway;
+  if (!s || s.dead || !s.ip) return null;
+  const c = s.ip.contracts[id];
+  return c && c.on ? c : null;
+}
+// how much the characters pull now (what the partners sell of them goes with it)
+const pullOf = (ip) => Math.max(0, ip.heat * ip.brand);
+function ipEvent(s, d, kind, text, data = {}) {
+  s.ip.events.push({ day: d, kind, text, ...data });
+  if (s.ip.events.length > 40) s.ip.events.splice(0, s.ip.events.length - 40);
+}
+// The day's licences: each partner's fee (its cost, owed to MY WAY and paid within its terms; MY WAY's sale), and
+// what it sold of the characters — to its customers outside before the country lives, or (once it does) what the
+// people paid for them (their flows: its sale already, by its own day) — with their cost.
+function licenseDay(w, d, flows) {
+  const s = w.co.myway;
+  if (!s || s.dead || !s.ip) return;
+  const ip = s.ip, circ = !!w.ext;
+  for (const [id, c] of Object.entries(ip.contracts)) {
+    const t = w.co[id], x = MW.partners[id];
+    if (!t || !x || t.dead) continue;
+    let sold = 0;
+    if (c.on) {
+      const fee = take(t, 'mwfee', c.fee / YEAR);
+      if (fee > 0) {
+        post(t, [['sLicense', fee], ['ap', -fee]]);
+        t.owe.myway = (t.owe.myway || 0) + fee;
+        post(s, [['ar', fee], ['r:' + id, -fee]]);
+        c.m.fee += fee;
+      }
+      if (!circ) {
+        sold = take(t, 'mwsale', x.fee * x.lift * pullOf(ip) * econOf(w, PROFILES.get(id).beta) / YEAR);
+        if (sold > 0) { post(t, [['ar', sold], ['r:myway', -sold]]); t.recv += sold; }
+      }
+    }
+    // (the people's purchases of a contract that ended today still came: theirs, as sold)
+    if (circ) sold = Math.round((flows.npc && flows.npc.co[id] && flows.npc.co[id].s && flows.npc.co[id].s.myway) || 0);
+    const cost = take(t, 'mwcost', sold * x.cost);
+    if (cost > 0) {
+      post(t, [['c:myway', cost], ['ap', -cost]]);
+      const to = circ ? '@sector' : '*';
+      t.owe[to] = (t.owe[to] || 0) + cost;
+    }
+    c.m.sales += sold;
+    c.m.cost += cost;
+    c.avg = c.avg * 29 / 30 + sold / 30;
+  }
+}
+// What the licences add to a day's expectations: a partner's fee and what it sells of the characters, MY WAY's fees
+function ipExpect(w, s, p, d, add) {
+  const ip = ipOf(w);
+  if (!ip) return;
+  if (s.id === 'myway') {
+    if (s.dead) return;
+    for (const [id, c] of Object.entries(ip.contracts)) if (c.on) add('r:' + id, c.fee / YEAR);
+    return;
+  }
+  const c = contractOf(w, s.id), x = MW.partners[s.id];
+  if (!c || !x) return;
+  add('sLicense', c.fee / YEAR);
+  const sales = w.ext || (w.circ && d >= w.circ.from) ? c.avg : x.fee * x.lift * pullOf(ip) * econOf(w, p.beta) / YEAR;
+  add('r:myway', sales);
+  add('c:myway', sales * x.cost);
+}
+// MY WAY's day: its characters' heat worn down (faster with no new character for a year), the copies about; from the
+// launch on (the made-up past knew its characters as they were)
+function ipDay(w, s, p, d) {
+  const ip = s.ip;
+  if (!ip || s.dead || d < w.launch) return;
+  const H = MW.heat, since = Math.max(0, d - ip.lastNew) / YEAR;
+  ip.heat = Math.max(H.min, ip.heat * Math.exp(-(H.fatigue + H.stale * Math.min(1, since)) / YEAR));
+  // (信用 comes back by itself towards what the copies allow)
+  const target = Math.max(0.1, 1 - MW.brand.fakeHurt * ip.fakes);
+  ip.brand += (target - ip.brand) * MW.brand.back / 30;
+  ip.brand = Math.max(0.02, Math.min(1, ip.brand));
+}
+// MY WAY's month (at its end): a new character out of its research (or not), the copies spreading (a flood now and
+// then), a scandal or a cold spell now and then, the ideas taken up (by its people's review once the country lives:
+// server/core/npc-org.js), each partner's month weighed (with nobody in the country to decide, a partner losing on it
+// two months running gives it up, and one whose breakeven is well passed again comes back), and the obvious measures
+// taken by itself when nobody is there to take them.
+function ipMonth(w, s, p, d, ch, out) {
+  const ip = s.ip;
+  if (!ip || s.dead) return;
+  // (the made-up past: each partner's month only)
+  if (d < w.launch) {
+    for (const c of Object.values(ip.contracts)) { c.last = { m: CORP.monthKey(d), sales: c.m.sales, cost: c.m.cost, fee: c.m.fee, margin: c.m.sales - c.m.cost - c.m.fee, on: c.on }; c.m = { sales: 0, cost: 0, fee: 0 }; }
+    return;
+  }
+  const live = !!(w.circ && d >= w.circ.from);
+  const R = (k) => ch.u(`myway:${k}:${d}`);
+  // a new character, as often as the research budget allows, more of them the better the people's mood
+  const C = MW.chars, rd = Math.max(0.1, (s.budget.rd || 0) / Math.max(1, p.rd.amount * sizeScale(w, p)));
+  if (R('char') < C.perYear / 12 * Math.sqrt(rd) * (0.6 + 0.7 * s.morale)) newCharacter(w, s, p, d, ch, out, 'research');
+  // the copies
+  const B = MW.brand;
+  ip.fakes = Math.min(1, ip.fakes + B.fakeGrow * (0.5 + R('fakes')));
+  if (R('flood') < B.flood) {
+    const by = B.floodBy[0] + (B.floodBy[1] - B.floodBy[0]) * R('floodBy');
+    ip.fakes = Math.min(1, ip.fakes + by);
+    ip.brand = Math.max(0.02, ip.brand - by * 0.5);
+    ipEvent(s, d, 'fakes', `精巧な違法コピー品が大量に出回っています（コピー品 ${Math.round(ip.fakes * 100)}%）`);
+    news(out, s, p, d + 1, 2 * 3600, 'ip', `精巧な違法コピー品が市場に氾濫（ブランドの信用が低下）`, { fakes: ip.fakes }, -0.06, true);
+  }
+  if (R('scandal') < B.scandal) {
+    const by = B.scandalBy[0] + (B.scandalBy[1] - B.scandalBy[0]) * R('scandalBy');
+    ip.brand = Math.max(0.02, ip.brand - by);
+    ipEvent(s, d, 'scandal', `スキャンダルで「持つと恥ずかしい」の声（信用 −${Math.round(by * 100)}%）`);
+    news(out, s, p, d + 1, 3 * 3600, 'ip', `キャラクターをめぐるスキャンダルが拡散、「持つと恥ずかしい」との声も`, { brand: ip.brand }, -0.12, true);
+  }
+  if (R('chill') < MW.heat.chill) {
+    const by = MW.heat.chillBy[0] + (MW.heat.chillBy[1] - MW.heat.chillBy[0]) * R('chillBy');
+    ip.heat = Math.max(MW.heat.min, ip.heat * by);
+    ipEvent(s, d, 'chill', `流行が冷え込み、マンネリ化で飽きられ始めています（流行 ×${by.toFixed(2)}）`);
+    news(out, s, p, d + 1, 3 * 3600, 'ip', `キャラクター人気に陰り：流行の冷え込み`, { heat: ip.heat }, -0.1, true);
+  }
+  // the ideas taken up (with nobody in the country to review them, about as many as its people would have)
+  const mk = CORP.monthKey(d);
+  if (!live) {
+    const n = Math.round(s.n * MW.ideaRate * (0.6 + 0.7 * s.morale) * (0.8 + 0.4 * R('ideas')));
+    if (n > 0) ideasPaid(w, s, n, null);
+  }
+  ip.ideas.last = { m: mk, n: ip.ideas.m === mk ? ip.ideas.n : 0 };
+  ip.ideas.m = '';
+  ip.ideas.n = 0;
+  // each partner's month
+  for (const [id, c] of Object.entries(ip.contracts)) {
+    const x = MW.partners[id], t = w.co[id];
+    if (!x || !t) continue;
+    const margin = c.m.sales - c.m.cost - c.m.fee;
+    c.last = { m: mk, sales: c.m.sales, cost: c.m.cost, fee: c.m.fee, margin, on: c.on };
+    c.m = { sales: 0, cost: 0, fee: 0 };
+    if (live) continue;
+    const pull = pullOf(ip), be = CORP.breakeven(id, c.fee);
+    if (c.on) {
+      c.bad = margin < 0 ? c.bad + 1 : 0;
+      if (c.bad >= MW.badMonths) license(w, id, 'cancel', d, out, ch, '採算割れが続いたため');
+    } else {
+      c.good = pull >= be * MW.again ? c.good + 1 : 0;
+      if (c.good >= MW.badMonths) license(w, id, 'sign', d, out, ch, 'キャラクター人気の回復を受けて');
+    }
+  }
+  if (!live) autoMeasures(w, s, p, d, ch, out);
+}
+// a new character out (`why`: its research, or a push its people decided): it catches on (heat up) or flops
+function newCharacter(w, s, p, d, ch, out, why, lift = null) {
+  const ip = s.ip, C = MW.chars, n = ++ip.seq;
+  const name = C.names[(n - 1) % C.names.length] + (n > C.names.length ? Math.ceil(n / C.names.length) : '');
+  const hit = ch.u(`myway:hit:${n}`) >= C.flop;
+  const range = lift || C.lift, by = hit ? range[0] + (range[1] - range[0]) * ch.u(`myway:lift:${n}`) : 0.01;
+  ip.heat = Math.min(MW.heat.max, ip.heat + by);
+  ip.lastNew = d;
+  ip.chars.push({ day: d, name, hit, by: Math.round(by * 1000) / 1000, why });
+  if (ip.chars.length > 24) ip.chars.splice(0, ip.chars.length - 24);
+  ipEvent(s, d, 'char', `新キャラクター「${name}」${hit ? 'が大ヒット' : 'は不発'}（流行 ${hit ? '+' : ''}${Math.round(by * 100)}%）`);
+  news(out, s, p, d + 1, 2 * 3600, 'char', hit ? `新キャラクター「${name}」が発表と同時に大ヒット` : `新キャラクター「${name}」を発表（反応は今ひとつ）`, { name, hit }, hit ? 0.03 + by * 0.3 : -0.02, true);
+}
+// `n` ideas taken up this month, $500K each: to whoever had them (`people`: the people's indexes, once the country
+// lives: its review's), else to its people in all
+function ideasPaid(w, s, n, people) {
+  const each = MW.idea, all = n * each, ip = s.ip;
+  if (!people) {
+    post(s, [['sIdea', all], ['cash', -all]], 'payroll');
+    if (w.ext) w.ext.pay.push({ company: s.id, n: all, kind: 'bonus' });
+  }
+  ip.ideas.m = CORP.monthKey(w.day + 1);
+  ip.ideas.n += n;
+  ip.ideas.all += n;
+  ip.ideas.paid = (ip.ideas.paid || 0) + all;
+  ip.heat = Math.min(MW.heat.max, ip.heat + n * MW.ideaHeat);
+}
+// A partner's contract signed again or given up (its people's decision, or by itself with nobody to decide); a listed
+// partner's shares jump the day it signs (投資熱), and fall a little the day it leaves; MY WAY's the other way.
+function license(w, id, action, d, out, ch, why = '', fee = null) {
+  const s = w.co.myway, c = s && s.ip && s.ip.contracts[id], t = w.co[id];
+  if (!c || !t || s.dead) return;
+  const p = PROFILES.get('myway'), tp = PROFILES.get(id);
+  if (action === 'cancel' && c.on) {
+    c.on = false;
+    c.bad = 0;
+    c.good = 0;
+    c.until = d;
+    ipEvent(s, d, 'cancel', `${tp.name}が契約を打ち切り${why ? '（' + why + '）' : ''}`, { partner: id });
+    news(out, s, p, d + 1, 4 * 3600, 'license', `${tp.name}がMY WAYとのIP契約を打ち切り${why ? '（' + why + '）' : ''}`, { partner: id }, -0.08, true);
+    news(out, t, tp, d + 1, 4 * 3600, 'license', `MY WAYとのIP契約を終了（${MW.partners[id].what}）`, { partner: 'myway' }, -0.02, true);
+  } else if (action === 'sign' && !c.on) {
+    c.on = true;
+    c.bad = 0;
+    c.good = 0;
+    c.from = d;
+    if (fee) c.fee = fee;
+    const jump = Math.log(1 + MW.hype[0] + (MW.hype[1] - MW.hype[0]) * ch.u(`myway:hype:${id}:${d}`));
+    ipEvent(s, d, 'sign', `${tp.name}と契約（年${CORP.fmt.money(c.fee)}）${why ? '・' + why : ''}`, { partner: id });
+    news(out, s, p, d + 1, 4 * 3600, 'license', `${tp.name}とIP契約を締結（${MW.partners[id].what}・年${CORP.fmt.money(c.fee)}）`, { partner: id }, 0.04, true);
+    news(out, t, tp, d + 1, 4 * 3600, 'license', `MY WAYの審査を通過しコラボ契約を締結：発表と同時に買いが殺到`, { partner: 'myway' }, jump, true);
+  }
+}
+// the fee of a partner's contract changed (its talks): within the band of the fee it began at
+function feeTo(w, id, mult, d, out) {
+  const s = w.co.myway, c = s && s.ip && s.ip.contracts[id];
+  if (!c || s.dead) return;
+  const T = MW.talks, was = c.fee;
+  c.fee = Math.round(Math.max(c.base * T.floor, Math.min(c.base * T.cap, c.fee * Math.max(1 - T.step, Math.min(1 + T.step, mult)))) / 1e6) * 1e6;
+  if (c.fee === was) return;
+  ipEvent(s, d, 'fee', `${PROFILES.get(id).name}の契約料 ${CORP.fmt.money(was)}→${CORP.fmt.money(c.fee)}（年）`, { partner: id });
+}
+// with nobody in the country to decide: a new character when the heat is low, the copies fought when they spread, a
+// campaign when the name is hurt (each once a quarter at most, and only with the money for it)
+function autoMeasures(w, s, p, d, ch, out) {
+  const ip = s.ip, monthly = monthlyCosts(s), free = (s.bal.cash || 0) - monthly * 2;
+  if (CORP.ymd(d).m % 3 !== 0) return;
+  if (ip.heat < 0.75 && free > MW.newChar.cost) measure(w, s, { action: 'newchar' }, d, ch, out);
+  if (ip.fakes > 0.3 && free > MW.legal.cost) measure(w, s, { action: 'legal' }, d, ch, out);
+  if (ip.brand < 0.7 && free > MW.pr.cost) measure(w, s, { action: 'pr' }, d, ch, out);
+}
+// One of MY WAY's measures (its people's decision, server/core/npc-org.js, or its own: autoMeasures). Their costs are
+// paid now (the local businesses', the studio's and the lawyers' work).
+function measure(w, s, o, d, ch, out) {
+  if (!s || s.dead || !s.ip) return;
+  const ip = s.ip, p = PROFILES.get('myway'), pay = (n) => { if (n > 0) { post(s, [['sMeasure', n], ['cash', -n]], 'expenses'); if (w.ext) w.ext.sector += n; } };
+  const u = (k) => ch.u(`myway:${o.action}:${k}:${d}:${ip.seq}:${Math.round(ip.heat * 1000)}`);
+  if (o.action === 'newchar') {
+    const N = MW.newChar;
+    pay(N.cost);
+    if (u('ok') < N.chance) newCharacter(w, s, p, d, ch, out, 'push', N.lift);
+    else { ip.lastNew = d; ipEvent(s, d, 'char', '新キャラクターを緊急投入したが話題にならず'); }
+  } else if (o.action === 'legal') {
+    const L = MW.legal;
+    pay(L.cost);
+    ip.fakes = Math.max(0, ip.fakes * (1 - L.cut));
+    ip.brand = Math.min(1, ip.brand + L.brand);
+    ipEvent(s, d, 'legal', `違法コピー品を一斉摘発・国際訴訟（コピー品 ${Math.round(ip.fakes * 100)}%）`);
+    news(out, s, p, d + 1, 3 * 3600, 'ip', '違法コピー品の一斉摘発と国際訴訟に踏み切る', {}, 0.02, true);
+  } else if (o.action === 'pr') {
+    const R = MW.pr, by = R.brand[0] + (R.brand[1] - R.brand[0]) * u('by');
+    pay(R.cost);
+    ip.brand = Math.min(1, ip.brand + by);
+    ipEvent(s, d, 'pr', `ブランド回復キャンペーン・謝罪会見（信用 +${Math.round(by * 100)}%）`);
+    news(out, s, p, d + 1, 3 * 3600, 'ip', 'ブランドの信用回復へ：会見とキャンペーンを実施', {}, 0.02, true);
+  } else if (o.action === 'care') {
+    // (the costs of caring for its people, never their pay: what it spends a head beyond the pay, down a tenth, never
+    // under half of what it was)
+    const C = MW.care, extra = s.unit - s.pay, floor = (p.cost - p.salary) * C.floor;
+    const to = Math.max(Math.min(extra, floor), Math.round(extra * (1 - C.cut)));
+    if (to < extra) {
+      s.careCut = (s.careCut || 0) + (extra - to);
+      s.unit = s.pay + to;
+      s.morale = Math.max(0.2, s.morale - 0.03);
+      ipEvent(s, d, 'care', `社員管理・福利厚生費を1人あたり${CORP.fmt.money(extra - to)}削減（基本給と月次ボーナスは減額できません）`);
+    }
+  } else if (o.action === 'retire') {
+    // (a voluntary retirement: some of its people leave with months of pay; once the country lives they go by its
+    // own leaving, server/core/npc-labor.js dismiss)
+    const R = MW.retire, n = Math.max(1, Math.round(s.n * R.share)), each = Math.round(s.pay / 12 * R.severance);
+    if (w.ext || (w.circ && d >= w.circ.from)) s.cut = { n, day: d + 1, each };
+    else { s.n -= n; post(s, [['sSeverance', n * each], ['cash', -n * each]], 'payroll'); }
+    s.target = Math.max(1, s.n - (s.cut ? n : 0));
+    ipEvent(s, d, 'retire', `希望退職を募集（${CORP.fmt.group(n)}人・退職金 1人${CORP.fmt.money(each)}）`);
+    news(out, s, p, d + 1, 3 * 3600, 'staff', `希望退職${CORP.fmt.group(n)}人を募集（固定費の削減）`, { n }, 0.01, true);
+  } else if (o.action === 'win' && o.partner) {
+    // (the fee offered lower to a partner that left: it may come back when the characters pull enough for it)
+    const c = ip.contracts[o.partner];
+    if (c && !c.on) {
+      c.fee = Math.round(Math.max(c.base * MW.talks.floor, c.fee * (1 - MW.win.off)) / 1e6) * 1e6;
+      c.offered = d;
+      ipEvent(s, d, 'fee', `${PROFILES.get(o.partner).name}に契約料${CORP.fmt.money(c.fee)}で再契約を提案`, { partner: o.partner });
+    }
+  } else if (o.action === 'fee' && o.partner) feeTo(w, o.partner, o.mult, d, out);
+  else if (o.action === 'ideas') ideasPaid(w, s, o.n, o.people || []);
+}
+// MY WAY fails (倒産): out of money with nothing more Tenesice will lend. What it is owed comes in; its bonds are sold;
+// what it has pays its people what is owed them, then its bills and its taxes, then the bank; the bank loses what is
+// left of its loans (its 与信関係費用), MY WAY's books keep the rest as a gain on the debt forgiven; what it had besides
+// (its buildings, its stock) is written off. Its contracts end, its people are let go (once the country lives: its
+// people's side lets them go), its shares are struck off (上場廃止): worth nothing from then on.
+function bankrupt(w, s, p, d, out, why) {
+  const x = w.ext;
+  // what the partners owed it, paid at once (the trustee's first work)
+  for (const [id, t] of Object.entries(w.co)) {
+    const n = (t.owe && t.owe.myway) || 0;
+    if (!n || id === s.id) continue;
+    t.owe.myway = 0;
+    post(t, [['ap', n], ['cash', -n]], 'purchases');
+    received(s, n);
+  }
+  if (s.recv > 0) { const n = s.recv; s.recv = 0; post(s, [['cash', n], ['ar', -n]], 'receipts'); if (x) x.exports += n; }
+  const bonds = s.bal.bonds || 0;
+  if (bonds) { post(s, [['cash', bonds], ['bonds', -bonds]], 'bondsSell'); if (x) x.bonds.push({ company: s.id, n: -bonds }); }
+  const cash = () => Math.max(0, s.bal.cash || 0);
+  // the people first: their pay owed
+  const accrued = Math.min(s.bal.accrued || 0, cash());
+  if (accrued > 0) { post(s, [['accrued', accrued], ['cash', -accrued]], 'payroll'); if (x) x.pay.push({ company: s.id, n: accrued, kind: 'salary' }); }
+  const bonus = Math.min(s.bal.bonus || 0, cash());
+  if (bonus > 0) { post(s, [['bonus', bonus], ['cash', -bonus]], 'payroll'); if (x) x.pay.push({ company: s.id, n: bonus, kind: 'bonus' }); }
+  // then its bills (to the companies, to the local businesses) and its running costs
+  for (const [to, owed] of Object.entries(s.owe)) {
+    const n = Math.min(owed, cash());
+    if (n <= 0) continue;
+    s.owe[to] = owed - n;
+    post(s, [['ap', n], ['cash', -n]], 'purchases');
+    if (to !== '*' && to !== '@sector' && w.co[to]) received(w.co[to], n);
+    else if (x) { if (to === '@sector') x.sector += n; else x.imports += n; }
+  }
+  if (s.exp) {
+    const n = Math.min(s.exp, cash());
+    if (n > 0) { post(s, [['ap', n], ['cash', -n]], 'expenses'); if (x) x.sector += n; }
+    s.exp = 0;
+  }
+  const tax = Math.min(s.bal.taxdue || 0, cash());
+  if (tax > 0) { post(s, [['taxdue', tax], ['cash', -tax]], 'taxes'); if (x) x.taxes.push({ company: s.id, n: tax }); }
+  // then the bank
+  const debt = debtOf(s), repay = Math.min(debt, cash()), loss = debt - repay;
+  if (repay > 0) post(s, [['loan', repay], ['cash', -repay]], 'repay');
+  if (loss > 0) post(s, [['loan', loss], ['xRelief', -loss]]);
+  s.loans = [];
+  w.creditLoss = (w.creditLoss || 0) + loss;
+  // what is left of what it owes besides is forgiven; what it had besides is written off
+  const rest = (s.bal.ap || 0) + (s.bal.accrued || 0) + (s.bal.bonus || 0) + (s.bal.taxdue || 0);
+  const lines = [];
+  for (const k of ['ap', 'accrued', 'bonus', 'taxdue']) if (s.bal[k]) lines.push([k, s.bal[k]]);
+  if (rest) { lines.push(['xRelief', -rest]); post(s, lines); }
+  s.owe = {};
+  const assets = ['ar', 'stock', 'wip', 'ppe', 'content', 'affil', 'lent'].filter((k) => s.bal[k]);
+  const gone = assets.reduce((n, k) => n + s.bal[k], 0);
+  if (gone) post(s, [['xBankrupt', gone], ...assets.map((k) => [k, -s.bal[k]])]);
+  for (const c of Object.values(s.ip ? s.ip.contracts : {})) { if (c.on) c.until = d; c.on = false; }
+  s.dead = { day: d, why, debt, repaid: repay, loss, staff: s.n };
+  s.n = 0;
+  s.target = 0;
+  for (const k of Object.keys(s.budget)) s.budget[k] = 0;
+  s.div = { dps: 0, daily: 0, total: 0 };
+  s.pend = [];
+  s.cut = null;
+  if (s.ip) ipEvent(s, d, 'bankrupt', `倒産（負債 ${CORP.fmt.money(debt)}・テネシスの損失 ${CORP.fmt.money(loss)}）：${why}`);
+  news(out, s, p, d + 1, 2 * 3600, 'bankrupt', `倒産：${why}。全契約を終了し、社員${CORP.fmt.group(s.dead.staff)}人は解雇、株式は上場廃止に（負債 ${CORP.fmt.money(debt)}）`, { debt, loss }, -3, true);
+  if (x) (x.bankrupt || (x.bankrupt = [])).push(s.id);
+  (out.bankrupt || (out.bankrupt = [])).push(s.id);
+}
+
 /* ---------------------------------------------------------------- the day --- */
 // The world's day `d`, closed at its end: every company's operations in ORDER, then what passes between them,
 // then the bank's books following everyone's money, then the periods that end, and the next day's announcements,
@@ -2000,14 +2365,30 @@ export function closeDay(w, d, flows, ch) {
   if (npc && npc.lend) w.lend = npc.lend;
   // what each company's people decided in their meetings (server/core/npc-org.js): their budgets, their hiring, their
   // mood, their research
-  if (npc && npc.ops) for (const o of npc.ops) decided(w, o);
+  if (npc && npc.ops) for (const o of npc.ops) decided(w, o, d, out, ch);
   for (const id of ORDER) {
     const s = w.co[id], p = PROFILES.get(id);
     s.today = 0;
     s.per.d = {};
+    // (a company that failed: its books are closed, nothing more happens to it — what the country still sent it, its
+    // public works and the like, the local businesses take instead)
+    if (s.dead) {
+      s.npcDay = 0;
+      const c = npc && npc.co[id];
+      if (c && w.ext) {
+        let n = (c.cat || 0) + Math.max(0, c.cas || 0) - (c.buyback || 0);
+        for (const v of Object.values(c.s || {})) n += v;
+        for (const k of Object.values(c.p || {})) for (const v of Object.values(k)) n += v[1];
+        for (const v of Object.values(c.t || {})) n += v[1];
+        for (const v of Object.values(c.l || {})) n += v;
+        if (n) w.ext.sector += Math.round(n);
+      }
+      continue;
+    }
     // (what came in on an average day of late, by stream: the country's money is all of it now)
     if (circ) { s.pr = s.pr || {}; for (const k of Object.keys(s.pr)) s.pr[k] *= 29 / 30; }
     if (!live) { people(s, p, d, w.launch); budgets(s, p, d, w.launch); }
+    if (s.ip) ipDay(w, s, p, d);
     if (p.model === 'studio') studioDay(w, s, p, d, ch, out, flows);
     else if (p.model === 'bank') bankDay(w, s, p, d, ch, flows);
     else {
@@ -2024,10 +2405,15 @@ export function closeDay(w, d, flows, ch) {
   }
   // the game's own businesses (YOSIDA's quests, gacha and trees, DAIZIN's buying back) and the treasury's part
   gameDay(w, d, flows);
+  // MY WAY's licences: the partners' fees and what they sold of its characters; the measures its people decided
+  licenseDay(w, d, flows);
+  for (const o of (w.ipOps || []).splice(0)) measure(w, w.co[o.company], o, d, ch, out);
+  delete w.ipOps;
   // what the companies' people decided to pay for (a placement fee, a severance, a new business's costs)
   if (npc && npc.charges) for (const c of npc.charges) charge(w, c);
   for (const id of ORDER) {
     const s = w.co[id], p = PROFILES.get(id);
+    if (s.dead) continue;
     settle(w, s, p, d);
     for (const x of w.paid.splice(0)) {
       received(w.co[x.to], x.n);
@@ -2040,12 +2426,14 @@ export function closeDay(w, d, flows, ch) {
     if (CORP.ymd(d).d === 1 && d >= w.launch) tech(w, s, p, d, ch, out);
     if (p.model === 'studio') titlesLook(w, s, p, d, out);
     if (CORP.isMonthEnd(d)) treasury(w, s, p, d, out);
+    // (MY WAY out of money at a month's end with nothing more Tenesice will lend: it fails)
+    if (s.ip && CORP.isMonthEnd(d) && d >= w.launch && (s.bal.cash || 0) < 0) bankrupt(w, s, p, d, out, '資金繰りに行き詰まり、テネシスからの追加融資も受けられず');
   }
   // what one company paid another for its services (MAGITA's facilities, Dtrade's data centres, the job sites'
   // advertising and placements, ジンクス's game shelves): each a sale of the one paid
   for (const b of w.b2bCash.splice(0)) {
     const s = w.co[b.to];
-    if (!s) { if (w.ext) w.ext.sector += b.n; continue; }
+    if (!s || s.dead) { if (w.ext) w.ext.sector += b.n; continue; }
     cashSale(s, b.stream, b.n);
     s.pr[b.stream] = (s.pr[b.stream] || 0) + b.n / 30;
     // (what it took to make what was sold: its materials, bought outside — MAGITA's cars for YOSIDA's gacha)
@@ -2074,7 +2462,11 @@ export function closeDay(w, d, flows, ch) {
     if (net) post(bank, [['cash', net], ['r:nii', -net]], 'receipts');
     let cash = npc ? Math.round(npc.bank.deposits || 0) : 0, lent = npc ? Math.round(npc.bank.loans || 0) : 0;
     for (const id of ORDER) if (id !== 'tenesice' && !(npc && abroad(w.co[id]))) { cash += w.co[id].bal.cash || 0; lent += debtOf(w.co[id]); }
-    const lost = npc ? Math.round(npc.bank.credit || 0) : 0;
+    // (and what a company that failed never paid back: MY WAY's, its 与信関係費用)
+    const failed = Math.round(w.creditLoss || 0);
+    w.creditLoss = 0;
+    if (failed > 0) post(bank, [['sCredit', failed], ['lent', -failed]]);
+    const lost = (npc ? Math.round(npc.bank.credit || 0) : 0) + failed;
     const dc = cash - (bank.inGame || { cash }).cash, dl = lent - (bank.inGame || { lent }).lent + lost;
     if (bank.inGame) {
       if (dc) post(bank, [['cash', dc], ['deposits', -dc]], 'deposits');
@@ -2089,8 +2481,11 @@ export function closeDay(w, d, flows, ch) {
     if (CORP.isMonthEnd(d) && id === 'magita' && d >= w.launch) garageFee(w, s, p, d, out);
     // (and YOSIDA its fee on the quests' rewards and, with DAIZIN, the VIP1週間券's price)
     if (CORP.isMonthEnd(d) && id === 'yosida' && d >= w.launch) { questFeeSet(w, s, p, d, out, ch); vipWeekSet(w, s, p, d, out, ch); }
-    if (CORP.isQuarterEnd(d) && d >= w.launch) staffing(w, s, p, d, out);
-    if (CORP.isQuarterEnd(d)) {
+    // (MY WAY's month: its characters, its partners)
+    if (CORP.isMonthEnd(d) && s.ip && !s.dead) ipMonth(w, s, p, d, ch, out);
+    // (MY WAY keeps its people whatever its year: what it cannot cut is its trouble — its own measures aside)
+    if (CORP.isQuarterEnd(d) && d >= w.launch && !s.dead && !s.ip) staffing(w, s, p, d, out);
+    if (CORP.isQuarterEnd(d) && !s.dead) {
       if (p.model === 'studio') impair(s, p, d);
       // the backer's part of its studio's quarter (持分法)
       for (const [held, shares] of Object.entries(s.hold.own || {})) {
@@ -2122,21 +2517,26 @@ export function closeDay(w, d, flows, ch) {
   delete w.bank;
   return out;
 }
-function decided(w, o) {
+function decided(w, o, d, out, ch) {
   const s = w.co[o.company];
-  if (!s) return;
+  if (!s || s.dead) return;
+  // (MY WAY's measures, taken once its day is under way: what they cost is that day's; a partner's contract signed
+  // again or given up)
+  if (o.kind === 'ip') { (w.ipOps || (w.ipOps = [])).push(o); return; }
+  if (o.kind === 'license') return license(w, o.company, o.action, d, out, ch, o.why || '', o.fee || null);
   if (o.kind === 'budget' && s.budget[o.key] !== undefined) s.budget[o.key] = Math.max(0, Math.round(s.budget[o.key] * o.mult));
   else if (o.kind === 'target') s.target = Math.max(1, Math.round((s.target || s.n) * o.mult));
   else if (o.kind === 'morale') s.morale = Math.max(0.2, Math.min(0.95, s.morale + o.add));
   else if (o.kind === 'lab' && s.lab) s.lab.mult *= 1 - o.cut;
 }
 // one payment the companies' people decided (a company's to another company, to a person, or to the local businesses)
-const CHARGE_ACCOUNT = { placement: 'sRecruit', severance: 'sSeverance', ventureLaunch: 'sVenture', ventureCost: 'sVenture' };
+const CHARGE_ACCOUNT = { placement: 'sRecruit', severance: 'sSeverance', ventureLaunch: 'sVenture', ventureCost: 'sVenture', idea: 'sIdea' };
 function charge(w, c) {
   const s = w.co[c.from], n = Math.round(c.n);
-  if (!s || !(n > 0)) return;
+  // (nothing from a company that has failed)
+  if (!s || s.dead || !(n > 0)) return;
   post(s, [[CHARGE_ACCOUNT[c.stream] || 'sOther', n], ['cash', -n]], 'expenses');
-  if (c.to && w.co[c.to] && c.to !== c.from) w.b2bCash.push({ to: c.to, stream: c.stream, n, from: c.from });
+  if (c.to && w.co[c.to] && !w.co[c.to].dead && c.to !== c.from) w.b2bCash.push({ to: c.to, stream: c.stream, n, from: c.from });
   else if (c.person >= 0) w.ext.toPeople.push({ i: c.person, n });
   else w.ext.sector += n;
 }
@@ -2156,6 +2556,12 @@ function dayRow(w, s, p, d) {
 // revision when the year is far from it), and the market's view for the next day.
 function announce(w, s, p, d, out, ch) {
   const next = d + 1;
+  // (a company that failed: struck off, worth nothing — its price's centre at $1 from the day after)
+  if (s.dead) {
+    s.mkt = { e: 0, fair: 1 };
+    if (p.listed) out.anchors.push({ company: s.id, day: next, e0: 0, e1: 0, ev: out.jumps.filter((j) => j.company === s.id && j.day === next).map((j) => [j.at, j.jump]), dps: 0 });
+    return;
+  }
   const due = s.pend.filter((x) => x.day === next);
   s.pend = s.pend.filter((x) => x.day !== next);
   const at = CORP.announce.hour * 3600;

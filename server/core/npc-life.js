@@ -12,7 +12,7 @@ import { thinkCar, thinkJob } from './npc-mind.js';
 const A = NPC.act;
 const PL = Object.fromEntries(NPC.places.map((p, k) => [p, k]));
 // what a company's people do at work, and where (the place on the map)
-const WORKPLACE = { tenesice: 'bank', magita: 'factory', carowner: 'dealer', jinx: 'store', daizin: 'lounge', citywork: 'office', speedeed: 'office', dtrade: 'office', riru: 'studio', ice: 'studio', yosida: 'factory', wazima: 'factory' };
+const WORKPLACE = { tenesice: 'bank', magita: 'factory', carowner: 'dealer', jinx: 'store', daizin: 'lounge', citywork: 'office', speedeed: 'office', dtrade: 'office', riru: 'studio', ice: 'studio', yosida: 'factory', wazima: 'factory', myway: 'studio' };
 // the learned worth of each kind of free time (P.learn)
 export const L = { casino: 0, game: 1, shop: 2, car: 3, lounge: 4, friends: 5, outing: 6, invest: 7, politics: 8, venture: 9, walk: 10, home: 11 };
 // memories (P.mem): kind codes

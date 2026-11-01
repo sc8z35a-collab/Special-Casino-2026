@@ -36,10 +36,12 @@ export function assignOne(W, id, ages, r) {
     if (!staff.length) { o.depts = spec.map((d) => ({ ...d, head: -1, managers: [], named: {}, size: 0 })); return; }
     // the executives: the most able of the older ones (not those kept on after 60)
     const able = staff.filter((i) => !(P.flags[i] & FL.rehired) && ages[i] >= 45).map((i) => [i, sk(P, i, S.manage) * 2 + tr(P, i, T.ambition) + ages[i] / 60 + r.u() * 0.4]).sort((a, b) => b[1] - a[1]);
-    const nOff = Math.max(2, Math.min(8, Math.round(staff.length / 2500) + 2));
+    // (a company that names its executives — MY WAY's CCO, CFO, COO and 執行役員 — has as many as it names)
+    const named = NPC.officers[id], nOff = named ? Math.min(named.length, Math.max(2, staff.length - 2)) : Math.max(2, Math.min(8, Math.round(staff.length / 2500) + 2));
     const execs = able.slice(0, 2 + nOff).map((x) => x[0]);
-    // (a small company with few of the older: the ablest of the rest)
-    for (const i of staff.slice().sort((a, b) => P.sk[b * 8 + S.manage] - P.sk[a * 8 + S.manage])) { if (execs.length >= 2) break; if (!execs.includes(i)) execs.push(i); }
+    // (a small company with few of the older: the ablest of the rest — all the executives it names, for one that names them)
+    const wantExecs = named ? 2 + nOff : 2;
+    for (const i of staff.slice().sort((a, b) => P.sk[b * 8 + S.manage] - P.sk[a * 8 + S.manage])) { if (execs.length >= wantExecs) break; if (!execs.includes(i)) execs.push(i); }
     if (execs.length) { o.ceo = execs[0]; P.rank[o.ceo] = 6; }
     if (execs.length > 1) { o.president = execs[1]; P.rank[o.president] = 5; }
     o.officers = execs.slice(2);
@@ -120,7 +122,7 @@ export function posts(W, i) {
   for (const o of Object.values(W.orgs)) {
     if (o.ceo === i) out.push(`${o.name} CEO`);
     if (o.president === i) out.push(`${o.name} 社長`);
-    if (o.officers.includes(i)) out.push(`${o.name} 役員`);
+    if (o.officers.includes(i)) { const t = NPC.officers[o.id]; out.push(`${o.name} ${t && t[o.officers.indexOf(i)] ? t[o.officers.indexOf(i)] : '役員'}`); }
     for (const d of o.depts) {
       if (d.head === i && d.kind !== 'exec') out.push(`${o.name} ${d.name}部長`.replace('部部長', '部長'));
       for (const [key, name] of d.roles) if (d.named[key] === i) out.push(`${o.name} ${name}`);
@@ -179,13 +181,15 @@ export function orgDay(W, day, r, ctx) {
   if (!ctx.corp) return;
   for (const id of NPC.companies) {
     const o = W.orgs[id], s = ctx.corp.co[id];
-    if (!o || !s) continue;
+    // (a company that failed meets no more)
+    if (!o || !s || s.dead) continue;
     if (dow >= 1 && dow <= 5 && (hashDay(id) + day) % 5 === 0) meeting(W, o, s, day, r, ctx);
     if (t.d === 2) { accounts(W, o, s, day, r, ctx); ventureReview(W, o, s, day, r, ctx); }
   }
   lendingDesk(W, day, r, ctx);
+  if (t.d === 2) ideaReview(W, day, r, ctx);
   if (t.d === 3) { analysis(W, day, r, ctx); labsMonth(W, day, r, ctx); }
-  if (t.d === 10 && t.m % 3 === 1) talks(W, day, r, ctx);
+  if (t.d === 10 && t.m % 3 === 1) { talks(W, day, r, ctx); licenseTalks(W, day, r, ctx); }
   ventureMonth(W, day, r, ctx);
 }
 const hashDay = (id) => { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 997; return h; };
@@ -254,6 +258,10 @@ function proposals(W, o, s, day, r, ctx) {
     else if (long < -0.1 && now > 0.5) out.push({ kind: 'price', title: `値下げ（${key === 'vipFee' ? 'VIP会費' : key === 'goods' ? '商品' : '整備料金'}を8%）：客離れを止める`, effect: [{ kind: 'price', key, mult: 0.92 }], cost: 0, risk: 0.15, gain: 0.05, by: by('plan') >= 0 ? by('plan') : by('acct'), why: { trend: long, price: now } });
   }
   if (id === 'jinx' && r.u() < 0.15) out.push({ kind: 'partner', title: 'スタジオとの連携：店頭でのゲーム販売の強化', effect: [{ kind: 'appeal', key: 'games', add: 0.03, days: 90 }], cost: 0, risk: 0.1, gain: 0.03, by: dept('partner').named.liaison });
+  // MY WAY: what its people do for its characters, its partners and its costs; and a partner's contract with it
+  if (id === 'myway' && s.ip) mywayProposals(W, o, s, out, { pl, runway, dept, by });
+  const mw = ctx.corp.co.myway;
+  if (mw && mw.ip && !mw.dead && mw.ip.contracts[id]) partnerProposals(W, o, mw, out, { dept, by });
   return out.filter((p) => p.by !== undefined && p.by >= 0);
 }
 // the rate the 金利決定担当 thinks right (テイラー則: neutral, plus half the inflation over the target and half the
@@ -270,7 +278,9 @@ function meeting(W, o, s, day, r, ctx) {
   const P = W.P, list = proposals(W, o, s, day, r, ctx);
   if (!list.length) return;
   // (a restructuring comes first when it is on the table)
-  const p = list.find((x) => x.kind === 'cut' && x.gain >= 0.2) || list[r.int(list.length)];
+  // (when there are several, one of them: MY WAY's own measures besides a company's usual restructuring)
+  const cuts = list.filter((x) => x.kind === 'cut' && x.gain >= 0.2);
+  const p = cuts.length > 1 ? cuts[r.int(cuts.length)] : cuts[0] || list[r.int(list.length)];
   const acct = o.depts.find((d) => d.kind === 'acct'), stop = o.depts.find((d) => d.kind === 'stop');
   const stopper = stop ? (stop.named.stopper >= 0 ? stop.named.stopper : stop.head) : -1;
   const who = [[o.ceo, 'CEO', 3], [o.president, '社長', 2], [p.by, roleOf(o, p.by), 1], [acct ? acct.head : -1, '経理部長', 1], [stopper, 'ストップ係', 1]];
@@ -328,7 +338,7 @@ function think(W, o, i, day, line) {
 // the server, server/core/npc.js, on the companies' world), and the people's side (prices to them, how much they want
 // it, the job sites' shares, the new businesses)
 function apply(W, o, e, day, r, ctx) {
-  if (e.kind === 'budget' || e.kind === 'target' || e.kind === 'morale' || e.kind === 'terms' || e.kind === 'lab' || e.kind === 'lend') { W.corpOps.push({ company: o.id, ...e }); return; }
+  if (e.kind === 'budget' || e.kind === 'target' || e.kind === 'morale' || e.kind === 'terms' || e.kind === 'lab' || e.kind === 'lend' || e.kind === 'ip' || e.kind === 'license') { W.corpOps.push({ company: o.id, ...e }); return; }
   // (a price: changed for good, or for a campaign's days on top of it — a campaign ends by itself, the price stays)
   if (e.kind === 'price') {
     const k = o.id + ':' + e.key;
@@ -467,6 +477,106 @@ function talks(W, day, r, ctx) {
   }
 }
 
+/* ---------------------------------------------------------------- MY WAY --- */
+// What MY WAY's people bring to its 会議室 (CORP.myway): the 世界観・IP設定プランナー (or the design chief) a new
+// character when the characters cool (流行の冷え込み), the IP lawyers the copies fought in court, the PR director a
+// campaign when the name is hurt (信用崩壊), the alliance manager the fee offered lower to a partner that left, and the
+// CFO's planners the costs (固定費の地獄: the care for its people cut, never their pay, and a voluntary retirement when the
+// money runs short).
+function mywayProposals(W, o, s, out, { pl, runway, dept, by }) {
+  const ip = s.ip, M = CORP.myway, pct = (x) => `${Math.round(x * 100)}%`;
+  const named = (k, role) => { const d = dept(k); return d ? (d.named[role] >= 0 ? d.named[role] : d.head) : -1; };
+  const cfo = o.officers[1] >= 0 ? o.officers[1] : by('plan');
+  if (ip.heat < 0.85) {
+    const who = named('world', 'planner') >= 0 ? named('world', 'planner') : named('design', 'chief');
+    out.push({ kind: 'ip', title: `新キャラクターの緊急投入（流行${pct(ip.heat)}：マンネリ化への対策）`, effect: [{ kind: 'ip', action: 'newchar' }], cost: M.newChar.cost, risk: 0.3, gain: 0.12 + (0.85 - ip.heat) * 0.5, by: who, why: { heat: ip.heat } });
+  }
+  if (ip.fakes > 0.2) out.push({ kind: 'ip', title: `違法コピー品の一斉摘発・国際訴訟（コピー品${pct(ip.fakes)}）`, effect: [{ kind: 'ip', action: 'legal' }], cost: M.legal.cost, risk: 0.15, gain: 0.08 + ip.fakes * 0.3, by: named('legal', 'ip'), why: { fakes: ip.fakes } });
+  if (ip.brand < 0.8) out.push({ kind: 'ip', title: `ブランド回復キャンペーンと記者会見（信用${pct(ip.brand)}）`, effect: [{ kind: 'ip', action: 'pr' }], cost: M.pr.cost, risk: 0.2, gain: 0.06 + (0.8 - ip.brand) * 0.4, by: named('pr', 'pr'), why: { brand: ip.brand } });
+  for (const [pid, c] of Object.entries(ip.contracts)) {
+    if (c.on || c.fee <= c.base * M.talks.floor + 1e6 || (c.offered && W.day - c.offered < 60)) continue;
+    out.push({ kind: 'ip', title: `${CORP.company(pid).name}への再契約の提案（契約料を${pct(M.win.off)}引き下げ）`, effect: [{ kind: 'ip', action: 'win', partner: pid }], cost: 0, risk: 0.1, gain: 0.07, by: named('alliance', 'negotiator'), why: { partner: pid } });
+  }
+  // (the fixed costs: what it cannot cut is the pay)
+  if (pl.op < 0 || runway < 6) {
+    out.push({ kind: 'cut', title: '固定費の見直し（社員管理・福利厚生費を10%削減。基本給と月次ボーナスは維持）', effect: [{ kind: 'ip', action: 'care' }, { kind: 'budget', key: 'other', mult: 0.85 }, { kind: 'target', mult: 0.98 }], cost: 0, risk: 0.2, gain: 0.2, by: cfo, why: { op: pl.op, runway } });
+    if (runway < 4) out.push({ kind: 'cut', title: `希望退職の募集（社員の${pct(M.retire.share)}・退職金${M.retire.severance}か月分）`, effect: [{ kind: 'ip', action: 'retire' }], cost: s.n * M.retire.share * s.pay / 12 * M.retire.severance, risk: 0.35, gain: 0.25, by: cfo, why: { runway } });
+  }
+}
+// A partner of MY WAY's weighs its contract (its 交渉係, its buyer or its planners): given up when it lost on it last
+// month or the characters became something to be ashamed of (信用 under a third); taken up again when they pull well
+// past what the fee asks of them.
+function partnerProposals(W, o, mw, out, { dept, by }) {
+  const c = mw.ip.contracts[o.id], M = CORP.myway, x = M.partners[o.id];
+  if (!c || !x) return;
+  const d = dept('nego') || dept('trade') || dept('partner');
+  const who = d ? (d.named.negotiator >= 0 ? d.named.negotiator : d.named.buyer >= 0 ? d.named.buyer : d.named.liaison >= 0 ? d.named.liaison : d.head) : by('plan');
+  const pull = Math.max(0, mw.ip.heat * mw.ip.brand), be = CORP.breakeven(o.id, c.fee), last = c.last;
+  if (c.on) {
+    const losing = last && last.on && last.margin < 0, shame = mw.ip.brand < 0.33;
+    if (losing || shame) out.push({ kind: 'license', title: `MY WAYとのIP契約の打ち切り（${shame ? 'ブランドの信用が失墜し「持つと恥ずかしい」状態' : `コラボの採算割れ：先月${NPC.money(last.margin)}`}）`,
+      effect: [{ kind: 'license', action: 'cancel', why: shame ? 'ブランドの信用失墜のため' : '採算割れのため' }], cost: 0, risk: 0.15, gain: 0.08 + (losing ? Math.min(0.3, -last.margin / Math.max(1, last.fee)) : 0.15), by: who, why: { margin: last ? last.margin : 0, brand: mw.ip.brand } });
+  } else if (pull >= be * 1.1) {
+    out.push({ kind: 'license', title: `MY WAYとのIP契約の再締結（キャラクター人気の回復：年${NPC.money(c.fee)}）`, effect: [{ kind: 'license', action: 'sign', why: 'キャラクター人気の回復を受けて' }], cost: 0, risk: 0.25, gain: 0.06 + Math.min(0.2, (pull / be - 1) * 0.3), by: who, why: { pull, breakeven: be } });
+  }
+}
+// Each quarter MY WAY's 交渉係 meets each partner's on its fee: MY WAY asks more while its characters pull well and
+// the partner earns on them, less to keep a partner that barely does; the partner wants less while it earns little on
+// them. They move towards each other by their patience and skill until they meet (the fee moves, within MY WAY's band)
+// or part.
+function licenseTalks(W, day, r, ctx) {
+  const P = W.P, o = W.orgs.myway, mw = ctx.corp && ctx.corp.co.myway;
+  if (!o || !mw || mw.dead || !mw.ip) return;
+  const d0 = o.depts.find((d) => d.kind === 'nego'), us = d0 ? (d0.named.negotiator >= 0 ? d0.named.negotiator : d0.head) : -1;
+  if (us < 0) return;
+  const pull = Math.max(0, mw.ip.heat * mw.ip.brand);
+  for (const [id, c] of Object.entries(mw.ip.contracts)) {
+    const t = W.orgs[id];
+    if (!c.on || !t || !c.last) continue;
+    const d = t.depts.find((x) => x.kind === 'nego' || x.kind === 'trade' || x.kind === 'partner');
+    const them = d ? (d.named.negotiator >= 0 ? d.named.negotiator : d.named.buyer >= 0 ? d.named.buyer : d.named.liaison >= 0 ? d.named.liaison : d.head) : -1;
+    if (them === undefined || them < 0) continue;
+    const share = c.last.margin / Math.max(1, c.last.fee);
+    let a = pull > 1.05 && share > 0.3 ? 0.05 : pull < 0.9 || share < 0.05 ? -0.05 : 0.01;
+    let b = share < 0.1 ? -0.08 : share < 0.4 ? -0.03 : 0.02;
+    const rows = [];
+    for (let round = 1; round <= 5; round++) {
+      a -= (a - b) * 0.25 * (1.2 - tr(P, us, T.patience) * 0.6 - P.sk[us * 8 + S.negotiate] / 255 * 0.4);
+      b += (a - b) * 0.25 * (1.2 - tr(P, them, T.patience) * 0.6 - P.sk[them * 8 + S.negotiate] / 255 * 0.4);
+      rows.push({ round, us: Math.round(a * 1000) / 10, them: Math.round(b * 1000) / 10 });
+      if (a - b < 0.004) break;
+    }
+    const deal = a - b < 0.01, move = deal ? Math.round((a + b) / 2 * 1000) / 1000 : 0;
+    if (deal && move) W.corpOps.push({ company: 'myway', kind: 'ip', action: 'fee', partner: id, mult: 1 + move });
+    const m = { id: ++o.seq, company: 'myway', day, room: '交渉室', title: `${t.name}とのIP契約料の交渉`, kind: 'talks', by: us,
+      attendees: [{ i: us, role: 'MY WAY 交渉係', name: W.card(us, day).name }, { i: them, role: `${t.name} 交渉担当`, name: W.card(them, day).name }],
+      lines: rows.map((x) => ({ i: us, role: `第${x.round}回`, stance: 'neutral', name: '', text: `MY WAY案 ${x.us >= 0 ? '+' : ''}${x.us}%／${t.name}案 ${x.them >= 0 ? '+' : ''}${x.them}%` })), yes: deal ? 1 : 0, no: deal ? 0 : 1, veto: null, pass: deal, result: { move } };
+    W.meetings.push(m);
+    W.news.push({ day, kind: 'company', district: 3, text: deal ? `MY WAYと${t.name}がIP契約料で合意（${move >= 0 ? '+' : ''}${(move * 100).toFixed(1)}%）` : `MY WAYと${t.name}の契約料交渉は物別れ`, data: { meeting: m.id } });
+    think(W, o, us, day, deal ? `${t.name}と契約料${(move * 100).toFixed(1)}%で合意した。` : `${t.name}は譲らなかった。次の四半期にまた話す。`);
+  }
+}
+// MY WAY's アイデア審査・成果報酬査定委員会, each month: the ideas its creative people brought, the ones taken up paid
+// $500K each (成果報酬) to whoever had them — the more creative and the happier at work, the likelier — and the
+// characters freshened by them
+function ideaReview(W, day, r, ctx) {
+  const P = W.P, o = W.orgs.myway, s = ctx.corp && ctx.corp.co.myway;
+  if (!o || !s || s.dead || !s.ip) return;
+  const M = CORP.myway, staff = W.staffOf('myway');
+  if (!staff.length) return;
+  const n = Math.round(staff.length * M.ideaRate * (0.6 + 0.7 * s.morale) * (0.8 + 0.4 * r.u()));
+  if (n <= 0) return;
+  const pool = staff.map((i) => [i, P.sk[i * 8 + S.create] / 255 + P.jsat[i] / 510 + r.u()]).sort((a, b) => b[1] - a[1]).slice(0, n).map((x) => x[0]);
+  for (const i of pool) { W.charge('myway', null, 'idea', M.idea, i); remember(P, i, day, M_PRIZE, 140); }
+  W.corpOps.push({ company: 'myway', kind: 'ip', action: 'ideas', n: pool.length, people: pool.slice(0, 50) });
+  const rev = o.depts.find((d) => d.kind === 'review'), judge = rev ? (rev.named.judge >= 0 ? rev.named.judge : rev.head) : o.president;
+  W.reports.push({ company: 'myway', kind: 'ideas', day, by: judge, title: `${CORP.monthLabel(day)} アイデア審査・成果報酬査定`, data: { n: pool.length, each: M.idea, all: pool.length * M.idea, people: pool.slice(0, 12) },
+    text: `今月は${pool.length}件の企画を採用しました。発案者には1件あたり${NPC.money(M.idea)}の成果報酬（合計${NPC.money(pool.length * M.idea)}）を支給します。` });
+  think(W, o, judge, day, `今月は${pool.length}件を採用した。社員の発想こそが最大の資産だ。`);
+}
+// (a person whose idea was taken up remembers it as a good day at work)
+const M_PRIZE = M.promoted;
+
 /* ---------------------------------------------------------------- Tenesice's lending desk --- */
 // The lending desk every day: the 融資先選定担当 looks at each company's books (its money in months, its losses, its
 // loans), the 融資額決定担当 says how much it may borrow, the 金利決定担当 at what rate (its rank's band and more for
@@ -481,24 +591,28 @@ function lendingDesk(W, day, r, ctx) {
   for (const id of NPC.companies) {
     if (id === 'tenesice') continue;
     const s = ctx.corp.co[id];
-    if (!s) continue;
+    if (!s || s.dead) continue;
     const monthly = Math.max(1, (s.n * s.unit + s.budget.place + s.budget.rd + s.budget.ads + s.budget.other) / 12);
     const eq = (s.bal.capital || 0) + (s.bal.reserve || 0) + (s.bal.retained || 0);
     const debt = (s.loans || []).reduce((n, l) => n + l.amt, 0);
     const lossy = CORP.plOf(s.per.y || {}).op < 0;
     const health = Math.max(0, Math.min(1, (eq / Math.max(1, eq + debt)) * 0.7 + Math.min(1, (s.bal.cash || 0) / monthly / 6) * 0.3 - (lossy ? 0.2 : 0)));
-    const [lo, hi] = CORP.ranks.A.rate;
     const strict = pick >= 0 ? tr(P, pick, T.consc) : 0.5;
-    // (never under the rank's floor, however kind the 金利決定担当)
-    const rate = Math.round(Math.max(lo, Math.min(0.06, hi - (hi - lo) * health + (health < 0.3 ? 0.01 * (1 + strict) : 0) + (rateBy >= 0 ? (0.5 - tr(P, rateBy, T.agree)) * 0.002 : 0))) * 10000) / 10000;
-    const cap = Math.round(Math.max(monthly * 6, eq * (0.2 + 0.6 * health) * (amountBy >= 0 ? 0.8 + 0.4 * tr(P, amountBy, T.risk) : 1)) / 1e7) * 1e7;
-    rows.push({ id, name: CORP.company(id).name, health: Math.round(health * 100), rate, cap, debt });
-    W.corpOps.push({ company: id, kind: 'lend', rate, cap });
+    // its rank by its health (A; B under `below`; C, at 10%, under its own), and its rate in the rank's band (never
+    // under its floor, however kind the 金利決定担当)
+    const R = CORP.ranks, rank = health < R.C.below ? 'C' : health < R.B.below ? 'B' : 'A';
+    const [lo, hi] = R[rank].rate, within = rank === 'A' ? health : rank === 'B' ? (health - R.C.below) / (R.B.below - R.C.below) : 0;
+    let rate = Math.round(Math.max(lo, Math.min(hi, hi - (hi - lo) * within + (rank === 'A' && health < 0.3 ? 0.01 * (1 + strict) : 0) + (rateBy >= 0 ? (0.5 - tr(P, rateBy, T.agree)) * 0.002 : 0))) * 10000) / 10000;
+    let cap = Math.round(Math.max(monthly * 6, eq * (0.2 + 0.6 * health) * (amountBy >= 0 ? 0.8 + 0.4 * tr(P, amountBy, T.risk) : 1)) / 1e7) * 1e7;
+    // (MY WAY: its pace frightens the bank — 15% a year whatever its rank, and no more than half its equity)
+    if (s.ip) { rate = CORP.myway.loanRate; cap = Math.round(Math.max(0, eq) * CORP.myway.line / 1e7) * 1e7; }
+    rows.push({ id, name: CORP.company(id).name, health: Math.round(health * 100), rank, rate, cap, debt });
+    W.corpOps.push({ company: id, kind: 'lend', rate, cap, rank });
   }
   if ((day + 4) % 28 === 3 || !W.lendLog) {
     W.meetings.push({ id: ++o.seq, company: 'tenesice', day, room: '融資審査室', title: '融資審査会議（各社の与信と条件）', kind: 'lending', by: pick,
       attendees: [[pick, '融資先選定担当'], [rateBy, '金利決定担当'], [amountBy, '融資額決定担当'], [d.head, '融資本部長']].filter(([i]) => i >= 0).map(([i, role]) => ({ i, role, name: W.card(i, day).name })),
-      lines: rows.map((x) => ({ i: pick, role: x.name, stance: x.health > 50 ? 'for' : 'neutral', name: '', text: `与信${x.health}点／金利 年${(x.rate * 100).toFixed(2)}%／融資枠${NPC.money(x.cap)}${x.debt ? `（残高${NPC.money(x.debt)}）` : ''}` })), yes: 1, no: 0, veto: null, pass: true });
+      lines: rows.map((x) => ({ i: pick, role: x.name, stance: x.health > 50 ? 'for' : 'neutral', name: '', text: `与信${x.health}点（ランク${x.rank}）／金利 年${(x.rate * 100).toFixed(2)}%／融資枠${NPC.money(x.cap)}${x.debt ? `（残高${NPC.money(x.debt)}）` : ''}` })), yes: 1, no: 0, veto: null, pass: true });
     W.lendLog = day;
   }
 }
