@@ -168,6 +168,14 @@ test('once the country lives the companies still sell abroad what it does not bu
   assert.ok(w.co.tenesice.pr.nii > 0);
 });
 
+test('no company plans for more than half again its size: hiring plans compounded without end took the others\' people', () => {
+  const c = country(2000), w = c.w;
+  for (const id of ['myway', 'tenesice', 'jinx']) {
+    const s = w.co[id], cap = corpModel.targetCap(w, s), size = Math.round(CORP.company(id).staff * w.circ.scale);
+    assert.equal(cap, Math.max(s.n, Math.round(size * 1.5)));
+  }
+});
+
 test('WAZIMA pays MAGITA its month and still never runs below nothing; no company keeps a tax it never booked', () => {
   const c = country(2000), w = c.w;
   for (const s of Object.values(w.co)) assert.equal(s.bal.taxdue || 0, corpModel.taxOwed(s, w.day), s.id);

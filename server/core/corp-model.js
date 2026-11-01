@@ -1805,9 +1805,15 @@ function staffing(w, s, p, d, out) {
   } else if (ratio !== null && ratio > ST.growAbove) {
     const share = ST.grow[0] + (ST.grow[1] - ST.grow[0]) * Math.min(1, (ratio - ST.growAbove) / ST.growAbove);
     const add = Math.max(1, Math.round(s.n * share));
-    s.target = Math.max(s.target || s.n, s.n) + add;
+    s.target = Math.min(targetCap(w, s), Math.max(s.target || s.n, s.n) + add);
     news(out, s, p, d + 1, 3 * 3600, 'staff', `好業績のため採用を拡大（採用計画 +${CORP.fmt.group(add)}人）`, { grow: add }, 0, true);
   }
+}
+// the most people a company plans to have: half again its size for the country it lives in (its meetings' +5% and its
+// good years' hiring compounded without end — MY WAY at 2.5 times its size in two years, the others' people gone to it)
+export function targetCap(w, s) {
+  const p = PROFILES.get(s.id);
+  return Math.max(s.n, Math.round(p.staff * sizeScale(w, p) * 1.5));
 }
 // 技術開発: one development at a time, begun on a month's first day and done after its months; it succeeds the likelier
 // the more people the company has (against its size at the start), the better their mood and the more it spends on
@@ -2663,7 +2669,7 @@ function decided(w, o, d, out, ch) {
   if (o.kind === 'ip') { (w.ipOps || (w.ipOps = [])).push(o); return; }
   if (o.kind === 'license') return license(w, o.company, o.action, d, out, ch, o.why || '', o.fee || null);
   if (o.kind === 'budget' && s.budget[o.key] !== undefined) s.budget[o.key] = Math.max(0, Math.round(s.budget[o.key] * o.mult));
-  else if (o.kind === 'target') s.target = Math.max(1, Math.round((s.target || s.n) * o.mult));
+  else if (o.kind === 'target') s.target = Math.min(o.mult > 1 ? targetCap(w, s) : Infinity, Math.max(1, Math.round((s.target || s.n) * o.mult)));
   else if (o.kind === 'morale') s.morale = Math.max(0.2, Math.min(0.95, s.morale + o.add));
   else if (o.kind === 'lab' && s.lab) s.lab.mult *= 1 - o.cut;
 }
