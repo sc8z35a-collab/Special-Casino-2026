@@ -130,5 +130,6 @@
   "check_medals.cjs": {
     "runner": "browser",
     "tier": "pr"
-  }
+  },
+  "check_town.cjs": { "runner": "browser", "tier": "pr" }
 }
