@@ -181,26 +181,54 @@ test('倒産: out of money with nothing more to borrow it fails — its people p
   let dead = null, outs = [];
   for (let k = 0; k < 70 && !s.dead; k++) outs.push(...x.days(1));
   dead = s.dead;
-  assert.ok(dead, 'it failed');
+  assert.ok(dead, 'it filed for 破産');
   assert.ok(CORP.isMonthEnd(dead.day));
+  assert.equal(s.bk.stage, 'filed');
+  assert.ok(dead.debt >= 2000000000);
   assert.equal(s.n, 0);
-  assert.equal(s.loans.length, 0);
   assert.ok(Object.values(ip.contracts).every((c) => !c.on));
   assert.deepEqual([s.div.dps, s.div.total], [0, 0]);
-  assert.ok(dead.loss > 0 && dead.debt >= 2000000000);
-  // the bank lost what it was not repaid
-  assert.ok((bank.per.y.sCredit || 0) - credit >= dead.loss);
   const last = outs[outs.length - 1];
   assert.ok(last.bankrupt && last.bankrupt.includes('myway'));
-  assert.ok(last.news.some((n) => n.company === 'myway' && n.kind === 'bankrupt'));
+  assert.ok(last.news.some((n) => n.company === 'myway' && n.kind === 'bankrupt' && /破産を申請/.test(n.text)));
   assert.ok(last.jumps.some((j) => j.company === 'myway' && j.jump <= -3));
+  // the court opens it, its trustee sells and pays out: the bank repaid what can be and losing the rest
+  const after = x.days(CORP.bankruptcy.distribute + 1);
+  assert.equal(s.bk.stage, 'distributed');
+  assert.equal(s.loans.length, 0);
+  // (what it owed the bank: repaid as far as its estate went, the rest the bank's loss)
+  assert.equal(s.dead.repaid + s.dead.loss, 2000000000);
+  assert.ok(s.bk.rate > 0 && s.bk.rate <= 1);
+  assert.ok((bank.per.y.sCredit || 0) - credit >= s.dead.loss);
   for (const s2 of Object.values(x.w.co)) { const [a, le] = books(s2); assert.equal(a, le, s2.id); }
-  // from then on: nothing; its share's centre at $1
-  const cash = s.bal.cash, after = x.days(3);
-  assert.equal(s.bal.cash, cash);
-  const anchor = after[2].anchors.find((a) => a.company === 'myway');
+  assert.ok(after.some((o) => o.news.some((n) => n.company === 'myway' && /配当率/.test(n.text))));
+  // its share's centre at $1, nothing sold
+  const anchor = after[after.length - 1].anchors.find((a) => a.company === 'myway');
   assert.deepEqual([anchor.e0, anchor.e1, anchor.dps], [0, 0, 0]);
   assert.ok(after.every((o) => o.days.find((r) => r.company === 'myway').sales === 0));
+});
+
+test('破産 with little left: the estate pays out alike and the bank books the rest as its loss; a supplier owed writes it off', () => {
+  const x = world();
+  const s = x.w.co.myway, bank = x.w.co.tenesice;
+  for (const c of Object.values(s.ip.contracts)) c.on = false;
+  s.ip.heat = 0.05;
+  // (nothing left: its money, its receivables and its buildings gone with its equity, a loan of $3B owed)
+  const gone = (s.bal.cash || 0) + (s.bal.bonds || 0) + (s.bal.ar || 0) + (s.bal.ppe || 0);
+  s.bal.cash = 0; s.bal.bonds = 0; s.bal.ar = 0; s.bal.ppe = 0; s.recv = 0; s.bal.retained -= gone;
+  for (const t of Object.values(x.w.co)) { const n = (t.owe && t.owe.myway) || 0; if (n) { t.owe.myway = 0; t.bal.ap -= n; t.bal.retained += n; } }
+  s.loans.push({ id: 'Ly', amt: 3000000000, rate: M.loanRate, from: x.day(), until: x.day() + 1000 });
+  s.bal.loan = (s.bal.loan || 0) + 3000000000; s.bal.retained -= 3000000000;
+  bank.inGame = null;
+  const credit = bank.per.y.sCredit || 0;
+  for (let k = 0; k < 70 && !s.dead; k++) x.days(1);
+  assert.ok(s.dead);
+  x.days(CORP.bankruptcy.distribute + 1);
+  assert.ok(s.bk.rate < 1 && s.dead.loss > 0, JSON.stringify(s.bk));
+  assert.ok((bank.per.y.sCredit || 0) - credit >= s.dead.loss);
+  for (const s2 of Object.values(x.w.co)) { const [a, le] = books(s2); assert.equal(a, le, s2.id); }
+  x.days(CORP.bankruptcy.close - CORP.bankruptcy.distribute);
+  assert.equal(s.bk.stage, 'closed');
 });
 
 test('its people in the country: hired by its skills, paid by its own ladder (the 社長 above the CEO, far above the rest), its executives named; the people buy its collaborations; failed, they are let go', () => {

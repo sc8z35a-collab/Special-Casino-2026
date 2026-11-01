@@ -15,7 +15,7 @@ import { keyFrom } from './auth.js';
 import { ApiError } from './errors.js';
 import { partOf } from './hash.js';
 import * as model from './npc-model.js';
-import { view as localView } from './npc-local.js';
+import { view as localView, detail as localDetail } from './npc-local.js';
 import * as pop from './npc-pop.js';
 import * as text from './npc-text.js';
 import { createAi } from './npc-ai.js';
@@ -439,6 +439,13 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         sector: w.sector, sum: w.sum, cal: w.cal, rates: w.bankRates, stock: w.stock, depth: w.depth, paused: !!w.paused,
         usage: { ticks, tickMs: ticks ? Math.round(tickMs / ticks * 10) / 10 : 0, saves, ai: { ...ai.used(now), on: ai.on }, server: usage() } };
       return { ...partOf(all, req.query.get('rev')), now };
+    },
+    // 地方企業 (the operator site's 企業 folder): the 32 local companies, their specs and their state now (server/core/npc-local.js)
+    'GET /api/ops/npc/locals': (req, u) => {
+      see(u);
+      const w = get(), now = clock();
+      if (!w) return { started: false, now };
+      return { ...partOf({ started: true, day: w.day, locals: localDetail(w) }, req.query.get('rev')), now };
     },
     // the people: by name (kanji or kana), district, employer
     'GET /api/ops/npc/people': (req, u) => {

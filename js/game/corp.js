@@ -364,9 +364,49 @@
   //   the pay, which it cannot cut), a voluntary retirement (`retire`: of the staff, with `severance` months each).
   //   With no people to decide (before the country lives) the company does the obvious by itself (`auto`).
   // - Tenesice lends to it at `loanRate` a year whatever its rank (MY WAY's pace frightens it), no more than `line` of its
-  //   equity. Out of money with nothing more to borrow it fails (倒産): its contracts end, its people are let go, its
-  //   shares are struck off Dtrade (上場廃止, worth nothing), what it has pays its people, its bills and the bank, and
-  //   the bank loses the rest of what it lent.
+  //   equity. Out of money with nothing more to borrow it files for 破産 as any company does (BANKRUPTCY below): its
+  //   contracts end, its people are let go, its shares stopped and struck off Dtrade (上場廃止, worth nothing), its
+  //   trustee pays out what it has, and the bank loses the rest of what it lent.
+  /* ------------------------------------------------- the game's businesses and failing --- */
+  // The game's own businesses (機能) and who runs them: each its `owner` at the start, the money the players and the
+  // people pay for it (`kinds`: the players' flows to the owner, server/core/corp.js; `npc`: the people's streams;
+  // `products`/`npcProducts`: what is sold as goods; `job`: a job site's part of the バイト's fees), what of it is profit
+  // (`margin`), who it suits among the thirteen (`fit`, 0.7 for the rest) and the local companies (`local`, the best
+  // first). When its company fails, the trustee carries it on and sells it to the highest bidder (事業譲渡).
+  var FEATURES = [
+    { id: 'slots', name: 'カジノスロット', owner: 'dtrade', kinds: ['casino', 'winfee', 'slotfee', 'exchange'], npc: ['slotfee', 'winfee', 'exchange'], cas: true, margin: 0.55,
+      fit: { tenesice: 1.1, daizin: 1.2, jinx: 0.8, myway: 0.9 }, local: ['goldhotel', 'alpha', 'chiikibank'] },
+    { id: 'invest', name: '投資（株式の売買）', owner: 'dtrade', kinds: ['trade'], npc: ['commission'], margin: 0.6, fit: { tenesice: 1.4, daizin: 1.0 }, local: ['alpha', 'chiikibank', 'central'] },
+    { id: 'garage', name: 'ガレージ（MAGITA Garage）', owner: 'magita', kinds: ['garage', 'garagefee', 'rentfee'], margin: 0.5, fit: { carowner: 1.2, yosida: 1.1, wazima: 1.0 }, local: ['mgtown', 'autoparts'] },
+    { id: 'robert', name: '中古車の買取（MAGITA Robert）', owner: 'magita', kinds: ['buyback'], margin: 0.08, fit: { carowner: 1.3, yosida: 1.0 }, local: ['nextused', 'autoparts'] },
+    { id: 'cars', name: '新車の販売（カーオーナー）', owner: 'carowner', kinds: [], products: 'car', npcProducts: 'cars', npc: ['service'], margin: 0.12, fit: { magita: 1.2, yosida: 1.2, jinx: 0.9 }, local: ['nextused', 'autoparts'] },
+    { id: 'shop', name: 'SHOP（ジンクス）', owner: 'jinx', kinds: [], products: 'shop', npcProducts: 'items', margin: 0.15, fit: { carowner: 1.0, daizin: 0.8 }, local: ['palette', 'freshmart'] },
+    { id: 'vip', name: 'VIP・ロイヤルコイン（DAIZIN）', owner: 'daizin', kinds: ['vip'], npc: ['lounge', 'members'], coins: true, margin: 0.6, fit: { tenesice: 1.0, dtrade: 1.1, myway: 0.9 }, local: ['luxe', 'aegis'] },
+    { id: 'jobs-citywork', name: 'バイトの求人（シティーワーク）', owner: 'citywork', kinds: [], job: true, margin: 0.2, fit: { speedeed: 1.4 }, local: ['central', 'chiikibank'] },
+    { id: 'jobs-speedeed', name: 'バイトの求人（スピーディード）', owner: 'speedeed', kinds: [], job: true, margin: 0.15, fit: { citywork: 1.4 }, local: ['central', 'chiikibank'] },
+    { id: 'gacha', name: 'ガチャ（YOSIDA）', owner: 'yosida', kinds: ['gacha'], prizes: true, margin: 0.3, fit: { dtrade: 1.2, daizin: 1.0, ice: 1.1, riru: 1.0 }, local: ['gamesark', 'neogear'] },
+    { id: 'quests', name: 'クエスト（YOSIDA）', owner: 'yosida', kinds: ['questfee'], margin: 0.9, fit: { dtrade: 1.0, citywork: 1.1 }, local: ['cyberarena', 'alpha'] },
+    { id: 'tree', name: '金の生る木（YOSIDA）', owner: 'yosida', kinds: ['fertilizer'], trees: true, margin: 0.6, fit: { magita: 0.9, wazima: 1.0 }, local: ['greenfoods', 'mgtown'] }
+  ];
+  // 破産 (Japan's 破産手続, a few months of it): a company files when it cannot pay (out of money with nothing more Tenesice
+  // will lend: a company whose equity is below nothing is lent no more than its line) or when its equity has been
+  // below nothing `insolvent` months running; it pays the court's deposit (`deposit`: of its debts, at least, at most),
+  // stops, pays its people what it owes them (the country `guarantee` of what it cannot: 未払賃金立替払) and lets them
+  // go; its shares stop trading and are struck off `delist` days on; the court opens it `open` days on and its trustee
+  // sells its businesses (`auction`: the bids) and what it has (`sell`: of each asset's worth), pays its own fee
+  // (`trustee`), the taxes, then everyone else alike (配当率), and closes it `close` days on. A business is worth
+  // `years` years of its profit; the trustee takes nothing below `reserve` of that. A local company buying one borrows
+  // all of it from Tenesice at `localRate`, over `localYears`.
+  var BANKRUPTCY = {
+    insolvent: 6, deposit: [0.002, 50000000, 2000000000], guarantee: 0.8,
+    open: 14, delist: 30, auction: 35, distribute: 60, close: 120,
+    sell: { ar: 0.9, stock: 0.4, wip: 0, ppe: 0.3, content: 0.2, affil: 0.5, goodwill: 0, lent: 0.8 },
+    trustee: 0.02, years: 4, reserve: 0.3, bid: [0.65, 1], goodwillYears: 5, localRate: 0.06, localYears: 10,
+    // a local company: below nothing `months` running and its bank out of patience (its overdraft beyond `overdraft`
+    // months of its plan's sales)
+    local: { months: 3, overdraft: 2 }
+  };
+
   var MYWAY = {
     partners: {
       jinx: { fee: 15000000000, lift: 2.2, cost: 0.3, what: 'ぬいぐるみ・限定キャラグッズの製造販売' },
@@ -651,10 +691,17 @@
     // MY WAY: a partner's fee and what it sells of the characters; MY WAY's measures, its ideas' rewards, its failure
     sLicense: ['IP契約料（MY WAYへの支払ロイヤリティ）', 's'], 'r:myway': ['MY WAYコラボ売上', 'r'], 'c:myway': ['MY WAYコラボ商品の原価', 'c'],
     sMeasure: ['ブランド・IP対策費（新キャラクター・法的措置・PR）', 's'], sIdea: ['成果報酬（企画採用1件$500K）', 's'],
-    xBankrupt: ['倒産に伴う資産の評価損', 'xl'], xRelief: ['債務免除益（倒産・清算）', 'xi']
+    xBankrupt: ['倒産に伴う資産の評価損', 'xl'], xRelief: ['債務免除益（倒産・清算）', 'xi'],
+    // (a customer's or a debtor's failure: what it never paid; the trustee's business carried on; a business sold;
+    // a business bought: のれん, written off over its years)
+    xBad: ['貸倒損失（取引先の破産）', 'xl'], xEstate: ['破産管財人による事業継続の収入', 'xi'], xSale: ['事業譲渡益（破産管財人）', 'xi'],
+    goodwill: ['のれん（事業の譲受け）', 'a'], sGoodwill: ['のれん償却', 's'], xCourt: ['破産手続の予納金', 'xl']
   };
   // an account's name and kind for a company (its own sales and costs by its streams; its place and research by their names)
   function account(code, c) {
+    // (a business carried on for another company: r:op:<feature>)
+    var o = /^([rc]):op:(.+)$/.exec(code);
+    if (o) { var ft = FEATURES.filter(function (x) { return x.id === o[2]; })[0]; return [(ft ? '運営を引き継いだ事業（' + ft.name + '）' : code) + (o[1] === 'c' ? 'の原価' : ''), o[1]]; }
     if (c) {
       if (code === 'sPlace' && c.place) return [c.place.name, 's'];
       if (code === 'sRd' && c.rd) return [c.rd.name, 's'];
@@ -687,7 +734,7 @@
   // the 貸借対照表's groups
   var BS = [
     { id: 'current', name: '流動資産', side: 'a', accounts: ['cash', 'ar', 'stock', 'wip'] },
-    { id: 'fixed', name: '固定資産', side: 'a', accounts: ['lent', 'ppe', 'content', 'bonds', 'affil'] },
+    { id: 'fixed', name: '固定資産', side: 'a', accounts: ['lent', 'ppe', 'content', 'bonds', 'affil', 'goodwill'] },
     { id: 'currentL', name: '流動負債', side: 'l', accounts: ['deposits', 'ap', 'accrued', 'bonus', 'taxdue'] },
     { id: 'fixedL', name: '固定負債', side: 'l', accounts: ['loan'] },
     { id: 'equity', name: '純資産', side: 'e', accounts: ['capital', 'reserve', 'othercap', 'legal', 'retained', 'treasury'] }
@@ -697,7 +744,7 @@
     { id: 'op', name: '営業活動によるキャッシュ・フロー', lines: [['receipts', '営業収入'], ['purchases', '仕入れによる支出'], ['payroll', '人件費の支出'],
       ['expenses', 'その他の営業支出'], ['support', '援助金の受取額'], ['interestIn', '利息及び配当金の受取額'], ['interestOut', '利息の支払額'], ['taxes', '法人税等の支払額']] },
     { id: 'inv', name: '投資活動によるキャッシュ・フロー', lines: [['capex', '有形固定資産の取得による支出'], ['bondsBuy', '投資有価証券の取得による支出'],
-      ['bondsSell', '投資有価証券の売却による収入'], ['lending', '貸出金の増減']] },
+      ['bondsSell', '投資有価証券の売却による収入'], ['lending', '貸出金の増減'], ['acquire', '事業の譲受けによる支出'], ['divest', '事業の譲渡・資産の売却による収入']] },
     { id: 'fin', name: '財務活動によるキャッシュ・フロー', lines: [['issue', '株式の発行による収入'], ['treasurySale', '自己株式の処分による収入'],
       ['buyback', '自己株式の取得による支出'], ['borrow', '借入れによる収入'], ['repay', '借入金の返済による支出'], ['deposits', '預金の増減'], ['dividends', '配当金の支払額']] }
   ];
@@ -733,7 +780,7 @@
   BR.CORP = {
     DAY_MS: DAY_MS,
     companies: COMPANIES, company: company, listed: function () { return COMPANIES.filter(function (c) { return c.listed; }); },
-    players: PLAYERS, magita: MAGITA, yosida: YOSIDA, questFee: questFee, wazima: WAZIMA, myway: MYWAY, breakeven: breakeven, makers: MAKERS, firstLot: firstLot, staffing: STAFFING, tech: TECH, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
+    players: PLAYERS, features: FEATURES, feature: function (id) { return FEATURES.filter(function (x) { return x.id === id; })[0] || null; }, bankruptcy: BANKRUPTCY, magita: MAGITA, yosida: YOSIDA, questFee: questFee, wazima: WAZIMA, myway: MYWAY, breakeven: breakeven, makers: MAKERS, firstLot: firstLot, staffing: STAFFING, tech: TECH, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
     ranks: RANKS, money: MONEY, tax: TAX,
     accounts: ACCOUNTS, account: account, pl: PL, bs: BS, cf: CF, plOf: plOf,
     // the 決算発表: this many days after a quarter's end, at 15:00 Japan time (6:00 UTC)

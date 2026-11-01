@@ -22,6 +22,7 @@ export function takeFlows(W, day) {
     delete W.fl[k];
     for (const key of ['nii', 'fees', 'credit']) out.bank[key] += f.bank[key] || 0;
     out.charges.push(...(f.charges || []));
+    for (const [id, n] of Object.entries(f.estates || {})) { out.estates = out.estates || {}; out.estates[id] = (out.estates[id] || 0) + n; }
     for (const [id, c] of Object.entries(f.co)) {
       const o = out.co[id] || (out.co[id] = { s: {}, p: {}, t: {}, l: {}, cat: 0 });
       for (const [k2, v] of Object.entries(c.s)) o.s[k2] = (o.s[k2] || 0) + v;
@@ -48,6 +49,7 @@ export function pending(W) {
       for (const v of Object.values(c.l)) x += v;
     }
     x += f.bank.nii + f.bank.fees - f.bank.credit;
+    for (const n of Object.values(f.estates || {})) x += n;
   }
   return x;
 }
@@ -83,6 +85,14 @@ export function toLive(W, day, company, id, n) {
 export function toCatalog(W, day, company, n) {
   if (!(n > 0)) return;
   coFlow(W, day, company).cat += n;
+  W.sum.toCo += n;
+}
+// to a failed company's trustee (破産財団): what a local company pays for a business it bought from it
+export function toEstate(W, day, company, n) {
+  if (!(n > 0)) return;
+  const f = flowsOf(W, day);
+  f.estates = f.estates || {};
+  f.estates[company] = (f.estates[company] || 0) + n;
   W.sum.toCo += n;
 }
 export function toBank(W, day, kind, n) {

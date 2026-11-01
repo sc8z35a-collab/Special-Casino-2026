@@ -84,6 +84,16 @@ export function fromCompanies(W, ext, day) {
     econ.districtIn(W, hq >= 0 ? hq : 4, 'corporate', t.n - nation);
   }
   for (const d of ext.dividends || []) dividends(W, d.company, d.n, d.out);
+  // (a company that failed: what it could not pay its people, the country's 80% — 未払賃金立替払 —, before they go)
+  for (const g of ext.guarantee || []) {
+    const staff = W.staffOf(g.company), each = staff.length ? Math.floor(g.n / staff.length) : 0;
+    if (!each) continue;
+    for (const i of staff) { P.cash[i] += each; P.inc[i] += each; }
+    econ.nationOut(W, 'guarantee', each * staff.length);
+  }
+  // (the game's businesses the local companies run, and those they bought: server/core/npc-local.js)
+  for (const e of ext.toLocals || []) local.operated(W, e, day);
+  for (const e of ext.localWins || []) local.won(W, e, day);
   if (ext.sector) {
     W.sector.cash += ext.sector; W.sector.inCompanies += ext.sector;
     // (who paid it and for what: the local companies' sales of it, server/core/npc-local.js)

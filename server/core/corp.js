@@ -10,7 +10,7 @@
 //
 // The world in memory is the one in the database: a transaction that fails takes back what it changed (`stale`
 // until it commits: read again before the next use).
-import { CORP, STOCKS, RULES, NPC } from './rules.js';
+import { CORP, STOCKS, RULES, NPC, LOCAL } from './rules.js';
 import { keyFrom } from './auth.js';
 import { ApiError } from './errors.js';
 import { partOf } from './hash.js';
@@ -262,6 +262,15 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       careCut: s.careCut || 0, dead: s.dead || null
     };
   }
+  // the game's businesses: each with who runs it now ('local:<firm>': a local company; null: a failed company's trustee,
+  // or nobody until it is sold again), since when, what it was bought for, its bids, who ran it before
+  // a runner's name: one of the thirteen's ids as it is, a local company's ('local:<id>') its name
+  const runnerName = (by) => (by && by.startsWith('local:') ? ((LOCAL && LOCAL.firm(by.slice(6))) || {}).name || by.slice(6) : null);
+  function opsView(w) {
+    const ops = model.opsOf(w);
+    return CORP.features.map((f) => { const o = ops[f.id]; return { id: f.id, name: f.name, owner: f.owner, by: o.by, byName: runnerName(o.by), since: o.since, price: o.price || 0, from: o.from || null, estate: o.estate || null,
+      orphan: o.orphan || null, bids: o.bids || [], history: o.history || [], day: Math.round((w.opRev || {})[f.id] || 0) }; });
+  }
   const delisted = (id) => { const w = get(); return !!(w && w.co[id] && w.co[id].dead); };
   // a listed company's shares traded by a player at second `sec` (new shares or its own bought back), and the
   // fee, Dtrade's
@@ -335,7 +344,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       staff: s.n, cash: s.bal.cash || 0, bonds: s.bal.bonds || 0, debt: s.loans.reduce((n, l) => n + l.amt, 0), equity: model.equityOf(s),
       retained: s.bal.retained, capital: s.bal.capital, ttm, year: years[0] ? { key: years[0].key, label: years[0].label, pl: years[0].pl } : null,
       fair: Math.round(fair), shares, dps: s.div.dps, guide: s.guide ? { fy: s.guide.fy, sales: s.guide.sales, op: s.guide.op, net: s.guide.net } : null,
-      players, people, parent: p.parent || null, abroad: !!p.abroad, dead: s.dead || null,
+      players, people, parent: p.parent || null, abroad: !!p.abroad, dead: s.dead || null, bk: s.bk ? { ...s.bk, sold: (s.bk.sold || []).map((x) => ({ ...x, toName: runnerName(x.to) })) } : null, runs: model.runs(w, id), goodwill: s.goodwill || [],
       // (Tenesice's rank for it as its lending desk last read its books)
       creditRank: (w.lend && w.lend[id] && w.lend[id].rank) || p.rank, loanRate: w.lend && w.lend[id] ? w.lend[id].rate : null,
       collab: !!(w.co.myway && w.co.myway.ip && w.co.myway.ip.contracts[id] && w.co.myway.ip.contracts[id].on && !w.co.myway.dead),
@@ -489,7 +498,9 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       if (!w) return { started: false, now };
       const all = { started: true, day: w.day, launch: w.launch, econ: Math.round(Math.exp(w.econ.x) * 1000) / 1000, garageFee: model.garageFeeOf(w),
         questFee: model.questFeeOf(w), vipWeek: model.vipWeekOf(w), gov: w.gov || null,
-        companies: CORP.companies.filter((c) => w.co[c.id]).map((c) => summary(c.id, now)), ties: tiesOf(w).filter((t) => w.co[t.a] && w.co[t.b]) };
+        companies: CORP.companies.filter((c) => w.co[c.id]).map((c) => summary(c.id, now)), ties: tiesOf(w).filter((t) => w.co[t.a] && w.co[t.b]),
+        // (the game's businesses and who runs each: CORP.features; a day of each one's money of late)
+        ops: opsView(w) };
       return { ...partOf(all, req.query.get('rev')), now };
     },
     // a company's day so far, asked again every half minute while its site is open (small: never in the site's `rev`)

@@ -439,6 +439,8 @@ test('the server: the 街ライブ shows the country to players (and nothing to 
   // the operators' 街 app
   r = await s.call('GET', '/api/ops/npc', { token: p.token });
   assert.ok(r.status === 403 || r.status === 401 || r.status === 404);
+  r = await s.call('GET', '/api/ops/npc/locals', { token: p.token });
+  assert.ok(r.status === 403 || r.status === 401 || r.status === 404, `locals: ${r.status}`);
   // MAGITA and Tenesice are on the market
   r = await s.call('GET', '/api/stocks', { token: p.token });
   assert.deepEqual(r.market.map((x) => x.id), ['riru', 'ice', 'magita', 'tenesice', 'yosida', 'carowner', 'myway']);
