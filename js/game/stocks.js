@@ -130,10 +130,10 @@
     moveOf: moveOf, slipped: slipped, buyNeed: buyNeed, maxBuy: maxBuy, sellValue: sellValue, maxSell: maxSell,
     // what may be bought in a trading day (9:00 to 9:00 Japan time), every company together: the buys filled that day
     // (what they cost, fee included) and the money the day's buy orders still hold
-    dayCap: 800000000,
+    dayCap: 2000000000,
     // what may be sold in a trading day, every company together: the sales filled that day (the shares at the price
     // they sold at, before the fee) and the day's sell orders still waiting (at their price)
-    sellCap: 800000000,
+    sellCap: 2000000000,
     // trades a trading day: every order counts once (an order that waits holds its count; cancelled, it gives it back)
     tradesPerDay: 200,
     // limit and stop orders waiting at once

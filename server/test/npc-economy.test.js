@@ -11,6 +11,7 @@ import * as npc from '../core/npc-model.js';
 import * as pop from '../core/npc-pop.js';
 import { NPC, CORP, RULES } from '../core/rules.js';
 import { seeded } from '../core/npc-rand.js';
+import * as state from '../core/npc-state.js';
 
 const START = Date.UTC(2026, 10, 2, 2, 0, 0);
 const MIN = 60000;
@@ -140,6 +141,19 @@ test('the market: a person makes at most 15 orders a day (buys and sales togethe
   // (the day's count goes at the next day's start)
   c.days(1);
   assert.ok(P.trades[i] <= 15);
+});
+
+test('the slots draw the people more: what they set aside for them a month and how much they want to go', async () => {
+  const c = country(300);
+  const { W } = c;
+  assert.ok(NPC.life.casinoPull > 1 && NPC.life.casinoSpend > 1);
+  const i = 5, was = NPC.life.casinoSpend;
+  NPC.life.casinoSpend = 1;
+  state.budgetOf(W, i, 40, { u: () => 0.5 });
+  const plain = W.P.fund[i * 4];
+  NPC.life.casinoSpend = was;
+  state.budgetOf(W, i, 40, { u: () => 0.5 });
+  assert.ok(Math.abs(W.P.fund[i * 4] - Math.round(plain * was)) <= 1, `${W.P.fund[i * 4]} ${plain}`);
 });
 
 test('raises reach the people: April\'s raise and the step for the years worked on everyone\'s pay; the talks read last year\'s profit', () => {

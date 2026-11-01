@@ -6,6 +6,7 @@ import path from 'node:path';
 import { startServer } from './helpers.js';
 import { createLineFeed, feedPeriods } from '../core/line-feed.js';
 import { configFrom } from '../core/config.js';
+import { RELEASE_NAME } from '../core/rules.js';
 import catalog from '../core/line-wallpapers.json' with { type: 'json' };
 
 const SECRET = '0123456789abcdef0123456789abcdef', TOKEN = 'feed-test-token-' + 'x'.repeat(40);
@@ -178,7 +179,7 @@ test('LINE update: one exact sentence per deployment/version and recipient, incl
     f.restart({ version: 'version-2' }); await f.feed.tick();
     const update = f.sent.filter((r) => r.body.messages[0].text?.includes('アップデート'));
     assert.equal(update.length, 1);
-    assert.deepEqual(update[0].body.messages, [{ type: 'text', text: 'S2 DEV1のバージョンversion-2にアップデートされました。' }]);
+    assert.deepEqual(update[0].body.messages, [{ type: 'text', text: `${RELEASE_NAME}のバージョンversion-2にアップデートされました。` }]);
     f.restart({ version: 'version-2' }); await f.feed.tick();
     assert.equal(f.sent.filter((r) => r.body.messages[0].text?.includes('アップデート')).length, 1);
   } finally { await f.stop(); }

@@ -554,7 +554,8 @@
     ui.total.appendChild(row('合計', money(total)));
     ui.total.appendChild(row('手数料', money(fee) + (S.feeBpOf(value, tradedToday()) === S.activeFeeBp ? '（10%・アクティブ）' : '')));
     var left = st.side === 'buy' ? Math.max(0, (st.mine && st.mine.dayCap || S.dayCap) - boughtToday()) : sellRoom();
-    ui.total.appendChild(row('最大', fmt(max) + '株' + (st.mine ? '（本日あと' + money(left) + '）' : '')));
+    // (the day's room in short: $1.23B)
+    ui.total.appendChild(row('最大', fmt(max) + '株' + (st.mine ? '（あと' + (BR.CORP ? BR.CORP.fmt.money(left) : money(left)) + '）' : '')));
     ui.go.classList.toggle('sk-buy', st.side === 'buy');
     ui.go.classList.toggle('sk-sell', st.side === 'sell');
     ui.goText.textContent = gone ? '上場廃止' : (st.side === 'buy' ? '買う' : '売る') + (st.type === 'market' ? '' : '（' + TYPE[st.type] + '）');

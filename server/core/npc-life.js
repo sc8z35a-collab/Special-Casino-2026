@@ -176,7 +176,8 @@ function free(W, i, m, t, j, day, r, ctx) {
   const burnt = lossMem && lossMem.ago < 10 ? (tr(P, i, T.gamble) > 0.75 ? 1.3 : 0.4) : 1;
   // (the first spin of a month costs the month's slot charge, $1M: only those who mean to play a lot start)
   const firstSpin = !P.spun[i] && fund(0) < NPC.life.casinoMonthly;
-  scores[3] = !firstSpin && (fund(0) > W.cal.minBet || P.tokens[i] > W.cal.minBet) ? (0.05 + need(P, i, N.thrill) * 0.8 * tr(P, i, T.gamble)) * (0.6 + md) * (evening ? 1.4 : 0.8) * burnt * learnt(P, i, L.casino) * (W.boycott.dtrade ? 1 - 0.6 * P.disc[i * 8 + 6] / 255 : 1) * (1 + econ.appealOf(W, 'dtrade', 'casino')) : 0;
+  // (the slots draw them more: NPC.life.casinoPull)
+  scores[3] = !firstSpin && (fund(0) > W.cal.minBet || P.tokens[i] > W.cal.minBet) ? NPC.life.casinoPull * (0.05 + need(P, i, N.thrill) * 0.8 * tr(P, i, T.gamble)) * (0.6 + md) * (evening ? 1.4 : 0.8) * burnt * learnt(P, i, L.casino) * (W.boycott.dtrade ? 1 - 0.6 * P.disc[i * 8 + 6] / 255 : 1) * (1 + econ.appealOf(W, 'dtrade', 'casino')) : 0;
   scores[4] = (0.1 + need(P, i, N.fun) * 0.7 * tr(P, i, T.game)) * (evening ? 1.3 : 0.9) * learnt(P, i, L.game) * (age < 40 ? 1.2 : age > 65 ? 0.5 : 1);
   const stir = 1 + 15 * ((W.marketState && W.marketState.move) || 0);
   const holds = P.sh[i * 4] + P.sh[i * 4 + 1] + P.sh[i * 4 + 2] + P.sh[i * 4 + 3] > 0;
