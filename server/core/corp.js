@@ -10,7 +10,7 @@
 //
 // The world in memory is the one in the database: a transaction that fails takes back what it changed (`stale`
 // until it commits: read again before the next use).
-import { CORP, STOCKS, RULES, NPC } from './rules.js';
+import { CORP, STOCKS, RULES, NPC, LOCAL } from './rules.js';
 import { keyFrom } from './auth.js';
 import { ApiError } from './errors.js';
 import { partOf } from './hash.js';
@@ -126,7 +126,9 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   // the second the next day closes at (its end), and its closing: the day's own players' money, every company's
   // operations, what it writes, and the word to whoever has the 投資 screen or the operator site open
   const closesAt = () => (get() ? (get().day + 2) * DAY : Infinity);
-  function close() {
+  // (`extra`: the day's flows the players' side settles as it closes — their dividends of it, '@div':
+  // server/core/stocks.js settleDay)
+  function close(extra = null) {
     let d = 0;
     flush();
     const day = get().day + 1;
@@ -137,6 +139,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       d = w.day + 1;
       const row = q('SELECT data FROM corp_flows WHERE day = ?').get(d);
       const flows = row ? JSON.parse(row.data) : {};
+      if (extra) Object.assign(flows, extra);
       if (people) flows.npc = people;
       // (everyone's money as the day closes: the players' $ and the people's deposits; the economy follows it)
       flows.wealth = (q("SELECT COALESCE(SUM(MAX(dollars, 0)), 0) AS n FROM users WHERE npc = ''").get().n || 0) + (people && people.bank ? Math.max(0, Math.round(people.bank.deposits || 0)) : 0);
@@ -213,6 +216,17 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       q('INSERT INTO corp_flows (day, data) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET data = excluded.data').run(day, JSON.stringify(data));
     }
   }
+  // What crossed between the players and the country that the country has not booked yet (the money ledger's, as
+  // a day `day` closes): the flows of the days after it (their rows and the spins' kept in memory) and the shares
+  // traded since (server/core/corp-model.js crossingsOf)
+  function unbooked(day) {
+    let inn = 0, out = 0;
+    const add = (data) => { const c = model.crossingsOf(data); inn += c.in; out += c.out; };
+    for (const r of q('SELECT data FROM corp_flows WHERE day > ?').all(day)) add(JSON.parse(r.data));
+    for (const [d, data] of pending) if (d > day) add(data);
+    const w = get(), c = (w && w.cross) || { in: 0, out: 0 };
+    return { in: inn + (c.in || 0), out: out + (c.out || 0) };
+  }
   function sold(company, kind, id, count, paid) {
     if (!(count > 0)) return;
     bump((data) => {
@@ -262,7 +276,17 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       careCut: s.careCut || 0, dead: s.dead || null
     };
   }
-  const delisted = (id) => { const w = get(); return !!(w && w.co[id] && w.co[id].dead); };
+  // the game's businesses: each with who runs it now ('local:<firm>': a local company; null: a failed company's trustee,
+  // or nobody until it is sold again), since when, what it was bought for, its bids, who ran it before
+  // a runner's name: one of the thirteen's ids as it is, a local company's ('local:<id>') its name
+  const runnerName = (by) => (by && by.startsWith('local:') ? ((LOCAL && LOCAL.firm(by.slice(6))) || {}).name || by.slice(6) : null);
+  function opsView(w) {
+    const ops = model.opsOf(w);
+    return CORP.features.map((f) => { const o = ops[f.id]; return { id: f.id, name: f.name, owner: f.owner, by: o.by, byName: runnerName(o.by), since: o.since, price: o.price || 0, from: o.from || null, estate: o.estate || null,
+      orphan: o.orphan || null, bids: o.bids || [], history: o.history || [], day: Math.round((w.opRev || {})[f.id] || 0) }; });
+  }
+  // (failed, or a bank put under the state — 一時国有化: its shares struck off, worth nothing)
+  const delisted = (id) => { const w = get(); return !!(w && w.co[id] && (w.co[id].dead || w.co[id].reorg)); };
   // a listed company's shares traded by a player at second `sec` (new shares or its own bought back), and the
   // fee, Dtrade's
   // (all of it the company's: a buy is new shares, the money into its funds; a sale its own bought back, the money
@@ -309,7 +333,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
         guide: s.guide ? { fy: s.guide.fy, sales: s.guide.sales, op: s.guide.op, ord: s.guide.ord, net: s.guide.net, eps: s.guide.eps, dps: s.guide.dps } : null,
         next, news: publicNews(id, now, PUBLIC_NEWS),
         // (struck off: it failed; MY WAY's partner: its contract with it)
-        ...(s.dead ? { delisted: { day: s.dead.day, why: s.dead.why } } : {}),
+        ...(s.dead ? { delisted: { day: s.dead.day, why: s.dead.why } } : s.reorg ? { delisted: { day: s.reorg.day, why: s.reorg.why } } : {}),
         ...(id === 'myway' && s.ip ? { ip: { heat: Math.round(s.ip.heat * 100) / 100, brand: Math.round(s.ip.brand * 100) / 100, partners: Object.values(s.ip.contracts).filter((c) => c.on).length } } : {}),
         ...(w.co.myway && w.co.myway.ip && w.co.myway.ip.contracts[id] && w.co.myway.ip.contracts[id].on && !w.co.myway.dead ? { collab: true } : {})
       };
@@ -335,7 +359,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       staff: s.n, cash: s.bal.cash || 0, bonds: s.bal.bonds || 0, debt: s.loans.reduce((n, l) => n + l.amt, 0), equity: model.equityOf(s),
       retained: s.bal.retained, capital: s.bal.capital, ttm, year: years[0] ? { key: years[0].key, label: years[0].label, pl: years[0].pl } : null,
       fair: Math.round(fair), shares, dps: s.div.dps, guide: s.guide ? { fy: s.guide.fy, sales: s.guide.sales, op: s.guide.op, net: s.guide.net } : null,
-      players, people, parent: p.parent || null, abroad: !!p.abroad, dead: s.dead || null,
+      players, people, parent: p.parent || null, abroad: !!p.abroad, dead: s.dead || null, bk: s.bk ? { ...s.bk, sold: (s.bk.sold || []).map((x) => ({ ...x, toName: runnerName(x.to) })) } : null, runs: model.runs(w, id), goodwill: s.goodwill || [],
       // (Tenesice's rank for it as its lending desk last read its books)
       creditRank: (w.lend && w.lend[id] && w.lend[id].rank) || p.rank, loanRate: w.lend && w.lend[id] ? w.lend[id].rate : null,
       collab: !!(w.co.myway && w.co.myway.ip && w.co.myway.ip.contracts[id] && w.co.myway.ip.contracts[id].on && !w.co.myway.dead),
@@ -489,7 +513,9 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       if (!w) return { started: false, now };
       const all = { started: true, day: w.day, launch: w.launch, econ: Math.round(Math.exp(w.econ.x) * 1000) / 1000, garageFee: model.garageFeeOf(w),
         questFee: model.questFeeOf(w), vipWeek: model.vipWeekOf(w), gov: w.gov || null,
-        companies: CORP.companies.filter((c) => w.co[c.id]).map((c) => summary(c.id, now)), ties: tiesOf(w).filter((t) => w.co[t.a] && w.co[t.b]) };
+        companies: CORP.companies.filter((c) => w.co[c.id]).map((c) => summary(c.id, now)), ties: tiesOf(w).filter((t) => w.co[t.a] && w.co[t.b]),
+        // (the game's businesses and who runs each: CORP.features; a day of each one's money of late)
+        ops: opsView(w) };
       return { ...partOf(all, req.query.get('rev')), now };
     },
     // a company's day so far, asked again every half minute while its site is open (small: never in the site's `rev`)
@@ -520,6 +546,6 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     q('DELETE FROM corp_flows WHERE day < ?').run(day - KEEP_FLOWS);
   }
 
-  return { ensure, booted, closesAt, close, anchor, dps, flow, tally, flush, sold, prize, coinsBought, questFee, npcSpent, today, traded, surcharge, surcharges, garageFee, garageReady, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8,
+  return { ensure, booted, closesAt, close, unbooked, anchor, dps, flow, tally, flush, sold, prize, coinsBought, questFee, npcSpent, today, traded, surcharge, surcharges, garageFee, garageReady, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8,
     delisted, ip: () => ipView(get()) };
 }

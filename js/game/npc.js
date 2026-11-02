@@ -188,7 +188,7 @@
   // day, buys and sales together — the players': js/game/stocks.js tradesPerDay)
   // (`casinoPull`: how much more a person wants to go and spin than at the start; `casinoSpend`: how much more of their
   // month they set aside for it)
-  var LIFE = { adult: 18, mean: 80, gompertz: 0.085, phone: 100000, casinoMonthly: 1000000, investDay: 50000000, tradesDay: 15, casinoPull: 1.6, casinoSpend: 1.5 };
+  var LIFE = { utilities: 40000, adult: 18, mean: 80, gompertz: 0.085, phone: 100000, casinoMonthly: 1000000, investDay: 50000000, tradesDay: 15, casinoPull: 1.6, casinoSpend: 1.5 };
   // the money troubles: a loan from Tenesice at a high rate first (its クイックローン), then a friend's or family's
   // home (居候), then the street; the 生活保護 picks those it reaches
   var TROUBLE = { quickRate: 0.178, quickMax: 30000000, quickBase: 3000000, stayDays: 120, homelessFloor: -50000000 };
@@ -463,7 +463,9 @@
   // average, and a few in a hundred out of work at any time, as in Japan)
   // `localEnd`: a local job (その他・パート) ending a month (the self-employed `selfShare` of it), as Japan's job
   // separations are; `localShare`: the local trade's part of the offers to those out of work
-  var LABOR = { offerDaily: 0.005, localEnd: 0.015, selfShare: 0.35, localShare: 1 };
+  // `seniors`: how much likelier than that a retired person of 60-74 is taken on part time by a local company short of
+  // people (js/game/local.js)
+  var LABOR = { offerDaily: 0.005, localEnd: 0.015, selfShare: 0.35, localShare: 1, seniors: 0.6 };
 
   BR.NPC = {
     nation: NATION, districts: DISTRICTS, places: PLACES, placeNames: PLACE_NAMES, acts: ACTS, act: ACT, hours: HOURS,

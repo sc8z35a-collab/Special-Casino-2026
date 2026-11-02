@@ -196,7 +196,8 @@ test('the server: MAGITA Garage takes each garage place\'s fee once a month (eve
   const sold = await s.call('POST', '/api/cars/sell', { token: a.token, body: { car: old, price } });
   assert.equal(sold.status, 200, JSON.stringify(sold));
   const f = flows(s);
-  assert.deepEqual([f.garagefee, f.rentfee, f.buyback], [300000, 150000 + 70000, price]);
+  // (the renting fee the player's; MAGITA Garage's cut of the takings the renters', through the local businesses)
+  assert.deepEqual([f.garagefee, f.rentfee, f.rentcut, f.buyback], [300000, 70000, 150000, price]);
   // the next month: again, at the fee MAGITA set for it
   now = Date.UTC(2026, 11, 1, 1);
   await s.call('GET', '/api/cars', { token: a.token });

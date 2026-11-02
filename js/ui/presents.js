@@ -100,7 +100,8 @@
     card.appendChild(pic(m.text, 'big'));
     card.appendChild(el('div', 'gift-name', p ? p.name : 'プレゼント'));
     card.appendChild(K.amountEl(m.amount || (p ? p.price : 0), 'dollars', 'pr-worth'));
-    card.appendChild(el('div', 'pr-state', K.receiptExpired(m) ? '期限を過ぎたため受け取れません' : mine ? (m.claimed ? '受け取られました' : 'まだ受け取られていません')
+    card.appendChild(el('div', 'pr-state', m.lapsed ? (mine ? '期限までに受け取られなかったため、あなたに戻りました' : '期限を過ぎたため送り主に戻りました')
+      : K.receiptExpired(m) ? '期限を過ぎたため受け取れません' : mine ? (m.claimed ? '受け取られました' : 'まだ受け取られていません')
       : m.claimed ? '受け取り済み' : claiming[m.id] ? '受け取っています…' : 'タップして受け取る'));
     K.receiptHint(card, m);
     if (open) card.addEventListener('click', function () { claim(m); });

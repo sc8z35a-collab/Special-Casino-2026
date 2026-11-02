@@ -73,7 +73,7 @@ async function hold(page, pattern) {
     await page.evaluate(() => OpsDesktop.open('profile')); await page.waitForFunction(() => !!window.OpsDiaryProfile && document.getElementById('view-profile').textContent.trim().length > 0);
     assert.ok(opsRequests.includes('/ops/calendar.js')); assert.ok(opsRequests.includes('/ops/diary-profile.js'));
     // 企業: its styles, the shared company rules and the app, when the folder is opened
-    await page.evaluate(() => OpsDesktop.open('corp')); await page.waitForFunction(() => document.querySelectorAll('#view-corp .corp-app').length === 13);
+    await page.evaluate(() => OpsDesktop.open('corp')); await page.waitForFunction(() => document.querySelectorAll('#view-corp .corp-app').length === 14);
     for (const file of ['/ops/corp.js', '/ops/corp.css', '/js/game/corp.js']) assert.equal(opsRequests.filter(p => p === file).length, 1, file + ' loads once');
     await page.setViewportSize({ width: 390, height: 844 }); await page.waitForFunction(() => !!document.querySelector('link[media*="max-width: 700px"]'));
     assert.deepEqual(opsErrors, []);

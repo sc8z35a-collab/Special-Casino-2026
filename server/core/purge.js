@@ -11,7 +11,11 @@
 // operators' log (it can never change). Cars they gave away stay with their
 // owners, without the giver. What friends sent them that they never tapped
 // (money, a car, items) goes back to the friend; what they sent and nobody
-// tapped goes with them.
+// tapped stays for the friend (and comes back to their estate if never
+// tapped). Their money — their $ and tokens, what their buy orders held,
+// their dividends not taken, their open 観戦ベット's stake — is their estate:
+// the country's treasury's (国庫に帰属, `estate`), never lost; a bet others
+// made on their spins goes back to whoever made it.
 
 import { RECEIPTS } from './rules.js';
 
@@ -61,7 +65,8 @@ const CURRENCIES = ['tokens', 'dollars'];
 function settlePending(q, id, now) {
   let back = 0;
   for (const m of q('SELECT * FROM message_history WHERE recipient_id = ? AND pending = 1 AND claimed_at = 0').all(id)) {
-    if (RECEIPTS.expired(m, now)) {
+    // (a car or an item whose time ran out lapses; money never does — it goes back to whoever sent it)
+    if (RECEIPTS.expired(m, now) && m.kind !== 'transfer') {
       // Deleting the recipient cannot turn an expired gift into a refund.
       if (m.kind === 'gift') q('DELETE FROM cars WHERE id = ? AND owner_id = 0').run(m.amount);
       q("UPDATE messages SET state = 'expired' WHERE id = ?").run(m.id);
@@ -87,12 +92,30 @@ function settlePending(q, id, now) {
   return back;
 }
 
-// Takes out one player's data (in one transaction); how many rows went, by table.
-export function purgePlayer(q, tx, id, now = Date.now()) {
+// What an account holds in money, all of it ($): its $ and tokens (at `tokenPrice`), what its buy orders hold, its
+// dividends not taken, its open 観戦ベット's stake
+function moneyOf(q, id, tokenPrice) {
+  const one = (sql) => Number((q(sql).get(id) || {}).n || 0);
+  return one('SELECT dollars + ' + Number(tokenPrice) + ' * tokens AS n FROM users WHERE id = ?')
+    + one("SELECT COALESCE(SUM(reserved), 0) AS n FROM stock_orders WHERE user_id = ? AND status = 'open'")
+    + one('SELECT COALESCE(SUM(pending), 0) AS n FROM stock_accounts WHERE user_id = ?')
+    + Number(tokenPrice) * one("SELECT COALESCE(SUM(stake), 0) AS n FROM watch_bets WHERE watcher_id = ? AND state = 'open'");
+}
+
+// Takes out one player's data (in one transaction); how many rows went, by table. (`estate`: what the account held
+// in money goes to — the treasury: server/core/ops.js)
+export function purgePlayer(q, tx, id, now = Date.now(), { tokenPrice = 10, estate = null } = {}) {
   return tx(() => {
     const gone = {};
     const back = settlePending(q, id, now);
     if (back) gone.returned = back;
+    // (the bets others made on their spins: back to whoever made them; their own money: their estate's)
+    for (const b of q("SELECT * FROM watch_bets WHERE host_id = ? AND watcher_id != ? AND state = 'open'").all(id, id)) {
+      q("UPDATE watch_bets SET state = 'refunded', paid = stake, ended_at = ? WHERE id = ?").run(now, b.id);
+      q('UPDATE users SET tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(b.stake, b.watcher_id);
+    }
+    const left = moneyOf(q, id, tokenPrice);
+    if (left > 0 && estate) { estate(left); gone.estate = left; }
     for (const [table, cols] of PLAYER_ROWS) {
       const n = Number(q(`DELETE FROM ${table} WHERE ${cols.map((c) => `${c} = ?`).join(' OR ')}`).run(...cols.map(() => id)).changes);
       if (n) gone[table] = n;

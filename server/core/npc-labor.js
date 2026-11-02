@@ -6,6 +6,7 @@
 import { NPC, CORP } from './rules.js';
 import { T, S, FL, E, NT, ageOf, remember, clampB, OTHER_PAY } from './npc-pop.js';
 import { M, skillFor } from './npc-life.js';
+import * as local from './npc-local.js';
 import * as econ from './npc-econ.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
@@ -143,26 +144,50 @@ function retire(W, i, day, r) {
 // local trade wanting more people the more it has). Before, no local job ever ended and the out of work could only
 // be hired by the thirteen companies: no one was ever out of work.
 function localJobs(W, day, r) {
-  const P = W.P, L = NPC.labor, J = NPC.job, hard = W.sector.cash < 0 ? 2 : 1;
-  const want = Math.max(0.3, Math.min(1.2, 1 + W.sector.cash / Math.max(1, (W.cal.nationFloor || 1) * 2)));
+  const P = W.P, L = NPC.labor, J = NPC.job, shops = W.sector.cash - local.held(W), hard = shops < 0 ? 2 : 1;
+  const want = Math.max(0.3, Math.min(1.2, 1 + shops / Math.max(1, (W.cal.nationFloor || 1) * 2)));
+  if (!W.locals) local.init(W, day);
+  // (the 32 local companies short of people, by how short: js/game/local.js)
+  const open = local.openings(W), gaps = open.reduce((n, x) => n + x[1], 0);
+  const pick = () => { let k = r.u() * gaps; for (const [f, g] of open) { k -= g; if (k < 0) return f; } return open.length ? open[open.length - 1][0] : null; };
+  const taken = (f) => { const x = open.find((y) => y[0] === f); if (x) x[1]--; W.locals.firms[f.id].staff++; };
   for (let i = 0; i < P.n; i++) {
     const j = P.job[i];
     if (j === J.other || j === J.part || j === J.self) {
+      const age = ageOf(P, i, day);
+      // (the old who worked on part time: at 75 for good)
+      if (age >= 75 && local.firmOf(P, i)) { leave(W, i, day, 'retire'); continue; }
       const end = (j === J.self ? L.localEnd * L.selfShare : L.localEnd) * hard / 30;
-      if (r.u() < end) leave(W, i, day, j === J.self ? 'quit' : 'fired');
+      if (r.u() < end) { leave(W, i, day, age >= 65 ? 'retire' : j === J.self ? 'quit' : 'fired'); }
+      continue;
+    }
+    // the retired of 60-74 the local companies take on part time (シニアの再雇用: Japan's are half at work to 69)
+    if (j === J.retired) {
+      if (!gaps || r.u() >= L.offerDaily * L.seniors) continue;
+      const age = ageOf(P, i, day);
+      if (age < 60 || age >= 75 || P.health[i] < 120) continue;
+      const f = pick();
+      if (!f) continue;
+      P.job[i] = J.part;
+      local.join(W, i, f, Math.round(f.pay * (0.45 + 0.2 * r.u())), () => r.u());
+      P.tenure[i] = 0; P.jsat[i] = 170;
+      remember(P, i, day, M.hired, 120);
+      taken(f);
       continue;
     }
     if (j !== J.none || P.flags[i] & (FL.student | FL.mayor)) continue;
     const age = ageOf(P, i, day);
     if (age < 18 || age >= 65 || r.u() >= L.offerDaily * L.localShare * want) continue;
-    const kind = r.u() < 0.7 ? J.other : J.part;
+    // (a local company short of people first, else one of the small shops)
+    const f = gaps > 0 && r.u() < 0.8 ? pick() : null;
+    const kind = f || r.u() < 0.7 ? J.other : J.part;
     P.job[i] = kind;
-    P.salary[i] = Math.round(OTHER_PAY[kind] * (0.8 + 0.4 * r.u()));
+    if (f) { local.join(W, i, f, 0, () => r.u()); taken(f); }
+    else { P.firm[i] = 0; P.salary[i] = Math.round(OTHER_PAY[kind] * (0.8 + 0.4 * r.u())); P.wdist[i] = P.dist[i]; }
     P.tenure[i] = 0;
     P.jsat[i] = 160;
     P.jobless[i] = 0;
     P.joblessPay[i] = 0;
-    P.wdist[i] = P.dist[i];
     remember(P, i, day, M.hired, 120);
   }
 }

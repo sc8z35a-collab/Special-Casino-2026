@@ -220,7 +220,8 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
         corp.ensure(target);
         for (let end = corp.closesAt(); end <= target; end = corp.closesAt()) {
           for (const c of COMPANIES) run(c, end, told);
-          corp.close();
+          // (every player's dividends of the day paid as it closes: the country gives them exactly that)
+          corp.close({ '@div': settleDay(end) });
         }
       }
       for (const c of COMPANIES) st.set(c.id, run(c, target, told));
@@ -370,21 +371,37 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
     const per = corp ? corp.dps(h.company, d) : null;
     if (per !== null && per !== undefined) {
       h.frac += avg * per;
-      return paid(h);
+      return paid(h, d);
     }
     const end = (d + 1) * DAY;
     const close = ctx && ctx.company === h.company && ctx.tick === end ? ctx.price
       : q('SELECT c FROM stock_candles WHERE company = ? AND span = ? AND at = ?').get(h.company, DAY, d * DAY)?.c;
     if (!close) return;
     h.frac += avg * close * RATE.get(h.company);
-    paid(h);
+    paid(h, d);
   }
-  function paid(h) {
+  function paid(h, d) {
     const whole = Math.floor(h.frac);
     if (whole <= 0) return;
     h.frac -= whole;
     h.dividends += whole;
     q('INSERT INTO stock_accounts (user_id, pending) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET pending = pending + excluded.pending').run(h.user_id, whole);
+    if (settling && d === settling.day) settling.paid[h.company] = (settling.paid[h.company] || 0) + whole;
+  }
+  // A day the companies close (it ends at second `end`): every player's holding's dividends up to its end, paid now —
+  // what each company's holders got of that day, for the country to give them exactly that, out of that company's
+  // day of dividends (server/core/corp-model.js dividends; a day before this was counted then, as the shares were)
+  let settling = null;
+  function settleDay(end) {
+    settling = { day: Math.floor(end / DAY) - 1, paid: {} };
+    try {
+      for (const row of q("SELECT h.* FROM stock_holdings h JOIN users u ON u.id = h.user_id WHERE (h.shares > 0 OR h.acc > 0) AND u.npc = ''").all()) {
+        const h = { ...row }, day = h.acc_day;
+        accrue(h, end);
+        if (h.acc_day !== day) save(h);
+      }
+      return settling.paid;
+    } finally { settling = null; }
   }
   // the player's holdings, their dividends paid up to the second the market is at
   function settle(userId, st) {

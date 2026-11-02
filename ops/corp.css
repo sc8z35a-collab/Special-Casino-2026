@@ -112,3 +112,12 @@
 .corp-clock-bar span { display: block; height: 100%; background: linear-gradient(90deg, #2d6fd8, #39b3c9); }
 .corp-site .corp-clock { margin: 10px 0 0; }
 .corp-note.neg { color: var(--bad); font-weight: 700; }
+
+/* 破産手続: its stages, the ones passed marked (ops/corp.js bkPanel); a game business run by another than its first owner */
+.corp-steps { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; padding: 0; list-style: none; counter-reset: step; }
+.corp-steps li { counter-increment: step; padding: 4px 12px 4px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: 12.5px; color: var(--muted, #667); background: #fff; }
+.corp-steps li::before { content: counter(step) '. '; font-weight: 700; }
+.corp-steps li.done { border-color: var(--bad); color: var(--bad); font-weight: 700; }
+.corp-steps li.done::before { content: '✓ '; }
+.corp-table tr.corp-moved th { color: var(--bad); }
+.corp-badge.neg { background: rgba(216, 58, 58, .85); border-color: rgba(255, 255, 255, .5); }

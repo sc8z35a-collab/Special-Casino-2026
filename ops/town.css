@@ -28,3 +28,7 @@
 .town-meet summary { cursor: pointer; font-size: 13px; font-weight: 700; }
 .town-line { padding-left: 10px; border-left: 3px solid rgba(60, 120, 220, .25); }
 .town-veto { color: #b3261e; font-weight: 700; }
+
+/* アスカ国's news, and a money ledger that has moved (it never should) */
+.town-list { margin: 0; padding-left: 1.2em; font-size: 13px; line-height: 1.7; }
+.town-kv.town-bad b { color: var(--bad, #c0392b); }

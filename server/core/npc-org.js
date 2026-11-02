@@ -603,7 +603,8 @@ function lendingDesk(W, day, r, ctx) {
     const R = CORP.ranks, rank = health < R.C.below ? 'C' : health < R.B.below ? 'B' : 'A';
     const [lo, hi] = R[rank].rate, within = rank === 'A' ? health : rank === 'B' ? (health - R.C.below) / (R.B.below - R.C.below) : 0;
     let rate = Math.round(Math.max(lo, Math.min(hi, hi - (hi - lo) * within + (rank === 'A' && health < 0.3 ? 0.01 * (1 + strict) : 0) + (rateBy >= 0 ? (0.5 - tr(P, rateBy, T.agree)) * 0.002 : 0))) * 10000) / 10000;
-    let cap = Math.round(Math.max(monthly * 6, eq * (0.2 + 0.6 * health) * (amountBy >= 0 ? 0.8 + 0.4 * tr(P, amountBy, T.risk) : 1)) / 1e7) * 1e7;
+    // (below water — 債務超過 —: not a dollar more; out of money then, it fails: CORP.bankruptcy)
+    let cap = eq <= 0 ? 0 : Math.round(Math.max(monthly * 6, eq * (0.2 + 0.6 * health) * (amountBy >= 0 ? 0.8 + 0.4 * tr(P, amountBy, T.risk) : 1)) / 1e7) * 1e7;
     // (MY WAY: its pace frightens the bank — 15% a year whatever its rank, and no more than half its equity)
     if (s.ip) { rate = CORP.myway.loanRate; cap = Math.round(Math.max(0, eq) * CORP.myway.line / 1e7) * 1e7; }
     rows.push({ id, name: CORP.company(id).name, health: Math.round(health * 100), rank, rate, cap, debt });

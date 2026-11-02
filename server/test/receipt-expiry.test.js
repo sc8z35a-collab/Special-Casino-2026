@@ -103,7 +103,9 @@ test('present cash and car-sale proceeds cannot bypass the 30-day money deadline
   assert.equal((await s.call('GET', '/api/me', { token: b.token })).me.dollars, b.me.dollars);
 });
 
-test('deleting a recipient returns only unexpired gifts and removes their permanent VIP data', async t => {
+// (money is never lost: what was sent comes back to the friend who sent it, its time run out or not — a car or an item
+// whose time ran out lapses)
+test('deleting a recipient returns the money sent to them, expired or not, and removes their permanent VIP data', async t => {
   const { purgePlayer } = await import('../core/purge.js');
   const s = await startServer(); t.after(() => s.stop());
   const a = await s.register('RefundFrom'), b = await s.register('DeletedTo');
@@ -113,7 +115,7 @@ test('deleting a recipient returns only unexpired gifts and removes their perman
   s.setUser(b.me.id, { vip_exp: 14800, vip_permanent_at: now, vip_modes: JSON.stringify([{ start: now, end: now + DAY, mode: 'ultra' }]) });
   const q = sql => s.app.db.prepare(sql);
   purgePlayer(q, fn => s.app.db.tx(fn), b.me.id, now);
-  assert.equal(s.app.db.prepare('SELECT dollars FROM users WHERE id = ?').get(a.me.id).dollars, a.me.dollars + 50);
+  assert.equal(s.app.db.prepare('SELECT dollars FROM users WHERE id = ?').get(a.me.id).dollars, a.me.dollars + 1050);
   const gone = s.app.db.prepare('SELECT vip_exp, vip_modes, vip_permanent_at FROM users WHERE id = ?').get(b.me.id);
   assert.deepEqual({ ...gone }, { vip_exp: 0, vip_modes: '[]', vip_permanent_at: 0 });
 });

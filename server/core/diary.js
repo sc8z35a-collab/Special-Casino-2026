@@ -7,7 +7,7 @@ import { screen } from './filter.js';
 
 export const DIARY_REWARDS = Array.from({ length: 25 }, (_, i) => (i + 1) * 10000);
 export const DIARY_TTL = 30 * 86400000;
-export function createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed, commentRate, opsLog, gate = null }) {
+export function createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, balanceChanged, meDto, chatAllowed, commentRate, opsLog, gate = null, onPaid = () => {} }) {
   const developer = (u) => {
     ops.need(u);
     if (!isDeveloper(u)) throw new ApiError(403, 'developer_only', '開発者日記の管理・コメント閲覧は開発者だけが利用できます');
@@ -92,6 +92,8 @@ export function createDiary({ q, tx, ops, isDeveloper, getUser, mini, live, bala
         const r = q('INSERT OR IGNORE INTO diary_claims (post_id, user_id, amount, at) VALUES (?, ?, ?, ?)').run(p.id, u.id, p.reward, Date.now());
         if (!r.changes) return 0;
         q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(p.reward, u.id);
+        // (the treasury's money, as everything the game gives)
+        onPaid(p.reward);
         return p.reward;
       });
       if (paid) balanceChanged(u.id);

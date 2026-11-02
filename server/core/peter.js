@@ -144,12 +144,16 @@ export function createPeter(ctx) {
   }
 
   // Lends `amount` $ at `rate` %: the money arrives, the debt grows.
+  // (his money: the country's local businesses', a money lender's among them — lent out of it and paid back into it:
+  // ctx.money, server/core/corp-model.js gameDay '@sector')
+  const money = ctx.money || { lent() {}, back() {} };
   function lend(d, cur, amount, rate) {
     const owed = amount + Math.round(amount * rate / 100);
     d.principal += amount;
     d.owed += owed;
     d.lent += amount;
     q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(amount, cur.id);
+    money.lent(amount);
     return owed;
   }
   // the line under every loan
@@ -170,6 +174,7 @@ export function createPeter(ctx) {
     // all paid back: a clean slate (his own offers can come again)
     if (d.owed === 0) Object.assign(d, { principal: 0, stage: 0, offer: 0, chat: 0 });
     q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(pay, cur.id);
+    money.back(pay);
     return pay;
   }
 
