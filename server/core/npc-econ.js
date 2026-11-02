@@ -102,6 +102,7 @@ export function toAbroad(W, n, division = 'altas', by = 'other') {
   n = Math.round(n);
   if (!(n > 0)) return;
   W.sum.imports += n;
+  gdpAcc(W).m += n;
   // (the world outside is アスカ国 once it is founded: what is bought there is ATSUKA Vision's sale — raw materials,
   // fuel and food アルタス's)
   if (!asuka.earned(W, n, division, by)) W.abroad.cash += n;
@@ -113,20 +114,26 @@ export function toBank(W, day, kind, n) {
 }
 
 /* ------------------------------------------------------------ prices and pull --- */
+// the prices' level and the rents' (1 at the start: the economy moves them, server/core/npc-cycle.js), and what the
+// companies charge as they decided it (their fees: server/core/corp-model.js fees, told with each close)
+export const cpi = (W) => W.cpi || 1;
+export const rentIdx = (W) => W.rentIdx || 1;
+export const feeOf = (W, k, dflt) => (W.fees && W.fees[k] !== undefined ? W.fees[k] : dflt);
 // what a company's own price decisions have done to a price (its sales and discounts, its fees raised: npc-org.js),
 // and how much more the people want what it sells for its campaigns and its advertising (its own and for all it does)
 export const priceOf = (W, key) => (W.priceIdx[key] || 1) * ((W.priceTemp && W.priceTemp[key] && W.priceTemp[key].mult) || 1);
 export const appealOf = (W, id, key) => (W.appeal[id + ':' + key] || 0) + (W.appeal[id + ':all'] || 0);
-// what is spent on something whose price moved: the people buy a little less of it when dearer (spending by the
-// square root of the price)
-export const spendAt = (W, key, n) => Math.round(n * Math.sqrt(priceOf(W, key)));
+// what is spent on something whose price moved — its own (the company's decision) and with all prices (W.cpi:
+// server/core/npc-macro.js) —: the people buy a little less of it when dearer (spending by the square root of the price)
+export const spendAt = (W, key, n) => Math.round(n * Math.sqrt(priceOf(W, key) * cpi(W)));
 
 /* ------------------------------------------------------------------- paying --- */
 // A person pays `n` for something of `company`'s (its stream): with the consumption tax on top (the country's), out
 // of their money; short of it, only what is needed to live is borrowed for (Tenesice's クイックローン, as far as it
 // lends), the rest is not bought — and what nobody will lend for is not paid at all (a day missed: the trouble
 // ladder's sign). Returns whether it was paid.
-export function pay(W, i, n, essential = false) {
+// (`use`: 'c' what they buy — the country's 家計最終消費支出, its GDP —; 'x' anything else: a contribution, a stake)
+export function pay(W, i, n, essential = false, use = 'c') {
   const P = W.P;
   n = Math.round(n);
   if (n <= 0) return true;
@@ -137,8 +144,12 @@ export function pay(W, i, n, essential = false) {
   }
   P.cash[i] -= n;
   P.spent[i] += n;
+  if (use === 'c') gdpAcc(W).c += n;
   return true;
 }
+// the day's spending for the GDP (server/core/npc-gdp.js): the people's own (`c`), the local companies' investment
+// (`inv`), what the country paid アスカ国 and the world outside (`m`), its people's trips there (`trips`)
+export const gdpAcc = (W) => W.gdpAcc || (W.gdpAcc = { c: 0, inv: 0, m: 0, trips: 0 });
 // what the consumption tax adds to a price now (the people only: the players pay none)
 export const withTax = (W, n) => Math.round(n * (1 + (W.nation.knobs.consumptionTax || 0) / 100));
 export function buy(W, i, day, company, stream, n, essential = false) {
@@ -230,7 +241,9 @@ export function borrowFor(W, i, need) {
 export const bankRoom = (W) => (W.bankRoom === undefined || W.bankRoom === null ? Infinity : Math.max(0, W.bankRoom));
 export const quickCap = (P, i) => Math.round(Math.max(NPC.trouble.quickBase, Math.min(NPC.trouble.quickMax, (P.salary[i] || 0) * 0.5)) * (0.5 + P.credit[i] / 255));
 // the rate a person's loan pays a year: the usual (the bank's own rate for people) or the クイックローン
-export const loanRate = (W, P, i) => (P.dkind[i] === 2 ? NPC.knobOf(W, 'quickRate') / 100 : W.bankRates.person);
+// (the クイックローン's rate: Tenesice's own — its people's rate and the spread it keeps for the risk, npc-org.js)
+export const quickRate = (W) => (W.bankRates.quick !== undefined ? W.bankRates.quick : W.bankRates.person + (W.bankRates.spread ?? 0.153));
+export const loanRate = (W, P, i) => (P.dkind[i] === 2 ? quickRate(W) : W.bankRates.person);
 
 /* ------------------------------------------------------------- the month's money --- */
 // what of a month's fund (0 the slots, 1 the games, 2 the pleasures, 3 the market) a person lets themselves use today:
@@ -297,17 +310,17 @@ export function casinoSession(W, i, day, budget, r) {
     const m = spinOnce(r), win = Math.floor(unit * m);
     back += win;
     if (m > best) best = m;
-    if (bet >= RULES.casino.bigBet && win > 0) fee += Math.floor(win * (W.nation.knobs.winFee || 6) / 100);
+    if (bet >= RULES.casino.bigBet && win > 0) fee += Math.floor(win * feeOf(W, 'winFee', 0.06));
     // (a big win is often where one stops)
     if (m >= 100 && r.u() < 0.6) break;
   }
   // (the tokens left are changed back to $ only when it is worth the fee; else kept for next time)
-  const ex = W.nation.knobs.exchangeFee || RULES.casino.exchangeFee;
+  const ex = feeOf(W, 'exchangeFee', RULES.casino.exchangeFee);
   const had = P.tokens[i];
   const left = had - Math.min(had, staked) + back - fee;
   const change = left > ex * 8 ? ex : 0;
   const fromCash = Math.max(0, staked - had);
-  if (!pay(W, i, fromCash, false)) return null;
+  if (!pay(W, i, fromCash, false, 'x')) return null;
   if (change) { P.cash[i] += left - change; P.tokens[i] = 0; }
   else P.tokens[i] = left;
   const net = back - fee - staked;
@@ -319,6 +332,8 @@ export function casinoSession(W, i, day, budget, r) {
   } else nationOut(W, 'casinoWins', back - staked);
   if (fee) toStream(W, day, 'dtrade', 'winfee', fee);
   if (change) toStream(W, day, 'dtrade', 'exchange', change);
+  // (what the people bought of the casino: what their bets lost and its fees — a win beyond the bets the treasury's gift)
+  gdpAcc(W).c += Math.max(0, staked - back) + fee + change;
   P.spun[i] = 1;
   W.sum.bets += staked;
   return { staked, back, net, best, bet: unit, cash: fromCash };

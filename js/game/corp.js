@@ -437,7 +437,20 @@
     // (when a partner gives up: its contract losing for `badMonths` months running; back when heat × brand is `again`
     // times its breakeven for as long)
     badMonths: 2, again: 1.25,
-    loanRate: 0.15, line: 0.5
+    loanRate: 0.15, line: 0.5,
+    // MY WAYの経営理念 (fixed: its own, set by no one else) — its people first, and an economy of its own always in a boom:
+    // - `keepQuarters`: quarters of losses in a row before it cuts anything of its people's — their pay, their care,
+    //   their places (当分は社員の給料を減らさない); it pushes on until then
+    // - its pay: each month its sales grew (its last month against the two before), `raiseBy` of that growth onto
+    //   everyone's pay, each their own share of it (`spread`: from its low to its high times), and more in a boom
+    //   (`boom` of how hot the economy is)
+    // - little kept (利益剰余金を貯めない): it aims at `margin` of its plan's margin and spends the rest — its people's
+    //   welfare, its buildings, research, advertising, running and investment —, up to `raise` more a month and `top`
+    //   times its budgets; `payout` of its profit to its shareholders
+    // - its economy (the MY WAY経済圏's local companies): each month `sphere` of its profit as their support, and at
+    //   least `floor` of their month's sales; they take on its ways — their people's pay raised as their sales grow,
+    //   `grow` more people a month while it supports them, never a cut
+    philosophy: { keepQuarters: 4, raiseBy: 0.6, spread: [0.5, 1.5], boom: 0.03, margin: 0.4, raise: 0.3, top: 12, payout: 0.9, sphere: 0.25, floor: 0.1, grow: 0.03 }
   };
   // a partner's breakeven heat × brand at its contract's fee now
   function breakeven(id, fee) {
@@ -547,21 +560,24 @@
   //   (rounded down) as its fee. It sets the fee each month: while it does badly (its quarter short of 90% of its
   //   plan, or the month a loss) `quest.min`〜`quest.max`, the worse the higher; now and then (`quest.greed` of the
   //   months it does well), wanting more, `quest.min`〜`quest.greedMax` for `quest.months` months; else `quest.base`.
-  // - ガチャ: what the players pay is its sale, and it bills the country `gacha.claim` of that. What they win costs it:
-  //   ロットコイン (spin tokens) at their $ straight out of its retained earnings (利益剰余金); ロイヤルコイン
-  //   `gacha.royal` each, bought of DAIZIN; ガレージコイン `gacha.garage` each, bought of MAGITA (MAGITA Garage);
-  //   VIP1週間券 bought of DAIZIN at the price the two agree each month (`gacha.vipWeek`: DAIZIN asks more while it
-  //   needs it and YOSIDA pays less while it does, the better they get on the less); a car its maker's sale (YOSHIDA's:
-  //   its own, made at its cost; MAGITA's: bought of it at its 仕入れ価格 and 専売特別費用, or, for a car it sells no
-  //   more, `gacha.carShare` of its price); a 金の生る木 (seed or grown) `tree`, made by itself; a リセットチケット
-  //   nothing (the quests are its own).
+  // - ガチャ: `gacha.share` of what the players pay is its sale, the rest the country's treasury's. Each prize is
+  //   provided by its company at its own cost (`gacha`, below): ロットコイン Dtrade's, ロイヤルコイン and VIP1週間券
+  //   DAIZIN's, the 金の生る木 and リセットチケット YOSIDA's own, ガレージコイン MAGITA's; a car bought of its maker
+  //   (YOSHIDA's: its own, made at its cost; MAGITA's: at its 仕入れ価格 and 専売特別費用, or, for a car it sells no
+  //   more, `gacha.carShare` of its price). The players can sell some back (GACHA.sell).
   // - 金の生る木: its biotech, which no one else comes near — seeds made for `seeds.cost` each, `seeds.month` of them
   //   shipped to the market abroad each month at `seeds.price` on average, but no more than `seeds.cap` a year of
   //   them (more as it grows and its technology improves); a tree won at the players' auction is its sale too (made
   //   for `tree`); and the fertilizer is its own: `fertilizer` of the money given to a tree.
   var YOSIDA = {
     quest: { base: 0.1, min: 0.11, max: 0.21, greed: 0.15, greedMax: 0.15, months: 3 },
-    gacha: { claim: 0.5, royal: 100000, garage: 1400000, vipWeek: [1200000, 3500000], carShare: 0.8,
+    // the gacha: `share` of what the players pay for it YOSIDA's (it runs it), the rest the country's treasury's; its
+    // prizes each provided by its company at its own cost — the lot coins Dtrade's (its tokens at their $), the
+    // ロイヤルコイン DAIZIN's (nothing until it buys one back), a VIP1週間券 DAIZIN's (`vipWeek`), a money tree's seed
+    // and a grown one YOSIDA's (`seed`, `grown`; one that has no room — the player's trees all there — paid to the
+    // player instead, `treePay`), a reset ticket YOSIDA's (`reset`), a garage coin MAGITA's (`garage`); the cars bought of
+    // their makers by YOSIDA (`carShare`: of a list price, a car only the gacha gives worth `worth`)
+    gacha: { share: 0.8, vipWeek: 50000, seed: 4000000, grown: 5500000, treePay: 3000000, reset: 1000000, garage: 1000000, carShare: 0.8,
       // (a car only the gacha gives: what it is worth)
       worth: { 'porsche-kuia-spyder': 24000000 } },
     tree: 1000000,
@@ -704,6 +720,10 @@
     // buildings' energy and materials, its research's —, at its prices: server/core/corp-model.js costOf, running)
     'c:altas': ['資源の仕入れ（アルタス）', 'c'], 'c:asukaAltas': ['アスカ国で売った品物の資源の仕入れ（アルタス）', 'c'],
     sAltas: ['資源・エネルギーの購入（アルタス）', 's'],
+    // (the gacha's prizes each company provides at its own cost; what the players sold back to it of them)
+    sGacha: ['ガチャ景品の提供（自社負担）', 's'], 'c:rebuy': ['プレイヤーからの買い取り（VIP券・チケット・ガレージコイン）', 'c'],
+    // (MY WAY's support of the local companies of its economy: their funding)
+    sSupport: ['MY WAY経済圏の企業への支援', 's'],
     xBad: ['貸倒損失（取引先の破産）', 'xl'], xEstate: ['破産管財人による事業継続の収入', 'xi'], xSale: ['事業譲渡益（破産管財人）', 'xi'],
     goodwill: ['のれん（事業の譲受け）', 'a'], sGoodwill: ['のれん償却', 's'], xCourt: ['破産手続の予納金', 'xl']
   };

@@ -9,6 +9,7 @@
 import { NPC, CORP, LOCAL, ASUKA } from './rules.js';
 import * as econ from './npc-econ.js';
 import * as asukaModel from './asuka.js';
+import { boomOf } from './npc-macro.js';
 
 const YEAR = 365;
 const J = NPC.job;
@@ -131,15 +132,40 @@ export function day(W, day) {
   const sc = scaleOf(W);
   for (const f of LOCAL.firms) {
     const c = L.firms[f.id];
+    c.costToday = 0;
     if (c.dead) continue;
-    const other = businesses(c, f).reduce((a, b) => a + Math.max(0, b.sales - b.op - b.staff * b.unit), 0) * sc / YEAR;
+    // (at the prices of the day: server/core/npc-macro.js)
+    const other = businesses(c, f).reduce((a, b) => a + Math.max(0, b.sales - b.op - b.staff * b.unit), 0) * sc / YEAR * econ.cpi(W);
     const n = Math.round(other * 0.3 + 0.7 * other * (c.today.plan > 0 ? c.today.got / c.today.plan : 1));
     if (n <= 0) continue;
     spend(W, f, c, n);
+    c.costToday = n;
   }
   if (CORP.isMonthEnd(day)) count(W);
+  report(W, day);
   // the failed ones' procedures
   for (const f of LOCAL.firms) { const c = L.firms[f.id]; if (c.bk) bkDay(W, f, c, day); }
+}
+// each one's day in brief (日次の収支: 運営's report of the 45 companies): what it sold, its costs, its people's pay for
+// the day (their year's pay over the year: paid on the 25th, earned every day), what that left, MY WAY's support that
+// came, its money; the last 30 days kept
+function report(W, day) {
+  const L = W.locals, P = W.P, pay = {}, n = {};
+  for (let i = 0; i < P.n; i++) { const no = firmOf(P, i); if (no) { pay[no] = (pay[no] || 0) + P.salary[i]; n[no] = (n[no] || 0) + 1; } }
+  for (const f of LOCAL.firms) {
+    const c = L.firms[f.id];
+    if (c.dead) continue;
+    const d = { day, sales: (c.today && c.today.got) || 0, cost: c.costToday || 0, pay: Math.round((pay[f.no] || 0) / YEAR), support: c.sup || 0, cash: Math.round(c.cash), staff: n[f.no] || 0 };
+    d.op = d.sales - d.cost - d.pay;
+    c.sup = 0;
+    (c.days || (c.days = [])).push(d);
+    if (c.days.length > 30) c.days.shift();
+  }
+}
+// the 32's days in brief, for 運営's report
+export function reportOf(W) {
+  if (!W.locals) return null;
+  return LOCAL.firms.map((f) => { const c = W.locals.firms[f.id]; return { id: f.id, no: f.no, name: f.name, sphere: f.sphere, dead: !!c.dead, staff: c.staff, days: c.days || [] }; });
 }
 function spend(W, f, c, n) {
   const L = W.locals, U = LOCAL.utilities;
@@ -164,6 +190,40 @@ function spend(W, f, c, n) {
     W.sector.cash -= at;
     econ.toAbroad(W, at, 'altas', 'local:' + f.id);
   }
+}
+
+/* ------------------------------------------------------------- MY WAY's economy --- */
+// the local companies of MY WAY's 経済圏 (its sphere): MY WAY's own ways are theirs too (CORP.myway.philosophy)
+const SPHERE = 'myway';
+const inSphere = (f) => f.sphere === SPHERE;
+// what they sold last month together (the least MY WAY gives them: server/core/corp-model.js mywaySphere)
+export const sphereOf = (no) => { const f = LOCAL.firms.find((x) => x.no === no); return !!(f && inSphere(f)); };
+export function sphereSales(W) {
+  if (!W.locals) return 0;
+  let n = 0;
+  for (const f of LOCAL.firms) { const c = W.locals.firms[f.id]; if (inSphere(f) && !c.dead) n += (c.last && c.last.sales) || 0; }
+  return n;
+}
+// MY WAY's support of them, shared out: more to those whose sales fell (to keep them all growing), by their size
+// otherwise — their own money (the local businesses', as all theirs is), to grow on
+export function support(W, n, day) {
+  if (!W.locals || !(n > 0)) return;
+  const list = LOCAL.firms.filter((f) => inSphere(f) && !W.locals.firms[f.id].dead);
+  // (none of them left: the local trade's, as all of theirs is)
+  if (!list.length) { W.sector.cash += n; return; }
+  const weight = (f) => { const c = W.locals.firms[f.id], last = c.last ? c.last.sales : 0, before = c.before || last; return Math.max(1, f.sales) * (last < before ? 2 : 1); };
+  const ws = list.map(weight), all = ws.reduce((a, b) => a + b, 0);
+  let given = 0;
+  list.forEach((f, k) => {
+    const share = k === list.length - 1 ? n - given : Math.floor(n * ws[k] / all);
+    const c = W.locals.firms[f.id];
+    c.cash += share;
+    c.m.support = (c.m.support || 0) + share;
+    c.sup = (c.sup || 0) + share;
+    c.supported = day;
+    given += share;
+  });
+  W.sector.cash += n;
 }
 
 /* ---------------------------------------------------------------- the month --- */
@@ -197,14 +257,33 @@ export function month(W, day, bonus) {
     const plan = f.op * sc / 12;
     let paid = 0;
     const people = staff[f.no] || [];
-    if (op > plan * 1.1 && people.length) {
+    // (MY WAY's economy: its ways theirs — their people share what they made beyond nothing, not only beyond the plan;
+    // supported, more people a month, never fewer)
+    const mine = inSphere(f), PH = CORP.myway.philosophy;
+    if (mine && PH) {
+      c.before = c.last ? c.last.sales : m.sales;
+      if (c.supported && day - c.supported < 40) c.target = Math.max(c.target, Math.ceil(c.target * (1 + PH.grow)));
+      // (what it holds beyond three months of its costs is not kept: a fifth of it a month into growing — its
+      // shops, its stock, its events —, to the other local companies, the small shops and アルタス)
+      const cushion = Math.max(0, (m.cost + m.pay) * 3), extra = Math.round((c.cash - cushion) * 0.2 * Math.max(1, boomOf(W)));
+      if (extra > 0) { spend(W, f, c, extra); m.invest = (m.invest || 0) + extra; econ.gdpAcc(W).inv += extra; }
+    } else if (boomOf(W) > 1.05) {
+      // (the others in a boom: what they hold beyond six months of their costs, a part of it into growing while it lasts)
+      const cushion = Math.max(0, (m.cost + m.pay) * 6), extra = Math.round((c.cash - cushion) * (boomOf(W) - 1) * 0.5);
+      if (extra > 0) { spend(W, f, c, extra); m.invest = (m.invest || 0) + extra; econ.gdpAcc(W).inv += extra; }
+    }
+    if (mine && op > 0 && people.length) {
+      const pool = Math.round(op * R.bonus), each = Math.floor(pool / people.length);
+      if (each > 0) for (const i of people) { bonus(i, each); paid += each; }
+      c.cash -= paid; W.sector.cash -= paid;
+    } else if (op > plan * 1.1 && people.length) {
       const pool = Math.round((op - plan) * R.bonus), each = Math.floor(pool / people.length);
       if (each > 0) for (const i of people) { bonus(i, each); paid += each; }
       c.cash -= paid; W.sector.cash -= paid;
     }
     const net = op - tax - paid;
     c.retained += net;
-    c.last = { key: m.key, sales: m.sales, cost: m.cost, altas: m.altas || 0, pay: m.pay, op, tax, bonus: paid, net, staff: people.length, by: m.by, what: m.what || {}, plan: Math.round(f.sales * sc / 12), planOp: Math.round(plan), days: m.days || 0 };
+    c.last = { key: m.key, sales: m.sales, cost: m.cost, altas: m.altas || 0, support: m.support || 0, pay: m.pay, op, tax, bonus: paid, net, staff: people.length, by: m.by, what: m.what || {}, plan: Math.round(f.sales * sc / 12), planOp: Math.round(plan), days: m.days || 0 };
     const y = c.year;
     y.sales += m.sales; y.op += op; y.net += net; y.tax += tax; y.bonus += paid;
     if (CORP.ymd(day).m === 3) { c.lastYear = { ...y }; c.year = { sales: 0, op: 0, net: 0, tax: 0, bonus: 0 }; }
@@ -346,7 +425,7 @@ export function detail(W) {
     firms: LOCAL.firms.map((f, k) => {
       const c = W.locals.firms[f.id];
       return { ...v.firms[k], spec: { staff: f.staff, pay: f.pay, unit: f.unit, ceo: f.ceo, sales: f.sales, op: f.op, capital: f.capital, retained: f.retained, from: f.from, costs: f.costs },
-        m: { key: c.m.key, sales: c.m.sales, cost: c.m.cost, altas: c.m.altas || 0, pay: c.m.pay, days: c.m.days || 0 }, last: c.last || null, day: c.today || null, pace: pace(c), debt: c.debt || 0, loans: c.loans || [],
+        m: { key: c.m.key, sales: c.m.sales, cost: c.m.cost, altas: c.m.altas || 0, support: c.m.support || 0, pay: c.m.pay, days: c.m.days || 0 }, last: c.last || null, day: c.today || null, pace: pace(c), debt: c.debt || 0, loans: c.loans || [],
         runs: ops[f.id] || [], extra: (c.extra || []).map((id) => LOCAL.firm(id).name), dead: c.dead || null, bk: c.bk || null, under: c.under || 0 };
     }) };
 }

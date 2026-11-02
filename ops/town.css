@@ -32,3 +32,7 @@
 /* アスカ国's news, and a money ledger that has moved (it never should) */
 .town-list { margin: 0; padding-left: 1.2em; font-size: 13px; line-height: 1.7; }
 .town-kv.town-bad b { color: var(--bad, #c0392b); }
+/* a country's GDP: its last 90 days' real GDP as bars (a day each) */
+.town-bars { display: flex; align-items: flex-end; gap: 1px; height: 52px; margin: 10px 0 4px; padding: 2px 0; border-bottom: 1px solid var(--line); overflow: hidden; }
+.town-bars i { flex: 1 1 0; min-width: 1px; max-width: 8px; background: var(--accent); opacity: .8; border-radius: 1px 1px 0 0; }
+.town-bars i.neg { background: var(--bad); }

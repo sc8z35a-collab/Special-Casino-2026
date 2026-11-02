@@ -90,8 +90,8 @@ test('its books at the start: about $45B of sales and $23.4B of operating profit
   assert.ok(Math.abs(y.net / 16.38e9 - 1) < 0.08, `${y.net}`);
   assert.equal(s.bal.retained, 25200000000);
   assert.equal(s.bal.capital, 2000000000);
-  // (its guidance pays out 56% of what it expects)
-  assert.ok(Math.abs(s.div.total / Math.max(1, s.guide.net) - 0.56) < 0.01);
+  // (its guidance pays out what its philosophy says — little kept: 90% of what it expects)
+  assert.ok(Math.abs(s.div.total / Math.max(1, s.guide.net) - CORP.myway.philosophy.payout) < 0.01);
   for (const [id, c] of Object.entries(s.ip.contracts)) {
     assert.ok(c.on && c.fee === M.partners[id].fee, id);
     const t = w.co[id];

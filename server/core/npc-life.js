@@ -149,7 +149,7 @@ function lunch(W, i, m, day, r) {
   const P = W.P;
   set(W, i, A.lunch, PL.store, P.wdist[i], m, 45 + r.int(20));
   // (a lunch out: the local restaurants; now and then a snack from ジンクス)
-  const n = Math.round(W.cal.lunch * (0.6 + 0.8 * r.u()) * (1 - 0.4 * tr(P, i, T.thrift)) * (1 + NPC.knobOf(W, 'livingCost') / 100));
+  const n = Math.round(W.cal.lunch * (0.6 + 0.8 * r.u()) * (1 - 0.4 * tr(P, i, T.thrift)) * econ.cpi(W));
   econ.toSector(W, i, n, false, 'food');
   if (r.u() < 0.3) econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.4), false);
   fill(P, i, N.rest, 25);
@@ -338,7 +338,7 @@ const ACTIONS = {
     const n = Math.round(Math.min(econ.allowance(W, i, 2, day) * 0.8, W.cal.leisure * (0.2 + 0.4 * r.u())));
     // (some outings are trips to アスカ・リゾート: its money, ATSUKA Vision's)
     // (the cheaper アスカ is, against its founding prices, the more go)
-    if (n > 0 && W.asuka && r.u() < ASUKA.rules.tourism / ((W.asuka.policy && W.asuka.policy.price) || 1)) { if (econ.pay(W, i, n, false)) { asuka.earned(W, n, 'resort'); P.fund[i * 4 + 2] -= n; } }
+    if (n > 0 && W.asuka && r.u() < ASUKA.rules.tourism / ((W.asuka.policy && W.asuka.policy.price) || 1)) { if (econ.pay(W, i, n, false)) { asuka.earned(W, n, 'resort'); econ.gdpAcc(W).trips += n; P.fund[i * 4 + 2] -= n; } }
     else if (n > 0 && econ.toSector(W, i, n, false, 'leisure')) P.fund[i * 4 + 2] -= n;
     // (a little from the shops on the way)
     if (r.u() < 0.5) econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.25), false);

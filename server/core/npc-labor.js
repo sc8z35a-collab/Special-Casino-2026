@@ -3,11 +3,12 @@
 // when unhappy, many at once when the mood is bad and the openings elsewhere good: 大量退職); 60 (定年: a severance,
 // most kept on to 65 at 60% of their pay) and 65; the new graduates in April. And the unions: their members, their
 // rep, the spring wage talks (春闘) in February and March, and a strike when the talks fail.
-import { NPC, CORP } from './rules.js';
+import { NPC, CORP, LOCAL as BR_LOCAL } from './rules.js';
 import { T, S, FL, E, NT, ageOf, remember, clampB, OTHER_PAY } from './npc-pop.js';
 import { M, skillFor } from './npc-life.js';
 import * as local from './npc-local.js';
 import * as econ from './npc-econ.js';
+import { boomOf } from './npc-macro.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const RATES = { tenesice: 0.35, magita: 0.75, carowner: 0.4, jinx: 0.45, daizin: 0.2, citywork: 0.15, speedeed: 0.05, dtrade: 0.1, riru: 0.25, ice: 0.3, yosida: 0.6, wazima: 0.65 };
@@ -85,7 +86,7 @@ function hire(W, i, o, day, r) {
   P.shift[i] = r.int(2);
   o.left--;
   // the site's placement fee (初年度年収の30%), the hiring company's
-  W.charge(o.company, o.site, 'placement', Math.round(P.salary[i] * 0.3 * (W.nation.knobs.jobFee || 25) / 25));
+  W.charge(o.company, o.site, 'placement', Math.round(P.salary[i] * 0.3 * econ.feeOf(W, 'jobFee', 0.25) / 0.25));
   if (RATES[o.company] && r.u() < RATES[o.company]) { P.flags[i] |= FL.union; W.lab.unions[o.company].members++; }
   remember(P, i, day, M.hired, 150);
   W.lab.hires[o.company] = (W.lab.hires[o.company] || 0) + 1;
@@ -147,6 +148,8 @@ function localJobs(W, day, r) {
   const P = W.P, L = NPC.labor, J = NPC.job, shops = W.sector.cash - local.held(W), hard = shops < 0 ? 2 : 1;
   const want = Math.max(0.3, Math.min(1.2, 1 + shops / Math.max(1, (W.cal.nationFloor || 1) * 2)));
   if (!W.locals) local.init(W, day);
+  // (each one's people as they are today: some left it since)
+  local.count(W);
   // (the 32 local companies short of people, by how short: js/game/local.js)
   const open = local.openings(W), gaps = open.reduce((n, x) => n + x[1], 0);
   const pick = () => { let k = r.u() * gaps; for (const [f, g] of open) { k -= g; if (k < 0) return f; } return open.length ? open[open.length - 1][0] : null; };
@@ -158,7 +161,9 @@ function localJobs(W, day, r) {
       // (the old who worked on part time: at 75 for good)
       if (age >= 75 && local.firmOf(P, i)) { leave(W, i, day, 'retire'); continue; }
       const end = (j === J.self ? L.localEnd * L.selfShare : L.localEnd) * hard / 30;
-      if (r.u() < end) { leave(W, i, day, age >= 65 ? 'retire' : j === J.self ? 'quit' : 'fired'); }
+      // (MY WAY's economy's companies never let their people go: only those who retire leave them)
+      const kept = local.firmOf(P, i) && local.sphereOf(local.firmOf(P, i));
+      if (r.u() < end && (!kept || age >= 65)) { leave(W, i, day, age >= 65 ? 'retire' : j === J.self ? 'quit' : 'fired'); }
       continue;
     }
     // the retired of 60-74 the local companies take on part time (シニアの再雇用: Japan's are half at work to 69)
@@ -192,6 +197,97 @@ function localJobs(W, day, r) {
   }
 }
 
+/* ---------------------------------------------------------------- MY WAY's pay --- */
+// MY WAY's philosophy (CORP.myway.philosophy): each month its sales grew, its people's pay up by `raiseBy` of the growth,
+// and more in a boom — each their own share of it (`spread`); never down. Its economy's local companies do the same
+// by their own sales.
+function mywayRaises(W, day, r, ctx) {
+  const P = W.P, PH = CORP.myway.philosophy, mw = ctx.corp && ctx.corp.co.myway;
+  if (!PH) return;
+  // (the times: in a boom faster still — server/core/npc-macro.js)
+  const boom = Math.max(0, boomOf(W) - 1) * PH.boom * 10;
+  const growth = (h) => (h && h.length >= 3 && h[0].sales + h[1].sales > 0 ? h[2].sales / ((h[0].sales + h[1].sales) / 2) - 1 : 0);
+  const lift = (i, g) => { const k = PH.spread[0] + (PH.spread[1] - PH.spread[0]) * r.u(); P.salary[i] = Math.round(P.salary[i] * (1 + g * k)); };
+  if (mw && !mw.dead) {
+    const g = Math.max(0, PH.raiseBy * growth(mw.mHist)) + boom;
+    if (g > 0) for (const i of W.staffOf('myway')) lift(i, g);
+  }
+  if (!W.locals) return;
+  for (const f of BR_LOCAL.firms) {
+    const c = W.locals.firms[f.id];
+    if (!local.sphereOf(f.no) || c.dead || !c.last || !c.before) continue;
+    const g = Math.max(0, PH.raiseBy * (c.last.sales / Math.max(1, c.before) - 1)) + boom;
+    if (g > 0) for (let i = 0; i < P.n; i++) if (local.firmOf(P, i) === f.no) lift(i, g);
+  }
+}
+
+/* ---------------------------------------------------------------- 人手不足 --- */
+// A company or a local company that stays short of its people raises what it offers new ones the longer it stays
+// short (中途採用の上乗せ: `perDay` of its pay for each day — no cap: what it takes to fill), and takes them from where
+// they are, a month's gap at most a day: the small shops' people, the self-employed and part-timers (as far as it pays
+// them better than now), those at home and the retired still able to (再雇用, to 69), who take less. In a country where
+// everyone works, a new employer fills only so (the companies that came later, MY WAY's and WAZIMA's, never did before).
+const SHORT = { perDay: 0.002, better: 1.1, take: 0.5, homeAge: [22, 60], seniorAge: [60, 70], seniorHealth: 120, seniorPay: 0.65 };
+function shortage(W, day, r, ctx) {
+  const P = W.P, J = NPC.job, lb = W.lab, short = lb.short || (lb.short = {}), lshort = lb.lshort || (lb.lshort = {});
+  const opens = lb.openings.filter((o) => o.left > 0);
+  for (const id of NPC.companies) short[id] = opens.some((o) => o.company === id) ? (short[id] || 0) + 1 : 0;
+  if (!W.locals) return;
+  const lopen = local.openings(W);
+  for (const f of LOCAL_FIRMS()) lshort[f.id] = lopen.some((x) => x[0] === f) ? (lshort[f.id] || 0) + 1 : 0;
+  if (!opens.length && !lopen.length) return;
+  // (who might move: their pay now, 0 for those at home and the retired)
+  const pool = [];
+  for (let i = 0; i < P.n; i++) {
+    const j = P.job[i];
+    if (P.flags[i] & (FL.student | FL.mayor | FL.exec)) continue;
+    if (j === J.other || j === J.self || j === J.part) { pool.push(i); continue; }
+    if (j !== J.home && j !== J.retired) continue;
+    const age = ageOf(P, i, day);
+    if (j === J.home ? age >= SHORT.homeAge[0] && age < SHORT.homeAge[1] : age >= SHORT.seniorAge[0] && age < SHORT.seniorAge[1] && P.health[i] >= SHORT.seniorHealth) pool.push(i);
+  }
+  if (!pool.length) return;
+  const used = new Set();
+  const draw = () => { for (let k = 0; k < 6; k++) { const i = pool[r.int(pool.length)]; if (!used.has(i)) return i; } return -1; };
+  const wants = (i, offer) => {
+    const j = P.job[i], senior = j === J.retired;
+    const pay = senior ? offer * SHORT.seniorPay : offer;
+    // (those at home and the retired come for a fair wage; the others as far as it is better than theirs)
+    return (j === J.home || senior ? true : pay > (P.salary[i] || 0) * SHORT.better) && r.u() < SHORT.take;
+  };
+  const moved = (i) => { used.add(i); if (local.firmOf(P, i)) P.firm[i] = 0; };
+  // the companies
+  for (const o of opens) {
+    const offer = o.pay * (1 + SHORT.perDay * (short[o.company] || 0)), n = Math.max(1, Math.ceil(o.left / 30));
+    for (let k = 0; k < n && o.left > 0; k++) {
+      const i = draw();
+      if (i < 0 || !wants(i, offer)) continue;
+      const senior = P.job[i] === J.retired;
+      moved(i);
+      P.job[i] = J.none;
+      hire(W, i, { ...o, pay: senior ? offer * SHORT.seniorPay : offer, left: 1 }, day, r);
+      o.left--;
+      if (senior) P.flags[i] |= FL.rehired;
+    }
+  }
+  // the local companies
+  for (const [f, gap] of lopen) {
+    const c = W.locals.firms[f.id], offer = f.pay * (1 + SHORT.perDay * (lshort[f.id] || 0)), n = Math.max(1, Math.ceil(gap / 30));
+    for (let k = 0; k < n; k++) {
+      const i = draw();
+      if (i < 0 || local.firmOf(P, i) === f.no || !wants(i, offer)) continue;
+      const senior = P.job[i] === J.retired;
+      moved(i);
+      P.job[i] = senior ? J.part : J.other;
+      local.join(W, i, f, Math.round((senior ? offer * SHORT.seniorPay : offer) * (0.85 + 0.3 * r.u())), () => r.u());
+      P.tenure[i] = 0; P.jsat[i] = 170; P.jobless[i] = 0; P.joblessPay[i] = 0;
+      remember(P, i, day, M.hired, 120);
+      c.staff++;
+    }
+  }
+}
+const LOCAL_FIRMS = () => BR_LOCAL.firms;
+
 /* ---------------------------------------------------------------- a working day --- */
 function laborDay(W, day, r, ctx) {
   const P = W.P, t = CORP.ymd(day);
@@ -206,6 +302,8 @@ function laborDay(W, day, r, ctx) {
   dismiss(W, day, ctx);
   openings(W, ctx);
   localJobs(W, day, r);
+  shortage(W, day, r, ctx);
+  if (t.d === 1) mywayRaises(W, day, r, ctx);
   // the month in work: a month more of it, the mood at work (the pay against what others pay, the company's
   // fortunes, the boss, the hours), and who leaves today
   for (let i = 0; i < P.n; i++) {
@@ -269,7 +367,9 @@ function payRaise(W, id, fy, raise) {
   lb.raised[id] = fy;
   for (const i of W.staffOf(id)) {
     if (!(P.salary[i] > 0)) continue;
-    P.salary[i] = Math.round(P.salary[i] * (1 + Math.max(-0.1, raise) + (P.tenure[i] >= 12 && !(P.flags[i] & FL.rehired) ? STEP : 0)));
+    // (MY WAY never lowers its people's pay: its philosophy)
+    const r0 = id === 'myway' ? Math.max(0, raise) : Math.max(-0.1, raise);
+    P.salary[i] = Math.round(P.salary[i] * (1 + r0 + (P.tenure[i] >= 12 && !(P.flags[i] & FL.rehired) ? STEP : 0)));
   }
 }
 

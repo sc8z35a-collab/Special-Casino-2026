@@ -15,14 +15,15 @@ import { keyFrom } from './auth.js';
 import { ApiError } from './errors.js';
 import { partOf } from './hash.js';
 import * as model from './npc-model.js';
-import { view as localView, detail as localDetail } from './npc-local.js';
+import * as econ from './npc-econ.js';
+import { view as localView, detail as localDetail, reportOf as localReport } from './npc-local.js';
 import * as pop from './npc-pop.js';
 import * as asukaModel from './asuka.js';
 import * as text from './npc-text.js';
 import { createAi } from './npc-ai.js';
 import { LISTED_IDS } from './npc-market.js';
 import { fmtKnob } from './npc-politics.js';
-import { peopleSpent } from './corp-model.js';
+import { peopleSpent, feesOf } from './corp-model.js';
 import { playersMoney, playersLedgerDay } from './money.js';
 
 const MIN = 60000;
@@ -56,9 +57,15 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     if (!all.length) return null;
     pop.unpack(P, all, false);
     if ((m.hotAt || 0) > (m.allAt || 0)) { const hot = rows('hot'); if (hot.length) pop.unpack(P, hot, true); }
-    // (アスカ国's people: their own blobs, kept as each day closes — the only time they change)
+    // (アスカ国's people: their own blobs, all of them as each day closed and what moved since)
     let AP;
-    if (m.asuka) { const ar = rows('asuka'); if (ar.length) AP = asukaModel.unpack(asukaModel.alloc(m.asuka.n), ar); }
+    if (m.asuka) {
+      const ar = rows('asuka');
+      if (ar.length) {
+        AP = asukaModel.unpack(asukaModel.alloc(m.asuka.n), ar);
+        if ((m.hotAt || 0) > (m.allAt || 0)) { const hot = rows('asukahot'); if (hot.length) asukaModel.unpack(AP, hot, true); }
+      }
+    }
     const w = Object.assign(m, { P, key, ...(AP ? { AP } : {}) });
     model.attach(w);
     return w;
@@ -97,10 +104,12 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const rows = pop.pack(w.P, kind !== 'all');
     rows.forEach((r, k) => q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`${prefix}:${String(k).padStart(3, '0')}`, r));
     q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`${prefix}:${String(rows.length).padStart(3, '0')}`, prefix + ';');
-    if (kind === 'all' && w.AP) {
-      const ar = asukaModel.pack(w.AP);
-      ar.forEach((r, k) => q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`asuka:${String(k).padStart(3, '0')}`, r));
-      q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`asuka:${String(ar.length).padStart(3, '0')}`, 'asuka;');
+    // (アスカ国's people: all of them as each day closes, what moves within a day — their money, what they are doing —
+    // with every save between: they spend through the day as ヴェルノア's people do)
+    if (w.AP) {
+      const ap = kind === 'all' ? 'asuka' : 'asukahot', ar = asukaModel.pack(w.AP, kind !== 'all');
+      ar.forEach((r, k) => q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`${ap}:${String(k).padStart(3, '0')}`, r));
+      q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`${ap}:${String(ar.length).padStart(3, '0')}`, ap + ';');
     }
     saves++;
     // (a transaction that fails takes its minutes back: read again before the next use)
@@ -137,15 +146,17 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
 
   // The rules the country's knobs reach in the game itself (the players' fees and MAGITA's surcharge): set on the
   // shared rules (js/game/config.js, stocks.js, corp.js) as they are now; the game is told them too (hello).
-  function policy(w) {
-    const k = w.nation.knobs;
-    RULES.casino.winFee = (k.winFee ?? 6) / 100;
-    RULES.casino.exchangeFee = k.exchangeFee ?? 40000;
-    STOCKS.feeBp = Math.round((k.tradeFee ?? 1.8) * 100);
-    CORP.players.jobFee = (k.jobFee ?? 25) / 100;
-    CORP.magita.surcharge.amount = Math.min(3000000, k.magitaSurcharge ?? 3000000);
+  // what the companies charge the players, as they set it themselves (server/core/corp-model.js fees: Dtrade's, the
+  // job sites'); MAGITA's surcharge is its own too (its world's)
+  function policy() {
+    const cw = corp.world(), f = feesOf(cw);
+    RULES.casino.winFee = f.winFee;
+    RULES.casino.exchangeFee = f.exchangeFee;
+    STOCKS.feeBp = Math.round(f.tradeFee * 10000);
+    CORP.players.jobFee = f.jobFee;
   }
-  const policyDto = () => ({ winFee: RULES.casino.winFee, exchangeFee: RULES.casino.exchangeFee, feeBp: STOCKS.feeBp, jobFee: CORP.players.jobFee, surcharge: CORP.magita.surcharge.amount });
+  const policyDto = () => ({ winFee: RULES.casino.winFee, exchangeFee: RULES.casino.exchangeFee, feeBp: STOCKS.feeBp, jobFee: CORP.players.jobFee,
+    surcharge: (() => { const cw = corp.world(), s = cw && cw.co.magita; return s && s.surcharge ? (s.surchargeAmt || CORP.magita.surcharge.amount) : CORP.magita.surcharge.amount; })() });
 
   /* ---------------------------------------------------------------- the beginning --- */
   // The country begins (once): its people made up, the companies set to live on its money from the day they close next.
@@ -449,15 +460,29 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     'POST /api/town/watch': async (req, u) => { const body = await req.json(); watch(u.id, !!body.on); return { ok: true, now: clock() }; }
   };
   const routes = (see, need, isDeveloper) => ({
+    // アスカ国 now: what its people are doing, by district, and the day's money so far (asked every few seconds while
+    // its page is open: small, never in the 街's `rev`)
+    'GET /api/ops/npc/asuka': (req, u) => {
+      see(u);
+      const w = get(), now = clock();
+      if (!w || !w.asuka) return { live: null, now };
+      return { live: asukaModel.liveView(w), minute: w.minute, now };
+    },
     'GET /api/ops/npc': (req, u) => {
       see(u);
       const w = get(), now = clock();
       if (!w) return { started: false, on, now, population: N };
       const days = q('SELECT day, data FROM npc_days WHERE day >= ? ORDER BY day').all(w.day - 90).map((r) => ({ day: r.day, ...JSON.parse(r.data) }));
-      const all = { ...town(now), frame: undefined, days, knobs: NPC.knobs.map((k) => ({ ...k, value: NPC.knobOf(w, k.id), range: w.nation.ranges[k.id] || [k.min, k.max], locked: !!w.nation.locks[k.id], changed: w.nation.changed[k.id] || 0 })),
+      const all = { ...town(now), frame: undefined, days, knobs: NPC.knobs.map((k) => ({ ...k, value: NPC.knobOf(w, k.id), changed: w.nation.changed[k.id] || 0 })),
+        // (what the companies decided themselves: their fees, MAGITA's surcharge, Tenesice's rates and phone bill)
+        decided: { fees: feesOf(corp.world()), surcharge: policyDto().surcharge, rates: w.bankRates, quick: econ.quickRate(w), phone: Math.round(NPC.life.phone * econ.priceOf(w, 'tenesice:mobile')), cpi: econ.cpi(w), rentIdx: econ.rentIdx(w) },
         nationFull: { cash: w.nation.cash, debt: w.nation.debt, bank: w.nation.bank, fund: w.nation.fund, day: w.nation.day, month: w.nation.month, hist: w.nation.hist.slice(-60) },
         sector: w.sector, sum: w.sum, cal: w.cal, rates: w.bankRates, stock: w.stock, depth: w.depth, paused: !!w.paused,
         usage: { ticks, tickMs: ticks ? Math.round(tickMs / ticks * 10) / 10 : 0, saves, ai: { ...ai.used(now), on: ai.on }, server: usage() },
+        // (the two countries' GDP: server/core/npc-gdp.js)
+        gdp: model.gdpView(w),
+        // (the times' mood and the prices: server/core/npc-macro.js)
+        macro: model.macroView(w),
         // (アスカ国, and the money ledger: every $ from someone to someone)
         asuka: asukaModel.view(w), ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30),
           players: w.ledger.players ? { drift: w.ledger.players.drift, worst: w.ledger.players.worst || 0, days: w.ledger.players.days.slice(-30) } : null } : null };
@@ -508,49 +533,12 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       };
       return { ...partOf(all, req.query.get('rev')), now: clock() };
     },
-    // 運営 sets what the council and the people may change (a knob's range, a lock, or its value from next month)
+    // (運営 once set the knobs' ranges and values here: no more — refused)
     'POST /api/ops/npc/knob': async (req, u) => {
       need(u);
-      if (!isDeveloper(u)) throw new ApiError(403, 'not_developer', 'この操作は開発者だけができます');
-      const body = await req.json();
-      started();
-      const k = NPC.knob[String(body.id || '')];
-      if (!k) throw new ApiError(400, 'bad_knob', '項目を選んでください');
-      const w = get();
-      tx(() => {
-        const ww = get();
-        if (body.range) {
-          const lo = Number(body.range[0]), hi = Number(body.range[1]);
-          if (!(lo <= hi) || lo < k.min - (k.player ? 0 : k.max) || (k.player && lo < k.start / 2)) throw new ApiError(400, 'bad_range', '範囲が正しくありません');
-          ww.nation.ranges[k.id] = [lo, hi];
-        }
-        if (body.lock !== undefined) ww.nation.locks[k.id] = !!body.lock;
-        if (body.value !== undefined) {
-          const v = Number(body.value);
-          if (!Number.isFinite(v)) throw new ApiError(400, 'bad_value', '値が正しくありません');
-          ww.nation.pending = ww.nation.pending.filter((p) => p.id !== k.id);
-          if (body.now) {
-            // (at once: the knob as it is from now, what it rescales rescaled)
-            // (運営 may go past the range; a level no lower than −95%, money and rates not below 0, the players' fees not
-            // below half of where they began)
-            const floor = k.player ? k.start / 2 : k.unit === '%' && (k.id.startsWith('pay:') || k.id === 'livingCost' || k.id === 'rentLevel') ? -95 : k.unit === '$' || k.id === 'quickRate' ? 0 : -Infinity;
-            const was = NPC.knobOf(ww, k.id), to = Math.round(Math.max(floor, v) / k.step) * k.step;
-            ww.nation.knobs[k.id] = to;
-            if (ww.knobChanged && to !== was) ww.knobChanged(k.id, was, to);
-            ww.nation.changed[k.id] = ww.day;
-            ww.nation.log.push({ day: ww.day, id: k.id, from: was, to, by: 'ops' });
-            ww.news.push({ day: ww.day, kind: 'knob', district: -1, text: `今日から${k.name}が${fmtKnob(k.id, was)}→${fmtKnob(k.id, to)}に（運営）`, data: { id: k.id } });
-            policy(ww);
-          } else {
-            const t = CORP.ymd(ww.day);
-            ww.nation.pending.push({ id: k.id, to: v, from: t.m === 12 ? CORP.dayAt(t.y + 1, 1, 1) : CORP.dayAt(t.y, t.m + 1, 1), by: 'ops', day: ww.day });
-          }
-        }
-        save('hot');
-        if (opsLog) opsLog.add({ action: 'npc_knob', summary: `NPCの国：${k.name}の設定を変更${body.now && body.value !== undefined ? '（今すぐ）' : ''}`, detail: { id: k.id, range: body.range, lock: body.lock, value: body.value, now: !!body.now } });
-      });
-      void w;
-      return { ok: true, now: clock() };
+      // (the country's taxes and budgets are its council's and its people's, the companies' prices and pay their own:
+      // 運営 sets none of them, and no range on any)
+      throw new ApiError(410, 'autonomous', '税・予算は国（議会と市民投票）が、給与・料金・金利は各企業が自分で決めます。運営は変更できません');
     },
     // 運営's switches: the country paused (its people still, the companies' days going on), the depth of its thinking
     'POST /api/ops/npc/control': async (req, u) => {
@@ -597,6 +585,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   return {
     on, booted, ensure, wake, due, beforeClose, afterClose, cross, spentToday, carBought, carStock, watch, town, personCard, policy: policyDto, housekeep, writeAi,
     playerRoutes, routes, world: get,
+    // (the 32 local companies' days in brief: 運営's report of the 45, server/core/corp.js)
+    localReport: () => { const w = get(); return w ? localReport(w) : null; },
     // (the tests: the minutes and the days worked out now, and what was kept)
     runTo: (m) => tx(() => { runTo(m, Infinity); save('hot'); })
   };

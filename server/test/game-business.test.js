@@ -32,15 +32,21 @@ test('the rules: WAZIMA as given, all MAGITA\'s; WAZIMA and YOSIDA at home, sell
   assert.equal(CORP.yosida.seeds.cap, 21000000000);
   assert.deepEqual(CORP.company('magita').children, ['wazima']);
   const Y = CORP.yosida;
-  assert.deepEqual([Y.quest.base, Y.quest.max, Y.gacha.claim, Y.gacha.royal, Y.gacha.garage, Y.gacha.vipWeek, Y.tree, Y.seeds.month, Y.seeds.price, Y.seeds.cost, Y.fertilizer],
-    [0.1, 0.21, 0.5, 100000, 1400000, [1200000, 3500000], 1000000, [5000, 10000], [10000000, 12000000], 1000000, 0.4]);
+  assert.deepEqual([Y.quest.base, Y.quest.max, Y.tree, Y.seeds.month, Y.seeds.price, Y.seeds.cost, Y.fertilizer],
+    [0.1, 0.21, 1000000, [5000, 10000], [10000000, 12000000], 1000000, 0.4]);
+  // the gacha: 80% of what is paid YOSIDA's, 20% the treasury's; each prize its provider's at its own cost; what the
+  // players can sell back, and at what
+  assert.deepEqual([Y.gacha.share, Y.gacha.vipWeek, Y.gacha.seed, Y.gacha.grown, Y.gacha.treePay, Y.gacha.reset, Y.gacha.garage],
+    [0.8, 50000, 4000000, 5500000, 3000000, 1000000, 1000000]);
+  assert.deepEqual(GACHA.sell, { 'vip-week': 200000, 'reset-5h': 250000, 'reset-day': 350000, garage: 350000 });
+  assert.deepEqual([GACHA.slots, GACHA.price('rare', 1), GACHA.price('legendary', 1), GACHA.price('secret', 1)], [2, 4500000, 27000000, 45000000]);
   assert.deepEqual([CORP.questFee(7000), CORP.questFee(7005), CORP.questFee(7000, 0.21)], [700, 700, 1470]);
   assert.deepEqual(RULES.vip.buyback, { each: 50000, max: 100000 });
   // every car the gacha gives has a price for YOSIDA to pay its maker
   for (const c of GACHA.cars) assert.ok(CORP.products.cars[c.id] || RULES.cars.some((x) => x.id === c.id) || CORP.yosida.gacha.worth[c.id], c.id);
 });
 
-test('the game\'s money as a day closes: the treasury\'s bill, YOSIDA\'s sale, claim and prizes, DAIZIN\'s buying back; the books balance', () => {
+test('the game\'s money as a day closes: the treasury\'s bill and share, YOSIDA\'s sale, each prize its provider\'s, the buying back; the books balance', () => {
   const { world: w, ch } = world();
   const before = {
     ys: { cash: w.co.yosida.bal.cash, retained: w.co.yosida.bal.retained },
@@ -48,39 +54,46 @@ test('the game\'s money as a day closes: the treasury\'s bill, YOSIDA\'s sale, c
   };
   const d = launch;
   const flows = {
-    '@state': { slots: 5000000, quests: 1000000, gacha: 15000000 },
-    yosida: { gacha: 30000000, questfee: 100000, fertilizer: 40000, trees: { seed: [1, 10500000] } },
-    '@prize': { lot: 20000, royal: 10, garage: 2, vip: 1, tree: 1, cars: { onvoro: 1, 'porsche-kuia-spyder': 1 } },
+    '@state': { slots: 5000000, quests: 1000000 },
+    '@stateIn': { gacha: 6000000 },
+    yosida: { gacha: 24000000, questfee: 100000, fertilizer: 40000, trees: { seed: [1, 10500000] } },
+    '@prize': { lot: 20000, royal: 10, garage: 2, vip: 1, seed: 1, grown: 1, treePay: 1, reset: 3, cars: { onvoro: 1, 'porsche-kuia-spyder': 1 } },
+    '@rebuy': { daizin: { vip: [2, 400000] }, yosida: { reset: [1, 250000] }, magita: { garage: [1, 350000] } },
     '@coins': { n: 4, paid: 200000 }
   };
   model.closeDay(w, d, flows, ch);
   for (const s of Object.values(w.co)) { const [a, le] = books(s); assert.equal(a, le, s.id); }
-  const ys = w.co.yosida, dz = w.co.daizin, mg = w.co.magita;
-  // YOSIDA: the players' gacha money, its claim on the treasury, its fees, the fertilizer and the auction's tree
-  assert.deepEqual([yearSum(ys, 'r:gacha'), yearSum(ys, 'r:claim'), yearSum(ys, 'r:quest'), yearSum(ys, 'r:tree')], [30000000, 15000000, 100000, 40000 + 10500000]);
-  // the prizes: coins and the VIP ticket bought of DAIZIN, the garage coins and cars of MAGITA, its own tree at cost
+  const ys = w.co.yosida, dz = w.co.daizin, mg = w.co.magita, dt = w.co.dtrade;
+  // YOSIDA: its 80% of the players' gacha money (no claim on the treasury), its fees, the fertilizer and the auction's tree
+  assert.deepEqual([yearSum(ys, 'r:gacha'), yearSum(ys, 'r:claim'), yearSum(ys, 'r:quest'), yearSum(ys, 'r:tree')], [24000000, 0, 100000, 40000 + 10500000]);
+  // the prizes, each its provider's own: YOSIDA's seed, grown tree, a tree's $3M paid instead and three reset tickets;
+  // Dtrade's lot coins (its tokens at their $); DAIZIN's VIP ticket ($50K; its coins cost nothing until bought back);
+  // MAGITA's two garage coins ($1M each); the cars bought of their makers by YOSIDA
   const [, onvoro] = [0, CORP.products.cars.onvoro.buy + CORP.products.cars.onvoro.excl];
   const gt = Math.round(CORP.yosida.gacha.worth['porsche-kuia-spyder'] * CORP.yosida.gacha.carShare);
-  const vip = model.vipWeekOf(w);
-  assert.equal(yearSum(ys, 'c:gacha'), 10 * 100000 + vip + 2 * 1400000 + onvoro + gt + 1000000);
-  assert.equal(yearSum(ys, 'c:tree'), 1000000);
-  assert.equal((dz.per.y['r:coins'] || 0) - before.dz, 10 * 100000 + vip);
-  assert.equal((mg.per.y['r:garage'] || 0) - before.mg.garage, 2 * 1400000);
+  assert.equal(yearSum(ys, 'sGacha'), 4000000 + 5500000 + 3000000 + 3 * 1000000);
+  assert.equal(yearSum(ys, 'c:gacha'), onvoro + gt);
+  assert.equal(yearSum(dt, 'sGacha'), 20000 * P);
+  assert.equal(yearSum(dz, 'sGacha'), 50000);
+  assert.equal(yearSum(mg, 'sGacha'), 2 * 1000000);
+  assert.equal((dz.per.y['r:coins'] || 0) - before.dz, 0);
+  assert.equal((mg.per.y['r:garage'] || 0) - before.mg.garage, 0);
   assert.equal((mg.per.y['r:gacha'] || 0) - before.mg.gacha, onvoro + gt);
-  // the lot coins: tokens at their $, straight out of its retained earnings, not a cost of the day
-  assert.equal(ys.biz[CORP.monthKey(d)].lot, 20000 * P);
+  assert.equal(dt.biz[CORP.monthKey(d)].lot, 20000 * P);
+  // what the players sold back: each company's own purchase
+  assert.deepEqual([yearSum(dz, 'c:rebuy'), yearSum(ys, 'c:rebuy'), yearSum(mg, 'c:rebuy')], [400000, 250000, 350000]);
   // DAIZIN's buying back: its own money
   assert.equal(yearSum(dz, 'c:coinbuy'), 200000);
   assert.deepEqual([dz.biz[CORP.monthKey(d)].coins, dz.biz[CORP.monthKey(d)].coinPaid], [4, 200000]);
   // the treasury's ledger
-  assert.deepEqual(w.gov.all, { slots: 5000000, quests: 1000000, gacha: 15000000, questfee: 100000 });
+  assert.deepEqual(w.gov.all, { slots: 5000000, quests: 1000000, questfee: 100000 });
   // (a day with nothing of the game's: nothing more in the ledger)
   model.closeDay(w, d + 1, {}, ch);
-  assert.deepEqual(w.gov.all, { slots: 5000000, quests: 1000000, gacha: 15000000, questfee: 100000 });
+  assert.deepEqual(w.gov.all, { slots: 5000000, quests: 1000000, questfee: 100000 });
   void before;
 });
 
-test('YOSIDA ships 5,000〜10,000 seeds a month at $10M〜$12M, sets its quest fee (10%, up to 21% when it does badly) and the VIP ticket\'s price with DAIZIN', () => {
+test('YOSIDA ships 5,000〜10,000 seeds a month at $10M〜$12M and sets its quest fee (10%, up to 21% when it does badly)', () => {
   const { world: w, ch } = world(32);
   let d = launch;
   const monthEnd = CORP.monthEnd(d);
@@ -97,8 +110,7 @@ test('YOSIDA ships 5,000〜10,000 seeds a month at $10M〜$12M, sets its quest f
   ys.rnd = { ...(ys.rnd || {}), edge: 1.2 };
   assert.equal(model.seedsCap(ys), Math.round(21e9 * 2 * 1.2));
   Object.assign(ys, at);
-  const v = model.vipWeekOf(w);
-  assert.ok(v >= 1200000 && v <= 3500000 && v % 10000 === 0);
+  assert.equal(model.vipWeekOf(w), 50000);
   assert.ok(model.questFeeOf(w) >= 0.1 && model.questFeeOf(w) <= 0.21);
   // a quarter far short of its plan: the fee goes up (the worse, the higher), at most 21%
   ys.guide.expected.quarters = ys.guide.expected.quarters.map((x) => Math.abs(x) * 100 + 1e12);
@@ -171,7 +183,7 @@ test('the people\'s money at each company is in its day\'s row', () => {
   assert.deepEqual([row('jinx').npc, row('dtrade').npc, row('tenesice').npc, row('magita').npc], [161000, 50000, 300, 0]);
 });
 
-test('the server: a spin\'s win beyond its bet is the treasury\'s, a reward pays YOSIDA its fee, the gacha its sale and claim, the fertilizer its 40%; DAIZIN buys coins back', async (t) => {
+test('the server: a spin\'s win beyond its bet is the treasury\'s, a reward pays YOSIDA its fee, the gacha 80% its sale and 20% the treasury\'s, prizes sold back, the fertilizer its 40%; DAIZIN buys coins back', async (t) => {
   let now = START;
   const s = await startServer({ clock: () => now, corpHistory: 0 });
   t.after(() => s.stop());
@@ -199,18 +211,32 @@ test('the server: a spin\'s win beyond its bet is the treasury\'s, a reward pays
   const sold = await s.call('POST', '/api/coins/sell', { token: a.token, body: { amount: 12 } });
   assert.deepEqual([sold.sold, sold.paid, sold.me.coins, sold.me.dollars], [12, 600000, 18, 600000]);
   assert.deepEqual(rows().find((d) => d['@coins'])['@coins'], { n: 12, paid: 600000 });
-  // the gacha: its price YOSIDA's sale, half of it claimed of the treasury, the prizes counted
+  // the gacha: 80% of its price YOSIDA's sale, 20% the treasury's, the prizes counted
   s.setUser(a.me.id, { dollars: 100000000, tokens: 0, coins: 0 });
   const g = await s.call('POST', '/api/gacha/spin', { token: a.token, body: { kind: 'rare', count: 1 } });
   assert.equal(g.status, 200, JSON.stringify(g));
-  assert.equal(sum('yosida', 'gacha'), g.paid);
-  assert.equal(sum('@state', 'gacha'), Math.floor(g.paid * 0.5));
+  assert.equal(sum('yosida', 'gacha'), Math.round(g.paid * 0.8));
+  assert.equal(sum('@stateIn', 'gacha'), g.paid - Math.round(g.paid * 0.8));
+  assert.equal(sum('@state', 'gacha'), 0);
   // (no row when the pulls gave nothing YOSIDA buys: an item, a ticket)
   const prize = (rows().find((d) => d['@prize']) || {})['@prize'] || {}, rewards = g.pulls.flatMap((p) => p.rewards);
   const count = (type) => rewards.filter((r) => r.type === type).reduce((n, r) => n + (r.amount || 1), 0);
   assert.equal(prize.lot || 0, count('lot'));
   assert.equal(prize.royal || 0, count('royal') + g.pulls.reduce((n, p) => n + (p.bonus || 0), 0));
   assert.equal(prize.garage || 0, count('garage'));
+  // what the gacha gave, sold back: a VIP ticket to DAIZIN ($200K), a reset ticket to YOSIDA ($250K), an empty garage
+  // place to MAGITA ($350K) — each the company's purchase
+  s.app.db.prepare("INSERT INTO items (user_id, item, count) VALUES (?, 'gacha-vip-week', 1) ON CONFLICT(user_id, item) DO UPDATE SET count = count + 1").run(a.me.id);
+  s.setUser(a.me.id, { garage_extra: 1, quests: JSON.stringify({ tickets: { '5h': 1, day: 0 } }) });
+  const cash0 = (await s.call('GET', '/api/me', { token: a.token })).me.dollars;
+  for (const item of ['vip-week', 'reset-5h', 'garage']) {
+    const x = await s.call('POST', '/api/gacha/sell', { token: a.token, body: { item } });
+    assert.equal(x.status, 200, item + ' ' + JSON.stringify(x).slice(0, 200));
+  }
+  assert.equal((await s.call('POST', '/api/gacha/sell', { token: a.token, body: { item: 'vip-week' } })).error.code, 'no_item');
+  assert.equal((await s.call('GET', '/api/me', { token: a.token })).me.dollars, cash0 + 200000 + 250000 + 350000);
+  const rebuy = rows().reduce((o, d) => { for (const [co, k] of Object.entries(d['@rebuy'] || {})) for (const [kind, v] of Object.entries(k)) o[co + ':' + kind] = (o[co + ':' + kind] || 0) + v[1]; return o; }, {});
+  assert.deepEqual(rebuy, { 'daizin:vip': 200000, 'yosida:reset': 250000, 'magita:garage': 350000 });
   // the money trees: YOSIDA's fertilizer, 40% of what is given
   const tree = (await s.call('GET', '/api/tree', { token: a.token })).trees[0].id;
   assert.equal((await s.call('POST', '/api/tree/give', { token: a.token, body: { tree, amount: 100000 } })).status, 200);
@@ -245,4 +271,23 @@ test('the operator site: a company\'s day so far — the day\'s plan, and the pl
   r = await s.call('GET', '/api/ops/corp/today?c=dtrade', { token: boss.token });
   assert.ok(r.today.players >= RULES.casino.exchangeFee + lost, `${r.today.players}`);
   assert.equal(r.now, now);
+  // the money put into it today: the players' buying of its shares (new ones), and taken out by their selling; its
+  // other gains as a usual day brings them
+  assert.equal(r.today.invest, 0);
+  assert.ok(Number.isFinite(r.today.other) && Number.isFinite(r.today.plan.other));
+  // (a listed company's: MAGITA's)
+  const corp = s.app.api.corp, sec = Math.floor(now / 1000);
+  corp.traded('magita', 'buy', 100, 25000, 0, sec);
+  corp.traded('magita', 'buy', 20, 25000, 0, sec + 5);
+  corp.traded('magita', 'sell', 10, 25000, 0, sec + 9);
+  r = await s.call('GET', '/api/ops/corp/today?c=magita', { token: boss.token });
+  assert.deepEqual([r.today.invest, r.today.back], [3000000, 250000]);
+  // (and in the day's row once it closes: the site's days)
+  now = (r.today.day + 1) * 86400000 + 60000;
+  await s.app.api.housekeeping();
+  const site = await s.call('GET', '/api/ops/corp/company?c=magita', { token: boss.token });
+  const k = site.days.day.indexOf(r.today.day);
+  assert.ok(k >= 0);
+  assert.deepEqual([site.days.invest[k], site.days.back[k]], [3000000, 250000]);
+  assert.ok(Number.isFinite(site.days.other[k]));
 });

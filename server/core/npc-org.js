@@ -187,6 +187,7 @@ export function orgDay(W, day, r, ctx) {
     if (t.d === 2) { accounts(W, o, s, day, r, ctx); ventureReview(W, o, s, day, r, ctx); }
   }
   lendingDesk(W, day, r, ctx);
+  if (t.d === 1 && ctx.corp.co.tenesice && !ctx.corp.co.tenesice.dead) rateReview(W, day);
   if (t.d === 2) ideaReview(W, day, r, ctx);
   if (t.d === 3) { analysis(W, day, r, ctx); labsMonth(W, day, r, ctx); }
   if (t.d === 10 && t.m % 3 === 1) { talks(W, day, r, ctx); licenseTalks(W, day, r, ctx); }
@@ -210,7 +211,9 @@ function proposals(W, o, s, day, r, ctx) {
   // 経営企画・経理: the year against the plan
   // (the month's operating result against its sales: deep in the red, a restructuring)
   const monthOp = pl.op, deep = monthOp < 0 && -monthOp > Math.max(1, pl.sales) * 0.15;
-  if (deep) {
+  // (MY WAY by its philosophy cuts nothing until its losses have run for quarters: CORP.myway.philosophy)
+  const keepOn = id === 'myway' && CORP.myway.philosophy && (s.lossQ || 0) < CORP.myway.philosophy.keepQuarters;
+  if (keepOn) { /* it pushes on */ } else if (deep) {
     const cut = 0.25;
     out.push({ kind: 'cut', title: `構造改革（その他経費を${Math.round(cut * 100)}%・施設費と研究費を10%削減、採用を凍結）`, effect: [{ kind: 'budget', key: 'other', mult: 1 - cut }, { kind: 'budget', key: 'place', mult: 0.9 }, { kind: 'budget', key: 'rd', mult: 0.9 }, { kind: 'budget', key: 'ads', mult: 0.85 }, { kind: 'target', mult: 0.97 }], cost: 0, risk: 0.2, gain: 0.2, by: by('plan') >= 0 ? by('plan') : by('acct'), why: { op: monthOp, sales: pl.sales } });
   } else if (ytd.op < 0 || behind < 0.85) {
@@ -225,10 +228,7 @@ function proposals(W, o, s, day, r, ctx) {
     const v = pickVenture(W, o, r);
     if (v) out.push({ kind: 'venture', title: `新事業「${v.name}」の立ち上げ`, effect: [{ kind: 'venture', action: 'start', type: v.id }], cost: v.launch, risk: 0.45, gain: 0.1, by: dept('venture').named.scout >= 0 ? dept('venture').named.scout : by('venture'), why: { fit: v.fit, market: v.market } });
   }
-  if (id === 'tenesice') {
-    const rate = W.bankRates.person, want = policyRate(W);
-    if (Math.abs(want - rate) > 0.0025) out.push({ kind: 'rate', title: `個人向け金利の改定（年${(rate * 100).toFixed(2)}%→${(want * 100).toFixed(2)}%）`, effect: [{ kind: 'rate', key: 'person', to: want }, { kind: 'rate', key: 'auto', to: Math.max(0.01, want - 0.005) }], cost: 0, risk: 0.1, gain: 0.04, by: dept('lend').named.rate, why: { inflation: W.stats.inflation, target: W.nation.knobs.inflation } });
-  }
+  // (Tenesice's rates: its 金利決定会合 each month, rateReview — not a proposal among the others)
   if (id === 'magita' && dept('product') && r.u() < 0.3) {
     out.push({ kind: 'product', title: '人気車種のマイナーチェンジ（魅力の向上）', effect: [{ kind: 'appeal', key: 'cars', add: 0.05, days: 365 }, { kind: 'budget', key: 'rd', mult: 1.03 }], cost: s.budget.rd * 0.03, risk: 0.25, gain: 0.05, by: by('product') });
   }
@@ -250,12 +250,12 @@ function proposals(W, o, s, day, r, ctx) {
   if (id === 'tenesice' && dept('tech') && r.u() < 0.2) out.push({ kind: 'tech', title: '勘定系システムの刷新（運用費の削減）', effect: [{ kind: 'budget', key: 'rd', mult: 1.05 }, { kind: 'budget', key: 'other', mult: 0.96 }], cost: s.budget.rd * 0.05, risk: 0.3, gain: 0.05, by: dept('tech').named.cto });
   // pricing power: what the people cannot get elsewhere (ジンクス's shelves, Car Owner's service, DAIZIN's membership)
   // is raised while they keep buying more of it, and cut when they buy much less (値上げ・値下げ: for good)
-  const PRICED = { jinx: 'goods', carowner: 'service', daizin: 'vipFee' };
+  const PRICED = { jinx: 'goods', carowner: 'service', daizin: 'vipFee', tenesice: 'mobile' };
   if (PRICED[id]) {
     const key = PRICED[id], now = W.priceIdx[id + ':' + key] || 1, greed = o.ceo >= 0 ? tr(P, o.ceo, T.ambition) : 0.5;
     const long = (W.coTrendLong || {})[id] || 0;
-    if (long > 0.05 && r.u() < 0.2 + 0.3 * greed) { const up = Math.round((1.04 + 0.08 * greed * r.u()) * 100) / 100; out.push({ kind: 'price', title: `値上げ（${key === 'vipFee' ? 'VIP会費' : key === 'goods' ? '商品' : '整備料金'}を${Math.round((up - 1) * 100)}%）：需要が強いうちに`, effect: [{ kind: 'price', key, mult: up }], cost: 0, risk: 0.2 + 0.1 * Math.max(0, now - 1), gain: 0.06, by: by('plan') >= 0 ? by('plan') : by('acct'), why: { trend: long, price: now } }); }
-    else if (long < -0.1 && now > 0.5) out.push({ kind: 'price', title: `値下げ（${key === 'vipFee' ? 'VIP会費' : key === 'goods' ? '商品' : '整備料金'}を8%）：客離れを止める`, effect: [{ kind: 'price', key, mult: 0.92 }], cost: 0, risk: 0.15, gain: 0.05, by: by('plan') >= 0 ? by('plan') : by('acct'), why: { trend: long, price: now } });
+    if (long > 0.05 && r.u() < 0.2 + 0.3 * greed) { const up = Math.round((1.04 + 0.08 * greed * r.u()) * 100) / 100; out.push({ kind: 'price', title: `値上げ（${PRICE_NAME[key] || key}を${Math.round((up - 1) * 100)}%）：需要が強いうちに`, effect: [{ kind: 'price', key, mult: up }], cost: 0, risk: 0.2 + 0.1 * Math.max(0, now - 1), gain: 0.06, by: by('plan') >= 0 ? by('plan') : by('acct'), why: { trend: long, price: now } }); }
+    else if (long < -0.1 && now > 0.5) out.push({ kind: 'price', title: `値下げ（${PRICE_NAME[key] || key}を8%）：客離れを止める`, effect: [{ kind: 'price', key, mult: 0.92 }], cost: 0, risk: 0.15, gain: 0.05, by: by('plan') >= 0 ? by('plan') : by('acct'), why: { trend: long, price: now } });
   }
   if (id === 'jinx' && r.u() < 0.15) out.push({ kind: 'partner', title: 'スタジオとの連携：店頭でのゲーム販売の強化', effect: [{ kind: 'appeal', key: 'games', add: 0.03, days: 90 }], cost: 0, risk: 0.1, gain: 0.03, by: dept('partner').named.liaison });
   // MY WAY: what its people do for its characters, its partners and its costs; and a partner's contract with it
@@ -264,11 +264,40 @@ function proposals(W, o, s, day, r, ctx) {
   if (mw && mw.ip && !mw.dead && mw.ip.contracts[id]) partnerProposals(W, o, mw, out, { dept, by });
   return out.filter((p) => p.by !== undefined && p.by >= 0);
 }
+// (what each of the companies' own prices is called, in its decisions)
+const PRICE_NAME = { vipFee: 'VIP会費', goods: '商品', service: '整備料金', mobile: '携帯の月額' };
+// how many of those who borrowed by クイックローン have fallen behind (a day's payment missed)
+function quickLate(W) {
+  const P = W.P;
+  let n = 0, late = 0;
+  for (let i = 0; i < P.n; i++) if (P.dkind[i] === 2 && P.debt[i] > 0) { n++; if (P.miss[i] > 0) late++; }
+  return n ? late / n : 0;
+}
 // the rate the 金利決定担当 thinks right (テイラー則: neutral, plus half the inflation over the target and half the
-// economy's gap), for the people's loans
+// economy's gap), for the people's loans — the inflation as it runs now (server/core/npc-macro.js) and over the year,
+// the gap the people's spending against its year's
 export function policyRate(W) {
-  const target = (W.nation.knobs.inflation || 2) / 100, infl = W.stats.inflation || 0.01, gap = (W.stats.economy || 1) - 1;
-  return Math.max(0.005, Math.min(0.12, Math.round((0.02 + target + 0.5 * (infl - target) + 0.5 * gap) * 400) / 400));
+  const target = (W.nation.knobs.inflation ?? 2) / 100;
+  const now = W.macro ? W.macro.pi : null, year = W.stats.inflation ?? 0.01, infl = now === null ? year : 0.5 * now + 0.5 * year;
+  const gap = Math.log(Math.max(0.2, W.stats.economy || 1));
+  // (no cap on it but the floor every rate has: nothing below zero)
+  return Math.max(0, Math.round((0.02 + target + 1.5 * (infl - target) + 0.5 * gap) * 400) / 400);
+}
+// Tenesice's 金利決定会合, each month's first day: its people's rate toward what the rule says (a step of up to a point
+// a month — a bank moves its rates in steps), the car loans' half a point under it, and the クイックローン's: the
+// people's rate and a spread for the risk — wider when more of those who borrowed this way fall behind, narrower when
+// few do. No one else sets them.
+export function rateReview(W, day) {
+  const B = W.bankRates, rate = B.person, want = policyRate(W);
+  const next = Math.max(0, Math.round((rate + Math.max(-0.01, Math.min(0.01, want - rate))) * 400) / 400);
+  const spread = B.spread ?? 0.153, late = quickLate(W);
+  const nextSpread = Math.max(0, Math.round((spread + (late > 0.2 ? 0.01 : late < 0.05 ? -0.005 : 0)) * 1000) / 1000);
+  const quick = Math.round((next + nextSpread) * 1000) / 1000, was = econ.quickRate(W);
+  if (next === rate && Math.abs(quick - was) < 0.005) return null;
+  B.person = next; B.auto = Math.max(0.005, Math.round((next - 0.005) * 400) / 400); B.spread = nextSpread; B.quick = quick;
+  const why = W.macro ? `インフレ率 年${(W.macro.pi * 100).toFixed(1)}%・景気 ${W.macro.mood >= 0 ? '+' : ''}${W.macro.mood.toFixed(2)}` : `インフレ率 ${((W.stats.inflation || 0) * 100).toFixed(1)}%`;
+  W.news.push({ day, kind: 'rate', district: -1, text: `テネシスが金利を改定：個人向け 年${(rate * 100).toFixed(2)}%→${(next * 100).toFixed(2)}%・クイックローン 年${(was * 100).toFixed(1)}%→${(quick * 100).toFixed(1)}%（${why}）`, data: { from: rate, to: next, quick } });
+  return { from: rate, to: next };
 }
 
 /* ---------------------------------------------------------------- the meeting --- */
@@ -343,7 +372,7 @@ function apply(W, o, e, day, r, ctx) {
   if (e.kind === 'price') {
     const k = o.id + ':' + e.key;
     if (e.days) { W.priceTemp = W.priceTemp || {}; W.priceTemp[k] = { mult: e.mult, until: day + e.days }; }
-    else W.priceIdx[k] = Math.max(0.3, Math.min(5, (W.priceIdx[k] || 1) * e.mult));
+    else W.priceIdx[k] = Math.max(0.01, (W.priceIdx[k] || 1) * e.mult);
     return;
   }
   if (e.kind === 'appeal') { const k = o.id + ':' + e.key; W.appeal[k] = Math.min(0.5, (W.appeal[k] || 0) + e.add); W.appealUntil[k] = day + (e.days || 60); return; }
@@ -497,8 +526,10 @@ function mywayProposals(W, o, s, out, { pl, runway, dept, by }) {
     if (c.on || c.fee <= c.base * M.talks.floor + 1e6 || (c.offered && W.day - c.offered < 60)) continue;
     out.push({ kind: 'ip', title: `${CORP.company(pid).name}への再契約の提案（契約料を${pct(M.win.off)}引き下げ）`, effect: [{ kind: 'ip', action: 'win', partner: pid }], cost: 0, risk: 0.1, gain: 0.07, by: named('alliance', 'negotiator'), why: { partner: pid } });
   }
-  // (the fixed costs: what it cannot cut is the pay)
-  if (pl.op < 0 || runway < 6) {
+  // (the fixed costs: what it cannot cut is the pay — and by its philosophy nothing of its people's at all until its
+  // losses have run for quarters: CORP.myway.philosophy.keepQuarters; it pushes on till then)
+  const patient = M.philosophy && (s.lossQ || 0) < M.philosophy.keepQuarters && runway >= 2;
+  if (!patient && (pl.op < 0 || runway < 6)) {
     out.push({ kind: 'cut', title: '固定費の見直し（社員管理・福利厚生費を10%削減。基本給と月次ボーナスは維持）', effect: [{ kind: 'ip', action: 'care' }, { kind: 'budget', key: 'other', mult: 0.85 }, { kind: 'target', mult: 0.98 }], cost: 0, risk: 0.2, gain: 0.2, by: cfo, why: { op: pl.op, runway } });
     if (runway < 4) out.push({ kind: 'cut', title: `希望退職の募集（社員の${pct(M.retire.share)}・退職金${M.retire.severance}か月分）`, effect: [{ kind: 'ip', action: 'retire' }], cost: s.n * M.retire.share * s.pay / 12 * M.retire.severance, risk: 0.35, gain: 0.25, by: cfo, why: { runway } });
   }

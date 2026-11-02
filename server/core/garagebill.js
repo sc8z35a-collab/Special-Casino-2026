@@ -1,6 +1,7 @@
 // MAGITA Garage: every player's garage is MAGITA's (js/game/corp.js MAGITA.garage), and each month every player pays
 // its contract fee — the fee a place this month (MAGITA sets it at each month's end by how it is doing: $100,000, or
-// $110,000〜$200,000 while it does badly; server/core/corp-model.js garageFee) times the places of their garage —
+// $110,000〜$200,000 while it does badly; server/core/corp-model.js garageFee) times the places of their garage in
+// use (a car in it: an empty place costs nothing) —
 // taken at once from the $ in hand (強制徴収: even below 0). The money is MAGITA's (server/core/corp.js). A message
 // from MAGITA Garage (an account that only sends) tells them, and the garage screen shows the last months.
 //
@@ -32,19 +33,22 @@ export function createGarageBills(ctx) {
     const r = tx(() => {
       const u = getUser(userId);
       if (!u || u.npc || u.created_at >= start) return null;
-      const fee = corp.garageFee(), slots = slotsOf(u), amount = fee * slots;
+      const fee = corp.garageFee(), all = slotsOf(u), cars = q('SELECT COUNT(*) AS n FROM cars WHERE owner_id = ?').get(userId).n;
+      const slots = Math.min(all, cars), amount = fee * slots;
       const made = q('INSERT OR IGNORE INTO garage_bills (user_id, month, slots, fee, amount, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(userId, month, slots, fee, amount, now);
       if (!made.changes) return null;
-      q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(amount, userId);
-      corp.flow('magita', 'garagefee', amount);
-      return { month, fee, slots, amount };
+      if (amount > 0) {
+        q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(amount, userId);
+        corp.flow('magita', 'garagefee', amount);
+      }
+      return { month, fee, slots, all, amount };
     });
     if (!r) return null;
     const u = getUser(userId);
     const raised = r.fee > CORP.magita.garage.base ? `（MAGITAの経営状況により通常の$${fmt(CORP.magita.garage.base)}から値上げ中）` : '';
     bot.say(userId, `【MAGITA Garage 契約料のお知らせ】\n\n${u.name}様\n\nお客様のガレージはMAGITA Garageが管理しています。${monthLabel(r.month)}の契約料を手元資金から徴収しました。\n\n` +
-      `ガレージ ${r.slots}台分 × $${fmt(r.fee)}${raised}\n徴収額：$${fmt(r.amount)}\n現在の手元資金：${u.dollars < 0 ? '−' : ''}$${fmt(Math.abs(u.dollars))}\n\n` +
-      `契約料は毎月1日に、その時のガレージの台数分を自動で徴収します。\n\n${BOT_NAME}より`);
+      `使っているガレージ ${r.slots}台分（全${r.all}台）× $${fmt(r.fee)}${raised}\n徴収額：$${fmt(r.amount)}\n現在の手元資金：${u.dollars < 0 ? '−' : ''}$${fmt(Math.abs(u.dollars))}\n\n` +
+      `契約料は毎月1日に、その時に車が入っているガレージの台数分を自動で徴収します（空いているガレージは無料です）。\n\n${BOT_NAME}より`);
     balanceChanged(userId);
     return r;
   }

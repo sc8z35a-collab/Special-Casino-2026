@@ -1,4 +1,4 @@
-/* The server settles all 3/9/30 reward slots before this lightweight reveal. */
+/* The server settles all the reward slots (GACHA.slots a pull) before this lightweight reveal. */
 (function (BR) {
   'use strict';
   var K = BR.kit, api = BR.api, G = BR.GACHA, A = BR.GACHA_ART, el = K.el;
@@ -78,7 +78,7 @@
     document.getElementById('confirm').classList.add('gc-confirm');
     K.confirmBox(function (box) {
       box.appendChild(el('strong', 'gc-confirm-title', '本当に引きますか？'));
-      box.appendChild(el('span', 'gc-confirm-choice', tier().name + ' ' + count + '連 · ' + count * 3 + '枠'));
+      box.appendChild(el('span', 'gc-confirm-choice', tier().name + ' ' + count + '連 · ' + count * G.slots + '枠'));
       if (free) {
         var t = el('span', 'gc-confirm-price gc-confirm-ticket');
         t.appendChild(picture(A.tickets[chosen]));
@@ -94,6 +94,21 @@
   function use(item) {
     if (busy) return; busy = true; render(); var gen = generation;
     api.gachaUse(item).then(function (r) { if (gen === generation) apply(r); }, K.fail).then(function () { if (gen !== generation) return; busy = false; render(); });
+  }
+  // selling one back (GACHA.sell): to the company that provides it, at its price, once confirmed
+  function sell(item, name) {
+    if (busy) return;
+    var each = G.sell[item], gen = generation;
+    busy = true; render();
+    K.confirmBox(function (box) {
+      box.appendChild(el('strong', 'gc-confirm-title', name + 'を1つ売りますか？'));
+      box.appendChild(el('span', 'gc-confirm-price', money(each)));
+    }, '売る', 'やめる').then(function (ok) {
+      if (gen !== generation) return;
+      if (!ok) { busy = false; render(); return; }
+      api.gachaSell(item, 1).then(function (r) { if (gen === generation) { apply(r); K.toast(name + 'を' + money(r.paid) + 'で売りました'); } }, K.fail)
+        .then(function () { if (gen !== generation) return; busy = false; render(); });
+    });
   }
   // Create the controls and their listeners on the first visit, then update existing nodes.
   function buildControls() {
@@ -121,7 +136,7 @@
       b.appendChild(picture(A.pulls[count]));
       if (A.discounts[count]) b.appendChild(picture(A.discounts[count], 'gc-discount'));
       var cost = el('strong', 'gc-price'), was = el('s', 'gc-was'); was.hidden = true;
-      box.appendChild(b); box.appendChild(was); box.appendChild(cost); box.appendChild(el('small', 'gc-slots', count * 3 + '枠'));
+      box.appendChild(b); box.appendChild(was); box.appendChild(cost); box.appendChild(el('small', 'gc-slots', count * G.slots + '枠'));
       controls.bundles.push({ button: b, price: cost, was: was, count: count });
       purchases.appendChild(box);
     });
@@ -129,7 +144,7 @@
     var free = el('div', 'gc-bundle gc-free'), fb = button('', function () { spin(1, true); }, 'gc-art-button gc-free-button');
     var fimg = picture(A.tickets[kind]); fb.appendChild(fimg); fb.appendChild(el('span', 'gc-free-label', '無料で引く'));
     var fcount = el('strong', 'gc-free-count');
-    free.appendChild(fb); free.appendChild(fcount); free.appendChild(el('small', 'gc-free-slots', '3枠'));
+    free.appendChild(fb); free.appendChild(fcount); free.appendChild(el('small', 'gc-free-slots', G.slots + '枠'));
     controls.free = { box: free, button: fb, img: fimg, count: fcount };
     purchases.appendChild(free);
     fragment.appendChild(purchases);
@@ -167,7 +182,7 @@
       v.was.hidden = !was; v.was.textContent = was;
       if (v.price.textContent !== text) {
         v.price.textContent = text;
-        v.button.setAttribute('aria-label', v.count + '連 ' + text + ' ' + v.count * 3 + '枠');
+        v.button.setAttribute('aria-label', v.count + '連 ' + text + ' ' + v.count * G.slots + '枠');
       }
       v.button.disabled = busy || insufficient || (!!retry && !recovering); v.button.title = recovering ? '前の抽選結果を確認' : insufficient ? '$が足りません' : '';
     });
@@ -175,11 +190,19 @@
     var wallet = state.me ? money(state.me.dollars) : '';
     if (ui.wallet.textContent !== wallet) ui.wallet.textContent = wallet;
     ui.odds.disabled = busy;
-    var items = ui.items, itemKey = JSON.stringify(state.items);
+    var items = ui.items, itemKey = JSON.stringify([state.items, state.resets, state.garageFree]);
     if (controls.itemKey !== itemKey) {
       items.replaceChildren(); controls.itemKey = itemKey;
       if (state.items.seed) { var seed = button('種 ×' + state.items.seed, function () { use('seed'); }); seed.prepend(picture(A.rewards.seed)); items.appendChild(seed); }
-      if (state.items.vipWeek) { var vip = button('VIP1週間券 ×' + state.items.vipWeek, function () { use('vip-week'); }); vip.prepend(picture(A.rewards['vip-week'])); items.appendChild(vip); }
+      if (state.items.vipWeek) {
+        var vip = button('VIP1週間券 ×' + state.items.vipWeek, function () { use('vip-week'); }); vip.prepend(picture(A.rewards['vip-week'])); items.appendChild(vip);
+        items.appendChild(button('VIP1週間券を売る ' + money(G.sell['vip-week']), function () { sell('vip-week', 'VIP1週間券'); }, 'mini-btn gc-sell'));
+      }
+      // (what can be sold back: the reset tickets to YOSIDA, an empty garage place's coin to MAGITA)
+      var rs = state.resets || {};
+      if (rs['5h']) items.appendChild(button('リセットチケット（5時間）×' + rs['5h'] + ' を売る ' + money(G.sell['reset-5h']), function () { sell('reset-5h', 'リセットチケット（5時間）'); }, 'mini-btn gc-sell'));
+      if (rs.day) items.appendChild(button('リセットチケット（24時間）×' + rs.day + ' を売る ' + money(G.sell['reset-day']), function () { sell('reset-day', 'リセットチケット（24時間）'); }, 'mini-btn gc-sell'));
+      if (state.garageFree) items.appendChild(button('ガレージコイン ×' + state.garageFree + ' を売る ' + money(G.sell.garage), function () { sell('garage', 'ガレージコイン'); }, 'mini-btn gc-sell'));
       (state.items.waiting || []).forEach(function (r) {
         var claim = button(r.name + ' ×' + r.count + ' 受け取る', function () { use(r.key); }); claim.prepend(picture(rewardArt(r))); items.appendChild(claim);
       });

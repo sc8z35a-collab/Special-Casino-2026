@@ -400,21 +400,24 @@ test('a new business: started with its people, billing the people who take it, r
   for (let i = 0; i < W.P.n; i++) assert.equal(W.P.subs[i] & (1 << v.slot), 0);
 });
 
-test('politics: the council moves a knob only within its range, from the 1st of the next month, once a quarter; 運営 can lock it', () => {
+test('politics: the council moves a knob from the 1st of the next month, once a quarter, with no range but the world\'s floor; 運営\'s settings are no more', () => {
   const c = country(2000);
   const W = c.W;
+  // (a lock or a range 運営 once set: ignored; a change 運営 once scheduled: dropped)
   W.nation.locks.consumptionTax = true;
   W.nation.pending.push({ id: 'consumptionTax', to: 10, from: W.day + 1, by: 'council', day: W.day });
   W.nation.pending.push({ id: 'residentTax', to: 99, from: W.day + 1, by: 'council', day: W.day });
-  // the 1st comes: the locked one stays, the other is held to its range
+  W.nation.pending.push({ id: 'welfare', to: -500, from: W.day + 1, by: 'council', day: W.day });
+  W.nation.pending.push({ id: 'jobless', to: 25, from: W.day + 1, by: 'ops', day: W.day });
+  W.nation.pending.push({ id: 'pay:jinx', to: 50, from: W.day + 1, by: 'ops', day: W.day });
   let d = W.day;
   while (CORP.ymd(d).d !== 1) d++;
   c.days(d - W.day + 1);
-  assert.equal(W.nation.knobs.consumptionTax, 0);
-  assert.equal(W.nation.knobs.residentTax, 12);
-  // a player-facing fee never below half of where it began
-  assert.ok(NPC.knob.winFee.min >= NPC.knob.winFee.start / 2);
-  assert.ok(NPC.knob.magitaSurcharge.min >= NPC.knob.magitaSurcharge.start / 2);
+  assert.equal(W.nation.knobs.consumptionTax, 10);
+  assert.equal(W.nation.knobs.residentTax, 99);
+  assert.equal(W.nation.knobs.welfare, -100);
+  assert.equal(W.nation.knobs.jobless, 0);
+  assert.equal(W.nation.knobs['pay:jinx'], undefined);
 });
 
 test('the market: the people\'s orders matched among themselves (shares and money both kept), a player\'s order takes theirs first', () => {

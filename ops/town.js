@@ -1,11 +1,11 @@
 /* 街: the country of people behind the companies (server/core/npc.js), all of it — the country now (its numbers, its
-   books, its districts and mayors, the knobs the council and the people may move and how far 運営 lets them, the
+   books, its districts and mayors, what the council and the people decide and what the companies decide, the
    elections, petitions, votes and the council's minutes, the unions), its 50,000 people (found by name, district or
    employer, each one whole: character, needs, money, work, pension, home, relations, memories, the reasons of their
    decisions), each company's people (its executives, departments and named posts, the meetings in its 会議室 with
    who said what and the stopper's word, its reports, its new businesses, MAGITA's research departments, Tenesice's
-   lending), and its news. The developer may set a knob's range, lock it, or set it from next month, pause the country
-   or fix how deep its people think. Asked for when opened and when the server says a day closed ('npc'); asking
+   lending), and its news. The developer may pause the country or fix how deep its people think (its knobs and the
+   companies' prices are the country's and the companies' own to decide). Asked for when opened and when the server says a day closed ('npc'); asking
    again with the last answer's rev is answered { same: true }. Labels from js/game/npc.js (BR.NPC). Text only by textContent. */
 var OpsTown = (function () {
   'use strict';
@@ -36,7 +36,92 @@ var OpsTown = (function () {
     t.appendChild(tb); wrap.appendChild(t); return wrap;
   }
   function who(p) { return p ? p.name : '—'; }
-  function knobText(k, v) { return k.unit === '$' ? money(v) : v + k.unit; }
+  function knobText(k, v) { return !k ? String(v) : k.unit === '$' ? money(v) : v + k.unit; }
+
+  /* ---------------------------------------------------------------- GDP --- */
+  // a country's GDP (server/core/npc-gdp.js gdpView): the last day closed, the month, the year (暦年) and the last 365
+  // days, nominal and real (at the prices of its beginning), what it was spent on, and its last 90 days as bars
+  function gdpPanel(box, g, name) {
+    var p = panel(name + 'のGDP（国内総生産）', '支出面：消費＋政府＋投資＋輸出−輸入・実質は建国時の物価で・毎日の締めで更新');
+    if (!g) { p.appendChild(el('p', 'muted', '最初の締めの翌日から数えます。')); box.appendChild(p); return; }
+    var sign = function (x) { return x === null || x === undefined ? '—' : (x >= 0 ? '+' : '−') + Math.abs(x * 100).toFixed(1) + '%'; };
+    var t = el('div', 'town-grid');
+    kv(t, '実質GDP（年率・直近30日）', money(g.pace.real) + '（前の30日比 ' + sign(g.pace.growth) + '）');
+    kv(t, '名目GDP（年率・直近30日）', money(g.pace.nominal));
+    kv(t, '直近365日の実質GDP', money(g.last365.real) + (g.last365.days < 365 ? '（' + g.last365.days + '日分）' : '') + (g.yoy !== null ? '・前年比 ' + sign(g.yoy) : ''));
+    kv(t, '1人あたりGDP（年）', money(g.head) + '（人口 ' + (g.people || 0).toLocaleString('ja-JP') + '人）');
+    kv(t, 'GDPデフレーター', (g.defl * 100).toFixed(1) + '（建国時＝100）');
+    p.appendChild(t);
+    var rows = [['日（' + day(g.day.day) + '）', g.day, sign(g.day.growth)], ['月（' + g.month.key + '・' + g.month.days + '日）', g.month, g.prevMonth ? '前月 ' + money(g.prevMonth.real) : '—'],
+      ['年（' + g.year.y + '年・' + g.year.days + '日）', g.year, g.lastYear ? '前年 ' + money(g.lastYear.real) : '—']];
+    p.appendChild(table(['', '名目GDP', '実質GDP', '消費(C)', '政府(G)', '投資(I)', '輸出(X)', '輸入(M)', '比較'], rows.map(function (x) {
+      var o = x[1];
+      return [x[0], money(o.nominal), money(o.real), money(o.c), money(o.g), money(o.i), money(o.x), money(o.m), x[2]];
+    })));
+    // the last 90 days' real GDP (a day each; the months' ends are when the monthly bills and pay fall)
+    var bars = el('div', 'town-bars'), max = g.series.reduce(function (m, x) { return Math.max(m, Math.abs(x[2])); }, 1);
+    bars.setAttribute('role', 'img');
+    bars.setAttribute('aria-label', name + 'の実質GDP（直近' + g.series.length + '日）');
+    g.series.forEach(function (x) { var b = el('i', x[2] < 0 ? 'neg' : ''); b.style.height = Math.max(1, Math.round(Math.abs(x[2]) / max * 48)) + 'px'; b.title = day(x[0]) + ' 実質 ' + money(x[2]) + '・名目 ' + money(x[1]); bars.appendChild(b); });
+    p.appendChild(bars);
+    p.appendChild(el('p', 'muted town-note', '消費＝市民（とプレイヤー）が買ったもの（消費税込み）、政府＝公務員の給与・医療・区の購入、投資＝企業の設備・ゲームの開発・地元企業の投資・公共事業、輸出入＝もう一方の国と海外との取引（アスカ国の支店はアスカ国の生産）。月末の請求・給料・設備投資の日は1日の値が大きく動きます。'));
+    box.appendChild(p);
+  }
+
+  // the times' mood and the prices (server/core/npc-macro.js macroView): what pulls the mood, what everyone expects
+  // the prices to do, the price index and the rents against the beginning, and the last 120 days of the mood
+  function macroPanel(box, m) {
+    var p = panel('景気の波と物価', '市民・企業・国が感じている景気（バブル〜恐慌）と、それによるインフレ・デフレ・誰も決めていません');
+    if (!m) { p.appendChild(el('p', 'muted', '国の次の日から数えます。')); box.appendChild(p); return; }
+    var sign = function (x) { return (x >= 0 ? '+' : '−') + Math.abs(x * 100).toFixed(2) + '%'; };
+    var g = el('div', 'town-grid'), P = m.parts || {};
+    kv(g, '世の中の景気', m.name + '（' + (m.mood >= 0 ? '+' : '−') + Math.abs(m.mood).toFixed(3) + '・支出への効き ×' + m.boom.toFixed(3) + '）');
+    kv(g, '今のインフレ率（年率）', sign(m.pi)); kv(g, '予想インフレ率', sign(m.expInfl));
+    kv(g, '物価指数', (m.cpi * 100).toFixed(2) + '（はじめ＝100）'); kv(g, '家賃指数', (m.rentIdx * 100).toFixed(2));
+    kv(g, '消費の勢い（年平均比）', sign(P.econ || 0)); kv(g, '株価（90日前比）', sign(P.market || 0)); kv(g, '借入の伸び（90日）', sign(P.credit || 0));
+    kv(g, '失業率（1年平均との差）', sign(-(P.jobs || 0))); kv(g, '金利（中立金利との差）', sign(P.rate || 0)); kv(g, 'アルタスの資源価格（年率）', sign(P.altas || 0));
+    p.appendChild(g);
+    var bars = el('div', 'town-bars town-mood'), list = m.hist || [];
+    bars.setAttribute('role', 'img'); bars.setAttribute('aria-label', '世の中の景気（直近' + list.length + '日）');
+    list.forEach(function (x) { var b = el('i', x[1] < 0 ? 'neg' : ''); b.style.height = Math.max(1, Math.round(Math.abs(x[1]) * 48)) + 'px'; b.title = day(x[0]) + ' 景気 ' + x[1].toFixed(3) + '・インフレ率 ' + sign(x[2]); bars.appendChild(b); });
+    p.appendChild(bars);
+    p.appendChild(el('p', 'muted town-note', '好景気・バブルでは市民が収入と貯金をよく使い（カジノ・遊び・株への投資も増え）、企業は利益をため込まずに予算・配当・設備投資を増やし、国は国庫の余裕を早く使います。不景気ではその逆。景気は消費の勢い・株価・借入・雇用でふくらみ、自分の噂でも勢いづき、高い金利・お金の不足・株価の反落でしぼみます。物価は予想インフレ率に需要・雇用・景気・資源価格が上乗せされて動きます。'));
+    box.appendChild(p);
+  }
+
+  /* ------------------------------------------------------------ アスカ国, live --- */
+  // what its people are doing now (they live minute by minute as ヴェルノア's: server/core/asuka.js tick) and the day's
+  // money so far, asked every 10 seconds while the page is open
+  var asukaTimer = 0, ASUKA_ASK = 10000;
+  function asukaLive() {
+    var p = panel('アスカ国の今（リアルタイム）', '市民はヴェルノアと同じく1分ごとに動きます（9:00/11:00〜22:00）・10秒ごとに更新');
+    var body = el('div'); p.appendChild(body);
+    function show(v) {
+      if (!v) { body.replaceChildren(el('p', 'muted', '読み込み中…')); return; }
+      var L = v.live;
+      if (!L) { body.replaceChildren(el('p', 'muted', 'アスカ国はまだ建国されていません。')); return; }
+      var parts = [], g = el('div', 'town-grid'), T = L.today, M = L.money;
+      var t = new Date((v.minute || L.minute) * 60000 + 9 * 3600000);
+      kv(g, '国の時刻', t.getUTCFullYear() + '/' + (t.getUTCMonth() + 1) + '/' + t.getUTCDate() + ' ' + t.getUTCHours() + ':' + ('0' + t.getUTCMinutes()).slice(-2) + '（日本時間）');
+      L.acts.forEach(function (name, k) { if (L.all[k]) kv(g, name, L.all[k].toLocaleString('ja-JP') + '人'); });
+      if (T) { kv(g, '今日の生活費（地元の商売）', money(T.living)); kv(g, '今日の買い物（ヴェルノア企業の拠点）', money(T.bought)); kv(g, '今日の消費税', money(T.tax)); kv(g, '今日の外出', T.trips.toLocaleString('ja-JP') + '回'); }
+      kv(g, 'まだ使うつもりのお金（今日）', money(L.left)); kv(g, '国民の預金', money(M.people)); kv(g, '国庫', money(M.treasury)); kv(g, 'ATSUKA Vision', money(M.atsuka)); kv(g, '地元の商売', money(M.trade));
+      kv(g, '企業への支払い待ち（締めで入金）', money(M.toCo)); kv(g, 'アスカ国のお金の合計', money(M.all));
+      parts.push(g);
+      parts.push(table(['区'].concat(L.acts), L.districts.map(function (d) { return [d.name].concat(d.acts.map(function (n) { return n.toLocaleString('ja-JP'); })); })));
+      if (T) parts.push(el('p', 'muted town-note', '今日の買い物：' + T.byCat.filter(function (c) { return c.n > 0; }).map(function (c) { return c.name + ' ' + money(c.n); }).join('・') + (L.last ? '（前日：生活費 ' + money(L.last.living) + '・買い物 ' + money(L.last.bought) + '）' : '')));
+      body.replaceChildren.apply(body, parts);
+    }
+    function askLive() {
+      if (!st.request) return;
+      st.request('GET', '/api/ops/npc/asuka').then(function (r) { st.asukaLive = r; if (p.isConnected) show(r); }, function () { /* (kept: the last figures) */ });
+    }
+    show(st.asukaLive);
+    askLive();
+    if (asukaTimer) clearInterval(asukaTimer);
+    asukaTimer = setInterval(function () { if (!p.isConnected) { clearInterval(asukaTimer); asukaTimer = 0; return; } askLive(); }, ASUKA_ASK);
+    return p;
+  }
 
   /* ---------------------------------------------------------------- アスカ国 --- */
   // the country beside it (server/core/asuka.js view): its people and money, ATSUKA Vision, ヴェルノア's companies'
@@ -44,12 +129,14 @@ var OpsTown = (function () {
   function asuka(box, r) {
     var a = r.asuka;
     if (!a) { box.appendChild(el('p', 'muted', 'アスカ国はまだ建国されていません（次の締めで建国されます）。')); return; }
+    box.appendChild(asukaLive());
     var p = panel('アスカ国', '建国 ' + day(a.founded) + '・建国資金 ' + money(a.total) + '（一度だけ発行）・人口 ' + a.people.toLocaleString('ja-JP') + '人');
     var g = el('div', 'town-grid'), J = a.jobs;
     kv(g, 'ATSUKA Visionで働く人', String(J.atsuka)); kv(g, '地元の商売で働く人', String(J.trade)); kv(g, 'ヴェルノア企業の支店で働く人', String(J.branch));
     kv(g, '仕事を探している人', String(J.none) + '（失業率 ' + pct(a.stats && a.stats.jobless) + '）'); kv(g, '学生', String(J.student)); kv(g, '退職した人', String(J.retired));
     p.appendChild(g);
     box.appendChild(p);
+    gdpPanel(box, r.gdp && r.gdp.asuka, 'アスカ国');
     p = panel('アスカ国のお金', 'すべて建国資金から：両国の間を行き来するだけ');
     g = el('div', 'town-grid'); var M = a.money;
     kv(g, '国民の預金', money(M.people)); kv(g, '国庫', money(M.treasury)); kv(g, 'ATSUKA Vision', money(M.atsuka)); kv(g, '国立銀行の自己資金', money(M.bank));
@@ -189,6 +276,8 @@ var OpsTown = (function () {
       ['ジニ係数', String(s.gini)], ['資産の中央値', money(s.median)], ['路上で暮らす人', String(s.homeless)], ['居候', String(s.staying)], ['市民の預金', money(s.cash)], ['市民の借金', money(s.debt)]].forEach(function (x) { kv(g, x[0], x[1]); });
     p.appendChild(g);
     box.appendChild(p);
+    gdpPanel(box, r.gdp && r.gdp.vernoa, r.nation.name);
+    macroPanel(box, r.macro);
     var nf = r.nationFull;
     p = panel('国の帳簿', 'テネシスの国の口座');
     g = el('div', 'town-grid');
@@ -201,7 +290,7 @@ var OpsTown = (function () {
       guarantee: '未払賃金の立替払', bondInterest: '国債の利子', debtInterest: 'テネシスへの利子', casinoWins: '市民のスロットの勝ち分',
       slotWins: 'プレイヤーのスロットの勝ち分', questRewards: 'クエストの報酬', gachaClaims: 'ガチャ代（YOSIDAへ）', loginBonus: 'ログインボーナス', dailyTokens: '毎日の無料トークン',
       coopBonus: '協力プレイのボーナス', releaseBonus: 'アップデートのお礼', medalRewards: '功績の報酬', diaryRewards: '日記の報酬', treeHarvest: '金の生る木の収穫', npcGifts: 'ジョンソン・運営からの贈り物',
-      playerStart: 'プレイヤーの初期資金', treeFund: '金の生る木の肥料（収穫の財源）', newLife: '生まれた人の初期資金', bankRescue: 'テネシスへの公的資金', asukaBonds: 'アスカ国の政府系ファンドへの国債の利子' };
+      playerStart: 'プレイヤーの初期資金', treeFund: '金の生る木の肥料（収穫の財源）', newLife: '生まれた人の初期資金', bankRescue: 'テネシスへの公的資金', asukaBonds: 'アスカ国の政府系ファンドへの国債の利子', gachaShare: 'ガチャ代の国庫分（20%）' };
     var kindName = function (k) { return KIND[k] || k; };
     Object.keys(nf.day.in || {}).forEach(function (k) { rows.push(['収入', kindName(k), money(nf.day.in[k])]); });
     Object.keys(nf.day.out || {}).forEach(function (k) { rows.push(['支出', kindName(k), money(nf.day.out[k])]); });
@@ -238,13 +327,24 @@ var OpsTown = (function () {
       return { cells: [d.name, link(d.mayor), d.approval + '%', String(d.people), (d.economy * 100).toFixed(1), (d.platform || []).map(function (id) { var x = N().platforms.filter(function (y) { return y.id === id; })[0]; return x ? x.name : id; }).join('・')] };
     })));
     box.appendChild(p);
-    // the knobs: what the council and the people may move, how far (the developer sets it)
-    p = panel('国の決まり（つまみ）', '税・年金などは街の議会と市民投票が範囲の中で動かす（翌月1日から・同じつまみは四半期に1回）。給与・暮らし・金融は運営だけが設定（今すぐか翌月1日から）');
-    p.appendChild(table(['項目', '今', '範囲', '固定', '最後の変更', ''], r.knobs.map(function (k) {
-      var edit = btn('btn small', '設定', function () { editKnob(k); });
-      return { cells: [(k.group ? '［' + k.group + '］' : '') + k.name + (k.player ? '（プレイヤーにも）' : '') + (k.ops ? '（運営のみ）' : ''), knobText(k, k.value), knobText(k, k.range[0]) + '〜' + knobText(k, k.range[1]), k.locked ? '固定' : '', k.changed ? day(k.changed) : '', edit] };
+    // the knobs: what the council and the people move, as the country's situation calls for (no range; 運営 sets none)
+    p = panel('国の決まり', '税・年金・予算などは、街の議会と市民投票が状況に応じて決めます（翌月1日から・同じ項目は四半期に1回・範囲なし）。運営は変更できません');
+    p.appendChild(table(['項目', '今', '最後の変更'], r.knobs.map(function (k) {
+      return { cells: [(k.group ? '［' + k.group + '］' : '') + k.name, knobText(k, k.value), k.changed ? day(k.changed) : ''] };
     })));
     box.appendChild(p);
+    // what the companies decide themselves: their fees, MAGITA's surcharge, Tenesice's rates and phone bill; the prices
+    var dc = r.decided;
+    if (dc) {
+      p = panel('企業が自分で決めていること', '業績と状況に応じて各社が毎月見直します（運営は変更できません・範囲なし）');
+      g = el('div', 'town-grid');
+      kv(g, 'Dtradeの勝利金手数料', (dc.fees.winFee * 100).toFixed(2) + '%'); kv(g, 'Dtradeの交換手数料', money(dc.fees.exchangeFee)); kv(g, 'Dtradeの株の売買手数料', (dc.fees.tradeFee * 100).toFixed(2) + '%');
+      kv(g, '求人サイトの掲載料（シティーワーク）', (dc.fees.jobFee * 100).toFixed(1) + '%'); kv(g, 'MAGITAの仕入れ価格への上乗せ（経営悪化時）', money(dc.surcharge));
+      kv(g, 'テネシスの個人向け金利', (dc.rates.person * 100).toFixed(2) + '%'); kv(g, 'テネシスのクイックローン金利', (dc.quick * 100).toFixed(1) + '%'); kv(g, 'テネシス・モバイルの月額', money(dc.phone));
+      kv(g, '物価（はじめ＝1）', dc.cpi.toFixed(3)); kv(g, '家賃の水準（はじめ＝1）', dc.rentIdx.toFixed(3));
+      p.appendChild(g);
+      box.appendChild(p);
+    }
     var po = r.politics;
     p = panel('政治');
     if (po.campaign) p.appendChild(table(['区', '候補', '公約'], po.campaign.cands.map(function (c) { return [N().districts[c.district].name, c.name + (c.incumbent ? '（現職）' : ''), (c.platform || []).join('・')]; })));
@@ -270,17 +370,6 @@ var OpsTown = (function () {
     ['auto', 'shallow', 'standard', 'deep', 'deepest'].forEach(function (d) { ctl.appendChild(btn('btn small', { auto: '深さ：自動', shallow: '浅い', standard: '標準', deep: '深い', deepest: 'いちばん深い' }[d], function () { control({ depth: d }); })); });
     p.appendChild(ctl);
     box.appendChild(p);
-  }
-  function editKnob(k) {
-    var lo = prompt(k.name + 'の範囲の下限（' + k.unit + '）', String(k.range[0]));
-    if (lo === null) return;
-    var hi = prompt(k.name + 'の範囲の上限（' + k.unit + '）', String(k.range[1]));
-    if (hi === null) return;
-    var lock = confirm(k.name + 'を固定しますか？（OK＝固定・キャンセル＝固定しない）');
-    var val = prompt('新しい値（' + k.unit + '・空欄なら変えない）', '');
-    var body = { id: k.id, range: [Number(lo), Number(hi)], lock: lock };
-    if (val !== null && val !== '') { body.value = Number(val); body.now = confirm('今すぐ反映しますか？（OK＝今すぐ・キャンセル＝来月1日から）'); }
-    st.request('POST', '/api/ops/npc/knob', body).then(function () { st.toast('設定しました'); st.all = null; ask(); }, function (e) { st.toast(e && e.message || '設定できませんでした'); });
   }
   function control(body) {
     st.request('POST', '/api/ops/npc/control', body).then(function () { st.toast('設定しました'); st.all = null; ask(); }, function (e) { st.toast(e && e.message || '設定できませんでした'); });

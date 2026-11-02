@@ -1193,24 +1193,74 @@ function budgetReview(w, s, p, d, out) {
   if (h.length < BUDGET.months) return;
   const base = s.budgetBase || (s.budgetBase = { ...s.budget });
   const sales = h.reduce((a, x) => a + x.sales, 0) / h.length, op = h.reduce((a, x) => a + x.op, 0) / h.length;
-  const want = Math.max(0.02, Math.min(0.4, p.op / Math.max(1, p.sales))) * Math.max(0, sales);
+  // (MY WAY: its philosophy — a low margin aimed at, the rest spent, faster and further; nothing cut while it keeps on)
+  const PH = s.ip ? CORP.myway.philosophy : null;
+  // (the times: in a boom a thinner margin will do and the budgets grow faster — what is made is spent, not kept —; in
+  // a bust a fatter one is wanted and the cuts go deeper)
+  const boom = w.boom || 1;
+  const want = Math.max(0.02, Math.min(0.4, p.op / Math.max(1, p.sales))) * Math.max(0, sales) * (PH ? PH.margin : 1) / boom;
   const yearly = BUDGET.keys.reduce((a, k) => a + (s.budget[k] || 0), 0);
   if (!(yearly > 0)) return;
   let f = 0;
-  if (op < want) f = -Math.min(BUDGET.cut, (want - op) * 12 / yearly);
-  else if (op > want * BUDGET.over) f = Math.min(BUDGET.raise, (op - want) * 12 / yearly);
+  if (op < want) f = PH && (s.lossQ || 0) < PH.keepQuarters ? 0 : -Math.min(BUDGET.cut / Math.min(1, boom), (want - op) * 12 / yearly);
+  else if (op > want * BUDGET.over) f = Math.min((PH ? PH.raise : BUDGET.raise) * Math.max(1, boom), (op - want) * 12 / yearly);
   if (!f) return;
   let moved = 0;
   for (const k of BUDGET.keys) {
     const b = s.budget[k] || 0, top = base[k] || 0;
     if (!top) continue;
-    const next = Math.round(Math.max(top * BUDGET.floor, Math.min(f > 0 ? Math.max(top * BUDGET.top, b) : b, b * (1 + f))));
+    const next = Math.round(Math.max(top * BUDGET.floor, Math.min(f > 0 ? Math.max(top * (PH ? PH.top : BUDGET.top), b) : b, b * (1 + f))));
     moved += next - b;
     s.budget[k] = next;
   }
   if (Math.abs(moved) * 12 < yearly * 0.01) return;
   const pct = Math.round(Math.abs(moved) / Math.max(1, yearly) * 1000) / 10;
   news(out, s, p, d + 1, 4 * 3600, 'cut', moved < 0 ? `売上に合わせて経費を見直し：施設・研究・広告・その他・設備の予算を${pct}%削減（直近3か月の売上 月${CORP.fmt.money(sales)}）` : `売上の伸びに合わせて予算を${pct}%増額`, { moved, sales: Math.round(sales) }, 0, true);
+}
+
+// MY WAY's economy (its philosophy): each month a share of its profit to the local companies of its 経済圏 — and at
+// least a tenth of what they sold — as their support, as far as its money goes beyond a month of its costs (the people
+// of the country share it out among them: server/core/npc-local.js support). They grow on it, pay more and never cut.
+function mywaySphere(w, s, p, d, out) {
+  const PH = CORP.myway.philosophy;
+  if (!s.ip || !PH || !w.ext || s.dead || abroad(s)) return;
+  const op = CORP.plOf(s.per.m).op, theirs = Math.max(0, w.sphereSales || 0);
+  const want = Math.max(Math.round(Math.max(0, op) * PH.sphere), Math.round(theirs * PH.floor));
+  const n = Math.min(want, Math.max(0, Math.round((s.bal.cash || 0) - monthlyCosts(s))));
+  if (n <= 0) return;
+  post(s, [['sSupport', n], ['cash', -n]], 'expenses');
+  w.ext.sphere = (w.ext.sphere || 0) + n;
+  s.sphereGiven = (s.sphereGiven || 0) + n;
+  news(out, s, p, d + 1, 5 * 3600, 'sphere', `MY WAY経済圏の地元企業4社に${CORP.fmt.money(n)}を支援（資金援助・社員の派遣・事業拡大）`, { n }, 0, true);
+}
+
+// What the companies charge for their own services, each its own to set — no one else sets it, and no range is set on
+// it: Dtrade's fee on a big win (of the win), on changing tokens back ($), on a trade (of it), the job sites' on a hire
+// (of the year's pay; CityWork's, the bigger of the two, the market's). At each month's end, by how it did against its
+// plan's margin (its last three months, as its budget meeting sees them): short of it, a step up; well over it, a step
+// down to win more custom. (`w.fees`: the players' side reads it, server/core/npc.js; the people's with each close.)
+export const FEES0 = { winFee: 0.06, exchangeFee: 40000, tradeFee: 0.018, jobFee: 0.25 };
+const FEES_OF = { dtrade: ['winFee', 'exchangeFee', 'tradeFee'], citywork: ['jobFee'] };
+const FEE_NAME = { winFee: '勝利金手数料', exchangeFee: '交換手数料', tradeFee: '株の売買手数料', jobFee: '求人サイトの掲載料' };
+export const feesOf = (w) => ({ ...FEES0, ...((w && w.fees) || {}) });
+export function feesMonth(w, s, p, d, out) {
+  const keys = FEES_OF[s.id], h = s.mHist || [];
+  if (!keys || !w.circ || s.dead || h.length < 3) return;
+  const f = w.fees || (w.fees = { ...FEES0 });
+  const sales = h.reduce((a, x) => a + x.sales, 0) / h.length, op = h.reduce((a, x) => a + x.op, 0) / h.length;
+  const want = (p.op / Math.max(1, p.sales)) * Math.max(0, sales);
+  const step = op < want ? 0.05 : op > want * 1.5 ? -0.03 : 0;
+  if (!step) return;
+  const said = [];
+  for (const k of keys) {
+    const was = f[k];
+    // (a share of something can come to all of it at most: what it is, not a range)
+    let v = was * (1 + step);
+    v = k === 'exchangeFee' ? Math.max(1, Math.round(v / 1000) * 1000) : Math.min(0.99, Math.round(v * 10000) / 10000);
+    f[k] = v;
+    said.push(`${FEE_NAME[k]}を${k === 'exchangeFee' ? CORP.fmt.money(was) + '→' + CORP.fmt.money(v) : (was * 100).toFixed(2) + '%→' + (v * 100).toFixed(2) + '%'}`);
+  }
+  news(out, s, p, d + 1, 3 * 3600, 'fee', `${step > 0 ? '業績が計画に届かないため' : '利益が計画を大きく上回るため、利用者を増やそうと'}${said.join('・')}に${step > 0 ? '引き上げ' : '引き下げ'}ます`, { step }, 0, true);
 }
 
 // What is owed paid, day by day and at the month's end: the suppliers within weeks (each to whom it is owed), the
@@ -1701,7 +1751,8 @@ function guidance(w, s, p, d, f) {
     quarters: f.quarters.map((x) => shy(x, 0.95)), expected: f
   };
   g.eps = Math.round(g.net / out);
-  g.dps = Math.max(0, Math.round(p.payout * Math.max(0, f.net * 0.95) / out));
+  g.payout = payoutOf(p, w);
+  g.dps = Math.max(0, Math.round(g.payout * Math.max(0, f.net * 0.95) / out));
   return g;
 }
 function setDividend(s, p, g) {
@@ -1709,7 +1760,26 @@ function setDividend(s, p, g) {
   if (s.reorg) { s.div = { dps: 0, daily: 0, total: 0 }; return; }
   s.div.dps = g.dps;
   s.div.daily = g.dps / YEAR;
-  s.div.total = Math.max(0, Math.round(p.payout * Math.max(0, g.net)));
+  s.div.total = Math.max(0, Math.round((g.payout ?? payoutOf(p)) * Math.max(0, g.net)));
+}
+// what of its profit a company pays out (MY WAY: its philosophy's — little kept; the others more in a boom, less in a
+// bust, as the year's guidance is made: server/core/npc-macro.js)
+const payoutOf = (p, w) => (p.id === 'myway' && CORP.myway.philosophy ? CORP.myway.philosophy.payout : Math.min(0.95, p.payout * Math.pow((w && w.boom) || 1, 1.5)));
+
+// In a boom (the times: server/core/npc-macro.js), at the month's end, a company keeps fewer months of its costs in
+// hand and puts a part of the rest into its equipment — 利益剰余金を貯めこまない —, bought as any of its equipment is
+// (MAGITA's facilities, the local businesses, アルタス's raw materials); in a bust it keeps it all.
+// (its own money only: a bank's cash is its depositors', and none puts more into it than a tenth of what it is worth)
+function boomSpend(w, s, p, d, out) {
+  const boom = w.boom || 1;
+  if (boom <= 1.05 || !w.ext || s.dead || abroad(s) || s.reorg || p.model === 'bank') return;
+  const costs = monthlyCosts(s);
+  const extra = Math.round(Math.min(((s.bal.cash || 0) - costs * 6 / boom) * (boom - 1) * 0.5, Math.max(0, equityOf(s)) * 0.1));
+  if (!(extra > costs * 0.05)) return;
+  post(s, [['ppe', extra], ['cash', -extra]], 'capex');
+  route(w, s, 'capex', extra);
+  s.boomSpent = (s.boomSpent || 0) + extra;
+  news(out, s, p, d + 1, 4 * 3600, 'invest', `好景気を受けて設備投資を拡大：手元資金のうち${CORP.fmt.money(extra)}を新しい設備・拠点に投資`, { extra, boom }, 0.002, true);
 }
 
 /* --------------------------------------------------- closing the periods --- */
@@ -1821,9 +1891,9 @@ const labMult = (w, maker) => (maker === 'magita' && w.co.magita && w.co.magita.
 function surchargeOf(w, kind, id) {
   const s = w.co.magita;
   const pr = kind === 'cars' && CORP.products.cars[id];
-  return pr && pr.maker === 'magita' && s && s.surcharge && !MG.surcharge.except.includes(id) ? MG.surcharge.amount : 0;
+  return pr && pr.maker === 'magita' && s && s.surcharge && !MG.surcharge.except.includes(id) ? (s.surchargeAmt || MG.surcharge.amount) : 0;
 }
-export const surcharges = (w) => Object.fromEntries(RULES.cars.filter((c) => surchargeOf(w, 'cars', c.id) && CORP.products.cars[c.id]).map((c) => [c.id, MG.surcharge.amount]));
+export const surcharges = (w) => Object.fromEntries(RULES.cars.filter((c) => surchargeOf(w, 'cars', c.id) && CORP.products.cars[c.id]).map((c) => [c.id, surchargeOf(w, 'cars', c.id)]));
 const MONTH = YEAR / 12;
 // the research begun (on the first live day; a world begun before it had research begins it then)
 function startLab(s, d) {
@@ -1848,14 +1918,21 @@ function labDay(w, s, p, d, ch, out) {
       { id: r.id, ok: true }, 0, true);
   }
 }
-// at a quarter's end: struggling (below `on` of the plan, or a loss), the surcharge on; back at `off`, off
+// at a quarter's end: struggling (below `on` of the plan, or a loss), the surcharge on — how much MAGITA's own call, by
+// how far short it is (no cap: still short a quarter later, a fifth more); back at `off`, off
 function surchargeCheck(s, p, d, qs, out) {
   if (s.id !== 'magita' || !s.launchDay || d < s.launchDay) return;
   const op = qs.pl.op, plan = qs.expected;
   const bad = op < 0 || (plan > 0 && op < plan * MG.surcharge.on), good = op >= 0 && (!(plan > 0) || op >= plan * MG.surcharge.off);
+  const short = plan > 0 ? Math.max(0, 1 - op / plan) : 1;
   if (!s.surcharge && bad) {
     s.surcharge = d + 1;
-    news(out, s, p, d + 1, 2 * 3600, 'surcharge', `経営悪化のため、オンヴォーロ以外の全車種の仕入れ価格に手数料${CORP.fmt.money(MG.surcharge.amount)}を上乗せします`, { on: true }, 0, true);
+    s.surchargeAmt = Math.round(MG.surcharge.amount * (0.5 + short) / 100000) * 100000;
+    news(out, s, p, d + 1, 2 * 3600, 'surcharge', `経営悪化のため、オンヴォーロ以外の全車種の仕入れ価格に手数料${CORP.fmt.money(s.surchargeAmt)}を上乗せします`, { on: true }, 0, true);
+  } else if (s.surcharge && bad) {
+    const was = s.surchargeAmt || MG.surcharge.amount;
+    s.surchargeAmt = Math.round(was * 1.2 / 100000) * 100000;
+    news(out, s, p, d + 1, 2 * 3600, 'surcharge', `業績が戻らないため、車両の仕入れ価格への手数料を${CORP.fmt.money(was)}→${CORP.fmt.money(s.surchargeAmt)}に引き上げます`, { on: true }, 0, true);
   } else if (s.surcharge && good) {
     s.surcharge = 0;
     news(out, s, p, d + 1, 2 * 3600, 'surcharge', '業績が回復したため、車両の仕入れ価格への手数料の上乗せを終了します', { on: false }, 0, true);
@@ -1974,7 +2051,10 @@ function tech(w, s, p, d, ch, out) {
 const AR = ASUKA.rules;
 const asukaIncome = (y) => (y['r:asuka'] || 0) - (y['c:asuka'] || 0) - (y['c:asukaAltas'] || 0) - (y['sAsuka'] || 0);
 function asukaDay(w, d, A, out) {
-  const X = w.ext.asuka = { pay: {}, rent: 0, open: 0, platform: 0, tax: 0, boost: 0, refund: 0 };
+  // (`trade`: what ヴェルノア sold アスカ国 through it — the goods its branches bought of the makers and of the local
+  // businesses, the games and the services sold straight from home — and the raw materials its branches bought there:
+  // the two countries' GDP, server/core/npc-gdp.js)
+  const X = w.ext.asuka = { pay: {}, rent: 0, open: 0, platform: 0, tax: 0, boost: 0, refund: 0, trade: { goods: 0, direct: 0, altas: 0 } };
   const B = w.asukaB || (w.asukaB = {});
   const seg = (s) => s.asuka || (s.asuka = { m: { sales: 0, cost: 0 }, last: null, staff: 0 });
   for (const [co, cats] of Object.entries(A.toCo || {})) {
@@ -1988,6 +2068,7 @@ function asukaDay(w, d, A, out) {
       s.pr.asuka = (s.pr.asuka || 0) + n / 30;
       g.m.sales += n;
       const c = ASUKA.cat(cat);
+      if (!c || c.digital) X.trade.direct += n;
       for (const [to, share] of Object.entries((c && c.cogs) || {})) {
         const x = Math.round(n * share);
         if (x <= 0) continue;
@@ -1998,10 +2079,12 @@ function asukaDay(w, d, A, out) {
           g.m.cost += x - base + at;
           w.ext.sector += x - base;
           imported(w.ext, 'altas', at, s.id);
+          X.trade.goods += x - base; X.trade.altas += at;
         } else {
           post(s, [['c:asuka', x], ['cash', -x]], 'purchases');
           g.m.cost += x;
           w.b2bCash.push({ to, stream: 'asukaB2B', n: x, from: s.id, cost: Math.round(x * 0.6) });
+          X.trade.goods += x;
         }
       }
       const rent = c && !c.digital ? Math.round(n * ((A.rates && A.rates.rent) || AR.tax.rent)) : 0, plat = c && c.digital ? Math.round(n * c.platform) : 0;
@@ -2133,6 +2216,8 @@ export function crossingsOf(flows) {
   inn += sum(flows['@sectorIn']) + sum(flows['@stateIn']);
   if (flows['@coins'] && flows['@coins'].paid > 0) out += Math.round(flows['@coins'].paid);
   if (flows['@prize'] && flows['@prize'].lot > 0) out += Math.round(flows['@prize'].lot * RULES.tokenPrice);
+  if (flows['@prize'] && flows['@prize'].treePay > 0) out += flows['@prize'].treePay * YS.gacha.treePay;
+  for (const kinds of Object.values(flows['@rebuy'] || {})) for (const v of Object.values(kinds || {})) out += Math.max(0, Math.round((v && v[1]) || 0));
   return { in: inn, out };
 }
 function playersCross(w, orig) {
@@ -2172,7 +2257,7 @@ const STATE_OUT = { slots: 'slotWins', quests: 'questRewards', gacha: 'gachaClai
   release: 'releaseBonus', medals: 'medalRewards', diary: 'diaryRewards', tree: 'treeHarvest', gifts: 'npcGifts', start: 'playerStart' };
 // what the players pay the treasury (its name in the country's books): the fertilizer beyond YOSIDA's share
 // and what a player's account that is gone held, its estate (国庫に帰属: server/core/purge.js, api.js lapse)
-const STATE_IN = { fertilizer: 'treeFund', estate: 'escheat' };
+const STATE_IN = { fertilizer: 'treeFund', estate: 'escheat', gacha: 'gachaShare' };
 function gameDay(w, d, flows, orig = flows) {
   for (const s of Object.values(w.co)) if (s.pc) for (const k of Object.keys(s.pc)) s.pc[k] *= 29 / 30;
   // (who runs each now — CORP.features: its company, or for a local company or a trustee a stand-in, settled after)
@@ -2228,6 +2313,7 @@ function gameDay(w, d, flows, orig = flows) {
     if (mine.gacha) bizCount(ys, d, 'gacha', mine.gacha);
     if (mine.fertilizer) bizCount(ts, d, 'fertilizer', mine.fertilizer);
     prizes(w, ys, d, pz);
+    rebought(w, d, flows['@rebuy']);
     // the trees the players won at the auctions: its sale, each made at its cost
     for (const [, got] of Object.entries(mine.trees || {})) {
       const [n, money] = got;
@@ -2273,11 +2359,35 @@ function gachaCar(w, id) {
   const worth = Math.round(((car && car.price) || YS.gacha.worth[id] || YS.gacha.worth['porsche-kuia-spyder']) * YS.gacha.carShare);
   return ['magita', worth, Math.round(worth * 0.25)];
 }
-// The gacha's prizes, what each costs YOSIDA (CORP.yosida.gacha): the lot coins out of its retained earnings; the
-// coins, tickets and cars bought of their makers (paid at once: their sales); its own trees and cars made at cost.
+// The gacha's prizes, each provided by its company at its own cost (CORP.yosida.gacha), booked as its expense
+// (ガチャ景品の提供): the lot coins Dtrade's — its tokens, at their $, to the player —; the ロイヤルコイン DAIZIN's (a coin
+// costs it nothing until it buys one back) and a VIP1週間券 DAIZIN's (`vipWeek`, to the local trade that serves the
+// lounge); a money tree's seed and a grown tree YOSIDA's own (`seed`, `grown`: its biotech, of アルタス's materials) —
+// one that had no room paid to the player instead (`treePay`) —, a reset ticket YOSIDA's (`reset`, its quests' own
+// running); a garage coin MAGITA's (`garage`: MAGITA Garage's place, built by the local trade); the cars bought of their
+// makers by YOSIDA (its own made at cost). A provider that failed: whoever runs the gacha provides it. (`ys`: who
+// runs the gacha; an old day's `tree`: YOSIDA's trees as before.)
 function prizes(w, ys, d, pz) {
   const G = YS.gacha;
+  const by = (id) => (w.co[id] && !w.co[id].dead ? w.co[id] : ys);
+  const outside = (s) => !w.ext || abroad(s);
   let cost = 0;
+  // (a cost owed to whom provides it: the local trade, or アルタス at its prices)
+  const owe = (s, n, to = '@sector') => {
+    if (!(n > 0)) return 0;
+    const m = to === '*' ? altasCost(w, n) : n;
+    post(s, [['sGacha', m], ['ap', -m]]);
+    s.owe[to] = (s.owe[to] || 0) + m;
+    if (s === ys) cost += m;
+    return m;
+  };
+  // (money to the players: their tokens, a tree's worth)
+  const toPlayers = (s, n) => {
+    if (!(n > 0)) return;
+    post(s, [['sGacha', n], ['cash', -n]], 'expenses');
+    if (!outside(s)) w.ext.toPlayers = (w.ext.toPlayers || 0) + n;
+    if (s === ys) cost += n;
+  };
   const buy = (to, stream, n, extra = {}) => {
     if (!(n > 0)) return;
     post(ys, [['c:gacha', n], ['cash', -n]], 'purchases');
@@ -2285,22 +2395,20 @@ function prizes(w, ys, d, pz) {
     if (w.co[to]) w.b2bCash.push({ to, stream, n, from: ys.id, ...extra });
     else if (w.ext && !abroad(ys)) w.ext.sector += n;
   };
-  // ロットコイン: tokens at their $, straight out of its retained earnings (not a cost of the day)
+  // ロットコイン: Dtrade's tokens, at their $
   const lot = Math.round((pz.lot || 0) * RULES.tokenPrice);
-  if (lot > 0) {
-    post(ys, [['retained', lot], ['cash', -lot]], 'expenses');
-    bizCount(ys, d, 'lot', lot);
-    if (w.ext && !abroad(ys)) w.ext.toPlayers = (w.ext.toPlayers || 0) + lot;
-  }
-  if (pz.royal > 0) { buy('daizin', 'coins', pz.royal * G.royal); bizCount(ys, d, 'royal', pz.royal); }
-  if (pz.vip > 0) {
-    const each = vipWeekOf(w);
-    buy('daizin', 'coins', pz.vip * each);
-    bizCount(ys, d, 'vip', pz.vip);
-    bizCount(ys, d, 'vipPaid', pz.vip * each);
-    w.mon['yosida:daizin'] = (w.mon['yosida:daizin'] || 0) + pz.vip * each;
-  }
-  if (pz.garage > 0) { buy('magita', 'garage', pz.garage * G.garage); bizCount(ys, d, 'garage', pz.garage); }
+  if (lot > 0) { const dt = by('dtrade'); toPlayers(dt, lot); bizCount(dt, d, 'lot', lot); bizCount(ys, d, 'lot', lot); }
+  // ロイヤルコイン and VIP1週間券: DAIZIN's
+  if (pz.royal > 0) { bizCount(by('daizin'), d, 'royalGiven', pz.royal); bizCount(ys, d, 'royal', pz.royal); }
+  if (pz.vip > 0) { const dz = by('daizin'); owe(dz, pz.vip * G.vipWeek); bizCount(dz, d, 'vipGiven', pz.vip); bizCount(ys, d, 'vip', pz.vip); }
+  // ガレージコイン: MAGITA's
+  if (pz.garage > 0) { const mg = by('magita'); owe(mg, pz.garage * G.garage); bizCount(mg, d, 'garageGiven', pz.garage); bizCount(ys, d, 'garage', pz.garage); }
+  // the money trees and the reset tickets: YOSIDA's own
+  if (pz.seed > 0) { owe(ys, pz.seed * G.seed, '*'); bizCount(ys, d, 'seed', pz.seed); }
+  if (pz.grown > 0) { owe(ys, pz.grown * G.grown, '*'); bizCount(ys, d, 'grown', pz.grown); }
+  if (pz.tree > 0) { owe(ys, pz.tree * YS.tree, '*'); bizCount(ys, d, 'tree', pz.tree); }
+  if (pz.treePay > 0) { toPlayers(ys, pz.treePay * G.treePay); bizCount(ys, d, 'treePay', pz.treePay); }
+  if (pz.reset > 0) { owe(ys, pz.reset * G.reset); bizCount(ys, d, 'reset', pz.reset); }
   for (const [id, n] of Object.entries(pz.cars || {})) {
     if (!(n > 0)) continue;
     const [maker, each, made] = gachaCar(w, id);
@@ -2315,17 +2423,26 @@ function prizes(w, ys, d, pz) {
     }
     buy(maker, 'gacha', n * each, { cost: n * made, item: { id, n } });
   }
-  // the money trees: its own, each made at its cost (paid to its suppliers abroad within weeks)
-  if (pz.tree > 0) {
-    const n = altasCost(w, pz.tree * YS.tree);
-    post(ys, [['c:gacha', n], ['ap', -n]]);
-    ys.owe['*'] = (ys.owe['*'] || 0) + n;
-    cost += n;
-    bizCount(ys, d, 'tree', pz.tree);
-  }
   if (cost) {
     (ys.pc || (ys.pc = {})).gacha = (ys.pc.gacha || 0) + cost / 30;
     bizCount(ys, d, 'prizeCost', cost);
+  }
+}
+// What the players sold back of what the gacha gave them (GACHA.sell: a VIP1週間券 to DAIZIN, reset tickets to YOSIDA,
+// a garage coin to MAGITA), each company's purchase of it: { company: { kind: [n, $] } } — to the players.
+function rebought(w, d, list) {
+  for (const [id, kinds] of Object.entries(list || {})) {
+    const s = w.co[id] && !w.co[id].dead ? w.co[id] : null;
+    for (const [kind, v] of Object.entries(kinds || {})) {
+      const [n, paid] = v;
+      if (!(paid > 0)) continue;
+      // (a company that failed meanwhile: the local trade that took its business over pays)
+      if (!s) { if (w.ext) { w.ext.fromSector += paid; w.ext.toPlayers = (w.ext.toPlayers || 0) + paid; } continue; }
+      post(s, [['c:rebuy', paid], ['cash', -paid]], 'purchases');
+      bizCount(s, d, 'rebuy:' + kind, n);
+      bizCount(s, d, 'rebuyPaid', paid);
+      if (w.ext && !abroad(s)) w.ext.toPlayers = (w.ext.toPlayers || 0) + paid;
+    }
   }
 }
 
@@ -2362,23 +2479,8 @@ function questFeeSet(w, s, p, d, out, ch) {
 }
 // the fee on the quests' rewards this month
 export const questFeeOf = (w) => (w && ((opCo(w, 'quests') || w.co.yosida || {}).questFee)) || YQ.base;
-// At a month's end YOSIDA and DAIZIN agree next month's price of a VIP1週間券 (CORP.yosida.gacha.vipWeek): DAIZIN
-// asks more while it does badly, YOSIDA gives less while it does; the better they get on, the less it costs.
-function vipWeekSet(w, s, p, d, out, ch) {
-  const dz = opCo(w, 'vip');
-  if (!dz || dz === s) return;
-  const [lo, hi] = YS.gacha.vipWeek, key = CORP.monthKey(d);
-  const hurt = (c) => { const m = CORP.plOf(c.per.m); return m.op < 0 ? 1 : 0; };
-  const tie = tieOf(w, s.id, dz.id);
-  let f = 0.5 + 0.2 * hurt(dz) - 0.2 * hurt(s) - (tie - 50) / 200 + 0.12 * ch.z(`vipweek:${key}`);
-  f = Math.max(0, Math.min(1, f));
-  const was = s.vipWeek || 0, price = Math.round((lo + (hi - lo) * f) / 10000) * 10000;
-  s.vipWeek = price;
-  if (price === was) return;
-  news(out, s, p, d + 1, 3 * 3600, 'deal', `DAIZINとの交渉で、${CORP.monthLabel(d + 1)}のVIP1週間券の買い取り価格を1枚${CORP.fmt.money(price)}に決めました（ビジネス友好度${Math.round(tie)}）`, { from: was, to: price }, 0, false);
-}
-// what YOSIDA pays DAIZIN for a VIP1週間券 now (before the first talks: the middle of the range)
-export const vipWeekOf = (w) => (w && ((opCo(w, 'gacha') || w.co.yosida || {}).vipWeek)) || Math.round((YS.gacha.vipWeek[0] + YS.gacha.vipWeek[1]) / 2 / 10000) * 10000;
+// what a VIP1週間券 of the gacha costs DAIZIN to provide (its own)
+export const vipWeekOf = () => YS.gacha.vipWeek;
 
 /* ------------------------------------------------------------ WAZIMA's work --- */
 // WAZIMA's research (CORP.wazima, its `wlab`), begun on the first live day it has: each done cuts its parent's costs
@@ -3185,6 +3287,10 @@ export function closeDay(w, d, flows, ch) {
     if (st.pay > 0) { s.pay = Math.round(st.pay); s.unit = Math.round(st.pay * p.cost / p.salary); }
   }
   if (npc && npc.raises) w.raises = npc.raises;
+  // (the times' mood, as the country feels it: server/core/npc-macro.js — the companies spend in a boom, keep in a bust)
+  if (npc && npc.boom) w.boom = npc.boom;
+  // (what MY WAY's economy's local companies sold last month: the least it gives them, mywaySphere)
+  if (npc && npc.sphere !== undefined) w.sphereSales = npc.sphere;
   if (npc && npc.terms) w.terms = npc.terms;
   if (npc && npc.lend) w.lend = npc.lend;
   // what each company's people decided in their meetings (server/core/npc-org.js): their budgets, their hiring, their
@@ -3267,7 +3373,7 @@ export function closeDay(w, d, flows, ch) {
     month(w, s, p, d, ch, out);
     if (CORP.ymd(d).d === 1 && d >= w.launch) tech(w, s, p, d, ch, out);
     if (p.model === 'studio') titlesLook(w, s, p, d, out);
-    if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); treasury(w, s, p, d, out); }
+    if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); feesMonth(w, s, p, d, out); mywaySphere(w, s, p, d, out); boomSpend(w, s, p, d, out); treasury(w, s, p, d, out); }
     // (out of money with nothing more Tenesice will lend, or below nothing too long: 破産)
     solvencyCheck(w, s, p, d, out);
   }
@@ -3327,7 +3433,7 @@ export function closeDay(w, d, flows, ch) {
     // (the month's end: MAGITA sets next month's garage fee; the quarter's: who goes and who is hired)
     if (CORP.isMonthEnd(d) && operatorOf(w, 'garage') === id && d >= w.launch) garageFee(w, s, p, d, out);
     // (and YOSIDA its fee on the quests' rewards and, with DAIZIN, the VIP1週間券's price)
-    if (CORP.isMonthEnd(d) && d >= w.launch) { if (operatorOf(w, 'quests') === id) questFeeSet(w, s, p, d, out, ch); if (operatorOf(w, 'gacha') === id) vipWeekSet(w, s, p, d, out, ch); }
+    if (CORP.isMonthEnd(d) && d >= w.launch) { if (operatorOf(w, 'quests') === id) questFeeSet(w, s, p, d, out, ch); }
     // (MY WAY's month: its characters, its partners)
     if (CORP.isMonthEnd(d) && s.ip && !s.dead) ipMonth(w, s, p, d, ch, out);
     // (MY WAY keeps its people whatever its year: what it cannot cut is its trouble — its own measures aside)
@@ -3354,7 +3460,11 @@ export function closeDay(w, d, flows, ch) {
     if (CORP.isMonthEnd(d) && parentOn) { toParent(w, s, p, d); treasury(w, s, p, d, out); }
     s.bal.retained += s.today;
     for (const k of ['m', 'q', 'y']) s.sd[k] += outstanding(s);
-    if (CORP.isQuarterEnd(d)) s.qNet = CORP.plOf(s.per.q).net;
+    if (CORP.isQuarterEnd(d)) {
+      s.qNet = CORP.plOf(s.per.q).net;
+      // (MY WAY counts its quarters of losses in a row: its people kept whole until there are too many)
+      if (s.ip) s.lossQ = CORP.plOf(s.per.q).op < 0 ? (s.lossQ || 0) + 1 : 0;
+    }
     out.days.push(dayRow(w, s, p, d));
     // (how the companies did today, together: アルタス reads it when it sets its prices)
     if (w.ext && !s.dead) { const row = out.days[out.days.length - 1]; w.ext.health = (w.ext.health || 0) + row.op; w.ext.sales = (w.ext.sales || 0) + row.sales; }
@@ -3365,7 +3475,7 @@ export function closeDay(w, d, flows, ch) {
   for (const id of ORDER) announce(w, w.co[id], PROFILES.get(id), d, out, ch);
   w.day = d;
   // (what the exporters wanted of abroad today: tomorrow's share of its money by it)
-  if (w.ext) { w.abroadWant = Math.round((w.abroadWant || w.ext.abroadWant) * 0.5 + w.ext.abroadWant * 0.5); out.ext = w.ext; }
+  if (w.ext) { w.abroadWant = Math.round((w.abroadWant || w.ext.abroadWant) * 0.5 + w.ext.abroadWant * 0.5); w.ext.fees = feesOf(w); out.ext = w.ext; }
   delete w.ext;
   delete w.b2bCash;
   delete w.b2b;
@@ -3403,7 +3513,12 @@ function check(s, d) {
 }
 function dayRow(w, s, p, d) {
   const pl = CORP.plOf(Object.fromEntries(Object.entries(s.per.d).filter(([k]) => !/^cf:/.test(k))));
-  return { company: s.id, day: d, sales: Math.round(pl.sales), op: Math.round(pl.op), net: Math.round(pl.net), cash: s.bal.cash || 0, bonds: s.bal.bonds || 0, debt: debtOf(s),
+  // (the money put into it: the players' buying of its shares that day — new ones, or its own sold again —, and any
+  // issued as the day closed, a rescue's; and its other gains: 営業外収益 and 特別利益)
+  const live = s.liveIn && s.liveIn.day === d ? s.liveIn : null;
+  const invest = (live ? live.in : 0) + (s.per.d['cf:issue'] || 0) + (s.per.d['cf:treasurySale'] || 0);
+  return { company: s.id, day: d, sales: Math.round(pl.sales), op: Math.round(pl.op), net: Math.round(pl.net), other: Math.round(pl.noi + pl.xi), invest, back: live ? live.out : 0,
+    cash: s.bal.cash || 0, bonds: s.bal.bonds || 0, debt: debtOf(s),
     equity: equityOf(s), staff: s.n, fair: s.mkt ? Math.round(s.mkt.fair) : 0, econ: Math.round(Math.exp(w.econ.x) * 1000) / 1000, players: s.players || 0, npc: s.npcDay || 0 };
 }
 
@@ -3496,6 +3611,10 @@ export function trade(w, id, side, shares, price, sec) {
   s.sh.sec += out * Math.max(0, sec - s.sh.at);
   s.sh.at = Math.max(s.sh.at, sec);
   const amount = shares * price;
+  // (the day's money in from the players' buying and out to their selling, for 運営's 本日の稼ぎ and the day's row:
+  // the business day the second falls in)
+  const day = Math.floor(sec / 86400), live = s.liveIn && s.liveIn.day === day ? s.liveIn : (s.liveIn = { day, in: 0, out: 0 });
+  if (side === 'buy') live.in += amount; else live.out += amount;
   // (the players' money in and out of the country, for the money ledger: counted as the day closes, playersCross)
   if (w.circ) { const c = w.cross || (w.cross = { in: 0, out: 0 }); if (side === 'buy') c.in += amount; else c.out += amount; }
   if (side === 'buy') {
@@ -3568,7 +3687,7 @@ export function boot(key, launch, { years = 2, prices = {}, onDay = null } = {})
     const fy = CORP.fyOf(launch - 1), q = CORP.quarterOf(launch - 1);
     s.sd = { m: s.sh.issued * (launch - CORP.monthStart(launch - 1)), q: s.sh.issued * (launch - CORP.quarterStart(fy, q)), y: s.sh.issued * (launch - CORP.fyStart(fy)) };
     s.mkt = { e: Math.log(price), fair: price };
-    if (s.guide) { s.guide.eps = Math.round(s.guide.net / s.sh.issued); s.guide.dps = Math.max(0, Math.round(p.payout * Math.max(0, s.guide.expected.net * 0.95) / s.sh.issued)); setDividend(s, p, s.guide); }
+    if (s.guide) { s.guide.eps = Math.round(s.guide.net / s.sh.issued); s.guide.dps = Math.max(0, Math.round(payoutOf(p) * Math.max(0, s.guide.expected.net * 0.95) / s.sh.issued)); setDividend(s, p, s.guide); }
   };
   for (const p of CORP.companies) count(p);
   // the backer's stake in its studio
@@ -3815,4 +3934,4 @@ function rebates(w, s, p, d, out) {
   s.exclQ = {};
 }
 
-export { chance, post, take, forecast, expectDay, guidance, statement, productsYear };
+export { chance, post, take, forecast, expectDay, guidance, statement, productsYear, boomSpend, payoutOf };

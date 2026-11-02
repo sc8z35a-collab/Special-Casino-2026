@@ -55,15 +55,19 @@
     { id: 'seed', name: '金の生る木の種', chance: 1 }
   ];
   var TABLES = { rare: RARE, legendary: LEGENDARY, secret: SECRET };
-  // `price`: one pull (一連: 3 slots)
+  // `price`: one pull (一連: `SLOTS` slots)
+  var SLOTS = 2;
   var KINDS = [
-    { id: 'rare', name: 'レアガチャ', price: 3500000 },
-    { id: 'legendary', name: 'レジェンダリーガチャ', price: 15000000 },
-    { id: 'secret', name: 'シークレットガチャ', price: 30000000 }
+    { id: 'rare', name: 'レアガチャ', price: 4500000 },
+    { id: 'legendary', name: 'レジェンダリーガチャ', price: 27000000 },
+    { id: 'secret', name: 'シークレットガチャ', price: 45000000 }
   ];
   // リリース記念セール: the secret gacha at this a pull for `hours` from when the server first ran with it
   // (server/core/gacha.js keeps that moment and tells the game when the sale ends)
-  var RELEASE_SALE = { kind: 'secret', price: 28000000, hours: 100 };
+  var RELEASE_SALE = { kind: 'secret', price: 40000000, hours: 100 };
+  // what the players can sell what the gacha gave them for, a piece (each bought back by the company that provides
+  // it: the VIP1週間券 DAIZIN, the reset tickets YOSIDA, a garage coin — an empty place of one's garage — MAGITA)
+  var SELL = { 'vip-week': 200000, 'reset-5h': 250000, 'reset-day': 350000, garage: 350000 };
 
   function hash(text) {
     var h = 2166136261;
@@ -162,7 +166,7 @@
     // Every slot in a purchase has the same table; build it once, including a 30-slot bundle.
     var table = odds(kind, boostOn), pulls = [];
     for (var i = 0; i < count; i++) {
-      var rewards = [], n = 3;
+      var rewards = [], n = SLOTS;
       for (var j = 0; j < n; j++) rewards.push(drawOne(table, rand));
       var bonus = null;
       if (saleOn && rand() < 0.8) {
@@ -186,7 +190,7 @@
   }
 
   BR.GACHA = {
-    cars: CARS, carPrice: carPrice, randomCar: randomCar, rare: RARE, legendary: LEGENDARY, secret: SECRET, kinds: KINDS, releaseSale: RELEASE_SALE, events: events, price: price, odds: odds, draw: draw,
+    cars: CARS, carPrice: carPrice, randomCar: randomCar, rare: RARE, legendary: LEGENDARY, secret: SECRET, kinds: KINDS, slots: SLOTS, sell: SELL, releaseSale: RELEASE_SALE, events: events, price: price, odds: odds, draw: draw,
     pct: pct, label: label, car: car, day: DAY, grownGiven: 1500000
   };
 })(globalThis.BR = globalThis.BR || {});

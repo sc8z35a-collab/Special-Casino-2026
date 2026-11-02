@@ -17,8 +17,15 @@ const R = ASUKA.rules, CATS = ASUKA.cats, DIV = ASUKA.atsuka.divisions, YEAR = 3
 export const JOB = { none: 0, atsuka: 1, trade: 2, branch: 3, student: 4, retired: 5 };
 const COS = NPC.companies;
 const NC = CATS.length;
+// (each person's: `hot` what moves within a day — kept every few minutes with ヴェルノア's —, `late` what a country kept
+// before it does not have: it starts at 0 — what they do now, until when, what they still need and mean to spend today)
 const COLS = [['birth', Int32Array, 1], ['dist', Uint8Array, 1], ['job', Uint8Array, 1], ['emp', Uint8Array, 1], ['gen', Uint16Array, 1],
-  ['taste', Uint8Array, NC], ['pay', Float64Array, 1], ['cash', Float64Array, 1], ['debt', Float64Array, 1], ['miss', Uint8Array, 1]];
+  ['taste', Uint8Array, NC], ['pay', Float64Array, 1], ['cash', Float64Array, 1, 'hot'], ['debt', Float64Array, 1, 'hot'], ['miss', Uint8Array, 1, 'hot'],
+  ['act', Uint8Array, 1, 'hot', 'late'], ['due', Int32Array, 1, 'hot', 'late'], ['need', Float64Array, 1, 'hot', 'late'], ['left', Float64Array, 1, 'hot', 'late']];
+const isHot = (c) => c.includes('hot'), isLate = (c) => c.includes('late');
+// what a person is doing (as ヴェルノア's people, minute by minute within the hours the people are about)
+export const ACT = { home: 0, sleep: 1, commute: 2, work: 3, lunch: 4, shop: 5, leisure: 6, study: 7 };
+export const ACT_NAMES = ['家', '睡眠', '通勤', '仕事', '昼食', '買い物', 'レジャー', '学校'];
 
 /* --------------------------------------------------------------- the people --- */
 export function alloc(n) {
@@ -26,9 +33,9 @@ export function alloc(n) {
   for (const [name, T, w] of COLS) A[name] = new T(n * w);
   return A;
 }
-// the arrays as blobs (of at most ~1MB each) and back
-export function pack(A) {
-  const parts = COLS.map(([name]) => new Uint8Array(A[name].buffer, A[name].byteOffset, A[name].byteLength));
+// the arrays as blobs (of at most ~1MB each) and back (`hot`: only what moves within a day)
+export function pack(A, hot = false) {
+  const parts = COLS.filter((c) => !hot || isHot(c)).map(([name]) => new Uint8Array(A[name].buffer, A[name].byteOffset, A[name].byteLength));
   const total = parts.reduce((a, p) => a + p.byteLength, 0), all = new Uint8Array(total);
   let at = 0;
   for (const p of parts) { all.set(p, at); at += p.byteLength; }
@@ -36,15 +43,16 @@ export function pack(A) {
   for (let k = 0; k < total; k += STEP) rows.push(all.slice(k, Math.min(total, k + STEP)));
   return rows;
 }
-export function unpack(A, rows) {
+export function unpack(A, rows, hot = false) {
   let total = 0;
   for (const r of rows) total += r.byteLength;
   const all = new Uint8Array(total);
   let at = 0;
   for (const r of rows) { all.set(r instanceof Uint8Array ? r : new Uint8Array(r), at); at += r.byteLength; }
   at = 0;
-  for (const [name] of COLS) {
-    const a = A[name], len = a.byteLength;
+  for (const c of COLS.filter((x) => !hot || isHot(x))) {
+    const a = A[c[0]], len = a.byteLength;
+    if (isLate(c) && at >= total) continue;
     if (at + len > total) throw new Error('asuka: the blobs are shorter than the people');
     new Uint8Array(a.buffer, a.byteOffset, len).set(all.subarray(at, at + len));
     at += len;
@@ -146,6 +154,8 @@ export function earned(W, n, division = 'altas', by = 'other', internal = false)
   if (port) a.atsuka.rev.port = (a.atsuka.rev.port || 0) + port;
   a.atsuka.rev[division] = (a.atsuka.rev[division] || 0) + n - port;
   a.atsuka.revDay += n;
+  // (sold to ヴェルノア — its exports —: never its own country's, nor the land and buildings of the branches here)
+  if (!internal && division !== 'zone') gdpAcc(a).x += n;
   // (アルタス's month: what it sold, by who bought it — every $ of it what was bought, nothing fixed)
   if (division === 'altas') { const m = altasOf(a).m; m.rev += n - port; m.by[by] = (m.by[by] || 0) + n - port; }
   if (!internal) a.sum.fromVernoa += n;
@@ -176,6 +186,8 @@ export function fromCompanies(W, x, day) {
     staff.forEach((i, j) => { const g = j === staff.length - 1 ? left : Math.floor(n * A.pay[i] / Math.max(1, total)); left -= g; income(W, i, g); });
   }
   for (const [k, div] of [['rent', 'zone'], ['open', 'zone'], ['platform', 'digital']]) if (x[k] > 0) earned(W, x[k], div);
+  // (the branches' buildings, put up here: invested — what the drawing fund paid of them too)
+  gdpAcc(a).i += Math.max(0, Math.round(x.open || 0)) + Math.max(0, Math.min(a.boost.cash, Math.round(x.boost || 0)));
   if (x.tax > 0) { a.treasury += Math.round(x.tax); a.sum.fromVernoa += Math.round(x.tax); tin(a, 'branchTax', Math.round(x.tax)); }
   // (what its people paid a company that failed before its day closed: back to the local trade that served them)
   if (x.refund > 0) { a.trade.cash += Math.round(x.refund); a.sum.fromVernoa += Math.round(x.refund); }
@@ -207,11 +219,14 @@ export function day(W, day, ext) {
   const r = seeded(W.key, 'asuka:d:' + day), t = CORP.ymd(day);
   a.day = day;
   procure(W);
-  spend(W, day);
+  // the day's shopping closed (a country kept before its people went out: the day as one, at its close)
+  if (!a.today) prepare(W, day);
+  closeShopping(W);
   lives(W, day, r);
   if (t.d === 15) pensions(W);
   if (t.d === 25) payday(W, day);
   if (CORP.isMonthEnd(day)) month(W, day, r);
+  prepare(W, day + 1);
 }
 // ATSUKA Vision buys of ヴェルノア's makers (machines, vehicles, systems, seeds): a part of its money and of what it earns,
 // a day of it into what the world outside buys of ヴェルノア with (W.abroad: corp-model abroadBuys)
@@ -223,6 +238,8 @@ function procure(W) {
   if (n <= 0) return;
   z.cash -= n;
   z.procured += n;
+  // (machines from abroad: invested, and imported)
+  gdpAcc(a).i += n; gdpAcc(a).m += n;
   // (アルタス's part of it — its people's part of the state's —: the heavy machinery, the trucks and the rest its mines
   // and fields run on, its cost)
   const m = altasOf(a).m;
@@ -239,12 +256,14 @@ function yearlyOf(A, i) {
   if (j === JOB.retired) return R.pension;
   return 0;
 }
-// The people's spending of the day: what they need (the local trade, with the consumption tax), and the rest as their
-// tastes go — at ヴェルノア's companies' branches as far as there are branches to serve them (what cannot be bought is
-// kept); short of money for what they need, the national bank lends (of its own money), else it is not paid.
-function spend(W, day) {
-  const a = W.asuka, A = W.AP, taxr = R.tax.consumption;
-  // the branches' room today (a category without a branch sells nothing; a digital one, all)
+// The people's spending, through the day: at its start, what each needs (food, rent, the rest: the local trade's, with
+// the consumption tax) and what they mean to spend beyond it as their tastes go, and how much of each kind the branches
+// of ヴェルノア's companies can serve today (a kind without a branch sells nothing, a digital one all: what cannot be
+// bought is kept); then as they go out — at lunch, after work, on a day off — they pay what they need and buy, a part
+// each time; at the day's close what they need and did not go out for is paid all the same (short of money, the
+// national bank lends of its own money; else it is not paid). Every $ moves as it is spent.
+function prepare(W, day) {
+  const a = W.asuka, A = W.AP;
   const room = new Float64Array(NC), want = new Float64Array(NC);
   CATS.forEach((c, k) => {
     if (c.digital) { room[k] = Infinity; return; }
@@ -253,64 +272,134 @@ function spend(W, day) {
     room[k] = cap;
   });
   const disc = 1 - R.spend.living;
-  // (first what everyone would buy, then each its part of what can be bought)
   for (let i = 0; i < A.n; i++) {
-    const b = dayBudget(A, i, yearlyOf(A, i)) * disc;
+    const all = dayBudget(A, i, yearlyOf(A, i));
+    A.need[i] = all > 0 ? Math.round(all * R.spend.living) : 0;
+    A.left[i] = all > 0 ? Math.round(all * disc) : 0;
+    const b = A.left[i];
     if (b <= 0) continue;
-    let tw = 0;
-    for (let k = 0; k < NC; k++) tw += CATS[k].share * (0.5 + A.taste[i * NC + k] / 255);
+    const tw = weightsSum(A, i);
     for (let k = 0; k < NC; k++) want[k] += b * CATS[k].share * (0.5 + A.taste[i * NC + k] / 255) / tw;
   }
-  const ratio = new Float64Array(NC);
+  const ratio = [];
   for (let k = 0; k < NC; k++) {
-    ratio[k] = want[k] > 0 ? Math.min(1, room[k] / want[k]) : 0;
+    ratio.push(want[k] > 0 ? Math.min(1, room[k] / want[k]) : 0);
     // (what the people would spend in it a year: what the companies read when they plan their branches)
     a.want[CATS[k].id] = Math.round((a.want[CATS[k].id] || want[k] * YEAR) * 0.97 + want[k] * YEAR * 0.03);
   }
-  const bought = new Float64Array(NC);
-  let living = 0, tax = 0;
-  for (let i = 0; i < A.n; i++) {
-    const yearly = yearlyOf(A, i), all = dayBudget(A, i, yearly);
-    if (all <= 0) continue;
-    // what one needs: food, rent, the rest (the local trade's; with the consumption tax)
-    const need = Math.round(all * R.spend.living), needTax = Math.round(need * taxr);
-    if (A.cash[i] < need + needTax) borrow(W, i, need + needTax - A.cash[i], yearly);
-    if (A.cash[i] >= need + needTax) { A.cash[i] -= need + needTax; living += need; tax += needTax; if (A.miss[i]) A.miss[i] = 0; }
-    else { A.miss[i] = Math.min(255, A.miss[i] + 1); continue; }
-    let tw = 0;
-    for (let k = 0; k < NC; k++) tw += CATS[k].share * (0.5 + A.taste[i * NC + k] / 255);
-    const b = all * disc;
-    for (let k = 0; k < NC; k++) {
-      if (!ratio[k]) continue;
-      const n = Math.round(b * CATS[k].share * (0.5 + A.taste[i * NC + k] / 255) / tw * ratio[k]), nt = Math.round(n * taxr);
-      if (n <= 0 || A.cash[i] < n + nt) continue;
-      A.cash[i] -= n + nt;
-      bought[k] += n;
-      tax += nt;
-    }
-  }
-  a.trade.cash += living;
-  a.trade.month += living;
-  tin(a, 'trade', living);
-  // (its food and goods: アルタス's, at its prices — アスカ's own money, staying in it)
-  const raw = Math.min(Math.max(0, a.trade.cash), Math.round(living * ASUKA.altas.trade * altasOf(a).price));
-  if (raw > 0) { a.trade.cash -= raw; earned(W, raw, 'altas', 'asuka:trade', true); }
+  a.today = { day, ratio, living: 0, tax: 0, bought: CATS.map(() => 0), trips: 0 };
+}
+const weightsSum = (A, i) => { let tw = 0; for (let k = 0; k < NC; k++) tw += CATS[k].share * (0.5 + A.taste[i * NC + k] / 255); return tw; };
+// what one needs today, paid (with the tax): to the local trade
+function payNeed(W, i) {
+  const a = W.asuka, A = W.AP, T = a.today, need = A.need[i];
+  if (!(need > 0)) return true;
+  const tax = Math.round(need * R.tax.consumption);
+  if (A.cash[i] < need + tax) borrow(W, i, need + tax - A.cash[i], yearlyOf(A, i));
+  if (A.cash[i] < need + tax) { A.miss[i] = Math.min(255, A.miss[i] + 1); A.need[i] = 0; return false; }
+  A.cash[i] -= need + tax;
+  A.need[i] = 0;
+  if (A.miss[i]) A.miss[i] = 0;
+  a.trade.cash += need; a.trade.month += need;
   a.treasury += tax;
-  tin(a, 'consumption', tax);
-  // what was bought at each company, on its way to it (its sales as the companies' day closes)
-  CATS.forEach((c, k) => {
-    if (!bought[k]) return;
-    const cos = ASUKA.companiesOf(c);
-    let left = bought[k];
-    cos.forEach(([co, share], j) => {
-      const n = j === cos.length - 1 ? left : Math.round(bought[k] * share);
-      left -= n;
+  T.living += need; T.tax += tax;
+  gdpAcc(a).c += need + tax;
+  return true;
+}
+// a part (`part`) of what one means to spend today beyond it, as one's tastes go and the branches can serve: to the
+// companies (on its way to them: their sales as their day closes)
+function buy(W, i, part) {
+  const a = W.asuka, A = W.AP, T = a.today, taxr = R.tax.consumption;
+  const b = Math.round(A.left[i] * part);
+  if (!(b > 0)) return;
+  A.left[i] -= b;
+  const tw = weightsSum(A, i), g = gdpAcc(a);
+  for (let k = 0; k < NC; k++) {
+    if (!T.ratio[k]) continue;
+    const n = Math.round(b * CATS[k].share * (0.5 + A.taste[i * NC + k] / 255) / tw * T.ratio[k]), nt = Math.round(n * taxr);
+    if (n <= 0 || A.cash[i] < n + nt) continue;
+    A.cash[i] -= n + nt;
+    a.treasury += nt;
+    T.bought[k] += n; T.tax += nt;
+    g.c += n + nt;
+    const c = CATS[k], cos = ASUKA.companiesOf(c);
+    let rest = n;
+    cos.forEach(([co, share], x) => {
+      const v = x === cos.length - 1 ? rest : Math.round(n * share);
+      rest -= v;
+      if (!v) return;
       const box = a.toCo[co] || (a.toCo[co] = {});
-      box[c.id] = (box[c.id] || 0) + n;
-      a.sum.toVernoa += n;
+      box[c.id] = (box[c.id] || 0) + v;
+      a.sum.toVernoa += v;
     });
-    tout(a, 'cat:' + c.id, bought[k]);
-  });
+  }
+}
+// the day's close: what was needed and not gone out for, paid; the local trade's goods of アルタス for what it sold;
+// the month's record of it
+function closeShopping(W) {
+  const a = W.asuka, A = W.AP, T = a.today;
+  if (!T) return;
+  for (let i = 0; i < A.n; i++) if (A.need[i] > 0) payNeed(W, i);
+  tin(a, 'trade', T.living);
+  // (its food and goods: アルタス's, at its prices — アスカ's own money, staying in it)
+  const raw = Math.min(Math.max(0, a.trade.cash), Math.round(T.living * ASUKA.altas.trade * altasOf(a).price));
+  if (raw > 0) { a.trade.cash -= raw; earned(W, raw, 'altas', 'asuka:trade', true); }
+  tin(a, 'consumption', T.tax);
+  CATS.forEach((c, k) => { if (T.bought[k]) tout(a, 'cat:' + c.id, T.bought[k]); });
+  // (what was meant to be spent and was not: kept)
+  for (let i = 0; i < A.n; i++) A.left[i] = 0;
+  a.last = { day: T.day, living: T.living, tax: T.tax, bought: T.bought.reduce((x, y) => x + y, 0), trips: T.trips };
+  a.today = null;
+}
+
+/* ---------------------------------------------------------------- the minutes --- */
+// アスカ国's people through the day, minute by minute as ヴェルノア's (within the hours the people are about, its
+// clock `j`: server/core/npc-model.js tick): the state's, the local trade's and the branches' people at work on a
+// working day (a lunch out, home after), the students at school, everyone else and everyone on a day off out to shop,
+// for their pleasures or at home — paying what they need the first time they go out, buying a part of what they mean to
+// spend each time they shop or go out for pleasure; home for the night by 22:00.
+const H = (i, m, k) => { let h = (Math.imul(i + 1, 2654435761) ^ Math.imul(m + k * 977, 40503)) >>> 0; h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0; return (h >>> 0) / 4294967296; };
+export function tick(W, m, j) {
+  const a = W.asuka, A = W.AP;
+  if (!a || !A || !a.today) return;
+  const t = j.min, off = j.off;
+  // (after a rest — the night, a pause — everyone takes up their day again over a quarter of an hour)
+  if (a.lastTick !== m - 1) for (let i = 0; i < A.n; i++) if (A.due[i] < m) A.due[i] = m + Math.floor(H(i, m, 1) * 15);
+  a.lastTick = m;
+  for (let i = 0; i < A.n; i++) if (A.due[i] <= m) act(W, i, m, t, off);
+}
+function act(W, i, m, t, off) {
+  const A = W.AP, T = W.asuka.today, job = A.job[i], u = H(i, m, 2);
+  const set = (x, minutes) => { A.act[i] = x; A.due[i] = m + Math.max(5, Math.round(minutes)); };
+  const worker = job === JOB.atsuka || job === JOB.trade || job === JOB.branch;
+  // (each one's hours: the state's from about nine, the shops' from about ten, a little either way)
+  const start = (job === JOB.atsuka ? 540 : 600) + Math.floor(H(i, 0, 3) * 60) - 30, end = start + 510 + Math.floor(H(i, 0, 4) * 60);
+  if (t >= 1320) return set(ACT.sleep, 1440 - t);
+  if (worker && !off) {
+    if (t < start) return set(ACT.commute, start - t);
+    if (t < 720) return set(ACT.work, 720 - t);
+    if (t < 770 && A.act[i] !== ACT.lunch) { set(ACT.lunch, 45 + u * 15); payNeed(W, i); T.trips++; return; }
+    if (t < end) return set(ACT.work, end - t);
+    if (A.act[i] === ACT.work) return set(ACT.commute, 25 + u * 35);
+  } else if (job === JOB.student && !off && t < 930) return set(ACT.study, 930 - t);
+  // free: out for what one needs first, then shopping, pleasures, or home
+  if (A.need[i] > 0 && u < 0.6) { set(ACT.shop, 30 + u * 40); payNeed(W, i); buy(W, i, 0.3); T.trips++; return; }
+  if (A.left[i] > 0 && u < 0.5) { set(ACT.shop, 30 + u * 100); payNeed(W, i); buy(W, i, t >= 1200 ? 1 : 0.4 + 0.5 * u); T.trips++; return; }
+  if (A.left[i] > 0 && u < 0.75) { set(ACT.leisure, 60 + u * 120); payNeed(W, i); buy(W, i, 0.25); T.trips++; return; }
+  set(ACT.home, 60 + u * 150);
+}
+// what they are doing now, where (運営's アスカ国, live): each kind of doing by district, the day's money so far
+export function liveView(W) {
+  const a = W.asuka, A = W.AP;
+  if (!a || !A) return null;
+  const by = ASUKA.districts.map(() => ACT_NAMES.map(() => 0)), all = ACT_NAMES.map(() => 0);
+  let cash = 0, need = 0, left = 0;
+  for (let i = 0; i < A.n; i++) { by[A.dist[i]][A.act[i]]++; all[A.act[i]]++; cash += A.cash[i]; need += A.need[i]; left += A.left[i]; }
+  const T = a.today;
+  return { minute: a.lastTick || 0, acts: ACT_NAMES, all, districts: ASUKA.districts.map((d, k) => ({ name: d.name, acts: by[k] })),
+    today: T ? { day: T.day, living: T.living, tax: T.tax, bought: T.bought.reduce((x, y) => x + y, 0), byCat: CATS.map((c, k) => ({ id: c.id, name: c.name, n: T.bought[k] })), trips: T.trips } : null,
+    last: a.last || null, left: Math.round(left), need: Math.round(need),
+    money: { people: Math.round(cash), treasury: Math.round(a.treasury), atsuka: Math.round(a.atsuka.cash), trade: Math.round(a.trade.cash), toCo: Math.round(Object.values(a.toCo).reduce((x, v) => x + Object.values(v).reduce((p, q) => p + q, 0), 0)), all: Math.round(moneyOf(W)) } };
 }
 // the national bank lends what one needs to live (of its own money, up to what their pay allows)
 function borrow(W, i, need, yearly) {
@@ -563,9 +652,23 @@ function hire(W, day, r) {
     const pay = Math.min(fees, Math.max(0, a.treasury));
     a.treasury -= pay;
     tout(a, 'hireFees', pay);
+    gdpAcc(a).g += pay;
     const cw = Math.round(pay * 0.65);
     for (const [co, n] of [['citywork', cw], ['speedeed', pay - cw]]) { const box = a.toCo[co] || (a.toCo[co] = {}); box.jobs = (box.jobs || 0) + n; a.sum.toVernoa += n; }
   }
+}
+
+/* ------------------------------------------------------------------ its GDP --- */
+// the day's spending for its GDP (server/core/npc-gdp.js): its people's (what they need, with the tax, and what they
+// bought at the branches and of ヴェルノア's games), the state's (the job sites' fees), what was invested (ATSUKA
+// Vision's machines, the branches' buildings), what it sold ヴェルノア and bought of it; read once a day
+const gdpAcc = (a) => a.gdp || (a.gdp = { c: 0, g: 0, i: 0, x: 0, m: 0 });
+export function gdpOf(W) {
+  const a = W.asuka, A = W.AP;
+  if (!a || !A) return null;
+  const g = gdpAcc(a);
+  a.gdp = { c: 0, g: 0, i: 0, x: 0, m: 0 };
+  return { ...g, defl: (a.policy && a.policy.price) || 1, people: A.n };
 }
 
 /* --------------------------------------------------------- to the companies --- */

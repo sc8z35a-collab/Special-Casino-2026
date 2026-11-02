@@ -235,27 +235,28 @@ test('MAGITA\'s negotiated terms are on MAGITA\'s goods only; a smaller country\
   assert.equal(lot['nissan-gt-r'], Math.round(CORP.products.cars['nissan-gt-r'].buy * 1.2) + CORP.products.cars['nissan-gt-r'].excl + (w.co.magita.surcharge ? CORP.magita.surcharge.amount : 0));
 });
 
-test('運営\'s knobs: a company\'s pay level rescales its people\'s pay at once; the rents; knobs added later start where the rules say', () => {
+test('no knob of 運営\'s: the pay, the phone bill and the loans\' rates are the companies\' own, the rents and living costs follow the prices; the country\'s knobs added later start where the rules say', () => {
   const { W } = country(800);
   const P = W.P, staff = W.staffOf('jinx'), before = staff.map((i) => P.salary[i]);
-  assert.equal(NPC.knobOf(W, 'pay:jinx'), 0);
+  // (no pay level, cost of living, rent, phone bill, loan rate, lending cap or market limit of 運営's)
+  for (const id of ['pay:jinx', 'pay:civil', 'livingCost', 'rentLevel', 'phoneBill', 'quickRate', 'debtCap', 'investDaily', 'winFee', 'jobFee', 'magitaSurcharge']) assert.equal(NPC.knob[id], undefined, id);
+  assert.ok(NPC.knobs.every((k) => k.min === undefined && k.max === undefined && k.floor !== undefined));
   W.knobChanged('pay:jinx', 0, 20);
-  staff.forEach((i, k) => assert.equal(P.salary[i], Math.round(before[k] * 1.2)));
-  W.knobChanged('pay:jinx', 20, -10);
-  staff.forEach((i, k) => assert.equal(P.salary[i], Math.round(Math.round(before[k] * 1.2) * 0.9 / 1.2)));
-  const renter = Array.from({ length: P.n }, (_, i) => i).find((i) => P.rent[i] > 0);
-  const rent = P.rent[renter];
-  W.knobChanged('rentLevel', 0, 50);
-  assert.equal(P.rent[renter], Math.round(rent * 1.5));
-  delete W.nation.knobs.phoneBill;
+  staff.forEach((i, k) => assert.equal(P.salary[i], before[k]));
+  // (the rents follow the rents' level, the quick loans' rate Tenesice's: its people's rate and its spread)
+  W.rentIdx = 1.5;
+  assert.equal(npc.state.rentFor(W, 0), 135000);
+  assert.equal(Math.round(npc.econ.quickRate(W) * 1000), Math.round((W.bankRates.person + 0.153) * 1000));
+  delete W.nation.knobs.consumptionTax;
   npc.attach(W);
-  assert.equal(W.nation.knobs.phoneBill, 100000);
+  assert.equal(W.nation.knobs.consumptionTax, 0);
 });
 
 test('the country beyond what Tenesice will lend it: it defaults (財政破綻) and pays its pensions and servants only in part, until its money is back', () => {
   const c = country(800);
   const { W } = c;
-  W.nation.knobs.debtCap = 100;
+  // (Tenesice with nothing of its own left to lend it)
+  W.bankRoom = 0;
   W.nation.bank = W.cal.bank0;
   W.nation.cash = -W.cal.nationFloor * 2;
   c.days(2);
@@ -264,10 +265,13 @@ test('the country beyond what Tenesice will lend it: it defaults (財政破綻) 
   const news = [];
   W.nation.cash = -W.cal.nationFloor * 2;
   W.nation.broke = false;
+  W.bankRoom = 0;
+  const owed = W.nation.bank;
   npc.state.dayStart(W, W.day + 1, seeded(Buffer.alloc(32, 6), 'd'), c.ctx);
   for (const n of W.news) news.push(n.text);
   assert.ok(news.some((t) => t.includes('財政が破綻')), news.join('\n'));
-  assert.equal(W.nation.bank <= W.cal.bank0, true);
+  // (nothing lent beyond what the bank had of its own)
+  assert.equal(W.nation.bank, owed);
 });
 
 test('crashes and manias can happen: a company\'s price may move 8% a day towards its worth, the people rush with a move', () => {
@@ -290,7 +294,9 @@ test('a home taken by the bank: what it brings pays the debt and the rest is the
   let i = -1;
   for (let x = 0; x < P.n; x++) if (P.home[x] === pop.HOME.own && P.hh[x] === x) { i = x; break; }
   assert.ok(i >= 0);
-  W.nation.knobs.rentLevel = 20;
+  W.rentIdx = 1.2;
+  // (not one a company short of people would take on again: too frail)
+  P.health[i] = 50;
   P.cash[i] = 0; P.credit[i] = 0; P.salary[i] = 0; P.rent[i] = 0;
   P.debt[i] = npc.econ.quickCap(P, i) * 4 + 1000;
   P.dkind[i] = 2;

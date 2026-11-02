@@ -9,7 +9,8 @@ import { toStream, nationIn } from './npc-econ.js';
 
 export const LISTED_IDS = ['riru', 'ice', 'magita', 'tenesice'];
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
-const feeOf = (W, v) => Math.ceil(v * (W.nation.knobs.tradeFee || 1.8) / 100);
+// (Dtrade's fee on a trade, as it set it: server/core/corp-model.js fees)
+const feeOf = (W, v) => Math.ceil(v * ((W.fees && W.fees.tradeFee !== undefined ? W.fees.tradeFee : 0.018)));
 
 export function createMarket(W) {
   const m = W.marketState || (W.marketState = { book: {}, last: {}, hist: {}, nudges: [], volume: {}, cost: {} });
@@ -43,9 +44,9 @@ export function createMarket(W) {
       if (held > 0 && price < cost * 0.9) view += 0.3;
       const limit = Math.max(1, Math.round(price * (1 + (view > 0 ? 1 : -1) * (0.001 + 0.006 * r.u()))));
       if (view > 0.2) {
-        const room = Math.max(0, NPC.knobOf(W, 'investDaily') - P.buyDay[i]);
-        // (in a mania what was set aside for the market is not the limit: the greedy put in what they have)
-        const money = Math.min(Math.max(Math.max(0, P.fund[i * 4 + 3]) * (0.3 + 0.5 * r.u()), rush > 0 ? Math.max(0, P.cash[i]) * Math.min(0.5, rush * 0.2) : 0), Math.max(0, P.cash[i]) * 0.5, room);
+        // (what they set aside for the market — no limit but their own money; in a mania it is not the limit either: the
+        // greedy put in what they have)
+        const money = Math.min(Math.max(Math.max(0, P.fund[i * 4 + 3]) * (0.3 + 0.5 * r.u()), rush > 0 ? Math.max(0, P.cash[i]) * Math.min(0.5, rush * 0.2) : 0), Math.max(0, P.cash[i]) * 0.5);
         const shares = Math.floor(money / (limit * 1.02));
         if (shares > 0) { m.book[id].buy.push([i, shares, limit]); P.buyDay[i] += shares * limit; P.fund[i * 4 + 3] -= shares * limit; P.trades[i]++; }
       } else if (view < -0.2 && held > 0) {
@@ -61,8 +62,18 @@ export function createMarket(W) {
       for (let k = 0; k < LISTED; k++) {
         const id = LISTED_IDS[k], b = m.book[id], price = ctx.stockPrice ? ctx.stockPrice(id) : 0;
         if (!price) { b.buy = []; b.sell = []; continue; }
-        for (const o of b.buy) o[1] = Math.min(o[1], Math.floor(Math.max(0, P.cash[o[0]]) / (price * 1.02)));
-        for (const o of b.sell) o[1] = Math.min(o[1], P.sh[o[0] * LISTED + k]);
+        // (each one's orders together never beyond what they have: one may have put in several)
+        const cash = new Map(), held = new Map();
+        for (const o of b.buy) {
+          const have = cash.has(o[0]) ? cash.get(o[0]) : Math.max(0, P.cash[o[0]]);
+          o[1] = Math.max(0, Math.min(o[1], Math.floor(have / (price * 1.02))));
+          cash.set(o[0], have - o[1] * price * 1.02);
+        }
+        for (const o of b.sell) {
+          const have = held.has(o[0]) ? held.get(o[0]) : Math.max(0, P.sh[o[0] * LISTED + k]);
+          o[1] = Math.max(0, Math.min(o[1], have));
+          held.set(o[0], have - o[1]);
+        }
         const buys = b.buy.filter((o) => o[2] >= price && o[1] > 0), sells = b.sell.filter((o) => o[2] <= price && o[1] > 0);
         let want = 0, have = 0;
         for (const o of buys) want += o[1];
@@ -101,7 +112,8 @@ export function createMarket(W) {
       const fills = [];
       for (const o of list) {
         if (left <= 0) break;
-        const can = side === 'buy' ? Math.min(o[1], P.sh[o[0] * LISTED + k]) : Math.min(o[1], Math.floor(Math.max(0, P.cash[o[0]]) / (price * 1.02)));
+        // (as they stand now: an earlier order of theirs may have taken some of it)
+        const can = side === 'buy' ? Math.min(o[1], Math.max(0, P.sh[o[0] * LISTED + k])) : Math.min(o[1], Math.floor(Math.max(0, P.cash[o[0]]) / (price * 1.02)));
         const n = Math.min(left, can);
         if (n <= 0) { o[1] = 0; continue; }
         settle(W, k, o[0], n, price, side === 'buy' ? 'sell' : 'buy', true);
@@ -133,8 +145,8 @@ export function createMarket(W) {
       P.cash[i] -= v + fee;
       P.sh[i * LISTED + k] += n;
       const c = m.cost[id] || (m.cost[id] = {});
-      const was = P.sh[i * LISTED + k] - n;
-      c[i] = Math.round(((c[i] || price) * was + price * n) / Math.max(1, was + n));
+      const was = Math.max(0, P.sh[i * LISTED + k] - n);
+      c[i] = Math.round(((was > 0 && c[i] > 0 ? c[i] : price) * was + price * n) / Math.max(1, was + n));
       if (player) W.sum.fromPlayers -= v;
     } else {
       // (what they paid a share, read before a holding sold out is forgotten)
