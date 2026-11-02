@@ -834,9 +834,10 @@ var OpsCorp = (function () {
     var keys = Object.keys(r.biz).sort().reverse().slice(0, 6);
     if (!keys.length) return;
     var cols = p.id === 'daizin'
-      ? [['coins', '買い取ったコイン（枚）', group], ['coinPaid', '買い取りに払った額', money]]
-      : [['gacha', 'ガチャ代', money], ['claim', '国への請求（50%）', money], ['prizeCost', '景品の原価', money], ['lot', 'ロットコイン（利益剰余金から）', money], ['royal', 'ロイヤルコイン（枚）', group],
-        ['garage', 'ガレージコイン（枚）', group], ['vip', 'VIP1週間券（枚）', group], ['cars', '車（台）', group], ['tree', '金の生る木（本）', group],
+      ? [['coins', '買い取ったコイン（枚）', group], ['coinPaid', '買い取りに払った額', money], ['royalGiven', 'ガチャ景品のコイン（枚）', group], ['vipGiven', 'ガチャ景品のVIP券（枚）', group], ['rebuyPaid', 'VIP券の買い取り', money]]
+      : [['gacha', 'ガチャ代（80%）', money], ['prizeCost', '自社の景品の原価', money], ['lot', 'ロットコイン（Dtrade）', money], ['royal', 'ロイヤルコイン（枚・DAIZIN）', group],
+        ['garage', 'ガレージコイン（枚・MAGITA）', group], ['vip', 'VIP1週間券（枚・DAIZIN）', group], ['cars', '車（台）', group], ['seed', '種（本）', group], ['grown', '成長済みの木（本）', group],
+        ['treePay', '木の代わりの$3M（回）', group], ['reset', 'リセットチケット（枚）', group], ['rebuyPaid', '買い取り（チケット）', money],
         ['questfee', 'クエスト手数料', money], ['fertilizer', '肥料（40%）', money], ['treeSales', '木の市場', money]];
     var pb = panel(p.id === 'daizin' ? 'ロイヤルコインの買い取り' : 'ゲーム内の事業（クエスト・ガチャ・金の生る木）', '月ごと');
     pb.appendChild(table([['月']].concat(cols.map(function (c) { return [c[1], 1]; })), keys.map(function (k) {
@@ -844,8 +845,8 @@ var OpsCorp = (function () {
       return [k].concat(cols.map(function (c) { return m[c[0]] ? c[2](m[c[0]]) : '—'; }));
     })));
     pb.appendChild(el('p', 'muted corp-note', p.id === 'daizin'
-      ? 'プレイヤーのロイヤルコインを1枚$50,000で、DAIZINが自社の資金で買い取っています（売上原価「ロイヤルコインの買い取り」）。YOSIDAがガチャの景品として買うロイヤルコイン（1枚$100,000）とVIP1週間券は「ロイヤルコイン・VIP1週間券の販売（YOSIDA向け）」の売上です。'
-      : 'ガチャの景品：ロットコインはトークンの価格で利益剰余金から直接、ロイヤルコインは1枚$100,000でDAIZINから、ガレージコインは1枚$1.4MでMAGITAから、VIP1週間券はDAIZINと交渉した価格で、MAGITAの車はMAGITAの仕入れ価格＋専売特別費用で買い、YOSHIDA車は自社の売上、金の生る木は自社製（原価$1.0M）、リセットチケットは自社のクエスト事業のため$0です。'));
+      ? 'プレイヤーのロイヤルコインを1枚$50,000で、DAIZINが自社の資金で買い取っています（売上原価「ロイヤルコインの買い取り」）。ガチャの景品のロイヤルコインとVIP1週間券（原価1枚$50K）はDAIZINの自社負担で、プレイヤーはVIP1週間券を1枚$200KでDAIZINに売れます。'
+      : 'ガチャ代の80%がYOSIDAの売上、20%が国庫に入ります（1連2枠）。景品は提供する会社の自社負担です。ロットコインはDtrade（トークンの価格）、ロイヤルコインとVIP1週間券（原価$50K）はDAIZIN、ガレージコインはMAGITA（原価$1M）、金の生る木の種（$4M）・成長済みの木（$5.5M）・リセットチケット（$1M）はYOSIDAです。木が上限まであるプレイヤーには、YOSIDAが代わりに$3Mを払います。車はメーカーから買います（YOSHIDA車は自社の売上）。プレイヤーはリセットチケットを5時間$250K・24時間$350KでYOSIDAに、ガレージコインを$350KでMAGITAに売れます。'));
     body.appendChild(pb);
   }
   function studioPages(body, r, p) {

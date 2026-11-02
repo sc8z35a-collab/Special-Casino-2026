@@ -2133,6 +2133,8 @@ export function crossingsOf(flows) {
   inn += sum(flows['@sectorIn']) + sum(flows['@stateIn']);
   if (flows['@coins'] && flows['@coins'].paid > 0) out += Math.round(flows['@coins'].paid);
   if (flows['@prize'] && flows['@prize'].lot > 0) out += Math.round(flows['@prize'].lot * RULES.tokenPrice);
+  if (flows['@prize'] && flows['@prize'].treePay > 0) out += flows['@prize'].treePay * YS.gacha.treePay;
+  for (const kinds of Object.values(flows['@rebuy'] || {})) for (const v of Object.values(kinds || {})) out += Math.max(0, Math.round((v && v[1]) || 0));
   return { in: inn, out };
 }
 function playersCross(w, orig) {
@@ -2172,7 +2174,7 @@ const STATE_OUT = { slots: 'slotWins', quests: 'questRewards', gacha: 'gachaClai
   release: 'releaseBonus', medals: 'medalRewards', diary: 'diaryRewards', tree: 'treeHarvest', gifts: 'npcGifts', start: 'playerStart' };
 // what the players pay the treasury (its name in the country's books): the fertilizer beyond YOSIDA's share
 // and what a player's account that is gone held, its estate (国庫に帰属: server/core/purge.js, api.js lapse)
-const STATE_IN = { fertilizer: 'treeFund', estate: 'escheat' };
+const STATE_IN = { fertilizer: 'treeFund', estate: 'escheat', gacha: 'gachaShare' };
 function gameDay(w, d, flows, orig = flows) {
   for (const s of Object.values(w.co)) if (s.pc) for (const k of Object.keys(s.pc)) s.pc[k] *= 29 / 30;
   // (who runs each now — CORP.features: its company, or for a local company or a trustee a stand-in, settled after)
@@ -2228,6 +2230,7 @@ function gameDay(w, d, flows, orig = flows) {
     if (mine.gacha) bizCount(ys, d, 'gacha', mine.gacha);
     if (mine.fertilizer) bizCount(ts, d, 'fertilizer', mine.fertilizer);
     prizes(w, ys, d, pz);
+    rebought(w, d, flows['@rebuy']);
     // the trees the players won at the auctions: its sale, each made at its cost
     for (const [, got] of Object.entries(mine.trees || {})) {
       const [n, money] = got;
@@ -2273,11 +2276,35 @@ function gachaCar(w, id) {
   const worth = Math.round(((car && car.price) || YS.gacha.worth[id] || YS.gacha.worth['porsche-kuia-spyder']) * YS.gacha.carShare);
   return ['magita', worth, Math.round(worth * 0.25)];
 }
-// The gacha's prizes, what each costs YOSIDA (CORP.yosida.gacha): the lot coins out of its retained earnings; the
-// coins, tickets and cars bought of their makers (paid at once: their sales); its own trees and cars made at cost.
+// The gacha's prizes, each provided by its company at its own cost (CORP.yosida.gacha), booked as its expense
+// (ガチャ景品の提供): the lot coins Dtrade's — its tokens, at their $, to the player —; the ロイヤルコイン DAIZIN's (a coin
+// costs it nothing until it buys one back) and a VIP1週間券 DAIZIN's (`vipWeek`, to the local trade that serves the
+// lounge); a money tree's seed and a grown tree YOSIDA's own (`seed`, `grown`: its biotech, of アルタス's materials) —
+// one that had no room paid to the player instead (`treePay`) —, a reset ticket YOSIDA's (`reset`, its quests' own
+// running); a garage coin MAGITA's (`garage`: MAGITA Garage's place, built by the local trade); the cars bought of their
+// makers by YOSIDA (its own made at cost). A provider that failed: whoever runs the gacha provides it. (`ys`: who
+// runs the gacha; an old day's `tree`: YOSIDA's trees as before.)
 function prizes(w, ys, d, pz) {
   const G = YS.gacha;
+  const by = (id) => (w.co[id] && !w.co[id].dead ? w.co[id] : ys);
+  const outside = (s) => !w.ext || abroad(s);
   let cost = 0;
+  // (a cost owed to whom provides it: the local trade, or アルタス at its prices)
+  const owe = (s, n, to = '@sector') => {
+    if (!(n > 0)) return 0;
+    const m = to === '*' ? altasCost(w, n) : n;
+    post(s, [['sGacha', m], ['ap', -m]]);
+    s.owe[to] = (s.owe[to] || 0) + m;
+    if (s === ys) cost += m;
+    return m;
+  };
+  // (money to the players: their tokens, a tree's worth)
+  const toPlayers = (s, n) => {
+    if (!(n > 0)) return;
+    post(s, [['sGacha', n], ['cash', -n]], 'expenses');
+    if (!outside(s)) w.ext.toPlayers = (w.ext.toPlayers || 0) + n;
+    if (s === ys) cost += n;
+  };
   const buy = (to, stream, n, extra = {}) => {
     if (!(n > 0)) return;
     post(ys, [['c:gacha', n], ['cash', -n]], 'purchases');
@@ -2285,22 +2312,20 @@ function prizes(w, ys, d, pz) {
     if (w.co[to]) w.b2bCash.push({ to, stream, n, from: ys.id, ...extra });
     else if (w.ext && !abroad(ys)) w.ext.sector += n;
   };
-  // ロットコイン: tokens at their $, straight out of its retained earnings (not a cost of the day)
+  // ロットコイン: Dtrade's tokens, at their $
   const lot = Math.round((pz.lot || 0) * RULES.tokenPrice);
-  if (lot > 0) {
-    post(ys, [['retained', lot], ['cash', -lot]], 'expenses');
-    bizCount(ys, d, 'lot', lot);
-    if (w.ext && !abroad(ys)) w.ext.toPlayers = (w.ext.toPlayers || 0) + lot;
-  }
-  if (pz.royal > 0) { buy('daizin', 'coins', pz.royal * G.royal); bizCount(ys, d, 'royal', pz.royal); }
-  if (pz.vip > 0) {
-    const each = vipWeekOf(w);
-    buy('daizin', 'coins', pz.vip * each);
-    bizCount(ys, d, 'vip', pz.vip);
-    bizCount(ys, d, 'vipPaid', pz.vip * each);
-    w.mon['yosida:daizin'] = (w.mon['yosida:daizin'] || 0) + pz.vip * each;
-  }
-  if (pz.garage > 0) { buy('magita', 'garage', pz.garage * G.garage); bizCount(ys, d, 'garage', pz.garage); }
+  if (lot > 0) { const dt = by('dtrade'); toPlayers(dt, lot); bizCount(dt, d, 'lot', lot); bizCount(ys, d, 'lot', lot); }
+  // ロイヤルコイン and VIP1週間券: DAIZIN's
+  if (pz.royal > 0) { bizCount(by('daizin'), d, 'royalGiven', pz.royal); bizCount(ys, d, 'royal', pz.royal); }
+  if (pz.vip > 0) { const dz = by('daizin'); owe(dz, pz.vip * G.vipWeek); bizCount(dz, d, 'vipGiven', pz.vip); bizCount(ys, d, 'vip', pz.vip); }
+  // ガレージコイン: MAGITA's
+  if (pz.garage > 0) { const mg = by('magita'); owe(mg, pz.garage * G.garage); bizCount(mg, d, 'garageGiven', pz.garage); bizCount(ys, d, 'garage', pz.garage); }
+  // the money trees and the reset tickets: YOSIDA's own
+  if (pz.seed > 0) { owe(ys, pz.seed * G.seed, '*'); bizCount(ys, d, 'seed', pz.seed); }
+  if (pz.grown > 0) { owe(ys, pz.grown * G.grown, '*'); bizCount(ys, d, 'grown', pz.grown); }
+  if (pz.tree > 0) { owe(ys, pz.tree * YS.tree, '*'); bizCount(ys, d, 'tree', pz.tree); }
+  if (pz.treePay > 0) { toPlayers(ys, pz.treePay * G.treePay); bizCount(ys, d, 'treePay', pz.treePay); }
+  if (pz.reset > 0) { owe(ys, pz.reset * G.reset); bizCount(ys, d, 'reset', pz.reset); }
   for (const [id, n] of Object.entries(pz.cars || {})) {
     if (!(n > 0)) continue;
     const [maker, each, made] = gachaCar(w, id);
@@ -2315,17 +2340,26 @@ function prizes(w, ys, d, pz) {
     }
     buy(maker, 'gacha', n * each, { cost: n * made, item: { id, n } });
   }
-  // the money trees: its own, each made at its cost (paid to its suppliers abroad within weeks)
-  if (pz.tree > 0) {
-    const n = altasCost(w, pz.tree * YS.tree);
-    post(ys, [['c:gacha', n], ['ap', -n]]);
-    ys.owe['*'] = (ys.owe['*'] || 0) + n;
-    cost += n;
-    bizCount(ys, d, 'tree', pz.tree);
-  }
   if (cost) {
     (ys.pc || (ys.pc = {})).gacha = (ys.pc.gacha || 0) + cost / 30;
     bizCount(ys, d, 'prizeCost', cost);
+  }
+}
+// What the players sold back of what the gacha gave them (GACHA.sell: a VIP1週間券 to DAIZIN, reset tickets to YOSIDA,
+// a garage coin to MAGITA), each company's purchase of it: { company: { kind: [n, $] } } — to the players.
+function rebought(w, d, list) {
+  for (const [id, kinds] of Object.entries(list || {})) {
+    const s = w.co[id] && !w.co[id].dead ? w.co[id] : null;
+    for (const [kind, v] of Object.entries(kinds || {})) {
+      const [n, paid] = v;
+      if (!(paid > 0)) continue;
+      // (a company that failed meanwhile: the local trade that took its business over pays)
+      if (!s) { if (w.ext) { w.ext.fromSector += paid; w.ext.toPlayers = (w.ext.toPlayers || 0) + paid; } continue; }
+      post(s, [['c:rebuy', paid], ['cash', -paid]], 'purchases');
+      bizCount(s, d, 'rebuy:' + kind, n);
+      bizCount(s, d, 'rebuyPaid', paid);
+      if (w.ext && !abroad(s)) w.ext.toPlayers = (w.ext.toPlayers || 0) + paid;
+    }
   }
 }
 
@@ -2362,23 +2396,8 @@ function questFeeSet(w, s, p, d, out, ch) {
 }
 // the fee on the quests' rewards this month
 export const questFeeOf = (w) => (w && ((opCo(w, 'quests') || w.co.yosida || {}).questFee)) || YQ.base;
-// At a month's end YOSIDA and DAIZIN agree next month's price of a VIP1週間券 (CORP.yosida.gacha.vipWeek): DAIZIN
-// asks more while it does badly, YOSIDA gives less while it does; the better they get on, the less it costs.
-function vipWeekSet(w, s, p, d, out, ch) {
-  const dz = opCo(w, 'vip');
-  if (!dz || dz === s) return;
-  const [lo, hi] = YS.gacha.vipWeek, key = CORP.monthKey(d);
-  const hurt = (c) => { const m = CORP.plOf(c.per.m); return m.op < 0 ? 1 : 0; };
-  const tie = tieOf(w, s.id, dz.id);
-  let f = 0.5 + 0.2 * hurt(dz) - 0.2 * hurt(s) - (tie - 50) / 200 + 0.12 * ch.z(`vipweek:${key}`);
-  f = Math.max(0, Math.min(1, f));
-  const was = s.vipWeek || 0, price = Math.round((lo + (hi - lo) * f) / 10000) * 10000;
-  s.vipWeek = price;
-  if (price === was) return;
-  news(out, s, p, d + 1, 3 * 3600, 'deal', `DAIZINとの交渉で、${CORP.monthLabel(d + 1)}のVIP1週間券の買い取り価格を1枚${CORP.fmt.money(price)}に決めました（ビジネス友好度${Math.round(tie)}）`, { from: was, to: price }, 0, false);
-}
-// what YOSIDA pays DAIZIN for a VIP1週間券 now (before the first talks: the middle of the range)
-export const vipWeekOf = (w) => (w && ((opCo(w, 'gacha') || w.co.yosida || {}).vipWeek)) || Math.round((YS.gacha.vipWeek[0] + YS.gacha.vipWeek[1]) / 2 / 10000) * 10000;
+// what a VIP1週間券 of the gacha costs DAIZIN to provide (its own)
+export const vipWeekOf = () => YS.gacha.vipWeek;
 
 /* ------------------------------------------------------------ WAZIMA's work --- */
 // WAZIMA's research (CORP.wazima, its `wlab`), begun on the first live day it has: each done cuts its parent's costs
@@ -3327,7 +3346,7 @@ export function closeDay(w, d, flows, ch) {
     // (the month's end: MAGITA sets next month's garage fee; the quarter's: who goes and who is hired)
     if (CORP.isMonthEnd(d) && operatorOf(w, 'garage') === id && d >= w.launch) garageFee(w, s, p, d, out);
     // (and YOSIDA its fee on the quests' rewards and, with DAIZIN, the VIP1週間券's price)
-    if (CORP.isMonthEnd(d) && d >= w.launch) { if (operatorOf(w, 'quests') === id) questFeeSet(w, s, p, d, out, ch); if (operatorOf(w, 'gacha') === id) vipWeekSet(w, s, p, d, out, ch); }
+    if (CORP.isMonthEnd(d) && d >= w.launch) { if (operatorOf(w, 'quests') === id) questFeeSet(w, s, p, d, out, ch); }
     // (MY WAY's month: its characters, its partners)
     if (CORP.isMonthEnd(d) && s.ip && !s.dead) ipMonth(w, s, p, d, ch, out);
     // (MY WAY keeps its people whatever its year: what it cannot cut is its trouble — its own measures aside)

@@ -93,6 +93,12 @@ test('every way a player\'s money moves, through the server: the players\' ledge
   const tree = (await s.call('GET', '/api/tree', { token: a.token })).trees[0].id;
   await ok('tree', s.call('POST', '/api/tree/give', { token: a.token, body: { tree, amount: RULES.tree.amounts[0] } }));
   await ok('gacha', s.call('POST', '/api/gacha/spin', { token: a.token, body: { kind: 'rare', count: 1 } }));
+  // (a pull of trees that have no room: their $3M each paid instead, YOSIDA's; the prizes sold back)
+  for (let i = 0; i < 8; i++) q("INSERT INTO trees (user_id, name, super, given, price, created_at) VALUES (?, '木', 0, 0, 0, ?)").run(a.me.id, Date.now());
+  await ok('gacha with full trees', s.call('POST', '/api/gacha/spin', { token: a.token, body: { kind: 'legendary', count: 10 } }));
+  q("INSERT INTO items (user_id, item, count) VALUES (?, 'gacha-vip-week', 2) ON CONFLICT(user_id, item) DO UPDATE SET count = count + 2").run(a.me.id);
+  await ok('a VIP ticket sold', s.call('POST', '/api/gacha/sell', { token: a.token, body: { item: 'vip-week' } }));
+  await ok('a garage coin sold', s.call('POST', '/api/gacha/sell', { token: a.token, body: { item: 'garage' } }));
   // ロイヤルコイン bought back by DAIZIN with its own $ (the coins themselves are not money)
   s.setUser(b.me.id, { coins: 20 });
   await ok('coins', s.call('POST', '/api/coins/sell', { token: b.token, body: { amount: 10 } }));
@@ -187,7 +193,8 @@ test('what a day\'s flows come to between the players and the country: crossings
     '@sector': { job: 30000, rent: 20000, lend: 1500000 },
     '@sectorIn': { repay: 15000 },
     '@coins': { n: 2, paid: 100000 },
-    '@prize': { lot: 30 }
+    '@prize': { lot: 30, treePay: 1, seed: 1, reset: 2 },
+    '@rebuy': { daizin: { vip: [1, 200000] }, magita: { garage: [2, 700000] } }
   };
   const c = corpModel.crossingsOf(flows);
   assert.ok(c.in > 0 && c.out > 0);

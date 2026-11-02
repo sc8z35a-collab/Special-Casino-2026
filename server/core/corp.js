@@ -248,6 +248,11 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       }
     });
   }
+  // what a company bought back of the gacha's prizes from a player (server/core/gacha.js sell): { company: { kind: [n, $] } }
+  function rebuy(company, kind, n, paid) {
+    if (!(paid > 0)) return;
+    bump((data) => { const r = data['@rebuy'] || (data['@rebuy'] = {}), c = r[company] || (r[company] = {}), was = c[kind] || [0, 0]; c[kind] = [was[0] + n, was[1] + paid]; });
+  }
   // the ロイヤルコイン DAIZIN bought back from a player, and what it paid for them
   function coinsBought(n, paid) {
     if (!(n > 0)) return;
@@ -546,6 +551,6 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     q('DELETE FROM corp_flows WHERE day < ?').run(day - KEEP_FLOWS);
   }
 
-  return { ensure, booted, closesAt, close, unbooked, anchor, dps, flow, tally, flush, sold, prize, coinsBought, questFee, npcSpent, today, traded, surcharge, surcharges, garageFee, garageReady, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8,
+  return { ensure, booted, closesAt, close, unbooked, anchor, dps, flow, tally, flush, sold, prize, rebuy, coinsBought, questFee, npcSpent, today, traded, surcharge, surcharges, garageFee, garageReady, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8,
     delisted, ip: () => ipView(get()) };
 }

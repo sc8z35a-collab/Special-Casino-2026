@@ -201,7 +201,7 @@ var OpsTown = (function () {
       guarantee: '未払賃金の立替払', bondInterest: '国債の利子', debtInterest: 'テネシスへの利子', casinoWins: '市民のスロットの勝ち分',
       slotWins: 'プレイヤーのスロットの勝ち分', questRewards: 'クエストの報酬', gachaClaims: 'ガチャ代（YOSIDAへ）', loginBonus: 'ログインボーナス', dailyTokens: '毎日の無料トークン',
       coopBonus: '協力プレイのボーナス', releaseBonus: 'アップデートのお礼', medalRewards: '功績の報酬', diaryRewards: '日記の報酬', treeHarvest: '金の生る木の収穫', npcGifts: 'ジョンソン・運営からの贈り物',
-      playerStart: 'プレイヤーの初期資金', treeFund: '金の生る木の肥料（収穫の財源）', newLife: '生まれた人の初期資金', bankRescue: 'テネシスへの公的資金', asukaBonds: 'アスカ国の政府系ファンドへの国債の利子' };
+      playerStart: 'プレイヤーの初期資金', treeFund: '金の生る木の肥料（収穫の財源）', newLife: '生まれた人の初期資金', bankRescue: 'テネシスへの公的資金', asukaBonds: 'アスカ国の政府系ファンドへの国債の利子', gachaShare: 'ガチャ代の国庫分（20%）' };
     var kindName = function (k) { return KIND[k] || k; };
     Object.keys(nf.day.in || {}).forEach(function (k) { rows.push(['収入', kindName(k), money(nf.day.in[k])]); });
     Object.keys(nf.day.out || {}).forEach(function (k) { rows.push(['支出', kindName(k), money(nf.day.out[k])]); });

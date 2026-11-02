@@ -26,9 +26,10 @@ function secureRandom() {
   return randomWords[randomAt++] / 4294967296;
 }
 
-// The gacha is YOSIDA's (js/game/corp.js CORP.yosida): what a pull costs is its sale, and it bills the country's
-// treasury its share of it; what the pulls give away it pays for (server/core/corp-model.js prizes). The player
-// sees none of that: the pulls and their prizes are what they were. (`corp`: server/core/corp.js, or none in tests.)
+// The gacha is YOSIDA's (js/game/corp.js CORP.yosida): of what a pull costs, its share is its sale and the rest the
+// country's treasury's; each prize is provided by its company at its own cost (server/core/corp-model.js prizes) —
+// a money tree that has no room (the player's trees all there) paid to the player instead. The players can sell
+// some of them back (GACHA.sell: POST /api/gacha/sell). (`corp`: server/core/corp.js, or none in tests.)
 export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend,
   settleVip = () => 0, vipChanged = balanceChanged, onSpin = () => {}, now = Date.now, rand = secureRandom, corp = null }) {
   const requests = createSpinRequests({ q, tx, clock: now, table: 'gacha_requests', code: 'gacha', label: 'ガチャ',
@@ -55,6 +56,8 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       events,
       prices: pricesOf(saleOn(at)),
       ...(saleOn(at) ? { releaseSale: { kind: GACHA.releaseSale.kind, end: saleEnd } } : {}),
+      // (what can be sold back: the VIP1週間券, the reset tickets, the garage's empty places that are coins)
+      sell: GACHA.sell, resets: questTickets(readQuests(u.quests)), garageFree: Math.max(0, Math.min(u.garage_extra || 0, garageSize(u) - carCount(u.id))),
       items: { seed: items[SEED] || 0, vipWeek: items[VIP_WEEK] || 0,
         // the free tickets (功績's rewards, server/core/medals.js): one pull each
         tickets: Object.fromEntries(GACHA.kinds.map((k) => [k.id, items[TICKET + k.id] || 0])),
@@ -88,12 +91,15 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       }
       const pulls = GACHA.draw(kind, count, events.boost.on, events.sale.on, rand);
       const rewards = pulls.flatMap((p) => p.rewards);
-      if (rewards.some(r => r.type === 'grown-tree')) ensureStarterTree(q, cur.id, at);
+      if (rewards.some(r => r.type === 'grown-tree' || r.type === 'seed')) ensureStarterTree(q, cur.id, at);
       const garageCoins = rewards.filter((r) => r.type === 'garage').reduce((n, r) => n + r.amount, 0);
       let carRoom = Math.max(0, garageSize(cur) + garageCoins - carCount(cur.id));
       let treeRoom = Math.max(0, RULES.tree.max - treeCount(cur.id));
+      // (the trees the player has and is waiting to plant: all there, a tree's money instead — YOSIDA's)
+      let treesHeld = treeCount(cur.id) + itemCount(cur.id, SEED) + itemCount(cur.id, GROWN);
+      const G = CORP.yosida.gacha;
 
-      let tokens = 0, coins = 0, resets = 0;
+      let tokens = 0, coins = 0, resets = 0, lot = 0, seeds = 0, grown = 0, treePay = 0;
       const quests = readQuests(cur.quests);
       for (const pull of pulls) coins += pull.bonus || 0;
       for (const r of rewards) {
@@ -102,13 +108,15 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
           carRoom--;
           carGot(q, cur.id, Number(q("INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid, via) VALUES (?, ?, 0, ?, ?, 0, 'gacha')")
             .run(cur.id, r.carId, at, at).lastInsertRowid));
-        } else if (r.type === 'lot') tokens += r.amount;
+        } else if (r.type === 'lot') { tokens += r.amount; lot += r.amount; }
         else if (r.type === 'royal') coins += r.amount;
         else if (r.type === 'garage') { /* counted below */ }
         else if (r.type === 'reset') resets += r.amount;
-        else if (r.type === 'seed') addItems(cur.id, SEED, 1);
+        else if ((r.type === 'seed' || r.type === 'grown-tree') && treesHeld >= RULES.tree.max) { treePay++; r.paid = G.treePay; }
+        else if (r.type === 'seed') { addItems(cur.id, SEED, 1); seeds++; treesHeld++; }
         else if (r.type === 'vip-week') addItems(cur.id, VIP_WEEK, 1);
         else if (r.type === 'grown-tree') {
+          grown++; treesHeld++;
           if (treeRoom <= 0) { addItems(cur.id, GROWN, 1); r.pending = true; continue; }
           treeRoom--;
           q('INSERT INTO trees (user_id, name, super, given, price, created_at) VALUES (?, ?, 0, ?, 0, ?)')
@@ -120,17 +128,18 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
         quests.tickets = { '5h': tickets['5h'] + resets, day: tickets.day };
       }
       // (the pulls, free ones too: counted for the 功績, server/core/medals.js)
-      q(`UPDATE users SET dollars = dollars - ?, tokens = tokens + ?, coins = coins + ?,
+      q(`UPDATE users SET dollars = dollars - ? + ?, tokens = tokens + ?, coins = coins + ?,
            garage_extra = garage_extra + ?, quests = ?, gacha_pulls = gacha_pulls + ?, rev = rev + 1 WHERE id = ?`)
-        .run(paid, tokens, coins, garageCoins, JSON.stringify(quests), count, cur.id);
-      // YOSIDA's books: the pull's price its sale, its claim on the treasury, and what was given away
+        .run(paid, treePay * G.treePay, tokens, coins, garageCoins, JSON.stringify(quests), count, cur.id);
+      // the books: the pull's price YOSIDA's sale and the treasury's share; the prizes, each its provider's
       if (corp) {
-        corp.flow('yosida', 'gacha', paid);
-        corp.flow('@state', 'gacha', Math.floor(paid * CORP.yosida.gacha.claim));
+        const mine = Math.round(paid * G.share);
+        corp.flow('yosida', 'gacha', mine);
+        corp.flow('@stateIn', 'gacha', paid - mine);
         const cars = {};
         for (const r of rewards) if (r.type === 'car') cars[r.carId] = (cars[r.carId] || 0) + 1;
-        corp.prize({ lot: tokens, royal: coins, garage: garageCoins, vip: rewards.filter((r) => r.type === 'vip-week').length,
-          tree: rewards.filter((r) => r.type === 'seed' || r.type === 'grown-tree').length, cars });
+        corp.prize({ lot, royal: coins, garage: garageCoins, vip: rewards.filter((r) => r.type === 'vip-week').length,
+          seed: seeds, grown, treePay, reset: resets, cars });
       }
       return { pulls, paid, kind, count, ...(free ? { free: true } : {}) };
     });
@@ -172,9 +181,44 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
     return { ok: true, item, ...state(after) };
   }
 
+  // What the gacha gave that the player sells back (GACHA.sell, a piece): a VIP1週間券 to DAIZIN, reset tickets (5時間・
+  // 24時間) to YOSIDA, a garage coin — an empty extra place of their garage — to MAGITA; paid in $ at once, the
+  // company's purchase (server/core/corp-model.js rebought).
+  const SOLD_TO = { 'vip-week': ['daizin', 'vip'], 'reset-5h': ['yosida', 'reset'], 'reset-day': ['yosida', 'reset'], garage: ['magita', 'garage'] };
+  function sell(item, count, u) {
+    const to = SOLD_TO[item], each = GACHA.sell[item];
+    if (!to || !each) throw new ApiError(400, 'bad_item', 'このアイテムは売れません');
+    if (!Number.isInteger(count) || count < 1 || count > 1000) throw new ApiError(400, 'bad_count', '売る数を選んでください');
+    const paid = each * count;
+    tx(() => {
+      const cur = getUser(u.id);
+      if (item === 'vip-week') {
+        if (itemCount(cur.id, VIP_WEEK) < count) throw new ApiError(409, 'no_item', 'VIP1週間券が足りません');
+        addItems(cur.id, VIP_WEEK, -count);
+        q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(paid, cur.id);
+      } else if (item === 'garage') {
+        const free = Math.min(cur.garage_extra || 0, garageSize(cur) - carCount(cur.id));
+        if (free < count) throw new ApiError(409, 'no_item', '売れるガレージコイン（空いているガレージ）が足りません');
+        q('UPDATE users SET garage_extra = garage_extra - ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(count, paid, cur.id);
+      } else {
+        const quests = readQuests(cur.quests), t = questTickets(quests), k = item === 'reset-5h' ? '5h' : 'day';
+        if ((t[k] || 0) < count) throw new ApiError(409, 'no_item', 'リセットチケットが足りません');
+        quests.tickets = { ...t, [k]: t[k] - count };
+        q('UPDATE users SET quests = ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(JSON.stringify(quests), paid, cur.id);
+      }
+      if (corp) corp.rebuy(to[0], to[1], count, paid);
+    });
+    balanceChanged(u.id, true);
+    return { ok: true, item, count, paid, ...state(getUser(u.id)) };
+  }
+
   return {
     routes: {
       'GET /api/gacha': (req, u) => state(getUser(u.id)),
+      'POST /api/gacha/sell': async (req, u) => {
+        const body = await req.json();
+        return sell(String(body.item || ''), Number(body.count === undefined ? 1 : body.count), u);
+      },
       'POST /api/gacha/spin': async (req, u) => { const body = await req.json(); return requests.run(u.id, body, () => spin(body, u)); },
       'POST /api/gacha/use': async (req, u) => {
         const body = await req.json();
