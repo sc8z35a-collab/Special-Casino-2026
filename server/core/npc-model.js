@@ -357,6 +357,8 @@ export function tick(W, m, ctx) {
   W.lastTick = m;
   for (let i = 0; i < P.n; i++) if (P.due[i] <= m) decide(W, i, m, t, j, r, ctx);
   W.market.auction(W, m, ctx);
+  // アスカ国's people, the same minute (server/core/asuka.js tick)
+  asuka.tick(W, m, j);
 }
 
 /* ---------------------------------------------------------------- the days --- */

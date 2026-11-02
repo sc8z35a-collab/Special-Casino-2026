@@ -57,9 +57,15 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     if (!all.length) return null;
     pop.unpack(P, all, false);
     if ((m.hotAt || 0) > (m.allAt || 0)) { const hot = rows('hot'); if (hot.length) pop.unpack(P, hot, true); }
-    // (アスカ国's people: their own blobs, kept as each day closes — the only time they change)
+    // (アスカ国's people: their own blobs, all of them as each day closed and what moved since)
     let AP;
-    if (m.asuka) { const ar = rows('asuka'); if (ar.length) AP = asukaModel.unpack(asukaModel.alloc(m.asuka.n), ar); }
+    if (m.asuka) {
+      const ar = rows('asuka');
+      if (ar.length) {
+        AP = asukaModel.unpack(asukaModel.alloc(m.asuka.n), ar);
+        if ((m.hotAt || 0) > (m.allAt || 0)) { const hot = rows('asukahot'); if (hot.length) asukaModel.unpack(AP, hot, true); }
+      }
+    }
     const w = Object.assign(m, { P, key, ...(AP ? { AP } : {}) });
     model.attach(w);
     return w;
@@ -98,10 +104,12 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const rows = pop.pack(w.P, kind !== 'all');
     rows.forEach((r, k) => q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`${prefix}:${String(k).padStart(3, '0')}`, r));
     q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`${prefix}:${String(rows.length).padStart(3, '0')}`, prefix + ';');
-    if (kind === 'all' && w.AP) {
-      const ar = asukaModel.pack(w.AP);
-      ar.forEach((r, k) => q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`asuka:${String(k).padStart(3, '0')}`, r));
-      q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`asuka:${String(ar.length).padStart(3, '0')}`, 'asuka;');
+    // (アスカ国's people: all of them as each day closes, what moves within a day — their money, what they are doing —
+    // with every save between: they spend through the day as ヴェルノア's people do)
+    if (w.AP) {
+      const ap = kind === 'all' ? 'asuka' : 'asukahot', ar = asukaModel.pack(w.AP, kind !== 'all');
+      ar.forEach((r, k) => q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`${ap}:${String(k).padStart(3, '0')}`, r));
+      q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`${ap}:${String(ar.length).padStart(3, '0')}`, ap + ';');
     }
     saves++;
     // (a transaction that fails takes its minutes back: read again before the next use)
@@ -452,6 +460,14 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     'POST /api/town/watch': async (req, u) => { const body = await req.json(); watch(u.id, !!body.on); return { ok: true, now: clock() }; }
   };
   const routes = (see, need, isDeveloper) => ({
+    // アスカ国 now: what its people are doing, by district, and the day's money so far (asked every few seconds while
+    // its page is open: small, never in the 街's `rev`)
+    'GET /api/ops/npc/asuka': (req, u) => {
+      see(u);
+      const w = get(), now = clock();
+      if (!w || !w.asuka) return { live: null, now };
+      return { live: asukaModel.liveView(w), minute: w.minute, now };
+    },
     'GET /api/ops/npc': (req, u) => {
       see(u);
       const w = get(), now = clock();

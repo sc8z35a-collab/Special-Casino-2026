@@ -89,12 +89,47 @@ var OpsTown = (function () {
     box.appendChild(p);
   }
 
+  /* ------------------------------------------------------------ アスカ国, live --- */
+  // what its people are doing now (they live minute by minute as ヴェルノア's: server/core/asuka.js tick) and the day's
+  // money so far, asked every 10 seconds while the page is open
+  var asukaTimer = 0, ASUKA_ASK = 10000;
+  function asukaLive() {
+    var p = panel('アスカ国の今（リアルタイム）', '市民はヴェルノアと同じく1分ごとに動きます（9:00/11:00〜22:00）・10秒ごとに更新');
+    var body = el('div'); p.appendChild(body);
+    function show(v) {
+      if (!v) { body.replaceChildren(el('p', 'muted', '読み込み中…')); return; }
+      var L = v.live;
+      if (!L) { body.replaceChildren(el('p', 'muted', 'アスカ国はまだ建国されていません。')); return; }
+      var parts = [], g = el('div', 'town-grid'), T = L.today, M = L.money;
+      var t = new Date((v.minute || L.minute) * 60000 + 9 * 3600000);
+      kv(g, '国の時刻', t.getUTCFullYear() + '/' + (t.getUTCMonth() + 1) + '/' + t.getUTCDate() + ' ' + t.getUTCHours() + ':' + ('0' + t.getUTCMinutes()).slice(-2) + '（日本時間）');
+      L.acts.forEach(function (name, k) { if (L.all[k]) kv(g, name, L.all[k].toLocaleString('ja-JP') + '人'); });
+      if (T) { kv(g, '今日の生活費（地元の商売）', money(T.living)); kv(g, '今日の買い物（ヴェルノア企業の拠点）', money(T.bought)); kv(g, '今日の消費税', money(T.tax)); kv(g, '今日の外出', T.trips.toLocaleString('ja-JP') + '回'); }
+      kv(g, 'まだ使うつもりのお金（今日）', money(L.left)); kv(g, '国民の預金', money(M.people)); kv(g, '国庫', money(M.treasury)); kv(g, 'ATSUKA Vision', money(M.atsuka)); kv(g, '地元の商売', money(M.trade));
+      kv(g, '企業への支払い待ち（締めで入金）', money(M.toCo)); kv(g, 'アスカ国のお金の合計', money(M.all));
+      parts.push(g);
+      parts.push(table(['区'].concat(L.acts), L.districts.map(function (d) { return [d.name].concat(d.acts.map(function (n) { return n.toLocaleString('ja-JP'); })); })));
+      if (T) parts.push(el('p', 'muted town-note', '今日の買い物：' + T.byCat.filter(function (c) { return c.n > 0; }).map(function (c) { return c.name + ' ' + money(c.n); }).join('・') + (L.last ? '（前日：生活費 ' + money(L.last.living) + '・買い物 ' + money(L.last.bought) + '）' : '')));
+      body.replaceChildren.apply(body, parts);
+    }
+    function askLive() {
+      if (!st.request) return;
+      st.request('GET', '/api/ops/npc/asuka').then(function (r) { st.asukaLive = r; if (p.isConnected) show(r); }, function () { /* (kept: the last figures) */ });
+    }
+    show(st.asukaLive);
+    askLive();
+    if (asukaTimer) clearInterval(asukaTimer);
+    asukaTimer = setInterval(function () { if (!p.isConnected) { clearInterval(asukaTimer); asukaTimer = 0; return; } askLive(); }, ASUKA_ASK);
+    return p;
+  }
+
   /* ---------------------------------------------------------------- アスカ国 --- */
   // the country beside it (server/core/asuka.js view): its people and money, ATSUKA Vision, ヴェルノア's companies'
   // branches, the money between the two countries, its months and news
   function asuka(box, r) {
     var a = r.asuka;
     if (!a) { box.appendChild(el('p', 'muted', 'アスカ国はまだ建国されていません（次の締めで建国されます）。')); return; }
+    box.appendChild(asukaLive());
     var p = panel('アスカ国', '建国 ' + day(a.founded) + '・建国資金 ' + money(a.total) + '（一度だけ発行）・人口 ' + a.people.toLocaleString('ja-JP') + '人');
     var g = el('div', 'town-grid'), J = a.jobs;
     kv(g, 'ATSUKA Visionで働く人', String(J.atsuka)); kv(g, '地元の商売で働く人', String(J.trade)); kv(g, 'ヴェルノア企業の支店で働く人', String(J.branch));

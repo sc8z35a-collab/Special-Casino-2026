@@ -41,6 +41,13 @@ test('the operator site: the 45 companies\' daily report — the thirteen and th
     if (f.days.some((d) => d.sales > 0)) selling++;
   }
   assert.ok(selling >= r.locals.length / 4, `${selling}`);
+  // アスカ国 now, for its page every few seconds: what its people are doing, by district, the day's money
+  assert.ok([401, 403].includes((await s.call('GET', '/api/ops/npc/asuka', { token: p.token })).status));
+  const a = await s.call('GET', '/api/ops/npc/asuka', { token: boss.token });
+  assert.equal(a.status, 200);
+  assert.equal(a.live.all.reduce((x, y) => x + y, 0), s.app.api.npc.world().AP.n);
+  assert.equal(a.live.districts.reduce((x, d) => x + d.acts.reduce((p2, q) => p2 + q, 0), 0), s.app.api.npc.world().AP.n);
+  assert.ok(a.live.last && a.live.last.living > 0 && a.live.money.all > 0);
   // (unchanged until the next close: { same: true } for the same rev)
   const again = await s.call('GET', '/api/ops/corp/report?rev=' + encodeURIComponent(r.rev), { token: boss.token });
   assert.equal(again.same, true);
