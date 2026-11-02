@@ -76,7 +76,8 @@
     card.appendChild(carPic(b.model));
     card.appendChild(nameRow(b.model, true));
     card.appendChild(K.amountEl(m.amount, 'dollars', 'xfer-amount'));
-    card.appendChild(el('div', 'pr-state', K.receiptExpired(m) ? '期限を過ぎたため受け取れません' : mine ? (m.claimed ? '売上金が受け取られました' : 'Garage に入りました')
+    card.appendChild(el('div', 'pr-state', m.lapsed ? (mine ? '売上金は期限を過ぎたため売り主に入金されました' : '期限を過ぎたため売上金を自動で受け取りました')
+      : K.receiptExpired(m) ? '期限を過ぎたため受け取れません' : mine ? (m.claimed ? '売上金が受け取られました' : 'Garage に入りました')
       : m.claimed ? '受け取り済み' : working[m.id] ? '受け取っています…' : 'タップして売上金を受け取る'));
     K.receiptHint(card, m);
     if (open) card.addEventListener('click', function () { claim(m); });
@@ -151,6 +152,8 @@
     var patch = {};
     if (d.state) patch.state = d.state;
     if (d.claimed) patch.claimed = true;
+    // (its time ran out untaken: the money back to its sender, a car's price to its seller)
+    if (d.lapsed) patch.lapsed = true;
     BR.social.patchMsg(d.id, patch);
     if (d.kind === 'car_offer') BR.cars.changed();
   }

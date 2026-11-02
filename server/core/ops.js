@@ -55,7 +55,7 @@ export const SPEEDS = ['max', 'high', 'normal', 'slow', 'slowest'];
 const SPEED_NAMES = { max: '極めて高い', high: '高い', normal: '通常', slow: '遅い', slowest: '極めて遅い' };
 
 export function createOps({ q, tx, live, config, getUser, mini, openCode, setRecovery, banMessage, BAN_DAYS, deviceBanOf, deviceBans, dropFromHub, official, opsLog, balance,
-  banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode = createDevCode({ q, opsLog }), seen = new Map(), pins }) {
+  banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode = createDevCode({ q, opsLog }), seen = new Map(), pins, tokenPrice = 10, estate = null }) {
   const operators = new Set(config.operators.map(nameKey));
   const accessRow = (key) => q('SELECT * FROM ops_access WHERE name_key = ?').get(key);
   // the refresh speed the developer chose (通常 until then)
@@ -898,7 +898,7 @@ export function createOps({ q, tx, live, config, getUser, mini, openCode, setRec
   // 90 days in the archive: their data goes, what was said stays (from the housekeeping)
   function purgeDue(now = Date.now()) {
     for (const p of q("SELECT * FROM users WHERE npc = '' AND purge_at > 0 AND purge_at <= ? LIMIT 50").all(now)) {
-      const gone = purgePlayer(q, tx, p.id, now);
+      const gone = purgePlayer(q, tx, p.id, now, { tokenPrice, estate });
       opsLog.add({
         actorName: 'システム', action: 'account_purge', target: p,
         summary: `${p.name}さんのデータを削除（${p.archive_reason === 'deleted' ? 'アカウント削除' : '永久BAN'}でプレイヤーアーカイブに入って${ARCHIVE_DAYS}日・会話と記録は無期限で保存）`,

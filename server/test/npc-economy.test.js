@@ -38,38 +38,36 @@ function country(n = 1000, seed = 7) {
       }
       return outs;
     },
-    money() {
-      const P = W.P;
-      let x = 0;
-      for (let i = 0; i < P.n; i++) x += P.cash[i] - P.debt[i] + P.tokens[i];
-      x += W.nation.cash - W.nation.bank + W.nation.fund.cash + W.districts.reduce((a, d) => a + d.cash, 0) + W.sector.cash;
-      for (const id of NPC.companies) {
-        const s = w.co[id];
-        if (id === 'tenesice') x += (s.bal.cash || 0) + (s.bal.lent || 0) + (s.bal.bonds || 0) - (s.bal.deposits || 0);
-        else x += (s.bal.cash || 0) - s.loans.reduce((a, l) => a + l.amt, 0);
-      }
-      return x + npc.econ.pending(W) + W.sum.imports - (W.sum.exports || 0) + W.sum.toPlayers - W.sum.fromPlayers;
-    }
+    // (the money ledger: server/core/npc-model.js moneyOf — アスカ国's money with it)
+    money() { return npc.moneyOf(W, w); }
   };
 }
 
-test('a payment one must make borrows what is short and no more: beyond what anyone lends their money ends at 0, never above it nor below', () => {
+test('a payment one must make borrows what is short, out of Tenesice\'s own money: beyond what anyone lends it is not paid (a day missed), never paid with money from nowhere', () => {
   const { W } = country(600);
   const P = W.P, i = 3;
-  for (const [cash, n] of [[100, 1000], [-5000, 1000], [0, 50000000]]) {
-    P.cash[i] = cash; P.credit[i] = 0; P.salary[i] = 0;
+  for (const [cash, n] of [[100, 1000], [0, 50000000]]) {
+    P.cash[i] = cash; P.credit[i] = 0; P.salary[i] = 0; P.miss[i] = 0;
     // (owing all the quick loan allows already)
     P.debt[i] = npc.econ.quickCap(P, i);
     const debt = P.debt[i];
-    npc.econ.pay(W, i, n, true);
-    assert.equal(P.cash[i], 0, `${cash} paying ${n}`);
-    assert.equal(P.debt[i] - debt, n - cash);
+    assert.equal(npc.econ.pay(W, i, n, true), false);
+    assert.equal(P.cash[i], cash, `${cash} paying ${n}`);
+    assert.equal(P.debt[i], debt);
+    assert.equal(P.miss[i], 1);
   }
   // (with room for a quick loan: at least a million of it, the payment made from it)
-  P.cash[i] = 100; P.debt[i] = 0;
-  npc.econ.pay(W, i, 1000, true);
+  P.cash[i] = 100; P.debt[i] = 0; P.miss[i] = 0;
+  assert.equal(npc.econ.pay(W, i, 1000, true), true);
   assert.equal(P.cash[i], 100 + 1000000 - 1000);
   assert.equal(P.debt[i], 1000000);
+  // (but no more than the bank has of its own to lend: what it lent counted off it)
+  W.bankRoom = 600;
+  P.cash[i] = 100; P.debt[i] = 0;
+  assert.equal(npc.econ.pay(W, i, 1000, true), false);
+  assert.equal(P.cash[i], 700);
+  assert.equal(P.debt[i], 600);
+  assert.equal(W.bankRoom, 0);
 });
 
 test('a life ends: money they were short of is a loss to the bank (not money made), the home passes on, nobody counts them a friend, their orders go', () => {

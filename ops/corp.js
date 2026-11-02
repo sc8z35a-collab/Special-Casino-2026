@@ -20,7 +20,7 @@ var OpsCorp = (function () {
   var TABS = [['top', 'トップ'], ['fin', '決算'], ['products', '商品'], ['biz', '事業'], ['people', '人と予算'], ['stock', '株式・財務'], ['ties', '友好度'], ['news', 'ニュース']];
   var NEWS = { results: '決算', guidance: '業績予想', revise: '予想修正', dividend: '配当', release: '発売', hit: 'ヒット', flop: '不振', start: '開発開始',
     delay: '発売延期', cancel: '開発中止', update: '大型更新', week: '週間', hire: '採用', loan: '借入', support: '開発援助', rebate: '販売奨励金', tie: '友好度', lab: '研究開発', surcharge: '値上げ',
-    garage: 'ガレージ契約料', staff: '人員', tech: '技術開発', quest: 'クエスト手数料', deal: '価格交渉', ip: 'ブランド', char: '新キャラクター', license: 'IP契約', bankrupt: '倒産' };
+    garage: 'ガレージ契約料', staff: '人員', tech: '技術開発', quest: 'クエスト手数料', deal: '価格交渉', ip: 'ブランド', char: '新キャラクター', license: 'IP契約', bankrupt: '破産' };
   var st = { view: null, request: null, toast: null, at: '', tab: 'top', mode: 'q', sheet: 'pl', metric: 'sales', all: null, sites: {}, gen: 0, today: {} };
 
   /* ------------------------------------------------------------------ small things --- */
@@ -152,6 +152,126 @@ var OpsCorp = (function () {
   // server's clock, as its last answer said it, ticking here every second; each business day runs from 9:00 to 9:00
   // Japan time and closes then).
   var clockTimer = 0, skew = 0;
+  // the game's businesses and who runs each (CORP.features): its first owner's, until that one fails; then its trustee's
+  // and, sold, the highest bidder's (or a local company's, with Tenesice's money)
+  function runnerName(o) {
+    if (o.by && o.by.indexOf('local:') === 0) return '地元：' + (o.byName || o.by.slice(6)) + '（テネシスから借入）';
+    if (o.by) return nameOf(o.by);
+    return o.estate ? nameOf(o.estate) + 'の破産管財人' : '運営者なし（再入札待ち）';
+  }
+  function opsPanel(ops) {
+    var p = panel('ゲーム機能の運営権', '会社が破産すると破産管財人が運営を続け、入札で上場13社（応札がなければ地元企業がテネシスから借り入れて）に譲渡');
+    p.appendChild(table([['機能'], ['運営'], ['いつから'], ['1日の売上（最近）', 1], ['取得額', 1], ['入札']], ops.map(function (o) {
+      return { cells: [o.name, o.by === o.owner ? nameOf(o.by) + '（当初から）' : runnerName(o), o.by === o.owner ? '—' : dayLabel(o.since), money(o.day), o.price ? money(o.price) : '—',
+        o.bids && o.bids.length ? o.bids.map(function (b) { return nameOf(b.id) + ' ' + money(b.bid); }).join('・') : '—'], cls: o.by === o.owner ? '' : 'corp-moved' };
+    })));
+    return p;
+  }
+  // a company's 破産 (CORP.bankruptcy): its days, what it owed and paid out, what its trustee sold
+  function bkPanel(r) {
+    var b = r.bk, S = ['filed', 'opened', 'auction', 'distributed', 'closed'], N = { filed: '破産申立て', opened: '破産手続開始決定', auction: '事業譲渡の入札', distributed: '換価・配当', closed: '手続終結（消滅）' };
+    var p = panel('破産手続', b.why);
+    var steps = el('ol', 'corp-steps');
+    [['filed', b.filed], ['opened', b.open], ['auction', b.auction], ['distributed', b.distribute], ['closed', b.close]].forEach(function (x) {
+      steps.appendChild(el('li', S.indexOf(x[0]) <= S.indexOf(b.stage) ? 'done' : '', N[x[0]] + '（' + dayLabel(x[1]) + '）'));
+    });
+    p.appendChild(steps);
+    var g = el('div', 'corp-tiles');
+    g.appendChild(stat('負債総額（申立て時）', money(b.debt), '予納金 ' + money(b.deposit) + '・上場廃止 ' + dayLabel(b.delist)));
+    g.appendChild(stat('社員', (b.staff || 0) + '名', '全員解雇（未払賃金 ' + money(b.wages) + '、国の立替払 ' + money(b.guaranteed) + '）'));
+    if (b.rate !== undefined && b.rate !== null) g.appendChild(stat('配当率', (Math.round(b.rate * 1000) / 10) + '%', '債権 ' + money(b.claims) + '・回収 ' + money(b.gathered), b.rate < 1 ? 'neg' : ''));
+    if (b.loss !== undefined) g.appendChild(stat('テネシスの損失', money(b.loss), '返済 ' + money(b.repaid)));
+    p.appendChild(g);
+    if (b.sold && b.sold.length) p.appendChild(table([['譲渡した事業'], ['譲渡先'], ['価格', 1], ['応札', 1]], b.sold.map(function (x) {
+      return [C().feature(x.feature).name, x.to.indexOf('local:') === 0 ? '地元：' + (x.toName || x.to.slice(6)) : nameOf(x.to), money(x.price), String(x.bids)];
+    })));
+    if (b.losses && Object.keys(b.losses).length) p.appendChild(el('p', 'muted corp-note', '債権者の貸倒損失：' + Object.keys(b.losses).map(function (k) { return nameOf(k) + ' ' + money(b.losses[k]); }).join('・')));
+    return p;
+  }
+  // 地方企業: the 32 local companies by their economies; one of them in full (its spec, its day counted on, its months)
+  function localsPage(box) {
+    var r = st.locals, top = el('div', 'corp-nav');
+    top.appendChild(btn('btn small corp-back', st.local ? '‹ 地方企業' : '‹ 企業', function () { if (st.local) { st.local = ''; render(); } else open(''); }, st.local ? '地方企業の一覧に戻る' : '企業フォルダーに戻る'));
+    top.appendChild(el('span', 'muted', '企業 / 地方企業' + (st.local && r && r.locals ? ' / ' + (r.locals.firms.filter(function (f) { return f.id === st.local; })[0] || {}).name : '')));
+    box.appendChild(top);
+    if (!r) { box.appendChild(el('p', 'muted corp-empty', '読み込み中…')); return; }
+    if (!r.started || !r.locals) { box.appendChild(el('p', 'muted corp-empty', 'NPCの国が始まると、地方企業32社が動き出します。')); return; }
+    box.appendChild(liveClock(r));
+    var L = r.locals, f = st.local ? L.firms.filter(function (x) { return x.id === st.local; })[0] : null;
+    if (f) { localSite(box, L, f); return; }
+    L.spheres.forEach(function (sp) {
+      var list = L.firms.filter(function (x) { return x.sphere === sp.id; });
+      var p = panel(sp.name, list.length + '社・この国の大きさで（×' + (Math.round(L.scale * 1000) / 1000) + '）');
+      p.appendChild(table([['No.'], ['会社'], ['本社'], ['社員', 1], ['年収', 1], ['売上高（年・計画）', 1], ['営業利益（年・計画）', 1], ['先月の営業利益', 1], ['利益剰余金', 1], ['状態']], list.map(function (x) {
+        var last = x.last || {};
+        return { onclick: function () { st.local = x.id; render(); if (st.view) st.view.scrollTop = 0; },
+          cells: [String(x.no), x.name, x.hq, x.staff + ' / ' + x.target, money(x.pay), money(x.spec.sales), money(x.spec.op), { t: last.op !== undefined ? money(last.op) : '—', cls: last.op < 0 ? 'neg' : '' }, money(x.retained),
+            x.dead ? (x.bk ? '破産（' + dayLabel(x.bk.filed) + '）' : '倒産') : x.under ? '債務超過' + x.under + 'か月' : x.runs.length ? '運営：' + x.runs.map(function (o) { return o.name; }).join('・') : '—'] };
+      })));
+      box.appendChild(p);
+    });
+  }
+  function localSite(box, L, f) {
+    var s = el('div', 'corp-site'); s.style.setProperty('--c1', '#1d3b2a'); s.style.setProperty('--c2', '#4b8a5c');
+    var hero = el('header', 'corp-hero'), names = el('div', 'corp-hero-text');
+    hero.appendChild(icon('locals', 84));
+    names.appendChild(el('small', 'corp-en', 'No.' + f.no + '・' + L.spheres.filter(function (x) { return x.id === f.sphere; })[0].name));
+    names.appendChild(el('h2', '', f.name));
+    names.appendChild(el('p', '', f.role));
+    var badges = el('div', 'corp-badges');
+    badges.appendChild(el('span', 'corp-badge', '非上場'));
+    badges.appendChild(el('span', 'corp-badge', '本社 ' + f.hq));
+    badges.appendChild(el('span', 'corp-badge', '社員 ' + f.staff + '名'));
+    if (f.dead) badges.appendChild(el('span', 'corp-badge neg', '破産（' + dayLabel(f.dead.day) + '）'));
+    names.appendChild(badges); hero.appendChild(names); s.appendChild(hero);
+    var body = el('div', 'corp-body');
+    // the day so far: what it sold on the last day it closed, counted on through today (it is paid as the day closes)
+    if (!f.dead && f.day) {
+      var lp = panel('本日の売上（リアルタイム）', '最近の1日平均の速さで9:00から積み上げた見込み・確定は日の締め（上位13社からの代金は月末にまとめて入金）');
+      var g0 = el('div', 'corp-tiles'), sales = stat('本日の売上（見込み）', '', ''), month = stat('今月の売上', money(f.m.sales + 0), '費用 ' + money(f.m.cost) + (f.m.altas ? '（うちアルタス ' + money(f.m.altas) + '）' : '') + '・給料 ' + money(f.m.pay));
+      g0.appendChild(sales); g0.appendChild(month); lp.appendChild(g0); body.appendChild(lp);
+      var rate = f.pace || 0, t0 = 0, run = function () {
+        if (t0 && !lp.isConnected) { clearInterval(t0); return; }
+        var now = Date.now() + skew, into = (now % 86400000) / 86400000;
+        sales.querySelector('b').textContent = C().fmt.moneyFine(rate * into, 3);
+        var sm = sales.querySelector('small') || sales.appendChild(el('small', 'muted')); sm.textContent = '1日平均 ' + money(rate) + '・前日の入金 ' + money(f.day.got) + '（計画 ' + money(f.plan.sales / 365) + '/日）';
+        month.querySelector('b').textContent = C().fmt.moneyFine(f.m.sales + rate * into, 3);
+      };
+      run(); t0 = setInterval(run, 1000);
+    }
+    var sp = f.spec, t = el('div', 'corp-tiles');
+    t.appendChild(stat('社員', f.staff + ' / ' + f.target + '名', '仕様 ' + sp.staff + '名（国の大きさで ' + f.target + '名）'));
+    t.appendChild(stat('一般社員の年収', money(sp.pay), '1人あたり会社負担 ' + money(sp.unit)));
+    t.appendChild(stat('社長 / CEO の年収', money(sp.ceo[0]) + ' / ' + money(sp.ceo[1]), ''));
+    t.appendChild(stat('売上高（年・計画）', money(sp.sales), 'この国で ' + money(f.plan.sales)));
+    t.appendChild(stat('営業利益（年・計画）', money(sp.op), '利益率 ' + (Math.round(sp.op / sp.sales * 1000) / 10) + '%'));
+    t.appendChild(stat('資本金', money(f.capital), L.scale < 1 ? '仕様 ' + money(sp.capital) : ''));
+    t.appendChild(stat('利益剰余金', money(f.retained), '始まり ' + money(sp.retained * L.scale) + (f.capital + f.retained < 0 ? '・債務超過' : ''), f.retained < 0 ? 'neg' : ''));
+    t.appendChild(stat('手元の資金', money(f.cash), f.cash < 0 ? '取引銀行から借入中（年' + (L.rules.overdraft * 100) + '%）' : '', f.cash < 0 ? 'neg' : ''));
+    if (f.debt) t.appendChild(stat('テネシスからの借入', money(f.debt), f.loans.map(function (l) { return C().feature(l.feature).name + '・年' + (l.rate * 100) + '%'; }).join('・'), 'neg'));
+    body.appendChild(t);
+    if (f.runs.length) { var rp = panel('運営しているゲームの機能'); rp.appendChild(el('p', '', f.runs.map(function (o) { return o.name; }).join('・'))); body.appendChild(rp); }
+    if (f.extra.length) { var xp = panel('引き継いだ事業'); xp.appendChild(el('p', '', f.extra.join('・') + '（破産した会社の事業を引き継ぎ）')); body.appendChild(xp); }
+    var fp = panel('売上の源泉（計画）', '上位13社の支出（業務委託・共同研究費・賃借・発注）と市民の支出');
+    fp.appendChild(table([['源泉'], ['内容'], ['計画の割合', 1]], sp.from.map(function (x) { return [x[0], x[2], Math.round(x[1] * 100) + '%']; })));
+    body.appendChild(fp);
+    if (f.last) {
+      var mp = panel('先月の決算', f.last.key);
+      mp.appendChild(table([['', 0], ['金額', 1]], [['売上高', money(f.last.sales)], ['費用', money(f.last.cost)], ['うち資源の仕入れ（アルタス）', f.last.altas ? money(f.last.altas) : '—'], ['給料', money(f.last.pay)], [{ t: '営業利益' }, { t: money(f.last.op), cls: f.last.op < 0 ? 'neg' : '' }],
+        ['法人税等', money(f.last.tax)], ['決算賞与', f.last.bonus ? money(f.last.bonus) : '—'], ['当期純利益', money(f.last.net)]]));
+      mp.appendChild(el('p', 'muted corp-note', '主な売上：' + (f.by || []).map(function (x) { return x.label + ' ' + money(x.n); }).join('・')));
+      body.appendChild(mp);
+    }
+    if (f.bk) {
+      var bp = panel('破産手続', f.bk.why);
+      bp.appendChild(el('p', '', '申立て ' + dayLabel(f.bk.filed) + '・開始決定 ' + dayLabel(f.bk.open) + '・配当 ' + dayLabel(f.bk.distribute) + '・終結 ' + dayLabel(f.bk.close) + '（' + f.bk.stage + '）'));
+      bp.appendChild(el('p', 'muted corp-note', '負債総額 ' + money(f.bk.debt) + (f.bk.loss ? '・取引銀行の損失 ' + money(f.bk.loss.bank) + '・テネシスの損失 ' + money(f.bk.loss.tenesice) : '') + (f.bk.to ? '・事業の引き継ぎ先 ' + f.bk.to : '')));
+      body.appendChild(bp);
+    }
+    s.appendChild(body);
+    box.appendChild(s);
+  }
+
   function liveClock(r) {
     if (r && r.now) skew = r.now - Date.now();
     var box = el('div', 'corp-clock'), t = el('b', 'corp-clock-time'), d = el('span', 'corp-clock-day'), bar = el('i', 'corp-clock-bar'), fill = el('span');
@@ -232,13 +352,13 @@ var OpsCorp = (function () {
   function ask() {
     if (!st.request) return;
     var gen = ++st.gen, id = st.at;
-    var have = id ? st.sites[id] : st.all;
-    var path = id ? '/api/ops/corp/company?c=' + encodeURIComponent(id) : '/api/ops/corp';
-    if (have && have.rev) path += (id ? '&' : '?') + 'rev=' + encodeURIComponent(have.rev);
+    var have = id === 'locals' ? st.locals : id ? st.sites[id] : st.all;
+    var path = id === 'locals' ? '/api/ops/npc/locals' : id ? '/api/ops/corp/company?c=' + encodeURIComponent(id) : '/api/ops/corp';
+    if (have && have.rev) path += (path.indexOf('?') >= 0 ? '&' : '?') + 'rev=' + encodeURIComponent(have.rev);
     st.request('GET', path).then(function (r) {
       if (gen !== st.gen) return;
       if (r.same) { if (have) have.now = r.now; return; }
-      if (id) st.sites[id] = r; else st.all = r;
+      if (id === 'locals') st.locals = r; else if (id) st.sites[id] = r; else st.all = r;
       render();
     }, function (e) {
       if (gen !== st.gen) return;
@@ -252,7 +372,7 @@ var OpsCorp = (function () {
     var view = st.view;
     if (!view || !C()) return;
     var box = el('div', 'corp');
-    if (st.at) site(box, st.at); else folder(box);
+    if (st.at === 'locals') localsPage(box); else if (st.at) site(box, st.at); else folder(box);
     view.replaceChildren(box);
   }
 
@@ -273,17 +393,25 @@ var OpsCorp = (function () {
       b.appendChild(icon(p.id, 72));
       b.appendChild(el('span', 'corp-app-name', p.name));
       var sm = a && a.companies ? a.companies.filter(function (c) { return c.id === p.id; })[0] : null;
-      b.appendChild(el('small', 'muted', sm && sm.dead ? '倒産・上場廃止' : 'ランク' + ((sm && sm.creditRank) || p.rank) + (p.listed ? '・上場' : '')));
+      b.appendChild(el('small', 'muted', sm && sm.dead ? '破産・上場廃止' : 'ランク' + ((sm && sm.creditRank) || p.rank) + (p.listed ? '・上場' : '')));
       grid.appendChild(b);
     });
+    // 地方企業: the 32 local companies (their specs and their state: the country's, ops/corp.js localsPage)
+    var lb = btn('corp-app', '', function () { open('locals'); }, '地方企業（32社）を開く');
+    lb.setAttribute('role', 'listitem');
+    lb.appendChild(icon('locals', 72));
+    lb.appendChild(el('span', 'corp-app-name', '地方企業'));
+    lb.appendChild(el('small', 'muted', '32社・10の経済圏'));
+    grid.appendChild(lb);
     box.appendChild(grid);
     if (!a) { box.appendChild(el('p', 'muted corp-empty', '読み込み中…')); return; }
     if (!a.started) { box.appendChild(el('p', 'muted corp-empty', 'まだ始まっていません。')); return; }
     // every company at a glance
+    if (a.ops) box.appendChild(opsPanel(a.ops));
     var p1 = panel('各社の概況', '直近4四半期（プレイヤー・市民は直近30日）・M=百万ドル、B=十億ドル');
     p1.appendChild(table([['会社'], ['社員', 1], ['売上高', 1], ['営業利益', 1], ['純利益', 1], ['現金', 1], ['借入金', 1], ['純資産', 1], ['プレイヤー(30日)', 1], ['市民(30日)', 1]],
       a.companies.map(function (c) {
-        var who = el('span', 'corp-who'); who.appendChild(icon(c.id, 24)); who.appendChild(el('span', '', c.name + (c.parent ? '（' + nameOf(c.parent) + 'の子会社）' : '') + (c.dead ? '（倒産）' : '')));
+        var who = el('span', 'corp-who'); who.appendChild(icon(c.id, 24)); who.appendChild(el('span', '', c.name + (c.parent ? '（' + nameOf(c.parent) + 'の子会社）' : '') + (c.dead ? '（破産）' : '')));
         return { onclick: function () { open(c.id); }, cells: [{ t: who }, group(c.staff), mil(c.ttm.sales), { t: mil(c.ttm.op), cls: c.ttm.op < 0 ? 'neg' : '' },
           { t: mil(c.ttm.net), cls: c.ttm.net < 0 ? 'neg' : '' }, mil(c.cash), c.debt ? mil(c.debt) : '—', mil(c.equity), c.players ? money(c.players) : '—',
           c.people ? money(c.people) : (c.abroad ? '国外' : '—')] };
@@ -349,7 +477,7 @@ var OpsCorp = (function () {
     var badges = el('div', 'corp-badges');
     var sm0 = r && r.summary;
     badges.appendChild(el('span', 'corp-badge', 'ランク' + ((sm0 && sm0.creditRank) || p.rank) + (sm0 && sm0.loanRate ? '（テネシス 年' + (sm0.loanRate * 100).toFixed(2) + '%）' : '')));
-    badges.appendChild(el('span', 'corp-badge', sm0 && sm0.dead ? '倒産・上場廃止' : p.listed ? '上場（投資で売買できます）' : '非上場'));
+    badges.appendChild(el('span', 'corp-badge', sm0 && sm0.dead ? '破産・上場廃止' : p.listed ? '上場（投資で売買できます）' : '非上場'));
     if (sm0 && sm0.collab) badges.appendChild(el('span', 'corp-badge', 'MY WAYコラボ中'));
     badges.appendChild(el('span', 'corp-badge', '3月決算'));
     if (r && r.summary) badges.appendChild(el('span', 'corp-badge', '社員 ' + group(r.summary.staff) + '名'));
@@ -371,13 +499,23 @@ var OpsCorp = (function () {
   // トップ: where it stands now, the year's plan, its days in a chart, what players spent there and its latest news
   function pageTop(body, r, p) {
     var m = r.summary, sv = r.state;
-    if (m.dead) {
+    if (m.bk) body.appendChild(bkPanel(m));
+    else if (m.dead) {
       var pd = panel('倒産', dayLabel(m.dead.day));
       pd.appendChild(el('p', 'corp-big neg', '倒産・上場廃止'));
       pd.appendChild(el('p', 'muted', m.dead.why + '。負債 ' + money(m.dead.debt) + '（返済 ' + money(m.dead.repaid) + '・テネシスの損失 ' + money(m.dead.loss) + '）、社員' + group(m.dead.staff) + '名は解雇、全契約を終了、株式は上場廃止（価値はありません）。'));
       body.appendChild(pd);
     }
-    body.appendChild(todayPanel(p.id, p));
+    if (!m.dead) body.appendChild(todayPanel(p.id, p));
+    // the game's businesses it runs (its own from the start, or bought from a failed company's trustee: のれん)
+    if (m.runs && (m.runs.length || (m.goodwill || []).length)) {
+      var pr = panel('運営しているゲームの機能', '会社が破産すると、その機能の運営権は入札で他社へ');
+      pr.appendChild(el('p', '', m.runs.length ? m.runs.map(function (f) { return C().feature(f).name; }).join('・') : '（なし）'));
+      (m.goodwill || []).forEach(function (g) {
+        pr.appendChild(el('p', 'muted corp-note', C().feature(g.feature).name + 'を譲受け：のれん ' + money(g.price) + '（残り ' + money(g.left) + '・毎月 ' + money(g.month) + 'を5年で償却）'));
+      });
+      body.appendChild(pr);
+    }
     var tiles = el('div', 'corp-tiles');
     tiles.appendChild(stat(p.salesName || '売上高', money(m.ttm.sales), '直近4四半期'));
     tiles.appendChild(stat('営業利益', money(m.ttm.op), '直近4四半期', m.ttm.op < 0 ? 'neg' : ''));
@@ -409,7 +547,7 @@ var OpsCorp = (function () {
       tiles.appendChild(stat('IP契約', on + ' / ' + r.ip.contracts.length + '社', '契約料 年' + money(r.ip.contracts.reduce(function (n, c) { return n + (c.on ? c.fee : 0); }, 0)), on < r.ip.contracts.length ? 'neg' : ''));
       tiles.appendChild(stat('成果報酬（企画採用）', group(r.ip.ideas.all || 0) + '件', '1件 $500K・累計 ' + money(r.ip.ideas.paid || 0)));
     }
-    if (r.license) tiles.appendChild(stat('MY WAYとのIP契約', r.license.dead ? 'MY WAYが倒産' : r.license.on ? '契約中' : '打ち切り', '契約料 年' + money(r.license.fee) + (r.license.last ? '・先月の採算 ' + money(r.license.last.margin) : ''), !r.license.on || (r.license.last && r.license.last.margin < 0) ? 'neg' : ''));
+    if (r.license) tiles.appendChild(stat('MY WAYとのIP契約', r.license.dead ? 'MY WAYが破産' : r.license.on ? '契約中' : '打ち切り', '契約料 年' + money(r.license.fee) + (r.license.last ? '・先月の採算 ' + money(r.license.last.margin) : ''), !r.license.on || (r.license.last && r.license.last.margin < 0) ? 'neg' : ''));
     if (r.seeds) tiles.appendChild(stat('金の生る木の種', group(r.seeds.n) + '本/月', r.seeds.m + '・平均' + money(r.seeds.price) + '・原価$1.0M・出荷済み ' + group(r.seeds.sold) + '本'));
     body.appendChild(tiles);
     // the year's plan
@@ -657,7 +795,7 @@ var OpsCorp = (function () {
   function licensePanel(body, r, p) {
     var c = r.license, pl = panel('MY WAYとのIP契約', c.what);
     var tiles = el('div', 'corp-tiles');
-    tiles.appendChild(stat('状態', c.dead ? 'MY WAYが倒産' : c.on ? '契約中' : '打ち切り', c.on ? dayLabel(c.from) + 'から' : c.until ? dayLabel(c.until) + 'まで' : ''));
+    tiles.appendChild(stat('状態', c.dead ? 'MY WAYが破産' : c.on ? '契約中' : '打ち切り', c.on ? dayLabel(c.from) + 'から' : c.until ? dayLabel(c.until) + 'まで' : ''));
     tiles.appendChild(stat('契約料（年）', money(c.fee), '当初 ' + money(c.base)));
     if (c.last) { tiles.appendChild(stat('先月のコラボ売上', money(c.last.sales), '原価 ' + money(c.last.cost) + '・契約料 ' + money(c.last.fee))); tiles.appendChild(stat('先月の採算', money(c.last.margin), '', c.last.margin < 0 ? 'neg' : '')); }
     tiles.appendChild(stat('採算ライン', '流行×信用 ' + Math.round(c.breakeven * 100) + '%', 'これを下回ると赤字'));

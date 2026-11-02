@@ -3,11 +3,13 @@
 // districts' books (taxes, the pension and its fund, the health insurance, the safety nets, the civil servants, the
 // public works, bonds), the month's bills, lives ending and new ones beginning at 18, the money troubles, work
 // (hiring, leaving, 60 and 65), and the people's politics and unions (npc-politics.js).
-import { NPC, CORP } from './rules.js';
-import { T, S, N, E, FL, HOME, NN, NT, REL, MEM, OWN, LISTED, ageOf, remember, memberList, joinHousehold, leaveHousehold, addRelation, pensionMonthly, clampB, clearView } from './npc-pop.js';
+import { NPC, CORP, ASUKA } from './rules.js';
+import { T, S, N, E, FL, HOME, NN, NT, REL, MEM, OWN, LISTED, ageOf, remember, memberList, joinHousehold, leaveHousehold, addRelation, pensionMonthly, clampB, clearView, startMoney } from './npc-pop.js';
 import * as econ from './npc-econ.js';
 import { M } from './npc-life.js';
 import { LISTED_IDS } from './npc-market.js';
+import * as local from './npc-local.js';
+import * as asukaModel from './asuka.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const YEAR = 365;
@@ -82,10 +84,34 @@ export function fromCompanies(W, ext, day) {
     const hq = NPC.districts.findIndex((d) => d.hq.includes(t.company));
     econ.districtIn(W, hq >= 0 ? hq : 4, 'corporate', t.n - nation);
   }
-  for (const d of ext.dividends || []) dividends(W, d.company, d.n, d.out);
-  if (ext.sector) { W.sector.cash += ext.sector; W.sector.inCompanies += ext.sector; }
-  if (ext.imports) W.sum.imports += ext.imports;
-  if (ext.exports) W.sum.exports = (W.sum.exports || 0) + ext.exports;
+  for (const d of ext.dividends || []) dividends(W, d.company, d.n, d.out, d.players);
+  // (a company that failed: what it could not pay its people, the country's 80% — 未払賃金立替払 —, before they go)
+  for (const g of ext.guarantee || []) {
+    const staff = W.staffOf(g.company), each = staff.length ? Math.floor(g.n / staff.length) : 0;
+    if (!each) continue;
+    for (const i of staff) { P.cash[i] += each; P.inc[i] += each; }
+    econ.nationOut(W, 'guarantee', each * staff.length);
+  }
+  // (the game's businesses the local companies run, and those they bought: server/core/npc-local.js)
+  for (const e of ext.toLocals || []) local.operated(W, e, day);
+  for (const e of ext.localWins || []) local.won(W, e, day);
+  if (ext.sector) {
+    W.sector.cash += ext.sector; W.sector.inCompanies += ext.sector;
+    // (who paid it and for what: the local companies' sales of it, server/core/npc-local.js)
+    const by = W.sector.today || (W.sector.today = {});
+    for (const [k, n] of Object.entries(ext.sectorBy || {})) by['co:' + k] = (by['co:' + k] || 0) + n;
+  }
+  // (abroad: paid for what came from it, it paid for what it bought of the country — only ever with what it was paid;
+  // by the part of ATSUKA Vision that sold it, アルタス's by the company that bought)
+  if (ext.imports) {
+    const by = ext.importsBy || {}, altasBy = ext.altasBy || {};
+    let left = ext.imports;
+    if (by.digital) { econ.toAbroad(W, by.digital, 'digital'); left -= by.digital; }
+    let named = 0;
+    for (const [co, n] of Object.entries(altasBy)) { if (n > 0 && named + n <= left) { econ.toAbroad(W, n, 'altas', 'co:' + co); named += n; } }
+    if (left - named > 0) econ.toAbroad(W, left - named, 'altas', 'co:other');
+  }
+  if (ext.exports) { W.sum.exports = (W.sum.exports || 0) + ext.exports; W.abroad.cash -= ext.exports; }
   // (the used cars the local trade bought from Car Owner)
   if (ext.fromSector) W.sector.cash -= ext.fromSector;
   // the companies' bonds are the country's: bought, the country has the money; sold back, it pays it; and their interest
@@ -107,14 +133,21 @@ export function fromCompanies(W, ext, day) {
   }
   // a severance or a car bought back from a person: the company's to them
   for (const s of ext.toPeople || []) { if (s.i >= 0 && s.i < P.n) P.cash[s.i] += s.n; else W.sector.cash += s.n; }
-  // (the players' part of the market's money: theirs)
+  // (the country's money put into the failing bank, for its shares: 公的資金の注入)
+  if (ext.bankAid) { econ.nationOut(W, 'bankRescue', ext.bankAid); W.nation.stakes = W.nation.stakes || {}; W.nation.stakes.tenesice = (W.nation.stakes.tenesice || 0) + ext.bankAid; }
+  // (what Tenesice has of its own not lent yet, as of this close: what it can lend until the next, borrowFor)
+  if (ext.bankFree !== undefined) W.bankRoom = Math.max(0, ext.bankFree);
+  // (the players' part of the market's money: theirs; and what the players paid the local businesses back)
   if (ext.toPlayers) W.sum.toPlayers += ext.toPlayers;
+  if (ext.fromPlayers) W.sum.fromPlayers += ext.fromPlayers;
   // what the treasury paid for the game (server/core/corp-model.js gameDay): the players' slot wins beyond their bets
   // and their quests' rewards (theirs, but YOSIDA's fee), YOSIDA's bill for the gacha (abroad)
+  // (what the players paid the treasury: the money trees' fund)
+  for (const [k, n] of Object.entries(ext.stateIn || {})) econ.nationIn(W, k, n);
   if (ext.state) {
     for (const [k, n] of Object.entries(ext.state.by || {})) econ.nationOut(W, k, n);
     W.sum.toPlayers += ext.state.players || 0;
-    W.sum.imports += ext.state.abroad || 0;
+    econ.toAbroad(W, ext.state.abroad || 0);
   }
 }
 
@@ -158,32 +191,32 @@ export function take(W, i, gross, kind, day) {
 }
 
 // A company's dividends of the day to the people holding its shares (`out`: its shares out): the listed ones' by the
-// shares each holds; the others' to those listed as holding them (their founders and backers); a player's part goes
-// to the players (server/core/stocks.js pays them), a company's is in its own books already.
-function dividends(W, company, n, out) {
+// shares each holds; the others' to those listed as holding them (their founders and backers); a company's is in its
+// own books already. The players' part is what their side paid them for the day, to the dollar (`players`:
+// server/core/stocks.js settleDay — by the second they held them), the people's by their shares out of what that
+// leaves (fewer, if the players' seconds came to more than their shares as the day closed); without it (a country of
+// its own), the players' by their shares as the day closed. The rounding is the local businesses'.
+function dividends(W, company, n, out, players = null) {
   const P = W.P, k = LISTED_IDS.indexOf(company);
   if (n <= 0 || !out) return;
+  const pl = players !== null && players !== undefined ? Math.max(0, Math.min(n, Math.round(players))) : null;
+  const holders = [];
+  if (k >= 0) { for (let i = 0; i < P.n; i++) { const s = P.sh[i * LISTED + k]; if (s > 0) holders.push([i, s]); } }
+  else for (const [i, s] of W.priv[company] || []) if (s > 0) holders.push([i, s]);
+  const room = pl === null ? n : n - pl;
+  let want = 0;
+  for (const [, s] of holders) want += Math.floor(n * s / out);
+  const all = want > room ? holders.reduce((a, [, s]) => a + s, 0) : 0;
   let paid = 0;
-  if (k >= 0) {
-    for (let i = 0; i < P.n; i++) {
-      const s = P.sh[i * LISTED + k];
-      if (s <= 0) continue;
-      const d = Math.floor(n * s / out);
-      P.cash[i] += d;
-      paid += d;
-    }
-  } else {
-    for (const [i, s] of W.priv[company] || []) {
-      const d = Math.floor(n * s / out);
-      P.cash[i] += d;
-      paid += d;
-    }
+  for (const [i, s] of holders) {
+    const d = want > room ? Math.floor(room * s / all) : Math.floor(n * s / out);
+    P.cash[i] += d;
+    paid += d;
   }
-  // the players' part is theirs (their side pays it: server/core/stocks.js); the rounding, the local businesses'
-  const players = Math.min(n - paid, Math.floor(n * ((W.playerShares || {})[company] || 0) / out));
-  W.sum.toPlayers += players;
-  W.sector.cash += n - paid - players;
-  W.sum.divRest += n - paid - players;
+  const toPl = pl !== null ? pl : Math.min(n - paid, Math.floor(n * ((W.playerShares || {})[company] || 0) / out));
+  W.sum.toPlayers += toPl;
+  W.sector.cash += n - paid - toPl;
+  W.sum.divRest += n - paid - toPl;
 }
 
 /* ------------------------------------------------------- the local businesses --- */
@@ -192,22 +225,38 @@ function dividends(W, company, n, out) {
 // (rent and profit, by what they have), less a cushion of a month.
 export function sectorDay(W, day) {
   const P = W.P, s = W.sector, t = CORP.ymd(day);
+  // (the small shops' goods and food: アルタス's, of what the people paid them today, at its prices)
+  if (W.asuka) {
+    const today = s.inPeople - (s.altasSeen ?? s.inPeople);
+    s.altasSeen = s.inPeople;
+    const n = Math.min(Math.max(0, s.cash - local.held(W)), Math.round(today * ASUKA.altas.shops * asukaModel.altasPrice(W)));
+    if (n > 0) { s.cash -= n; econ.toAbroad(W, n, 'altas', 'shops'); }
+  }
+  // the 32 local companies' day (their part of what came in, their costs: server/core/npc-local.js), and their month
+  // on its first day
+  local.day(W, day);
+  if (t.d === 1) local.month(W, day - 1, (i, g) => take(W, i, g, 'salary', day));
   if (t.d === 25) {
     let pay = 0;
+    const shops = s.cash - local.held(W);
     for (let i = 0; i < P.n; i++) {
       const j = P.job[i];
       if (j !== NPC.job.other && j !== NPC.job.self && j !== NPC.job.part) continue;
-      const g = Math.round(P.salary[i] / 12 * (s.cash > 0 ? 1 : 0.6));
+      // (a local company's people by it, in full; the small shops' by what they have)
+      const no = local.firmOf(P, i), f = no ? local.firmByNo(no) : null;
+      const g = Math.round(P.salary[i] / 12 * (f || shops > 0 ? 1 : 0.6));
       take(W, i, g, j === NPC.job.self ? 'self' : 'salary', day);
+      if (f) { const c = W.locals.firms[f.id]; c.cash -= g; c.m.pay += g; }
       pay += g;
     }
     s.cash -= pay;
     s.outPeople += pay;
   }
   // the owners' part: what is beyond a cushion, a thirtieth a day, by what they have (capital), taxed 20% at source
-  const cushion = W.cal.sectorCushion;
-  if (s.cash > cushion) {
-    const out = Math.floor((s.cash - cushion) / 30);
+  // (of the small shops' alone: the local companies keep theirs)
+  const cushion = W.cal.sectorCushion, shops = s.cash - local.held(W);
+  if (shops > cushion) {
+    const out = Math.floor((shops - cushion) / 30);
     if (out > 0 && W.owners.total > 0) {
       let left = out;
       for (const [i, w] of W.owners.list) {
@@ -273,7 +322,7 @@ export function dayStart(W, day, r, ctx) {
     const street = P.home[i] === HOME.street ? 0.15 : 1;
     const n = W.cal.living * Math.pow(size, 0.75) * wealth * thrift * street * (W.capacity.jinx || 1) * (1 + NPC.knobOf(W, 'livingCost') / 100);
     econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.62), true);
-    econ.toSector(W, i, Math.round(n * 0.38), true);
+    econ.toSector(W, i, Math.round(n * 0.38), true, 'living');
     // MY WAY's fans (購入熱): its characters' goods and collaborations at its partners and its own showroom, as much as
     // the characters pull, the impulsive the more
     if (fans) {
@@ -307,11 +356,14 @@ export function dayStart(W, day, r, ctx) {
   // all it owes, 財政破綻, until its money comes back)
   if (W.nation.cash < W.cal.nationFloor) {
     const cap = (W.cal.bank0 || Math.round(3e12 * W.scale)) * NPC.knobOf(W, 'debtCap') / 100;
-    const n = Math.min(Math.ceil((W.cal.nationFloor * 2 - W.nation.cash) / 1e9) * 1e9, Math.max(0, Math.floor((cap - W.nation.bank) / 1e9) * 1e9));
+    // (as far as Tenesice has money of its own to lend: never money made by lending)
+    const room = Math.min(Math.max(0, cap - W.nation.bank), econ.bankRoom(W));
+    const n = Math.min(Math.ceil((W.cal.nationFloor * 2 - W.nation.cash) / 1e9) * 1e9, Math.max(0, Math.floor(room / 1e9) * 1e9));
     if (n > 0) {
       W.nation.cash += n;
       W.nation.bank += n;
       W.nation.debt += n;
+      if (W.bankRoom !== undefined && W.bankRoom !== null) W.bankRoom -= n;
       W.events.push({ kind: 'bonds', n });
     }
   }
@@ -332,18 +384,24 @@ function month(W, day, r, ctx) {
   const rate = W.bankRates;
   for (let i = 0; i < P.n; i++) {
     const age = ageOf(P, i, day);
+    // the household's electricity, gas and water (ナショナル・パワー電力・メトロ都市ガス・アクア・ライフ水道公社, js/game/local.js), by
+    // how many live in it: a household paid none before
+    if (P.hh[i] === i && P.home[i] !== HOME.street) {
+      const bill = Math.round((W.cal.utilities || NPC.life.utilities) * Math.sqrt(memberList(P, i).length) * (1 + NPC.knobOf(W, 'livingCost') / 100));
+      econ.toSector(W, i, bill, true, 'utilities');
+    }
     // the phone: everyone has one, at the same $100,000 a month (テネシス・モバイル); unpaid, it is cut off
     if (econ.pay(W, i, phone, P.cash[i] > -NPC.trouble.quickMax)) { econ.toStream(W, day, 'tenesice', 'mobile', phone); P.phone[i] = 0; }
     else P.phone[i] = 1;
     // the slots: a month played, $1,000,000 to Dtrade
     if (P.spun[i]) {
-      econ.pay(W, i, slot, true);
-      econ.toStream(W, day, 'dtrade', 'slotfee', slot);
+      // (paid only if it could be: never Dtrade's money from nowhere)
+      if (econ.pay(W, i, slot, true)) econ.toStream(W, day, 'dtrade', 'slotfee', slot);
       P.spun[i] = 0;
     }
     if (P.home[i] === HOME.rent && P.rent[i] > 0) {
       if (P.flags[i] & FL.welfare) { econ.nationOut(W, 'welfare', P.rent[i]); W.sector.cash += P.rent[i]; W.sector.inNation += P.rent[i]; }
-      else econ.toSector(W, i, P.rent[i], true);
+      else econ.toSector(W, i, P.rent[i], true, 'rent');
     }
     // VIP (DAIZIN): a member's year renewed while they can afford it and still care for it (the dearer, the fewer),
     // the month's fee paid; and the rich who are vain enough join
@@ -553,7 +611,9 @@ export function die(W, i, day, r, ctx) {
     P.debt[i] = 0;
     P.dkind[i] = 0;
   }
-  // the inheritance: the money and the shares, the tax on what is beyond the free part
+  // the inheritance: the money and the shares, the tax on what is beyond the free part (the slots' tokens they left
+  // changed back into it first: they were only struck off, and the money with them)
+  if (P.tokens[i] > 0) { P.cash[i] += P.tokens[i]; P.tokens[i] = 0; }
   const estate = Math.max(0, P.cash[i]);
   let tax = 0;
   if (heirs.length) {
@@ -586,7 +646,6 @@ export function die(W, i, day, r, ctx) {
     }
     for (const id of Object.keys(W.priv)) for (const h of W.priv[id]) if (h[0] === i) h[0] = W.richest;
   }
-  // (the slots' tokens they left: changed back for the estate, the fee kept)
   P.cash[i] = 0;
   P.tokens[i] = 0;
   for (let k = 0; k < LISTED; k++) P.sh[i * LISTED + k] = 0;
@@ -612,8 +671,9 @@ export function die(W, i, day, r, ctx) {
 }
 
 // A new life at 18 in the place of one that ended: most as the grown child of a household that wanted one (some of
-// its character from them), the rest young people come to live here; a little money of their own and the family's
-// help; a student or looking for work.
+// its character from them), the rest young people come to live here; the money a life begins with (as everyone's at
+// the country's start, paid by the treasury — no money is made but at the country's founding: its 出生・転入の支度金,
+// `newLife` in its books) and the family's help; a student or looking for work.
 export function reborn(W, i, day, r, heirs) {
   const P = W.P;
   P.gen[i] = (P.gen[i] + 1) & 0xffff;
@@ -650,11 +710,14 @@ export function reborn(W, i, day, r, heirs) {
   P.job[i] = r.u() < 0.6 ? NPC.job.student : NPC.job.none;
   P.dept[i] = 0; P.rank[i] = 0; P.salary[i] = 0; P.tenure[i] = 0; P.jsat[i] = 160; P.shift[i] = r.int(2); P.wdist[i] = P.dist[i];
   P.flags[i] = FL.newborn | (P.job[i] === NPC.job.student ? FL.student : 0);
-  P.debt[i] = 0; P.dkind[i] = 0; P.credit[i] = 150; P.car[i] = 0; P.carDay[i] = 0; P.vip[i] = 0; P.phone[i] = 0; P.spun[i] = 0; P.live[i] = 0; P.subs[i] = 0;
+  P.debt[i] = 0; P.dkind[i] = 0; P.credit[i] = 150; P.miss[i] = 0; P.car[i] = 0; P.carDay[i] = 0; P.vip[i] = 0; P.phone[i] = 0; P.spun[i] = 0; P.live[i] = 0; P.subs[i] = 0;
   P.penM[i] = 0; P.penPay[i] = 0; P.penHalf[i] = 0; P.penDefer[i] = 0; P.penAmt[i] = 0; P.jobless[i] = 0; P.joblessPay[i] = 0;
   P.aware[i] = 0; P.sign[i] = 0; P.vote[i] = 0; P.grief[i] = 0; P.lastBig[i] = day; P.why[i] = 0; P.budget[i] = 0; P.spent[i] = 0; P.inc[i] = 0;
   P.fund.fill(0, i * 4, i * 4 + 4);
-  P.cash[i] = 0;
+  // (the money a life begins with: as the country's first people had at 18, by where they live — the treasury's)
+  const own = startMoney(18, 0, P.dist[i], r.z());
+  econ.nationOut(W, 'newLife', own);
+  P.cash[i] = own;
   P.tokens[i] = 0;
   P.home[i] = HOME.family;
   P.rent[i] = 0;
@@ -670,10 +733,6 @@ export function reborn(W, i, day, r, heirs) {
     joinHousehold(P, i, i);
     P.home[i] = HOME.rent;
     P.rent[i] = Math.round((80000 + r.int(40) * 1000) * (1 + NPC.knobOf(W, 'rentLevel') / 100));
-    // (come from elsewhere with what they saved: the country's start-up grant for the young)
-    const n = 1500000 + r.int(2000000);
-    econ.nationOut(W, 'youth', n);
-    P.cash[i] = n;
   }
   for (let k = 0; k < 4; k++) { const j = r.int(P.n); if (Math.abs(ageOf(P, j, day) - 18) < 6) addRelation(P, i, j, 80, 120); }
   P.upd[i] = W.minute;
@@ -718,7 +777,9 @@ export function richestOf(P) {
 function troubles(W, day, r) {
   const P = W.P, TR = NPC.trouble;
   for (let i = 0; i < P.n; i++) {
-    const broke = P.cash[i] < 0 || (P.debt[i] > econ.quickCap(P, i) * 1.3 && P.cash[i] < 300000);
+    // (broke: owing beyond what anyone lends, or the payments one had to make missed day after day)
+    const broke = P.cash[i] < 0 || (P.debt[i] > econ.quickCap(P, i) * 1.3 && P.cash[i] < 300000) || P.miss[i] >= 3;
+    if (P.miss[i] && P.cash[i] > 1000000) P.miss[i] = 0;
     const h = P.home[i];
     if (h === HOME.stay) {
       P.stay[i]++;

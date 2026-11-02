@@ -299,8 +299,9 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady =
         saveGrowth(t, now);
         q('UPDATE trees SET given = given + ? WHERE id = ?').run(amount, t.id);
         q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(amount, cur.id);
-        // (YOSIDA's fertilizer: its share of what was given)
-        if (corp) corp.flow('yosida', 'fertilizer', Math.floor(amount * CORP.yosida.fertilizer));
+        // (YOSIDA's fertilizer: its share of what was given; the rest the treasury's, which pays the harvests)
+        const share = Math.floor(amount * CORP.yosida.fertilizer);
+        if (corp) { corp.flow('yosida', 'fertilizer', share); corp.flow('@stateIn', 'fertilizer', amount - share); }
         return { tree: dto(q('SELECT * FROM trees WHERE id = ?').get(t.id), now), balance: balance(getUser(u.id)) };
       });
       balanceChanged(u.id, true);
@@ -334,6 +335,8 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady =
         const paid = Math.floor(grownNow(t, now) * c.mult * boostOf(t));
         // (harvests: counted for the 功績, server/core/medals.js)
         q('UPDATE users SET dollars = dollars + ?, harvests = harvests + 1, rev = rev + 1 WHERE id = ?').run(paid, u.id);
+        // (the tree's money: the treasury's, as everything the game gives — nothing is made from nothing)
+        if (corp) corp.flow('@state', 'tree', paid);
         q('UPDATE trees SET harvested = harvested + ? WHERE id = ?').run(paid, t.id);
         startCycle(t, TREE.cycleOf(String(body.next || '')) ? String(body.next) : c.id, now);
         return { paid, tree: dto(q('SELECT * FROM trees WHERE id = ?').get(t.id), now), balance: balance(getUser(u.id)) };

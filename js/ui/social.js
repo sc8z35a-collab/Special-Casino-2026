@@ -1071,7 +1071,8 @@
   // under the card: whether it was received (`hint`: where it is once it is)
   function claimState(card, m, mine, hint) {
     if (m.pending) {
-      card.appendChild(el('div', 'pr-state', K.receiptExpired(m) ? '期限を過ぎたため受け取れません' : mine ? (m.returned ? '相手のアカウントが削除されたため、あなたに戻りました' : m.claimed ? '受け取られました' : 'まだ受け取られていません')
+      card.appendChild(el('div', 'pr-state', m.lapsed ? (mine ? '期限までに受け取られなかったため、あなたに戻りました' : '期限を過ぎたため送り主に戻りました')
+        : K.receiptExpired(m) ? '期限を過ぎたため受け取れません' : mine ? (m.returned ? '相手のアカウントが削除されたため、あなたに戻りました' : m.claimed ? '受け取られました' : 'まだ受け取られていません')
         : m.claimed ? '受け取り済み' : claiming[m.id] ? '受け取っています…' : 'タップして受け取る'));
     }
     K.receiptHint(card, m);
