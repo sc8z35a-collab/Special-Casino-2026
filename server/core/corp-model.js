@@ -1178,10 +1178,13 @@ const monthlyCosts = (s) => Math.round(s.n * s.unit / 12 + (spend(s, 'place') + 
 // The month's budget meeting, once the country lives: what it spends set by what it sells. Its last three months'
 // sales and operating result against the margin its plan was made for (`p.op / p.sales`): short of it, its
 // buildings, research, advertising, other costs and investment cut by what is missing (a tenth at most a month, down
-// to a twentieth of where they began — a company can end up a tenth of its size); well over it and below where they
-// began, raised back a twentieth a month. Its people follow at the quarter (staffing). Nobody pays for what does not
-// sell: a company lives on what it is paid. (A studio's quarters swing with its releases: its own plans decide.)
-const BUDGET = { keys: ['place', 'rd', 'ads', 'other', 'capex'], cut: 0.1, raise: 0.05, floor: 0.05, months: 3 };
+// to a twentieth of where they began — a company can end up a tenth of its size); well over it (`over`), it spends
+// what is beyond the plan's margin on growing — more buildings, research, advertising, investment — up to `raise` a
+// month (`top` times where they began at most): a company that sells three times its plan, or keeps far more of it
+// than its plan meant to, runs more and more, its margin back towards the plan's. Its people follow at the quarter
+// (staffing). Nobody pays for what does not sell: a company lives on what it is paid. (A studio's quarters swing
+// with its releases: its own plans decide.)
+const BUDGET = { keys: ['place', 'rd', 'ads', 'other', 'capex'], cut: 0.1, raise: 0.15, over: 1.2, top: 6, floor: 0.05, months: 3 };
 function budgetReview(w, s, p, d, out) {
   if (!w.circ || d < w.circ.from || p.model === 'studio' || s.dead || abroad(s)) return;
   const pl = CORP.plOf(s.per.m), h = s.mHist || (s.mHist = []);
@@ -1195,13 +1198,13 @@ function budgetReview(w, s, p, d, out) {
   if (!(yearly > 0)) return;
   let f = 0;
   if (op < want) f = -Math.min(BUDGET.cut, (want - op) * 12 / yearly);
-  else if (op > want * 1.5) f = Math.min(BUDGET.raise, (op - want) * 12 / yearly);
+  else if (op > want * BUDGET.over) f = Math.min(BUDGET.raise, (op - want) * 12 / yearly);
   if (!f) return;
   let moved = 0;
   for (const k of BUDGET.keys) {
     const b = s.budget[k] || 0, top = base[k] || 0;
     if (!top) continue;
-    const next = Math.round(Math.max(top * BUDGET.floor, Math.min(f > 0 ? Math.max(top, b) : b, b * (1 + f))));
+    const next = Math.round(Math.max(top * BUDGET.floor, Math.min(f > 0 ? Math.max(top * BUDGET.top, b) : b, b * (1 + f))));
     moved += next - b;
     s.budget[k] = next;
   }
@@ -3354,7 +3357,7 @@ export function closeDay(w, d, flows, ch) {
     if (CORP.isQuarterEnd(d)) s.qNet = CORP.plOf(s.per.q).net;
     out.days.push(dayRow(w, s, p, d));
     // (how the companies did today, together: アルタス reads it when it sets its prices)
-    if (w.ext && !s.dead) w.ext.health = (w.ext.health || 0) + out.days[out.days.length - 1].op;
+    if (w.ext && !s.dead) { const row = out.days[out.days.length - 1]; w.ext.health = (w.ext.health || 0) + row.op; w.ext.sales = (w.ext.sales || 0) + row.sales; }
     closePeriods(w, s, p, d, out, ch);
     check(s, d);
   }

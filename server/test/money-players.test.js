@@ -166,3 +166,33 @@ test('every way a player\'s money moves, through the server: the players\' ledge
   const P = W().ledger.players;
   assert.equal(P.drift, 0, JSON.stringify(P.days.slice(-3)));
 });
+
+// (the count of what a day's flows come to between the players and the country — the players' ledger's, for the days
+// still open — is what the day's close books of them, kind by kind)
+test('what a day\'s flows come to between the players and the country: crossingsOf counts them as the close books them', async () => {
+  const corpModel = await import('../core/corp-model.js'), npc = await import('../core/npc-model.js');
+  const key = Buffer.alloc(32, 9), ch = corpModel.chance(key), launch = Math.floor(START / DAY);
+  const { world: w } = corpModel.boot(key, launch, { years: 0, prices: { riru: 12000, ice: 30000 } });
+  const W = npc.boot(key, START, w, { n: 500 });
+  corpModel.startCirculation(w, launch, 500 / 50000);
+  const flows = {
+    dtrade: { casino: 123456, winfee: 6789, exchange: 900, trade: 4400 },
+    yosida: { questfee: 1000, gacha: 50000, fertilizer: 4000 },
+    magita: { rentcut: 500 },
+    myway: { icons: 3000000 },
+    carowner: { car: { 'mercedes-amg-one-white': [1, 300000000] } },
+    jinx: { shop: { omamori: [2, 10000] } },
+    '@state': { slots: 70000, quests: 10000, gacha: 25000, start: 5000000, daily: 1000, gifts: 2000 },
+    '@stateIn': { fertilizer: 6000 },
+    '@sector': { job: 30000, rent: 20000, lend: 1500000 },
+    '@sectorIn': { repay: 15000 },
+    '@coins': { n: 2, paid: 100000 },
+    '@prize': { lot: 30 }
+  };
+  const c = corpModel.crossingsOf(flows);
+  assert.ok(c.in > 0 && c.out > 0);
+  const d = w.day + 1;
+  const out = corpModel.closeDay(w, d, { ...flows, npc: npc.flowsFor(W, d) }, ch);
+  const booked = (out.ext.toPlayers || 0) + ((out.ext.state || {}).players || 0) - (out.ext.fromPlayers || 0);
+  assert.equal(booked, c.out - c.in, JSON.stringify({ c, toPlayers: out.ext.toPlayers, state: out.ext.state, fromPlayers: out.ext.fromPlayers }));
+});

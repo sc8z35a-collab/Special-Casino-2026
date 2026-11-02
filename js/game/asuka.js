@@ -65,17 +65,17 @@
   // - `shops`: of what ヴェルノア's people pay the small shops (their goods and food); `trade`: of what アスカ's people pay its
   //   local trade
   // Its prices (`price`: an index, 1 at the founding) it sets each month as a monopoly does, for as much as it can
-  // take: up a step while what was bought of it held up and its customers (the thirteen) made money, down a step when
-  // they lost it; within `min` and `max`. What they pay above the founding's prices is their cost (they pass it on in
-  // their own prices as their plans are reviewed). Half its profit each month (`dividend`) is the treasury's, for the
-  // country's own projects.
+  // take: up a step while what was bought of it held up and its customers (the thirteen) had the margin to bear it
+  // (`squeeze` of their sales), down a step when theirs fell below `relief` or they lost money; within `min` and `max`.
+  // What they pay above the founding's prices is their cost (their budgets follow it as they are reviewed). Half its
+  // profit each month (`dividend`) is the treasury's, for the country's own projects.
   var ALTAS = {
     name: 'アルタス', full: 'アルタス（ATSUKA Visionの国営資源事業）',
     cogs: { magita: 0.6, yosida: 0.6, wazima: 0.6, jinx: 0.45, carowner: 0.35, daizin: 0.4, myway: 0.35, dtrade: 0.1, speedeed: 0.1, citywork: 0.05, tenesice: 0, ice: 0, riru: 0 },
     route: { place: 0.1, plant: 0.3, rd: 0.05, other: 0.05, selling: 0.1, capex: 0.15 },
     local: { bank: 0.02, magita: 0.5, wazima: 0.35, yosida: 0.3, retail: 0.3, myway: 0.25, dtrade: 0.1, daizin: 0.5, games: 0.2, life: 0.45 },
     shops: 0.1, trade: 0.25,
-    price: { min: 0.8, max: 2.5, up: 0.03, down: 0.03, margin: 0.45 },
+    price: { min: 0.8, max: 2.5, up: 0.03, down: 0.03, margin: 0.45, squeeze: 0.1, relief: 0.03 },
     dividend: 0.5
   };
 

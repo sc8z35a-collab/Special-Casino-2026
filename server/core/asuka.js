@@ -153,7 +153,7 @@ export function earned(W, n, division = 'altas', by = 'other', internal = false)
   return true;
 }
 // アルタス's books within ATSUKA Vision (its money is ATSUKA Vision's): its prices, its month, its months
-const altasMonth0 = () => ({ rev: 0, pay: 0, equip: 0, health: 0, by: {} });
+const altasMonth0 = () => ({ rev: 0, pay: 0, equip: 0, health: 0, sales: 0, days: 0, by: {} });
 function altasOf(a) {
   return a.altas || (a.altas = { price: 1, m: altasMonth0(), last: null, hist: [], dividends: 0 });
 }
@@ -202,6 +202,8 @@ export function day(W, day, ext) {
   if (!a || !A) return;
   if (ext && ext.asuka) fromCompanies(W, ext.asuka, day);
   if (ext && ext.health) altasOf(a).m.health += ext.health;
+  if (ext && ext.sales) altasOf(a).m.sales = (altasOf(a).m.sales || 0) + ext.sales;
+  altasOf(a).m.days = (altasOf(a).m.days || 0) + 1;
   const r = seeded(W.key, 'asuka:d:' + day), t = CORP.ymd(day);
   a.day = day;
   procure(W);
@@ -441,10 +443,6 @@ function month(W, day, r) {
   a.month = { in: {}, out: {} };
   a.atsuka.month = {};
 }
-// アルタス's month: its prices set as a monopoly sets them, for as much as it can take — up a step while its customers
-// (ヴェルノア's thirteen, together) made money and what they bought of it held up (a rise that cost it more in what was
-// not bought than it brought is not repeated: its sales are what was bought, never fixed), down a step when they lost
-// money (it lives on them) — and half its profit to the treasury, for the country's own projects.
 // アルタス's customers of a month, the biggest first, by kind: ヴェルノア's thirteen, its local companies, its small shops,
 // アスカ's own trade
 function customers(by) {
@@ -458,17 +456,26 @@ function customers(by) {
     return { kind: 'other', label: k, n };
   }).map((x) => ({ ...x, group: kinds[x.kind] || 'その他' }));
 }
+// アルタス's month: its prices set as a monopoly sets them, for as much as it can take — up a step while what was
+// bought of it held up (a rise that cost it more in what was not bought than it brought is not repeated: its sales are
+// what was bought, never fixed) and its customers (ヴェルノア's thirteen, together) had the margin to bear it
+// (`squeeze` of their sales), down a step when theirs fell below `relief` or they lost money (it lives on them) —
+// and half its profit to the treasury, for the country's own projects.
 export function altasMonth(W, day) {
   const a = W.asuka, L = altasOf(a), P = ASUKA.altas.price, m = L.m;
   const profit = m.rev - m.pay - (m.equip || 0), margin = m.rev > 0 ? profit / m.rev : 0;
-  const was = L.price, prev = L.last ? L.last.rev : 0;
-  const held = prev > 0 ? m.rev >= prev * 0.95 : margin < P.margin;
-  if (m.health < 0) L.price = Math.max(P.min, Math.round(L.price * (1 - P.down) * 1000) / 1000);
-  else if (held) L.price = Math.min(P.max, Math.round(L.price * (1 + P.up) * 1000) / 1000);
-  if (L.price !== was) say(W, day, `アルタスが資源価格を${L.price > was ? '引き上げ' : '引き下げ'}（${was.toFixed(3)}→${L.price.toFixed(3)}：${L.price > was ? '需要が保たれ、取引先の企業が黒字のため' : 'ヴェルノアの企業が赤字のため'}）`);
+  // (what was bought a day, against the month before's: a short month is no fall)
+  const perDay = (x) => x.rev / Math.max(1, x.days || 30);
+  const was = L.price, prev = L.last ? perDay(L.last) : 0;
+  const held = prev > 0 ? perDay(m) >= prev * 0.95 : margin < P.margin;
+  // (its customers' margin: what they made of what they sold — none counted: as good as enough)
+  const theirs = m.sales > 0 ? m.health / m.sales : (m.health >= 0 ? 1 : -1);
+  if (m.health < 0 || theirs < P.relief) L.price = Math.max(P.min, Math.round(L.price * (1 - P.down) * 1000) / 1000);
+  else if (held && theirs >= P.squeeze) L.price = Math.min(P.max, Math.round(L.price * (1 + P.up) * 1000) / 1000);
+  if (L.price !== was) say(W, day, `アルタスが資源価格を${L.price > was ? '引き上げ' : '引き下げ'}（${was.toFixed(3)}→${L.price.toFixed(3)}：${L.price > was ? `需要が保たれ、取引先の企業の利益率が${Math.round(theirs * 100)}%あるため` : m.health < 0 ? 'ヴェルノアの企業が赤字のため' : `取引先の企業の利益率が${Math.round(theirs * 100)}%に下がったため`}）`);
   let div = 0;
   if (profit > 0) { div = Math.min(Math.max(0, a.atsuka.cash), Math.floor(profit * ASUKA.altas.dividend)); a.atsuka.cash -= div; a.treasury += div; L.dividends += div; tin(a, 'altasDividend', div); }
-  L.last = { day, rev: m.rev, pay: m.pay, equip: m.equip || 0, profit, margin: Math.round(margin * 1000) / 1000, health: m.health, by: m.by, price: was, next: L.price, dividend: div };
+  L.last = { day, days: m.days || 0, rev: m.rev, pay: m.pay, equip: m.equip || 0, profit, margin: Math.round(margin * 1000) / 1000, health: m.health, sales: m.sales || 0, theirs: Math.round(theirs * 1000) / 1000, by: m.by, price: was, next: L.price, dividend: div };
   L.hist.push(L.last);
   if (L.hist.length > 36) L.hist.shift();
   L.m = altasMonth0();
