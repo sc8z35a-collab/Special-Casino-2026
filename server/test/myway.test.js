@@ -290,18 +290,8 @@ test('the server: MY WAY is on the market, and once struck off its orders are re
 test('倒産 in a living country: its people let go by the country the day after, and every $ still goes from someone to someone', () => {
   const x = world({ n: 800 });
   const { W, w } = x, s = w.co.myway;
-  const money = () => {
-    const P = W.P;
-    let m = 0;
-    for (let i = 0; i < P.n; i++) m += P.cash[i] - P.debt[i] + P.tokens[i];
-    m += W.nation.cash - W.nation.bank + W.nation.fund.cash + W.districts.reduce((a, d) => a + d.cash, 0) + W.sector.cash;
-    for (const id of NPC.companies) {
-      const c = w.co[id];
-      if (id === 'tenesice') m += (c.bal.cash || 0) + (c.bal.lent || 0) + (c.bal.bonds || 0) - (c.bal.deposits || 0);
-      else m += (c.bal.cash || 0) - c.loans.reduce((a, l) => a + l.amt, 0);
-    }
-    return m + npc.econ.pending(W) + W.abroad.cash - W.sum.endowed + W.sum.toPlayers - W.sum.fromPlayers;
-  };
+  // (the money ledger: server/core/npc-model.js moneyOf)
+  const money = () => npc.moneyOf(W, w);
   // (its money and what it is owed gone, its equity with them: nothing Tenesice will lend)
   s.ip.heat = 0.05; s.ip.brand = 0.3;
   const take = (s.bal.cash || 0) + (s.bal.bonds || 0) - 1000000;

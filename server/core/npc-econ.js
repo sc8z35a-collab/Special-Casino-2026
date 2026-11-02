@@ -4,6 +4,7 @@
 // day's flows until its day closes (server/core/corp-model.js takes it in then).
 import { NPC, RULES, CORP } from './rules.js';
 import { T, FL, HOME, ageOf } from './npc-pop.js';
+import * as asuka from './asuka.js';
 
 /* ----------------------------------------------------------------- the flows --- */
 // the day's money for the companies: { co: { company: { s: { stream: $ }, p: { cars|items: { id: [n, $] } }, t: { title: [n, $] },
@@ -97,11 +98,12 @@ export function toEstate(W, day, company, n) {
 }
 // 海外: what the country pays abroad (its imports) is all the money the world outside has, to buy what the country sells
 // abroad with (server/core/corp-model.js abroadBuys): nothing comes in from outside but what went out
-export function toAbroad(W, n) {
+export function toAbroad(W, n, division = 'materials') {
   n = Math.round(n);
   if (!(n > 0)) return;
   W.sum.imports += n;
-  W.abroad.cash += n;
+  // (the world outside is アスカ国 once it is founded: what is bought there is ATSUKA Vision's sale)
+  if (!asuka.earned(W, n, division)) W.abroad.cash += n;
 }
 export function toBank(W, day, kind, n) {
   if (!(n > 0)) return;
@@ -120,8 +122,9 @@ export const spendAt = (W, key, n) => Math.round(n * Math.sqrt(priceOf(W, key)))
 
 /* ------------------------------------------------------------------- paying --- */
 // A person pays `n` for something of `company`'s (its stream): with the consumption tax on top (the country's), out
-// of their money; short of it, only what is needed to live goes on (a loan or the trouble ladder), the rest is not
-// bought. Returns whether it was paid.
+// of their money; short of it, only what is needed to live is borrowed for (Tenesice's クイックローン, as far as it
+// lends), the rest is not bought — and what nobody will lend for is not paid at all (a day missed: the trouble
+// ladder's sign). Returns whether it was paid.
 export function pay(W, i, n, essential = false) {
   const P = W.P;
   n = Math.round(n);
@@ -129,6 +132,7 @@ export function pay(W, i, n, essential = false) {
   if (P.cash[i] < n) {
     if (!essential) return false;
     borrowFor(W, i, n - P.cash[i]);
+    if (P.cash[i] < n) { P.miss[i] = Math.min(255, P.miss[i] + 1); return false; }
   }
   P.cash[i] -= n;
   P.spent[i] += n;
@@ -137,6 +141,8 @@ export function pay(W, i, n, essential = false) {
 // what the consumption tax adds to a price now (the people only: the players pay none)
 export const withTax = (W, n) => Math.round(n * (1 + (W.nation.knobs.consumptionTax || 0) / 100));
 export function buy(W, i, day, company, stream, n, essential = false) {
+  // (in whole dollars, once: what the buyer pays is exactly what the company and the country get — not a cent lost)
+  n = Math.round(n);
   const tax = Math.round(n * (W.nation.knobs.consumptionTax || 0) / 100);
   if (!pay(W, i, n + tax, essential)) return false;
   toStream(W, day, company, stream, n);
@@ -200,32 +206,27 @@ export function give(W, from, to, n) {
 }
 
 /* ------------------------------------------------------------- the money troubles --- */
-// Short of money for what one must pay: first テネシスのクイックローン (a high rate, up to what their pay and credit
-// allow), then a loan of the usual kind (stops at the cap), and beyond that the debt only grows: the trouble
-// ladder (staying with someone, the street) is climbed each day by npc-state.js.
+// Short of money for what one must pay: テネシスのクイックローン (a high rate, up to what their pay and credit allow),
+// lent out of Tenesice's own money (`W.bankRoom`: what it has of its own not lent yet, as of the last close, less
+// what it lent since — a bank lends only its own money: no money is made by lending). Beyond that nothing: the payment
+// is not made, and the trouble ladder (staying with someone, the street) is climbed each day by npc-state.js.
 export function borrowFor(W, i, need) {
-  const P = W.P, TR = NPC.trouble;
+  const P = W.P;
   need = Math.ceil(need);
-  // (what their money must come to for the payment: what they had and what they are short)
-  const goal = P.cash[i] + need;
-  const room = Math.max(0, quickCap(P, i) - P.debt[i]);
+  const room = Math.max(0, Math.min(quickCap(P, i) - P.debt[i], bankRoom(W)));
   const take = Math.min(room, Math.max(need, Math.min(room, 1000000)));
   if (take > 0) {
     P.debt[i] += take;
     P.cash[i] += take;
+    W.bankRoom -= take;
     if (P.dkind[i] !== 2) { P.dkind[i] = 2; W.sum.quickLoans++; }
     W.sum.lent += take;
   }
-  if (P.cash[i] < goal) {
-    // (beyond what anyone will lend: what is owed grows on its own, the bank's loss if it is never paid)
-    const rest = goal - P.cash[i];
-    P.debt[i] += rest;
-    P.cash[i] += rest;
-    P.dkind[i] = 2;
-    W.sum.lent += rest;
-  }
   return take;
 }
+// what Tenesice can still lend today (its own money not lent yet, server/core/corp-model.js: `bankFree` as of the last
+// close, less what it lent since); before the companies live on the country, as much as is asked
+export const bankRoom = (W) => (W.bankRoom === undefined || W.bankRoom === null ? Infinity : Math.max(0, W.bankRoom));
 export const quickCap = (P, i) => Math.round(Math.max(NPC.trouble.quickBase, Math.min(NPC.trouble.quickMax, (P.salary[i] || 0) * 0.5)) * (0.5 + P.credit[i] / 255));
 // the rate a person's loan pays a year: the usual (the bank's own rate for people) or the クイックローン
 export const loanRate = (W, P, i) => (P.dkind[i] === 2 ? NPC.knobOf(W, 'quickRate') / 100 : W.bankRates.person);

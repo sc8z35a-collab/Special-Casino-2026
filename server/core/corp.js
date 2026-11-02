@@ -271,7 +271,8 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     return CORP.features.map((f) => { const o = ops[f.id]; return { id: f.id, name: f.name, owner: f.owner, by: o.by, byName: runnerName(o.by), since: o.since, price: o.price || 0, from: o.from || null, estate: o.estate || null,
       orphan: o.orphan || null, bids: o.bids || [], history: o.history || [], day: Math.round((w.opRev || {})[f.id] || 0) }; });
   }
-  const delisted = (id) => { const w = get(); return !!(w && w.co[id] && w.co[id].dead); };
+  // (failed, or a bank put under the state — 一時国有化: its shares struck off, worth nothing)
+  const delisted = (id) => { const w = get(); return !!(w && w.co[id] && (w.co[id].dead || w.co[id].reorg)); };
   // a listed company's shares traded by a player at second `sec` (new shares or its own bought back), and the
   // fee, Dtrade's
   // (all of it the company's: a buy is new shares, the money into its funds; a sale its own bought back, the money
@@ -318,7 +319,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
         guide: s.guide ? { fy: s.guide.fy, sales: s.guide.sales, op: s.guide.op, ord: s.guide.ord, net: s.guide.net, eps: s.guide.eps, dps: s.guide.dps } : null,
         next, news: publicNews(id, now, PUBLIC_NEWS),
         // (struck off: it failed; MY WAY's partner: its contract with it)
-        ...(s.dead ? { delisted: { day: s.dead.day, why: s.dead.why } } : {}),
+        ...(s.dead ? { delisted: { day: s.dead.day, why: s.dead.why } } : s.reorg ? { delisted: { day: s.reorg.day, why: s.reorg.why } } : {}),
         ...(id === 'myway' && s.ip ? { ip: { heat: Math.round(s.ip.heat * 100) / 100, brand: Math.round(s.ip.brand * 100) / 100, partners: Object.values(s.ip.contracts).filter((c) => c.on).length } } : {}),
         ...(w.co.myway && w.co.myway.ip && w.co.myway.ip.contracts[id] && w.co.myway.ip.contracts[id].on && !w.co.myway.dead ? { collab: true } : {})
       };

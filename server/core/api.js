@@ -294,7 +294,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     if (!(gross > 0)) return 0;
     const cut = Math.floor(gross * CORP.magita.garage.rentCut), net = gross - cut;
     q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(net, userId);
-    corp.flow('magita', 'rentfee', cut);
+    corp.flow('magita', 'rentcut', cut);
     corp.flow('@sector', 'rent', net);
     return net;
   }
@@ -1770,6 +1770,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
           .run(name, key, sha256(normalizeRecoveryCode(code)), sealText(CODE_KEY, code), passwordHash, avatar, start.tokens, start.dollars, start.coins,
             req.ip, dev.id, dev.fp, now, now, RELEASE);
         const id = Number(r.lastInsertRowid);
+        // (what a player starts with is the country's treasury's, as everything the game gives: money is made only when
+        // the two countries were founded)
+        corp.flow('@state', 'start', start.dollars + start.tokens * RULES.tokenPrice);
         if (inside) inside(id);
         seenOn(id, req);
         const token = createSession(id), user = getUser(id);
@@ -2284,6 +2287,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (cur.dollars < a.price) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, avatars = ?, avatar = ?, rev = rev + 1 WHERE id = ?')
           .run(a.price, [...owned, a.id].join(','), a.id, cur.id);
+        // (the icons are MY WAY's characters: its sale, all of it — the money goes somewhere, never nowhere)
+        corp.flow('myway', 'icons', a.price);
         afterSpend(u.id);
       });
       const me = meDto(balanceChanged(u.id));
@@ -3109,8 +3114,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         // (the coins spent: the 功績's 消費者, server/core/medals.js)
         q('UPDATE users SET coins = coins - ? + ?, coins_spent = coins_spent + ?, vip_until = ?, vip_modes = ?, quests = ?, rev = rev + 1 WHERE id = ?')
           .run(c.coins, c.back, c.coins, until, JSON.stringify(modes), quests, cur.id);
-        // (VIP is DAIZIN's: the coins kept, at their worth in $)
-        corp.flow('daizin', 'vip', Math.max(0, c.coins - c.back) * CORP.players.coin);
+        // (VIP is DAIZIN's, but paid in ロイヤルコイン — bought with real money, not the game's $: DAIZIN takes the coins
+        // back, and no $ is made of them; a coin becomes $ only when DAIZIN buys one back with its own $)
         if (s.pay) track(u.id, [['jobpay', s.pay]]);
         syncMilestones(u.id);
         return { ...c, paid: s.pay, start, until };
@@ -3948,7 +3953,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const npc = createNpc({ q, tx, afterCommit, clock: config.clock || Date.now, secret, config, corp, stocks: () => stocks, live, opsLog,
     opsIds: () => ops.operatorList().filter((o) => o.id && live.opsOnline(o.id)).map((o) => o.id),
     playersHeld: () => Object.fromEntries(q('SELECT company, SUM(shares) AS n FROM stock_holdings GROUP BY company').all().map((r) => [r.company, r.n || 0])),
-    ai: host && host.ai ? host.ai : null, usage: () => { try { return stats.report(0).percent; } catch { return 0; } } });
+    ai: host && host.ai ? host.ai : null, usage: () => { try { return stats.report(0).percent; } catch { return 0; } },
+    // (the money ledger moved: money made or lost somewhere — the developer told at once)
+    alert: (day, moved, drift) => discord.danger('🧮', `マネー台帳がずれました：${CORP.dateLabel(day)}の締めで ${moved > 0 ? '+' : '−'}$${Math.abs(moved).toLocaleString('en-US')}（累計 ${drift >= 0 ? '+' : '−'}$${Math.abs(drift).toLocaleString('en-US')}）`, ['・お金は途中で生まれも消えもしないはずです。その日の流れ（corp_flows・npc_days）を確認してください']) });
   if (npc.on) corp.setNpc(npc);
   registry.add('npc', npc.playerRoutes);
   const gacha = createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend, settleVip: settleVipJobs, onSpin: medalCheck, corp,

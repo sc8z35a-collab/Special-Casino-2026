@@ -21,6 +21,7 @@ import * as org from './npc-org.js';
 import { createMarket, LISTED_IDS } from './npc-market.js';
 import * as local from './npc-local.js';
 import * as text from './npc-text.js';
+import * as asuka from './asuka.js';
 
 const MIN = 60000, DAY_MIN = 1440;
 export { LISTED_IDS };
@@ -57,6 +58,8 @@ export function boot(key, now, corp, { n = NPC.nation.population, held = {} } = 
   for (let i = 0; i < n; i++) state.budgetOf(W, i, ageOf(P, i, day), r);
   state.owners(W);
   W.politics.first(W, day, r);
+  // (アスカ国, the country beside it: founded the same day, its money printed once)
+  asuka.found(W, day);
   refresh(W, day, { corp });
   stats(W, day);
   W.news.push({ day, kind: 'nation', district: -1, text: `${NPC.nation.name}が始まりました（人口${n.toLocaleString('en-US')}人・5つの区）`, data: {} });
@@ -159,9 +162,8 @@ function blank(key, n, scale, first, day, minute) {
 export function attach(W) {
   // (a knob added after the country began starts where the rules say)
   for (const k of NPC.knobs) if (W.nation.knobs[k.id] === undefined) W.nation.knobs[k.id] = k.start;
-  // (海外's account and the money lives began with since, for a country saved before them: from now on)
+  // (海外's account, for a country saved before it: from now on)
   if (!W.abroad) W.abroad = { cash: 0 };
-  if (W.sum.endowed === undefined) W.sum.endowed = 0;
   W.knobChanged = (id, was, now) => state.knobChanged(W, id, was, now);
   W.market = createMarket(W);
   W.politics = createPolitics(W);
@@ -371,8 +373,14 @@ export function flowsFor(W, day) {
   // (the raises the unions settled in this year's talks: the companies give them from April)
   const raises = {}, year = CORP.ymd(day).y;
   for (const [id, u] of Object.entries(W.lab.unions || {})) if (u.state === 'settled' && W.lab.talks && W.lab.talks.year === year) raises[id] = u.raise;
-  let deposits = W.nation.cash + W.nation.fund.cash + W.districts.reduce((a, d) => a + d.cash, 0) + W.sector.cash, loans = W.nation.bank;
-  for (let i = 0; i < P.n; i++) { deposits += P.cash[i] + P.tokens[i]; loans += P.debt[i]; }
+  // (Tenesice's books: everyone's money is its deposits, what everyone owes it its loans — an account below zero too:
+  // what was paid beyond what one had is lent, out of the bank's own money; the local companies' loans for the
+  // game's businesses they bought)
+  let deposits = 0, loans = W.nation.bank;
+  const hold = (x) => { if (x >= 0) deposits += x; else loans -= x; };
+  hold(W.nation.cash); hold(W.nation.fund.cash); for (const d of W.districts) hold(d.cash); hold(W.sector.cash);
+  for (let i = 0; i < P.n; i++) { hold(P.cash[i] + P.tokens[i]); loans += P.debt[i]; }
+  if (W.locals) for (const c of Object.values(W.locals.firms)) loans += c.debt || 0;
   const ops = [];
   for (const o of W.corpOps.splice(0)) {
     if (o.kind === 'terms') { W.terms = W.terms || {}; W.terms[o.buyer] = Math.round((W.terms[o.buyer] || 1) * o.mult * 10000) / 10000; }
@@ -384,15 +392,55 @@ export function flowsFor(W, day) {
   const locals = local.summary(W), localFailed = W.locals && W.locals.failed ? W.locals.failed.splice(0) : [];
   return { co: f.co, bank: { ...f.bank, deposits: Math.max(0, deposits), loans, rate: W.bankRates.deposit }, charges: f.charges, staff, raises, terms: W.terms || {}, lend: W.lend || {}, ops,
     locals, localFailed, estates: f.estates || {},
+    // (アスカ国: what its people bought of each company, what they would spend, its branches' people: corp-model asukaDay)
+    asuka: asuka.flowsFor(W),
     // (海外's money, and the local trade's, for what the companies sell them: server/core/corp-model.js abroadBuys, sectorBuys)
-    abroad: Math.max(0, W.abroad.cash), sectorCash: Math.max(0, W.sector.cash) };
+    abroad: Math.max(0, W.abroad.cash), sectorCash: Math.max(0, W.sector.cash),
+    // (what Tenesice can still lend: its own money as of the last close, less the people's and the country's loans since)
+    bankRoom: W.bankRoom === undefined ? null : Math.max(0, W.bankRoom),
+    // (what the treasury could put into the bank were it failing: what it has beyond twice its floor)
+    aidRoom: Math.max(0, W.nation.cash - (W.cal.nationFloor || 0) * 2) };
 }
 // The companies' day `day` closed (`ext`: what it paid out, server/core/corp-model.js); the country's next day begins
 // (its money from the companies, its bills and benefits, lives, work, politics, the companies' people's minds).
+/* ------------------------------------------------------------- the money ledger --- */
+// マネー台帳: all the money there is in the country and its companies (the companies' world `w`), net of what is owed
+// (a debt is owed to the bank, which counts what it lent: the two cancel), with what has gone to the players and come
+// from them set back. Money is made only when a country is founded: this never moves but by those foundings
+// (`W.ledger.founded`). `W.ledger`: its first count (`base`), the foundings since, each close's drift (should be 0).
+export function moneyOf(W, w) {
+  const P = W.P;
+  let x = 0;
+  for (let i = 0; i < P.n; i++) x += P.cash[i] - P.debt[i] + P.tokens[i];
+  x += W.nation.cash - W.nation.bank + W.nation.fund.cash + W.districts.reduce((a, d) => a + d.cash, 0) + W.sector.cash;
+  if (W.locals) for (const c of Object.values(W.locals.firms)) x -= c.debt || 0;
+  for (const s of Object.values(w.co)) {
+    if (s.id === 'tenesice') x += (s.bal.cash || 0) + (s.bal.lent || 0) + (s.bal.bonds || 0) - (s.bal.deposits || 0);
+    else x += (s.bal.cash || 0) - s.loans.reduce((a, l) => a + l.amt, 0);
+  }
+  // (アスカ国's money too: the two countries' money moves between them, never out of them)
+  return Math.round(x + econ.pending(W) + W.abroad.cash + asuka.moneyOf(W) + W.sum.toPlayers - W.sum.fromPlayers);
+}
+// the day's count: what it came to against what it should; a drift beyond rounding is told (`tell`)
+export function ledgerDay(W, w, day, tell = null) {
+  const now = moneyOf(W, w), L = W.ledger || (W.ledger = { base: now, founded: 0, at: day, drift: 0, worst: 0, days: [] });
+  const drift = now - L.base - (L.founded || 0), moved = drift - (L.drift || 0);
+  L.drift = drift; L.at = day;
+  L.days.push({ day, total: now, drift, moved });
+  if (L.days.length > 60) L.days.shift();
+  if (Math.abs(moved) > Math.abs(L.worst || 0)) L.worst = moved;
+  if (Math.abs(moved) > 1000 && tell) tell(day, moved, drift, now);
+  return L;
+}
+
 export function nextDay(W, day, ext, ctx) {
   const r = seeded(W.key, 'd:' + (day + 1));
   W._staff = null;
+  // (a country that lived before アスカ国 was: founded now, its money printed once — the money ledger told of it)
+  if (!W.asuka) { const made = asuka.found(W, day + 1); if (made && W.ledger) W.ledger.founded = (W.ledger.founded || 0) + made; }
   state.fromCompanies(W, ext, day);
+  // アスカ国's day: what the companies paid it, its people's spending, its month
+  asuka.day(W, day, ext);
   // a company that failed (MY WAY): its people let go
   for (const id of (ext && ext.bankrupt) || []) failed(W, id, day + 1);
   const next = day + 1;
@@ -574,7 +622,7 @@ export function card(W, i, day) {
 }
 
 // the plain data of a world (what is kept besides the people's columns)
-const SKIP = new Set(['P', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners', 'knobChanged', 'carSold']);
+const SKIP = new Set(['P', 'AP', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners', 'knobChanged', 'carSold']);
 export function metaOf(W) {
   const out = {};
   for (const [k, v] of Object.entries(W)) if (!SKIP.has(k) && typeof v !== 'function') out[k] = v;

@@ -260,8 +260,8 @@ function bkDay(W, f, c, day) {
 // at a failed company's auction (Tenesice lends all of it, paid at once to that company's trustee)
 export function operated(W, e, day) {
   // (the money is the local trade's in any case: its company's part if it is still there)
+  // (the players' part of it is counted where it came in: server/core/corp-model.js playersCross)
   W.sector.cash += e.n;
-  if (e.players > 0) W.sum.fromPlayers += e.players;
   const c = W.locals && W.locals.firms[e.firm], f = LOCAL.firm(e.firm);
   if (!c || c.dead) return;
   const ft = e.feature ? CORP.feature(e.feature) : null, cost = e.n > 0 && ft ? Math.round(e.n * (1 - ft.margin)) : 0;

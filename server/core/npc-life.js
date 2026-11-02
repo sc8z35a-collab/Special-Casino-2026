@@ -3,11 +3,12 @@
 // what speaks for it: their needs, their money, their character, what they remember of it, what they learned it
 // does for them, who asked them along, the time and the place), with the draw of an impulsive person looser. The big
 // things (a car, another job) are thought through a year ahead: npc-mind.js.
-import { NPC, RULES, CORP } from './rules.js';
+import { NPC, RULES, CORP, ASUKA } from './rules.js';
 import { T, S, N, E, FL, HOME, NN, NT, REL, MEM, OWN, LEARN, ageOf, remember, addRelation, clampB, viewOf, setView, FIT } from './npc-pop.js';
 import { hash32 } from './npc-rand.js';
 import * as econ from './npc-econ.js';
 import { thinkCar, thinkJob } from './npc-mind.js';
+import * as asuka from './asuka.js';
 
 const A = NPC.act;
 const PL = Object.fromEntries(NPC.places.map((p, k) => [p, k]));
@@ -334,8 +335,10 @@ const ACTIONS = {
   outing(W, i, m, t, day, r) {
     const P = W.P;
     set(W, i, A.outing, PL.park, r.int(5), m, 120 + r.int(120));
-    const n = Math.min(econ.allowance(W, i, 2, day) * 0.8, W.cal.leisure * (0.2 + 0.4 * r.u()));
-    if (n > 0 && econ.toSector(W, i, n, false, 'leisure')) P.fund[i * 4 + 2] -= n;
+    const n = Math.round(Math.min(econ.allowance(W, i, 2, day) * 0.8, W.cal.leisure * (0.2 + 0.4 * r.u())));
+    // (some outings are trips to アスカ・リゾート: its money, ATSUKA Vision's)
+    if (n > 0 && W.asuka && r.u() < ASUKA.rules.tourism) { if (econ.pay(W, i, n, false)) { asuka.earned(W, n, 'resort'); P.fund[i * 4 + 2] -= n; } }
+    else if (n > 0 && econ.toSector(W, i, n, false, 'leisure')) P.fund[i * 4 + 2] -= n;
     // (a little from the shops on the way)
     if (r.u() < 0.5) econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.25), false);
     fill(P, i, N.fun, 70);
@@ -425,12 +428,13 @@ function games(W, i, day, r, ctx) {
   if (P.live[i]) {
     const l = (W.liveGames || [])[P.live[i] - 1];
     if (l) {
-      const n = Math.min(budget - spent, W.cal.livePlay * Math.pow(Math.max(0.05, P.cash[i] / 60000000), 0.7) * g * g * (0.4 + 1.2 * r.u()));
+      // (in whole dollars, once: the game's money and the tax exactly what was paid)
+      const n = Math.round(Math.min(budget - spent, W.cal.livePlay * Math.pow(Math.max(0.05, P.cash[i] / 60000000), 0.7) * g * g * (0.4 + 1.2 * r.u())));
       if (n > 1000 && econ.pay(W, i, econ.withTax(W, n), false)) {
         const tax = econ.withTax(W, n) - n;
         if (tax) econ.nationIn(W, 'consumption', tax);
-        econ.toLive(W, day, l.company, l.id, Math.round(n));
-        spent += Math.round(n);
+        econ.toLive(W, day, l.company, l.id, n);
+        spent += n;
       }
     }
   } else if (r.u() < 0.02 * g && W.liveGames && W.liveGames.length) P.live[i] = 1 + r.int(W.liveGames.length);

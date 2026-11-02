@@ -124,11 +124,17 @@ export function fromCompanies(W, ext, day) {
   }
   // a severance or a car bought back from a person: the company's to them
   for (const s of ext.toPeople || []) { if (s.i >= 0 && s.i < P.n) P.cash[s.i] += s.n; else W.sector.cash += s.n; }
+  // (the country's money put into the failing bank, for its shares: 公的資金の注入)
+  if (ext.bankAid) { econ.nationOut(W, 'bankRescue', ext.bankAid); W.nation.stakes = W.nation.stakes || {}; W.nation.stakes.tenesice = (W.nation.stakes.tenesice || 0) + ext.bankAid; }
+  // (what Tenesice has of its own not lent yet, as of this close: what it can lend until the next, borrowFor)
+  if (ext.bankFree !== undefined) W.bankRoom = Math.max(0, ext.bankFree);
   // (the players' part of the market's money: theirs; and what the players paid the local businesses back)
   if (ext.toPlayers) W.sum.toPlayers += ext.toPlayers;
   if (ext.fromPlayers) W.sum.fromPlayers += ext.fromPlayers;
   // what the treasury paid for the game (server/core/corp-model.js gameDay): the players' slot wins beyond their bets
   // and their quests' rewards (theirs, but YOSIDA's fee), YOSIDA's bill for the gacha (abroad)
+  // (what the players paid the treasury: the money trees' fund)
+  for (const [k, n] of Object.entries(ext.stateIn || {})) econ.nationIn(W, k, n);
   if (ext.state) {
     for (const [k, n] of Object.entries(ext.state.by || {})) econ.nationOut(W, k, n);
     W.sum.toPlayers += ext.state.players || 0;
@@ -334,11 +340,14 @@ export function dayStart(W, day, r, ctx) {
   // all it owes, 財政破綻, until its money comes back)
   if (W.nation.cash < W.cal.nationFloor) {
     const cap = (W.cal.bank0 || Math.round(3e12 * W.scale)) * NPC.knobOf(W, 'debtCap') / 100;
-    const n = Math.min(Math.ceil((W.cal.nationFloor * 2 - W.nation.cash) / 1e9) * 1e9, Math.max(0, Math.floor((cap - W.nation.bank) / 1e9) * 1e9));
+    // (as far as Tenesice has money of its own to lend: never money made by lending)
+    const room = Math.min(Math.max(0, cap - W.nation.bank), econ.bankRoom(W));
+    const n = Math.min(Math.ceil((W.cal.nationFloor * 2 - W.nation.cash) / 1e9) * 1e9, Math.max(0, Math.floor(room / 1e9) * 1e9));
     if (n > 0) {
       W.nation.cash += n;
       W.nation.bank += n;
       W.nation.debt += n;
+      if (W.bankRoom !== undefined && W.bankRoom !== null) W.bankRoom -= n;
       W.events.push({ kind: 'bonds', n });
     }
   }
@@ -370,8 +379,8 @@ function month(W, day, r, ctx) {
     else P.phone[i] = 1;
     // the slots: a month played, $1,000,000 to Dtrade
     if (P.spun[i]) {
-      econ.pay(W, i, slot, true);
-      econ.toStream(W, day, 'dtrade', 'slotfee', slot);
+      // (paid only if it could be: never Dtrade's money from nowhere)
+      if (econ.pay(W, i, slot, true)) econ.toStream(W, day, 'dtrade', 'slotfee', slot);
       P.spun[i] = 0;
     }
     if (P.home[i] === HOME.rent && P.rent[i] > 0) {
@@ -647,7 +656,8 @@ export function die(W, i, day, r, ctx) {
 
 // A new life at 18 in the place of one that ended: most as the grown child of a household that wanted one (some of
 // its character from them), the rest young people come to live here; the money a life begins with (as everyone's at
-// the country's start: made from nothing, W.sum.endowed) and the family's help; a student or looking for work.
+// the country's start, paid by the treasury — no money is made but at the country's founding: its 出生・転入の支度金,
+// `newLife` in its books) and the family's help; a student or looking for work.
 export function reborn(W, i, day, r, heirs) {
   const P = W.P;
   P.gen[i] = (P.gen[i] + 1) & 0xffff;
@@ -684,14 +694,14 @@ export function reborn(W, i, day, r, heirs) {
   P.job[i] = r.u() < 0.6 ? NPC.job.student : NPC.job.none;
   P.dept[i] = 0; P.rank[i] = 0; P.salary[i] = 0; P.tenure[i] = 0; P.jsat[i] = 160; P.shift[i] = r.int(2); P.wdist[i] = P.dist[i];
   P.flags[i] = FL.newborn | (P.job[i] === NPC.job.student ? FL.student : 0);
-  P.debt[i] = 0; P.dkind[i] = 0; P.credit[i] = 150; P.car[i] = 0; P.carDay[i] = 0; P.vip[i] = 0; P.phone[i] = 0; P.spun[i] = 0; P.live[i] = 0; P.subs[i] = 0;
+  P.debt[i] = 0; P.dkind[i] = 0; P.credit[i] = 150; P.miss[i] = 0; P.car[i] = 0; P.carDay[i] = 0; P.vip[i] = 0; P.phone[i] = 0; P.spun[i] = 0; P.live[i] = 0; P.subs[i] = 0;
   P.penM[i] = 0; P.penPay[i] = 0; P.penHalf[i] = 0; P.penDefer[i] = 0; P.penAmt[i] = 0; P.jobless[i] = 0; P.joblessPay[i] = 0;
   P.aware[i] = 0; P.sign[i] = 0; P.vote[i] = 0; P.grief[i] = 0; P.lastBig[i] = day; P.why[i] = 0; P.budget[i] = 0; P.spent[i] = 0; P.inc[i] = 0;
   P.fund.fill(0, i * 4, i * 4 + 4);
-  // (the money a life begins with: as the country's first people had at 18, by where they live)
+  // (the money a life begins with: as the country's first people had at 18, by where they live — the treasury's)
   const own = startMoney(18, 0, P.dist[i], r.z());
+  econ.nationOut(W, 'newLife', own);
   P.cash[i] = own;
-  W.sum.endowed += own;
   P.tokens[i] = 0;
   P.home[i] = HOME.family;
   P.rent[i] = 0;
@@ -751,7 +761,9 @@ export function richestOf(P) {
 function troubles(W, day, r) {
   const P = W.P, TR = NPC.trouble;
   for (let i = 0; i < P.n; i++) {
-    const broke = P.cash[i] < 0 || (P.debt[i] > econ.quickCap(P, i) * 1.3 && P.cash[i] < 300000);
+    // (broke: owing beyond what anyone lends, or the payments one had to make missed day after day)
+    const broke = P.cash[i] < 0 || (P.debt[i] > econ.quickCap(P, i) * 1.3 && P.cash[i] < 300000) || P.miss[i] >= 3;
+    if (P.miss[i] && P.cash[i] > 1000000) P.miss[i] = 0;
     const h = P.home[i];
     if (h === HOME.stay) {
       P.stay[i]++;

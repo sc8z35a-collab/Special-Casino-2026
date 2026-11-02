@@ -40,18 +40,8 @@ function country(n = 2000, start = START) {
     },
     // all the money there is in the country, by who holds it (the bank by what it holds less what it owes), with what
     // is on its way to the companies and what came in from or went out of it
-    money() {
-      const P = W.P;
-      let x = 0;
-      for (let i = 0; i < P.n; i++) x += P.cash[i] - P.debt[i] + P.tokens[i];
-      x += W.nation.cash - W.nation.bank + W.nation.fund.cash + W.districts.reduce((a, d) => a + d.cash, 0) + W.sector.cash;
-      for (const id of NPC.companies) {
-        const s = w.co[id];
-        if (id === 'tenesice') x += (s.bal.cash || 0) + (s.bal.lent || 0) + (s.bal.bonds || 0) - (s.bal.deposits || 0);
-        else x += (s.bal.cash || 0) - s.loans.reduce((a, l) => a + l.amt, 0);
-      }
-      return x + npc.econ.pending(W) + W.abroad.cash - W.sum.endowed + W.sum.toPlayers - W.sum.fromPlayers;
-    }
+    // (the money ledger: server/core/npc-model.js moneyOf — アスカ国's money with it)
+    money() { return npc.moneyOf(W, w); }
   };
 }
 
@@ -166,16 +156,17 @@ test('once the country lives nothing comes from outside: abroad buys only with w
     // (the world outside never spends more than it holds)
     assert.ok(W.abroad.cash >= 0, `abroad: ${W.abroad.cash}`);
   }
-  // abroad bought of the country (exports) no more than the country paid it, and some
-  assert.ok(exports > 0 && exports <= W.sum.imports, `exports ${exports} imports ${W.sum.imports}`);
-  assert.ok(imports > 0);
+  // the world outside (アスカ国) bought of the country (exports) only with what it set aside for it (ATSUKA Vision's
+  // purchases), and the country's imports were アスカ国's sales
+  assert.ok(exports > 0 && exports <= W.asuka.atsuka.procured, `exports ${exports} procured ${W.asuka.atsuka.procured}`);
+  assert.ok(imports > 0 && W.asuka.sum.fromVernoa >= imports);
   // (no company's sales made up to its plan by customers outside: the bank, the dealer, the shop, the services)
   for (const id of ['tenesice', 'carowner', 'jinx', 'citywork', 'daizin', 'dtrade']) assert.ok(!Object.values(w.co[id].po || {}).some((v) => v > 1), `${id} sold outside`);
   // the bank's money is the country's: its interest and fees, its people's money it paid them
   assert.ok(w.co.tenesice.pr.nii > 0);
-  // every $ went from someone to someone, new lives' money aside
-  assert.ok(W.sum.endowed >= 0);
+  // every $ went from someone to someone: the money ledger never moved
   assert.ok(Math.abs(c.money() - before) < 2000 * 100, `${c.money() - before}`);
+  assert.equal(npc.moneyOf(W, w), c.money());
 });
 
 test('no company plans for more than half again its size: hiring plans compounded without end took the others\' people', () => {
@@ -205,7 +196,7 @@ test('nothing a player gets is made from nothing: the game\'s gifts are the trea
   c.days(1);
   const day = c.w.day + 1, before = c.money(), toPlayers = W.sum.toPlayers, fromPlayers = W.sum.fromPlayers, sector = W.sector.cash, nation = W.nation.cash;
   const flows = { npc: npc.flowsFor(W, day), '@state': { login: 600000, daily: 1000000, medals: 2000000, tree: 5000000, gifts: 150000 },
-    '@sector': { job: 3000000, rent: 850000, lend: 1500000 }, '@sectorIn': { repay: 400000 }, magita: { rentfee: 150000 }, job: 3000000 };
+    '@sector': { job: 3000000, rent: 850000, lend: 1500000 }, '@sectorIn': { repay: 400000 }, magita: { rentcut: 150000 }, job: 3000000 };
   const out = corpModel.closeDay(c.w, day, flows, ch);
   assert.deepEqual(out.ext.state.by, { loginBonus: 600000, dailyTokens: 1000000, medalRewards: 2000000, treeHarvest: 5000000, npcGifts: 150000 });
   assert.equal(out.ext.state.players, 8750000);
@@ -223,15 +214,14 @@ test('a death leaves the slots\' tokens to the estate: they were struck off and 
   const c = country(1000), W = c.W, P = W.P;
   const i = Array.from({ length: P.n }, (_, k) => k).find((k) => P.job[k] === NPC.job.retired);
   P.tokens[i] = 59500;
-  const before = c.money(), endowed = W.sum.endowed, nation = W.nation.cash;
+  const before = c.money(), newLife = W.nation.month.out.newLife || 0;
   npcState.die(W, i, W.day, seeded(Buffer.alloc(32, 9), 'death'), c.ctx);
   assert.equal(P.tokens[i], 0);
+  // the life begun in their place brings the money a life begins with — the treasury's, no money made — and the
+  // family's help on top
   assert.equal(c.money(), before);
-  // the life begun in their place brings the money a life begins with (made from nothing, as everyone's at the start;
-  // not the treasury's any more), and the family's help on top
-  assert.ok(W.sum.endowed > endowed);
-  assert.ok(P.cash[i] >= W.sum.endowed - endowed);
-  assert.ok(W.nation.cash >= nation, 'no grant out of the treasury');
+  const paid = (W.nation.month.out.newLife || 0) - newLife;
+  assert.ok(paid > 0 && P.cash[i] >= paid, `${paid} ${P.cash[i]}`);
 });
 
 test('the 32 local companies: their people from the local jobs, their sales from the thirteen\'s costs and the people\'s spending, paid by them, money kept', () => {
@@ -328,9 +318,9 @@ test('companies that come home to a living country (YOSIDA, WAZIMA) hire at once
   // a country kept before the companies' second column of views (and the day's count of orders after it): it loads,
   // those at 0
   const rows = pop.pack(P), whole = Buffer.concat(rows.map((r) => Buffer.from(r)));
-  const old = whole.subarray(0, whole.length - P.view2.byteLength - P.trades.byteLength - P.firm.byteLength), Q = pop.alloc(P.n);
+  const old = whole.subarray(0, whole.length - P.view2.byteLength - P.trades.byteLength - P.firm.byteLength - P.miss.byteLength), Q = pop.alloc(P.n);
   pop.unpack(Q, [old]);
-  assert.deepEqual([Q.job[5], Q.cash[5], Q.view2.every((v) => v === 0), Q.trades.every((v) => v === 0), Q.firm.every((v) => v === 0)], [P.job[5], P.cash[5], true, true, true]);
+  assert.deepEqual([Q.job[5], Q.cash[5], Q.view2.every((v) => v === 0), Q.trades.every((v) => v === 0), Q.firm.every((v) => v === 0), Q.miss.every((v) => v === 0)], [P.job[5], P.cash[5], true, true, true, true]);
   assert.throws(() => pop.unpack(pop.alloc(P.n), [old.subarray(0, old.length - 4)]), /shorter/);
 });
 

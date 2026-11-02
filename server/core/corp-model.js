@@ -21,7 +21,7 @@
 // the shop sell comes from the carmaker, whose sale it becomes; Ice Smoker pays RIRU STUDIO for its work and backs
 // it month by month, and holds a fifth of it; and the bank holds every company's money and lends it to them.
 import crypto from 'node:crypto';
-import { CORP, RULES } from './rules.js';
+import { CORP, RULES, ASUKA } from './rules.js';
 import { yearTax } from './corp-tax.js';
 
 const YEAR = 365;
@@ -211,11 +211,15 @@ function sectorBuys(w, want) {
   x.fromSector += n;
   return n;
 }
-// what customers outside still owed when the companies began to live on the country (its made-up past's): theirs
-// at once, the last money the world outside ever pays but for what it is paid (once)
-function settleOutside(s) {
+// what customers outside still owed when the companies began to live on the country (its made-up past's): at the
+// country's founding, part of the money it began with (`founding`: paid in at once); in a country already living,
+// never paid — the world outside has no money but what it is paid —, written off (a loss, no money made)
+function settleOutside(s, founding) {
   const n = Math.min(s.recv || 0, Math.max(0, s.bal.ar || 0));
-  if (n > 0) post(s, [['cash', n], ['ar', -n]], 'receipts');
+  if (n > 0) {
+    if (founding) post(s, [['cash', n], ['ar', -n]], 'receipts');
+    else post(s, [['xBad', n], ['ar', -n]]);
+  }
   s.recv = 0;
 }
 // what a company's development work (技術開発) has lifted its trade by (1: nothing yet)
@@ -268,7 +272,7 @@ export function startCirculation(w, d, scale = 1) {
   w.closedLoop = d;
   for (const s of Object.values(w.co)) {
     s.payAll = true;
-    settleOutside(s);
+    settleOutside(s, true);
     if (abroad(s)) { goAbroad(s); continue; }
     s.target = Math.max(1, Math.round((s.target || s.n) * scale));
     if (scale !== 1) {
@@ -1086,6 +1090,8 @@ function treasury(w, s, p, d, out) {
         // (below water: not a dollar beyond its line — what keeps it paying no more: out of money, it fails)
         amt = equityOf(s) < 0 ? Math.min(amt, Math.floor(room / M.unit) * M.unit) : Math.max(Math.ceil((floor - cash) / M.unit) * M.unit, Math.min(amt, Math.floor(room / M.unit) * M.unit));
       } else if (equityOf(s) < 0 && d >= w.launch) amt = 0;
+      // (no more than Tenesice has of its own to lend today: a bank never lends money it does not have)
+      amt = lendable(w, s, amt);
       if (amt <= 0) return;
       s.loans.push({ id: 'L' + (++s.seq), amt, rate, from: d, until: d + M.years * YEAR });
       post(s, [['cash', amt], ['loan', -amt]], 'borrow');
@@ -1115,6 +1121,41 @@ function treasury(w, s, p, d, out) {
   for (const l of s.loans) if (d >= l.until) { l.until = d + M.years * YEAR; l.rate = rateFor(w, s); }
 }
 const monthlyCosts = (s) => Math.round(s.n * s.unit / 12 + (spend(s, 'place') + spend(s, 'rd') + spend(s, 'ads') + spend(s, 'other')) / 12);
+
+// The month's budget meeting, once the country lives: what it spends set by what it sells. Its last three months'
+// sales and operating result against the margin its plan was made for (`p.op / p.sales`): short of it, its
+// buildings, research, advertising, other costs and investment cut by what is missing (a tenth at most a month, down
+// to a twentieth of where they began — a company can end up a tenth of its size); well over it and below where they
+// began, raised back a twentieth a month. Its people follow at the quarter (staffing). Nobody pays for what does not
+// sell: a company lives on what it is paid. (A studio's quarters swing with its releases: its own plans decide.)
+const BUDGET = { keys: ['place', 'rd', 'ads', 'other', 'capex'], cut: 0.1, raise: 0.05, floor: 0.05, months: 3 };
+function budgetReview(w, s, p, d, out) {
+  if (!w.circ || d < w.circ.from || p.model === 'studio' || s.dead || abroad(s)) return;
+  const pl = CORP.plOf(s.per.m), h = s.mHist || (s.mHist = []);
+  h.push({ sales: Math.round(pl.sales), op: Math.round(pl.op) });
+  while (h.length > BUDGET.months) h.shift();
+  if (h.length < BUDGET.months) return;
+  const base = s.budgetBase || (s.budgetBase = { ...s.budget });
+  const sales = h.reduce((a, x) => a + x.sales, 0) / h.length, op = h.reduce((a, x) => a + x.op, 0) / h.length;
+  const want = Math.max(0.02, Math.min(0.4, p.op / Math.max(1, p.sales))) * Math.max(0, sales);
+  const yearly = BUDGET.keys.reduce((a, k) => a + (s.budget[k] || 0), 0);
+  if (!(yearly > 0)) return;
+  let f = 0;
+  if (op < want) f = -Math.min(BUDGET.cut, (want - op) * 12 / yearly);
+  else if (op > want * 1.5) f = Math.min(BUDGET.raise, (op - want) * 12 / yearly);
+  if (!f) return;
+  let moved = 0;
+  for (const k of BUDGET.keys) {
+    const b = s.budget[k] || 0, top = base[k] || 0;
+    if (!top) continue;
+    const next = Math.round(Math.max(top * BUDGET.floor, Math.min(f > 0 ? Math.max(top, b) : b, b * (1 + f))));
+    moved += next - b;
+    s.budget[k] = next;
+  }
+  if (Math.abs(moved) * 12 < yearly * 0.01) return;
+  const pct = Math.round(Math.abs(moved) / Math.max(1, yearly) * 1000) / 10;
+  news(out, s, p, d + 1, 4 * 3600, 'cut', moved < 0 ? `売上に合わせて経費を見直し：施設・研究・広告・その他・設備の予算を${pct}%削減（直近3か月の売上 月${CORP.fmt.money(sales)}）` : `売上の伸びに合わせて予算を${pct}%増額`, { moved, sales: Math.round(sales) }, 0, true);
+}
 
 // What is owed paid, day by day and at the month's end: the suppliers within weeks (each to whom it is owed), the
 // customers' money in, the pay and the bills of the month.
@@ -1333,7 +1374,8 @@ function taxes(w, s, p, d, final) {
   const pretax = CORP.plOf(s.per.y).pretax;
   // (the profit of a company held by the equity method is not income yet; half the dividends from it are not taxed;
   // a wholly owned child's dividends are not taxed at all: 完全子法人株式等)
-  const income = pretax - (s.per.y.nEquity || 0) + (s.per.y.eEquity || 0) - childIncome(s.per.y);
+  // (what its branches in アスカ国 made is taxed there — tAsuka —, not here again: 国外所得)
+  const income = pretax - (s.per.y.nEquity || 0) + (s.per.y.eEquity || 0) - childIncome(s.per.y) - asukaIncome(s.per.y);
   const args = { fy, paidBusiness: s.tax.bizPaid, carry: s.tax.carry, capital: s.bal.capital, capitalEtc: s.bal.capital + s.bal.reserve, staff: s.n,
     value: (s.per.y.sSalary || 0) + (s.per.y.sWelfare || 0) + (s.per.y.sPlace || 0) + Math.max(0, income) };
   let due;
@@ -1596,6 +1638,8 @@ function guidance(w, s, p, d, f) {
   return g;
 }
 function setDividend(s, p, g) {
+  // (a bank under the state pays none: its old shares are worth nothing, its profit rebuilds its own money)
+  if (s.reorg) { s.div = { dps: 0, daily: 0, total: 0 }; return; }
   s.div.dps = g.dps;
   s.div.daily = g.dps / YEAR;
   s.div.total = Math.max(0, Math.round(p.payout * Math.max(0, g.net)));
@@ -1854,6 +1898,160 @@ function tech(w, s, p, d, ch, out) {
   news(out, s, p, d + 1, 3 * 3600, 'tech', `${cur.name}の開発に成功：${p.model === 'studio' ? 'ゲームの品質' : '売上'}が約${(lift * (p.model === 'studio' ? 2 : 1) * 100).toFixed(1)}%向上`, { id: cur.id, ok: true }, 0.02 + lift, true);
 }
 
+/* ------------------------------------------------------- アスカ国の支店 --- */
+// What アスカ国's people bought at a company's branches (and of its games, by アスカ・デジタル) came to it as its day
+// closed (server/core/asuka.js flowsFor `toCo`): its sales; what it sold came from its makers (their sale to it) or
+// ヴェルノア's local trade; the land's rent (of its sales) and its fixed rent, its branches' people's pay (as many as
+// アスカ gave it), the store's fee: アスカ国's (`w.ext.asuka`, server/core/asuka.js fromCompanies). At the month's end
+// its branches' profit taxed there (and the withholding on it), and its plan of branches for the next.
+const AR = ASUKA.rules;
+const asukaIncome = (y) => (y['r:asuka'] || 0) - (y['c:asuka'] || 0) - (y['sAsuka'] || 0);
+function asukaDay(w, d, A, out) {
+  const X = w.ext.asuka = { pay: {}, rent: 0, open: 0, platform: 0, tax: 0, boost: 0, refund: 0 };
+  const B = w.asukaB || (w.asukaB = {});
+  const seg = (s) => s.asuka || (s.asuka = { m: { sales: 0, cost: 0 }, last: null, staff: 0 });
+  for (const [co, cats] of Object.entries(A.toCo || {})) {
+    const s = w.co[co];
+    if (!s || s.dead) { for (const n of Object.values(cats)) X.refund += Math.round(n); continue; }
+    const g = seg(s);
+    for (const [cat, n0] of Object.entries(cats)) {
+      const n = Math.round(n0);
+      if (n <= 0) continue;
+      cashSale(s, 'asuka', n);
+      s.pr.asuka = (s.pr.asuka || 0) + n / 30;
+      g.m.sales += n;
+      const c = ASUKA.cat(cat);
+      for (const [to, share] of Object.entries((c && c.cogs) || {})) {
+        const x = Math.round(n * share);
+        if (x <= 0) continue;
+        post(s, [['c:asuka', x], ['cash', -x]], 'purchases');
+        g.m.cost += x;
+        if (to === '@sector' || !w.co[to] || w.co[to].dead) w.ext.sector += x;
+        else w.b2bCash.push({ to, stream: 'asukaB2B', n: x, from: s.id, cost: Math.round(x * 0.6) });
+      }
+      const rent = c && !c.digital ? Math.round(n * AR.tax.rent) : 0, plat = c && c.digital ? Math.round(n * c.platform) : 0;
+      if (rent + plat > 0) { post(s, [['sAsuka', rent + plat], ['cash', -(rent + plat)]], 'expenses'); g.m.cost += rent + plat; X.rent += rent; X.platform += plat; }
+    }
+  }
+  for (const [co, cats] of Object.entries(B)) {
+    const s = w.co[co];
+    if (!s || s.dead) continue;
+    const g = seg(s);
+    let fixed = 0;
+    for (const [cat, k] of Object.entries(cats)) { const c = ASUKA.cat(cat); if (c && !c.digital && k > 0) fixed += k * c.rent * (A.scale || 1); }
+    g.staff = (A.staff || {})[co] || 0;
+    const pay = Math.round(g.staff * (A.pay || AR.pay.branch) / YEAR), rent = Math.round(fixed / YEAR);
+    if (pay + rent > 0) {
+      post(s, [['sAsuka', pay + rent], ['cash', -(pay + rent)]], 'payroll');
+      g.m.cost += pay + rent;
+      if (pay) X.pay[co] = (X.pay[co] || 0) + pay;
+      X.rent += rent;
+    }
+  }
+  if (!CORP.isMonthEnd(d)) return;
+  for (const s of Object.values(w.co)) {
+    if (!s.asuka || s.dead) continue;
+    const g = s.asuka, profit = g.m.sales - g.m.cost;
+    if (profit > 0) {
+      const tax = Math.round(profit * AR.tax.corporate), wh = Math.round((profit - tax) * AR.tax.withhold);
+      post(s, [['tAsuka', tax + wh], ['cash', -(tax + wh)]], 'taxes');
+      X.tax += tax + wh;
+    }
+    g.last = { day: d, sales: g.m.sales, cost: g.m.cost, profit, staff: g.staff };
+    g.m = { sales: 0, cost: 0 };
+  }
+  asukaPlan(w, d, A, out, X);
+}
+// Each company's branches for the next month, by what アスカ国's people would spend in what it sells (`want`, a year):
+// as many as would be used to nine tenths, if a branch pays at that (its sales less its goods and the land's rent, its
+// people and its fixed rent); new ones a quarter more at most a month and as far as its money goes (three months of its
+// costs kept), the drawing fund paying its part of the building while it lasts; fewer if they are used under six tenths.
+function asukaPlan(w, d, A, out, X) {
+  const B = w.asukaB, sc = A.scale || 1;
+  let boost = Math.max(0, A.boost || 0);
+  const subsidy = d < (A.boostUntil || 0) ? AR.boost.share : 0;
+  for (const c of ASUKA.cats) {
+    if (c.digital) continue;
+    // (a branch in a country of this size: its sales, its building and its rent by it, its people at least one)
+    const cap = c.cap * sc, open = c.open * sc, rentY = c.rent * sc, staff = Math.max(1, Math.round(c.staff * sc));
+    for (const [co, share] of ASUKA.companiesOf(c)) {
+      const s = w.co[co], p = PROFILES.get(co);
+      const have = (B[co] && B[co][c.id]) || 0;
+      if (!s || s.dead || s.reorg) { if (have) B[co][c.id] = 0; continue; }
+      const want = (A.want[c.id] || 0) * share;
+      const cogs = Object.values(c.cogs || {}).reduce((a, b) => a + b, 0);
+      const margin = cap * 0.9 * (1 - cogs - AR.tax.rent) - staff * (A.pay || AR.pay.branch) - rentY;
+      // (as many as would be used to nine tenths — and the first as soon as half of one would be)
+      const target = margin > 0 ? Math.max(Math.floor(want / (cap * 0.9)), want >= cap * 0.5 ? 1 : 0) : 0;
+      const step = Math.max(1, Math.ceil(have * 0.25));
+      let next = have;
+      if (target > have) {
+        const each = Math.round(open * (1 - subsidy)), part = Math.round(open * subsidy);
+        let k = Math.min(target - have, step);
+        if (part > 0) k = Math.min(k, Math.floor(boost / part));
+        // (what it has beyond a month of its costs; the rest borrowed of Tenesice, as far as it lends and only if the
+        // branches pay their building back within three years)
+        const spare = Math.max(0, (s.bal.cash || 0) - monthlyCosts(s));
+        if (each * k > spare && equityOf(s) > 0 && margin * 3 >= open) {
+          const amt = lendable(w, s, Math.ceil((each * k - spare) / M.unit) * M.unit), rate = rateFor(w, s);
+          if (amt > 0) {
+            s.loans.push({ id: 'L' + (++s.seq), amt, rate, from: d, until: d + M.years * YEAR });
+            post(s, [['cash', amt], ['loan', -amt]], 'borrow');
+            news(out, s, p, d + 1, 5 * 3600, 'loan', `アスカ国の拠点の開設資金としてテネシスから${CORP.fmt.money(amt)}を借入（年${(rate * 100).toFixed(2)}%）`, { amt, rate }, -0.002, true);
+          }
+        }
+        k = Math.min(k, Math.floor(Math.max(0, (s.bal.cash || 0) - monthlyCosts(s) * 0.5) / Math.max(1, each)));
+        if (k > 0) {
+          const cost = each * k;
+          post(s, [['ppe', cost], ['cash', -cost]], 'capex');
+          X.open += cost;
+          X.boost += part * k;
+          boost -= part * k;
+          next = have + k;
+          news(out, s, p, d + 1, 4 * 3600, 'asuka', `アスカ国に${c.name}の拠点を${k}か所開設（計${next}か所${part ? `・建設費の${Math.round(subsidy * 100)}%はアスカ国の企業誘致の資金から` : ''}）`, { cat: c.id, branches: next }, 0.005, false);
+        }
+      } else if (have > 0 && want < have * cap * 0.6) {
+        next = Math.max(target, have - step);
+        if (next < have) news(out, s, p, d + 1, 4 * 3600, 'asuka', `アスカ国の${c.name}の拠点を${have - next}か所閉鎖（計${next}か所）`, { cat: c.id, branches: next }, -0.005, false);
+      }
+      if (next !== have) (B[co] || (B[co] = {}))[c.id] = next;
+    }
+  }
+  X.branches = JSON.parse(JSON.stringify(B));
+}
+
+/* ------------------------------------------------- the players' money, in and out --- */
+// What crossed between the players and the country today, booked as it closes (the money ledger's: every $ the players
+// paid in went to someone here, every $ they got came from someone here): what they paid the companies (each company's
+// flows — but the quest fee, which is the treasury's, the rental cut, which the renters pay, and the buy-backs, which
+// the company pays them —, products and trees bought, the treasury's and the local businesses' channels counted where
+// they are booked), and their shares bought and sold since the last close (`trade`).
+const NOT_PLAYERS = new Set(['questfee', 'rentcut', 'buyback']);
+// one company's flows of the day: what the players paid it (`in`) and it paid them (`out`, the buy-backs)
+function playersMoney(kinds) {
+  let inn = 0, out = 0;
+  for (const [k, v] of Object.entries(kinds || {})) {
+    if (k === 'buyback') { out += Math.round(v || 0); continue; }
+    if (NOT_PLAYERS.has(k)) continue;
+    if (typeof v === 'number') inn += Math.round(v);
+    else if (v && typeof v === 'object') for (const x of Object.values(v)) if (Array.isArray(x)) inn += Math.round(x[1] || 0);
+  }
+  return { in: inn, out };
+}
+function playersCross(w, orig) {
+  let inn = 0, out = 0;
+  for (const [id, kinds] of Object.entries(orig)) {
+    if (!kinds || typeof kinds !== 'object' || id[0] === '@' || id === '*' || id === 'npc') continue;
+    const m = playersMoney(kinds);
+    inn += m.in; out += m.out;
+  }
+  const c = w.cross || { in: 0, out: 0 };
+  inn += c.in; out += c.out;
+  w.cross = { in: 0, out: 0 };
+  w.ext.fromPlayers = (w.ext.fromPlayers || 0) + inn;
+  w.ext.toPlayers = (w.ext.toPlayers || 0) + out;
+}
+
 /* ------------------------------------------- the game's businesses and the treasury --- */
 // The players' money of the game's own businesses on a day (server/core/api.js, gacha.js, tree.js send it), booked
 // once every company's day is done:
@@ -1866,13 +2064,17 @@ function tech(w, s, p, d, ch, out) {
 // - '@state' beyond the slots, quests and gacha: whatever else the game gives the players (the login bonus and the day's
 //   free tokens at their price, the co-op bonus, the update's thanks, the medals', the diary's and the money trees'
 //   money, the gifts of the game's own NPC accounts): the treasury's too — nothing a player gets is made from nothing
+// - '@stateIn': what the players pay the treasury ({ fertilizer: what was given to the money trees beyond YOSIDA's share,
+//   the fund the harvests are paid from })
 // - '@sector': what the local businesses pay the players ({ job: their バイト's pay, rent: what their cars rented out
 //   earned them, lend: マイクソン's loans }) and '@sectorIn' what the players pay them back ({ repay }); the local
 //   businesses pay the job sites' fee on the バイト and MAGITA Garage's cut of the rentals too
 const GOV_KEEP = 24;
 // the treasury's spending of each kind on the game (its name in the country's books, server/core/npc-state.js)
 const STATE_OUT = { slots: 'slotWins', quests: 'questRewards', gacha: 'gachaClaims', login: 'loginBonus', daily: 'dailyTokens', coop: 'coopBonus',
-  release: 'releaseBonus', medals: 'medalRewards', diary: 'diaryRewards', tree: 'treeHarvest', gifts: 'npcGifts' };
+  release: 'releaseBonus', medals: 'medalRewards', diary: 'diaryRewards', tree: 'treeHarvest', gifts: 'npcGifts', start: 'playerStart' };
+// what the players pay the treasury (its name in the country's books): the fertilizer beyond YOSIDA's share
+const STATE_IN = { fertilizer: 'treeFund' };
 function gameDay(w, d, flows, orig = flows) {
   for (const s of Object.values(w.co)) if (s.pc) for (const k of Object.keys(s.pc)) s.pc[k] *= 29 / 30;
   // (who runs each now — CORP.features: its company, or for a local company or a trustee a stand-in, settled after)
@@ -1909,9 +2111,12 @@ function gameDay(w, d, flows, orig = flows) {
   if (w.ext) {
     const sec = flows['@sector'] || {}, back = flows['@sectorIn'] || {};
     const out = Object.values(sec).reduce((a, n) => a + Math.round(n || 0), 0), inn = Object.values(back).reduce((a, n) => a + Math.round(n || 0), 0);
-    const fees = Math.round((orig.magita || {}).rentfee || 0) + (w.launch <= d ? Math.round((orig.job || 0) * CORP.players.jobFee) : 0);
+    const fees = Math.round((orig.magita || {}).rentcut || 0) + (w.launch <= d ? Math.round((orig.job || 0) * CORP.players.jobFee) : 0);
     if (out) { w.ext.fromSector += out; w.ext.toPlayers = (w.ext.toPlayers || 0) + out; }
     if (inn) { w.ext.sector += inn; w.ext.fromPlayers = (w.ext.fromPlayers || 0) + inn; }
+    const sin = {};
+    for (const [k, n] of Object.entries(flows['@stateIn'] || {})) { const v = Math.round(n || 0); if (v > 0) sin[STATE_IN[k] || k] = v; }
+    if (Object.keys(sin).length) { w.ext.stateIn = sin; w.ext.fromPlayers = (w.ext.fromPlayers || 0) + Object.values(sin).reduce((a, b) => a + b, 0); }
     if (fees) w.ext.fromSector += fees;
   }
   if (ys && paid.gacha > 0) {
@@ -2549,15 +2754,46 @@ function toOperator(w, to, n, players, feature = null) {
 
 /* ------------------------------------------------------------------ 破産 --- */
 // Each month's end: a company out of money with nothing more Tenesice will lend (支払不能), or below nothing six months
-// running (債務超過), files for 破産 (Tenesice itself, the country's bank, is not left to fail: the country takes it
-// over, 一時国有化). MY WAY the same.
+// running (債務超過), files for 破産. MY WAY the same. The bank its own way (bankCheck).
 function solvencyCheck(w, s, p, d, out) {
-  if (s.dead || p.model === 'bank' || d < w.launch || !CORP.isMonthEnd(d)) return;
+  if (s.dead || d < w.launch || !CORP.isMonthEnd(d)) return;
+  if (p.model === 'bank') return bankCheck(w, s, p, d, out);
   if ((s.bal.cash || 0) < 0) return file(w, s, p, d, out, '資金繰りに行き詰まり、テネシスからの追加融資も受けられず（支払不能）');
   if (equityOf(s) < 0) {
     s.under = (s.under || 0) + 1;
     if (s.under >= BK.insolvent) return file(w, s, p, d, out, `債務超過が${s.under}か月続き、再建の見込みが立たず`);
   } else s.under = 0;
+}
+// The bank's month (Tenesice): it has lent more than its own money (支払不能: what it lent was others' money — never
+// allowed: no money is made by lending), or it is below nothing six months running (債務超過). Then first the country,
+// if its treasury can spare it, puts in the capital it lacks and three months of its costs (公的資金の注入: the
+// treasury's money, for new shares the country holds); if it cannot, the bank fails (経営破綻): 会社更生 under the
+// country (一時国有化) — its shares struck off and worth nothing, its management gone, a third of its people let go
+// (a month's pay each), no dividends, no new loans until it has money of its own again; the people's deposits are the
+// country's to keep whole, and its books, the country's money, go on. The country can still put money in later.
+const BANK = { buffer: 3, cut: 0.3, severance: 1 };
+function bankCheck(w, s, p, d, out) {
+  const free = (s.bal.cash || 0) - (s.bal.deposits || 0), eq = equityOf(s);
+  s.under = eq < 0 ? (s.under || 0) + 1 : 0;
+  if (!(free < 0 || (eq < 0 && s.under >= BK.insolvent))) return;
+  const gap = Math.max(-free, -eq, 0) + Math.round(monthlyCosts(s) * BANK.buffer);
+  const can = Math.max(0, w.aidRoom || 0);
+  if (can >= gap && w.ext) {
+    post(s, [['cash', gap], ['capital', -gap]], 'issue');
+    w.ext.bankAid = (w.ext.bankAid || 0) + gap;
+    (s.aid || (s.aid = [])).push({ day: d, n: gap, why: free < 0 ? '貸出が自己資金を超えた' : '債務超過' });
+    s.under = 0;
+    news(out, s, p, d + 1, 3 * 3600, 'bankrupt', `国が公的資金${CORP.fmt.money(gap)}を注入（${free < 0 ? '貸出が自己資金を超えたため' : '債務超過が続いたため'}）。国が新しい株を引き受けます`, { aid: gap }, -0.05, true);
+    return;
+  }
+  if (s.reorg) return;
+  const why = free < 0 ? `貸出が自己資金を${CORP.fmt.money(-free)}上回り、国も公的資金を出せず（経営破綻）` : `債務超過が${s.under}か月続き、国も公的資金を出せず（経営破綻）`;
+  const staff = s.n, n = Math.min(s.n - 1, Math.round(s.n * BANK.cut)), each = Math.round(s.pay / 12 * BANK.severance);
+  s.reorg = { day: d, why, free, equity: eq, staff, cut: n };
+  s.div = { dps: 0, daily: 0, total: 0 };
+  if (n > 0) { if (w.circ && d >= w.circ.from) s.cut = { n, day: d + 1, each }; s.target = Math.max(1, s.n - n); }
+  news(out, s, p, d + 1, 2 * 3600, 'bankrupt', `経営破綻：会社更生手続を申し立て、国の管理下へ（一時国有化）。${why}。株式は上場廃止（価値はありません）、経営陣は退任、社員${CORP.fmt.group(staff)}人のうち${CORP.fmt.group(n)}人を削減。預金は国が全額保護し、新しい貸出は自己資金が戻るまで止めます`, { reorg: true, free, equity: eq }, -3, true);
+  (out.bankrupt || (out.bankrupt = [])).push(s.id);
 }
 // 破産申立て: the court's deposit, the business stopped (its trustee carries on the game's businesses it ran until they
 // are sold), its people paid what it owes them (what it cannot, the country 80%) and let go, its shares stopped.
@@ -2621,7 +2857,10 @@ function auction(w, f, s, d, out, ch, flows) {
     const fit = f.fit[id] || 0.7;
     const eager = BK.bid[0] + (BK.bid[1] - BK.bid[0]) * ch.u(`bid:${f.id}:${id}:${d}`);
     const pol = w.lend && w.lend[id];
-    const room = tp.model === 'bank' ? Math.max(0, (t.bal.cash || 0) * 0.01) : Math.max(0, (t.bal.cash || 0) + (t.bal.bonds || 0) - monthlyCosts(t) * 3) + Math.max(0, (pol ? pol.cap : equityOf(t) * 0.5) - debtOf(t));
+    // (its own money, and what Tenesice would lend it — as far as Tenesice has its own money to lend; the bank, a tenth
+    // of its own money not lent)
+    const bankRoom = w.bankRoom === undefined ? Infinity : Math.max(0, w.bankRoom);
+    const room = tp.model === 'bank' ? Math.max(0, ((t.bal.cash || 0) - (t.bal.deposits || 0)) * 0.1) : Math.max(0, (t.bal.cash || 0) + (t.bal.bonds || 0) - monthlyCosts(t) * 3) + Math.min(bankRoom, Math.max(0, (pol ? pol.cap : equityOf(t) * 0.5) - debtOf(t)));
     const bid = Math.round(Math.min(worth * fit * eager, room) / 1e6) * 1e6;
     if (bid > 0 && bid >= reserve) bids.push({ id, bid, fit });
   }
@@ -2640,8 +2879,10 @@ function auction(w, f, s, d, out, ch, flows) {
   // none of the thirteen: a local company, with Tenesice's money
   const locals = ((flows.npc && flows.npc.locals) || []).filter((x) => !x.dead);
   const pick = f.local.map((id) => locals.find((x) => x.id === id)).find(Boolean) || locals.sort((a, b) => b.equity - a.equity)[0];
-  if (pick && w.ext) {
-    const price = Math.max(reserve, Math.round(worth * 0.4 / 1e6) * 1e6);
+  const localPrice = Math.max(reserve, Math.round(worth * 0.4 / 1e6) * 1e6), canLend = w.bankRoom === undefined || w.bankRoom >= localPrice;
+  if (pick && w.ext && canLend) {
+    const price = localPrice;
+    if (w.bankRoom !== undefined) w.bankRoom -= price;
     (w.ext.localWins || (w.ext.localWins = [])).push({ feature: f.id, firm: pick.id, price, rate: BK.localRate, estate: s ? s.id : null });
     assign('local:' + pick.id, price, []);
     sold('local:' + pick.id, price, 0);
@@ -2658,17 +2899,27 @@ function auction(w, f, s, d, out, ch, flows) {
   sold(strong.id, price, 0);
 }
 // a business bought: its price as のれん (written off over `goodwillYears`), paid from its money, Tenesice lending the rest
+// (as far as it has its own money to lend)
 function buyBusiness(w, t, tp, f, price, d, out) {
   if (!(price > 0)) return;
   const short = price - Math.max(0, t.bal.cash || 0);
   if (short > 0) {
-    const amt = Math.ceil(short / M.unit) * M.unit, rate = rateFor(w, t);
+    const amt = lendable(w, t, Math.ceil(short / M.unit) * M.unit), rate = rateFor(w, t);
     t.loans.push({ id: 'L' + (++t.seq), amt, rate, from: d, until: d + M.years * YEAR });
     post(t, [['cash', amt], ['loan', -amt]], 'borrow');
     news(out, t, tp, d + 1, 5 * 3600, 'loan', `${f.name}の取得資金としてテネシスから${CORP.fmt.money(amt)}を借入（年${(rate * 100).toFixed(2)}%）`, { amt, rate }, -0.005, true);
   }
   post(t, [['goodwill', price], ['cash', -price]], 'acquire');
   (t.goodwill || (t.goodwill = [])).push({ feature: f.id, price, left: price, month: Math.round(price / (BK.goodwillYears * 12)) });
+}
+// what Tenesice lends a company of `want` today: as far as its own money not yet lent goes (`w.bankRoom`), in its units;
+// counted off the day's room (Tenesice itself borrows from nobody)
+function lendable(w, s, want) {
+  if (s.id === 'tenesice' || !(want > 0)) return 0;
+  const room = w.bankRoom === undefined ? Infinity : w.bankRoom;
+  const n = room === Infinity ? want : Math.min(want, Math.floor(Math.max(0, room) / M.unit) * M.unit);
+  if (room !== Infinity) w.bankRoom = room - n;
+  return n;
 }
 // the のれん written off each month
 function goodwillMonth(s) {
@@ -2813,13 +3064,16 @@ export function closeDay(w, d, flows, ch) {
     for (const firm of npc.localFailed || []) for (const f of FT) { const o = opsOf(w)[f.id]; if (o.by === 'local:' + firm) { o.history.push({ by: o.by, until: d }); Object.assign(o, { by: null, estate: null, orphan: d + 14 }); } }
   }
   w.ext = circ ? { pay: [], welfare: [], taxes: [], dividends: [], sector: 0, imports: 0, exports: 0, fromSector: 0, bonds: [], bondInterest: 0, depositInterest: 0, toPeople: [] } : null;
+  // (what Tenesice can lend today: its own money not lent, less what the people and the country borrowed since the last
+  // close — server/core/npc-econ.js bankRoom)
+  w.bankRoom = npc && npc.bankRoom !== undefined && npc.bankRoom !== null ? Math.max(0, npc.bankRoom) : Infinity;
+  // (what the treasury could spare for the bank, were it failing: bankCheck)
+  w.aidRoom = npc ? Math.max(0, npc.aidRoom || 0) : 0;
   if (w.ext) {
     // 海外: what the world outside can spend today (its money over ABROAD_DAYS days), shared among the exporters by
     // what they all wanted yesterday; the country's own trade's money for what is sold to it
     const pool = Math.max(0, Math.floor((npc && npc.abroad) || 0)), budget = Math.floor(pool / ABROAD_DAYS);
     Object.assign(w.ext, { abroadLeft: budget, abroadWant: 0, abroadRatio: w.abroadWant > 0 ? Math.min(1, budget / w.abroadWant) : 1, sectorCash: Math.max(0, (npc && npc.sectorCash) || 0) });
-    // (a world that began before the world outside was closed: what its customers outside still owed, settled once)
-    if (!w.closedLoop) { for (const s of Object.values(w.co)) if (!s.dead) settleOutside(s); w.closedLoop = d; }
   }
   w.b2bCash = [];
   if (npc && npc.staff) for (const [id, st] of Object.entries(npc.staff)) {
@@ -2836,6 +3090,8 @@ export function closeDay(w, d, flows, ch) {
   if (npc && npc.ops) for (const o of npc.ops) decided(w, o, d, out, ch);
   // (every company's day begun before any posts to another's: a studio's dividends to its backer, a day's trade)
   for (const id of ORDER) { w.co[id].today = 0; w.co[id].per.d = {}; }
+  // (a world that began before the world outside was closed: what its customers outside still owed, written off once)
+  if (w.ext && !w.closedLoop) { for (const s of Object.values(w.co)) if (!s.dead) settleOutside(s, false); w.closedLoop = d; }
   for (const id of ORDER) {
     const s = w.co[id], p = PROFILES.get(id);
     // (a company that failed: its books are closed, nothing more happens to it — what the country still sent it, its
@@ -2844,6 +3100,9 @@ export function closeDay(w, d, flows, ch) {
       bkDay(w, s, p, d, out, ch, flows);
       s.npcDay = 0;
       const c = npc && npc.co[id];
+      // (what the players still paid it, beyond the businesses sold to others: the local businesses' too — and what it
+      // owed them for cars bought back, theirs to pay)
+      if (w.ext) { const m = playersMoney(flows[id]); w.ext.sector += m.in; w.ext.fromSector += m.out; }
       if (c && w.ext) {
         let n = (c.cat || 0) + Math.max(0, c.cas || 0) - (c.buyback || 0);
         for (const v of Object.values(c.s || {})) n += v;
@@ -2885,6 +3144,7 @@ export function closeDay(w, d, flows, ch) {
   for (const f of FT) { const o = opsOf(w)[f.id]; if (o.by === null && o.orphan && d >= o.orphan) auction(w, f, null, d, out, ch, flows); }
   // the game's own businesses (YOSIDA's quests, gacha and trees, DAIZIN's buying back) and the treasury's part
   gameDay(w, d, flows, orig);
+  if (w.ext) playersCross(w, orig);
   // MY WAY's licences: the partners' fees and what they sold of its characters; the measures its people decided
   licenseDay(w, d, flows);
   for (const o of (w.ipOps || []).splice(0)) measure(w, w.co[o.company], o, d, ch, out);
@@ -2905,10 +3165,12 @@ export function closeDay(w, d, flows, ch) {
     month(w, s, p, d, ch, out);
     if (CORP.ymd(d).d === 1 && d >= w.launch) tech(w, s, p, d, ch, out);
     if (p.model === 'studio') titlesLook(w, s, p, d, out);
-    if (CORP.isMonthEnd(d)) { goodwillMonth(s); treasury(w, s, p, d, out); }
+    if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); treasury(w, s, p, d, out); }
     // (out of money with nothing more Tenesice will lend, or below nothing too long: 破産)
     solvencyCheck(w, s, p, d, out);
   }
+  // アスカ国's branches (its people's purchases and what the companies pay it: before the makers' sales to them below)
+  if (w.ext && npc && npc.asuka) asukaDay(w, d, npc.asuka, out);
   // what one company paid another for its services (MAGITA's facilities, Dtrade's data centres, the job sites'
   // advertising and placements, ジンクス's game shelves): each a sale of the one paid
   for (const b of w.b2bCash.splice(0)) {
@@ -2941,7 +3203,8 @@ export function closeDay(w, d, flows, ch) {
     const net = w.bank.got - w.bank.paid;
     if (net) post(bank, [['cash', net], ['r:nii', -net]], 'receipts');
     let cash = npc ? Math.round(npc.bank.deposits || 0) : 0, lent = npc ? Math.round(npc.bank.loans || 0) : 0;
-    for (const id of ORDER) if (id !== 'tenesice' && !(npc && abroad(w.co[id]))) { cash += w.co[id].bal.cash || 0; lent += debtOf(w.co[id]); }
+    // (a company below zero: what it paid beyond its money is lent to it, out of the bank's own)
+    for (const id of ORDER) if (id !== 'tenesice' && !(npc && abroad(w.co[id]))) { const c = w.co[id].bal.cash || 0; cash += Math.max(0, c); lent += debtOf(w.co[id]) + Math.max(0, -c); }
     // (and what a company that failed never paid back: MY WAY's, its 与信関係費用)
     const failed = Math.round(w.creditLoss || 0);
     w.creditLoss = 0;
@@ -2953,6 +3216,8 @@ export function closeDay(w, d, flows, ch) {
       if (dl) post(bank, [['lent', dl], ['cash', -dl]], 'lending');
     }
     bank.inGame = { cash, lent };
+    // (what it has of its own not lent: all it may lend until the next close — a bank lends only its own money)
+    if (w.ext) w.ext.bankFree = Math.round((bank.bal.cash || 0) - (bank.bal.deposits || 0));
   }
   // the day closes: its profit into the retained earnings, the share-days counted
   for (const id of ORDER) {
@@ -3127,6 +3392,8 @@ export function trade(w, id, side, shares, price, sec) {
   s.sh.sec += out * Math.max(0, sec - s.sh.at);
   s.sh.at = Math.max(s.sh.at, sec);
   const amount = shares * price;
+  // (the players' money in and out of the country, for the money ledger: counted as the day closes, playersCross)
+  if (w.circ) { const c = w.cross || (w.cross = { in: 0, out: 0 }); if (side === 'buy') c.in += amount; else c.out += amount; }
   if (side === 'buy') {
     const fromTreasury = Math.min(shares, s.sh.treasury);
     let cash = 0;

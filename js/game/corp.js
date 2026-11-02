@@ -104,7 +104,9 @@
         // places bought, its cut of what renting a car out earns), and so is buying their used cars back (MAGITA
         // Robert: sold on within weeks; a car sold to a friend in the chat is outside it)
         // (and the ガレージコイン YOSIDA buys of it for its gacha: YOSIDA below)
-        { id: 'garage', name: 'MAGITA Garage（ガレージ契約料・増設・貸し出し手数料）', cost: 0.08, player: ['garage', 'garagefee', 'rentfee'] },
+        // (`rentcut`: its part of what the cars rented out earned, paid by those who rented them — the local businesses —, not by
+        // the players)
+        { id: 'garage', name: 'MAGITA Garage（ガレージ契約料・増設・貸し出し手数料）', cost: 0.08, player: ['garage', 'garagefee', 'rentfee', 'rentcut'] },
         { id: 'used', name: 'MAGITA Robert（中古車の買い取り・販売）', player: ['buyback'] },
         // the cars YOSIDA buys of it to give away in its gacha (at their 仕入れ価格 and 専売特別費用)
         { id: 'gacha', name: '車両の販売（YOSIDAのガチャ景品向け）' },
@@ -330,7 +332,9 @@
         { id: 'tenesice', name: 'テネシス（公式看板キャラクターの独占契約）', license: true },
         { id: 'dtrade', name: 'Dtrade（カジノスロットの冬仕様外装・季節限定スキン）', license: true },
         { id: 'riru', name: 'RIRUスタジオ（新興ゲームへのIP使用権許諾・コラボ）', license: true },
-        { id: 'direct', name: '直営ショールーム・その他（旗艦店での直販・他社ライセンス）', share: 2500000000 / 45000000000, cost: 0, beta: 1.1 }
+        { id: 'direct', name: '直営ショールーム・その他（旗艦店での直販・他社ライセンス）', share: 2500000000 / 45000000000, cost: 0, beta: 1.1 },
+        // the players' profile icons (アイコン) bought in the game: its characters' (the price, all of it)
+        { id: 'icons', name: 'アイコンの販売（プレイヤー）', player: ['icons'] }
       ],
       ppe: 1500000000, growth: 0.03, beta: 1.1, season: 'luxury', hire: 0.02, raise: 0.02, quit: 0.02,
       payout: 0.56, per: 24, pbr: 6, founders: 0.3, price: 50000, depth: 600000000
@@ -377,7 +381,7 @@
     { id: 'slots', name: 'カジノスロット', owner: 'dtrade', kinds: ['casino', 'winfee', 'slotfee', 'exchange'], npc: ['slotfee', 'winfee', 'exchange'], cas: true, margin: 0.55,
       fit: { tenesice: 1.1, daizin: 1.2, jinx: 0.8, myway: 0.9 }, local: ['goldhotel', 'alpha', 'chiikibank'] },
     { id: 'invest', name: '投資（株式の売買）', owner: 'dtrade', kinds: ['trade'], npc: ['commission'], margin: 0.6, fit: { tenesice: 1.4, daizin: 1.0 }, local: ['alpha', 'chiikibank', 'central'] },
-    { id: 'garage', name: 'ガレージ（MAGITA Garage）', owner: 'magita', kinds: ['garage', 'garagefee', 'rentfee'], margin: 0.5, fit: { carowner: 1.2, yosida: 1.1, wazima: 1.0 }, local: ['mgtown', 'autoparts'] },
+    { id: 'garage', name: 'ガレージ（MAGITA Garage）', owner: 'magita', kinds: ['garage', 'garagefee', 'rentfee', 'rentcut'], margin: 0.5, fit: { carowner: 1.2, yosida: 1.1, wazima: 1.0 }, local: ['mgtown', 'autoparts'] },
     { id: 'robert', name: '中古車の買取（MAGITA Robert）', owner: 'magita', kinds: ['buyback'], margin: 0.08, fit: { carowner: 1.3, yosida: 1.0 }, local: ['nextused', 'autoparts'] },
     { id: 'cars', name: '新車の販売（カーオーナー）', owner: 'carowner', kinds: [], products: 'car', npcProducts: 'cars', npc: ['service'], margin: 0.12, fit: { magita: 1.2, yosida: 1.2, jinx: 0.9 }, local: ['nextused', 'autoparts'] },
     { id: 'shop', name: 'SHOP（ジンクス）', owner: 'jinx', kinds: [], products: 'shop', npcProducts: 'items', margin: 0.15, fit: { carowner: 1.0, daizin: 0.8 }, local: ['palette', 'freshmart'] },
@@ -694,6 +698,8 @@
     xBankrupt: ['倒産に伴う資産の評価損', 'xl'], xRelief: ['債務免除益（倒産・清算）', 'xi'],
     // (a customer's or a debtor's failure: what it never paid; the trustee's business carried on; a business sold;
     // a business bought: のれん, written off over its years)
+    'r:asuka': ['アスカ国の支店の売上', 'r'], 'r:asukaB2B': ['アスカ国の支店向けの卸売', 'r'], 'c:asuka': ['アスカ国で売った品物の仕入れ', 'c'],
+    sAsuka: ['アスカ国の支店の人件費・地代・手数料', 's'], tAsuka: ['アスカ国の法人税・源泉税', 't'],
     xBad: ['貸倒損失（取引先の破産）', 'xl'], xEstate: ['破産管財人による事業継続の収入', 'xi'], xSale: ['事業譲渡益（破産管財人）', 'xi'],
     goodwill: ['のれん（事業の譲受け）', 'a'], sGoodwill: ['のれん償却', 's'], xCourt: ['破産手続の予納金', 'xl']
   };

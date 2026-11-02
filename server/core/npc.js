@@ -17,6 +17,7 @@ import { partOf } from './hash.js';
 import * as model from './npc-model.js';
 import { view as localView, detail as localDetail } from './npc-local.js';
 import * as pop from './npc-pop.js';
+import * as asukaModel from './asuka.js';
 import * as text from './npc-text.js';
 import { createAi } from './npc-ai.js';
 import { LISTED_IDS } from './npc-market.js';
@@ -32,7 +33,7 @@ const KEEP_NEWS = 120, KEEP_MEETINGS = 400, KEEP_REPORTS = 600, KEEP_DAYS = 800;
 const DEPTHS = ['shallow', 'standard', 'deep', 'deepest'];
 const b64 = (u8) => Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength).toString('base64');
 
-export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config = {}, corp, stocks = () => null, live = null, opsIds = () => [], playersHeld = () => ({}), ai: binding = null, usage = () => 0, opsLog = null }) {
+export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config = {}, corp, stocks = () => null, live = null, opsIds = () => [], playersHeld = () => ({}), ai: binding = null, usage = () => 0, opsLog = null, alert = null }) {
   const on = config.npc !== false;
   const N = Math.max(500, Math.min(NPC.nation.population, Number(config.npcPopulation) || NPC.nation.population));
   const key = keyFrom(secret, 'npc');
@@ -54,7 +55,10 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     if (!all.length) return null;
     pop.unpack(P, all, false);
     if ((m.hotAt || 0) > (m.allAt || 0)) { const hot = rows('hot'); if (hot.length) pop.unpack(P, hot, true); }
-    const w = Object.assign(m, { P, key });
+    // (アスカ国's people: their own blobs, kept as each day closes — the only time they change)
+    let AP;
+    if (m.asuka) { const ar = rows('asuka'); if (ar.length) AP = asukaModel.unpack(asukaModel.alloc(m.asuka.n), ar); }
+    const w = Object.assign(m, { P, key, ...(AP ? { AP } : {}) });
     model.attach(w);
     return w;
   }
@@ -92,6 +96,11 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const rows = pop.pack(w.P, kind !== 'all');
     rows.forEach((r, k) => q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`${prefix}:${String(k).padStart(3, '0')}`, r));
     q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`${prefix}:${String(rows.length).padStart(3, '0')}`, prefix + ';');
+    if (kind === 'all' && w.AP) {
+      const ar = asukaModel.pack(w.AP);
+      ar.forEach((r, k) => q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`asuka:${String(k).padStart(3, '0')}`, r));
+      q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`asuka:${String(ar.length).padStart(3, '0')}`, 'asuka;');
+    }
     saves++;
     // (a transaction that fails takes its minutes back: read again before the next use)
     stale = true;
@@ -162,7 +171,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     return {
       corp: w, fair,
       carPrice: (id) => { const c = RULES.cars.find((x) => x.id === id); return c ? carPrice(c, sale, 0, corp.surcharge(id)).price : 0; },
-      stockPrice: (id) => prices.get(id) || 0,
+      // (a company struck off the market — failed, or a bank put under the state: nobody trades its shares)
+      stockPrice: (id) => (corp.delisted(id) ? 0 : prices.get(id) || 0),
       lastMonth: (id) => { const r = q("SELECT data FROM corp_periods WHERE company = ? AND kind = 'm' ORDER BY day DESC LIMIT 1").get(id); return r ? JSON.parse(r.data) : null; }
     };
   }
@@ -243,6 +253,9 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const w = get();
     if (!w) return;
     model.nextDay(w, d, out.ext, ctx());
+    // (the money ledger: every $ from someone to someone — told at once if not)
+    const cw = corp.world();
+    if (cw) model.ledgerDay(w, cw, d, alert);
     policy(w);
     q('INSERT INTO npc_days (day, data) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET data = excluded.data').run(d + 1, JSON.stringify({
       stats: w.stats, nation: { cash: w.nation.cash, debt: w.nation.debt, bank: w.nation.bank, fund: w.nation.fund, in: w.nation.day.in, out: w.nation.day.out },
@@ -437,7 +450,9 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       const all = { ...town(now), frame: undefined, days, knobs: NPC.knobs.map((k) => ({ ...k, value: NPC.knobOf(w, k.id), range: w.nation.ranges[k.id] || [k.min, k.max], locked: !!w.nation.locks[k.id], changed: w.nation.changed[k.id] || 0 })),
         nationFull: { cash: w.nation.cash, debt: w.nation.debt, bank: w.nation.bank, fund: w.nation.fund, day: w.nation.day, month: w.nation.month, hist: w.nation.hist.slice(-60) },
         sector: w.sector, sum: w.sum, cal: w.cal, rates: w.bankRates, stock: w.stock, depth: w.depth, paused: !!w.paused,
-        usage: { ticks, tickMs: ticks ? Math.round(tickMs / ticks * 10) / 10 : 0, saves, ai: { ...ai.used(now), on: ai.on }, server: usage() } };
+        usage: { ticks, tickMs: ticks ? Math.round(tickMs / ticks * 10) / 10 : 0, saves, ai: { ...ai.used(now), on: ai.on }, server: usage() },
+        // (アスカ国, and the money ledger: every $ from someone to someone)
+        asuka: asukaModel.view(w), ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30) } : null };
       return { ...partOf(all, req.query.get('rev')), now };
     },
     // 地方企業 (the operator site's 企業 folder): the 32 local companies, their specs and their state now (server/core/npc-local.js)

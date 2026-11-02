@@ -10,7 +10,7 @@
 var OpsTown = (function () {
   'use strict';
   var N = function () { return window.BR && window.BR.NPC; };
-  var TABS = [['nation', '国'], ['people', '住民'], ['orgs', '会社の人と会議'], ['locals', '地元の企業'], ['news', 'ニュース']];
+  var TABS = [['nation', '国'], ['people', '住民'], ['orgs', '会社の人と会議'], ['locals', '地元の企業'], ['asuka', 'アスカ国'], ['news', 'ニュース']];
   var STANCE = { for: '賛成', against: '反対', neutral: '保留', stop: '差し止め', overrule: '決裁' };
   var st = { view: null, request: null, toast: null, tab: 'nation', all: null, people: null, person: null, company: 'tenesice', orgs: {}, q: '', d: '', j: '', page: 0, gen: 0 };
 
@@ -37,6 +37,48 @@ var OpsTown = (function () {
   }
   function who(p) { return p ? p.name : '—'; }
   function knobText(k, v) { return k.unit === '$' ? money(v) : v + k.unit; }
+
+  /* ---------------------------------------------------------------- アスカ国 --- */
+  // the country beside it (server/core/asuka.js view): its people and money, ATSUKA Vision, ヴェルノア's companies'
+  // branches, the money between the two countries, its months and news
+  function asuka(box, r) {
+    var a = r.asuka;
+    if (!a) { box.appendChild(el('p', 'muted', 'アスカ国はまだ建国されていません（次の締めで建国されます）。')); return; }
+    var p = panel('アスカ国', '建国 ' + day(a.founded) + '・建国資金 ' + money(a.total) + '（一度だけ発行）・人口 ' + a.people.toLocaleString('ja-JP') + '人');
+    var g = el('div', 'town-grid'), J = a.jobs;
+    kv(g, 'ATSUKA Visionで働く人', String(J.atsuka)); kv(g, '地元の商売で働く人', String(J.trade)); kv(g, 'ヴェルノア企業の支店で働く人', String(J.branch));
+    kv(g, '仕事を探している人', String(J.none) + '（失業率 ' + pct(a.stats && a.stats.jobless) + '）'); kv(g, '学生', String(J.student)); kv(g, '退職した人', String(J.retired));
+    p.appendChild(g);
+    box.appendChild(p);
+    p = panel('アスカ国のお金', 'すべて建国資金から：両国の間を行き来するだけ');
+    g = el('div', 'town-grid'); var M = a.money;
+    kv(g, '国民の預金', money(M.people)); kv(g, '国庫', money(M.treasury)); kv(g, 'ATSUKA Vision', money(M.atsuka)); kv(g, '国立銀行の自己資金', money(M.bank));
+    kv(g, '国立銀行の貸出', money(M.lent)); kv(g, '企業誘致の資金（残り）', money(M.boost) + '（支払い済み ' + money(M.boostPaid) + '）'); kv(g, '年金の積立金', money(M.pension)); kv(g, '地元の商売', money(M.trade));
+    kv(g, 'アスカ国のお金の合計', money(M.all));
+    kv(g, 'ヴェルノアから入ったお金（累計）', money(a.sum.fromVernoa)); kv(g, 'ヴェルノアへ出たお金（累計）', money(a.sum.toVernoa)); kv(g, 'ATSUKA Visionの調達（累計）', money(a.procured));
+    p.appendChild(g);
+    box.appendChild(p);
+    p = panel('ATSUKA Vision', '国営の事業：アスカ国の雇用主で、ヴェルノアから稼ぐ');
+    p.appendChild(table(['事業', '内容', '働く人', 'ヴェルノアからの売上（累計）'], a.atsuka.map(function (d) { return [d.name, d.what, String(d.staff), money(d.rev)]; })));
+    box.appendChild(p);
+    p = panel('ヴェルノア企業の拠点', '各社がアスカの人の支出を見て、採算が合うだけ開く（毎月）');
+    var rows = [];
+    a.cats.forEach(function (c) { c.cos.forEach(function (co, k) { rows.push([k ? '' : c.name, k ? '' : money(c.want) + '/年', co.name, c.digital ? '配信（拠点なし）' : co.branches + 'か所']); }); });
+    p.appendChild(table(['分野', 'アスカの人が使いたい額', '会社', '拠点'], rows));
+    box.appendChild(p);
+    if (a.hist && a.hist.length) {
+      p = panel('月ごとの記録');
+      p.appendChild(table(['月末', 'お金の合計', '国民の預金', '国庫', 'ATSUKA Vision', '失業率', 'ヴェルノアから（累計）', 'ヴェルノアへ（累計）'], a.hist.slice(-12).reverse().map(function (h) {
+        return [day(h.day), money(h.money), money(h.cash), money(h.treasury), money(h.atsuka), pct(h.jobless), money(h.fromVernoa), money(h.toVernoa)];
+      })));
+      box.appendChild(p);
+    }
+    p = panel('アスカ国のニュース');
+    var list = el('ul', 'town-list');
+    (a.news || []).slice().reverse().forEach(function (n) { list.appendChild(el('li', '', day(n.day) + '　' + n.text)); });
+    p.appendChild(list);
+    box.appendChild(p);
+  }
 
   /* ---------------------------------------------------------------- asking --- */
   function ask() {
@@ -77,6 +119,7 @@ var OpsTown = (function () {
     else if (st.tab === 'people') people(box, r);
     else if (st.tab === 'orgs') orgs(box);
     else if (st.tab === 'locals') locals(box, r);
+    else if (st.tab === 'asuka') asuka(box, r);
     else news(box, r);
     view.replaceChildren(box);
   }
@@ -128,6 +171,17 @@ var OpsTown = (function () {
     Object.keys(nf.day.out || {}).forEach(function (k) { rows.push(['支出', kindName(k), money(nf.day.out[k])]); });
     if (rows.length) p.appendChild(table(['', '項目（今日）', '金額'], rows));
     box.appendChild(p);
+    // the money ledger: every $ from someone to someone (it moves only when a country is founded)
+    var L = r.ledger;
+    if (L) {
+      p = panel('マネー台帳', 'お金は途中で生まれも消えもしない：建国のときだけ増える');
+      g = el('div', 'town-grid');
+      kv(g, '今のずれ（累計）', (L.drift >= 0 ? '+' : '−') + '$' + Math.abs(L.drift).toLocaleString('en-US')).classList.toggle('town-bad', L.drift !== 0);
+      kv(g, '1日の最大のずれ', '$' + Math.abs(L.worst).toLocaleString('en-US'));
+      kv(g, '最初に数えたお金', money(L.base)); kv(g, 'その後の建国で増えた分', money(L.founded)); kv(g, '最後に数えた日', day(L.at));
+      p.appendChild(g);
+      box.appendChild(p);
+    }
     p = panel('5つの区');
     p.appendChild(table(['区', '区長', '支持率', '人口', '景気', '公約'], r.districts.map(function (d) {
       return { cells: [d.name, link(d.mayor), d.approval + '%', String(d.people), (d.economy * 100).toFixed(1), (d.platform || []).map(function (id) { var x = N().platforms.filter(function (y) { return y.id === id; })[0]; return x ? x.name : id; }).join('・')] };

@@ -46,7 +46,10 @@ const COLS = [
   // (the orders a person made in the 投資 market today: at most NPC.life.tradesDay)
   ['trades', Uint8Array, 1, true, true],
   // (the local company one works for, its number in js/game/local.js: a local job's, その他・パート; 0: the small shops)
-  ['firm', Uint8Array, 1, false, true]
+  ['firm', Uint8Array, 1, false, true],
+  // (the days in a row a payment one had to make could not be made: nobody would lend them more — what is not paid is
+  // not paid, never paid with money from nowhere —: the trouble ladder's sign, npc-state.js troubles)
+  ['miss', Uint8Array, 1, true, true]
 ];
 export const COLUMNS = COLS.map(([name, kind, width, hot, late]) => ({ name, kind, width, hot: !!hot, late: !!late }));
 // what a person thinks of company `k` (NPC.companies' order: the first ten in `view`, the rest in `view2`)

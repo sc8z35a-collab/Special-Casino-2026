@@ -31,19 +31,8 @@ function country(n = 1500) {
       return outs;
     },
     // all the money there is, by who holds it (a local company's loan from Tenesice a debt like the people's)
-    money() {
-      const P = W.P;
-      let x = 0;
-      for (let i = 0; i < P.n; i++) x += P.cash[i] - P.debt[i] + P.tokens[i];
-      x += W.nation.cash - W.nation.bank + W.nation.fund.cash + W.districts.reduce((a, d) => a + d.cash, 0) + W.sector.cash;
-      if (W.locals) for (const c of Object.values(W.locals.firms)) x -= c.debt || 0;
-      for (const id of NPC.companies) {
-        const s = w.co[id];
-        if (id === 'tenesice') x += (s.bal.cash || 0) + (s.bal.lent || 0) + (s.bal.bonds || 0) - (s.bal.deposits || 0);
-        else x += (s.bal.cash || 0) - s.loans.reduce((a, l) => a + l.amt, 0);
-      }
-      return x + npc.econ.pending(W) + W.abroad.cash - W.sum.endowed + W.sum.toPlayers - W.sum.fromPlayers;
-    }
+    // (the money ledger: server/core/npc-model.js moneyOf — アスカ国's money with it)
+    money() { return npc.moneyOf(W, w); }
   };
 }
 // (a company's money and its equity gone, a loan beyond anything Tenesice will lend it)

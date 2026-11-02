@@ -299,8 +299,9 @@ export function createTrees({ q, tx, getUser, balance, balanceChanged, onReady =
         saveGrowth(t, now);
         q('UPDATE trees SET given = given + ? WHERE id = ?').run(amount, t.id);
         q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(amount, cur.id);
-        // (YOSIDA's fertilizer: its share of what was given)
-        if (corp) corp.flow('yosida', 'fertilizer', Math.floor(amount * CORP.yosida.fertilizer));
+        // (YOSIDA's fertilizer: its share of what was given; the rest the treasury's, which pays the harvests)
+        const share = Math.floor(amount * CORP.yosida.fertilizer);
+        if (corp) { corp.flow('yosida', 'fertilizer', share); corp.flow('@stateIn', 'fertilizer', amount - share); }
         return { tree: dto(q('SELECT * FROM trees WHERE id = ?').get(t.id), now), balance: balance(getUser(u.id)) };
       });
       balanceChanged(u.id, true);
