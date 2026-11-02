@@ -337,7 +337,8 @@ const ACTIONS = {
     set(W, i, A.outing, PL.park, r.int(5), m, 120 + r.int(120));
     const n = Math.round(Math.min(econ.allowance(W, i, 2, day) * 0.8, W.cal.leisure * (0.2 + 0.4 * r.u())));
     // (some outings are trips to アスカ・リゾート: its money, ATSUKA Vision's)
-    if (n > 0 && W.asuka && r.u() < ASUKA.rules.tourism) { if (econ.pay(W, i, n, false)) { asuka.earned(W, n, 'resort'); P.fund[i * 4 + 2] -= n; } }
+    // (the cheaper アスカ is, against its founding prices, the more go)
+    if (n > 0 && W.asuka && r.u() < ASUKA.rules.tourism / ((W.asuka.policy && W.asuka.policy.price) || 1)) { if (econ.pay(W, i, n, false)) { asuka.earned(W, n, 'resort'); P.fund[i * 4 + 2] -= n; } }
     else if (n > 0 && econ.toSector(W, i, n, false, 'leisure')) P.fund[i * 4 + 2] -= n;
     // (a little from the shops on the way)
     if (r.u() < 0.5) econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.25), false);

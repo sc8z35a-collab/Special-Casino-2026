@@ -58,6 +58,17 @@ var OpsTown = (function () {
     kv(g, 'ヴェルノアから入ったお金（累計）', money(a.sum.fromVernoa)); kv(g, 'ヴェルノアへ出たお金（累計）', money(a.sum.toVernoa)); kv(g, 'ATSUKA Visionの調達（累計）', money(a.procured));
     p.appendChild(g);
     box.appendChild(p);
+    // its balance with ヴェルノア kept: the rent and the withholding it moves, its prices, its fund's bonds
+    var pol = a.policy;
+    if (pol) {
+      p = panel('アスカ国の財政ルール', 'ヴェルノアとの収支が3か月続けて赤字なら地代と源泉税を上げ、黒字なら下げる');
+      g = el('div', 'town-grid');
+      kv(g, '先月のヴェルノアとの収支', (pol.last >= 0 ? '+' : '−') + money(Math.abs(pol.last || 0)));
+      kv(g, '支店の地代（売上に対し）', ((pol.rent || 0) * 100).toFixed(1) + '%'); kv(g, '送金の源泉税', ((pol.withhold || 0) * 100).toFixed(0) + '%');
+      kv(g, '物価（建国時＝1）', String(pol.price)); kv(g, '政府系ファンド（ヴェルノア国債）', money(pol.bonds));
+      p.appendChild(g);
+      box.appendChild(p);
+    }
     p = panel('ATSUKA Vision', '国営の事業：アスカ国の雇用主で、ヴェルノアから稼ぐ');
     p.appendChild(table(['事業', '内容', '働く人', 'ヴェルノアからの売上（累計）'], a.atsuka.map(function (d) { return [d.name, d.what, String(d.staff), money(d.rev)]; })));
     box.appendChild(p);

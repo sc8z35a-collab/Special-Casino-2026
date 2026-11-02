@@ -1929,7 +1929,7 @@ function asukaDay(w, d, A, out) {
         if (to === '@sector' || !w.co[to] || w.co[to].dead) w.ext.sector += x;
         else w.b2bCash.push({ to, stream: 'asukaB2B', n: x, from: s.id, cost: Math.round(x * 0.6) });
       }
-      const rent = c && !c.digital ? Math.round(n * AR.tax.rent) : 0, plat = c && c.digital ? Math.round(n * c.platform) : 0;
+      const rent = c && !c.digital ? Math.round(n * ((A.rates && A.rates.rent) || AR.tax.rent)) : 0, plat = c && c.digital ? Math.round(n * c.platform) : 0;
       if (rent + plat > 0) { post(s, [['sAsuka', rent + plat], ['cash', -(rent + plat)]], 'expenses'); g.m.cost += rent + plat; X.rent += rent; X.platform += plat; }
     }
   }
@@ -1953,7 +1953,7 @@ function asukaDay(w, d, A, out) {
     if (!s.asuka || s.dead) continue;
     const g = s.asuka, profit = g.m.sales - g.m.cost;
     if (profit > 0) {
-      const tax = Math.round(profit * AR.tax.corporate), wh = Math.round((profit - tax) * AR.tax.withhold);
+      const tax = Math.round(profit * AR.tax.corporate), wh = Math.round((profit - tax) * ((A.rates && A.rates.withhold) || AR.tax.withhold));
       post(s, [['tAsuka', tax + wh], ['cash', -(tax + wh)]], 'taxes');
       X.tax += tax + wh;
     }
@@ -1980,7 +1980,7 @@ function asukaPlan(w, d, A, out, X) {
       if (!s || s.dead || s.reorg) { if (have) B[co][c.id] = 0; continue; }
       const want = (A.want[c.id] || 0) * share;
       const cogs = Object.values(c.cogs || {}).reduce((a, b) => a + b, 0);
-      const margin = cap * 0.9 * (1 - cogs - AR.tax.rent) - staff * (A.pay || AR.pay.branch) - rentY;
+      const margin = cap * 0.9 * (1 - cogs - ((A.rates && A.rates.rent) || AR.tax.rent)) - staff * (A.pay || AR.pay.branch) - rentY;
       // (as many as would be used to nine tenths — and the first as soon as half of one would be)
       const target = margin > 0 ? Math.max(Math.floor(want / (cap * 0.9)), want >= cap * 0.5 ? 1 : 0) : 0;
       const step = Math.max(1, Math.ceil(have * 0.25));

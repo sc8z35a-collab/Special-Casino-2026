@@ -76,7 +76,13 @@
     // (a year's chance of dying by age: Gompertz, as ヴェルノア's)
     mortality: { a: 0.00002, b: 0.095 },
     // (the trade's cushion: what it keeps of a month's takings before paying its owners)
-    tradeKeep: 0.15
+    tradeKeep: 0.15,
+    // its balance with ヴェルノア kept: `months` running of more going out than coming in (or the other way) move the
+    // branches' land rent and the withholding on their profit by `step` (within `max`, back towards where they began);
+    // its prices follow its people's money (the square root of it a head against the founding's), and ヴェルノア's
+    // people travel there the more the cheaper it is; what the treasury has beyond `fund` times its founding part, a
+    // tenth of it a month into ヴェルノア's government bonds at `bondRate` a year (its 政府系ファンド)
+    policy: { months: 3, step: { rent: 0.005, withhold: 0.01 }, max: { rent: 0.1, withhold: 0.15 }, fund: 1.5, bondRate: 0.01 }
   };
 
   var byCat = {};

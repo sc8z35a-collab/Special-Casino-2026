@@ -404,6 +404,7 @@ function month(W, day, r) {
     if (back > 0) { A.cash[i] -= back; A.debt[i] -= back; a.bank.own += back; a.bank.lent -= back; }
   }
   hire(W, day, r);
+  policy(W, day);
   // the record
   let jobless = 0, work = 0, cash = 0, debt = 0;
   for (let i = 0; i < A.n; i++) {
@@ -417,6 +418,45 @@ function month(W, day, r) {
   if (a.hist.length > 36) a.hist.shift();
   a.month = { in: {}, out: {} };
   a.atsuka.month = {};
+}
+// The month's balance with ヴェルノア, and what the state does about it (its rules: `R.policy`): the branches' land
+// rent and the withholding on their profit up a step after `months` of more going out than coming in, down a step
+// after `months` of the other way; its prices by its people's money; and what its treasury holds beyond its fund,
+// lent to ヴェルノア's government (its bonds, the interest paid each month by ヴェルノア's treasury).
+function policy(W, day) {
+  const a = W.asuka, A = W.AP, Pol = R.policy;
+  const p = a.policy || (a.policy = { rent: R.tax.rent, withhold: R.tax.withhold, out: 0, in: 0, from: a.sum.fromVernoa, to: a.sum.toVernoa, price: 1, bonds: 0 });
+  const bal = (a.sum.fromVernoa - p.from) - (a.sum.toVernoa - p.to);
+  p.from = a.sum.fromVernoa; p.to = a.sum.toVernoa; p.last = bal;
+  if (bal < 0) { p.out++; p.in = 0; } else { p.in++; p.out = 0; }
+  if (p.out >= Pol.months && (p.rent < Pol.max.rent || p.withhold < Pol.max.withhold)) {
+    p.rent = Math.min(Pol.max.rent, Math.round((p.rent + Pol.step.rent) * 1000) / 1000);
+    p.withhold = Math.min(Pol.max.withhold, Math.round((p.withhold + Pol.step.withhold) * 1000) / 1000);
+    p.out = 0;
+    say(W, day, `ヴェルノアへの支払いが${Pol.months}か月続けて受け取りを上回ったため、支店の地代を売上の${(p.rent * 100).toFixed(1)}%、送金の源泉税を${(p.withhold * 100).toFixed(0)}%に引き上げ`);
+  } else if (p.in >= Pol.months && (p.rent > R.tax.rent || p.withhold > R.tax.withhold)) {
+    p.rent = Math.max(R.tax.rent, Math.round((p.rent - Pol.step.rent) * 1000) / 1000);
+    p.withhold = Math.max(R.tax.withhold, Math.round((p.withhold - Pol.step.withhold) * 1000) / 1000);
+    p.in = 0;
+    say(W, day, `ヴェルノアとの収支が${Pol.months}か月続けて黒字のため、支店の地代を売上の${(p.rent * 100).toFixed(1)}%、送金の源泉税を${(p.withhold * 100).toFixed(0)}%に引き下げ`);
+  }
+  // (its prices: its people's money a head against the founding's)
+  let cash = 0;
+  for (let i = 0; i < A.n; i++) cash += Math.max(0, A.cash[i]);
+  const start = a.total * R.founding.people / A.n;
+  p.price = Math.round(Math.sqrt(Math.max(0.01, cash / A.n / start)) * 1000) / 1000;
+  // (the treasury's surplus into ヴェルノア's government bonds: its money there now, the interest back each month)
+  const keep = a.total * R.founding.treasury * Pol.fund;
+  if (a.treasury > keep && W.nation) {
+    const n = Math.floor((a.treasury - keep) * 0.1);
+    if (n > 0) { a.treasury -= n; p.bonds += n; W.nation.cash += n; W.nation.debt += n; W.nation.asuka = (W.nation.asuka || 0) + n; tout(a, 'bonds', n); say(W, day, `国庫の余剰${CORP.fmt.money(n)}をヴェルノアの国債で運用（残高${CORP.fmt.money(p.bonds)}）`); }
+  }
+  if (p.bonds > 0 && W.nation) {
+    const int = Math.round(p.bonds * Pol.bondRate / 12);
+    W.nation.cash -= int;
+    if (W.nation.day) W.nation.day.out.asukaBonds = (W.nation.day.out.asukaBonds || 0) + int;
+    a.treasury += int; a.sum.fromVernoa += int; tin(a, 'bondInterest', int);
+  }
 }
 // the posts: the state's (as many as it was founded with), the local trade's (as its takings allow), and each
 // company's branches (`staffCo`, what its branches need: corp-model asukaPlan) — filled from those looking for work,
@@ -478,7 +518,9 @@ export function flowsFor(W) {
   a.toCo = {};
   const staff = {};
   for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.branch) { const co = COS[A.emp[i]]; staff[co] = (staff[co] || 0) + 1; }
-  return { toCo, want: { ...a.want }, staff, boost: Math.max(0, Math.round(a.boost.cash)), branches: a.branches || {}, founded: a.founded, boostUntil: a.founded + R.boost.years * YEAR, pay: R.pay.branch, scale: a.scale };
+  const pol = a.policy || {};
+  return { toCo, want: { ...a.want }, staff, boost: Math.max(0, Math.round(a.boost.cash)), branches: a.branches || {}, founded: a.founded, boostUntil: a.founded + R.boost.years * YEAR, pay: R.pay.branch, scale: a.scale,
+    rates: { rent: pol.rent || R.tax.rent, withhold: pol.withhold || R.tax.withhold } };
 }
 // a branch's people in a country of this size (at least one)
 export const branchStaff = (c, scale) => Math.max(1, Math.round(c.staff * (scale || 1)));
@@ -508,6 +550,6 @@ export function view(W) {
     districts: ASUKA.districts.map((d, k) => ({ ...d, people: byDist[k] })),
     atsuka: DIV.map((d, k) => ({ id: d.id, name: d.name, what: d.what, staff: byDiv[k], rev: Math.round(a.atsuka.rev[d.id] || 0) })), procured: a.atsuka.procured,
     cats: CATS.map((c) => ({ id: c.id, name: c.name, want: a.want[c.id] || 0, digital: !!c.digital, cos: ASUKA.companiesOf(c).map(([co]) => ({ id: co, name: (CORP.company(co) || {}).name || co, branches: (a.branches[co] || {})[c.id] || 0 })) })),
-    sum: a.sum, hist: a.hist, news: a.news.slice(-30)
+    policy: a.policy || null, sum: a.sum, hist: a.hist, news: a.news.slice(-30)
   };
 }
