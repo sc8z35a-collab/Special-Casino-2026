@@ -1193,24 +1193,42 @@ function budgetReview(w, s, p, d, out) {
   if (h.length < BUDGET.months) return;
   const base = s.budgetBase || (s.budgetBase = { ...s.budget });
   const sales = h.reduce((a, x) => a + x.sales, 0) / h.length, op = h.reduce((a, x) => a + x.op, 0) / h.length;
-  const want = Math.max(0.02, Math.min(0.4, p.op / Math.max(1, p.sales))) * Math.max(0, sales);
+  // (MY WAY: its philosophy — a low margin aimed at, the rest spent, faster and further; nothing cut while it keeps on)
+  const PH = s.ip ? CORP.myway.philosophy : null;
+  const want = Math.max(0.02, Math.min(0.4, p.op / Math.max(1, p.sales))) * Math.max(0, sales) * (PH ? PH.margin : 1);
   const yearly = BUDGET.keys.reduce((a, k) => a + (s.budget[k] || 0), 0);
   if (!(yearly > 0)) return;
   let f = 0;
-  if (op < want) f = -Math.min(BUDGET.cut, (want - op) * 12 / yearly);
-  else if (op > want * BUDGET.over) f = Math.min(BUDGET.raise, (op - want) * 12 / yearly);
+  if (op < want) f = PH && (s.lossQ || 0) < PH.keepQuarters ? 0 : -Math.min(BUDGET.cut, (want - op) * 12 / yearly);
+  else if (op > want * BUDGET.over) f = Math.min(PH ? PH.raise : BUDGET.raise, (op - want) * 12 / yearly);
   if (!f) return;
   let moved = 0;
   for (const k of BUDGET.keys) {
     const b = s.budget[k] || 0, top = base[k] || 0;
     if (!top) continue;
-    const next = Math.round(Math.max(top * BUDGET.floor, Math.min(f > 0 ? Math.max(top * BUDGET.top, b) : b, b * (1 + f))));
+    const next = Math.round(Math.max(top * BUDGET.floor, Math.min(f > 0 ? Math.max(top * (PH ? PH.top : BUDGET.top), b) : b, b * (1 + f))));
     moved += next - b;
     s.budget[k] = next;
   }
   if (Math.abs(moved) * 12 < yearly * 0.01) return;
   const pct = Math.round(Math.abs(moved) / Math.max(1, yearly) * 1000) / 10;
   news(out, s, p, d + 1, 4 * 3600, 'cut', moved < 0 ? `売上に合わせて経費を見直し：施設・研究・広告・その他・設備の予算を${pct}%削減（直近3か月の売上 月${CORP.fmt.money(sales)}）` : `売上の伸びに合わせて予算を${pct}%増額`, { moved, sales: Math.round(sales) }, 0, true);
+}
+
+// MY WAY's economy (its philosophy): each month a share of its profit to the local companies of its 経済圏 — and at
+// least a tenth of what they sold — as their support, as far as its money goes beyond a month of its costs (the people
+// of the country share it out among them: server/core/npc-local.js support). They grow on it, pay more and never cut.
+function mywaySphere(w, s, p, d, out) {
+  const PH = CORP.myway.philosophy;
+  if (!s.ip || !PH || !w.ext || s.dead || abroad(s)) return;
+  const op = CORP.plOf(s.per.m).op, theirs = Math.max(0, w.sphereSales || 0);
+  const want = Math.max(Math.round(Math.max(0, op) * PH.sphere), Math.round(theirs * PH.floor));
+  const n = Math.min(want, Math.max(0, Math.round((s.bal.cash || 0) - monthlyCosts(s))));
+  if (n <= 0) return;
+  post(s, [['sSupport', n], ['cash', -n]], 'expenses');
+  w.ext.sphere = (w.ext.sphere || 0) + n;
+  s.sphereGiven = (s.sphereGiven || 0) + n;
+  news(out, s, p, d + 1, 5 * 3600, 'sphere', `MY WAY経済圏の地元企業4社に${CORP.fmt.money(n)}を支援（資金援助・社員の派遣・事業拡大）`, { n }, 0, true);
 }
 
 // What the companies charge for their own services, each its own to set — no one else sets it, and no range is set on
@@ -1222,7 +1240,7 @@ export const FEES0 = { winFee: 0.06, exchangeFee: 40000, tradeFee: 0.018, jobFee
 const FEES_OF = { dtrade: ['winFee', 'exchangeFee', 'tradeFee'], citywork: ['jobFee'] };
 const FEE_NAME = { winFee: '勝利金手数料', exchangeFee: '交換手数料', tradeFee: '株の売買手数料', jobFee: '求人サイトの掲載料' };
 export const feesOf = (w) => ({ ...FEES0, ...((w && w.fees) || {}) });
-function feesMonth(w, s, p, d, out) {
+export function feesMonth(w, s, p, d, out) {
   const keys = FEES_OF[s.id], h = s.mHist || [];
   if (!keys || !w.circ || s.dead || h.length < 3) return;
   const f = w.fees || (w.fees = { ...FEES0 });
@@ -1730,7 +1748,7 @@ function guidance(w, s, p, d, f) {
     quarters: f.quarters.map((x) => shy(x, 0.95)), expected: f
   };
   g.eps = Math.round(g.net / out);
-  g.dps = Math.max(0, Math.round(p.payout * Math.max(0, f.net * 0.95) / out));
+  g.dps = Math.max(0, Math.round(payoutOf(p) * Math.max(0, f.net * 0.95) / out));
   return g;
 }
 function setDividend(s, p, g) {
@@ -1738,8 +1756,10 @@ function setDividend(s, p, g) {
   if (s.reorg) { s.div = { dps: 0, daily: 0, total: 0 }; return; }
   s.div.dps = g.dps;
   s.div.daily = g.dps / YEAR;
-  s.div.total = Math.max(0, Math.round(p.payout * Math.max(0, g.net)));
+  s.div.total = Math.max(0, Math.round(payoutOf(p) * Math.max(0, g.net)));
 }
+// what of its profit a company pays out (MY WAY: its philosophy's — little kept)
+const payoutOf = (p) => (p.id === 'myway' && CORP.myway.philosophy ? CORP.myway.philosophy.payout : p.payout);
 
 /* --------------------------------------------------- closing the periods --- */
 function statement(s, p, kind, from, to, key, label) {
@@ -3240,6 +3260,8 @@ export function closeDay(w, d, flows, ch) {
     if (st.pay > 0) { s.pay = Math.round(st.pay); s.unit = Math.round(st.pay * p.cost / p.salary); }
   }
   if (npc && npc.raises) w.raises = npc.raises;
+  // (what MY WAY's economy's local companies sold last month: the least it gives them, mywaySphere)
+  if (npc && npc.sphere !== undefined) w.sphereSales = npc.sphere;
   if (npc && npc.terms) w.terms = npc.terms;
   if (npc && npc.lend) w.lend = npc.lend;
   // what each company's people decided in their meetings (server/core/npc-org.js): their budgets, their hiring, their
@@ -3322,7 +3344,7 @@ export function closeDay(w, d, flows, ch) {
     month(w, s, p, d, ch, out);
     if (CORP.ymd(d).d === 1 && d >= w.launch) tech(w, s, p, d, ch, out);
     if (p.model === 'studio') titlesLook(w, s, p, d, out);
-    if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); feesMonth(w, s, p, d, out); treasury(w, s, p, d, out); }
+    if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); feesMonth(w, s, p, d, out); mywaySphere(w, s, p, d, out); treasury(w, s, p, d, out); }
     // (out of money with nothing more Tenesice will lend, or below nothing too long: 破産)
     solvencyCheck(w, s, p, d, out);
   }
@@ -3409,7 +3431,11 @@ export function closeDay(w, d, flows, ch) {
     if (CORP.isMonthEnd(d) && parentOn) { toParent(w, s, p, d); treasury(w, s, p, d, out); }
     s.bal.retained += s.today;
     for (const k of ['m', 'q', 'y']) s.sd[k] += outstanding(s);
-    if (CORP.isQuarterEnd(d)) s.qNet = CORP.plOf(s.per.q).net;
+    if (CORP.isQuarterEnd(d)) {
+      s.qNet = CORP.plOf(s.per.q).net;
+      // (MY WAY counts its quarters of losses in a row: its people kept whole until there are too many)
+      if (s.ip) s.lossQ = CORP.plOf(s.per.q).op < 0 ? (s.lossQ || 0) + 1 : 0;
+    }
     out.days.push(dayRow(w, s, p, d));
     // (how the companies did today, together: アルタス reads it when it sets its prices)
     if (w.ext && !s.dead) { const row = out.days[out.days.length - 1]; w.ext.health = (w.ext.health || 0) + row.op; w.ext.sales = (w.ext.sales || 0) + row.sales; }
@@ -3623,7 +3649,7 @@ export function boot(key, launch, { years = 2, prices = {}, onDay = null } = {})
     const fy = CORP.fyOf(launch - 1), q = CORP.quarterOf(launch - 1);
     s.sd = { m: s.sh.issued * (launch - CORP.monthStart(launch - 1)), q: s.sh.issued * (launch - CORP.quarterStart(fy, q)), y: s.sh.issued * (launch - CORP.fyStart(fy)) };
     s.mkt = { e: Math.log(price), fair: price };
-    if (s.guide) { s.guide.eps = Math.round(s.guide.net / s.sh.issued); s.guide.dps = Math.max(0, Math.round(p.payout * Math.max(0, s.guide.expected.net * 0.95) / s.sh.issued)); setDividend(s, p, s.guide); }
+    if (s.guide) { s.guide.eps = Math.round(s.guide.net / s.sh.issued); s.guide.dps = Math.max(0, Math.round(payoutOf(p) * Math.max(0, s.guide.expected.net * 0.95) / s.sh.issued)); setDividend(s, p, s.guide); }
   };
   for (const p of CORP.companies) count(p);
   // the backer's stake in its studio

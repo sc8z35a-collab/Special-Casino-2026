@@ -295,6 +295,8 @@ test('a home taken by the bank: what it brings pays the debt and the rest is the
   for (let x = 0; x < P.n; x++) if (P.home[x] === pop.HOME.own && P.hh[x] === x) { i = x; break; }
   assert.ok(i >= 0);
   W.rentIdx = 1.2;
+  // (not one a company short of people would take on again: too frail)
+  P.health[i] = 50;
   P.cash[i] = 0; P.credit[i] = 0; P.salary[i] = 0; P.rent[i] = 0;
   P.debt[i] = npc.econ.quickCap(P, i) * 4 + 1000;
   P.dkind[i] = 2;

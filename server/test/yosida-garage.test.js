@@ -156,15 +156,17 @@ test('the server: MAGITA Garage takes each garage place\'s fee once a month (eve
   t.mock.method(Date, 'now', () => now);
   s.setUser(a.me.id, { created_at: MONTH0 - 86400000, dollars: 150000, garage_extra: 1 });
   s.setUser(b.me.id, { created_at: MONTH0 + 3600000 });
+  // (3 places, 2 of them used: only those it uses — a place left empty is not billed)
+  for (let k = 0; k < 2; k++) s.app.db.prepare(`INSERT INTO cars (owner_id, model, created_at, acquired_at) VALUES (?, 'yoshida-s5', ?, ?)`).run(a.me.id, now, now);
   let g = await s.call('GET', '/api/cars', { token: a.token });
   assert.equal(g.status, 200);
   assert.equal(g.garageFee.fee, 100000);
-  assert.deepEqual(g.garageFee.bills.map((x) => [x.month, x.slots, x.fee, x.amount]), [['2026-11', 3, 100000, 300000]]);
+  assert.deepEqual(g.garageFee.bills.map((x) => [x.month, x.slots, x.fee, x.amount]), [['2026-11', 2, 100000, 200000]]);
   const me = s.app.db.prepare('SELECT dollars FROM users WHERE id = ?');
-  assert.equal(me.get(a.me.id).dollars, 150000 - 300000);
+  assert.equal(me.get(a.me.id).dollars, 150000 - 200000);
   // once a month
   await s.call('GET', '/api/cars', { token: a.token });
-  assert.equal(me.get(a.me.id).dollars, -150000);
+  assert.equal(me.get(a.me.id).dollars, -50000);
   // an account begun this month pays from the next
   g = await s.call('GET', '/api/cars', { token: b.token });
   assert.equal(g.garageFee.bills.length, 0);
@@ -197,7 +199,7 @@ test('the server: MAGITA Garage takes each garage place\'s fee once a month (eve
   assert.equal(sold.status, 200, JSON.stringify(sold));
   const f = flows(s);
   // (the renting fee the player's; MAGITA Garage's cut of the takings the renters', through the local businesses)
-  assert.deepEqual([f.garagefee, f.rentfee, f.rentcut, f.buyback], [300000, 70000, 150000, price]);
+  assert.deepEqual([f.garagefee, f.rentfee, f.rentcut, f.buyback], [200000, 70000, 150000, price]);
   // the next month: again, at the fee MAGITA set for it
   now = Date.UTC(2026, 11, 1, 1);
   await s.call('GET', '/api/cars', { token: a.token });

@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from './helpers.js';
 import { answerOnSocket, overSocket } from '../core/socketapi.js';
+import { GACHA } from '../core/rules.js';
 import crypto from 'node:crypto';
 
 const CONN = { ip: '203.0.113.7', host: 'casino.test', scheme: 'https:', ua: 'Mozilla/5.0 (Linux; Android 14) Chrome/130', origin: 'https://casino.test', lang: 'ja', device: 'a'.repeat(32) };
@@ -19,7 +20,7 @@ async function ask(s, m, conn = CONN) {
 }
 const bearer = (u) => ({ authorization: 'Bearer ' + u.token });
 
-test('gacha uses the optimized connection: 3/9/30 slots settle once at the quoted price, with the same HTTP balance', async () => {
+test('gacha uses the optimized connection: 2/6/20 slots settle once at the quoted price, with the same HTTP balance', async () => {
   const s = await startServer();
   try {
     const a = await s.register('GachaSocket');
@@ -37,8 +38,10 @@ test('gacha uses the optimized connection: 3/9/30 slots settle once at the quote
       assert.equal(s.app.db.prepare('SELECT dollars FROM users WHERE id = ?').get(a.me.id).dollars, money);
       const r = await ask(s, { m: 'POST', p: '/api/gacha/spin', h: bearer(a), b: { kind, count, price } });
       assert.equal(r.s, 200, JSON.stringify(r.b));
-      assert.equal(r.b.pulls.flatMap((p) => p.rewards).length, count * 3);
-      money -= price;
+      const got = r.b.pulls.flatMap((p) => p.rewards);
+      assert.equal(got.length, count * GACHA.slots);
+      // (a tree beyond all the player can have: its money instead, YOSIDA's)
+      money += got.reduce((n, x) => n + (x.paid || 0), 0) - price;
       assert.equal(r.b.me.dollars, money);
       assert.equal((await s.call('GET', '/api/me', { token: a.token })).me.dollars, money);
     }

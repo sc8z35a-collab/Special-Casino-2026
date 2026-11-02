@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { startServer } from './helpers.js';
 import { createGacha } from '../core/gacha.js';
 import { purgePlayer } from '../core/purge.js';
-import { GACHA, RULES } from '../core/rules.js';
+import { GACHA, RULES, CORP } from '../core/rules.js';
 const key = () => Date.now() + '-' + crypto.randomBytes(16).toString('hex');
 async function fixture(t) {
   const s = await startServer({ startTokens: 10000, startDollars: 100000000 }); t.after(() => s.stop());
@@ -32,12 +32,15 @@ for (const count of [1, 10]) test(`a ${count}-pull mature-tree draw reserves the
   for (const reward of GACHA.odds('rare', false)) { if (reward.id === 'grown-tree') { roll = (before + reward.chance / 2) / 100; break; } before += reward.chance; }
   assert.ok(roll > 0);
   const gacha = createGacha({ q, tx: fn => s.app.db.tx(fn), getUser, meDto: u => u, itemsOf, addItems, balanceChanged: getUser, afterSpend() {}, now: () => now, rand: () => roll });
+  const was = getUser(a.me.id).dollars;
   const result = await gacha.routes['POST /api/gacha/spin']({ json: async () => ({ kind: 'rare', count }) }, a.me);
-  const trees = q('SELECT * FROM trees WHERE user_id=?').all(a.me.id), planted = Math.min(count * 3, RULES.tree.max - 1);
+  const n = count * GACHA.slots, trees = q('SELECT * FROM trees WHERE user_id=?').all(a.me.id), planted = Math.min(n, RULES.tree.max - 1);
   assert.equal(trees.length, planted + 1); assert.equal(trees.filter(x => x.given === 0).length, 1);
   assert.equal(trees.filter(x => x.given === GACHA.grownGiven).length, planted);
-  assert.equal(itemsOf(a.me.id)['gacha-grown-tree'] || 0, count * 3 - planted);
-  assert.equal(result.pulls.flatMap(p => p.rewards).length, count * 3);
+  // (every tree the player can have there: the rest paid in money instead — YOSIDA's, a tree's worth each)
+  assert.equal(itemsOf(a.me.id)['gacha-grown-tree'] || 0, 0);
+  assert.equal(getUser(a.me.id).dollars, was - result.paid + (n - planted) * CORP.yosida.gacha.treePay);
+  assert.equal(result.pulls.flatMap(p => p.rewards).length, n);
 });
 
 test('gifting a car with rental earnings publishes the new sender balance once', async t => {

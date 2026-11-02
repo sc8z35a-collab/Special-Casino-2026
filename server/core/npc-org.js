@@ -210,7 +210,9 @@ function proposals(W, o, s, day, r, ctx) {
   // 経営企画・経理: the year against the plan
   // (the month's operating result against its sales: deep in the red, a restructuring)
   const monthOp = pl.op, deep = monthOp < 0 && -monthOp > Math.max(1, pl.sales) * 0.15;
-  if (deep) {
+  // (MY WAY by its philosophy cuts nothing until its losses have run for quarters: CORP.myway.philosophy)
+  const keepOn = id === 'myway' && CORP.myway.philosophy && (s.lossQ || 0) < CORP.myway.philosophy.keepQuarters;
+  if (keepOn) { /* it pushes on */ } else if (deep) {
     const cut = 0.25;
     out.push({ kind: 'cut', title: `構造改革（その他経費を${Math.round(cut * 100)}%・施設費と研究費を10%削減、採用を凍結）`, effect: [{ kind: 'budget', key: 'other', mult: 1 - cut }, { kind: 'budget', key: 'place', mult: 0.9 }, { kind: 'budget', key: 'rd', mult: 0.9 }, { kind: 'budget', key: 'ads', mult: 0.85 }, { kind: 'target', mult: 0.97 }], cost: 0, risk: 0.2, gain: 0.2, by: by('plan') >= 0 ? by('plan') : by('acct'), why: { op: monthOp, sales: pl.sales } });
   } else if (ytd.op < 0 || behind < 0.85) {
@@ -512,8 +514,10 @@ function mywayProposals(W, o, s, out, { pl, runway, dept, by }) {
     if (c.on || c.fee <= c.base * M.talks.floor + 1e6 || (c.offered && W.day - c.offered < 60)) continue;
     out.push({ kind: 'ip', title: `${CORP.company(pid).name}への再契約の提案（契約料を${pct(M.win.off)}引き下げ）`, effect: [{ kind: 'ip', action: 'win', partner: pid }], cost: 0, risk: 0.1, gain: 0.07, by: named('alliance', 'negotiator'), why: { partner: pid } });
   }
-  // (the fixed costs: what it cannot cut is the pay)
-  if (pl.op < 0 || runway < 6) {
+  // (the fixed costs: what it cannot cut is the pay — and by its philosophy nothing of its people's at all until its
+  // losses have run for quarters: CORP.myway.philosophy.keepQuarters; it pushes on till then)
+  const patient = M.philosophy && (s.lossQ || 0) < M.philosophy.keepQuarters && runway >= 2;
+  if (!patient && (pl.op < 0 || runway < 6)) {
     out.push({ kind: 'cut', title: '固定費の見直し（社員管理・福利厚生費を10%削減。基本給と月次ボーナスは維持）', effect: [{ kind: 'ip', action: 'care' }, { kind: 'budget', key: 'other', mult: 0.85 }, { kind: 'target', mult: 0.98 }], cost: 0, risk: 0.2, gain: 0.2, by: cfo, why: { op: pl.op, runway } });
     if (runway < 4) out.push({ kind: 'cut', title: `希望退職の募集（社員の${pct(M.retire.share)}・退職金${M.retire.severance}か月分）`, effect: [{ kind: 'ip', action: 'retire' }], cost: s.n * M.retire.share * s.pay / 12 * M.retire.severance, risk: 0.35, gain: 0.25, by: cfo, why: { runway } });
   }

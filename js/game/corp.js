@@ -437,7 +437,20 @@
     // (when a partner gives up: its contract losing for `badMonths` months running; back when heat × brand is `again`
     // times its breakeven for as long)
     badMonths: 2, again: 1.25,
-    loanRate: 0.15, line: 0.5
+    loanRate: 0.15, line: 0.5,
+    // MY WAYの経営理念 (fixed: its own, set by no one else) — its people first, and an economy of its own always in a boom:
+    // - `keepQuarters`: quarters of losses in a row before it cuts anything of its people's — their pay, their care,
+    //   their places (当分は社員の給料を減らさない); it pushes on until then
+    // - its pay: each month its sales grew (its last month against the two before), `raiseBy` of that growth onto
+    //   everyone's pay, each their own share of it (`spread`: from its low to its high times), and more in a boom
+    //   (`boom` of how hot the economy is)
+    // - little kept (利益剰余金を貯めない): it aims at `margin` of its plan's margin and spends the rest — its people's
+    //   welfare, its buildings, research, advertising, running and investment —, up to `raise` more a month and `top`
+    //   times its budgets; `payout` of its profit to its shareholders
+    // - its economy (the MY WAY経済圏's local companies): each month `sphere` of its profit as their support, and at
+    //   least `floor` of their month's sales; they take on its ways — their people's pay raised as their sales grow,
+    //   `grow` more people a month while it supports them, never a cut
+    philosophy: { keepQuarters: 4, raiseBy: 0.6, spread: [0.5, 1.5], boom: 0.03, margin: 0.4, raise: 0.3, top: 12, payout: 0.9, sphere: 0.25, floor: 0.1, grow: 0.03 }
   };
   // a partner's breakeven heat × brand at its contract's fee now
   function breakeven(id, fee) {
@@ -709,6 +722,8 @@
     sAltas: ['資源・エネルギーの購入（アルタス）', 's'],
     // (the gacha's prizes each company provides at its own cost; what the players sold back to it of them)
     sGacha: ['ガチャ景品の提供（自社負担）', 's'], 'c:rebuy': ['プレイヤーからの買い取り（VIP券・チケット・ガレージコイン）', 'c'],
+    // (MY WAY's support of the local companies of its economy: their funding)
+    sSupport: ['MY WAY経済圏の企業への支援', 's'],
     xBad: ['貸倒損失（取引先の破産）', 'xl'], xEstate: ['破産管財人による事業継続の収入', 'xi'], xSale: ['事業譲渡益（破産管財人）', 'xi'],
     goodwill: ['のれん（事業の譲受け）', 'a'], sGoodwill: ['のれん償却', 's'], xCourt: ['破産手続の予納金', 'xl']
   };

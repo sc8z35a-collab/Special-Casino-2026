@@ -125,6 +125,8 @@ export function fromCompanies(W, ext, day) {
   if (ext.bankAid) { econ.nationOut(W, 'bankRescue', ext.bankAid); W.nation.stakes = W.nation.stakes || {}; W.nation.stakes.tenesice = (W.nation.stakes.tenesice || 0) + ext.bankAid; }
   // (what the companies charge for their own services, as they set it: Dtrade's fees, the job sites')
   if (ext.fees) W.fees = { ...ext.fees };
+  // (MY WAY's support of the local companies of its economy, shared out among them)
+  if (ext.sphere) local.support(W, ext.sphere, day);
   // (what Tenesice has of its own not lent yet, as of this close: what it can lend until the next, borrowFor)
   if (ext.bankFree !== undefined) W.bankRoom = Math.max(0, ext.bankFree);
   // (the players' part of the market's money: theirs; and what the players paid the local businesses back)
@@ -456,13 +458,14 @@ function month(W, day, r, ctx) {
 }
 
 // A person's month (their own sense of what they may spend: of what comes in, by how careful they are, and a little
-// of what they have, more for the old), and its parts: the slots, the games, the pleasures, the market
+// of what they have, more for the old), and its parts: the slots, the games, the pleasures, the market. (Most of what
+// comes in goes out again — six tenths for the most careful, nearly all for the least —: the money goes round.)
 export function budgetOf(W, i, age, r) {
   const P = W.P, c = W.cal;
   const inc = (P.salary[i] || 0) / 12 * 0.78 + P.penAmt[i] + (P.jobless[i] ? P.joblessPay[i] : 0) + Math.max(0, P.inc[i]) * 0.3;
   const wealth = Math.max(0, P.cash[i]);
-  const keep = 0.5 + 0.45 * (1 - tr(P, i, T.thrift));
-  const draw = (0.01 + 0.04 * (age >= 60 ? 1 : age / 60)) * (1 - 0.5 * tr(P, i, T.thrift)) / 12;
+  const keep = 0.6 + 0.38 * (1 - tr(P, i, T.thrift));
+  const draw = (0.015 + 0.05 * (age >= 60 ? 1 : age / 60)) * (1 - 0.5 * tr(P, i, T.thrift)) / 12;
   const mood = P.emo[i * 5 + E.mood] / 255;
   const b = Math.max(0, inc * keep + wealth * draw) * (0.85 + 0.3 * mood);
   P.budget[i] = Math.round(b);

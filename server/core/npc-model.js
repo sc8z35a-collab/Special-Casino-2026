@@ -390,7 +390,7 @@ export function flowsFor(W, day) {
   // (the 32 local companies as a bidder sees them, those that failed since — their businesses to be sold again —, and
   // what was paid to failed companies' trustees: server/core/npc-local.js)
   const locals = local.summary(W), localFailed = W.locals && W.locals.failed ? W.locals.failed.splice(0) : [];
-  return { co: f.co, bank: { ...f.bank, deposits: Math.max(0, deposits), loans, rate: W.bankRates.deposit }, charges: f.charges, staff, raises, terms: W.terms || {}, lend: W.lend || {}, ops,
+  return { co: f.co, bank: { ...f.bank, deposits: Math.max(0, deposits), loans, rate: W.bankRates.deposit }, charges: f.charges, staff, raises, terms: W.terms || {}, lend: W.lend || {}, ops, sphere: local.sphereSales(W),
     locals, localFailed, estates: f.estates || {},
     // (アスカ国: what its people bought of each company, what they would spend, its branches' people: corp-model asukaDay)
     asuka: asuka.flowsFor(W),
