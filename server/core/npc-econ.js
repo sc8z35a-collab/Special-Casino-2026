@@ -98,12 +98,13 @@ export function toEstate(W, day, company, n) {
 }
 // 海外: what the country pays abroad (its imports) is all the money the world outside has, to buy what the country sells
 // abroad with (server/core/corp-model.js abroadBuys): nothing comes in from outside but what went out
-export function toAbroad(W, n, division = 'materials') {
+export function toAbroad(W, n, division = 'altas', by = 'other') {
   n = Math.round(n);
   if (!(n > 0)) return;
   W.sum.imports += n;
-  // (the world outside is アスカ国 once it is founded: what is bought there is ATSUKA Vision's sale)
-  if (!asuka.earned(W, n, division)) W.abroad.cash += n;
+  // (the world outside is アスカ国 once it is founded: what is bought there is ATSUKA Vision's sale — raw materials,
+  // fuel and food アルタス's)
+  if (!asuka.earned(W, n, division, by)) W.abroad.cash += n;
 }
 export function toBank(W, day, kind, n) {
   if (!(n > 0)) return;

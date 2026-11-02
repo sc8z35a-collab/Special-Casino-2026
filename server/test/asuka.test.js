@@ -58,7 +58,7 @@ test('two months of two countries: every $ between them from someone to someone,
   assert.equal(L.drift, 0);
   const a = W.asuka;
   assert.ok(a.sum.fromVernoa > 0 && a.sum.toVernoa > 0, JSON.stringify(a.sum));
-  assert.ok(a.atsuka.rev.materials > 0, 'imports: ATSUKA Vision\'s');
+  assert.ok(a.atsuka.rev.altas > 0, 'imports: ATSUKA Vision\'s (アルタス\'s)');
   const exports = outs.reduce((n, o) => n + (o.ext.exports || 0), 0);
   assert.ok(exports > 0 && exports <= a.atsuka.procured, `${exports} ${a.atsuka.procured}`);
   // (its people lived: deaths and new lives, the new ones' money the treasury's)

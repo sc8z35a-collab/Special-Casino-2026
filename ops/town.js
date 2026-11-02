@@ -72,6 +72,30 @@ var OpsTown = (function () {
     p = panel('ATSUKA Vision', '国営の事業：アスカ国の雇用主で、ヴェルノアから稼ぐ');
     p.appendChild(table(['事業', '内容', '働く人', 'ヴェルノアからの売上（累計）'], a.atsuka.map(function (d) { return [d.name, d.what, String(d.staff), money(d.rev)]; })));
     box.appendChild(p);
+    // アルタス: the resources of every company, its prices as a monopoly sets them, what it sold by who bought it
+    var al = a.altas;
+    if (al) {
+      p = panel('アルタス（国営資源事業）', 'ヴェルノアの45社とアスカの商売の資源を独占して売る。売上は買われた分だけ・価格は毎月アルタスが決める');
+      g = el('div', 'town-grid'); var L = al.last;
+      kv(g, '資源価格（建国時＝1）', (al.price || 1).toFixed(3)); kv(g, '働く人', String(al.staff)); kv(g, '今月の売上（ここまで）', money(al.month && al.month.rev));
+      if (L) {
+        kv(g, '先月の売上', money(L.rev)); kv(g, '先月の人件費', money(L.pay)); kv(g, '先月の設備（ヴェルノアの重機・車両）', money(L.equip));
+        kv(g, '先月の利益', money(L.profit) + '（利益率 ' + pct(L.margin) + '）'); kv(g, '先月の国庫への配当', money(L.dividend));
+      }
+      kv(g, '国庫への配当（累計）', money(al.dividends));
+      p.appendChild(g);
+      var groups = {}, order = [];
+      (al.customers || []).forEach(function (c) { if (!(c.group in groups)) { groups[c.group] = 0; order.push(c.group); } groups[c.group] += c.n; });
+      var when = L ? '先月' : '今月';
+      if (order.length) p.appendChild(table(['お客の種類（' + when + '）', '売上'], order.map(function (k) { return [k, money(groups[k])]; })));
+      if ((al.customers || []).length) p.appendChild(table(['お客（' + when + '・上位20）', '種類', '売上'], al.customers.slice(0, 20).map(function (c) { return [c.label, c.group, money(c.n)]; })));
+      if (al.hist && al.hist.length) {
+        p.appendChild(table(['月末', '資源価格', '売上', '人件費', '設備', '利益', '国庫への配当'], al.hist.slice().reverse().map(function (h) {
+          return [day(h.day), h.price.toFixed(3) + (h.next !== h.price ? '→' + h.next.toFixed(3) : ''), money(h.rev), money(h.pay), money(h.equip || 0), money(h.profit), money(h.dividend)];
+        })));
+      }
+      box.appendChild(p);
+    }
     p = panel('ヴェルノア企業の拠点', '各社がアスカの人の支出を見て、採算が合うだけ開く（毎月）');
     var rows = [];
     a.cats.forEach(function (c) { c.cos.forEach(function (co, k) { rows.push([k ? '' : c.name, k ? '' : money(c.want) + '/年', co.name, c.digital ? '配信（拠点なし）' : co.branches + 'か所']); }); });

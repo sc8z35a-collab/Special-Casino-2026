@@ -205,7 +205,8 @@ test('the server: a spin\'s win beyond its bet is the treasury\'s, a reward pays
   assert.equal(g.status, 200, JSON.stringify(g));
   assert.equal(sum('yosida', 'gacha'), g.paid);
   assert.equal(sum('@state', 'gacha'), Math.floor(g.paid * 0.5));
-  const prize = rows().find((d) => d['@prize'])['@prize'], rewards = g.pulls.flatMap((p) => p.rewards);
+  // (no row when the pulls gave nothing YOSIDA buys: an item, a ticket)
+  const prize = (rows().find((d) => d['@prize']) || {})['@prize'] || {}, rewards = g.pulls.flatMap((p) => p.rewards);
   const count = (type) => rewards.filter((r) => r.type === type).reduce((n, r) => n + (r.amount || 1), 0);
   assert.equal(prize.lot || 0, count('lot'));
   assert.equal(prize.royal || 0, count('royal') + g.pulls.reduce((n, p) => n + (p.bonus || 0), 0));

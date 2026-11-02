@@ -228,7 +228,7 @@ var OpsCorp = (function () {
     // the day so far: what it sold on the last day it closed, counted on through today (it is paid as the day closes)
     if (!f.dead && f.day) {
       var lp = panel('本日の売上（リアルタイム）', '最近の1日平均の速さで9:00から積み上げた見込み・確定は日の締め（上位13社からの代金は月末にまとめて入金）');
-      var g0 = el('div', 'corp-tiles'), sales = stat('本日の売上（見込み）', '', ''), month = stat('今月の売上', money(f.m.sales + 0), '費用 ' + money(f.m.cost) + '・給料 ' + money(f.m.pay));
+      var g0 = el('div', 'corp-tiles'), sales = stat('本日の売上（見込み）', '', ''), month = stat('今月の売上', money(f.m.sales + 0), '費用 ' + money(f.m.cost) + (f.m.altas ? '（うちアルタス ' + money(f.m.altas) + '）' : '') + '・給料 ' + money(f.m.pay));
       g0.appendChild(sales); g0.appendChild(month); lp.appendChild(g0); body.appendChild(lp);
       var rate = f.pace || 0, t0 = 0, run = function () {
         if (t0 && !lp.isConnected) { clearInterval(t0); return; }
@@ -257,7 +257,7 @@ var OpsCorp = (function () {
     body.appendChild(fp);
     if (f.last) {
       var mp = panel('先月の決算', f.last.key);
-      mp.appendChild(table([['', 0], ['金額', 1]], [['売上高', money(f.last.sales)], ['費用', money(f.last.cost)], ['給料', money(f.last.pay)], [{ t: '営業利益' }, { t: money(f.last.op), cls: f.last.op < 0 ? 'neg' : '' }],
+      mp.appendChild(table([['', 0], ['金額', 1]], [['売上高', money(f.last.sales)], ['費用', money(f.last.cost)], ['うち資源の仕入れ（アルタス）', f.last.altas ? money(f.last.altas) : '—'], ['給料', money(f.last.pay)], [{ t: '営業利益' }, { t: money(f.last.op), cls: f.last.op < 0 ? 'neg' : '' }],
         ['法人税等', money(f.last.tax)], ['決算賞与', f.last.bonus ? money(f.last.bonus) : '—'], ['当期純利益', money(f.last.net)]]));
       mp.appendChild(el('p', 'muted corp-note', '主な売上：' + (f.by || []).map(function (x) { return x.label + ' ' + money(x.n); }).join('・')));
       body.appendChild(mp);

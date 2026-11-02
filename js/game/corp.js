@@ -676,7 +676,7 @@
     retained: ['繰越利益剰余金', 'e'], treasury: ['自己株式', 'e'],
     'r:game': ['ゲーム売上', 'r'], 'r:live': ['運営型タイトル売上', 'r'], 'r:contract': ['受託開発売上', 'r'], 'r:license': ['ライセンス収入', 'r'],
     'c:platform': ['プラットフォーム手数料', 'c'], 'c:amort': ['コンテンツ償却費', 'c'], 'c:contract': ['受託開発原価', 'c'], 'c:live': ['運営費', 'c'],
-    'c:materials': ['材料費', 'c'], 'c:factory': ['製造労務費', 'c'], 'c:plant': ['製造経費', 'c'], 'c:rebate': ['販売奨励金', 'c'],
+    'c:materials': ['材料費（アルタスの資源）', 'c'], 'c:factory': ['製造労務費', 'c'], 'c:plant': ['製造経費', 'c'], 'c:rebate': ['販売奨励金', 'c'],
     sSalary: ['給料手当', 's'], sBonus: ['賞与', 's'], sWelfare: ['法定福利費・福利厚生費', 's'], sPlace: ['地代家賃・施設維持費', 's'],
     sRd: ['研究開発費', 's'], sAds: ['広告宣伝費', 's'], sSelling: ['販売費', 's'], sPartner: ['開発援助・業務委託費', 's'], sCredit: ['与信関係費用', 's'], sDepr: ['減価償却費', 's'], sOther: ['その他', 's'],
     nInterest: ['受取利息', 'ni'], nDividend: ['受取配当金', 'ni'], nSupport: ['受取援助金', 'ni'], nEquity: ['持分法による投資利益', 'ni'], nOther: ['雑収入', 'ni'],
@@ -700,6 +700,10 @@
     // a business bought: のれん, written off over its years)
     'r:asuka': ['アスカ国の支店の売上', 'r'], 'r:asukaB2B': ['アスカ国の支店向けの卸売', 'r'], 'c:asuka': ['アスカ国で売った品物の仕入れ', 'c'],
     sAsuka: ['アスカ国の支店の人件費・地代・手数料', 's'], tAsuka: ['アスカ国の法人税・源泉税', 't'],
+    // (アルタス: every company's resources bought of it — its goods' and parts' raw materials and food, its plants' and
+    // buildings' energy and materials, its research's —, at its prices: server/core/corp-model.js costOf, running)
+    'c:altas': ['資源の仕入れ（アルタス）', 'c'], 'c:asukaAltas': ['アスカ国で売った品物の資源の仕入れ（アルタス）', 'c'],
+    sAltas: ['資源・エネルギーの購入（アルタス）', 's'],
     xBad: ['貸倒損失（取引先の破産）', 'xl'], xEstate: ['破産管財人による事業継続の収入', 'xi'], xSale: ['事業譲渡益（破産管財人）', 'xi'],
     goodwill: ['のれん（事業の譲受け）', 'a'], sGoodwill: ['のれん償却', 's'], xCourt: ['破産手続の予納金', 'xl']
   };

@@ -41,15 +41,42 @@
   var ATSUKA = {
     name: 'ATSUKA Vision',
     divisions: [
-      { id: 'materials', name: 'アスカ素材・エネルギー公社', part: 0.4, what: 'ヴェルノアの会社の原料・発電の燃料・地元企業の輸入' },
-      { id: 'port', name: 'アスカ国際港・物流ハブ', part: 0.15, what: '両国の間の品物の港湾・通関の手数料' },
-      { id: 'digital', name: 'アスカ・デジタル', part: 0.1, what: 'ゲームの配信手数料・ヴェルノア企業のサーバー' },
-      { id: 'resort', name: 'アスカ・リゾート', part: 0.17, what: 'ヴェルノア市民の旅行' },
-      { id: 'zone', name: 'フリーコマースゾーン・社会実験特区', part: 0.18, what: '支店の地代・建設' }
+      { id: 'altas', name: 'アルタス（国営資源事業）', part: 0.6, what: 'レアメタル・金属・鉱石・素材・燃料・食料の採掘と集荷：ヴェルノア45社とアスカの商売の材料のもと（独占）' },
+      { id: 'port', name: 'アスカ国際港・物流ハブ', part: 0.08, what: '両国の間の品物の港湾・通関の手数料' },
+      { id: 'digital', name: 'アスカ・デジタル', part: 0.06, what: 'ゲームの配信手数料・ヴェルノア企業のサーバー' },
+      { id: 'resort', name: 'アスカ・リゾート', part: 0.12, what: 'ヴェルノア市民の旅行' },
+      { id: 'zone', name: 'フリーコマースゾーン・社会実験特区', part: 0.14, what: '支店の地代・建設' }
     ],
     // (of the trade between the two countries: the port's fee, paid by the one who pays)
     port: 0.01,
     procure: 0.04, procureRevenue: 0.2, hireFee: 0.02
+  };
+
+  // アルタス: ATSUKA Vision's state resource enterprise, the world's largest by its people (`part` of the state's posts),
+  // and the only one: every company's raw materials, metals, ores, fuel and food are bought of it, at its prices — sold
+  // only as much as is bought (never a fixed sale). Who buys of it and how much of what they spend — on their books
+  // a line of its own (資源の仕入れ・材料費・資源・エネルギーの購入（アルタス）):
+  // - the makers' materials (what they make for the others, for abroad and of their own), all of it
+  // - `cogs`: of the cost of what each of ヴェルノア's thirteen sells (its streams' costs: the goods' and parts' raw
+  //   materials, the food), and of what its branches in アスカ sell; the rest the local businesses that supply it
+  // - `route`: of their running costs by kind (their buildings' energy and materials — a maker's plants' `plant` —,
+  //   their research's, the rest, what selling cost: packing and fuel, their equipment's raw materials)
+  // - `local`: of each local company's costs by its economy (or its own `imports`, if more)
+  // - `shops`: of what ヴェルノア's people pay the small shops (their goods and food); `trade`: of what アスカ's people pay its
+  //   local trade
+  // Its prices (`price`: an index, 1 at the founding) it sets each month as a monopoly does, for as much as it can
+  // take: up a step while what was bought of it held up and its customers (the thirteen) made money, down a step when
+  // they lost it; within `min` and `max`. What they pay above the founding's prices is their cost (they pass it on in
+  // their own prices as their plans are reviewed). Half its profit each month (`dividend`) is the treasury's, for the
+  // country's own projects.
+  var ALTAS = {
+    name: 'アルタス', full: 'アルタス（ATSUKA Visionの国営資源事業）',
+    cogs: { magita: 0.6, yosida: 0.6, wazima: 0.6, jinx: 0.45, carowner: 0.35, daizin: 0.4, myway: 0.35, dtrade: 0.1, speedeed: 0.1, citywork: 0.05, tenesice: 0, ice: 0, riru: 0 },
+    route: { place: 0.1, plant: 0.3, rd: 0.05, other: 0.05, selling: 0.1, capex: 0.15 },
+    local: { bank: 0.02, magita: 0.5, wazima: 0.35, yosida: 0.3, retail: 0.3, myway: 0.25, dtrade: 0.1, daizin: 0.5, games: 0.2, life: 0.45 },
+    shops: 0.1, trade: 0.25,
+    price: { min: 0.8, max: 2.5, up: 0.03, down: 0.03, margin: 0.45 },
+    dividend: 0.5
   };
 
   var CATS = [
@@ -90,5 +117,5 @@
   // the companies a category's sales go to, by share
   function companiesOf(cat) { return typeof cat.co === 'string' ? [[cat.co, 1]] : Object.keys(cat.co).map(function (k) { return [k, cat.co[k]]; }); }
 
-  BR.ASUKA = { name: 'アスカ国', districts: DISTRICTS, atsuka: ATSUKA, cats: CATS, cat: function (id) { return byCat[id] || null; }, companiesOf: companiesOf, rules: RULES };
+  BR.ASUKA = { name: 'アスカ国', districts: DISTRICTS, atsuka: ATSUKA, altas: ALTAS, cats: CATS, cat: function (id) { return byCat[id] || null; }, companiesOf: companiesOf, rules: RULES };
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

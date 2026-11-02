@@ -6,8 +6,9 @@
 // its bad one theirs) —; their costs go to the utilities, to the others they buy from, abroad (their materials) and the
 // rest to the small shops; their people (P.firm) are paid by them on the 25th (server/core/npc-state.js sectorDay),
 // their month's profit taxed (the country's), a part of a month beyond the plan their people's (決算賞与), the rest kept.
-import { NPC, CORP, LOCAL } from './rules.js';
+import { NPC, CORP, LOCAL, ASUKA } from './rules.js';
 import * as econ from './npc-econ.js';
+import * as asukaModel from './asuka.js';
 
 const YEAR = 365;
 const J = NPC.job;
@@ -50,7 +51,7 @@ export function init(W, day) {
   }
   count(W);
 }
-function blankMonth(day) { return { key: CORP.monthKey(day), sales: 0, cost: 0, pay: 0, by: {} }; }
+function blankMonth(day) { return { key: CORP.monthKey(day), sales: 0, cost: 0, altas: 0, pay: 0, by: {} }; }
 // person `i` works for `f` from now (at `salary`, or its pay give or take 15%)
 export function join(W, i, f, salary, rand) {
   const P = W.P;
@@ -152,9 +153,17 @@ function spend(W, f, c, n) {
   };
   for (const [id, share] of U.to) pay(id, Math.round(n * U.share * share));
   for (const [id, share] of f.costs.to || []) pay(id, Math.round(n * share));
-  // (bought abroad: money leaving the country; the rest the small shops', still in the local trade)
-  const out = Math.round(n * (f.costs.imports || 0));
-  if (out > 0) { W.sector.cash -= out; econ.toAbroad(W, out); }
+  // (its raw materials, fuel and food: アルタス's, at its prices — what it costs beyond what was set aside, its own
+  // cost too; the rest the small shops', still in the local trade)
+  const out = Math.round(n * Math.max(f.costs.imports || 0, ASUKA.altas.local[f.sphere] || 0));
+  if (out > 0) {
+    const at = Math.round(out * asukaModel.altasPrice(W)), extra = at - out;
+    if (extra) { c.cash -= extra; c.m.cost += extra; }
+    // (of its costs, what went to アルタス: its books show it)
+    c.m.altas = (c.m.altas || 0) + at;
+    W.sector.cash -= at;
+    econ.toAbroad(W, at, 'altas', 'local:' + f.id);
+  }
 }
 
 /* ---------------------------------------------------------------- the month --- */
@@ -195,7 +204,7 @@ export function month(W, day, bonus) {
     }
     const net = op - tax - paid;
     c.retained += net;
-    c.last = { key: m.key, sales: m.sales, cost: m.cost, pay: m.pay, op, tax, bonus: paid, net, staff: people.length, by: m.by, what: m.what || {}, plan: Math.round(f.sales * sc / 12), planOp: Math.round(plan), days: m.days || 0 };
+    c.last = { key: m.key, sales: m.sales, cost: m.cost, altas: m.altas || 0, pay: m.pay, op, tax, bonus: paid, net, staff: people.length, by: m.by, what: m.what || {}, plan: Math.round(f.sales * sc / 12), planOp: Math.round(plan), days: m.days || 0 };
     const y = c.year;
     y.sales += m.sales; y.op += op; y.net += net; y.tax += tax; y.bonus += paid;
     if (CORP.ymd(day).m === 3) { c.lastYear = { ...y }; c.year = { sales: 0, op: 0, net: 0, tax: 0, bonus: 0 }; }
@@ -337,7 +346,7 @@ export function detail(W) {
     firms: LOCAL.firms.map((f, k) => {
       const c = W.locals.firms[f.id];
       return { ...v.firms[k], spec: { staff: f.staff, pay: f.pay, unit: f.unit, ceo: f.ceo, sales: f.sales, op: f.op, capital: f.capital, retained: f.retained, from: f.from, costs: f.costs },
-        m: { key: c.m.key, sales: c.m.sales, cost: c.m.cost, pay: c.m.pay, days: c.m.days || 0 }, last: c.last || null, day: c.today || null, pace: pace(c), debt: c.debt || 0, loans: c.loans || [],
+        m: { key: c.m.key, sales: c.m.sales, cost: c.m.cost, altas: c.m.altas || 0, pay: c.m.pay, days: c.m.days || 0 }, last: c.last || null, day: c.today || null, pace: pace(c), debt: c.debt || 0, loans: c.loans || [],
         runs: ops[f.id] || [], extra: (c.extra || []).map((id) => LOCAL.firm(id).name), dead: c.dead || null, bk: c.bk || null, under: c.under || 0 };
     }) };
 }

@@ -10,7 +10,7 @@
 //   world outside buys of the country with: corp-model abroadBuys).
 // Its people are lighter than ヴェルノア's: typed arrays (`W.AP`, kept as blobs of their own, server/core/npc.js), a day's
 // spending, a month's pay, pensions and jobs, deaths and new lives at 18 (their money the treasury's, as ヴェルノア's).
-import { ASUKA, NPC, CORP } from './rules.js';
+import { ASUKA, NPC, CORP, LOCAL } from './rules.js';
 import { seeded } from './npc-rand.js';
 
 const R = ASUKA.rules, CATS = ASUKA.cats, DIV = ASUKA.atsuka.divisions, YEAR = 365;
@@ -136,20 +136,28 @@ export function moneyOf(W) {
 /* -------------------------------------------------------- from ヴェルノア --- */
 // what ヴェルノア pays it: its imports (to ATSUKA Vision: its materials and energy — the platforms' fees its digital
 // division's), its people's trips (アスカ・リゾート)
-export function earned(W, n, division = 'materials') {
+export function earned(W, n, division = 'altas', by = 'other', internal = false) {
   const a = W.asuka;
   n = Math.round(n);
   if (!a || !(n > 0)) return false;
   a.atsuka.cash += n;
-  // (goods shipped from アスカ: the port's fee on them, ATSUKA Vision's harbour's part of it)
-  const port = division === 'materials' ? Math.round(n * ASUKA.atsuka.port) : 0;
+  // (goods shipped from アスカ to ヴェルノア: the port's fee on them, ATSUKA Vision's harbour's part of it)
+  const port = division === 'altas' && !internal ? Math.round(n * ASUKA.atsuka.port) : 0;
   if (port) a.atsuka.rev.port = (a.atsuka.rev.port || 0) + port;
   a.atsuka.rev[division] = (a.atsuka.rev[division] || 0) + n - port;
   a.atsuka.revDay += n;
-  a.sum.fromVernoa += n;
+  // (アルタス's month: what it sold, by who bought it — every $ of it what was bought, nothing fixed)
+  if (division === 'altas') { const m = altasOf(a).m; m.rev += n - port; m.by[by] = (m.by[by] || 0) + n - port; }
+  if (!internal) a.sum.fromVernoa += n;
   tin(a, 'atsuka:' + division, n);
   return true;
 }
+// アルタス's books within ATSUKA Vision (its money is ATSUKA Vision's): its prices, its month, its months
+const altasMonth0 = () => ({ rev: 0, pay: 0, equip: 0, health: 0, by: {} });
+function altasOf(a) {
+  return a.altas || (a.altas = { price: 1, m: altasMonth0(), last: null, hist: [], dividends: 0 });
+}
+export const altasPrice = (W) => (W.asuka ? altasOf(W.asuka).price : 1);
 // what ヴェルノア's companies paid it as their day closed (server/core/corp-model.js asukaDay): their branches' people's
 // pay, the land's rent and the buildings put up for them (ATSUKA Vision's zone), their taxes, the stores' fees
 export function fromCompanies(W, x, day) {
@@ -193,6 +201,7 @@ export function day(W, day, ext) {
   const a = W.asuka, A = W.AP;
   if (!a || !A) return;
   if (ext && ext.asuka) fromCompanies(W, ext.asuka, day);
+  if (ext && ext.health) altasOf(a).m.health += ext.health;
   const r = seeded(W.key, 'asuka:d:' + day), t = CORP.ymd(day);
   a.day = day;
   procure(W);
@@ -212,6 +221,10 @@ function procure(W) {
   if (n <= 0) return;
   z.cash -= n;
   z.procured += n;
+  // (アルタス's part of it — its people's part of the state's —: the heavy machinery, the trucks and the rest its mines
+  // and fields run on, its cost)
+  const m = altasOf(a).m;
+  m.equip = (m.equip || 0) + Math.round(n * ((ASUKA.atsuka.divisions.find((x) => x.id === 'altas') || {}).part || 0));
   W.abroad.cash += n;
   a.sum.toVernoa += n;
   tout(a, 'procure', n);
@@ -277,6 +290,9 @@ function spend(W, day) {
   a.trade.cash += living;
   a.trade.month += living;
   tin(a, 'trade', living);
+  // (its food and goods: アルタス's, at its prices — アスカ's own money, staying in it)
+  const raw = Math.min(Math.max(0, a.trade.cash), Math.round(living * ASUKA.altas.trade * altasOf(a).price));
+  if (raw > 0) { a.trade.cash -= raw; earned(W, raw, 'altas', 'asuka:trade', true); }
   a.treasury += tax;
   tin(a, 'consumption', tax);
   // what was bought at each company, on its way to it (its sales as the companies' day closes)
@@ -329,6 +345,11 @@ function payday(W, day) {
   for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.atsuka) { const g = Math.floor(A.pay[i] / 12 * zr); income(W, i, g); paid += g; }
   z.cash -= paid;
   z.month.pay = (z.month.pay || 0) + paid;
+  // (アルタス's people: those of its division)
+  const ai = DIV.findIndex((x) => x.id === 'altas');
+  let apaid = 0;
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.atsuka && A.emp[i] === ai) apaid += Math.floor(A.pay[i] / 12 * zr);
+  altasOf(a).m.pay += apaid;
   let tdue = 0;
   for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.trade) tdue += Math.round(A.pay[i] / 12);
   const tr = tdue > 0 ? Math.min(1, Math.max(0, a.trade.cash) / tdue) : 0;
@@ -405,6 +426,7 @@ function month(W, day, r) {
   }
   hire(W, day, r);
   policy(W, day);
+  altasMonth(W, day);
   // the record
   let jobless = 0, work = 0, cash = 0, debt = 0;
   for (let i = 0; i < A.n; i++) {
@@ -418,6 +440,38 @@ function month(W, day, r) {
   if (a.hist.length > 36) a.hist.shift();
   a.month = { in: {}, out: {} };
   a.atsuka.month = {};
+}
+// アルタス's month: its prices set as a monopoly sets them, for as much as it can take — up a step while its customers
+// (ヴェルノア's thirteen, together) made money and what they bought of it held up (a rise that cost it more in what was
+// not bought than it brought is not repeated: its sales are what was bought, never fixed), down a step when they lost
+// money (it lives on them) — and half its profit to the treasury, for the country's own projects.
+// アルタス's customers of a month, the biggest first, by kind: ヴェルノア's thirteen, its local companies, its small shops,
+// アスカ's own trade
+function customers(by) {
+  const kinds = { co: 'ヴェルノアの13社', local: 'ヴェルノアの地元企業', shops: 'ヴェルノアの小さな商店', trade: 'アスカの地元の商売' };
+  return Object.entries(by || {}).filter(([, n]) => n > 0).sort((x, y) => y[1] - x[1]).map(([k, n]) => {
+    const [kind, id] = k.split(':');
+    if (kind === 'co') return { kind: 'co', label: (id !== 'other' && CORP.company(id) && CORP.company(id).name) || 'その他の企業', n };
+    if (kind === 'local') return { kind: 'local', label: ((LOCAL && LOCAL.firm(id)) || {}).name || id, n };
+    if (k === 'shops') return { kind: 'shops', label: kinds.shops, n };
+    if (k === 'asuka:trade') return { kind: 'trade', label: kinds.trade, n };
+    return { kind: 'other', label: k, n };
+  }).map((x) => ({ ...x, group: kinds[x.kind] || 'その他' }));
+}
+export function altasMonth(W, day) {
+  const a = W.asuka, L = altasOf(a), P = ASUKA.altas.price, m = L.m;
+  const profit = m.rev - m.pay - (m.equip || 0), margin = m.rev > 0 ? profit / m.rev : 0;
+  const was = L.price, prev = L.last ? L.last.rev : 0;
+  const held = prev > 0 ? m.rev >= prev * 0.95 : margin < P.margin;
+  if (m.health < 0) L.price = Math.max(P.min, Math.round(L.price * (1 - P.down) * 1000) / 1000);
+  else if (held) L.price = Math.min(P.max, Math.round(L.price * (1 + P.up) * 1000) / 1000);
+  if (L.price !== was) say(W, day, `アルタスが資源価格を${L.price > was ? '引き上げ' : '引き下げ'}（${was.toFixed(3)}→${L.price.toFixed(3)}：${L.price > was ? '需要が保たれ、取引先の企業が黒字のため' : 'ヴェルノアの企業が赤字のため'}）`);
+  let div = 0;
+  if (profit > 0) { div = Math.min(Math.max(0, a.atsuka.cash), Math.floor(profit * ASUKA.altas.dividend)); a.atsuka.cash -= div; a.treasury += div; L.dividends += div; tin(a, 'altasDividend', div); }
+  L.last = { day, rev: m.rev, pay: m.pay, equip: m.equip || 0, profit, margin: Math.round(margin * 1000) / 1000, health: m.health, by: m.by, price: was, next: L.price, dividend: div };
+  L.hist.push(L.last);
+  if (L.hist.length > 36) L.hist.shift();
+  L.m = altasMonth0();
 }
 // The month's balance with ヴェルノア, and what the state does about it (its rules: `R.policy`): the branches' land
 // rent and the withholding on their profit up a step after `months` of more going out than coming in, down a step
@@ -520,7 +574,7 @@ export function flowsFor(W) {
   for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.branch) { const co = COS[A.emp[i]]; staff[co] = (staff[co] || 0) + 1; }
   const pol = a.policy || {};
   return { toCo, want: { ...a.want }, staff, boost: Math.max(0, Math.round(a.boost.cash)), branches: a.branches || {}, founded: a.founded, boostUntil: a.founded + R.boost.years * YEAR, pay: R.pay.branch, scale: a.scale,
-    rates: { rent: pol.rent || R.tax.rent, withhold: pol.withhold || R.tax.withhold } };
+    rates: { rent: pol.rent || R.tax.rent, withhold: pol.withhold || R.tax.withhold }, altasPrice: altasOf(a).price };
 }
 // a branch's people in a country of this size (at least one)
 export const branchStaff = (c, scale) => Math.max(1, Math.round(c.staff * (scale || 1)));
@@ -550,6 +604,7 @@ export function view(W) {
     districts: ASUKA.districts.map((d, k) => ({ ...d, people: byDist[k] })),
     atsuka: DIV.map((d, k) => ({ id: d.id, name: d.name, what: d.what, staff: byDiv[k], rev: Math.round(a.atsuka.rev[d.id] || 0) })), procured: a.atsuka.procured,
     cats: CATS.map((c) => ({ id: c.id, name: c.name, want: a.want[c.id] || 0, digital: !!c.digital, cos: ASUKA.companiesOf(c).map(([co]) => ({ id: co, name: (CORP.company(co) || {}).name || co, branches: (a.branches[co] || {})[c.id] || 0 })) })),
-    policy: a.policy || null, sum: a.sum, hist: a.hist, news: a.news.slice(-30)
+    policy: a.policy || null, altas: (() => { const L = altasOf(a); return { price: L.price, staff: byDiv[DIV.findIndex((x) => x.id === 'altas')] || 0, last: L.last, month: L.m, customers: customers(L.last ? L.last.by : L.m.by), dividends: L.dividends, hist: L.hist.slice(-12).map(({ by, ...h }) => h) }; })(),
+    sum: a.sum, hist: a.hist, news: a.news.slice(-30)
   };
 }

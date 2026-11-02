@@ -3,12 +3,13 @@
 // districts' books (taxes, the pension and its fund, the health insurance, the safety nets, the civil servants, the
 // public works, bonds), the month's bills, lives ending and new ones beginning at 18, the money troubles, work
 // (hiring, leaving, 60 and 65), and the people's politics and unions (npc-politics.js).
-import { NPC, CORP } from './rules.js';
+import { NPC, CORP, ASUKA } from './rules.js';
 import { T, S, N, E, FL, HOME, NN, NT, REL, MEM, OWN, LISTED, ageOf, remember, memberList, joinHousehold, leaveHousehold, addRelation, pensionMonthly, clampB, clearView, startMoney } from './npc-pop.js';
 import * as econ from './npc-econ.js';
 import { M } from './npc-life.js';
 import { LISTED_IDS } from './npc-market.js';
 import * as local from './npc-local.js';
+import * as asukaModel from './asuka.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const YEAR = 365;
@@ -100,8 +101,16 @@ export function fromCompanies(W, ext, day) {
     const by = W.sector.today || (W.sector.today = {});
     for (const [k, n] of Object.entries(ext.sectorBy || {})) by['co:' + k] = (by['co:' + k] || 0) + n;
   }
-  // (abroad: paid for what came from it, it paid for what it bought of the country — only ever with what it was paid)
-  if (ext.imports) econ.toAbroad(W, ext.imports);
+  // (abroad: paid for what came from it, it paid for what it bought of the country — only ever with what it was paid;
+  // by the part of ATSUKA Vision that sold it, アルタス's by the company that bought)
+  if (ext.imports) {
+    const by = ext.importsBy || {}, altasBy = ext.altasBy || {};
+    let left = ext.imports;
+    if (by.digital) { econ.toAbroad(W, by.digital, 'digital'); left -= by.digital; }
+    let named = 0;
+    for (const [co, n] of Object.entries(altasBy)) { if (n > 0 && named + n <= left) { econ.toAbroad(W, n, 'altas', 'co:' + co); named += n; } }
+    if (left - named > 0) econ.toAbroad(W, left - named, 'altas', 'co:other');
+  }
   if (ext.exports) { W.sum.exports = (W.sum.exports || 0) + ext.exports; W.abroad.cash -= ext.exports; }
   // (the used cars the local trade bought from Car Owner)
   if (ext.fromSector) W.sector.cash -= ext.fromSector;
@@ -216,6 +225,13 @@ function dividends(W, company, n, out) {
 // (rent and profit, by what they have), less a cushion of a month.
 export function sectorDay(W, day) {
   const P = W.P, s = W.sector, t = CORP.ymd(day);
+  // (the small shops' goods and food: アルタス's, of what the people paid them today, at its prices)
+  if (W.asuka) {
+    const today = s.inPeople - (s.altasSeen ?? s.inPeople);
+    s.altasSeen = s.inPeople;
+    const n = Math.min(Math.max(0, s.cash - local.held(W)), Math.round(today * ASUKA.altas.shops * asukaModel.altasPrice(W)));
+    if (n > 0) { s.cash -= n; econ.toAbroad(W, n, 'altas', 'shops'); }
+  }
   // the 32 local companies' day (their part of what came in, their costs: server/core/npc-local.js), and their month
   // on its first day
   local.day(W, day);
