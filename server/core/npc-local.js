@@ -9,6 +9,7 @@
 import { NPC, CORP, LOCAL, ASUKA } from './rules.js';
 import * as econ from './npc-econ.js';
 import * as asukaModel from './asuka.js';
+import { boomOf } from './npc-macro.js';
 
 const YEAR = 365;
 const J = NPC.job;
@@ -133,7 +134,8 @@ export function day(W, day) {
     const c = L.firms[f.id];
     c.costToday = 0;
     if (c.dead) continue;
-    const other = businesses(c, f).reduce((a, b) => a + Math.max(0, b.sales - b.op - b.staff * b.unit), 0) * sc / YEAR;
+    // (at the prices of the day: server/core/npc-macro.js)
+    const other = businesses(c, f).reduce((a, b) => a + Math.max(0, b.sales - b.op - b.staff * b.unit), 0) * sc / YEAR * econ.cpi(W);
     const n = Math.round(other * 0.3 + 0.7 * other * (c.today.plan > 0 ? c.today.got / c.today.plan : 1));
     if (n <= 0) continue;
     spend(W, f, c, n);
@@ -263,7 +265,11 @@ export function month(W, day, bonus) {
       if (c.supported && day - c.supported < 40) c.target = Math.max(c.target, Math.ceil(c.target * (1 + PH.grow)));
       // (what it holds beyond three months of its costs is not kept: a fifth of it a month into growing — its
       // shops, its stock, its events —, to the other local companies, the small shops and アルタス)
-      const cushion = Math.max(0, (m.cost + m.pay) * 3), extra = Math.round((c.cash - cushion) * 0.2);
+      const cushion = Math.max(0, (m.cost + m.pay) * 3), extra = Math.round((c.cash - cushion) * 0.2 * Math.max(1, boomOf(W)));
+      if (extra > 0) { spend(W, f, c, extra); m.invest = (m.invest || 0) + extra; econ.gdpAcc(W).inv += extra; }
+    } else if (boomOf(W) > 1.05) {
+      // (the others in a boom: what they hold beyond six months of their costs, a part of it into growing while it lasts)
+      const cushion = Math.max(0, (m.cost + m.pay) * 6), extra = Math.round((c.cash - cushion) * (boomOf(W) - 1) * 0.5);
       if (extra > 0) { spend(W, f, c, extra); m.invest = (m.invest || 0) + extra; econ.gdpAcc(W).inv += extra; }
     }
     if (mine && op > 0 && people.length) {

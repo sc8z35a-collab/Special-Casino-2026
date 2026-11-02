@@ -187,6 +187,7 @@ export function orgDay(W, day, r, ctx) {
     if (t.d === 2) { accounts(W, o, s, day, r, ctx); ventureReview(W, o, s, day, r, ctx); }
   }
   lendingDesk(W, day, r, ctx);
+  if (t.d === 1 && ctx.corp.co.tenesice && !ctx.corp.co.tenesice.dead) rateReview(W, day);
   if (t.d === 2) ideaReview(W, day, r, ctx);
   if (t.d === 3) { analysis(W, day, r, ctx); labsMonth(W, day, r, ctx); }
   if (t.d === 10 && t.m % 3 === 1) { talks(W, day, r, ctx); licenseTalks(W, day, r, ctx); }
@@ -227,15 +228,7 @@ function proposals(W, o, s, day, r, ctx) {
     const v = pickVenture(W, o, r);
     if (v) out.push({ kind: 'venture', title: `新事業「${v.name}」の立ち上げ`, effect: [{ kind: 'venture', action: 'start', type: v.id }], cost: v.launch, risk: 0.45, gain: 0.1, by: dept('venture').named.scout >= 0 ? dept('venture').named.scout : by('venture'), why: { fit: v.fit, market: v.market } });
   }
-  if (id === 'tenesice') {
-    const rate = W.bankRates.person, want = policyRate(W);
-    // (the クイックローン: its people's rate and a spread for the risk — wider when more of those who borrowed this way
-    // fall behind, narrower when few do; no one else sets it)
-    const spread = W.bankRates.spread ?? 0.153, late = quickLate(W);
-    const nextSpread = Math.max(0, Math.round((spread + (late > 0.2 ? 0.01 : late < 0.05 ? -0.005 : 0)) * 1000) / 1000);
-    const quick = Math.round((want + nextSpread) * 1000) / 1000, was = econ.quickRate(W);
-    if (Math.abs(want - rate) > 0.0025 || Math.abs(quick - was) >= 0.005) out.push({ kind: 'rate', title: `金利の改定（個人向け 年${(rate * 100).toFixed(2)}%→${(want * 100).toFixed(2)}%・クイックローン 年${(was * 100).toFixed(1)}%→${(quick * 100).toFixed(1)}%）`, effect: [{ kind: 'rate', key: 'person', to: want }, { kind: 'rate', key: 'auto', to: Math.max(0.01, want - 0.005) }, { kind: 'rate', key: 'spread', to: nextSpread }, { kind: 'rate', key: 'quick', to: quick }], cost: 0, risk: 0.1, gain: 0.04, by: dept('lend').named.rate, why: { inflation: W.stats.inflation, target: W.nation.knobs.inflation, late } });
-  }
+  // (Tenesice's rates: its 金利決定会合 each month, rateReview — not a proposal among the others)
   if (id === 'magita' && dept('product') && r.u() < 0.3) {
     out.push({ kind: 'product', title: '人気車種のマイナーチェンジ（魅力の向上）', effect: [{ kind: 'appeal', key: 'cars', add: 0.05, days: 365 }, { kind: 'budget', key: 'rd', mult: 1.03 }], cost: s.budget.rd * 0.03, risk: 0.25, gain: 0.05, by: by('product') });
   }
@@ -281,11 +274,30 @@ function quickLate(W) {
   return n ? late / n : 0;
 }
 // the rate the 金利決定担当 thinks right (テイラー則: neutral, plus half the inflation over the target and half the
-// economy's gap), for the people's loans
+// economy's gap), for the people's loans — the inflation as it runs now (server/core/npc-macro.js) and over the year,
+// the gap the people's spending against its year's
 export function policyRate(W) {
-  const target = (W.nation.knobs.inflation || 2) / 100, infl = W.stats.inflation || 0.01, gap = (W.stats.economy || 1) - 1;
+  const target = (W.nation.knobs.inflation ?? 2) / 100;
+  const now = W.macro ? W.macro.pi : null, year = W.stats.inflation ?? 0.01, infl = now === null ? year : 0.5 * now + 0.5 * year;
+  const gap = Math.log(Math.max(0.2, W.stats.economy || 1));
   // (no cap on it but the floor every rate has: nothing below zero)
-  return Math.max(0, Math.round((0.02 + target + 0.5 * (infl - target) + 0.5 * gap) * 400) / 400);
+  return Math.max(0, Math.round((0.02 + target + 1.5 * (infl - target) + 0.5 * gap) * 400) / 400);
+}
+// Tenesice's 金利決定会合, each month's first day: its people's rate toward what the rule says (a step of up to a point
+// a month — a bank moves its rates in steps), the car loans' half a point under it, and the クイックローン's: the
+// people's rate and a spread for the risk — wider when more of those who borrowed this way fall behind, narrower when
+// few do. No one else sets them.
+export function rateReview(W, day) {
+  const B = W.bankRates, rate = B.person, want = policyRate(W);
+  const next = Math.max(0, Math.round((rate + Math.max(-0.01, Math.min(0.01, want - rate))) * 400) / 400);
+  const spread = B.spread ?? 0.153, late = quickLate(W);
+  const nextSpread = Math.max(0, Math.round((spread + (late > 0.2 ? 0.01 : late < 0.05 ? -0.005 : 0)) * 1000) / 1000);
+  const quick = Math.round((next + nextSpread) * 1000) / 1000, was = econ.quickRate(W);
+  if (next === rate && Math.abs(quick - was) < 0.005) return null;
+  B.person = next; B.auto = Math.max(0.005, Math.round((next - 0.005) * 400) / 400); B.spread = nextSpread; B.quick = quick;
+  const why = W.macro ? `インフレ率 年${(W.macro.pi * 100).toFixed(1)}%・景気 ${W.macro.mood >= 0 ? '+' : ''}${W.macro.mood.toFixed(2)}` : `インフレ率 ${((W.stats.inflation || 0) * 100).toFixed(1)}%`;
+  W.news.push({ day, kind: 'rate', district: -1, text: `テネシスが金利を改定：個人向け 年${(rate * 100).toFixed(2)}%→${(next * 100).toFixed(2)}%・クイックローン 年${(was * 100).toFixed(1)}%→${(quick * 100).toFixed(1)}%（${why}）`, data: { from: rate, to: next, quick } });
+  return { from: rate, to: next };
 }
 
 /* ---------------------------------------------------------------- the meeting --- */

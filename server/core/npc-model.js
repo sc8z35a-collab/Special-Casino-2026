@@ -23,6 +23,7 @@ import * as local from './npc-local.js';
 import * as text from './npc-text.js';
 import * as asuka from './asuka.js';
 import { gdpDay, gdpView } from './npc-gdp.js';
+import { macroDay, macroView, boomOf } from './npc-macro.js';
 
 const MIN = 60000, DAY_MIN = 1440;
 export { LISTED_IDS };
@@ -165,6 +166,8 @@ export function attach(W) {
   for (const k of NPC.knobs) if (W.nation.knobs[k.id] === undefined) W.nation.knobs[k.id] = k.start;
   // (海外's account, for a country saved before it: from now on)
   if (!W.abroad) W.abroad = { cash: 0 };
+  // (a holding below nothing — several sell orders of one person once all filled: npc-market auction — none at all)
+  if (W.P && W.P.sh) for (let x = 0; x < W.P.sh.length; x++) if (W.P.sh[x] < 0) W.P.sh[x] = 0;
   W.knobChanged = (id, was, now) => state.knobChanged(W, id, was, now);
   W.market = createMarket(W);
   W.politics = createPolitics(W);
@@ -392,6 +395,8 @@ export function flowsFor(W, day) {
   // what was paid to failed companies' trustees: server/core/npc-local.js)
   const locals = local.summary(W), localFailed = W.locals && W.locals.failed ? W.locals.failed.splice(0) : [];
   return { co: f.co, bank: { ...f.bank, deposits: Math.max(0, deposits), loans, rate: W.bankRates.deposit }, charges: f.charges, staff, raises, terms: W.terms || {}, lend: W.lend || {}, ops, sphere: local.sphereSales(W),
+    // (the times' mood, the companies' too: server/core/npc-macro.js)
+    boom: boomOf(W),
     locals, localFailed, estates: f.estates || {},
     // (アスカ国: what its people bought of each company, what they would spend, its branches' people: corp-model asukaDay)
     asuka: asuka.flowsFor(W),
@@ -454,6 +459,8 @@ export function nextDay(W, day, ext, ctx) {
   org.orgDay(W, next, r, ctx);
   restock(W, next);
   W._staff = null;
+  // the times' mood and the prices (server/core/npc-macro.js): of the day just closed, before its numbers are counted
+  macroDay(W, next, ctx);
   stats(W, next);
   W.nation.hist.push({ day: next, prices: W.stats.prices, cash: W.nation.cash, debt: W.nation.debt, fund: W.nation.fund.cash + W.nation.fund.bonds, in: W.nation.day.in, out: W.nation.day.out });
   if (W.nation.hist.length > 400) W.nation.hist.shift();
@@ -561,7 +568,7 @@ function stats(W, day) {
   // prices: the consumption tax and the companies' own changes to them; inflation: against a year (or since the start)
   const keys = new Set([...Object.keys(W.priceIdx), ...Object.keys(W.priceTemp || {})]);
   s.prices = (1 + (W.nation.knobs.consumptionTax || 0) / 100) * [...keys].reduce((a, k) => a * Math.pow(econ.priceOf(W, k), 0.1), 1) * (W.surchargeOn ? 1.005 : 1)
-    * Math.pow(econ.cpi(W), 0.35) * Math.pow(econ.rentIdx(W), 0.2);
+    * Math.pow(econ.cpi(W), 0.7) * Math.pow(econ.rentIdx(W), 0.2);
   const past = W.nation.hist.length ? W.nation.hist[Math.max(0, W.nation.hist.length - 365)] : null;
   s.inflation = Math.round(((s.prices / ((past && past.prices) || W.stats.prices0 || s.prices)) - 1) * 1000) / 1000;
   s.prices0 = W.stats.prices0 || s.prices;
@@ -631,4 +638,4 @@ export function metaOf(W) {
   for (const [k, v] of Object.entries(W)) if (!SKIP.has(k) && typeof v !== 'function') out[k] = v;
   return out;
 }
-export { pop, econ, state, org, text, gdpView };
+export { pop, econ, state, org, text, gdpView, macroView };

@@ -68,6 +68,27 @@ var OpsTown = (function () {
     box.appendChild(p);
   }
 
+  // the times' mood and the prices (server/core/npc-macro.js macroView): what pulls the mood, what everyone expects
+  // the prices to do, the price index and the rents against the beginning, and the last 120 days of the mood
+  function macroPanel(box, m) {
+    var p = panel('景気の波と物価', '市民・企業・国が感じている景気（バブル〜恐慌）と、それによるインフレ・デフレ・誰も決めていません');
+    if (!m) { p.appendChild(el('p', 'muted', '国の次の日から数えます。')); box.appendChild(p); return; }
+    var sign = function (x) { return (x >= 0 ? '+' : '−') + Math.abs(x * 100).toFixed(2) + '%'; };
+    var g = el('div', 'town-grid'), P = m.parts || {};
+    kv(g, '世の中の景気', m.name + '（' + (m.mood >= 0 ? '+' : '−') + Math.abs(m.mood).toFixed(3) + '・支出への効き ×' + m.boom.toFixed(3) + '）');
+    kv(g, '今のインフレ率（年率）', sign(m.pi)); kv(g, '予想インフレ率', sign(m.expInfl));
+    kv(g, '物価指数', (m.cpi * 100).toFixed(2) + '（はじめ＝100）'); kv(g, '家賃指数', (m.rentIdx * 100).toFixed(2));
+    kv(g, '消費の勢い（年平均比）', sign(P.econ || 0)); kv(g, '株価（90日前比）', sign(P.market || 0)); kv(g, '借入の伸び（90日）', sign(P.credit || 0));
+    kv(g, '失業率（1年平均との差）', sign(-(P.jobs || 0))); kv(g, '金利（中立金利との差）', sign(P.rate || 0)); kv(g, 'アルタスの資源価格（年率）', sign(P.altas || 0));
+    p.appendChild(g);
+    var bars = el('div', 'town-bars town-mood'), list = m.hist || [];
+    bars.setAttribute('role', 'img'); bars.setAttribute('aria-label', '世の中の景気（直近' + list.length + '日）');
+    list.forEach(function (x) { var b = el('i', x[1] < 0 ? 'neg' : ''); b.style.height = Math.max(1, Math.round(Math.abs(x[1]) * 48)) + 'px'; b.title = day(x[0]) + ' 景気 ' + x[1].toFixed(3) + '・インフレ率 ' + sign(x[2]); bars.appendChild(b); });
+    p.appendChild(bars);
+    p.appendChild(el('p', 'muted town-note', '好景気・バブルでは市民が収入と貯金をよく使い（カジノ・遊び・株への投資も増え）、企業は利益をため込まずに予算・配当・設備投資を増やし、国は国庫の余裕を早く使います。不景気ではその逆。景気は消費の勢い・株価・借入・雇用でふくらみ、自分の噂でも勢いづき、高い金利・お金の不足・株価の反落でしぼみます。物価は予想インフレ率に需要・雇用・景気・資源価格が上乗せされて動きます。'));
+    box.appendChild(p);
+  }
+
   /* ---------------------------------------------------------------- アスカ国 --- */
   // the country beside it (server/core/asuka.js view): its people and money, ATSUKA Vision, ヴェルノア's companies'
   // branches, the money between the two countries, its months and news
@@ -221,6 +242,7 @@ var OpsTown = (function () {
     p.appendChild(g);
     box.appendChild(p);
     gdpPanel(box, r.gdp && r.gdp.vernoa, r.nation.name);
+    macroPanel(box, r.macro);
     var nf = r.nationFull;
     p = panel('国の帳簿', 'テネシスの国の口座');
     g = el('div', 'town-grid');

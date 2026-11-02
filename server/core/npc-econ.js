@@ -123,9 +123,9 @@ export const feeOf = (W, k, dflt) => (W.fees && W.fees[k] !== undefined ? W.fees
 // and how much more the people want what it sells for its campaigns and its advertising (its own and for all it does)
 export const priceOf = (W, key) => (W.priceIdx[key] || 1) * ((W.priceTemp && W.priceTemp[key] && W.priceTemp[key].mult) || 1);
 export const appealOf = (W, id, key) => (W.appeal[id + ':' + key] || 0) + (W.appeal[id + ':all'] || 0);
-// what is spent on something whose price moved: the people buy a little less of it when dearer (spending by the
-// square root of the price)
-export const spendAt = (W, key, n) => Math.round(n * Math.sqrt(priceOf(W, key)));
+// what is spent on something whose price moved — its own (the company's decision) and with all prices (W.cpi:
+// server/core/npc-macro.js) —: the people buy a little less of it when dearer (spending by the square root of the price)
+export const spendAt = (W, key, n) => Math.round(n * Math.sqrt(priceOf(W, key) * cpi(W)));
 
 /* ------------------------------------------------------------------- paying --- */
 // A person pays `n` for something of `company`'s (its stream): with the consumption tax on top (the country's), out

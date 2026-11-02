@@ -553,7 +553,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       see(u);
       const now = clock(), w = get();
       if (!w) return { started: false, now };
-      const all = { started: true, day: w.day, launch: w.launch, econ: Math.round(Math.exp(w.econ.x) * 1000) / 1000, garageFee: model.garageFeeOf(w),
+      const all = { started: true, day: w.day, launch: w.launch, econ: Math.round(Math.exp(w.econ.x) * 1000) / 1000, boom: w.boom || 1, garageFee: model.garageFeeOf(w),
         questFee: model.questFeeOf(w), vipWeek: model.vipWeekOf(w), gov: w.gov || null,
         companies: CORP.companies.filter((c) => w.co[c.id]).map((c) => summary(c.id, now)), ties: tiesOf(w).filter((t) => w.co[t.a] && w.co[t.b]),
         // (the game's businesses and who runs each: CORP.features; a day of each one's money of late)

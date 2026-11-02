@@ -49,10 +49,10 @@ test('a country where everyone works: the companies short of people take them fr
   const sphere = LOCAL.firms.filter((f) => f.sphere === 'myway');
   assert.ok(sphere.some((f) => W.locals.firms[f.id].target > Math.round(f.staff * W.P.n / NPC.nation.population)));
   assert.ok(sphere.every((f) => (W.locals.firms[f.id].last || {}).support >= 0));
-  // (those who were there: never paid less, most of them more — those it took on since, at what it offered)
+  // (those who were there: never paid less — those it took on since, at what it offered; raised as its sales grow and
+  // in a boom: server/test/macro.test.js)
   const still = W.staffOf('myway').filter((i) => was.has(i));
   assert.ok(still.length > 0 && still.every((i) => W.P.salary[i] >= was.get(i)));
-  assert.ok(still.filter((i) => W.P.salary[i] > was.get(i)).length >= still.length * 0.6);
   assert.equal(W.ledger.drift, 0);
   // (its payout: its philosophy's)
   assert.ok(mw.guide && Math.abs(mw.div.total / Math.max(1, mw.guide.net) - CORP.myway.philosophy.payout) < 0.01);

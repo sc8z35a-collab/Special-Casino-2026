@@ -465,6 +465,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         usage: { ticks, tickMs: ticks ? Math.round(tickMs / ticks * 10) / 10 : 0, saves, ai: { ...ai.used(now), on: ai.on }, server: usage() },
         // (the two countries' GDP: server/core/npc-gdp.js)
         gdp: model.gdpView(w),
+        // (the times' mood and the prices: server/core/npc-macro.js)
+        macro: model.macroView(w),
         // (アスカ国, and the money ledger: every $ from someone to someone)
         asuka: asukaModel.view(w), ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30),
           players: w.ledger.players ? { drift: w.ledger.players.drift, worst: w.ledger.players.worst || 0, days: w.ledger.players.days.slice(-30) } : null } : null };

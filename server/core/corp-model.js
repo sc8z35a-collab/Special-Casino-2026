@@ -1195,12 +1195,15 @@ function budgetReview(w, s, p, d, out) {
   const sales = h.reduce((a, x) => a + x.sales, 0) / h.length, op = h.reduce((a, x) => a + x.op, 0) / h.length;
   // (MY WAY: its philosophy — a low margin aimed at, the rest spent, faster and further; nothing cut while it keeps on)
   const PH = s.ip ? CORP.myway.philosophy : null;
-  const want = Math.max(0.02, Math.min(0.4, p.op / Math.max(1, p.sales))) * Math.max(0, sales) * (PH ? PH.margin : 1);
+  // (the times: in a boom a thinner margin will do and the budgets grow faster — what is made is spent, not kept —; in
+  // a bust a fatter one is wanted and the cuts go deeper)
+  const boom = w.boom || 1;
+  const want = Math.max(0.02, Math.min(0.4, p.op / Math.max(1, p.sales))) * Math.max(0, sales) * (PH ? PH.margin : 1) / boom;
   const yearly = BUDGET.keys.reduce((a, k) => a + (s.budget[k] || 0), 0);
   if (!(yearly > 0)) return;
   let f = 0;
-  if (op < want) f = PH && (s.lossQ || 0) < PH.keepQuarters ? 0 : -Math.min(BUDGET.cut, (want - op) * 12 / yearly);
-  else if (op > want * BUDGET.over) f = Math.min(PH ? PH.raise : BUDGET.raise, (op - want) * 12 / yearly);
+  if (op < want) f = PH && (s.lossQ || 0) < PH.keepQuarters ? 0 : -Math.min(BUDGET.cut / Math.min(1, boom), (want - op) * 12 / yearly);
+  else if (op > want * BUDGET.over) f = Math.min((PH ? PH.raise : BUDGET.raise) * Math.max(1, boom), (op - want) * 12 / yearly);
   if (!f) return;
   let moved = 0;
   for (const k of BUDGET.keys) {
@@ -1748,7 +1751,8 @@ function guidance(w, s, p, d, f) {
     quarters: f.quarters.map((x) => shy(x, 0.95)), expected: f
   };
   g.eps = Math.round(g.net / out);
-  g.dps = Math.max(0, Math.round(payoutOf(p) * Math.max(0, f.net * 0.95) / out));
+  g.payout = payoutOf(p, w);
+  g.dps = Math.max(0, Math.round(g.payout * Math.max(0, f.net * 0.95) / out));
   return g;
 }
 function setDividend(s, p, g) {
@@ -1756,10 +1760,27 @@ function setDividend(s, p, g) {
   if (s.reorg) { s.div = { dps: 0, daily: 0, total: 0 }; return; }
   s.div.dps = g.dps;
   s.div.daily = g.dps / YEAR;
-  s.div.total = Math.max(0, Math.round(payoutOf(p) * Math.max(0, g.net)));
+  s.div.total = Math.max(0, Math.round((g.payout ?? payoutOf(p)) * Math.max(0, g.net)));
 }
-// what of its profit a company pays out (MY WAY: its philosophy's — little kept)
-const payoutOf = (p) => (p.id === 'myway' && CORP.myway.philosophy ? CORP.myway.philosophy.payout : p.payout);
+// what of its profit a company pays out (MY WAY: its philosophy's — little kept; the others more in a boom, less in a
+// bust, as the year's guidance is made: server/core/npc-macro.js)
+const payoutOf = (p, w) => (p.id === 'myway' && CORP.myway.philosophy ? CORP.myway.philosophy.payout : Math.min(0.95, p.payout * Math.pow((w && w.boom) || 1, 1.5)));
+
+// In a boom (the times: server/core/npc-macro.js), at the month's end, a company keeps fewer months of its costs in
+// hand and puts a part of the rest into its equipment — 利益剰余金を貯めこまない —, bought as any of its equipment is
+// (MAGITA's facilities, the local businesses, アルタス's raw materials); in a bust it keeps it all.
+// (its own money only: a bank's cash is its depositors', and none puts more into it than a tenth of what it is worth)
+function boomSpend(w, s, p, d, out) {
+  const boom = w.boom || 1;
+  if (boom <= 1.05 || !w.ext || s.dead || abroad(s) || s.reorg || p.model === 'bank') return;
+  const costs = monthlyCosts(s);
+  const extra = Math.round(Math.min(((s.bal.cash || 0) - costs * 6 / boom) * (boom - 1) * 0.5, Math.max(0, equityOf(s)) * 0.1));
+  if (!(extra > costs * 0.05)) return;
+  post(s, [['ppe', extra], ['cash', -extra]], 'capex');
+  route(w, s, 'capex', extra);
+  s.boomSpent = (s.boomSpent || 0) + extra;
+  news(out, s, p, d + 1, 4 * 3600, 'invest', `好景気を受けて設備投資を拡大：手元資金のうち${CORP.fmt.money(extra)}を新しい設備・拠点に投資`, { extra, boom }, 0.002, true);
+}
 
 /* --------------------------------------------------- closing the periods --- */
 function statement(s, p, kind, from, to, key, label) {
@@ -3266,6 +3287,8 @@ export function closeDay(w, d, flows, ch) {
     if (st.pay > 0) { s.pay = Math.round(st.pay); s.unit = Math.round(st.pay * p.cost / p.salary); }
   }
   if (npc && npc.raises) w.raises = npc.raises;
+  // (the times' mood, as the country feels it: server/core/npc-macro.js — the companies spend in a boom, keep in a bust)
+  if (npc && npc.boom) w.boom = npc.boom;
   // (what MY WAY's economy's local companies sold last month: the least it gives them, mywaySphere)
   if (npc && npc.sphere !== undefined) w.sphereSales = npc.sphere;
   if (npc && npc.terms) w.terms = npc.terms;
@@ -3350,7 +3373,7 @@ export function closeDay(w, d, flows, ch) {
     month(w, s, p, d, ch, out);
     if (CORP.ymd(d).d === 1 && d >= w.launch) tech(w, s, p, d, ch, out);
     if (p.model === 'studio') titlesLook(w, s, p, d, out);
-    if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); feesMonth(w, s, p, d, out); mywaySphere(w, s, p, d, out); treasury(w, s, p, d, out); }
+    if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); feesMonth(w, s, p, d, out); mywaySphere(w, s, p, d, out); boomSpend(w, s, p, d, out); treasury(w, s, p, d, out); }
     // (out of money with nothing more Tenesice will lend, or below nothing too long: 破産)
     solvencyCheck(w, s, p, d, out);
   }
@@ -3911,4 +3934,4 @@ function rebates(w, s, p, d, out) {
   s.exclQ = {};
 }
 
-export { chance, post, take, forecast, expectDay, guidance, statement, productsYear };
+export { chance, post, take, forecast, expectDay, guidance, statement, productsYear, boomSpend, payoutOf };

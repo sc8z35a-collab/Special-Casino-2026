@@ -8,6 +8,7 @@ import { T, S, FL, E, NT, ageOf, remember, clampB, OTHER_PAY } from './npc-pop.j
 import { M, skillFor } from './npc-life.js';
 import * as local from './npc-local.js';
 import * as econ from './npc-econ.js';
+import { boomOf } from './npc-macro.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const RATES = { tenesice: 0.35, magita: 0.75, carowner: 0.4, jinx: 0.45, daizin: 0.2, citywork: 0.15, speedeed: 0.05, dtrade: 0.1, riru: 0.25, ice: 0.3, yosida: 0.6, wazima: 0.65 };
@@ -203,7 +204,8 @@ function localJobs(W, day, r) {
 function mywayRaises(W, day, r, ctx) {
   const P = W.P, PH = CORP.myway.philosophy, mw = ctx.corp && ctx.corp.co.myway;
   if (!PH) return;
-  const boom = Math.max(0, W.boom || 0) * PH.boom;
+  // (the times: in a boom faster still — server/core/npc-macro.js)
+  const boom = Math.max(0, boomOf(W) - 1) * PH.boom * 10;
   const growth = (h) => (h && h.length >= 3 && h[0].sales + h[1].sales > 0 ? h[2].sales / ((h[0].sales + h[1].sales) / 2) - 1 : 0);
   const lift = (i, g) => { const k = PH.spread[0] + (PH.spread[1] - PH.spread[0]) * r.u(); P.salary[i] = Math.round(P.salary[i] * (1 + g * k)); };
   if (mw && !mw.dead) {

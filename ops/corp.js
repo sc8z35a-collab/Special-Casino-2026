@@ -38,6 +38,8 @@ var OpsCorp = (function () {
     return t.getFullYear() + '/' + (t.getMonth() + 1) + '/' + t.getDate() + ' ' + p(t.getHours()) + ':' + p(t.getMinutes());
   }
   function company(id) { return C().company(id) || { id: id, name: id }; }
+  // the times' mood as the companies read it (server/core/npc-macro.js: 1 as usual, about 0.7 to 1.65)
+  function boomWord(b) { var m = Math.log(b) / (b >= 1 ? 0.5 : 0.35); return m >= 0.6 ? 'バブル' : m >= 0.25 ? '好景気' : m > -0.25 ? '平常' : m > -0.6 ? '不景気' : '恐慌'; }
   function nameOf(id) { return company(id).name; }
   function icon(id, size) {
     var img = el('img', 'corp-icon'); img.src = 'assets/corp-' + String(id).replace(/[^\w-]/g, '') + '.webp';
@@ -428,7 +430,7 @@ var OpsCorp = (function () {
     var head = el('div', 'bar corp-bar'); head.appendChild(el('h2', '', '企業'));
     var a = st.all;
     if (a && a.started) head.appendChild(el('span', 'muted', a.companies.length + '社・' + dayLabel(a.day) + 'の締め（9:00）まで反映・景気指数 ' + a.econ.toFixed(3) +
-      (a.econ >= 1.03 ? '（好景気）' : a.econ <= 0.97 ? '（不景気）' : '') + (a.garageFee ? '・MAGITA Garage 1台' + money(a.garageFee) + '/月' : '') +
+      (a.econ >= 1.03 ? '（好景気）' : a.econ <= 0.97 ? '（不景気）' : '') + '・世の中の景気 ' + (a.boom || 1).toFixed(3) + '（' + boomWord(a.boom || 1) + '）' + (a.garageFee ? '・MAGITA Garage 1台' + money(a.garageFee) + '/月' : '') +
       (a.questFee ? '・YOSIDAのクエスト手数料 ' + Math.round(a.questFee * 100) + '%' : '')));
     head.appendChild(btn('btn small corp-report-open', '日次収支レポート（45社）', function () { open('report'); }, '45社の日次収支レポートを開く'));
     box.appendChild(head);
