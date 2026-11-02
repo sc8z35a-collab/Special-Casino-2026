@@ -131,15 +131,39 @@ export function day(W, day) {
   const sc = scaleOf(W);
   for (const f of LOCAL.firms) {
     const c = L.firms[f.id];
+    c.costToday = 0;
     if (c.dead) continue;
     const other = businesses(c, f).reduce((a, b) => a + Math.max(0, b.sales - b.op - b.staff * b.unit), 0) * sc / YEAR;
     const n = Math.round(other * 0.3 + 0.7 * other * (c.today.plan > 0 ? c.today.got / c.today.plan : 1));
     if (n <= 0) continue;
     spend(W, f, c, n);
+    c.costToday = n;
   }
   if (CORP.isMonthEnd(day)) count(W);
+  report(W, day);
   // the failed ones' procedures
   for (const f of LOCAL.firms) { const c = L.firms[f.id]; if (c.bk) bkDay(W, f, c, day); }
+}
+// each one's day in brief (日次の収支: 運営's report of the 45 companies): what it sold, its costs, its people's pay for
+// the day (their year's pay over the year: paid on the 25th, earned every day), what that left, MY WAY's support that
+// came, its money; the last 30 days kept
+function report(W, day) {
+  const L = W.locals, P = W.P, pay = {}, n = {};
+  for (let i = 0; i < P.n; i++) { const no = firmOf(P, i); if (no) { pay[no] = (pay[no] || 0) + P.salary[i]; n[no] = (n[no] || 0) + 1; } }
+  for (const f of LOCAL.firms) {
+    const c = L.firms[f.id];
+    if (c.dead) continue;
+    const d = { day, sales: (c.today && c.today.got) || 0, cost: c.costToday || 0, pay: Math.round((pay[f.no] || 0) / YEAR), support: c.sup || 0, cash: Math.round(c.cash), staff: n[f.no] || 0 };
+    d.op = d.sales - d.cost - d.pay;
+    c.sup = 0;
+    (c.days || (c.days = [])).push(d);
+    if (c.days.length > 30) c.days.shift();
+  }
+}
+// the 32's days in brief, for 運営's report
+export function reportOf(W) {
+  if (!W.locals) return null;
+  return LOCAL.firms.map((f) => { const c = W.locals.firms[f.id]; return { id: f.id, no: f.no, name: f.name, sphere: f.sphere, dead: !!c.dead, staff: c.staff, days: c.days || [] }; });
 }
 function spend(W, f, c, n) {
   const L = W.locals, U = LOCAL.utilities;
@@ -193,6 +217,7 @@ export function support(W, n, day) {
     const c = W.locals.firms[f.id];
     c.cash += share;
     c.m.support = (c.m.support || 0) + share;
+    c.sup = (c.sup || 0) + share;
     c.supported = day;
     given += share;
   });

@@ -16,7 +16,7 @@ import { ApiError } from './errors.js';
 import { partOf } from './hash.js';
 import * as model from './npc-model.js';
 import * as econ from './npc-econ.js';
-import { view as localView, detail as localDetail } from './npc-local.js';
+import { view as localView, detail as localDetail, reportOf as localReport } from './npc-local.js';
 import * as pop from './npc-pop.js';
 import * as asukaModel from './asuka.js';
 import * as text from './npc-text.js';
@@ -565,6 +565,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   return {
     on, booted, ensure, wake, due, beforeClose, afterClose, cross, spentToday, carBought, carStock, watch, town, personCard, policy: policyDto, housekeep, writeAi,
     playerRoutes, routes, world: get,
+    // (the 32 local companies' days in brief: 運営's report of the 45, server/core/corp.js)
+    localReport: () => { const w = get(); return w ? localReport(w) : null; },
     // (the tests: the minutes and the days worked out now, and what was kept)
     runTo: (m) => tx(() => { runTo(m, Infinity); save('hot'); })
   };

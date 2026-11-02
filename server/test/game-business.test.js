@@ -271,4 +271,23 @@ test('the operator site: a company\'s day so far — the day\'s plan, and the pl
   r = await s.call('GET', '/api/ops/corp/today?c=dtrade', { token: boss.token });
   assert.ok(r.today.players >= RULES.casino.exchangeFee + lost, `${r.today.players}`);
   assert.equal(r.now, now);
+  // the money put into it today: the players' buying of its shares (new ones), and taken out by their selling; its
+  // other gains as a usual day brings them
+  assert.equal(r.today.invest, 0);
+  assert.ok(Number.isFinite(r.today.other) && Number.isFinite(r.today.plan.other));
+  // (a listed company's: MAGITA's)
+  const corp = s.app.api.corp, sec = Math.floor(now / 1000);
+  corp.traded('magita', 'buy', 100, 25000, 0, sec);
+  corp.traded('magita', 'buy', 20, 25000, 0, sec + 5);
+  corp.traded('magita', 'sell', 10, 25000, 0, sec + 9);
+  r = await s.call('GET', '/api/ops/corp/today?c=magita', { token: boss.token });
+  assert.deepEqual([r.today.invest, r.today.back], [3000000, 250000]);
+  // (and in the day's row once it closes: the site's days)
+  now = (r.today.day + 1) * 86400000 + 60000;
+  await s.app.api.housekeeping();
+  const site = await s.call('GET', '/api/ops/corp/company?c=magita', { token: boss.token });
+  const k = site.days.day.indexOf(r.today.day);
+  assert.ok(k >= 0);
+  assert.deepEqual([site.days.invest[k], site.days.back[k]], [3000000, 250000]);
+  assert.ok(Number.isFinite(site.days.other[k]));
 });

@@ -3484,7 +3484,12 @@ function check(s, d) {
 }
 function dayRow(w, s, p, d) {
   const pl = CORP.plOf(Object.fromEntries(Object.entries(s.per.d).filter(([k]) => !/^cf:/.test(k))));
-  return { company: s.id, day: d, sales: Math.round(pl.sales), op: Math.round(pl.op), net: Math.round(pl.net), cash: s.bal.cash || 0, bonds: s.bal.bonds || 0, debt: debtOf(s),
+  // (the money put into it: the players' buying of its shares that day — new ones, or its own sold again —, and any
+  // issued as the day closed, a rescue's; and its other gains: 営業外収益 and 特別利益)
+  const live = s.liveIn && s.liveIn.day === d ? s.liveIn : null;
+  const invest = (live ? live.in : 0) + (s.per.d['cf:issue'] || 0) + (s.per.d['cf:treasurySale'] || 0);
+  return { company: s.id, day: d, sales: Math.round(pl.sales), op: Math.round(pl.op), net: Math.round(pl.net), other: Math.round(pl.noi + pl.xi), invest, back: live ? live.out : 0,
+    cash: s.bal.cash || 0, bonds: s.bal.bonds || 0, debt: debtOf(s),
     equity: equityOf(s), staff: s.n, fair: s.mkt ? Math.round(s.mkt.fair) : 0, econ: Math.round(Math.exp(w.econ.x) * 1000) / 1000, players: s.players || 0, npc: s.npcDay || 0 };
 }
 
@@ -3577,6 +3582,10 @@ export function trade(w, id, side, shares, price, sec) {
   s.sh.sec += out * Math.max(0, sec - s.sh.at);
   s.sh.at = Math.max(s.sh.at, sec);
   const amount = shares * price;
+  // (the day's money in from the players' buying and out to their selling, for 運営's 本日の稼ぎ and the day's row:
+  // the business day the second falls in)
+  const day = Math.floor(sec / 86400), live = s.liveIn && s.liveIn.day === day ? s.liveIn : (s.liveIn = { day, in: 0, out: 0 });
+  if (side === 'buy') live.in += amount; else live.out += amount;
   // (the players' money in and out of the country, for the money ledger: counted as the day closes, playersCross)
   if (w.circ) { const c = w.cross || (w.cross = { in: 0, out: 0 }); if (side === 'buy') c.in += amount; else c.out += amount; }
   if (side === 'buy') {

@@ -434,7 +434,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   // a company's days as columns (the charts)
   function days(id, from) {
     const list = q('SELECT day, data FROM corp_days WHERE company = ? AND day >= ? ORDER BY day').all(id, from);
-    const cols = { day: [], sales: [], op: [], net: [], cash: [], debt: [], equity: [], staff: [], fair: [], econ: [], players: [], npc: [] };
+    const cols = { day: [], sales: [], op: [], net: [], other: [], invest: [], back: [], cash: [], debt: [], equity: [], staff: [], fair: [], econ: [], players: [], npc: [] };
     for (const r of list) {
       const x = JSON.parse(r.data);
       cols.day.push(r.day);
@@ -502,7 +502,44 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     const row = q('SELECT data FROM corp_flows WHERE day = ?').get(day), mem = pending.get(day);
     const players = (row ? spentAt(JSON.parse(row.data), id) : 0) + (mem ? spentAt(mem, id) : 0);
     const people = npc && npc.spentToday ? npc.spentToday(day, id) : 0;
-    return { day, start: day * 86400000, plan: { sales: Math.round(pl.sales), op: Math.round(pl.op), net: Math.round(pl.net) }, usual, players, people, closed: w.day };
+    // the money put into it today (the players' buying of its shares: new ones or its own sold again) and taken out
+    // (their selling: its own bought back), as it came; its other gains (営業外収益・特別利益: interest and dividends
+    // received, its child's profit, support, gains on what it sold) as a usual day of the last 30 brings them
+    const live = s.liveIn && s.liveIn.day === day ? s.liveIn : null;
+    const seen = recent.filter((x) => x.other !== undefined);
+    const other = seen.length ? Math.round(seen.reduce((n, x) => n + x.other, 0) / seen.length) : Math.round((pl.noi || 0) + (pl.xi || 0));
+    return { day, start: day * 86400000, plan: { sales: Math.round(pl.sales), op: Math.round(pl.op), net: Math.round(pl.net), other: Math.round((pl.noi || 0) + (pl.xi || 0)) }, usual, players, people,
+      invest: live ? live.in : 0, back: live ? live.out : 0, other, closed: w.day };
+  }
+  // 日次収支レポート: each of the 45 companies' last days in brief — the thirteen's day rows (sales, what they cost,
+  // the operating result, the net, the other gains, the money put into them, their cash), the 32 local companies' own
+  // (server/core/npc-local.js report) — with a line on the last day closed against the one before
+  function report(n = 14) {
+    const w = get();
+    if (!w) return null;
+    const from = w.day - n + 1, byCo = {};
+    for (const r of q('SELECT company, day, data FROM corp_days WHERE day >= ? ORDER BY day').all(from)) {
+      const x = JSON.parse(r.data);
+      (byCo[r.company] || (byCo[r.company] = [])).push({ day: r.day, sales: x.sales, cost: x.sales - x.op, op: x.op, net: x.net, other: x.other || 0, invest: x.invest || 0, cash: x.cash, staff: x.staff });
+    }
+    const companies = CORP.companies.filter((c) => w.co[c.id]).map((c) => {
+      const days = byCo[c.id] || [];
+      return { id: c.id, name: c.name, kind: 'corp', dead: !!w.co[c.id].dead, abroad: !!c.abroad, days, line: lineOf(days) };
+    });
+    const loc = npc && npc.localReport ? npc.localReport() : null;
+    const locals = loc ? loc.map((f) => { const days = f.days.filter((d) => d.day >= from); return { ...f, kind: 'local', days, line: lineOf(days, f.dead) }; }) : null;
+    return { day: w.day, companies, locals };
+  }
+  // the last day in a line: 増収・減収 against the day before, in the black or the red
+  function lineOf(days, dead = false) {
+    if (dead) return '倒産・破産手続中';
+    const d = days[days.length - 1], b = days[days.length - 2];
+    if (!d) return 'まだ締めた日がありません';
+    const up = b && b.sales > 0 ? d.sales / b.sales - 1 : null;
+    const move = up === null ? '' : Math.abs(up) < 0.005 ? '売上は前日並み' : (up > 0 ? '増収' : '減収') + '（' + CORP.fmt.pct(up) + '）';
+    const res = d.op > 0 ? '営業黒字 ' + CORP.fmt.money(d.op) : d.op < 0 ? '営業赤字 ' + CORP.fmt.money(d.op) : '営業損益ゼロ';
+    const extra = [d.invest ? '投資の入金 ' + CORP.fmt.money(d.invest) : '', d.support ? 'MY WAYからの支援 ' + CORP.fmt.money(d.support) : ''].filter(Boolean).join('・');
+    return [move, res, extra].filter(Boolean).join('、');
   }
   // how likely its development is to succeed now (as server/core/corp-model.js tech works it out)
   function techChance(s, p) {
@@ -522,6 +559,13 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
         // (the game's businesses and who runs each: CORP.features; a day of each one's money of late)
         ops: opsView(w) };
       return { ...partOf(all, req.query.get('rev')), now };
+    },
+    // 日次収支レポート: the 45 companies' last two weeks in brief (changes as a day closes)
+    'GET /api/ops/corp/report': (req, u) => {
+      see(u);
+      const now = clock(), r = report();
+      if (!r) return { started: false, now };
+      return { ...partOf({ started: true, ...r }, req.query.get('rev')), now };
     },
     // a company's day so far, asked again every half minute while its site is open (small: never in the site's `rev`)
     'GET /api/ops/corp/today': (req, u) => {

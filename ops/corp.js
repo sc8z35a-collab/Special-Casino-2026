@@ -211,6 +211,45 @@ var OpsCorp = (function () {
       box.appendChild(p);
     });
   }
+  // 日次収支レポート: the 45 companies' last day closed in brief (sales, costs, the operating result against the day
+  // before, their cash) and a line each; the thirteen's site or a local company's opens from its row
+  function reportPage(box) {
+    var r = st.report, top = el('div', 'corp-nav');
+    top.appendChild(btn('btn small corp-back', '‹ 企業', function () { open(''); }, '企業フォルダーに戻る'));
+    top.appendChild(el('span', 'muted', '企業 / 日次収支レポート'));
+    box.appendChild(top);
+    if (!r) { box.appendChild(el('p', 'muted corp-empty', '読み込み中…')); return; }
+    if (!r.started) { box.appendChild(el('p', 'muted corp-empty', 'まだ始まっていません。')); return; }
+    box.appendChild(liveClock(r));
+    var all = r.companies.concat(r.locals || []), last = function (c) { return c.days[c.days.length - 1] || null; }, prev = function (c) { return c.days[c.days.length - 2] || null; };
+    var shown = all.filter(function (c) {
+      var d = last(c);
+      return st.repWho === 'corp' ? c.kind === 'corp' : st.repWho === 'local' ? c.kind === 'local' : st.repWho === 'red' ? d && d.op < 0 : true;
+    });
+    box.appendChild(chips([['all', '全' + all.length + '社'], ['corp', '上位13社'], ['local', '地方企業' + (r.locals ? r.locals.length : 0) + '社'], ['red', '前日赤字の会社']], st.repWho || 'all',
+      function (k) { st.repWho = k; render(); }, '表示する会社'));
+    // the day in sum
+    var sum = { sales: 0, op: 0, black: 0, red: 0, invest: 0 };
+    all.forEach(function (c) { var d = last(c); if (!d || c.dead) return; sum.sales += d.sales; sum.op += d.op; sum.invest += d.invest || 0; if (d.op >= 0) sum.black++; else sum.red++; });
+    var tiles = el('div', 'corp-tiles');
+    tiles.appendChild(stat('45社の売上高（前日）', money(sum.sales), dayLabel(r.day) + 'の締め'));
+    tiles.appendChild(stat('45社の営業損益（前日）', money(sum.op), '', sum.op < 0 ? 'neg' : ''));
+    tiles.appendChild(stat('黒字 / 赤字', sum.black + '社 / ' + sum.red + '社', '前日の営業損益で'));
+    tiles.appendChild(stat('投資で入った資金（前日）', money(sum.invest), 'プレイヤーの株の買い'));
+    box.appendChild(tiles);
+    var p = panel(dayLabel(r.day) + 'の収支', '1日ごと・費用は人件費（地方企業は年収の日割り）・資源（アルタス）・その他・M=百万、B=十億');
+    p.appendChild(table([['会社'], ['売上高', 1], ['費用', 1], ['営業損益', 1], ['前日比（売上）', 1], ['純利益', 1], ['現金', 1], ['14日の営業損益'], ['ひとこと']], shown.map(function (c) {
+      var d = last(c) || {}, b = prev(c), up = b && b.sales ? d.sales / b.sales - 1 : null;
+      var spark = el('span', 'corp-spark'), max = c.days.reduce(function (m, x) { return Math.max(m, Math.abs(x.op)); }, 1);
+      c.days.forEach(function (x) { var i = el('i', x.op < 0 ? 'neg' : ''); i.style.height = Math.max(1, Math.round(Math.abs(x.op) / max * 18)) + 'px'; i.title = dayLabel(x.day) + ' ' + money(x.op); spark.appendChild(i); });
+      var who = el('span', 'corp-who'); who.appendChild(icon(c.kind === 'local' ? 'locals' : c.id, 20)); who.appendChild(el('span', '', (c.kind === 'local' ? 'No.' + c.no + ' ' : '') + c.name));
+      return { onclick: function () { if (c.kind === 'local') { st.local = c.id; open('locals'); } else open(c.id); },
+        cells: [{ t: who }, d.sales !== undefined ? money(d.sales) : '—', d.cost !== undefined ? money(d.cost + (d.pay || 0)) : '—', { t: d.op !== undefined ? money(d.op) : '—', cls: d.op < 0 ? 'neg' : '' },
+          up === null ? '—' : pct(up), d.net !== undefined ? { t: money(d.net), cls: d.net < 0 ? 'neg' : '' } : '—', d.cash !== undefined ? { t: money(d.cash), cls: d.cash < 0 ? 'neg' : '' } : '—', { t: spark }, c.line] };
+    })));
+    p.appendChild(el('p', 'muted corp-note', '上位13社は毎日の締め（9:00）の決算、地方企業は毎日の売上・費用と社員の年収の日割り（給料は毎月25日に支払い）で数えています。上位13社の月末の請求（業務委託・賃借など）や賞与の月は、その日の数字が大きく動きます。'));
+    box.appendChild(p);
+  }
   function localSite(box, L, f) {
     var s = el('div', 'corp-site'); s.style.setProperty('--c1', '#1d3b2a'); s.style.setProperty('--c2', '#4b8a5c');
     var hero = el('header', 'corp-hero'), names = el('div', 'corp-hero-text');
@@ -305,12 +344,17 @@ var OpsCorp = (function () {
     var f = Math.max(0, Math.min(1, (now - t.start) / 86400000)), live = t.players + t.people, extra = live - t.usual * f;
     var rest = Math.max(0, t.plan.sales - t.usual), sales = rest * f + live;
     var m = t.plan.sales > 0 ? Math.max(0, Math.min(1, t.plan.op / t.plan.sales)) : 0, n = t.plan.sales > 0 ? Math.max(0, Math.min(1, t.plan.net / t.plan.sales)) : 0;
-    return { f: f, sales: sales, op: t.plan.op * f + extra * m, net: t.plan.net * f + extra * n, live: live };
+    // its other gains (営業外収益・特別利益) as a usual day brings them, over the part of the day gone (the plan's net
+    // already counts what it expected of them: only the difference added); the money put into it today as it came
+    var other = (t.other || 0) * f, invest = t.invest || 0, planOther = (t.plan.other || 0) * f;
+    return { f: f, sales: sales, op: t.plan.op * f + extra * m, net: t.plan.net * f + extra * n + (other - planOther), live: live,
+      other: other, invest: invest, back: t.back || 0, all: sales + other + invest };
   }
   function todayPanel(id, p) {
     var pt = panel('本日の稼ぎ（リアルタイム）', '営業日の9:00から・確定は9:00の締め');
     var tiles = el('div', 'corp-tiles corp-today');
-    var cells = [stat(p.salesName || '売上高', '—', ''), stat('営業利益', '—', ''), stat('当期純利益', '—', ''), stat('プレイヤー・市民の支出（実績）', '—', '')];
+    var cells = [stat('本日の収入（売上高＋投資＋その他の利益）', '—', ''), stat(p.salesName || '売上高', '—', ''), stat('投資で入った資金（実績）', '—', ''),
+      stat('その他の利益（営業外・特別利益）', '—', ''), stat('営業利益', '—', ''), stat('当期純利益', '—', ''), stat('プレイヤー・市民の支出（実績）', '—', '')];
     cells.forEach(function (c) { tiles.appendChild(c); });
     pt.appendChild(tiles);
     var note = el('p', 'muted corp-note', '');
@@ -321,11 +365,14 @@ var OpsCorp = (function () {
       var d = t.data, x = todayFigures(d, Date.now() + skew);
       // (to the dollar: they move every second)
       var put = function (c, v, sub) { c.querySelector('b').textContent = C().fmt.moneyFine(v, Math.abs(v) >= 1e9 ? 4 : 3); c.classList.toggle('neg', v < 0); var s = c.querySelector('small') || c.appendChild(el('small', 'muted')); s.textContent = sub; };
-      put(cells[0], x.sales, '今日の見込み ' + money(d.plan.sales));
-      put(cells[1], x.op, '今日の見込み ' + money(d.plan.op));
-      put(cells[2], x.net, '今日の見込み ' + money(d.plan.net));
-      put(cells[3], x.live, 'プレイヤー ' + money(d.players) + '・市民 ' + money(d.people) + '（いつもは1日 ' + money(d.usual) + '）');
-      note.textContent = '経過 ' + (x.f * 100).toFixed(1) + '%。今日の見込み（経営陣の予想）を経過時間で積み上げ、プレイヤーと市民のお金は実際に入った額で数えています（30秒ごとに更新）。締めの決算とは少し違うことがあります。';
+      put(cells[0], x.all, '売上高 ' + money(x.sales) + '・投資 ' + money(x.invest) + '・その他 ' + money(x.other));
+      put(cells[1], x.sales, '今日の見込み ' + money(d.plan.sales));
+      put(cells[2], x.invest, 'プレイヤーの株の買い（新株・自己株式の処分）' + (x.back ? '・売りの買い戻し ' + money(x.back) : ''));
+      put(cells[3], x.other, '受取利息・配当・子会社の利益・援助金・売却益など（いつもは1日 ' + money(d.other || 0) + '）');
+      put(cells[4], x.op, '今日の見込み ' + money(d.plan.op));
+      put(cells[5], x.net, '今日の見込み ' + money(d.plan.net));
+      put(cells[6], x.live, 'プレイヤー ' + money(d.players) + '・市民 ' + money(d.people) + '（いつもは1日 ' + money(d.usual) + '）');
+      note.textContent = '経過 ' + (x.f * 100).toFixed(1) + '%。今日の見込み（経営陣の予想）を経過時間で積み上げ、プレイヤーと市民のお金・投資で入った資金は実際に入った額で数えています（30秒ごとに更新）。投資で入った資金は会社の資本（純資産）に入るお金で、営業利益・当期純利益には含みません。締めの決算とは少し違うことがあります。';
     }
     function askToday() {
       if (!st.request) return;
@@ -352,13 +399,13 @@ var OpsCorp = (function () {
   function ask() {
     if (!st.request) return;
     var gen = ++st.gen, id = st.at;
-    var have = id === 'locals' ? st.locals : id ? st.sites[id] : st.all;
-    var path = id === 'locals' ? '/api/ops/npc/locals' : id ? '/api/ops/corp/company?c=' + encodeURIComponent(id) : '/api/ops/corp';
+    var have = id === 'locals' ? st.locals : id === 'report' ? st.report : id ? st.sites[id] : st.all;
+    var path = id === 'locals' ? '/api/ops/npc/locals' : id === 'report' ? '/api/ops/corp/report' : id ? '/api/ops/corp/company?c=' + encodeURIComponent(id) : '/api/ops/corp';
     if (have && have.rev) path += (path.indexOf('?') >= 0 ? '&' : '?') + 'rev=' + encodeURIComponent(have.rev);
     st.request('GET', path).then(function (r) {
       if (gen !== st.gen) return;
       if (r.same) { if (have) have.now = r.now; return; }
-      if (id === 'locals') st.locals = r; else if (id) st.sites[id] = r; else st.all = r;
+      if (id === 'locals') st.locals = r; else if (id === 'report') st.report = r; else if (id) st.sites[id] = r; else st.all = r;
       render();
     }, function (e) {
       if (gen !== st.gen) return;
@@ -372,7 +419,7 @@ var OpsCorp = (function () {
     var view = st.view;
     if (!view || !C()) return;
     var box = el('div', 'corp');
-    if (st.at === 'locals') localsPage(box); else if (st.at) site(box, st.at); else folder(box);
+    if (st.at === 'locals') localsPage(box); else if (st.at === 'report') reportPage(box); else if (st.at) site(box, st.at); else folder(box);
     view.replaceChildren(box);
   }
 
@@ -383,6 +430,7 @@ var OpsCorp = (function () {
     if (a && a.started) head.appendChild(el('span', 'muted', a.companies.length + '社・' + dayLabel(a.day) + 'の締め（9:00）まで反映・景気指数 ' + a.econ.toFixed(3) +
       (a.econ >= 1.03 ? '（好景気）' : a.econ <= 0.97 ? '（不景気）' : '') + (a.garageFee ? '・MAGITA Garage 1台' + money(a.garageFee) + '/月' : '') +
       (a.questFee ? '・YOSIDAのクエスト手数料 ' + Math.round(a.questFee * 100) + '%' : '')));
+    head.appendChild(btn('btn small corp-report-open', '日次収支レポート（45社）', function () { open('report'); }, '45社の日次収支レポートを開く'));
     box.appendChild(head);
     if (a && a.started) box.appendChild(liveClock(a));
     // the apps: an icon each
