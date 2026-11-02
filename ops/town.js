@@ -1,11 +1,11 @@
 /* 街: the country of people behind the companies (server/core/npc.js), all of it — the country now (its numbers, its
-   books, its districts and mayors, the knobs the council and the people may move and how far 運営 lets them, the
+   books, its districts and mayors, what the council and the people decide and what the companies decide, the
    elections, petitions, votes and the council's minutes, the unions), its 50,000 people (found by name, district or
    employer, each one whole: character, needs, money, work, pension, home, relations, memories, the reasons of their
    decisions), each company's people (its executives, departments and named posts, the meetings in its 会議室 with
    who said what and the stopper's word, its reports, its new businesses, MAGITA's research departments, Tenesice's
-   lending), and its news. The developer may set a knob's range, lock it, or set it from next month, pause the country
-   or fix how deep its people think. Asked for when opened and when the server says a day closed ('npc'); asking
+   lending), and its news. The developer may pause the country or fix how deep its people think (its knobs and the
+   companies' prices are the country's and the companies' own to decide). Asked for when opened and when the server says a day closed ('npc'); asking
    again with the last answer's rev is answered { same: true }. Labels from js/game/npc.js (BR.NPC). Text only by textContent. */
 var OpsTown = (function () {
   'use strict';
@@ -36,7 +36,7 @@ var OpsTown = (function () {
     t.appendChild(tb); wrap.appendChild(t); return wrap;
   }
   function who(p) { return p ? p.name : '—'; }
-  function knobText(k, v) { return k.unit === '$' ? money(v) : v + k.unit; }
+  function knobText(k, v) { return !k ? String(v) : k.unit === '$' ? money(v) : v + k.unit; }
 
   /* ---------------------------------------------------------------- アスカ国 --- */
   // the country beside it (server/core/asuka.js view): its people and money, ATSUKA Vision, ヴェルノア's companies'
@@ -238,13 +238,24 @@ var OpsTown = (function () {
       return { cells: [d.name, link(d.mayor), d.approval + '%', String(d.people), (d.economy * 100).toFixed(1), (d.platform || []).map(function (id) { var x = N().platforms.filter(function (y) { return y.id === id; })[0]; return x ? x.name : id; }).join('・')] };
     })));
     box.appendChild(p);
-    // the knobs: what the council and the people may move, how far (the developer sets it)
-    p = panel('国の決まり（つまみ）', '税・年金などは街の議会と市民投票が範囲の中で動かす（翌月1日から・同じつまみは四半期に1回）。給与・暮らし・金融は運営だけが設定（今すぐか翌月1日から）');
-    p.appendChild(table(['項目', '今', '範囲', '固定', '最後の変更', ''], r.knobs.map(function (k) {
-      var edit = btn('btn small', '設定', function () { editKnob(k); });
-      return { cells: [(k.group ? '［' + k.group + '］' : '') + k.name + (k.player ? '（プレイヤーにも）' : '') + (k.ops ? '（運営のみ）' : ''), knobText(k, k.value), knobText(k, k.range[0]) + '〜' + knobText(k, k.range[1]), k.locked ? '固定' : '', k.changed ? day(k.changed) : '', edit] };
+    // the knobs: what the council and the people move, as the country's situation calls for (no range; 運営 sets none)
+    p = panel('国の決まり', '税・年金・予算などは、街の議会と市民投票が状況に応じて決めます（翌月1日から・同じ項目は四半期に1回・範囲なし）。運営は変更できません');
+    p.appendChild(table(['項目', '今', '最後の変更'], r.knobs.map(function (k) {
+      return { cells: [(k.group ? '［' + k.group + '］' : '') + k.name, knobText(k, k.value), k.changed ? day(k.changed) : ''] };
     })));
     box.appendChild(p);
+    // what the companies decide themselves: their fees, MAGITA's surcharge, Tenesice's rates and phone bill; the prices
+    var dc = r.decided;
+    if (dc) {
+      p = panel('企業が自分で決めていること', '業績と状況に応じて各社が毎月見直します（運営は変更できません・範囲なし）');
+      g = el('div', 'town-grid');
+      kv(g, 'Dtradeの勝利金手数料', (dc.fees.winFee * 100).toFixed(2) + '%'); kv(g, 'Dtradeの交換手数料', money(dc.fees.exchangeFee)); kv(g, 'Dtradeの株の売買手数料', (dc.fees.tradeFee * 100).toFixed(2) + '%');
+      kv(g, '求人サイトの掲載料（シティーワーク）', (dc.fees.jobFee * 100).toFixed(1) + '%'); kv(g, 'MAGITAの仕入れ価格への上乗せ（経営悪化時）', money(dc.surcharge));
+      kv(g, 'テネシスの個人向け金利', (dc.rates.person * 100).toFixed(2) + '%'); kv(g, 'テネシスのクイックローン金利', (dc.quick * 100).toFixed(1) + '%'); kv(g, 'テネシス・モバイルの月額', money(dc.phone));
+      kv(g, '物価（はじめ＝1）', dc.cpi.toFixed(3)); kv(g, '家賃の水準（はじめ＝1）', dc.rentIdx.toFixed(3));
+      p.appendChild(g);
+      box.appendChild(p);
+    }
     var po = r.politics;
     p = panel('政治');
     if (po.campaign) p.appendChild(table(['区', '候補', '公約'], po.campaign.cands.map(function (c) { return [N().districts[c.district].name, c.name + (c.incumbent ? '（現職）' : ''), (c.platform || []).join('・')]; })));
@@ -270,17 +281,6 @@ var OpsTown = (function () {
     ['auto', 'shallow', 'standard', 'deep', 'deepest'].forEach(function (d) { ctl.appendChild(btn('btn small', { auto: '深さ：自動', shallow: '浅い', standard: '標準', deep: '深い', deepest: 'いちばん深い' }[d], function () { control({ depth: d }); })); });
     p.appendChild(ctl);
     box.appendChild(p);
-  }
-  function editKnob(k) {
-    var lo = prompt(k.name + 'の範囲の下限（' + k.unit + '）', String(k.range[0]));
-    if (lo === null) return;
-    var hi = prompt(k.name + 'の範囲の上限（' + k.unit + '）', String(k.range[1]));
-    if (hi === null) return;
-    var lock = confirm(k.name + 'を固定しますか？（OK＝固定・キャンセル＝固定しない）');
-    var val = prompt('新しい値（' + k.unit + '・空欄なら変えない）', '');
-    var body = { id: k.id, range: [Number(lo), Number(hi)], lock: lock };
-    if (val !== null && val !== '') { body.value = Number(val); body.now = confirm('今すぐ反映しますか？（OK＝今すぐ・キャンセル＝来月1日から）'); }
-    st.request('POST', '/api/ops/npc/knob', body).then(function () { st.toast('設定しました'); st.all = null; ask(); }, function (e) { st.toast(e && e.message || '設定できませんでした'); });
   }
   function control(body) {
     st.request('POST', '/api/ops/npc/control', body).then(function () { st.toast('設定しました'); st.all = null; ask(); }, function (e) { st.toast(e && e.message || '設定できませんでした'); });

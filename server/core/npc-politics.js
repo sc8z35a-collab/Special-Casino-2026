@@ -309,14 +309,16 @@ function council(W, day, r) {
   po.council = po.council.slice(-36);
 }
 const sumOf = (o) => Object.values(o).reduce((a, b) => a + b, 0);
-export function fmtKnob(id, v) { const k = NPC.knob[id]; return k.unit === '$' ? NPC.money(v) : k.unit === '%' || k.unit === 'pt' ? v + k.unit : v + k.unit; }
+export function fmtKnob(id, v) { const k = NPC.knob[id]; if (!k) return String(v); return k.unit === '$' ? NPC.money(v) : v + k.unit; }
+// a knob moved: no range but the world's own floor (no tax below nothing), in its steps
 export function clampKnob(W, id, v) {
-  const k = NPC.knob[id], range = (W.nation.ranges && W.nation.ranges[id]) || [k.min, k.max];
-  return Math.round(Math.max(range[0], Math.min(range[1], v)) / k.step) * k.step;
+  const k = NPC.knob[id];
+  if (!k) return v;
+  return Math.round(Math.max(k.floor ?? -Infinity, v) / k.step) * k.step;
 }
-// whether a knob may change now: not locked, not changed (or set to change) this quarter
+// whether a knob may change now: the country's own (still one of its knobs), not changed (or set to change) this quarter
 export function canChange(W, id, day) {
-  if (W.nation.locks && W.nation.locks[id]) return false;
+  if (!NPC.knob[id]) return false;
   if (W.nation.pending.some((p) => p.id === id)) return false;
   const last = W.nation.changed[id];
   return !(last && CORP.quarterKey(last) === CORP.quarterKey(day));
@@ -331,12 +333,13 @@ function applyPending(W, day) {
   const due = W.nation.pending.filter((p) => p.from <= day);
   W.nation.pending = W.nation.pending.filter((p) => p.from > day);
   for (const p of due) {
-    if (W.nation.locks && W.nation.locks[p.id]) continue;
+    // (no knob of the country's any more — a company's own price now —, or one 運営 set before: dropped)
+    if (!NPC.knob[p.id] || p.by === 'ops') continue;
     const was = W.nation.knobs[p.id];
     W.nation.knobs[p.id] = clampKnob(W, p.id, p.to);
     if (W.knobChanged && was !== W.nation.knobs[p.id]) W.knobChanged(p.id, was, W.nation.knobs[p.id]);
     W.nation.log.push({ day, id: p.id, from: was, to: W.nation.knobs[p.id], by: p.by });
-    W.news.push(news(day, 'knob', -1, `今日から${NPC.knob[p.id].name}が${fmtKnob(p.id, was)}→${fmtKnob(p.id, W.nation.knobs[p.id])}に（${p.by === 'vote' ? '市民投票' : p.by === 'ops' ? '運営' : '街の議会'}）`, { id: p.id }));
+    W.news.push(news(day, 'knob', -1, `今日から${NPC.knob[p.id].name}が${fmtKnob(p.id, was)}→${fmtKnob(p.id, W.nation.knobs[p.id])}に（${p.by === 'vote' ? '市民投票' : '街の議会'}）`, { id: p.id }));
   }
   W.nation.log = W.nation.log.slice(-120);
 }

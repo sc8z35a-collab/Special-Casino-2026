@@ -9,7 +9,8 @@ import { toStream, nationIn } from './npc-econ.js';
 
 export const LISTED_IDS = ['riru', 'ice', 'magita', 'tenesice'];
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
-const feeOf = (W, v) => Math.ceil(v * (W.nation.knobs.tradeFee || 1.8) / 100);
+// (Dtrade's fee on a trade, as it set it: server/core/corp-model.js fees)
+const feeOf = (W, v) => Math.ceil(v * ((W.fees && W.fees.tradeFee !== undefined ? W.fees.tradeFee : 0.018)));
 
 export function createMarket(W) {
   const m = W.marketState || (W.marketState = { book: {}, last: {}, hist: {}, nudges: [], volume: {}, cost: {} });
@@ -43,9 +44,9 @@ export function createMarket(W) {
       if (held > 0 && price < cost * 0.9) view += 0.3;
       const limit = Math.max(1, Math.round(price * (1 + (view > 0 ? 1 : -1) * (0.001 + 0.006 * r.u()))));
       if (view > 0.2) {
-        const room = Math.max(0, NPC.knobOf(W, 'investDaily') - P.buyDay[i]);
-        // (in a mania what was set aside for the market is not the limit: the greedy put in what they have)
-        const money = Math.min(Math.max(Math.max(0, P.fund[i * 4 + 3]) * (0.3 + 0.5 * r.u()), rush > 0 ? Math.max(0, P.cash[i]) * Math.min(0.5, rush * 0.2) : 0), Math.max(0, P.cash[i]) * 0.5, room);
+        // (what they set aside for the market — no limit but their own money; in a mania it is not the limit either: the
+        // greedy put in what they have)
+        const money = Math.min(Math.max(Math.max(0, P.fund[i * 4 + 3]) * (0.3 + 0.5 * r.u()), rush > 0 ? Math.max(0, P.cash[i]) * Math.min(0.5, rush * 0.2) : 0), Math.max(0, P.cash[i]) * 0.5);
         const shares = Math.floor(money / (limit * 1.02));
         if (shares > 0) { m.book[id].buy.push([i, shares, limit]); P.buyDay[i] += shares * limit; P.fund[i * 4 + 3] -= shares * limit; P.trades[i]++; }
       } else if (view < -0.2 && held > 0) {

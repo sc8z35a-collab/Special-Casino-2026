@@ -193,55 +193,32 @@
   // home (居候), then the street; the 生活保護 picks those it reaches
   var TROUBLE = { quickRate: 0.178, quickMax: 30000000, quickBase: 3000000, stayDays: 120, homelessFloor: -50000000 };
 
-  // What the council and the people may change, and how far (運営 may narrow, widen or lock each of them). `player`:
-  // it reaches the players too (the fees they pay and MAGITA's surcharge): never lower than half of where it began.
+  // What the country decides — its council and its people's votes, as its situation calls for (js/game/npc.js: the
+  // council's motions, the citizens' votes): its taxes, its pensions, its labour rules, its safety net, its budgets,
+  // the inflation it aims at. No range is set on any of them (運営 sets none of them either); each has only the floor
+  // the world gives it (`floor`: no tax below nothing, no benefit cut by more than all of it). What the companies charge
+  // and pay — their fees, their pay, the phone bill, the loans' rates — the companies decide themselves
+  // (server/core/corp-model.js fees, npc-org.js), and the rents and the cost of living follow the prices (npc-cycle.js).
   var KNOBS = [
-    { id: 'incomeShift', group: '税', name: '所得税（全体の上げ下げ）', start: 0, min: -5, max: 5, step: 1, unit: 'pt' },
-    { id: 'residentTax', group: '税', name: '住民税', start: 10, min: 6, max: 12, step: 1, unit: '%' },
-    { id: 'consumptionTax', group: '税', name: '消費税', start: 0, min: 0, max: 15, step: 1, unit: '%' },
-    { id: 'pensionRate', group: '年金', name: '厚生年金の保険料率', start: 18.3, min: 15, max: 22, step: 0.5, unit: '%' },
-    { id: 'pensionAge', group: '年金', name: '年金を受け取る年齢', start: 60, min: 55, max: 65, step: 1, unit: '歳' },
-    { id: 'pensionLevel', group: '年金', name: '年金額の見直し', start: 0, min: -10, max: 10, step: 1, unit: '%' },
-    { id: 'minWage', group: '働く', name: '最低賃金（年）', start: 1800000, min: 1200000, max: 2400000, step: 100000, unit: '$' },
-    { id: 'overtime', group: '働く', name: '残業の上限（月）', start: 45, min: 30, max: 80, step: 5, unit: '時間' },
-    { id: 'jobless', group: '保障', name: '失業手当', start: 0, min: -30, max: 30, step: 5, unit: '%' },
-    { id: 'welfare', group: '保障', name: '生活保護', start: 0, min: -30, max: 30, step: 5, unit: '%' },
-    { id: 'medical', group: '保障', name: '医療の自己負担', start: 0, min: -30, max: 30, step: 5, unit: '%' },
-    { id: 'publicWorks', group: '予算', name: '公共事業', start: 0, min: -40, max: 40, step: 10, unit: '%' },
-    { id: 'grants', group: '予算', name: '地区への交付金', start: 0, min: -30, max: 30, step: 10, unit: '%' },
-    { id: 'inflation', group: '経済', name: 'テネシスの物価目標', start: 2, min: 1, max: 3, step: 0.5, unit: '%' },
-    { id: 'magitaSurcharge', group: '企業', name: 'MAGITAの値上げ（上限）', start: 3000000, min: 1500000, max: 3000000, step: 500000, unit: '$', player: true },
-    { id: 'winFee', group: '企業', name: 'Dtradeの勝利金手数料', start: 6, min: 3, max: 6, step: 0.5, unit: '%', player: true },
-    { id: 'exchangeFee', group: '企業', name: 'Dtradeの交換手数料', start: 40000, min: 20000, max: 40000, step: 5000, unit: '$', player: true },
-    { id: 'tradeFee', group: '企業', name: 'Dtradeの株の手数料', start: 1.8, min: 0.9, max: 1.8, step: 0.1, unit: '%', player: true },
-    { id: 'jobFee', group: '企業', name: '求人サイトの掲載料', start: 25, min: 12.5, max: 25, step: 2.5, unit: '%', player: true },
-    // (what only 運営 sets: the council and the people never move these) the pay at each company and elsewhere, against
-    // what it is (a change scales everyone's there at once, and the new hires' with it), the cost of living, the
-    // rents, the phone bill, the quick loans' rate, how far Tenesice lends to the country (beyond it the country
-    // cannot pay all it owes: 財政破綻), the people's own limit on the market a day
-    { id: 'pay:tenesice', group: '給与', name: 'テネシスの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
-    { id: 'pay:magita', group: '給与', name: 'MAGITAの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
-    { id: 'pay:carowner', group: '給与', name: 'カーオーナーの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
-    { id: 'pay:jinx', group: '給与', name: 'ジンクスの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
-    { id: 'pay:daizin', group: '給与', name: 'DAIZINの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
-    { id: 'pay:citywork', group: '給与', name: 'シティーワークの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
-    { id: 'pay:speedeed', group: '給与', name: 'スピーディードの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
-    { id: 'pay:dtrade', group: '給与', name: 'Dtradeの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
-    { id: 'pay:riru', group: '給与', name: 'RIRU STUDIOの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
-    { id: 'pay:ice', group: '給与', name: 'Ice Smokerの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
-    { id: 'pay:civil', group: '給与', name: '公務員の給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
-    { id: 'pay:local', group: '給与', name: '地元の店・自営業・パートの給与水準', start: 0, min: -50, max: 200, step: 5, unit: '%', ops: true },
-    { id: 'livingCost', group: '暮らし', name: '日用品の物価', start: 0, min: -50, max: 300, step: 5, unit: '%', ops: true },
-    { id: 'rentLevel', group: '暮らし', name: '家賃の水準', start: 0, min: -50, max: 300, step: 5, unit: '%', ops: true },
-    { id: 'phoneBill', group: '暮らし', name: 'テネシス・モバイルの月額', start: 100000, min: 0, max: 1000000, step: 10000, unit: '$', ops: true },
-    { id: 'quickRate', group: '金融', name: 'クイックローンの金利', start: 17.8, min: 1, max: 40, step: 0.1, unit: '%', ops: true },
-    { id: 'debtCap', group: '金融', name: 'テネシスが国に貸す上限（最初の残高に対して）', start: 300, min: 100, max: 2000, step: 10, unit: '%', ops: true },
-    { id: 'investDaily', group: '金融', name: '市民の株の購入上限（1日）', start: LIFE.investDay, min: 0, max: 1000000000, step: 1000000, unit: '$', ops: true }
+    { id: 'incomeShift', group: '税', name: '所得税（全体の上げ下げ）', start: 0, floor: -5, step: 1, unit: 'pt' },
+    { id: 'residentTax', group: '税', name: '住民税', start: 10, floor: 0, step: 1, unit: '%' },
+    { id: 'consumptionTax', group: '税', name: '消費税', start: 0, floor: 0, step: 1, unit: '%' },
+    { id: 'pensionRate', group: '年金', name: '厚生年金の保険料率', start: 18.3, floor: 0, step: 0.5, unit: '%' },
+    { id: 'pensionAge', group: '年金', name: '年金を受け取る年齢', start: 60, floor: 50, step: 1, unit: '歳' },
+    { id: 'pensionLevel', group: '年金', name: '年金額の見直し', start: 0, floor: -100, step: 1, unit: '%' },
+    { id: 'minWage', group: '働く', name: '最低賃金（年）', start: 1800000, floor: 0, step: 100000, unit: '$' },
+    { id: 'overtime', group: '働く', name: '残業の上限（月）', start: 45, floor: 0, step: 5, unit: '時間' },
+    { id: 'jobless', group: '保障', name: '失業手当', start: 0, floor: -100, step: 5, unit: '%' },
+    { id: 'welfare', group: '保障', name: '生活保護', start: 0, floor: -100, step: 5, unit: '%' },
+    { id: 'medical', group: '保障', name: '医療の自己負担', start: 0, floor: -100, step: 5, unit: '%' },
+    { id: 'publicWorks', group: '予算', name: '公共事業', start: 0, floor: -100, step: 10, unit: '%' },
+    { id: 'grants', group: '予算', name: '地区への交付金', start: 0, floor: -100, step: 10, unit: '%' },
+    { id: 'inflation', group: '経済', name: 'テネシスの物価目標', start: 2, floor: 0, step: 0.5, unit: '%' }
   ];
   var KNOB = {};
   KNOBS.forEach(function (k) { KNOB[k.id] = k; });
-  // a knob as it is now in a country (one added after the country began: where it starts)
-  function knobOf(W, id) { var v = W && W.nation && W.nation.knobs ? W.nation.knobs[id] : undefined; return v === undefined || v === null ? KNOB[id].start : v; }
+  // a knob's value now (its start before it was ever set; none for one that is no knob of the country's any more)
+  function knobOf(W, id) { var k = KNOB[id], v = W && W.nation && W.nation.knobs ? W.nation.knobs[id] : undefined; return v === undefined || v === null ? (k ? k.start : 0) : v; }
   // a knob changes from the 1st of the next month, once a quarter at most; a citizens' vote needs these
   var CHANGE = { quarterOnce: true };
   var VOTES = {
@@ -263,7 +240,8 @@
     { id: 'gap', name: '格差' }, { id: 'magita', name: 'MAGITAの値上げ' }, { id: 'dtrade', name: 'Dtradeの手数料' }, { id: 'mayor', name: '区長への不信' }
   ];
   // what a theme asks of the country when the people move on it (the knob, and which way)
-  var DEMANDS = { tax: ['consumptionTax', -1], pension: ['pensionLevel', 1], prices: ['consumptionTax', -1], wages: ['minWage', 1], gap: ['incomeShift', 1], magita: ['magitaSurcharge', -1], dtrade: ['winFee', -1] };
+  // (what the people ask of the council for each worry: a company's own prices are its own to set, not the council's)
+  var DEMANDS = { tax: ['consumptionTax', -1], pension: ['pensionLevel', 1], prices: ['consumptionTax', -1], wages: ['minWage', 1], gap: ['incomeShift', 1] };
 
   /* ---------------------------------------------------------------- the companies' people --- */
   // Every company's departments: `kind` says what the department does in the company's mind (server/core/npc-org.js),

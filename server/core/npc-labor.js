@@ -85,7 +85,7 @@ function hire(W, i, o, day, r) {
   P.shift[i] = r.int(2);
   o.left--;
   // the site's placement fee (初年度年収の30%), the hiring company's
-  W.charge(o.company, o.site, 'placement', Math.round(P.salary[i] * 0.3 * (W.nation.knobs.jobFee || 25) / 25));
+  W.charge(o.company, o.site, 'placement', Math.round(P.salary[i] * 0.3 * econ.feeOf(W, 'jobFee', 0.25) / 0.25));
   if (RATES[o.company] && r.u() < RATES[o.company]) { P.flags[i] |= FL.union; W.lab.unions[o.company].members++; }
   remember(P, i, day, M.hired, 150);
   W.lab.hires[o.company] = (W.lab.hires[o.company] || 0) + 1;

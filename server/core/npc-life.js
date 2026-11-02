@@ -149,7 +149,7 @@ function lunch(W, i, m, day, r) {
   const P = W.P;
   set(W, i, A.lunch, PL.store, P.wdist[i], m, 45 + r.int(20));
   // (a lunch out: the local restaurants; now and then a snack from ジンクス)
-  const n = Math.round(W.cal.lunch * (0.6 + 0.8 * r.u()) * (1 - 0.4 * tr(P, i, T.thrift)) * (1 + NPC.knobOf(W, 'livingCost') / 100));
+  const n = Math.round(W.cal.lunch * (0.6 + 0.8 * r.u()) * (1 - 0.4 * tr(P, i, T.thrift)) * econ.cpi(W));
   econ.toSector(W, i, n, false, 'food');
   if (r.u() < 0.3) econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.4), false);
   fill(P, i, N.rest, 25);

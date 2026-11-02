@@ -92,6 +92,8 @@ test('every way a player\'s money moves, through the server: the players\' ledge
   await ok('garage', s.call('POST', '/api/garage/expand', { token: a.token, body: {} }));
   const tree = (await s.call('GET', '/api/tree', { token: a.token })).trees[0].id;
   await ok('tree', s.call('POST', '/api/tree/give', { token: a.token, body: { tree, amount: RULES.tree.amounts[0] } }));
+  // (room in the garages for the gacha's cars and the cars below — places are no money)
+  s.setUser(a.me.id, { garage_extra: 60 }); s.setUser(b.me.id, { garage_extra: 60 });
   await ok('gacha', s.call('POST', '/api/gacha/spin', { token: a.token, body: { kind: 'rare', count: 1 } }));
   // (a pull of trees that have no room: their $3M each paid instead, YOSIDA's; the prizes sold back)
   for (let i = 0; i < 8; i++) q("INSERT INTO trees (user_id, name, super, given, price, created_at) VALUES (?, '木', 0, 0, 0, ?)").run(a.me.id, Date.now());

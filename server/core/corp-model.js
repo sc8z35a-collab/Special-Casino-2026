@@ -1213,6 +1213,35 @@ function budgetReview(w, s, p, d, out) {
   news(out, s, p, d + 1, 4 * 3600, 'cut', moved < 0 ? `売上に合わせて経費を見直し：施設・研究・広告・その他・設備の予算を${pct}%削減（直近3か月の売上 月${CORP.fmt.money(sales)}）` : `売上の伸びに合わせて予算を${pct}%増額`, { moved, sales: Math.round(sales) }, 0, true);
 }
 
+// What the companies charge for their own services, each its own to set — no one else sets it, and no range is set on
+// it: Dtrade's fee on a big win (of the win), on changing tokens back ($), on a trade (of it), the job sites' on a hire
+// (of the year's pay; CityWork's, the bigger of the two, the market's). At each month's end, by how it did against its
+// plan's margin (its last three months, as its budget meeting sees them): short of it, a step up; well over it, a step
+// down to win more custom. (`w.fees`: the players' side reads it, server/core/npc.js; the people's with each close.)
+export const FEES0 = { winFee: 0.06, exchangeFee: 40000, tradeFee: 0.018, jobFee: 0.25 };
+const FEES_OF = { dtrade: ['winFee', 'exchangeFee', 'tradeFee'], citywork: ['jobFee'] };
+const FEE_NAME = { winFee: '勝利金手数料', exchangeFee: '交換手数料', tradeFee: '株の売買手数料', jobFee: '求人サイトの掲載料' };
+export const feesOf = (w) => ({ ...FEES0, ...((w && w.fees) || {}) });
+function feesMonth(w, s, p, d, out) {
+  const keys = FEES_OF[s.id], h = s.mHist || [];
+  if (!keys || !w.circ || s.dead || h.length < 3) return;
+  const f = w.fees || (w.fees = { ...FEES0 });
+  const sales = h.reduce((a, x) => a + x.sales, 0) / h.length, op = h.reduce((a, x) => a + x.op, 0) / h.length;
+  const want = (p.op / Math.max(1, p.sales)) * Math.max(0, sales);
+  const step = op < want ? 0.05 : op > want * 1.5 ? -0.03 : 0;
+  if (!step) return;
+  const said = [];
+  for (const k of keys) {
+    const was = f[k];
+    // (a share of something can come to all of it at most: what it is, not a range)
+    let v = was * (1 + step);
+    v = k === 'exchangeFee' ? Math.max(1, Math.round(v / 1000) * 1000) : Math.min(0.99, Math.round(v * 10000) / 10000);
+    f[k] = v;
+    said.push(`${FEE_NAME[k]}を${k === 'exchangeFee' ? CORP.fmt.money(was) + '→' + CORP.fmt.money(v) : (was * 100).toFixed(2) + '%→' + (v * 100).toFixed(2) + '%'}`);
+  }
+  news(out, s, p, d + 1, 3 * 3600, 'fee', `${step > 0 ? '業績が計画に届かないため' : '利益が計画を大きく上回るため、利用者を増やそうと'}${said.join('・')}に${step > 0 ? '引き上げ' : '引き下げ'}ます`, { step }, 0, true);
+}
+
 // What is owed paid, day by day and at the month's end: the suppliers within weeks (each to whom it is owed), the
 // customers' money in, the pay and the bills of the month.
 function settle(w, s, p, d) {
@@ -1821,9 +1850,9 @@ const labMult = (w, maker) => (maker === 'magita' && w.co.magita && w.co.magita.
 function surchargeOf(w, kind, id) {
   const s = w.co.magita;
   const pr = kind === 'cars' && CORP.products.cars[id];
-  return pr && pr.maker === 'magita' && s && s.surcharge && !MG.surcharge.except.includes(id) ? MG.surcharge.amount : 0;
+  return pr && pr.maker === 'magita' && s && s.surcharge && !MG.surcharge.except.includes(id) ? (s.surchargeAmt || MG.surcharge.amount) : 0;
 }
-export const surcharges = (w) => Object.fromEntries(RULES.cars.filter((c) => surchargeOf(w, 'cars', c.id) && CORP.products.cars[c.id]).map((c) => [c.id, MG.surcharge.amount]));
+export const surcharges = (w) => Object.fromEntries(RULES.cars.filter((c) => surchargeOf(w, 'cars', c.id) && CORP.products.cars[c.id]).map((c) => [c.id, surchargeOf(w, 'cars', c.id)]));
 const MONTH = YEAR / 12;
 // the research begun (on the first live day; a world begun before it had research begins it then)
 function startLab(s, d) {
@@ -1848,14 +1877,21 @@ function labDay(w, s, p, d, ch, out) {
       { id: r.id, ok: true }, 0, true);
   }
 }
-// at a quarter's end: struggling (below `on` of the plan, or a loss), the surcharge on; back at `off`, off
+// at a quarter's end: struggling (below `on` of the plan, or a loss), the surcharge on — how much MAGITA's own call, by
+// how far short it is (no cap: still short a quarter later, a fifth more); back at `off`, off
 function surchargeCheck(s, p, d, qs, out) {
   if (s.id !== 'magita' || !s.launchDay || d < s.launchDay) return;
   const op = qs.pl.op, plan = qs.expected;
   const bad = op < 0 || (plan > 0 && op < plan * MG.surcharge.on), good = op >= 0 && (!(plan > 0) || op >= plan * MG.surcharge.off);
+  const short = plan > 0 ? Math.max(0, 1 - op / plan) : 1;
   if (!s.surcharge && bad) {
     s.surcharge = d + 1;
-    news(out, s, p, d + 1, 2 * 3600, 'surcharge', `経営悪化のため、オンヴォーロ以外の全車種の仕入れ価格に手数料${CORP.fmt.money(MG.surcharge.amount)}を上乗せします`, { on: true }, 0, true);
+    s.surchargeAmt = Math.round(MG.surcharge.amount * (0.5 + short) / 100000) * 100000;
+    news(out, s, p, d + 1, 2 * 3600, 'surcharge', `経営悪化のため、オンヴォーロ以外の全車種の仕入れ価格に手数料${CORP.fmt.money(s.surchargeAmt)}を上乗せします`, { on: true }, 0, true);
+  } else if (s.surcharge && bad) {
+    const was = s.surchargeAmt || MG.surcharge.amount;
+    s.surchargeAmt = Math.round(was * 1.2 / 100000) * 100000;
+    news(out, s, p, d + 1, 2 * 3600, 'surcharge', `業績が戻らないため、車両の仕入れ価格への手数料を${CORP.fmt.money(was)}→${CORP.fmt.money(s.surchargeAmt)}に引き上げます`, { on: true }, 0, true);
   } else if (s.surcharge && good) {
     s.surcharge = 0;
     news(out, s, p, d + 1, 2 * 3600, 'surcharge', '業績が回復したため、車両の仕入れ価格への手数料の上乗せを終了します', { on: false }, 0, true);
@@ -3286,7 +3322,7 @@ export function closeDay(w, d, flows, ch) {
     month(w, s, p, d, ch, out);
     if (CORP.ymd(d).d === 1 && d >= w.launch) tech(w, s, p, d, ch, out);
     if (p.model === 'studio') titlesLook(w, s, p, d, out);
-    if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); treasury(w, s, p, d, out); }
+    if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); feesMonth(w, s, p, d, out); treasury(w, s, p, d, out); }
     // (out of money with nothing more Tenesice will lend, or below nothing too long: 破産)
     solvencyCheck(w, s, p, d, out);
   }
@@ -3384,7 +3420,7 @@ export function closeDay(w, d, flows, ch) {
   for (const id of ORDER) announce(w, w.co[id], PROFILES.get(id), d, out, ch);
   w.day = d;
   // (what the exporters wanted of abroad today: tomorrow's share of its money by it)
-  if (w.ext) { w.abroadWant = Math.round((w.abroadWant || w.ext.abroadWant) * 0.5 + w.ext.abroadWant * 0.5); out.ext = w.ext; }
+  if (w.ext) { w.abroadWant = Math.round((w.abroadWant || w.ext.abroadWant) * 0.5 + w.ext.abroadWant * 0.5); w.ext.fees = feesOf(w); out.ext = w.ext; }
   delete w.ext;
   delete w.b2bCash;
   delete w.b2b;

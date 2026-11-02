@@ -113,6 +113,11 @@ export function toBank(W, day, kind, n) {
 }
 
 /* ------------------------------------------------------------ prices and pull --- */
+// the prices' level and the rents' (1 at the start: the economy moves them, server/core/npc-cycle.js), and what the
+// companies charge as they decided it (their fees: server/core/corp-model.js fees, told with each close)
+export const cpi = (W) => W.cpi || 1;
+export const rentIdx = (W) => W.rentIdx || 1;
+export const feeOf = (W, k, dflt) => (W.fees && W.fees[k] !== undefined ? W.fees[k] : dflt);
 // what a company's own price decisions have done to a price (its sales and discounts, its fees raised: npc-org.js),
 // and how much more the people want what it sells for its campaigns and its advertising (its own and for all it does)
 export const priceOf = (W, key) => (W.priceIdx[key] || 1) * ((W.priceTemp && W.priceTemp[key] && W.priceTemp[key].mult) || 1);
@@ -230,7 +235,9 @@ export function borrowFor(W, i, need) {
 export const bankRoom = (W) => (W.bankRoom === undefined || W.bankRoom === null ? Infinity : Math.max(0, W.bankRoom));
 export const quickCap = (P, i) => Math.round(Math.max(NPC.trouble.quickBase, Math.min(NPC.trouble.quickMax, (P.salary[i] || 0) * 0.5)) * (0.5 + P.credit[i] / 255));
 // the rate a person's loan pays a year: the usual (the bank's own rate for people) or the クイックローン
-export const loanRate = (W, P, i) => (P.dkind[i] === 2 ? NPC.knobOf(W, 'quickRate') / 100 : W.bankRates.person);
+// (the クイックローン's rate: Tenesice's own — its people's rate and the spread it keeps for the risk, npc-org.js)
+export const quickRate = (W) => (W.bankRates.quick !== undefined ? W.bankRates.quick : W.bankRates.person + (W.bankRates.spread ?? 0.153));
+export const loanRate = (W, P, i) => (P.dkind[i] === 2 ? quickRate(W) : W.bankRates.person);
 
 /* ------------------------------------------------------------- the month's money --- */
 // what of a month's fund (0 the slots, 1 the games, 2 the pleasures, 3 the market) a person lets themselves use today:
@@ -297,12 +304,12 @@ export function casinoSession(W, i, day, budget, r) {
     const m = spinOnce(r), win = Math.floor(unit * m);
     back += win;
     if (m > best) best = m;
-    if (bet >= RULES.casino.bigBet && win > 0) fee += Math.floor(win * (W.nation.knobs.winFee || 6) / 100);
+    if (bet >= RULES.casino.bigBet && win > 0) fee += Math.floor(win * feeOf(W, 'winFee', 0.06));
     // (a big win is often where one stops)
     if (m >= 100 && r.u() < 0.6) break;
   }
   // (the tokens left are changed back to $ only when it is worth the fee; else kept for next time)
-  const ex = W.nation.knobs.exchangeFee || RULES.casino.exchangeFee;
+  const ex = feeOf(W, 'exchangeFee', RULES.casino.exchangeFee);
   const had = P.tokens[i];
   const left = had - Math.min(had, staked) + back - fee;
   const change = left > ex * 8 ? ex : 0;

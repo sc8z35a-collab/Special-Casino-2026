@@ -558,7 +558,7 @@ function stats(W, day) {
   // prices: the consumption tax and the companies' own changes to them; inflation: against a year (or since the start)
   const keys = new Set([...Object.keys(W.priceIdx), ...Object.keys(W.priceTemp || {})]);
   s.prices = (1 + (W.nation.knobs.consumptionTax || 0) / 100) * [...keys].reduce((a, k) => a * Math.pow(econ.priceOf(W, k), 0.1), 1) * (W.surchargeOn ? 1.005 : 1)
-    * Math.pow(1 + NPC.knobOf(W, 'livingCost') / 100, 0.35) * Math.pow(1 + NPC.knobOf(W, 'rentLevel') / 100, 0.2);
+    * Math.pow(econ.cpi(W), 0.35) * Math.pow(econ.rentIdx(W), 0.2);
   const past = W.nation.hist.length ? W.nation.hist[Math.max(0, W.nation.hist.length - 365)] : null;
   s.inflation = Math.round(((s.prices / ((past && past.prices) || W.stats.prices0 || s.prices)) - 1) * 1000) / 1000;
   s.prices0 = W.stats.prices0 || s.prices;
