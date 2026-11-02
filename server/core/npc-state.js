@@ -410,9 +410,9 @@ function month(W, day, r, ctx) {
     if (age >= 18 && age < 60 && !isEmployee(P.job[i]) && P.job[i] !== NPC.job.home) {
       if (P.job[i] === NPC.job.student) { /* 学生納付特例 */ }
       else if (P.cash[i] < 3000000 && !P.salary[i]) { P.penHalf[i]++; P.penM[i]++; }
-      else if (econ.pay(W, i, NPC.social.national, true)) { W.nation.fund.cash += NPC.social.national; W.nation.day.in.pensionIn = (W.nation.day.in.pensionIn || 0) + NPC.social.national; P.penM[i]++; }
+      else if (econ.pay(W, i, NPC.social.national, true, 'x')) { W.nation.fund.cash += NPC.social.national; W.nation.day.in.pensionIn = (W.nation.day.in.pensionIn || 0) + NPC.social.national; P.penM[i]++; }
       const nhi = Math.min(NPC.social.nhiCap, Math.round((P.salary[i] || 0) / 12 * NPC.social.nhi));
-      if (nhi && econ.pay(W, i, nhi, true)) econ.nationIn(W, 'social', nhi);
+      if (nhi && econ.pay(W, i, nhi, true, 'x')) econ.nationIn(W, 'social', nhi);
     }
     // a loan's month: its interest to Tenesice, and a part paid back
     if (P.debt[i] > 0) {

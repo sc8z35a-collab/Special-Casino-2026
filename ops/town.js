@@ -38,6 +38,36 @@ var OpsTown = (function () {
   function who(p) { return p ? p.name : '—'; }
   function knobText(k, v) { return !k ? String(v) : k.unit === '$' ? money(v) : v + k.unit; }
 
+  /* ---------------------------------------------------------------- GDP --- */
+  // a country's GDP (server/core/npc-gdp.js gdpView): the last day closed, the month, the year (暦年) and the last 365
+  // days, nominal and real (at the prices of its beginning), what it was spent on, and its last 90 days as bars
+  function gdpPanel(box, g, name) {
+    var p = panel(name + 'のGDP（国内総生産）', '支出面：消費＋政府＋投資＋輸出−輸入・実質は建国時の物価で・毎日の締めで更新');
+    if (!g) { p.appendChild(el('p', 'muted', '最初の締めの翌日から数えます。')); box.appendChild(p); return; }
+    var sign = function (x) { return x === null || x === undefined ? '—' : (x >= 0 ? '+' : '−') + Math.abs(x * 100).toFixed(1) + '%'; };
+    var t = el('div', 'town-grid');
+    kv(t, '実質GDP（年率・直近30日）', money(g.pace.real) + '（前の30日比 ' + sign(g.pace.growth) + '）');
+    kv(t, '名目GDP（年率・直近30日）', money(g.pace.nominal));
+    kv(t, '直近365日の実質GDP', money(g.last365.real) + (g.last365.days < 365 ? '（' + g.last365.days + '日分）' : '') + (g.yoy !== null ? '・前年比 ' + sign(g.yoy) : ''));
+    kv(t, '1人あたりGDP（年）', money(g.head) + '（人口 ' + (g.people || 0).toLocaleString('ja-JP') + '人）');
+    kv(t, 'GDPデフレーター', (g.defl * 100).toFixed(1) + '（建国時＝100）');
+    p.appendChild(t);
+    var rows = [['日（' + day(g.day.day) + '）', g.day, sign(g.day.growth)], ['月（' + g.month.key + '・' + g.month.days + '日）', g.month, g.prevMonth ? '前月 ' + money(g.prevMonth.real) : '—'],
+      ['年（' + g.year.y + '年・' + g.year.days + '日）', g.year, g.lastYear ? '前年 ' + money(g.lastYear.real) : '—']];
+    p.appendChild(table(['', '名目GDP', '実質GDP', '消費(C)', '政府(G)', '投資(I)', '輸出(X)', '輸入(M)', '比較'], rows.map(function (x) {
+      var o = x[1];
+      return [x[0], money(o.nominal), money(o.real), money(o.c), money(o.g), money(o.i), money(o.x), money(o.m), x[2]];
+    })));
+    // the last 90 days' real GDP (a day each; the months' ends are when the monthly bills and pay fall)
+    var bars = el('div', 'town-bars'), max = g.series.reduce(function (m, x) { return Math.max(m, Math.abs(x[2])); }, 1);
+    bars.setAttribute('role', 'img');
+    bars.setAttribute('aria-label', name + 'の実質GDP（直近' + g.series.length + '日）');
+    g.series.forEach(function (x) { var b = el('i', x[2] < 0 ? 'neg' : ''); b.style.height = Math.max(1, Math.round(Math.abs(x[2]) / max * 48)) + 'px'; b.title = day(x[0]) + ' 実質 ' + money(x[2]) + '・名目 ' + money(x[1]); bars.appendChild(b); });
+    p.appendChild(bars);
+    p.appendChild(el('p', 'muted town-note', '消費＝市民（とプレイヤー）が買ったもの（消費税込み）、政府＝公務員の給与・医療・区の購入、投資＝企業の設備・ゲームの開発・地元企業の投資・公共事業、輸出入＝もう一方の国と海外との取引（アスカ国の支店はアスカ国の生産）。月末の請求・給料・設備投資の日は1日の値が大きく動きます。'));
+    box.appendChild(p);
+  }
+
   /* ---------------------------------------------------------------- アスカ国 --- */
   // the country beside it (server/core/asuka.js view): its people and money, ATSUKA Vision, ヴェルノア's companies'
   // branches, the money between the two countries, its months and news
@@ -50,6 +80,7 @@ var OpsTown = (function () {
     kv(g, '仕事を探している人', String(J.none) + '（失業率 ' + pct(a.stats && a.stats.jobless) + '）'); kv(g, '学生', String(J.student)); kv(g, '退職した人', String(J.retired));
     p.appendChild(g);
     box.appendChild(p);
+    gdpPanel(box, r.gdp && r.gdp.asuka, 'アスカ国');
     p = panel('アスカ国のお金', 'すべて建国資金から：両国の間を行き来するだけ');
     g = el('div', 'town-grid'); var M = a.money;
     kv(g, '国民の預金', money(M.people)); kv(g, '国庫', money(M.treasury)); kv(g, 'ATSUKA Vision', money(M.atsuka)); kv(g, '国立銀行の自己資金', money(M.bank));
@@ -189,6 +220,7 @@ var OpsTown = (function () {
       ['ジニ係数', String(s.gini)], ['資産の中央値', money(s.median)], ['路上で暮らす人', String(s.homeless)], ['居候', String(s.staying)], ['市民の預金', money(s.cash)], ['市民の借金', money(s.debt)]].forEach(function (x) { kv(g, x[0], x[1]); });
     p.appendChild(g);
     box.appendChild(p);
+    gdpPanel(box, r.gdp && r.gdp.vernoa, r.nation.name);
     var nf = r.nationFull;
     p = panel('国の帳簿', 'テネシスの国の口座');
     g = el('div', 'town-grid');

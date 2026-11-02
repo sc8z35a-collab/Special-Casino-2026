@@ -264,7 +264,7 @@ export function month(W, day, bonus) {
       // (what it holds beyond three months of its costs is not kept: a fifth of it a month into growing — its
       // shops, its stock, its events —, to the other local companies, the small shops and アルタス)
       const cushion = Math.max(0, (m.cost + m.pay) * 3), extra = Math.round((c.cash - cushion) * 0.2);
-      if (extra > 0) { spend(W, f, c, extra); m.invest = (m.invest || 0) + extra; }
+      if (extra > 0) { spend(W, f, c, extra); m.invest = (m.invest || 0) + extra; econ.gdpAcc(W).inv += extra; }
     }
     if (mine && op > 0 && people.length) {
       const pool = Math.round(op * R.bonus), each = Math.floor(pool / people.length);

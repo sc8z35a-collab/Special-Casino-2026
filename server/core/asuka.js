@@ -146,6 +146,8 @@ export function earned(W, n, division = 'altas', by = 'other', internal = false)
   if (port) a.atsuka.rev.port = (a.atsuka.rev.port || 0) + port;
   a.atsuka.rev[division] = (a.atsuka.rev[division] || 0) + n - port;
   a.atsuka.revDay += n;
+  // (sold to ヴェルノア — its exports —: never its own country's, nor the land and buildings of the branches here)
+  if (!internal && division !== 'zone') gdpAcc(a).x += n;
   // (アルタス's month: what it sold, by who bought it — every $ of it what was bought, nothing fixed)
   if (division === 'altas') { const m = altasOf(a).m; m.rev += n - port; m.by[by] = (m.by[by] || 0) + n - port; }
   if (!internal) a.sum.fromVernoa += n;
@@ -176,6 +178,8 @@ export function fromCompanies(W, x, day) {
     staff.forEach((i, j) => { const g = j === staff.length - 1 ? left : Math.floor(n * A.pay[i] / Math.max(1, total)); left -= g; income(W, i, g); });
   }
   for (const [k, div] of [['rent', 'zone'], ['open', 'zone'], ['platform', 'digital']]) if (x[k] > 0) earned(W, x[k], div);
+  // (the branches' buildings, put up here: invested — what the drawing fund paid of them too)
+  gdpAcc(a).i += Math.max(0, Math.round(x.open || 0)) + Math.max(0, Math.min(a.boost.cash, Math.round(x.boost || 0)));
   if (x.tax > 0) { a.treasury += Math.round(x.tax); a.sum.fromVernoa += Math.round(x.tax); tin(a, 'branchTax', Math.round(x.tax)); }
   // (what its people paid a company that failed before its day closed: back to the local trade that served them)
   if (x.refund > 0) { a.trade.cash += Math.round(x.refund); a.sum.fromVernoa += Math.round(x.refund); }
@@ -223,6 +227,8 @@ function procure(W) {
   if (n <= 0) return;
   z.cash -= n;
   z.procured += n;
+  // (machines from abroad: invested, and imported)
+  gdpAcc(a).i += n; gdpAcc(a).m += n;
   // (アルタス's part of it — its people's part of the state's —: the heavy machinery, the trucks and the rest its mines
   // and fields run on, its cost)
   const m = altasOf(a).m;
@@ -295,6 +301,8 @@ function spend(W, day) {
   // (its food and goods: アルタス's, at its prices — アスカ's own money, staying in it)
   const raw = Math.min(Math.max(0, a.trade.cash), Math.round(living * ASUKA.altas.trade * altasOf(a).price));
   if (raw > 0) { a.trade.cash -= raw; earned(W, raw, 'altas', 'asuka:trade', true); }
+  const g = gdpAcc(a);
+  g.c += living + tax;
   a.treasury += tax;
   tin(a, 'consumption', tax);
   // what was bought at each company, on its way to it (its sales as the companies' day closes)
@@ -310,6 +318,7 @@ function spend(W, day) {
       a.sum.toVernoa += n;
     });
     tout(a, 'cat:' + c.id, bought[k]);
+    g.c += bought[k];
   });
 }
 // the national bank lends what one needs to live (of its own money, up to what their pay allows)
@@ -563,9 +572,23 @@ function hire(W, day, r) {
     const pay = Math.min(fees, Math.max(0, a.treasury));
     a.treasury -= pay;
     tout(a, 'hireFees', pay);
+    gdpAcc(a).g += pay;
     const cw = Math.round(pay * 0.65);
     for (const [co, n] of [['citywork', cw], ['speedeed', pay - cw]]) { const box = a.toCo[co] || (a.toCo[co] = {}); box.jobs = (box.jobs || 0) + n; a.sum.toVernoa += n; }
   }
+}
+
+/* ------------------------------------------------------------------ its GDP --- */
+// the day's spending for its GDP (server/core/npc-gdp.js): its people's (what they need, with the tax, and what they
+// bought at the branches and of ヴェルノア's games), the state's (the job sites' fees), what was invested (ATSUKA
+// Vision's machines, the branches' buildings), what it sold ヴェルノア and bought of it; read once a day
+const gdpAcc = (a) => a.gdp || (a.gdp = { c: 0, g: 0, i: 0, x: 0, m: 0 });
+export function gdpOf(W) {
+  const a = W.asuka, A = W.AP;
+  if (!a || !A) return null;
+  const g = gdpAcc(a);
+  a.gdp = { c: 0, g: 0, i: 0, x: 0, m: 0 };
+  return { ...g, defl: (a.policy && a.policy.price) || 1, people: A.n };
 }
 
 /* --------------------------------------------------------- to the companies --- */

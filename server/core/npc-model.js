@@ -22,6 +22,7 @@ import { createMarket, LISTED_IDS } from './npc-market.js';
 import * as local from './npc-local.js';
 import * as text from './npc-text.js';
 import * as asuka from './asuka.js';
+import { gdpDay, gdpView } from './npc-gdp.js';
 
 const MIN = 60000, DAY_MIN = 1440;
 export { LISTED_IDS };
@@ -441,6 +442,8 @@ export function nextDay(W, day, ext, ctx) {
   state.fromCompanies(W, ext, day);
   // アスカ国's day: what the companies paid it, its people's spending, its month
   asuka.day(W, day, ext);
+  // the day's GDP of each country (its producers' books of the day just closed: server/core/npc-gdp.js)
+  gdpDay(W, day, ctx && ctx.corp, ext);
   // a company that failed (MY WAY): its people let go
   for (const id of (ext && ext.bankrupt) || []) failed(W, id, day + 1);
   const next = day + 1;
@@ -628,4 +631,4 @@ export function metaOf(W) {
   for (const [k, v] of Object.entries(W)) if (!SKIP.has(k) && typeof v !== 'function') out[k] = v;
   return out;
 }
-export { pop, econ, state, org, text };
+export { pop, econ, state, org, text, gdpView };

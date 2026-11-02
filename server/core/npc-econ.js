@@ -102,6 +102,7 @@ export function toAbroad(W, n, division = 'altas', by = 'other') {
   n = Math.round(n);
   if (!(n > 0)) return;
   W.sum.imports += n;
+  gdpAcc(W).m += n;
   // (the world outside is アスカ国 once it is founded: what is bought there is ATSUKA Vision's sale — raw materials,
   // fuel and food アルタス's)
   if (!asuka.earned(W, n, division, by)) W.abroad.cash += n;
@@ -131,7 +132,8 @@ export const spendAt = (W, key, n) => Math.round(n * Math.sqrt(priceOf(W, key)))
 // of their money; short of it, only what is needed to live is borrowed for (Tenesice's クイックローン, as far as it
 // lends), the rest is not bought — and what nobody will lend for is not paid at all (a day missed: the trouble
 // ladder's sign). Returns whether it was paid.
-export function pay(W, i, n, essential = false) {
+// (`use`: 'c' what they buy — the country's 家計最終消費支出, its GDP —; 'x' anything else: a contribution, a stake)
+export function pay(W, i, n, essential = false, use = 'c') {
   const P = W.P;
   n = Math.round(n);
   if (n <= 0) return true;
@@ -142,8 +144,12 @@ export function pay(W, i, n, essential = false) {
   }
   P.cash[i] -= n;
   P.spent[i] += n;
+  if (use === 'c') gdpAcc(W).c += n;
   return true;
 }
+// the day's spending for the GDP (server/core/npc-gdp.js): the people's own (`c`), the local companies' investment
+// (`inv`), what the country paid アスカ国 and the world outside (`m`), its people's trips there (`trips`)
+export const gdpAcc = (W) => W.gdpAcc || (W.gdpAcc = { c: 0, inv: 0, m: 0, trips: 0 });
 // what the consumption tax adds to a price now (the people only: the players pay none)
 export const withTax = (W, n) => Math.round(n * (1 + (W.nation.knobs.consumptionTax || 0) / 100));
 export function buy(W, i, day, company, stream, n, essential = false) {
@@ -314,7 +320,7 @@ export function casinoSession(W, i, day, budget, r) {
   const left = had - Math.min(had, staked) + back - fee;
   const change = left > ex * 8 ? ex : 0;
   const fromCash = Math.max(0, staked - had);
-  if (!pay(W, i, fromCash, false)) return null;
+  if (!pay(W, i, fromCash, false, 'x')) return null;
   if (change) { P.cash[i] += left - change; P.tokens[i] = 0; }
   else P.tokens[i] = left;
   const net = back - fee - staked;
@@ -326,6 +332,8 @@ export function casinoSession(W, i, day, budget, r) {
   } else nationOut(W, 'casinoWins', back - staked);
   if (fee) toStream(W, day, 'dtrade', 'winfee', fee);
   if (change) toStream(W, day, 'dtrade', 'exchange', change);
+  // (what the people bought of the casino: what their bets lost and its fees — a win beyond the bets the treasury's gift)
+  gdpAcc(W).c += Math.max(0, staked - back) + fee + change;
   P.spun[i] = 1;
   W.sum.bets += staked;
   return { staked, back, net, best, bet: unit, cash: fromCash };

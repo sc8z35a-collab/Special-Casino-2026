@@ -2030,7 +2030,10 @@ function tech(w, s, p, d, ch, out) {
 const AR = ASUKA.rules;
 const asukaIncome = (y) => (y['r:asuka'] || 0) - (y['c:asuka'] || 0) - (y['c:asukaAltas'] || 0) - (y['sAsuka'] || 0);
 function asukaDay(w, d, A, out) {
-  const X = w.ext.asuka = { pay: {}, rent: 0, open: 0, platform: 0, tax: 0, boost: 0, refund: 0 };
+  // (`trade`: what ヴェルノア sold アスカ国 through it — the goods its branches bought of the makers and of the local
+  // businesses, the games and the services sold straight from home — and the raw materials its branches bought there:
+  // the two countries' GDP, server/core/npc-gdp.js)
+  const X = w.ext.asuka = { pay: {}, rent: 0, open: 0, platform: 0, tax: 0, boost: 0, refund: 0, trade: { goods: 0, direct: 0, altas: 0 } };
   const B = w.asukaB || (w.asukaB = {});
   const seg = (s) => s.asuka || (s.asuka = { m: { sales: 0, cost: 0 }, last: null, staff: 0 });
   for (const [co, cats] of Object.entries(A.toCo || {})) {
@@ -2044,6 +2047,7 @@ function asukaDay(w, d, A, out) {
       s.pr.asuka = (s.pr.asuka || 0) + n / 30;
       g.m.sales += n;
       const c = ASUKA.cat(cat);
+      if (!c || c.digital) X.trade.direct += n;
       for (const [to, share] of Object.entries((c && c.cogs) || {})) {
         const x = Math.round(n * share);
         if (x <= 0) continue;
@@ -2054,10 +2058,12 @@ function asukaDay(w, d, A, out) {
           g.m.cost += x - base + at;
           w.ext.sector += x - base;
           imported(w.ext, 'altas', at, s.id);
+          X.trade.goods += x - base; X.trade.altas += at;
         } else {
           post(s, [['c:asuka', x], ['cash', -x]], 'purchases');
           g.m.cost += x;
           w.b2bCash.push({ to, stream: 'asukaB2B', n: x, from: s.id, cost: Math.round(x * 0.6) });
+          X.trade.goods += x;
         }
       }
       const rent = c && !c.digital ? Math.round(n * ((A.rates && A.rates.rent) || AR.tax.rent)) : 0, plat = c && c.digital ? Math.round(n * c.platform) : 0;
