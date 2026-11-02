@@ -200,7 +200,8 @@ var OpsTown = (function () {
       pensionIn: '年金の保険料', civil: '公務員の給与', pension: '年金', welfare: '生活保護', jobless: '失業手当', medical: '医療', works: '公共事業', grants: '交付金・給付',
       guarantee: '未払賃金の立替払', bondInterest: '国債の利子', debtInterest: 'テネシスへの利子', casinoWins: '市民のスロットの勝ち分',
       slotWins: 'プレイヤーのスロットの勝ち分', questRewards: 'クエストの報酬', gachaClaims: 'ガチャ代（YOSIDAへ）', loginBonus: 'ログインボーナス', dailyTokens: '毎日の無料トークン',
-      coopBonus: '協力プレイのボーナス', releaseBonus: 'アップデートのお礼', medalRewards: '功績の報酬', diaryRewards: '日記の報酬', treeHarvest: '金の生る木の収穫', npcGifts: 'ジョンソン・運営からの贈り物' };
+      coopBonus: '協力プレイのボーナス', releaseBonus: 'アップデートのお礼', medalRewards: '功績の報酬', diaryRewards: '日記の報酬', treeHarvest: '金の生る木の収穫', npcGifts: 'ジョンソン・運営からの贈り物',
+      playerStart: 'プレイヤーの初期資金', treeFund: '金の生る木の肥料（収穫の財源）', newLife: '生まれた人の初期資金', bankRescue: 'テネシスへの公的資金', asukaBonds: 'アスカ国の政府系ファンドへの国債の利子' };
     var kindName = function (k) { return KIND[k] || k; };
     Object.keys(nf.day.in || {}).forEach(function (k) { rows.push(['収入', kindName(k), money(nf.day.in[k])]); });
     Object.keys(nf.day.out || {}).forEach(function (k) { rows.push(['支出', kindName(k), money(nf.day.out[k])]); });
@@ -215,6 +216,21 @@ var OpsTown = (function () {
       kv(g, '1日の最大のずれ', '$' + Math.abs(L.worst).toLocaleString('en-US'));
       kv(g, '最初に数えたお金', money(L.base)); kv(g, 'その後の建国で増えた分', money(L.founded)); kv(g, '最後に数えた日', day(L.at));
       p.appendChild(g);
+      // (the players' side: their money and what is held for them, against what crossed between them and the country)
+      var PL = L.players, last = PL && PL.days && PL.days[PL.days.length - 1];
+      if (PL) {
+        g = el('div', 'town-grid');
+        kv(g, 'プレイヤー側のずれ（累計）', (PL.drift >= 0 ? '+' : '−') + '$' + Math.abs(PL.drift).toLocaleString('en-US')).classList.toggle('town-bad', PL.drift !== 0);
+        kv(g, 'プレイヤー側の1日の最大のずれ', '$' + Math.abs(PL.worst || 0).toLocaleString('en-US'));
+        if (last) {
+          var LP = last.parts || {};
+          kv(g, 'プレイヤーのお金（合計）', money(last.money));
+          kv(g, 'うち$とトークン', money(LP.held)); kv(g, 'うち注文で預かり中', money(LP.orders)); kv(g, 'うち未受取の配当', money(LP.dividends));
+          kv(g, 'うち観戦ベットの賭け金', money(LP.bets)); kv(g, 'うち受け取り待ちの送金・プレゼント・車の代金', money(LP.sent));
+          kv(g, '国から受け取った分−国へ払った分（累計）', money(last.crossed));
+        }
+        p.appendChild(g);
+      }
       box.appendChild(p);
     }
     p = panel('5つの区');

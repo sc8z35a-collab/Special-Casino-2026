@@ -645,7 +645,11 @@ function tradeDay(w, s, p, d, flows, ch) {
         continue;
       }
       let paid = mine[kind] || 0;
-      if (kind === 'job') paid = take(s, 'job', (flows.job || 0) * CORP.players.jobFee * jobShare(p, d, w.launch));
+      if (kind === 'job') {
+        paid = take(s, 'job', (flows.job || 0) * CORP.players.jobFee * jobShare(p, d, w.launch));
+        // (what the local businesses pay for it: exactly what the job sites booked, gameDay)
+        if (w.ext && paid > 0) w.ext.jobFees = (w.ext.jobFees || 0) + paid;
+      }
       if (!paid) continue;
       if (kind === 'buyback') { buyBack(s, d, paid); continue; }
       const cost = s.cost && s.cost[x.id] !== undefined ? s.cost[x.id] : (x.cost || 0);
@@ -1403,6 +1407,10 @@ function dividends(w, s, p, d) {
   } else n = take(s, 'div', (s.div.total || 0) / YEAR);
   s.sh.sec = 0;
   s.sh.at = (d + 1) * DAY;
+  // (the players' part, once the country lives: what their side paid them for the day, to the dollar —
+  // server/core/stocks.js settleDay, by the second they held them —; a rounding beyond the day's count paid too)
+  const pl = w.ext && w.divPlayers && !abroad(s) && p.listed ? Math.max(0, Math.round(w.divPlayers[s.id] || 0)) : null;
+  if (pl !== null && pl > Math.max(0, n)) n = pl;
   if (n <= 0) return;
   post(s, [['retained', n], ['cash', -n]], 'dividends');
   let held = 0;
@@ -1414,7 +1422,13 @@ function dividends(w, s, p, d) {
     held += Math.max(0, part);
   }
   // the rest to the people holding it (and the players, whose part their side pays: server/core/stocks.js)
-  if (w.ext && n - held > 0 && !abroad(s)) w.ext.dividends.push({ company: s.id, n: n - held, out: Math.max(1, out - Object.values(s.hold.by || {}).reduce((a, b) => a + b, 0)) });
+  // (the companies' parts first; what is left of it, more than the players' at least)
+  if (pl !== null && n - held < pl) {
+    const more = pl - (n - held);
+    post(s, [['retained', more], ['cash', -more]], 'dividends');
+    held -= more;
+  }
+  if (w.ext && n - held > 0 && !abroad(s)) w.ext.dividends.push({ company: s.id, n: n - held, out: Math.max(1, out - Object.values(s.hold.by || {}).reduce((a, b) => a + b, 0)), ...(pl !== null ? { players: pl } : {}) });
 }
 
 /* ------------------------------------------------------------- the quarters --- */
@@ -2096,6 +2110,28 @@ function playersMoney(kinds) {
   }
   return { in: inn, out };
 }
+// What a day's flows (not booked yet) come to between the players and the country, as closeDay books them: what they
+// paid the companies and the treasury and the local businesses back (`in`), what the treasury (but YOSIDA's fee in
+// the quests' rewards, and the gacha's bill, which is YOSIDA's), the local businesses, DAIZIN's buy-backs and the
+// gacha's lot coins paid them (`out`). (The money ledger's: a close's flows of the days still open, the players' side
+// counts them already — server/core/money.js.)
+export function crossingsOf(flows) {
+  let inn = 0, out = 0;
+  if (!flows || typeof flows !== 'object') return { in: 0, out: 0 };
+  for (const [id, kinds] of Object.entries(flows)) {
+    if (!kinds || typeof kinds !== 'object' || id[0] === '@' || id === '*' || id === 'npc') continue;
+    const m = playersMoney(kinds);
+    inn += m.in; out += m.out;
+  }
+  const sum = (o, skip) => Object.entries(o || {}).reduce((a, [k, n]) => a + (k === skip ? 0 : Math.max(0, Math.round(n || 0))), 0);
+  const st = sum(flows['@state'], 'gacha'), any = Object.values(flows['@state'] || {}).some((n) => Math.round(n || 0) > 0);
+  out += st - (any ? Math.round(((flows.yosida || {}).questfee) || 0) : 0);
+  out += sum(flows['@sector']);
+  inn += sum(flows['@sectorIn']) + sum(flows['@stateIn']);
+  if (flows['@coins'] && flows['@coins'].paid > 0) out += Math.round(flows['@coins'].paid);
+  if (flows['@prize'] && flows['@prize'].lot > 0) out += Math.round(flows['@prize'].lot * RULES.tokenPrice);
+  return { in: inn, out };
+}
 function playersCross(w, orig) {
   let inn = 0, out = 0;
   for (const [id, kinds] of Object.entries(orig)) {
@@ -2132,7 +2168,8 @@ const GOV_KEEP = 24;
 const STATE_OUT = { slots: 'slotWins', quests: 'questRewards', gacha: 'gachaClaims', login: 'loginBonus', daily: 'dailyTokens', coop: 'coopBonus',
   release: 'releaseBonus', medals: 'medalRewards', diary: 'diaryRewards', tree: 'treeHarvest', gifts: 'npcGifts', start: 'playerStart' };
 // what the players pay the treasury (its name in the country's books): the fertilizer beyond YOSIDA's share
-const STATE_IN = { fertilizer: 'treeFund' };
+// and what a player's account that is gone held, its estate (国庫に帰属: server/core/purge.js, api.js lapse)
+const STATE_IN = { fertilizer: 'treeFund', estate: 'escheat' };
 function gameDay(w, d, flows, orig = flows) {
   for (const s of Object.values(w.co)) if (s.pc) for (const k of Object.keys(s.pc)) s.pc[k] *= 29 / 30;
   // (who runs each now — CORP.features: its company, or for a local company or a trustee a stand-in, settled after)
@@ -2169,7 +2206,8 @@ function gameDay(w, d, flows, orig = flows) {
   if (w.ext) {
     const sec = flows['@sector'] || {}, back = flows['@sectorIn'] || {};
     const out = Object.values(sec).reduce((a, n) => a + Math.round(n || 0), 0), inn = Object.values(back).reduce((a, n) => a + Math.round(n || 0), 0);
-    const fees = Math.round((orig.magita || {}).rentcut || 0) + (w.launch <= d ? Math.round((orig.job || 0) * CORP.players.jobFee) : 0);
+    // (the job sites' fee on the バイト: what they booked of it, theirs or their businesses' new runners' — to the dollar)
+    const fees = Math.round((orig.magita || {}).rentcut || 0) + (w.ext.jobFees || 0) + (w.jobRouted || 0);
     if (out) { w.ext.fromSector += out; w.ext.toPlayers = (w.ext.toPlayers || 0) + out; }
     if (inn) { w.ext.sector += inn; w.ext.fromPlayers = (w.ext.fromPlayers || 0) + inn; }
     const sin = {};
@@ -2712,6 +2750,7 @@ export const runs = (w, id) => FT.filter((f) => operatorOf(w, f.id) === id).map(
 // 'estate:<company>')
 function routeFlows(w, flows, d) {
   const ops = opsOf(w), routed = {}, book = { ...flows }, rev = w.opRev || (w.opRev = {});
+  w.jobRouted = 0;
   const npc = flows.npc && flows.npc.co ? { ...flows.npc, co: { ...flows.npc.co } } : null;
   if (npc) book.npc = npc;
   for (const f of FT) {
@@ -2720,7 +2759,8 @@ function routeFlows(w, flows, d) {
     const products = {}, npcProducts = {};
     for (const k of f.kinds) players += Math.round(src[k] || 0);
     if (f.products && src[f.products]) for (const [id, v] of Object.entries(src[f.products])) { products[id] = v; players += Math.round(v[1]); }
-    if (f.job && w.launch <= d) players += Math.round((flows.job || 0) * CORP.players.jobFee * jobShare(PROFILES.get(f.owner), d, w.launch));
+    const jf = f.job && w.launch <= d ? Math.round((flows.job || 0) * CORP.players.jobFee * jobShare(PROFILES.get(f.owner), d, w.launch)) : 0;
+    players += jf;
     const c = flows.npc && flows.npc.co ? flows.npc.co[f.owner] : null;
     if (c) {
       for (const k of f.npc || []) people += Math.round((c.s || {})[k] || 0);
@@ -2741,6 +2781,7 @@ function routeFlows(w, flows, d) {
     }
     const key = o.by || (o.estate ? 'estate:' + o.estate : 'sector');
     (routed[key] || (routed[key] = {}))[f.id] = { players, people, cas, products, npcProducts };
+    w.jobRouted += jf;
   }
   return { book, routed };
 }
@@ -3082,6 +3123,8 @@ function liquidate(w, s, p, d, out) {
 // guidance and the market's view. `flows`: the players' money of the day ({ company: { kind: $ }, job: $ }).
 export function closeDay(w, d, flows, ch) {
   const out = { days: [], periods: [], titles: [], news: [], jumps: [], anchors: [] };
+  // (the players' dividends of the day, as their side paid them: server/core/stocks.js settleDay)
+  w.divPlayers = (flows && flows['@div']) || null;
   w.b2b = [];
   w.paid = [];
   w.bank = { got: 0, paid: 0 };

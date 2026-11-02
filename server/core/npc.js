@@ -23,6 +23,7 @@ import { createAi } from './npc-ai.js';
 import { LISTED_IDS } from './npc-market.js';
 import { fmtKnob } from './npc-politics.js';
 import { peopleSpent } from './corp-model.js';
+import { playersMoney, playersLedgerDay } from './money.js';
 
 const MIN = 60000;
 const MAX_TICKS = 240;               // minutes worked out in one wake at most (the rest the next)
@@ -33,7 +34,7 @@ const KEEP_NEWS = 120, KEEP_MEETINGS = 400, KEEP_REPORTS = 600, KEEP_DAYS = 800;
 const DEPTHS = ['shallow', 'standard', 'deep', 'deepest'];
 const b64 = (u8) => Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength).toString('base64');
 
-export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config = {}, corp, stocks = () => null, live = null, opsIds = () => [], playersHeld = () => ({}), ai: binding = null, usage = () => 0, opsLog = null, alert = null }) {
+export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config = {}, corp, stocks = () => null, live = null, opsIds = () => [], playersHeld = () => ({}), ai: binding = null, usage = () => 0, opsLog = null, alert = null, alertPlayers = null }) {
   const on = config.npc !== false;
   const N = Math.max(500, Math.min(NPC.nation.population, Number(config.npcPopulation) || NPC.nation.population));
   const key = keyFrom(secret, 'npc');
@@ -255,7 +256,13 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     model.nextDay(w, d, out.ext, ctx());
     // (the money ledger: every $ from someone to someone — told at once if not)
     const cw = corp.world();
-    if (cw) model.ledgerDay(w, cw, d, alert);
+    if (cw) {
+      const L = model.ledgerDay(w, cw, d, alert);
+      // (and the players' side: their money, and what of it is held for them, against what crossed between them and
+      // the country — what the country has booked, and what it books with the days still open: server/core/money.js)
+      const un = corp.unbooked ? corp.unbooked(d) : { in: 0, out: 0 };
+      playersLedgerDay(L, d, playersMoney(q, RULES.tokenPrice), w.sum.toPlayers - w.sum.fromPlayers + un.out - un.in, alertPlayers);
+    }
     policy(w);
     q('INSERT INTO npc_days (day, data) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET data = excluded.data').run(d + 1, JSON.stringify({
       stats: w.stats, nation: { cash: w.nation.cash, debt: w.nation.debt, bank: w.nation.bank, fund: w.nation.fund, in: w.nation.day.in, out: w.nation.day.out },
@@ -452,7 +459,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         sector: w.sector, sum: w.sum, cal: w.cal, rates: w.bankRates, stock: w.stock, depth: w.depth, paused: !!w.paused,
         usage: { ticks, tickMs: ticks ? Math.round(tickMs / ticks * 10) / 10 : 0, saves, ai: { ...ai.used(now), on: ai.on }, server: usage() },
         // (アスカ国, and the money ledger: every $ from someone to someone)
-        asuka: asukaModel.view(w), ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30) } : null };
+        asuka: asukaModel.view(w), ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30),
+          players: w.ledger.players ? { drift: w.ledger.players.drift, worst: w.ledger.players.worst || 0, days: w.ledger.players.days.slice(-30) } : null } : null };
       return { ...partOf(all, req.query.get('rev')), now };
     },
     // 地方企業 (the operator site's 企業 folder): the 32 local companies, their specs and their state now (server/core/npc-local.js)

@@ -84,7 +84,7 @@ export function fromCompanies(W, ext, day) {
     const hq = NPC.districts.findIndex((d) => d.hq.includes(t.company));
     econ.districtIn(W, hq >= 0 ? hq : 4, 'corporate', t.n - nation);
   }
-  for (const d of ext.dividends || []) dividends(W, d.company, d.n, d.out);
+  for (const d of ext.dividends || []) dividends(W, d.company, d.n, d.out, d.players);
   // (a company that failed: what it could not pay its people, the country's 80% — 未払賃金立替払 —, before they go)
   for (const g of ext.guarantee || []) {
     const staff = W.staffOf(g.company), each = staff.length ? Math.floor(g.n / staff.length) : 0;
@@ -191,32 +191,32 @@ export function take(W, i, gross, kind, day) {
 }
 
 // A company's dividends of the day to the people holding its shares (`out`: its shares out): the listed ones' by the
-// shares each holds; the others' to those listed as holding them (their founders and backers); a player's part goes
-// to the players (server/core/stocks.js pays them), a company's is in its own books already.
-function dividends(W, company, n, out) {
+// shares each holds; the others' to those listed as holding them (their founders and backers); a company's is in its
+// own books already. The players' part is what their side paid them for the day, to the dollar (`players`:
+// server/core/stocks.js settleDay — by the second they held them), the people's by their shares out of what that
+// leaves (fewer, if the players' seconds came to more than their shares as the day closed); without it (a country of
+// its own), the players' by their shares as the day closed. The rounding is the local businesses'.
+function dividends(W, company, n, out, players = null) {
   const P = W.P, k = LISTED_IDS.indexOf(company);
   if (n <= 0 || !out) return;
+  const pl = players !== null && players !== undefined ? Math.max(0, Math.min(n, Math.round(players))) : null;
+  const holders = [];
+  if (k >= 0) { for (let i = 0; i < P.n; i++) { const s = P.sh[i * LISTED + k]; if (s > 0) holders.push([i, s]); } }
+  else for (const [i, s] of W.priv[company] || []) if (s > 0) holders.push([i, s]);
+  const room = pl === null ? n : n - pl;
+  let want = 0;
+  for (const [, s] of holders) want += Math.floor(n * s / out);
+  const all = want > room ? holders.reduce((a, [, s]) => a + s, 0) : 0;
   let paid = 0;
-  if (k >= 0) {
-    for (let i = 0; i < P.n; i++) {
-      const s = P.sh[i * LISTED + k];
-      if (s <= 0) continue;
-      const d = Math.floor(n * s / out);
-      P.cash[i] += d;
-      paid += d;
-    }
-  } else {
-    for (const [i, s] of W.priv[company] || []) {
-      const d = Math.floor(n * s / out);
-      P.cash[i] += d;
-      paid += d;
-    }
+  for (const [i, s] of holders) {
+    const d = want > room ? Math.floor(room * s / all) : Math.floor(n * s / out);
+    P.cash[i] += d;
+    paid += d;
   }
-  // the players' part is theirs (their side pays it: server/core/stocks.js); the rounding, the local businesses'
-  const players = Math.min(n - paid, Math.floor(n * ((W.playerShares || {})[company] || 0) / out));
-  W.sum.toPlayers += players;
-  W.sector.cash += n - paid - players;
-  W.sum.divRest += n - paid - players;
+  const toPl = pl !== null ? pl : Math.min(n - paid, Math.floor(n * ((W.playerShares || {})[company] || 0) / out));
+  W.sum.toPlayers += toPl;
+  W.sector.cash += n - paid - toPl;
+  W.sum.divRest += n - paid - toPl;
 }
 
 /* ------------------------------------------------------- the local businesses --- */

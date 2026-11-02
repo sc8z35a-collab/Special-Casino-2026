@@ -126,7 +126,9 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   // the second the next day closes at (its end), and its closing: the day's own players' money, every company's
   // operations, what it writes, and the word to whoever has the 投資 screen or the operator site open
   const closesAt = () => (get() ? (get().day + 2) * DAY : Infinity);
-  function close() {
+  // (`extra`: the day's flows the players' side settles as it closes — their dividends of it, '@div':
+  // server/core/stocks.js settleDay)
+  function close(extra = null) {
     let d = 0;
     flush();
     const day = get().day + 1;
@@ -137,6 +139,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       d = w.day + 1;
       const row = q('SELECT data FROM corp_flows WHERE day = ?').get(d);
       const flows = row ? JSON.parse(row.data) : {};
+      if (extra) Object.assign(flows, extra);
       if (people) flows.npc = people;
       // (everyone's money as the day closes: the players' $ and the people's deposits; the economy follows it)
       flows.wealth = (q("SELECT COALESCE(SUM(MAX(dollars, 0)), 0) AS n FROM users WHERE npc = ''").get().n || 0) + (people && people.bank ? Math.max(0, Math.round(people.bank.deposits || 0)) : 0);
@@ -212,6 +215,17 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       }
       q('INSERT INTO corp_flows (day, data) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET data = excluded.data').run(day, JSON.stringify(data));
     }
+  }
+  // What crossed between the players and the country that the country has not booked yet (the money ledger's, as
+  // a day `day` closes): the flows of the days after it (their rows and the spins' kept in memory) and the shares
+  // traded since (server/core/corp-model.js crossingsOf)
+  function unbooked(day) {
+    let inn = 0, out = 0;
+    const add = (data) => { const c = model.crossingsOf(data); inn += c.in; out += c.out; };
+    for (const r of q('SELECT data FROM corp_flows WHERE day > ?').all(day)) add(JSON.parse(r.data));
+    for (const [d, data] of pending) if (d > day) add(data);
+    const w = get(), c = (w && w.cross) || { in: 0, out: 0 };
+    return { in: inn + (c.in || 0), out: out + (c.out || 0) };
   }
   function sold(company, kind, id, count, paid) {
     if (!(count > 0)) return;
@@ -532,6 +546,6 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     q('DELETE FROM corp_flows WHERE day < ?').run(day - KEEP_FLOWS);
   }
 
-  return { ensure, booted, closesAt, close, anchor, dps, flow, tally, flush, sold, prize, coinsBought, questFee, npcSpent, today, traded, surcharge, surcharges, garageFee, garageReady, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8,
+  return { ensure, booted, closesAt, close, unbooked, anchor, dps, flow, tally, flush, sold, prize, coinsBought, questFee, npcSpent, today, traded, surcharge, surcharges, garageFee, garageReady, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8,
     delisted, ip: () => ipView(get()) };
 }

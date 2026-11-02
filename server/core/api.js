@@ -1077,6 +1077,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       claimed: m.kind === 'present' || m.kind === 'car_sold' || m.pending ? !!m.claimed_at : undefined,
       // back to its sender: the account it was for was deleted (server/core/purge.js)
       returned: m.pending && m.state === 'returned' ? true : undefined,
+      // (its time ran out untaken: the money back to its sender, a car's price to its seller — api.js lapse)
+      lapsed: m.state === 'lapsed' ? true : undefined,
       expiresAt: RECEIPTS.deadline(m) || undefined,
       expired: RECEIPTS.expired(m) || undefined,
       retracted: gone ? m.retracted_at : undefined,
@@ -1286,6 +1288,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       tx(() => {
         q('UPDATE watch_bets SET left_n = ?, state = ?, paid = ?, ended_at = ? WHERE id = ?').run(left, state, paid, state === 'open' ? 0 : now, b.id);
         if (paid) q('UPDATE users SET tokens = tokens + ?, rev = rev + 1 WHERE id = ?').run(paid, b.watcher_id);
+        // (the casino's bet, as a spin's: a stake lost is Dtrade's, what a win pays beyond the stake the country's
+        // treasury's — the stake was held since the bet, no $ made or lost)
+        if (state === 'lost') corp.flow('dtrade', 'casino', b.stake * RULES.tokenPrice);
+        else if (state === 'won' && paid > b.stake) corp.flow('@state', 'slots', (paid - b.stake) * RULES.tokenPrice);
+        else if (state === 'won' && paid < b.stake) corp.flow('dtrade', 'casino', (b.stake - paid) * RULES.tokenPrice);
       });
       const dto = betDto({ ...b, left_n: left, state, paid });
       live.send(b.watcher_id, 'watch', { type: 'bet', user: hostId, host: host ? mini(host) : null, bet: dto });
@@ -3840,7 +3847,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   };
   const ops = createOps({
     q, tx, live, config, getUser, mini, openCode: (s) => openText(CODE_KEY, s), setRecovery, banMessage, BAN_DAYS, deviceBanOf, deviceBans, dropFromHub,
-    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen, pins
+    official, opsLog, balance, banState, tellBanned, liftBan, DEVICE_BANNED, isDeveloper, devCode, seen: opsSeen, pins,
+    // (an account's money, as it is taken out: its estate, the treasury's)
+    tokenPrice: RULES.tokenPrice, estate: (n) => corp.flow('@stateIn', 'estate', n)
   });
   registry.add('ops', ops.routes);
   // the operators' screen view (見る): state only, sealed, one way, 30 minutes at most, logged
@@ -3955,7 +3964,10 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     playersHeld: () => Object.fromEntries(q('SELECT company, SUM(shares) AS n FROM stock_holdings GROUP BY company').all().map((r) => [r.company, r.n || 0])),
     ai: host && host.ai ? host.ai : null, usage: () => { try { return stats.report(0).percent; } catch { return 0; } },
     // (the money ledger moved: money made or lost somewhere — the developer told at once)
-    alert: (day, moved, drift) => discord.danger('🧮', `マネー台帳がずれました：${CORP.dateLabel(day)}の締めで ${moved > 0 ? '+' : '−'}$${Math.abs(moved).toLocaleString('en-US')}（累計 ${drift >= 0 ? '+' : '−'}$${Math.abs(drift).toLocaleString('en-US')}）`, ['・お金は途中で生まれも消えもしないはずです。その日の流れ（corp_flows・npc_days）を確認してください']) });
+    alert: (day, moved, drift) => discord.danger('🧮', `マネー台帳がずれました：${CORP.dateLabel(day)}の締めで ${moved > 0 ? '+' : '−'}$${Math.abs(moved).toLocaleString('en-US')}（累計 ${drift >= 0 ? '+' : '−'}$${Math.abs(drift).toLocaleString('en-US')}）`, ['・お金は途中で生まれも消えもしないはずです。その日の流れ（corp_flows・npc_days）を確認してください']),
+    // (the players' side: their money against what crossed between them and the country)
+    alertPlayers: (day, moved, drift, money) => discord.danger('🧮', `マネー台帳（プレイヤー側）がずれました：${CORP.dateLabel(day)}の締めで ${moved > 0 ? '+' : '−'}$${Math.abs(moved).toLocaleString('en-US')}（累計 ${drift >= 0 ? '+' : '−'}$${Math.abs(drift).toLocaleString('en-US')}）`,
+      ['・プレイヤーのお金（$・トークン・保留中の注文・未受取の配当・観戦ベット・未受取の送金）の増減が、国との出入りと合いません', '・内訳：' + Object.entries(money.parts).map(([k, n]) => `${k} $${n.toLocaleString('en-US')}`).join('・')]) });
   if (npc.on) corp.setNpc(npc);
   registry.add('npc', npc.playerRoutes);
   const gacha = createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceChanged, afterSpend, settleVip: settleVipJobs, onSpin: medalCheck, corp,
@@ -4361,6 +4373,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       }
       for (const l of Object.values(limit)) l.prune();
       opsLogin.prune();
+      // money sent between players that was never taken: back to whoever it belongs to
+      lapse();
       // 90 days in the プレイヤーアーカイブ: their data goes
       ops.purgeDue();
       milestones();
@@ -4381,6 +4395,32 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       // the server looks over itself
       patrol.run().catch((e) => console.error('patrol failed', e))
     ]);
+  }
+  // Money one player sent another that was never taken — its card's time ran out (RECEIPTS): a transfer or a present
+  // back to the friend who sent it, a car's price to the seller it was for. Nobody's money is lost: what the game's own
+  // accounts send the treasury pays only as it is taken (it simply lapses), and what would go to an account that is
+  // gone is its estate's, the country's treasury's (国庫に帰属: money.js counts all of it until then).
+  function lapse(now = Date.now()) {
+    const rows = q(`SELECT * FROM messages WHERE claimed_at = 0 AND state NOT IN ('returned', 'expired', 'void', 'canceled', 'lapsed')
+      AND ((kind = 'transfer' AND pending = 1) OR kind IN ('present', 'car_sold')) AND created_at < ?`).all(now - RULES.receiveDays.money * 86400000);
+    for (const m of rows) {
+      if (!RECEIPTS.expired(m, now)) continue;
+      const from = getUser(m.sender_id);
+      if (!from || from.npc) { q("UPDATE messages SET state = 'expired' WHERE id = ? AND claimed_at = 0").run(m.id); continue; }
+      const currency = m.kind === 'transfer' ? m.currency : 'dollars';
+      if (!CURRENCIES.includes(currency) || !(m.amount > 0)) continue;
+      const toId = m.kind === 'car_sold' ? m.recipient_id : m.sender_id, to = getUser(toId);
+      const state = 'lapsed';
+      const done = tx(() => {
+        if (!Number(q('UPDATE messages SET claimed_at = ?, state = ? WHERE id = ? AND claimed_at = 0').run(now, state, m.id).changes)) return false;
+        if (to && !to.purged_at) q(`UPDATE users SET ${currency} = ${currency} + ?, rev = rev + 1 WHERE id = ?`).run(m.amount, toId);
+        else corp.flow('@stateIn', 'estate', currency === 'tokens' ? m.amount * RULES.tokenPrice : m.amount);
+        return true;
+      });
+      if (!done) continue;
+      cardChanged(m, { claimed: true, lapsed: true });
+      if (to && !to.purged_at) balanceChanged(toId);
+    }
   }
   // when the host should run the housekeeping next: in 6 hours, or sooner for a backup
   function nextHousekeeping(now = Date.now()) {
