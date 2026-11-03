@@ -76,6 +76,16 @@ export function voice(W, i, day) {
   if (P.grief[i] > 150) return 'あの人がいないのにまだ慣れない。';
   if (P.debt[i] > 0 && P.dkind[i] === 2) return '返済日が近い。利息だけでも払わないと。';
   if (P.job[i] === NPC.job.none && age < 65) return '求人サイトをもう一度見てみよう。';
+  // (the mind: server/core/npc-heart.js)
+  if (P.emo2) {
+    const x = i * 3;
+    if (P.hoard[i] > 0) return '買いだめしておいて正解だったかな。しばらく買い物はいいや。';
+    if (P.emo2[x] < 70) return '自分なんて…何か買えば気が晴れるかな。';
+    if (P.emo[i * 5 + E.stress] > 190) return 'もう限界。パーッと買い物でもしないとやってられない。';
+    if (P.emo[i * 5 + E.anxiety] > 200) return '先のことが心配だ。今は無駄づかいしないでおこう。';
+    if (P.emo2[x + 2] > 150 && P.wind[i] > 0) return 'ボーナスも入ったし、自分にご褒美をあげよう。';
+    if (P.emo2[x + 1] > 200) return '疲れた…今日はコンビニで済ませよう。';
+  }
   let theme = 0, most = 0;
   for (let k = 0; k < 8; k++) if (P.disc[i * 8 + k] > most) { most = P.disc[i * 8 + k]; theme = k; }
   if (most > 170) return ['税金、また上がる気がする。', '年金、これで足りるのかな。', '最近なんでも高い。', '給料がもう少し上がればなあ。', 'お金持ちばかり得してないか。', 'MAGITAの値上げ、ひどくない？', 'Dtradeの手数料が高すぎる。', '区長の公約、まだ1つも守られてない気がする。'][theme];

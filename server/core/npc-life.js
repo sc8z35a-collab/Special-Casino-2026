@@ -4,11 +4,12 @@
 // does for them, who asked them along, the time and the place), with the draw of an impulsive person looser. The big
 // things (a car, another job) are thought through a year ahead: npc-mind.js.
 import { NPC, RULES, CORP, ASUKA } from './rules.js';
-import { T, S, N, E, FL, HOME, NN, NT, REL, MEM, OWN, LEARN, ageOf, remember, addRelation, clampB, viewOf, setView, FIT } from './npc-pop.js';
+import { T, S, N, E, E2, BL, NB, LS, NL, FL, HOME, NN, NT, REL, MEMS, OWN, LEARN, ageOf, remember, memoryAt, addRelation, clampB, viewOf, setView, memberList, FIT } from './npc-pop.js';
 import { hash32 } from './npc-rand.js';
 import * as econ from './npc-econ.js';
 import { thinkCar, thinkJob } from './npc-mind.js';
 import * as asuka from './asuka.js';
+import * as heart from './npc-heart.js';
 
 const A = NPC.act;
 const PL = Object.fromEntries(NPC.places.map((p, k) => [p, k]));
@@ -17,7 +18,9 @@ const WORKPLACE = { tenesice: 'bank', magita: 'factory', carowner: 'dealer', jin
 // the learned worth of each kind of free time (P.learn)
 export const L = { casino: 0, game: 1, shop: 2, car: 3, lounge: 4, friends: 5, outing: 6, invest: 7, politics: 8, venture: 9, walk: 10, home: 11 };
 // memories (P.mem): kind codes
-export const M = { bigWin: 1, bigLoss: 2, car: 3, fired: 4, hired: 5, death: 6, married: 7, elected: 8, strike: 9, street: 10, loan: 11, promoted: 12, stockUp: 13, stockDown: 14, goodGame: 15, venture: 16, moved: 17, demo: 18, born: 19, recovered: 20, lostElection: 21, voted: 22, quit: 23, retired: 24 };
+export const M = { bigWin: 1, bigLoss: 2, car: 3, fired: 4, hired: 5, death: 6, married: 7, elected: 8, strike: 9, street: 10, loan: 11, promoted: 12, stockUp: 13, stockDown: 14, goodGame: 15, venture: 16, moved: 17, demo: 18, born: 19, recovered: 20, lostElection: 21, voted: 22, quit: 23, retired: 24,
+  // (the mind's, npc-heart.js K: a spree, regretting it, stocking up, a treat, a friend's new car)
+  splurge: 25, regret: 26, hoard: 27, treat: 28, envy: 29 };
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const need = (P, i, k) => 1 - P.need[i * NN + k] / 255;           // how short of it (0: met, 1: wanting)
@@ -32,14 +35,15 @@ function learn(P, i, k, sat) {
 // the last memory of a kind, its power and how many days ago (or null)
 export function recall(P, i, kind, day) {
   let best = null;
-  for (let k = 0; k < MEM; k++) {
-    const v = P.mem[i * MEM + k];
-    if (!v || ((v >> 8) & 0xff) !== kind) continue;
-    const ago = ((day & 0xffff) - (v >>> 16) + 65536) % 65536;
-    if (!best || ago < best.ago) best = { ago, power: v & 0xff };
+  for (let k = 0; k < MEMS; k++) {
+    const v = memoryAt(P, i, k);
+    if (!v || v.kind !== kind) continue;
+    const ago = ((day & 0xffff) - v.day + 65536) % 65536;
+    if (!best || ago < best.ago) best = { ago, power: v.power };
   }
   return best;
 }
+const clampS = (x) => Math.max(-127, Math.min(127, Math.round(x)));
 
 /* ---------------------------------------------------------------- the timetable --- */
 // what a person must be doing at minute `t` of a day (`off`: a day off): { kind, end } (end: the minute it ends)
@@ -86,7 +90,7 @@ export function decide(W, i, m, t, j, r, ctx) {
   decay(P, i, dt);
   const ob = obliged(W, i, t, j.off, day, j.w);
   const home = P.home[i] === HOME.street ? PL.street : PL.home;
-  if (ob.kind === 'sleep') { set(W, i, A.sleep, home, P.dist[i], m, Math.min(ob.end - t, 600)); fill(P, i, N.rest, dt * 0.6); return; }
+  if (ob.kind === 'sleep') { set(W, i, A.sleep, home, P.dist[i], m, Math.min(ob.end - t, 600)); fill(P, i, N.rest, dt * 0.6); if (P.emo2) heart.add2(P, i, E2.tired, -dt * 0.1); return; }
   if (ob.kind === 'sick') { set(W, i, A.hospital, PL.hospital, P.dist[i], m, 120); hospital(W, i, day, r); return; }
   if (ob.kind === 'work') return work(W, i, m, t, ob.end, r, ctx);
   if (ob.kind === 'study') { set(W, i, A.study, PL.school, 2, m, Math.min(ob.end - t, 120)); fill(P, i, N.achieve, 18); return; }
@@ -104,7 +108,12 @@ function decay(P, i, dt) {
   const x = i * 5;
   P.emo[x + E.mood] = clampB(P.emo[x + E.mood] + (base - P.emo[x + E.mood]) * Math.min(1, 0.05 * k));
   P.emo[x + E.anger] = clampB(P.emo[x + E.anger] * Math.pow(0.97, k));
-  P.emo[x + E.stress] = clampB(P.emo[x + E.stress] - 2 * k);
+  // (stress eases, but not below what one's worries and tiredness keep up: npc-heart.js)
+  if (P.emo2) {
+    const floor = 25 + 100 * heart.worry(P, i) + 70 * P.emo2[i * 3 + E2.tired] / 255, s = P.emo[x + E.stress];
+    P.emo[x + E.stress] = clampB(s > floor ? Math.max(floor, s - 2 * k) : s + (floor - s) * Math.min(1, 0.03 * k));
+    P.emo2[i * 3 + E2.tired] = clampB(P.emo2[i * 3 + E2.tired] - 2 * k);
+  } else P.emo[x + E.stress] = clampB(P.emo[x + E.stress] - 2 * k);
 }
 
 function set(W, i, act, place, dist, m, minutes) {
@@ -138,6 +147,12 @@ function work(W, i, m, t, end, r, ctx) {
   fill(P, i, N.achieve, 10 * (0.5 + sat));
   fill(P, i, N.rest, -8);
   feel(P, i, E.stress, Math.round(4 * (1 - sat) - 1));
+  // (an hour's work tires, a job one dislikes the more: 疲れ; and now and then a bad hour — a mistake, a scolding, a
+  // difficult customer —, the more in a job one dislikes and when worn out: stress, and sometimes anger)
+  if (P.emo2) {
+    heart.add2(P, i, E2.tired, (len / 60) * 8 * (1.3 - 0.6 * sat));
+    if (r.u() < 0.05 * (1.6 - sat) * (1 + P.emo2[i * 3 + E2.tired] / 255)) { feel(P, i, E.stress, 30 + r.int(40)); if (r.u() < 0.4) feel(P, i, E.anger, 15 + r.int(30)); }
+  }
   fill(P, i, N.security, 3);
   // a word with a colleague now and then
   if (r.u() < 0.25) talk(W, i, m, r, true);
@@ -151,7 +166,7 @@ function lunch(W, i, m, day, r) {
   // (a lunch out: the local restaurants; now and then a snack from ジンクス)
   const n = Math.round(W.cal.lunch * (0.6 + 0.8 * r.u()) * (1 - 0.4 * tr(P, i, T.thrift)) * econ.cpi(W));
   econ.toSector(W, i, n, false, 'food');
-  if (r.u() < 0.3) econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.4), false);
+  if (r.u() < 0.3 + (P.emo2 ? 0.4 * heart.apathyNow(P, i) * heart.tendency(P, i, 'apathy') : 0)) econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.4), false);
   fill(P, i, N.rest, 25);
   fill(P, i, N.fun, 8);
   if (r.u() < 0.6) talk(W, i, m, r, true);
@@ -160,7 +175,8 @@ function lunch(W, i, m, day, r) {
 /* --------------------------------------------------------------- free time --- */
 // what each thing in one's own time is worth now (the product of what speaks for it), drawn by those worths: the
 // impulsive more by chance, the careful mostly the best
-const OPTIONS = ['home', 'shop', 'car', 'casino', 'game', 'invest', 'lounge', 'friends', 'jobhunt', 'politics', 'parttime', 'demo', 'venture', 'walk', 'outing', 'bank'];
+// (the last two the mind's: a spree when stressed — ストレス買い —, stocking up when dearer times are feared — パニック消費)
+const OPTIONS = ['home', 'shop', 'car', 'casino', 'game', 'invest', 'lounge', 'friends', 'jobhunt', 'politics', 'parttime', 'demo', 'venture', 'walk', 'outing', 'bank', 'splurge', 'stockup'];
 function free(W, i, m, t, j, day, r, ctx) {
   const P = W.P, age = ageOf(P, i, day), cash = P.cash[i], late = t >= 1260, evening = t >= 1080, off = j.off;
   const wealth = Math.max(0.05, cash / 60000000);
@@ -195,7 +211,8 @@ function free(W, i, m, t, j, day, r, ctx) {
   scores[13] = (0.12 + need(P, i, N.rest) * 0.2 + (age >= 60 ? 0.35 : 0)) * learnt(P, i, L.walk) * (t < 1140 ? 1 : 0.3);
   scores[14] = off && t >= 600 && t < 1200 ? (0.1 + need(P, i, N.fun) * 0.5) * Math.min(1.4, fund(2) / Math.max(1, W.cal.leisure) + 0.2) * learnt(P, i, L.outing) : 0;
   scores[15] = t >= 540 && t < 900 && !off && (P.debt[i] > 0 && cash > P.debt[i] * 0.3 || cash < 0) ? 0.08 : 0;
-  if (street) for (const k of [1, 2, 5, 6, 12, 14]) scores[k] *= 0.1;
+  if (P.emo2) mindScores(W, i, scores, cash, shops, street, day);
+  if (street) for (const k of [1, 2, 5, 6, 12, 14, 16]) scores[k] *= 0.1;
   // the draw: by the worths, raised to a power (the careful pick the best)
   const pow = 1.5 + 4 * (1 - imp);
   let total = 0;
@@ -203,6 +220,36 @@ function free(W, i, m, t, j, day, r, ctx) {
   let x = r.u() * total, pick = 0;
   for (let k = 0; k < scores.length; k++) { x -= scores[k]; if (x <= 0) { pick = k; break; } }
   ACTIONS[OPTIONS[pick]](W, i, m, t, day, r, ctx, street);
+  if (P.emo2) heart.planDone(P, i, OPTIONS[pick]);
+}
+// What the mind adds to the free time's worths (npc-heart.js): a low sense of oneself draws one to what is seen (a car,
+// the lounge, the dear things: 代償消費), a treat one feels one has earned to going out (ご褒美消費), tiredness home and to
+// the running games (無気力消費), worry keeps one from spending (but for those who stock up instead), what one has learnt
+// of the slots, the market and debt, what one expects of the market, 消費観 in hard times (応援消費); stress and anger a
+// spree (ストレス買い), dearer times feared a stock-up (パニック消費); and today's plan.
+function mindScores(W, i, scores, cash, shops, street, day) {
+  const P = W.P, td = heart.tendencies(P, i), st = heart.strain(P, i), low = heart.lowEsteem(P, i), lic = P.emo2[i * 3 + E2.license] / 255;
+  const ap = heart.apathyNow(P, i), wo = heart.worry(P, i), tired = P.emo2[i * 3 + E2.tired] / 255;
+  const eth = heart.ethosOf(P, i) * (W.heart ? W.heart.support[P.dist[i]] || 0 : 0);
+  const L = (k) => P.lesson[i * NL + k] / 127;
+  scores[1] *= (1 + 0.8 * td.compensate * low + 0.5 * eth) * Math.max(0.5, 1 + 0.3 * L(LS.spend));
+  scores[2] *= 1 + 2 * td.compensate * low + 0.3 * Math.max(0, L(LS.luxury));
+  scores[6] *= 1 + 1.5 * td.compensate * low + lic * td.reward;
+  scores[14] *= 1 + 1.5 * lic * td.reward + 0.4 * eth;
+  scores[7] *= 1 + 0.8 * lic * td.reward + 0.4 * eth + 0.3 * Math.max(0, L(LS.friends));
+  scores[0] *= 1 + 0.8 * tired;
+  scores[13] *= 1 + 0.5 * tired;
+  scores[4] *= 1 + 0.8 * ap * td.apathy;
+  for (const k of [1, 6, 14]) scores[k] *= 1 - 0.4 * wo * (1 - td.panic);
+  scores[3] *= Math.max(0.25, Math.min(1.8, 1 + 0.7 * L(LS.gamble))) * (1 + 0.6 * st * tr(P, i, T.gamble));
+  scores[5] *= Math.max(0.3, Math.min(2, 1 + 0.5 * P.belief[i * NB + BL.mkt] / 127 + 0.4 * L(LS.market)));
+  scores[15] *= 1 + 2 * Math.max(0, -L(LS.debt)) + wo;
+  // (the patient hold themselves back; those who regretted a spree the more)
+  scores[16] = st > 0.4 ? (st - 0.4) * 2.4 * td.stress * (1.3 - 0.6 * tr(P, i, T.patience)) * (shops ? 1 : 0.5) * Math.max(0.3, 1 + 0.5 * L(LS.spend)) * (cash < 0 && L(LS.debt) < -0.4 ? 0.2 : 1) : 0;
+  const fear = Math.max(0, (P.belief[i * NB + BL.infl] - 35) / 50) + (W.heart ? W.heart.alarm || 0 : 0) * 0.6;
+  scores[17] = shops && !street && P.hoard[i] === 0 && (P.hh[i] === i || P.hh[i] < 0) ? Math.min(1.2, fear) * td.panic * 1.2 : 0;
+  for (let k = 0; k < scores.length; k++) if (scores[k]) scores[k] *= heart.planPull(P, i, OPTIONS[k]);
+  void day;
 }
 
 const ACTIONS = {
@@ -211,16 +258,43 @@ const ACTIONS = {
     set(W, i, street ? A.homeless : A.home, street ? PL.street : PL.home, P.dist[i], m, 60 + r.int(90));
     fill(P, i, N.rest, 40);
     learn(P, i, L.home, 0.5 * need(P, i, N.rest));
+    // (worn out and low: something from the station's shop on the way, and the running game again — 無気力消費)
+    if (P.emo2 && !street) {
+      const ap = heart.apathyNow(P, i) * heart.tendency(P, i, 'apathy');
+      if (ap > 0.15 && r.u() < ap * 2) econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', W.cal.lunch * (0.8 + 0.8 * r.u())), false);
+    }
     // a call or a message to someone close
     if (r.u() < 0.4) talk(W, i, m, r, false);
   },
-  shop(W, i, m, t, day, r) {
+  shop(W, i, m, t, day, r, ctx) {
     const P = W.P;
     const d = nearest(W, P.dist[i], 'store');
     set(W, i, A.shop, PL.store, d, m, 40 + r.int(60));
-    const want = W.cal.leisure * (0.15 + 0.3 * r.u()) * (0.6 + 0.8 * tr(P, i, T.vanity)) * (1 - 0.5 * tr(P, i, T.thrift)) * Math.sqrt(econ.priceOf(W, 'jinx:goods'));
-    const n = Math.round(Math.min(econ.allowance(W, i, 2, day) * 0.6, want));
-    if (n > 1000 && econ.buy(W, i, day, 'jinx', 'goods', n, false)) P.fund[i * 4 + 2] -= n;
+    const v = tr(P, i, T.vanity), th = tr(P, i, T.thrift), price = Math.sqrt(econ.priceOf(W, 'jinx:goods'));
+    // what one buys: a part of what one lets oneself spend today (one's own budget and windfall: npc-heart.js pocket),
+    // the vain more, the careful less, a good mood more; of the everyday goods no more than a household uses (more
+    // for the rich), the rest the dear things (MY WAY's own goods, the boutiques: the local businesses)
+    const wealth = Math.max(0.05, P.cash[i] / 60000000);
+    const daily = W.cal.leisure * (0.15 + 0.3 * r.u()) * (0.6 + 0.8 * v) * (1 - 0.5 * th) * price * (1 + 0.6 * Math.sqrt(wealth));
+    if (P.emo2) {
+      const mind = (0.8 + 0.4 * P.emo[i * 5 + E.mood] / 255) * Math.max(0.5, 1 + 0.3 * P.lesson[i * NL + LS.spend] / 127);
+      const n = Math.round(heart.pocket(W, i, day) * (0.55 + 0.45 * r.u()) * (0.7 + 0.6 * v) * (1 - 0.3 * th) * mind * price);
+      const goods = Math.min(n, Math.round(daily));
+      let got = 0;
+      if (goods > 1000 && econ.buy(W, i, day, 'jinx', 'goods', goods, false)) got += goods;
+      const status = heart.tendency(P, i, 'compensate') * heart.lowEsteem(P, i);
+      const lux = Math.round((n - goods) * Math.min(1, 0.6 + 0.4 * v + status));
+      if (lux > 1000) {
+        const alive = luxury(W, i, day, ctx, lux);
+        got += alive.got;
+        heart.add2(P, i, E2.esteem, 4 + 8 * status);
+        if (lux > W.cal.leisure * 0.5) heart.envy(W, i, day, alive.myway ? 'myway' : null, 90);
+      }
+      heart.spent(P, i, got);
+    } else {
+      const n = Math.round(Math.min(econ.allowance(W, i, 2, day) * 0.6, daily / (1 + 0.6 * Math.sqrt(wealth))));
+      if (n > 1000 && econ.buy(W, i, day, 'jinx', 'goods', n, false)) P.fund[i * 4 + 2] -= n;
+    }
     shopItems(W, i, day, r);
     fill(P, i, N.fun, 30);
     fill(P, i, N.status, 10);
@@ -248,6 +322,8 @@ const ACTIONS = {
     const rel = out.net / Math.max(1, budget);
     feel(P, i, E.mood, Math.round(30 * Math.max(-1, Math.min(1, rel))));
     if (out.best >= 100) { remember(P, i, day, M.bigWin, Math.min(255, Math.round(out.best / 4))); W.events.push({ kind: 'bigwin', i, n: out.net, mult: out.best }); }
+    // (what was won beyond the bets: a windfall, spent the more freely — 心の財布)
+    if (out.net > 0 && out.best >= 20) heart.windfall(P, i, out.net * 0.8);
     if (rel < -0.7) remember(P, i, day, M.bigLoss, Math.min(255, Math.round(-rel * 160)));
     learn(P, i, L.casino, Math.max(0, Math.min(1, 0.5 + rel * 0.6 + 0.2 * tr(P, i, T.gamble))));
     // (a regular buys the セーフティースロット now and then)
@@ -269,8 +345,11 @@ const ACTIONS = {
   lounge(W, i, m, t, day, r) {
     const P = W.P;
     set(W, i, A.lounge, PL.lounge, 3, m, 80 + r.int(90));
-    const n = Math.min(econ.allowance(W, i, 2, day), W.cal.lounge * (0.5 + r.u()));
-    if (n > 0 && econ.buy(W, i, day, 'daizin', 'lounge', n, false)) P.fund[i * 4 + 2] -= n;
+    // (an evening there by one's own means: the rich, and those who want to be seen there, the more — 代償消費)
+    const status = P.emo2 ? heart.tendency(P, i, 'compensate') * heart.lowEsteem(P, i) : 0;
+    const n = P.emo2 ? Math.min(heart.pocket(W, i, day), W.cal.lounge * (0.5 + r.u()) * (1 + 0.5 * Math.sqrt(Math.max(0.05, P.cash[i] / 60000000))) * (1 + status))
+      : Math.min(econ.allowance(W, i, 2, day), W.cal.lounge * (0.5 + r.u()));
+    if (n > 0 && econ.buy(W, i, day, 'daizin', 'lounge', n, false)) { if (P.emo2) { heart.spent(P, i, n); heart.add2(P, i, E2.esteem, 3 + 10 * status); } else P.fund[i * 4 + 2] -= n; }
     fill(P, i, N.status, 60);
     fill(P, i, N.social, 40);
     learn(P, i, L.lounge, 0.7);
@@ -279,8 +358,9 @@ const ACTIONS = {
   friends(W, i, m, t, day, r) {
     const P = W.P;
     set(W, i, A.friends, r.u() < 0.5 ? PL.park : PL.store, P.dist[i], m, 60 + r.int(120));
-    const n = W.cal.lunch * (0.5 + r.u());
-    econ.toSector(W, i, n, false, 'food');
+    // (a meal out with them: the more when one feels one has earned it — ご褒美)
+    const n = W.cal.lunch * (0.5 + r.u()) * (P.emo2 ? 1 + 1.5 * P.emo2[i * 3 + E2.license] / 255 * heart.tendency(P, i, 'reward') : 1);
+    if (econ.toSector(W, i, n, false, 'food') && P.emo2) heart.spent(P, i, n);
     fill(P, i, N.social, 80);
     fill(P, i, N.fun, 20);
     feel(P, i, E.mood, 10);
@@ -335,11 +415,18 @@ const ACTIONS = {
   outing(W, i, m, t, day, r) {
     const P = W.P;
     set(W, i, A.outing, PL.park, r.int(5), m, 120 + r.int(120));
-    const n = Math.round(Math.min(econ.allowance(W, i, 2, day) * 0.8, W.cal.leisure * (0.2 + 0.4 * r.u())));
+    // (a day out by one's own means — the rich go further —, beyond them on a treat one feels one has earned, out of
+    // the windfall too: ご褒美消費)
+    const lic = P.emo2 ? P.emo2[i * 3 + E2.license] / 255 * heart.tendency(P, i, 'reward') : 0;
+    const pk = P.emo2 ? heart.pocket(W, i, day) : econ.allowance(W, i, 2, day);
+    const n = P.emo2 ? Math.round(Math.min(pk * (0.7 + 0.6 * r.u()) * (1 + 1.2 * lic), Math.max(pk, W.cal.leisure * (0.4 + 0.8 * r.u()) * (1 + Math.sqrt(Math.max(0.05, P.cash[i] / 60000000))))))
+      : Math.round(Math.min(pk * 0.8, W.cal.leisure * (0.2 + 0.4 * r.u())));
+    if (lic > 0.25 && n > 0) remember(P, i, day, M.treat, 120);
     // (some outings are trips to アスカ・リゾート: its money, ATSUKA Vision's)
     // (the cheaper アスカ is, against its founding prices, the more go)
-    if (n > 0 && W.asuka && r.u() < ASUKA.rules.tourism / ((W.asuka.policy && W.asuka.policy.price) || 1)) { if (econ.pay(W, i, n, false)) { asuka.earned(W, n, 'resort'); econ.gdpAcc(W).trips += n; P.fund[i * 4 + 2] -= n; } }
-    else if (n > 0 && econ.toSector(W, i, n, false, 'leisure')) P.fund[i * 4 + 2] -= n;
+    const used = (x) => { if (P.emo2) heart.spent(P, i, x); else P.fund[i * 4 + 2] -= x; };
+    if (n > 0 && W.asuka && r.u() < ASUKA.rules.tourism / ((W.asuka.policy && W.asuka.policy.price) || 1)) { if (econ.pay(W, i, n, false)) { asuka.earned(W, n, 'resort'); econ.gdpAcc(W).trips += n; used(n); } }
+    else if (n > 0 && econ.toSector(W, i, n, false, 'leisure')) used(n);
     // (a little from the shops on the way)
     if (r.u() < 0.5) econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.25), false);
     fill(P, i, N.fun, 70);
@@ -354,9 +441,82 @@ const ACTIONS = {
     const back = Math.min(P.debt[i], Math.max(0, P.cash[i] - Math.max(1000000, (P.salary[i] || 1200000) / 6)));
     if (back > 0) { P.cash[i] -= back; P.debt[i] -= back; W.sum.repaid += back; if (P.debt[i] <= 0) { P.debt[i] = 0; P.dkind[i] = 0; } }
     fill(P, i, N.security, 30);
+  },
+  // ストレス買い (npc-heart.js): stressed or angry, two or three days' worth of what one lets oneself spend at once — the
+  // shops' goods, things for the car, the running game (from home, the game alone) —; short of it, the careless put it
+  // on a loan (テネシスのクイックローン, as far as it lends: its own money); a feeling of being on top of things, for now
+  splurge(W, i, m, t, day, r) {
+    const P = W.P, shops = t >= 600 && t < 1260;
+    if (shops) set(W, i, A.shop, PL.store, nearest(W, P.dist[i], 'store'), m, 30 + r.int(60));
+    else set(W, i, A.game, P.home[i] === HOME.street ? PL.street : PL.home, P.dist[i], m, 30 + r.int(60));
+    let want = Math.round(Math.max(W.cal.leisure * 0.1, heart.pocket(W, i, day) * (2 + r.u())));
+    if (P.cash[i] < want && heart.tendency(P, i, 'stress') > 0.55 && tr(P, i, T.impulse) > 0.5 && P.lesson[i * NL + LS.debt] > -40) {
+      if (econ.borrowFor(W, i, want - Math.max(0, P.cash[i])) > 0) remember(P, i, day, M.loan, 60);
+    }
+    want = Math.min(want, Math.max(0, Math.floor(P.cash[i])));
+    if (want < 1000) return;
+    let paid = 0;
+    const parts = shops ? [['goods', P.car[i] ? 0.5 : 0.6], ['items', P.car[i] ? 0.25 : 0], ['play', P.car[i] ? 0.25 : 0.4]] : [['play', 1]];
+    for (const [what, share] of parts) {
+      const n = Math.round(want * share);
+      if (n < 1000) continue;
+      if (what === 'goods') { if (econ.buy(W, i, day, 'jinx', 'goods', n, false)) paid += n; }
+      else if (what === 'items') {
+        const id = n >= itemPrice('engine-v1') ? 'engine-v1' : n >= itemPrice('repair-kit') ? 'repair-kit' : 'gasoline-full', u = itemPrice(id), c = Math.floor(n / u);
+        if (c > 0 && econ.buyProduct(W, i, day, 'items', id, c, u, false)) paid += c * u;
+      } else paid += play(W, i, day, n);
+    }
+    if (!paid) return;
+    heart.spent(P, i, paid);
+    feel(P, i, E.stress, -35);
+    feel(P, i, E.anger, -15);
+    feel(P, i, E.mood, 12);
+    fill(P, i, N.fun, 30);
+    remember(P, i, day, M.splurge, Math.min(255, Math.round(80 + 40 * paid / Math.max(1, W.cal.leisure))));
+  },
+  // パニック消費 (npc-heart.js): dearer times feared (the prices, a strike, the bank: the news, the talk), two to four
+  // weeks of the household's living goods at once — ジンクス's goods, the local shops' —; then hardly any until they
+  // are used up (npc-state.js dayStart)
+  stockup(W, i, m, t, day, r) {
+    const P = W.P;
+    set(W, i, A.shop, PL.store, nearest(W, P.dist[i], 'store'), m, 40 + r.int(40));
+    const days = 14 + r.int(15), size = P.hh[i] === i ? memberList(P, i).length : 1;
+    const per = W.cal.living * Math.pow(size, 0.75) * Math.pow(Math.max(0.02, (P.cash[i] + 1) / 60000000), 0.22) * (1 - 0.35 * tr(P, i, T.thrift)) * econ.cpi(W);
+    const goods = econ.spendAt(W, 'jinx:goods', per * days * 0.62), rest = Math.round(per * days * 0.38);
+    let got = false;
+    if (econ.buy(W, i, day, 'jinx', 'goods', goods, false)) got = true;
+    if (econ.toSector(W, i, rest, false, 'living')) got = true;
+    if (!got) return;
+    P.hoard[i] = days;
+    feel(P, i, E.anxiety, -25);
+    remember(P, i, day, M.hoard, 100);
+    if (W.heart) W.heart.panic = (W.heart.panic || 0) + 1;
   }
 };
+// one of the free time's doings, for a person at minute `m` (the tests' and 運営's way in: the minutes choose them)
+export function act(W, name, i, m, day, r, ctx) { ACTIONS[name](W, i, m, m % 1440, day, r, ctx, W.P.home[i] === HOME.street); }
+// a sum spent on a game (the running one played, else the catalogue's): the game's money and the tax exactly what was paid
+function play(W, i, day, n) {
+  const P = W.P, l = P.live[i] ? (W.liveGames || [])[P.live[i] - 1] : null, taxed = econ.withTax(W, n);
+  if (!econ.pay(W, i, taxed, false)) return 0;
+  if (taxed - n) econ.nationIn(W, 'consumption', taxed - n);
+  if (l) econ.toLive(W, day, l.company, l.id, n);
+  else econ.toCatalog(W, day, 'ice', n);
+  return n;
+}
 
+// The dear things bought beyond the everyday goods: MY WAY's own goods, its characters' at ジンクス (while that
+// contract is on), the rest at the boutiques and the like (the local businesses); returns what was paid
+function luxury(W, i, day, ctx, n) {
+  const mw = ctx && ctx.corp && ctx.corp.co && ctx.corp.co.myway, alive = !!(mw && !mw.dead);
+  const jx = alive && mw.ip && mw.ip.contracts && mw.ip.contracts.jinx && mw.ip.contracts.jinx.on;
+  let got = 0;
+  const own = alive ? Math.round(n * 0.35) : 0, collab = jx ? Math.round(n * 0.25) : 0;
+  if (own > 0 && econ.buy(W, i, day, 'myway', 'direct', own, false)) got += own;
+  if (collab > 0 && econ.buy(W, i, day, 'jinx', 'myway', collab, false)) got += collab;
+  if (n - own - collab > 0 && econ.toSector(W, i, n - own - collab, false, 'leisure')) got += n - own - collab;
+  return { got, myway: alive };
+}
 // the district nearest one's own with a place of that kind (one's own if it has one)
 function nearest(W, d, kind) {
   const D = NPC.districts;
@@ -408,8 +568,10 @@ function games(W, i, day, r, ctx) {
     let own = false;
     for (let k = 0; k < OWN; k++) if (P.owned[i * OWN + k] === t.key) { own = true; break; }
     if (own) continue;
-    const fans = t.buzz || 0.5;
-    const p = W.cal.gameBuy * g * Math.exp((t.q - 72) / 12) * Math.exp(-age / 45) * (0.5 + fans) * (age < 7 ? 2 : 1);
+    // (and what those who bought it say of it: a hit talked up, a flop down — npc-heart.js word)
+    const fans = Math.max(0.05, (t.buzz || 0.5) + (P.emo2 ? heart.buzzOf(W, t.id) : 0));
+    // (and the more, the more one lets oneself spend on games against what it costs)
+    const p = W.cal.gameBuy * g * Math.exp((t.q - 72) / 12) * Math.exp(-age / 45) * (0.5 + fans) * (age < 7 ? 2 : 1) * (P.emo2 ? Math.max(0.3, Math.min(2.5, Math.sqrt(budget / Math.max(1, t.price * 1.5)))) : 1);
     if (r.u() >= p) continue;
     // (an edition by what they can spend: the standard, the deluxe, the collector's)
     const ed = budget > t.price * 30 && r.u() < 0.4 ? 30 : budget > t.price * 3 && r.u() < 0.4 ? 3 : 1;
@@ -424,13 +586,17 @@ function games(W, i, day, r, ctx) {
     for (let k = 0; k < OWN; k++) if (!P.owned[i * OWN + k]) { slot = k; break; }
     P.owned[i * OWN + (slot >= 0 ? slot : (t.key + day) % OWN)] = t.key;
     if (t.q >= 85) remember(P, i, day, M.goodGame, t.q);
+    // (what they say of it: a hit talked up, a poor one down — npc-heart.js word)
+    if (P.emo2) heart.word(W, t.id, t.q);
   }
   // the running games: a month's spending of a player of one, in pieces
   if (P.live[i]) {
     const l = (W.liveGames || [])[P.live[i] - 1];
     if (l) {
       // (in whole dollars, once: the game's money and the tax exactly what was paid)
-      const n = Math.round(Math.min(budget - spent, W.cal.livePlay * Math.pow(Math.max(0.05, P.cash[i] / 60000000), 0.7) * g * g * (0.4 + 1.2 * r.u())));
+      // (the worn out and low the more: 無気力消費)
+      const ap = P.emo2 ? 1 + 1.5 * heart.apathyNow(P, i) * heart.tendency(P, i, 'apathy') : 1;
+      const n = Math.round(Math.min(budget - spent, W.cal.livePlay * Math.pow(Math.max(0.05, P.cash[i] / 60000000), 0.7) * g * g * (0.4 + 1.2 * r.u()) * ap));
       if (n > 1000 && econ.pay(W, i, econ.withTax(W, n), false)) {
         const tax = econ.withTax(W, n) - n;
         if (tax) econ.nationIn(W, 'consumption', tax);
@@ -438,7 +604,7 @@ function games(W, i, day, r, ctx) {
         spent += n;
       }
     }
-  } else if (r.u() < 0.02 * g && W.liveGames && W.liveGames.length) P.live[i] = 1 + r.int(W.liveGames.length);
+  } else if (r.u() < 0.02 * g * (P.emo2 ? 1 + 3 * heart.apathyNow(P, i) * heart.tendency(P, i, 'apathy') : 1) && W.liveGames && W.liveGames.length) P.live[i] = 1 + r.int(W.liveGames.length);
   // the older games (the catalogue)
   if (r.u() < W.cal.catalog * g) {
     const co = r.u() < 0.85 ? 'ice' : 'riru', n = 3000 + r.int(4) * 1000;
@@ -485,6 +651,18 @@ export function talk(W, i, m, r, work) {
   // news passes on (what one of them knows, the other may now)
   const know = P.aware[j] & ~P.aware[i];
   if (know && r.u() < 0.35 + 0.4 * tr(P, i, T.news)) P.aware[i] |= know & (r.u() < 0.5 ? know : (know & -know));
+  // what they expect of the times passes on (a rumour: the more for the trusted), one's company's from a colleague, one
+  // stocking up (dearer times feared), 消費観 a little, and what they learnt of the slots and of debt (npc-heart.js)
+  if (P.emo2) {
+    const bi = i * NB, bj = j * NB, w = 0.08 * t;
+    P.belief[bi + BL.infl] = clampS(P.belief[bi + BL.infl] + (P.belief[bj + BL.infl] - P.belief[bi + BL.infl]) * w + (P.hoard[j] > 0 ? 4 * t : 0));
+    P.belief[bi + BL.mkt] = clampS(P.belief[bi + BL.mkt] + (P.belief[bj + BL.mkt] - P.belief[bi + BL.mkt]) * w * 0.8);
+    if (P.job[i] === P.job[j] && NPC.isCompanyJob(P.job[i])) P.belief[bi + BL.job] = clampS(P.belief[bi + BL.job] + (P.belief[bj + BL.job] - P.belief[bi + BL.job]) * 0.1 * t);
+    // (a friend just let go: it could happen to anyone)
+    else if (P.job[j] === NPC.job.none && P.jobless[j] > 0 && NPC.employed(P.job[i])) P.belief[bi + BL.job] = clampS(P.belief[bi + BL.job] + 2 * t);
+    P.ethos[i] = clampB(P.ethos[i] + (P.ethos[j] - P.ethos[i]) * 0.02 * t);
+    for (const x of [LS.gamble, LS.debt]) P.lesson[i * NL + x] = clampS(P.lesson[i * NL + x] + (P.lesson[j * NL + x] - P.lesson[i * NL + x]) * 0.03 * t);
+  }
   // closer, and the trust found or lost
   P.close[i * REL + k] = Math.min(255, P.close[i * REL + k] + 2);
   fill(P, i, N.social, 15);

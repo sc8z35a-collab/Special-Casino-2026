@@ -21,7 +21,10 @@ const NC = CATS.length;
 // before it does not have: it starts at 0 — what they do now, until when, what they still need and mean to spend today)
 const COLS = [['birth', Int32Array, 1], ['dist', Uint8Array, 1], ['job', Uint8Array, 1], ['emp', Uint8Array, 1], ['gen', Uint16Array, 1],
   ['taste', Uint8Array, NC], ['pay', Float64Array, 1], ['cash', Float64Array, 1, 'hot'], ['debt', Float64Array, 1, 'hot'], ['miss', Uint8Array, 1, 'hot'],
-  ['act', Uint8Array, 1, 'hot', 'late'], ['due', Int32Array, 1, 'hot', 'late'], ['need', Float64Array, 1, 'hot', 'late'], ['left', Float64Array, 1, 'hot', 'late']];
+  ['act', Uint8Array, 1, 'hot', 'late'], ['due', Int32Array, 1, 'hot', 'late'], ['need', Float64Array, 1, 'hot', 'late'], ['left', Float64Array, 1, 'hot', 'late'],
+  // (消費観, docs/ai-economy-plan.md 2.3: the sense that one's own spending keeps the country going — from middling to
+  // as high as ヴェルノア's people's, 0.5 to 0.85 —: in hard times they spend to support it, as far as they can afford)
+  ['ethos', Uint8Array, 1, 'late']];
 const isHot = (c) => c.includes('hot'), isLate = (c) => c.includes('late');
 // what a person is doing (as ヴェルノア's people, minute by minute within the hours the people are about)
 export const ACT = { home: 0, sleep: 1, commute: 2, work: 3, lunch: 4, shop: 5, leisure: 6, study: 7 };
@@ -64,6 +67,15 @@ export const ageOf = (A, i, day) => Math.floor((day - A.birth[i]) / 365.25);
 const AGEW = (a) => (a < 30 ? 0.25 : a < 40 ? 0.6 : a < 50 ? 1 : a < 60 ? 1.4 : a < 70 ? 1.7 : a < 80 ? 1.6 : 1.4);
 const weightOf = (age, pay, z) => AGEW(age) * (pay > 0 ? Math.pow(pay / R.pay.atsuka, 0.6) : 0.8) * Math.exp(0.9 * z);
 const compIdx = (id) => COS.indexOf(id);
+// a person's 消費観 (0.5 to 0.85, by their own luck: never the country's draws)
+const ethosFor = (i, gen) => Math.round(255 * (0.5 + 0.35 * H(i, gen, 9)));
+// How much アスカ's own trade needs its people's support (0..1): more out of work than it has been of late, and the
+// local trade unable to pay its people in full
+function supportOf(a) {
+  const j = (a.stats && a.stats.jobless) || 0;
+  a.joblessBase = a.joblessBase === undefined ? j : a.joblessBase + (j - a.joblessBase) / 6;
+  return Math.max(0, Math.min(1, (j - a.joblessBase) * 6 + (1 - (a.tradePaid ?? 1))));
+}
 // the year's pay of a post (its own, a little either way)
 const payFor = (job, r, age) => Math.round((job === JOB.atsuka ? R.pay.atsuka : job === JOB.trade ? R.pay.trade : R.pay.branch) * (0.8 + 0.4 * r.u()) * (1 + Math.max(0, Math.min(35, age - 25)) * 0.01));
 
@@ -85,6 +97,7 @@ export function found(W, day) {
     A.dist[i] = r.int(ASUKA.districts.length);
     A.gen[i] = 1;
     for (let k = 0; k < NC; k++) A.taste[i * NC + k] = r.int(256);
+    A.ethos[i] = ethosFor(i, 1);
     if (age < 23 && r.u() < 0.6) A.job[i] = JOB.student;
     else if (age >= 65) A.job[i] = JOB.retired;
     else { A.job[i] = JOB.none; order.push(i); }
@@ -218,6 +231,8 @@ export function day(W, day, ext) {
   altasOf(a).m.days = (altasOf(a).m.days || 0) + 1;
   const r = seeded(W.key, 'asuka:d:' + day), t = CORP.ymd(day);
   a.day = day;
+  // (消費観 for a country kept before it: everyone's, once)
+  if (!a.ethosSet) { for (let i = 0; i < A.n; i++) if (!A.ethos[i]) A.ethos[i] = ethosFor(i, A.gen[i]); a.ethosSet = 1; }
   procure(W);
   // the day's shopping closed (a country kept before its people went out: the day as one, at its close)
   if (!a.today) prepare(W, day);
@@ -271,11 +286,16 @@ function prepare(W, day) {
     for (const [co] of ASUKA.companiesOf(c)) cap += ((a.branches && a.branches[co] && a.branches[co][c.id]) || 0) * c.cap * a.scale / YEAR;
     room[k] = cap;
   });
-  const disc = 1 - R.spend.living;
+  const disc = 1 - R.spend.living, support = supportOf(a);
+  a.support = support;
   for (let i = 0; i < A.n; i++) {
-    const all = dayBudget(A, i, yearlyOf(A, i));
-    A.need[i] = all > 0 ? Math.round(all * R.spend.living) : 0;
-    A.left[i] = all > 0 ? Math.round(all * disc) : 0;
+    // (and in hard times what 消費観 adds, as far as they can afford it: half at the local trade, half where its people
+    // work — the branches)
+    const base = dayBudget(A, i, yearlyOf(A, i));
+    const afford = base > 0 ? Math.max(0, Math.min(1, A.cash[i] / (base * 90) - 0.3)) : 0;
+    const extra = base * 0.3 * (A.ethos[i] / 255) * support * afford, all = base + extra;
+    A.need[i] = all > 0 ? Math.round(base * R.spend.living + extra * 0.5) : 0;
+    A.left[i] = all > 0 ? Math.round(base * disc + extra * 0.5) : 0;
     const b = A.left[i];
     if (b <= 0) continue;
     const tw = weightsSum(A, i);
@@ -287,7 +307,7 @@ function prepare(W, day) {
     // (what the people would spend in it a year: what the companies read when they plan their branches)
     a.want[CATS[k].id] = Math.round((a.want[CATS[k].id] || want[k] * YEAR) * 0.97 + want[k] * YEAR * 0.03);
   }
-  a.today = { day, ratio, living: 0, tax: 0, bought: CATS.map(() => 0), trips: 0 };
+  a.today = { day, ratio, living: 0, tax: 0, bought: CATS.map(() => 0), trips: 0, instead: 0 };
 }
 const weightsSum = (A, i) => { let tw = 0; for (let k = 0; k < NC; k++) tw += CATS[k].share * (0.5 + A.taste[i * NC + k] / 255); return tw; };
 // what one needs today, paid (with the tax): to the local trade
@@ -314,9 +334,14 @@ function buy(W, i, part) {
   if (!(b > 0)) return;
   A.left[i] -= b;
   const tw = weightsSum(A, i), g = gdpAcc(a);
+  let instead = 0;
   for (let k = 0; k < NC; k++) {
+    const meant = b * CATS[k].share * (0.5 + A.taste[i * NC + k] / 255) / tw;
+    // (what the branches could not serve: half of it bought at the local trade instead — something else, nearby —, the
+    // rest kept)
+    instead += meant * (1 - (T.ratio[k] || 0)) * 0.5;
     if (!T.ratio[k]) continue;
-    const n = Math.round(b * CATS[k].share * (0.5 + A.taste[i * NC + k] / 255) / tw * T.ratio[k]), nt = Math.round(n * taxr);
+    const n = Math.round(meant * T.ratio[k]), nt = Math.round(n * taxr);
     if (n <= 0 || A.cash[i] < n + nt) continue;
     A.cash[i] -= n + nt;
     a.treasury += nt;
@@ -333,6 +358,14 @@ function buy(W, i, part) {
       a.sum.toVernoa += v;
     });
   }
+  const n = Math.round(instead), nt = Math.round(n * taxr);
+  if (n > 0 && A.cash[i] >= n + nt) {
+    A.cash[i] -= n + nt;
+    a.trade.cash += n; a.trade.month += n;
+    a.treasury += nt;
+    T.living += n; T.tax += nt; T.instead += n;
+    g.c += n + nt;
+  }
 }
 // the day's close: what was needed and not gone out for, paid; the local trade's goods of アルタス for what it sold;
 // the month's record of it
@@ -348,7 +381,7 @@ function closeShopping(W) {
   CATS.forEach((c, k) => { if (T.bought[k]) tout(a, 'cat:' + c.id, T.bought[k]); });
   // (what was meant to be spent and was not: kept)
   for (let i = 0; i < A.n; i++) A.left[i] = 0;
-  a.last = { day: T.day, living: T.living, tax: T.tax, bought: T.bought.reduce((x, y) => x + y, 0), trips: T.trips };
+  a.last = { day: T.day, living: T.living, tax: T.tax, bought: T.bought.reduce((x, y) => x + y, 0), trips: T.trips, instead: T.instead || 0 };
   a.today = null;
 }
 
@@ -444,6 +477,7 @@ function payday(W, day) {
   let tdue = 0;
   for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.trade) tdue += Math.round(A.pay[i] / 12);
   const tr = tdue > 0 ? Math.min(1, Math.max(0, a.trade.cash) / tdue) : 0;
+  a.tradePaid = tdue > 0 ? tr : 1;
   let tpaid = 0;
   for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.trade) { const g = Math.floor(A.pay[i] / 12 * tr); income(W, i, g); tpaid += g; }
   a.trade.cash -= tpaid;
@@ -495,6 +529,7 @@ function lives(W, day, r) {
     A.job[i] = r.u() < 0.6 ? JOB.student : JOB.none;
     A.emp[i] = 0; A.pay[i] = 0; A.debt[i] = 0; A.miss[i] = 0;
     for (let k = 0; k < NC; k++) A.taste[i * NC + k] = r.int(256);
+    A.ethos[i] = ethosFor(i, A.gen[i]);
     const own = Math.min(Math.max(0, a.treasury), Math.floor(weightOf(18, 0, r.z()) * a.factor));
     a.treasury -= own;
     A.cash[i] = own;
