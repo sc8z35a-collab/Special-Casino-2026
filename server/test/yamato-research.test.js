@@ -145,3 +145,21 @@ test('the companies keep less of their money: five months of their costs, a twel
   assert.ok((w.co.jinx.boomSpent || 0) > 0, 'invested in ordinary times');
   assert.ok(c.worst <= 1000, `ledger ${c.worst}`);
 });
+
+test('a country kept before アスカ国 and read back mid-month: its next close founds アスカ国 (and YAMATO) — 運営\'s アスカ国 page has it — and does not stop', () => {
+  const c = country(600);
+  c.days(5);
+  const W = c.W;
+  // (as the live country was kept: no アスカ国 yet, its owners' list never kept)
+  const meta = JSON.parse(JSON.stringify(npc.metaOf(W)));
+  delete meta.asuka;
+  const P2 = pop.unpack(pop.alloc(W.P.n), pop.pack(W.P, false), false);
+  const W2 = Object.assign(meta, { P: P2, key: W.key });
+  npc.attach(W2);
+  assert.equal(asuka.view(W2), null);
+  const out = corpModel.closeDay(c.w, W2.day, { npc: npc.flowsFor(W2, W2.day) }, c.ch);
+  npc.nextDay(W2, W2.day, out.ext, c.ctx);
+  const v = asuka.view(W2);
+  assert.ok(v && v.people > 0 && v.founded === W2.day, 'founded at the close');
+  assert.ok(W2.asuka.yamato, 'and YAMATO with it');
+});
