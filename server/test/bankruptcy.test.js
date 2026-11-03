@@ -96,20 +96,22 @@ test('none of the thirteen bidding, a local company buys the business with Tenes
   assert.match(o.by || '', /^local:/);
   const firm = o.by.slice(6), lc = W.locals.firms[firm];
   c.days(2);
-  assert.ok(lc.debt > 0 && lc.loans.length === 1);
+  // (its loan for the business: one — テネシスファンド's, if it was short of money, beside it)
+  assert.ok(lc.debt > 0 && lc.loans.filter((l) => !l.fund).length === 1);
   assert.equal(W.locals.ops.vip, firm);
   const before = c.money();
   // (it runs it: the people's VIP its sales; at the month's end it pays Tenesice)
   c.days(35);
   assert.ok(Object.keys((lc.last || lc.m).by).includes('op:vip') || Object.keys(lc.m.by).includes('op:vip'));
-  assert.ok(lc.debt < lc.loans[0].n);
+  const biz = lc.loans.find((l) => !l.fund);
+  assert.ok(biz.left < biz.n);
   assert.ok(Math.abs(c.money() - before) < 1500 * 100, `${c.money() - before}`);
   // (the operators' 地方企業 app: all 32, the one that runs it among them, each its pace of late — the thirteen pay at
   // the month's end, so not its last day's)
   const det = localModel.detail(W), mine = det.firms.find((x) => x.id === firm);
   assert.equal(det.firms.length, 32);
   assert.deepEqual(mine.runs.map((x) => x.id), ['vip']);
-  assert.ok(mine.debt > 0 && mine.loans.length === 1);
+  assert.ok(mine.debt > 0 && mine.loans.filter((l) => !l.fund).length === 1);
   assert.ok(det.firms.filter((x) => x.pace > 0).length >= 24, det.firms.map((x) => x.pace).join(','));
   for (const x of det.firms) assert.ok(x.capital > 0 && x.capital <= x.spec.capital);
   // a local company fails: its bank takes the loss, another of its economy its business

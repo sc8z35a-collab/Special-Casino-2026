@@ -21,6 +21,7 @@ import * as pop from './npc-pop.js';
 import * as asukaModel from './asuka.js';
 import * as text from './npc-text.js';
 import * as heart from './npc-heart.js';
+import * as research from './npc-research.js';
 import { createAi } from './npc-ai.js';
 import { LISTED_IDS } from './npc-market.js';
 import { fmtKnob } from './npc-politics.js';
@@ -487,7 +488,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         // (the times' mood and the prices: server/core/npc-macro.js)
         macro: model.macroView(w),
         // (アスカ国, and the money ledger: every $ from someone to someone)
-        asuka: asukaModel.view(w), ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30),
+        asuka: asukaModel.view(w), research: research.view(w), fund: (corp.world() || {}).fund || null, ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30),
           players: w.ledger.players ? { drift: w.ledger.players.drift, worst: w.ledger.players.worst || 0, days: w.ledger.players.days.slice(-30) } : null } : null };
       return { ...partOf(all, req.query.get('rev')), now };
     },

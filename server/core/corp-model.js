@@ -38,6 +38,9 @@ const WEALTH_PULL = 0.3;
 // (the usual growth of the money, against which a month's is a boom or a bust: about a year's memory)
 const WEALTH_TREND = Math.pow(0.5, 1 / 12);
 const M = CORP.money;
+// (the months of its costs a company keeps at hand: five — a little less than the rules' six, so that what it earns goes
+// round again (利益を貯めこまない): into its equipment, its people's bonuses and its dividends)
+const KEEP = Math.min(M.months, 5);
 // a game's sales: `fast` of them in the first weeks (half-life `h1` days), the rest over its life (half-life by its scale)
 const CURVE = { fast: 0.45, h1: 12, h2: { AAA: 240, '大型': 200, '中型': 150 }, years: 3 };
 // what the studio expects its games to sell once the country lives, against what they sold to the world outside
@@ -1120,7 +1123,7 @@ function rateFor(w, s) {
 function treasury(w, s, p, d, out) {
   if (p.model === 'bank') return;
   const monthly = monthlyCosts(s);
-  const want = monthly * M.months, floor = monthly * M.floor;
+  const want = monthly * KEEP, floor = monthly * M.floor;
   let cash = s.bal.cash || 0;
   if (cash < floor) {
     const sell = Math.min(s.bal.bonds || 0, want - cash);
@@ -1156,6 +1159,8 @@ function treasury(w, s, p, d, out) {
     // paid back first, then into bonds
     let spare = cash - want;
     for (const l of s.loans) {
+      // (テネシスリサーチ's loans: for its five years, paid back at their end)
+      if (l.research && d < l.until) continue;
       const pay = Math.min(l.amt, spare);
       if (pay <= 0) continue;
       l.amt -= pay;
@@ -1170,8 +1175,9 @@ function treasury(w, s, p, d, out) {
       if (w.ext && !abroad(s)) w.ext.bonds.push({ company: s.id, n: buy });
     }
   }
-  // loans that come due are rolled over at today's rate
-  for (const l of s.loans) if (d >= l.until) { l.until = d + M.years * YEAR; l.rate = rateFor(w, s); }
+  // loans that come due are rolled over at today's rate (テネシスリサーチ's, ended, an ordinary loan from then: paid back as
+  // its money allows)
+  for (const l of s.loans) if (d >= l.until) { l.until = d + M.years * YEAR; l.rate = rateFor(w, s); l.research = false; }
 }
 const monthlyCosts = (s) => Math.round(s.n * s.unit / 12 + (spend(s, 'place') + spend(s, 'rd') + spend(s, 'ads') + spend(s, 'other')) / 12);
 
@@ -1365,6 +1371,18 @@ function month(w, s, p, d, ch, out) {
     post(s, [['bonus', put], ['sBonus', diff], ['cash', -paid]], 'payroll');
     if (w.ext && paid > 0 && !abroad(s)) w.ext.pay.push({ company: s.id, n: paid, kind: 'bonus' });
     s.morale = Math.max(0.2, Math.min(0.95, s.morale + 0.08 * (mult - 1)));
+    // (and what it holds well beyond the months of its costs it keeps, a part back to its people — 還元賞与 —, up to a
+    // month's pay each: its own money only, not in a bust, not while it loses or is being put right)
+    if (w.ext && d >= w.launch && !abroad(s) && !s.dead && !s.reorg && p.model !== 'bank' && (w.boom || 1) > 0.97 && opOf(s.per.y) > 0) {
+      const over = (s.bal.cash || 0) - monthlyCosts(s) * KEEP * 1.5;
+      const n = Math.round(Math.min(over * 0.15, s.n * s.pay / 12));
+      if (n > s.n * 1000) {
+        post(s, [['sBonus', n], ['cash', -n]], 'payroll');
+        w.ext.pay.push({ company: s.id, n, kind: 'bonus' });
+        s.morale = Math.min(0.95, s.morale + 0.02);
+        news(out, s, p, d + 1, 3 * 3600, 'bonus', `手元資金の一部を社員に還元：賞与に${CORP.fmt.money(n)}を上乗せ`, { n }, 0, false);
+      }
+    }
   }
   // 特別賞与 (once the country lives): at June's end, for a year that beat its guidance, up to three months' pay
   if (w.ext && s.payAll && CORP.isMonthEnd(d) && m === 6) {
@@ -1764,22 +1782,103 @@ function setDividend(s, p, g) {
 }
 // what of its profit a company pays out (MY WAY: its philosophy's — little kept; the others more in a boom, less in a
 // bust, as the year's guidance is made: server/core/npc-macro.js)
-const payoutOf = (p, w) => (p.id === 'myway' && CORP.myway.philosophy ? CORP.myway.philosophy.payout : Math.min(0.95, p.payout * Math.pow((w && w.boom) || 1, 1.5)));
+// (a tenth more of it than the profile's in ordinary times: what is earned goes round)
+const payoutOf = (p, w) => (p.id === 'myway' && CORP.myway.philosophy ? CORP.myway.philosophy.payout : Math.min(0.95, p.payout * 1.1 * Math.pow((w && w.boom) || 1, 1.5)));
 
-// In a boom (the times: server/core/npc-macro.js), at the month's end, a company keeps fewer months of its costs in
-// hand and puts a part of the rest into its equipment — 利益剰余金を貯めこまない —, bought as any of its equipment is
-// (MAGITA's facilities, the local businesses, アルタス's raw materials); in a bust it keeps it all.
+// At the month's end a company puts a part of what it holds beyond the months of its costs it keeps into its equipment
+// — 利益剰余金を貯めこまない —, bought as any of its equipment is (MAGITA's facilities, the local businesses, アルタス's
+// raw materials): a twelfth of it in ordinary times, and in a boom (the times: server/core/npc-macro.js) it keeps fewer
+// months and puts in more; in a bust it keeps it all.
 // (its own money only: a bank's cash is its depositors', and none puts more into it than a tenth of what it is worth)
 function boomSpend(w, s, p, d, out) {
   const boom = w.boom || 1;
-  if (boom <= 1.05 || !w.ext || s.dead || abroad(s) || s.reorg || p.model === 'bank') return;
+  if (boom <= 0.97 || !w.ext || s.dead || abroad(s) || s.reorg || p.model === 'bank') return;
   const costs = monthlyCosts(s);
-  const extra = Math.round(Math.min(((s.bal.cash || 0) - costs * 6 / boom) * (boom - 1) * 0.5, Math.max(0, equityOf(s)) * 0.1));
+  const rate = 0.08 + Math.max(0, boom - 1) * 0.5;
+  const extra = Math.round(Math.min(((s.bal.cash || 0) - costs * KEEP / Math.max(1, boom)) * rate, Math.max(0, equityOf(s)) * 0.1));
   if (!(extra > costs * 0.05)) return;
   post(s, [['ppe', extra], ['cash', -extra]], 'capex');
   route(w, s, 'capex', extra);
   s.boomSpent = (s.boomSpent || 0) + extra;
-  news(out, s, p, d + 1, 4 * 3600, 'invest', `好景気を受けて設備投資を拡大：手元資金のうち${CORP.fmt.money(extra)}を新しい設備・拠点に投資`, { extra, boom }, 0.002, true);
+  if (boom > 1.05) news(out, s, p, d + 1, 4 * 3600, 'invest', `好景気を受けて設備投資を拡大：手元資金のうち${CORP.fmt.money(extra)}を新しい設備・拠点に投資`, { extra, boom }, 0.002, true);
+  else if (extra > costs) news(out, s, p, d + 1, 4 * 3600, 'invest', `手元資金のうち${CORP.fmt.money(extra)}を設備・拠点に投資（資金を貯めこまず事業に回す）`, { extra, boom }, 0.001, true);
+}
+
+/* -------------------------------------------- テネシスリサーチ・テネシスファンド --- */
+// テネシスリサーチ (from 2026-11-03, five years: server/core/npc-research.js has its facilities and researchers): Tenesice's
+// research business, to make ヴェルノア's car industry the world's — MAGITA, YOSIDA and WAZIMA its only members. Each day
+// Tenesice pays out of its own money what its facilities need (their researchers' pay, the land's rent to each country,
+// YAMATO's bills, シティーワーク's fees: what the country's side says); each member pays its 参加費 ($10M a day) and is lent
+// by Tenesice each day (MAGITA $300M, YOSIDA $200M, WAZIMA $60M — as far as Tenesice has its own money to lend: a bank
+// lends only that), until the five years end, when the loans are to be paid back; its developments the sooner and the
+// better (tech). A member that failed is out; Tenesice failed or the five years over, it ends.
+export const RESEARCH_DAY = CORP.dayAt(2026, 11, 3);
+export const RESEARCH = { years: 5, members: { magita: { fee: 10e6, loan: 300e6 }, yosida: { fee: 10e6, loan: 200e6 }, wazima: { fee: 10e6, loan: 60e6 } }, speed: 1.5, odds: 1.2, quality: 1.25 };
+export const researchMember = (w, id) => !!(w.research && w.research.on && RESEARCH.members[id] && w.co[id] && !w.co[id].dead);
+function researchDay(w, d, flows, out) {
+  const bank = w.co.tenesice, rs = flows.npc && flows.npc.research;
+  if (!w.research && d >= RESEARCH_DAY && bank && !bank.dead) {
+    w.research = { since: d, until: d + RESEARCH.years * YEAR, on: true, paid: 0, fees: 0, lent: {} };
+    news(out, bank, PROFILES.get('tenesice'), d + 1, 3 * 3600, 'venture', '新事業「テネシスリサーチ」を開始：アスカ国に10か所・ヴェルノアに5か所の研究施設（各350人）。MAGITA・YOSIDA・WAZIMAが参加（5年契約）', {}, 0.01, true);
+  }
+  const R0 = w.research;
+  if (!R0 || !R0.on) return;
+  if (!bank || bank.dead || d >= R0.until) {
+    R0.on = false;
+    if (bank && !bank.dead) news(out, bank, PROFILES.get('tenesice'), d + 1, 3 * 3600, 'venture', 'テネシスリサーチの5年の契約期間が終わり、事業を終了しました', {}, 0, true);
+    return;
+  }
+  const sc = w.circ ? w.circ.scale || 1 : 1;
+  const need = Math.max(0, Math.round((rs && rs.need) || 0));
+  if (need > 0) {
+    post(bank, [['sRd', need], ['cash', -need]], 'expenses');
+    w.ext.research = (w.ext.research || 0) + need;
+    R0.paid += need;
+  }
+  for (const [id, m] of Object.entries(RESEARCH.members)) {
+    const s = w.co[id];
+    if (!s || s.dead || abroad(s)) continue;
+    const fee = Math.round(m.fee * sc);
+    post(s, [['sRd', fee], ['cash', -fee]], 'expenses');
+    post(bank, [['cash', fee], ['r:fees', -fee]], 'receipts');
+    R0.fees += fee;
+    const amt = lendable(w, s, Math.round(m.loan * sc));
+    if (amt > 0) {
+      s.loans.push({ id: 'L' + (++s.seq), amt, rate: rateFor(w, s), from: d, until: R0.until, research: true });
+      post(s, [['cash', amt], ['loan', -amt]], 'borrow');
+      w.mon[s.id + ':borrowed'] = (w.mon[s.id + ':borrowed'] || 0) + amt;
+      R0.lent[id] = (R0.lent[id] || 0) + amt;
+    }
+  }
+}
+// テネシスファンド (from 2026-11-03): companies in trouble or near it (less than three months of their costs in hand, a month
+// lost with less than they keep, below water) apply at a month's end, before they turn to their usual borrowing;
+// Tenesice lends them up to six months of their costs (all its fund loans to one no more than a year of them; twice a
+// fiscal year at most), a point below its usual rate, for three years — as far as it has its own money to lend. For the
+// money to go round, and its name.
+export const FUND = { since: RESEARCH_DAY, runway: 3, months: 6, cap: 12, perYear: 2, discount: 0.01, years: 3 };
+function fundOne(w, s, p, d, out) {
+  const bank = w.co.tenesice;
+  if (!w.ext || !bank || bank.dead || d < FUND.since) return;
+  const F = w.fund || (w.fund = { since: d, loans: 0, lent: 0, by: {} }), fy = CORP.fyOf(d), id = s.id;
+  {
+    if (id === 'tenesice' || s.dead || s.reorg || abroad(s) || p.model === 'bank' || d < w.launch) return;
+    const monthly = monthlyCosts(s), cash = s.bal.cash || 0, op = CORP.plOf(s.per.m).op;
+    if (!(cash < monthly * FUND.runway || (op < 0 && cash < monthly * KEEP) || equityOf(s) < 0)) return;
+    const mine = F.by[id] || (F.by[id] = { fy, count: 0, lent: 0 });
+    if (mine.fy !== fy) { mine.fy = fy; mine.count = 0; }
+    const owed = s.loans.filter((l) => l.fund).reduce((n, l) => n + l.amt, 0);
+    if (mine.count >= FUND.perYear || owed >= monthly * FUND.cap) return;
+    const amt = lendable(w, s, Math.ceil(Math.min(monthly * FUND.months, monthly * FUND.cap - owed) / M.unit) * M.unit);
+    if (amt <= 0) return;
+    const rate = Math.max(0.005, Math.round(((s.ip ? MW.loanRate : rateFor(w, s)) - FUND.discount) * 10000) / 10000);
+    s.loans.push({ id: 'L' + (++s.seq), amt, rate, from: d, until: d + FUND.years * YEAR, fund: true });
+    post(s, [['cash', amt], ['loan', -amt]], 'borrow');
+    w.mon[s.id + ':borrowed'] = (w.mon[s.id + ':borrowed'] || 0) + amt;
+    mine.count++; mine.lent += amt; F.loans++; F.lent += amt;
+    news(out, s, p, d + 1, 5 * 3600, 'loan', `テネシスファンドに申請し、${CORP.fmt.money(amt)}の融資を受けました（年${(rate * 100).toFixed(2)}%・${FUND.years}年）`, { amt, rate, fund: true }, 0.003, true);
+    news(out, bank, PROFILES.get('tenesice'), d + 1, 5 * 3600, 'fund', `テネシスファンド：${p.name}に${CORP.fmt.money(amt)}を融資（経営の立て直しを支援）`, { company: id, amt }, 0.002, true);
+  }
 }
 
 /* --------------------------------------------------- closing the periods --- */
@@ -2016,7 +2115,9 @@ function tech(w, s, p, d, ch, out) {
   if (!r.cur) {
     const months = TC.months[0] + Math.floor(ch.u(`${p.id}:tech:len:${d}`) * (TC.months[1] - TC.months[0] + 1));
     const name = `${ch.pick(`${p.id}:tech:name:${d}`, TC.names)}${TC.kinds[p.model] || '技術'}`;
-    r.cur = { id: ++r.n, name, start: d, due: d + Math.round(months * MONTH) };
+    // (テネシスリサーチ's members: its researchers, resources and facilities free — their developments the sooner)
+    const fast = researchMember(w, p.id) ? RESEARCH.speed : 1;
+    r.cur = { id: ++r.n, name, start: d, due: d + Math.round(months * MONTH / fast) };
     news(out, s, p, d + 1, 2 * 3600, 'tech', `${name}の開発を開始（${months}か月の予定・社員${CORP.fmt.group(s.n)}人）`, { id: r.cur.id }, 0, false);
     return;
   }
@@ -2025,7 +2126,8 @@ function tech(w, s, p, d, ch, out) {
   const sc = sizeScale(w, p);
   const size = Math.max(0.2, Math.min(3, s.n / Math.max(1, p.staff * sc)));
   const spend = Math.max(0.2, Math.min(3, (s.budget.rd || 0) / Math.max(1, p.rd.amount * sc)));
-  const chance = Math.max(0.05, Math.min(0.95, TC.chance * Math.pow(size, 0.8) * (0.6 + 0.7 * s.morale) * Math.pow(spend, 0.3)));
+  const member = researchMember(w, p.id);
+  const chance = Math.max(0.05, Math.min(0.95, TC.chance * Math.pow(size, 0.8) * (0.6 + 0.7 * s.morale) * Math.pow(spend, 0.3) * (member ? RESEARCH.odds : 1)));
   const cur = r.cur;
   r.cur = null;
   cur.chance = Math.round(chance * 1000) / 1000;
@@ -2034,7 +2136,7 @@ function tech(w, s, p, d, ch, out) {
     news(out, s, p, d + 1, 3 * 3600, 'tech', `${cur.name}の開発は成果が出ず終了しました`, { id: cur.id, ok: false }, -0.01, true);
     return;
   }
-  const lift = (TC.edge[0] + (TC.edge[1] - TC.edge[0]) * ch.u(`${p.id}:tech:q:${cur.id}`)) * Math.min(1.5, Math.sqrt(size));
+  const lift = (TC.edge[0] + (TC.edge[1] - TC.edge[0]) * ch.u(`${p.id}:tech:q:${cur.id}`)) * Math.min(1.5, Math.sqrt(size)) * (member ? RESEARCH.quality : 1);
   r.ok++;
   if (p.model === 'studio') s.tech *= 1 + lift * 2;
   else r.edge = Math.min(TC.maxEdge, r.edge * (1 + lift));
@@ -3375,7 +3477,7 @@ export function closeDay(w, d, flows, ch) {
     month(w, s, p, d, ch, out);
     if (CORP.ymd(d).d === 1 && d >= w.launch) tech(w, s, p, d, ch, out);
     if (p.model === 'studio') titlesLook(w, s, p, d, out);
-    if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); feesMonth(w, s, p, d, out); mywaySphere(w, s, p, d, out); boomSpend(w, s, p, d, out); treasury(w, s, p, d, out); }
+    if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); feesMonth(w, s, p, d, out); mywaySphere(w, s, p, d, out); boomSpend(w, s, p, d, out); fundOne(w, s, p, d, out); treasury(w, s, p, d, out); }
     // (out of money with nothing more Tenesice will lend, or below nothing too long: 破産)
     solvencyCheck(w, s, p, d, out);
   }
@@ -3403,6 +3505,8 @@ export function closeDay(w, d, flows, ch) {
       else if (!fa && ta) w.ext.imports += b.n;
     }
   }
+  // テネシスリサーチ's day and テネシスファンド's month (Tenesice's research business and its lending to companies in trouble)
+  if (w.ext) researchDay(w, d, flows, out);
   // the maker's rebates at a quarter's end, and the month's moves of the ties
   if (CORP.isQuarterEnd(d)) for (const id of ORDER) if (PROFILES.get(id).materials) rebates(w, w.co[id], PROFILES.get(id), d, out);
   if (CORP.isMonthEnd(d)) moveTies(w, d, ch, out);

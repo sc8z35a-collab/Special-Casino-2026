@@ -74,7 +74,8 @@ function hire(W, i, o, day, r) {
   const P = W.P;
   if (NPC.isCompanyJob(P.job[i])) leave(W, i, day, 'move');
   P.job[i] = NPC.jobOf(o.company);
-  P.flags[i] &= ~FL.student;
+  // (a researcher of テネシスリサーチ moving to a company: its no longer)
+  P.flags[i] &= ~(FL.student | FL.research);
   P.rank[i] = 0;
   P.dept[i] = W.org.deptFor(o.company, r);
   P.salary[i] = Math.round(o.pay * (0.78 + 0.1 * r.u()));
@@ -113,7 +114,7 @@ function leave(W, i, day, why) {
     remember(P, i, day, why === 'quit' ? M.quit : M.fired, 160);
   }
   P.job[i] = why === 'retire' || why === 'death' ? NPC.job.retired : NPC.job.none;
-  P.flags[i] &= ~(FL.union | FL.rehired | FL.striking | FL.exec);
+  P.flags[i] &= ~(FL.union | FL.rehired | FL.striking | FL.exec | FL.research);
   P.salary[i] = 0;
   P.rank[i] = 0;
   P.tenure[i] = 0;
@@ -157,6 +158,8 @@ function localJobs(W, day, r) {
   for (let i = 0; i < P.n; i++) {
     const j = P.job[i];
     if (j === J.other || j === J.part || j === J.self) {
+      // (テネシスリサーチ's researchers: not the small shops' to let go)
+      if (P.flags[i] & FL.research) continue;
       const age = ageOf(P, i, day);
       // (the old who worked on part time: at 75 for good)
       if (age >= 75 && local.firmOf(P, i)) { leave(W, i, day, 'retire'); continue; }
@@ -240,7 +243,7 @@ function shortage(W, day, r, ctx) {
   const pool = [];
   for (let i = 0; i < P.n; i++) {
     const j = P.job[i];
-    if (P.flags[i] & (FL.student | FL.mayor | FL.exec)) continue;
+    if (P.flags[i] & (FL.student | FL.mayor | FL.exec | FL.research)) continue;
     if (j === J.other || j === J.self || j === J.part) { pool.push(i); continue; }
     if (j !== J.home && j !== J.retired) continue;
     const age = ageOf(P, i, day);
