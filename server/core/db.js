@@ -1358,6 +1358,17 @@ MIGRATIONS.push([
    )`
 ]);
 
+// 企業の本当のリアルタイム稼ぎ (server/core/corp.js hourTick): each hour of six companies' — what the players and the
+// people actually paid them in it, what the companies' own trade and costs came to an hour by the last day closed
+MIGRATIONS.push([
+  `CREATE TABLE corp_hours (
+     company TEXT    NOT NULL,
+     hour    INTEGER NOT NULL,
+     data    TEXT    NOT NULL,
+     PRIMARY KEY (company, hour)
+   ) WITHOUT ROWID`
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
@@ -1369,7 +1380,7 @@ export const TABLES = ['users', 'sessions', 'game_login_locks', 'chat_filter_str
   'ops_favorites', 'ops_watch_log', 'ops_watch_usage', 'staff_pins', 'ops_cdw', 'sec_identity', 'oauth_identities',
   'line_feed_targets', 'line_feed_jobs', 'line_feed_deliveries', 'line_feed_rewards', 'line_feed_claims',
   'stock_state', 'stock_candles', 'stock_holdings', 'stock_accounts', 'stock_orders', 'medals',
-  'corp_state', 'corp_days', 'corp_anchor', 'corp_periods', 'corp_titles', 'corp_news', 'corp_flows', 'slot_bills', 'garage_bills',
+  'corp_state', 'corp_days', 'corp_anchor', 'corp_periods', 'corp_titles', 'corp_news', 'corp_flows', 'corp_hours', 'slot_bills', 'garage_bills',
   // (the country's record; not the people themselves — some 20MB, kept by the host's own history of the database)
   'npc_news', 'npc_meetings', 'npc_reports', 'npc_days', 'npc_ai', 'stock_npc', 'meta'];
 

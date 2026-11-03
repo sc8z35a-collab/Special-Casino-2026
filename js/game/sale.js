@@ -178,6 +178,8 @@
     // bought in a sale sold back on a day without one, or on a 大廃棄セール, made money)
     buyback: function (car, ms, sale, paid) {
       if (!carPriced(car)) return null;
+      // (a car always bought back for the same: the K110)
+      if (car.buyback) return { price: car.buyback, pct: 0, disposal: false };
       var b = BR.CONFIG.carBuyback, d = BR.sale.disposal(ms);
       var pct = d ? d.pct : b.min + pick('car-buyback/' + dayKey(ms) + '/' + car.id, b.max - b.min + 1);
       var now = BR.sale.carPrice(car, sale).price;

@@ -202,7 +202,8 @@ function proposals(W, o, s, day, r, ctx) {
   const pl = CORP.plOf(Object.fromEntries(Object.entries(s.per.m || {}).filter(([k]) => !/^cf:/.test(k))));
   const ytd = CORP.plOf(Object.fromEntries(Object.entries(s.per.y || {}).filter(([k]) => !/^cf:/.test(k))));
   const monthly = Math.max(1, (s.n * s.unit + s.budget.place + s.budget.rd + s.budget.ads + s.budget.other) / 12);
-  const runway = (s.bal.cash || 0) / monthly;
+  // (its money: what is in hand and its bonds — sold as soon as it needs them: corp-model treasury)
+  const runway = ((s.bal.cash || 0) + (s.bal.bonds || 0)) / monthly;
   const guideOp = s.guide && s.guide.ytdOp ? s.guide.ytdOp : 0;
   const behind = guideOp ? ytd.op / Math.max(1, Math.abs(guideOp)) : 1;
   const trend = W.coTrend[id] || 0;
@@ -258,6 +259,9 @@ function proposals(W, o, s, day, r, ctx) {
     else if (long < -0.1 && now > 0.5) out.push({ kind: 'price', title: `値下げ（${PRICE_NAME[key] || key}を8%）：客離れを止める`, effect: [{ kind: 'price', key, mult: 0.92 }], cost: 0, risk: 0.15, gain: 0.05, by: by('plan') >= 0 ? by('plan') : by('acct'), why: { trend: long, price: now } });
   }
   if (id === 'jinx' && r.u() < 0.15) out.push({ kind: 'partner', title: 'スタジオとの連携：店頭でのゲーム販売の強化', effect: [{ kind: 'appeal', key: 'games', add: 0.03, days: 90 }], cost: 0, risk: 0.1, gain: 0.03, by: dept('partner').named.liaison });
+  // its money and its contracts, its own to decide (corp-model decided): テネシスファンド, its loans, its dividends,
+  // テネシスリサーチ — every company's but the bank's and those abroad
+  if (id !== 'tenesice' && !(CORP.company(id) || {}).abroad) moneyProposals(W, o, s, out, { pl, ytd, runway, behind, dept, by, ctx, day });
   // MY WAY: what its people do for its characters, its partners and its costs; and a partner's contract with it
   if (id === 'myway' && s.ip) mywayProposals(W, o, s, out, { pl, runway, dept, by });
   const mw = ctx.corp.co.myway;
@@ -309,7 +313,14 @@ function meeting(W, o, s, day, r, ctx) {
   // (a restructuring comes first when it is on the table)
   // (when there are several, one of them: MY WAY's own measures besides a company's usual restructuring)
   const cuts = list.filter((x) => x.kind === 'cut' && x.gain >= 0.2);
-  const p = cuts.length > 1 ? cuts[r.int(cuts.length)] : cuts[0] || list[r.int(list.length)];
+  // (the rest by what each is worth to it now, as its CEO weighs gain and risk — and the AI 経営アドバイザー's choice,
+  // when it gave one: npc.js writeAi —; the likelier the better, never certain)
+  const advice = adviceFor(W, o.id, list);
+  const ceo = o.ceo >= 0 ? o.ceo : o.president;
+  const worth = (x) => x.gain * 6 - x.risk * (2 - (ceo >= 0 ? tr(P, ceo, T.risk) : 0.5) * 1.6) + (advice && advice.p === x ? 0.8 : 0);
+  const p = cuts.length > 1 ? cuts[r.int(cuts.length)] : cuts[0] || list[r.weighted(list.map((x) => Math.exp(1.5 * worth(x))))] || list[0];
+  // (the next time: asked of the AI, when there is more than one to choose from)
+  if (list.length > 1) askAdvice(W, o, s, list, day);
   const acct = o.depts.find((d) => d.kind === 'acct'), stop = o.depts.find((d) => d.kind === 'stop');
   const stopper = stop ? (stop.named.stopper >= 0 ? stop.named.stopper : stop.head) : -1;
   const who = [[o.ceo, 'CEO', 3], [o.president, '社長', 2], [p.by, roleOf(o, p.by), 1], [acct ? acct.head : -1, '経理部長', 1], [stopper, 'ストップ係', 1]];
@@ -317,8 +328,9 @@ function meeting(W, o, s, day, r, ctx) {
   const seen = new Set(), att = [];
   for (const [i, role, w] of who) if (i >= 0 && !seen.has(i)) { seen.add(i); att.push({ i, role, w }); }
   const monthly = Math.max(1, (s.n * s.unit + s.budget.place + s.budget.rd + s.budget.ads + s.budget.other) / 12);
-  const runway = (s.bal.cash || 0) / monthly;
-  const afford = p.cost <= Math.max(0, (s.bal.cash || 0) - monthly * 2);
+  // (its money: what is in hand and its bonds — sold as soon as it needs them: corp-model treasury)
+  const runway = ((s.bal.cash || 0) + (s.bal.bonds || 0)) / monthly;
+  const afford = p.cost <= Math.max(0, (s.bal.cash || 0) + (s.bal.bonds || 0) - monthly * 2);
   let yes = 0, no = 0, veto = null;
   const lines = [];
   for (const a of att) {
@@ -326,6 +338,7 @@ function meeting(W, o, s, day, r, ctx) {
     let v = p.gain * 6 - p.risk * (2 - tr(P, i, T.risk) * 1.6) + (tr(P, i, T.ambition) - 0.5) * 0.6 + r.z() * 0.4;
     if (a.role === '経理部長') v += afford ? 0.2 : -1.5;
     if (i === p.by) v += 1;
+    if (advice && advice.p === p) v += 0.3;
     if (p.kind === 'cut') v += (runway < 4 ? 0.8 : 0) - (tr(P, i, T.ambition) - 0.5);
     let stance = v > 0.15 ? 'for' : v < -0.15 ? 'against' : 'neutral';
     if (a.role === 'ストップ係') {
@@ -337,10 +350,11 @@ function meeting(W, o, s, day, r, ctx) {
     lines.push({ i, role: a.role, stance, text: text.remark(W, o, p, a.role, stance, { runway, afford, i }, r) });
     if (stance === 'for') yes += a.w; else if (stance === 'against') no += a.w;
   }
+  if (advice && advice.p === p) lines.unshift({ i: -1, role: 'AI経営アドバイザー', stance: 'for', text: `データから見て「${p.title}」が最も効果的だと判断します。` });
   let pass = yes > no && !veto;
   // (a CEO set on it may overrule the stopper, now and then, and say why)
   if (veto && yes > no + 2 && o.ceo >= 0 && tr(P, o.ceo, T.ambition) > 0.8 && r.u() < 0.25) { pass = true; lines.push({ i: o.ceo, role: 'CEO', stance: 'overrule', text: 'ストップ係の懸念は理解するが、責任は私が取る。実行する。' }); }
-  const m = { id: ++o.seq, company: o.id, day, room: `第${1 + (o.seq % 4)}会議室`, title: p.title, kind: p.kind, by: p.by, attendees: att.map((a) => ({ i: a.i, role: a.role, name: W.card(a.i, day).name })), lines: lines.map((l) => ({ ...l, name: W.card(l.i, day).name })), yes, no, veto: veto ? { ...veto, name: W.card(veto.i, day).name } : null, pass, why: p.why || null };
+  const m = { id: ++o.seq, company: o.id, day, room: `第${1 + (o.seq % 4)}会議室`, title: p.title, kind: p.kind, by: p.by, attendees: att.map((a) => ({ i: a.i, role: a.role, name: W.card(a.i, day).name })), lines: lines.map((l) => ({ ...l, name: l.i >= 0 ? W.card(l.i, day).name : 'AI' })), yes, no, veto: veto ? { ...veto, name: W.card(veto.i, day).name } : null, pass, why: p.why || null };
   W.meetings.push(m);
   // the thinking of those who carried or stopped it, kept as their own
   think(W, o, p.by, day, `${p.title}を提案した。${pass ? '会議で承認された。' : veto ? `ストップ係に止められた（${veto.why}）。` : '会議で否決された。'}`);
@@ -367,7 +381,8 @@ function think(W, o, i, day, line) {
 // the server, server/core/npc.js, on the companies' world), and the people's side (prices to them, how much they want
 // it, the job sites' shares, the new businesses)
 function apply(W, o, e, day, r, ctx) {
-  if (e.kind === 'budget' || e.kind === 'target' || e.kind === 'morale' || e.kind === 'terms' || e.kind === 'lab' || e.kind === 'lend' || e.kind === 'ip' || e.kind === 'license') { W.corpOps.push({ company: o.id, ...e }); return; }
+  if (e.kind === 'budget' || e.kind === 'target' || e.kind === 'morale' || e.kind === 'terms' || e.kind === 'lab' || e.kind === 'lend' || e.kind === 'ip' || e.kind === 'license'
+    || e.kind === 'fund' || e.kind === 'loan' || e.kind === 'payout' || e.kind === 'research' || e.kind === 'myway') { W.corpOps.push({ company: o.id, ...e }); return; }
   // (a price: changed for good, or for a campaign's days on top of it — a campaign ends by itself, the price stays)
   if (e.kind === 'price') {
     const k = o.id + ':' + e.key;
@@ -389,7 +404,8 @@ function accounts(W, o, s, day, r, ctx) {
   if (!acct) return;
   const m = ctx.lastMonth ? ctx.lastMonth(o.id) : null;
   const monthly = Math.max(1, (s.n * s.unit + s.budget.place + s.budget.rd + s.budget.ads + s.budget.other) / 12);
-  const runway = (s.bal.cash || 0) / monthly;
+  // (its money: what is in hand and its bonds — sold as soon as it needs them: corp-model treasury)
+  const runway = ((s.bal.cash || 0) + (s.bal.bonds || 0)) / monthly;
   const warn = [];
   if (runway < 3) warn.push(`手元資金が固定費の${runway.toFixed(1)}か月分`);
   if (m && m.pl.op < 0) warn.push('営業赤字');
@@ -526,6 +542,11 @@ function mywayProposals(W, o, s, out, { pl, runway, dept, by }) {
     if (c.on || c.fee <= c.base * M.talks.floor + 1e6 || (c.offered && W.day - c.offered < 60)) continue;
     out.push({ kind: 'ip', title: `${CORP.company(pid).name}への再契約の提案（契約料を${pct(M.win.off)}引き下げ）`, effect: [{ kind: 'ip', action: 'win', partner: pid }], cost: 0, risk: 0.1, gain: 0.07, by: named('alliance', 'negotiator'), why: { partner: pid } });
   }
+  // its growth's pace (CORP.myway.grow): faster while it sells well, slower while it loses; and more for 株式会社YAMATO
+  const aim = s.growAim || 1, cfo2 = cfo >= 0 ? cfo : by('plan');
+  if (pl.op > 0 && runway > 3 && aim > 0.3) out.push({ kind: 'myway', title: `成長投資の加速（純資産の目標を${Math.round((1 - 0.8) * 100)}%引き下げ、周辺企業・研究・社員への投資を前倒し）`, effect: [{ kind: 'myway', action: 'aim', mult: 0.8 }], cost: 0, risk: 0.25, gain: 0.07, by: cfo2, why: { aim } });
+  if ((pl.op < 0 || runway < 2) && aim < 3) out.push({ kind: 'myway', title: '成長投資の抑制（純資産の目標を25%引き上げ、手元資金を厚く）', effect: [{ kind: 'myway', action: 'aim', mult: 1.25 }], cost: 0, risk: 0.1, gain: 0.06 + (pl.op < 0 ? 0.04 : 0), by: cfo2, why: { aim, op: pl.op } });
+  if (pl.op > 0 && runway > 2) out.push({ kind: 'myway', title: `株式会社YAMATOへの追加の資金援助（先月の営業利益の5%：${NPC.money(Math.round(pl.op * 0.05))}）`, effect: [{ kind: 'myway', action: 'yamato', n: Math.round(pl.op * 0.05) }], cost: Math.round(pl.op * 0.05), risk: 0.1, gain: 0.04, by: named('alliance', 'negotiator') >= 0 ? named('alliance', 'negotiator') : cfo2, why: { op: pl.op } });
   // (the fixed costs: what it cannot cut is the pay — and by its philosophy nothing of its people's at all until its
   // losses have run for quarters: CORP.myway.philosophy.keepQuarters; it pushes on till then)
   const patient = M.philosophy && (s.lossQ || 0) < M.philosophy.keepQuarters && runway >= 2;
@@ -544,12 +565,69 @@ function partnerProposals(W, o, mw, out, { dept, by }) {
   const who = d ? (d.named.negotiator >= 0 ? d.named.negotiator : d.named.buyer >= 0 ? d.named.buyer : d.named.liaison >= 0 ? d.named.liaison : d.head) : by('plan');
   const pull = Math.max(0, mw.ip.heat * mw.ip.brand), be = CORP.breakeven(o.id, c.fee), last = c.last;
   if (c.on) {
-    const losing = last && last.on && last.margin < 0, shame = mw.ip.brand < 0.33;
+    const losing = last && last.on && last.margin < 0, shame = mw.ip.brand < 0.33, share = last && last.on ? last.margin / Math.max(1, last.fee) : null;
+    const [lo, hi] = CORP.scaleRange(o.id), size = c.scale || 1, step = M.scale.step;
+    // (its size: a bigger contract when the characters sell far beyond the fee, a smaller one when they barely pay it)
+    if (share !== null && share > 0.8 && pull >= 1 && size * step <= hi + 1e-9) out.push({ kind: 'license', title: `MY WAYとのIP契約の規模拡大（コラボの利益が契約料の${Math.round(share * 100)}%：×${size.toFixed(2)}→×${(size * step).toFixed(2)}）`,
+      effect: [{ kind: 'license', action: 'scale', mult: step, why: 'コラボ商品の売れ行き好調' }], cost: 0, risk: 0.2, gain: 0.05 + Math.min(0.2, (share - 0.8) * 0.2), by: who, why: { share, size } });
+    else if (share !== null && share >= 0 && share < 0.1 && size / step >= lo - 1e-9) out.push({ kind: 'license', title: `MY WAYとのIP契約の規模縮小（コラボの利益が薄い：×${size.toFixed(2)}→×${(size / step).toFixed(2)}）`,
+      effect: [{ kind: 'license', action: 'scale', mult: 1 / step, why: '採算の改善' }], cost: 0, risk: 0.1, gain: 0.05, by: who, why: { share, size } });
+    // (its fee: asked down when it barely pays, offered up to keep a contract that pays it well — within MY WAY's band)
+    if (share !== null && share >= 0 && share < 0.25 && c.fee > c.base * M.talks.floor * 1.05) out.push({ kind: 'license', title: `MY WAYに契約料の引き下げを要請（−5%：コラボの利益が契約料の${Math.round(share * 100)}%）`,
+      effect: [{ kind: 'license', action: 'fee', mult: 0.95 }], cost: 0, risk: 0.1, gain: 0.04, by: who, why: { share } });
     if (losing || shame) out.push({ kind: 'license', title: `MY WAYとのIP契約の打ち切り（${shame ? 'ブランドの信用が失墜し「持つと恥ずかしい」状態' : `コラボの採算割れ：先月${NPC.money(last.margin)}`}）`,
       effect: [{ kind: 'license', action: 'cancel', why: shame ? 'ブランドの信用失墜のため' : '採算割れのため' }], cost: 0, risk: 0.15, gain: 0.08 + (losing ? Math.min(0.3, -last.margin / Math.max(1, last.fee)) : 0.15), by: who, why: { margin: last ? last.margin : 0, brand: mw.ip.brand } });
   } else if (pull >= be * 1.1) {
     out.push({ kind: 'license', title: `MY WAYとのIP契約の再締結（キャラクター人気の回復：年${NPC.money(c.fee)}）`, effect: [{ kind: 'license', action: 'sign', why: 'キャラクター人気の回復を受けて' }], cost: 0, risk: 0.25, gain: 0.06 + Math.min(0.2, (pull / be - 1) * 0.3), by: who, why: { pull, breakeven: be } });
   }
+}
+// A company's money and its contracts, its people's to decide (corp-model decided): テネシスファンド applied to when
+// its money runs short (its review may turn it down), loans paid back early when it has plenty, more borrowed to grow
+// on when it does well and its money is thin, the dividends' share up or down, テネシスリサーチ left when its fee weighs
+// on a month in the red and joined again when it pays
+function moneyProposals(W, o, s, out, { pl, ytd, runway, behind, dept, by, ctx, day }) {
+  const id = o.id, cfo = o.officers[1] >= 0 ? o.officers[1] : by('acct') >= 0 ? by('acct') : by('plan');
+  const debt = (s.loans || []).filter((l) => !l.research).reduce((n, l) => n + l.amt, 0);
+  const corp = ctx.corp, F = corp && corp.fund, fy = CORP.fyOf(day), mine = F && F.by && F.by[id];
+  const fundOpen = corp && corp.co.tenesice && !corp.co.tenesice.dead && day >= CORP.dayAt(2026, 11, 3) && !(mine && mine.fy === fy && mine.count >= 2);
+  if (fundOpen && (runway < 3 || (pl.op < 0 && runway < 5))) out.push({ kind: 'fund', title: `テネシスファンドへの融資申請（手元資金 ${runway.toFixed(1)}か月分・6か月分の費用まで）`, effect: [{ kind: 'fund', action: 'apply' }], cost: 0, risk: 0.1, gain: 0.1 + Math.max(0, 3 - runway) * 0.06, by: cfo, why: { runway } });
+  if (debt > 0 && runway > 8) out.push({ kind: 'loan', title: `借入金の繰上げ返済（残高 ${NPC.money(debt)}・支払利息の削減）`, effect: [{ kind: 'loan', action: 'repay', share: 0.5 }], cost: 0, risk: 0.05, gain: 0.04, by: cfo, why: { debt, runway } });
+  if (behind > 1.1 && runway > 2 && runway < 6 && pl.op > 0) out.push({ kind: 'loan', title: 'テネシスから成長資金を借入（3か月分の費用・設備投資を20%拡大）', effect: [{ kind: 'loan', action: 'borrow', months: 3 }, { kind: 'budget', key: 'capex', mult: 1.2 }], cost: 0, risk: 0.3, gain: 0.06, by: by('plan'), why: { behind, runway } });
+  const pm = s.payoutMult || 1;
+  if (ytd.net > 0 && runway > 7 && pm < 1.4) out.push({ kind: 'payout', title: '増配（配当性向を1割引き上げ：利益を株主に還元）', effect: [{ kind: 'payout', mult: 1.1 }], cost: 0, risk: 0.1, gain: 0.04, by: cfo, why: { runway, payout: pm } });
+  else if ((ytd.net < 0 || runway < 3) && pm > 0.6) out.push({ kind: 'payout', title: '減配（配当性向を1割引き下げ：手元資金を厚く）', effect: [{ kind: 'payout', mult: 0.9 }], cost: 0, risk: 0.15, gain: 0.05, by: cfo, why: { runway, payout: pm } });
+  // テネシスリサーチ (its three members only)
+  const R = corp && corp.research, member = R && R.on && ['magita', 'yosida', 'wazima'].includes(id);
+  if (member) {
+    const left = R.out && R.out[id], fee = 10e6 * 30 * ((corp.circ && corp.circ.scale) || 1);
+    if (!left && pl.op < 0 && fee > Math.max(1, pl.sales) * 0.03) out.push({ kind: 'research', title: `テネシスリサーチからの脱退（参加費 月${NPC.money(fee)}の負担・今月は赤字）`, effect: [{ kind: 'research', action: 'leave' }], cost: 0, risk: 0.35, gain: 0.05, by: by('rd') >= 0 ? by('rd') : cfo, why: { op: pl.op } });
+    else if (left && pl.op > 0 && runway > 3) out.push({ kind: 'research', title: 'テネシスリサーチへの再参加（研究の加速と毎日の融資）', effect: [{ kind: 'research', action: 'join' }], cost: fee, risk: 0.2, gain: 0.07, by: by('rd') >= 0 ? by('rd') : by('plan'), why: { op: pl.op } });
+  }
+}
+// The AI 経営アドバイザー (Workers AI, server/core/npc-ai.js 'decide'): a company's choices asked of it as its meeting
+// ends (once a week at most), its answer — the number of one — read at the next (`W.aiAdvice`: the host's, null
+// without the AI) and weighed there; the matching proposal by its kind and the start of its title
+const ADVICE_DAYS = 7;
+function askAdvice(W, o, s, list, day) {
+  const A = W.aiAsked || (W.aiAsked = {}), was = A[o.id];
+  if (!W.aiAdvice || (was && day - was.day < ADVICE_DAYS)) return;
+  const titles = list.slice(0, 6).map((x) => x.title);
+  const monthly = Math.max(1, (s.n * s.unit + s.budget.place + s.budget.rd + s.budget.ads + s.budget.other) / 12);
+  const pl = CORP.plOf(Object.fromEntries(Object.entries(s.per.m || {}).filter(([k]) => !/^cf:/.test(k))));
+  const state = `手元資金は費用の${(((s.bal.cash || 0) + (s.bal.bonds || 0)) / monthly).toFixed(1)}か月分、今月の売上${NPC.money(Math.round(pl.sales))}・営業利益${NPC.money(Math.round(pl.op))}、借入${NPC.money((s.loans || []).reduce((n, l) => n + l.amt, 0))}、社員${s.n}人、士気${Math.round(s.morale * 100)}%`;
+  A[o.id] = { day, titles, kinds: list.slice(0, 6).map((x) => x.kind) };
+  W.ai.push({ kind: 'decide', company: o.id, name: o.name, day, state, options: titles });
+}
+function adviceFor(W, id, list) {
+  const asked = W.aiAsked && W.aiAsked[id];
+  if (!W.aiAdvice || !asked || asked.used) return null;
+  const a = W.aiAdvice(id, asked.day);
+  const n = a ? parseInt(String(a).replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).match(/\d+/) || [0], 10) : 0;
+  if (!(n >= 1 && n <= asked.titles.length)) return null;
+  asked.used = true;
+  const want = asked.titles[n - 1], kind = asked.kinds[n - 1];
+  const p = list.find((x) => x.title === want) || list.find((x) => x.kind === kind && x.title.slice(0, 6) === want.slice(0, 6));
+  return p ? { p, n, title: want } : null;
 }
 // Each quarter MY WAY's 交渉係 meets each partner's on its fee: MY WAY asks more while its characters pull well and
 // the partner earns on them, less to keep a partner that barely does; the partner wants less while it earns little on

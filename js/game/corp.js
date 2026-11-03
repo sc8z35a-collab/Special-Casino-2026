@@ -332,6 +332,17 @@
         { id: 'tenesice', name: 'テネシス（公式看板キャラクターの独占契約）', license: true },
         { id: 'dtrade', name: 'Dtrade（カジノスロットの冬仕様外装・季節限定スキン）', license: true },
         { id: 'riru', name: 'RIRUスタジオ（新興ゲームへのIP使用権許諾・コラボ）', license: true },
+        // (from 2026-11-03 every one of the thirteen is its partner, and the local companies and both countries may be)
+        { id: 'yosida', name: 'YOSIDA（コラボ車 S6 WAY・限定ラッピング車）', license: true },
+        { id: 'wazima', name: 'WAZIMA（キャラクターデザイン部品・工場見学ツアー）', license: true },
+        { id: 'daizin', name: 'DAIZIN（VIPラウンジのキャラクター空間・限定ロイヤルコイン）', license: true },
+        { id: 'citywork', name: 'シティーワーク（求人サイトの公式キャラクター）', license: true },
+        { id: 'speedeed', name: 'スピーディード（バイトアプリの公式キャラクター）', license: true },
+        { id: 'ipLocal', name: '地元企業32社とのIP契約', license: true },
+        { id: 'ipNation', name: 'ヴェルノア国とのIP契約（国の公式キャラクター）', license: true },
+        { id: 'ipAsuka', name: 'アスカ国とのIP契約（国の公式キャラクター）', license: true },
+        // (the collaboration cars: MAGITA's and YOSHIDA's share of their profit to MY WAY — PRODUCTS.cars `collab`)
+        { id: 'collabCars', name: 'コラボ車の利益配分（MAGITA 4:6・YOSHIDA 3:7）', license: true },
         { id: 'direct', name: '直営ショールーム・その他（旗艦店での直販・他社ライセンス）', share: 2500000000 / 45000000000, cost: 0, beta: 1.1 },
         // the players' profile icons (アイコン) bought in the game: its characters' (the price, all of it)
         { id: 'icons', name: 'アイコンの販売（プレイヤー）', player: ['icons'] }
@@ -417,10 +428,49 @@
       magita: { fee: 6000000000, lift: 1.8, cost: 0.35, what: 'オリキャラデザイン車・特別仕様エンジンの共同開発' },
       carowner: { fee: 4000000000, lift: 1.8, cost: 0.3, what: 'オリキャラデザイン車の販売' },
       ice: { fee: 6500000000, lift: 1.9, cost: 0.15, what: '世界1位ゲームへのIP使用権許諾・コラボ' },
-      tenesice: { fee: 6000000000, lift: 1.6, cost: 0.05, what: '公式看板キャラクターの独占契約' },
+      // (Tenesice's alone a 超大型IP契約 from 2026-11-03: far bigger than anyone's, and up to four times its size —
+      // `huge`; `fee0` its fee before)
+      tenesice: { fee: 20000000000, fee0: 6000000000, lift: 1.5, cost: 0.05, huge: true, what: '公式看板キャラクターの独占契約（超大型IP契約：全支店・カード・ATM・アプリ）' },
       dtrade: { fee: 3500000000, lift: 1.8, cost: 0.1, what: 'カジノスロットの冬仕様外装・季節限定スキン' },
-      riru: { fee: 1500000000, lift: 2.2, cost: 0.15, what: '新興ゲームへのIP使用権許諾・コラボ' }
+      riru: { fee: 1500000000, lift: 2.2, cost: 0.15, what: '新興ゲームへのIP使用権許諾・コラボ' },
+      // (the rest of the thirteen, from 2026-11-03: `late`)
+      yosida: { fee: 2500000000, lift: 2, cost: 0.35, late: true, what: 'コラボ車（S6 WAY）・限定ラッピング車' },
+      wazima: { fee: 1200000000, lift: 1.9, cost: 0.3, late: true, what: 'キャラクターデザイン部品・工場見学ツアー' },
+      daizin: { fee: 2000000000, lift: 1.8, cost: 0.2, late: true, what: 'VIPラウンジのキャラクター空間・限定ロイヤルコイン' },
+      citywork: { fee: 800000000, lift: 1.6, cost: 0.1, late: true, what: '求人サイトの公式キャラクター' },
+      speedeed: { fee: 600000000, lift: 1.6, cost: 0.1, late: true, what: 'バイトアプリの公式キャラクター' }
     },
+    // the day the thirteen all became its partners and Tenesice's became its 超大型IP契約 (its seven partners before
+    // at their first fees — `fee0` — and its showroom made its $45B)
+    allFrom: [2026, 11, 3],
+    // a contract's size (契約規模): its fee and what the partner sells of the characters both times `scale` — each
+    // partner may take it up or down a `step` at a time, within `range` (Tenesice's 超大型 `huge`)
+    scale: { step: 1.25, range: [0.4, 2], huge: [0.5, 4] },
+    // MY WAY's 交渉係 talks with every partner every day (`daily`): most days nothing comes of it; on a day that it does
+    // (`odds`), it asks more of a partner that earns well on its characters (`rich`: its margin on them against the fee)
+    // — a bigger contract when it earns far more (`big`) —, gives a little to one that loses on them (or takes the
+    // contract down a size), within the fee's band (talks). How far a side gives: its ビジネス友好度.
+    daily: { odds: 0.08, rich: 0.4, big: 1.2, poor: 0, up: [0.01, 0.04], down: [0.01, 0.03] },
+    // the local companies' contracts (the 32 — not the banks): a fee of `share` of a year's sales at its size,
+    // its goods `lift` times it at `cost` of their price (sold to the people as fans); one signs when the characters
+    // pull `pull` or more and it has `months` of its costs in hand, gives up after `badMonths` of losing on it
+    locals: { share: 0.03, min: 30000000, lift: 1.8, cost: 0.3, pull: 0.85, months: 1.5, badMonths: 2, again: 1.2 },
+    // the two countries' (国の公式キャラクター): its fee a year (by its size: a country of 50,000 / アスカ's own), and
+    // what it brings — the people's love of the characters there (`pull`: × 1 + pull × its size) and, アスカ国's,
+    // the trips to アスカ・リゾート (`trips`) —; signed while its treasury has `months` of its spending to spare
+    nations: { vernoa: { fee: 3000000000, pull: 0.12, months: 3 }, asuka: { fee: 4000000000, pull: 0.1, trips: 0.15, months: 3 } },
+    // MY WAY grows (成長企業): what it has beyond its equity's aim (`equity`: $1B in a bubble of its own to $5B in hard
+    // times, × the country's size) into its economy each month — `months` to spend it at most, `cap` a month at most —:
+    // the local companies about it (`parts.sphere`), research (`rd`), its people (`people`: a bonus), 株式会社YAMATO
+    // (`yamato`: 世界一のビジネスパートナー, besides the `yamato` it gives each month); in its 社内バブル (its sales up
+    // `bubble.growth` a month or its characters' pull `bubble.pull` or more, or a boom of `bubble.boom`) it borrows of
+    // Tenesice up to `bubble.line` of its equity and a year's `bubble.sales` of its sales to grow on (its people,
+    // its buildings, its ads); its shares up `ads.gain` or more over the month, `ads.of` of its month's sales more
+    // into advertising (a sixth of it its budget's for good)
+    grow: { equity: [1000000000, 5000000000], months: 6, cap: 4000000000, parts: { sphere: 0.35, rd: 0.2, people: 0.3, yamato: 0.15 },
+      yamato: 150000000,
+      bubble: { growth: 0.08, pull: 1.15, boom: 1.1, line: 2, sales: 0.5, capex: 0.45, ads: 0.25, people: 0.03 },
+      ads: { gain: 0.03, of: 0.4, keep: 6 } },
     direct: 2500000000,
     talks: { step: 0.08, floor: 0.5, cap: 1.6 },
     hype: [0.2, 0.35], per: 0.15,
@@ -453,10 +503,36 @@
     philosophy: { keepQuarters: 4, raiseBy: 0.6, spread: [0.5, 1.5], boom: 0.03, margin: 0.4, raise: 0.3, top: 12, payout: 0.9, sphere: 0.25, floor: 0.1, grow: 0.03 }
   };
   // a partner's breakeven heat × brand at its contract's fee now
+  // (`fee`: the fee at its size 1; the size doubles both its fee and what is sold, so it does not move this)
   function breakeven(id, fee) {
     var p = MYWAY.partners[id];
     if (!p) return 1;
     return (fee === undefined ? p.fee : fee) / (p.fee * p.lift * (1 - p.cost));
+  }
+  // a contract's size range (Tenesice's the bigger)
+  function scaleRange(id) { var p = MYWAY.partners[id]; return p && p.huge ? MYWAY.scale.huge : MYWAY.scale.range; }
+  // A day's talk between MY WAY and a partner (`c`: its contract — `fee` at size 1, `base`, `scale` —; `t`: `share`,
+  // what it earned on the characters beyond its fee last month against the fee; `pull` their pull now; `tie` the two
+  // companies' ビジネス友好度; `range` its size's; `u` three chances of the day). What they agreed: the fee's and the
+  // size's multipliers (1: nothing changed), and what was said.
+  function mywayTalk(c, t) {
+    var D = MYWAY.daily, T = MYWAY.talks, S = MYWAY.scale, r = t.range || S.range, u = t.u || [0.5, 0.5, 0.5];
+    var res = { fee: 1, scale: 1, said: '' };
+    if (u[0] >= D.odds) return res;
+    var give = Math.max(0.2, Math.min(1, (t.tie === undefined ? 50 : t.tie) / 70)), size = c.scale || 1;
+    var pick = function (a, k) { return a[0] + (a[1] - a[0]) * k; };
+    if (t.share >= D.big && t.pull >= 1 && size * S.step <= r[1] + 1e-9 && u[1] < 0.5) { res.scale = S.step; res.said = '契約規模の拡大で合意（売れ行き好調）'; }
+    else if (t.share >= D.rich && t.pull >= 0.9) {
+      var up = pick(D.up, u[2]) * give;
+      if (c.fee * (1 + up) <= c.base * T.cap) { res.fee = 1 + up; res.said = '契約料の引き上げで合意（パートナーの利益が大きい）'; }
+    } else if (t.share < D.poor) {
+      if (size / S.step >= r[0] - 1e-9 && u[1] < 0.4) { res.scale = 1 / S.step; res.said = '契約規模の縮小で合意（採算の改善）'; }
+      else {
+        var down = pick(D.down, u[2]) * (1.2 - give * 0.5);
+        if (c.fee * (1 - down) >= c.base * T.floor) { res.fee = 1 - down; res.said = '契約料の引き下げで合意（パートナーの採算割れ）'; }
+      }
+    }
+    return res;
   }
 
   /* ------------------------------------------------------------- the products --- */
@@ -469,7 +545,14 @@
     // what selling one costs the seller (販売費): kept inside its books, never added to the price
     sell: { cars: 150000, items: 2500 },
     cars: {
-      'mercedes-amg-one-white': { maker: 'magita', cost: 120000000, buy: 280000000, excl: 10000000, npc: 15 },
+      // (its price cut to $120M: MAGITA bears it — its materials as they were —, the dealer's $10M as it was)
+      'mercedes-amg-one-white': { maker: 'magita', cost: 120000000, buy: 108000000, excl: 2000000, npc: 30 },
+      // MY WAY's collaboration cars (from `from`: 2026-11-03): sold at Car Owner at a loss to the dealer (its 専売費 and
+      // 仕入れ価格 above the price: 販売店側純利益 −$6M, −$5M, −$7M), the maker's profit on each (仕入れ価格 + 専売費 −
+      // 原価) shared with MY WAY (`collab.share` MY WAY's: MAGITA 4:6)
+      'magita-speed-r-feat': { maker: 'magita', cost: 2500000, buy: 15500000, excl: 8000000, npc: 160, from: [2026, 11, 3], collab: { with: 'myway', share: 0.6 } },
+      'magita-k120-feat': { maker: 'magita', cost: 3800000, buy: 32000000, excl: 8000000, npc: 80, from: [2026, 11, 3], collab: { with: 'myway', share: 0.6 } },
+      'magita-dr1-feat': { maker: 'magita', cost: 8000000, buy: 53000000, excl: 10000000, npc: 40, from: [2026, 11, 3], collab: { with: 'myway', share: 0.6 } },
       'lamborghini-revuelto': { maker: 'magita', cost: 10000000, buy: 60000000, excl: 3000000, npc: 110 },
       'nissan-gt-r': { maker: 'magita', cost: 9000000, buy: 30000000, excl: 2000000, npc: 260 },
       'lamborghini-kuia-spyder': { maker: 'magita', cost: 5000000, buy: 17000000, excl: 13000000, npc: 90 },
@@ -486,7 +569,9 @@
       'yoshida-h9c': { maker: 'yosida', cost: 4300000, buy: 7500000, excl: 0, npc: 500 },
       'yoshida-s5': { maker: 'yosida', cost: 1500000, buy: 2500000, excl: 0, npc: 2600 },
       'yoshida-s6': { maker: 'yosida', cost: 1000000, buy: 1600000, excl: 0, npc: 3200 },
-      'yoshida-k10e': { maker: 'yosida', cost: 3000000, buy: 4500000, excl: 0, npc: 1200 }
+      'yoshida-k10e': { maker: 'yosida', cost: 3000000, buy: 4500000, excl: 0, npc: 1200 },
+      // (YOSHIDA S6 WAY, in the S6's place: YOSIDA's profit on it 3:7 with MY WAY; the dealer's $1.5M)
+      'yoshida-s6-way': { maker: 'yosida', cost: 3800000, buy: 6000000, excl: 0, npc: 2400, from: [2026, 11, 3], collab: { with: 'myway', share: 0.7 } }
     },
     items: {
       omamori: { maker: 'jinx', cost: 1000, npc: 50000 },
@@ -724,6 +809,9 @@
     sGacha: ['ガチャ景品の提供（自社負担）', 's'], 'c:rebuy': ['プレイヤーからの買い取り（VIP券・チケット・ガレージコイン）', 'c'],
     // (MY WAY's support of the local companies of its economy: their funding)
     sSupport: ['MY WAY経済圏の企業への支援', 's'],
+    // (MY WAY grows: what it puts into those about it, its research and its people beyond its equity's aim; its gift to
+    // 株式会社YAMATO; the advertising its shares' rise paid for)
+    sGrow: ['成長投資（周辺企業・研究・社員への投資）', 's'], sYamato: ['株式会社YAMATOへの資金援助', 's'],
     xBad: ['貸倒損失（取引先の破産）', 'xl'], xEstate: ['破産管財人による事業継続の収入', 'xi'], xSale: ['事業譲渡益（破産管財人）', 'xi'],
     goodwill: ['のれん（事業の譲受け）', 'a'], sGoodwill: ['のれん償却', 's'], xCourt: ['破産手続の予納金', 'xl']
   };
@@ -810,7 +898,7 @@
   BR.CORP = {
     DAY_MS: DAY_MS,
     companies: COMPANIES, company: company, listed: function () { return COMPANIES.filter(function (c) { return c.listed; }); },
-    players: PLAYERS, features: FEATURES, feature: function (id) { return FEATURES.filter(function (x) { return x.id === id; })[0] || null; }, bankruptcy: BANKRUPTCY, magita: MAGITA, yosida: YOSIDA, questFee: questFee, wazima: WAZIMA, myway: MYWAY, breakeven: breakeven, makers: MAKERS, firstLot: firstLot, staffing: STAFFING, tech: TECH, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
+    players: PLAYERS, features: FEATURES, feature: function (id) { return FEATURES.filter(function (x) { return x.id === id; })[0] || null; }, bankruptcy: BANKRUPTCY, magita: MAGITA, yosida: YOSIDA, questFee: questFee, wazima: WAZIMA, myway: MYWAY, breakeven: breakeven, scaleRange: scaleRange, mywayTalk: mywayTalk, makers: MAKERS, firstLot: firstLot, staffing: STAFFING, tech: TECH, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
     ranks: RANKS, money: MONEY, tax: TAX,
     accounts: ACCOUNTS, account: account, pl: PL, bs: BS, cf: CF, plOf: plOf,
     // the 決算発表: this many days after a quarter's end, at 15:00 Japan time (6:00 UTC)

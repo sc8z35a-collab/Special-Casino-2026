@@ -15,6 +15,11 @@
   function has(id) {
     return BR.CONFIG.cars.some(function (c) { return c.id === id && !!c.model; });
   }
+  // the model a car is shown in: its own, or the one of the car it is built on (`look`)
+  function fileOf(id) {
+    var c = BR.CONFIG.cars.filter(function (x) { return x.id === id; })[0];
+    return (c && c.look) || id;
+  }
   function build() {
     var canvas = document.createElement('canvas');
     canvas.className = 'g3d-canvas';
@@ -58,7 +63,7 @@
     if (!cars[id]) {
       var entry = cars[id] = { used: ++used, model: null };
       entry.promise = new Promise(function (resolve, reject) {
-        new T.GLTFLoader().setMeshoptDecoder(T.MeshoptDecoder).load('img/3d/cars/' + id + '.glb', function (r) {
+        new T.GLTFLoader().setMeshoptDecoder(T.MeshoptDecoder).load('img/3d/cars/' + fileOf(id) + '.glb', function (r) {
           var obj = r.scene, box = new T.Box3().setFromObject(obj);
           obj.scale.multiplyScalar(4.6 / box.getSize(new T.Vector3()).x);
           box.setFromObject(obj);

@@ -30,9 +30,10 @@
   var sel = '';        // the car Car Owner shows
   var tick = 0;        // the countdowns
 
-  function catalog() { return BR.CONFIG.cars; }
+  // (the shop's: every car but those taken off it — the セダン, the K110 —; a car's own by its id, any of them)
+  function catalog() { return BR.CONFIG.cars.filter(function (c) { return !c.hidden; }); }
   function model(id) {
-    var list = catalog();
+    var list = BR.CONFIG.cars;
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;
   }

@@ -177,11 +177,11 @@ test('buy-back and renting out: the day\'s price, customers every 5 hours, back 
   const { RULES, carBuyback } = await import('../core/rules.js');
   const p = await register('Rent7');
   setUser(p.me.id, { dollars: 200000000, garage_extra: 3 });
-  const buy = async () => (await call('POST', '/api/cars/buy', { token: p.token, body: { model: 'blue-lightning' } })).car.id;
+  const buy = async () => (await call('POST', '/api/cars/buy', { token: p.token, body: { model: 'nissan-gt-r' } })).car.id;
   const [a, b] = [await buy(), await buy()];
   let g = await call('GET', '/api/cars', { token: p.token });
-  const offer = g.buyback['blue-lightning'];
-  assert.deepEqual(offer, carBuyback(RULES.cars.find((c) => c.id === 'blue-lightning')));
+  const offer = g.buyback['nissan-gt-r'];
+  assert.deepEqual(offer, carBuyback(RULES.cars.find((c) => c.id === 'nissan-gt-r')));
   assert.ok(offer.disposal ? offer.pct >= 2.5 && offer.pct <= 10 : offer.pct >= 10 && offer.pct <= 35);
   // rent both out (as many as one has)
   for (const id of [a, b]) assert.ok((await call('POST', '/api/cars/rent', { token: p.token, body: { car: id, action: 'start' } })).car.rent);
@@ -202,7 +202,7 @@ test('buy-back and renting out: the day\'s price, customers every 5 hours, back 
   const before = dollars(p.me.id);
   const got = await call('POST', '/api/cars/collect', { token: p.token, body: {} });
   assert.equal(dollars(p.me.id), before + got.paid);
-  const offer2 = (await call('GET', '/api/cars', { token: p.token })).buyback['blue-lightning'];
+  const offer2 = (await call('GET', '/api/cars', { token: p.token })).buyback['nissan-gt-r'];
   assert.equal((await call('POST', '/api/cars/sell', { token: p.token, body: { car: a, price: offer2.price + 100 } })).error.code, 'price_changed');
   const sold = await call('POST', '/api/cars/sell', { token: p.token, body: { car: a, price: offer2.price } });
   assert.equal(sold.paid, offer2.price);

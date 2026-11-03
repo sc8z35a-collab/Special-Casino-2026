@@ -13,6 +13,7 @@ import * as asukaModel from './asuka.js';
 import { boomOf } from './npc-macro.js';
 import * as heart from './npc-heart.js';
 import * as research from './npc-research.js';
+import * as deals from './npc-ipdeals.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const YEAR = 365;
@@ -134,6 +135,8 @@ export function fromCompanies(W, ext, day) {
   if (ext.bankFree !== undefined) W.bankRoom = Math.max(0, ext.bankFree);
   // (テネシスリサーチ: what Tenesice sent for its facilities — server/core/npc-research.js)
   if (ext.research) research.funded(W, ext.research);
+  // (MY WAY's gift to 株式会社YAMATO, its partner of all the world's: アスカ国's; no YAMATO, the local trade's)
+  if (ext.yamato > 0 && !asukaModel.yamatoEarn(W, ext.yamato, 'myway')) W.sector.cash += ext.yamato;
   // (the players' part of the market's money: theirs; and what the players paid the local businesses back)
   if (ext.toPlayers) W.sum.toPlayers += ext.toPlayers;
   if (ext.fromPlayers) W.sum.fromPlayers += ext.fromPlayers;
@@ -303,14 +306,22 @@ function collabOf(W, ctx) {
   if (!mw || mw.dead || !mw.ip) return null;
   const M = CORP.myway, all = Object.values(M.partners).reduce((n, x) => n + x.fee * x.lift, 0) + M.direct;
   const list = [['myway', 'direct', M.direct / all]];
-  for (const [id, c] of Object.entries(mw.ip.contracts)) if (c.on && M.partners[id]) list.push([id, 'myway', M.partners[id].fee * M.partners[id].lift / all]);
+  // (each partner by the size of its contract: npc-ipdeals.js has the local companies')
+  for (const [id, c] of Object.entries(mw.ip.contracts)) if (c.on && M.partners[id]) list.push([id, 'myway', (c.base || M.partners[id].fee) * (c.scale || 1) * M.partners[id].lift / all]);
+  for (const x of deals.collabList(W, all)) list.push(x);
+  // (a country from before all thirteen were partners: what its people buy of them grows with what the new ones sell —
+  // the seven's and the showroom's then, $85.05B a year)
+  if (W.cal.collab !== undefined && W.cal.collabAll === undefined) W.cal.collabAll = 85.05e9;
+  if (W.cal.collab !== undefined && W.cal.collabAll !== all) { W.cal.collab = Math.round(W.cal.collab * all / W.cal.collabAll); W.cal.collabAll = all; }
   if (W.cal.collab === undefined) {
     const P = W.P;
     let households = 0;
     for (let i = 0; i < P.n; i++) if (P.hh[i] === i) households += Math.pow(memberList(P, i).length, 0.75) * Math.pow(Math.max(0.02, (P.cash[i] + 1) / 60000000), 0.22) * (1 - 0.35 * tr(P, i, T.thrift));
     W.cal.collab = Math.round(all * W.scale / YEAR / Math.max(1, households));
+    W.cal.collabAll = all;
   }
-  return { list, pull: Math.max(0, mw.ip.heat * mw.ip.brand) };
+  // (ヴェルノア's own contract with MY WAY: its people love the characters the more)
+  return { list, pull: Math.max(0, mw.ip.heat * mw.ip.brand) * deals.pullLift(W) };
 }
 export function dayStart(W, day, r, ctx) {
   const P = W.P, t = CORP.ymd(day), age = (i) => ageOf(P, i, day);
@@ -321,6 +332,8 @@ export function dayStart(W, day, r, ctx) {
   if (P.emo2) heart.day(W, day, r);
   // テネシスリサーチ's day (its researchers taken on, the land's rent, the pay, YAMATO's bills: npc-research.js)
   research.day(W, day, r, ctx);
+  // MY WAY's contracts with the local companies and the two countries (npc-ipdeals.js): their fees, their talks
+  deals.day(W, day, r, ctx);
   if (t.d === 1) month(W, day, r, ctx);
   const fans = collabOf(W, ctx);
   // living: the day's food and things of the household (ジンクス's goods, the local shops'), by its size and money
@@ -341,7 +354,10 @@ export function dayStart(W, day, r, ctx) {
       // (by what the household lets itself spend on pleasures, and the more for one who buys to be seen: 代償消費)
       const mine = P.emo2 ? Math.max(0.4, Math.min(3, Math.sqrt((Math.max(0, P.fund[i * 4 + 2]) + Math.max(0, P.wind[i]) * 0.1) / Math.max(1, W.cal.leisure)))) * (1 + 0.8 * heart.tendency(P, i, 'compensate') * heart.lowEsteem(P, i)) : 1;
       const k = W.cal.collab * Math.pow(size, 0.75) * wealth * thrift * street * (0.4 + 1.2 * tr(P, i, T.impulse)) * fans.pull * mine;
-      if (k >= 1) for (const [co, stream, part] of fans.list) econ.buy(W, i, day, co, stream, Math.round(k * part), false);
+      if (k >= 1) for (const [co, stream, part] of fans.list) {
+        if (co.startsWith('local:')) deals.sell(W, i, co.slice(6), Math.round(k * part));
+        else econ.buy(W, i, day, co, stream, Math.round(k * part), false);
+      }
     }
   }
   // the unemployment benefit (失業手当), a day of it

@@ -1,5 +1,6 @@
 // The few lines of the country written by Cloudflare Workers AI (server/core/npc.js): a new mayor's first speech,
-// a new business's announcement, the thoughts of the people the town talks about, a word in 街の声. Within 90% of
+// a new business's announcement, the thoughts of the people the town talks about, a word in 街の声 — and the AI
+// 経営アドバイザー's choice among a company's proposals (a number: weighed at its next meeting, npc-org.js). Within 90% of
 // what the plan includes a day (10,000 Neurons a day: what is used is counted by the tokens sent and written, at the
 // model's own rates), never more; without the binding (the Node server) or past the day's share, the patterns of
 // server/core/npc-text.js write them instead.
@@ -67,6 +68,10 @@ function promptOf(job) {
     case 'voice': return { system, user: `${job.age}歳・${job.job}の${job.name}さんの、今の心の声を1文で。状況：${job.mood}。`, max: 80 };
     case 'street': return { system, user: `${job.district}に住む${job.age}歳の住民の、${job.topic}についての短いつぶやきを1文で。`, max: 80 };
     case 'meeting': return { system, user: `${job.company}の会議「${job.title}」の議事録の要約を3文で。結論：${job.result}。`, max: 160 };
+    // (the AI 経営アドバイザー: one of a company's choices, by its number — server/core/npc-org.js askAdvice)
+    case 'decide': return {
+      system: 'あなたは架空の国「ヴェルノア共和国」の企業の経営アドバイザーです。実在の企業や人物は扱いません。会社の状況と議題の候補を読み、会社の長期的な成長と国の経済の循環のために今いちばん良い議題を1つ選び、その番号だけを半角数字で答えてください。説明は不要です。',
+      user: `会社：${job.company}\n状況：${job.state}\n候補：\n${(job.options || []).map((t, k) => `${k + 1}. ${t}`).join('\n')}`, max: 8 };
     default: return null;
   }
 }

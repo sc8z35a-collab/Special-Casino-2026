@@ -147,7 +147,9 @@ test('WAZIMA: MAGITA\'s share of research its sale, its own research cutting MAG
   assert.equal(sub, paid);
   // WAZIMA's sales to others are MAGITA's (what MAGITA paid it for the joint development left out); nothing owed between
   // them at a month's end
-  assert.ok(m.per.y['r:wazima'] > 0 && Math.abs(m.per.y['r:wazima'] - ((z.per.y['r:export'] || 0))) < 1e6, `${m.per.y['r:wazima']} ${z.per.y['r:export']}`);
+  // (and, since it became MY WAY's partner on 2026-11-03, what it sold of MY WAY's characters)
+  const others = (z.per.y['r:export'] || 0) + (z.per.y['r:myway'] || 0);
+  assert.ok(m.per.y['r:wazima'] > 0 && Math.abs(m.per.y['r:wazima'] - others) < 1e6, `${m.per.y['r:wazima']} ${others}`);
   // the joint development: a share of MAGITA's research is WAZIMA's sale
   assert.ok((z.per.y['r:codev'] || 0) > 0);
   // its research done: MAGITA's costs besides materials lower, never below the floor

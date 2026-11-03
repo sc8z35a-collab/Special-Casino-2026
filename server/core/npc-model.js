@@ -419,6 +419,8 @@ export function flowsFor(W, day) {
     asuka: asuka.flowsFor(W),
     // (テネシスリサーチ: what its facilities need of Tenesice today — server/core/npc-research.js)
     research: { need: research.need(W) },
+    // (MY WAY's share price at the last close and a month before: what it spends on advertising, corp-model mywayGrow)
+    mwPrice: W.mwPx && W.mwPx.length ? { now: W.mwPx[W.mwPx.length - 1], month: W.mwPx[0] } : null,
     // (海外's money, and the local trade's, for what the companies sell them: server/core/corp-model.js abroadBuys, sectorBuys)
     abroad: Math.max(0, W.abroad.cash), sectorCash: Math.max(0, W.sector.cash),
     // (what Tenesice can still lend: its own money as of the last close, less the people's and the country's loans since)
@@ -481,6 +483,8 @@ export function nextDay(W, day, ext, ctx) {
   W._staff = null;
   // the times' mood and the prices (server/core/npc-macro.js): of the day just closed, before its numbers are counted
   macroDay(W, next, ctx);
+  // (MY WAY's share price, a month of closes)
+  if (ctx && ctx.stockPrice) { const px = ctx.stockPrice('myway'); if (px > 0) { const h = W.mwPx || (W.mwPx = []); h.push(px); if (h.length > 31) h.shift(); } }
   stats(W, next);
   W.nation.hist.push({ day: next, prices: W.stats.prices, cash: W.nation.cash, debt: W.nation.debt, fund: W.nation.fund.cash + W.nation.fund.bonds, in: W.nation.day.in, out: W.nation.day.out });
   if (W.nation.hist.length > 400) W.nation.hist.shift();
@@ -548,7 +552,8 @@ function restock(W, day) {
 // a car sold out: its next lot ordered (once: nothing more while one is on its way)
 export function orderCar(W, id, day) {
   const s = W.stock, pr = CORP.products.cars[id], m = pr && CORP.makers[pr.maker];
-  if (!m || s.orders.some((x) => x.id === id)) return;
+  // (none of a car no longer sold)
+  if (!m || s.orders.some((x) => x.id === id) || !RULES.cars.some((c) => c.id === id && c.price > 0 && !c.ended)) return;
   s.lots = s.lots || {};
   const first = CORP.firstLot(id, W.scale), last = s.lots[id] || first;
   const lot = Math.min(first * m.maxGrow, Math.max(last + 1, Math.ceil(last * m.grow)));
@@ -652,7 +657,7 @@ export function card(W, i, day) {
 }
 
 // the plain data of a world (what is kept besides the people's columns)
-const SKIP = new Set(['P', 'AP', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners', 'knobChanged', 'carSold', 'closeIntoYamato', 'stateTake']);
+const SKIP = new Set(['P', 'AP', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners', 'knobChanged', 'carSold', 'closeIntoYamato', 'stateTake', 'aiAdvice']);
 export function metaOf(W) {
   const out = {};
   for (const [k, v] of Object.entries(W)) if (!SKIP.has(k) && typeof v !== 'function') out[k] = v;

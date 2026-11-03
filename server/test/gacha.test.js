@@ -8,13 +8,18 @@ import crypto from 'node:crypto';
 import { answerOnSocket } from '../core/socketapi.js';
 
 const EXPECTED = {
-  rare: [['lot', 30], ['royal', 20], ['seed', 0.01], ['grown-tree', 0.005], ['garage', 10], ['reset', 23.3], ['vip-week', 14], ['onvoro', 1.7], ['porsche', 0.5], ['random-car', 0.485]],
-  legendary: [['lot', 10], ['royal', 10], ['garage', 20], ['reset', 21.06], ['vip-week', 24], ['onvoro', 3.5], ['porsche', 2.8], ['random-car', 7.635], ['seed', 1], ['grown-tree', 0.005]],
+  // (the K110 — once the クイヤスパイダーGT — no longer given: its chance the ランダムな車's)
+  rare: [['lot', 30], ['royal', 20], ['seed', 0.01], ['grown-tree', 0.005], ['garage', 10], ['reset', 23.3], ['vip-week', 14], ['onvoro', 1.7], ['random-car', 0.985]],
+  legendary: [['lot', 10], ['royal', 10], ['garage', 20], ['reset', 21.06], ['vip-week', 24], ['onvoro', 3.5], ['random-car', 10.435], ['seed', 1], ['grown-tree', 0.005]],
   secret: [['lot', 10], ['royal-high', 19], ['royal', 8], ['garage', 8], ['reset', 10], ['vip-week', 24], ['random-car', 20], ['seed', 1]]
 };
 
 test('all three gacha tables match requested odds, total 100%, draw 2/6/20 slots and apply the 1.5x car campaign', () => {
-  assert.equal(GACHA.cars.length, 12);
+  // (every car a prize may be — a won one waiting to be taken too —; a ランダムな車 any of the 17 on sale, none that ended)
+  assert.equal(GACHA.cars.length, 22);
+  assert.equal(GACHA.pool.length, 17);
+  assert.ok(!GACHA.pool.some((c) => ['two-state-sedan', 'blue-lightning', 'lamborghini-kuia-spyder', 'porsche-kuia-spyder', 'yoshida-s6'].includes(c.id)));
+  assert.ok(GACHA.cars.some((c) => c.id === 'porsche-kuia-spyder' && c.name === 'MAGITA K110'));
   assert.equal(GACHA.slots, 2);
   assert.deepEqual(GACHA.kinds.map((k) => k.id), ['rare', 'legendary', 'secret']);
   for (const [kind, expected] of Object.entries(EXPECTED)) {
@@ -54,25 +59,25 @@ test('tier prices use a single 10% discount for 3 pulls and 25% for 10, without 
   assert.throws(() => GACHA.price('normal', 1), RangeError);
 });
 
-test('the random car category in every tier draws all 12 models, the cheaper the likelier (by one over the price)', () => {
-  const w = GACHA.cars.map((c) => 1 / GACHA.carPrice(c.id)), total = w.reduce((a, b) => a + b, 0);
+test('the random car category in every tier draws all 17 models on sale, the cheaper the likelier (by one over the price)', () => {
+  const D = GACHA.pool, w = D.map((c) => 1 / GACHA.carPrice(c.id)), total = w.reduce((a, b) => a + b, 0);
   for (const kind of GACHA.kinds.map((k) => k.id)) {
     const table = GACHA.odds(kind, false);
     const entry = table.findIndex((r) => r.id === 'random-car');
     const chance = (table.slice(0, entry).reduce((n, r) => n + r.chance, 0) + table[entry].chance / 2) / 100;
     let at = 0;
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < D.length; i++) {
       const mid = (w.slice(0, i).reduce((a, b) => a + b, 0) + w[i] / 2) / total;
       let k = 0;
       const pulls = GACHA.draw(kind, 1, false, false, () => k++ % 2 === 0 ? chance : mid);
-      assert.ok(pulls[0].rewards.every((r) => r.carId === GACHA.cars[i].id), `${kind} ${i}`);
+      assert.ok(pulls[0].rewards.every((r) => r.carId === D[i].id), `${kind} ${i}`);
       at++;
     }
-    assert.equal(at, 12);
+    assert.equal(at, 17);
   }
-  // (the onvoro, the cheapest, comes about 70 times as often as the MAGITA ONE（ホワイト）)
-  const one = GACHA.cars.findIndex((c) => c.id === 'mercedes-amg-one-white'), onvoro = GACHA.cars.findIndex((c) => c.id === 'onvoro');
-  assert.ok(w[onvoro] / w[one] > 70);
+  // (the onvoro comes about 28 times as often as the MAGITA ONE（ホワイト）at its $120M)
+  const one = D.findIndex((c) => c.id === 'mercedes-amg-one-white'), onvoro = D.findIndex((c) => c.id === 'onvoro');
+  assert.ok(w[onvoro] / w[one] > 28);
 });
 
 test('coin ranges reach their exact endpoints, including both distinct secret royal categories', () => {

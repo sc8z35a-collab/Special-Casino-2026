@@ -219,7 +219,7 @@ test('the operator site: the 企業 folder\'s apps answer operators only, with e
   assert.equal((await s.call('GET', `/api/ops/corp?rev=${all.rev}`, { token: boss.token })).same, true);
   const dealer = await s.call('GET', '/api/ops/corp/company?c=carowner', { token: boss.token });
   const one = dealer.products.find((x) => x.id === 'mercedes-amg-one-white');
-  assert.deepEqual([one.price, one.cost, one.buy, one.excl, one.sellerNet, one.selling], [300000000, 120000000, 280000000, 10000000, 10000000, 150000]);
+  assert.deepEqual([one.price, one.cost, one.buy, one.excl, one.sellerNet, one.selling], [120000000, 120000000, 108000000, 2000000, 10000000, 150000]);
   assert.equal(dealer.products.find((x) => x.id === 'two-state-sedan').ended, true);
   const maker = await s.call('GET', '/api/ops/corp/company?c=magita', { token: boss.token });
   assert.ok(maker.products.some((x) => x.id === 'engine-v3' && x.makerNet === 7900000 - 800000));

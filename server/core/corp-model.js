@@ -618,7 +618,7 @@ function tradeDay(w, s, p, d, flows, ch) {
       // each model's or item's customers outside the game (once the country lives: as far as abroad's money goes)
       for (const [id, pr] of Object.entries(CORP.products[x.products])) {
         const price = listPrice(x.products, id);
-        if (!pr.npc || !price) continue;
+        if (!pr.npc || !price || (pr.from && d < CORP.dayAt(...pr.from))) continue;
         let n = take(s, 'u:' + id, pr.npc * g * productLift(w, pr, x.beta ?? p.beta) / YEAR);
         if (circ) { n = abroadBuys(w, n * price, price) / price; sellProducts(w, s, x.id, x.products, id, n, n * price, true, 'npc'); }
         else sellProducts(w, s, x.id, x.products, id, n, n * price, false);
@@ -777,12 +777,29 @@ function supply(w, s, p) {
     w.mon[`b2b:${p.id}:${b.to}`] = (w.mon[`b2b:${p.id}:${b.to}`] || 0) + b.buy + b.excl;
     s.exclQ = s.exclQ || {};
     s.exclQ[b.to] = (s.exclQ[b.to] || 0) + b.excl;
+    // (a collaboration car: its maker's profit on it — 仕入れ価格 and 専売費 less what it cost — shared with MY WAY)
+    const pr = CORP.products[b.kind] && CORP.products[b.kind][b.id];
+    if (pr && pr.collab) collabShare(w, s, pr.collab, b.buy + b.excl - b.cost, b.n);
   }
   if (made) {
     const m = altasCost(w, made);
     post(s, [['c:materials', m], ['ap', -m]]);
     s.owe['*'] = (s.owe['*'] || 0) + m;
   }
+}
+// MY WAY's part of a collaboration product's profit (CORP.products `collab`: 60% of MAGITA's, 70% of YOSIDA's), owed to
+// it and paid within the terms as its IP fees are: the maker's cost (IP契約料), MY WAY's sale (コラボ車の利益配分)
+function collabShare(w, s, c, profit, n) {
+  const mw = w.co[c.with];
+  if (!mw || mw.dead || !(profit > 0)) return;
+  const x = Math.round(profit * c.share);
+  post(s, [['sLicense', x], ['ap', -x]]);
+  s.owe[c.with] = (s.owe[c.with] || 0) + x;
+  post(mw, [['ar', x], ['r:collabCars', -x]]);
+  if (w.ext) mw.pr.collabCars = (mw.pr.collabCars || 0) + x / 30;
+  const g = mw.collabCars || (mw.collabCars = {});
+  const k = g[s.id] || (g[s.id] = { n: 0, profit: 0, share: 0 });
+  k.n += n; k.profit += profit; k.share += x;
 }
 function materials(w, s, sold) {
   const n = take(s, 'materials', sold * s.materials * (s.lab ? s.lab.mult : 1) * (w.altasPrice || 1));
@@ -1137,7 +1154,9 @@ function treasury(w, s, p, d, out) {
         // (MY WAY: Tenesice's 15%, and no more than its line — half its equity, or what the lending desk set: what it
         // will not lend, it does not; out of money then, it files for 破産 at the end of this month: solvencyCheck)
         rate = MW.loanRate;
-        const line = pol ? Math.min(pol.cap, Math.max(0, equityOf(s)) * MW.line) : Math.max(0, equityOf(s)) * MW.line;
+        const line0 = pol ? Math.min(pol.cap, Math.max(0, equityOf(s)) * MW.line) : Math.max(0, equityOf(s)) * MW.line;
+        // (its 社内バブル: Tenesice lends it the more, as far as half a year of its sales — mywayGrow)
+        const line = mywayBubble(w, s) && MWG ? Math.max(line0, Math.max(0, equityOf(s)) * MWG.bubble.line + CORP.plOf(s.per.m).sales * 6 * MWG.bubble.sales) : line0;
         const room = Math.max(0, line - debtOf(s));
         amt = Math.min(amt, Math.floor(room / M.unit) * M.unit);
       } else if (pol) {
@@ -1238,6 +1257,114 @@ function mywaySphere(w, s, p, d, out) {
   w.ext.sphere = (w.ext.sphere || 0) + n;
   s.sphereGiven = (s.sphereGiven || 0) + n;
   news(out, s, p, d + 1, 5 * 3600, 'sphere', `MY WAY経済圏の地元企業4社に${CORP.fmt.money(n)}を支援（資金援助・社員の派遣・事業拡大）`, { n }, 0, true);
+}
+
+// MY WAY, the company that spends more than it takes in (CORP.myway.grow), at each month's end from 2026-11-03:
+// - its 社内バブル: its sales up a twelfth a month, its characters' pull high, or a boom in the country
+// - what it holds beyond its equity's aim ($1B in its bubble to $5B in hard times) into those about it — half to its
+//   経済圏's local companies, half to the local businesses as work (周辺企業への投資) —, its research, its people (a
+//   bonus to each by their pay) and 株式会社YAMATO, a sixth of what is beyond a month (its bonds sold for it); and to
+//   YAMATO each month besides (世界一のビジネスパートナー), out of its own money
+// - in its bubble, borrowed of Tenesice beyond its usual line (`bubble.line` of its equity, and half a year's sales)
+//   to grow on: its buildings, its ads and more people
+// - its shares up over the month: more advertising (part of it its budget's for good)
+const MWG = CORP.myway.grow;
+export function mywayBubble(w, s) {
+  const B = MWG.bubble, h = s.mHist || [], ip = s.ip;
+  const growth = h.length >= 2 && h[h.length - 2].sales > 0 ? h[h.length - 1].sales / h[h.length - 2].sales - 1 : 0;
+  return !!(ip && (growth >= B.growth || pullOf(ip) >= B.pull || (w.boom || 1) >= B.boom));
+}
+function mywayGrow(w, s, p, d, out) {
+  if (!MWG || !s.ip || !w.ext || s.dead || abroad(s) || d < ALL_FROM) return;
+  const sc = sizeScale(w, p), monthly = monthlyCosts(s), bubble = mywayBubble(w, s);
+  const g = s.grow || (s.grow = { spent: 0, borrowed: 0, ads: 0, yamato: 0, by: { sphere: 0, local: 0, rd: 0, people: 0, yamato: 0, capex: 0, ads: 0 }, hist: [] });
+  const boom = w.boom || 1, hard = Math.max(0, Math.min(1, (1.1 - boom) / 0.4));
+  // (its own say on the pace: `growAim`, its 会議室's — lower to spend faster, higher to keep more —, within $1B〜$5B)
+  const aim = Math.round(Math.max(MWG.equity[0], Math.min(MWG.equity[1], (bubble ? MWG.equity[0] : MWG.equity[0] + (MWG.equity[1] - MWG.equity[0]) * (0.25 + 0.75 * hard)) * (s.growAim || 1))) * sc);
+  const eq = equityOf(s);
+  // (its money: what is in hand and its bonds, two months of its costs kept)
+  const money = () => (s.bal.cash || 0) + (s.bal.bonds || 0) - monthly * 2;
+  const cashFor = (n) => {
+    const short = n - (s.bal.cash || 0);
+    if (short > 0 && (s.bal.bonds || 0) > 0) { const x = Math.min(s.bal.bonds, short); post(s, [['cash', x], ['bonds', -x]], 'bondsSell'); w.ext.bonds.push({ company: s.id, n: -x }); }
+    return Math.min(n, Math.max(0, s.bal.cash || 0));
+  };
+  const row = { m: CORP.monthKey(d), bubble, aim, equity: Math.round(eq), spent: 0, borrowed: 0, ads: 0, yamato: 0 };
+  // (borrowed in its bubble, to grow on)
+  if (bubble) {
+    const B = MWG.bubble, yearSales = (s.mHist || []).reduce((a, x) => a + x.sales, 0) / Math.max(1, (s.mHist || []).length) * 12;
+    const line = Math.max(0, eq) * B.line + yearSales * B.sales;
+    let amt = Math.floor(Math.max(0, Math.min(line - debtOf(s), monthly * 3)) / M.unit) * M.unit;
+    amt = lendable(w, s, amt);
+    if (amt > 0) {
+      s.loans.push({ id: 'L' + (++s.seq), amt, rate: MW.loanRate, from: d, until: d + M.years * YEAR, bubble: true });
+      post(s, [['cash', amt], ['loan', -amt]], 'borrow');
+      w.mon[s.id + ':borrowed'] = (w.mon[s.id + ':borrowed'] || 0) + amt;
+      g.borrowed += amt; row.borrowed = amt;
+      // (to grow on, all of it: its buildings, its advertising, the local businesses' work for its new places — and
+      // more people)
+      const capex = Math.round(amt * B.capex), ads = Math.round(amt * B.ads), work = amt - capex - ads;
+      post(s, [['ppe', capex], ['cash', -capex]], 'capex');
+      route(w, s, 'capex', capex);
+      post(s, [['sAds', ads], ['sGrow', work], ['cash', -(ads + work)]], 'expenses');
+      route(w, s, 'ads', ads);
+      route(w, s, 'place', work);
+      g.by.capex += capex; g.by.ads += ads; g.by.local += work;
+      s.target = Math.max(s.target || s.n, Math.round((s.target || s.n) * (1 + B.people)));
+      news(out, s, p, d + 1, 5 * 3600, 'loan', `社内バブルで大規模な事業拡大へ：テネシスから${CORP.fmt.money(amt)}を借入（年${(MW.loanRate * 100).toFixed(0)}%）。新拠点・広告・採用を一気に拡大`, { amt, bubble: true }, 0.01, true);
+    }
+  }
+  // what is beyond its aim, into its economy
+  const beyond = eq - aim;
+  let n = Math.round(Math.max(0, Math.min(Math.ceil(beyond / MWG.months), MWG.cap * sc, money())));
+  if (n > monthly * 0.02) {
+    n = cashFor(n);
+    const P = MWG.parts, part = (k) => Math.round(n * P[k]);
+    const sphere = Math.round(part('sphere') / 2), local = part('sphere') - sphere, rd = part('rd'), people = part('people'), yamato = n - sphere - local - rd - people;
+    post(s, [['sGrow', sphere + local + rd + people], ['sYamato', yamato], ['cash', -n]], 'expenses');
+    w.ext.sphere = (w.ext.sphere || 0) + sphere;
+    s.sphereGiven = (s.sphereGiven || 0) + sphere;
+    route(w, s, 'place', local);
+    route(w, s, 'rd', rd);
+    w.ext.pay.push({ company: s.id, n: people, kind: 'bonus' });
+    w.ext.yamato = (w.ext.yamato || 0) + yamato;
+    s.morale = Math.min(0.95, s.morale + 0.02);
+    // (its research the faster for it)
+    if (s.rnd) s.rnd.edge = Math.min(CORP.tech.maxEdge, s.rnd.edge + 0.01 * rd / Math.max(1, monthly));
+    g.spent += n; row.spent = n;
+    g.by.sphere += sphere; g.by.local += local; g.by.rd += rd; g.by.people += people; g.by.yamato += yamato;
+    g.yamato += yamato; row.yamato += yamato;
+    news(out, s, p, d + 1, 5 * 3600, 'invest', `成長投資：${CORP.fmt.money(n)}を周辺企業（${CORP.fmt.money(sphere + local)}）・研究（${CORP.fmt.money(rd)}）・社員（${CORP.fmt.money(people)}）・株式会社YAMATO（${CORP.fmt.money(yamato)}）に投資（純資産の目標 ${CORP.fmt.money(aim)}）`, { n, aim }, 0.004, true);
+  }
+  // 株式会社YAMATO, its partner of all the world's: each month, out of its own money
+  const yg = Math.round(Math.min(MWG.yamato * sc, Math.max(0, (s.bal.cash || 0) - monthly)));
+  if (yg > 0) {
+    post(s, [['sYamato', yg], ['cash', -yg]], 'expenses');
+    w.ext.yamato = (w.ext.yamato || 0) + yg;
+    g.by.yamato += yg;
+  }
+  g.yamato += yg;
+  row.yamato += yg;
+  // its shares up over the month: more of its sales into advertising
+  const pr = w.mwPrice;
+  if (pr && pr.now > 0 && pr.month > 0) {
+    const gain = pr.now / pr.month - 1;
+    if (gain >= MWG.ads.gain) {
+      const sales = CORP.plOf(s.per.m).sales;
+      const ad = cashFor(Math.round(Math.min(sales * MWG.ads.of * Math.min(3, gain / MWG.ads.gain) / 3, Math.max(0, (s.bal.cash || 0) + (s.bal.bonds || 0) - monthly))));
+      if (ad > 0) {
+        post(s, [['sAds', ad], ['cash', -ad]], 'expenses');
+        route(w, s, 'ads', ad);
+        s.budget.ads = Math.round((s.budget.ads || 0) + ad * 12 / MWG.ads.keep / 12);
+        g.ads += ad; g.by.ads += ad; row.ads = ad;
+        news(out, s, p, d + 1, 4 * 3600, 'ads', `株価の上昇（月間+${(gain * 100).toFixed(1)}%）を受けて広告を拡大：${CORP.fmt.money(ad)}を広告宣伝に投入`, { ad, gain }, 0.003, true);
+      }
+    }
+  }
+  g.bubble = bubble;
+  g.aim = aim;
+  g.hist.push(row);
+  if (g.hist.length > 24) g.hist.shift();
 }
 
 // What the companies charge for their own services, each its own to set — no one else sets it, and no range is set on
@@ -1783,7 +1910,11 @@ function setDividend(s, p, g) {
 // what of its profit a company pays out (MY WAY: its philosophy's — little kept; the others more in a boom, less in a
 // bust, as the year's guidance is made: server/core/npc-macro.js)
 // (a tenth more of it than the profile's in ordinary times: what is earned goes round)
-const payoutOf = (p, w) => (p.id === 'myway' && CORP.myway.philosophy ? CORP.myway.philosophy.payout : Math.min(0.95, p.payout * 1.1 * Math.pow((w && w.boom) || 1, 1.5)));
+// (and by its own dividend policy, as its 会議室 set it: `payoutMult`, ×0.5〜×1.5)
+const payoutOf = (p, w) => {
+  const k = (w && w.co && w.co[p.id] && w.co[p.id].payoutMult) || 1;
+  return Math.min(0.95, (p.id === 'myway' && CORP.myway.philosophy ? CORP.myway.philosophy.payout : p.payout * 1.1 * Math.pow((w && w.boom) || 1, 1.5)) * k);
+};
 
 // At the month's end a company puts a part of what it holds beyond the months of its costs it keeps into its equipment
 // — 利益剰余金を貯めこまない —, bought as any of its equipment is (MAGITA's facilities, the local businesses, アルタス's
@@ -1814,7 +1945,8 @@ function boomSpend(w, s, p, d, out) {
 // better (tech). A member that failed is out; Tenesice failed or the five years over, it ends.
 export const RESEARCH_DAY = CORP.dayAt(2026, 11, 3);
 export const RESEARCH = { years: 5, members: { magita: { fee: 10e6, loan: 300e6 }, yosida: { fee: 10e6, loan: 200e6 }, wazima: { fee: 10e6, loan: 60e6 } }, speed: 1.5, odds: 1.2, quality: 1.25 };
-export const researchMember = (w, id) => !!(w.research && w.research.on && RESEARCH.members[id] && w.co[id] && !w.co[id].dead);
+// (a member may leave it by its own decision, and come back: `w.research.out`)
+export const researchMember = (w, id) => !!(w.research && w.research.on && RESEARCH.members[id] && w.co[id] && !w.co[id].dead && !(w.research.out && w.research.out[id]));
 function researchDay(w, d, flows, out) {
   const bank = w.co.tenesice, rs = flows.npc && flows.npc.research;
   if (!w.research && d >= RESEARCH_DAY && bank && !bank.dead) {
@@ -1837,7 +1969,7 @@ function researchDay(w, d, flows, out) {
   }
   for (const [id, m] of Object.entries(RESEARCH.members)) {
     const s = w.co[id];
-    if (!s || s.dead || abroad(s)) continue;
+    if (!s || s.dead || abroad(s) || !researchMember(w, id)) continue;
     const fee = Math.round(m.fee * sc);
     post(s, [['sRd', fee], ['cash', -fee]], 'expenses');
     post(bank, [['cash', fee], ['r:fees', -fee]], 'receipts');
@@ -1856,15 +1988,21 @@ function researchDay(w, d, flows, out) {
 // Tenesice lends them up to six months of their costs (all its fund loans to one no more than a year of them; twice a
 // fiscal year at most), a point below its usual rate, for three years — as far as it has its own money to lend. For the
 // money to go round, and its name.
-export const FUND = { since: RESEARCH_DAY, runway: 3, months: 6, cap: 12, perYear: 2, discount: 0.01, years: 3 };
-function fundOne(w, s, p, d, out) {
+// (once the country lives its companies apply by their own decision — their 会議室's, npc-org.js —; at the month's end
+// Tenesice lends by itself only to one that has less than a month of its costs: `asked` false)
+export const FUND = { since: RESEARCH_DAY, runway: 3, months: 6, cap: 12, perYear: 2, discount: 0.01, years: 3, emergency: 1 };
+function fundOne(w, s, p, d, out, asked = false) {
   const bank = w.co.tenesice;
-  if (!w.ext || !bank || bank.dead || d < FUND.since) return;
-  const F = w.fund || (w.fund = { since: d, loans: 0, lent: 0, by: {} }), fy = CORP.fyOf(d), id = s.id;
+  if (!w.ext || !bank || bank.dead || d < FUND.since) return 0;
+  const F = w.fund || (w.fund = { since: d, loans: 0, lent: 0, by: {}, asked: 0, refused: 0 }), fy = CORP.fyOf(d), id = s.id;
   {
-    if (id === 'tenesice' || s.dead || s.reorg || abroad(s) || p.model === 'bank' || d < w.launch) return;
+    if (id === 'tenesice' || s.dead || s.reorg || abroad(s) || p.model === 'bank' || d < w.launch) return 0;
     const monthly = monthlyCosts(s), cash = s.bal.cash || 0, op = CORP.plOf(s.per.m).op;
-    if (!(cash < monthly * FUND.runway || (op < 0 && cash < monthly * KEEP) || equityOf(s) < 0)) return;
+    const need = cash < monthly * FUND.runway || (op < 0 && cash < monthly * KEEP) || equityOf(s) < 0;
+    if (asked) F.asked = (F.asked || 0) + 1;
+    // (applied for without the need: its review turns it down)
+    if (asked && !need) { F.refused = (F.refused || 0) + 1; news(out, s, p, d + 1, 5 * 3600, 'loan', 'テネシスファンドに融資を申請したが、審査で見送られました（資金繰りに余裕があるため）', { fund: true }, 0, false); return 0; }
+    if (!asked && !(cash < monthly * FUND.emergency || equityOf(s) < 0)) return 0;
     const mine = F.by[id] || (F.by[id] = { fy, count: 0, lent: 0 });
     if (mine.fy !== fy) { mine.fy = fy; mine.count = 0; }
     const owed = s.loans.filter((l) => l.fund).reduce((n, l) => n + l.amt, 0);
@@ -1878,6 +2016,37 @@ function fundOne(w, s, p, d, out) {
     mine.count++; mine.lent += amt; F.loans++; F.lent += amt;
     news(out, s, p, d + 1, 5 * 3600, 'loan', `テネシスファンドに申請し、${CORP.fmt.money(amt)}の融資を受けました（年${(rate * 100).toFixed(2)}%・${FUND.years}年）`, { amt, rate, fund: true }, 0.003, true);
     news(out, bank, PROFILES.get('tenesice'), d + 1, 5 * 3600, 'fund', `テネシスファンド：${p.name}に${CORP.fmt.money(amt)}を融資（経営の立て直しを支援）`, { company: id, amt }, 0.002, true);
+    return amt;
+  }
+}
+// A company's own decisions on its money (its 会議室's, npc-org.js): loans paid back before their time, or more borrowed of
+// Tenesice to grow on (within what its lending desk allows and Tenesice has of its own); its dividends' share
+function loanDecided(w, s, p, o, d, out) {
+  const monthly = monthlyCosts(s);
+  if (o.action === 'repay') {
+    let spare = Math.max(0, Math.round(((s.bal.cash || 0) - monthly * KEEP) * (o.share || 0.5)));
+    let paid = 0;
+    for (const l of s.loans) {
+      if (l.research && d < l.until) continue;
+      const x = Math.min(l.amt, spare);
+      if (x <= 0) continue;
+      l.amt -= x; spare -= x; paid += x;
+      post(s, [['loan', x], ['cash', -x]], 'repay');
+    }
+    s.loans = s.loans.filter((l) => l.amt > 0);
+    if (paid) { w.mon[s.id + ':repaid'] = (w.mon[s.id + ':repaid'] || 0) + paid; news(out, s, p, d + 1, 5 * 3600, 'loan', `借入金${CORP.fmt.money(paid)}を繰上げ返済（支払利息の削減）`, { paid }, 0.002, true); }
+  } else if (o.action === 'borrow') {
+    const pol = w.lend && w.lend[s.id];
+    let amt = Math.ceil(monthly * (o.months || 3) / M.unit) * M.unit;
+    if (pol) amt = Math.min(amt, Math.floor(Math.max(0, pol.cap - debtOf(s)) / M.unit) * M.unit);
+    if (s.ip) amt = Math.min(amt, Math.floor(Math.max(0, Math.max(0, equityOf(s)) * MW.line - debtOf(s)) / M.unit) * M.unit);
+    amt = lendable(w, s, amt);
+    if (amt <= 0) { news(out, s, p, d + 1, 5 * 3600, 'loan', '成長資金の借入をテネシスに申し込んだが、融資枠がなく見送られました', {}, 0, false); return; }
+    const rate = s.ip ? MW.loanRate : pol ? pol.rate : rateFor(w, s);
+    s.loans.push({ id: 'L' + (++s.seq), amt, rate, from: d, until: d + M.years * YEAR });
+    post(s, [['cash', amt], ['loan', -amt]], 'borrow');
+    w.mon[s.id + ':borrowed'] = (w.mon[s.id + ':borrowed'] || 0) + amt;
+    news(out, s, p, d + 1, 5 * 3600, 'loan', `成長資金としてテネシスから${CORP.fmt.money(amt)}を借入（年${(rate * 100).toFixed(2)}%）`, { amt, rate }, 0.002, true);
   }
 }
 
@@ -2166,6 +2335,8 @@ function asukaDay(w, d, A, out) {
     for (const [cat, n0] of Object.entries(cats)) {
       const n = Math.round(n0);
       if (n <= 0) continue;
+      // (アスカ国's IP契約 with MY WAY: its fee, out of its treasury — a service sold it from home, not its branches')
+      if (cat === 'ip') { cashSale(s, 'ipAsuka', n); s.pr.ipAsuka = (s.pr.ipAsuka || 0) + n / 30; X.trade.direct += n; continue; }
       cashSale(s, 'asuka', n);
       s.pr.asuka = (s.pr.asuka || 0) + n / 30;
       g.m.sales += n;
@@ -2460,7 +2631,7 @@ function gachaCar(w, id) {
     return [pr.maker, pr.buy + (pr.excl || 0) + surchargeOf(w, 'cars', id), Math.round(pr.cost * labMult(w, pr.maker))];
   }
   const car = RULES.cars.find((c) => c.id === id);
-  const worth = Math.round(((car && car.price) || YS.gacha.worth[id] || YS.gacha.worth['porsche-kuia-spyder']) * YS.gacha.carShare);
+  const worth = Math.round((YS.gacha.worth[id] || (car && car.price) || YS.gacha.worth['porsche-kuia-spyder']) * YS.gacha.carShare);
   return ['magita', worth, Math.round(worth * 0.25)];
 }
 // The gacha's prizes, each provided by its company at its own cost (CORP.yosida.gacha), booked as its expense
@@ -2664,7 +2835,40 @@ function toParent(w, s, p, d) {
 const MW = CORP.myway;
 function startIp(s, d) {
   s.ip = { heat: 1, brand: 1, fakes: MW.brand.fakes, lastNew: d, chars: [], ideas: { m: '', n: 0, all: 0, paid: 0 }, events: [], contracts: {}, seq: 0 };
-  for (const [id, x] of Object.entries(MW.partners)) s.ip.contracts[id] = { fee: x.fee, base: x.fee, on: true, from: d, bad: 0, good: 0, m: { sales: 0, cost: 0, fee: 0 }, last: null, avg: 0 };
+  // (its seven at their first fees; the rest of the thirteen and Tenesice's 超大型 from 2026-11-03: ipCatchUp)
+  for (const [id, x] of Object.entries(MW.partners)) if (!x.late) s.ip.contracts[id] = newContract(x, d, x.fee0 || x.fee, false);
+}
+const newContract = (x, d, fee = x.fee, huge = !!x.huge) => ({ fee, base: fee, scale: 1, huge, on: true, from: d, bad: 0, good: 0, m: { sales: 0, cost: 0, fee: 0 }, last: null, avg: 0 });
+// a contract's size (1: as it began) and its fee a year at that size
+const sizeOf = (c) => (c && c.scale) || 1;
+export const contractFee = (c) => Math.round(c.fee * sizeOf(c));
+// The day the thirteen all became MY WAY's partners (CORP.myway.allFrom): a world from before signs those it did not
+// have (their fee as it begins), and Tenesice's contract becomes its 超大型IP契約 (its fee as far above where it began
+// as the new one's is)
+const ALL_FROM = CORP.dayAt(...MW.allFrom);
+function ipCatchUp(w, s, d, out, ch) {
+  const ip = s.ip;
+  if (!ip || s.dead || d < ALL_FROM || ip.all) return;
+  ip.all = d;
+  const p = PROFILES.get('myway');
+  for (const [id, x] of Object.entries(MW.partners)) {
+    const c = ip.contracts[id], t = w.co[id];
+    if (!c) {
+      if (!t || t.dead) continue;
+      ip.contracts[id] = newContract(x, d);
+      ipEvent(s, d, 'sign', `${PROFILES.get(id).name}と契約（年${CORP.fmt.money(x.fee)}：${x.what}）`, { partner: id });
+      news(out, s, p, d + 1, 4 * 3600, 'license', `${PROFILES.get(id).name}とIP契約を締結（${x.what}・年${CORP.fmt.money(x.fee)}）`, { partner: id }, 0.02, true);
+      news(out, t, PROFILES.get(id), d + 1, 4 * 3600, 'license', `MY WAYの審査を通過しコラボ契約を締結（${x.what}）`, { partner: 'myway' }, Math.log(1 + MW.hype[0] * 0.5), true);
+    } else if (x.huge && !c.huge) {
+      c.fee = Math.round(c.fee * x.fee / Math.max(1, c.base) / 1e6) * 1e6;
+      c.base = x.fee;
+      c.huge = true;
+      c.scale = c.scale || 1;
+      ipEvent(s, d, 'sign', `${PROFILES.get(id).name}と超大型IP契約を締結（年${CORP.fmt.money(contractFee(c))}）`, { partner: id });
+      news(out, s, p, d + 1, 4 * 3600, 'license', `${PROFILES.get(id).name}と史上最大の超大型IP契約を締結（年${CORP.fmt.money(contractFee(c))}）`, { partner: id }, 0.04, true);
+    }
+    if (ip.contracts[id] && !ip.contracts[id].scale) ip.contracts[id].scale = 1;
+  }
 }
 // MY WAY's state (null: not in this world), and a partner's contract that is on (null: none, or MY WAY gone)
 export const ipOf = (w) => (w && w.co.myway && w.co.myway.ip) || null;
@@ -2692,7 +2896,8 @@ function licenseDay(w, d, flows) {
     if (!t || !x || t.dead) continue;
     let sold = 0;
     if (c.on) {
-      const fee = take(t, 'mwfee', c.fee / YEAR);
+      // (a country smaller than the full 50,000 — the tests' —: its partners' fees as much smaller as all they sell)
+      const fee = take(t, 'mwfee', c.fee * sizeOf(c) * sizeScale(w, PROFILES.get(id)) / YEAR);
       if (fee > 0) {
         post(t, [['sLicense', fee], ['ap', -fee]]);
         t.owe.myway = (t.owe.myway || 0) + fee;
@@ -2700,7 +2905,7 @@ function licenseDay(w, d, flows) {
         c.m.fee += fee;
       }
       if (!circ) {
-        sold = take(t, 'mwsale', x.fee * x.lift * pullOf(ip) * econOf(w, PROFILES.get(id).beta) / YEAR);
+        sold = take(t, 'mwsale', x.fee * sizeOf(c) * x.lift * pullOf(ip) * econOf(w, PROFILES.get(id).beta) / YEAR);
         if (sold > 0) { post(t, [['ar', sold], ['r:myway', -sold]]); t.recv += sold; }
       }
     }
@@ -2719,13 +2924,13 @@ function ipExpect(w, s, p, d, add) {
   if (!ip) return;
   if (s.id === 'myway') {
     if (s.dead) return;
-    for (const [id, c] of Object.entries(ip.contracts)) if (c.on) add('r:' + id, c.fee / YEAR);
+    for (const [id, c] of Object.entries(ip.contracts)) if (c.on) add('r:' + id, c.fee * sizeOf(c) * sizeScale(w, PROFILES.get(id)) / YEAR);
     return;
   }
   const c = contractOf(w, s.id), x = MW.partners[s.id];
   if (!c || !x) return;
-  add('sLicense', c.fee / YEAR);
-  const sales = w.ext || (w.circ && d >= w.circ.from) ? c.avg : x.fee * x.lift * pullOf(ip) * econOf(w, p.beta) / YEAR;
+  add('sLicense', c.fee * sizeOf(c) * sizeScale(w, p) / YEAR);
+  const sales = w.ext || (w.circ && d >= w.circ.from) ? c.avg : x.fee * sizeOf(c) * x.lift * pullOf(ip) * econOf(w, p.beta) / YEAR;
   add('r:myway', sales);
   add('c:myway', sales * x.cost);
 }
@@ -2838,10 +3043,14 @@ function ideasPaid(w, s, n, people) {
 }
 // A partner's contract signed again or given up (its people's decision, or by itself with nobody to decide); a listed
 // partner's shares jump the day it signs (投資熱), and fall a little the day it leaves; MY WAY's the other way.
-function license(w, id, action, d, out, ch, why = '', fee = null) {
+function license(w, id, action, d, out, ch, why = '', fee = null, mult = 1) {
   const s = w.co.myway, c = s && s.ip && s.ip.contracts[id], t = w.co[id];
   if (!c || !t || s.dead) return;
   const p = PROFILES.get('myway'), tp = PROFILES.get(id);
+  // (its size up or down a step: its fee and what it sells of the characters with it)
+  if (action === 'scale' && c.on) return scaleTo(w, id, mult, d, out, why);
+  // (its fee asked down — or offered up — by the partner: within MY WAY's band)
+  if (action === 'fee' && c.on) return feeTo(w, id, mult, d, out);
   if (action === 'cancel' && c.on) {
     c.on = false;
     c.bad = 0;
@@ -2857,9 +3066,49 @@ function license(w, id, action, d, out, ch, why = '', fee = null) {
     c.from = d;
     if (fee) c.fee = fee;
     const jump = Math.log(1 + MW.hype[0] + (MW.hype[1] - MW.hype[0]) * ch.u(`myway:hype:${id}:${d}`));
-    ipEvent(s, d, 'sign', `${tp.name}と契約（年${CORP.fmt.money(c.fee)}）${why ? '・' + why : ''}`, { partner: id });
-    news(out, s, p, d + 1, 4 * 3600, 'license', `${tp.name}とIP契約を締結（${MW.partners[id].what}・年${CORP.fmt.money(c.fee)}）`, { partner: id }, 0.04, true);
+    ipEvent(s, d, 'sign', `${tp.name}と契約（年${CORP.fmt.money(contractFee(c))}）${why ? '・' + why : ''}`, { partner: id });
+    news(out, s, p, d + 1, 4 * 3600, 'license', `${tp.name}とIP契約を締結（${MW.partners[id].what}・年${CORP.fmt.money(contractFee(c))}）`, { partner: id }, 0.04, true);
     news(out, t, tp, d + 1, 4 * 3600, 'license', `MY WAYの審査を通過しコラボ契約を締結：発表と同時に買いが殺到`, { partner: 'myway' }, jump, true);
+  }
+}
+// a partner's contract a size bigger or smaller (`mult`: CORP.myway.scale's step or its inverse), within its range
+function scaleTo(w, id, mult, d, out, why = '') {
+  const s = w.co.myway, c = s && s.ip && s.ip.contracts[id];
+  if (!c || !c.on || s.dead) return;
+  const [lo, hi] = CORP.scaleRange(id), was = sizeOf(c);
+  const to = Math.round(Math.max(lo, Math.min(hi, was * mult)) * 1000) / 1000;
+  if (Math.abs(to - was) < 1e-6) return;
+  c.scale = to;
+  const name = PROFILES.get(id).name, up = to > was;
+  ipEvent(s, d, 'scale', `${name}との契約規模を${up ? '拡大' : '縮小'}（×${was.toFixed(2)}→×${to.toFixed(2)}・年${CORP.fmt.money(contractFee(c))}）${why ? '・' + why : ''}`, { partner: id });
+  news(out, s, PROFILES.get('myway'), d + 1, 4 * 3600, 'license', `${name}とのIP契約の規模を${up ? '拡大' : '縮小'}（年${CORP.fmt.money(contractFee(c))}）`, { partner: id }, up ? 0.01 : -0.01, true);
+}
+// MY WAY's 交渉係 with every partner, every day (CORP.myway.daily): what each earned on the characters last month
+// against its fee, their pull, how the two get on — most days nothing; the rest a fee or a size changed (the talks'
+// tally kept, `ip.talks`)
+function ipTalks(w, s, d, ch, out) {
+  const ip = s.ip;
+  if (!ip || s.dead || d < w.launch) return;
+  const T = ip.talks && ip.talks.day === d ? ip.talks : (ip.talks = { day: d, n: 0, deals: 0, up: 0, down: 0, bigger: 0, smaller: 0, all: (ip.talks && ip.talks.all) || 0, gained: (ip.talks && ip.talks.gained) || 0 });
+  const pull = pullOf(ip);
+  for (const [id, c] of Object.entries(ip.contracts)) {
+    const t = w.co[id];
+    if (!c.on || !c.last || !t || t.dead) continue;
+    T.n++;
+    const share = c.last.margin / Math.max(1, c.last.fee);
+    const u = [ch.u(`myway:talk:${id}:${d}`), ch.u(`myway:talk:size:${id}:${d}`), ch.u(`myway:talk:by:${id}:${d}`)];
+    const r = CORP.mywayTalk(c, { share, pull, tie: tieOf(w, 'myway', id), range: CORP.scaleRange(id), u });
+    if (r.fee === 1 && r.scale === 1) continue;
+    const was = contractFee(c);
+    if (r.fee !== 1) feeTo(w, id, r.fee, d, out);
+    if (r.scale !== 1) scaleTo(w, id, r.scale, d, out, r.said);
+    const now = contractFee(c);
+    if (now === was) continue;
+    T.deals++; T.all++;
+    T.gained += now - was;
+    if (r.fee > 1) T.up++; else if (r.fee < 1) T.down++;
+    if (r.scale > 1) T.bigger++; else if (r.scale < 1) T.smaller++;
+    c.talk = { day: d, said: r.said, from: was, to: now };
   }
 }
 // the fee of a partner's contract changed (its talks): within the band of the fee it began at
@@ -2869,7 +3118,7 @@ function feeTo(w, id, mult, d, out) {
   const T = MW.talks, was = c.fee;
   c.fee = Math.round(Math.max(c.base * T.floor, Math.min(c.base * T.cap, c.fee * Math.max(1 - T.step, Math.min(1 + T.step, mult)))) / 1e6) * 1e6;
   if (c.fee === was) return;
-  ipEvent(s, d, 'fee', `${PROFILES.get(id).name}の契約料 ${CORP.fmt.money(was)}→${CORP.fmt.money(c.fee)}（年）`, { partner: id });
+  ipEvent(s, d, 'fee', `${PROFILES.get(id).name}の契約料 ${CORP.fmt.money(Math.round(was * sizeOf(c)))}→${CORP.fmt.money(contractFee(c))}（年）`, { partner: id });
 }
 // with nobody in the country to decide: a new character when the heat is low, the copies fought when they spread, a
 // campaign when the name is hurt (each once a quarter at most, and only with the money for it)
@@ -3395,6 +3644,8 @@ export function closeDay(w, d, flows, ch) {
   if (npc && npc.boom) w.boom = npc.boom;
   // (what MY WAY's economy's local companies sold last month: the least it gives them, mywaySphere)
   if (npc && npc.sphere !== undefined) w.sphereSales = npc.sphere;
+  // (MY WAY's share price now and a month ago, as the people's side saw the market: mywayGrow)
+  if (npc && npc.mwPrice) w.mwPrice = npc.mwPrice;
   if (npc && npc.terms) w.terms = npc.terms;
   if (npc && npc.lend) w.lend = npc.lend;
   // what each company's people decided in their meetings (server/core/npc-org.js): their budgets, their hiring, their
@@ -3428,7 +3679,7 @@ export function closeDay(w, d, flows, ch) {
     // (what came in on an average day of late, by stream: the country's money is all of it now)
     if (circ) { s.pr = s.pr || {}; for (const k of Object.keys(s.pr)) s.pr[k] *= 29 / 30; if (s.po) for (const k of Object.keys(s.po)) s.po[k] *= 29 / 30; }
     if (!live) { people(s, p, d, w.launch); budgets(s, p, d, w.launch); }
-    if (s.ip) ipDay(w, s, p, d);
+    if (s.ip) { ipCatchUp(w, s, d, out, ch); ipDay(w, s, p, d); ipTalks(w, s, d, ch, out); }
     if (p.model === 'studio') studioDay(w, s, p, d, ch, out, flows);
     else if (p.model === 'bank') bankDay(w, s, p, d, ch, flows);
     else {
@@ -3477,7 +3728,7 @@ export function closeDay(w, d, flows, ch) {
     month(w, s, p, d, ch, out);
     if (CORP.ymd(d).d === 1 && d >= w.launch) tech(w, s, p, d, ch, out);
     if (p.model === 'studio') titlesLook(w, s, p, d, out);
-    if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); feesMonth(w, s, p, d, out); mywaySphere(w, s, p, d, out); boomSpend(w, s, p, d, out); fundOne(w, s, p, d, out); treasury(w, s, p, d, out); }
+    if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); feesMonth(w, s, p, d, out); mywaySphere(w, s, p, d, out); mywayGrow(w, s, p, d, out); boomSpend(w, s, p, d, out); fundOne(w, s, p, d, out); treasury(w, s, p, d, out); }
     // (out of money with nothing more Tenesice will lend, or below nothing too long: 破産)
     solvencyCheck(w, s, p, d, out);
   }
@@ -3595,7 +3846,28 @@ function decided(w, o, d, out, ch) {
   // (MY WAY's measures, taken once its day is under way: what they cost is that day's; a partner's contract signed
   // again or given up)
   if (o.kind === 'ip') { (w.ipOps || (w.ipOps = [])).push(o); return; }
-  if (o.kind === 'license') return license(w, o.company, o.action, d, out, ch, o.why || '', o.fee || null);
+  if (o.kind === 'license') return license(w, o.company, o.action, d, out, ch, o.why || '', o.fee || null, o.mult || 1);
+  const p = PROFILES.get(o.company);
+  // (its own say on Tenesice's fund, its loans, its dividends, テネシスリサーチ, MY WAY's pace and its gift to YAMATO)
+  if (o.kind === 'fund') { fundOne(w, s, p, d, out, true); return; }
+  if (o.kind === 'loan') { loanDecided(w, s, p, o, d, out); return; }
+  if (o.kind === 'payout') { s.payoutMult = Math.round(Math.max(0.5, Math.min(1.5, (s.payoutMult || 1) * (o.mult || 1))) * 100) / 100; return; }
+  if (o.kind === 'research' && w.research && RESEARCH.members[s.id]) {
+    const R0 = w.research, out0 = R0.out || (R0.out = {});
+    if (o.action === 'leave' && !out0[s.id]) { out0[s.id] = d; news(out, s, p, d + 1, 4 * 3600, 'venture', 'テネシスリサーチから脱退（参加費の負担を見直し）', {}, -0.01, true); }
+    else if (o.action === 'join' && out0[s.id]) { delete out0[s.id]; news(out, s, p, d + 1, 4 * 3600, 'venture', 'テネシスリサーチに再参加（研究の加速と融資）', {}, 0.01, true); }
+    return;
+  }
+  if (o.kind === 'myway' && s.ip) {
+    if (o.action === 'aim') s.growAim = Math.round(Math.max(0.25, Math.min(4, (s.growAim || 1) * (o.mult || 1))) * 100) / 100;
+    else if (o.action === 'yamato' && w.ext) {
+      const n = Math.round(Math.min(o.n || 0, Math.max(0, (s.bal.cash || 0) - monthlyCosts(s) * 2)));
+      // (before the day's books begin: its cost straight into what it has kept — dpost, on its own)
+      if (n > 0) { const t0 = s.today; s.today = 0; dpost(s, [['sYamato', n], ['cash', -n]], 'expenses'); s.today = t0; w.ext.yamato = (w.ext.yamato || 0) + n; const g = s.grow || (s.grow = { spent: 0, borrowed: 0, ads: 0, yamato: 0, by: { sphere: 0, local: 0, rd: 0, people: 0, yamato: 0, capex: 0, ads: 0 }, hist: [] }); g.yamato += n; g.by.yamato += n;
+        news(out, s, p, d + 1, 4 * 3600, 'invest', `株式会社YAMATOに追加で${CORP.fmt.money(n)}を資金援助（世界一のビジネスパートナー）`, { n }, 0.002, true); }
+    }
+    return;
+  }
   if (o.kind === 'budget' && s.budget[o.key] !== undefined) s.budget[o.key] = Math.max(0, Math.round(s.budget[o.key] * o.mult));
   else if (o.kind === 'target') s.target = Math.min(o.mult > 1 ? targetCap(w, s) : Infinity, Math.max(1, Math.round((s.target || s.n) * o.mult)));
   else if (o.kind === 'morale') s.morale = Math.max(0.2, Math.min(0.95, s.morale + o.add));
@@ -3873,7 +4145,8 @@ function productsYear(kind, seller, weight = null) {
   const out = { sales: 0, cost: 0, selling: 0, makers: {} };
   for (const [id, pr0] of Object.entries(CORP.products[kind])) {
     const price = listPrice(kind, id);
-    if (!pr0.npc || !price) continue;
+    // (one sold only from a day after the start — MY WAY's collaboration cars —: not in the start's year)
+    if (!pr0.npc || !price || pr0.from) continue;
     const pr = weight ? { ...pr0, npc: pr0.npc * weight(pr0) } : pr0;
     out.sales += pr.npc * price;
     out.selling += pr.npc * CORP.products.sell[kind];

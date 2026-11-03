@@ -17,10 +17,12 @@ import { partOf } from './hash.js';
 import * as model from './npc-model.js';
 import * as econ from './npc-econ.js';
 import { view as localView, detail as localDetail, reportOf as localReport } from './npc-local.js';
+import { view as dealsView } from './npc-ipdeals.js';
 import * as pop from './npc-pop.js';
 import * as asukaModel from './asuka.js';
 import * as text from './npc-text.js';
 import * as heart from './npc-heart.js';
+import { carByIndex } from './npc-mind.js';
 import * as research from './npc-research.js';
 import { createAi } from './npc-ai.js';
 import { LISTED_IDS } from './npc-market.js';
@@ -76,10 +78,12 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     if (stale) {
       W = load();
       stale = false;
-      if (W) { policy(W); homecoming(W); }
+      if (W) { policy(W); homecoming(W); adviser(W); }
     }
     return W;
   }
+  // the AI 経営アドバイザー's answer to a company's choices asked on `day` (npc-org.js askAdvice; null: no AI here)
+  function adviser(w) { w.aiAdvice = ai.on ? (company, day) => ai.text('decide', company + ':' + day) : null; }
   // the companies that came home since the country was kept (YOSIDA, WAZIMA): each hires its people once (model.welcome),
   // and the country is kept with them at once
   function homecoming(w) {
@@ -175,6 +179,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       save('all');
     });
     policy(W);
+    adviser(W);
   }
 
   /* ---------------------------------------------------------------- the minutes --- */
@@ -227,6 +232,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       if (n && (w2.minute - (w2.hotAt || 0) >= SAVE_EVERY || w2.dirtyAll)) save(w2.dirtyAll ? 'all' : 'hot');
       if (n) afterCommit(() => push(now));
     });
+    // (the hour's end: six companies' 本当のリアルタイム稼ぎ kept — server/core/corp.js)
+    if (corp.hourTick) { try { corp.hourTick(now); } catch (e) { console.error('corp hours failed', e); } }
     tune();
   }
   // when the host should wake next: the next minute the people are about
@@ -442,7 +449,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       work: { job: NPC.jobNames[P.job[i]], rank: NPC.ranks[P.rank[i]].name, salary: P.salary[i], tenure: P.tenure[i], satisfaction: P.jsat[i], union: !!(P.flags[i] & pop.FL.union), striking: !!(P.flags[i] & pop.FL.striking) },
       pension: { months: P.penM[i], pay: P.penPay[i], exempt: P.penHalf[i], monthly: P.penAmt[i], deferring: !!(P.flags[i] & pop.FL.defer) },
       home: { kind: ['賃貸', '持ち家', '家族と同居', '居候', '路上'][P.home[i]], rent: P.rent[i], host: P.host[i] >= 0 ? w.card(P.host[i], day).name : null },
-      car: P.car[i] ? (RULES.cars.filter((c) => c.price > 0 && !c.ended)[P.car[i] - 1] || {}).name : null, vip: P.vip[i] > day, phone: P.phone[i] ? '停止中' : '利用中', holds, relations: rel, reasons,
+      car: P.car[i] ? (carByIndex(P.car[i]) || {}).name : null, vip: P.vip[i] > day, phone: P.phone[i] ? '停止中' : '利用中', holds, relations: rel, reasons,
       // (the mind: its feelings, what they expect and have learnt, today's plan, the five ways, 消費観 — npc-heart.js)
       mind: heart.view(w, i)
     };
@@ -488,7 +495,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         // (the times' mood and the prices: server/core/npc-macro.js)
         macro: model.macroView(w),
         // (アスカ国, and the money ledger: every $ from someone to someone)
-        asuka: asukaModel.view(w), research: research.view(w), fund: (corp.world() || {}).fund || null, ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30),
+        asuka: asukaModel.view(w), research: research.view(w), fund: (corp.world() || {}).fund || null, ipDeals: dealsView(w), ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30),
           players: w.ledger.players ? { drift: w.ledger.players.drift, worst: w.ledger.players.worst || 0, days: w.ledger.players.days.slice(-30) } : null } : null };
       return { ...partOf(all, req.query.get('rev')), now };
     },
@@ -573,6 +580,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     if (j.kind === 'speech') { const c = w.card(j.i, day), d = w.districts[j.district]; return { kind: 'speech', ref: `${j.district}:${d.since}`, district: d.name, name: c.name, platform: (j.platform || []).map((id) => (NPC.platforms.find((p) => p.id === id) || {}).name).join('・') }; }
     if (j.kind === 'voice') { const c = w.card(j.i, day); return { kind: 'voice', ref: `${c.id}`, name: c.name, age: c.age, job: c.posts[0] || c.job, mood: c.voice }; }
     if (j.kind === 'venture') { const o = w.orgs[j.company], v = o && o.ventures.find((x) => x.id === j.venture); return v ? { kind: 'venture', ref: v.id, company: o.name, name: v.name } : null; }
+    if (j.kind === 'decide') return { kind: 'decide', ref: `${j.company}:${j.day}`, company: j.name, state: j.state, options: j.options };
     return null;
   }
 
@@ -591,6 +599,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     playerRoutes, routes, world: get,
     // (the 32 local companies' days in brief: 運営's report of the 45, server/core/corp.js)
     localReport: () => { const w = get(); return w ? localReport(w) : null; },
+    // (MY WAY's contracts with the local companies and the two countries: the people's side keeps them)
+    ipDeals: () => { const w = get(); return w ? dealsView(w) : null; },
     // (the tests: the minutes and the days worked out now, and what was kept)
     runTo: (m) => tx(() => { runTo(m, Infinity); save('hot'); })
   };

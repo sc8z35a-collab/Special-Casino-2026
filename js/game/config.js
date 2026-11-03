@@ -166,30 +166,39 @@
       { id: 'sage-secret', name: '大賢者', rarity: 'secret', price: 0, rare: true, given: true }
     ],
     // Car Owner shop (price in $); `model`: a 3D model to look at
-    // (img/3d/cars/<id>.glb, js/render/garage3d.js). A null price means the
+    // (img/3d/cars/<id>.glb — or `look`'s, the car it is built on —, js/render/garage3d.js). A null price means the
     // car can be previewed but cannot be bought or included in a sale; an
     // `ended` one is no longer sold (the ones the players have can still be
-    // sold back). Every car is made by MAGITA or YOSIDA (`maker`; what it costs to
-    // make and how its price is shared with Car Owner: js/game/corp.js products).
+    // sold back), a `hidden` one not shown in the shop at all; `buyback`: what one is always bought back for. Every car
+    // is made by MAGITA or YOSIDA (`maker`; what it costs to make and how its price is shared with Car Owner — and with
+    // MY WAY for its collaboration cars, `collab` —: js/game/corp.js products).
     cars: [
-      { id: 'two-state-sedan', name: 'MAGITA Two state セダン', price: 26500000, ended: true },
-      { id: 'blue-lightning', name: 'MAGITA シロン', price: 35000000, model: true },
+      { id: 'two-state-sedan', name: 'MAGITA Two state セダン', price: 26500000, ended: true, hidden: true },
+      { id: 'blue-lightning', name: 'MAGITA シロン', price: 35000000, model: true, ended: true },
       { id: 'onvoro', name: 'MAGITA オンヴォーロ', price: 4200000, model: true },
       { id: 'ferrari-325', name: 'MAGITA 325', price: 27000000, model: true },
       { id: 'mercedes-benz-one', name: 'MAGITA ONE', price: 55000000, model: true },
       { id: 'lamborghini-aventador', name: 'MAGITA アベンタドール', price: 80000000, model: true },
       { id: 'lamborghini-urus', name: 'MAGITA ウルス', price: 30000000, model: true },
-      { id: 'lamborghini-kuia-spyder', name: 'MAGITA クイヤスパイダー', price: 20000000, model: true },
+      { id: 'lamborghini-kuia-spyder', name: 'MAGITA クイヤスパイダー', price: 20000000, model: true, ended: true },
       { id: 'nissan-gt-r', name: 'MAGITA GT-R', price: 34000000, model: true },
       { id: 'lamborghini-revuelto', name: 'MAGITA レヴエルト', price: 65000000, model: true },
-      { id: 'mercedes-amg-one-white', name: 'MAGITA ONE（ホワイト）', price: 300000000, model: true },
+      { id: 'mercedes-amg-one-white', name: 'MAGITA ONE（ホワイト）', price: 120000000, model: true },
+      // MY WAY's first collaboration cars with MAGITA (from 2026-11-03; for now in the bodies they are built on)
+      { id: 'magita-speed-r-feat', name: 'MAGITA Speed R Feat.', price: 17500000, model: true, look: 'nissan-gt-r', collab: 'myway' },
+      { id: 'magita-k120-feat', name: 'MAGITA K120 Feat.', price: 35000000, model: true, look: 'lamborghini-kuia-spyder', collab: 'myway' },
+      { id: 'magita-dr1-feat', name: 'MAGITA DR1 Feat.', price: 56000000, model: true, look: 'lamborghini-revuelto', collab: 'myway' },
+      // the gacha's K110 (once the クイヤスパイダーGT): no longer given, never sold; one a player has sells for $35M
+      { id: 'porsche-kuia-spyder', name: 'MAGITA K110', price: 35000000, model: true, look: 'lamborghini-kuia-spyder', ended: true, hidden: true, buyback: 35000000 },
       // YOSIDA's cars (MAGITA's rival: js/game/corp.js), sold at Car Owner too; pictures are placeholders for now
       { id: 'yoshida-zx4', name: 'YOSHIDA ZX4', price: 8500000, maker: 'yosida' },
       { id: 'yoshida-p100w', name: 'YOSHIDA P100W', price: 6400000, maker: 'yosida' },
       { id: 'yoshida-h9c', name: 'YOSHIDA H9C', price: 10500000, maker: 'yosida' },
       { id: 'yoshida-s5', name: 'YOSHIDA S5', price: 4000000, maker: 'yosida' },
-      { id: 'yoshida-s6', name: 'YOSHIDA S6', price: 3600000, maker: 'yosida' },
-      { id: 'yoshida-k10e', name: 'YOSHIDA K10E', price: 6000000, maker: 'yosida' }
+      { id: 'yoshida-s6', name: 'YOSHIDA S6', price: 3600000, maker: 'yosida', ended: true },
+      { id: 'yoshida-k10e', name: 'YOSHIDA K10E', price: 6000000, maker: 'yosida' },
+      // (its collaboration car with MY WAY: YOSIDA's and MY WAY's profit 3:7)
+      { id: 'yoshida-s6-way', name: 'YOSHIDA S6 WAY', price: 7500000, maker: 'yosida', collab: 'myway' }
     ],
     // the garage holds this many cars; one more place costs `slotPrice` $ (for good, any number). The garages are
     // MAGITA Garage's: every month each place costs its contract fee (js/game/corp.js MAGITA.garage), taken from the $

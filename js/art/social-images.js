@@ -45,6 +45,12 @@
       'nissan-gt-r': 'img/cars/nissan-gt-r.webp',
       'lamborghini-revuelto': 'img/cars/lamborghini-revuelto.webp',
       'mercedes-amg-one-white': 'img/cars/mercedes-amg-one-white.webp',
+      // (MY WAY's collaboration cars and the K110: the pictures of the cars they are built on, for now)
+      'magita-speed-r-feat': 'img/cars/nissan-gt-r.webp',
+      'magita-k120-feat': 'img/cars/lamborghini-kuia-spyder.webp',
+      'magita-dr1-feat': 'img/cars/lamborghini-revuelto.webp',
+      'porsche-kuia-spyder': 'img/cars/lamborghini-kuia-spyder.webp',
+      'yoshida-s6-way': 'img/cars/yoshida-s6.webp',
       // (YOSHIDA: placeholder pictures until the real ones are made)
       'yoshida-zx4': 'img/cars/yoshida-zx4.webp',
       'yoshida-p100w': 'img/cars/yoshida-p100w.webp',

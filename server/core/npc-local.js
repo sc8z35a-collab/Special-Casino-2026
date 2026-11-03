@@ -172,6 +172,11 @@ export function reportOf(W) {
   if (!W.locals) return null;
   return LOCAL.firms.map((f) => { const c = W.locals.firms[f.id]; return { id: f.id, no: f.no, name: f.name, sphere: f.sphere, dead: !!c.dead, staff: c.staff, days: c.days || [] }; });
 }
+// (a local company's costs of what it sold beyond its plan — MY WAY's goods, npc-ipdeals.js —, bought as all its are)
+export function spendOf(W, id, n) {
+  const f = LOCAL.firm(id), c = W.locals && W.locals.firms[id];
+  if (f && c && !c.dead && n > 0) spend(W, f, c, n);
+}
 function spend(W, f, c, n) {
   const L = W.locals, U = LOCAL.utilities;
   c.cash -= n;

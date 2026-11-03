@@ -867,6 +867,19 @@ export function homeBill(W, members = 2, care = 0.5) {
 }
 // money paid YAMATO (`from`: who — 'vernoa:homes', 'vernoa:companies', 'vernoa:locals', 'asuka:homes', 'atsuka',
 // 'research'): its takings; what came from ヴェルノア, its exports
+// アスカ国's IP契約 with MY WAY (server/core/npc-ipdeals.js): its fee out of the treasury, to MY WAY as its day closes
+// (flowsFor `toCo`: the companies' side books it as MY WAY's 'ipAsuka')
+export function payMyway(W, n) {
+  const a = W.asuka;
+  n = Math.round(n);
+  if (!a || !(n > 0)) return false;
+  a.treasury -= n;
+  tout(a, 'myway', n);
+  const box = a.toCo.myway || (a.toCo.myway = {});
+  box.ip = (box.ip || 0) + n;
+  a.sum.toVernoa += n;
+  return true;
+}
 export function yamatoEarn(W, n, from) {
   const a = W.asuka, Y = yOf(W);
   n = Math.round(n);
