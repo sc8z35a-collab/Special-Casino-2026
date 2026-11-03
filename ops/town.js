@@ -411,6 +411,27 @@ var OpsTown = (function () {
     var cols = el('div', 'town-cols');
     cols.appendChild(t('性格', x.traits)); cols.appendChild(t('欲求（満たされ具合）', x.needs)); cols.appendChild(t('気持ち', x.feelings)); cols.appendChild(t('不満', x.discontent)); cols.appendChild(t('スキル', x.skills));
     p.appendChild(cols);
+    // the mind (server/core/npc-heart.js): more feelings, the five ways of spending, what they expect and have learnt
+    var mi = x.mind;
+    if (mi) {
+      var ways = {}, wn = { stress: 'ストレス買い', compensate: '代償消費', panic: 'パニック消費', apathy: '無気力消費', reward: 'ご褒美消費' };
+      Object.keys(mi.ways || {}).forEach(function (k) { ways[wn[k] || k] = Math.round(mi.ways[k] * 255); });
+      var c2 = el('div', 'town-cols');
+      c2.appendChild(t('心', { '自己肯定感': mi.esteem, '疲れ': mi.tired, 'ご褒美の免罪符': mi.license, '消費観': Math.round(mi.ethos * 255) }));
+      c2.appendChild(t('5つの消費傾向', ways));
+      p.appendChild(c2);
+      var g2 = el('div', 'town-grid');
+      kv(g2, '今日の予定', mi.plan.length ? mi.plan.join('・') : '—');
+      kv(g2, '物価の見通し', '年' + mi.beliefs.inflation.toFixed(1) + '%'); kv(g2, '失業の心配', '月' + mi.beliefs.jobLoss + '%'); kv(g2, '株の見通し', '年' + (mi.beliefs.market > 0 ? '+' : '') + mi.beliefs.market + '%');
+      kv(g2, 'いつもの月の予算', money(mi.habit)); kv(g2, '臨時のお金', money(mi.windfall)); kv(g2, '買いだめ', mi.stocked ? 'あと' + mi.stocked + '日分' : 'なし'); kv(g2, '選ばれし300人', mi.elite ? 'はい' : 'いいえ');
+      p.appendChild(g2);
+      var ln = { gamble: 'スロット', debt: '借金', job: '仕事', market: '株', spend: '買い物', luxury: '高い物', save: '貯金', friends: '友だち' };
+      var lessons = Object.keys(mi.lessons || {}).filter(function (k) { return Math.abs(mi.lessons[k]) >= 8; });
+      if (lessons.length) {
+        p.appendChild(el('h4', '', '教訓（思い出から学んだこと）'));
+        lessons.forEach(function (k) { var v = mi.lessons[k]; p.appendChild(el('p', '', ln[k] + '：' + (v > 0 ? 'いいもの' : 'こりごり') + '（' + (v > 0 ? '+' : '') + v + '）')); });
+      }
+    }
     p.appendChild(el('h4', '', '人間関係'));
     p.appendChild(table(['相手', '親しさ', '信頼', ''], x.relations.map(function (rl) { return { onclick: function () { openPerson(rl.i); }, cells: [rl.name, String(rl.close), String(rl.trust), rl.family ? '家族' : ''] }; })));
     p.appendChild(el('h4', '', '人生の本（最近の出来事）'));

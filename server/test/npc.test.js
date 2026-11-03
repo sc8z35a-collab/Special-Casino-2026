@@ -315,12 +315,13 @@ test('companies that come home to a living country (YOSIDA, WAZIMA) hire at once
   assert.equal(Array.from(P.job).filter((j) => j === NPC.job.civil).length, civil);
   assert.equal(c.money(), before);
   assert.deepEqual(npc.welcome(W, c.w, day), []);
-  // a country kept before the companies' second column of views (and the day's count of orders after it): it loads,
-  // those at 0
+  // a country kept before the companies' second column of views (and every column added after it — the day's count
+  // of orders, the local firm, the days missed, the mind's): it loads, those at 0
   const rows = pop.pack(P), whole = Buffer.concat(rows.map((r) => Buffer.from(r)));
-  const old = whole.subarray(0, whole.length - P.view2.byteLength - P.trades.byteLength - P.firm.byteLength - P.miss.byteLength), Q = pop.alloc(P.n);
+  const first = pop.COLUMNS.findIndex((x) => x.name === 'view2');
+  const old = whole.subarray(0, pop.COLUMNS.slice(0, first).reduce((a, x) => a + P[x.name].byteLength, 0)), Q = pop.alloc(P.n);
   pop.unpack(Q, [old]);
-  assert.deepEqual([Q.job[5], Q.cash[5], Q.view2.every((v) => v === 0), Q.trades.every((v) => v === 0), Q.firm.every((v) => v === 0), Q.miss.every((v) => v === 0)], [P.job[5], P.cash[5], true, true, true, true]);
+  assert.deepEqual([Q.job[5], Q.cash[5], Q.view2.every((v) => v === 0), Q.trades.every((v) => v === 0), Q.firm.every((v) => v === 0), Q.miss.every((v) => v === 0), Q.ethos.every((v) => v === 0), Q.wind.every((v) => v === 0)], [P.job[5], P.cash[5], true, true, true, true, true, true]);
   assert.throws(() => pop.unpack(pop.alloc(P.n), [old.subarray(0, old.length - 4)]), /shorter/);
 });
 

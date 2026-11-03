@@ -15,9 +15,22 @@ export const N = { fun: 0, thrill: 1, status: 2, security: 3, move: 4, social: 5
 export const NN = 9;
 // feelings
 export const E = { mood: 0, stress: 1, anger: 2, anxiety: 3, happy: 4 };
+// the feelings added later (`emo2`): how much one thinks of oneself (自己肯定感), how worn out one is (疲れ), and how
+// much one feels one has earned a treat (ご褒美の免罪符)
+export const E2 = { esteem: 0, tired: 1, license: 2 };
+export const NE2 = 3;
+// what one expects of the times (`belief`, −127..127: what each has heard, read and lived, npc-heart.js): the prices
+// (a tenth of a % a year), losing one's work (a 2000th a month) and the market (127: up 30% a year)
+export const BL = { infl: 0, job: 1, mkt: 2 };
+export const NB = 3;
+// what one has learnt of life (`lesson`, −127..127: what the nights made of one's memories, npc-heart.js)
+export const LS = { gamble: 0, debt: 1, job: 2, market: 3, spend: 4, luxury: 5, save: 6, friends: 7 };
+export const NL = 8;
 // marks
-export const FL = { student: 1, famous: 2, candidate: 4, mayor: 8, unionRep: 16, leader: 32, striking: 64, moving: 128, founder: 256, rich: 512, exec: 1024, welfare: 4096, sick: 8192, defer: 16384, widow: 32768, rehired: 65536, union: 131072, newborn: 262144 };
+export const FL = { student: 1, famous: 2, candidate: 4, mayor: 8, unionRep: 16, leader: 32, striking: 64, moving: 128, founder: 256, rich: 512, exec: 1024, welfare: 4096, sick: 8192, defer: 16384, widow: 32768, rehired: 65536, union: 131072, newborn: 262144, elite: 524288 };
 export const MEM = 16, REL = 12, OWN = 8, LEARN = 12, LISTED = 4;
+// the memories: the first 16 in `mem`, the 16 added later in `mem2` (32 in all)
+export const MEM2 = 16, MEMS = MEM + MEM2;
 // room for the companies' views beyond the first ten (YOSIDA, WAZIMA and those to come)
 const VIEW2 = 6;
 // home: 0 rents, 1 owns, 2 lives with family, 3 stays with someone (居候), 4 on the street
@@ -49,7 +62,14 @@ const COLS = [
   ['firm', Uint8Array, 1, false, true],
   // (the days in a row a payment one had to make could not be made: nobody would lend them more — what is not paid is
   // not paid, never paid with money from nowhere —: the trouble ladder's sign, npc-state.js troubles)
-  ['miss', Uint8Array, 1, true, true]
+  ['miss', Uint8Array, 1, true, true],
+  // (the mind added later, npc-heart.js: the feelings of `E2`, what one expects of the times and has learnt of life, the
+  // 16 memories beyond the first, today's plan (two things one means to do), one's sense that one's own spending keeps
+  // the country going (消費観), the month's spending one is used to (the habit: 参照点), the money one counts as a windfall
+  // (a bonus, a win, an inheritance: spent the more freely, 心の財布), and the days of living goods stocked at home)
+  ['emo2', Uint8Array, NE2, false, true], ['belief', Int8Array, NB, false, true], ['lesson', Int8Array, NL, false, true], ['mem2', Uint32Array, MEM2, false, true],
+  ['plan', Uint8Array, 2, false, true], ['ethos', Uint8Array, 1, false, true], ['ref', Float32Array, 1, false, true],
+  ['wind', Float64Array, 1, true, true], ['hoard', Uint8Array, 1, true, true]
 ];
 export const COLUMNS = COLS.map(([name, kind, width, hot, late]) => ({ name, kind, width, hot: !!hot, late: !!late }));
 // what a person thinks of company `k` (NPC.companies' order: the first ten in `view`, the rest in `view2`)
@@ -131,11 +151,51 @@ export function leaveHousehold(P, i) {
   P.hh[i] = -1;
   P.hnext[i] = -1;
 }
+// a memory: in the next of the 32 places (the oldest gone); and what it does to one's feelings at once (FEEL)
 export function remember(P, i, day, kind, power) {
-  const k = P.memAt[i];
-  P.mem[i * MEM + k] = ((day & 0xffff) << 16) | ((kind & 0xff) << 8) | (power & 0xff);
-  P.memAt[i] = (k + 1) % MEM;
+  const k = P.memAt[i] % MEMS, v = ((day & 0xffff) << 16) | ((kind & 0xff) << 8) | (power & 0xff);
+  if (k < MEM) P.mem[i * MEM + k] = v; else P.mem2[i * MEM2 + k - MEM] = v;
+  P.memAt[i] = (k + 1) % MEMS;
+  const f = FEEL[kind];
+  if (f && P.emo2) {
+    const w = Math.min(1.5, Math.max(0.3, (power & 0xff) / 150));
+    const x = i * NE2;
+    P.emo2[x + E2.esteem] = clampB(P.emo2[x + E2.esteem] + f[0] * w);
+    P.emo[i * 5 + E.stress] = clampB(P.emo[i * 5 + E.stress] + f[1] * w);
+    P.emo2[x + E2.license] = clampB(P.emo2[x + E2.license] + f[2] * w);
+  }
 }
+// memory `k` (0..31) of person `i`: { day (its low 16 bits), kind, power } or null
+export function memoryAt(P, i, k) {
+  const v = k < MEM ? P.mem[i * MEM + k] : P.mem2 ? P.mem2[i * MEM2 + k - MEM] : 0;
+  return v ? { day: v >>> 16, kind: (v >> 8) & 0xff, power: v & 0xff } : null;
+}
+// what a memory does to the feelings at once, by its kind (npc-life.js M): [自己肯定感, ストレス, ご褒美の免罪符], at a
+// power of 150 (more for a stronger memory, half again at most)
+const FEEL = {
+  1: [20, -10, 30],   // a big win
+  2: [-25, 25, 0],    // a big loss
+  3: [15, 0, 0],      // a car
+  4: [-60, 50, 0],    // fired
+  5: [40, -20, 10],   // hired
+  6: [-5, 30, 0],     // someone close died
+  7: [30, -20, 20],   // married
+  8: [60, 0, 30],     // elected
+  9: [0, 20, 0],      // a strike
+  10: [-70, 60, 0],   // on the street
+  11: [-5, 10, 0],    // a loan
+  12: [50, -10, 40],  // promoted
+  13: [10, 0, 10],    // shares up
+  14: [-10, 15, 0],   // shares down
+  20: [30, -30, 0],   // back on one's feet
+  21: [-50, 30, 0],   // lost an election
+  23: [-10, -10, 0],  // quit
+  24: [-15, -20, 20], // retired
+  25: [10, -25, 0],   // a spree (ストレス買い: 万能感)
+  26: [-15, 15, 0],   // regret (後悔)
+  28: [5, -15, -40],  // a treat (ご褒美: the license used)
+  29: [-8, 5, 0]      // a friend's new car or the like (見栄)
+};
 export function addRelation(P, i, j, close = 80, trust = 120) {
   if (i === j || j < 0) return;
   let slot = -1, weakest = 256;

@@ -2144,8 +2144,10 @@ function asukaPlan(w, d, A, out, X) {
       const step = Math.max(1, Math.ceil(have * 0.25));
       let next = have;
       if (target > have) {
+        // (toward what its people would buy: a quarter more, or a third of what is lacking if that is more — what they
+        // cannot buy for want of branches is a sale lost every day)
         const each = Math.round(open * (1 - subsidy)), part = Math.round(open * subsidy);
-        let k = Math.min(target - have, step);
+        let k = Math.min(target - have, Math.max(step, Math.ceil((target - have) / 3)));
         if (part > 0) k = Math.min(k, Math.floor(boost / part));
         // (what it has beyond a month of its costs; the rest borrowed of Tenesice, as far as it lends and only if the
         // branches pay their building back within three years)

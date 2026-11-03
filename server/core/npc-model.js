@@ -24,6 +24,7 @@ import * as text from './npc-text.js';
 import * as asuka from './asuka.js';
 import { gdpDay, gdpView } from './npc-gdp.js';
 import { macroDay, macroView, boomOf } from './npc-macro.js';
+import * as heart from './npc-heart.js';
 
 const MIN = 60000, DAY_MIN = 1440;
 export { LISTED_IDS };
@@ -58,6 +59,9 @@ export function boot(key, now, corp, { n = NPC.nation.population, held = {} } = 
   W.labor.first(W);
   calibrate(W, corp, day);
   for (let i = 0; i < n; i++) state.budgetOf(W, i, ageOf(P, i, day), r);
+  // (the mind: everyone's feelings, beliefs, 消費観 and habit as they begin — npc-heart.js — and the 300 chosen)
+  heart.migrate(W);
+  heart.chooseElite(W);
   state.owners(W);
   W.politics.first(W, day, r);
   // (アスカ国, the country beside it: founded the same day, its money printed once)
@@ -166,6 +170,12 @@ export function attach(W) {
   for (const k of NPC.knobs) if (W.nation.knobs[k.id] === undefined) W.nation.knobs[k.id] = k.start;
   // (海外's account, for a country saved before it: from now on)
   if (!W.abroad) W.abroad = { cash: 0 };
+  // (who owns the local businesses is not kept — it is made again from everyone's money —: made now for a country
+  // read back, or its next day's owners' share finds no list until the month's start)
+  if (W.P && !W.owners && W.cal && W.cal.living !== undefined) state.owners(W);
+  // (the mind, for a country kept before it: given everyone once — npc-heart.js; a country being made gets it as its
+  // people are made)
+  if (W.P && W.P.emo2 && W.brain === undefined && W.cal && W.cal.living !== undefined) { heart.migrate(W); heart.chooseElite(W); }
   // (a holding below nothing — several sell orders of one person once all filled: npc-market auction — none at all)
   if (W.P && W.P.sh) for (let x = 0; x < W.P.sh.length; x++) if (W.P.sh[x] < 0) W.P.sh[x] = 0;
   W.knobChanged = (id, was, now) => state.knobChanged(W, id, was, now);

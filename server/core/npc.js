@@ -20,6 +20,7 @@ import { view as localView, detail as localDetail, reportOf as localReport } fro
 import * as pop from './npc-pop.js';
 import * as asukaModel from './asuka.js';
 import * as text from './npc-text.js';
+import * as heart from './npc-heart.js';
 import { createAi } from './npc-ai.js';
 import { LISTED_IDS } from './npc-market.js';
 import { fmtKnob } from './npc-politics.js';
@@ -402,7 +403,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const out = { ...c, district: NPC.districts[c.district].name, at: NPC.districts[c.at] ? NPC.districts[c.at].name : '' };
     const famous = P.flags[i] & (pop.FL.famous | pop.FL.mayor | pop.FL.exec | pop.FL.rich);
     if (famous || deep) {
-      out.life = memories(w, i, day).slice(0, deep ? 16 : 5);
+      out.life = memories(w, i, day).slice(0, deep ? 32 : 5);
       const voice = ai.text('voice', `${c.id}`);
       if (voice) out.voice = voice;
     }
@@ -410,14 +411,14 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     return out;
   }
   const MEMS = { 1: 'カジノで大勝ち', 2: 'カジノで大負け', 3: '車を買った', 4: '仕事を失った', 5: '就職した', 6: '大切な人を亡くした', 7: '結婚した', 8: '選挙に当選', 9: 'ストライキに参加', 10: '路上生活になった',
-    11: 'ローンを組んだ', 12: '昇進した', 13: '株で儲けた', 14: '株で損をした', 15: '名作ゲームに出会った', 16: '新しいサービスを使った', 17: '引っ越した', 18: 'デモに参加', 19: '新しい人生が始まった', 20: '暮らしを立て直した', 21: '選挙に落選', 22: '投票に行った', 23: '会社を辞めた', 24: '定年を迎えた' };
+    11: 'ローンを組んだ', 12: '昇進した', 13: '株で儲けた', 14: '株で損をした', 15: '名作ゲームに出会った', 16: '新しいサービスを使った', 17: '引っ越した', 18: 'デモに参加', 19: '新しい人生が始まった', 20: '暮らしを立て直した', 21: '選挙に落選', 22: '投票に行った', 23: '会社を辞めた', 24: '定年を迎えた', 25: '気晴らしに買いまくった', 26: '買いすぎを後悔した', 27: '日用品を買いだめした', 28: '自分へのご褒美', 29: '友だちの新車がうらやましかった' };
   function memories(w, i, day) {
     const P = w.P, out = [];
-    for (let k = 0; k < pop.MEM; k++) {
-      const v = P.mem[i * pop.MEM + k];
+    for (let k = 0; k < pop.MEMS; k++) {
+      const v = pop.memoryAt(P, i, k);
       if (!v) continue;
-      const kind = (v >> 8) & 0xff, ago = ((day & 0xffff) - (v >>> 16) + 65536) % 65536;
-      out.push({ what: MEMS[kind] || '出来事', ago, power: v & 0xff });
+      const ago = ((day & 0xffff) - v.day + 65536) % 65536;
+      out.push({ what: MEMS[v.kind] || '出来事', ago, power: v.power });
     }
     return out.sort((a, b) => a.ago - b.ago);
   }
@@ -440,7 +441,9 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       work: { job: NPC.jobNames[P.job[i]], rank: NPC.ranks[P.rank[i]].name, salary: P.salary[i], tenure: P.tenure[i], satisfaction: P.jsat[i], union: !!(P.flags[i] & pop.FL.union), striking: !!(P.flags[i] & pop.FL.striking) },
       pension: { months: P.penM[i], pay: P.penPay[i], exempt: P.penHalf[i], monthly: P.penAmt[i], deferring: !!(P.flags[i] & pop.FL.defer) },
       home: { kind: ['賃貸', '持ち家', '家族と同居', '居候', '路上'][P.home[i]], rent: P.rent[i], host: P.host[i] >= 0 ? w.card(P.host[i], day).name : null },
-      car: P.car[i] ? (RULES.cars.filter((c) => c.price > 0 && !c.ended)[P.car[i] - 1] || {}).name : null, vip: P.vip[i] > day, phone: P.phone[i] ? '停止中' : '利用中', holds, relations: rel, reasons
+      car: P.car[i] ? (RULES.cars.filter((c) => c.price > 0 && !c.ended)[P.car[i] - 1] || {}).name : null, vip: P.vip[i] > day, phone: P.phone[i] ? '停止中' : '利用中', holds, relations: rel, reasons,
+      // (the mind: its feelings, what they expect and have learnt, today's plan, the five ways, 消費観 — npc-heart.js)
+      mind: heart.view(w, i)
     };
   }
 

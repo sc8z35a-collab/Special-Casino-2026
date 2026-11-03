@@ -11,6 +11,7 @@ import { LISTED_IDS } from './npc-market.js';
 import * as local from './npc-local.js';
 import * as asukaModel from './asuka.js';
 import { boomOf } from './npc-macro.js';
+import * as heart from './npc-heart.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const YEAR = 365;
@@ -176,6 +177,13 @@ export function take(W, i, gross, kind, day) {
   // (rounding: what is left beyond the takings is theirs)
   P.cash[i] += gross - so.pension - so.rest - tax - resident;
   P.inc[i] += net;
+  // (the payday's treat one feels one has earned; a bonus, the more so, and the part of it one counts as extra money:
+  // 心の財布, npc-heart.js)
+  if (P.emo2) {
+    const rw = heart.tendency(P, i, 'reward');
+    if (kind === 'bonus') { heart.windfall(P, i, net * (0.25 + 0.5 * rw)); heart.add2(P, i, 2, 60 * (0.5 + rw)); }
+    else heart.add2(P, i, 2, 12 * (0.4 + rw));
+  }
   if (kind === 'salary' && age < 60) {
     // the pension's record: a month paid in, on this pay
     P.penM[i] = Math.min(65535, P.penM[i] + 1);
@@ -304,6 +312,8 @@ export function dayStart(W, day, r, ctx) {
   W.nation.day = { in: {}, out: {} };
   for (const d of W.districts) d.day = { in: {}, out: {} };
   for (let i = 0; i < P.n; i++) { P.buyDay[i] = 0; P.trades[i] = 0; }
+  // the people's night (npc-heart.js): yesterday's lessons, their feelings settling, what they expect now, today's plan
+  if (P.emo2) heart.day(W, day, r);
   if (t.d === 1) month(W, day, r, ctx);
   const fans = collabOf(W, ctx);
   // living: the day's food and things of the household (ジンクス's goods, the local shops'), by its size and money
@@ -313,13 +323,17 @@ export function dayStart(W, day, r, ctx) {
     const wealth = Math.pow(Math.max(0.02, (P.cash[i] + 1) / 60000000), 0.22);
     const thrift = 1 - 0.35 * tr(P, i, T.thrift);
     const street = P.home[i] === HOME.street ? 0.15 : 1;
-    const n = W.cal.living * Math.pow(size, 0.75) * wealth * thrift * street * (W.capacity.jinx || 1) * econ.cpi(W);
+    // (living goods stocked at home — a panic's 買いだめ —: only the fresh food until they run out)
+    const stocked = P.hoard && P.hoard[i] > 0 ? (P.hoard[i]--, 0.3) : 1;
+    const n = W.cal.living * Math.pow(size, 0.75) * wealth * thrift * street * stocked * (W.capacity.jinx || 1) * econ.cpi(W);
     econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.62), true);
     econ.toSector(W, i, Math.round(n * 0.38), true, 'living');
     // MY WAY's fans (購入熱): its characters' goods and collaborations at its partners and its own showroom, as much as
     // the characters pull, the impulsive the more
     if (fans) {
-      const k = W.cal.collab * Math.pow(size, 0.75) * wealth * thrift * street * (0.4 + 1.2 * tr(P, i, T.impulse)) * fans.pull;
+      // (by what the household lets itself spend on pleasures, and the more for one who buys to be seen: 代償消費)
+      const mine = P.emo2 ? Math.max(0.4, Math.min(3, Math.sqrt((Math.max(0, P.fund[i * 4 + 2]) + Math.max(0, P.wind[i]) * 0.1) / Math.max(1, W.cal.leisure)))) * (1 + 0.8 * heart.tendency(P, i, 'compensate') * heart.lowEsteem(P, i)) : 1;
+      const k = W.cal.collab * Math.pow(size, 0.75) * wealth * thrift * street * (0.4 + 1.2 * tr(P, i, T.impulse)) * fans.pull * mine;
       if (k >= 1) for (const [co, stream, part] of fans.list) econ.buy(W, i, day, co, stream, Math.round(k * part), false);
     }
   }
@@ -400,11 +414,13 @@ function month(W, day, r, ctx) {
     // VIP (DAIZIN): a member's year renewed while they can afford it and still care for it (the dearer, the fewer),
     // the month's fee paid; and the rich who are vain enough join
     const vipPrice = econ.priceOf(W, 'daizin:vipFee'), vipFee = Math.round(W.cal.vipFee * vipPrice);
+    // (one who thinks little of themselves and minds being seen joins sooner and keeps it the longer: 代償消費)
+    const status = P.emo2 ? heart.tendency(P, i, 'compensate') * heart.lowEsteem(P, i) : 0;
     if (P.vip[i] > 0) {
-      if (P.vip[i] <= day + 31 && P.cash[i] > vipFee * 24 && r.u() < 0.55 + 0.4 * tr(P, i, T.vanity) - 0.3 * Math.max(0, vipPrice - 1)) P.vip[i] += 365;
+      if (P.vip[i] <= day + 31 && P.cash[i] > vipFee * 24 && r.u() < 0.55 + 0.4 * tr(P, i, T.vanity) + 0.3 * status - 0.3 * Math.max(0, vipPrice - 1)) P.vip[i] += 365;
       if (!(P.vip[i] > day) || !econ.buy(W, i, day, 'daizin', 'members', vipFee, false)) P.vip[i] = 0;
-    } else if (P.cash[i] > 300000000 && r.u() < 0.02 * (0.3 + tr(P, i, T.vanity)) / Math.max(0.3, vipPrice)) {
-      if (econ.buy(W, i, day, 'daizin', 'members', vipFee, false)) P.vip[i] = day + 365;
+    } else if ((P.cash[i] > 300000000 || (P.cash[i] > vipFee * 60 && status > 0.3)) && r.u() < 0.02 * (0.3 + tr(P, i, T.vanity)) * (1 + 3 * status) / Math.max(0.3, vipPrice)) {
+      if (econ.buy(W, i, day, 'daizin', 'members', vipFee, false)) { P.vip[i] = day + 365; if (P.emo2) { heart.add2(P, i, 0, 15); heart.envy(W, i, day, 'daizin'); } }
     }
     if (P.car[i]) econ.buy(W, i, day, 'carowner', 'service', econ.spendAt(W, 'carowner:service', W.cal.service * (0.5 + r.u())), true);
     // the 国民年金 and 国民健康保険 of those not employed (students wait; those with little are let off half)
@@ -428,11 +444,12 @@ function month(W, day, r, ctx) {
         P.credit[i] = clampB(P.credit[i] + 2);
         if (P.debt[i] <= 0) { P.debt[i] = 0; P.dkind[i] = 0; }
       } else {
-        // not paid: added to what is owed, the credit marked down
+        // not paid: added to what is owed, the credit marked down (and it weighs on them)
         P.debt[i] += int;
         W.sum.lent += int;
         econ.toBank(W, day, 'nii', int);
         P.credit[i] = clampB(P.credit[i] - 12);
+        P.emo[i * 5 + E.stress] = clampB(P.emo[i * 5 + E.stress] + 25);
       }
     }
     // the 生活保護: those it has found, up to what one needs to live
@@ -441,11 +458,18 @@ function month(W, day, r, ctx) {
       if (need > 0) { econ.nationOut(W, 'welfare', need); P.cash[i] += need; }
       if (P.cash[i] > welfare * 6 && P.inc[i] > welfare) P.flags[i] &= ~FL.welfare;
     }
+    // (what was left of last month's pleasures: a part of it extra money for the careless — 心の財布 —; the windfall
+    // counted as one's savings again little by little)
+    if (P.emo2 && W.brain) { P.wind[i] = Math.round(P.wind[i] * 0.75); heart.leftover(P, i); }
     budgetOf(W, i, age, r);
+    // (the month's spending one is used to: 参照点)
+    if (P.emo2 && W.brain) heart.habit(P, i);
     P.inc[i] = 0;
     P.spent[i] = 0;
   }
   owners(W);
+  // (選ばれし300人: chosen again each month, npc-heart.js)
+  if (P.emo2) heart.chooseElite(W);
   // the country's interest to Tenesice on what it owes the bank, and the bank's fee for keeping large deposits
   // (口座管理手数料: 0.1% a year of what is above $100M)
   const owed = Math.round(W.nation.bank * (W.nation.bankRate || 0.01) / 12 * solvency(W));
@@ -460,7 +484,8 @@ function month(W, day, r, ctx) {
 
 // A person's month (their own sense of what they may spend: of what comes in, by how careful they are, and a little
 // of what they have, more for the old), and its parts: the slots, the games, the pleasures, the market. (Most of what
-// comes in goes out again — six tenths for the most careful, nearly all for the least —: the money goes round.)
+// comes in goes out again — seven tenths for the most careful, more than all of it for the least —: the money goes
+// round.)
 // The times (server/core/npc-macro.js boom): in a boom they spend more of what comes in and of what they have — the
 // careless and the bold, who follow the talk, the most; the careful hardly — gamble and play more, and buy into the
 // market (it is rising); in a bust they keep it (and sell: the market is falling).
@@ -471,10 +496,13 @@ export function budgetOf(W, i, age, r) {
   const thrift = tr(P, i, T.thrift);
   // (how far the times carry this one: by how bold, how much they follow the news, how careful)
   const feel = Math.max(0.2, 0.4 + 0.6 * tr(P, i, T.risk) + 0.4 * tr(P, i, T.news) - 0.6 * thrift), boom = Math.max(0.2, 1 + (boomOf(W) - 1) * feel);
-  const keep = Math.min(1.1, (0.6 + 0.38 * (1 - thrift)) * (1 + 0.2 * (boom - 1)));
-  const draw = (0.015 + 0.05 * (age >= 60 ? 1 : age / 60)) * (1 - 0.5 * thrift) / 12 * Math.pow(boom, 1.5);
+  // (docs/ai-economy-plan.md 2.1: 72% of what comes in for the most careful to 115% for the least, and half again as
+  // much more of what they have — the country's people spend: their spending is the companies' sales)
+  const keep = Math.min(1.2, (0.72 + 0.43 * (1 - thrift)) * (1 + 0.2 * (boom - 1)));
+  const draw = (0.015 + 0.05 * (age >= 60 ? 1 : age / 60)) * (1 - 0.5 * thrift) / 12 * Math.pow(boom, 1.5) * 1.7;
   const mood = P.emo[i * 5 + E.mood] / 255;
-  const b = Math.max(0, inc * keep + wealth * draw) * (0.85 + 0.3 * mood);
+  // (and the mind's say: worry, a low sense of oneself, 消費観, what one has learnt, the windfall, the habit — npc-heart.js)
+  const b = heart.budgetMind(W, i, Math.max(0, inc * keep + wealth * draw) * (0.85 + 0.3 * mood)).b;
   P.budget[i] = Math.round(b);
   const w = weightsOf(P, i, age);
   P.fund[i * 4] = Math.round(b * c.casino * w.casino * NPC.life.casinoSpend * Math.pow(boom, 1.3));
@@ -630,7 +658,7 @@ export function die(W, i, day, r, ctx) {
     const sp = P.spouse[i];
     const parts = heirs.map((j) => (j === sp ? heirs.length : 1));
     const sum = parts.reduce((a, b) => a + b, 0);
-    heirs.forEach((j, k) => { const g = k === heirs.length - 1 ? left : Math.floor((estate - tax) * parts[k] / sum); P.cash[j] += g; left -= g; });
+    heirs.forEach((j, k) => { const g = k === heirs.length - 1 ? left : Math.floor((estate - tax) * parts[k] / sum); P.cash[j] += g; left -= g; heart.windfall(P, j, g * 0.3); });
     for (let k = 0; k < LISTED; k++) {
       const s = Math.max(0, P.sh[i * LISTED + k]);
       if (!s) continue;
@@ -741,6 +769,7 @@ export function reborn(W, i, day, r, heirs) {
   for (let k = 0; k < 4; k++) { const j = r.int(P.n); if (Math.abs(ageOf(P, j, day) - 18) < 6) addRelation(P, i, j, 80, 120); }
   P.upd[i] = W.minute;
   budgetOf(W, i, 18, r);
+  if (P.emo2) heart.newLife(W, i, parent);
   W.sum.born++;
   W.events.push({ kind: 'born', i, name: W.card(i, day).name, parent: parent >= 0 ? W.card(parent, day).name : '' });
 }
