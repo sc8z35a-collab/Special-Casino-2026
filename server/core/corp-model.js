@@ -1844,7 +1844,8 @@ function expectCountry(w, s, p, d) {
     if (cost) add('c:' + k, v * cost);
   }
   if (p.model === 'studio') {
-    add('c:platform', ((s.pr.game || 0) + (s.pr.live || 0) + ((s.po && s.po.game) || 0)) * p.platform);
+    // (`s.pr`: there from the first close once the country lives — none before)
+    add('c:platform', (((s.pr && s.pr.game) || 0) + ((s.pr && s.pr.live) || 0) + ((s.po && s.po.game) || 0)) * p.platform);
     for (const t of s.titles) { const line = lineOf(p, t.line), age = d - t.day; if (age < CURVE.years * YEAR) add('c:amort', t.cost * (writtenShare(line, age) - writtenShare(line, age - 1))); }
     if (p.contract) { add('c:contract', people * p.makers * contractShare(s, p)); add('r:contract', PROFILES.get(p.partner.with).partner.fee * 12 / YEAR); }
     if (p.partner && p.partner.role === 'backer') add('sPartner', p.partner.budget / YEAR);

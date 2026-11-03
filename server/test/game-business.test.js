@@ -228,7 +228,8 @@ test('the server: a spin\'s win beyond its bet is the treasury\'s, a reward pays
   assert.equal(prize.garage || 0, count('garage'));
   // what the gacha gave, sold back: a VIP ticket to DAIZIN ($200K), a reset ticket to YOSIDA ($250K), an empty garage
   // place to MAGITA ($350K) — each the company's purchase
-  s.app.db.prepare("INSERT INTO items (user_id, item, count) VALUES (?, 'gacha-vip-week', 1) ON CONFLICT(user_id, item) DO UPDATE SET count = count + 1").run(a.me.id);
+  // (exactly one, whatever the pulls above gave: the gacha's own draws are the server's secure chance)
+  s.app.db.prepare("INSERT INTO items (user_id, item, count) VALUES (?, 'gacha-vip-week', 1) ON CONFLICT(user_id, item) DO UPDATE SET count = 1").run(a.me.id);
   s.setUser(a.me.id, { garage_extra: 1, quests: JSON.stringify({ tickets: { '5h': 1, day: 0 } }) });
   const cash0 = (await s.call('GET', '/api/me', { token: a.token })).me.dollars;
   for (const item of ['vip-week', 'reset-5h', 'garage']) {

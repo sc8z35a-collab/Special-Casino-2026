@@ -154,3 +154,15 @@ test('the six companies\' hours of 本当のリアルタイム稼ぎ: a row an h
   assert.equal(corp.hoursOf('jinx', now), null);
   for (const id of ['myway', 'ice', 'riru', 'magita', 'yosida', 'tenesice']) assert.ok(corp.hoursOf(id, now).hours.length >= 4, id);
 });
+
+test('a studio\'s day expected before the first close of a living country (its money of late not there yet): the hours of ICE SMOKER and RIRU are kept too', () => {
+  const key = Buffer.alloc(32, 8);
+  const launch = Math.floor(START / 86400000);
+  const { world: w } = corpModel.boot(key, launch, { years: 0, prices: { riru: 12000, ice: 30000 } });
+  corpModel.startCirculation(w, launch, 0.02);
+  for (const id of ['ice', 'riru']) {
+    const s = w.co[id];
+    delete s.pr;
+    assert.doesNotThrow(() => corpModel.expectDay(w, s, corpModel.PROFILES.get(id), launch), id);
+  }
+});

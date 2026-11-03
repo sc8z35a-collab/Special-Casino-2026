@@ -543,31 +543,35 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     tx(() => {
       for (const id of HOURLY) {
         if (!w.co[id]) continue;
-        const last = q('SELECT hour, data FROM corp_hours WHERE company = ? ORDER BY hour DESC LIMIT 1').get(id);
-        const prev = last ? JSON.parse(last.data) : null;
-        if (last && last.hour >= h - 1) continue;
-        const t = today(id, now), cum = (t.players || 0) + (t.people || 0), cumP = t.players || 0;
-        // (the day just closed: what it ended at, for a snapshot of it before its end)
-        const ended = (d) => { const r = q('SELECT data FROM corp_days WHERE company = ? AND day = ?').get(id, d); const x = r ? JSON.parse(r.data) : null; return x ? { all: (x.players || 0) + (x.npc || 0), players: x.players || 0 } : null; };
-        // (the first hour kept: where the counting starts, nothing in it known yet)
-        let direct = 0, players = 0;
-        if (prev && prev.day === t.day) { direct = cum - prev.cum; players = cumP - prev.cumP; }
-        else if (prev) { const e = ended(prev.day); direct = cum + Math.max(0, (e ? e.all : prev.cum) - prev.cum); players = cumP + Math.max(0, (e ? e.players : prev.cumP) - prev.cumP); }
-        // (the last day closed: its trade with the companies and its costs, an hour of them)
-        const r = q('SELECT data FROM corp_days WHERE company = ? AND day <= ? ORDER BY day DESC LIMIT 1').get(id, t.day - 1);
-        const x = r ? JSON.parse(r.data) : null;
-        const trade = x ? Math.max(0, x.sales - (x.players || 0) - (x.npc || 0)) / 24 : 0, cost = x ? (x.sales - x.op) / 24 : 0, other = x ? (x.other || 0) / 24 : 0;
-        const from = prev ? Math.max(prev.hour + 1, h - 24) : h - 1, hours = Math.max(1, h - from);
-        for (let k = from; k < h; k++) {
-          const d = Math.round(Math.max(0, direct) / hours), pl = Math.round(Math.max(0, players) / hours);
-          q('INSERT OR REPLACE INTO corp_hours (company, hour, data) VALUES (?, ?, ?)').run(id, k, JSON.stringify({
-            hour: k, day: t.day, cum, cumP, players: pl, people: d - pl, direct: d, trade: Math.round(trade), cost: Math.round(cost), other: Math.round(other),
-            earned: Math.round(d + trade + other - cost), slept: hours > 1, first: !prev }));
-        }
+        // (each company's hour on its own: one that cannot be worked out keeps none of the others from theirs)
+        try { hourOf(id, h, now); } catch (e) { console.error('corp hours failed', id, e); }
       }
       q('DELETE FROM corp_hours WHERE hour < ?').run(h - KEEP_HOURS);
     });
     hourAt = h;
+  }
+  function hourOf(id, h, now) {
+    const last = q('SELECT hour, data FROM corp_hours WHERE company = ? ORDER BY hour DESC LIMIT 1').get(id);
+    const prev = last ? JSON.parse(last.data) : null;
+    if (last && last.hour >= h - 1) return;
+    const t = today(id, now), cum = (t.players || 0) + (t.people || 0), cumP = t.players || 0;
+    // (the day just closed: what it ended at, for a snapshot of it before its end)
+    const ended = (d) => { const r = q('SELECT data FROM corp_days WHERE company = ? AND day = ?').get(id, d); const x = r ? JSON.parse(r.data) : null; return x ? { all: (x.players || 0) + (x.npc || 0), players: x.players || 0 } : null; };
+    // (the first hour kept: where the counting starts, nothing in it known yet)
+    let direct = 0, players = 0;
+    if (prev && prev.day === t.day) { direct = cum - prev.cum; players = cumP - prev.cumP; }
+    else if (prev) { const e = ended(prev.day); direct = cum + Math.max(0, (e ? e.all : prev.cum) - prev.cum); players = cumP + Math.max(0, (e ? e.players : prev.cumP) - prev.cumP); }
+    // (the last day closed: its trade with the companies and its costs, an hour of them)
+    const r = q('SELECT data FROM corp_days WHERE company = ? AND day <= ? ORDER BY day DESC LIMIT 1').get(id, t.day - 1);
+    const x = r ? JSON.parse(r.data) : null;
+    const trade = x ? Math.max(0, x.sales - (x.players || 0) - (x.npc || 0)) / 24 : 0, cost = x ? (x.sales - x.op) / 24 : 0, other = x ? (x.other || 0) / 24 : 0;
+    const from = prev ? Math.max(prev.hour + 1, h - 24) : h - 1, hours = Math.max(1, h - from);
+    for (let k = from; k < h; k++) {
+      const d = Math.round(Math.max(0, direct) / hours), pl = Math.round(Math.max(0, players) / hours);
+      q('INSERT OR REPLACE INTO corp_hours (company, hour, data) VALUES (?, ?, ?)').run(id, k, JSON.stringify({
+        hour: k, day: t.day, cum, cumP, players: pl, people: d - pl, direct: d, trade: Math.round(trade), cost: Math.round(cost), other: Math.round(other),
+        earned: Math.round(d + trade + other - cost), slept: hours > 1, first: !prev }));
+    }
   }
   // a company's last `n` hours (null: not one of the six) and the hour under way so far
   function hoursOf(id, now = clock(), n = 48) {
