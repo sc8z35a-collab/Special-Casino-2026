@@ -66,3 +66,17 @@
 .gc-hero{position:relative}.gc-sale-bar{position:absolute;right:30px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 22px;border-radius:20px;background:#3a1240d9;box-shadow:inset 0 0 0 2px #f5d06a}
 .gc-sale-bar img{width:280px;height:auto}.gc-sale-clock{color:#fff2c4;font:900 30px var(--f-num);font-variant-numeric:tabular-nums}
 .gc-was{display:block;color:#7b879a;font-size:20px;font-weight:700;text-decoration:line-through}
+/* アイテム売却所: a slider a kind of item, all sold at once */
+.gc-sellshop{position:absolute;inset:20px;z-index:4;border-radius:34px;background:#eef3fb;color:#243753;display:flex;flex-direction:column;gap:14px;padding:30px 48px;overflow:hidden;box-shadow:0 20px 70px #253c6f44}.gc-sellshop[hidden]{display:none}
+.gc-sell-head{display:flex;align-items:center;gap:24px;flex:none}.gc-sell-head .back-btn{position:static;flex:none;color:#2c4566}.gc-sell-head h2{margin:0;font-size:32px;flex:1;text-align:center;padding-right:120px}
+.gc-sell-note{margin:0;font-size:18px;color:#4d6280;flex:none}
+#gacha-sell-list{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.gc-sell-row{display:flex;align-items:center;gap:18px;padding:14px 18px;border-radius:18px;background:#fff;box-shadow:inset 0 0 0 2px #d3deee}
+.gc-sell-art{width:64px;height:64px;object-fit:contain;flex:none}
+.gc-sell-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}.gc-sell-info strong{font-size:22px}.gc-sell-info small{font-size:16px;color:#5a6f8c}
+.gc-sell-line{display:flex;align-items:center;gap:8px}.gc-sell-range{flex:1;min-width:120px;height:30px;accent-color:#3f7fe0}
+.gacha-card .gc-sell-step,.gc-sellshop .gc-sell-step,.gc-sellshop .gc-sell-all{margin:0;padding:6px 14px;min-width:48px;border:1px solid #bdcadd;background:#e1e9f6;color:#193754;border-radius:12px;font-size:20px}.gc-sellshop .mini-btn:disabled{opacity:.45}
+.gc-sell-sub{flex:none;width:170px;display:flex;flex-direction:column;align-items:flex-end;gap:2px}.gc-sell-n{font-size:22px}.gc-sell-sub span{font-size:20px;color:#1d6b3a;font-weight:700}
+.gc-sell-empty{text-align:center;color:#5a6f8c}
+.gc-sell-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:20px;font-size:24px}.gc-sell-foot b{font-size:30px;color:#1d6b3a}
+.gc-sell-go{position:static;width:auto;min-width:260px;min-height:64px;padding:10px 28px;font-size:26px}.gc-sell-go:disabled{opacity:.45}

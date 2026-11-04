@@ -182,34 +182,53 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
   }
 
   // What the gacha gave that the player sells back (GACHA.sell, a piece): a VIP1週間券 to DAIZIN, reset tickets (5時間・
-  // 24時間) to YOSIDA, a garage coin — an empty extra place of their garage — to MAGITA; paid in $ at once, the
-  // company's purchase (server/core/corp-model.js rebought).
-  const SOLD_TO = { 'vip-week': ['daizin', 'vip'], 'reset-5h': ['yosida', 'reset'], 'reset-day': ['yosida', 'reset'], garage: ['magita', 'garage'] };
-  function sell(item, count, u) {
-    const to = SOLD_TO[item], each = GACHA.sell[item];
-    if (!to || !each) throw new ApiError(400, 'bad_item', 'このアイテムは売れません');
-    if (!Number.isInteger(count) || count < 1 || count > 1000) throw new ApiError(400, 'bad_count', '売る数を選んでください');
-    const paid = each * count;
+  // 24時間) to YOSIDA, a garage coin — an empty extra place of their garage — to MAGITA, a money tree's seed to YOSIDA
+  // (what it pays one whose trees are all there); paid in $ at once, the company's purchase (server/core/corp-model.js
+  // rebought). Several at once (the gacha's 売却所: { item: count }), all or none.
+  const SOLD_TO = { 'vip-week': ['daizin', 'vip'], 'reset-5h': ['yosida', 'reset'], 'reset-day': ['yosida', 'reset'], garage: ['magita', 'garage'], seed: ['yosida', 'seed'] };
+  const NAMES = { 'vip-week': 'VIP1週間券', 'reset-5h': 'リセットチケット（5時間）', 'reset-day': 'リセットチケット（24時間）', garage: '売れるガレージコイン（空いているガレージ）', seed: '金の生る木の種' };
+  function sellAll(list, u) {
+    const items = Object.entries(list || {}).filter(([, n]) => n !== 0);
+    if (!items.length) throw new ApiError(400, 'bad_count', '売る数を選んでください');
+    for (const [item, count] of items) {
+      if (!SOLD_TO[item] || !GACHA.sell[item]) throw new ApiError(400, 'bad_item', 'このアイテムは売れません');
+      if (!Number.isInteger(count) || count < 1 || count > 1000) throw new ApiError(400, 'bad_count', '売る数を選んでください');
+    }
+    let paid = 0;
+    const sold = {};
     tx(() => {
       const cur = getUser(u.id);
-      if (item === 'vip-week') {
-        if (itemCount(cur.id, VIP_WEEK) < count) throw new ApiError(409, 'no_item', 'VIP1週間券が足りません');
-        addItems(cur.id, VIP_WEEK, -count);
-        q('UPDATE users SET dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(paid, cur.id);
-      } else if (item === 'garage') {
-        const free = Math.min(cur.garage_extra || 0, garageSize(cur) - carCount(cur.id));
-        if (free < count) throw new ApiError(409, 'no_item', '売れるガレージコイン（空いているガレージ）が足りません');
-        q('UPDATE users SET garage_extra = garage_extra - ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(count, paid, cur.id);
-      } else {
-        const quests = readQuests(cur.quests), t = questTickets(quests), k = item === 'reset-5h' ? '5h' : 'day';
-        if ((t[k] || 0) < count) throw new ApiError(409, 'no_item', 'リセットチケットが足りません');
-        quests.tickets = { ...t, [k]: t[k] - count };
-        q('UPDATE users SET quests = ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(JSON.stringify(quests), paid, cur.id);
+      const quests = readQuests(cur.quests), t = { ...questTickets(quests) };
+      let garage = 0;
+      for (const [item, count] of items) {
+        const each = GACHA.sell[item] * count;
+        if (item === 'vip-week' || item === 'seed') {
+          const key = item === 'seed' ? SEED : VIP_WEEK;
+          if (itemCount(cur.id, key) < count) throw new ApiError(409, 'no_item', NAMES[item] + 'が足りません');
+          addItems(cur.id, key, -count);
+        } else if (item === 'garage') {
+          const free = Math.min(cur.garage_extra || 0, garageSize(cur) - carCount(cur.id));
+          if (free < count) throw new ApiError(409, 'no_item', NAMES[item] + 'が足りません');
+          garage = count;
+        } else {
+          const k = item === 'reset-5h' ? '5h' : 'day';
+          if ((t[k] || 0) < count) throw new ApiError(409, 'no_item', NAMES[item] + 'が足りません');
+          t[k] -= count;
+        }
+        paid += each;
+        sold[item] = { count, paid: each };
       }
-      if (corp) corp.rebuy(to[0], to[1], count, paid);
+      if (sold['reset-5h'] || sold['reset-day']) { quests.tickets = t; q('UPDATE users SET quests = ? WHERE id = ?').run(JSON.stringify(quests), cur.id); }
+      q('UPDATE users SET garage_extra = garage_extra - ?, dollars = dollars + ?, rev = rev + 1 WHERE id = ?').run(garage, paid, cur.id);
+      if (corp) for (const [item, x] of Object.entries(sold)) corp.rebuy(SOLD_TO[item][0], SOLD_TO[item][1], x.count, x.paid);
     });
     balanceChanged(u.id, true);
-    return { ok: true, item, count, paid, ...state(getUser(u.id)) };
+    return { ok: true, sold, paid, ...state(getUser(u.id)) };
+  }
+  function sell(item, count, u) {
+    if (!SOLD_TO[item] || !GACHA.sell[item]) throw new ApiError(400, 'bad_item', 'このアイテムは売れません');
+    const r = sellAll({ [item]: count }, u);
+    return { ...r, item, count };
   }
 
   return {
@@ -217,6 +236,7 @@ export function createGacha({ q, tx, getUser, meDto, addItems, itemsOf, balanceC
       'GET /api/gacha': (req, u) => state(getUser(u.id)),
       'POST /api/gacha/sell': async (req, u) => {
         const body = await req.json();
+        if (body.items && typeof body.items === 'object') return sellAll(Object.fromEntries(Object.entries(body.items).map(([k, v]) => [String(k), Number(v)])), u);
         return sell(String(body.item || ''), Number(body.count === undefined ? 1 : body.count), u);
       },
       'POST /api/gacha/spin': async (req, u) => { const body = await req.json(); return requests.run(u.id, body, () => spin(body, u)); },

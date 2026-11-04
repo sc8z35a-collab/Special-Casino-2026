@@ -38,8 +38,10 @@ test('the rules: WAZIMA as given, all MAGITA\'s; WAZIMA and YOSIDA at home, sell
   // players can sell back, and at what
   assert.deepEqual([Y.gacha.share, Y.gacha.vipWeek, Y.gacha.seed, Y.gacha.grown, Y.gacha.treePay, Y.gacha.reset, Y.gacha.garage],
     [0.8, 50000, 4000000, 5500000, 3000000, 1000000, 1000000]);
-  assert.deepEqual(GACHA.sell, { 'vip-week': 200000, 'reset-5h': 250000, 'reset-day': 350000, garage: 350000 });
-  assert.deepEqual([GACHA.slots, GACHA.price('rare', 1), GACHA.price('legendary', 1), GACHA.price('secret', 1)], [2, 4500000, 27000000, 45000000]);
+  assert.deepEqual(GACHA.sell, { 'vip-week': 200000, 'reset-5h': 250000, 'reset-day': 350000, garage: 350000, seed: 3000000 });
+  // (a seed bought back by YOSIDA at what it pays one whose trees are all there)
+  assert.equal(GACHA.sell.seed, CORP.yosida.gacha.treePay);
+  assert.deepEqual([GACHA.slots, GACHA.price('rare', 1), GACHA.price('legendary', 1), GACHA.price('secret', 1)], [2, 4500000, 27000000, 60000000]);
   assert.deepEqual([CORP.questFee(7000), CORP.questFee(7005), CORP.questFee(7000, 0.21)], [700, 700, 1470]);
   assert.deepEqual(RULES.vip.buyback, { each: 50000, max: 100000 });
   // every car the gacha gives has a price for YOSIDA to pay its maker
@@ -240,6 +242,23 @@ test('the server: a spin\'s win beyond its bet is the treasury\'s, a reward pays
   assert.equal((await s.call('GET', '/api/me', { token: a.token })).me.dollars, cash0 + 200000 + 250000 + 350000);
   const rebuy = rows().reduce((o, d) => { for (const [co, k] of Object.entries(d['@rebuy'] || {})) for (const [kind, v] of Object.entries(k)) o[co + ':' + kind] = (o[co + ':' + kind] || 0) + v[1]; return o; }, {});
   assert.deepEqual(rebuy, { 'daizin:vip': 200000, 'yosida:reset': 250000, 'magita:garage': 350000 });
+  // アイテム売却所: several kinds at once, as many of each as chosen — the seeds too (YOSIDA, $3M a piece) —, all or none
+  s.app.db.prepare("INSERT INTO items (user_id, item, count) VALUES (?, 'gacha-vip-week', 3) ON CONFLICT(user_id, item) DO UPDATE SET count = 3").run(a.me.id);
+  s.app.db.prepare("INSERT INTO items (user_id, item, count) VALUES (?, 'gacha-seed', 2) ON CONFLICT(user_id, item) DO UPDATE SET count = 2").run(a.me.id);
+  s.setUser(a.me.id, { quests: JSON.stringify({ tickets: { '5h': 0, day: 4 } }) });
+  const cash1 = (await s.call('GET', '/api/me', { token: a.token })).me.dollars;
+  const short = await s.call('POST', '/api/gacha/sell', { token: a.token, body: { items: { 'vip-week': 2, 'reset-day': 5 } } });
+  assert.equal(short.error.code, 'no_item');
+  assert.equal((await s.call('GET', '/api/me', { token: a.token })).me.dollars, cash1, 'nothing sold of a sale it could not make whole');
+  const many = await s.call('POST', '/api/gacha/sell', { token: a.token, body: { items: { 'vip-week': 2, 'reset-day': 3, seed: 2 } } });
+  assert.equal(many.status, 200, JSON.stringify(many).slice(0, 200));
+  assert.equal(many.paid, 2 * 200000 + 3 * 350000 + 2 * 3000000);
+  assert.equal(many.items.vipWeek, 1);
+  assert.equal(many.items.seed, 0);
+  assert.equal(many.resets.day, 1);
+  assert.equal((await s.call('GET', '/api/me', { token: a.token })).me.dollars, cash1 + many.paid);
+  assert.equal((await s.call('POST', '/api/gacha/sell', { token: a.token, body: { items: { seed: 1 } } })).error.code, 'no_item');
+  assert.equal((await s.call('POST', '/api/gacha/sell', { token: a.token, body: { items: { 'vip-week': 0.5 } } })).error.code, 'bad_count');
   // the money trees: YOSIDA's fertilizer, 40% of what is given
   const tree = (await s.call('GET', '/api/tree', { token: a.token })).trees[0].id;
   assert.equal((await s.call('POST', '/api/tree/give', { token: a.token, body: { tree, amount: 100000 } })).status, 200);

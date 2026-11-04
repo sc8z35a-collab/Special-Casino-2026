@@ -623,6 +623,12 @@
         <div class="gc-result-head"><button id="gacha-result-close" class="back-btn back-jp" type="button"><i class="ic ic-back"></i><span>戻る</span></button><h2 id="gacha-result-name"></h2><span id="gacha-bonus"></span></div>
         <div id="gacha-results" aria-live="polite"></div>
       </div>
+      <div id="gacha-sell" class="gc-sellshop" hidden role="dialog" aria-modal="true" aria-label="アイテム売却所">
+        <div class="gc-sell-head"><button id="gacha-sell-close" class="back-btn back-jp" type="button"><i class="ic ic-back"></i><span>戻る</span></button><h2>アイテム売却所</h2></div>
+        <p class="gc-sell-note">売る数をスライダーで決めて、まとめて売れます。それぞれのアイテムを出している会社が買い取ります。</p>
+        <div id="gacha-sell-list"></div>
+        <div class="gc-sell-foot"><span>合計 <b id="gacha-sell-total">$0</b></span><button id="gacha-sell-go" class="action-btn gc-sell-go" type="button" disabled>まとめて売る</button></div>
+      </div>
     </div>
     <div id="gacha-odds-modal" class="modal" hidden>
       <div class="modal-card gc-odds-card" role="dialog" aria-modal="true" aria-label="ガチャ確率表">
@@ -1030,7 +1036,7 @@
 <script src="js/art/ui-images.js?v=0061319db7"></script>
 <script src="js/art/social-images.js?v=d9906f4240"></script>
 <script src="js/art/ui-svg.js?v=00d5767a31"></script>
-<script src="js/version.js?v=25ba04fbdc"></script>
+<script src="js/version.js?v=741ba79968"></script>
 <script src="js/core/util.js?v=0101c12ff0"></script>
 <script src="js/core/clock.js?v=2ba2dad169"></script>
 <script src="js/core/effects.js?v=ae47f50aa7"></script>
@@ -1043,7 +1049,7 @@
 <script src="js/core/store.js?v=f0d92dc1dd"></script>
 <script src="js/game/engine.js?v=75f36e1496"></script>
 <script src="js/net/device.js?v=ff52665f6b"></script>
-<script src="js/net/api.js?v=bc725e0679"></script>
+<script src="js/net/api.js?v=e113b16848"></script>
 <script src="js/net/transport-policy.js?v=3ee219f81a"></script>
 <script src="js/net/keepalive.js?v=18dee0ca8c"></script>
 <script src="js/net/wire.js?v=52e85a64bb"></script>

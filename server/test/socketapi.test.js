@@ -20,7 +20,7 @@ async function ask(s, m, conn = CONN) {
 }
 const bearer = (u) => ({ authorization: 'Bearer ' + u.token });
 
-test('gacha uses the optimized connection: 2/6/20 slots settle once at the quoted price, with the same HTTP balance', async () => {
+test('gacha uses the optimized connection: 2/6/30 slots settle once at the quoted price, with the same HTTP balance', async () => {
   const s = await startServer();
   try {
     const a = await s.register('GachaSocket');
@@ -39,7 +39,7 @@ test('gacha uses the optimized connection: 2/6/20 slots settle once at the quote
       const r = await ask(s, { m: 'POST', p: '/api/gacha/spin', h: bearer(a), b: { kind, count, price } });
       assert.equal(r.s, 200, JSON.stringify(r.b));
       const got = r.b.pulls.flatMap((p) => p.rewards);
-      assert.equal(got.length, count * GACHA.slots);
+      assert.equal(got.length, count * GACHA.slotsOf(kind));
       // (a tree beyond all the player can have: its money instead, YOSIDA's)
       money += got.reduce((n, x) => n + (x.paid || 0), 0) - price;
       assert.equal(r.b.me.dollars, money);
