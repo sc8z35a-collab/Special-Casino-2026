@@ -266,8 +266,12 @@ function proposals(W, o, s, day, r, ctx) {
   if (id === 'myway' && s.ip) mywayProposals(W, o, s, out, { pl, runway, dept, by });
   const mw = ctx.corp.co.myway;
   if (mw && mw.ip && !mw.dead && mw.ip.contracts[id]) partnerProposals(W, o, mw, out, { dept, by });
-  return out.filter((p) => p.by !== undefined && p.by >= 0);
+  // (a restructuring or a cut of costs passed: none proposed again for `CUT_GAP` days — its effect is still coming; the
+  // same 25% cut twice in five days was the costs' spiral)
+  const cutLately = o.lastCut !== undefined && day - o.lastCut < CUT_GAP;
+  return out.filter((p) => p.by !== undefined && p.by >= 0 && !(cutLately && p.kind === 'cut'));
 }
+const CUT_GAP = 45;
 // (what each of the companies' own prices is called, in its decisions)
 const PRICE_NAME = { vipFee: 'VIP会費', goods: '商品', service: '整備料金', mobile: '携帯の月額' };
 // how many of those who borrowed by クイックローン have fallen behind (a day's payment missed)
@@ -359,6 +363,7 @@ function meeting(W, o, s, day, r, ctx) {
   // the thinking of those who carried or stopped it, kept as their own
   think(W, o, p.by, day, `${p.title}を提案した。${pass ? '会議で承認された。' : veto ? `ストップ係に止められた（${veto.why}）。` : '会議で否決された。'}`);
   if (pass) {
+    if (p.kind === 'cut') o.lastCut = day;
     for (const e of p.effect) apply(W, o, e, day, r, ctx);
     W.news.push({ day, kind: 'company', district: -1, text: `${o.name}：${p.title}を決定`, data: { company: o.id, meeting: m.id } });
   }

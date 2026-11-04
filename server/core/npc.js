@@ -18,6 +18,7 @@ import * as model from './npc-model.js';
 import * as econ from './npc-econ.js';
 import { view as localView, detail as localDetail, reportOf as localReport } from './npc-local.js';
 import { view as dealsView } from './npc-ipdeals.js';
+import { view as wagesView } from './npc-wages.js';
 import * as pop from './npc-pop.js';
 import * as asukaModel from './asuka.js';
 import * as text from './npc-text.js';
@@ -495,7 +496,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         // (the times' mood and the prices: server/core/npc-macro.js)
         macro: model.macroView(w),
         // (アスカ国, and the money ledger: every $ from someone to someone)
-        asuka: asukaModel.view(w), research: research.view(w), fund: (corp.world() || {}).fund || null, ipDeals: dealsView(w), ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30),
+        asuka: asukaModel.view(w), research: research.view(w), fund: (corp.world() || {}).fund || null, ipDeals: dealsView(w), wages: wagesView(w), ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30),
           players: w.ledger.players ? { drift: w.ledger.players.drift, worst: w.ledger.players.worst || 0, days: w.ledger.players.days.slice(-30) } : null } : null };
       return { ...partOf(all, req.query.get('rev')), now };
     },
@@ -601,6 +602,10 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     localReport: () => { const w = get(); return w ? localReport(w) : null; },
     // (MY WAY's contracts with the local companies and the two countries: the people's side keeps them)
     ipDeals: () => { const w = get(); return w ? dealsView(w) : null; },
+    // (a company's pay against the market's and its 引き抜き: the people's side keeps them — npc-wages.js)
+    wageOf: (id) => { const w = get(), v = w ? wagesView(w) : null; if (!v || !v.companies[id]) return null; const by = (v.poach.last && v.poach.last.by) || {}, mb = v.poach.month.by || {};
+      const sum = (o, side) => Object.entries(o).reduce((n, [k, x]) => n + (k.split('>')[side] === id ? x : 0), 0);
+      return { ...v.companies[id], idx: v.idx, aim: v.aim, took: { last: sum(by, 0), month: sum(mb, 0) }, lost: { last: sum(by, 1), month: sum(mb, 1) } }; },
     // (the tests: the minutes and the days worked out now, and what was kept)
     runTo: (m) => tx(() => { runTo(m, Infinity); save('hot'); })
   };

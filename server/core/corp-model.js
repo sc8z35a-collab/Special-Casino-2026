@@ -2246,7 +2246,11 @@ function staffing(w, s, p, d, out) {
   const op = opOf(s.per.y), plan = s.guide && s.guide.fy === fy ? s.guide.expected.quarters.slice(0, qn).reduce((a, b) => a + b, 0) : null;
   const ratio = plan > 0 ? op / plan : null;
   const people = !!(w.circ && d >= w.circ.from && !p.abroad);
-  if (op < 0 || (ratio !== null && ratio < ST.cutBelow)) {
+  // (once the companies fight over people — server/core/npc-wages.js —, one with money to spare holds on to its own:
+  // a year of its costs in hand and still in the black, or half a year of them in the red; a bank by its own money)
+  const money = p.model === 'bank' ? Math.max(0, equityOf(s)) : (s.bal.cash || 0) + (s.bal.bonds || 0), months = money / Math.max(1, monthlyCosts(s));
+  const holds = people && (op >= 0 ? months >= 12 : months >= 6);
+  if (!holds && (op < 0 || (ratio !== null && ratio < ST.cutBelow))) {
     const sev = op < 0 ? 1 : Math.max(0, Math.min(1, (ST.cutBelow - ratio) / ST.cutBelow));
     const n = Math.min(s.n - 1, Math.round(s.n * (ST.cut[0] + (ST.cut[1] - ST.cut[0]) * sev)));
     if (n <= 0) return;

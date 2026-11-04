@@ -9,6 +9,7 @@ import { M, skillFor } from './npc-life.js';
 import * as local from './npc-local.js';
 import * as econ from './npc-econ.js';
 import { boomOf } from './npc-macro.js';
+import * as wages from './npc-wages.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const RATES = { tenesice: 0.35, magita: 0.75, carowner: 0.4, jinx: 0.45, daizin: 0.2, citywork: 0.15, speedeed: 0.05, dtrade: 0.1, riru: 0.25, ice: 0.3, yosida: 0.6, wazima: 0.65 };
@@ -177,7 +178,7 @@ function localJobs(W, day, r) {
       const f = pick();
       if (!f) continue;
       P.job[i] = J.part;
-      local.join(W, i, f, Math.round(f.pay * (0.45 + 0.2 * r.u())), () => r.u());
+      local.join(W, i, f, wages.atMarket(W, f.pay * (0.45 + 0.2 * r.u())), () => r.u());
       P.tenure[i] = 0; P.jsat[i] = 170;
       remember(P, i, day, M.hired, 120);
       taken(f);
@@ -190,8 +191,8 @@ function localJobs(W, day, r) {
     const f = gaps > 0 && r.u() < 0.8 ? pick() : null;
     const kind = f || r.u() < 0.7 ? J.other : J.part;
     P.job[i] = kind;
-    if (f) { local.join(W, i, f, 0, () => r.u()); taken(f); }
-    else { P.firm[i] = 0; P.salary[i] = Math.round(OTHER_PAY[kind] * (0.8 + 0.4 * r.u())); P.wdist[i] = P.dist[i]; }
+    if (f) { local.join(W, i, f, wages.atMarket(W, f.pay * (0.85 + 0.3 * r.u())), () => r.u()); taken(f); }
+    else { P.firm[i] = 0; P.salary[i] = wages.atMarket(W, OTHER_PAY[kind] * (0.8 + 0.4 * r.u())); P.wdist[i] = P.dist[i]; }
     P.tenure[i] = 0;
     P.jsat[i] = 160;
     P.jobless[i] = 0;
@@ -275,7 +276,7 @@ function shortage(W, day, r, ctx) {
   }
   // the local companies
   for (const [f, gap] of lopen) {
-    const c = W.locals.firms[f.id], offer = f.pay * (1 + SHORT.perDay * (lshort[f.id] || 0)), n = Math.max(1, Math.ceil(gap / 30));
+    const c = W.locals.firms[f.id], offer = wages.atMarket(W, f.pay) * (1 + SHORT.perDay * (lshort[f.id] || 0)), n = Math.max(1, Math.ceil(gap / 30));
     for (let k = 0; k < n; k++) {
       const i = draw();
       if (i < 0 || local.firmOf(P, i) === f.no || !wants(i, offer)) continue;
@@ -306,7 +307,11 @@ function laborDay(W, day, r, ctx) {
   openings(W, ctx);
   localJobs(W, day, r);
   shortage(W, day, r, ctx);
+  // 引き抜き: the companies short of people make offers to the others' (npc-wages.js)
+  wages.poach(W, day, r, ctx, hire);
   if (t.d === 1) mywayRaises(W, day, r, ctx);
+  // the market's pay moved by the country's wealth, and every employer's review of its people's (npc-wages.js)
+  if (t.d === 1) wages.month(W, day, r, ctx);
   // the month in work: a month more of it, the mood at work (the pay against what others pay, the company's
   // fortunes, the boss, the hours), and who leaves today
   for (let i = 0; i < P.n; i++) {

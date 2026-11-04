@@ -671,7 +671,8 @@ function hire(W, day, r) {
   const take = (job, emp, n) => {
     for (let x = 0; x < n && at < seekers.length; x++) {
       const i = seekers[at++], age = ageOf(A, i, day);
-      A.job[i] = job; A.emp[i] = emp; A.pay[i] = payFor(job, r, age);
+      // (at the market's pay of the day: server/core/npc-wages.js)
+      A.job[i] = job; A.emp[i] = emp; A.pay[i] = Math.round(payFor(job, r, age) * ((W.wage && W.wage.asuka && W.wage.asuka.idx) || 1));
       a.sum.hires++;
       // (the job sites' fee on a hire: the state's and the local trade's to pay; a branch's its company's)
       if (job !== JOB.branch) fees += Math.round(A.pay[i] * ASUKA.atsuka.hireFee);
@@ -746,9 +747,11 @@ export function flowsFor(W) {
   const toCo = a.toCo;
   a.toCo = {};
   const staff = {};
-  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.branch) { const co = COS[A.emp[i]]; staff[co] = (staff[co] || 0) + 1; }
+  // (the branches' people at their pay of now: the market's raised it — server/core/npc-wages.js; their companies pay it)
+  let bpay = 0, bn = 0;
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.branch) { const co = COS[A.emp[i]]; staff[co] = (staff[co] || 0) + 1; if (A.pay[i] > 0) { bpay += A.pay[i]; bn++; } }
   const pol = a.policy || {};
-  return { toCo, want: { ...a.want }, staff, boost: Math.max(0, Math.round(a.boost.cash)), branches: a.branches || {}, founded: a.founded, boostUntil: a.founded + R.boost.years * YEAR, pay: R.pay.branch, scale: a.scale,
+  return { toCo, want: { ...a.want }, staff, boost: Math.max(0, Math.round(a.boost.cash)), branches: a.branches || {}, founded: a.founded, boostUntil: a.founded + R.boost.years * YEAR, pay: bn ? Math.round(bpay / bn) : R.pay.branch, scale: a.scale,
     rates: { rent: pol.rent || R.tax.rent, withhold: pol.withhold || R.tax.withhold }, altasPrice: altasOf(a).price };
 }
 // a branch's people in a country of this size (at least one)

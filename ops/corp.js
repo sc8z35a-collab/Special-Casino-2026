@@ -207,8 +207,8 @@ var OpsCorp = (function () {
       p.appendChild(table([['No.'], ['会社'], ['本社'], ['社員', 1], ['年収', 1], ['売上高（年・計画）', 1], ['営業利益（年・計画）', 1], ['先月の営業利益', 1], ['利益剰余金', 1], ['状態']], list.map(function (x) {
         var last = x.last || {};
         return { onclick: function () { st.local = x.id; render(); if (st.view) st.view.scrollTop = 0; },
-          cells: [String(x.no), x.name, x.hq, x.staff + ' / ' + x.target, money(x.pay), money(x.spec.sales), money(x.spec.op), { t: last.op !== undefined ? money(last.op) : '—', cls: last.op < 0 ? 'neg' : '' }, money(x.retained),
-            x.dead ? (x.bk ? '破産（' + dayLabel(x.bk.filed) + '）' : '倒産') : x.under ? '債務超過' + x.under + 'か月' : x.runs.length ? '運営：' + x.runs.map(function (o) { return o.name; }).join('・') : '—'] };
+          cells: [String(x.no), x.name, x.hq, x.staff + ' / ' + x.target, money(x.pay), money((x.plan || x.spec).sales), money((x.plan || x.spec).op), { t: last.op !== undefined ? money(last.op) : '—', cls: last.op < 0 ? 'neg' : '' }, money(x.retained),
+            x.yamato ? '株式会社YAMATOに統合' : x.dead ? (x.bk ? '破産（' + dayLabel(x.bk.filed) + '）' : '倒産') : x.under ? '債務超過' + x.under + 'か月' : x.runs.length ? '運営：' + x.runs.map(function (o) { return o.name; }).join('・') : '—'] };
       })));
       box.appendChild(p);
     });
@@ -234,8 +234,8 @@ var OpsCorp = (function () {
     var sum = { sales: 0, op: 0, black: 0, red: 0, invest: 0 };
     all.forEach(function (c) { var d = last(c); if (!d || c.dead) return; sum.sales += d.sales; sum.op += d.op; sum.invest += d.invest || 0; if (d.op >= 0) sum.black++; else sum.red++; });
     var tiles = el('div', 'corp-tiles');
-    var live = all.filter(function (c) { return !c.dead; }).length;
-    tiles.appendChild(stat(live + '社の売上高（前日）', money(sum.sales), dayLabel(r.day) + 'の締め' + (live < all.length ? '・倒産 ' + (all.length - live) + '社' : '')));
+    var live = all.filter(function (c) { return !c.dead; }).length, merged = all.filter(function (c) { return c.yamato; }).length;
+    tiles.appendChild(stat(live + '社の売上高（前日）', money(sum.sales), dayLabel(r.day) + 'の締め' + (live + merged < all.length ? '・倒産 ' + (all.length - live - merged) + '社' : '') + (merged ? '・YAMATOに統合 ' + merged + '社' : '')));
     tiles.appendChild(stat(live + '社の営業損益（前日）', money(sum.op), '', sum.op < 0 ? 'neg' : ''));
     tiles.appendChild(stat('黒字 / 赤字', sum.black + '社 / ' + sum.red + '社', '前日の営業損益で'));
     tiles.appendChild(stat('投資で入った資金（前日）', money(sum.invest), 'プレイヤーの株の買い'));
@@ -527,7 +527,8 @@ var OpsCorp = (function () {
     lb.setAttribute('role', 'listitem');
     lb.appendChild(icon('locals', 72));
     lb.appendChild(el('span', 'corp-app-name', '地方企業'));
-    lb.appendChild(el('small', 'muted', a && a.locals ? (a.locals.alive < a.locals.n ? a.locals.alive + ' / ' + a.locals.n + '社' : a.locals.n + '社') + '・' + a.locals.spheres + 'の経済圏' + (a.locals.ip ? '・MY WAYとIP契約 ' + a.locals.ip + '社' : '') : '読み込み中…'));
+    var LC = a && a.locals, failed = LC ? LC.n - LC.alive - (LC.merged || 0) : 0;
+    lb.appendChild(el('small', 'muted', LC ? LC.alive + '社' + (LC.merged ? '（' + LC.merged + '社はYAMATOに統合）' : '') + (failed > 0 ? '・倒産 ' + failed + '社' : '') + '・' + LC.spheres + 'の経済圏' + (LC.ip ? '・MY WAYとIP契約 ' + LC.ip + '社' : '') : '読み込み中…'));
     grid.appendChild(lb);
     box.appendChild(grid);
     if (!a) { box.appendChild(el('p', 'muted corp-empty', '読み込み中…')); return; }
@@ -654,7 +655,9 @@ var OpsCorp = (function () {
     if (p.listed) tiles.appendChild(stat('適正株価（理論値）', '$' + group(m.fair), '1株配当 年$' + group(m.dps)));
     // (today, still running: what the players have spent here so far)
     var today = Math.floor(((r.now || Date.now())) / 86400000), now = (r.flows || []).filter(function (f) { return f.day === today; })[0];
-    var lp = stat('本日のプレイヤー・市民の支出', money(now ? now.spent : 0), '集計中（' + dayLabel(today) + '・9:00に締め）');
+    // (from the day's live figures when they are here — the players' and the people's —, the players' alone till then)
+    var td = st.today[p.id] && st.today[p.id].data;
+    var lp = stat('本日のプレイヤー・市民の支出', money(td ? (td.players || 0) + (td.people || 0) : now ? now.spent : 0), td ? 'プレイヤー ' + money(td.players || 0) + '・市民 ' + money(td.people || 0) + '（30秒ごとに更新・9:00に締め）' : '集計中（' + dayLabel(today) + '・9:00に締め）');
     lp.classList.add('corp-live-spend');
     tiles.appendChild(lp);
     var GG = C().magita.garage;
@@ -1055,6 +1058,12 @@ var OpsCorp = (function () {
     var s = r.state, tiles = el('div', 'corp-tiles');
     tiles.appendChild(stat('従業員数', group(s.staff) + '名', s.target !== s.staff ? '目標 ' + group(s.target) + '名' : ''));
     tiles.appendChild(stat('平均年収', money(s.pay), 'はじめ ' + money(p.salary)));
+    var wg = r.wage;
+    if (wg) {
+      tiles.appendChild(stat('賃金相場での年収', money(wg.market), (wg.avg >= wg.market ? '相場以上' : '相場より ' + money(wg.market - wg.avg) + ' 低い') + '・相場 ×' + wg.idx.toFixed(2) + '（目標 ×' + (wg.aim || 0).toFixed(2) + '）', wg.avg < wg.market * 0.95 ? 'neg' : ''));
+      tiles.appendChild(stat('最後の賃上げ', wg.raised ? '+' + (wg.raised.x * 100).toFixed(1) + '%' : '—', wg.raised ? dayLabel(wg.raised.day) + '・' + wg.raised.why : '毎月1日に見直し'));
+      tiles.appendChild(stat('引き抜き（今月）', '獲得 ' + wg.took.month + '人・流出 ' + wg.lost.month + '人', '先月 獲得 ' + wg.took.last + '人・流出 ' + wg.lost.last + '人', wg.lost.month > wg.took.month ? 'neg' : ''));
+    }
     tiles.appendChild(stat('会社負担（1人・年）', money(s.unit), '給与＋賞与＋法定福利費など'));
     tiles.appendChild(stat('人件費（年）', money(s.staff * s.unit), ''));
     tiles.appendChild(stat('士気', Math.round(s.morale * 100) + '%', s.morale >= 0.7 ? '高い' : s.morale >= 0.45 ? 'ふつう' : '低い'));

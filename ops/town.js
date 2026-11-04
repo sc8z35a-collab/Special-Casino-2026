@@ -145,6 +145,33 @@ var OpsTown = (function () {
     })));
     box.appendChild(p);
   }
+  // 賃金相場 (server/core/npc-wages.js view): the market's pay against the country's wealth, each company's pay against it
+  // and its last review, the 引き抜き of the month, アスカ国's market
+  function wagesPanel(box, v) {
+    var p = panel('賃金相場と人材の奪い合い', '毎月1日に見直し・国民の資産（1人あたり）の' + v.years + '年分の年収を目標に、相場が少しずつ近づく');
+    var g = el('div', 'town-grid');
+    kv(g, '賃金相場（はじめ＝1）', '×' + v.idx.toFixed(3) + (v.aim ? '（目標 ×' + v.aim.toFixed(2) + '）' : ''));
+    kv(g, '平均年収', money(v.avg) + (v.base ? '（はじめ ' + money(v.base) + '）' : ''));
+    if (v.wealth) kv(g, '国民の資産（1人あたり）', money(v.wealth) + '・年収の ' + (v.wealth / Math.max(1, v.avg)).toFixed(1) + '年分');
+    var pm = v.poach.month || {}, pl = v.poach.last || {};
+    kv(g, '引き抜き（今月）', (pm.n || 0) + '人・引き止め ' + (pm.countered || 0) + '人');
+    kv(g, '引き抜き（先月）', (pl.n || 0) + '人・引き止め ' + (pl.countered || 0) + '人');
+    kv(g, '引き抜き（累計）', v.poach.total + '人・引き止め ' + v.poach.countered + '人');
+    if (v.civil) kv(g, '公務員の平均年収', money(v.civil.avg) + '（相場 ' + money(v.civil.market) + '）');
+    if (v.asuka) kv(g, 'アスカ国の賃金相場', '×' + v.asuka.idx.toFixed(3) + (v.asuka.aim ? '（目標 ×' + v.asuka.aim.toFixed(2) + '）' : ''));
+    p.appendChild(g);
+    var ids = Object.keys(v.companies);
+    p.appendChild(table(['会社', '社員', '平均年収', '相場での年収', '最後の賃上げ'], ids.map(function (id) {
+      var c = v.companies[id];
+      return [c.name, String(c.staff), money(c.avg), money(c.market), c.raised ? '+' + (c.raised.x * 100).toFixed(1) + '%（' + day(c.raised.day) + '・' + c.raised.why + '）' : '—'];
+    })));
+    var by = (pl.by) || {}, keys = Object.keys(by).sort(function (a, b) { return by[b] - by[a]; }).slice(0, 10), nm = function (id) { var c = C() && C().company(id); return c ? c.name : id; };
+    if (keys.length) p.appendChild(table(['引き抜いた会社', '引き抜かれた会社', '人数（先月）'], keys.map(function (k) { var x = k.split('>'); return [nm(x[0]), nm(x[1]), String(by[k])]; })));
+    if (v.hist && v.hist.length) p.appendChild(table(['月', '相場', '目標', '平均年収', '資産/人', '引き抜き', '引き止め'], v.hist.slice().reverse().map(function (h) {
+      return [day(h.day), '×' + h.idx.toFixed(3), h.aim ? '×' + h.aim.toFixed(2) : '—', money(h.avg), money(h.wealth || 0), String(h.poached), String(h.countered)];
+    })));
+    box.appendChild(p);
+  }
   // テネシスリサーチ (server/core/npc-research.js view): its sites, its researchers in each country, what it paid
   function researchPanel(box, x) {
     var p = panel(x.name || 'テネシスリサーチ', (x.on ? '稼働中' : '終了') + '・' + day(x.since) + '〜' + day(x.until) + '（MAGITA・YOSIDA・WAZIMAが参加）');
@@ -271,13 +298,37 @@ var OpsTown = (function () {
     var path = '/api/ops/npc' + (st.all && st.all.rev ? '?rev=' + encodeURIComponent(st.all.rev) : '');
     st.request('GET', path).then(function (r) {
       if (gen !== st.gen) return;
+      // (nothing new since what is shown: no redraw — the reader's place and what they had open stay as they were)
+      if (r.same && st.drawn) return;
       if (!r.same) st.all = r;
       render();
     }, function (e) { if (gen === st.gen) st.view.replaceChildren(el('p', 'muted', '表示できません：' + (e && e.message || '通信できませんでした'))); });
   }
+  // (while the app is in sight: the country asked again every minute — its day goes on between the closes —, the
+  // person open and the company's people with it)
+  var REFRESH = 60000, refresher = 0;
+  function keepFresh() {
+    if (refresher) clearInterval(refresher);
+    refresher = setInterval(function () {
+      if (!st.view || !st.view.isConnected) { clearInterval(refresher); refresher = 0; return; }
+      if (st.view.hidden || document.hidden) return;
+      refreshAll();
+    }, REFRESH);
+  }
+  function refreshAll() {
+    ask();
+    if (st.tab === 'orgs') askOrg(st.company);
+    if (st.tab === 'people' && st.person) refreshPerson();
+  }
+  function refreshPerson() {
+    var i = st.person && st.person.i;
+    if (i === undefined || i === null) return;
+    st.request('GET', '/api/ops/npc/person?i=' + i).then(function (r) { if (st.person && st.person.i === i && st.tab === 'people') { st.person = r.person; render(); } }, function () { /* (kept: what is shown) */ });
+  }
   function askOrg(id) {
     var have = st.orgs[id], path = '/api/ops/npc/org?c=' + encodeURIComponent(id) + (have && have.rev ? '&rev=' + encodeURIComponent(have.rev) : '');
-    st.request('GET', path).then(function (r) { if (!r.same) st.orgs[id] = r; if (st.tab === 'orgs' && st.company === id) render(); }, function (e) { st.toast(e && e.message || '読み込めませんでした'); });
+    // (nothing new: no redraw — the minutes the reader opened stay open)
+    st.request('GET', path).then(function (r) { if (r.same && have) return; if (!r.same) st.orgs[id] = r; if (st.tab === 'orgs' && st.company === id) render(); }, function (e) { st.toast(e && e.message || '読み込めませんでした'); });
   }
   function search() {
     var p = '/api/ops/npc/people?q=' + encodeURIComponent(st.q) + '&d=' + encodeURIComponent(st.d) + '&j=' + encodeURIComponent(st.j) + '&p=' + st.page;
@@ -306,6 +357,7 @@ var OpsTown = (function () {
     else if (st.tab === 'asuka') asuka(box, r);
     else news(box, r);
     view.replaceChildren(box);
+    st.drawn = !!st.all;
   }
 
   // 地元の企業: the 32 local companies by their economies (server/core/npc-local.js view) — their people, last month
@@ -334,7 +386,7 @@ var OpsTown = (function () {
   function nation(box, r) {
     var s = r.stats, p = panel(r.nation.name, (r.active ? '活動中' : '休止中（再開 ' + at(r.next) + '）') + '・人口' + (s.population || 0).toLocaleString('ja-JP'));
     var g = el('div', 'town-grid');
-    [['失業率', pct(s.unemployment)], ['平均の気分', Math.round((s.mood || 0) / 2.55) + '/100'], ['景気', ((s.economy || 1) * 100).toFixed(1)], ['物価', ((s.prices || 1) * 100).toFixed(1)], ['インフレ率', pct(s.inflation)],
+    [['失業率', pct(s.unemployment)], ['平均の気分', Math.round((s.mood || 0) / 2.55) + '/100'], ['景気', ((s.economy || 1) * 100).toFixed(1)], ['店頭価格（税・各社の値付け込み）', ((s.prices || 1) * 100).toFixed(1)], ['店頭価格の上昇率（1年・それまではこれまで）', pct(s.inflation)],
       ['ジニ係数', String(s.gini)], ['資産の中央値', money(s.median)], ['路上で暮らす人', String(s.homeless)], ['居候', String(s.staying)], ['市民の預金', money(s.cash)], ['市民の借金', money(s.debt)]].forEach(function (x) { kv(g, x[0], x[1]); });
     p.appendChild(g);
     box.appendChild(p);
@@ -385,6 +437,7 @@ var OpsTown = (function () {
       }
       box.appendChild(p);
     }
+    if (r.wages) wagesPanel(box, r.wages);
     if (r.research) researchPanel(box, r.research);
     if (r.fund) fundPanel(box, r.fund);
     if (r.ipDeals) dealsPanel(box, r.ipDeals);
@@ -463,7 +516,9 @@ var OpsTown = (function () {
     if (st.person) personPanel(box, st.person);
   }
   function personPanel(box, x) {
-    var p = panel(x.name + '（' + x.kana + '・' + x.age + '歳）', x.district + '・' + x.home + (x.posts && x.posts.length ? '・' + x.posts.join('、') : ''));
+    // (its home as the person's detail has it: its kind, the rent, whose home one stays in)
+    var hm = x.home && typeof x.home === 'object' ? (x.home.kind || '') + (x.home.rent ? '（家賃 月' + money(x.home.rent) + '）' : '') + (x.home.host ? '（' + x.home.host + 'の家）' : '') : (x.home || '');
+    var p = panel(x.name + '（' + x.kana + '・' + x.age + '歳）', x.district + (hm ? '・' + hm : '') + (x.posts && x.posts.length ? '・' + x.posts.join('、') : ''));
     p.appendChild(el('p', 'town-voice', '心の声：「' + x.voice + '」'));
     var g = el('div', 'town-grid');
     kv(g, 'いま', x.act + '（' + x.at + '・' + x.place + '）'); kv(g, '仕事', x.job || '—'); kv(g, '健康', String(x.health));
@@ -573,8 +628,8 @@ var OpsTown = (function () {
   }
 
   return {
-    show: function (view, request, toast) { st.view = view; st.request = request; st.toast = toast; render(); ask(); },
-    // a day closed on the server: asked again while open
-    live: function () { if (st.view && !st.view.hidden) { ask(); if (st.tab === 'orgs') askOrg(st.company); } }
+    show: function (view, request, toast) { st.view = view; st.request = request; st.toast = toast; render(); ask(); keepFresh(); },
+    // a day closed on the server: asked again while open (the person open with it)
+    live: function () { if (st.view && !st.view.hidden) refreshAll(); }
   };
 })();

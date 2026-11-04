@@ -113,7 +113,9 @@ export function gdpView(W) {
       month: month(mkOf(t.y, t.m)), prevMonth: month(mkOf(pm.y, pm.m)),
       year: { ...months(yearKeys(t.y)), y: t.y }, lastYear: (() => { const o = months(yearKeys(t.y - 1)); return o ? { ...o, y: t.y - 1 } : null; })(),
       last365: y, yoy: last12 && prev12 && last12.days >= 330 && prev12.days >= 330 ? rate(last12, prev12) : null,
-      pace: { nominal: Math.round(pace.nominal / pace.days * YEAR), real: Math.round(pace.real / pace.days * YEAR), growth: p30.length ? rate(pace, sum(p30)) : null },
+      // (against the 30 days before only once there were nearly thirty of them: a country's first few days — part of a day,
+      // before its people and its companies were all at work — are no measure, +800% from them)
+      pace: { nominal: Math.round(pace.nominal / pace.days * YEAR), real: Math.round(pace.real / pace.days * YEAR), growth: p30.length >= 25 ? rate(pace, sum(p30)) : null },
       head: now.o.people ? Math.round(y.nominal / y.days * YEAR / now.o.people) : 0,
       defl: now.o.defl, people: now.o.people,
       series: rows.slice(-90).map((r) => [r.day, r.o.nominal, r.o.real])

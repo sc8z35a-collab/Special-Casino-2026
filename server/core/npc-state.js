@@ -23,11 +23,14 @@ const isEmployee = (j) => NPC.employed(j);
 // a year's income tax on a year's pay (給与所得控除・基礎控除・社会保険料を引いて、段階の税率で)
 export function incomeTax(W, gross, social) {
   const TX = NPC.tax;
-  const ded = Math.min(TX.employment[1], gross * TX.employment[0]);
-  const taxable = Math.max(0, gross - ded - social - TX.basic);
+  // (the brackets and the deductions keep up with the market's pay: a raise for everyone is not a tax rise for them)
+  const k = econ.wageIdx(W);
+  const ded = Math.min(TX.employment[1] * k, gross * TX.employment[0]);
+  const taxable = Math.max(0, gross - ded - social - TX.basic * k);
   let tax = 0, lo = 0;
   const shift = (W.nation.knobs.incomeShift || 0) / 100;
-  for (const [hi, rate] of TX.income) {
+  for (const [hi0, rate] of TX.income) {
+    const hi = hi0 * k;
     if (taxable <= lo) break;
     tax += (Math.min(taxable, hi) - lo) * Math.max(0, rate + shift);
     lo = hi;
@@ -345,7 +348,7 @@ export function dayStart(W, day, r, ctx) {
     const street = P.home[i] === HOME.street ? 0.15 : 1;
     // (living goods stocked at home — a panic's 買いだめ —: only the fresh food until they run out)
     const stocked = P.hoard && P.hoard[i] > 0 ? (P.hoard[i]--, 0.3) : 1;
-    const n = W.cal.living * Math.pow(size, 0.75) * wealth * thrift * street * stocked * (W.capacity.jinx || 1) * econ.cpi(W);
+    const n = W.cal.living * Math.pow(size, 0.75) * wealth * thrift * street * stocked * (W.capacity.jinx || 1) * econ.cpi(W) * econ.lifeIdx(W);
     econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.62), true);
     econ.toSector(W, i, Math.round(n * 0.38), true, 'living');
     // MY WAY's fans (購入熱): its characters' goods and collaborations at its partners and its own showroom, as much as
@@ -353,7 +356,7 @@ export function dayStart(W, day, r, ctx) {
     if (fans) {
       // (by what the household lets itself spend on pleasures, and the more for one who buys to be seen: 代償消費)
       const mine = P.emo2 ? Math.max(0.4, Math.min(3, Math.sqrt((Math.max(0, P.fund[i * 4 + 2]) + Math.max(0, P.wind[i]) * 0.1) / Math.max(1, W.cal.leisure)))) * (1 + 0.8 * heart.tendency(P, i, 'compensate') * heart.lowEsteem(P, i)) : 1;
-      const k = W.cal.collab * Math.pow(size, 0.75) * wealth * thrift * street * (0.4 + 1.2 * tr(P, i, T.impulse)) * fans.pull * mine;
+      const k = W.cal.collab * Math.pow(size, 0.75) * wealth * thrift * street * (0.4 + 1.2 * tr(P, i, T.impulse)) * fans.pull * mine * econ.lifeIdx(W);
       if (k >= 1) for (const [co, stream, part] of fans.list) {
         if (co.startsWith('local:')) deals.sell(W, i, co.slice(6), Math.round(k * part));
         else econ.buy(W, i, day, co, stream, Math.round(k * part), false);
@@ -452,7 +455,7 @@ function month(W, day, r, ctx) {
     } else if ((P.cash[i] > 300000000 || (P.cash[i] > vipFee * 60 && status > 0.3)) && r.u() < 0.02 * (0.3 + tr(P, i, T.vanity)) * (1 + 3 * status) / Math.max(0.3, vipPrice)) {
       if (econ.buy(W, i, day, 'daizin', 'members', vipFee, false)) { P.vip[i] = day + 365; if (P.emo2) { heart.add2(P, i, 0, 15); heart.envy(W, i, day, 'daizin'); } }
     }
-    if (P.car[i]) econ.buy(W, i, day, 'carowner', 'service', econ.spendAt(W, 'carowner:service', W.cal.service * (0.5 + r.u())), true);
+    if (P.car[i]) econ.buy(W, i, day, 'carowner', 'service', econ.spendAt(W, 'carowner:service', W.cal.service * (0.5 + r.u()) * econ.lifeIdx(W)), true);
     // the 国民年金 and 国民健康保険 of those not employed (students wait; those with little are let off half)
     if (age >= 18 && age < 60 && !isEmployee(P.job[i]) && P.job[i] !== NPC.job.home) {
       if (P.job[i] === NPC.job.student) { /* 学生納付特例 */ }
@@ -560,9 +563,11 @@ function pensions(W, day) {
   let paid = 0;
   for (let i = 0; i < P.n; i++) {
     if (!P.penAmt[i]) continue;
-    let n = P.penAmt[i] * 2 * (1 + level / 100) * paidNow;
+    // (and as the market's pay rose: the fund's takings rose with it — 賃金スライド)
+    const pen = P.penAmt[i] * econ.wageIdx(W), cap = PEN.workCap * econ.wageIdx(W);
+    let n = pen * 2 * (1 + level / 100) * paidNow;
     // (working on a big pay: a part of it held back, 在職老齢年金)
-    if (P.salary[i] / 12 + P.penAmt[i] > PEN.workCap) n = Math.max(0, n - (P.salary[i] / 12 + P.penAmt[i] - PEN.workCap));
+    if (P.salary[i] / 12 + pen > cap) n = Math.max(0, n - (P.salary[i] / 12 + pen - cap));
     n = Math.round(n);
     P.cash[i] += n;
     P.inc[i] += n;
