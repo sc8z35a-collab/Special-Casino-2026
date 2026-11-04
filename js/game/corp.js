@@ -1,7 +1,7 @@
 /* 企業: the companies of the game's world (server/core/corp.js works them out day by day; the 投資 screen,
    js/ui/stocks.js, shows the listed ones, and the operator site's 株式 app, ops/corp.js, all of them). Who they
-   are (thirteen of them: YOSIDA, MAGITA's rival, WAZIMA, MAGITA's own carmaker, and MY WAY, the character IP company,
-   the last to come), the fiscal calendar, the accounts their books keep and how the statements read, the taxes, the lending
+   are (fourteen of them: YOSIDA, MAGITA's rival, WAZIMA, MAGITA's own carmaker, MY WAY, the character IP company, and
+   HACHI, the world's largest medical company, the last to come), the fiscal calendar, the accounts their books keep and how the statements read, the taxes, the lending
    ranks, the economy they share and how each makes its money. Money is whole $ (the NPCs say 円); a day is a
    trading day, 9:00 to 9:00 Japan time (a UTC day), named by its date. Every number here is where a company
    starts: from then on it hires, raises pay, sells, borrows and grows by itself. */
@@ -349,9 +349,96 @@
       ],
       ppe: 1500000000, growth: 0.03, beta: 1.1, season: 'luxury', hire: 0.02, raise: 0.02, quit: 0.02,
       payout: 0.56, per: 24, pbr: 6, founders: 0.3, price: 50000, depth: 600000000
+    },
+    {
+      // The world's largest medical company, the fourteenth (HACHI below): its wards in both countries — HACHI ○○区
+      // 第○病院 — see almost every patient (診察・薬・入院・手術・リハビリ・健診) at fixed fees, and it buys and gives
+      // the medicines itself. Founded on 2026-11-04 (`founded`: no made-up past — its books begin that day), its 利益剰余金
+      // the treasury's $20B once (`retained`), Tenesice's loan that day. Its people here (`staff`): ヴェルノア's wards'
+      // medical staff, its 経営陣 and its researchers (アスカ国's wards' are paid there, through its branches) — at the
+      // pay it starts them on (`salary`: their average a year — $5M, $6M and $10M a month —), a 15% more each costing it.
+      id: 'hachi', name: 'HACHI', full: '株式会社HACHI', en: 'HACHI', rank: 'S', model: 'service', kind: '医療（病棟の運営・薬の調達と提供：世界1位の規模）', listed: true,
+      founded: [2026, 11, 4],
+      capital: 0, reserve: 0, retained: 20000000000,
+      staff: 1875, salary: 79200000, cost: 91080000,
+      // (its wards' land and 管理費, its research with アスカ国 and the medicines' raw materials: HACHI below, booked as
+      // they go — not a budget of a year)
+      place: { name: '病棟の土地代・管理費', amount: 0 }, rd: { name: '薬・サービス・医療機器の研究（アスカ国との共同研究）', amount: 0 },
+      sales: 1800000000000, op: 700000000000,
+      // (its patients are the countries' people: what they pay is all its sales once the country lives — `alone`: each
+      // service's share of `sales` in a company system without the country, as the others' `share`)
+      streams: [
+        { id: 'checkup', name: '定期検診（全国民の月1回の義務）', cost: 0.03, alone: 0.25 },
+        { id: 'consult', name: '診察', cost: 0.03, alone: 0.2 },
+        { id: 'medicine', name: '薬の提供（原材料はアスカ国から）', cost: 0.3, alone: 0.25 },
+        { id: 'inpatient', name: '入院', cost: 0.15, alone: 0.15 },
+        { id: 'surgery', name: '手術', cost: 0.12, alone: 0.1 },
+        { id: 'rehab', name: 'リハビリ', cost: 0.03, alone: 0.05 },
+        // (the 医療税: six tenths of it HACHI's, the state's the rest — CORP.hachi.tax —, once the country lives)
+        { id: 'tax', name: '医療税の配分（6割）', cost: 0 }
+      ],
+      ppe: 0, growth: 0, beta: 0.2, season: 'flat', hire: 0, raise: 0.02, quit: 0.03,
+      payout: 0.3, per: 14, pbr: 2, founders: 0.2, price: 80000, depth: 3000000000
     }
   ];
   function company(id) { for (var i = 0; i < COMPANIES.length; i++) if (COMPANIES[i].id === id) return COMPANIES[i]; return null; }
+
+  /* ---------------------------------------------------------------- HACHI --- */
+  // HACHI's rules (server/core/corp-hachi.js its books, server/core/hachi.js its wards and its patients). Every number
+  // is where it starts.
+  // - `seed`: its 利益剰余金, the treasury's once, the day it is founded; Tenesice's loan that day `loan.months` of its
+  //   costs at `loan.rate` (kept for `loan.years`: not paid back early), its line `loan.line` months — 非常に友好的
+  // - `fees`: a visit's, fixed (100%負担の額: what the patient pays without insurance) — a 診察, a medicine, a
+  //   リハビリ each; a day in a bed (`inpatient`); an operation (always a success: healthy after it); the monthly 定期検診
+  // - `minutes`: how long each takes; `cap`: what a ward does at once at most (診察 400 — the checkups among them —,
+  //   beds 800, operations 20, リハビリ 100), less when its people are fewer than `perWard` of the medical staff
+  // - `wards`: 5 in ヴェルノア (one a district) and 15 in アスカ国 (three a district) at the start; between `min` and
+  //   `max` in all as it does; `state` under the state's care; each `land` and `admin` a month (both countries alike);
+  //   `open` what a new one costs (its equipment from FIGMA)
+  // - `staff` at the start in a full world (its medical staff by wards: `medical` ÷ the 20 wards = `perWard`, 175 a ward,
+  //   the standard: a ward with fewer does as much less of everything — its desks, beds, operations and リハビリ — in
+  //   proportion; it takes on that many for each ward it has, as far as it is not cutting), `pay` a month each
+  // - `equipment`: what FIGMA's equipment and its upkeep cost a ward a month; `research`: what it puts into the joint
+  //   research with アスカ国 of what it made beyond `cushion` months of its costs — done by FIGMA (アスカ国 giving its
+  //   raw materials): its equipment and its research both FIGMA's sales, and アスカ国's own medical research budget
+  //   buys `figmaRatio` times that of it (4 : 6)
+  // - `loan.credit`: Tenesice's special line (非常に友好的): short of `credit` days of its costs at hand any day — more
+  //   going out than its windows take in —, it is lent at once at `loan.rate` as far as `loan.line` months of its costs
+  // - `tax`: the 医療税 of both countries (of everyone's pay and every company's profit), `hachi` of it HACHI's — paid it
+  //   day by day as it comes in —, the rest its country's
+  // - `cut`: who goes first when it must cut (経営難): researchers, the 経営陣, the medical staff last
+  // - `buyout`: its failure — アスカ国 alone buys the whole business at `mult` times its market value (no one else may
+  //   take it over), paid out to its 社長, its people and FIGMA's (関連社員) by these shares; then the state runs it:
+  //   no one let go, `wards.state` wards, no land rent (the state's)
+  // - `myway`: MY WAY's characters for its 定期検診 advertising and its name (`years` a contract, then renewed, cut
+  //   or talked over; on under the state too), `lift` more of the people keeping their checkups while it is on
+  var HACHI = {
+    founded: [2026, 11, 4],
+    seed: 20000000000,
+    loan: { months: 3, rate: 0.006, years: 10, line: 12, credit: 15 },
+    fees: { checkup: 700000, consult: 850000, medicine: 850000, rehab: 850000, inpatient: 500000, surgery: 3000000 },
+    minutes: { checkup: 30, consult: 25, surgery: 10, rehab: 60 },
+    cap: { consult: 400, inpatient: 800, surgery: 20, rehab: 100 },
+    wards: { vernoa: 5, asuka: 15, min: 7, max: 45, state: 20, land: 35000000, admin: 600000000, open: 2000000000 },
+    staff: { medical: 3500, exec: 500, research: 500 }, perWard: 175,
+    pay: { medical: 5000000, exec: 6000000, research: 10000000 },
+    tax: { hachi: 0.6, state: 0.4 },
+    burden: 1.15,
+    equipment: 1200000000, figmaRatio: 1.5,
+    research: { share: 0.5, cushion: 6 },
+    cut: ['research', 'exec', 'medical'],
+    buyout: { mult: 2, ceo: 0.2, staff: 0.5, related: 0.3 },
+    myway: { years: 5, lift: 0.06 },
+    // a ward's review each month (its 経営陣's): its patients a ward against `perWard` of everyone's visits (a ward's
+    // share of both countries' people, a visit and a tenth each a month) — `busy` times that and making money, one more
+    // where they are most; under `quiet` times that, or two months in the red, one fewer (never below `min`)
+    review: { busy: 1.15, quiet: 0.5, visits: 1.1 },
+    // (the job sites' 30% of a hire's first year, on its pay only as far as this: a medical professional's first year
+    // beyond it is not theirs to take)
+    placementCap: 39000000
+  };
+  // a ward's name: HACHI ○○区 第○病院 (its number in its district)
+  function wardName(district, k) { return 'HACHI ' + district + ' 第' + k + '病院'; }
 
   /* ---------------------------------------------------------------- MY WAY --- */
   // MY WAY's licences and the life of its characters (server/core/corp-model.js ip; its people's part:
@@ -438,7 +525,11 @@
       wazima: { fee: 1200000000, lift: 1.9, cost: 0.3, late: true, what: 'キャラクターデザイン部品・工場見学ツアー' },
       daizin: { fee: 2000000000, lift: 1.8, cost: 0.2, late: true, what: 'VIPラウンジのキャラクター空間・限定ロイヤルコイン' },
       citywork: { fee: 800000000, lift: 1.6, cost: 0.1, late: true, what: '求人サイトの公式キャラクター' },
-      speedeed: { fee: 600000000, lift: 1.6, cost: 0.1, late: true, what: 'バイトアプリの公式キャラクター' }
+      speedeed: { fee: 600000000, lift: 1.6, cost: 0.1, late: true, what: 'バイトアプリの公式キャラクター' },
+      // (HACHI, from its founding on 2026-11-04: its 定期検診 advertising and its name, a contract of five years —
+      // `term` — then renewed, cut or talked over; on under the state too. No goods: what it is worth to it is the
+      // checkups and visits its advertising brings, about a quarter more than its fee at full pull — `lift`)
+      hachi: { fee: 8000000000, lift: 1.25, cost: 0, late: true, term: 5, what: '定期検診の広告・知名度向上（キャラクター使用権：5年更新）' }
     },
     // the day the thirteen all became its partners and Tenesice's became its 超大型IP契約 (its seven partners before
     // at their first fees — `fee0` — and its showroom made its $45B)
@@ -629,6 +720,8 @@
     { a: 'myway', b: 'ice', start: 70, why: 'MY WAYのIP使用権許諾・コラボ（世界1位のゲーム）' },
     { a: 'myway', b: 'riru', start: 65, why: 'MY WAYのIP使用権許諾・コラボ（新興ゲーム）' },
     { a: 'myway', b: 'dtrade', start: 65, why: 'カジノスロットの冬仕様外装・季節限定スキン（IP契約）' },
+    { a: 'myway', b: 'hachi', start: 70, why: '定期検診の広告・知名度向上（キャラクター使用権：5年更新）' },
+    { a: 'tenesice', b: 'hachi', start: 95, why: '非常に友好的な取引銀行（巨額の融資）' },
     { a: 'tenesice', b: '*', start: 60, why: '取引銀行（預金・融資）' }
   ];
 
@@ -801,6 +894,8 @@
     // a business bought: のれん, written off over its years)
     'r:asuka': ['アスカ国の支店の売上', 'r'], 'r:asukaB2B': ['アスカ国の支店向けの卸売', 'r'], 'c:asuka': ['アスカ国で売った品物の仕入れ', 'c'],
     sAsuka: ['アスカ国の支店の人件費・地代・手数料', 's'], tAsuka: ['アスカ国の法人税・源泉税', 't'],
+    // (the 医療税 on its month's profit: js/game/npc.js medicalTax)
+    tMedical: ['医療税（企業利益）', 't'],
     // (アルタス: every company's resources bought of it — its goods' and parts' raw materials and food, its plants' and
     // buildings' energy and materials, its research's —, at its prices: server/core/corp-model.js costOf, running)
     'c:altas': ['資源の仕入れ（アルタス）', 'c'], 'c:asukaAltas': ['アスカ国で売った品物の資源の仕入れ（アルタス）', 'c'],
@@ -898,7 +993,7 @@
   BR.CORP = {
     DAY_MS: DAY_MS,
     companies: COMPANIES, company: company, listed: function () { return COMPANIES.filter(function (c) { return c.listed; }); },
-    players: PLAYERS, features: FEATURES, feature: function (id) { return FEATURES.filter(function (x) { return x.id === id; })[0] || null; }, bankruptcy: BANKRUPTCY, magita: MAGITA, yosida: YOSIDA, questFee: questFee, wazima: WAZIMA, myway: MYWAY, breakeven: breakeven, scaleRange: scaleRange, mywayTalk: mywayTalk, makers: MAKERS, firstLot: firstLot, staffing: STAFFING, tech: TECH, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
+    players: PLAYERS, features: FEATURES, feature: function (id) { return FEATURES.filter(function (x) { return x.id === id; })[0] || null; }, bankruptcy: BANKRUPTCY, magita: MAGITA, yosida: YOSIDA, questFee: questFee, wazima: WAZIMA, myway: MYWAY, hachi: HACHI, wardName: wardName, breakeven: breakeven, scaleRange: scaleRange, mywayTalk: mywayTalk, makers: MAKERS, firstLot: firstLot, staffing: STAFFING, tech: TECH, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
     ranks: RANKS, money: MONEY, tax: TAX,
     accounts: ACCOUNTS, account: account, pl: PL, bs: BS, cf: CF, plOf: plOf,
     // the 決算発表: this many days after a quarter's end, at 15:00 Japan time (6:00 UTC)

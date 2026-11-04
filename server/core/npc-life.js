@@ -11,6 +11,8 @@ import { thinkCar, thinkJob } from './npc-mind.js';
 import * as asuka from './asuka.js';
 import * as heart from './npc-heart.js';
 import * as deals from './npc-ipdeals.js';
+import * as health from './npc-health.js';
+import * as hachi from './hachi.js';
 
 const A = NPC.act;
 const PL = Object.fromEntries(NPC.places.map((p, k) => [p, k]));
@@ -55,7 +57,11 @@ export function obliged(W, i, t, off, day, jdow) {
   if (t < wake && t >= (bed - 1440)) return { kind: 'sleep', end: wake };
   if (t >= bed) return { kind: 'sleep', end: 1440 + wake };
   if (P.flags[i] & FL.striking) return { kind: 'free', end: 1440 };
-  if (P.health[i] < 60 && !(P.flags[i] & FL.student)) return { kind: 'sick', end: t + 120 };
+  // (健康度: a bed, an operation within the hour, a bed to be had, a doctor at once, home with no work — HACHI's wards
+  // once there are: hachi.js; before them, the local clinics as before)
+  const hv = hachi.obliged(W, i, day);
+  if (hv) return { kind: hv, end: t + (hv === 'leave' ? 120 : 30) };
+  if (!hachi.isOpen(W) && P.health[i] < 60 && !(P.flags[i] & FL.student)) return { kind: 'sick', end: t + 120 };
   let sched = null, shift = P.shift[i];
   if (NPC.isCompanyJob(job)) sched = NPC.schedules[NPC.companySchedule[NPC.companyOf(job)]];
   else if (job === NPC.job.civil) sched = NPC.schedules.civil;
@@ -91,13 +97,25 @@ export function decide(W, i, m, t, j, r, ctx) {
   decay(P, i, dt);
   const ob = obliged(W, i, t, j.off, day, j.w);
   const home = P.home[i] === HOME.street ? PL.street : PL.home;
-  if (ob.kind === 'sleep') { set(W, i, A.sleep, home, P.dist[i], m, Math.min(ob.end - t, 600)); fill(P, i, N.rest, dt * 0.6); if (P.emo2) heart.add2(P, i, E2.tired, -dt * 0.1); return; }
+  // (in a bed at a ward: asleep there too)
+  const inBed = P.care && P.care[i] === hachi.CARE.bed;
+  if (ob.kind === 'sleep') { set(W, i, A.sleep, inBed ? PL.hospital : home, inBed ? wardDist(W, i) : P.dist[i], m, Math.min(ob.end - t, 600)); fill(P, i, N.rest, dt * 0.6); if (P.emo2) heart.add2(P, i, E2.tired, -dt * 0.1); return; }
   if (ob.kind === 'sick') { set(W, i, A.hospital, PL.hospital, P.dist[i], m, 120); hospital(W, i, day, r); return; }
+  if (ob.kind === 'bed') { set(W, i, A.hospital, PL.hospital, wardDist(W, i), m, 120); fill(P, i, N.rest, dt * 0.5); return; }
+  if (ob.kind === 'leave') { set(W, i, A.home, home, P.dist[i], m, 120); fill(P, i, N.rest, dt * 0.8); if (P.emo2) heart.add2(P, i, E2.tired, -dt * 0.2); return; }
+  if (ob.kind === 'emergency' || ob.kind === 'surgery' || ob.kind === 'admit' || ob.kind === 'doctor') { toWard(W, i, m, ob.kind, r, ctx); return; }
   if (ob.kind === 'work') return work(W, i, m, t, ob.end, r, ctx);
   if (ob.kind === 'study') { set(W, i, A.study, PL.school, 2, m, Math.min(ob.end - t, 120)); fill(P, i, N.achieve, 18); return; }
   if (ob.kind === 'lunch') return lunch(W, i, m, day, r);
   free(W, i, m, t, j, day, r, ctx);
 }
+
+// to HACHI's ward of one's district (or the nearest) for `kind`: waiting there, served as their turn comes (hachi.js)
+function toWard(W, i, m, kind, r, ctx) {
+  set(W, i, A.hospital, PL.hospital, wardDist(W, i), m, 15);
+  hachi.arrive(W, i, m, kind, ctx, r);
+}
+const wardDist = (W, i) => { const k = hachi.wardFor(W, 'vernoa', W.P.dist[i]), x = k >= 0 ? W.hachiInfo.wards.filter((y) => y.country === 'vernoa')[k] : null; return x ? x.district : W.P.dist[i]; };
 
 function decay(P, i, dt) {
   const k = dt / 60;
@@ -141,7 +159,8 @@ function work(W, i, m, t, end, r, ctx) {
   const sat = P.jsat[i] / 255;
   if (NPC.isCompanyJob(job)) {
     const id = NPC.companyOf(job);
-    const k = (0.7 + 0.6 * skillFor(P, i, id)) * (0.75 + 0.5 * sat) * (0.85 + 0.3 * P.health[i] / 255) * (len / 60);
+    // (健康度: twice as much done from 76, less the lower it is — npc-health.js output)
+    const k = (0.7 + 0.6 * skillFor(P, i, id)) * (0.75 + 0.5 * sat) * Math.max(0.3, health.output(health.hpOf(P, i))) * (len / 60);
     W.work[id] = (W.work[id] || 0) + k;
     W.workHours[id] = (W.workHours[id] || 0) + len / 60;
   }
@@ -179,6 +198,9 @@ function lunch(W, i, m, day, r) {
 // (the last two the mind's: a spree when stressed — ストレス買い —, stocking up when dearer times are feared — パニック消費)
 const OPTIONS = ['home', 'shop', 'car', 'casino', 'game', 'invest', 'lounge', 'friends', 'jobhunt', 'politics', 'parttime', 'demo', 'venture', 'walk', 'outing', 'bank', 'splurge', 'stockup'];
 function free(W, i, m, t, j, day, r, ctx) {
+  // (the month's checkup — the law's —, a リハビリ, a doctor when unwell: HACHI's ward first, hachi.js)
+  const care = hachi.freeTime(W, i, day, r);
+  if (care) { toWard(W, i, m, care, r, ctx); return; }
   const P = W.P, age = ageOf(P, i, day), cash = P.cash[i], late = t >= 1260, evening = t >= 1080, off = j.off;
   const wealth = Math.max(0.05, cash / 60000000);
   const scores = new Float64Array(OPTIONS.length);

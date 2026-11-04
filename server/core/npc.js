@@ -19,6 +19,7 @@ import * as econ from './npc-econ.js';
 import { view as localView, detail as localDetail, reportOf as localReport } from './npc-local.js';
 import { view as dealsView } from './npc-ipdeals.js';
 import { view as wagesView } from './npc-wages.js';
+import { view as hachiView } from './hachi.js';
 import * as pop from './npc-pop.js';
 import * as asukaModel from './asuka.js';
 import * as text from './npc-text.js';
@@ -445,7 +446,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     for (const [id, list] of Object.entries(w.priv)) for (const [j, s] of list) if (j === i) holds[id] = s;
     const reasons = q("SELECT data FROM npc_reports WHERE company = '' AND kind = 'reason' ORDER BY id DESC LIMIT 200").all().map((r) => JSON.parse(r.data)).filter((x) => x.i === i && x.id === pop.pid(P, i)).slice(0, 8);
     return {
-      traits: tr, skills: sk, needs: need, feelings: emo, discontent: disc, lean: { size: P.lean[i * 2], change: P.lean[i * 2 + 1] }, health: P.health[i],
+      traits: tr, skills: sk, needs: need, feelings: emo, discontent: disc, lean: { size: P.lean[i * 2], change: P.lean[i * 2 + 1] }, health: Math.round(P.health[i] / 1.275 - 100),
       money: { cash: P.cash[i], debt: P.debt[i], loan: ['', '通常', 'クイックローン'][P.dkind[i]], credit: P.credit[i], budget: P.budget[i], funds: Array.from(P.fund.subarray(i * 4, i * 4 + 4)), income: P.inc[i], spent: P.spent[i], tokens: P.tokens[i] },
       work: { job: NPC.jobNames[P.job[i]], rank: NPC.ranks[P.rank[i]].name, salary: P.salary[i], tenure: P.tenure[i], satisfaction: P.jsat[i], union: !!(P.flags[i] & pop.FL.union), striking: !!(P.flags[i] & pop.FL.striking) },
       pension: { months: P.penM[i], pay: P.penPay[i], exempt: P.penHalf[i], monthly: P.penAmt[i], deferring: !!(P.flags[i] & pop.FL.defer) },
@@ -496,7 +497,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         // (the times' mood and the prices: server/core/npc-macro.js)
         macro: model.macroView(w),
         // (アスカ国, and the money ledger: every $ from someone to someone)
-        asuka: asukaModel.view(w), research: research.view(w), fund: (corp.world() || {}).fund || null, ipDeals: dealsView(w), wages: wagesView(w), ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30),
+        asuka: asukaModel.view(w), research: research.view(w), hachi: hachiView(w), fund: (corp.world() || {}).fund || null, ipDeals: dealsView(w), wages: wagesView(w), ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30),
           players: w.ledger.players ? { drift: w.ledger.players.drift, worst: w.ledger.players.worst || 0, days: w.ledger.players.days.slice(-30) } : null } : null };
       return { ...partOf(all, req.query.get('rev')), now };
     },

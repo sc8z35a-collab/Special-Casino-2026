@@ -112,7 +112,8 @@ test('a company that stops selling spends less, month by month: its budgets foll
   // (nobody buys from it: its sales gone)
   const p = CORP.company('jinx');
   const keep = p.op;
-  for (let k = 0; k < 4; k++) {
+  // (five months: three of its own reviews at the least — the cuts its people may decide in their meetings besides)
+  for (let k = 0; k < 5; k++) {
     untilMonthEnd(c);
     for (const x of Object.keys(s.per.m)) if (/^r:/.test(x)) s.per.m[x] = 0;
     c.days(1);

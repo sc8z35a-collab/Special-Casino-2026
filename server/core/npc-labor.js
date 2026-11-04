@@ -10,6 +10,7 @@ import * as local from './npc-local.js';
 import * as econ from './npc-econ.js';
 import { boomOf } from './npc-macro.js';
 import * as wages from './npc-wages.js';
+import { deptKey as hachiDept, payFor as hachiPay } from './hachi.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const RATES = { tenesice: 0.35, magita: 0.75, carowner: 0.4, jinx: 0.45, daizin: 0.2, citywork: 0.15, speedeed: 0.05, dtrade: 0.1, riru: 0.25, ice: 0.3, yosida: 0.6, wazima: 0.65 };
@@ -57,7 +58,9 @@ function dismiss(W, day, ctx) {
     if (!c || !c.cut || c.cut.day > day || lb.cutDone[id] === c.cut.day) continue;
     lb.cutDone[id] = c.cut.day;
     const staff = W.staffOf(id).filter((i) => !(P.flags[i] & FL.exec));
-    staff.sort((a, b) => (P.tenure[a] - P.tenure[b]) || (P.jsat[a] - P.jsat[b]) || (a - b));
+    // (HACHI: by its order — its researchers first, then its 経営陣, its medical staff last: CORP.hachi.cut)
+    const order = c.cut.order ? (i) => { const k = c.cut.order.indexOf(NPC.hachiRoles[hachiDept(W, P.dept[i])] || 'medical'); return k < 0 ? 9 : k; } : () => 0;
+    staff.sort((a, b) => (order(a) - order(b)) || (P.tenure[a] - P.tenure[b]) || (P.jsat[a] - P.jsat[b]) || (a - b));
     const n = Math.min(c.cut.n, Math.max(0, staff.length - 1));
     for (let k = 0; k < n; k++) {
       const i = staff[k];
@@ -80,6 +83,9 @@ function hire(W, i, o, day, r) {
   P.rank[i] = 0;
   P.dept[i] = W.org.deptFor(o.company, r);
   P.salary[i] = Math.round(o.pay * (0.78 + 0.1 * r.u()));
+  // (HACHI: at its department's own pay — CORP.hachi.pay, $5M, $6M or $10M a month to start —, moved with the market's
+  // since it began; never its average, which its few at the top lift)
+  if (o.company === 'hachi') P.salary[i] = Math.round(hachiPay(W, P.dept[i]) * ((W.wage && W.wage.idx) || 1) * (0.96 + 0.08 * r.u()));
   P.tenure[i] = 0;
   P.jsat[i] = 170;
   P.jobless[i] = 0;
@@ -88,7 +94,9 @@ function hire(W, i, o, day, r) {
   P.shift[i] = r.int(2);
   o.left--;
   // the site's placement fee (初年度年収の30%), the hiring company's
-  W.charge(o.company, o.site, 'placement', Math.round(P.salary[i] * 0.3 * econ.feeOf(W, 'jobFee', 0.25) / 0.25));
+  // (HACHI's: on its pay as far as `placementCap` — a medical professional's first year beyond it is not the sites' to take)
+  const base = o.company === 'hachi' ? Math.min(P.salary[i], CORP.hachi.placementCap) : P.salary[i];
+  W.charge(o.company, o.site, 'placement', Math.round(base * 0.3 * econ.feeOf(W, 'jobFee', 0.25) / 0.25));
   if (RATES[o.company] && r.u() < RATES[o.company]) { P.flags[i] |= FL.union; W.lab.unions[o.company].members++; }
   remember(P, i, day, M.hired, 150);
   W.lab.hires[o.company] = (W.lab.hires[o.company] || 0) + 1;
@@ -273,6 +281,9 @@ function shortage(W, day, r, ctx) {
     for (let k = 0; k < n && o.left > 0; k++) {
       const i = draw();
       if (i < 0 || !wants(i, offer)) continue;
+      // (HACHI: those at home, the able retired and the self-employed first — a local company's people only now and then,
+      // the country's own businesses kept)
+      if (o.company === 'hachi' && local.firmOf(P, i)) continue;
       // (人材の奪い合い: a local company with the money holds one of its people a little above the offer, as the thirteen
       // do theirs — npc-wages.js poach)
       if (local.firmOf(P, i) && wages.localHolds(W, i, offer, r)) continue;

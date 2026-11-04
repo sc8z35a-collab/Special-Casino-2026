@@ -23,6 +23,7 @@
 import crypto from 'node:crypto';
 import { CORP, RULES, ASUKA } from './rules.js';
 import { yearTax } from './corp-tax.js';
+import * as hachi from './corp-hachi.js';
 
 const YEAR = 365;
 const DAY = 86400;
@@ -66,6 +67,11 @@ function rankOf(p) {
   return p.model === 'studio' ? 1 : 0;
 }
 export const ORDER = CORP.companies.slice().sort((a, b) => rankOf(a) - rankOf(b)).map((p) => p.id);
+// (the companies a world is made with — its made-up past —: never one founded later, HACHI: it is founded on its day,
+// corp-hachi.js; and the ones a world has today)
+const BOOTED = CORP.companies.filter((p) => !p.founded);
+const BOOT_ORDER = ORDER.filter((id) => !PROFILES.get(id).founded);
+const liveOrder = (w) => ORDER.filter((id) => w.co[id]);
 
 /* ------------------------------------------------------------------- chance --- */
 function chance(key) {
@@ -466,8 +472,10 @@ const spend = (s, k) => (s.budget[k] || 0) * ((s.save && s.save[k]) || 1);
 // rest's — are bought of アルタス at its prices: a line of their own (資源・エネルギー; a maker's plants' in its cost
 // of sales), paid to it at the month's end with the rest (route 'altas').
 function running(s, p, d, w) {
-  const place0 = take(s, 'place', spend(s, 'place') / YEAR), rd0 = take(s, 'rd', spend(s, 'rd') / YEAR);
-  const ads = take(s, 'ads', spend(s, 'ads') / YEAR), other0 = take(s, 'other', spend(s, 'other') / YEAR);
+  // (HACHI's wards — their land, 管理費 and equipment — and its research: booked as they go, corp-hachi.js)
+  const own = p.id === 'hachi';
+  const place0 = own ? 0 : take(s, 'place', spend(s, 'place') / YEAR), rd0 = own ? 0 : take(s, 'rd', spend(s, 'rd') / YEAR);
+  const ads = take(s, 'ads', spend(s, 'ads') / YEAR), other0 = own ? 0 : take(s, 'other', spend(s, 'other') / YEAR);
   const maker = p.model === 'maker', R = (w && w.ext && ASUKA.altas.route) || {};
   const aPlace = Math.round(place0 * ((maker ? R.plant : R.place) || 0)), aRest = Math.round(rd0 * (R.rd || 0)), aOther = Math.round(other0 * (R.other || 0));
   const atPlace = aPlace ? altasCost(w, aPlace) : 0, atRest = aRest + aOther ? altasCost(w, aRest + aOther) : 0;
@@ -624,7 +632,7 @@ function tradeDay(w, s, p, d, flows, ch) {
         else sellProducts(w, s, x.id, x.products, id, n, n * price, false);
       }
     } else {
-      const share = s.share && s.share[x.id] !== undefined ? s.share[x.id] : (x.share || 0);
+      const share = s.share && s.share[x.id] !== undefined ? s.share[x.id] : (x.share || (!circ && x.alone) || 0);
       if (share) {
         let n = take(s, 'sale:' + x.id, p.sales * share * f * (s.scale && s.scale[x.id] || 1) / YEAR);
         const cost = s.cost && s.cost[x.id] !== undefined ? s.cost[x.id] : (x.cost || 0);
@@ -1178,8 +1186,8 @@ function treasury(w, s, p, d, out) {
     // paid back first, then into bonds
     let spare = cash - want;
     for (const l of s.loans) {
-      // (テネシスリサーチ's loans: for its five years, paid back at their end)
-      if (l.research && d < l.until) continue;
+      // (テネシスリサーチ's loans: for its five years, paid back at their end; HACHI's from its founding, its ten)
+      if ((l.research || l.keep) && d < l.until) continue;
       const pay = Math.min(l.amt, spare);
       if (pay <= 0) continue;
       l.amt -= pay;
@@ -1196,7 +1204,7 @@ function treasury(w, s, p, d, out) {
   }
   // loans that come due are rolled over at today's rate (テネシスリサーチ's, ended, an ordinary loan from then: paid back as
   // its money allows)
-  for (const l of s.loans) if (d >= l.until) { l.until = d + M.years * YEAR; l.rate = rateFor(w, s); l.research = false; }
+  for (const l of s.loans) if (d >= l.until) { l.until = d + M.years * YEAR; l.rate = rateFor(w, s); l.research = false; l.keep = false; }
 }
 const monthlyCosts = (s) => Math.round(s.n * s.unit / 12 + (spend(s, 'place') + spend(s, 'rd') + spend(s, 'ads') + spend(s, 'other')) / 12);
 
@@ -1211,7 +1219,7 @@ const monthlyCosts = (s) => Math.round(s.n * s.unit / 12 + (spend(s, 'place') + 
 // with its releases: its own plans decide.)
 const BUDGET = { keys: ['place', 'rd', 'ads', 'other', 'capex'], cut: 0.1, raise: 0.15, over: 1.2, top: 6, floor: 0.05, months: 3 };
 function budgetReview(w, s, p, d, out) {
-  if (!w.circ || d < w.circ.from || p.model === 'studio' || s.dead || abroad(s)) return;
+  if (!w.circ || d < w.circ.from || p.model === 'studio' || s.dead || abroad(s) || p.id === 'hachi') return;
   const pl = CORP.plOf(s.per.m), h = s.mHist || (s.mHist = []);
   h.push({ sales: Math.round(pl.sales), op: Math.round(pl.op) });
   while (h.length > BUDGET.months) h.shift();
@@ -1637,7 +1645,9 @@ function taxes(w, s, p, d, final) {
   // (the profit of a company held by the equity method is not income yet; half the dividends from it are not taxed;
   // a wholly owned child's dividends are not taxed at all: 完全子法人株式等)
   // (what its branches in アスカ国 made is taxed there — tAsuka —, not here again: 国外所得)
-  const income = pretax - (s.per.y.nEquity || 0) + (s.per.y.eEquity || 0) - childIncome(s.per.y) - asukaIncome(s.per.y);
+  // (HACHI: its wards there part of its one business — their land, 管理費 and equipment on its books here —, all its
+  // income taxed here)
+  const income = pretax - (s.per.y.nEquity || 0) + (s.per.y.eEquity || 0) - childIncome(s.per.y) - (p.id === 'hachi' ? 0 : asukaIncome(s.per.y));
   const args = { fy, paidBusiness: s.tax.bizPaid, carry: s.tax.carry, capital: s.bal.capital, capitalEtc: s.bal.capital + s.bal.reserve, staff: s.n,
     value: (s.per.y.sSalary || 0) + (s.per.y.sWelfare || 0) + (s.per.y.sPlace || 0) + Math.max(0, income) };
   let due;
@@ -1791,7 +1801,7 @@ function expectDay(w, s, p, d) {
         add('c:' + x.id, k.cost * g + players * k.cost / Math.max(1, k.sales));
         add('sSelling', k.selling * g + players * k.selling / Math.max(1, k.sales));
       } else {
-        const share = s.share && s.share[x.id] !== undefined ? s.share[x.id] : (x.share || 0);
+        const share = s.share && s.share[x.id] !== undefined ? s.share[x.id] : (x.share || (!w.ext && x.alone) || 0);
         const cost = s.cost && s.cost[x.id] !== undefined ? s.cost[x.id] : (x.cost || 0);
         const base = p.sales * share * f * (s.scale && s.scale[x.id] || 1) + players;
         add('r:' + x.id, base);
@@ -1926,7 +1936,7 @@ const payoutOf = (p, w) => {
 // (its own money only: a bank's cash is its depositors', and none puts more into it than a tenth of what it is worth)
 function boomSpend(w, s, p, d, out) {
   const boom = w.boom || 1;
-  if (boom <= 0.97 || !w.ext || s.dead || abroad(s) || s.reorg || p.model === 'bank') return;
+  if (boom <= 0.97 || !w.ext || s.dead || abroad(s) || s.reorg || p.model === 'bank' || p.id === 'hachi') return;
   const costs = monthlyCosts(s);
   const rate = 0.08 + Math.max(0, boom - 1) * 0.5;
   const extra = Math.round(Math.min(((s.bal.cash || 0) - costs * KEEP / Math.max(1, boom)) * rate, Math.max(0, equityOf(s)) * 0.1));
@@ -2030,7 +2040,7 @@ function loanDecided(w, s, p, o, d, out) {
     let spare = Math.max(0, Math.round(((s.bal.cash || 0) - monthly * KEEP) * (o.share || 0.5)));
     let paid = 0;
     for (const l of s.loans) {
-      if ((l.research && d < l.until) || l.bubble) continue;
+      if (((l.research || l.keep) && d < l.until) || l.bubble) continue;
       const x = Math.min(l.amt, spare);
       if (x <= 0) continue;
       l.amt -= x; spare -= x; paid += x;
@@ -2119,9 +2129,14 @@ function closePeriods(w, s, p, d, out, ch) {
 export function fairValue(s, p, w) {
   const eq = equityOf(s), g = s.guide;
   // (its profit as the market sees it: half what is guided for the year, half the last two years' average)
+  // (a company founded in the year — HACHI —: its first year's guidance a year's worth, its first quarters' by their days)
+  const born = p.founded ? CORP.dayAt(...p.founded) : null;
   const qs = s.hist.filter((h) => h.kind === 'q').slice(-8);
-  const avg = qs.length ? qs.reduce((n, h) => n + h.net, 0) * 4 / qs.length : 0;
-  const ni = g ? 0.5 * g.expected.net + 0.5 * avg : avg;
+  const qNet = (h) => (born !== null && h.d - born + 1 < 91 ? h.net * 91 / Math.max(30, h.d - born + 1) : h.net);
+  const avg = qs.length ? qs.reduce((n, h) => n + qNet(h), 0) * 4 / qs.length : 0;
+  const part = born !== null && g && g.fy === CORP.fyOf(born) ? YEAR / Math.max(30, CORP.fyEnd(g.fy) - born + 1) : 1;
+  const gn = g ? g.expected.net * part : 0;
+  const ni = g ? (qs.length ? 0.5 * gn + 0.5 * avg : gn) : avg;
   // its money (cash and bonds less loans) counts as itself; the rest by its profit and its book
   const cash = p.model === 'bank' ? 0 : Math.max(0, (s.bal.cash || 0) + (s.bal.bonds || 0) - debtOf(s));
   const book = Math.max(0, eq - cash);
@@ -2243,6 +2258,7 @@ export const garageFeeOf = (w) => (w && ((opCo(w, 'garage') || w.co.magita || {}
 // well (over `growAbove`) hires more.
 const ST = CORP.staffing;
 function staffing(w, s, p, d, out) {
+  if (p.id === 'hachi') return hachi.staffing(H, w, s, p, d, out);
   // (the year so far against what the plan expected of it: a studio's quarters swing with its releases)
   const fy = CORP.fyOf(d), qn = CORP.quarterOf(d);
   const op = opOf(s.per.y), plan = s.guide && s.guide.fy === fy ? s.guide.expected.quarters.slice(0, qn).reduce((a, b) => a + b, 0) : null;
@@ -2333,6 +2349,9 @@ function asukaDay(w, d, A, out) {
   // businesses, the games and the services sold straight from home — and the raw materials its branches bought there:
   // the two countries' GDP, server/core/npc-gdp.js)
   const X = w.ext.asuka = { pay: {}, rent: 0, open: 0, platform: 0, tax: 0, boost: 0, refund: 0, trade: { goods: 0, direct: 0, altas: 0 } };
+  // (what HACHI paid アスカ国 today — its wards' land and 管理費, FIGMA's equipment, the joint research, its surplus under
+  // the state, a buyout —: corp-hachi.js)
+  if (w.hachiX) { X.hachi = w.hachiX; w.hachiX = null; }
   const B = w.asukaB || (w.asukaB = {});
   const seg = (s) => s.asuka || (s.asuka = { m: { sales: 0, cost: 0 }, last: null, staff: 0 });
   for (const [co, cats] of Object.entries(A.toCo || {})) {
@@ -2344,6 +2363,18 @@ function asukaDay(w, d, A, out) {
       if (n <= 0) continue;
       // (アスカ国's IP契約 with MY WAY: its fee, out of its treasury — a service sold it from home, not its branches')
       if (cat === 'ip') { cashSale(s, 'ipAsuka', n); s.pr.ipAsuka = (s.pr.ipAsuka || 0) + n / 30; X.trade.direct += n; continue; }
+      // (HACHI's wards there: what its patients and アスカ国's insurance paid for each service — its own fixed land rent,
+      // no share of the sale —, and what the state put into it when it runs it)
+      if (co === 'hachi') {
+        // (what the state put in under its care, and the 医療税's six tenths: transfers — no trade between the countries)
+        if (cat === 'aid') { dpost(s, [['cash', n], ['nOther', -n]], 'receipts'); X.transfer = (X.transfer || 0) + n; continue; }
+        const x = PROFILES.get('hachi').streams.find((y) => y.id === cat);
+        sellCash(w, s, x ? cat : 'asuka', n, take(s, 'hcost:' + cat, n * (x ? x.cost : 0)));
+        s.pr[x ? cat : 'asuka'] = (s.pr[x ? cat : 'asuka'] || 0) + n / 30;
+        g.m.sales += n;
+        if (cat === 'tax') X.transfer = (X.transfer || 0) + n; else X.trade.direct += n;
+        continue;
+      }
       cashSale(s, 'asuka', n);
       s.pr.asuka = (s.pr.asuka || 0) + n / 30;
       g.m.sales += n;
@@ -2386,11 +2417,25 @@ function asukaDay(w, d, A, out) {
       X.rent += rent;
     }
   }
+  // (HACHI's people at its wards there, at their own pay — and the company's part beyond it, アスカ国's social
+  // insurance)
+  const hs = w.co.hachi, ha = A.hachi;
+  if (hs && !hs.dead && ha && ha.pay > 0) {
+    const g = seg(hs), pay = Math.round(ha.pay / YEAR), social = Math.round(pay * (CORP.hachi.burden - 1));
+    post(hs, [['sAsuka', pay + social], ['cash', -(pay + social)]], 'payroll');
+    g.m.cost += pay + social;
+    g.staff = ha.staff || 0;
+    X.pay.hachi = (X.pay.hachi || 0) + pay;
+    const hx = X.hachi || (X.hachi = { land: 0, admin: 0, figma: 0, research: 0, owner: 0, social: 0, need: 0, buyout: null });
+    hx.social += social;
+  }
+  if (hs && hs.hachi && ha) { hs.hachi.asukaPay = ha.pay || 0; hs.hachi.asukaStaff = ha.staff || 0; }
   if (!CORP.isMonthEnd(d)) return;
   for (const s of Object.values(w.co)) {
     if (!s.asuka || s.dead) continue;
     const g = s.asuka, profit = g.m.sales - g.m.cost;
-    if (profit > 0) {
+    // (HACHI's wards there are no branch of their own: taxed with the rest of it in ヴェルノア)
+    if (profit > 0 && s.id !== 'hachi') {
       const tax = Math.round(profit * AR.tax.corporate), wh = Math.round((profit - tax) * ((A.rates && A.rates.withhold) || AR.tax.withhold));
       post(s, [['tAsuka', tax + wh], ['cash', -(tax + wh)]], 'taxes');
       X.tax += tax + wh;
@@ -2582,7 +2627,8 @@ function gameDay(w, d, flows, orig = flows) {
     if (inn) { w.ext.sector += inn; w.ext.fromPlayers = (w.ext.fromPlayers || 0) + inn; }
     const sin = {};
     for (const [k, n] of Object.entries(flows['@stateIn'] || {})) { const v = Math.round(n || 0); if (v > 0) sin[STATE_IN[k] || k] = v; }
-    if (Object.keys(sin).length) { w.ext.stateIn = sin; w.ext.fromPlayers = (w.ext.fromPlayers || 0) + Object.values(sin).reduce((a, b) => a + b, 0); }
+    // (added to what the day already owes the treasury — HACHI's wards' land —, never in its place)
+    if (Object.keys(sin).length) { const st = w.ext.stateIn || (w.ext.stateIn = {}); for (const [k, v] of Object.entries(sin)) st[k] = (st[k] || 0) + v; w.ext.fromPlayers = (w.ext.fromPlayers || 0) + Object.values(sin).reduce((a, b) => a + b, 0); }
     if (fees) w.ext.fromSector += fees;
   }
   if (ys && paid.gacha > 0) {
@@ -2918,6 +2964,8 @@ function licenseDay(w, d, flows) {
     }
     // (the people's purchases of a contract that ended today still came: theirs, as sold)
     if (circ) sold = Math.round((flows.npc && flows.npc.co[id] && flows.npc.co[id].s && flows.npc.co[id].s.myway) || 0);
+    // (HACHI: no goods of the characters — what they are worth to it is the checkups its advertising brought)
+    if (id === 'hachi') { c.m.sales += c.on ? Math.round((t.hachi && t.hachi.campaign) || 0) : 0; c.avg = c.avg * 29 / 30; continue; }
     // (the goods' cost: their raw materials アルタス's, once the country lives, the rest the local businesses')
     const cost = costOf(w, t, 'myway', take(t, 'mwcost', sold * x.cost));
     c.m.sales += sold;
@@ -3318,6 +3366,13 @@ function toOperator(w, to, n, players, feature = null) {
 function solvencyCheck(w, s, p, d, out) {
   if (s.dead || d < w.launch || !CORP.isMonthEnd(d)) return;
   if (p.model === 'bank') return bankCheck(w, s, p, d, out);
+  // (HACHI: never 破産 — アスカ国 buys the whole business by its contract; under the state, the state carries it)
+  if (p.id === 'hachi') {
+    if (s.reorg) return;
+    if ((s.bal.cash || 0) < 0) return hachi.buyout(H, w, s, p, d, out, '資金繰りに行き詰まり、テネシスからの追加融資も受けられず');
+    if (equityOf(s) < 0) { s.under = (s.under || 0) + 1; if (s.under >= BK.insolvent) return hachi.buyout(H, w, s, p, d, out, `債務超過が${s.under}か月続いた`); } else s.under = 0;
+    return;
+  }
   if ((s.bal.cash || 0) < 0) return file(w, s, p, d, out, '資金繰りに行き詰まり、テネシスからの追加融資も受けられず（支払不能）');
   if (equityOf(s) < 0) {
     s.under = (s.under || 0) + 1;
@@ -3413,7 +3468,8 @@ function auction(w, f, s, d, out, ch, flows) {
   const bids = [];
   for (const id of ORDER) {
     const t = w.co[id], tp = PROFILES.get(id);
-    if (!t || t.dead || (s && id === s.id) || tp.model === 'bank' && f.id !== 'invest' && f.id !== 'slots' && f.id !== 'vip' || equityOf(t) <= 0) continue;
+    // (HACHI, a medical company, bids for none of the game's businesses)
+    if (!t || t.dead || id === 'hachi' || (s && id === s.id) || tp.model === 'bank' && f.id !== 'invest' && f.id !== 'slots' && f.id !== 'vip' || equityOf(t) <= 0) continue;
     const fit = f.fit[id] || 0.7;
     const eager = BK.bid[0] + (BK.bid[1] - BK.bid[0]) * ch.u(`bid:${f.id}:${id}:${d}`);
     const pol = w.lend && w.lend[id];
@@ -3450,7 +3506,7 @@ function auction(w, f, s, d, out, ch, flows) {
     return;
   }
   // (no country: the strongest company takes it on, at what it can)
-  const strong = ORDER.map((id) => w.co[id]).filter((t) => t && !t.dead && (!s || t.id !== s.id) && PROFILES.get(t.id).model !== 'bank').sort((a, b) => equityOf(b) - equityOf(a))[0];
+  const strong = ORDER.map((id) => w.co[id]).filter((t) => t && !t.dead && t.id !== 'hachi' && (!s || t.id !== s.id) && PROFILES.get(t.id).model !== 'bank').sort((a, b) => equityOf(b) - equityOf(a))[0];
   if (!strong) return;
   const price = Math.min(reserve, Math.max(0, strong.bal.cash || 0));
   buyBusiness(w, strong, PROFILES.get(strong.id), f, price, d, out);
@@ -3480,6 +3536,20 @@ function lendable(w, s, want) {
   const n = room === Infinity ? want : Math.min(want, Math.floor(Math.max(0, room) / M.unit) * M.unit);
   if (room !== Infinity) w.bankRoom = room - n;
   return n;
+}
+// 医療税 on a company's profit (js/game/npc.js medicalTax: of everyone's pay and every company's profit, 国が一括して): the
+// month's profit before tax at the rate the people's side gave last (flows.npc.medicalTax), to ヴェルノア's treasury —
+// which gives HACHI six tenths of it (server/core/hachi.js taxed). HACHI itself pays none (the 医療税 is its own
+// income), nor a company abroad.
+function medicalTaxMonth(w, s, p) {
+  if (!w.ext || !(w.medRate > 0) || p.id === 'hachi' || abroad(s) || s.reorg) return;
+  const pre = CORP.plOf(s.per.m).pretax;
+  if (!(pre > 0)) return;
+  const n = Math.round(pre * w.medRate / 100);
+  if (n <= 0) return;
+  post(s, [['tMedical', n], ['cash', -n]], 'taxes');
+  const st = w.ext.stateIn || (w.ext.stateIn = {});
+  st.medicalTax = (st.medicalTax || 0) + n;
 }
 // the のれん written off each month
 function goodwillMonth(s) {
@@ -3647,6 +3717,8 @@ export function closeDay(w, d, flows, ch) {
     if (st.pay > 0) { s.pay = Math.round(st.pay); s.unit = Math.round(st.pay * p.cost / p.salary); }
   }
   if (npc && npc.raises) w.raises = npc.raises;
+  if (npc && npc.medicalTax !== undefined) w.medRate = npc.medicalTax;
+  if (npc && npc.hachi && w.co.hachi && w.co.hachi.hachi) { const h = w.co.hachi.hachi; h.busy = npc.hachi.busy || 0; h.patients = npc.hachi.patients || {}; h.campaign = npc.hachi.campaign || 0; }
   // (the times' mood, as the country feels it: server/core/npc-macro.js — the companies spend in a boom, keep in a bust)
   if (npc && npc.boom) w.boom = npc.boom;
   // (what MY WAY's economy's local companies sold last month: the least it gives them, mywaySphere)
@@ -3658,11 +3730,16 @@ export function closeDay(w, d, flows, ch) {
   // what each company's people decided in their meetings (server/core/npc-org.js): their budgets, their hiring, their
   // mood, their research
   if (npc && npc.ops) for (const o of npc.ops) decided(w, o, d, out, ch);
+  // (what the people paid a company not in this world yet — none should, but never a dollar lost —: the local
+  // businesses', as a failed company's)
+  if (npc && w.ext) for (const [id, c] of Object.entries(npc.co || {})) if (!w.co[id]) w.ext.sector += peopleSpent(c, null);
   // (every company's day begun before any posts to another's: a studio's dividends to its backer, a day's trade)
-  for (const id of ORDER) { w.co[id].today = 0; w.co[id].per.d = {}; }
+  for (const id of liveOrder(w)) { w.co[id].today = 0; w.co[id].per.d = {}; }
+  // 株式会社HACHI, on its day (once: corp-hachi.js)
+  if (!w.co.hachi && d >= hachi.FOUNDED && d >= w.launch) hachi.found({ ...H, ch: (k) => ch.u(k) }, w, d, out, ch);
   // (a world that began before the world outside was closed: what its customers outside still owed, written off once)
   if (w.ext && !w.closedLoop) { for (const s of Object.values(w.co)) if (!s.dead) settleOutside(s, false); w.closedLoop = d; }
-  for (const id of ORDER) {
+  for (const id of liveOrder(w)) {
     const s = w.co[id], p = PROFILES.get(id);
     // (a company that failed: its books are closed, nothing more happens to it — what the country still sent it, its
     // public works and the like, the local businesses take instead)
@@ -3695,6 +3772,8 @@ export function closeDay(w, d, flows, ch) {
       if (p.parent && live) wazimaLab(w, s, p, d, ch, out);
       tradeDay(w, s, p, d, flows, ch);
       if (p.materials) supply(w, s, p);
+      // (HACHI's wards: their land, 管理費 and equipment; the people it wants here for them)
+      if (p.id === 'hachi') { hachi.day(H, w, s, p, d); hachi.credit(H, w, s, p, d, out); if (!s.cut) s.target = hachi.targetHere(w, s); }
     }
     // (what the people spent here today)
     s.npcDay = npc ? peopleSpent(npc.co[id], id === 'tenesice' ? npc.bank : null) : 0;
@@ -3721,7 +3800,7 @@ export function closeDay(w, d, flows, ch) {
   delete w.ipOps;
   // what the companies' people decided to pay for (a placement fee, a severance, a new business's costs)
   if (npc && npc.charges) for (const c of npc.charges) charge(w, c);
-  for (const id of ORDER) {
+  for (const id of liveOrder(w)) {
     const s = w.co[id], p = PROFILES.get(id);
     if (s.dead) continue;
     settle(w, s, p, d);
@@ -3735,12 +3814,21 @@ export function closeDay(w, d, flows, ch) {
     month(w, s, p, d, ch, out);
     if (CORP.ymd(d).d === 1 && d >= w.launch) tech(w, s, p, d, ch, out);
     if (p.model === 'studio') titlesLook(w, s, p, d, out);
+    if (CORP.isMonthEnd(d) && p.id === 'hachi') hachi.month({ ...H, ch: (k) => ch.u(k) }, w, s, p, d, out);
+    if (CORP.isMonthEnd(d)) medicalTaxMonth(w, s, p);
     if (CORP.isMonthEnd(d)) { goodwillMonth(s); budgetReview(w, s, p, d, out); feesMonth(w, s, p, d, out); mywaySphere(w, s, p, d, out); mywayGrow(w, s, p, d, out); boomSpend(w, s, p, d, out); fundOne(w, s, p, d, out); treasury(w, s, p, d, out); }
     // (out of money with nothing more Tenesice will lend, or below nothing too long: 破産)
     solvencyCheck(w, s, p, d, out);
   }
   // アスカ国's branches (its people's purchases and what the companies pay it: before the makers' sales to them below)
   if (w.ext && npc && npc.asuka) asukaDay(w, d, npc.asuka, out);
+  // (HACHI's wards as they are, for the people's side: where to go, under the state or not, MY WAY's advertising on)
+  if (w.ext && w.co.hachi && !w.co.hachi.dead && w.co.hachi.hachi) {
+    const h = w.co.hachi.hachi, c = w.co.myway && !w.co.myway.dead && w.co.myway.ip && w.co.myway.ip.contracts.hachi;
+    w.ext.hachiInfo = { wards: h.wards.map((x) => ({ id: x.id, name: x.name, country: x.country, district: x.district, k: x.k })), state: !!h.state, founded: h.founded, campaign: !!(c && c.on) };
+  }
+  // (no アスカ国 yet: what HACHI would have paid it, ヴェルノア's local trade's instead)
+  if (w.hachiX) { const x = w.hachiX; if (w.ext) w.ext.sector += x.land + x.admin + x.figma + x.research + x.owner + x.social; w.hachiX = null; }
   // what one company paid another for its services (MAGITA's facilities, Dtrade's data centres, the job sites'
   // advertising and placements, ジンクス's game shelves): each a sale of the one paid
   for (const b of w.b2bCash.splice(0)) {
@@ -3766,7 +3854,7 @@ export function closeDay(w, d, flows, ch) {
   // テネシスリサーチ's day and テネシスファンド's month (Tenesice's research business and its lending to companies in trouble)
   if (w.ext) researchDay(w, d, flows, out);
   // the maker's rebates at a quarter's end, and the month's moves of the ties
-  if (CORP.isQuarterEnd(d)) for (const id of ORDER) if (PROFILES.get(id).materials) rebates(w, w.co[id], PROFILES.get(id), d, out);
+  if (CORP.isQuarterEnd(d)) for (const id of liveOrder(w)) if (PROFILES.get(id).materials) rebates(w, w.co[id], PROFILES.get(id), d, out);
   if (CORP.isMonthEnd(d)) moveTies(w, d, ch, out);
   // the bank: the interest it was paid and paid, and every company's money and loans as its deposits and loans (once
   // the country lives, the people's and the country's too: what the people never paid back is a loss, not money in)
@@ -3776,7 +3864,7 @@ export function closeDay(w, d, flows, ch) {
     if (net) post(bank, [['cash', net], ['r:nii', -net]], 'receipts');
     let cash = npc ? Math.round(npc.bank.deposits || 0) : 0, lent = npc ? Math.round(npc.bank.loans || 0) : 0;
     // (a company below zero: what it paid beyond its money is lent to it, out of the bank's own)
-    for (const id of ORDER) if (id !== 'tenesice' && !(npc && abroad(w.co[id]))) { const c = w.co[id].bal.cash || 0; cash += Math.max(0, c); lent += debtOf(w.co[id]) + Math.max(0, -c); }
+    for (const id of liveOrder(w)) if (id !== 'tenesice' && !(npc && abroad(w.co[id]))) { const c = w.co[id].bal.cash || 0; cash += Math.max(0, c); lent += debtOf(w.co[id]) + Math.max(0, -c); }
     // (and what a company that failed never paid back: MY WAY's, its 与信関係費用)
     const failed = Math.round(w.creditLoss || 0);
     w.creditLoss = 0;
@@ -3792,7 +3880,7 @@ export function closeDay(w, d, flows, ch) {
     if (w.ext) w.ext.bankFree = Math.round((bank.bal.cash || 0) - (bank.bal.deposits || 0));
   }
   // the day closes: its profit into the retained earnings, the share-days counted
-  for (const id of ORDER) {
+  for (const id of liveOrder(w)) {
     const s = w.co[id], p = PROFILES.get(id);
     // (the month's end: MAGITA sets next month's garage fee; the quarter's: who goes and who is hired)
     if (CORP.isMonthEnd(d) && operatorOf(w, 'garage') === id && d >= w.launch) garageFee(w, s, p, d, out);
@@ -3836,7 +3924,7 @@ export function closeDay(w, d, flows, ch) {
     check(s, d);
   }
   // the next day: announcements due, the guidance, the dividends, the market's view
-  for (const id of ORDER) announce(w, w.co[id], PROFILES.get(id), d, out, ch);
+  for (const id of liveOrder(w)) announce(w, w.co[id], PROFILES.get(id), d, out, ch);
   w.day = d;
   // (what the exporters wanted of abroad today: tomorrow's share of its money by it)
   if (w.ext) { w.abroadWant = Math.round((w.abroadWant || w.ext.abroadWant) * 0.5 + w.ext.abroadWant * 0.5); w.ext.fees = feesOf(w); out.ext = w.ext; }
@@ -3959,7 +4047,8 @@ function announce(w, s, p, d, out, ch) {
   }
   if (s.guide) s.guide.ytdOp = expectedSoFar(s, next);
   // the market's view
-  const fair = fairValue(s, p, w) / Math.max(1, outstanding(s));
+  // (below nothing — a company in 債務超過 —: a dollar a share at least, never a price of nothing or less)
+  const fair = Math.max(1, fairValue(s, p, w) / Math.max(1, outstanding(s)));
   s.mkt = s.mkt || { e: Math.log(fair), fair };
   s.mkt.fair = fair;
   if (p.listed) {
@@ -4038,7 +4127,7 @@ export function trade(w, id, side, shares, price, sec) {
 export function boot(key, launch, { years = 2, prices = {}, onDay = null } = {}) {
   const ch = chance(key);
   const start = Math.min(launch - 30, CORP.fyStart(CORP.fyOf(launch) - years));
-  let shift = Object.fromEntries(CORP.companies.map((p) => [p.id, 0]));
+  let shift = Object.fromEntries(BOOTED.map((p) => [p.id, 0]));
   let w, hist;
   // (a company's retained earnings on the launch day move with where they start, by a little more than one for one:
   // what the bonds and the bank pay on the money; a second guess along that line usually lands to the dollar)
@@ -4046,7 +4135,7 @@ export function boot(key, launch, { years = 2, prices = {}, onDay = null } = {})
   for (let round = 0; round < 3; round++) {
     ({ w, hist } = run(ch, start, launch, shift, onDay));
     let off = 0;
-    for (const p of CORP.companies) {
+    for (const p of BOOTED) {
       const end = w.co[p.id].bal.retained, gap = p.retained - end, last = ends[p.id];
       off = Math.max(off, Math.abs(gap));
       const slope = last && shift[p.id] !== last.shift ? (end - last.end) / (shift[p.id] - last.shift) : 1;
@@ -4056,7 +4145,7 @@ export function boot(key, launch, { years = 2, prices = {}, onDay = null } = {})
     if (off < 1000) break;
   }
   // what is left over to the dollar: the last made-up day's odd income or loss
-  for (const p of CORP.companies) {
+  for (const p of BOOTED) {
     const s = w.co[p.id], gap = p.retained - s.bal.retained;
     s.today = 0;
     if (gap) post(s, [['cash', gap], [gap > 0 ? 'nOther' : 'eOther', -gap]], 'receipts');
@@ -4075,9 +4164,9 @@ export function boot(key, launch, { years = 2, prices = {}, onDay = null } = {})
     s.mkt = { e: Math.log(price), fair: price };
     if (s.guide) { s.guide.eps = Math.round(s.guide.net / s.sh.issued); s.guide.dps = Math.max(0, Math.round(payoutOf(p) * Math.max(0, s.guide.expected.net * 0.95) / s.sh.issued)); setDividend(s, p, s.guide); }
   };
-  for (const p of CORP.companies) count(p);
+  for (const p of BOOTED) count(p);
   // the backer's stake in its studio
-  for (const p of CORP.companies) {
+  for (const p of BOOTED) {
     const deal = p.partner;
     if (!deal || deal.role !== 'backer') continue;
     const st = w.co[deal.with], s = w.co[p.id];
@@ -4101,9 +4190,9 @@ export function boot(key, launch, { years = 2, prices = {}, onDay = null } = {})
     r.dps = Math.round(-(r.cf.dividends || 0) / s.sh.issued);
     r.bps = (r.bs.capital + r.bs.reserve + (r.bs.othercap || 0) + (r.bs.legal || 0) + r.bs.retained + (r.bs.treasury || 0)) / s.sh.issued;
   }
-  for (const p of CORP.companies) w.co[p.id].hist.forEach((h) => { h.eps = h.net / w.co[p.id].sh.issued; });
+  for (const p of BOOTED) w.co[p.id].hist.forEach((h) => { h.eps = h.net / w.co[p.id].sh.issued; });
   // (and on the launch day its people, their pay and its budgets are the profile's own exactly)
-  for (const p of CORP.companies) { const s = w.co[p.id]; people(s, p, launch, launch); budgets(s, p, launch, launch); }
+  for (const p of BOOTED) { const s = w.co[p.id]; people(s, p, launch, launch); budgets(s, p, launch, launch); }
   w.day = launch - 1;
   return { world: w, history: hist };
 }
@@ -4113,7 +4202,7 @@ function run(ch, start, launch, shift, onDay) {
   let raw = 0, last = start;
   for (let d = start; d < launch; d++) if (CORP.ymd(d).d === 1) { raw = raw * ECON_KEEP + CORP.economy.sd * ch.z(`economy:${d}`); last = d; }
   const w = { v: 1, day: start - 1, launch, start, econ: { x: 0, raw: 0, bridge: raw, last, fade: 0 }, co: {} };
-  for (const p of CORP.companies) {
+  for (const p of BOOTED) {
     // (the made-up past adds the sum of its days' profits less dividends to where it starts)
     w.co[p.id] = newCompany(p, start, launch, p.retained + shift[p.id] - 0, ch);
   }
@@ -4121,7 +4210,7 @@ function run(ch, start, launch, shift, onDay) {
   startTies(w);
   w.mon = {};
   // the first year's guidance and dividends, as if published at its start
-  for (const id of ORDER) {
+  for (const id of BOOT_ORDER) {
     const s = w.co[id], p = PROFILES.get(id);
     s.sh.issued = 1;
     for (const k of ['m', 'q', 'y']) { s.cash0[k] = s.bal.cash || 0; }
@@ -4140,7 +4229,7 @@ function run(ch, start, launch, shift, onDay) {
     if (onDay) onDay(d);
   }
   // the titles still on sale and the projects under way are in the companies themselves
-  for (const p of CORP.companies) {
+  for (const p of BOOTED) {
     const s = w.co[p.id];
     if (s.titles) for (const t of s.titles) hist.titles.push(titleRow(s, t, p));
   }
@@ -4175,7 +4264,7 @@ function productsYear(kind, seller, weight = null) {
 // profit; the others the rest of 販管費. (A little of every trade's sales is 販管費 besides: `other`.)
 function calibrate(w, start) {
   w.b2b0 = {};
-  for (const p of CORP.companies) {
+  for (const p of BOOTED) {
     if (!p.streams) continue;
     for (const x of p.streams) if (x.products) {
       for (const [maker, k] of Object.entries(productsYear(x.products, p.id).makers)) {
@@ -4184,7 +4273,7 @@ function calibrate(w, start) {
       }
     }
   }
-  for (const p of CORP.companies) {
+  for (const p of BOOTED) {
     const s = w.co[p.id];
     if (p.model === 'studio') continue;
     const people = p.staff * p.cost, fixed = p.place.amount + p.rd.amount + (p.ads || 0);
@@ -4227,7 +4316,7 @@ function calibrate(w, start) {
 // found again (the trades' costs that its products change, the usual trade between the companies, the ties). What
 // it returns: the ones added and their made-up past (the rows to keep).
 export function addCompanies(key, w, prices = {}) {
-  const added = CORP.companies.filter((p) => !w.co[p.id]).map((p) => p.id);
+  const added = BOOTED.filter((p) => !w.co[p.id]).map((p) => p.id);
   if (!added.length) return null;
   const { world: f, history: h } = boot(key, w.day + 1, { years: 1, prices });
   for (const id of added) {
@@ -4248,8 +4337,10 @@ export function addCompanies(key, w, prices = {}) {
 
 /* ---------------------------------------------------------------- the ties --- */
 // ビジネス友好度: every pair the rules name (Tenesice with each of the others), kept in the world
-const TIE_PAIRS = CORP.ties.flatMap((t) => t.b === '*' ? CORP.companies.filter((c) => c.id !== t.a).map((c) => ({ ...t, b: c.id })) : [t]);
+// (a pair the rules name on its own — Tenesice and HACHI — is not one of Tenesice's '*' too)
 const tieKey = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
+const NAMED_TIES = new Set(CORP.ties.filter((t) => t.b !== '*').map((t) => tieKey(t.a, t.b)));
+const TIE_PAIRS = CORP.ties.flatMap((t) => t.b === '*' ? CORP.companies.filter((c) => c.id !== t.a && !NAMED_TIES.has(tieKey(t.a, c.id))).map((c) => ({ ...t, b: c.id })) : [t]);
 export function tieOf(w, a, b) {
   const v = w.ties && w.ties[tieKey(a, b)];
   return v === undefined ? 50 : v;
@@ -4322,3 +4413,14 @@ function rebates(w, s, p, d, out) {
 }
 
 export { chance, post, take, forecast, expectDay, guidance, statement, productsYear, boomSpend, payoutOf };
+
+// (what corp-hachi.js is handed of these books)
+const H = { PROFILES, M, post, dpost, take, news, lendable, rateFor, sizeScale, newCompany, guidance, forecast, fairValue, setDividend, outstanding, equityOf, contractFee, tieOf, ties, newContract: (x, d) => newContract(x, d) };
+hachi.setHelpers(H);
+// (HACHI failing on day `d` — its contract's buyout by アスカ国 and the state's running of it: corp-hachi.js buyout —,
+// for the tests and the operators' tools; what it wrote, as a day's `out`)
+export function hachiFail(w, d, why = '資金繰りに行き詰まり') {
+  const out = { days: [], periods: [], titles: [], news: [], jumps: [], anchors: [] };
+  if (w.co.hachi && !w.co.hachi.dead) hachi.buyout(H, w, w.co.hachi, PROFILES.get('hachi'), d, out, why);
+  return out;
+}

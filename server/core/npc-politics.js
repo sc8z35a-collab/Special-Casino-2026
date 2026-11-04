@@ -221,7 +221,8 @@ function districtSpend(W, k, day, r) {
     if (n <= 0) continue;
     if (id === 'works' || id === 'firms') {
       econ.districtOut(W, k, 'works', n);
-      const co = NPC.districts[k].hq.length ? NPC.districts[k].hq[r.int(NPC.districts[k].hq.length)] : 'magita';
+      // (HACHI, the medical company, takes no works: the bills are what it lives on)
+      const hq = NPC.districts[k].hq.filter((id) => id !== 'hachi'), co = hq.length ? hq[r.int(hq.length)] : 'magita';
       econ.toStream(W, day, co, 'public', n);
     } else if (id === 'shops') {
       econ.districtOut(W, k, 'shops', n);
@@ -310,11 +311,12 @@ function council(W, day, r) {
 }
 const sumOf = (o) => Object.values(o).reduce((a, b) => a + b, 0);
 export function fmtKnob(id, v) { const k = NPC.knob[id]; if (!k) return String(v); return k.unit === '$' ? NPC.money(v) : v + k.unit; }
-// a knob moved: no range but the world's own floor (no tax below nothing), in its steps
+// a knob moved: no range but the world's own floor (no tax below nothing) — and the 医療税's ceiling (`cap`) —, in its
+// steps
 export function clampKnob(W, id, v) {
   const k = NPC.knob[id];
   if (!k) return v;
-  return Math.round(Math.max(k.floor ?? -Infinity, v) / k.step) * k.step;
+  return Math.round(Math.min(k.cap ?? Infinity, Math.max(k.floor ?? -Infinity, v)) / k.step) * k.step;
 }
 // whether a knob may change now: the country's own (still one of its knobs), not changed (or set to change) this quarter
 export function canChange(W, id, day) {

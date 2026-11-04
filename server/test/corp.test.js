@@ -22,7 +22,9 @@ const books = (s) => [model.assetsOf(s), model.liabilitiesOf(s) + model.equityOf
 test('the made-up past ends on every profile\'s own numbers, and its books balance and add up', () => {
   const { world: w, history: h } = model.boot(Buffer.alloc(32, 5), launch, { years: 1, prices: { riru: 12000, ice: 30000 } });
   assert.equal(w.day, launch - 1);
-  for (const p of CORP.companies) {
+  // (HACHI, founded on its day 2026-11-04: no made-up past, not there yet)
+  assert.equal(w.co.hachi, undefined);
+  for (const p of CORP.companies.filter((x) => !x.founded)) {
     const s = w.co[p.id];
     assert.deepEqual([s.bal.retained, s.bal.capital, s.bal.reserve, s.n, s.pay, s.unit], [p.retained, p.capital, p.reserve, p.staff, p.salary, p.cost], p.id);
     const [a, le] = books(s);
@@ -71,7 +73,9 @@ test('the companies run on: every day balances, and their sales and profits stay
     const seeds = r.accounts['r:seeds'] || 0, child = r.accounts['r:wazima'] || 0, months = Math.max(1, Math.round((r.to - Math.max(r.from, launch) + 1) / 30.44));
     if (seeds) assert.ok(seeds > 0 && seeds < CORP.yosida.seeds.cap * 1.4 * (months + 1) / 12, `${r.company} seeds ${seeds} in ${months} months`);
     else assert.ok(r.company !== 'yosida' || r.to < launch);
-    if (p.sales) assert.ok(r.pl.sales - seeds - child > p.sales * 0.6 && r.pl.sales - seeds - child < p.sales * 1.6, `${r.company} ${r.pl.sales}`);
+    // (a company founded in the year — HACHI —: its first year from its founding)
+    const part = p.founded ? (r.to - Math.max(r.from, CORP.dayAt(...p.founded)) + 1) / 365 : 1;
+    if (p.sales) assert.ok(r.pl.sales - seeds - child > p.sales * 0.6 * part && r.pl.sales - seeds - child < p.sales * 1.6 * part, `${r.company} ${r.pl.sales}`);
     assert.ok(r.staff > 0);
   }
 });
@@ -213,9 +217,10 @@ test('the operator site: the 企業 folder\'s apps answer operators only, with e
   // (an operator's look begins them, as a look at the market would)
   const all = await s.call('GET', '/api/ops/corp', { token: boss.token });
   assert.equal(all.started, true);
+  // (the thirteen: HACHI is founded on 2026-11-04)
   assert.equal(all.companies.length, 13);
   assert.ok(all.ties.length >= 17);
-  assert.deepEqual(all.companies.map((c) => c.id).sort(), CORP.companies.map((c) => c.id).sort());
+  assert.deepEqual(all.companies.map((c) => c.id).sort(), CORP.companies.filter((c) => !c.founded).map((c) => c.id).sort());
   assert.equal((await s.call('GET', `/api/ops/corp?rev=${all.rev}`, { token: boss.token })).same, true);
   const dealer = await s.call('GET', '/api/ops/corp/company?c=carowner', { token: boss.token });
   const one = dealer.products.find((x) => x.id === 'mercedes-amg-one-white');

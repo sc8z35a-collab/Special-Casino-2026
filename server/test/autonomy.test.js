@@ -41,8 +41,10 @@ test('a country where everyone works: the companies short of people take them fr
   // (the small ones, in a country where hardly anyone is out of work, together most of the way: their people's pay
   // below the big ones', some of them taken by them)
   const firms = Object.values(W.locals.firms).filter((x) => !x.dead);
+  // (HACHI too, from 2026-11-04: its 1,875 posts — 3.75% of the people — out of a country already at work; it takes
+  // nobody of theirs itself, but those it takes the others would have: the local companies about half way)
   const staff = firms.reduce((a, x) => a + x.staff, 0), target = firms.reduce((a, x) => a + x.target, 0);
-  assert.ok(staff >= target * 0.6, `${staff}/${target}`);
+  assert.ok(staff >= target * 0.4, `${staff}/${target}`);
   // MY WAY: its support to its economy's local companies, their targets growing; its people's pay never down
   const mw = w.co.myway;
   assert.ok(mw.sphereGiven > 0 && (mw.per.y.sSupport || 0) > 0);

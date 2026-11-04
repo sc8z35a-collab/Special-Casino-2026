@@ -160,6 +160,17 @@ export function vacate(W, i, day) {
     for (const v of o.ventures) { v.staff = v.staff.filter((x) => x !== i); if (v.lead === i) v.lead = v.staff[0] !== undefined ? v.staff[0] : -1; }
   }
 }
+// A company whose top posts are empty — HACHI founded where nobody was free to take on at once, its people come since
+// through the job sites —: its CEO and its 社長 named from its own people, the best at managing (once a day, cheap)
+export function fillTop(W, id, day) {
+  const o = W.orgs && W.orgs[id], P = W.P;
+  if (!o || (o.ceo >= 0 && o.president >= 0)) return;
+  const cand = W.staffOf(id).filter((j) => j !== o.ceo && j !== o.president).map((j) => [j, sk(P, j, S.manage) + P.rank[j] * 0.3 + Math.min(40, P.tenure[j] || 0) * 0.01]).sort((a, b) => b[1] - a[1]);
+  if (!cand.length) return;
+  const name = (j, post) => { P.flags[j] |= FL.exec | FL.famous; o.officers = o.officers.filter((x) => x !== j); W.news.push({ day, kind: 'exec', district: -1, text: `${o.name}の${post}に${W.card(j, day).name}氏が就任`, data: { company: o.id } }); };
+  if (o.ceo < 0) { const j = cand.shift()[0]; o.ceo = j; P.rank[j] = 6; name(j, 'CEO'); }
+  if (o.president < 0 && cand.length) { const j = cand.shift()[0]; o.president = j; P.rank[j] = 5; name(j, '社長'); }
+}
 // the department a new hire joins: the one most short against its share
 export function deptFor(W, id, r) {
   const o = W.orgs[id];
@@ -593,7 +604,7 @@ function partnerProposals(W, o, mw, out, { dept, by }) {
 function moneyProposals(W, o, s, out, { pl, ytd, runway, behind, dept, by, ctx, day }) {
   const id = o.id, cfo = o.officers[1] >= 0 ? o.officers[1] : by('acct') >= 0 ? by('acct') : by('plan');
   // (テネシスリサーチ's loans and MY WAY's in its bubble — borrowed to grow on, by its plan — not the meeting's to repay)
-  const debt = (s.loans || []).filter((l) => !l.research && !l.bubble).reduce((n, l) => n + l.amt, 0);
+  const debt = (s.loans || []).filter((l) => !l.research && !l.bubble && !l.keep).reduce((n, l) => n + l.amt, 0);
   const corp = ctx.corp, F = corp && corp.fund, fy = CORP.fyOf(day), mine = F && F.by && F.by[id];
   const fundOpen = corp && corp.co.tenesice && !corp.co.tenesice.dead && day >= CORP.dayAt(2026, 11, 3) && !(mine && mine.fy === fy && mine.count >= 2);
   if (fundOpen && (runway < 3 || (pl.op < 0 && runway < 5))) out.push({ kind: 'fund', title: `テネシスファンドへの融資申請（手元資金 ${runway.toFixed(1)}か月分・6か月分の費用まで）`, effect: [{ kind: 'fund', action: 'apply' }], cost: 0, risk: 0.1, gain: 0.1 + Math.max(0, 3 - runway) * 0.06, by: cfo, why: { runway } });
@@ -723,6 +734,8 @@ function lendingDesk(W, day, r, ctx) {
     let cap = eq <= 0 ? 0 : Math.round(Math.max(monthly * 6, eq * (0.2 + 0.6 * health) * (amountBy >= 0 ? 0.8 + 0.4 * tr(P, amountBy, T.risk) : 1)) / 1e7) * 1e7;
     // (MY WAY: its pace frightens the bank — 15% a year whatever its rank, and no more than half its equity)
     if (s.ip) { rate = CORP.myway.loanRate; cap = Math.round(Math.max(0, eq) * CORP.myway.line / 1e7) * 1e7; }
+    // (HACHI: 非常に友好的 — its friend's rate, and a line of a year of its costs whatever its rank)
+    if (id === 'hachi' && CORP.hachi) { const m = monthly + ((s.hachi && s.hachi.asukaPay) || 0) * CORP.hachi.burden / 12; rate = Math.min(rate, CORP.hachi.loan.rate); cap = Math.max(cap, Math.round(m * CORP.hachi.loan.line / 1e7) * 1e7); }
     rows.push({ id, name: CORP.company(id).name, health: Math.round(health * 100), rank, rate, cap, debt });
     W.corpOps.push({ company: id, kind: 'lend', rate, cap, rank });
   }

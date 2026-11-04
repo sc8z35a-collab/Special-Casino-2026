@@ -47,6 +47,9 @@ function groups(W) {
     if (id) add('co:' + id, x);
     else if (j === J().civil) add('civil', x);
     else if (j === J().other || j === J().self || j === J().part) add(P.firm[i] ? 'local:' + P.firm[i] : 'shops:' + j, x);
+    // (HACHI's: paid by its own rules — its medical staff from $13M a month, CORP.hachi.pay —, far above the market;
+    // its own group moves with the index, but the market's average is the rest's: else its few would set everyone's aim)
+    if (id === 'hachi') continue;
     add('all', x);
   }
   return g;
@@ -88,7 +91,9 @@ export function month(W, day, r, ctx) {
     if (april && W.lab.raised && W.lab.raised[id] === fy) continue;
     const base = S.base['co:' + id] || avgOf(e), now = avgOf(e), gap = base * S.idx / Math.max(1, now) - 1;
     const short = Math.min(1, ((W.lab.short && W.lab.short[id]) || 0) / 30), gone = (lost[id] || 0) / Math.max(1, e[1]);
-    let x = Math.max(0, gap) * R.gap + (gap > -0.05 ? R.short * short + R.lost * gone : 0);
+    // (HACHI: its pay its own rules' — CORP.hachi.pay, from its start —, moved with the market only, never bid up for the
+    // people it is still taking on)
+    let x = Math.max(0, gap) * R.gap + (gap > -0.05 && id !== 'hachi' ? R.short * short + R.lost * gone : 0);
     // (its money: a company with less than two months of its costs that lost money last month gives little)
     const monthly = Math.max(1, (c.n * c.unit + (c.budget.place || 0) + (c.budget.rd || 0) + (c.budget.ads || 0) + (c.budget.other || 0)) / 12);
     const runway = ((c.bal.cash || 0) + (c.bal.bonds || 0)) / monthly, op = CORP.plOf(c.per.m || {}).op;
@@ -198,7 +203,9 @@ export function poach(W, day, r, ctx, hire) {
       if (!from || from === o.company) continue;
       const fit = W.fitFor(P, i, o.company);
       if (fit < Q.fit) continue;
-      const offer = Math.round(Math.max(o.pay, P.salary[i]) * (1 + Q.premium[0] + (Q.premium[1] - Q.premium[0]) * fit * r.u()));
+      // (HACHI: from its own scale — CORP.hachi.pay, its medical staff's —, never its average lifted by its few at the top)
+      const base = o.company === 'hachi' ? CORP.hachi.pay.medical * 12 * idx(W) : o.pay;
+      const offer = Math.round(Math.max(base, P.salary[i]) * (1 + Q.premium[0] + (Q.premium[1] - Q.premium[0]) * fit * r.u()));
       // (tempted: by the rise, by how far below the market they are paid, by being unhappy; held back by loyalty)
       const market = (S.base['co:' + from] || P.salary[i]) * idx(W);
       const will = (offer / P.salary[i] - 1) * 1.5 + Math.max(0, market / P.salary[i] - 1) * 0.5 + (170 - P.jsat[i]) / 255 * 0.4 - P.tr[i * NT + T.loyalty] / 255 * 0.35;

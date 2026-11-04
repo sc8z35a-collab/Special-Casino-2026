@@ -4,6 +4,7 @@
 // few minutes; the rest of the mind with each hour and each day.
 import { NPC, CORP } from './rules.js';
 import { hash32 } from './npc-rand.js';
+import * as health from './npc-health.js';
 
 // traits (0..255): the Big Five, then the game's own
 export const T = { open: 0, consc: 1, extra: 2, agree: 3, neuro: 4, risk: 5, impulse: 6, thrift: 7, vanity: 8, gamble: 9, patience: 10, learn: 11, loyalty: 12, car: 13, game: 14, news: 15, justice: 16, ambition: 17 };
@@ -69,7 +70,11 @@ const COLS = [
   // (a bonus, a win, an inheritance: spent the more freely, 心の財布), and the days of living goods stocked at home)
   ['emo2', Uint8Array, NE2, false, true], ['belief', Int8Array, NB, false, true], ['lesson', Int8Array, NL, false, true], ['mem2', Uint32Array, MEM2, false, true],
   ['plan', Uint8Array, 2, false, true], ['ethos', Uint8Array, 1, false, true], ['ref', Float32Array, 1, false, true],
-  ['wind', Float64Array, 1, true, true], ['hoard', Uint8Array, 1, true, true]
+  ['wind', Float64Array, 1, true, true], ['hoard', Uint8Array, 1, true, true],
+  // (HACHI's, server/core/hachi.js: the 医療保険 on one's 身分証明書, a long illness (持病)'s weight, this month's medicine,
+  // a bed or リハビリ, the ward one is at, the minutes left at −90 and below, the month of one's last checkup)
+  ['ins', Uint8Array, 1, false, true], ['ill', Uint8Array, 1, false, true], ['med', Uint8Array, 1, false, true],
+  ['care', Uint8Array, 1, true, true], ['ward', Uint8Array, 1, true, true], ['crit', Int16Array, 1, true, true], ['chk', Uint16Array, 1, false, true]
 ];
 export const COLUMNS = COLS.map(([name, kind, width, hot, late]) => ({ name, kind, width, hot: !!hot, late: !!late }));
 // what a person thinks of company `k` (NPC.companies' order: the first ten in `view`, the rest in `view2`)
@@ -230,7 +235,7 @@ export const OTHER_PAY = { 11: 4000000, 12: 3000000, 13: 3500000, 14: 1300000 };
 // the skills each company hires for
 export const FIT = { tenesice: [S.manage, S.sales], magita: [S.tech, S.drive], carowner: [S.sales, S.service], jinx: [S.service, S.sales], daizin: [S.service, S.speech],
   citywork: [S.sales, S.speech], speedeed: [S.tech, S.create], dtrade: [S.tech, S.manage], riru: [S.create, S.tech], ice: [S.create, S.tech],
-  yosida: [S.tech, S.drive], wazima: [S.tech, S.manage], myway: [S.create, S.sales] };
+  yosida: [S.tech, S.drive], wazima: [S.tech, S.manage], myway: [S.create, S.sales], hachi: [S.service, S.tech] };
 
 // The country's people on day `day` (a corp day), from the companies as they are (`corp`: { companies: { id: { staff,
 // pay } } }) and the draws of `r`. Returns the people and what the companies' organisation needs (who works where).
@@ -269,7 +274,8 @@ export function makePeople(n, day, corp, r) {
     P.emo[i * 5 + E.mood] = 140 + r.int(60);
     P.emo[i * 5 + E.happy] = 130 + r.int(70);
     P.emo[i * 5 + E.stress] = 40 + r.int(60);
-    P.health[i] = clampB(235 - Math.max(0, age - 50) * 2.2 + r.z() * 12);
+    // (健康度, −100..100 in the byte: npc-health.js — about the age's baseline, a few with a long illness)
+    { const h = health.start(age, r); P.health[i] = health.toByte(h.hp); P.ill[i] = h.ill; }
     P.lean[i * 2] = Math.round(r.z() * 40);
     P.lean[i * 2 + 1] = Math.round(r.z() * 40);
     for (let k = 0; k < 5; k++) P.trust[i * 5 + k] = r.byte(140, 30);

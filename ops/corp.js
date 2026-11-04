@@ -15,7 +15,8 @@ var OpsCorp = (function () {
   var THEME = {
     tenesice: ['#0f1c3f', '#2d4a8a'], magita: ['#5c0a10', '#c62832'], carowner: ['#0b2f63', '#2378dd'], jinx: ['#8a2c00', '#e47a12'],
     daizin: ['#140a24', '#53308a'], citywork: ['#11471c', '#2f9a44'], speedeed: ['#00505c', '#0aa6b8'], dtrade: ['#0d2b2a', '#1a8a7e'],
-    riru: ['#5b1173', '#d8336f'], ice: ['#063d73', '#2f9fd8'], yosida: ['#0e3b31', '#1f8a6e'], wazima: ['#262c36', '#6b7f99'], myway: ['#3d0b3f', '#e8508f']
+    riru: ['#5b1173', '#d8336f'], ice: ['#063d73', '#2f9fd8'], yosida: ['#0e3b31', '#1f8a6e'], wazima: ['#262c36', '#6b7f99'], myway: ['#3d0b3f', '#e8508f'],
+    hachi: ['#073b40', '#0e9aa0']
   };
   var TABS = [['top', 'トップ'], ['fin', '決算'], ['products', '商品'], ['biz', '事業'], ['people', '人と予算'], ['stock', '株式・財務'], ['ties', '友好度'], ['news', 'ニュース']];
   var NEWS = { results: '決算', guidance: '業績予想', revise: '予想修正', dividend: '配当', release: '発売', hit: 'ヒット', flop: '不振', start: '開発開始',
@@ -623,6 +624,32 @@ var OpsCorp = (function () {
     box.appendChild(s);
   }
 
+  // HACHI's wards (both countries'), its month, the state's hand, its research with アスカ国 and FIGMA's equipment
+  function hachiPanel(h, r) {
+    var R = h.rules, V = h.wards.filter(function (x) { return x.country === 'vernoa'; }), A = h.wards.filter(function (x) { return x.country === 'asuka'; });
+    var box = el('div');
+    var pt = panel('病棟と医療', h.state ? '国の管理下（' + dayLabel(h.state.day) + '〜）' : '病棟 ' + h.wards.length + 'か所（' + R.wards.min + '〜' + R.wards.max + '）');
+    if (h.state) pt.appendChild(el('p', 'neg', 'アスカ国が' + money(h.state.price) + '（時価総額の' + R.buyout.mult + '倍）で事業を買収し、国の管理下で運営中：' + h.state.why + '。人員削減なし・' + R.wards.state + '病棟・土地代なし（株式は上場廃止）'));
+    var t = el('div', 'corp-tiles'), L = h.last || {};
+    t.appendChild(stat('病棟', h.wards.length + 'か所', 'ヴェルノア ' + V.length + '・アスカ国 ' + A.length + '（開設 ' + (h.opened || 0) + '・閉鎖 ' + (h.closed || 0) + '）'));
+    t.appendChild(stat('医療従事者（アスカ国）', group(h.asukaStaff) + '名', '年収計 ' + money(h.asukaPay) + '（1病棟あたり ' + group(Math.round(h.asukaStaff / Math.max(1, A.length))) + '名）'));
+    t.appendChild(stat('病棟の混み具合（先月）', Math.round((h.busy || 0) * 100) + '%', '1病棟あたりの患者数（両国の国民の受診の1病棟分を100%）'));
+    t.appendChild(stat('アスカ国との共同研究', money(h.research), '累計（毎月、利益とクッションを超えた分から・FIGMAが研究、アスカ国が原材料）'));
+    t.appendChild(stat('FIGMAの医療機器', money(h.figma), '累計（病棟の機器と保守・新しい病棟の機器）。機器と研究費がFIGMAの売上、アスカ国の研究予算と4:6'));
+    t.appendChild(stat('医療税の配分（今年度）', money(h.tax || 0), '両国の医療税の6割（給与所得と企業利益から）・残り4割は国'));
+    t.appendChild(stat('テネシスの特別融資枠', money(h.line || 0), '借入残高（累計 ' + money(h.credit || 0) + '）：手元資金が' + R.loan.credit + '日分を切ると年' + (R.loan.rate * 100).toFixed(1) + '%で自動融資・上限は費用の' + R.loan.line + 'か月分'));
+    var fee = R.fees;
+    t.appendChild(stat('医療費（100%負担・固定）', '診察・薬・リハビリ ' + money(fee.consult), '入院 ' + money(fee.inpatient) + '/日・手術 ' + money(fee.surgery) + '・定期検診 ' + money(fee.checkup)));
+    pt.appendChild(t);
+    var visits = L.visits || {}, names = { checkup: '定期検診', consult: '診察', medicine: '薬', inpatient: '入院（日）', surgery: '手術', rehab: 'リハビリ' };
+    if (L.key) pt.appendChild(table([['先月（' + L.key + '）', 0], ['回数（ヴェルノア）', 1]], Object.keys(names).map(function (k) { return [names[k], group(visits[k] || 0)]; }).concat([['売上', money(L.sales)], ['営業利益', money(L.op)], ['共同研究へ', money(L.research)]])));
+    var rows = h.wards.map(function (x) { return [x.name, x.country === 'vernoa' ? 'ヴェルノア' : 'アスカ国', dayLabel(x.opened)]; });
+    pt.appendChild(table([['病棟', 0], ['国', 0], ['開設', 0]], rows));
+    pt.appendChild(el('p', 'muted corp-note', '1病棟で同時に 診察' + R.cap.consult + '人・入院' + R.cap.inpatient + '人・手術' + R.cap.surgery + '人（' + R.minutes.surgery + '分）・リハビリ' + R.cap.rehab + '人まで（健康度の低い患者から）。営業時間は国が動いている時間。救急救命はなく、患者は自分で来院します。経営難のときは研究者・経営陣・医療従事者の順に人員削減。'));
+    box.appendChild(pt);
+    return box;
+  }
+
   // トップ: where it stands now, the year's plan, its days in a chart, what players spent there and its latest news
   function pageTop(body, r, p) {
     var m = r.summary, sv = r.state;
@@ -685,6 +712,7 @@ var OpsCorp = (function () {
     if (r.license) tiles.appendChild(stat('MY WAYとのIP契約', r.license.dead ? 'MY WAYが破産' : r.license.on ? '契約中' : '打ち切り', '契約料 年' + money(r.license.fee) + (r.license.last ? '・先月の採算 ' + money(r.license.last.margin) : ''), !r.license.on || (r.license.last && r.license.last.margin < 0) ? 'neg' : ''));
     if (r.seeds) tiles.appendChild(stat('金の生る木の種', group(r.seeds.n) + '本/月', r.seeds.m + '・平均' + money(r.seeds.price) + '・原価' + money(C().yosida.seeds.cost) + '・出荷済み ' + group(r.seeds.sold) + '本'));
     body.appendChild(tiles);
+    if (r.hachi) body.appendChild(hachiPanel(r.hachi, r));
     // the year's plan
     var g = sv.guide;
     if (g) {

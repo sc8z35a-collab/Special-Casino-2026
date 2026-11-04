@@ -14,7 +14,7 @@
   // The five districts (1万人ずつ): what they are like, the companies with their head office there (whose local
   // taxes they take), and their places on the map (x, y in 0..100; r: how far the people there spread).
   var DISTRICTS = [
-    { id: 0, key: 'soleil', name: 'ソレイユ区', kana: 'それいゆく', look: 'オフィス街。共働きと単身が多い', hq: ['tenesice', 'dtrade', 'citywork', 'speedeed'], color: '#f2b84b',
+    { id: 0, key: 'soleil', name: 'ソレイユ区', kana: 'それいゆく', look: 'オフィス街。共働きと単身が多い', hq: ['tenesice', 'dtrade', 'citywork', 'speedeed', 'hachi'], color: '#f2b84b',
       places: { home: [[18, 22, 12], [80, 76, 12], [22, 80, 10]], office: [[50, 40, 14]], bank: [[44, 58, 4]], store: [[66, 54, 5]], casino: [[60, 24, 6]], park: [[30, 52, 7]], station: [[50, 66, 4]], hall: [[74, 34, 4]], hospital: [[86, 54, 4]], square: [[40, 30, 5]], dealer: [[16, 56, 4]], lounge: [], studio: [], factory: [], school: [[84, 18, 4]] } },
     { id: 1, key: 'eisen', name: 'アイゼン区', kana: 'あいぜんく', look: 'MAGITAとWAZIMAの工場と社宅、港とカーオーナーの中古車置き場', hq: ['magita', 'carowner', 'wazima'], color: '#8fa3b8',
       places: { home: [[20, 70, 13], [76, 78, 11]], office: [[30, 26, 6]], factory: [[62, 30, 16]], dealer: [[22, 44, 7]], bank: [[48, 64, 4]], store: [[52, 80, 5]], park: [[86, 52, 6]], station: [[40, 54, 4]], hall: [[12, 30, 4]], hospital: [[70, 62, 4]], square: [[44, 42, 5]], casino: [], lounge: [], studio: [], school: [[88, 20, 4]] } },
@@ -123,12 +123,12 @@
 
   /* ------------------------------------------------------- what they do for a living --- */
   // employers: 0 none, 1..10 the first ten companies, then the country's own and the rest (11..17), then the companies
-  // that came home later (YOSIDA, WAZIMA, MY WAY: from 18 on, so that the people kept from before keep what they were)
-  var COMPANY_IDS = ['tenesice', 'magita', 'carowner', 'jinx', 'daizin', 'citywork', 'speedeed', 'dtrade', 'riru', 'ice', 'yosida', 'wazima', 'myway'];
+  // that came home later (YOSIDA, WAZIMA, MY WAY, HACHI: from 18 on, so that the people kept from before keep what they were)
+  var COMPANY_IDS = ['tenesice', 'magita', 'carowner', 'jinx', 'daizin', 'citywork', 'speedeed', 'dtrade', 'riru', 'ice', 'yosida', 'wazima', 'myway', 'hachi'];
   var JOB = { none: 0, civil: 11, other: 12, self: 13, part: 14, student: 15, home: 16, retired: 17 };
   var LATER_JOBS = 18;
   var JOB_NAMES = ['無職', 'テネシス', 'MAGITA', 'カーオーナー', 'ジンクス', 'DAIZIN', 'シティーワーク', 'スピーディード', 'Dtrade', 'RIRU STUDIO', 'Ice Smoker', '公務員', 'その他の職場', '自営業', 'パート・バイト', '大学生', '家事中心', '年金生活',
-    'YOSIDA', 'WAZIMA', 'MY WAY'];
+    'YOSIDA', 'WAZIMA', 'MY WAY', 'HACHI'];
   // a company's job code, the company of a code (null: not a company's), and whether a code is a company's
   function jobOf(id) { var k = COMPANY_IDS.indexOf(id); return k < 0 ? -1 : k < 10 ? k + 1 : LATER_JOBS + k - 10; }
   function companyOf(j) { return j >= 1 && j <= 10 ? COMPANY_IDS[j - 1] : j >= LATER_JOBS ? COMPANY_IDS[10 + j - LATER_JOBS] || null : null; }
@@ -148,17 +148,21 @@
     other: { blocks: [[540, 1080]], off: false },
     self: { blocks: [[600, 1140]], off: true, days: 1, flex: 90 },
     part: { blocks: [[600, 840]], off: true, days: 3 },
-    student: { blocks: [[540, 900]], off: false }
+    student: { blocks: [[540, 900]], off: false },
+    // (a ward's people: an early and a late shift through the hours the country is about, two days off a week of their own)
+    hospital: { shifts: [[540, 1080], [780, 1320]], off: true, days: 2 }
   };
   var COMPANY_SCHEDULE = { tenesice: 'bank', magita: 'factory', carowner: 'retail', jinx: 'retail', daizin: 'office', citywork: 'office', speedeed: 'office', dtrade: 'office', riru: 'studio', ice: 'studio',
-    yosida: 'factory', wazima: 'factory', myway: 'studio' };
+    yosida: 'factory', wazima: 'factory', myway: 'studio', hachi: 'hospital' };
   // where each company's people work: its districts, and how many of them there
   var SITES = {
     tenesice: [[0, 0.5], [1, 0.12], [2, 0.14], [3, 0.12], [4, 0.12]], magita: [[1, 0.92], [0, 0.08]], carowner: [[1, 0.55], [0, 0.2], [3, 0.25]],
     jinx: [[2, 0.5], [0, 0.15], [1, 0.12], [3, 0.1], [4, 0.13]], daizin: [[3, 1]], citywork: [[0, 1]], speedeed: [[0, 1]], dtrade: [[0, 0.8], [2, 0.15], [3, 0.05]],
     riru: [[3, 1]], ice: [[3, 1]], yosida: [[4, 0.7], [1, 0.3]], wazima: [[1, 0.85], [4, 0.15]],
     // (MY WAY: its design studio in オーロラ区, its flagship showroom in カナリア区)
-    myway: [[3, 0.85], [2, 0.15]]
+    myway: [[3, 0.85], [2, 0.15]],
+    // (HACHI: its head office and research in ソレイユ区, a ward in each district)
+    hachi: [[0, 0.44], [1, 0.14], [2, 0.14], [3, 0.14], [4, 0.14]]
   };
 
   /* --------------------------------------------------------------- the country's books --- */
@@ -210,7 +214,12 @@
     { id: 'overtime', group: '働く', name: '残業の上限（月）', start: 45, floor: 0, step: 5, unit: '時間' },
     { id: 'jobless', group: '保障', name: '失業手当', start: 0, floor: -100, step: 5, unit: '%' },
     { id: 'welfare', group: '保障', name: '生活保護', start: 0, floor: -100, step: 5, unit: '%' },
-    { id: 'medical', group: '保障', name: '医療の自己負担', start: 0, floor: -100, step: 5, unit: '%' },
+    // (医療税: of everyone's pay and every company's profit, taken with the rest — 国が一括して —; 4% at the start, never
+    // below 2% nor above 8% (`cap`); the state moves it each month by how the medical money stands and by the times —
+    // 景気変動型: down towards 2〜3.5% when it is well ahead in good times, up step by step towards 5〜8% when the
+    // gravely ill multiply or the state runs HACHI —, server/core/hachi.js; six tenths of it HACHI's (CORP.hachi.tax).
+    // It took the place of the health insurance's own contribution and of the old 医療の自己負担 knob)
+    { id: 'medicalTax', group: '税', name: '医療税', start: 4, floor: 2, cap: 8, step: 0.1, unit: '%' },
     { id: 'publicWorks', group: '予算', name: '公共事業', start: 0, floor: -100, step: 10, unit: '%' },
     { id: 'grants', group: '予算', name: '地区への交付金', start: 0, floor: -100, step: 10, unit: '%' },
     { id: 'inflation', group: '経済', name: 'テネシスの物価目標', start: 2, floor: 0, step: 0.5, unit: '%' }
@@ -334,6 +343,66 @@
       ['stop', '監査室（ストップ係）', 'stop', 0.004, [['stopper', 'ストップ係']]]
     ]
   };
+  // HACHI's people here (its wards' medical staff in ヴェルノア, its 経営陣 and its researchers: アスカ国's wards' people
+  // are アスカ国's): their department says their pay and who goes first when it must cut (CORP.hachi)
+  ORG.hachi = [
+    ['exec', '経営陣（役員）', 'exec', 0.003],
+    ['medical', '医療本部（医師・看護師・薬剤師・療法士）', 'medical', 0.46, [['chief', '病院長'], ['nurse', '看護部長']]],
+    ['research', '研究本部（薬・サービス・医療機器）', 'rd', 0.265, [['cto', '研究本部長']]],
+    ['mgmt', '経営管理本部（経営陣）', 'plan', 0.245, [['planner', '病棟計画担当']]],
+    ['acct', '経理部', 'acct', 0.01], ['admin', '総務部', 'admin', 0.01], ['stop', '監査室（ストップ係）', 'stop', 0.007, [['stopper', 'ストップ係']]]
+  ];
+  // (which of its departments are which of CORP.hachi's kinds of people)
+  var HACHI_ROLES = { medical: 'medical', research: 'research', mgmt: 'exec', exec: 'exec', acct: 'exec', admin: 'exec', stop: 'exec' };
+
+  /* ---------------------------------------------------------------- health --- */
+  // 健康度 (every person's, both countries'): −100 to 100, the higher the healthier — and the less need of a hospital.
+  // Its bands and what each means (server/core/npc-health.js):
+  // - −100 危篤・末期, −99〜−90 重篤 (緊急: `timer` minutes of the country's time from when it began, and an operation
+  //   must be done by then — else death), −89〜−70 重症 (a bed), −69〜−30 早急な処置 (a doctor and medicine at once),
+  //   −29〜0 休職・休養 (no work), 1〜30 動けるが優れない, 31〜50 小過労 (a rest puts it right), 51〜75 健康 (most),
+  //   76〜85 非常に健康 (work does twice as much), 86〜100 最も健康 (twice as much, and earns up to 70% more)
+  // - what wears it down (`harm`, a day at most): stress, a big loss of money (心の傷), work beyond what one can bear,
+  //   illness now and then and the long ones (持病), age, being poor a long time; what brings it back: rest, sleep,
+  //   the hospital's care
+  var HEALTH = {
+    bands: [
+      { id: 'terminal', name: '危篤・末期', min: -100, max: -100 },
+      { id: 'critical', name: '重篤（緊急）', min: -99, max: -90 },
+      { id: 'severe', name: '重症', min: -89, max: -70 },
+      { id: 'urgent', name: '早急な処置が必要', min: -69, max: -30 },
+      { id: 'leave', name: '休職・休養が必要', min: -29, max: 0 },
+      { id: 'unwell', name: '体調は優れないが動ける', min: 1, max: 30 },
+      { id: 'tired', name: '小過労', min: 31, max: 50 },
+      { id: 'healthy', name: '健康', min: 51, max: 75 },
+      { id: 'fit', name: '非常に健康（仕事の成果2倍）', min: 76, max: 85 },
+      { id: 'peak', name: '最も健康（稼ぎ最大70%増）', min: 86, max: 100 }
+    ],
+    timer: 60, earn: 0.7,
+    // (an illness now and then takes `illness` off; `grave` of them — a stroke, an accident — another 55〜125 besides)
+    harm: { stress: 1.2, loss: 25, work: 1.5, illness: [12, 45], grave: [0.02, 55, 70], chronic: 0.35, age: 0.04, poor: 0.6 },
+    // (back towards one's own baseline a day: `rest` when below it; above it 0.3 a day, a リハビリ's conditioning above 75
+    // `fade` a day — kept only by more of it)
+    rest: 1.2, sleep: 0.5, fade: 1.5,
+    // after an operation (always a success: for those at −30 and below, `surgeryFrom`), and on leaving a bed
+    healed: 65, discharge: 1, surgeryFrom: -30,
+    // what each of HACHI's services does: a day in a bed +35 (its stress and its work's load gone), a 診察 (and its
+    // medicine: the illness treated, a long one eased) +25 as far as 75, a checkup +2 as far as 75; リハビリ +15 — the
+    // only way up into 76〜100
+    care: { bed: 35, consult: 25, upTo: 75, checkup: 2, rehab: 15 },
+    // the month's checkup missed (the law's: once a month): −20 at the next month's start, and the insurance's share
+    // stopped — all of every bill one's own — until the checkup is done
+    missed: -20
+  };
+  function healthBand(h) { for (var i = 0; i < HEALTH.bands.length; i++) if (h >= HEALTH.bands[i].min && h <= HEALTH.bands[i].max) return HEALTH.bands[i]; return h > 100 ? HEALTH.bands[HEALTH.bands.length - 1] : HEALTH.bands[0]; }
+  // 医療保険 (written on everyone's 身分証明書, which nobody loses): none, or a week's premium for the state paying a
+  // share of every bill (the rest the patient's); 生活保護 pays it all
+  var INSURANCE = [
+    { id: 0, name: '未加入', week: 0, cover: 0 },
+    { id: 1, name: '医療保険（自己負担50%）', week: 60000, cover: 0.5 },
+    { id: 2, name: '医療保険（自己負担30%）', week: 120000, cover: 0.7 }
+  ];
+
   // the executives a company names beyond its CEO and 社長 (its 役員, in this order: the rest 執行役員)
   var OFFICERS = { myway: ['CCO（最高クリエイティブ責任者）', 'CFO（最高財務責任者）', 'COO（最高運営責任者）', '執行役員・事業本部長', '執行役員・事業本部長', '執行役員・事業本部長', '執行役員・事業本部長', '執行役員・事業本部長'] };
   // the ranks (a person's post): 0 staff, 1 主任, 2 課長, 3 部長, 4 役員, 5 社長, 6 CEO; pay against the company's average
@@ -452,6 +521,7 @@
     tax: TAX, social: SOCIAL, pension: PENSION, safety: SAFETY, retire: RETIRE, labor: LABOR, life: LIFE, trouble: TROUBLE,
     knobs: KNOBS, knob: KNOB, knobOf: knobOf, change: CHANGE, votes: VOTES, platforms: PLATFORMS, themes: THEMES, demands: DEMANDS,
     org: ORG, officers: OFFICERS, ranks: RANKS, rankPay: rankPay, labs: LABS, labThemes: LAB_THEMES, ventures: VENTURES,
+    health: HEALTH, healthBand: healthBand, insurance: INSURANCE, hachiRoles: HACHI_ROLES,
     names: { family: FAMILY, male: MALE, female: FEMALE }, nameOf: nameOf, money: money, frame: FRAME, MIN: MIN
   };
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

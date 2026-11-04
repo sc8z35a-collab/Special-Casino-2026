@@ -73,10 +73,13 @@ test('the people: 50,000 by default in five districts, 18 and over, the companie
   // share each of what is left, their other posts open)
   for (const id of NPC.companies.slice(0, 10)) assert.equal(c.W.staffOf(id).length, Math.round(CORP.company(id).staff * 0.1), id);
   assert.equal(Array.from(P.job).filter((j) => j === NPC.job.civil).length, 150);
-  const shares = NPC.companies.slice(10).map((id) => c.W.staffOf(id).length / Math.round(CORP.company(id).staff * 0.1));
+  // (HACHI, founded on 2026-11-04: its people taken on that day — none yet)
+  assert.equal(c.W.staffOf('hachi').length, 0);
+  const shares = NPC.companies.slice(10).filter((id) => !CORP.company(id).founded).map((id) => c.W.staffOf(id).length / Math.round(CORP.company(id).staff * 0.1));
   for (const x of shares) assert.ok(x >= 0.5 && x <= 1 && Math.abs(x - shares[0]) < 0.05, JSON.stringify(shares));
   // every company's people organised: a CEO and a 社長, a 部長 for each department, the stopper, Tenesice's three lending posts
-  for (const id of NPC.companies) {
+  // (HACHI's from its founding: server/test/hachi.test.js)
+  for (const id of NPC.companies.filter((x) => !CORP.company(x).founded)) {
     const o = c.W.orgs[id];
     assert.ok(o.ceo >= 0 && o.president >= 0 && o.ceo !== o.president, id);
     assert.ok(o.depts.find((d) => d.kind === 'stop').named.stopper >= 0, id);
@@ -231,7 +234,8 @@ test('the 32 local companies: their people from the local jobs, their sales from
   assert.ok(Math.abs(c.money() - before) < 100, 'money kept');
   const v = localModel.view(W);
   assert.equal(v.firms.length, 32);
-  assert.ok(v.firms.filter((f) => f.staff > 0).length >= 28, 'most have their people');
+  // (HACHI's people from 2026-11-04 — 3.75% of the country, already at work —: a few more of the smallest left empty)
+  assert.ok(v.firms.filter((f) => f.staff > 0).length >= 26, 'most have their people');
   // (who pays them: WAZIMA's research the 極東精機ラボ's, MAGITA's to its own; the power, gas and water companies closed
   // into 株式会社YAMATO — the households' bills and the companies' energy its now)
   const by = (id) => (W.locals.firms[id].last || {}).by || {};
@@ -375,6 +379,8 @@ test('the companies\' people decide: meetings with their minutes and the stopper
   // (each in its rank's band — A 0.8〜1.2%, B 3〜6%, C 10% —, MY WAY at its own 15% and no more than half its equity)
   for (const [id, x] of Object.entries(W.lend)) {
     if (id === 'myway') { assert.equal(x.rate, CORP.myway.loanRate); continue; }
+    // (HACHI: Tenesice's friend, at its own rate — CORP.hachi.loan —, a year of its costs' line)
+    if (id === 'hachi') { assert.ok(x.rate <= CORP.hachi.loan.rate && x.cap > 0, JSON.stringify(x)); continue; }
     const [lo, hi] = CORP.ranks[x.rank].rate;
     assert.ok(x.rate >= lo && x.rate <= hi + 0.01 && x.cap > 0, JSON.stringify([id, x]));
   }
@@ -471,7 +477,7 @@ test('the server: the 街ライブ shows the country to players (and nothing to 
   assert.ok(r.status === 403 || r.status === 401 || r.status === 404, `locals: ${r.status}`);
   // MAGITA and Tenesice are on the market
   r = await s.call('GET', '/api/stocks', { token: p.token });
-  assert.deepEqual(r.market.map((x) => x.id), ['riru', 'ice', 'magita', 'tenesice', 'yosida', 'carowner', 'myway']);
+  assert.deepEqual(r.market.map((x) => x.id), ['riru', 'ice', 'magita', 'tenesice', 'yosida', 'carowner', 'myway', 'hachi']);
   // the minutes go on: a weekday evening's hours
   now = START + 3 * 3600000;
   await s.app.api.npcWake();
