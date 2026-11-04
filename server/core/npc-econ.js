@@ -107,6 +107,16 @@ export function toAbroad(W, n, division = 'altas', by = 'other') {
   // fuel and food アルタス's)
   if (!asuka.earned(W, n, division, by)) W.abroad.cash += n;
 }
+// 株式会社YAMATO (アスカ国's: server/core/asuka.js): what the country pays it for its power, gas and water — its homes', its
+// companies', its local trade's — out of the country (an import), its takings
+export function toYamato(W, n, from) {
+  n = Math.round(n);
+  if (!(n > 0)) return false;
+  if (!asuka.yamatoEarn(W, n, from)) { W.sector.cash += n; return false; }
+  W.sum.imports += n;
+  gdpAcc(W).m += n;
+  return true;
+}
 export function toBank(W, day, kind, n) {
   if (!(n > 0)) return;
   flowsOf(W, day).bank[kind] += n;

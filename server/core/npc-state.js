@@ -12,6 +12,8 @@ import * as local from './npc-local.js';
 import * as asukaModel from './asuka.js';
 import { boomOf } from './npc-macro.js';
 import * as heart from './npc-heart.js';
+import * as research from './npc-research.js';
+import * as deals from './npc-ipdeals.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const YEAR = 365;
@@ -131,6 +133,10 @@ export function fromCompanies(W, ext, day) {
   if (ext.sphere) local.support(W, ext.sphere, day);
   // (what Tenesice has of its own not lent yet, as of this close: what it can lend until the next, borrowFor)
   if (ext.bankFree !== undefined) W.bankRoom = Math.max(0, ext.bankFree);
+  // (テネシスリサーチ: what Tenesice sent for its facilities — server/core/npc-research.js)
+  if (ext.research) research.funded(W, ext.research);
+  // (MY WAY's gift to 株式会社YAMATO, its partner of all the world's: アスカ国's; no YAMATO, the local trade's)
+  if (ext.yamato > 0 && !asukaModel.yamatoEarn(W, ext.yamato, 'myway')) W.sector.cash += ext.yamato;
   // (the players' part of the market's money: theirs; and what the players paid the local businesses back)
   if (ext.toPlayers) W.sum.toPlayers += ext.toPlayers;
   if (ext.fromPlayers) W.sum.fromPlayers += ext.fromPlayers;
@@ -243,6 +249,8 @@ export function sectorDay(W, day) {
     for (let i = 0; i < P.n; i++) {
       const j = P.job[i];
       if (j !== NPC.job.other && j !== NPC.job.self && j !== NPC.job.part) continue;
+      // (テネシスリサーチ's researchers: paid by it)
+      if (P.flags[i] & FL.research) continue;
       // (a local company's people by it, in full; the small shops' by what they have)
       const no = local.firmOf(P, i), f = no ? local.firmByNo(no) : null;
       const g = Math.round(P.salary[i] / 12 * (f || shops > 0 ? 1 : 0.6));
@@ -298,14 +306,22 @@ function collabOf(W, ctx) {
   if (!mw || mw.dead || !mw.ip) return null;
   const M = CORP.myway, all = Object.values(M.partners).reduce((n, x) => n + x.fee * x.lift, 0) + M.direct;
   const list = [['myway', 'direct', M.direct / all]];
-  for (const [id, c] of Object.entries(mw.ip.contracts)) if (c.on && M.partners[id]) list.push([id, 'myway', M.partners[id].fee * M.partners[id].lift / all]);
+  // (each partner by the size of its contract: npc-ipdeals.js has the local companies')
+  for (const [id, c] of Object.entries(mw.ip.contracts)) if (c.on && M.partners[id]) list.push([id, 'myway', (c.base || M.partners[id].fee) * (c.scale || 1) * M.partners[id].lift / all]);
+  for (const x of deals.collabList(W, all)) list.push(x);
+  // (a country from before all thirteen were partners: what its people buy of them grows with what the new ones sell —
+  // the seven's and the showroom's then, $85.05B a year)
+  if (W.cal.collab !== undefined && W.cal.collabAll === undefined) W.cal.collabAll = 85.05e9;
+  if (W.cal.collab !== undefined && W.cal.collabAll !== all) { W.cal.collab = Math.round(W.cal.collab * all / W.cal.collabAll); W.cal.collabAll = all; }
   if (W.cal.collab === undefined) {
     const P = W.P;
     let households = 0;
     for (let i = 0; i < P.n; i++) if (P.hh[i] === i) households += Math.pow(memberList(P, i).length, 0.75) * Math.pow(Math.max(0.02, (P.cash[i] + 1) / 60000000), 0.22) * (1 - 0.35 * tr(P, i, T.thrift));
     W.cal.collab = Math.round(all * W.scale / YEAR / Math.max(1, households));
+    W.cal.collabAll = all;
   }
-  return { list, pull: Math.max(0, mw.ip.heat * mw.ip.brand) };
+  // (ヴェルノア's own contract with MY WAY: its people love the characters the more)
+  return { list, pull: Math.max(0, mw.ip.heat * mw.ip.brand) * deals.pullLift(W) };
 }
 export function dayStart(W, day, r, ctx) {
   const P = W.P, t = CORP.ymd(day), age = (i) => ageOf(P, i, day);
@@ -314,6 +330,10 @@ export function dayStart(W, day, r, ctx) {
   for (let i = 0; i < P.n; i++) { P.buyDay[i] = 0; P.trades[i] = 0; }
   // the people's night (npc-heart.js): yesterday's lessons, their feelings settling, what they expect now, today's plan
   if (P.emo2) heart.day(W, day, r);
+  // テネシスリサーチ's day (its researchers taken on, the land's rent, the pay, YAMATO's bills: npc-research.js)
+  research.day(W, day, r, ctx);
+  // MY WAY's contracts with the local companies and the two countries (npc-ipdeals.js): their fees, their talks
+  deals.day(W, day, r, ctx);
   if (t.d === 1) month(W, day, r, ctx);
   const fans = collabOf(W, ctx);
   // living: the day's food and things of the household (ジンクス's goods, the local shops'), by its size and money
@@ -334,7 +354,10 @@ export function dayStart(W, day, r, ctx) {
       // (by what the household lets itself spend on pleasures, and the more for one who buys to be seen: 代償消費)
       const mine = P.emo2 ? Math.max(0.4, Math.min(3, Math.sqrt((Math.max(0, P.fund[i * 4 + 2]) + Math.max(0, P.wind[i]) * 0.1) / Math.max(1, W.cal.leisure)))) * (1 + 0.8 * heart.tendency(P, i, 'compensate') * heart.lowEsteem(P, i)) : 1;
       const k = W.cal.collab * Math.pow(size, 0.75) * wealth * thrift * street * (0.4 + 1.2 * tr(P, i, T.impulse)) * fans.pull * mine;
-      if (k >= 1) for (const [co, stream, part] of fans.list) econ.buy(W, i, day, co, stream, Math.round(k * part), false);
+      if (k >= 1) for (const [co, stream, part] of fans.list) {
+        if (co.startsWith('local:')) deals.sell(W, i, co.slice(6), Math.round(k * part));
+        else econ.buy(W, i, day, co, stream, Math.round(k * part), false);
+      }
     }
   }
   // the unemployment benefit (失業手当), a day of it
@@ -395,8 +418,15 @@ function month(W, day, r, ctx) {
     // the household's electricity, gas and water (ナショナル・パワー電力・メトロ都市ガス・アクア・ライフ水道公社, js/game/local.js), by
     // how many live in it: a household paid none before
     if (P.hh[i] === i && P.home[i] !== HOME.street) {
-      const bill = Math.round((W.cal.utilities || NPC.life.utilities) * Math.sqrt(memberList(P, i).length) * econ.cpi(W));
-      econ.toSector(W, i, bill, true, 'utilities');
+      // (株式会社YAMATO's once it is founded: its bill for a household of its size by the times and its own care —
+      // server/core/asuka.js homeBill)
+      if (asukaModel.yamatoOn(W)) {
+        const bill = asukaModel.homeBill(W, memberList(P, i).length, tr(P, i, T.thrift));
+        if (econ.pay(W, i, bill, true)) econ.toYamato(W, bill, 'vernoa:homes');
+      } else {
+        const bill = Math.round((W.cal.utilities || NPC.life.utilities) * Math.sqrt(memberList(P, i).length) * econ.cpi(W));
+        econ.toSector(W, i, bill, true, 'utilities');
+      }
     }
     // the phone: everyone has one, at the same $100,000 a month (テネシス・モバイル); unpaid, it is cut off
     if (econ.pay(W, i, phone, P.cash[i] > -NPC.trouble.quickMax)) { econ.toStream(W, day, 'tenesice', 'mobile', phone); P.phone[i] = 0; }
@@ -484,7 +514,7 @@ function month(W, day, r, ctx) {
 
 // A person's month (their own sense of what they may spend: of what comes in, by how careful they are, and a little
 // of what they have, more for the old), and its parts: the slots, the games, the pleasures, the market. (Most of what
-// comes in goes out again — seven tenths for the most careful, more than all of it for the least —: the money goes
+// comes in goes out again — three quarters for the most careful, more than all of it for the least —: the money goes
 // round.)
 // The times (server/core/npc-macro.js boom): in a boom they spend more of what comes in and of what they have — the
 // careless and the bold, who follow the talk, the most; the careful hardly — gamble and play more, and buy into the
@@ -496,9 +526,9 @@ export function budgetOf(W, i, age, r) {
   const thrift = tr(P, i, T.thrift);
   // (how far the times carry this one: by how bold, how much they follow the news, how careful)
   const feel = Math.max(0.2, 0.4 + 0.6 * tr(P, i, T.risk) + 0.4 * tr(P, i, T.news) - 0.6 * thrift), boom = Math.max(0.2, 1 + (boomOf(W) - 1) * feel);
-  // (docs/ai-economy-plan.md 2.1: 72% of what comes in for the most careful to 115% for the least, and half again as
-  // much more of what they have — the country's people spend: their spending is the companies' sales)
-  const keep = Math.min(1.2, (0.72 + 0.43 * (1 - thrift)) * (1 + 0.2 * (boom - 1)));
+  // (docs/ai-economy-plan.md 2.1: 75% of what comes in for the most careful to 120% for the least, and seven tenths
+  // more of what they have — the country's people spend: their spending is the companies' sales)
+  const keep = Math.min(1.25, (0.75 + 0.45 * (1 - thrift)) * (1 + 0.2 * (boom - 1)));
   const draw = (0.015 + 0.05 * (age >= 60 ? 1 : age / 60)) * (1 - 0.5 * thrift) / 12 * Math.pow(boom, 1.5) * 1.7;
   const mood = P.emo[i * 5 + E.mood] / 255;
   // (and the mind's say: worry, a low sense of oneself, 消費観, what one has learnt, the windfall, the habit — npc-heart.js)
@@ -507,7 +537,8 @@ export function budgetOf(W, i, age, r) {
   const w = weightsOf(P, i, age);
   P.fund[i * 4] = Math.round(b * c.casino * w.casino * NPC.life.casinoSpend * Math.pow(boom, 1.3));
   P.fund[i * 4 + 1] = Math.round(b * c.games * w.games);
-  P.fund[i * 4 + 2] = Math.round(b * c.leisureShare * w.leisure * boom);
+  // (a quarter more of it for one's pleasures than the country began with: what the people spend is what goes round)
+  P.fund[i * 4 + 2] = Math.round(b * c.leisureShare * 1.25 * w.leisure * boom);
   P.fund[i * 4 + 3] = Math.round(wealth * c.invest * w.invest * boom * boom);
 }
 export function weightsOf(P, i, age) {

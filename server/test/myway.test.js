@@ -63,9 +63,13 @@ test('the rules: MY WAY as given — 1,250 people at $16.3M a head, $45B of sale
     [1250, 16300000, 325000000, 900000000, 45000000000, 23400000000, 2000000000, 25200000000, 0.56, true]);
   // (its operating profit is its sales less its people and its two costs: 52%)
   assert.equal(p.sales - p.staff * p.cost - p.place.amount - p.rd.amount, p.op);
-  const fees = Object.values(M.partners).reduce((n, x) => n + x.fee, 0);
-  assert.equal(fees + M.direct, p.sales);
-  assert.deepEqual(Object.keys(M.partners).sort(), ['carowner', 'dtrade', 'ice', 'jinx', 'magita', 'riru', 'tenesice']);
+  // (its seven partners at their first fees and its showroom: the rest of the thirteen, and Tenesice's 超大型IP契約, from
+  // 2026-11-03)
+  const first = Object.entries(M.partners).filter(([, x]) => !x.late);
+  assert.equal(first.reduce((n, [, x]) => n + (x.fee0 || x.fee), 0) + M.direct, p.sales);
+  assert.deepEqual(first.map(([id]) => id).sort(), ['carowner', 'dtrade', 'ice', 'jinx', 'magita', 'riru', 'tenesice']);
+  assert.deepEqual(Object.keys(M.partners).sort(), CORP.companies.map((c) => c.id).filter((id) => id !== 'myway').sort());
+  assert.ok(Object.entries(M.partners).every(([id, x]) => id === 'tenesice' || x.fee < M.partners.tenesice.fee) && M.partners.tenesice.huge);
   assert.equal(M.partners.jinx.fee, 15000000000);
   assert.equal(M.partners.magita.fee + M.partners.carowner.fee, 10000000000);
   // every partner earns on it at full pull, and loses on it well below
@@ -93,7 +97,7 @@ test('its books at the start: about $45B of sales and $23.4B of operating profit
   // (its guidance pays out what its philosophy says — little kept: 90% of what it expects)
   assert.ok(Math.abs(s.div.total / Math.max(1, s.guide.net) - CORP.myway.philosophy.payout) < 0.01);
   for (const [id, c] of Object.entries(s.ip.contracts)) {
-    assert.ok(c.on && c.fee === M.partners[id].fee, id);
+    assert.ok(c.on && c.fee === (M.partners[id].fee0 || M.partners[id].fee), id);
     const t = w.co[id];
     // the partner's year: its fee a cost, what it sold of the characters a sale
     const yr = t.hist.filter((h) => h.kind === 'y').slice(-1)[0];

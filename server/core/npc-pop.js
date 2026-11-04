@@ -27,7 +27,7 @@ export const NB = 3;
 export const LS = { gamble: 0, debt: 1, job: 2, market: 3, spend: 4, luxury: 5, save: 6, friends: 7 };
 export const NL = 8;
 // marks
-export const FL = { student: 1, famous: 2, candidate: 4, mayor: 8, unionRep: 16, leader: 32, striking: 64, moving: 128, founder: 256, rich: 512, exec: 1024, welfare: 4096, sick: 8192, defer: 16384, widow: 32768, rehired: 65536, union: 131072, newborn: 262144, elite: 524288 };
+export const FL = { student: 1, famous: 2, candidate: 4, mayor: 8, unionRep: 16, leader: 32, striking: 64, moving: 128, founder: 256, rich: 512, exec: 1024, welfare: 4096, sick: 8192, defer: 16384, widow: 32768, rehired: 65536, union: 131072, newborn: 262144, elite: 524288, research: 1048576 };
 export const MEM = 16, REL = 12, OWN = 8, LEARN = 12, LISTED = 4;
 // the memories: the first 16 in `mem`, the 16 added later in `mem2` (32 in all)
 export const MEM2 = 16, MEMS = MEM + MEM2;

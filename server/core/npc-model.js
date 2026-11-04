@@ -25,6 +25,7 @@ import * as asuka from './asuka.js';
 import { gdpDay, gdpView } from './npc-gdp.js';
 import { macroDay, macroView, boomOf } from './npc-macro.js';
 import * as heart from './npc-heart.js';
+import * as research from './npc-research.js';
 
 const MIN = 60000, DAY_MIN = 1440;
 export { LISTED_IDS };
@@ -196,6 +197,10 @@ export function attach(W) {
     return W._staff[id] || [];
   };
   W.card = (i, day) => card(W, i, day);
+  // (株式会社YAMATO founded: ヴェルノア's power, gas and water companies close into it — server/core/npc-local.js)
+  W.closeIntoYamato = (day) => local.closeIntoYamato(W, day);
+  // (a pay in, its taxes taken: テネシスリサーチ's researchers' — server/core/npc-research.js)
+  W.stateTake = (i, g, day) => state.take(W, i, g, 'salary', day);
   // one of a car sold (to a person or a player): one fewer at Car Owner, and the last one ordered again at once
   W.carSold = (id) => { if (W.stock.cars[id] > 0) W.stock.cars[id]--; if (W.stock.cars[id] === 0) orderCar(W, id, W.day); };
   // a company's money to another company (a placement fee) or out to the local businesses or to a person: with the day's flows
@@ -412,6 +417,10 @@ export function flowsFor(W, day) {
     locals, localFailed, estates: f.estates || {},
     // (アスカ国: what its people bought of each company, what they would spend, its branches' people: corp-model asukaDay)
     asuka: asuka.flowsFor(W),
+    // (テネシスリサーチ: what its facilities need of Tenesice today — server/core/npc-research.js)
+    research: { need: research.need(W) },
+    // (MY WAY's share price at the last close and a month before: what it spends on advertising, corp-model mywayGrow)
+    mwPrice: W.mwPx && W.mwPx.length ? { now: W.mwPx[W.mwPx.length - 1], month: W.mwPx[0] } : null,
     // (海外's money, and the local trade's, for what the companies sell them: server/core/corp-model.js abroadBuys, sectorBuys)
     abroad: Math.max(0, W.abroad.cash), sectorCash: Math.max(0, W.sector.cash),
     // (what Tenesice can still lend: its own money as of the last close, less the people's and the country's loans since)
@@ -437,7 +446,8 @@ export function moneyOf(W, w) {
     else x += (s.bal.cash || 0) - s.loans.reduce((a, l) => a + l.amt, 0);
   }
   // (アスカ国's money too: the two countries' money moves between them, never out of them)
-  return Math.round(x + econ.pending(W) + W.abroad.cash + asuka.moneyOf(W) + W.sum.toPlayers - W.sum.fromPlayers);
+  // (テネシスリサーチ's money: what Tenesice sent it, not yet paid out)
+  return Math.round(x + econ.pending(W) + W.abroad.cash + asuka.moneyOf(W) + research.cashOf(W) + W.sum.toPlayers - W.sum.fromPlayers);
 }
 // the day's count: what it came to against what it should; a drift beyond rounding is told (`tell`)
 export function ledgerDay(W, w, day, tell = null) {
@@ -473,6 +483,8 @@ export function nextDay(W, day, ext, ctx) {
   W._staff = null;
   // the times' mood and the prices (server/core/npc-macro.js): of the day just closed, before its numbers are counted
   macroDay(W, next, ctx);
+  // (MY WAY's share price, a month of closes)
+  if (ctx && ctx.stockPrice) { const px = ctx.stockPrice('myway'); if (px > 0) { const h = W.mwPx || (W.mwPx = []); h.push(px); if (h.length > 31) h.shift(); } }
   stats(W, next);
   W.nation.hist.push({ day: next, prices: W.stats.prices, cash: W.nation.cash, debt: W.nation.debt, fund: W.nation.fund.cash + W.nation.fund.bonds, in: W.nation.day.in, out: W.nation.day.out });
   if (W.nation.hist.length > 400) W.nation.hist.shift();
@@ -540,7 +552,8 @@ function restock(W, day) {
 // a car sold out: its next lot ordered (once: nothing more while one is on its way)
 export function orderCar(W, id, day) {
   const s = W.stock, pr = CORP.products.cars[id], m = pr && CORP.makers[pr.maker];
-  if (!m || s.orders.some((x) => x.id === id)) return;
+  // (none of a car no longer sold)
+  if (!m || s.orders.some((x) => x.id === id) || !RULES.cars.some((c) => c.id === id && c.price > 0 && !c.ended)) return;
   s.lots = s.lots || {};
   const first = CORP.firstLot(id, W.scale), last = s.lots[id] || first;
   const lot = Math.min(first * m.maxGrow, Math.max(last + 1, Math.ceil(last * m.grow)));
@@ -635,7 +648,7 @@ function stats(W, day) {
 export function card(W, i, day) {
   const P = W.P, nm = pop.nameOf(P, i), age = ageOf(P, i, day), j = P.job[i];
   const posts = org.posts(W, i);
-  const co = NPC.companyOf(j), job = co ? `${NPC.jobNames[j]} ${NPC.org[co][P.dept[i]] ? NPC.org[co][P.dept[i]][1] : ''} ${NPC.ranks[P.rank[i]].name}`.trim() : (local.firmOf(P, i) ? `${local.firmByNo(local.firmOf(P, i)).name}（${j === NPC.job.part ? 'パート' : '社員'}）` : NPC.jobNames[j] || '');
+  const co = NPC.companyOf(j), job = P.flags[i] & FL.research ? 'テネシスリサーチ 研究員' : co ? `${NPC.jobNames[j]} ${NPC.org[co][P.dept[i]] ? NPC.org[co][P.dept[i]][1] : ''} ${NPC.ranks[P.rank[i]].name}`.trim() : (local.firmOf(P, i) ? `${local.firmByNo(local.firmOf(P, i)).name}（${j === NPC.job.part ? 'パート' : '社員'}）` : NPC.jobNames[j] || '');
   return {
     id: pop.pid(P, i), i, name: nm.name, kana: nm.kana, sex: P.sex[i], age, district: P.dist[i], at: P.ldist[i], job, posts,
     act: NPC.acts[P.act[i]] ? NPC.acts[P.act[i]].name : '', place: NPC.placeNames[NPC.places[P.place[i]]] || '', mood: P.emo[i * 5],
@@ -644,7 +657,7 @@ export function card(W, i, day) {
 }
 
 // the plain data of a world (what is kept besides the people's columns)
-const SKIP = new Set(['P', 'AP', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners', 'knobChanged', 'carSold']);
+const SKIP = new Set(['P', 'AP', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners', 'knobChanged', 'carSold', 'closeIntoYamato', 'stateTake', 'aiAdvice']);
 export function metaOf(W) {
   const out = {};
   for (const [k, v] of Object.entries(W)) if (!SKIP.has(k) && typeof v !== 'function') out[k] = v;

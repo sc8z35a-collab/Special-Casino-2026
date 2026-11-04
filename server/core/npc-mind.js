@@ -59,8 +59,13 @@ export function ahead(W, i, o, futures, r) {
 }
 
 /* ---------------------------------------------------------------- a car --- */
-const CARS = RULES.cars.filter((c) => c.price > 0 && !c.ended);
-export function carList(ctx) { return CARS.map((c, k) => ({ id: c.id, k: k + 1, name: c.name, price: ctx.carPrice ? ctx.carPrice(c.id) : c.price, npc: CORP.products.cars[c.id] ? CORP.products.cars[c.id].npc : 50 })); }
+// the people's cars by number (P.car), for good: the sixteen on sale when the country began in their order, then each
+// that came after (MY WAY's collaboration cars …) — a car that ended keeps its number (those who have one keep it)
+const FIRST = ['blue-lightning', 'onvoro', 'ferrari-325', 'mercedes-benz-one', 'lamborghini-aventador', 'lamborghini-urus', 'lamborghini-kuia-spyder', 'nissan-gt-r',
+  'lamborghini-revuelto', 'mercedes-amg-one-white', 'yoshida-zx4', 'yoshida-p100w', 'yoshida-h9c', 'yoshida-s5', 'yoshida-s6', 'yoshida-k10e'];
+const CARS = [...FIRST.map((id) => RULES.cars.find((c) => c.id === id)).filter(Boolean), ...RULES.cars.filter((c) => c.price > 0 && !c.ended && !FIRST.includes(c.id))];
+// (the ones to be bought: on sale now)
+export function carList(ctx) { return CARS.map((c, k) => ({ c, k: k + 1 })).filter(({ c }) => c.price > 0 && !c.ended).map(({ c, k }) => ({ id: c.id, k, name: c.name, price: ctx.carPrice ? ctx.carPrice(c.id) : c.price, npc: CORP.products.cars[c.id] ? CORP.products.cars[c.id].npc : 50 })); }
 export const carByIndex = (k) => CARS[k - 1] || null;
 
 export function thinkCar(W, i, day, r, ctx) {

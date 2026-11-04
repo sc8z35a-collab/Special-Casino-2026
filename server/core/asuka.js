@@ -14,7 +14,10 @@ import { ASUKA, NPC, CORP, LOCAL } from './rules.js';
 import { seeded } from './npc-rand.js';
 
 const R = ASUKA.rules, CATS = ASUKA.cats, DIV = ASUKA.atsuka.divisions, YEAR = 365;
-export const JOB = { none: 0, atsuka: 1, trade: 2, branch: 3, student: 4, retired: 5 };
+// (yamato: 株式会社YAMATO's people, by their post in `emp`; research: テネシスリサーチ's researchers here, by their
+// facility in `emp` — server/core/npc-research.js)
+export const JOB = { none: 0, atsuka: 1, trade: 2, branch: 3, student: 4, retired: 5, yamato: 6, research: 7 };
+const PAID = (j) => j === JOB.atsuka || j === JOB.trade || j === JOB.branch || j === JOB.yamato || j === JOB.research;
 const COS = NPC.companies;
 const NC = CATS.length;
 // (each person's: `hot` what moves within a day — kept every few minutes with ヴェルノア's —, `late` what a country kept
@@ -149,7 +152,7 @@ export function moneyOf(W) {
   if (!a || !A) return 0;
   let x = 0;
   for (let i = 0; i < A.n; i++) x += A.cash[i] - A.debt[i];
-  x += a.treasury + a.atsuka.cash + a.bank.own + a.bank.lent + a.boost.cash + a.pension.cash + a.trade.cash;
+  x += a.treasury + a.atsuka.cash + a.bank.own + a.bank.lent + a.boost.cash + a.pension.cash + a.trade.cash + (a.yamato ? a.yamato.cash : 0);
   for (const v of Object.values(a.toCo)) for (const n of Object.values(v)) x += n;
   return x;
 }
@@ -234,13 +237,17 @@ export function day(W, day, ext) {
   // (消費観 for a country kept before it: everyone's, once)
   if (!a.ethosSet) { for (let i = 0; i < A.n; i++) if (!A.ethos[i]) A.ethos[i] = ethosFor(i, A.gen[i]); a.ethosSet = 1; }
   procure(W);
+  // 株式会社YAMATO: founded on its day (once), its day's upkeep and emergencies
+  if (!a.yamato && day >= YAMATO_DAY) foundYamato(W, day, r);
+  if (a.yamato) yamatoDay(W, day, r);
   // the day's shopping closed (a country kept before its people went out: the day as one, at its close)
   if (!a.today) prepare(W, day);
   closeShopping(W);
   lives(W, day, r);
   if (t.d === 15) pensions(W);
   if (t.d === 25) payday(W, day);
-  if (CORP.isMonthEnd(day)) month(W, day, r);
+  if (t.d === 25 && a.yamato) yamatoPay(W);
+  if (CORP.isMonthEnd(day)) { if (a.yamato) yamatoMonth(W, day); month(W, day, r); }
   prepare(W, day + 1);
 }
 // ATSUKA Vision buys of ヴェルノア's makers (machines, vehicles, systems, seeds): a part of its money and of what it earns,
@@ -267,7 +274,7 @@ function procure(W) {
 const dayBudget = (A, i, yearly) => (Math.max(0, A.cash[i]) * R.spend.wealth + yearly * R.spend.income) / YEAR;
 function yearlyOf(A, i) {
   const j = A.job[i];
-  if (j === JOB.atsuka || j === JOB.trade || j === JOB.branch) return A.pay[i] * (1 - R.tax.income);
+  if (PAID(j)) return A.pay[i] * (1 - R.tax.income);
   if (j === JOB.retired) return R.pension;
   return 0;
 }
@@ -288,13 +295,16 @@ function prepare(W, day) {
   });
   const disc = 1 - R.spend.living, support = supportOf(a);
   a.support = support;
+  const util = a.yamato ? homeBill(W, YAMATO.household) / YAMATO.household / 30 : 0;
   for (let i = 0; i < A.n; i++) {
     // (and in hard times what 消費観 adds, as far as they can afford it: half at the local trade, half where its people
     // work — the branches)
     const base = dayBudget(A, i, yearlyOf(A, i));
     const afford = base > 0 ? Math.max(0, Math.min(1, A.cash[i] / (base * 90) - 0.3)) : 0;
     const extra = base * 0.3 * (A.ethos[i] / 255) * support * afford, all = base + extra;
-    A.need[i] = all > 0 ? Math.round(base * R.spend.living + extra * 0.5) : 0;
+    // (what one needs less the part of it that was the home's water, power and gas — billed by YAMATO at the month's
+    // end now, as far as it was in it)
+    A.need[i] = all > 0 ? Math.max(0, Math.round(base * R.spend.living + extra * 0.5 - Math.min(base * R.spend.living * 0.3, util))) : 0;
     A.left[i] = all > 0 ? Math.round(base * disc + extra * 0.5) : 0;
     const b = A.left[i];
     if (b <= 0) continue;
@@ -404,7 +414,7 @@ export function tick(W, m, j) {
 function act(W, i, m, t, off) {
   const A = W.AP, T = W.asuka.today, job = A.job[i], u = H(i, m, 2);
   const set = (x, minutes) => { A.act[i] = x; A.due[i] = m + Math.max(5, Math.round(minutes)); };
-  const worker = job === JOB.atsuka || job === JOB.trade || job === JOB.branch;
+  const worker = PAID(job);
   // (each one's hours: the state's from about nine, the shops' from about ten, a little either way)
   const start = (job === JOB.atsuka ? 540 : 600) + Math.floor(H(i, 0, 3) * 60) - 30, end = start + 510 + Math.floor(H(i, 0, 4) * 60);
   if (t >= 1320) return set(ACT.sleep, 1440 - t);
@@ -558,7 +568,7 @@ function month(W, day, r) {
   for (let i = 0; i < A.n; i++) {
     const j = A.job[i];
     if (j === JOB.none) jobless++;
-    if (j === JOB.none || j === JOB.atsuka || j === JOB.trade || j === JOB.branch) work++;
+    if (j === JOB.none || PAID(j)) work++;
     cash += A.cash[i]; debt += A.debt[i];
   }
   a.stats = { people: A.n, jobless: work ? jobless / work : 0, cash: Math.round(cash), debt: Math.round(debt), treasury: Math.round(a.treasury), atsuka: Math.round(a.atsuka.cash), bank: Math.round(a.bank.own), money: Math.round(moneyOf(W)) };
@@ -667,6 +677,26 @@ function hire(W, day, r) {
       if (job !== JOB.branch) fees += Math.round(A.pay[i] * ASUKA.atsuka.hireFee);
     }
   };
+  // (YAMATO's posts, each at its own pay; テネシスリサーチ's researchers here, through シティーワーク — server/core/npc-research.js)
+  if (a.yamato) {
+    const by = new Map();
+    for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.yamato) by.set(A.emp[i], (by.get(A.emp[i]) || 0) + 1);
+    YAMATO.roles.forEach(([, n, pay], k) => {
+      for (let x = Math.max(1, Math.round(n * a.scale)) - (by.get(k) || 0); x > 0 && at < seekers.length; x--) { const i = seekers[at++]; A.job[i] = JOB.yamato; A.emp[i] = k; A.pay[i] = pay; a.sum.hires++; }
+    });
+  }
+  if (W.research && W.research.on) {
+    const per = W.research.asukaSites || [], have2 = per.map(() => 0);
+    for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.research && A.emp[i] < have2.length) have2[A.emp[i]]++;
+    per.forEach((w0, k) => {
+      for (let x = w0 - have2[k]; x > 0 && at < seekers.length; x--) {
+        const i = seekers[at++];
+        A.job[i] = JOB.research; A.emp[i] = k; A.pay[i] = Math.round(W.research.pay[0] + (W.research.pay[1] - W.research.pay[0]) * Math.pow(r.u(), 1.6));
+        a.sum.hires++;
+        W.research.hiredHere = (W.research.hiredHere || 0) + 1;
+      }
+    });
+  }
   take(JOB.atsuka, 0, Math.max(0, want[JOB.atsuka] - (have[JOB.atsuka] || 0)));
   take(JOB.trade, 0, Math.max(0, want[JOB.trade] - (have[JOB.trade] || 0)));
   for (const [co, n] of Object.entries(a.staffCo || {})) {
@@ -750,6 +780,215 @@ export function view(W) {
     atsuka: DIV.map((d, k) => ({ id: d.id, name: d.name, what: d.what, staff: byDiv[k], rev: Math.round(a.atsuka.rev[d.id] || 0) })), procured: a.atsuka.procured,
     cats: CATS.map((c) => ({ id: c.id, name: c.name, want: a.want[c.id] || 0, digital: !!c.digital, cos: ASUKA.companiesOf(c).map(([co]) => ({ id: co, name: (CORP.company(co) || {}).name || co, branches: (a.branches[co] || {})[c.id] || 0 })) })),
     policy: a.policy || null, altas: (() => { const L = altasOf(a); return { price: L.price, staff: byDiv[DIV.findIndex((x) => x.id === 'altas')] || 0, last: L.last, month: L.m, customers: customers(L.last ? L.last.by : L.m.by), dividends: L.dividends, hist: L.hist.slice(-12).map(({ by, ...h }) => h) }; })(),
+    yamato: yamatoView(W),
     sum: a.sum, hist: a.hist, news: a.news.slice(-30)
   };
+}
+
+/* ------------------------------------------------------------ 株式会社YAMATO --- */
+// 株式会社YAMATO (founded 2026-11-03): アスカ国's first company of its own and the world's water, electricity and gas — the
+// only one: ヴェルノア's power, gas and water companies close into it (server/core/npc-local.js closeIntoYamato).
+// - Its money once from the treasury at its founding (its capital and retained earnings), never again; then what it
+//   bills: every household of both countries at the month's end (a household of two's power, gas and water, dearer in
+//   inflation, cheaper in deflation, a little more used in good times — 3 times what ヴェルノア's homes paid before),
+//   the companies' energy (ヴェルノア's thirteen and its local companies: what they paid the three for it), ATSUKA
+//   Vision's (its biggest customer: a part of what it earns), テネシスリサーチ's facilities (by the month, by the times).
+// - Its people (5,500 in a full country, by the posts and pays of its plan: no bonus — the months' bonuses abolished to
+//   keep its fixed costs down — but a $30K emergency allowance each time a big outage, gas leak or burst main is put
+//   right in time), its upkeep (設備維持・インフラ整備・緊急対策・開発: $18B a year — アルタス's materials, the local
+//   trade's work, machines from ヴェルノア), the corporate tax of its profit and its dividends to the treasury (its
+//   owner); what it holds beyond five months of its costs it puts into its networks (利益を貯めこまない).
+export const YAMATO_DAY = CORP.dayAt(2026, 11, 3);
+export const YAMATO = {
+  name: '株式会社YAMATO', capital: 5.0e9, retained: 35.0e9, upkeep: 18.0e9,
+  upkeepTo: { altas: 0.45, trade: 0.35, abroad: 0.2 },
+  // a household of two's month: [usual, in inflation, in deflation] (the plan's 550K/200K/150K and its dearer and
+  // cheaper ones in proportion, kept to 3 times what ヴェルノア's homes paid before)
+  bills: { power: [104000, 141000, 90000], gas: [38000, 57000, 32000], water: [28000, 36000, 25000] },
+  household: 2,
+  // ATSUKA Vision's share of what it earns a month for its power, gas and water; a research facility's month
+  big: 0.05, lab: 150000000,
+  // a day's chance of a big outage, gas leak or burst main in a full country; those sent; put right in time
+  emergency: { pay: 30000, odds: 0.15, team: 24, inTime: 0.82 },
+  keep: 5, dividend: 0.5,
+  // its posts: [name, how many in a full country, a year's pay]
+  roles: [
+    ['代表取締役社長', 1, 50e6], ['最高経営責任者（CEO）', 1, 30e6], ['最高運営・危機管理責任者（COO）', 1, 15e6], ['最高財務・コスト管理責任者（CFO）', 1, 15e6],
+    ['最高技術・インフラ整備責任者（CTO）', 1, 15e6], ['執行役員・インフラ事業本部長', 5, 9.0e6], ['広域トラブル対策・緊急災害復旧統括部長', 5, 7.0e6],
+    ['インフラ整備・老朽プラント保全統括部長', 5, 6.0e6], ['グローバル資源調達・コスト監査部長', 5, 6.0e6], ['24時間統合指令室センター長', 15, 5.0e6],
+    ['大規模プラント統括所長', 30, 4.5e6], ['チーフ・インフラ整備＆老朽化改修エンジニア', 80, 3.9e6], ['国際インフラ整備・海外プラント保守マネージャー', 100, 3.6e6],
+    ['緊急出動・重大トラブル特務復旧スペシャリスト', 350, 3.2e6], ['経営管理・徹底コスト査定・IPO準備スタッフ', 60, 3.0e6],
+    ['インフラ制御システム・大規模停電・通信トラブル復旧エンジニア', 150, 3.0e6], ['24時間トラブル監視・緊急ディスパッチオペレーター', 240, 2.7e6],
+    ['発電所・ガス基地・浄水場 設備稼働＆定常整備エンジニア', 550, 2.6e6], ['送電網・変電設備 定期点検＆トラブル予防整備士', 650, 2.4e6],
+    ['高圧ガス導管・パイプライン 漏洩点検＆緊急遮断整備士', 600, 2.3e6], ['上下水道本管・ポンプ場 破損修理＆水質点検スタッフ', 600, 2.2e6],
+    ['24時間緊急駆けつけ・現場一次対応パトロール隊員', 850, 2.1e6], ['交換部品・重機管理＆緊急復旧資材輸送スタッフ', 250, 2.0e6],
+    ['フィールド定期巡回・老朽設備点検・スマートメーター保守員', 650, 1.8e6], ['24時間トラブル通報受付・料金徴収・事務スタッフ', 300, 1.7e6]
+  ],
+  // (the posts sent to an emergency: the specialists, the restoration engineers, the patrols)
+  responders: [13, 15, 21]
+};
+const yOf = (W) => (W.asuka && W.asuka.yamato) || null;
+export const yamatoOn = (W) => !!yOf(W);
+// the times' prices of power, gas and water against the usual (1: the usual; the homes' bills and the facilities')
+export function billLevel(W) {
+  const usual = Object.values(YAMATO.bills).reduce((n, b) => n + b[0], 0);
+  return homeBill(W, YAMATO.household, 0.5) / usual;
+}
+// テネシスリサーチ's facilities here (server/core/npc-research.js): their land's rent a day, the treasury's; their
+// researchers' month (as far as `budget` goes), taxed as anyone's pay here — what it paid
+export function landRent(W, n) {
+  const a = W.asuka;
+  n = Math.round(n);
+  if (!a || !(n > 0)) return;
+  a.treasury += n; a.sum.fromVernoa += n; gdpAcc(a).x += n;
+  tin(a, 'landRent', n);
+}
+export function payResearch(W, budget) {
+  const a = W.asuka, A = W.AP;
+  if (!a || !A || !(budget > 0)) return 0;
+  let due = 0;
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.research) due += A.pay[i] / 12;
+  const ratio = due > 0 ? Math.min(1, budget / due) : 0;
+  let paid = 0;
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.research) { const g = Math.floor(A.pay[i] / 12 * ratio); income(W, i, g); paid += g; }
+  a.sum.fromVernoa += paid;
+  tin(a, 'research', paid);
+  return paid;
+}
+// what a household of `members` pays a month now: the times' prices (inflation: toward the dear ones; deflation: toward
+// the cheap) and how much is used (more in good times — less thrift then —, by the household's own care: `care` 0..1)
+export function homeBill(W, members = 2, care = 0.5) {
+  const M = W.macro || {}, pi = M.pi ?? 0.02, boom = M.boom || 1;
+  const level = Math.max(-1, Math.min(1, (pi - 0.02) / (pi >= 0.02 ? 0.03 : 0.03)));
+  let n = 0;
+  for (const [usual, dear, cheap] of Object.values(YAMATO.bills)) n += level >= 0 ? usual + (dear - usual) * level : usual + (usual - cheap) * level;
+  const use = (1 + 0.3 * Math.max(0, boom - 1)) * (1.1 - 0.2 * care);
+  return Math.round(n * Math.sqrt(members / YAMATO.household) * use);
+}
+// money paid YAMATO (`from`: who — 'vernoa:homes', 'vernoa:companies', 'vernoa:locals', 'asuka:homes', 'atsuka',
+// 'research'): its takings; what came from ヴェルノア, its exports
+// アスカ国's IP契約 with MY WAY (server/core/npc-ipdeals.js): its fee out of the treasury, to MY WAY as its day closes
+// (flowsFor `toCo`: the companies' side books it as MY WAY's 'ipAsuka')
+export function payMyway(W, n) {
+  const a = W.asuka;
+  n = Math.round(n);
+  if (!a || !(n > 0)) return false;
+  a.treasury -= n;
+  tout(a, 'myway', n);
+  const box = a.toCo.myway || (a.toCo.myway = {});
+  box.ip = (box.ip || 0) + n;
+  a.sum.toVernoa += n;
+  return true;
+}
+export function yamatoEarn(W, n, from) {
+  const a = W.asuka, Y = yOf(W);
+  n = Math.round(n);
+  if (!Y || !(n > 0)) return false;
+  Y.cash += n;
+  Y.m.rev[from] = (Y.m.rev[from] || 0) + n;
+  Y.total.rev += n;
+  if (/^vernoa|^research/.test(from)) { a.sum.fromVernoa += n; gdpAcc(a).x += n; }
+  tin(a, 'yamato:' + from, n);
+  return true;
+}
+function foundYamato(W, day, r) {
+  const a = W.asuka, A = W.AP, sc = a.scale;
+  const capital = Math.round(YAMATO.capital * sc), retained = Math.round(YAMATO.retained * sc);
+  const n = Math.min(Math.max(0, a.treasury), capital + retained);
+  a.treasury -= n;
+  tout(a, 'yamato', n);
+  a.yamato = { founded: day, cash: n, capital, retained: retained - (capital + retained - n), m: yMonth(), last: null, hist: [], total: { rev: 0, pay: 0, upkeep: 0, emergency: 0, tax: 0, dividends: 0, invest: 0 }, incidents: 0, restored: 0 };
+  // its people: those out of work first, then the local trade's (the posts from the top)
+  const pool = [];
+  for (let i = 0; i < A.n; i++) { const age = ageOf(A, i, day); if (age >= 20 && age < 65 && A.job[i] === JOB.none) pool.push(i); }
+  for (let i = 0; i < A.n; i++) { const age = ageOf(A, i, day); if (age >= 20 && age < 65 && A.job[i] === JOB.trade) pool.push(i); }
+  let at = 0, hired = 0;
+  YAMATO.roles.forEach(([, k, pay], role) => {
+    for (let x = Math.max(1, Math.round(k * sc)); x > 0 && at < pool.length; x--) { const i = pool[at++]; A.job[i] = JOB.yamato; A.emp[i] = role; A.pay[i] = pay; hired++; }
+  });
+  a.sum.hires += hired;
+  a.yamato.staff = hired;
+  say(W, day, `株式会社YAMATOが設立されました（アスカ国初のアスカ国籍企業・水道・電気・ガスの世界一の独占インフラ企業）。資本金${CORP.fmt.money(capital)}・利益剰余金${CORP.fmt.money(retained)}は国庫から一度だけ。社員${hired.toLocaleString('en-US')}人を採用しました`);
+  if (W.closeIntoYamato) W.closeIntoYamato(day);
+  void r;
+}
+const yMonth = () => ({ rev: {}, pay: 0, upkeep: 0, emergency: 0 });
+// a day: its upkeep (a 365th of the year's: アルタス's materials, the local trade's work, machines from ヴェルノア), and the
+// big troubles put right (the emergency allowance to those sent, each time in time)
+function yamatoDay(W, day, r) {
+  const a = W.asuka, A = W.AP, Y = a.yamato, sc = a.scale;
+  const n = Math.min(Math.max(0, Y.cash), Math.round(YAMATO.upkeep * sc / YEAR));
+  if (n > 0) spendUpkeep(W, n);
+  Y.m.upkeep += n; Y.total.upkeep += n;
+  if (r.u() < YAMATO.emergency.odds) {
+    Y.incidents++;
+    if (r.u() < YAMATO.emergency.inTime) {
+      Y.restored++;
+      const team = [];
+      for (let i = 0; i < A.n && team.length < Math.max(2, Math.round(YAMATO.emergency.team * Math.sqrt(sc))); i++) if (A.job[i] === JOB.yamato && YAMATO.responders.includes(A.emp[i]) && r.u() < 0.08) team.push(i);
+      for (const i of team) { if (Y.cash < YAMATO.emergency.pay) break; Y.cash -= YAMATO.emergency.pay; income(W, i, YAMATO.emergency.pay); Y.m.emergency += YAMATO.emergency.pay; Y.total.emergency += YAMATO.emergency.pay; }
+    }
+  }
+}
+function spendUpkeep(W, n) {
+  const a = W.asuka, Y = a.yamato, T = YAMATO.upkeepTo;
+  Y.cash -= n;
+  const altas = Math.round(n * T.altas), trade = Math.round(n * T.trade), abroad = n - altas - trade;
+  earned(W, altas, 'altas', 'yamato', true);
+  a.trade.cash += trade; a.trade.month += trade;
+  W.abroad.cash += abroad; a.sum.toVernoa += abroad;
+  gdpAcc(a).i += n; gdpAcc(a).m += abroad;
+  tout(a, 'yamato:upkeep', n);
+}
+// the 25th: its people's month (no bonus), as far as its money goes
+function yamatoPay(W) {
+  const a = W.asuka, A = W.AP, Y = a.yamato;
+  let due = 0;
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.yamato) due += Math.round(A.pay[i] / 12);
+  const ratio = due > 0 ? Math.min(1, Math.max(0, Y.cash) / due) : 0;
+  let paid = 0;
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.yamato) { const g = Math.floor(A.pay[i] / 12 * ratio); income(W, i, g); paid += g; }
+  Y.cash -= paid; Y.m.pay += paid; Y.total.pay += paid;
+}
+// the month's end: アスカ's homes billed (a household of two each: half a household's bill a head), ATSUKA Vision's part
+// of what it earned; the month's profit, its tax and its dividends to the treasury; and what it holds beyond five
+// months of its costs into its networks
+function yamatoMonth(W, day) {
+  const a = W.asuka, A = W.AP, Y = a.yamato, z = a.atsuka;
+  const each = Math.round(homeBill(W, YAMATO.household) / YAMATO.household);
+  let homes = 0;
+  for (let i = 0; i < A.n; i++) {
+    if (A.cash[i] < each) borrow(W, i, each - A.cash[i], yearlyOf(A, i));
+    const n = Math.min(each, Math.max(0, Math.floor(A.cash[i])));
+    if (n <= 0) { A.miss[i] = Math.min(255, A.miss[i] + 1); continue; }
+    A.cash[i] -= n; homes += n;
+  }
+  if (homes) yamatoEarn(W, homes, 'asuka:homes');
+  const big = Math.min(Math.max(0, z.cash), Math.round((z.revAvg || 0) * 30 * YAMATO.big));
+  if (big > 0) { z.cash -= big; tout(a, 'atsuka:yamato', big); yamatoEarn(W, big, 'atsuka'); }
+  const rev = Object.values(Y.m.rev).reduce((x, v) => x + v, 0), cost = Y.m.pay + Y.m.upkeep + Y.m.emergency, profit = rev - cost;
+  let tax = 0, div = 0;
+  if (profit > 0) {
+    tax = Math.min(Math.max(0, Y.cash), Math.round(profit * R.tax.corporate));
+    Y.cash -= tax; a.treasury += tax; tin(a, 'yamatoTax', tax);
+    div = Math.min(Math.max(0, Y.cash), Math.round((profit - tax) * YAMATO.dividend));
+    Y.cash -= div; a.treasury += div; tin(a, 'yamatoDividend', div);
+  }
+  Y.retained += profit - tax - div;
+  Y.total.tax += tax; Y.total.dividends += div;
+  // (利益を貯めこまない: beyond five months of its costs, a quarter of it into its networks)
+  const keep = Math.max(1, cost) * YAMATO.keep, more = Math.round(Math.max(0, Y.cash - keep) * 0.25);
+  if (more > 0) { spendUpkeep(W, more); Y.total.invest += more; }
+  Y.last = { day, rev, by: { ...Y.m.rev }, pay: Y.m.pay, upkeep: Y.m.upkeep, emergency: Y.m.emergency, profit, tax, dividend: div, invest: more, cash: Math.round(Y.cash), bill: homeBill(W, YAMATO.household) };
+  Y.hist.push(Y.last);
+  if (Y.hist.length > 24) Y.hist.shift();
+  Y.m = yMonth();
+}
+function yamatoView(W) {
+  const a = W.asuka, A = W.AP, Y = yOf(W);
+  if (!Y) return null;
+  const posts = YAMATO.roles.map(([name, , pay]) => ({ name, pay, staff: 0 }));
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.yamato && posts[A.emp[i]]) posts[A.emp[i]].staff++;
+  return { name: YAMATO.name, founded: Y.founded, cash: Math.round(Y.cash), capital: Y.capital, retained: Math.round(Y.retained), staff: posts.reduce((n, p) => n + p.staff, 0), posts,
+    bill: homeBill(W, YAMATO.household), month: Y.m, last: Y.last, total: Y.total, incidents: Y.incidents, restored: Y.restored, hist: Y.hist.slice(-12) };
 }

@@ -10,6 +10,7 @@
 var OpsTown = (function () {
   'use strict';
   var N = function () { return window.BR && window.BR.NPC; };
+  var C = function () { return window.BR && window.BR.CORP; };
   var TABS = [['nation', '国'], ['people', '住民'], ['orgs', '会社の人と会議'], ['locals', '地元の企業'], ['asuka', 'アスカ国'], ['news', 'ニュース']];
   var STANCE = { for: '賛成', against: '反対', neutral: '保留', stop: '差し止め', overrule: '決裁' };
   var st = { view: null, request: null, toast: null, tab: 'nation', all: null, people: null, person: null, company: 'tenesice', orgs: {}, q: '', d: '', j: '', page: 0, gen: 0 };
@@ -123,6 +124,64 @@ var OpsTown = (function () {
     return p;
   }
 
+  /* ------------------------------------------------- YAMATO・テネシスの新事業・MY WAY --- */
+  // 株式会社YAMATO (server/core/asuka.js yamatoView): its people by their posts, what it took this month and last by who
+  // paid it, its bill for a household of two now, its months
+  var YFROM = { 'vernoa:homes': 'ヴェルノアの家庭', 'vernoa:companies': 'ヴェルノアの企業', 'vernoa:locals': 'ヴェルノアの地元企業', 'asuka:homes': 'アスカの家庭', atsuka: 'ATSUKA Vision', research: 'テネシスリサーチ', myway: 'MY WAYの資金援助' };
+  function yamatoPanel(box, y) {
+    var m = y.month || { rev: {} }, L = y.last, sum = function (o) { return Object.keys(o || {}).reduce(function (n, k) { return n + o[k]; }, 0); };
+    var p = panel(y.name || '株式会社YAMATO', '設立 ' + day(y.founded) + '・世界の電気・ガス・水道を一社で（社員 ' + y.staff.toLocaleString('ja-JP') + '人・賞与なし）');
+    var g = el('div', 'town-grid');
+    kv(g, '手元資金', money(y.cash)); kv(g, '資本金', money(y.capital)); kv(g, '利益剰余金', money(y.retained));
+    kv(g, '今月の売上（ここまで）', money(sum(m.rev))); kv(g, '今月の人件費（ここまで）', money(m.pay)); kv(g, '今月の設備維持・整備費（ここまで）', money(m.upkeep));
+    kv(g, '2人世帯の月の料金（今）', money(y.bill)); kv(g, '緊急出動（累計）', String(y.incidents || 0) + '件（制限時間内に復旧 ' + (y.restored || 0) + '件）');
+    if (L) { kv(g, '先月の売上', money(L.rev)); kv(g, '先月の利益', money(L.profit)); kv(g, '先月の税・国庫への配当', money(L.tax) + '・' + money(L.dividend)); }
+    p.appendChild(g);
+    var by = L ? L.by : m.rev, keys = Object.keys(by || {}).sort(function (x, z) { return by[z] - by[x]; });
+    if (keys.length) p.appendChild(table(['お客（' + (L ? '先月' : '今月') + '）', '売上'], keys.map(function (k) { return [YFROM[k] || k, money(by[k])]; })));
+    p.appendChild(table(['職種', '年収', '人数'], (y.posts || []).map(function (x) { return [x.name, money(x.pay), String(x.staff)]; })));
+    if (y.hist && y.hist.length) p.appendChild(table(['月末', '売上', '人件費', '設備維持', '緊急手当', '利益', '税', '配当', '手元資金'], y.hist.slice().reverse().map(function (h) {
+      return [day(h.day), money(h.rev), money(h.pay), money(h.upkeep), money(h.emergency), money(h.profit), money(h.tax), money(h.dividend), money(h.cash)];
+    })));
+    box.appendChild(p);
+  }
+  // テネシスリサーチ (server/core/npc-research.js view): its sites, its researchers in each country, what it paid
+  function researchPanel(box, x) {
+    var p = panel(x.name || 'テネシスリサーチ', (x.on ? '稼働中' : '終了') + '・' + day(x.since) + '〜' + day(x.until) + '（MAGITA・YOSIDA・WAZIMAが参加）');
+    var g = el('div', 'town-grid'), P = x.paid || {};
+    kv(g, '研究施設', 'アスカ国 ' + x.sites.asuka + 'か所・ヴェルノア ' + x.sites.vernoa + 'か所');
+    kv(g, '研究員', (x.researchers.vernoa + x.researchers.asuka).toLocaleString('ja-JP') + '人 / ' + x.researchers.wanted.toLocaleString('ja-JP') + '人（ヴェルノア ' + x.researchers.vernoa + '・アスカ ' + x.researchers.asuka + '）');
+    kv(g, 'ヴェルノアの研究員の平均年収', money(x.avgPay)); kv(g, 'シティーワークの紹介料（累計）', money(x.feesPaid) + '（' + (x.hired || 0) + '人）');
+    Object.keys(P).forEach(function (k) { kv(g, ({ payV: 'ヴェルノアの研究員の給与', payA: 'アスカの研究員の給与', landV: 'ヴェルノアへの土地代', landA: 'アスカ国への土地代', yamato: 'YAMATOへのインフラ代', citywork: 'シティーワークへの紹介料' })[k] || k, money(P[k]) + '（累計）'); });
+    kv(g, '手元資金', money(x.cash));
+    p.appendChild(g);
+    box.appendChild(p);
+  }
+  // テネシスファンド (server/core/corp-model.js fundOne): what it lent, to whom, this fiscal year
+  function fundPanel(box, f) {
+    var p = panel('テネシスファンド', day(f.since) + 'から・各社が会議で申請を決め、審査に通ると融資（年2回まで・手元資金が1か月を切るとテネシスが自ら融資）');
+    var g = el('div', 'town-grid');
+    kv(g, '融資の件数（累計）', String(f.loans || 0)); kv(g, '融資額（累計）', money(f.lent || 0));
+    kv(g, '各社の会議での申請（累計）', String(f.asked || 0) + '件（審査で見送り ' + (f.refused || 0) + '件）');
+    p.appendChild(g);
+    var ids = Object.keys(f.by || {});
+    if (ids.length) p.appendChild(table(['会社', '年度', '今年度の回数', '融資額（累計）'], ids.map(function (id) { var b = f.by[id], c = C() && C().company(id); return [c ? c.name : id, String(b.fy), String(b.count), money(b.lent)]; })));
+    box.appendChild(p);
+  }
+  // MY WAY's contracts with the two countries and the local companies (server/core/npc-ipdeals.js view)
+  function dealsPanel(box, d) {
+    var p = panel('MY WAYとのIP契約（国・地元企業）', '契約中 ' + d.on + '件・契約料 年' + money(d.fees) + '・MY WAYの交渉係が毎日交渉');
+    var nat = d.list.filter(function (k) { return k.kind === 'nation'; });
+    var g = el('div', 'town-grid');
+    ['vernoa', 'asuka'].forEach(function (id) {
+      var k = nat.filter(function (x) { return x.id === id; })[0];
+      kv(g, (id === 'asuka' ? 'アスカ国' : 'ヴェルノア国') + '（国の公式キャラクター）', k ? (k.on ? '契約中・年' + money(k.fee) + '・規模 ×' + k.scale.toFixed(2) : '打ち切り（' + day(k.until) + '）') : '未契約');
+    });
+    kv(g, '契約中の地元企業', d.locals + '社');
+    p.appendChild(g);
+    box.appendChild(p);
+  }
+
   /* ---------------------------------------------------------------- アスカ国 --- */
   // the country beside it (server/core/asuka.js view): its people and money, ATSUKA Vision, ヴェルノア's companies'
   // branches, the money between the two countries, its months and news
@@ -133,6 +192,8 @@ var OpsTown = (function () {
     var p = panel('アスカ国', '建国 ' + day(a.founded) + '・建国資金 ' + money(a.total) + '（一度だけ発行）・人口 ' + a.people.toLocaleString('ja-JP') + '人');
     var g = el('div', 'town-grid'), J = a.jobs;
     kv(g, 'ATSUKA Visionで働く人', String(J.atsuka)); kv(g, '地元の商売で働く人', String(J.trade)); kv(g, 'ヴェルノア企業の支店で働く人', String(J.branch));
+    if (J.yamato) kv(g, '株式会社YAMATOで働く人', String(J.yamato));
+    if (J.research) kv(g, 'テネシスリサーチで働く人', String(J.research));
     kv(g, '仕事を探している人', String(J.none) + '（失業率 ' + pct(a.stats && a.stats.jobless) + '）'); kv(g, '学生', String(J.student)); kv(g, '退職した人', String(J.retired));
     p.appendChild(g);
     box.appendChild(p);
@@ -159,10 +220,11 @@ var OpsTown = (function () {
     p = panel('ATSUKA Vision', '国営の事業：アスカ国の雇用主で、ヴェルノアから稼ぐ');
     p.appendChild(table(['事業', '内容', '働く人', 'ヴェルノアからの売上（累計）'], a.atsuka.map(function (d) { return [d.name, d.what, String(d.staff), money(d.rev)]; })));
     box.appendChild(p);
+    if (a.yamato) yamatoPanel(box, a.yamato);
     // アルタス: the resources of every company, its prices as a monopoly sets them, what it sold by who bought it
     var al = a.altas;
     if (al) {
-      p = panel('アルタス（国営資源事業）', 'ヴェルノアの45社とアスカの商売の資源を独占して売る。売上は買われた分だけ・価格は毎月アルタスが決める');
+      p = panel('アルタス（国営資源事業）', 'ヴェルノアの企業（上位' + ((C() && C().companies.length) || 13) + '社と地元企業）とアスカの商売の資源を独占して売る。売上は買われた分だけ・価格は毎月アルタスが決める');
       g = el('div', 'town-grid'); var L = al.last;
       kv(g, '資源価格（建国時＝1）', (al.price || 1).toFixed(3)); kv(g, '働く人', String(al.staff)); kv(g, '今月の売上（ここまで）', money(al.month && al.month.rev));
       if (L) {
@@ -263,7 +325,7 @@ var OpsTown = (function () {
       p.appendChild(el('p', 'muted town-note', list.map(function (f) { return f.name + '：' + f.role; }).join(' ／ ')));
       box.appendChild(p);
     });
-    var q = panel('上位13社から地元の企業へ（先月）', '研究開発費・施設費・その他の経費・販売費のうち、地元の企業への業務委託・共同研究費・賃借・発注');
+    var q = panel('上位' + ((C() && C().companies.length) || 13) + '社から地元の企業へ（先月）', '研究開発費・施設費・その他の経費・販売費のうち、地元の企業への業務委託・共同研究費・賃借・発注');
     q.appendChild(table(['会社', '支払先（内容）'], Object.keys(L.paidBy).map(function (id) {
       return { cells: [co && co.company(id) ? co.company(id).name : id, L.paidBy[id].slice(0, 6).map(function (x) { return x.firm + '（' + x.what + '）' + money(x.n); }).join('、')] };
     })));
@@ -290,7 +352,8 @@ var OpsTown = (function () {
       guarantee: '未払賃金の立替払', bondInterest: '国債の利子', debtInterest: 'テネシスへの利子', casinoWins: '市民のスロットの勝ち分',
       slotWins: 'プレイヤーのスロットの勝ち分', questRewards: 'クエストの報酬', gachaClaims: 'ガチャ代（YOSIDAへ）', loginBonus: 'ログインボーナス', dailyTokens: '毎日の無料トークン',
       coopBonus: '協力プレイのボーナス', releaseBonus: 'アップデートのお礼', medalRewards: '功績の報酬', diaryRewards: '日記の報酬', treeHarvest: '金の生る木の収穫', npcGifts: 'ジョンソン・運営からの贈り物',
-      playerStart: 'プレイヤーの初期資金', treeFund: '金の生る木の肥料（収穫の財源）', newLife: '生まれた人の初期資金', bankRescue: 'テネシスへの公的資金', asukaBonds: 'アスカ国の政府系ファンドへの国債の利子', gachaShare: 'ガチャ代の国庫分（20%）' };
+      playerStart: 'プレイヤーの初期資金', treeFund: '金の生る木の肥料（収穫の財源）', newLife: '生まれた人の初期資金', bankRescue: 'テネシスへの公的資金', asukaBonds: 'アスカ国の政府系ファンドへの国債の利子', gachaShare: 'ガチャ代の国庫分（' + Math.round((1 - ((C() && C().yosida.gacha.share) || 0.8)) * 100) + '%）',
+      landRent: 'テネシスリサーチの土地代', myway: 'MY WAYへのIP契約料（国の公式キャラクター）' };
     var kindName = function (k) { return KIND[k] || k; };
     Object.keys(nf.day.in || {}).forEach(function (k) { rows.push(['収入', kindName(k), money(nf.day.in[k])]); });
     Object.keys(nf.day.out || {}).forEach(function (k) { rows.push(['支出', kindName(k), money(nf.day.out[k])]); });
@@ -322,6 +385,9 @@ var OpsTown = (function () {
       }
       box.appendChild(p);
     }
+    if (r.research) researchPanel(box, r.research);
+    if (r.fund) fundPanel(box, r.fund);
+    if (r.ipDeals) dealsPanel(box, r.ipDeals);
     p = panel('5つの区');
     p.appendChild(table(['区', '区長', '支持率', '人口', '景気', '公約'], r.districts.map(function (d) {
       return { cells: [d.name, link(d.mayor), d.approval + '%', String(d.people), (d.economy * 100).toFixed(1), (d.platform || []).map(function (id) { var x = N().platforms.filter(function (y) { return y.id === id; })[0]; return x ? x.name : id; }).join('・')] };

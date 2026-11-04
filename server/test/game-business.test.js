@@ -147,7 +147,9 @@ test('WAZIMA: MAGITA\'s share of research its sale, its own research cutting MAG
   assert.equal(sub, paid);
   // WAZIMA's sales to others are MAGITA's (what MAGITA paid it for the joint development left out); nothing owed between
   // them at a month's end
-  assert.ok(m.per.y['r:wazima'] > 0 && Math.abs(m.per.y['r:wazima'] - ((z.per.y['r:export'] || 0))) < 1e6, `${m.per.y['r:wazima']} ${z.per.y['r:export']}`);
+  // (and, since it became MY WAY's partner on 2026-11-03, what it sold of MY WAY's characters)
+  const others = (z.per.y['r:export'] || 0) + (z.per.y['r:myway'] || 0);
+  assert.ok(m.per.y['r:wazima'] > 0 && Math.abs(m.per.y['r:wazima'] - others) < 1e6, `${m.per.y['r:wazima']} ${others}`);
   // the joint development: a share of MAGITA's research is WAZIMA's sale
   assert.ok((z.per.y['r:codev'] || 0) > 0);
   // its research done: MAGITA's costs besides materials lower, never below the floor
@@ -226,7 +228,8 @@ test('the server: a spin\'s win beyond its bet is the treasury\'s, a reward pays
   assert.equal(prize.garage || 0, count('garage'));
   // what the gacha gave, sold back: a VIP ticket to DAIZIN ($200K), a reset ticket to YOSIDA ($250K), an empty garage
   // place to MAGITA ($350K) — each the company's purchase
-  s.app.db.prepare("INSERT INTO items (user_id, item, count) VALUES (?, 'gacha-vip-week', 1) ON CONFLICT(user_id, item) DO UPDATE SET count = count + 1").run(a.me.id);
+  // (exactly one, whatever the pulls above gave: the gacha's own draws are the server's secure chance)
+  s.app.db.prepare("INSERT INTO items (user_id, item, count) VALUES (?, 'gacha-vip-week', 1) ON CONFLICT(user_id, item) DO UPDATE SET count = 1").run(a.me.id);
   s.setUser(a.me.id, { garage_extra: 1, quests: JSON.stringify({ tickets: { '5h': 1, day: 0 } }) });
   const cash0 = (await s.call('GET', '/api/me', { token: a.token })).me.dollars;
   for (const item of ['vip-week', 'reset-5h', 'garage']) {

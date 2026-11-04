@@ -71,6 +71,11 @@
 .corp-svg .corp-dot { fill: var(--c2, var(--accent)); stroke: #fff; stroke-width: 2; }
 .corp-tip { position: absolute; top: 4px; width: 150px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 6px 16px rgba(20, 30, 60, .12); font-size: 12px; pointer-events: none; }
 .corp-tip span, .corp-tip b { display: block; }
+.corp-svg .corp-hbar { fill: #2f9e6e; }
+.corp-svg .corp-hbar.neg { fill: var(--bad, #d64545); }
+.corp-svg .corp-hbar.live { opacity: .45; }
+.corp-hourly { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+.corp-hourly-title { margin: 0 0 8px; font-size: 14px; }
 .corp-tip b { font-size: 14px; font-variant-numeric: tabular-nums; }
 
 .corp-ties { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }

@@ -10,6 +10,7 @@ import { NPC, CORP, LOCAL, ASUKA } from './rules.js';
 import * as econ from './npc-econ.js';
 import * as asukaModel from './asuka.js';
 import { boomOf } from './npc-macro.js';
+import { FL } from './npc-pop.js';
 
 const YEAR = 365;
 const J = NPC.job;
@@ -37,7 +38,8 @@ export function init(W, day) {
       m: blankMonth(day), last: null, year: { sales: 0, op: 0, net: 0, tax: 0, bonus: 0 }, by: {} };
   }
   const pool = [];
-  for (let i = 0; i < P.n; i++) if (P.job[i] === J.other || P.job[i] === J.part) { P.firm[i] = 0; pool.push(i); }
+  // (テネシスリサーチ's researchers are its own, not the local companies')
+  for (let i = 0; i < P.n; i++) if ((P.job[i] === J.other || P.job[i] === J.part) && !(P.flags[i] & FL.research)) { P.firm[i] = 0; pool.push(i); }
   pool.sort((a, b) => P.birth[a] - P.birth[b]);
   const left = Object.fromEntries(LOCAL.firms.map((f) => [f.id, W.locals.firms[f.id].target]));
   const head = {};
@@ -80,7 +82,8 @@ const businesses = (c, f) => [f, ...(c.extra || []).map((id) => LOCAL.firm(id)).
 function wants(W) {
   const sc = scaleOf(W), L = W.locals, out = [];
   const avg = (k) => (L.ew > 0 ? (L.ema[k] || 0) / L.ew : 0);
-  for (const f of LOCAL.firms) for (const b of L.firms[f.id].dead ? [] : businesses(L.firms[f.id], f)) for (const [src, part, label] of b.from) {
+  // (the power, gas and water companies closed into 株式会社YAMATO: what they would have sold is YAMATO's now — day)
+  for (const f of LOCAL.firms) for (const b of L.firms[f.id].dead && !L.firms[f.id].yamato ? [] : businesses(L.firms[f.id], f)) for (const [src, part, label] of b.from) {
     const w = b.sales * part * sc / YEAR, m = /^co:\*:(\w+)$/.exec(src);
     if (!m) { out.push([f, src, w, label]); continue; }
     const keys = Object.keys(L.ema).filter((k) => k.startsWith('co:') && k.endsWith(':' + m[1]) && !k.startsWith('co:*:'));
@@ -121,6 +124,8 @@ export function day(W, day) {
   }
   for (const f of LOCAL.firms) {
     const c = L.firms[f.id], g = got[f.id] || { got: 0, plan: f.sales * scaleOf(W) / YEAR };
+    // (closed into YAMATO: the companies' and the local trade's energy, out of the country to it)
+    if (c.yamato) { if (g.got > 0) { W.sector.cash -= g.got; econ.toYamato(W, g.got, 'vernoa:companies'); } c.today = { got: 0, plan: 0 }; continue; }
     if (c.dead) { c.today = { got: 0, plan: 0 }; continue; }
     c.cash += g.got;
     c.m.sales += g.got;
@@ -167,6 +172,11 @@ export function reportOf(W) {
   if (!W.locals) return null;
   return LOCAL.firms.map((f) => { const c = W.locals.firms[f.id]; return { id: f.id, no: f.no, name: f.name, sphere: f.sphere, dead: !!c.dead, staff: c.staff, days: c.days || [] }; });
 }
+// (a local company's costs of what it sold beyond its plan — MY WAY's goods, npc-ipdeals.js —, bought as all its are)
+export function spendOf(W, id, n) {
+  const f = LOCAL.firm(id), c = W.locals && W.locals.firms[id];
+  if (f && c && !c.dead && n > 0) spend(W, f, c, n);
+}
 function spend(W, f, c, n) {
   const L = W.locals, U = LOCAL.utilities;
   c.cash -= n;
@@ -174,6 +184,8 @@ function spend(W, f, c, n) {
   const pay = (id, x) => {
     const t = L.firms[id];
     if (!t || x <= 0 || id === f.id) return 0;
+    // (its power, gas and water: YAMATO's since the three closed into it)
+    if (t.yamato) { W.sector.cash -= x; econ.toYamato(W, x, 'vernoa:locals'); return x; }
     t.cash += x; t.m.sales += x; t.m.by['local:' + f.id] = (t.m.by['local:' + f.id] || 0) + x;
     return x;
   };
@@ -252,6 +264,11 @@ export function month(W, day, bonus) {
     }
     if (c.loans) c.loans = c.loans.filter((l) => l.left > 0);
     const op = m.sales - m.cost - m.pay;
+    // テネシスファンド (server/core/corp-model.js FUND): less than a month of its costs in hand, or overdrawn after a month
+    // lost — it applies, and Tenesice lends it three months of its costs for three years (twice a fiscal year at most,
+    // as far as Tenesice has its own money to lend), a point below its usual rate
+    // (not the local banks: lenders themselves)
+    if (day >= FUND_DAY && f.sphere !== 'bank' && (c.cash < (m.cost + m.pay) || (op < 0 && c.cash < 0))) fund(W, f, c, m, day);
     const tax = Math.max(0, Math.round(op * R.tax));
     if (tax > 0) { c.cash -= tax; W.sector.cash -= tax; econ.nationIn(W, 'corporate', tax); }
     const plan = f.op * sc / 12;
@@ -267,9 +284,10 @@ export function month(W, day, bonus) {
       // shops, its stock, its events —, to the other local companies, the small shops and アルタス)
       const cushion = Math.max(0, (m.cost + m.pay) * 3), extra = Math.round((c.cash - cushion) * 0.2 * Math.max(1, boomOf(W)));
       if (extra > 0) { spend(W, f, c, extra); m.invest = (m.invest || 0) + extra; econ.gdpAcc(W).inv += extra; }
-    } else if (boomOf(W) > 1.05) {
-      // (the others in a boom: what they hold beyond six months of their costs, a part of it into growing while it lasts)
-      const cushion = Math.max(0, (m.cost + m.pay) * 6), extra = Math.round((c.cash - cushion) * (boomOf(W) - 1) * 0.5);
+    } else if (boomOf(W) > 0.97) {
+      // (the others: what they hold beyond five months of their costs, a twelfth of it a month into growing in ordinary
+      // times, more in a boom; in a bust they keep it)
+      const cushion = Math.max(0, (m.cost + m.pay) * 5), extra = Math.round((c.cash - cushion) * (0.08 + Math.max(0, boomOf(W) - 1) * 0.5));
       if (extra > 0) { spend(W, f, c, extra); m.invest = (m.invest || 0) + extra; econ.gdpAcc(W).inv += extra; }
     }
     if (mine && op > 0 && people.length) {
@@ -294,6 +312,53 @@ export function month(W, day, bonus) {
     if (c.under >= BKL.months && c.cash < -BKL.overdraft * f.sales * sc / 12) file(W, f, c, day + 1, `債務超過が${c.under}か月続き、取引銀行からの追加融資も受けられず`);
   }
 }
+/* ------------------------------------------------------------- テネシスファンド --- */
+const FUND_DAY = CORP.dayAt(2026, 11, 3);
+function fund(W, f, c, m, day) {
+  const fy = CORP.fyOf(day), F = c.fund && c.fund.fy === fy ? c.fund : (c.fund = { fy, count: 0, lent: 0 });
+  if (F.count >= 2) return;
+  const months = Math.max(1, m.cost + m.pay), room = econ.bankRoom(W);
+  const n = Math.floor(Math.min(months * 3, room) / 1000) * 1000;
+  if (n <= 0) return;
+  const rate = Math.max(0.005, (W.bankRates.person || 0.025) - 0.01);
+  (c.loans || (c.loans = [])).push({ left: n, rate, month: Math.ceil(n / 36), fund: true });
+  c.debt = (c.debt || 0) + n;
+  c.cash += n; W.sector.cash += n;
+  if (W.bankRoom !== undefined && W.bankRoom !== null) W.bankRoom -= n;
+  W.sum.lent += n;
+  F.count++; F.lent += n;
+  say(W, day, f, `${f.name}がテネシスファンドに申請し、${CORP.fmt.money(n)}の融資を受けました（年${(rate * 100).toFixed(2)}%・3年）`);
+}
+
+/* ------------------------------------------------------- closed into YAMATO --- */
+// 株式会社YAMATO (server/core/asuka.js): ヴェルノア's power, gas and water companies close — the world's are one company's
+// now —: their people go (the unemployment benefit), what they owed Tenesice paid of what they had (the rest its loss),
+// an overdraft their bank's loss, what was left to the small shops (the local trade) as any of its money; the game's
+// businesses they ran sold again (server/core/corp-model.js). What they sold — the companies' energy, the local trade's —
+// is YAMATO's from now on (day, spend); the homes YAMATO bills itself (npc-state.js month).
+export const INTO_YAMATO = ['power', 'gas', 'aqua'];
+export function closeIntoYamato(W, day) {
+  if (!W.locals) init(W, day);
+  const P = W.P;
+  for (const id of INTO_YAMATO) {
+    const f = LOCAL.firms.find((x) => x.id === id), c = W.locals.firms[id];
+    if (!f || !c || c.yamato) continue;
+    let staff = 0;
+    for (let i = 0; i < P.n; i++) if (firmOf(P, i) === f.no) { W.labor.leave(W, i, day, 'fired'); staff++; }
+    W._staff = null;
+    const back = Math.min(c.debt || 0, Math.max(0, c.cash));
+    if (back > 0) { c.cash -= back; c.debt -= back; W.sector.cash -= back; W.sum.repaid += back; }
+    if (c.debt > 0) { econ.toBank(W, day, 'credit', c.debt); W.sum.lent -= c.debt; c.debt = 0; }
+    if (c.cash < 0) { const bank = bankOf(W, id); if (bank) { bank.cash += c.cash; bank.m.cost -= c.cash; } }
+    c.cash = 0;
+    c.dead = { day, why: '株式会社YAMATOに一本化', debt: 0, staff };
+    c.yamato = day;
+    c.staff = 0; c.target = 0;
+    for (const [fid, by] of Object.entries(W.locals.ops || {})) if (by === f.id) { delete W.locals.ops[fid]; (W.locals.failed || (W.locals.failed = [])).push(f.id); }
+    say(W, day, f, `${f.name}は事業を終え、電気・ガス・水道は株式会社YAMATOに一本化されました。社員${staff}人が職を失いました`);
+  }
+}
+
 /* ---------------------------------------------------------------- 破産 --- */
 const BKL = CORP.bankruptcy.local, BK = CORP.bankruptcy;
 // the local bank that lends to the others: 第一地域銀行, else セントラル信用金庫 (null: none left, Tenesice's)

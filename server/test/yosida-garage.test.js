@@ -41,21 +41,25 @@ test('the rules: YOSIDA with its numbers, its six cars and two engines (no 専�
 });
 
 test('Car Owner orders a sold-out car again in a bigger lot: MAGITA\'s by the next day, YOSHIDA\'s five days later and far more of them', () => {
-  const W = { scale: 1, stock: { cars: { 'nissan-gt-r': 0, 'yoshida-s6': 0 }, orders: [], lots: {} } };
+  const W = { scale: 1, stock: { cars: { 'nissan-gt-r': 0, 'yoshida-s5': 0 }, orders: [], lots: {} } };
   orderCar(W, 'nissan-gt-r', 100);
-  orderCar(W, 'yoshida-s6', 100);
-  orderCar(W, 'yoshida-s6', 100);   // (once: one already on its way)
-  const gtr = W.stock.orders.find((o) => o.id === 'nissan-gt-r'), s6 = W.stock.orders.filter((o) => o.id === 'yoshida-s6');
+  orderCar(W, 'yoshida-s5', 100);
+  orderCar(W, 'yoshida-s5', 100);   // (once: one already on its way)
+  const gtr = W.stock.orders.find((o) => o.id === 'nissan-gt-r'), s6 = W.stock.orders.filter((o) => o.id === 'yoshida-s5');
   assert.equal(s6.length, 1);
   assert.equal(gtr.at, 101);
   assert.equal(s6[0].at, 105);
-  const f1 = CORP.firstLot('nissan-gt-r', 1), f2 = CORP.firstLot('yoshida-s6', 1);
+  const f1 = CORP.firstLot('nissan-gt-r', 1), f2 = CORP.firstLot('yoshida-s5', 1);
   assert.equal(gtr.n, Math.max(f1 + 1, Math.ceil(f1 * 1.25)));
   assert.equal(s6[0].n, f2 * 2);
   // sold out again: the lots grow again (up to their caps)
   W.stock.orders = [];
-  orderCar(W, 'yoshida-s6', 110);
+  orderCar(W, 'yoshida-s5', 110);
   assert.equal(W.stock.orders[0].n, Math.min(f2 * 32, f2 * 4));
+  // (a car no longer sold — the S6, in the S6 WAY's place now —: never ordered again)
+  W.stock.orders = [];
+  orderCar(W, 'yoshida-s6', 120);
+  assert.equal(W.stock.orders.length, 0);
 });
 
 test('the economy: in bad times YOSHIDA\'s cars sell more and MAGITA\'s less, in good times the other way; Car Owner sells both', () => {

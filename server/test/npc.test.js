@@ -232,10 +232,13 @@ test('the 32 local companies: their people from the local jobs, their sales from
   const v = localModel.view(W);
   assert.equal(v.firms.length, 32);
   assert.ok(v.firms.filter((f) => f.staff > 0).length >= 28, 'most have their people');
-  // (who pays them: WAZIMA's research the 極東精機ラボ's, the households' bills the power company's, MAGITA's to its own)
+  // (who pays them: WAZIMA's research the 極東精機ラボ's, MAGITA's to its own; the power, gas and water companies closed
+  // into 株式会社YAMATO — the households' bills and the companies' energy its now)
   const by = (id) => (W.locals.firms[id].last || {}).by || {};
   assert.ok(by('kyokuto')['co:wazima:rd'] > 0);
-  assert.ok(by('power')['people:utilities'] > 0 && Object.keys(by('power')).some((k) => /^co:\w+:place$/.test(k)));
+  assert.ok(['power', 'gas', 'aqua'].every((id) => W.locals.firms[id].yamato));
+  const yr = W.asuka.yamato.hist.reduce((o, h) => { for (const [k, v] of Object.entries(h.by)) o[k] = (o[k] || 0) + v; return o; }, {});
+  assert.ok(yr['vernoa:homes'] > 0 && yr['vernoa:companies'] > 0, JSON.stringify(yr));
   assert.ok(v.paidBy.magita.some((x) => x.firm === 'MAGITAマテリアル'));
   // (their people paid by them, and shown working for them)
   assert.ok(Object.values(W.locals.firms).every((f) => !f.staff || (f.last && f.last.pay > 0)));

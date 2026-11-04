@@ -10,6 +10,7 @@ import * as econ from './npc-econ.js';
 import { thinkCar, thinkJob } from './npc-mind.js';
 import * as asuka from './asuka.js';
 import * as heart from './npc-heart.js';
+import * as deals from './npc-ipdeals.js';
 
 const A = NPC.act;
 const PL = Object.fromEntries(NPC.places.map((p, k) => [p, k]));
@@ -425,7 +426,7 @@ const ACTIONS = {
     // (some outings are trips to アスカ・リゾート: its money, ATSUKA Vision's)
     // (the cheaper アスカ is, against its founding prices, the more go)
     const used = (x) => { if (P.emo2) heart.spent(P, i, x); else P.fund[i * 4 + 2] -= x; };
-    if (n > 0 && W.asuka && r.u() < ASUKA.rules.tourism / ((W.asuka.policy && W.asuka.policy.price) || 1)) { if (econ.pay(W, i, n, false)) { asuka.earned(W, n, 'resort'); econ.gdpAcc(W).trips += n; used(n); } }
+    if (n > 0 && W.asuka && r.u() < ASUKA.rules.tourism * deals.tripLift(W) / ((W.asuka.policy && W.asuka.policy.price) || 1)) { if (econ.pay(W, i, n, false)) { asuka.earned(W, n, 'resort'); econ.gdpAcc(W).trips += n; used(n); } }
     else if (n > 0 && econ.toSector(W, i, n, false, 'leisure')) used(n);
     // (a little from the shops on the way)
     if (r.u() < 0.5) econ.buy(W, i, day, 'jinx', 'goods', econ.spendAt(W, 'jinx:goods', n * 0.25), false);
