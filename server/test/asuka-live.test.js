@@ -50,8 +50,9 @@ test('アスカ国\'s people through the day as ヴェルノア\'s: at work and 
   B.cash.fill(0); B.act.fill(0);
   asuka.unpack(B, hot, true);
   assert.deepEqual([Array.from(B.cash.subarray(0, 50)), Array.from(B.act.subarray(0, 50)), Array.from(B.left.subarray(0, 50))], [Array.from(A.cash.subarray(0, 50)), Array.from(A.act.subarray(0, 50)), Array.from(A.left.subarray(0, 50))]);
-  // (a country kept before its people went out: its blobs without the day's columns still read)
-  const old = asuka.pack(A, false), cut = old.reduce((x, r) => x + r.byteLength, 0) - A.n * (1 + 4 + 8 + 8);
+  // (a country kept before its people went out: its blobs without the day's columns — nor the later ones: 消費観, and
+  // 健康度 with HACHI's — still read)
+  const old = asuka.pack(A, false), cut = old.reduce((x, r) => x + r.byteLength, 0) - A.n * (1 + 4 + 8 + 8 + 1 + (1 + 1 + 1 + 1 + 1 + 2));
   const flat = new Uint8Array(cut); let k = 0;
   for (const r of old) { const take = Math.min(r.byteLength, cut - k); if (take > 0) flat.set(r.subarray(0, take), k); k += take; }
   const C = asuka.unpack(asuka.alloc(A.n), [flat]);

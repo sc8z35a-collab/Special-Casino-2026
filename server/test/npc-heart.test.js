@@ -125,9 +125,12 @@ test('dearer times feared: a household stocks two to four weeks of living goods 
   assert.ok(P.cash[i] < cash, 'paid for');
   assert.equal(c.money(), money0, 'every $ to someone');
   // the next days: the household buys much less of its living goods
-  const living = (stocked) => { P.hoard[i] = stocked; P.cash[i] = 500000000; state.dayStart(W, DAY + 1, even, ctx); return 500000000 - P.cash[i]; };
-  const usual = living(0), after = living(10);
-  assert.ok(after < usual, `stocked at home: ${after} against ${usual}`);
+  // (what the country's households spent on their living goods that day — the local shops' part —: the others' the same
+  // each time, the rest of this one's day — its pleasures, its plans — its own as its feelings move)
+  // (the day's own counts: handed to the local companies as the day starts, so kept by hand here)
+  const living = (stocked) => { P.hoard[i] = stocked; P.cash[i] = 500000000; const by = W.sector.today = {}; state.dayStart(W, DAY + 1, even, ctx); return by['people:living'] || 0; };
+  const usual = living(0), after = living(10), again = living(0);
+  assert.ok(after < Math.min(usual, again), `stocked at home: ${after} against ${usual} and ${again}`);
 });
 
 test('a spree when stressed: the careless put it on a loan (the bank\'s own money), feel better for now — and regret it within the fortnight, learning of debt and spending', () => {

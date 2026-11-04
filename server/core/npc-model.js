@@ -26,6 +26,8 @@ import { gdpDay, gdpView } from './npc-gdp.js';
 import { macroDay, macroView, boomOf } from './npc-macro.js';
 import * as heart from './npc-heart.js';
 import * as research from './npc-research.js';
+import * as hachi from './hachi.js';
+import * as health from './npc-health.js';
 
 const MIN = 60000, DAY_MIN = 1440;
 export { LISTED_IDS };
@@ -40,10 +42,13 @@ export function boot(key, now, corp, { n = NPC.nation.population, held = {} } = 
   const day = Math.floor(now / 86400000), first = NPC.jst(now).date;
   const scale = n / NPC.nation.population;
   const view = { companies: {} };
-  for (const id of NPC.companies) { const s = corp.co[id]; view.companies[id] = { staff: Math.round(s.n * scale), pay: s.pay }; }
+  // (a company not founded yet — HACHI before its day —: nobody of it)
+  for (const id of NPC.companies) { const s = corp.co[id]; view.companies[id] = s ? { staff: Math.round(s.n * scale), pay: s.pay } : { staff: 0, pay: 0 }; }
   const { P, ages } = pop.makePeople(n, day, view, r);
   pop.makeHomes(P, ages, day, r);
   const W = blank(key, n, scale, first, day, Math.floor(now / MIN) - 1);
+  // (its people's 健康度 made on its scale from the start: npc-health.js)
+  W.health2 = day;
   W.P = P;
   attach(W);
   org.assign(W, ages, r);
@@ -101,16 +106,47 @@ export function toWelcome(W, corp) {
     return !o || (!o.came && !W.staffOf(id).length);
   });
 }
-export function welcome(W, corp, day) {
+// A company founded in a living country (HACHI): its shares, as the others' were at the start — its founders' part to a
+// rich older family, the rest to the investors by their money and their taste for risk (the listed ones' through the
+// market, the others held by the few)
+export function sharesFor(W, corp, id) {
+  const P = W.P, s = corp.co[id], p = CORP.company(id);
+  if (!s || (W.priv[id] && W.priv[id].length)) return;
+  const k = LISTED_IDS.indexOf(id), out = s.sh.issued - s.sh.treasury, people = Math.max(0, out - (W.playerShares ? W.playerShares[id] || 0 : 0));
+  const give = (i, x) => {
+    if (x <= 0) return;
+    if (k >= 0) P.sh[i * LISTED + k] += x;
+    else { const l = W.priv[id] || (W.priv[id] = []); const h = l.find((y) => y[0] === i); if (h) h[1] += x; else l.push([i, x]); }
+  };
+  let fam = W.richest;
+  for (let i = 0, best = -1; i < P.n; i++) if (!(P.flags[i] & FL.founder) && ageOf(P, i, W.day) >= 50 && P.cash[i] > best) { best = P.cash[i]; fam = i; }
+  P.flags[fam] |= FL.founder | FL.famous;
+  const fShares = Math.min(people, Math.round(out * (p.founders || 0)));
+  give(fam, fShares);
+  const pool = [];
+  for (let i = 0; i < P.n; i++) if (P.cash[i] > 30000000 && P.tr[i * NT + T.risk] > 90) pool.push(i);
+  const list = k >= 0 ? pool : pool.filter((i) => P.cash[i] > 500000000).slice(0, 60);
+  const ps = list.reduce((a, i) => a + Math.pow(P.cash[i], 1.05) * P.tr[i * NT + T.risk], 0) || 1;
+  let left = people - fShares;
+  for (const i of list) {
+    if (left <= 0) break;
+    const x = Math.min(left, Math.floor((people - fShares) * Math.pow(P.cash[i], 1.05) * P.tr[i * NT + T.risk] / ps));
+    give(i, x);
+    left -= x;
+  }
+  give(list.length ? list[0] : fam, left);
+}
+export function welcome(W, corp, day, only = null) {
   const P = W.P, came = [];
-  const ids = toWelcome(W, corp);
+  const ids = toWelcome(W, corp).filter((id) => !only || id === only);
   if (!ids.length) return came;
   const ages = new Int16Array(P.n);
   for (let i = 0; i < P.n; i++) ages[i] = ageOf(P, i, day);
-  // those who may come: of working age, out of work or in work of another kind (never a civil servant, a student or a mayor)
+  // those who may come: of working age, out of work or in work of another kind (never a civil servant, a student, a
+  // mayor or テネシスリサーチ's researcher — its own five years' —)
   const J = NPC.job, first = { [J.none]: 2, [J.part]: 1.5, [J.other]: 1, [J.self]: 0.5, [J.home]: 0.2 };
   const pool = [];
-  for (let i = 0; i < P.n; i++) if (first[P.job[i]] !== undefined && ages[i] >= 20 && ages[i] < 60 && !(P.flags[i] & (FL.student | FL.mayor))) pool.push(i);
+  for (let i = 0; i < P.n; i++) if (first[P.job[i]] !== undefined && ages[i] >= 20 && ages[i] < 60 && !(P.flags[i] & (FL.student | FL.mayor | FL.research))) pool.push(i);
   // (what each plans to have — already for the country's size once the companies live on it, never more than its size
   // for the country by a third —, all the same share of it when there are not enough people)
   const wants = ids.map((id) => { const c = corp.co[id], size = CORP.company(id).staff * W.scale; return Math.max(1, Math.round(Math.min(c.target || c.n || size, size * 1.3))); });
@@ -118,7 +154,10 @@ export function welcome(W, corp, day) {
   const taken = new Uint8Array(P.n);
   ids.forEach((id, k) => {
     const c = corp.co[id], r = seeded(W.key, 'welcome:' + id), want = wants[k], f = pop.FIT[id] || [0, 1];
-    const cand = pool.filter((i) => !taken[i]).map((i) => [i, first[P.job[i]] + (P.sk[i * 8 + f[0]] + P.sk[i * 8 + f[1]]) / 255 + r.u()]);
+    // (HACHI's wards: those out of work, part-timers and those at home first — the local companies' people, whose
+    // businesses the country lives on, last of all)
+    const keep = id === 'hachi' ? (i) => (local.firmOf(P, i) ? -2.5 : P.job[i] === J.home ? 1.6 : 0) : () => 0;
+    const cand = pool.filter((i) => !taken[i]).map((i) => [i, first[P.job[i]] + keep(i) + (P.sk[i * 8 + f[0]] + P.sk[i * 8 + f[1]]) / 255 + r.u()]);
     cand.sort((a, b) => b[1] - a[1]);
     const hired = cand.slice(0, Math.floor(want * share)).map((x) => x[0]), code = NPC.jobOf(id), site = NPC.sites[id] || [[0, 1]];
     for (const i of hired) {
@@ -137,6 +176,9 @@ export function welcome(W, corp, day) {
     org.assignOne(W, id, ages, r);
     W.orgs[id].came = day;
     pop.payStaff(P, hired, c.pay || CORP.company(id).salary, ages, r, id);
+    // (HACHI: each at its department's pay — its medical staff, its 経営陣, its researchers: CORP.hachi.pay —, a little
+    // more for the years)
+    if (id === 'hachi') for (const i of hired) P.salary[i] = Math.round(hachi.payFor(W, P.dept[i]) * (0.96 + 0.08 * r.u()) * (1 + Math.max(0, Math.min(20, ages[i] - 30)) * 0.005));
     W.labor.join(W, id, hired, r);
     for (const i of hired) remember(P, i, day, M.hired, 150);
     const hq = NPC.districts.find((d) => d.hq.includes(id));
@@ -251,6 +293,8 @@ function own(W, ages, day, corp, held, r) {
   const founders = rich.map((x) => x[0]).filter((i) => ages[i] >= 50);
   NPC.companies.forEach((id, ci) => {
     const s = corp.co[id], p = CORP.company(id);
+    // (a company founded later — HACHI —: its shares given out on its day, sharesFor)
+    if (!s) return;
     const out = s.sh.issued - s.sh.treasury;
     const byCo = Object.values(s.hold.by || {}).reduce((a, b) => a + b, 0);
     const playersHeld = held[id] || 0;
@@ -346,7 +390,7 @@ function calibrate(W, corp, day) {
   W.nation.fund.cash = Math.round(pensions * 2);
   W.nation.fund.bonds = Math.round(pensions * 2);
   let bonds = 0;
-  for (const id of NPC.companies) if (id !== 'tenesice') bonds += corp.co[id].bal.bonds || 0;
+  for (const id of NPC.companies) if (id !== 'tenesice' && corp.co[id]) bonds += corp.co[id].bal.bonds || 0;
   W.nation.debt = bonds + W.nation.fund.bonds;
   // the country's old debt, held by Tenesice (its bonds: what the bank's book abroad became), at its rate
   W.nation.bank = Math.round(3e12 * sc);
@@ -371,6 +415,8 @@ export function tick(W, m, ctx) {
   if (W.lastTick !== m - 1) for (let i = 0; i < P.n; i++) if (P.due[i] < m) P.due[i] = m + (hash32(i, m) % 15);
   W.lastTick = m;
   for (let i = 0; i < P.n; i++) if (P.due[i] <= m) decide(W, i, m, t, j, r, ctx);
+  // HACHI's wards this minute: their desks, and the hour of those at −90 and below (server/core/hachi.js)
+  hachi.tick(W, m, ctx, (i) => state.die(W, i, Math.floor(m / 1440), r, ctx));
   W.market.auction(W, m, ctx);
   // アスカ国's people, the same minute (server/core/asuka.js tick)
   asuka.tick(W, m, j);
@@ -388,7 +434,8 @@ export function flowsFor(W, day) {
   for (const id of NPC.companies) {
     const st = W.staffOf(id);
     let pay = 0, n = 0, all = 0;
-    for (const i of st) { all += P.salary[i]; if (P.flags[i] & FL.striking) continue; pay += P.salary[i]; n++; }
+    // (the healthiest earn up to 70% more of their pay: their employer pays it — npc-health.js earn)
+    for (const i of st) { const g = P.salary[i] * health.earnOf(P, i); all += g; if (P.flags[i] & FL.striking) continue; pay += g; n++; }
     staff[id] = { n, pay: n ? pay / n : st.length ? all / st.length : 0 };
   }
   // (the raises the unions settled in this year's talks: the companies give them from April)
@@ -419,6 +466,10 @@ export function flowsFor(W, day) {
     asuka: asuka.flowsFor(W),
     // (テネシスリサーチ: what its facilities need of Tenesice today — server/core/npc-research.js)
     research: { need: research.need(W) },
+    // (HACHI's wards: how busy, its patients, what MY WAY's advertising brought — server/core/hachi.js)
+    hachi: hachi.flowsFor(W),
+    // (the 医療税's rate now: on the companies' profits too, at the month's end — corp-model medicalTaxMonth)
+    medicalTax: NPC.knobOf(W, 'medicalTax'),
     // (MY WAY's share price at the last close and a month before: what it spends on advertising, corp-model mywayGrow)
     mwPrice: W.mwPx && W.mwPx.length ? { now: W.mwPx[W.mwPx.length - 1], month: W.mwPx[0] } : null,
     // (海外's money, and the local trade's, for what the companies sell them: server/core/corp-model.js abroadBuys, sectorBuys)
@@ -466,7 +517,13 @@ export function nextDay(W, day, ext, ctx) {
   W._staff = null;
   // (a country that lived before アスカ国 was: founded now, its money printed once — the money ledger told of it)
   if (!W.asuka) { const made = asuka.found(W, day + 1); if (made && W.ledger) W.ledger.founded = (W.ledger.founded || 0) + made; }
+  // (健康度 on its scale: a country kept before it, once — npc-health.js)
+  if (!W.health2) health.recalibrate(W, day, ageOf);
   state.fromCompanies(W, ext, day);
+  // (株式会社HACHI founded at this close: its people taken on at once — its wards, its 経営陣, its researchers)
+  if (ctx && ctx.corp && ctx.corp.co.hachi && toWelcome(W, ctx.corp).includes('hachi')) { welcome(W, ctx.corp, day + 1, 'hachi'); sharesFor(W, ctx.corp, 'hachi'); }
+  // (its CEO and 社長 named from its people once it has them, if nobody was free to be taken on at once)
+  if (ctx && ctx.corp && ctx.corp.co.hachi && !ctx.corp.co.hachi.dead) org.fillTop(W, 'hachi', day + 1);
   // アスカ国's day: what the companies paid it, its people's spending, its month
   asuka.day(W, day, ext);
   // the day's GDP of each country (its producers' books of the day just closed: server/core/npc-gdp.js)
@@ -652,12 +709,16 @@ export function card(W, i, day) {
   return {
     id: pop.pid(P, i), i, name: nm.name, kana: nm.kana, sex: P.sex[i], age, district: P.dist[i], at: P.ldist[i], job, posts,
     act: NPC.acts[P.act[i]] ? NPC.acts[P.act[i]].name : '', place: NPC.placeNames[NPC.places[P.place[i]]] || '', mood: P.emo[i * 5],
-    home: ['賃貸', '持ち家', '家族と同居', '居候', '路上'][P.home[i]] || '', famous: !!(P.flags[i] & (FL.famous | FL.mayor | FL.exec)), voice: text.voice(W, i, day)
+    home: ['賃貸', '持ち家', '家族と同居', '居候', '路上'][P.home[i]] || '', famous: !!(P.flags[i] & (FL.famous | FL.mayor | FL.exec)), voice: text.voice(W, i, day),
+    // (their 身分証明書: its number, their 医療保険, their 健康度 — server/core/hachi.js)
+    idCard: hachi.idCard(W, i)
   };
 }
 
 // the plain data of a world (what is kept besides the people's columns)
-const SKIP = new Set(['P', 'AP', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners', 'knobChanged', 'carSold', 'closeIntoYamato', 'stateTake', 'aiAdvice']);
+// (`hosp`: HACHI's wards' desks and queues this minute — remade as people come; those at −90 and below from their
+// `crit` column, server/core/hachi.js)
+const SKIP = new Set(['P', 'AP', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners', 'knobChanged', 'carSold', 'closeIntoYamato', 'stateTake', 'aiAdvice', 'hosp']);
 export function metaOf(W) {
   const out = {};
   for (const [k, v] of Object.entries(W)) if (!SKIP.has(k) && typeof v !== 'function') out[k] = v;

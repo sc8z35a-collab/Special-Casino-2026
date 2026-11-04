@@ -44,19 +44,21 @@
     { id: 'seed', name: '金の生る木の種', chance: 1 }
   ];
   var TABLES = { rare: RARE, legendary: LEGENDARY, secret: SECRET };
-  // `price`: one pull (一連: `SLOTS` slots)
+  // `price`: one pull (一連: `SLOTS` slots, the secret one `slots` of its own)
   var SLOTS = 2;
   var KINDS = [
     { id: 'rare', name: 'レアガチャ', price: 4500000 },
     { id: 'legendary', name: 'レジェンダリーガチャ', price: 27000000 },
-    { id: 'secret', name: 'シークレットガチャ', price: 45000000 }
+    // (3 slots a pull from 2026-11-04: its price a little below the 3-slot $67.5M that its old return a slot would make)
+    { id: 'secret', name: 'シークレットガチャ', price: 60000000, slots: 3 }
   ];
   // リリース記念セール: the secret gacha at this a pull for `hours` from when the server first ran with it
   // (server/core/gacha.js keeps that moment and tells the game when the sale ends)
-  var RELEASE_SALE = { kind: 'secret', price: 40000000, hours: 100 };
+  var RELEASE_SALE = { kind: 'secret', price: 54000000, hours: 100 };
   // what the players can sell what the gacha gave them for, a piece (each bought back by the company that provides
-  // it: the VIP1週間券 DAIZIN, the reset tickets YOSIDA, a garage coin — an empty place of one's garage — MAGITA)
-  var SELL = { 'vip-week': 200000, 'reset-5h': 250000, 'reset-day': 350000, garage: 350000 };
+  // it: the VIP1週間券 DAIZIN, the reset tickets YOSIDA, a garage coin — an empty place of one's garage — MAGITA, a
+  // money tree's seed YOSIDA, at what it pays one whose trees are all there: CORP.yosida.gacha.treePay)
+  var SELL = { 'vip-week': 200000, 'reset-5h': 250000, 'reset-day': 350000, garage: 350000, seed: 3000000 };
 
   function hash(text) {
     var h = 2166136261;
@@ -87,6 +89,11 @@
     return { boost: campaign('probability-up', now), sale: campaign('big-sale', now) };
   }
   // `sale`: the リリース記念セール is on (its kind costs its sale price a pull; 3 and 10 pulls keep their discount)
+  // the slots of one pull of a kind
+  function slotsOf(kind) {
+    var tier = KINDS.filter(function (k) { return k.id === kind; })[0];
+    return (tier && tier.slots) || SLOTS;
+  }
   function price(kind, count, sale) {
     var tier = KINDS.filter(function (k) { return k.id === kind; })[0];
     if (!tier || (count !== 1 && count !== 3 && count !== 10)) throw new RangeError('Unknown gacha bundle');
@@ -156,7 +163,7 @@
     // Every slot in a purchase has the same table; build it once, including a 30-slot bundle.
     var table = odds(kind, boostOn), pulls = [];
     for (var i = 0; i < count; i++) {
-      var rewards = [], n = SLOTS;
+      var rewards = [], n = slotsOf(kind);
       for (var j = 0; j < n; j++) rewards.push(drawOne(table, rand));
       var bonus = null;
       if (saleOn && rand() < 0.8) {
@@ -180,7 +187,7 @@
   }
 
   BR.GACHA = {
-    cars: CARS, pool: DRAW, carPrice: carPrice, randomCar: randomCar, rare: RARE, legendary: LEGENDARY, secret: SECRET, kinds: KINDS, slots: SLOTS, sell: SELL, releaseSale: RELEASE_SALE, events: events, price: price, odds: odds, draw: draw,
+    cars: CARS, pool: DRAW, carPrice: carPrice, randomCar: randomCar, rare: RARE, legendary: LEGENDARY, secret: SECRET, kinds: KINDS, slots: SLOTS, slotsOf: slotsOf, sell: SELL, releaseSale: RELEASE_SALE, events: events, price: price, odds: odds, draw: draw,
     pct: pct, label: label, car: car, day: DAY, grownGiven: 1500000
   };
 })(globalThis.BR = globalThis.BR || {});

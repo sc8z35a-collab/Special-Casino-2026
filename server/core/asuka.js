@@ -12,12 +12,15 @@
 // spending, a month's pay, pensions and jobs, deaths and new lives at 18 (their money the treasury's, as ヴェルノア's).
 import { ASUKA, NPC, CORP, LOCAL } from './rules.js';
 import { seeded } from './npc-rand.js';
+import * as hachi from './hachi.js';
+import { earn as healthEarn } from './npc-health.js';
 
 const R = ASUKA.rules, CATS = ASUKA.cats, DIV = ASUKA.atsuka.divisions, YEAR = 365;
 // (yamato: 株式会社YAMATO's people, by their post in `emp`; research: テネシスリサーチ's researchers here, by their
 // facility in `emp` — server/core/npc-research.js)
-export const JOB = { none: 0, atsuka: 1, trade: 2, branch: 3, student: 4, retired: 5, yamato: 6, research: 7 };
-const PAID = (j) => j === JOB.atsuka || j === JOB.trade || j === JOB.branch || j === JOB.yamato || j === JOB.research;
+// (hachi: 株式会社HACHI's medical staff at its wards here; figma: 株式会社FIGMA's people — server/core/hachi.js)
+export const JOB = { none: 0, atsuka: 1, trade: 2, branch: 3, student: 4, retired: 5, yamato: 6, research: 7, hachi: 8, figma: 9 };
+const PAID = (j) => j === JOB.atsuka || j === JOB.trade || j === JOB.branch || j === JOB.yamato || j === JOB.research || j === JOB.hachi || j === JOB.figma;
 const COS = NPC.companies;
 const NC = CATS.length;
 // (each person's: `hot` what moves within a day — kept every few minutes with ヴェルノア's —, `late` what a country kept
@@ -27,7 +30,10 @@ const COLS = [['birth', Int32Array, 1], ['dist', Uint8Array, 1], ['job', Uint8Ar
   ['act', Uint8Array, 1, 'hot', 'late'], ['due', Int32Array, 1, 'hot', 'late'], ['need', Float64Array, 1, 'hot', 'late'], ['left', Float64Array, 1, 'hot', 'late'],
   // (消費観, docs/ai-economy-plan.md 2.3: the sense that one's own spending keeps the country going — from middling to
   // as high as ヴェルノア's people's, 0.5 to 0.85 —: in hard times they spend to support it, as far as they can afford)
-  ['ethos', Uint8Array, 1, 'late']];
+  ['ethos', Uint8Array, 1, 'late'],
+  // (健康度 and HACHI's: a long illness's weight, this month's medicine, the 医療保険 on one's 身分証明書, a bed or リハビリ,
+  // the month of one's last checkup — server/core/hachi.js)
+  ['hp', Int8Array, 1, 'late'], ['ill', Uint8Array, 1, 'late'], ['med', Uint8Array, 1, 'late'], ['ins', Uint8Array, 1, 'late'], ['care', Uint8Array, 1, 'late'], ['chk', Uint16Array, 1, 'late']];
 const isHot = (c) => c.includes('hot'), isLate = (c) => c.includes('late');
 // what a person is doing (as ヴェルノア's people, minute by minute within the hours the people are about)
 export const ACT = { home: 0, sleep: 1, commute: 2, work: 3, lunch: 4, shop: 5, leisure: 6, study: 7 };
@@ -152,7 +158,7 @@ export function moneyOf(W) {
   if (!a || !A) return 0;
   let x = 0;
   for (let i = 0; i < A.n; i++) x += A.cash[i] - A.debt[i];
-  x += a.treasury + a.atsuka.cash + a.bank.own + a.bank.lent + a.boost.cash + a.pension.cash + a.trade.cash + (a.yamato ? a.yamato.cash : 0);
+  x += a.treasury + a.atsuka.cash + a.bank.own + a.bank.lent + a.boost.cash + a.pension.cash + a.trade.cash + (a.yamato ? a.yamato.cash : 0) + (a.figma ? a.figma.cash : 0) + (a.medResearch || 0);
   for (const v of Object.values(a.toCo)) for (const n of Object.values(v)) x += n;
   return x;
 }
@@ -195,7 +201,7 @@ export function fromCompanies(W, x, day) {
     a.sum.fromVernoa += n;
     let total = 0;
     const staff = [];
-    for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.branch && A.emp[i] === k) { staff.push(i); total += A.pay[i]; }
+    for (let i = 0; i < A.n; i++) if (co === 'hachi' ? A.job[i] === JOB.hachi : A.job[i] === JOB.branch && A.emp[i] === k) { staff.push(i); total += A.pay[i]; }
     // (nobody there yet: the local trade's, for the work done for it)
     if (!staff.length) { a.trade.cash += n; continue; }
     let left = n;
@@ -208,6 +214,8 @@ export function fromCompanies(W, x, day) {
   // (what its people paid a company that failed before its day closed: back to the local trade that served them)
   if (x.refund > 0) { a.trade.cash += Math.round(x.refund); a.sum.fromVernoa += Math.round(x.refund); }
   if (x.branches) branchesSet(W, x.branches);
+  // (HACHI's: its wards' land and 管理費, FIGMA's equipment, the joint research, its surplus and a buyout under the state)
+  if (x.hachi) fromHachi(W, x.hachi, day);
   // (the drawing fund's part of the new branches' buildings: to ATSUKA Vision's zone)
   if (x.boost > 0) { const n = Math.min(a.boost.cash, Math.round(x.boost)); a.boost.cash -= n; a.boost.paid += n; a.atsuka.cash += n; a.atsuka.rev.zone = (a.atsuka.rev.zone || 0) + n; tout(a, 'boost', n); }
   void day;
@@ -215,10 +223,130 @@ export function fromCompanies(W, x, day) {
 // a person's pay in: the income tax the treasury's, the rest theirs
 function income(W, i, gross) {
   const a = W.asuka, A = W.AP;
-  const tax = Math.round(gross * R.tax.income);
-  A.cash[i] += gross - tax;
-  a.treasury += tax;
+  const tax = Math.round(gross * R.tax.income), med = hachi.asukaTax(W, gross);
+  A.cash[i] += gross - tax - med;
+  // (the 医療税: six tenths HACHI's — its wards' takings —, the rest the treasury's)
+  const toHachi = med ? hachi.asukaTaxed(W, med) : 0;
+  a.treasury += tax + med - toHachi;
   tin(a, 'income', tax);
+  if (med - toHachi) tin(a, 'medicalTax', med - toHachi);
+}
+// What HACHI paid アスカ国 today (corp-hachi.js, through corp-model asukaDay): its wards' land (the treasury's), their
+// 管理費 (the local trade's work), FIGMA's equipment (its sales — and アスカ国's research buying of it), the joint
+// research (アスカ国's medical research money), what the company costs beyond its people's pay (the treasury's social
+// insurance), its surplus under the state (the owner's), what it lacks under the state (put in tomorrow), its buyout
+function fromHachi(W, x, day) {
+  const a = W.asuka, n = (k) => Math.max(0, Math.round(x[k] || 0));
+  const all = n('land') + n('admin') + n('figma') + n('research') + n('owner') + n('social');
+  a.sum.fromVernoa += all;
+  a.treasury += n('land') + n('owner') + n('social');
+  tin(a, 'hachiLand', n('land')); tin(a, 'hachiOwner', n('owner')); tin(a, 'hachiSocial', n('social'));
+  a.trade.cash += n('admin');
+  a.trade.month = (a.trade.month || 0) + n('admin');
+  // (its equipment and its research — the joint research, done by FIGMA with アスカ国's materials —: FIGMA's sales, and
+  // アスカ国's own research budget buying half as much again of it: 4 : 6)
+  if (a.figma) hachi.figmaSales(W, n('figma') + n('research')); else a.trade.cash += n('figma') + n('research');
+  if (x.need > 0) a.hachiNeed = (a.hachiNeed || 0) + Math.round(x.need);
+  if (x.buyout) buyHachi(W, x.buyout.price, day);
+}
+// 株式会社HACHI bought by its contract (its failure: CORP.hachi.buyout): its price paid out — 20% its 社長's, 50% its
+// people's (both countries', by their pay), 30% FIGMA's (関連社員) —, out of the treasury, then ATSUKA Vision's, then
+// the national bank's own; what it cannot pay now it owes, paid month by month
+function buyHachi(W, price, day) {
+  const a = W.asuka, A = W.AP, P = W.P;
+  let have = Math.max(0, a.treasury) + Math.max(0, a.atsuka.cash) + Math.max(0, a.bank.own);
+  const now = Math.min(price, have);
+  let left = now;
+  for (const k of ['treasury', 'atsuka', 'bank']) {
+    const box = k === 'treasury' ? a : k === 'atsuka' ? a.atsuka : a.bank, key = k === 'treasury' ? 'treasury' : k === 'atsuka' ? 'cash' : 'own';
+    const t = Math.min(left, Math.max(0, box[key]));
+    box[key] -= t; left -= t;
+  }
+  tout(a, 'hachiBuyout', now);
+  a.hachiOwed = (a.hachiOwed || 0) + price - now;
+  a.hachiBought = { day, price, paid: now };
+  payOut(W, now);
+  say(W, day, `契約によりHACHIの事業をまるごと買い取りました（${CORP.fmt.money(price)}：時価総額の${CORP.hachi.buyout.mult}倍）。社長に20%・社員に50%・関連社員（FIGMA）に30%を支払い${price > now ? `、残り${CORP.fmt.money(price - now)}は毎月お支払いします` : ''}`);
+  void have; void A; void P;
+}
+// a buyout's money (or a month's part of what is owed of it) to its 社長, HACHI's people and FIGMA's
+function payOut(W, n) {
+  const a = W.asuka, A = W.AP, P = W.P, B = CORP.hachi.buyout;
+  if (!(n > 0)) return;
+  const o = W.orgs && W.orgs.hachi, boss = o ? (o.president >= 0 ? o.president : o.ceo) : -1;
+  const ceo = Math.floor(n * B.ceo), staff = Math.floor(n * B.staff), rel = n - ceo - staff;
+  let spare = 0;
+  if (boss >= 0) P.cash[boss] += ceo; else spare += ceo;
+  // (its people, both countries', by their pay)
+  const here = W.staffOf ? W.staffOf('hachi') : [], there = [];
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.hachi) there.push(i);
+  let tot = 0;
+  for (const i of here) tot += P.salary[i];
+  for (const i of there) tot += A.pay[i];
+  let given = 0;
+  if (tot > 0) {
+    for (const i of here) { const g = Math.floor(staff * P.salary[i] / tot); P.cash[i] += g; given += g; }
+    for (const i of there) { const g = Math.floor(staff * A.pay[i] / tot); A.cash[i] += g; given += g; }
+  }
+  spare += staff - given;
+  // (FIGMA's people: 関連社員)
+  const fig = [];
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.figma) fig.push(i);
+  if (fig.length) { const each = Math.floor(rel / fig.length); for (const i of fig) A.cash[i] += each; spare += rel - each * fig.length; } else spare += rel;
+  // (the cents left, and all of it when nobody is there: the treasury's back)
+  a.treasury += spare;
+}
+// a death (asuka.js lives, and HACHI's wards: one at −90 and below not operated on in time — hachi.js): their estate,
+// and a new life at 18 in their place
+export function die(W, i, day, r) {
+  const a = W.asuka, A = W.AP;
+  a.sum.deaths++;
+  let estate = Math.max(0, A.cash[i]);
+  const back = Math.min(A.debt[i], estate);
+  estate -= back; a.bank.own += back; a.bank.lent -= back;
+  if (A.debt[i] > back) a.bank.lent -= A.debt[i] - back;
+  const tax = Math.floor(estate * 0.1);
+  a.treasury += tax;
+  tin(a, 'inheritance', tax);
+  let heir = r.int(A.n);
+  if (heir === i) heir = (i + 1) % A.n;
+  A.cash[heir] += estate - tax;
+  A.gen[i] = (A.gen[i] + 1) & 0xffff;
+  A.birth[i] = day - Math.ceil(18 * 365.25) - r.int(300);
+  A.job[i] = r.u() < 0.6 ? JOB.student : JOB.none;
+  A.emp[i] = 0; A.pay[i] = 0; A.debt[i] = 0; A.miss[i] = 0;
+  for (let k = 0; k < NC; k++) A.taste[i * NC + k] = r.int(256);
+  A.ethos[i] = ethosFor(i, A.gen[i]);
+  if (A.hp) { A.hp[i] = 60 + r.int(12); A.ill[i] = 0; A.med[i] = 0; A.ins[i] = 0; A.care[i] = 0; A.chk[i] = 0; }
+  const own = Math.min(Math.max(0, a.treasury), Math.floor(weightOf(18, 0, r.z()) * a.factor));
+  a.treasury -= own;
+  A.cash[i] = own;
+  tout(a, 'newLife', own);
+  a.sum.born++;
+}
+// HACHI's medical staff at its wards here (175 a ward, at its pay), taken on from the state's people, those out of work
+// and the local trade's in that order, let go when its wards are fewer (never under the state)
+function hachiStaff(W, day) {
+  const a = W.asuka, A = W.AP, info = hachi.infoOf(W);
+  if (!info) { for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.hachi) { A.job[i] = JOB.none; A.pay[i] = 0; } return; }
+  const all = info.wards.length, mine = info.wards.filter((x) => x.country === 'asuka').length;
+  // (175 a ward — CORP.hachi.perWard —; under the state its 20 wards' all kept, none let go)
+  const want = Math.round(CORP.hachi.perWard * (a.scale || 1) * mine);
+  void all;
+  let have = 0;
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.hachi) have++;
+  // (the state's own people first — ATSUKA Vision's posts, the country's medical care now HACHI's: its post goes with
+  // them —, then those out of work, the local trade's only when they are not enough; never アルタス's)
+  const altas = DIV.findIndex((x) => x.id === 'altas');
+  for (const from of [JOB.atsuka, JOB.none, JOB.trade]) for (let i = 0; i < A.n && have < want; i++) {
+    if (A.job[i] !== from || (from === JOB.atsuka && A.emp[i] === altas)) continue;
+    const age = ageOf(A, i, day);
+    if (age < 22 || age >= 62) continue;
+    if (from === JOB.atsuka) a.posts.atsuka = Math.max(0, a.posts.atsuka - 1);
+    A.job[i] = JOB.hachi; A.emp[i] = 0; A.pay[i] = CORP.hachi.pay.medical * 12; have++; a.sum.hires++;
+  }
+  // (fewer wards: let go — the state's posts back for them)
+  if (!info.state) for (let i = A.n - 1; i >= 0 && have > want; i--) if (A.job[i] === JOB.hachi) { A.job[i] = JOB.none; A.pay[i] = 0; have--; a.posts.atsuka++; }
 }
 
 /* --------------------------------------------------------------- the day --- */
@@ -244,10 +372,19 @@ export function day(W, day, ext) {
   if (!a.today) prepare(W, day);
   closeShopping(W);
   lives(W, day, r);
+  // 株式会社HACHI's wards here: its people, its patients (server/core/hachi.js); 株式会社FIGMA, founded with it
+  W.asukaJobs = JOB;
+  hachiStaff(W, day);
+  hachi.asukaDay(W, day, r, (i) => die(W, i, day, r));
+  if (!a.figma && hachi.isOpen(W)) hachi.figmaFound(W, day, r, JOB);
+  // (under the state: what HACHI lacks put in by the treasury; and what is still owed of its buyout, month by month)
+  if (a.hachiNeed > 0) { const n = Math.min(a.hachiNeed, Math.max(0, a.treasury)); if (n > 0) { a.treasury -= n; const box = a.toCo.hachi || (a.toCo.hachi = {}); box.aid = (box.aid || 0) + n; a.sum.toVernoa += n; tout(a, 'hachiAid', n); } a.hachiNeed = 0; }
+  if (t.d === 1 && a.hachiOwed > 0) { const n = Math.min(a.hachiOwed, Math.max(0, Math.round(a.treasury * 0.1))); if (n > 0) { a.treasury -= n; a.hachiOwed -= n; tout(a, 'hachiBuyout', n); payOut(W, n); } }
   if (t.d === 15) pensions(W);
   if (t.d === 25) payday(W, day);
   if (t.d === 25 && a.yamato) yamatoPay(W);
-  if (CORP.isMonthEnd(day)) { if (a.yamato) yamatoMonth(W, day); month(W, day, r); }
+  if (t.d === 25) hachi.figmaPay(W, JOB, (i, g) => income(W, i, g));
+  if (CORP.isMonthEnd(day)) { if (a.yamato) yamatoMonth(W, day); hachi.figmaMonth(W, day); month(W, day, r); }
   prepare(W, day + 1);
 }
 // ATSUKA Vision buys of ヴェルノア's makers (machines, vehicles, systems, seeds): a part of its money and of what it earns,
@@ -414,7 +551,9 @@ export function tick(W, m, j) {
 function act(W, i, m, t, off) {
   const A = W.AP, T = W.asuka.today, job = A.job[i], u = H(i, m, 2);
   const set = (x, minutes) => { A.act[i] = x; A.due[i] = m + Math.max(5, Math.round(minutes)); };
-  const worker = PAID(job);
+  // (健康度 below 1, or in a bed of HACHI's: no work today — 休職 —, at home resting)
+  const unfit = W.asuka.hpSet && A.hp && (A.hp[i] <= 0 || A.care[i] === hachi.CARE.bed);
+  const worker = PAID(job) && !unfit;
   // (each one's hours: the state's from about nine, the shops' from about ten, a little either way)
   const start = (job === JOB.atsuka ? 540 : 600) + Math.floor(H(i, 0, 3) * 60) - 30, end = start + 510 + Math.floor(H(i, 0, 4) * 60);
   if (t >= 1320) return set(ACT.sleep, 1440 - t);
@@ -467,29 +606,31 @@ function pensions(W) {
   a.pension.cash -= paid * n;
   tout(a, 'pension', paid * n);
 }
+// a month's pay of a person's post at their 健康度 (from 86, up to 70% more: npc-health.js earn — their employer pays it)
+const monthPay = (W, i) => { const A = W.AP; return A.pay[i] / 12 * (W.asuka.hpSet && A.hp ? healthEarn(A.hp[i]) : 1); };
 // the 25th: the state's people (ATSUKA Vision's money; the treasury tops it up), the local trade's; what the local trade
 // took beyond its pay and its cushion, to its owners (by what they have); the unemployed's benefit (the treasury's)
 function payday(W, day) {
   const a = W.asuka, A = W.AP, z = a.atsuka;
   let due = 0;
-  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.atsuka) due += Math.round(A.pay[i] / 12);
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.atsuka) due += Math.round(monthPay(W, i));
   if (z.cash < due) { const add = Math.min(Math.max(0, a.treasury), due - z.cash); a.treasury -= add; z.cash += add; tout(a, 'atsukaSubsidy', add); }
   const zr = due > 0 ? Math.min(1, z.cash / due) : 0;
   let paid = 0;
-  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.atsuka) { const g = Math.floor(A.pay[i] / 12 * zr); income(W, i, g); paid += g; }
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.atsuka) { const g = Math.floor(monthPay(W, i) * zr); income(W, i, g); paid += g; }
   z.cash -= paid;
   z.month.pay = (z.month.pay || 0) + paid;
   // (アルタス's people: those of its division)
   const ai = DIV.findIndex((x) => x.id === 'altas');
   let apaid = 0;
-  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.atsuka && A.emp[i] === ai) apaid += Math.floor(A.pay[i] / 12 * zr);
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.atsuka && A.emp[i] === ai) apaid += Math.floor(monthPay(W, i) * zr);
   altasOf(a).m.pay += apaid;
   let tdue = 0;
-  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.trade) tdue += Math.round(A.pay[i] / 12);
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.trade) tdue += Math.round(monthPay(W, i));
   const tr = tdue > 0 ? Math.min(1, Math.max(0, a.trade.cash) / tdue) : 0;
   a.tradePaid = tdue > 0 ? tr : 1;
   let tpaid = 0;
-  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.trade) { const g = Math.floor(A.pay[i] / 12 * tr); income(W, i, g); tpaid += g; }
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.trade) { const g = Math.floor(monthPay(W, i) * tr); income(W, i, g); tpaid += g; }
   a.trade.cash -= tpaid;
   // (its owners: what is left beyond a cushion of its month, by what each holds)
   const extra = Math.floor(a.trade.cash - a.trade.month * R.tradeKeep);
@@ -750,9 +891,12 @@ export function flowsFor(W) {
   // (the branches' people at their pay of now: the market's raised it — server/core/npc-wages.js; their companies pay it)
   let bpay = 0, bn = 0;
   for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.branch) { const co = COS[A.emp[i]]; staff[co] = (staff[co] || 0) + 1; if (A.pay[i] > 0) { bpay += A.pay[i]; bn++; } }
+  // (HACHI's medical staff here, at their own pay: corp-model asukaDay)
+  let hn = 0, hp = 0;
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.hachi) { hn++; hp += A.pay[i]; }
   const pol = a.policy || {};
   return { toCo, want: { ...a.want }, staff, boost: Math.max(0, Math.round(a.boost.cash)), branches: a.branches || {}, founded: a.founded, boostUntil: a.founded + R.boost.years * YEAR, pay: bn ? Math.round(bpay / bn) : R.pay.branch, scale: a.scale,
-    rates: { rent: pol.rent || R.tax.rent, withhold: pol.withhold || R.tax.withhold }, altasPrice: altasOf(a).price };
+    rates: { rent: pol.rent || R.tax.rent, withhold: pol.withhold || R.tax.withhold }, altasPrice: altasOf(a).price, hachi: { staff: hn, pay: hp } };
 }
 // a branch's people in a country of this size (at least one)
 export const branchStaff = (c, scale) => Math.max(1, Math.round(c.staff * (scale || 1)));
@@ -772,8 +916,8 @@ export function branchesSet(W, branches) {
 export function view(W) {
   const a = W.asuka, A = W.AP;
   if (!a || !A) return null;
-  const jobs = { atsuka: 0, trade: 0, branch: 0, none: 0, student: 0, retired: 0 };
-  const names = Object.keys(JOB);
+  // (every kind of post counted from nothing: YAMATO's, テネシスリサーチ's, HACHI's wards', FIGMA's too)
+  const names = Object.keys(JOB), jobs = Object.fromEntries(names.map((k) => [k, 0]));
   const byDiv = DIV.map(() => 0), byDist = ASUKA.districts.map(() => 0);
   for (let i = 0; i < A.n; i++) { jobs[names[A.job[i]]]++; if (A.job[i] === JOB.atsuka) byDiv[A.emp[i]]++; byDist[A.dist[i]]++; }
   return {
@@ -850,10 +994,10 @@ export function payResearch(W, budget) {
   const a = W.asuka, A = W.AP;
   if (!a || !A || !(budget > 0)) return 0;
   let due = 0;
-  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.research) due += A.pay[i] / 12;
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.research) due += monthPay(W, i);
   const ratio = due > 0 ? Math.min(1, budget / due) : 0;
   let paid = 0;
-  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.research) { const g = Math.floor(A.pay[i] / 12 * ratio); income(W, i, g); paid += g; }
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.research) { const g = Math.floor(monthPay(W, i) * ratio); income(W, i, g); paid += g; }
   a.sum.fromVernoa += paid;
   tin(a, 'research', paid);
   return paid;
@@ -947,10 +1091,10 @@ function spendUpkeep(W, n) {
 function yamatoPay(W) {
   const a = W.asuka, A = W.AP, Y = a.yamato;
   let due = 0;
-  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.yamato) due += Math.round(A.pay[i] / 12);
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.yamato) due += Math.round(monthPay(W, i));
   const ratio = due > 0 ? Math.min(1, Math.max(0, Y.cash) / due) : 0;
   let paid = 0;
-  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.yamato) { const g = Math.floor(A.pay[i] / 12 * ratio); income(W, i, g); paid += g; }
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.yamato) { const g = Math.floor(monthPay(W, i) * ratio); income(W, i, g); paid += g; }
   Y.cash -= paid; Y.m.pay += paid; Y.total.pay += paid;
 }
 // the month's end: アスカ's homes billed (a household of two each: half a household's bill a head), ATSUKA Vision's part

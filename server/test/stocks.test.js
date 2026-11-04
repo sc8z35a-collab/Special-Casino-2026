@@ -127,7 +127,10 @@ test('投資: the market opens with a month behind it, and every second comes ou
   for (const c of S.companies) assert.equal(m.db.prepare('SELECT opened FROM stock_state WHERE company = ?').get(c.id).opened, opened);
   assert.deepEqual(r.market.map((q) => q.price), S.companies.map((c) => c.base));
   // (the companies began with it: their book price is the market's, and so their first day's centre)
-  for (const c of S.companies) assert.deepEqual(Object.values(m.db.prepare('SELECT e0, e1 FROM corp_anchor WHERE company = ? AND day = ?').get(c.id, Math.floor(START / 86400000))), [Math.log(c.base), Math.log(c.base)]);
+  // (HACHI, founded on 2026-11-04: its listing to come — its first centre its founding day's —, no trading until then)
+  for (const c of S.companies.filter((x) => !x.from)) assert.deepEqual(Object.values(m.db.prepare('SELECT e0, e1 FROM corp_anchor WHERE company = ? AND day = ?').get(c.id, Math.floor(START / 86400000))), [Math.log(c.base), Math.log(c.base)]);
+  assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM corp_anchor WHERE company = ?').get('hachi').n, 0);
+  assert.deepEqual(r.corp.hachi.soon, { day: Math.floor(Date.UTC(2026, 10, 4) / 86400000) });
   assert.equal(r.corp.riru.name, 'RIRU STUDIO');
   assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM stock_candles WHERE span = 60').get().n, S.companies.length * 3 * 1440);
   assert.equal(m.db.prepare('SELECT COUNT(*) AS n FROM stock_candles WHERE span = ?').get(DAY).n, S.companies.length * 31);

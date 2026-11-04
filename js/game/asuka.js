@@ -71,7 +71,7 @@
   // profit each month (`dividend`) is the treasury's, for the country's own projects.
   var ALTAS = {
     name: 'アルタス', full: 'アルタス（ATSUKA Visionの国営資源事業）',
-    cogs: { magita: 0.6, yosida: 0.6, wazima: 0.6, jinx: 0.45, carowner: 0.35, daizin: 0.4, myway: 0.35, dtrade: 0.1, speedeed: 0.1, citywork: 0.05, tenesice: 0, ice: 0, riru: 0 },
+    cogs: { magita: 0.6, yosida: 0.6, wazima: 0.6, jinx: 0.45, carowner: 0.35, daizin: 0.4, myway: 0.35, dtrade: 0.1, speedeed: 0.1, citywork: 0.05, tenesice: 0, ice: 0, riru: 0, hachi: 0.6 },
     route: { place: 0.1, plant: 0.3, rd: 0.05, other: 0.05, selling: 0.1, capex: 0.15 },
     local: { bank: 0.02, magita: 0.5, wazima: 0.35, yosida: 0.3, retail: 0.3, myway: 0.25, dtrade: 0.1, daizin: 0.5, games: 0.2, life: 0.45 },
     shops: 0.1, trade: 0.25,
@@ -112,10 +112,23 @@
     policy: { months: 3, step: { rent: 0.005, withhold: 0.01 }, max: { rent: 0.1, withhold: 0.15 }, fund: 1.5, bondRate: 0.01 }
   };
 
+  // 株式会社FIGMA: the medical equipment maker (研究開発と製造) of アスカ国's アカツキ区, not listed. Its two customers —
+  // HACHI and アスカ国's medical research — buy of it in about `ratio` (4:6), and that is what it lives on. Founded with
+  // HACHI on 2026-11-04 (its 利益剰余金 `retained`, the treasury's once), its `staff` at `pay` a month each to start with,
+  // costing it `cost` a month each with what it pays for them (社員1人あたりの会社負担). Its people are アスカ国's.
+  var FIGMA = {
+    name: '株式会社FIGMA', short: 'FIGMA', what: '医療機器の研究開発と製造（非上場）', district: 'akatsuki',
+    staff: 1100, pay: 30000000, cost: 40000000, retained: 10000000000, ratio: [4, 6],
+    // (what it makes them of: the materials アルタス's — of its sales —; what it keeps of a month's costs before it
+    // pays the rest into its own research; HACHI's joint research money is アスカ国's research budget, from which it
+    // buys of FIGMA)
+    materials: 0.12, keep: 3
+  };
+
   var byCat = {};
   CATS.forEach(function (c) { byCat[c.id] = c; });
   // the companies a category's sales go to, by share
   function companiesOf(cat) { return typeof cat.co === 'string' ? [[cat.co, 1]] : Object.keys(cat.co).map(function (k) { return [k, cat.co[k]]; }); }
 
-  BR.ASUKA = { name: 'アスカ国', districts: DISTRICTS, atsuka: ATSUKA, altas: ALTAS, cats: CATS, cat: function (id) { return byCat[id] || null; }, companiesOf: companiesOf, rules: RULES };
+  BR.ASUKA = { name: 'アスカ国', districts: DISTRICTS, atsuka: ATSUKA, altas: ALTAS, figma: FIGMA, cats: CATS, cat: function (id) { return byCat[id] || null; }, companiesOf: companiesOf, rules: RULES };
 })(globalThis.BR = globalThis.BR || {}); // shared with the server, hence globalThis

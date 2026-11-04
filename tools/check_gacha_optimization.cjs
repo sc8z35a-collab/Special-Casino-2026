@@ -60,14 +60,17 @@ const ROOT = path.resolve(__dirname, '..');
 
     const money = () => s.app.db.prepare('SELECT dollars FROM users WHERE id = ?').get(player.me.id).dollars;
     let expected = money();
-    // (a fresh server is in its first 100 hours: the リリース記念セール puts the secret tier at $10M a pull, the old price struck through)
-    const prices = { rare: [3500000, 9450000, 26250000], legendary: [15000000, 40500000, 112500000], secret: [10000000, 27000000, 75000000] };
+    // (a fresh server is in its first 100 hours: the リリース記念セール puts its tier at the sale's price, the old price
+    // struck through — the prices as the rules have them, js/game/gacha.js)
+    const { GACHA } = await import(path.join(ROOT, 'server/core/rules.js'));
+    const SALE = GACHA.releaseSale.kind, tiers = (kind, sale) => [1, 3, 10].map((n) => GACHA.price(kind, n, sale));
+    const prices = Object.fromEntries(GACHA.kinds.map((k) => [k.id, tiers(k.id, k.id === SALE)]));
     for (const [kind, values] of Object.entries(prices)) {
       await page.locator(`.gc-tier[data-kind="${kind}"]`).click();
       assert.deepEqual((await page.locator('.gc-price').allTextContents()).map((x) => Number(x.replace(/\D/g, ''))), values);
-      assert.equal(await page.locator('.gc-was:not([hidden])').count(), kind === 'secret' ? 3 : 0);
+      assert.equal(await page.locator('.gc-was:not([hidden])').count(), kind === SALE ? 3 : 0);
     }
-    assert.deepEqual((await page.locator('.gc-was').allTextContents()).map((x) => Number(x.replace(/\D/g, ''))), [30000000, 81000000, 225000000]);
+    assert.deepEqual((await page.locator('.gc-was').allTextContents()).map((x) => Number(x.replace(/\D/g, ''))), tiers(SALE, false));
     assert.equal(await page.locator('.gc-tier[data-kind="secret"] .gc-tier-sale').count(), 1);
     await page.locator('.gc-pull-button[data-count="3"]').click();
     await page.locator('#confirm').waitFor({ state: 'visible' });
@@ -81,7 +84,7 @@ const ROOT = path.resolve(__dirname, '..');
       await page.locator('#confirm').waitFor({ state: 'visible' });
       const had = requests.filter((p) => p === '/api/gacha/spin').length;
       await page.evaluate(() => { document.getElementById('confirm-yes').click(); document.getElementById('confirm-yes').click(); });
-      await page.waitForFunction((n) => document.querySelectorAll('.gc-reward').length === n, count * 3);
+      await page.waitForFunction((n) => document.querySelectorAll('.gc-reward').length === n, count * GACHA.slotsOf(kind));
       assert.equal(requests.filter((p) => p === '/api/gacha/spin').length, had + 1);
       expected -= prices[kind][index]; assert.equal(money(), expected);
       await page.locator('#gacha-results').evaluate((n) => { n.scrollTop = n.scrollHeight; });
@@ -117,11 +120,13 @@ const ROOT = path.resolve(__dirname, '..');
     const oddsCalls = requests.filter((p) => p === '/api/gacha').length;
     await page.locator('#gacha-odds-open').click();
     const carChance = () => page.locator('#gacha-odds-rows tr').filter({ hasText: /^MAGITA オンヴォーロ/ }).locator('td').last().textContent();
-    assert.equal(await carChance(), '10.5%');
+    // (MAGITA オンヴォーロ in the rare tier, its chance as the rules have it: 1.5 times in the car campaign, then not)
+    const onvoro = (boost) => GACHA.pct(GACHA.odds('rare', boost).find((r) => r.id === 'onvoro').chance) + '%';
+    assert.equal(await carChance(), onvoro(true));
     await page.locator('[data-close="gacha-odds-modal"]').click();
     await page.evaluate(() => { gachaShift = 1200000; });
     await page.locator('#gacha-odds-open').click();
-    assert.equal(await carChance(), '7%');
+    assert.equal(await carChance(), onvoro(false));
     assert.equal(requests.filter((p) => p === '/api/gacha').length, oddsCalls);
     await page.evaluate(() => { BR.kit.closeModal('gacha-odds-modal'); BR.kit.closeModal('gacha-modal'); BR.diary.open(); });
     await page.locator('#developer-diary').waitFor({ state: 'visible' });
@@ -129,7 +134,7 @@ const ROOT = path.resolve(__dirname, '..');
     await page.locator('#developer-diary').waitFor({ state: 'visible' });
     for (const file of lazy.diary) assert.equal(requests.filter((p) => p === '/' + file).length, 1, file + ' is reused on a second open');
     assert.deepEqual(errors, []); assert.deepEqual(missing, []);
-    console.log(JSON.stringify({ ok: true, initialGachaImageRequests: initialGachaImages.length, controls, oddsExtraRequests: 0, campaignBoundary: true, prices: 9, rewardSlots: [3, 9, 30], doubleCharge: false, phoneConfirmation: true }));
+    console.log(JSON.stringify({ ok: true, initialGachaImageRequests: initialGachaImages.length, controls, oddsExtraRequests: 0, campaignBoundary: true, prices: 9, rewardSlots: [['rare', 1], ['legendary', 3], ['secret', 10]].map(([k, n]) => n * GACHA.slotsOf(k)), doubleCharge: false, phoneConfirmation: true }));
     await context.close();
   } finally {
     if (browser) await browser.close();

@@ -545,7 +545,8 @@
     if (st.side === 'buy' && st.type === 'market' && q) unit = S.slipped(depth(), { side: 'buy', type: 'market', shares: shares }, q.price);
     var value = st.type === 'stop' && st.side === 'buy' ? st.price * shares : unit * shares;
     // (a share struck off — its company failed — is no longer traded)
-    var gone = !!(st.corp && st.corp[st.company] && st.corp[st.company].delisted);
+    // (and one not listed yet — HACHI before its founding —: none until its day)
+    var gone = !!(st.corp && st.corp[st.company] && (st.corp[st.company].delisted || st.corp[st.company].soon));
     var ok = shares > 0 && (shares <= max || (st.fit && max > 0)) && priceOk() && !st.busy && !!st.mine && !gone;
     ui.priceRow.input.classList.toggle('sk-bad', st.type !== 'market' && !priceOk());
     ui.sharesRow.input.classList.toggle('sk-bad', shares > max);
@@ -683,6 +684,8 @@
     var next = c.next ? new Date(c.next * 1000) : null;
     // (a company that failed: struck off, no more trading)
     if (c.delisted) line([['倒産', '上場廃止', 'sk-down'], ['日付', (function (d) { var t = C.ymd(d); return t.y + '/' + t.m + '/' + t.d; })(c.delisted.day)], ['売買', '不可', 'sk-down']]);
+    // (founded on its day: its listing to come)
+    if (c.soon) { line([['会社', c.full], ['上場予定', (function (d) { var t = C.ymd(d); return t.y + '/' + t.m + '/' + t.d; })(c.soon.day)], ['売買', '上場日から', 'sk-down']]); return; }
     line([['会社', c.full], ['社員', fmt(c.staff) + '名'], ['ランク', c.rank], ['次の決算発表', next ? (next.getMonth() + 1) + '/' + next.getDate() : '—']]);
     // MY WAY: how its characters pull and its partners; a partner of it: its collaboration
     if (c.ip) line([['流行', Math.round(c.ip.heat * 100) + '%', c.ip.heat < 0.85 ? 'sk-down' : ''], ['信用', Math.round(c.ip.brand * 100) + '%', c.ip.brand < 0.7 ? 'sk-down' : ''], ['IP契約', c.ip.partners + '社']]);

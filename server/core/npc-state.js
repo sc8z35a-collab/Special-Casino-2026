@@ -14,6 +14,8 @@ import { boomOf } from './npc-macro.js';
 import * as heart from './npc-heart.js';
 import * as research from './npc-research.js';
 import * as deals from './npc-ipdeals.js';
+import * as health from './npc-health.js';
+import * as hachi from './hachi.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const YEAR = 365;
@@ -37,11 +39,12 @@ export function incomeTax(W, gross, social) {
   }
   return { tax: Math.round(tax), resident: Math.round(taxable * (W.nation.knobs.residentTax || 10) / 100) };
 }
-// a person's own part of the social insurance on a month's pay (厚生年金・健康保険・雇用保険・介護保険)
+// a person's own part of the social insurance on a month's pay (厚生年金・雇用保険・介護保険), and the 医療税 (in place of
+// the health insurance's own part since HACHI's insurance: server/core/hachi.js)
 export function socialOf(W, monthly, age) {
   const SO = NPC.social, pr = (W.nation.knobs.pensionRate || 18.3) / 100;
-  const pension = monthly * pr / 2, health = monthly * SO.health / 2, emp = monthly * SO.employment[1], care = age >= SO.careFrom ? monthly * SO.care / 2 : 0;
-  return { pension: Math.round(pension), rest: Math.round(health + emp + care) };
+  const pension = monthly * pr / 2, emp = monthly * SO.employment[1], care = age >= SO.careFrom ? monthly * SO.care / 2 : 0, med = hachi.taxOn(W, monthly);
+  return { pension: Math.round(pension), rest: Math.round(emp + care) + med, med };
 }
 
 /* ---------------------------------------------------------------- the knobs --- */
@@ -146,7 +149,11 @@ export function fromCompanies(W, ext, day) {
   // what the treasury paid for the game (server/core/corp-model.js gameDay): the players' slot wins beyond their bets
   // and their quests' rewards (theirs, but YOSIDA's fee), YOSIDA's bill for the gacha (abroad)
   // (what the players paid the treasury: the money trees' fund)
-  for (const [k, n] of Object.entries(ext.stateIn || {})) econ.nationIn(W, k, n);
+  // (the companies' 医療税 on their profits: shared with HACHI as everyone's is — hachi.js taxed)
+  for (const [k, n] of Object.entries(ext.stateIn || {})) { if (k === 'medicalTax') hachi.taxed(W, n, day); else econ.nationIn(W, k, n); }
+  // (株式会社HACHI's 利益剰余金 at its founding: the treasury's, once; its wards as they are — server/core/hachi.js)
+  if (ext.hachiSeed) econ.nationOut(W, 'hachiSeed', ext.hachiSeed);
+  hachi.fromCompanies(W, ext.hachiInfo || null);
   if (ext.state) {
     for (const [k, n] of Object.entries(ext.state.by || {})) econ.nationOut(W, k, n);
     W.sum.toPlayers += ext.state.players || 0;
@@ -159,11 +166,12 @@ export function fromCompanies(W, ext, day) {
 function payStaff(W, company, n, kind, day) {
   const P = W.P, staff = W.staffOf(company).filter((i) => !(P.flags[i] & FL.striking));
   if (!staff.length) { W.sector.cash += n; return; }
+  // (by their pay — the healthiest's up to 70% more: npc-health.js earn —)
   let total = 0;
-  for (const i of staff) total += P.salary[i];
+  for (const i of staff) total += P.salary[i] * health.earnOf(P, i);
   let left = n;
   staff.forEach((i, k) => {
-    const g = k === staff.length - 1 ? left : Math.floor(n * P.salary[i] / Math.max(1, total));
+    const g = k === staff.length - 1 ? left : Math.floor(n * P.salary[i] * health.earnOf(P, i) / Math.max(1, total));
     left -= g;
     take(W, i, g, kind, day);
   });
@@ -180,7 +188,8 @@ export function take(W, i, gross, kind, day) {
   const net = Math.max(0, gross - so.pension - so.rest - tax - resident);
   W.nation.fund.cash += so.pension;
   W.nation.day.in.pensionIn = (W.nation.day.in.pensionIn || 0) + so.pension;
-  econ.nationIn(W, 'social', so.rest);
+  econ.nationIn(W, 'social', so.rest - so.med);
+  hachi.taxed(W, so.med, day);
   econ.nationIn(W, 'income', tax);
   econ.districtIn(W, P.dist[i], 'resident', resident);
   // (rounding: what is left beyond the takings is theirs)
@@ -461,8 +470,9 @@ function month(W, day, r, ctx) {
       if (P.job[i] === NPC.job.student) { /* 学生納付特例 */ }
       else if (P.cash[i] < 3000000 && !P.salary[i]) { P.penHalf[i]++; P.penM[i]++; }
       else if (econ.pay(W, i, NPC.social.national, true, 'x')) { W.nation.fund.cash += NPC.social.national; W.nation.day.in.pensionIn = (W.nation.day.in.pensionIn || 0) + NPC.social.national; P.penM[i]++; }
-      const nhi = Math.min(NPC.social.nhiCap, Math.round((P.salary[i] || 0) / 12 * NPC.social.nhi));
-      if (nhi && econ.pay(W, i, nhi, true, 'x')) econ.nationIn(W, 'social', nhi);
+      // (their 医療税 on their income: in place of the 国民健康保険 since HACHI's insurance)
+      const nhi = hachi.taxOn(W, (P.salary[i] || 0) / 12);
+      if (nhi && econ.pay(W, i, nhi, true, 'x')) hachi.taxed(W, nhi, day);
     }
     // a loan's month: its interest to Tenesice, and a part paid back
     if (P.debt[i] > 0) {
@@ -624,14 +634,14 @@ function lives(W, day, r, ctx) {
   const P = W.P;
   for (let i = 0; i < P.n; i++) {
     const age = ageOf(P, i, day);
-    // health: a little lower each year past 50, an illness now and then
-    if (r.u() < 0.0015 + age * 0.00005) { P.health[i] = clampB(P.health[i] - 20 - r.int(40)); P.flags[i] |= FL.sick; }
-    else if (P.health[i] < 230 - Math.max(0, age - 50) * 2) P.health[i] = clampB(P.health[i] + 1);
-    if (P.health[i] > 120) P.flags[i] &= ~FL.sick;
+    // 健康度: what wore it down today and what brought it back (npc-health.js)
+    health.day(W, i, day, age, r);
     if (r.u() < deathRate(age, P.health[i])) { die(W, i, day, r, ctx); continue; }
     // birthdays
     if (Math.floor((day - P.birth[i]) % 365.25) === 0) birthday(W, i, age, day, r);
   }
+  // HACHI's wards' day: the beds, those fallen to −90 on their way, the month's insurance and 医療税 (hachi.js)
+  hachi.day(W, day, r);
   W.labor.day(W, day, r, ctx);
 }
 function birthday(W, i, age, day, r) {
@@ -763,7 +773,8 @@ export function reborn(W, i, day, r, heirs) {
   for (let k = 0; k < NN; k++) P.need[i * NN + k] = 170 + r.int(60);
   P.emo.fill(150, i * 5, i * 5 + 5);
   P.emo[i * 5 + E.stress] = 60;
-  P.health[i] = 230 + r.int(20);
+  { const h = health.start(18, r); health.setHp(P, i, h.hp); P.ill[i] = h.ill; }
+  P.ins[i] = 0; P.med[i] = 0; P.care[i] = 0; P.ward[i] = 0; P.crit[i] = 0; P.chk[i] = 0;
   P.disc.fill(40, i * 8, i * 8 + 8);
   P.lean[i * 2] = Math.round(r.z() * 40); P.lean[i * 2 + 1] = Math.round(r.z() * 40 + 15);
   P.trust.fill(150, i * 5, i * 5 + 5);

@@ -585,7 +585,8 @@ export function createStocks({ q, tx, afterCommit, getUser, meDto, balanceChange
   function place(u, r, now, st) {
     const { c, side, type, price } = r, s = st.get(c.id), p = s.price, t = s.tick;
     // (a company that failed is struck off: its shares are no longer traded — MY WAY's 倒産)
-    if (corp && corp.delisted && corp.delisted(c.id)) throw new ApiError(409, 'delisted', `${c.name}は倒産により上場廃止となりました（売買できません）`);
+    if (corp && corp.delisted && corp.delisted(c.id)) throw new ApiError(409, 'delisted', `${c.name}は上場廃止となりました（売買できません）`);
+    if (corp && corp.notYet && corp.notYet(c.id)) throw new ApiError(409, 'not_listed', `${c.name}はまだ上場していません`);
     const day = S.dayOf(now), traded = tradedOn(u.id, day);
     let shares = r.shares;
     // MAX: trimmed to what fits now (the money in hand, the day's room), at least one share (else refused as any order)

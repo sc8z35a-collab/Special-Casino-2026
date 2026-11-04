@@ -313,6 +313,7 @@
     gachaUse: function (item) { return post('/api/gacha/use', { item: item }); },
     // a prize of the gacha sold back (GACHA.sell): 'vip-week', 'reset-5h', 'reset-day', 'garage'
     gachaSell: function (item, count) { return post('/api/gacha/sell', { item: item, count: count || 1 }); },
+    gachaSellAll: function (items) { return post('/api/gacha/sell', { items: items }); },
     lineReward: function (token) { return post('/api/line/reward', { token: token }); },
     lineRewardClaim: function (token) { return post('/api/line/reward/claim', { token: token }); },
     diary: function (saved, before) { return get('/api/diary?bookmarks=' + (saved ? '1' : '0') + (before ? '&before=' + q(before) : '')); },

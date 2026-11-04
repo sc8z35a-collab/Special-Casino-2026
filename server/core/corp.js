@@ -75,7 +75,9 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     for (const id of Object.keys(co)) q('INSERT INTO corp_state (id, data) VALUES (?, ?)').run(id, JSON.stringify(co[id]));
     write({ ...h, anchors: [], days: h.days.filter((r) => r.day >= launch - KEEP_DAYS) });
     for (const id of listed) {
-      const s = co[id], b = Math.log(base.get(id));
+      const s = co[id];
+      if (!s) continue; // (founded later — HACHI —: its first anchor its founding day's close)
+      const b = Math.log(base.get(id));
       q('INSERT OR REPLACE INTO corp_anchor (company, day, e0, e1, ev, dps) VALUES (?, ?, ?, ?, ?, ?)').run(id, launch, b, b, '[]', s.div.daily || 0);
     }
     afterCommit(() => { stale = false; });
@@ -92,7 +94,8 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       const fixed = change((w) => model.repairStakes(w));
       if (fixed.length) console.log('corp: stakes carried', fixed.map((x) => `${x.id} ${x.n}`).join(', '));
     }
-    if (CORP.companies.every((p) => w0.co[p.id])) return;
+    // (a company founded on its day — HACHI —: never added with a made-up past, corp-model closeDay founds it)
+    if (CORP.companies.every((p) => p.founded || w0.co[p.id])) return;
     const r = change((w) => model.addCompanies(key, w, Object.fromEntries(base)));
     if (!r) return;
     write({ ...r.history, anchors: [] });
@@ -302,8 +305,10 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   // fee, Dtrade's
   // (all of it the company's: a buy is new shares, the money into its funds; a sale its own bought back, the money
   // out of its funds — never the people's waiting orders)
+  // (a company not founded yet — HACHI before 2026-11-04 —: not listed yet)
+  const notYet = (id) => { const w = get(); return !!(w && !w.co[id]); };
   function traded(id, side, shares, price, fee, sec) {
-    if (!booted() || !listed.includes(id) || delisted(id)) return;
+    if (!booted() || !listed.includes(id) || delisted(id) || notYet(id)) return;
     change((w) => model.trade(w, id, side, shares, price, sec), [id]);
     flow('dtrade', 'trade', fee);
   }
@@ -328,7 +333,12 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
     if (!w) return null;
     const out = {};
     for (const id of listed) {
-      if (!w.co[id]) continue;
+      // (founded on its day — HACHI before 2026-11-04 —: its listing to come, no trading until then)
+      if (!w.co[id]) {
+        const p = model.PROFILES.get(id);
+        if (p && p.founded) out[id] = { name: p.name, full: p.full, rank: p.rank, kind: p.kind, staff: 0, shares: 0, eps: 0, bps: 0, dps: 0, last: null, guide: null, next: null, news: [], soon: { day: CORP.dayAt(...p.founded) } };
+        continue;
+      }
       const s = w.co[id], p = model.PROFILES.get(id), last = latestQuarter(id, now);
       const quarters = q("SELECT data FROM corp_periods WHERE company = ? AND kind = 'q' ORDER BY day DESC LIMIT 6").all(id).map((r) => JSON.parse(r.data)).filter((x) => !x.announce || x.announce * 1000 <= now).slice(0, 4);
       const shares = model.outstanding(s);
@@ -501,6 +511,9 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       cut: s.cut || null, target: s.target, abroad: !!p.abroad,
       // MY WAY's characters and licences (its own site), or this partner's contract with it
       ip: id === 'myway' ? ipView(w) : null,
+      // HACHI's wards (both countries'), its months, its research with アスカ国 and FIGMA's equipment, the state's hand
+      hachi: id === 'hachi' && s.hachi ? { wards: s.hachi.wards, last: s.hachi.last, hist: s.hachi.hist, state: s.hachi.state, research: s.hachi.research, figma: s.hachi.figma, busy: s.hachi.busy || 0, patients: s.hachi.patients || {}, asukaStaff: s.hachi.asukaStaff || 0, asukaPay: s.hachi.asukaPay || 0, opened: s.hachi.opened, closed: s.hachi.closed, founded: s.hachi.founded, rules: CORP.hachi,
+        credit: s.hachi.credit || 0, line: s.loans.filter((l) => l.line).reduce((n, l) => n + l.amt, 0), tax: Math.round(s.per.y['r:tax'] || 0) } : null,
       license: w.co.myway && w.co.myway.ip && w.co.myway.ip.contracts[id] ? { ...w.co.myway.ip.contracts[id], fee: model.contractFee(w.co.myway.ip.contracts[id]), scale: w.co.myway.ip.contracts[id].scale || 1, name: CORP.company('myway').name, what: CORP.myway.partners[id].what, breakeven: CORP.breakeven(id, w.co.myway.ip.contracts[id].fee), dead: !!w.co.myway.dead } : null,
       news: q('SELECT at, kind, text, public FROM corp_news WHERE company = ? AND at <= ? ORDER BY at DESC, id DESC LIMIT 100').all(id, Math.floor(now / 1000)),
       ties: tiesOf(w, id),
@@ -677,5 +690,5 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
   }
 
   return { ensure, booted, closesAt, close, unbooked, anchor, dps, flow, tally, flush, sold, prize, rebuy, coinsBought, questFee, npcSpent, today, hourTick, hoursOf, traded, surcharge, surcharges, garageFee, garageReady, view, routes, housekeep, world: get, startCirculation, setNpc: (n) => { npc = n; }, depth: (id) => (model.PROFILES.get(id) || {}).depth || 1e8,
-    delisted, ip: () => ipView(get()) };
+    delisted, notYet, ip: () => ipView(get()) };
 }

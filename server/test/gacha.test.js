@@ -21,6 +21,8 @@ test('all three gacha tables match requested odds, total 100%, draw 2/6/20 slots
   assert.ok(!GACHA.pool.some((c) => ['two-state-sedan', 'blue-lightning', 'lamborghini-kuia-spyder', 'porsche-kuia-spyder', 'yoshida-s6'].includes(c.id)));
   assert.ok(GACHA.cars.some((c) => c.id === 'porsche-kuia-spyder' && c.name === 'MAGITA K110'));
   assert.equal(GACHA.slots, 2);
+  // (the secret one 3 slots a pull)
+  assert.deepEqual(['rare', 'legendary', 'secret'].map(GACHA.slotsOf), [2, 2, 3]);
   assert.deepEqual(GACHA.kinds.map((k) => k.id), ['rare', 'legendary', 'secret']);
   for (const [kind, expected] of Object.entries(EXPECTED)) {
     assert.deepEqual(GACHA.odds(kind, false).map((r) => [r.id, r.chance]), expected);
@@ -30,7 +32,7 @@ test('all three gacha tables match requested odds, total 100%, draw 2/6/20 slots
       const car = table.filter((r) => r.car).reduce((n, r) => n + r.chance, 0);
       const baseCar = { rare: 2.685, legendary: 13.935, secret: 20 }[kind];
       assert.ok(Math.abs(car - baseCar * (boost ? 1.5 : 1)) < 1e-10);
-      for (const count of [1, 3, 10]) assert.equal(GACHA.draw(kind, count, boost, false, () => 0).flatMap((r) => r.rewards).length, count * GACHA.slots);
+      for (const count of [1, 3, 10]) assert.equal(GACHA.draw(kind, count, boost, false, () => 0).flatMap((r) => r.rewards).length, count * GACHA.slotsOf(kind));
     }
   }
   for (const kind of ['normal', 'bad', 'toString', '__proto__', 'constructor']) assert.throws(() => GACHA.odds(kind, false), RangeError);
@@ -39,12 +41,12 @@ test('all three gacha tables match requested odds, total 100%, draw 2/6/20 slots
 const BASE = {
   rare: { single: 4500000, three: 12150000, ten: 33750000 },
   legendary: { single: 27000000, three: 72900000, ten: 202500000 },
-  secret: { single: 45000000, three: 121500000, ten: 337500000 }
+  secret: { single: 60000000, three: 162000000, ten: 450000000 }
 };
-// what a server asks during its first 100 hours: the リリース記念セール, the secret tier at $40M a pull
+// what a server asks during its first 100 hours: the リリース記念セール, the secret tier at $54M a pull
 const PRICES = {
   ...BASE,
-  secret: { single: 40000000, three: 108000000, ten: 300000000 }
+  secret: { single: 54000000, three: 145800000, ten: 405000000 }
 };
 
 test('tier prices use a single 10% discount for 3 pulls and 25% for 10, without stacking the old sale discounts', () => {
@@ -104,7 +106,7 @@ test('coin ranges reach their exact endpoints, including both distinct secret ro
   }
 });
 
-test('gacha API authenticates, removes normal, validates count/price and settles two-slot rewards with payment', async () => {
+test('gacha API authenticates, removes normal, validates count/price and settles each tier\'s slots (three for the secret one) with payment', async () => {
   const s = await startServer();
   try {
     assert.equal((await s.call('GET', '/api/gacha')).status, 401);
@@ -116,7 +118,7 @@ test('gacha API authenticates, removes normal, validates count/price and settles
     const r = await s.call('POST', '/api/gacha/spin', { token: p.token, body: { kind: 'secret', count: 10 } });
     assert.equal(r.status, 200, JSON.stringify(r)); assert.equal(r.pulls.length, 10);
     const rewards = r.pulls.flatMap((pull) => pull.rewards);
-    assert.equal(rewards.length, 20);
+    assert.equal(rewards.length, 30);
     // (a money tree that had no room: its $3M paid instead, YOSIDA's)
     const treePaid = rewards.filter((x) => x.paid).reduce((n, x) => n + x.paid, 0);
     assert.equal(r.paid, PRICES.secret.ten); assert.equal(r.me.dollars, 1000000000 - r.paid + treePaid);
@@ -128,7 +130,7 @@ test('gacha API authenticates, removes normal, validates count/price and settles
   } finally { await s.stop(); }
 });
 
-test('the リリース記念セール: the secret tier at $40M a pull for the first 100 hours of the server, then its price again', async () => {
+test('the リリース記念セール: the secret tier at $54M a pull for the first 100 hours of the server, then its price again', async () => {
   const s = await startServer();
   try {
     const p = await s.register('セール確認'); s.setUser(p.me.id, { dollars: 1000000000, garage_extra: 40 });
@@ -139,7 +141,7 @@ test('the リリース記念セール: the secret tier at $40M a pull for the fi
     // (a quote of the old price is refused while the sale is on)
     assert.equal((await s.call('POST', '/api/gacha/spin', { token: p.token, body: { kind: 'secret', count: 1, price: BASE.secret.single } })).error.code, 'price_changed');
     const sale = await s.call('POST', '/api/gacha/spin', { token: p.token, body: { kind: 'secret', count: 1, price: PRICES.secret.single } });
-    assert.equal(sale.paid, 40000000);
+    assert.equal(sale.paid, 54000000);
     // over: a service started after the 100 hours (the start is kept in meta, never moved)
     const q = (sql) => s.app.db.prepare(sql);
     const getUser = (id) => q('SELECT * FROM users WHERE id = ?').get(id);
@@ -156,7 +158,7 @@ test('the リリース記念セール: the secret tier at $40M a pull for the fi
   } finally { await s.stop(); }
 });
 
-test('all tiers settle the exact 3-pull price and six rewards; a mismatched tier quote cannot debit the account', async () => {
+test('all tiers settle the exact 3-pull price and three pulls of their slots; a mismatched tier quote cannot debit the account', async () => {
   const s = await startServer();
   try {
     const p = await s.register('三連確認'); s.setUser(p.me.id, { dollars: 2000000000, garage_extra: 100 });
@@ -167,7 +169,7 @@ test('all tiers settle the exact 3-pull price and six rewards; a mismatched tier
       assert.equal(s.app.db.prepare('SELECT dollars FROM users WHERE id = ?').get(p.me.id).dollars, before);
       const result = await s.call('POST', '/api/gacha/spin', { token: p.token, body: { kind, count: 3, price: PRICES[kind].three } });
       assert.equal(result.status, 200, JSON.stringify(result)); assert.equal(result.pulls.length, 3);
-      assert.equal(result.pulls.flatMap((pull) => pull.rewards).length, 6);
+      assert.equal(result.pulls.flatMap((pull) => pull.rewards).length, 3 * GACHA.slotsOf(kind));
       const treePaid = result.pulls.flatMap((x) => x.rewards).filter((x) => x.paid).reduce((n, x) => n + x.paid, 0);
       assert.equal(result.paid, PRICES[kind].three); before += treePaid - result.paid; assert.equal(result.me.dollars, before);
     }
@@ -193,23 +195,23 @@ test('all tier rewards settle their full quantities; tickets are consumed once a
       for (const reward of GACHA.odds(kind, false)) {
         roll = (cumulative + reward.chance / 2) / 100; cumulative += reward.chance;
         const r = await g.routes['POST /api/gacha/spin']({ json: async () => ({ kind, count: 1 }) }, p.me);
-        assert.equal(r.pulls[0].rewards.length, 2);
+        assert.equal(r.pulls[0].rewards.length, GACHA.slotsOf(kind));
         assert.equal(r.pulls[0].rewards[0].type, reward.car ? 'car' : reward.type || reward.id);
       }
     }
-    assert.equal(getUser(p.me.id).garage_extra, 52, 'secret gives 4 slots per reward, two rewards give 8');
-    assert.equal(questTickets(readQuests(getUser(p.me.id).quests))['5h'], 12, '2 + 4 + 6 tickets across tiers');
+    assert.equal(getUser(p.me.id).garage_extra, 56, 'secret gives 4 slots per reward, three rewards give 12');
+    assert.equal(questTickets(readQuests(getUser(p.me.id).quests))['5h'], 15, '2 + 4 + 9 tickets across tiers');
     // (the money trees: the starter, then seeds and grown ones until the player's trees are all there — 8 —, after
     // that each paid as $3M instead: rare 2 seeds + 2 grown, legendary 2 seeds and 1 grown, the rest paid)
     assert.equal(itemsOf(p.me.id)['gacha-seed'], 4);
     assert.equal(q('SELECT COUNT(*) AS n FROM trees WHERE user_id = ?').get(p.me.id).n, 4);
     assert.equal(q('SELECT COUNT(*) AS n FROM trees WHERE user_id = ? AND given = ?').get(p.me.id, GACHA.grownGiven).n, 3);
-    assert.equal(itemsOf(p.me.id)['gacha-vip-week'], 6);
+    assert.equal(itemsOf(p.me.id)['gacha-vip-week'], 7);
     await g.routes['POST /api/gacha/use']({ json: async () => ({ item: 'seed' }) }, p.me);
     assert.equal(itemsOf(p.me.id)['gacha-seed'], 3);
-    for (let i = 0; i < 6; i++) await g.routes['POST /api/gacha/use']({ json: async () => ({ item: 'vip-week' }) }, p.me);
+    for (let i = 0; i < 7; i++) await g.routes['POST /api/gacha/use']({ json: async () => ({ item: 'vip-week' }) }, p.me);
     await assert.rejects(g.routes['POST /api/gacha/use']({ json: async () => ({ item: 'vip-week' }) }, p.me), (e) => e.code === 'no_item');
-    assert.equal(getUser(p.me.id).vip_until, now + 42 * 86400000);
+    assert.equal(getUser(p.me.id).vip_until, now + 49 * 86400000);
     const before = getUser(p.me.id).dollars;
     s.setUser(p.me.id, { garage_extra: 0 });
     roll = 0.98; // Onvoro's rare category (97.315-99.015), both slots.
@@ -226,7 +228,7 @@ test('all tier rewards settle their full quantities; tickets are consumed once a
   } finally { await s.stop(); }
 });
 
-test('gacha retries across HTTP/live and recreated services debit once and preserve all 20 rewards', async t => {
+test('gacha retries across HTTP/live and recreated services debit once and preserve all 30 rewards', async t => {
   const s = await startServer(); t.after(() => s.stop()); const p = await s.register('GachaReceipt');
   s.setUser(p.me.id, { dollars: 1000000000, garage_extra: 100 });
   const body = { key: Date.now() + '-' + crypto.randomBytes(16).toString('hex'), kind: 'secret', count: 10, price: PRICES.secret.ten };
@@ -236,7 +238,7 @@ test('gacha retries across HTTP/live and recreated services debit once and prese
   assert.equal(live.s, 200); assert.deepEqual(live.b.pulls, replies[0].pulls);
   const treePaid = replies[0].pulls.flatMap(r => r.rewards).filter(r => r.paid).reduce((n, r) => n + r.paid, 0);
   assert.equal(s.app.db.prepare('SELECT dollars FROM users WHERE id = ?').get(p.me.id).dollars, 1000000000 - PRICES.secret.ten + treePaid);
-  assert.equal(replies[0].pulls.flatMap(r => r.rewards).length, 20);
+  assert.equal(replies[0].pulls.flatMap(r => r.rewards).length, 30);
   const conflict = await s.call('POST', '/api/gacha/spin', { token: p.token, body: { ...body, count: 1 } }); assert.equal(conflict.error.code, 'gacha_conflict');
   const q = sql => s.app.db.prepare(sql);
   q('UPDATE users SET dollars = dollars - 1, rev = rev + 1 WHERE id = ?').run(p.me.id);

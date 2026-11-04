@@ -19,6 +19,7 @@ var OpsTown = (function () {
   function btn(cls, text, fn) { var b = el('button', cls, text); b.type = 'button'; if (fn) b.addEventListener('click', fn); return b; }
   function money(n) { return N().money(Math.round(n || 0)); }
   function pct(x) { return ((x || 0) * 100).toFixed(1) + '%'; }
+  function group(n) { return Math.round(n || 0).toLocaleString('en-US'); }
   function day(d) { var t = new Date(d * 86400000); return t.getUTCFullYear() + '/' + (t.getUTCMonth() + 1) + '/' + t.getUTCDate(); }
   function at(ms) { var t = new Date(ms); return (t.getMonth() + 1) + '/' + t.getDate() + ' ' + t.getHours() + ':' + ('0' + t.getMinutes()).slice(-2); }
   function panel(title, note) { var p = el('section', 'town-panel'); var h = el('div', 'town-head'); h.appendChild(el('h3', '', title)); if (note) h.appendChild(el('span', 'muted', note)); p.appendChild(h); return p; }
@@ -147,6 +148,57 @@ var OpsTown = (function () {
   }
   // 賃金相場 (server/core/npc-wages.js view): the market's pay against the country's wealth, each company's pay against it
   // and its last review, the 引き抜き of the month, アスカ国's market
+  // 医療と健康 (server/core/hachi.js view): HACHI's wards, everyone's 健康度 by its bands, the 医療保険 and the 医療税,
+  // the month's checkups and what the country paid of the bills — both countries'
+  function healthPanel(box, v) {
+    var p = panel('医療と健康', v.open ? 'HACHIの病棟 ' + v.wards.length + 'か所' + (v.state ? '（国の管理下）' : '') : 'HACHIの設立前（地元の診療所）');
+    var g = el('div', 'town-grid'), V = v.vernoa, A = v.asuka;
+    kv(g, '健康度の平均（ヴェルノア）', (V.avg > 0 ? '+' : '') + V.avg);
+    if (A) kv(g, '健康度の平均（アスカ国）', (A.avg > 0 ? '+' : '') + A.avg);
+    kv(g, '医療税（ヴェルノア）', V.rate + '%（給与所得と企業利益に一律・2〜8%。国が毎月、医療財源の収支・景気・重篤患者の増減・国営化で見直し）');
+    kv(g, '医療税の配分', 'HACHI 6割・国 4割' + (V.med && V.med.toHachi ? '（今月のHACHI分 ' + money(V.med.toHachi) + '・国 ' + money(V.med.tax) + '）' : ''));
+    if (A && A.rate !== null && A.rate !== undefined) kv(g, '医療税（アスカ国）', A.rate + '%');
+    var ins = V.insured || [0, 0, 0], plans = v.insurance || [];
+    kv(g, '医療保険（ヴェルノア）', plans.map(function (x, k) { return x.name + ' ' + group(ins[k] || 0) + '人'; }).join('・'));
+    if (A && A.insured) kv(g, '医療保険（アスカ国）', plans.map(function (x, k) { return x.name + ' ' + group(A.insured[k] || 0) + '人'; }).join('・'));
+    var L = V.last;
+    if (L) {
+      kv(g, '定期検診（先月）', group(L.done || 0) + ' / ' + group(L.due || 0) + '人（義務：月1回）');
+      if (L.missed) kv(g, '未受診のペナルティ（今月）', group(L.missed) + '人（健康度−20・受診するまで保険の軽減停止）');
+      kv(g, '国の医療費の負担（先月）', money(L.med.paid) + '（保険料 ' + money(L.med.premiums) + '・医療税 ' + money(L.med.tax) + '）');
+    }
+    kv(g, '手術で助かった人（累計）', group(V.saved || 0) + '人');
+    kv(g, '手術が間に合わず亡くなった人（累計）', group(V.deaths || 0) + '人').classList.toggle('town-bad', (V.deaths || 0) > 0);
+    p.appendChild(g);
+    var A2 = A ? A.bands : null;
+    p.appendChild(table(['健康度', '状態', 'ヴェルノア', 'アスカ国'], V.bands.map(function (b, k) { return [(b.min === b.max ? String(b.min) : b.min + '〜' + b.max), b.name, group(b.n), A2 ? group(A2[k].n) : '—']; })));
+    var M = V.month;
+    if (M) {
+      var names = { checkup: '定期検診', consult: '診察', medicine: '薬', inpatient: '入院（日）', surgery: '手術', rehab: 'リハビリ' };
+      p.appendChild(table(['今月のヴェルノアの受診', '回数', '医療費'], Object.keys(names).map(function (k) { return [names[k], group((M.visits || {})[k] || 0), money((M.rev || {})[k] || 0)]; })));
+    }
+    if (A && A.month) {
+      var AM = A.month;
+      p.appendChild(table(['今月のアスカ国の受診', '回数・人数'], [['診察・薬', group(AM.consult)], ['定期検診', group(AM.checkups)], ['入院（日）', group(AM.beds)], ['手術', group(AM.surgery)], ['手術で助かった人', group(AM.saved)], ['間に合わず亡くなった人', group(AM.deaths)], ['医療費（HACHIの売上）', money(AM.rev)]]));
+    }
+    // the wards: ヴェルノア's with who is in them right now, アスカ国's by name and district
+    var W = v.wards || [];
+    if (W.length) {
+      var vw = W.filter(function (x) { return x.country === 'vernoa'; }), aw = W.filter(function (x) { return x.country !== 'vernoa'; });
+      if (vw.length) p.appendChild(table(['ヴェルノアの病棟', '待ち', '診察中', '手術中', 'リハビリ中', '入院'], vw.map(function (x) { return [x.name, group(x.waiting), group(x.seen), group(x.surgery), group(x.rehab), group(x.beds)]; })));
+      if (aw.length) p.appendChild(el('p', 'muted', 'アスカ国の病棟（' + aw.length + 'か所）：' + aw.map(function (x) { return x.name; }).join('・')));
+    }
+    // 株式会社FIGMA (アスカ国の非上場の医療機器メーカー): its sales to HACHI and to アスカ国's research (4:6)
+    var F = A && A.figma;
+    if (F) {
+      var fg = el('div', 'town-grid'), S = F.sales || {}, tot = (S.hachi || 0) + (S.asuka || 0);
+      kv(fg, '株式会社FIGMA（医療機器・非上場）', '社員 ' + group(F.staff) + '人・手元資金 ' + money(F.cash));
+      kv(fg, '売上（設立から）', money(tot) + (tot ? '（HACHI ' + Math.round(S.hachi / tot * 100) + '% : アスカ国 ' + Math.round(S.asuka / tot * 100) + '%）' : ''));
+      if (F.last) kv(fg, '先月', '売上 ' + money((F.last.hachi || 0) + (F.last.asuka || 0)) + '・給与 ' + money(F.last.pay) + '・原材料 ' + money(F.last.materials));
+      p.appendChild(fg);
+    }
+    box.appendChild(p);
+  }
   function wagesPanel(box, v) {
     var p = panel('賃金相場と人材の奪い合い', '毎月1日に見直し・国民の資産（1人あたり）の' + v.years + '年分の年収を目標に、相場が少しずつ近づく');
     var g = el('div', 'town-grid');
@@ -406,7 +458,8 @@ var OpsTown = (function () {
       slotWins: 'プレイヤーのスロットの勝ち分', questRewards: 'クエストの報酬', gachaClaims: 'ガチャ代（YOSIDAへ）', loginBonus: 'ログインボーナス', dailyTokens: '毎日の無料トークン',
       coopBonus: '協力プレイのボーナス', releaseBonus: 'アップデートのお礼', medalRewards: '功績の報酬', diaryRewards: '日記の報酬', treeHarvest: '金の生る木の収穫', npcGifts: 'ジョンソン・運営からの贈り物',
       playerStart: 'プレイヤーの初期資金', treeFund: '金の生る木の肥料（収穫の財源）', newLife: '生まれた人の初期資金', bankRescue: 'テネシスへの公的資金', asukaBonds: 'アスカ国の政府系ファンドへの国債の利子', gachaShare: 'ガチャ代の国庫分（' + Math.round((1 - ((C() && C().yosida.gacha.share) || 0.8)) * 100) + '%）',
-      landRent: 'テネシスリサーチの土地代', myway: 'MY WAYへのIP契約料（国の公式キャラクター）' };
+      landRent: 'テネシスリサーチの土地代', myway: 'MY WAYへのIP契約料（国の公式キャラクター）',
+      medicalTax: '医療税', premium: '医療保険の保険料', hachiLand: 'HACHIの病棟の土地代', hachiSeed: 'HACHIの設立（利益剰余金）' };
     var kindName = function (k) { return KIND[k] || k; };
     Object.keys(nf.day.in || {}).forEach(function (k) { rows.push(['収入', kindName(k), money(nf.day.in[k])]); });
     Object.keys(nf.day.out || {}).forEach(function (k) { rows.push(['支出', kindName(k), money(nf.day.out[k])]); });
@@ -438,6 +491,7 @@ var OpsTown = (function () {
       }
       box.appendChild(p);
     }
+    if (r.hachi) healthPanel(box, r.hachi);
     if (r.wages) wagesPanel(box, r.wages);
     if (r.research) researchPanel(box, r.research);
     if (r.fund) fundPanel(box, r.fund);
@@ -522,7 +576,15 @@ var OpsTown = (function () {
     var p = panel(x.name + '（' + x.kana + '・' + x.age + '歳）', x.district + (hm ? '・' + hm : '') + (x.posts && x.posts.length ? '・' + x.posts.join('、') : ''));
     p.appendChild(el('p', 'town-voice', '心の声：「' + x.voice + '」'));
     var g = el('div', 'town-grid');
-    kv(g, 'いま', x.act + '（' + x.at + '・' + x.place + '）'); kv(g, '仕事', x.job || '—'); kv(g, '健康', String(x.health));
+    var idc = x.idCard;
+    kv(g, 'いま', x.act + '（' + x.at + '・' + x.place + '）'); kv(g, '仕事', x.job || '—');
+    kv(g, '健康度', (x.health > 0 ? '+' : '') + x.health + (idc ? '（' + idc.band + '）' : '')).classList.toggle('town-bad', x.health <= 0);
+    // (their 身分証明書: nobody loses it — its number, their 医療保険, how they are)
+    if (idc) {
+      kv(g, '身分証明書', idc.no);
+      kv(g, '医療保険', idc.welfare ? '生活保護（医療費は国が全額）' : idc.insurance + (idc.suspended ? '（定期検診の未受診で軽減停止中：受診で解除）' : idc.cover ? '（国が' + Math.round(idc.cover * 100) + '%負担）' : ''));
+      kv(g, '病院', (idc.care || '—') + (idc.chronic ? '・持病あり' : '') + '・今月の定期検診 ' + (idc.checked ? '受診済み' : 'まだ'));
+    }
     var m = x.money;
     kv(g, '手元のお金', money(m.cash)); kv(g, '借金', money(m.debt) + (m.loan ? '（' + m.loan + '）' : '')); kv(g, '信用', String(m.credit)); kv(g, '月の予算', money(m.budget));
     kv(g, '今月の使ったお金', money(m.spent)); kv(g, 'カジノのトークン', money(m.tokens));
