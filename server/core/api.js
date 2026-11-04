@@ -2455,6 +2455,11 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       }
       // (Car Owner's stock: none left, none to sell until the next lot arrives)
       const stock = npc.carStock();
+      // (MIZUKAWA GARAGE's: from its day — the people's side has its stock once it is out —, as many as it makes)
+      if (car.seller) {
+        if (!stock || stock.cars[car.id] === undefined) throw new ApiError(409, 'not_yet', `${car.name}は${car.from ? `${car.from[1]}月${car.from[2]}日` : 'まだ'}発売前です（MIZUKAWA GARAGE）`);
+        if (stock.cars[car.id] <= 0) throw new ApiError(409, 'sold_out', `${car.name}は完売しました（MIZUKAWA GARAGEの限定生産）`, { stock });
+      }
       if (stock && stock.cars[car.id] !== undefined && stock.cars[car.id] <= 0) {
         const c = stock.coming[car.id];
         throw new ApiError(409, 'sold_out', `${car.name}は売り切れです${c ? `（${new Date(c.at + 9 * 3600000).getUTCMonth() + 1}/${new Date(c.at + 9 * 3600000).getUTCDate()} 9:00に${c.n}台入荷予定）` : ''}`, { stock });
@@ -2467,8 +2472,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         const vipPay = addVipExp(cur, VIP_RULES.exp.car);
         const now = Date.now();
         const id = Number(q('INSERT INTO cars (owner_id, model, from_id, created_at, acquired_at, paid) VALUES (?, ?, 0, ?, ?, ?)').run(cur.id, car.id, now, now, cost).lastInsertRowid);
-        // (Car Owner's sale, at what was paid: server/core/corp.js)
-        corp.sold('carowner', 'car', car.id, 1, cost);
+        // (Car Owner's sale, at what was paid — MIZUKAWA's its own, at MIZUKAWA GARAGE: server/core/corp.js)
+        corp.sold(car.seller || 'carowner', 'car', car.id, 1, cost);
         // (one fewer of it for the people: the players buy first, never refused for them)
         npc.carBought(car.id);
         carGot(q, cur.id, id);
@@ -2810,6 +2815,12 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
       const item = SHOP.get(String(body.id || ''));
       if (!item) throw new ApiError(400, 'bad_item', 'この商品は販売していません');
       const count = body.count === undefined ? 1 : posInt(body.count, '個数');
+      // (MIZUKAWA GARAGE's engines: from their day, as many as it makes)
+      if (item.seller) {
+        const stock = npc.carStock();
+        if (!stock || stock.cars[item.id] === undefined) throw new ApiError(409, 'not_yet', `${item.name}は${item.from ? `${item.from[1]}月${item.from[2]}日` : 'まだ'}発売前です（MIZUKAWA GARAGE）`);
+        if (stock.cars[item.id] < count) throw new ApiError(409, 'sold_out', stock.cars[item.id] > 0 ? `${item.name}は残り${stock.cars[item.id]}個です` : `${item.name}は完売しました（MIZUKAWA GARAGEの限定生産）`);
+      }
       const sale = shopSale(item);
       if (body.price !== undefined && Number(body.price) !== sale.price) {
         throw new ApiError(409, 'price_changed', `価格が変わりました（今は $${fmt(sale.price)}）`, { itemShop: itemShop() });
@@ -2824,8 +2835,9 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
         if (cur.dollars < cost) throw new ApiError(409, 'insufficient', '$が足りません');
         q('UPDATE users SET dollars = dollars - ?, rev = rev + 1 WHERE id = ?').run(cost, cur.id);
         addItems(cur.id, item.id, count);
-        // (the Shop is ジンクス's)
-        corp.sold('jinx', 'shop', item.id, count, cost);
+        // (the Shop is ジンクス's — MIZUKAWA's engines MIZUKAWA GARAGE's, one fewer of each for the people)
+        corp.sold(item.seller || 'jinx', 'shop', item.id, count, cost);
+        if (item.seller) for (let k = 0; k < count; k++) npc.carBought(item.id);
         afterSpend(u.id);
       });
       const me = meDto(balanceChanged(u.id));

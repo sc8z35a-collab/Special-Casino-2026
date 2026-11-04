@@ -16,7 +16,7 @@ var OpsCorp = (function () {
     tenesice: ['#0f1c3f', '#2d4a8a'], magita: ['#5c0a10', '#c62832'], carowner: ['#0b2f63', '#2378dd'], jinx: ['#8a2c00', '#e47a12'],
     daizin: ['#140a24', '#53308a'], citywork: ['#11471c', '#2f9a44'], speedeed: ['#00505c', '#0aa6b8'], dtrade: ['#0d2b2a', '#1a8a7e'],
     riru: ['#5b1173', '#d8336f'], ice: ['#063d73', '#2f9fd8'], yosida: ['#0e3b31', '#1f8a6e'], wazima: ['#262c36', '#6b7f99'], myway: ['#3d0b3f', '#e8508f'],
-    hachi: ['#073b40', '#0e9aa0']
+    hachi: ['#073b40', '#0e9aa0'], mizukawa: ['#0a1f4a', '#2f6fd1']
   };
   var TABS = [['top', 'トップ'], ['fin', '決算'], ['products', '商品'], ['biz', '事業'], ['people', '人と予算'], ['stock', '株式・財務'], ['ties', '友好度'], ['news', 'ニュース']];
   var NEWS = { results: '決算', guidance: '業績予想', revise: '予想修正', dividend: '配当', release: '発売', hit: 'ヒット', flop: '不振', start: '開発開始',
@@ -650,6 +650,37 @@ var OpsCorp = (function () {
     return box;
   }
 
+  // MIZUKAWA Motors (アスカ国籍): its models at MIZUKAWA GARAGE — each worked out the day it came out, its stock —, its
+  // research pool (研究開発員の給与50%・他社への発注30%・技術資産20%), its technology's share and fees, HIGA MASTER, its
+  // people by role at their pay index (稼ぐほど上がる), its plans (WAZIMA, the four of MAGITA's economy)
+  function mizukawaPanel(z) {
+    var R = z.rules, box = el('div');
+    var pt = panel('MIZUKAWA GARAGE・研究・技術', 'アスカ国籍・' + dayLabel(z.founded) + '設立');
+    var t = el('div', 'corp-tiles'), L = z.last || {};
+    t.appendChild(stat('社員（アスカ国）', group(z.staff) + '名', R.roles.map(function (r) { return r.name + ' ' + group((z.byRole || {})[r.id] || 0); }).join('・')));
+    t.appendChild(stat('給与水準', '×' + (z.payIdx || 1).toFixed(2), '稼ぐほど上がる（売上から原価を引いた額の' + Math.round(R.pay.share * 100) + '%まで・月' + Math.round(R.pay.step * 100) + '%ずつ）・人数 ×' + (z.staffIdx || 1).toFixed(2)));
+    t.appendChild(stat('製造ライン技術シェア', Math.round((z.line || 0) * 1000) / 10 + '%', z.wazima ? 'WAZIMAを買収（世界の製造ラインはすべてMIZUKAWAグループ）' : 'WAZIMA ' + Math.round((1 - (z.line || 0)) * 1000) / 10 + '%'));
+    t.appendChild(stat('技術提供料（累計）', money((z.license.magita || 0) + (z.license.wazima || 0) + (z.license.yosida || 0)), 'MAGITA ' + money(z.license.magita || 0) + '・WAZIMA ' + money(z.license.wazima || 0) + '・YOSHIDA ' + money(z.license.yosida || 0)));
+    t.appendChild(stat('研究プール', money(z.pool), '使った研究費：給与・ボーナス ' + money(z.spent.pay) + '・他社への発注 ' + money(z.spent.orders) + '・技術資産 ' + money(z.spent.asset)));
+    t.appendChild(stat('技術資産（技術ライセンス価値）', money(z.asset), '技術提供料が ×' + (1 + z.asset / R.line.lift).toFixed(3) + '（お金は社内に残る）'));
+    t.appendChild(stat(R.higa.name, z.higa.done ? '完了（' + dayLabel(z.higa.done) + '）' : dayLabel(z.higa.due) + ' 完了予定', '総研究費 ' + money(z.higa.cost) + '・原価' + Math.round(R.higa.cut * 100) + '%低減' + (z.higa.done ? '' : '（投入 ' + money(z.higa.spent) + '）')));
+    t.appendChild(stat('アスカ国の住民の購入', money(z.asuka), 'MIZUKAWA GARAGE（アスカ国内）の売上・累計'));
+    pt.appendChild(t);
+    var cars = C().products.cars, items = C().products.items, list = Object.keys(cars).concat(Object.keys(items)).filter(function (id) { var x = cars[id] || items[id]; return x.seller === 'mizukawa'; });
+    var rows = list.map(function (id) {
+      var x = (z.products || {})[id], spec = cars[id] || items[id], name = (C().carName ? C().carName(id) : id);
+      var meta = (window.BR.CONFIG.cars.filter(function (c) { return c.id === id; })[0] || window.BR.CONFIG.shop.filter(function (c) { return c.id === id; })[0] || {});
+      if (!x) return [meta.name || name, spec.from ? spec.from[0] + '/' + spec.from[1] + '/' + spec.from[2] + ' 発売予定' : '—', meta.price ? money(meta.price) : '—', '発売時に算出', '—', '—', group(spec.limit)];
+      return [meta.name || name, dayLabel(x.day), money(x.price), money(x.cost), money(x.research), money(x.net), group((z.left || {})[id] !== undefined ? z.left[id] : spec.limit) + ' / ' + group(spec.limit) + '（販売 ' + group((z.sold || {})[id] || 0) + '）'];
+    });
+    pt.appendChild(table([['モデル', 0], ['発売', 0], ['価格', 1], ['原価', 1], ['研究費', 1], ['1台の純利益', 1], ['在庫（この国の規模）', 1]], rows));
+    pt.appendChild(el('p', 'muted corp-note', '発売時の原価＝基準原価×景気物価指数（' + R.release.index.join('〜') + '）×HIGA（完了後0.7）・研究費＝価格×技術難度率÷研究ボーナス（WAZIMA買収後1.2）・販売手数料1台' + money(R.fee) + '。River W Feat.の利益はMY WAYと' + Math.round((1 - R.myway.share) * 10) + ':' + Math.round(R.myway.share * 10) + '。'));
+    if (z.wazima || z.locals) pt.appendChild(el('p', '', (z.wazima ? 'WAZIMAを' + dayLabel(z.wazima.day) + 'に' + money(z.wazima.price) + 'で買収。' : '') + (z.locals ? '旧MAGITA経済圏から' + z.locals.bought.map(function (x) { return x.name; }).join('・') + 'を計' + money(z.locals.paid) + 'で取得。' : '')));
+    else pt.appendChild(el('p', 'muted', '事業拡大の計画：WAZIMAを企業価値の' + Math.round(R.wazima.premium * 100) + '%増しで買収（設立から' + R.wazima.after + '日以降、不足分はテネシスから借入）→ その' + R.locals.after + '日後に旧MAGITA経済圏の4社の事業を取得'));
+    box.appendChild(pt);
+    return box;
+  }
+
   // トップ: where it stands now, the year's plan, its days in a chart, what players spent there and its latest news
   function pageTop(body, r, p) {
     var m = r.summary, sv = r.state;
@@ -713,6 +744,7 @@ var OpsCorp = (function () {
     if (r.seeds) tiles.appendChild(stat('金の生る木の種', group(r.seeds.n) + '本/月', r.seeds.m + '・平均' + money(r.seeds.price) + '・原価' + money(C().yosida.seeds.cost) + '・出荷済み ' + group(r.seeds.sold) + '本'));
     body.appendChild(tiles);
     if (r.hachi) body.appendChild(hachiPanel(r.hachi, r));
+    if (r.mizukawa) body.appendChild(mizukawaPanel(r.mizukawa));
     // the year's plan
     var g = sv.guide;
     if (g) {

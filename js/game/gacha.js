@@ -7,9 +7,10 @@
   var DAY = 86400000;
   var JST = 9 * 3600000;
   // every car a prize may be (a player's won one waiting to be taken too: the ended ones, the K110), by Car Owner's
-  // list (js/game/config.js); `DRAW`: the ones a ランダムな車 may be — every car on sale, none that ended
-  var CARS = ((BR.CONFIG && BR.CONFIG.cars) || []).filter(function (c) { return c.price > 0; }).map(function (c) { return { id: c.id, name: c.name }; });
-  var DRAW = ((BR.CONFIG && BR.CONFIG.cars) || []).filter(function (c) { return c.price > 0 && !c.ended; }).map(function (c) { return { id: c.id, name: c.name }; });
+  // list (js/game/config.js); `DRAW`: the ones a ランダムな車 may be — every car on sale, none that ended. (MIZUKAWA's,
+  // made in their limited numbers and sold at its own MIZUKAWA GARAGE only, never a prize)
+  var CARS = ((BR.CONFIG && BR.CONFIG.cars) || []).filter(function (c) { return c.price > 0 && !c.seller; }).map(function (c) { return { id: c.id, name: c.name }; });
+  var DRAW = ((BR.CONFIG && BR.CONFIG.cars) || []).filter(function (c) { return c.price > 0 && !c.ended && !c.seller; }).map(function (c) { return { id: c.id, name: c.name }; });
   var RARE = [
     { id: 'lot', name: 'ロットコイン', chance: 30, min: 10000, max: 25000, step: 1000 },
     { id: 'royal', name: 'ロイヤルコイン', chance: 20, min: 8, max: 12, step: 1 },

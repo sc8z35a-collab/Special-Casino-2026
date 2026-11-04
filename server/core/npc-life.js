@@ -574,6 +574,13 @@ function shopItems(W, i, day, r) {
     if (n) econ.buyProduct(W, i, day, 'items', id, n, itemPrice(id), false);
   }
   if (tr(P, i, T.car) > 0.7) for (const id of ['engine-v1', 'engine-v2', 'engine-v3']) if (r.u() < (c[id] || 0)) econ.buyProduct(W, i, day, 'items', id, 1, itemPrice(id), false);
+  // (MIZUKAWA's engines at MIZUKAWA GARAGE, once out and while it has them: the keen and the well-off)
+  const mz = W.mzInfo && W.mzInfo.out;
+  if (mz && tr(P, i, T.car) > 0.6) for (const [id, x] of Object.entries(mz)) {
+    if (x.kind !== 'items' || !((W.stock.cars[id] || 0) > 0) || P.cash[i] < x.price * 3) continue;
+    const rate = c[id] ?? (CORP.products.items[id] ? CORP.products.items[id].npc * NPC.life.carSpend / Math.max(1, 50000 * 0.4 * 95) : 0);
+    if (r.u() < rate && econ.buyProduct(W, i, day, 'items', id, 1, x.price, false)) W.stock.cars[id]--;
+  }
 }
 
 // The games: a new one from the studios (by its genre, how good it is said to be, how new, what friends say), now and

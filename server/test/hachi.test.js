@@ -47,7 +47,8 @@ function adult(W, skip = []) {
 
 test('the rules as given: 14th company, listed, founded 2026-11-04; its fees, wards, people at $5M/$6M/$10M a month; the 医療税 4% (2〜8%) six tenths its; the 医療保険; 健康度 ±100 and its bands', () => {
   const p = CORP.company('hachi'), R = CORP.hachi;
-  assert.equal(CORP.companies.length, 14);
+  // (and MIZUKAWA, founded the day after it, the 15th)
+  assert.equal(CORP.companies.length, 15);
   assert.equal(CORP.companies[13].id, 'hachi');
   assert.deepEqual([p.founded, p.listed, p.retained, p.capital], [[2026, 11, 4], true, 20000000000, 0]);
   assert.ok(STOCKS.companies.some((c) => c.id === 'hachi' && c.ticker === 'HCH'));

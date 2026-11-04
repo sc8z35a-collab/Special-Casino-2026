@@ -459,7 +459,8 @@ var OpsTown = (function () {
       coopBonus: '協力プレイのボーナス', releaseBonus: 'アップデートのお礼', medalRewards: '功績の報酬', diaryRewards: '日記の報酬', treeHarvest: '金の生る木の収穫', npcGifts: 'ジョンソン・運営からの贈り物',
       playerStart: 'プレイヤーの初期資金', treeFund: '金の生る木の肥料（収穫の財源）', newLife: '生まれた人の初期資金', bankRescue: 'テネシスへの公的資金', asukaBonds: 'アスカ国の政府系ファンドへの国債の利子', gachaShare: 'ガチャ代の国庫分（' + Math.round((1 - ((C() && C().yosida.gacha.share) || 0.8)) * 100) + '%）',
       landRent: 'テネシスリサーチの土地代', myway: 'MY WAYへのIP契約料（国の公式キャラクター）',
-      medicalTax: '医療税', premium: '医療保険の保険料', hachiLand: 'HACHIの病棟の土地代', hachiSeed: 'HACHIの設立（利益剰余金）' };
+      medicalTax: '医療税', premium: '医療保険の保険料', hachiLand: 'HACHIの病棟の土地代', hachiSeed: 'HACHIの設立（利益剰余金）',
+      mizukawaSeed: 'MIZUKAWAの設立（利益剰余金）', mizukawaLand: 'MIZUKAWAの工場・本社の土地代', mizukawaSocial: 'MIZUKAWAの社会保険', mizukawaTax: 'MIZUKAWAの法人税' };
     var kindName = function (k) { return KIND[k] || k; };
     Object.keys(nf.day.in || {}).forEach(function (k) { rows.push(['収入', kindName(k), money(nf.day.in[k])]); });
     Object.keys(nf.day.out || {}).forEach(function (k) { rows.push(['支出', kindName(k), money(nf.day.out[k])]); });

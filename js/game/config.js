@@ -198,7 +198,18 @@
       { id: 'yoshida-s6', name: 'YOSHIDA S6', price: 3600000, maker: 'yosida', ended: true },
       { id: 'yoshida-k10e', name: 'YOSHIDA K10E', price: 6000000, maker: 'yosida' },
       // (its collaboration car with MY WAY: YOSIDA's and MY WAY's profit 3:7)
-      { id: 'yoshida-s6-way', name: 'YOSHIDA S6 WAY', price: 7500000, maker: 'yosida', collab: 'myway' }
+      { id: 'yoshida-s6-way', name: 'YOSHIDA S6 WAY', price: 7500000, maker: 'yosida', collab: 'myway' },
+      // MIZUKAWA's (アスカ国の自動車メーカー: js/game/corp.js MIZUKAWA), sold at MIZUKAWA GARAGE only (`seller`), each
+      // from its day (`from`) as many as it makes (`limit`: js/game/corp.js products); for now in the bodies of others
+      { id: 'mizukawa-river-w', name: 'MIZUKAWA River W', price: 25000000, model: true, look: 'ferrari-325', maker: 'mizukawa', seller: 'mizukawa', from: [2026, 11, 5] },
+      { id: 'mizukawa-river-w-feat', name: 'MIZUKAWA River W Feat.', price: 38000000, model: true, look: 'ferrari-325', maker: 'mizukawa', seller: 'mizukawa', collab: 'myway', from: [2026, 11, 5] },
+      { id: 'mizukawa-river-w2', name: 'MIZUKAWA RIVER W II', price: 30000000, model: true, look: 'nissan-gt-r', maker: 'mizukawa', seller: 'mizukawa', from: [2026, 11, 10] },
+      { id: 'mizukawa-super-u', name: 'MIZUKAWA SUPER U', price: 19000000, model: true, look: 'mercedes-benz-one', maker: 'mizukawa', seller: 'mizukawa', from: [2026, 11, 30] },
+      { id: 'mizukawa-h1', name: 'MIZUKAWA H1', price: 45000000, model: true, look: 'lamborghini-urus', maker: 'mizukawa', seller: 'mizukawa', from: [2026, 11, 30] },
+      { id: 'mizukawa-h1-super', name: 'MIZUKAWA H1 SUPER', price: 67000000, model: true, look: 'lamborghini-urus', maker: 'mizukawa', seller: 'mizukawa', from: [2026, 11, 30] },
+      { id: 'mizukawa-super-u2', name: 'MIZUKAWA SUPER U II', price: 22000000, model: true, look: 'mercedes-benz-one', maker: 'mizukawa', seller: 'mizukawa', from: [2027, 2, 3] },
+      { id: 'mizukawa-nature-1', name: 'MIZUKAWA Nature 1', price: 13000000, model: true, look: 'mercedes-benz-one', maker: 'mizukawa', seller: 'mizukawa', from: [2027, 3, 4] },
+      { id: 'mizukawa-river-w3', name: 'MIZUKAWA RIVER W III', price: 27000000, model: true, look: 'nissan-gt-r', maker: 'mizukawa', seller: 'mizukawa', from: [2027, 3, 4] }
     ],
     // the garage holds this many cars; one more place costs `slotPrice` $ (for good, any number). The garages are
     // MAGITA Garage's: every month each place costs its contract fee (js/game/corp.js MAGITA.garage), taken from the $
@@ -235,7 +246,11 @@
       { id: 'engine-v3', name: '高機動エンジンV3', price: 8200000, max: 999, category: 'car', kind: 'engine', fixedPrice: true },
       // YOSIDA's 高効率エンジン series (placeholder pictures for now)
       { id: 'yoshida-er10', name: 'YOSHIDA ER-10', price: 2000000, max: 999, category: 'car', kind: 'engine', fixedPrice: true, maker: 'yosida' },
-      { id: 'yoshida-er20', name: 'YOSHIDA ER-20', price: 6500000, max: 999, category: 'car', kind: 'engine', fixedPrice: true, maker: 'yosida' }
+      { id: 'yoshida-er20', name: 'YOSHIDA ER-20', price: 6500000, max: 999, category: 'car', kind: 'engine', fixedPrice: true, maker: 'yosida' },
+      // MIZUKAWA's engines: at MIZUKAWA GARAGE (`seller`), not the Shop, each from its day
+      { id: 'mizukawa-enjin2', name: 'MIZUKAWA SUPER 炎神 II', price: 12000000, max: 999, category: 'car', kind: 'engine', fixedPrice: true, maker: 'mizukawa', seller: 'mizukawa', from: [2026, 11, 5] },
+      { id: 'mizukawa-enjin3', name: 'MIZUKAWA 炎神 III', price: 16000000, max: 999, category: 'car', kind: 'engine', fixedPrice: true, maker: 'mizukawa', seller: 'mizukawa', from: [2027, 3, 1] },
+      { id: 'mizukawa-flow', name: 'MIZUKAWA FLOW', price: 10000000, max: 999, category: 'car', kind: 'engine', fixedPrice: true, maker: 'mizukawa', seller: 'mizukawa', from: [2027, 9, 1] }
     ],
     // セーフティースロット (once お守り加護), switched on before a spin: the next losing spin gives back
     // min-max % of the lost tokens (all of them `fullChance` of the time);

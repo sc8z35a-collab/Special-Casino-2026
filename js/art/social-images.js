@@ -57,7 +57,17 @@
       'yoshida-h9c': 'img/cars/yoshida-h9c.webp',
       'yoshida-s5': 'img/cars/yoshida-s5.webp',
       'yoshida-s6': 'img/cars/yoshida-s6.webp',
-      'yoshida-k10e': 'img/cars/yoshida-k10e.webp'
+      'yoshida-k10e': 'img/cars/yoshida-k10e.webp',
+      // (MIZUKAWA's: the pictures of the bodies they are shown in, for now — js/game/config.js `look`)
+      'mizukawa-river-w': 'img/cars/ferrari-325.webp',
+      'mizukawa-river-w-feat': 'img/cars/ferrari-325.webp',
+      'mizukawa-river-w2': 'img/cars/nissan-gt-r.webp',
+      'mizukawa-super-u': 'img/cars/mercedes-benz-one.webp',
+      'mizukawa-h1': 'img/cars/lamborghini-urus.webp',
+      'mizukawa-h1-super': 'img/cars/lamborghini-urus.webp',
+      'mizukawa-super-u2': 'img/cars/mercedes-benz-one.webp',
+      'mizukawa-nature-1': 'img/cars/mercedes-benz-one.webp',
+      'mizukawa-river-w3': 'img/cars/nissan-gt-r.webp'
     },
     items: {
       omamori: 'img/ui/refresh/charm.webp',
@@ -68,7 +78,11 @@
       'engine-v2': 'img/items/lowpoly/engine-v2.webp',
       'engine-v3': 'img/items/lowpoly/engine-v3.webp',
       'yoshida-er10': 'img/items/yoshida-er10.webp',
-      'yoshida-er20': 'img/items/yoshida-er20.webp'
+      'yoshida-er20': 'img/items/yoshida-er20.webp',
+      // (MIZUKAWA's engines: placeholder pictures for now)
+      'mizukawa-enjin2': 'img/items/lowpoly/engine-v3.webp',
+      'mizukawa-enjin3': 'img/items/lowpoly/engine-v3.webp',
+      'mizukawa-flow': 'img/items/lowpoly/engine-v2.webp'
     },
     // presents in a chat (js/ui/presents.js)
     presents: {

@@ -15,6 +15,7 @@ import { keyFrom } from './auth.js';
 import { ApiError } from './errors.js';
 import { partOf } from './hash.js';
 import * as model from './corp-model.js';
+import * as mizukawaModel from './corp-mizukawa.js';
 
 const DAY = 86400;
 const KEEP_DAYS = 800;          // a company's days kept (its months, quarters and years are kept for good)
@@ -514,6 +515,8 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       // HACHI's wards (both countries'), its months, its research with アスカ国 and FIGMA's equipment, the state's hand
       hachi: id === 'hachi' && s.hachi ? { wards: s.hachi.wards, last: s.hachi.last, hist: s.hachi.hist, state: s.hachi.state, research: s.hachi.research, figma: s.hachi.figma, busy: s.hachi.busy || 0, patients: s.hachi.patients || {}, asukaStaff: s.hachi.asukaStaff || 0, asukaPay: s.hachi.asukaPay || 0, opened: s.hachi.opened, closed: s.hachi.closed, founded: s.hachi.founded, rules: CORP.hachi,
         credit: s.hachi.credit || 0, line: s.loans.filter((l) => l.line).reduce((n, l) => n + l.amt, 0), tax: Math.round(s.per.y['r:tax'] || 0) } : null,
+      // (MIZUKAWA: its models, its research pool, its technology, its people by role, its plans — corp-mizukawa.js)
+      mizukawa: s.mz ? mizukawaModel.view(s) : null,
       license: w.co.myway && w.co.myway.ip && w.co.myway.ip.contracts[id] ? { ...w.co.myway.ip.contracts[id], fee: model.contractFee(w.co.myway.ip.contracts[id]), scale: w.co.myway.ip.contracts[id].scale || 1, name: CORP.company('myway').name, what: CORP.myway.partners[id].what, breakeven: CORP.breakeven(id, w.co.myway.ip.contracts[id].fee), dead: !!w.co.myway.dead } : null,
       news: q('SELECT at, kind, text, public FROM corp_news WHERE company = ? AND at <= ? ORDER BY at DESC, id DESC LIMIT 100').all(id, Math.floor(now / 1000)),
       ties: tiesOf(w, id),

@@ -86,7 +86,7 @@ function wants(W) {
   const sc = scaleOf(W), L = W.locals, out = [];
   const avg = (k) => (L.ew > 0 ? (L.ema[k] || 0) / L.ew : 0);
   // (the power, gas and water companies closed into 株式会社YAMATO: what they would have sold is YAMATO's now — day)
-  for (const f of LOCAL.firms) for (const b of L.firms[f.id].dead && !L.firms[f.id].yamato ? [] : businesses(L.firms[f.id], f)) for (const [src, part, label] of b.from) {
+  for (const f of LOCAL.firms) for (const b of L.firms[f.id].dead && !L.firms[f.id].yamato && !L.firms[f.id].mizukawa ? [] : businesses(L.firms[f.id], f)) for (const [src, part, label] of b.from) {
     const w = b.sales * part * sc / YEAR, m = /^co:\*:(\w+)$/.exec(src);
     if (!m) { out.push([f, src, w, label]); continue; }
     const keys = Object.keys(L.ema).filter((k) => k.startsWith('co:') && k.endsWith(':' + m[1]) && !k.startsWith('co:*:'));
@@ -129,6 +129,8 @@ export function day(W, day) {
     const c = L.firms[f.id], g = got[f.id] || { got: 0, plan: f.sales * scaleOf(W) / YEAR };
     // (closed into YAMATO: the companies' and the local trade's energy, out of the country to it)
     if (c.yamato) { if (g.got > 0) { W.sector.cash -= g.got; econ.toYamato(W, g.got, 'vernoa:companies'); } c.today = { got: 0, plan: 0 }; continue; }
+    // (taken into MIZUKAWA: what it would have sold MIZUKAWA's — its sales, out of the local trade)
+    if (c.mizukawa) { if (g.got > 0) { W.sector.cash -= g.got; econ.toStream(W, day, 'mizukawa', 'locals', g.got); } c.today = { got: 0, plan: 0 }; continue; }
     if (c.dead) { c.today = { got: 0, plan: 0 }; continue; }
     c.cash += g.got;
     c.m.sales += g.got;
@@ -359,6 +361,37 @@ export function closeIntoYamato(W, day) {
     c.staff = 0; c.target = 0;
     for (const [fid, by] of Object.entries(W.locals.ops || {})) if (by === f.id) { delete W.locals.ops[fid]; (W.locals.failed || (W.locals.failed = [])).push(f.id); }
     say(W, day, f, `${f.name}は事業を終え、電気・ガス・水道は株式会社YAMATOに一本化されました。社員${staff}人が職を失いました`);
+  }
+}
+
+/* ---------------------------------------------------- taken into MIZUKAWA --- */
+// MIZUKAWA Motors bought four of MAGITA's economy (corp-mizukawa.js plans): each closes — its people go (the
+// unemployment benefit; MIZUKAWA takes none of them, nor its technology), what it owed paid of what it had, what was
+// left the local trade's —, its owner (its 社長, the best paid of it) paid the price; what it sold is MIZUKAWA's sales
+// from now on (day)
+export function closeIntoMizukawa(W, list, day) {
+  if (!W.locals || !list) return;
+  const P = W.P;
+  for (const x of list) {
+    const f = LOCAL.firms.find((y) => y.id === x.id), c = W.locals.firms[x.id];
+    if (!f || !c || c.dead) { W.sector.cash += x.price; continue; }
+    let staff = 0, owner = -1, best = -1;
+    for (let i = 0; i < P.n; i++) if (firmOf(P, i) === f.no) { if (P.salary[i] > best) { best = P.salary[i]; owner = i; } }
+    if (owner >= 0) P.cash[owner] += x.price; else W.sector.cash += x.price;
+    for (let i = 0; i < P.n; i++) if (firmOf(P, i) === f.no) { W.labor.leave(W, i, day, 'fired'); staff++; }
+    W._staff = null;
+    const back = Math.min(c.debt || 0, Math.max(0, c.cash));
+    if (back > 0) { c.cash -= back; c.debt -= back; W.sector.cash -= back; W.sum.repaid += back; }
+    if (c.debt > 0) { econ.toBank(W, day, 'credit', c.debt); W.sum.lent -= c.debt; c.debt = 0; }
+    if (c.cash < 0) { const bank = bankOf(W, x.id); if (bank) { bank.cash += c.cash; bank.m.cost -= c.cash; } }
+    // (what it held beyond its debts, bought with it: MIZUKAWA's — its 取得した事業's takings)
+    else if (c.cash > 0) { W.sector.cash -= c.cash; econ.toStream(W, day, 'mizukawa', 'locals', c.cash); }
+    c.cash = 0;
+    c.dead = { day, why: 'MIZUKAWA Motorsに事業を売却・吸収', debt: 0, staff, price: x.price };
+    c.mizukawa = day;
+    c.staff = 0; c.target = 0;
+    for (const [fid, by] of Object.entries(W.locals.ops || {})) if (by === f.id) { delete W.locals.ops[fid]; (W.locals.failed || (W.locals.failed = [])).push(f.id); }
+    say(W, day, f, `${f.name}は事業をMIZUKAWA Motorsに${CORP.fmt.money(x.price)}で売却し、吸収されました。社員${staff}人が職を失いました`);
   }
 }
 

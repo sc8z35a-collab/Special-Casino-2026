@@ -192,7 +192,9 @@
   // day, buys and sales together — the players': js/game/stocks.js tradesPerDay)
   // (`casinoPull`: how much more a person wants to go and spin than at the start; `casinoSpend`: how much more of their
   // month they set aside for it)
-  var LIFE = { utilities: 40000, adult: 18, mean: 80, gompertz: 0.085, phone: 100000, casinoMonthly: 1000000, investDay: 50000000, tradesDay: 15, casinoPull: 1.6, casinoSpend: 1.5 };
+  // (`carSpend`: how much more often a look at the cars becomes a decision than at the start — the people of both
+  // countries spending on cars three and a half times as much as before: どんどん消費)
+  var LIFE = { utilities: 40000, adult: 18, mean: 80, gompertz: 0.085, phone: 100000, casinoMonthly: 1000000, investDay: 50000000, tradesDay: 15, casinoPull: 1.6, casinoSpend: 1.5, carSpend: 3.5 };
   // the money troubles: a loan from Tenesice at a high rate first (its クイックローン), then a friend's or family's
   // home (居候), then the street; the 生活保護 picks those it reaches
   var TROUBLE = { quickRate: 0.178, quickMax: 30000000, quickBase: 3000000, stayDays: 120, homelessFloor: -50000000 };

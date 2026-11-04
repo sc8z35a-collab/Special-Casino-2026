@@ -16,7 +16,9 @@
    - MAGITA Garage owns the garages: every month each place's contract fee is taken
      from the $ (shown in the garage's bar), and it keeps 10% of the rentals'
      takings; MAGITA Robert buys cars back. Car Owner sells MAGITA's and YOSHIDA's
-     cars from its stock: a car sold out waits for its next lot. */
+     cars from its stock: a car sold out waits for its next lot. MIZUKAWA's are sold
+     at its own dealers (MIZUKAWA GARAGE) at their price, each from its day and as
+     many as it makes (no Car Owner sale, no VIP off). */
 (function (BR) {
   'use strict';
 
@@ -82,7 +84,13 @@
     return { n: st.cars[id], coming: st.coming[id] || null };
   }
   function soldOut(id) { var x = stockOf(id); return !!x && x.n <= 0; }
-  function makerOf(car) { return car.maker === 'yosida' ? 'yosida' : 'magita'; }
+  function makerOf(car) { return car.maker === 'yosida' ? 'yosida' : car.maker === 'mizukawa' ? 'mizukawa' : 'magita'; }
+  var MAKER_NAMES = { magita: 'MAGITA', yosida: 'YOSHIDA', mizukawa: 'MIZUKAWA' };
+  // MIZUKAWA's cars: at its own dealers (MIZUKAWA GARAGE), from their day, as many as it makes — not yet out: the
+  // server's stock has none of it yet
+  function garageCar(car) { return !!(car && car.seller); }
+  function notYet(car) { return garageCar(car) && (!garage || !garage.stock || garage.stock.cars[car.id] === undefined); }
+  function outDay(car) { return car.from ? car.from[1] + '/' + car.from[2] : ''; }
   function capacity() { return garage ? garage.capacity : BR.CONFIG.garage.slots; }
 
   /* ------------------------------------------------------------ Car Owner --- */
@@ -120,7 +128,8 @@
       b.appendChild(el('span', 'car-thumb-name', c.name));
       if (s && s.pct[c.id]) b.appendChild(el('em', 'car-thumb-off', '-' + s.pct[c.id] + '%'));
       if (c.model) b.appendChild(el('i', 'car-thumb-3d', '3D'));
-      if (BR.sale.carSold(c) && soldOut(c.id)) b.appendChild(el('em', 'car-thumb-out', '売り切れ'));
+      if (BR.sale.carSold(c) && notYet(c)) b.appendChild(el('em', 'car-thumb-pending', outDay(c) + '発売'));
+      else if (BR.sale.carSold(c) && soldOut(c.id)) b.appendChild(el('em', 'car-thumb-out', garageCar(c) ? '完売' : '売り切れ'));
       if (!BR.sale.carSold(c)) b.appendChild(el('em', 'car-thumb-pending', c.ended ? '販売終了' : '価格未定'));
       if (c.vip) { var vb = K.vipBadge(c.vip); vb.classList.add('car-thumb-vip'); b.appendChild(vb); }
       b.addEventListener('click', function () {
@@ -157,10 +166,16 @@
     var box = $('#car-stock');
     box.textContent = '';
     var m = makerOf(car);
-    box.appendChild(el('span', 'car-maker ' + m, m === 'yosida' ? 'YOSHIDA' : 'MAGITA'));
+    box.appendChild(el('span', 'car-maker ' + m, MAKER_NAMES[m]));
+    if (garageCar(car)) box.appendChild(el('span', 'car-garage-tag', 'MIZUKAWA GARAGE'));
     var st = BR.sale.carSold(car) ? stockOf(car.id) : null;
     box.classList.toggle('out', !!st && st.n <= 0);
-    if (st) {
+    if (garageCar(car)) {
+      // (its own dealers': from its day, as many as it makes — never more)
+      if (notYet(car)) box.appendChild(el('b', '', outDay(car) + ' 発売予定'));
+      else if (st && st.n > 0) { box.appendChild(document.createTextNode('限定 残り')); box.appendChild(el('b', '', U.fmt(st.n) + '台')); }
+      else box.appendChild(el('b', '', '完売（限定生産）'));
+    } else if (st) {
       if (st.n > 0) { box.appendChild(document.createTextNode('在庫')); box.appendChild(el('b', '', U.fmt(st.n) + '台')); }
       else {
         box.appendChild(el('b', '', '売り切れ'));
@@ -191,9 +206,9 @@
     var car = model(sel);
     var buy = $('#car-buy');
     var pending = !BR.sale.carSold(car);
-    var locked = !BR.VIP.carOpen(car, vipLevel()), out = !pending && soldOut(car.id);
-    buy.disabled = busy || locked || pending || out;
-    buy.textContent = pending ? (car.ended ? '販売終了' : '価格未定') : locked ? 'VIP' + BR.VIP.label(car.vip) + '限定車' : out ? '売り切れ（入荷待ち）' : '購入する';
+    var locked = !BR.VIP.carOpen(car, vipLevel()), early = !pending && notYet(car), out = !pending && !early && soldOut(car.id);
+    buy.disabled = busy || locked || pending || out || early;
+    buy.textContent = pending ? (car.ended ? '販売終了' : '価格未定') : early ? outDay(car) + ' 発売予定' : locked ? 'VIP' + BR.VIP.label(car.vip) + '限定車' : out ? (garageCar(car) ? '完売' : '売り切れ（入荷待ち）') : '購入する';
     buy.classList.toggle('short', !pending && S.dollars < priceOf(car).price);
   }
 
@@ -226,7 +241,8 @@
     var car = model(sel);
     if (busy) return;
     if (!BR.sale.carSold(car)) { sfx('deny'); toast(car.ended ? 'この車は販売終了しました（持っている車は売れます）' : 'この車は価格未定のため、まだ購入できません'); return; }
-    if (soldOut(car.id)) { sfx('deny'); toast(car.name + 'は売り切れです。次の入荷をお待ちください'); return; }
+    if (notYet(car)) { sfx('deny'); toast(car.name + 'は' + outDay(car) + 'にMIZUKAWA GARAGEで発売です'); return; }
+    if (soldOut(car.id)) { sfx('deny'); toast(garageCar(car) ? car.name + 'は完売しました（限定生産）' : car.name + 'は売り切れです。次の入荷をお待ちください'); return; }
     var pr = priceOf(car);
     if (S.dollars < pr.price) {
       sfx('deny');
@@ -260,7 +276,7 @@
         return load();
       }).catch(function (err) {
         if (err.code === 'garage_full') { full(); return null; }
-        if (err.code === 'price_changed' || err.code === 'sold_out') load().then(function () { if (onBoard('cars')) renderShop(); }, function () {});
+        if (err.code === 'price_changed' || err.code === 'sold_out' || err.code === 'not_yet') load().then(function () { if (onBoard('cars')) renderShop(); }, function () {});
         fail(err);
       }).then(function () {
         busy = false;

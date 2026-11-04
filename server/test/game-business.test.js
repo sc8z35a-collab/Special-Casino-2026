@@ -131,33 +131,47 @@ test('YOSIDA ships 5,000〜10,000 seeds a month at $10M〜$12M and sets its ques
 test('WAZIMA: MAGITA\'s share of research its sale, its own research cutting MAGITA\'s costs, its sales on MAGITA\'s books and its profit MAGITA\'s each month', () => {
   const { world: w, ch } = world(33);
   const z = w.co.wazima, m = w.co.magita, start = z.bal.retained;
-  let paid = 0, sub = 0, kept = null;
+  let paid = 0, sub = 0, kept = null, codev = 0;
   for (let d = launch; d < launch + 400; d++) {
     const out = model.closeDay(w, d, {}, ch);
+    codev += z.per.d['r:codev'] || 0;
     for (const s of Object.values(w.co)) { const [a, le] = books(s); assert.equal(a, le, `${s.id} on ${d}`); }
     if (CORP.isMonthEnd(d)) {
       // its retained earnings stay where they were from one month's end to the next: each month's profit went to
       // MAGITA (the first month's had a few made-up days before the launch in it too)
       if (kept === null) { kept = z.bal.retained; assert.ok(Math.abs(kept - start) < 5e7); }
       else assert.equal(z.bal.retained, kept, `on ${d}`);
-      paid += z.toParent ? z.toParent.net : 0;
+      // (MAGITA's while it is MAGITA's: MIZUKAWA buys it — at a month's end, that month MAGITA's still —)
+      paid += z.toParent && z.toParent.m === CORP.monthKey(d) && z.toParent.to === 'magita' ? z.toParent.net : 0;
+      // (nothing of it left owed on MAGITA's books once it was sold: the month it was, settled with MAGITA)
+      if (z.owner === 'mizukawa') assert.ok(Math.abs(m.bal.affil || 0) < 1e6, `${m.bal.affil} on ${d}`);
     }
     // (MAGITA's part of WAZIMA's month: its sales less its costs, day by day, and the rest of its profit at the end)
     for (const r of out.periods) if (r.company === 'magita' && r.kind === 'm') sub += (r.accounts['r:wazima'] || 0) - (r.accounts['c:wazima'] || 0) + (r.accounts.nSubsidiary || 0) - (r.accounts.eSubsidiary || 0);
   }
-  assert.ok(paid > 1e9, String(paid));
+  // (its months MAGITA's till MIZUKAWA buys it, two months after its founding at the earliest: corp-mizukawa.js plans)
+  assert.ok(paid > 3e8, String(paid));
   assert.equal(sub, paid);
   // WAZIMA's sales to others are MAGITA's (what MAGITA paid it for the joint development left out); nothing owed between
   // them at a month's end
   // (and, since it became MY WAY's partner on 2026-11-03, what it sold of MY WAY's characters)
-  const others = (z.per.y['r:export'] || 0) + (z.per.y['r:myway'] || 0);
-  assert.ok(m.per.y['r:wazima'] > 0 && Math.abs(m.per.y['r:wazima'] - others) < 1e6, `${m.per.y['r:wazima']} ${others}`);
+  // (and, once MIZUKAWA bought it, on MIZUKAWA's: the two together all its year's)
+  // (MIZUKAWA's research orders to WAZIMA's engineers a sale to MAGITA's group, inside MIZUKAWA's: this year's all its)
+  const others = (z.per.y['r:export'] || 0) + (z.per.y['r:myway'] || 0) + (z.owner === 'mizukawa' ? 0 : z.per.y['r:mzorder'] || 0), mz = w.co.mizukawa;
+  const onBooks = (m.per.y['r:wazima'] || 0) + ((mz && mz.per.y['r:wazima']) || 0);
+  assert.ok(onBooks > 0 && Math.abs(onBooks - others) < 1e6, `${onBooks} ${others}`);
+  if (z.owner === 'mizukawa') {
+    assert.ok(mz.mz.wazima && mz.per.y['r:wazima'] > 0 && z.toParent.to === 'mizukawa');
+  }
   // the joint development: a share of MAGITA's research is WAZIMA's sale
-  assert.ok((z.per.y['r:codev'] || 0) > 0);
+  // (while it is MAGITA's)
+  assert.ok(codev > 0);
   // its research done: MAGITA's costs besides materials lower, never below the floor
   assert.ok(z.wlab.list.filter((r) => r.done && r.ok).length >= 2);
-  assert.ok(m.save.place < 1 && m.save.place >= CORP.wazima.next.floor);
-  assert.ok(Object.values(m.save).every((x) => x >= CORP.wazima.next.floor && x <= 1));
+  // (its parent's: MAGITA's, or MIZUKAWA's plants' upkeep once it bought it)
+  const par = w.co[z.owner || 'magita'];
+  assert.ok(par.save.place < 1 && par.save.place >= CORP.wazima.next.floor);
+  for (const c of [m, par]) assert.ok(Object.values(c.save || {}).every((x) => x >= CORP.wazima.next.floor && x <= 1));
   // (and MAGITA's research is its own: the A1 and the rest)
   assert.ok(m.lab && m.lab.mult < 1);
 });

@@ -70,8 +70,10 @@ test('a month of it: the thirteen all its partners from 2026-11-03, Tenesice\'s 
   assert.equal(Object.keys(s.ip.contracts).length, 7);
   c.days(33);
   const ip = s.ip;
-  // (the twelve, and HACHI's five years from its founding on 2026-11-04)
-  assert.equal(Object.keys(ip.contracts).length, 13);
+  // (the twelve, HACHI's five years from its founding on 2026-11-04, and MIZUKAWA's — MIZUKAWA's own wish — till
+  // 2027-01-01)
+  assert.equal(Object.keys(ip.contracts).length, 14);
+  assert.ok(ip.contracts.mizukawa && ip.contracts.mizukawa.until === CORP.dayAt(2027, 1, 1), JSON.stringify(ip.contracts.mizukawa));
   assert.ok(ip.contracts.hachi && ip.contracts.hachi.from === CORP.dayAt(2026, 11, 4) && ip.contracts.hachi.term === 5 && ip.contracts.hachi.until === ip.contracts.hachi.from + 5 * 365);
   assert.ok(ip.contracts.tenesice.huge && ip.contracts.tenesice.base === CORP.myway.partners.tenesice.fee);
   for (const id of ['yosida', 'wazima', 'daizin', 'citywork', 'speedeed']) assert.ok(ip.contracts[id].from >= CORP.dayAt(2026, 11, 3), id);

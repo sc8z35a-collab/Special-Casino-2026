@@ -76,7 +76,8 @@ test('the companies run on: every day balances, and their sales and profits stay
     // (a company founded in the year — HACHI —: its first year from its founding)
     const part = p.founded ? (r.to - Math.max(r.from, CORP.dayAt(...p.founded)) + 1) / 365 : 1;
     if (p.sales) assert.ok(r.pl.sales - seeds - child > p.sales * 0.6 * part && r.pl.sales - seeds - child < p.sales * 1.6 * part, `${r.company} ${r.pl.sales}`);
-    assert.ok(r.staff > 0);
+    // (MIZUKAWA's people are アスカ国's: with no people of アスカ, none of its own)
+    assert.ok(r.staff > 0 || p.nation === 'asuka', r.company);
   }
 });
 
@@ -231,7 +232,12 @@ test('the operator site: the 企業 folder\'s apps answer operators only, with e
   const studio = await s.call('GET', '/api/ops/corp/company?c=riru', { token: boss.token });
   assert.ok(studio.projects.length >= 3 && studio.quarters.length >= 1);
   assert.equal((await s.call('GET', '/api/ops/corp/company?c=nope', { token: boss.token })).error.code, 'bad_company');
-  assert.ok(RULES.cars.every((c) => !CORP.products.cars[c.id] || CORP.products.cars[c.id].buy + CORP.products.cars[c.id].excl <= c.price + 10000000));
+  assert.ok(RULES.cars.every((c) => !CORP.products.cars[c.id] || c.seller || CORP.products.cars[c.id].buy + CORP.products.cars[c.id].excl <= c.price + 10000000));
+  // (MIZUKAWA's, sold at its own garage: what it costs it to make, and its research, under its list price)
+  for (const c of RULES.cars.filter((c) => c.seller === 'mizukawa')) {
+    const pr = CORP.products.cars[c.id];
+    assert.ok(pr && pr.maker === 'mizukawa' && pr.seller === 'mizukawa', c.id);
+  }
 });
 
 test('MAGITA\'s research: A1 in a year, T1 in nine months (by its chance), RIMU TAG in two years shortening MOL1; each cut taken on what it makes', () => {

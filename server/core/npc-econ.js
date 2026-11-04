@@ -179,7 +179,9 @@ export function buy(W, i, day, company, stream, n, essential = false) {
 export function buyProduct(W, i, day, kind, id, count, unit, essential = false) {
   const n = unit * count, tax = Math.round(n * (W.nation.knobs.consumptionTax || 0) / 100);
   if (!pay(W, i, n + tax, essential)) return false;
-  toProduct(W, day, kind === 'cars' ? 'carowner' : 'jinx', kind, id, count, n);
+  // (a car or an engine of MIZUKAWA's: its own dealers', MIZUKAWA GARAGE — the rest Car Owner's and ジンクス's)
+  const pr = CORP.products[kind] && CORP.products[kind][id];
+  toProduct(W, day, (pr && pr.seller) || (kind === 'cars' ? 'carowner' : 'jinx'), kind, id, count, n);
   if (tax) nationIn(W, 'consumption', tax);
   return true;
 }

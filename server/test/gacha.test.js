@@ -20,6 +20,8 @@ test('all three gacha tables match requested odds, total 100%, draw 2/6/20 slots
   assert.equal(GACHA.pool.length, 17);
   assert.ok(!GACHA.pool.some((c) => ['two-state-sedan', 'blue-lightning', 'lamborghini-kuia-spyder', 'porsche-kuia-spyder', 'yoshida-s6'].includes(c.id)));
   assert.ok(GACHA.cars.some((c) => c.id === 'porsche-kuia-spyder' && c.name === 'MAGITA K110'));
+  // (MIZUKAWA's cars, sold at its own garage only in their limited numbers, never a prize)
+  assert.ok(![...GACHA.cars, ...GACHA.pool].some((c) => /^mizukawa-/.test(c.id)));
   assert.equal(GACHA.slots, 2);
   // (the secret one 3 slots a pull)
   assert.deepEqual(['rare', 'legendary', 'secret'].map(GACHA.slotsOf), [2, 2, 3]);

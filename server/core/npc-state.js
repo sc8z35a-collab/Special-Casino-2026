@@ -154,6 +154,12 @@ export function fromCompanies(W, ext, day) {
   // (株式会社HACHI's 利益剰余金 at its founding: the treasury's, once; its wards as they are — server/core/hachi.js)
   if (ext.hachiSeed) econ.nationOut(W, 'hachiSeed', ext.hachiSeed);
   hachi.fromCompanies(W, ext.hachiInfo || null);
+  // (MIZUKAWA as its last close had it: its models out, its people's pay and number — null before its founding)
+  W.mzInfo = ext.mizukawaInfo || null;
+  // (the four of MAGITA's economy it bought: closed into it — npc-local.js)
+  if (W.mzInfo && W.mzInfo.buy) { local.closeIntoMizukawa(W, W.mzInfo.buy, day + 1); W.mzInfo.buy = null; }
+  // (the car list again: one coming out, one sold out — npc-mind.js carList)
+  W.carList = null;
   if (ext.state) {
     for (const [k, n] of Object.entries(ext.state.by || {})) econ.nationOut(W, k, n);
     W.sum.toPlayers += ext.state.players || 0;
