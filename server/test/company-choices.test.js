@@ -93,8 +93,10 @@ test('its loans, its dividends, テネシスリサーチ, MY WAY\'s pace and a p
   c.days(1, [{ company: 'wazima', kind: 'research', action: 'join' }]);
   assert.equal(corpModel.researchMember(w, 'wazima'), true);
   // MY WAY's pace (its equity's aim) and its gift to YAMATO
+  // (from wherever its own meetings had it — and with any of theirs the same day)
+  const aim0 = w.co.myway.growAim || 1;
   c.days(1, [{ company: 'myway', kind: 'myway', action: 'aim', mult: 0.8 }, { company: 'myway', kind: 'myway', action: 'yamato', n: 1e6 }]);
-  assert.equal(w.co.myway.growAim, 0.8);
+  assert.ok(w.co.myway.growAim <= Math.round(Math.max(0.25, aim0 * 0.8) * 100) / 100 && w.co.myway.growAim >= 0.25, `${aim0} → ${w.co.myway.growAim}`);
   // a partner's fee asked down: within MY WAY's band
   const k = w.co.myway.ip.contracts.dtrade, f0 = k.fee;
   c.days(1, [{ company: 'dtrade', kind: 'license', action: 'fee', mult: 0.95 }]);
@@ -118,4 +120,25 @@ test('the meetings choose among what is on the table by what each is worth, and 
   // (and every kind of decision there is now on the tables: the money and the contracts among them)
   const kinds = new Set(W.meetings.map((m) => m.kind));
   assert.ok(kinds.size >= 5, [...kinds].join(','));
+});
+
+test('MY WAY\'s loans of its bubble (borrowed to grow on, by its plan) are not paid back early by a meeting\'s decision; another loan is', () => {
+  const c = country(700, 7);
+  const { w } = c;
+  c.days(3);
+  const s = w.co.myway;
+  const x = 4e9;
+  corpModel.post(w.co.tenesice, [['cash', -x], ['retained', x]], 'expenses');
+  corpModel.post(s, [['cash', x], ['retained', -x]], 'receipts');
+  // (borrowed of Tenesice as any loan is: corp-model.js decided 'borrow')
+  for (const [id, bubble] of [['Lb', true], ['Lo', false]]) {
+    s.loans.push({ id, amt: 1e9, rate: 0.02, from: w.day, until: w.day + 3650, ...(bubble ? { bubble } : {}) });
+    corpModel.post(s, [['cash', 1e9], ['loan', -1e9]], 'borrow');
+    w.mon['myway:borrowed'] = (w.mon['myway:borrowed'] || 0) + 1e9;
+  }
+  c.days(1, [{ company: 'myway', kind: 'loan', action: 'repay', share: 1 }]);
+  const b = s.loans.find((l) => l.id === 'Lb'), o = s.loans.find((l) => l.id === 'Lo');
+  assert.ok(b && b.amt === 1e9, 'its bubble\'s loan kept');
+  assert.ok(!o || o.amt < 1e9, 'the other paid back');
+  assert.ok(c.worst <= 1000, `ledger ${c.worst}`);
 });

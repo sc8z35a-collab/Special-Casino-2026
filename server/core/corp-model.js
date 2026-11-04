@@ -1912,9 +1912,11 @@ function setDividend(s, p, g) {
 // bust, as the year's guidance is made: server/core/npc-macro.js)
 // (a tenth more of it than the profile's in ordinary times: what is earned goes round)
 // (and by its own dividend policy, as its 会議室 set it: `payoutMult`, ×0.5〜×1.5)
+// (MY WAY's its philosophy's alone: a policy its 会議室 set before it was its own kept no longer)
 const payoutOf = (p, w) => {
+  if (p.id === 'myway' && CORP.myway.philosophy) return Math.min(0.95, CORP.myway.philosophy.payout);
   const k = (w && w.co && w.co[p.id] && w.co[p.id].payoutMult) || 1;
-  return Math.min(0.95, (p.id === 'myway' && CORP.myway.philosophy ? CORP.myway.philosophy.payout : p.payout * 1.1 * Math.pow((w && w.boom) || 1, 1.5)) * k);
+  return Math.min(0.95, p.payout * 1.1 * Math.pow((w && w.boom) || 1, 1.5) * k);
 };
 
 // At the month's end a company puts a part of what it holds beyond the months of its costs it keeps into its equipment
@@ -2028,7 +2030,7 @@ function loanDecided(w, s, p, o, d, out) {
     let spare = Math.max(0, Math.round(((s.bal.cash || 0) - monthly * KEEP) * (o.share || 0.5)));
     let paid = 0;
     for (const l of s.loans) {
-      if (l.research && d < l.until) continue;
+      if ((l.research && d < l.until) || l.bubble) continue;
       const x = Math.min(l.amt, spare);
       if (x <= 0) continue;
       l.amt -= x; spare -= x; paid += x;
@@ -2246,7 +2248,11 @@ function staffing(w, s, p, d, out) {
   const op = opOf(s.per.y), plan = s.guide && s.guide.fy === fy ? s.guide.expected.quarters.slice(0, qn).reduce((a, b) => a + b, 0) : null;
   const ratio = plan > 0 ? op / plan : null;
   const people = !!(w.circ && d >= w.circ.from && !p.abroad);
-  if (op < 0 || (ratio !== null && ratio < ST.cutBelow)) {
+  // (once the companies fight over people — server/core/npc-wages.js —, one with money to spare holds on to its own:
+  // a year of its costs in hand and still in the black, or half a year of them in the red; a bank by its own money)
+  const money = p.model === 'bank' ? Math.max(0, equityOf(s)) : (s.bal.cash || 0) + (s.bal.bonds || 0), months = money / Math.max(1, monthlyCosts(s));
+  const holds = people && (op >= 0 ? months >= 12 : months >= 6);
+  if (!holds && (op < 0 || (ratio !== null && ratio < ST.cutBelow))) {
     const sev = op < 0 ? 1 : Math.max(0, Math.min(1, (ST.cutBelow - ratio) / ST.cutBelow));
     const n = Math.min(s.n - 1, Math.round(s.n * (ST.cut[0] + (ST.cut[1] - ST.cut[0]) * sev)));
     if (n <= 0) return;
@@ -3852,6 +3858,7 @@ function decided(w, o, d, out, ch) {
   // (its own say on Tenesice's fund, its loans, its dividends, テネシスリサーチ, MY WAY's pace and its gift to YAMATO)
   if (o.kind === 'fund') { fundOne(w, s, p, d, out, true); return; }
   if (o.kind === 'loan') { loanDecided(w, s, p, o, d, out); return; }
+  if (o.kind === 'payout' && o.company === 'myway' && CORP.myway.philosophy) return;
   if (o.kind === 'payout') { s.payoutMult = Math.round(Math.max(0.5, Math.min(1.5, (s.payoutMult || 1) * (o.mult || 1))) * 100) / 100; return; }
   if (o.kind === 'research' && w.research && RESEARCH.members[s.id]) {
     const R0 = w.research, out0 = R0.out || (R0.out = {});

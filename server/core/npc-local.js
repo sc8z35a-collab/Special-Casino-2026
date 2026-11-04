@@ -26,6 +26,9 @@ const districtOf = (f) => Math.max(0, NPC.districts.findIndex((d) => d.name === 
 const scaleOf = (W) => W.P.n / NPC.nation.population;
 // its capital in a country of this size (its retained earnings begin so too: a smaller country, smaller companies)
 const capitalOf = (W, f) => Math.round(f.capital * scaleOf(W));
+// what a local company is worth: its capital and what it kept (its cash runs below nothing within a month, its sales
+// settled at the month's end)
+export const equityOf = (W, f) => capitalOf(W, f) + ((W.locals && W.locals.firms[f.id] && W.locals.firms[f.id].retained) || 0);
 
 /* ---------------------------------------------------------------- the beginning --- */
 // Once (a country kept before them too): their books, and the people in the local jobs taken on by them, the
@@ -170,7 +173,7 @@ function report(W, day) {
 // the 32's days in brief, for 運営's report
 export function reportOf(W) {
   if (!W.locals) return null;
-  return LOCAL.firms.map((f) => { const c = W.locals.firms[f.id]; return { id: f.id, no: f.no, name: f.name, sphere: f.sphere, dead: !!c.dead, staff: c.staff, days: c.days || [] }; });
+  return LOCAL.firms.map((f) => { const c = W.locals.firms[f.id]; return { id: f.id, no: f.no, name: f.name, sphere: f.sphere, dead: !!c.dead, yamato: !!c.yamato, staff: c.staff, days: c.days || [] }; });
 }
 // (a local company's costs of what it sold beyond its plan — MY WAY's goods, npc-ipdeals.js —, bought as all its are)
 export function spendOf(W, id, n) {
@@ -454,11 +457,14 @@ export function held(W) {
 export function view(W) {
   if (!W.locals) return null;
   const sc = scaleOf(W), K = LOCAL.kinds, out = [], paidBy = {};
+  // (what each one's people are paid now: the market moved it since its rules — server/core/npc-wages.js)
+  const paid = {}, P = W.P;
+  for (let i = 0; i < P.n; i++) if (P.firm[i] && P.salary[i] > 0) { const e = paid[P.firm[i]] || (paid[P.firm[i]] = [0, 0]); e[0] += P.salary[i]; e[1]++; }
   const label = (f, src, what) => { if (what && what[src]) return what[src]; const l = f.from.find((x) => x[0] === src); return l ? l[2] : src.startsWith('local:') ? (src === 'local:interest' ? '地元企業への融資の利息' : (LOCAL.firm(src.slice(6)) || {}).name || src) : src; };
   for (const f of LOCAL.firms) {
     const c = W.locals.firms[f.id], m = c.last || c.m;
     const by = Object.entries(m.by || {}).sort((a, b) => b[1] - a[1]).map(([src, n]) => ({ src, n, label: label(f, src, m.what) }));
-    out.push({ no: f.no, id: f.id, name: f.name, sphere: f.sphere, role: f.role, hq: f.hq, staff: c.staff, target: c.target, pay: f.pay, ceo: f.ceo,
+    out.push({ no: f.no, id: f.id, name: f.name, sphere: f.sphere, role: f.role, hq: f.hq, staff: c.staff, target: c.target, pay: paid[f.no] ? Math.round(paid[f.no][0] / paid[f.no][1]) : f.pay, payStart: f.pay, ceo: f.ceo, yamato: !!c.yamato,
       plan: { sales: Math.round(f.sales * sc), op: Math.round(f.op * sc) }, capital: capitalOf(W, f), retained: Math.round(c.retained), cash: Math.round(c.cash),
       month: { key: m.key, sales: m.sales, op: c.last ? c.last.op : m.sales - m.cost - m.pay, bonus: c.last ? c.last.bonus : 0 }, year: c.lastYear || null, by: by.slice(0, 6) });
     for (const x of by) {

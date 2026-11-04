@@ -309,7 +309,7 @@ const ACTIONS = {
     // a look at the cars: the big decision, thought a year ahead (npc-mind.js)
     const got = thinkCar(W, i, day, r, ctx);
     learn(P, i, L.car, got ? 0.9 : 0.35);
-    if (P.car[i]) econ.buy(W, i, day, 'carowner', 'service', econ.spendAt(W, 'carowner:service', W.cal.service * (0.3 + 0.7 * r.u())), false);
+    if (P.car[i]) econ.buy(W, i, day, 'carowner', 'service', econ.spendAt(W, 'carowner:service', W.cal.service * (0.3 + 0.7 * r.u()) * econ.lifeIdx(W)), false);
   },
   casino(W, i, m, t, day, r) {
     const P = W.P, d = nearest(W, P.dist[i], 'casino');
@@ -482,7 +482,7 @@ const ACTIONS = {
     const P = W.P;
     set(W, i, A.shop, PL.store, nearest(W, P.dist[i], 'store'), m, 40 + r.int(40));
     const days = 14 + r.int(15), size = P.hh[i] === i ? memberList(P, i).length : 1;
-    const per = W.cal.living * Math.pow(size, 0.75) * Math.pow(Math.max(0.02, (P.cash[i] + 1) / 60000000), 0.22) * (1 - 0.35 * tr(P, i, T.thrift)) * econ.cpi(W);
+    const per = W.cal.living * Math.pow(size, 0.75) * Math.pow(Math.max(0.02, (P.cash[i] + 1) / 60000000), 0.22) * (1 - 0.35 * tr(P, i, T.thrift)) * econ.cpi(W) * econ.lifeIdx(W);
     const goods = econ.spendAt(W, 'jinx:goods', per * days * 0.62), rest = Math.round(per * days * 0.38);
     let got = false;
     if (econ.buy(W, i, day, 'jinx', 'goods', goods, false)) got = true;

@@ -494,6 +494,8 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
         bubble: id === 'myway' ? model.mywayBubble(w, s) : undefined
       },
       gov: id === 'yosida' ? (w.gov || null) : undefined,
+      // its people's pay against the market's, its last review, the people it took from others and lost to them
+      wage: npc && npc.wageOf ? npc.wageOf(id) : null,
       // its development work (技術開発): the one under way, the last done, and what they have won it
       tech: s.rnd ? { edge: Math.round(s.rnd.edge * 1000) / 1000, ok: s.rnd.ok, n: s.rnd.n, cur: s.rnd.cur, last: s.rnd.last || null, chance: techChance(s, p) } : { edge: 1, ok: 0, n: 0, cur: null, last: null, chance: techChance(s, p) },
       cut: s.cut || null, target: s.target, abroad: !!p.abroad,
@@ -600,7 +602,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
       return { id: c.id, name: c.name, kind: 'corp', dead: !!w.co[c.id].dead, abroad: !!c.abroad, days, line: lineOf(days) };
     });
     const loc = npc && npc.localReport ? npc.localReport() : null;
-    const locals = loc ? loc.map((f) => { const days = f.days.filter((d) => d.day >= from); return { ...f, kind: 'local', days, line: lineOf(days, f.dead) }; }) : null;
+    const locals = loc ? loc.map((f) => { const days = f.days.filter((d) => d.day >= from); return { ...f, kind: 'local', days, line: f.yamato ? '株式会社YAMATOに統合' : lineOf(days, f.dead) }; }) : null;
     return { day: w.day, companies, locals };
   }
   // the last day in a line: 増収・減収 against the day before, in the black or the red
@@ -633,7 +635,7 @@ export function createCorp({ q, tx, afterCommit, clock = Date.now, secret, histo
         ops: opsView(w),
         // (the local companies as they are now: how many there are, still in business, their economies, MY WAY's partners)
         locals: (() => { const loc = npc && npc.localReport ? npc.localReport() : null, deals = npc && npc.ipDeals ? npc.ipDeals() : null;
-          return { n: LOCAL.firms.length, alive: loc ? loc.filter((f) => !f.dead).length : LOCAL.firms.length, spheres: new Set(LOCAL.firms.map((f) => f.sphere)).size, ip: deals ? deals.locals : 0 }; })() };
+          return { n: LOCAL.firms.length, alive: loc ? loc.filter((f) => !f.dead).length : LOCAL.firms.length, merged: loc ? loc.filter((f) => f.yamato).length : 0, spheres: new Set(LOCAL.firms.map((f) => f.sphere)).size, ip: deals ? deals.locals : 0 }; })() };
       return { ...partOf(all, req.query.get('rev')), now };
     },
     // 日次収支レポート: the 45 companies' last two weeks in brief (changes as a day closes)

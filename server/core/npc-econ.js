@@ -127,6 +127,11 @@ export function toBank(W, day, kind, n) {
 // the prices' level and the rents' (1 at the start: the economy moves them, server/core/npc-cycle.js), and what the
 // companies charge as they decided it (their fees: server/core/corp-model.js fees, told with each close)
 export const cpi = (W) => W.cpi || 1;
+// how much better the people live than when the country began, as the market's pay rose (server/core/npc-wages.js):
+// their goods and food, their car's upkeep, what they buy of MY WAY's characters — a little less than the pay
+export const lifeIdx = (W) => Math.pow((W.wage && W.wage.idx) || 1, 0.85);
+// the market's pay against the country's beginning (the tax brackets, the pensions keep up with it)
+export const wageIdx = (W) => (W.wage && W.wage.idx) || 1;
 export const rentIdx = (W) => W.rentIdx || 1;
 export const feeOf = (W, k, dflt) => (W.fees && W.fees[k] !== undefined ? W.fees[k] : dflt);
 // what a company's own price decisions have done to a price (its sales and discounts, its fees raised: npc-org.js),
