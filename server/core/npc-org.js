@@ -592,15 +592,17 @@ function partnerProposals(W, o, mw, out, { dept, by }) {
 // on a month in the red and joined again when it pays
 function moneyProposals(W, o, s, out, { pl, ytd, runway, behind, dept, by, ctx, day }) {
   const id = o.id, cfo = o.officers[1] >= 0 ? o.officers[1] : by('acct') >= 0 ? by('acct') : by('plan');
-  const debt = (s.loans || []).filter((l) => !l.research).reduce((n, l) => n + l.amt, 0);
+  // (テネシスリサーチ's loans and MY WAY's in its bubble — borrowed to grow on, by its plan — not the meeting's to repay)
+  const debt = (s.loans || []).filter((l) => !l.research && !l.bubble).reduce((n, l) => n + l.amt, 0);
   const corp = ctx.corp, F = corp && corp.fund, fy = CORP.fyOf(day), mine = F && F.by && F.by[id];
   const fundOpen = corp && corp.co.tenesice && !corp.co.tenesice.dead && day >= CORP.dayAt(2026, 11, 3) && !(mine && mine.fy === fy && mine.count >= 2);
   if (fundOpen && (runway < 3 || (pl.op < 0 && runway < 5))) out.push({ kind: 'fund', title: `テネシスファンドへの融資申請（手元資金 ${runway.toFixed(1)}か月分・6か月分の費用まで）`, effect: [{ kind: 'fund', action: 'apply' }], cost: 0, risk: 0.1, gain: 0.1 + Math.max(0, 3 - runway) * 0.06, by: cfo, why: { runway } });
   if (debt > 0 && runway > 8) out.push({ kind: 'loan', title: `借入金の繰上げ返済（残高 ${NPC.money(debt)}・支払利息の削減）`, effect: [{ kind: 'loan', action: 'repay', share: 0.5 }], cost: 0, risk: 0.05, gain: 0.04, by: cfo, why: { debt, runway } });
   if (behind > 1.1 && runway > 2 && runway < 6 && pl.op > 0) out.push({ kind: 'loan', title: 'テネシスから成長資金を借入（3か月分の費用・設備投資を20%拡大）', effect: [{ kind: 'loan', action: 'borrow', months: 3 }, { kind: 'budget', key: 'capex', mult: 1.2 }], cost: 0, risk: 0.3, gain: 0.06, by: by('plan'), why: { behind, runway } });
-  const pm = s.payoutMult || 1;
-  if (ytd.net > 0 && runway > 7 && pm < 1.4) out.push({ kind: 'payout', title: '増配（配当性向を1割引き上げ：利益を株主に還元）', effect: [{ kind: 'payout', mult: 1.1 }], cost: 0, risk: 0.1, gain: 0.04, by: cfo, why: { runway, payout: pm } });
-  else if ((ytd.net < 0 || runway < 3) && pm > 0.6) out.push({ kind: 'payout', title: '減配（配当性向を1割引き下げ：手元資金を厚く）', effect: [{ kind: 'payout', mult: 0.9 }], cost: 0, risk: 0.15, gain: 0.05, by: cfo, why: { runway, payout: pm } });
+  // (MY WAY's payout is its philosophy's — CORP.myway.philosophy.payout —, not a meeting's)
+  const pm = s.payoutMult || 1, ownPayout = !(id === 'myway' && CORP.myway && CORP.myway.philosophy);
+  if (ownPayout && ytd.net > 0 && runway > 7 && pm < 1.4) out.push({ kind: 'payout', title: '増配（配当性向を1割引き上げ：利益を株主に還元）', effect: [{ kind: 'payout', mult: 1.1 }], cost: 0, risk: 0.1, gain: 0.04, by: cfo, why: { runway, payout: pm } });
+  else if (ownPayout && (ytd.net < 0 || runway < 3) && pm > 0.6) out.push({ kind: 'payout', title: '減配（配当性向を1割引き下げ：手元資金を厚く）', effect: [{ kind: 'payout', mult: 0.9 }], cost: 0, risk: 0.15, gain: 0.05, by: cfo, why: { runway, payout: pm } });
   // テネシスリサーチ (its three members only)
   const R = corp && corp.research, member = R && R.on && ['magita', 'yosida', 'wazima'].includes(id);
   if (member) {

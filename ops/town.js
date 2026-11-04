@@ -157,6 +157,7 @@ var OpsTown = (function () {
     kv(g, '引き抜き（今月）', (pm.n || 0) + '人・引き止め ' + (pm.countered || 0) + '人');
     kv(g, '引き抜き（先月）', (pl.n || 0) + '人・引き止め ' + (pl.countered || 0) + '人');
     kv(g, '引き抜き（累計）', v.poach.total + '人・引き止め ' + v.poach.countered + '人');
+    kv(g, '地元企業から13社へ（今月）', (pm.localLost || 0) + '人・地元企業の引き止め ' + (pm.localHeld || 0) + '人');
     if (v.civil) kv(g, '公務員の平均年収', money(v.civil.avg) + '（相場 ' + money(v.civil.market) + '）');
     if (v.asuka) kv(g, 'アスカ国の賃金相場', '×' + v.asuka.idx.toFixed(3) + (v.asuka.aim ? '（目標 ×' + v.asuka.aim.toFixed(2) + '）' : ''));
     p.appendChild(g);

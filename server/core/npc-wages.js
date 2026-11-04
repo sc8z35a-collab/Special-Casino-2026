@@ -10,6 +10,7 @@
 import { NPC, CORP, LOCAL, ASUKA } from './rules.js';
 import { FL, T, NT } from './npc-pop.js';
 import { JOB as AJOB } from './asuka.js';
+import { equityOf as localEquity } from './npc-local.js';
 
 export const WAGE = {
   // its people's money a head this many years of the pay (the market's aim), how far towards it a month (a step of at
@@ -27,6 +28,7 @@ export const WAGE = {
   keep: 24
 };
 const P_OF = (W) => W.P;
+const localFirm = (no) => (no ? LOCAL.firms.find((f) => f.no === no) : null) || null;
 const J = () => NPC.job;
 export const idx = (W) => (W.wage && W.wage.idx) || 1;
 export const asukaIdx = (W) => (W.wage && W.wage.asuka && W.wage.asuka.idx) || 1;
@@ -136,7 +138,7 @@ export function month(W, day, r, ctx) {
     const top = Object.entries(pm.by).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => { const [a, b] = k.split('>'); return `${CORP.company(b).name}→${CORP.company(a).name} ${n}人`; });
     W.news.push({ day, kind: 'labor', district: -1, text: `先月の引き抜き${pm.n}人・引き止め${pm.countered}人（${top.join('・')}）`, data: {} });
   }
-  S.poach.last = { day, n: pm.n, countered: pm.countered, by: pm.by };
+  S.poach.last = { day, n: pm.n, countered: pm.countered, by: pm.by, localHeld: pm.localHeld || 0, localLost: pm.localLost || 0 };
   S.poach.m = { n: 0, countered: 0, by: {}, lostBy: {} };
   const g2 = groups(W);
   S.hist.push({ day, idx: S.idx, aim: S.aim, wealth: S.wealth, avg: Math.round(avgOf(g2.all)), poached: pm.n, countered: pm.countered, asuka: W.wage.asuka ? W.wage.asuka.idx : null });
@@ -222,6 +224,24 @@ export function poach(W, day, r, ctx, hire) {
       (m.lostBy || (m.lostBy = {}))[from] = ((m.lostBy || {})[from] || 0) + 1;
     }
   }
+}
+
+// One of the thirteen's offers to a local company's person (npc-labor.js shortage, npc-mind.js thinkJob): the company,
+// worth `runway` months of its pay and costs (or with them in hand), holds them `counter` of the time a little above it
+// (and they are the happier for it); counted with the 引き抜き
+export function localHolds(W, i, offer, r) {
+  const P = P_OF(W), Q = WAGE.poach, f = localFirm(P.firm[i]), c = f && W.locals && W.locals.firms[f.id];
+  if (!c || c.dead) return false;
+  const m = stateOf(W).poach.m;
+  const last = c.last || c.m || {}, monthly = Math.max(1, (last.cost || 0) + (last.pay || 0), (c.staff || 1) * P.salary[i] / 12);
+  if (Math.max(c.cash, localEquity(W, f)) / monthly > Q.runway && r.u() < Q.counter) {
+    P.salary[i] = Math.round(Math.max(P.salary[i], offer) * Q.match);
+    P.jsat[i] = Math.min(255, P.jsat[i] + 20);
+    m.localHeld = (m.localHeld || 0) + 1;
+    return true;
+  }
+  m.localLost = (m.localLost || 0) + 1;
+  return false;
 }
 
 /* --------------------------------------------------------------- the view --- */

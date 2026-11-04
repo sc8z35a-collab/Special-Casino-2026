@@ -33,7 +33,10 @@ const ROOT = path.resolve(__dirname, '..');
     await page.evaluate(() => { BR.social.open('more'); document.querySelector('[data-act="town"]').click(); });
     await page.locator('#town-modal').waitFor({ state: 'visible' });
     await page.waitForFunction(() => document.querySelector('#tw-status .tw-pop'));
-    const inked = await page.evaluate(() => { const c = document.getElementById('tw-map'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; });
+    // (drawn on the next frames: waited for, not read once)
+    const ink = () => { const c = document.getElementById('tw-map'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; };
+    await page.waitForFunction(`(${ink})() > 5000`, null, { timeout: 15000 }).catch(() => {});
+    const inked = await page.evaluate(`(${ink})()`);
     assert.ok(inked > 5000, 'the map is drawn: ' + inked);
     for (const tab of ['区', '国', '政治', '労働', '企業', 'ニュース', '今']) {
       await page.locator('#tw-tabs button', { hasText: tab }).first().click();

@@ -51,6 +51,12 @@
     schedule();
   }
   function schedule() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; draw(); }); }
+  function refit() {
+    if (!shown() || !canvas) return;
+    var w = canvas.width, h = canvas.height;
+    fit();
+    if (st.frame && (canvas.width !== w || canvas.height !== h || !st.to)) { st.from = null; st.to = place(st.frame); }
+  }
   function draw() {
     if (!shown() || !canvas) return;
     var g = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
@@ -294,7 +300,10 @@
       BR.live.on('town', onTown);
       BR.live.on('status', function (on) { if (on && shown()) { say(true); load(); } });
       document.addEventListener('visibilitychange', function () { if (shown()) say(!document.hidden); });
-      window.addEventListener('resize', function () { if (shown() && st.frame) { fit(); st.from = null; st.to = place(st.frame); schedule(); } });
+      window.addEventListener('resize', refit);
+      // (the map's own size, whenever it changes — the window laid out after the first frame, a rotated phone: else a
+      // map sized before its window was would stay a pixel wide until the window was resized)
+      if (window.ResizeObserver) new ResizeObserver(refit).observe(canvas);
     }
   };
 })(window.BR = window.BR || {});

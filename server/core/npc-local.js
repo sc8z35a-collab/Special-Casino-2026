@@ -26,6 +26,9 @@ const districtOf = (f) => Math.max(0, NPC.districts.findIndex((d) => d.name === 
 const scaleOf = (W) => W.P.n / NPC.nation.population;
 // its capital in a country of this size (its retained earnings begin so too: a smaller country, smaller companies)
 const capitalOf = (W, f) => Math.round(f.capital * scaleOf(W));
+// what a local company is worth: its capital and what it kept (its cash runs below nothing within a month, its sales
+// settled at the month's end)
+export const equityOf = (W, f) => capitalOf(W, f) + ((W.locals && W.locals.firms[f.id] && W.locals.firms[f.id].retained) || 0);
 
 /* ---------------------------------------------------------------- the beginning --- */
 // Once (a country kept before them too): their books, and the people in the local jobs taken on by them, the

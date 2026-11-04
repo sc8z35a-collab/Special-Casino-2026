@@ -8,6 +8,7 @@ import { NPC, RULES, CORP } from './rules.js';
 import { T, S, N, E, E2, BL, NB, LS, NL, FL, HOME, NN, NT, REL, ageOf, remember, memberList, clampB, viewOf } from './npc-pop.js';
 import * as econ from './npc-econ.js';
 import * as heart from './npc-heart.js';
+import { localHolds } from './npc-wages.js';
 
 const tr = (P, i, k) => P.tr[i * NT + k] / 255;
 const LOSS = 2.25;
@@ -199,6 +200,9 @@ export function thinkJob(W, i, day, r, ctx) {
   const screen = now === NPC.job.none || now === NPC.job.part ? NPC.labor.offerDaily : NPC.labor.offerDaily * 2;
   if (r.u() > screen) return false;
   if (r.u() > 0.25 + 0.6 * best.fit) { econ_feel(P, i, -6); return false; }
+  // (one of a local company's people with an offer: the company, with the money, may hold them a little above it —
+  // 人材の奪い合い, npc-wages.js)
+  if ((now === NPC.job.other || now === NPC.job.part) && P.firm[i] && localHolds(W, i, best.o.pay, r)) return false;
   W.hire(i, best.o, day, r);
   return true;
 }

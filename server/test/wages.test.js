@@ -116,3 +116,37 @@ test('運営\'s screens as the country is: its GDP not against a 30 days before 
     if (pays.length) assert.equal(f.pay, Math.round(mean(pays)), f.id);
   }
 });
+
+test('one of the thirteen after a local company\'s person: the company, with the money (or worth it), holds them a little above the offer; without it, they go', () => {
+  const c = country(900, 14);
+  const { W } = c;
+  c.days(3);
+  const P = W.P;
+  const i = Array.from({ length: P.n }, (_, k) => k).find((k) => local.firmOf(P, k) && P.salary[k] > 0);
+  const f = local.firmByNo(local.firmOf(P, i)), st = W.locals.firms[f.id];
+  const yes = { u: () => 0 }, pay = P.salary[i], offer = Math.round(pay * 1.3);
+  wages.view(W);
+  const m = W.wage ? W.wage.poach.m : null, held = m ? m.localHeld || 0 : 0, lost = m ? m.localLost || 0 : 0;
+  st.cash = 1e12;
+  assert.equal(wages.localHolds(W, i, offer, yes), true);
+  assert.equal(P.salary[i], Math.round(offer * wages.WAGE.poach.match));
+  st.cash = 0; st.retained = -1e12;
+  assert.equal(wages.localHolds(W, i, offer * 2, yes), false);
+  assert.equal(P.salary[i], Math.round(offer * wages.WAGE.poach.match));
+  const m2 = W.wage.poach.m;
+  assert.equal((m2.localHeld || 0) - (m === m2 ? held : 0), 1);
+  assert.equal((m2.localLost || 0) - (m === m2 ? lost : 0), 1);
+});
+
+test('MY WAY\'s payout is its philosophy\'s: its meeting never puts a dividend policy on the table, and one set before is not used', () => {
+  const c = country(700, 15);
+  const { w, W } = c;
+  c.days(40);
+  assert.ok(!W.meetings.some((m) => m.company === 'myway' && m.kind === 'payout'));
+  w.co.myway.payoutMult = 1.3;
+  const out = corpModel.closeDay(w, w.day + 1, { npc: { ...npc.flowsFor(W, w.day + 1), ops: [{ company: 'myway', kind: 'payout', mult: 1.1 }] } }, c.ch);
+  assert.ok(out);
+  assert.equal(w.co.myway.payoutMult, 1.3, 'the decision not applied');
+  const g = w.co.myway.guide;
+  if (g && g.net > 0) assert.ok(Math.abs(w.co.myway.div.total / g.net - CORP.myway.philosophy.payout) < 0.01);
+});

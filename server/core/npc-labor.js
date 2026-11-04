@@ -153,9 +153,16 @@ function localJobs(W, day, r) {
   // (each one's people as they are today: some left it since)
   local.count(W);
   // (the 32 local companies short of people, by how short: js/game/local.js)
-  const open = local.openings(W), gaps = open.reduce((n, x) => n + x[1], 0);
-  const pick = () => { let k = r.u() * gaps; for (const [f, g] of open) { k -= g; if (k < 0) return f; } return open.length ? open[open.length - 1][0] : null; };
-  const taken = (f) => { const x = open.find((y) => y[0] === f); if (x) x[1]--; W.locals.firms[f.id].staff++; };
+  // (`gaps` as they are filled: a company no longer short is not picked again the same day)
+  const open = local.openings(W);
+  let gaps = open.reduce((n, x) => n + x[1], 0);
+  const pick = () => {
+    if (gaps <= 0) return null;
+    let k = r.u() * gaps, last = null;
+    for (const [f, g] of open) { if (g <= 0) continue; last = f; k -= g; if (k < 0) return f; }
+    return last;
+  };
+  const taken = (f) => { const x = open.find((y) => y[0] === f); if (x && x[1] > 0) { x[1]--; gaps--; } W.locals.firms[f.id].staff++; };
   for (let i = 0; i < P.n; i++) {
     const j = P.job[i];
     if (j === J.other || j === J.part || j === J.self) {
@@ -266,6 +273,9 @@ function shortage(W, day, r, ctx) {
     for (let k = 0; k < n && o.left > 0; k++) {
       const i = draw();
       if (i < 0 || !wants(i, offer)) continue;
+      // (人材の奪い合い: a local company with the money holds one of its people a little above the offer, as the thirteen
+      // do theirs — npc-wages.js poach)
+      if (local.firmOf(P, i) && wages.localHolds(W, i, offer, r)) continue;
       const senior = P.job[i] === J.retired;
       moved(i);
       P.job[i] = J.none;
