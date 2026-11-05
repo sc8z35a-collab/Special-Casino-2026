@@ -1369,6 +1369,16 @@ MIGRATIONS.push([
    ) WITHOUT ROWID`
 ]);
 
+// 少数精鋭集団アルファ (server/core/npc-alpha.js): each day of it — its talk, its plan, its orders, how its members
+// stand —, 70 days kept here and in R2 (`r2`: copied there)
+MIGRATIONS.push([
+  `CREATE TABLE npc_alpha (
+     day  INTEGER PRIMARY KEY,
+     data TEXT    NOT NULL,
+     r2   INTEGER NOT NULL DEFAULT 0
+   )`
+]);
+
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)
@@ -1382,7 +1392,7 @@ export const TABLES = ['users', 'sessions', 'game_login_locks', 'chat_filter_str
   'stock_state', 'stock_candles', 'stock_holdings', 'stock_accounts', 'stock_orders', 'medals',
   'corp_state', 'corp_days', 'corp_anchor', 'corp_periods', 'corp_titles', 'corp_news', 'corp_flows', 'corp_hours', 'slot_bills', 'garage_bills',
   // (the country's record; not the people themselves — some 20MB, kept by the host's own history of the database)
-  'npc_news', 'npc_meetings', 'npc_reports', 'npc_days', 'npc_ai', 'stock_npc', 'meta'];
+  'npc_news', 'npc_meetings', 'npc_reports', 'npc_days', 'npc_ai', 'npc_alpha', 'stock_npc', 'meta'];
 
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');

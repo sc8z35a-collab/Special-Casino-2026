@@ -50,8 +50,9 @@ test('the eight supplied cars on sale have their names, prices, real GLBs and fa
     assert.ok(fs.existsSync(new URL(`../../img/3d/cars/${look}.glb`, import.meta.url)) && fs.existsSync(new URL(`../../img/cars/${look}.webp`, import.meta.url)));
   }
   assert.deepEqual(['yoshida-s6-way', 'porsche-kuia-spyder'].map((id) => RULES.cars.find(c => c.id === id)).map((c) => [c.name, c.price]), [['YOSHIDA S6 WAY', 7500000], ['MAGITA K110', 35000000]]);
-  // (no car carries a real carmaker's name: MAGITA's, or its rival YOSIDA's YOSHIDA series)
-  for (const c of RULES.cars) assert.match(c.name, /^(MAGITA|YOSHIDA) /, c.id);
+  // (no car carries a real carmaker's name: MAGITA's, its rival YOSIDA's YOSHIDA series, or MIZUKAWA's own, sold at
+  // its MIZUKAWA GARAGE)
+  for (const c of RULES.cars) assert.match(c.name, c.seller === 'mizukawa' ? /^MIZUKAWA / : /^(MAGITA|YOSHIDA) /, c.id);
 });
 
 test('a car no longer sold never gains a sale, but is still bought back', () => {
@@ -68,7 +69,9 @@ test('a car no longer sold never gains a sale, but is still bought back', () => 
     if (sale.kind === 'year') annual = sale;
   }
   assert.ok(annual);
-  assert.equal(Object.keys(annual.pct).length, RULES.cars.filter(carSold).length);
+  // (MIZUKAWA's cars, sold at its own garage at their list prices, never on a sale)
+  assert.equal(Object.keys(annual.pct).length, RULES.cars.filter((c) => carSold(c) && !c.seller).length);
+  for (const c of RULES.cars.filter((c) => c.seller)) assert.equal(Object.hasOwn(annual.pct, c.id), false);
   for (const id of ended) {
     const car = RULES.cars.find(c => c.id === id);
     assert.equal(CARS.has(id), true);

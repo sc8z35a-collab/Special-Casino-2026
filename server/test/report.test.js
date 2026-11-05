@@ -20,13 +20,13 @@ test('the operator site: the 46 companies\' daily report — the thirteen, HACHI
   const r = await s.call('GET', '/api/ops/corp/report', { token: boss.token });
   assert.equal(r.status, 200);
   assert.equal(r.started, true);
-  // (the thirteen, and HACHI from its founding on 2026-11-04)
-  assert.equal(r.companies.length + r.locals.length, 14 + LOCAL.firms.length);
-  assert.equal(r.companies.length + r.locals.length, 46);
+  // (the thirteen, HACHI from its founding on 2026-11-04 and MIZUKAWA from 2026-11-05)
+  assert.equal(r.companies.length + r.locals.length, 15 + LOCAL.firms.length);
+  assert.equal(r.companies.length + r.locals.length, 47);
   assert.ok(r.companies.some((c) => c.id === 'hachi'));
-  // the fourteen: each day's row (sales, what it cost, the result), the last day closed the newest
+  // the fifteen: each day's row (sales, what it cost, the result), the last day closed the newest
   for (const c of r.companies) {
-    assert.ok(c.days.length >= (c.id === 'hachi' ? 1 : 3), `${c.id}: ${c.days.length} days`);
+    assert.ok(c.days.length >= (c.id === 'hachi' || c.id === 'mizukawa' ? 1 : 3), `${c.id}: ${c.days.length} days`);
     const d = c.days[c.days.length - 1];
     assert.equal(d.day, r.day);
     assert.equal(d.sales - d.cost, d.op);

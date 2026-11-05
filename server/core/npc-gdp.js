@@ -39,9 +39,12 @@ export function gdpDay(W, day, corp, x) {
   G.owed = owed;
   const nd = (W.nation.day && W.nation.day.out) || {}, dd = (k) => W.districts.reduce((n, d) => n + ((d.day && d.day.out && d.day.out[k]) || 0), 0);
   const xa = (x && x.asuka) || {}, tr = xa.trade || { goods: 0, direct: 0, altas: 0 };
+  // (what ヴェルノア bought of アスカ国's own companies — MIZUKAWA's cars, engines and technology —: its imports, アスカ国's exports)
+  const fromA = Math.max(0, tr.fromAsuka || 0);
   let players = 0, capex = 0, content = 0;
   if (corp) for (const s of Object.values(corp.co)) {
-    if (!s.per) continue;
+    // (アスカ国's own — MIZUKAWA —: its investment アスカ国's)
+    if (!s.per || s.mz) continue;
     const d = s.per.d || {};
     players += s.players || 0;
     capex += -(d['cf:capex'] || 0);
@@ -57,11 +60,11 @@ export function gdpDay(W, day, corp, x) {
     g: Math.round((nd.civil || 0) + (nd.medical || 0) + dd('shops')),
     i: Math.round(Math.max(0, capex - Math.max(0, xa.open || 0)) + Math.max(0, content) + acc.inv + (nd.works || 0) + dd('works')),
     x: Math.round(((x && x.exports) || 0) + tr.goods + tr.direct),
-    m: Math.round(acc.m + dOwed + acc.trips + (xa.platform || 0) - tr.altas),
+    m: Math.round(acc.m + dOwed + acc.trips + (xa.platform || 0) - tr.altas + fromA),
     defl: W.stats && W.stats.prices0 ? W.stats.prices / W.stats.prices0 : 1, people: W.P.n
   };
   const a = asuka.gdpOf(W);
-  const row = { day, v: pack(round(v)), a: a ? pack(round({ ...a, x: a.x + dOwed - tr.altas, m: a.m + tr.goods + tr.direct })) : null };
+  const row = { day, v: pack(round(v)), a: a ? pack(round({ ...a, x: a.x + dOwed - tr.altas + fromA, m: a.m + tr.goods + tr.direct })) : null };
   G.days.push(row);
   if (G.days.length > KEEP) G.days.splice(0, G.days.length - KEEP);
   // (and its month's sums, kept five years)

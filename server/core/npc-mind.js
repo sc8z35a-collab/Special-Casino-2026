@@ -78,9 +78,12 @@ export function thinkCar(W, i, day, r, ctx) {
   const status = P.emo2 ? heart.tendency(P, i, 'compensate') * heart.lowEsteem(P, i) : 0;
   const means = P.emo2 ? Math.max(0.5, Math.min(2, Math.pow((Math.max(0, P.fund[i * 4 + 2]) + Math.max(0, P.wind[i]) * 0.3) / Math.max(1, W.cal.leisure), 0.3))) : 1;
   const urge = W.cal.carUrge * (have ? Math.min(2.5, years / 6) : 1.6) * (1 + ((W.appeal['magita:cars'] || 0) + econ.appealOf(W, 'carowner', 'cars') + (W.appeal['magita:all'] || 0) + (W.appeal['yosida:all'] || 0)) * 3) * (0.5 + tr(P, i, T.car)) * (0.6 + tr(P, i, T.vanity) * 0.8)
-    * means * (1 + 1.5 * status) * (P.emo2 ? (1 + Math.max(0, P.lesson[i * NL + LS.luxury]) / 127 * 0.5) * (1 + Math.max(0, P.belief[i * NB + BL.infl] - 30) / 100) : 1);
+    * means * (1 + 1.5 * status) * (P.emo2 ? (1 + Math.max(0, P.lesson[i * NL + LS.luxury]) / 127 * 0.5) * (1 + Math.max(0, P.belief[i * NB + BL.infl] - 30) / 100) : 1)
+    // (the year's gift's week: three times as keen — npc-welfare.js)
+    * econ.keenOf(W, i, day);
   if (r.u() > urge) return false;
-  const cars = W.carList || (W.carList = carList(ctx));
+  // (MIZUKAWA's only once out and while it has them: its stock is all it makes)
+  const cars = W.carList || (W.carList = carList(ctx).filter((c) => { const rc = carByIndex(c.k); return !rc || !rc.seller || !!(W.mzInfo && W.mzInfo.out && W.mzInfo.out[c.id] && (W.stock.cars[c.id] || 0) > 0); }));
   const cap = Math.max(0, P.cash[i]) + loanRoom(W, i);
   // the models within reach, by how much they are wanted (the popular ones, and the dear ones for the vain)
   const cand = cars.filter((c) => c.price * 1.1 < cap && (!have || c.k !== have || years > 8));
@@ -159,7 +162,8 @@ function makerView(P, i, id) {
   return k >= 0 ? viewOf(P, i, k) : 0;
 }
 function makerPull(W, id) {
-  const pr = CORP.products.cars[id], m = pr && CORP.makers[pr.maker];
+  // (MIZUKAWA's: its own dealers', its luxury cars with the economy its own way — no lots ordered: CORP.makers has none)
+  const pr = CORP.products.cars[id], m = pr && (CORP.makers[pr.maker] || (pr.seller && CORP.company(pr.maker) ? { beta: CORP.company(pr.maker).beta } : null));
   if (!m) return 1;
   return Math.exp(m.beta * 3 * (W.econX || 0)) * ((W.makerEdge && W.makerEdge[pr.maker]) || 1);
 }

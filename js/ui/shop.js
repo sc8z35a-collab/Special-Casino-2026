@@ -93,6 +93,9 @@
       card.appendChild(stage);
       var body = el('div', 'shop-body');
       body.appendChild(el('h3', 'shop-name', it.name));
+      // (MIZUKAWA's engines: its own dealers', MIZUKAWA GARAGE, from their day — 9:00 Japan time —, as many as it makes)
+      var early = !!(it.seller && it.from && Date.now() < Date.UTC(it.from[0], it.from[1] - 1, it.from[2]));
+      if (it.seller) body.appendChild(el('p', 'shop-garage', 'MIZUKAWA GARAGE（アスカ国）' + (early ? '・' + it.from[1] + '/' + it.from[2] + ' 発売予定' : '・限定生産')));
       var ul = el('ul', 'shop-lines');
       (LINES[it.id] || []).forEach(function (t) { ul.appendChild(el('li', '', t)); });
       body.appendChild(ul);
@@ -115,8 +118,8 @@
       row.appendChild(minus);
       row.appendChild(count);
       row.appendChild(plus);
-      var buyBtn = el('button', 'act-btn gold shop-buy', room > 0 ? '購入する（' + money(s.salePrice * n) + '）' : '上限まで持っています');
-      buyBtn.disabled = busy || room <= 0;
+      var buyBtn = el('button', 'act-btn gold shop-buy', early ? it.from[1] + '/' + it.from[2] + ' 発売予定' : room > 0 ? '購入する（' + money(s.salePrice * n) + '）' : '上限まで持っています');
+      buyBtn.disabled = busy || room <= 0 || early;
       buyBtn.classList.toggle('short', S.dollars < s.salePrice * n);
       buyBtn.addEventListener('click', function () { sfx('click'); buy(it, n); });
       row.appendChild(buyBtn);

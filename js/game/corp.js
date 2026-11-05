@@ -189,7 +189,9 @@
       sales: 24000000000, op: 2400000000,
       streams: [
         { id: 'export', name: 'MAGITA車の受託製造（海外市場向け）', share: 1, beta: 1.2, abroad: true },
-        { id: 'codev', name: '共同開発（MAGITA向け）' }
+        { id: 'codev', name: '共同開発（MAGITA向け）' },
+        // (what MIZUKAWA orders of its engineers, out of its research: corp-mizukawa.js)
+        { id: 'mzorder', name: 'MIZUKAWAからの研究受託' }
       ],
       materials: true, factory: 0.8, inventoryDays: 30,
       ppe: 12000000000, growth: 0.03, beta: 1.2, season: 'cars', hire: 0.01, raise: 0.02, quit: 0.04,
@@ -341,6 +343,8 @@
         { id: 'ipLocal', name: '地元企業32社とのIP契約', license: true },
         { id: 'ipNation', name: 'ヴェルノア国とのIP契約（国の公式キャラクター）', license: true },
         { id: 'ipAsuka', name: 'アスカ国とのIP契約（国の公式キャラクター）', license: true },
+        // (MIZUKAWA, from its founding to 2027-01-01: its first collaboration car River W Feat., the profit 5:5)
+        { id: 'mizukawa', name: 'MIZUKAWA（コラボ特別仕様車 River W Feat.：利益5:5）', license: true },
         // (the collaboration cars: MAGITA's and YOSHIDA's share of their profit to MY WAY — PRODUCTS.cars `collab`)
         { id: 'collabCars', name: 'コラボ車の利益配分（MAGITA 4:6・YOSHIDA 3:7）', license: true },
         { id: 'direct', name: '直営ショールーム・その他（旗艦店での直販・他社ライセンス）', share: 2500000000 / 45000000000, cost: 0, beta: 1.1 },
@@ -379,6 +383,37 @@
       ],
       ppe: 0, growth: 0, beta: 0.2, season: 'flat', hire: 0, raise: 0.02, quit: 0.03,
       payout: 0.3, per: 14, pbr: 2, founders: 0.2, price: 80000, depth: 3000000000
+    },
+    {
+      // The world's third carmaker (after MAGITA and YOSHIDA; WAZIMA the last), the fifteenth — アスカ国籍: its home,
+      // its people, its taxes, its land and its materials アスカ国's (MIZUKAWA below). Founded on 2026-11-05 with $38B
+      // of アスカ国's treasury once (`retained`). It sells at its own dealers only, MIZUKAWA GARAGE — the one carmaker
+      // not selling through Car Owner or ジンクス —, its cars dear (its research is the dearest of the four) and made on
+      // its own HIGA production lines (the cheapest to make); and it earns on its technology: its production lines'
+      // (70% of the world's, WAZIMA the rest) of MAGITA and WAZIMA, its cars' of YOSHIDA. Its people (`staff`) at the pay
+      // they start on (`salary`: their average a year) — all of it the economy's and its business's (MIZUKAWA.pay).
+      // Not listed (アスカ国 has no market): it pays no dividend, everything it earns beyond its people goes into research.
+      id: 'mizukawa', name: 'MIZUKAWA', full: 'MIZUKAWA Motors株式会社', en: 'MIZUKAWA MOTORS', rank: 'A', model: 'maker', nation: 'asuka',
+      kind: '自動車メーカー（アスカ国籍：高級車・炎神エンジン・HIGA製造ライン・MIZUKAWA GARAGE・製造ライン技術の提供）', listed: false,
+      founded: [2026, 11, 5],
+      capital: 0, reserve: 0, retained: 38000000000,
+      staff: 2300, salary: 42521739, cost: 48900000,
+      place: { name: '製造工場・本社ビルの土地代・管理費', amount: 0 }, rd: { name: '研究開発費（研究開発員の給与・他社への発注・技術資産）', amount: 0 },
+      sales: 160000000000, op: 25000000000,
+      // (its own cars and engines, sold at MIZUKAWA GARAGE to the people of both countries and to the players — `own`:
+      // its products alone —; its technology's fees; WAZIMA's books once it is its, and the businesses it took over)
+      // (`alone`: each one's share of `sales` in a company system without the country)
+      streams: [
+        { id: 'cars', name: 'MIZUKAWA GARAGE（新車販売）', products: 'cars', own: true, player: ['car'], alone: 0.72 },
+        { id: 'engines', name: 'MIZUKAWA GARAGE（エンジン販売）', products: 'items', own: true, player: ['shop'], alone: 0.12 },
+        { id: 'linetech', name: '製造ライン技術提供料（MAGITA・WAZIMA）', alone: 0.1 },
+        { id: 'cartech', name: '車技術提供料（YOSHIDA）', alone: 0.06 },
+        { id: 'wazima', name: 'WAZIMA（子会社・連結：買収後）' },
+        { id: 'locals', name: '取得した事業（旧MAGITA経済圏の4社）' }
+      ],
+      inventoryDays: 30,
+      ppe: 0, growth: 0.05, beta: 1.6, season: 'cars', hire: 0, raise: 0, quit: 0.03,
+      payout: 0, per: 16, pbr: 1.6, founders: 0, price: 10000
     }
   ];
   function company(id) { for (var i = 0; i < COMPANIES.length; i++) if (COMPANIES[i].id === id) return COMPANIES[i]; return null; }
@@ -437,6 +472,69 @@
     // beyond it is not theirs to take)
     placementCap: 39000000
   };
+  /* ------------------------------------------------------------- MIZUKAWA --- */
+  // MIZUKAWA Motors' rules (server/core/corp-mizukawa.js its books, server/core/asuka.js its people). Every number is
+  // where it starts; its people, their pay and its prices all move with the economy and with how it does.
+  // - `seed`: its 利益剰余金, アスカ国's treasury's once, the day it is founded
+  // - `roles`: its people in アスカ国 (研究開発員・営業・システム・製造ライン管理・経営陣), each `n` and `pay` a month to
+  //   start; `burden`: what each costs it beyond (アスカ国's social insurance)
+  // - `pay`: 稼ぐほど上がる — its pay index (1 at the start) moved each month towards what it earns: its people's pay at
+  //   most `share` of what its sales leave after their making (and its technology's fees), a step of `step` a month,
+  //   between `min` and `max` times the start's; the researchers' half of the research pool on top (`research.pay`)
+  // - `staff`: its people's number with its business, `min`〜`max` of the start's: `grow` more a quarter while it makes
+  //   money and has the cash, `cut` fewer a month after two in the red with under `runway` months of its costs
+  // - `facilities`: its plants', its head office's land and their 管理費, a month (`land` of it the land's rent, to
+  //   アスカ国's treasury; the rest the local trade's work); `fee`: 販売手数料 a unit sold (MIZUKAWA GARAGE's)
+  // - `research`: the pool every unit sold puts its research into, and more besides (`extra` times what it made in
+  //   the month, 収益以上 — as far as `cushion` months of its costs stay at hand), never lost: `pay` of it its
+  //   researchers' pay and bonus, `orders` its orders to others (`ordersTo`: YAMATO, WAZIMA's engineers, アスカ国), `asset`
+  //   its technology's worth (技術ライセンス価値: kept, not spent — what its fees are lifted by)
+  // - `line`: the world's production-line technology, `share` MIZUKAWA's (WAZIMA the rest), `grow` more a month and
+  //   `perAsset` more for every `assetUnit` of its technology's worth, up to `max`; MAGITA and WAZIMA pay `rate` of what
+  //   they make for it (each holder its share), YOSHIDA `cartech` of its cars' for its car technology — both × (1 +
+  //   its worth ÷ `lift`)
+  // - `higa`: HIGA MASTER製造技術 (begun before its founding): `cost` in all over its half year, done on `due` (always):
+  //   every unit made after it `cut` cheaper
+  // - `release`: a model's cost and research a unit worked out the day it comes out — its `base` cost × the economy's
+  //   price index (`index`: アルタス's, held within its range) × HIGA (0.7 once done), its research its price × its
+  //   `rate` (15〜55%: a model built on one before lower) ÷ the research bonus (`bonus` with WAZIMA its)
+  // - `wazima`: its plan to buy WAZIMA of MAGITA at its value and `premium` more, `after` days from its founding at the
+  //   earliest — what its cash and `cushion` months of its costs kept do not cover, Tenesice lends (as far as `loan`
+  //   times a year of its sales): WAZIMA's profit, people, plants and business its, its research `bonus` times faster
+  // - `locals`: its plan for the four companies of MAGITA's economy: their businesses bought at what they are worth
+  //   and a share more as the talks go (`premium`), taken into it — their people not (they lose their jobs), their
+  //   technology none —, `after` the WAZIMA buyout
+  // - `myway`: its contract with MY WAY (its first collaboration car, River W Feat.: the profit `share` MY WAY's) ends
+  //   on `until`; the Feat. cars still in stock go on sharing
+  // - `asuka`: what of アスカ国's people's car money goes to MIZUKAWA GARAGE at home
+  var MIZUKAWA = {
+    founded: [2026, 11, 5],
+    seed: 38000000000,
+    roles: [
+      { id: 'rd', name: '研究開発員', n: 1500, pay: 4000000 },
+      { id: 'sales', name: '営業', n: 350, pay: 2000000 },
+      { id: 'systems', name: 'システム', n: 150, pay: 3000000 },
+      { id: 'line', name: '製造ライン管理', n: 200, pay: 3000000 },
+      { id: 'exec', name: '経営陣', n: 100, pay: 4000000 }
+    ],
+    burden: 1.15,
+    pay: { share: 0.55, step: 0.08, min: 0.6, max: 3 },
+    staff: { min: 0.5, max: 2, grow: 0.03, cut: 0.05, runway: 3 },
+    facilities: { month: 1000000000, land: 0.3 },
+    fee: 100000,
+    research: { pay: 0.5, orders: 0.3, asset: 0.2, ordersTo: { yamato: 0.4, wazima: 0.3, asuka: 0.3 }, extra: 1.2, cushion: 6 },
+    line: { share: 0.7, grow: 0.002, perAsset: 0.01, assetUnit: 10000000000, max: 0.95, rate: 0.1, cartech: 0.06, lift: 100000000000 },
+    higa: { name: 'HIGA MASTER製造技術', start: [2026, 8, 3], due: [2027, 2, 3], cost: 5000000000, cut: 0.3 },
+    release: { index: [0.8, 1.2], bonus: 1.2 },
+    wazima: { premium: 0.25, cushion: 3, after: 60, loan: 1 },
+    locals: { firms: ['mgmaterial', 'mglogi', 'mgtown', 'jukofood'], premium: [0.1, 0.4], after: 30 },
+    myway: { until: [2027, 1, 1], share: 0.5 },
+    // (アスカ国's people's car money: `share` of it at MIZUKAWA GARAGE at home — their own country's carmaker —, the rest
+    // at Car Owner's branches there)
+    asuka: { share: 0.65 }
+  };
+  // a MIZUKAWA product on sale on day `day` (its release day and its stock: server/core/corp-mizukawa.js)
+  function mizukawaOut(id, day) { var pr = PRODUCTS.cars[id] || PRODUCTS.items[id]; return !!(pr && pr.seller === 'mizukawa' && (!pr.from || day >= dayAt(pr.from[0], pr.from[1], pr.from[2]))); }
   // a ward's name: HACHI ○○区 第○病院 (its number in its district)
   function wardName(district, k) { return 'HACHI ' + district + ' 第' + k + '病院'; }
 
@@ -529,7 +627,10 @@
       // (HACHI, from its founding on 2026-11-04: its 定期検診 advertising and its name, a contract of five years —
       // `term` — then renewed, cut or talked over; on under the state too. No goods: what it is worth to it is the
       // checkups and visits its advertising brings, about a quarter more than its fee at full pull — `lift`)
-      hachi: { fee: 8000000000, lift: 1.25, cost: 0, late: true, term: 5, what: '定期検診の広告・知名度向上（キャラクター使用権：5年更新）' }
+      hachi: { fee: 8000000000, lift: 1.25, cost: 0, late: true, term: 5, what: '定期検診の広告・知名度向上（キャラクター使用権：5年更新）' },
+      // (MIZUKAWA, from its founding on 2026-11-05 to 2027-01-01 — not renewed —: its collaboration car's profit half
+      // MY WAY's on top of the fee)
+      mizukawa: { fee: 1200000000, lift: 1.6, cost: 0, late: true, ends: [2027, 1, 1], what: 'コラボ特別仕様車 River W Feat.（利益5:5）' }
     },
     // the day the thirteen all became its partners and Tenesice's became its 超大型IP契約 (its seven partners before
     // at their first fees — `fee0` — and its showroom made its $45B)
@@ -662,7 +763,24 @@
       'yoshida-s6': { maker: 'yosida', cost: 1000000, buy: 1600000, excl: 0, npc: 3200 },
       'yoshida-k10e': { maker: 'yosida', cost: 3000000, buy: 4500000, excl: 0, npc: 1200 },
       // (YOSHIDA S6 WAY, in the S6's place: YOSIDA's profit on it 3:7 with MY WAY; the dealer's $1.5M)
-      'yoshida-s6-way': { maker: 'yosida', cost: 3800000, buy: 6000000, excl: 0, npc: 2400, from: [2026, 11, 3], collab: { with: 'myway', share: 0.7 } }
+      'yoshida-s6-way': { maker: 'yosida', cost: 3800000, buy: 6000000, excl: 0, npc: 2400, from: [2026, 11, 3], collab: { with: 'myway', share: 0.7 } },
+      // MIZUKAWA's (CORP.mizukawa): its own, sold at MIZUKAWA GARAGE alone (`seller`), as many as `limit` in all, from
+      // `from`. The ones on sale at its founding with their `cost` and `research` a unit as given (River W: $25M less
+      // $3M, $10M and its $100K fee leaves it $11.9M; River W Feat. $33.9M, half of it MY WAY's), the ones to come with
+      // their `base` cost and research `rate`, worked out the day they come out (server/core/corp-mizukawa.js release)
+      'mizukawa-river-w': { maker: 'mizukawa', seller: 'mizukawa', cost: 3000000, research: 10000000, limit: 20000, npc: 800, from: [2026, 11, 5] },
+      'mizukawa-river-w-feat': { maker: 'mizukawa', seller: 'mizukawa', cost: 3000000, research: 1000000, limit: 1000, npc: 260, from: [2026, 11, 5], collab: { with: 'myway', share: 0.5 } },
+      'mizukawa-river-w2': { maker: 'mizukawa', seller: 'mizukawa', base: 3200000, rate: 0.2, limit: 30000, npc: 1000, from: [2026, 11, 10] },
+      // (庶民的: its margin the lowest)
+      'mizukawa-super-u': { maker: 'mizukawa', seller: 'mizukawa', base: 3000000, rate: 0.5, limit: 10000, npc: 1800, from: [2026, 11, 30] },
+      // (大型車・キャンプ向け; and its SUPER, 炎神II inside, the very richest's favourite)
+      'mizukawa-h1': { maker: 'mizukawa', seller: 'mizukawa', base: 6500000, rate: 0.35, limit: 50000, npc: 700, from: [2026, 11, 30] },
+      'mizukawa-h1-super': { maker: 'mizukawa', seller: 'mizukawa', base: 9000000, rate: 0.18, limit: 3000, npc: 120, from: [2026, 11, 30] },
+      // (性能を大きく伸ばして万人向け、いちばんの人気; then Nature 1, cheap enough for those in the middle, and River W
+      // III: its engine far beyond its price)
+      'mizukawa-super-u2': { maker: 'mizukawa', seller: 'mizukawa', base: 3300000, rate: 0.4, limit: 40000, npc: 3000, from: [2027, 2, 3] },
+      'mizukawa-nature-1': { maker: 'mizukawa', seller: 'mizukawa', base: 2400000, rate: 0.3, limit: 30000, npc: 2600, from: [2027, 3, 4] },
+      'mizukawa-river-w3': { maker: 'mizukawa', seller: 'mizukawa', base: 3400000, rate: 0.22, limit: 5000, npc: 450, from: [2027, 3, 4] }
     },
     items: {
       omamori: { maker: 'jinx', cost: 1000, npc: 50000 },
@@ -674,7 +792,11 @@
       'engine-v3': { maker: 'magita', cost: 800000, buy: 7500000, excl: 400000, npc: 150 },
       // YOSIDA's 高効率エンジン series
       'yoshida-er10': { maker: 'yosida', cost: 1100000, buy: 1400000, excl: 0, npc: 2500 },
-      'yoshida-er20': { maker: 'yosida', cost: 3200000, buy: 4000000, excl: 0, npc: 700 }
+      'yoshida-er20': { maker: 'yosida', cost: 3200000, buy: 4000000, excl: 0, npc: 700 },
+      // MIZUKAWA's 炎神 series and FLOW (MIZUKAWA GARAGE's: SUPER 炎神 II $12M less $2.5M and $7M leaves $2.5M)
+      'mizukawa-enjin2': { maker: 'mizukawa', seller: 'mizukawa', cost: 2500000, research: 7000000, limit: 20000, npc: 900, from: [2026, 11, 5] },
+      'mizukawa-enjin3': { maker: 'mizukawa', seller: 'mizukawa', base: 3000000, rate: 0.45, limit: 10000, npc: 1200, from: [2027, 3, 1] },
+      'mizukawa-flow': { maker: 'mizukawa', seller: 'mizukawa', base: 2200000, rate: 0.55, limit: 20000, npc: 900, from: [2027, 9, 1] }
     }
   };
 
@@ -722,6 +844,10 @@
     { a: 'myway', b: 'dtrade', start: 65, why: 'カジノスロットの冬仕様外装・季節限定スキン（IP契約）' },
     { a: 'myway', b: 'hachi', start: 70, why: '定期検診の広告・知名度向上（キャラクター使用権：5年更新）' },
     { a: 'tenesice', b: 'hachi', start: 95, why: '非常に友好的な取引銀行（巨額の融資）' },
+    { a: 'mizukawa', b: 'magita', start: 30, why: '製造ライン技術の提供（シェア70%）と高級車市場のライバル' },
+    { a: 'mizukawa', b: 'wazima', start: 45, why: '製造ライン技術の二強（MIZUKAWA 70%・WAZIMA 30%）' },
+    { a: 'mizukawa', b: 'yosida', start: 55, why: '車技術の提供' },
+    { a: 'myway', b: 'mizukawa', start: 65, why: 'MIZUKAWA River W Feat.（初のコラボ特別仕様車：利益5:5）' },
     { a: 'tenesice', b: '*', start: 60, why: '取引銀行（預金・融資）' }
   ];
 
@@ -896,6 +1022,10 @@
     sAsuka: ['アスカ国の支店の人件費・地代・手数料', 's'], tAsuka: ['アスカ国の法人税・源泉税', 't'],
     // (the 医療税 on its month's profit: js/game/npc.js medicalTax)
     tMedical: ['医療税（企業利益）', 't'],
+    // (what a carmaker pays MIZUKAWA for its production lines' or its cars' technology)
+    sTech: ['技術提供料（MIZUKAWAの製造ライン・車技術）', 's'],
+    // (a child company sold: MAGITA's WAZIMA to MIZUKAWA)
+    xSubsidiary: ['子会社株式の売却益（WAZIMA）', 'xi'],
     // (アルタス: every company's resources bought of it — its goods' and parts' raw materials and food, its plants' and
     // buildings' energy and materials, its research's —, at its prices: server/core/corp-model.js costOf, running)
     'c:altas': ['資源の仕入れ（アルタス）', 'c'], 'c:asukaAltas': ['アスカ国で売った品物の資源の仕入れ（アルタス）', 'c'],
@@ -993,7 +1123,7 @@
   BR.CORP = {
     DAY_MS: DAY_MS,
     companies: COMPANIES, company: company, listed: function () { return COMPANIES.filter(function (c) { return c.listed; }); },
-    players: PLAYERS, features: FEATURES, feature: function (id) { return FEATURES.filter(function (x) { return x.id === id; })[0] || null; }, bankruptcy: BANKRUPTCY, magita: MAGITA, yosida: YOSIDA, questFee: questFee, wazima: WAZIMA, myway: MYWAY, hachi: HACHI, wardName: wardName, breakeven: breakeven, scaleRange: scaleRange, mywayTalk: mywayTalk, makers: MAKERS, firstLot: firstLot, staffing: STAFFING, tech: TECH, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
+    players: PLAYERS, features: FEATURES, feature: function (id) { return FEATURES.filter(function (x) { return x.id === id; })[0] || null; }, bankruptcy: BANKRUPTCY, magita: MAGITA, yosida: YOSIDA, questFee: questFee, wazima: WAZIMA, myway: MYWAY, hachi: HACHI, wardName: wardName, mizukawa: MIZUKAWA, mizukawaOut: mizukawaOut, breakeven: breakeven, scaleRange: scaleRange, mywayTalk: mywayTalk, makers: MAKERS, firstLot: firstLot, staffing: STAFFING, tech: TECH, products: PRODUCTS, ties: TIES, genres: GENRES, names: NAMES, economy: ECONOMY, seasons: SEASONS,
     ranks: RANKS, money: MONEY, tax: TAX,
     accounts: ACCOUNTS, account: account, pl: PL, bs: BS, cf: CF, plOf: plOf,
     // the 決算発表: this many days after a quarter's end, at 15:00 Japan time (6:00 UTC)

@@ -14,6 +14,9 @@ const feeOf = (W, v) => Math.ceil(v * ((W.fees && W.fees.tradeFee !== undefined 
 
 export function createMarket(W) {
   const m = W.marketState || (W.marketState = { book: {}, last: {}, hist: {}, nudges: [], volume: {}, cost: {} });
+  // (少数精鋭集団アルファ's orders — [i, shares, limit, 'A', id, the minute it went in] —: its fills told to it,
+  // server/core/npc-alpha.js)
+  if (!m.alphaFills) m.alphaFills = [];
   for (const id of LISTED_IDS) {
     if (!m.book[id]) m.book[id] = { buy: [], sell: [] };
     if (!m.hist[id]) m.hist[id] = [];
@@ -82,14 +85,19 @@ export function createMarket(W) {
         if (done > 0) {
           // each side's share of what traded, by what it asked for (the remainders to the largest), never beyond it
           const fb = alloc(buys, done), fs = alloc(sells, done);
-          buys.forEach((o, x) => { if (fb[x] > 0) { settle(W, k, o[0], fb[x], price, 'buy'); o[1] -= fb[x]; } });
-          sells.forEach((o, x) => { if (fs[x] > 0) { settle(W, k, o[0], fs[x], price, 'sell'); o[1] -= fs[x]; } });
+          buys.forEach((o, x) => { if (fb[x] > 0) { settle(W, k, o[0], fb[x], price, 'buy'); o[1] -= fb[x]; if (o[3] === 'A') m.alphaFills.push([k, o[0], fb[x], price, 'buy', o[4]]); } });
+          sells.forEach((o, x) => { if (fs[x] > 0) { settle(W, k, o[0], fs[x], price, 'sell'); o[1] -= fs[x]; if (o[3] === 'A') m.alphaFills.push([k, o[0], fs[x], price, 'sell', o[4]]); } });
         }
-        // what was left of each side waits through the minute for the players; its imbalance moves the price
-        const net = (want - done) - (have - done);
+        // what was left of each side waits through the minute for the players; its imbalance moves the price (アルファ's
+        // the minute it went in only: a standing order of it moves the price once, not each minute it waits)
+        let net = 0;
+        for (const o of buys) if (o[3] !== 'A' || o[5] === minute) net += o[1];
+        for (const o of sells) if (o[3] !== 'A' || o[5] === minute) net -= o[1];
         if (done || net) m.nudges.push({ company: id, at: minute, shares: done, value: net * price });
-        b.buy = b.buy.filter((o) => o[1] > 0 && o[2] >= price * 0.995).slice(-200);
-        b.sell = b.sell.filter((o) => o[1] > 0 && o[2] <= price * 1.005).slice(-200);
+        // (アルファ's kept apart from the 200 waiting: never pushed out by the people's)
+        const isA = (o) => o[3] === 'A';
+        b.buy = b.buy.filter((o) => isA(o) && o[1] > 0 && o[2] >= price * 0.995).concat(b.buy.filter((o) => !isA(o) && o[1] > 0 && o[2] >= price * 0.995).slice(-200));
+        b.sell = b.sell.filter((o) => isA(o) && o[1] > 0 && o[2] <= price * 1.005).concat(b.sell.filter((o) => !isA(o) && o[1] > 0 && o[2] <= price * 1.005).slice(-200));
         b.at = minute;
         m.volume[id] = (m.volume[id] || 0) + done;
         // (the price as the people last saw it, for the move of late: every half hour of it)
@@ -118,6 +126,7 @@ export function createMarket(W) {
         if (n <= 0) { o[1] = 0; continue; }
         settle(W, k, o[0], n, price, side === 'buy' ? 'sell' : 'buy', true);
         o[1] -= n;
+        if (o[3] === 'A') m.alphaFills.push([k, o[0], n, price, side === 'buy' ? 'sell' : 'buy', o[4]]);
         left -= n;
         fills.push([o[0], n]);
       }

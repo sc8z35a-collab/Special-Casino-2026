@@ -167,8 +167,11 @@ export function pay(W, i, n, essential = false, use = 'c') {
 export const gdpAcc = (W) => W.gdpAcc || (W.gdpAcc = { c: 0, inv: 0, m: 0, trips: 0 });
 // what the consumption tax adds to a price now (the people only: the players pay none)
 export const withTax = (W, n) => Math.round(n * (1 + (W.nation.knobs.consumptionTax || 0) / 100));
+// (給付型経済成長's week: one of the year's gift wants three times as much of what is not a need — npc-welfare.js)
+export const keenOf = (W, i, day) => (W.gift && day < W.gift.until && (W.P.flags[i] & FL.gift) ? NPC.gift.boost : 1);
 export function buy(W, i, day, company, stream, n, essential = false) {
   // (in whole dollars, once: what the buyer pays is exactly what the company and the country get — not a cent lost)
+  if (!essential && W.gift) n *= keenOf(W, i, day);
   n = Math.round(n);
   const tax = Math.round(n * (W.nation.knobs.consumptionTax || 0) / 100);
   if (!pay(W, i, n + tax, essential)) return false;
@@ -179,7 +182,9 @@ export function buy(W, i, day, company, stream, n, essential = false) {
 export function buyProduct(W, i, day, kind, id, count, unit, essential = false) {
   const n = unit * count, tax = Math.round(n * (W.nation.knobs.consumptionTax || 0) / 100);
   if (!pay(W, i, n + tax, essential)) return false;
-  toProduct(W, day, kind === 'cars' ? 'carowner' : 'jinx', kind, id, count, n);
+  // (a car or an engine of MIZUKAWA's: its own dealers', MIZUKAWA GARAGE — the rest Car Owner's and ジンクス's)
+  const pr = CORP.products[kind] && CORP.products[kind][id];
+  toProduct(W, day, (pr && pr.seller) || (kind === 'cars' ? 'carowner' : 'jinx'), kind, id, count, n);
   if (tax) nationIn(W, 'consumption', tax);
   return true;
 }

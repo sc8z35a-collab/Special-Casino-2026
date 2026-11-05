@@ -21,7 +21,9 @@
     // 企業: a folder of the ten companies' apps (ops/corp.js)
     ['corp', '企業', 'corp'],
     // 街: the country of people behind the companies (ops/town.js)
-    ['town', '街（NPCの国）', 'town']
+    ['town', '街（NPCの国）', 'town'],
+    // アルファ: 少数精鋭集団アルファ, its members and its meetings (ops/alpha.js)
+    ['alpha', 'アルファ', 'alpha']
   ];
   var windows = {}, active = null, order = 0, signedIn = false, grouped = false;
   var overview = false, desktopSaved = null, silentRouting = false, suppressedRoute = '';

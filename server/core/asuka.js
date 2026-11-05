@@ -19,8 +19,8 @@ const R = ASUKA.rules, CATS = ASUKA.cats, DIV = ASUKA.atsuka.divisions, YEAR = 3
 // (yamato: 株式会社YAMATO's people, by their post in `emp`; research: テネシスリサーチ's researchers here, by their
 // facility in `emp` — server/core/npc-research.js)
 // (hachi: 株式会社HACHI's medical staff at its wards here; figma: 株式会社FIGMA's people — server/core/hachi.js)
-export const JOB = { none: 0, atsuka: 1, trade: 2, branch: 3, student: 4, retired: 5, yamato: 6, research: 7, hachi: 8, figma: 9 };
-const PAID = (j) => j === JOB.atsuka || j === JOB.trade || j === JOB.branch || j === JOB.yamato || j === JOB.research || j === JOB.hachi || j === JOB.figma;
+export const JOB = { none: 0, atsuka: 1, trade: 2, branch: 3, student: 4, retired: 5, yamato: 6, research: 7, hachi: 8, figma: 9, mizukawa: 10 };
+const PAID = (j) => j === JOB.atsuka || j === JOB.trade || j === JOB.branch || j === JOB.yamato || j === JOB.research || j === JOB.hachi || j === JOB.figma || j === JOB.mizukawa;
 const COS = NPC.companies;
 const NC = CATS.length;
 // (each person's: `hot` what moves within a day — kept every few minutes with ヴェルノア's —, `late` what a country kept
@@ -198,10 +198,12 @@ export function fromCompanies(W, x, day) {
   for (const [co, n0] of Object.entries(x.pay || {})) {
     const n = Math.round(n0), k = compIdx(co);
     if (!(n > 0)) continue;
-    a.sum.fromVernoa += n;
+    // (MIZUKAWA's people: its own country's company — no money from ヴェルノア)
+    if (co !== 'mizukawa') a.sum.fromVernoa += n;
     let total = 0;
     const staff = [];
-    for (let i = 0; i < A.n; i++) if (co === 'hachi' ? A.job[i] === JOB.hachi : A.job[i] === JOB.branch && A.emp[i] === k) { staff.push(i); total += A.pay[i]; }
+    const theirs = co === 'hachi' ? (i) => A.job[i] === JOB.hachi : co === 'mizukawa' ? (i) => A.job[i] === JOB.mizukawa : (i) => A.job[i] === JOB.branch && A.emp[i] === k;
+    for (let i = 0; i < A.n; i++) if (theirs(i)) { staff.push(i); total += A.pay[i]; }
     // (nobody there yet: the local trade's, for the work done for it)
     if (!staff.length) { a.trade.cash += n; continue; }
     let left = n;
@@ -216,6 +218,8 @@ export function fromCompanies(W, x, day) {
   if (x.branches) branchesSet(W, x.branches);
   // (HACHI's: its wards' land and 管理費, FIGMA's equipment, the joint research, its surplus and a buyout under the state)
   if (x.hachi) fromHachi(W, x.hachi, day);
+  // (MIZUKAWA's: the seed it was founded with, its land and 管理費, its orders, its researchers' bonus, its taxes)
+  if (x.mizukawa) fromMizukawa(W, x.mizukawa, day);
   // (the drawing fund's part of the new branches' buildings: to ATSUKA Vision's zone)
   if (x.boost > 0) { const n = Math.min(a.boost.cash, Math.round(x.boost)); a.boost.cash -= n; a.boost.paid += n; a.atsuka.cash += n; a.atsuka.rev.zone = (a.atsuka.rev.zone || 0) + n; tout(a, 'boost', n); }
   void day;
@@ -324,6 +328,61 @@ export function die(W, i, day, r) {
   tout(a, 'newLife', own);
   a.sum.born++;
 }
+/* ---------------------------------------------------------------- MIZUKAWA --- */
+// MIZUKAWA Motors' people (CORP.mizukawa roles), each role as many as it wants now (its number moves with its business:
+// corp-mizukawa.js) at its pay now (稼ぐほど上がる: its pay index), taken on as HACHI's are — the state's people first
+// (ATSUKA Vision's posts going with them, never アルタス's), then those out of work, then the local trade's —; let go
+// when too many; all of them let go if it is gone
+const MZ = CORP.mizukawa;
+function mizukawaStaff(W, day) {
+  const a = W.asuka, A = W.AP, info = W.mzInfo;
+  if (!info) { for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.mizukawa) { A.job[i] = JOB.none; A.pay[i] = 0; a.posts.atsuka++; } return; }
+  const sc = a.scale || 1, idx = info.payIdx || 1, k = info.staffIdx || 1, altas = DIV.findIndex((x) => x.id === 'altas');
+  const have = MZ.roles.map(() => 0);
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.mizukawa) {
+    const r = MZ.roles[A.emp[i]];
+    if (!r) continue;
+    have[A.emp[i]]++;
+    // (their pay as the index moves: the role's at it)
+    A.pay[i] = Math.round(r.pay * 12 * idx);
+  }
+  MZ.roles.forEach((r, ri) => {
+    const want = Math.max(r.n >= 100 ? 1 : 0, Math.round(r.n * sc * k));
+    for (const from of [JOB.atsuka, JOB.none, JOB.trade]) for (let i = 0; i < A.n && have[ri] < want; i++) {
+      if (A.job[i] !== from || (from === JOB.atsuka && A.emp[i] === altas)) continue;
+      const age = ageOf(A, i, day);
+      if (age < 22 || age >= 62) continue;
+      if (from === JOB.atsuka) a.posts.atsuka = Math.max(0, a.posts.atsuka - 1);
+      A.job[i] = JOB.mizukawa; A.emp[i] = ri; A.pay[i] = Math.round(r.pay * 12 * idx); have[ri]++; a.sum.hires++;
+    }
+    for (let i = A.n - 1; i >= 0 && have[ri] > want; i--) if (A.job[i] === JOB.mizukawa && A.emp[i] === ri) { A.job[i] = JOB.none; A.pay[i] = 0; have[ri]--; a.posts.atsuka++; }
+  });
+}
+// What MIZUKAWA paid アスカ国 today (corp-mizukawa.js, through corp-model asukaDay): the seed it was founded with (out
+// of the treasury, once), its land (the treasury's) and 管理費 (the local trade's work), its orders (ATSUKA Vision's
+// and YAMATO's), its researchers' half of the research pool (their pay, by it), its people's social insurance, its
+// 法人税, its 医療税 (six tenths of it HACHI's)
+function fromMizukawa(W, x, day) {
+  const a = W.asuka, A = W.AP, n = (k) => Math.max(0, Math.round(x[k] || 0));
+  if (n('seed')) { a.treasury -= n('seed'); tout(a, 'mizukawaSeed', n('seed')); }
+  if (n('land')) { a.treasury += n('land'); tin(a, 'mizukawaLand', n('land')); }
+  if (n('admin')) { a.trade.cash += n('admin'); a.trade.month = (a.trade.month || 0) + n('admin'); }
+  if (n('orders')) { a.atsuka.cash += n('orders'); a.atsuka.rev.mizukawa = (a.atsuka.rev.mizukawa || 0) + n('orders'); }
+  if (n('yamato')) { if (a.yamato) a.yamato.cash += n('yamato'); else a.atsuka.cash += n('yamato'); }
+  if (n('social')) { a.treasury += n('social'); tin(a, 'mizukawaSocial', n('social')); }
+  if (n('tax')) { a.treasury += n('tax'); tin(a, 'mizukawaTax', n('tax')); }
+  if (n('medTax')) { const toHachi = hachi.asukaTaxed(W, n('medTax')); a.treasury += n('medTax') - toHachi; tin(a, 'medicalTax', n('medTax') - toHachi); }
+  // (the researchers' bonus, by their pay; none of them yet: the local trade's)
+  if (n('bonus')) {
+    const staff = [];
+    let total = 0;
+    for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.mizukawa && A.emp[i] === 0) { staff.push(i); total += A.pay[i]; }
+    if (!staff.length) a.trade.cash += n('bonus');
+    else { let left = n('bonus'); staff.forEach((i, j) => { const g = j === staff.length - 1 ? left : Math.floor(n('bonus') * A.pay[i] / Math.max(1, total)); left -= g; income(W, i, g); }); }
+    a.mzBonus = (a.mzBonus || 0) + n('bonus');
+  }
+  void day;
+}
 // HACHI's medical staff at its wards here (175 a ward, at its pay), taken on from the state's people, those out of work
 // and the local trade's in that order, let go when its wards are fewer (never under the state)
 function hachiStaff(W, day) {
@@ -375,6 +434,8 @@ export function day(W, day, ext) {
   // 株式会社HACHI's wards here: its people, its patients (server/core/hachi.js); 株式会社FIGMA, founded with it
   W.asukaJobs = JOB;
   hachiStaff(W, day);
+  // MIZUKAWA Motors' people (アスカ国籍: server/core/corp-mizukawa.js), by role
+  mizukawaStaff(W, day);
   hachi.asukaDay(W, day, r, (i) => die(W, i, day, r));
   if (!a.figma && hachi.isOpen(W)) hachi.figmaFound(W, day, r, JOB);
   // (under the state: what HACHI lacks put in by the treasury; and what is still owed of its buyout, month by month)
@@ -483,7 +544,21 @@ function buy(W, i, part) {
   const tw = weightsSum(A, i), g = gdpAcc(a);
   let instead = 0;
   for (let k = 0; k < NC; k++) {
-    const meant = b * CATS[k].share * (0.5 + A.taste[i * NC + k] / 255) / tw;
+    let meant = b * CATS[k].share * (0.5 + A.taste[i * NC + k] / 255) / tw;
+    // (cars: アスカ国's own carmaker first — MIZUKAWA GARAGE, at home, no branch needed —, the rest at Car Owner's branches)
+    if (CATS[k].id === 'cars' && W.mzInfo) {
+      const v = Math.round(meant * MZ.asuka.share), vt = Math.round(v * taxr);
+      if (v > 0 && A.cash[i] >= v + vt) {
+        A.cash[i] -= v + vt;
+        a.treasury += vt;
+        T.tax += vt;
+        g.c += v + vt;
+        const box = a.toCo.mizukawa || (a.toCo.mizukawa = {});
+        box.cars = (box.cars || 0) + v;
+        T.mizukawa = (T.mizukawa || 0) + v;
+        meant -= v;
+      }
+    }
     // (what the branches could not serve: half of it bought at the local trade instead — something else, nearby —, the
     // rest kept)
     instead += meant * (1 - (T.ratio[k] || 0)) * 0.5;
@@ -894,9 +969,14 @@ export function flowsFor(W) {
   // (HACHI's medical staff here, at their own pay: corp-model asukaDay)
   let hn = 0, hp = 0;
   for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.hachi) { hn++; hp += A.pay[i]; }
+  // (MIZUKAWA's people, by role, at their pay: corp-mizukawa.js payDay)
+  let mn = 0, mp = 0;
+  const byRole = {};
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.mizukawa) { mn++; mp += A.pay[i]; const r = MZ.roles[A.emp[i]]; if (r) byRole[r.id] = (byRole[r.id] || 0) + 1; }
   const pol = a.policy || {};
   return { toCo, want: { ...a.want }, staff, boost: Math.max(0, Math.round(a.boost.cash)), branches: a.branches || {}, founded: a.founded, boostUntil: a.founded + R.boost.years * YEAR, pay: bn ? Math.round(bpay / bn) : R.pay.branch, scale: a.scale,
-    rates: { rent: pol.rent || R.tax.rent, withhold: pol.withhold || R.tax.withhold }, altasPrice: altasOf(a).price, hachi: { staff: hn, pay: hp } };
+    rates: { rent: pol.rent || R.tax.rent, withhold: pol.withhold || R.tax.withhold }, altasPrice: altasOf(a).price, hachi: { staff: hn, pay: hp },
+    mizukawa: { staff: mn, pay: mp, byRole }, medRate: (a.rates && a.rates.medical) ?? NPC.knob.medicalTax.start };
 }
 // a branch's people in a country of this size (at least one)
 export const branchStaff = (c, scale) => Math.max(1, Math.round(c.staff * (scale || 1)));

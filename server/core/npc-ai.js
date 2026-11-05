@@ -39,10 +39,29 @@ export function createAi({ binding = null, q, clock = Date.now, daily = 10000, s
     q('INSERT INTO npc_ai (at, kind, ref, text, neurons) VALUES (?, ?, ?, ?, ?)').run(now, job.kind, String(job.ref || ''), text, Math.round(neurons * 100) / 100);
     return text;
   }
+  // one free-form job (少数精鋭集団アルファ's talk: npc.js alphaTalk) — the same day's share, the same count
+  async function say(kind, ref, system, user, max = 160, now = clock()) {
+    if (!binding) return null;
+    const guess = (TOKENS(system + user) * RATES.in + max * RATES.out) / 1e6;
+    if (cap - used(now).neurons < guess) return null;
+    let text = '';
+    try {
+      const out = await binding.run(model, { messages: [{ role: 'system', content: system }, { role: 'user', content: user }], max_tokens: max });
+      text = String((out && (out.response || out.result || '')) || '').trim().slice(0, 600);
+    } catch (e) {
+      console.error('npc ai failed', e && e.message);
+      return null;
+    }
+    if (!text) return null;
+    const neurons = (TOKENS(system + user) * RATES.in + TOKENS(text) * RATES.out) / 1e6;
+    q('INSERT INTO npc_ai (at, kind, ref, text, neurons) VALUES (?, ?, ?, ?, ?)').run(now, kind, String(ref || ''), text, Math.round(neurons * 100) / 100);
+    return text;
+  }
   return {
     on: !!binding,
     cap,
     used,
+    say,
     // the jobs waiting, as many as the day's share allows (the newest first: the speech of today over yesterday's)
     async run(jobs, now = clock()) {
       let n = 0;

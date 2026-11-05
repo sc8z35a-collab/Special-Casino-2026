@@ -113,9 +113,12 @@ test('a company that stops selling spends less, month by month: its budgets foll
   const p = CORP.company('jinx');
   const keep = p.op;
   // (five months: three of its own reviews at the least — the cuts its people may decide in their meetings besides)
+  // (its sales gone every day of it: the money the state now gives its poorest — 最貧困層, 給付型経済成長 — spent
+  // elsewhere, never at it)
+  const gone = () => { for (const x of Object.keys(s.per.m)) if (/^r:/.test(x)) s.per.m[x] = 0; };
   for (let k = 0; k < 5; k++) {
-    untilMonthEnd(c);
-    for (const x of Object.keys(s.per.m)) if (/^r:/.test(x)) s.per.m[x] = 0;
+    while (!CORP.isMonthEnd(c.w.day + 1)) { c.days(1); gone(); }
+    gone();
     c.days(1);
   }
   const now = ['place', 'rd', 'ads', 'other'].reduce((a, k) => a + (s.budget[k] || 0), 0);

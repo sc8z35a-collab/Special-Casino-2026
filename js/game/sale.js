@@ -122,7 +122,8 @@
     if (!on) return null;
     var c = S[on.kind];
     // which cars (a shuffle of its own), and how much off each
-    var order = (cars || BR.CONFIG.cars).filter(carSold).map(function (x) { return x.id; }).sort()
+    // (Car Owner's cars only: MIZUKAWA's are sold at its own dealers, MIZUKAWA GARAGE, at their price)
+    var order = (cars || BR.CONFIG.cars).filter(function (x) { return carSold(x) && !x.seller; }).map(function (x) { return x.id; }).sort()
       .map(function (id) { return { id: id, r: mix(hash(on.key + '/order/' + id)) }; })
       .sort(function (a, b) { return a.r - b.r; });
     var pct = {};
@@ -156,6 +157,8 @@
     carSold: carSold,
     // (`extra`: MAGITA's surcharge on it, when the maker is struggling: added after the % off, server/core/corp.js)
     carPrice: function (car, sale, off, extra) {
+      // (MIZUKAWA GARAGE's: its own price — no Car Owner sale, no VIP off, no MAGITA surcharge)
+      if (car && car.seller && carPriced(car)) return { price: car.price, pct: 0, vip: 0, extra: 0 };
       if (!carPriced(car)) return { price: null, pct: 0, vip: 0, extra: 0 };
       var pct = sale && sale.pct[car.id] || 0, all = pct + (off || 0);
       return { price: (all ? round100(car.price * (100 - all) / 100) : car.price) + (extra || 0), pct: pct, vip: off || 0, extra: extra || 0 };

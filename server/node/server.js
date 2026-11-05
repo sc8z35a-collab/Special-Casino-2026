@@ -51,14 +51,15 @@ function machine(dataDir, live, trail) {
   };
 }
 
-// `blobs`: a bucket for the developer's vault (the tests' stand-in for R2; none here)
-export function createApp({ blobs = null, questRewardRoll, questTicketRoll, extensions, stele = null, ...overrides } = {}) {
+// `blobs`: a bucket for the developer's vault (the tests' stand-in for R2; none here); `ai`: a Workers AI binding's
+// stand-in (the tests': none here — the country's patterns write its words)
+export function createApp({ blobs = null, ai = null, questRewardRoll, questTicketRoll, extensions, stele = null, ...overrides } = {}) {
   const config = loadConfig(overrides);
   const db = openDb(config.dataDir);
   const live = new Live();
   const secret = metaValue(db, 'ticket_secret', () => crypto.randomBytes(32).toString('base64url'));
   let hk, closing = false, api;
-  api = createApi({ db, live, config, secret, blobs, questRewardRoll, questTicketRoll, extensions, host: { ...machine(config.dataDir, live, config.logRequests), stele: stele || fileStele(path.join(config.dataDir, 'stele')), reschedule: () => scheduleHousekeeping() } });
+  api = createApi({ db, live, config, secret, blobs, questRewardRoll, questTicketRoll, extensions, host: { ...machine(config.dataDir, live, config.logRequests), ...(ai ? { ai } : {}), stele: stele || fileStele(path.join(config.dataDir, 'stele')), reschedule: () => scheduleHousekeeping() } });
   live.authVersion = api.liveVersion;
   live.valid = api.liveValid;
   live.onPresence = (userId, online) => api.presence(userId, online);

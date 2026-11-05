@@ -19,6 +19,8 @@ import { createPolitics } from './npc-politics.js';
 import { createLabor } from './npc-labor.js';
 import * as org from './npc-org.js';
 import { createMarket, LISTED_IDS } from './npc-market.js';
+import * as welfare from './npc-welfare.js';
+import * as alpha from './npc-alpha.js';
 import * as local from './npc-local.js';
 import * as text from './npc-text.js';
 import * as asuka from './asuka.js';
@@ -190,7 +192,8 @@ export function welcome(W, corp, day, only = null) {
 }
 function blank(key, n, scale, first, day, minute) {
   const stockCars = {};
-  for (const c of RULES.cars) if (c.price > 0 && !c.ended) stockCars[c.id] = CORP.firstLot(c.id, scale);
+  // (MIZUKAWA's: none till each comes out — then as many as it makes: restock)
+  for (const c of RULES.cars) if (c.price > 0 && !c.ended && !c.seller) stockCars[c.id] = CORP.firstLot(c.id, scale);
   return {
     v: 1, key, n, scale, first, start: day, minute, day,
     cal: {}, sum: { toCo: 0, imports: 0, fromPlayers: 0, toPlayers: 0, divRest: 0, lent: 0, repaid: 0, bets: 0, traded: 0, marketSlip: 0, quickLoans: 0, staying: 0, homeless: 0, deaths: 0, born: 0, hired: 0, month: 0, made: 0 },
@@ -354,7 +357,8 @@ function calibrate(W, corp, day) {
   c.medical = 30000;
   c.hourly = 1300;
   c.minBet = RULES.bets[0] * RULES.tokenPrice * 10;
-  c.carUrge = 0.004;
+  // (how often a look at the cars becomes a decision: three and a half times what it began at — NPC.life.carSpend)
+  c.carUrge = 0.004 * NPC.life.carSpend;
   c.gameBuy = 0.2;
   c.catalog = 0.04;
   // the shares of a month's budget: worked out from the people's own budgets and weights at these scales
@@ -417,7 +421,10 @@ export function tick(W, m, ctx) {
   for (let i = 0; i < P.n; i++) if (P.due[i] <= m) decide(W, i, m, t, j, r, ctx);
   // HACHI's wards this minute: their desks, and the hour of those at −90 and below (server/core/hachi.js)
   hachi.tick(W, m, ctx, (i) => state.die(W, i, Math.floor(m / 1440), r, ctx));
+  // 少数精鋭集団アルファ: its day's trades in at their minutes, before the matching; its fills after (npc-alpha.js)
+  if (W.alpha) alpha.tick(W, m, t, ctx);
   W.market.auction(W, m, ctx);
+  if (W.alpha) { alpha.swept(W); alpha.filled(W, m); }
   // アスカ国's people, the same minute (server/core/asuka.js tick)
   asuka.tick(W, m, j);
 }
@@ -470,6 +477,8 @@ export function flowsFor(W, day) {
     hachi: hachi.flowsFor(W),
     // (the 医療税's rate now: on the companies' profits too, at the month's end — corp-model medicalTaxMonth)
     medicalTax: NPC.knobOf(W, 'medicalTax'),
+    // (MIZUKAWA's stock left of each model out: corp-mizukawa.js)
+    mzLeft: W.mzInfo && W.mzInfo.out ? Object.fromEntries(Object.keys(W.mzInfo.out).map((id) => [id, W.stock.cars[id] || 0])) : null,
     // (MY WAY's share price at the last close and a month before: what it spends on advertising, corp-model mywayGrow)
     mwPrice: W.mwPx && W.mwPx.length ? { now: W.mwPx[W.mwPx.length - 1], month: W.mwPx[0] } : null,
     // (海外's money, and the local trade's, for what the companies sell them: server/core/corp-model.js abroadBuys, sectorBuys)
@@ -519,6 +528,8 @@ export function nextDay(W, day, ext, ctx) {
   if (!W.asuka) { const made = asuka.found(W, day + 1); if (made && W.ledger) W.ledger.founded = (W.ledger.founded || 0) + made; }
   // (健康度 on its scale: a country kept before it, once — npc-health.js)
   if (!W.health2) health.recalibrate(W, day, ageOf);
+  // (the cars: a country kept before spending on them as much as now — NPC.life.carSpend)
+  if (W.cal) W.cal.carUrge = 0.004 * NPC.life.carSpend;
   state.fromCompanies(W, ext, day);
   // (株式会社HACHI founded at this close: its people taken on at once — its wards, its 経営陣, its researchers)
   if (ctx && ctx.corp && ctx.corp.co.hachi && toWelcome(W, ctx.corp).includes('hachi')) { welcome(W, ctx.corp, day + 1, 'hachi'); sharesFor(W, ctx.corp, 'hachi'); }
@@ -534,6 +545,10 @@ export function nextDay(W, day, ext, ctx) {
   W.day = next;
   refresh(W, next, ctx);
   state.dayStart(W, next, r, ctx);
+  // 最貧困層's month (both countries) and 給付型経済成長's day: the state's money to its poorest (npc-welfare.js)
+  welfare.day(W, next, ctx);
+  // 少数精鋭集団アルファ: its month's 90, its day's meeting (npc-alpha.js; the AI's talk: server/core/npc.js)
+  alpha.day(W, next, ctx, !!W.alphaAi);
   W.politics.day(W, next, r);
   org.orgDay(W, next, r, ctx);
   restock(W, next);
@@ -596,7 +611,10 @@ function restock(W, day) {
   const s = W.stock;
   s.lots = s.lots || {};
   // (a car the stock does not know yet — one added later — starts with its first lot)
-  for (const c of RULES.cars) if (c.price > 0 && !c.ended && s.cars[c.id] === undefined) s.cars[c.id] = CORP.firstLot(c.id, W.scale);
+  for (const c of RULES.cars) if (c.price > 0 && !c.ended && !c.seller && s.cars[c.id] === undefined) s.cars[c.id] = CORP.firstLot(c.id, W.scale);
+  // (MIZUKAWA's cars and engines, each the day it comes out: as many as it makes, at this country's size — never more)
+  const mz = W.mzInfo;
+  if (mz && mz.out) for (const [id, x] of Object.entries(mz.out)) if (s.cars[id] === undefined) s.cars[id] = Math.max(1, Math.round((x.limit || 0) * (W.scale || 1)));
   const arrived = [];
   for (const o of s.orders.filter((x) => x.at <= day)) { s.cars[o.id] = (s.cars[o.id] || 0) + o.n; arrived.push({ id: o.id, n: o.n }); }
   s.orders = s.orders.filter((x) => x.at > day);
