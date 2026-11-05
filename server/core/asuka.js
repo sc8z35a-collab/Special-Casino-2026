@@ -14,7 +14,6 @@ import { ASUKA, NPC, CORP, LOCAL } from './rules.js';
 import { seeded } from './npc-rand.js';
 import * as hachi from './hachi.js';
 import { earn as healthEarn } from './npc-health.js';
-import { rowReader } from './npc-pop.js';
 
 const R = ASUKA.rules, CATS = ASUKA.cats, DIV = ASUKA.atsuka.divisions, YEAR = 365;
 // (yamato: 株式会社YAMATO's people, by their post in `emp`; research: テネシスリサーチ's researchers here, by their
@@ -47,32 +46,28 @@ export function alloc(n) {
   return A;
 }
 // the arrays as blobs (of at most ~1MB each) and back (`hot`: only what moves within a day)
-// (a row at a time as they are written, read back a column at a time: never all the bytes joined in one more copy —
-// the rows themselves as they always were, a million bytes each)
-const STEP = 1000000;
-export function* packRows(A, hot = false) {
-  let row = new Uint8Array(STEP), at = 0;
-  for (const c of COLS) {
-    if (hot && !isHot(c)) continue;
-    const a = A[c[0]], u = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
-    for (let k = 0; k < u.length;) {
-      const n = Math.min(STEP - at, u.length - k);
-      row.set(u.subarray(k, k + n), at);
-      at += n; k += n;
-      if (at === STEP) { yield row; row = new Uint8Array(STEP); at = 0; }
-    }
-  }
-  if (at > 0) yield row.slice(0, at);
+export function pack(A, hot = false) {
+  const parts = COLS.filter((c) => !hot || isHot(c)).map(([name]) => new Uint8Array(A[name].buffer, A[name].byteOffset, A[name].byteLength));
+  const total = parts.reduce((a, p) => a + p.byteLength, 0), all = new Uint8Array(total);
+  let at = 0;
+  for (const p of parts) { all.set(p, at); at += p.byteLength; }
+  const rows = [], STEP = 1000000;
+  for (let k = 0; k < total; k += STEP) rows.push(all.slice(k, Math.min(total, k + STEP)));
+  return rows;
 }
-export function pack(A, hot = false) { return Array.from(packRows(A, hot)); }
 export function unpack(A, rows, hot = false) {
-  const rd = rowReader(rows);
-  for (const c of COLS) {
-    if (hot && !isHot(c)) continue;
+  let total = 0;
+  for (const r of rows) total += r.byteLength;
+  const all = new Uint8Array(total);
+  let at = 0;
+  for (const r of rows) { all.set(r instanceof Uint8Array ? r : new Uint8Array(r), at); at += r.byteLength; }
+  at = 0;
+  for (const c of COLS.filter((x) => !hot || isHot(x))) {
     const a = A[c[0]], len = a.byteLength;
-    if (isLate(c) && rd.left() === 0) continue;
-    if (rd.left() < len) throw new Error('asuka: the blobs are shorter than the people');
-    rd.into(new Uint8Array(a.buffer, a.byteOffset, len));
+    if (isLate(c) && at >= total) continue;
+    if (at + len > total) throw new Error('asuka: the blobs are shorter than the people');
+    new Uint8Array(a.buffer, a.byteOffset, len).set(all.subarray(at, at + len));
+    at += len;
   }
   return A;
 }

@@ -284,8 +284,6 @@ export class Casino extends DurableObject {
         db: this.db, live: this.live, config: this.config, secret, defer, hostAdmin: (cmd, args) => this.hostAdmin(cmd, args),
         blobs: env.VAULT ? bucketBlobs(env.VAULT) : null,
         host: {
-          // the people's rooms (NPC_ROOM_1…15: Workers of their own — server/cloudflare/npc-room.js), their objects by number
-          rooms: roomStubs(env),
           // for the operator site's サーバー tab
           name: 'cloudflare', dbBytes: () => ctx.storage.sql.databaseSize, sockets: () => ctx.getWebSockets().length,
           // which version of the Worker this is (wrangler.jsonc: version_metadata): a new one is told to Discord
@@ -489,14 +487,4 @@ export class Casino extends DurableObject {
     }
     return undefined;
   }
-}
-
-// the people's rooms bound to this Worker (tools/rooms/deploy.mjs adds NPC_ROOM_1…15), each one object of its Worker:
-// a function giving them by number (none bound: an empty list)
-function roomStubs(env) {
-  let stubs = null;
-  return () => {
-    if (!stubs) stubs = Array.from({ length: 15 }, (_, k) => { const ns = env[`NPC_ROOM_${k + 1}`]; return ns ? ns.get(ns.idFromName('room')) : null; });
-    return stubs;
-  };
 }

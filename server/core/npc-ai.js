@@ -17,10 +17,8 @@ export function neuronsOf(model, inTokens, outTokens) {
   return (inTokens * r[0] + outTokens * r[1]) / 1e6;
 }
 // the yen a month the AI may spend beyond the free Neurons: what is left of NPC.elite.cap once `rooms` people's rooms
-// are paid — their five hours a day beyond what the month includes, the main room's own share of it taken first
-// (docs/npc-rooms-plan.md)
-export const roomsYen = (rooms = 0) => Math.max(0, Math.max(0, rooms) * EL.roomGBs + EL.mainGBs - EL.included) * EL.gbPrice * EL.usd;
-export const aiYen = (rooms = 0) => Math.max(0, Math.round(EL.cap - roomsYen(rooms)));
+// are paid (docs/npc-rooms-plan.md)
+export const aiYen = (rooms = 0) => Math.max(0, EL.cap - Math.max(0, rooms) * EL.roomYen);
 // the day's Neurons: the free part (a little short of it) and the yen beyond, a thirtieth of the month's a day
 export function dailyCap(free = EL.free, yen = aiYen()) {
   return Math.floor(free * 0.98 + Math.max(0, yen) / EL.usd / EL.price * 1000 / 30);
@@ -30,13 +28,10 @@ const plain = (t) => String(t || '').replace(/<think>[\s\S]*?(<\/think>|$)/g, ''
 
 export function createAi({ binding = null, q, clock = Date.now, daily = EL.free, yen = aiYen(), model = EL.model }) {
   const cap = dailyCap(daily, yen);
-  // (the day's spend: read once from what was kept when a day begins — the host may have woken anew —, then kept here
-  // as each call is counted: no sum over the day's calls at each look)
-  let spent = { day: -1, n: 0, c: 0 };
+  const dayStart = (ms) => Math.floor(ms / DAY) * DAY;
   function used(now = clock()) {
-    const d = Math.floor(now / DAY);
-    if (spent.day !== d) { const r = q('SELECT COALESCE(SUM(neurons), 0) AS n, COUNT(*) AS c FROM npc_ai WHERE at >= ?').get(d * DAY); spent = { day: d, n: r.n, c: r.c }; }
-    return { neurons: spent.n, calls: spent.c, cap };
+    const r = q('SELECT COALESCE(SUM(neurons), 0) AS n, COUNT(*) AS c FROM npc_ai WHERE at >= ?').get(dayStart(now));
+    return { neurons: r.n, calls: r.c, cap };
   }
   // one call of `use` (a model) as far as `room` allows: its answer kept (or null: no room, no binding, nothing said)
   async function ask(use, kind, ref, system, user, max = 160, now = clock(), room = cap - used(now).neurons) {
@@ -51,10 +46,8 @@ export function createAi({ binding = null, q, clock = Date.now, daily = EL.free,
       return null;
     }
     if (!text) return null;
-    const neurons = Math.round(neuronsOf(use, TOKENS(system + user), TOKENS(text)) * 100) / 100;
-    q('INSERT INTO npc_ai (at, kind, ref, text, neurons) VALUES (?, ?, ?, ?, ?)').run(now, kind, String(ref || ''), text.slice(0, 600), neurons);
-    used(now);
-    spent.n += neurons; spent.c++;
+    const neurons = neuronsOf(use, TOKENS(system + user), TOKENS(text));
+    q('INSERT INTO npc_ai (at, kind, ref, text, neurons) VALUES (?, ?, ?, ?, ?)').run(now, kind, String(ref || ''), text.slice(0, 600), Math.round(neurons * 100) / 100);
     return text;
   }
   return {

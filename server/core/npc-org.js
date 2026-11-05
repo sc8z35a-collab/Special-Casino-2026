@@ -208,7 +208,7 @@ const hashDay = (id) => { let h = 0; for (const c of id) h = (h * 31 + c.charCod
 
 /* ---------------------------------------------------------------- proposals --- */
 // What a department sees and wants, as a proposal: { title, kind, effect, cost, risk, gain, by, why }
-export function proposals(W, o, s, day, r, ctx) {
+function proposals(W, o, s, day, r, ctx) {
   const P = W.P, id = o.id, out = [];
   const pl = CORP.plOf(Object.fromEntries(Object.entries(s.per.m || {}).filter(([k]) => !/^cf:/.test(k))));
   const ytd = CORP.plOf(Object.fromEntries(Object.entries(s.per.y || {}).filter(([k]) => !/^cf:/.test(k))));
@@ -335,8 +335,7 @@ function meeting(W, o, s, day, r, ctx) {
   const worth = (x) => x.gain * 6 - x.risk * (2 - (ceo >= 0 ? tr(P, ceo, T.risk) : 0.5) * 1.6) + (advice && advice.p === x ? 0.8 : 0);
   const p = cuts.length > 1 ? cuts[r.int(cuts.length)] : cuts[0] || list[r.weighted(list.map((x) => Math.exp(1.5 * worth(x))))] || list[0];
   // (the next time: asked of the AI, when there is more than one to choose from)
-  // (a company whose 社長 is one of the 300 decides by its 社長's own AI instead: npc-boss.js)
-  if (list.length > 1 && !(o.president >= 0 && W.P.flags[o.president] & FL.elite)) askAdvice(W, o, s, list, day);
+  if (list.length > 1) askAdvice(W, o, s, list, day);
   const acct = o.depts.find((d) => d.kind === 'acct'), stop = o.depts.find((d) => d.kind === 'stop');
   const stopper = stop ? (stop.named.stopper >= 0 ? stop.named.stopper : stop.head) : -1;
   const who = [[o.ceo, 'CEO', 3], [o.president, '社長', 2], [p.by, roleOf(o, p.by), 1], [acct ? acct.head : -1, '経理部長', 1], [stopper, 'ストップ係', 1]];
@@ -397,7 +396,7 @@ function think(W, o, i, day, line) {
 // what a decision does: the company's books (its budgets, its target, its morale, its terms, Tenesice's lending: by
 // the server, server/core/npc.js, on the companies' world), and the people's side (prices to them, how much they want
 // it, the job sites' shares, the new businesses)
-export function apply(W, o, e, day, r, ctx) {
+function apply(W, o, e, day, r, ctx) {
   if (e.kind === 'budget' || e.kind === 'target' || e.kind === 'morale' || e.kind === 'terms' || e.kind === 'lab' || e.kind === 'lend' || e.kind === 'ip' || e.kind === 'license'
     || e.kind === 'fund' || e.kind === 'loan' || e.kind === 'payout' || e.kind === 'research' || e.kind === 'myway') { W.corpOps.push({ company: o.id, ...e }); return; }
   // (a price: changed for good, or for a campaign's days on top of it — a campaign ends by itself, the price stays)

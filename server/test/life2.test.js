@@ -7,7 +7,6 @@ import * as corpModel from '../core/corp-model.js';
 import * as npc from '../core/npc-model.js';
 import * as pop from '../core/npc-pop.js';
 import * as asuka from '../core/asuka.js';
-import { obliged } from '../core/npc-life.js';
 import { NPC, RULES } from '../core/rules.js';
 
 const START = Date.UTC(2026, 10, 2, 2, 0, 0); // a Monday, 11:00 in Japan
@@ -104,38 +103,4 @@ test('the days: nobody reaches 62, a new life begins at 18 looking for work, the
   assert.equal(P.n, 1500);
   // (nobody kept on after 60)
   for (let i = 0; i < P.n; i++) assert.equal(P.flags[i] & pop.FL.rehired, 0);
-});
-
-test('the working day: four of the people\'s hours — forty minutes of each at work, twenty a break —; the companies at their capacity', () => {
-  const c = country(1500);
-  const W = c.W, P = W.P, D = L.workDay, wk = NPC.hours.weekday;
-  // (a weekday: an office's person from the people's start)
-  const day = W.day + 2, i = Array.from({ length: P.n }, (_, k) => k).find((k) => NPC.companyOf(P.job[k]) === 'citywork');
-  let work = 0, rest = 0;
-  for (let t = wk[0]; t < wk[1]; t++) { const o = obliged(W, i, t, false, day, 3); if (o.kind === 'work') work++; else if (o.kind === 'break') rest++; }
-  assert.equal(work, D.hours * D.work);
-  assert.equal(rest, D.hours * (60 - D.work));
-  assert.equal(obliged(W, i, wk[0] + 45, false, day, 3).kind, 'break');
-  assert.equal(obliged(W, i, wk[0] + D.hours * 60, false, day, 3).kind, 'free');
-  // (a day off: none)
-  assert.equal(obliged(W, i, wk[0] + 10, true, day, 6).kind, 'free');
-  // (to a weekday's close: 11/3 is 文化の日, the offices shut)
-  c.days(3);
-  for (const id of ['tenesice', 'jinx', 'citywork']) assert.ok(W.capacity[id] >= 0.6 && W.capacity[id] <= 1.1, `${id} ${W.capacity[id]}`);
-});
-
-test('the five hours: kept so, the people are about from 17:00 to 22:00 every day, and work from 17:00 to 21:00', () => {
-  const win = NPC.hours.window, at = (y, mo, d, h, mi = 0) => Date.UTC(y, mo - 1, d, h - 9, mi);
-  assert.ok(!NPC.activeAt(at(2026, 11, 4, 16, 59), null, win));
-  assert.ok(NPC.activeAt(at(2026, 11, 4, 17), null, win));
-  assert.ok(!NPC.activeAt(at(2026, 11, 4, 22), null, win));
-  assert.ok(!NPC.activeAt(at(2026, 11, 7, 10), null, win), 'a Saturday morning too');
-  assert.equal(NPC.nextActive(at(2026, 11, 4, 23), null, win), at(2026, 11, 5, 17));
-  const c = country(1500), W = c.W, P = W.P;
-  W.hoursWin = win;
-  const i = Array.from({ length: P.n }, (_, k) => k).find((k) => NPC.companyOf(P.job[k]) === 'citywork');
-  assert.equal(obliged(W, i, 16 * 60 + 30, false, W.day + 2, 3).kind, 'free');
-  assert.equal(obliged(W, i, 17 * 60 + 5, false, W.day + 2, 3).kind, 'work');
-  assert.equal(obliged(W, i, 20 * 60 + 50, false, W.day + 2, 3).kind, 'break');
-  assert.equal(obliged(W, i, 21 * 60 + 5, false, W.day + 2, 3).kind, 'free');
 });

@@ -1379,22 +1379,6 @@ MIGRATIONS.push([
    )`
 ]);
 
-// 人の部屋 (server/core/npc-rooms.js, docs/npc-rooms-plan.md): each person's profile as their room's mind showed it at its
-// last close (read while the rooms sleep), and the minds of the rooms kept here when they live in this host (`local`)
-MIGRATIONS.push([
-  `CREATE TABLE npc_profiles (
-     id   TEXT    PRIMARY KEY,
-     day  INTEGER NOT NULL,
-     data TEXT    NOT NULL
-   )`,
-  `CREATE TABLE npc_room_blob (
-     room INTEGER NOT NULL,
-     part INTEGER NOT NULL,
-     data BLOB    NOT NULL,
-     PRIMARY KEY (room, part)
-   )`
-]);
-
 export const SCHEMA_VERSION = MIGRATIONS.length;
 // what a backup holds (not the vault's files: they are big, and the developer
 // has them; nor what goes with them, the operators' limits and requests)

@@ -241,9 +241,7 @@ test('a month of the country with the mind: plans made, the 300 kept, every $ fr
   const P = c.W.P;
   let planned = 0, elite = 0;
   for (let i = 0; i < P.n; i++) { if (P.plan[i * 2]) planned++; if (P.flags[i] & pop.FL.elite) elite++; }
-  // (a fifth or more with a plan of their own for tomorrow: fewer than before the four-hour working day — less worn out,
-  // more of the day free for what they lack, fewer of them with something pressing to plan)
-  assert.ok(planned > P.n * 0.2, `planned: ${planned}`);
+  assert.ok(planned > P.n * 0.3, `planned: ${planned}`);
   assert.ok(elite >= 1);
   assert.ok(Math.abs(c.W.ledger.drift) <= 1000, `drift ${c.W.ledger.drift}`);
 });

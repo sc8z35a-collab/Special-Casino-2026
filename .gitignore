@@ -35,6 +35,3 @@ dist/
 tools/video/source/
 tools/sound/source/
 tools/art/source/
-
-# the people's rooms' Worker configs (tools/rooms/deploy.mjs writes them)
-tools/rooms/out/

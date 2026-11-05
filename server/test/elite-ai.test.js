@@ -48,7 +48,7 @@ test('what the AI is told: who they are by their character and life, all the pla
   const i = Array.from({ length: P.n }, (_, k) => k).find((k) => P.flags[k] & pop.FL.elite);
   const line = elite.describe(W, i, W.day);
   assert.match(line, /歳/);
-  assert.match(line, /性格:/);
+  assert.match(line, /性格：/);
   const p = elite.prompt(W, 'elite', [i], W.day);
   for (const name of ['ご褒美', '節約', '投資', '地元で買う']) assert.ok(p.user.includes(name));
   assert.ok(!p.user.includes('見通し='));
@@ -86,8 +86,7 @@ test('the AI money: the free Neurons of the UTC day and the yen beyond, by each 
   assert.ok(dailyCap(10000, 100) > 11000 && dailyCap(10000, 100) < 12500);
   // (all that is left of the most the country may add once its people's rooms are paid: none of them yet, all of it)
   assert.equal(aiYen(0), EL.cap);
-  // (fifteen rooms' five hours a day: what the month includes covers some, about ¥1,370 beyond — the AI the rest)
-  assert.ok(aiYen(15) > 0 && aiYen(15) < 150, String(aiYen(15)));
+  assert.equal(aiYen(15), Math.max(0, EL.cap - 15 * EL.roomYen));
   assert.equal(aiYen(20), 0);
   assert.ok(neuronsOf(EL.model, 1e6, 0) === EL.rates[EL.model][0]);
   const q = memoryDb();
@@ -105,48 +104,4 @@ test('the AI money: the free Neurons of the UTC day and the yen beyond, by each 
   // (the day starts again at 00:00 UTC)
   assert.ok(ai.used(now).neurons > 0);
   assert.equal(ai.used(Date.UTC(2026, 10, 3, 0, 0, 1)).neurons, 0);
-});
-
-test('what they may do at once, by the AI\'s choice: buy and sell shares, borrow and pay back, look for work — checked and done by the engine', () => {
-  const W = country(2000), P = W.P, m = W.minute;
-  const i = Array.from({ length: P.n }, (_, k) => k).find((k) => P.flags[k] & pop.FL.elite && P.cash[k] > 1000000);
-  assert.deepEqual(elite.actionOf('1 予定=1 行動=buy:magita:20 理由=x'), { code: 'buy', id: 'magita', pct: 20 });
-  assert.deepEqual(elite.actionOf('行動=sell:ice:150'), { code: 'sell', id: 'ice', pct: 100 });
-  assert.deepEqual(elite.actionOf('行動=borrow:300'), { code: 'borrow', yen: 3000000 });
-  assert.equal(elite.actionOf('行動=none'), null);
-  assert.equal(elite.actionOf('行動=buy:apple:20'), null);
-  const run = { ctx: { stockPrice: () => 10000, carPrice: () => 1e9, corp: null, fair: {} }, r: { u: () => 0.5, int: () => 0, z: () => 0 } };
-  const book = W.market && W.marketState.book.magita;
-  const before = book.buy.length, cash = P.cash[i];
-  elite.apply(W, 'elite', [i], '1 予定=8 行動=buy:magita:20 理由=伸びると見た', W.day, m, EL.model, null, run);
-  assert.equal(book.buy.length, before + 1);
-  assert.equal(book.buy[book.buy.length - 1][0], i);
-  assert.equal(P.cash[i], cash, 'the money moves only when the order fills');
-  assert.equal(elite.viewOf(W, i).act.did, 'buy');
-  // (borrow, then pay back: what one owes and holds both move, the money ledger's sum of them not)
-  const owe = P.debt[i];
-  elite.apply(W, 'elite', [i], '1 行動=borrow:100 理由=x', W.day, m, EL.model, null, run);
-  assert.ok(P.debt[i] > owe);
-  const net = P.cash[i] - P.debt[i];
-  elite.apply(W, 'elite', [i], '1 行動=repay:50 理由=x', W.day, m, EL.model, null, run);
-  assert.equal(P.cash[i] - P.debt[i], net);
-  assert.equal(elite.viewOf(W, i).act.did, 'repay');
-});
-
-test('the turns (npc-think.js): the 300 a batch a call and the AI 社長 a company a call, as far as the paced money goes, stopping at the first unanswered', async () => {
-  const { createThinker } = await import('../core/npc-think.js');
-  const W = country(2000);
-  W.P.flags[W.orgs.carowner.president] |= pop.FL.elite;
-  let spent = 0, calls = [];
-  const ai = { cap: 1e6, used: () => ({ neurons: spent }), ask: async (model, kind, ref, s, u) => { calls.push(kind); spent += 10; return kind === 'boss' ? '選択=1 理由=x' : u.split('\n').filter((l) => /^\d+\. /.test(l)).map((l) => `${l.split('.')[0]} 予定=4 行動=none 理由=休む`).join('\n'); } };
-  const ctx = () => ({ corp: W._corp, stockPrice: () => 10000, carPrice: () => 1e9, fair: {} });
-  const t = createThinker({ ai, get: () => W, tx: (f) => f(), save: () => {}, ctx, hours: () => [0, 1440] });
-  const now = Date.UTC(2026, 10, 2, 12, 0, 0);
-  const n = await t.elite(now);
-  assert.equal(n, 6);
-  assert.ok(calls.every((k) => k === 'elite') && W.eliteAi.answered > 0);
-  // (no money left: nothing asked)
-  ai.cap = spent;
-  assert.equal(await t.elite(now), 0);
-  assert.equal(calls.length, 6);
 });

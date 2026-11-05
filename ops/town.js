@@ -618,22 +618,6 @@ var OpsTown = (function () {
     var cols = el('div', 'town-cols');
     cols.appendChild(t('性格', x.traits)); cols.appendChild(t('欲求（満たされ具合）', x.needs)); cols.appendChild(t('気持ち', x.feelings)); cols.appendChild(t('不満', x.discontent)); cols.appendChild(t('スキル', x.skills));
     p.appendChild(cols);
-    // their mind's own account (its room's, as it was at its last close: server/core/npc-brain.js profile) and, one of the
-    // 300, what their AI chose last and why (server/core/npc-elite.js)
-    if (x.profile) {
-      var pf = x.profile, pg = el('div', 'town-grid');
-      kv(pg, '人生の目標', pf.goal || '—'); kv(pg, '覚えていること', pf.memories + '件');
-      kv(pg, '学んだこと', (pf.learnt || []).join('／') || 'まだない');
-      kv(pg, '自分で決めたルール', (pf.rules || []).join('／') || 'なし');
-      kv(pg, '最近の決断', (pf.decisions || []).map(function (d) { return d.what + '（' + d.when + (d.done ? '・答え合わせ済み' : '') + '）'; }).join('／') || '—');
-      p.appendChild(el('h4', '', 'プロフィール（人の部屋の頭）')); p.appendChild(pg);
-    }
-    if (x.ai) {
-      var ag = el('div', 'town-grid'), act = x.ai.act;
-      kv(ag, 'AIの層', x.ai.tier); kv(ag, '今日の予定', (x.ai.plans || []).join('・') || '—'); kv(ag, '理由', x.ai.why || '—');
-      if (act) kv(ag, '行動', ({ job: '転職先を探す', car: '車を検討', buy: '株を買う', sell: '株を売る', borrow: '借りる', repay: '返す' }[act.did] || act.did) + (act.id ? '（' + act.id + '）' : ''));
-      p.appendChild(el('h4', '', '選ばれし300人のAI')); p.appendChild(ag);
-    }
     // the mind (server/core/npc-heart.js): more feelings, the five ways of spending, what they expect and have learnt
     var mi = x.mind;
     if (mi) {
