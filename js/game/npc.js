@@ -553,6 +553,20 @@
     vernoa: 10000, ratio: 2, economy: 0.4, asukaEconomy: 0.267, asukaTrade: 0.3, atsukaLeast: 1500, jobless: 0.03,
     staff: { tenesice: 2000, magita: 2800, yosida: 2000, jinx: 1000, carowner: 600 }
   };
+  // 選ばれし300人 (server/core/npc-elite.js): the only people who think with AI — the `n` of the highest standing and
+  // the richest of a country of `per` people (fewer in a smaller one), the 90 of アルファ among them, and its 10 at its
+  // meetings among those. The citizens think with the engine alone. Each asks the AI, while the people are about, every
+  // `every` minutes by their tier (the 10 most often), `batch` of them in one call, of `model` (the 10's talk of
+  // `topModel`, the stronger); `rates` the Neurons a model costs a million tokens in and out (Workers AI's price list).
+  // What it may spend: the free `free` Neurons a day (Cloudflare's, by the UTC day) and `yen` a month beyond it, at
+  // `price` $ a thousand Neurons and `usd` yen a $ — all of it, paced through the day (`pace`: never more of the day's
+  // than the share of the people's hours gone, and this many minutes ahead).
+  var ELITE = {
+    n: 300, per: 10000, every: { elite: 40, alpha: 20, top: 10 }, batch: 10,
+    model: '@cf/qwen/qwen3-30b-a3b-fp8', topModel: '@cf/google/gemma-4-26b-a4b-it',
+    rates: { '@cf/qwen/qwen3-30b-a3b-fp8': [4625, 30475], '@cf/google/gemma-4-26b-a4b-it': [9091, 27273], '@cf/ibm-granite/granite-4.0-h-micro': [1542, 10158], '@cf/google/gemma-3-12b-it': [31371, 50560] },
+    free: 10000, yen: 100, price: 0.011, usd: 150, pace: 30
+  };
   // a day's chance of dying at `age` by these rules (1 at `max`; the illnesses' share below `from`: npc-state.js)
   function lateDeath(age) {
     if (age >= LIFE2.max) return 1;
@@ -577,7 +591,7 @@
     holidays: holidays, jst: jst, hoursOf: hoursOf, activeAt: activeAt, nextActive: nextActive,
     companies: COMPANY_IDS, job: JOB, jobNames: JOB_NAMES, jobOf: jobOf, companyOf: companyOf, isCompanyJob: isCompanyJob, employed: employed, working: working, schedules: SCHEDULES, companySchedule: COMPANY_SCHEDULE, sites: SITES,
     tax: TAX, social: SOCIAL, pension: PENSION, safety: SAFETY, retire: RETIRE, labor: LABOR, life: LIFE, poorest: POOREST, gift: GIFT, alpha: ALPHA, trouble: TROUBLE,
-    life2: LIFE2, lateDeath: lateDeath, startAge: startAge, reorg: REORG,
+    life2: LIFE2, lateDeath: lateDeath, startAge: startAge, reorg: REORG, elite: ELITE,
     knobs: KNOBS, knob: KNOB, knobOf: knobOf, change: CHANGE, votes: VOTES, platforms: PLATFORMS, themes: THEMES, demands: DEMANDS,
     org: ORG, officers: OFFICERS, ranks: RANKS, rankPay: rankPay, labs: LABS, labThemes: LAB_THEMES, ventures: VENTURES,
     health: HEALTH, healthBand: healthBand, insurance: INSURANCE, hachiRoles: HACHI_ROLES,

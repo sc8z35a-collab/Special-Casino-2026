@@ -782,7 +782,6 @@ export function startVenture(W, o, type, day, r) {
   v.log.push({ day, text: `事業開始。担当${staff.length}人、立ち上げ費用${NPC.money(v.launch)}。` });
   W.news.push({ day, kind: 'venture', district: -1, text: `${o.name}が新事業「${spec.name}」を開始`, data: { venture: v.id } });
   if (lead >= 0) { P.flags[lead] |= FL.famous; remember(P, lead, day, M.promoted, 160); }
-  W.ai.push({ kind: 'venture', venture: v.id, company: o.id, day });
 }
 function freeSlot(W) {
   const used = new Set();
