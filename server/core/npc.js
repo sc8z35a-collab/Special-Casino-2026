@@ -29,6 +29,7 @@ import * as research from './npc-research.js';
 import { createAi, aiYen } from './npc-ai.js';
 import * as alphaModel from './npc-alpha.js';
 import * as elite from './npc-elite.js';
+import * as boss from './npc-boss.js';
 import { seeded } from './npc-rand.js';
 import { view as welfareView } from './npc-welfare.js';
 import crypto from 'node:crypto';
@@ -564,6 +565,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         ventures: o.ventures.map((v) => ({ ...v, staff: v.staff.length, lead: nm(v.lead), announce: `${o.name}の新事業「${v.name}」が始まりました。` })),
         think: o.think.slice(-30).reverse().map((t) => ({ ...t, name: w.card(t.i, day).name })),
         union: w.lab.unions[id], terms: (w.terms || {})[id] || null, lend: (w.lend || {})[id] || null,
+        // (a 社長 of the 300: run by its AI — its last 社長決裁 and why: npc-boss.js)
+        boss: { ai: boss.aiBoss(w, id), last: boss.lastOf(w, id) },
         meetings: q('SELECT id, data FROM npc_meetings WHERE company = ? AND id < ? ORDER BY id DESC LIMIT 30').all(id, before).map((r) => ({ rid: r.id, ...JSON.parse(r.data) })),
         reports: q('SELECT id, data FROM npc_reports WHERE company = ? ORDER BY id DESC LIMIT 30').all(id).map((r) => ({ rid: r.id, ...JSON.parse(r.data) }))
       };
@@ -604,6 +607,31 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const w = get();
     if (w && w.ai.length) { const jobs = w.ai.splice(0).map((j) => jobOf(w, j)).filter(Boolean); n += await ai.run(jobs, now); }
     try { n += await eliteThink(now); } catch (e) { console.error('elite ai failed', e); }
+    try { n += await bossThink(now); } catch (e) { console.error('boss ai failed', e); }
+    return n;
+  }
+  // 社長のAI (server/core/npc-boss.js): a company whose 社長 is one of the 300, once a day, told of its company as it is
+  // that moment and choosing its 社長決裁 with the stronger model — two companies a wake at most, within the paced money
+  async function bossThink(now) {
+    let n = 0;
+    for (let step = 0; step < 2; step++) {
+      const w = get();
+      if (!w) break;
+      const room = ai.cap * paced(now, w) - ai.used(now).neurons, c = ctx();
+      const id = room > 0 ? boss.due(w, c, w.day) : null;
+      if (!id) break;
+      const list = boss.options(w, id, c, w.day, seeded(w.key, `boss:${w.day}:${id}`)), p = boss.prompt(w, id, c, w.day, list);
+      const said = await ai.ask(NPC.elite.topModel, 'boss', `${w.day}:${id}`, p.system, p.user, p.max, now, room);
+      const w2 = get();
+      if (!w2) break;
+      tx(() => {
+        // (no answer: its turn tomorrow — the 社長 decides without the AI today, at its meetings)
+        boss.decide(w2, id, list, said || '', ctx(), w2.day, seeded(w2.key, `boss!:${w2.day}:${id}`));
+        save('hot');
+      });
+      if (!said) break;
+      n++;
+    }
     return n;
   }
   // what the AI may have spent of the (UTC) day by now: a share of it as the people's hours go (NPC.elite.pace minutes
