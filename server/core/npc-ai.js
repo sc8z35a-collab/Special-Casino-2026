@@ -16,14 +16,17 @@ export function neuronsOf(model, inTokens, outTokens) {
   const r = EL.rates[model] || DEAREST;
   return (inTokens * r[0] + outTokens * r[1]) / 1e6;
 }
+// the yen a month the AI may spend beyond the free Neurons: what is left of NPC.elite.cap once `rooms` people's rooms
+// are paid (docs/npc-rooms-plan.md)
+export const aiYen = (rooms = 0) => Math.max(0, EL.cap - Math.max(0, rooms) * EL.roomYen);
 // the day's Neurons: the free part (a little short of it) and the yen beyond, a thirtieth of the month's a day
-export function dailyCap(free = EL.free, yen = EL.yen) {
+export function dailyCap(free = EL.free, yen = aiYen()) {
   return Math.floor(free * 0.98 + Math.max(0, yen) / EL.usd / EL.price * 1000 / 30);
 }
 // the model's words without its thinking aloud (<think>…</think>)
 const plain = (t) => String(t || '').replace(/<think>[\s\S]*?(<\/think>|$)/g, '').trim();
 
-export function createAi({ binding = null, q, clock = Date.now, daily = EL.free, yen = EL.yen, model = EL.model }) {
+export function createAi({ binding = null, q, clock = Date.now, daily = EL.free, yen = aiYen(), model = EL.model }) {
   const cap = dailyCap(daily, yen);
   const dayStart = (ms) => Math.floor(ms / DAY) * DAY;
   function used(now = clock()) {

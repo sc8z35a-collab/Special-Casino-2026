@@ -8,7 +8,7 @@ import * as npc from '../core/npc-model.js';
 import * as pop from '../core/npc-pop.js';
 import * as elite from '../core/npc-elite.js';
 import { eliteWant } from '../core/npc-heart.js';
-import { createAi, dailyCap, neuronsOf } from '../core/npc-ai.js';
+import { createAi, dailyCap, neuronsOf, aiYen } from '../core/npc-ai.js';
 import { NPC } from '../core/rules.js';
 
 const START = Date.UTC(2026, 10, 2, 2, 0, 0);
@@ -69,6 +69,9 @@ test('what it says made theirs: plans and views by the line, a line it got wrong
   assert.equal(W.eliteAi.next[list[0]], m + EL.every.alpha);
   assert.equal(W.eliteAi.next[list[2]], m + 5);
   assert.equal(elite.viewOf(W, list[0]).why, 'ストレスを買い物で発散');
+  // (their turns the oftener the more AI money there is: never oftener than the fastest share)
+  assert.equal(elite.speed(W, 1e9, 660), EL.fastest);
+  assert.equal(elite.speed(W, 1, 660), 1);
   // (a 300 of the rest: no view of the companies taken from it)
   const before = P.outlook[list[2] * pop.LISTED];
   elite.apply(W, 'elite', [list[2]], '1 予定=4 見通し=riru:+2 理由=休む', W.day, m);
@@ -81,6 +84,10 @@ test('what it says made theirs: plans and views by the line, a line it got wrong
 test('the AI money: the free Neurons of the UTC day and the yen beyond, by each model\'s rates; nothing more is asked once spent', async () => {
   assert.equal(dailyCap(10000, 0), 9800);
   assert.ok(dailyCap(10000, 100) > 11000 && dailyCap(10000, 100) < 12500);
+  // (all that is left of the most the country may add once its people's rooms are paid: none of them yet, all of it)
+  assert.equal(aiYen(0), EL.cap);
+  assert.equal(aiYen(15), Math.max(0, EL.cap - 15 * EL.roomYen));
+  assert.equal(aiYen(20), 0);
   assert.ok(neuronsOf(EL.model, 1e6, 0) === EL.rates[EL.model][0]);
   const q = memoryDb();
   let calls = 0;

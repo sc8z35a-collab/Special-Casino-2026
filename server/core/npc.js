@@ -26,7 +26,7 @@ import * as text from './npc-text.js';
 import * as heart from './npc-heart.js';
 import { carByIndex } from './npc-mind.js';
 import * as research from './npc-research.js';
-import { createAi } from './npc-ai.js';
+import { createAi, aiYen } from './npc-ai.js';
 import * as alphaModel from './npc-alpha.js';
 import * as elite from './npc-elite.js';
 import { view as welfareView } from './npc-welfare.js';
@@ -49,7 +49,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   const on = config.npc !== false;
   const N = Math.max(500, Math.min(NPC.nation.population, Number(config.npcPopulation) || NPC.nation.population));
   const key = keyFrom(secret, 'npc');
-  const ai = createAi({ binding, q, clock, daily: Number(config.npcAiNeurons) || NPC.elite.free, yen: Number(config.npcAiYen) >= 0 ? Number(config.npcAiYen) : NPC.elite.yen, model: config.npcAiModel || undefined });
+  const ai = createAi({ binding, q, clock, daily: Number(config.npcAiNeurons) || NPC.elite.free, yen: Number(config.npcAiYen) >= 0 ? Number(config.npcAiYen) : aiYen(Number(config.npcRooms) || 0), model: config.npcAiModel || undefined });
   let W = null, stale = true, last = null;
   const prices = new Map(STOCKS.companies.map((c) => [c.id, c.base]));
   const watchers = new Map();
@@ -620,6 +620,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       const w = get();
       if (!w) break;
       const room = ai.cap * paced(now, w) - ai.used(now).neurons;
+      // (their turns as often as the day's money allows: npc-elite.js speed)
+      if (step === 0) { const h = NPC.hoursOf(now, w.first); elite.speed(w, ai.cap, h[1] - h[0]); }
       const job = room > 0 ? elite.due(w, w.minute) : null;
       if (!job) break;
       const gens = job.list.map((i) => w.P.gen[i]);

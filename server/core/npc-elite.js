@@ -45,6 +45,16 @@ export function due(W, m) {
   for (const t of TIERS) if (by[t].length) return { tier: t, list: by[t].sort((a, b) => (S.next[a] ?? -1) - (S.next[b] ?? -1)).slice(0, EL.batch) };
   return null;
 }
+// how often their turns come: as often as the day's AI money (`cap` Neurons) allows over the people's `minutes` of the
+// day — the longest NPC.elite.every, the shortest a `fastest` share of it (S.f: that share)
+export function speed(W, cap, minutes) {
+  const S = state(W), ten = topTen(W), n = { top: 0, alpha: 0, elite: 0 }, P = W.P;
+  for (let i = 0; i < P.n; i++) if (P.flags[i] & (FL.elite | FL.alpha)) { const t = tierOf(W, i, ten); if (t) n[t]++; }
+  const need = TIERS.reduce((a, t) => a + n[t] * Math.max(1, minutes) / EL.every[t] * EL.perChoice, 0);
+  S.f = Math.max(EL.fastest, Math.min(1, need > 0 ? need / Math.max(1, cap) : 1));
+  return S.f;
+}
+const everyOf = (W, tier) => Math.max(1, Math.round(EL.every[tier] * ((W.eliteAi && W.eliteAi.f) || 1)));
 // asked and not answered (or not to be asked again so soon): their next turn a little later
 export function later(W, list, m, minutes = 5) { const S = state(W); for (const i of list) S.next[i] = m + minutes; }
 
@@ -125,7 +135,7 @@ export function apply(W, tier, list, text, day, m, model = EL.model, gens = null
     // (someone gone since they were asked of: a new life in their place, not theirs to take)
     if (gens && P.gen[i] !== gens[k]) return;
     const x = got[k];
-    S.next[i] = m + (x ? EL.every[tier] : 5);
+    S.next[i] = m + (x ? everyOf(W, tier) : 5);
     if (!x) return;
     if (x.plans.length) { P.plan[i * 2] = x.plans[0]; P.plan[i * 2 + 1] = x.plans[1] || 0; }
     if (tier !== 'elite') for (const [id, v] of Object.entries(x.view)) P.outlook[i * LISTED + LISTED_IDS.indexOf(id)] = Math.round(v * 60);
@@ -146,5 +156,5 @@ export function summary(W) {
   const P = W.P, ten = topTen(W), n = { top: 0, alpha: 0, elite: 0 };
   for (let i = 0; i < P.n; i++) { const t = (P.flags[i] & (FL.elite | FL.alpha)) ? tierOf(W, i, ten) : null; if (t) n[t]++; }
   const S = W.eliteAi || { asked: 0, answered: 0, days: {} };
-  return { tiers: n, asked: S.asked, answered: S.answered, days: S.days, model: EL.model, topModel: EL.topModel };
+  return { tiers: n, asked: S.asked, answered: S.answered, days: S.days, model: EL.model, topModel: EL.topModel, every: Object.fromEntries(TIERS.map((t) => [t, everyOf(W, t)])) };
 }
