@@ -434,8 +434,10 @@ function bkDay(W, f, c, day) {
     // (its business: the strongest company of its economy takes it on, and its plan for people with it)
     const alive = LOCAL.firms.filter((x) => !W.locals.firms[x.id].dead);
     const eq = (x) => capitalOf(W, x) + W.locals.firms[x.id].retained;
-    const to = alive.filter((x) => x.sphere === f.sphere).sort((a, b2) => eq(b2) - eq(a))[0] || alive.sort((a, b2) => eq(b2) - eq(a))[0];
-    if (to && eq(to) > 0) {
+    // (of its own economy those above water, the strongest; none of them: the strongest of all of them)
+    const able = alive.filter((x) => eq(x) > 0).sort((a, b2) => eq(b2) - eq(a));
+    const to = able.find((x) => x.sphere === f.sphere) || able[0];
+    if (to) {
       const t = W.locals.firms[to.id];
       t.extra = [...(t.extra || []), f.id, ...(c.extra || [])];
       t.target += Math.round(f.staff * scaleOf(W) * 0.7);
