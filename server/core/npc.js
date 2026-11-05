@@ -115,15 +115,13 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     if (kind === 'all') { w.allAt = w.minute; w.dirtyAll = false; }
     q("INSERT INTO npc_state (id, data) VALUES ('meta', ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data").run(JSON.stringify(model.metaOf(w)));
     const prefix = kind === 'all' ? 'all' : 'hot';
-    const rows = pop.pack(w.P, kind !== 'all');
-    rows.forEach((r, k) => q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`${prefix}:${String(k).padStart(3, '0')}`, r));
-    q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`${prefix}:${String(rows.length).padStart(3, '0')}`, prefix + ';');
+    // (a row at a time as it is made: npc-pop.js packRows)
+    const put = (pre, rows) => { let k = 0; for (const r of rows) { q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`${pre}:${String(k).padStart(3, '0')}`, r); k++; } q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`${pre}:${String(k).padStart(3, '0')}`, pre + ';'); };
+    put(prefix, pop.packRows(w.P, kind !== 'all'));
     // (アスカ国's people: all of them as each day closes, what moves within a day — their money, what they are doing —
     // with every save between: they spend through the day as ヴェルノア's people do)
     if (w.AP) {
-      const ap = kind === 'all' ? 'asuka' : 'asukahot', ar = asukaModel.pack(w.AP, kind !== 'all');
-      ar.forEach((r, k) => q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`${ap}:${String(k).padStart(3, '0')}`, r));
-      q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`${ap}:${String(ar.length).padStart(3, '0')}`, ap + ';');
+      put(kind === 'all' ? 'asuka' : 'asukahot', asukaModel.packRows(w.AP, kind !== 'all'));
     }
     saves++;
     // (a transaction that fails takes its minutes back: read again before the next use)
