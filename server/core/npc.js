@@ -29,6 +29,7 @@ import * as research from './npc-research.js';
 import { createAi, aiYen } from './npc-ai.js';
 import * as alphaModel from './npc-alpha.js';
 import * as elite from './npc-elite.js';
+import { seeded } from './npc-rand.js';
 import { view as welfareView } from './npc-welfare.js';
 import crypto from 'node:crypto';
 import { LISTED_IDS } from './npc-market.js';
@@ -631,7 +632,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       const w2 = get();
       if (!w2) break;
       tx(() => {
-        if (said) elite.apply(w2, job.tier, job.list, said, w2.day, w2.minute, NPC.elite.model, gens);
+        // (what they chose to do at once, done by the engine with the day's prices and a draw of the minute's)
+        if (said) elite.apply(w2, job.tier, job.list, said, w2.day, w2.minute, NPC.elite.model, gens, { ctx: ctx(), r: seeded(w2.key, `elite:${w2.minute}:${job.list[0]}`) });
         else elite.later(w2, job.list, w2.minute, 10);
         save('hot');
       });

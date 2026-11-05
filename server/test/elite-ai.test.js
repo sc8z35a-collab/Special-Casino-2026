@@ -105,3 +105,29 @@ test('the AI money: the free Neurons of the UTC day and the yen beyond, by each 
   assert.ok(ai.used(now).neurons > 0);
   assert.equal(ai.used(Date.UTC(2026, 10, 3, 0, 0, 1)).neurons, 0);
 });
+
+test('what they may do at once, by the AI\'s choice: buy and sell shares, borrow and pay back, look for work — checked and done by the engine', () => {
+  const W = country(2000), P = W.P, m = W.minute;
+  const i = Array.from({ length: P.n }, (_, k) => k).find((k) => P.flags[k] & pop.FL.elite && P.cash[k] > 1000000);
+  assert.deepEqual(elite.actionOf('1 予定=1 行動=buy:magita:20 理由=x'), { code: 'buy', id: 'magita', pct: 20 });
+  assert.deepEqual(elite.actionOf('行動=sell:ice:150'), { code: 'sell', id: 'ice', pct: 100 });
+  assert.deepEqual(elite.actionOf('行動=borrow:300'), { code: 'borrow', yen: 3000000 });
+  assert.equal(elite.actionOf('行動=none'), null);
+  assert.equal(elite.actionOf('行動=buy:apple:20'), null);
+  const run = { ctx: { stockPrice: () => 10000, carPrice: () => 1e9, corp: null, fair: {} }, r: { u: () => 0.5, int: () => 0, z: () => 0 } };
+  const book = W.market && W.marketState.book.magita;
+  const before = book.buy.length, cash = P.cash[i];
+  elite.apply(W, 'elite', [i], '1 予定=8 行動=buy:magita:20 理由=伸びると見た', W.day, m, EL.model, null, run);
+  assert.equal(book.buy.length, before + 1);
+  assert.equal(book.buy[book.buy.length - 1][0], i);
+  assert.equal(P.cash[i], cash, 'the money moves only when the order fills');
+  assert.equal(elite.viewOf(W, i).act.did, 'buy');
+  // (borrow, then pay back: what one owes and holds both move, the money ledger's sum of them not)
+  const owe = P.debt[i];
+  elite.apply(W, 'elite', [i], '1 行動=borrow:100 理由=x', W.day, m, EL.model, null, run);
+  assert.ok(P.debt[i] > owe);
+  const net = P.cash[i] - P.debt[i];
+  elite.apply(W, 'elite', [i], '1 行動=repay:50 理由=x', W.day, m, EL.model, null, run);
+  assert.equal(P.cash[i] - P.debt[i], net);
+  assert.equal(elite.viewOf(W, i).act.did, 'repay');
+});
