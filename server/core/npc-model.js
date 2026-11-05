@@ -601,7 +601,9 @@ function refresh(W, day, ctx) {
   for (const id of NPC.companies) {
     const staff = W.staffOf(id).length;
     const h = W.workHours[id] || 0;
-    W.capacity[id] = staff ? Math.max(0.3, Math.min(1.1, h / Math.max(1, staff * 5))) : 1;
+    // (against a full day's hours a person: 5, by the new rules the working day's — NPC.life2.workDay)
+    const per = W.life2 ? NPC.life2.workDay.hours * NPC.life2.workDay.work / 60 : 5;
+    W.capacity[id] = staff ? Math.max(0.3, Math.min(1.1, h / Math.max(1, staff * per))) : 1;
     if (!W.workSeen) W.capacity[id] = 1;
   }
   W.workSeen = true;

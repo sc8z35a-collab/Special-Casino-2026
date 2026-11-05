@@ -542,6 +542,9 @@
   // by age (by the 50,000, as their life's chances leave them).
   var LIFE2 = {
     adult: 18, work: [18, 59], retire: 60, mean: 60, max: 62, from: 58, yearly: [0.06, 0.12, 0.25, 0.45],
+    // (a working day: `hours` of the hours the people are about — from their start, a late shift's to their end —,
+    // `work` minutes of each hour at work and the rest a break)
+    workDay: { hours: 4, work: 40 },
     ages: [[18, 57, 46097], [58, 58, 1152], [59, 59, 1083], [60, 60, 953], [61, 61, 715]]
   };
   // 人口の再編 (server/core/npc-reorg.js, once, a country kept from before brought under these rules): ヴェルノア's
