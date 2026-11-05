@@ -69,10 +69,13 @@ test('a bank lends only its own money: an account below zero is lent out of it, 
   const free = a.ext.bankFree;
   assert.ok(free > 0);
   assert.equal(W.bankRoom, free);
-  // (the country spends beyond its money: what it is short of is lent to it, out of the bank's own)
+  // (the country spends beyond its money: what it is short of is lent to it, out of the bank's own — against the same
+  // country's same day without it, the day's other business the same in both)
+  const twin = country(800);
+  twin.days(3);
   W.nation.cash -= 5e9; W.sector.cash += 5e9;
-  const [b] = c.days(1);
-  assert.ok(b.ext.bankFree <= free - 4e9, `${free} → ${b.ext.bankFree}`);
+  const [b] = c.days(1), [t] = twin.days(1);
+  assert.ok(b.ext.bankFree <= t.ext.bankFree - 4e9, `${t.ext.bankFree} → ${b.ext.bankFree}`);
 });
 
 test('a bank that has lent more than its own money: the country puts in what it lacks if it can, else it fails and the country takes it over — no money made either way', () => {
