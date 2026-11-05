@@ -143,6 +143,8 @@ export function day(W, d, r) {
     reflect(W, i, yd, d);
     settle(P, i);
     expect(W, i, pi, mkt, H.alarm);
+    // (one of the 300 whose AI chose their plan yesterday or today keeps it: npc-elite.js)
+    if (aiPlanned(W, i, d)) continue;
     choosePlan(W, i, d, t, off, r);
   }
 }
@@ -390,11 +392,15 @@ export function word(W, title, q) {
 export const buzzOf = (W, title) => (W.heart && W.heart.buzz[title]) || 0;
 
 /* ---------------------------------------------------------------- the 300 --- */
-// 選ばれし300人 (docs/ai-economy-plan.md 4): the country's part of them (ヴェルノア's 200 of a full country) by their
+// 選ばれし300人 (NPC.elite, server/core/npc-elite.js): 300 of a country of 10,000 (fewer in a smaller one) by their
 // standing — the companies' officers, the mayors, the unions' representatives — and their money, chosen again each
-// month (those already in it stay unless they fall well behind); they think deeper and further ahead (npc-mind.js)
+// month (those already in it stay unless they fall well behind); they think deeper and further ahead (npc-mind.js),
+// and they alone think with AI
+export const eliteWant = (n) => Math.max(1, Math.min(NPC.elite.n, Math.round(NPC.elite.n * n / NPC.elite.per)));
+// (an AI's plan of theirs from yesterday or today, by the same person: npc-elite.js)
+const aiPlanned = (W, i, d) => { const x = W.eliteAi && W.eliteAi.last[i]; return !!x && x.gen === W.P.gen[i] && d - x.day <= 1; };
 export function chooseElite(W) {
-  const P = W.P, want = Math.max(1, Math.round(200 * (W.scale || P.n / 50000)));
+  const P = W.P, want = eliteWant(P.n);
   const score = new Float64Array(P.n);
   for (let i = 0; i < P.n; i++) {
     const f = P.flags[i];

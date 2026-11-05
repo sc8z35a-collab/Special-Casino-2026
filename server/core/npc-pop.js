@@ -217,10 +217,12 @@ export function addRelation(P, i, j, close = 80, trust = 120) {
 }
 
 /* ---------------------------------------------------------------- the beginning --- */
-// how many of each age there are at the start (plan §4.1), by the 50,000
-const AGES = [[18, 29, 9700], [30, 39, 8100], [40, 49, 8000], [50, 59, 7800], [60, 69, 7300], [70, 79, 5600], [80, 95, 3500]];
-// what everyone does at the start (plan §4.6), by the 50,000
-const WORK = { civil: 1500, other: 1800, self: 900, part: 1500, home: 1500, student: 2000, none: 800, rehire: 1750 };
+// how many of each age there are at the start, by the 50,000: by the new rules (NPC.life2: lives begin at 18 and end
+// by 62 — docs/npc-rooms-plan.md), everyone of 18 to 59 at work
+const AGES = NPC.life2.ages;
+// what everyone does at the start beside the companies, by the 50,000 (nobody studies or keeps house: everyone of
+// working age works; those beyond what is here work in the local trade)
+const WORK = { civil: 1500, other: 1800, self: 900, part: 1500, none: 800 };
 // what living in each district costs a month (rent), and how rich people there are against the country
 // The money a person has when their life in the country begins (at its start, by their age and pay; a life begun
 // since in the place of one that ended, at 18 with no pay yet): made from nothing, the only money there is besides the
@@ -283,52 +285,31 @@ export function makePeople(n, day, corp, r) {
     for (let k = 0; k < LEARN; k++) P.learn[i * LEARN + k] = 128;
     P.credit[i] = r.byte(170, 40);
   }
-  // students, the retired, and who works for whom
+  // the retired, and who works for whom
   const ages = new Int16Array(n);
   for (let i = 0; i < n; i++) ages[i] = ageOf(P, i, day);
   const order = shuffled(n, r);
   const want = {}, have = {};
   for (const [k, v] of Object.entries(WORK)) { want[k] = Math.round(v * scale); have[k] = 0; }
   const staff = {};
-  let rehireAll = 0;
-  for (const id of NPC.companies) { staff[id] = Math.round((corp.companies[id] ? corp.companies[id].staff : 0)); rehireAll += staff[id]; }
+  for (const id of NPC.companies) staff[id] = Math.round((corp.companies[id] ? corp.companies[id].staff : 0));
   const free = [];
   for (const i of order) {
-    const a = ages[i];
     P.job[i] = 255;
-    if (a <= 22 && have.student < want.student && r.u() < 0.72) { P.job[i] = NPC.job.student; P.flags[i] |= FL.student; have.student++; continue; }
-    if (a >= 65) { P.job[i] = NPC.job.retired; continue; }
+    if (ages[i] >= NPC.life2.retire) { P.job[i] = NPC.job.retired; continue; }
     free.push(i);
   }
-  // the companies take theirs: the 60-64s first for their re-employed (いちど定年を迎えた再雇用), then by fit — the first
-  // ten in full; the country's own civil servants next; then the companies that came home later (YOSIDA, WAZIMA), all
-  // of them the same share of what they want when there are not enough people for it (their other posts stay open)
-  const rehireShare = want.rehire / Math.max(1, rehireAll);
-  const old = free.filter((i) => ages[i] >= 60 && ages[i] <= 64);
-  const young = free.filter((i) => ages[i] >= 20 && ages[i] < 60);
+  // the companies take theirs by fit — the first ten in full; the country's own civil servants next; then the companies
+  // that came home later (YOSIDA, WAZIMA, MY WAY, HACHI), all of them the same share of what they want when there are
+  // not enough people for it (their other posts stay open)
+  const young = free;
   const taken = new Uint8Array(n);
-  const fit = FIT;
   const take = (id, total) => {
     if (!total) return;
-    const nOld = Math.min(Math.round(total * rehireShare), total);
-    const pick = (pool, k, rehired) => {
-      const f = fit[id];
-      const cand = pool.filter((i) => !taken[i]).map((i) => [i, skill(P, i, f[0]) + skill(P, i, f[1]) + 60 * r.u()]);
-      cand.sort((a, b) => b[1] - a[1]);
-      let got = 0;
-      for (let x = 0; x < k && x < cand.length; x++) {
-        const i = cand[x][0];
-        taken[i] = 1;
-        P.job[i] = NPC.jobOf(id);
-        if (rehired) P.flags[i] |= FL.rehired;
-        got++;
-      }
-      return got;
-    };
-    const got = pick(old, nOld, true);
-    const more = total - got - pick(young, total - got, false);
-    // (the young run out: the 60-64s, kept on as the re-employed are)
-    if (more > 0) pick(old, more, true);
+    const f = FIT[id];
+    const cand = young.filter((i) => !taken[i]).map((i) => [i, skill(P, i, f[0]) + skill(P, i, f[1]) + 60 * r.u()]);
+    cand.sort((a, b) => b[1] - a[1]);
+    for (let x = 0; x < total && x < cand.length; x++) { const i = cand[x][0]; taken[i] = 1; P.job[i] = NPC.jobOf(id); }
   };
   const first = NPC.companies.slice(0, 10), later = NPC.companies.slice(10);
   for (const id of first) take(id, staff[id]);
@@ -342,7 +323,7 @@ export function makePeople(n, day, corp, r) {
     civil++;
   }
   have.civil = civil;
-  const room = young.filter((i) => !taken[i]).length + old.filter((i) => !taken[i]).length;
+  const room = young.filter((i) => !taken[i]).length;
   const wantLater = later.reduce((a, id) => a + staff[id], 0), share = wantLater > room ? room / wantLater : 1;
   for (const id of later) take(id, Math.floor(staff[id] * share));
   // the country's own and the rest
@@ -358,7 +339,6 @@ export function makePeople(n, day, corp, r) {
   put('civil', NPC.job.civil, (a) => a >= 22 && a < 60);
   put('other', NPC.job.other, (a) => a < 60);
   put('self', NPC.job.self, (a) => a >= 25);
-  put('home', NPC.job.home, (a) => a >= 25);
   put('none', NPC.job.none, (a) => a < 60);
   put('part', NPC.job.part, () => true);
   for (const i of rest) if (P.job[i] === 255) P.job[i] = ages[i] >= 60 ? NPC.job.retired : NPC.job.other;

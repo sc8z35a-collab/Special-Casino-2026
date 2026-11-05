@@ -634,15 +634,16 @@ function publicWorks(W, day, r) {
 }
 
 /* ---------------------------------------------------------------- lives --- */
-// a day's chance of dying at an age (Gompertz: half the people gone by about 83, 80 on average), by health
-const deathRate = (age, health) => 5.3e-5 * Math.exp(0.085 * age) / YEAR * (1.6 - health / 255);
+// a day's chance of dying at an age (Gompertz: half the people gone by about 83, 80 on average), by health; by the new
+// rules (W.life2: NPC.life2) the illnesses' part only below 58, then a year's chance of its own, and 62 the last
+const deathRate = (age, health, life2) => (life2 && age >= NPC.life2.from ? NPC.lateDeath(age) : 5.3e-5 * Math.exp(0.085 * age) / YEAR * (1.6 - health / 255));
 function lives(W, day, r, ctx) {
   const P = W.P;
   for (let i = 0; i < P.n; i++) {
     const age = ageOf(P, i, day);
     // 健康度: what wore it down today and what brought it back (npc-health.js)
     health.day(W, i, day, age, r);
-    if (r.u() < deathRate(age, P.health[i])) { die(W, i, day, r, ctx); continue; }
+    if (r.u() < deathRate(age, P.health[i], W.life2)) { die(W, i, day, r, ctx); continue; }
     // birthdays
     if (Math.floor((day - P.birth[i]) % 365.25) === 0) birthday(W, i, age, day, r);
   }
@@ -652,6 +653,8 @@ function lives(W, day, r, ctx) {
 }
 function birthday(W, i, age, day, r) {
   const P = W.P, PEN = NPC.pension, at = W.nation.knobs.pensionAge || PEN.age;
+  // (by the new rules all who work retire at 60: the employees with their severance, the others leave their work)
+  if (W.life2 && age === NPC.life2.retire && NPC.working(P.job[i]) && !NPC.employed(P.job[i])) W.labor.leave(W, i, day, 'retire');
   if (age === NPC.retire.at && NPC.employed(P.job[i])) W.labor.retire(W, i, day, r);
   if (age === NPC.retire.rehire && P.flags[i] & FL.rehired) W.labor.leave(W, i, day, 'retire');
   // the pension from its age (or later, a month at a time: 0.7% more each, to 70)
@@ -792,7 +795,8 @@ export function reborn(W, i, day, r, heirs) {
   P.rel.fill(-1, i * REL, i * REL + REL);
   P.owned.fill(0, i * OWN, i * OWN + OWN);
   P.spouse[i] = -1; P.host[i] = -1; P.stay[i] = 0;
-  P.job[i] = r.u() < 0.6 ? NPC.job.student : NPC.job.none;
+  // (by the new rules nobody studies: every life begins looking for work)
+  P.job[i] = r.u() < 0.6 && !W.life2 ? NPC.job.student : NPC.job.none;
   P.dept[i] = 0; P.rank[i] = 0; P.salary[i] = 0; P.tenure[i] = 0; P.jsat[i] = 160; P.shift[i] = r.int(2); P.wdist[i] = P.dist[i];
   P.flags[i] = FL.newborn | (P.job[i] === NPC.job.student ? FL.student : 0);
   P.debt[i] = 0; P.dkind[i] = 0; P.credit[i] = 150; P.miss[i] = 0; P.car[i] = 0; P.carDay[i] = 0; P.vip[i] = 0; P.phone[i] = 0; P.spun[i] = 0; P.live[i] = 0; P.subs[i] = 0;

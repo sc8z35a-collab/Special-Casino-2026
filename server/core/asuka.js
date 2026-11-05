@@ -72,6 +72,10 @@ export function unpack(A, rows, hot = false) {
   return A;
 }
 export const ageOf = (A, i, day) => Math.floor((day - A.birth[i]) / 365.25);
+// the age the people here stop working at (65; by the new rules — W.life2 — 60), and the ages HACHI and MIZUKAWA take
+// people on at ([22, 62); by the new rules all of working age, [18, 60))
+const workEnd = (W) => (W.life2 ? NPC.life2.retire : 65);
+const hireAges = (W) => (W.life2 ? [NPC.life2.work[0], NPC.life2.retire] : [22, 62]);
 // a person's share of the people's founding money: by age, pay and luck (the shape of ヴェルノア's: npc-pop startMoney)
 const AGEW = (a) => (a < 30 ? 0.25 : a < 40 ? 0.6 : a < 50 ? 1 : a < 60 ? 1.4 : a < 70 ? 1.7 : a < 80 ? 1.6 : 1.4);
 const weightOf = (age, pay, z) => AGEW(age) * (pay > 0 ? Math.pow(pay / R.pay.atsuka, 0.6) : 0.8) * Math.exp(0.9 * z);
@@ -100,15 +104,15 @@ export function found(W, day) {
   const posts = { atsuka: Math.round(R.jobs.atsuka * sc), trade: Math.round(R.jobs.trade * sc) };
   const order = [];
   for (let i = 0; i < n; i++) {
-    // (a young country: most of working age)
-    const u = r.u(), age = u < 0.12 ? 18 + r.int(5) : u < 0.86 ? 23 + r.int(42) : 65 + r.int(30);
+    // (a young country: most of working age; by the new rules — W.life2 — its ages as ヴェルノア's: NPC.life2.ages)
+    const u = r.u(), age = W.life2 ? NPC.startAge(u, r.u()) : u < 0.12 ? 18 + r.int(5) : u < 0.86 ? 23 + r.int(42) : 65 + r.int(30);
     A.birth[i] = day - Math.ceil(age * 365.25) - r.int(365);
     A.dist[i] = r.int(ASUKA.districts.length);
     A.gen[i] = 1;
     for (let k = 0; k < NC; k++) A.taste[i * NC + k] = r.int(256);
     A.ethos[i] = ethosFor(i, 1);
-    if (age < 23 && r.u() < 0.6) A.job[i] = JOB.student;
-    else if (age >= 65) A.job[i] = JOB.retired;
+    if (age < 23 && !W.life2 && r.u() < 0.6) A.job[i] = JOB.student;
+    else if (age >= workEnd(W)) A.job[i] = JOB.retired;
     else { A.job[i] = JOB.none; order.push(i); }
   }
   // the posts: the state's first, then the local trade's (the rest looking for work, the branches to come)
@@ -317,7 +321,8 @@ export function die(W, i, day, r) {
   A.cash[heir] += estate - tax;
   A.gen[i] = (A.gen[i] + 1) & 0xffff;
   A.birth[i] = day - Math.ceil(18 * 365.25) - r.int(300);
-  A.job[i] = r.u() < 0.6 ? JOB.student : JOB.none;
+  // (by the new rules nobody studies: every life begins looking for work)
+  A.job[i] = r.u() < 0.6 && !W.life2 ? JOB.student : JOB.none;
   A.emp[i] = 0; A.pay[i] = 0; A.debt[i] = 0; A.miss[i] = 0;
   for (let k = 0; k < NC; k++) A.taste[i * NC + k] = r.int(256);
   A.ethos[i] = ethosFor(i, A.gen[i]);
@@ -351,7 +356,7 @@ function mizukawaStaff(W, day) {
     for (const from of [JOB.atsuka, JOB.none, JOB.trade]) for (let i = 0; i < A.n && have[ri] < want; i++) {
       if (A.job[i] !== from || (from === JOB.atsuka && A.emp[i] === altas)) continue;
       const age = ageOf(A, i, day);
-      if (age < 22 || age >= 62) continue;
+      if (age < hireAges(W)[0] || age >= hireAges(W)[1]) continue;
       if (from === JOB.atsuka) a.posts.atsuka = Math.max(0, a.posts.atsuka - 1);
       A.job[i] = JOB.mizukawa; A.emp[i] = ri; A.pay[i] = Math.round(r.pay * 12 * idx); have[ri]++; a.sum.hires++;
     }
@@ -400,7 +405,7 @@ function hachiStaff(W, day) {
   for (const from of [JOB.atsuka, JOB.none, JOB.trade]) for (let i = 0; i < A.n && have < want; i++) {
     if (A.job[i] !== from || (from === JOB.atsuka && A.emp[i] === altas)) continue;
     const age = ageOf(A, i, day);
-    if (age < 22 || age >= 62) continue;
+    if (age < hireAges(W)[0] || age >= hireAges(W)[1]) continue;
     if (from === JOB.atsuka) a.posts.atsuka = Math.max(0, a.posts.atsuka - 1);
     A.job[i] = JOB.hachi; A.emp[i] = 0; A.pay[i] = CORP.hachi.pay.medical * 12; have++; a.sum.hires++;
   }
@@ -725,42 +730,16 @@ function payday(W, day) {
   if (g > 0) { for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.none) A.cash[i] += g; a.treasury -= g * jobless; tout(a, 'jobless', g * jobless); }
   void day;
 }
-// deaths (by age), their estates (what they owed the bank first, a tenth to the treasury, the rest to someone), and in
-// their place a new life at 18 with the money a life begins with — the treasury's, never made
+// deaths (by age: by the new rules — W.life2 — a year's chance of its own from 58, and 62 the last), their estates and
+// a new life in their place (die); the retired (at 65, by the new rules at 60: the post left), students at 23 to work
 function lives(W, day, r) {
-  const a = W.asuka, A = W.AP, M = R.mortality;
+  const A = W.AP, M = R.mortality, end = workEnd(W);
   for (let i = 0; i < A.n; i++) {
     const age = ageOf(A, i, day);
-    if (age < 40 || r.u() >= M.a * Math.exp(M.b * age) / YEAR) {
-      // (retiring at 65: the post left; students at 23 look for work)
-      if (age >= 65 && A.job[i] !== JOB.retired) { A.job[i] = JOB.retired; A.pay[i] = 0; }
-      else if (A.job[i] === JOB.student && age >= 23) A.job[i] = JOB.none;
-      continue;
-    }
-    a.sum.deaths++;
-    let estate = Math.max(0, A.cash[i]);
-    const back = Math.min(A.debt[i], estate);
-    estate -= back; a.bank.own += back; a.bank.lent -= back;
-    // (what was never paid back: the bank's loss)
-    if (A.debt[i] > back) a.bank.lent -= A.debt[i] - back;
-    const tax = Math.floor(estate * 0.1);
-    a.treasury += tax;
-    tin(a, 'inheritance', tax);
-    let heir = r.int(A.n);
-    if (heir === i) heir = (i + 1) % A.n;
-    A.cash[heir] += estate - tax;
-    // the new life
-    A.gen[i] = (A.gen[i] + 1) & 0xffff;
-    A.birth[i] = day - Math.ceil(18 * 365.25) - r.int(300);
-    A.job[i] = r.u() < 0.6 ? JOB.student : JOB.none;
-    A.emp[i] = 0; A.pay[i] = 0; A.debt[i] = 0; A.miss[i] = 0;
-    for (let k = 0; k < NC; k++) A.taste[i * NC + k] = r.int(256);
-    A.ethos[i] = ethosFor(i, A.gen[i]);
-    const own = Math.min(Math.max(0, a.treasury), Math.floor(weightOf(18, 0, r.z()) * a.factor));
-    a.treasury -= own;
-    A.cash[i] = own;
-    tout(a, 'newLife', own);
-    a.sum.born++;
+    const q = W.life2 && age >= NPC.life2.from ? NPC.lateDeath(age) : age < 40 ? 0 : M.a * Math.exp(M.b * age) / YEAR;
+    if (q > 0 && r.u() < q) { die(W, i, day, r); continue; }
+    if (age >= end && A.job[i] !== JOB.retired) { A.job[i] = JOB.retired; A.pay[i] = 0; }
+    else if (A.job[i] === JOB.student && age >= 23) A.job[i] = JOB.none;
   }
 }
 // The month's end: the bank's interest and what people pay back; the posts filled (the state's, the local trade's, the
@@ -881,7 +860,7 @@ function hire(W, day, r) {
     else if (j === JOB.branch) haveCo[A.emp[i]] = (haveCo[A.emp[i]] || 0) + 1;
   }
   const seekers = [];
-  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.none && ageOf(A, i, day) < 65) seekers.push(i);
+  for (let i = 0; i < A.n; i++) if (A.job[i] === JOB.none && ageOf(A, i, day) < workEnd(W)) seekers.push(i);
   for (let k = seekers.length - 1; k > 0; k--) { const j = r.int(k + 1); const t = seekers[k]; seekers[k] = seekers[j]; seekers[j] = t; }
   let at = 0, fees = 0;
   const take = (job, emp, n) => {
@@ -1127,8 +1106,8 @@ function foundYamato(W, day, r) {
   a.yamato = { founded: day, cash: n, capital, retained: retained - (capital + retained - n), m: yMonth(), last: null, hist: [], total: { rev: 0, pay: 0, upkeep: 0, emergency: 0, tax: 0, dividends: 0, invest: 0 }, incidents: 0, restored: 0 };
   // its people: those out of work first, then the local trade's (the posts from the top)
   const pool = [];
-  for (let i = 0; i < A.n; i++) { const age = ageOf(A, i, day); if (age >= 20 && age < 65 && A.job[i] === JOB.none) pool.push(i); }
-  for (let i = 0; i < A.n; i++) { const age = ageOf(A, i, day); if (age >= 20 && age < 65 && A.job[i] === JOB.trade) pool.push(i); }
+  for (let i = 0; i < A.n; i++) { const age = ageOf(A, i, day); if (age >= 20 && age < workEnd(W) && A.job[i] === JOB.none) pool.push(i); }
+  for (let i = 0; i < A.n; i++) { const age = ageOf(A, i, day); if (age >= 20 && age < workEnd(W) && A.job[i] === JOB.trade) pool.push(i); }
   let at = 0, hired = 0;
   YAMATO.roles.forEach(([, k, pay], role) => {
     for (let x = Math.max(1, Math.round(k * sc)); x > 0 && at < pool.length; x--) { const i = pool[at++]; A.job[i] = JOB.yamato; A.emp[i] = role; A.pay[i] = pay; hired++; }

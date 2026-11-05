@@ -35,8 +35,9 @@ test('a country where everyone works: the companies short of people take them fr
   const before = { myway: fill('myway'), wazima: fill('wazima') };
   const was = new Map(W.staffOf('myway').map((i) => [i, W.P.salary[i]]));
   c.days(95);
-  assert.ok(fill('myway') > before.myway && fill('myway') >= 0.9, `${before.myway} → ${fill('myway')}`);
-  assert.ok(fill('wazima') > before.wazima, `${before.wazima} → ${fill('wazima')}`);
+  // (by the new rules — everyone of 18 to 59 at work: NPC.life2 — a company may be full from the start: it stays so)
+  assert.ok(fill('myway') >= Math.min(before.myway, 0.9) && fill('myway') >= 0.9, `${before.myway} → ${fill('myway')}`);
+  assert.ok(fill('wazima') >= Math.min(before.wazima, 0.9), `${before.wazima} → ${fill('wazima')}`);
   // (the local companies too: most of them near their targets)
   // (the small ones, in a country where hardly anyone is out of work, together most of the way: their people's pay
   // below the big ones', some of them taken by them)

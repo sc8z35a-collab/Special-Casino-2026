@@ -30,6 +30,7 @@ import * as heart from './npc-heart.js';
 import * as research from './npc-research.js';
 import * as hachi from './hachi.js';
 import * as health from './npc-health.js';
+import { reorganize } from './npc-reorg.js';
 
 const MIN = 60000, DAY_MIN = 1440;
 export { LISTED_IDS };
@@ -49,6 +50,8 @@ export function boot(key, now, corp, { n = NPC.nation.population, held = {} } = 
   const { P, ages } = pop.makePeople(n, day, view, r);
   pop.makeHomes(P, ages, day, r);
   const W = blank(key, n, scale, first, day, Math.floor(now / MIN) - 1);
+  // (a new country lives by the new rules from its start: NPC.life2 — a country kept from before, from its 人口再編)
+  W.life2 = true;
   // (its people's 健康度 made on its scale from the start: npc-health.js)
   W.health2 = day;
   W.P = P;
@@ -509,10 +512,11 @@ export function moneyOf(W, w) {
   // (テネシスリサーチ's money: what Tenesice sent it, not yet paid out)
   return Math.round(x + econ.pending(W) + W.abroad.cash + asuka.moneyOf(W) + research.cashOf(W) + W.sum.toPlayers - W.sum.fromPlayers);
 }
-// the day's count: what it came to against what it should; a drift beyond rounding is told (`tell`)
+// the day's count: what it came to against what it should (the money printed at a founding added, what left the two
+// countries at the 人口再編 — `out`: server/core/npc-reorg.js — taken off); a drift beyond rounding is told (`tell`)
 export function ledgerDay(W, w, day, tell = null) {
   const now = moneyOf(W, w), L = W.ledger || (W.ledger = { base: now, founded: 0, at: day, drift: 0, worst: 0, days: [] });
-  const drift = now - L.base - (L.founded || 0), moved = drift - (L.drift || 0);
+  const drift = now - L.base - (L.founded || 0) + (L.out || 0), moved = drift - (L.drift || 0);
   L.drift = drift; L.at = day;
   L.days.push({ day, total: now, drift, moved });
   if (L.days.length > 60) L.days.shift();
@@ -526,6 +530,8 @@ export function nextDay(W, day, ext, ctx) {
   W._staff = null;
   // (a country that lived before アスカ国 was: founded now, its money printed once — the money ledger told of it)
   if (!W.asuka) { const made = asuka.found(W, day + 1); if (made && W.ledger) W.ledger.founded = (W.ledger.founded || 0) + made; }
+  // (人口の再編: a country kept from before brought under the new rules, once — server/core/npc-reorg.js)
+  if (!W.life2) reorganize(W, ctx && ctx.corp, day + 1, r);
   // (健康度 on its scale: a country kept before it, once — npc-health.js)
   if (!W.health2) health.recalibrate(W, day, ageOf);
   // (the cars: a country kept before spending on them as much as now — NPC.life.carSpend)

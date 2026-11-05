@@ -26,8 +26,9 @@ import * as text from './npc-text.js';
 import * as heart from './npc-heart.js';
 import { carByIndex } from './npc-mind.js';
 import * as research from './npc-research.js';
-import { createAi } from './npc-ai.js';
+import { createAi, aiYen } from './npc-ai.js';
 import * as alphaModel from './npc-alpha.js';
+import * as elite from './npc-elite.js';
 import { view as welfareView } from './npc-welfare.js';
 import crypto from 'node:crypto';
 import { LISTED_IDS } from './npc-market.js';
@@ -48,7 +49,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   const on = config.npc !== false;
   const N = Math.max(500, Math.min(NPC.nation.population, Number(config.npcPopulation) || NPC.nation.population));
   const key = keyFrom(secret, 'npc');
-  const ai = createAi({ binding, q, clock, daily: Number(config.npcAiNeurons) || 10000, share: 0.9, model: config.npcAiModel || undefined });
+  const ai = createAi({ binding, q, clock, daily: Number(config.npcAiNeurons) || NPC.elite.free, yen: Number(config.npcAiYen) >= 0 ? Number(config.npcAiYen) : aiYen(Number(config.npcRooms) || 0), model: config.npcAiModel || undefined });
   let W = null, stale = true, last = null;
   const prices = new Map(STOCKS.companies.map((c) => [c.id, c.base]));
   const watchers = new Map();
@@ -298,8 +299,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       stats: w.stats, nation: { cash: w.nation.cash, debt: w.nation.debt, bank: w.nation.bank, fund: w.nation.fund, in: w.nation.day.in, out: w.nation.day.out },
       districts: w.districts.map((x) => ({ cash: x.cash, approval: Math.round(x.approval), mayor: x.mayor, economy: x.economy })), sector: w.sector.cash, sum: w.sum
     }));
-    // (the thoughts of a few of those the town talks about, for the AI to write while it has room)
-    if (ai.on) for (const o of Object.values(w.orgs).slice(0, 10)) if (o.ceo >= 0 && (d + o.ceo) % 3 === 0) w.ai.push({ kind: 'voice', i: o.ceo });
+    // (the thoughts of a few of those the town talks about — CEOs of the 300 only: the citizens think without AI)
+    if (ai.on) for (const o of Object.values(w.orgs).slice(0, 10)) if (o.ceo >= 0 && w.P.flags[o.ceo] & pop.FL.elite && (d + o.ceo) % 3 === 0) w.ai.push({ kind: 'voice', i: o.ceo });
     save('all');
     afterCommit(() => {
       for (const id of opsIds()) if (live) live.sendOps(id, 'npc', { day: d + 1 });
@@ -461,7 +462,9 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       home: { kind: ['賃貸', '持ち家', '家族と同居', '居候', '路上'][P.home[i]], rent: P.rent[i], host: P.host[i] >= 0 ? w.card(P.host[i], day).name : null },
       car: P.car[i] ? (carByIndex(P.car[i]) || {}).name : null, vip: P.vip[i] > day, phone: P.phone[i] ? '停止中' : '利用中', holds, relations: rel, reasons,
       // (the mind: its feelings, what they expect and have learnt, today's plan, the five ways, 消費観 — npc-heart.js)
-      mind: heart.view(w, i)
+      mind: heart.view(w, i),
+      // (one of the 300: what their AI chose last and why — npc-elite.js)
+      ai: elite.viewOf(w, i)
     };
   }
 
@@ -499,7 +502,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         decided: { fees: feesOf(corp.world()), surcharge: policyDto().surcharge, rates: w.bankRates, quick: econ.quickRate(w), phone: Math.round(NPC.life.phone * econ.priceOf(w, 'tenesice:mobile')), cpi: econ.cpi(w), rentIdx: econ.rentIdx(w) },
         nationFull: { cash: w.nation.cash, debt: w.nation.debt, bank: w.nation.bank, fund: w.nation.fund, day: w.nation.day, month: w.nation.month, hist: w.nation.hist.slice(-60) },
         sector: w.sector, sum: w.sum, cal: w.cal, rates: w.bankRates, stock: w.stock, depth: w.depth, paused: !!w.paused,
-        usage: { ticks, tickMs: ticks ? Math.round(tickMs / ticks * 10) / 10 : 0, saves, ai: { ...ai.used(now), on: ai.on }, server: usage() },
+        usage: { ticks, tickMs: ticks ? Math.round(tickMs / ticks * 10) / 10 : 0, saves, ai: { ...ai.used(now), on: ai.on, elite: elite.summary(w) }, server: usage() },
         // (the two countries' GDP: server/core/npc-gdp.js)
         gdp: model.gdpView(w),
         // (the times' mood and the prices: server/core/npc-macro.js)
@@ -557,7 +560,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         id, name: o.name, ceo: nm(o.ceo), president: nm(o.president), officers: o.officers.map(nm), staff: w.staffOf(id).length,
         depts: o.depts.map((d, k) => ({ key: d.key, name: d.name, kind: d.kind, size: w.staffOf(id).filter((i) => w.P.dept[i] === k).length, head: nm(d.head), managers: d.managers.slice(0, 6).map(nm), named: d.roles.map(([key, name]) => ({ key, name, who: nm(d.named[key] ?? -1) })) })),
         labs: o.labs.map((l) => ({ ...l, head: nm(l.head), theme: (NPC.labThemes.find((t) => t.id === l.theme) || { name: l.theme }).name })),
-        ventures: o.ventures.map((v) => ({ ...v, staff: v.staff.length, lead: nm(v.lead), announce: ai.text('venture', v.id) })),
+        ventures: o.ventures.map((v) => ({ ...v, staff: v.staff.length, lead: nm(v.lead), announce: `${o.name}の新事業「${v.name}」が始まりました。` })),
         think: o.think.slice(-30).reverse().map((t) => ({ ...t, name: w.card(t.i, day).name })),
         union: w.lab.unions[id], terms: (w.terms || {})[id] || null, lend: (w.lend || {})[id] || null,
         meetings: q('SELECT id, data FROM npc_meetings WHERE company = ? AND id < ? ORDER BY id DESC LIMIT 30').all(id, before).map((r) => ({ rid: r.id, ...JSON.parse(r.data) })),
@@ -589,21 +592,58 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     }
   });
 
-  // the Cloudflare host's AI, after a wake (outside the transaction): what the country asked to have written; アルファ's
-  // talk a few messages a wake; its days copied to R2
+  // the Cloudflare host's AI, after a wake (outside the transaction), for the 300 alone (NPC.elite): アルファ's 10's talk
+  // a few messages a wake; what the country asked to have written (a new mayor's speech, a CEO's advice); the 300's own
+  // choices, a batch at a time as far as the day's AI money goes; アルファ's days copied to R2
   async function writeAi(now = clock()) {
     let n = 0;
     if (ai.on) { try { n += await alphaTalk(now); } catch (e) { console.error('alpha talk failed', e); } }
     try { await alphaR2(now); } catch (e) { console.error('alpha r2 failed', e); }
+    if (!ai.on) return n;
     const w = get();
-    if (!w || !ai.on || !w.ai.length) return n;
-    const jobs = w.ai.splice(0).map((j) => jobOf(w, j)).filter(Boolean);
-    return n + await ai.run(jobs, now);
+    if (w && w.ai.length) { const jobs = w.ai.splice(0).map((j) => jobOf(w, j)).filter(Boolean); n += await ai.run(jobs, now); }
+    try { n += await eliteThink(now); } catch (e) { console.error('elite ai failed', e); }
+    return n;
+  }
+  // what the AI may have spent of the (UTC) day by now: a share of it as the people's hours go (NPC.elite.pace minutes
+  // ahead), all of it by their end — nothing before they begin
+  function paced(now, w) {
+    const h = NPC.hoursOf(now, w.first), t = NPC.jst(now).min;
+    if (t < h[0]) return 0;
+    return Math.min(1, (t - h[0] + NPC.elite.pace) / Math.max(1, h[1] - h[0]));
+  }
+  // 選ばれし300人's choices (server/core/npc-elite.js): those whose turn it is, a batch of one tier a call (the 10 first,
+  // then the 90, then the rest), up to six calls a wake, as far as the paced money goes
+  async function eliteThink(now) {
+    let n = 0;
+    for (let step = 0; step < 6; step++) {
+      const w = get();
+      if (!w) break;
+      const room = ai.cap * paced(now, w) - ai.used(now).neurons;
+      // (their turns as often as the day's money allows: npc-elite.js speed)
+      if (step === 0) { const h = NPC.hoursOf(now, w.first); elite.speed(w, ai.cap, h[1] - h[0]); }
+      const job = room > 0 ? elite.due(w, w.minute) : null;
+      if (!job) break;
+      const gens = job.list.map((i) => w.P.gen[i]);
+      const board = job.tier !== 'elite' && w.alpha && w.alpha.today ? w.alpha.today.board : null;
+      const p = elite.prompt(w, job.tier, job.list, w.day, board);
+      const said = await ai.ask(NPC.elite.model, 'elite', `${w.day}:${job.tier}:${job.list[0]}`, p.system, p.user, p.max, now, room);
+      const w2 = get();
+      if (!w2) break;
+      tx(() => {
+        if (said) elite.apply(w2, job.tier, job.list, said, w2.day, w2.minute, NPC.elite.model, gens);
+        else elite.later(w2, job.list, w2.minute, 10);
+        save('hot');
+      });
+      if (!said) break;
+      n++;
+    }
+    return n;
   }
   // 少数精鋭集団アルファ's talk (server/core/npc-alpha.js): its 10, each in their way, a message at a time (up to four a
   // wake) until the 15〜25 are said, the one with the most last with the conclusion. Each kept at once; the first order
   // in before it is done: the model's own words and plan stand (and what the AI had said is kept with them)
-  const ALPHA_SYSTEM = 'あなたは架空の国「ヴェルノア共和国」の株式投資家集団「アルファ」の会議で発言するメンバーです。実在の人物・企業・市場は扱わず、ゲームの中の架空の話として書きます。日本語の話し言葉で、1〜2文・40〜120文字、数字に触れて発言してください。前の人の発言に答えても構いません。発言の本文だけを書いてください。';
+  const ALPHA_SYSTEM = 'あなたは架空の国「ヴェルノア共和国」の株式投資家集団「アルファ」の会議で発言するメンバーです。実在の人物・企業・市場は扱わず、ゲームの中の架空の話として書きます。グループの決まり（最大2社・売買は合計2回まで・上限の範囲で資産の比率で拠出）を守り、株価・理論株価・配当・値動き・メンバーの見通し・これまでの損益を根拠に、自分の投資スタイルで考えてください。日本語の話し言葉で、1〜2文・40〜120文字、数字に触れて発言してください。前の人の発言に答えても構いません。発言の本文だけを書いてください。';
   const ALPHA_WAY = { value: '配当と理論株価から見た割安さ（ファンダメンタル）を重んじます。', swing: '短期の値動きと下げた後のリバウンド（反発）を狙います。', infra: '国の土台を支える企業の安定性と、値動きの小ささを重んじます。' };
   function alphaPrompt(j) {
     const pc = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}%`, $ = (x) => CORP.fmt.money(Math.round(x));
@@ -611,10 +651,15 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const lines = j.board.map((b) => `- ${b.name}（id: ${b.id}）株価${$(b.price)}・前日比${pc(b.r1)}・5日${pc(b.r5)}・20日${pc(b.r20)}・日々の変動${(b.vol * 100).toFixed(1)}%・理論株価${$(b.fair)}・配当利回り${(b.yield * 100).toFixed(1)}%・アルファの保有${b.held ? `${$(b.held * b.price)}（含み${pc(b.gain)}）` : 'なし'}`);
     const who = j.talkers.map((t) => `${t.rank}. ${t.name}（${t.styleName}）`).join('、');
     const said = j.msgs.slice(-10).map((x) => `${x.name}：${x.text}`).join('\n') || '（まだ誰も発言していません）';
+    // (what the 90 think of each company — their own AI's view, npc-elite.js — and the group's record so far)
+    const w0 = get(), G = w0 && w0.alpha, views = {};
+    if (w0 && w0.eliteAi && G) for (const m of G.members) { const x = w0.eliteAi.last[m.i]; if (x && x.view) for (const [id, v] of Object.entries(x.view)) (views[id] || (views[id] = [])).push(v); }
+    const mood = Object.entries(views).map(([id, vs]) => `${id} ${(vs.reduce((a, b) => a + b, 0) / vs.length >= 0 ? '+' : '')}${(vs.reduce((a, b) => a + b, 0) / vs.length).toFixed(1)}（${vs.length}人）`).join('・');
+    const record = G && G.sum ? `アルファのこれまで：${G.sum.days}日・確定損益${$(G.sum.realized)}・手数料${$(G.sum.fees)}` : '';
     let ask = `あなたは${j.who.name}（${j.who.styleName}）です。${ALPHA_WAY[j.who.style] || ''}次の発言をしてください。`;
     if (j.k === 0) ask = `あなたは議長の${j.who.name}（${j.who.styleName}）です。今日の議題を短く切り出し、あなたの考えを一言添えてください。`;
     if (j.last) ask = `あなたは議長の${j.who.name}です。議論をまとめて最終結論を出してください。最後の行は必ず「結論：買い magita 60、買い tenesice 40」のように、買い/売り・銘柄のid・割合(%)の形で書いてください（最大2社・合計2件まで。売りはアルファが保有している銘柄だけ。割合は買いならその日の資金の何%、売りなら保有の何%か）。`;
-    return `今日の議題：今日・今週に重点的に投資する企業を決める（最大2社・売買は全員で合計2回まで・投資しない日はなし・1日の上限は全体で${$(cap)}を資産の比率で拠出）。\n銘柄：\n${lines.join('\n')}\n参加者（資産順）：${who}\nこれまでの発言（${j.k}件目まで、全${j.target}件の予定）：\n${said}\n\n${ask}`;
+    return `今日の議題：今日・今週に重点的に投資する企業を決める（最大2社・売買は全員で合計2回まで・投資しない日はなし・1日の上限は全体で${$(cap)}を資産の比率で拠出）。\n銘柄：\n${lines.join('\n')}\n${mood ? `メンバー90人の見通し（−2〜+2の平均）：${mood}\n` : ''}${record ? `${record}\n` : ''}参加者（資産順）：${who}\nこれまでの発言（${j.k}件目まで、全${j.target}件の予定）：\n${said}\n\n${ask}`;
   }
   const alphaClean = (t) => String(t || '').replace(/^[「『"]|[」』"]$/g, '').replace(/^[^：:\n]{1,12}[：:]\s*/, (m) => (/結論/.test(m) ? m : '')).trim().slice(0, 300);
   async function alphaTalk(now) {
@@ -662,9 +707,12 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   }
   function jobOf(w, j) {
     const day = w.day;
+    // (the AI writes for the 300 alone: a mayor or a CEO of theirs — server/core/npc-elite.js)
+    const of300 = (i) => i >= 0 && i < w.P.n && !!(w.P.flags[i] & pop.FL.elite);
+    if ((j.kind === 'speech' || j.kind === 'voice') && !of300(j.i)) return null;
+    if (j.kind === 'decide' && !(w.orgs[j.company] && of300(w.orgs[j.company].ceo))) return null;
     if (j.kind === 'speech') { const c = w.card(j.i, day), d = w.districts[j.district]; return { kind: 'speech', ref: `${j.district}:${d.since}`, district: d.name, name: c.name, platform: (j.platform || []).map((id) => (NPC.platforms.find((p) => p.id === id) || {}).name).join('・') }; }
     if (j.kind === 'voice') { const c = w.card(j.i, day); return { kind: 'voice', ref: `${c.id}`, name: c.name, age: c.age, job: c.posts[0] || c.job, mood: c.voice }; }
-    if (j.kind === 'venture') { const o = w.orgs[j.company], v = o && o.ventures.find((x) => x.id === j.venture); return v ? { kind: 'venture', ref: v.id, company: o.name, name: v.name } : null; }
     if (j.kind === 'decide') return { kind: 'decide', ref: `${j.company}:${j.day}`, company: j.name, state: j.state, options: j.options };
     return null;
   }

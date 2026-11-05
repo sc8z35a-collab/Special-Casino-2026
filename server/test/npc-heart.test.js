@@ -203,7 +203,8 @@ test('a country kept before the mind: read back from its old blobs, everyone is 
   assert.ok(P2.ref[3] === Math.fround(P2.budget[3]));
   let elite = 0;
   for (let i = 0; i < P2.n; i++) if (P2.flags[i] & pop.FL.elite) elite++;
-  assert.equal(elite, Math.max(1, Math.round(200 * W2.scale)));
+  // (300 of a country of 10,000, fewer in a smaller one: NPC.elite)
+  assert.equal(elite, heart.eliteWant(P2.n));
   assert.ok(W2.owners && W2.owners.list, 'who owns the local businesses, made again');
 });
 

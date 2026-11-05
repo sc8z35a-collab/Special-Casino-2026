@@ -128,7 +128,8 @@ function leave(W, i, day, why) {
   P.rank[i] = 0;
   P.tenure[i] = 0;
 }
-// 60: the severance (two months of pay for each year at most), then most are kept on at 60% to 65
+// 60: the severance (two months of pay for each year at most), then most are kept on at 60% to 65 (by the new rules —
+// W.life2 — nobody: everyone retires)
 function retire(W, i, day, r) {
   const P = W.P, j = P.job[i];
   const id = NPC.companyOf(j);
@@ -137,7 +138,7 @@ function retire(W, i, day, r) {
   if (id) W.charge(id, null, 'severance', sev, i);
   else if (j === NPC.job.civil) { econ.nationOut(W, 'civil', sev); P.cash[i] += sev; }
   remember(P, i, day, M.retired, 180);
-  if (id && r.u() < 0.55 + 0.3 * (1 - P.cash[i] / 200000000)) {
+  if (id && !W.life2 && r.u() < 0.55 + 0.3 * (1 - P.cash[i] / 200000000)) {
     // kept on: the same company, 60% of the pay, no longer in a post
     W.org.vacate(W, i, day);
     P.flags[i] |= FL.rehired;
@@ -181,13 +182,14 @@ function localJobs(W, day, r) {
       if (age >= 75 && local.firmOf(P, i)) { leave(W, i, day, 'retire'); continue; }
       const end = (j === J.self ? L.localEnd * L.selfShare : L.localEnd) * hard / 30;
       // (MY WAY's economy's companies never let their people go: only those who retire leave them)
-      const kept = local.firmOf(P, i) && local.sphereOf(local.firmOf(P, i));
-      if (r.u() < end && (!kept || age >= 65)) { leave(W, i, day, age >= 65 ? 'retire' : j === J.self ? 'quit' : 'fired'); }
+      const kept = local.firmOf(P, i) && local.sphereOf(local.firmOf(P, i)), old = W.life2 ? NPC.life2.retire : 65;
+      if (r.u() < end && (!kept || age >= old)) { leave(W, i, day, age >= old ? 'retire' : j === J.self ? 'quit' : 'fired'); }
       continue;
     }
     // the retired of 60-74 the local companies take on part time (シニアの再雇用: Japan's are half at work to 69)
     if (j === J.retired) {
-      if (!gaps || r.u() >= L.offerDaily * L.seniors) continue;
+      // (by the new rules — W.life2 — nobody works after 60)
+      if (W.life2 || !gaps || r.u() >= L.offerDaily * L.seniors) continue;
       const age = ageOf(P, i, day);
       if (age < 60 || age >= 75 || P.health[i] < 120) continue;
       const f = pick();
@@ -201,7 +203,7 @@ function localJobs(W, day, r) {
     }
     if (j !== J.none || P.flags[i] & (FL.student | FL.mayor)) continue;
     const age = ageOf(P, i, day);
-    if (age < 18 || age >= 65 || r.u() >= L.offerDaily * L.localShare * want) continue;
+    if (age < 18 || age >= (W.life2 ? NPC.life2.retire : 65) || r.u() >= L.offerDaily * L.localShare * want) continue;
     // (a local company short of people first, else one of the small shops)
     const f = gaps > 0 && r.u() < 0.8 ? pick() : null;
     const kind = f || r.u() < 0.7 ? J.other : J.part;
@@ -262,6 +264,7 @@ function shortage(W, day, r, ctx) {
     if (P.flags[i] & (FL.student | FL.mayor | FL.exec | FL.research)) continue;
     if (j === J.other || j === J.self || j === J.part) { pool.push(i); continue; }
     if (j !== J.home && j !== J.retired) continue;
+    if (W.life2 && j === J.retired) continue;
     const age = ageOf(P, i, day);
     if (j === J.home ? age >= SHORT.homeAge[0] && age < SHORT.homeAge[1] : age >= SHORT.seniorAge[0] && age < SHORT.seniorAge[1] && P.health[i] >= SHORT.seniorHealth) pool.push(i);
   }

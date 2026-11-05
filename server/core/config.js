@@ -64,6 +64,10 @@ export function configFrom(env = {}, overrides = {}) {
     npcPopulation: int(env, 'NPC_POPULATION', 50000),
     npcAiModel: str(env, 'NPC_AI_MODEL', ''),
     npcAiNeurons: int(env, 'NPC_AI_NEURONS', 10000),
+    // (the yen a month the 300's AI may spend beyond the free Neurons — when not set, what NPC.elite.cap leaves once the
+    // people's rooms, NPC_ROOMS of them, are paid: server/core/npc-ai.js)
+    npcAiYen: int(env, 'NPC_AI_YEN', -1),
+    npcRooms: int(env, 'NPC_ROOMS', 0),
     // Private daily R2 vault snapshots, seven retained; a full recovery drill weekly.
     vaultSnapshots: flag(env, 'VAULT_SNAPSHOTS', true),
     vaultSnapshotHours: int(env, 'VAULT_SNAPSHOT_HOURS', 24),
