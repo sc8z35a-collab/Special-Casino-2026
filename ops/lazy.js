@@ -25,6 +25,8 @@
   window.OpsCorp = { live: function () {}, show: function (root, request, toast) { return Promise.all([load('corp.css'), load('../js/game/corp.js')]).then(function () { return load('corp.js'); }).then(function () { window.OpsCorp.show(root, request, toast); }).catch(failure); } };
   // 街: its styles, the shared rules of the country and the companies (BR.NPC, BR.CORP) and the app
   window.OpsTown = { live: function () {}, show: function (root, request, toast) { return Promise.all([load('town.css'), load('../js/game/corp.js'), load('../js/game/npc.js')]).then(function () { return load('town.js'); }).then(function () { window.OpsTown.show(root, request, toast); }).catch(failure); } };
+  // アルファ: the 街's styles and its own, the shared rules of the country (BR.NPC) and the app
+  window.OpsAlpha = { live: function () {}, show: function (root, request, toast) { return Promise.all([load('town.css'), load('alpha.css'), load('../js/game/corp.js'), load('../js/game/npc.js')]).then(function () { return load('alpha.js'); }).then(function () { window.OpsAlpha.show(root, request, toast); }).catch(failure); } };
   var watchApi;
   window.OpsWatch = {
     init: function (api) { watchApi = api; }, active: function () { return false; }, onLive: function () {},

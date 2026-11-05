@@ -27,6 +27,9 @@ import * as heart from './npc-heart.js';
 import { carByIndex } from './npc-mind.js';
 import * as research from './npc-research.js';
 import { createAi } from './npc-ai.js';
+import * as alphaModel from './npc-alpha.js';
+import { view as welfareView } from './npc-welfare.js';
+import crypto from 'node:crypto';
 import { LISTED_IDS } from './npc-market.js';
 import { fmtKnob } from './npc-politics.js';
 import { peopleSpent, feesOf } from './corp-model.js';
@@ -41,7 +44,7 @@ const KEEP_NEWS = 120, KEEP_MEETINGS = 400, KEEP_REPORTS = 600, KEEP_DAYS = 800;
 const DEPTHS = ['shallow', 'standard', 'deep', 'deepest'];
 const b64 = (u8) => Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength).toString('base64');
 
-export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config = {}, corp, stocks = () => null, live = null, opsIds = () => [], playersHeld = () => ({}), ai: binding = null, usage = () => 0, opsLog = null, alert = null, alertPlayers = null }) {
+export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config = {}, corp, stocks = () => null, live = null, opsIds = () => [], playersHeld = () => ({}), ai: binding = null, usage = () => 0, opsLog = null, alert = null, alertPlayers = null, blobs = () => null }) {
   const on = config.npc !== false;
   const N = Math.max(500, Math.min(NPC.nation.population, Number(config.npcPopulation) || NPC.nation.population));
   const key = keyFrom(secret, 'npc');
@@ -85,7 +88,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     return W;
   }
   // the AI 経営アドバイザー's answer to a company's choices asked on `day` (npc-org.js askAdvice; null: no AI here)
-  function adviser(w) { w.aiAdvice = ai.on ? (company, day) => ai.text('decide', company + ':' + day) : null; }
+  function adviser(w) { w.aiAdvice = ai.on ? (company, day) => ai.text('decide', company + ':' + day) : null; w.alphaAi = ai.on; }
   // the companies that came home since the country was kept (YOSIDA, WAZIMA): each hires its people once (model.welcome),
   // and the country is kept with them at once
   function homecoming(w) {
@@ -132,6 +135,11 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     for (const x of w.reasons.splice(0)) {
       const c = w.card(x.i, x.day);
       q('INSERT INTO npc_reports (company, kind, day, data) VALUES (?, ?, ?, ?)').run('', 'reason', x.day, JSON.stringify({ i: x.i, id: c.id, name: c.name, kind: x.kind, text: text.reason(w, x) }));
+    }
+    // 少数精鋭集団アルファ's days: kept here (70 of them), and copied to R2 after (alphaR2)
+    if (w.alpha && w.alpha.out && w.alpha.out.length) {
+      for (const r of w.alpha.out.splice(0)) q('INSERT INTO npc_alpha (day, data, r2) VALUES (?, ?, 0) ON CONFLICT(day) DO UPDATE SET data = excluded.data, r2 = 0').run(r.day, JSON.stringify(r));
+      q('DELETE FROM npc_alpha WHERE day < ?').run(w.day - NPC.alpha.keep);
     }
     // the town's talk: the latest lines, kept with the country
     w.talkFeed = w.talkFeed || [];
@@ -497,7 +505,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         // (the times' mood and the prices: server/core/npc-macro.js)
         macro: model.macroView(w),
         // (アスカ国, and the money ledger: every $ from someone to someone)
-        asuka: asukaModel.view(w), research: research.view(w), hachi: hachiView(w), fund: (corp.world() || {}).fund || null, ipDeals: dealsView(w), wages: wagesView(w), ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30),
+        asuka: asukaModel.view(w), research: research.view(w), hachi: hachiView(w), welfare: welfareView(w), fund: (corp.world() || {}).fund || null, ipDeals: dealsView(w), wages: wagesView(w), ledger: w.ledger ? { base: w.ledger.base, founded: w.ledger.founded || 0, drift: w.ledger.drift, worst: w.ledger.worst || 0, at: w.ledger.at, days: w.ledger.days.slice(-30),
           players: w.ledger.players ? { drift: w.ledger.players.drift, worst: w.ledger.players.worst || 0, days: w.ledger.players.days.slice(-30) } : null } : null };
       return { ...partOf(all, req.query.get('rev')), now };
     },
@@ -526,6 +534,17 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       return { people: out, found, now: clock() };
     },
     'GET /api/ops/npc/person': (req, u) => { see(u); started(); return { person: personCard(Number(req.query.get('i')), true), now: clock() }; },
+    // 少数精鋭集団アルファ (the operator site's アルファ app): its members, today's talk and orders, its days (one in full
+    // with ?day=: kept here, else from R2)
+    'GET /api/ops/npc/alpha': async (req, u) => {
+      see(u);
+      const w = get(), now = clock();
+      if (!w) return { started: false, now };
+      const day = req.query.get('day');
+      if (day !== null && day !== '') return { day: await alphaDay(Number(day)), now };
+      const kept = q('SELECT day, r2 FROM npc_alpha ORDER BY day DESC LIMIT ?').all(NPC.alpha.keep).map((r) => ({ day: r.day, r2: !!r.r2 }));
+      return { ...partOf({ ...alphaModel.view(w, ctx()), kept, ai: ai.on, r2: !!(blobs && blobs()) }, req.query.get('rev')), now };
+    },
     // a company's people: its executives, departments, named posts, meetings, reports, new businesses, labs, union
     'GET /api/ops/npc/org': (req, u) => {
       see(u);
@@ -570,12 +589,76 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     }
   });
 
-  // the Cloudflare host's AI, after a wake (outside the transaction): what the country asked to have written
+  // the Cloudflare host's AI, after a wake (outside the transaction): what the country asked to have written; アルファ's
+  // talk a few messages a wake; its days copied to R2
   async function writeAi(now = clock()) {
+    let n = 0;
+    if (ai.on) { try { n += await alphaTalk(now); } catch (e) { console.error('alpha talk failed', e); } }
+    try { await alphaR2(now); } catch (e) { console.error('alpha r2 failed', e); }
     const w = get();
-    if (!w || !ai.on || !w.ai.length) return 0;
+    if (!w || !ai.on || !w.ai.length) return n;
     const jobs = w.ai.splice(0).map((j) => jobOf(w, j)).filter(Boolean);
-    return ai.run(jobs, now);
+    return n + await ai.run(jobs, now);
+  }
+  // 少数精鋭集団アルファ's talk (server/core/npc-alpha.js): its 10, each in their way, a message at a time (up to four a
+  // wake) until the 15〜25 are said, the one with the most last with the conclusion. Each kept at once; the first order
+  // in before it is done: the model's own words and plan stand (and what the AI had said is kept with them)
+  const ALPHA_SYSTEM = 'あなたは架空の国「ヴェルノア共和国」の株式投資家集団「アルファ」の会議で発言するメンバーです。実在の人物・企業・市場は扱わず、ゲームの中の架空の話として書きます。日本語の話し言葉で、1〜2文・40〜120文字、数字に触れて発言してください。前の人の発言に答えても構いません。発言の本文だけを書いてください。';
+  const ALPHA_WAY = { value: '配当と理論株価から見た割安さ（ファンダメンタル）を重んじます。', swing: '短期の値動きと下げた後のリバウンド（反発）を狙います。', infra: '国の土台を支える企業の安定性と、値動きの小ささを重んじます。' };
+  function alphaPrompt(j) {
+    const pc = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}%`, $ = (x) => CORP.fmt.money(Math.round(x));
+    const cap = NPC.alpha.cap * ((get() || {}).scale || 1);
+    const lines = j.board.map((b) => `- ${b.name}（id: ${b.id}）株価${$(b.price)}・前日比${pc(b.r1)}・5日${pc(b.r5)}・20日${pc(b.r20)}・日々の変動${(b.vol * 100).toFixed(1)}%・理論株価${$(b.fair)}・配当利回り${(b.yield * 100).toFixed(1)}%・アルファの保有${b.held ? `${$(b.held * b.price)}（含み${pc(b.gain)}）` : 'なし'}`);
+    const who = j.talkers.map((t) => `${t.rank}. ${t.name}（${t.styleName}）`).join('、');
+    const said = j.msgs.slice(-10).map((x) => `${x.name}：${x.text}`).join('\n') || '（まだ誰も発言していません）';
+    let ask = `あなたは${j.who.name}（${j.who.styleName}）です。${ALPHA_WAY[j.who.style] || ''}次の発言をしてください。`;
+    if (j.k === 0) ask = `あなたは議長の${j.who.name}（${j.who.styleName}）です。今日の議題を短く切り出し、あなたの考えを一言添えてください。`;
+    if (j.last) ask = `あなたは議長の${j.who.name}です。議論をまとめて最終結論を出してください。最後の行は必ず「結論：買い magita 60、買い tenesice 40」のように、買い/売り・銘柄のid・割合(%)の形で書いてください（最大2社・合計2件まで。売りはアルファが保有している銘柄だけ。割合は買いならその日の資金の何%、売りなら保有の何%か）。`;
+    return `今日の議題：今日・今週に重点的に投資する企業を決める（最大2社・売買は全員で合計2回まで・投資しない日はなし・1日の上限は全体で${$(cap)}を資産の比率で拠出）。\n銘柄：\n${lines.join('\n')}\n参加者（資産順）：${who}\nこれまでの発言（${j.k}件目まで、全${j.target}件の予定）：\n${said}\n\n${ask}`;
+  }
+  const alphaClean = (t) => String(t || '').replace(/^[「『"]|[」』"]$/g, '').replace(/^[^：:\n]{1,12}[：:]\s*/, (m) => (/結論/.test(m) ? m : '')).trim().slice(0, 300);
+  async function alphaTalk(now) {
+    let n = 0;
+    for (let step = 0; step < 4; step++) {
+      const w = get(), job = w && alphaModel.talkJob(w);
+      if (!job) break;
+      const said = await ai.say('alpha', `${job.day}:${job.k}`, ALPHA_SYSTEM, alphaPrompt(job), job.last ? 220 : 140, now);
+      if (!said) break;
+      const w2 = get(), j2 = w2 && alphaModel.talkJob(w2);
+      if (!j2 || j2.day !== job.day || j2.k !== job.k) break;
+      tx(() => {
+        const d = w2.alpha.today;
+        d.talk.status = 'talking';
+        d.talk.msgs.push({ i: job.who.i, name: job.who.name, style: job.who.style, text: alphaClean(said), ai: true, ...(job.last ? { last: true } : {}) });
+        if (job.last) alphaModel.heard(w2, job.day, d.talk.msgs, said);
+        save('hot');
+      });
+      n++;
+    }
+    return n;
+  }
+  // its days to R2 (the bucket the host has: none, kept here only), 70 of them there too — the older taken out once a day
+  let alphaPruned = -1;
+  async function alphaR2(now) {
+    const b = blobs && blobs();
+    if (!b) return;
+    const rows = q('SELECT day, data FROM npc_alpha WHERE r2 = 0 ORDER BY day LIMIT 3').all();
+    for (const r of rows) {
+      const bytes = new TextEncoder().encode(r.data), sha = crypto.createHash('sha256').update(bytes).digest('hex');
+      if (await b.put(`npc-alpha/${r.day}.json`, bytes, sha)) q('UPDATE npc_alpha SET r2 = 1 WHERE day = ? AND data = ?').run(r.day, r.data);
+    }
+    const w = get(), today = w ? w.day : Math.floor(now / 86400000);
+    if (alphaPruned === today || !b.list || !b.del) return;
+    alphaPruned = today;
+    const old = (await b.list('npc-alpha/')).map((o) => o.key).filter((k) => Number(k.slice(10, -5)) < today - NPC.alpha.keep);
+    if (old.length) await b.del(old);
+  }
+  // one of its days in full: here, else from R2
+  async function alphaDay(day) {
+    const r = q('SELECT data FROM npc_alpha WHERE day = ?').get(day);
+    if (r) return JSON.parse(r.data);
+    const b = blobs && blobs(), o = b ? await b.get(`npc-alpha/${day}.json`) : null;
+    return o ? JSON.parse(new TextDecoder().decode(o.bytes)) : null;
   }
   function jobOf(w, j) {
     const day = w.day;

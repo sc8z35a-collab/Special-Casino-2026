@@ -3975,6 +3975,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
     opsIds: () => ops.operatorList().filter((o) => o.id && live.opsOnline(o.id)).map((o) => o.id),
     playersHeld: () => Object.fromEntries(q('SELECT company, SUM(shares) AS n FROM stock_holdings GROUP BY company').all().map((r) => [r.company, r.n || 0])),
     ai: host && host.ai ? host.ai : null, usage: () => { try { return stats.report(0).percent; } catch { return 0; } },
+    // (少数精鋭集団アルファ's days: R2 too, when the host has the bucket)
+    blobs: () => bucket || null,
     // (the money ledger moved: money made or lost somewhere — the developer told at once)
     alert: (day, moved, drift) => discord.danger('🧮', `マネー台帳がずれました：${CORP.dateLabel(day)}の締めで ${moved > 0 ? '+' : '−'}$${Math.abs(moved).toLocaleString('en-US')}（累計 ${drift >= 0 ? '+' : '−'}$${Math.abs(drift).toLocaleString('en-US')}）`, ['・お金は途中で生まれも消えもしないはずです。その日の流れ（corp_flows・npc_days）を確認してください']),
     // (the players' side: their money against what crossed between them and the country)

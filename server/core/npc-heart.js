@@ -417,7 +417,7 @@ export function view(W, i) {
     esteem: feel2(P, i, E2.esteem), tired: feel2(P, i, E2.tired), license: feel2(P, i, E2.license),
     beliefs: { inflation: belief(P, i, BL.infl) / 10, jobLoss: Math.round(belief(P, i, BL.job) / 2000 * 10000) / 100, market: Math.round(belief(P, i, BL.mkt) / 127 * 30) },
     lessons, plan: [P.plan[i * 2], P.plan[i * 2 + 1]].filter(Boolean).map((p) => PLAN_NAMES[p]), ethos: Math.round(ethosOf(P, i) * 100) / 100,
-    habit: Math.round(P.ref[i] || 0), windfall: Math.round(P.wind[i] || 0), stocked: P.hoard[i] || 0, elite: !!(P.flags[i] & FL.elite),
+    habit: Math.round(P.ref[i] || 0), windfall: Math.round(P.wind[i] || 0), stocked: P.hoard[i] || 0, elite: !!(P.flags[i] & FL.elite), alpha: !!(P.flags[i] & FL.alpha), poorest: !!(P.flags[i] & FL.poorest), gift: !!(P.flags[i] & FL.gift),
     ways: Object.fromEntries(Object.entries(td).map(([k, v]) => [k, Math.round(v * 100) / 100]))
   };
 }

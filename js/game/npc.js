@@ -195,6 +195,24 @@
   // (`carSpend`: how much more often a look at the cars becomes a decision than at the start — the people of both
   // countries spending on cars three and a half times as much as before: どんどん消費)
   var LIFE = { utilities: 40000, adult: 18, mean: 80, gompertz: 0.085, phone: 100000, casinoMonthly: 1000000, investDay: 50000000, tradesDay: 15, casinoPull: 1.6, casinoSpend: 1.5, carSpend: 3.5 };
+  // 最貧困層 (both countries, from 2026-11-05): the 1,000 with the least (総資産: cash, shares at their price, less what
+  // they owe — the adults', a child's money its household's), chosen again at each month's start (the same ones as often
+  // as they are still the poorest), each paid $5M a month by the state, theirs to use as they like — work or none, the
+  // 医療保険 or none — ($5B a month); in a dangerous bust (恐慌: the mood at −0.6 or below, or a bust with one in ten out
+  // of work) 3,000 and $15B. At a country's size its share of the 1,000.
+  var POOREST = { from: [2026, 11, 5], n: 1000, pay: 5000000, crisis: { n: 3000, mood: -0.6, bust: -0.25, jobless: 0.1 }, hist: 24 };
+  // 給付型経済成長 (ヴェルノア): once a year (each 12/1: the year's end shopping — the first 2026-12-01), $5M to each of
+  // the poorest 40% of its adults by what they have; for a week from that day each of them wants to buy three times as
+  // much (their pleasures, the cars, the games, the Shop's — not the bread they need)
+  var GIFT = { at: [12, 1], first: [2026, 12, 1], share: 0.4, pay: 5000000, days: 7, boost: 3 };
+  // 少数精鋭集団アルファ (from 2026-11-05): the 90 of 選ばれし300人 (ヴェルノア's part of them) with the most, made members
+  // for a month — never more, never fewer, never out by their own will, never dissolved —; its 10 at the top talk it over
+  // each day (Workers AI: 15〜25 messages, their three ways of thinking) and all 90 follow: at most two companies, at most
+  // two trades a day together, every day, up to $5B a day between them by what each has; what it makes or loses theirs
+  // by what each put in. Its talks and its days, 70 of them, kept (R2 and the server's own)
+  var ALPHA = { from: [2026, 11, 5], n: 90, top: 10, msgs: [15, 25], cap: 5000000000, companies: 2, trades: 2, keep: 70,
+    at: [9 * 60 + 30, 13 * 60 + 30], close: 15 * 60, slip: 0.03,
+    styles: [{ id: 'value', name: '配当・ファンダメンタル重視派' }, { id: 'swing', name: '値動き・リバウンド狙い派' }, { id: 'infra', name: 'インフラ・安定重視派' }] };
   // the money troubles: a loan from Tenesice at a high rate first (its クイックローン), then a friend's or family's
   // home (居候), then the street; the 生活保護 picks those it reaches
   var TROUBLE = { quickRate: 0.178, quickMax: 30000000, quickBase: 3000000, stayDays: 120, homelessFloor: -50000000 };
@@ -520,7 +538,7 @@
     nation: NATION, districts: DISTRICTS, places: PLACES, placeNames: PLACE_NAMES, acts: ACTS, act: ACT, hours: HOURS,
     holidays: holidays, jst: jst, hoursOf: hoursOf, activeAt: activeAt, nextActive: nextActive,
     companies: COMPANY_IDS, job: JOB, jobNames: JOB_NAMES, jobOf: jobOf, companyOf: companyOf, isCompanyJob: isCompanyJob, employed: employed, working: working, schedules: SCHEDULES, companySchedule: COMPANY_SCHEDULE, sites: SITES,
-    tax: TAX, social: SOCIAL, pension: PENSION, safety: SAFETY, retire: RETIRE, labor: LABOR, life: LIFE, trouble: TROUBLE,
+    tax: TAX, social: SOCIAL, pension: PENSION, safety: SAFETY, retire: RETIRE, labor: LABOR, life: LIFE, poorest: POOREST, gift: GIFT, alpha: ALPHA, trouble: TROUBLE,
     knobs: KNOBS, knob: KNOB, knobOf: knobOf, change: CHANGE, votes: VOTES, platforms: PLATFORMS, themes: THEMES, demands: DEMANDS,
     org: ORG, officers: OFFICERS, ranks: RANKS, rankPay: rankPay, labs: LABS, labThemes: LAB_THEMES, ventures: VENTURES,
     health: HEALTH, healthBand: healthBand, insurance: INSURANCE, hachiRoles: HACHI_ROLES,

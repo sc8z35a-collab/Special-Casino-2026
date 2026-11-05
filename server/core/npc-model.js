@@ -19,6 +19,8 @@ import { createPolitics } from './npc-politics.js';
 import { createLabor } from './npc-labor.js';
 import * as org from './npc-org.js';
 import { createMarket, LISTED_IDS } from './npc-market.js';
+import * as welfare from './npc-welfare.js';
+import * as alpha from './npc-alpha.js';
 import * as local from './npc-local.js';
 import * as text from './npc-text.js';
 import * as asuka from './asuka.js';
@@ -419,7 +421,10 @@ export function tick(W, m, ctx) {
   for (let i = 0; i < P.n; i++) if (P.due[i] <= m) decide(W, i, m, t, j, r, ctx);
   // HACHI's wards this minute: their desks, and the hour of those at −90 and below (server/core/hachi.js)
   hachi.tick(W, m, ctx, (i) => state.die(W, i, Math.floor(m / 1440), r, ctx));
+  // 少数精鋭集団アルファ: its day's trades in at their minutes, before the matching; its fills after (npc-alpha.js)
+  if (W.alpha) alpha.tick(W, m, t, ctx);
   W.market.auction(W, m, ctx);
+  if (W.alpha) { alpha.swept(W); alpha.filled(W, m); }
   // アスカ国's people, the same minute (server/core/asuka.js tick)
   asuka.tick(W, m, j);
 }
@@ -540,6 +545,10 @@ export function nextDay(W, day, ext, ctx) {
   W.day = next;
   refresh(W, next, ctx);
   state.dayStart(W, next, r, ctx);
+  // 最貧困層's month (both countries) and 給付型経済成長's day: the state's money to its poorest (npc-welfare.js)
+  welfare.day(W, next, ctx);
+  // 少数精鋭集団アルファ: its month's 90, its day's meeting (npc-alpha.js; the AI's talk: server/core/npc.js)
+  alpha.day(W, next, ctx, !!W.alphaAi);
   W.politics.day(W, next, r);
   org.orgDay(W, next, r, ctx);
   restock(W, next);

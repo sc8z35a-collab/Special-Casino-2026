@@ -72,6 +72,27 @@ var OpsTown = (function () {
 
   // the times' mood and the prices (server/core/npc-macro.js macroView): what pulls the mood, what everyone expects
   // the prices to do, the price index and the rents against the beginning, and the last 120 days of the mood
+  // 最貧困層 (both countries) and 給付型経済成長 (ヴェルノア): server/core/npc-welfare.js view
+  function welfarePanel(box, w) {
+    var p = panel('最貧困層の生活保護・給付型経済成長', '毎月1日に資産の下位を選び直し1人$5,000,000（危険な不況では3,000人規模）・年に1回、下位40%の国民に$5,000,000と1週間の購買意欲3倍');
+    if (!w || (!w.vernoa && !w.asuka && !w.gift)) { p.appendChild(el('p', 'muted', '2026年11月5日に始まります。')); box.appendChild(p); return; }
+    var rows = [['ヴェルノア', w.vernoa], ['アスカ国', w.asuka]].filter(function (x) { return x[1]; }).map(function (x) {
+      var v = x[1];
+      return [x[0], day(v.day), v.n.toLocaleString('ja-JP') + '人' + (v.crisis ? '（危険な不況で拡大）' : ''), money(v.paid), money(v.budget), money(v.line), v.again.toLocaleString('ja-JP') + '人'];
+    });
+    p.appendChild(table(['国', '選定日', '対象者', '今月の支給', '今月の予算', '対象の資産の上限', '前月から続けて対象'], rows));
+    var g = w.gift;
+    if (g) {
+      var q = el('div', 'town-grid');
+      kv(q, '給付型経済成長（' + g.year + '年）', day(g.day) + '・' + g.n.toLocaleString('ja-JP') + '人（成人' + g.of.toLocaleString('ja-JP') + '人の下位40%）');
+      kv(q, '支給額', money(g.paid));
+      kv(q, '購買意欲3倍の期間', day(g.day) + '〜' + day(g.until - 1) + (g.on ? '（実施中）' : '（終了）'));
+      p.appendChild(q);
+    } else p.appendChild(el('p', 'muted', '給付型経済成長：毎年12月1日（初回 2026年12月1日）に支給します。'));
+    var h = (w.vernoa && w.vernoa.hist) || [];
+    if (h.length > 1) p.appendChild(el('p', 'muted town-note', 'これまで（ヴェルノア）：' + h.slice(-6).map(function (x) { return day(x.day) + ' ' + x.n + '人' + (x.crisis ? '（拡大）' : ''); }).join('・')));
+    box.appendChild(p);
+  }
   function macroPanel(box, m) {
     var p = panel('景気の波と物価', '市民・企業・国が感じている景気（バブル〜恐慌）と、それによるインフレ・デフレ・誰も決めていません');
     if (!m) { p.appendChild(el('p', 'muted', '国の次の日から数えます。')); box.appendChild(p); return; }
@@ -445,6 +466,7 @@ var OpsTown = (function () {
     box.appendChild(p);
     gdpPanel(box, r.gdp && r.gdp.vernoa, r.nation.name);
     macroPanel(box, r.macro);
+    welfarePanel(box, r.welfare);
     var nf = r.nationFull;
     p = panel('国の帳簿', 'テネシスの国の口座');
     g = el('div', 'town-grid');
@@ -454,7 +476,7 @@ var OpsTown = (function () {
     // (each kind's name; one not listed shows as it is)
     var KIND = { consumption: '消費税', income: '所得税', social: '社会保険料', corporate: '法人税', inheritance: '相続税', escheat: '相続人のいない遺産', gains: '譲渡益税',
       pensionIn: '年金の保険料', civil: '公務員の給与', pension: '年金', welfare: '生活保護', jobless: '失業手当', medical: '医療', works: '公共事業', grants: '交付金・給付',
-      guarantee: '未払賃金の立替払', bondInterest: '国債の利子', debtInterest: 'テネシスへの利子', casinoWins: '市民のスロットの勝ち分',
+      guarantee: '未払賃金の立替払', bondInterest: '国債の利子', debtInterest: 'テネシスへの利子', casinoWins: '市民のスロットの勝ち分', poorest: '最貧困層の生活保護（月$5M）', gift: '給付型経済成長（年1回$5M）',
       slotWins: 'プレイヤーのスロットの勝ち分', questRewards: 'クエストの報酬', gachaClaims: 'ガチャ代（YOSIDAへ）', loginBonus: 'ログインボーナス', dailyTokens: '毎日の無料トークン',
       coopBonus: '協力プレイのボーナス', releaseBonus: 'アップデートのお礼', medalRewards: '功績の報酬', diaryRewards: '日記の報酬', treeHarvest: '金の生る木の収穫', npcGifts: 'ジョンソン・運営からの贈り物',
       playerStart: 'プレイヤーの初期資金', treeFund: '金の生る木の肥料（収穫の財源）', newLife: '生まれた人の初期資金', bankRescue: 'テネシスへの公的資金', asukaBonds: 'アスカ国の政府系ファンドへの国債の利子', gachaShare: 'ガチャ代の国庫分（' + Math.round((1 - ((C() && C().yosida.gacha.share) || 0.8)) * 100) + '%）',
@@ -608,7 +630,7 @@ var OpsTown = (function () {
       var g2 = el('div', 'town-grid');
       kv(g2, '今日の予定', mi.plan.length ? mi.plan.join('・') : '—');
       kv(g2, '物価の見通し', '年' + mi.beliefs.inflation.toFixed(1) + '%'); kv(g2, '失業の心配', '月' + mi.beliefs.jobLoss + '%'); kv(g2, '株の見通し', '年' + (mi.beliefs.market > 0 ? '+' : '') + mi.beliefs.market + '%');
-      kv(g2, 'いつもの月の予算', money(mi.habit)); kv(g2, '臨時のお金', money(mi.windfall)); kv(g2, '買いだめ', mi.stocked ? 'あと' + mi.stocked + '日分' : 'なし'); kv(g2, '選ばれし300人', mi.elite ? 'はい' : 'いいえ');
+      kv(g2, 'いつもの月の予算', money(mi.habit)); kv(g2, '臨時のお金', money(mi.windfall)); kv(g2, '買いだめ', mi.stocked ? 'あと' + mi.stocked + '日分' : 'なし'); kv(g2, '選ばれし300人', mi.elite ? 'はい' : 'いいえ'); kv(g2, '少数精鋭集団アルファ', mi.alpha ? 'メンバー' : '—'); kv(g2, '最貧困層（生活保護 月$5M）', mi.poorest ? '対象' : '—'); if (mi.gift) kv(g2, '給付型経済成長', '今週は購買意欲3倍');
       p.appendChild(g2);
       var ln = { gamble: 'スロット', debt: '借金', job: '仕事', market: '株', spend: '買い物', luxury: '高い物', save: '貯金', friends: '友だち' };
       var lessons = Object.keys(mi.lessons || {}).filter(function (k) { return Math.abs(mi.lessons[k]) >= 8; });

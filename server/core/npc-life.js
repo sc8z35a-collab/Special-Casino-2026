@@ -601,7 +601,7 @@ function games(W, i, day, r, ctx) {
     // (and what those who bought it say of it: a hit talked up, a flop down — npc-heart.js word)
     const fans = Math.max(0.05, (t.buzz || 0.5) + (P.emo2 ? heart.buzzOf(W, t.id) : 0));
     // (and the more, the more one lets oneself spend on games against what it costs)
-    const p = W.cal.gameBuy * g * Math.exp((t.q - 72) / 12) * Math.exp(-age / 45) * (0.5 + fans) * (age < 7 ? 2 : 1) * (P.emo2 ? Math.max(0.3, Math.min(2.5, Math.sqrt(budget / Math.max(1, t.price * 1.5)))) : 1);
+    const p = W.cal.gameBuy * g * Math.exp((t.q - 72) / 12) * Math.exp(-age / 45) * (0.5 + fans) * (age < 7 ? 2 : 1) * (P.emo2 ? Math.max(0.3, Math.min(2.5, Math.sqrt(budget / Math.max(1, t.price * 1.5)))) : 1) * econ.keenOf(W, i, day);
     if (r.u() >= p) continue;
     // (an edition by what they can spend: the standard, the deluxe, the collector's)
     const ed = budget > t.price * 30 && r.u() < 0.4 ? 30 : budget > t.price * 3 && r.u() < 0.4 ? 3 : 1;
@@ -636,7 +636,7 @@ function games(W, i, day, r, ctx) {
     }
   } else if (r.u() < 0.02 * g * (P.emo2 ? 1 + 3 * heart.apathyNow(P, i) * heart.tendency(P, i, 'apathy') : 1) && W.liveGames && W.liveGames.length) P.live[i] = 1 + r.int(W.liveGames.length);
   // the older games (the catalogue)
-  if (r.u() < W.cal.catalog * g) {
+  if (r.u() < W.cal.catalog * g * econ.keenOf(W, i, day)) {
     const co = r.u() < 0.85 ? 'ice' : 'riru', n = 3000 + r.int(4) * 1000;
     if (n < budget - spent && econ.pay(W, i, econ.withTax(W, n), false)) {
       const tax = econ.withTax(W, n) - n;
