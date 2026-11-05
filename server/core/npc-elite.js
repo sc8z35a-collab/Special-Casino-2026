@@ -8,7 +8,7 @@
 // they buy and sell (npc-market.js). The AI only chooses: the engine does it all, and never moves money for it
 // (docs/ai-economy-plan.md 0.2). The host asks (server/core/npc.js writeAi) as far as the day's AI money goes.
 import { NPC } from './rules.js';
-import { T, N, E, E2, NT, NN, LS, NL, FL, LISTED, ageOf, nameOf, HOME } from './npc-pop.js';
+import { T, N, E, E2, NT, NN, LS, NL, FL, LISTED, ageOf, HOME } from './npc-pop.js';
 import { PLAN_NAMES } from './npc-heart.js';
 import { LISTED_IDS } from './npc-market.js';
 import { thinkJob, thinkCar } from './npc-mind.js';
@@ -20,39 +20,38 @@ const TIER_NAMES = { top: 'アルファの会議の10人', alpha: 'アルファ�
 const state = (W) => W.eliteAi || (W.eliteAi = { next: {}, last: {}, asked: 0, answered: 0, days: {} });
 
 /* ---------------------------------------------------------------- who --- */
-// the 10 at アルファ's meetings today (else the richest 10 of its members)
-function topTen(W) {
-  const d = W.alpha && W.alpha.today;
-  if (d && d.talkers) return new Set(d.talkers.map((t) => t.i));
-  const m = ((W.alpha && W.alpha.members) || []).slice().sort((a, b) => (b.wealth || 0) - (a.wealth || 0)).slice(0, NPC.alpha.top);
-  return new Set(m.map((x) => x.i));
+// the 300 by tier, made once a day (the 300 are chosen a month at a time, アルファ's members and its 10 each day) and
+// kept off the saved world (W._roster): a turn's look is through them, never through everyone. One gone since (a new
+// life in their place, without the mark) is passed over until it is made again.
+function roster(W) {
+  const day = W.day, d = W.alpha && W.alpha.today, key = `${day}:${d ? d.day : -1}:${W.P.n}`;
+  if (W._roster && W._roster.key === key) return W._roster;
+  const P = W.P, ten = new Set(d && d.talkers ? d.talkers.map((t) => t.i) : ((W.alpha && W.alpha.members) || []).slice().sort((a, b) => (b.wealth || 0) - (a.wealth || 0)).slice(0, NPC.alpha.top).map((m) => m.i));
+  const R = { key, ten, top: [], alpha: [], elite: [] };
+  for (let i = 0; i < P.n; i++) { const f = P.flags[i]; if (f & FL.alpha) R[ten.has(i) ? 'top' : 'alpha'].push(i); else if (f & FL.elite) R.elite.push(i); }
+  return (W._roster = R);
 }
 // a person's tier (null: a citizen, without AI)
-export function tierOf(W, i, ten = topTen(W)) {
+export function tierOf(W, i) {
   const f = W.P.flags[i];
-  if (ten.has(i) && f & FL.alpha) return 'top';
-  if (f & FL.alpha) return 'alpha';
-  if (f & FL.elite) return 'elite';
-  return null;
+  if (f & FL.alpha) return roster(W).ten.has(i) ? 'top' : 'alpha';
+  return f & FL.elite ? 'elite' : null;
 }
-// those whose turn it is at minute `m`: the highest tier first, `EL.batch` of one tier at most
+// those whose turn it is at minute `m`: the highest tier first, `EL.batch` of one tier at most (the longest waiting)
 export function due(W, m) {
-  const P = W.P, S = state(W), ten = topTen(W), by = { top: [], alpha: [], elite: [] };
-  for (let i = 0; i < P.n; i++) {
-    if (!(P.flags[i] & (FL.elite | FL.alpha))) continue;
-    const t = tierOf(W, i, ten);
-    if (!t || (S.next[i] !== undefined && S.next[i] > m)) continue;
-    by[t].push(i);
+  const P = W.P, S = state(W), R = roster(W);
+  for (const t of TIERS) {
+    const mark = t === 'elite' ? FL.elite : FL.alpha, list = [];
+    for (const i of R[t]) if (P.flags[i] & mark && !(S.next[i] > m)) list.push(i);
+    if (list.length) return { tier: t, list: list.sort((a, b) => (S.next[a] ?? -1) - (S.next[b] ?? -1)).slice(0, EL.batch) };
   }
-  for (const t of TIERS) if (by[t].length) return { tier: t, list: by[t].sort((a, b) => (S.next[a] ?? -1) - (S.next[b] ?? -1)).slice(0, EL.batch) };
   return null;
 }
 // how often their turns come: as often as the day's AI money (`cap` Neurons) allows over the people's `minutes` of the
 // day — the longest NPC.elite.every, the shortest a `fastest` share of it (S.f: that share)
 export function speed(W, cap, minutes) {
-  const S = state(W), ten = topTen(W), n = { top: 0, alpha: 0, elite: 0 }, P = W.P;
-  for (let i = 0; i < P.n; i++) if (P.flags[i] & (FL.elite | FL.alpha)) { const t = tierOf(W, i, ten); if (t) n[t]++; }
-  const need = TIERS.reduce((a, t) => a + n[t] * Math.max(1, minutes) / EL.every[t] * EL.perChoice, 0);
+  const S = state(W), R = roster(W);
+  const need = TIERS.reduce((a, t) => a + R[t].length * Math.max(1, minutes) / EL.every[t] * EL.perChoice, 0);
   S.f = Math.max(EL.fastest, Math.min(1, need > 0 ? need / Math.max(1, cap) : 1));
   return S.f;
 }
@@ -70,7 +69,7 @@ const TRAIT_WORDS = [
 ];
 const NEED_WORDS = { [N.fun]: '楽しみ', [N.thrill]: 'スリル', [N.status]: '見栄・地位', [N.security]: '安心', [N.move]: '移動', [N.social]: '人づきあい', [N.rest]: '休息', [N.achieve]: '達成感', [N.fair]: '公平さ' };
 const LESSON_WORDS = { [LS.gamble]: ['賭けは割に合う', '賭けで痛い目を見た'], [LS.debt]: ['借金は役に立つ', '借金はこわい'], [LS.job]: ['仕事は報われる', '仕事は報われない'], [LS.market]: ['株はもうかる', '株で損をした'], [LS.spend]: ['使えば満たされる', '使っても満たされない'], [LS.luxury]: ['ぜいたくは価値がある', 'ぜいたくはむなしい'], [LS.save]: ['貯金は大事', '貯金しても仕方ない'], [LS.friends]: ['友は頼れる', '人は当てにならない'] };
-const yen = (x) => (Math.abs(x) >= 1e8 ? `${Math.round(x / 1e7) / 10}億` : Math.abs(x) >= 1e4 ? `${Math.round(x / 1e4)}万` : `${Math.round(x)}`) + '円';
+const yen = (x) => (Math.abs(x) >= 1e8 ? `${Math.round(x / 1e7) / 10}億` : Math.abs(x) >= 1e4 ? `${Math.round(x / 1e4)}万` : `${Math.round(x)}`);
 // one person as the AI is told of them (a line, short)
 export function describe(W, i, day) {
   const P = W.P, tr = (t) => P.tr[i * NT + t];
@@ -89,9 +88,10 @@ export function describe(W, i, day) {
   const job = NPC.jobNames[P.job[i]] || '';
   const home = P.home[i] === HOME.own ? '持ち家' : P.home[i] === HOME.rent ? '賃貸' : P.home[i] === HOME.family ? '実家' : P.home[i] === HOME.stay ? '居候' : '路上';
   const fam = P.hh[i] >= 0 ? `${P.spouse[i] >= 0 ? '既婚' : '独身'}` : '独身';
-  return `${nameOf(P, i).name}（${ageOf(P, i, day)}歳・${job}${P.rank[i] >= 3 ? '・役職者' : ''}・年収${yen(P.salary[i])}・現金${yen(P.cash[i])}${P.debt[i] > 0 ? `・借金${yen(P.debt[i])}` : ''}・${fam}・${home}・車${P.car[i] ? 'あり' : 'なし'}）`
-    + `性格：${traits.join('・') || 'ふつう'}／気持ち：${emo.join('・') || '落ち着いている'}／足りないもの：${lack.join('・') || 'とくになし'}`
-    + `${lessons.length ? `／人生の教訓：${lessons.join('・')}` : ''}${held.length ? `／持ち株：${held.join('・')}` : ''}`;
+  // (short: the AI reads them by their number — every token of it is the 300's AI money)
+  return `${ageOf(P, i, day)}歳・${job}${P.rank[i] >= 3 ? '(役職)' : ''}・年収${yen(P.salary[i])}・現金${yen(P.cash[i])}${P.debt[i] > 0 ? `・借金${yen(P.debt[i])}` : ''}・${fam}・${home}${P.car[i] ? '・車あり' : ''}`
+    + `｜性格:${traits.join(',') || 'ふつう'}｜気分:${emo.join(',') || '平静'}｜不足:${lack.join(',') || 'なし'}`
+    + `${lessons.length ? `｜教訓:${lessons.join(',')}` : ''}${held.length ? `｜株:${held.join(',')}` : ''}`;
 }
 // the AI's instructions and the batch's question
 export function prompt(W, tier, list, day, board = null) {
@@ -208,8 +208,7 @@ export function apply(W, tier, list, text, day, m, model = EL.model, gens = null
 // for 運営: a person's AI's last choice, and the tiers' counts
 export function viewOf(W, i) { const x = W.eliteAi && W.eliteAi.last[i]; return x && x.gen === W.P.gen[i] ? { ...x, plans: x.plans.map((p) => PLAN_NAMES[p]), tier: TIER_NAMES[x.tier], act: x.act || null } : null; }
 export function summary(W) {
-  const P = W.P, ten = topTen(W), n = { top: 0, alpha: 0, elite: 0 };
-  for (let i = 0; i < P.n; i++) { const t = (P.flags[i] & (FL.elite | FL.alpha)) ? tierOf(W, i, ten) : null; if (t) n[t]++; }
+  const R = roster(W), n = { top: R.top.length, alpha: R.alpha.length, elite: R.elite.length };
   const S = W.eliteAi || { asked: 0, answered: 0, days: {} };
   return { tiers: n, asked: S.asked, answered: S.answered, days: S.days, model: EL.model, topModel: EL.topModel, every: Object.fromEntries(TIERS.map((t) => [t, everyOf(W, t)])) };
 }

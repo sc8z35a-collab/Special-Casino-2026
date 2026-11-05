@@ -48,7 +48,7 @@ test('what the AI is told: who they are by their character and life, all the pla
   const i = Array.from({ length: P.n }, (_, k) => k).find((k) => P.flags[k] & pop.FL.elite);
   const line = elite.describe(W, i, W.day);
   assert.match(line, /歳/);
-  assert.match(line, /性格：/);
+  assert.match(line, /性格:/);
   const p = elite.prompt(W, 'elite', [i], W.day);
   for (const name of ['ご褒美', '節約', '投資', '地元で買う']) assert.ok(p.user.includes(name));
   assert.ok(!p.user.includes('見通し='));
@@ -130,4 +130,22 @@ test('what they may do at once, by the AI\'s choice: buy and sell shares, borrow
   elite.apply(W, 'elite', [i], '1 行動=repay:50 理由=x', W.day, m, EL.model, null, run);
   assert.equal(P.cash[i] - P.debt[i], net);
   assert.equal(elite.viewOf(W, i).act.did, 'repay');
+});
+
+test('the turns (npc-think.js): the 300 a batch a call and the AI 社長 a company a call, as far as the paced money goes, stopping at the first unanswered', async () => {
+  const { createThinker } = await import('../core/npc-think.js');
+  const W = country(2000);
+  W.P.flags[W.orgs.carowner.president] |= pop.FL.elite;
+  let spent = 0, calls = [];
+  const ai = { cap: 1e6, used: () => ({ neurons: spent }), ask: async (model, kind, ref, s, u) => { calls.push(kind); spent += 10; return kind === 'boss' ? '選択=1 理由=x' : u.split('\n').filter((l) => /^\d+\. /.test(l)).map((l) => `${l.split('.')[0]} 予定=4 行動=none 理由=休む`).join('\n'); } };
+  const ctx = () => ({ corp: W._corp, stockPrice: () => 10000, carPrice: () => 1e9, fair: {} });
+  const t = createThinker({ ai, get: () => W, tx: (f) => f(), save: () => {}, ctx, hours: () => [0, 1440] });
+  const now = Date.UTC(2026, 10, 2, 12, 0, 0);
+  const n = await t.elite(now);
+  assert.equal(n, 6);
+  assert.ok(calls.every((k) => k === 'elite') && W.eliteAi.answered > 0);
+  // (no money left: nothing asked)
+  ai.cap = spent;
+  assert.equal(await t.elite(now), 0);
+  assert.equal(calls.length, 6);
 });

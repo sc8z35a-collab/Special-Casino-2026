@@ -744,7 +744,7 @@ export function card(W, i, day) {
 // the plain data of a world (what is kept besides the people's columns)
 // (`hosp`: HACHI's wards' desks and queues this minute — remade as people come; those at −90 and below from their
 // `crit` column, server/core/hachi.js)
-const SKIP = new Set(['P', 'AP', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners', 'knobChanged', 'carSold', 'closeIntoYamato', 'stateTake', 'aiAdvice', 'hosp']);
+const SKIP = new Set(['P', 'AP', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners', 'knobChanged', 'carSold', 'closeIntoYamato', 'stateTake', 'aiAdvice', 'hosp', '_roster']);
 export function metaOf(W) {
   const out = {};
   for (const [k, v] of Object.entries(W)) if (!SKIP.has(k) && typeof v !== 'function') out[k] = v;

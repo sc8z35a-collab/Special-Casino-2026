@@ -30,7 +30,7 @@ import { createAi, aiYen } from './npc-ai.js';
 import * as alphaModel from './npc-alpha.js';
 import * as elite from './npc-elite.js';
 import * as boss from './npc-boss.js';
-import { seeded } from './npc-rand.js';
+import { createThinker } from './npc-think.js';
 import { view as welfareView } from './npc-welfare.js';
 import crypto from 'node:crypto';
 import { LISTED_IDS } from './npc-market.js';
@@ -608,70 +608,12 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     if (!ai.on) return n;
     const w = get();
     if (w && w.ai.length) { const jobs = w.ai.splice(0).map((j) => jobOf(w, j)).filter(Boolean); n += await ai.run(jobs, now); }
-    try { n += await eliteThink(now); } catch (e) { console.error('elite ai failed', e); }
-    try { n += await bossThink(now); } catch (e) { console.error('boss ai failed', e); }
+    try { n += await think.elite(now); } catch (e) { console.error('elite ai failed', e); }
+    try { n += await think.boss(now); } catch (e) { console.error('boss ai failed', e); }
     return n;
   }
-  // 社長のAI (server/core/npc-boss.js): a company whose 社長 is one of the 300, once a day, told of its company as it is
-  // that moment and choosing its 社長決裁 with the stronger model — two companies a wake at most, within the paced money
-  async function bossThink(now) {
-    let n = 0;
-    for (let step = 0; step < 2; step++) {
-      const w = get();
-      if (!w) break;
-      const room = ai.cap * paced(now, w) - ai.used(now).neurons, c = ctx();
-      const id = room > 0 ? boss.due(w, c, w.day) : null;
-      if (!id) break;
-      const list = boss.options(w, id, c, w.day, seeded(w.key, `boss:${w.day}:${id}`)), p = boss.prompt(w, id, c, w.day, list);
-      const said = await ai.ask(NPC.elite.topModel, 'boss', `${w.day}:${id}`, p.system, p.user, p.max, now, room);
-      const w2 = get();
-      if (!w2) break;
-      tx(() => {
-        // (no answer: its turn tomorrow — the 社長 decides without the AI today, at its meetings)
-        boss.decide(w2, id, list, said || '', ctx(), w2.day, seeded(w2.key, `boss!:${w2.day}:${id}`));
-        save('hot');
-      });
-      if (!said) break;
-      n++;
-    }
-    return n;
-  }
-  // what the AI may have spent of the (UTC) day by now: a share of it as the people's hours go (NPC.elite.pace minutes
-  // ahead), all of it by their end — nothing before they begin
-  function paced(now, w) {
-    const h = NPC.hoursOf(now, w.first, hw(w)), t = NPC.jst(now).min;
-    if (t < h[0]) return 0;
-    return Math.min(1, (t - h[0] + NPC.elite.pace) / Math.max(1, h[1] - h[0]));
-  }
-  // 選ばれし300人's choices (server/core/npc-elite.js): those whose turn it is, a batch of one tier a call (the 10 first,
-  // then the 90, then the rest), up to six calls a wake, as far as the paced money goes
-  async function eliteThink(now) {
-    let n = 0;
-    for (let step = 0; step < 6; step++) {
-      const w = get();
-      if (!w) break;
-      const room = ai.cap * paced(now, w) - ai.used(now).neurons;
-      // (their turns as often as the day's money allows: npc-elite.js speed)
-      if (step === 0) { const h = NPC.hoursOf(now, w.first, hw(w)); elite.speed(w, ai.cap, h[1] - h[0]); }
-      const job = room > 0 ? elite.due(w, w.minute) : null;
-      if (!job) break;
-      const gens = job.list.map((i) => w.P.gen[i]);
-      const board = job.tier !== 'elite' && w.alpha && w.alpha.today ? w.alpha.today.board : null;
-      const p = elite.prompt(w, job.tier, job.list, w.day, board);
-      const said = await ai.ask(NPC.elite.model, 'elite', `${w.day}:${job.tier}:${job.list[0]}`, p.system, p.user, p.max, now, room);
-      const w2 = get();
-      if (!w2) break;
-      tx(() => {
-        // (what they chose to do at once, done by the engine with the day's prices and a draw of the minute's)
-        if (said) elite.apply(w2, job.tier, job.list, said, w2.day, w2.minute, NPC.elite.model, gens, { ctx: ctx(), r: seeded(w2.key, `elite:${w2.minute}:${job.list[0]}`) });
-        else elite.later(w2, job.list, w2.minute, 10);
-        save('hot');
-      });
-      if (!said) break;
-      n++;
-    }
-    return n;
-  }
+  // the 300's and the AI 社長's turns (server/core/npc-think.js), within the day's AI money by the people's hours
+  const think = createThinker({ ai, get: () => get(), tx: (f) => tx(f), save: (k) => save(k), ctx: () => ctx(), hours: (now, w) => NPC.hoursOf(now, w.first, hw(w)) });
   // 少数精鋭集団アルファ's talk (server/core/npc-alpha.js): its 10, each in their way, a message at a time (up to four a
   // wake) until the 15〜25 are said, the one with the most last with the conclusion. Each kept at once; the first order
   // in before it is done: the model's own words and plan stand (and what the AI had said is kept with them)

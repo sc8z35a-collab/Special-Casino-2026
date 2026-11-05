@@ -28,10 +28,13 @@ const plain = (t) => String(t || '').replace(/<think>[\s\S]*?(<\/think>|$)/g, ''
 
 export function createAi({ binding = null, q, clock = Date.now, daily = EL.free, yen = aiYen(), model = EL.model }) {
   const cap = dailyCap(daily, yen);
-  const dayStart = (ms) => Math.floor(ms / DAY) * DAY;
+  // (the day's spend: read once from what was kept when a day begins — the host may have woken anew —, then kept here
+  // as each call is counted: no sum over the day's calls at each look)
+  let spent = { day: -1, n: 0, c: 0 };
   function used(now = clock()) {
-    const r = q('SELECT COALESCE(SUM(neurons), 0) AS n, COUNT(*) AS c FROM npc_ai WHERE at >= ?').get(dayStart(now));
-    return { neurons: r.n, calls: r.c, cap };
+    const d = Math.floor(now / DAY);
+    if (spent.day !== d) { const r = q('SELECT COALESCE(SUM(neurons), 0) AS n, COUNT(*) AS c FROM npc_ai WHERE at >= ?').get(d * DAY); spent = { day: d, n: r.n, c: r.c }; }
+    return { neurons: spent.n, calls: spent.c, cap };
   }
   // one call of `use` (a model) as far as `room` allows: its answer kept (or null: no room, no binding, nothing said)
   async function ask(use, kind, ref, system, user, max = 160, now = clock(), room = cap - used(now).neurons) {
@@ -46,8 +49,10 @@ export function createAi({ binding = null, q, clock = Date.now, daily = EL.free,
       return null;
     }
     if (!text) return null;
-    const neurons = neuronsOf(use, TOKENS(system + user), TOKENS(text));
-    q('INSERT INTO npc_ai (at, kind, ref, text, neurons) VALUES (?, ?, ?, ?, ?)').run(now, kind, String(ref || ''), text.slice(0, 600), Math.round(neurons * 100) / 100);
+    const neurons = Math.round(neuronsOf(use, TOKENS(system + user), TOKENS(text)) * 100) / 100;
+    q('INSERT INTO npc_ai (at, kind, ref, text, neurons) VALUES (?, ?, ?, ?, ?)').run(now, kind, String(ref || ''), text.slice(0, 600), neurons);
+    used(now);
+    spent.n += neurons; spent.c++;
     return text;
   }
   return {

@@ -578,10 +578,10 @@
     free: 10000, cap: 1450, roomYen: 131, price: 0.011, usd: 150, pace: 30
   };
   // a day's chance of dying at `age` by these rules (1 at `max`; the illnesses' share below `from`: npc-state.js)
+  var LATE = LIFE2.yearly.map(function (p) { return 1 - Math.pow(1 - p, 1 / 365); });
   function lateDeath(age) {
     if (age >= LIFE2.max) return 1;
-    if (age < LIFE2.from) return 0;
-    return 1 - Math.pow(1 - LIFE2.yearly[age - LIFE2.from], 1 / 365);
+    return age < LIFE2.from ? 0 : LATE[age - LIFE2.from];
   }
   // an age at a country's start, by `ages` (u in [0, 1))
   function startAge(u, v) {
