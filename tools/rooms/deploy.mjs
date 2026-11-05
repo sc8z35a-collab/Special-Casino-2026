@@ -3,6 +3,7 @@
 //
 //   node tools/rooms/deploy.mjs            deploys the fifteen rooms and adds their bindings to wrangler.jsonc
 //   node tools/rooms/deploy.mjs --bind     only adds the bindings (the rooms already deployed)
+//   node tools/rooms/deploy.mjs --no-bind  only deploys the rooms (GitHub Actions: .github/workflows/npc-rooms.yml)
 //   node tools/rooms/deploy.mjs --dry      writes the rooms' configs to tools/rooms/out/ and changes nothing
 //
 // Then deploy the main Worker as always (npm run deploy) with NPC_ROOMS=15 set in its variables. Its migrations (the
@@ -43,7 +44,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       if (!args.has('--dry')) { console.log(`deploying npc-room-${k}`); execFileSync('npx', ['wrangler', 'deploy', '-c', file], { cwd: ROOT, stdio: 'inherit' }); }
     }
   }
-  if (!args.has('--dry')) {
+  if (!args.has('--dry') && !args.has('--no-bind')) {
     const f = path.join(ROOT, 'wrangler.jsonc'), text = fs.readFileSync(f, 'utf8'), next = bind(text);
     if (next !== text) { fs.writeFileSync(f, next); console.log('wrangler.jsonc: NPC_ROOM_1 … NPC_ROOM_15 bound. Set NPC_ROOMS=15 and deploy the main Worker (npm run deploy).'); }
     else console.log('wrangler.jsonc: the rooms are bound already.');
