@@ -50,6 +50,9 @@ const b64 = (u8) => Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength).toStrin
 export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config = {}, corp, stocks = () => null, live = null, opsIds = () => [], playersHeld = () => ({}), ai: binding = null, usage = () => 0, opsLog = null, alert = null, alertPlayers = null, blobs = () => null }) {
   const on = config.npc !== false;
   const N = Math.max(500, Math.min(NPC.nation.population, Number(config.npcPopulation) || NPC.nation.population));
+  // the people's hours: by the new rules 17:00 to 22:00 every day (NPC.hours.window), unless NPC_WINDOW is 'off'
+  const winOn = String(config.npcWindow || 'off') !== 'off';
+  const hw = (w) => (w && w.life2 && winOn ? NPC.hours.window : null);
   const key = keyFrom(secret, 'npc');
   const ai = createAi({ binding, q, clock, daily: Number(config.npcAiNeurons) || NPC.elite.free, yen: Number(config.npcAiYen) >= 0 ? Number(config.npcAiYen) : aiYen(Number(config.npcRooms) || 0), model: config.npcAiModel || undefined });
   let W = null, stale = true, last = null;
@@ -214,8 +217,9 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const t0 = Date.now();
     while (m <= target && n < max) {
       if (Math.floor(m / 1440) > w.day) break;
-      if (w.paused || !NPC.activeAt(m * MIN, w.first)) {
-        const next = w.paused ? target + 1 : Math.floor(NPC.nextActive(m * MIN, w.first) / MIN);
+      w.hoursWin = hw(w);
+      if (w.paused || !NPC.activeAt(m * MIN, w.first, w.hoursWin)) {
+        const next = w.paused ? target + 1 : Math.floor(NPC.nextActive(m * MIN, w.first, w.hoursWin) / MIN);
         w.minute = Math.min(target, Math.min(next, (w.day + 1) * 1440) - 1);
         m = w.minute + 1;
         continue;
@@ -253,7 +257,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const w = get();
     // (not begun: as soon as the companies are, never before)
     if (!w) return corp.booted() ? now + 1000 : Infinity;
-    return Math.max(now + 1000, NPC.nextActive(now + 1000, w.first) + 2000);
+    return Math.max(now + 1000, NPC.nextActive(now + 1000, w.first, hw(w)) + 2000);
   }
   // the depth the people think at: shallower when the server is busy (its month's usage high, the minutes slow)
   function tune() {
@@ -380,7 +384,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   function liveStats(w) {
     const P = w.P, acts = new Uint32Array(NPC.acts.length);
     for (let i = 0; i < P.n; i++) acts[P.act[i]]++;
-    return { acts: Array.from(acts), mood: w.stats.mood, unemployment: w.stats.unemployment, homeless: w.stats.homeless, economy: w.stats.economy, prices: w.stats.prices, active: NPC.activeAt(clock(), w.first) };
+    return { acts: Array.from(acts), mood: w.stats.mood, unemployment: w.stats.unemployment, homeless: w.stats.homeless, economy: w.stats.economy, prices: w.stats.prices, active: NPC.activeAt(clock(), w.first, hw(w)) };
   }
   function watch(userId, onOff) {
     if (onOff) watchers.set(userId, clock() + WATCH_MS);
@@ -397,7 +401,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const news = q('SELECT day, at, kind, district, text FROM npc_news ORDER BY id DESC LIMIT 40').all();
     const spent = corp && corp.npcSpent ? corp.npcSpent(now) : {};
     return {
-      on, started: true, now, minute: w.minute, first: w.first, active: NPC.activeAt(now, w.first), next: NPC.nextActive(now, w.first),
+      on, started: true, now, minute: w.minute, first: w.first, active: NPC.activeAt(now, w.first, hw(w)), next: NPC.nextActive(now, w.first, hw(w)),
       nation: { ...NPC.nation, cash: w.nation.cash, debt: w.nation.debt, fund: w.nation.fund.cash + w.nation.fund.bonds, knobs: w.nation.knobs, pending: w.nation.pending, log: w.nation.log.slice(-12), month: w.nation.month, budget: w.cal.publicWorks },
       stats: { ...w.stats, population: P.n },
       districts: w.districts.map((d, k) => ({ id: k, name: d.name, look: NPC.districts[k].look, mayor: person(d.mayor), approval: Math.round(d.approval), platform: d.platform, since: d.since, until: d.until, economy: Math.round(d.economy * 1000) / 1000, people: w.stats.byDistrict ? w.stats.byDistrict[k] : 0, speech: d.mayor >= 0 ? ai.text('speech', `${k}:${d.since}`) : null })),
@@ -635,7 +639,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   // what the AI may have spent of the (UTC) day by now: a share of it as the people's hours go (NPC.elite.pace minutes
   // ahead), all of it by their end — nothing before they begin
   function paced(now, w) {
-    const h = NPC.hoursOf(now, w.first), t = NPC.jst(now).min;
+    const h = NPC.hoursOf(now, w.first, hw(w)), t = NPC.jst(now).min;
     if (t < h[0]) return 0;
     return Math.min(1, (t - h[0] + NPC.elite.pace) / Math.max(1, h[1] - h[0]));
   }
@@ -648,7 +652,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       if (!w) break;
       const room = ai.cap * paced(now, w) - ai.used(now).neurons;
       // (their turns as often as the day's money allows: npc-elite.js speed)
-      if (step === 0) { const h = NPC.hoursOf(now, w.first); elite.speed(w, ai.cap, h[1] - h[0]); }
+      if (step === 0) { const h = NPC.hoursOf(now, w.first, hw(w)); elite.speed(w, ai.cap, h[1] - h[0]); }
       const job = room > 0 ? elite.due(w, w.minute) : null;
       if (!job) break;
       const gens = job.list.map((i) => w.P.gen[i]);

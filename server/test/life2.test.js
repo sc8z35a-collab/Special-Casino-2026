@@ -123,3 +123,19 @@ test('the working day: four of the people\'s hours — forty minutes of each at 
   c.days(3);
   for (const id of ['tenesice', 'jinx', 'citywork']) assert.ok(W.capacity[id] >= 0.6 && W.capacity[id] <= 1.1, `${id} ${W.capacity[id]}`);
 });
+
+test('the five hours: kept so, the people are about from 17:00 to 22:00 every day, and work from 17:00 to 21:00', () => {
+  const win = NPC.hours.window, at = (y, mo, d, h, mi = 0) => Date.UTC(y, mo - 1, d, h - 9, mi);
+  assert.ok(!NPC.activeAt(at(2026, 11, 4, 16, 59), null, win));
+  assert.ok(NPC.activeAt(at(2026, 11, 4, 17), null, win));
+  assert.ok(!NPC.activeAt(at(2026, 11, 4, 22), null, win));
+  assert.ok(!NPC.activeAt(at(2026, 11, 7, 10), null, win), 'a Saturday morning too');
+  assert.equal(NPC.nextActive(at(2026, 11, 4, 23), null, win), at(2026, 11, 5, 17));
+  const c = country(1500), W = c.W, P = W.P;
+  W.hoursWin = win;
+  const i = Array.from({ length: P.n }, (_, k) => k).find((k) => NPC.companyOf(P.job[k]) === 'citywork');
+  assert.equal(obliged(W, i, 16 * 60 + 30, false, W.day + 2, 3).kind, 'free');
+  assert.equal(obliged(W, i, 17 * 60 + 5, false, W.day + 2, 3).kind, 'work');
+  assert.equal(obliged(W, i, 20 * 60 + 50, false, W.day + 2, 3).kind, 'break');
+  assert.equal(obliged(W, i, 21 * 60 + 5, false, W.day + 2, 3).kind, 'free');
+});

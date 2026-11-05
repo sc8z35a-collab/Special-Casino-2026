@@ -78,7 +78,7 @@ export function obliged(W, i, t, off, day, jdow) {
   // (by the new rules — W.life2 — four of the hours the people are about at work: the early shift and the rest from
   // their start, the late shift to their end; forty minutes of each hour at work, twenty a break: NPC.life2.workDay)
   if (W.life2 && job !== NPC.job.student) {
-    const hrs = off ? NPC.hours.holiday : NPC.hours.weekday, D = NPC.life2.workDay, len = D.hours * 60;
+    const hrs = W.hoursWin || (off ? NPC.hours.holiday : NPC.hours.weekday), D = NPC.life2.workDay, len = D.hours * 60;
     const start = sched.shifts && shift % 2 === 1 ? Math.max(hrs[0], hrs[1] - len) : hrs[0], end = start + len;
     if (t < start) return { kind: 'free', end: start };
     if (t >= end) return { kind: 'free', end: 1440 };

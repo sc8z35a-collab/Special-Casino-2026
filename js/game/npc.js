@@ -63,7 +63,9 @@
   // The people live in real time, Japan's. On the day the country began they are about all 24 hours; from the next
   // day on, from 9:00 to 22:00 on Saturdays, Sundays and holidays, and from 11:00 to 22:00 on other days. Outside
   // those hours the country rests (nobody moves, nothing is bought); the companies' days still close at 9:00.
-  var HOURS = { holiday: [9 * 60, 22 * 60], weekday: [11 * 60, 22 * 60], first: [0, 24 * 60] };
+  // (`window`: by the new rules, a country whose host keeps it so — server/core/npc.js, NPC_WINDOW — is about from 17:00
+  // to 22:00 every day, its rooms awake those five hours alone: docs/npc-rooms-plan.md)
+  var HOURS = { holiday: [9 * 60, 22 * 60], weekday: [11 * 60, 22 * 60], first: [0, 24 * 60], window: [17 * 60, 22 * 60] };
   function pad(n) { return n < 10 ? '0' + n : String(n); }
   function dkey(y, m, d) { return y + '-' + pad(m) + '-' + pad(d); }
   function dow(y, m, d) { return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); }
@@ -103,17 +105,19 @@
     return { y: y, m: m, d: d, w: w, min: t.getUTCHours() * 60 + t.getUTCMinutes(), date: Math.floor((ms + JST) / DAY_MS), off: w === 0 || w === 6 || !!name || newYear, holiday: name || (newYear ? '年末年始' : '') };
   }
   // the hours of the day of `ms` the people are about ([from, to) in minutes of the day; `first`: the first day's date)
-  function hoursOf(ms, first) {
+  // (`win`: the country's own hours every day — HOURS.window —, when its host keeps them)
+  function hoursOf(ms, first, win) {
     var t = jst(ms);
     if (first !== undefined && first !== null && t.date === first) return HOURS.first;
+    if (win) return win;
     return t.off ? HOURS.holiday : HOURS.weekday;
   }
-  function activeAt(ms, first) { var h = hoursOf(ms, first), t = jst(ms); return t.min >= h[0] && t.min < h[1]; }
+  function activeAt(ms, first, win) { var h = hoursOf(ms, first, win), t = jst(ms); return t.min >= h[0] && t.min < h[1]; }
   // the next minute (ms) from `ms` on when the people are about
-  function nextActive(ms, first) {
+  function nextActive(ms, first, win) {
     var at = Math.ceil(ms / MIN) * MIN;
     for (var i = 0; i < 4; i++) {
-      var t = jst(at), h = hoursOf(at, first);
+      var t = jst(at), h = hoursOf(at, first, win);
       if (t.min < h[0]) return at + (h[0] - t.min) * MIN;
       if (t.min < h[1]) return at;
       at += (24 * 60 - t.min) * MIN;
