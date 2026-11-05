@@ -67,7 +67,8 @@ export function configFrom(env = {}, overrides = {}) {
     // (the yen a month the 300's AI may spend beyond the free Neurons — when not set, what NPC.elite.cap leaves once the
     // people's rooms, NPC_ROOMS of them, are paid: server/core/npc-ai.js)
     npcAiYen: int(env, 'NPC_AI_YEN', -1),
-    npcRooms: int(env, 'NPC_ROOMS', 0),
+    // (the people's rooms: '0' none, 'local' in this host, a number — 15 — Cloudflare's room Workers bound to it)
+    npcRooms: str(env, 'NPC_ROOMS', '0'),
     // (the people about from 17:00 to 22:00 every day once the country lives by the new rules — 'off': the old hours)
     npcWindow: str(env, 'NPC_WINDOW', '17-22'),
     // Private daily R2 vault snapshots, seven retained; a full recovery drill weekly.

@@ -86,7 +86,8 @@ test('the AI money: the free Neurons of the UTC day and the yen beyond, by each 
   assert.ok(dailyCap(10000, 100) > 11000 && dailyCap(10000, 100) < 12500);
   // (all that is left of the most the country may add once its people's rooms are paid: none of them yet, all of it)
   assert.equal(aiYen(0), EL.cap);
-  assert.equal(aiYen(15), Math.max(0, EL.cap - 15 * EL.roomYen));
+  // (fifteen rooms' five hours a day: what the month includes covers some, about ¥1,370 beyond — the AI the rest)
+  assert.ok(aiYen(15) > 0 && aiYen(15) < 150, String(aiYen(15)));
   assert.equal(aiYen(20), 0);
   assert.ok(neuronsOf(EL.model, 1e6, 0) === EL.rates[EL.model][0]);
   const q = memoryDb();

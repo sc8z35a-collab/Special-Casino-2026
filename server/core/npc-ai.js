@@ -17,8 +17,10 @@ export function neuronsOf(model, inTokens, outTokens) {
   return (inTokens * r[0] + outTokens * r[1]) / 1e6;
 }
 // the yen a month the AI may spend beyond the free Neurons: what is left of NPC.elite.cap once `rooms` people's rooms
-// are paid (docs/npc-rooms-plan.md)
-export const aiYen = (rooms = 0) => Math.max(0, EL.cap - Math.max(0, rooms) * EL.roomYen);
+// are paid — their five hours a day beyond what the month includes, the main room's own share of it taken first
+// (docs/npc-rooms-plan.md)
+export const roomsYen = (rooms = 0) => Math.max(0, Math.max(0, rooms) * EL.roomGBs + EL.mainGBs - EL.included) * EL.gbPrice * EL.usd;
+export const aiYen = (rooms = 0) => Math.max(0, Math.round(EL.cap - roomsYen(rooms)));
 // the day's Neurons: the free part (a little short of it) and the yen beyond, a thirtieth of the month's a day
 export function dailyCap(free = EL.free, yen = aiYen()) {
   return Math.floor(free * 0.98 + Math.max(0, yen) / EL.usd / EL.price * 1000 / 30);

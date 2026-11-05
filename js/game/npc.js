@@ -567,7 +567,7 @@
   // `topModel`, the stronger); `rates` the Neurons a model costs a million tokens in and out (Workers AI's price list).
   // What it may spend: the free `free` Neurons a day (Cloudflare's, by the UTC day) and, beyond it, all that is left
   // a month of `cap` yen (the most the country may add to the bill: docs/npc-rooms-plan.md) once the people's rooms
-  // are paid (`roomYen` each, a month of their five hours), at `price` $ a thousand Neurons and `usd` yen a $ — all of
+  // are paid (below), at `price` $ a thousand Neurons and `usd` yen a $ — all of
   // it, paced through the day (`pace`: never more of the day's than the share of the people's hours gone, and this many
   // minutes ahead); their turns come the oftener the more there is (`every` the longest, a `fastest` share of it the
   // shortest), `per` Neurons a person's choice about (a call of ten)
@@ -575,7 +575,10 @@
     n: 300, per: 10000, every: { elite: 40, alpha: 20, top: 10 }, fastest: 0.1, batch: 10, perChoice: 1.3,
     model: '@cf/qwen/qwen3-30b-a3b-fp8', topModel: '@cf/google/gemma-4-26b-a4b-it',
     rates: { '@cf/qwen/qwen3-30b-a3b-fp8': [4625, 30475], '@cf/google/gemma-4-26b-a4b-it': [9091, 27273], '@cf/ibm-granite/granite-4.0-h-micro': [1542, 10158], '@cf/google/gemma-3-12b-it': [31371, 50560] },
-    free: 10000, cap: 1450, roomYen: 131, price: 0.011, usd: 150, pace: 30
+    free: 10000, cap: 1450, price: 0.011, usd: 150, pace: 30,
+    // (the rooms' cost: each awake its five hours a day `roomGBs` GB-seconds a month — 128MB each —, the main room's
+    // `mainGBs` of the `included` the month gives the account, the rest at `gbPrice` $ a GB-second)
+    roomGBs: 69750, mainGBs: 83700, included: 400000, gbPrice: 12.5e-6
   };
   // a day's chance of dying at `age` by these rules (1 at `max`; the illnesses' share below `from`: npc-state.js)
   var LATE = LIFE2.yearly.map(function (p) { return 1 - Math.pow(1 - p, 1 / 365); });

@@ -129,7 +129,7 @@ export function actionOf(line) {
   return null;
 }
 // doing it (`run`: { ctx, r } — the day's prices and a draw); what was done (null: nothing could be)
-function act(W, i, x, day, run) {
+export function act(W, i, x, day, run) {
   const P = W.P, { ctx, r } = run, m = W.marketState;
   if (x.code === 'job') return thinkJob(W, i, day, r, ctx) ? { did: 'job' } : { did: 'job', none: true };
   if (x.code === 'car') { const before = P.car[i]; thinkCar(W, i, day, r, ctx); return { did: 'car', bought: P.car[i] !== before }; }

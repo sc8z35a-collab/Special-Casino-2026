@@ -31,6 +31,8 @@ import * as alphaModel from './npc-alpha.js';
 import * as elite from './npc-elite.js';
 import * as boss from './npc-boss.js';
 import { createThinker } from './npc-think.js';
+import { createHost, localTransport, remoteTransport, dbStore } from './npc-rooms.js';
+import { seeded } from './npc-rand.js';
 import { view as welfareView } from './npc-welfare.js';
 import crypto from 'node:crypto';
 import { LISTED_IDS } from './npc-market.js';
@@ -47,7 +49,7 @@ const KEEP_NEWS = 120, KEEP_MEETINGS = 400, KEEP_REPORTS = 600, KEEP_DAYS = 800;
 const DEPTHS = ['shallow', 'standard', 'deep', 'deepest'];
 const b64 = (u8) => Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength).toString('base64');
 
-export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config = {}, corp, stocks = () => null, live = null, opsIds = () => [], playersHeld = () => ({}), ai: binding = null, usage = () => 0, opsLog = null, alert = null, alertPlayers = null, blobs = () => null }) {
+export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config = {}, corp, stocks = () => null, live = null, opsIds = () => [], playersHeld = () => ({}), ai: binding = null, usage = () => 0, opsLog = null, alert = null, alertPlayers = null, blobs = () => null, rooms: roomStubs = null }) {
   const on = config.npc !== false;
   const N = Math.max(500, Math.min(NPC.nation.population, Number(config.npcPopulation) || NPC.nation.population));
   // the people's hours: by the new rules 17:00 to 22:00 every day (NPC.hours.window), unless NPC_WINDOW is 'off'
@@ -468,7 +470,9 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       // (the mind: its feelings, what they expect and have learnt, today's plan, the five ways, 消費観 — npc-heart.js)
       mind: heart.view(w, i),
       // (one of the 300: what their AI chose last and why — npc-elite.js)
-      ai: elite.viewOf(w, i)
+      ai: elite.viewOf(w, i),
+      // (their mind's own account of itself, as their room showed it at its last close: npc-brain.js profile)
+      profile: (() => { const r = q('SELECT data FROM npc_profiles WHERE id = ?').get(`v:${i}:${P.gen[i]}`); return r ? JSON.parse(r.data) : null; })()
     };
   }
 
@@ -506,7 +510,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         decided: { fees: feesOf(corp.world()), surcharge: policyDto().surcharge, rates: w.bankRates, quick: econ.quickRate(w), phone: Math.round(NPC.life.phone * econ.priceOf(w, 'tenesice:mobile')), cpi: econ.cpi(w), rentIdx: econ.rentIdx(w) },
         nationFull: { cash: w.nation.cash, debt: w.nation.debt, bank: w.nation.bank, fund: w.nation.fund, day: w.nation.day, month: w.nation.month, hist: w.nation.hist.slice(-60) },
         sector: w.sector, sum: w.sum, cal: w.cal, rates: w.bankRates, stock: w.stock, depth: w.depth, paused: !!w.paused,
-        usage: { ticks, tickMs: ticks ? Math.round(tickMs / ticks * 10) / 10 : 0, saves, ai: { ...ai.used(now), on: ai.on, elite: elite.summary(w) }, server: usage() },
+        usage: { ticks, tickMs: ticks ? Math.round(tickMs / ticks * 10) / 10 : 0, saves, ai: { ...ai.used(now), on: ai.on, elite: elite.summary(w) }, rooms: rooms ? { mode: roomsMode, ...(w.rooms || {}) } : null, server: usage() },
         // (the two countries' GDP: server/core/npc-gdp.js)
         gdp: model.gdpView(w),
         // (the times' mood and the prices: server/core/npc-macro.js)
@@ -603,6 +607,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   // choices, a batch at a time as far as the day's AI money goes; アルファ's days copied to R2
   async function writeAi(now = clock()) {
     let n = 0;
+    // (the people's rooms first: their minds told of the minute, what they meant done — server/core/npc-rooms.js)
+    if (rooms) { try { n += await rooms.step(now); } catch (e) { console.error('npc rooms failed', e); } }
     if (ai.on) { try { n += await alphaTalk(now); } catch (e) { console.error('alpha talk failed', e); } }
     try { await alphaR2(now); } catch (e) { console.error('alpha r2 failed', e); }
     if (!ai.on) return n;
@@ -614,6 +620,12 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   }
   // the 300's and the AI 社長's turns (server/core/npc-think.js), within the day's AI money by the people's hours
   const think = createThinker({ ai, get: () => get(), tx: (f) => tx(f), save: (k) => save(k), ctx: () => ctx(), hours: (now, w) => NPC.hoursOf(now, w.first, hw(w)) });
+  // 人の部屋 (server/core/npc-rooms.js): the people's minds in rooms of their own — in this host (NPC_ROOMS=local) or
+  // Cloudflare's own Workers (NPC_ROOMS=15, bound to this one: tools/rooms/deploy.mjs) —; none: the engine's minds alone
+  const roomsMode = String(config.npcRooms || '0');
+  const transport = roomsMode === 'local' ? localTransport((r) => dbStore(q, r)) : Number(roomsMode) > 0 && roomStubs ? remoteTransport(roomStubs) : null;
+  const rooms = transport ? createHost({ transport, get: () => get(), tx: (f) => tx(f), save: (k) => save(k), ctx: () => ctx(), seeded, hours: (now, w) => NPC.hoursOf(now, w.first, hw(w)),
+    profiles: (rows, day) => { for (const [id, p] of rows) q('INSERT INTO npc_profiles (id, day, data) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET day = excluded.day, data = excluded.data').run(id, day, JSON.stringify(p)); } }) : null;
   // 少数精鋭集団アルファ's talk (server/core/npc-alpha.js): its 10, each in their way, a message at a time (up to four a
   // wake) until the 15〜25 are said, the one with the most last with the conclusion. Each kept at once; the first order
   // in before it is done: the model's own words and plan stand (and what the AI had said is kept with them)
@@ -698,6 +710,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     q('DELETE FROM npc_reports WHERE id < (SELECT COALESCE(MAX(id), 0) FROM npc_reports) - ?').run(KEEP_REPORTS * 10);
     q('DELETE FROM stock_npc WHERE at < ?').run(Math.floor(now / 1000) - 3 * 86400);
     q('DELETE FROM npc_ai WHERE at < ?').run(now - 60 * 86400000);
+    if (w) q('DELETE FROM npc_profiles WHERE day < ?').run(w.day - 30);
     if (w) q('DELETE FROM npc_days WHERE day < ?').run(w.day - KEEP_DAYS);
   }
 
