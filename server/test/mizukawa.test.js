@@ -70,7 +70,8 @@ test('the rules as given: the 15th company, アスカ国籍, unlisted, founded 2
 });
 
 test('its first month: founded at 2026-11-05 9:00 with アスカ国\'s $38B; its people アスカ国\'s by role at their pay; the models out on their days, worked out then; the line technology\'s fees; its research spent 50/30/20; MY WAY\'s contract; every $ kept', () => {
-  const c = country(800), { w, W } = c;
+  // (a country of 1,600: MAGITA's people — 2,800 of a full country — enough in it to make its dealer's cars the first month)
+  const c = country(1600), { w, W } = c;
   c.days(2);
   assert.equal(w.co.mizukawa, undefined);
   c.days(1);

@@ -71,7 +71,7 @@
     {
       id: 'tenesice', name: 'テネシス', full: '株式会社テネシス', en: 'Tenesice', rank: 'S', model: 'bank', kind: '銀行（金融の絶対支配者）', listed: true,
       capital: 50000000000, reserve: 50000000000, retained: 3500000000000,
-      staff: 12000, salary: 4800000, cost: 7000000,
+      staff: 2000, salary: 4800000, cost: 7000000,
       place: { name: '本店・支店網・巨大金庫維持費', amount: 15000000000 }, rd: { name: '金融セキュリティ・システム研究開発費', amount: 20000000000 },
       sales: 450000000000, op: 150000000000, salesName: '業務粗利益',
       streams: [
@@ -89,7 +89,7 @@
     {
       id: 'magita', name: 'MAGITA', full: '株式会社MAGITA', en: 'MAGITA', rank: 'A', model: 'maker', kind: '総合重工メーカー（高級車・エンジン・オイル・修理キット・MAGITA Garage・MAGITA Robert）', listed: true,
       capital: 2000000000, reserve: 2000000000, retained: 120000000000,
-      staff: 6000, salary: 3200000, cost: 4800000,
+      staff: 2800, salary: 3200000, cost: 4800000,
       place: { name: '巨大工場・製造ライン維持費', amount: 8500000000 }, rd: { name: '車両・エンジン・化学研究開発費', amount: 6000000000 },
       sales: 90000000000, op: 9000000000,
       // what Car Owner and the Shop buy from it are its sales to them (each car and item at its 仕入れ価格, with its
@@ -123,7 +123,7 @@
     {
       id: 'carowner', name: 'カーオーナー', full: '株式会社カーオーナー', en: 'CAR OWNER', rank: 'A', model: 'dealer', kind: '自動車販売（MAGITA・YOSHIDAのディーラー）', listed: true,
       capital: 500000000, reserve: 500000000, retained: 25000000000,
-      staff: 2500, salary: 2800000, cost: 4000000,
+      staff: 600, salary: 2800000, cost: 4000000,
       place: { name: '大型ショールーム・店舗維持費', amount: 2200000000 }, rd: { name: '販売管理システム開発費', amount: 150000000 }, ads: 1200000000,
       // (the profile's numbers are where it starts, found from what it sells: with YOSHIDA's cars — some 9,800 more a
       // year, cheap and wanted, and far more of their price its own — its sales and profit grew well past the $65B and
@@ -150,7 +150,7 @@
       // its cars and engines abroad, its money tree seeds) goes on once the country lives, money coming into it.
       id: 'yosida', name: 'YOSIDA', full: '株式会社YOSIDA', en: 'YOSIDA', rank: 'A', model: 'maker', kind: '自動車メーカー（大衆車・高効率エンジン、MAGITAのライバル）・クエスト・ガチャ・金の生る木の事業を独占', listed: true,
       capital: 1200000000, reserve: 1200000000, retained: 35000000000,
-      staff: 4500, salary: 2400000, cost: 3800000,
+      staff: 2000, salary: 2400000, cost: 3800000,
       place: { name: '自社一貫工場・製造ライン維持費', amount: 6500000000 }, rd: { name: '車両・エンジン実用開発費', amount: 1700000000 },
       // (its sales and profit found from what it costs: 4,500 people at $3.8M, its plants and research are $25.3B a
       // year, its cars and engines cost it about 62% of what it sells them for, so $95B of sales leave it about $6B;
@@ -200,7 +200,7 @@
     {
       id: 'jinx', name: 'ジンクス', full: '株式会社ジンクス', en: 'JINX', rank: 'A', model: 'retail', kind: 'ショップ（SHOPの運営・管理）',
       capital: 300000000, reserve: 300000000, retained: 18000000000,
-      staff: 3000, salary: 2200000, cost: 3200000,
+      staff: 1000, salary: 2200000, cost: 3200000,
       place: { name: '店舗網・巨大倉庫維持費', amount: 1800000000 }, rd: { name: '流通・PB商品開発費', amount: 200000000 }, ads: 900000000,
       // (with YOSHIDA's engines on its shelves, some $9.6B more a year and $3.2B of it its own: past the $50B and $2B
       // it began with)

@@ -17,7 +17,8 @@ const flows = (s) => s.app.db.prepare('SELECT data FROM corp_flows').all().map((
 test('the rules: YOSIDA with its numbers, its six cars and two engines (no 専売特別費用, the dealer keeps price − 仕入れ価格), listed with Car Owner', () => {
   const y = CORP.company('yosida');
   assert.deepEqual([y.staff, y.salary, y.cost, y.place.amount, y.rd.amount, y.capital, y.retained, y.listed, y.model],
-    [4500, 2400000, 3800000, 6500000000, 1700000000, 1200000000, 35000000000, true, 'maker']);
+    // (its people cut to 2,000 at the 人口再編: docs/npc-rooms-plan.md)
+    [2000, 2400000, 3800000, 6500000000, 1700000000, 1200000000, 35000000000, true, 'maker']);
   const want = { 'yoshida-zx4': [8500000, 2800000, 4500000, 4000000], 'yoshida-p100w': [6400000, 2100000, 2400000, 4000000], 'yoshida-h9c': [10500000, 4300000, 3000000, 7500000],
     'yoshida-s5': [4000000, 1500000, 1500000, 2500000], 'yoshida-s6': [3600000, 1000000, 2000000, 1600000], 'yoshida-k10e': [6000000, 3000000, 1500000, 4500000] };
   for (const [id, [price, cost, net, buy]] of Object.entries(want)) {

@@ -182,7 +182,7 @@ export function thinkJob(W, i, day, r, ctx) {
   const P = W.P, jobs = W.labor.openings;
   if (!jobs || !jobs.length) return false;
   const age = ageOf(P, i, day);
-  if (age >= 65) return false;
+  if (age >= (W.life2 ? NPC.life2.retire : 65)) return false;
   const now = P.job[i];
   // the openings worth asking at, best first
   const opts = jobs.filter((o) => o.left > 0 && o.company !== (NPC.companyOf(now) || '')).map((o) => {

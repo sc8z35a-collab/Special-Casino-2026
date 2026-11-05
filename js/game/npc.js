@@ -534,11 +534,50 @@
   // people (js/game/local.js)
   var LABOR = { offerDaily: 0.005, localEnd: 0.015, selfShare: 0.35, localShare: 1, seniors: 0.6 };
 
+  // 新しい暮らしの決まり (docs/npc-rooms-plan.md, both countries; a country lives by them from its 人口再編 — W.life2 —,
+  // a new country from its start): every life begins at 18 (no children, no students); everyone of `work` (18 to 59)
+  // works — no one keeps house, the out of work look for work —; at 60 all retire (no one kept on) and the pension begins;
+  // a life ends at `max` (62) at the latest: a year's chance of dying of `yearly` from `from` (58) on, so that lives
+  // last 60 years on average (an illness can end one sooner, as before). `ages`: the people of a country at its start,
+  // by age (by the 50,000, as their life's chances leave them).
+  var LIFE2 = {
+    adult: 18, work: [18, 59], retire: 60, mean: 60, max: 62, from: 58, yearly: [0.06, 0.12, 0.25, 0.45],
+    ages: [[18, 57, 46097], [58, 58, 1152], [59, 59, 1083], [60, 60, 953], [61, 61, 715]]
+  };
+  // 人口の再編 (server/core/npc-reorg.js, once, a country kept from before brought under these rules): ヴェルノア's
+  // people `vernoa` (アスカ国's `ratio` times as many), its economy `economy` of what it was and アスカ国's
+  // `asukaEconomy` (its companies' plans for people and their budgets), the five companies' people cut to `staff` (at
+  // a full country's size); アスカ国's posts: its local trade `asukaTrade` of its people, ATSUKA Vision the rest of those
+  // of working age at work but `jobless` of them (at least `atsukaLeast` in a full country)
+  var REORG = {
+    vernoa: 10000, ratio: 2, economy: 0.4, asukaEconomy: 0.267, asukaTrade: 0.3, atsukaLeast: 1500, jobless: 0.03,
+    staff: { tenesice: 2000, magita: 2800, yosida: 2000, jinx: 1000, carowner: 600 }
+  };
+  // a day's chance of dying at `age` by these rules (1 at `max`; the illnesses' share below `from`: npc-state.js)
+  function lateDeath(age) {
+    if (age >= LIFE2.max) return 1;
+    if (age < LIFE2.from) return 0;
+    return 1 - Math.pow(1 - LIFE2.yearly[age - LIFE2.from], 1 / 365);
+  }
+  // an age at a country's start, by `ages` (u in [0, 1))
+  function startAge(u, v) {
+    var total = 0, k;
+    for (k = 0; k < LIFE2.ages.length; k++) total += LIFE2.ages[k][2];
+    var x = u * total;
+    for (k = 0; k < LIFE2.ages.length; k++) {
+      var g = LIFE2.ages[k];
+      if (x < g[2]) return g[0] + Math.min(g[1] - g[0], Math.floor(v * (g[1] - g[0] + 1)));
+      x -= g[2];
+    }
+    return LIFE2.work[0];
+  }
+
   BR.NPC = {
     nation: NATION, districts: DISTRICTS, places: PLACES, placeNames: PLACE_NAMES, acts: ACTS, act: ACT, hours: HOURS,
     holidays: holidays, jst: jst, hoursOf: hoursOf, activeAt: activeAt, nextActive: nextActive,
     companies: COMPANY_IDS, job: JOB, jobNames: JOB_NAMES, jobOf: jobOf, companyOf: companyOf, isCompanyJob: isCompanyJob, employed: employed, working: working, schedules: SCHEDULES, companySchedule: COMPANY_SCHEDULE, sites: SITES,
     tax: TAX, social: SOCIAL, pension: PENSION, safety: SAFETY, retire: RETIRE, labor: LABOR, life: LIFE, poorest: POOREST, gift: GIFT, alpha: ALPHA, trouble: TROUBLE,
+    life2: LIFE2, lateDeath: lateDeath, startAge: startAge, reorg: REORG,
     knobs: KNOBS, knob: KNOB, knobOf: knobOf, change: CHANGE, votes: VOTES, platforms: PLATFORMS, themes: THEMES, demands: DEMANDS,
     org: ORG, officers: OFFICERS, ranks: RANKS, rankPay: rankPay, labs: LABS, labThemes: LAB_THEMES, ventures: VENTURES,
     health: HEALTH, healthBand: healthBand, insurance: INSURANCE, hachiRoles: HACHI_ROLES,
