@@ -601,7 +601,9 @@ function refresh(W, day, ctx) {
   for (const id of NPC.companies) {
     const staff = W.staffOf(id).length;
     const h = W.workHours[id] || 0;
-    W.capacity[id] = staff ? Math.max(0.3, Math.min(1.1, h / Math.max(1, staff * 5))) : 1;
+    // (against a full day's hours a person: 5, by the new rules the working day's — NPC.life2.workDay)
+    const per = W.life2 ? NPC.life2.workDay.hours * NPC.life2.workDay.work / 60 : 5;
+    W.capacity[id] = staff ? Math.max(0.3, Math.min(1.1, h / Math.max(1, staff * per))) : 1;
     if (!W.workSeen) W.capacity[id] = 1;
   }
   W.workSeen = true;
@@ -742,7 +744,7 @@ export function card(W, i, day) {
 // the plain data of a world (what is kept besides the people's columns)
 // (`hosp`: HACHI's wards' desks and queues this minute — remade as people come; those at −90 and below from their
 // `crit` column, server/core/hachi.js)
-const SKIP = new Set(['P', 'AP', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners', 'knobChanged', 'carSold', 'closeIntoYamato', 'stateTake', 'aiAdvice', 'hosp']);
+const SKIP = new Set(['P', 'AP', 'key', 'market', 'politics', 'labor', 'org', 'ventureUse', 'fitFor', 'hire', 'staffOf', 'card', 'charge', 'flowsBuyback', '_staff', 'carList', 'owners', 'knobChanged', 'carSold', 'closeIntoYamato', 'stateTake', 'aiAdvice', 'hosp', '_roster']);
 export function metaOf(W) {
   const out = {};
   for (const [k, v] of Object.entries(W)) if (!SKIP.has(k) && typeof v !== 'function') out[k] = v;

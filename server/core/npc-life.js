@@ -75,6 +75,16 @@ export function obliged(W, i, t, off, day, jdow) {
   const dow = jdow !== undefined ? jdow : (day + 4) % 7;
   if (sched.off) { if (sched.days && ((h >>> 8) + dow) % 7 < sched.days) return { kind: 'free', end: 1440 }; }
   else if (off && !(job === 2 && W.overtime && W.overtime.magita)) return { kind: 'free', end: 1440 };
+  // (by the new rules — W.life2 — four of the hours the people are about at work: the early shift and the rest from
+  // their start, the late shift to their end; forty minutes of each hour at work, twenty a break: NPC.life2.workDay)
+  if (W.life2 && job !== NPC.job.student) {
+    const hrs = W.hoursWin || (off ? NPC.hours.holiday : NPC.hours.weekday), D = NPC.life2.workDay, len = D.hours * 60;
+    const start = sched.shifts && shift % 2 === 1 ? Math.max(hrs[0], hrs[1] - len) : hrs[0], end = start + len;
+    if (t < start) return { kind: 'free', end: start };
+    if (t >= end) return { kind: 'free', end: 1440 };
+    const into = (t - start) % 60;
+    return into < D.work ? { kind: 'work', end: t + D.work - into } : { kind: 'break', end: t + 60 - into };
+  }
   const blk = sched.shifts ? sched.shifts[shift % sched.shifts.length] : sched.blocks[0];
   const flex = sched.flex ? ((h >>> 4) % sched.flex) - sched.flex / 2 : 0;
   const from = blk[0] + flex, to = blk[1] + flex + (W.crunch && W.crunch[job] ? 90 : 0);
@@ -108,6 +118,8 @@ export function decide(W, i, m, t, j, r, ctx) {
   if (ob.kind === 'study') { set(W, i, A.study, PL.school, 2, m, Math.min(ob.end - t, 120)); fill(P, i, N.achieve, 18); return; }
   if (ob.kind === 'lunch') return lunch(W, i, m, day, r);
   free(W, i, m, t, j, day, r, ctx);
+  // (a break: whatever one does in it, back at work when it ends)
+  if (ob.kind === 'break') P.due[i] = Math.min(P.due[i], m + Math.max(5, ob.end - t));
 }
 
 // to HACHI's ward of one's district (or the nearest) for `kind`: waiting there, served as their turn comes (hachi.js)

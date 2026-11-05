@@ -29,6 +29,10 @@ import * as research from './npc-research.js';
 import { createAi, aiYen } from './npc-ai.js';
 import * as alphaModel from './npc-alpha.js';
 import * as elite from './npc-elite.js';
+import * as boss from './npc-boss.js';
+import { createThinker } from './npc-think.js';
+import { createHost, localTransport, remoteTransport, dbStore } from './npc-rooms.js';
+import { seeded } from './npc-rand.js';
 import { view as welfareView } from './npc-welfare.js';
 import crypto from 'node:crypto';
 import { LISTED_IDS } from './npc-market.js';
@@ -45,9 +49,12 @@ const KEEP_NEWS = 120, KEEP_MEETINGS = 400, KEEP_REPORTS = 600, KEEP_DAYS = 800;
 const DEPTHS = ['shallow', 'standard', 'deep', 'deepest'];
 const b64 = (u8) => Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength).toString('base64');
 
-export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config = {}, corp, stocks = () => null, live = null, opsIds = () => [], playersHeld = () => ({}), ai: binding = null, usage = () => 0, opsLog = null, alert = null, alertPlayers = null, blobs = () => null }) {
+export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config = {}, corp, stocks = () => null, live = null, opsIds = () => [], playersHeld = () => ({}), ai: binding = null, usage = () => 0, opsLog = null, alert = null, alertPlayers = null, blobs = () => null, rooms: roomStubs = null }) {
   const on = config.npc !== false;
   const N = Math.max(500, Math.min(NPC.nation.population, Number(config.npcPopulation) || NPC.nation.population));
+  // the people's hours: by the new rules 17:00 to 22:00 every day (NPC.hours.window), unless NPC_WINDOW is 'off'
+  const winOn = String(config.npcWindow || 'off') !== 'off';
+  const hw = (w) => (w && w.life2 && winOn ? NPC.hours.window : null);
   const key = keyFrom(secret, 'npc');
   const ai = createAi({ binding, q, clock, daily: Number(config.npcAiNeurons) || NPC.elite.free, yen: Number(config.npcAiYen) >= 0 ? Number(config.npcAiYen) : aiYen(Number(config.npcRooms) || 0), model: config.npcAiModel || undefined });
   let W = null, stale = true, last = null;
@@ -113,15 +120,13 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     if (kind === 'all') { w.allAt = w.minute; w.dirtyAll = false; }
     q("INSERT INTO npc_state (id, data) VALUES ('meta', ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data").run(JSON.stringify(model.metaOf(w)));
     const prefix = kind === 'all' ? 'all' : 'hot';
-    const rows = pop.pack(w.P, kind !== 'all');
-    rows.forEach((r, k) => q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`${prefix}:${String(k).padStart(3, '0')}`, r));
-    q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`${prefix}:${String(rows.length).padStart(3, '0')}`, prefix + ';');
+    // (a row at a time as it is made: npc-pop.js packRows)
+    const put = (pre, rows) => { let k = 0; for (const r of rows) { q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`${pre}:${String(k).padStart(3, '0')}`, r); k++; } q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`${pre}:${String(k).padStart(3, '0')}`, pre + ';'); };
+    put(prefix, pop.packRows(w.P, kind !== 'all'));
     // (アスカ国's people: all of them as each day closes, what moves within a day — their money, what they are doing —
     // with every save between: they spend through the day as ヴェルノア's people do)
     if (w.AP) {
-      const ap = kind === 'all' ? 'asuka' : 'asukahot', ar = asukaModel.pack(w.AP, kind !== 'all');
-      ar.forEach((r, k) => q('INSERT INTO npc_blob (part, data) VALUES (?, ?) ON CONFLICT(part) DO UPDATE SET data = excluded.data').run(`${ap}:${String(k).padStart(3, '0')}`, r));
-      q('DELETE FROM npc_blob WHERE part >= ? AND part < ?').run(`${ap}:${String(ar.length).padStart(3, '0')}`, ap + ';');
+      put(kind === 'all' ? 'asuka' : 'asukahot', asukaModel.packRows(w.AP, kind !== 'all'));
     }
     saves++;
     // (a transaction that fails takes its minutes back: read again before the next use)
@@ -214,8 +219,9 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const t0 = Date.now();
     while (m <= target && n < max) {
       if (Math.floor(m / 1440) > w.day) break;
-      if (w.paused || !NPC.activeAt(m * MIN, w.first)) {
-        const next = w.paused ? target + 1 : Math.floor(NPC.nextActive(m * MIN, w.first) / MIN);
+      w.hoursWin = hw(w);
+      if (w.paused || !NPC.activeAt(m * MIN, w.first, w.hoursWin)) {
+        const next = w.paused ? target + 1 : Math.floor(NPC.nextActive(m * MIN, w.first, w.hoursWin) / MIN);
         w.minute = Math.min(target, Math.min(next, (w.day + 1) * 1440) - 1);
         m = w.minute + 1;
         continue;
@@ -253,7 +259,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const w = get();
     // (not begun: as soon as the companies are, never before)
     if (!w) return corp.booted() ? now + 1000 : Infinity;
-    return Math.max(now + 1000, NPC.nextActive(now + 1000, w.first) + 2000);
+    return Math.max(now + 1000, NPC.nextActive(now + 1000, w.first, hw(w)) + 2000);
   }
   // the depth the people think at: shallower when the server is busy (its month's usage high, the minutes slow)
   function tune() {
@@ -380,7 +386,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   function liveStats(w) {
     const P = w.P, acts = new Uint32Array(NPC.acts.length);
     for (let i = 0; i < P.n; i++) acts[P.act[i]]++;
-    return { acts: Array.from(acts), mood: w.stats.mood, unemployment: w.stats.unemployment, homeless: w.stats.homeless, economy: w.stats.economy, prices: w.stats.prices, active: NPC.activeAt(clock(), w.first) };
+    return { acts: Array.from(acts), mood: w.stats.mood, unemployment: w.stats.unemployment, homeless: w.stats.homeless, economy: w.stats.economy, prices: w.stats.prices, active: NPC.activeAt(clock(), w.first, hw(w)) };
   }
   function watch(userId, onOff) {
     if (onOff) watchers.set(userId, clock() + WATCH_MS);
@@ -397,7 +403,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     const news = q('SELECT day, at, kind, district, text FROM npc_news ORDER BY id DESC LIMIT 40').all();
     const spent = corp && corp.npcSpent ? corp.npcSpent(now) : {};
     return {
-      on, started: true, now, minute: w.minute, first: w.first, active: NPC.activeAt(now, w.first), next: NPC.nextActive(now, w.first),
+      on, started: true, now, minute: w.minute, first: w.first, active: NPC.activeAt(now, w.first, hw(w)), next: NPC.nextActive(now, w.first, hw(w)),
       nation: { ...NPC.nation, cash: w.nation.cash, debt: w.nation.debt, fund: w.nation.fund.cash + w.nation.fund.bonds, knobs: w.nation.knobs, pending: w.nation.pending, log: w.nation.log.slice(-12), month: w.nation.month, budget: w.cal.publicWorks },
       stats: { ...w.stats, population: P.n },
       districts: w.districts.map((d, k) => ({ id: k, name: d.name, look: NPC.districts[k].look, mayor: person(d.mayor), approval: Math.round(d.approval), platform: d.platform, since: d.since, until: d.until, economy: Math.round(d.economy * 1000) / 1000, people: w.stats.byDistrict ? w.stats.byDistrict[k] : 0, speech: d.mayor >= 0 ? ai.text('speech', `${k}:${d.since}`) : null })),
@@ -464,7 +470,9 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
       // (the mind: its feelings, what they expect and have learnt, today's plan, the five ways, 消費観 — npc-heart.js)
       mind: heart.view(w, i),
       // (one of the 300: what their AI chose last and why — npc-elite.js)
-      ai: elite.viewOf(w, i)
+      ai: elite.viewOf(w, i),
+      // (their mind's own account of itself, as their room showed it at its last close: npc-brain.js profile)
+      profile: (() => { const r = q('SELECT data FROM npc_profiles WHERE id = ?').get(`v:${i}:${P.gen[i]}`); return r ? JSON.parse(r.data) : null; })()
     };
   }
 
@@ -502,7 +510,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         decided: { fees: feesOf(corp.world()), surcharge: policyDto().surcharge, rates: w.bankRates, quick: econ.quickRate(w), phone: Math.round(NPC.life.phone * econ.priceOf(w, 'tenesice:mobile')), cpi: econ.cpi(w), rentIdx: econ.rentIdx(w) },
         nationFull: { cash: w.nation.cash, debt: w.nation.debt, bank: w.nation.bank, fund: w.nation.fund, day: w.nation.day, month: w.nation.month, hist: w.nation.hist.slice(-60) },
         sector: w.sector, sum: w.sum, cal: w.cal, rates: w.bankRates, stock: w.stock, depth: w.depth, paused: !!w.paused,
-        usage: { ticks, tickMs: ticks ? Math.round(tickMs / ticks * 10) / 10 : 0, saves, ai: { ...ai.used(now), on: ai.on, elite: elite.summary(w) }, server: usage() },
+        usage: { ticks, tickMs: ticks ? Math.round(tickMs / ticks * 10) / 10 : 0, saves, ai: { ...ai.used(now), on: ai.on, elite: elite.summary(w) }, rooms: rooms ? { mode: roomsMode, ...(w.rooms || {}) } : null, server: usage() },
         // (the two countries' GDP: server/core/npc-gdp.js)
         gdp: model.gdpView(w),
         // (the times' mood and the prices: server/core/npc-macro.js)
@@ -563,6 +571,8 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
         ventures: o.ventures.map((v) => ({ ...v, staff: v.staff.length, lead: nm(v.lead), announce: `${o.name}の新事業「${v.name}」が始まりました。` })),
         think: o.think.slice(-30).reverse().map((t) => ({ ...t, name: w.card(t.i, day).name })),
         union: w.lab.unions[id], terms: (w.terms || {})[id] || null, lend: (w.lend || {})[id] || null,
+        // (a 社長 of the 300: run by its AI — its last 社長決裁 and why: npc-boss.js)
+        boss: { ai: boss.aiBoss(w, id), last: boss.lastOf(w, id) },
         meetings: q('SELECT id, data FROM npc_meetings WHERE company = ? AND id < ? ORDER BY id DESC LIMIT 30').all(id, before).map((r) => ({ rid: r.id, ...JSON.parse(r.data) })),
         reports: q('SELECT id, data FROM npc_reports WHERE company = ? ORDER BY id DESC LIMIT 30').all(id).map((r) => ({ rid: r.id, ...JSON.parse(r.data) }))
       };
@@ -597,49 +607,25 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
   // choices, a batch at a time as far as the day's AI money goes; アルファ's days copied to R2
   async function writeAi(now = clock()) {
     let n = 0;
+    // (the people's rooms first: their minds told of the minute, what they meant done — server/core/npc-rooms.js)
+    if (rooms) { try { n += await rooms.step(now); } catch (e) { console.error('npc rooms failed', e); } }
     if (ai.on) { try { n += await alphaTalk(now); } catch (e) { console.error('alpha talk failed', e); } }
     try { await alphaR2(now); } catch (e) { console.error('alpha r2 failed', e); }
     if (!ai.on) return n;
     const w = get();
     if (w && w.ai.length) { const jobs = w.ai.splice(0).map((j) => jobOf(w, j)).filter(Boolean); n += await ai.run(jobs, now); }
-    try { n += await eliteThink(now); } catch (e) { console.error('elite ai failed', e); }
+    try { n += await think.elite(now); } catch (e) { console.error('elite ai failed', e); }
+    try { n += await think.boss(now); } catch (e) { console.error('boss ai failed', e); }
     return n;
   }
-  // what the AI may have spent of the (UTC) day by now: a share of it as the people's hours go (NPC.elite.pace minutes
-  // ahead), all of it by their end — nothing before they begin
-  function paced(now, w) {
-    const h = NPC.hoursOf(now, w.first), t = NPC.jst(now).min;
-    if (t < h[0]) return 0;
-    return Math.min(1, (t - h[0] + NPC.elite.pace) / Math.max(1, h[1] - h[0]));
-  }
-  // 選ばれし300人's choices (server/core/npc-elite.js): those whose turn it is, a batch of one tier a call (the 10 first,
-  // then the 90, then the rest), up to six calls a wake, as far as the paced money goes
-  async function eliteThink(now) {
-    let n = 0;
-    for (let step = 0; step < 6; step++) {
-      const w = get();
-      if (!w) break;
-      const room = ai.cap * paced(now, w) - ai.used(now).neurons;
-      // (their turns as often as the day's money allows: npc-elite.js speed)
-      if (step === 0) { const h = NPC.hoursOf(now, w.first); elite.speed(w, ai.cap, h[1] - h[0]); }
-      const job = room > 0 ? elite.due(w, w.minute) : null;
-      if (!job) break;
-      const gens = job.list.map((i) => w.P.gen[i]);
-      const board = job.tier !== 'elite' && w.alpha && w.alpha.today ? w.alpha.today.board : null;
-      const p = elite.prompt(w, job.tier, job.list, w.day, board);
-      const said = await ai.ask(NPC.elite.model, 'elite', `${w.day}:${job.tier}:${job.list[0]}`, p.system, p.user, p.max, now, room);
-      const w2 = get();
-      if (!w2) break;
-      tx(() => {
-        if (said) elite.apply(w2, job.tier, job.list, said, w2.day, w2.minute, NPC.elite.model, gens);
-        else elite.later(w2, job.list, w2.minute, 10);
-        save('hot');
-      });
-      if (!said) break;
-      n++;
-    }
-    return n;
-  }
+  // the 300's and the AI 社長's turns (server/core/npc-think.js), within the day's AI money by the people's hours
+  const think = createThinker({ ai, get: () => get(), tx: (f) => tx(f), save: (k) => save(k), ctx: () => ctx(), hours: (now, w) => NPC.hoursOf(now, w.first, hw(w)) });
+  // 人の部屋 (server/core/npc-rooms.js): the people's minds in rooms of their own — in this host (NPC_ROOMS=local) or
+  // Cloudflare's own Workers (NPC_ROOMS=15, bound to this one: tools/rooms/deploy.mjs) —; none: the engine's minds alone
+  const roomsMode = String(config.npcRooms || '0');
+  const transport = roomsMode === 'local' ? localTransport((r) => dbStore(q, r)) : Number(roomsMode) > 0 && roomStubs ? remoteTransport(roomStubs) : null;
+  const rooms = transport ? createHost({ transport, get: () => get(), tx: (f) => tx(f), save: (k) => save(k), ctx: () => ctx(), seeded, hours: (now, w) => NPC.hoursOf(now, w.first, hw(w)),
+    profiles: (rows, day) => { for (const [id, p] of rows) q('INSERT INTO npc_profiles (id, day, data) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET day = excluded.day, data = excluded.data').run(id, day, JSON.stringify(p)); } }) : null;
   // 少数精鋭集団アルファ's talk (server/core/npc-alpha.js): its 10, each in their way, a message at a time (up to four a
   // wake) until the 15〜25 are said, the one with the most last with the conclusion. Each kept at once; the first order
   // in before it is done: the model's own words and plan stand (and what the AI had said is kept with them)
@@ -724,6 +710,7 @@ export function createNpc({ q, tx, afterCommit, clock = Date.now, secret, config
     q('DELETE FROM npc_reports WHERE id < (SELECT COALESCE(MAX(id), 0) FROM npc_reports) - ?').run(KEEP_REPORTS * 10);
     q('DELETE FROM stock_npc WHERE at < ?').run(Math.floor(now / 1000) - 3 * 86400);
     q('DELETE FROM npc_ai WHERE at < ?').run(now - 60 * 86400000);
+    if (w) q('DELETE FROM npc_profiles WHERE day < ?').run(w.day - 30);
     if (w) q('DELETE FROM npc_days WHERE day < ?').run(w.day - KEEP_DAYS);
   }
 

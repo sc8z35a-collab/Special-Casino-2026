@@ -63,7 +63,9 @@
   // The people live in real time, Japan's. On the day the country began they are about all 24 hours; from the next
   // day on, from 9:00 to 22:00 on Saturdays, Sundays and holidays, and from 11:00 to 22:00 on other days. Outside
   // those hours the country rests (nobody moves, nothing is bought); the companies' days still close at 9:00.
-  var HOURS = { holiday: [9 * 60, 22 * 60], weekday: [11 * 60, 22 * 60], first: [0, 24 * 60] };
+  // (`window`: by the new rules, a country whose host keeps it so — server/core/npc.js, NPC_WINDOW — is about from 17:00
+  // to 22:00 every day, its rooms awake those five hours alone: docs/npc-rooms-plan.md)
+  var HOURS = { holiday: [9 * 60, 22 * 60], weekday: [11 * 60, 22 * 60], first: [0, 24 * 60], window: [17 * 60, 22 * 60] };
   function pad(n) { return n < 10 ? '0' + n : String(n); }
   function dkey(y, m, d) { return y + '-' + pad(m) + '-' + pad(d); }
   function dow(y, m, d) { return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); }
@@ -103,17 +105,19 @@
     return { y: y, m: m, d: d, w: w, min: t.getUTCHours() * 60 + t.getUTCMinutes(), date: Math.floor((ms + JST) / DAY_MS), off: w === 0 || w === 6 || !!name || newYear, holiday: name || (newYear ? '年末年始' : '') };
   }
   // the hours of the day of `ms` the people are about ([from, to) in minutes of the day; `first`: the first day's date)
-  function hoursOf(ms, first) {
+  // (`win`: the country's own hours every day — HOURS.window —, when its host keeps them)
+  function hoursOf(ms, first, win) {
     var t = jst(ms);
     if (first !== undefined && first !== null && t.date === first) return HOURS.first;
+    if (win) return win;
     return t.off ? HOURS.holiday : HOURS.weekday;
   }
-  function activeAt(ms, first) { var h = hoursOf(ms, first), t = jst(ms); return t.min >= h[0] && t.min < h[1]; }
+  function activeAt(ms, first, win) { var h = hoursOf(ms, first, win), t = jst(ms); return t.min >= h[0] && t.min < h[1]; }
   // the next minute (ms) from `ms` on when the people are about
-  function nextActive(ms, first) {
+  function nextActive(ms, first, win) {
     var at = Math.ceil(ms / MIN) * MIN;
     for (var i = 0; i < 4; i++) {
-      var t = jst(at), h = hoursOf(at, first);
+      var t = jst(at), h = hoursOf(at, first, win);
       if (t.min < h[0]) return at + (h[0] - t.min) * MIN;
       if (t.min < h[1]) return at;
       at += (24 * 60 - t.min) * MIN;
@@ -542,6 +546,9 @@
   // by age (by the 50,000, as their life's chances leave them).
   var LIFE2 = {
     adult: 18, work: [18, 59], retire: 60, mean: 60, max: 62, from: 58, yearly: [0.06, 0.12, 0.25, 0.45],
+    // (a working day: `hours` of the hours the people are about — from their start, a late shift's to their end —,
+    // `work` minutes of each hour at work and the rest a break)
+    workDay: { hours: 4, work: 40 },
     ages: [[18, 57, 46097], [58, 58, 1152], [59, 59, 1083], [60, 60, 953], [61, 61, 715]]
   };
   // 人口の再編 (server/core/npc-reorg.js, once, a country kept from before brought under these rules): ヴェルノア's
@@ -560,7 +567,7 @@
   // `topModel`, the stronger); `rates` the Neurons a model costs a million tokens in and out (Workers AI's price list).
   // What it may spend: the free `free` Neurons a day (Cloudflare's, by the UTC day) and, beyond it, all that is left
   // a month of `cap` yen (the most the country may add to the bill: docs/npc-rooms-plan.md) once the people's rooms
-  // are paid (`roomYen` each, a month of their five hours), at `price` $ a thousand Neurons and `usd` yen a $ — all of
+  // are paid (below), at `price` $ a thousand Neurons and `usd` yen a $ — all of
   // it, paced through the day (`pace`: never more of the day's than the share of the people's hours gone, and this many
   // minutes ahead); their turns come the oftener the more there is (`every` the longest, a `fastest` share of it the
   // shortest), `per` Neurons a person's choice about (a call of ten)
@@ -568,13 +575,16 @@
     n: 300, per: 10000, every: { elite: 40, alpha: 20, top: 10 }, fastest: 0.1, batch: 10, perChoice: 1.3,
     model: '@cf/qwen/qwen3-30b-a3b-fp8', topModel: '@cf/google/gemma-4-26b-a4b-it',
     rates: { '@cf/qwen/qwen3-30b-a3b-fp8': [4625, 30475], '@cf/google/gemma-4-26b-a4b-it': [9091, 27273], '@cf/ibm-granite/granite-4.0-h-micro': [1542, 10158], '@cf/google/gemma-3-12b-it': [31371, 50560] },
-    free: 10000, cap: 1450, roomYen: 131, price: 0.011, usd: 150, pace: 30
+    free: 10000, cap: 1450, price: 0.011, usd: 150, pace: 30,
+    // (the rooms' cost: each awake its five hours a day `roomGBs` GB-seconds a month — 128MB each —, the main room's
+    // `mainGBs` of the `included` the month gives the account, the rest at `gbPrice` $ a GB-second)
+    roomGBs: 69750, mainGBs: 83700, included: 400000, gbPrice: 12.5e-6
   };
   // a day's chance of dying at `age` by these rules (1 at `max`; the illnesses' share below `from`: npc-state.js)
+  var LATE = LIFE2.yearly.map(function (p) { return 1 - Math.pow(1 - p, 1 / 365); });
   function lateDeath(age) {
     if (age >= LIFE2.max) return 1;
-    if (age < LIFE2.from) return 0;
-    return 1 - Math.pow(1 - LIFE2.yearly[age - LIFE2.from], 1 / 365);
+    return age < LIFE2.from ? 0 : LATE[age - LIFE2.from];
   }
   // an age at a country's start, by `ages` (u in [0, 1))
   function startAge(u, v) {

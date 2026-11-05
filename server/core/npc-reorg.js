@@ -211,6 +211,7 @@ function vernoa(W, w, day, n, r) {
   }
   W.P = Q;
   W.n = k;
+  W._roster = null;
   remapWorld(W, re);
   W._staff = null;
   // the new rules for those staying: nobody studies or keeps house (they look for work), nobody works after 60

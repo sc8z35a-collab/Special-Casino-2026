@@ -91,32 +91,49 @@ export function alloc(n) {
 // The people as blobs: every column's bytes one after another (the hot ones only, or all), cut into rows of at most
 // `size` bytes for the database; and back.
 const ROW = 1500000;
-export function pack(P, hot = false) {
-  const cols = COLUMNS.filter((c) => !hot || c.hot);
-  let total = 0;
-  for (const c of cols) total += P[c.name].byteLength;
-  const all = new Uint8Array(total);
-  let at = 0;
-  for (const c of cols) { const a = P[c.name]; all.set(new Uint8Array(a.buffer, a.byteOffset, a.byteLength), at); at += a.byteLength; }
-  const rows = [];
-  for (let i = 0; i < total; i += ROW) rows.push(all.subarray(i, Math.min(total, i + ROW)));
-  return rows;
+// (the rows are the columns' bytes one after another cut every ROW bytes — as they always were —, but made a row at a
+// time as they are written, and read back a column at a time: never all the people's bytes joined in one more copy,
+// which a save of them all once made the memory's peak — docs/npc-rooms-plan.md 5章)
+export function* packRows(P, hot = false) {
+  let row = new Uint8Array(ROW), at = 0;
+  for (const c of COLUMNS) {
+    if (hot && !c.hot) continue;
+    const a = P[c.name], u = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+    for (let k = 0; k < u.length;) {
+      const n = Math.min(ROW - at, u.length - k);
+      row.set(u.subarray(k, k + n), at);
+      at += n; k += n;
+      if (at === ROW) { yield row; row = new Uint8Array(ROW); at = 0; }
+    }
+  }
+  if (at > 0) yield row.subarray(0, at);
+}
+export function pack(P, hot = false) { return Array.from(packRows(P, hot)); }
+// the rows as one stream of bytes, read into one column after another
+export function rowReader(rows) {
+  let k = 0, off = 0, left = 0;
+  for (const r of rows) left += r.byteLength;
+  return {
+    left: () => left,
+    into(dst) {
+      for (let at = 0; at < dst.length;) {
+        const r = rows[k], u = r instanceof Uint8Array ? r : new Uint8Array(r), n = Math.min(dst.length - at, u.length - off);
+        dst.set(u.subarray(off, off + n), at);
+        at += n; off += n; left -= n;
+        if (off >= u.length) { k++; off = 0; }
+      }
+    }
+  };
 }
 export function unpack(P, rows, hot = false) {
-  const cols = COLUMNS.filter((c) => !hot || c.hot);
-  let total = 0;
-  for (const r of rows) total += r.byteLength;
-  const all = new Uint8Array(total);
-  let at = 0;
-  for (const r of rows) { all.set(r instanceof Uint8Array ? r : new Uint8Array(r), at); at += r.byteLength; }
-  at = 0;
-  for (const c of cols) {
+  const rd = rowReader(rows);
+  for (const c of COLUMNS) {
+    if (hot && !c.hot) continue;
     const a = P[c.name], len = a.byteLength;
     // (a column added later that a country kept before it does not have: it stays at 0)
-    if (c.late && at >= total) continue;
-    if (at + len > total) throw new Error('npc: the blobs are shorter than the people');
-    new Uint8Array(a.buffer, a.byteOffset, len).set(all.subarray(at, at + len));
-    at += len;
+    if (c.late && rd.left() === 0) continue;
+    if (rd.left() < len) throw new Error('npc: the blobs are shorter than the people');
+    rd.into(new Uint8Array(a.buffer, a.byteOffset, len));
   }
   return P;
 }
