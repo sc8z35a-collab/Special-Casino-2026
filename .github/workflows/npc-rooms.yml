@@ -1,0 +1,30 @@
+name: Deploy the people's rooms
+
+# 人の部屋（npc-room-1〜npc-room-15：server/cloudflare/npc-room.js）を Cloudflare に配備します（docs/npc-rooms-plan.md）。
+# パソコンに何も入れずに、GitHub の「Actions」タブ →「Deploy the people's rooms」→「Run workflow」で実行します。
+# 必要なもの（リポジトリの Settings → Secrets and variables → Actions に登録）：
+#   CLOUDFLARE_API_TOKEN  Cloudflare の API トークン（テンプレート「Edit Cloudflare Workers」）
+#   CLOUDFLARE_ACCOUNT_ID Cloudflare のアカウント ID
+# 本体（blockbuster-reels）とそのデータ（Casino の v1）には一切触れません。部屋のWorkerを作る・更新するだけです。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rooms:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Deploy npc-room-1 … npc-room-15
+        run: node tools/rooms/deploy.mjs --no-bind
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
