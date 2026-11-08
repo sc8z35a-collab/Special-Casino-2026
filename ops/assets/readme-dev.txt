@@ -280,6 +280,7 @@ Cloudflare の Worker の「設定 → 変数とシークレット」で追加�
 | `CF_ACCOUNT_ID` / `CF_API_TOKEN` | 「サーバー」タブに Cloudflare 自身の今月の数字（リクエスト・エラー・CPU 時間・R2・データベース）も出すとき。アカウント ID と、**Account Analytics: 読み取り** だけの API トークン（シークレット） |
 | `STRIPE_API_VERSION` | Stripe の API バージョン（既定 `2025-09-30.clover`。通常は不要） |
 | `DISCORD_WEBHOOK_URL`（シークレット） | 開発者への通知を送る Discord のチャンネルの Webhook の URL（下の「Discord に通知する」） |
+| `DISCORD_NOTIFY` | `on` のときだけ Discord に通知を送ります。**既定は止まっています**（Webhook が入っていても送りません。LINE と運営ログはそのまま） |
 
 ホーム通話は端末どうしを直接つなぎます。ほとんどの Wi-Fi・モバイル回線はそのままつながりますが、
 一部の回線でつながらない場合は上の TURN を設定してください。マイクの使用には HTTPS が必要です（workers.dev は HTTPS です）。
