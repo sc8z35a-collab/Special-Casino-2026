@@ -149,6 +149,9 @@ export function configFrom(env = {}, overrides = {}) {
     // notices for the developer in a Discord channel (server/core/discord.js):
     // the channel's webhook address (a secret)
     discordWebhook: str(env, 'DISCORD_WEBHOOK_URL'),
+    // …stopped: nothing goes to that channel unless DISCORD_NOTIFY is "on"
+    // (the webhook may stay set; LINE and the operators' log are unchanged)
+    discordNotify: str(env, 'DISCORD_NOTIFY').toLowerCase() === 'on',
     // パスキー認証 (server/core/pk.js): each time the operator site or the security
     // base is opened, today's six digits (from Discord's /passkey) are asked for.
     // Off until GATE_KEY (a secret of 32 characters or more) is set; the Discord
