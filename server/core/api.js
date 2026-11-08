@@ -484,8 +484,8 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   official.id();
   // notices for the developer, from the log's entries: in a Discord channel
   // (server/core/discord.js) and in LINE (server/core/line.js), the same in
-  // both (server/core/notify.js)
-  const discord = createDiscord({ url: config.discordWebhook, defer, jst, publicUrl: config.publicUrl });
+  // both (server/core/notify.js). Discord is stopped unless DISCORD_NOTIFY=on.
+  const discord = createDiscord({ url: config.discordNotify ? config.discordWebhook : '', defer, jst, publicUrl: config.publicUrl });
   const kv = {
     get(key) {
       const r = q('SELECT value FROM meta WHERE key = ?').get(key);
@@ -4034,7 +4034,7 @@ export function createApi({ db, live: hostLive, config, secret, hostAdmin = null
   const operatorsOnlineNow = () => { const now = Date.now(); return ops.operatorList().filter((o) => o.operator && o.id && now - (opsSeen.get(o.id) || 0) < 40000).length; };
   // the server looks over itself (server/core/patrol.js): with the housekeeping, and when the developer asks
   const settingsNow = () => ({
-    gateKey: !!config.gateKey, discordBot: !!config.discordAppKey, discord: !!discord.on, line: !!line.on, adminToken: !!config.adminToken, stripe: !!config.stripeSecretKey,
+    gateKey: !!config.gateKey, discordBot: !!config.discordAppKey, discord: !!config.discordWebhook, line: !!line.on, adminToken: !!config.adminToken, stripe: !!config.stripeSecretKey,
     requireDevMfa: !!config.requireDevMfa, developer: nameKey(config.developer || ''), operators: sha256(config.operators.map(nameKey).sort().join(',')).slice(0, 12)
   });
   const patrol = createPatrol({

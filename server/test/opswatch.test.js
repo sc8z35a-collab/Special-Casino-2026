@@ -323,7 +323,7 @@ test('an emergency ends every watch at once, reports it to Discord and leaves it
   const sent = [];
   const s = await startServer({
     operators: ['taku'], limits: LIMITS, publicUrl: 'https://game.example.test',
-    discordWebhook: 'https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_0123456789'
+    discordNotify: true, discordWebhook: 'https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_0123456789'
   });
   try {
     // (Discord's answer is faked: the message is only looked at)
