@@ -38,7 +38,9 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Casino"] }],
   // the plan the game runs on: Workers Paid ($5 a month, since 2026-10-20);
   // the variables set in the dashboard stay through every deploy
-  "vars": { "CF_PLAN": "paid", "LINE_FEED_ENABLED": "true" },
+  // HALT "on": 全停止 — nothing of the game runs (the API answered by the Worker, the object never woken, its alarm
+  // deleted; the data kept). "off" and a deploy start it again (server/core/halt.js, docs/handbook/14.md)
+  "vars": { "CF_PLAN": "paid", "LINE_FEED_ENABLED": "true", "HALT": "on" },
   "keep_vars": true,
   "observability": { "enabled": true },
   // which version is live: a new one is told to the developer's Discord

@@ -13,6 +13,7 @@ import { newToken } from '../core/auth.js';
 import { nextAlarm, monthOf } from './awake.js';
 import { answerOnSocket, connectionOf } from '../core/socketapi.js';
 import { terminalEvent } from '../core/live-terminal.js';
+import { isHalted, haltBody } from '../core/halt.js';
 
 const HOUSEKEEPING_EVERY = 6 * 3600000;
 const JSON_HEADERS = {
@@ -260,10 +261,14 @@ function coreRequest(request, url) {
 function json(status, body) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
+const closeQuietly = (ws) => { try { ws.close(1012, 'halted'); } catch { /* already closed */ } };
 
 export class Casino extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
+    // 全停止 (server/core/halt.js): nothing is opened or started — the alarm it had deleted, never set again
+    this.halted = isHalted(env);
+    if (this.halted) { ctx.blockConcurrencyWhile(() => ctx.storage.deleteAlarm()); return; }
     this.db = sqlAdapter(ctx);
     this.live = new SocketHub(ctx);
     // staying awake while played (server/cloudflare/awake.js): the last
@@ -335,6 +340,7 @@ export class Casino extends DurableObject {
   }
 
   async fetch(request) {
+    if (this.halted) return json(503, haltBody());
     const url = new URL(request.url);
     this.touch();
     if (url.pathname === '/api/live') return this.connect(request, url);
@@ -392,6 +398,7 @@ export class Casino extends DurableObject {
   // from the game, voice chat signalling ({ op: "call", ... }), 入力中 ({ op: "typing" }), the activity beat of the time quests
   // ({ op: "beat" }) and, only while an operator watches, the sealed frames of the game's state ({ op: "view" }).
   async webSocketMessage(ws, message) {
+    if (this.halted) { closeQuietly(ws); return; }
     if (!this.live.valid(ws)) return;
     if (message === 'ping') { this.live.write(ws, 'pong'); return; }
     if (typeof message !== 'string' || message.length > 32 * 1024) return;
@@ -423,11 +430,11 @@ export class Casino extends DurableObject {
 
   async webSocketClose(ws, code) {
     try { ws.close(code === 1005 || code === 1006 ? 1000 : code, 'bye'); } catch { /* already closed */ }
-    this.left(ws);
+    if (!this.halted) this.left(ws);
   }
 
   async webSocketError(ws) {
-    this.left(ws);
+    if (!this.halted) this.left(ws);
   }
 
   left(ws) {
@@ -444,6 +451,8 @@ export class Casino extends DurableObject {
   // the housekeeping: every 6 hours, or sooner when the developer's backup is
   // due; in between, while played, a tick to stay awake (counted by the month)
   async alarm() {
+    // 全停止: the last time it is woken (no alarm is set again)
+    if (this.halted) { await this.ctx.storage.deleteAlarm(); return; }
     const now = Date.now();
     if (now >= this.housekeepAt - 1000) {
       await this.api.housekeeping();
