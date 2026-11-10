@@ -12,7 +12,8 @@ exports.freePort = () => new Promise((resolve, reject) => {
 exports.startWorker = async function ({ vars = {}, config = path.join(root, 'wrangler.jsonc') } = {}) {
   const port = await exports.freePort(), directory = fs.mkdtempSync(path.join(os.tmpdir(), 'casino-contract-'));
   const child = spawn(path.join(root, 'node_modules/.bin/wrangler'), ['dev', '--config', config, '--local', '--ip', '127.0.0.1', '--port', String(port), '--persist-to', directory,
-    ...Object.entries({ REGISTRATIONS_PER_IP: 0, ACCOUNTS_PER_DEVICE: 0, ...vars }).flatMap(([key, value]) => ['--var', key + ':' + value])],
+    // (the checks run the game itself: never 全停止, whatever wrangler.jsonc says — server/core/halt.js)
+    ...Object.entries({ REGISTRATIONS_PER_IP: 0, ACCOUNTS_PER_DEVICE: 0, HALT: 'off', ...vars }).flatMap(([key, value]) => ['--var', key + ':' + value])],
   { cwd: root, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: '1' } });
   let log = '', failed;
   child.stdout.on('data', (data) => { log += data; }); child.stderr.on('data', (data) => { log += data; }); child.on('error', (error) => { failed = error; });

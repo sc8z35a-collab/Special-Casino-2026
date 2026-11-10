@@ -8,6 +8,7 @@ import { Casino } from './casino.js';
 import { maintenanceBody, isQuotaError } from '../core/quota.js';
 import { screenChat, blockedBody } from '../core/attach.js';
 import { LINK_BODY_MAX } from '../core/vault.js';
+import { isHalted, haltBody } from '../core/halt.js';
 
 export { Casino };
 
@@ -106,6 +107,8 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
+    // 全停止: answered here, the object never woken (server/core/halt.js)
+    if (isHalted(env)) return Response.json(haltBody(), { status: 503, headers: NO_STORE });
     const casino = env.CASINO.get(env.CASINO.idFromName(DATABASE));
     try {
       if (request.method === 'GET' || request.method === 'HEAD') return await casino.fetch(request);

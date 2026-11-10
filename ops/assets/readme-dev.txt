@@ -281,6 +281,7 @@ Cloudflare の Worker の「設定 → 変数とシークレット」で追加�
 | `STRIPE_API_VERSION` | Stripe の API バージョン（既定 `2025-09-30.clover`。通常は不要） |
 | `DISCORD_WEBHOOK_URL`（シークレット） | 開発者への通知を送る Discord のチャンネルの Webhook の URL（下の「Discord に通知する」） |
 | `DISCORD_NOTIFY` | `on` のときだけ Discord に通知を送ります。**既定は止まっています**（Webhook が入っていても送りません。LINE と運営ログはそのまま） |
+| `HALT` | **全停止**。`on` のあいだ、ゲームは Cloudflare の上で何も動きません（API は Worker がその場で「緊急メンテナンス」と答え、データベースのオブジェクトは起こしません。オブジェクトは残っていたアラームで最後に 1 回だけ起き、アラームを消して止まります。バックアップ・NPCの国・Workers AI・投資・通知もすべて止まります）。データはそのまま残ります。**今は `wrangler.jsonc` に `on` と記入済み**。再開は `wrangler.jsonc` の `"HALT": "on"` を `"off"` にして main にマージ（自動でデプロイ）。止めていた日数分を再開後に順に進めます |
 
 ホーム通話は端末どうしを直接つなぎます。ほとんどの Wi-Fi・モバイル回線はそのままつながりますが、
 一部の回線でつながらない場合は上の TURN を設定してください。マイクの使用には HTTPS が必要です（workers.dev は HTTPS です）。
